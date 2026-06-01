@@ -11,9 +11,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/wins/acp-transport/jsonrpc"
-	"github.com/wins/acp-transport/stdio"
-	"github.com/wins/acp-transport/streamhttp"
+	"github.com/gluonfield/acp-transport/jsonrpc"
+	"github.com/gluonfield/acp-transport/stdio"
+	"github.com/gluonfield/acp-transport/streamhttp"
 )
 
 func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, env map[string]string, cwd string) (jsonrpc.MessageConn, error) {

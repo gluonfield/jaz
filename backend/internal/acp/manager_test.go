@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wins/acp-transport/jsonrpc"
-	"github.com/wins/acp-transport/stdio"
+	"github.com/gluonfield/acp-transport/jsonrpc"
+	"github.com/gluonfield/acp-transport/stdio"
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
