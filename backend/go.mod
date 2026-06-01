@@ -11,7 +11,7 @@ require (
 	go.uber.org/fx v1.24.0
 )
 
-replace github.com/gluonfield/acp-transport => /Users/wins/Projects/personal/acp-transport
+replace github.com/gluonfield/acp-transport => /Users/wins/Projects/personal/jarvis/acp-transport
 
 require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect

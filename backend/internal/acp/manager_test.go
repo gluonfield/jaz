@@ -153,7 +153,26 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				},
 			})
 		case "session/new":
-			sendResult(conn, msg, map[string]any{"sessionId": "fake-session"})
+			sendResult(conn, msg, map[string]any{
+				"sessionId": "fake-session",
+				"modes": map[string]any{
+					"currentModeId": "auto",
+					"availableModes": []map[string]any{
+						{"id": "auto", "name": "Auto"},
+						{"id": "full-access", "name": "Full Access"},
+					},
+				},
+			})
+		case "session/set_mode":
+			var req struct {
+				ModeID string `json:"modeId"`
+			}
+			if err := json.Unmarshal(msg.Params, &req); err != nil || req.ModeID != "full-access" {
+				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("expected full-access mode", nil))
+				_ = conn.Send(context.Background(), resp)
+				continue
+			}
+			sendResult(conn, msg, map[string]any{})
 		case "session/prompt":
 			notify(conn, "session/update", map[string]any{
 				"sessionId": "fake-session",

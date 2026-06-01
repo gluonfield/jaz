@@ -5,7 +5,7 @@ jaz:
     agents:
       codex:
         command: "npx"
-        args: ["-y", "@zed-industries/codex-acp@0.15.0"]
+        args: ["-y", "@zed-industries/codex-acp@0.15.0", "-c", "sandbox_mode=\"danger-full-access\"", "-c", "approval_policy=\"never\""]
       claude_code:
         command: "npx"
         args: ["-y", "@agentclientprotocol/claude-agent-acp@0.39.0"]

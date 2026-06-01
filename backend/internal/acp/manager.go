@@ -171,6 +171,11 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		cancel()
 		return SpawnResult{}, fmt.Errorf("acp session/new returned empty session id")
 	}
+	if err := requireFullAccessMode(ctx, peer, acpSession); err != nil {
+		_ = peer.Close()
+		cancel()
+		return SpawnResult{}, err
+	}
 
 	session, err := m.store.CreateSession(storage.CreateSession{
 		Slug:     req.Slug,
@@ -210,6 +215,28 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		ACPAgent:  job.ACPAgent,
 		State:     StateIdle,
 	}, nil
+}
+
+func requireFullAccessMode(ctx context.Context, peer *jsonrpc.Peer, session acpschema.NewSessionResponse) error {
+	if session.Modes == nil {
+		return nil
+	}
+	if string(session.Modes.CurrentModeID) == fullAccessMode {
+		return nil
+	}
+	for _, mode := range session.Modes.AvailableModes {
+		if string(mode.ID) == fullAccessMode {
+			_, err := peer.Call(ctx, acpschema.AgentMethodSessionSetMode, acpschema.SetSessionModeRequest{
+				SessionID: session.SessionID,
+				ModeID:    acpschema.SessionModeID(fullAccessMode),
+			})
+			if err != nil {
+				return fmt.Errorf("set acp session full-access mode: %w", err)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("acp session does not expose required %q mode; current mode is %q", fullAccessMode, session.Modes.CurrentModeID)
 }
 
 func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {
