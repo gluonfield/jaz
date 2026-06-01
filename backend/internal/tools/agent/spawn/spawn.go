@@ -18,13 +18,12 @@ type input struct {
 	Slug     string `json:"slug,omitempty" jsonschema_description:"Stable human-readable handle for the spawned session."`
 	Title    string `json:"title,omitempty" jsonschema_description:"Optional display title for the spawned session."`
 	Message  string `json:"message" jsonschema_description:"Initial instruction to send to the ACP agent."`
-	Cwd      string `json:"cwd,omitempty" jsonschema_description:"Working directory for the ACP session."`
 }
 
 func (t *Tool) Definition() tools.Definition {
 	return tools.Function(
 		"agent_spawn",
-		"Spawn an ACP-backed agent session and send it an initial instruction.",
+		"Spawn an ACP-backed agent session, such as codex or claude_code, and send it an initial instruction. The session runs asynchronously; its completion is propagated back to the parent chat.",
 		true,
 		helpers.GenerateSchema[input](),
 	)
@@ -41,7 +40,6 @@ func (t *Tool) Execute(ctx context.Context, inputs map[string]any) (tools.Result
 		Slug:     req.Slug,
 		Title:    req.Title,
 		Message:  req.Message,
-		Cwd:      req.Cwd,
 	})
 	if err != nil {
 		return tools.Result{}, err

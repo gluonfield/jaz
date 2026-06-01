@@ -26,4 +26,8 @@ go run ./cmd/jaz serve --provider openrouter --model openai/gpt-5.4-mini
 
 Provider credentials can also live in `application.local.yaml` or `.env`.
 
+Codex ACP sessions reuse your Codex CLI OAuth login from `~/.codex` by default.
+Set `CODEX_HOME` only when Codex uses a non-default auth directory. OpenAI and
+OpenRouter credentials only authenticate the coordinator model.
+
 Runtime files are stored under `~/.jaz` by default. Override with `jaz.root`.

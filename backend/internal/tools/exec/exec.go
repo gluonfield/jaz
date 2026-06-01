@@ -84,7 +84,7 @@ type ExecCommandTool struct {
 func (t *ExecCommandTool) Definition() tools.Definition {
 	return tools.Function(
 		"exec_command",
-		"Runs a command in a PTY, returning output or a session ID for ongoing interaction.",
+		"Runs a local shell command. Do not use when the user explicitly asks to use a named ACP agent such as codex or claude_code; use agent_spawn instead.",
 		false,
 		tools.ObjectSchema(map[string]any{
 			"cmd":               tools.StringSchema("Shell command to execute."),

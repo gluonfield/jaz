@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -10,6 +11,9 @@ import (
 	"github.com/wins/jaz/backend/internal/provider"
 	mockprovider "github.com/wins/jaz/backend/internal/provider/mock"
 	openaiprovider "github.com/wins/jaz/backend/internal/provider/openai"
+	"github.com/wins/jaz/backend/internal/sessioncontext"
+	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/sessionlock"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 	"github.com/wins/jaz/backend/internal/tools"
 	agentcancel "github.com/wins/jaz/backend/internal/tools/agent/cancel"
@@ -35,21 +39,33 @@ type ProviderConfig struct {
 	Model  string
 }
 
-func BuildAgent(cfg Config) (*agent.Agent, *jsonstore.Store, error) {
+type Runtime struct {
+	Agent  *agent.Agent
+	Store  *jsonstore.Store
+	ACP    *acp.Manager
+	Locks  *sessionlock.Locks
+	Events *sessionevents.Bus
+}
+
+func BuildRuntime(cfg Config) (*Runtime, error) {
 	store, err := jsonstore.New(cfg.Root)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	workspace := cfg.Workspace
 	if workspace == "" {
 		workspace = store.DefaultWorkspace()
 	}
 	if err := os.MkdirAll(workspace, 0o755); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	commandManager := exectool.NewCommandManager()
+	cfg.ACP.Root = store.RootDir()
+	cfg.ACP.Workspace = workspace
 	acpManager := acp.NewManager(store, cfg.ACP)
+	locks := sessionlock.New()
+	events := sessionevents.New()
 	registry := tools.NewRegistry(
 		&exectool.ExecCommandTool{Manager: commandManager, Workspace: workspace},
 		&exectool.WriteStdinTool{Manager: commandManager},
@@ -64,15 +80,56 @@ func BuildAgent(cfg Config) (*agent.Agent, *jsonstore.Store, error) {
 
 	modelProvider, err := BuildProvider(cfg.Provider)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	return &agent.Agent{
+	runtime := &Runtime{Agent: &agent.Agent{
 		Provider: modelProvider,
 		Model:    cfg.Provider.Model,
 		Tools:    registry,
 		MaxTurns: agent.DefaultMaxTurns,
-	}, store, nil
+	}, Store: store, ACP: acpManager, Locks: locks, Events: events}
+	acpManager.Done = runtime.completeACP
+	return runtime, nil
+}
+
+func (r *Runtime) completeACP(ctx context.Context, job acp.Job) {
+	if job.ParentID == "" {
+		return
+	}
+	unlock := r.Locks.Lock(job.ParentID)
+	defer unlock()
+
+	messages, err := r.Store.LoadMessages(job.ParentID)
+	if err != nil {
+		return
+	}
+	messages = append(messages, provider.DeveloperMessage(acpCompletion(job)))
+	ctx = sessioncontext.WithSessionID(ctx, job.ParentID)
+	result, err := r.Agent.Complete(ctx, provider.Request{Messages: messages})
+	if err != nil {
+		content := fmt.Sprintf("ACP session %s finished, but coordinator follow-up failed: %v", job.Slug, err)
+		messages = append(messages, provider.AssistantMessage(content, nil))
+		_ = r.Store.SaveMessages(job.ParentID, messages)
+		r.Events.Publish(sessionevents.Event{SessionID: job.ParentID, Type: "assistant", Content: content})
+		return
+	}
+	_ = r.Store.SaveMessages(job.ParentID, result.Messages)
+	if content := provider.MessageContent(result.Message); strings.TrimSpace(content) != "" {
+		r.Events.Publish(sessionevents.Event{SessionID: job.ParentID, Type: "assistant", Content: content})
+	}
+}
+
+func acpCompletion(job acp.Job) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "ACP session %s (%s) completed with state %s.", job.Slug, job.ACPAgent, job.State)
+	if job.Error != "" {
+		fmt.Fprintf(&b, "\nError: %s", job.Error)
+	}
+	if strings.TrimSpace(job.Assistant) != "" {
+		fmt.Fprintf(&b, "\nAssistant result:\n%s", job.Assistant)
+	}
+	return b.String()
 }
 
 func BuildProvider(cfg ProviderConfig) (provider.Provider, error) {
