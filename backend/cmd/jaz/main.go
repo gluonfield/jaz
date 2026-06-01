@@ -13,11 +13,7 @@ import (
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/agent"
-	"github.com/wins/jaz/backend/internal/app"
-	"github.com/wins/jaz/backend/internal/codexcompat"
-	"github.com/wins/jaz/backend/internal/config"
 	"github.com/wins/jaz/backend/internal/provider"
-	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -43,41 +39,6 @@ func main() {
 		usage()
 		os.Exit(2)
 	}
-}
-
-func runServe(args []string) error {
-	loaded, err := config.Load()
-	if err != nil {
-		return err
-	}
-	cfg := loaded.Jaz
-	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
-	addr := fs.String("addr", ":8080", "HTTP listen address")
-	fs.StringVar(&cfg.Root, "root", cfg.Root, "Jaz root directory")
-	fs.StringVar(&cfg.Workspace, "workspace", cfg.Workspace, "default workspace")
-	fs.StringVar(&cfg.Provider.Type, "provider", cfg.Provider.Type, "provider: openai, openrouter, or mock")
-	fs.StringVar(&cfg.Provider.APIKey, "api-key", cfg.Provider.APIKey, "provider API key")
-	fs.StringVar(&cfg.Provider.Model, "model", cfg.Provider.Model, "model name")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-
-	runtime, err := app.BuildRuntime(cfg)
-	if err != nil {
-		return err
-	}
-	workspace := cfg.Workspace
-	if workspace == "" {
-		workspace = runtime.Store.DefaultWorkspace()
-	}
-	srv := &http.Server{
-		Addr:    *addr,
-		Handler: (&server.Server{Agent: runtime.Agent, Store: runtime.Store, ACP: runtime.ACP, Locks: runtime.Locks, Events: runtime.Events, SystemPrompt: codexcompat.DefaultSystemPrompt}).Handler(),
-	}
-	fmt.Printf("jaz server listening on %s\n", displayAddr(*addr))
-	fmt.Printf("root: %s\n", runtime.Store.RootDir())
-	fmt.Printf("workspace: %s\n", workspace)
-	return srv.ListenAndServe()
 }
 
 func runChat(args []string) error {

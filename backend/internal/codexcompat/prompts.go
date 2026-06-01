@@ -11,13 +11,16 @@ verifiable changes. When using shell commands, set the working directory when it
 matters. Use apply_patch for file edits. Report what changed and which checks ran.
 
 When the user explicitly asks to use, spawn, delegate to, or ask a named agent
-such as Codex or Claude Code, use agent_spawn with acp_agent set to the requested
-agent. Do not satisfy that request with local shell or file-editing tools unless
-the user asks you to do the work directly.
+such as Codex or Claude Code, use ACP agent tools. Do not satisfy that request
+with local shell or file-editing tools unless the user asks you to do the work
+directly.
 
-agent_spawn runs asynchronously. Tell the user which spawned session is running,
-then stop; the runtime will propagate the spawned agent's result back into this
-chat when it completes. Do not choose a working directory for agent_spawn; it
-uses the configured workspace.`
+agent_spawn only creates an idle session. It does not send work to the agent and
+does not have a wait mode. After creating a session, send each task with
+agent_send. Set wait=true on agent_send for short, concrete tasks where the user
+expects the result immediately, such as pwd, whoami, git status, or quick file
+inspection. Use wait=false or omit it for longer background tasks; then tell the
+user which session is working and stop. Do not choose a working directory for
+agent_spawn; it uses the configured workspace.`
 
 const CodexAttribution = `Codex compatibility is based on OpenAI Codex CLI, Apache-2.0: https://github.com/openai/codex`

@@ -53,12 +53,12 @@ type SpawnRequest struct {
 	ACPAgent string
 	Slug     string
 	Title    string
-	Message  string
 }
 
 type SendRequest struct {
-	Session string
-	Message string
+	Session    string
+	Message    string
+	Completion CompletionMode
 }
 
 type WaitRequest struct {
@@ -99,9 +99,6 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	cfg, ok := m.cfg.Agent(req.ACPAgent)
 	if !ok {
 		return SpawnResult{}, fmt.Errorf("acp agent %q is not configured", req.ACPAgent)
-	}
-	if strings.TrimSpace(req.Message) == "" {
-		return SpawnResult{}, fmt.Errorf("message is required")
 	}
 	absCwd, err := m.resolveCwd(cfg.Cwd)
 	if err != nil {
@@ -191,12 +188,6 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		cancel()
 		return SpawnResult{}, err
 	}
-	if err := m.store.AppendMessages(session.ID, provider.UserMessage(req.Message)); err != nil {
-		_ = peer.Close()
-		cancel()
-		return SpawnResult{}, err
-	}
-
 	job := &Job{
 		ID:         session.ID,
 		Slug:       session.Slug,
@@ -205,21 +196,19 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		ACPAgent:   req.ACPAgent,
 		ACPSession: string(acpSession.SessionID),
 		Cwd:        absCwd,
-		State:      StateStarting,
+		State:      StateIdle,
 		CreatedAt:  session.CreatedAt,
 		UpdatedAt:  time.Now().UTC(),
 		toolByID:   make(map[string]ToolCallSnapshot),
 	}
 	m.addJob(job, conn, peer, cancel)
-	job.startTurn()
-	go m.runPrompt(runCtx, job, req.Message)
 
 	return SpawnResult{
-		Status:    "accepted",
+		Status:    "created",
 		SessionID: job.ID,
 		Slug:      job.Slug,
 		ACPAgent:  job.ACPAgent,
-		State:     StateRunning,
+		State:     StateIdle,
 	}, nil
 }
 
@@ -238,7 +227,7 @@ func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {
 		return Job{}, fmt.Errorf("session %s is already running", job.Slug)
 	}
 	_ = m.store.AppendMessages(job.ID, provider.UserMessage(req.Message))
-	job.startTurn()
+	job.startTurn(req.Completion)
 	go m.runPrompt(context.Background(), job, req.Message)
 	return job.Snapshot(), nil
 }
@@ -340,7 +329,7 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string) {
 	done := job.done
 	job.mu.RUnlock()
 	if done == nil {
-		done = job.startTurn()
+		done = job.startTurn(CompletionInline)
 	}
 
 	peer := m.peer(job.ID)
@@ -380,8 +369,12 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string) {
 }
 
 func (m *Manager) finishTurn(done chan struct{}, job *Job) {
+	job.mu.Lock()
+	completion := job.completion
+	job.completion = CompletionInline
+	job.mu.Unlock()
 	close(done)
-	if m.Done != nil {
+	if completion.propagates() && m.Done != nil {
 		go m.Done(context.Background(), job.Snapshot())
 	}
 }

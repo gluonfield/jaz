@@ -26,6 +26,7 @@ type Job struct {
 	mu                sync.RWMutex
 	turnMu            sync.Mutex
 	done              chan struct{}
+	completion        CompletionMode
 	toolByID          map[string]ToolCallSnapshot
 	savedAssistantLen int
 }
@@ -74,7 +75,7 @@ func (j *Job) setState(state, stopReason, errMsg string) {
 	j.UpdatedAt = time.Now().UTC()
 }
 
-func (j *Job) startTurn() chan struct{} {
+func (j *Job) startTurn(completion CompletionMode) chan struct{} {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	j.State = StateRunning
@@ -85,6 +86,7 @@ func (j *Job) startTurn() chan struct{} {
 	j.Error = ""
 	j.StopReason = ""
 	j.savedAssistantLen = 0
+	j.completion = completion
 	j.toolByID = make(map[string]ToolCallSnapshot)
 	j.done = make(chan struct{})
 	j.UpdatedAt = time.Now().UTC()
