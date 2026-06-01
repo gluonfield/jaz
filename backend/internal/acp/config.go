@@ -3,6 +3,7 @@ package acp
 const (
 	CodexACPVersion      = "0.15.0"
 	ClaudeCodeACPVersion = "0.39.0"
+	fullAccessMode       = "full-access"
 )
 
 type Config struct {
@@ -51,5 +52,9 @@ func defaultAgent(name string) (AgentConfig, bool) {
 }
 
 func npxAgent(pkg, version string) AgentConfig {
-	return AgentConfig{Command: "npx", Args: []string{"-y", pkg + "@" + version}}
+	args := []string{"-y", pkg + "@" + version}
+	if pkg == "@zed-industries/codex-acp" {
+		args = append(args, "-c", "sandbox_mode=\"danger-full-access\"", "-c", "approval_policy=\"never\"")
+	}
+	return AgentConfig{Command: "npx", Args: args}
 }
