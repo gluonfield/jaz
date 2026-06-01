@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/provider"
@@ -18,6 +19,7 @@ import (
 
 type Store struct {
 	root string
+	mu   sync.Mutex
 }
 
 func DefaultRoot() string {
@@ -134,6 +136,12 @@ func (s *Store) LoadSession(ref string) (storage.Session, error) {
 }
 
 func (s *Store) SaveSession(session storage.Session) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.saveSession(session)
+}
+
+func (s *Store) saveSession(session storage.Session) error {
 	if session.ID == "" {
 		return fmt.Errorf("session id is empty")
 	}
@@ -214,6 +222,12 @@ func (s *Store) LastRootSession() (storage.Session, error) {
 }
 
 func (s *Store) LoadMessages(id string) ([]provider.Message, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.loadMessages(id)
+}
+
+func (s *Store) loadMessages(id string) ([]provider.Message, error) {
 	path := filepath.Join(s.sessionDir(id), "messages.json")
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -230,6 +244,25 @@ func (s *Store) LoadMessages(id string) ([]provider.Message, error) {
 }
 
 func (s *Store) SaveMessages(id string, messages []provider.Message) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.saveMessages(id, messages)
+}
+
+func (s *Store) AppendMessages(id string, messages ...provider.Message) error {
+	if len(messages) == 0 {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	existing, err := s.loadMessages(id)
+	if err != nil {
+		return err
+	}
+	return s.saveMessages(id, append(existing, messages...))
+}
+
+func (s *Store) saveMessages(id string, messages []provider.Message) error {
 	if err := s.EnsureSession(id); err != nil {
 		return err
 	}
@@ -242,7 +275,74 @@ func (s *Store) SaveMessages(id string, messages []provider.Message) error {
 	}
 	if session, err := s.loadSessionByID(id); err == nil {
 		session.UpdatedAt = time.Now().UTC()
-		_ = s.SaveSession(session)
+		_ = s.saveSession(session)
+	}
+	return nil
+}
+
+func (s *Store) LoadActivity(id string) ([]storage.ActivityEntry, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.loadActivity(id)
+}
+
+func (s *Store) loadActivity(id string) ([]storage.ActivityEntry, error) {
+	path := filepath.Join(s.sessionDir(id), "activity.json")
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var activity []storage.ActivityEntry
+	if err := stdjson.Unmarshal(data, &activity); err != nil {
+		return nil, err
+	}
+	return activity, nil
+}
+
+func (s *Store) SaveActivity(id string, activity []storage.ActivityEntry) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.saveActivity(id, activity)
+}
+
+func (s *Store) UpsertActivity(id string, entry storage.ActivityEntry) error {
+	if entry.At.IsZero() {
+		entry.At = time.Now().UTC()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	activity, err := s.loadActivity(id)
+	if err != nil {
+		return err
+	}
+	if entry.ID != "" {
+		for i := range activity {
+			if activity[i].ID == entry.ID {
+				activity[i] = entry
+				return s.saveActivity(id, activity)
+			}
+		}
+	}
+	return s.saveActivity(id, append(activity, entry))
+}
+
+func (s *Store) saveActivity(id string, activity []storage.ActivityEntry) error {
+	if err := s.EnsureSession(id); err != nil {
+		return err
+	}
+	data, err := stdjson.MarshalIndent(activity, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(s.sessionDir(id), "activity.json"), data, 0o644); err != nil {
+		return err
+	}
+	if session, err := s.loadSessionByID(id); err == nil {
+		session.UpdatedAt = time.Now().UTC()
+		_ = s.saveSession(session)
 	}
 	return nil
 }

@@ -40,3 +40,18 @@ func TestApplyProviderSelectsOpenRouter(t *testing.T) {
 		t.Fatalf("unexpected provider %#v", provider)
 	}
 }
+
+func TestProviderKeysStayOutOfACPEnv(t *testing.T) {
+	cfg := Config{
+		Providers: ProvidersConfig{Default: "openai"},
+		OpenAI:    openaiprovider.Config{APIKey: "openai-key", Model: "gpt-4.1-mini"},
+	}
+
+	if err := applyProvider(&cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	if cfg.Jaz.ACP.Env["OPENAI_API_KEY"] != "" {
+		t.Fatalf("provider API key leaked into acp env: %#v", cfg.Jaz.ACP.Env)
+	}
+}

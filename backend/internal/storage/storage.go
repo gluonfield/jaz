@@ -28,6 +28,14 @@ type Session struct {
 	UpdatedAt  time.Time   `json:"updated_at"`
 }
 
+type ActivityEntry struct {
+	ID     string    `json:"id,omitempty"`
+	Kind   string    `json:"kind"`
+	Text   string    `json:"text,omitempty"`
+	Status string    `json:"status,omitempty"`
+	At     time.Time `json:"at"`
+}
+
 type CreateSession struct {
 	Slug       string
 	Title      string
@@ -55,4 +63,8 @@ type Store interface {
 	LastRootSession() (Session, error)
 	LoadMessages(id string) ([]provider.Message, error)
 	SaveMessages(id string, messages []provider.Message) error
+	AppendMessages(id string, messages ...provider.Message) error
+	LoadActivity(id string) ([]ActivityEntry, error)
+	SaveActivity(id string, activity []ActivityEntry) error
+	UpsertActivity(id string, entry ActivityEntry) error
 }

@@ -4,9 +4,11 @@ jaz:
   acp:
     agents:
       codex:
-        command: "codex-acp"
+        command: "npx"
+        args: ["-y", "@zed-industries/codex-acp@0.15.0"]
       claude_code:
-        command: "claude-code-acp"
+        command: "npx"
+        args: ["-y", "@agentclientprotocol/claude-agent-acp@0.39.0"]
 
 providers:
   default: "openrouter"

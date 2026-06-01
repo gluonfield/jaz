@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -17,6 +18,8 @@ import (
 	"github.com/wins/jaz/backend/internal/config"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/server"
+	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/storage"
 )
 
 func main() {
@@ -59,20 +62,20 @@ func runServe(args []string) error {
 		return err
 	}
 
-	agentRuntime, store, err := app.BuildAgent(cfg)
+	runtime, err := app.BuildRuntime(cfg)
 	if err != nil {
 		return err
 	}
 	workspace := cfg.Workspace
 	if workspace == "" {
-		workspace = store.DefaultWorkspace()
+		workspace = runtime.Store.DefaultWorkspace()
 	}
 	srv := &http.Server{
 		Addr:    *addr,
-		Handler: (&server.Server{Agent: agentRuntime, Store: store, SystemPrompt: codexcompat.DefaultSystemPrompt}).Handler(),
+		Handler: (&server.Server{Agent: runtime.Agent, Store: runtime.Store, ACP: runtime.ACP, Locks: runtime.Locks, Events: runtime.Events, SystemPrompt: codexcompat.DefaultSystemPrompt}).Handler(),
 	}
 	fmt.Printf("jaz server listening on %s\n", displayAddr(*addr))
-	fmt.Printf("root: %s\n", store.RootDir())
+	fmt.Printf("root: %s\n", runtime.Store.RootDir())
 	fmt.Printf("workspace: %s\n", workspace)
 	return srv.ListenAndServe()
 }
@@ -90,20 +93,33 @@ func runChat(args []string) error {
 	}
 
 	client := http.DefaultClient
+	var session sessionResponse
 	if *last {
-		session, err := lastSession(client, *serverURL)
+		var err error
+		session, err = lastSession(client, *serverURL)
 		if err != nil {
 			return err
 		}
-		*sessionID = session.ID
 	} else if *sessionID == "" {
-		id, err := createSession(client, *serverURL)
+		var err error
+		session, err = createSession(client, *serverURL)
 		if err != nil {
 			return err
 		}
-		*sessionID = id
+	} else {
+		var err error
+		session, err = getSession(client, *serverURL, *sessionID)
+		if err != nil {
+			return err
+		}
 	}
-	fmt.Printf("session: %s\n", *sessionID)
+	*sessionID = session.ID
+	fmt.Printf("session: %s\n", sessionLabel(session))
+	_ = printHistory(client, *serverURL, *sessionID)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go subscribeEvents(ctx, client, *serverURL, *sessionID)
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
@@ -131,25 +147,25 @@ type sessionResponse struct {
 	Slug string `json:"slug"`
 }
 
-func createSession(client *http.Client, serverURL string) (string, error) {
+func createSession(client *http.Client, serverURL string) (sessionResponse, error) {
 	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(serverURL, "/")+"/v1/sessions", nil)
 	if err != nil {
-		return "", err
+		return sessionResponse{}, err
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return sessionResponse{}, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("create session failed: %s", strings.TrimSpace(string(body)))
+		return sessionResponse{}, fmt.Errorf("create session failed: %s", strings.TrimSpace(string(body)))
 	}
 	var out sessionResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", err
+		return sessionResponse{}, err
 	}
-	return out.ID, nil
+	return out, nil
 }
 
 func lastSession(client *http.Client, serverURL string) (sessionResponse, error) {
@@ -172,6 +188,119 @@ func lastSession(client *http.Client, serverURL string) (sessionResponse, error)
 		return sessionResponse{}, err
 	}
 	return out, nil
+}
+
+func getSession(client *http.Client, serverURL, sessionID string) (sessionResponse, error) {
+	endpoint := fmt.Sprintf("%s/v1/sessions/%s", strings.TrimRight(serverURL, "/"), sessionID)
+	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+	if err != nil {
+		return sessionResponse{}, err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return sessionResponse{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return sessionResponse{}, fmt.Errorf("load session failed: %s", strings.TrimSpace(string(body)))
+	}
+	var out sessionResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return sessionResponse{}, err
+	}
+	return out, nil
+}
+
+type messagesResponse struct {
+	Messages []provider.Message      `json:"messages"`
+	Activity []storage.ActivityEntry `json:"activity"`
+}
+
+func printHistory(client *http.Client, serverURL, sessionID string) error {
+	endpoint := fmt.Sprintf("%s/v1/sessions/%s/messages", strings.TrimRight(serverURL, "/"), sessionID)
+	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil
+	}
+	var out messagesResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return err
+	}
+	printed := false
+	for _, msg := range out.Messages {
+		role := provider.MessageRole(msg)
+		if role != "user" && role != "assistant" {
+			continue
+		}
+		content := strings.TrimSpace(provider.MessageContent(msg))
+		if content == "" {
+			continue
+		}
+		if !printed {
+			fmt.Println("history:")
+			printed = true
+		}
+		fmt.Printf("[%s] %s\n", role, content)
+	}
+	for _, entry := range out.Activity {
+		text := strings.TrimSpace(entry.Text)
+		if text == "" {
+			continue
+		}
+		if !printed {
+			fmt.Println("history:")
+			printed = true
+		}
+		label := entry.Kind
+		if entry.Status != "" {
+			label += " " + entry.Status
+		}
+		fmt.Printf("[%s] %s\n", label, text)
+	}
+	return nil
+}
+
+func subscribeEvents(ctx context.Context, client *http.Client, serverURL, sessionID string) {
+	endpoint := fmt.Sprintf("%s/v1/sessions/%s/events", strings.TrimRight(serverURL, "/"), sessionID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return
+	}
+	req.Header.Set("Accept", "text/event-stream")
+	resp, err := client.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return
+	}
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if data == "" {
+			continue
+		}
+		var event sessionevents.Event
+		if err := json.Unmarshal([]byte(data), &event); err != nil || strings.TrimSpace(event.Content) == "" {
+			continue
+		}
+		fmt.Printf("\n[async]\n%s\n> ", strings.TrimSpace(event.Content))
+	}
 }
 
 func streamMessage(client *http.Client, serverURL, sessionID, message string) error {
@@ -217,6 +346,8 @@ func readSSE(r io.Reader) error {
 		case agent.StreamToolCall:
 			if event.ToolCall != nil {
 				fmt.Printf("\n[tool] %s\n", provider.ToolCallName(*event.ToolCall))
+			} else if event.ToolName != "" {
+				fmt.Printf("\n[tool] %s\n", event.ToolName)
 			}
 		case agent.StreamToolResult:
 			fmt.Printf("[tool result] %s\n", compact(event.Result, 600))
@@ -245,6 +376,13 @@ func displayAddr(addr string) string {
 		return addr
 	}
 	return "http://" + addr
+}
+
+func sessionLabel(session sessionResponse) string {
+	if session.Slug == "" || session.Slug == session.ID {
+		return session.ID
+	}
+	return session.Slug + " (" + session.ID + ")"
 }
 
 func usage() {

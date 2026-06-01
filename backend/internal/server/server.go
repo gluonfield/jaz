@@ -1,20 +1,33 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
+	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/sessionlock"
 	"github.com/wins/jaz/backend/internal/storage"
 )
+
+type ACPManager interface {
+	Send(context.Context, acp.SendRequest) (acp.Job, error)
+	Status(string) (acp.Job, error)
+}
 
 type Server struct {
 	Agent        *agent.Agent
 	Store        storage.Store
+	ACP          ACPManager
+	Locks        *sessionlock.Locks
+	Events       *sessionevents.Bus
 	SystemPrompt string
 }
 
@@ -22,6 +35,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("GET /v1/sessions", s.handleListSessions)
+	mux.HandleFunc("GET /v1/sessions/", s.handleGetSession)
 	mux.HandleFunc("POST /v1/sessions", s.handleCreateSession)
 	mux.HandleFunc("POST /v1/sessions/", s.handleSessionAction)
 	return mux
@@ -79,6 +93,58 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"sessions": sessions})
 }
 
+func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
+	rest := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
+	sessionRef, action, hasAction := strings.Cut(rest, "/")
+	if sessionRef == "" || (hasAction && action != "messages" && action != "events") {
+		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
+		return
+	}
+	session, err := s.Store.LoadSession(sessionRef)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	if !hasAction {
+		writeJSON(w, http.StatusOK, session)
+		return
+	}
+	if action == "events" {
+		s.streamSessionEvents(w, r, session.ID)
+		return
+	}
+	messages, err := s.Store.LoadMessages(session.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	activity, err := s.Store.LoadActivity(session.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"session": session, "messages": messages, "activity": activity})
+}
+
+func (s *Server) streamSessionEvents(w http.ResponseWriter, r *http.Request, sessionID string) {
+	if s.Events == nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("session events are not configured"))
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("streaming unsupported"))
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	for event := range s.Events.Subscribe(r.Context(), sessionID) {
+		writeSessionEventSSE(w, flusher, event)
+	}
+}
+
 func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
 	sessionRef, action, ok := strings.Cut(rest, "/")
@@ -116,6 +182,21 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
 
+	switch session.Runtime {
+	case "", storage.RuntimeNative:
+		s.streamNativeSession(w, flusher, r, session, req.Message)
+	case storage.RuntimeACP:
+		s.streamACPSession(w, flusher, r.Context(), session, req.Message)
+	default:
+		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: fmt.Sprintf("unknown session runtime %q", session.Runtime)})
+		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
+	}
+}
+
+func (s *Server) streamNativeSession(w http.ResponseWriter, flusher http.Flusher, r *http.Request, session storage.Session, message string) {
+	unlock := s.lockSession(session.ID)
+	defer unlock()
+
 	messages, err := s.Store.LoadMessages(session.ID)
 	if err != nil {
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: err.Error()})
@@ -124,7 +205,7 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	if len(messages) == 0 && s.SystemPrompt != "" {
 		messages = append(messages, provider.SystemMessage(s.SystemPrompt))
 	}
-	messages = append(messages, provider.UserMessage(req.Message))
+	messages = append(messages, provider.UserMessage(message))
 
 	ctx := sessioncontext.WithSessionID(r.Context(), session.ID)
 	for event := range s.Agent.Run(ctx, provider.Request{Messages: messages}) {
@@ -135,7 +216,112 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, ctx context.Context, session storage.Session, message string) {
+	if s.ACP == nil {
+		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: "acp manager is not configured"})
+		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
+		return
+	}
+	unlock := s.lockSession(session.ID)
+	defer unlock()
+
+	job, err := s.ACP.Send(ctx, acp.SendRequest{Session: session.ID, Message: message})
+	if err != nil {
+		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: acpSendError(session, err).Error()})
+		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
+		return
+	}
+
+	emittedAssistant := 0
+	seenTools := map[string]struct{}{}
+	ticker := time.NewTicker(120 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		emitACPJob(w, flusher, job, &emittedAssistant, seenTools)
+		if job.State == acp.StateFailed {
+			writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: job.Error})
+			writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
+			return
+		}
+		if isACPTerminal(job.State) {
+			writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			job, err = s.ACP.Status(session.ID)
+			if err != nil {
+				writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: err.Error()})
+				writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
+				return
+			}
+		}
+	}
+}
+
+func emitACPJob(w http.ResponseWriter, flusher http.Flusher, job acp.Job, emittedAssistant *int, seenTools map[string]struct{}) {
+	for _, call := range job.ToolCalls {
+		key := firstNonEmpty(call.ID, call.Title)
+		if key == "" {
+			continue
+		}
+		if _, ok := seenTools[key]; ok {
+			continue
+		}
+		seenTools[key] = struct{}{}
+		writeSSE(w, flusher, agent.StreamEvent{
+			Type:     agent.StreamToolCall,
+			ToolName: firstNonEmpty(call.Title, call.ID),
+		})
+	}
+	if *emittedAssistant < len(job.Assistant) {
+		delta := job.Assistant[*emittedAssistant:]
+		*emittedAssistant = len(job.Assistant)
+		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDelta, Delta: delta})
+	}
+}
+
+func isACPTerminal(state string) bool {
+	return state == acp.StateIdle || state == acp.StateCancelled
+}
+
+func acpSendError(session storage.Session, err error) error {
+	if strings.Contains(err.Error(), "active acp session not found") {
+		return fmt.Errorf("acp session %q (%s) is stored but not active in this server process; reconnect/resume is not implemented yet", session.Slug, session.ID)
+	}
+	return err
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func (s *Server) lockSession(id string) func() {
+	if s.Locks == nil {
+		return func() {}
+	}
+	return s.Locks.Lock(id)
+}
+
 func writeSSE(w http.ResponseWriter, flusher http.Flusher, event agent.StreamEvent) {
+	data, err := json.Marshal(event)
+	if err != nil {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "event: %s\n", event.Type)
+	_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
+	flusher.Flush()
+}
+
+func writeSessionEventSSE(w http.ResponseWriter, flusher http.Flusher, event sessionevents.Event) {
 	data, err := json.Marshal(event)
 	if err != nil {
 		return

@@ -9,5 +9,6 @@
   - `openclaw`: https://github.com/openclaw/openclaw
   - `hermes`: https://github.com/nousresearch/hermes-agent
 - Treat reference repos as learning material, not authority. Some implementations will be good, some will be poor, but reading them should still sharpen our design choices.
+- Codex ACP must use the user's Codex OAuth credentials by default. Do not pass coordinator provider keys such as `OPENAI_APIKEY`, `OPENAI_API_KEY`, `OPENROUTER_APIKEY`, or `OPENROUTER_API_KEY` into Codex subprocesses.
 - Tests must earn their place. Add tests only when they protect meaningful behavior, catch likely regressions, or clarify a tricky contract.
 - Avoid coverage theater. A test that is not genuinely useful should not live in this codebase.

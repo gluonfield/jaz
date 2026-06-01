@@ -6,10 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -17,8 +13,6 @@ import (
 
 	acpschema "github.com/wins/acp-transport/acp"
 	"github.com/wins/acp-transport/jsonrpc"
-	"github.com/wins/acp-transport/stdio"
-	"github.com/wins/acp-transport/streamhttp"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -35,13 +29,14 @@ type Store interface {
 	CreateSession(storage.CreateSession) (storage.Session, error)
 	LoadSession(string) (storage.Session, error)
 	SaveSession(storage.Session) error
-	LoadMessages(string) ([]provider.Message, error)
-	SaveMessages(string, []provider.Message) error
+	AppendMessages(string, ...provider.Message) error
+	UpsertActivity(string, storage.ActivityEntry) error
 }
 
 type Manager struct {
 	cfg   Config
 	store Store
+	Done  func(context.Context, Job)
 
 	mu           sync.RWMutex
 	jobsByID     map[string]*Job
@@ -59,7 +54,6 @@ type SpawnRequest struct {
 	Slug     string
 	Title    string
 	Message  string
-	Cwd      string
 }
 
 type SendRequest struct {
@@ -70,43 +64,6 @@ type SendRequest struct {
 type WaitRequest struct {
 	Session string
 	Timeout time.Duration
-}
-
-type Job struct {
-	ID         string             `json:"id"`
-	Slug       string             `json:"slug"`
-	Title      string             `json:"title,omitempty"`
-	ParentID   string             `json:"parent_id,omitempty"`
-	ACPAgent   string             `json:"acp_agent"`
-	ACPSession string             `json:"acp_session"`
-	Cwd        string             `json:"cwd,omitempty"`
-	State      string             `json:"state"`
-	StopReason string             `json:"stop_reason,omitempty"`
-	Assistant  string             `json:"assistant,omitempty"`
-	Thought    string             `json:"thought,omitempty"`
-	Plan       []PlanEntry        `json:"plan,omitempty"`
-	ToolCalls  []ToolCallSnapshot `json:"tool_calls,omitempty"`
-	Error      string             `json:"error,omitempty"`
-	CreatedAt  time.Time          `json:"created_at"`
-	UpdatedAt  time.Time          `json:"updated_at"`
-
-	mu                sync.RWMutex
-	turnMu            sync.Mutex
-	done              chan struct{}
-	toolByID          map[string]ToolCallSnapshot
-	savedAssistantLen int
-}
-
-type PlanEntry struct {
-	Content  string `json:"content"`
-	Status   string `json:"status,omitempty"`
-	Priority string `json:"priority,omitempty"`
-}
-
-type ToolCallSnapshot struct {
-	ID     string `json:"id"`
-	Title  string `json:"title,omitempty"`
-	Status string `json:"status,omitempty"`
 }
 
 type SpawnResult struct {
@@ -146,17 +103,14 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	if strings.TrimSpace(req.Message) == "" {
 		return SpawnResult{}, fmt.Errorf("message is required")
 	}
-	cwd := firstNonEmpty(req.Cwd, cfg.Cwd)
-	if cwd == "" {
-		cwd = "."
-	}
-	absCwd, err := filepath.Abs(cwd)
+	absCwd, err := m.resolveCwd(cfg.Cwd)
 	if err != nil {
 		return SpawnResult{}, err
 	}
+	env := m.processEnv(req.ACPAgent, cfg)
 
 	runCtx, cancel := context.WithCancel(context.Background())
-	conn, err := m.openConn(runCtx, req.ACPAgent, cfg)
+	conn, err := m.openConn(runCtx, req.ACPAgent, cfg, env, absCwd)
 	if err != nil {
 		cancel()
 		return SpawnResult{}, err
@@ -188,12 +142,17 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		cancel()
 		return SpawnResult{}, fmt.Errorf("initialize acp agent: %w", err)
 	}
-	if methodID := autoAuthMethod(initRaw); methodID != "" {
+	methodID, missingAuth := autoAuthMethod(req.ACPAgent, initRaw, env)
+	if methodID != "" {
 		if _, err := peer.Call(ctx, acpschema.AgentMethodAuthenticate, acpschema.AuthenticateRequest{MethodID: methodID}); err != nil {
 			_ = peer.Close()
 			cancel()
 			return SpawnResult{}, fmt.Errorf("authenticate acp agent: %w", err)
 		}
+	} else if len(missingAuth) > 0 {
+		_ = peer.Close()
+		cancel()
+		return SpawnResult{}, fmt.Errorf("authenticate acp agent %q: missing %s", req.ACPAgent, strings.Join(missingAuth, " or "))
 	}
 	sessionRaw, err := peer.Call(ctx, acpschema.AgentMethodSessionNew, acpschema.NewSessionRequest{
 		Cwd:        absCwd,
@@ -232,7 +191,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		cancel()
 		return SpawnResult{}, err
 	}
-	if err := m.store.SaveMessages(session.ID, []provider.Message{provider.UserMessage(req.Message)}); err != nil {
+	if err := m.store.AppendMessages(session.ID, provider.UserMessage(req.Message)); err != nil {
 		_ = peer.Close()
 		cancel()
 		return SpawnResult{}, err
@@ -278,9 +237,7 @@ func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {
 	if state == StateRunning || state == StateStarting {
 		return Job{}, fmt.Errorf("session %s is already running", job.Slug)
 	}
-	messages, _ := m.store.LoadMessages(job.ID)
-	messages = append(messages, provider.UserMessage(req.Message))
-	_ = m.store.SaveMessages(job.ID, messages)
+	_ = m.store.AppendMessages(job.ID, provider.UserMessage(req.Message))
 	job.startTurn()
 	go m.runPrompt(context.Background(), job, req.Message)
 	return job.Snapshot(), nil
@@ -389,7 +346,7 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string) {
 	peer := m.peer(job.ID)
 	if peer == nil {
 		job.setState(StateFailed, "", "acp peer is not active")
-		close(done)
+		m.finishTurn(done, job)
 		return
 	}
 	raw, err := peer.Call(ctx, acpschema.AgentMethodSessionPrompt, map[string]any{
@@ -400,7 +357,7 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string) {
 	})
 	if err != nil {
 		job.setState(StateFailed, "", err.Error())
-		close(done)
+		m.finishTurn(done, job)
 		return
 	}
 	var resp struct {
@@ -408,7 +365,7 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string) {
 	}
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		job.setState(StateFailed, "", err.Error())
-		close(done)
+		m.finishTurn(done, job)
 		return
 	}
 	stopReason := resp.StopReason
@@ -419,7 +376,14 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string) {
 	job.setState(state, stopReason, "")
 	time.Sleep(50 * time.Millisecond)
 	m.appendAssistantMessage(job)
+	m.finishTurn(done, job)
+}
+
+func (m *Manager) finishTurn(done chan struct{}, job *Job) {
 	close(done)
+	if m.Done != nil {
+		go m.Done(context.Background(), job.Snapshot())
+	}
 }
 
 func (m *Manager) appendAssistantMessage(job *Job) {
@@ -435,191 +399,7 @@ func (m *Manager) appendAssistantMessage(job *Job) {
 	if strings.TrimSpace(content) == "" {
 		return
 	}
-	messages, err := m.store.LoadMessages(sessionID)
-	if err != nil {
-		return
-	}
-	messages = append(messages, provider.AssistantMessage(content, nil))
-	_ = m.store.SaveMessages(sessionID, messages)
-}
-
-func (m *Manager) handleJSONRPC(ctx context.Context, req jsonrpc.Request) (json.RawMessage, *jsonrpc.Error) {
-	switch req.Method {
-	case acpschema.ClientMethodSessionUpdate:
-		var note struct {
-			SessionID string          `json:"sessionId"`
-			Update    json.RawMessage `json:"update"`
-		}
-		if err := json.Unmarshal(req.Params, &note); err != nil {
-			return nil, jsonrpc.InvalidParams("invalid session/update", map[string]any{"error": err.Error()})
-		}
-		m.applyUpdate(note.SessionID, note.Update)
-		return jsonrpc.EncodeResult(map[string]any{})
-	case acpschema.ClientMethodSessionRequestPermission:
-		return jsonrpc.EncodeResult(map[string]any{"outcome": "cancelled"})
-	case acpschema.ClientMethodFSReadTextFile:
-		return m.readTextFile(req.Params)
-	case acpschema.ClientMethodFSWriteTextFile:
-		return m.writeTextFile(req.Params)
-	case acpschema.ClientMethodTerminalKill, acpschema.ClientMethodTerminalRelease:
-		return jsonrpc.EncodeResult(map[string]any{})
-	case acpschema.ClientMethodTerminalCreate, acpschema.ClientMethodTerminalOutput, acpschema.ClientMethodTerminalWaitForExit:
-		return nil, jsonrpc.InternalError("terminal support is disabled", nil)
-	default:
-		return nil, jsonrpc.MethodNotFound(req.Method)
-	}
-}
-
-func (m *Manager) readTextFile(raw json.RawMessage) (json.RawMessage, *jsonrpc.Error) {
-	var req acpschema.ReadTextFileRequest
-	if err := json.Unmarshal(raw, &req); err != nil {
-		return nil, jsonrpc.InvalidParams("invalid fs/read_text_file", map[string]any{"error": err.Error()})
-	}
-	job := m.jobByACP(string(req.SessionID))
-	if job == nil {
-		return nil, jsonrpc.InvalidParams("unknown acp session", nil)
-	}
-	path, err := safePath(job.Cwd, req.Path)
-	if err != nil {
-		return nil, jsonrpc.InvalidParams(err.Error(), nil)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, jsonrpc.InternalError(err.Error(), nil)
-	}
-	content := string(data)
-	if req.Limit > 0 && len(content) > req.Limit {
-		content = content[:req.Limit]
-	}
-	return jsonrpc.EncodeResult(acpschema.ReadTextFileResponse{Content: content})
-}
-
-func (m *Manager) writeTextFile(raw json.RawMessage) (json.RawMessage, *jsonrpc.Error) {
-	var req acpschema.WriteTextFileRequest
-	if err := json.Unmarshal(raw, &req); err != nil {
-		return nil, jsonrpc.InvalidParams("invalid fs/write_text_file", map[string]any{"error": err.Error()})
-	}
-	job := m.jobByACP(string(req.SessionID))
-	if job == nil {
-		return nil, jsonrpc.InvalidParams("unknown acp session", nil)
-	}
-	path, err := safePath(job.Cwd, req.Path)
-	if err != nil {
-		return nil, jsonrpc.InvalidParams(err.Error(), nil)
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return nil, jsonrpc.InternalError(err.Error(), nil)
-	}
-	if err := os.WriteFile(path, []byte(req.Content), 0o644); err != nil {
-		return nil, jsonrpc.InternalError(err.Error(), nil)
-	}
-	return jsonrpc.EncodeResult(acpschema.WriteTextFileResponse{})
-}
-
-func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
-	job := m.jobByACP(acpSessionID)
-	if job == nil {
-		return
-	}
-	var env struct {
-		SessionUpdate string          `json:"sessionUpdate"`
-		Content       json.RawMessage `json:"content"`
-		Title         string          `json:"title"`
-		ToolCallID    string          `json:"toolCallId"`
-		Status        json.RawMessage `json:"status"`
-		Entries       []struct {
-			Content  string          `json:"content"`
-			Status   json.RawMessage `json:"status"`
-			Priority json.RawMessage `json:"priority"`
-		} `json:"entries"`
-	}
-	if err := json.Unmarshal(raw, &env); err != nil {
-		return
-	}
-	job.mu.Lock()
-	defer job.mu.Unlock()
-	switch env.SessionUpdate {
-	case "agent_message_chunk":
-		job.Assistant += contentText(env.Content)
-	case "agent_thought_chunk":
-		job.Thought += contentText(env.Content)
-	case "tool_call", "tool_call_update":
-		call := job.toolByID[env.ToolCallID]
-		call.ID = env.ToolCallID
-		if env.Title != "" {
-			call.Title = env.Title
-		}
-		if len(env.Status) > 0 {
-			call.Status = rawString(env.Status)
-		}
-		job.toolByID[env.ToolCallID] = call
-		job.ToolCalls = sortedToolCalls(job.toolByID)
-	case "plan":
-		job.Plan = make([]PlanEntry, 0, len(env.Entries))
-		for _, entry := range env.Entries {
-			job.Plan = append(job.Plan, PlanEntry{
-				Content:  entry.Content,
-				Status:   rawString(entry.Status),
-				Priority: rawString(entry.Priority),
-			})
-		}
-	case "session_info_update":
-		if env.Title != "" {
-			job.Title = env.Title
-			if session, err := m.store.LoadSession(job.ID); err == nil {
-				session.Title = env.Title
-				_ = m.store.SaveSession(session)
-			}
-		}
-	}
-	job.UpdatedAt = time.Now().UTC()
-}
-
-func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig) (jsonrpc.MessageConn, error) {
-	if cfg.URL != "" {
-		opts := []streamhttp.ClientOption{}
-		parsed, err := url.Parse(cfg.URL)
-		if err != nil {
-			return nil, err
-		}
-		if parsed.Scheme == "http" {
-			opts = append(opts, streamhttp.WithH2C())
-		}
-		if cfg.Token != "" {
-			opts = append(opts, streamhttp.WithBearerToken(cfg.Token))
-		}
-		return streamhttp.Dial(cfg.URL, opts...)
-	}
-	command := cfg.Command
-	if command == "" {
-		command = defaultCommand(name)
-	}
-	if command == "" {
-		return nil, fmt.Errorf("acp agent %q has no command", name)
-	}
-	cmd := exec.CommandContext(ctx, command, cfg.Args...)
-	cmd.Env = os.Environ()
-	for key, value := range cfg.Env {
-		cmd.Env = append(cmd.Env, key+"="+value)
-	}
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return nil, err
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, err
-	}
-	cmd.Stderr = os.Stderr
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
-	conn := stdio.New(stdout, stdin)
-	go func() {
-		_ = cmd.Wait()
-		_ = conn.Close()
-	}()
-	return conn, nil
+	_ = m.store.AppendMessages(sessionID, provider.AssistantMessage(content, nil))
 }
 
 func (m *Manager) addJob(job *Job, conn jsonrpc.MessageConn, peer *jsonrpc.Peer, cancel context.CancelFunc) {
@@ -670,151 +450,4 @@ func (m *Manager) setServeErr(peer *jsonrpc.Peer, err error) {
 			return
 		}
 	}
-}
-
-func (j *Job) Snapshot() Job {
-	j.mu.RLock()
-	defer j.mu.RUnlock()
-	return Job{
-		ID:         j.ID,
-		Slug:       j.Slug,
-		Title:      j.Title,
-		ParentID:   j.ParentID,
-		ACPAgent:   j.ACPAgent,
-		ACPSession: j.ACPSession,
-		Cwd:        j.Cwd,
-		State:      j.State,
-		StopReason: j.StopReason,
-		Assistant:  j.Assistant,
-		Thought:    j.Thought,
-		Plan:       append([]PlanEntry(nil), j.Plan...),
-		ToolCalls:  append([]ToolCallSnapshot(nil), j.ToolCalls...),
-		Error:      j.Error,
-		CreatedAt:  j.CreatedAt,
-		UpdatedAt:  j.UpdatedAt,
-	}
-}
-
-func (j *Job) setState(state, stopReason, errMsg string) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	j.State = state
-	j.StopReason = stopReason
-	j.Error = errMsg
-	j.UpdatedAt = time.Now().UTC()
-}
-
-func (j *Job) startTurn() chan struct{} {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	j.State = StateRunning
-	j.Error = ""
-	j.StopReason = ""
-	j.done = make(chan struct{})
-	j.UpdatedAt = time.Now().UTC()
-	return j.done
-}
-
-func autoAuthMethod(raw json.RawMessage) string {
-	var init struct {
-		AuthMethods []struct {
-			Type string `json:"type"`
-			ID   string `json:"id"`
-			Vars []struct {
-				Name string `json:"name"`
-			} `json:"vars"`
-		} `json:"authMethods"`
-	}
-	if err := json.Unmarshal(raw, &init); err != nil {
-		return ""
-	}
-	for _, method := range init.AuthMethods {
-		if method.Type != "env_var" || len(method.Vars) == 0 {
-			continue
-		}
-		allSet := true
-		for _, v := range method.Vars {
-			if os.Getenv(v.Name) == "" {
-				allSet = false
-				break
-			}
-		}
-		if allSet {
-			return method.ID
-		}
-	}
-	return ""
-}
-
-func contentText(raw json.RawMessage) string {
-	var block struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	}
-	if err := json.Unmarshal(raw, &block); err == nil && block.Type == "text" {
-		return block.Text
-	}
-	return ""
-}
-
-func rawString(raw json.RawMessage) string {
-	if len(raw) == 0 {
-		return ""
-	}
-	var s string
-	if err := json.Unmarshal(raw, &s); err == nil {
-		return s
-	}
-	return strings.TrimSpace(string(raw))
-}
-
-func sortedToolCalls(in map[string]ToolCallSnapshot) []ToolCallSnapshot {
-	out := make([]ToolCallSnapshot, 0, len(in))
-	for _, call := range in {
-		out = append(out, call)
-	}
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].ID < out[j].ID
-	})
-	return out
-}
-
-func safePath(root, name string) (string, error) {
-	if filepath.IsAbs(name) {
-		name = strings.TrimPrefix(filepath.Clean(name), string(filepath.Separator))
-	}
-	path := filepath.Join(root, name)
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return "", err
-	}
-	rootAbs, err := filepath.Abs(root)
-	if err != nil {
-		return "", err
-	}
-	rel, err := filepath.Rel(rootAbs, abs)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("path escapes workspace: %s", name)
-	}
-	return abs, nil
-}
-
-func defaultCommand(name string) string {
-	switch name {
-	case "codex":
-		return "codex-acp"
-	case "claude_code":
-		return "claude-code-acp"
-	default:
-		return ""
-	}
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
 }

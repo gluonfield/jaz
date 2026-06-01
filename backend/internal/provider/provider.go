@@ -45,6 +45,10 @@ func SystemMessage(content string) Message {
 	return oa.SystemMessage(content)
 }
 
+func DeveloperMessage(content string) Message {
+	return oa.DeveloperMessage(content)
+}
+
 func UserMessage(content string) Message {
 	return oa.UserMessage(content)
 }
@@ -121,6 +125,9 @@ func MessageRole(msg Message) string {
 }
 
 func MessageContent(msg Message) string {
+	if msg.OfDeveloper != nil {
+		return msg.OfDeveloper.Content.OfString.Or("")
+	}
 	if msg.OfAssistant != nil {
 		return msg.OfAssistant.Content.OfString.Or("")
 	}
