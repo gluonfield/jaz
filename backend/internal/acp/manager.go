@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	acpschema "github.com/wins/acp-transport/acp"
-	"github.com/wins/acp-transport/jsonrpc"
+	acpschema "github.com/gluonfield/acp-transport/acp"
+	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
 )

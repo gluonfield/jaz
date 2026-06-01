@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	acpschema "github.com/wins/acp-transport/acp"
-	"github.com/wins/acp-transport/jsonrpc"
+	acpschema "github.com/gluonfield/acp-transport/acp"
+	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -27,7 +27,7 @@ func (m *Manager) handleJSONRPC(ctx context.Context, req jsonrpc.Request) (json.
 		m.applyUpdate(note.SessionID, note.Update)
 		return jsonrpc.EncodeResult(map[string]any{})
 	case acpschema.ClientMethodSessionRequestPermission:
-		return jsonrpc.EncodeResult(map[string]any{"outcome": "cancelled"})
+		return m.requestPermission(req.Params)
 	case acpschema.ClientMethodFSReadTextFile:
 		return m.readTextFile(req.Params)
 	case acpschema.ClientMethodFSWriteTextFile:
@@ -39,6 +39,24 @@ func (m *Manager) handleJSONRPC(ctx context.Context, req jsonrpc.Request) (json.
 	default:
 		return nil, jsonrpc.MethodNotFound(req.Method)
 	}
+}
+
+func (m *Manager) requestPermission(raw json.RawMessage) (json.RawMessage, *jsonrpc.Error) {
+	var req acpschema.RequestPermissionRequest
+	if err := json.Unmarshal(raw, &req); err != nil {
+		return nil, jsonrpc.InvalidParams("invalid session/request_permission", map[string]any{"error": err.Error()})
+	}
+	job := m.jobByACP(string(req.SessionID))
+	if job == nil || !locationsStayInside(job.Cwd, req.ToolCall.Locations) {
+		return permissionCancelled()
+	}
+	optionID := selectPermissionOption(req.Options)
+	if optionID == "" {
+		return permissionCancelled()
+	}
+	return jsonrpc.EncodeResult(map[string]any{
+		"outcome": map[string]any{"outcome": "selected", "optionId": optionID},
+	})
 }
 
 func (m *Manager) readTextFile(raw json.RawMessage) (json.RawMessage, *jsonrpc.Error) {
@@ -85,6 +103,32 @@ func (m *Manager) writeTextFile(raw json.RawMessage) (json.RawMessage, *jsonrpc.
 		return nil, jsonrpc.InternalError(err.Error(), nil)
 	}
 	return jsonrpc.EncodeResult(acpschema.WriteTextFileResponse{})
+}
+
+func permissionCancelled() (json.RawMessage, *jsonrpc.Error) {
+	return jsonrpc.EncodeResult(map[string]any{"outcome": map[string]any{"outcome": "cancelled"}})
+}
+
+func selectPermissionOption(options []acpschema.PermissionOption) string {
+	for _, option := range options {
+		text := strings.ToLower(string(option.OptionID) + " " + option.Name)
+		if strings.Contains(text, "allow") || strings.Contains(text, "approve") {
+			return string(option.OptionID)
+		}
+	}
+	return ""
+}
+
+func locationsStayInside(root string, locations []acpschema.ToolCallLocation) bool {
+	if len(locations) == 0 {
+		return false
+	}
+	for _, location := range locations {
+		if _, err := safePath(root, location.Path); err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {

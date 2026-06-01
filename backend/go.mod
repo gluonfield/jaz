@@ -3,15 +3,15 @@ module github.com/wins/jaz/backend
 go 1.26
 
 require (
+	github.com/gluonfield/acp-transport v0.0.0
 	github.com/invopop/jsonschema v0.14.0
 	github.com/joho/godotenv v1.5.1
 	github.com/openai/openai-go/v3 v3.37.0
 	github.com/spf13/viper v1.21.0
-	github.com/wins/acp-transport v0.0.0
 	go.uber.org/fx v1.24.0
 )
 
-replace github.com/wins/acp-transport => /Users/wins/Projects/personal/acp-transport
+replace github.com/gluonfield/acp-transport => /Users/wins/Projects/personal/acp-transport
 
 require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
