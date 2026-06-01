@@ -8,6 +8,7 @@ require (
 	github.com/openai/openai-go/v3 v3.37.0
 	github.com/spf13/viper v1.21.0
 	github.com/wins/acp-transport v0.0.0
+	go.uber.org/fx v1.24.0
 )
 
 replace github.com/wins/acp-transport => /Users/wins/Projects/personal/acp-transport
@@ -29,6 +30,9 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
+	go.uber.org/dig v1.19.0 // indirect
+	go.uber.org/multierr v1.10.0 // indirect
+	go.uber.org/zap v1.26.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
 	golang.org/x/net v0.47.0 // indirect

@@ -42,13 +42,29 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 		ParentID: parent.ID,
 		ACPAgent: "fake",
 		Slug:     "fake-review",
-		Message:  "say hello",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
 
+	if spawned.State != acp.StateIdle {
+		t.Fatalf("spawn state = %s, want %s", spawned.State, acp.StateIdle)
+	}
+	messages, err := store.LoadMessages(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 0 {
+		t.Fatalf("spawn should not store task messages: %#v", messages)
+	}
+
+	done := make(chan acp.Job, 2)
+	manager.Done = func(_ context.Context, job acp.Job) { done <- job }
+
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.Slug, Message: "say hello", Completion: acp.CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
 	job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
 	if err != nil {
 		t.Fatal(err)
@@ -67,12 +83,17 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	if session.ParentID != parent.ID || session.Runtime != storage.RuntimeACP || session.RuntimeRef.SessionID != "fake-session" {
 		t.Fatalf("unexpected session metadata %#v", session)
 	}
-	messages, err := store.LoadMessages(spawned.SessionID)
+	messages, err = store.LoadMessages(spawned.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(messages) != 2 || provider.MessageContent(messages[1]) != "hello from fake agent" {
 		t.Fatalf("unexpected messages %#v", messages)
+	}
+	select {
+	case job := <-done:
+		t.Fatalf("sync task propagated async completion: %#v", job)
+	case <-time.After(100 * time.Millisecond):
 	}
 	activity, err := store.LoadActivity(spawned.SessionID)
 	if err != nil {
@@ -82,7 +103,7 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 		t.Fatalf("unexpected activity %#v", activity)
 	}
 
-	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.Slug, Message: "again"}); err != nil {
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.Slug, Message: "again", Completion: acp.CompletionAsync}); err != nil {
 		t.Fatal(err)
 	}
 	job, err = manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
@@ -98,6 +119,14 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	}
 	if len(messages) != 4 || provider.MessageContent(messages[3]) != "hello from fake agent" {
 		t.Fatalf("unexpected follow-up messages %#v", messages)
+	}
+	select {
+	case job := <-done:
+		if job.ID != spawned.SessionID {
+			t.Fatalf("unexpected propagated job %#v", job)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("async task did not propagate completion")
 	}
 }
 

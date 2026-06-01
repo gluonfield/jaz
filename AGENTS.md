@@ -5,6 +5,7 @@
 - Every JSON field must justify itself too. The default is to omit fields and code until there is a concrete reason to keep them.
 - Keep structure clean as the project grows. Put concrete implementations in focused packages and keep core interfaces small.
 - Prefer Viper's default field-name mapping for config structs. Do not add `mapstructure` tags unless there is a specific mismatch that cannot be solved cleanly by naming.
+- Use Uber Fx for server/runtime wiring. Provide original package constructors directly in `fx.Provide`; avoid wrapper constructors that only forward to another package.
 - When designing agent/runtime behavior, clone and inspect these reference projects for inspiration:
   - `openclaw`: https://github.com/openclaw/openclaw
   - `hermes`: https://github.com/nousresearch/hermes-agent

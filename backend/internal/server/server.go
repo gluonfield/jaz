@@ -225,7 +225,7 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 	unlock := s.lockSession(session.ID)
 	defer unlock()
 
-	job, err := s.ACP.Send(ctx, acp.SendRequest{Session: session.ID, Message: message})
+	job, err := s.ACP.Send(ctx, acp.SendRequest{Session: session.ID, Message: message, Completion: acp.CompletionInline})
 	if err != nil {
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: acpSendError(session, err).Error()})
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
