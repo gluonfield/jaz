@@ -1,0 +1,334 @@
+package jsonstore
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	stdjson "encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/wins/jaz/backend/internal/provider"
+	"github.com/wins/jaz/backend/internal/storage"
+)
+
+type Store struct {
+	root string
+}
+
+func DefaultRoot() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ".jaz"
+	}
+	return filepath.Join(home, ".jaz")
+}
+
+func New(root string) (*Store, error) {
+	if root == "" {
+		root = DefaultRoot()
+	}
+	store := &Store{root: root}
+	for _, dir := range []string{store.SessionsDir(), store.WorkspacesDir()} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return nil, err
+		}
+	}
+	return store, nil
+}
+
+func (s *Store) RootDir() string {
+	return s.root
+}
+
+func (s *Store) SessionsDir() string {
+	return filepath.Join(s.root, "sessions")
+}
+
+func (s *Store) WorkspacesDir() string {
+	return filepath.Join(s.root, "workspaces")
+}
+
+func (s *Store) DefaultWorkspace() string {
+	return filepath.Join(s.WorkspacesDir(), "default")
+}
+
+func (s *Store) NewSessionID() string {
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("%s-00000000", time.Now().UTC().Format("20060102T150405"))
+	}
+	return fmt.Sprintf("%s-%s", time.Now().UTC().Format("20060102T150405"), hex.EncodeToString(b[:]))
+}
+
+func (s *Store) CreateSession(input storage.CreateSession) (storage.Session, error) {
+	now := time.Now().UTC()
+	runtime := input.Runtime
+	if runtime == "" {
+		runtime = storage.RuntimeNative
+	}
+	session := storage.Session{
+		ID:         s.NewSessionID(),
+		Slug:       input.Slug,
+		Title:      input.Title,
+		ParentID:   input.ParentID,
+		Runtime:    runtime,
+		RuntimeRef: input.RuntimeRef,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+	if session.Slug == "" {
+		session.Slug = defaultSlug(session)
+	}
+	slug, err := s.uniqueSlug(session.Slug, "")
+	if err != nil {
+		return storage.Session{}, err
+	}
+	session.Slug = slug
+	if err := s.SaveSession(session); err != nil {
+		return storage.Session{}, err
+	}
+	return session, nil
+}
+
+func (s *Store) EnsureSession(id string) error {
+	if id == "" {
+		return fmt.Errorf("session id is empty")
+	}
+	return os.MkdirAll(s.sessionDir(id), 0o755)
+}
+
+func (s *Store) LoadSession(ref string) (storage.Session, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return storage.Session{}, fmt.Errorf("session id or slug is required")
+	}
+	if session, err := s.loadSessionByID(ref); err == nil {
+		return session, nil
+	}
+	sessions, err := s.ListSessions(storage.SessionFilter{IncludeChildren: true})
+	if err != nil {
+		return storage.Session{}, err
+	}
+	var matches []storage.Session
+	for _, session := range sessions {
+		if session.Slug == ref {
+			matches = append(matches, session)
+		}
+	}
+	if len(matches) == 0 {
+		return storage.Session{}, fmt.Errorf("session not found: %s", ref)
+	}
+	if len(matches) > 1 {
+		ids := make([]string, 0, len(matches))
+		for _, session := range matches {
+			ids = append(ids, session.ID)
+		}
+		return storage.Session{}, fmt.Errorf("ambiguous session slug %q: %s", ref, strings.Join(ids, ", "))
+	}
+	return matches[0], nil
+}
+
+func (s *Store) SaveSession(session storage.Session) error {
+	if session.ID == "" {
+		return fmt.Errorf("session id is empty")
+	}
+	if session.Runtime == "" {
+		session.Runtime = storage.RuntimeNative
+	}
+	if session.CreatedAt.IsZero() {
+		session.CreatedAt = time.Now().UTC()
+	}
+	session.UpdatedAt = time.Now().UTC()
+	slug, err := s.uniqueSlug(session.Slug, session.ID)
+	if err != nil {
+		return err
+	}
+	session.Slug = slug
+	if err := s.EnsureSession(session.ID); err != nil {
+		return err
+	}
+	data, err := stdjson.MarshalIndent(session, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(s.metaPath(session.ID), data, 0o644)
+}
+
+func (s *Store) ListSessions(filter storage.SessionFilter) ([]storage.Session, error) {
+	entries, err := os.ReadDir(s.SessionsDir())
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	sessions := make([]storage.Session, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		session, err := s.loadSessionByID(entry.Name())
+		if err != nil {
+			continue
+		}
+		if filter.RootOnly && session.ParentID != "" {
+			continue
+		}
+		if filter.ParentOnly && session.ParentID != filter.ParentID {
+			continue
+		}
+		if !filter.IncludeChildren && !filter.ParentOnly && !filter.RootOnly && filter.ParentID == "" && session.ParentID != "" {
+			continue
+		}
+		if filter.ParentID != "" && session.ParentID != filter.ParentID {
+			continue
+		}
+		if filter.Runtime != "" && session.Runtime != filter.Runtime {
+			continue
+		}
+		sessions = append(sessions, session)
+	}
+	sort.Slice(sessions, func(i, j int) bool {
+		return sessions[i].UpdatedAt.After(sessions[j].UpdatedAt)
+	})
+	if filter.Limit > 0 && len(sessions) > filter.Limit {
+		sessions = sessions[:filter.Limit]
+	}
+	return sessions, nil
+}
+
+func (s *Store) LastRootSession() (storage.Session, error) {
+	sessions, err := s.ListSessions(storage.SessionFilter{RootOnly: true, Limit: 1})
+	if err != nil {
+		return storage.Session{}, err
+	}
+	if len(sessions) == 0 {
+		return storage.Session{}, fmt.Errorf("no root sessions found")
+	}
+	return sessions[0], nil
+}
+
+func (s *Store) LoadMessages(id string) ([]provider.Message, error) {
+	path := filepath.Join(s.sessionDir(id), "messages.json")
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var messages []provider.Message
+	if err := stdjson.Unmarshal(data, &messages); err != nil {
+		return nil, err
+	}
+	return messages, nil
+}
+
+func (s *Store) SaveMessages(id string, messages []provider.Message) error {
+	if err := s.EnsureSession(id); err != nil {
+		return err
+	}
+	data, err := stdjson.MarshalIndent(messages, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(s.sessionDir(id), "messages.json"), data, 0o644); err != nil {
+		return err
+	}
+	if session, err := s.loadSessionByID(id); err == nil {
+		session.UpdatedAt = time.Now().UTC()
+		_ = s.SaveSession(session)
+	}
+	return nil
+}
+
+func (s *Store) sessionDir(id string) string {
+	return filepath.Join(s.SessionsDir(), id)
+}
+
+func (s *Store) metaPath(id string) string {
+	return filepath.Join(s.sessionDir(id), "meta.json")
+}
+
+func (s *Store) loadSessionByID(id string) (storage.Session, error) {
+	data, err := os.ReadFile(s.metaPath(id))
+	if os.IsNotExist(err) {
+		return storage.Session{}, fmt.Errorf("session metadata not found: %s", id)
+	}
+	if err != nil {
+		return storage.Session{}, err
+	}
+	var session storage.Session
+	if err := stdjson.Unmarshal(data, &session); err != nil {
+		return storage.Session{}, err
+	}
+	return session, nil
+}
+
+var slugUnsafe = regexp.MustCompile(`[^a-z0-9]+`)
+
+func defaultSlug(session storage.Session) string {
+	if session.Title != "" {
+		return session.Title
+	}
+	if session.Runtime == storage.RuntimeACP && session.RuntimeRef != nil && session.RuntimeRef.Agent != "" {
+		return session.RuntimeRef.Agent
+	}
+	return "chat-" + time.Now().UTC().Format("2006-01-02-150405")
+}
+
+func normalizeSlug(value string) string {
+	slug := strings.ToLower(strings.TrimSpace(value))
+	slug = slugUnsafe.ReplaceAllString(slug, "-")
+	slug = strings.Trim(slug, "-")
+	if slug == "" {
+		return "session"
+	}
+	if len(slug) > 64 {
+		slug = strings.Trim(slug[:64], "-")
+	}
+	return slug
+}
+
+func (s *Store) uniqueSlug(value, currentID string) (string, error) {
+	base := normalizeSlug(value)
+	slug := base
+	for i := 2; ; i++ {
+		exists, err := s.slugExists(slug, currentID)
+		if err != nil {
+			return "", err
+		}
+		if !exists {
+			return slug, nil
+		}
+		slug = fmt.Sprintf("%s-%d", base, i)
+	}
+}
+
+func (s *Store) slugExists(slug, currentID string) (bool, error) {
+	entries, err := os.ReadDir(s.SessionsDir())
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Name() == currentID {
+			continue
+		}
+		session, err := s.loadSessionByID(entry.Name())
+		if err != nil {
+			continue
+		}
+		if session.Slug == slug {
+			return true, nil
+		}
+	}
+	return false, nil
+}
