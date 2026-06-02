@@ -25,13 +25,14 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := acp.NewManager(store, acp.Config{
-		Root:      t.TempDir(),
-		Workspace: t.TempDir(),
+		Root:         t.TempDir(),
+		Workspace:    t.TempDir(),
+		SystemPrompt: "skill prompt",
 		Agents: map[string]acp.AgentConfig{
 			"fake": {
 				Command: os.Args[0],
 				Args:    []string{"-test.run=TestFakeACPAgentProcess"},
-				Env:     map[string]string{"JAZ_FAKE_ACP_AGENT": "1"},
+				Env:     map[string]string{"JAZ_FAKE_ACP_AGENT": "1", "JAZ_FAKE_ACP_SYSTEM_PROMPT": "skill prompt"},
 			},
 		},
 	})
@@ -153,6 +154,19 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				},
 			})
 		case "session/new":
+			var req struct {
+				Meta map[string]any `json:"_meta"`
+			}
+			if err := json.Unmarshal(msg.Params, &req); err != nil {
+				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("invalid session/new params", nil))
+				_ = conn.Send(context.Background(), resp)
+				continue
+			}
+			if want := os.Getenv("JAZ_FAKE_ACP_SYSTEM_PROMPT"); want != "" && req.Meta["systemPrompt"] != want {
+				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("missing system prompt", nil))
+				_ = conn.Send(context.Background(), resp)
+				continue
+			}
 			sendResult(conn, msg, map[string]any{
 				"sessionId": "fake-session",
 				"modes": map[string]any{

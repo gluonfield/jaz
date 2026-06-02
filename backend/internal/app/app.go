@@ -8,12 +8,14 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/agent"
+	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/provider"
 	mockprovider "github.com/wins/jaz/backend/internal/provider/mock"
 	openaiprovider "github.com/wins/jaz/backend/internal/provider/openai"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
+	"github.com/wins/jaz/backend/internal/skills"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 	"github.com/wins/jaz/backend/internal/tools"
 	agentcancel "github.com/wins/jaz/backend/internal/tools/agent/cancel"
@@ -40,11 +42,12 @@ type ProviderConfig struct {
 }
 
 type Runtime struct {
-	Agent  *agent.Agent
-	Store  *jsonstore.Store
-	ACP    *acp.Manager
-	Locks  *sessionlock.Locks
-	Events *sessionevents.Bus
+	Agent        *agent.Agent
+	Store        *jsonstore.Store
+	ACP          *acp.Manager
+	Locks        *sessionlock.Locks
+	Events       *sessionevents.Bus
+	SystemPrompt string
 }
 
 func BuildRuntime(cfg Config) (*Runtime, error) {
@@ -61,8 +64,18 @@ func BuildRuntime(cfg Config) (*Runtime, error) {
 	}
 
 	commandManager := exectool.NewCommandManager()
+	catalog, err := skills.Load(store.RootDir())
+	if err != nil {
+		return nil, err
+	}
+	skillsPrompt := catalog.Prompt()
+	systemPrompt, err := coordinator.Prompt(store.RootDir(), skillsPrompt)
+	if err != nil {
+		return nil, err
+	}
 	cfg.ACP.Root = store.RootDir()
 	cfg.ACP.Workspace = workspace
+	cfg.ACP.SystemPrompt = skillsPrompt
 	acpManager := acp.NewManager(store, cfg.ACP)
 	locks := sessionlock.New()
 	events := sessionevents.New()
@@ -88,7 +101,7 @@ func BuildRuntime(cfg Config) (*Runtime, error) {
 		Model:    cfg.Provider.Model,
 		Tools:    registry,
 		MaxTurns: agent.DefaultMaxTurns,
-	}, Store: store, ACP: acpManager, Locks: locks, Events: events}
+	}, Store: store, ACP: acpManager, Locks: locks, Events: events, SystemPrompt: systemPrompt}
 	acpManager.Done = runtime.completeACP
 	return runtime, nil
 }
