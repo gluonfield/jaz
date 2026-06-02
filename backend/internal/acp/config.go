@@ -7,10 +7,11 @@ const (
 )
 
 type Config struct {
-	Agents    map[string]AgentConfig
-	Root      string
-	Workspace string
-	Env       map[string]string
+	Agents       map[string]AgentConfig
+	Root         string
+	Workspace    string
+	Env          map[string]string
+	SystemPrompt string
 }
 
 type AgentConfig struct {

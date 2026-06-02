@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/app"
-	"github.com/wins/jaz/backend/internal/codexcompat"
 	"github.com/wins/jaz/backend/internal/config"
 	"github.com/wins/jaz/backend/internal/server"
 	"go.uber.org/fx"
@@ -71,7 +70,7 @@ func startServer(lc fx.Lifecycle, runtime *app.Runtime, cfg app.Config, opts ser
 	}
 	srv := &http.Server{
 		Addr:    opts.Addr,
-		Handler: (&server.Server{Agent: runtime.Agent, Store: runtime.Store, ACP: runtime.ACP, Locks: runtime.Locks, Events: runtime.Events, SystemPrompt: codexcompat.DefaultSystemPrompt}).Handler(),
+		Handler: (&server.Server{Agent: runtime.Agent, Store: runtime.Store, ACP: runtime.ACP, Locks: runtime.Locks, Events: runtime.Events, SystemPrompt: runtime.SystemPrompt}).Handler(),
 	}
 	lc.Append(fx.Hook{
 		OnStart: func(context.Context) error {

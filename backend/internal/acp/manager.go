@@ -78,6 +78,7 @@ func NewManager(store Store, cfg Config) *Manager {
 	if cfg.Agents == nil {
 		cfg.Agents = map[string]AgentConfig{}
 	}
+	cfg.SystemPrompt = strings.TrimSpace(cfg.SystemPrompt)
 	return &Manager{
 		cfg:          cfg,
 		store:        store,
@@ -151,10 +152,14 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		cancel()
 		return SpawnResult{}, fmt.Errorf("authenticate acp agent %q: missing %s", req.ACPAgent, strings.Join(missingAuth, " or "))
 	}
-	sessionRaw, err := peer.Call(ctx, acpschema.AgentMethodSessionNew, acpschema.NewSessionRequest{
+	newSession := acpschema.NewSessionRequest{
 		Cwd:        absCwd,
 		MCPServers: []acpschema.MCPServer{},
-	})
+	}
+	if m.cfg.SystemPrompt != "" {
+		newSession.Meta = map[string]any{"systemPrompt": m.cfg.SystemPrompt}
+	}
+	sessionRaw, err := peer.Call(ctx, acpschema.AgentMethodSessionNew, newSession)
 	if err != nil {
 		_ = peer.Close()
 		cancel()
