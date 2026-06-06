@@ -10,7 +10,28 @@ type Event struct {
 	SessionID string    `json:"session_id"`
 	Type      string    `json:"type"`
 	Content   string    `json:"content,omitempty"`
+	ACP       *ACPEvent `json:"acp,omitempty"`
 	At        time.Time `json:"at"`
+}
+
+type ACPEvent struct {
+	ID         string        `json:"id"`
+	Slug       string        `json:"slug"`
+	Title      string        `json:"title,omitempty"`
+	ParentID   string        `json:"parent_id,omitempty"`
+	Agent      string        `json:"agent"`
+	SessionID  string        `json:"session_id"`
+	State      string        `json:"state"`
+	StopReason string        `json:"stop_reason,omitempty"`
+	Assistant  string        `json:"assistant,omitempty"`
+	Error      string        `json:"error,omitempty"`
+	ToolCalls  []ACPToolCall `json:"tool_calls,omitempty"`
+}
+
+type ACPToolCall struct {
+	ID     string `json:"id"`
+	Title  string `json:"title,omitempty"`
+	Status string `json:"status,omitempty"`
 }
 
 type Bus struct {

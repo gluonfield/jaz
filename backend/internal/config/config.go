@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -50,28 +51,30 @@ func LoadConfig[T any]() (T, error) {
 func Init() error {
 	_ = godotenv.Load()
 
+	viper.SetDefault("providers.default", "openrouter")
+	viper.SetDefault("openrouter.model", "openai/gpt-5.4-mini")
+	viper.SetDefault("openai.model", "gpt-5.4-mini")
+
+	explicitConfig := false
 	if configFile := os.Getenv("APPLICATION_CONFIG"); configFile != "" {
+		explicitConfig = true
 		viper.SetConfigFile(configFile)
 	} else {
 		viper.SetConfigName("application")
 		viper.AddConfigPath(".")
+		viper.AddConfigPath("backend")
 		viper.SetConfigType("yaml")
 	}
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	bindEnv()
-	viper.AutomaticEnv()
+	_ = viper.BindEnv("openai.apikey", "OPENAI_API_KEY")
+	_ = viper.BindEnv("openrouter.apikey", "OPENROUTER_API_KEY")
 	if err := viper.ReadInConfig(); err != nil {
+		var notFound viper.ConfigFileNotFoundError
+		if !explicitConfig && errors.As(err, &notFound) {
+			return nil
+		}
 		return fmt.Errorf("error reading config file: %w", err)
 	}
 	return nil
-}
-
-func bindEnv() {
-	_ = viper.BindEnv("openai.apikey", "OPENAI_API_KEY", "OPENAI_APIKEY")
-	_ = viper.BindEnv("openai.model", "OPENAI_MODEL")
-	_ = viper.BindEnv("openrouter.apikey", "OPENROUTER_API_KEY", "OPENROUTER_APIKEY")
-	_ = viper.BindEnv("openrouter.model", "OPENROUTER_MODEL")
-	_ = viper.BindEnv("providers.default", "JAZ_PROVIDER")
 }
 
 func applyProvider(cfg *Config) error {
