@@ -5,10 +5,13 @@ import { MessageMarkdown } from './MessageMarkdown'
 import { ToolCallCard } from './ToolCallCard'
 
 function messageText(message: ChatMessage): string {
+  // Each text block is a separate utterance; join as paragraphs so block
+  // boundaries don't fuse sentences together ("…intact.Updated…").
   const text = message.blocks
     ?.filter((block) => block.type === 'text')
-    .map((block) => block.text ?? '')
-    .join('')
+    .map((block) => (block.text ?? '').trim())
+    .filter(Boolean)
+    .join('\n\n')
   return text || message.content
 }
 
