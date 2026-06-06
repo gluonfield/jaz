@@ -17,7 +17,7 @@ import (
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
-	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
+	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	exectool "github.com/wins/jaz/backend/internal/tools/exec"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxevent"
@@ -115,7 +115,7 @@ func conciseError(err error) error {
 func startServer(
 	lc fx.Lifecycle,
 	a *agent.Agent,
-	store *jsonstore.Store,
+	store *sqlitestore.Store,
 	manager *acp.Manager,
 	locks *sessionlock.Locks,
 	events *sessionevents.Bus,

@@ -28,6 +28,7 @@ type StreamEvent struct {
 	ToolName string             `json:"tool_name,omitempty"`
 	Result   string             `json:"result,omitempty"`
 	Error    string             `json:"error,omitempty"`
+	Usage    *provider.Usage    `json:"usage,omitempty"`
 	Metadata map[string]any     `json:"metadata,omitempty"`
 	At       time.Time          `json:"at"`
 	Messages []provider.Message `json:"-"`
@@ -44,6 +45,7 @@ type Result struct {
 	Message        provider.Message   `json:"message"`
 	Messages       []provider.Message `json:"messages"`
 	Content        string             `json:"content"`
+	Usage          provider.Usage     `json:"usage,omitempty"`
 	ToolExecutions []ToolExecution    `json:"tool_executions,omitempty"`
 }
 
@@ -59,6 +61,7 @@ func (a *Agent) Complete(ctx context.Context, req provider.Request) (Result, err
 	}
 	messages := append([]provider.Message(nil), req.Messages...)
 	var toolExecutions []ToolExecution
+	var usage provider.Usage
 
 	for turn := 0; turn < a.MaxTurns; turn++ {
 		resp, err := a.Provider.Complete(ctx, provider.Request{
@@ -69,6 +72,7 @@ func (a *Agent) Complete(ctx context.Context, req provider.Request) (Result, err
 		if err != nil {
 			return Result{Messages: messages, ToolExecutions: toolExecutions}, err
 		}
+		usage = addUsage(usage, resp.Usage)
 
 		calls := provider.MessageToolCalls(resp.Message)
 		messages = append(messages, resp.Message)
@@ -77,6 +81,7 @@ func (a *Agent) Complete(ctx context.Context, req provider.Request) (Result, err
 				Message:        resp.Message,
 				Messages:       messages,
 				Content:        provider.MessageContent(resp.Message),
+				Usage:          usage,
 				ToolExecutions: toolExecutions,
 			}, nil
 		}
@@ -105,6 +110,7 @@ func (a *Agent) run(ctx context.Context, req provider.Request, out chan<- Stream
 		return
 	}
 	messages := append([]provider.Message(nil), req.Messages...)
+	var usage provider.Usage
 
 	for turn := 0; turn < a.MaxTurns; turn++ {
 		stream, err := a.Provider.StreamComplete(ctx, provider.Request{
@@ -137,12 +143,13 @@ func (a *Agent) run(ctx context.Context, req provider.Request, out chan<- Stream
 				a.emit(out, StreamEvent{Type: StreamError, Error: msg, Messages: messages})
 				return
 			case provider.EventDone:
+				usage = addUsage(usage, event.Usage)
 			}
 		}
 
 		if len(calls) == 0 {
 			messages = append(messages, provider.AssistantMessage(assistantText.String(), nil))
-			a.emit(out, StreamEvent{Type: StreamDone, Messages: messages})
+			a.emit(out, StreamEvent{Type: StreamDone, Messages: messages, Usage: &usage})
 			return
 		}
 
@@ -220,4 +227,13 @@ func (a *Agent) emit(out chan<- StreamEvent, event StreamEvent) {
 		event.At = time.Now().UTC()
 	}
 	out <- event
+}
+
+func addUsage(a, b provider.Usage) provider.Usage {
+	a.InputTokens += b.InputTokens
+	a.CachedInputTokens += b.CachedInputTokens
+	a.OutputTokens += b.OutputTokens
+	a.ReasoningOutputTokens += b.ReasoningOutputTokens
+	a.TotalTokens += b.TotalTokens
+	return a
 }

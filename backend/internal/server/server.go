@@ -32,6 +32,14 @@ type Server struct {
 	Root         string
 }
 
+type messageRecordStore interface {
+	LoadMessageRecords(string) ([]storage.Message, error)
+}
+
+type usageStore interface {
+	AddUsage(string, storage.Usage) error
+}
+
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.handleHealth)
@@ -116,10 +124,21 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		s.streamSessionEvents(w, r, session.ID)
 		return
 	}
-	messages, err := s.Store.LoadMessages(session.ID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
+	var messages any
+	if recordStore, ok := s.Store.(messageRecordStore); ok {
+		records, err := recordStore.LoadMessageRecords(session.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		messages = records
+	} else {
+		loaded, err := s.Store.LoadMessages(session.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		messages = loaded
 	}
 	activity, err := s.Store.LoadActivity(session.ID)
 	if err != nil {
@@ -204,9 +223,19 @@ func (s *Server) streamNativeSession(w http.ResponseWriter, flusher http.Flusher
 	unlock := s.lockSession(session.ID)
 	defer unlock()
 
+	session.Status = storage.StatusRunning
+	if session.Runtime == "" {
+		session.Runtime = storage.RuntimeNative
+	}
+	if session.Title == "" {
+		session.Title = titleFromMessage(message)
+	}
+	_ = s.Store.SaveSession(session)
+
 	messages, err := s.Store.LoadMessages(session.ID)
 	if err != nil {
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: err.Error()})
+		s.setSessionStatus(session, storage.StatusError)
 		return
 	}
 	if len(messages) == 0 && s.SystemPrompt != "" {
@@ -215,12 +244,26 @@ func (s *Server) streamNativeSession(w http.ResponseWriter, flusher http.Flusher
 	messages = append(messages, provider.UserMessage(message))
 
 	ctx := sessioncontext.WithSessionID(r.Context(), session.ID)
+	finalStatus := storage.StatusError
 	for event := range s.Agent.Run(ctx, provider.Request{Messages: messages}) {
 		if len(event.Messages) > 0 {
-			_ = s.Store.SaveMessages(session.ID, event.Messages)
+			if err := s.Store.SaveMessages(session.ID, event.Messages); err != nil {
+				writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: err.Error()})
+				writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
+				s.setSessionStatus(session, storage.StatusError)
+				return
+			}
+		}
+		if event.Type == agent.StreamDone {
+			finalStatus = storage.StatusIdle
+			s.addUsage(session.ID, event.Usage)
+		}
+		if event.Type == agent.StreamError {
+			finalStatus = storage.StatusError
 		}
 		writeSSE(w, flusher, event)
 	}
+	s.setSessionStatus(session, finalStatus)
 }
 
 func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, ctx context.Context, session storage.Session, message string) {
@@ -232,8 +275,10 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 	unlock := s.lockSession(session.ID)
 	defer unlock()
 
+	s.setSessionStatus(session, storage.StatusRunning)
 	job, err := s.ACP.Send(ctx, acp.SendRequest{Session: session.ID, Message: message, Completion: acp.CompletionInline})
 	if err != nil {
+		s.setSessionStatus(session, storage.StatusError)
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: acpSendError(session, err).Error()})
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
 		return
@@ -247,11 +292,13 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 	for {
 		emitACPJob(w, flusher, job, &emittedAssistant, seenTools)
 		if job.State == acp.StateFailed {
+			s.setSessionStatus(session, storage.StatusError)
 			writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: job.Error})
 			writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
 			return
 		}
 		if isACPTerminal(job.State) {
+			s.setSessionStatus(session, storage.StatusIdle)
 			writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
 			return
 		}
@@ -261,6 +308,7 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 		case <-ticker.C:
 			job, err = s.ACP.Status(session.ID)
 			if err != nil {
+				s.setSessionStatus(session, storage.StatusError)
 				writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: err.Error()})
 				writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
 				return
@@ -309,6 +357,48 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func (s *Server) setSessionStatus(session storage.Session, status string) {
+	if status == "" {
+		return
+	}
+	if current, err := s.Store.LoadSession(session.ID); err == nil {
+		session = current
+	}
+	session.Status = status
+	_ = s.Store.SaveSession(session)
+}
+
+func (s *Server) addUsage(sessionID string, usage *provider.Usage) {
+	if usage == nil {
+		return
+	}
+	if usageStore, ok := s.Store.(usageStore); ok {
+		_ = usageStore.AddUsage(sessionID, storage.Usage{
+			InputTokens:           usage.InputTokens,
+			CachedInputTokens:     usage.CachedInputTokens,
+			OutputTokens:          usage.OutputTokens,
+			ReasoningOutputTokens: usage.ReasoningOutputTokens,
+			TotalTokens:           usage.TotalTokens,
+		})
+	}
+}
+
+func titleFromMessage(message string) string {
+	words := strings.Fields(message)
+	if len(words) == 0 {
+		return ""
+	}
+	if len(words) > 6 {
+		words = words[:6]
+	}
+	title := strings.Join(words, " ")
+	title = strings.Trim(title, " \t\r\n.,!?;:")
+	if len(title) > 64 {
+		title = strings.TrimSpace(title[:64])
+	}
+	return title
 }
 
 func (s *Server) lockSession(id string) func() {

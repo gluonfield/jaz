@@ -17,7 +17,7 @@ import (
 	"github.com/wins/jaz/backend/internal/sessionlock"
 	"github.com/wins/jaz/backend/internal/skills"
 	"github.com/wins/jaz/backend/internal/storage"
-	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
+	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/tools"
 	agentcancel "github.com/wins/jaz/backend/internal/tools/agent/cancel"
 	agentlist "github.com/wins/jaz/backend/internal/tools/agent/list"
@@ -50,20 +50,20 @@ type SystemPrompt string
 type Stores struct {
 	fx.Out
 
-	Store        *jsonstore.Store
+	Store        *sqlitestore.Store
 	ACPStore     acp.Store
 	StorageStore storage.Store
 }
 
 func NewStore(cfg Config) (Stores, error) {
-	store, err := jsonstore.New(cfg.Root)
+	store, err := sqlitestore.New(cfg.Root)
 	if err != nil {
 		return Stores{}, err
 	}
 	return Stores{Store: store, ACPStore: store, StorageStore: store}, nil
 }
 
-func NewWorkspace(cfg Config, store *jsonstore.Store) (Workspace, error) {
+func NewWorkspace(cfg Config, store *sqlitestore.Store) (Workspace, error) {
 	workspace := cfg.Workspace
 	if workspace == "" {
 		workspace = store.DefaultWorkspace()
@@ -71,7 +71,7 @@ func NewWorkspace(cfg Config, store *jsonstore.Store) (Workspace, error) {
 	return Workspace(workspace), os.MkdirAll(workspace, 0o755)
 }
 
-func LoadSkills(store *jsonstore.Store) (skills.Catalog, error) {
+func LoadSkills(store *sqlitestore.Store) (skills.Catalog, error) {
 	return skills.Load(store.RootDir())
 }
 
@@ -79,12 +79,12 @@ func NewSkillsPrompt(catalog skills.Catalog) SkillsPrompt {
 	return SkillsPrompt(catalog.Prompt())
 }
 
-func NewSystemPrompt(store *jsonstore.Store, skillsPrompt SkillsPrompt) (SystemPrompt, error) {
+func NewSystemPrompt(store *sqlitestore.Store, skillsPrompt SkillsPrompt) (SystemPrompt, error) {
 	prompt, err := coordinator.Prompt(store.RootDir(), string(skillsPrompt))
 	return SystemPrompt(prompt), err
 }
 
-func NewACPConfig(cfg Config, store *jsonstore.Store, workspace Workspace, skillsPrompt SkillsPrompt) acp.Config {
+func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, skillsPrompt SkillsPrompt) acp.Config {
 	cfg.ACP.Root = store.RootDir()
 	cfg.ACP.Workspace = string(workspace)
 	cfg.ACP.SystemPrompt = string(skillsPrompt)
@@ -133,13 +133,13 @@ func NewAgent(cfg Config, modelProvider provider.Provider, registry *tools.Regis
 	}
 }
 
-func ConnectACPCompletion(manager *acp.Manager, a *agent.Agent, store *jsonstore.Store, locks *sessionlock.Locks, events *sessionevents.Bus) {
+func ConnectACPCompletion(manager *acp.Manager, a *agent.Agent, store *sqlitestore.Store, locks *sessionlock.Locks, events *sessionevents.Bus) {
 	manager.Done = func(ctx context.Context, job acp.Job) {
 		completeACP(ctx, a, store, locks, events, job)
 	}
 }
 
-func completeACP(ctx context.Context, a *agent.Agent, store *jsonstore.Store, locks *sessionlock.Locks, events *sessionevents.Bus, job acp.Job) {
+func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, locks *sessionlock.Locks, events *sessionevents.Bus, job acp.Job) {
 	if job.ParentID == "" {
 		return
 	}
@@ -161,6 +161,13 @@ func completeACP(ctx context.Context, a *agent.Agent, store *jsonstore.Store, lo
 		return
 	}
 	_ = store.SaveMessages(job.ParentID, result.Messages)
+	_ = store.AddUsage(job.ParentID, storage.Usage{
+		InputTokens:           result.Usage.InputTokens,
+		CachedInputTokens:     result.Usage.CachedInputTokens,
+		OutputTokens:          result.Usage.OutputTokens,
+		ReasoningOutputTokens: result.Usage.ReasoningOutputTokens,
+		TotalTokens:           result.Usage.TotalTokens,
+	})
 	if content := provider.MessageContent(result.Message); content != "" {
 		events.Publish(sessionevents.Event{SessionID: job.ParentID, Type: "assistant", Content: content, ACP: acpEvent(job)})
 	}
