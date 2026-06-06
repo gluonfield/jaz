@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { SquarePen } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { SIDEBAR_SESSION_LIMIT, rootSessionsQuery } from '@/lib/api/sessions'
+import { SIDEBAR_SESSION_LIMIT, sidebarSessionsQuery } from '@/lib/api/sessions'
 import { SkeletonRows } from '../ui/Skeleton'
 import { SessionRow } from './SessionRow'
 
@@ -38,7 +38,8 @@ function SoonItem({ label }: { label: string }) {
 }
 
 export function Sidebar() {
-  const sessions = useQuery(rootSessionsQuery)
+  const sessions = useQuery(sidebarSessionsQuery)
+  const visibleSessions = sessions.data?.slice(0, SIDEBAR_SESSION_LIMIT) ?? []
 
   return (
     <aside className="flex h-full w-[264px] shrink-0 flex-col border-r border-border bg-surface">
@@ -61,12 +62,12 @@ export function Sidebar() {
             <SkeletonRows count={4} />
           ) : sessions.isError ? (
             <p className="px-2.5 py-1 text-[13px] text-ink-3">Backend unreachable</p>
-          ) : sessions.data.length === 0 ? (
+          ) : visibleSessions.length === 0 ? (
             <p className="px-2.5 py-1 text-[13px] text-ink-3">No sessions yet</p>
           ) : (
             <div className="flex flex-col gap-px">
               <AnimatePresence initial={false}>
-                {sessions.data.map((session) => (
+                {visibleSessions.map((session) => (
                   <motion.div
                     key={session.id}
                     layout
@@ -79,7 +80,7 @@ export function Sidebar() {
                   </motion.div>
                 ))}
               </AnimatePresence>
-              {sessions.data.length >= SIDEBAR_SESSION_LIMIT ? (
+              {sessions.data.length > SIDEBAR_SESSION_LIMIT ? (
                 <Link
                   to="/sessions"
                   className="mt-1 rounded-control px-2.5 py-1.5 text-[13px] text-primary transition-colors duration-150 hover:bg-surface-2"

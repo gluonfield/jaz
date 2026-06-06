@@ -12,6 +12,7 @@ export interface Session {
   slug: string
   title?: string
   parent_id?: string
+  status: 'idle' | 'running' | 'error'
   runtime: 'native' | 'acp'
   runtime_ref?: RuntimeRef
   created_at: string
@@ -32,12 +33,19 @@ export interface ToolCallJSON {
   function: { name: string; arguments: string }
 }
 
-// OpenAI-compatible message union (openai-go/v3 on the wire).
-export type ChatMessage =
-  | { role: 'system' | 'developer'; content: string }
-  | { role: 'user'; content: string }
-  | { role: 'assistant'; content?: string; tool_calls?: ToolCallJSON[] }
-  | { role: 'tool'; tool_call_id: string; content: string }
+export type MessageBlock =
+  | { type: 'text'; text?: string }
+  | { type: 'reasoning'; text?: string }
+  | { type: 'tool'; id: string; name: string; input_json?: string; result?: string }
+
+export interface ChatMessage {
+  seq: number
+  role: 'system' | 'developer' | 'user' | 'assistant'
+  content: string
+  reasoning?: string
+  blocks: MessageBlock[]
+  created_at: string
+}
 
 export interface SessionMessages {
   session: Session

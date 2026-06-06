@@ -16,7 +16,8 @@ export function useSessionEvents(sessionId: string): void {
         ...prev,
         event,
       ])
-      queryClient.invalidateQueries({ queryKey: keys.rootSessions })
+      queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
+      queryClient.invalidateQueries({ queryKey: keys.allSessions })
     })
     return stop
   }, [sessionId, queryClient])
