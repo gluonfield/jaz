@@ -1,6 +1,10 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
+import { Archive } from 'lucide-react'
+import { setSessionArchived } from '@/lib/api/sessions'
 import type { Session } from '@/lib/api/types'
 import { relativeTime } from '@/lib/format/time'
+import { keys } from '@/lib/query/keys'
 import { RuntimeBadge } from './RuntimeBadge'
 
 // Auto-generated chat slugs (chat-2026-06-06-153125) carry no scannable
@@ -32,13 +36,13 @@ function StatusDot({ status }: { status: Session['status'] }) {
   return null
 }
 
-export function SessionRow({ session }: { session: Session }) {
+export function SessionRow({ session, indented = false }: { session: Session; indented?: boolean }) {
   return (
     <Link
       to="/sessions/$sessionId"
       params={{ sessionId: session.id }}
       className={`group flex items-center gap-2 rounded-control px-2.5 py-2 text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink ${
-        session.parent_id ? 'pl-6' : ''
+        indented ? 'pl-6' : ''
       }`}
       activeProps={{ className: 'bg-primary-soft! text-ink! font-medium' }}
     >
@@ -48,9 +52,39 @@ export function SessionRow({ session }: { session: Session }) {
       </span>
       {/* native is the default; only agent-backed sessions earn a badge */}
       {session.runtime === 'acp' ? <RuntimeBadge session={session} /> : null}
-      <span className="shrink-0 text-[11px] tabular-nums text-ink-3">
+      <span className="shrink-0 text-[11px] tabular-nums text-ink-3 group-hover:hidden">
         {relativeTime(session.updated_at)}
       </span>
+      <ArchiveButton sessionId={session.id} />
     </Link>
+  )
+}
+
+// Replaces the timestamp on row hover; archives the thread (and children).
+function ArchiveButton({ sessionId }: { sessionId: string }) {
+  const queryClient = useQueryClient()
+  const archive = useMutation({
+    mutationFn: () => setSessionArchived(sessionId, true),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
+      queryClient.invalidateQueries({ queryKey: keys.allSessions })
+      queryClient.invalidateQueries({ queryKey: keys.archivedSessions })
+    },
+  })
+
+  return (
+    <button
+      type="button"
+      aria-label="Archive thread"
+      title="Archive thread"
+      onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        archive.mutate()
+      }}
+      className="hidden size-5 shrink-0 cursor-pointer place-items-center rounded text-ink-3 transition-colors duration-150 group-hover:grid hover:bg-surface-2 hover:text-ink"
+    >
+      <Archive size={13} />
+    </button>
   )
 }

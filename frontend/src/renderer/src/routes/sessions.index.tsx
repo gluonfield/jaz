@@ -39,8 +39,8 @@ function SessionsPage() {
         </EmptyState>
       ) : (
         <div className="flex flex-col gap-px">
-          {sessions.data.map((session) => (
-            <SessionRow key={session.id} session={session} />
+          {sessions.data.map((item) => (
+            <SessionRow key={item.session.id} session={item.session} indented={item.indented} />
           ))}
         </div>
       )}

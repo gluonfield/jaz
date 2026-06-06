@@ -7,6 +7,20 @@ export function createSession(): Promise<Session> {
   return post<Session>('/v1/sessions', {})
 }
 
+export function setSessionArchived(id: string, archived: boolean): Promise<Session> {
+  return post<Session>(`/v1/sessions/${id}/${archived ? 'archive' : 'unarchive'}`)
+}
+
+export const archivedSessionsQuery = queryOptions({
+  queryKey: keys.archivedSessions,
+  queryFn: async () => {
+    const data = await get<{ sessions: Session[] | null }>(
+      '/v1/sessions?archived=true&include_children=true',
+    )
+    return groupSessionsForDisplay(data.sessions ?? [])
+  },
+})
+
 export const SIDEBAR_SESSION_LIMIT = 7
 
 function sessionTime(session: Session): number {
@@ -18,7 +32,14 @@ function compareSessions(a: Session, b: Session): number {
   return sessionTime(b) - sessionTime(a) || a.id.localeCompare(b.id)
 }
 
-export function groupSessionsForDisplay(sessions: Session[]): Session[] {
+// A display row: indented only when its parent is rendered above it in the
+// same list (orphans and archived children render flush).
+export interface SessionListItem {
+  session: Session
+  indented: boolean
+}
+
+export function groupSessionsForDisplay(sessions: Session[]): SessionListItem[] {
   const byID = new Map(sessions.map((session) => [session.id, session]))
   const children = new Map<string, Session[]>()
   const roots: Session[] = []
@@ -50,17 +71,19 @@ export function groupSessionsForDisplay(sessions: Session[]): Session[] {
   const compareGroups = (a: Session, b: Session): number =>
     groupTime(b) - groupTime(a) || compareSessions(a, b)
 
-  const ordered: Session[] = []
+  const ordered: SessionListItem[] = []
   const emitted = new Set<string>()
-  const append = (session: Session) => {
+  const append = (session: Session, indented: boolean) => {
     if (emitted.has(session.id)) return
     emitted.add(session.id)
-    ordered.push(session)
-    for (const child of [...(children.get(session.id) ?? [])].sort(compareGroups)) append(child)
+    ordered.push({ session, indented })
+    for (const child of [...(children.get(session.id) ?? [])].sort(compareGroups)) {
+      append(child, true)
+    }
   }
 
-  for (const root of [...roots].sort(compareGroups)) append(root)
-  for (const session of [...sessions].sort(compareGroups)) append(session)
+  for (const root of [...roots].sort(compareGroups)) append(root, false)
+  for (const session of [...sessions].sort(compareGroups)) append(session, false)
   return ordered
 }
 
@@ -72,7 +95,7 @@ export const sidebarSessionsQuery = queryOptions({
   },
   // Tighten the poll while a thread is running so status dots stay live.
   refetchInterval: (query) =>
-    query.state.data?.some((s) => s.status === 'running') ? 3_000 : 15_000,
+    query.state.data?.some((item) => item.session.status === 'running') ? 3_000 : 15_000,
 })
 
 export const allSessionsQuery = queryOptions({

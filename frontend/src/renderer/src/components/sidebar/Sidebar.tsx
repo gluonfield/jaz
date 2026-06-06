@@ -25,18 +25,6 @@ function PageLink({ to, label, hint }: { to: string; label: string; hint?: strin
   )
 }
 
-function SoonItem({ label }: { label: string }) {
-  return (
-    <div
-      aria-disabled
-      className="flex items-baseline gap-2 rounded-control px-2.5 py-2 text-[13px] text-ink-3"
-    >
-      <span className="flex-1">{label}</span>
-      <span className="rounded bg-surface-2 px-1.5 py-px text-[10px] font-medium">soon</span>
-    </div>
-  )
-}
-
 export function Sidebar() {
   const sessions = useQuery(sidebarSessionsQuery)
   const visibleSessions = sessions.data?.slice(0, SIDEBAR_SESSION_LIMIT) ?? []
@@ -67,16 +55,16 @@ export function Sidebar() {
           ) : (
             <div className="flex flex-col gap-px">
               <AnimatePresence initial={false}>
-                {visibleSessions.map((session) => (
+                {visibleSessions.map((item) => (
                   <motion.div
-                    key={session.id}
+                    key={item.session.id}
                     layout
                     initial={{ opacity: 0, x: -8 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -8 }}
                     transition={{ type: 'spring', stiffness: 420, damping: 34 }}
                   >
-                    <SessionRow session={session} />
+                    <SessionRow session={item.session} indented={item.indented} />
                   </motion.div>
                 ))}
               </AnimatePresence>
@@ -98,7 +86,7 @@ export function Sidebar() {
           <SectionLabel>Pages</SectionLabel>
           <div className="flex flex-col gap-px">
             <PageLink to="/agent" label="Agent" />
-            <SoonItem label="Settings" />
+            <PageLink to="/settings" label="Settings" />
           </div>
         </section>
       </nav>
