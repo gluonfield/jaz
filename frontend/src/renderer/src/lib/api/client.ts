@@ -1,0 +1,48 @@
+export function apiBaseUrl(): string {
+  // Bridged by the preload script; fall back for plain-browser debugging.
+  return window.jaz?.apiBaseUrl ?? 'http://localhost:8080'
+}
+
+export class ApiError extends Error {
+  status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${apiBaseUrl()}${path}`, init)
+  if (!res.ok) {
+    let message = `${res.status} ${res.statusText}`
+    try {
+      const body = (await res.json()) as { error?: string }
+      if (body.error) message = body.error
+    } catch {
+      // non-JSON error body; keep the status text
+    }
+    throw new ApiError(res.status, message)
+  }
+  return (await res.json()) as T
+}
+
+export function get<T>(path: string): Promise<T> {
+  return request<T>(path)
+}
+
+export function put<T>(path: string, body: unknown): Promise<T> {
+  return request<T>(path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export function post<T>(path: string, body?: unknown): Promise<T> {
+  return request<T>(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+}
