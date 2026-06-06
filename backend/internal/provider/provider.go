@@ -18,6 +18,15 @@ type Request struct {
 
 type Response struct {
 	Message Message `json:"message"`
+	Usage   Usage
+}
+
+type Usage struct {
+	InputTokens           int64 `json:"input_tokens,omitempty"`
+	CachedInputTokens     int64 `json:"cached_input_tokens,omitempty"`
+	OutputTokens          int64 `json:"output_tokens,omitempty"`
+	ReasoningOutputTokens int64 `json:"reasoning_output_tokens,omitempty"`
+	TotalTokens           int64 `json:"total_tokens,omitempty"`
 }
 
 type EventType string
@@ -33,6 +42,7 @@ type Event struct {
 	Type     EventType
 	Delta    string
 	ToolCall *ToolCall
+	Usage    Usage
 	Err      error
 }
 
@@ -100,6 +110,14 @@ func ToolCallName(call ToolCall) string {
 
 func ToolCallArguments(call ToolCall) string {
 	return call.Function.Arguments
+}
+
+func MessageToolCallID(msg Message) string {
+	id := msg.GetToolCallID()
+	if id == nil {
+		return ""
+	}
+	return *id
 }
 
 func MessageRole(msg Message) string {

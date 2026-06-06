@@ -78,6 +78,7 @@ func (s *Store) CreateSession(input storage.CreateSession) (storage.Session, err
 		Slug:       input.Slug,
 		Title:      input.Title,
 		ParentID:   input.ParentID,
+		Status:     storage.StatusIdle,
 		Runtime:    runtime,
 		RuntimeRef: input.RuntimeRef,
 		CreatedAt:  now,
@@ -147,6 +148,9 @@ func (s *Store) saveSession(session storage.Session) error {
 	}
 	if session.Runtime == "" {
 		session.Runtime = storage.RuntimeNative
+	}
+	if session.Status == "" {
+		session.Status = storage.StatusIdle
 	}
 	if session.CreatedAt.IsZero() {
 		session.CreatedAt = time.Now().UTC()
@@ -366,6 +370,9 @@ func (s *Store) loadSessionByID(id string) (storage.Session, error) {
 	var session storage.Session
 	if err := stdjson.Unmarshal(data, &session); err != nil {
 		return storage.Session{}, err
+	}
+	if session.Status == "" {
+		session.Status = storage.StatusIdle
 	}
 	return session, nil
 }

@@ -50,6 +50,9 @@ func (p *Provider) StreamComplete(ctx context.Context, req provider.Request) (<-
 		Model:    shared.ChatModel(model),
 		Messages: req.Messages,
 		Tools:    req.Tools,
+		StreamOptions: oa.ChatCompletionStreamOptionsParam{
+			IncludeUsage: oa.Bool(true),
+		},
 	})
 
 	events := make(chan provider.Event)
@@ -73,7 +76,7 @@ func (p *Provider) StreamComplete(ctx context.Context, req provider.Request) (<-
 			return
 		}
 		emitToolCalls(acc, events)
-		events <- provider.Event{Type: provider.EventDone}
+		events <- provider.Event{Type: provider.EventDone, Usage: usageFromOpenAI(acc.Usage)}
 	}()
 	return events, nil
 }
@@ -110,7 +113,17 @@ func (p *Provider) Complete(ctx context.Context, req provider.Request) (provider
 	if len(resp.Choices) == 0 {
 		return provider.Response{}, errors.New("provider returned no choices")
 	}
-	return provider.Response{Message: resp.Choices[0].Message.ToParam()}, nil
+	return provider.Response{Message: resp.Choices[0].Message.ToParam(), Usage: usageFromOpenAI(resp.Usage)}, nil
+}
+
+func usageFromOpenAI(usage oa.CompletionUsage) provider.Usage {
+	return provider.Usage{
+		InputTokens:           usage.PromptTokens,
+		CachedInputTokens:     usage.PromptTokensDetails.CachedTokens,
+		OutputTokens:          usage.CompletionTokens,
+		ReasoningOutputTokens: usage.CompletionTokensDetails.ReasoningTokens,
+		TotalTokens:           usage.TotalTokens,
+	}
 }
 
 func emitToolCalls(acc oa.ChatCompletionAccumulator, events chan<- provider.Event) {
