@@ -353,6 +353,43 @@ func (m *Manager) List() []Job {
 	return out
 }
 
+func (m *Manager) Close() {
+	m.mu.Lock()
+	cancels := make([]context.CancelFunc, 0, len(m.cancelByID))
+	peers := make([]*jsonrpc.Peer, 0, len(m.peersByID))
+	conns := make([]jsonrpc.MessageConn, 0, len(m.connsByID))
+	jobs := make([]*Job, 0, len(m.jobsByID))
+	for _, cancel := range m.cancelByID {
+		cancels = append(cancels, cancel)
+	}
+	for _, peer := range m.peersByID {
+		peers = append(peers, peer)
+	}
+	for _, conn := range m.connsByID {
+		conns = append(conns, conn)
+	}
+	for _, job := range m.jobsByID {
+		jobs = append(jobs, job)
+	}
+	m.connsByID = map[string]jsonrpc.MessageConn{}
+	m.peersByID = map[string]*jsonrpc.Peer{}
+	m.cancelByID = map[string]context.CancelFunc{}
+	m.mu.Unlock()
+
+	for _, cancel := range cancels {
+		cancel()
+	}
+	for _, peer := range peers {
+		_ = peer.Close()
+	}
+	for _, conn := range conns {
+		_ = conn.Close()
+	}
+	for _, job := range jobs {
+		job.setState(StateCancelled, "server_shutdown", "")
+	}
+}
+
 func (m *Manager) runPrompt(ctx context.Context, job *Job, message string) {
 	job.turnMu.Lock()
 	defer job.turnMu.Unlock()

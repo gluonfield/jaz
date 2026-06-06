@@ -5,26 +5,23 @@ Native Go agent backend with a provider-neutral loop, OpenAI-compatible streamin
 ## Run
 
 ```sh
-go run ./cmd/jaz serve --provider mock --addr 127.0.0.1:8080
-go run ./cmd/jaz chat --server http://127.0.0.1:8080
+go run ./cmd/jaz serve
+go run ./cmd/jaz chat
 ```
 
-For OpenAI:
-
-```sh
-cp application.yaml application.local.yaml
-OPENAI_API_KEY=...
-APPLICATION_CONFIG=application.local.yaml go run ./cmd/jaz serve --provider openai
-```
-
-For OpenRouter, configure the provider explicitly:
+The default provider is OpenRouter. Put the key in `.env` or your shell:
 
 ```sh
 OPENROUTER_API_KEY=...
-go run ./cmd/jaz serve --provider openrouter --model openai/gpt-5.4-mini
 ```
 
-Provider credentials can also live in `application.local.yaml` or `.env`.
+For OpenAI, set `providers.default: openai` in `application.yaml` and provide:
+
+```sh
+OPENAI_API_KEY=...
+```
+
+Only `OPENAI_API_KEY` and `OPENROUTER_API_KEY` are read from the environment.
 
 Codex ACP sessions reuse your Codex CLI OAuth login from `~/.codex` by default.
 Set `CODEX_HOME` only when Codex uses a non-default auth directory. OpenAI and

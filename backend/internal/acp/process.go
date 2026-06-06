@@ -31,14 +31,10 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 		}
 		return streamhttp.Dial(cfg.URL, opts...)
 	}
-	command := cfg.Command
-	if command == "" {
-		command = defaultCommand(name)
-	}
-	if command == "" {
+	if cfg.Command == "" {
 		return nil, fmt.Errorf("acp agent %q has no command", name)
 	}
-	cmd := exec.CommandContext(ctx, command, cfg.Args...)
+	cmd := exec.CommandContext(ctx, cfg.Command, cfg.Args...)
 	cmd.Env = envList(env)
 	if cwd != "" {
 		cmd.Dir = cwd
@@ -53,7 +49,7 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	}
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start acp agent %q (%s): %w", name, strings.Join(append([]string{command}, cfg.Args...), " "), err)
+		return nil, fmt.Errorf("start acp agent %q (%s): %w", name, strings.Join(append([]string{cfg.Command}, cfg.Args...), " "), err)
 	}
 	conn := stdio.New(stdout, stdin)
 	go func() {
@@ -241,12 +237,4 @@ func appendMissing(values []string, value string) []string {
 		}
 	}
 	return append(values, value)
-}
-
-func defaultCommand(name string) string {
-	agent, ok := defaultAgent(name)
-	if !ok {
-		return ""
-	}
-	return agent.Command
 }

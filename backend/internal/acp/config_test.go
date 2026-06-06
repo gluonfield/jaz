@@ -3,30 +3,9 @@ package acp
 import (
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 )
-
-func TestDefaultAgentsUsePinnedLatestNpxPackages(t *testing.T) {
-	tests := map[string][]string{
-		"codex": {
-			"-y", "@zed-industries/codex-acp@" + CodexACPVersion,
-			"-c", "sandbox_mode=\"danger-full-access\"",
-			"-c", "approval_policy=\"never\"",
-		},
-		"claude_code": {"-y", "@agentclientprotocol/claude-agent-acp@" + ClaudeCodeACPVersion},
-	}
-	for name, args := range tests {
-		agent, ok := (Config{}).Agent(name)
-		if !ok {
-			t.Fatalf("%s default agent missing", name)
-		}
-		if agent.Command != "npx" || !slices.Equal(agent.Args, args) {
-			t.Fatalf("%s command = %q %#v", name, agent.Command, agent.Args)
-		}
-	}
-}
 
 func TestProcessEnvIsMinimalAndCanonical(t *testing.T) {
 	t.Setenv("PATH", "/bin")
