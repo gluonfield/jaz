@@ -2,12 +2,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
-import { AcpStateBadge } from '@/components/session/AcpStateBadge'
 import { Composer } from '@/components/session/Composer'
+import { MessageMarkdown } from '@/components/session/MessageMarkdown'
 import { ToolCallCard } from '@/components/session/ToolCallCard'
 import { Transcript } from '@/components/session/Transcript'
-import { sessionLabel } from '@/components/sidebar/SessionRow'
-import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Skeleton, SkeletonRows } from '@/components/ui/Skeleton'
 import { sessionMessagesQuery } from '@/lib/api/sessions'
@@ -125,7 +123,8 @@ function SessionPage() {
         abortRef.current = null
         // The server persisted the exchange; swap the live view for history.
         await queryClient.refetchQueries({ queryKey: keys.sessionMessages(sessionId) })
-        queryClient.invalidateQueries({ queryKey: keys.rootSessions })
+        queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
+        queryClient.invalidateQueries({ queryKey: keys.allSessions })
         setLive((prev) => (prev?.error ? prev : null))
       })
   }
@@ -137,8 +136,6 @@ function SessionPage() {
     // handleSend is recreated per render; this only fires per session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
-
-  const latestAcpState = [...events.data].reverse().find((e) => e.acp)?.acp?.state
 
   if (detail.isPending) {
     return (
@@ -157,7 +154,7 @@ function SessionPage() {
     )
   }
 
-  const { session, messages, activity } = detail.data
+  const { messages, activity } = detail.data
   const empty = messages.length === 0 && events.data.length === 0 && !live
 
   return (
@@ -170,21 +167,7 @@ function SessionPage() {
           nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
         }}
       >
-        <div className="mx-auto max-w-[720px] px-10 pb-40">
-          <header className="sticky top-0 z-dropdown -mx-2 mb-6 bg-bg/95 px-2 pt-1 pb-3 backdrop-blur-sm">
-            <div className="flex items-center gap-2.5">
-              <h1 className="min-w-0 truncate text-lg font-semibold text-ink">
-                {sessionLabel(session)}
-              </h1>
-              <RuntimeBadge session={session} />
-              {latestAcpState ? <AcpStateBadge state={latestAcpState} /> : null}
-            </div>
-            <p className="mt-0.5 text-[12px] text-ink-3">
-              started {fullTime(session.created_at)} ·{' '}
-              <span className="font-mono select-text">{session.id}</span>
-            </p>
-          </header>
-
+        <div className="mx-auto max-w-[720px] px-10 pt-2 pb-40">
           {empty ? (
             <EmptyState title="Start the conversation">
               <p>Messages stream in live as your assistant thinks and works.</p>
@@ -206,15 +189,16 @@ function SessionPage() {
                 </div>
               </motion.div>
               {live.tools.map((tool) => (
-                <ToolCallCard key={tool.key} name={tool.name} args={tool.args} result={tool.result} />
+                <ToolCallCard
+                  key={tool.key}
+                  name={tool.name}
+                  args={tool.args}
+                  result={tool.result}
+                  pending={streaming && tool.result === undefined}
+                />
               ))}
               {live.assistant ? (
-                <p className="max-w-[72ch] text-sm leading-relaxed whitespace-pre-wrap select-text">
-                  {live.assistant}
-                  {streaming ? (
-                    <span className="ml-0.5 inline-block h-3.5 w-[2px] animate-pulse rounded-full bg-ink-2 align-middle" />
-                  ) : null}
-                </p>
+                <MessageMarkdown text={live.assistant} />
               ) : streaming ? (
                 <p className="animate-pulse text-sm text-ink-3">Thinking…</p>
               ) : null}

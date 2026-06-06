@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import 'katex/dist/katex.min.css';
 
 @theme {
   /* ground + surfaces — pure white ground, faint sage neutrals */
@@ -43,6 +44,115 @@
   --color-rainbow-3: oklch(0.6 0.15 145);
   --color-rainbow-4: oklch(0.58 0.15 230);
   --color-rainbow-5: oklch(0.55 0.18 300);
+}
+
+/* Rendered markdown inside chat messages: compact, token-based typography. */
+.chat-prose {
+  max-width: 72ch;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--color-ink);
+  overflow-wrap: break-word;
+  user-select: text;
+}
+.chat-prose > :first-child {
+  margin-top: 0;
+}
+.chat-prose > :last-child {
+  margin-bottom: 0;
+}
+.chat-prose p {
+  margin: 0.5em 0;
+}
+.chat-prose h1,
+.chat-prose h2,
+.chat-prose h3,
+.chat-prose h4 {
+  margin: 1em 0 0.4em;
+  font-weight: 600;
+}
+.chat-prose h1 {
+  font-size: 1.125rem;
+}
+.chat-prose h2 {
+  font-size: 1rem;
+}
+.chat-prose h3,
+.chat-prose h4 {
+  font-size: 0.9375rem;
+}
+.chat-prose ul,
+.chat-prose ol {
+  margin: 0.5em 0;
+  padding-left: 1.4em;
+}
+.chat-prose ul {
+  list-style: disc;
+}
+.chat-prose ol {
+  list-style: decimal;
+}
+.chat-prose li {
+  margin: 0.2em 0;
+}
+.chat-prose code {
+  background: var(--color-surface-2);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  font-family: var(--font-mono);
+  font-size: 0.8125em;
+}
+.chat-prose pre {
+  margin: 0.6em 0;
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  padding: 0.6rem 0.75rem;
+}
+.chat-prose pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.8125rem;
+}
+.chat-prose a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.chat-prose blockquote {
+  margin: 0.6em 0;
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  padding: 0.5em 0.75em;
+  color: var(--color-ink-2);
+}
+.chat-prose table {
+  margin: 0.6em 0;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+.chat-prose th,
+.chat-prose td {
+  border: 1px solid var(--color-border);
+  padding: 0.3em 0.6em;
+}
+.chat-prose th {
+  background: var(--color-surface);
+  font-weight: 600;
+}
+.chat-prose hr {
+  margin: 1em 0;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+}
+.chat-prose .katex {
+  font-size: 1.05em;
+}
+.chat-prose .katex-display {
+  margin: 0.6em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 /* Animated brand wordmark: a sliding 3-hue gradient clipped to the text. */
