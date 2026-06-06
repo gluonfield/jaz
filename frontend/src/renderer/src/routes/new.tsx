@@ -26,7 +26,8 @@ function NewSessionPage() {
     try {
       const session = await createSession()
       setPendingMessage(session.id, text)
-      queryClient.invalidateQueries({ queryKey: keys.rootSessions })
+      queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
+      queryClient.invalidateQueries({ queryKey: keys.allSessions })
       navigate({ to: '/sessions/$sessionId', params: { sessionId: session.id } })
     } catch (error) {
       toast(`Couldn't start a session: ${(error as Error).message}`, 'danger')
