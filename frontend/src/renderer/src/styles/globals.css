@@ -1,0 +1,134 @@
+@import 'tailwindcss';
+
+@theme {
+  /* ground + surfaces — pure white ground, faint sage neutrals */
+  --color-bg: oklch(1 0 0);
+  --color-surface: oklch(0.972 0.004 110);
+  --color-surface-2: oklch(0.945 0.006 110);
+
+  /* text hierarchy */
+  --color-ink: oklch(0.27 0.015 110);
+  --color-ink-2: oklch(0.5 0.014 110);
+  --color-ink-3: oklch(0.56 0.012 110);
+
+  /* brand — sage primary, warm clay accent */
+  --color-primary: oklch(0.55 0.12 110);
+  --color-primary-strong: oklch(0.47 0.11 110);
+  --color-primary-soft: oklch(0.93 0.04 110);
+  --color-accent: oklch(0.62 0.13 55);
+  --color-accent-strong: oklch(0.52 0.12 55);
+  --color-accent-soft: oklch(0.94 0.035 55);
+
+  /* status */
+  --color-running: oklch(0.65 0.13 75);
+  --color-ok: oklch(0.6 0.13 145);
+  --color-danger: oklch(0.55 0.19 25);
+  --color-danger-soft: oklch(0.95 0.025 25);
+
+  --color-border: oklch(0.9 0.006 110);
+
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', monospace;
+
+  --radius-control: 8px;
+  --radius-card: 10px;
+
+  --z-dropdown: 10;
+  --z-toast: 20;
+  --z-tooltip: 30;
+
+  /* rainbow ramp shared by the Jaz wordmark and the composer focus ring */
+  --color-rainbow-1: oklch(0.62 0.19 25);
+  --color-rainbow-2: oklch(0.72 0.14 90);
+  --color-rainbow-3: oklch(0.6 0.15 145);
+  --color-rainbow-4: oklch(0.58 0.15 230);
+  --color-rainbow-5: oklch(0.55 0.18 300);
+}
+
+/* Animated brand wordmark: a sliding 3-hue gradient clipped to the text. */
+.jaz-gradient {
+  background-image: linear-gradient(
+    90deg,
+    var(--color-rainbow-1),
+    var(--color-rainbow-3),
+    var(--color-rainbow-5),
+    var(--color-rainbow-1)
+  );
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: jaz-slide 5s linear infinite;
+}
+
+@keyframes jaz-slide {
+  to {
+    background-position: 300% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jaz-gradient {
+    animation: none;
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+/* macOS hidden titlebar: the top strip drags the window */
+.titlebar-drag {
+  -webkit-app-region: drag;
+}
+.titlebar-drag button,
+.titlebar-drag a {
+  -webkit-app-region: no-drag;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Text fields never carry the focus ring themselves — their container does
+ * (focus-within). Keyboard users still get rings on buttons, links, tabs. */
+textarea:focus-visible,
+input:focus-visible,
+.cm-content:focus-visible {
+  outline: none;
+}
+
+::selection {
+  background: var(--color-primary-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
