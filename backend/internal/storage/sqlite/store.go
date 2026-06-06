@@ -165,13 +165,25 @@ func (s *Store) SaveSession(session storage.Session) error {
 	return nil
 }
 
+// SetArchived archives or restores a session together with its children.
+func (s *Store) SetArchived(id string, archived bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	flag := 0
+	if archived {
+		flag = 1
+	}
+	_, err := s.db.Exec(`UPDATE threads SET archived = ? WHERE id = ? OR parent_id = ?`, flag, id, id)
+	return err
+}
+
 func (s *Store) ListSessions(filter storage.SessionFilter) ([]storage.Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	rows, err := s.db.Query(`SELECT id, slug, title, parent_id, status, runtime, acp_agent, acp_session_id,
 model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens,
-reasoning_output_tokens, total_tokens, created_at_ms, updated_at_ms FROM threads`)
+reasoning_output_tokens, total_tokens, archived, created_at_ms, updated_at_ms FROM threads`)
 	if err != nil {
 		return nil, err
 	}
@@ -196,6 +208,9 @@ reasoning_output_tokens, total_tokens, created_at_ms, updated_at_ms FROM threads
 			continue
 		}
 		if filter.Runtime != "" && session.Runtime != filter.Runtime {
+			continue
+		}
+		if session.Archived != filter.Archived {
 			continue
 		}
 		sessions = append(sessions, session)
@@ -376,6 +391,7 @@ func (s *Store) migrate() error {
   output_tokens INTEGER NOT NULL DEFAULT 0,
   reasoning_output_tokens INTEGER NOT NULL DEFAULT 0,
   total_tokens INTEGER NOT NULL DEFAULT 0,
+  archived INTEGER NOT NULL DEFAULT 0,
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL
 )`,
@@ -398,6 +414,12 @@ func (s *Store) migrate() error {
 		if _, err := s.db.Exec(stmt); err != nil {
 			return err
 		}
+	}
+	// Tolerant migration for databases created before the column existed
+	// (CREATE TABLE IF NOT EXISTS skips them).
+	if _, err := s.db.Exec(`ALTER TABLE threads ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`); err != nil &&
+		!strings.Contains(err.Error(), "duplicate column name") {
+		return err
 	}
 	return nil
 }
@@ -478,7 +500,7 @@ func (s *Store) loadSessionLocked(ref string) (storage.Session, error) {
 	}
 	row := s.db.QueryRow(`SELECT id, slug, title, parent_id, status, runtime, acp_agent, acp_session_id,
 model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens,
-reasoning_output_tokens, total_tokens, created_at_ms, updated_at_ms
+reasoning_output_tokens, total_tokens, archived, created_at_ms, updated_at_ms
 FROM threads WHERE id = ? OR slug = ? LIMIT 1`, ref, ref)
 	return scanSession(row)
 }
@@ -570,8 +592,8 @@ func insertSession(db execer, session storage.Session) error {
 	_, err := db.Exec(`INSERT INTO threads (
 id, slug, title, parent_id, status, runtime, acp_agent, acp_session_id,
 model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens,
-reasoning_output_tokens, total_tokens, created_at_ms, updated_at_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+reasoning_output_tokens, total_tokens, archived, created_at_ms, updated_at_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
 slug = excluded.slug,
 title = excluded.title,
@@ -588,13 +610,14 @@ cached_input_tokens = excluded.cached_input_tokens,
 output_tokens = excluded.output_tokens,
 reasoning_output_tokens = excluded.reasoning_output_tokens,
 total_tokens = excluded.total_tokens,
+archived = excluded.archived,
 created_at_ms = excluded.created_at_ms,
 updated_at_ms = excluded.updated_at_ms`,
 		session.ID, session.Slug, nullString(session.Title), nullString(session.ParentID),
 		session.Status, session.Runtime, nullString(acpAgent), nullString(acpSessionID),
 		nullString(session.ModelProvider), nullString(session.Model), nullString(session.ReasoningEffort),
 		session.Usage.InputTokens, session.Usage.CachedInputTokens, session.Usage.OutputTokens,
-		session.Usage.ReasoningOutputTokens, session.Usage.TotalTokens,
+		session.Usage.ReasoningOutputTokens, session.Usage.TotalTokens, session.Archived,
 		timeToMs(session.CreatedAt), timeToMs(session.UpdatedAt))
 	return err
 }
@@ -621,7 +644,7 @@ func scanSession(scanner sessionScanner) (storage.Session, error) {
 	err := scanner.Scan(&session.ID, &session.Slug, &title, &parentID, &session.Status, &session.Runtime,
 		&acpAgent, &acpSessionID, &modelProvider, &model, &reasoningEffort,
 		&session.Usage.InputTokens, &session.Usage.CachedInputTokens, &session.Usage.OutputTokens,
-		&session.Usage.ReasoningOutputTokens, &session.Usage.TotalTokens, &createdMs, &updatedMs)
+		&session.Usage.ReasoningOutputTokens, &session.Usage.TotalTokens, &session.Archived, &createdMs, &updatedMs)
 	if err != nil {
 		return storage.Session{}, err
 	}
