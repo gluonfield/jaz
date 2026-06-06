@@ -125,7 +125,7 @@ func startServer(
 ) {
 	srv := &http.Server{
 		Addr:    opts.Addr,
-		Handler: (&server.Server{Agent: a, Store: store, ACP: manager, Locks: locks, Events: events, SystemPrompt: string(systemPrompt)}).Handler(),
+		Handler: (&server.Server{Agent: a, Store: store, ACP: manager, Locks: locks, Events: events, SystemPrompt: string(systemPrompt), Root: store.RootDir()}).Handler(),
 	}
 	lc.Append(fx.Hook{
 		OnStart: func(context.Context) error {

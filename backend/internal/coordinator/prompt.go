@@ -9,16 +9,18 @@ import (
 	prompttemplate "github.com/wins/jaz/backend/internal/templates/coordinator"
 )
 
-var promptFiles = []string{"AGENTS.md", "SOUL.md", "HEARTBEAT.md"}
+// PromptFiles are the agent prompt files read from the jaz root directory,
+// in the order they are rendered into the coordinator system prompt.
+var PromptFiles = []string{"AGENTS.md", "SOUL.md", "HEARTBEAT.md"}
 
 func Prompt(root, skillsPrompt string) (string, error) {
 	return prompt(root, skillsPrompt, time.Now())
 }
 
 func prompt(root, skillsPrompt string, now time.Time) (string, error) {
-	sections := make([]prompttemplate.Section, 0, len(promptFiles))
-	for _, name := range promptFiles {
-		content, err := readPromptFile(root, name)
+	sections := make([]prompttemplate.Section, 0, len(PromptFiles))
+	for _, name := range PromptFiles {
+		content, err := ReadPromptFile(root, name)
 		if err != nil {
 			return "", err
 		}
@@ -29,7 +31,9 @@ func prompt(root, skillsPrompt string, now time.Time) (string, error) {
 	return prompttemplate.Render(now, sections, skillsPrompt)
 }
 
-func readPromptFile(root, name string) (string, error) {
+// ReadPromptFile reads a single prompt file from root, returning "" when the
+// file does not exist or root is unset.
+func ReadPromptFile(root, name string) (string, error) {
 	if root == "" {
 		return "", nil
 	}

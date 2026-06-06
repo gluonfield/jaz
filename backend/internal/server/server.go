@@ -29,6 +29,7 @@ type Server struct {
 	Locks        *sessionlock.Locks
 	Events       *sessionevents.Bus
 	SystemPrompt string
+	Root         string
 }
 
 func (s *Server) Handler() http.Handler {
@@ -38,7 +39,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/sessions/", s.handleGetSession)
 	mux.HandleFunc("POST /v1/sessions", s.handleCreateSession)
 	mux.HandleFunc("POST /v1/sessions/", s.handleSessionAction)
-	return mux
+	mux.HandleFunc("GET /v1/agent/files", s.handleListAgentFiles)
+	mux.HandleFunc("PUT /v1/agent/files/{name}", s.handleWriteAgentFile)
+	return withCORS(mux)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -140,6 +143,9 @@ func (s *Server) streamSessionEvents(w http.ResponseWriter, r *http.Request, ses
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
+	// Flush the headers immediately so EventSource clients see the stream
+	// open before the first event arrives.
+	flusher.Flush()
 	for event := range s.Events.Subscribe(r.Context(), sessionID) {
 		writeSessionEventSSE(w, flusher, event)
 	}
@@ -181,6 +187,7 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
 
 	switch session.Runtime {
 	case "", storage.RuntimeNative:
