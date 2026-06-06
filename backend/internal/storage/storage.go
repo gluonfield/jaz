@@ -43,6 +43,7 @@ type Session struct {
 	Model           string      `json:"model,omitempty"`
 	ReasoningEffort string      `json:"reasoning_effort,omitempty"`
 	Usage           Usage       `json:"usage,omitempty"`
+	Archived        bool        `json:"archived,omitempty"`
 	CreatedAt       time.Time   `json:"created_at"`
 	UpdatedAt       time.Time   `json:"updated_at"`
 }
@@ -88,6 +89,8 @@ type SessionFilter struct {
 	RootOnly        bool
 	Runtime         string
 	IncludeChildren bool
+	// Archived selects only archived sessions; by default they are excluded.
+	Archived        bool
 	Limit           int
 }
 
@@ -97,6 +100,7 @@ type Store interface {
 	EnsureSession(id string) error
 	LoadSession(ref string) (Session, error)
 	SaveSession(session Session) error
+	SetArchived(id string, archived bool) error
 	ListSessions(filter SessionFilter) ([]Session, error)
 	LastRootSession() (Session, error)
 	LoadMessages(id string) ([]provider.Message, error)

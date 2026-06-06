@@ -171,6 +171,29 @@ func (s *Store) saveSession(session storage.Session) error {
 	return os.WriteFile(s.metaPath(session.ID), data, 0o644)
 }
 
+// SetArchived archives or restores a session together with its children.
+func (s *Store) SetArchived(id string, archived bool) error {
+	session, err := s.loadSessionByID(id)
+	if err != nil {
+		return err
+	}
+	session.Archived = archived
+	if err := s.saveSession(session); err != nil {
+		return err
+	}
+	children, err := s.ListSessions(storage.SessionFilter{ParentID: id, ParentOnly: true, Archived: !archived})
+	if err != nil {
+		return err
+	}
+	for _, child := range children {
+		child.Archived = archived
+		if err := s.saveSession(child); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Store) ListSessions(filter storage.SessionFilter) ([]storage.Session, error) {
 	entries, err := os.ReadDir(s.SessionsDir())
 	if os.IsNotExist(err) {
@@ -201,6 +224,9 @@ func (s *Store) ListSessions(filter storage.SessionFilter) ([]storage.Session, e
 			continue
 		}
 		if filter.Runtime != "" && session.Runtime != filter.Runtime {
+			continue
+		}
+		if session.Archived != filter.Archived {
 			continue
 		}
 		sessions = append(sessions, session)

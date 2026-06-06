@@ -94,6 +94,7 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		RootOnly:        query.Get("root") == "true",
 		Runtime:         query.Get("runtime"),
 		IncludeChildren: query.Get("include_children") == "true",
+		Archived:        query.Get("archived") == "true",
 		Limit:           limit,
 	}
 	sessions, err := s.Store.ListSessions(filter)
@@ -173,7 +174,7 @@ func (s *Server) streamSessionEvents(w http.ResponseWriter, r *http.Request, ses
 func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
 	sessionRef, action, ok := strings.Cut(rest, "/")
-	if !ok || action != "messages:stream" {
+	if !ok || (action != "messages:stream" && action != "archive" && action != "unarchive") {
 		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
 		return
 	}
@@ -184,6 +185,16 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	session, err := s.Store.LoadSession(sessionRef)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err)
+		return
+	}
+
+	if action == "archive" || action == "unarchive" {
+		if err := s.Store.SetArchived(session.ID, action == "archive"); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		session.Archived = action == "archive"
+		writeJSON(w, http.StatusOK, session)
 		return
 	}
 
