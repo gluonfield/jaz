@@ -13,6 +13,7 @@ export interface Session {
   title?: string
   parent_id?: string
   status: 'idle' | 'running' | 'error'
+  archived?: boolean
   runtime: 'native' | 'acp'
   runtime_ref?: RuntimeRef
   created_at: string
