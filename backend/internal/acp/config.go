@@ -1,6 +1,9 @@
 package acp
 
-const fullAccessMode = "full-access"
+// Mode IDs that grant unattended full access, in preference order. Agents
+// name the same capability differently: Codex exposes "full-access", the
+// Claude Code adapter "bypassPermissions", Gemini CLI "yolo".
+var fullAccessModes = []string{"full-access", "bypassPermissions", "yolo"}
 
 type Config struct {
 	Agents       map[string]AgentConfig
