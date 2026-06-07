@@ -2,6 +2,7 @@ import { motion } from 'motion/react'
 import type { ChatMessage, SessionEvent } from '@/lib/api/types'
 import { relativeTime } from '@/lib/format/time'
 import { MessageMarkdown } from './MessageMarkdown'
+import { ThinkingBlock } from './ThinkingBlock'
 import { ToolCallCard } from './ToolCallCard'
 
 function messageText(message: ChatMessage): string {
@@ -13,6 +14,15 @@ function messageText(message: ChatMessage): string {
     .filter(Boolean)
     .join('\n\n')
   return text || message.content
+}
+
+function messageReasoning(message: ChatMessage): string {
+  const text = message.blocks
+    ?.filter((block) => block.type === 'reasoning')
+    .map((block) => (block.text ?? '').trim())
+    .filter(Boolean)
+    .join('\n\n')
+  return text || message.reasoning || ''
 }
 
 function Bubble({ message }: { message: ChatMessage }) {
@@ -27,8 +37,10 @@ function Bubble({ message }: { message: ChatMessage }) {
       )
     case 'assistant': {
       const text = messageText(message)
+      const reasoning = messageReasoning(message)
       return (
         <div className="flex max-w-[72ch] flex-col gap-2">
+          <ThinkingBlock text={reasoning} />
           {text ? <MessageMarkdown text={text} /> : null}
           {message.blocks
             ?.filter((block) => block.type === 'tool')

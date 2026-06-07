@@ -79,6 +79,48 @@ func TestSaveMessagesRejectsDanglingToolCall(t *testing.T) {
 	}
 }
 
+func TestSaveMessagesWithReasoningPersistsBlocksWithoutReplay(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	session, err := store.CreateSession(storage.CreateSession{Slug: "reasoning"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = store.SaveMessagesWithReasoning(session.ID, []provider.Message{
+		provider.UserMessage("hello"),
+		provider.AssistantMessage("done", nil),
+	}, map[int]string{1: "thinking"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	records, err := store.LoadMessageRecords(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("records = %d, want 2", len(records))
+	}
+	if records[1].Reasoning != "thinking" {
+		t.Fatalf("reasoning = %q, want thinking", records[1].Reasoning)
+	}
+	if len(records[1].Blocks) != 2 || records[1].Blocks[0].Type != blockReasoning || records[1].Blocks[1].Type != blockText {
+		t.Fatalf("assistant blocks = %#v", records[1].Blocks)
+	}
+
+	replayed, err := store.LoadMessages(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(replayed) != 2 || provider.MessageContent(replayed[1]) != "done" {
+		t.Fatalf("unexpected replayed messages %#v", replayed)
+	}
+}
+
 func TestToolCallAndResultPersistAsOneAssistantRecord(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {

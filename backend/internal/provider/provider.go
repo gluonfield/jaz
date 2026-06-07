@@ -32,18 +32,20 @@ type Usage struct {
 type EventType string
 
 const (
-	EventDelta    EventType = "delta"
-	EventToolCall EventType = "tool_call"
-	EventDone     EventType = "done"
-	EventError    EventType = "error"
+	EventDelta     EventType = "delta"
+	EventReasoning EventType = "reasoning"
+	EventToolCall  EventType = "tool_call"
+	EventDone      EventType = "done"
+	EventError     EventType = "error"
 )
 
 type Event struct {
-	Type     EventType
-	Delta    string
-	ToolCall *ToolCall
-	Usage    Usage
-	Err      error
+	Type      EventType
+	Delta     string
+	Reasoning string
+	ToolCall  *ToolCall
+	Usage     Usage
+	Err       error
 }
 
 type Provider interface {

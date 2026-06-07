@@ -1,6 +1,5 @@
-// Hands the first message from the New-session page to the session view,
-// which sends it on mount. A module map (not router state) so StrictMode's
-// double-mount can't double-send: take() is destructive.
+// Hands the first message from the New-session page to the session view.
+// The session page waits until its detail query has loaded before taking it.
 const pending = new Map<string, string>()
 
 export function setPendingMessage(sessionId: string, message: string): void {

@@ -36,6 +36,10 @@ type messageRecordStore interface {
 	LoadMessageRecords(string) ([]storage.Message, error)
 }
 
+type reasoningMessageStore interface {
+	SaveMessagesWithReasoning(string, []provider.Message, map[int]string) error
+}
+
 type usageStore interface {
 	AddUsage(string, storage.Usage) error
 }
@@ -146,7 +150,13 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"session": session, "messages": messages, "activity": activity})
+	resp := map[string]any{"session": session, "messages": messages, "activity": activity}
+	if session.Runtime == storage.RuntimeACP && s.ACP != nil {
+		if job, err := s.ACP.Status(session.ID); err == nil {
+			resp["acp_state"] = job.State
+		}
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) streamSessionEvents(w http.ResponseWriter, r *http.Request, sessionID string) {
@@ -258,7 +268,13 @@ func (s *Server) streamNativeSession(w http.ResponseWriter, flusher http.Flusher
 	finalStatus := storage.StatusError
 	for event := range s.Agent.Run(ctx, provider.Request{Messages: messages}) {
 		if len(event.Messages) > 0 {
-			if err := s.Store.SaveMessages(session.ID, event.Messages); err != nil {
+			var err error
+			if store, ok := s.Store.(reasoningMessageStore); ok && len(event.ReasoningByMessage) > 0 {
+				err = store.SaveMessagesWithReasoning(session.ID, event.Messages, event.ReasoningByMessage)
+			} else {
+				err = s.Store.SaveMessages(session.ID, event.Messages)
+			}
+			if err != nil {
 				writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: err.Error()})
 				writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
 				s.setSessionStatus(session, storage.StatusError)
@@ -296,12 +312,13 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 	}
 
 	emittedAssistant := 0
+	emittedThought := 0
 	seenTools := map[string]struct{}{}
 	ticker := time.NewTicker(120 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
-		emitACPJob(w, flusher, job, &emittedAssistant, seenTools)
+		emitACPJob(w, flusher, job, &emittedAssistant, &emittedThought, seenTools)
 		if job.State == acp.StateFailed {
 			s.setSessionStatus(session, storage.StatusError)
 			writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: job.Error})
@@ -328,7 +345,7 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 	}
 }
 
-func emitACPJob(w http.ResponseWriter, flusher http.Flusher, job acp.Job, emittedAssistant *int, seenTools map[string]struct{}) {
+func emitACPJob(w http.ResponseWriter, flusher http.Flusher, job acp.Job, emittedAssistant, emittedThought *int, seenTools map[string]struct{}) {
 	for _, call := range job.ToolCalls {
 		key := firstNonEmpty(call.ID, call.Title)
 		if key == "" {
@@ -347,6 +364,11 @@ func emitACPJob(w http.ResponseWriter, flusher http.Flusher, job acp.Job, emitte
 		delta := job.Assistant[*emittedAssistant:]
 		*emittedAssistant = len(job.Assistant)
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDelta, Delta: delta})
+	}
+	if *emittedThought < len(job.Thought) {
+		delta := job.Thought[*emittedThought:]
+		*emittedThought = len(job.Thought)
+		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamReasoning, Reasoning: delta})
 	}
 }
 
