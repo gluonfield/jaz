@@ -40,7 +40,7 @@ function SessionsPage() {
       ) : (
         <div className="flex flex-col gap-px">
           {sessions.data.map((item) => (
-            <SessionRow key={item.session.id} session={item.session} indented={item.indented} />
+            <SessionRow key={item.session.id} session={item.session} child={item.child} />
           ))}
         </div>
       )}

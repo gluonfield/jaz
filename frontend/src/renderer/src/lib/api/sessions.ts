@@ -3,8 +3,8 @@ import { keys } from '../query/keys'
 import { get, post } from './client'
 import type { Session, SessionMessages } from './types'
 
-export function createSession(): Promise<Session> {
-  return post<Session>('/v1/sessions', {})
+export function createSession(input: { title?: string } = {}): Promise<Session> {
+  return post<Session>('/v1/sessions', input)
 }
 
 export function setSessionArchived(id: string, archived: boolean): Promise<Session> {
@@ -32,11 +32,12 @@ function compareSessions(a: Session, b: Session): number {
   return sessionTime(b) - sessionTime(a) || a.id.localeCompare(b.id)
 }
 
-// A display row: indented only when its parent is rendered above it in the
-// same list (orphans and archived children render flush).
+// A display row: `child` marks a session whose parent renders directly above
+// it in the same list; rows draw a branch connector for those. Orphans (and
+// archived children whose parent isn't in the list) render as roots.
 export interface SessionListItem {
   session: Session
-  indented: boolean
+  child: boolean
 }
 
 export function groupSessionsForDisplay(sessions: Session[]): SessionListItem[] {
@@ -73,12 +74,12 @@ export function groupSessionsForDisplay(sessions: Session[]): SessionListItem[] 
 
   const ordered: SessionListItem[] = []
   const emitted = new Set<string>()
-  const append = (session: Session, indented: boolean) => {
+  const append = (session: Session, isChild: boolean) => {
     if (emitted.has(session.id)) return
     emitted.add(session.id)
-    ordered.push({ session, indented })
-    for (const child of [...(children.get(session.id) ?? [])].sort(compareGroups)) {
-      append(child, true)
+    ordered.push({ session, child: isChild })
+    for (const sub of [...(children.get(session.id) ?? [])].sort(compareGroups)) {
+      append(sub, true)
     }
   }
 

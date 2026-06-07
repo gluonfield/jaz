@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Archive } from 'lucide-react'
+import { Archive, CornerDownRight } from 'lucide-react'
 import { setSessionArchived } from '@/lib/api/sessions'
 import type { Session } from '@/lib/api/types'
 import { relativeTime } from '@/lib/format/time'
@@ -36,22 +36,26 @@ function StatusDot({ status }: { status: Session['status'] }) {
   return null
 }
 
-export function SessionRow({ session, indented = false }: { session: Session; indented?: boolean }) {
+export function SessionRow({ session, child = false }: { session: Session; child?: boolean }) {
   return (
     <Link
       to="/sessions/$sessionId"
       params={{ sessionId: session.id }}
-      className={`group flex items-center gap-2 rounded-control px-2.5 py-2 text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink ${
-        indented ? 'pl-6' : ''
-      }`}
+      className="group flex items-center gap-2 rounded-control px-2.5 py-2 text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
       activeProps={{ className: 'bg-primary-soft! text-ink! font-medium' }}
     >
+      {/* branch connector: this thread was spawned by the session above */}
+      {child ? <CornerDownRight size={12} className="shrink-0 text-ink-3" /> : null}
       <StatusDot status={session.status} />
+      {/* native is the default; only agent-backed sessions earn a badge.
+          When the chip leads the row, a negative margin optically aligns
+          its text with the titles. */}
+      {session.runtime === 'acp' ? (
+        <RuntimeBadge session={session} className={child ? '' : '-ml-1.5'} />
+      ) : null}
       <span className="min-w-0 flex-1 truncate" title={sessionLabel(session)}>
         {sessionLabel(session)}
       </span>
-      {/* native is the default; only agent-backed sessions earn a badge */}
-      {session.runtime === 'acp' ? <RuntimeBadge session={session} /> : null}
       <span className="shrink-0 text-[11px] tabular-nums text-ink-3 group-hover:hidden">
         {relativeTime(session.updated_at)}
       </span>

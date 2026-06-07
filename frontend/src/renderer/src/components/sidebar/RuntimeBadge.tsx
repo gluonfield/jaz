@@ -1,15 +1,19 @@
 import type { Session } from '@/lib/api/types'
 
-export function RuntimeBadge({ session }: { session: Session }) {
+export function RuntimeBadge({ session, className = '' }: { session: Session; className?: string }) {
   if (session.runtime === 'acp') {
     return (
-      <span className="rounded px-1.5 py-px font-mono text-[11px] text-accent-strong bg-accent-soft">
+      <span
+        className={`rounded px-1.5 py-px font-mono text-[11px] text-accent-strong bg-accent-soft ${className}`}
+      >
         {session.runtime_ref?.agent ?? 'acp'}
       </span>
     )
   }
   return (
-    <span className="rounded px-1.5 py-px font-mono text-[11px] text-ink-2 bg-surface-2">
+    <span
+      className={`rounded px-1.5 py-px font-mono text-[11px] text-ink-2 bg-surface-2 ${className}`}
+    >
       native
     </span>
   )
