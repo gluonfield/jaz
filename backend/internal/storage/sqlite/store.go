@@ -186,7 +186,7 @@ func (s *Store) ListSessions(filter storage.SessionFilter) ([]storage.Session, e
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	rows, err := s.db.Query(`SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id,
+	rows, err := s.db.Query(`SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd,
 model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens,
 reasoning_output_tokens, total_tokens, archived, created_at_ms, updated_at_ms FROM threads`)
 	if err != nil {
@@ -458,6 +458,7 @@ func (s *Store) migrate() error {
   runtime TEXT NOT NULL DEFAULT 'native',
   acp_agent TEXT,
   acp_session_id TEXT,
+  cwd TEXT,
   model_provider TEXT,
   model TEXT,
   reasoning_effort TEXT,
@@ -509,6 +510,10 @@ func (s *Store) migrate() error {
 		return err
 	}
 	if _, err := s.db.Exec(`ALTER TABLE threads ADD COLUMN error TEXT`); err != nil &&
+		!strings.Contains(err.Error(), "duplicate column name") {
+		return err
+	}
+	if _, err := s.db.Exec(`ALTER TABLE threads ADD COLUMN cwd TEXT`); err != nil &&
 		!strings.Contains(err.Error(), "duplicate column name") {
 		return err
 	}
@@ -649,7 +654,7 @@ func (s *Store) loadSessionLocked(ref string) (storage.Session, error) {
 	if ref == "" {
 		return storage.Session{}, fmt.Errorf("session id or slug is required")
 	}
-	row := s.db.QueryRow(`SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id,
+	row := s.db.QueryRow(`SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd,
 model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens,
 reasoning_output_tokens, total_tokens, archived, created_at_ms, updated_at_ms
 FROM threads WHERE id = ? OR slug = ? LIMIT 1`, ref, ref)
@@ -749,12 +754,12 @@ type execer interface {
 }
 
 func insertSession(db execer, session storage.Session) error {
-	acpAgent, acpSessionID := runtimeRefColumns(session)
+	acpAgent, acpSessionID, cwd := runtimeRefColumns(session)
 	_, err := db.Exec(`INSERT INTO threads (
-id, slug, title, parent_id, status, runtime, acp_agent, acp_session_id,
+id, slug, title, parent_id, status, runtime, acp_agent, acp_session_id, cwd,
 error, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens,
 reasoning_output_tokens, total_tokens, archived, created_at_ms, updated_at_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
 slug = excluded.slug,
 title = excluded.title,
@@ -764,6 +769,7 @@ error = excluded.error,
 runtime = excluded.runtime,
 acp_agent = excluded.acp_agent,
 acp_session_id = excluded.acp_session_id,
+cwd = excluded.cwd,
 model_provider = excluded.model_provider,
 model = excluded.model,
 reasoning_effort = excluded.reasoning_effort,
@@ -776,7 +782,7 @@ archived = excluded.archived,
 created_at_ms = excluded.created_at_ms,
 updated_at_ms = excluded.updated_at_ms`,
 		session.ID, session.Slug, nullString(session.Title), nullString(session.ParentID),
-		session.Status, session.Runtime, nullString(acpAgent), nullString(acpSessionID), nullString(session.Error),
+		session.Status, session.Runtime, nullString(acpAgent), nullString(acpSessionID), nullString(cwd), nullString(session.Error),
 		nullString(session.ModelProvider), nullString(session.Model), nullString(session.ReasoningEffort),
 		session.Usage.InputTokens, session.Usage.CachedInputTokens, session.Usage.OutputTokens,
 		session.Usage.ReasoningOutputTokens, session.Usage.TotalTokens, session.Archived,
@@ -802,10 +808,10 @@ type sessionScanner interface {
 
 func scanSession(scanner sessionScanner) (storage.Session, error) {
 	var session storage.Session
-	var title, parentID, errorMessage, acpAgent, acpSessionID, modelProvider, model, reasoningEffort sql.NullString
+	var title, parentID, errorMessage, acpAgent, acpSessionID, cwd, modelProvider, model, reasoningEffort sql.NullString
 	var createdMs, updatedMs int64
 	err := scanner.Scan(&session.ID, &session.Slug, &title, &parentID, &session.Status, &errorMessage, &session.Runtime,
-		&acpAgent, &acpSessionID, &modelProvider, &model, &reasoningEffort,
+		&acpAgent, &acpSessionID, &cwd, &modelProvider, &model, &reasoningEffort,
 		&session.Usage.InputTokens, &session.Usage.CachedInputTokens, &session.Usage.OutputTokens,
 		&session.Usage.ReasoningOutputTokens, &session.Usage.TotalTokens, &session.Archived, &createdMs, &updatedMs)
 	if err != nil {
@@ -825,11 +831,12 @@ func scanSession(scanner sessionScanner) (storage.Session, error) {
 	if session.Status == "" {
 		session.Status = storage.StatusIdle
 	}
-	if acpAgent.Valid || acpSessionID.Valid {
+	if acpAgent.Valid || acpSessionID.Valid || cwd.Valid {
 		session.RuntimeRef = &storage.RuntimeRef{
 			Type:      storage.RuntimeACP,
 			Agent:     acpAgent.String,
 			SessionID: acpSessionID.String,
+			Cwd:       cwd.String,
 		}
 	}
 	return session, nil
@@ -876,11 +883,11 @@ func (s *Store) uniqueSlugLocked(value, currentID string) (string, error) {
 	}
 }
 
-func runtimeRefColumns(session storage.Session) (string, string) {
+func runtimeRefColumns(session storage.Session) (string, string, string) {
 	if session.RuntimeRef == nil {
-		return "", ""
+		return "", "", ""
 	}
-	return session.RuntimeRef.Agent, session.RuntimeRef.SessionID
+	return session.RuntimeRef.Agent, session.RuntimeRef.SessionID, session.RuntimeRef.Cwd
 }
 
 func nullString(value string) any {

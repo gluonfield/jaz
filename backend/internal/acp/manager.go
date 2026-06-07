@@ -65,6 +65,12 @@ type SpawnRequest struct {
 	ACPAgent string
 	Slug     string
 	Title    string
+	// Directory is where the agent works, relative to the jaz workspace
+	// (absolute paths must stay inside it); created if missing. Empty means
+	// a fresh per-session directory named after the slug.
+	Directory string
+	// Worktree runs the session on a disposable git worktree of Directory.
+	Worktree bool
 }
 
 type SendRequest struct {
@@ -96,6 +102,7 @@ type SpawnResult struct {
 	SessionID string `json:"session_id"`
 	Slug      string `json:"slug"`
 	ACPAgent  string `json:"acp_agent"`
+	Cwd       string `json:"cwd,omitempty"`
 	State     string `json:"state"`
 }
 
@@ -215,39 +222,50 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	if !ok {
 		return SpawnResult{}, fmt.Errorf("acp agent %q is not configured", req.ACPAgent)
 	}
-	absCwd, err := m.resolveCwd(cfg.Cwd)
-	if err != nil {
-		return SpawnResult{}, err
-	}
-	ac, err := m.connect(ctx, req.ACPAgent, cfg, absCwd)
-	if err != nil {
-		return SpawnResult{}, err
-	}
-	acpSession, err := m.newACPSession(ctx, ac, absCwd)
-	if err != nil {
-		ac.close()
-		return SpawnResult{}, err
-	}
-	modes, err := m.initializeModeState(ctx, ac.peer, acpSession)
-	if err != nil {
-		ac.close()
-		return SpawnResult{}, err
-	}
-
+	// The session row is created first: its unique slug names the default
+	// directory and the worktree branch.
 	session, err := m.store.CreateSession(storage.CreateSession{
 		Slug:     req.Slug,
 		Title:    req.Title,
 		ParentID: req.ParentID,
 		Runtime:  storage.RuntimeACP,
 		RuntimeRef: &storage.RuntimeRef{
-			Type:      storage.RuntimeACP,
-			Agent:     req.ACPAgent,
-			SessionID: string(acpSession.SessionID),
+			Type:  storage.RuntimeACP,
+			Agent: req.ACPAgent,
 		},
 	})
 	if err != nil {
-		ac.close()
 		return SpawnResult{}, err
+	}
+	fail := func(err error) (SpawnResult, error) {
+		session.Status = storage.StatusError
+		session.Error = err.Error()
+		_ = m.store.SaveSession(session)
+		return SpawnResult{}, err
+	}
+	absCwd, err := m.prepareSessionDir(req, cfg, session.Slug)
+	if err != nil {
+		return fail(err)
+	}
+	ac, err := m.connect(ctx, req.ACPAgent, cfg, absCwd)
+	if err != nil {
+		return fail(err)
+	}
+	acpSession, err := m.newACPSession(ctx, ac, absCwd)
+	if err != nil {
+		ac.close()
+		return fail(err)
+	}
+	modes, err := m.initializeModeState(ctx, ac.peer, acpSession)
+	if err != nil {
+		ac.close()
+		return fail(err)
+	}
+	session.RuntimeRef.SessionID = string(acpSession.SessionID)
+	session.RuntimeRef.Cwd = absCwd
+	if err := m.store.SaveSession(session); err != nil {
+		ac.close()
+		return fail(err)
 	}
 	job := &Job{
 		ID:         session.ID,
@@ -272,6 +290,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		SessionID: job.ID,
 		Slug:      job.Slug,
 		ACPAgent:  job.ACPAgent,
+		Cwd:       job.Cwd,
 		State:     StateIdle,
 	}, nil
 }
@@ -319,7 +338,7 @@ func (m *Manager) resume(ctx context.Context, ref string) (*Job, error) {
 	if loader, ok := m.store.(acpStateLoader); ok {
 		state, _ = loader.LoadACPState(session.ID)
 	}
-	cwd := state.Cwd
+	cwd := firstNonEmpty(session.RuntimeRef.Cwd, state.Cwd)
 	if cwd == "" {
 		if cwd, err = m.resolveCwd(cfg.Cwd); err != nil {
 			return nil, err

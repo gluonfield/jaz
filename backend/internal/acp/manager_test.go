@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -538,5 +540,130 @@ func TestCancelStopsRunningTurn(t *testing.T) {
 	}
 	if job.State != acp.StateIdle || job.Assistant != "hello from fake agent" {
 		t.Fatalf("follow-up turn state=%s assistant=%q error=%q", job.State, job.Assistant, job.Error)
+	}
+}
+
+func TestSpawnSessionDirectories(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	manager := acp.NewManager(store, acp.Config{
+		Root:      t.TempDir(),
+		Workspace: workspace,
+		Agents: map[string]acp.AgentConfig{
+			"fake": {
+				Command: os.Args[0],
+				Args:    []string{"-test.run=TestFakeACPAgentProcess"},
+				Env:     map[string]string{"JAZ_FAKE_ACP_AGENT": "1"},
+			},
+		},
+	}, log.New(io.Discard))
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	// Explicit directory: created under the workspace and persisted.
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "dir-task", Directory: "ink-backend"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	want := filepath.Join(workspace, "ink-backend")
+	if spawned.Cwd != want {
+		t.Fatalf("cwd = %q, want %q", spawned.Cwd, want)
+	}
+	if info, err := os.Stat(want); err != nil || !info.IsDir() {
+		t.Fatalf("directory was not created: %v", err)
+	}
+	session, err := store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.RuntimeRef == nil || session.RuntimeRef.Cwd != want {
+		t.Fatalf("cwd not persisted: %#v", session.RuntimeRef)
+	}
+
+	// No directory: a fresh per-session directory named after the slug.
+	spawned, err = manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "adhoc-task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	if spawned.Cwd != filepath.Join(workspace, spawned.Slug) {
+		t.Fatalf("default cwd = %q, want workspace/%s", spawned.Cwd, spawned.Slug)
+	}
+
+	// Escapes are rejected and the failure lands on the session row.
+	if _, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "escape-task", Directory: "../outside"}); err == nil {
+		t.Fatal("expected escape to be rejected")
+	}
+	failed, err := store.LoadSession("escape-task")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.Status != storage.StatusError || failed.Error == "" {
+		t.Fatalf("spawn failure not recorded on session: %#v", failed)
+	}
+}
+
+func TestSpawnWorktree(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not available")
+	}
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	repo := filepath.Join(workspace, "ink-backend")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"init"},
+		{"config", "user.email", "test@jaz"},
+		{"config", "user.name", "jaz"},
+		{"commit", "--allow-empty", "-m", "init"},
+	} {
+		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	manager := acp.NewManager(store, acp.Config{
+		Root:      t.TempDir(),
+		Workspace: workspace,
+		Agents: map[string]acp.AgentConfig{
+			"fake": {
+				Command: os.Args[0],
+				Args:    []string{"-test.run=TestFakeACPAgentProcess"},
+				Env:     map[string]string{"JAZ_FAKE_ACP_AGENT": "1"},
+			},
+		},
+	}, log.New(io.Discard))
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "wt-task", Directory: "ink-backend", Worktree: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	want := filepath.Join(workspace, ".worktrees", spawned.Slug)
+	if spawned.Cwd != want {
+		t.Fatalf("cwd = %q, want %q", spawned.Cwd, want)
+	}
+	branch, err := exec.Command("git", "-C", want, "rev-parse", "--abbrev-ref", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(string(branch)); got != "jaz/"+spawned.Slug {
+		t.Fatalf("worktree branch = %q", got)
+	}
+
+	// Worktree without a repository directory is an explicit error.
+	if _, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "wt-bad", Directory: "not-a-repo", Worktree: true}); err == nil {
+		t.Fatal("expected worktree on plain directory to fail")
 	}
 }
