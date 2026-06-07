@@ -41,7 +41,7 @@ export function Sidebar() {
           activeProps={{ className: 'bg-primary-soft!' }}
         >
           <SquarePen size={15} className="text-ink-2" />
-          <span className="flex-1">New thread</span>
+          <span className="flex-1">New Thread</span>
           <span className="flex items-center gap-0.5 text-[10px] text-ink-3">
             <kbd className="rounded border border-border bg-bg px-1 font-sans">⌘</kbd>
             <kbd className="rounded border border-border bg-bg px-1 font-sans">N</kbd>
