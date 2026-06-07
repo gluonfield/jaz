@@ -1,6 +1,7 @@
 package jsonstore
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	stdjson "encoding/json"
@@ -303,11 +304,29 @@ func (s *Store) saveMessages(id string, messages []provider.Message) error {
 	if err := os.WriteFile(filepath.Join(s.sessionDir(id), "messages.json"), data, 0o644); err != nil {
 		return err
 	}
+	lines, err := marshalMessagesJSONL(messages)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(s.sessionDir(id), "messages.jsonl"), lines, 0o644); err != nil {
+		return err
+	}
 	if session, err := s.loadSessionByID(id); err == nil {
 		session.UpdatedAt = time.Now().UTC()
 		_ = s.saveSession(session)
 	}
 	return nil
+}
+
+func marshalMessagesJSONL(messages []provider.Message) ([]byte, error) {
+	var out bytes.Buffer
+	enc := stdjson.NewEncoder(&out)
+	for _, message := range messages {
+		if err := enc.Encode(message); err != nil {
+			return nil, err
+		}
+	}
+	return out.Bytes(), nil
 }
 
 func (s *Store) LoadActivity(id string) ([]storage.ActivityEntry, error) {

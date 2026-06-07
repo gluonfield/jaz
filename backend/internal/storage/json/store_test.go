@@ -1,8 +1,13 @@
 package jsonstore
 
 import (
+	stdjson "encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -41,5 +46,38 @@ func TestSessionsHaveStableUniqueSlugsAndRootListing(t *testing.T) {
 	}
 	if resolved.ID != second.ID {
 		t.Fatalf("resolved %s, want %s", resolved.ID, second.ID)
+	}
+}
+
+func TestSaveMessagesWritesJSONLMirror(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	session, err := store.CreateSession(storage.CreateSession{Slug: "jsonl"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveMessages(session.ID, []provider.Message{
+		provider.UserMessage("hello"),
+		provider.AssistantMessage("done", nil),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(store.sessionDir(session.ID), "messages.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("jsonl lines = %d, want 2", len(lines))
+	}
+	for _, line := range lines {
+		var msg provider.Message
+		if err := stdjson.Unmarshal([]byte(line), &msg); err != nil {
+			t.Fatalf("invalid jsonl line %q: %v", line, err)
+		}
 	}
 }
