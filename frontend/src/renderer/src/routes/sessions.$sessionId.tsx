@@ -12,10 +12,15 @@ import { Transcript } from '@/components/session/Transcript'
 import { VoiceMode } from '@/components/session/VoiceMode'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Skeleton, SkeletonRows } from '@/components/ui/Skeleton'
-import { answerSessionInteractiveResponse, cancelSession, sessionMessagesQuery } from '@/lib/api/sessions'
+import {
+  answerSessionInteractiveResponse,
+  cancelSession,
+  sessionMessagesQuery,
+} from '@/lib/api/sessions'
 import { streamSessionMessage } from '@/lib/api/stream'
 import type { ACPJobSnapshot, ACPPermission, ChatMessage, SessionEvent } from '@/lib/api/types'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
+import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
 import { takePendingMessage, takePendingVoice } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
 
@@ -321,6 +326,15 @@ function SessionPage() {
     queryClient.invalidateQueries({ queryKey: keys.allSessions })
   }, [handleSend, queryClient, sessionId])
 
+  const currentSession = detail.data?.session
+  const queue = useSessionQueue({
+    sessionId,
+    session: currentSession,
+    acpState: detail.data?.acp_state,
+    streaming,
+    onSend: handleSend,
+  })
+
   // First message handed over from the New-session page. Wait for the session
   // detail query so StrictMode's initial effect cleanup cannot abort the send.
   useEffect(() => {
@@ -453,8 +467,7 @@ function SessionPage() {
   const empty = messages.length === 0 && displayEvents.length === 0 && !live
   const isACP = session.runtime === 'acp'
   // Covers turns started elsewhere (parent-triggered, or refresh mid-turn).
-  const sessionRunning =
-    streaming || session.status === 'running' || (isACP && acpState === 'running')
+  const sessionRunning = queue.sessionRunning
   // ACP turns stream through events; the live exchange only contributes the
   // not-yet-refetched user bubble, injected so mid-turn events sort after it.
   const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user')
@@ -493,7 +506,7 @@ function SessionPage() {
           nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
         }}
       >
-        <div className="mx-auto max-w-[720px] px-10 pt-2 pb-40">
+        <div className={`mx-auto max-w-[720px] px-10 pt-2 ${queue.queuedPrompts.length ? 'pb-72' : 'pb-40'}`}>
           {session.status === 'error' && session.error ? (
             <p className="mb-5 max-w-[72ch] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
               {session.error}
@@ -591,13 +604,19 @@ function SessionPage() {
         <Composer
           streaming={sessionRunning}
           planAvailable={planAvailable}
-          onSend={handleSend}
+          queuedPrompts={queue.queuedPrompts}
+          steerDisabled={queue.steerDisabled}
+          onSend={queue.onSend}
           onStop={() => {
             // the turn runs detached server-side; stop it there first
             void cancelSession(sessionId).catch(() => {})
             abortRef.current?.abort()
           }}
           onVoice={session.runtime !== 'acp' ? () => setVoiceMode(true) : undefined}
+          onSteerQueuedPrompt={queue.onSteerQueuedPrompt}
+          onDeleteQueuedPrompt={queue.onDeleteQueuedPrompt}
+          onEditQueuedPrompt={queue.onEditQueuedPrompt}
+          onMoveQueuedPrompt={queue.onMoveQueuedPrompt}
         />
       )}
     </div>

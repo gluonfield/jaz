@@ -76,6 +76,7 @@ func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
 	normalizeEnv(env, "ANTHROPIC_API_KEY", "ANTHROPIC_APIKEY")
 
 	root := firstNonEmpty(m.cfg.Root, filepath.Join(os.TempDir(), "jaz"))
+	home := filepath.Join(root, "acp", "home")
 	if name == "codex" {
 		if codexHome := prepareCodexHome(root, env["CODEX_HOME"]); codexHome != "" {
 			env["CODEX_HOME"] = codexHome
@@ -84,7 +85,15 @@ func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
 			delete(env, key)
 		}
 	}
-	home := filepath.Join(root, "acp", "home")
+	if name == "claude_code" {
+		configuredHome := strings.TrimSpace(env["HOME"])
+		preserveHostEnv(env, []string{"CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CONFIG_DIR"})
+		if configuredHome != "" {
+			home = configuredHome
+		} else if userHome, err := os.UserHomeDir(); err == nil && userHome != "" {
+			home = userHome
+		}
+	}
 	tmp := filepath.Join(root, "acp", "tmp")
 	cache := filepath.Join(root, "acp", "npm-cache")
 	_ = os.MkdirAll(home, 0o700)
@@ -128,6 +137,17 @@ func prepareCodexHome(root, sourceHome string) string {
 		return dstHome
 	}
 	return ""
+}
+
+func preserveHostEnv(env map[string]string, keys []string) {
+	for _, key := range keys {
+		if env[key] != "" {
+			continue
+		}
+		if value := os.Getenv(key); value != "" {
+			env[key] = value
+		}
+	}
 }
 
 func normalizeEnv(env map[string]string, canonical, alias string) {

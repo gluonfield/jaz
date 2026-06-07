@@ -1,6 +1,7 @@
 import { ArrowUp, AudioLines, Check, ListChecks, LoaderCircle, Square, X } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
+import { QueuedPromptList } from './QueuedPromptList'
 
 // A rainbow comet (~100° arc fading in and out of transparency) that orbits
 // the card while focused; the rest of the perimeter stays a quiet track.
@@ -16,6 +17,7 @@ export function ComposerCard({
   placeholder = 'Message your assistant…',
   disabled = false,
   planAvailable = false,
+  queueWhenStreaming = false,
   translucent = false,
   onSend,
   onStop,
@@ -26,6 +28,7 @@ export function ComposerCard({
   placeholder?: string
   disabled?: boolean
   planAvailable?: boolean
+  queueWhenStreaming?: boolean
   /** let a backdrop (e.g. the welcome particle field) read through the card */
   translucent?: boolean
   onSend: (text: string, options?: { planRequested?: boolean }) => void
@@ -45,8 +48,8 @@ export function ComposerCard({
 
   const submit = () => {
     const trimmed = text.trim()
-    if (!trimmed || streaming || disabled) return
-    onSend(trimmed, { planRequested: planAvailable && planRequested })
+    if (!trimmed || disabled || (streaming && !queueWhenStreaming)) return
+    onSend(trimmed, { planRequested: !streaming && planAvailable && planRequested })
     setText('')
     setPlanRequested(false)
     const el = textareaRef.current
@@ -159,7 +162,7 @@ export function ComposerCard({
                 <AudioLines size={16} />
               </motion.button>
             ) : null}
-            {streaming && onStop ? (
+            {streaming && onStop && (!text.trim() || !queueWhenStreaming) ? (
               <motion.button
                 type="button"
                 aria-label="Stop response"
@@ -173,9 +176,9 @@ export function ComposerCard({
             ) : (
               <motion.button
                 type="button"
-                aria-label="Send message"
-                title="Send message"
-                disabled={!text.trim() || streaming || disabled}
+                aria-label={streaming ? 'Queue message' : 'Send message'}
+                title={streaming ? 'Queue message' : 'Send message'}
+                disabled={!text.trim() || disabled || (streaming && !queueWhenStreaming)}
                 onClick={submit}
                 whileTap={{ scale: 0.92 }}
                 className="grid size-9 cursor-pointer place-items-center rounded-full bg-primary text-white shadow-sm transition-colors duration-150 hover:bg-primary-strong disabled:cursor-default disabled:bg-bg disabled:text-ink-3 disabled:shadow-none"
@@ -197,17 +200,29 @@ export function Composer({
   disabled,
   placeholder,
   planAvailable,
+  queuedPrompts = [],
+  steerDisabled,
   onSend,
   onStop,
   onVoice,
+  onSteerQueuedPrompt,
+  onDeleteQueuedPrompt,
+  onEditQueuedPrompt,
+  onMoveQueuedPrompt,
 }: {
   streaming: boolean
   disabled?: boolean
   placeholder?: string
   planAvailable?: boolean
+  queuedPrompts?: string[]
+  steerDisabled?: boolean
   onSend: (text: string, options?: { planRequested?: boolean }) => void
   onStop: () => void
   onVoice?: () => void
+  onSteerQueuedPrompt?: (index: number) => void
+  onDeleteQueuedPrompt?: (index: number) => void
+  onEditQueuedPrompt?: (index: number, text: string) => void
+  onMoveQueuedPrompt?: (from: number, to: number) => void
 }) {
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-b from-transparent to-bg to-45% px-10 pt-6 pb-5">
@@ -217,11 +232,28 @@ export function Composer({
         animate={{ y: 0, opacity: 1 }}
         transition={{ type: 'spring', stiffness: 380, damping: 32 }}
       >
+        <AnimatePresence initial={false}>
+          {queuedPrompts.length > 0 &&
+          onSteerQueuedPrompt &&
+          onDeleteQueuedPrompt &&
+          onEditQueuedPrompt &&
+          onMoveQueuedPrompt ? (
+            <QueuedPromptList
+              prompts={queuedPrompts}
+              steerDisabled={steerDisabled}
+              onSteer={onSteerQueuedPrompt}
+              onDelete={onDeleteQueuedPrompt}
+              onEdit={onEditQueuedPrompt}
+              onMove={onMoveQueuedPrompt}
+            />
+          ) : null}
+        </AnimatePresence>
         <ComposerCard
           streaming={streaming}
           disabled={disabled}
           placeholder={placeholder}
           planAvailable={planAvailable}
+          queueWhenStreaming
           onSend={onSend}
           onStop={onStop}
           onVoice={onVoice}

@@ -37,11 +37,12 @@ type Store interface {
 }
 
 type Manager struct {
-	cfg    Config
-	store  Store
-	log    *log.Logger
-	Done   func(context.Context, Job)
-	Events *sessionevents.Bus
+	cfg          Config
+	store        Store
+	log          *log.Logger
+	Done         func(context.Context, Job)
+	TurnFinished func(context.Context, Job)
+	Events       *sessionevents.Bus
 
 	mu           sync.RWMutex
 	jobsByID     map[string]*Job
@@ -113,7 +114,6 @@ func NewManager(store Store, cfg Config, logger *log.Logger) *Manager {
 	if logger == nil {
 		logger = log.Default()
 	}
-	cfg.SystemPrompt = strings.TrimSpace(cfg.SystemPrompt)
 	return &Manager{
 		cfg:               cfg,
 		store:             store,
@@ -196,8 +196,10 @@ func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, cwd string) 
 		Cwd:        cwd,
 		MCPServers: []acpschema.MCPServer{},
 	}
-	if m.cfg.SystemPrompt != "" {
-		newSession.Meta = map[string]any{"systemPrompt": m.cfg.SystemPrompt}
+	if m.cfg.SystemPrompt != nil {
+		if prompt := strings.TrimSpace(m.cfg.SystemPrompt.SkillsPrompt()); prompt != "" {
+			newSession.Meta = map[string]any{"systemPrompt": prompt}
+		}
 	}
 	sessionRaw, err := ac.peer.Call(ctx, acpschema.AgentMethodSessionNew, newSession)
 	if err != nil {
@@ -748,9 +750,13 @@ func (m *Manager) finishTurn(done chan struct{}, job *Job) {
 	job.mu.Unlock()
 	m.cancelPendingPermissions(job.ID)
 	m.resolveDanglingToolCalls(job)
+	snapshot := job.Snapshot()
+	if m.TurnFinished != nil {
+		m.TurnFinished(context.Background(), snapshot)
+	}
 	close(done)
 	if completion.propagates() && parentVisible && !planRequested && m.Done != nil {
-		go m.Done(context.Background(), job.Snapshot())
+		go m.Done(context.Background(), snapshot)
 	}
 }
 

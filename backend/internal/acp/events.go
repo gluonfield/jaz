@@ -66,12 +66,21 @@ func (m *Manager) awaitPermission(ctx context.Context, job *Job, req acpschema.R
 
 func (m *Manager) AnswerInteractive(ctx context.Context, req InteractiveAnswer) error {
 	if strings.TrimSpace(req.RequestID) == "" {
-		if strings.TrimSpace(req.Text) == "" {
+		text := strings.TrimSpace(req.Text)
+		if text == "" {
 			return fmt.Errorf("request_id or text is required")
+		}
+		if job, err := m.job(req.Session); err == nil {
+			job.mu.RLock()
+			state := job.State
+			job.mu.RUnlock()
+			if state == StateRunning || state == StateStarting {
+				return m.steerText(ctx, job, text, req)
+			}
 		}
 		_, err := m.Send(ctx, SendRequest{
 			Session:       req.Session,
-			Message:       req.Text,
+			Message:       text,
 			Completion:    CompletionAsync,
 			Interactive:   true,
 			PlanRequested: req.PlanRequested,
@@ -176,6 +185,29 @@ func (m *Manager) AnswerInteractive(ctx context.Context, req InteractiveAnswer) 
 	default:
 	}
 	return nil
+}
+
+func (m *Manager) steerText(ctx context.Context, job *Job, text string, req InteractiveAnswer) error {
+	if req.ParentVisible {
+		job.mu.Lock()
+		job.ParentVisible = true
+		job.mu.Unlock()
+	}
+	if _, err := m.Cancel(ctx, job.ID); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	_, err := m.Send(ctx, SendRequest{
+		Session:       job.ID,
+		Message:       text,
+		Completion:    CompletionAsync,
+		Interactive:   true,
+		PlanRequested: req.PlanRequested,
+		ParentVisible: req.ParentVisible,
+	})
+	return err
 }
 
 func (m *Manager) sendTextAfterTurn(sessionID, text string, parentVisible bool) {

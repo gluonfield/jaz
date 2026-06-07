@@ -6,11 +6,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/agent"
+	"github.com/wins/jaz/backend/internal/provider"
 	mockprovider "github.com/wins/jaz/backend/internal/provider/mock"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -57,6 +59,136 @@ func TestACPBackedSessionRoutesToACPManager(t *testing.T) {
 	}
 	if !strings.Contains(res.Body.String(), "codex says hi") {
 		t.Fatalf("missing acp assistant output: %s", res.Body.String())
+	}
+}
+
+func TestACPStreamUsesServerContextAfterRequestCancel(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "codex-detached-stream",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     "codex",
+			SessionID: "acp-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeACPManager{job: acp.Job{
+		ID:        session.ID,
+		Slug:      session.Slug,
+		State:     acp.StateIdle,
+		Assistant: "done",
+	}}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/messages:stream", strings.NewReader(`{"message":"hi"}`)).WithContext(ctx)
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store, ACP: manager}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	manager.mu.Lock()
+	sendCtxErr := manager.sendCtxErr
+	manager.mu.Unlock()
+	if sendCtxErr != nil {
+		t.Fatalf("acp send used cancelled request context: %v", sendCtxErr)
+	}
+}
+
+func TestACPInteractiveResponseUsesServerContextAfterRequestCancel(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "codex-detached-interactive",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     "codex",
+			SessionID: "acp-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeACPManager{job: acp.Job{
+		ID:    session.ID,
+		Slug:  session.Slug,
+		State: acp.StateIdle,
+	}}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/interactive-response", strings.NewReader(`{"text":"continue"}`)).WithContext(ctx)
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store, ACP: manager}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	manager.mu.Lock()
+	answerCtxErr := manager.answerCtxErr
+	manager.mu.Unlock()
+	if answerCtxErr != nil {
+		t.Fatalf("interactive response used cancelled request context: %v", answerCtxErr)
+	}
+}
+
+func TestACPCancelUsesServerContextAfterRequestCancel(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "codex-detached-cancel",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     "codex",
+			SessionID: "acp-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.Status = storage.StatusRunning
+	if err := store.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeACPManager{job: acp.Job{
+		ID:    session.ID,
+		Slug:  session.Slug,
+		State: acp.StateRunning,
+	}}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/cancel", nil).WithContext(ctx)
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store, ACP: manager}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	manager.mu.Lock()
+	cancelCtxErr := manager.cancelCtxErr
+	manager.mu.Unlock()
+	if cancelCtxErr != nil {
+		t.Fatalf("cancel used cancelled request context: %v", cancelCtxErr)
 	}
 }
 
@@ -239,13 +371,23 @@ func TestSessionMessagesHidesDirectACPChildStateFromParent(t *testing.T) {
 }
 
 type fakeACPManager struct {
-	sent acp.SendRequest
-	job  acp.Job
+	mu           sync.Mutex
+	sent         acp.SendRequest
+	answered     acp.InteractiveAnswer
+	sendCtxErr   error
+	answerCtxErr error
+	cancelCtxErr error
+	sendErr      error
+	answerErr    error
+	job          acp.Job
 }
 
-func (f *fakeACPManager) Send(_ context.Context, req acp.SendRequest) (acp.Job, error) {
+func (f *fakeACPManager) Send(ctx context.Context, req acp.SendRequest) (acp.Job, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.sent = req
-	return f.job, nil
+	f.sendCtxErr = ctx.Err()
+	return f.job, f.sendErr
 }
 
 func (f *fakeACPManager) Status(string) (acp.Job, error) {
@@ -256,11 +398,18 @@ func (f *fakeACPManager) List() []acp.Job {
 	return []acp.Job{f.job}
 }
 
-func (f *fakeACPManager) AnswerInteractive(context.Context, acp.InteractiveAnswer) error {
-	return nil
+func (f *fakeACPManager) AnswerInteractive(ctx context.Context, answer acp.InteractiveAnswer) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.answered = answer
+	f.answerCtxErr = ctx.Err()
+	return f.answerErr
 }
 
-func (f *fakeACPManager) Cancel(context.Context, string) (acp.Job, error) {
+func (f *fakeACPManager) Cancel(ctx context.Context, _ string) (acp.Job, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.cancelCtxErr = ctx.Err()
 	return f.job, nil
 }
 
@@ -273,6 +422,32 @@ func (s *slowTool) Definition() tools.Definition {
 func (s *slowTool) Execute(context.Context, map[string]any) (tools.Result, error) {
 	time.Sleep(s.delay)
 	return tools.Result{Content: `{"status":"ok"}`}, nil
+}
+
+type blockingProvider struct {
+	started     chan struct{}
+	startedOnce sync.Once
+	release     chan struct{}
+}
+
+func (p *blockingProvider) Complete(context.Context, provider.Request) (provider.Response, error) {
+	return provider.Response{Message: provider.AssistantMessage("done", nil)}, nil
+}
+
+func (p *blockingProvider) StreamComplete(ctx context.Context, _ provider.Request) (<-chan provider.Event, error) {
+	ch := make(chan provider.Event, 2)
+	go func() {
+		defer close(ch)
+		p.startedOnce.Do(func() { close(p.started) })
+		select {
+		case <-p.release:
+			ch <- provider.Event{Type: provider.EventDelta, Delta: "done"}
+			ch <- provider.Event{Type: provider.EventDone}
+		case <-ctx.Done():
+			ch <- provider.Event{Type: provider.EventError, Err: ctx.Err()}
+		}
+	}()
+	return ch, nil
 }
 
 // The transcript interleaves messages with session events by timestamp, so

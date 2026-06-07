@@ -58,6 +58,7 @@ type Session struct {
 	Model           string      `json:"model,omitempty"`
 	ReasoningEffort string      `json:"reasoning_effort,omitempty"`
 	Usage           Usage       `json:"usage,omitempty"`
+	QueuedMessages  []string    `json:"queued_messages,omitempty"`
 	Archived        bool        `json:"archived,omitempty"`
 	CreatedAt       time.Time   `json:"created_at"`
 	UpdatedAt       time.Time   `json:"updated_at"`

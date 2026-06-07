@@ -16,7 +16,6 @@ import (
 	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
-	"github.com/wins/jaz/backend/internal/skills"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/tools"
@@ -65,8 +64,6 @@ type MistralConfig struct {
 }
 
 type Workspace string
-type SkillsPrompt string
-type SystemPrompt string
 
 type Stores struct {
 	fx.Out
@@ -92,23 +89,14 @@ func NewWorkspace(cfg Config, store *sqlitestore.Store) (Workspace, error) {
 	return Workspace(workspace), os.MkdirAll(workspace, 0o755)
 }
 
-func LoadSkills(store *sqlitestore.Store) (skills.Catalog, error) {
-	return skills.Load(store.RootDir())
+func NewPromptBuilder(store *sqlitestore.Store, logger *log.Logger) *coordinator.Builder {
+	return coordinator.NewBuilder(store.RootDir(), logger.WithPrefix("prompt"))
 }
 
-func NewSkillsPrompt(catalog skills.Catalog) SkillsPrompt {
-	return SkillsPrompt(catalog.Prompt())
-}
-
-func NewSystemPrompt(store *sqlitestore.Store, skillsPrompt SkillsPrompt) (SystemPrompt, error) {
-	prompt, err := coordinator.Prompt(store.RootDir(), string(skillsPrompt))
-	return SystemPrompt(prompt), err
-}
-
-func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, skillsPrompt SkillsPrompt) acp.Config {
+func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, prompts *coordinator.Builder) acp.Config {
 	cfg.ACP.Root = store.RootDir()
 	cfg.ACP.Workspace = string(workspace)
-	cfg.ACP.SystemPrompt = string(skillsPrompt)
+	cfg.ACP.SystemPrompt = prompts
 	return cfg.ACP
 }
 
@@ -208,14 +196,14 @@ func NewAgent(cfg Config, modelProvider provider.Provider, registry *tools.Regis
 	}
 }
 
-func ConnectACPCompletion(manager *acp.Manager, a *agent.Agent, store *sqlitestore.Store, locks *sessionlock.Locks, events *sessionevents.Bus, logger *log.Logger) {
+func ConnectACPCompletion(manager *acp.Manager, a *agent.Agent, store *sqlitestore.Store, locks *sessionlock.Locks, events *sessionevents.Bus, prompts *coordinator.Builder, logger *log.Logger) {
 	manager.Events = events
 	manager.Done = func(ctx context.Context, job acp.Job) {
-		completeACP(ctx, a, store, locks, events, logger.WithPrefix("coordinator"), job)
+		completeACP(ctx, a, store, locks, events, prompts, logger.WithPrefix("coordinator"), job)
 	}
 }
 
-func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, locks *sessionlock.Locks, events *sessionevents.Bus, logger *log.Logger, job acp.Job) {
+func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, locks *sessionlock.Locks, events *sessionevents.Bus, prompts *coordinator.Builder, logger *log.Logger, job acp.Job) {
 	if job.ParentID == "" {
 		return
 	}
@@ -237,6 +225,14 @@ func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, 
 		return
 	}
 	messages = append(messages, completion)
+	// Same per-turn prompt rules as native turns: derive fresh, never persist
+	// (older sessions stored it as their first message; skip that copy).
+	for len(messages) > 0 && messages[0].OfSystem != nil {
+		messages = messages[1:]
+	}
+	if prompt := strings.TrimSpace(prompts.SystemPrompt()); prompt != "" {
+		messages = append([]provider.Message{provider.SystemMessage(prompt)}, messages...)
+	}
 	ctx = sessioncontext.WithSessionID(ctx, job.ParentID)
 	result, err := a.Complete(ctx, provider.Request{Messages: messages})
 	if err != nil {
