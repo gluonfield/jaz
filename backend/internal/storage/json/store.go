@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	stdjson "encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -259,8 +260,17 @@ func (s *Store) LoadMessages(id string) ([]provider.Message, error) {
 }
 
 func (s *Store) loadMessages(id string) ([]provider.Message, error) {
-	path := filepath.Join(s.sessionDir(id), "messages.json")
+	path := filepath.Join(s.sessionDir(id), "messages.jsonl")
 	data, err := os.ReadFile(path)
+	if err == nil {
+		return unmarshalMessagesJSONL(data)
+	}
+	if !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	path = filepath.Join(s.sessionDir(id), "messages.json")
+	data, err = os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -286,22 +296,31 @@ func (s *Store) AppendMessages(id string, messages ...provider.Message) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	existing, err := s.loadMessages(id)
-	if err != nil {
+	if err := s.EnsureSession(id); err != nil {
 		return err
 	}
-	return s.saveMessages(id, append(existing, messages...))
+	path := filepath.Join(s.sessionDir(id), "messages.jsonl")
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		existing, err := s.loadMessages(id)
+		if err != nil {
+			return err
+		}
+		return s.saveMessages(id, append(existing, messages...))
+	} else if err != nil {
+		return err
+	}
+	if err := appendMessagesJSONL(path, messages); err != nil {
+		return err
+	}
+	if err := removeLegacyMessagesJSON(s.sessionDir(id)); err != nil {
+		return err
+	}
+	s.touchSession(id)
+	return nil
 }
 
 func (s *Store) saveMessages(id string, messages []provider.Message) error {
 	if err := s.EnsureSession(id); err != nil {
-		return err
-	}
-	data, err := stdjson.MarshalIndent(messages, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(s.sessionDir(id), "messages.json"), data, 0o644); err != nil {
 		return err
 	}
 	lines, err := marshalMessagesJSONL(messages)
@@ -311,11 +330,26 @@ func (s *Store) saveMessages(id string, messages []provider.Message) error {
 	if err := os.WriteFile(filepath.Join(s.sessionDir(id), "messages.jsonl"), lines, 0o644); err != nil {
 		return err
 	}
-	if session, err := s.loadSessionByID(id); err == nil {
-		session.UpdatedAt = time.Now().UTC()
-		_ = s.saveSession(session)
+	if err := removeLegacyMessagesJSON(s.sessionDir(id)); err != nil {
+		return err
 	}
+	s.touchSession(id)
 	return nil
+}
+
+func unmarshalMessagesJSONL(data []byte) ([]provider.Message, error) {
+	dec := stdjson.NewDecoder(bytes.NewReader(data))
+	var messages []provider.Message
+	for {
+		var message provider.Message
+		if err := dec.Decode(&message); err != nil {
+			if err == io.EOF {
+				return messages, nil
+			}
+			return nil, err
+		}
+		messages = append(messages, message)
+	}
 }
 
 func marshalMessagesJSONL(messages []provider.Message) ([]byte, error) {
@@ -327,6 +361,36 @@ func marshalMessagesJSONL(messages []provider.Message) ([]byte, error) {
 		}
 	}
 	return out.Bytes(), nil
+}
+
+func appendMessagesJSONL(path string, messages []provider.Message) error {
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	enc := stdjson.NewEncoder(file)
+	for _, message := range messages {
+		if err := enc.Encode(message); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func removeLegacyMessagesJSON(dir string) error {
+	err := os.Remove(filepath.Join(dir, "messages.json"))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
+func (s *Store) touchSession(id string) {
+	if session, err := s.loadSessionByID(id); err == nil {
+		session.UpdatedAt = time.Now().UTC()
+		_ = s.saveSession(session)
+	}
 }
 
 func (s *Store) LoadActivity(id string) ([]storage.ActivityEntry, error) {
