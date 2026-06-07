@@ -481,13 +481,12 @@ export function PixelField({
 
     /* ---- frames (the from/to coordinate spaces) ---- */
     const frameFrom = {
-      cx: 0, cy: 0, scale: 1, rot: 0, rotSpeed: 0, wobbleAmp: 0, alpha: 0.3, brand: 0,
+      cx: 0, cy: 0, scale: 1, rot: 0, rotSpeed: 0, wobbleAmp: 0, wobblePhase: 0, alpha: 0.3, brand: 0,
     }
     const frameTo = { ...frameFrom }
     let progress = 1
     let morphDur = 1.8
     let swirl = 0
-    let wobblePhase = 0
     let homeTarget = true // frameTo is the wordmark
 
     let width = 0
@@ -499,6 +498,10 @@ export function PixelField({
     // window resizes don't teleport the mark mid-cycle.
     let homeU = 0.5
     let homeV = 0.76
+    // once assembled, the mark slides on slow sine paths around this anchor
+    let homeBaseCx = 0
+    let homeBaseCy = 0
+    let driftPhase = rand(0, TAU)
     const homeFrame = () => {
       const scale = Math.min(230, Math.max(110, width * 0.16))
       const halfH = scale * markAspect
@@ -509,6 +512,7 @@ export function PixelField({
         rot: 0,
         rotSpeed: 0,
         wobbleAmp: 0.09,
+        wobblePhase: 0,
         alpha: 0.62,
         brand: 1,
       }
@@ -573,7 +577,7 @@ export function PixelField({
       progress = 0
       morphDur = dur
       swirl = sw
-      wobblePhase = rand(0, TAU)
+      frameTo.wobblePhase = rand(0, TAU)
     }
 
     const toHome = () => {
@@ -581,12 +585,16 @@ export function PixelField({
       homeU = rand(0.34, 0.66)
       // sometimes the mark settles above the composer instead of below
       homeV = Math.random() < 0.45 ? rand(0.12, 0.24) : rand(0.6, 0.82)
+      driftPhase = rand(0, TAU)
+      const home = homeFrame()
+      homeBaseCx = home.cx
+      homeBaseCy = home.cy
       beginMorph(
         (out) => {
           if (markPts) out.set(markPts)
           else scatter(out)
         },
-        homeFrame(),
+        home,
         rand(1.7, 2.4),
         0.4,
       )
@@ -630,6 +638,7 @@ export function PixelField({
           rot: 0,
           rotSpeed: def.spin ? (Math.random() < 0.5 ? -1 : 1) * rand(0.18, 0.3) : 0,
           wobbleAmp: def.spin ? 0 : 0.3,
+          wobblePhase: 0,
           alpha: def.alpha,
           brand: 0,
         },
@@ -652,7 +661,12 @@ export function PixelField({
       gl.uniform2f(uni.res, width, height)
       gl.uniform1f(uni.dpr, dpr)
       drawCount = Math.min(N_MAX, Math.max(9000, Math.round((width * height) / 42)))
-      if (homeTarget) Object.assign(frameTo, homeFrame())
+      if (homeTarget) {
+        const home = homeFrame()
+        homeBaseCx = home.cx
+        homeBaseCy = home.cy
+        Object.assign(frameTo, home, { wobblePhase: frameTo.wobblePhase })
+      }
     }
     resize()
     const observer = new ResizeObserver(resize)
@@ -699,7 +713,10 @@ export function PixelField({
     if (markPts) toArr.set(markPts)
     else scatter(toArr)
     writeTo()
-    Object.assign(frameTo, homeFrame())
+    const bootHome = homeFrame()
+    homeBaseCx = bootHome.cx
+    homeBaseCy = bootHome.cy
+    Object.assign(frameTo, bootHome)
     progress = reducedMotion ? 1 : 0
     morphDur = 2.4
     swirl = 0.4
@@ -712,7 +729,10 @@ export function PixelField({
       if (homeTarget && markPts) {
         toArr.set(markPts)
         writeTo()
-        Object.assign(frameTo, homeFrame(), { rot: frameTo.rot })
+        Object.assign(frameTo, homeFrame(), {
+          rot: frameTo.rot,
+          wobblePhase: frameTo.wobblePhase,
+        })
         if (reducedMotion) drawFrame(0, 1)
       }
     })
@@ -744,8 +764,21 @@ export function PixelField({
       progress = Math.min(1, progress + dt / morphDur)
 
       for (const f of [frameFrom, frameTo]) {
-        if (f.wobbleAmp > 0) f.rot = f.wobbleAmp * Math.sin(t * 0.4 + wobblePhase)
+        if (f.wobbleAmp > 0) f.rot = f.wobbleAmp * Math.sin(t * 0.4 + f.wobblePhase)
         else f.rot += f.rotSpeed * dt
+      }
+
+      // the assembled wordmark never sits still: a slow mostly-horizontal
+      // slide around its anchor, clamped to the band homeFrame allows
+      if (homeTarget) {
+        const halfH = frameTo.scale * markAspect
+        const dx = Math.sin(t * 0.06 + driftPhase) * frameTo.scale * 0.55
+        const dy = Math.sin(t * 0.037 + driftPhase * 2.3) * halfH * 0.3
+        frameTo.cx = Math.min(
+          width - frameTo.scale - 32,
+          Math.max(frameTo.scale + 32, homeBaseCx + dx),
+        )
+        frameTo.cy = Math.min(height - halfH - 28, Math.max(halfH + 40, homeBaseCy + dy))
       }
 
       if (state === 'forming') {
