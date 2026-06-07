@@ -16,6 +16,7 @@ export function ComposerCard({
   placeholder = 'Message your assistant…',
   disabled = false,
   planAvailable = false,
+  translucent = false,
   onSend,
   onStop,
   onVoice,
@@ -25,6 +26,8 @@ export function ComposerCard({
   placeholder?: string
   disabled?: boolean
   planAvailable?: boolean
+  /** let a backdrop (e.g. the welcome particle field) read through the card */
+  translucent?: boolean
   onSend: (text: string, options?: { planRequested?: boolean }) => void
   onStop?: () => void
   onVoice?: () => void
@@ -92,7 +95,9 @@ export function ComposerCard({
       {/* borderless card, agent-council style: the surface tone IS the card.
           The whole card is a click target for the textarea. */}
       <div
-        className="relative flex cursor-text flex-col gap-1.5 rounded-[12px] bg-surface p-2.5"
+        className={`relative flex cursor-text flex-col gap-1.5 rounded-[12px] p-2.5 ${
+          translucent ? 'bg-surface/85 backdrop-blur-[2px]' : 'bg-surface'
+        }`}
         onClick={(e) => {
           if ((e.target as HTMLElement).closest('button, textarea')) return
           textareaRef.current?.focus()
