@@ -530,8 +530,7 @@ func (m *Manager) recordAndPublish(event sessionevents.Event) {
 	if event.At.IsZero() {
 		event.At = time.Now().UTC()
 	}
-	// The store writes the assigned Seq back into the slice; publishing the
-	// stored copy lets clients dedupe live events against persisted history.
+	// Publish the stored copy (with Seq) so clients can dedupe against history.
 	events := []sessionevents.Event{event}
 	if m != nil && m.store != nil && event.SessionID != "" {
 		_ = m.store.AppendSessionEvents(event.SessionID, events...)
@@ -543,6 +542,10 @@ func (m *Manager) recordAndPublish(event sessionevents.Event) {
 
 type acpStateSaver interface {
 	SaveACPState(string, storage.ACPState) error
+}
+
+type acpStateLoader interface {
+	LoadACPState(string) (storage.ACPState, error)
 }
 
 func (m *Manager) saveACPState(job Job) {

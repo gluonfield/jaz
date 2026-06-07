@@ -11,8 +11,7 @@ export function setSessionArchived(id: string, archived: boolean): Promise<Sessi
   return post<Session>(`/v1/sessions/${id}/${archived ? 'archive' : 'unarchive'}`)
 }
 
-// Stops the in-flight turn server-side; closing the stream alone no longer
-// cancels it (turns survive page refreshes).
+// Stops the in-flight turn server-side (turns survive closed streams).
 export function cancelSession(id: string): Promise<{ ok: boolean }> {
   return post<{ ok: boolean }>(`/v1/sessions/${id}/cancel`)
 }

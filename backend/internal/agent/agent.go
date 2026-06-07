@@ -166,8 +166,7 @@ func (a *Agent) run(ctx context.Context, req provider.Request, out chan<- Stream
 
 		messages = append(messages, provider.AssistantMessage(assistantText.String(), calls))
 		recordReasoning(reasoningByMessage, len(messages)-1, reasoningText.String())
-		// Snapshot before executing tools so the round is persisted with the
-		// time the model produced it, not when its tools finished.
+		// Snapshot pre-execution so the round is stamped when the model produced it.
 		a.emit(out, snapshotEvent(messages, reasoningByMessage))
 		for _, call := range calls {
 			result := a.executeTool(ctx, call)
@@ -191,8 +190,7 @@ func recordReasoning(out map[int]string, index int, reasoning string) {
 	}
 }
 
-// snapshotEvent copies the in-progress message list so the consumer can
-// persist it while the run keeps appending.
+// Copies state so the consumer can persist it while the run keeps appending.
 func snapshotEvent(messages []provider.Message, reasoningByMessage map[int]string) StreamEvent {
 	reasoning := make(map[int]string, len(reasoningByMessage))
 	maps.Copy(reasoning, reasoningByMessage)

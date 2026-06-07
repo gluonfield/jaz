@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/app"
@@ -30,6 +31,7 @@ func runServe(args []string) error {
 		fx.WithLogger(func() fxevent.Logger { return fxevent.NopLogger }),
 		fx.Supply(serveArgs{Args: args}),
 		fx.Provide(
+			newLogger,
 			loadServeConfig,
 			app.NewStore,
 			app.NewWorkspace,
@@ -67,6 +69,17 @@ func runServe(args []string) error {
 
 type serveArgs struct {
 	Args []string
+}
+
+// Log level comes from JAZ_LOG (debug, info, warn, error); defaults to info.
+func newLogger() *log.Logger {
+	level := log.InfoLevel
+	if raw := os.Getenv("JAZ_LOG"); raw != "" {
+		if parsed, err := log.ParseLevel(raw); err == nil {
+			level = parsed
+		}
+	}
+	return log.NewWithOptions(os.Stderr, log.Options{ReportTimestamp: true, Level: level})
 }
 
 type serveConfig struct {
@@ -125,11 +138,12 @@ func startServer(
 	workspace app.Workspace,
 	stt voice.STT,
 	tts voice.TTS,
+	logger *log.Logger,
 	opts serveOptions,
 ) {
 	srv := &http.Server{
 		Addr:    opts.Addr,
-		Handler: (&server.Server{Agent: a, Store: store, ACP: manager, Locks: locks, Events: events, STT: stt, TTS: tts, SystemPrompt: string(systemPrompt), Root: store.RootDir()}).Handler(),
+		Handler: (&server.Server{Agent: a, Store: store, ACP: manager, Locks: locks, Events: events, STT: stt, TTS: tts, SystemPrompt: string(systemPrompt), Root: store.RootDir(), Log: logger.WithPrefix("server")}).Handler(),
 	}
 	lc.Append(fx.Hook{
 		OnStart: func(context.Context) error {

@@ -35,9 +35,7 @@ func recordsFromProviderMessagesWithReasoning(messages []provider.Message, reaso
 			}
 			blocks := textBlocks(provider.MessageContent(msg), reasoningByMessage[msgIndex])
 			for _, call := range calls {
-				// Calls whose results haven't arrived yet (mid-turn snapshot
-				// saves) are stored with an empty result and filled in on the
-				// next save.
+				// Mid-turn snapshots store calls without results; the next save fills them in.
 				if i+1 >= len(messages) || provider.MessageRole(messages[i+1]) != "tool" {
 					blocks = append(blocks, storage.Block{
 						Type:      blockTool,
@@ -105,8 +103,7 @@ func providerMessagesFromRecords(records []storage.Message) ([]provider.Message,
 			}
 			messages = append(messages, provider.AssistantMessage(content, calls))
 			for _, result := range results {
-				// A still-empty result means the turn was interrupted before
-				// the tool finished; give providers a non-empty placeholder.
+				// An empty result means the turn was interrupted mid-tool.
 				text := result.Result
 				if text == "" {
 					text = `{"status":"interrupted","error":"no result was recorded"}`
