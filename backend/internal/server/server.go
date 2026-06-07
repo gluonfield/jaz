@@ -8,13 +8,12 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/agent"
+	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/provider"
-	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -30,16 +29,18 @@ type ACPManager interface {
 }
 
 type Server struct {
-	Agent        *agent.Agent
-	Store        storage.Store
-	ACP          ACPManager
-	Locks        *sessionlock.Locks
-	Events       *sessionevents.Bus
-	STT          voice.STT
-	TTS          voice.TTS
-	SystemPrompt string
-	Root         string
-	Log          *log.Logger
+	Agent  *agent.Agent
+	Store  storage.Store
+	ACP    ACPManager
+	Locks  *sessionlock.Locks
+	Events *sessionevents.Bus
+	STT    voice.STT
+	TTS    voice.TTS
+	// Prompts derives the system prompt fresh per turn from disk, so skill
+	// and prompt-file edits apply without a restart.
+	Prompts *coordinator.Builder
+	Root    string
+	Log     *log.Logger
 
 	// in-flight native turns by session id, cancellable via the cancel action
 	turnCancels sync.Map
@@ -358,7 +359,7 @@ func (s *Server) streamSessionEvents(w http.ResponseWriter, r *http.Request, ses
 func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
 	sessionRef, action, ok := strings.Cut(rest, "/")
-	if !ok || (action != "messages:stream" && action != "archive" && action != "unarchive" && action != "interactive-response" && action != "permission" && action != "cancel") {
+	if !ok || (action != "messages:stream" && action != "archive" && action != "unarchive" && action != "interactive-response" && action != "permission" && action != "cancel" && action != "queue") {
 		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
 		return
 	}
@@ -381,11 +382,17 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, session)
 		return
 	}
+	if action == "queue" {
+		s.handleQueueAction(w, r, session)
+		return
+	}
 	if action == "cancel" {
 		logger := s.logger().With("session", session.ID, "runtime", session.Runtime)
 		logger.Info("cancel requested", "status", session.Status)
 		if session.Runtime == storage.RuntimeACP && s.ACP != nil {
-			if _, err := s.ACP.Cancel(r.Context(), session.ID); err != nil {
+			ctx, cancel := serverActionContext()
+			defer cancel()
+			if _, err := s.ACP.Cancel(ctx, session.ID); err != nil {
 				logger.Error("acp cancel failed", "error", err)
 				writeError(w, http.StatusInternalServerError, err)
 				return
@@ -411,7 +418,9 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		if err := s.ACP.AnswerInteractive(r.Context(), acp.InteractiveAnswer{
+		ctx, cancel := serverActionContext()
+		defer cancel()
+		if err := s.ACP.AnswerInteractive(ctx, acp.InteractiveAnswer{
 			Session:       session.ID,
 			RequestID:     req.RequestID,
 			OptionID:      req.OptionID,
@@ -459,243 +468,12 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// voiceModeNote steers spoken turns; it is injected per-request and stripped
-// before messages are persisted, so transcripts stay clean.
-const voiceModeNote = "Voice mode: the user spoke this message aloud and your final reply will be read out by text-to-speech. Keep the final response to a few short conversational sentences of plain prose — no markdown, lists, headings, or code blocks. Using tools is fine."
-
-// stripVoiceNote removes the injected note (the agent echoes the full request
-// message list back, and SaveMessages replaces the stored list wholesale) and
-// shifts reasoning indexes that pointed past it.
-func stripVoiceNote(messages []provider.Message, reasoning map[int]string) ([]provider.Message, map[int]string) {
-	idx := -1
-	for i, msg := range messages {
-		if msg.OfSystem != nil && msg.OfSystem.Content.OfString.Value == voiceModeNote {
-			idx = i
-			break
-		}
-	}
-	if idx == -1 {
-		return messages, reasoning
-	}
-	out := append(append([]provider.Message(nil), messages[:idx]...), messages[idx+1:]...)
-	if len(reasoning) == 0 {
-		return out, reasoning
-	}
-	remapped := make(map[int]string, len(reasoning))
-	for i, text := range reasoning {
-		if i == idx {
-			continue
-		}
-		if i > idx {
-			i--
-		}
-		remapped[i] = text
-	}
-	return out, remapped
-}
-
-func (s *Server) streamNativeSession(w http.ResponseWriter, flusher http.Flusher, r *http.Request, session storage.Session, message string, voiceMode bool) {
-	unlock := s.lockSession(session.ID)
-	defer unlock()
-
-	session.Status = storage.StatusRunning
-	if session.Runtime == "" {
-		session.Runtime = storage.RuntimeNative
-	}
-	if session.Title == "" {
-		session.Title = titleFromMessage(message)
-	}
-	_ = s.Store.SaveSession(session)
-
-	// Turns survive client disconnects: run detached, stream only while the
-	// client is connected; the cancel action stops the turn for real.
-	logger := s.logger().With("session", session.ID)
-	logger.Info("native turn started")
-	clientCtx := r.Context()
-	turnCtx, cancelTurn := context.WithCancel(context.WithoutCancel(clientCtx))
-	defer cancelTurn()
-	s.turnCancels.Store(session.ID, cancelTurn)
-	defer s.turnCancels.Delete(session.ID)
-	send := func(event agent.StreamEvent) {
-		if clientCtx.Err() == nil {
-			writeSSE(w, flusher, event)
-		}
-	}
-
-	messages, err := s.Store.LoadMessages(session.ID)
-	if err != nil {
-		send(agent.StreamEvent{Type: agent.StreamError, Error: err.Error()})
-		s.setSessionError(session, err.Error())
-		return
-	}
-	// Persist the opener now: real timestamp, survives provider failures.
-	opener := make([]provider.Message, 0, 2)
-	if len(messages) == 0 && s.SystemPrompt != "" {
-		messages = append(messages, provider.SystemMessage(s.SystemPrompt))
-		opener = append(opener, provider.SystemMessage(s.SystemPrompt))
-	}
-	if voiceMode {
-		messages = append(messages, provider.SystemMessage(voiceModeNote))
-	}
-	messages = append(messages, provider.UserMessage(message))
-	opener = append(opener, provider.UserMessage(message))
-	if err := s.Store.AppendMessages(session.ID, opener...); err != nil {
-		send(agent.StreamEvent{Type: agent.StreamError, Error: err.Error()})
-		s.setSessionError(session, err.Error())
-		return
-	}
-	s.publishMessagesChanged(session.ID)
-
-	ctx := sessioncontext.WithSessionID(turnCtx, session.ID)
-	finalStatus := storage.StatusError
-	finalError := "Agent stream ended without a completion event."
-	for event := range s.Agent.Run(ctx, provider.Request{Messages: messages}) {
-		if len(event.Messages) > 0 {
-			toSave, reasoning := event.Messages, event.ReasoningByMessage
-			if voiceMode {
-				toSave, reasoning = stripVoiceNote(toSave, reasoning)
-			}
-			var err error
-			if store, ok := s.Store.(reasoningMessageStore); ok && len(reasoning) > 0 {
-				err = store.SaveMessagesWithReasoning(session.ID, toSave, reasoning)
-			} else {
-				err = s.Store.SaveMessages(session.ID, toSave)
-			}
-			if err != nil {
-				logger.Error("saving turn messages failed", "error", err)
-				send(agent.StreamEvent{Type: agent.StreamError, Error: err.Error()})
-				send(agent.StreamEvent{Type: agent.StreamDone})
-				s.setSessionError(session, err.Error())
-				return
-			}
-			s.publishMessagesChanged(session.ID)
-		}
-		if event.Type == agent.StreamDone {
-			finalStatus = storage.StatusIdle
-			s.addUsage(session.ID, event.Usage)
-		}
-		if event.Type == agent.StreamError {
-			finalStatus = storage.StatusError
-			finalError = event.Error
-		}
-		send(event)
-	}
-	if turnCtx.Err() != nil && finalStatus == storage.StatusError {
-		finalStatus = storage.StatusIdle
-		finalError = ""
-	}
-	if finalStatus == storage.StatusError {
-		logger.Error("native turn failed", "error", finalError)
-	} else {
-		logger.Info("native turn finished", "status", finalStatus, "cancelled", turnCtx.Err() != nil)
-	}
-	s.setSessionStatusWithError(session, finalStatus, finalError)
-}
-
 // Tells subscribed pages (including ones opened mid-turn) to refetch messages.
 func (s *Server) publishMessagesChanged(sessionID string) {
 	if s.Events == nil {
 		return
 	}
 	s.Events.Publish(sessionevents.Event{SessionID: sessionID, Type: "assistant"})
-}
-
-func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, ctx context.Context, session storage.Session, message string, planRequested bool) {
-	if s.ACP == nil {
-		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: "acp manager is not configured"})
-		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
-		return
-	}
-	unlock := s.lockSession(session.ID)
-	defer unlock()
-
-	s.setSessionStatus(session, storage.StatusRunning)
-	job, err := s.ACP.Send(ctx, acp.SendRequest{
-		Session:       session.ID,
-		Message:       message,
-		Completion:    acp.CompletionInline,
-		Interactive:   true,
-		PlanRequested: planRequested,
-	})
-	if err != nil {
-		sendErr := acpSendError(session, err)
-		s.logger().Error("acp send failed", "session", session.ID, "error", sendErr)
-		s.setSessionError(session, sendErr.Error())
-		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: sendErr.Error()})
-		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
-		return
-	}
-
-	emittedAssistant := 0
-	emittedThought := 0
-	seenTools := map[string]struct{}{}
-	ticker := time.NewTicker(120 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		emitACPJob(w, flusher, job, &emittedAssistant, &emittedThought, seenTools)
-		if job.State == acp.StateFailed {
-			s.setSessionError(session, job.Error)
-			writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: job.Error})
-			writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
-			return
-		}
-		if isACPTerminal(job.State) {
-			s.setSessionStatus(session, storage.StatusIdle)
-			writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
-			return
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			job, err = s.ACP.Status(session.ID)
-			if err != nil {
-				s.setSessionError(session, err.Error())
-				writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: err.Error()})
-				writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
-				return
-			}
-		}
-	}
-}
-
-func emitACPJob(w http.ResponseWriter, flusher http.Flusher, job acp.Job, emittedAssistant, emittedThought *int, seenTools map[string]struct{}) {
-	for _, call := range job.ToolCalls {
-		key := firstNonEmpty(call.ID, call.Title)
-		if key == "" {
-			continue
-		}
-		if _, ok := seenTools[key]; ok {
-			continue
-		}
-		seenTools[key] = struct{}{}
-		writeSSE(w, flusher, agent.StreamEvent{
-			Type:     agent.StreamToolCall,
-			ToolName: firstNonEmpty(call.Title, call.ID),
-		})
-	}
-	if *emittedAssistant < len(job.Assistant) {
-		delta := job.Assistant[*emittedAssistant:]
-		*emittedAssistant = len(job.Assistant)
-		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDelta, Delta: delta})
-	}
-	if *emittedThought < len(job.Thought) {
-		delta := job.Thought[*emittedThought:]
-		*emittedThought = len(job.Thought)
-		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamReasoning, Reasoning: delta})
-	}
-}
-
-func isACPTerminal(state string) bool {
-	return state == acp.StateIdle || state == acp.StateCancelled
-}
-
-func acpSendError(session storage.Session, err error) error {
-	if strings.Contains(err.Error(), "active acp session not found") {
-		return fmt.Errorf("acp session %q (%s) could not be resumed: %v", session.Slug, session.ID, err)
-	}
-	return err
 }
 
 func firstNonEmpty(values ...string) string {
@@ -719,6 +497,8 @@ func (s *Server) setSessionStatusWithError(session storage.Session, status, mess
 	if status == "" {
 		return
 	}
+	unlock := s.lockSession(session.ID)
+	defer unlock()
 	if current, err := s.Store.LoadSession(session.ID); err == nil {
 		session = current
 	}

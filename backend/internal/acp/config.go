@@ -5,12 +5,19 @@ package acp
 // Claude Code adapter "bypassPermissions", Gemini CLI "yolo".
 var fullAccessModes = []string{"full-access", "bypassPermissions", "yolo"}
 
+// SystemPromptSource supplies the system prompt for new ACP sessions. It is
+// consulted at session creation, not at startup, so skill edits reach new
+// sessions without a restart.
+type SystemPromptSource interface {
+	SkillsPrompt() string
+}
+
 type Config struct {
 	Agents       map[string]AgentConfig
 	Root         string
 	Workspace    string
 	Env          map[string]string
-	SystemPrompt string
+	SystemPrompt SystemPromptSource
 }
 
 type AgentConfig struct {

@@ -75,6 +75,47 @@ func TestProcessEnvSetsCodexHomeFromSystemLogin(t *testing.T) {
 	}
 }
 
+func TestProcessEnvUsesUserHomeForClaudeCode(t *testing.T) {
+	home := t.TempDir()
+	configDir := filepath.Join(home, "claude-config")
+	t.Setenv("HOME", home)
+	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "setup-token")
+	t.Setenv("CLAUDE_CONFIG_DIR", configDir)
+
+	root := t.TempDir()
+	env := NewManager(nil, Config{Root: root}, nil).processEnv("claude_code", AgentConfig{})
+
+	if env["HOME"] != home {
+		t.Fatalf("HOME = %q, want %q", env["HOME"], home)
+	}
+	if env["CLAUDE_CODE_OAUTH_TOKEN"] != "setup-token" {
+		t.Fatalf("CLAUDE_CODE_OAUTH_TOKEN was not preserved")
+	}
+	if env["CLAUDE_CONFIG_DIR"] != configDir {
+		t.Fatalf("CLAUDE_CONFIG_DIR = %q, want %q", env["CLAUDE_CONFIG_DIR"], configDir)
+	}
+	if !strings.HasPrefix(env["TMPDIR"], filepath.Join(root, "acp")) || !strings.HasPrefix(env["npm_config_cache"], filepath.Join(root, "acp")) {
+		t.Fatalf("expected claude temp/cache under jaz root: %#v", env)
+	}
+}
+
+func TestProcessEnvHonorsConfiguredClaudeHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+
+	root := t.TempDir()
+	env := NewManager(nil, Config{Root: root}, nil).processEnv("claude_code", AgentConfig{
+		Env: map[string]string{"HOME": home},
+	})
+
+	if env["HOME"] != home {
+		t.Fatalf("HOME = %q, want configured claude home %q", env["HOME"], home)
+	}
+	if !strings.HasPrefix(env["TMPDIR"], filepath.Join(root, "acp")) || !strings.HasPrefix(env["npm_config_cache"], filepath.Join(root, "acp")) {
+		t.Fatalf("expected claude temp/cache under jaz root: %#v", env)
+	}
+}
+
 func TestProcessEnvNeverLeaksAPIKeysToCodex(t *testing.T) {
 	home := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o700); err != nil {

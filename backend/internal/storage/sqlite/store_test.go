@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -46,6 +47,30 @@ func TestSessionsHaveStableUniqueSlugsAndRootListing(t *testing.T) {
 	}
 	if resolved.ID != second.ID {
 		t.Fatalf("resolved %s, want %s", resolved.ID, second.ID)
+	}
+}
+
+func TestSessionQueuedMessagesRoundTrip(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{Slug: "queued"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.QueuedMessages = []string{"one prompt", "second prompt"}
+	if err := store.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(loaded.QueuedMessages, "|") != "one prompt|second prompt" {
+		t.Fatalf("queued messages = %#v", loaded.QueuedMessages)
 	}
 }
 

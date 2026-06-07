@@ -50,6 +50,29 @@ func TestSessionsHaveStableUniqueSlugsAndRootListing(t *testing.T) {
 	}
 }
 
+func TestSessionQueuedMessagesRoundTrip(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "queued"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.QueuedMessages = []string{"one prompt", "second prompt"}
+	if err := store.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(loaded.QueuedMessages, "|") != "one prompt|second prompt" {
+		t.Fatalf("queued messages = %#v", loaded.QueuedMessages)
+	}
+}
+
 func TestSaveACPStateUpdatesSessionStatus(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {

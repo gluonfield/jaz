@@ -17,6 +17,7 @@ export interface Session {
   archived?: boolean
   runtime: 'native' | 'acp'
   runtime_ref?: RuntimeRef
+  queued_messages?: string[]
   created_at: string
   updated_at: string
 }

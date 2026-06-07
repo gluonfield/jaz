@@ -22,6 +22,11 @@ import (
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
+// staticPrompt is a fixed acp.SystemPromptSource for tests.
+type staticPrompt string
+
+func (s staticPrompt) SkillsPrompt() string { return string(s) }
+
 func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -34,7 +39,7 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	manager := acp.NewManager(store, acp.Config{
 		Root:         t.TempDir(),
 		Workspace:    t.TempDir(),
-		SystemPrompt: "skill prompt",
+		SystemPrompt: staticPrompt("skill prompt"),
 		Agents: map[string]acp.AgentConfig{
 			"fake": {
 				Command: os.Args[0],
@@ -540,6 +545,107 @@ func TestCancelStopsRunningTurn(t *testing.T) {
 	}
 	if job.State != acp.StateIdle || job.Assistant != "hello from fake agent" {
 		t.Fatalf("follow-up turn state=%s assistant=%q error=%q", job.State, job.Assistant, job.Error)
+	}
+}
+
+func TestInteractiveTextCancelsRunningTurnBeforeManagedSend(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := newFakeAgentManager(t, store, t.TempDir(), nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-steer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "block until cancelled", Completion: acp.CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.AnswerInteractive(ctx, acp.InteractiveAnswer{Session: spawned.SessionID, Text: "say hello"}); err != nil {
+		t.Fatal(err)
+	}
+	job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.State != acp.StateIdle || job.Assistant != "hello from fake agent" {
+		t.Fatalf("steered turn state=%s assistant=%q error=%q", job.State, job.Assistant, job.Error)
+	}
+	messages, err := store.LoadMessages(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 2 ||
+		provider.MessageContent(messages[0]) != "block until cancelled" ||
+		provider.MessageContent(messages[1]) != "say hello" {
+		t.Fatalf("unexpected messages after steer %#v", messages)
+	}
+	events, err := store.LoadSessionEvents(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasACPMessage(events, "hello from fake agent") {
+		t.Fatalf("managed steered turn did not publish assistant transcript: %#v", events)
+	}
+}
+
+func TestInteractiveTextWaitsForCancelledTurnFinishedBeforeManagedSend(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := newFakeAgentManager(t, store, t.TempDir(), nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-steer-finish-order"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+
+	cancelFinishedEntered := make(chan struct{})
+	releaseCancelFinished := make(chan struct{})
+	released := false
+	manager.TurnFinished = func(_ context.Context, job acp.Job) {
+		if job.ID == spawned.SessionID && job.State == acp.StateCancelled {
+			close(cancelFinishedEntered)
+			<-releaseCancelFinished
+		}
+	}
+	defer func() {
+		if !released {
+			close(releaseCancelFinished)
+		}
+	}()
+
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "block until cancelled", Completion: acp.CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
+	answerDone := make(chan error, 1)
+	go func() {
+		answerDone <- manager.AnswerInteractive(ctx, acp.InteractiveAnswer{Session: spawned.SessionID, Text: "say hello"})
+	}()
+
+	select {
+	case <-cancelFinishedEntered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("cancelled turn did not reach TurnFinished")
+	}
+	select {
+	case err := <-answerDone:
+		t.Fatalf("AnswerInteractive returned before TurnFinished completed: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(releaseCancelFinished)
+	released = true
+	if err := <-answerDone; err != nil {
+		t.Fatal(err)
 	}
 }
 

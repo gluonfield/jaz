@@ -15,6 +15,7 @@ import (
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/app"
 	"github.com/wins/jaz/backend/internal/config"
+	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
@@ -36,9 +37,7 @@ func runServe(args []string) error {
 			app.NewStore,
 			app.NewWorkspace,
 			exectool.NewCommandManager,
-			app.LoadSkills,
-			app.NewSkillsPrompt,
-			app.NewSystemPrompt,
+			app.NewPromptBuilder,
 			app.NewACPConfig,
 			acp.NewManager,
 			sessionlock.New,
@@ -134,16 +133,18 @@ func startServer(
 	manager *acp.Manager,
 	locks *sessionlock.Locks,
 	events *sessionevents.Bus,
-	systemPrompt app.SystemPrompt,
+	prompts *coordinator.Builder,
 	workspace app.Workspace,
 	stt voice.STT,
 	tts voice.TTS,
 	logger *log.Logger,
 	opts serveOptions,
 ) {
+	handler := &server.Server{Agent: a, Store: store, ACP: manager, Locks: locks, Events: events, STT: stt, TTS: tts, Prompts: prompts, Root: store.RootDir(), Log: logger.WithPrefix("server")}
+	manager.TurnFinished = handler.HandleACPTurnFinished
 	srv := &http.Server{
 		Addr:    opts.Addr,
-		Handler: (&server.Server{Agent: a, Store: store, ACP: manager, Locks: locks, Events: events, STT: stt, TTS: tts, SystemPrompt: string(systemPrompt), Root: store.RootDir(), Log: logger.WithPrefix("server")}).Handler(),
+		Handler: handler.Handler(),
 	}
 	lc.Append(fx.Hook{
 		OnStart: func(context.Context) error {

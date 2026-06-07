@@ -16,6 +16,18 @@ export function cancelSession(id: string): Promise<{ ok: boolean }> {
   return post<{ ok: boolean }>(`/v1/sessions/${id}/cancel`)
 }
 
+export type QueueMutation =
+  | { op: 'append'; text: string }
+  | { op: 'delete'; index: number; expected?: string }
+  | { op: 'edit'; index: number; text: string; expected?: string }
+  | { op: 'move'; from: number; to: number; expected?: string }
+  | { op: 'steer'; index: number; expected?: string }
+  | { op: 'replace'; messages: string[] }
+
+export function mutateSessionQueue(id: string, mutation: QueueMutation): Promise<Session> {
+  return post<Session>(`/v1/sessions/${id}/queue`, mutation)
+}
+
 export function answerSessionInteractiveResponse(
   id: string,
   input: {

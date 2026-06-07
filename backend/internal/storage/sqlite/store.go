@@ -188,7 +188,7 @@ func (s *Store) ListSessions(filter storage.SessionFilter) ([]storage.Session, e
 
 	rows, err := s.db.Query(`SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd,
 model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens,
-reasoning_output_tokens, total_tokens, archived, created_at_ms, updated_at_ms FROM threads`)
+reasoning_output_tokens, total_tokens, queued_messages, archived, created_at_ms, updated_at_ms FROM threads`)
 	if err != nil {
 		return nil, err
 	}
@@ -467,6 +467,7 @@ func (s *Store) migrate() error {
   output_tokens INTEGER NOT NULL DEFAULT 0,
   reasoning_output_tokens INTEGER NOT NULL DEFAULT 0,
   total_tokens INTEGER NOT NULL DEFAULT 0,
+  queued_messages TEXT NOT NULL DEFAULT '[]',
   archived INTEGER NOT NULL DEFAULT 0,
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL
@@ -514,6 +515,10 @@ func (s *Store) migrate() error {
 		return err
 	}
 	if _, err := s.db.Exec(`ALTER TABLE threads ADD COLUMN cwd TEXT`); err != nil &&
+		!strings.Contains(err.Error(), "duplicate column name") {
+		return err
+	}
+	if _, err := s.db.Exec(`ALTER TABLE threads ADD COLUMN queued_messages TEXT NOT NULL DEFAULT '[]'`); err != nil &&
 		!strings.Contains(err.Error(), "duplicate column name") {
 		return err
 	}
@@ -656,7 +661,7 @@ func (s *Store) loadSessionLocked(ref string) (storage.Session, error) {
 	}
 	row := s.db.QueryRow(`SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd,
 model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens,
-reasoning_output_tokens, total_tokens, archived, created_at_ms, updated_at_ms
+reasoning_output_tokens, total_tokens, queued_messages, archived, created_at_ms, updated_at_ms
 FROM threads WHERE id = ? OR slug = ? LIMIT 1`, ref, ref)
 	return scanSession(row)
 }
@@ -755,11 +760,15 @@ type execer interface {
 
 func insertSession(db execer, session storage.Session) error {
 	acpAgent, acpSessionID, cwd := runtimeRefColumns(session)
-	_, err := db.Exec(`INSERT INTO threads (
+	queuedMessages, err := marshalStringList(session.QueuedMessages)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(`INSERT INTO threads (
 id, slug, title, parent_id, status, runtime, acp_agent, acp_session_id, cwd,
 error, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens,
-reasoning_output_tokens, total_tokens, archived, created_at_ms, updated_at_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+reasoning_output_tokens, total_tokens, queued_messages, archived, created_at_ms, updated_at_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
 slug = excluded.slug,
 title = excluded.title,
@@ -778,6 +787,7 @@ cached_input_tokens = excluded.cached_input_tokens,
 output_tokens = excluded.output_tokens,
 reasoning_output_tokens = excluded.reasoning_output_tokens,
 total_tokens = excluded.total_tokens,
+queued_messages = excluded.queued_messages,
 archived = excluded.archived,
 created_at_ms = excluded.created_at_ms,
 updated_at_ms = excluded.updated_at_ms`,
@@ -785,7 +795,7 @@ updated_at_ms = excluded.updated_at_ms`,
 		session.Status, session.Runtime, nullString(acpAgent), nullString(acpSessionID), nullString(cwd), nullString(session.Error),
 		nullString(session.ModelProvider), nullString(session.Model), nullString(session.ReasoningEffort),
 		session.Usage.InputTokens, session.Usage.CachedInputTokens, session.Usage.OutputTokens,
-		session.Usage.ReasoningOutputTokens, session.Usage.TotalTokens, session.Archived,
+		session.Usage.ReasoningOutputTokens, session.Usage.TotalTokens, queuedMessages, session.Archived,
 		timeToMs(session.CreatedAt), timeToMs(session.UpdatedAt))
 	return err
 }
@@ -801,19 +811,18 @@ VALUES (?, ?, ?, ?, ?, ?, ?)`,
 	return err
 }
 
-
 type sessionScanner interface {
 	Scan(...any) error
 }
 
 func scanSession(scanner sessionScanner) (storage.Session, error) {
 	var session storage.Session
-	var title, parentID, errorMessage, acpAgent, acpSessionID, cwd, modelProvider, model, reasoningEffort sql.NullString
+	var title, parentID, errorMessage, acpAgent, acpSessionID, cwd, modelProvider, model, reasoningEffort, queuedMessages sql.NullString
 	var createdMs, updatedMs int64
 	err := scanner.Scan(&session.ID, &session.Slug, &title, &parentID, &session.Status, &errorMessage, &session.Runtime,
 		&acpAgent, &acpSessionID, &cwd, &modelProvider, &model, &reasoningEffort,
 		&session.Usage.InputTokens, &session.Usage.CachedInputTokens, &session.Usage.OutputTokens,
-		&session.Usage.ReasoningOutputTokens, &session.Usage.TotalTokens, &session.Archived, &createdMs, &updatedMs)
+		&session.Usage.ReasoningOutputTokens, &session.Usage.TotalTokens, &queuedMessages, &session.Archived, &createdMs, &updatedMs)
 	if err != nil {
 		return storage.Session{}, err
 	}
@@ -823,6 +832,10 @@ func scanSession(scanner sessionScanner) (storage.Session, error) {
 	session.ModelProvider = modelProvider.String
 	session.Model = model.String
 	session.ReasoningEffort = reasoningEffort.String
+	session.QueuedMessages, err = unmarshalStringList(queuedMessages.String)
+	if err != nil {
+		return storage.Session{}, err
+	}
 	session.CreatedAt = msToTime(createdMs)
 	session.UpdatedAt = msToTime(updatedMs)
 	if session.Runtime == "" {
@@ -888,6 +901,28 @@ func runtimeRefColumns(session storage.Session) (string, string, string) {
 		return "", "", ""
 	}
 	return session.RuntimeRef.Agent, session.RuntimeRef.SessionID, session.RuntimeRef.Cwd
+}
+
+func marshalStringList(values []string) (string, error) {
+	if len(values) == 0 {
+		return "[]", nil
+	}
+	data, err := stdjson.Marshal(values)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func unmarshalStringList(raw string) ([]string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	var values []string
+	if err := stdjson.Unmarshal([]byte(raw), &values); err != nil {
+		return nil, err
+	}
+	return values, nil
 }
 
 func nullString(value string) any {
