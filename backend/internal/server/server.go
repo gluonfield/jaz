@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/provider"
@@ -38,9 +39,17 @@ type Server struct {
 	TTS          voice.TTS
 	SystemPrompt string
 	Root         string
+	Log          *log.Logger
 
 	// in-flight native turns by session id, cancellable via the cancel action
 	turnCancels sync.Map
+}
+
+func (s *Server) logger() *log.Logger {
+	if s.Log != nil {
+		return s.Log
+	}
+	return log.Default()
 }
 
 type messageRecordStore interface {
@@ -373,11 +382,21 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if action == "cancel" {
-		if cancel, ok := s.turnCancels.Load(session.ID); ok {
-			cancel.(context.CancelFunc)()
-		}
+		logger := s.logger().With("session", session.ID, "runtime", session.Runtime)
+		logger.Info("cancel requested", "status", session.Status)
 		if session.Runtime == storage.RuntimeACP && s.ACP != nil {
-			_, _ = s.ACP.Cancel(r.Context(), session.ID)
+			if _, err := s.ACP.Cancel(r.Context(), session.ID); err != nil {
+				logger.Error("acp cancel failed", "error", err)
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
+		} else if cancel, ok := s.turnCancels.Load(session.ID); ok {
+			cancel.(context.CancelFunc)()
+		} else if session.Status == storage.StatusRunning {
+			// No live turn to stop (server restarted mid-turn) — unstick it.
+			logger.Info("no live turn, forcing status idle")
+			s.setSessionStatus(session, storage.StatusIdle)
+			s.publishMessagesChanged(session.ID)
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 		return
@@ -488,10 +507,10 @@ func (s *Server) streamNativeSession(w http.ResponseWriter, flusher http.Flusher
 	}
 	_ = s.Store.SaveSession(session)
 
-	// The turn must survive client disconnects (refresh, navigation): run it
-	// on a detached context and keep persisting; the response stream is only
-	// written while the client is still connected. The cancel action stops
-	// the turn for real.
+	// Turns survive client disconnects: run detached, stream only while the
+	// client is connected; the cancel action stops the turn for real.
+	logger := s.logger().With("session", session.ID)
+	logger.Info("native turn started")
 	clientCtx := r.Context()
 	turnCtx, cancelTurn := context.WithCancel(context.WithoutCancel(clientCtx))
 	defer cancelTurn()
@@ -509,9 +528,7 @@ func (s *Server) streamNativeSession(w http.ResponseWriter, flusher http.Flusher
 		s.setSessionError(session, err.Error())
 		return
 	}
-	// Persist the turn opener immediately: the user bubble keeps its real
-	// timestamp (events that arrive mid-turn must sort after it) and survives
-	// even if the provider fails before the first snapshot save.
+	// Persist the opener now: real timestamp, survives provider failures.
 	opener := make([]provider.Message, 0, 2)
 	if len(messages) == 0 && s.SystemPrompt != "" {
 		messages = append(messages, provider.SystemMessage(s.SystemPrompt))
@@ -545,6 +562,7 @@ func (s *Server) streamNativeSession(w http.ResponseWriter, flusher http.Flusher
 				err = s.Store.SaveMessages(session.ID, toSave)
 			}
 			if err != nil {
+				logger.Error("saving turn messages failed", "error", err)
 				send(agent.StreamEvent{Type: agent.StreamError, Error: err.Error()})
 				send(agent.StreamEvent{Type: agent.StreamDone})
 				s.setSessionError(session, err.Error())
@@ -566,11 +584,15 @@ func (s *Server) streamNativeSession(w http.ResponseWriter, flusher http.Flusher
 		finalStatus = storage.StatusIdle
 		finalError = ""
 	}
+	if finalStatus == storage.StatusError {
+		logger.Error("native turn failed", "error", finalError)
+	} else {
+		logger.Info("native turn finished", "status", finalStatus, "cancelled", turnCtx.Err() != nil)
+	}
 	s.setSessionStatusWithError(session, finalStatus, finalError)
 }
 
-// publishMessagesChanged tells subscribed pages (including ones opened after
-// a refresh mid-turn) to refetch the message history.
+// Tells subscribed pages (including ones opened mid-turn) to refetch messages.
 func (s *Server) publishMessagesChanged(sessionID string) {
 	if s.Events == nil {
 		return
@@ -597,6 +619,7 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 	})
 	if err != nil {
 		sendErr := acpSendError(session, err)
+		s.logger().Error("acp send failed", "session", session.ID, "error", sendErr)
 		s.setSessionError(session, sendErr.Error())
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: sendErr.Error()})
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
@@ -670,7 +693,7 @@ func isACPTerminal(state string) bool {
 
 func acpSendError(session storage.Session, err error) error {
 	if strings.Contains(err.Error(), "active acp session not found") {
-		return fmt.Errorf("acp session %q (%s) is stored but not active in this server process; reconnect/resume is not implemented yet", session.Slug, session.ID)
+		return fmt.Errorf("acp session %q (%s) could not be resumed: %v", session.Slug, session.ID, err)
 	}
 	return err
 }

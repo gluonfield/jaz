@@ -161,7 +161,7 @@ export function ComposerCard({
                 title="Stop response"
                 onClick={onStop}
                 whileTap={{ scale: 0.92 }}
-                className="grid size-9 cursor-pointer place-items-center rounded-full bg-bg text-ink shadow-sm transition-colors duration-150 hover:bg-surface-2"
+                className="grid size-9 cursor-pointer place-items-center rounded-full bg-primary text-white shadow-sm transition-colors duration-150 hover:bg-primary-strong"
               >
                 <Square size={13} fill="currentColor" strokeWidth={0} />
               </motion.button>

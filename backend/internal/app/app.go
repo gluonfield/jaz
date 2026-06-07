@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/coordinator"
@@ -207,29 +208,31 @@ func NewAgent(cfg Config, modelProvider provider.Provider, registry *tools.Regis
 	}
 }
 
-func ConnectACPCompletion(manager *acp.Manager, a *agent.Agent, store *sqlitestore.Store, locks *sessionlock.Locks, events *sessionevents.Bus) {
+func ConnectACPCompletion(manager *acp.Manager, a *agent.Agent, store *sqlitestore.Store, locks *sessionlock.Locks, events *sessionevents.Bus, logger *log.Logger) {
 	manager.Events = events
 	manager.Done = func(ctx context.Context, job acp.Job) {
-		completeACP(ctx, a, store, locks, events, job)
+		completeACP(ctx, a, store, locks, events, logger.WithPrefix("coordinator"), job)
 	}
 }
 
-func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, locks *sessionlock.Locks, events *sessionevents.Bus, job acp.Job) {
+func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, locks *sessionlock.Locks, events *sessionevents.Bus, logger *log.Logger, job acp.Job) {
 	if job.ParentID == "" {
 		return
 	}
+	logger.Info("acp child finished, running follow-up", "child", job.ID, "parent", job.ParentID, "state", job.State)
 	unlock := locks.Lock(job.ParentID)
 	defer unlock()
 
 	messages, err := store.LoadMessages(job.ParentID)
 	if err != nil {
+		logger.Error("loading parent messages failed", "parent", job.ParentID, "error", err)
 		setStoredSessionError(store, job.ParentID, err.Error())
 		return
 	}
-	// Append-only writes: a full-list save here would clobber rows another
-	// writer persisted after our load.
+	// Append-only: a full-list save would clobber rows persisted after our load.
 	completion := provider.DeveloperMessage(acpCompletion(job))
 	if err := store.AppendMessages(job.ParentID, completion); err != nil {
+		logger.Error("appending completion note failed", "parent", job.ParentID, "error", err)
 		setStoredSessionError(store, job.ParentID, err.Error())
 		return
 	}
@@ -237,6 +240,7 @@ func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, 
 	ctx = sessioncontext.WithSessionID(ctx, job.ParentID)
 	result, err := a.Complete(ctx, provider.Request{Messages: messages})
 	if err != nil {
+		logger.Error("coordinator follow-up failed", "parent", job.ParentID, "error", err)
 		content := fmt.Sprintf("ACP session %s finished, but coordinator follow-up failed: %v", job.Slug, err)
 		_ = store.AppendMessages(job.ParentID, provider.AssistantMessage(content, nil))
 		setStoredSessionError(store, job.ParentID, err.Error())

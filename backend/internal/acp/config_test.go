@@ -17,7 +17,7 @@ func TestProcessEnvIsMinimalAndCanonical(t *testing.T) {
 	manager := NewManager(nil, Config{
 		Root: root,
 		Env:  map[string]string{"EXPLICIT": "yes", "OPENAI_APIKEY": "openai-key"},
-	})
+	}, nil)
 	env := manager.processEnv("fake", AgentConfig{Env: map[string]string{"ANTHROPIC_APIKEY": "anthropic-key"}})
 
 	if env["OPENAI_API_KEY"] != "openai-key" || env["ANTHROPIC_API_KEY"] != "anthropic-key" {
@@ -39,7 +39,7 @@ func TestProcessEnvIsMinimalAndCanonical(t *testing.T) {
 
 func TestResolveCwdRejectsWorkspaceEscape(t *testing.T) {
 	workspace := t.TempDir()
-	manager := NewManager(nil, Config{Workspace: workspace})
+	manager := NewManager(nil, Config{Workspace: workspace}, nil)
 
 	if _, err := manager.resolveCwd(filepath.Join(workspace, "project")); err != nil {
 		t.Fatalf("inside workspace rejected: %v", err)
@@ -61,7 +61,7 @@ func TestProcessEnvSetsCodexHomeFromSystemLogin(t *testing.T) {
 	t.Setenv("CODEX_HOME", "")
 
 	root := t.TempDir()
-	env := NewManager(nil, Config{Root: root}).processEnv("codex", AgentConfig{})
+	env := NewManager(nil, Config{Root: root}, nil).processEnv("codex", AgentConfig{})
 
 	want := filepath.Join(root, "acp", "codex-home")
 	if env["CODEX_HOME"] != want {
@@ -94,7 +94,7 @@ func TestProcessEnvNeverLeaksAPIKeysToCodex(t *testing.T) {
 			"CODEX_API_KEY":      "configured-codex-key",
 			"CODEX_ACCESS_TOKEN": "configured-access-token",
 		},
-	}).processEnv("codex", AgentConfig{})
+	}, nil).processEnv("codex", AgentConfig{})
 
 	for _, key := range []string{"OPENAI_API_KEY", "OPENROUTER_APIKEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"} {
 		if env[key] != "" {

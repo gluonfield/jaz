@@ -16,7 +16,7 @@ import (
 
 func TestRequestPermissionApprovesWorkspaceLocalTool(t *testing.T) {
 	root := t.TempDir()
-	manager := NewManager(nil, Config{})
+	manager := NewManager(nil, Config{}, nil)
 	manager.jobsByACP["acp-session"] = &Job{ID: "session", ACPSession: "acp-session", Cwd: root}
 
 	raw, rpcErr := manager.handleJSONRPC(context.Background(), jsonrpc.Request{
@@ -44,7 +44,7 @@ func TestRequestPermissionApprovesWorkspaceLocalTool(t *testing.T) {
 
 func TestRequestPermissionCancelsWorkspaceEscape(t *testing.T) {
 	root := t.TempDir()
-	manager := NewManager(nil, Config{})
+	manager := NewManager(nil, Config{}, nil)
 	manager.jobsByACP["acp-session"] = &Job{ID: "session", ACPSession: "acp-session", Cwd: root}
 
 	raw, rpcErr := manager.handleJSONRPC(context.Background(), jsonrpc.Request{
@@ -73,7 +73,7 @@ func TestRequestPermissionCancelsWorkspaceEscape(t *testing.T) {
 func TestInteractiveRequestPermissionWaitsForAnswer(t *testing.T) {
 	root := t.TempDir()
 	events := sessionevents.New()
-	manager := NewManager(nil, Config{})
+	manager := NewManager(nil, Config{}, nil)
 	manager.Events = events
 	manager.jobsByID["session"] = &Job{ID: "session", ACPSession: "acp-session", Cwd: root, interactive: true}
 	manager.jobsByACP["acp-session"] = manager.jobsByID["session"]
@@ -144,7 +144,7 @@ func TestInteractiveRequestUserInputPublishesStructuredQuestions(t *testing.T) {
 		t.Fatal(err)
 	}
 	events := sessionevents.New()
-	manager := NewManager(store, Config{})
+	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
 	manager.jobsByID["session"] = &Job{ID: "session", ACPSession: "acp-session", Cwd: root, interactive: true}
 	manager.jobsByACP["acp-session"] = manager.jobsByID["session"]
@@ -249,7 +249,7 @@ func TestPlanSessionUpdatePublishesAndPersistsPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	events := sessionevents.New()
-	manager := NewManager(store, Config{})
+	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
 	manager.jobsByID["session"] = &Job{ID: "session", ACPSession: "acp-session", Slug: "claude-plan"}
 	manager.jobsByACP["acp-session"] = manager.jobsByID["session"]
@@ -306,7 +306,7 @@ func TestClaudeStylePlanExitPermissionPublishesGenericPermission(t *testing.T) {
 		t.Fatal(err)
 	}
 	events := sessionevents.New()
-	manager := NewManager(store, Config{})
+	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
 	manager.jobsByID["session"] = &Job{ID: "session", ACPSession: "acp-session", Cwd: root, interactive: true}
 	manager.jobsByACP["acp-session"] = manager.jobsByID["session"]

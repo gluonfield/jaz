@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/charmbracelet/log"
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/wins/jaz/backend/internal/provider"
@@ -38,6 +39,7 @@ type Store interface {
 type Manager struct {
 	cfg    Config
 	store  Store
+	log    *log.Logger
 	Done   func(context.Context, Job)
 	Events *sessionevents.Bus
 
@@ -53,6 +55,9 @@ type Manager struct {
 	permissionSeq     uint64
 	pendingPermission map[string]*pendingPermission
 	permissionMu      sync.Mutex
+
+	// serializes resumes so concurrent sends can't start two agent processes
+	resumeMu sync.Mutex
 }
 
 type SpawnRequest struct {
@@ -94,14 +99,18 @@ type SpawnResult struct {
 	State     string `json:"state"`
 }
 
-func NewManager(store Store, cfg Config) *Manager {
+func NewManager(store Store, cfg Config, logger *log.Logger) *Manager {
 	if cfg.Agents == nil {
 		cfg.Agents = map[string]AgentConfig{}
+	}
+	if logger == nil {
+		logger = log.Default()
 	}
 	cfg.SystemPrompt = strings.TrimSpace(cfg.SystemPrompt)
 	return &Manager{
 		cfg:               cfg,
 		store:             store,
+		log:               logger.WithPrefix("acp"),
 		jobsByID:          make(map[string]*Job),
 		jobsBySlug:        make(map[string]*Job),
 		jobsByACP:         make(map[string]*Job),
@@ -113,26 +122,25 @@ func NewManager(store Store, cfg Config) *Manager {
 	}
 }
 
-func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, error) {
-	req.ACPAgent = strings.TrimSpace(req.ACPAgent)
-	if req.ACPAgent == "" {
-		req.ACPAgent = "codex"
-	}
-	cfg, ok := m.cfg.Agent(req.ACPAgent)
-	if !ok {
-		return SpawnResult{}, fmt.Errorf("acp agent %q is not configured", req.ACPAgent)
-	}
-	absCwd, err := m.resolveCwd(cfg.Cwd)
-	if err != nil {
-		return SpawnResult{}, err
-	}
-	env := m.processEnv(req.ACPAgent, cfg)
+type agentConn struct {
+	conn    jsonrpc.MessageConn
+	peer    *jsonrpc.Peer
+	cancel  context.CancelFunc
+	initRaw json.RawMessage
+}
 
+func (c *agentConn) close() {
+	_ = c.peer.Close()
+	c.cancel()
+}
+
+func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd string) (*agentConn, error) {
+	env := m.processEnv(name, cfg)
 	runCtx, cancel := context.WithCancel(context.Background())
-	conn, err := m.openConn(runCtx, req.ACPAgent, cfg, env, absCwd)
+	conn, err := m.openConn(runCtx, name, cfg, env, cwd)
 	if err != nil {
 		cancel()
-		return SpawnResult{}, err
+		return nil, err
 	}
 	peer := jsonrpc.NewPeer(conn, jsonrpc.HandlerFunc(m.handleJSONRPC))
 	go func() {
@@ -159,48 +167,70 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	if err != nil {
 		_ = peer.Close()
 		cancel()
-		return SpawnResult{}, fmt.Errorf("initialize acp agent: %w", err)
+		return nil, fmt.Errorf("initialize acp agent: %w", err)
 	}
-	methodID, missingAuth := autoAuthMethod(req.ACPAgent, initRaw, env)
+	methodID, missingAuth := autoAuthMethod(name, initRaw, env)
 	if methodID != "" {
 		if _, err := peer.Call(ctx, acpschema.AgentMethodAuthenticate, acpschema.AuthenticateRequest{MethodID: methodID}); err != nil {
 			_ = peer.Close()
 			cancel()
-			return SpawnResult{}, fmt.Errorf("authenticate acp agent: %w", err)
+			return nil, fmt.Errorf("authenticate acp agent: %w", err)
 		}
 	} else if len(missingAuth) > 0 {
 		_ = peer.Close()
 		cancel()
-		return SpawnResult{}, fmt.Errorf("authenticate acp agent %q: missing %s", req.ACPAgent, strings.Join(missingAuth, " or "))
+		return nil, fmt.Errorf("authenticate acp agent %q: missing %s", name, strings.Join(missingAuth, " or "))
 	}
+	return &agentConn{conn: conn, peer: peer, cancel: cancel, initRaw: initRaw}, nil
+}
+
+func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, cwd string) (acpschema.NewSessionResponse, error) {
 	newSession := acpschema.NewSessionRequest{
-		Cwd:        absCwd,
+		Cwd:        cwd,
 		MCPServers: []acpschema.MCPServer{},
 	}
 	if m.cfg.SystemPrompt != "" {
 		newSession.Meta = map[string]any{"systemPrompt": m.cfg.SystemPrompt}
 	}
-	sessionRaw, err := peer.Call(ctx, acpschema.AgentMethodSessionNew, newSession)
+	sessionRaw, err := ac.peer.Call(ctx, acpschema.AgentMethodSessionNew, newSession)
 	if err != nil {
-		_ = peer.Close()
-		cancel()
-		return SpawnResult{}, fmt.Errorf("create acp session: %w", err)
+		return acpschema.NewSessionResponse{}, fmt.Errorf("create acp session: %w", err)
 	}
 	var acpSession acpschema.NewSessionResponse
 	if err := json.Unmarshal(sessionRaw, &acpSession); err != nil {
-		_ = peer.Close()
-		cancel()
-		return SpawnResult{}, err
+		return acpschema.NewSessionResponse{}, err
 	}
 	if acpSession.SessionID == "" {
-		_ = peer.Close()
-		cancel()
-		return SpawnResult{}, fmt.Errorf("acp session/new returned empty session id")
+		return acpschema.NewSessionResponse{}, fmt.Errorf("acp session/new returned empty session id")
 	}
-	modes, err := m.initializeModeState(ctx, peer, acpSession)
+	return acpSession, nil
+}
+
+func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, error) {
+	req.ACPAgent = strings.TrimSpace(req.ACPAgent)
+	if req.ACPAgent == "" {
+		req.ACPAgent = "codex"
+	}
+	cfg, ok := m.cfg.Agent(req.ACPAgent)
+	if !ok {
+		return SpawnResult{}, fmt.Errorf("acp agent %q is not configured", req.ACPAgent)
+	}
+	absCwd, err := m.resolveCwd(cfg.Cwd)
 	if err != nil {
-		_ = peer.Close()
-		cancel()
+		return SpawnResult{}, err
+	}
+	ac, err := m.connect(ctx, req.ACPAgent, cfg, absCwd)
+	if err != nil {
+		return SpawnResult{}, err
+	}
+	acpSession, err := m.newACPSession(ctx, ac, absCwd)
+	if err != nil {
+		ac.close()
+		return SpawnResult{}, err
+	}
+	modes, err := m.initializeModeState(ctx, ac.peer, acpSession)
+	if err != nil {
+		ac.close()
 		return SpawnResult{}, err
 	}
 
@@ -216,8 +246,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		},
 	})
 	if err != nil {
-		_ = peer.Close()
-		cancel()
+		ac.close()
 		return SpawnResult{}, err
 	}
 	job := &Job{
@@ -234,8 +263,9 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		UpdatedAt:  time.Now().UTC(),
 		toolByID:   make(map[string]ToolCallSnapshot),
 	}
-	m.addJob(job, conn, peer, cancel)
+	m.addJob(job, ac.conn, ac.peer, ac.cancel)
 	m.saveACPState(job.Snapshot())
+	m.log.Info("spawned agent session", "agent", job.ACPAgent, "session", job.ID, "acp_session", job.ACPSession)
 
 	return SpawnResult{
 		Status:    "created",
@@ -266,10 +296,111 @@ func (m *Manager) initializeModeState(ctx context.Context, peer *jsonrpc.Peer, s
 	return modes, nil
 }
 
+// Restarts the agent for a stored session (server restart): session/load when
+// supported, otherwise a fresh agent session in the same workspace.
+func (m *Manager) resume(ctx context.Context, ref string) (*Job, error) {
+	m.resumeMu.Lock()
+	defer m.resumeMu.Unlock()
+	if job, err := m.job(ref); err == nil {
+		return job, nil
+	}
+	session, err := m.store.LoadSession(ref)
+	if err != nil {
+		return nil, fmt.Errorf("active acp session not found: %s", ref)
+	}
+	if session.Runtime != storage.RuntimeACP || session.RuntimeRef == nil || session.RuntimeRef.Agent == "" {
+		return nil, fmt.Errorf("session %s is not acp-backed", ref)
+	}
+	cfg, ok := m.cfg.Agent(session.RuntimeRef.Agent)
+	if !ok {
+		return nil, fmt.Errorf("acp agent %q is not configured", session.RuntimeRef.Agent)
+	}
+	var state storage.ACPState
+	if loader, ok := m.store.(acpStateLoader); ok {
+		state, _ = loader.LoadACPState(session.ID)
+	}
+	cwd := state.Cwd
+	if cwd == "" {
+		if cwd, err = m.resolveCwd(cfg.Cwd); err != nil {
+			return nil, err
+		}
+	}
+	ac, err := m.connect(ctx, session.RuntimeRef.Agent, cfg, cwd)
+	if err != nil {
+		return nil, err
+	}
+	acpSessionID, modes, err := m.restoreACPSession(ctx, ac, session, cwd)
+	if err != nil {
+		ac.close()
+		return nil, err
+	}
+	if acpSessionID != session.RuntimeRef.SessionID {
+		session.RuntimeRef.SessionID = acpSessionID
+		_ = m.store.SaveSession(session)
+	}
+	job := &Job{
+		ID:            session.ID,
+		Slug:          session.Slug,
+		Title:         session.Title,
+		ParentID:      session.ParentID,
+		ACPAgent:      session.RuntimeRef.Agent,
+		ACPSession:    acpSessionID,
+		Cwd:           cwd,
+		State:         StateIdle,
+		Modes:         modes,
+		ParentVisible: state.ParentVisible,
+		CreatedAt:     session.CreatedAt,
+		UpdatedAt:     time.Now().UTC(),
+		toolByID:      make(map[string]ToolCallSnapshot),
+	}
+	m.addJob(job, ac.conn, ac.peer, ac.cancel)
+	m.saveACPState(job.Snapshot())
+	m.log.Info("resumed agent session", "agent", job.ACPAgent, "session", job.ID,
+		"acp_session", acpSessionID, "loaded", acpSessionID == session.RuntimeRef.SessionID)
+	return job, nil
+}
+
+// The job is registered only after session/load returns, so the agent's
+// history replay notifications are dropped, not re-recorded as events.
+func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, session storage.Session, cwd string) (string, ModeState, error) {
+	var caps struct {
+		AgentCapabilities acpschema.AgentCapabilities `json:"agentCapabilities"`
+	}
+	_ = json.Unmarshal(ac.initRaw, &caps)
+	storedID := session.RuntimeRef.SessionID
+	if caps.AgentCapabilities.LoadSession && storedID != "" {
+		raw, err := ac.peer.Call(ctx, acpschema.AgentMethodSessionLoad, acpschema.LoadSessionRequest{
+			Cwd:        cwd,
+			MCPServers: []acpschema.MCPServer{},
+			SessionID:  acpschema.SessionID(storedID),
+		})
+		if err == nil {
+			var resp acpschema.LoadSessionResponse
+			if err := json.Unmarshal(raw, &resp); err != nil {
+				return "", ModeState{}, err
+			}
+			modes, err := m.initializeModeState(ctx, ac.peer, acpschema.NewSessionResponse{
+				SessionID: acpschema.SessionID(storedID),
+				Modes:     resp.Modes,
+			})
+			return storedID, modes, err
+		}
+		// The agent lost this session — fall through to a fresh one.
+	}
+	acpSession, err := m.newACPSession(ctx, ac, cwd)
+	if err != nil {
+		return "", ModeState{}, err
+	}
+	modes, err := m.initializeModeState(ctx, ac.peer, acpSession)
+	return string(acpSession.SessionID), modes, err
+}
+
 func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {
 	job, err := m.job(req.Session)
 	if err != nil {
-		return Job{}, err
+		if job, err = m.resume(ctx, req.Session); err != nil {
+			return Job{}, err
+		}
 	}
 	if strings.TrimSpace(req.Message) == "" {
 		return Job{}, fmt.Errorf("message is required")
@@ -284,6 +415,7 @@ func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {
 		return Job{}, err
 	}
 	_ = m.store.AppendMessages(job.ID, provider.UserMessage(req.Message))
+	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested)
 	job.startTurn(req.Completion, req.Interactive, req.PlanRequested, req.ParentVisible)
 	m.publishACP(job.Snapshot())
 	go m.runPrompt(context.Background(), job, req.Message)
@@ -341,25 +473,130 @@ func (m *Manager) Wait(ctx context.Context, req WaitRequest) (Job, error) {
 	}
 }
 
+// Cancel asks the agent to stop the current turn (session/cancel) and lets
+// the turn end through the protocol so state and events stay consistent. If
+// the agent doesn't stop in time, the process is torn down and removed so the
+// next send resumes a fresh one. Cancel always succeeds for stored sessions:
+// with no live job it clears the stuck stored state instead.
 func (m *Manager) Cancel(ctx context.Context, ref string) (Job, error) {
 	job, err := m.job(ref)
 	if err != nil {
-		return Job{}, err
+		return m.cancelStored(ref)
 	}
-	peer := m.peer(job.ID)
-	if peer != nil {
-		_ = peer.Notify(ctx, acpschema.AgentMethodSessionCancel, acpschema.CancelNotification{
+	job.mu.Lock()
+	job.cancelRequested = true
+	running := job.State == StateRunning || job.State == StateStarting
+	done := job.done
+	job.mu.Unlock()
+	m.log.Info("acp cancel requested", "session", job.ID, "agent", job.ACPAgent, "running", running)
+	if peer := m.peer(job.ID); peer != nil {
+		if err := peer.Notify(ctx, acpschema.AgentMethodSessionCancel, acpschema.CancelNotification{
 			SessionID: acpschema.SessionID(job.ACPSession),
-		})
+		}); err != nil {
+			m.log.Warn("acp cancel notify failed", "session", job.ID, "error", err)
+		}
 	}
-	m.mu.RLock()
-	cancel := m.cancelByID[job.ID]
-	m.mu.RUnlock()
+	if !running || done == nil {
+		return job.Snapshot(), nil
+	}
+	select {
+	case <-done:
+		m.log.Info("acp turn cancelled", "session", job.ID)
+	case <-time.After(5 * time.Second):
+		m.log.Warn("acp agent ignored cancel, tearing down process", "session", job.ID)
+		m.teardown(job.ID)
+		job.mu.RLock()
+		stillRunning := job.State == StateRunning || job.State == StateStarting
+		job.mu.RUnlock()
+		if stillRunning {
+			job.setState(StateCancelled, "cancelled", "")
+			m.publishACPStatus(job.Snapshot())
+		}
+	case <-ctx.Done():
+	}
+	return job.Snapshot(), nil
+}
+
+// cancelStored unsticks a session that has no live job (server restarted
+// mid-turn): the stored state flips to cancelled, which also resets the
+// thread status, and a status event tells open pages to refresh.
+func (m *Manager) cancelStored(ref string) (Job, error) {
+	session, err := m.store.LoadSession(ref)
+	if err != nil {
+		return Job{}, fmt.Errorf("session not found: %s", ref)
+	}
+	m.log.Info("cancel for inactive session, clearing stored state", "session", session.ID)
+	var state storage.ACPState
+	if loader, ok := m.store.(acpStateLoader); ok {
+		state, _ = loader.LoadACPState(session.ID)
+	}
+	state.ID = session.ID
+	state.Slug = firstNonEmpty(state.Slug, session.Slug)
+	state.Title = firstNonEmpty(state.Title, session.Title)
+	state.ParentID = firstNonEmpty(state.ParentID, session.ParentID)
+	if session.RuntimeRef != nil {
+		state.ACPAgent = firstNonEmpty(state.ACPAgent, session.RuntimeRef.Agent)
+		state.ACPSession = firstNonEmpty(state.ACPSession, session.RuntimeRef.SessionID)
+	}
+	state.State = StateCancelled
+	state.StopReason = "cancelled"
+	if saver, ok := m.store.(acpStateSaver); ok {
+		if err := saver.SaveACPState(session.ID, state); err != nil {
+			m.log.Warn("clearing stored acp state failed", "session", session.ID, "error", err)
+		}
+	}
+	m.recordAndPublish(sessionevents.Event{
+		SessionID: session.ID,
+		Type:      "acp",
+		ACP: &sessionevents.ACPEvent{
+			ID:         session.ID,
+			Slug:       state.Slug,
+			Title:      state.Title,
+			ParentID:   state.ParentID,
+			Agent:      state.ACPAgent,
+			SessionID:  state.ACPSession,
+			State:      StateCancelled,
+			StopReason: "cancelled",
+		},
+	})
+	return Job{
+		ID:         session.ID,
+		Slug:       session.Slug,
+		Title:      session.Title,
+		ParentID:   session.ParentID,
+		ACPAgent:   state.ACPAgent,
+		ACPSession: state.ACPSession,
+		State:      StateCancelled,
+		StopReason: "cancelled",
+		CreatedAt:  session.CreatedAt,
+		UpdatedAt:  time.Now().UTC(),
+	}, nil
+}
+
+func (m *Manager) teardown(id string) {
+	m.mu.Lock()
+	job := m.jobsByID[id]
+	conn := m.connsByID[id]
+	peer := m.peersByID[id]
+	cancel := m.cancelByID[id]
+	delete(m.jobsByID, id)
+	delete(m.connsByID, id)
+	delete(m.peersByID, id)
+	delete(m.cancelByID, id)
+	if job != nil {
+		delete(m.jobsBySlug, job.Slug)
+		delete(m.jobsByACP, job.ACPSession)
+	}
+	m.mu.Unlock()
+	if peer != nil {
+		_ = peer.Close()
+	}
+	if conn != nil {
+		_ = conn.Close()
+	}
 	if cancel != nil {
 		cancel()
 	}
-	job.setState(StateCancelled, "cancelled", "")
-	return job.Snapshot(), nil
 }
 
 func (m *Manager) List() []Job {
@@ -429,7 +666,7 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string) {
 
 	peer := m.peer(job.ID)
 	if peer == nil {
-		job.setState(StateFailed, "", "acp peer is not active")
+		m.failTurn(job, fmt.Errorf("acp peer is not active"))
 		m.finishTurn(done, job)
 		return
 	}
@@ -440,7 +677,7 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string) {
 		},
 	})
 	if err != nil {
-		job.setState(StateFailed, "", err.Error())
+		m.failTurn(job, err)
 		m.finishTurn(done, job)
 		return
 	}
@@ -448,7 +685,7 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string) {
 		StopReason string `json:"stopReason"`
 	}
 	if err := json.Unmarshal(raw, &resp); err != nil {
-		job.setState(StateFailed, "", err.Error())
+		m.failTurn(job, err)
 		m.finishTurn(done, job)
 		return
 	}
@@ -458,10 +695,27 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string) {
 		state = StateCancelled
 	}
 	job.setState(state, stopReason, "")
+	m.log.Info("acp turn finished", "session", job.ID, "state", state, "stop_reason", stopReason)
 	m.publishACPStatus(job.Snapshot())
 	time.Sleep(50 * time.Millisecond)
 	m.appendAssistantMessage(job)
 	m.finishTurn(done, job)
+}
+
+// A turn that died after a cancel request ends as cancelled, not failed; both
+// outcomes are published so the UI and stored status reflect them.
+func (m *Manager) failTurn(job *Job, err error) {
+	job.mu.RLock()
+	cancelled := job.cancelRequested
+	job.mu.RUnlock()
+	if cancelled {
+		job.setState(StateCancelled, "cancelled", "")
+		m.log.Info("acp turn cancelled", "session", job.ID)
+	} else {
+		job.setState(StateFailed, "", err.Error())
+		m.log.Error("acp turn failed", "session", job.ID, "error", err)
+	}
+	m.publishACPStatus(job.Snapshot())
 }
 
 func (m *Manager) finishTurn(done chan struct{}, job *Job) {
@@ -474,10 +728,62 @@ func (m *Manager) finishTurn(done chan struct{}, job *Job) {
 	job.planRequested = false
 	job.mu.Unlock()
 	m.cancelPendingPermissions(job.ID)
+	m.resolveDanglingToolCalls(job)
 	close(done)
 	if completion.propagates() && parentVisible && !planRequested && m.Done != nil {
 		go m.Done(context.Background(), job.Snapshot())
 	}
+}
+
+// A cancelled or failed turn leaves the agent's in-flight tool calls without
+// terminal updates; resolve them so they don't render as running forever.
+func (m *Manager) resolveDanglingToolCalls(job *Job) {
+	job.mu.Lock()
+	state := job.State
+	if state != StateCancelled && state != StateFailed {
+		job.mu.Unlock()
+		return
+	}
+	status := "cancelled"
+	if state == StateFailed {
+		status = "failed"
+	}
+	var updated []ToolCallSnapshot
+	for id, call := range job.toolByID {
+		if terminalToolStatus(call.Status) {
+			continue
+		}
+		call.Status = status
+		job.toolByID[id] = call
+		updated = append(updated, call)
+	}
+	if len(updated) == 0 {
+		job.mu.Unlock()
+		return
+	}
+	job.ToolCalls = sortedToolCalls(job.toolByID)
+	job.UpdatedAt = time.Now().UTC()
+	sessionID := job.ID
+	job.mu.Unlock()
+	m.log.Info("resolved dangling tool calls", "session", sessionID, "count", len(updated), "status", status)
+	for _, call := range updated {
+		_ = m.store.UpsertActivity(sessionID, storage.ActivityEntry{
+			ID:     call.ID,
+			Kind:   "tool",
+			Text:   firstNonEmpty(call.Title, call.ID),
+			Status: call.Status,
+			At:     time.Now().UTC(),
+		})
+		m.publishACPTool(job.Snapshot(), call)
+	}
+}
+
+func terminalToolStatus(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "completed", "complete", "failed", "cancelled", "canceled":
+		return true
+	}
+	return false
 }
 
 func (m *Manager) appendAssistantMessage(job *Job) {
@@ -548,6 +854,7 @@ func (m *Manager) setServeErr(peer *jsonrpc.Peer, err error) {
 	for id, candidate := range m.peersByID {
 		if candidate == peer {
 			m.serveErrByID[id] = err
+			m.log.Error("acp agent connection failed", "session", id, "error", err)
 			if job := m.jobsByID[id]; job != nil {
 				job.setState(StateFailed, "", err.Error())
 			}

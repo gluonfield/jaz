@@ -212,8 +212,7 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 				Priority: string(entry.Priority),
 			})
 		}
-		// Agents re-send the full plan on every token; only an actual change
-		// is worth persisting and publishing.
+		// Agents re-send the plan constantly; only persist actual changes.
 		publishACP = !slices.Equal(job.Plan, plan)
 		job.Plan = plan
 	case acpschema.CurrentModeSessionUpdate:

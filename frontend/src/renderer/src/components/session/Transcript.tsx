@@ -103,8 +103,7 @@ function hasWorkingStatusSurface(event: SessionEvent): boolean {
   return Boolean(event.acp && normalized(event.acp.state) === 'running')
 }
 
-// An 'acp' status event whose only visible surface is the "working on …"
-// link — transient state rather than transcript history.
+// A status event whose only surface is the "working on …" link.
 function isWorkingLinkOnly(event: SessionEvent): boolean {
   return (
     event.type === 'acp' &&
@@ -241,11 +240,15 @@ function toolRunLabel(calls: ACPToolCall[]): string {
   return failed ? `${label}, ${failed} failed` : label
 }
 
-function ToolDisclosure({ label, calls }: { label: string; calls: ACPToolCall[] }) {
+function ToolDisclosure({ label, calls, active = false }: { label: string; calls: ACPToolCall[]; active?: boolean }) {
   const [open, setOpen] = useState(false)
-  const running = calls.some((call) =>
-    ['pending', 'in_progress', 'in-progress', 'running'].includes(normalized(call.status)),
-  )
+  // Old sessions can hold stale non-terminal statuses; only spin while the
+  // session is actually working.
+  const running =
+    active &&
+    calls.some((call) =>
+      ['pending', 'in_progress', 'in-progress', 'running'].includes(normalized(call.status)),
+    )
   return (
     <div className="flex flex-col items-start gap-1">
       <button
@@ -283,12 +286,12 @@ function ToolDisclosure({ label, calls }: { label: string; calls: ACPToolCall[] 
   )
 }
 
-function ToolSummary({ calls }: { calls?: ACPToolCall[] }) {
+function ToolSummary({ calls, active = false }: { calls?: ACPToolCall[]; active?: boolean }) {
   if (!calls?.length) return null
   return (
     <div className="flex flex-col items-start gap-1.5">
       {groupToolCalls(calls).map((group) => (
-        <ToolDisclosure key={group.key} label={group.label} calls={group.calls} />
+        <ToolDisclosure key={group.key} label={group.label} calls={group.calls} active={active} />
       ))}
     </div>
   )
@@ -699,6 +702,7 @@ function LiveEvent({
   event,
   sessionId,
   showHeader,
+  working = false,
   permissionResolution,
   showPlan,
   onApprovePlan,
@@ -706,6 +710,7 @@ function LiveEvent({
   event: SessionEvent
   sessionId?: string
   showHeader: boolean
+  working?: boolean
   permissionResolution?: ACPPermission
   showPlan?: boolean
   onApprovePlan?: () => void
@@ -749,7 +754,7 @@ function LiveEvent({
           <span>{agentLabel(event.acp?.agent)} is working on {childLabel(event)}</span>
         </Link>
       ) : null}
-      {!parentChild ? <ToolSummary calls={event.acp?.tool_calls} /> : null}
+      {!parentChild ? <ToolSummary calls={event.acp?.tool_calls} active={working} /> : null}
       {event.permission ? (
         <PermissionCard event={event} resolution={permissionResolution} />
       ) : null}
@@ -773,9 +778,8 @@ function itemTime(value: string | undefined): number {
   return Number.isNaN(parsed) ? 0 : parsed
 }
 
-// Merge the two independently ordered streams: messages by seq, events in
-// their already-sorted order. Comparing only the heads preserves each
-// stream's internal order even when timestamps are unreliable.
+// Head-only merge of two ordered streams preserves each stream's internal
+// order even when timestamps are unreliable.
 function mergeTimeline(
   messages: ChatMessage[],
   events: { event: SessionEvent; index: number }[],
@@ -803,8 +807,7 @@ function mergeTimeline(
   return out
 }
 
-// Consecutive single-call tool events collapse into one codex-style run:
-// "Explored 2 files, ran 1 command".
+// Consecutive tool events collapse into one run: "Explored 2 files, ran 1 command".
 function groupToolRuns(items: TimelineItem[]): TimelineItem[] {
   const out: TimelineItem[] = []
   for (const item of items) {
@@ -842,8 +845,7 @@ function markEventHeaders(items: TimelineItem[], sessionId?: string): void {
       previousACP = ''
       continue
     }
-    // Events from this page's own agent need no byline; a child agent's run
-    // surfaced in the parent thread is introduced once.
+    // Own-page events need no byline; a child agent's run is introduced once.
     item.showHeader = Boolean(sessionId && acp.id !== sessionId && acp.id !== previousACP)
     previousACP = acp.id
   }
@@ -877,8 +879,7 @@ function splitTurns(items: TimelineItem[]): Turn[] {
   return turns
 }
 
-// Work that may fold under "Worked for Xs": tool runs, thoughts, and interim
-// narration. Plans, pending questions, errors, and user-visible cards stay out.
+// Work that may fold under "Worked for Xs"; plans, pending questions, and errors stay out.
 function isCollapsibleWork(
   item: TimelineItem,
   pendingPermissionIds: Set<string>,
@@ -950,8 +951,7 @@ export function Transcript({
   sessionId?: string
   groupTurns?: boolean
   working?: boolean
-  // The in-flight live exchange, rendered between history and the
-  // bottom-anchored live-state items (working links, pending questions).
+  // in-flight live exchange, rendered between history and anchored live state
   tail?: ReactNode
   onApprovePlan?: () => void
 }) {
@@ -1019,10 +1019,8 @@ export function Transcript({
     (message) => message.role === 'user' || message.role === 'assistant',
   )
   const merged = groupToolRuns(mergeTimeline(visibleMessages, renderedEvents))
-  // Live state isn't history: a pending question is what the user must act on
-  // next and a running child's status is a transient indicator, so both anchor
-  // at the bottom (codex-style). Once answered, the question returns to its
-  // chronological spot as a collapsed "Asked N questions" row.
+  // Live state isn't history: pending questions and working status anchor at
+  // the bottom; an answered question returns to its chronological spot.
   const isPendingCard = (item: TimelineItem) =>
     item.kind === 'event' &&
     item.event.type === 'permission_request' &&
@@ -1041,7 +1039,14 @@ export function Transcript({
       case 'message':
         return <Bubble key={`message-${item.message.seq}`} message={item.message} />
       case 'tools':
-        return <ToolDisclosure key={item.key} label={toolRunLabel(item.calls)} calls={item.calls} />
+        return (
+          <ToolDisclosure
+            key={item.key}
+            label={toolRunLabel(item.calls)}
+            calls={item.calls}
+            active={working}
+          />
+        )
       case 'event':
         return (
           <LiveEvent
@@ -1049,6 +1054,7 @@ export function Transcript({
             event={item.event}
             sessionId={sessionId}
             showHeader={item.showHeader}
+            working={working}
             showPlan={
               hasPlanSurface(item.event)
                 ? latestPlanEvent.get(item.event.acp!.id) === item.eventIndex
@@ -1125,9 +1131,8 @@ export function Transcript({
   )
 }
 
-// Coalesced events keep their latest copy, whose seq changes on every update;
-// key by identity so React patches in place instead of remounting (and
-// replaying the entry animation) per streamed delta.
+// Coalesced events keep their latest copy whose seq changes per update; key by
+// identity so streamed deltas patch in place instead of remounting.
 function stableEventKey(event: SessionEvent): string {
   if (event.type === 'acp' && event.acp?.id) {
     if (event.acp.plan?.length) return `acp_plan:${event.acp.id}`
@@ -1149,8 +1154,7 @@ function combineSequentialACPText(events: SessionEvent[]): SessionEvent[] {
   let lastSourceSeq = 0
   for (const event of events) {
     const prev = out.at(-1)
-    // A seq gap means another event originally sat between these chunks
-    // (coalesced elsewhere) — keep the paragraph boundary it created.
+    // A seq gap means another event sat between these chunks; keep the boundary.
     const contiguous = !prev?.seq || !event.seq || event.seq === lastSourceSeq + 1
     lastSourceSeq = event.seq ?? 0
     if (canMergeACPText(prev, event) && contiguous) {

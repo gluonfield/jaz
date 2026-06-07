@@ -126,8 +126,7 @@ function eventCoalesceKey(event: SessionEvent): string {
 }
 
 function coalesceSessionEvents(events: SessionEvent[]): SessionEvent[] {
-  // Pass 1: the store-assigned seq identifies an event exactly, so persisted
-  // history and the live SSE copy of the same event collapse into one.
+  // Pass 1: dedupe by store-assigned seq (persisted history vs live SSE copy).
   const bySeq = new Map<string, number>()
   const deduped: SessionEvent[] = []
   for (const event of events) {
@@ -144,8 +143,7 @@ function coalesceSessionEvents(events: SessionEvent[]): SessionEvent[] {
       deduped[existing] = event
     }
   }
-  // Pass 2: rolling state (status, plan revisions, tool-call updates) keeps
-  // only its latest occurrence.
+  // Pass 2: rolling state (status, plan, tool updates) keeps only its latest copy.
   const indexed = deduped.reduce<{ event: SessionEvent; index: number }[]>((acc, event, sourceIndex) => {
     const key = eventCoalesceKey(event)
     if (!key) return [...acc, { event, index: sourceIndex }]
@@ -317,8 +315,7 @@ function SessionPage() {
       plan_requested: options.planRequested,
       parent_visible: options.parentVisible,
     })
-    // Never invalidate sessionEvents: that query is fed by SSE only, and a
-    // refetch resets it to [] — wiping live history.
+    // Never invalidate sessionEvents: its queryFn returns [], wiping the SSE cache.
     queryClient.invalidateQueries({ queryKey: keys.sessionMessages(targetSessionID) })
     queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
     queryClient.invalidateQueries({ queryKey: keys.allSessions })
@@ -370,10 +367,8 @@ function SessionPage() {
     acp_children: acpChildren,
     events: persistedEvents = [],
   } = detail.data
-  // When the event log already records this session's run, the cumulative
-  // job snapshot would only repeat it (and dump every tool call at the very
-  // end of the transcript); keep the snapshot as a fallback for sessions
-  // without persisted events.
+  // The job snapshot is only a fallback: when events record the run, the
+  // snapshot would repeat it and dump every tool call at the end.
   const eventsCoverOwnACP =
     [...persistedEvents, ...events.data].some(
       (event) =>
@@ -407,17 +402,14 @@ function SessionPage() {
   ]
   const transcriptEvents = coalesceSessionEvents(
     [...persistedEvents, ...snapshotEvents, ...events.data].flatMap((event) => {
-      // Coordinator follow-ups live in the message store; their event is only
-      // a refresh signal.
+      // 'assistant' events are refresh signals; the message store has the content.
       if (event.type === 'assistant') return []
-      // Old rows round-tripped a typed-nil ACP into an empty struct; treat an
-      // id-less acp as absent so permission cards aren't misclassified.
+      // Old rows round-tripped a typed-nil ACP into an empty struct.
       if (event.acp && !event.acp.id) event = { ...event, acp: undefined }
       const sanitized = sanitizeParentChildACPEvent(event, session.id)
       return sanitized ? [sanitized] : []
     }),
   )
-  const inactiveACP = session.runtime === 'acp' && acpState === 'not_running'
   const planAvailable = session.runtime === 'acp' && Boolean(acpModes?.plan_mode_id)
   const pendingPermissionEvents = new Map<string, SessionEvent>()
   for (const event of transcriptEvents) {
@@ -456,16 +448,15 @@ function SessionPage() {
       planDecisionSessionID &&
       !streaming &&
       !live &&
-      !inactiveACP &&
       !hasPendingPermission,
   )
   const empty = messages.length === 0 && displayEvents.length === 0 && !live
   const isACP = session.runtime === 'acp'
-  const acpWorking =
-    isACP && (acpState === 'running' || session.status === 'running' || streaming || Boolean(live))
-  // ACP turns stream through session events, so the live exchange only
-  // contributes the not-yet-refetched user bubble (and any transport error);
-  // it is injected into the transcript so mid-turn events sort after it.
+  // Covers turns started elsewhere (parent-triggered, or refresh mid-turn).
+  const sessionRunning =
+    streaming || session.status === 'running' || (isACP && acpState === 'running')
+  // ACP turns stream through events; the live exchange only contributes the
+  // not-yet-refetched user bubble, injected so mid-turn events sort after it.
   const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user')
   const transcriptMessages =
     isACP && live && lastUserMessage?.content.trim() !== live.user.trim()
@@ -519,7 +510,7 @@ function SessionPage() {
               events={displayEvents}
               sessionId={session.id}
               groupTurns={isACP}
-              working={acpWorking}
+              working={sessionRunning}
               tail={
                 live && !isACP ? (
                   <div className="flex flex-col gap-5">
@@ -574,7 +565,6 @@ function SessionPage() {
             </p>
           ) : null}
           <PlanDecisionDock
-            disabled={inactiveACP}
             pending={planDecisionPending}
             onImplement={() => {
               setPlanDecisionPending(true)
@@ -599,14 +589,11 @@ function SessionPage() {
         </>
       ) : (
         <Composer
-          streaming={streaming}
-          disabled={inactiveACP}
-          placeholder={inactiveACP ? 'ACP session is not active' : undefined}
+          streaming={sessionRunning}
           planAvailable={planAvailable}
           onSend={handleSend}
           onStop={() => {
-            // The turn runs detached server-side; ask the server to stop it,
-            // then drop the local stream.
+            // the turn runs detached server-side; stop it there first
             void cancelSession(sessionId).catch(() => {})
             abortRef.current?.abort()
           }}

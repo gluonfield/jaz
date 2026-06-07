@@ -21,7 +21,6 @@ function eventCoalesceKey(event: SessionEvent): string {
 }
 
 function mergeSessionEvent(prev: SessionEvent[], event: SessionEvent): SessionEvent[] {
-  // The store-assigned seq identifies an event exactly (replays, reconnects).
   if (event.seq) {
     const seqIndex = prev.findIndex(
       (item) => item.seq === event.seq && item.session_id === event.session_id,
@@ -41,14 +40,9 @@ function mergeSessionEvent(prev: SessionEvent[], event: SessionEvent): SessionEv
   return next
 }
 
-// Subscribes to a session's SSE stream for as long as the component is
-// mounted. Events accumulate in the query cache (so remounts within the
-// session keep history) and bump the sidebar list's freshness.
-//
-// streamingRef: while this page itself streams a turn, its live exchange is
-// the sole renderer of the in-flight messages — refetching mid-turn would
-// show the persisted user/assistant rows next to the live copies. Other
-// windows (and pages opened after a refresh) keep refetching per round.
+// Subscribes to a session's SSE stream while mounted; events accumulate in
+// the query cache. streamingRef suppresses mid-turn message refetches on the
+// page that is itself streaming — its live exchange already renders the turn.
 export function useSessionEvents(sessionId: string, streamingRef?: RefObject<boolean>): void {
   const queryClient = useQueryClient()
 
@@ -58,16 +52,14 @@ export function useSessionEvents(sessionId: string, streamingRef?: RefObject<boo
       queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
     }
     const stop = openSessionEvents(sessionId, (event: SessionEvent) => {
-      // Coordinator follow-ups land in the message store; the event is just
-      // the "refetch now" signal, not a transcript item of its own.
+      // 'assistant' events are refresh signals, not transcript items.
       if (event.type === 'assistant') {
         refetchMessages()
       } else {
         queryClient.setQueryData<SessionEvent[]>(keys.sessionEvents(sessionId), (prev = []) =>
           mergeSessionEvent(prev, event),
         )
-        // A finished turn means new rows were persisted (user echoes,
-        // completion summaries) and the ACP state went idle — refresh both.
+        // turn finished: new rows were persisted
         const state = (event.acp?.state ?? '').toLowerCase()
         if (event.type === 'acp' && ['idle', 'failed', 'cancelled'].includes(state)) {
           refetchMessages()

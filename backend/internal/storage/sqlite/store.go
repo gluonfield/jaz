@@ -728,9 +728,7 @@ func (s *Store) replaceMessagesLocked(id string, records []storage.Message) erro
 	for i, record := range records {
 		record.ThreadID = id
 		record.Seq = int64(i + 1)
-		// Rows that were already stored keep their original timestamps so the
-		// transcript chronology vs session events stays truthful; only rows
-		// new in this save are stamped now.
+		// Already-stored rows keep their timestamps; only new rows are stamped.
 		if i < len(existing) && existing[i].Role == record.Role {
 			record.CreatedAt = existing[i].CreatedAt
 		} else if record.CreatedAt.IsZero() {

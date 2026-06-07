@@ -34,6 +34,7 @@ type Job struct {
 	completion        CompletionMode
 	interactive       bool
 	planRequested     bool
+	cancelRequested   bool
 	toolByID          map[string]ToolCallSnapshot
 	savedAssistantLen int
 }
@@ -122,6 +123,7 @@ func (j *Job) startTurn(completion CompletionMode, interactive, planRequested, p
 	j.completion = completion
 	j.interactive = interactive
 	j.planRequested = planRequested
+	j.cancelRequested = false
 	j.ParentVisible = parentVisible
 	j.toolByID = make(map[string]ToolCallSnapshot)
 	j.done = make(chan struct{})

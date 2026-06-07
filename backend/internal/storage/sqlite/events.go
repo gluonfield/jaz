@@ -151,8 +151,7 @@ func marshalOptionalJSON(value any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Typed nil pointers slip past the interface nil check and marshal to
-	// "null"; storing that round-trips into a bogus empty struct on load.
+	// Typed nils marshal to "null", which round-trips into a bogus empty struct.
 	if string(data) == "null" {
 		return nil, nil
 	}
