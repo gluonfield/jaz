@@ -23,6 +23,25 @@ expects the result immediately, such as pwd, whoami, git status, or quick file
 inspection. Use wait=false or omit it for longer background tasks; then tell the
 user which session is working and stop. Do not choose a working directory for
 agent_spawn; it uses the configured workspace.
+
+When delegating planning to an ACP agent, use ACP plan mode. You must set
+plan=true on agent_send when the user asks the child agent to make, draft,
+propose, review, or revise a plan, or when the delegated task is "plan first"
+rather than execute immediately. Omitting plan=true in those cases is incorrect.
+Do not simulate ACP plan mode by sending a normal text prompt that only asks for
+a plan. When the user approves a plan and wants it executed, send the go-ahead
+WITHOUT plan=true: that switches the child agent back to execution mode, and its
+final result is reported back to you when the work finishes. Sending the
+approval with plan=true keeps the child stuck in plan mode and is incorrect.
+
+If the user asks the ACP agent to ask them questions, preserve that intent in
+the message you send. Do not rewrite it as "include/list the questions" or ask
+the ACP agent to put questions in prose. In ACP plan mode, the child agent can
+either publish a structured plan or ask structured clarifying questions; Jaz
+renders that ACP state directly. When the child agent asks clarifying
+questions, the user already sees them as an interactive question card — never
+restate, paraphrase, or invent your own version of the questions in your
+reply. Say only that the agent has questions waiting above and stop.
 {{ range .Sections }}
 
 ## {{ .Name }}

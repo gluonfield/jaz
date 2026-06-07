@@ -3,7 +3,7 @@ package storage
 import (
 	"time"
 
-	"github.com/wins/jaz/backend/internal/provider"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 )
 
 const (
@@ -16,6 +16,19 @@ const (
 	StatusRunning = "running"
 	StatusError   = "error"
 )
+
+func SessionStatusForACPState(state string) string {
+	switch state {
+	case "starting", "running":
+		return StatusRunning
+	case "idle", "cancelled":
+		return StatusIdle
+	case "failed":
+		return StatusError
+	default:
+		return ""
+	}
+}
 
 type RuntimeRef struct {
 	Type      string `json:"type"`
@@ -37,6 +50,7 @@ type Session struct {
 	Title           string      `json:"title,omitempty"`
 	ParentID        string      `json:"parent_id,omitempty"`
 	Status          string      `json:"status"`
+	Error           string      `json:"error,omitempty"`
 	Runtime         string      `json:"runtime"`
 	RuntimeRef      *RuntimeRef `json:"runtime_ref,omitempty"`
 	ModelProvider   string      `json:"model_provider,omitempty"`
@@ -75,6 +89,28 @@ type ActivityEntry struct {
 	At     time.Time `json:"at"`
 }
 
+type ACPState struct {
+	ID            string                        `json:"id"`
+	Slug          string                        `json:"slug"`
+	Title         string                        `json:"title,omitempty"`
+	ParentID      string                        `json:"parent_id,omitempty"`
+	ACPAgent      string                        `json:"acp_agent"`
+	ACPSession    string                        `json:"acp_session"`
+	Cwd           string                        `json:"cwd,omitempty"`
+	State         string                        `json:"state"`
+	StopReason    string                        `json:"stop_reason,omitempty"`
+	Assistant     string                        `json:"assistant,omitempty"`
+	Thought       string                        `json:"thought,omitempty"`
+	Plan          []sessionevents.ACPPlanEntry  `json:"plan,omitempty"`
+	ToolCalls     []sessionevents.ACPToolCall   `json:"tool_calls,omitempty"`
+	Permissions   []sessionevents.ACPPermission `json:"permissions,omitempty"`
+	Modes         sessionevents.ACPModeState    `json:"modes,omitempty"`
+	Error         string                        `json:"error,omitempty"`
+	ParentVisible bool                          `json:"parent_visible,omitempty"`
+	CreatedAt     time.Time                     `json:"created_at"`
+	UpdatedAt     time.Time                     `json:"updated_at"`
+}
+
 type CreateSession struct {
 	Slug       string
 	Title      string
@@ -90,23 +126,6 @@ type SessionFilter struct {
 	Runtime         string
 	IncludeChildren bool
 	// Archived selects only archived sessions; by default they are excluded.
-	Archived        bool
-	Limit           int
-}
-
-type Store interface {
-	NewSessionID() string
-	CreateSession(input CreateSession) (Session, error)
-	EnsureSession(id string) error
-	LoadSession(ref string) (Session, error)
-	SaveSession(session Session) error
-	SetArchived(id string, archived bool) error
-	ListSessions(filter SessionFilter) ([]Session, error)
-	LastRootSession() (Session, error)
-	LoadMessages(id string) ([]provider.Message, error)
-	SaveMessages(id string, messages []provider.Message) error
-	AppendMessages(id string, messages ...provider.Message) error
-	LoadActivity(id string) ([]ActivityEntry, error)
-	SaveActivity(id string, activity []ActivityEntry) error
-	UpsertActivity(id string, entry ActivityEntry) error
+	Archived bool
+	Limit    int
 }

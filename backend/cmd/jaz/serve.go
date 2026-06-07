@@ -19,6 +19,7 @@ import (
 	"github.com/wins/jaz/backend/internal/sessionlock"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	exectool "github.com/wins/jaz/backend/internal/tools/exec"
+	"github.com/wins/jaz/backend/internal/voice"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxevent"
 )
@@ -42,6 +43,7 @@ func runServe(args []string) error {
 			sessionevents.New,
 			app.NewToolRegistry,
 			app.NewProvider,
+			app.NewVoice,
 			app.NewAgent,
 		),
 		fx.Invoke(
@@ -121,11 +123,13 @@ func startServer(
 	events *sessionevents.Bus,
 	systemPrompt app.SystemPrompt,
 	workspace app.Workspace,
+	stt voice.STT,
+	tts voice.TTS,
 	opts serveOptions,
 ) {
 	srv := &http.Server{
 		Addr:    opts.Addr,
-		Handler: (&server.Server{Agent: a, Store: store, ACP: manager, Locks: locks, Events: events, SystemPrompt: string(systemPrompt), Root: store.RootDir()}).Handler(),
+		Handler: (&server.Server{Agent: a, Store: store, ACP: manager, Locks: locks, Events: events, STT: stt, TTS: tts, SystemPrompt: string(systemPrompt), Root: store.RootDir()}).Handler(),
 	}
 	lc.Append(fx.Hook{
 		OnStart: func(context.Context) error {

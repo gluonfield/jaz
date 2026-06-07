@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -15,6 +14,7 @@ import (
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/wins/jaz/backend/internal/provider"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -30,14 +30,16 @@ type Store interface {
 	CreateSession(storage.CreateSession) (storage.Session, error)
 	LoadSession(string) (storage.Session, error)
 	SaveSession(storage.Session) error
-	AppendMessages(string, ...provider.Message) error
-	UpsertActivity(string, storage.ActivityEntry) error
+	storage.MessageAppender
+	storage.SessionEventAppender
+	storage.ActivityUpserter
 }
 
 type Manager struct {
-	cfg   Config
-	store Store
-	Done  func(context.Context, Job)
+	cfg    Config
+	store  Store
+	Done   func(context.Context, Job)
+	Events *sessionevents.Bus
 
 	mu           sync.RWMutex
 	jobsByID     map[string]*Job
@@ -47,6 +49,10 @@ type Manager struct {
 	peersByID    map[string]*jsonrpc.Peer
 	cancelByID   map[string]context.CancelFunc
 	serveErrByID map[string]error
+
+	permissionSeq     uint64
+	pendingPermission map[string]*pendingPermission
+	permissionMu      sync.Mutex
 }
 
 type SpawnRequest struct {
@@ -57,9 +63,22 @@ type SpawnRequest struct {
 }
 
 type SendRequest struct {
-	Session    string
-	Message    string
-	Completion CompletionMode
+	Session       string
+	Message       string
+	Completion    CompletionMode
+	Interactive   bool
+	PlanRequested bool
+	ParentVisible bool
+}
+
+type InteractiveAnswer struct {
+	Session       string
+	RequestID     string
+	OptionID      string
+	Text          string
+	Answers       map[string]InteractiveAnswerValue
+	PlanRequested bool
+	ParentVisible bool
 }
 
 type WaitRequest struct {
@@ -81,15 +100,16 @@ func NewManager(store Store, cfg Config) *Manager {
 	}
 	cfg.SystemPrompt = strings.TrimSpace(cfg.SystemPrompt)
 	return &Manager{
-		cfg:          cfg,
-		store:        store,
-		jobsByID:     make(map[string]*Job),
-		jobsBySlug:   make(map[string]*Job),
-		jobsByACP:    make(map[string]*Job),
-		connsByID:    make(map[string]jsonrpc.MessageConn),
-		peersByID:    make(map[string]*jsonrpc.Peer),
-		cancelByID:   make(map[string]context.CancelFunc),
-		serveErrByID: make(map[string]error),
+		cfg:               cfg,
+		store:             store,
+		jobsByID:          make(map[string]*Job),
+		jobsBySlug:        make(map[string]*Job),
+		jobsByACP:         make(map[string]*Job),
+		connsByID:         make(map[string]jsonrpc.MessageConn),
+		peersByID:         make(map[string]*jsonrpc.Peer),
+		cancelByID:        make(map[string]context.CancelFunc),
+		serveErrByID:      make(map[string]error),
+		pendingPermission: make(map[string]*pendingPermission),
 	}
 }
 
@@ -177,7 +197,8 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		cancel()
 		return SpawnResult{}, fmt.Errorf("acp session/new returned empty session id")
 	}
-	if err := requireFullAccessMode(ctx, peer, acpSession); err != nil {
+	modes, err := m.initializeModeState(ctx, peer, acpSession)
+	if err != nil {
 		_ = peer.Close()
 		cancel()
 		return SpawnResult{}, err
@@ -208,11 +229,13 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		ACPSession: string(acpSession.SessionID),
 		Cwd:        absCwd,
 		State:      StateIdle,
+		Modes:      modes,
 		CreatedAt:  session.CreatedAt,
 		UpdatedAt:  time.Now().UTC(),
 		toolByID:   make(map[string]ToolCallSnapshot),
 	}
 	m.addJob(job, conn, peer, cancel)
+	m.saveACPState(job.Snapshot())
 
 	return SpawnResult{
 		Status:    "created",
@@ -223,30 +246,24 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	}, nil
 }
 
-func requireFullAccessMode(ctx context.Context, peer *jsonrpc.Peer, session acpschema.NewSessionResponse) error {
+func (m *Manager) initializeModeState(ctx context.Context, peer *jsonrpc.Peer, session acpschema.NewSessionResponse) (ModeState, error) {
+	modes := modeStateFromACP(session.Modes)
 	if session.Modes == nil {
-		return nil
+		return modes, nil
 	}
-	if slices.Contains(fullAccessModes, string(session.Modes.CurrentModeID)) {
-		return nil
+	if modes.ExecutionModeID == "" {
+		modes.ExecutionModeID = modes.CurrentModeID
 	}
-	for _, id := range fullAccessModes {
-		for _, mode := range session.Modes.AvailableModes {
-			if string(mode.ID) != id {
-				continue
+	if preferred := preferredExecutionMode(session.Modes.AvailableModes); preferred != "" {
+		modes.ExecutionModeID = preferred
+		if modes.CurrentModeID != preferred {
+			if err := m.setSessionMode(ctx, peer, session.SessionID, preferred); err != nil {
+				return modes, err
 			}
-			_, err := peer.Call(ctx, acpschema.AgentMethodSessionSetMode, acpschema.SetSessionModeRequest{
-				SessionID: session.SessionID,
-				ModeID:    mode.ID,
-			})
-			if err != nil {
-				return fmt.Errorf("set acp session %q mode: %w", id, err)
-			}
-			return nil
+			modes.CurrentModeID = preferred
 		}
 	}
-	return fmt.Errorf("acp session exposes no full-access mode (looked for %s); current mode is %q",
-		strings.Join(fullAccessModes, ", "), session.Modes.CurrentModeID)
+	return modes, nil
 }
 
 func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {
@@ -263,8 +280,12 @@ func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {
 	if state == StateRunning || state == StateStarting {
 		return Job{}, fmt.Errorf("session %s is already running", job.Slug)
 	}
+	if err := m.prepareModeForTurn(ctx, job, req.PlanRequested); err != nil {
+		return Job{}, err
+	}
 	_ = m.store.AppendMessages(job.ID, provider.UserMessage(req.Message))
-	job.startTurn(req.Completion)
+	job.startTurn(req.Completion, req.Interactive, req.PlanRequested, req.ParentVisible)
+	m.publishACP(job.Snapshot())
 	go m.runPrompt(context.Background(), job, req.Message)
 	return job.Snapshot(), nil
 }
@@ -403,7 +424,7 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string) {
 	done := job.done
 	job.mu.RUnlock()
 	if done == nil {
-		done = job.startTurn(CompletionInline)
+		done = job.startTurn(CompletionInline, false, false, false)
 	}
 
 	peer := m.peer(job.ID)
@@ -437,6 +458,7 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string) {
 		state = StateCancelled
 	}
 	job.setState(state, stopReason, "")
+	m.publishACPStatus(job.Snapshot())
 	time.Sleep(50 * time.Millisecond)
 	m.appendAssistantMessage(job)
 	m.finishTurn(done, job)
@@ -445,16 +467,25 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string) {
 func (m *Manager) finishTurn(done chan struct{}, job *Job) {
 	job.mu.Lock()
 	completion := job.completion
+	planRequested := job.planRequested
+	parentVisible := job.ParentVisible
 	job.completion = CompletionInline
+	job.interactive = false
+	job.planRequested = false
 	job.mu.Unlock()
+	m.cancelPendingPermissions(job.ID)
 	close(done)
-	if completion.propagates() && m.Done != nil {
+	if completion.propagates() && parentVisible && !planRequested && m.Done != nil {
 		go m.Done(context.Background(), job.Snapshot())
 	}
 }
 
 func (m *Manager) appendAssistantMessage(job *Job) {
 	job.mu.Lock()
+	if job.planRequested {
+		job.mu.Unlock()
+		return
+	}
 	if job.savedAssistantLen >= len(job.Assistant) {
 		job.mu.Unlock()
 		return
@@ -497,6 +528,12 @@ func (m *Manager) jobByACP(acpSessionID string) *Job {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.jobsByACP[acpSessionID]
+}
+
+func (m *Manager) jobByID(id string) *Job {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.jobsByID[id]
 }
 
 func (m *Manager) peer(id string) *jsonrpc.Peer {

@@ -1,4 +1,4 @@
-import { Outlet, createRootRoute, useRouterState } from '@tanstack/react-router'
+import { Outlet, createRootRoute, useNavigate, useRouterState } from '@tanstack/react-router'
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useEffect, useState } from 'react'
@@ -14,6 +14,7 @@ const SIDEBAR_PREF_KEY = 'jaz.sidebar'
 
 function RootLayout() {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(
     () => localStorage.getItem(SIDEBAR_PREF_KEY) !== 'closed',
   )
@@ -23,17 +24,22 @@ function RootLayout() {
   }, [sidebarOpen])
 
   // Cmd+S toggles the sidebar — unless something closer (the agent-file
-  // editor's save keymap) already claimed the event.
+  // editor's save keymap) already claimed the event. Cmd+N starts a thread.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 's' && !e.defaultPrevented) {
+      if (!(e.metaKey || e.ctrlKey) || e.defaultPrevented) return
+      if (e.key === 's') {
         e.preventDefault()
         setSidebarOpen((open) => !open)
+      }
+      if (e.key === 'n') {
+        e.preventDefault()
+        navigate({ to: '/new' })
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
+  }, [navigate])
 
   return (
     <ToastProvider>

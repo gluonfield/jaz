@@ -5,7 +5,20 @@ import type { SessionEvent } from './types'
 // EventSource routes named events to addEventListener(type), NOT onmessage,
 // so every type we care about must be registered explicitly. onmessage stays
 // as a catch-all for unnamed frames.
-const KNOWN_EVENT_TYPES = ['assistant', 'user', 'tool', 'tool_result', 'async', 'error', 'acp']
+const KNOWN_EVENT_TYPES = [
+  'assistant',
+  'user',
+  'tool',
+  'tool_result',
+  'async',
+  'error',
+  'acp',
+  'acp_message',
+  'acp_thought',
+  'acp_tool',
+  'permission_request',
+  'permission_response',
+]
 
 export function openSessionEvents(
   sessionId: string,

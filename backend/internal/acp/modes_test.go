@@ -1,8 +1,6 @@
 package acp
 
 import (
-	"context"
-	"strings"
 	"testing"
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
@@ -10,27 +8,27 @@ import (
 
 // Agents name their unattended mode differently (Codex "full-access", Claude
 // Code "bypassPermissions", Gemini CLI "yolo"); all must be accepted as-is.
-func TestRequireFullAccessModeAcceptsAgentFlavors(t *testing.T) {
+func TestPreferredExecutionModeAcceptsAgentFlavors(t *testing.T) {
 	for _, id := range fullAccessModes {
-		session := acpschema.NewSessionResponse{Modes: &acpschema.SessionModeState{
-			CurrentModeID: acpschema.SessionModeID(id),
-		}}
-		if err := requireFullAccessMode(context.Background(), nil, session); err != nil {
-			t.Fatalf("current mode %q should be accepted: %v", id, err)
+		got := preferredExecutionMode([]acpschema.SessionMode{{ID: acpschema.SessionModeID(id)}})
+		if got != id {
+			t.Fatalf("preferredExecutionMode(%q) = %q", id, got)
 		}
 	}
 }
 
-func TestRequireFullAccessModeRejectsWhenUnavailable(t *testing.T) {
-	session := acpschema.NewSessionResponse{Modes: &acpschema.SessionModeState{
-		CurrentModeID:  "default",
-		AvailableModes: []acpschema.SessionMode{{ID: "default"}, {ID: "plan"}},
-	}}
-	err := requireFullAccessMode(context.Background(), nil, session)
-	if err == nil {
-		t.Fatal("want error when no full-access-equivalent mode is offered")
+func TestModeStateDetectsPlanWithoutFullAccess(t *testing.T) {
+	state := modeStateFromACP(&acpschema.SessionModeState{
+		CurrentModeID: "default",
+		AvailableModes: []acpschema.SessionMode{
+			{ID: "default", Name: "Default"},
+			{ID: "plan", Name: "Plan"},
+		},
+	})
+	if state.PlanModeID != "plan" {
+		t.Fatalf("PlanModeID = %q", state.PlanModeID)
 	}
-	if !strings.Contains(err.Error(), "bypassPermissions") {
-		t.Fatalf("error should name the accepted modes, got: %v", err)
+	if state.ExecutionModeID != "default" {
+		t.Fatalf("ExecutionModeID = %q", state.ExecutionModeID)
 	}
 }

@@ -7,31 +7,93 @@ import (
 )
 
 type Event struct {
-	SessionID string    `json:"session_id"`
-	Type      string    `json:"type"`
-	Content   string    `json:"content,omitempty"`
-	ACP       *ACPEvent `json:"acp,omitempty"`
-	At        time.Time `json:"at"`
+	Seq        int64          `json:"seq,omitempty"`
+	SessionID  string         `json:"session_id"`
+	Type       string         `json:"type"`
+	Content    string         `json:"content,omitempty"`
+	ACP        *ACPEvent      `json:"acp,omitempty"`
+	Permission *ACPPermission `json:"permission,omitempty"`
+	At         time.Time      `json:"at"`
 }
 
 type ACPEvent struct {
-	ID         string        `json:"id"`
-	Slug       string        `json:"slug"`
-	Title      string        `json:"title,omitempty"`
-	ParentID   string        `json:"parent_id,omitempty"`
-	Agent      string        `json:"agent"`
-	SessionID  string        `json:"session_id"`
-	State      string        `json:"state"`
-	StopReason string        `json:"stop_reason,omitempty"`
-	Assistant  string        `json:"assistant,omitempty"`
-	Error      string        `json:"error,omitempty"`
-	ToolCalls  []ACPToolCall `json:"tool_calls,omitempty"`
+	ID          string          `json:"id"`
+	Slug        string          `json:"slug"`
+	Title       string          `json:"title,omitempty"`
+	ParentID    string          `json:"parent_id,omitempty"`
+	Agent       string          `json:"agent"`
+	SessionID   string          `json:"session_id"`
+	State       string          `json:"state"`
+	StopReason  string          `json:"stop_reason,omitempty"`
+	Assistant   string          `json:"assistant,omitempty"`
+	Thought     string          `json:"thought,omitempty"`
+	Error       string          `json:"error,omitempty"`
+	Modes       ACPModeState    `json:"modes,omitempty"`
+	Plan        []ACPPlanEntry  `json:"plan,omitempty"`
+	ToolCalls   []ACPToolCall   `json:"tool_calls,omitempty"`
+	Permissions []ACPPermission `json:"permissions,omitempty"`
+}
+
+type ACPModeState struct {
+	CurrentModeID   string    `json:"current_mode_id,omitempty"`
+	ExecutionModeID string    `json:"execution_mode_id,omitempty"`
+	PlanModeID      string    `json:"plan_mode_id,omitempty"`
+	AvailableModes  []ACPMode `json:"available_modes,omitempty"`
+}
+
+type ACPMode struct {
+	ID          string `json:"id"`
+	Name        string `json:"name,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+type ACPPlanEntry struct {
+	Content  string `json:"content"`
+	Status   string `json:"status,omitempty"`
+	Priority string `json:"priority,omitempty"`
 }
 
 type ACPToolCall struct {
 	ID     string `json:"id"`
 	Title  string `json:"title,omitempty"`
 	Status string `json:"status,omitempty"`
+}
+
+type ACPPermission struct {
+	ID               string                  `json:"id"`
+	SessionID        string                  `json:"session_id,omitempty"`
+	Title            string                  `json:"title,omitempty"`
+	ToolCallID       string                  `json:"tool_call_id,omitempty"`
+	Options          []ACPPermissionOption   `json:"options,omitempty"`
+	Locations        []ACPPermissionLocation `json:"locations,omitempty"`
+	Questions        []ACPQuestion           `json:"questions,omitempty"`
+	Status           string                  `json:"status,omitempty"`
+	SelectedOptionID string                  `json:"selected_option_id,omitempty"`
+}
+
+type ACPQuestion struct {
+	ID       string              `json:"id"`
+	Header   string              `json:"header,omitempty"`
+	Question string              `json:"question"`
+	IsOther  bool                `json:"is_other,omitempty"`
+	IsSecret bool                `json:"is_secret,omitempty"`
+	Options  []ACPQuestionOption `json:"options,omitempty"`
+}
+
+type ACPQuestionOption struct {
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+}
+
+type ACPPermissionOption struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Kind string `json:"kind,omitempty"`
+}
+
+type ACPPermissionLocation struct {
+	Path string `json:"path"`
+	Line int    `json:"line,omitempty"`
 }
 
 type Bus struct {

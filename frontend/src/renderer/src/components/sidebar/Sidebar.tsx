@@ -8,7 +8,7 @@ import { SessionRow } from './SessionRow'
 
 function SectionLabel({ children }: { children: string }) {
   return (
-    <p className="px-2.5 pb-1.5 text-[11px] font-semibold tracking-wide text-ink-3">{children}</p>
+    <p className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3">{children}</p>
   )
 }
 
@@ -16,7 +16,7 @@ function PageLink({ to, label, hint }: { to: string; label: string; hint?: strin
   return (
     <Link
       to={to}
-      className="flex items-baseline gap-2 rounded-control px-2.5 py-2 text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+      className="flex items-baseline gap-2 rounded-control px-2 py-1.5 text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
       activeProps={{ className: 'bg-primary-soft! text-ink! font-medium' }}
     >
       <span className="flex-1">{label}</span>
@@ -34,14 +34,18 @@ export function Sidebar() {
       {/* draggable titlebar strip; traffic lights live here on macOS */}
       <div className="titlebar-drag h-[52px] shrink-0" />
 
-      <nav className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-3 pt-4">
+      <nav className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-3 pt-3">
         <Link
           to="/new"
-          className="flex items-center gap-2 rounded-control px-2.5 py-2 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2"
+          className="group flex items-center gap-2 rounded-control px-2 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2"
           activeProps={{ className: 'bg-primary-soft!' }}
         >
           <SquarePen size={15} className="text-ink-2" />
-          New session
+          <span className="flex-1">New thread</span>
+          <span className="flex items-center gap-0.5 text-[10px] text-ink-3">
+            <kbd className="rounded border border-border bg-bg px-1 font-sans">⌘</kbd>
+            <kbd className="rounded border border-border bg-bg px-1 font-sans">N</kbd>
+          </span>
         </Link>
 
         <section>
@@ -71,7 +75,7 @@ export function Sidebar() {
               {sessions.data.length > SIDEBAR_SESSION_LIMIT ? (
                 <Link
                   to="/sessions"
-                  className="mt-1 rounded-control px-2.5 py-1.5 text-[13px] text-primary transition-colors duration-150 hover:bg-surface-2"
+                  className="mt-1 rounded-control px-2 py-1 text-[13px] text-primary transition-colors duration-150 hover:bg-surface-2"
                   activeOptions={{ exact: true }}
                   activeProps={{ className: 'bg-primary-soft!' }}
                 >

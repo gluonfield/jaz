@@ -18,18 +18,22 @@ export interface AgentStreamEvent {
 export async function streamSessionMessage({
   sessionId,
   message,
+  planRequested = false,
+  voice = false,
   signal,
   onEvent,
 }: {
   sessionId: string
   message: string
+  planRequested?: boolean
+  voice?: boolean
   signal: AbortSignal
   onEvent: (event: AgentStreamEvent) => void
 }): Promise<void> {
   const res = await fetch(`${apiBaseUrl()}/v1/sessions/${sessionId}/messages:stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, plan_requested: planRequested, voice }),
     signal,
   })
   if (!res.ok || !res.body) {

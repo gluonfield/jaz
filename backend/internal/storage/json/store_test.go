@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/provider"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -46,6 +47,56 @@ func TestSessionsHaveStableUniqueSlugsAndRootListing(t *testing.T) {
 	}
 	if resolved.ID != second.ID {
 		t.Fatalf("resolved %s, want %s", resolved.ID, second.ID)
+	}
+}
+
+func TestSaveACPStateUpdatesSessionStatus(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "acp", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.SaveACPState(session.ID, storage.ACPState{State: "running"}); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Status != storage.StatusRunning {
+		t.Fatalf("status = %q, want %q", loaded.Status, storage.StatusRunning)
+	}
+
+	if err := store.SaveACPState(session.ID, storage.ACPState{State: "failed", Error: "codex failed"}); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err = store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Status != storage.StatusError {
+		t.Fatalf("status = %q, want %q", loaded.Status, storage.StatusError)
+	}
+	if loaded.Error != "codex failed" {
+		t.Fatalf("error = %q, want %q", loaded.Error, "codex failed")
+	}
+
+	if err := store.SaveACPState(session.ID, storage.ACPState{State: "idle"}); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err = store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Status != storage.StatusIdle {
+		t.Fatalf("status = %q, want %q", loaded.Status, storage.StatusIdle)
+	}
+	if loaded.Error != "" {
+		t.Fatalf("error = %q, want empty", loaded.Error)
 	}
 }
 
@@ -141,5 +192,46 @@ func TestLoadMessagesFallsBackToLegacyJSON(t *testing.T) {
 	}
 	if len(loaded) != 2 || provider.MessageContent(loaded[1]) != "upgraded" {
 		t.Fatalf("upgraded messages = %#v", loaded)
+	}
+}
+
+func TestSessionEventsUseJSONL(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "events"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.AppendSessionEvents(session.ID,
+		sessionevents.Event{Type: "acp_message", Content: "working"},
+		sessionevents.Event{
+			Type: "acp_tool",
+			ACP: &sessionevents.ACPEvent{
+				ID:        session.ID,
+				ToolCalls: []sessionevents.ACPToolCall{{ID: "tool-1", Title: "Read file"}},
+			},
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded) != 2 {
+		t.Fatalf("events = %d, want 2", len(loaded))
+	}
+	if loaded[0].Seq != 1 || loaded[0].SessionID != session.ID || loaded[0].Content != "working" {
+		t.Fatalf("first event = %#v", loaded[0])
+	}
+	if loaded[1].Seq != 2 || loaded[1].ACP == nil || loaded[1].ACP.ToolCalls[0].Title != "Read file" {
+		t.Fatalf("second event = %#v", loaded[1])
+	}
+	if loaded[0].At.IsZero() || loaded[1].At.IsZero() {
+		t.Fatalf("events should be timestamped: %#v", loaded)
 	}
 }

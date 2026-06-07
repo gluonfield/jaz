@@ -6,7 +6,7 @@ require (
 	charm.land/bubbles/v2 v2.1.0
 	charm.land/bubbletea/v2 v2.0.7
 	charm.land/lipgloss/v2 v2.0.3
-	github.com/gluonfield/acp-transport v0.0.0
+	github.com/gluonfield/acp-transport v0.0.0-20260607112912-bd05483092e7
 	github.com/invopop/jsonschema v0.14.0
 	github.com/joho/godotenv v1.5.1
 	github.com/openai/openai-go/v3 v3.37.0
@@ -14,8 +14,6 @@ require (
 	go.uber.org/fx v1.24.0
 	modernc.org/sqlite v1.52.0
 )
-
-replace github.com/gluonfield/acp-transport => /Users/wins/Projects/personal/jarvis/acp-transport
 
 require (
 	github.com/atotto/clipboard v0.1.4 // indirect

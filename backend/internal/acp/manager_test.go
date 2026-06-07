@@ -11,6 +11,7 @@ import (
 	"github.com/gluonfield/acp-transport/stdio"
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/provider"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
@@ -52,6 +53,13 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	if spawned.State != acp.StateIdle {
 		t.Fatalf("spawn state = %s, want %s", spawned.State, acp.StateIdle)
 	}
+	status, err := manager.Status(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Modes.PlanModeID != "plan" || status.Modes.ExecutionModeID != "full-access" {
+		t.Fatalf("unexpected modes %#v", status.Modes)
+	}
 	messages, err := store.LoadMessages(spawned.SessionID)
 	if err != nil {
 		t.Fatal(err)
@@ -88,8 +96,15 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(messages) != 2 || provider.MessageContent(messages[1]) != "hello from fake agent" {
+	if len(messages) != 1 || provider.MessageContent(messages[0]) != "say hello" {
 		t.Fatalf("unexpected messages %#v", messages)
+	}
+	events, err := store.LoadSessionEvents(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasACPMessage(events, "hello from fake agent") || !hasACPTool(events, "whoami") {
+		t.Fatalf("missing ACP transcript events %#v", events)
 	}
 	select {
 	case job := <-done:
@@ -104,7 +119,7 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 		t.Fatalf("unexpected activity %#v", activity)
 	}
 
-	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.Slug, Message: "again", Completion: acp.CompletionAsync}); err != nil {
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.Slug, Message: "again", Completion: acp.CompletionAsync, ParentVisible: true}); err != nil {
 		t.Fatal(err)
 	}
 	job, err = manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
@@ -118,8 +133,25 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(messages) != 4 || provider.MessageContent(messages[3]) != "hello from fake agent" {
+	if len(messages) != 2 || provider.MessageContent(messages[1]) != "again" {
 		t.Fatalf("unexpected follow-up messages %#v", messages)
+	}
+	events, err = store.LoadSessionEvents(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if countACPMessage(events, "hello from fake agent") < 2 {
+		t.Fatalf("missing follow-up ACP transcript event %#v", events)
+	}
+	parentEvents, err := store.LoadSessionEvents(parent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasACPMessage(parentEvents, "hello from fake agent") || hasACPTool(parentEvents, "whoami") {
+		t.Fatalf("parent leaked child transcript details %#v", parentEvents)
+	}
+	if !hasACPStatus(parentEvents, spawned.SessionID) {
+		t.Fatalf("parent missing child status surface %#v", parentEvents)
 	}
 	select {
 	case job := <-done:
@@ -129,6 +161,68 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("async task did not propagate completion")
 	}
+
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.Slug, Message: "make a plan", Completion: acp.CompletionInline, PlanRequested: true}); err != nil {
+		t.Fatal(err)
+	}
+	job, err = manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(job.Plan) != 2 || job.Plan[0].Status != "completed" || job.Plan[1].Status != "in_progress" {
+		t.Fatalf("unexpected plan %#v", job.Plan)
+	}
+	if job.Modes.CurrentModeID != "plan" {
+		t.Fatalf("current mode = %q, want plan", job.Modes.CurrentModeID)
+	}
+
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.Slug, Message: "approved", Completion: acp.CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
+	job, err = manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Modes.CurrentModeID != "full-access" {
+		t.Fatalf("current mode after approval = %q, want full-access", job.Modes.CurrentModeID)
+	}
+}
+
+func hasACPMessage(events []sessionevents.Event, content string) bool {
+	return countACPMessage(events, content) > 0
+}
+
+func countACPMessage(events []sessionevents.Event, content string) int {
+	count := 0
+	for _, event := range events {
+		if event.Type == "acp_message" && event.Content == content {
+			count++
+		}
+	}
+	return count
+}
+
+func hasACPTool(events []sessionevents.Event, title string) bool {
+	for _, event := range events {
+		if event.Type != "acp_tool" || event.ACP == nil {
+			continue
+		}
+		for _, call := range event.ACP.ToolCalls {
+			if call.Title == title {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func hasACPStatus(events []sessionevents.Event, id string) bool {
+	for _, event := range events {
+		if event.Type == "acp" && event.ACP != nil && event.ACP.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 func TestFakeACPAgentProcess(t *testing.T) {
@@ -136,6 +230,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 		return
 	}
 	conn := stdio.New(os.Stdin, os.Stdout)
+	currentMode := "auto"
 	for {
 		msg, err := conn.Receive(context.Background())
 		if err != nil {
@@ -174,6 +269,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 					"availableModes": []map[string]any{
 						{"id": "auto", "name": "Auto"},
 						{"id": "full-access", "name": "Full Access"},
+						{"id": "plan", "name": "Plan"},
 					},
 				},
 			})
@@ -181,13 +277,28 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			var req struct {
 				ModeID string `json:"modeId"`
 			}
-			if err := json.Unmarshal(msg.Params, &req); err != nil || req.ModeID != "full-access" {
-				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("expected full-access mode", nil))
+			if err := json.Unmarshal(msg.Params, &req); err != nil || (req.ModeID != "full-access" && req.ModeID != "plan") {
+				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("expected supported mode", nil))
 				_ = conn.Send(context.Background(), resp)
 				continue
 			}
+			currentMode = req.ModeID
 			sendResult(conn, msg, map[string]any{})
 		case "session/prompt":
+			if currentMode == "plan" {
+				notify(conn, "session/update", map[string]any{
+					"sessionId": "fake-session",
+					"update": map[string]any{
+						"sessionUpdate": "plan",
+						"entries": []map[string]any{
+							{"content": "Inspect request", "priority": "high", "status": "completed"},
+							{"content": "Wait for approval", "priority": "medium", "status": "in_progress"},
+						},
+					},
+				})
+				sendResult(conn, msg, map[string]any{"stopReason": "end_turn"})
+				continue
+			}
 			notify(conn, "session/update", map[string]any{
 				"sessionId": "fake-session",
 				"update": map[string]any{

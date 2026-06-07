@@ -11,6 +11,26 @@ export function setSessionArchived(id: string, archived: boolean): Promise<Sessi
   return post<Session>(`/v1/sessions/${id}/${archived ? 'archive' : 'unarchive'}`)
 }
 
+// Stops the in-flight turn server-side; closing the stream alone no longer
+// cancels it (turns survive page refreshes).
+export function cancelSession(id: string): Promise<{ ok: boolean }> {
+  return post<{ ok: boolean }>(`/v1/sessions/${id}/cancel`)
+}
+
+export function answerSessionInteractiveResponse(
+  id: string,
+  input: {
+    request_id?: string
+    option_id?: string
+    text?: string
+    plan_requested?: boolean
+    parent_visible?: boolean
+    answers?: Record<string, { answers: string[] }>
+  },
+): Promise<{ ok: boolean }> {
+  return post<{ ok: boolean }>(`/v1/sessions/${id}/interactive-response`, input)
+}
+
 export const archivedSessionsQuery = queryOptions({
   queryKey: keys.archivedSessions,
   queryFn: async () => {
@@ -117,6 +137,7 @@ export const sessionMessagesQuery = (id: string) =>
         ...data,
         messages: data.messages ?? [],
         activity: data.activity ?? [],
+        events: data.events ?? [],
       }
     },
   })

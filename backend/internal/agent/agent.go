@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ const (
 	StreamReasoning  = "reasoning"
 	StreamToolCall   = "tool_call"
 	StreamToolResult = "tool_result"
+	StreamTurn       = "turn"
 	StreamError      = "error"
 	StreamDone       = "done"
 )
@@ -164,6 +166,9 @@ func (a *Agent) run(ctx context.Context, req provider.Request, out chan<- Stream
 
 		messages = append(messages, provider.AssistantMessage(assistantText.String(), calls))
 		recordReasoning(reasoningByMessage, len(messages)-1, reasoningText.String())
+		// Snapshot before executing tools so the round is persisted with the
+		// time the model produced it, not when its tools finished.
+		a.emit(out, snapshotEvent(messages, reasoningByMessage))
 		for _, call := range calls {
 			result := a.executeTool(ctx, call)
 			messages = append(messages, provider.ToolMessage(result, provider.ToolCallID(call)))
@@ -173,6 +178,7 @@ func (a *Agent) run(ctx context.Context, req provider.Request, out chan<- Stream
 				Result:   result,
 			})
 		}
+		a.emit(out, snapshotEvent(messages, reasoningByMessage))
 	}
 
 	errMsg := fmt.Sprintf("stopped after %d tool turns", a.MaxTurns)
@@ -182,6 +188,18 @@ func (a *Agent) run(ctx context.Context, req provider.Request, out chan<- Stream
 func recordReasoning(out map[int]string, index int, reasoning string) {
 	if strings.TrimSpace(reasoning) != "" {
 		out[index] = reasoning
+	}
+}
+
+// snapshotEvent copies the in-progress message list so the consumer can
+// persist it while the run keeps appending.
+func snapshotEvent(messages []provider.Message, reasoningByMessage map[int]string) StreamEvent {
+	reasoning := make(map[int]string, len(reasoningByMessage))
+	maps.Copy(reasoning, reasoningByMessage)
+	return StreamEvent{
+		Type:               StreamTurn,
+		Messages:           append([]provider.Message(nil), messages...),
+		ReasoningByMessage: reasoning,
 	}
 }
 
