@@ -267,6 +267,21 @@ func (s *Store) SaveMessages(id string, messages []provider.Message) error {
 	return nil
 }
 
+func (s *Store) SaveMessagesWithReasoning(id string, messages []provider.Message, reasoningByMessage map[int]string) error {
+	records, err := recordsFromProviderMessagesWithReasoning(messages, reasoningByMessage, time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	err = s.replaceMessagesLocked(id, records)
+	s.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	s.mirrorMessages(id, messages)
+	return nil
+}
+
 func (s *Store) AppendMessages(id string, messages ...provider.Message) error {
 	if len(messages) == 0 {
 		return nil

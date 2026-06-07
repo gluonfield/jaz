@@ -48,7 +48,7 @@ function RootLayout() {
         </motion.div>
 
         <main className="flex min-w-0 flex-1 flex-col">
-          <div className="titlebar-drag flex h-[52px] shrink-0 items-center px-3">
+          <div className="titlebar-drag flex h-[52px] shrink-0 items-center gap-2 px-3">
             <button
               type="button"
               aria-label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
@@ -60,6 +60,8 @@ function RootLayout() {
             >
               {sidebarOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
             </button>
+            {/* slot routes portal into (e.g. the session runtime tag) */}
+            <div id="titlebar-slot" className="flex items-center" />
           </div>
           {/* light crossfade between routes; state-only, never blocking */}
           <motion.div

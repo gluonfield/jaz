@@ -52,6 +52,7 @@ export interface SessionMessages {
   session: Session
   messages: ChatMessage[]
   activity: ActivityEntry[]
+  acp_state?: string
 }
 
 export interface ACPToolCall {

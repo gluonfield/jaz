@@ -17,18 +17,23 @@ const (
 )
 
 func recordsFromProviderMessages(messages []provider.Message, start time.Time) ([]storage.Message, error) {
+	return recordsFromProviderMessagesWithReasoning(messages, nil, start)
+}
+
+func recordsFromProviderMessagesWithReasoning(messages []provider.Message, reasoningByMessage map[int]string, start time.Time) ([]storage.Message, error) {
 	records := make([]storage.Message, 0, len(messages))
 	for i := 0; i < len(messages); i++ {
 		msg := messages[i]
+		msgIndex := i
 		role := provider.MessageRole(msg)
 		switch role {
 		case "assistant":
 			calls := provider.MessageToolCalls(msg)
 			if len(calls) == 0 {
-				records = append(records, messageRecord(role, provider.MessageContent(msg), nil, start, len(records)+1))
+				records = append(records, messageRecord(role, provider.MessageContent(msg), textBlocks(provider.MessageContent(msg), reasoningByMessage[msgIndex]), start, len(records)+1))
 				continue
 			}
-			blocks := textBlocks(provider.MessageContent(msg), "")
+			blocks := textBlocks(provider.MessageContent(msg), reasoningByMessage[msgIndex])
 			for _, call := range calls {
 				i++
 				if i >= len(messages) {

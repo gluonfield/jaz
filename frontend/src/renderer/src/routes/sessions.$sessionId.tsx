@@ -1,9 +1,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { motion } from 'motion/react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Composer } from '@/components/session/Composer'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
+import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
+import { ThinkingBlock } from '@/components/session/ThinkingBlock'
 import { ToolCallCard } from '@/components/session/ToolCallCard'
 import { Transcript } from '@/components/session/Transcript'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -11,7 +14,6 @@ import { Skeleton, SkeletonRows } from '@/components/ui/Skeleton'
 import { sessionMessagesQuery } from '@/lib/api/sessions'
 import { streamSessionMessage } from '@/lib/api/stream'
 import type { SessionEvent } from '@/lib/api/types'
-import { fullTime } from '@/lib/format/time'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { takePendingMessage } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
@@ -24,6 +26,7 @@ export const Route = createFileRoute('/sessions/$sessionId')({
 // while it streams; replaced by the refetched server history on completion.
 interface LiveExchange {
   user: string
+  reasoning: string
   assistant: string
   tools: { key: string; name: string; args?: string; result?: string }[]
   error?: string
@@ -45,11 +48,14 @@ function SessionPage() {
   const [live, setLive] = useState<LiveExchange | null>(null)
   const [streaming, setStreaming] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
+  const sentPendingRef = useRef<string | null>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const nearBottom = useRef(true)
   const itemCount = (detail.data?.messages.length ?? 0) + events.data.length
-  const liveSize = live ? live.assistant.length + live.tools.length + (live.error?.length ?? 0) : 0
+  const liveSize = live
+    ? live.reasoning.length + live.assistant.length + live.tools.length + (live.error?.length ?? 0)
+    : 0
 
   // Stick to the bottom only when the reader is already there.
   useEffect(() => {
@@ -60,11 +66,11 @@ function SessionPage() {
   // Abandon an in-flight stream when leaving the session.
   useEffect(() => () => abortRef.current?.abort(), [sessionId])
 
-  const handleSend = (text: string) => {
+  const handleSend = useCallback((text: string) => {
     const controller = new AbortController()
     abortRef.current = controller
     nearBottom.current = true
-    setLive({ user: text, assistant: '', tools: [] })
+    setLive({ user: text, reasoning: '', assistant: '', tools: [] })
     setStreaming(true)
 
     streamSessionMessage({
@@ -77,6 +83,8 @@ function SessionPage() {
           switch (event.type) {
             case 'delta':
               return { ...prev, assistant: prev.assistant + (event.delta ?? '') }
+            case 'reasoning':
+              return { ...prev, reasoning: prev.reasoning + (event.reasoning ?? '') }
             case 'tool_call': {
               const name = event.tool_call?.function?.name ?? event.tool_name ?? 'tool'
               return {
@@ -127,15 +135,17 @@ function SessionPage() {
         queryClient.invalidateQueries({ queryKey: keys.allSessions })
         setLive((prev) => (prev?.error ? prev : null))
       })
-  }
+  }, [queryClient, sessionId])
 
-  // First message handed over from the New-session page: send it on arrival.
+  // First message handed over from the New-session page. Wait for the session
+  // detail query so StrictMode's initial effect cleanup cannot abort the send.
   useEffect(() => {
+    if (!detail.isSuccess || sentPendingRef.current === sessionId) return
     const pending = takePendingMessage(sessionId)
-    if (pending) handleSend(pending)
-    // handleSend is recreated per render; this only fires per session.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId])
+    if (!pending) return
+    sentPendingRef.current = sessionId
+    handleSend(pending)
+  }, [detail.isSuccess, handleSend, sessionId])
 
   if (detail.isPending) {
     return (
@@ -154,11 +164,19 @@ function SessionPage() {
     )
   }
 
-  const { messages, activity } = detail.data
+  const { session, messages, acp_state: acpState } = detail.data
+  const inactiveACP = session.runtime === 'acp' && acpState === 'not_running'
   const empty = messages.length === 0 && events.data.length === 0 && !live
+  const titlebarSlot = document.getElementById('titlebar-slot')
 
   return (
     <div className="relative h-full">
+      {/* runtime tag for ACP threads, shown in the titlebar next to the
+          sidebar toggle: which agent runs this thread (codex, …) */}
+      {session.runtime === 'acp' && titlebarSlot
+        ? createPortal(<RuntimeBadge session={session} />, titlebarSlot)
+        : null}
+
       <div
         ref={scrollRef}
         className="h-full overflow-y-auto"
@@ -188,6 +206,7 @@ function SessionPage() {
                   {live.user}
                 </div>
               </motion.div>
+              <ThinkingBlock text={live.reasoning} pending={streaming} />
               {live.tools.map((tool) => (
                 <ToolCallCard
                   key={tool.key}
@@ -210,30 +229,13 @@ function SessionPage() {
             </div>
           ) : null}
 
-          {activity.length > 0 ? (
-            <details className="mt-8 text-[12px] text-ink-3">
-              <summary className="cursor-pointer select-none">
-                Activity log ({activity.length})
-              </summary>
-              <ul className="mt-2 flex flex-col gap-1">
-                {activity.map((entry, i) => (
-                  <li key={entry.id ?? i} className="flex gap-2 font-mono">
-                    <span className="shrink-0 tabular-nums">{fullTime(entry.at)}</span>
-                    <span className="text-ink-2">
-                      {entry.kind}
-                      {entry.status ? ` · ${entry.status}` : ''}
-                      {entry.text ? ` · ${entry.text}` : ''}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </details>
-          ) : null}
         </div>
       </div>
 
       <Composer
         streaming={streaming}
+        disabled={inactiveACP}
+        placeholder={inactiveACP ? 'ACP session is not active' : undefined}
         onSend={handleSend}
         onStop={() => abortRef.current?.abort()}
       />

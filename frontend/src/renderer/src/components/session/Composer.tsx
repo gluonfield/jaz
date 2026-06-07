@@ -14,12 +14,14 @@ export function ComposerCard({
   streaming,
   autoFocus,
   placeholder = 'Message your assistant…',
+  disabled = false,
   onSend,
   onStop,
 }: {
   streaming: boolean
   autoFocus?: boolean
   placeholder?: string
+  disabled?: boolean
   onSend: (text: string) => void
   onStop?: () => void
 }) {
@@ -35,7 +37,7 @@ export function ComposerCard({
 
   const submit = () => {
     const trimmed = text.trim()
-    if (!trimmed || streaming) return
+    if (!trimmed || streaming || disabled) return
     onSend(trimmed)
     setText('')
     const el = textareaRef.current
@@ -95,8 +97,9 @@ export function ComposerCard({
           value={text}
           rows={1}
           autoFocus={autoFocus}
+          disabled={disabled}
           placeholder={placeholder}
-          className="max-h-[200px] min-h-[30px] w-full resize-none bg-transparent px-2 pt-1.5 pb-0.5 text-sm leading-relaxed text-ink select-text placeholder:text-ink-3"
+          className="max-h-[200px] min-h-[30px] w-full resize-none bg-transparent px-2 pt-1.5 pb-0.5 text-sm leading-relaxed text-ink select-text placeholder:text-ink-3 disabled:cursor-default"
           onChange={(e) => {
             setText(e.target.value)
             e.target.style.height = 'auto'
@@ -126,7 +129,7 @@ export function ComposerCard({
               type="button"
               aria-label="Send message"
               title="Send message"
-              disabled={!text.trim() || streaming}
+              disabled={!text.trim() || streaming || disabled}
               onClick={submit}
               whileTap={{ scale: 0.92 }}
               className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-full bg-primary text-white shadow-sm transition-colors duration-150 hover:bg-primary-strong disabled:cursor-default disabled:bg-bg disabled:text-ink-3 disabled:shadow-none"
@@ -144,10 +147,14 @@ export function ComposerCard({
 // page background; only the card itself receives pointer events.
 export function Composer({
   streaming,
+  disabled,
+  placeholder,
   onSend,
   onStop,
 }: {
   streaming: boolean
+  disabled?: boolean
+  placeholder?: string
   onSend: (text: string) => void
   onStop: () => void
 }) {
@@ -159,7 +166,13 @@ export function Composer({
         animate={{ y: 0, opacity: 1 }}
         transition={{ type: 'spring', stiffness: 380, damping: 32 }}
       >
-        <ComposerCard streaming={streaming} onSend={onSend} onStop={onStop} />
+        <ComposerCard
+          streaming={streaming}
+          disabled={disabled}
+          placeholder={placeholder}
+          onSend={onSend}
+          onStop={onStop}
+        />
       </motion.div>
     </div>
   )

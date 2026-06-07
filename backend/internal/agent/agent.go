@@ -13,6 +13,7 @@ import (
 
 const (
 	StreamDelta      = "delta"
+	StreamReasoning  = "reasoning"
 	StreamToolCall   = "tool_call"
 	StreamToolResult = "tool_result"
 	StreamError      = "error"
@@ -22,16 +23,18 @@ const (
 var DefaultMaxTurns = 25
 
 type StreamEvent struct {
-	Type     string             `json:"type"`
-	Delta    string             `json:"delta,omitempty"`
-	ToolCall *provider.ToolCall `json:"tool_call,omitempty"`
-	ToolName string             `json:"tool_name,omitempty"`
-	Result   string             `json:"result,omitempty"`
-	Error    string             `json:"error,omitempty"`
-	Usage    *provider.Usage    `json:"usage,omitempty"`
-	Metadata map[string]any     `json:"metadata,omitempty"`
-	At       time.Time          `json:"at"`
-	Messages []provider.Message `json:"-"`
+	Type               string             `json:"type"`
+	Delta              string             `json:"delta,omitempty"`
+	Reasoning          string             `json:"reasoning,omitempty"`
+	ToolCall           *provider.ToolCall `json:"tool_call,omitempty"`
+	ToolName           string             `json:"tool_name,omitempty"`
+	Result             string             `json:"result,omitempty"`
+	Error              string             `json:"error,omitempty"`
+	Usage              *provider.Usage    `json:"usage,omitempty"`
+	Metadata           map[string]any     `json:"metadata,omitempty"`
+	At                 time.Time          `json:"at"`
+	Messages           []provider.Message `json:"-"`
+	ReasoningByMessage map[int]string     `json:"-"`
 }
 
 type Agent struct {
@@ -111,6 +114,7 @@ func (a *Agent) run(ctx context.Context, req provider.Request, out chan<- Stream
 	}
 	messages := append([]provider.Message(nil), req.Messages...)
 	var usage provider.Usage
+	reasoningByMessage := map[int]string{}
 
 	for turn := 0; turn < a.MaxTurns; turn++ {
 		stream, err := a.Provider.StreamComplete(ctx, provider.Request{
@@ -124,12 +128,16 @@ func (a *Agent) run(ctx context.Context, req provider.Request, out chan<- Stream
 		}
 
 		var assistantText strings.Builder
+		var reasoningText strings.Builder
 		var calls []provider.ToolCall
 		for event := range stream {
 			switch event.Type {
 			case provider.EventDelta:
 				assistantText.WriteString(event.Delta)
 				a.emit(out, StreamEvent{Type: StreamDelta, Delta: event.Delta})
+			case provider.EventReasoning:
+				reasoningText.WriteString(event.Reasoning)
+				a.emit(out, StreamEvent{Type: StreamReasoning, Reasoning: event.Reasoning})
 			case provider.EventToolCall:
 				if event.ToolCall != nil {
 					calls = append(calls, *event.ToolCall)
@@ -149,11 +157,13 @@ func (a *Agent) run(ctx context.Context, req provider.Request, out chan<- Stream
 
 		if len(calls) == 0 {
 			messages = append(messages, provider.AssistantMessage(assistantText.String(), nil))
-			a.emit(out, StreamEvent{Type: StreamDone, Messages: messages, Usage: &usage})
+			recordReasoning(reasoningByMessage, len(messages)-1, reasoningText.String())
+			a.emit(out, StreamEvent{Type: StreamDone, Messages: messages, ReasoningByMessage: reasoningByMessage, Usage: &usage})
 			return
 		}
 
 		messages = append(messages, provider.AssistantMessage(assistantText.String(), calls))
+		recordReasoning(reasoningByMessage, len(messages)-1, reasoningText.String())
 		for _, call := range calls {
 			result := a.executeTool(ctx, call)
 			messages = append(messages, provider.ToolMessage(result, provider.ToolCallID(call)))
@@ -167,6 +177,12 @@ func (a *Agent) run(ctx context.Context, req provider.Request, out chan<- Stream
 
 	errMsg := fmt.Sprintf("stopped after %d tool turns", a.MaxTurns)
 	a.emit(out, StreamEvent{Type: StreamError, Error: errMsg, Messages: messages})
+}
+
+func recordReasoning(out map[int]string, index int, reasoning string) {
+	if strings.TrimSpace(reasoning) != "" {
+		out[index] = reasoning
+	}
 }
 
 func (a *Agent) normalize(req provider.Request) (provider.Request, error) {

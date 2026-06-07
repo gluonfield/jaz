@@ -3,8 +3,9 @@ import type { ToolCallJSON } from './types'
 
 // agent.StreamEvent on the wire (backend/internal/agent/agent.go).
 export interface AgentStreamEvent {
-  type: 'delta' | 'tool_call' | 'tool_result' | 'error' | 'done' | (string & {})
+  type: 'delta' | 'reasoning' | 'tool_call' | 'tool_result' | 'error' | 'done' | (string & {})
   delta?: string
+  reasoning?: string
   tool_call?: ToolCallJSON
   tool_name?: string
   result?: string
