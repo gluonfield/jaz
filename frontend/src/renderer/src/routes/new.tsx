@@ -24,7 +24,7 @@ function NewSessionPage() {
   const handleSend = async (text: string) => {
     setCreating(true)
     try {
-      const session = await createSession()
+      const session = await createSession({ title: text.trim() })
       setPendingMessage(session.id, text)
       queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
       queryClient.invalidateQueries({ queryKey: keys.allSessions })

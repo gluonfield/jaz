@@ -64,7 +64,7 @@ export function Sidebar() {
                     exit={{ opacity: 0, x: -8 }}
                     transition={{ type: 'spring', stiffness: 420, damping: 34 }}
                   >
-                    <SessionRow session={item.session} indented={item.indented} />
+                    <SessionRow session={item.session} child={item.child} />
                   </motion.div>
                 ))}
               </AnimatePresence>
