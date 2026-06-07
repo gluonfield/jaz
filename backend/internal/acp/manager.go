@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -226,22 +227,26 @@ func requireFullAccessMode(ctx context.Context, peer *jsonrpc.Peer, session acps
 	if session.Modes == nil {
 		return nil
 	}
-	if string(session.Modes.CurrentModeID) == fullAccessMode {
+	if slices.Contains(fullAccessModes, string(session.Modes.CurrentModeID)) {
 		return nil
 	}
-	for _, mode := range session.Modes.AvailableModes {
-		if string(mode.ID) == fullAccessMode {
+	for _, id := range fullAccessModes {
+		for _, mode := range session.Modes.AvailableModes {
+			if string(mode.ID) != id {
+				continue
+			}
 			_, err := peer.Call(ctx, acpschema.AgentMethodSessionSetMode, acpschema.SetSessionModeRequest{
 				SessionID: session.SessionID,
-				ModeID:    acpschema.SessionModeID(fullAccessMode),
+				ModeID:    mode.ID,
 			})
 			if err != nil {
-				return fmt.Errorf("set acp session full-access mode: %w", err)
+				return fmt.Errorf("set acp session %q mode: %w", id, err)
 			}
 			return nil
 		}
 	}
-	return fmt.Errorf("acp session does not expose required %q mode; current mode is %q", fullAccessMode, session.Modes.CurrentModeID)
+	return fmt.Errorf("acp session exposes no full-access mode (looked for %s); current mode is %q",
+		strings.Join(fullAccessModes, ", "), session.Modes.CurrentModeID)
 }
 
 func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {
