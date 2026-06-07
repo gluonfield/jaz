@@ -2,8 +2,10 @@ package sqlite
 
 import (
 	"testing"
+	"time"
 
 	"github.com/wins/jaz/backend/internal/provider"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
@@ -47,7 +49,65 @@ func TestSessionsHaveStableUniqueSlugsAndRootListing(t *testing.T) {
 	}
 }
 
-func TestSaveMessagesRejectsDanglingToolCall(t *testing.T) {
+func TestSaveACPStateMirrorsStateAndUpdatesSessionStatus(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{Slug: "acp", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.SaveACPState(session.ID, storage.ACPState{State: "running", Assistant: "working"}); err != nil {
+		t.Fatal(err)
+	}
+	state, err := store.LoadACPState(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.State != "running" || state.Assistant != "working" {
+		t.Fatalf("state = %#v", state)
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Status != storage.StatusRunning {
+		t.Fatalf("status = %q, want %q", loaded.Status, storage.StatusRunning)
+	}
+
+	if err := store.SaveACPState(session.ID, storage.ACPState{State: "failed", Error: "codex failed"}); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err = store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Status != storage.StatusError {
+		t.Fatalf("status = %q, want %q", loaded.Status, storage.StatusError)
+	}
+	if loaded.Error != "codex failed" {
+		t.Fatalf("error = %q, want %q", loaded.Error, "codex failed")
+	}
+
+	if err := store.SaveACPState(session.ID, storage.ACPState{State: "cancelled"}); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err = store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Status != storage.StatusIdle {
+		t.Fatalf("status = %q, want %q", loaded.Status, storage.StatusIdle)
+	}
+	if loaded.Error != "" {
+		t.Fatalf("error = %q, want empty", loaded.Error)
+	}
+}
+
+func TestSaveMessagesKeepsPendingToolCallUntilResultArrives(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -59,23 +119,91 @@ func TestSaveMessagesRejectsDanglingToolCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	call := provider.FunctionToolCall("call_1", "mock", `{"value":"ok"}`)
-	err = store.SaveMessages(session.ID, []provider.Message{
+	// Mid-turn snapshot: the call exists but its result hasn't arrived yet.
+	if err := store.SaveMessages(session.ID, []provider.Message{
 		provider.UserMessage("hello"),
 		provider.AssistantMessage("", []provider.ToolCall{call}),
-	})
-	if err == nil {
-		t.Fatal("expected dangling tool call to be rejected")
+	}); err != nil {
+		t.Fatal(err)
 	}
-	legacy, err := jsonstore.New(store.RootDir())
+	records, err := store.LoadMessageRecords(session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	mirrored, err := legacy.LoadMessages(session.ID)
+	if len(records) != 2 {
+		t.Fatalf("got %d records, want 2", len(records))
+	}
+	pending := records[1].Blocks[0]
+	if pending.Type != "tool" || pending.Result != "" {
+		t.Fatalf("pending call block = %#v, want empty result", pending)
+	}
+	loaded, err := store.LoadMessages(session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(mirrored) != 0 {
-		t.Fatalf("dangling tool call was mirrored to JSON: %#v", mirrored)
+	if len(loaded) != 3 || provider.MessageContent(loaded[2]) == "" {
+		t.Fatalf("pending call should load with a placeholder tool result, got %#v", loaded)
+	}
+	createdAt := records[1].CreatedAt
+
+	// The follow-up save fills in the result and keeps the original timestamp.
+	if err := store.SaveMessages(session.ID, []provider.Message{
+		provider.UserMessage("hello"),
+		provider.AssistantMessage("", []provider.ToolCall{call}),
+		provider.ToolMessage(`{"status":"ok"}`, "call_1"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	records, err = store.LoadMessageRecords(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("got %d records after result save, want 2", len(records))
+	}
+	resolved := records[1].Blocks[0]
+	if resolved.Result != `{"status":"ok"}` {
+		t.Fatalf("tool result = %q, want stored result", resolved.Result)
+	}
+	if !records[1].CreatedAt.Equal(createdAt) {
+		t.Fatalf("created_at changed across saves: %v -> %v", createdAt, records[1].CreatedAt)
+	}
+}
+
+func TestBackfillMissingThreadErrorsFromFailedToolResult(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	session, err := store.CreateSession(storage.CreateSession{Slug: "failed-parent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := provider.FunctionToolCall("call_1", "agent_send", `{"session":"codex"}`)
+	if err := store.SaveMessages(session.ID, []provider.Message{
+		provider.UserMessage("ask codex"),
+		provider.AssistantMessage("", []provider.ToolCall{call}),
+		provider.ToolMessage(`{"error":"context canceled","status":"error"}`, "call_1"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	session.Status = storage.StatusError
+	session.Error = ""
+	if err := store.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.backfillMissingThreadErrors(); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Error != "agent_send failed: context canceled" {
+		t.Fatalf("error = %q", loaded.Error)
 	}
 }
 
@@ -175,6 +303,95 @@ func TestToolCallAndResultPersistAsOneAssistantRecord(t *testing.T) {
 	}
 	if len(mirrored) != 4 {
 		t.Fatalf("mirrored JSON messages = %d, want 4", len(mirrored))
+	}
+}
+
+func TestAppendMessagesPreservesExistingTimestamps(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	session, err := store.CreateSession(storage.CreateSession{Slug: "append-times"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendMessages(session.ID, provider.UserMessage("first")); err != nil {
+		t.Fatal(err)
+	}
+	records, err := store.LoadMessageRecords(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("records = %d, want 1", len(records))
+	}
+	firstCreatedAt := records[0].CreatedAt
+
+	time.Sleep(5 * time.Millisecond)
+	if err := store.AppendMessages(session.ID, provider.UserMessage("second")); err != nil {
+		t.Fatal(err)
+	}
+	records, err = store.LoadMessageRecords(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("records = %d, want 2", len(records))
+	}
+	if !records[0].CreatedAt.Equal(firstCreatedAt) {
+		t.Fatalf("first timestamp changed from %s to %s", firstCreatedAt, records[0].CreatedAt)
+	}
+	if !records[1].CreatedAt.After(records[0].CreatedAt) {
+		t.Fatalf("second timestamp %s should be after first %s", records[1].CreatedAt, records[0].CreatedAt)
+	}
+}
+
+func TestSessionEventsPersistAndMirror(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{Slug: "events"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.AppendSessionEvents(session.ID,
+		sessionevents.Event{Type: "acp_message", Content: "working"},
+		sessionevents.Event{
+			Type: "acp_tool",
+			ACP: &sessionevents.ACPEvent{
+				ID:        session.ID,
+				ToolCalls: []sessionevents.ACPToolCall{{ID: "tool-1", Title: "Read file"}},
+			},
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded) != 2 || loaded[0].Seq != 1 || loaded[1].Seq != 2 {
+		t.Fatalf("loaded events = %#v", loaded)
+	}
+	if loaded[1].ACP == nil || loaded[1].ACP.ToolCalls[0].Title != "Read file" {
+		t.Fatalf("tool event = %#v", loaded[1])
+	}
+	legacy, err := jsonstore.New(store.RootDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	mirrored, err := legacy.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mirrored) != 2 || mirrored[0].Content != "working" {
+		t.Fatalf("mirrored events = %#v", mirrored)
 	}
 }
 

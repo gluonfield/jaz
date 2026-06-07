@@ -1,0 +1,244 @@
+//go:build acpprobe
+
+package acp
+
+import (
+	"context"
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	acpschema "github.com/gluonfield/acp-transport/acp"
+	"github.com/gluonfield/acp-transport/jsonrpc"
+	"github.com/gluonfield/acp-transport/stdio"
+)
+
+func TestLiveACPProbe(t *testing.T) {
+	agent := firstNonEmpty(os.Getenv("ACP_PROBE_AGENT"), "codex")
+	prompt := firstNonEmpty(os.Getenv("ACP_PROBE_PROMPT"), "Plan building a single static HTML page about koalas. Ask me clarifying questions if useful. Do not edit files.")
+	timeout := 90 * time.Second
+	if raw := os.Getenv("ACP_PROBE_TIMEOUT"); raw != "" {
+		if parsed, err := time.ParseDuration(raw); err == nil {
+			timeout = parsed
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	root := firstNonEmpty(os.Getenv("ACP_PROBE_ROOT"), filepath.Join(os.Getenv("HOME"), ".jaz"))
+	cwd := firstNonEmpty(os.Getenv("ACP_PROBE_CWD"), filepath.Join(root, "workspaces", "default"))
+	if err := os.MkdirAll(cwd, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := probeAgentConfig(t, agent)
+	manager := NewManager(nil, Config{Root: root, Workspace: cwd})
+	env := manager.processEnv(agent, cfg)
+	if home := strings.TrimSpace(os.Getenv("ACP_PROBE_HOME")); home != "" {
+		env["HOME"] = home
+	}
+	applyProbeEnvOverrides(env)
+	conn, cleanup := probeOpenConn(t, ctx, cfg, env, cwd)
+	defer cleanup()
+
+	init := probeCall(t, ctx, conn, "1", acpschema.AgentMethodInitialize, acpschema.InitializeRequest{
+		ProtocolVersion: acpschema.ProtocolVersion(acpschema.ProtocolVersionNumber),
+		ClientInfo: &acpschema.Implementation{
+			Name:    "jaz-probe",
+			Title:   "Jaz ACP Probe",
+			Version: "0.1.0",
+		},
+		ClientCapabilities: &acpschema.ClientCapabilities{
+			Meta: map[string]any{
+				"terminal-auth": true,
+			},
+			FS:       &acpschema.FileSystemCapabilities{ReadTextFile: true, WriteTextFile: true},
+			Terminal: true,
+		},
+	})
+	t.Logf("initialize result: %s", init.Result)
+	if methodID, missing := autoAuthMethod(agent, init.Result, env); methodID != "" {
+		auth := probeCall(t, ctx, conn, "2", acpschema.AgentMethodAuthenticate, acpschema.AuthenticateRequest{MethodID: methodID})
+		t.Logf("authenticate result: %s", auth.Result)
+	} else if len(missing) > 0 {
+		t.Fatalf("missing auth for %s: %s", agent, strings.Join(missing, ", "))
+	}
+
+	session := probeCall(t, ctx, conn, "3", acpschema.AgentMethodSessionNew, acpschema.NewSessionRequest{
+		Cwd:        cwd,
+		MCPServers: []acpschema.MCPServer{},
+	})
+	t.Logf("session/new result: %s", session.Result)
+	var sessionResp acpschema.NewSessionResponse
+	if err := json.Unmarshal(session.Result, &sessionResp); err != nil {
+		t.Fatal(err)
+	}
+	if sessionResp.SessionID == "" {
+		t.Fatal("empty session id")
+	}
+	if os.Getenv("ACP_PROBE_SKIP_PLAN_MODE") == "1" {
+		t.Log("skipping plan mode switch")
+	} else if modeID := planModeID(sessionResp.Modes.AvailableModes); modeID != "" {
+		setMode := probeCall(t, ctx, conn, "4", acpschema.AgentMethodSessionSetMode, acpschema.SetSessionModeRequest{
+			SessionID: sessionResp.SessionID,
+			ModeID:    acpschema.SessionModeID(modeID),
+		})
+		t.Logf("session/set_mode(%s) result: %s", modeID, setMode.Result)
+	} else {
+		t.Log("agent did not expose plan mode")
+	}
+
+	final := probeCall(t, ctx, conn, "5", acpschema.AgentMethodSessionPrompt, map[string]any{
+		"sessionId": sessionResp.SessionID,
+		"prompt": []any{
+			map[string]any{"type": "text", "text": prompt},
+		},
+	})
+	t.Logf("session/prompt result: %s", final.Result)
+}
+
+func applyProbeEnvOverrides(env map[string]string) {
+	if value := strings.TrimSpace(os.Getenv("ACP_PROBE_CLAUDE_EXECUTABLE")); value != "" {
+		env["CLAUDE_CODE_EXECUTABLE"] = value
+	}
+	if value := strings.TrimSpace(os.Getenv("ACP_PROBE_CLAUDE_CONFIG_DIR")); value != "" {
+		env["CLAUDE_CONFIG_DIR"] = value
+	}
+	for _, key := range []string{
+		"ANTHROPIC_API_KEY",
+		"ANTHROPIC_AUTH_TOKEN",
+		"ANTHROPIC_BASE_URL",
+		"ANTHROPIC_MODEL",
+		"CLAUDE_CODE_EXECUTABLE",
+		"CLAUDE_CONFIG_DIR",
+		"CLAUDE_CODE_USE_VERTEX",
+		"CLAUDE_CODE_USE_BEDROCK",
+		"CLAUDE_CODE_REMOTE",
+	} {
+		if value := os.Getenv(key); value != "" {
+			env[key] = value
+		}
+	}
+}
+
+func probeAgentConfig(t *testing.T, agent string) AgentConfig {
+	t.Helper()
+	switch agent {
+	case "codex":
+		return AgentConfig{
+			Command: "/Users/wins/Projects/personal/jarvis/codex-acp-zed/target/debug/codex-acp",
+			Args:    []string{"-c", "sandbox_mode=\"danger-full-access\"", "-c", "approval_policy=\"never\""},
+		}
+	case "claude_code":
+		return AgentConfig{
+			Command: "npx",
+			Args:    []string{"-y", "@agentclientprotocol/claude-agent-acp@0.39.0"},
+		}
+	default:
+		t.Fatalf("unknown probe agent %q", agent)
+		return AgentConfig{}
+	}
+}
+
+func probeOpenConn(t *testing.T, ctx context.Context, cfg AgentConfig, env map[string]string, cwd string) (jsonrpc.MessageConn, func()) {
+	t.Helper()
+	cmd := exec.CommandContext(ctx, cfg.Command, cfg.Args...)
+	cmd.Env = envList(env)
+	cmd.Dir = cwd
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	conn := stdio.New(stdout, stdin)
+	return conn, func() {
+		_ = conn.Close()
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		_ = cmd.Wait()
+	}
+}
+
+func probeCall(t *testing.T, ctx context.Context, conn jsonrpc.MessageConn, id string, method string, params any) *jsonrpc.Message {
+	t.Helper()
+	req, err := jsonrpc.NewRequest(json.RawMessage(id), method, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	probeLogMessage(t, "client -> agent", req)
+	if err := conn.Send(ctx, req); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		msg, err := conn.Receive(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		probeLogMessage(t, "agent -> client", msg)
+		if msg.IsRequest() {
+			probeHandleClientRequest(t, ctx, conn, msg)
+			continue
+		}
+		if msg.IsResponse() && msg.ID != nil && string(*msg.ID) == id {
+			if msg.Error != nil {
+				t.Fatalf("%s failed: %v", method, msg.Error)
+			}
+			return msg
+		}
+	}
+}
+
+func probeHandleClientRequest(t *testing.T, ctx context.Context, conn jsonrpc.MessageConn, msg *jsonrpc.Message) {
+	t.Helper()
+	var result any
+	var rpcErr *jsonrpc.Error
+	switch msg.Method {
+	case acpschema.ClientMethodSessionRequestPermission:
+		result = acpschema.RequestPermissionResponseCancelled()
+	case acpschema.ClientMethodFSReadTextFile:
+		result = acpschema.ReadTextFileResponse{}
+	case acpschema.ClientMethodFSWriteTextFile:
+		result = acpschema.WriteTextFileResponse{}
+	case acpschema.ClientMethodTerminalKill, acpschema.ClientMethodTerminalRelease:
+		result = map[string]any{}
+	case acpschema.ClientMethodTerminalCreate, acpschema.ClientMethodTerminalOutput, acpschema.ClientMethodTerminalWaitForExit:
+		rpcErr = jsonrpc.InternalError("terminal support is disabled in live probe", nil)
+	default:
+		rpcErr = jsonrpc.MethodNotFound(msg.Method)
+	}
+	var resp *jsonrpc.Message
+	var err error
+	if rpcErr != nil {
+		resp, err = jsonrpc.NewErrorResponse(*msg.ID, rpcErr)
+	} else {
+		resp, err = jsonrpc.NewResult(*msg.ID, result)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	probeLogMessage(t, "client -> agent", resp)
+	if err := conn.Send(ctx, resp); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func probeLogMessage(t *testing.T, prefix string, msg *jsonrpc.Message) {
+	t.Helper()
+	raw, err := json.MarshalIndent(msg, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("%s:\n%s", prefix, raw)
+}

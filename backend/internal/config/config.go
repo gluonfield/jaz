@@ -18,6 +18,9 @@ type Config struct {
 	Providers  ProvidersConfig
 	OpenRouter openrouterprovider.Config
 	OpenAI     openaiprovider.Config
+	Mistral    app.MistralConfig
+	TTS        app.SpeechConfig
+	STT        app.SpeechConfig
 }
 
 type ProvidersConfig struct {
@@ -31,6 +34,10 @@ func Load() (Config, error) {
 	}
 	if err := applyProvider(&cfg); err != nil {
 		return Config{}, err
+	}
+	cfg.Jaz.Voice = app.VoiceConfig{TTS: cfg.TTS, STT: cfg.STT, Mistral: cfg.Mistral}
+	if cfg.Jaz.Voice.Mistral.APIKey == "" {
+		cfg.Jaz.Voice.Mistral.APIKey = os.Getenv("MISTRAL_API_KEY")
 	}
 	return cfg, nil
 }

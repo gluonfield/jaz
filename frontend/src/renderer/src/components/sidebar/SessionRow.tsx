@@ -21,8 +21,8 @@ export function sessionLabel(session: Session): string {
   return `Chat · ${when}`
 }
 
-function StatusDot({ status }: { status: Session['status'] }) {
-  if (status === 'running') {
+function StatusDot({ session }: { session: Session }) {
+  if (session.status === 'running') {
     return (
       <span
         title="Running"
@@ -30,8 +30,13 @@ function StatusDot({ status }: { status: Session['status'] }) {
       />
     )
   }
-  if (status === 'error') {
-    return <span title="Failed" className="size-1.5 shrink-0 rounded-full bg-danger" />
+  if (session.status === 'error') {
+    return (
+      <span
+        title={session.error ? `Failed: ${session.error}` : 'Failed'}
+        className="size-1.5 shrink-0 rounded-full bg-danger"
+      />
+    )
   }
   return null
 }
@@ -41,12 +46,12 @@ export function SessionRow({ session, child = false }: { session: Session; child
     <Link
       to="/sessions/$sessionId"
       params={{ sessionId: session.id }}
-      className="group flex items-center gap-2 rounded-control px-2.5 py-2 text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+      className="group flex items-center gap-2 rounded-control px-2 py-1.5 text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
       activeProps={{ className: 'bg-primary-soft! text-ink! font-medium' }}
     >
       {/* branch connector: this thread was spawned by the session above */}
       {child ? <CornerDownRight size={12} className="shrink-0 text-ink-3" /> : null}
-      <StatusDot status={session.status} />
+      <StatusDot session={session} />
       {/* native is the default; only agent-backed sessions earn a badge.
           When the chip leads the row, a negative margin optically aligns
           its text with the titles. */}

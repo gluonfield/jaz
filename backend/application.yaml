@@ -4,8 +4,8 @@ jaz:
   acp:
     agents:
       codex:
-        command: "npx"
-        args: ["-y", "@zed-industries/codex-acp@0.15.0", "-c", "sandbox_mode=\"danger-full-access\"", "-c", "approval_policy=\"never\""]
+        command: "/Users/wins/Projects/personal/jarvis/codex-acp-zed/target/debug/codex-acp"
+        args: ["-c", "sandbox_mode=\"danger-full-access\"", "-c", "approval_policy=\"never\""]
       claude_code:
         command: "npx"
         args: ["-y", "@agentclientprotocol/claude-agent-acp@0.39.0"]
@@ -20,3 +20,16 @@ openrouter:
 openai:
   apikey: ""
   model: "gpt-5.4-mini"
+
+mistral:
+  apikey: "" # set MISTRAL_API_KEY instead
+  baseurl: "https://api.mistral.ai/v1"
+
+tts:
+  provider: "mistral"
+  model: "voxtral-mini-tts-2603"
+  voice: "en_paul_neutral"
+
+stt:
+  provider: "mistral"
+  model: "voxtral-mini-latest"

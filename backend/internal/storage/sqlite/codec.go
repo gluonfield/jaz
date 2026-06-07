@@ -35,14 +35,20 @@ func recordsFromProviderMessagesWithReasoning(messages []provider.Message, reaso
 			}
 			blocks := textBlocks(provider.MessageContent(msg), reasoningByMessage[msgIndex])
 			for _, call := range calls {
+				// Calls whose results haven't arrived yet (mid-turn snapshot
+				// saves) are stored with an empty result and filled in on the
+				// next save.
+				if i+1 >= len(messages) || provider.MessageRole(messages[i+1]) != "tool" {
+					blocks = append(blocks, storage.Block{
+						Type:      blockTool,
+						ID:        provider.ToolCallID(call),
+						Name:      provider.ToolCallName(call),
+						InputJSON: provider.ToolCallArguments(call),
+					})
+					continue
+				}
 				i++
-				if i >= len(messages) {
-					return nil, fmt.Errorf("assistant tool call %q has no tool result", provider.ToolCallID(call))
-				}
 				result := messages[i]
-				if provider.MessageRole(result) != "tool" {
-					return nil, fmt.Errorf("assistant tool call %q followed by %q, want tool result", provider.ToolCallID(call), provider.MessageRole(result))
-				}
 				resultID := provider.MessageToolCallID(result)
 				if resultID != provider.ToolCallID(call) {
 					return nil, fmt.Errorf("assistant tool call %q followed by result for %q", provider.ToolCallID(call), resultID)
@@ -99,7 +105,13 @@ func providerMessagesFromRecords(records []storage.Message) ([]provider.Message,
 			}
 			messages = append(messages, provider.AssistantMessage(content, calls))
 			for _, result := range results {
-				messages = append(messages, provider.ToolMessage(result.Result, result.ID))
+				// A still-empty result means the turn was interrupted before
+				// the tool finished; give providers a non-empty placeholder.
+				text := result.Result
+				if text == "" {
+					text = `{"status":"interrupted","error":"no result was recorded"}`
+				}
+				messages = append(messages, provider.ToolMessage(text, result.ID))
 			}
 		case "tool":
 			return nil, fmt.Errorf("canonical message row %d must not use role tool", record.Seq)
@@ -172,9 +184,6 @@ func validateBlocks(blocks []storage.Block) error {
 			}
 			if block.Name == "" {
 				return fmt.Errorf("tool block %d missing name", i)
-			}
-			if block.Result == "" {
-				return fmt.Errorf("tool block %d missing result", i)
 			}
 		default:
 			return fmt.Errorf("unknown block type %q", block.Type)

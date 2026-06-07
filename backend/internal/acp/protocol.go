@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
@@ -27,7 +30,7 @@ func (m *Manager) handleJSONRPC(ctx context.Context, req jsonrpc.Request) (json.
 		m.applyUpdate(note.SessionID, note.Update)
 		return jsonrpc.EncodeResult(map[string]any{})
 	case acpschema.ClientMethodSessionRequestPermission:
-		return m.requestPermission(req.Params)
+		return m.requestPermission(ctx, req.Params)
 	case acpschema.ClientMethodFSReadTextFile:
 		return m.readTextFile(req.Params)
 	case acpschema.ClientMethodFSWriteTextFile:
@@ -41,7 +44,7 @@ func (m *Manager) handleJSONRPC(ctx context.Context, req jsonrpc.Request) (json.
 	}
 }
 
-func (m *Manager) requestPermission(raw json.RawMessage) (json.RawMessage, *jsonrpc.Error) {
+func (m *Manager) requestPermission(ctx context.Context, raw json.RawMessage) (json.RawMessage, *jsonrpc.Error) {
 	var req acpschema.RequestPermissionRequest
 	if err := json.Unmarshal(raw, &req); err != nil {
 		return nil, jsonrpc.InvalidParams("invalid session/request_permission", map[string]any{"error": err.Error()})
@@ -50,13 +53,20 @@ func (m *Manager) requestPermission(raw json.RawMessage) (json.RawMessage, *json
 	if job == nil || !locationsStayInside(job.Cwd, req.ToolCall.Locations) {
 		return permissionCancelled()
 	}
+	job.mu.RLock()
+	interactive := job.interactive
+	job.mu.RUnlock()
+	if interactive {
+		return m.awaitPermission(ctx, job, req)
+	}
+	if len(req.ToolCall.Locations) == 0 {
+		return permissionCancelled()
+	}
 	optionID := selectPermissionOption(req.Options)
 	if optionID == "" {
 		return permissionCancelled()
 	}
-	return jsonrpc.EncodeResult(map[string]any{
-		"outcome": map[string]any{"outcome": "selected", "optionId": optionID},
-	})
+	return jsonrpc.EncodeResult(acpschema.RequestPermissionResponseSelected(acpschema.PermissionOptionID(optionID)))
 }
 
 func (m *Manager) readTextFile(raw json.RawMessage) (json.RawMessage, *jsonrpc.Error) {
@@ -106,7 +116,7 @@ func (m *Manager) writeTextFile(raw json.RawMessage) (json.RawMessage, *jsonrpc.
 }
 
 func permissionCancelled() (json.RawMessage, *jsonrpc.Error) {
-	return jsonrpc.EncodeResult(map[string]any{"outcome": map[string]any{"outcome": "cancelled"}})
+	return jsonrpc.EncodeResult(acpschema.RequestPermissionResponseCancelled())
 }
 
 func selectPermissionOption(options []acpschema.PermissionOption) string {
@@ -120,9 +130,6 @@ func selectPermissionOption(options []acpschema.PermissionOption) string {
 }
 
 func locationsStayInside(root string, locations []acpschema.ToolCallLocation) bool {
-	if len(locations) == 0 {
-		return false
-	}
 	for _, location := range locations {
 		if _, err := safePath(root, location.Path); err != nil {
 			return false
@@ -136,41 +143,40 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	if job == nil {
 		return
 	}
-	var env struct {
-		SessionUpdate string          `json:"sessionUpdate"`
-		Content       json.RawMessage `json:"content"`
-		Title         string          `json:"title"`
-		ToolCallID    string          `json:"toolCallId"`
-		Status        json.RawMessage `json:"status"`
-		Entries       []struct {
-			Content  string          `json:"content"`
-			Status   json.RawMessage `json:"status"`
-			Priority json.RawMessage `json:"priority"`
-		} `json:"entries"`
-	}
-	if err := json.Unmarshal(raw, &env); err != nil {
-		return
-	}
 	var activity *storage.ActivityEntry
 	var title string
+	var publishACP bool
+	var messageChunk string
+	var thoughtChunk string
+	var toolEvent *ToolCallSnapshot
 	now := time.Now().UTC()
+	update, err := acpschema.DecodeSessionUpdate(raw)
+	if err != nil {
+		return
+	}
 	job.mu.Lock()
-	switch env.SessionUpdate {
-	case "agent_message_chunk":
-		job.Assistant += contentText(env.Content)
-	case "agent_thought_chunk":
-		job.Thought += contentText(env.Content)
-	case "tool_call", "tool_call_update":
-		call := job.toolByID[env.ToolCallID]
-		call.ID = env.ToolCallID
-		if env.Title != "" {
-			call.Title = env.Title
+	switch event := update.(type) {
+	case acpschema.AgentMessageChunkUpdate:
+		messageChunk = contentText(event.Content)
+		job.Assistant = appendACPText(job.Assistant, messageChunk)
+		if messageChunk != "" {
+			job.savedAssistantLen = len(job.Assistant)
 		}
-		if len(env.Status) > 0 {
-			call.Status = rawString(env.Status)
+	case acpschema.AgentThoughtChunkUpdate:
+		thoughtChunk = contentText(event.Content)
+		job.Thought = appendACPText(job.Thought, thoughtChunk)
+	case acpschema.ToolCallSessionUpdate:
+		call := job.toolByID[string(event.ToolCallID)]
+		call.ID = string(event.ToolCallID)
+		if event.Title != "" {
+			call.Title = event.Title
 		}
-		job.toolByID[env.ToolCallID] = call
+		if event.Status != nil {
+			call.Status = string(*event.Status)
+		}
+		job.toolByID[string(event.ToolCallID)] = call
 		job.ToolCalls = sortedToolCalls(job.toolByID)
+		toolEvent = &call
 		activity = &storage.ActivityEntry{
 			ID:     call.ID,
 			Kind:   "tool",
@@ -178,19 +184,45 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 			Status: call.Status,
 			At:     now,
 		}
-	case "plan":
-		job.Plan = make([]PlanEntry, 0, len(env.Entries))
-		for _, entry := range env.Entries {
-			job.Plan = append(job.Plan, PlanEntry{
+	case acpschema.ToolCallUpdateSessionUpdate:
+		call := job.toolByID[string(event.ToolCallID)]
+		call.ID = string(event.ToolCallID)
+		if event.Title != "" {
+			call.Title = event.Title
+		}
+		if event.Status != nil {
+			call.Status = string(*event.Status)
+		}
+		job.toolByID[string(event.ToolCallID)] = call
+		job.ToolCalls = sortedToolCalls(job.toolByID)
+		toolEvent = &call
+		activity = &storage.ActivityEntry{
+			ID:     call.ID,
+			Kind:   "tool",
+			Text:   firstNonEmpty(call.Title, call.ID),
+			Status: call.Status,
+			At:     now,
+		}
+	case acpschema.PlanSessionUpdate:
+		plan := make([]PlanEntry, 0, len(event.Entries))
+		for _, entry := range event.Entries {
+			plan = append(plan, PlanEntry{
 				Content:  entry.Content,
-				Status:   rawString(entry.Status),
-				Priority: rawString(entry.Priority),
+				Status:   string(entry.Status),
+				Priority: string(entry.Priority),
 			})
 		}
-	case "session_info_update":
-		if env.Title != "" {
-			job.Title = env.Title
-			title = env.Title
+		// Agents re-send the full plan on every token; only an actual change
+		// is worth persisting and publishing.
+		publishACP = !slices.Equal(job.Plan, plan)
+		job.Plan = plan
+	case acpschema.CurrentModeSessionUpdate:
+		publishACP = job.Modes.CurrentModeID != string(event.CurrentModeID)
+		job.Modes.CurrentModeID = string(event.CurrentModeID)
+	case acpschema.SessionInfoSessionUpdate:
+		if event.Title != "" {
+			job.Title = event.Title
+			title = event.Title
 		}
 	}
 	job.UpdatedAt = now
@@ -206,28 +238,62 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 			_ = m.store.SaveSession(session)
 		}
 	}
+	if messageChunk != "" {
+		m.publishACPMessage(job.Snapshot(), messageChunk)
+	}
+	if thoughtChunk != "" {
+		m.publishACPThought(job.Snapshot(), thoughtChunk)
+	}
+	if toolEvent != nil {
+		m.publishACPTool(job.Snapshot(), *toolEvent)
+	}
+	if publishACP {
+		m.publishACP(job.Snapshot())
+	}
 }
 
-func contentText(raw json.RawMessage) string {
-	var block struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
+func contentText(raw acpschema.ContentBlock) string {
+	block, err := acpschema.DecodeContentBlock(raw)
+	if err != nil {
+		return ""
 	}
-	if err := json.Unmarshal(raw, &block); err == nil && block.Type == "text" {
-		return block.Text
+	if text, ok := block.(acpschema.TextContentBlock); ok {
+		return text.Text
 	}
 	return ""
 }
 
-func rawString(raw json.RawMessage) string {
-	if len(raw) == 0 {
-		return ""
+func appendACPText(existing, chunk string) string {
+	if chunk == "" {
+		return existing
 	}
-	var s string
-	if err := json.Unmarshal(raw, &s); err == nil {
-		return s
+	if existing == "" {
+		return chunk
 	}
-	return strings.TrimSpace(string(raw))
+	if startsOrEndsWhitespace(existing, chunk) || !looksLikeMessageBoundary(existing, chunk) {
+		return existing + chunk
+	}
+	return existing + "\n\n" + chunk
+}
+
+func startsOrEndsWhitespace(existing, chunk string) bool {
+	last, _ := utf8.DecodeLastRuneInString(existing)
+	first, _ := utf8.DecodeRuneInString(chunk)
+	return unicode.IsSpace(last) || unicode.IsSpace(first)
+}
+
+func looksLikeMessageBoundary(existing, chunk string) bool {
+	last, _ := utf8.DecodeLastRuneInString(existing)
+	first, _ := utf8.DecodeRuneInString(chunk)
+	if !unicode.IsUpper(first) && first != '`' {
+		return false
+	}
+	switch last {
+	case '.', '!', '?', ':', '`', ')':
+		return true
+	default:
+		return false
+	}
 }
 
 func sortedToolCalls(in map[string]ToolCallSnapshot) []ToolCallSnapshot {
