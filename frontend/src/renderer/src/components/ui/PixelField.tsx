@@ -5,7 +5,7 @@ const TAU = Math.PI * 2
 
 // A CSS mask keeps a soft clearing around the centered heading + composer; the
 // JS constants mirror it so constructions only form where the field is visible.
-const MASK = { rx: 420, ry: 240, cx: 0.5, cy: 0.45 }
+const MASK = { rx: 420, ry: 190, cx: 0.5, cy: 0.45 }
 const MASK_CSS = `radial-gradient(ellipse ${MASK.rx}px ${MASK.ry}px at 50% 45%, transparent 42%, black 85%)`
 
 const N_MAX = 24_000
@@ -200,8 +200,10 @@ const SHAPES: Record<string, ShapeDef> = {
 
 /* ---------------- shaders ----------------
  * Every particle owns a `from` and `to` position, each in its own frame
- * (center px / scale px / Y-rotation). Morphs ease per particle with a
- * staggered cubic, swirling gently around the destination mid-flight. */
+ * (center px / scale px / Y-rotation / brand factor). Morphs ease per particle
+ * with a staggered cubic, swirling gently around the destination mid-flight.
+ * `brand` slides the wordmark's rainbow ramp across the particles, echoing the
+ * .jaz-gradient animation on the heading. */
 
 const VERT = `#version 300 es
 precision highp float;
@@ -217,12 +219,15 @@ uniform float uSwirl;
 uniform float uAlphaMul;
 uniform float uAlphaFrom;
 uniform float uAlphaTo;
+uniform float uBrandFrom;
+uniform float uBrandTo;
 uniform vec2 uCenterFrom;
 uniform vec2 uCenterTo;
 uniform float uScaleFrom;
 uniform float uScaleTo;
 uniform float uRotFrom;
 uniform float uRotTo;
+uniform vec3 uRain[5];
 out vec3 vColor;
 out float vAlpha;
 
@@ -266,6 +271,17 @@ void main() {
 
   float twinkle = 0.75 + 0.25 * sin(uTime * aSeed.z * 1.6 + aSeed.y * 6.2832);
   vColor = aColor;
+
+  float brand = mix(uBrandFrom, uBrandTo, e);
+  if (brand > 0.001) {
+    // sliding rainbow keyed to unit-space x, like the wordmark gradient
+    float xu = mix(aFrom.x, aTo.x, e) * 0.5 + 0.5;
+    float seg = fract(xu * 0.9 - uTime * 0.11) * 4.0;
+    int i = int(floor(seg));
+    vec3 ramp = mix(uRain[i], uRain[min(i + 1, 4)], fract(seg));
+    vColor = mix(vColor, ramp, brand * 0.85);
+  }
+
   vAlpha = mix(uAlphaFrom, uAlphaTo, e) * twinkle * uAlphaMul;
 }`
 
@@ -291,11 +307,11 @@ function cssToRgb(css: string, scratch: CanvasRenderingContext2D): [number, numb
 }
 
 // Welcome-page backdrop, after enchanted-twin's voice visualizer: one
-// persistent swarm of ~20k GPU particles. It rests as faint full-screen dust,
-// condenses into a construction — a spinning sphere or torus, a solid sun,
-// bird, paper plane — holds, then either morphs straight into the next
-// construction or relaxes back into dust. While `calm` (the user is typing),
-// it stays dust and dims.
+// persistent swarm of ~20k GPU particles. Its home is the word "jaz" set in
+// Inter, shimmering with the wordmark's rainbow ramp. Every so often it
+// morphs into a construction — a spinning sphere or torus, a solid sun, bird,
+// paper plane — holds, then flows home (or chains into the next construction).
+// While `calm` (the user is typing), it returns home and dims.
 export function PixelField({
   calm = false,
   shapes,
@@ -355,6 +371,8 @@ export function PixelField({
       alphaMul: U('uAlphaMul'),
       alphaFrom: U('uAlphaFrom'),
       alphaTo: U('uAlphaTo'),
+      brandFrom: U('uBrandFrom'),
+      brandTo: U('uBrandTo'),
       centerFrom: U('uCenterFrom'),
       centerTo: U('uCenterTo'),
       scaleFrom: U('uScaleFrom'),
@@ -363,19 +381,19 @@ export function PixelField({
       rotTo: U('uRotTo'),
     }
 
-    /* ---- particle buffers ---- */
+    /* ---- palette ---- */
     const scratch = document.createElement('canvas')
     scratch.width = scratch.height = 1
     const sctx = scratch.getContext('2d', { willReadFrequently: true })
     if (!sctx) return
     const styles = getComputedStyle(document.documentElement)
-    const palette = [
-      ...Array.from({ length: 5 }, (_, i) =>
-        cssToRgb(styles.getPropertyValue(`--color-rainbow-${i + 1}`).trim(), sctx),
-      ),
-      cssToRgb(styles.getPropertyValue('--color-primary').trim(), sctx),
-    ]
+    const rainbow = Array.from({ length: 5 }, (_, i) =>
+      cssToRgb(styles.getPropertyValue(`--color-rainbow-${i + 1}`).trim(), sctx),
+    )
+    const sage = cssToRgb(styles.getPropertyValue('--color-primary').trim(), sctx)
+    gl.uniform3fv(U('uRain[0]'), rainbow.flat())
 
+    /* ---- particle buffers ---- */
     const fromArr = new Float32Array(N_MAX * 3)
     const toArr = new Float32Array(N_MAX * 3)
     const seedArr = new Float32Array(N_MAX * 4)
@@ -386,7 +404,7 @@ export function PixelField({
       seedArr[i * 4 + 2] = rand(0.3, 1.2)
       seedArr[i * 4 + 3] = Math.random()
       // mostly sage, the rainbow ramp as confetti, with lightness jitter
-      const rgb = palette[Math.random() < 0.62 ? 5 : Math.floor(rand(0, 5))]
+      const rgb = Math.random() < 0.62 ? sage : rainbow[Math.floor(rand(0, 5))]
       const jitter = rand(0.82, 1.18)
       colorArr[i * 3] = Math.min(1, rgb[0] * jitter)
       colorArr[i * 3 + 1] = Math.min(1, rgb[1] * jitter)
@@ -409,19 +427,94 @@ export function PixelField({
     attr('aSeed', 4, seedArr, gl.STATIC_DRAW)
     attr('aColor', 3, colorArr, gl.STATIC_DRAW)
 
+    /* ---- wordmark (the home state) ---- */
+    // Rasterize "jaz" in the app's face and sample the inked pixels. Re-baked
+    // once webfonts finish loading, in case Inter wasn't ready at mount.
+    let markPts: Float32Array | null = null
+    let markAspect = 0.45 // half-height / half-width of the sampled text
+    const bakeWordmark = () => {
+      const W = 560
+      const H = 280
+      const cv = document.createElement('canvas')
+      cv.width = W
+      cv.height = H
+      const g = cv.getContext('2d')
+      if (!g) return
+      g.font = '600 150px "Inter Variable", ui-sans-serif, sans-serif'
+      g.textAlign = 'center'
+      g.textBaseline = 'middle'
+      g.letterSpacing = '-4px'
+      g.fillText('jaz', W / 2, H / 2)
+      const data = g.getImageData(0, 0, W, H).data
+      const inked: number[] = []
+      let minX = W
+      let maxX = 0
+      let minY = H
+      let maxY = 0
+      for (let i = 3; i < data.length; i += 4) {
+        if (data[i] > 110) {
+          const p = (i - 3) / 4
+          const x = p % W
+          const y = Math.floor(p / W)
+          inked.push(p)
+          if (x < minX) minX = x
+          if (x > maxX) maxX = x
+          if (y < minY) minY = y
+          if (y > maxY) maxY = y
+        }
+      }
+      if (inked.length < 100) return
+      const cx = (minX + maxX) / 2
+      const cy = (minY + maxY) / 2
+      const halfW = (maxX - minX) / 2
+      markAspect = (maxY - minY) / 2 / halfW
+      const pts = new Float32Array(N_MAX * 3)
+      for (let i = 0; i < N_MAX; i++) {
+        const p = inked[Math.floor(rand(0, inked.length))]
+        pts[i * 3] = ((p % W) + rand(-0.6, 0.6) - cx) / halfW
+        pts[i * 3 + 1] = -(Math.floor(p / W) + rand(-0.6, 0.6) - cy) / halfW
+        pts[i * 3 + 2] = rand(-0.06, 0.06)
+      }
+      markPts = pts
+    }
+    bakeWordmark()
+
     /* ---- frames (the from/to coordinate spaces) ---- */
-    const frameFrom = { cx: 0, cy: 0, scale: 1, rot: 0, rotSpeed: 0, wobble: false, alpha: 0.3 }
-    const frameTo = { cx: 0, cy: 0, scale: 1, rot: 0, rotSpeed: 0, wobble: false, alpha: 0.3 }
+    const frameFrom = {
+      cx: 0, cy: 0, scale: 1, rot: 0, rotSpeed: 0, wobbleAmp: 0, alpha: 0.3, brand: 0,
+    }
+    const frameTo = { ...frameFrom }
     let progress = 1
     let morphDur = 1.8
     let swirl = 0
     let wobblePhase = 0
+    let homeTarget = true // frameTo is the wordmark
 
     let width = 0
     let height = 0
     let drawCount = N_MAX
 
-    const ambient = (out: Float32Array) => {
+    // wordmark frame: somewhere in the open bands above or below the
+    // composer. The jitter is rolled once per homecoming (not in here) so
+    // window resizes don't teleport the mark mid-cycle.
+    let homeU = 0.5
+    let homeV = 0.76
+    const homeFrame = () => {
+      const scale = Math.min(230, Math.max(110, width * 0.16))
+      const halfH = scale * markAspect
+      return {
+        cx: Math.min(width - scale - 32, Math.max(scale + 32, width * homeU)),
+        cy: Math.min(height - halfH - 28, Math.max(halfH + 40, height * homeV)),
+        scale,
+        rot: 0,
+        rotSpeed: 0,
+        wobbleAmp: 0.09,
+        alpha: 0.62,
+        brand: 1,
+      }
+    }
+
+    const scatter = (out: Float32Array) => {
       const scale = Math.max(width, height, 1) * 0.62
       for (let i = 0; i < N_MAX; i++) {
         out[i * 3] = (rand(0, width) - width / 2) / scale
@@ -463,7 +556,12 @@ export function PixelField({
     }
 
     // Commit the finished `to` state as the new `from`, then aim at the next.
-    const beginMorph = (gen: (out: Float32Array) => void, target: typeof frameTo, dur: number, sw: number) => {
+    const beginMorph = (
+      gen: (out: Float32Array) => void,
+      target: typeof frameTo,
+      dur: number,
+      sw: number,
+    ) => {
       fromArr.set(toArr)
       gl.bindBuffer(gl.ARRAY_BUFFER, fromBuf)
       gl.bufferSubData(gl.ARRAY_BUFFER, 0, fromArr)
@@ -478,24 +576,29 @@ export function PixelField({
       wobblePhase = rand(0, TAU)
     }
 
-    let lastShape = -1
-    const toAmbient = () => {
-      let scale = 1
+    const toHome = () => {
+      homeTarget = true
+      homeU = rand(0.34, 0.66)
+      // sometimes the mark settles above the composer instead of below
+      homeV = Math.random() < 0.45 ? rand(0.12, 0.24) : rand(0.6, 0.82)
       beginMorph(
         (out) => {
-          scale = ambient(out)
+          if (markPts) out.set(markPts)
+          else scatter(out)
         },
-        { cx: width / 2, cy: height / 2, scale: 1, rot: 0, rotSpeed: 0, wobble: false, alpha: 0.32 },
-        1.9,
-        0.25,
+        homeFrame(),
+        rand(1.7, 2.4),
+        0.4,
       )
-      frameTo.scale = scale
     }
 
+    let lastShape = -1
     const toConstruction = () => {
       const idx = (lastShape + 1 + Math.floor(rand(0, playlist.length - 1))) % playlist.length
       const def = SHAPES[playlist[idx]]
       const want = Math.min(280, Math.max(130, Math.min(width, height) * 0.27)) * def.scaleMul
+      // first acceptable candidate wins: attempts are random, so positions
+      // spread instead of converging on the roomiest corner every time
       let cx = 0
       let cy = 0
       let r = 0
@@ -503,15 +606,21 @@ export function PixelField({
         const x = rand(0, width)
         const y = rand(0, height)
         const fit = fitRadius(x, y, want)
+        if (fit >= want * 0.7) {
+          cx = x
+          cy = y
+          r = fit
+          break
+        }
         if (fit > r) {
           cx = x
           cy = y
           r = fit
-          if (r === want) break
         }
       }
       if (r === 0) return false
       lastShape = idx
+      homeTarget = false
       beginMorph(
         (out) => def.gen(out, N_MAX),
         {
@@ -520,10 +629,11 @@ export function PixelField({
           scale: r,
           rot: 0,
           rotSpeed: def.spin ? (Math.random() < 0.5 ? -1 : 1) * rand(0.18, 0.3) : 0,
-          wobble: !def.spin,
+          wobbleAmp: def.spin ? 0 : 0.3,
           alpha: def.alpha,
+          brand: 0,
         },
-        1.8,
+        rand(1.5, 2.2),
         0.5,
       )
       return true
@@ -542,28 +652,11 @@ export function PixelField({
       gl.uniform2f(uni.res, width, height)
       gl.uniform1f(uni.dpr, dpr)
       drawCount = Math.min(N_MAX, Math.max(9000, Math.round((width * height) / 42)))
+      if (homeTarget) Object.assign(frameTo, homeFrame())
     }
     resize()
     const observer = new ResizeObserver(resize)
     observer.observe(canvas)
-
-    // boot as settled dust
-    ambient(toArr)
-    fromArr.set(toArr)
-    Object.assign(frameTo, {
-      cx: width / 2,
-      cy: height / 2,
-      scale: Math.max(width, height, 1) * 0.62,
-      rot: 0,
-      rotSpeed: 0,
-      wobble: false,
-      alpha: 0.32,
-    })
-    Object.assign(frameFrom, frameTo)
-    gl.bindBuffer(gl.ARRAY_BUFFER, fromBuf)
-    gl.bufferSubData(gl.ARRAY_BUFFER, 0, fromArr)
-    gl.bindBuffer(gl.ARRAY_BUFFER, toBuf)
-    gl.bufferSubData(gl.ARRAY_BUFFER, 0, toArr)
 
     const drawFrame = (t: number, alphaMul: number) => {
       gl.clearColor(0, 0, 0, 0)
@@ -574,6 +667,8 @@ export function PixelField({
       gl.uniform1f(uni.alphaMul, alphaMul)
       gl.uniform1f(uni.alphaFrom, frameFrom.alpha)
       gl.uniform1f(uni.alphaTo, frameTo.alpha)
+      gl.uniform1f(uni.brandFrom, frameFrom.brand)
+      gl.uniform1f(uni.brandTo, frameTo.brand)
       gl.uniform2f(uni.centerFrom, frameFrom.cx, frameFrom.cy)
       gl.uniform2f(uni.centerTo, frameTo.cx, frameTo.cy)
       gl.uniform1f(uni.scaleFrom, frameFrom.scale)
@@ -583,15 +678,56 @@ export function PixelField({
       gl.drawArrays(gl.POINTS, 0, drawCount)
     }
 
+    // boot: dust condenses into the wordmark
+    const writeTo = () => {
+      gl.bindBuffer(gl.ARRAY_BUFFER, toBuf)
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, toArr)
+    }
+    scatter(fromArr)
+    gl.bindBuffer(gl.ARRAY_BUFFER, fromBuf)
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, fromArr)
+    Object.assign(frameFrom, {
+      cx: width / 2,
+      cy: height / 2,
+      scale: Math.max(width, height, 1) * 0.62,
+      rot: 0,
+      rotSpeed: 0,
+      wobbleAmp: 0,
+      alpha: 0.28,
+      brand: 0,
+    })
+    if (markPts) toArr.set(markPts)
+    else scatter(toArr)
+    writeTo()
+    Object.assign(frameTo, homeFrame())
+    progress = reducedMotion ? 1 : 0
+    morphDur = 2.4
+    swirl = 0.4
+
+    let disposed = false
+    // if Inter landed after mount, re-bake so the mark isn't fallback-font shaped
+    document.fonts?.ready.then(() => {
+      if (disposed) return
+      bakeWordmark()
+      if (homeTarget && markPts) {
+        toArr.set(markPts)
+        writeTo()
+        Object.assign(frameTo, homeFrame(), { rot: frameTo.rot })
+        if (reducedMotion) drawFrame(0, 1)
+      }
+    })
+
     if (reducedMotion) {
       drawFrame(0, 1)
-      return () => observer.disconnect()
+      return () => {
+        disposed = true
+        observer.disconnect()
+      }
     }
 
     /* ---- scheduler ---- */
-    // states: 'ambient' (dust) -> 'forming' -> 'holding' -> back
-    let state: 'ambient' | 'forming' | 'holding' = 'ambient'
-    let stateUntil = performance.now() / 1000 + rand(2, 3)
+    let state: 'home' | 'forming' | 'holding' = 'forming'
+    let stateUntil = 0
     let chain = 0
     let alphaMul = 1
 
@@ -604,37 +740,40 @@ export function PixelField({
       const t = ms / 1000
       const calmNow = calmRef.current
 
-      alphaMul += ((calmNow ? 0.5 : 1) - alphaMul) * (1 - Math.exp(-dt * 2.5))
+      alphaMul += ((calmNow ? 0.55 : 1) - alphaMul) * (1 - Math.exp(-dt * 2.5))
       progress = Math.min(1, progress + dt / morphDur)
 
       for (const f of [frameFrom, frameTo]) {
-        if (f.wobble) f.rot = 0.3 * Math.sin(t * 0.4 + wobblePhase)
+        if (f.wobbleAmp > 0) f.rot = f.wobbleAmp * Math.sin(t * 0.4 + wobblePhase)
         else f.rot += f.rotSpeed * dt
       }
 
-      if (state === 'ambient') {
+      if (state === 'forming') {
+        if (progress >= 1) {
+          if (homeTarget) {
+            state = 'home'
+            stateUntil = t + rand(5, 14)
+          } else {
+            state = 'holding'
+            stateUntil = t + rand(3.5, 8)
+          }
+        }
+      } else if (state === 'home') {
         if (t > stateUntil && !calmNow) {
           if (toConstruction()) state = 'forming'
           else stateUntil = t + rand(2, 4)
         }
-      } else if (state === 'forming') {
-        if (progress >= 1) {
-          state = 'holding'
-          stateUntil = t + rand(4, 5.5)
-        }
       } else if (state === 'holding') {
         if (calmNow) stateUntil = Math.min(stateUntil, t + 0.4)
         if (t > stateUntil) {
-          const morphOn = !calmNow && chain < 2 && Math.random() < 0.55
+          const morphOn = !calmNow && chain < 3 && Math.random() < 0.65
           if (morphOn && toConstruction()) {
             chain++
-            state = 'forming'
           } else {
-            toAmbient()
+            toHome()
             chain = 0
-            state = 'ambient'
-            stateUntil = t + morphDur + rand(3, 6)
           }
+          state = 'forming'
         }
       }
 
@@ -643,6 +782,7 @@ export function PixelField({
     raf = requestAnimationFrame(frame)
 
     return () => {
+      disposed = true
       cancelAnimationFrame(raf)
       observer.disconnect()
     }

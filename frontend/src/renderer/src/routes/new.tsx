@@ -56,15 +56,6 @@ function NewSessionPage() {
         animate="show"
         variants={{ hidden: {}, show: { transition: { staggerChildren: 0.07 } } }}
       >
-        <motion.h1
-          className="pb-4 text-center text-[1.375rem] font-medium text-ink"
-          variants={{
-            hidden: { opacity: 0, y: -10 },
-            show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 320, damping: 26 } },
-          }}
-        >
-          I'm <span className="jaz-gradient font-semibold">Jaz</span>, what's on your mind?
-        </motion.h1>
         <motion.div
           variants={{
             hidden: { opacity: 0, y: 14, scale: 0.985 },
@@ -79,6 +70,7 @@ function NewSessionPage() {
           <ComposerCard
             streaming={creating}
             autoFocus
+            translucent
             placeholder="Ask anything, or hand your assistant a task…"
             onSend={handleSend}
             onVoice={handleVoice}
