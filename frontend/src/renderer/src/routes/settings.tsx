@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
 import { sessionLabel } from '@/components/sidebar/SessionRow'
 import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
+import { MCPSettings } from '@/components/settings/MCPSettings'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import { archivedSessionsQuery, setSessionArchived } from '@/lib/api/sessions'
@@ -20,8 +21,9 @@ function SettingsPage() {
   const [showArchived, setShowArchived] = useState(false)
 
   return (
-    <div className="mx-auto max-w-[640px] px-10 pb-12">
+    <div className="mx-auto max-w-[760px] px-10 pb-12">
       <h1 className="pb-6 text-lg font-semibold text-ink">Settings</h1>
+      <MCPSettings />
 
       <section className="flex items-center justify-between gap-4 border-t border-border py-4">
         <div>

@@ -497,9 +497,27 @@ func (s *Store) migrate() error {
   PRIMARY KEY (thread_id, seq),
   FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE
 )`,
+		`CREATE TABLE IF NOT EXISTS mcp_servers (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  transport TEXT NOT NULL DEFAULT 'streamable_http',
+  url TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  bearer_token_env_var TEXT,
+  headers_json TEXT NOT NULL DEFAULT '[]',
+  env_headers_json TEXT NOT NULL DEFAULT '[]',
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+)`,
 		`CREATE INDEX IF NOT EXISTS idx_threads_parent_updated ON threads(parent_id, updated_at_ms DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_threads_updated ON threads(updated_at_ms DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_session_events_thread_seq ON session_events(thread_id, seq)`,
+		`CREATE INDEX IF NOT EXISTS idx_mcp_servers_updated ON mcp_servers(updated_at_ms DESC)`,
+		`CREATE TABLE IF NOT EXISTS mcp_oauth_tokens (
+  server_id TEXT PRIMARY KEY,
+  token_json TEXT NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+)`,
 		`PRAGMA user_version = 1`,
 	}
 	for _, stmt := range stmts {

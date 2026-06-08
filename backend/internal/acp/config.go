@@ -1,5 +1,7 @@
 package acp
 
+import mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+
 var fullAccessModes = []string{"full-access", "yolo"}
 
 // SystemPromptSource supplies the system prompt for new ACP sessions. It is
@@ -15,6 +17,7 @@ type Config struct {
 	Workspace    string
 	Env          map[string]string
 	SystemPrompt SystemPromptSource
+	MCPStore     mcpconfig.ServerReader
 }
 
 type AgentConfig struct {

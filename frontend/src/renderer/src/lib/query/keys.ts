@@ -6,4 +6,5 @@ export const keys = {
   sessionMessages: (id: string) => ['sessions', id, 'messages'] as const,
   sessionEvents: (id: string) => ['sessions', id, 'events'] as const,
   agentFiles: ['agent', 'files'] as const,
+  mcpServers: ['mcp', 'servers'] as const,
 }

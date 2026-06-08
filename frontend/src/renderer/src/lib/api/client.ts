@@ -46,3 +46,7 @@ export function post<T>(path: string, body?: unknown): Promise<T> {
     body: body === undefined ? undefined : JSON.stringify(body),
   })
 }
+
+export function del<T>(path: string): Promise<T> {
+  return request<T>(path, { method: 'DELETE' })
+}

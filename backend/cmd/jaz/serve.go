@@ -16,6 +16,7 @@ import (
 	"github.com/wins/jaz/backend/internal/app"
 	configloader "github.com/wins/jaz/backend/internal/config"
 	"github.com/wins/jaz/backend/internal/coordinator"
+	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
@@ -45,6 +46,7 @@ func runServe(args []string) error {
 			sessionlock.New,
 			sessionevents.New,
 			app.NewToolRegistry,
+			app.NewMCPManager,
 			app.NewProvider,
 			app.NewVoice,
 			app.NewAgent,
@@ -53,6 +55,7 @@ func runServe(args []string) error {
 			app.ConnectACPCompletion,
 			app.CloseMemory,
 			app.StartMemoryScheduler,
+			app.StartMCPManager,
 			startServer,
 		),
 	)
@@ -140,6 +143,7 @@ func startServer(
 	locks *sessionlock.Locks,
 	events *sessionevents.Bus,
 	prompts *coordinator.Builder,
+	mcpManager *mcpruntime.Manager,
 	workspace app.Workspace,
 	stt voice.STT,
 	tts voice.TTS,
@@ -151,6 +155,7 @@ func startServer(
 		Agent:                 a,
 		Store:                 store,
 		ACP:                   manager,
+		MCP:                   mcpManager,
 		Locks:                 locks,
 		Events:                events,
 		STT:                   stt,
