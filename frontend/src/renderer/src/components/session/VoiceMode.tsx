@@ -1,231 +1,364 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { X } from 'lucide-react'
+import { Mic, Pause, X } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { streamSessionMessage } from '@/lib/api/stream'
 import { speakStream, transcribeAudio } from '@/lib/api/voice'
+import { Mic as Microphone } from '@/lib/audio/mic'
 import { StreamingPlayer } from '@/lib/audio/player'
-import { Recorder } from '@/lib/audio/recorder'
 import { keys } from '@/lib/query/keys'
+import { VoiceVisualizer } from './VoiceVisualizer'
 
-type Phase = 'idle' | 'listening' | 'thinking' | 'speaking'
+type Phase = 'connecting' | 'listening' | 'thinking' | 'speaking' | 'paused' | 'error'
+
+type Turn = { id: number; role: 'user' | 'assistant'; text: string }
 
 const STATUS: Record<Phase, string> = {
-  idle: 'Tap to talk',
-  listening: 'Listening — tap when you’re done',
+  connecting: 'Starting microphone…',
+  listening: 'Listening — just start talking',
   thinking: 'Thinking…',
-  speaking: 'Tap to interrupt',
+  speaking: 'Speaking — talk over me to cut in',
+  paused: 'Paused',
+  error: 'Something went wrong',
 }
 
-const RAINBOW_CONIC =
-  'conic-gradient(from 0deg, var(--color-rainbow-1), var(--color-rainbow-2), var(--color-rainbow-3), var(--color-rainbow-4), var(--color-rainbow-5), var(--color-rainbow-1))'
-
-const GLOW_OPACITY: Record<Phase, number> = {
-  idle: 0.35,
-  listening: 0.75,
-  thinking: 0.55,
-  speaking: 0.65,
-}
-
-const SPIN_SECONDS: Record<Phase, number> = { idle: 14, listening: 6, thinking: 2.4, speaking: 8 }
+// Voice-activity thresholds (RMS, 0..1). Hysteresis + a hangover window let the
+// loop decide on its own when you've finished a sentence.
+const SPEECH_ON = 0.045
+const SILENCE_HANGOVER_MS = 1100
+const MIN_SPEECH_MS = 250
+const MAX_UTTERANCE_MS = 30_000
+// Barge-in: louder + sustained, and only after a short guard so the assistant's
+// own opening syllable (bleeding through echo cancellation) can't trigger it.
+const BARGE_ON = 0.08
+const BARGE_SUSTAIN_MS = 320
+const BARGE_GUARD_MS = 500
 
 export function VoiceMode({ sessionId, onExit }: { sessionId: string; onExit: () => void }) {
   const queryClient = useQueryClient()
   const reducedMotion = useReducedMotion()
-  const [phase, setPhase] = useState<Phase>('idle')
-  const [userText, setUserText] = useState('')
-  const [assistantText, setAssistantText] = useState('')
+  const [phase, setPhase] = useState<Phase>('connecting')
+  const [turns, setTurns] = useState<Turn[]>([])
+  const [live, setLive] = useState('') // streaming assistant reply, pre-commit
   const [error, setError] = useState('')
 
-  const recorderRef = useRef<Recorder | null>(null)
+  const micRef = useRef<Microphone | null>(null)
   const playerRef = useRef<StreamingPlayer | null>(null)
-  const abortRef = useRef<AbortController | null>(null)
-  const exitedRef = useRef(false)
-  if (!recorderRef.current) recorderRef.current = new Recorder()
+  if (!micRef.current) micRef.current = new Microphone()
   if (!playerRef.current) playerRef.current = new StreamingPlayer()
 
+  // Loop state lives in refs so the rAF tick reads it without re-subscribing.
+  const phaseRef = useRef<Phase>('connecting')
+  const exitedRef = useRef(false)
+  const busyRef = useRef(false)
+  const controllerRef = useRef<AbortController | null>(null)
+  const hadSpeechRef = useRef(false)
+  const captureStartRef = useRef(0)
+  const lastVoiceRef = useRef(0)
+  const speakStartRef = useRef(0)
+  const bargeStartRef = useRef(0)
+  const turnSeq = useRef(0)
+  const captionsRef = useRef<HTMLDivElement>(null)
+  const controlRef = useRef<{ pause: () => void; resume: () => void } | null>(null)
+
+  const setPhaseBoth = (p: Phase) => {
+    phaseRef.current = p
+    setPhase(p)
+  }
+
+  const pushTurn = (role: Turn['role'], text: string) =>
+    setTurns((prev) => [...prev, { id: turnSeq.current++, role, text }])
+
+  // keep the caption rail pinned to the newest line
   useEffect(() => {
-    // Refs survive StrictMode's simulated unmount; re-arm on (re)mount.
+    const el = captionsRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [turns, live])
+
+  useEffect(() => {
     exitedRef.current = false
+    const mic = micRef.current!
+    const player = playerRef.current!
+
+    const beginListening = () => {
+      if (exitedRef.current) return
+      busyRef.current = false
+      hadSpeechRef.current = false
+      const now = performance.now()
+      captureStartRef.current = now
+      lastVoiceRef.current = now
+      try {
+        mic.beginCapture()
+        setPhaseBoth('listening')
+      } catch {
+        fail('Microphone unavailable — check system permissions.')
+      }
+    }
+
+    const fail = (message: string) => {
+      controllerRef.current?.abort()
+      mic.cancelCapture()
+      player.stop()
+      setError(message)
+      setPhaseBoth('error')
+    }
+
+    const finishUtterance = async () => {
+      if (busyRef.current || exitedRef.current) return
+      busyRef.current = true
+      setPhaseBoth('thinking')
+      const controller = new AbortController()
+      controllerRef.current = controller
+      try {
+        const blob = await mic.endCapture()
+        const text = (await transcribeAudio(blob, controller.signal)).trim()
+        if (exitedRef.current) return
+        if (!text) {
+          beginListening() // heard noise, not words — keep the floor open
+          return
+        }
+        pushTurn('user', text)
+        setLive('')
+
+        let reply = ''
+        await streamSessionMessage({
+          sessionId,
+          message: text,
+          voice: true,
+          signal: controller.signal,
+          onEvent: (event) => {
+            if (event.type === 'delta' && event.delta) {
+              reply += event.delta
+              setLive(reply)
+            }
+            if (event.type === 'error' && event.error) throw new Error(event.error)
+          },
+        })
+        if (exitedRef.current) return
+        queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
+        queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
+        if (!reply.trim()) {
+          setLive('')
+          beginListening()
+          return
+        }
+        pushTurn('assistant', reply)
+        setLive('')
+
+        setPhaseBoth('speaking')
+        speakStartRef.current = performance.now()
+        bargeStartRef.current = 0
+        const res = await speakStream(reply, controller.signal)
+        if (exitedRef.current) {
+          res.body?.cancel()
+          return
+        }
+        await player.play(res.body!, () => {
+          if (!exitedRef.current && phaseRef.current === 'speaking') beginListening()
+        })
+      } catch (err) {
+        if (exitedRef.current || controller.signal.aborted) return
+        fail(err instanceof Error ? err.message : String(err))
+      }
+    }
+
+    // single rAF: silence detection while listening, barge-in while speaking
+    let raf = 0
+    const tick = (now: number) => {
+      raf = requestAnimationFrame(tick)
+      const p = phaseRef.current
+      if (p === 'listening' && mic.capturing) {
+        const lvl = mic.level()
+        if (lvl > SPEECH_ON) {
+          if (!hadSpeechRef.current && now - captureStartRef.current > 120)
+            hadSpeechRef.current = true
+          lastVoiceRef.current = now
+        }
+        const sayLen = now - captureStartRef.current
+        const silentFor = now - lastVoiceRef.current
+        if (
+          (hadSpeechRef.current && silentFor > SILENCE_HANGOVER_MS && sayLen > MIN_SPEECH_MS) ||
+          (hadSpeechRef.current && sayLen > MAX_UTTERANCE_MS)
+        ) {
+          void finishUtterance()
+        }
+      } else if (p === 'speaking') {
+        const lvl = mic.level()
+        if (now - speakStartRef.current > BARGE_GUARD_MS && lvl > BARGE_ON) {
+          if (!bargeStartRef.current) bargeStartRef.current = now
+          else if (now - bargeStartRef.current > BARGE_SUSTAIN_MS) {
+            controllerRef.current?.abort()
+            player.stop()
+            beginListening() // cut in: the user is talking
+          }
+        } else {
+          bargeStartRef.current = 0
+        }
+      }
+    }
+
+    ;(async () => {
+      try {
+        await mic.open()
+        if (exitedRef.current) {
+          mic.close()
+          return
+        }
+        raf = requestAnimationFrame(tick)
+        beginListening()
+      } catch {
+        setError('Microphone unavailable — check system permissions.')
+        setPhaseBoth('error')
+      }
+    })()
+
+    // expose controls to the JSX via the outer refs
+    controlRef.current = {
+      pause: () => {
+        controllerRef.current?.abort()
+        mic.cancelCapture()
+        player.stop()
+        busyRef.current = false
+        setPhaseBoth('paused')
+      },
+      resume: () => {
+        setError('')
+        if (mic.analyser) beginListening()
+        else
+          void (async () => {
+            try {
+              await mic.open()
+              beginListening()
+            } catch {
+              fail('Microphone unavailable — check system permissions.')
+            }
+          })()
+      },
+    }
+
     return () => {
       exitedRef.current = true
-      recorderRef.current?.cancel()
-      playerRef.current?.stop()
-      abortRef.current?.abort()
+      cancelAnimationFrame(raf)
+      controllerRef.current?.abort()
+      mic.close()
+      player.stop()
+      controlRef.current = null
     }
-  }, [])
+  }, [sessionId, queryClient])
 
-  const refreshTranscript = () => {
-    queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
-    queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
+  const togglePause = () => {
+    if (phase === 'paused' || phase === 'error') controlRef.current?.resume()
+    else controlRef.current?.pause()
   }
 
-  const runExchange = async () => {
-    const recorder = recorderRef.current!
-    const player = playerRef.current!
-    const controller = new AbortController()
-    abortRef.current = controller
-
-    setPhase('thinking')
-    try {
-      const blob = await recorder.stop()
-      const text = (await transcribeAudio(blob, controller.signal)).trim()
-      if (exitedRef.current) return
-      if (!text) {
-        setError('Didn’t catch that — try again.')
-        setPhase('idle')
-        return
+  // Space toggles the mic, Escape leaves.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onExit()
+      } else if (e.code === 'Space' && !(e.target as HTMLElement)?.closest('input, textarea')) {
+        e.preventDefault()
+        togglePause()
       }
-      setUserText(text)
-
-      let reply = ''
-      await streamSessionMessage({
-        sessionId,
-        message: text,
-        voice: true,
-        signal: controller.signal,
-        onEvent: (event) => {
-          if (event.type === 'delta' && event.delta) {
-            reply += event.delta
-            setAssistantText(reply)
-          }
-          if (event.type === 'error' && event.error) throw new Error(event.error)
-        },
-      })
-      if (exitedRef.current) return
-      refreshTranscript()
-      if (!reply.trim()) {
-        setPhase('idle')
-        return
-      }
-
-      setPhase('speaking')
-      const res = await speakStream(reply, controller.signal)
-      if (exitedRef.current) {
-        res.body?.cancel()
-        return
-      }
-      await player.play(res.body!, () => {
-        if (!exitedRef.current) setPhase('idle')
-      })
-    } catch (err) {
-      if (exitedRef.current || controller.signal.aborted) return
-      setError(err instanceof Error ? err.message : String(err))
-      setPhase('idle')
     }
-  }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
 
-  const handleTap = async () => {
-    const recorder = recorderRef.current!
-    const player = playerRef.current!
-    switch (phase) {
-      case 'idle':
-        setError('')
-        setUserText('')
-        setAssistantText('')
-        try {
-          await recorder.start()
-          setPhase('listening')
-        } catch {
-          setError('Microphone unavailable — check system permissions.')
-        }
-        break
-      case 'listening':
-        void runExchange()
-        break
-      case 'speaking':
-        player.stop()
-        setPhase('idle')
-        break
-      case 'thinking':
-        break
-    }
-  }
+  const paused = phase === 'paused' || phase === 'error'
+  const vizAnalyser =
+    phase === 'listening'
+      ? micRef.current?.analyser ?? null
+      : phase === 'speaking'
+        ? playerRef.current?.analyser ?? null
+        : null
 
   return (
-    <div className="relative flex h-full flex-col items-center justify-center px-10 pb-16">
+    <div className="relative flex h-full flex-col items-center">
       <button
         type="button"
         aria-label="Exit voice mode"
-        title="Exit voice mode"
+        title="Exit voice mode (Esc)"
         onClick={onExit}
-        className="absolute top-1 right-4 grid size-9 cursor-pointer place-items-center rounded-full text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+        className="absolute top-2 right-4 z-10 grid size-9 cursor-pointer place-items-center rounded-full text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
       >
         <X size={18} />
       </button>
 
-      <motion.button
-        type="button"
-        aria-label={STATUS[phase]}
-        onClick={handleTap}
-        whileTap={{ scale: 0.96 }}
-        animate={
-          reducedMotion
-            ? {}
-            : phase === 'listening'
-              ? { scale: [1, 1.07, 1] }
-              : phase === 'speaking'
-                ? { scale: [1, 1.04, 1] }
-                : { scale: [1, 1.02, 1] }
-        }
-        transition={{
-          duration: phase === 'listening' ? 1.1 : phase === 'speaking' ? 0.8 : 4,
-          repeat: Infinity,
-          ease: 'easeInOut',
+      {/* caption rail — the running conversation, newest pinned to the orb */}
+      <div
+        ref={captionsRef}
+        className="flex w-full max-w-[560px] flex-1 flex-col justify-end gap-3 overflow-y-auto px-6 pt-14 pb-4"
+        style={{
+          maskImage: 'linear-gradient(to bottom, transparent, black 12%)',
+          WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 12%)',
         }}
-        className="relative size-44 cursor-pointer rounded-full"
       >
-        <motion.div
-          aria-hidden
-          className="absolute -inset-4 rounded-full blur-2xl"
-          style={{ background: RAINBOW_CONIC }}
-          animate={
-            reducedMotion
-              ? { opacity: GLOW_OPACITY[phase] }
-              : { opacity: GLOW_OPACITY[phase], rotate: 360 }
-          }
-          transition={{
-            opacity: { duration: 0.4 },
-            rotate: { duration: SPIN_SECONDS[phase], repeat: Infinity, ease: 'linear' },
-          }}
-        />
-        <motion.div
-          aria-hidden
-          className="absolute inset-0 rounded-full"
-          style={{ background: RAINBOW_CONIC }}
-          animate={reducedMotion ? {} : { rotate: 360 }}
-          transition={{ duration: SPIN_SECONDS[phase], repeat: Infinity, ease: 'linear' }}
-        />
-        <div aria-hidden className="absolute inset-[4px] rounded-full bg-bg" />
-        <AnimatePresence>
-          {phase === 'listening' && !reducedMotion ? (
-            <motion.div
-              aria-hidden
-              className="absolute inset-0 rounded-full border-2 border-primary"
-              initial={{ scale: 1, opacity: 0.6 }}
-              animate={{ scale: 1.45, opacity: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 1.4, repeat: Infinity, ease: 'easeOut' }}
-            />
-          ) : null}
-        </AnimatePresence>
-      </motion.button>
-
-      <motion.p
-        key={phase}
-        initial={{ opacity: 0, y: 4 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="pt-8 text-sm font-medium text-ink-2"
-      >
-        {STATUS[phase]}
-      </motion.p>
-
-      <div className="flex min-h-32 w-full max-w-[480px] flex-col items-center gap-3 pt-6 text-center">
-        {userText ? <p className="text-[13px] text-ink-3">“{userText}”</p> : null}
-        {assistantText ? (
-          <p className="text-[15px] leading-relaxed text-ink select-text">{assistantText}</p>
+        {turns.slice(-8).map((turn) => (
+          <p
+            key={turn.id}
+            className={
+              turn.role === 'user'
+                ? 'self-end rounded-2xl rounded-br-md bg-surface-2 px-3.5 py-2 text-right text-[13px] text-ink-2 select-text'
+                : 'text-[15px] leading-relaxed text-ink select-text'
+            }
+          >
+            {turn.text}
+          </p>
+        ))}
+        {live ? (
+          <p className="text-[15px] leading-relaxed text-ink-2 select-text">{live}</p>
         ) : null}
-        {error ? <p className="text-[13px] text-danger">{error}</p> : null}
+      </div>
+
+      {/* the orb */}
+      <div className="relative grid shrink-0 place-items-center">
+        <VoiceVisualizer analyser={vizAnalyser} phase={phase} reducedMotion={reducedMotion} />
+        {phase === 'thinking' ? (
+          <motion.div
+            aria-hidden
+            className="absolute size-9 rounded-full border-2 border-primary border-t-transparent"
+            animate={reducedMotion ? {} : { rotate: 360 }}
+            transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
+          />
+        ) : null}
+      </div>
+
+      <AnimatePresence mode="wait">
+        <motion.p
+          key={phase === 'error' ? `err:${error}` : phase}
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          transition={{ duration: 0.18 }}
+          className={`shrink-0 pt-3 text-sm font-medium ${
+            phase === 'error' ? 'text-danger' : 'text-ink-2'
+          }`}
+        >
+          {phase === 'error' ? error : STATUS[phase]}
+        </motion.p>
+      </AnimatePresence>
+
+      {/* controls */}
+      <div className="flex shrink-0 flex-col items-center gap-2 pt-6 pb-12">
+        <motion.button
+          type="button"
+          aria-label={paused ? 'Resume listening' : 'Pause'}
+          title={paused ? 'Resume (Space)' : 'Pause (Space)'}
+          onClick={togglePause}
+          whileTap={{ scale: 0.94 }}
+          className={`grid size-14 cursor-pointer place-items-center rounded-full shadow-sm transition-colors duration-150 ${
+            paused
+              ? 'bg-primary text-on-primary hover:bg-primary-strong'
+              : 'bg-surface-2 text-ink hover:bg-surface-2/70'
+          }`}
+        >
+          {paused ? <Mic size={22} /> : <Pause size={20} />}
+        </motion.button>
+        <p className="text-[11px] text-ink-3">
+          {paused ? 'Tap to resume' : 'Hands-free · Space to pause · Esc to exit'}
+        </p>
       </div>
     </div>
   )
