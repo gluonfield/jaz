@@ -199,3 +199,45 @@ export interface AgentFilesResponse {
   files: AgentFile[]
   root: string
 }
+
+export interface MCPHeader {
+  name: string
+  value: string
+}
+
+export interface MCPEnvHeader {
+  name: string
+  env_var: string
+}
+
+export interface MCPServer {
+  id: string
+  name: string
+  transport: 'streamable_http'
+  url: string
+  enabled: boolean
+  bearer_token_env_var?: string
+  headers?: MCPHeader[]
+  env_headers?: MCPEnvHeader[]
+  status: 'connected' | 'disabled' | 'error' | 'needs_auth' | 'unknown'
+  tool_count: number
+  error?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface MCPServerInput {
+  name: string
+  url: string
+  enabled: boolean
+  bearer_token_env_var?: string
+  headers?: MCPHeader[]
+  env_headers?: MCPEnvHeader[]
+}
+
+export interface MCPServerStatus {
+  status: 'connected' | 'disabled' | 'error' | 'needs_auth' | 'unknown'
+  tool_count: number
+  error?: string
+  checked_at?: string
+}

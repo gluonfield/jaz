@@ -1,0 +1,134 @@
+package mcp
+
+import (
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/charmbracelet/log"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/tools"
+)
+
+type testStore struct {
+	servers []mcpconfig.Server
+}
+
+func (s *testStore) ListMCPServers() ([]mcpconfig.Server, error) {
+	return append([]mcpconfig.Server(nil), s.servers...), nil
+}
+
+type echoInput struct {
+	Value string `json:"value"`
+}
+
+func TestManagerRefreshMapsAndExecutesRemoteTools(t *testing.T) {
+	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "test-mcp", Version: "1.0.0"}, nil)
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
+		Name:        "echo",
+		Description: "echoes a value",
+	}, func(ctx context.Context, req *mcpsdk.CallToolRequest, input echoInput) (*mcpsdk.CallToolResult, map[string]string, error) {
+		return &mcpsdk.CallToolResult{
+			Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: "got " + input.Value}},
+		}, map[string]string{"value": input.Value}, nil
+	})
+
+	handler := mcpsdk.NewStreamableHTTPHandler(func(req *http.Request) *mcpsdk.Server {
+		if req.Header.Get("X-Test") != "secret" {
+			return nil
+		}
+		return server
+	}, &mcpsdk.StreamableHTTPOptions{JSONResponse: true})
+	httpServer := httptest.NewServer(handler)
+	defer httpServer.Close()
+
+	registry := tools.NewRegistry()
+	manager := NewManager(&testStore{servers: []mcpconfig.Server{{
+		ID:        "srv1",
+		Name:      "Remote Test",
+		Transport: mcpconfig.TransportStreamableHTTP,
+		URL:       httpServer.URL,
+		Enabled:   true,
+		Headers:   []mcpconfig.Header{{Name: "X-Test", Value: "secret"}},
+	}}}, nil, registry, log.New(io.Discard))
+	manager.Refresh(context.Background())
+	defer manager.Close()
+
+	status := manager.Status("srv1")
+	if status.Status != "connected" || status.ToolCount != 1 {
+		t.Fatalf("status = %#v", status)
+	}
+	defs := registry.Definitions()
+	if len(defs) != 1 {
+		t.Fatalf("registry definitions = %d, want 1", len(defs))
+	}
+	name := tools.DefinitionName(defs[0])
+	if !strings.HasPrefix(name, "mcp_Remote_Test_echo") {
+		t.Fatalf("tool name = %q", name)
+	}
+	tool, ok := registry.Get(name)
+	if !ok {
+		t.Fatalf("tool %q not registered", name)
+	}
+	result, err := tool.Execute(context.Background(), map[string]any{"value": "ok"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		Status            string            `json:"status"`
+		Server            string            `json:"server"`
+		Tool              string            `json:"tool"`
+		Content           []map[string]any  `json:"content"`
+		StructuredContent map[string]string `json:"structured_content"`
+	}
+	if err := json.Unmarshal([]byte(result.Content), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Status != "completed" || payload.Server != "Remote Test" || payload.Tool != "echo" {
+		t.Fatalf("payload = %#v", payload)
+	}
+	if len(payload.Content) != 1 || payload.Content[0]["text"] != "got ok" {
+		t.Fatalf("content = %#v", payload.Content)
+	}
+	if payload.StructuredContent["value"] != "ok" {
+		t.Fatalf("structured_content = %#v", payload.StructuredContent)
+	}
+}
+
+func TestResolvedHeadersUsesEnvAndBearerToken(t *testing.T) {
+	t.Setenv("MCP_HEADER_VALUE", "from-env")
+	t.Setenv("MCP_TOKEN", "token")
+	headers, err := mcpconfig.ResolvedHeaders(mcpconfig.Server{
+		Headers:           []mcpconfig.Header{{Name: "X-Literal", Value: "literal"}},
+		EnvHeaders:        []mcpconfig.EnvHeader{{Name: "X-Env", EnvVar: "MCP_HEADER_VALUE"}},
+		BearerTokenEnvVar: "MCP_TOKEN",
+	}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, header := range headers {
+		got[header.Name] = header.Value
+	}
+	if got["X-Literal"] != "literal" || got["X-Env"] != "from-env" || got["Authorization"] != "Bearer token" {
+		t.Fatalf("headers = %#v", got)
+	}
+}
+
+func TestMappedToolNameIsSafeAndBounded(t *testing.T) {
+	used := map[string]string{}
+	name := mappedToolName(mcpconfig.Server{ID: "server", Name: "Server With Spaces"}, strings.Repeat("tool/", 40), used)
+	if len(name) > maxToolNameLen {
+		t.Fatalf("tool name length = %d, want <= %d", len(name), maxToolNameLen)
+	}
+	for _, ch := range name {
+		if !(ch == '_' || ch == '-' || ch >= 'A' && ch <= 'Z' || ch >= 'a' && ch <= 'z' || ch >= '0' && ch <= '9') {
+			t.Fatalf("unsafe character %q in %q", ch, name)
+		}
+	}
+}

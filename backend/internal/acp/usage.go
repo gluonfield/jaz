@@ -149,20 +149,23 @@ func intField(fields map[string]json.RawMessage, key string) (int64, bool) {
 }
 
 func mergeUsageSnapshot(current, next storage.Usage) storage.Usage {
-	if next.InputTokens > 0 {
+	if next.InputTokens > current.InputTokens {
 		current.InputTokens = next.InputTokens
 	}
-	if next.CachedInputTokens > 0 {
+	if next.CachedInputTokens > current.CachedInputTokens {
 		current.CachedInputTokens = next.CachedInputTokens
 	}
-	if next.OutputTokens > 0 {
+	if next.OutputTokens > current.OutputTokens {
 		current.OutputTokens = next.OutputTokens
 	}
-	if next.ReasoningOutputTokens > 0 {
+	if next.ReasoningOutputTokens > current.ReasoningOutputTokens {
 		current.ReasoningOutputTokens = next.ReasoningOutputTokens
 	}
-	if next.TotalTokens > 0 {
+	if next.TotalTokens > current.TotalTokens {
 		current.TotalTokens = next.TotalTokens
+	}
+	if derivedTotal := current.InputTokens + current.OutputTokens; derivedTotal > current.TotalTokens {
+		current.TotalTokens = derivedTotal
 	}
 	return current
 }

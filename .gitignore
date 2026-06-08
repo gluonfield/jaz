@@ -5,3 +5,9 @@
 # build artifacts and OS junk
 .DS_Store
 backend/jaz
+activepieces/.env
+activepieces/data/
+activepieces/io/**
+!activepieces/io/
+!activepieces/io/**/
+!activepieces/io/**/.gitkeep

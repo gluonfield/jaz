@@ -192,9 +192,13 @@ func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd
 }
 
 func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, cwd string) (acpSessionInfo, error) {
-	newSession := acpschema.NewSessionRequest{
+	newSession := struct {
+		Meta       map[string]any    `json:"_meta,omitempty"`
+		Cwd        string            `json:"cwd"`
+		MCPServers []json.RawMessage `json:"mcpServers"`
+	}{
 		Cwd:        cwd,
-		MCPServers: []acpschema.MCPServer{},
+		MCPServers: m.mcpServersForAgent(ac.initRaw),
 	}
 	if m.cfg.SystemPrompt != nil {
 		if prompt := strings.TrimSpace(m.cfg.SystemPrompt.SkillsPrompt()); prompt != "" {
@@ -409,9 +413,14 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, session 
 	_ = json.Unmarshal(ac.initRaw, &caps)
 	storedID := session.RuntimeRef.SessionID
 	if caps.AgentCapabilities.LoadSession && storedID != "" {
-		raw, err := ac.peer.Call(ctx, acpschema.AgentMethodSessionLoad, acpschema.LoadSessionRequest{
+		raw, err := ac.peer.Call(ctx, acpschema.AgentMethodSessionLoad, struct {
+			Meta       map[string]any      `json:"_meta,omitempty"`
+			Cwd        string              `json:"cwd"`
+			MCPServers []json.RawMessage   `json:"mcpServers"`
+			SessionID  acpschema.SessionID `json:"sessionId"`
+		}{
 			Cwd:        cwd,
-			MCPServers: []acpschema.MCPServer{},
+			MCPServers: m.mcpServersForAgent(ac.initRaw),
 			SessionID:  acpschema.SessionID(storedID),
 		})
 		if err == nil {

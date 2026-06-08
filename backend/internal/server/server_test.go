@@ -12,6 +12,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/agent"
+	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/provider"
 	mockprovider "github.com/wins/jaz/backend/internal/provider/mock"
 	"github.com/wins/jaz/backend/internal/sessionevents"
@@ -59,6 +60,208 @@ func TestACPBackedSessionRoutesToACPManager(t *testing.T) {
 	}
 	if !strings.Contains(res.Body.String(), "codex says hi") {
 		t.Fatalf("missing acp assistant output: %s", res.Body.String())
+	}
+}
+
+func TestMCPServerSettingsAPI(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	handler := (&Server{Store: store}).Handler()
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/mcp/servers", strings.NewReader(`{
+		"name":"Docs",
+		"url":"https://mcp.example.com/mcp",
+		"enabled":true,
+		"bearer_token_env_var":"DOCS_TOKEN",
+		"headers":[{"name":"X-Team","value":"platform"}],
+		"env_headers":[{"name":"X-Secret","env_var":"DOCS_SECRET"}]
+	}`))
+	createReq.Header.Set("Content-Type", "application/json")
+	createRes := httptest.NewRecorder()
+	handler.ServeHTTP(createRes, createReq)
+	if createRes.Code != http.StatusOK {
+		t.Fatalf("create status = %d, body = %s", createRes.Code, createRes.Body.String())
+	}
+	var created struct {
+		ID                string `json:"id"`
+		Name              string `json:"name"`
+		URL               string `json:"url"`
+		Enabled           bool   `json:"enabled"`
+		BearerTokenEnvVar string `json:"bearer_token_env_var"`
+		Status            string `json:"status"`
+		ToolCount         int    `json:"tool_count"`
+	}
+	if err := json.Unmarshal(createRes.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.ID == "" || created.Name != "Docs" || created.URL != "https://mcp.example.com/mcp" ||
+		!created.Enabled || created.BearerTokenEnvVar != "DOCS_TOKEN" {
+		t.Fatalf("created = %#v", created)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/mcp/servers", nil)
+	listRes := httptest.NewRecorder()
+	handler.ServeHTTP(listRes, listReq)
+	if listRes.Code != http.StatusOK {
+		t.Fatalf("list status = %d, body = %s", listRes.Code, listRes.Body.String())
+	}
+	var listed struct {
+		Servers []struct {
+			ID      string `json:"id"`
+			Headers []struct {
+				Name  string `json:"name"`
+				Value string `json:"value"`
+			} `json:"headers"`
+			EnvHeaders []struct {
+				Name   string `json:"name"`
+				EnvVar string `json:"env_var"`
+			} `json:"env_headers"`
+		} `json:"servers"`
+	}
+	if err := json.Unmarshal(listRes.Body.Bytes(), &listed); err != nil {
+		t.Fatal(err)
+	}
+	if len(listed.Servers) != 1 || listed.Servers[0].ID != created.ID ||
+		len(listed.Servers[0].Headers) != 1 || listed.Servers[0].Headers[0].Value != "platform" ||
+		len(listed.Servers[0].EnvHeaders) != 1 || listed.Servers[0].EnvHeaders[0].EnvVar != "DOCS_SECRET" {
+		t.Fatalf("listed = %#v", listed)
+	}
+
+	disableReq := httptest.NewRequest(http.MethodPost, "/v1/mcp/servers/"+created.ID+"/disable", nil)
+	disableRes := httptest.NewRecorder()
+	handler.ServeHTTP(disableRes, disableReq)
+	if disableRes.Code != http.StatusOK {
+		t.Fatalf("disable status = %d, body = %s", disableRes.Code, disableRes.Body.String())
+	}
+	loaded, err := store.LoadMCPServer(created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Enabled {
+		t.Fatalf("server still enabled: %#v", loaded)
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/v1/mcp/servers/"+created.ID, nil)
+	deleteRes := httptest.NewRecorder()
+	handler.ServeHTTP(deleteRes, deleteReq)
+	if deleteRes.Code != http.StatusOK {
+		t.Fatalf("delete status = %d, body = %s", deleteRes.Code, deleteRes.Body.String())
+	}
+	servers, err := store.ListMCPServers()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(servers) != 0 {
+		t.Fatalf("servers after delete = %#v", servers)
+	}
+}
+
+// The renderer is a separate origin, so a DELETE is preflighted. The handler
+// must advertise DELETE in Access-Control-Allow-Methods or the browser blocks
+// the request before it ever reaches us.
+func TestCORSAllowsDeletePreflight(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := (&Server{Store: store}).Handler()
+
+	req := httptest.NewRequest(http.MethodOptions, "/v1/mcp/servers/abc", nil)
+	req.Header.Set("Origin", "http://localhost:5180")
+	req.Header.Set("Access-Control-Request-Method", http.MethodDelete)
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+
+	if res.Code != http.StatusNoContent {
+		t.Fatalf("preflight status = %d", res.Code)
+	}
+	if allow := res.Header().Get("Access-Control-Allow-Methods"); !strings.Contains(allow, http.MethodDelete) {
+		t.Fatalf("Access-Control-Allow-Methods = %q, missing DELETE", allow)
+	}
+}
+
+type blockingMCPRuntime struct {
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (r *blockingMCPRuntime) Refresh(ctx context.Context) {
+	r.once.Do(func() { close(r.started) })
+	select {
+	case <-r.release:
+	case <-ctx.Done():
+	}
+}
+
+func (r *blockingMCPRuntime) Status(string) mcpconfig.ServerStatus {
+	return mcpconfig.ServerStatus{}
+}
+
+func (r *blockingMCPRuntime) Test(context.Context, mcpconfig.Server) mcpconfig.ServerStatus {
+	return mcpconfig.ServerStatus{}
+}
+
+func (r *blockingMCPRuntime) Authorize(context.Context, mcpconfig.Server) mcpconfig.ServerStatus {
+	return mcpconfig.ServerStatus{}
+}
+
+func TestMCPServerSettingsRefreshDoesNotBlockResponse(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	runtime := &blockingMCPRuntime{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	defer close(runtime.release)
+	handler := (&Server{Store: store, MCP: runtime}).Handler()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/mcp/servers", strings.NewReader(`{
+		"name":"Docs",
+		"url":"https://mcp.example.com/mcp",
+		"enabled":true
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	start := time.Now()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("create status = %d, body = %s", res.Code, res.Body.String())
+	}
+	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
+		t.Fatalf("response waited on refresh for %s", elapsed)
+	}
+	select {
+	case <-runtime.started:
+	case <-time.After(time.Second):
+		t.Fatal("refresh was not scheduled")
+	}
+}
+
+func TestMCPServerSettingsRejectInvalidURL(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	handler := (&Server{Store: store}).Handler()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/mcp/servers", strings.NewReader(`{
+		"name":"Docs",
+		"url":"ftp://mcp.example.com/mcp",
+		"enabled":true
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("create status = %d, want 400, body = %s", res.Code, res.Body.String())
 	}
 }
 

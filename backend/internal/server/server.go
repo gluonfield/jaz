@@ -13,6 +13,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/coordinator"
+	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
@@ -28,10 +29,18 @@ type ACPManager interface {
 	Cancel(context.Context, string) (acp.Job, error)
 }
 
+type MCPRuntime interface {
+	Refresh(context.Context)
+	Status(string) mcpconfig.ServerStatus
+	Test(context.Context, mcpconfig.Server) mcpconfig.ServerStatus
+	Authorize(context.Context, mcpconfig.Server) mcpconfig.ServerStatus
+}
+
 type Server struct {
 	Agent  *agent.Agent
 	Store  storage.Store
 	ACP    ACPManager
+	MCP    MCPRuntime
 	Locks  *sessionlock.Locks
 	Events *sessionevents.Bus
 	STT    voice.STT
@@ -77,6 +86,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/sessions/", s.handleGetSession)
 	mux.HandleFunc("POST /v1/sessions", s.handleCreateSession)
 	mux.HandleFunc("POST /v1/sessions/", s.handleSessionAction)
+	mux.HandleFunc("GET /v1/mcp/servers", s.handleListMCPServers)
+	mux.HandleFunc("POST /v1/mcp/servers", s.handleCreateMCPServer)
+	mux.HandleFunc("PUT /v1/mcp/servers/", s.handleMCPServerAction)
+	mux.HandleFunc("DELETE /v1/mcp/servers/", s.handleMCPServerAction)
+	mux.HandleFunc("POST /v1/mcp/servers/", s.handleMCPServerAction)
 	mux.HandleFunc("GET /v1/agent/files", s.handleListAgentFiles)
 	mux.HandleFunc("PUT /v1/agent/files/{name}", s.handleWriteAgentFile)
 	mux.HandleFunc("POST /v1/audio/transcribe", s.handleTranscribe)

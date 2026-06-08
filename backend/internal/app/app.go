@@ -10,6 +10,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/coordinator"
+	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/provider"
 	mockprovider "github.com/wins/jaz/backend/internal/provider/mock"
 	openaiprovider "github.com/wins/jaz/backend/internal/provider/openai"
@@ -111,6 +112,7 @@ func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, pro
 	cfg.ACP.Root = store.RootDir()
 	cfg.ACP.Workspace = string(workspace)
 	cfg.ACP.SystemPrompt = prompts
+	cfg.ACP.MCPStore = store
 	return cfg.ACP
 }
 
@@ -132,6 +134,36 @@ func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspac
 		&memorytool.DreamTool{Memory: memory},
 		&memorytool.LinkHygieneTool{Memory: memory},
 	)
+}
+
+func NewMCPManager(store *sqlitestore.Store, registry *tools.Registry, logger *log.Logger) *mcpruntime.Manager {
+	return mcpruntime.NewManager(store, store, registry, logger)
+}
+
+func StartMCPManager(lc fx.Lifecycle, manager *mcpruntime.Manager, logger *log.Logger) {
+	if manager == nil {
+		return
+	}
+	var cancel context.CancelFunc
+	lc.Append(fx.Hook{
+		// Connecting to MCP servers must never block or fail startup: a slow or
+		// unreachable server would otherwise blow the lifecycle start deadline and
+		// take the whole backend down. Refresh in the background on its own context
+		// so the server comes up immediately regardless of MCP connectivity.
+		OnStart: func(context.Context) error {
+			ctx, stop := context.WithCancel(context.Background())
+			cancel = stop
+			go manager.Refresh(ctx)
+			return nil
+		},
+		OnStop: func(context.Context) error {
+			if cancel != nil {
+				cancel()
+			}
+			manager.Close()
+			return nil
+		},
+	})
 }
 
 func CloseMemory(lc fx.Lifecycle, memory *jazmem.Memory) {

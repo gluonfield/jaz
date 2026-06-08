@@ -79,6 +79,50 @@ func TestACPUsagePersistsAtTurnFinish(t *testing.T) {
 	}
 }
 
+func TestACPUsagePersistsMonotonicTurnSnapshot(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "acp-monotonic-usage", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(store, Config{}, nil)
+	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
+	job.startTurn(CompletionInline, false, false, false)
+
+	manager.recordUsage(job, usageFromRaw(json.RawMessage(`{
+		"usage": {
+			"prompt_tokens": 120,
+			"completion_tokens": 20,
+			"total_tokens": 140
+		}
+	}`)))
+	manager.recordUsage(job, usageFromRaw(json.RawMessage(`{
+		"usage": {
+			"prompt_tokens": 100,
+			"completion_tokens": 10,
+			"total_tokens": 110
+		}
+	}`)))
+	manager.recordUsage(job, usageFromRaw(json.RawMessage(`{
+		"usage": {
+			"prompt_tokens": 130,
+			"completion_tokens": 25
+		}
+	}`)))
+	manager.persistUsage(job)
+
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Usage.InputTokens != 130 || loaded.Usage.OutputTokens != 25 || loaded.Usage.TotalTokens != 155 {
+		t.Fatalf("usage = %#v", loaded.Usage)
+	}
+}
+
 func TestACPUsagePersistsAtTurnFinishToSQLite(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {

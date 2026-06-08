@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -73,6 +74,79 @@ func TestSessionQueuedMessagesRoundTrip(t *testing.T) {
 	}
 	if strings.Join(loaded.QueuedMessages, "|") != "one prompt|second prompt" {
 		t.Fatalf("queued messages = %#v", loaded.QueuedMessages)
+	}
+}
+
+func TestMCPServersCRUDRoundTrip(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	created, err := store.CreateMCPServer(mcpconfig.ServerInput{
+		Name:              "Linear",
+		URL:               "https://mcp.example.com/mcp",
+		Enabled:           true,
+		BearerTokenEnvVar: "LINEAR_TOKEN",
+		Headers:           []mcpconfig.Header{{Name: "X-Team", Value: "platform"}},
+		EnvHeaders:        []mcpconfig.EnvHeader{{Name: "X-Secret", EnvVar: "LINEAR_SECRET"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Transport != mcpconfig.TransportStreamableHTTP || !created.Enabled {
+		t.Fatalf("created = %#v", created)
+	}
+
+	loaded, err := store.LoadMCPServer(created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.BearerTokenEnvVar != "LINEAR_TOKEN" ||
+		len(loaded.Headers) != 1 || loaded.Headers[0].Value != "platform" ||
+		len(loaded.EnvHeaders) != 1 || loaded.EnvHeaders[0].EnvVar != "LINEAR_SECRET" {
+		t.Fatalf("loaded = %#v", loaded)
+	}
+
+	updated, err := store.UpdateMCPServer(created.ID, mcpconfig.ServerInput{
+		Name:    "Docs",
+		URL:     "https://docs.example.com/mcp",
+		Enabled: true,
+		Headers: []mcpconfig.Header{{Name: "X-Docs", Value: "1"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Name != "Docs" || updated.URL != "https://docs.example.com/mcp" ||
+		updated.BearerTokenEnvVar != "" || len(updated.Headers) != 1 || updated.Headers[0].Name != "X-Docs" {
+		t.Fatalf("updated = %#v", updated)
+	}
+
+	disabled, err := store.SetMCPServerEnabled(created.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if disabled.Enabled {
+		t.Fatalf("disabled server still enabled: %#v", disabled)
+	}
+
+	servers, err := store.ListMCPServers()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(servers) != 1 || servers[0].ID != created.ID {
+		t.Fatalf("servers = %#v", servers)
+	}
+	if err := store.DeleteMCPServer(created.ID); err != nil {
+		t.Fatal(err)
+	}
+	servers, err = store.ListMCPServers()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(servers) != 0 {
+		t.Fatalf("servers after delete = %#v", servers)
 	}
 }
 
