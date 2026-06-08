@@ -3,7 +3,8 @@ package memory
 import (
 	"context"
 	"errors"
-	"time"
+	"fmt"
+	"strings"
 
 	"github.com/wins/jaz/backend/internal/helpers"
 	"github.com/wins/jaz/backend/internal/tools"
@@ -18,45 +19,16 @@ type GetTool struct {
 	Memory *jazmem.Memory
 }
 
-type FileTool struct {
-	Memory *jazmem.Memory
-}
-
-type ReindexTool struct {
-	Memory *jazmem.Memory
-}
-
-type DreamTool struct {
-	Memory *jazmem.Memory
-}
-
-type LinkHygieneTool struct {
-	Memory *jazmem.Memory
-}
-
 type searchInput struct {
-	Query string `json:"query" jsonschema_description:"Full-text memory search query."`
-	Limit int    `json:"limit,omitempty" jsonschema_description:"Maximum results to return. Defaults to 10, capped at 50."`
+	Query string `json:"query" jsonschema_description:"Question or topic to answer from jazmem memory."`
 }
 
 type getInput struct {
 	Slug string `json:"slug" jsonschema_description:"Markdown page slug, for example people/alice or inbox/2026-06-08-note."`
 }
 
-type fileInput struct {
-	Slug string `json:"slug" jsonschema_description:"Markdown page slug, for example people/alice. Returns the absolute markdown file path."`
-}
-
-type reindexInput struct{}
-
-type dreamInput struct {
-	Date string `json:"date,omitempty" jsonschema_description:"Optional dream date in YYYY-MM-DD format. Defaults to today."`
-}
-
-type linkHygieneInput struct{}
-
 func (t *SearchTool) Definition() tools.Definition {
-	return tools.Function("mem_search", "Search canonical markdown memory using the rebuildable SQLite FTS index. Returns compact ranked chunks; it does not synthesize an answer.", true, helpers.GenerateSchema[searchInput]())
+	return tools.Function("mem_search", "Search jazmem and synthesize an evidence-grounded answer with citations and gaps. Use this as the default memory search tool.", true, helpers.GenerateSchema[searchInput]())
 }
 
 func (t *SearchTool) Execute(ctx context.Context, inputs map[string]any) (tools.Result, error) {
@@ -64,15 +36,15 @@ func (t *SearchTool) Execute(ctx context.Context, inputs map[string]any) (tools.
 	if err != nil {
 		return tools.Result{}, err
 	}
-	results, err := t.Memory.Retrieve(ctx, req.Query, jazmem.SearchOptions{Limit: req.Limit})
+	result, err := t.Memory.AgenticSearch(ctx, req.Query, jazmem.AgenticOptions{})
 	if err != nil {
 		return tools.Result{}, err
 	}
-	return tools.JSONResult(results)
+	return tools.JSONResult(result)
 }
 
 func (t *GetTool) Definition() tools.Definition {
-	return tools.Function("mem_get", "Read a canonical markdown memory page by slug.", true, helpers.GenerateSchema[getInput]())
+	return tools.Function("mem_get", "Read a jazmem markdown page by slug. Returns raw markdown content; if missing, returns similar slug suggestions.", true, helpers.GenerateSchema[getInput]())
 }
 
 func (t *GetTool) Execute(ctx context.Context, inputs map[string]any) (tools.Result, error) {
@@ -84,88 +56,26 @@ func (t *GetTool) Execute(ctx context.Context, inputs map[string]any) (tools.Res
 	if err != nil {
 		var notFound *jazmem.NotFoundError
 		if errors.As(err, &notFound) {
-			return tools.JSONResult(map[string]any{
-				"error":       notFound.Error(),
-				"suggestions": notFound.Suggestions,
-			})
+			return tools.Result{Content: notFoundText(notFound)}, nil
 		}
 		return tools.Result{}, err
 	}
-	return tools.JSONResult(page)
+	return tools.Result{Content: page.Raw}, nil
 }
 
-func (t *FileTool) Definition() tools.Definition {
-	return tools.Function("mem_file", "Resolve a canonical markdown memory slug to its absolute file path before reading or editing the raw markdown file.", true, helpers.GenerateSchema[fileInput]())
-}
-
-func (t *FileTool) Execute(ctx context.Context, inputs map[string]any) (tools.Result, error) {
-	req, err := helpers.DecodeMap[fileInput](inputs)
-	if err != nil {
-		return tools.Result{}, err
+func notFoundText(notFound *jazmem.NotFoundError) string {
+	var b strings.Builder
+	b.WriteString(notFound.Error())
+	if len(notFound.Suggestions) == 0 {
+		return b.String()
 	}
-	page, err := t.Memory.GetPage(ctx, req.Slug)
-	if err != nil {
-		var notFound *jazmem.NotFoundError
-		if errors.As(err, &notFound) {
-			return tools.JSONResult(map[string]any{
-				"error":       notFound.Error(),
-				"suggestions": notFound.Suggestions,
-			})
+	b.WriteString("\nsuggestions:")
+	for _, suggestion := range notFound.Suggestions {
+		if suggestion.Title == "" {
+			fmt.Fprintf(&b, "\n- %s", suggestion.Slug)
+			continue
 		}
-		return tools.Result{}, err
+		fmt.Fprintf(&b, "\n- %s (%s)", suggestion.Slug, suggestion.Title)
 	}
-	return tools.JSONResult(jazmem.PageRef{Slug: page.Slug, Path: page.Path})
-}
-
-func (t *ReindexTool) Definition() tools.Definition {
-	return tools.Function("mem_reindex", "Rebuild the SQLite memory index from canonical markdown files.", true, helpers.GenerateSchema[reindexInput]())
-}
-
-func (t *ReindexTool) Execute(ctx context.Context, inputs map[string]any) (tools.Result, error) {
-	if _, err := helpers.DecodeMap[reindexInput](inputs); err != nil {
-		return tools.Result{}, err
-	}
-	report, err := t.Memory.Reindex(ctx, jazmem.ReindexOptions{})
-	if err != nil {
-		return tools.Result{}, err
-	}
-	return tools.JSONResult(report)
-}
-
-func (t *DreamTool) Definition() tools.Definition {
-	return tools.Function("mem_dream", "Run deterministic jazmem dream consolidation scaffolding and write a dream run markdown page.", true, helpers.GenerateSchema[dreamInput]())
-}
-
-func (t *DreamTool) Execute(ctx context.Context, inputs map[string]any) (tools.Result, error) {
-	req, err := helpers.DecodeMap[dreamInput](inputs)
-	if err != nil {
-		return tools.Result{}, err
-	}
-	var date time.Time
-	if req.Date != "" {
-		date, err = time.Parse("2006-01-02", req.Date)
-		if err != nil {
-			return tools.Result{}, err
-		}
-	}
-	report, err := t.Memory.Dream(ctx, jazmem.DreamOptions{Date: date})
-	if err != nil {
-		return tools.Result{}, err
-	}
-	return tools.JSONResult(report)
-}
-
-func (t *LinkHygieneTool) Definition() tools.Definition {
-	return tools.Function("mem_link_hygiene", "Scan derived memory links and write relationship proposals to a review markdown page. It does not edit canonical entity pages.", true, helpers.GenerateSchema[linkHygieneInput]())
-}
-
-func (t *LinkHygieneTool) Execute(ctx context.Context, inputs map[string]any) (tools.Result, error) {
-	if _, err := helpers.DecodeMap[linkHygieneInput](inputs); err != nil {
-		return tools.Result{}, err
-	}
-	report, err := t.Memory.LinkHygiene(ctx)
-	if err != nil {
-		return tools.Result{}, err
-	}
-	return tools.JSONResult(report)
+	return b.String()
 }

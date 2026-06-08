@@ -129,10 +129,6 @@ func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspac
 		&agentlist.Tool{Manager: manager},
 		&memorytool.SearchTool{Memory: memory},
 		&memorytool.GetTool{Memory: memory},
-		&memorytool.FileTool{Memory: memory},
-		&memorytool.ReindexTool{Memory: memory},
-		&memorytool.DreamTool{Memory: memory},
-		&memorytool.LinkHygieneTool{Memory: memory},
 	)
 }
 
