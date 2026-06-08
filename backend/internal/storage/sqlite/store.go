@@ -126,6 +126,8 @@ func (s *Store) CreateSession(input storage.CreateSession) (storage.Session, err
 		ModelProvider:   input.ModelProvider,
 		Model:           input.Model,
 		ReasoningEffort: input.ReasoningEffort,
+		SourceType:      input.SourceType,
+		SourceID:        input.SourceID,
 		CreatedAt:       now,
 		UpdatedAt:       now,
 	}
@@ -191,7 +193,7 @@ func (s *Store) ListSessions(filter storage.SessionFilter) ([]storage.Session, e
 
 	rows, err := s.db.Query(`SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd,
 model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens,
-reasoning_output_tokens, total_tokens, queued_messages, archived, created_at_ms, updated_at_ms FROM threads`)
+reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms FROM threads`)
 	if err != nil {
 		return nil, err
 	}
@@ -203,22 +205,7 @@ reasoning_output_tokens, total_tokens, queued_messages, archived, created_at_ms,
 		if err != nil {
 			return nil, err
 		}
-		if filter.RootOnly && session.ParentID != "" {
-			continue
-		}
-		if filter.ParentOnly && session.ParentID != filter.ParentID {
-			continue
-		}
-		if !filter.IncludeChildren && !filter.ParentOnly && !filter.RootOnly && filter.ParentID == "" && session.ParentID != "" {
-			continue
-		}
-		if filter.ParentID != "" && session.ParentID != filter.ParentID {
-			continue
-		}
-		if filter.Runtime != "" && session.Runtime != filter.Runtime {
-			continue
-		}
-		if session.Archived != filter.Archived {
+		if !storage.SessionMatchesFilter(session, filter) {
 			continue
 		}
 		sessions = append(sessions, session)
@@ -449,102 +436,6 @@ func (s *Store) configure() error {
 	return nil
 }
 
-func (s *Store) migrate() error {
-	stmts := []string{
-		`CREATE TABLE IF NOT EXISTS threads (
-  id TEXT PRIMARY KEY,
-  slug TEXT NOT NULL UNIQUE,
-  title TEXT,
-  parent_id TEXT,
-  status TEXT NOT NULL DEFAULT 'idle',
-  error TEXT,
-  runtime TEXT NOT NULL DEFAULT 'native',
-  acp_agent TEXT,
-  acp_session_id TEXT,
-  cwd TEXT,
-  model_provider TEXT,
-  model TEXT,
-  reasoning_effort TEXT,
-  input_tokens INTEGER NOT NULL DEFAULT 0,
-  cached_input_tokens INTEGER NOT NULL DEFAULT 0,
-  output_tokens INTEGER NOT NULL DEFAULT 0,
-  reasoning_output_tokens INTEGER NOT NULL DEFAULT 0,
-  total_tokens INTEGER NOT NULL DEFAULT 0,
-  queued_messages TEXT NOT NULL DEFAULT '[]',
-  archived INTEGER NOT NULL DEFAULT 0,
-  created_at_ms INTEGER NOT NULL,
-  updated_at_ms INTEGER NOT NULL
-)`,
-		`CREATE TABLE IF NOT EXISTS messages (
-  thread_id TEXT NOT NULL,
-  seq INTEGER NOT NULL,
-  role TEXT NOT NULL,
-  content TEXT NOT NULL DEFAULT '',
-  reasoning TEXT,
-  blocks TEXT NOT NULL DEFAULT '[]',
-  created_at_ms INTEGER NOT NULL,
-  PRIMARY KEY (thread_id, seq),
-  FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE
-)`,
-		`CREATE TABLE IF NOT EXISTS session_events (
-  thread_id TEXT NOT NULL,
-  seq INTEGER NOT NULL,
-  type TEXT NOT NULL,
-  content TEXT NOT NULL DEFAULT '',
-  acp TEXT,
-  permission TEXT,
-  created_at_ms INTEGER NOT NULL,
-  PRIMARY KEY (thread_id, seq),
-  FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE
-)`,
-		`CREATE TABLE IF NOT EXISTS mcp_servers (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  transport TEXT NOT NULL DEFAULT 'streamable_http',
-  url TEXT NOT NULL,
-  enabled INTEGER NOT NULL DEFAULT 1,
-  bearer_token_env_var TEXT,
-  headers_json TEXT NOT NULL DEFAULT '[]',
-  env_headers_json TEXT NOT NULL DEFAULT '[]',
-  created_at_ms INTEGER NOT NULL,
-  updated_at_ms INTEGER NOT NULL
-)`,
-		`CREATE INDEX IF NOT EXISTS idx_threads_parent_updated ON threads(parent_id, updated_at_ms DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_threads_updated ON threads(updated_at_ms DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_session_events_thread_seq ON session_events(thread_id, seq)`,
-		`CREATE INDEX IF NOT EXISTS idx_mcp_servers_updated ON mcp_servers(updated_at_ms DESC)`,
-		`CREATE TABLE IF NOT EXISTS mcp_oauth_tokens (
-  server_id TEXT PRIMARY KEY,
-  token_json TEXT NOT NULL,
-  updated_at_ms INTEGER NOT NULL
-)`,
-		`PRAGMA user_version = 1`,
-	}
-	for _, stmt := range stmts {
-		if _, err := s.db.Exec(stmt); err != nil {
-			return err
-		}
-	}
-	// Tolerant migration for databases created before the column existed
-	// (CREATE TABLE IF NOT EXISTS skips them).
-	for _, stmt := range []string{
-		`ALTER TABLE threads ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE threads ADD COLUMN error TEXT`,
-		`ALTER TABLE threads ADD COLUMN cwd TEXT`,
-		`ALTER TABLE threads ADD COLUMN input_tokens INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE threads ADD COLUMN cached_input_tokens INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE threads ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE threads ADD COLUMN reasoning_output_tokens INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE threads ADD COLUMN total_tokens INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE threads ADD COLUMN queued_messages TEXT NOT NULL DEFAULT '[]'`,
-	} {
-		if _, err := s.db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
-			return err
-		}
-	}
-	return nil
-}
-
 func (s *Store) importLegacyJSON() error {
 	legacy := s.mirror
 	if legacy == nil {
@@ -681,7 +572,7 @@ func (s *Store) loadSessionLocked(ref string) (storage.Session, error) {
 	}
 	row := s.db.QueryRow(`SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd,
 model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens,
-reasoning_output_tokens, total_tokens, queued_messages, archived, created_at_ms, updated_at_ms
+reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms
 FROM threads WHERE id = ? OR slug = ? LIMIT 1`, ref, ref)
 	return scanSession(row)
 }
@@ -787,8 +678,8 @@ func insertSession(db execer, session storage.Session) error {
 	_, err = db.Exec(`INSERT INTO threads (
 id, slug, title, parent_id, status, runtime, acp_agent, acp_session_id, cwd,
 error, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens,
-reasoning_output_tokens, total_tokens, queued_messages, archived, created_at_ms, updated_at_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
 slug = excluded.slug,
 title = excluded.title,
@@ -808,6 +699,8 @@ output_tokens = excluded.output_tokens,
 reasoning_output_tokens = excluded.reasoning_output_tokens,
 total_tokens = excluded.total_tokens,
 queued_messages = excluded.queued_messages,
+source_type = excluded.source_type,
+source_id = excluded.source_id,
 archived = excluded.archived,
 created_at_ms = excluded.created_at_ms,
 updated_at_ms = excluded.updated_at_ms`,
@@ -815,7 +708,8 @@ updated_at_ms = excluded.updated_at_ms`,
 		session.Status, session.Runtime, nullString(acpAgent), nullString(acpSessionID), nullString(cwd), nullString(session.Error),
 		nullString(session.ModelProvider), nullString(session.Model), nullString(session.ReasoningEffort),
 		session.Usage.InputTokens, session.Usage.CachedInputTokens, session.Usage.OutputTokens,
-		session.Usage.ReasoningOutputTokens, session.Usage.TotalTokens, queuedMessages, session.Archived,
+		session.Usage.ReasoningOutputTokens, session.Usage.TotalTokens, queuedMessages,
+		nullString(session.SourceType), nullString(session.SourceID), session.Archived,
 		timeToMs(session.CreatedAt), timeToMs(session.UpdatedAt))
 	return err
 }
@@ -837,12 +731,13 @@ type sessionScanner interface {
 
 func scanSession(scanner sessionScanner) (storage.Session, error) {
 	var session storage.Session
-	var title, parentID, errorMessage, acpAgent, acpSessionID, cwd, modelProvider, model, reasoningEffort, queuedMessages sql.NullString
+	var title, parentID, errorMessage, acpAgent, acpSessionID, cwd, modelProvider, model, reasoningEffort, queuedMessages, sourceType, sourceID sql.NullString
 	var createdMs, updatedMs int64
 	err := scanner.Scan(&session.ID, &session.Slug, &title, &parentID, &session.Status, &errorMessage, &session.Runtime,
 		&acpAgent, &acpSessionID, &cwd, &modelProvider, &model, &reasoningEffort,
 		&session.Usage.InputTokens, &session.Usage.CachedInputTokens, &session.Usage.OutputTokens,
-		&session.Usage.ReasoningOutputTokens, &session.Usage.TotalTokens, &queuedMessages, &session.Archived, &createdMs, &updatedMs)
+		&session.Usage.ReasoningOutputTokens, &session.Usage.TotalTokens, &queuedMessages, &sourceType, &sourceID,
+		&session.Archived, &createdMs, &updatedMs)
 	if err != nil {
 		return storage.Session{}, err
 	}
@@ -852,6 +747,8 @@ func scanSession(scanner sessionScanner) (storage.Session, error) {
 	session.ModelProvider = modelProvider.String
 	session.Model = model.String
 	session.ReasoningEffort = reasoningEffort.String
+	session.SourceType = sourceType.String
+	session.SourceID = sourceID.String
 	session.QueuedMessages, err = unmarshalStringList(queuedMessages.String)
 	if err != nil {
 		return storage.Session{}, err

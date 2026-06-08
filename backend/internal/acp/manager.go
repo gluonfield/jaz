@@ -72,6 +72,9 @@ type SpawnRequest struct {
 	Directory string
 	// Worktree runs the session on a disposable git worktree of Directory.
 	Worktree bool
+	// SourceType/SourceID tag sessions created by backend automation such as loops.
+	SourceType string
+	SourceID   string
 }
 
 type SendRequest struct {
@@ -238,6 +241,8 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		ModelProvider:   req.ACPAgent,
 		Model:           strings.TrimSpace(cfg.Model),
 		ReasoningEffort: configuredReasoningEffort(cfg.ReasoningEffort),
+		SourceType:      req.SourceType,
+		SourceID:        req.SourceID,
 		RuntimeRef: &storage.RuntimeRef{
 			Type:  storage.RuntimeACP,
 			Agent: req.ACPAgent,

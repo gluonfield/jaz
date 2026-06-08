@@ -583,6 +583,45 @@ type fakeACPManager struct {
 	sendErr      error
 	answerErr    error
 	job          acp.Job
+	spawnStore   storage.SessionStore
+	spawned      acp.SpawnRequest
+	spawnErr     error
+}
+
+func (f *fakeACPManager) Spawn(_ context.Context, req acp.SpawnRequest) (acp.SpawnResult, error) {
+	f.mu.Lock()
+	f.spawned = req
+	spawnStore := f.spawnStore
+	spawnErr := f.spawnErr
+	f.mu.Unlock()
+	if spawnErr != nil {
+		return acp.SpawnResult{}, spawnErr
+	}
+	if spawnStore == nil {
+		return acp.SpawnResult{}, nil
+	}
+	session, err := spawnStore.CreateSession(storage.CreateSession{
+		Slug:       req.Slug,
+		Title:      req.Title,
+		Runtime:    storage.RuntimeACP,
+		SourceType: req.SourceType,
+		SourceID:   req.SourceID,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     req.ACPAgent,
+			SessionID: "fake-acp-session",
+		},
+	})
+	if err != nil {
+		return acp.SpawnResult{}, err
+	}
+	return acp.SpawnResult{
+		Status:    "created",
+		SessionID: session.ID,
+		Slug:      session.Slug,
+		ACPAgent:  req.ACPAgent,
+		State:     acp.StateIdle,
+	}, nil
 }
 
 func (f *fakeACPManager) Send(ctx context.Context, req acp.SendRequest) (acp.Job, error) {

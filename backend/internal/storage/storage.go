@@ -17,6 +17,10 @@ const (
 	StatusError   = "error"
 )
 
+const (
+	SourceLoopRun = "loop_run"
+)
+
 func SessionStatusForACPState(state string) string {
 	switch state {
 	case "starting", "running":
@@ -59,6 +63,8 @@ type Session struct {
 	ReasoningEffort string      `json:"reasoning_effort,omitempty"`
 	Usage           Usage       `json:"usage,omitempty"`
 	QueuedMessages  []string    `json:"queued_messages,omitempty"`
+	SourceType      string      `json:"source_type,omitempty"`
+	SourceID        string      `json:"source_id,omitempty"`
 	Archived        bool        `json:"archived,omitempty"`
 	CreatedAt       time.Time   `json:"created_at"`
 	UpdatedAt       time.Time   `json:"updated_at"`
@@ -122,6 +128,8 @@ type CreateSession struct {
 	ModelProvider   string
 	Model           string
 	ReasoningEffort string
+	SourceType      string
+	SourceID        string
 }
 
 type SessionFilter struct {
@@ -130,7 +138,38 @@ type SessionFilter struct {
 	RootOnly        bool
 	Runtime         string
 	IncludeChildren bool
+	SourceType      string
+	SourceID        string
+	IncludeSourced  bool
 	// Archived selects only archived sessions; by default they are excluded.
 	Archived bool
 	Limit    int
+}
+
+func SessionMatchesFilter(session Session, filter SessionFilter) bool {
+	if filter.RootOnly && session.ParentID != "" {
+		return false
+	}
+	if filter.ParentOnly && session.ParentID != filter.ParentID {
+		return false
+	}
+	if !filter.IncludeChildren && !filter.ParentOnly && !filter.RootOnly && filter.ParentID == "" && session.ParentID != "" {
+		return false
+	}
+	if filter.ParentID != "" && session.ParentID != filter.ParentID {
+		return false
+	}
+	if filter.Runtime != "" && session.Runtime != filter.Runtime {
+		return false
+	}
+	if filter.SourceType != "" && session.SourceType != filter.SourceType {
+		return false
+	}
+	if filter.SourceID != "" && session.SourceID != filter.SourceID {
+		return false
+	}
+	if filter.SourceType == "" && filter.SourceID == "" && !filter.IncludeSourced && session.SourceType != "" {
+		return false
+	}
+	return session.Archived == filter.Archived
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/coordinator"
+	"github.com/wins/jaz/backend/internal/loops"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessionevents"
@@ -22,6 +23,7 @@ import (
 )
 
 type ACPManager interface {
+	Spawn(context.Context, acp.SpawnRequest) (acp.SpawnResult, error)
 	Send(context.Context, acp.SendRequest) (acp.Job, error)
 	Status(string) (acp.Job, error)
 	List() []acp.Job
@@ -43,6 +45,7 @@ type Server struct {
 	MCP    MCPRuntime
 	Locks  *sessionlock.Locks
 	Events *sessionevents.Bus
+	Loops  *loops.Service
 	STT    voice.STT
 	TTS    voice.TTS
 	// NativeModel* captures configured model metadata for native Jaz sessions.
@@ -86,6 +89,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/sessions/", s.handleGetSession)
 	mux.HandleFunc("POST /v1/sessions", s.handleCreateSession)
 	mux.HandleFunc("POST /v1/sessions/", s.handleSessionAction)
+	mux.HandleFunc("GET /v1/loops", s.handleListLoops)
+	mux.HandleFunc("POST /v1/loops", s.handleCreateLoop)
+	mux.HandleFunc("/v1/loops/", s.handleLoopAction)
 	mux.HandleFunc("GET /v1/mcp/servers", s.handleListMCPServers)
 	mux.HandleFunc("POST /v1/mcp/servers", s.handleCreateMCPServer)
 	mux.HandleFunc("PUT /v1/mcp/servers/", s.handleMCPServerAction)
@@ -139,6 +145,9 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		RootOnly:        query.Get("root") == "true",
 		Runtime:         query.Get("runtime"),
 		IncludeChildren: query.Get("include_children") == "true",
+		SourceType:      query.Get("source_type"),
+		SourceID:        query.Get("source_id"),
+		IncludeSourced:  query.Get("include_sourced") == "true",
 		Archived:        query.Get("archived") == "true",
 		Limit:           limit,
 	}

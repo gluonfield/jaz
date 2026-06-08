@@ -86,6 +86,8 @@ func (s *Store) CreateSession(input storage.CreateSession) (storage.Session, err
 		ModelProvider:   input.ModelProvider,
 		Model:           input.Model,
 		ReasoningEffort: input.ReasoningEffort,
+		SourceType:      input.SourceType,
+		SourceID:        input.SourceID,
 		CreatedAt:       now,
 		UpdatedAt:       now,
 	}
@@ -219,22 +221,7 @@ func (s *Store) ListSessions(filter storage.SessionFilter) ([]storage.Session, e
 		if err != nil {
 			continue
 		}
-		if filter.RootOnly && session.ParentID != "" {
-			continue
-		}
-		if filter.ParentOnly && session.ParentID != filter.ParentID {
-			continue
-		}
-		if !filter.IncludeChildren && !filter.ParentOnly && !filter.RootOnly && filter.ParentID == "" && session.ParentID != "" {
-			continue
-		}
-		if filter.ParentID != "" && session.ParentID != filter.ParentID {
-			continue
-		}
-		if filter.Runtime != "" && session.Runtime != filter.Runtime {
-			continue
-		}
-		if session.Archived != filter.Archived {
+		if !storage.SessionMatchesFilter(session, filter) {
 			continue
 		}
 		sessions = append(sessions, session)
