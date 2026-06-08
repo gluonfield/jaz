@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/storage"
 )
 
 type Job struct {
@@ -37,6 +38,7 @@ type Job struct {
 	cancelRequested   bool
 	toolByID          map[string]ToolCallSnapshot
 	savedAssistantLen int
+	usage             storage.Usage
 }
 
 type PlanEntry struct {
@@ -120,6 +122,7 @@ func (j *Job) startTurn(completion CompletionMode, interactive, planRequested, p
 	j.Error = ""
 	j.StopReason = ""
 	j.savedAssistantLen = 0
+	j.usage = storage.Usage{}
 	j.completion = completion
 	j.interactive = interactive
 	j.planRequested = planRequested

@@ -259,6 +259,28 @@ func (s *Store) LastRootSession() (storage.Session, error) {
 	return sessions[0], nil
 }
 
+func (s *Store) AddUsage(id string, usage storage.Usage) error {
+	if usage.InputTokens == 0 && usage.CachedInputTokens == 0 && usage.OutputTokens == 0 && usage.ReasoningOutputTokens == 0 && usage.TotalTokens == 0 {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, err := s.loadSessionByID(id)
+	if err != nil {
+		return err
+	}
+	total := usage.TotalTokens
+	if total == 0 {
+		total = usage.InputTokens + usage.OutputTokens
+	}
+	session.Usage.InputTokens += usage.InputTokens
+	session.Usage.CachedInputTokens += usage.CachedInputTokens
+	session.Usage.OutputTokens += usage.OutputTokens
+	session.Usage.ReasoningOutputTokens += usage.ReasoningOutputTokens
+	session.Usage.TotalTokens += total
+	return s.saveSession(session)
+}
+
 func (s *Store) LoadMessages(id string) ([]provider.Message, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -729,6 +729,9 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string) {
 		m.finishTurn(done, job)
 		return
 	}
+	if usage := usageFromRaw(raw); !usageEmpty(usage) {
+		m.recordUsage(job, usage)
+	}
 	stopReason := resp.StopReason
 	state := StateIdle
 	if stopReason == "cancelled" {
@@ -738,6 +741,7 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string) {
 	m.log.Info("acp turn finished", "session", job.ID, "state", state, "stop_reason", stopReason)
 	m.publishACPStatus(job.Snapshot())
 	time.Sleep(50 * time.Millisecond)
+	m.persistUsage(job)
 	m.appendAssistantMessage(job)
 	m.finishTurn(done, job)
 }

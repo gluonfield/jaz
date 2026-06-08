@@ -1,6 +1,8 @@
 package sqlite
 
 import (
+	"database/sql"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -71,6 +73,73 @@ func TestSessionQueuedMessagesRoundTrip(t *testing.T) {
 	}
 	if strings.Join(loaded.QueuedMessages, "|") != "one prompt|second prompt" {
 		t.Fatalf("queued messages = %#v", loaded.QueuedMessages)
+	}
+}
+
+func TestAddUsageStoresCachedTokensAndMirrors(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{Slug: "usage"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.AddUsage(session.ID, storage.Usage{
+		InputTokens:           100,
+		CachedInputTokens:     64,
+		OutputTokens:          25,
+		ReasoningOutputTokens: 7,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AddUsage(session.ID, storage.Usage{
+		InputTokens:       10,
+		CachedInputTokens: 8,
+		OutputTokens:      5,
+		TotalTokens:       20,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Usage.InputTokens != 110 || loaded.Usage.CachedInputTokens != 72 || loaded.Usage.OutputTokens != 30 ||
+		loaded.Usage.ReasoningOutputTokens != 7 || loaded.Usage.TotalTokens != 145 {
+		t.Fatalf("usage = %#v", loaded.Usage)
+	}
+
+	legacy, err := jsonstore.New(store.RootDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	mirrored, err := legacy.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mirrored.Usage != loaded.Usage {
+		t.Fatalf("mirrored usage = %#v, want %#v", mirrored.Usage, loaded.Usage)
+	}
+}
+
+func TestMigrateAddsUsageColumnsToLegacyThreads(t *testing.T) {
+	root := t.TempDir()
+	if err := makeLegacyDB(root); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	if _, err := store.CreateSession(storage.CreateSession{Slug: "usage"}); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -460,4 +529,28 @@ func TestImportLegacyJSONCopiesMissingSessions(t *testing.T) {
 	if len(loaded) != 1 || provider.MessageContent(loaded[0]) != "second" {
 		t.Fatalf("missing legacy session was not imported: %#v", loaded)
 	}
+}
+
+func makeLegacyDB(root string) error {
+	db, err := sql.Open("sqlite", filepath.Join(root, "jaz.sqlite"))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	_, err = db.Exec(`CREATE TABLE threads (
+  id TEXT PRIMARY KEY,
+  slug TEXT NOT NULL UNIQUE,
+  title TEXT,
+  parent_id TEXT,
+  status TEXT NOT NULL DEFAULT 'idle',
+  runtime TEXT NOT NULL DEFAULT 'native',
+  acp_agent TEXT,
+  acp_session_id TEXT,
+  model_provider TEXT,
+  model TEXT,
+  reasoning_effort TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+)`)
+	return err
 }

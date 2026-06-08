@@ -8,6 +8,14 @@ export interface RuntimeRef {
   cwd?: string
 }
 
+export interface Usage {
+  input_tokens?: number
+  cached_input_tokens?: number
+  output_tokens?: number
+  reasoning_output_tokens?: number
+  total_tokens?: number
+}
+
 export interface Session {
   id: string
   slug: string
@@ -21,6 +29,7 @@ export interface Session {
   model_provider?: string
   model?: string
   reasoning_effort?: string
+  usage?: Usage
   queued_messages?: string[]
   created_at: string
   updated_at: string

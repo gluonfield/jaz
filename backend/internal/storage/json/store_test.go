@@ -73,6 +73,43 @@ func TestSessionQueuedMessagesRoundTrip(t *testing.T) {
 	}
 }
 
+func TestAddUsageStoresCachedTokens(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "usage"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.AddUsage(session.ID, storage.Usage{
+		InputTokens:           100,
+		CachedInputTokens:     64,
+		OutputTokens:          25,
+		ReasoningOutputTokens: 7,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AddUsage(session.ID, storage.Usage{
+		InputTokens:       10,
+		CachedInputTokens: 8,
+		OutputTokens:      5,
+		TotalTokens:       20,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Usage.InputTokens != 110 || loaded.Usage.CachedInputTokens != 72 || loaded.Usage.OutputTokens != 30 ||
+		loaded.Usage.ReasoningOutputTokens != 7 || loaded.Usage.TotalTokens != 145 {
+		t.Fatalf("usage = %#v", loaded.Usage)
+	}
+}
+
 func TestSaveACPStateUpdatesSessionStatus(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
