@@ -56,7 +56,7 @@ export function SessionRow({ session, child = false }: { session: Session; child
           When the chip leads the row, a negative margin optically aligns
           its text with the titles. */}
       {session.runtime === 'acp' ? (
-        <RuntimeBadge session={session} className={child ? '' : '-ml-1.5'} />
+        <RuntimeBadge session={session} compact className={child ? '' : '-ml-1.5'} />
       ) : null}
       <span className="min-w-0 flex-1 truncate" title={sessionLabel(session)}>
         {sessionLabel(session)}

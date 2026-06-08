@@ -9,6 +9,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
 	"github.com/wins/jaz/backend/internal/app"
+	"github.com/wins/jaz/backend/internal/provider"
 	openaiprovider "github.com/wins/jaz/backend/internal/provider/openai"
 	openrouterprovider "github.com/wins/jaz/backend/internal/provider/openrouter"
 )
@@ -73,7 +74,11 @@ func Init() error {
 		viper.SetConfigType("yaml")
 	}
 	_ = viper.BindEnv("openai.apikey", "OPENAI_API_KEY")
+	_ = viper.BindEnv("openai.model", "OPENAI_MODEL")
+	_ = viper.BindEnv("openai.reasoningeffort", "OPENAI_REASONING_EFFORT")
 	_ = viper.BindEnv("openrouter.apikey", "OPENROUTER_API_KEY")
+	_ = viper.BindEnv("openrouter.model", "OPENROUTER_MODEL")
+	_ = viper.BindEnv("openrouter.reasoningeffort", "OPENROUTER_REASONING_EFFORT")
 	if err := viper.ReadInConfig(); err != nil {
 		var notFound viper.ConfigFileNotFoundError
 		if !explicitConfig && errors.As(err, &notFound) {
@@ -87,16 +92,26 @@ func Init() error {
 func applyProvider(cfg *Config) error {
 	switch strings.ToLower(cfg.Providers.Default) {
 	case "", "openai":
+		effort, err := provider.NormalizeReasoningEffort(cfg.OpenAI.ReasoningEffort)
+		if err != nil {
+			return err
+		}
 		cfg.Jaz.Provider = app.ProviderConfig{
-			Type:   "openai",
-			APIKey: cfg.OpenAI.APIKey,
-			Model:  cfg.OpenAI.Model,
+			Type:            "openai",
+			APIKey:          cfg.OpenAI.APIKey,
+			Model:           cfg.OpenAI.Model,
+			ReasoningEffort: effort,
 		}
 	case "openrouter":
+		effort, err := provider.NormalizeReasoningEffort(cfg.OpenRouter.ReasoningEffort)
+		if err != nil {
+			return err
+		}
 		cfg.Jaz.Provider = app.ProviderConfig{
-			Type:   "openrouter",
-			APIKey: cfg.OpenRouter.APIKey,
-			Model:  cfg.OpenRouter.Model,
+			Type:            "openrouter",
+			APIKey:          cfg.OpenRouter.APIKey,
+			Model:           cfg.OpenRouter.Model,
+			ReasoningEffort: effort,
 		}
 	case "mock":
 		cfg.Jaz.Provider = app.ProviderConfig{Type: "mock"}

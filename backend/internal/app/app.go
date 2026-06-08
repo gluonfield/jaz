@@ -27,8 +27,10 @@ import (
 	agentwait "github.com/wins/jaz/backend/internal/tools/agent/wait"
 	applypatch "github.com/wins/jaz/backend/internal/tools/applypatch"
 	exectool "github.com/wins/jaz/backend/internal/tools/exec"
+	memorytool "github.com/wins/jaz/backend/internal/tools/memory"
 	"github.com/wins/jaz/backend/internal/voice"
 	mistralvoice "github.com/wins/jaz/backend/internal/voice/mistral"
+	"github.com/wins/jazmem/pkg/jazmem"
 	"go.uber.org/fx"
 )
 
@@ -38,12 +40,14 @@ type Config struct {
 	Provider  ProviderConfig
 	Voice     VoiceConfig
 	ACP       acp.Config
+	Memory    MemoryConfig
 }
 
 type ProviderConfig struct {
-	Type   string
-	APIKey string
-	Model  string
+	Type            string
+	APIKey          string
+	Model           string
+	ReasoningEffort string
 }
 
 type VoiceConfig struct {
@@ -61,6 +65,12 @@ type SpeechConfig struct {
 type MistralConfig struct {
 	APIKey  string
 	BaseURL string
+}
+
+type MemoryConfig struct {
+	Root      string
+	DBPath    string
+	Scheduler bool
 }
 
 type Workspace string
@@ -89,6 +99,10 @@ func NewWorkspace(cfg Config, store *sqlitestore.Store) (Workspace, error) {
 	return Workspace(workspace), os.MkdirAll(workspace, 0o755)
 }
 
+func NewMemory(cfg Config) (*jazmem.Memory, error) {
+	return jazmem.Open(jazmem.Config{Root: cfg.Memory.Root, DBPath: cfg.Memory.DBPath})
+}
+
 func NewPromptBuilder(store *sqlitestore.Store, workspace Workspace, logger *log.Logger) *coordinator.Builder {
 	return coordinator.NewBuilder(store.RootDir(), string(workspace), logger.WithPrefix("prompt"))
 }
@@ -100,7 +114,7 @@ func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, pro
 	return cfg.ACP
 }
 
-func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager) *tools.Registry {
+func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, memory *jazmem.Memory) *tools.Registry {
 	return tools.NewRegistry(
 		&exectool.ExecCommandTool{Manager: commandManager, Workspace: string(workspace)},
 		&exectool.WriteStdinTool{Manager: commandManager},
@@ -111,7 +125,46 @@ func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspac
 		&agentwait.Tool{Manager: manager},
 		&agentcancel.Tool{Manager: manager},
 		&agentlist.Tool{Manager: manager},
+		&memorytool.SearchTool{Memory: memory},
+		&memorytool.GetTool{Memory: memory},
+		&memorytool.FileTool{Memory: memory},
+		&memorytool.ReindexTool{Memory: memory},
+		&memorytool.DreamTool{Memory: memory},
+		&memorytool.LinkHygieneTool{Memory: memory},
 	)
+}
+
+func CloseMemory(lc fx.Lifecycle, memory *jazmem.Memory) {
+	lc.Append(fx.Hook{
+		OnStop: func(context.Context) error {
+			return memory.Close()
+		},
+	})
+}
+
+func StartMemoryScheduler(lc fx.Lifecycle, cfg Config, memory *jazmem.Memory, logger *log.Logger) {
+	if !cfg.Memory.Scheduler {
+		return
+	}
+	var cancel context.CancelFunc
+	lc.Append(fx.Hook{
+		OnStart: func(context.Context) error {
+			ctx, stop := context.WithCancel(context.Background())
+			cancel = stop
+			go func() {
+				if err := memory.StartScheduler(ctx); err != nil && ctx.Err() == nil {
+					logger.WithPrefix("memory").Error("scheduler stopped", "error", err)
+				}
+			}()
+			return nil
+		},
+		OnStop: func(context.Context) error {
+			if cancel != nil {
+				cancel()
+			}
+			return nil
+		},
+	})
 }
 
 func NewProvider(cfg Config) (provider.Provider, error) {
@@ -189,10 +242,11 @@ func newTTS(cfg VoiceConfig) (voice.TTS, error) {
 
 func NewAgent(cfg Config, modelProvider provider.Provider, registry *tools.Registry) *agent.Agent {
 	return &agent.Agent{
-		Provider: modelProvider,
-		Model:    cfg.Provider.Model,
-		Tools:    registry,
-		MaxTurns: agent.DefaultMaxTurns,
+		Provider:        modelProvider,
+		Model:           cfg.Provider.Model,
+		ReasoningEffort: cfg.Provider.ReasoningEffort,
+		Tools:           registry,
+		MaxTurns:        agent.DefaultMaxTurns,
 	}
 }
 

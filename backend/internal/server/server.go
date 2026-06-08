@@ -36,6 +36,11 @@ type Server struct {
 	Events *sessionevents.Bus
 	STT    voice.STT
 	TTS    voice.TTS
+	// NativeModel* captures configured model metadata for native Jaz sessions.
+	// The provider object only executes requests; it does not own config metadata.
+	NativeModelProvider   string
+	NativeModel           string
+	NativeReasoningEffort string
 	// Prompts derives the system prompt fresh per turn from disk, so skill
 	// and prompt-file edits apply without a restart.
 	Prompts *coordinator.Builder
@@ -88,11 +93,10 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&req)
 	}
-	session, err := s.Store.CreateSession(storage.CreateSession{
-		Slug:    req.Slug,
-		Title:   req.Title,
-		Runtime: storage.RuntimeNative,
-	})
+	input := s.nativeSessionDefaults()
+	input.Slug = req.Slug
+	input.Title = req.Title
+	session, err := s.Store.CreateSession(input)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return

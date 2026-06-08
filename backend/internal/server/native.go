@@ -161,6 +161,7 @@ func (s *Server) beginNativeTurn(session storage.Session, message string, claime
 	if session.Runtime == "" {
 		session.Runtime = storage.RuntimeNative
 	}
+	s.applyNativeSessionDefaults(&session)
 	if session.Title == "" {
 		session.Title = titleFromMessage(message)
 	}
@@ -168,6 +169,38 @@ func (s *Server) beginNativeTurn(session storage.Session, message string, claime
 		return session, storage.StatusError, err
 	}
 	return session, storage.StatusRunning, nil
+}
+
+func (s *Server) nativeSessionDefaults() storage.CreateSession {
+	return storage.CreateSession{
+		Runtime:         storage.RuntimeNative,
+		ModelProvider:   strings.TrimSpace(s.NativeModelProvider),
+		Model:           s.nativeModel(),
+		ReasoningEffort: strings.TrimSpace(s.NativeReasoningEffort),
+	}
+}
+
+func (s *Server) applyNativeSessionDefaults(session *storage.Session) {
+	defaults := s.nativeSessionDefaults()
+	if defaults.ModelProvider != "" && session.ModelProvider != defaults.ModelProvider {
+		session.ModelProvider = defaults.ModelProvider
+	}
+	if defaults.Model != "" && session.Model != defaults.Model {
+		session.Model = defaults.Model
+	}
+	if defaults.ReasoningEffort != "" && session.ReasoningEffort != defaults.ReasoningEffort {
+		session.ReasoningEffort = defaults.ReasoningEffort
+	}
+}
+
+func (s *Server) nativeModel() string {
+	if model := strings.TrimSpace(s.NativeModel); model != "" {
+		return model
+	}
+	if s.Agent == nil {
+		return ""
+	}
+	return strings.TrimSpace(s.Agent.Model)
 }
 
 func (s *Server) nativeRequestMessages(sessionID, message string, voiceMode bool) ([]provider.Message, []string, error) {

@@ -191,7 +191,7 @@ func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd
 	return &agentConn{conn: conn, peer: peer, cancel: cancel, initRaw: initRaw}, nil
 }
 
-func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, cwd string) (acpschema.NewSessionResponse, error) {
+func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, cwd string) (acpSessionInfo, error) {
 	newSession := acpschema.NewSessionRequest{
 		Cwd:        cwd,
 		MCPServers: []acpschema.MCPServer{},
@@ -203,16 +203,16 @@ func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, cwd string) 
 	}
 	sessionRaw, err := ac.peer.Call(ctx, acpschema.AgentMethodSessionNew, newSession)
 	if err != nil {
-		return acpschema.NewSessionResponse{}, fmt.Errorf("create acp session: %w", err)
+		return acpSessionInfo{}, fmt.Errorf("create acp session: %w", err)
 	}
 	var acpSession acpschema.NewSessionResponse
 	if err := json.Unmarshal(sessionRaw, &acpSession); err != nil {
-		return acpschema.NewSessionResponse{}, err
+		return acpSessionInfo{}, err
 	}
 	if acpSession.SessionID == "" {
-		return acpschema.NewSessionResponse{}, fmt.Errorf("acp session/new returned empty session id")
+		return acpSessionInfo{}, fmt.Errorf("acp session/new returned empty session id")
 	}
-	return acpSession, nil
+	return newACPSessionInfo(sessionRaw, acpSession), nil
 }
 
 func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, error) {
@@ -227,10 +227,13 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	// The session row is created first: its unique slug names the default
 	// directory and the worktree branch.
 	session, err := m.store.CreateSession(storage.CreateSession{
-		Slug:     req.Slug,
-		Title:    req.Title,
-		ParentID: req.ParentID,
-		Runtime:  storage.RuntimeACP,
+		Slug:            req.Slug,
+		Title:           req.Title,
+		ParentID:        req.ParentID,
+		Runtime:         storage.RuntimeACP,
+		ModelProvider:   req.ACPAgent,
+		Model:           strings.TrimSpace(cfg.Model),
+		ReasoningEffort: configuredReasoningEffort(cfg.ReasoningEffort),
 		RuntimeRef: &storage.RuntimeRef{
 			Type:  storage.RuntimeACP,
 			Agent: req.ACPAgent,
@@ -258,12 +261,12 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		ac.close()
 		return fail(err)
 	}
-	modes, err := m.initializeModeState(ctx, ac.peer, acpSession)
+	modes, err := m.configuredModeState(ctx, ac.peer, req.ACPAgent, acpSession, cfg)
 	if err != nil {
 		ac.close()
 		return fail(err)
 	}
-	session.RuntimeRef.SessionID = string(acpSession.SessionID)
+	session.RuntimeRef.SessionID = string(acpSession.response.SessionID)
 	session.RuntimeRef.Cwd = absCwd
 	if err := m.store.SaveSession(session); err != nil {
 		ac.close()
@@ -275,7 +278,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		Title:      session.Title,
 		ParentID:   session.ParentID,
 		ACPAgent:   req.ACPAgent,
-		ACPSession: string(acpSession.SessionID),
+		ACPSession: string(acpSession.response.SessionID),
 		Cwd:        absCwd,
 		State:      StateIdle,
 		Modes:      modes,
@@ -350,13 +353,29 @@ func (m *Manager) resume(ctx context.Context, ref string) (*Job, error) {
 	if err != nil {
 		return nil, err
 	}
-	acpSessionID, modes, err := m.restoreACPSession(ctx, ac, session, cwd)
+	acpSessionID, modes, err := m.restoreACPSession(ctx, ac, session, cfg, cwd)
 	if err != nil {
 		ac.close()
 		return nil, err
 	}
+	sessionChanged := false
 	if acpSessionID != session.RuntimeRef.SessionID {
 		session.RuntimeRef.SessionID = acpSessionID
+		sessionChanged = true
+	}
+	if session.ModelProvider == "" {
+		session.ModelProvider = session.RuntimeRef.Agent
+		sessionChanged = true
+	}
+	if model := strings.TrimSpace(cfg.Model); model != "" && session.Model != model {
+		session.Model = model
+		sessionChanged = true
+	}
+	if effort := configuredReasoningEffort(cfg.ReasoningEffort); effort != "" && session.ReasoningEffort != effort {
+		session.ReasoningEffort = effort
+		sessionChanged = true
+	}
+	if sessionChanged {
 		_ = m.store.SaveSession(session)
 	}
 	job := &Job{
@@ -383,7 +402,7 @@ func (m *Manager) resume(ctx context.Context, ref string) (*Job, error) {
 
 // The job is registered only after session/load returns, so the agent's
 // history replay notifications are dropped, not re-recorded as events.
-func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, session storage.Session, cwd string) (string, ModeState, error) {
+func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, session storage.Session, cfg AgentConfig, cwd string) (string, ModeState, error) {
 	var caps struct {
 		AgentCapabilities acpschema.AgentCapabilities `json:"agentCapabilities"`
 	}
@@ -400,10 +419,10 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, session 
 			if err := json.Unmarshal(raw, &resp); err != nil {
 				return "", ModeState{}, err
 			}
-			modes, err := m.initializeModeState(ctx, ac.peer, acpschema.NewSessionResponse{
+			modes, err := m.configuredModeState(ctx, ac.peer, session.RuntimeRef.Agent, newACPSessionInfo(raw, acpschema.NewSessionResponse{
 				SessionID: acpschema.SessionID(storedID),
 				Modes:     resp.Modes,
-			})
+			}), cfg)
 			return storedID, modes, err
 		}
 		// The agent lost this session — fall through to a fresh one.
@@ -412,8 +431,8 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, session 
 	if err != nil {
 		return "", ModeState{}, err
 	}
-	modes, err := m.initializeModeState(ctx, ac.peer, acpSession)
-	return string(acpSession.SessionID), modes, err
+	modes, err := m.configuredModeState(ctx, ac.peer, session.RuntimeRef.Agent, acpSession, cfg)
+	return string(acpSession.response.SessionID), modes, err
 }
 
 func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {

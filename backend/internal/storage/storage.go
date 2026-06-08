@@ -114,11 +114,14 @@ type ACPState struct {
 }
 
 type CreateSession struct {
-	Slug       string
-	Title      string
-	ParentID   string
-	Runtime    string
-	RuntimeRef *RuntimeRef
+	Slug            string
+	Title           string
+	ParentID        string
+	Runtime         string
+	RuntimeRef      *RuntimeRef
+	ModelProvider   string
+	Model           string
+	ReasoningEffort string
 }
 
 type SessionFilter struct {

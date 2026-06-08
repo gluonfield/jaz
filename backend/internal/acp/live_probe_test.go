@@ -5,6 +5,7 @@ package acp
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/log"
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/gluonfield/acp-transport/stdio"
@@ -36,7 +38,7 @@ func TestLiveACPProbe(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := probeAgentConfig(t, agent)
-	manager := NewManager(nil, Config{Root: root, Workspace: cwd})
+	manager := NewManager(nil, Config{Root: root, Workspace: cwd}, log.New(io.Discard))
 	env := manager.processEnv(agent, cfg)
 	if home := strings.TrimSpace(os.Getenv("ACP_PROBE_HOME")); home != "" {
 		env["HOME"] = home
@@ -80,6 +82,11 @@ func TestLiveACPProbe(t *testing.T) {
 	if sessionResp.SessionID == "" {
 		t.Fatal("empty session id")
 	}
+	probeApplyConfiguredSessionOptions(t, ctx, conn, agent, sessionResp.SessionID)
+	if os.Getenv("ACP_PROBE_SKIP_PROMPT") == "1" {
+		t.Log("skipping prompt")
+		return
+	}
 	if os.Getenv("ACP_PROBE_SKIP_PLAN_MODE") == "1" {
 		t.Log("skipping plan mode switch")
 	} else if modeID := planModeID(sessionResp.Modes.AvailableModes); modeID != "" {
@@ -99,6 +106,28 @@ func TestLiveACPProbe(t *testing.T) {
 		},
 	})
 	t.Logf("session/prompt result: %s", final.Result)
+}
+
+func probeApplyConfiguredSessionOptions(t *testing.T, ctx context.Context, conn jsonrpc.MessageConn, agent string, sessionID acpschema.SessionID) {
+	t.Helper()
+	rawModel := strings.TrimSpace(os.Getenv("ACP_PROBE_MODEL"))
+	effort := strings.TrimSpace(os.Getenv("ACP_PROBE_REASONING_EFFORT"))
+	if rawModel != "" {
+		model := configuredSessionModel(agent, rawModel, effort)
+		setModel := probeCall(t, ctx, conn, "10", agentMethodSessionSetModel, setSessionModelRequest{
+			SessionID: sessionID,
+			ModelID:   model,
+		})
+		t.Logf("session/set_model(%s) result: %s", model, setModel.Result)
+	}
+	if effort != "" && !reasoningEffortEncodedInModel(agent, rawModel, effort) {
+		setEffort := probeCall(t, ctx, conn, "11", acpschema.AgentMethodSessionSetConfigOption, acpschema.SetSessionConfigOptionRequest{
+			SessionID: sessionID,
+			ConfigID:  acpschema.SessionConfigID(sessionConfigReasoningEffort),
+			Value:     acpschema.SessionConfigValueID(effort),
+		})
+		t.Logf("session/set_config_option(reasoning_effort=%s) result: %s", effort, setEffort.Result)
+	}
 }
 
 func applyProbeEnvOverrides(env map[string]string) {

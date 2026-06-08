@@ -1,20 +1,50 @@
 import type { Session } from '@/lib/api/types'
 
-export function RuntimeBadge({ session, className = '' }: { session: Session; className?: string }) {
+// `compact` drops the model and shows only the provider/agent name — used in
+// the cramped sidebar rows, where the full model still surfaces on hover.
+export function RuntimeBadge({
+  session,
+  className = '',
+  compact = false,
+}: {
+  session: Session
+  className?: string
+  compact?: boolean
+}) {
+  const model = compactModel(session.model)
+  const modelLabel = withReasoningEffort(model, session.reasoning_effort)
+  const fullModelLabel = session.model
+    ? withReasoningEffort(session.model, session.reasoning_effort)
+    : ''
   if (session.runtime === 'acp') {
+    const agent = session.runtime_ref?.agent ?? 'acp'
     return (
       <span
-        className={`rounded px-1.5 py-px font-mono text-[11px] text-accent-strong bg-accent-soft ${className}`}
+        title={fullModelLabel ? `${agent}: ${fullModelLabel}` : agent}
+        className={`inline-block min-w-0 max-w-[11rem] truncate rounded px-1.5 py-px font-mono text-[11px] text-accent-strong bg-accent-soft ${className}`}
       >
-        {session.runtime_ref?.agent ?? 'acp'}
+        {!compact && modelLabel ? `${agent} · ${modelLabel}` : agent}
       </span>
     )
   }
+  const provider = session.model_provider || 'native'
   return (
     <span
-      className={`rounded px-1.5 py-px font-mono text-[11px] text-ink-2 bg-surface-2 ${className}`}
+      title={fullModelLabel ? `${provider}: ${fullModelLabel}` : provider}
+      className={`inline-block min-w-0 max-w-[11rem] truncate rounded px-1.5 py-px font-mono text-[11px] text-ink-2 bg-surface-2 ${className}`}
     >
-      native
+      {modelLabel ? `${provider} · ${modelLabel}` : provider}
     </span>
   )
+}
+
+function compactModel(model?: string): string {
+  if (!model) return ''
+  const parts = model.split('/').filter(Boolean)
+  return parts.at(-1) ?? model
+}
+
+function withReasoningEffort(model: string, effort?: string): string {
+  if (!model) return ''
+  return effort ? `${model}/${effort}` : model
 }

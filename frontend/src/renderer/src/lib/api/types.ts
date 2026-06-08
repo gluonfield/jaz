@@ -5,6 +5,7 @@ export interface RuntimeRef {
   type: string
   agent?: string
   session_id?: string
+  cwd?: string
 }
 
 export interface Session {
@@ -17,6 +18,9 @@ export interface Session {
   archived?: boolean
   runtime: 'native' | 'acp'
   runtime_ref?: RuntimeRef
+  model_provider?: string
+  model?: string
+  reasoning_effort?: string
   queued_messages?: string[]
   created_at: string
   updated_at: string

@@ -18,12 +18,14 @@ type Config struct {
 }
 
 type AgentConfig struct {
-	Command string
-	Args    []string
-	URL     string
-	Token   string
-	Env     map[string]string
-	Cwd     string
+	Command         string
+	Args            []string
+	Model           string
+	ReasoningEffort string
+	URL             string
+	Token           string
+	Env             map[string]string
+	Cwd             string
 }
 
 func (c Config) Agent(name string) (AgentConfig, bool) {
