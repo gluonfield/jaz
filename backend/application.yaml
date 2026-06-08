@@ -22,7 +22,7 @@ openai:
   model: "gpt-5.4-mini"
 
 mistral:
-  apikey: "" # set MISTRAL_API_KEY instead
+  apikey: ""
   baseurl: "https://api.mistral.ai/v1"
 
 tts:
