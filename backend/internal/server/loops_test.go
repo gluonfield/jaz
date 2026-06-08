@@ -1,0 +1,262 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/agent"
+	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/provider"
+	"github.com/wins/jaz/backend/internal/storage"
+	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
+)
+
+func TestLoopAPIAndManualRun(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	executor := &fakeLoopExecutor{started: make(chan loops.Run, 1)}
+	service := loops.NewService(store, executor, nil)
+	srv := &Server{Store: store, Loops: service}
+
+	create := httptest.NewRequest(http.MethodPost, "/v1/loops", strings.NewReader(`{
+		"name":"Half hourly",
+		"prompt":"check status",
+		"schedule":{"kind":"cron","expr":"*/30 * * * *","timezone":"UTC"},
+		"runtime":"native"
+	}`))
+	create.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(res, create)
+	if res.Code != http.StatusOK {
+		t.Fatalf("create status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var created loops.Loop
+	if err := json.Unmarshal(res.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.ID == "" || created.Runtime != loops.RuntimeNative {
+		t.Fatalf("created loop = %#v", created)
+	}
+
+	patch := httptest.NewRequest(http.MethodPatch, "/v1/loops/"+created.ID, strings.NewReader(`{"status":"paused"}`))
+	patch.Header.Set("Content-Type", "application/json")
+	res = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(res, patch)
+	if res.Code != http.StatusOK {
+		t.Fatalf("patch status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var patched loops.Loop
+	if err := json.Unmarshal(res.Body.Bytes(), &patched); err != nil {
+		t.Fatal(err)
+	}
+	if patched.Status != loops.StatusPaused {
+		t.Fatalf("patched status = %q", patched.Status)
+	}
+
+	runReq := httptest.NewRequest(http.MethodPost, "/v1/loops/"+created.ID+"/run", nil)
+	res = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(res, runReq)
+	if res.Code != http.StatusOK {
+		t.Fatalf("run status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var run loops.Run
+	if err := json.Unmarshal(res.Body.Bytes(), &run); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case started := <-executor.started:
+		if started.ID != run.ID {
+			t.Fatalf("started run = %s, response run = %s", started.ID, run.ID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("manual run did not dispatch")
+	}
+}
+
+func TestNativeLoopRunCreatesFreshThreadWithMetadata(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	recorder := &recordingProvider{assistant: "old transcript text"}
+	srv := &Server{
+		Agent: &agent.Agent{Provider: recorder, MaxTurns: 1},
+		Store: store,
+	}
+	service := loops.NewService(store, NewLoopRunner(srv), nil)
+	srv.Loops = service
+	loop, err := service.Create(loops.CreateLoop{
+		Name:     "Fresh check",
+		Prompt:   "check status",
+		Runtime:  loops.RuntimeNative,
+		Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "* * * * *", Timezone: "UTC"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := service.RunNow(context.Background(), loop.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForLoopRun(t, service, loop.ID, first.ID, loops.RunStatusOK)
+	firstSession := sessionForRun(t, store, first.ID)
+
+	second, err := service.RunNow(context.Background(), loop.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForLoopRun(t, service, loop.ID, second.ID, loops.RunStatusOK)
+	secondSession := sessionForRun(t, store, second.ID)
+	if firstSession.ID == secondSession.ID {
+		t.Fatal("loop runs reused the same thread")
+	}
+	messages, err := store.LoadMessages(secondSession.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) == 0 {
+		t.Fatal("second loop run has no messages")
+	}
+	content := provider.MessageContent(messages[0])
+	if !strings.Contains(content, "Previous run: id="+first.ID) || !strings.Contains(content, "thread_id="+firstSession.ID) {
+		t.Fatalf("second run prompt missing previous run metadata:\n%s", content)
+	}
+	if strings.Contains(content, "old transcript text") {
+		t.Fatalf("second run prompt included previous assistant transcript:\n%s", content)
+	}
+}
+
+func TestACPLoopRunCreatesHiddenThreadAndFinishesFromCallback(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	manager := &fakeACPManager{spawnStore: store}
+	srv := &Server{Store: store, ACP: manager}
+	service := loops.NewService(store, NewLoopRunner(srv), nil)
+	srv.Loops = service
+	loop, err := service.Create(loops.CreateLoop{
+		Name:     "ACP check",
+		Prompt:   "check status",
+		Runtime:  loops.RuntimeACP,
+		ACPAgent: "codex",
+		Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "* * * * *", Timezone: "UTC"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	run, err := service.RunNow(context.Background(), loop.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sent := waitForACPSendContaining(t, manager, "You are running a scheduled Jaz loop.")
+	if sent.Session == "" {
+		t.Fatalf("missing sent session: %#v", sent)
+	}
+	manager.mu.Lock()
+	spawned := manager.spawned
+	manager.mu.Unlock()
+	if spawned.SourceType != storage.SourceLoopRun || spawned.SourceID != run.ID {
+		t.Fatalf("spawn source = %#v", spawned)
+	}
+	session := sessionForRun(t, store, run.ID)
+	if session.ID != sent.Session {
+		t.Fatalf("run session = %s, sent session = %s", session.ID, sent.Session)
+	}
+
+	if _, ok, err := service.FinishThread(sent.Session, loops.RunStatusOK, ""); err != nil || !ok {
+		t.Fatalf("finish loop run from acp callback = ok %v, err %v", ok, err)
+	}
+	waitForLoopRun(t, service, loop.ID, run.ID, loops.RunStatusOK)
+}
+
+type fakeLoopExecutor struct {
+	started chan loops.Run
+}
+
+func (f *fakeLoopExecutor) StartLoopRun(_ context.Context, execution loops.Execution) {
+	f.started <- execution.Run
+}
+
+type recordingProvider struct {
+	mu        sync.Mutex
+	requests  []provider.Request
+	assistant string
+}
+
+func (p *recordingProvider) Complete(context.Context, provider.Request) (provider.Response, error) {
+	return provider.Response{Message: provider.AssistantMessage(p.assistant, nil)}, nil
+}
+
+func (p *recordingProvider) StreamComplete(ctx context.Context, req provider.Request) (<-chan provider.Event, error) {
+	p.mu.Lock()
+	p.requests = append(p.requests, req)
+	p.mu.Unlock()
+	ch := make(chan provider.Event, 2)
+	go func() {
+		defer close(ch)
+		select {
+		case <-ctx.Done():
+			ch <- provider.Event{Type: provider.EventError, Err: ctx.Err()}
+		default:
+			ch <- provider.Event{Type: provider.EventDelta, Delta: p.assistant}
+			ch <- provider.Event{Type: provider.EventDone}
+		}
+	}()
+	return ch, nil
+}
+
+func waitForLoopRun(t *testing.T, service *loops.Service, loopID, runID, status string) {
+	t.Helper()
+	waitFor(t, time.Second, func() bool {
+		runs, err := service.Runs(loopID, 20)
+		if err != nil {
+			return false
+		}
+		for _, run := range runs {
+			if run.ID == runID {
+				return run.Status == status
+			}
+		}
+		return false
+	})
+}
+
+func waitForACPSendContaining(t *testing.T, manager *fakeACPManager, text string) acp.SendRequest {
+	t.Helper()
+	var sent acp.SendRequest
+	waitFor(t, time.Second, func() bool {
+		sent = sentACPRequest(manager)
+		return strings.Contains(sent.Message, text)
+	})
+	return sent
+}
+
+func sessionForRun(t *testing.T, store *sqlitestore.Store, runID string) storage.Session {
+	t.Helper()
+	sessions, err := store.ListSessions(storage.SessionFilter{SourceType: storage.SourceLoopRun})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, session := range sessions {
+		if session.SourceID == runID {
+			return session
+		}
+	}
+	t.Fatalf("session for run %s not found in %#v", runID, sessions)
+	return storage.Session{}
+}

@@ -16,6 +16,7 @@ import (
 	"github.com/wins/jaz/backend/internal/app"
 	configloader "github.com/wins/jaz/backend/internal/config"
 	"github.com/wins/jaz/backend/internal/coordinator"
+	"github.com/wins/jaz/backend/internal/loops"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/sessionevents"
@@ -167,16 +168,30 @@ func startServer(
 		Root:                  store.RootDir(),
 		Log:                   logger.WithPrefix("server"),
 	}
-	manager.TurnFinished = handler.HandleACPTurnFinished
+	loopRunner := server.NewLoopRunner(handler)
+	loopService := loops.NewService(store, loopRunner, logger)
+	handler.Loops = loopService
+	manager.TurnFinished = func(ctx context.Context, job acp.Job) {
+		finishLoopFromACP(loopService, logger, job)
+		handler.HandleACPTurnFinished(ctx, job)
+	}
 	srv := &http.Server{
 		Addr:    opts.Addr,
 		Handler: handler.Handler(),
 	}
+	var stopLoops context.CancelFunc
 	lc.Append(fx.Hook{
 		OnStart: func(context.Context) error {
 			fmt.Printf("jaz server listening on %s\n", displayAddr(opts.Addr))
 			fmt.Printf("root: %s\n", store.RootDir())
 			fmt.Printf("workspace: %s\n", workspace)
+			loopCtx, cancelLoops := context.WithCancel(context.Background())
+			stopLoops = cancelLoops
+			go func() {
+				if err := loops.StartScheduler(loopCtx, loopService, 30*time.Second); err != nil && loopCtx.Err() == nil {
+					logger.WithPrefix("loops").Error("scheduler stopped", "error", err)
+				}
+			}()
 			go func() {
 				if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 					fmt.Fprintln(os.Stderr, "serve:", err)
@@ -185,10 +200,31 @@ func startServer(
 			return nil
 		},
 		OnStop: func(ctx context.Context) error {
+			if stopLoops != nil {
+				stopLoops()
+			}
 			manager.Close()
 			return stopHTTPServer(ctx, srv)
 		},
 	})
+}
+
+func finishLoopFromACP(service *loops.Service, logger *log.Logger, job acp.Job) {
+	if service == nil || job.ID == "" {
+		return
+	}
+	status := loops.RunStatusOK
+	switch job.State {
+	case acp.StateFailed:
+		status = loops.RunStatusError
+	case acp.StateCancelled:
+		status = loops.RunStatusCancelled
+	}
+	if _, ok, err := service.FinishThread(job.ID, status, job.Error); err != nil {
+		logger.WithPrefix("loops").Error("finishing loop run from acp state failed", "session", job.ID, "error", err)
+	} else if ok {
+		logger.WithPrefix("loops").Info("loop run finished", "session", job.ID, "state", job.State)
+	}
 }
 
 func stopHTTPServer(ctx context.Context, srv *http.Server) error {
