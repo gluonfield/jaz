@@ -350,7 +350,7 @@ export function PlanDecisionDock({
                   disabled={!text.trim() || disabled}
                   onClick={submitClarification}
                   whileTap={{ scale: 0.92 }}
-                  className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-full bg-primary text-white transition-colors duration-150 hover:bg-primary-strong disabled:cursor-default disabled:bg-surface-2 disabled:text-ink-3"
+                  className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-full bg-primary text-on-primary transition-colors duration-150 hover:bg-primary-strong disabled:cursor-default disabled:bg-surface-2 disabled:text-ink-3"
                 >
                   <ArrowUp size={14} />
                 </motion.button>

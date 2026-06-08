@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { SIDEBAR_SESSION_LIMIT, sidebarSessionsQuery } from '@/lib/api/sessions'
 import { SkeletonRows } from '../ui/Skeleton'
 import { SessionRow } from './SessionRow'
+import { ThemeSwitcher } from './ThemeSwitcher'
 
 function SectionLabel({ children }: { children: string }) {
   return (
@@ -94,6 +95,10 @@ export function Sidebar() {
           </div>
         </section>
       </nav>
+
+      <div className="shrink-0 border-t border-border p-3">
+        <ThemeSwitcher />
+      </div>
     </aside>
   )
 }
