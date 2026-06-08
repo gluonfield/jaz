@@ -19,10 +19,11 @@ type ChatTool = oa.ChatCompletionToolUnionParam
 type FunctionDefinition = shared.FunctionDefinitionParam
 
 type Provider struct {
-	BaseURL string
-	APIKey  string
-	Model   string
-	Client  *http.Client
+	BaseURL      string
+	APIKey       string
+	Model        string
+	Client       *http.Client
+	IncludeUsage bool
 }
 
 func New(baseURL, apiKey, model string) *Provider {
@@ -30,10 +31,11 @@ func New(baseURL, apiKey, model string) *Provider {
 		baseURL = "https://api.openai.com/v1"
 	}
 	return &Provider{
-		BaseURL: strings.TrimRight(baseURL, "/"),
-		APIKey:  apiKey,
-		Model:   model,
-		Client:  http.DefaultClient,
+		BaseURL:      strings.TrimRight(baseURL, "/"),
+		APIKey:       apiKey,
+		Model:        model,
+		Client:       http.DefaultClient,
+		IncludeUsage: strings.Contains(baseURL, "openrouter.ai"),
 	}
 }
 
@@ -62,14 +64,16 @@ func (p *Provider) StreamComplete(ctx context.Context, req provider.Request) (<-
 	if reasoningEffort != "" {
 		params.ReasoningEffort = shared.ReasoningEffort(reasoningEffort)
 	}
-	stream := client.Chat.Completions.NewStreaming(ctx, params)
+	stream := client.Chat.Completions.NewStreaming(ctx, params, p.requestOptions()...)
 
 	events := make(chan provider.Event)
 	go func() {
 		defer close(events)
 		acc := oa.ChatCompletionAccumulator{}
+		var usage provider.Usage
 		for stream.Next() {
 			chunk := stream.Current()
+			usage = mergeUsageSnapshot(usage, usageFromOpenAI(chunk.Usage))
 			if !acc.AddChunk(chunk) {
 				events <- provider.Event{Type: provider.EventError, Err: errors.New("failed to accumulate chat stream chunk")}
 				return
@@ -87,8 +91,9 @@ func (p *Provider) StreamComplete(ctx context.Context, req provider.Request) (<-
 			events <- provider.Event{Type: provider.EventError, Err: err}
 			return
 		}
+		usage = mergeUsageSnapshot(usage, usageFromOpenAI(acc.Usage))
 		emitToolCalls(acc, events)
-		events <- provider.Event{Type: provider.EventDone, Usage: usageFromOpenAI(acc.Usage)}
+		events <- provider.Event{Type: provider.EventDone, Usage: usage}
 	}()
 	return events, nil
 }
@@ -126,7 +131,7 @@ func (p *Provider) Complete(ctx context.Context, req provider.Request) (provider
 	if reasoningEffort != "" {
 		params.ReasoningEffort = shared.ReasoningEffort(reasoningEffort)
 	}
-	resp, err := client.Chat.Completions.New(ctx, params)
+	resp, err := client.Chat.Completions.New(ctx, params, p.requestOptions()...)
 	if err != nil {
 		return provider.Response{}, err
 	}
@@ -139,11 +144,37 @@ func (p *Provider) Complete(ctx context.Context, req provider.Request) (provider
 func usageFromOpenAI(usage oa.CompletionUsage) provider.Usage {
 	return provider.Usage{
 		InputTokens:           usage.PromptTokens,
-		CachedInputTokens:     usage.PromptTokensDetails.CachedTokens,
+		CachedInputTokens:     cachedInputTokens(usage),
 		OutputTokens:          usage.CompletionTokens,
 		ReasoningOutputTokens: usage.CompletionTokensDetails.ReasoningTokens,
 		TotalTokens:           usage.TotalTokens,
 	}
+}
+
+func (p *Provider) requestOptions() []option.RequestOption {
+	if !p.IncludeUsage {
+		return nil
+	}
+	return []option.RequestOption{option.WithJSONSet("usage", map[string]any{"include": true})}
+}
+
+func mergeUsageSnapshot(current, next provider.Usage) provider.Usage {
+	if next.InputTokens > 0 {
+		current.InputTokens = next.InputTokens
+	}
+	if next.CachedInputTokens > 0 {
+		current.CachedInputTokens = next.CachedInputTokens
+	}
+	if next.OutputTokens > 0 {
+		current.OutputTokens = next.OutputTokens
+	}
+	if next.ReasoningOutputTokens > 0 {
+		current.ReasoningOutputTokens = next.ReasoningOutputTokens
+	}
+	if next.TotalTokens > 0 {
+		current.TotalTokens = next.TotalTokens
+	}
+	return current
 }
 
 func reasoningDeltas(raw string) []string {

@@ -509,21 +509,20 @@ func (s *Store) migrate() error {
 	}
 	// Tolerant migration for databases created before the column existed
 	// (CREATE TABLE IF NOT EXISTS skips them).
-	if _, err := s.db.Exec(`ALTER TABLE threads ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`); err != nil &&
-		!strings.Contains(err.Error(), "duplicate column name") {
-		return err
-	}
-	if _, err := s.db.Exec(`ALTER TABLE threads ADD COLUMN error TEXT`); err != nil &&
-		!strings.Contains(err.Error(), "duplicate column name") {
-		return err
-	}
-	if _, err := s.db.Exec(`ALTER TABLE threads ADD COLUMN cwd TEXT`); err != nil &&
-		!strings.Contains(err.Error(), "duplicate column name") {
-		return err
-	}
-	if _, err := s.db.Exec(`ALTER TABLE threads ADD COLUMN queued_messages TEXT NOT NULL DEFAULT '[]'`); err != nil &&
-		!strings.Contains(err.Error(), "duplicate column name") {
-		return err
+	for _, stmt := range []string{
+		`ALTER TABLE threads ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE threads ADD COLUMN error TEXT`,
+		`ALTER TABLE threads ADD COLUMN cwd TEXT`,
+		`ALTER TABLE threads ADD COLUMN input_tokens INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE threads ADD COLUMN cached_input_tokens INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE threads ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE threads ADD COLUMN reasoning_output_tokens INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE threads ADD COLUMN total_tokens INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE threads ADD COLUMN queued_messages TEXT NOT NULL DEFAULT '[]'`,
+	} {
+		if _, err := s.db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+			return err
+		}
 	}
 	return nil
 }
