@@ -89,8 +89,8 @@ func NewWorkspace(cfg Config, store *sqlitestore.Store) (Workspace, error) {
 	return Workspace(workspace), os.MkdirAll(workspace, 0o755)
 }
 
-func NewPromptBuilder(store *sqlitestore.Store, logger *log.Logger) *coordinator.Builder {
-	return coordinator.NewBuilder(store.RootDir(), logger.WithPrefix("prompt"))
+func NewPromptBuilder(store *sqlitestore.Store, workspace Workspace, logger *log.Logger) *coordinator.Builder {
+	return coordinator.NewBuilder(store.RootDir(), string(workspace), logger.WithPrefix("prompt"))
 }
 
 func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, prompts *coordinator.Builder) acp.Config {

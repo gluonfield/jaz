@@ -13,11 +13,11 @@ import (
 // in the order they are rendered into the coordinator system prompt.
 var PromptFiles = []string{"AGENTS.md", "SOUL.md", "HEARTBEAT.md"}
 
-func Prompt(root, skillsPrompt string) (string, error) {
-	return prompt(root, skillsPrompt, time.Now())
+func Prompt(root, workspace, skillsPrompt string) (string, error) {
+	return prompt(root, workspace, skillsPrompt, time.Now())
 }
 
-func prompt(root, skillsPrompt string, now time.Time) (string, error) {
+func prompt(root, workspace, skillsPrompt string, now time.Time) (string, error) {
 	sections := make([]prompttemplate.Section, 0, len(PromptFiles))
 	for _, name := range PromptFiles {
 		content, err := ReadPromptFile(root, name)
@@ -25,10 +25,13 @@ func prompt(root, skillsPrompt string, now time.Time) (string, error) {
 			return "", err
 		}
 		if content != "" {
-			sections = append(sections, prompttemplate.Section{Name: name, Content: content})
+			sections = append(sections, prompttemplate.Section{Name: name, Body: content})
 		}
 	}
-	return prompttemplate.Render(now, sections, skillsPrompt)
+	if strings.TrimSpace(workspace) == "" {
+		workspace = "~/.jaz/workspaces/default"
+	}
+	return prompttemplate.Render(now, workspace, sections, skillsPrompt)
 }
 
 // ReadPromptFile reads a single prompt file from root, returning "" when the

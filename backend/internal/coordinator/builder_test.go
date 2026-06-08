@@ -9,9 +9,9 @@ import (
 
 func TestBuilderPicksUpEditsWithoutRestart(t *testing.T) {
 	root := t.TempDir()
-	builder := NewBuilder(root, nil)
+	builder := NewBuilder(root, filepath.Join(root, "workspaces", "default"), nil)
 
-	if prompt := builder.SystemPrompt(); strings.Contains(prompt, "SOUL.md") {
+	if prompt := builder.SystemPrompt(); strings.Contains(prompt, "## SOUL.md") {
 		t.Fatalf("empty root should have no SOUL.md section:\n%s", prompt)
 	}
 
@@ -44,7 +44,7 @@ func TestBuilderPicksUpEditsWithoutRestart(t *testing.T) {
 func TestBuilderFallsBackToLastGoodBuild(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "SOUL.md", "soul")
-	builder := NewBuilder(root, nil)
+	builder := NewBuilder(root, filepath.Join(root, "workspaces", "default"), nil)
 	if !strings.Contains(builder.SystemPrompt(), "soul") {
 		t.Fatal("initial build missing SOUL.md")
 	}

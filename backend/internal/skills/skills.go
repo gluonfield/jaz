@@ -77,7 +77,7 @@ func (c Catalog) Prompt() string {
 	}
 	var b strings.Builder
 	b.WriteString("## Skills\n")
-	b.WriteString("The following skills provide specialized instructions for specific tasks. If the user names a skill with `$name`, or the task matches a skill description, inspect the listed SKILL.md before acting. Resolve skill-relative paths against the directory containing SKILL.md. Load supporting files only when the skill asks for them.\n\n")
+	b.WriteString("Use a listed skill when named or when its description matches the task. Read its SKILL.md first; resolve relative paths from that file; load extras only as needed.\n\n")
 	b.WriteString("<available_skills>\n")
 	for _, skill := range c.Skills {
 		fmt.Fprintf(&b, "  <skill>\n    <name>%s</name>\n    <description>%s</description>\n    <location>%s</location>\n  </skill>\n", html.EscapeString(skill.Name), html.EscapeString(skill.Description), html.EscapeString(skill.Path))
