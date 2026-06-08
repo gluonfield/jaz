@@ -14,7 +14,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/app"
-	"github.com/wins/jaz/backend/internal/config"
+	configloader "github.com/wins/jaz/backend/internal/config"
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/sessionevents"
@@ -33,7 +33,8 @@ func runServe(args []string) error {
 		fx.Supply(serveArgs{Args: args}),
 		fx.Provide(
 			newLogger,
-			loadServeConfig,
+			loadConfig,
+			parseServeOptions,
 			app.NewStore,
 			app.NewWorkspace,
 			exectool.NewCommandManager,
@@ -81,29 +82,31 @@ func newLogger() *log.Logger {
 	return log.NewWithOptions(os.Stderr, log.Options{ReportTimestamp: true, Level: level})
 }
 
-type serveConfig struct {
+type config struct {
 	fx.Out
 
-	Config  app.Config
-	Options serveOptions
+	Jaz app.Config
 }
 
 type serveOptions struct {
 	Addr string
 }
 
-func loadServeConfig(args serveArgs) (serveConfig, error) {
-	loaded, err := config.Load()
+func loadConfig() (config, error) {
+	loaded, err := configloader.Load()
 	if err != nil {
-		return serveConfig{}, err
+		return config{}, err
 	}
-	cfg := loaded.Jaz
+	return config{Jaz: loaded.Jaz}, nil
+}
+
+func parseServeOptions(args serveArgs) (serveOptions, error) {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	addr := fs.String("addr", ":8080", "HTTP listen address")
 	if err := fs.Parse(args.Args); err != nil {
-		return serveConfig{}, err
+		return serveOptions{}, err
 	}
-	return serveConfig{Config: cfg, Options: serveOptions{Addr: *addr}}, nil
+	return serveOptions{Addr: *addr}, nil
 }
 
 func conciseError(err error) error {
