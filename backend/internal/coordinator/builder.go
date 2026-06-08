@@ -12,16 +12,17 @@ import (
 // next turn without restarting the server. A rebuild that fails falls back to
 // the last successful one rather than dropping the prompt mid-conversation.
 type Builder struct {
-	root string
-	log  *log.Logger
+	root      string
+	workspace string
+	log       *log.Logger
 
 	mu         sync.Mutex
 	lastSystem string
 	lastSkills string
 }
 
-func NewBuilder(root string, logger *log.Logger) *Builder {
-	b := &Builder{root: root, log: logger}
+func NewBuilder(root, workspace string, logger *log.Logger) *Builder {
+	b := &Builder{root: root, workspace: workspace, log: logger}
 	b.build() // warm the fallback so later disk errors degrade gracefully
 	return b
 }
@@ -46,7 +47,7 @@ func (b *Builder) build() (system, skillsPrompt string) {
 	catalog, err := skills.Load(b.root)
 	if err == nil {
 		skillsPrompt = catalog.Prompt()
-		system, err = Prompt(b.root, skillsPrompt)
+		system, err = Prompt(b.root, b.workspace, skillsPrompt)
 	}
 	if err != nil {
 		if b.log != nil {
