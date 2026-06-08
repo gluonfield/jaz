@@ -7,6 +7,7 @@ import { useToast } from '@/components/ui/toast'
 import { createSession } from '@/lib/api/sessions'
 import { setPendingMessage, setPendingVoice } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
+import { useTheme } from '@/lib/theme'
 import { useQueryClient } from '@tanstack/react-query'
 
 export const Route = createFileRoute('/new')({
@@ -22,6 +23,8 @@ function NewSessionPage() {
   const toast = useToast()
   const [creating, setCreating] = useState(false)
   const [composing, setComposing] = useState(false)
+  // PixelField samples the palette at mount; remount it when the theme flips.
+  const { resolved } = useTheme()
 
   const startThread = async (title: string | undefined, prepare: (sessionId: string) => void) => {
     setCreating(true)
@@ -49,7 +52,7 @@ function NewSessionPage() {
         if (el instanceof HTMLTextAreaElement) setComposing(el.value.trim().length > 0)
       }}
     >
-      <PixelField calm={composing || creating} />
+      <PixelField key={resolved} calm={composing || creating} />
       <motion.div
         className="relative w-full max-w-[640px]"
         initial="hidden"

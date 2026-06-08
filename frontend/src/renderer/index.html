@@ -5,6 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="./favicon.png" />
     <title>Jaz</title>
+    <script>
+      // Apply the saved theme before first paint so dark launches never flash
+      // white. Mirrors lib/theme.ts; keep the dark bg value in sync with the
+      // --color-bg token under :root.dark.
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('jaz.theme') || 'system'
+          var dark =
+            pref === 'dark' ||
+            (pref !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          var el = document.documentElement
+          if (dark) el.classList.add('dark')
+          el.style.colorScheme = dark ? 'dark' : 'light'
+          el.style.background = dark ? 'oklch(0.205 0.008 110)' : '#ffffff'
+        } catch (e) {}
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

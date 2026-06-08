@@ -1,6 +1,10 @@
 import { join } from 'node:path'
-import { BrowserWindow, app, session, shell, systemPreferences } from 'electron'
+import { BrowserWindow, app, ipcMain, nativeTheme, session, shell, systemPreferences } from 'electron'
 import appIcon from '../assets/jaz-icon-1024.png?asset'
+
+// Matches --color-bg under :root.dark; used as the window paint color before
+// the renderer mounts so a dark launch doesn't flash white behind the content.
+const DARK_BG = '#1e201b'
 
 const APP_NAME = 'Jaz'
 
@@ -15,7 +19,7 @@ function createWindow(): void {
     minHeight: 600,
     show: false,
     icon: appIcon,
-    backgroundColor: '#ffffff',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? DARK_BG : '#ffffff',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 18, y: 18 },
     webPreferences: {
@@ -42,6 +46,14 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // Renderer mirrors its theme choice here so the native chrome (macOS traffic
+  // lights, native scrollbars) and any new window's paint color match.
+  ipcMain.on('jaz:set-native-theme', (_event, source) => {
+    if (source === 'light' || source === 'dark' || source === 'system') {
+      nativeTheme.themeSource = source
+    }
+  })
+
   // Voice mode records from the mic; allow media (macOS still shows its own
   // TCC prompt) and deny everything else.
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {

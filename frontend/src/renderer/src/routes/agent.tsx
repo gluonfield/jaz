@@ -103,10 +103,10 @@ function AgentPage() {
               type="button"
               onClick={handleSave}
               disabled={save.isPending}
-              className="flex items-center gap-2 rounded-control bg-primary px-3.5 py-1.5 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-primary-strong disabled:opacity-50"
+              className="flex items-center gap-2 rounded-control bg-primary px-3.5 py-1.5 text-[13px] font-medium text-on-primary transition-colors duration-150 hover:bg-primary-strong disabled:opacity-50"
             >
               {save.isPending ? 'Saving…' : 'Save changes'}
-              <kbd className="font-mono text-[11px] text-white/75">⌘S</kbd>
+              <kbd className="font-mono text-[11px] text-on-primary/75">⌘S</kbd>
             </button>
           ) : (
             <span className="text-[12px] text-ink-3">All changes saved</span>

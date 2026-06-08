@@ -6,6 +6,8 @@ import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/vi
 import { tags } from '@lezer/highlight'
 import { useEffect, useRef } from 'react'
 
+// Colors reference the theme tokens (via CSS vars), so the editor follows
+// light/dark without rebuilding the EditorView.
 const theme = EditorView.theme({
   '&': {
     height: '100%',
@@ -16,28 +18,28 @@ const theme = EditorView.theme({
     fontFamily: "'JetBrains Mono Variable', ui-monospace, monospace",
     lineHeight: '1.7',
     padding: '16px 20px',
-    caretColor: 'oklch(0.27 0.015 110)',
+    caretColor: 'var(--color-ink)',
   },
   '.cm-line': { padding: '0' },
   '&.cm-focused': { outline: 'none' },
-  '.cm-activeLine': { backgroundColor: 'oklch(0.972 0.004 110 / 60%)' },
+  '.cm-activeLine': { backgroundColor: 'var(--color-surface-2)' },
   '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
-    backgroundColor: 'oklch(0.93 0.04 110)',
+    backgroundColor: 'var(--color-primary-soft)',
   },
-  '.cm-cursor': { borderLeftColor: 'oklch(0.27 0.015 110)' },
+  '.cm-cursor': { borderLeftColor: 'var(--color-ink)' },
   '.cm-scroller': { overflow: 'auto' },
-  '.cm-placeholder': { color: 'oklch(0.56 0.012 110)' },
+  '.cm-placeholder': { color: 'var(--color-ink-3)' },
 })
 
 const highlight = HighlightStyle.define([
-  { tag: tags.heading, fontWeight: '600', color: 'oklch(0.27 0.015 110)' },
+  { tag: tags.heading, fontWeight: '600', color: 'var(--color-ink)' },
   { tag: tags.strong, fontWeight: '600' },
   { tag: tags.emphasis, fontStyle: 'italic' },
-  { tag: tags.link, color: 'oklch(0.55 0.12 110)' },
-  { tag: tags.url, color: 'oklch(0.55 0.12 110)' },
-  { tag: tags.monospace, color: 'oklch(0.52 0.12 55)' },
-  { tag: tags.quote, color: 'oklch(0.5 0.014 110)' },
-  { tag: tags.list, color: 'oklch(0.5 0.014 110)' },
+  { tag: tags.link, color: 'var(--color-primary)' },
+  { tag: tags.url, color: 'var(--color-primary)' },
+  { tag: tags.monospace, color: 'var(--color-accent-strong)' },
+  { tag: tags.quote, color: 'var(--color-ink-2)' },
+  { tag: tags.list, color: 'var(--color-ink-2)' },
 ])
 
 export function MarkdownEditor({

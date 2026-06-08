@@ -358,7 +358,7 @@ function PlanChecklist({
             <button
               type="button"
               onClick={onApprovePlan}
-              className="inline-flex h-7 items-center gap-1.5 rounded-control bg-primary px-2 text-[12px] font-medium text-white transition-colors hover:bg-primary-strong"
+              className="inline-flex h-7 items-center gap-1.5 rounded-control bg-primary px-2 text-[12px] font-medium text-on-primary transition-colors hover:bg-primary-strong"
             >
               <Check size={13} />
               Approve plan
@@ -537,7 +537,7 @@ function QuestionPermissionCard({
             type="button"
             disabled={!complete || locked}
             onClick={() => void submit()}
-            className="inline-flex h-8 items-center gap-1.5 rounded-control bg-primary px-3 text-[12px] font-medium text-white transition hover:bg-primary-strong disabled:cursor-not-allowed disabled:bg-bg disabled:text-ink-3"
+            className="inline-flex h-8 items-center gap-1.5 rounded-control bg-primary px-3 text-[12px] font-medium text-on-primary transition hover:bg-primary-strong disabled:cursor-not-allowed disabled:bg-bg disabled:text-ink-3"
           >
             {submitting ? (
               <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
