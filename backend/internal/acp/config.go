@@ -1,9 +1,6 @@
 package acp
 
-// Mode IDs that grant unattended full access, in preference order. Agents
-// name the same capability differently: Codex exposes "full-access", the
-// Claude Code adapter "bypassPermissions", Gemini CLI "yolo".
-var fullAccessModes = []string{"full-access", "bypassPermissions", "yolo"}
+var fullAccessModes = []string{"full-access", "yolo"}
 
 // SystemPromptSource supplies the system prompt for new ACP sessions. It is
 // consulted at session creation, not at startup, so skill edits reach new

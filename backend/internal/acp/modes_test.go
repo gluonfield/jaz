@@ -6,14 +6,26 @@ import (
 	acpschema "github.com/gluonfield/acp-transport/acp"
 )
 
-// Agents name their unattended mode differently (Codex "full-access", Claude
-// Code "bypassPermissions", Gemini CLI "yolo"); all must be accepted as-is.
 func TestPreferredExecutionModeAcceptsAgentFlavors(t *testing.T) {
 	for _, id := range fullAccessModes {
 		got := preferredExecutionMode([]acpschema.SessionMode{{ID: acpschema.SessionModeID(id)}})
 		if got != id {
 			t.Fatalf("preferredExecutionMode(%q) = %q", id, got)
 		}
+	}
+}
+
+func TestModeStateDoesNotForceClaudeBypassPermissions(t *testing.T) {
+	state := modeStateFromACP(&acpschema.SessionModeState{
+		CurrentModeID: "auto",
+		AvailableModes: []acpschema.SessionMode{
+			{ID: "auto", Name: "Auto"},
+			{ID: "bypassPermissions", Name: "Bypass Permissions"},
+			{ID: "plan", Name: "Plan"},
+		},
+	})
+	if state.ExecutionModeID != "auto" {
+		t.Fatalf("ExecutionModeID = %q, want auto", state.ExecutionModeID)
 	}
 }
 
