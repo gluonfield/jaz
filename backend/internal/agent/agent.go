@@ -40,10 +40,11 @@ type StreamEvent struct {
 }
 
 type Agent struct {
-	Provider provider.Provider
-	Model    string
-	Tools    *tools.Registry
-	MaxTurns int
+	Provider        provider.Provider
+	Model           string
+	ReasoningEffort string
+	Tools           *tools.Registry
+	MaxTurns        int
 }
 
 type Result struct {
@@ -70,9 +71,10 @@ func (a *Agent) Complete(ctx context.Context, req provider.Request) (Result, err
 
 	for turn := 0; turn < a.MaxTurns; turn++ {
 		resp, err := a.Provider.Complete(ctx, provider.Request{
-			Model:    req.Model,
-			Messages: messages,
-			Tools:    req.Tools,
+			Model:           req.Model,
+			ReasoningEffort: req.ReasoningEffort,
+			Messages:        messages,
+			Tools:           req.Tools,
 		})
 		if err != nil {
 			return Result{Messages: messages, ToolExecutions: toolExecutions}, err
@@ -120,9 +122,10 @@ func (a *Agent) run(ctx context.Context, req provider.Request, out chan<- Stream
 
 	for turn := 0; turn < a.MaxTurns; turn++ {
 		stream, err := a.Provider.StreamComplete(ctx, provider.Request{
-			Model:    req.Model,
-			Messages: messages,
-			Tools:    req.Tools,
+			Model:           req.Model,
+			ReasoningEffort: req.ReasoningEffort,
+			Messages:        messages,
+			Tools:           req.Tools,
 		})
 		if err != nil {
 			a.emit(out, StreamEvent{Type: StreamError, Error: err.Error(), Messages: messages})
@@ -213,6 +216,9 @@ func (a *Agent) normalize(req provider.Request) (provider.Request, error) {
 	}
 	if req.Model == "" {
 		req.Model = a.Model
+	}
+	if req.ReasoningEffort == "" {
+		req.ReasoningEffort = a.ReasoningEffort
 	}
 	req.Messages = append([]provider.Message(nil), req.Messages...)
 	if len(req.Tools) == 0 {

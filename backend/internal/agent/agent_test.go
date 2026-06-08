@@ -10,11 +10,13 @@ import (
 )
 
 type fakeProvider struct {
-	calls int
+	calls    int
+	requests []provider.Request
 }
 
 func (p *fakeProvider) Complete(ctx context.Context, req provider.Request) (provider.Response, error) {
 	p.calls++
+	p.requests = append(p.requests, req)
 	if p.calls == 1 {
 		return provider.Response{Message: provider.AssistantMessage("", []provider.ToolCall{
 			provider.FunctionToolCall("call_1", "mock", `{"value":"ok"}`),
@@ -25,6 +27,7 @@ func (p *fakeProvider) Complete(ctx context.Context, req provider.Request) (prov
 
 func (p *fakeProvider) StreamComplete(ctx context.Context, req provider.Request) (<-chan provider.Event, error) {
 	p.calls++
+	p.requests = append(p.requests, req)
 	ch := make(chan provider.Event, 4)
 	go func() {
 		defer close(ch)
@@ -94,5 +97,23 @@ func TestAgentCompleteReturnsFinalResult(t *testing.T) {
 	}
 	if len(result.Messages) != 4 {
 		t.Fatalf("expected user, assistant-call, tool, assistant messages; got %d", len(result.Messages))
+	}
+}
+
+func TestAgentUsesDefaultReasoningEffort(t *testing.T) {
+	fp := &fakeProvider{}
+	a := &Agent{
+		Provider:        fp,
+		ReasoningEffort: "high",
+		Tools:           tools.NewRegistry(mockTool{}),
+	}
+	_, err := a.Complete(context.Background(), provider.Request{
+		Messages: []provider.Message{provider.UserMessage("hello")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fp.requests) == 0 || fp.requests[0].ReasoningEffort != "high" {
+		t.Fatalf("reasoning effort was not forwarded: %#v", fp.requests)
 	}
 }

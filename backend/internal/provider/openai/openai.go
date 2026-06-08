@@ -45,16 +45,24 @@ func (p *Provider) StreamComplete(ctx context.Context, req provider.Request) (<-
 	if model == "" {
 		return nil, errors.New("model is required")
 	}
+	reasoningEffort, err := provider.NormalizeReasoningEffort(req.ReasoningEffort)
+	if err != nil {
+		return nil, err
+	}
 
 	client := p.client()
-	stream := client.Chat.Completions.NewStreaming(ctx, oa.ChatCompletionNewParams{
+	params := oa.ChatCompletionNewParams{
 		Model:    shared.ChatModel(model),
 		Messages: req.Messages,
 		Tools:    req.Tools,
 		StreamOptions: oa.ChatCompletionStreamOptionsParam{
 			IncludeUsage: oa.Bool(true),
 		},
-	})
+	}
+	if reasoningEffort != "" {
+		params.ReasoningEffort = shared.ReasoningEffort(reasoningEffort)
+	}
+	stream := client.Chat.Completions.NewStreaming(ctx, params)
 
 	events := make(chan provider.Event)
 	go func() {
@@ -104,13 +112,21 @@ func (p *Provider) Complete(ctx context.Context, req provider.Request) (provider
 	if model == "" {
 		return provider.Response{}, errors.New("model is required")
 	}
+	reasoningEffort, err := provider.NormalizeReasoningEffort(req.ReasoningEffort)
+	if err != nil {
+		return provider.Response{}, err
+	}
 
 	client := p.client()
-	resp, err := client.Chat.Completions.New(ctx, oa.ChatCompletionNewParams{
+	params := oa.ChatCompletionNewParams{
 		Model:    shared.ChatModel(model),
 		Messages: req.Messages,
 		Tools:    req.Tools,
-	})
+	}
+	if reasoningEffort != "" {
+		params.ReasoningEffort = shared.ReasoningEffort(reasoningEffort)
+	}
+	resp, err := client.Chat.Completions.New(ctx, params)
 	if err != nil {
 		return provider.Response{}, err
 	}

@@ -37,6 +37,7 @@ func runServe(args []string) error {
 			parseServeOptions,
 			app.NewStore,
 			app.NewWorkspace,
+			app.NewMemory,
 			exectool.NewCommandManager,
 			app.NewPromptBuilder,
 			app.NewACPConfig,
@@ -50,6 +51,8 @@ func runServe(args []string) error {
 		),
 		fx.Invoke(
 			app.ConnectACPCompletion,
+			app.CloseMemory,
+			app.StartMemoryScheduler,
 			startServer,
 		),
 	)
@@ -141,9 +144,24 @@ func startServer(
 	stt voice.STT,
 	tts voice.TTS,
 	logger *log.Logger,
+	cfg app.Config,
 	opts serveOptions,
 ) {
-	handler := &server.Server{Agent: a, Store: store, ACP: manager, Locks: locks, Events: events, STT: stt, TTS: tts, Prompts: prompts, Root: store.RootDir(), Log: logger.WithPrefix("server")}
+	handler := &server.Server{
+		Agent:                 a,
+		Store:                 store,
+		ACP:                   manager,
+		Locks:                 locks,
+		Events:                events,
+		STT:                   stt,
+		TTS:                   tts,
+		NativeModelProvider:   cfg.Provider.Type,
+		NativeModel:           cfg.Provider.Model,
+		NativeReasoningEffort: cfg.Provider.ReasoningEffort,
+		Prompts:               prompts,
+		Root:                  store.RootDir(),
+		Log:                   logger.WithPrefix("server"),
+	}
 	manager.TurnFinished = handler.HandleACPTurnFinished
 	srv := &http.Server{
 		Addr:    opts.Addr,

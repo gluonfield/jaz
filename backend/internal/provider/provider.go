@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	oa "github.com/openai/openai-go/v3"
 	"github.com/wins/jaz/backend/internal/tools"
@@ -11,9 +13,10 @@ type Message = oa.ChatCompletionMessageParamUnion
 type ToolCall = oa.ChatCompletionMessageToolCallUnion
 
 type Request struct {
-	Model    string
-	Messages []Message
-	Tools    []tools.Definition
+	Model           string
+	ReasoningEffort string
+	Messages        []Message
+	Tools           []tools.Definition
 }
 
 type Response struct {
@@ -51,6 +54,18 @@ type Event struct {
 type Provider interface {
 	Complete(ctx context.Context, req Request) (Response, error)
 	StreamComplete(ctx context.Context, req Request) (<-chan Event, error)
+}
+
+func NormalizeReasoningEffort(value string) (string, error) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	switch value {
+	case "", "none":
+		return "", nil
+	case "minimal", "low", "medium", "high":
+		return value, nil
+	default:
+		return "", fmt.Errorf("unknown reasoning effort %q; valid values are none, minimal, low, medium, high", value)
+	}
 }
 
 func SystemMessage(content string) Message {

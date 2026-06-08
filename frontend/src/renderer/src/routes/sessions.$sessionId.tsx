@@ -492,11 +492,7 @@ function SessionPage() {
 
   return (
     <div className="relative h-full">
-      {/* runtime tag for ACP threads, shown in the titlebar next to the
-          sidebar toggle: which agent runs this thread (codex, …) */}
-      {session.runtime === 'acp' && titlebarSlot
-        ? createPortal(<RuntimeBadge session={session} />, titlebarSlot)
-        : null}
+      {titlebarSlot ? createPortal(<RuntimeBadge session={session} />, titlebarSlot) : null}
 
       <div
         ref={scrollRef}

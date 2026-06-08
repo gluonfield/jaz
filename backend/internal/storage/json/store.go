@@ -76,15 +76,18 @@ func (s *Store) CreateSession(input storage.CreateSession) (storage.Session, err
 		runtime = storage.RuntimeNative
 	}
 	session := storage.Session{
-		ID:         s.NewSessionID(),
-		Slug:       input.Slug,
-		Title:      input.Title,
-		ParentID:   input.ParentID,
-		Status:     storage.StatusIdle,
-		Runtime:    runtime,
-		RuntimeRef: input.RuntimeRef,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		ID:              s.NewSessionID(),
+		Slug:            input.Slug,
+		Title:           input.Title,
+		ParentID:        input.ParentID,
+		Status:          storage.StatusIdle,
+		Runtime:         runtime,
+		RuntimeRef:      input.RuntimeRef,
+		ModelProvider:   input.ModelProvider,
+		Model:           input.Model,
+		ReasoningEffort: input.ReasoningEffort,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 	if session.Slug == "" {
 		session.Slug = defaultSlug(session)

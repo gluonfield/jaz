@@ -21,10 +21,40 @@ For OpenAI, set `providers.default: openai` in `application.yaml` and provide:
 OPENAI_API_KEY=...
 ```
 
-Only `OPENAI_API_KEY` and `OPENROUTER_API_KEY` are read from the environment.
+Provider secrets and native model settings can also come from `.env`:
+`OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_REASONING_EFFORT`,
+`OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_REASONING_EFFORT`, and
+`MISTRAL_API_KEY`.
 
 Codex ACP sessions reuse your Codex CLI OAuth login from `~/.codex` by default.
 Set `CODEX_HOME` only when Codex uses a non-default auth directory. OpenAI and
 OpenRouter credentials only authenticate the coordinator model.
+
+Native Jaz model selection stays in `application.yaml`:
+
+```yaml
+providers:
+  default: openrouter
+
+openrouter:
+  model: openai/gpt-5.4-mini
+  reasoningeffort: medium
+```
+
+Coding-agent models are configured per ACP agent:
+
+```yaml
+jaz:
+  acp:
+    agents:
+      codex:
+        command: /path/to/codex-acp
+        model: gpt-5.5
+        reasoningeffort: medium
+```
+
+When an ACP agent does not support `session/set_model` or
+`session/set_config_option`, remove the unsupported field and pass the setting
+through that agent's own `args` or `env`.
 
 Runtime files are stored under `~/.jaz` by default. Override with `jaz.root`.
