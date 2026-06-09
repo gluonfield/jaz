@@ -122,7 +122,7 @@ type SpawnResult struct {
 func NewManager(store Store, cfg Config, logger *log.Logger) *Manager {
 	agents := cfg.AgentSource
 	if agents == nil {
-		agents = AgentCatalog(cfg.Agents)
+		agents = MergeAgents(nil, cfg.Agents)
 	}
 	if logger == nil {
 		logger = log.Default()
@@ -237,7 +237,7 @@ func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, cwd string) 
 }
 
 func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, error) {
-	req.ACPAgent = strings.TrimSpace(req.ACPAgent)
+	req.ACPAgent = CanonicalAgentName(req.ACPAgent)
 	if req.ACPAgent == "" {
 		req.ACPAgent = AgentCodex
 	}
@@ -369,12 +369,21 @@ func (m *Manager) resume(ctx context.Context, ref string) (*Job, error) {
 	if session.Runtime != storage.RuntimeACP || session.RuntimeRef == nil || session.RuntimeRef.Agent == "" {
 		return nil, fmt.Errorf("session %s is not acp-backed", ref)
 	}
-	cfg, ok, err := m.configuredAgent(session.RuntimeRef.Agent)
+	agentName := CanonicalAgentName(session.RuntimeRef.Agent)
+	sessionChanged := false
+	if agentName != session.RuntimeRef.Agent {
+		if session.ModelProvider == session.RuntimeRef.Agent {
+			session.ModelProvider = agentName
+		}
+		session.RuntimeRef.Agent = agentName
+		sessionChanged = true
+	}
+	cfg, ok, err := m.configuredAgent(agentName)
 	if err != nil {
 		return nil, err
 	}
 	if !ok {
-		return nil, fmt.Errorf("acp agent %q is not configured", session.RuntimeRef.Agent)
+		return nil, fmt.Errorf("acp agent %q is not configured", agentName)
 	}
 	cfg.Model = strings.TrimSpace(session.Model)
 	cfg.ReasoningEffort = strings.TrimSpace(session.ReasoningEffort)
@@ -388,16 +397,15 @@ func (m *Manager) resume(ctx context.Context, ref string) (*Job, error) {
 			return nil, err
 		}
 	}
-	ac, err := m.connect(ctx, session.RuntimeRef.Agent, cfg, cwd)
+	ac, err := m.connect(ctx, agentName, cfg, cwd)
 	if err != nil {
 		return nil, err
 	}
-	acpSessionID, modes, err := m.restoreACPSession(ctx, ac, session, cfg, cwd)
+	acpSessionID, modes, err := m.restoreACPSession(ctx, ac, agentName, session, cfg, cwd)
 	if err != nil {
 		ac.close()
 		return nil, err
 	}
-	sessionChanged := false
 	if acpSessionID != session.RuntimeRef.SessionID {
 		session.RuntimeRef.SessionID = acpSessionID
 		sessionChanged = true
@@ -414,7 +422,7 @@ func (m *Manager) resume(ctx context.Context, ref string) (*Job, error) {
 		Slug:          session.Slug,
 		Title:         session.Title,
 		ParentID:      session.ParentID,
-		ACPAgent:      session.RuntimeRef.Agent,
+		ACPAgent:      agentName,
 		ACPSession:    acpSessionID,
 		Cwd:           cwd,
 		State:         StateIdle,
@@ -433,7 +441,8 @@ func (m *Manager) resume(ctx context.Context, ref string) (*Job, error) {
 
 // The job is registered only after session/load returns, so the agent's
 // history replay notifications are dropped, not re-recorded as events.
-func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, session storage.Session, cfg AgentConfig, cwd string) (string, ModeState, error) {
+func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentName string, session storage.Session, cfg AgentConfig, cwd string) (string, ModeState, error) {
+	agentName = CanonicalAgentName(agentName)
 	var caps struct {
 		AgentCapabilities acpschema.AgentCapabilities `json:"agentCapabilities"`
 	}
@@ -455,7 +464,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, session 
 			if err := json.Unmarshal(raw, &resp); err != nil {
 				return "", ModeState{}, err
 			}
-			modes, err := m.configuredModeState(ctx, ac.peer, session.RuntimeRef.Agent, newACPSessionInfo(raw, acpschema.NewSessionResponse{
+			modes, err := m.configuredModeState(ctx, ac.peer, agentName, newACPSessionInfo(raw, acpschema.NewSessionResponse{
 				SessionID: acpschema.SessionID(storedID),
 				Modes:     resp.Modes,
 			}), cfg)
@@ -467,7 +476,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, session 
 	if err != nil {
 		return "", ModeState{}, err
 	}
-	modes, err := m.configuredModeState(ctx, ac.peer, session.RuntimeRef.Agent, acpSession, cfg)
+	modes, err := m.configuredModeState(ctx, ac.peer, agentName, acpSession, cfg)
 	return string(acpSession.response.SessionID), modes, err
 }
 
@@ -543,7 +552,7 @@ func (m *Manager) Status(ref string) (Job, error) {
 		Slug:       session.Slug,
 		Title:      session.Title,
 		ParentID:   session.ParentID,
-		ACPAgent:   session.RuntimeRef.Agent,
+		ACPAgent:   CanonicalAgentName(session.RuntimeRef.Agent),
 		ACPSession: session.RuntimeRef.SessionID,
 		State:      "not_running",
 		CreatedAt:  session.CreatedAt,
@@ -552,7 +561,7 @@ func (m *Manager) Status(ref string) (Job, error) {
 }
 
 func (m *Manager) configuredAgent(name string) (AgentConfig, bool, error) {
-	return m.agents.AgentConfig(name)
+	return m.agents.AgentConfig(CanonicalAgentName(name))
 }
 
 func (m *Manager) Wait(ctx context.Context, req WaitRequest) (Job, error) {

@@ -13,6 +13,7 @@ import (
 )
 
 const agentMethodSessionSetModel = "session/set_model"
+const sessionConfigModel = "model"
 const sessionConfigReasoningEffort = "reasoning_effort"
 const claudeSessionConfigEffort = "effort"
 
@@ -39,6 +40,21 @@ func (m *Manager) setConfiguredSessionModel(ctx context.Context, peer *jsonrpc.P
 	model = strings.TrimSpace(model)
 	if model == "" {
 		return nil
+	}
+	if strings.ToLower(strings.TrimSpace(agentName)) == AgentClaude {
+		_, err := peer.Call(ctx, acpschema.AgentMethodSessionSetConfigOption, acpschema.SetSessionConfigOptionRequest{
+			SessionID: sessionID,
+			ConfigID:  acpschema.SessionConfigID(sessionConfigModel),
+			Value:     acpschema.SessionConfigValueID(model),
+		})
+		if err == nil {
+			return nil
+		}
+		var rpcErr *jsonrpc.Error
+		if errors.As(err, &rpcErr) && rpcErr.Code == -32601 {
+			return fmt.Errorf("set acp agent %q model %q: session/set_config_option is not supported; clear the model in Settings > Agents or pass the model through that agent's args or env", agentName, model)
+		}
+		return fmt.Errorf("set acp agent %q model %q: %w", agentName, model, err)
 	}
 	_, err := peer.Call(ctx, agentMethodSessionSetModel, setSessionModelRequest{
 		SessionID: sessionID,
@@ -157,7 +173,24 @@ func parseConfigOptionValues(raw json.RawMessage) []string {
 }
 
 func validateConfiguredSessionModel(agentName, rawModel, effectiveModel string, state sessionModelState) error {
-	if strings.ToLower(strings.TrimSpace(agentName)) != AgentCodex || strings.TrimSpace(rawModel) == "" || state.empty() {
+	if strings.TrimSpace(rawModel) == "" || state.empty() {
+		return nil
+	}
+	switch strings.ToLower(strings.TrimSpace(agentName)) {
+	case AgentClaude:
+		if state.hasExact(effectiveModel) || state.hasBase(effectiveModel) {
+			return nil
+		}
+		available := state.availableExact()
+		if len(available) == 0 {
+			available = state.availableBases()
+		}
+		if len(available) == 0 {
+			return nil
+		}
+		return fmt.Errorf("configured acp agent %q model %q is not advertised by the agent; available model ids: %s", agentName, effectiveModel, strings.Join(available, ", "))
+	case AgentCodex:
+	default:
 		return nil
 	}
 	if modelHasReasoningEffort(effectiveModel) && len(state.exact) > 0 {
@@ -268,7 +301,7 @@ func reasoningEffortEncodedInModel(agentName, model, effort string) bool {
 
 func reasoningEffortConfigID(agentName string) string {
 	switch strings.ToLower(strings.TrimSpace(agentName)) {
-	case AgentClaudeCode:
+	case AgentClaude:
 		return claudeSessionConfigEffort
 	default:
 		return sessionConfigReasoningEffort

@@ -13,10 +13,11 @@ import (
 )
 
 const (
-	AgentSettingsNamespace = "agents"
-	AgentDefaultsKey       = "defaults"
-	legacyCodexACPCommand  = `npx -y @zed-industries/codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'`
-	legacyClaudeCodeModel  = "claude-sonnet-4-5"
+	AgentSettingsNamespace  = "agents"
+	AgentDefaultsKey        = "defaults"
+	legacyCodexACPCommand   = `npx -y @zed-industries/codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'`
+	legacyClaudeCodeCommand = "npx -y @agentclientprotocol/claude-agent-acp@0.39.0"
+	legacyClaudeCodeModel   = "claude-sonnet-4-5"
 )
 
 type NativeAgentDefaults struct {
@@ -86,13 +87,12 @@ func LoadAgentDefaults(store storage.SettingsStorage) (AgentDefaults, error) {
 	if defaults.ACP == nil {
 		defaults.ACP = map[string]ACPAgentDefaults{}
 	}
-	for name, agent := range defaults.ACP {
-		defaults.ACP[name] = collapseLegacyACPCommand(agent)
-	}
+	defaults.ACP = canonicalizeACPDefaults(defaults.ACP)
 	return defaults, nil
 }
 
 func SaveAgentDefaults(store storage.SettingsStorage, defaults AgentDefaults) (AgentDefaults, error) {
+	defaults.ACP = canonicalizeACPDefaults(defaults.ACP)
 	data, err := json.Marshal(defaults)
 	if err != nil {
 		return AgentDefaults{}, err
@@ -107,7 +107,7 @@ func EnsureAgentDefaults(store storage.SettingsStorage, seed AgentDefaults) erro
 	current, err := LoadAgentDefaults(store)
 	if err == nil {
 		merged := MergeAgentDefaults(current, seed, agentNames(seed))
-		if agentDefaultsEqual(current, merged) {
+		if agentDefaultsEqual(current, merged) && storedAgentDefaultsEqual(store, current) {
 			return nil
 		}
 		_, err := SaveAgentDefaults(store, merged)
@@ -117,6 +117,21 @@ func EnsureAgentDefaults(store storage.SettingsStorage, seed AgentDefaults) erro
 	}
 	_, err = SaveAgentDefaults(store, seed)
 	return err
+}
+
+func storedAgentDefaultsEqual(store storage.SettingsStorage, defaults AgentDefaults) bool {
+	setting, err := store.LoadSetting(AgentSettingsNamespace, AgentDefaultsKey)
+	if err != nil {
+		return false
+	}
+	var stored AgentDefaults
+	if err := json.Unmarshal(setting.Value, &stored); err != nil {
+		return false
+	}
+	if stored.ACP == nil {
+		stored.ACP = map[string]ACPAgentDefaults{}
+	}
+	return agentDefaultsEqual(stored, defaults)
 }
 
 func agentDefaultsEqual(a, b AgentDefaults) bool {
@@ -144,7 +159,7 @@ func NormalizeAgentDefaults(input AgentDefaults, catalog acp.AgentCatalog, nativ
 	agentNames := catalog.Names()
 	allowed := map[string]struct{}{}
 	for _, name := range agentNames {
-		name = strings.TrimSpace(name)
+		name = acp.CanonicalAgentName(name)
 		if name != "" {
 			allowed[name] = struct{}{}
 		}
@@ -175,9 +190,16 @@ func NormalizeAgentDefaults(input AgentDefaults, catalog acp.AgentCatalog, nativ
 		Native: input.Native,
 		ACP:    map[string]ACPAgentDefaults{},
 	}
+	inputACP := canonicalizeACPDefaults(input.ACP)
+	for name := range inputACP {
+		if _, ok := allowed[name]; !ok {
+			return AgentDefaults{}, fmt.Errorf("unknown acp agent %q", name)
+		}
+	}
 	for _, name := range sortedAgentNames(agentNames) {
+		name = acp.CanonicalAgentName(name)
 		base, _ := catalog.Agent(name)
-		current := input.ACP[name]
+		current := inputACP[name]
 		effort, err := normalizeACPReasoningEffort(current.ReasoningEffort)
 		if err != nil {
 			return AgentDefaults{}, err
@@ -200,11 +222,6 @@ func NormalizeAgentDefaults(input AgentDefaults, catalog acp.AgentCatalog, nativ
 			ReasoningEffort: effort,
 		}
 	}
-	for name := range input.ACP {
-		if _, ok := allowed[name]; !ok {
-			return AgentDefaults{}, fmt.Errorf("unknown acp agent %q", name)
-		}
-	}
 	return next, nil
 }
 
@@ -212,6 +229,7 @@ func MergeAgentDefaults(stored, seed AgentDefaults, agentNames []string) AgentDe
 	if stored.ACP == nil {
 		stored.ACP = map[string]ACPAgentDefaults{}
 	}
+	stored.ACP = canonicalizeACPDefaults(stored.ACP)
 	if strings.TrimSpace(stored.Native.ModelProvider) == "" {
 		stored.Native.ModelProvider = seed.Native.ModelProvider
 	}
@@ -223,6 +241,7 @@ func MergeAgentDefaults(stored, seed AgentDefaults, agentNames []string) AgentDe
 		ACP:    map[string]ACPAgentDefaults{},
 	}
 	for _, name := range sortedAgentNames(agentNames) {
+		name = acp.CanonicalAgentName(name)
 		value, ok := stored.ACP[name]
 		if !ok {
 			value = seed.ACP[name]
@@ -241,11 +260,34 @@ func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentD
 		stored.Command = seed.Command
 	case name == acp.AgentCodex && strings.TrimSpace(stored.Command) == legacyCodexACPCommand:
 		stored.Command = seed.Command
+	case name == acp.AgentClaude && strings.TrimSpace(stored.Command) == legacyClaudeCodeCommand:
+		stored.Command = seed.Command
 	}
-	if name == acp.AgentClaudeCode && strings.TrimSpace(stored.Model) == legacyClaudeCodeModel {
+	if name == acp.AgentClaude && strings.TrimSpace(stored.Model) == legacyClaudeCodeModel {
 		stored.Model = seed.Model
 	}
 	return stored
+}
+
+func canonicalizeACPDefaults(in map[string]ACPAgentDefaults) map[string]ACPAgentDefaults {
+	out := map[string]ACPAgentDefaults{}
+	for name, agent := range in {
+		canonical := acp.CanonicalAgentName(name)
+		if canonical == "" || canonical != strings.TrimSpace(name) {
+			continue
+		}
+		out[canonical] = collapseLegacyACPCommand(agent)
+	}
+	for name, agent := range in {
+		canonical := acp.CanonicalAgentName(name)
+		if canonical == "" || canonical == strings.TrimSpace(name) {
+			continue
+		}
+		if _, ok := out[canonical]; !ok {
+			out[canonical] = collapseLegacyACPCommand(agent)
+		}
+	}
+	return out
 }
 
 type ACPConfigSource struct {
@@ -258,6 +300,7 @@ func NewACPConfigSource(store storage.SettingsStorage, catalog acp.AgentCatalog)
 }
 
 func (s *ACPConfigSource) AgentConfig(name string) (acp.AgentConfig, bool, error) {
+	name = acp.CanonicalAgentName(name)
 	cfg, ok := s.catalog.Agent(name)
 	if !ok {
 		return acp.AgentConfig{}, false, nil

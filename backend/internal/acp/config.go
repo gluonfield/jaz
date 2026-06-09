@@ -2,6 +2,7 @@ package acp
 
 import (
 	"sort"
+	"strings"
 
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 )
@@ -9,9 +10,17 @@ import (
 var fullAccessModes = []string{"full-access", "yolo"}
 
 const (
-	AgentCodex      = "codex"
-	AgentClaudeCode = "claude_code"
+	AgentCodex  = "codex"
+	AgentClaude = "claude"
 )
+
+func CanonicalAgentName(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	if strings.ReplaceAll(name, "_", "-") == "claude-code" {
+		return AgentClaude
+	}
+	return name
+}
 
 // SystemPromptSource supplies the system prompt for new ACP sessions. It is
 // consulted at session creation, not at startup, so skill edits reach new
@@ -52,6 +61,7 @@ func (c AgentCatalog) Agent(name string) (AgentConfig, bool) {
 	if c == nil {
 		return AgentConfig{}, false
 	}
+	name = CanonicalAgentName(name)
 	agent, ok := c[name]
 	return agent, ok
 }
@@ -85,9 +95,9 @@ func BuiltinAgents() AgentCatalog {
 			Model:           "gpt-5.5",
 			ReasoningEffort: "medium",
 		},
-		AgentClaudeCode: {
+		AgentClaude: {
 			Command:         "npx",
-			Args:            []string{"-y", "@agentclientprotocol/claude-agent-acp@0.39.0"},
+			Args:            []string{"-y", "@agentclientprotocol/claude-agent-acp@0.43.0"},
 			Model:           "default",
 			ReasoningEffort: "medium",
 		},
@@ -97,10 +107,10 @@ func BuiltinAgents() AgentCatalog {
 func MergeAgents(base, override map[string]AgentConfig) AgentCatalog {
 	out := AgentCatalog{}
 	for name, cfg := range base {
-		out[name] = cfg
+		out[CanonicalAgentName(name)] = cfg
 	}
 	for name, cfg := range override {
-		out[name] = cfg
+		out[CanonicalAgentName(name)] = cfg
 	}
 	return out
 }

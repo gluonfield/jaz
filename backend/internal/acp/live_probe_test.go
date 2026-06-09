@@ -114,11 +114,20 @@ func probeApplyConfiguredSessionOptions(t *testing.T, ctx context.Context, conn 
 	effort := strings.TrimSpace(os.Getenv("ACP_PROBE_REASONING_EFFORT"))
 	if rawModel != "" {
 		model := configuredSessionModel(agent, rawModel, effort)
-		setModel := probeCall(t, ctx, conn, "10", agentMethodSessionSetModel, setSessionModelRequest{
-			SessionID: sessionID,
-			ModelID:   model,
-		})
-		t.Logf("session/set_model(%s) result: %s", model, setModel.Result)
+		if strings.ToLower(strings.TrimSpace(agent)) == AgentClaude {
+			setModel := probeCall(t, ctx, conn, "10", acpschema.AgentMethodSessionSetConfigOption, acpschema.SetSessionConfigOptionRequest{
+				SessionID: sessionID,
+				ConfigID:  acpschema.SessionConfigID(sessionConfigModel),
+				Value:     acpschema.SessionConfigValueID(model),
+			})
+			t.Logf("session/set_config_option(model=%s) result: %s", model, setModel.Result)
+		} else {
+			setModel := probeCall(t, ctx, conn, "10", agentMethodSessionSetModel, setSessionModelRequest{
+				SessionID: sessionID,
+				ModelID:   model,
+			})
+			t.Logf("session/set_model(%s) result: %s", model, setModel.Result)
+		}
 	}
 	if effort != "" && !reasoningEffortEncodedInModel(agent, rawModel, effort) {
 		configID := reasoningEffortConfigID(agent)
@@ -173,10 +182,14 @@ func probeAgentConfig(t *testing.T, agent string) AgentConfig {
 			Command: command,
 			Args:    strings.Fields(strings.TrimSpace(os.Getenv("ACP_PROBE_CODEX_ARGS"))),
 		}
-	case AgentClaudeCode:
+	case AgentClaude:
+		pkg := strings.TrimSpace(os.Getenv("ACP_PROBE_CLAUDE_PACKAGE"))
+		if pkg == "" {
+			pkg = "@agentclientprotocol/claude-agent-acp@0.43.0"
+		}
 		return AgentConfig{
 			Command: "npx",
-			Args:    []string{"-y", "@agentclientprotocol/claude-agent-acp@0.39.0"},
+			Args:    []string{"-y", pkg},
 		}
 	default:
 		t.Fatalf("unknown probe agent %q", agent)

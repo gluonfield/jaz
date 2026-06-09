@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -107,16 +108,21 @@ func TestEnsureAgentDefaultsMigratesLegacyClaudeCodeModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	seed := testAgentDefaultsSeed()
+	legacyClaudeName := strings.ReplaceAll("claude-code", "-", "_")
 	old := seed
 	old.ACP = map[string]ACPAgentDefaults{
-		"claude_code": {
+		legacyClaudeName: {
 			Enabled:         true,
-			Command:         seed.ACP["claude_code"].Command,
+			Command:         legacyClaudeCodeCommand,
 			Model:           legacyClaudeCodeModel,
 			ReasoningEffort: "xhigh",
 		},
 	}
-	if _, err := SaveAgentDefaults(store, old); err != nil {
+	data, err := json.Marshal(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SaveSetting(AgentSettingsNamespace, AgentDefaultsKey, data); err != nil {
 		t.Fatal(err)
 	}
 
@@ -127,10 +133,16 @@ func TestEnsureAgentDefaultsMigratesLegacyClaudeCodeModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.ACP["claude_code"].Model != "default" {
-		t.Fatalf("claude_code model = %q", loaded.ACP["claude_code"].Model)
+	if loaded.ACP["claude"].Model != "default" {
+		t.Fatalf("claude model = %q", loaded.ACP["claude"].Model)
 	}
-	if loaded.ACP["claude_code"].ReasoningEffort != "xhigh" {
-		t.Fatalf("claude_code effort = %q", loaded.ACP["claude_code"].ReasoningEffort)
+	if loaded.ACP["claude"].Command != seed.ACP["claude"].Command {
+		t.Fatalf("claude command = %q", loaded.ACP["claude"].Command)
+	}
+	if loaded.ACP["claude"].ReasoningEffort != "xhigh" {
+		t.Fatalf("claude effort = %q", loaded.ACP["claude"].ReasoningEffort)
+	}
+	if _, ok := loaded.ACP[legacyClaudeName]; ok {
+		t.Fatalf("legacy claude key was not migrated: %#v", loaded.ACP)
 	}
 }
