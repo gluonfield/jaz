@@ -93,7 +93,25 @@ export interface ToolCallJSON {
 export type MessageBlock =
   | { type: 'text'; text?: string }
   | { type: 'reasoning'; text?: string }
+  | {
+      type: 'attachment'
+      id: string
+      name: string
+      uri: string
+      mime_type?: string
+      size?: number
+      server_path?: string
+    }
   | { type: 'tool'; id: string; name: string; input_json?: string; result?: string }
+
+export interface Attachment {
+  id: string
+  name: string
+  mime_type?: string
+  size?: number
+  uri: string
+  server_path?: string
+}
 
 export interface ChatMessage {
   seq: number

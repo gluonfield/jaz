@@ -84,6 +84,7 @@ type SpawnRequest struct {
 type SendRequest struct {
 	Session       string
 	Message       string
+	Attachments   []storage.Attachment
 	Completion    CompletionMode
 	Interactive   bool
 	PlanRequested bool
@@ -489,12 +490,41 @@ func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {
 	if err := m.prepareModeForTurn(ctx, job, req.PlanRequested); err != nil {
 		return Job{}, err
 	}
-	_ = m.store.AppendMessages(job.ID, provider.UserMessage(req.Message))
+	_ = m.appendUserMessage(job.ID, req.Message, req.Attachments)
 	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested)
 	job.startTurn(req.Completion, req.Interactive, req.PlanRequested, req.ParentVisible)
 	m.publishACP(job.Snapshot())
-	go m.runPrompt(context.Background(), job, req.Message)
+	go m.runPrompt(context.Background(), job, req.Message, req.Attachments)
 	return job.Snapshot(), nil
+}
+
+func (m *Manager) appendUserMessage(sessionID, message string, attachments []storage.Attachment) error {
+	if len(attachments) > 0 {
+		if appender, ok := m.store.(storage.MessageRecordAppender); ok {
+			return appender.AppendMessageRecords(sessionID, acpUserMessageRecord(message, attachments))
+		}
+	}
+	return m.store.AppendMessages(sessionID, provider.UserMessage(message))
+}
+
+func acpUserMessageRecord(message string, attachments []storage.Attachment) storage.Message {
+	blocks := []storage.Block{{Type: "text", Text: message}}
+	for _, attachment := range attachments {
+		blocks = append(blocks, storage.Block{
+			Type:       "attachment",
+			ID:         attachment.ID,
+			Name:       attachment.Name,
+			URI:        attachment.URI,
+			MimeType:   attachment.MimeType,
+			Size:       attachment.Size,
+			ServerPath: attachment.ServerPath,
+		})
+	}
+	return storage.Message{
+		Role:    "user",
+		Content: message,
+		Blocks:  blocks,
+	}
 }
 
 func (m *Manager) Status(ref string) (Job, error) {

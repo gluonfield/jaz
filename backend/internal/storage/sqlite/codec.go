@@ -11,9 +11,10 @@ import (
 )
 
 const (
-	blockText      = "text"
-	blockReasoning = "reasoning"
-	blockTool      = "tool"
+	blockText       = "text"
+	blockReasoning  = "reasoning"
+	blockTool       = "tool"
+	blockAttachment = "attachment"
 )
 
 func recordsFromProviderMessages(messages []provider.Message, start time.Time) ([]storage.Message, error) {
@@ -175,6 +176,16 @@ func validateBlocks(blocks []storage.Block) error {
 	for i, block := range blocks {
 		switch block.Type {
 		case blockText, blockReasoning:
+		case blockAttachment:
+			if block.ID == "" {
+				return fmt.Errorf("attachment block %d missing id", i)
+			}
+			if block.Name == "" {
+				return fmt.Errorf("attachment block %d missing name", i)
+			}
+			if block.URI == "" {
+				return fmt.Errorf("attachment block %d missing uri", i)
+			}
 		case blockTool:
 			if block.ID == "" {
 				return fmt.Errorf("tool block %d missing id", i)

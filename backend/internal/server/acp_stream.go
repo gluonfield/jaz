@@ -12,7 +12,7 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, clientCtx context.Context, session storage.Session, message string, planRequested bool) {
+func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, clientCtx context.Context, session storage.Session, message string, attachments []storage.Attachment, planRequested bool) {
 	if s.ACP == nil {
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: "acp manager is not configured"})
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
@@ -30,6 +30,7 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 	job, err := s.ACP.Send(startCtx, acp.SendRequest{
 		Session:       session.ID,
 		Message:       message,
+		Attachments:   attachments,
 		Completion:    acp.CompletionInline,
 		Interactive:   true,
 		PlanRequested: planRequested,

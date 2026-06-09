@@ -71,12 +71,25 @@ type Session struct {
 }
 
 type Block struct {
-	Type      string `json:"type"`
-	Text      string `json:"text,omitempty"`
-	ID        string `json:"id,omitempty"`
-	Name      string `json:"name,omitempty"`
-	InputJSON string `json:"input_json,omitempty"`
-	Result    string `json:"result,omitempty"`
+	Type       string `json:"type"`
+	Text       string `json:"text,omitempty"`
+	ID         string `json:"id,omitempty"`
+	Name       string `json:"name,omitempty"`
+	URI        string `json:"uri,omitempty"`
+	MimeType   string `json:"mime_type,omitempty"`
+	Size       int64  `json:"size,omitempty"`
+	ServerPath string `json:"server_path,omitempty"`
+	InputJSON  string `json:"input_json,omitempty"`
+	Result     string `json:"result,omitempty"`
+}
+
+type Attachment struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	MimeType   string `json:"mime_type,omitempty"`
+	Size       int64  `json:"size,omitempty"`
+	URI        string `json:"uri"`
+	ServerPath string `json:"server_path,omitempty"`
 }
 
 type Message struct {

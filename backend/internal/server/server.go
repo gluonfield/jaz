@@ -462,7 +462,7 @@ func (s *Server) streamSessionEvents(w http.ResponseWriter, r *http.Request, ses
 func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
 	sessionRef, action, ok := strings.Cut(rest, "/")
-	if !ok || (action != "messages:stream" && action != "archive" && action != "unarchive" && action != "interactive-response" && action != "permission" && action != "cancel" && action != "queue") {
+	if !ok || (action != "messages:stream" && action != "attachments" && action != "archive" && action != "unarchive" && action != "interactive-response" && action != "permission" && action != "cancel" && action != "queue") {
 		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
 		return
 	}
@@ -483,6 +483,14 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 		}
 		session.Archived = action == "archive"
 		writeJSON(w, http.StatusOK, session)
+		return
+	}
+	if action == "attachments" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
+			return
+		}
+		s.handleUploadAttachment(w, r, session)
 		return
 	}
 	if action == "queue" {
@@ -548,6 +556,11 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("message is required"))
 		return
 	}
+	attachments, err := s.resolveAttachments(session.ID, req.AttachmentIDs)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -562,9 +575,9 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 
 	switch session.Runtime {
 	case "", storage.RuntimeNative:
-		s.streamNativeSession(w, flusher, r, session, req.Message, req.Voice)
+		s.streamNativeSession(w, flusher, r, session, req.Message, attachments, req.Voice)
 	case storage.RuntimeACP:
-		s.streamACPSession(w, flusher, r.Context(), session, req.Message, req.PlanRequested)
+		s.streamACPSession(w, flusher, r.Context(), session, req.Message, attachments, req.PlanRequested)
 	default:
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: fmt.Sprintf("unknown session runtime %q", session.Runtime)})
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
@@ -673,9 +686,10 @@ func writeSessionEventSSE(w http.ResponseWriter, flusher http.Flusher, event ses
 }
 
 type streamRequest struct {
-	Message       string `json:"message"`
-	PlanRequested bool   `json:"plan_requested,omitempty"`
-	Voice         bool   `json:"voice,omitempty"`
+	Message       string   `json:"message"`
+	AttachmentIDs []string `json:"attachment_ids,omitempty"`
+	PlanRequested bool     `json:"plan_requested,omitempty"`
+	Voice         bool     `json:"voice,omitempty"`
 }
 
 type interactiveResponseRequest struct {

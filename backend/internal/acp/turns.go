@@ -12,7 +12,7 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-func (m *Manager) runPrompt(ctx context.Context, job *Job, message string) {
+func (m *Manager) runPrompt(ctx context.Context, job *Job, message string, attachments []storage.Attachment) {
 	job.turnMu.Lock()
 	defer job.turnMu.Unlock()
 
@@ -29,11 +29,15 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string) {
 		m.finishTurn(done, job)
 		return
 	}
+	prompt, err := promptContentBlocks(message, attachments)
+	if err != nil {
+		m.failTurn(job, err)
+		m.finishTurn(done, job)
+		return
+	}
 	raw, err := peer.Call(ctx, acpschema.AgentMethodSessionPrompt, map[string]any{
 		"sessionId": job.ACPSession,
-		"prompt": []any{
-			map[string]any{"type": "text", "text": message},
-		},
+		"prompt":    prompt,
 	})
 	if err != nil {
 		m.failTurn(job, err)
@@ -63,6 +67,40 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string) {
 	m.persistUsage(job)
 	m.appendAssistantMessage(job)
 	m.finishTurn(done, job)
+}
+
+func promptContentBlocks(message string, attachments []storage.Attachment) ([]acpschema.ContentBlock, error) {
+	out := make([]acpschema.ContentBlock, 0, 1+len(attachments))
+	text, err := marshalContentBlock(map[string]any{"type": "text", "text": message})
+	if err != nil {
+		return nil, err
+	}
+	out = append(out, text)
+	for _, attachment := range attachments {
+		block := acpschema.ResourceLinkContentBlock{
+			Kind: acpschema.ContentBlockResourceLink,
+			ResourceLink: acpschema.ResourceLink{
+				Name:     attachment.Name,
+				URI:      attachment.URI,
+				MimeType: attachment.MimeType,
+				Size:     attachment.Size,
+			},
+		}
+		raw, err := marshalContentBlock(block)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, raw)
+	}
+	return out, nil
+}
+
+func marshalContentBlock(block any) (acpschema.ContentBlock, error) {
+	data, err := json.Marshal(block)
+	if err != nil {
+		return nil, err
+	}
+	return acpschema.ContentBlock(data), nil
 }
 
 // A turn that died after a cancel request ends as cancelled, not failed; both
