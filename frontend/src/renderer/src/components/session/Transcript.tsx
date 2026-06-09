@@ -2,12 +2,10 @@ import { motion } from 'motion/react'
 import { Link } from '@tanstack/react-router'
 import {
   Check,
-  CheckCircle2,
+  ChevronDown,
   ChevronRight,
-  Circle,
+  FileText,
   LoaderCircle,
-  Maximize2,
-  Minimize2,
 } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type {
@@ -18,6 +16,7 @@ import type {
   SessionEvent,
 } from '@/lib/api/types'
 import { Button } from '@/components/ui/Button'
+import { IconButton } from '@/components/ui/IconButton'
 import { agentLabel } from '@/lib/agentLabel'
 import { relativeTime } from '@/lib/format/time'
 import { MessageMarkdown } from './MessageMarkdown'
@@ -46,6 +45,33 @@ function messageReasoning(message: ChatMessage): string {
   return text || message.reasoning || ''
 }
 
+function formatAttachmentSize(size?: number): string {
+  if (!size) return ''
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function MessageAttachments({ message }: { message: ChatMessage }) {
+  const attachments = message.blocks?.filter((block) => block.type === 'attachment') ?? []
+  if (!attachments.length) return null
+  return (
+    <div className="mt-2 flex flex-wrap gap-1">
+      {attachments.map((attachment) => (
+        <span
+          key={attachment.id}
+          className="inline-flex max-w-full items-center gap-1.5 rounded-control bg-bg px-2 py-1 text-xs text-ink-2"
+          title={attachment.server_path ?? attachment.uri}
+        >
+          <FileText size={13} className="shrink-0 text-primary" />
+          <span className="max-w-[220px] truncate text-ink">{attachment.name}</span>
+          <span className="shrink-0 text-ink-3">{formatAttachmentSize(attachment.size)}</span>
+        </span>
+      ))}
+    </div>
+  )
+}
+
 function Bubble({ message }: { message: ChatMessage }) {
   switch (message.role) {
     case 'user':
@@ -53,6 +79,7 @@ function Bubble({ message }: { message: ChatMessage }) {
         <div className="flex justify-end">
           <div className="max-w-[80%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap select-text">
             {messageText(message)}
+            <MessageAttachments message={message} />
           </div>
         </div>
       )
@@ -274,19 +301,6 @@ function ToolSummary({ calls, active = false }: { calls?: ACPToolCall[]; active?
   )
 }
 
-function PlanStatusIcon({ status }: { status?: string }) {
-  switch (normalized(status)) {
-    case 'completed':
-    case 'complete':
-      return <CheckCircle2 className="mt-0.5 size-3.5 text-ok" aria-hidden />
-    case 'in_progress':
-    case 'in-progress':
-      return <LoaderCircle className="mt-0.5 size-3.5 animate-spin text-running" aria-hidden />
-    default:
-      return <Circle className="mt-0.5 size-3.5 text-ink-3" aria-hidden />
-  }
-}
-
 function PlanChecklist({
   entries,
   onApprovePlan,
@@ -318,43 +332,31 @@ function PlanChecklist({
     <div className="rounded-card border border-border bg-surface/60 px-3 py-2.5">
       <div className="mb-2 flex items-center justify-between gap-3">
         <p className="text-[11px] font-medium tracking-wide text-ink-3 uppercase">Plan</p>
-        <div className="flex shrink-0 items-center gap-1.5">
-          {showExpandControl ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setExpanded((value) => !value)}
-              aria-label={expanded ? 'Collapse plan' : 'Expand plan'}
-              title={expanded ? 'Collapse plan' : 'Expand plan'}
-            >
-              {expanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-              {expanded ? 'Collapse' : 'Expand'}
-            </Button>
-          ) : null}
-          {onApprovePlan ? (
-            <Button variant="primary" size="sm" onClick={onApprovePlan}>
-              <Check size={13} />
-              Approve plan
-            </Button>
-          ) : null}
-        </div>
+        {onApprovePlan ? (
+          <Button variant="primary" size="sm" onClick={onApprovePlan}>
+            <Check size={13} />
+            Approve plan
+          </Button>
+        ) : null}
       </div>
       <div
         ref={contentRef}
         className={`relative ${expanded ? '' : 'max-h-[340px] overflow-hidden'}`}
       >
-        <ul className="flex flex-col gap-3 pb-1">
-          {entries?.map((entry, index) => (
-            <li
-              key={`${entry.content}-${index}`}
-              className="flex min-w-0 gap-2 text-sm text-ink-2"
-            >
-              <PlanStatusIcon status={entry.status} />
-              <div className="min-w-0 flex-1">
+        {/* Status reads from the text itself — finished steps strike through and
+            fade — so the rows stay clean without a column of leading icons. */}
+        <ul className="flex flex-col gap-2.5">
+          {entries?.map((entry, index) => {
+            const done = ['completed', 'complete'].includes(normalized(entry.status))
+            return (
+              <li
+                key={`${entry.content}-${index}`}
+                className={`min-w-0 text-sm text-ink-2 ${done ? 'line-through opacity-50' : ''}`}
+              >
                 <MessageMarkdown text={entry.content} />
-              </div>
-            </li>
-          ))}
+              </li>
+            )
+          })}
         </ul>
         {!expanded && overflowing ? (
           <div
@@ -363,6 +365,28 @@ function PlanChecklist({
           />
         ) : null}
       </div>
+      {/* Centered chevron-in-a-circle is the only expand affordance; it lifts
+          onto the fade when collapsed and flips to point up when open. */}
+      {showExpandControl ? (
+        <div className={`relative z-10 flex justify-center ${expanded ? 'mt-1.5' : '-mt-3.5'}`}>
+          <IconButton
+            variant="ghost"
+            size="md"
+            round
+            aria-expanded={expanded}
+            aria-label={expanded ? 'Collapse plan' : 'Expand plan'}
+            title={expanded ? 'Collapse plan' : 'Expand plan'}
+            className="border border-border bg-surface shadow-sm"
+            onClick={() => setExpanded((value) => !value)}
+          >
+            <ChevronDown
+              size={15}
+              className={`transition-transform duration-200 ease-out ${expanded ? 'rotate-180' : ''}`}
+              aria-hidden
+            />
+          </IconButton>
+        </div>
+      ) : null}
     </div>
   )
 }
