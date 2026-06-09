@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/log"
+	"github.com/gluonfield/jazmem/pkg/jazmem"
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/coordinator"
@@ -31,7 +32,6 @@ import (
 	memorytool "github.com/wins/jaz/backend/internal/tools/memory"
 	"github.com/wins/jaz/backend/internal/voice"
 	mistralvoice "github.com/wins/jaz/backend/internal/voice/mistral"
-	"github.com/wins/jazmem/pkg/jazmem"
 	"go.uber.org/fx"
 )
 

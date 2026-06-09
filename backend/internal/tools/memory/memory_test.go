@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wins/jazmem/pkg/jazmem"
+	"github.com/gluonfield/jazmem/pkg/jazmem"
 )
 
 func TestSearchToolUsesAgenticJazmemSearch(t *testing.T) {
