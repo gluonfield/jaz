@@ -35,20 +35,33 @@ func Within(root, path string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
+// Dir is an immediate subdirectory plus whether it is a git repository root.
+type Dir struct {
+	Name string `json:"name"`
+	Git  bool   `json:"git"`
+}
+
+// IsGitRepo reports whether dir is a git working tree root: it has a .git entry,
+// which may be a directory for a normal repo or a file for a worktree/submodule.
+func IsGitRepo(dir string) bool {
+	_, err := os.Stat(filepath.Join(dir, ".git"))
+	return err == nil
+}
+
 // Subdirs lists the immediate subdirectories of dir, skipping dotfiles
-// (.git, .worktrees, …). Names are relative to dir and sorted (os.ReadDir
-// returns entries ordered by filename).
-func Subdirs(dir string) ([]string, error) {
+// (.git, .worktrees, …), flagging each that is a git repository root. Names are
+// relative to dir and sorted (os.ReadDir returns entries ordered by filename).
+func Subdirs(dir string) ([]Dir, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
-	dirs := make([]string, 0, len(entries))
+	dirs := make([]Dir, 0, len(entries))
 	for _, entry := range entries {
 		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
-		dirs = append(dirs, entry.Name())
+		dirs = append(dirs, Dir{Name: entry.Name(), Git: IsGitRepo(filepath.Join(dir, entry.Name()))})
 	}
 	return dirs, nil
 }

@@ -55,6 +55,7 @@ type Server struct {
 	NativeModelProvider   string
 	NativeModel           string
 	NativeReasoningEffort string
+	AgentCatalog          acp.AgentCatalog
 	// Prompts derives the system prompt fresh per turn from disk, so skill
 	// and prompt-file edits apply without a restart.
 	Prompts *coordinator.Builder
@@ -97,6 +98,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/loops", s.handleListLoops)
 	mux.HandleFunc("POST /v1/loops", s.handleCreateLoop)
 	mux.HandleFunc("/v1/loops/", s.handleLoopAction)
+	mux.HandleFunc("/v1/settings/agents", s.handleAgentSettings)
 	mux.HandleFunc("GET /v1/acp/agents", s.handleListACPAgents)
 	mux.HandleFunc("GET /v1/workspace/dirs", s.handleListWorkspaceDirs)
 	mux.HandleFunc("GET /v1/mcp/servers", s.handleListMCPServers)
@@ -159,6 +161,7 @@ func (s *Server) createACPSession(w http.ResponseWriter, req createSessionReques
 		Slug:      req.Slug,
 		Title:     req.Title,
 		Directory: directory,
+		Worktree:  req.Worktree,
 	})
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
@@ -194,7 +197,7 @@ func (s *Server) handleListWorkspaceDirs(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"path": path, "dirs": dirs})
+	writeJSON(w, http.StatusOK, map[string]any{"path": path, "git": pathsafe.IsGitRepo(abs), "dirs": dirs})
 }
 
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
@@ -690,6 +693,7 @@ type createSessionRequest struct {
 	Runtime   string `json:"runtime,omitempty"`
 	Agent     string `json:"agent,omitempty"`
 	Directory string `json:"directory,omitempty"`
+	Worktree  bool   `json:"worktree,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

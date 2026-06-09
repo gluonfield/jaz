@@ -3,6 +3,7 @@ import { motion } from 'motion/react'
 import { useState } from 'react'
 import { ComposerCard } from '@/components/session/Composer'
 import { DirectoryPicker, RuntimeSelect } from '@/components/session/NewThreadControls'
+import { Checkbox } from '@/components/ui/Checkbox'
 import { PixelField } from '@/components/ui/PixelField'
 import { useToast } from '@/components/ui/toast'
 import { acpAgentsQuery, createSession } from '@/lib/api/sessions'
@@ -27,6 +28,10 @@ function NewSessionPage() {
   // 'native' or a configured ACP agent name; the directory only applies to ACP.
   const [runtime, setRuntime] = useState('native')
   const [directory, setDirectory] = useState('')
+  // Worktree runs the ACP session on a disposable git worktree; only offered
+  // when the chosen directory is a git repository.
+  const [directoryIsGit, setDirectoryIsGit] = useState(false)
+  const [worktree, setWorktree] = useState(false)
   const { data: agents = [] } = useQuery(acpAgentsQuery)
   // PixelField samples the palette at mount; remount it when the theme flips.
   const { resolved } = useTheme()
@@ -39,7 +44,7 @@ function NewSessionPage() {
           ? title
             ? { title }
             : {}
-          : { ...(title ? { title } : {}), runtime: 'acp', agent: runtime, directory },
+          : { ...(title ? { title } : {}), runtime: 'acp', agent: runtime, directory, worktree },
       )
       prepare(session.id)
       queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
@@ -99,8 +104,31 @@ function NewSessionPage() {
                     <DirectoryPicker
                       value={directory}
                       disabled={creating}
-                      onChange={setDirectory}
+                      onChange={(path, git) => {
+                        setDirectory(path)
+                        setDirectoryIsGit(git)
+                        if (!git) setWorktree(false)
+                      }}
                     />
+                  ) : null}
+                  {runtime !== 'native' && directoryIsGit ? (
+                    <div className="flex items-center gap-1.5 text-[13px] text-ink-2">
+                      <Checkbox
+                        checked={worktree}
+                        onChange={setWorktree}
+                        disabled={creating}
+                        aria-label="Run on a git worktree"
+                      />
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        disabled={creating}
+                        onClick={() => setWorktree((v) => !v)}
+                        className="cursor-pointer select-none disabled:cursor-default disabled:opacity-50"
+                      >
+                        Worktree
+                      </button>
+                    </div>
                   ) : null}
                 </>
               ) : undefined

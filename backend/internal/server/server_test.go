@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -60,6 +62,68 @@ func TestACPBackedSessionRoutesToACPManager(t *testing.T) {
 	}
 	if !strings.Contains(res.Body.String(), "codex says hi") {
 		t.Fatalf("missing acp assistant output: %s", res.Body.String())
+	}
+}
+
+func TestCreateACPSessionForwardsWorktree(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeACPManager{spawnStore: store}
+
+	body := `{"runtime":"acp","agent":"codex","directory":"repo","worktree":true}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store, ACP: manager}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	if manager.spawned.Directory != "repo" || !manager.spawned.Worktree {
+		t.Fatalf("spawn request = %#v, want Directory=repo Worktree=true", manager.spawned)
+	}
+}
+
+func TestListWorkspaceDirsReportsGit(t *testing.T) {
+	workspace := t.TempDir()
+	for _, name := range []string{"repo", "plain"} {
+		if err := os.Mkdir(filepath.Join(workspace, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(workspace, "repo", ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/workspace/dirs?path=", nil)
+	res := httptest.NewRecorder()
+	(&Server{Workspace: workspace}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var got struct {
+		Path string `json:"path"`
+		Git  bool   `json:"git"`
+		Dirs []struct {
+			Name string `json:"name"`
+			Git  bool   `json:"git"`
+		} `json:"dirs"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Dirs) != 2 {
+		t.Fatalf("dirs = %#v, want 2 entries", got.Dirs)
+	}
+	want := map[string]bool{"repo": true, "plain": false}
+	for _, dir := range got.Dirs {
+		if got, ok := want[dir.Name]; !ok || got != dir.Git {
+			t.Fatalf("dir %q git = %v, want %v", dir.Name, dir.Git, want[dir.Name])
+		}
 	}
 }
 
@@ -156,6 +220,223 @@ func TestMCPServerSettingsAPI(t *testing.T) {
 	}
 	if len(servers) != 0 {
 		t.Fatalf("servers after delete = %#v", servers)
+	}
+}
+
+func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	handler := (&Server{
+		Store:                 store,
+		NativeModelProvider:   "openrouter",
+		NativeModel:           "openai/gpt-5.4-mini",
+		NativeReasoningEffort: "medium",
+	}).Handler()
+
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/settings/agents", nil)
+	getRes := httptest.NewRecorder()
+	handler.ServeHTTP(getRes, getReq)
+	if getRes.Code != http.StatusOK {
+		t.Fatalf("get status = %d, body = %s", getRes.Code, getRes.Body.String())
+	}
+	var got struct {
+		Native struct {
+			ModelProvider string `json:"model_provider"`
+			Model         string `json:"model"`
+		} `json:"native"`
+		Providers []struct {
+			ID      string `json:"id"`
+			BaseURL string `json:"base_url"`
+		} `json:"providers"`
+		Agents []string `json:"agents"`
+		ACP    map[string]struct {
+			Enabled         bool   `json:"enabled"`
+			Command         string `json:"command"`
+			Model           string `json:"model"`
+			ReasoningEffort string `json:"reasoning_effort"`
+		} `json:"acp"`
+	}
+	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Native.ModelProvider != "openrouter" || got.Native.Model != "openai/gpt-5.4-mini" || strings.Join(got.Agents, ",") != "claude_code,codex" {
+		t.Fatalf("unexpected seeded settings %#v", got)
+	}
+	if !hasNativeProvider(got.Providers, "openai", "https://api.openai.com/v1") ||
+		!hasNativeProvider(got.Providers, "openrouter", "https://openrouter.ai/api/v1") ||
+		!hasNativeProvider(got.Providers, "anthropic", "https://api.anthropic.com/v1") {
+		t.Fatalf("providers = %#v", got.Providers)
+	}
+	if !got.ACP["codex"].Enabled ||
+		got.ACP["codex"].Command != `codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'` ||
+		got.ACP["codex"].Model != "gpt-5.5" {
+		t.Fatalf("unexpected codex defaults %#v", got.ACP["codex"])
+	}
+
+	putReq := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
+		"native":{"model_provider":"openrouter","model":"openai/gpt-5.4-mini","reasoning_effort":"medium"},
+		"acp":{
+			"codex":{"enabled":true,"command":"/opt/jaz/codex-acp -c 'sandbox_mode=\"danger-full-access\"'","model":"gpt-5.5","reasoning_effort":"high"},
+			"claude_code":{"enabled":false,"command":"npx -y @agentclientprotocol/claude-agent-acp@0.39.0","model":"default","reasoning_effort":"medium"}
+		}
+	}`))
+	putReq.Header.Set("Content-Type", "application/json")
+	putRes := httptest.NewRecorder()
+	handler.ServeHTTP(putRes, putReq)
+	if putRes.Code != http.StatusOK {
+		t.Fatalf("put status = %d, body = %s", putRes.Code, putRes.Body.String())
+	}
+	loaded, err := store.LoadSetting("agents", "defaults")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(loaded.Value), `"enabled":false`) ||
+		!strings.Contains(string(loaded.Value), `/opt/jaz/codex-acp`) ||
+		!strings.Contains(string(loaded.Value), `"reasoning_effort":"high"`) {
+		t.Fatalf("stored settings = %s", loaded.Value)
+	}
+}
+
+func hasNativeProvider(providers []struct {
+	ID      string `json:"id"`
+	BaseURL string `json:"base_url"`
+}, id, baseURL string) bool {
+	for _, provider := range providers {
+		if provider.ID == id && provider.BaseURL == baseURL {
+			return true
+		}
+	}
+	return false
+}
+
+func TestAgentSettingsAPIRoundTripsConfiguredACPAgent(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	catalog := acp.MergeAgents(acp.BuiltinAgents(), map[string]acp.AgentConfig{
+		"local_helper": {
+			Command:         "/opt/jaz/local-helper",
+			Args:            []string{"--stdio"},
+			Model:           "helper-model",
+			ReasoningEffort: "low",
+		},
+	})
+	handler := (&Server{
+		Store:                 store,
+		NativeModelProvider:   "openrouter",
+		NativeModel:           "openai/gpt-5.4-mini",
+		NativeReasoningEffort: "medium",
+		AgentCatalog:          catalog,
+	}).Handler()
+
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/settings/agents", nil)
+	getRes := httptest.NewRecorder()
+	handler.ServeHTTP(getRes, getReq)
+	if getRes.Code != http.StatusOK {
+		t.Fatalf("get status = %d, body = %s", getRes.Code, getRes.Body.String())
+	}
+	var got struct {
+		Agents []string `json:"agents"`
+		ACP    map[string]struct {
+			Enabled bool   `json:"enabled"`
+			Command string `json:"command"`
+			Model   string `json:"model"`
+		} `json:"acp"`
+	}
+	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(got.Agents, ",") != "claude_code,codex,local_helper" {
+		t.Fatalf("agents = %#v", got.Agents)
+	}
+	if got.ACP["local_helper"].Command != "/opt/jaz/local-helper --stdio" || got.ACP["local_helper"].Model != "helper-model" {
+		t.Fatalf("custom agent not seeded: %#v", got.ACP["local_helper"])
+	}
+
+	putReq := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
+		"native":{"model_provider":"openrouter","model":"openai/gpt-5.4-mini","reasoning_effort":"medium"},
+		"acp":{
+			"codex":{"enabled":false,"command":"codex-acp","model":"gpt-5.5","reasoning_effort":"medium"},
+			"claude_code":{"enabled":false,"command":"npx -y @agentclientprotocol/claude-agent-acp@0.39.0","model":"default","reasoning_effort":"medium"},
+			"local_helper":{"enabled":true,"command":"/opt/jaz/local-helper --stdio","model":"helper-model","reasoning_effort":"low"}
+		}
+	}`))
+	putReq.Header.Set("Content-Type", "application/json")
+	putRes := httptest.NewRecorder()
+	handler.ServeHTTP(putRes, putReq)
+	if putRes.Code != http.StatusOK {
+		t.Fatalf("put status = %d, body = %s", putRes.Code, putRes.Body.String())
+	}
+	if !strings.Contains(putRes.Body.String(), "local_helper") {
+		t.Fatalf("custom agent missing from response: %s", putRes.Body.String())
+	}
+}
+
+func TestAgentSettingsRejectUnknownACPAgent(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	req := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
+		"native":{"model_provider":"openrouter","model":"openai/gpt-5.4-mini"},
+		"acp":{"missing":{"enabled":true}}
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "unknown acp agent") {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
+func TestAgentSettingsRejectUnknownNativeProvider(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	req := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
+		"native":{"model_provider":"missing","model":"test-model"},
+		"acp":{"codex":{"enabled":false}}
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "unknown native provider") {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
+func TestAgentSettingsRejectEnabledACPWithoutCommand(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	req := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
+		"native":{"model_provider":"openrouter","model":"openai/gpt-5.4-mini"},
+		"acp":{
+			"codex":{"enabled":true,"command":""},
+			"claude_code":{"enabled":false,"command":""}
+		}
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "command is required") {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
 }
 
@@ -693,6 +974,57 @@ func (p *blockingProvider) StreamComplete(ctx context.Context, _ provider.Reques
 		}
 	}()
 	return ch, nil
+}
+
+type requestRecorderProvider struct {
+	requests []provider.Request
+}
+
+func (p *requestRecorderProvider) Complete(context.Context, provider.Request) (provider.Response, error) {
+	return provider.Response{Message: provider.AssistantMessage("done", nil)}, nil
+}
+
+func (p *requestRecorderProvider) StreamComplete(_ context.Context, req provider.Request) (<-chan provider.Event, error) {
+	p.requests = append(p.requests, req)
+	ch := make(chan provider.Event, 2)
+	ch <- provider.Event{Type: provider.EventDelta, Delta: "done"}
+	ch <- provider.Event{Type: provider.EventDone}
+	close(ch)
+	return ch, nil
+}
+
+func TestNativeTurnUsesStoredProviderModelAndReasoning(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:            "native-provider",
+		Runtime:         storage.RuntimeNative,
+		ModelProvider:   "openai",
+		Model:           "gpt-test",
+		ReasoningEffort: "high",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := &requestRecorderProvider{}
+	srv := &Server{
+		Store: store,
+		Agent: &agent.Agent{Provider: recorder, MaxTurns: 1},
+	}
+
+	if status := srv.runNativeSession(context.Background(), session, "hello", false, nil); status != storage.StatusIdle {
+		t.Fatalf("status = %s", status)
+	}
+	if len(recorder.requests) != 1 {
+		t.Fatalf("requests = %#v", recorder.requests)
+	}
+	req := recorder.requests[0]
+	if req.Provider != "openai" || req.Model != "gpt-test" || req.ReasoningEffort != "high" {
+		t.Fatalf("unexpected provider request %#v", req)
+	}
 }
 
 // The transcript interleaves messages with session events by timestamp, so
