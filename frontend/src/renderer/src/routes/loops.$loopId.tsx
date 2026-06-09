@@ -227,7 +227,10 @@ function StatusPill({ loop }: { loop: Loop }) {
 }
 
 function RunRow({ run }: { run: LoopRun }) {
-  const when = run.started_at || run.scheduled_for || run.created_at
+  // Go marshals an unset time.Time as "0001-01-01T00:00:00Z" (omitempty is a
+  // no-op for structs), so a still-starting run's zero started_at is truthy and
+  // would render as "Dec 31"; pick the first field that carries a real time.
+  const when = [run.started_at, run.scheduled_for, run.created_at].find(hasTime) ?? run.created_at
   const body = (
     <>
       <RunStatusDot status={run.status} />

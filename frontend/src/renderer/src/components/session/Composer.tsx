@@ -1,14 +1,66 @@
-import { ArrowUp, AudioLines, Check, ListChecks, LoaderCircle, Square, X } from 'lucide-react'
+import { ArrowUp, AudioLines, Check, FileText, ListChecks, LoaderCircle, Paperclip, Plus, Square, X } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
-import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
+import { MenuRow, Popover } from './NewThreadControls'
 import { QueuedPromptList } from './QueuedPromptList'
 
 // A rainbow comet (~100° arc fading in and out of transparency) that orbits
 // the card while focused; the rest of the perimeter stays a quiet track.
 const RAINBOW_BEAM =
   'conic-gradient(from var(--ring-angle, 0deg), transparent 0deg 250deg, var(--color-rainbow-1) 278deg, var(--color-rainbow-2) 296deg, var(--color-rainbow-3) 312deg, var(--color-rainbow-4) 326deg, var(--color-rainbow-5) 340deg, transparent 352deg 360deg)'
+
+export interface ComposerSendOptions {
+  planRequested?: boolean
+  files?: File[]
+}
+
+function formatFileSize(size: number): string {
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function PlanMenuToggle({
+  checked,
+  disabled,
+  onToggle,
+}: {
+  checked: boolean
+  disabled?: boolean
+  onToggle: () => void
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={onToggle}
+      className={`flex h-7 w-full items-center gap-2 rounded-control px-2 text-left text-[13px] transition-colors duration-150 hover:bg-surface-2 disabled:cursor-default disabled:opacity-50 ${
+        checked ? 'text-ink' : 'text-ink-2'
+      }`}
+    >
+      <span className="min-w-0 flex-1 truncate">Plan</span>
+      {/* mirrors the shared Switch primitive: spring-driven layout thumb, no
+          forbidden transition-all */}
+      <span
+        aria-hidden
+        className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors duration-150 ${
+          checked ? 'bg-ink' : 'bg-ink/20'
+        }`}
+      >
+        <motion.span
+          layout
+          transition={{ type: 'spring', stiffness: 500, damping: 34 }}
+          className={`absolute size-3 rounded-full ${
+            checked ? 'right-0.5 bg-bg' : 'left-0.5 bg-ink/60'
+          }`}
+        />
+      </span>
+    </button>
+  )
+}
 
 // Composer in the agent-council style: borderless auto-growing textarea on a
 // raised card, toolbar row beneath with the send/stop action. The card is the
@@ -36,14 +88,18 @@ export function ComposerCard({
   translucent?: boolean
   /** leading toolbar content (e.g. the new-thread runtime/directory pickers) */
   leftSlot?: ReactNode
-  onSend: (text: string, options?: { planRequested?: boolean }) => void
+  onSend: (text: string, options?: ComposerSendOptions) => void
   onStop?: () => void
   onVoice?: () => void
 }) {
   const [text, setText] = useState('')
+  const [files, setFiles] = useState<File[]>([])
   const [focused, setFocused] = useState(false)
+  const [draggingFiles, setDraggingFiles] = useState(false)
+  const [optionsOpen, setOptionsOpen] = useState(false)
   const [planRequested, setPlanRequested] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const reducedMotion = useReducedMotion()
 
   // autoFocus lands before React's focus listeners attach; sync the initial state.
@@ -51,11 +107,50 @@ export function ComposerCard({
     if (document.activeElement === textareaRef.current) setFocused(true)
   }, [])
 
+  useEffect(() => {
+    if (!planAvailable) setPlanRequested(false)
+  }, [planAvailable])
+
+  const addFiles = (next: File[]) => {
+    if (disabled || streaming || next.length === 0) return
+    setFiles((current) => [...current, ...next])
+  }
+
+  const togglePlanRequested = () => {
+    if (disabled || streaming || !planAvailable) return
+    setPlanRequested((value) => !value)
+  }
+
+  useEffect(() => {
+    if (disabled || streaming || !planAvailable) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.key !== 'Tab' ||
+        !event.shiftKey ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        document.querySelector('[role="dialog"][aria-modal="true"]')
+      ) {
+        return
+      }
+      event.preventDefault()
+      setPlanRequested((value) => !value)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [disabled, planAvailable, streaming])
+
   const submit = () => {
     const trimmed = text.trim()
-    if (!trimmed || disabled || (streaming && !queueWhenStreaming)) return
-    onSend(trimmed, { planRequested: !streaming && planAvailable && planRequested })
+    if (!trimmed || disabled || (streaming && (!queueWhenStreaming || files.length > 0))) return
+    onSend(trimmed, {
+      planRequested: !streaming && planAvailable && planRequested,
+      files: streaming ? [] : files,
+    })
     setText('')
+    setFiles([])
     setPlanRequested(false)
     const el = textareaRef.current
     if (el) {
@@ -70,6 +165,24 @@ export function ComposerCard({
       onFocusCapture={() => setFocused(true)}
       onBlurCapture={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(false)
+      }}
+      onDragEnter={(e) => {
+        if (!Array.from(e.dataTransfer.types).includes('Files')) return
+        e.preventDefault()
+        if (!disabled && !streaming) setDraggingFiles(true)
+      }}
+      onDragOver={(e) => {
+        if (!Array.from(e.dataTransfer.types).includes('Files')) return
+        e.preventDefault()
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDraggingFiles(false)
+      }}
+      onDrop={(e) => {
+        if (!Array.from(e.dataTransfer.types).includes('Files')) return
+        e.preventDefault()
+        setDraggingFiles(false)
+        addFiles(Array.from(e.dataTransfer.files))
       }}
     >
       <AnimatePresence>
@@ -103,14 +216,47 @@ export function ComposerCard({
       {/* borderless card, agent-council style: the surface tone IS the card.
           The whole card is a click target for the textarea. */}
       <div
-        className={`relative flex cursor-text flex-col gap-1.5 rounded-[12px] p-2.5 ${
+        className={`relative flex cursor-text flex-col gap-1.5 rounded-[12px] p-2.5 transition-shadow ${
           translucent ? 'bg-surface/85 backdrop-blur-[2px]' : 'bg-surface'
-        }`}
+        } ${draggingFiles ? 'shadow-[0_0_0_1px_var(--color-primary),0_10px_35px_rgba(0,0,0,0.16)]' : ''}`}
         onClick={(e) => {
-          if ((e.target as HTMLElement).closest('button, textarea')) return
+          if ((e.target as HTMLElement).closest('button, textarea, input')) return
           textareaRef.current?.focus()
         }}
       >
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          disabled={disabled || streaming}
+          onChange={(e) => {
+            addFiles(Array.from(e.currentTarget.files ?? []))
+            e.currentTarget.value = ''
+          }}
+        />
+        {files.length > 0 ? (
+          <div className="flex flex-wrap gap-1 px-1.5 pt-0.5">
+            {files.map((file, index) => (
+              <div
+                key={`${file.name}-${file.size}-${index}`}
+                className="flex max-w-full items-center gap-1.5 rounded-control bg-bg px-2 py-1 text-xs text-ink-2"
+              >
+                <FileText size={13} className="shrink-0 text-primary" />
+                <span className="max-w-[220px] truncate text-ink">{file.name}</span>
+                <span className="shrink-0 text-ink-3">{formatFileSize(file.size)}</span>
+                <button
+                  type="button"
+                  className="ml-0.5 rounded-full p-0.5 text-ink-3 transition-colors hover:bg-surface hover:text-ink"
+                  aria-label={`Remove ${file.name}`}
+                  onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
         <textarea
           ref={textareaRef}
           value={text}
@@ -133,21 +279,77 @@ export function ComposerCard({
         />
         <div className="flex items-center justify-between gap-2.5">
           <div className="flex min-w-0 items-center gap-1.5">
-            {leftSlot}
-            {planAvailable ? (
-              <Button
-                size="md"
-                active={planRequested}
-                aria-pressed={planRequested}
-                aria-label={planRequested ? 'Plan mode enabled' : 'Plan mode'}
-                title={planRequested ? 'Plan mode enabled' : 'Plan mode'}
-                disabled={streaming || disabled}
-                onClick={() => setPlanRequested((value) => !value)}
+            <Popover
+              open={optionsOpen}
+              onClose={() => setOptionsOpen(false)}
+              trigger={
+                <IconButton
+                  variant="ghost"
+                  size="md"
+                  aria-haspopup="menu"
+                  aria-expanded={optionsOpen}
+                  aria-label="Composer options"
+                  title="Composer options"
+                  disabled={streaming || disabled}
+                  onClick={() => setOptionsOpen((value) => !value)}
+                >
+                  <Plus
+                    size={16}
+                    className={`transition-transform duration-200 ease-out ${
+                      optionsOpen ? 'rotate-45' : ''
+                    }`}
+                  />
+                </IconButton>
+              }
+            >
+              <MenuRow
+                onClick={() => {
+                  setOptionsOpen(false)
+                  fileInputRef.current?.click()
+                }}
               >
-                <ListChecks size={14} />
-                Plan
-              </Button>
-            ) : null}
+                <span className="flex items-center gap-2">
+                  <Paperclip size={13} />
+                  Attach files
+                </span>
+              </MenuRow>
+              {planAvailable ? (
+                <PlanMenuToggle checked={planRequested} disabled={streaming || disabled} onToggle={togglePlanRequested} />
+              ) : null}
+            </Popover>
+            {leftSlot}
+            <AnimatePresence initial={false}>
+              {planRequested ? (
+                <motion.div
+                  key="plan-chip"
+                  initial={{ opacity: 0, scale: 0.8, filter: 'blur(4px)' }}
+                  animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+                  exit={{ opacity: 0, scale: 0.8, filter: 'blur(4px)' }}
+                  transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
+                  className="group flex h-8 shrink-0 items-center gap-1 rounded-control pr-2 pl-1 text-[13px] font-medium text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+                >
+                  <IconButton
+                    variant="ghost"
+                    size="xs"
+                    aria-label="Remove plan mode"
+                    title="Remove plan mode"
+                    disabled={streaming || disabled}
+                    className="grid"
+                    onClick={() => setPlanRequested(false)}
+                  >
+                    <ListChecks
+                      size={13}
+                      className="col-start-1 row-start-1 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0"
+                    />
+                    <X
+                      size={13}
+                      className="col-start-1 row-start-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                    />
+                  </IconButton>
+                  <span>Plan</span>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             {onVoice ? (
@@ -181,7 +383,7 @@ export function ComposerCard({
                 round
                 aria-label={streaming ? 'Queue message' : 'Send message'}
                 title={streaming ? 'Queue message' : 'Send message'}
-                disabled={!text.trim() || disabled || (streaming && !queueWhenStreaming)}
+                disabled={!text.trim() || disabled || (streaming && (!queueWhenStreaming || files.length > 0))}
                 onClick={submit}
               >
                 <ArrowUp size={18} />
@@ -217,7 +419,7 @@ export function Composer({
   planAvailable?: boolean
   queuedPrompts?: string[]
   steerDisabled?: boolean
-  onSend: (text: string, options?: { planRequested?: boolean }) => void
+  onSend: (text: string, options?: ComposerSendOptions) => void
   onStop: () => void
   onVoice?: () => void
   onSteerQueuedPrompt?: (index: number) => void

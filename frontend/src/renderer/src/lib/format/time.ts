@@ -4,7 +4,9 @@ const DAY = 24 * HOUR
 
 export function relativeTime(iso: string, now = Date.now()): string {
   const then = new Date(iso).getTime()
-  if (Number.isNaN(then)) return ''
+  // Treat unset/zero-value times (Go marshals these as "0001-01-01T00:00:00Z",
+  // a large negative epoch) as no time rather than a far-past date.
+  if (!Number.isFinite(then) || then <= 0) return ''
   const diff = Math.max(0, now - then)
   if (diff < MINUTE) return 'now'
   if (diff < HOUR) return `${Math.floor(diff / MINUTE)}m`

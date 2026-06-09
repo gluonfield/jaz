@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
+import { FileText } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Composer, PlanDecisionDock } from '@/components/session/Composer'
+import { Composer, PlanDecisionDock, type ComposerSendOptions } from '@/components/session/Composer'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
 import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
 import { ThinkingBlock } from '@/components/session/ThinkingBlock'
@@ -16,6 +17,7 @@ import {
   answerSessionInteractiveResponse,
   cancelSession,
   sessionMessagesQuery,
+  uploadSessionAttachment,
 } from '@/lib/api/sessions'
 import { streamSessionMessage } from '@/lib/api/stream'
 import type { ACPJobSnapshot, ACPPermission, ChatMessage, SessionEvent } from '@/lib/api/types'
@@ -33,10 +35,48 @@ export const Route = createFileRoute('/sessions/$sessionId')({
 interface LiveExchange {
   user: string
   at: string
+  attachments: LiveAttachment[]
   reasoning: string
   assistant: string
   tools: { key: string; name: string; args?: string; result?: string }[]
   error?: string
+}
+
+interface LiveAttachment {
+  id?: string
+  name: string
+  uri?: string
+  mime_type?: string
+  size?: number
+  server_path?: string
+  uploading?: boolean
+}
+
+function formatAttachmentSize(size?: number): string {
+  if (!size) return ''
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function LiveAttachmentList({ attachments }: { attachments: LiveAttachment[] }) {
+  if (!attachments.length) return null
+  return (
+    <div className="mt-2 flex flex-wrap gap-1">
+      {attachments.map((attachment, index) => (
+        <span
+          key={attachment.id ?? `${attachment.name}-${index}`}
+          className="inline-flex max-w-full items-center gap-1.5 rounded-control bg-bg px-2 py-1 text-xs text-ink-2"
+        >
+          <FileText size={13} className="shrink-0 text-primary" />
+          <span className="max-w-[220px] truncate text-ink">{attachment.name}</span>
+          <span className="shrink-0 text-ink-3">
+            {attachment.uploading ? 'Uploading' : formatAttachmentSize(attachment.size)}
+          </span>
+        </span>
+      ))}
+    </div>
+  )
 }
 
 function acpSnapshotEvents(job: ACPJobSnapshot, pageSessionID: string): SessionEvent[] {
@@ -220,7 +260,11 @@ function SessionPage() {
   const nearBottom = useRef(true)
   const itemCount = (detail.data?.messages.length ?? 0) + events.data.length
   const liveSize = live
-    ? live.reasoning.length + live.assistant.length + live.tools.length + (live.error?.length ?? 0)
+    ? live.reasoning.length +
+      live.assistant.length +
+      live.tools.length +
+      live.attachments.length +
+      (live.error?.length ?? 0)
     : 0
 
   // Stick to the bottom only when the reader is already there.
@@ -232,64 +276,81 @@ function SessionPage() {
   // Abandon an in-flight stream when leaving the session.
   useEffect(() => () => abortRef.current?.abort(), [sessionId])
 
-  const handleSend = useCallback((text: string, options: { planRequested?: boolean } = {}) => {
+  const handleSend = useCallback((text: string, options: ComposerSendOptions = {}) => {
     const controller = new AbortController()
+    const files = options.files ?? []
     abortRef.current = controller
     nearBottom.current = true
-    setLive({ user: text, at: new Date().toISOString(), reasoning: '', assistant: '', tools: [] })
+    setLive({
+      user: text,
+      at: new Date().toISOString(),
+      attachments: files.map((file) => ({ name: file.name, size: file.size, uploading: true })),
+      reasoning: '',
+      assistant: '',
+      tools: [],
+    })
     setStreaming(true)
     streamingRef.current = true
 
-    streamSessionMessage({
-      sessionId,
-      message: text,
-      planRequested: options.planRequested,
-      signal: controller.signal,
-      onEvent: (event) => {
-        setLive((prev) => {
-          if (!prev) return prev
-          switch (event.type) {
-            case 'delta':
-              return { ...prev, assistant: prev.assistant + (event.delta ?? '') }
-            case 'reasoning':
-              return { ...prev, reasoning: prev.reasoning + (event.reasoning ?? '') }
-            case 'tool_call': {
-              const name = event.tool_call?.function?.name ?? event.tool_name ?? 'tool'
-              return {
-                ...prev,
-                tools: [
-                  ...prev.tools,
-                  {
-                    key: event.tool_call?.id ?? `${name}-${prev.tools.length}`,
-                    name,
-                    args: event.tool_call?.function?.arguments,
-                  },
-                ],
+    ;(async () => {
+      const attachments = files.length
+        ? await Promise.all(files.map((file) => uploadSessionAttachment(sessionId, file, controller.signal)))
+        : []
+      if (attachments.length) {
+        setLive((prev) => (prev ? { ...prev, attachments } : prev))
+      }
+      await streamSessionMessage({
+        sessionId,
+        message: text,
+        attachmentIds: attachments.map((attachment) => attachment.id),
+        planRequested: options.planRequested,
+        signal: controller.signal,
+        onEvent: (event) => {
+          setLive((prev) => {
+            if (!prev) return prev
+            switch (event.type) {
+              case 'delta':
+                return { ...prev, assistant: prev.assistant + (event.delta ?? '') }
+              case 'reasoning':
+                return { ...prev, reasoning: prev.reasoning + (event.reasoning ?? '') }
+              case 'tool_call': {
+                const name = event.tool_call?.function?.name ?? event.tool_name ?? 'tool'
+                return {
+                  ...prev,
+                  tools: [
+                    ...prev.tools,
+                    {
+                      key: event.tool_call?.id ?? `${name}-${prev.tools.length}`,
+                      name,
+                      args: event.tool_call?.function?.arguments,
+                    },
+                  ],
+                }
               }
+              case 'tool_result': {
+                const idx = prev.tools.findLastIndex((t) => t.result === undefined)
+                const tools =
+                  idx === -1
+                    ? [
+                        ...prev.tools,
+                        {
+                          key: `result-${prev.tools.length}`,
+                          name: event.tool_name ?? 'tool',
+                          result: event.result,
+                        },
+                      ]
+                    : prev.tools.map((t, i) => (i === idx ? { ...t, result: event.result } : t))
+                return { ...prev, tools }
+              }
+              case 'error':
+                return { ...prev, error: event.error || 'Something went wrong.' }
+              default:
+                return prev
             }
-            case 'tool_result': {
-              const idx = prev.tools.findLastIndex((t) => t.result === undefined)
-              const tools =
-                idx === -1
-                  ? [
-                      ...prev.tools,
-                      {
-                        key: `result-${prev.tools.length}`,
-                        name: event.tool_name ?? 'tool',
-                        result: event.result,
-                      },
-                    ]
-                  : prev.tools.map((t, i) => (i === idx ? { ...t, result: event.result } : t))
-              return { ...prev, tools }
-            }
-            case 'error':
-              return { ...prev, error: event.error || 'Something went wrong.' }
-            default:
-              return prev
-          }
-        })
-      },
-    })
+          })
+        },
+      })
+    })()
       .catch((err: Error) => {
         if (controller.signal.aborted) return
         setLive((prev) => (prev ? { ...prev, error: err.message } : prev))
@@ -342,7 +403,7 @@ function SessionPage() {
     const pending = takePendingMessage(sessionId)
     if (!pending) return
     sentPendingRef.current = sessionId
-    handleSend(pending)
+    handleSend(pending.text, { planRequested: pending.planRequested, files: pending.files ?? [] })
   }, [detail.isSuccess, handleSend, sessionId])
 
   // Voice button on /new: open this thread straight in voice mode.
@@ -439,6 +500,15 @@ function SessionPage() {
   const activePermissionEvent = [...pendingPermissionEvents.values()].at(-1)
   const hasPendingPermission = Boolean(activePermissionEvent)
   const displayEvents = transcriptEvents
+  // A failed native turn carries its error only on the session; ACP turns and
+  // the in-flight live exchange already surface it inline, so showing the
+  // banner too would duplicate it. When it's the only carrier, anchor it at
+  // the bottom so it reads chronologically after the prompt that triggered it.
+  const showErrorBanner =
+    session.status === 'error' &&
+    Boolean(session.error) &&
+    !live?.error &&
+    !displayEvents.some((event) => Boolean(event.acp?.error))
   const latestPlanDecisionEvent = [...transcriptEvents]
     .reverse()
     .find((event) => {
@@ -479,7 +549,24 @@ function SessionPage() {
             seq: (messages.at(-1)?.seq ?? 0) + 1_000_000,
             role: 'user' as const,
             content: live.user,
-            blocks: [{ type: 'text' as const, text: live.user }],
+            blocks: [
+              { type: 'text' as const, text: live.user },
+              ...live.attachments.flatMap((attachment) =>
+                attachment.id && attachment.uri
+                  ? [
+                      {
+                        type: 'attachment' as const,
+                        id: attachment.id,
+                        name: attachment.name,
+                        uri: attachment.uri,
+                        mime_type: attachment.mime_type,
+                        size: attachment.size,
+                        server_path: attachment.server_path,
+                      },
+                    ]
+                  : [],
+              ),
+            ],
             created_at: live.at,
           },
         ]
@@ -505,12 +592,6 @@ function SessionPage() {
         }}
       >
         <div className={`mx-auto max-w-[720px] px-10 pt-2 ${queue.queuedPrompts.length ? 'pb-72' : 'pb-40'}`}>
-          {session.status === 'error' && session.error ? (
-            <p className="mb-5 max-w-[72ch] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
-              {session.error}
-            </p>
-          ) : null}
-
           {empty ? (
             <EmptyState title="Start the conversation">
               <p>Messages stream in live as your assistant thinks and works.</p>
@@ -533,6 +614,7 @@ function SessionPage() {
                     >
                       <div className="max-w-[80%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap select-text">
                         {live.user}
+                        <LiveAttachmentList attachments={live.attachments} />
                       </div>
                     </motion.div>
                     <ThinkingBlock text={live.reasoning} pending={streaming} />
@@ -565,6 +647,11 @@ function SessionPage() {
             />
           )}
 
+          {showErrorBanner ? (
+            <p className="mt-5 max-w-[72ch] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
+              {session.error}
+            </p>
+          ) : null}
         </div>
       </div>
 
