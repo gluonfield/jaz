@@ -1,8 +1,17 @@
 package acp
 
-import mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+import (
+	"sort"
+
+	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+)
 
 var fullAccessModes = []string{"full-access", "yolo"}
+
+const (
+	AgentCodex      = "codex"
+	AgentClaudeCode = "claude_code"
+)
 
 // SystemPromptSource supplies the system prompt for new ACP sessions. It is
 // consulted at session creation, not at startup, so skill edits reach new
@@ -13,6 +22,7 @@ type SystemPromptSource interface {
 
 type Config struct {
 	Agents       map[string]AgentConfig
+	AgentSource  AgentConfigSource
 	Root         string
 	Workspace    string
 	Env          map[string]string
@@ -31,10 +41,66 @@ type AgentConfig struct {
 	Cwd             string
 }
 
-func (c Config) Agent(name string) (AgentConfig, bool) {
-	if c.Agents == nil {
+type AgentCatalog map[string]AgentConfig
+
+type AgentConfigSource interface {
+	AgentConfig(name string) (AgentConfig, bool, error)
+	EnabledAgentNames() ([]string, error)
+}
+
+func (c AgentCatalog) Agent(name string) (AgentConfig, bool) {
+	if c == nil {
 		return AgentConfig{}, false
 	}
-	agent, ok := c.Agents[name]
+	agent, ok := c[name]
 	return agent, ok
+}
+
+func (c AgentCatalog) AgentConfig(name string) (AgentConfig, bool, error) {
+	agent, ok := c.Agent(name)
+	return agent, ok, nil
+}
+
+func (c AgentCatalog) Names() []string {
+	names := make([]string, 0, len(c))
+	for name := range c {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func (c AgentCatalog) EnabledAgentNames() ([]string, error) {
+	return c.Names(), nil
+}
+
+func BuiltinAgents() AgentCatalog {
+	return AgentCatalog{
+		AgentCodex: {
+			Command: "codex-acp",
+			Args: []string{
+				"-c", `sandbox_mode="danger-full-access"`,
+				"-c", `approval_policy="never"`,
+			},
+			Model:           "gpt-5.5",
+			ReasoningEffort: "medium",
+		},
+		AgentClaudeCode: {
+			Command:         "npx",
+			Args:            []string{"-y", "@agentclientprotocol/claude-agent-acp@0.39.0"},
+			Model:           "default",
+			ReasoningEffort: "medium",
+		},
+	}
+}
+
+func MergeAgents(base, override map[string]AgentConfig) AgentCatalog {
+	out := AgentCatalog{}
+	for name, cfg := range base {
+		out[name] = cfg
+	}
+	for name, cfg := range override {
+		out[name] = cfg
+	}
+	return out
 }

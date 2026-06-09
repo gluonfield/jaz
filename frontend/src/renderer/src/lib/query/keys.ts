@@ -6,6 +6,7 @@ export const keys = {
   sessionMessages: (id: string) => ['sessions', id, 'messages'] as const,
   sessionEvents: (id: string) => ['sessions', id, 'events'] as const,
   agentFiles: ['agent', 'files'] as const,
+  agentSettings: ['settings', 'agents'] as const,
   mcpServers: ['mcp', 'servers'] as const,
   acpAgents: ['acp', 'agents'] as const,
   workspaceDirs: (path: string) => ['workspace', 'dirs', path] as const,

@@ -13,11 +13,13 @@ import (
 	"github.com/wins/jaz/backend/internal/coordinator"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/provider"
+	anthropicprovider "github.com/wins/jaz/backend/internal/provider/anthropic"
 	mockprovider "github.com/wins/jaz/backend/internal/provider/mock"
 	openaiprovider "github.com/wins/jaz/backend/internal/provider/openai"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
+	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/tools"
@@ -36,16 +38,18 @@ import (
 )
 
 type Config struct {
-	Root      string
-	Workspace string
-	Provider  ProviderConfig
-	Voice     VoiceConfig
-	ACP       acp.Config
-	Memory    MemoryConfig
+	Root           string
+	Workspace      string
+	Provider       ProviderConfig
+	ModelProviders map[string]ProviderConfig
+	Voice          VoiceConfig
+	ACP            acp.Config
+	Memory         MemoryConfig
 }
 
 type ProviderConfig struct {
 	Type            string
+	BaseURL         string
 	APIKey          string
 	Model           string
 	ReasoningEffort string
@@ -84,9 +88,13 @@ type Stores struct {
 	StorageStore storage.Store
 }
 
-func NewStore(cfg Config) (Stores, error) {
+func NewStore(cfg Config, catalog acp.AgentCatalog) (Stores, error) {
 	store, err := sqlitestore.New(cfg.Root)
 	if err != nil {
+		return Stores{}, err
+	}
+	if err := agentsettings.EnsureAgentDefaults(store, agentDefaultsSeed(cfg, catalog)); err != nil {
+		_ = store.Close()
 		return Stores{}, err
 	}
 	return Stores{Store: store, ACPStore: store, StorageStore: store}, nil
@@ -108,12 +116,30 @@ func NewPromptBuilder(store *sqlitestore.Store, workspace Workspace, logger *log
 	return coordinator.NewBuilder(store.RootDir(), string(workspace), logger.WithPrefix("prompt"))
 }
 
-func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, prompts *coordinator.Builder) acp.Config {
+func NewACPAgentCatalog(cfg Config) acp.AgentCatalog {
+	return acp.MergeAgents(acp.BuiltinAgents(), cfg.ACP.Agents)
+}
+
+func NewACPAgentConfigSource(store *sqlitestore.Store, catalog acp.AgentCatalog) acp.AgentConfigSource {
+	return agentsettings.NewACPConfigSource(store, catalog)
+}
+
+func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, prompts *coordinator.Builder, catalog acp.AgentCatalog, source acp.AgentConfigSource) acp.Config {
+	cfg.ACP.Agents = catalog
+	cfg.ACP.AgentSource = source
 	cfg.ACP.Root = store.RootDir()
 	cfg.ACP.Workspace = string(workspace)
 	cfg.ACP.SystemPrompt = prompts
 	cfg.ACP.MCPStore = store
 	return cfg.ACP
+}
+
+func agentDefaultsSeed(cfg Config, catalog acp.AgentCatalog) agentsettings.AgentDefaults {
+	return agentsettings.AgentDefaultsFromCatalog(agentsettings.NativeAgentDefaults{
+		ModelProvider:   strings.TrimSpace(cfg.Provider.Type),
+		Model:           strings.TrimSpace(cfg.Provider.Model),
+		ReasoningEffort: strings.TrimSpace(cfg.Provider.ReasoningEffort),
+	}, catalog)
 }
 
 func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, memory *jazmem.Memory) *tools.Registry {
@@ -196,21 +222,73 @@ func StartMemoryScheduler(lc fx.Lifecycle, cfg Config, memory *jazmem.Memory, lo
 }
 
 func NewProvider(cfg Config) (provider.Provider, error) {
-	switch strings.ToLower(cfg.Provider.Type) {
-	case "", "openai":
-		if cfg.Provider.APIKey == "" {
-			return nil, fmt.Errorf("openai provider requires an API key; set OPENAI_API_KEY or openai.apikey")
+	defaultProvider := strings.ToLower(strings.TrimSpace(cfg.Provider.Type))
+	if defaultProvider == "" {
+		defaultProvider = provider.ProviderOpenAI
+	}
+	configs := cfg.ModelProviders
+	if len(configs) == 0 {
+		configs = map[string]ProviderConfig{defaultProvider: cfg.Provider}
+	}
+	if _, ok := configs[defaultProvider]; !ok {
+		configs[defaultProvider] = cfg.Provider
+	}
+
+	clients := map[string]provider.Provider{}
+	for id, config := range configs {
+		id = strings.ToLower(strings.TrimSpace(id))
+		if id == "" {
+			continue
 		}
-		return openaiprovider.New("https://api.openai.com/v1", cfg.Provider.APIKey, cfg.Provider.Model), nil
-	case "openrouter":
-		if cfg.Provider.APIKey == "" {
-			return nil, fmt.Errorf("openrouter provider requires an API key; set OPENROUTER_API_KEY or openrouter.apikey")
+		client, err := nativeProviderClient(id, config)
+		if err != nil {
+			if id == defaultProvider {
+				return nil, err
+			}
+			clients[id] = provider.UnavailableProvider{ID: id, Reason: err.Error()}
+			continue
 		}
-		return openaiprovider.New("https://openrouter.ai/api/v1", cfg.Provider.APIKey, cfg.Provider.Model), nil
-	case "mock":
+		clients[id] = client
+	}
+	return provider.NewRouter(defaultProvider, clients), nil
+}
+
+func nativeProviderClient(id string, cfg ProviderConfig) (provider.Provider, error) {
+	switch id {
+	case provider.ProviderOpenAI, provider.ProviderOpenRouter:
+		if cfg.APIKey == "" {
+			meta, _ := provider.NativeProviderByID(id)
+			keyEnv := meta.APIKeyEnv
+			if keyEnv == "" {
+				keyEnv = strings.ToUpper(id) + "_API_KEY"
+			}
+			return nil, fmt.Errorf("set %s or %s.apikey", keyEnv, id)
+		}
+		baseURL := strings.TrimSpace(cfg.BaseURL)
+		if baseURL == "" {
+			meta, _ := provider.NativeProviderByID(id)
+			baseURL = meta.BaseURL
+		}
+		return openaiprovider.New(baseURL, cfg.APIKey, cfg.Model), nil
+	case provider.ProviderAnthropic:
+		if cfg.APIKey == "" {
+			meta, _ := provider.NativeProviderByID(id)
+			keyEnv := meta.APIKeyEnv
+			if keyEnv == "" {
+				keyEnv = "ANTHROPIC_API_KEY"
+			}
+			return nil, fmt.Errorf("set %s or %s.apikey", keyEnv, id)
+		}
+		baseURL := strings.TrimSpace(cfg.BaseURL)
+		if baseURL == "" {
+			meta, _ := provider.NativeProviderByID(id)
+			baseURL = meta.BaseURL
+		}
+		return anthropicprovider.New(baseURL, cfg.APIKey, cfg.Model), nil
+	case provider.ProviderMock:
 		return mockprovider.New(), nil
 	default:
-		return nil, fmt.Errorf("unknown provider %q; valid providers are openai, openrouter, mock", cfg.Provider.Type)
+		return nil, fmt.Errorf("unknown provider %q; valid providers are openai, openrouter, anthropic, mock", id)
 	}
 }
 
@@ -271,6 +349,7 @@ func newTTS(cfg VoiceConfig) (voice.TTS, error) {
 func NewAgent(cfg Config, modelProvider provider.Provider, registry *tools.Registry) *agent.Agent {
 	return &agent.Agent{
 		Provider:        modelProvider,
+		ModelProvider:   cfg.Provider.Type,
 		Model:           cfg.Provider.Model,
 		ReasoningEffort: cfg.Provider.ReasoningEffort,
 		Tools:           registry,
@@ -293,6 +372,12 @@ func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, 
 	unlock := locks.Lock(job.ParentID)
 	defer unlock()
 
+	parent, err := store.LoadSession(job.ParentID)
+	if err != nil {
+		logger.Error("loading parent session failed", "parent", job.ParentID, "error", err)
+		setStoredSessionError(store, job.ParentID, err.Error())
+		return
+	}
 	messages, err := store.LoadMessages(job.ParentID)
 	if err != nil {
 		logger.Error("loading parent messages failed", "parent", job.ParentID, "error", err)
@@ -316,7 +401,12 @@ func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, 
 		messages = append([]provider.Message{provider.SystemMessage(prompt)}, messages...)
 	}
 	ctx = sessioncontext.WithSessionID(ctx, job.ParentID)
-	result, err := a.Complete(ctx, provider.Request{Messages: messages})
+	result, err := a.Complete(ctx, provider.Request{
+		Provider:        parent.ModelProvider,
+		Model:           parent.Model,
+		ReasoningEffort: parent.ReasoningEffort,
+		Messages:        messages,
+	})
 	if err != nil {
 		logger.Error("coordinator follow-up failed", "parent", job.ParentID, "error", err)
 		content := fmt.Sprintf("ACP session %s finished, but coordinator follow-up failed: %v", job.Slug, err)

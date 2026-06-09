@@ -1,6 +1,6 @@
 # Jaz Backend
 
-Native Go agent backend with a provider-neutral loop, OpenAI-compatible streaming provider, Codex-style tools, and SSE server.
+Native Go agent backend with a provider-neutral loop, native model providers, Codex-style tools, and SSE server.
 
 ## Run
 
@@ -21,40 +21,31 @@ For OpenAI, set `providers.default: openai` in `application.yaml` and provide:
 OPENAI_API_KEY=...
 ```
 
-Provider secrets and native model settings can also come from `.env`:
-`OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_REASONING_EFFORT`,
-`OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_REASONING_EFFORT`, and
+Provider secrets can also come from `.env`:
+`OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, and
 `MISTRAL_API_KEY`.
 
 Codex ACP sessions reuse your Codex CLI OAuth login from `~/.codex` by default.
-Set `CODEX_HOME` only when Codex uses a non-default auth directory. OpenAI and
-OpenRouter credentials only authenticate the coordinator model.
+Set `CODEX_HOME` only when Codex uses a non-default auth directory. Native
+provider credentials only authenticate the coordinator model.
 
-Native Jaz model selection stays in `application.yaml`:
+Native Jaz defaults are stored in the database and edited from Settings >
+Agents as the provider, model, and reasoning effort copied into new threads.
+The Settings API also exposes hardcoded native provider endpoint metadata for
+OpenRouter, OpenAI, and Anthropic. Built-in ACP agent defaults are stored in the
+same settings record; Settings controls whether each client is enabled, the
+command used to start it, plus the model and reasoning effort copied into new
+threads.
 
-```yaml
-providers:
-  default: openrouter
+For local development with the custom Codex ACP fork built under this workspace,
+set the Codex command in Settings > Agents to:
 
-openrouter:
-  model: openai/gpt-5.4-mini
-  reasoningeffort: medium
-```
-
-Coding-agent models are configured per ACP agent:
-
-```yaml
-jaz:
-  acp:
-    agents:
-      codex:
-        command: /path/to/codex-acp
-        model: gpt-5.5
-        reasoningeffort: medium
+```sh
+/Users/wins/Projects/personal/jarvis/codex-acp-zed/target/debug/codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'
 ```
 
 When an ACP agent does not support `session/set_model` or
-`session/set_config_option`, remove the unsupported field and pass the setting
-through that agent's own `args` or `env`.
+`session/set_config_option`, clear the unsupported field in Settings > Agents
+and pass the setting through that agent's own args or env.
 
 Runtime files are stored under `~/.jaz` by default. Override with `jaz.root`.

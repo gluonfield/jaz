@@ -5,31 +5,15 @@ jaz:
     root: ""
     dbpath: ""
     scheduler: true
-  acp:
-    agents:
-      codex:
-        command: "/Users/wins/Projects/personal/jarvis/codex-acp-zed/target/debug/codex-acp"
-        args: ["-c", "sandbox_mode=\"danger-full-access\"", "-c", "approval_policy=\"never\""]
-        model: "gpt-5.5"
-        reasoningeffort: "medium"
-      claude_code:
-        command: "npx"
-        args: ["-y", "@agentclientprotocol/claude-agent-acp@0.39.0"]
-        model: "claude-sonnet-4-5"
-        reasoningeffort: ""
 
 providers:
   default: "openrouter"
 
 openrouter:
   apikey: ""
-  model: "openai/gpt-5.4-mini"
-  reasoningeffort: "medium"
 
 openai:
   apikey: ""
-  model: "gpt-5.4-mini"
-  reasoningeffort: "medium"
 
 mistral:
   apikey: ""

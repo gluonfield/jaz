@@ -38,6 +38,7 @@ type Store interface {
 
 type Manager struct {
 	cfg          Config
+	agents       AgentConfigSource
 	store        Store
 	log          *log.Logger
 	Done         func(context.Context, Job)
@@ -118,14 +119,16 @@ type SpawnResult struct {
 }
 
 func NewManager(store Store, cfg Config, logger *log.Logger) *Manager {
-	if cfg.Agents == nil {
-		cfg.Agents = map[string]AgentConfig{}
+	agents := cfg.AgentSource
+	if agents == nil {
+		agents = AgentCatalog(cfg.Agents)
 	}
 	if logger == nil {
 		logger = log.Default()
 	}
 	return &Manager{
 		cfg:               cfg,
+		agents:            agents,
 		store:             store,
 		log:               logger.WithPrefix("acp"),
 		jobsByID:          make(map[string]*Job),
@@ -235,9 +238,12 @@ func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, cwd string) 
 func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, error) {
 	req.ACPAgent = strings.TrimSpace(req.ACPAgent)
 	if req.ACPAgent == "" {
-		req.ACPAgent = "codex"
+		req.ACPAgent = AgentCodex
 	}
-	cfg, ok := m.cfg.Agent(req.ACPAgent)
+	cfg, ok, err := m.configuredAgent(req.ACPAgent)
+	if err != nil {
+		return SpawnResult{}, err
+	}
 	if !ok {
 		return SpawnResult{}, fmt.Errorf("acp agent %q is not configured", req.ACPAgent)
 	}
@@ -362,10 +368,15 @@ func (m *Manager) resume(ctx context.Context, ref string) (*Job, error) {
 	if session.Runtime != storage.RuntimeACP || session.RuntimeRef == nil || session.RuntimeRef.Agent == "" {
 		return nil, fmt.Errorf("session %s is not acp-backed", ref)
 	}
-	cfg, ok := m.cfg.Agent(session.RuntimeRef.Agent)
+	cfg, ok, err := m.configuredAgent(session.RuntimeRef.Agent)
+	if err != nil {
+		return nil, err
+	}
 	if !ok {
 		return nil, fmt.Errorf("acp agent %q is not configured", session.RuntimeRef.Agent)
 	}
+	cfg.Model = strings.TrimSpace(session.Model)
+	cfg.ReasoningEffort = strings.TrimSpace(session.ReasoningEffort)
 	var state storage.ACPState
 	if loader, ok := m.store.(acpStateLoader); ok {
 		state, _ = loader.LoadACPState(session.ID)
@@ -392,14 +403,6 @@ func (m *Manager) resume(ctx context.Context, ref string) (*Job, error) {
 	}
 	if session.ModelProvider == "" {
 		session.ModelProvider = session.RuntimeRef.Agent
-		sessionChanged = true
-	}
-	if model := strings.TrimSpace(cfg.Model); model != "" && session.Model != model {
-		session.Model = model
-		sessionChanged = true
-	}
-	if effort := configuredReasoningEffort(cfg.ReasoningEffort); effort != "" && session.ReasoningEffort != effort {
-		session.ReasoningEffort = effort
 		sessionChanged = true
 	}
 	if sessionChanged {
@@ -516,6 +519,10 @@ func (m *Manager) Status(ref string) (Job, error) {
 		CreatedAt:  session.CreatedAt,
 		UpdatedAt:  session.UpdatedAt,
 	}, nil
+}
+
+func (m *Manager) configuredAgent(name string) (AgentConfig, bool, error) {
+	return m.agents.AgentConfig(name)
 }
 
 func (m *Manager) Wait(ctx context.Context, req WaitRequest) (Job, error) {
@@ -691,9 +698,10 @@ func (m *Manager) List() []Job {
 // Agents lists the names of configured ACP agents, sorted, so the new-thread
 // UI can offer them as session runtimes.
 func (m *Manager) Agents() []string {
-	names := make([]string, 0, len(m.cfg.Agents))
-	for name := range m.cfg.Agents {
-		names = append(names, name)
+	names, err := m.agents.EnabledAgentNames()
+	if err != nil {
+		m.log.Warn("loading configured acp agents failed", "error", err)
+		return []string{}
 	}
 	sort.Strings(names)
 	return names
@@ -734,167 +742,6 @@ func (m *Manager) Close() {
 	for _, job := range jobs {
 		job.setState(StateCancelled, "server_shutdown", "")
 	}
-}
-
-func (m *Manager) runPrompt(ctx context.Context, job *Job, message string) {
-	job.turnMu.Lock()
-	defer job.turnMu.Unlock()
-
-	job.mu.RLock()
-	done := job.done
-	job.mu.RUnlock()
-	if done == nil {
-		done = job.startTurn(CompletionInline, false, false, false)
-	}
-
-	peer := m.peer(job.ID)
-	if peer == nil {
-		m.failTurn(job, fmt.Errorf("acp peer is not active"))
-		m.finishTurn(done, job)
-		return
-	}
-	raw, err := peer.Call(ctx, acpschema.AgentMethodSessionPrompt, map[string]any{
-		"sessionId": job.ACPSession,
-		"prompt": []any{
-			map[string]any{"type": "text", "text": message},
-		},
-	})
-	if err != nil {
-		m.failTurn(job, err)
-		m.finishTurn(done, job)
-		return
-	}
-	var resp struct {
-		StopReason string `json:"stopReason"`
-	}
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		m.failTurn(job, err)
-		m.finishTurn(done, job)
-		return
-	}
-	if usage := usageFromRaw(raw); !usageEmpty(usage) {
-		m.recordUsage(job, usage)
-	}
-	stopReason := resp.StopReason
-	state := StateIdle
-	if stopReason == "cancelled" {
-		state = StateCancelled
-	}
-	job.setState(state, stopReason, "")
-	m.log.Info("acp turn finished", "session", job.ID, "state", state, "stop_reason", stopReason)
-	m.publishACPStatus(job.Snapshot())
-	time.Sleep(50 * time.Millisecond)
-	m.persistUsage(job)
-	m.appendAssistantMessage(job)
-	m.finishTurn(done, job)
-}
-
-// A turn that died after a cancel request ends as cancelled, not failed; both
-// outcomes are published so the UI and stored status reflect them.
-func (m *Manager) failTurn(job *Job, err error) {
-	job.mu.RLock()
-	cancelled := job.cancelRequested
-	job.mu.RUnlock()
-	if cancelled {
-		job.setState(StateCancelled, "cancelled", "")
-		m.log.Info("acp turn cancelled", "session", job.ID)
-	} else {
-		job.setState(StateFailed, "", err.Error())
-		m.log.Error("acp turn failed", "session", job.ID, "error", err)
-	}
-	m.publishACPStatus(job.Snapshot())
-}
-
-func (m *Manager) finishTurn(done chan struct{}, job *Job) {
-	job.mu.Lock()
-	completion := job.completion
-	planRequested := job.planRequested
-	parentVisible := job.ParentVisible
-	job.completion = CompletionInline
-	job.interactive = false
-	job.planRequested = false
-	job.mu.Unlock()
-	m.cancelPendingPermissions(job.ID)
-	m.resolveDanglingToolCalls(job)
-	snapshot := job.Snapshot()
-	if m.TurnFinished != nil {
-		m.TurnFinished(context.Background(), snapshot)
-	}
-	close(done)
-	if completion.propagates() && parentVisible && !planRequested && m.Done != nil {
-		go m.Done(context.Background(), snapshot)
-	}
-}
-
-// A cancelled or failed turn leaves the agent's in-flight tool calls without
-// terminal updates; resolve them so they don't render as running forever.
-func (m *Manager) resolveDanglingToolCalls(job *Job) {
-	job.mu.Lock()
-	state := job.State
-	if state != StateCancelled && state != StateFailed {
-		job.mu.Unlock()
-		return
-	}
-	status := "cancelled"
-	if state == StateFailed {
-		status = "failed"
-	}
-	var updated []ToolCallSnapshot
-	for id, call := range job.toolByID {
-		if terminalToolStatus(call.Status) {
-			continue
-		}
-		call.Status = status
-		job.toolByID[id] = call
-		updated = append(updated, call)
-	}
-	if len(updated) == 0 {
-		job.mu.Unlock()
-		return
-	}
-	job.ToolCalls = sortedToolCalls(job.toolByID)
-	job.UpdatedAt = time.Now().UTC()
-	sessionID := job.ID
-	job.mu.Unlock()
-	m.log.Info("resolved dangling tool calls", "session", sessionID, "count", len(updated), "status", status)
-	for _, call := range updated {
-		_ = m.store.UpsertActivity(sessionID, storage.ActivityEntry{
-			ID:     call.ID,
-			Kind:   "tool",
-			Text:   firstNonEmpty(call.Title, call.ID),
-			Status: call.Status,
-			At:     time.Now().UTC(),
-		})
-		m.publishACPTool(job.Snapshot(), call)
-	}
-}
-
-func terminalToolStatus(status string) bool {
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "completed", "complete", "failed", "cancelled", "canceled":
-		return true
-	}
-	return false
-}
-
-func (m *Manager) appendAssistantMessage(job *Job) {
-	job.mu.Lock()
-	if job.planRequested {
-		job.mu.Unlock()
-		return
-	}
-	if job.savedAssistantLen >= len(job.Assistant) {
-		job.mu.Unlock()
-		return
-	}
-	content := job.Assistant[job.savedAssistantLen:]
-	job.savedAssistantLen = len(job.Assistant)
-	sessionID := job.ID
-	job.mu.Unlock()
-	if strings.TrimSpace(content) == "" {
-		return
-	}
-	_ = m.store.AppendMessages(sessionID, provider.AssistantMessage(content, nil))
 }
 
 func (m *Manager) addJob(job *Job, conn jsonrpc.MessageConn, peer *jsonrpc.Peer, cancel context.CancelFunc) {

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Plus, SquarePen } from 'lucide-react'
+import { Plus, Settings, SquarePen } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
 import { LoopModal } from '@/components/loops/LoopModal'
@@ -10,26 +10,12 @@ import { SIDEBAR_SESSION_LIMIT, sidebarSessionsQuery } from '@/lib/api/sessions'
 import { SkeletonRows } from '../ui/Skeleton'
 import { LoopRow } from './LoopRow'
 import { SessionRow } from './SessionRow'
-import { ThemeSwitcher } from './ThemeSwitcher'
 
 const SIDEBAR_LOOP_LIMIT = 6
 
 function SectionLabel({ children }: { children: string }) {
   return (
     <p className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3">{children}</p>
-  )
-}
-
-function PageLink({ to, label, hint }: { to: string; label: string; hint?: string }) {
-  return (
-    <Link
-      to={to}
-      className="flex items-baseline gap-2 rounded-control px-2 py-1.5 text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
-      activeProps={{ className: 'bg-primary-soft! text-ink! font-medium' }}
-    >
-      <span className="flex-1">{label}</span>
-      {hint ? <span className="text-[11px] text-ink-3">{hint}</span> : null}
-    </Link>
   )
 }
 
@@ -41,7 +27,14 @@ function LoopsSection() {
   return (
     <section>
       <div className="flex items-center justify-between pr-1">
-        <SectionLabel>Loops</SectionLabel>
+        <Link
+          to="/loops"
+          className="rounded-control px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3 transition-colors duration-150 hover:text-ink"
+          activeOptions={{ exact: true }}
+          activeProps={{ className: 'text-ink!' }}
+        >
+          Loops
+        </Link>
         <IconButton
           variant="ghost"
           size="xs"
@@ -97,7 +90,7 @@ function LoopsSection() {
   )
 }
 
-export function Sidebar() {
+export function Sidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const sessions = useQuery(sidebarSessionsQuery)
   const visibleSessions = sessions.data?.slice(0, SIDEBAR_SESSION_LIMIT) ?? []
 
@@ -158,19 +151,17 @@ export function Sidebar() {
         </section>
 
         <LoopsSection />
-
-        <section>
-          <SectionLabel>Pages</SectionLabel>
-          <div className="flex flex-col gap-px">
-            <PageLink to="/loops" label="Loops" />
-            <PageLink to="/agent" label="Agent" />
-            <PageLink to="/settings" label="Settings" />
-          </div>
-        </section>
       </nav>
 
       <div className="shrink-0 border-t border-border p-3">
-        <ThemeSwitcher />
+        <button
+          type="button"
+          onClick={onOpenSettings}
+          className="group flex w-full items-center gap-2 rounded-control px-2 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2"
+        >
+          <Settings size={15} className="text-ink-2" />
+          <span className="flex-1 text-left">Settings</span>
+        </button>
       </div>
     </aside>
   )

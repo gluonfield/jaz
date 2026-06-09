@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createFileRoute } from '@tanstack/react-router'
 import { motion } from 'motion/react'
 import { useState } from 'react'
 import { MarkdownEditor } from '@/components/agent/MarkdownEditor'
@@ -11,17 +10,13 @@ import { agentFilesQuery, saveAgentFile } from '@/lib/api/agentFiles'
 import type { AgentFile, AgentFilesResponse } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 
-export const Route = createFileRoute('/agent')({
-  component: AgentPage,
-})
-
 const FILE_DESCRIPTIONS: Record<string, string> = {
   'AGENTS.md': 'How your assistant works: roles, capabilities, and rules of engagement.',
   'SOUL.md': 'Who your assistant is: personality, voice, and values.',
   'HEARTBEAT.md': 'What your assistant does on its own: periodic and background behaviors.',
 }
 
-function AgentPage() {
+export function PersonalizationSettings() {
   const files = useQuery(agentFilesQuery)
   const queryClient = useQueryClient()
   const toast = useToast()
@@ -89,10 +84,10 @@ function AgentPage() {
   }
 
   return (
-    <div className="mx-auto flex h-full max-w-[860px] flex-col px-10 pb-8">
+    <div className="mx-auto flex h-full max-w-[860px] flex-col px-10 pb-8 pt-2">
       <header className="flex items-start justify-between gap-4 pb-4">
         <div>
-          <h1 className="text-lg font-semibold text-ink">Agent</h1>
+          <h1 className="text-lg font-semibold text-ink">Personalization</h1>
           <p className="mt-0.5 max-w-[58ch] text-[13px] text-ink-2">
             {FILE_DESCRIPTIONS[activeFile.name] ?? 'Agent definition file.'} Saved changes apply the
             next time the backend builds its prompt.
@@ -128,7 +123,7 @@ function AgentPage() {
             >
               {isActive ? (
                 <motion.span
-                  layoutId="agent-tab-underline"
+                  layoutId="personalization-tab-underline"
                   className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-primary"
                   transition={{ type: 'spring', stiffness: 480, damping: 38 }}
                 />

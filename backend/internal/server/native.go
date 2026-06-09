@@ -10,6 +10,7 @@ import (
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
+	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -104,7 +105,12 @@ func (s *Server) runNativeSessionWithClaim(ctx context.Context, session storage.
 	runCtx := sessioncontext.WithSessionID(turnCtx, session.ID)
 	finalStatus := storage.StatusError
 	finalError := "Agent stream ended without a completion event."
-	for event := range s.Agent.Run(runCtx, provider.Request{Messages: messages}) {
+	for event := range s.Agent.Run(runCtx, provider.Request{
+		Provider:        session.ModelProvider,
+		Model:           session.Model,
+		ReasoningEffort: session.ReasoningEffort,
+		Messages:        messages,
+	}) {
 		if len(event.Messages) > 0 {
 			toSave, reasoning := stripTransientSystem(event.Messages, event.ReasoningByMessage, transient)
 			var err error
@@ -172,6 +178,14 @@ func (s *Server) beginNativeTurn(session storage.Session, message string, claime
 }
 
 func (s *Server) nativeSessionDefaults() storage.CreateSession {
+	if defaults, ok := s.agentDefaults(); ok {
+		return storage.CreateSession{
+			Runtime:         storage.RuntimeNative,
+			ModelProvider:   strings.TrimSpace(defaults.Native.ModelProvider),
+			Model:           strings.TrimSpace(defaults.Native.Model),
+			ReasoningEffort: strings.TrimSpace(defaults.Native.ReasoningEffort),
+		}
+	}
 	return storage.CreateSession{
 		Runtime:         storage.RuntimeNative,
 		ModelProvider:   strings.TrimSpace(s.NativeModelProvider),
@@ -182,18 +196,21 @@ func (s *Server) nativeSessionDefaults() storage.CreateSession {
 
 func (s *Server) applyNativeSessionDefaults(session *storage.Session) {
 	defaults := s.nativeSessionDefaults()
-	if defaults.ModelProvider != "" && session.ModelProvider != defaults.ModelProvider {
+	if defaults.ModelProvider != "" && session.ModelProvider == "" {
 		session.ModelProvider = defaults.ModelProvider
 	}
-	if defaults.Model != "" && session.Model != defaults.Model {
+	if defaults.Model != "" && session.Model == "" {
 		session.Model = defaults.Model
 	}
-	if defaults.ReasoningEffort != "" && session.ReasoningEffort != defaults.ReasoningEffort {
+	if defaults.ReasoningEffort != "" && session.ReasoningEffort == "" {
 		session.ReasoningEffort = defaults.ReasoningEffort
 	}
 }
 
 func (s *Server) nativeModel() string {
+	if defaults, ok := s.agentDefaults(); ok && strings.TrimSpace(defaults.Native.Model) != "" {
+		return strings.TrimSpace(defaults.Native.Model)
+	}
 	if model := strings.TrimSpace(s.NativeModel); model != "" {
 		return model
 	}
@@ -201,6 +218,18 @@ func (s *Server) nativeModel() string {
 		return ""
 	}
 	return strings.TrimSpace(s.Agent.Model)
+}
+
+func (s *Server) agentDefaults() (agentsettings.AgentDefaults, bool) {
+	store, ok := s.Store.(storage.SettingsStorage)
+	if !ok {
+		return agentsettings.AgentDefaults{}, false
+	}
+	defaults, err := agentsettings.LoadAgentDefaults(store)
+	if err != nil {
+		return agentsettings.AgentDefaults{}, false
+	}
+	return defaults, true
 }
 
 func (s *Server) nativeRequestMessages(sessionID, message string, voiceMode bool) ([]provider.Message, []string, error) {

@@ -15,6 +15,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
@@ -209,6 +210,91 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	}
 }
 
+func TestManagerUsesStoredACPCommandArgs(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = agentsettings.SaveAgentDefaults(store, agentsettings.AgentDefaults{
+		ACP: map[string]agentsettings.ACPAgentDefaults{
+			"codex": {
+				Enabled:         true,
+				Command:         agentsettings.CommandLine(os.Args[0], []string{"-test.run=TestFakeACPAgentProcess"}),
+				Model:           "fake-large",
+				ReasoningEffort: "high",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog := acp.AgentCatalog{
+		"codex": {
+			Command: "missing-codex-acp",
+			Env: map[string]string{
+				"JAZ_FAKE_ACP_AGENT":         "1",
+				"JAZ_FAKE_ACP_SET_MODEL":     "1",
+				"JAZ_FAKE_ACP_EXPECT_MODEL":  "fake-large/high",
+				"JAZ_FAKE_ACP_SET_CONFIG":    "1",
+				"JAZ_FAKE_ACP_EXPECT_EFFORT": "high",
+			},
+		},
+	}
+	manager := acp.NewManager(store, acp.Config{
+		Root:        t.TempDir(),
+		Workspace:   t.TempDir(),
+		AgentSource: agentsettings.NewACPConfigSource(store, catalog),
+	}, log.New(io.Discard))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "codex", Slug: "stored-command"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	session, err := store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.Model != "fake-large" || session.ReasoningEffort != "high" {
+		t.Fatalf("unexpected session model metadata %#v", session)
+	}
+}
+
+func TestManagerDoesNotFallbackWhenAgentSettingsAreCorrupt(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SaveSetting(agentsettings.AgentSettingsNamespace, agentsettings.AgentDefaultsKey, []byte(`{"acp":"bad"}`)); err != nil {
+		t.Fatal(err)
+	}
+	catalog := acp.AgentCatalog{
+		"codex": {
+			Command: os.Args[0],
+			Args:    []string{"-test.run=TestFakeACPAgentProcess"},
+			Env:     map[string]string{"JAZ_FAKE_ACP_AGENT": "1"},
+		},
+	}
+	manager := acp.NewManager(store, acp.Config{
+		Root:        t.TempDir(),
+		Workspace:   t.TempDir(),
+		AgentSource: agentsettings.NewACPConfigSource(store, catalog),
+		Agents:      catalog,
+	}, log.New(io.Discard))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err = manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "codex", Slug: "corrupt-settings"})
+	if err == nil {
+		t.Fatal("expected corrupt settings to block spawn")
+	}
+	if _, loadErr := store.LoadSession("corrupt-settings"); loadErr == nil {
+		t.Fatal("spawn should fail before creating a session")
+	}
+}
+
 func TestManagerFailsWhenConfiguredModelIsUnsupported(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -256,6 +342,45 @@ func TestManagerFailsWhenConfiguredReasoningEffortIsUnsupported(t *testing.T) {
 	}
 	if session.Status != storage.StatusError || !strings.Contains(session.Error, "session/set_config_option is not supported") {
 		t.Fatalf("unsupported reasoning effort failure was not stored: %#v", session)
+	}
+}
+
+func TestManagerUsesClaudeCodeEffortConfigOption(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := acp.NewManager(store, acp.Config{
+		Root:      t.TempDir(),
+		Workspace: t.TempDir(),
+		Agents: map[string]acp.AgentConfig{
+			"claude_code": {
+				Command:         os.Args[0],
+				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
+				ReasoningEffort: "xhigh",
+				Env: map[string]string{
+					"JAZ_FAKE_ACP_AGENT":            "1",
+					"JAZ_FAKE_ACP_SET_CONFIG":       "1",
+					"JAZ_FAKE_ACP_EXPECT_CONFIG_ID": "effort",
+					"JAZ_FAKE_ACP_EXPECT_EFFORT":    "xhigh",
+				},
+			},
+		},
+	}, log.New(io.Discard))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "claude_code", Slug: "claude-effort"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	session, err := store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.ModelProvider != "claude_code" || session.ReasoningEffort != "xhigh" {
+		t.Fatalf("unexpected session metadata %#v", session)
 	}
 }
 

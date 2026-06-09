@@ -13,6 +13,7 @@ type Message = oa.ChatCompletionMessageParamUnion
 type ToolCall = oa.ChatCompletionMessageToolCallUnion
 
 type Request struct {
+	Provider        string
 	Model           string
 	ReasoningEffort string
 	Messages        []Message

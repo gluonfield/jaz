@@ -1,6 +1,7 @@
 import { ChevronRight } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
+import { MessageMarkdown } from './MessageMarkdown'
 
 export function ThinkingBlock({ text, pending = false }: { text: string; pending?: boolean }) {
   const [open, setOpen] = useState(false)
@@ -39,9 +40,9 @@ export function ThinkingBlock({ text, pending = false }: { text: string; pending
             transition={{ duration: 0.18, ease: 'easeOut' }}
             className="w-full overflow-hidden"
           >
-            <pre className="max-h-56 overflow-auto rounded-card border border-border bg-surface px-3 py-2 font-mono text-[12px] leading-relaxed whitespace-pre-wrap text-ink-2 select-text">
-              {trimmed}
-            </pre>
+            <div className="max-h-72 overflow-auto rounded-card bg-surface px-3 py-2 select-text">
+              <MessageMarkdown text={trimmed} />
+            </div>
           </motion.div>
         ) : null}
       </AnimatePresence>
