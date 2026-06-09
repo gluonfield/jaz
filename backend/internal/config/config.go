@@ -19,6 +19,7 @@ type Config struct {
 	Providers  ProvidersConfig
 	OpenRouter openrouterprovider.Config
 	OpenAI     openaiprovider.Config
+	Anthropic  AnthropicConfig
 	Mistral    app.MistralConfig
 	TTS        app.SpeechConfig
 	STT        app.SpeechConfig
@@ -26,6 +27,12 @@ type Config struct {
 
 type ProvidersConfig struct {
 	Default string
+}
+
+type AnthropicConfig struct {
+	APIKey          string
+	Model           string
+	ReasoningEffort string
 }
 
 func Load() (Config, error) {
@@ -61,7 +68,11 @@ func Init() error {
 
 	viper.SetDefault("providers.default", "openrouter")
 	viper.SetDefault("openrouter.model", "openai/gpt-5.4-mini")
+	viper.SetDefault("openrouter.reasoningeffort", "medium")
 	viper.SetDefault("openai.model", "gpt-5.4-mini")
+	viper.SetDefault("openai.reasoningeffort", "medium")
+	viper.SetDefault("anthropic.model", "claude-sonnet-4-5")
+	viper.SetDefault("anthropic.reasoningeffort", "medium")
 
 	explicitConfig := false
 	if configFile := os.Getenv("APPLICATION_CONFIG"); configFile != "" {
@@ -79,6 +90,9 @@ func Init() error {
 	_ = viper.BindEnv("openrouter.apikey", "OPENROUTER_API_KEY")
 	_ = viper.BindEnv("openrouter.model", "OPENROUTER_MODEL")
 	_ = viper.BindEnv("openrouter.reasoningeffort", "OPENROUTER_REASONING_EFFORT")
+	_ = viper.BindEnv("anthropic.apikey", "ANTHROPIC_API_KEY")
+	_ = viper.BindEnv("anthropic.model", "ANTHROPIC_MODEL")
+	_ = viper.BindEnv("anthropic.reasoningeffort", "ANTHROPIC_REASONING_EFFORT")
 	if err := viper.ReadInConfig(); err != nil {
 		var notFound viper.ConfigFileNotFoundError
 		if !explicitConfig && errors.As(err, &notFound) {
@@ -90,33 +104,57 @@ func Init() error {
 }
 
 func applyProvider(cfg *Config) error {
-	switch strings.ToLower(cfg.Providers.Default) {
-	case "", "openai":
-		effort, err := provider.NormalizeReasoningEffort(cfg.OpenAI.ReasoningEffort)
-		if err != nil {
-			return err
-		}
-		cfg.Jaz.Provider = app.ProviderConfig{
+	openAIEffort, err := provider.NormalizeReasoningEffort(cfg.OpenAI.ReasoningEffort)
+	if err != nil {
+		return err
+	}
+	openRouterEffort, err := provider.NormalizeReasoningEffort(cfg.OpenRouter.ReasoningEffort)
+	if err != nil {
+		return err
+	}
+	anthropicEffort, err := provider.NormalizeReasoningEffort(cfg.Anthropic.ReasoningEffort)
+	if err != nil {
+		return err
+	}
+	cfg.Jaz.ModelProviders = map[string]app.ProviderConfig{
+		"openai": {
 			Type:            "openai",
+			BaseURL:         nativeProviderBaseURL("openai"),
 			APIKey:          cfg.OpenAI.APIKey,
 			Model:           cfg.OpenAI.Model,
-			ReasoningEffort: effort,
-		}
-	case "openrouter":
-		effort, err := provider.NormalizeReasoningEffort(cfg.OpenRouter.ReasoningEffort)
-		if err != nil {
-			return err
-		}
-		cfg.Jaz.Provider = app.ProviderConfig{
+			ReasoningEffort: openAIEffort,
+		},
+		"openrouter": {
 			Type:            "openrouter",
+			BaseURL:         nativeProviderBaseURL("openrouter"),
 			APIKey:          cfg.OpenRouter.APIKey,
 			Model:           cfg.OpenRouter.Model,
-			ReasoningEffort: effort,
-		}
+			ReasoningEffort: openRouterEffort,
+		},
+		"anthropic": {
+			Type:            "anthropic",
+			BaseURL:         nativeProviderBaseURL("anthropic"),
+			APIKey:          cfg.Anthropic.APIKey,
+			Model:           cfg.Anthropic.Model,
+			ReasoningEffort: anthropicEffort,
+		},
+	}
+	switch strings.ToLower(cfg.Providers.Default) {
+	case "", "openai":
+		cfg.Jaz.Provider = cfg.Jaz.ModelProviders["openai"]
+	case "openrouter":
+		cfg.Jaz.Provider = cfg.Jaz.ModelProviders["openrouter"]
+	case "anthropic":
+		cfg.Jaz.Provider = cfg.Jaz.ModelProviders["anthropic"]
 	case "mock":
 		cfg.Jaz.Provider = app.ProviderConfig{Type: "mock"}
 	default:
-		return fmt.Errorf("unknown default provider %q; valid providers are openai, openrouter, mock", cfg.Providers.Default)
+		return fmt.Errorf("unknown default provider %q; valid providers are openai, openrouter, anthropic, mock", cfg.Providers.Default)
 	}
 	return nil
+}
+
+func nativeProviderBaseURL(id string) string {
+	meta, _ := provider.NativeProviderByID(id)
+	return meta.BaseURL
 }

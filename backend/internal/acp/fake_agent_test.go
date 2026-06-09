@@ -169,10 +169,14 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				ConfigID  string `json:"configId"`
 				Value     string `json:"value"`
 			}
+			wantConfigID := os.Getenv("JAZ_FAKE_ACP_EXPECT_CONFIG_ID")
+			if wantConfigID == "" {
+				wantConfigID = "reasoning_effort"
+			}
 			want := os.Getenv("JAZ_FAKE_ACP_EXPECT_EFFORT")
 			if err := json.Unmarshal(msg.Params, &req); err != nil ||
 				req.SessionID != "fake-session" ||
-				req.ConfigID != "reasoning_effort" ||
+				req.ConfigID != wantConfigID ||
 				(want != "" && req.Value != want) {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("expected configured reasoning effort", nil))
 				_ = conn.Send(context.Background(), resp)

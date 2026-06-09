@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ChevronRight, Pencil, Play, Trash2 } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Pencil, Play, Trash2 } from 'lucide-react'
 import { type Variants, motion, useReducedMotion } from 'motion/react'
 import { type ReactNode, useState } from 'react'
 import { LoopModal } from '@/components/loops/LoopModal'
@@ -104,6 +104,16 @@ function LoopDetail({ loop, runs }: { loop: Loop; runs: LoopRun[] }) {
       initial="hidden"
       animate="show"
     >
+      <motion.div variants={item} className="pb-3">
+        <Link
+          to="/loops"
+          className="inline-flex items-center gap-1.5 text-[12px] text-ink-3 transition-colors duration-150 hover:text-ink"
+        >
+          <ArrowLeft size={14} />
+          All loops
+        </Link>
+      </motion.div>
+
       <motion.header variants={item} className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2.5">

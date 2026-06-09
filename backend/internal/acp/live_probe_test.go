@@ -20,7 +20,7 @@ import (
 )
 
 func TestLiveACPProbe(t *testing.T) {
-	agent := firstNonEmpty(os.Getenv("ACP_PROBE_AGENT"), "codex")
+	agent := firstNonEmpty(os.Getenv("ACP_PROBE_AGENT"), AgentCodex)
 	prompt := firstNonEmpty(os.Getenv("ACP_PROBE_PROMPT"), "Plan building a single static HTML page about koalas. Ask me clarifying questions if useful. Do not edit files.")
 	timeout := 90 * time.Second
 	if raw := os.Getenv("ACP_PROBE_TIMEOUT"); raw != "" {
@@ -121,12 +121,13 @@ func probeApplyConfiguredSessionOptions(t *testing.T, ctx context.Context, conn 
 		t.Logf("session/set_model(%s) result: %s", model, setModel.Result)
 	}
 	if effort != "" && !reasoningEffortEncodedInModel(agent, rawModel, effort) {
+		configID := reasoningEffortConfigID(agent)
 		setEffort := probeCall(t, ctx, conn, "11", acpschema.AgentMethodSessionSetConfigOption, acpschema.SetSessionConfigOptionRequest{
 			SessionID: sessionID,
-			ConfigID:  acpschema.SessionConfigID(sessionConfigReasoningEffort),
+			ConfigID:  acpschema.SessionConfigID(configID),
 			Value:     acpschema.SessionConfigValueID(effort),
 		})
-		t.Logf("session/set_config_option(reasoning_effort=%s) result: %s", effort, setEffort.Result)
+		t.Logf("session/set_config_option(%s=%s) result: %s", configID, effort, setEffort.Result)
 	}
 }
 
@@ -157,12 +158,22 @@ func applyProbeEnvOverrides(env map[string]string) {
 func probeAgentConfig(t *testing.T, agent string) AgentConfig {
 	t.Helper()
 	switch agent {
-	case "codex":
-		return AgentConfig{
-			Command: "/Users/wins/Projects/personal/jarvis/codex-acp-zed/target/debug/codex-acp",
-			Args:    []string{"-c", "sandbox_mode=\"danger-full-access\"", "-c", "approval_policy=\"never\""},
+	case AgentCodex:
+		command := strings.TrimSpace(os.Getenv("ACP_PROBE_CODEX_COMMAND"))
+		if command == "" {
+			return AgentConfig{
+				Command: "codex-acp",
+				Args: []string{
+					"-c", `sandbox_mode="danger-full-access"`,
+					"-c", `approval_policy="never"`,
+				},
+			}
 		}
-	case "claude_code":
+		return AgentConfig{
+			Command: command,
+			Args:    strings.Fields(strings.TrimSpace(os.Getenv("ACP_PROBE_CODEX_ARGS"))),
+		}
+	case AgentClaudeCode:
 		return AgentConfig{
 			Command: "npx",
 			Args:    []string{"-y", "@agentclientprotocol/claude-agent-acp@0.39.0"},

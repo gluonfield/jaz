@@ -77,7 +77,7 @@ func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
 
 	root := firstNonEmpty(m.cfg.Root, filepath.Join(os.TempDir(), "jaz"))
 	home := filepath.Join(root, "acp", "home")
-	if name == "codex" {
+	if name == AgentCodex {
 		if codexHome := prepareCodexHome(root, env["CODEX_HOME"]); codexHome != "" {
 			env["CODEX_HOME"] = codexHome
 		}
@@ -85,7 +85,7 @@ func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
 			delete(env, key)
 		}
 	}
-	if name == "claude_code" {
+	if name == AgentClaudeCode {
 		configuredHome := strings.TrimSpace(env["HOME"])
 		preserveHostEnv(env, []string{
 			"ANTHROPIC_API_KEY",
@@ -208,7 +208,7 @@ func autoAuthMethod(agent string, raw json.RawMessage, env map[string]string) (s
 	if err := json.Unmarshal(raw, &init); err != nil {
 		return "", nil
 	}
-	if agent == "codex" {
+	if agent == AgentCodex {
 		for _, method := range init.AuthMethods {
 			if method.ID == "chatgpt" && codexAuthAvailable(env) {
 				return method.ID, nil
@@ -216,7 +216,7 @@ func autoAuthMethod(agent string, raw json.RawMessage, env map[string]string) (s
 		}
 	}
 	var missing []string
-	if agent == "codex" {
+	if agent == AgentCodex {
 		for _, method := range init.AuthMethods {
 			if method.ID == "chatgpt" {
 				missing = appendMissing(missing, codexAuthHint(env))
@@ -228,7 +228,7 @@ func autoAuthMethod(agent string, raw json.RawMessage, env map[string]string) (s
 		if method.Type != "env_var" && len(method.Vars) == 0 {
 			continue
 		}
-		if agent == "codex" {
+		if agent == AgentCodex {
 			continue
 		}
 		allSet := len(method.Vars) > 0

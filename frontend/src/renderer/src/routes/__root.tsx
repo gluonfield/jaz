@@ -2,6 +2,7 @@ import { Outlet, createRootRoute, useNavigate, useRouterState } from '@tanstack/
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useEffect, useState } from 'react'
+import { SettingsOverlay } from '@/components/settings/SettingsOverlay'
 import { Sidebar } from '@/components/sidebar/Sidebar'
 import { ToastProvider } from '@/components/ui/toast'
 
@@ -18,6 +19,7 @@ function RootLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(
     () => localStorage.getItem(SIDEBAR_PREF_KEY) !== 'closed',
   )
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_PREF_KEY, sidebarOpen ? 'open' : 'closed')
@@ -50,7 +52,7 @@ function RootLayout() {
           animate={{ width: sidebarOpen ? SIDEBAR_WIDTH : 0 }}
           transition={{ type: 'spring', stiffness: 400, damping: 36 }}
         >
-          <Sidebar />
+          <Sidebar onOpenSettings={() => setSettingsOpen(true)} />
         </motion.div>
 
         <main className="flex min-w-0 flex-1 flex-col">
@@ -81,6 +83,7 @@ function RootLayout() {
           </motion.div>
         </main>
       </div>
+      <SettingsOverlay open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </ToastProvider>
   )
 }

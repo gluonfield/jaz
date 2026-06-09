@@ -25,6 +25,9 @@ func TestApplyProviderSelectsOpenAI(t *testing.T) {
 	if provider.Type != "openai" || provider.APIKey != "openai-key" || provider.Model != "gpt-4.1-mini" || provider.ReasoningEffort != "low" {
 		t.Fatalf("unexpected provider %#v", provider)
 	}
+	if cfg.Jaz.ModelProviders["openrouter"].APIKey != "openrouter-key" {
+		t.Fatalf("provider catalog did not keep openrouter config: %#v", cfg.Jaz.ModelProviders)
+	}
 }
 
 func TestApplyProviderSelectsOpenRouter(t *testing.T) {
@@ -41,6 +44,33 @@ func TestApplyProviderSelectsOpenRouter(t *testing.T) {
 	provider := cfg.Jaz.Provider
 	if provider.Type != "openrouter" || provider.APIKey != "openrouter-key" || provider.Model != "openai/gpt-5.4-mini" || provider.ReasoningEffort != "high" {
 		t.Fatalf("unexpected provider %#v", provider)
+	}
+}
+
+func TestApplyProviderBuildsAnthropicCatalogEntry(t *testing.T) {
+	cfg := Config{
+		Providers: ProvidersConfig{Default: "openrouter"},
+		OpenRouter: openrouterprovider.Config{
+			APIKey:          "openrouter-key",
+			Model:           "openai/gpt-5.4-mini",
+			ReasoningEffort: "medium",
+		},
+		Anthropic: AnthropicConfig{
+			APIKey:          "anthropic-key",
+			Model:           "claude-sonnet-4-5",
+			ReasoningEffort: "high",
+		},
+	}
+
+	if err := applyProvider(&cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	anthropic := cfg.Jaz.ModelProviders["anthropic"]
+	if anthropic.Type != "anthropic" || anthropic.APIKey != "anthropic-key" ||
+		anthropic.BaseURL != "https://api.anthropic.com/v1" || anthropic.Model != "claude-sonnet-4-5" ||
+		anthropic.ReasoningEffort != "high" {
+		t.Fatalf("unexpected anthropic catalog entry %#v", anthropic)
 	}
 }
 
@@ -87,7 +117,7 @@ openrouter:
 	if err != nil {
 		t.Fatal(err)
 	}
-	agent, ok := cfg.Jaz.ACP.Agent("codex")
+	agent, ok := cfg.Jaz.ACP.Agents["codex"]
 	if !ok {
 		t.Fatal("codex agent config missing")
 	}

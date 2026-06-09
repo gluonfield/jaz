@@ -150,6 +150,53 @@ func TestMCPServersCRUDRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSettingsCRUDRoundTrip(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	created, err := store.SaveSetting("agents", "defaults", []byte(`{"native":{"model":"test-model"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Namespace != "agents" || created.Key != "defaults" || string(created.Value) != `{"native":{"model":"test-model"}}` {
+		t.Fatalf("created = %#v", created)
+	}
+
+	loaded, err := store.LoadSetting("agents", "defaults")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(loaded.Value) != string(created.Value) {
+		t.Fatalf("loaded = %#v", loaded)
+	}
+
+	settings, err := store.ListSettings("agents")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(settings) != 1 || settings[0].Key != "defaults" {
+		t.Fatalf("settings = %#v", settings)
+	}
+
+	updated, err := store.SaveSetting("agents", "defaults", []byte(`{"native":{"model":"next-model"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !updated.CreatedAt.Equal(created.CreatedAt) || updated.UpdatedAt.Before(created.UpdatedAt) {
+		t.Fatalf("timestamps were not preserved/advanced: created=%s/%s updated=%s/%s",
+			created.CreatedAt, created.UpdatedAt, updated.CreatedAt, updated.UpdatedAt)
+	}
+	if err := store.DeleteSetting("agents", "defaults"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.LoadSetting("agents", "defaults"); err == nil {
+		t.Fatal("deleted setting still loads")
+	}
+}
+
 func TestAddUsageStoresCachedTokensAndMirrors(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {

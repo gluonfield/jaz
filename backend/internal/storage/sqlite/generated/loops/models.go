@@ -82,6 +82,14 @@ type SessionEvent struct {
 	CreatedAtMs int64          `json:"created_at_ms"`
 }
 
+type Setting struct {
+	Namespace   string `json:"namespace"`
+	Key         string `json:"key"`
+	ValueJson   string `json:"value_json"`
+	CreatedAtMs int64  `json:"created_at_ms"`
+	UpdatedAtMs int64  `json:"updated_at_ms"`
+}
+
 type Thread struct {
 	ID                    string         `json:"id"`
 	Slug                  string         `json:"slug"`

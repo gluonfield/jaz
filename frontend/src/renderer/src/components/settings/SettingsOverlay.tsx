@@ -12,28 +12,13 @@ type Section = 'general' | 'personalization' | 'mcp' | 'agents' | 'archived'
 
 type NavItem = { id: Section; label: string; icon: typeof Bot; fullHeight?: boolean }
 
-const GROUPS: Array<{ label: string; items: NavItem[] }> = [
-  {
-    label: 'Personal',
-    items: [
-      { id: 'general', label: 'General', icon: SlidersHorizontal },
-      { id: 'personalization', label: 'Personalization', icon: Sparkles, fullHeight: true },
-    ],
-  },
-  {
-    label: 'Integrations',
-    items: [
-      { id: 'mcp', label: 'MCP servers', icon: Plug },
-      { id: 'agents', label: 'Agents (ACP)', icon: Bot },
-    ],
-  },
-  {
-    label: 'Archived',
-    items: [{ id: 'archived', label: 'Archived threads', icon: ArchiveRestore }],
-  },
+const NAV: NavItem[] = [
+  { id: 'general', label: 'General', icon: SlidersHorizontal },
+  { id: 'personalization', label: 'Personalization', icon: Sparkles, fullHeight: true },
+  { id: 'mcp', label: 'MCP servers', icon: Plug },
+  { id: 'agents', label: 'Agents (ACP)', icon: Bot },
+  { id: 'archived', label: 'Archived threads', icon: ArchiveRestore },
 ]
-
-const ALL_ITEMS = GROUPS.flatMap((group) => group.items)
 
 export function SettingsOverlay({ open, onClose }: { open: boolean; onClose: () => void }) {
   const reduce = useReducedMotion()
@@ -59,12 +44,9 @@ export function SettingsOverlay({ open, onClose }: { open: boolean; onClose: () 
   }, [open, onClose])
 
   const q = query.trim().toLowerCase()
-  const groups = GROUPS.map((group) => ({
-    ...group,
-    items: group.items.filter((item) => !q || item.label.toLowerCase().includes(q)),
-  })).filter((group) => group.items.length > 0)
+  const items = NAV.filter((item) => !q || item.label.toLowerCase().includes(q))
 
-  const current = ALL_ITEMS.find((item) => item.id === section) ?? ALL_ITEMS[0]
+  const current = NAV.find((item) => item.id === section) ?? NAV[0]
 
   return createPortal(
     <AnimatePresence>
@@ -110,36 +92,27 @@ export function SettingsOverlay({ open, onClose }: { open: boolean; onClose: () 
               </div>
             </div>
 
-            <nav className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 pb-3">
-              {groups.map((group) => (
-                <div key={group.label}>
-                  <p className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3">
-                    {group.label}
-                  </p>
-                  <div className="flex flex-col gap-px">
-                    {group.items.map((item) => {
-                      const Icon = item.icon
-                      const selected = item.id === section
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => setSection(item.id)}
-                          className={`flex items-center gap-2 rounded-control px-2 py-1.5 text-left text-[13px] transition-colors duration-150 ${
-                            selected
-                              ? 'bg-primary-soft font-medium text-ink'
-                              : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
-                          }`}
-                        >
-                          <Icon size={15} className={selected ? 'text-ink' : 'text-ink-3'} />
-                          <span className="flex-1">{item.label}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))}
-              {groups.length === 0 ? (
+            <nav className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-3 pb-3">
+              {items.map((item) => {
+                const Icon = item.icon
+                const selected = item.id === section
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setSection(item.id)}
+                    className={`flex items-center gap-2 rounded-control px-2 py-1.5 text-left text-[13px] transition-colors duration-150 ${
+                      selected
+                        ? 'bg-primary-soft font-medium text-ink'
+                        : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
+                    }`}
+                  >
+                    <Icon size={15} className={selected ? 'text-ink' : 'text-ink-3'} />
+                    <span className="flex-1">{item.label}</span>
+                  </button>
+                )
+              })}
+              {items.length === 0 ? (
                 <p className="px-2 text-[13px] text-ink-3">No matching settings.</p>
               ) : null}
             </nav>

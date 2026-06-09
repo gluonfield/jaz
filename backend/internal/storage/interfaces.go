@@ -60,4 +60,5 @@ type Store interface {
 	ActivityStore
 	SessionEventStore
 	ACPStateStore
+	SettingsStorage
 }

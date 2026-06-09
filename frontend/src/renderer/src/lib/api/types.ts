@@ -282,3 +282,33 @@ export interface MCPServerStatus {
   error?: string
   checked_at?: string
 }
+
+export interface NativeAgentDefaults {
+  model_provider?: string
+  model: string
+  reasoning_effort?: string
+}
+
+export interface NativeProviderOption {
+  id: string
+  label: string
+  base_url: string
+  api_key_env?: string
+  default_model?: string
+  default_reasoning_effort?: string
+  implemented: boolean
+}
+
+export interface ACPAgentDefaults {
+  enabled: boolean
+  command?: string
+  model?: string
+  reasoning_effort?: string
+}
+
+export interface AgentSettings {
+  native: NativeAgentDefaults
+  providers: NativeProviderOption[]
+  acp: Record<string, ACPAgentDefaults>
+  agents: string[]
+}

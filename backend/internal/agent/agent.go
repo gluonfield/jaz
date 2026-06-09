@@ -41,6 +41,7 @@ type StreamEvent struct {
 
 type Agent struct {
 	Provider        provider.Provider
+	ModelProvider   string
 	Model           string
 	ReasoningEffort string
 	Tools           *tools.Registry
@@ -71,6 +72,7 @@ func (a *Agent) Complete(ctx context.Context, req provider.Request) (Result, err
 
 	for turn := 0; turn < a.MaxTurns; turn++ {
 		resp, err := a.Provider.Complete(ctx, provider.Request{
+			Provider:        req.Provider,
 			Model:           req.Model,
 			ReasoningEffort: req.ReasoningEffort,
 			Messages:        messages,
@@ -122,6 +124,7 @@ func (a *Agent) run(ctx context.Context, req provider.Request, out chan<- Stream
 
 	for turn := 0; turn < a.MaxTurns; turn++ {
 		stream, err := a.Provider.StreamComplete(ctx, provider.Request{
+			Provider:        req.Provider,
 			Model:           req.Model,
 			ReasoningEffort: req.ReasoningEffort,
 			Messages:        messages,
@@ -213,6 +216,9 @@ func (a *Agent) normalize(req provider.Request) (provider.Request, error) {
 	}
 	if a.MaxTurns <= 0 {
 		a.MaxTurns = DefaultMaxTurns
+	}
+	if req.Provider == "" {
+		req.Provider = a.ModelProvider
 	}
 	if req.Model == "" {
 		req.Model = a.Model

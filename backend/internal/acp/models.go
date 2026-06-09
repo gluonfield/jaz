@@ -14,6 +14,7 @@ import (
 
 const agentMethodSessionSetModel = "session/set_model"
 const sessionConfigReasoningEffort = "reasoning_effort"
+const claudeSessionConfigEffort = "effort"
 
 type setSessionModelRequest struct {
 	SessionID acpschema.SessionID `json:"sessionId"`
@@ -48,7 +49,7 @@ func (m *Manager) setConfiguredSessionModel(ctx context.Context, peer *jsonrpc.P
 	}
 	var rpcErr *jsonrpc.Error
 	if errors.As(err, &rpcErr) && rpcErr.Code == -32601 {
-		return fmt.Errorf("set acp agent %q model %q: session/set_model is not supported; remove jaz.acp.agents.%s.model and pass the model through that agent's args or env", agentName, model, agentName)
+		return fmt.Errorf("set acp agent %q model %q: session/set_model is not supported; clear the model in Settings > Agents or pass the model through that agent's args or env", agentName, model)
 	}
 	return fmt.Errorf("set acp agent %q model %q: %w", agentName, model, err)
 }
@@ -61,9 +62,10 @@ func (m *Manager) setConfiguredReasoningEffort(ctx context.Context, peer *jsonrp
 	if effort == "" {
 		return nil
 	}
+	configID := reasoningEffortConfigID(agentName)
 	_, err = peer.Call(ctx, acpschema.AgentMethodSessionSetConfigOption, acpschema.SetSessionConfigOptionRequest{
 		SessionID: sessionID,
-		ConfigID:  acpschema.SessionConfigID(sessionConfigReasoningEffort),
+		ConfigID:  acpschema.SessionConfigID(configID),
 		Value:     acpschema.SessionConfigValueID(effort),
 	})
 	if err == nil {
@@ -71,7 +73,7 @@ func (m *Manager) setConfiguredReasoningEffort(ctx context.Context, peer *jsonrp
 	}
 	var rpcErr *jsonrpc.Error
 	if errors.As(err, &rpcErr) && rpcErr.Code == -32601 {
-		return fmt.Errorf("set acp agent %q reasoning effort %q: session/set_config_option is not supported; remove jaz.acp.agents.%s.reasoningeffort and pass the effort through that agent's args or env", agentName, effort, agentName)
+		return fmt.Errorf("set acp agent %q reasoning effort %q: session/set_config_option is not supported; clear the reasoning effort in Settings > Agents or pass the effort through that agent's args or env", agentName, effort)
 	}
 	return fmt.Errorf("set acp agent %q reasoning effort %q: %w", agentName, effort, err)
 }
@@ -155,7 +157,7 @@ func parseConfigOptionValues(raw json.RawMessage) []string {
 }
 
 func validateConfiguredSessionModel(agentName, rawModel, effectiveModel string, state sessionModelState) error {
-	if !isCodexAgent(agentName) || strings.TrimSpace(rawModel) == "" || state.empty() {
+	if strings.ToLower(strings.TrimSpace(agentName)) != AgentCodex || strings.TrimSpace(rawModel) == "" || state.empty() {
 		return nil
 	}
 	if modelHasReasoningEffort(effectiveModel) && len(state.exact) > 0 {
@@ -254,18 +256,23 @@ func configuredReasoningEffort(value string) string {
 
 func configuredSessionModel(agentName, rawModel, effort string) string {
 	model := strings.TrimSpace(rawModel)
-	if model == "" || effort == "" || !isCodexAgent(agentName) || modelHasReasoningEffort(model) {
+	if model == "" || effort == "" || strings.ToLower(strings.TrimSpace(agentName)) != AgentCodex || modelHasReasoningEffort(model) {
 		return model
 	}
 	return model + "/" + effort
 }
 
 func reasoningEffortEncodedInModel(agentName, model, effort string) bool {
-	return isCodexAgent(agentName) && strings.TrimSpace(model) != "" && effort != ""
+	return strings.ToLower(strings.TrimSpace(agentName)) == AgentCodex && strings.TrimSpace(model) != "" && effort != ""
 }
 
-func isCodexAgent(agentName string) bool {
-	return strings.EqualFold(strings.TrimSpace(agentName), "codex")
+func reasoningEffortConfigID(agentName string) string {
+	switch strings.ToLower(strings.TrimSpace(agentName)) {
+	case AgentClaudeCode:
+		return claudeSessionConfigEffort
+	default:
+		return sessionConfigReasoningEffort
+	}
 }
 
 func normalizeSessionReasoningEffort(value string) (string, error) {

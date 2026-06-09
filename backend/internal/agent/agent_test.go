@@ -104,6 +104,7 @@ func TestAgentUsesDefaultReasoningEffort(t *testing.T) {
 	fp := &fakeProvider{}
 	a := &Agent{
 		Provider:        fp,
+		ModelProvider:   "openrouter",
 		ReasoningEffort: "high",
 		Tools:           tools.NewRegistry(mockTool{}),
 	}
@@ -113,7 +114,7 @@ func TestAgentUsesDefaultReasoningEffort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(fp.requests) == 0 || fp.requests[0].ReasoningEffort != "high" {
-		t.Fatalf("reasoning effort was not forwarded: %#v", fp.requests)
+	if len(fp.requests) == 0 || fp.requests[0].Provider != "openrouter" || fp.requests[0].ReasoningEffort != "high" {
+		t.Fatalf("provider defaults were not forwarded: %#v", fp.requests)
 	}
 }
