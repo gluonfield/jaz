@@ -16,7 +16,9 @@ INSERT INTO loops (
   last_run_status,
   last_error,
   created_at_ms,
-  updated_at_ms
+  updated_at_ms,
+  reasoning_effort,
+  directory
 ) VALUES (
   sqlc.arg(id),
   sqlc.arg(name),
@@ -34,7 +36,9 @@ INSERT INTO loops (
   sqlc.narg(last_run_status),
   sqlc.narg(last_error),
   sqlc.arg(created_at_ms),
-  sqlc.arg(updated_at_ms)
+  sqlc.arg(updated_at_ms),
+  sqlc.arg(reasoning_effort),
+  sqlc.arg(directory)
 )
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
@@ -45,6 +49,8 @@ ON CONFLICT(id) DO UPDATE SET
   status = excluded.status,
   runtime = excluded.runtime,
   acp_agent = excluded.acp_agent,
+  reasoning_effort = excluded.reasoning_effort,
+  directory = excluded.directory,
   next_run_at_ms = excluded.next_run_at_ms,
   last_run_at_ms = excluded.last_run_at_ms,
   last_run_id = excluded.last_run_id,
@@ -72,7 +78,9 @@ SELECT
   last_run_status,
   last_error,
   created_at_ms,
-  updated_at_ms
+  updated_at_ms,
+  reasoning_effort,
+  directory
 FROM loops
 WHERE id = sqlc.arg(id)
 LIMIT 1;
@@ -95,7 +103,9 @@ SELECT
   last_run_status,
   last_error,
   created_at_ms,
-  updated_at_ms
+  updated_at_ms,
+  reasoning_effort,
+  directory
 FROM loops
 WHERE status <> sqlc.arg(deleted_status)
 ORDER BY updated_at_ms DESC;

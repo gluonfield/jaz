@@ -40,6 +40,18 @@ func TestFakeACPAgentProcess(t *testing.T) {
 		}
 		switch msg.Method {
 		case "initialize":
+			if os.Getenv("JAZ_FAKE_ACP_EXPECT_TERMINAL_AUTH") == "1" {
+				var req struct {
+					ClientCapabilities struct {
+						Meta map[string]any `json:"_meta"`
+					} `json:"clientCapabilities"`
+				}
+				if err := json.Unmarshal(msg.Params, &req); err != nil || req.ClientCapabilities.Meta["terminal-auth"] != true {
+					resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("missing terminal auth capability", nil))
+					_ = conn.Send(context.Background(), resp)
+					continue
+				}
+			}
 			capabilities := map[string]any{
 				"loadSession": os.Getenv("JAZ_FAKE_ACP_LOAD") == "1",
 			}

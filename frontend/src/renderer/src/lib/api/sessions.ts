@@ -3,8 +3,33 @@ import { keys } from '../query/keys'
 import { get, post } from './client'
 import type { Session, SessionMessages } from './types'
 
-export function createSession(input: { title?: string } = {}): Promise<Session> {
+export function createSession(
+  input: { title?: string; runtime?: 'native' | 'acp'; agent?: string; directory?: string } = {},
+): Promise<Session> {
   return post<Session>('/v1/sessions', input)
+}
+
+// Configured ACP agents the new-thread page can offer as a runtime. Resilient
+// by design: any failure (older backend without the route, no agents) yields an
+// empty list so the runtime selector simply doesn't appear.
+export const acpAgentsQuery = queryOptions({
+  queryKey: keys.acpAgents,
+  queryFn: async () => {
+    try {
+      const data = await get<{ agents: string[] | null }>('/v1/acp/agents')
+      return data.agents ?? []
+    } catch {
+      return []
+    }
+  },
+})
+
+// Lists immediate subdirectories of a workspace-relative path so the directory
+// picker can browse where an ACP session runs ('' is the workspace root).
+export function listWorkspaceDirs(path: string): Promise<{ path: string; dirs: string[] }> {
+  return get<{ path: string; dirs: string[] | null }>(
+    `/v1/workspace/dirs?path=${encodeURIComponent(path)}`,
+  ).then((data) => ({ path: data.path, dirs: data.dirs ?? [] }))
 }
 
 export function setSessionArchived(id: string, archived: boolean): Promise<Session> {

@@ -83,7 +83,9 @@ SELECT
   last_run_status,
   last_error,
   created_at_ms,
-  updated_at_ms
+  updated_at_ms,
+  reasoning_effort,
+  directory
 FROM loops
 WHERE id = ?1
 LIMIT 1
@@ -110,6 +112,8 @@ func (q *Queries) GetLoop(ctx context.Context, id string) (Loop, error) {
 		&i.LastError,
 		&i.CreatedAtMs,
 		&i.UpdatedAtMs,
+		&i.ReasoningEffort,
+		&i.Directory,
 	)
 	return i, err
 }
@@ -236,7 +240,9 @@ SELECT
   last_run_status,
   last_error,
   created_at_ms,
-  updated_at_ms
+  updated_at_ms,
+  reasoning_effort,
+  directory
 FROM loops
 WHERE status <> ?1
 ORDER BY updated_at_ms DESC
@@ -269,6 +275,8 @@ func (q *Queries) ListLoops(ctx context.Context, deletedStatus string) ([]Loop, 
 			&i.LastError,
 			&i.CreatedAtMs,
 			&i.UpdatedAtMs,
+			&i.ReasoningEffort,
+			&i.Directory,
 		); err != nil {
 			return nil, err
 		}
@@ -356,7 +364,9 @@ INSERT INTO loops (
   last_run_status,
   last_error,
   created_at_ms,
-  updated_at_ms
+  updated_at_ms,
+  reasoning_effort,
+  directory
 ) VALUES (
   ?1,
   ?2,
@@ -374,7 +384,9 @@ INSERT INTO loops (
   ?14,
   ?15,
   ?16,
-  ?17
+  ?17,
+  ?18,
+  ?19
 )
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
@@ -385,6 +397,8 @@ ON CONFLICT(id) DO UPDATE SET
   status = excluded.status,
   runtime = excluded.runtime,
   acp_agent = excluded.acp_agent,
+  reasoning_effort = excluded.reasoning_effort,
+  directory = excluded.directory,
   next_run_at_ms = excluded.next_run_at_ms,
   last_run_at_ms = excluded.last_run_at_ms,
   last_run_id = excluded.last_run_id,
@@ -413,6 +427,8 @@ type UpsertLoopParams struct {
 	LastError       sql.NullString `json:"last_error"`
 	CreatedAtMs     int64          `json:"created_at_ms"`
 	UpdatedAtMs     int64          `json:"updated_at_ms"`
+	ReasoningEffort string         `json:"reasoning_effort"`
+	Directory       string         `json:"directory"`
 }
 
 func (q *Queries) UpsertLoop(ctx context.Context, arg UpsertLoopParams) error {
@@ -434,6 +450,8 @@ func (q *Queries) UpsertLoop(ctx context.Context, arg UpsertLoopParams) error {
 		arg.LastError,
 		arg.CreatedAtMs,
 		arg.UpdatedAtMs,
+		arg.ReasoningEffort,
+		arg.Directory,
 	)
 	return err
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/loops"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/pathsafe"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
@@ -27,6 +28,7 @@ type ACPManager interface {
 	Send(context.Context, acp.SendRequest) (acp.Job, error)
 	Status(string) (acp.Job, error)
 	List() []acp.Job
+	Agents() []string
 	AnswerInteractive(context.Context, acp.InteractiveAnswer) error
 	Cancel(context.Context, string) (acp.Job, error)
 }
@@ -57,7 +59,10 @@ type Server struct {
 	// and prompt-file edits apply without a restart.
 	Prompts *coordinator.Builder
 	Root    string
-	Log     *log.Logger
+	// Workspace is the directory ACP sessions run within; the new-thread
+	// directory picker browses it (confined by pathsafe).
+	Workspace string
+	Log       *log.Logger
 
 	// in-flight native turns by session id, cancellable via the cancel action
 	turnCancels sync.Map
@@ -92,6 +97,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/loops", s.handleListLoops)
 	mux.HandleFunc("POST /v1/loops", s.handleCreateLoop)
 	mux.HandleFunc("/v1/loops/", s.handleLoopAction)
+	mux.HandleFunc("GET /v1/acp/agents", s.handleListACPAgents)
+	mux.HandleFunc("GET /v1/workspace/dirs", s.handleListWorkspaceDirs)
 	mux.HandleFunc("GET /v1/mcp/servers", s.handleListMCPServers)
 	mux.HandleFunc("POST /v1/mcp/servers", s.handleCreateMCPServer)
 	mux.HandleFunc("PUT /v1/mcp/servers/", s.handleMCPServerAction)
@@ -113,6 +120,12 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&req)
 	}
+	// An ACP runtime spawns an external agent session up front; everything else
+	// (including a missing runtime) is a native Jaz session.
+	if req.Runtime == storage.RuntimeACP && strings.TrimSpace(req.Agent) != "" {
+		s.createACPSession(w, req)
+		return
+	}
 	input := s.nativeSessionDefaults()
 	input.Slug = req.Slug
 	input.Title = req.Title
@@ -122,6 +135,66 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, session)
+}
+
+// createACPSession spawns the agent process and its session synchronously, so
+// the row returned to the client already carries the populated runtime_ref. The
+// spawn outlives this request (the agent process runs under a background
+// context), so it uses a bounded action context rather than the request's.
+func (s *Server) createACPSession(w http.ResponseWriter, req createSessionRequest) {
+	if s.ACP == nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("acp manager is not configured"))
+		return
+	}
+	// "" would create a fresh per-slug subdirectory; "." is the workspace root,
+	// which is the default users expect from the new-thread directory picker.
+	directory := strings.TrimSpace(req.Directory)
+	if directory == "" {
+		directory = "."
+	}
+	ctx, cancel := serverActionContext()
+	defer cancel()
+	result, err := s.ACP.Spawn(ctx, acp.SpawnRequest{
+		ACPAgent:  strings.TrimSpace(req.Agent),
+		Slug:      req.Slug,
+		Title:     req.Title,
+		Directory: directory,
+	})
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result.Session)
+}
+
+func (s *Server) handleListACPAgents(w http.ResponseWriter, r *http.Request) {
+	agents := []string{}
+	if s.ACP != nil {
+		agents = s.ACP.Agents()
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"agents": agents})
+}
+
+// handleListWorkspaceDirs browses the workspace (the server's filesystem) one
+// level at a time so the new-thread directory picker can choose where an ACP
+// session runs. path is workspace-relative; "" is the root.
+func (s *Server) handleListWorkspaceDirs(w http.ResponseWriter, r *http.Request) {
+	if strings.TrimSpace(s.Workspace) == "" {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("workspace is not configured"))
+		return
+	}
+	path := r.URL.Query().Get("path")
+	abs, err := pathsafe.Resolve(s.Workspace, path)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	dirs, err := pathsafe.Subdirs(abs)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"path": path, "dirs": dirs})
 }
 
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
@@ -612,8 +685,11 @@ type interactiveResponseRequest struct {
 }
 
 type createSessionRequest struct {
-	Slug  string `json:"slug,omitempty"`
-	Title string `json:"title,omitempty"`
+	Slug      string `json:"slug,omitempty"`
+	Title     string `json:"title,omitempty"`
+	Runtime   string `json:"runtime,omitempty"`
+	Agent     string `json:"agent,omitempty"`
+	Directory string `json:"directory,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

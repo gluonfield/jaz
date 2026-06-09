@@ -621,8 +621,11 @@ func (f *fakeACPManager) Spawn(_ context.Context, req acp.SpawnRequest) (acp.Spa
 		Slug:      session.Slug,
 		ACPAgent:  req.ACPAgent,
 		State:     acp.StateIdle,
+		Session:   session,
 	}, nil
 }
+
+func (f *fakeACPManager) Agents() []string { return nil }
 
 func (f *fakeACPManager) Send(ctx context.Context, req acp.SendRequest) (acp.Job, error) {
 	f.mu.Lock()

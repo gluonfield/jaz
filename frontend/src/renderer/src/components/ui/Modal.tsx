@@ -32,12 +32,19 @@ export function Modal({
   const reduce = useReducedMotion()
   const panelRef = useRef<HTMLDivElement>(null)
 
+  // Auto-focus the first field only as the modal opens. Keeping this off the
+  // onClose dependency stops re-renders (e.g. typing) from yanking focus back.
   useEffect(() => {
     if (!open) return
     const previouslyFocused = document.activeElement as HTMLElement | null
     const panel = panelRef.current
     const firstField = panel?.querySelector<HTMLElement>('input, textarea, select')
     ;(firstField ?? panel)?.focus()
+    return () => previouslyFocused?.focus?.()
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.stopPropagation()
@@ -63,10 +70,7 @@ export function Modal({
       }
     }
     document.addEventListener('keydown', onKey, true)
-    return () => {
-      document.removeEventListener('keydown', onKey, true)
-      previouslyFocused?.focus?.()
-    }
+    return () => document.removeEventListener('keydown', onKey, true)
   }, [open, onClose])
 
   return createPortal(

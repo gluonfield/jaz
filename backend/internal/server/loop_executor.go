@@ -60,6 +60,9 @@ func (r *LoopRunner) startNativeLoopRun(ctx context.Context, execution loops.Exe
 	input.Title = loop.Name
 	input.SourceType = storage.SourceLoopRun
 	input.SourceID = run.ID
+	if loop.ReasoningEffort != "" {
+		input.ReasoningEffort = loop.ReasoningEffort
+	}
 	session, err := r.store.CreateSession(input)
 	if err != nil {
 		r.finishLoopRun(execution, loops.RunStatusError, err.Error())
@@ -93,13 +96,18 @@ func (r *LoopRunner) startACPLoopRun(execution loops.Execution) {
 	if agent == "" {
 		agent = "codex"
 	}
+	directory := strings.TrimSpace(loop.Directory)
+	if directory == "" {
+		directory = "."
+	}
 	spawned, err := r.acp.Spawn(startCtx, acp.SpawnRequest{
-		ACPAgent:   agent,
-		Slug:       loopRunSlug(loop, run),
-		Title:      loop.Name,
-		Directory:  ".",
-		SourceType: storage.SourceLoopRun,
-		SourceID:   run.ID,
+		ACPAgent:        agent,
+		Slug:            loopRunSlug(loop, run),
+		Title:           loop.Name,
+		Directory:       directory,
+		ReasoningEffort: loop.ReasoningEffort,
+		SourceType:      storage.SourceLoopRun,
+		SourceID:        run.ID,
 	})
 	if err != nil {
 		r.finishLoopRun(execution, loops.RunStatusError, err.Error())

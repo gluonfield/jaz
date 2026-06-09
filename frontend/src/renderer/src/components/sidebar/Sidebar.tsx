@@ -1,11 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { SquarePen } from 'lucide-react'
+import { Plus, SquarePen } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
+import { useState } from 'react'
+import { LoopModal } from '@/components/loops/LoopModal'
+import { loopsQuery } from '@/lib/api/loops'
 import { SIDEBAR_SESSION_LIMIT, sidebarSessionsQuery } from '@/lib/api/sessions'
 import { SkeletonRows } from '../ui/Skeleton'
+import { LoopRow } from './LoopRow'
 import { SessionRow } from './SessionRow'
 import { ThemeSwitcher } from './ThemeSwitcher'
+
+const SIDEBAR_LOOP_LIMIT = 6
 
 function SectionLabel({ children }: { children: string }) {
   return (
@@ -23,6 +29,70 @@ function PageLink({ to, label, hint }: { to: string; label: string; hint?: strin
       <span className="flex-1">{label}</span>
       {hint ? <span className="text-[11px] text-ink-3">{hint}</span> : null}
     </Link>
+  )
+}
+
+function LoopsSection() {
+  const loops = useQuery(loopsQuery)
+  const [creating, setCreating] = useState(false)
+  const visibleLoops = loops.data?.slice(0, SIDEBAR_LOOP_LIMIT) ?? []
+
+  return (
+    <section>
+      <div className="flex items-center justify-between pr-1">
+        <SectionLabel>Loops</SectionLabel>
+        <button
+          type="button"
+          aria-label="New loop"
+          title="New loop"
+          onClick={() => setCreating(true)}
+          className="-mt-1 grid size-5 place-items-center rounded text-ink-3 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+        >
+          <Plus size={14} />
+        </button>
+      </div>
+      {loops.isPending ? (
+        <SkeletonRows count={2} />
+      ) : loops.isError ? (
+        <p className="px-2.5 py-1 text-[13px] text-ink-3">Backend unreachable</p>
+      ) : visibleLoops.length === 0 ? (
+        <button
+          type="button"
+          onClick={() => setCreating(true)}
+          className="rounded-control px-2 py-1 text-left text-[13px] text-ink-3 transition-colors duration-150 hover:text-ink"
+        >
+          Create your first loop
+        </button>
+      ) : (
+        <div className="flex flex-col gap-px">
+          <AnimatePresence initial={false}>
+            {visibleLoops.map((loop) => (
+              <motion.div
+                key={loop.id}
+                layout
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -8 }}
+                transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+              >
+                <LoopRow loop={loop} />
+              </motion.div>
+            ))}
+          </AnimatePresence>
+          {loops.data.length > SIDEBAR_LOOP_LIMIT ? (
+            <Link
+              to="/loops"
+              className="mt-1 rounded-control px-2 py-1 text-[13px] text-primary transition-colors duration-150 hover:bg-surface-2"
+              activeOptions={{ exact: true }}
+              activeProps={{ className: 'bg-primary-soft!' }}
+            >
+              Show all loops
+            </Link>
+          ) : null}
+        </div>
+      )}
+      <LoopModal open={creating} onClose={() => setCreating(false)} />
+    </section>
   )
 }
 
@@ -87,9 +157,12 @@ export function Sidebar() {
           )}
         </section>
 
+        <LoopsSection />
+
         <section>
           <SectionLabel>Pages</SectionLabel>
           <div className="flex flex-col gap-px">
+            <PageLink to="/loops" label="Loops" />
             <PageLink to="/agent" label="Agent" />
             <PageLink to="/settings" label="Settings" />
           </div>

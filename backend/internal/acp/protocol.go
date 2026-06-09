@@ -14,6 +14,7 @@ import (
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
+	"github.com/wins/jaz/backend/internal/pathsafe"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -78,7 +79,7 @@ func (m *Manager) readTextFile(raw json.RawMessage) (json.RawMessage, *jsonrpc.E
 	if job == nil {
 		return nil, jsonrpc.InvalidParams("unknown acp session", nil)
 	}
-	path, err := safePath(job.Cwd, req.Path)
+	path, err := pathsafe.Resolve(job.Cwd, req.Path)
 	if err != nil {
 		return nil, jsonrpc.InvalidParams(err.Error(), nil)
 	}
@@ -102,7 +103,7 @@ func (m *Manager) writeTextFile(raw json.RawMessage) (json.RawMessage, *jsonrpc.
 	if job == nil {
 		return nil, jsonrpc.InvalidParams("unknown acp session", nil)
 	}
-	path, err := safePath(job.Cwd, req.Path)
+	path, err := pathsafe.Resolve(job.Cwd, req.Path)
 	if err != nil {
 		return nil, jsonrpc.InvalidParams(err.Error(), nil)
 	}
@@ -131,7 +132,7 @@ func selectPermissionOption(options []acpschema.PermissionOption) string {
 
 func locationsStayInside(root string, locations []acpschema.ToolCallLocation) bool {
 	for _, location := range locations {
-		if _, err := safePath(root, location.Path); err != nil {
+		if _, err := pathsafe.Resolve(root, location.Path); err != nil {
 			return false
 		}
 	}

@@ -2,13 +2,14 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { motion } from 'motion/react'
 import { useState } from 'react'
 import { ComposerCard } from '@/components/session/Composer'
+import { DirectoryPicker, RuntimeSelect } from '@/components/session/NewThreadControls'
 import { PixelField } from '@/components/ui/PixelField'
 import { useToast } from '@/components/ui/toast'
-import { createSession } from '@/lib/api/sessions'
+import { acpAgentsQuery, createSession } from '@/lib/api/sessions'
 import { setPendingMessage, setPendingVoice } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
 import { useTheme } from '@/lib/theme'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 export const Route = createFileRoute('/new')({
   component: NewSessionPage,
@@ -23,13 +24,23 @@ function NewSessionPage() {
   const toast = useToast()
   const [creating, setCreating] = useState(false)
   const [composing, setComposing] = useState(false)
+  // 'native' or a configured ACP agent name; the directory only applies to ACP.
+  const [runtime, setRuntime] = useState('native')
+  const [directory, setDirectory] = useState('')
+  const { data: agents = [] } = useQuery(acpAgentsQuery)
   // PixelField samples the palette at mount; remount it when the theme flips.
   const { resolved } = useTheme()
 
   const startThread = async (title: string | undefined, prepare: (sessionId: string) => void) => {
     setCreating(true)
     try {
-      const session = await createSession(title ? { title } : {})
+      const session = await createSession(
+        runtime === 'native'
+          ? title
+            ? { title }
+            : {}
+          : { ...(title ? { title } : {}), runtime: 'acp', agent: runtime, directory },
+      )
       prepare(session.id)
       queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
       queryClient.invalidateQueries({ queryKey: keys.allSessions })
@@ -75,8 +86,27 @@ function NewSessionPage() {
             autoFocus
             translucent
             placeholder="Ask anything, or hand your assistant a task…"
+            leftSlot={
+              agents.length > 0 ? (
+                <>
+                  <RuntimeSelect
+                    value={runtime}
+                    agents={agents}
+                    disabled={creating}
+                    onChange={setRuntime}
+                  />
+                  {runtime !== 'native' ? (
+                    <DirectoryPicker
+                      value={directory}
+                      disabled={creating}
+                      onChange={setDirectory}
+                    />
+                  ) : null}
+                </>
+              ) : undefined
+            }
             onSend={handleSend}
-            onVoice={handleVoice}
+            onVoice={runtime === 'native' ? handleVoice : undefined}
           />
         </motion.div>
       </motion.div>

@@ -87,12 +87,35 @@ func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
 	}
 	if name == "claude_code" {
 		configuredHome := strings.TrimSpace(env["HOME"])
-		preserveHostEnv(env, []string{"CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CONFIG_DIR"})
+		preserveHostEnv(env, []string{
+			"ANTHROPIC_API_KEY",
+			"ANTHROPIC_APIKEY",
+			"ANTHROPIC_AUTH_TOKEN",
+			"ANTHROPIC_BASE_URL",
+			"CLAUDE_CODE_EXECUTABLE",
+			"CLAUDE_CODE_OAUTH_TOKEN",
+			"CLAUDE_CODE_USE_BEDROCK",
+			"CLAUDE_CODE_USE_VERTEX",
+			"CLAUDE_CONFIG_DIR",
+			"LANG",
+			"LC_ALL",
+			"LC_CTYPE",
+			"LOGNAME",
+			"SHELL",
+			"SSH_AUTH_SOCK",
+			"USER",
+		})
 		if configuredHome != "" {
 			home = configuredHome
 		} else if userHome, err := os.UserHomeDir(); err == nil && userHome != "" {
 			home = userHome
 		}
+		if env["CLAUDE_CODE_EXECUTABLE"] == "" {
+			if cli, err := exec.LookPath("claude"); err == nil {
+				env["CLAUDE_CODE_EXECUTABLE"] = cli
+			}
+		}
+		normalizeEnv(env, "ANTHROPIC_API_KEY", "ANTHROPIC_APIKEY")
 	}
 	tmp := filepath.Join(root, "acp", "tmp")
 	cache := filepath.Join(root, "acp", "npm-cache")

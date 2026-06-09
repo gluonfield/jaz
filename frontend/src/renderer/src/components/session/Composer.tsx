@@ -1,6 +1,6 @@
 import { ArrowUp, AudioLines, Check, ListChecks, LoaderCircle, Square, X } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { QueuedPromptList } from './QueuedPromptList'
 
 // A rainbow comet (~100° arc fading in and out of transparency) that orbits
@@ -19,6 +19,7 @@ export function ComposerCard({
   planAvailable = false,
   queueWhenStreaming = false,
   translucent = false,
+  leftSlot,
   onSend,
   onStop,
   onVoice,
@@ -31,6 +32,8 @@ export function ComposerCard({
   queueWhenStreaming?: boolean
   /** let a backdrop (e.g. the welcome particle field) read through the card */
   translucent?: boolean
+  /** leading toolbar content (e.g. the new-thread runtime/directory pickers) */
+  leftSlot?: ReactNode
   onSend: (text: string, options?: { planRequested?: boolean }) => void
   onStop?: () => void
   onVoice?: () => void
@@ -128,6 +131,7 @@ export function ComposerCard({
         />
         <div className="flex items-center justify-between gap-2.5">
           <div className="flex min-w-0 items-center gap-1.5">
+            {leftSlot}
             {planAvailable ? (
               <motion.button
                 type="button"
