@@ -43,6 +43,8 @@ type Loop struct {
 	Status          string    `json:"status"`
 	Runtime         string    `json:"runtime"`
 	ACPAgent        string    `json:"acp_agent,omitempty"`
+	ReasoningEffort string    `json:"reasoning_effort,omitempty"`
+	Directory       string    `json:"directory,omitempty"`
 	NextRunAt       time.Time `json:"next_run_at,omitempty"`
 	LastRunAt       time.Time `json:"last_run_at,omitempty"`
 	LastRunID       string    `json:"last_run_id,omitempty"`
@@ -66,23 +68,27 @@ type Run struct {
 }
 
 type CreateLoop struct {
-	Name     string
-	Prompt   string
-	Schedule Schedule
-	Status   string
-	Runtime  string
-	ACPAgent string
+	Name            string
+	Prompt          string
+	Schedule        Schedule
+	Status          string
+	Runtime         string
+	ACPAgent        string
+	ReasoningEffort string
+	Directory       string
 }
 
 type UpdateLoop struct {
-	Name         *string
-	Prompt       *string
-	Schedule     *Schedule
-	Status       *string
-	Runtime      *string
-	ACPAgent     *string
-	Reschedule   bool
-	RescheduleAt time.Time
+	Name            *string
+	Prompt          *string
+	Schedule        *Schedule
+	Status          *string
+	Runtime         *string
+	ACPAgent        *string
+	ReasoningEffort *string
+	Directory       *string
+	Reschedule      bool
+	RescheduleAt    time.Time
 }
 
 type Repository interface {

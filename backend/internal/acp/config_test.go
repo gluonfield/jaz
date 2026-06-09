@@ -79,8 +79,13 @@ func TestProcessEnvUsesUserHomeForClaudeCode(t *testing.T) {
 	home := t.TempDir()
 	configDir := filepath.Join(home, "claude-config")
 	t.Setenv("HOME", home)
+	t.Setenv("ANTHROPIC_APIKEY", "host-anthropic-key")
+	t.Setenv("ANTHROPIC_AUTH_TOKEN", "host-auth-token")
+	t.Setenv("CLAUDE_CODE_EXECUTABLE", "/usr/local/bin/claude")
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "setup-token")
+	t.Setenv("CLAUDE_CODE_USE_VERTEX", "0")
 	t.Setenv("CLAUDE_CONFIG_DIR", configDir)
+	t.Setenv("USER", "wins")
 
 	root := t.TempDir()
 	env := NewManager(nil, Config{Root: root}, nil).processEnv("claude_code", AgentConfig{})
@@ -88,11 +93,29 @@ func TestProcessEnvUsesUserHomeForClaudeCode(t *testing.T) {
 	if env["HOME"] != home {
 		t.Fatalf("HOME = %q, want %q", env["HOME"], home)
 	}
+	if env["ANTHROPIC_API_KEY"] != "host-anthropic-key" {
+		t.Fatalf("ANTHROPIC_API_KEY was not preserved and normalized")
+	}
+	if _, ok := env["ANTHROPIC_APIKEY"]; ok {
+		t.Fatal("ANTHROPIC_APIKEY alias leaked into subprocess env")
+	}
+	if env["ANTHROPIC_AUTH_TOKEN"] != "host-auth-token" {
+		t.Fatalf("ANTHROPIC_AUTH_TOKEN was not preserved")
+	}
+	if env["CLAUDE_CODE_EXECUTABLE"] != "/usr/local/bin/claude" {
+		t.Fatalf("CLAUDE_CODE_EXECUTABLE = %q", env["CLAUDE_CODE_EXECUTABLE"])
+	}
 	if env["CLAUDE_CODE_OAUTH_TOKEN"] != "setup-token" {
 		t.Fatalf("CLAUDE_CODE_OAUTH_TOKEN was not preserved")
 	}
+	if env["CLAUDE_CODE_USE_VERTEX"] != "0" {
+		t.Fatalf("CLAUDE_CODE_USE_VERTEX = %q", env["CLAUDE_CODE_USE_VERTEX"])
+	}
 	if env["CLAUDE_CONFIG_DIR"] != configDir {
 		t.Fatalf("CLAUDE_CONFIG_DIR = %q, want %q", env["CLAUDE_CONFIG_DIR"], configDir)
+	}
+	if env["USER"] != "wins" {
+		t.Fatalf("USER = %q, want wins", env["USER"])
 	}
 	if !strings.HasPrefix(env["TMPDIR"], filepath.Join(root, "acp")) || !strings.HasPrefix(env["npm_config_cache"], filepath.Join(root, "acp")) {
 		t.Fatalf("expected claude temp/cache under jaz root: %#v", env)

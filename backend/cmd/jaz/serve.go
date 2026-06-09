@@ -166,6 +166,7 @@ func startServer(
 		NativeReasoningEffort: cfg.Provider.ReasoningEffort,
 		Prompts:               prompts,
 		Root:                  store.RootDir(),
+		Workspace:             string(workspace),
 		Log:                   logger.WithPrefix("server"),
 	}
 	loopRunner := server.NewLoopRunner(handler)

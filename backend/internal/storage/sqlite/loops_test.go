@@ -277,3 +277,54 @@ func TestLoopRunSessionsAreHiddenFromDefaultSessionList(t *testing.T) {
 		t.Fatalf("loaded source id = %q", loaded.SourceID)
 	}
 }
+
+func TestLoopReasoningEffortAndDirectoryRoundTrip(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	now := time.Date(2026, 6, 8, 12, 0, 0, 0, time.UTC)
+	service := loops.NewService(store, nil, nil)
+	service.Now = func() time.Time { return now }
+	loop, err := service.Create(loops.CreateLoop{
+		Prompt:          "review the repo",
+		Schedule:        loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 9 * * *", Timezone: "UTC"},
+		Runtime:         loops.RuntimeACP,
+		ACPAgent:        "codex",
+		ReasoningEffort: "High",
+		Directory:       " sub/dir ",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loop.ReasoningEffort != "high" || loop.Directory != "sub/dir" {
+		t.Fatalf("create normalized = %q / %q", loop.ReasoningEffort, loop.Directory)
+	}
+
+	loaded, err := store.LoadLoop(loop.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.ReasoningEffort != "high" || loaded.Directory != "sub/dir" {
+		t.Fatalf("loaded = %q / %q", loaded.ReasoningEffort, loaded.Directory)
+	}
+
+	effort, dir := "medium", "other"
+	updated, err := service.Update(loop.ID, loops.UpdateLoop{ReasoningEffort: &effort, Directory: &dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.ReasoningEffort != "medium" || updated.Directory != "other" {
+		t.Fatalf("updated = %q / %q", updated.ReasoningEffort, updated.Directory)
+	}
+
+	if _, err := service.Create(loops.CreateLoop{
+		Prompt:          "bad effort",
+		Schedule:        loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 9 * * *", Timezone: "UTC"},
+		ReasoningEffort: "extreme",
+	}); err == nil {
+		t.Fatal("expected invalid reasoning effort to error")
+	}
+}

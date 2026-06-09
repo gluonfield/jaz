@@ -32,16 +32,18 @@ func (s *Service) Create(input CreateLoop) (Loop, error) {
 		return Loop{}, err
 	}
 	loop := Loop{
-		ID:        s.Repo.NewLoopID(),
-		Name:      input.Name,
-		Prompt:    input.Prompt,
-		Schedule:  input.Schedule,
-		Status:    input.Status,
-		Runtime:   input.Runtime,
-		ACPAgent:  input.ACPAgent,
-		NextRunAt: nextRun,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:              s.Repo.NewLoopID(),
+		Name:            input.Name,
+		Prompt:          input.Prompt,
+		Schedule:        input.Schedule,
+		Status:          input.Status,
+		Runtime:         input.Runtime,
+		ACPAgent:        input.ACPAgent,
+		ReasoningEffort: input.ReasoningEffort,
+		Directory:       input.Directory,
+		NextRunAt:       nextRun,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

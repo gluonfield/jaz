@@ -25,6 +25,12 @@ func NormalizeCreate(input CreateLoop, now time.Time) (CreateLoop, time.Time, er
 	if input.Runtime == RuntimeACP && input.ACPAgent == "" {
 		input.ACPAgent = "codex"
 	}
+	effort, err := normalizeReasoningEffort(input.ReasoningEffort)
+	if err != nil {
+		return input, time.Time{}, err
+	}
+	input.ReasoningEffort = effort
+	input.Directory = strings.TrimSpace(input.Directory)
 	if input.Name == "" {
 		input.Name = titleFromPrompt(input.Prompt)
 	}
@@ -55,6 +61,16 @@ func NormalizeUpdate(current Loop, input UpdateLoop, now time.Time) (Loop, bool,
 	}
 	if input.ACPAgent != nil {
 		next.ACPAgent = strings.TrimSpace(*input.ACPAgent)
+	}
+	if input.ReasoningEffort != nil {
+		effort, err := normalizeReasoningEffort(*input.ReasoningEffort)
+		if err != nil {
+			return next, false, err
+		}
+		next.ReasoningEffort = effort
+	}
+	if input.Directory != nil {
+		next.Directory = strings.TrimSpace(*input.Directory)
 	}
 	if next.Runtime == RuntimeACP && next.ACPAgent == "" {
 		next.ACPAgent = "codex"
@@ -160,6 +176,17 @@ func normalizeStatus(status string) string {
 		return StatusPaused
 	default:
 		return strings.ToLower(strings.TrimSpace(status))
+	}
+}
+
+func normalizeReasoningEffort(value string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "none":
+		return "", nil
+	case "minimal", "low", "medium", "high", "xhigh":
+		return strings.ToLower(strings.TrimSpace(value)), nil
+	default:
+		return "", fmt.Errorf("unknown reasoning effort %q; valid values are none, minimal, low, medium, high, xhigh", value)
 	}
 }
 

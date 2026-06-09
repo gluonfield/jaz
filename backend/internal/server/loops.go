@@ -33,12 +33,14 @@ func (s *Server) handleCreateLoop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	loop, err := s.Loops.Create(loops.CreateLoop{
-		Name:     req.Name,
-		Prompt:   req.Prompt,
-		Schedule: req.Schedule,
-		Status:   req.Status,
-		Runtime:  req.Runtime,
-		ACPAgent: req.ACPAgent,
+		Name:            req.Name,
+		Prompt:          req.Prompt,
+		Schedule:        req.Schedule,
+		Status:          req.Status,
+		Runtime:         req.Runtime,
+		ACPAgent:        req.ACPAgent,
+		ReasoningEffort: req.ReasoningEffort,
+		Directory:       req.Directory,
 	})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -111,12 +113,14 @@ func (s *Server) handlePatchLoop(w http.ResponseWriter, r *http.Request, loopID 
 		return
 	}
 	loop, err := s.Loops.Update(loopID, loops.UpdateLoop{
-		Name:     req.Name,
-		Prompt:   req.Prompt,
-		Schedule: req.Schedule,
-		Status:   req.Status,
-		Runtime:  req.Runtime,
-		ACPAgent: req.ACPAgent,
+		Name:            req.Name,
+		Prompt:          req.Prompt,
+		Schedule:        req.Schedule,
+		Status:          req.Status,
+		Runtime:         req.Runtime,
+		ACPAgent:        req.ACPAgent,
+		ReasoningEffort: req.ReasoningEffort,
+		Directory:       req.Directory,
 	})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -139,19 +143,23 @@ func (s *Server) handleListLoopRuns(w http.ResponseWriter, r *http.Request, loop
 }
 
 type loopRequest struct {
-	Name     string         `json:"name,omitempty"`
-	Prompt   string         `json:"prompt"`
-	Schedule loops.Schedule `json:"schedule"`
-	Status   string         `json:"status,omitempty"`
-	Runtime  string         `json:"runtime,omitempty"`
-	ACPAgent string         `json:"acp_agent,omitempty"`
+	Name            string         `json:"name,omitempty"`
+	Prompt          string         `json:"prompt"`
+	Schedule        loops.Schedule `json:"schedule"`
+	Status          string         `json:"status,omitempty"`
+	Runtime         string         `json:"runtime,omitempty"`
+	ACPAgent        string         `json:"acp_agent,omitempty"`
+	ReasoningEffort string         `json:"reasoning_effort,omitempty"`
+	Directory       string         `json:"directory,omitempty"`
 }
 
 type patchLoopRequest struct {
-	Name     *string         `json:"name,omitempty"`
-	Prompt   *string         `json:"prompt,omitempty"`
-	Schedule *loops.Schedule `json:"schedule,omitempty"`
-	Status   *string         `json:"status,omitempty"`
-	Runtime  *string         `json:"runtime,omitempty"`
-	ACPAgent *string         `json:"acp_agent,omitempty"`
+	Name            *string         `json:"name,omitempty"`
+	Prompt          *string         `json:"prompt,omitempty"`
+	Schedule        *loops.Schedule `json:"schedule,omitempty"`
+	Status          *string         `json:"status,omitempty"`
+	Runtime         *string         `json:"runtime,omitempty"`
+	ACPAgent        *string         `json:"acp_agent,omitempty"`
+	ReasoningEffort *string         `json:"reasoning_effort,omitempty"`
+	Directory       *string         `json:"directory,omitempty"`
 }

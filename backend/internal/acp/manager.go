@@ -72,6 +72,9 @@ type SpawnRequest struct {
 	Directory string
 	// Worktree runs the session on a disposable git worktree of Directory.
 	Worktree bool
+	// ReasoningEffort overrides the agent's configured reasoning effort for this
+	// session (empty keeps the agent default).
+	ReasoningEffort string
 	// SourceType/SourceID tag sessions created by backend automation such as loops.
 	SourceType string
 	SourceID   string
@@ -108,6 +111,10 @@ type SpawnResult struct {
 	ACPAgent  string `json:"acp_agent"`
 	Cwd       string `json:"cwd,omitempty"`
 	State     string `json:"state"`
+	// Session is the persisted row, handed to in-process callers (the HTTP
+	// create handler) so they don't re-read what Spawn just wrote. Excluded from
+	// the tool-facing JSON above.
+	Session storage.Session `json:"-"`
 }
 
 func NewManager(store Store, cfg Config, logger *log.Logger) *Manager {
@@ -168,6 +175,9 @@ func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd
 			Version: "0.1.0",
 		},
 		ClientCapabilities: &acpschema.ClientCapabilities{
+			Meta: map[string]any{
+				"terminal-auth": true,
+			},
 			FS: &acpschema.FileSystemCapabilities{
 				ReadTextFile:  true,
 				WriteTextFile: true,
@@ -231,6 +241,13 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	if !ok {
 		return SpawnResult{}, fmt.Errorf("acp agent %q is not configured", req.ACPAgent)
 	}
+	effort := configuredReasoningEffort(cfg.ReasoningEffort)
+	if req.ReasoningEffort != "" {
+		effort = req.ReasoningEffort
+	}
+	// Apply the effective effort (per-request override wins) to the agent config
+	// so configuredModeState pushes it to the agent, not just the session record.
+	cfg.ReasoningEffort = effort
 	// The session row is created first: its unique slug names the default
 	// directory and the worktree branch.
 	session, err := m.store.CreateSession(storage.CreateSession{
@@ -240,7 +257,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		Runtime:         storage.RuntimeACP,
 		ModelProvider:   req.ACPAgent,
 		Model:           strings.TrimSpace(cfg.Model),
-		ReasoningEffort: configuredReasoningEffort(cfg.ReasoningEffort),
+		ReasoningEffort: effort,
 		SourceType:      req.SourceType,
 		SourceID:        req.SourceID,
 		RuntimeRef: &storage.RuntimeRef{
@@ -306,6 +323,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		ACPAgent:  job.ACPAgent,
 		Cwd:       job.Cwd,
 		State:     StateIdle,
+		Session:   session,
 	}, nil
 }
 
@@ -668,6 +686,17 @@ func (m *Manager) List() []Job {
 		return out[i].UpdatedAt.After(out[j].UpdatedAt)
 	})
 	return out
+}
+
+// Agents lists the names of configured ACP agents, sorted, so the new-thread
+// UI can offer them as session runtimes.
+func (m *Manager) Agents() []string {
+	names := make([]string, 0, len(m.cfg.Agents))
+	for name := range m.cfg.Agents {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func (m *Manager) Close() {

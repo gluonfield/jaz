@@ -13,6 +13,14 @@ export function relativeTime(iso: string, now = Date.now()): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
+// Go marshals zero-value times as "0001-01-01T00:00:00Z" (a large negative
+// epoch) even with `omitempty`; treat those — and unset values — as no time.
+export function hasTime(iso?: string): boolean {
+  if (!iso) return false
+  const ms = new Date(iso).getTime()
+  return Number.isFinite(ms) && ms > 0
+}
+
 export function fullTime(iso: string): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return ''

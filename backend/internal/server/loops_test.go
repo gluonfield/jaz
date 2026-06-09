@@ -83,6 +83,67 @@ func TestLoopAPIAndManualRun(t *testing.T) {
 	}
 }
 
+func TestLoopAPICarriesReasoningEffortAndDirectory(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	manager := &fakeACPManager{spawnStore: store}
+	service := loops.NewService(store, NewLoopRunner(&Server{Store: store, ACP: manager}), nil)
+	srv := &Server{Store: store, Loops: service, ACP: manager}
+
+	create := httptest.NewRequest(http.MethodPost, "/v1/loops", strings.NewReader(`{
+		"prompt":"audit the repo",
+		"schedule":{"kind":"cron","expr":"0 9 * * *","timezone":"UTC"},
+		"runtime":"acp",
+		"acp_agent":"codex",
+		"reasoning_effort":"high",
+		"directory":"sub/dir"
+	}`))
+	create.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(res, create)
+	if res.Code != http.StatusOK {
+		t.Fatalf("create status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var created loops.Loop
+	if err := json.Unmarshal(res.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.ReasoningEffort != "high" || created.Directory != "sub/dir" {
+		t.Fatalf("created loop = %#v", created)
+	}
+
+	get := httptest.NewRequest(http.MethodGet, "/v1/loops/"+created.ID, nil)
+	res = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(res, get)
+	var detail struct {
+		Loop loops.Loop `json:"loop"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &detail); err != nil {
+		t.Fatal(err)
+	}
+	if detail.Loop.ReasoningEffort != "high" || detail.Loop.Directory != "sub/dir" {
+		t.Fatalf("fetched loop = %#v", detail.Loop)
+	}
+
+	run, err := service.RunNow(context.Background(), created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForACPSendContaining(t, manager, "You are running a scheduled Jaz loop.")
+	manager.mu.Lock()
+	spawned := manager.spawned
+	manager.mu.Unlock()
+	if spawned.ReasoningEffort != "high" || spawned.Directory != "sub/dir" {
+		t.Fatalf("acp spawn = %#v", spawned)
+	}
+	if spawned.SourceID != run.ID {
+		t.Fatalf("spawn source id = %q, run id = %q", spawned.SourceID, run.ID)
+	}
+}
+
 func TestNativeLoopRunCreatesFreshThreadWithMetadata(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {

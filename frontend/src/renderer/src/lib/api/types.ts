@@ -35,6 +35,46 @@ export interface Session {
   updated_at: string
 }
 
+export interface LoopSchedule {
+  kind: string
+  expr: string
+  timezone: string
+}
+
+export interface Loop {
+  id: string
+  name: string
+  prompt: string
+  schedule: LoopSchedule
+  status: 'active' | 'paused' | 'deleted'
+  runtime: 'native' | 'acp'
+  acp_agent?: string
+  reasoning_effort?: string
+  directory?: string
+  next_run_at?: string
+  last_run_at?: string
+  last_run_id?: string
+  last_run_thread_id?: string
+  last_run_status?: string
+  last_error?: string
+  created_at: string
+  updated_at: string
+}
+
+export type LoopRunStatus = 'starting' | 'running' | 'ok' | 'error' | 'cancelled' | 'skipped'
+
+export interface LoopRun {
+  id: string
+  loop_id: string
+  thread_id?: string
+  scheduled_for: string
+  started_at?: string
+  finished_at?: string
+  status: LoopRunStatus
+  error?: string
+  created_at: string
+}
+
 export interface ActivityEntry {
   id?: string
   kind: string

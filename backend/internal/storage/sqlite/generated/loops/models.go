@@ -26,6 +26,8 @@ type Loop struct {
 	LastError       sql.NullString `json:"last_error"`
 	CreatedAtMs     int64          `json:"created_at_ms"`
 	UpdatedAtMs     int64          `json:"updated_at_ms"`
+	ReasoningEffort string         `json:"reasoning_effort"`
+	Directory       string         `json:"directory"`
 }
 
 type LoopRun struct {

@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/wins/jaz/backend/internal/pathsafe"
 )
 
 // prepareSessionDir resolves where a spawned session works. An explicit
@@ -23,7 +25,7 @@ func (m *Manager) prepareSessionDir(req SpawnRequest, cfg AgentConfig, slug stri
 	var abs string
 	switch {
 	case directory != "":
-		if abs, err = safePath(workspace, directory); err != nil {
+		if abs, err = pathsafe.Resolve(workspace, directory); err != nil {
 			return "", err
 		}
 		if err := os.MkdirAll(abs, 0o755); err != nil {
@@ -36,7 +38,7 @@ func (m *Manager) prepareSessionDir(req SpawnRequest, cfg AgentConfig, slug stri
 	case req.Worktree:
 		return "", fmt.Errorf("worktree requires a directory pointing at a git repository")
 	default:
-		if abs, err = safePath(workspace, slug); err != nil {
+		if abs, err = pathsafe.Resolve(workspace, slug); err != nil {
 			return "", err
 		}
 		if err := os.MkdirAll(abs, 0o755); err != nil {
@@ -96,30 +98,10 @@ func (m *Manager) resolveCwd(configured string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if !isWithin(workspace, abs) {
+	if !pathsafe.Within(workspace, abs) {
 		return "", fmt.Errorf("acp cwd escapes workspace: %s", cwd)
 	}
 	return abs, nil
-}
-
-func safePath(root, name string) (string, error) {
-	rootAbs, err := filepath.Abs(root)
-	if err != nil {
-		return "", err
-	}
-	abs := filepath.Join(rootAbs, name)
-	if filepath.IsAbs(name) {
-		abs = filepath.Clean(name)
-	}
-	if !isWithin(rootAbs, abs) {
-		return "", fmt.Errorf("path escapes workspace: %s", name)
-	}
-	return abs, nil
-}
-
-func isWithin(root, path string) bool {
-	rel, err := filepath.Rel(root, path)
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func firstNonEmpty(values ...string) string {

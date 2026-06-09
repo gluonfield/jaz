@@ -17,6 +17,7 @@ import type {
   ChatMessage,
   SessionEvent,
 } from '@/lib/api/types'
+import { agentLabel } from '@/lib/agentLabel'
 import { relativeTime } from '@/lib/format/time'
 import { MessageMarkdown } from './MessageMarkdown'
 import { ThinkingBlock } from './ThinkingBlock'
@@ -132,16 +133,6 @@ function hasVisibleACPSurface(event: SessionEvent): boolean {
   )
 }
 
-function agentLabel(value: string | undefined): string {
-  const normalizedAgent = (value || 'agent').trim()
-  if (!normalizedAgent) return 'Agent'
-  if (normalizedAgent.toLowerCase() === 'codex') return 'Codex'
-  return normalizedAgent
-    .split(/[_\s-]+/)
-    .filter(Boolean)
-    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
-    .join(' ')
-}
 
 function childLabel(event: SessionEvent): string {
   const acp = event.acp
