@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
+import type { ComposerSendOptions } from '@/components/session/Composer'
 import { useToast } from '@/components/ui/toast'
 import { mutateSessionQueue, type QueueMutation } from '@/lib/api/sessions'
 import type { Session, SessionMessages } from '@/lib/api/types'
@@ -16,7 +17,7 @@ export function useSessionQueue({
   session?: Session
   acpState?: string
   streaming: boolean
-  onSend: (text: string, options?: { planRequested?: boolean }) => void
+  onSend: (text: string, options?: ComposerSendOptions) => void
 }) {
   const queryClient = useQueryClient()
   const toast = useToast()
@@ -46,13 +47,17 @@ export function useSessionQueue({
     toast(`Queue update failed: ${(error as Error).message}`, 'danger')
   }, [toast])
 
-  const send = useCallback((text: string, options: { planRequested?: boolean } = {}) => {
+  const send = useCallback((text: string, options: ComposerSendOptions = {}) => {
     if (running) {
+      if (options.files?.length) {
+        toast("Attachments can't be queued.", 'danger')
+        return
+      }
       void mutateQueue({ op: 'append', text }, [...queuedPrompts, text]).catch(showQueueError)
       return
     }
     onSend(text, options)
-  }, [mutateQueue, onSend, queuedPrompts, running, showQueueError])
+  }, [mutateQueue, onSend, queuedPrompts, running, showQueueError, toast])
 
   const deletePrompt = useCallback((index: number) => {
     void mutateQueue(

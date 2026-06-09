@@ -26,6 +26,10 @@ type MessageAppender interface {
 	AppendMessages(id string, messages ...provider.Message) error
 }
 
+type MessageRecordAppender interface {
+	AppendMessageRecords(id string, messages ...Message) error
+}
+
 type ActivityStore interface {
 	LoadActivity(id string) ([]ActivityEntry, error)
 	SaveActivity(id string, activity []ActivityEntry) error

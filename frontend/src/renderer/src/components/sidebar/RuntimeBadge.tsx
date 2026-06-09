@@ -1,7 +1,9 @@
+import { agentLabel } from '@/lib/agentLabel'
 import type { Session } from '@/lib/api/types'
 
-// `compact` drops the model and shows only the provider/agent name — used in
-// the cramped sidebar rows, where the full model still surfaces on hover.
+// Runtime tag: a pill carrying the *identity* (the ACP agent, prettified, or
+// the native provider) tinted by runtime, with the model as muted mono detail
+// beside it. `compact` (sidebar) drops the model — it still surfaces on hover.
 export function RuntimeBadge({
   session,
   className = '',
@@ -18,28 +20,32 @@ export function RuntimeBadge({
   const fullModelLabel = session.model
     ? withReasoningEffort(session.model, session.reasoning_effort)
     : ''
-  // Sidebar rows are cramped, so they clamp + truncate; roomier spots (the
-  // titlebar) opt out and show the full provider · model label.
-  const clamp = truncate ? 'min-w-0 max-w-[11rem] truncate' : 'whitespace-nowrap'
-  const base = `inline-block ${clamp} rounded px-1.5 py-px font-mono text-[11px]`
-  if (session.runtime === 'acp') {
-    const agent = session.runtime_ref?.agent ?? 'acp'
-    return (
-      <span
-        title={fullModelLabel ? `${agent}: ${fullModelLabel}` : agent}
-        className={`${base} text-accent-strong bg-accent-soft ${className}`}
-      >
-        {!compact && modelLabel ? `${agent} · ${modelLabel}` : agent}
-      </span>
-    )
-  }
-  const provider = session.model_provider || 'native'
+  const isACP = session.runtime === 'acp'
+  // Agent names arrive as slugs (codex, claude_code); prettify so the tag reads
+  // "Codex" / "Claude Code" rather than a raw identifier.
+  const name = isACP ? agentLabel(session.runtime_ref?.agent) : session.model_provider || 'native'
+  const title = fullModelLabel ? `${name} · ${fullModelLabel}` : name
+  // The accent is reserved for agent-backed sessions; native stays neutral.
+  const pillTone = isACP ? 'bg-accent-soft text-accent-strong' : 'bg-surface-2 text-ink-2'
+
   return (
-    <span
-      title={fullModelLabel ? `${provider}: ${fullModelLabel}` : provider}
-      className={`${base} text-ink-2 bg-surface-2 ${className}`}
-    >
-      {modelLabel ? `${provider} · ${modelLabel}` : provider}
+    <span title={title} className={`inline-flex min-w-0 items-center gap-1.5 ${className}`}>
+      <span
+        className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] leading-none font-medium ${pillTone} ${
+          truncate ? 'max-w-[11rem] truncate' : ''
+        }`}
+      >
+        {name}
+      </span>
+      {!compact && modelLabel ? (
+        <span
+          className={`font-mono text-[11px] text-ink-3 ${
+            truncate ? 'min-w-0 truncate' : 'whitespace-nowrap'
+          }`}
+        >
+          {modelLabel}
+        </span>
+      ) : null}
     </span>
   )
 }

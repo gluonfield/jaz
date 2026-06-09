@@ -55,27 +55,31 @@ func stripTransientSystem(messages []provider.Message, reasoning map[int]string,
 	return out, remapped
 }
 
-func (s *Server) streamNativeSession(w http.ResponseWriter, flusher http.Flusher, r *http.Request, session storage.Session, message string, voiceMode bool) {
+func (s *Server) streamNativeSession(w http.ResponseWriter, flusher http.Flusher, r *http.Request, session storage.Session, message string, attachments []storage.Attachment, voiceMode bool) {
 	clientCtx := r.Context()
 	send := func(event agent.StreamEvent) {
 		if clientCtx.Err() == nil {
 			writeSSE(w, flusher, event)
 		}
 	}
-	if s.runNativeSession(context.WithoutCancel(clientCtx), session, message, voiceMode, send) == storage.StatusIdle {
+	if s.runNativeSessionWithAttachments(context.WithoutCancel(clientCtx), session, message, attachments, voiceMode, send) == storage.StatusIdle {
 		s.drainQueueSoon(session.ID)
 	}
 }
 
 func (s *Server) runNativeSession(ctx context.Context, session storage.Session, message string, voiceMode bool, send func(agent.StreamEvent)) string {
-	return s.runNativeSessionWithClaim(ctx, session, message, voiceMode, send, false)
+	return s.runNativeSessionWithClaim(ctx, session, message, nil, voiceMode, send, false)
+}
+
+func (s *Server) runNativeSessionWithAttachments(ctx context.Context, session storage.Session, message string, attachments []storage.Attachment, voiceMode bool, send func(agent.StreamEvent)) string {
+	return s.runNativeSessionWithClaim(ctx, session, message, attachments, voiceMode, send, false)
 }
 
 func (s *Server) runClaimedNativeSession(ctx context.Context, session storage.Session, message string) string {
-	return s.runNativeSessionWithClaim(ctx, session, message, false, nil, true)
+	return s.runNativeSessionWithClaim(ctx, session, message, nil, false, nil, true)
 }
 
-func (s *Server) runNativeSessionWithClaim(ctx context.Context, session storage.Session, message string, voiceMode bool, send func(agent.StreamEvent), claimed bool) string {
+func (s *Server) runNativeSessionWithClaim(ctx context.Context, session storage.Session, message string, attachments []storage.Attachment, voiceMode bool, send func(agent.StreamEvent), claimed bool) string {
 	if send == nil {
 		send = func(agent.StreamEvent) {}
 	}
@@ -93,7 +97,7 @@ func (s *Server) runNativeSessionWithClaim(ctx context.Context, session storage.
 	s.turnCancels.Store(session.ID, cancelTurn)
 	defer s.turnCancels.Delete(session.ID)
 
-	messages, transient, err := s.nativeRequestMessages(session.ID, message, voiceMode)
+	messages, transient, modelMessage, err := s.nativeRequestMessages(session.ID, message, attachments, voiceMode)
 	if err != nil {
 		send(agent.StreamEvent{Type: agent.StreamError, Error: err.Error()})
 		send(agent.StreamEvent{Type: agent.StreamDone})
@@ -112,7 +116,7 @@ func (s *Server) runNativeSessionWithClaim(ctx context.Context, session storage.
 		Messages:        messages,
 	}) {
 		if len(event.Messages) > 0 {
-			toSave, reasoning := stripTransientSystem(event.Messages, event.ReasoningByMessage, transient)
+			toSave, reasoning := stripTransientSystem(cleanNativeSnapshotUser(event.Messages, modelMessage, message), event.ReasoningByMessage, transient)
 			var err error
 			if store, ok := s.Store.(reasoningMessageStore); ok && len(reasoning) > 0 {
 				err = store.SaveMessagesWithReasoning(session.ID, toSave, reasoning)
@@ -232,10 +236,10 @@ func (s *Server) agentDefaults() (agentsettings.AgentDefaults, bool) {
 	return defaults, true
 }
 
-func (s *Server) nativeRequestMessages(sessionID, message string, voiceMode bool) ([]provider.Message, []string, error) {
+func (s *Server) nativeRequestMessages(sessionID, message string, attachments []storage.Attachment, voiceMode bool) ([]provider.Message, []string, string, error) {
 	messages, err := s.Store.LoadMessages(sessionID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, "", err
 	}
 	// The system prompt is derived fresh for every turn (skills, SOUL.md and
 	// friends are re-read from disk) and never persisted. Older sessions stored
@@ -254,9 +258,25 @@ func (s *Server) nativeRequestMessages(sessionID, message string, voiceMode bool
 		messages = append(messages, provider.SystemMessage(voiceModeNote))
 		transient = append(transient, voiceModeNote)
 	}
-	messages = append(messages, provider.UserMessage(message))
-	if err := s.Store.AppendMessages(sessionID, provider.UserMessage(message)); err != nil {
-		return nil, nil, err
+	modelMessage := messageWithAttachmentLinks(message, attachments)
+	messages = append(messages, provider.UserMessage(modelMessage))
+	if err := appendUserMessage(s.Store, sessionID, message, attachments); err != nil {
+		return nil, nil, "", err
 	}
-	return messages, transient, nil
+	return messages, transient, modelMessage, nil
+}
+
+func cleanNativeSnapshotUser(messages []provider.Message, modelMessage, displayMessage string) []provider.Message {
+	if modelMessage == displayMessage {
+		return messages
+	}
+	out := append([]provider.Message(nil), messages...)
+	for i := len(out) - 1; i >= 0; i-- {
+		if provider.MessageRole(out[i]) != "user" || provider.MessageContent(out[i]) != modelMessage {
+			continue
+		}
+		out[i] = provider.UserMessage(displayMessage)
+		return out
+	}
+	return out
 }

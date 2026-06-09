@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { motion } from 'motion/react'
 import { useState } from 'react'
-import { ComposerCard } from '@/components/session/Composer'
+import { ComposerCard, type ComposerSendOptions } from '@/components/session/Composer'
 import { DirectoryPicker, RuntimeSelect } from '@/components/session/NewThreadControls'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { PixelField } from '@/components/ui/PixelField'
@@ -56,7 +56,14 @@ function NewSessionPage() {
     }
   }
 
-  const handleSend = (text: string) => startThread(text.trim(), (id) => setPendingMessage(id, text))
+  const handleSend = (text: string, options: ComposerSendOptions = {}) =>
+    startThread(text.trim(), (id) =>
+      setPendingMessage(id, {
+        text,
+        planRequested: runtime !== 'native' && Boolean(options.planRequested),
+        files: options.files ?? [],
+      }),
+    )
   const handleVoice = () => startThread(undefined, (id) => setPendingVoice(id))
 
   return (
@@ -91,6 +98,7 @@ function NewSessionPage() {
             autoFocus
             translucent
             placeholder="Ask anything, or hand your assistant a task…"
+            planAvailable={runtime !== 'native'}
             leftSlot={
               agents.length > 0 ? (
                 <>

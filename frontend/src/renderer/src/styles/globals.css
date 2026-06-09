@@ -38,7 +38,7 @@
   --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', monospace;
 
-  --radius-control: 8px;
+  --radius-control: 10px;
   --radius-card: 10px;
 
   --z-dropdown: 10;

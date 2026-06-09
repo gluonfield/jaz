@@ -1,20 +1,31 @@
-import { ArchiveRestore, ArrowLeft, Bot, Plug, Search, Sparkles, SlidersHorizontal } from 'lucide-react'
+import {
+  ArchiveRestore,
+  ArrowLeft,
+  Bot,
+  Keyboard,
+  Plug,
+  Search,
+  Sparkles,
+  SlidersHorizontal,
+} from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AgentSettings } from './AgentSettings'
 import { ArchivedThreadsSettings } from './ArchivedThreadsSettings'
 import { GeneralSettings } from './GeneralSettings'
+import { KeyboardShortcutsSettings } from './KeyboardShortcutsSettings'
 import { MCPSettings } from './MCPSettings'
 import { PersonalizationSettings } from './PersonalizationSettings'
 
-type Section = 'general' | 'personalization' | 'mcp' | 'agents' | 'archived'
+type Section = 'general' | 'personalization' | 'keyboard' | 'mcp' | 'agents' | 'archived'
 
 type NavItem = { id: Section; label: string; icon: typeof Bot; fullHeight?: boolean }
 
 const NAV: NavItem[] = [
   { id: 'general', label: 'General', icon: SlidersHorizontal },
   { id: 'personalization', label: 'Personalization', icon: Sparkles, fullHeight: true },
+  { id: 'keyboard', label: 'Keyboard shortcuts', icon: Keyboard },
   { id: 'mcp', label: 'MCP servers', icon: Plug },
   { id: 'agents', label: 'Agents (ACP)', icon: Bot },
   { id: 'archived', label: 'Archived threads', icon: ArchiveRestore },
@@ -154,6 +165,8 @@ function SectionContent({ section }: { section: Section }) {
   switch (section) {
     case 'general':
       return <GeneralSettings />
+    case 'keyboard':
+      return <KeyboardShortcutsSettings />
     case 'mcp':
       return <MCPSettings />
     case 'agents':

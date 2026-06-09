@@ -1,7 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '../query/keys'
-import { get, post } from './client'
-import type { Session, SessionMessages } from './types'
+import { apiBaseUrl, ApiError, get, post } from './client'
+import type { Attachment, Session, SessionMessages } from './types'
 
 export function createSession(
   input: {
@@ -13,6 +13,27 @@ export function createSession(
   } = {},
 ): Promise<Session> {
   return post<Session>('/v1/sessions', input)
+}
+
+export async function uploadSessionAttachment(sessionId: string, file: File, signal?: AbortSignal): Promise<Attachment> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch(`${apiBaseUrl()}/v1/sessions/${sessionId}/attachments`, {
+    method: 'POST',
+    body: form,
+    signal,
+  })
+  if (!res.ok) {
+    let message = `${res.status} ${res.statusText}`
+    try {
+      const body = (await res.json()) as { error?: string }
+      if (body.error) message = body.error
+    } catch {
+      // keep status text
+    }
+    throw new ApiError(res.status, message)
+  }
+  return (await res.json()) as Attachment
 }
 
 // Configured ACP agents the new-thread page can offer as a runtime. Resilient
