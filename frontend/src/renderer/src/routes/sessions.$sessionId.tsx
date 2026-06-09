@@ -492,7 +492,9 @@ function SessionPage() {
 
   return (
     <div className="relative h-full">
-      {titlebarSlot ? createPortal(<RuntimeBadge session={session} />, titlebarSlot) : null}
+      {titlebarSlot
+        ? createPortal(<RuntimeBadge session={session} truncate={false} />, titlebarSlot)
+        : null}
 
       <div
         ref={scrollRef}

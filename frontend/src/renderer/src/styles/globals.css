@@ -6,20 +6,21 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  /* ground + surfaces — pure white ground, neutral greys (no hue) */
-  --color-bg: oklch(1 0 0);
-  --color-surface: oklch(0.973 0 0);
-  --color-surface-2: oklch(0.946 0 0);
+  /* ground + surfaces — warm ivory, clearly off-white; surfaces deepen as they
+   * come forward */
+  --color-bg: oklch(0.962 0.009 85);
+  --color-surface: oklch(0.94 0.011 85);
+  --color-surface-2: oklch(0.907 0.013 85);
 
-  /* text hierarchy — neutral */
-  --color-ink: oklch(0.27 0 0);
-  --color-ink-2: oklch(0.5 0 0);
-  --color-ink-3: oklch(0.56 0 0);
+  /* text hierarchy — warm-neutral */
+  --color-ink: oklch(0.27 0.008 85);
+  --color-ink-2: oklch(0.5 0.008 85);
+  --color-ink-3: oklch(0.57 0.009 85);
 
   /* brand — monochrome: primary is near-black ink; clay accent kept for agent badges */
-  --color-primary: oklch(0.32 0 0);
-  --color-primary-strong: oklch(0.2 0 0);
-  --color-primary-soft: oklch(0.915 0 0);
+  --color-primary: oklch(0.32 0.008 85);
+  --color-primary-strong: oklch(0.2 0.008 85);
+  --color-primary-soft: oklch(0.878 0.014 85);
   /* text/icons that sit on a primary fill */
   --color-on-primary: oklch(1 0 0);
   --color-accent: oklch(0.62 0.13 55);
@@ -32,7 +33,7 @@
   --color-danger: oklch(0.55 0.19 25);
   --color-danger-soft: oklch(0.95 0.025 25);
 
-  --color-border: oklch(0.9 0 0);
+  --color-border: oklch(0.855 0.011 85);
 
   --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', monospace;

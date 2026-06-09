@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { Plus, Settings, SquarePen } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useState } from 'react'
+import { type PointerEvent as ReactPointerEvent, useState } from 'react'
 import { LoopModal } from '@/components/loops/LoopModal'
 import { IconButton } from '@/components/ui/IconButton'
 import { loopsQuery } from '@/lib/api/loops'
@@ -90,12 +90,27 @@ function LoopsSection() {
   )
 }
 
-export function Sidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
+export function Sidebar({
+  width,
+  resizing,
+  onResizeStart,
+  onResizeReset,
+  onOpenSettings,
+}: {
+  width: number
+  resizing?: boolean
+  onResizeStart: (e: ReactPointerEvent) => void
+  onResizeReset: () => void
+  onOpenSettings: () => void
+}) {
   const sessions = useQuery(sidebarSessionsQuery)
   const visibleSessions = sessions.data?.slice(0, SIDEBAR_SESSION_LIMIT) ?? []
 
   return (
-    <aside className="flex h-full w-[264px] shrink-0 flex-col border-r border-border bg-surface">
+    <aside
+      className="relative flex h-full shrink-0 flex-col border-r border-border bg-surface"
+      style={{ width }}
+    >
       {/* draggable titlebar strip; traffic lights live here on macOS */}
       <div className="titlebar-drag h-[52px] shrink-0" />
 
@@ -162,6 +177,22 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
           <Settings size={15} className="text-ink-2" />
           <span className="flex-1 text-left">Settings</span>
         </button>
+      </div>
+
+      {/* drag the right edge to resize; double-click resets to the default width */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize sidebar"
+        onPointerDown={onResizeStart}
+        onDoubleClick={onResizeReset}
+        className="group absolute inset-y-0 right-0 z-10 flex w-2 cursor-col-resize touch-none justify-end"
+      >
+        <span
+          className={`h-full w-px transition-colors duration-150 group-hover:bg-primary/40 ${
+            resizing ? 'bg-primary/60' : 'bg-transparent'
+          }`}
+        />
       </div>
     </aside>
   )
