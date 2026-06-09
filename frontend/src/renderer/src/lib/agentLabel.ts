@@ -1,4 +1,4 @@
-// Prettifies an ACP agent name for display, e.g. "claude_code" → "Claude Code".
+// Prettifies an ACP agent name for display, e.g. "claude" → "Claude".
 export function agentLabel(value: string | undefined): string {
   const normalizedAgent = (value || 'agent').trim()
   if (!normalizedAgent) return 'Agent'

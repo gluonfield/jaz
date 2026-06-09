@@ -345,7 +345,7 @@ func TestManagerFailsWhenConfiguredReasoningEffortIsUnsupported(t *testing.T) {
 	}
 }
 
-func TestManagerUsesClaudeCodeEffortConfigOption(t *testing.T) {
+func TestManagerUsesClaudeEffortConfigOption(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -354,15 +354,18 @@ func TestManagerUsesClaudeCodeEffortConfigOption(t *testing.T) {
 		Root:      t.TempDir(),
 		Workspace: t.TempDir(),
 		Agents: map[string]acp.AgentConfig{
-			"claude_code": {
+			"claude": {
 				Command:         os.Args[0],
 				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
+				Model:           "default",
 				ReasoningEffort: "xhigh",
 				Env: map[string]string{
-					"JAZ_FAKE_ACP_AGENT":            "1",
-					"JAZ_FAKE_ACP_SET_CONFIG":       "1",
-					"JAZ_FAKE_ACP_EXPECT_CONFIG_ID": "effort",
-					"JAZ_FAKE_ACP_EXPECT_EFFORT":    "xhigh",
+					"JAZ_FAKE_ACP_AGENT":               "1",
+					"JAZ_FAKE_ACP_MODELS":              "default,sonnet",
+					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG": "default",
+					"JAZ_FAKE_ACP_SET_CONFIG":          "1",
+					"JAZ_FAKE_ACP_EXPECT_CONFIG_ID":    "effort",
+					"JAZ_FAKE_ACP_EXPECT_EFFORT":       "xhigh",
 				},
 			},
 		},
@@ -370,7 +373,7 @@ func TestManagerUsesClaudeCodeEffortConfigOption(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "claude_code", Slug: "claude-effort"})
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "claude", Slug: "claude-effort"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -379,8 +382,52 @@ func TestManagerUsesClaudeCodeEffortConfigOption(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if session.ModelProvider != "claude_code" || session.ReasoningEffort != "xhigh" {
+	if session.ModelProvider != "claude" || session.Model != "default" || session.ReasoningEffort != "xhigh" {
 		t.Fatalf("unexpected session metadata %#v", session)
+	}
+}
+
+func TestManagerCanonicalizesClaudeAliasBeforeSettingModel(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := "claude-fable-5[1m]"
+	manager := acp.NewManager(store, acp.Config{
+		Root:      t.TempDir(),
+		Workspace: t.TempDir(),
+		Agents: map[string]acp.AgentConfig{
+			"claude": {
+				Command:         os.Args[0],
+				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
+				Model:           model,
+				ReasoningEffort: "xhigh",
+				Env: map[string]string{
+					"JAZ_FAKE_ACP_AGENT":               "1",
+					"JAZ_FAKE_ACP_MODELS":              "default," + model,
+					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG": model,
+					"JAZ_FAKE_ACP_SET_CONFIG":          "1",
+					"JAZ_FAKE_ACP_EXPECT_CONFIG_ID":    "effort",
+					"JAZ_FAKE_ACP_EXPECT_EFFORT":       "xhigh",
+				},
+			},
+		},
+	}, log.New(io.Discard))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	legacyClaudeName := strings.ReplaceAll("claude-code", "-", "_")
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: legacyClaudeName, Slug: "claude-fable"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	session, err := store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spawned.ACPAgent != "claude" || session.ModelProvider != "claude" || session.RuntimeRef.Agent != "claude" || session.Model != model {
+		t.Fatalf("unexpected session metadata spawned=%#v session=%#v", spawned, session)
 	}
 }
 

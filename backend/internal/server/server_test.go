@@ -395,7 +395,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Native.ModelProvider != "openrouter" || got.Native.Model != "openai/gpt-5.4-mini" || strings.Join(got.Agents, ",") != "claude_code,codex" {
+	if got.Native.ModelProvider != "openrouter" || got.Native.Model != "openai/gpt-5.4-mini" || strings.Join(got.Agents, ",") != "claude,codex" {
 		t.Fatalf("unexpected seeded settings %#v", got)
 	}
 	if !hasNativeProvider(got.Providers, "openai", "https://api.openai.com/v1") ||
@@ -413,7 +413,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		"native":{"model_provider":"openrouter","model":"openai/gpt-5.4-mini","reasoning_effort":"medium"},
 		"acp":{
 			"codex":{"enabled":true,"command":"/opt/jaz/codex-acp -c 'sandbox_mode=\"danger-full-access\"'","model":"gpt-5.5","reasoning_effort":"high"},
-			"claude_code":{"enabled":false,"command":"npx -y @agentclientprotocol/claude-agent-acp@0.39.0","model":"default","reasoning_effort":"medium"}
+			"claude":{"enabled":false,"command":"npx -y @agentclientprotocol/claude-agent-acp@0.43.0","model":"default","reasoning_effort":"medium"}
 		}
 	}`))
 	putReq.Header.Set("Content-Type", "application/json")
@@ -484,7 +484,7 @@ func TestAgentSettingsAPIRoundTripsConfiguredACPAgent(t *testing.T) {
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(got.Agents, ",") != "claude_code,codex,local_helper" {
+	if strings.Join(got.Agents, ",") != "claude,codex,local_helper" {
 		t.Fatalf("agents = %#v", got.Agents)
 	}
 	if got.ACP["local_helper"].Command != "/opt/jaz/local-helper --stdio" || got.ACP["local_helper"].Model != "helper-model" {
@@ -495,7 +495,7 @@ func TestAgentSettingsAPIRoundTripsConfiguredACPAgent(t *testing.T) {
 		"native":{"model_provider":"openrouter","model":"openai/gpt-5.4-mini","reasoning_effort":"medium"},
 		"acp":{
 			"codex":{"enabled":false,"command":"codex-acp","model":"gpt-5.5","reasoning_effort":"medium"},
-			"claude_code":{"enabled":false,"command":"npx -y @agentclientprotocol/claude-agent-acp@0.39.0","model":"default","reasoning_effort":"medium"},
+			"claude":{"enabled":false,"command":"npx -y @agentclientprotocol/claude-agent-acp@0.43.0","model":"default","reasoning_effort":"medium"},
 			"local_helper":{"enabled":true,"command":"/opt/jaz/local-helper --stdio","model":"helper-model","reasoning_effort":"low"}
 		}
 	}`))
@@ -560,7 +560,7 @@ func TestAgentSettingsRejectEnabledACPWithoutCommand(t *testing.T) {
 		"native":{"model_provider":"openrouter","model":"openai/gpt-5.4-mini"},
 		"acp":{
 			"codex":{"enabled":true,"command":""},
-			"claude_code":{"enabled":false,"command":""}
+			"claude":{"enabled":false,"command":""}
 		}
 	}`))
 	req.Header.Set("Content-Type", "application/json")

@@ -169,14 +169,28 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				ConfigID  string `json:"configId"`
 				Value     string `json:"value"`
 			}
+			if err := json.Unmarshal(msg.Params, &req); err != nil || req.SessionID != "fake-session" {
+				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("expected configured option", nil))
+				_ = conn.Send(context.Background(), resp)
+				continue
+			}
 			wantConfigID := os.Getenv("JAZ_FAKE_ACP_EXPECT_CONFIG_ID")
 			if wantConfigID == "" {
 				wantConfigID = "reasoning_effort"
 			}
 			want := os.Getenv("JAZ_FAKE_ACP_EXPECT_EFFORT")
-			if err := json.Unmarshal(msg.Params, &req); err != nil ||
-				req.SessionID != "fake-session" ||
-				req.ConfigID != wantConfigID ||
+			if req.ConfigID == "model" {
+				wantModel := os.Getenv("JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG")
+				if wantModel != "" && req.Value != wantModel {
+					resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("expected configured model option", nil))
+					_ = conn.Send(context.Background(), resp)
+					continue
+				}
+				currentModel = req.Value
+				sendResult(conn, msg, map[string]any{})
+				continue
+			}
+			if req.ConfigID != wantConfigID ||
 				(want != "" && req.Value != want) {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("expected configured reasoning effort", nil))
 				_ = conn.Send(context.Background(), resp)

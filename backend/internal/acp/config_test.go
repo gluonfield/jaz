@@ -88,7 +88,7 @@ func TestProcessEnvUsesUserHomeForClaudeCode(t *testing.T) {
 	t.Setenv("USER", "wins")
 
 	root := t.TempDir()
-	env := NewManager(nil, Config{Root: root}, nil).processEnv("claude_code", AgentConfig{})
+	env := NewManager(nil, Config{Root: root}, nil).processEnv("claude", AgentConfig{})
 
 	if env["HOME"] != home {
 		t.Fatalf("HOME = %q, want %q", env["HOME"], home)
@@ -127,7 +127,7 @@ func TestProcessEnvHonorsConfiguredClaudeHome(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
 	root := t.TempDir()
-	env := NewManager(nil, Config{Root: root}, nil).processEnv("claude_code", AgentConfig{
+	env := NewManager(nil, Config{Root: root}, nil).processEnv("claude", AgentConfig{
 		Env: map[string]string{"HOME": home},
 	})
 

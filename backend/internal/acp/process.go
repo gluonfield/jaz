@@ -60,6 +60,7 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 }
 
 func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
+	name = CanonicalAgentName(name)
 	env := map[string]string{}
 	for _, key := range []string{"PATH", "CODEX_HOME"} {
 		if value := os.Getenv(key); value != "" {
@@ -85,7 +86,7 @@ func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
 			delete(env, key)
 		}
 	}
-	if name == AgentClaudeCode {
+	if name == AgentClaude {
 		configuredHome := strings.TrimSpace(env["HOME"])
 		preserveHostEnv(env, []string{
 			"ANTHROPIC_API_KEY",
