@@ -12,6 +12,7 @@ func TestMetadataPromptUsesFreshRunMetadataOnly(t *testing.T) {
 		ID:              "loop-1",
 		Name:            "Morning check",
 		Prompt:          "Check overnight alerts.",
+		MemoryPath:      "/tmp/jaz/automations/morning-check/memory.md",
 		LastRunID:       "run-prev",
 		LastRunThreadID: "thread-prev",
 		LastRunStatus:   RunStatusOK,
@@ -24,6 +25,9 @@ func TestMetadataPromptUsesFreshRunMetadataOnly(t *testing.T) {
 	for _, want := range []string{
 		"Loop name: Morning check",
 		"Run ID: run-now",
+		"Memory file: /tmp/jaz/automations/morning-check/memory.md",
+		"read the memory file if it exists",
+		"create or update the memory file with concise Markdown",
 		"thread_id=thread-prev",
 		"Check overnight alerts.",
 	} {

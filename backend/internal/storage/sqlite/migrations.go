@@ -18,7 +18,7 @@ func (s *Store) migrate() error {
 	if err := runMigrations(s.db); err != nil {
 		return err
 	}
-	_, err := s.db.Exec(`PRAGMA user_version = 2`)
+	_, err := s.db.Exec(`PRAGMA user_version = 4`)
 	return err
 }
 

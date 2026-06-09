@@ -28,6 +28,7 @@ type Loop struct {
 	UpdatedAtMs     int64          `json:"updated_at_ms"`
 	ReasoningEffort string         `json:"reasoning_effort"`
 	Directory       string         `json:"directory"`
+	MemoryPath      string         `json:"memory_path"`
 }
 
 type LoopRun struct {

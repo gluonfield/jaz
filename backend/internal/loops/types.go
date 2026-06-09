@@ -45,6 +45,7 @@ type Loop struct {
 	ACPAgent        string    `json:"acp_agent,omitempty"`
 	ReasoningEffort string    `json:"reasoning_effort,omitempty"`
 	Directory       string    `json:"directory,omitempty"`
+	MemoryPath      string    `json:"memory_path,omitempty"`
 	NextRunAt       time.Time `json:"next_run_at,omitempty"`
 	LastRunAt       time.Time `json:"last_run_at,omitempty"`
 	LastRunID       string    `json:"last_run_id,omitempty"`
