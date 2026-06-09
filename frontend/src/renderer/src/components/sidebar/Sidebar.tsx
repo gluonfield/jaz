@@ -65,11 +65,10 @@ function LoopsSection() {
         </button>
       ) : (
         <div className="flex flex-col gap-px">
-          <AnimatePresence initial={false}>
+          <AnimatePresence initial={false} mode="popLayout">
             {visibleLoops.map((loop) => (
               <motion.div
                 key={loop.id}
-                layout
                 initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -8 }}
@@ -129,11 +128,10 @@ export function Sidebar() {
             <p className="px-2.5 py-1 text-[13px] text-ink-3">No sessions yet</p>
           ) : (
             <div className="flex flex-col gap-px">
-              <AnimatePresence initial={false}>
+              <AnimatePresence initial={false} mode="popLayout">
                 {visibleSessions.map((item) => (
                   <motion.div
                     key={item.session.id}
-                    layout
                     initial={{ opacity: 0, x: -8 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -8 }}
