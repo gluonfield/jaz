@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { Repeat } from 'lucide-react'
 import { useState } from 'react'
+import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { createLoop, updateLoop } from '@/lib/api/loops'
 import { acpAgentsQuery } from '@/lib/api/sessions'
@@ -65,21 +66,17 @@ export function LoopModal({
             {save.isError ? (save.error as Error).message : ''}
           </p>
           <div className="flex shrink-0 items-center gap-1">
-            <button
-              type="button"
-              onClick={close}
-              className="rounded-control px-3 py-1.5 text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
-            >
+            <Button variant="ghost" size="md" onClick={close}>
               Cancel
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
               disabled={!canSaveLoop(current) || save.isPending}
               onClick={() => save.mutate()}
-              className="rounded-control bg-primary px-3 py-1.5 text-[13px] font-medium text-on-primary transition-colors duration-150 hover:bg-primary-strong disabled:cursor-default disabled:opacity-50"
             >
               {save.isPending ? 'Saving…' : isEdit ? 'Save changes' : 'Create loop'}
-            </button>
+            </Button>
           </div>
         </>
       }

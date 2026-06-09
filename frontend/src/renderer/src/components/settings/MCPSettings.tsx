@@ -15,8 +15,11 @@ import {
 import { AnimatePresence, motion } from 'motion/react'
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { Button } from '@/components/ui/Button'
+import { IconButton } from '@/components/ui/IconButton'
 import { Modal } from '@/components/ui/Modal'
 import { SkeletonRows } from '@/components/ui/Skeleton'
+import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
 import {
   authorizeMCPServer,
@@ -33,10 +36,7 @@ import { keys } from '@/lib/query/keys'
 type Draft = MCPServerInput & { id?: string }
 
 const inputClass =
-  'w-full rounded-control border border-border bg-bg px-3 py-2 text-[13px] text-ink outline-none transition-colors duration-150 placeholder:text-ink-3 focus:border-primary focus:ring-2 focus:ring-primary/15'
-
-const ghostButton =
-  'grid size-7 shrink-0 cursor-pointer place-items-center rounded text-ink-3 transition-colors duration-150 hover:bg-surface-2 hover:text-ink disabled:cursor-default disabled:opacity-50'
+  'w-full rounded-control bg-ink/10 px-3 py-2 text-[13px] text-ink outline-none transition duration-150 placeholder:text-ink-3 focus:bg-ink/15 focus:ring-1 focus:ring-ink/25'
 
 function emptyDraft(): Draft {
   return {
@@ -137,7 +137,7 @@ export function MCPSettings() {
   const canSave = draft != null && draft.name.trim() !== '' && draft.url.trim() !== ''
 
   return (
-    <section className="border-t border-border py-5">
+    <section className="py-5">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-ink">MCP servers</p>
@@ -145,14 +145,10 @@ export function MCPSettings() {
             Remote Streamable HTTP connections available to Jaz and capable ACP agents.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={openAdd}
-          className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-control border border-border bg-bg px-3 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface"
-        >
+        <Button variant="secondary" size="md" onClick={openAdd}>
           <Plus size={14} />
           Add server
-        </button>
+        </Button>
       </div>
 
       <div className="mt-4">
@@ -199,21 +195,17 @@ export function MCPSettings() {
               {save.isError ? save.error.message : ''}
             </p>
             <div className="flex shrink-0 items-center gap-1">
-              <button
-                type="button"
-                onClick={close}
-                className="cursor-pointer rounded-control px-3 py-1.5 text-[13px] font-medium text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
-              >
+              <Button variant="ghost" size="md" onClick={close}>
                 Cancel
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="primary"
+                size="md"
                 disabled={!canSave || save.isPending}
                 onClick={() => draft && save.mutate(draft)}
-                className="cursor-pointer rounded-control border border-border bg-bg px-3.5 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface disabled:cursor-default disabled:opacity-50"
               >
                 {save.isPending ? 'Saving…' : isEdit ? 'Save changes' : 'Add server'}
-              </button>
+              </Button>
             </div>
           </>
         }
@@ -278,9 +270,9 @@ function MCPServerRow({
         {authorizing ? 'Waiting for sign-in…' : statusText(server)}
       </span>
       {needsAuth ? (
-        <button
-          type="button"
-          className="flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-control border border-border bg-bg px-2.5 text-[12px] font-medium text-ink transition-colors duration-150 hover:bg-surface disabled:cursor-default disabled:opacity-50"
+        <Button
+          variant="secondary"
+          size="sm"
           aria-label="Sign in to MCP server"
           title="Sign in"
           disabled={busy || !server.enabled}
@@ -288,49 +280,49 @@ function MCPServerRow({
         >
           <KeyRound size={13} />
           Sign in
-        </button>
+        </Button>
       ) : (
-        <button
-          type="button"
-          className={ghostButton}
+        <IconButton
+          variant="ghost"
+          size="sm"
           aria-label="Test MCP server"
           title="Test MCP server"
           disabled={busy || !server.enabled}
           onClick={onTest}
         >
           <RefreshCcw size={14} />
-        </button>
+        </IconButton>
       )}
-      <button
-        type="button"
-        className={ghostButton}
+      <IconButton
+        variant="ghost"
+        size="sm"
         aria-label={server.enabled ? 'Disable MCP server' : 'Enable MCP server'}
         title={server.enabled ? 'Disable MCP server' : 'Enable MCP server'}
         disabled={busy}
         onClick={onToggle}
       >
         <Power size={14} />
-      </button>
-      <button
-        type="button"
-        className={ghostButton}
+      </IconButton>
+      <IconButton
+        variant="ghost"
+        size="sm"
         aria-label="Edit MCP server"
         title="Edit MCP server"
         disabled={busy}
         onClick={onEdit}
       >
         <Pencil size={14} />
-      </button>
-      <button
-        type="button"
-        className={`${ghostButton} hover:text-danger`}
+      </IconButton>
+      <IconButton
+        variant="danger"
+        size="sm"
         aria-label="Delete MCP server"
         title="Delete MCP server"
         disabled={busy}
         onClick={onDelete}
       >
         <Trash2 size={14} />
-      </button>
+      </IconButton>
     </div>
   )
 }
@@ -434,17 +426,16 @@ function MCPServerForm({
         </AnimatePresence>
       </div>
 
-      <label className="flex cursor-pointer items-center gap-2.5 border-t border-border pt-4 text-[13px] text-ink-2">
-        <input
-          type="checkbox"
+      <div className="flex items-center gap-2.5 border-t border-border pt-4 text-[13px] text-ink-2">
+        <Switch
           checked={draft.enabled}
-          onChange={(event) => onChange({ ...draft, enabled: event.target.checked })}
-          className="size-4 shrink-0 accent-primary"
+          onChange={(enabled) => onChange({ ...draft, enabled })}
+          aria-label="Enabled"
         />
         <span>
           Enabled <span className="text-ink-3">— make its tools available to agents</span>
         </span>
-      </label>
+      </div>
     </div>
   )
 }
@@ -580,15 +571,16 @@ function replaceEnvHeader(
 
 function RemoveButton({ onClick }: { onClick: () => void }) {
   return (
-    <button
-      type="button"
-      className={`${ghostButton} self-center justify-self-end`}
+    <IconButton
+      variant="ghost"
+      size="sm"
+      className="self-center justify-self-end"
       aria-label="Remove row"
       title="Remove row"
       onClick={onClick}
     >
       <Trash2 size={14} />
-    </button>
+    </IconButton>
   )
 }
 

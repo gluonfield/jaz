@@ -2,12 +2,11 @@ import { useQuery } from '@tanstack/react-query'
 import { Check, ChevronDown, CornerLeftUp, Folder, LoaderCircle } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { Button } from '@/components/ui/Button'
+import { IconButton } from '@/components/ui/IconButton'
 import { agentLabel } from '@/lib/agentLabel'
 import { listWorkspaceDirs } from '@/lib/api/sessions'
 import { keys } from '@/lib/query/keys'
-
-export const TRIGGER_CLASS =
-  'inline-flex h-8 max-w-[12rem] items-center gap-1.5 rounded-control border border-border bg-bg px-2 text-[12px] font-medium text-ink-2 transition-colors duration-150 hover:border-primary hover:text-primary disabled:cursor-default disabled:opacity-50'
 
 // A floating menu anchored above its trigger, dismissed on outside-click/Escape.
 // Trigger and menu share one wrapper so clicking the trigger doesn't self-close.
@@ -108,20 +107,20 @@ export function RuntimeSelect({
       open={open}
       onClose={() => setOpen(false)}
       trigger={
-        <motion.button
-          type="button"
+        <Button
+          variant="secondary"
+          size="md"
+          className="max-w-[12rem]"
           aria-haspopup="listbox"
           aria-expanded={open}
           aria-label={`Runtime: ${label}`}
           title={`Runtime: ${label}`}
           disabled={disabled}
           onClick={() => setOpen((v) => !v)}
-          whileTap={{ scale: 0.96 }}
-          className={TRIGGER_CLASS}
         >
           <span className="truncate">{label}</span>
           <ChevronDown size={13} className="shrink-0" />
-        </motion.button>
+        </Button>
       }
     >
       <MenuRow selected={value === 'native'} onClick={() => select('native')}>
@@ -182,20 +181,20 @@ export function DirectoryPicker({
       open={open}
       onClose={() => setOpen(false)}
       trigger={
-        <motion.button
-          type="button"
+        <Button
+          variant="secondary"
+          size="md"
+          className="max-w-[12rem]"
           aria-haspopup="dialog"
           aria-expanded={open}
           aria-label={`Directory: ${value === '' ? 'workspace root' : value}`}
           title={value === '' ? 'Workspace root' : value}
           disabled={disabled}
           onClick={() => setOpen((v) => !v)}
-          whileTap={{ scale: 0.96 }}
-          className={TRIGGER_CLASS}
         >
           <Folder size={13} className="shrink-0" />
           <span className="truncate">{label}</span>
-        </motion.button>
+        </Button>
       }
     >
       <div className="flex items-center gap-1 px-2 pt-1 pb-1.5">
@@ -203,15 +202,15 @@ export function DirectoryPicker({
           {browseLabel}
         </span>
         {browse !== '' ? (
-          <button
-            type="button"
+          <IconButton
+            variant="ghost"
+            size="xs"
             aria-label="Parent directory"
             title="Parent directory"
             onClick={() => setBrowse(parentPath(browse))}
-            className="grid size-6 place-items-center rounded-control text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
           >
             <CornerLeftUp size={14} />
-          </button>
+          </IconButton>
         ) : null}
       </div>
       <div className="max-h-[220px] overflow-y-auto">

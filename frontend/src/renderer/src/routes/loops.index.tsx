@@ -5,6 +5,7 @@ import { type Variants, motion, useReducedMotion } from 'motion/react'
 import { useState } from 'react'
 import { LoopModal } from '@/components/loops/LoopModal'
 import { compactSchedule } from '@/components/loops/schedule'
+import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { agentLabel } from '@/lib/agentLabel'
@@ -37,15 +38,10 @@ function LoopsPage() {
           <h1 className="text-[22px] font-semibold tracking-[-0.01em] text-ink">Loops</h1>
           <p className="mt-1 text-[13px] text-ink-3">Prompts that run on a schedule.</p>
         </div>
-        <motion.button
-          type="button"
-          onClick={() => setCreating(true)}
-          whileTap={{ scale: 0.97 }}
-          className="inline-flex h-9 items-center gap-1.5 rounded-control bg-primary px-3.5 text-[13px] font-medium text-on-primary transition-colors duration-150 hover:bg-primary-strong"
-        >
+        <Button variant="primary" size="lg" onClick={() => setCreating(true)}>
           <Plus size={15} />
           New loop
-        </motion.button>
+        </Button>
       </header>
 
       {loops.isPending ? (

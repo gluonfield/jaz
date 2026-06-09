@@ -4,6 +4,7 @@ import { Plus, SquarePen } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
 import { LoopModal } from '@/components/loops/LoopModal'
+import { IconButton } from '@/components/ui/IconButton'
 import { loopsQuery } from '@/lib/api/loops'
 import { SIDEBAR_SESSION_LIMIT, sidebarSessionsQuery } from '@/lib/api/sessions'
 import { SkeletonRows } from '../ui/Skeleton'
@@ -41,15 +42,16 @@ function LoopsSection() {
     <section>
       <div className="flex items-center justify-between pr-1">
         <SectionLabel>Loops</SectionLabel>
-        <button
-          type="button"
+        <IconButton
+          variant="ghost"
+          size="xs"
           aria-label="New loop"
           title="New loop"
           onClick={() => setCreating(true)}
-          className="-mt-1 grid size-5 place-items-center rounded text-ink-3 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+          className="-mt-1"
         >
           <Plus size={14} />
-        </button>
+        </IconButton>
       </div>
       {loops.isPending ? (
         <SkeletonRows count={2} />
