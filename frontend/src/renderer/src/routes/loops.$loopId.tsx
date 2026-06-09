@@ -6,7 +6,9 @@ import { type ReactNode, useState } from 'react'
 import { LoopModal } from '@/components/loops/LoopModal'
 import { reasoningEffortLabel } from '@/components/loops/ReasoningEffortSelect'
 import { describeSchedule, draftFromLoop } from '@/components/loops/schedule'
+import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { IconButton } from '@/components/ui/IconButton'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import { agentLabel } from '@/lib/agentLabel'
@@ -122,15 +124,15 @@ function LoopDetail({ loop, runs }: { loop: Loop; runs: LoopRun[] }) {
             <Pencil size={13} />
             Edit
           </Action>
-          <button
-            type="button"
+          <IconButton
+            variant="danger"
+            size="md"
             aria-label="Delete loop"
             title="Delete loop"
             onClick={onDelete}
-            className="grid size-8 place-items-center rounded-control text-ink-3 transition-colors duration-150 hover:bg-danger-soft hover:text-danger"
           >
             <Trash2 size={15} />
-          </button>
+          </IconButton>
         </div>
       </motion.header>
 
@@ -177,15 +179,9 @@ function Action({
   children: ReactNode
 }) {
   return (
-    <motion.button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      whileTap={{ scale: 0.97 }}
-      className="inline-flex h-8 items-center gap-1.5 rounded-control border border-border bg-bg px-2.5 text-[13px] font-medium text-ink-2 transition-colors duration-150 hover:border-primary hover:text-primary disabled:opacity-50"
-    >
+    <Button variant="secondary" size="md" disabled={disabled} onClick={onClick}>
       {children}
-    </motion.button>
+    </Button>
   )
 }
 

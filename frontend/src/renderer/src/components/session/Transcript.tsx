@@ -17,6 +17,7 @@ import type {
   ChatMessage,
   SessionEvent,
 } from '@/lib/api/types'
+import { Button } from '@/components/ui/Button'
 import { agentLabel } from '@/lib/agentLabel'
 import { relativeTime } from '@/lib/format/time'
 import { MessageMarkdown } from './MessageMarkdown'
@@ -319,26 +320,22 @@ function PlanChecklist({
         <p className="text-[11px] font-medium tracking-wide text-ink-3 uppercase">Plan</p>
         <div className="flex shrink-0 items-center gap-1.5">
           {showExpandControl ? (
-            <button
-              type="button"
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={() => setExpanded((value) => !value)}
-              className="inline-flex h-7 items-center gap-1.5 rounded-control border border-border bg-bg px-2 text-[12px] font-medium text-ink-2 transition-colors hover:border-primary hover:text-primary"
               aria-label={expanded ? 'Collapse plan' : 'Expand plan'}
               title={expanded ? 'Collapse plan' : 'Expand plan'}
             >
               {expanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
               {expanded ? 'Collapse' : 'Expand'}
-            </button>
+            </Button>
           ) : null}
           {onApprovePlan ? (
-            <button
-              type="button"
-              onClick={onApprovePlan}
-              className="inline-flex h-7 items-center gap-1.5 rounded-control bg-primary px-2 text-[12px] font-medium text-on-primary transition-colors hover:bg-primary-strong"
-            >
+            <Button variant="primary" size="sm" onClick={onApprovePlan}>
               <Check size={13} />
               Approve plan
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>

@@ -10,7 +10,7 @@ import {
 } from './schedule'
 
 const fieldClass =
-  'rounded-control border border-border bg-bg px-2.5 py-1.5 text-[13px] text-ink outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/15'
+  'rounded-control bg-ink/10 px-2.5 py-1.5 text-[13px] text-ink outline-none transition duration-150 focus:bg-ink/15 focus:ring-1 focus:ring-ink/25'
 
 function formatRun(d: Date): string {
   return d.toLocaleString(undefined, {
@@ -47,10 +47,10 @@ export function SchedulePicker({
               disabled={disabled}
               onClick={() => set({ preset: preset.value })}
               aria-pressed={active}
-              className={`rounded-control border px-2 py-1.5 text-[12px] font-medium transition-colors duration-150 disabled:opacity-50 ${
+              className={`rounded-control px-2 py-1.5 text-[12px] font-medium transition-colors duration-150 disabled:opacity-50 ${
                 active
-                  ? 'border-primary bg-primary-soft text-primary-strong'
-                  : 'border-border bg-bg text-ink-2 hover:border-ink-3/40 hover:text-ink'
+                  ? 'bg-ink/15 text-ink'
+                  : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
               }`}
             >
               {preset.label}
@@ -103,7 +103,7 @@ export function SchedulePicker({
         />
       )}
 
-      <div className="rounded-control border border-border/70 bg-surface px-3 py-2">
+      <div className="rounded-control bg-surface px-3 py-2">
         <div className="flex items-center gap-1.5 text-[12px] font-medium text-ink-2">
           <CalendarClock size={13} className="text-ink-3" />
           {describeSchedule(value)}

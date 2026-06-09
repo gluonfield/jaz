@@ -6,20 +6,20 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  /* ground + surfaces — pure white ground, faint sage neutrals */
+  /* ground + surfaces — pure white ground, neutral greys (no hue) */
   --color-bg: oklch(1 0 0);
-  --color-surface: oklch(0.972 0.004 110);
-  --color-surface-2: oklch(0.945 0.006 110);
+  --color-surface: oklch(0.973 0 0);
+  --color-surface-2: oklch(0.946 0 0);
 
-  /* text hierarchy */
-  --color-ink: oklch(0.27 0.015 110);
-  --color-ink-2: oklch(0.5 0.014 110);
-  --color-ink-3: oklch(0.56 0.012 110);
+  /* text hierarchy — neutral */
+  --color-ink: oklch(0.27 0 0);
+  --color-ink-2: oklch(0.5 0 0);
+  --color-ink-3: oklch(0.56 0 0);
 
-  /* brand — sage primary, warm clay accent */
-  --color-primary: oklch(0.55 0.12 110);
-  --color-primary-strong: oklch(0.47 0.11 110);
-  --color-primary-soft: oklch(0.93 0.04 110);
+  /* brand — monochrome: primary is near-black ink; clay accent kept for agent badges */
+  --color-primary: oklch(0.32 0 0);
+  --color-primary-strong: oklch(0.2 0 0);
+  --color-primary-soft: oklch(0.915 0 0);
   /* text/icons that sit on a primary fill */
   --color-on-primary: oklch(1 0 0);
   --color-accent: oklch(0.62 0.13 55);
@@ -32,7 +32,7 @@
   --color-danger: oklch(0.55 0.19 25);
   --color-danger-soft: oklch(0.95 0.025 25);
 
-  --color-border: oklch(0.9 0.006 110);
+  --color-border: oklch(0.9 0 0);
 
   --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', monospace;
@@ -56,26 +56,25 @@
   color-scheme: light;
 }
 
-/* Dark theme — same sage identity carried into a desaturated charcoal-green.
- * Surfaces grow *lighter* as they come forward (inverse of the light theme),
- * the sage primary brightens to glow on the dark ground and pairs with dark
- * on-primary text, and the rainbow ramp lifts a little to stay vivid.
- * Specificity (:root.dark) clears Tailwind's :root theme layer. */
+/* Dark theme — neutral charcoal. Surfaces grow *lighter* as they come forward
+ * (inverse of the light theme); the primary inverts to near-white with dark
+ * on-primary text. No brand hue in the neutrals; the rainbow ramp lifts a
+ * little to stay vivid. Specificity (:root.dark) clears Tailwind's :root layer. */
 :root.dark {
   color-scheme: dark;
 
-  --color-bg: oklch(0.205 0.008 110);
-  --color-surface: oklch(0.245 0.009 110);
-  --color-surface-2: oklch(0.295 0.011 110);
+  --color-bg: oklch(0.205 0 0);
+  --color-surface: oklch(0.245 0 0);
+  --color-surface-2: oklch(0.295 0 0);
 
-  --color-ink: oklch(0.945 0.006 110);
-  --color-ink-2: oklch(0.76 0.011 110);
-  --color-ink-3: oklch(0.62 0.011 110);
+  --color-ink: oklch(0.945 0 0);
+  --color-ink-2: oklch(0.76 0 0);
+  --color-ink-3: oklch(0.62 0 0);
 
-  --color-primary: oklch(0.74 0.135 110);
-  --color-primary-strong: oklch(0.8 0.135 110);
-  --color-primary-soft: oklch(0.33 0.045 110);
-  --color-on-primary: oklch(0.21 0.018 110);
+  --color-primary: oklch(0.95 0 0);
+  --color-primary-strong: oklch(1 0 0);
+  --color-primary-soft: oklch(0.33 0 0);
+  --color-on-primary: oklch(0.2 0 0);
   --color-accent: oklch(0.72 0.12 55);
   --color-accent-strong: oklch(0.78 0.12 55);
   --color-accent-soft: oklch(0.33 0.05 55);
@@ -85,7 +84,7 @@
   --color-danger: oklch(0.68 0.18 25);
   --color-danger-soft: oklch(0.32 0.07 25);
 
-  --color-border: oklch(0.32 0.01 110);
+  --color-border: oklch(0.32 0 0);
 
   --color-rainbow-1: oklch(0.68 0.19 25);
   --color-rainbow-2: oklch(0.8 0.14 90);

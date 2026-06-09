@@ -1,7 +1,7 @@
 import { ChevronDown, Gauge } from 'lucide-react'
-import { motion } from 'motion/react'
 import { useState } from 'react'
-import { MenuRow, Popover, TRIGGER_CLASS } from '@/components/session/NewThreadControls'
+import { MenuRow, Popover } from '@/components/session/NewThreadControls'
+import { Button } from '@/components/ui/Button'
 
 // '' is the agent/server default; the rest map to provider reasoning efforts.
 const OPTIONS: { value: string; label: string }[] = [
@@ -38,21 +38,21 @@ export function ReasoningEffortSelect({
       open={open}
       onClose={() => setOpen(false)}
       trigger={
-        <motion.button
-          type="button"
+        <Button
+          variant="secondary"
+          size="md"
+          className="max-w-[12rem]"
           aria-haspopup="listbox"
           aria-expanded={open}
           aria-label={`Reasoning effort: ${label}`}
           title={`Reasoning effort: ${label}`}
           disabled={disabled}
           onClick={() => setOpen((v) => !v)}
-          whileTap={{ scale: 0.96 }}
-          className={TRIGGER_CLASS}
         >
           <Gauge size={13} className="shrink-0" />
           <span className="truncate">{label}</span>
           <ChevronDown size={13} className="shrink-0" />
-        </motion.button>
+        </Button>
       }
     >
       {OPTIONS.map((option) => (

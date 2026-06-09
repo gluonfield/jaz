@@ -46,7 +46,7 @@ export function SessionRow({ session, child = false }: { session: Session; child
     <Link
       to="/sessions/$sessionId"
       params={{ sessionId: session.id }}
-      className="group flex items-center gap-2 rounded-control px-2 py-1.5 text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+      className="group flex h-8 items-center gap-2 rounded-control px-2 text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
       activeProps={{ className: 'bg-primary-soft! text-ink! font-medium' }}
     >
       {/* branch connector: this thread was spawned by the session above */}

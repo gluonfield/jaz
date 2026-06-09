@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { IconButton } from '@/components/ui/IconButton'
 
 const SIZES = {
   sm: 'max-w-md',
@@ -110,14 +111,15 @@ export function Modal({
                     <p className="mt-0.5 text-[13px] text-ink-2">{description}</p>
                   ) : null}
                 </div>
-                <button
-                  type="button"
+                <IconButton
+                  variant="ghost"
+                  size="sm"
                   onClick={onClose}
                   aria-label="Close"
-                  className="-mr-1.5 -mt-1 grid size-7 shrink-0 cursor-pointer place-items-center rounded text-ink-3 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+                  className="-mr-1.5 -mt-1"
                 >
                   <X size={16} />
-                </button>
+                </IconButton>
               </header>
 
               <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">{children}</div>

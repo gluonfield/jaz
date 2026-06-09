@@ -1,6 +1,8 @@
 import { ArrowUp, AudioLines, Check, ListChecks, LoaderCircle, Square, X } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { Button } from '@/components/ui/Button'
+import { IconButton } from '@/components/ui/IconButton'
 import { QueuedPromptList } from './QueuedPromptList'
 
 // A rainbow comet (~100° arc fading in and out of transparency) that orbits
@@ -133,62 +135,57 @@ export function ComposerCard({
           <div className="flex min-w-0 items-center gap-1.5">
             {leftSlot}
             {planAvailable ? (
-              <motion.button
-                type="button"
+              <Button
+                size="md"
+                active={planRequested}
                 aria-pressed={planRequested}
                 aria-label={planRequested ? 'Plan mode enabled' : 'Plan mode'}
                 title={planRequested ? 'Plan mode enabled' : 'Plan mode'}
                 disabled={streaming || disabled}
                 onClick={() => setPlanRequested((value) => !value)}
-                whileTap={{ scale: 0.96 }}
-                className={`inline-flex h-8 items-center gap-1.5 rounded-control border px-2 text-[12px] font-medium transition-colors duration-150 disabled:cursor-default disabled:opacity-50 ${
-                  planRequested
-                    ? 'border-primary bg-primary-soft text-primary-strong'
-                    : 'border-border bg-bg text-ink-2 hover:border-primary hover:text-primary'
-                }`}
               >
                 <ListChecks size={14} />
                 Plan
-              </motion.button>
+              </Button>
             ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             {onVoice ? (
-              <motion.button
-                type="button"
+              <IconButton
+                variant="ghost"
+                size="lg"
+                round
                 aria-label="Voice mode"
                 title="Voice mode"
                 disabled={streaming || disabled}
                 onClick={onVoice}
-                whileTap={{ scale: 0.92 }}
-                className="grid size-9 cursor-pointer place-items-center rounded-full bg-bg text-ink-2 shadow-sm transition-colors duration-150 hover:bg-surface-2 hover:text-ink disabled:cursor-default disabled:opacity-50"
               >
                 <AudioLines size={16} />
-              </motion.button>
+              </IconButton>
             ) : null}
             {streaming && onStop && (!text.trim() || !queueWhenStreaming) ? (
-              <motion.button
-                type="button"
+              <IconButton
+                variant="primary"
+                size="lg"
+                round
                 aria-label="Stop response"
                 title="Stop response"
                 onClick={onStop}
-                whileTap={{ scale: 0.92 }}
-                className="grid size-9 cursor-pointer place-items-center rounded-full bg-primary text-white shadow-sm transition-colors duration-150 hover:bg-primary-strong"
               >
                 <Square size={13} fill="currentColor" strokeWidth={0} />
-              </motion.button>
+              </IconButton>
             ) : (
-              <motion.button
-                type="button"
+              <IconButton
+                variant="primary"
+                size="lg"
+                round
                 aria-label={streaming ? 'Queue message' : 'Send message'}
                 title={streaming ? 'Queue message' : 'Send message'}
                 disabled={!text.trim() || disabled || (streaming && !queueWhenStreaming)}
                 onClick={submit}
-                whileTap={{ scale: 0.92 }}
-                className="grid size-9 cursor-pointer place-items-center rounded-full bg-primary text-white shadow-sm transition-colors duration-150 hover:bg-primary-strong disabled:cursor-default disabled:bg-bg disabled:text-ink-3 disabled:shadow-none"
               >
                 <ArrowUp size={18} />
-              </motion.button>
+              </IconButton>
             )}
           </div>
         </div>
@@ -347,17 +344,17 @@ export function PlanDecisionDock({
                     }
                   }}
                 />
-                <motion.button
-                  type="button"
+                <IconButton
+                  variant="primary"
+                  size="sm"
+                  round
                   aria-label="Send clarification"
                   title="Send clarification"
                   disabled={!text.trim() || disabled}
                   onClick={submitClarification}
-                  whileTap={{ scale: 0.92 }}
-                  className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-full bg-primary text-on-primary transition-colors duration-150 hover:bg-primary-strong disabled:cursor-default disabled:bg-surface-2 disabled:text-ink-3"
                 >
                   <ArrowUp size={14} />
-                </motion.button>
+                </IconButton>
               </motion.div>
             ) : (
               <motion.button

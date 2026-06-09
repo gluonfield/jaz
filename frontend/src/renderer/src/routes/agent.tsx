@@ -3,6 +3,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { motion } from 'motion/react'
 import { useState } from 'react'
 import { MarkdownEditor } from '@/components/agent/MarkdownEditor'
+import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
@@ -99,15 +100,10 @@ function AgentPage() {
         </div>
         <div className="flex h-8 shrink-0 items-center">
           {dirty || save.isPending ? (
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={save.isPending}
-              className="flex items-center gap-2 rounded-control bg-primary px-3.5 py-1.5 text-[13px] font-medium text-on-primary transition-colors duration-150 hover:bg-primary-strong disabled:opacity-50"
-            >
+            <Button variant="primary" size="md" onClick={handleSave} disabled={save.isPending}>
               {save.isPending ? 'Saving…' : 'Save changes'}
               <kbd className="font-mono text-[11px] text-on-primary/75">⌘S</kbd>
-            </button>
+            </Button>
           ) : (
             <span className="text-[12px] text-ink-3">All changes saved</span>
           )}
