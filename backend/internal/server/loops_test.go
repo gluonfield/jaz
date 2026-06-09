@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -25,7 +26,7 @@ func TestLoopAPIAndManualRun(t *testing.T) {
 	}
 	defer store.Close()
 	executor := &fakeLoopExecutor{started: make(chan loops.Run, 1)}
-	service := loops.NewService(store, executor, nil)
+	service := newLoopServiceForTest(store, executor)
 	srv := &Server{Store: store, Loops: service}
 
 	create := httptest.NewRequest(http.MethodPost, "/v1/loops", strings.NewReader(`{
@@ -46,6 +47,36 @@ func TestLoopAPIAndManualRun(t *testing.T) {
 	}
 	if created.ID == "" || created.Runtime != loops.RuntimeNative {
 		t.Fatalf("created loop = %#v", created)
+	}
+	wantMemory := filepath.Join(store.RootDir(), "automations", "half-hourly", "memory.md")
+	if created.MemoryPath != wantMemory || !strings.Contains(res.Body.String(), `"memory_path"`) {
+		t.Fatalf("created memory path = %q, want %q; body = %s", created.MemoryPath, wantMemory, res.Body.String())
+	}
+
+	list := httptest.NewRequest(http.MethodGet, "/v1/loops", nil)
+	res = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(res, list)
+	var listed struct {
+		Loops []loops.Loop `json:"loops"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &listed); err != nil {
+		t.Fatal(err)
+	}
+	if len(listed.Loops) != 1 || listed.Loops[0].MemoryPath != wantMemory {
+		t.Fatalf("listed loops = %#v, want memory path %q", listed.Loops, wantMemory)
+	}
+
+	get := httptest.NewRequest(http.MethodGet, "/v1/loops/"+created.ID, nil)
+	res = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(res, get)
+	var detail struct {
+		Loop loops.Loop `json:"loop"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &detail); err != nil {
+		t.Fatal(err)
+	}
+	if detail.Loop.MemoryPath != wantMemory {
+		t.Fatalf("detail memory path = %q, want %q", detail.Loop.MemoryPath, wantMemory)
 	}
 
 	patch := httptest.NewRequest(http.MethodPatch, "/v1/loops/"+created.ID, strings.NewReader(`{"status":"paused"}`))
@@ -90,7 +121,7 @@ func TestLoopAPICarriesReasoningEffortAndDirectory(t *testing.T) {
 	}
 	defer store.Close()
 	manager := &fakeACPManager{spawnStore: store}
-	service := loops.NewService(store, NewLoopRunner(&Server{Store: store, ACP: manager}), nil)
+	service := newLoopServiceForTest(store, NewLoopRunner(&Server{Store: store, ACP: manager}))
 	srv := &Server{Store: store, Loops: service, ACP: manager}
 
 	create := httptest.NewRequest(http.MethodPost, "/v1/loops", strings.NewReader(`{
@@ -155,7 +186,7 @@ func TestNativeLoopRunCreatesFreshThreadWithMetadata(t *testing.T) {
 		Agent: &agent.Agent{Provider: recorder, MaxTurns: 1},
 		Store: store,
 	}
-	service := loops.NewService(store, NewLoopRunner(srv), nil)
+	service := newLoopServiceForTest(store, NewLoopRunner(srv))
 	srv.Loops = service
 	loop, err := service.Create(loops.CreateLoop{
 		Name:     "Fresh check",
@@ -194,6 +225,9 @@ func TestNativeLoopRunCreatesFreshThreadWithMetadata(t *testing.T) {
 	if !strings.Contains(content, "Previous run: id="+first.ID) || !strings.Contains(content, "thread_id="+firstSession.ID) {
 		t.Fatalf("second run prompt missing previous run metadata:\n%s", content)
 	}
+	if !strings.Contains(content, "Memory file: "+loop.MemoryPath) || !strings.Contains(content, "read the memory file if it exists") {
+		t.Fatalf("second run prompt missing memory instructions:\n%s", content)
+	}
 	if strings.Contains(content, "old transcript text") {
 		t.Fatalf("second run prompt included previous assistant transcript:\n%s", content)
 	}
@@ -207,7 +241,7 @@ func TestACPLoopRunCreatesHiddenThreadAndFinishesFromCallback(t *testing.T) {
 	defer store.Close()
 	manager := &fakeACPManager{spawnStore: store}
 	srv := &Server{Store: store, ACP: manager}
-	service := loops.NewService(store, NewLoopRunner(srv), nil)
+	service := newLoopServiceForTest(store, NewLoopRunner(srv))
 	srv.Loops = service
 	loop, err := service.Create(loops.CreateLoop{
 		Name:     "ACP check",
@@ -227,6 +261,9 @@ func TestACPLoopRunCreatesHiddenThreadAndFinishesFromCallback(t *testing.T) {
 	sent := waitForACPSendContaining(t, manager, "You are running a scheduled Jaz loop.")
 	if sent.Session == "" {
 		t.Fatalf("missing sent session: %#v", sent)
+	}
+	if !strings.Contains(sent.Message, "Memory file: "+loop.MemoryPath) {
+		t.Fatalf("acp loop prompt missing memory path %q:\n%s", loop.MemoryPath, sent.Message)
 	}
 	manager.mu.Lock()
 	spawned := manager.spawned
@@ -251,6 +288,10 @@ type fakeLoopExecutor struct {
 
 func (f *fakeLoopExecutor) StartLoopRun(_ context.Context, execution loops.Execution) {
 	f.started <- execution.Run
+}
+
+func newLoopServiceForTest(store *sqlitestore.Store, executor loops.Executor) *loops.Service {
+	return loops.NewService(store, executor, nil, loops.WithMemoryPaths(loops.NewMemoryPaths(filepath.Join(store.RootDir(), "automations"))))
 }
 
 type recordingProvider struct {

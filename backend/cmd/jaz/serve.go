@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -170,7 +171,8 @@ func startServer(
 		Log:                   logger.WithPrefix("server"),
 	}
 	loopRunner := server.NewLoopRunner(handler)
-	loopService := loops.NewService(store, loopRunner, logger)
+	loopMemoryPaths := loops.NewMemoryPaths(filepath.Join(store.RootDir(), "automations"))
+	loopService := loops.NewService(store, loopRunner, logger, loops.WithMemoryPaths(loopMemoryPaths))
 	handler.Loops = loopService
 	manager.TurnFinished = func(ctx context.Context, job acp.Job) {
 		finishLoopFromACP(loopService, logger, job)
@@ -186,6 +188,12 @@ func startServer(
 			fmt.Printf("jaz server listening on %s\n", displayAddr(opts.Addr))
 			fmt.Printf("root: %s\n", store.RootDir())
 			fmt.Printf("workspace: %s\n", workspace)
+			if err := loopMemoryPaths.EnsureDir(); err != nil {
+				logger.WithPrefix("loops").Warn("loop memory directory unavailable", "path", loopMemoryPaths.Dir(), "error", err)
+			}
+			if err := loopService.EnsureMemoryPaths(); err != nil {
+				return err
+			}
 			loopCtx, cancelLoops := context.WithCancel(context.Background())
 			stopLoops = cancelLoops
 			go func() {

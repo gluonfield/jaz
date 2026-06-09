@@ -85,7 +85,8 @@ SELECT
   created_at_ms,
   updated_at_ms,
   reasoning_effort,
-  directory
+  directory,
+  memory_path
 FROM loops
 WHERE id = ?1
 LIMIT 1
@@ -114,6 +115,7 @@ func (q *Queries) GetLoop(ctx context.Context, id string) (Loop, error) {
 		&i.UpdatedAtMs,
 		&i.ReasoningEffort,
 		&i.Directory,
+		&i.MemoryPath,
 	)
 	return i, err
 }
@@ -242,7 +244,8 @@ SELECT
   created_at_ms,
   updated_at_ms,
   reasoning_effort,
-  directory
+  directory,
+  memory_path
 FROM loops
 WHERE status <> ?1
 ORDER BY updated_at_ms DESC
@@ -277,6 +280,7 @@ func (q *Queries) ListLoops(ctx context.Context, deletedStatus string) ([]Loop, 
 			&i.UpdatedAtMs,
 			&i.ReasoningEffort,
 			&i.Directory,
+			&i.MemoryPath,
 		); err != nil {
 			return nil, err
 		}
@@ -366,7 +370,8 @@ INSERT INTO loops (
   created_at_ms,
   updated_at_ms,
   reasoning_effort,
-  directory
+  directory,
+  memory_path
 ) VALUES (
   ?1,
   ?2,
@@ -386,7 +391,8 @@ INSERT INTO loops (
   ?16,
   ?17,
   ?18,
-  ?19
+  ?19,
+  ?20
 )
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
@@ -399,6 +405,7 @@ ON CONFLICT(id) DO UPDATE SET
   acp_agent = excluded.acp_agent,
   reasoning_effort = excluded.reasoning_effort,
   directory = excluded.directory,
+  memory_path = excluded.memory_path,
   next_run_at_ms = excluded.next_run_at_ms,
   last_run_at_ms = excluded.last_run_at_ms,
   last_run_id = excluded.last_run_id,
@@ -429,6 +436,7 @@ type UpsertLoopParams struct {
 	UpdatedAtMs     int64          `json:"updated_at_ms"`
 	ReasoningEffort string         `json:"reasoning_effort"`
 	Directory       string         `json:"directory"`
+	MemoryPath      string         `json:"memory_path"`
 }
 
 func (q *Queries) UpsertLoop(ctx context.Context, arg UpsertLoopParams) error {
@@ -452,6 +460,7 @@ func (q *Queries) UpsertLoop(ctx context.Context, arg UpsertLoopParams) error {
 		arg.UpdatedAtMs,
 		arg.ReasoningEffort,
 		arg.Directory,
+		arg.MemoryPath,
 	)
 	return err
 }

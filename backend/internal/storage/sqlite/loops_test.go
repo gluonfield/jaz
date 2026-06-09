@@ -2,6 +2,9 @@ package sqlite
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,7 +21,7 @@ func TestLoopAdvanceMissedSkipsCatchUp(t *testing.T) {
 
 	base := time.Date(2026, 6, 8, 12, 0, 0, 0, time.UTC)
 	now := base
-	service := loops.NewService(store, nil, nil)
+	service := newLoopServiceForTest(store, nil)
 	service.Now = func() time.Time { return now }
 	loop, err := service.Create(loops.CreateLoop{
 		Name:     "Every minute",
@@ -62,7 +65,7 @@ func TestClaimDueLoopRunAdvancesAndSkipsOverlap(t *testing.T) {
 	base := time.Date(2026, 6, 8, 12, 0, 0, 0, time.UTC)
 	now := base
 	executor := &capturingLoopExecutor{started: make(chan loops.Execution, 2)}
-	service := loops.NewService(store, executor, nil)
+	service := newLoopServiceForTest(store, executor)
 	service.Now = func() time.Time { return now }
 	loop, err := service.Create(loops.CreateLoop{
 		Prompt:   "check the thing",
@@ -116,6 +119,53 @@ func TestClaimDueLoopRunAdvancesAndSkipsOverlap(t *testing.T) {
 	}
 }
 
+func TestStartDueAllDrainsCurrentlyDueLoops(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	base := time.Date(2026, 6, 8, 12, 0, 0, 0, time.UTC)
+	now := base
+	executor := &capturingLoopExecutor{started: make(chan loops.Execution, 2)}
+	service := newLoopServiceForTest(store, executor)
+	service.Now = func() time.Time { return now }
+	for i := 0; i < 2; i++ {
+		if _, err := service.Create(loops.CreateLoop{
+			Name:     "Due loop",
+			Prompt:   "check the thing",
+			Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "* * * * *", Timezone: "UTC"},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	now = base.Add(90 * time.Second)
+	started, err := service.StartDueAll(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if started != 2 {
+		t.Fatalf("started = %d, want 2", started)
+	}
+	for i := 0; i < 2; i++ {
+		select {
+		case <-executor.started:
+		case <-time.After(time.Second):
+			t.Fatal("due loop was not dispatched")
+		}
+	}
+
+	started, err = service.StartDueAll(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if started != 0 {
+		t.Fatalf("second drain started %d loops, want 0", started)
+	}
+}
+
 func TestAdvanceMissedResetsStaleActiveRuns(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
@@ -126,7 +176,7 @@ func TestAdvanceMissedResetsStaleActiveRuns(t *testing.T) {
 	base := time.Date(2026, 6, 8, 12, 0, 0, 0, time.UTC)
 	now := base
 	executor := &capturingLoopExecutor{started: make(chan loops.Execution, 2)}
-	service := loops.NewService(store, executor, nil)
+	service := newLoopServiceForTest(store, executor)
 	service.Now = func() time.Time { return now }
 	loop, err := service.Create(loops.CreateLoop{
 		Prompt:   "check the thing",
@@ -176,7 +226,7 @@ func TestDeleteLoopSoftDeletesAndKeepsRuns(t *testing.T) {
 	base := time.Date(2026, 6, 8, 12, 0, 0, 0, time.UTC)
 	now := base
 	executor := &capturingLoopExecutor{started: make(chan loops.Execution, 1)}
-	service := loops.NewService(store, executor, nil)
+	service := newLoopServiceForTest(store, executor)
 	service.Now = func() time.Time { return now }
 	loop, err := service.Create(loops.CreateLoop{
 		Prompt:   "check the thing",
@@ -235,6 +285,10 @@ func (e *capturingLoopExecutor) StartLoopRun(_ context.Context, execution loops.
 	e.started <- execution
 }
 
+func newLoopServiceForTest(store *Store, executor loops.Executor) *loops.Service {
+	return loops.NewService(store, executor, nil, loops.WithMemoryPaths(loops.NewMemoryPaths(filepath.Join(store.RootDir(), "automations"))))
+}
+
 func TestLoopRunSessionsAreHiddenFromDefaultSessionList(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
@@ -278,6 +332,100 @@ func TestLoopRunSessionsAreHiddenFromDefaultSessionList(t *testing.T) {
 	}
 }
 
+func TestLoopMemoryPathDefaultsAreStableAndUnique(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	service := newLoopServiceForTest(store, nil)
+	loop, err := service.Create(loops.CreateLoop{
+		Name:     "Weekly Status Update Draft",
+		Prompt:   "draft the status update",
+		Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 9 * * 1", Timezone: "UTC"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(store.RootDir(), "automations", "weekly-status-update-draft", "memory.md")
+	if loop.MemoryPath != want {
+		t.Fatalf("memory path = %q, want %q", loop.MemoryPath, want)
+	}
+	if _, err := os.Stat(filepath.Join(store.RootDir(), "automations")); !os.IsNotExist(err) {
+		t.Fatalf("create should not create automations dir: %v", err)
+	}
+	if err := service.MemoryPaths.EnsureDir(); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(filepath.Join(store.RootDir(), "automations")); err != nil || !info.IsDir() {
+		t.Fatalf("automations dir was not created: info=%v err=%v", info, err)
+	}
+
+	duplicate, err := service.Create(loops.CreateLoop{
+		Name:     "Weekly Status Update Draft",
+		Prompt:   "draft another status update",
+		Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 9 * * 1", Timezone: "UTC"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if duplicate.MemoryPath == loop.MemoryPath {
+		t.Fatalf("duplicate memory path reused %q", duplicate.MemoryPath)
+	}
+	if !strings.Contains(duplicate.MemoryPath, "weekly-status-update-draft-") {
+		t.Fatalf("duplicate memory path did not include id suffix: %q", duplicate.MemoryPath)
+	}
+
+	originalPath := loop.MemoryPath
+	renamed := "Renamed Loop"
+	updated, err := service.Update(loop.ID, loops.UpdateLoop{Name: &renamed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.MemoryPath != originalPath {
+		t.Fatalf("rename changed memory path from %q to %q", originalPath, updated.MemoryPath)
+	}
+}
+
+func TestEnsureMemoryPathsBackfillsExistingLoops(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	now := time.Date(2026, 6, 8, 12, 0, 0, 0, time.UTC)
+	legacy := loops.Loop{
+		ID:        store.NewLoopID(),
+		Name:      "Legacy Loop",
+		Prompt:    "keep going",
+		Schedule:  loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 9 * * *", Timezone: "UTC"},
+		Status:    loops.StatusActive,
+		Runtime:   loops.RuntimeACP,
+		ACPAgent:  "codex",
+		NextRunAt: now.Add(time.Hour),
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := store.SaveLoop(legacy); err != nil {
+		t.Fatal(err)
+	}
+
+	service := newLoopServiceForTest(store, nil)
+	if err := service.EnsureMemoryPaths(); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := store.LoadLoop(legacy.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(store.RootDir(), "automations", "legacy-loop", "memory.md")
+	if loaded.MemoryPath != want {
+		t.Fatalf("backfilled memory path = %q, want %q", loaded.MemoryPath, want)
+	}
+}
+
 func TestLoopReasoningEffortAndDirectoryRoundTrip(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
@@ -286,7 +434,7 @@ func TestLoopReasoningEffortAndDirectoryRoundTrip(t *testing.T) {
 	defer store.Close()
 
 	now := time.Date(2026, 6, 8, 12, 0, 0, 0, time.UTC)
-	service := loops.NewService(store, nil, nil)
+	service := newLoopServiceForTest(store, nil)
 	service.Now = func() time.Time { return now }
 	loop, err := service.Create(loops.CreateLoop{
 		Prompt:          "review the repo",

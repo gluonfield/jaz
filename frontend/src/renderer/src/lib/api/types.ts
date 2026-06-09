@@ -51,6 +51,7 @@ export interface Loop {
   acp_agent?: string
   reasoning_effort?: string
   directory?: string
+  memory_path?: string
   next_run_at?: string
   last_run_at?: string
   last_run_id?: string

@@ -21,11 +21,24 @@ func TestMigrationsAreIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	var version int64
-	if err := store.db.QueryRow(`SELECT version_id FROM goose_db_version WHERE version_id = 1 AND is_applied = 1`).Scan(&version); err != nil {
+	if err := store.db.QueryRow(`SELECT version_id FROM goose_db_version WHERE version_id = 4 AND is_applied = 1`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 1 {
-		t.Fatalf("migration version = %d, want 1", version)
+	if version != 4 {
+		t.Fatalf("migration version = %d, want 4", version)
+	}
+	if err := store.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if version != 4 {
+		t.Fatalf("user_version = %d, want 4", version)
+	}
+	columns, err := tableColumns(store.db, "loops")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !columns["memory_path"] {
+		t.Fatal("migration did not add loops.memory_path")
 	}
 }
 

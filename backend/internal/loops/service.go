@@ -11,18 +11,31 @@ import (
 )
 
 type Service struct {
-	Repo     Repository
-	Executor Executor
-	Log      *log.Logger
-	Now      func() time.Time
-	mu       sync.Mutex
+	Repo        Repository
+	Executor    Executor
+	Log         *log.Logger
+	Now         func() time.Time
+	MemoryPaths *MemoryPaths
+	mu          sync.Mutex
 }
 
-func NewService(repo Repository, executor Executor, logger *log.Logger) *Service {
+type Option func(*Service)
+
+func WithMemoryPaths(paths *MemoryPaths) Option {
+	return func(s *Service) {
+		s.MemoryPaths = paths
+	}
+}
+
+func NewService(repo Repository, executor Executor, logger *log.Logger, opts ...Option) *Service {
 	if logger == nil {
 		logger = log.Default()
 	}
-	return &Service{Repo: repo, Executor: executor, Log: logger.WithPrefix("loops")}
+	service := &Service{Repo: repo, Executor: executor, Log: logger.WithPrefix("loops")}
+	for _, opt := range opts {
+		opt(service)
+	}
+	return service
 }
 
 func (s *Service) Create(input CreateLoop) (Loop, error) {
@@ -47,6 +60,9 @@ func (s *Service) Create(input CreateLoop) (Loop, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.assignMemoryPathLocked(&loop); err != nil {
+		return Loop{}, err
+	}
 	return loop, s.Repo.SaveLoop(loop)
 }
 
@@ -103,6 +119,30 @@ func (s *Service) Runs(loopID string, limit int) ([]Run, error) {
 	return s.Repo.ListRuns(loopID, limit)
 }
 
+func (s *Service) EnsureMemoryPaths() error {
+	now := s.now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.MemoryPaths == nil || s.MemoryPaths.Dir() == "" {
+		return nil
+	}
+	items, err := s.Repo.ListLoops()
+	if err != nil {
+		return err
+	}
+	used := memoryPathSet(items)
+	updates := make([]Loop, 0)
+	for _, loop := range items {
+		if !s.MemoryPaths.AssignMissing(&loop, used) {
+			continue
+		}
+		loop.UpdatedAt = now
+		used[loop.MemoryPath] = struct{}{}
+		updates = append(updates, loop)
+	}
+	return s.Repo.SaveLoops(updates)
+}
+
 func (s *Service) AdvanceMissed() error {
 	now := s.now()
 	s.mu.Lock()
@@ -141,6 +181,20 @@ func (s *Service) StartDue(ctx context.Context) (bool, error) {
 	}
 	s.start(ctx, loop, run, now)
 	return true, nil
+}
+
+func (s *Service) StartDueAll(ctx context.Context) (int, error) {
+	started := 0
+	for {
+		if err := ctx.Err(); err != nil {
+			return started, err
+		}
+		ok, err := s.StartDue(ctx)
+		if err != nil || !ok {
+			return started, err
+		}
+		started++
+	}
 }
 
 func (s *Service) RunNow(ctx context.Context, loopID string) (Run, error) {
@@ -311,6 +365,19 @@ func (s *Service) startManualRunLocked(loopID string, now time.Time) (Loop, Run,
 	return promptLoop, run, nil
 }
 
+func (s *Service) assignMemoryPathLocked(loop *Loop) error {
+	if s.MemoryPaths == nil || s.MemoryPaths.Dir() == "" {
+		return nil
+	}
+	items, err := s.Repo.ListLoops()
+	if err != nil {
+		return err
+	}
+	used := memoryPathSet(items)
+	s.MemoryPaths.AssignMissing(loop, used)
+	return nil
+}
+
 func (s *Service) skipRunLocked(loop Loop, scheduledFor, nextRun, now time.Time, reason string) error {
 	run := Run{
 		ID:           s.Repo.NewRunID(),
@@ -391,6 +458,9 @@ func MetadataPrompt(loop Loop, run Run, now time.Time) string {
 	fmt.Fprintf(&b, "Run ID: %s\n", run.ID)
 	fmt.Fprintf(&b, "Scheduled for: %s\n", run.ScheduledFor.Format(time.RFC3339))
 	fmt.Fprintf(&b, "Current time: %s\n", now.UTC().Format(time.RFC3339))
+	if loop.MemoryPath != "" {
+		fmt.Fprintf(&b, "Memory file: %s\n", loop.MemoryPath)
+	}
 	if loop.LastRunID == "" {
 		b.WriteString("Previous run: none\n")
 	} else {
@@ -406,7 +476,14 @@ func MetadataPrompt(loop Loop, run Run, now time.Time) string {
 		}
 		b.WriteString("\n")
 	}
-	b.WriteString("\nRun the loop prompt below. Do not assume access to prior run transcripts unless you explicitly inspect their thread IDs through available tools.\n\n")
+	if loop.MemoryPath != "" {
+		b.WriteString("\nLoop memory instructions:\n")
+		b.WriteString("- At the start of the run, read the memory file if it exists.\n")
+		b.WriteString("- Before finishing, create parent directories as needed and create or update the memory file with concise Markdown containing only durable context useful for future runs.\n")
+		b.WriteString("- Do not store secrets, credentials, or full transcripts in the memory file.\n")
+		b.WriteString("- If filesystem or sandbox permissions prevent reading or writing the memory file, continue the run and report the memory update failure.\n")
+	}
+	b.WriteString("\nRun the loop prompt below. Do not assume access to prior run transcripts unless you explicitly inspect their thread IDs through available tools; prior transcripts are not injected automatically.\n\n")
 	b.WriteString(loop.Prompt)
 	return b.String()
 }
@@ -429,7 +506,7 @@ func StartScheduler(ctx context.Context, service *Service, tick time.Duration) e
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			if _, err := service.StartDue(ctx); err != nil {
+			if _, err := service.StartDueAll(ctx); err != nil && ctx.Err() == nil {
 				service.Log.Error("loop scheduler tick failed", "error", err)
 			}
 		}
