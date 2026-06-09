@@ -6,22 +6,28 @@ export function RuntimeBadge({
   session,
   className = '',
   compact = false,
+  truncate = true,
 }: {
   session: Session
   className?: string
   compact?: boolean
+  truncate?: boolean
 }) {
   const model = compactModel(session.model)
   const modelLabel = withReasoningEffort(model, session.reasoning_effort)
   const fullModelLabel = session.model
     ? withReasoningEffort(session.model, session.reasoning_effort)
     : ''
+  // Sidebar rows are cramped, so they clamp + truncate; roomier spots (the
+  // titlebar) opt out and show the full provider · model label.
+  const clamp = truncate ? 'min-w-0 max-w-[11rem] truncate' : 'whitespace-nowrap'
+  const base = `inline-block ${clamp} rounded px-1.5 py-px font-mono text-[11px]`
   if (session.runtime === 'acp') {
     const agent = session.runtime_ref?.agent ?? 'acp'
     return (
       <span
         title={fullModelLabel ? `${agent}: ${fullModelLabel}` : agent}
-        className={`inline-block min-w-0 max-w-[11rem] truncate rounded px-1.5 py-px font-mono text-[11px] text-accent-strong bg-accent-soft ${className}`}
+        className={`${base} text-accent-strong bg-accent-soft ${className}`}
       >
         {!compact && modelLabel ? `${agent} · ${modelLabel}` : agent}
       </span>
@@ -31,7 +37,7 @@ export function RuntimeBadge({
   return (
     <span
       title={fullModelLabel ? `${provider}: ${fullModelLabel}` : provider}
-      className={`inline-block min-w-0 max-w-[11rem] truncate rounded px-1.5 py-px font-mono text-[11px] text-ink-2 bg-surface-2 ${className}`}
+      className={`${base} text-ink-2 bg-surface-2 ${className}`}
     >
       {modelLabel ? `${provider} · ${modelLabel}` : provider}
     </span>
