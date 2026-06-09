@@ -4,7 +4,13 @@ import { get, post } from './client'
 import type { Session, SessionMessages } from './types'
 
 export function createSession(
-  input: { title?: string; runtime?: 'native' | 'acp'; agent?: string; directory?: string } = {},
+  input: {
+    title?: string
+    runtime?: 'native' | 'acp'
+    agent?: string
+    directory?: string
+    worktree?: boolean
+  } = {},
 ): Promise<Session> {
   return post<Session>('/v1/sessions', input)
 }
@@ -24,12 +30,20 @@ export const acpAgentsQuery = queryOptions({
   },
 })
 
+export interface WorkspaceDir {
+  name: string
+  git: boolean
+}
+
 // Lists immediate subdirectories of a workspace-relative path so the directory
-// picker can browse where an ACP session runs ('' is the workspace root).
-export function listWorkspaceDirs(path: string): Promise<{ path: string; dirs: string[] }> {
-  return get<{ path: string; dirs: string[] | null }>(
+// picker can browse where an ACP session runs ('' is the workspace root). `git`
+// flags whether the browsed path (and each entry) is a git repository root.
+export function listWorkspaceDirs(
+  path: string,
+): Promise<{ path: string; git: boolean; dirs: WorkspaceDir[] }> {
+  return get<{ path: string; git?: boolean; dirs: WorkspaceDir[] | null }>(
     `/v1/workspace/dirs?path=${encodeURIComponent(path)}`,
-  ).then((data) => ({ path: data.path, dirs: data.dirs ?? [] }))
+  ).then((data) => ({ path: data.path, git: data.git ?? false, dirs: data.dirs ?? [] }))
 }
 
 export function setSessionArchived(id: string, archived: boolean): Promise<Session> {

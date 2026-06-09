@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Check, ChevronDown, CornerLeftUp, Folder, LoaderCircle } from 'lucide-react'
+import { Check, ChevronDown, CornerLeftUp, Folder, GitBranch, LoaderCircle } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
@@ -153,7 +153,9 @@ export function DirectoryPicker({
 }: {
   value: string
   disabled?: boolean
-  onChange: (path: string) => void
+  // git reports whether the chosen path is a git repository root, so callers can
+  // offer worktree-only options for it.
+  onChange: (path: string, git: boolean) => void
 }) {
   const [open, setOpen] = useState(false)
   // The path currently being browsed; it starts at the selection each time the
@@ -171,8 +173,8 @@ export function DirectoryPicker({
 
   const label = value === '' ? 'workspace' : (value.split('/').at(-1) ?? value)
   const browseLabel = browse === '' ? 'workspace' : browse
-  const select = (path: string) => {
-    onChange(path)
+  const select = (path: string, git: boolean) => {
+    onChange(path, git)
     setOpen(false)
   }
 
@@ -224,13 +226,16 @@ export function DirectoryPicker({
         ) : query.data && query.data.dirs.length > 0 ? (
           query.data.dirs.map((dir) => (
             <button
-              key={dir}
+              key={dir.name}
               type="button"
-              onClick={() => setBrowse(joinPath(browse, dir))}
+              onClick={() => setBrowse(joinPath(browse, dir.name))}
               className="flex h-7 w-full items-center gap-2 rounded-control px-2 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
             >
               <Folder size={13} className="shrink-0 text-ink-3" />
-              <span className="min-w-0 flex-1 truncate">{dir}</span>
+              <span className="min-w-0 flex-1 truncate">{dir.name}</span>
+              {dir.git ? (
+                <GitBranch size={12} className="shrink-0 text-ink-3" aria-label="git repository" />
+              ) : null}
             </button>
           ))
         ) : (
@@ -240,7 +245,7 @@ export function DirectoryPicker({
       <div className="mt-1 border-t border-border pt-1">
         <button
           type="button"
-          onClick={() => select(browse)}
+          onClick={() => select(browse, query.data?.git ?? false)}
           className="flex h-7 w-full items-center gap-2 rounded-control px-2 text-left text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-primary-soft"
         >
           <Check size={13} className="shrink-0 text-primary" />
