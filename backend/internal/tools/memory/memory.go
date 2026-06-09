@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/gluonfield/jazmem/pkg/jazmem"
 	"github.com/wins/jaz/backend/internal/helpers"
 	"github.com/wins/jaz/backend/internal/tools"
-	"github.com/wins/jazmem/pkg/jazmem"
 )
 
 type SearchTool struct {

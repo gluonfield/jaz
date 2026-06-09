@@ -8,6 +8,7 @@ require (
 	charm.land/lipgloss/v2 v2.0.3
 	github.com/charmbracelet/log v0.4.2
 	github.com/gluonfield/acp-transport v0.0.0-20260607112912-bd05483092e7
+	github.com/gluonfield/jazmem v0.0.0
 	github.com/invopop/jsonschema v0.14.0
 	github.com/joho/godotenv v1.5.1
 	github.com/modelcontextprotocol/go-sdk v1.6.1
@@ -15,7 +16,6 @@ require (
 	github.com/pressly/goose/v3 v3.9.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/viper v1.21.0
-	github.com/wins/jazmem v0.0.0
 	go.uber.org/fx v1.24.0
 	golang.org/x/oauth2 v0.35.0
 	modernc.org/sqlite v1.52.0
@@ -82,4 +82,4 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 )
 
-replace github.com/wins/jazmem => ../../jazmem
+replace github.com/gluonfield/jazmem => ../../jazmem
