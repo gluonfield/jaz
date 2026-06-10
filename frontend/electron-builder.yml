@@ -1,0 +1,18 @@
+appId: dev.wins.jaz
+productName: Jaz
+directories:
+  output: dist
+# electron-vite bundles all deps into out/, so node_modules stays out of the app
+files:
+  - out/**
+# the Go backend binary, built by `build:backend`; spawned for "Start locally"
+extraResources:
+  - from: resources/bin
+    to: bin
+mac:
+  icon: src/assets/jaz.icns
+  target:
+    - target: dmg
+      arch:
+        - arm64
+npmRebuild: false

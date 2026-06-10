@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { BrowserWindow, app, ipcMain, nativeTheme, session, shell, systemPreferences } from 'electron'
 import appIcon from '../assets/jaz-icon-1024.png?asset'
+import { startLocalBackend, stopLocalBackend } from './backend'
 
 // Matches --color-bg under :root.dark; used as the window paint color before
 // the renderer mounts so a dark launch doesn't flash white behind the content.
@@ -58,6 +59,8 @@ app.whenReady().then(() => {
     }
   })
 
+  ipcMain.handle('jaz:start-local-backend', () => startLocalBackend())
+
   // Voice mode records from the mic; allow media (macOS still shows its own
   // TCC prompt) and deny everything else.
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
@@ -80,4 +83,8 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('before-quit', () => {
+  stopLocalBackend()
 })

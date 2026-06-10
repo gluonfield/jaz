@@ -1,6 +1,31 @@
-export function apiBaseUrl(): string {
-  // Bridged by the preload script; fall back for plain-browser debugging.
+const BACKEND_URL_KEY = 'jaz.backendUrl'
+
+// The local default bridged by the preload script; fall back for
+// plain-browser debugging.
+export function localBaseUrl(): string {
   return window.jaz?.apiBaseUrl ?? 'http://localhost:8080'
+}
+
+export function normalizeBaseUrl(url: string): string {
+  let trimmed = url.trim().replace(/\/+$/, '')
+  if (trimmed && !/^https?:\/\//i.test(trimmed)) trimmed = `http://${trimmed}`
+  return trimmed
+}
+
+// A remembered remote URL wins over the local default so the next launch
+// reconnects to wherever the user pointed the app last.
+let baseUrl = ((): string => {
+  const stored = localStorage.getItem(BACKEND_URL_KEY)
+  return stored ? normalizeBaseUrl(stored) : localBaseUrl()
+})()
+
+export function apiBaseUrl(): string {
+  return baseUrl
+}
+
+export function setApiBaseUrl(url: string): void {
+  baseUrl = normalizeBaseUrl(url)
+  localStorage.setItem(BACKEND_URL_KEY, baseUrl)
 }
 
 export class ApiError extends Error {
