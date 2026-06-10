@@ -300,6 +300,19 @@ body {
   user-select: none;
 }
 
+/* macOS vibrancy: index.html adds .vibrant when running in the mac app. The
+ * page goes transparent so the native sidebar material shows through; the
+ * sidebar paints a translucent wash over it while content stays opaque. */
+.sidebar-material {
+  background: var(--color-surface);
+}
+html.vibrant body {
+  background: transparent;
+}
+html.vibrant .sidebar-material {
+  background: color-mix(in oklab, var(--color-surface) 28%, transparent);
+}
+
 h1,
 h2,
 h3 {

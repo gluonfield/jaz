@@ -144,7 +144,7 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	if job == nil {
 		return
 	}
-	if usage := usageFromRaw(raw); !usageEmpty(usage) {
+	if usage := usageFromRaw(raw); !usage.IsZero() {
 		m.recordUsage(job, usage)
 	}
 	var activity *storage.ActivityEntry

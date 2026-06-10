@@ -23,8 +23,9 @@ type setSessionModelRequest struct {
 }
 
 type acpSessionInfo struct {
-	response   acpschema.NewSessionResponse
-	modelState sessionModelState
+	response      acpschema.NewSessionResponse
+	modelState    sessionModelState
+	effortOptions []string
 }
 
 type sessionModelState struct {
@@ -32,42 +33,45 @@ type sessionModelState struct {
 	base  map[string]struct{}
 }
 
-func (m *Manager) setConfiguredSessionModel(ctx context.Context, peer *jsonrpc.Peer, agentName string, sessionID acpschema.SessionID, rawModel string, effort string, state sessionModelState) error {
+// setConfiguredSessionModel applies the configured model and returns the
+// agent's raw response: it carries refreshed config options (e.g. the effort
+// levels valid for the newly selected model).
+func (m *Manager) setConfiguredSessionModel(ctx context.Context, peer *jsonrpc.Peer, agentName string, sessionID acpschema.SessionID, rawModel string, effort string, state sessionModelState) (json.RawMessage, error) {
 	model := configuredSessionModel(agentName, rawModel, effort)
 	if err := validateConfiguredSessionModel(agentName, rawModel, model, state); err != nil {
-		return err
+		return nil, err
 	}
 	model = strings.TrimSpace(model)
 	if model == "" {
-		return nil
+		return nil, nil
 	}
 	if strings.ToLower(strings.TrimSpace(agentName)) == AgentClaude {
-		_, err := peer.Call(ctx, acpschema.AgentMethodSessionSetConfigOption, acpschema.SetSessionConfigOptionRequest{
+		raw, err := peer.Call(ctx, acpschema.AgentMethodSessionSetConfigOption, acpschema.SetSessionConfigOptionRequest{
 			SessionID: sessionID,
 			ConfigID:  acpschema.SessionConfigID(sessionConfigModel),
 			Value:     acpschema.SessionConfigValueID(model),
 		})
 		if err == nil {
-			return nil
+			return raw, nil
 		}
 		var rpcErr *jsonrpc.Error
 		if errors.As(err, &rpcErr) && rpcErr.Code == -32601 {
-			return fmt.Errorf("set acp agent %q model %q: session/set_config_option is not supported; clear the model in Settings > Agents or pass the model through that agent's args or env", agentName, model)
+			return nil, fmt.Errorf("set acp agent %q model %q: session/set_config_option is not supported; clear the model in Settings > Agents or pass the model through that agent's args or env", agentName, model)
 		}
-		return fmt.Errorf("set acp agent %q model %q: %w", agentName, model, err)
+		return nil, fmt.Errorf("set acp agent %q model %q: %w", agentName, model, err)
 	}
-	_, err := peer.Call(ctx, agentMethodSessionSetModel, setSessionModelRequest{
+	raw, err := peer.Call(ctx, agentMethodSessionSetModel, setSessionModelRequest{
 		SessionID: sessionID,
 		ModelID:   model,
 	})
 	if err == nil {
-		return nil
+		return raw, nil
 	}
 	var rpcErr *jsonrpc.Error
 	if errors.As(err, &rpcErr) && rpcErr.Code == -32601 {
-		return fmt.Errorf("set acp agent %q model %q: session/set_model is not supported; clear the model in Settings > Agents or pass the model through that agent's args or env", agentName, model)
+		return nil, fmt.Errorf("set acp agent %q model %q: session/set_model is not supported; clear the model in Settings > Agents or pass the model through that agent's args or env", agentName, model)
 	}
-	return fmt.Errorf("set acp agent %q model %q: %w", agentName, model, err)
+	return nil, fmt.Errorf("set acp agent %q model %q: %w", agentName, model, err)
 }
 
 func (m *Manager) setConfiguredReasoningEffort(ctx context.Context, peer *jsonrpc.Peer, agentName string, sessionID acpschema.SessionID, effort string) error {
@@ -99,15 +103,88 @@ func (m *Manager) configuredModeState(ctx context.Context, peer *jsonrpc.Peer, a
 	if err != nil {
 		return ModeState{}, err
 	}
-	if err := m.setConfiguredSessionModel(ctx, peer, agentName, session.response.SessionID, cfg.Model, effort, session.modelState); err != nil {
+	modelRaw, err := m.setConfiguredSessionModel(ctx, peer, agentName, session.response.SessionID, cfg.Model, effort, session.modelState)
+	if err != nil {
 		return ModeState{}, err
 	}
 	if !reasoningEffortEncodedInModel(agentName, cfg.Model, effort) {
+		// Valid effort levels depend on the active model (claude's sonnet
+		// drops xhigh); switching models refreshes the advertised list.
+		advertised := session.effortOptions
+		if updated := parseEffortOptions(modelRaw); len(updated) > 0 {
+			advertised = updated
+		}
+		if clamped := clampReasoningEffort(effort, advertised); clamped != effort {
+			m.log.Info("clamped acp reasoning effort to the active model",
+				"agent", agentName, "model", cfg.Model, "requested", effort,
+				"using", firstNonEmpty(clamped, "agent default"))
+			effort = clamped
+		}
 		if err := m.setConfiguredReasoningEffort(ctx, peer, agentName, session.response.SessionID, effort); err != nil {
 			return ModeState{}, err
 		}
 	}
 	return m.initializeModeState(ctx, peer, session.response)
+}
+
+var effortLadder = []string{"minimal", "low", "medium", "high", "xhigh"}
+
+// clampReasoningEffort fits the configured effort to the agent's advertised
+// levels: the nearest weaker level wins, then the nearest stronger. Empty
+// result means skip the option and let the agent use its default; an unknown
+// advertisement leaves the effort untouched.
+func clampReasoningEffort(effort string, advertised []string) string {
+	if effort == "" || len(advertised) == 0 {
+		return effort
+	}
+	available := make(map[string]struct{}, len(advertised))
+	for _, value := range advertised {
+		available[strings.ToLower(strings.TrimSpace(value))] = struct{}{}
+	}
+	if _, ok := available[effort]; ok {
+		return effort
+	}
+	index := -1
+	for i, level := range effortLadder {
+		if level == effort {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		return effort
+	}
+	for i := index - 1; i >= 0; i-- {
+		if _, ok := available[effortLadder[i]]; ok {
+			return effortLadder[i]
+		}
+	}
+	for i := index + 1; i < len(effortLadder); i++ {
+		if _, ok := available[effortLadder[i]]; ok {
+			return effortLadder[i]
+		}
+	}
+	return ""
+}
+
+// parseEffortOptions extracts the advertised reasoning effort values from a
+// session/new or set-config response's configOptions.
+func parseEffortOptions(raw json.RawMessage) []string {
+	var resp struct {
+		ConfigOptions []struct {
+			ID      string          `json:"id"`
+			Options json.RawMessage `json:"options"`
+		} `json:"configOptions"`
+	}
+	if len(raw) == 0 || json.Unmarshal(raw, &resp) != nil {
+		return nil
+	}
+	for _, option := range resp.ConfigOptions {
+		if option.ID == claudeSessionConfigEffort || option.ID == sessionConfigReasoningEffort {
+			return parseConfigOptionValues(option.Options)
+		}
+	}
+	return nil
 }
 
 func parseSessionModelState(raw json.RawMessage) sessionModelState {
@@ -274,8 +351,9 @@ func sortedKeys(values map[string]struct{}) []string {
 
 func newACPSessionInfo(raw json.RawMessage, session acpschema.NewSessionResponse) acpSessionInfo {
 	return acpSessionInfo{
-		response:   session,
-		modelState: parseSessionModelState(raw),
+		response:      session,
+		modelState:    parseSessionModelState(raw),
+		effortOptions: parseEffortOptions(raw),
 	}
 }
 

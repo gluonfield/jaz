@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -57,8 +58,8 @@ type Server struct {
 	// and prompt-file edits apply without a restart.
 	Prompts *coordinator.Builder
 	Root    string
-	// Workspace is the directory ACP sessions run within; the new-thread
-	// directory picker browses it (confined by pathsafe).
+	// Workspace is the directory sessions run within; the new-thread directory
+	// picker browses it (confined by pathsafe).
 	Workspace string
 	Log       *log.Logger
 
@@ -151,6 +152,17 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	if model := strings.TrimSpace(req.Model); model != "" {
 		input.Model = model
 	}
+	if effort := strings.TrimSpace(req.ReasoningEffort); effort != "" {
+		input.ReasoningEffort = effort
+	}
+	if directory := strings.TrimSpace(req.Directory); directory != "" {
+		cwd, err := s.resolveWorkspaceDir(directory)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		input.RuntimeRef = &storage.RuntimeRef{Type: storage.RuntimeNative, Cwd: cwd}
+	}
 	input.Slug = req.Slug
 	input.Title = req.Title
 	session, err := s.Store.CreateSession(input)
@@ -159,6 +171,17 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, canonicalSessionResponse(session))
+}
+
+func (s *Server) resolveWorkspaceDir(directory string) (string, error) {
+	if strings.TrimSpace(s.Workspace) == "" {
+		return "", fmt.Errorf("workspace is not configured")
+	}
+	cwd, err := pathsafe.Resolve(s.Workspace, directory)
+	if err != nil {
+		return "", err
+	}
+	return cwd, os.MkdirAll(cwd, 0o755)
 }
 
 // createACPSession spawns the agent process and its session synchronously, so
@@ -179,12 +202,13 @@ func (s *Server) createACPSession(w http.ResponseWriter, req createSessionReques
 	ctx, cancel := serverActionContext()
 	defer cancel()
 	result, err := s.ACP.Spawn(ctx, acp.SpawnRequest{
-		ACPAgent:  strings.TrimSpace(req.Agent),
-		Slug:      req.Slug,
-		Title:     req.Title,
-		Directory: directory,
-		Worktree:  req.Worktree,
-		Model:     strings.TrimSpace(req.Model),
+		ACPAgent:        strings.TrimSpace(req.Agent),
+		Slug:            req.Slug,
+		Title:           req.Title,
+		Directory:       directory,
+		Worktree:        req.Worktree,
+		Model:           strings.TrimSpace(req.Model),
+		ReasoningEffort: strings.TrimSpace(req.ReasoningEffort),
 	})
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
@@ -645,7 +669,7 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 
 	switch session.Runtime {
 	case "", storage.RuntimeNative:
-		s.streamNativeSession(w, flusher, r, session, req.Message, attachments, req.Voice)
+		s.streamNativeSession(w, flusher, r, session, req.Message, attachments, req.Voice, req.PlanRequested)
 	case storage.RuntimeACP:
 		s.streamACPSession(w, flusher, r.Context(), session, req.Message, attachments, req.PlanRequested)
 	default:
@@ -778,11 +802,12 @@ type createSessionRequest struct {
 	Agent     string `json:"agent,omitempty"`
 	Directory string `json:"directory,omitempty"`
 	Worktree  bool   `json:"worktree,omitempty"`
-	// ModelProvider/Model override the defaults from Settings > Agents for this
-	// session. ModelProvider only applies to native sessions; for ACP sessions
-	// the provider is implied by the agent.
-	ModelProvider string `json:"model_provider,omitempty"`
-	Model         string `json:"model,omitempty"`
+	// ModelProvider/Model/ReasoningEffort override the defaults from
+	// Settings > Agents for this session. ModelProvider only applies to native
+	// sessions; for ACP sessions the provider is implied by the agent.
+	ModelProvider   string `json:"model_provider,omitempty"`
+	Model           string `json:"model,omitempty"`
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

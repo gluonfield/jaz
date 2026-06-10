@@ -3,7 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { IconButton } from '@/components/ui/IconButton'
 import type { SendMessageOptions } from '@/lib/sendMessage'
-import { MenuRow, Popover } from './NewThreadControls'
+import { MenuRow, Popover } from '@/components/ui/Popover'
 import { QueuedPromptList } from './QueuedPromptList'
 
 // A rainbow comet (~100° arc fading in and out of transparency) that orbits

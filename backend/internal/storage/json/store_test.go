@@ -104,9 +104,14 @@ func TestAddUsageStoresCachedTokens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Missing totals derive from the disjoint components (100+64+25 = 189).
 	if loaded.Usage.InputTokens != 110 || loaded.Usage.CachedInputTokens != 72 || loaded.Usage.OutputTokens != 30 ||
-		loaded.Usage.ReasoningOutputTokens != 7 || loaded.Usage.TotalTokens != 145 {
+		loaded.Usage.ReasoningOutputTokens != 7 || loaded.Usage.TotalTokens != 209 {
 		t.Fatalf("usage = %#v", loaded.Usage)
+	}
+	// Context reflects only the latest turn (10+8+5), never accumulates.
+	if loaded.Usage.ContextTokens != 23 {
+		t.Fatalf("context tokens = %d, want 23", loaded.Usage.ContextTokens)
 	}
 }
 
@@ -274,6 +279,13 @@ func TestSessionEventsUseJSONL(t *testing.T) {
 				ToolCalls: []sessionevents.ACPToolCall{{ID: "tool-1", Title: "Read file"}},
 			},
 		},
+		sessionevents.Event{
+			Type: "plan_update",
+			Plan: &sessionevents.PlanEvent{
+				Explanation: "Updated checklist",
+				Plan:        []sessionevents.PlanEntry{{Content: "Run tests", Status: "pending"}},
+			},
+		},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -282,8 +294,8 @@ func TestSessionEventsUseJSONL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded) != 2 {
-		t.Fatalf("events = %d, want 2", len(loaded))
+	if len(loaded) != 3 {
+		t.Fatalf("events = %d, want 3", len(loaded))
 	}
 	if loaded[0].Seq != 1 || loaded[0].SessionID != session.ID || loaded[0].Content != "working" {
 		t.Fatalf("first event = %#v", loaded[0])
@@ -291,7 +303,10 @@ func TestSessionEventsUseJSONL(t *testing.T) {
 	if loaded[1].Seq != 2 || loaded[1].ACP == nil || loaded[1].ACP.ToolCalls[0].Title != "Read file" {
 		t.Fatalf("second event = %#v", loaded[1])
 	}
-	if loaded[0].At.IsZero() || loaded[1].At.IsZero() {
+	if loaded[2].Seq != 3 || loaded[2].Plan == nil || loaded[2].Plan.Plan[0].Content != "Run tests" {
+		t.Fatalf("third event = %#v", loaded[2])
+	}
+	if loaded[0].At.IsZero() || loaded[1].At.IsZero() || loaded[2].At.IsZero() {
 		t.Fatalf("events should be timestamped: %#v", loaded)
 	}
 }

@@ -10,20 +10,22 @@ import {
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type {
   ACPPermission,
-  ACPPlanEntry,
   ACPToolCall,
   ChatMessage,
+  MessageBlock,
   SessionEvent,
 } from '@/lib/api/types'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { agentLabel } from '@/lib/agentLabel'
 import { relativeTime } from '@/lib/format/time'
+import { planSurfaceFromEvent, planSurfaceKey, type PlanSurface } from '@/lib/planSurface'
 import { MessageMarkdown } from './MessageMarkdown'
 import { ThinkingBlock } from './ThinkingBlock'
 import { PermissionCard } from './TranscriptPermissions'
 import { hasPermissionSurface, normalized } from './TranscriptUtils'
 import { ToolCallCard } from './ToolCallCard'
+import { isHiddenToolName } from './toolVisibility'
 
 function messageText(message: ChatMessage): string {
   // Each text block is a separate utterance; join as paragraphs so block
@@ -43,6 +45,10 @@ function messageReasoning(message: ChatMessage): string {
     .filter(Boolean)
     .join('\n\n')
   return text || message.reasoning || ''
+}
+
+function isVisibleToolBlock(block: MessageBlock): block is Extract<MessageBlock, { type: 'tool' }> {
+  return block.type === 'tool' && !isHiddenToolName(block.name)
 }
 
 function formatAttachmentSize(size?: number): string {
@@ -91,7 +97,7 @@ function Bubble({ message }: { message: ChatMessage }) {
           <ThinkingBlock text={reasoning} />
           {text ? <MessageMarkdown text={text} /> : null}
           {message.blocks
-            ?.filter((block) => block.type === 'tool')
+            ?.filter(isVisibleToolBlock)
             .map((block) => (
               <ToolCallCard
                 key={block.id}
@@ -108,10 +114,6 @@ function Bubble({ message }: { message: ChatMessage }) {
     default:
       return null
   }
-}
-
-function hasPlanSurface(event: SessionEvent): boolean {
-  return Boolean(event.acp?.plan?.length)
 }
 
 function isParentChildACPEvent(event: SessionEvent): boolean {
@@ -131,7 +133,7 @@ function isWorkingLinkOnly(event: SessionEvent): boolean {
   return (
     event.type === 'acp' &&
     hasWorkingStatusSurface(event) &&
-    !hasPlanSurface(event) &&
+    !planSurfaceFromEvent(event) &&
     !event.content &&
     !event.acp?.thought &&
     !event.acp?.error &&
@@ -142,12 +144,13 @@ function isWorkingLinkOnly(event: SessionEvent): boolean {
 function hasVisibleACPSurface(event: SessionEvent): boolean {
   const acp = event.acp
   if (!acp) return false
+  const hasPlan = Boolean(planSurfaceFromEvent(event))
   if (isParentChildACPEvent(event)) {
     return Boolean(
       event.content ||
         acp.thought ||
         acp.error ||
-        hasPlanSurface(event) ||
+        hasPlan ||
         hasWorkingStatusSurface(event),
     )
   }
@@ -156,7 +159,7 @@ function hasVisibleACPSurface(event: SessionEvent): boolean {
       acp.thought ||
       acp.error ||
       acp.tool_calls?.length ||
-      hasPlanSurface(event) ||
+      hasPlan ||
       hasWorkingStatusSurface(event),
   )
 }
@@ -301,16 +304,11 @@ function ToolSummary({ calls, active = false }: { calls?: ACPToolCall[]; active?
   )
 }
 
-function PlanChecklist({
-  entries,
-  onApprovePlan,
-}: {
-  entries?: ACPPlanEntry[]
-  onApprovePlan?: () => void
-}) {
+function PlanChecklist({ surface, onApprovePlan }: { surface: PlanSurface; onApprovePlan?: () => void }) {
   const [expanded, setExpanded] = useState(false)
   const [overflowing, setOverflowing] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
+  const { title, explanation, entries, strikeCompleted } = surface
 
   useEffect(() => {
     const el = contentRef.current
@@ -324,15 +322,17 @@ function PlanChecklist({
     const observer = new ResizeObserver(measure)
     observer.observe(el)
     return () => observer.disconnect()
-  }, [entries, expanded])
+  }, [entries, expanded, explanation])
 
   const showExpandControl = expanded || overflowing
+  const planEntries = entries ?? []
+  const explanationText = explanation?.trim() ?? ''
 
   return (
     <div className="rounded-card border border-border bg-surface/60 px-3 py-2.5">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="text-[11px] font-medium tracking-wide text-ink-3 uppercase">Plan</p>
-        {onApprovePlan ? (
+        <p className="text-[11px] font-medium tracking-wide text-ink-3 uppercase">{title}</p>
+        {surface.awaitingApproval && onApprovePlan ? (
           <Button variant="primary" size="sm" onClick={onApprovePlan}>
             <Check size={13} />
             Approve plan
@@ -343,21 +343,28 @@ function PlanChecklist({
         ref={contentRef}
         className={`relative ${expanded ? '' : 'max-h-[340px] overflow-hidden'}`}
       >
-        {/* Status reads from the text itself — finished steps strike through and
-            fade — so the rows stay clean without a column of leading icons. */}
-        <ul className="flex flex-col gap-2.5">
-          {entries?.map((entry, index) => {
-            const done = ['completed', 'complete'].includes(normalized(entry.status))
-            return (
-              <li
-                key={`${entry.content}-${index}`}
-                className={`min-w-0 text-sm text-ink-2 ${done ? 'line-through opacity-50' : ''}`}
-              >
-                <MessageMarkdown text={entry.content} />
-              </li>
-            )
-          })}
-        </ul>
+        {explanationText ? (
+          <div className="mb-2 text-sm text-ink-2">
+            <MessageMarkdown text={explanationText} />
+          </div>
+        ) : null}
+        {planEntries.length ? (
+          <ul className="flex flex-col gap-2.5">
+            {planEntries.map((entry, index) => {
+              const done = strikeCompleted && ['completed', 'complete'].includes(normalized(entry.status))
+              return (
+                <li
+                  key={`${entry.content}-${index}`}
+                  className={`min-w-0 text-sm text-ink-2 ${done ? 'line-through opacity-50' : ''}`}
+                >
+                  <MessageMarkdown text={entry.content} />
+                </li>
+              )
+            })}
+          </ul>
+        ) : explanationText ? null : (
+          <p className="text-sm italic text-ink-3">(no steps provided)</p>
+        )}
         {!expanded && overflowing ? (
           <div
             className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-b from-transparent via-surface/85 to-surface"
@@ -407,14 +414,11 @@ function LiveEvent({
   showPlan?: boolean
   onApprovePlan?: () => void
 }) {
-  const canApprovePlan = Boolean(
-    event.acp?.modes?.plan_mode_id &&
-      event.acp.modes.current_mode_id === event.acp.modes.plan_mode_id &&
-      onApprovePlan,
-  )
+  const eventPlan = planSurfaceFromEvent(event)
+  const planSurface = showPlan ? eventPlan : undefined
   const ownSession = Boolean(event.acp && event.acp.id === sessionId)
   const showWorkingStatus =
-    event.type === 'acp' && hasWorkingStatusSurface(event) && !hasPlanSurface(event) && !ownSession
+    event.type === 'acp' && hasWorkingStatusSurface(event) && !eventPlan && !ownSession
   const parentChild = isParentChildACPEvent(event)
   return (
     <motion.div
@@ -450,12 +454,7 @@ function LiveEvent({
       {event.permission ? (
         <PermissionCard event={event} resolution={permissionResolution} />
       ) : null}
-      {showPlan && event.acp?.plan?.length ? (
-        <PlanChecklist
-          entries={event.acp.plan}
-          onApprovePlan={canApprovePlan ? onApprovePlan : undefined}
-        />
-      ) : null}
+      {planSurface ? <PlanChecklist surface={planSurface} onApprovePlan={onApprovePlan} /> : null}
     </motion.div>
   )
 }
@@ -585,9 +584,12 @@ function isCollapsibleWork(
   if (event.type === 'permission_request') {
     return !pendingPermissionIds.has(event.permission?.id ?? '')
   }
+  const planSurface = planSurfaceFromEvent(event)
+  if (planSurface) {
+    return event.acp ? latestPlanIndex.get(event.acp.id) !== item.eventIndex : false
+  }
   if (event.type === 'acp') {
     if (event.acp?.error) return false
-    if (hasPlanSurface(event) && latestPlanIndex.get(event.acp!.id) === item.eventIndex) return false
     return true
   }
   return false
@@ -660,7 +662,7 @@ export function Transcript({
       permissionResolutions.set(event.permission.id, event.permission)
     }
     const acp = event.acp
-    if (acp && hasPlanSurface(event)) {
+    if (acp && planSurfaceFromEvent(event)) {
       latestPlanEvent.set(acp.id, index)
     }
     if (event.type === 'acp' && acp?.tool_calls?.length) {
@@ -682,17 +684,21 @@ export function Transcript({
         return false
       }
       const acp = event.acp
-      if (!acp) return true
+      const planSurface = planSurfaceFromEvent(event)
+      if (!acp) {
+        if (planSurface) return true
+        return Boolean(event.content || event.permission)
+      }
       if (!hasVisibleACPSurface(event)) return false
       // This page's own running state has no link to render — drop the event
       // instead of leaving an empty row.
       if (isWorkingLinkOnly(event) && acp.id === sessionId) return false
-      if (hasPlanSurface(event)) {
+      if (planSurface) {
         const isLatestPlan = latestPlanEvent.get(acp.id) === index
         if (!isLatestPlan && !event.content && !acp.error && !acp.tool_calls?.length) return false
       }
       if (event.type === 'acp' && acp.tool_calls?.length && latestToolEvent.get(acp.id) !== index) {
-        return Boolean(event.content || acp.error || hasPlanSurface(event))
+        return Boolean(event.content || acp.error || planSurface)
       }
       return true
     })
@@ -707,9 +713,7 @@ export function Transcript({
     }
   }
 
-  const visibleMessages = messages.filter(
-    (message) => message.role === 'user' || message.role === 'assistant',
-  )
+  const visibleMessages = messages.filter((message) => message.role === 'user' || message.role === 'assistant')
   const merged = groupToolRuns(mergeTimeline(visibleMessages, renderedEvents))
   // Live state isn't history: pending questions and working status anchor at
   // the bottom; an answered question returns to its chronological spot.
@@ -739,7 +743,8 @@ export function Transcript({
             active={working}
           />
         )
-      case 'event':
+      case 'event': {
+        const planSurface = planSurfaceFromEvent(item.event)
         return (
           <LiveEvent
             key={`event-${stableEventKey(item.event)}`}
@@ -748,9 +753,10 @@ export function Transcript({
             showHeader={item.showHeader}
             working={working}
             showPlan={
-              hasPlanSurface(item.event)
-                ? latestPlanEvent.get(item.event.acp!.id) === item.eventIndex
-                : false
+              Boolean(
+                planSurface &&
+                  (!item.event.acp || latestPlanEvent.get(item.event.acp.id) === item.eventIndex),
+              )
             }
             onApprovePlan={onApprovePlan}
             permissionResolution={
@@ -758,6 +764,7 @@ export function Transcript({
             }
           />
         )
+      }
     }
   }
 
@@ -826,8 +833,9 @@ export function Transcript({
 // Coalesced events keep their latest copy whose seq changes per update; key by
 // identity so streamed deltas patch in place instead of remounting.
 function stableEventKey(event: SessionEvent): string {
+  const planKey = planSurfaceKey(event)
+  if (planKey) return planKey
   if (event.type === 'acp' && event.acp?.id) {
-    if (event.acp.plan?.length) return `acp_plan:${event.acp.id}`
     if (event.acp.tool_calls?.length) return `acp_tools:${event.acp.id}`
     if (event.acp.error) return `acp_error:${event.acp.id}`
     return `acp_status:${event.acp.id}`

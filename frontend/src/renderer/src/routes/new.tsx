@@ -28,7 +28,7 @@ function NewSessionPage() {
   const toast = useToast()
   const [creating, setCreating] = useState(false)
   const [composing, setComposing] = useState(false)
-  // 'native' or a configured ACP agent name; the directory only applies to ACP.
+  // 'native' or a configured ACP agent name; directory is the session cwd.
   const [runtime, setRuntime] = useState('native')
   const [directory, setDirectory] = useState('')
   // Worktree runs the ACP session on a disposable git worktree; only offered
@@ -71,6 +71,7 @@ function NewSessionPage() {
         isNative
           ? {
               ...(title ? { title } : {}),
+              ...(directory ? { directory } : {}),
               ...(provider ? { model_provider: provider } : {}),
               ...(model ? { model } : {}),
             }
@@ -97,7 +98,7 @@ function NewSessionPage() {
     startThread(text.trim(), (id) =>
       setPendingMessage(id, {
         text,
-        planRequested: runtime !== 'native' && Boolean(options.planRequested),
+        planRequested: Boolean(options.planRequested),
         files: options.files ?? [],
       }),
     )
@@ -135,7 +136,7 @@ function NewSessionPage() {
             autoFocus
             translucent
             placeholder="Ask anything, or hand your assistant a task…"
-            planAvailable={runtime !== 'native'}
+            planAvailable
             leftSlot={
               <>
                 {agents.length > 0 ? (
@@ -147,6 +148,7 @@ function NewSessionPage() {
                       setRuntime(next)
                       setProviderOverride(null)
                       setModelOverride(null)
+                      if (next === 'native') setWorktree(false)
                     }}
                   />
                 ) : null}
@@ -173,17 +175,15 @@ function NewSessionPage() {
                       : undefined
                   }
                 />
-                {runtime !== 'native' ? (
-                  <DirectoryPicker
-                    value={directory}
-                    disabled={creating}
-                    onChange={(path, git) => {
-                      setDirectory(path)
-                      setDirectoryIsGit(git)
-                      if (!git) setWorktree(false)
-                    }}
-                  />
-                ) : null}
+                <DirectoryPicker
+                  value={directory}
+                  disabled={creating}
+                  onChange={(path, git) => {
+                    setDirectory(path)
+                    setDirectoryIsGit(git)
+                    if (!git || runtime === 'native') setWorktree(false)
+                  }}
+                />
                 {runtime !== 'native' && directoryIsGit ? (
                   <div className="flex items-center gap-1.5 text-[13px] text-ink-2">
                     <Checkbox

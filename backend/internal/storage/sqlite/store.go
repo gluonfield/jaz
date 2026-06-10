@@ -193,8 +193,8 @@ func (s *Store) ListSessions(filter storage.SessionFilter) ([]storage.Session, e
 	defer s.mu.Unlock()
 
 	rows, err := s.db.Query(`SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd,
-model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens,
-reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms FROM threads`)
+model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, cached_write_tokens, output_tokens,
+reasoning_output_tokens, total_tokens, context_tokens, context_window_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms FROM threads`)
 	if err != nil {
 		return nil, err
 	}
@@ -410,23 +410,32 @@ func (s *Store) SaveACPState(id string, state storage.ACPState) error {
 }
 
 func (s *Store) AddUsage(id string, usage storage.Usage) error {
-	if usage.InputTokens == 0 && usage.CachedInputTokens == 0 && usage.OutputTokens == 0 && usage.ReasoningOutputTokens == 0 && usage.TotalTokens == 0 {
+	if usage.IsZero() {
 		return nil
 	}
 	s.mu.Lock()
 	total := usage.TotalTokens
 	if total == 0 {
-		total = usage.InputTokens + usage.OutputTokens
+		total = usage.ComponentTotal()
 	}
+	// Token counters accumulate; context_tokens/context_window_tokens snapshot
+	// the latest turn's live context (so it can shrink after compaction),
+	// keeping the previous value when a turn reports nothing.
+	context := usage.LiveContextTokens()
 	_, err := s.db.Exec(`UPDATE threads SET
 input_tokens = input_tokens + ?,
 cached_input_tokens = cached_input_tokens + ?,
+cached_write_tokens = cached_write_tokens + ?,
 output_tokens = output_tokens + ?,
 reasoning_output_tokens = reasoning_output_tokens + ?,
 total_tokens = total_tokens + ?,
+context_tokens = CASE WHEN ? > 0 THEN ? ELSE context_tokens END,
+context_window_tokens = CASE WHEN ? > 0 THEN ? ELSE context_window_tokens END,
 updated_at_ms = ?
 WHERE id = ?`,
-		usage.InputTokens, usage.CachedInputTokens, usage.OutputTokens, usage.ReasoningOutputTokens, total, timeToMs(time.Now().UTC()), id)
+		usage.InputTokens, usage.CachedInputTokens, usage.CachedWriteTokens, usage.OutputTokens, usage.ReasoningOutputTokens, total,
+		context, context, usage.ContextWindowTokens, usage.ContextWindowTokens,
+		timeToMs(time.Now().UTC()), id)
 	s.mu.Unlock()
 	if err != nil {
 		return err
@@ -598,8 +607,8 @@ func (s *Store) loadSessionLocked(ref string) (storage.Session, error) {
 		return storage.Session{}, fmt.Errorf("session id or slug is required")
 	}
 	row := s.db.QueryRow(`SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd,
-model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens,
-reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms
+model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, cached_write_tokens, output_tokens,
+reasoning_output_tokens, total_tokens, context_tokens, context_window_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms
 FROM threads WHERE id = ? OR slug = ? LIMIT 1`, ref, ref)
 	return scanSession(row)
 }
@@ -705,9 +714,9 @@ func insertSession(db execer, session storage.Session) error {
 	}
 	_, err = db.Exec(`INSERT INTO threads (
 id, slug, title, parent_id, status, runtime, acp_agent, acp_session_id, cwd,
-error, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens,
-reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+error, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, cached_write_tokens, output_tokens,
+reasoning_output_tokens, total_tokens, context_tokens, context_window_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
 slug = excluded.slug,
 title = excluded.title,
@@ -723,9 +732,12 @@ model = excluded.model,
 reasoning_effort = excluded.reasoning_effort,
 input_tokens = excluded.input_tokens,
 cached_input_tokens = excluded.cached_input_tokens,
+cached_write_tokens = excluded.cached_write_tokens,
 output_tokens = excluded.output_tokens,
 reasoning_output_tokens = excluded.reasoning_output_tokens,
 total_tokens = excluded.total_tokens,
+context_tokens = excluded.context_tokens,
+context_window_tokens = excluded.context_window_tokens,
 queued_messages = excluded.queued_messages,
 source_type = excluded.source_type,
 source_id = excluded.source_id,
@@ -735,8 +747,9 @@ updated_at_ms = excluded.updated_at_ms`,
 		session.ID, session.Slug, nullString(session.Title), nullString(session.ParentID),
 		session.Status, session.Runtime, nullString(acpAgent), nullString(acpSessionID), nullString(cwd), nullString(session.Error),
 		nullString(session.ModelProvider), nullString(session.Model), nullString(session.ReasoningEffort),
-		session.Usage.InputTokens, session.Usage.CachedInputTokens, session.Usage.OutputTokens,
-		session.Usage.ReasoningOutputTokens, session.Usage.TotalTokens, queuedMessages,
+		session.Usage.InputTokens, session.Usage.CachedInputTokens, session.Usage.CachedWriteTokens, session.Usage.OutputTokens,
+		session.Usage.ReasoningOutputTokens, session.Usage.TotalTokens, session.Usage.ContextTokens,
+		session.Usage.ContextWindowTokens, queuedMessages,
 		nullString(session.SourceType), nullString(session.SourceID), session.Archived,
 		timeToMs(session.CreatedAt), timeToMs(session.UpdatedAt))
 	return err
@@ -763,8 +776,9 @@ func scanSession(scanner sessionScanner) (storage.Session, error) {
 	var createdMs, updatedMs int64
 	err := scanner.Scan(&session.ID, &session.Slug, &title, &parentID, &session.Status, &errorMessage, &session.Runtime,
 		&acpAgent, &acpSessionID, &cwd, &modelProvider, &model, &reasoningEffort,
-		&session.Usage.InputTokens, &session.Usage.CachedInputTokens, &session.Usage.OutputTokens,
-		&session.Usage.ReasoningOutputTokens, &session.Usage.TotalTokens, &queuedMessages, &sourceType, &sourceID,
+		&session.Usage.InputTokens, &session.Usage.CachedInputTokens, &session.Usage.CachedWriteTokens, &session.Usage.OutputTokens,
+		&session.Usage.ReasoningOutputTokens, &session.Usage.TotalTokens, &session.Usage.ContextTokens,
+		&session.Usage.ContextWindowTokens, &queuedMessages, &sourceType, &sourceID,
 		&session.Archived, &createdMs, &updatedMs)
 	if err != nil {
 		return storage.Session{}, err
@@ -791,7 +805,7 @@ func scanSession(scanner sessionScanner) (storage.Session, error) {
 	}
 	if acpAgent.Valid || acpSessionID.Valid || cwd.Valid {
 		session.RuntimeRef = &storage.RuntimeRef{
-			Type:      storage.RuntimeACP,
+			Type:      session.Runtime,
 			Agent:     acpAgent.String,
 			SessionID: acpSessionID.String,
 			Cwd:       cwd.String,

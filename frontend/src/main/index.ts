@@ -4,13 +4,14 @@ import appIcon from '../assets/jaz-icon-1024.png?asset'
 
 // Matches --color-bg under :root.dark; used as the window paint color before
 // the renderer mounts so a dark launch doesn't flash white behind the content.
-const DARK_BG = '#1e201b'
+const DARK_BG = '#1d1f24'
 
 const APP_NAME = 'Jaz'
 
 app.setName(APP_NAME)
 
 function createWindow(): void {
+  const mac = process.platform === 'darwin'
   const win = new BrowserWindow({
     title: APP_NAME,
     width: 1280,
@@ -19,8 +20,11 @@ function createWindow(): void {
     minHeight: 600,
     show: false,
     icon: appIcon,
-    backgroundColor: nativeTheme.shouldUseDarkColors ? DARK_BG : '#ffffff',
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    // On macOS the window paints the native sidebar material; the renderer
+    // keeps the content column opaque and lets the sidebar show through.
+    backgroundColor: mac ? '#00000000' : nativeTheme.shouldUseDarkColors ? DARK_BG : '#ffffff',
+    ...(mac ? { vibrancy: 'sidebar' as const, visualEffectState: 'followWindow' as const } : {}),
+    titleBarStyle: mac ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 18, y: 18 },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

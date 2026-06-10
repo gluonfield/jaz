@@ -12,6 +12,7 @@ type Event struct {
 	Type       string         `json:"type"`
 	Content    string         `json:"content,omitempty"`
 	ACP        *ACPEvent      `json:"acp,omitempty"`
+	Plan       *PlanEvent     `json:"plan,omitempty"`
 	Permission *ACPPermission `json:"permission,omitempty"`
 	At         time.Time      `json:"at"`
 }
@@ -29,9 +30,15 @@ type ACPEvent struct {
 	Thought     string          `json:"thought,omitempty"`
 	Error       string          `json:"error,omitempty"`
 	Modes       ACPModeState    `json:"modes,omitempty"`
-	Plan        []ACPPlanEntry  `json:"plan,omitempty"`
+	Plan        []PlanEntry     `json:"plan,omitempty"`
 	ToolCalls   []ACPToolCall   `json:"tool_calls,omitempty"`
 	Permissions []ACPPermission `json:"permissions,omitempty"`
+}
+
+type PlanEvent struct {
+	Explanation      string      `json:"explanation,omitempty"`
+	Plan             []PlanEntry `json:"plan,omitempty"`
+	AwaitingApproval bool        `json:"awaiting_approval,omitempty"`
 }
 
 type ACPModeState struct {
@@ -47,11 +54,13 @@ type ACPMode struct {
 	Description string `json:"description,omitempty"`
 }
 
-type ACPPlanEntry struct {
+type PlanEntry struct {
 	Content  string `json:"content"`
 	Status   string `json:"status,omitempty"`
 	Priority string `json:"priority,omitempty"`
 }
+
+type ACPPlanEntry = PlanEntry
 
 type ACPToolCall struct {
 	ID     string `json:"id"`

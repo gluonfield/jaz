@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/wins/jaz/backend/internal/pathsafe"
+	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/tools"
 )
 
@@ -45,8 +47,12 @@ func (t *Tool) Execute(ctx context.Context, inputs map[string]any) (tools.Result
 		return tools.Result{}, err
 	}
 	changed := make([]string, 0, len(hunks))
+	base, err := sessioncontext.WorkspaceBase(ctx, t.Workspace)
+	if err != nil {
+		return tools.Result{}, err
+	}
 	for _, hunk := range hunks {
-		if err := applyHunk(t.Workspace, hunk); err != nil {
+		if err := applyHunk(base, hunk); err != nil {
 			return tools.Result{}, err
 		}
 		changed = append(changed, hunk.pathForResult())
@@ -253,25 +259,11 @@ func resolvePatchPath(workspace, p string) (string, error) {
 	if p == "" {
 		return "", errors.New("patch path is empty")
 	}
-	if filepath.IsAbs(p) {
-		return filepath.Clean(p), nil
-	}
-	if workspace == "" {
-		workspace = "."
-	}
-	absWorkspace, err := filepath.Abs(workspace)
+	path, err := pathsafe.Resolve(workspace, p)
 	if err != nil {
-		return "", err
-	}
-	candidate := filepath.Clean(filepath.Join(absWorkspace, p))
-	rel, err := filepath.Rel(absWorkspace, candidate)
-	if err != nil {
-		return "", err
-	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("patch path escapes workspace: %s", p)
 	}
-	return candidate, nil
+	return path, nil
 }
 
 func splitContent(s string) ([]string, bool) {

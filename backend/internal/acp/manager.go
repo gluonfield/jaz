@@ -220,7 +220,11 @@ func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, cwd string) 
 		MCPServers: m.mcpServersForAgent(ac.initRaw),
 	}
 	if m.cfg.SystemPrompt != nil {
-		if prompt := strings.TrimSpace(m.cfg.SystemPrompt.SkillsPrompt()); prompt != "" {
+		prompt, err := m.cfg.SystemPrompt.SkillsPrompt()
+		if err != nil {
+			return acpSessionInfo{}, fmt.Errorf("build acp system prompt: %w", err)
+		}
+		if prompt := strings.TrimSpace(prompt); prompt != "" {
 			newSession.Meta = map[string]any{"systemPrompt": prompt}
 		}
 	}

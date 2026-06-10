@@ -93,7 +93,7 @@ func (p *Provider) StreamComplete(ctx context.Context, req provider.Request) (<-
 		}
 		usage = mergeUsageSnapshot(usage, usageFromOpenAI(acc.Usage))
 		emitToolCalls(acc, events)
-		events <- provider.Event{Type: provider.EventDone, Usage: usage}
+		events <- provider.Event{Type: provider.EventDone, Usage: splitCachedInput(usage)}
 	}()
 	return events, nil
 }
@@ -138,9 +138,13 @@ func (p *Provider) Complete(ctx context.Context, req provider.Request) (provider
 	if len(resp.Choices) == 0 {
 		return provider.Response{}, errors.New("provider returned no choices")
 	}
-	return provider.Response{Message: resp.Choices[0].Message.ToParam(), Usage: usageFromOpenAI(resp.Usage)}, nil
+	return provider.Response{Message: resp.Choices[0].Message.ToParam(), Usage: splitCachedInput(usageFromOpenAI(resp.Usage))}, nil
 }
 
+// usageFromOpenAI maps the wire shape verbatim — prompt_tokens still counts
+// cached reads inclusively. splitCachedInput converts to the disjoint
+// convention exactly once, at the response boundary; streaming merges
+// partial snapshots in between, so splitting any earlier double-counts.
 func usageFromOpenAI(usage oa.CompletionUsage) provider.Usage {
 	return provider.Usage{
 		InputTokens:           usage.PromptTokens,
@@ -149,6 +153,13 @@ func usageFromOpenAI(usage oa.CompletionUsage) provider.Usage {
 		ReasoningOutputTokens: usage.CompletionTokensDetails.ReasoningTokens,
 		TotalTokens:           usage.TotalTokens,
 	}
+}
+
+func splitCachedInput(u provider.Usage) provider.Usage {
+	if u.CachedInputTokens > 0 && u.CachedInputTokens <= u.InputTokens {
+		u.InputTokens -= u.CachedInputTokens
+	}
+	return u
 }
 
 func (p *Provider) requestOptions() []option.RequestOption {

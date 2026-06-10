@@ -49,12 +49,42 @@ type RuntimeRef struct {
 	Cwd       string `json:"cwd,omitempty"`
 }
 
+// Usage follows the ACP convention: input/cached/output are disjoint
+// components (InputTokens is fresh, uncached input; cache reads and writes
+// are counted separately, never folded into input).
 type Usage struct {
 	InputTokens           int64 `json:"input_tokens,omitempty"`
-	CachedInputTokens     int64 `json:"cached_input_tokens,omitempty"`
+	CachedInputTokens     int64 `json:"cached_input_tokens,omitempty"` // cache reads
+	CachedWriteTokens     int64 `json:"cached_write_tokens,omitempty"`
 	OutputTokens          int64 `json:"output_tokens,omitempty"`
 	ReasoningOutputTokens int64 `json:"reasoning_output_tokens,omitempty"`
 	TotalTokens           int64 `json:"total_tokens,omitempty"`
+	// ContextTokens is the live context size after the most recent turn;
+	// stores replace it on each usage write instead of accumulating.
+	ContextTokens int64 `json:"context_tokens,omitempty"`
+	// ContextWindowTokens is the model's context window as reported by the
+	// runtime (e.g. usage_update "size"); replaced like ContextTokens, zero
+	// when the runtime doesn't report it.
+	ContextWindowTokens int64 `json:"context_window_tokens,omitempty"`
+}
+
+// ComponentTotal is the full processed-token count for a turn: every
+// disjoint component the model touched.
+func (u Usage) ComponentTotal() int64 {
+	return u.InputTokens + u.CachedInputTokens + u.CachedWriteTokens + u.OutputTokens
+}
+
+func (u Usage) IsZero() bool {
+	return u == Usage{}
+}
+
+// LiveContextTokens estimates the context occupied after a turn when the
+// runtime didn't report it: everything sent plus what the model produced.
+func (u Usage) LiveContextTokens() int64 {
+	if u.ContextTokens > 0 {
+		return u.ContextTokens
+	}
+	return u.ComponentTotal()
 }
 
 type Session struct {

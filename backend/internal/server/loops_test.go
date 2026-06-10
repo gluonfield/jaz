@@ -182,17 +182,20 @@ func TestNativeLoopRunCreatesFreshThreadWithMetadata(t *testing.T) {
 	}
 	defer store.Close()
 	recorder := &recordingProvider{assistant: "old transcript text"}
+	workspace := t.TempDir()
 	srv := &Server{
-		Agent: &agent.Agent{Provider: recorder, MaxTurns: 1},
-		Store: store,
+		Agent:     &agent.Agent{Provider: recorder, MaxTurns: 1},
+		Store:     store,
+		Workspace: workspace,
 	}
 	service := newLoopServiceForTest(store, NewLoopRunner(srv))
 	srv.Loops = service
 	loop, err := service.Create(loops.CreateLoop{
-		Name:     "Fresh check",
-		Prompt:   "check status",
-		Runtime:  loops.RuntimeNative,
-		Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "* * * * *", Timezone: "UTC"},
+		Name:      "Fresh check",
+		Prompt:    "check status",
+		Runtime:   loops.RuntimeNative,
+		Directory: "repo",
+		Schedule:  loops.Schedule{Kind: loops.ScheduleCron, Expr: "* * * * *", Timezone: "UTC"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -204,6 +207,10 @@ func TestNativeLoopRunCreatesFreshThreadWithMetadata(t *testing.T) {
 	}
 	waitForLoopRun(t, service, loop.ID, first.ID, loops.RunStatusOK)
 	firstSession := sessionForRun(t, store, first.ID)
+	wantCWD := filepath.Join(workspace, "repo")
+	if firstSession.RuntimeRef == nil || firstSession.RuntimeRef.Cwd != wantCWD {
+		t.Fatalf("native loop cwd = %#v, want %q", firstSession.RuntimeRef, wantCWD)
+	}
 
 	second, err := service.RunNow(context.Background(), loop.ID)
 	if err != nil {

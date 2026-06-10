@@ -247,7 +247,7 @@ func (s *Store) LastRootSession() (storage.Session, error) {
 }
 
 func (s *Store) AddUsage(id string, usage storage.Usage) error {
-	if usage.InputTokens == 0 && usage.CachedInputTokens == 0 && usage.OutputTokens == 0 && usage.ReasoningOutputTokens == 0 && usage.TotalTokens == 0 {
+	if usage.IsZero() {
 		return nil
 	}
 	s.mu.Lock()
@@ -258,13 +258,20 @@ func (s *Store) AddUsage(id string, usage storage.Usage) error {
 	}
 	total := usage.TotalTokens
 	if total == 0 {
-		total = usage.InputTokens + usage.OutputTokens
+		total = usage.ComponentTotal()
 	}
 	session.Usage.InputTokens += usage.InputTokens
 	session.Usage.CachedInputTokens += usage.CachedInputTokens
+	session.Usage.CachedWriteTokens += usage.CachedWriteTokens
 	session.Usage.OutputTokens += usage.OutputTokens
 	session.Usage.ReasoningOutputTokens += usage.ReasoningOutputTokens
 	session.Usage.TotalTokens += total
+	if context := usage.LiveContextTokens(); context > 0 {
+		session.Usage.ContextTokens = context
+	}
+	if usage.ContextWindowTokens > 0 {
+		session.Usage.ContextWindowTokens = usage.ContextWindowTokens
+	}
 	return s.saveSession(session)
 }
 

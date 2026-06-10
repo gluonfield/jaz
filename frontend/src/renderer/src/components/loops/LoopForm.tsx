@@ -61,7 +61,7 @@ export function loopDraftToInput(draft: LoopDraft): LoopInput {
     runtime: native ? 'native' : 'acp',
     acp_agent: native ? undefined : draft.runtime,
     reasoning_effort: draft.reasoningEffort || undefined,
-    directory: native ? undefined : draft.directory || undefined,
+    directory: draft.directory || undefined,
   }
 }
 
@@ -134,13 +134,11 @@ export function LoopForm({
             disabled={disabled}
             onChange={(runtime) => set({ runtime })}
           />
-          {draft.runtime !== 'native' ? (
-            <DirectoryPicker
-              value={draft.directory}
-              disabled={disabled}
-              onChange={(directory) => set({ directory })}
-            />
-          ) : null}
+          <DirectoryPicker
+            value={draft.directory}
+            disabled={disabled}
+            onChange={(directory) => set({ directory })}
+          />
           <ReasoningEffortSelect
             value={draft.reasoningEffort}
             disabled={disabled}

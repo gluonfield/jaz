@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/tools"
 )
 
@@ -113,7 +114,11 @@ func (t *ExecCommandTool) Execute(ctx context.Context, inputs map[string]any) (t
 	yield := tools.Clamp(tools.IntInput(inputs, "yield_time_ms", 10000), 250, 30000)
 	maxTokens := tools.Clamp(tools.IntInput(inputs, "max_output_tokens", 10000), 1, 50000)
 	maxChars := maxTokens * 4
-	workdir, err := resolveWorkdir(t.Workspace, tools.StringInput(inputs, "workdir"))
+	base, err := sessioncontext.WorkspaceBase(ctx, t.Workspace)
+	if err != nil {
+		return tools.Result{}, err
+	}
+	workdir, err := resolveWorkdir(base, tools.StringInput(inputs, "workdir"))
 	if err != nil {
 		return tools.Result{}, err
 	}
@@ -303,14 +308,14 @@ func completedPayload(output string, err error) map[string]any {
 	return payload
 }
 
-func resolveWorkdir(workspace, workdir string) (string, error) {
-	if workspace == "" {
-		workspace = "."
+func resolveWorkdir(base, workdir string) (string, error) {
+	if base == "" {
+		base = "."
 	}
 	if workdir == "" {
-		workdir = workspace
+		workdir = base
 	} else if !filepath.IsAbs(workdir) {
-		workdir = filepath.Join(workspace, workdir)
+		workdir = filepath.Join(base, workdir)
 	}
 	cleaned, err := filepath.Abs(workdir)
 	if err != nil {

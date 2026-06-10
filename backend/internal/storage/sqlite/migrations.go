@@ -30,11 +30,13 @@ func runMigrations(db *sql.DB) error {
 	if err := goose.SetDialect("sqlite3"); err != nil {
 		return fmt.Errorf("set sqlite migration dialect: %w", err)
 	}
-	if err := goose.Up(db, "migrations"); err != nil {
-		return fmt.Errorf("run sqlite migrations: %w", err)
-	}
+	// Pre-goose thread tables lack columns that later migrations reference
+	// (0006 updates input_tokens), so add them before goose runs.
 	if err := ensureLegacyThreadColumns(db); err != nil {
 		return err
+	}
+	if err := goose.Up(db, "migrations"); err != nil {
+		return fmt.Errorf("run sqlite migrations: %w", err)
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_threads_source ON threads(source_type, source_id)`); err != nil {
 		return fmt.Errorf("create source thread index: %w", err)
@@ -51,6 +53,11 @@ func ensureLegacyThreadColumns(db *sql.DB) error {
 	columns, err := tableColumns(db, "threads")
 	if err != nil {
 		return err
+	}
+	// No threads table at all means a fresh database; goose creates the
+	// full schema and there is nothing legacy to patch.
+	if len(columns) == 0 {
+		return nil
 	}
 	for _, column := range []columnMigration{
 		{Name: "archived", Definition: "archived INTEGER NOT NULL DEFAULT 0"},
