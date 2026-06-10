@@ -292,6 +292,13 @@ const SHAPES: Record<string, ShapeDef> = {
   ...Object.fromEntries(PHRASES.map(([p, f]) => [p, textShape(p, f)])),
 }
 
+export type PixelFieldShapeFrame = {
+  shape: keyof typeof SHAPES
+  cx: number
+  cy: number
+  scale: number
+}
+
 /* ---------------- shaders ----------------
  * Every particle owns a `from` and `to` position, each in its own frame
  * (center px / scale px / Y-rotation / brand factor). Morphs ease per particle
@@ -410,12 +417,22 @@ function cssToRgb(css: string, scratch: CanvasRenderingContext2D): [number, numb
 export function PixelField({
   calm = false,
   shapes,
+  onShapeFrame,
+  freezeShape = false,
+  emphasizeShape = false,
 }: {
   calm?: boolean
   shapes?: (keyof typeof SHAPES)[]
+  onShapeFrame?: (frame: PixelFieldShapeFrame | null) => void
+  freezeShape?: boolean
+  /** swell the active construction slightly (e.g. while the rocket is hovered) */
+  emphasizeShape?: boolean
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const calmRef = useRef(calm)
+  const onShapeFrameRef = useRef(onShapeFrame)
+  const freezeShapeRef = useRef(freezeShape)
+  const emphasizeShapeRef = useRef(emphasizeShape)
   const reducedMotion = useReducedMotion()
   const playlist = (shapes?.length ? shapes : Object.keys(SHAPES)) as string[]
   const playlistKey = playlist.join(',')
@@ -423,6 +440,18 @@ export function PixelField({
   useEffect(() => {
     calmRef.current = calm
   }, [calm])
+
+  useEffect(() => {
+    onShapeFrameRef.current = onShapeFrame
+  }, [onShapeFrame])
+
+  useEffect(() => {
+    freezeShapeRef.current = freezeShape
+  }, [freezeShape])
+
+  useEffect(() => {
+    emphasizeShapeRef.current = emphasizeShape
+  }, [emphasizeShape])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -589,11 +618,42 @@ export function PixelField({
     let morphDur = 1.8
     let swirl = 0
     let homeTarget = true // frameTo is the wordmark
+    let activeShape: keyof typeof SHAPES | null = null
+    let emittedShape: keyof typeof SHAPES | null = null
+    let emittedCx = 0
+    let emittedCy = 0
+    let emittedScale = 0
+
+    const emitShapeFrame = (shape: keyof typeof SHAPES | null) => {
+      const callback = onShapeFrameRef.current
+      if (!callback) return
+      if (!shape) {
+        if (emittedShape !== null) {
+          emittedShape = null
+          callback(null)
+        }
+        return
+      }
+      if (
+        emittedShape === shape &&
+        Math.abs(emittedCx - frameTo.cx) < 1 &&
+        Math.abs(emittedCy - frameTo.cy) < 1 &&
+        Math.abs(emittedScale - frameTo.scale) < 1
+      ) {
+        return
+      }
+      emittedShape = shape
+      emittedCx = frameTo.cx
+      emittedCy = frameTo.cy
+      emittedScale = frameTo.scale
+      callback({ shape, cx: frameTo.cx, cy: frameTo.cy, scale: frameTo.scale })
+    }
 
     let width = 0
     let height = 0
     let drawCount = N_MAX
     let alphaMul = 1
+    let emphasis = 0
     let lastT = 0
 
     const drawFrame = (t: number) => {
@@ -610,7 +670,7 @@ export function PixelField({
       gl.uniform2f(uni.centerFrom, frameFrom.cx, frameFrom.cy)
       gl.uniform2f(uni.centerTo, frameTo.cx, frameTo.cy)
       gl.uniform1f(uni.scaleFrom, frameFrom.scale)
-      gl.uniform1f(uni.scaleTo, frameTo.scale)
+      gl.uniform1f(uni.scaleTo, frameTo.scale * (1 + emphasis * 0.08))
       gl.uniform1f(uni.rotFrom, frameFrom.rot)
       gl.uniform1f(uni.rotTo, frameTo.rot)
       gl.drawArrays(gl.POINTS, 0, drawCount)
@@ -722,6 +782,8 @@ export function PixelField({
 
     const toHome = () => {
       homeTarget = true
+      activeShape = null
+      emitShapeFrame(null)
       homeU = rand(0.34, 0.66)
       // sometimes the mark settles above the composer instead of below
       homeV = Math.random() < 0.45 ? rand(0.12, 0.24) : rand(0.6, 0.82)
@@ -741,10 +803,25 @@ export function PixelField({
     }
 
     let lastShape = -1
+    let constructionCount = 0
     let holdRange: [number, number] = [3.5, 8]
+    const chooseShapeIndex = () => {
+      const musicIdx = playlist.indexOf('music')
+      if (
+        musicIdx >= 0 &&
+        lastShape !== musicIdx &&
+        (constructionCount === 0 || constructionCount % 5 === 0)
+      ) {
+        return musicIdx
+      }
+      if (playlist.length <= 1) return 0
+      return (lastShape + 1 + Math.floor(rand(0, playlist.length - 1))) % playlist.length
+    }
+
     const toConstruction = () => {
-      const idx = (lastShape + 1 + Math.floor(rand(0, playlist.length - 1))) % playlist.length
-      const def = SHAPES[playlist[idx]]
+      const idx = chooseShapeIndex()
+      const shape = playlist[idx] as keyof typeof SHAPES
+      const def = SHAPES[shape]
       const ay = def.aspect ? def.aspect() : 1
       const want = Math.min(280, Math.max(130, Math.min(width, height) * 0.27)) * def.scaleMul
       // first acceptable candidate wins: attempts are random, so positions
@@ -770,8 +847,11 @@ export function PixelField({
       }
       if (r === 0) return false
       lastShape = idx
+      constructionCount++
       holdRange = def.hold ?? [3.5, 8]
       homeTarget = false
+      activeShape = shape
+      emitShapeFrame(null)
       beginMorph(
         (out) => def.gen(out, N_MAX),
         {
@@ -890,6 +970,7 @@ export function PixelField({
       const calmNow = calmRef.current
 
       alphaMul += ((calmNow ? 0.55 : 1) - alphaMul) * (1 - Math.exp(-dt * 2.5))
+      emphasis += ((emphasizeShapeRef.current ? 1 : 0) - emphasis) * (1 - Math.exp(-dt * 10))
       progress = Math.min(1, progress + dt / morphDur)
 
       for (const f of [frameFrom, frameTo]) {
@@ -903,9 +984,11 @@ export function PixelField({
         if (progress >= 1) {
           if (homeTarget) {
             state = 'home'
+            emitShapeFrame(null)
             stateUntil = t + rand(5, 14)
           } else {
             state = 'holding'
+            emitShapeFrame(activeShape)
             stateUntil = t + rand(holdRange[0], holdRange[1])
           }
         }
@@ -915,7 +998,12 @@ export function PixelField({
           else stateUntil = t + rand(2, 4)
         }
       } else if (state === 'holding') {
-        if (calmNow) stateUntil = Math.min(stateUntil, t + 0.4)
+        if (freezeShapeRef.current) {
+          // grace after playback/video ends: linger so the user can pick again
+          stateUntil = t + 2.5
+        } else if (calmNow) {
+          stateUntil = Math.min(stateUntil, t + 0.4)
+        }
         if (t > stateUntil) {
           const morphOn = !calmNow && chain < 3 && Math.random() < 0.65
           if (morphOn && toConstruction()) {

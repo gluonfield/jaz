@@ -8,7 +8,8 @@ import { QueuedPromptList } from './QueuedPromptList'
 
 // A rainbow comet (~100° arc fading in and out of transparency) that orbits
 // the card while focused; the rest of the perimeter stays a quiet track.
-const RAINBOW_BEAM =
+// Shared with the music bubbles' now-playing ring.
+export const RAINBOW_BEAM =
   'conic-gradient(from var(--ring-angle, 0deg), transparent 0deg 250deg, var(--color-rainbow-1) 278deg, var(--color-rainbow-2) 296deg, var(--color-rainbow-3) 312deg, var(--color-rainbow-4) 326deg, var(--color-rainbow-5) 340deg, transparent 352deg 360deg)'
 
 function formatFileSize(size: number): string {

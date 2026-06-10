@@ -282,6 +282,56 @@
   }
 }
 
+/* Music bubbles (welcome screen): bars dance while a preview plays and ride
+ * the shimmer ramp — rainbow only while music is alive. Bubbles at rest drift
+ * on a slow desynced bob. */
+.music-eq-bar {
+  transform-origin: bottom;
+  animation:
+    music-eq var(--eq-duration, 1s) var(--eq-delay, 0s) ease-in-out infinite,
+    jaz-shimmer 4.5s var(--eq-hue-delay, 0s) ease-in-out infinite;
+}
+
+@keyframes music-eq {
+  0%,
+  100% {
+    transform: scaleY(0.4);
+  }
+  25% {
+    transform: scaleY(1);
+  }
+  55% {
+    transform: scaleY(0.55);
+  }
+  80% {
+    transform: scaleY(0.85);
+  }
+}
+
+.music-float {
+  animation: music-float var(--float-duration, 6s) var(--float-delay, 0s) ease-in-out infinite;
+}
+
+@keyframes music-float {
+  0%,
+  100% {
+    transform: translateY(3px);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .music-eq-bar {
+    animation: none;
+    background-color: var(--color-primary);
+  }
+  .music-float {
+    animation: none;
+  }
+}
+
 html,
 body,
 #root {
@@ -301,16 +351,33 @@ body {
 }
 
 /* macOS vibrancy: index.html adds .vibrant when running in the mac app. The
- * page goes transparent so the native sidebar material shows through; the
- * sidebar paints a translucent wash over it while content stays opaque. */
+ * page goes transparent for the titlebar/native material. The sidebar keeps a
+ * weak translucent surface plus its own edge, so the material reads without
+ * turning light mode milky or weakening row states. */
 .sidebar-material {
-  background: var(--color-surface);
+  --sidebar-material-bg: var(--color-surface);
+  --sidebar-material-edge: var(--color-border);
+  --sidebar-material-highlight: transparent;
+  background: var(--sidebar-material-bg);
+  border-color: var(--sidebar-material-edge);
+  box-shadow: inset 1px 0 var(--sidebar-material-highlight);
 }
 html.vibrant body {
   background: transparent;
 }
 html.vibrant .sidebar-material {
-  background: color-mix(in oklab, var(--color-surface) 28%, transparent);
+  --sidebar-material-bg: color-mix(in oklab, var(--color-surface) 88%, transparent);
+  --sidebar-material-edge: color-mix(in oklab, var(--color-border) 82%, transparent);
+  --sidebar-material-highlight: color-mix(in oklab, oklch(1 0 0) 42%, transparent);
+  -webkit-backdrop-filter: saturate(1.08);
+  backdrop-filter: saturate(1.08);
+}
+html.vibrant.dark .sidebar-material {
+  --sidebar-material-bg: color-mix(in oklab, var(--color-surface) 82%, transparent);
+  --sidebar-material-edge: color-mix(in oklab, var(--color-border) 74%, transparent);
+  --sidebar-material-highlight: color-mix(in oklab, oklch(1 0 0) 7%, transparent);
+  -webkit-backdrop-filter: saturate(1.12);
+  backdrop-filter: saturate(1.12);
 }
 
 h1,
