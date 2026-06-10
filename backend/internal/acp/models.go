@@ -10,6 +10,8 @@ import (
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
+
+	"github.com/wins/jaz/backend/internal/provider"
 )
 
 const agentMethodSessionSetModel = "session/set_model"
@@ -75,7 +77,7 @@ func (m *Manager) setConfiguredSessionModel(ctx context.Context, peer *jsonrpc.P
 }
 
 func (m *Manager) setConfiguredReasoningEffort(ctx context.Context, peer *jsonrpc.Peer, agentName string, sessionID acpschema.SessionID, effort string) error {
-	effort, err := normalizeSessionReasoningEffort(effort)
+	effort, err := provider.NormalizeReasoningEffort(effort)
 	if err != nil {
 		return err
 	}
@@ -99,7 +101,7 @@ func (m *Manager) setConfiguredReasoningEffort(ctx context.Context, peer *jsonrp
 }
 
 func (m *Manager) configuredModeState(ctx context.Context, peer *jsonrpc.Peer, agentName string, session acpSessionInfo, cfg AgentConfig) (ModeState, error) {
-	effort, err := normalizeSessionReasoningEffort(cfg.ReasoningEffort)
+	effort, err := provider.NormalizeReasoningEffort(cfg.ReasoningEffort)
 	if err != nil {
 		return ModeState{}, err
 	}
@@ -358,7 +360,7 @@ func newACPSessionInfo(raw json.RawMessage, session acpschema.NewSessionResponse
 }
 
 func configuredReasoningEffort(value string) string {
-	effort, err := normalizeSessionReasoningEffort(value)
+	effort, err := provider.NormalizeReasoningEffort(value)
 	if err != nil {
 		return strings.TrimSpace(value)
 	}
@@ -386,23 +388,11 @@ func reasoningEffortConfigID(agentName string) string {
 	}
 }
 
-func normalizeSessionReasoningEffort(value string) (string, error) {
-	value = strings.ToLower(strings.TrimSpace(value))
-	switch value {
-	case "", "none":
-		return "", nil
-	case "minimal", "low", "medium", "high", "xhigh":
-		return value, nil
-	default:
-		return "", fmt.Errorf("unknown acp reasoning effort %q; valid values are none, minimal, low, medium, high, xhigh", value)
-	}
-}
-
 func modelHasReasoningEffort(model string) bool {
 	i := strings.LastIndex(model, "/")
 	if i < 0 {
 		return false
 	}
-	effort, err := normalizeSessionReasoningEffort(model[i+1:])
+	effort, err := provider.NormalizeReasoningEffort(model[i+1:])
 	return err == nil && effort != ""
 }

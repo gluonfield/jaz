@@ -14,6 +14,7 @@ export function createSession(
     // only applies to native sessions.
     model_provider?: string
     model?: string
+    reasoning_effort?: string
   } = {},
 ): Promise<Session> {
   return post<Session>('/v1/sessions', input)
