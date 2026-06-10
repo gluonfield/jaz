@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/media"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
@@ -263,7 +264,11 @@ func (s *Store) SaveMessages(id string, messages []provider.Message) error {
 }
 
 func (s *Store) SaveMessagesWithReasoning(id string, messages []provider.Message, reasoningByMessage map[int]string) error {
-	records, err := recordsFromProviderMessagesWithReasoning(messages, reasoningByMessage, time.Now().UTC())
+	return s.SaveMessagesWithReasoningAndMedia(id, messages, reasoningByMessage, nil)
+}
+
+func (s *Store) SaveMessagesWithReasoningAndMedia(id string, messages []provider.Message, reasoningByMessage map[int]string, mediaRefs map[string][]media.Ref) error {
+	records, err := recordsFromProviderMessagesWithReasoningAndMedia(messages, reasoningByMessage, mediaRefs, time.Now().UTC())
 	if err != nil {
 		return err
 	}

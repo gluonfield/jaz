@@ -3,6 +3,7 @@ package storage
 import (
 	"time"
 
+	"github.com/wins/jaz/backend/internal/media"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 )
 
@@ -78,16 +79,17 @@ type Session struct {
 }
 
 type Block struct {
-	Type       string `json:"type"`
-	Text       string `json:"text,omitempty"`
-	ID         string `json:"id,omitempty"`
-	Name       string `json:"name,omitempty"`
-	URI        string `json:"uri,omitempty"`
-	MimeType   string `json:"mime_type,omitempty"`
-	Size       int64  `json:"size,omitempty"`
-	ServerPath string `json:"server_path,omitempty"`
-	InputJSON  string `json:"input_json,omitempty"`
-	Result     string `json:"result,omitempty"`
+	Type       string      `json:"type"`
+	Text       string      `json:"text,omitempty"`
+	ID         string      `json:"id,omitempty"`
+	Name       string      `json:"name,omitempty"`
+	URI        string      `json:"uri,omitempty"`
+	MimeType   string      `json:"mime_type,omitempty"`
+	Size       int64       `json:"size,omitempty"`
+	ServerPath string      `json:"server_path,omitempty"`
+	InputJSON  string      `json:"input_json,omitempty"`
+	Result     string      `json:"result,omitempty"`
+	MediaRefs  []media.Ref `json:"media_refs,omitempty"`
 }
 
 type Attachment struct {

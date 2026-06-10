@@ -2,13 +2,19 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/agent"
+	"github.com/wins/jaz/backend/internal/media"
 	"github.com/wins/jaz/backend/internal/provider"
 	mockprovider "github.com/wins/jaz/backend/internal/provider/mock"
 	agentsettings "github.com/wins/jaz/backend/internal/settings"
@@ -181,6 +187,78 @@ func TestNativeStreamSendsAttachmentLinksAndKeepsTranscriptBlocks(t *testing.T) 
 	}
 	if !found {
 		t.Fatalf("attachment block not persisted: %#v", records[0].Blocks)
+	}
+}
+
+func TestNativeTurnReplaysPersistedToolMediaRefs(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{Slug: "native-media-replay", Runtime: storage.RuntimeNative})
+	if err != nil {
+		t.Fatal(err)
+	}
+	blob := []byte("\x89PNG\r\n\x1a\nimage-bytes")
+	sum := sha256.Sum256(blob)
+	blobPath := filepath.Join(t.TempDir(), "image-blob")
+	if err := os.WriteFile(blobPath, blob, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	call := provider.FunctionToolCall("call_view", "view_image", `{"path":"image.png"}`)
+	seed := []provider.Message{
+		provider.UserMessage("look"),
+		provider.AssistantMessage("", []provider.ToolCall{call}),
+		provider.ToolMessage(`{"status":"ok","message":"Image attached for visual inspection."}`, "call_view"),
+	}
+	ref := media.Ref{
+		Type:     media.TypeInputImage,
+		Text:     "Image returned by view_image: image.png",
+		BlobPath: blobPath,
+		MimeType: "image/png",
+		Size:     int64(len(blob)),
+		SHA256:   hex.EncodeToString(sum[:]),
+		Detail:   "auto",
+		Filename: "image.png",
+	}
+	if err := store.SaveMessagesWithReasoningAndMedia(session.ID, seed, nil, map[string][]media.Ref{"call_view": []media.Ref{ref}}); err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := &requestRecorderProvider{}
+	srv := &Server{
+		Store: store,
+		Agent: &agent.Agent{Provider: recorder, MaxTurns: 1},
+	}
+	if status := srv.runNativeSession(context.Background(), session, "what do you see now?", false, nil); status != storage.StatusIdle {
+		t.Fatalf("status = %s", status)
+	}
+	if len(recorder.requests) != 1 {
+		t.Fatalf("requests = %#v", recorder.requests)
+	}
+	requestJSON, err := json.Marshal(recorder.requests[0].Messages)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(requestJSON), "data:image/png;base64,") {
+		t.Fatalf("provider request did not replay image data: %s", requestJSON)
+	}
+
+	records, err := store.LoadMessageRecords(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refs := storage.MediaRefsByToolCall(records)
+	if got := refs["call_view"]; len(got) != 1 || got[0].BlobPath != blobPath {
+		t.Fatalf("stored media refs = %#v", refs)
+	}
+	rawRecords, err := json.Marshal(records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(rawRecords), "data:image") {
+		t.Fatalf("stored records leaked base64 image data: %s", rawRecords)
 	}
 }
 

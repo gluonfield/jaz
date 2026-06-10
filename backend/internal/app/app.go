@@ -31,6 +31,7 @@ import (
 	applypatch "github.com/wins/jaz/backend/internal/tools/applypatch"
 	exectool "github.com/wins/jaz/backend/internal/tools/exec"
 	memorytool "github.com/wins/jaz/backend/internal/tools/memory"
+	viewimagetool "github.com/wins/jaz/backend/internal/tools/viewimage"
 	"github.com/wins/jaz/backend/internal/voice"
 	mistralvoice "github.com/wins/jaz/backend/internal/voice/mistral"
 	"go.uber.org/fx"
@@ -139,6 +140,7 @@ func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspac
 		&exectool.ExecCommandTool{Manager: commandManager, Workspace: string(workspace)},
 		&exectool.WriteStdinTool{Manager: commandManager},
 		&applypatch.Tool{Workspace: string(workspace)},
+		&viewimagetool.Tool{Workspace: string(workspace)},
 		&agentspawn.Tool{Manager: manager},
 		&agentsend.Tool{Manager: manager},
 		&agentstatus.Tool{Manager: manager},

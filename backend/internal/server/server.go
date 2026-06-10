@@ -16,6 +16,7 @@ import (
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/loops"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/media"
 	"github.com/wins/jaz/backend/internal/pathsafe"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessionevents"
@@ -78,6 +79,10 @@ type messageRecordStore interface {
 
 type reasoningMessageStore interface {
 	SaveMessagesWithReasoning(string, []provider.Message, map[int]string) error
+}
+
+type mediaReasoningMessageStore interface {
+	SaveMessagesWithReasoningAndMedia(string, []provider.Message, map[int]string, map[string][]media.Ref) error
 }
 
 type usageStore interface {

@@ -6,6 +6,7 @@ import (
 
 	oa "github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/shared"
+	"github.com/wins/jaz/backend/internal/media"
 )
 
 type Definition = oa.ChatCompletionToolUnionParam
@@ -13,8 +14,9 @@ type FunctionDefinition = shared.FunctionDefinitionParam
 type FunctionParameters = shared.FunctionParameters
 
 type Result struct {
-	Content  string         `json:"content"`
-	Metadata map[string]any `json:"metadata,omitempty"`
+	Content   string         `json:"content"`
+	MediaRefs []media.Ref    `json:"media_refs,omitempty"`
+	Metadata  map[string]any `json:"metadata,omitempty"`
 }
 
 type Tool interface {

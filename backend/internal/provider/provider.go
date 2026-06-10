@@ -6,11 +6,13 @@ import (
 	"strings"
 
 	oa "github.com/openai/openai-go/v3"
+	"github.com/wins/jaz/backend/internal/media"
 	"github.com/wins/jaz/backend/internal/tools"
 )
 
 type Message = oa.ChatCompletionMessageParamUnion
 type ToolCall = oa.ChatCompletionMessageToolCallUnion
+type ContentPart = oa.ChatCompletionContentPartUnionParam
 
 type Request struct {
 	Provider        string
@@ -18,6 +20,7 @@ type Request struct {
 	ReasoningEffort string
 	Messages        []Message
 	Tools           []tools.Definition
+	MediaRefs       map[string][]media.Ref
 }
 
 type Response struct {
@@ -79,6 +82,21 @@ func DeveloperMessage(content string) Message {
 
 func UserMessage(content string) Message {
 	return oa.UserMessage(content)
+}
+
+func UserMessageParts(parts ...ContentPart) Message {
+	return oa.UserMessage(parts)
+}
+
+func TextPart(text string) ContentPart {
+	return oa.TextContentPart(text)
+}
+
+func ImageURLPart(imageURL, detail string) ContentPart {
+	return oa.ImageContentPart(oa.ChatCompletionContentPartImageImageURLParam{
+		URL:    imageURL,
+		Detail: detail,
+	})
 }
 
 func ToolMessage(content, toolCallID string) Message {
@@ -164,6 +182,12 @@ func MessageContent(msg Message) string {
 	if msg.OfDeveloper != nil {
 		return msg.OfDeveloper.Content.OfString.Or("")
 	}
+	if msg.OfUser != nil {
+		if text := msg.OfUser.Content.OfString.Or(""); text != "" {
+			return text
+		}
+		return contentPartsText(msg.OfUser.Content.OfArrayOfContentParts)
+	}
 	if msg.OfAssistant != nil {
 		return msg.OfAssistant.Content.OfString.Or("")
 	}
@@ -173,6 +197,16 @@ func MessageContent(msg Message) string {
 		return ""
 	}
 	return *text
+}
+
+func contentPartsText(parts []ContentPart) string {
+	var out []string
+	for _, part := range parts {
+		if text := part.GetText(); text != nil && *text != "" {
+			out = append(out, *text)
+		}
+	}
+	return strings.Join(out, "")
 }
 
 func MessageToolCalls(msg Message) []ToolCall {
