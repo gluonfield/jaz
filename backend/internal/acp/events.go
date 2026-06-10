@@ -17,14 +17,17 @@ import (
 )
 
 const (
-	codexRequestUserInputMetaKey  = "jaz.codex_request_user_input"
-	userInputResponseOptionPrefix = "__jaz_user_input_response__:"
+	codexRequestUserInputMetaKey        = "codex.request_user_input"
+	legacyCodexRequestUserInputMetaKey  = "jaz.codex_request_user_input"
+	userInputResponseOptionPrefix       = "__user_input_response__:"
+	legacyUserInputResponseOptionPrefix = "__jaz_user_input_response__:"
 )
 
 type pendingPermission struct {
-	sessionID string
-	request   sessionevents.ACPPermission
-	answer    chan string
+	sessionID                     string
+	request                       sessionevents.ACPPermission
+	userInputResponseOptionPrefix string
+	answer                        chan string
 }
 
 type InteractiveAnswerValue struct {
@@ -38,9 +41,10 @@ func (m *Manager) awaitPermission(ctx context.Context, job *Job, req acpschema.R
 	permission.Status = "pending"
 
 	pending := &pendingPermission{
-		sessionID: job.ID,
-		request:   permission,
-		answer:    make(chan string, 1),
+		sessionID:                     job.ID,
+		request:                       permission,
+		userInputResponseOptionPrefix: codexUserInputResponsePrefix(req),
+		answer:                        make(chan string, 1),
 	}
 	m.permissionMu.Lock()
 	m.pendingPermission[permission.ID] = pending
@@ -114,7 +118,7 @@ func (m *Manager) AnswerInteractive(ctx context.Context, req InteractiveAnswer) 
 			m.permissionMu.Unlock()
 			return fmt.Errorf("permission request %s does not accept structured answers", req.RequestID)
 		}
-		optionID, err := encodeUserInputResponse(req.Answers)
+		optionID, err := encodeUserInputResponse(req.Answers, pending.userInputResponseOptionPrefix)
 		if err != nil {
 			m.permissionMu.Unlock()
 			return err
@@ -310,8 +314,7 @@ type codexUserInputOption struct {
 
 func codexUserInputQuestions(req acpschema.RequestPermissionRequest) []sessionevents.ACPQuestion {
 	var meta codexUserInputMeta
-	if !decodeMeta(req.ToolCall.Meta, codexRequestUserInputMetaKey, &meta) &&
-		!decodeMeta(req.Meta, codexRequestUserInputMetaKey, &meta) {
+	if !decodeCodexUserInputMeta(req, &meta) {
 		return nil
 	}
 	out := make([]sessionevents.ACPQuestion, 0, len(meta.Questions))
@@ -341,6 +344,25 @@ func codexUserInputQuestions(req acpschema.RequestPermissionRequest) []sessionev
 	return out
 }
 
+func decodeCodexUserInputMeta(req acpschema.RequestPermissionRequest, out *codexUserInputMeta) bool {
+	for _, key := range []string{codexRequestUserInputMetaKey, legacyCodexRequestUserInputMetaKey} {
+		if decodeMeta(req.ToolCall.Meta, key, out) || decodeMeta(req.Meta, key, out) {
+			return true
+		}
+	}
+	return false
+}
+
+func codexUserInputResponsePrefix(req acpschema.RequestPermissionRequest) string {
+	if hasMetaKey(req.ToolCall.Meta, codexRequestUserInputMetaKey) || hasMetaKey(req.Meta, codexRequestUserInputMetaKey) {
+		return userInputResponseOptionPrefix
+	}
+	if hasMetaKey(req.ToolCall.Meta, legacyCodexRequestUserInputMetaKey) || hasMetaKey(req.Meta, legacyCodexRequestUserInputMetaKey) {
+		return legacyUserInputResponseOptionPrefix
+	}
+	return userInputResponseOptionPrefix
+}
+
 func decodeMeta(meta map[string]any, key string, out any) bool {
 	if len(meta) == 0 {
 		return false
@@ -354,6 +376,14 @@ func decodeMeta(meta map[string]any, key string, out any) bool {
 		return false
 	}
 	return json.Unmarshal(raw, out) == nil
+}
+
+func hasMetaKey(meta map[string]any, key string) bool {
+	if len(meta) == 0 {
+		return false
+	}
+	_, ok := meta[key]
+	return ok
 }
 
 func permissionOption(options []sessionevents.ACPPermissionOption, optionID string) (sessionevents.ACPPermissionOption, bool) {
@@ -370,12 +400,15 @@ func optionApprovesPlan(option sessionevents.ACPPermissionOption) bool {
 	return strings.Contains(text, "approve") || strings.Contains(text, "allow")
 }
 
-func encodeUserInputResponse(answers map[string]InteractiveAnswerValue) (string, error) {
+func encodeUserInputResponse(answers map[string]InteractiveAnswerValue, optionPrefix string) (string, error) {
+	if optionPrefix == "" {
+		optionPrefix = userInputResponseOptionPrefix
+	}
 	raw, err := json.Marshal(map[string]any{"answers": answers})
 	if err != nil {
 		return "", err
 	}
-	return userInputResponseOptionPrefix + string(raw), nil
+	return optionPrefix + string(raw), nil
 }
 
 func formatPermissionAnswers(permission sessionevents.ACPPermission, answers map[string]InteractiveAnswerValue) string {
