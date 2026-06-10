@@ -10,8 +10,14 @@ export interface LoopInput {
   status?: string
   runtime?: string
   acp_agent?: string
+  // Overrides of the Settings > Agents defaults; '' follows settings at run time.
+  model_provider?: string
+  model?: string
   reasoning_effort?: string
   directory?: string
+  // Boards the loop's widget is assigned to; assignment is what enables the
+  // widget (there is no separate toggle).
+  board_ids?: string[]
 }
 
 const activeRunStatus = (status?: string) => status === 'starting' || status === 'running'
@@ -30,14 +36,21 @@ export const loopsQuery = queryOptions({
 export interface LoopDetail {
   loop: Loop
   runs: LoopRun[]
+  boardIds: string[]
 }
 
 export const loopDetailQuery = (id: string) =>
   queryOptions({
     queryKey: keys.loopDetail(id),
     queryFn: async () => {
-      const data = await get<{ loop: Loop; runs: LoopRun[] | null }>(`/v1/loops/${id}`)
-      return { loop: data.loop, runs: data.runs ?? [] } satisfies LoopDetail
+      const data = await get<{ loop: Loop; runs: LoopRun[] | null; board_ids?: string[] }>(
+        `/v1/loops/${id}`,
+      )
+      return {
+        loop: data.loop,
+        runs: data.runs ?? [],
+        boardIds: data.board_ids ?? [],
+      } satisfies LoopDetail
     },
     refetchInterval: (query) =>
       activeRunStatus(query.state.data?.runs[0]?.status) ? 2_000 : false,

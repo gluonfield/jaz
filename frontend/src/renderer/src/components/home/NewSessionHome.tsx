@@ -1,9 +1,7 @@
-import { type ReactNode, useState } from 'react'
-import { AnimatePresence, motion } from 'motion/react'
+import { type ReactNode } from 'react'
+import { motion } from 'motion/react'
+import { HomePixelField } from '@/components/home/HomePixelField'
 import { ComposerCard } from '@/components/session/Composer'
-import { MusicBubbles } from '@/components/home/MusicBubbles'
-import { RocketVideo } from '@/components/home/RocketVideo'
-import { PixelField, type PixelFieldShapeFrame } from '@/components/ui/PixelField'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 
 export function NewSessionHome({
@@ -23,12 +21,6 @@ export function NewSessionHome({
   onSend: (text: string, options?: SendMessageOptions) => void
   onVoice?: () => void
 }) {
-  const [musicFrame, setMusicFrame] = useState<PixelFieldShapeFrame | null>(null)
-  const [musicPlaybackActive, setMusicPlaybackActive] = useState(false)
-  const [rocketFrame, setRocketFrame] = useState<PixelFieldShapeFrame | null>(null)
-  const [rocketHovered, setRocketHovered] = useState(false)
-  const [rocketOpen, setRocketOpen] = useState(false)
-
   return (
     <div
       className="relative flex h-full flex-col items-center justify-center overflow-hidden px-10 pb-16"
@@ -37,35 +29,7 @@ export function NewSessionHome({
         if (el instanceof HTMLTextAreaElement) onDraftActivity(el.value.trim().length > 0)
       }}
     >
-      <PixelField
-        key={themeKey}
-        calm={calm}
-        freezeShape={musicPlaybackActive || rocketOpen}
-        emphasizeShape={rocketHovered && !rocketOpen}
-        onShapeFrame={(frame) => {
-          setMusicFrame(frame?.shape === 'music' ? frame : null)
-          setRocketFrame(frame?.shape === 'rocket' ? frame : null)
-        }}
-      />
-      <AnimatePresence>
-        {musicFrame ? (
-          <MusicBubbles
-            key="music-bubbles"
-            frame={musicFrame}
-            onPlaybackActiveChange={setMusicPlaybackActive}
-          />
-        ) : null}
-      </AnimatePresence>
-      <AnimatePresence>
-        {rocketFrame ? (
-          <RocketVideo
-            key="rocket-video"
-            frame={rocketFrame}
-            onHoverChange={setRocketHovered}
-            onOpenChange={setRocketOpen}
-          />
-        ) : null}
-      </AnimatePresence>
+      <HomePixelField themeKey={themeKey} calm={calm} />
       <motion.div
         className="relative z-[2] w-full max-w-[640px]"
         initial="hidden"

@@ -32,6 +32,14 @@ func (s *Server) handleCreateLoop(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	// Bad board ids must fail BEFORE the loop is persisted — a rejected
+	// create must not leave a loop behind.
+	if len(req.BoardIDs) > 0 && s.Widgets != nil {
+		if err := s.Widgets.ValidateBoardIDs(req.BoardIDs); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+	}
 	loop, err := s.Loops.Create(loops.CreateLoop{
 		Name:            req.Name,
 		Prompt:          req.Prompt,
@@ -39,12 +47,20 @@ func (s *Server) handleCreateLoop(w http.ResponseWriter, r *http.Request) {
 		Status:          req.Status,
 		Runtime:         req.Runtime,
 		ACPAgent:        req.ACPAgent,
+		ModelProvider:   req.ModelProvider,
+		Model:           req.Model,
 		ReasoningEffort: req.ReasoningEffort,
 		Directory:       req.Directory,
 	})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
+	}
+	if len(req.BoardIDs) > 0 && s.Widgets != nil {
+		if _, err := s.Widgets.AssignLoopBoards(loop, req.BoardIDs); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, loop)
 }
@@ -70,6 +86,11 @@ func (s *Server) handleLoopAction(w http.ResponseWriter, r *http.Request) {
 			if err := s.Loops.Delete(loopID); err != nil {
 				writeError(w, http.StatusInternalServerError, err)
 				return
+			}
+			// The loop's widget dies with it; a lingering placement would
+			// invisibly occupy board cells.
+			if s.Widgets != nil {
+				s.Widgets.PurgeOrphans()
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 		default:
@@ -103,7 +124,13 @@ func (s *Server) handleGetLoop(w http.ResponseWriter, _ *http.Request, loopID st
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"loop": loop, "runs": runs})
+	boardIDs := []string{}
+	if s.Widgets != nil {
+		if _, boards, err := s.Widgets.StateForLoop(loopID); err == nil && boards != nil {
+			boardIDs = boards
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"loop": loop, "runs": runs, "board_ids": boardIDs})
 }
 
 func (s *Server) handlePatchLoop(w http.ResponseWriter, r *http.Request, loopID string) {
@@ -112,6 +139,14 @@ func (s *Server) handlePatchLoop(w http.ResponseWriter, r *http.Request, loopID 
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	// Bad board ids must fail BEFORE the loop is updated — a rejected patch
+	// must not leave half its changes applied.
+	if req.BoardIDs != nil && s.Widgets != nil {
+		if err := s.Widgets.ValidateBoardIDs(*req.BoardIDs); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+	}
 	loop, err := s.Loops.Update(loopID, loops.UpdateLoop{
 		Name:            req.Name,
 		Prompt:          req.Prompt,
@@ -119,12 +154,20 @@ func (s *Server) handlePatchLoop(w http.ResponseWriter, r *http.Request, loopID 
 		Status:          req.Status,
 		Runtime:         req.Runtime,
 		ACPAgent:        req.ACPAgent,
+		ModelProvider:   req.ModelProvider,
+		Model:           req.Model,
 		ReasoningEffort: req.ReasoningEffort,
 		Directory:       req.Directory,
 	})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
+	}
+	if req.BoardIDs != nil && s.Widgets != nil {
+		if _, err := s.Widgets.AssignLoopBoards(loop, *req.BoardIDs); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, loop)
 }
@@ -149,8 +192,13 @@ type loopRequest struct {
 	Status          string         `json:"status,omitempty"`
 	Runtime         string         `json:"runtime,omitempty"`
 	ACPAgent        string         `json:"acp_agent,omitempty"`
+	ModelProvider   string         `json:"model_provider,omitempty"`
+	Model           string         `json:"model,omitempty"`
 	ReasoningEffort string         `json:"reasoning_effort,omitempty"`
 	Directory       string         `json:"directory,omitempty"`
+	// BoardIDs assigns the loop's widget to boards; assignment is what enables
+	// widget publishing (there is no separate toggle).
+	BoardIDs []string `json:"board_ids,omitempty"`
 }
 
 type patchLoopRequest struct {
@@ -160,6 +208,9 @@ type patchLoopRequest struct {
 	Status          *string         `json:"status,omitempty"`
 	Runtime         *string         `json:"runtime,omitempty"`
 	ACPAgent        *string         `json:"acp_agent,omitempty"`
+	ModelProvider   *string         `json:"model_provider,omitempty"`
+	Model           *string         `json:"model,omitempty"`
 	ReasoningEffort *string         `json:"reasoning_effort,omitempty"`
 	Directory       *string         `json:"directory,omitempty"`
+	BoardIDs        *[]string       `json:"board_ids,omitempty"`
 }

@@ -21,8 +21,8 @@ export function RuntimeBadge({
     ? withReasoningEffort(session.model, session.reasoning_effort)
     : ''
   const isACP = session.runtime === 'acp'
-  // Agent names arrive as slugs (codex, claude); prettify so the tag reads
-  // "Codex" / "Claude Code" rather than a raw identifier.
+  // Agent names arrive as slugs; prettify so the tag reads like a product name
+  // rather than a raw identifier.
   const name = isACP ? agentLabel(session.runtime_ref?.agent) : session.model_provider || 'native'
   const title = fullModelLabel ? `${name} · ${fullModelLabel}` : name
   // Agent-backed sessions get the emphasized brand-soft fill (the same pill

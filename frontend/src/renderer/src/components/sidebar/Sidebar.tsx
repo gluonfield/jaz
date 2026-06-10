@@ -1,12 +1,16 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Plus, Settings, SquarePen } from 'lucide-react'
+import { Plus, Settings, SquarePen, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type PointerEvent as ReactPointerEvent, useState } from 'react'
+import { BoardModal } from '@/components/boards/BoardModal'
 import { LoopModal } from '@/components/loops/LoopModal'
 import { IconButton } from '@/components/ui/IconButton'
+import { boardsQuery, deleteBoard } from '@/lib/api/boards'
 import { loopsQuery } from '@/lib/api/loops'
 import { SIDEBAR_SESSION_LIMIT, sidebarSessionsQuery } from '@/lib/api/sessions'
+import type { Board } from '@/lib/api/types'
+import { keys } from '@/lib/query/keys'
 import { SkeletonRows } from '../ui/Skeleton'
 import { LoopRow } from './LoopRow'
 import { SessionRow } from './SessionRow'
@@ -90,6 +94,79 @@ function LoopsSection() {
   )
 }
 
+function BoardsSection() {
+  const boards = useQuery(boardsQuery)
+  const queryClient = useQueryClient()
+  const [creating, setCreating] = useState(false)
+
+  const remove = useMutation({
+    mutationFn: (boardId: string) => deleteBoard(boardId),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: keys.boards }),
+  })
+
+  const onDelete = (board: Board) => {
+    if (
+      confirm(
+        `Delete board "${board.name}"? Widgets and their history are kept — loops just stop publishing until you assign them to another board.`,
+      )
+    ) {
+      remove.mutate(board.id)
+    }
+  }
+
+  return (
+    <section>
+      <div className="flex items-center justify-between pr-1">
+        <p className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3">Boards</p>
+        <IconButton
+          variant="ghost"
+          size="xs"
+          aria-label="New board"
+          title="New board"
+          onClick={() => setCreating(true)}
+          className="-mt-1"
+        >
+          <Plus size={14} />
+        </IconButton>
+      </div>
+      {boards.isPending ? (
+        <SkeletonRows count={1} />
+      ) : boards.isError ? (
+        <p className="px-2.5 py-1 text-[13px] text-ink-3">Backend unreachable</p>
+      ) : (
+        <div className="flex flex-col gap-px">
+          {(boards.data ?? []).map((board) => (
+            <div key={board.id} className="group relative">
+              <Link
+                to="/boards/$boardId"
+                params={{ boardId: board.id }}
+                className="flex w-full items-center rounded-full px-2.5 py-1.5 pr-8 text-left text-[13px] text-ink transition-colors duration-150 hover:bg-surface-2"
+                activeProps={{ className: 'bg-primary-soft!' }}
+              >
+                <span className="min-w-0 flex-1 truncate" title={board.name}>
+                  {board.name}
+                </span>
+              </Link>
+              <span className="absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                <IconButton
+                  variant="ghost"
+                  size="xs"
+                  aria-label={`Delete board ${board.name}`}
+                  title="Delete board"
+                  onClick={() => onDelete(board)}
+                >
+                  <Trash2 size={12} />
+                </IconButton>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      <BoardModal open={creating} onClose={() => setCreating(false)} />
+    </section>
+  )
+}
+
 export function Sidebar({
   width,
   resizing,
@@ -166,6 +243,8 @@ export function Sidebar({
         </section>
 
         <LoopsSection />
+
+        <BoardsSection />
       </nav>
 
       <div className="shrink-0 border-t border-border p-3">

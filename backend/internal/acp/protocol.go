@@ -40,6 +40,8 @@ func (m *Manager) handleJSONRPC(ctx context.Context, req jsonrpc.Request) (json.
 		return jsonrpc.EncodeResult(map[string]any{})
 	case acpschema.ClientMethodTerminalCreate, acpschema.ClientMethodTerminalOutput, acpschema.ClientMethodTerminalWaitForExit:
 		return nil, jsonrpc.InternalError("terminal support is disabled", nil)
+	case ClientMethodWidgetPublish:
+		return m.widgetPublish(req.Params)
 	default:
 		return nil, jsonrpc.MethodNotFound(req.Method)
 	}
@@ -53,6 +55,9 @@ func (m *Manager) requestPermission(ctx context.Context, raw json.RawMessage) (j
 	job := m.jobByACP(string(req.SessionID))
 	if job == nil || !locationsStayInside(job.Cwd, req.ToolCall.Locations) {
 		return permissionCancelled()
+	}
+	if optionID := autoApprovedPermissionOption(job, req); optionID != "" {
+		return jsonrpc.EncodeResult(acpschema.RequestPermissionResponseSelected(acpschema.PermissionOptionID(optionID)))
 	}
 	job.mu.RLock()
 	interactive := job.interactive
@@ -122,12 +127,30 @@ func permissionCancelled() (json.RawMessage, *jsonrpc.Error) {
 
 func selectPermissionOption(options []acpschema.PermissionOption) string {
 	for _, option := range options {
-		text := strings.ToLower(string(option.OptionID) + " " + option.Name)
-		if strings.Contains(text, "allow") || strings.Contains(text, "approve") {
+		if permissionOptionAllows(option) {
 			return string(option.OptionID)
 		}
 	}
 	return ""
+}
+
+func autoApprovedPermissionOption(job *Job, req acpschema.RequestPermissionRequest) string {
+	if CanonicalAgentName(job.ACPAgent) != AgentGrok {
+		return ""
+	}
+	if len(codexUserInputQuestions(req)) > 0 {
+		return ""
+	}
+	return selectPermissionOption(req.Options)
+}
+
+func permissionOptionAllows(option acpschema.PermissionOption) bool {
+	switch option.Kind {
+	case acpschema.PermissionOptionKindAllowAlways, acpschema.PermissionOptionKindAllowOnce:
+		return true
+	}
+	text := strings.ToLower(string(option.OptionID) + " " + option.Name)
+	return strings.Contains(text, "allow") || strings.Contains(text, "approve")
 }
 
 func locationsStayInside(root string, locations []acpschema.ToolCallLocation) bool {

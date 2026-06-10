@@ -4,7 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { MUSIC_BUBBLE_CATEGORIES } from '@/components/home/musicBubbleConfig'
 import { RAINBOW_BEAM } from '@/components/session/Composer'
 import { IconButton } from '@/components/ui/IconButton'
-import type { PixelFieldShapeFrame } from '@/components/ui/PixelField'
+import type { PixelFieldShapeFrame } from '@/components/ui/PixelField.types'
 import { type PreviewPlayerState, usePreviewPlayer } from '@/lib/music/usePreviewPlayer'
 
 const placements = [

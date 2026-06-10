@@ -1,0 +1,220 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link, createFileRoute } from '@tanstack/react-router'
+import { ExternalLink, Plus, ZoomIn, ZoomOut } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { BoardGrid } from '@/components/boards/BoardGrid'
+import { LoopModal } from '@/components/loops/LoopModal'
+import { Button } from '@/components/ui/Button'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { IconButton } from '@/components/ui/IconButton'
+import { SkeletonRows } from '@/components/ui/Skeleton'
+import {
+  type BoardDetail,
+  type BoardLayoutEntry,
+  boardDetailQuery,
+  patchBoard,
+  removeWidgetFromBoard,
+} from '@/lib/api/boards'
+import { keys } from '@/lib/query/keys'
+import { useTheme } from '@/lib/theme'
+
+export const Route = createFileRoute('/boards/$boardId')({
+  component: BoardPage,
+})
+
+function BoardPage() {
+  const { boardId } = Route.useParams()
+  const detail = useQuery(boardDetailQuery(boardId))
+  const queryClient = useQueryClient()
+  const { resolved } = useTheme()
+  const scaleTimer = useRef<number | null>(null)
+  const isBoardWindow = window.jaz?.windowKind === 'board'
+  // "New widget" = a new loop with this board preselected. After creating,
+  // the board stays put and scrolls the fresh tile into view once it appears.
+  const [creating, setCreating] = useState(false)
+  const pendingLoopId = useRef<string | null>(null)
+
+  useEffect(() => {
+    const loopId = pendingLoopId.current
+    if (!loopId || !detail.data) return
+    const item = detail.data.items.find((it) => it.loop_id === loopId)
+    if (!item) return
+    pendingLoopId.current = null
+    requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-widget-id="${item.widget_id}"]`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+  }, [detail.data])
+
+  useEffect(() => {
+    if (isBoardWindow && detail.data?.board.name) {
+      document.title = `${detail.data.board.name} — Jaz`
+    }
+  }, [isBoardWindow, detail.data?.board.name])
+
+  const layoutMutation = useMutation({
+    mutationFn: (entry: BoardLayoutEntry) => patchBoard(boardId, { layout: [entry] }),
+    onMutate: async (entry) => {
+      await queryClient.cancelQueries({ queryKey: keys.boardDetail(boardId) })
+      queryClient.setQueryData<BoardDetail>(keys.boardDetail(boardId), (prev) =>
+        prev
+          ? {
+              ...prev,
+              items: prev.items.map((item) =>
+                item.widget_id === entry.widget_id
+                  ? { ...item, x: entry.x, y: entry.y, w: entry.w, h: entry.h, placed_by: 'user' }
+                  : item,
+              ),
+            }
+          : prev,
+      )
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: keys.boardDetail(boardId) }),
+  })
+
+  const removeMutation = useMutation({
+    mutationFn: (widgetId: string) => removeWidgetFromBoard(boardId, widgetId),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: keys.boardDetail(boardId) }),
+  })
+
+  const scaleMutation = useMutation({
+    mutationFn: (fontScale: number) => patchBoard(boardId, { font_scale: fontScale }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: keys.boardDetail(boardId) }),
+  })
+
+  if (detail.isPending) {
+    return (
+      <div className="mx-auto max-w-5xl p-6">
+        <SkeletonRows count={4} />
+      </div>
+    )
+  }
+  if (detail.isError) {
+    return <EmptyState title="Board unavailable">Could not load this board.</EmptyState>
+  }
+
+  const { board, items } = detail.data
+  const scale = board.font_scale > 0 ? board.font_scale : 1
+  // Steps apply to the cache immediately; the PATCH is debounced so rapid
+  // clicks settle on one absolute value instead of racing over HTTP.
+  const applyScale = (next: number) => {
+    queryClient.setQueryData<BoardDetail>(keys.boardDetail(boardId), (prev) =>
+      prev ? { ...prev, board: { ...prev.board, font_scale: next } } : prev,
+    )
+    if (scaleTimer.current) window.clearTimeout(scaleTimer.current)
+    scaleTimer.current = window.setTimeout(() => scaleMutation.mutate(next), 400)
+  }
+  const stepScale = (delta: number) => {
+    const cached = queryClient.getQueryData<BoardDetail>(keys.boardDetail(boardId))
+    const current = cached?.board.font_scale || scale
+    applyScale(Math.min(2, Math.max(0.7, Math.round((current + delta) * 10) / 10)))
+  }
+  const popOut = () => {
+    if (window.jaz?.openBoardWindow) {
+      window.jaz.openBoardWindow(boardId)
+      return
+    }
+    window.open(`/boards/${boardId}`, '_blank', 'noopener,noreferrer')
+  }
+
+  // Board windows stay chrome-light; embedded boards carry their name and the
+  // explicit window escape hatch in the app page header.
+  return (
+    <div className="flex h-full flex-col">
+      <div
+        className={`flex shrink-0 items-center gap-3 px-6 pb-1 ${
+          isBoardWindow ? 'justify-end pt-2' : 'justify-between pt-2'
+        }`}
+      >
+        {isBoardWindow ? null : (
+          <div className="min-w-0">
+            <h1 className="truncate text-lg font-semibold text-ink">{board.name}</h1>
+          </div>
+        )}
+        <div className="flex shrink-0 items-center gap-1">
+          {isBoardWindow ? null : (
+            <Button variant="secondary" size="sm" onClick={popOut}>
+              <ExternalLink size={13} />
+              Pop Out
+            </Button>
+          )}
+          <IconButton
+            variant="ghost"
+            size="xs"
+            aria-label="Smaller widget text"
+            title="Smaller widget text"
+            disabled={scale <= 0.7}
+            onClick={() => stepScale(-0.1)}
+          >
+            <ZoomOut size={13} />
+          </IconButton>
+          {scale !== 1 ? (
+            <button
+              type="button"
+              title="Reset widget text size"
+              onClick={() => applyScale(1)}
+              className="rounded-full px-1 text-[11px] tabular-nums text-ink-3 transition-colors duration-150 hover:text-ink"
+            >
+              {Math.round(scale * 100)}%
+            </button>
+          ) : null}
+          <IconButton
+            variant="ghost"
+            size="xs"
+            aria-label="Larger widget text"
+            title="Larger widget text"
+            disabled={scale >= 2}
+            onClick={() => stepScale(0.1)}
+          >
+            <ZoomIn size={13} />
+          </IconButton>
+        </div>
+      </div>
+      {items.length === 0 ? (
+        <EmptyState title="Nothing on this board yet">
+          <p>
+            Add a widget (a loop that publishes a live tile here), or assign an existing loop
+            from{' '}
+            <Link to="/loops" className="text-primary hover:underline">
+              the loops list
+            </Link>
+            .
+          </p>
+          <div className="mt-3 flex justify-center">
+            <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
+              <Plus size={13} />
+              New widget
+            </Button>
+          </div>
+        </EmptyState>
+      ) : (
+        // pt-1: tile rings are box-shadows drawn outside the box; with no top
+        // padding the overflow clip shaves the ring off row-0 tiles.
+        <div
+          className={`min-h-0 flex-1 overflow-y-auto px-6 pt-1 ${
+            isBoardWindow ? 'pb-0' : 'pb-6'
+          }`}
+        >
+          <BoardGrid
+            board={board}
+            items={items}
+            theme={resolved}
+            scale={scale}
+            onLayoutChange={(entry) => layoutMutation.mutate(entry)}
+            onRemove={(widgetId) => removeMutation.mutate(widgetId)}
+            onNewWidget={() => setCreating(true)}
+          />
+        </div>
+      )}
+      <LoopModal
+        open={creating}
+        onClose={() => setCreating(false)}
+        initialBoardIds={[boardId]}
+        onCreated={(created) => {
+          pendingLoopId.current = created.id
+        }}
+      />
+    </div>
+  )
+}

@@ -87,14 +87,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				},
 			})
 			sendResult(conn, msg, map[string]any{
-				"modes": map[string]any{
-					"currentModeId": "auto",
-					"availableModes": []map[string]any{
-						{"id": "auto", "name": "Auto"},
-						{"id": "full-access", "name": "Full Access"},
-						{"id": "plan", "name": "Plan"},
-					},
-				},
+				"modes": fakeModes(),
 			})
 		case "session/new":
 			var req struct {
@@ -118,14 +111,9 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			}
 			result := map[string]any{
 				"sessionId": "fake-session",
-				"modes": map[string]any{
-					"currentModeId": "auto",
-					"availableModes": []map[string]any{
-						{"id": "auto", "name": "Auto"},
-						{"id": "full-access", "name": "Full Access"},
-						{"id": "plan", "name": "Plan"},
-					},
-				},
+			}
+			if modes := fakeModes(); modes != nil {
+				result["modes"] = modes
 			}
 			addFakeModels(result)
 			sendResult(conn, msg, result)
@@ -133,7 +121,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			var req struct {
 				ModeID string `json:"modeId"`
 			}
-			if err := json.Unmarshal(msg.Params, &req); err != nil || (req.ModeID != "full-access" && req.ModeID != "plan") {
+			if err := json.Unmarshal(msg.Params, &req); err != nil || (req.ModeID != "full-access" && req.ModeID != "always-approve" && req.ModeID != "plan") {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("expected supported mode", nil))
 				_ = conn.Send(context.Background(), resp)
 				continue
@@ -187,7 +175,14 @@ func TestFakeACPAgentProcess(t *testing.T) {
 					continue
 				}
 				currentModel = req.Value
-				sendResult(conn, msg, map[string]any{})
+				result := map[string]any{}
+				if os.Getenv("JAZ_FAKE_ACP_MODEL_CONFIG_OMITS_EFFORT") == "1" {
+					result["configOptions"] = []map[string]any{
+						{"id": "mode", "type": "select", "options": []map[string]any{{"value": "auto"}}},
+						{"id": "model", "type": "select", "options": []map[string]any{{"value": req.Value}}},
+					}
+				}
+				sendResult(conn, msg, result)
 				continue
 			}
 			if req.ConfigID != wantConfigID ||
@@ -262,6 +257,20 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.MethodNotFound(msg.Method))
 			_ = conn.Send(context.Background(), resp)
 		}
+	}
+}
+
+func fakeModes() map[string]any {
+	if os.Getenv("JAZ_FAKE_ACP_NO_MODES") == "1" {
+		return nil
+	}
+	return map[string]any{
+		"currentModeId": "auto",
+		"availableModes": []map[string]any{
+			{"id": "auto", "name": "Auto"},
+			{"id": "full-access", "name": "Full Access"},
+			{"id": "plan", "name": "Plan"},
+		},
 	}
 }
 

@@ -137,6 +137,54 @@ func TestInteractiveRequestPermissionWaitsForAnswer(t *testing.T) {
 	}
 }
 
+func TestInteractiveGrokRequestPermissionAutoApproves(t *testing.T) {
+	root := t.TempDir()
+	events := sessionevents.New()
+	manager := NewManager(nil, Config{}, nil)
+	manager.Events = events
+	manager.jobsByID["session"] = &Job{
+		ID:          "session",
+		ACPAgent:    AgentGrok,
+		ACPSession:  "acp-session",
+		Cwd:         root,
+		interactive: true,
+	}
+	manager.jobsByACP["acp-session"] = manager.jobsByID["session"]
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sub := events.Subscribe(ctx, "session")
+
+	raw, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
+		Method: acpschema.ClientMethodSessionRequestPermission,
+		Params: mustJSON(t, acpschema.RequestPermissionRequest{
+			SessionID: "acp-session",
+			Options: []acpschema.PermissionOption{{
+				OptionID: "approve",
+				Name:     "Approve tool",
+				Kind:     acpschema.PermissionOptionKindAllowOnce,
+			}},
+			ToolCall: acpschema.ToolCallUpdate{ToolCallID: "shell-command", Title: "Run command"},
+		}),
+	})
+	if rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+
+	var got map[string]map[string]string
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["outcome"]["outcome"] != "selected" || got["outcome"]["optionId"] != "approve" {
+		t.Fatalf("unexpected permission response: %s", raw)
+	}
+	select {
+	case event := <-sub:
+		t.Fatalf("unexpected permission event %#v", event)
+	default:
+	}
+}
+
 func TestInteractiveRequestUserInputPublishesStructuredQuestions(t *testing.T) {
 	runInteractiveRequestUserInputTest(t, codexRequestUserInputMetaKey, "__user_input_submit__", userInputResponseOptionPrefix)
 }

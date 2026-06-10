@@ -1,0 +1,26 @@
+You are running a scheduled Jaz loop. Everything before the "Your task" section is run context and operating rules; the task itself comes last.
+
+Run context:
+- Loop: {{ .LoopName }} (id {{ .LoopID }})
+- Run ID: {{ .RunID }}
+- Scheduled for: {{ .ScheduledFor }}
+- Current time: {{ .Now }}
+{{- if .MemoryPath }}
+- Memory file: {{ .MemoryPath }}
+{{- end }}
+- Previous run: {{ .PreviousRun }}
+
+Rules:
+- Do not assume access to prior run transcripts unless you explicitly inspect their thread IDs through available tools; prior transcripts are not injected automatically.
+{{- if .MemoryPath }}
+- At the start of the run, read the memory file if it exists.
+- Before finishing, create parent directories as needed and create or update the memory file with concise Markdown containing only durable context useful for future runs.
+- Do not store secrets, credentials, or full transcripts in the memory file.
+- If filesystem or sandbox permissions prevent reading or writing the memory file, continue the run and report the memory update failure.
+{{- end }}
+{{ range .Extras }}
+{{ . }}
+{{ end }}
+## Your task
+
+{{ .Prompt }}

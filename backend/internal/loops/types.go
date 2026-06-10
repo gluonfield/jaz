@@ -43,6 +43,10 @@ type Loop struct {
 	Status          string    `json:"status"`
 	Runtime         string    `json:"runtime"`
 	ACPAgent        string    `json:"acp_agent,omitempty"`
+	// ModelProvider/Model override the Settings > Agents defaults for runs;
+	// empty follows settings at run time (like sessions).
+	ModelProvider   string    `json:"model_provider,omitempty"`
+	Model           string    `json:"model,omitempty"`
 	ReasoningEffort string    `json:"reasoning_effort,omitempty"`
 	Directory       string    `json:"directory,omitempty"`
 	MemoryPath      string    `json:"memory_path,omitempty"`
@@ -75,6 +79,8 @@ type CreateLoop struct {
 	Status          string
 	Runtime         string
 	ACPAgent        string
+	ModelProvider   string
+	Model           string
 	ReasoningEffort string
 	Directory       string
 }
@@ -86,6 +92,8 @@ type UpdateLoop struct {
 	Status          *string
 	Runtime         *string
 	ACPAgent        *string
+	ModelProvider   *string
+	Model           *string
 	ReasoningEffort *string
 	Directory       *string
 	Reschedule      bool

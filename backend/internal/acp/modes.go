@@ -58,6 +58,29 @@ func planModeID(modes []acpschema.SessionMode) string {
 	return ""
 }
 
+func grokFallbackModes() *acpschema.SessionModeState {
+	return &acpschema.SessionModeState{
+		CurrentModeID: acpschema.SessionModeID("ask"),
+		AvailableModes: []acpschema.SessionMode{
+			{
+				ID:          acpschema.SessionModeID("ask"),
+				Name:        "Ask",
+				Description: "Request permission before tool calls",
+			},
+			{
+				ID:          acpschema.SessionModeID("plan"),
+				Name:        "Plan",
+				Description: "Plan before making changes",
+			},
+			{
+				ID:          acpschema.SessionModeID("always-approve"),
+				Name:        "Always Approve",
+				Description: "Run tool calls without permission prompts",
+			},
+		},
+	}
+}
+
 func (m *Manager) prepareModeForTurn(ctx context.Context, job *Job, planRequested bool) error {
 	job.mu.RLock()
 	modes := job.Modes.Clone()

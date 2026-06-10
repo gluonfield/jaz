@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Composer, PlanDecisionDock } from '@/components/session/Composer'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
+import { RepoActions } from '@/components/session/RepoActions'
 import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
 import { ThinkingBlock } from '@/components/session/ThinkingBlock'
 import { TokenStats } from '@/components/session/TokenStats'
@@ -426,7 +427,13 @@ function SessionPage() {
       return sanitized ? [sanitized] : []
     }),
   )
-  const planAvailable = session.runtime !== 'acp' || Boolean(acpModes?.plan_mode_id)
+  const acpModesKnown = Boolean(
+    acpModes?.plan_mode_id ||
+      acpModes?.current_mode_id ||
+      acpModes?.execution_mode_id ||
+      acpModes?.available_modes?.length,
+  )
+  const planAvailable = session.runtime !== 'acp' || !acpModesKnown || Boolean(acpModes?.plan_mode_id)
   const pendingPermissionEvents = new Map<string, SessionEvent>()
   for (const event of transcriptEvents) {
     if (event.type === 'permission_request' && event.permission?.id) {
@@ -520,6 +527,7 @@ function SessionPage() {
         ]
       : messages
   const titlebarSlot = document.getElementById('titlebar-slot')
+  const titlebarActions = document.getElementById('titlebar-actions')
 
   if (voiceMode) {
     return <VoiceMode sessionId={sessionId} onExit={() => setVoiceMode(false)} />
@@ -536,6 +544,7 @@ function SessionPage() {
             titlebarSlot,
           )
         : null}
+      {titlebarActions ? createPortal(<RepoActions session={session} />, titlebarActions) : null}
 
       <div
         ref={scrollRef}

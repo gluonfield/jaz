@@ -139,6 +139,32 @@ func TestProcessEnvHonorsConfiguredClaudeHome(t *testing.T) {
 	}
 }
 
+func TestProcessEnvUsesUserHomeForGrok(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XAI_APIKEY", "host-xai-key")
+	t.Setenv("USER", "wins")
+
+	root := t.TempDir()
+	env := NewManager(nil, Config{Root: root}, nil).processEnv("grok", AgentConfig{})
+
+	if env["HOME"] != home {
+		t.Fatalf("HOME = %q, want %q", env["HOME"], home)
+	}
+	if env["XAI_API_KEY"] != "host-xai-key" {
+		t.Fatalf("XAI_API_KEY was not preserved and normalized")
+	}
+	if _, ok := env["XAI_APIKEY"]; ok {
+		t.Fatal("XAI_APIKEY alias leaked into subprocess env")
+	}
+	if env["USER"] != "wins" {
+		t.Fatalf("USER = %q, want wins", env["USER"])
+	}
+	if !strings.HasPrefix(env["TMPDIR"], filepath.Join(root, "acp")) || !strings.HasPrefix(env["npm_config_cache"], filepath.Join(root, "acp")) {
+		t.Fatalf("expected grok temp/cache under jaz root: %#v", env)
+	}
+}
+
 func TestProcessEnvNeverLeaksAPIKeysToCodex(t *testing.T) {
 	home := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o700); err != nil {
@@ -204,6 +230,103 @@ func TestAutoAuthMethodPrefersCodexOAuth(t *testing.T) {
 	}
 }
 
+func TestAutoAuthMethodPrefersGrokAPIKeyWhenAdvertised(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	method, missing := autoAuthMethod("grok", grokInitializeAuthMethods(), map[string]string{"XAI_API_KEY": "key"})
+
+	if method != "xai.api_key" || len(missing) != 0 {
+		t.Fatalf("method=%q missing=%v", method, missing)
+	}
+}
+
+func TestAutoAuthMethodUsesGrokCachedToken(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".grok"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".grok", "auth.json"), []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	method, missing := autoAuthMethod("grok", grokInitializeAuthMethods(), map[string]string{"HOME": home})
+
+	if method != "cached_token" || len(missing) != 0 {
+		t.Fatalf("method=%q missing=%v", method, missing)
+	}
+}
+
+func TestAutoAuthMethodReportsMissingGrokAuth(t *testing.T) {
+	home := t.TempDir()
+	method, missing := autoAuthMethod("grok", grokInitializeAuthMethods(), map[string]string{"HOME": home})
+
+	if method != "" || strings.Join(missing, ",") != "Grok login at "+filepath.Join(home, ".grok", "auth.json")+" or XAI_API_KEY" {
+		t.Fatalf("method=%q missing=%v", method, missing)
+	}
+}
+
+func TestProcessCommandAddsGrokReasoningEffortArg(t *testing.T) {
+	_, args := processCommand("grok", AgentConfig{
+		Command:         "grok",
+		Args:            []string{"--no-auto-update", "agent", "--no-leader", "stdio"},
+		ReasoningEffort: "high",
+	})
+	want := "--no-auto-update agent --no-leader --always-approve --reasoning-effort high stdio"
+	if strings.Join(args, " ") != want {
+		t.Fatalf("args = %q, want %q", strings.Join(args, " "), want)
+	}
+}
+
+func TestProcessCommandDoesNotDuplicateGrokAlwaysApproveArg(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "already always approve",
+			args: []string{"agent", "--always-approve", "stdio"},
+			want: "agent --always-approve stdio",
+		},
+		{
+			name: "explicit permission mode",
+			args: []string{"agent", "--permission-mode", "ask", "stdio"},
+			want: "agent --permission-mode ask stdio",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, args := processCommand("grok", AgentConfig{
+				Command: "grok",
+				Args:    tc.args,
+			})
+			if strings.Join(args, " ") != tc.want {
+				t.Fatalf("args = %q, want %q", strings.Join(args, " "), tc.want)
+			}
+		})
+	}
+}
+
+func TestProcessCommandDoesNotDuplicateGrokReasoningEffortArg(t *testing.T) {
+	_, args := processCommand("grok", AgentConfig{
+		Command:         "grok",
+		Args:            []string{"agent", "--reasoning-effort=low", "stdio"},
+		ReasoningEffort: "high",
+	})
+	if strings.Join(args, " ") != "agent --reasoning-effort=low --always-approve stdio" {
+		t.Fatalf("args = %#v", args)
+	}
+}
+
+func TestProcessCommandLeavesNonGrokCommandAlone(t *testing.T) {
+	_, args := processCommand("grok", AgentConfig{
+		Command:         os.Args[0],
+		Args:            []string{"-test.run=TestFakeACPAgentProcess"},
+		ReasoningEffort: "high",
+	})
+	if strings.Join(args, " ") != "-test.run=TestFakeACPAgentProcess" {
+		t.Fatalf("args = %#v", args)
+	}
+}
+
 func TestAutoAuthMethodReportsMissingEnvVars(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	method, missing := autoAuthMethod("codex", codexInitializeAuthMethods(), nil)
@@ -218,6 +341,16 @@ func codexInitializeAuthMethods() []byte {
 		"authMethods": [
 			{"id": "chatgpt", "name": "Login with ChatGPT"},
 			{"type": "env_var", "id": "openai-api-key", "vars": [{"name": "OPENAI_API_KEY"}]}
+		]
+	}`)
+}
+
+func grokInitializeAuthMethods() []byte {
+	return []byte(`{
+		"authMethods": [
+			{"id": "cached_token", "name": "cached_token"},
+			{"id": "grok.com", "name": "Grok"},
+			{"id": "xai.api_key", "name": "XAI API Key"}
 		]
 	}`)
 }

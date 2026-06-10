@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -68,6 +69,16 @@ func (r *LoopRunner) startNativeLoopRun(ctx context.Context, execution loops.Exe
 	if loop.ReasoningEffort != "" {
 		input.ReasoningEffort = loop.ReasoningEffort
 	}
+	// Per-loop model overrides mirror session creation: switching providers
+	// invalidates the settings default model, falling back to the provider's.
+	if loop.ModelProvider != "" && loop.ModelProvider != input.ModelProvider {
+		meta, _ := provider.NativeProviderByID(loop.ModelProvider)
+		input.ModelProvider = loop.ModelProvider
+		input.Model = strings.TrimSpace(meta.DefaultModel)
+	}
+	if loop.Model != "" {
+		input.Model = loop.Model
+	}
 	if directory := strings.TrimSpace(loop.Directory); directory != "" {
 		cwd, err := r.native.resolveWorkspaceDir(directory)
 		if err != nil {
@@ -118,6 +129,7 @@ func (r *LoopRunner) startACPLoopRun(execution loops.Execution) {
 		Slug:            loopRunSlug(loop, run),
 		Title:           loop.Name,
 		Directory:       directory,
+		Model:           loop.Model,
 		ReasoningEffort: loop.ReasoningEffort,
 		SourceType:      storage.SourceLoopRun,
 		SourceID:        run.ID,

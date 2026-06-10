@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
+	"github.com/wins/jaz/backend/internal/templates/looprun"
 )
 
 type Service struct {
@@ -16,6 +17,11 @@ type Service struct {
 	Log         *log.Logger
 	Now         func() time.Time
 	MemoryPaths *MemoryPaths
+	// PromptExtra appends capability sections (e.g. widget instructions) to the
+	// metadata prompt of each run.
+	PromptExtra func(Loop, Run) string
+	// RunFinished fires after a run reaches a terminal status.
+	RunFinished func(Loop, Run)
 	mu          sync.Mutex
 }
 
@@ -24,6 +30,18 @@ type Option func(*Service)
 func WithMemoryPaths(paths *MemoryPaths) Option {
 	return func(s *Service) {
 		s.MemoryPaths = paths
+	}
+}
+
+func WithPromptExtra(extra func(Loop, Run) string) Option {
+	return func(s *Service) {
+		s.PromptExtra = extra
+	}
+}
+
+func WithRunFinished(hook func(Loop, Run)) Option {
+	return func(s *Service) {
+		s.RunFinished = hook
 	}
 }
 
@@ -52,6 +70,8 @@ func (s *Service) Create(input CreateLoop) (Loop, error) {
 		Status:          input.Status,
 		Runtime:         input.Runtime,
 		ACPAgent:        input.ACPAgent,
+		ModelProvider:   input.ModelProvider,
+		Model:           input.Model,
 		ReasoningEffort: input.ReasoningEffort,
 		Directory:       input.Directory,
 		NextRunAt:       nextRun,
@@ -226,9 +246,9 @@ func (s *Service) MarkRunning(runID, threadID string) error {
 func (s *Service) Finish(runID, status, errText string) error {
 	now := s.now()
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	run, err := s.Repo.LoadRun(runID)
 	if err != nil {
+		s.mu.Unlock()
 		return err
 	}
 	run.Status = normalizeRunStatus(status)
@@ -237,18 +257,24 @@ func (s *Service) Finish(runID, status, errText string) error {
 	if run.StartedAt.IsZero() {
 		run.StartedAt = now
 	}
-	return s.saveRunAndLoopUpdateLocked(run, now)
+	err = s.saveRunAndLoopUpdateLocked(run, now)
+	s.mu.Unlock()
+	if err == nil {
+		s.notifyRunFinished(run)
+	}
+	return err
 }
 
 func (s *Service) FinishThread(threadID, status, errText string) (Run, bool, error) {
 	now := s.now()
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	run, ok, err := s.Repo.LoadRunByThread(threadID)
 	if err != nil || !ok {
+		s.mu.Unlock()
 		return Run{}, ok, err
 	}
 	if run.Status != RunStatusStarting && run.Status != RunStatusRunning {
+		s.mu.Unlock()
 		return run, true, nil
 	}
 	run.Status = normalizeRunStatus(status)
@@ -258,9 +284,23 @@ func (s *Service) FinishThread(threadID, status, errText string) (Run, bool, err
 		run.StartedAt = now
 	}
 	if err := s.saveRunAndLoopUpdateLocked(run, now); err != nil {
+		s.mu.Unlock()
 		return Run{}, false, err
 	}
+	s.mu.Unlock()
+	s.notifyRunFinished(run)
 	return run, true, nil
+}
+
+func (s *Service) notifyRunFinished(run Run) {
+	if s.RunFinished == nil {
+		return
+	}
+	loop, err := s.Repo.LoadLoop(run.LoopID)
+	if err != nil {
+		return
+	}
+	go s.RunFinished(loop, run)
 }
 
 func (s *Service) start(ctx context.Context, loop Loop, run Run, now time.Time) {
@@ -268,10 +308,17 @@ func (s *Service) start(ctx context.Context, loop Loop, run Run, now time.Time) 
 		_ = s.Finish(run.ID, RunStatusError, "loop executor is not configured")
 		return
 	}
+	var extras []string
+	if s.PromptExtra != nil {
+		if extra := strings.TrimSpace(s.PromptExtra(loop, run)); extra != "" {
+			extras = append(extras, extra)
+		}
+	}
+	prompt := RunPrompt(loop, run, now, extras...)
 	go s.Executor.StartLoopRun(context.WithoutCancel(ctx), Execution{
 		Loop:       loop,
 		Run:        run,
-		Prompt:     MetadataPrompt(loop, run, now),
+		Prompt:     prompt,
 		Controller: s,
 	})
 }
@@ -450,21 +497,14 @@ func (s *Service) loopUpdateForRunLocked(run Run, now time.Time) (*Loop, error) 
 	return &loop, nil
 }
 
-func MetadataPrompt(loop Loop, run Run, now time.Time) string {
-	var b strings.Builder
-	b.WriteString("You are running a scheduled Jaz loop.\n\n")
-	fmt.Fprintf(&b, "Loop name: %s\n", loop.Name)
-	fmt.Fprintf(&b, "Loop ID: %s\n", loop.ID)
-	fmt.Fprintf(&b, "Run ID: %s\n", run.ID)
-	fmt.Fprintf(&b, "Scheduled for: %s\n", run.ScheduledFor.Format(time.RFC3339))
-	fmt.Fprintf(&b, "Current time: %s\n", now.UTC().Format(time.RFC3339))
-	if loop.MemoryPath != "" {
-		fmt.Fprintf(&b, "Memory file: %s\n", loop.MemoryPath)
-	}
-	if loop.LastRunID == "" {
-		b.WriteString("Previous run: none\n")
-	} else {
-		fmt.Fprintf(&b, "Previous run: id=%s status=%s", loop.LastRunID, loop.LastRunStatus)
+// RunPrompt renders the full prompt for a run via the looprun template:
+// context and rules first, capability extras (widget instructions, …) next,
+// and the user's task last so it carries the emphasis.
+func RunPrompt(loop Loop, run Run, now time.Time, extras ...string) string {
+	previous := "none"
+	if loop.LastRunID != "" {
+		var b strings.Builder
+		fmt.Fprintf(&b, "id=%s status=%s", loop.LastRunID, loop.LastRunStatus)
 		if !loop.LastRunAt.IsZero() {
 			fmt.Fprintf(&b, " at=%s", loop.LastRunAt.Format(time.RFC3339))
 		}
@@ -474,18 +514,25 @@ func MetadataPrompt(loop Loop, run Run, now time.Time) string {
 		if loop.LastError != "" {
 			fmt.Fprintf(&b, " error=%q", loop.LastError)
 		}
-		b.WriteString("\n")
+		previous = b.String()
 	}
-	if loop.MemoryPath != "" {
-		b.WriteString("\nLoop memory instructions:\n")
-		b.WriteString("- At the start of the run, read the memory file if it exists.\n")
-		b.WriteString("- Before finishing, create parent directories as needed and create or update the memory file with concise Markdown containing only durable context useful for future runs.\n")
-		b.WriteString("- Do not store secrets, credentials, or full transcripts in the memory file.\n")
-		b.WriteString("- If filesystem or sandbox permissions prevent reading or writing the memory file, continue the run and report the memory update failure.\n")
+	prompt, err := looprun.Render(looprun.Data{
+		LoopName:     loop.Name,
+		LoopID:       loop.ID,
+		RunID:        run.ID,
+		ScheduledFor: run.ScheduledFor.Format(time.RFC3339),
+		Now:          now.UTC().Format(time.RFC3339),
+		MemoryPath:   loop.MemoryPath,
+		PreviousRun:  previous,
+		Extras:       extras,
+		Prompt:       loop.Prompt,
+	})
+	if err != nil {
+		// The template is embedded and parse-checked at init; execution
+		// cannot realistically fail, but the run must never lose its task.
+		return loop.Prompt
 	}
-	b.WriteString("\nRun the loop prompt below. Do not assume access to prior run transcripts unless you explicitly inspect their thread IDs through available tools; prior transcripts are not injected automatically.\n\n")
-	b.WriteString(loop.Prompt)
-	return b.String()
+	return prompt
 }
 
 func StartScheduler(ctx context.Context, service *Service, tick time.Duration) error {

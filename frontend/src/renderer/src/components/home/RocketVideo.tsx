@@ -4,7 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { EqBars } from '@/components/home/MusicBubbles'
 import { RAINBOW_BEAM } from '@/components/session/Composer'
 import { IconButton } from '@/components/ui/IconButton'
-import type { PixelFieldShapeFrame } from '@/components/ui/PixelField'
+import type { PixelFieldShapeFrame } from '@/components/ui/PixelField.types'
 
 const VIDEO_ID = 'rcd_SQZDlnk'
 const CARD_WIDTH = 440
@@ -13,9 +13,9 @@ type VideoMeta = { title: string; author: string }
 
 let cachedMeta: VideoMeta | null = null
 
-// The rocket glyph is the launch pad: hovering swells the construction (via
-// PixelField's emphasizeShape) and clicking opens the launch track in a
-// now-playing style card.
+// The rocket glyph is the launch pad: hovering asks the home field lifecycle to
+// swell the construction, and clicking opens the launch track in a now-playing
+// style card.
 export function RocketVideo({
   frame,
   onHoverChange,

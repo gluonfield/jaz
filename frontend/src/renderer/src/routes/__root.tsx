@@ -1,4 +1,10 @@
-import { Outlet, createRootRoute, useNavigate, useRouterState } from '@tanstack/react-router'
+import {
+  Outlet,
+  createRootRoute,
+  useNavigate,
+  useRouter,
+  useRouterState,
+} from '@tanstack/react-router'
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { motion } from 'motion/react'
 import { type PointerEvent as ReactPointerEvent, useEffect, useState } from 'react'
@@ -7,8 +13,26 @@ import { Sidebar } from '@/components/sidebar/Sidebar'
 import { ToastProvider } from '@/components/ui/toast'
 
 export const Route = createRootRoute({
-  component: RootLayout,
+  component: RootComponent,
 })
+
+// Board windows render their route full-bleed: no sidebar, no app titlebar
+// (they use the native OS titlebar). windowKind is fixed per window, so the
+// branch never changes within a window's lifetime.
+function RootComponent() {
+  if (window.jaz?.windowKind === 'board') {
+    // No extra padding: the board page is h-full, so any would overflow into
+    // a permanent sliver of scrollbar.
+    return (
+      <ToastProvider>
+        <main className="h-full overflow-hidden bg-bg">
+          <Outlet />
+        </main>
+      </ToastProvider>
+    )
+  }
+  return <RootLayout />
+}
 
 const SIDEBAR_DEFAULT_WIDTH = 264
 const SIDEBAR_MIN_WIDTH = 200
@@ -22,6 +46,12 @@ const clampSidebarWidth = (w: number) =>
 function RootLayout() {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const navigate = useNavigate()
+  const router = useRouter()
+
+  // Deep links from board windows ("Open loop in Jaz") land here.
+  useEffect(() => {
+    return window.jaz?.onOpenRoute?.((path) => router.history.push(path))
+  }, [router])
   const [sidebarOpen, setSidebarOpen] = useState(
     () => localStorage.getItem(SIDEBAR_PREF_KEY) !== 'closed',
   )
@@ -112,7 +142,9 @@ function RootLayout() {
               {sidebarOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
             </button>
             {/* slot routes portal into (e.g. the session runtime tag) */}
-            <div id="titlebar-slot" className="flex items-center gap-1.5" />
+            <div id="titlebar-slot" className="flex min-w-0 items-center gap-1.5" />
+            {/* right-aligned slot for contextual actions (e.g. repo actions) */}
+            <div id="titlebar-actions" className="ml-auto flex items-center gap-1.5" />
           </div>
           {/* light crossfade between routes; state-only, never blocking */}
           <motion.div

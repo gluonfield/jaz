@@ -1,13 +1,13 @@
 package acp
 
 import (
-	"bytes"
+	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/wins/jaz/backend/internal/gitinfo"
 	"github.com/wins/jaz/backend/internal/pathsafe"
 )
 
@@ -48,38 +48,12 @@ func (m *Manager) prepareSessionDir(req SpawnRequest, cfg AgentConfig, slug stri
 	if !req.Worktree {
 		return abs, nil
 	}
-	return m.addWorktree(workspace, abs, slug)
-}
-
-func (m *Manager) addWorktree(workspace, dir, slug string) (string, error) {
-	repo, err := gitOutput(dir, "rev-parse", "--show-toplevel")
+	worktree, err := gitinfo.AddWorktree(context.Background(), workspace, abs, slug)
 	if err != nil {
-		return "", fmt.Errorf("worktree requires a git repository at %s: %w", dir, err)
-	}
-	worktree := filepath.Join(workspace, ".worktrees", slug)
-	if err := os.MkdirAll(filepath.Dir(worktree), 0o755); err != nil {
 		return "", err
 	}
-	if _, err := gitOutput(repo, "worktree", "add", "-b", "jaz/"+slug, worktree); err != nil {
-		return "", fmt.Errorf("create worktree: %w", err)
-	}
-	m.log.Info("created worktree", "repo", repo, "worktree", worktree, "branch", "jaz/"+slug)
+	m.log.Info("created worktree", "dir", abs, "worktree", worktree, "branch", "jaz/"+slug)
 	return worktree, nil
-}
-
-func gitOutput(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
-	var out, stderr bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		detail := strings.TrimSpace(stderr.String())
-		if detail != "" {
-			return "", fmt.Errorf("git %s: %s", args[0], detail)
-		}
-		return "", err
-	}
-	return strings.TrimSpace(out.String()), nil
 }
 
 func (m *Manager) resolveCwd(configured string) (string, error) {

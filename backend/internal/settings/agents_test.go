@@ -102,6 +102,37 @@ func TestEnsureAgentDefaultsKeepsCustomCodexCommand(t *testing.T) {
 	}
 }
 
+func TestEnsureAgentDefaultsUpgradesLegacyGrokCommand(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := testAgentDefaultsSeed()
+	old := seed
+	old.ACP = map[string]ACPAgentDefaults{
+		"grok": {
+			Enabled:         true,
+			Command:         legacyGrokACPCommand,
+			Model:           "grok-build",
+			ReasoningEffort: "medium",
+		},
+	}
+	if _, err := SaveAgentDefaults(store, old); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := EnsureAgentDefaults(store, seed); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadAgentDefaults(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.ACP["grok"].Command != seed.ACP["grok"].Command {
+		t.Fatalf("grok command = %q", loaded.ACP["grok"].Command)
+	}
+}
+
 func TestEnsureAgentDefaultsUpgradesPreviousClaudeCommands(t *testing.T) {
 	for _, legacy := range legacyClaudeCodeCommands {
 		store, err := jsonstore.New(t.TempDir())

@@ -86,7 +86,9 @@ SELECT
   updated_at_ms,
   reasoning_effort,
   directory,
-  memory_path
+  memory_path,
+  model_provider,
+  model
 FROM loops
 WHERE id = ?1
 LIMIT 1
@@ -116,6 +118,8 @@ func (q *Queries) GetLoop(ctx context.Context, id string) (Loop, error) {
 		&i.ReasoningEffort,
 		&i.Directory,
 		&i.MemoryPath,
+		&i.ModelProvider,
+		&i.Model,
 	)
 	return i, err
 }
@@ -245,7 +249,9 @@ SELECT
   updated_at_ms,
   reasoning_effort,
   directory,
-  memory_path
+  memory_path,
+  model_provider,
+  model
 FROM loops
 WHERE status <> ?1
 ORDER BY updated_at_ms DESC
@@ -281,6 +287,8 @@ func (q *Queries) ListLoops(ctx context.Context, deletedStatus string) ([]Loop, 
 			&i.ReasoningEffort,
 			&i.Directory,
 			&i.MemoryPath,
+			&i.ModelProvider,
+			&i.Model,
 		); err != nil {
 			return nil, err
 		}
@@ -371,7 +379,9 @@ INSERT INTO loops (
   updated_at_ms,
   reasoning_effort,
   directory,
-  memory_path
+  memory_path,
+  model_provider,
+  model
 ) VALUES (
   ?1,
   ?2,
@@ -392,7 +402,9 @@ INSERT INTO loops (
   ?17,
   ?18,
   ?19,
-  ?20
+  ?20,
+  ?21,
+  ?22
 )
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
@@ -406,6 +418,8 @@ ON CONFLICT(id) DO UPDATE SET
   reasoning_effort = excluded.reasoning_effort,
   directory = excluded.directory,
   memory_path = excluded.memory_path,
+  model_provider = excluded.model_provider,
+  model = excluded.model,
   next_run_at_ms = excluded.next_run_at_ms,
   last_run_at_ms = excluded.last_run_at_ms,
   last_run_id = excluded.last_run_id,
@@ -437,6 +451,8 @@ type UpsertLoopParams struct {
 	ReasoningEffort string         `json:"reasoning_effort"`
 	Directory       string         `json:"directory"`
 	MemoryPath      string         `json:"memory_path"`
+	ModelProvider   string         `json:"model_provider"`
+	Model           string         `json:"model"`
 }
 
 func (q *Queries) UpsertLoop(ctx context.Context, arg UpsertLoopParams) error {
@@ -461,6 +477,8 @@ func (q *Queries) UpsertLoop(ctx context.Context, arg UpsertLoopParams) error {
 		arg.ReasoningEffort,
 		arg.Directory,
 		arg.MemoryPath,
+		arg.ModelProvider,
+		arg.Model,
 	)
 	return err
 }

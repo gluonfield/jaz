@@ -29,6 +29,8 @@ type Loop struct {
 	ReasoningEffort string         `json:"reasoning_effort"`
 	Directory       string         `json:"directory"`
 	MemoryPath      string         `json:"memory_path"`
+	ModelProvider   string         `json:"model_provider"`
+	Model           string         `json:"model"`
 }
 
 type LoopRun struct {

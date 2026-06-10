@@ -17,6 +17,7 @@ const (
 	AgentSettingsNamespace = "agents"
 	AgentDefaultsKey       = "defaults"
 	legacyCodexACPCommand  = `npx -y @zed-industries/codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'`
+	legacyGrokACPCommand   = `grok --no-auto-update agent --no-leader stdio`
 	legacyClaudeCodeModel  = "claude-sonnet-4-5"
 )
 
@@ -270,6 +271,8 @@ func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentD
 	case name == acp.AgentCodex && strings.TrimSpace(stored.Command) == legacyCodexACPCommand:
 		stored.Command = seed.Command
 	case name == acp.AgentClaude && isLegacyClaudeCodeCommand(stored.Command):
+		stored.Command = seed.Command
+	case name == acp.AgentGrok && strings.TrimSpace(stored.Command) == legacyGrokACPCommand:
 		stored.Command = seed.Command
 	}
 	if name == acp.AgentClaude && strings.TrimSpace(stored.Model) == legacyClaudeCodeModel {

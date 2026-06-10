@@ -41,10 +41,24 @@ function LoopDetailPage() {
       </div>
     )
   }
-  return <LoopDetail loop={detail.data.loop} runs={detail.data.runs} />
+  return (
+    <LoopDetail
+      loop={detail.data.loop}
+      runs={detail.data.runs}
+      boardIds={detail.data.boardIds}
+    />
+  )
 }
 
-function LoopDetail({ loop, runs }: { loop: Loop; runs: LoopRun[] }) {
+function LoopDetail({
+  loop,
+  runs,
+  boardIds,
+}: {
+  loop: Loop
+  runs: LoopRun[]
+  boardIds: string[]
+}) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const toast = useToast()
@@ -152,7 +166,11 @@ function LoopDetail({ loop, runs }: { loop: Loop; runs: LoopRun[] }) {
 
       <motion.dl variants={item} className="mt-5 flex flex-wrap gap-x-10 gap-y-3">
         <Fact label="Agent" value={isAcp ? agentLabel(loop.acp_agent) : 'Native'} />
-        <Fact label="Reasoning effort" value={reasoningEffortLabel(loop.reasoning_effort)} />
+        {/* Only pinned overrides show; otherwise runs follow Settings > Agents. */}
+        {loop.model?.trim() ? <Fact label="Model" value={loop.model} mono /> : null}
+        {loop.reasoning_effort?.trim() ? (
+          <Fact label="Reasoning effort" value={reasoningEffortLabel(loop.reasoning_effort)} />
+        ) : null}
         <Fact label="Folder" value={loop.directory?.trim() || 'workspace'} mono />
       </motion.dl>
 
@@ -174,7 +192,7 @@ function LoopDetail({ loop, runs }: { loop: Loop; runs: LoopRun[] }) {
         )}
       </motion.section>
 
-      <LoopModal open={editing} onClose={() => setEditing(false)} loop={loop} />
+      <LoopModal open={editing} onClose={() => setEditing(false)} loop={loop} boardIds={boardIds} />
     </motion.div>
   )
 }

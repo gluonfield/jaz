@@ -4,6 +4,7 @@
 const DISPLAY_NAMES: Record<string, string> = {
   codex: 'Codex',
   claude: 'Claude',
+  grok: 'Grok',
 }
 
 // Prettifies an ACP agent name for display, e.g. "claude" → "Claude".
