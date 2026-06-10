@@ -26,7 +26,7 @@ func CanonicalAgentName(name string) string {
 // consulted at session creation, not at startup, so skill edits reach new
 // sessions without a restart.
 type SystemPromptSource interface {
-	SkillsPrompt() string
+	SkillsPrompt() (string, error)
 }
 
 type Config struct {

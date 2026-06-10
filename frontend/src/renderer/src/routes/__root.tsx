@@ -82,7 +82,7 @@ function RootLayout() {
 
   return (
     <ToastProvider>
-      <div className="flex h-full bg-bg">
+      <div className="flex h-full">
         <motion.div
           className="shrink-0 overflow-hidden"
           initial={false}
@@ -98,7 +98,7 @@ function RootLayout() {
           />
         </motion.div>
 
-        <main className="flex min-w-0 flex-1 flex-col">
+        <main className="flex min-w-0 flex-1 flex-col bg-bg">
           <div className="titlebar-drag flex h-[52px] shrink-0 items-center gap-2 px-3">
             <button
               type="button"

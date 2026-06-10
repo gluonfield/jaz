@@ -129,7 +129,7 @@ export function SettingsOverlay({ open, onClose }: { open: boolean; onClose: () 
             </nav>
           </aside>
 
-          <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex min-w-0 flex-1 flex-col bg-bg">
             <div className="titlebar-drag h-[52px] shrink-0" />
             <div className="min-h-0 flex-1 overflow-hidden">
               <AnimatePresence initial={false} mode="wait">

@@ -1,10 +1,10 @@
 import { ChevronDown, Gauge } from 'lucide-react'
 import { useState } from 'react'
-import { MenuRow, Popover } from '@/components/session/NewThreadControls'
+import { MenuRow, Popover } from '@/components/ui/Popover'
 import { Button } from '@/components/ui/Button'
 
 // '' is the agent/server default; the rest map to provider reasoning efforts.
-const OPTIONS: { value: string; label: string }[] = [
+export const REASONING_EFFORT_OPTIONS: { value: string; label: string }[] = [
   { value: '', label: 'Default' },
   { value: 'minimal', label: 'Minimal' },
   { value: 'low', label: 'Low' },
@@ -14,7 +14,9 @@ const OPTIONS: { value: string; label: string }[] = [
 ]
 
 export function reasoningEffortLabel(value: string | undefined): string {
-  return OPTIONS.find((option) => option.value === (value ?? ''))?.label ?? 'Default'
+  return (
+    REASONING_EFFORT_OPTIONS.find((option) => option.value === (value ?? ''))?.label ?? 'Default'
+  )
 }
 
 // Picks the per-loop reasoning effort. An empty value inherits the agent default.
@@ -55,7 +57,7 @@ export function ReasoningEffortSelect({
         </Button>
       }
     >
-      {OPTIONS.map((option) => (
+      {REASONING_EFFORT_OPTIONS.map((option) => (
         <MenuRow
           key={option.value || 'default'}
           selected={(value ?? '') === option.value}

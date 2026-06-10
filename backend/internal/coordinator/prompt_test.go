@@ -16,7 +16,7 @@ func TestPromptCombinesCoordinatorFiles(t *testing.T) {
 
 	now := time.Date(2026, 6, 2, 9, 8, 7, 0, time.FixedZone("BST", 3600))
 	workspace := filepath.Join(root, "workspaces", "default")
-	prompt, err := prompt(root, workspace, "skills", now)
+	prompt, err := prompt(root, workspace, "", "skills", now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +24,7 @@ func TestPromptCombinesCoordinatorFiles(t *testing.T) {
 }
 
 func TestPromptOmitsMissingFiles(t *testing.T) {
-	prompt, err := Prompt(t.TempDir(), "", "")
+	prompt, err := Prompt(t.TempDir(), "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,5 +49,41 @@ func assertOrder(t *testing.T, value string, parts ...string) {
 			t.Fatalf("missing %q in:\n%s", part, value)
 		}
 		offset += i + len(part)
+	}
+}
+
+func TestPromptInjectsMemoryHorizons(t *testing.T) {
+	root := t.TempDir()
+	memoryRoot := t.TempDir()
+	write(t, root, "AGENTS.md", "agents")
+	write(t, memoryRoot, "LONG_TERM.md", "# Long Term Memory\n\n- Goal: $5m through agent products.")
+	write(t, memoryRoot, "SHORT_TERM.md", "# Short Term Memory\n\n- Focus: jaz memory system.")
+	if err := os.MkdirAll(filepath.Join(memoryRoot, "daily"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 6, 10, 9, 0, 0, 0, time.UTC)
+	today := now.Local().Format("2006-01-02")
+	yesterday := now.AddDate(0, 0, -1).Local().Format("2006-01-02")
+	write(t, memoryRoot, "daily/"+today+".md", "# Daily\n\n- shipped provenance fields")
+	write(t, memoryRoot, "daily/"+yesterday+".md", "# Daily\n\n- reviewed gbrain")
+
+	got, err := prompt(root, "", memoryRoot, "", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertOrder(t, got,
+		"## AGENTS.md",
+		"## memory/LONG_TERM.md", "$5m through agent products",
+		"## memory/SHORT_TERM.md", "jaz memory system",
+		"## memory/daily/"+today+".md", "shipped provenance fields",
+		"## memory/daily/"+yesterday+".md", "reviewed gbrain",
+	)
+
+	missing, err := prompt(root, "", t.TempDir(), "", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(missing, "## memory/") {
+		t.Fatalf("missing memory files must not add sections:\n%s", missing)
 	}
 }

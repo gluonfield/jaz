@@ -8,12 +8,19 @@ export interface RuntimeRef {
   cwd?: string
 }
 
+// Disjoint components: input is fresh, uncached input; cache reads/writes
+// are counted separately, never folded into input.
 export interface Usage {
   input_tokens?: number
-  cached_input_tokens?: number
+  cached_input_tokens?: number // cache reads
+  cached_write_tokens?: number
   output_tokens?: number
   reasoning_output_tokens?: number
   total_tokens?: number
+  // Live context size after the latest turn (replaced per turn, not summed).
+  context_tokens?: number
+  // Context window reported by the runtime; absent when it doesn't report one.
+  context_window_tokens?: number
 }
 
 export interface Session {
@@ -157,10 +164,18 @@ export interface ACPModeState {
   available_modes?: ACPMode[]
 }
 
-export interface ACPPlanEntry {
+export interface PlanEntry {
   content: string
   status?: string
   priority?: string
+}
+
+export type ACPPlanEntry = PlanEntry
+
+export interface PlanEvent {
+  explanation?: string
+  plan?: PlanEntry[]
+  awaiting_approval?: boolean
 }
 
 export interface ACPEvent {
@@ -244,6 +259,7 @@ export interface SessionEvent {
   type: string
   content?: string
   acp?: ACPEvent
+  plan?: PlanEvent
   permission?: ACPPermission
   at: string
 }

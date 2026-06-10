@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { Check, ChevronDown, CornerLeftUp, Folder, GitBranch, LoaderCircle } from 'lucide-react'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
+import { MenuRow, Popover } from '@/components/ui/Popover'
 import { agentLabel } from '@/lib/agentLabel'
 import { listWorkspaceDirs } from '@/lib/api/sessions'
 import {
@@ -12,86 +12,6 @@ import {
   type ModelSuggestion,
 } from '@/lib/models'
 import { keys } from '@/lib/query/keys'
-
-// A floating menu anchored to its trigger, dismissed on outside-click/Escape.
-// Trigger and menu share one wrapper so clicking the trigger doesn't self-close.
-export function Popover({
-  open,
-  onClose,
-  trigger,
-  children,
-  placement = 'above',
-}: {
-  open: boolean
-  onClose: () => void
-  trigger: ReactNode
-  children: ReactNode
-  placement?: 'above' | 'below'
-}) {
-  const ref = useRef<HTMLDivElement>(null)
-  const reducedMotion = useReducedMotion()
-
-  useEffect(() => {
-    if (!open) return
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('mousedown', onDown)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [open, onClose])
-
-  const slide = reducedMotion ? 0 : placement === 'above' ? 6 : -6
-  return (
-    <div ref={ref} className="relative">
-      {trigger}
-      <AnimatePresence>
-        {open ? (
-          <motion.div
-            initial={{ opacity: 0, y: slide }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: slide }}
-            transition={{ duration: 0.15, ease: 'easeOut' }}
-            className={`absolute left-0 z-20 min-w-[176px] rounded-[14px] bg-surface p-1.5 shadow-xl ring-1 ring-border ${
-              placement === 'above' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-            }`}
-          >
-            {children}
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-    </div>
-  )
-}
-
-export function MenuRow({
-  selected,
-  onClick,
-  children,
-}: {
-  selected?: boolean
-  onClick: () => void
-  children: ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] transition-colors duration-150 hover:bg-surface-2 ${
-        selected ? 'text-ink' : 'text-ink-2'
-      }`}
-    >
-      <span className="min-w-0 flex-1 truncate">{children}</span>
-      {selected ? <Check size={13} className="shrink-0 text-primary" /> : null}
-    </button>
-  )
-}
 
 // Selects the runtime backing a new thread: Native (the default Jaz session) or
 // one of the configured ACP agents. `value` is 'native' or an agent name.
@@ -286,8 +206,8 @@ function parentPath(path: string): string {
   return idx === -1 ? '' : path.slice(0, idx)
 }
 
-// Browses the workspace (confined server-side) to choose where an ACP coding
-// agent runs. `value` is a workspace-relative path; '' is the workspace root.
+// Browses the workspace (confined server-side) to choose the session working
+// directory. `value` is a workspace-relative path; '' is the workspace root.
 export function DirectoryPicker({
   value,
   disabled,

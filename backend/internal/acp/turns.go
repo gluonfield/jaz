@@ -52,7 +52,7 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string, attac
 		m.finishTurn(done, job)
 		return
 	}
-	if usage := usageFromRaw(raw); !usageEmpty(usage) {
+	if usage := usageFromRaw(raw); !usage.IsZero() {
 		m.recordUsage(job, usage)
 	}
 	stopReason := resp.StopReason

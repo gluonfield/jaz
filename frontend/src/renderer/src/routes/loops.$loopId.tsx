@@ -153,7 +153,7 @@ function LoopDetail({ loop, runs }: { loop: Loop; runs: LoopRun[] }) {
       <motion.dl variants={item} className="mt-5 flex flex-wrap gap-x-10 gap-y-3">
         <Fact label="Agent" value={isAcp ? agentLabel(loop.acp_agent) : 'Native'} />
         <Fact label="Reasoning effort" value={reasoningEffortLabel(loop.reasoning_effort)} />
-        {isAcp ? <Fact label="Folder" value={loop.directory?.trim() || 'workspace'} mono /> : null}
+        <Fact label="Folder" value={loop.directory?.trim() || 'workspace'} mono />
       </motion.dl>
 
       <motion.section variants={item} className="mt-10">

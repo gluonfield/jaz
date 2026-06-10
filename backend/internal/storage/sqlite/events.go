@@ -73,7 +73,7 @@ func (s *Store) AppendSessionEvents(id string, events ...sessionevents.Event) er
 }
 
 func (s *Store) loadSessionEventsLocked(id string) ([]sessionevents.Event, error) {
-	rows, err := s.db.Query(`SELECT thread_id, seq, type, content, acp, permission, created_at_ms
+	rows, err := s.db.Query(`SELECT thread_id, seq, type, content, acp, plan, permission, created_at_ms
 FROM session_events WHERE thread_id = ? ORDER BY seq`, id)
 	if err != nil {
 		return nil, err
@@ -82,9 +82,9 @@ FROM session_events WHERE thread_id = ? ORDER BY seq`, id)
 	var events []sessionevents.Event
 	for rows.Next() {
 		var event sessionevents.Event
-		var rawACP, rawPermission sql.NullString
+		var rawACP, rawPlan, rawPermission sql.NullString
 		var createdMs int64
-		if err := rows.Scan(&event.SessionID, &event.Seq, &event.Type, &event.Content, &rawACP, &rawPermission, &createdMs); err != nil {
+		if err := rows.Scan(&event.SessionID, &event.Seq, &event.Type, &event.Content, &rawACP, &rawPlan, &rawPermission, &createdMs); err != nil {
 			return nil, err
 		}
 		if rawACP.Valid && rawACP.String != "" && rawACP.String != "null" {
@@ -93,6 +93,13 @@ FROM session_events WHERE thread_id = ? ORDER BY seq`, id)
 				return nil, err
 			}
 			event.ACP = &acp
+		}
+		if rawPlan.Valid && rawPlan.String != "" && rawPlan.String != "null" {
+			var plan sessionevents.PlanEvent
+			if err := stdjson.Unmarshal([]byte(rawPlan.String), &plan); err != nil {
+				return nil, err
+			}
+			event.Plan = &plan
 		}
 		if rawPermission.Valid && rawPermission.String != "" && rawPermission.String != "null" {
 			var permission sessionevents.ACPPermission
@@ -131,15 +138,20 @@ func insertSessionEvent(db execer, event sessionevents.Event) error {
 	if err != nil {
 		return err
 	}
-	_, err = db.Exec(`INSERT INTO session_events (thread_id, seq, type, content, acp, permission, created_at_ms)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+	rawPlan, err := marshalOptionalJSON(event.Plan)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(`INSERT INTO session_events (thread_id, seq, type, content, acp, plan, permission, created_at_ms)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(thread_id, seq) DO UPDATE SET
 type = excluded.type,
 content = excluded.content,
 acp = excluded.acp,
+plan = excluded.plan,
 permission = excluded.permission,
 created_at_ms = excluded.created_at_ms`,
-		event.SessionID, event.Seq, event.Type, event.Content, rawACP, rawPermission, timeToMs(event.At))
+		event.SessionID, event.Seq, event.Type, event.Content, rawACP, rawPlan, rawPermission, timeToMs(event.At))
 	return err
 }
 

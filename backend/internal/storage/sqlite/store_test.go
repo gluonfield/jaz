@@ -214,6 +214,7 @@ func TestAddUsageStoresCachedTokensAndMirrors(t *testing.T) {
 		CachedInputTokens:     64,
 		OutputTokens:          25,
 		ReasoningOutputTokens: 7,
+		ContextWindowTokens:   400000,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -230,9 +231,15 @@ func TestAddUsageStoresCachedTokensAndMirrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Missing totals derive from the disjoint components (100+64+25 = 189).
 	if loaded.Usage.InputTokens != 110 || loaded.Usage.CachedInputTokens != 72 || loaded.Usage.OutputTokens != 30 ||
-		loaded.Usage.ReasoningOutputTokens != 7 || loaded.Usage.TotalTokens != 145 {
+		loaded.Usage.ReasoningOutputTokens != 7 || loaded.Usage.TotalTokens != 209 {
 		t.Fatalf("usage = %#v", loaded.Usage)
+	}
+	// Context reflects only the latest turn (10+8+5), never accumulates; the
+	// window keeps its last reported value when later turns omit it.
+	if loaded.Usage.ContextTokens != 23 || loaded.Usage.ContextWindowTokens != 400000 {
+		t.Fatalf("context = %d / %d, want 23 / 400000", loaded.Usage.ContextTokens, loaded.Usage.ContextWindowTokens)
 	}
 
 	legacy, err := jsonstore.New(store.RootDir())
@@ -640,6 +647,13 @@ func TestSessionEventsPersistAndMirror(t *testing.T) {
 				ToolCalls: []sessionevents.ACPToolCall{{ID: "tool-1", Title: "Read file"}},
 			},
 		},
+		sessionevents.Event{
+			Type: "plan_update",
+			Plan: &sessionevents.PlanEvent{
+				Explanation: "Updated checklist",
+				Plan:        []sessionevents.PlanEntry{{Content: "Run tests", Status: "pending"}},
+			},
+		},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -648,11 +662,14 @@ func TestSessionEventsPersistAndMirror(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded) != 2 || loaded[0].Seq != 1 || loaded[1].Seq != 2 {
+	if len(loaded) != 3 || loaded[0].Seq != 1 || loaded[1].Seq != 2 || loaded[2].Seq != 3 {
 		t.Fatalf("loaded events = %#v", loaded)
 	}
 	if loaded[1].ACP == nil || loaded[1].ACP.ToolCalls[0].Title != "Read file" {
 		t.Fatalf("tool event = %#v", loaded[1])
+	}
+	if loaded[2].Plan == nil || loaded[2].Plan.Plan[0].Content != "Run tests" {
+		t.Fatalf("plan event = %#v", loaded[2])
 	}
 	legacy, err := jsonstore.New(store.RootDir())
 	if err != nil {
@@ -662,7 +679,7 @@ func TestSessionEventsPersistAndMirror(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(mirrored) != 2 || mirrored[0].Content != "working" {
+	if len(mirrored) != 3 || mirrored[0].Content != "working" || mirrored[2].Plan == nil {
 		t.Fatalf("mirrored events = %#v", mirrored)
 	}
 }

@@ -31,6 +31,7 @@ import (
 	applypatch "github.com/wins/jaz/backend/internal/tools/applypatch"
 	exectool "github.com/wins/jaz/backend/internal/tools/exec"
 	memorytool "github.com/wins/jaz/backend/internal/tools/memory"
+	plantool "github.com/wins/jaz/backend/internal/tools/plan"
 	viewimagetool "github.com/wins/jaz/backend/internal/tools/viewimage"
 	"github.com/wins/jaz/backend/internal/voice"
 	mistralvoice "github.com/wins/jaz/backend/internal/voice/mistral"
@@ -109,8 +110,8 @@ func NewMemory(cfg Config) (*jazmem.Memory, error) {
 	return jazmem.Open(jazmem.Config{Root: cfg.Memory.Root, DBPath: cfg.Memory.DBPath})
 }
 
-func NewPromptBuilder(store *sqlitestore.Store, workspace Workspace, logger *log.Logger) *coordinator.Builder {
-	return coordinator.NewBuilder(store.RootDir(), string(workspace), logger.WithPrefix("prompt"))
+func NewPromptBuilder(store *sqlitestore.Store, workspace Workspace, memory *jazmem.Memory, logger *log.Logger) *coordinator.Builder {
+	return coordinator.NewBuilder(store.RootDir(), string(workspace), memory.Root(), logger.WithPrefix("prompt"))
 }
 
 func NewACPAgentCatalog(cfg Config) acp.AgentCatalog {
@@ -135,8 +136,9 @@ func agentDefaultsSeed(catalog acp.AgentCatalog) agentsettings.AgentDefaults {
 	return agentsettings.AgentDefaultsFromCatalog(catalog)
 }
 
-func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, memory *jazmem.Memory) *tools.Registry {
+func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, memory *jazmem.Memory, store *sqlitestore.Store, events *sessionevents.Bus) *tools.Registry {
 	return tools.NewRegistry(
+		&plantool.Tool{Store: store, Events: events},
 		&exectool.ExecCommandTool{Manager: commandManager, Workspace: string(workspace)},
 		&exectool.WriteStdinTool{Manager: commandManager},
 		&applypatch.Tool{Workspace: string(workspace)},
@@ -363,7 +365,13 @@ func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, 
 	for len(messages) > 0 && messages[0].OfSystem != nil {
 		messages = messages[1:]
 	}
-	if prompt := strings.TrimSpace(prompts.SystemPrompt()); prompt != "" {
+	prompt, err := prompts.SystemPrompt()
+	if err != nil {
+		logger.Error("building system prompt failed", "parent", job.ParentID, "error", err)
+		setStoredSessionError(store, job.ParentID, err.Error())
+		return
+	}
+	if prompt := strings.TrimSpace(prompt); prompt != "" {
 		messages = append([]provider.Message{provider.SystemMessage(prompt)}, messages...)
 	}
 	ctx = sessioncontext.WithSessionID(ctx, job.ParentID)

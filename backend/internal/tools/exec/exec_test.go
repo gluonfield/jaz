@@ -3,8 +3,12 @@ package exec
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/wins/jaz/backend/internal/sessioncontext"
 )
 
 func TestExecCommandCompletes(t *testing.T) {
@@ -23,6 +27,49 @@ func TestExecCommandCompletes(t *testing.T) {
 	}
 	if payload["status"] != "completed" || payload["output"] != "hello" {
 		t.Fatalf("unexpected payload %#v", payload)
+	}
+}
+
+func TestExecCommandDefaultsToSessionCWD(t *testing.T) {
+	manager := NewCommandManager()
+	workspace := t.TempDir()
+	cwd := filepath.Join(workspace, "repo")
+	if err := os.MkdirAll(cwd, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tool := &ExecCommandTool{Manager: manager, Workspace: workspace}
+	result, err := tool.Execute(sessioncontext.WithCWD(context.Background(), cwd), map[string]any{
+		"cmd":           "pwd",
+		"yield_time_ms": float64(1000),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(result.Content), &payload); err != nil {
+		t.Fatal(err)
+	}
+	got, err := filepath.EvalSymlinks(strings.TrimSpace(payload["output"].(string)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := filepath.EvalSymlinks(cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("pwd output = %#v, want %q", payload["output"], cwd)
+	}
+}
+
+func TestExecCommandRejectsSessionCWDOutsideWorkspace(t *testing.T) {
+	manager := NewCommandManager()
+	tool := &ExecCommandTool{Manager: manager, Workspace: t.TempDir()}
+	_, err := tool.Execute(sessioncontext.WithCWD(context.Background(), t.TempDir()), map[string]any{
+		"cmd": "pwd",
+	})
+	if err == nil || !strings.Contains(err.Error(), "escapes workspace") {
+		t.Fatalf("err = %v, want workspace escape", err)
 	}
 }
 

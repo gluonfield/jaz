@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/agent"
+	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/media"
 	"github.com/wins/jaz/backend/internal/provider"
 	mockprovider "github.com/wins/jaz/backend/internal/provider/mock"
@@ -21,6 +22,7 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/tools"
+	plantool "github.com/wins/jaz/backend/internal/tools/plan"
 )
 
 type slowTool struct{ delay time.Duration }
@@ -40,6 +42,28 @@ type requestRecorderProvider struct {
 
 func (p *requestRecorderProvider) Complete(context.Context, provider.Request) (provider.Response, error) {
 	return provider.Response{Message: provider.AssistantMessage("done", nil)}, nil
+}
+
+type planToolProvider struct {
+	requests []provider.Request
+}
+
+func (p *planToolProvider) Complete(context.Context, provider.Request) (provider.Response, error) {
+	return provider.Response{Message: provider.AssistantMessage("done", nil)}, nil
+}
+
+func (p *planToolProvider) StreamComplete(_ context.Context, req provider.Request) (<-chan provider.Event, error) {
+	p.requests = append(p.requests, req)
+	ch := make(chan provider.Event, 2)
+	if len(p.requests) == 1 {
+		call := provider.FunctionToolCall("call_plan", "update_plan", `{"explanation":"Ready for approval.","plan":[{"step":"Inspect files","status":"pending"},{"step":"Confirm approach","status":"pending"}]}`)
+		ch <- provider.Event{Type: provider.EventToolCall, ToolCall: &call}
+	} else {
+		ch <- provider.Event{Type: provider.EventDelta, Delta: "Plan ready for approval."}
+	}
+	ch <- provider.Event{Type: provider.EventDone}
+	close(ch)
+	return ch, nil
 }
 
 func (p *requestRecorderProvider) StreamComplete(_ context.Context, req provider.Request) (<-chan provider.Event, error) {
@@ -85,6 +109,35 @@ func TestNativeTurnUsesStoredProviderModelAndReasoning(t *testing.T) {
 	}
 }
 
+func TestNativeTurnFailsWhenPromptCannotBuild(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{Slug: "native-prompt-error", Runtime: storage.RuntimeNative})
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "AGENTS.md"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	recorder := &requestRecorderProvider{}
+	srv := &Server{
+		Store:   store,
+		Agent:   &agent.Agent{Provider: recorder, MaxTurns: 1},
+		Prompts: coordinator.NewBuilder(root, "", "", nil),
+	}
+
+	if status := srv.runNativeSession(context.Background(), session, "hello", false, nil); status != storage.StatusError {
+		t.Fatalf("status = %s, want %s", status, storage.StatusError)
+	}
+	if len(recorder.requests) != 0 {
+		t.Fatalf("provider was called after prompt build failure: %#v", recorder.requests)
+	}
+}
+
 func TestCreateNativeSessionAppliesModelOverrides(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
@@ -107,12 +160,12 @@ func TestCreateNativeSessionAppliesModelOverrides(t *testing.T) {
 		return res, session
 	}
 
-	res, session := post(`{"model_provider":"openai","model":"gpt-5.5"}`)
+	res, session := post(`{"model_provider":"openai","model":"gpt-5.5","reasoning_effort":"xhigh"}`)
 	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
-	if session.ModelProvider != "openai" || session.Model != "gpt-5.5" {
-		t.Fatalf("session = %#v, want openai/gpt-5.5", session)
+	if session.ModelProvider != "openai" || session.Model != "gpt-5.5" || session.ReasoningEffort != "xhigh" {
+		t.Fatalf("session = %#v, want openai/gpt-5.5/xhigh", session)
 	}
 
 	// Switching providers without naming a model falls back to that provider's
@@ -127,6 +180,50 @@ func TestCreateNativeSessionAppliesModelOverrides(t *testing.T) {
 
 	res, _ = post(`{"model_provider":"bogus"}`)
 	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "unknown native provider") {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
+func TestCreateNativeSessionPersistsWorkingDirectory(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	workspace := t.TempDir()
+	handler := (&Server{Store: store, Workspace: workspace}).Handler()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{"directory":"repo"}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var session storage.Session
+	if err := json.Unmarshal(res.Body.Bytes(), &session); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(workspace, "repo")
+	if session.RuntimeRef == nil || session.RuntimeRef.Type != storage.RuntimeNative || session.RuntimeRef.Cwd != want {
+		t.Fatalf("runtime ref = %#v, want native cwd %q", session.RuntimeRef, want)
+	}
+	if info, err := os.Stat(want); err != nil || !info.IsDir() {
+		t.Fatalf("working directory was not created: %v", err)
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.RuntimeRef == nil || loaded.RuntimeRef.Type != storage.RuntimeNative || loaded.RuntimeRef.Cwd != want {
+		t.Fatalf("loaded runtime ref = %#v, want native cwd %q", loaded.RuntimeRef, want)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{"directory":"../outside"}`))
+	req.Header.Set("Content-Type", "application/json")
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "escapes") {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
 }
@@ -233,6 +330,76 @@ func TestNativeStreamSendsAttachmentLinksAndKeepsTranscriptBlocks(t *testing.T) 
 	}
 	if !found {
 		t.Fatalf("attachment block not persisted: %#v", records[0].Blocks)
+	}
+}
+
+func TestNativePlanRequestCreatesProposedPlanApprovalEvent(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{Slug: "native-plan", Runtime: storage.RuntimeNative})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := &planToolProvider{}
+	handler := (&Server{
+		Store: store,
+		Agent: &agent.Agent{
+			Provider: recorder,
+			Tools:    tools.NewRegistry(&plantool.Tool{Store: store}),
+			MaxTurns: 3,
+		},
+	}).Handler()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/messages:stream", strings.NewReader(`{"message":"make a plan","plan_requested":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	if len(recorder.requests) != 2 {
+		t.Fatalf("requests = %#v", recorder.requests)
+	}
+	var sawPlanNote, sawPlanTool, sawPlanUserInstruction bool
+	for _, msg := range recorder.requests[0].Messages {
+		if msg.OfDeveloper != nil && provider.MessageContent(msg) == nativePlanModeNote {
+			sawPlanNote = true
+		}
+		if msg.OfUser != nil && strings.Contains(provider.MessageContent(msg), nativePlanUserInstruction) {
+			sawPlanUserInstruction = true
+		}
+	}
+	for _, def := range recorder.requests[0].Tools {
+		if tools.DefinitionName(def) == "update_plan" {
+			sawPlanTool = true
+		}
+	}
+	if !sawPlanNote || !sawPlanTool || !sawPlanUserInstruction {
+		t.Fatalf("sawPlanNote=%v sawPlanTool=%v sawPlanUserInstruction=%v request=%#v", sawPlanNote, sawPlanTool, sawPlanUserInstruction, recorder.requests[0])
+	}
+
+	messages, err := store.LoadMessages(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 4 || provider.MessageContent(messages[0]) != "make a plan" || strings.Contains(provider.MessageContent(messages[0]), nativePlanUserInstruction) {
+		t.Fatalf("messages = %#v", messages)
+	}
+	events, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Type != "proposed_plan" || events[0].Plan == nil {
+		t.Fatalf("events = %#v", events)
+	}
+	if !events[0].Plan.AwaitingApproval || events[0].ACP != nil {
+		t.Fatalf("plan event = %#v", events[0])
+	}
+	if events[0].Plan.Explanation != "Ready for approval." || len(events[0].Plan.Plan) != 2 {
+		t.Fatalf("plan event = %#v", events[0].Plan)
 	}
 }
 

@@ -19,9 +19,28 @@ import (
 // voiceModeNote steers spoken turns; it is injected per-request and stripped
 // before messages are persisted, so transcripts stay clean.
 const voiceModeNote = "Voice mode: the user spoke this message aloud and your final reply will be read out by text-to-speech. Keep the final response to a few short conversational sentences of plain prose — no markdown, lists, headings, or code blocks. Using tools is fine."
+const nativePlanModeNote = `<collaboration_mode># Plan Mode
 
-// stripTransientSystem removes injected system messages — the per-turn system
-// prompt, the voice note — before persisting (the agent echoes the full
+You are in Plan Mode until this turn ends. Plan Mode is a collaboration mode for producing an approval-ready implementation plan; it is not execution mode.
+
+## Rules
+
+- You may read/search/inspect and run non-mutating checks that improve the plan.
+- You must not edit files, apply patches, run codegen/formatters that rewrite tracked files, or otherwise execute the plan.
+- If the user asks you to implement while still in Plan Mode, plan the implementation instead of doing it.
+- A final plan must be decision-complete: another engineer or agent should be able to implement it without making design choices.
+
+## Proposing The Plan
+
+When you are ready to present the official plan, call update_plan with the proposed plan. In Plan Mode, update_plan creates the approval surface shown to the user. Do not duplicate the full plan in normal assistant text after calling the tool.
+
+The proposed plan should include a clear title or summary, important API/interface/type changes, concrete implementation steps, tests/scenarios, and explicit assumptions/defaults where needed. Do not ask "should I proceed?" in the final output; the user can approve the plan from the client.
+</collaboration_mode>`
+
+const nativePlanUserInstruction = "Plan mode is enabled for this turn. Use the update_plan tool to present the proposed plan when it is ready for approval."
+
+// stripTransientSystem removes injected system/developer messages — the
+// per-turn system prompt and mode notes — before persisting (the agent echoes the full
 // request message list back, and SaveMessages replaces the stored list
 // wholesale), remapping reasoning indexes onto the stripped list.
 func stripTransientSystem(messages []provider.Message, reasoning map[int]string, injected []string) ([]provider.Message, map[int]string) {
@@ -30,10 +49,10 @@ func stripTransientSystem(messages []provider.Message, reasoning map[int]string,
 	}
 	drop := make(map[int]bool)
 	for i, msg := range messages {
-		if msg.OfSystem == nil {
+		if msg.OfSystem == nil && msg.OfDeveloper == nil {
 			continue
 		}
-		if slices.Contains(injected, msg.OfSystem.Content.OfString.Value) {
+		if slices.Contains(injected, provider.MessageContent(msg)) {
 			drop[i] = true
 		}
 	}
@@ -57,31 +76,31 @@ func stripTransientSystem(messages []provider.Message, reasoning map[int]string,
 	return out, remapped
 }
 
-func (s *Server) streamNativeSession(w http.ResponseWriter, flusher http.Flusher, r *http.Request, session storage.Session, message string, attachments []storage.Attachment, voiceMode bool) {
+func (s *Server) streamNativeSession(w http.ResponseWriter, flusher http.Flusher, r *http.Request, session storage.Session, message string, attachments []storage.Attachment, voiceMode bool, planRequested bool) {
 	clientCtx := r.Context()
 	send := func(event agent.StreamEvent) {
 		if clientCtx.Err() == nil {
 			writeSSE(w, flusher, event)
 		}
 	}
-	if s.runNativeSessionWithAttachments(context.WithoutCancel(clientCtx), session, message, attachments, voiceMode, send) == storage.StatusIdle {
+	if s.runNativeSessionWithAttachments(context.WithoutCancel(clientCtx), session, message, attachments, voiceMode, planRequested, send) == storage.StatusIdle {
 		s.drainQueueSoon(session.ID)
 	}
 }
 
 func (s *Server) runNativeSession(ctx context.Context, session storage.Session, message string, voiceMode bool, send func(agent.StreamEvent)) string {
-	return s.runNativeSessionWithClaim(ctx, session, message, nil, voiceMode, send, false)
+	return s.runNativeSessionWithClaim(ctx, session, message, nil, voiceMode, false, send, false)
 }
 
-func (s *Server) runNativeSessionWithAttachments(ctx context.Context, session storage.Session, message string, attachments []storage.Attachment, voiceMode bool, send func(agent.StreamEvent)) string {
-	return s.runNativeSessionWithClaim(ctx, session, message, attachments, voiceMode, send, false)
+func (s *Server) runNativeSessionWithAttachments(ctx context.Context, session storage.Session, message string, attachments []storage.Attachment, voiceMode bool, planRequested bool, send func(agent.StreamEvent)) string {
+	return s.runNativeSessionWithClaim(ctx, session, message, attachments, voiceMode, planRequested, send, false)
 }
 
 func (s *Server) runClaimedNativeSession(ctx context.Context, session storage.Session, message string) string {
-	return s.runNativeSessionWithClaim(ctx, session, message, nil, false, nil, true)
+	return s.runNativeSessionWithClaim(ctx, session, message, nil, false, false, nil, true)
 }
 
-func (s *Server) runNativeSessionWithClaim(ctx context.Context, session storage.Session, message string, attachments []storage.Attachment, voiceMode bool, send func(agent.StreamEvent), claimed bool) string {
+func (s *Server) runNativeSessionWithClaim(ctx context.Context, session storage.Session, message string, attachments []storage.Attachment, voiceMode bool, planRequested bool, send func(agent.StreamEvent), claimed bool) string {
 	if send == nil {
 		send = func(agent.StreamEvent) {}
 	}
@@ -99,7 +118,7 @@ func (s *Server) runNativeSessionWithClaim(ctx context.Context, session storage.
 	s.turnCancels.Store(session.ID, cancelTurn)
 	defer s.turnCancels.Delete(session.ID)
 
-	turn, err := s.nativeRequestMessages(session.ID, message, attachments, voiceMode)
+	turn, err := s.nativeRequestMessages(session, message, attachments, voiceMode, planRequested)
 	if err != nil {
 		send(agent.StreamEvent{Type: agent.StreamError, Error: err.Error()})
 		send(agent.StreamEvent{Type: agent.StreamDone})
@@ -109,6 +128,12 @@ func (s *Server) runNativeSessionWithClaim(ctx context.Context, session storage.
 	s.publishMessagesChanged(session.ID)
 
 	runCtx := sessioncontext.WithSessionID(turnCtx, session.ID)
+	if session.RuntimeRef != nil && strings.TrimSpace(session.RuntimeRef.Cwd) != "" {
+		runCtx = sessioncontext.WithCWD(runCtx, session.RuntimeRef.Cwd)
+	}
+	if planRequested {
+		runCtx = sessioncontext.WithCollaborationMode(runCtx, sessioncontext.CollaborationModePlan)
+	}
 	finalStatus := storage.StatusError
 	finalError := "Agent stream ended without a completion event."
 	for event := range s.Agent.Run(runCtx, provider.Request{
@@ -259,12 +284,12 @@ func (r nativeTurnRequest) storageSnapshot(messages []provider.Message) []provid
 	return out
 }
 
-func (s *Server) nativeRequestMessages(sessionID, message string, attachments []storage.Attachment, voiceMode bool) (nativeTurnRequest, error) {
-	messages, err := s.Store.LoadMessages(sessionID)
+func (s *Server) nativeRequestMessages(session storage.Session, message string, attachments []storage.Attachment, voiceMode bool, planRequested bool) (nativeTurnRequest, error) {
+	messages, err := s.Store.LoadMessages(session.ID)
 	if err != nil {
 		return nativeTurnRequest{}, err
 	}
-	mediaRefs, err := s.nativeMediaRefs(sessionID)
+	mediaRefs, err := s.nativeMediaRefs(session.ID)
 	if err != nil {
 		return nativeTurnRequest{}, err
 	}
@@ -276,7 +301,15 @@ func (s *Server) nativeRequestMessages(sessionID, message string, attachments []
 	}
 	transient := make([]string, 0, 2)
 	if s.Prompts != nil {
-		if prompt := strings.TrimSpace(s.Prompts.SystemPrompt()); prompt != "" {
+		var workspace string
+		if session.RuntimeRef != nil && strings.TrimSpace(session.RuntimeRef.Cwd) != "" {
+			workspace = session.RuntimeRef.Cwd
+		}
+		prompt, err := s.Prompts.SystemPromptForWorkspace(workspace)
+		if err != nil {
+			return nativeTurnRequest{}, fmt.Errorf("build system prompt: %w", err)
+		}
+		if prompt := strings.TrimSpace(prompt); prompt != "" {
 			messages = append([]provider.Message{provider.SystemMessage(prompt)}, messages...)
 			transient = append(transient, prompt)
 		}
@@ -285,9 +318,17 @@ func (s *Server) nativeRequestMessages(sessionID, message string, attachments []
 		messages = append(messages, provider.SystemMessage(voiceModeNote))
 		transient = append(transient, voiceModeNote)
 	}
+	if planRequested {
+		messages = append(messages, provider.DeveloperMessage(nativePlanModeNote))
+		transient = append(transient, nativePlanModeNote)
+	}
 	userMessageIndex := len(messages)
-	messages = append(messages, provider.UserMessage(nativeMessageWithAttachmentLinks(message, attachments)))
-	if err := storage.AppendUserMessage(s.Store, sessionID, message, attachments); err != nil {
+	userPrompt := nativeMessageWithAttachmentLinks(message, attachments)
+	if planRequested {
+		userPrompt = strings.TrimSpace(userPrompt + "\n\n" + nativePlanUserInstruction)
+	}
+	messages = append(messages, provider.UserMessage(userPrompt))
+	if err := storage.AppendUserMessage(s.Store, session.ID, message, attachments); err != nil {
 		return nativeTurnRequest{}, err
 	}
 	return nativeTurnRequest{

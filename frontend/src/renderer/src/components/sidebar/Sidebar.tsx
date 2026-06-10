@@ -108,7 +108,7 @@ export function Sidebar({
 
   return (
     <aside
-      className="relative flex h-full shrink-0 flex-col border-r border-border bg-surface"
+      className="sidebar-material relative flex h-full shrink-0 flex-col border-r border-border"
       style={{ width }}
     >
       {/* draggable titlebar strip; traffic lights live here on macOS */}

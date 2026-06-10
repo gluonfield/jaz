@@ -8,9 +8,11 @@ import { Composer, PlanDecisionDock } from '@/components/session/Composer'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
 import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
 import { ThinkingBlock } from '@/components/session/ThinkingBlock'
+import { TokenStats } from '@/components/session/TokenStats'
 import { ToolCallCard } from '@/components/session/ToolCallCard'
 import { Transcript } from '@/components/session/Transcript'
 import { VoiceMode } from '@/components/session/VoiceMode'
+import { isHiddenToolName } from '@/components/session/toolVisibility'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Skeleton, SkeletonRows } from '@/components/ui/Skeleton'
 import {
@@ -25,7 +27,9 @@ import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
 import { takePendingMessage, takePendingVoice } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
+import { planSurfaceBelongsToSession, planSurfaceFromEvent } from '@/lib/planSurface'
 import type { SendMessageOptions } from '@/lib/sendMessage'
+import { coalesceSessionEvents } from '@/lib/sessionEvents'
 
 export const Route = createFileRoute('/sessions/$sessionId')({
   component: SessionPage,
@@ -67,7 +71,7 @@ function LiveAttachmentList({ attachments }: { attachments: LiveAttachment[] }) 
       {attachments.map((attachment, index) => (
         <span
           key={attachment.id ?? `${attachment.name}-${index}`}
-          className="inline-flex max-w-full items-center gap-1.5 rounded-control bg-bg px-2 py-1 text-xs text-ink-2"
+          className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-bg px-2.5 py-1 text-xs text-ink-2"
         >
           <FileText size={13} className="shrink-0 text-primary" />
           <span className="max-w-[220px] truncate text-ink">{attachment.name}</span>
@@ -153,72 +157,6 @@ function sanitizeParentChildACPEvent(event: SessionEvent, pageSessionID: string)
       permissions: undefined,
     },
   }
-}
-
-function eventCoalesceKey(event: SessionEvent): string {
-  if (event.type === 'acp' && event.acp?.id) {
-    if (event.acp.plan?.length) return `acp_plan:${event.acp.id}`
-    if (event.acp.tool_calls?.length) return `acp_tools:${event.acp.id}`
-    if (event.acp.error) return `acp_error:${event.acp.id}`
-    return `acp_status:${event.acp.id}`
-  }
-  if (event.type === 'acp_tool' && event.acp?.id && event.acp.tool_calls?.[0]?.id) {
-    return `acp_tool:${event.acp.id}:${event.acp.tool_calls[0].id}`
-  }
-  if ((event.type === 'permission_request' || event.type === 'permission_response') && event.permission?.id) {
-    return `${event.type}:${event.permission.id}`
-  }
-  return ''
-}
-
-function coalesceSessionEvents(events: SessionEvent[]): SessionEvent[] {
-  // Pass 1: dedupe by store-assigned seq (persisted history vs live SSE copy).
-  const bySeq = new Map<string, number>()
-  const deduped: SessionEvent[] = []
-  for (const event of events) {
-    if (!event.seq) {
-      deduped.push(event)
-      continue
-    }
-    const seqKey = `${event.session_id}:${event.seq}`
-    const existing = bySeq.get(seqKey)
-    if (existing === undefined) {
-      bySeq.set(seqKey, deduped.length)
-      deduped.push(event)
-    } else {
-      deduped[existing] = event
-    }
-  }
-  // Pass 2: rolling state (status, plan, tool updates) keeps only its latest copy.
-  const indexed = deduped.reduce<{ event: SessionEvent; index: number }[]>((acc, event, sourceIndex) => {
-    const key = eventCoalesceKey(event)
-    if (!key) return [...acc, { event, index: sourceIndex }]
-    const index = acc.findIndex((item) => eventCoalesceKey(item.event) === key)
-    if (index === -1) return [...acc, { event, index: sourceIndex }]
-    const next = [...acc]
-    next[index] = { event, index: next[index].index }
-    return next
-  }, [])
-  return indexed
-    .sort((a, b) => {
-      const seqA = a.event.seq ?? 0
-      const seqB = b.event.seq ?? 0
-      if (seqA && seqB && a.event.session_id === b.event.session_id) {
-        return seqA - seqB
-      }
-      const atA = Date.parse(a.event.at)
-      const atB = Date.parse(b.event.at)
-      const timeA = Number.isNaN(atA) ? 0 : atA
-      const timeB = Number.isNaN(atB) ? 0 : atB
-      return timeA - timeB || seqA - seqB || a.index - b.index
-    })
-    .map((item) => item.event)
-}
-
-function planHasActiveProgress(job: ACPJobSnapshot | NonNullable<SessionEvent['acp']>): boolean {
-  return Boolean(
-    job.plan?.some((entry) => ['in_progress', 'in-progress', 'running'].includes((entry.status ?? '').trim().toLowerCase())),
-  )
 }
 
 function hasStoredAssistantMessage(messages: ChatMessage[], text?: string): boolean {
@@ -316,6 +254,7 @@ function SessionPage() {
                 return { ...prev, reasoning: prev.reasoning + (event.reasoning ?? '') }
               case 'tool_call': {
                 const name = event.tool_call?.function?.name ?? event.tool_name ?? 'tool'
+                if (isHiddenToolName(name)) return prev
                 return {
                   ...prev,
                   tools: [
@@ -329,6 +268,7 @@ function SessionPage() {
                 }
               }
               case 'tool_result': {
+                if (isHiddenToolName(event.tool_name)) return prev
                 const idx = prev.tools.findLastIndex((t) => t.result === undefined)
                 const tools =
                   idx === -1
@@ -486,7 +426,7 @@ function SessionPage() {
       return sanitized ? [sanitized] : []
     }),
   )
-  const planAvailable = session.runtime === 'acp' && Boolean(acpModes?.plan_mode_id)
+  const planAvailable = session.runtime !== 'acp' || Boolean(acpModes?.plan_mode_id)
   const pendingPermissionEvents = new Map<string, SessionEvent>()
   for (const event of transcriptEvents) {
     if (event.type === 'permission_request' && event.permission?.id) {
@@ -501,6 +441,13 @@ function SessionPage() {
   const activePermissionEvent = [...pendingPermissionEvents.values()].at(-1)
   const hasPendingPermission = Boolean(activePermissionEvent)
   const displayEvents = transcriptEvents
+  const latestUserAt = Math.max(
+    0,
+    ...messages
+      .filter((message) => message.role === 'user')
+      .map((message) => Date.parse(message.created_at))
+      .filter((time) => !Number.isNaN(time)),
+  )
   // A failed native turn carries its error only on the session; ACP turns and
   // the in-flight live exchange already surface it inline, so showing the
   // banner too would duplicate it. When it's the only carrier, anchor it at
@@ -513,24 +460,24 @@ function SessionPage() {
   const latestPlanDecisionEvent = [...transcriptEvents]
     .reverse()
     .find((event) => {
-      const acp = event.acp
-      const modes = acp?.modes
-      if (!acp || !modes?.plan_mode_id || modes.current_mode_id !== modes.plan_mode_id) return false
-      if (acp.state === 'running') return false
-      if (planHasActiveProgress(acp)) return false
-      const belongsToPage = acp.id === session.id || acp.parent_id === session.id
-      return belongsToPage && Boolean(acp.plan?.length)
+      const surface = planSurfaceFromEvent(event)
+      return Boolean(
+        surface?.awaitingApproval &&
+          surface.approvalSessionId &&
+          planSurfaceBelongsToSession(event, session.id),
+      )
     })
-  const directPlanModes = latestPlanDecisionEvent?.acp?.modes ?? acpModes
-  const directPlanAwaitingDecision = Boolean(
-    latestPlanDecisionEvent &&
-      directPlanModes?.plan_mode_id &&
-      directPlanModes.current_mode_id === directPlanModes.plan_mode_id,
-  )
-  const planDecisionSessionID = latestPlanDecisionEvent?.acp?.id
+  const latestPlanDecisionSurface = latestPlanDecisionEvent
+    ? planSurfaceFromEvent(latestPlanDecisionEvent)
+    : undefined
+  const planDecisionSessionID = latestPlanDecisionSurface?.approvalSessionId
+  const planDecisionAt = Date.parse(latestPlanDecisionEvent?.at ?? '')
+  const planDecisionIsCurrent =
+    !Number.isNaN(planDecisionAt) && planDecisionAt >= latestUserAt
   const showPlanDecision = Boolean(
-    directPlanAwaitingDecision &&
+    latestPlanDecisionSurface?.awaitingApproval &&
       planDecisionSessionID &&
+      planDecisionIsCurrent &&
       !streaming &&
       !live &&
       !hasPendingPermission,
@@ -581,7 +528,13 @@ function SessionPage() {
   return (
     <div className="relative h-full">
       {titlebarSlot
-        ? createPortal(<RuntimeBadge session={session} truncate={false} />, titlebarSlot)
+        ? createPortal(
+            <>
+              <RuntimeBadge session={session} truncate={false} />
+              <TokenStats session={session} />
+            </>,
+            titlebarSlot,
+          )
         : null}
 
       <div
@@ -668,7 +621,7 @@ function SessionPage() {
             onImplement={() => {
               setPlanDecisionPending(true)
               setPlanDecisionError('')
-              void sendACPFallback(planDecisionSessionID!, 'Approved. Proceed with the plan.', {
+              void sendACPFallback(planDecisionSessionID!, 'Implement the plan.', {
                 parentVisible: planDecisionSessionID !== session.id,
               })
                 .catch((err: Error) => setPlanDecisionError(err.message || 'Sending the approval failed.'))

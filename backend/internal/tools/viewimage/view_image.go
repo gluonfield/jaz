@@ -19,6 +19,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/media"
 	"github.com/wins/jaz/backend/internal/pathsafe"
+	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/tools"
 	"golang.org/x/image/draw"
 	"golang.org/x/image/webp"
@@ -70,7 +71,11 @@ func (t *Tool) Execute(ctx context.Context, inputs map[string]any) (tools.Result
 		return tools.Result{}, err
 	}
 
-	path, err := pathsafe.Resolve(workspace, inputPath)
+	base, err := sessioncontext.WorkspaceBase(ctx, workspace)
+	if err != nil {
+		return tools.Result{}, err
+	}
+	path, err := pathsafe.Resolve(base, inputPath)
 	if err != nil {
 		return tools.Result{}, err
 	}
