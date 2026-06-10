@@ -6,7 +6,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createHashHistory, createRouter } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { LaunchScreen } from './components/launch/LaunchScreen'
+import { LaunchScreen, ReconnectingBanner } from './components/launch/LaunchScreen'
 import { useConnection } from './lib/connection'
 import { queryClient } from './lib/query/queryClient'
 import { routeTree } from './routeTree.gen'
@@ -25,12 +25,20 @@ declare module '@tanstack/react-router' {
   }
 }
 
-// The app only renders against a healthy backend; otherwise the launch
-// screen owns the window (start locally / connect to remote).
+// The app renders while connected — and stays mounted through transient
+// losses ('reconnecting', banner over live UI) so drafts and streams survive
+// a blip. Only a sustained outage hands the window to the launch screen.
 function App() {
   const { status } = useConnection()
-  if (status !== 'connected') return <LaunchScreen />
-  return <RouterProvider router={router} />
+  if (status === 'connected' || status === 'reconnecting') {
+    return (
+      <>
+        <RouterProvider router={router} />
+        <ReconnectingBanner show={status === 'reconnecting'} />
+      </>
+    )
+  }
+  return <LaunchScreen />
 }
 
 createRoot(document.getElementById('root')!).render(

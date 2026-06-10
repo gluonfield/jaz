@@ -5,7 +5,8 @@ Electron desktop app for the jaz backend. React + TypeScript + TanStack Router (
 ## Run
 
 ```bash
-# 1. backend (from ../backend) — the app expects it on :8080
+# 1. backend (from ../backend) — or skip this and click "Start locally"
+#    on the launch screen, which runs it for you
 go run ./cmd/jaz serve
 
 # 2. desktop app
@@ -13,7 +14,8 @@ bun install
 bun run dev
 ```
 
-Point the app at a different backend with `JAZ_API_URL`:
+Point the app at a different backend with `JAZ_API_URL` (an explicit value
+beats the URL remembered from the last session):
 
 ```bash
 JAZ_API_URL=http://127.0.0.1:18080 bun run dev
@@ -22,7 +24,8 @@ JAZ_API_URL=http://127.0.0.1:18080 bun run dev
 ## Scripts
 
 - `bun run dev` — dev mode with HMR (vite on port 5180)
-- `bun run build` — production build into `out/`
+- `bun run build` — distributable: compiles the Go backend, bundles, and packages a signed `Jaz.app` + dmg into `dist/` via electron-builder (alias of `build:app`; notarizes when Apple credentials are in the env)
+- `bun run build:bundle` — just the electron-vite production bundle into `out/`
 - `bun run typecheck` — renderer + main/preload TypeScript
 
 ## Layout

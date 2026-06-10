@@ -15,4 +15,13 @@ mac:
     - target: dmg
       arch:
         - arm64
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    NSMicrophoneUsageDescription: Jaz uses the microphone for voice input.
+  # Notarization runs automatically when credentials are in the environment
+  # (APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID); without them the
+  # build still succeeds, signed but unnotarized, for local testing.
 npmRebuild: false
