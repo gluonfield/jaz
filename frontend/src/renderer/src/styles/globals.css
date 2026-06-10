@@ -167,8 +167,28 @@
 }
 .chat-prose a {
   color: var(--color-primary);
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  text-decoration-line: none;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in oklab, currentColor 65%, transparent);
+  text-underline-offset: 0.18em;
+  transition-property: color;
+  transition-duration: 160ms;
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+.chat-prose a:hover,
+.chat-prose a:focus-visible {
+  color: var(--color-primary-strong);
+  text-decoration-line: underline;
+}
+.chat-prose-link-icon {
+  display: inline-block;
+  width: 0.82em;
+  height: 0.82em;
+  margin-right: 0.24em;
+  opacity: 0.66;
+  vertical-align: -0.1em;
+  pointer-events: none;
 }
 .chat-prose blockquote {
   margin: 0.6em 0;
