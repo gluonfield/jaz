@@ -22,6 +22,9 @@ type ShapeDef = {
   spin: boolean // 3D forms spin fully; pictograms only wobble so they stay readable
   scaleMul: number
   alpha: number
+  wobble?: number // wobble amplitude override; text sways less than pictograms
+  aspect?: () => number // half-height per half-width, for wide flat forms (phrases)
+  hold?: [number, number] // hold-duration range override; words need reading time
 }
 
 const sphere = (out: Float32Array, n: number) => {
@@ -101,9 +104,6 @@ const GLYPHS: Record<string, string[]> = {
     'M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z',
     'M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12',
   ],
-  heart: [
-    'M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5',
-  ],
   coffee: [
     'M10 2v2',
     'M14 2v2',
@@ -115,11 +115,6 @@ const GLYPHS: Record<string, string[]> = {
     'M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09',
     'M9 12a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.4 22.4 0 0 1-4 2z',
     'M9 12H4s.55-3.03 2-4c1.62-1.08 5 .05 5 .05',
-  ],
-  umbrella: [
-    'M12 13v7a2 2 0 0 0 4 0',
-    'M12 2v2',
-    'M20.992 13a1 1 0 0 0 .97-1.274 10.284 10.284 0 0 0-19.923 0A1 1 0 0 0 3 13z',
   ],
   bird: [
     'M16 7h.01',
@@ -179,6 +174,105 @@ const glyphDef = (name: keyof typeof GLYPHS, scaleMul = 1.15): ShapeDef => ({
   alpha: 0.6,
 })
 
+// Short affirmations the field occasionally spells out. Each phrase picks a
+// voice: serif italics for the borrowed wisdom, mono for the maker mantras,
+// the brand sans for direct encouragement. Rasterized like the wordmark, but
+// lazily and cached, since the same text re-forms many times.
+const TEXT_FONTS = {
+  serifItalic: 'italic 400 84px "Instrument Serif", ui-serif, Georgia, serif',
+  sans: '600 72px "Inter Variable", ui-sans-serif, sans-serif',
+  mono: '500 62px "JetBrains Mono Variable", ui-monospace, monospace',
+}
+
+const PHRASES: [string, keyof typeof TEXT_FONTS][] = [
+  ['trust yourself more', 'serifItalic'],
+  ['you can do it', 'sans'],
+  ['be here now', 'sans'],
+  ['this too shall pass', 'serifItalic'],
+  ['less, but better', 'sans'],
+  ['stay curious', 'mono'],
+  ['begin anyway', 'sans'],
+  ['the obstacle is the way', 'serifItalic'],
+  ['no mud, no lotus', 'serifItalic'],
+  ['done beats perfect', 'mono'],
+  ['what you seek seeks you', 'serifItalic'],
+  ['fall seven, rise eight', 'sans'],
+  ['leap, the net appears', 'serifItalic'],
+]
+
+const textShape = (text: string, fontKey: keyof typeof TEXT_FONTS): ShapeDef => {
+  const font = TEXT_FONTS[fontKey]
+  let inked: number[] | null = null
+  let settled = false // baked with the real webfont, not a fallback
+  let W = 0
+  let cx = 0
+  let cy = 0
+  let halfW = 1
+  let halfH = 0.18
+  const bake = () => {
+    if (settled) return
+    const ready = document.fonts?.check(font) ?? true
+    if (inked && !ready) return // keep the fallback bake until the face lands
+    const cv = document.createElement('canvas')
+    const g = cv.getContext('2d')
+    if (!g) return
+    g.font = font
+    cv.width = Math.ceil(g.measureText(text).width) + 48 // resizing resets ctx state
+    cv.height = 140
+    g.font = font
+    g.textAlign = 'center'
+    g.textBaseline = 'middle'
+    g.fillText(text, cv.width / 2, cv.height / 2)
+    W = cv.width
+    const data = g.getImageData(0, 0, W, cv.height).data
+    const pts: number[] = []
+    let minX = W
+    let maxX = 0
+    let minY = cv.height
+    let maxY = 0
+    for (let i = 3; i < data.length; i += 4) {
+      if (data[i] > 110) {
+        const p = (i - 3) / 4
+        const x = p % W
+        const y = Math.floor(p / W)
+        pts.push(p)
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
+      }
+    }
+    if (pts.length < 100) return
+    cx = (minX + maxX) / 2
+    cy = (minY + maxY) / 2
+    halfW = (maxX - minX) / 2
+    halfH = (maxY - minY) / 2
+    inked = pts
+    settled = ready
+  }
+  return {
+    gen: (out, n) => {
+      bake()
+      if (!inked) return sphere(out, n)
+      for (let i = 0; i < n; i++) {
+        const p = inked[Math.floor(rand(0, inked.length))]
+        out[i * 3] = ((p % W) + rand(-0.6, 0.6) - cx) / halfW
+        out[i * 3 + 1] = -(Math.floor(p / W) + rand(-0.6, 0.6) - cy) / halfW
+        out[i * 3 + 2] = rand(-0.05, 0.05)
+      }
+    },
+    spin: false,
+    scaleMul: 1.45,
+    alpha: 0.68,
+    wobble: 0.1,
+    aspect: () => {
+      bake()
+      return halfH / halfW
+    },
+    hold: [5.5, 9.5],
+  }
+}
+
 const SHAPES: Record<string, ShapeDef> = {
   sphere: { gen: sphere, spin: true, scaleMul: 0.9, alpha: 0.5 },
   torus: { gen: torus, spin: true, scaleMul: 0.95, alpha: 0.5 },
@@ -190,13 +284,12 @@ const SHAPES: Record<string, ShapeDef> = {
   plane: glyphDef('plane'),
   bulb: glyphDef('bulb'),
   leaf: glyphDef('leaf'),
-  heart: glyphDef('heart'),
   coffee: glyphDef('coffee'),
   rocket: glyphDef('rocket'),
-  umbrella: glyphDef('umbrella'),
   bird: glyphDef('bird'),
   star: glyphDef('star'),
   book: glyphDef('book'),
+  ...Object.fromEntries(PHRASES.map(([p, f]) => [p, textShape(p, f)])),
 }
 
 /* ---------------- shaders ----------------
@@ -311,7 +404,8 @@ function cssToRgb(css: string, scratch: CanvasRenderingContext2D): [number, numb
 // persistent swarm of ~20k GPU particles. Its home is the word "jaz" set in
 // Inter, shimmering with the wordmark's rainbow ramp. Every so often it
 // morphs into a construction — a spinning sphere or torus, a solid sun, bird,
-// paper plane — holds, then flows home (or chains into the next construction).
+// paper plane, or a short encouraging phrase — holds, then flows home (or
+// chains into the next construction).
 // While `calm` (the user is typing), it returns home and dims.
 export function PixelField({
   calm = false,
@@ -480,6 +574,12 @@ export function PixelField({
     }
     bakeWordmark()
 
+    // @font-face faces only load on first DOM use, and no DOM text uses the
+    // phrase faces — kick them now so text constructions bake the real fonts
+    // (textShape keeps re-baking off a fallback until its face lands).
+    if (document.fonts)
+      for (const f of Object.values(TEXT_FONTS)) document.fonts.load(f, 'x').catch(() => {})
+
     /* ---- frames (the from/to coordinate spaces) ---- */
     const frameFrom = {
       cx: 0, cy: 0, scale: 1, rot: 0, rotSpeed: 0, wobbleAmp: 0, wobblePhase: 0, alpha: 0.3, brand: 0,
@@ -569,27 +669,30 @@ export function PixelField({
     const maskParam = (x: number, y: number) =>
       Math.hypot((x - width * MASK.cx) / MASK.rx, (y - height * MASK.cy) / MASK.ry)
 
-    const clearOfMask = (cx: number, cy: number, r: number) => {
+    const clearOfMask = (cx: number, cy: number, r: number, ry: number) => {
       if (maskParam(cx, cy) < 0.9) return false
       for (let i = 0; i < 8; i++) {
         const a = (i / 8) * TAU
-        if (maskParam(cx + Math.cos(a) * r, cy + Math.sin(a) * r) < 0.66) return false
+        if (maskParam(cx + Math.cos(a) * r, cy + Math.sin(a) * ry) < 0.66) return false
       }
       return true
     }
 
     // Largest construction radius (down to a readable floor) that keeps the
-    // site inside the viewport and out of the masked clearing.
-    const fitRadius = (cx: number, cy: number, want: number) => {
+    // site inside the viewport and out of the masked clearing. `ay` squashes
+    // the checked footprint so wide flat forms (phrases) can settle into
+    // horizontal bands a circle of the same width never fits.
+    const fitRadius = (cx: number, cy: number, want: number, ay = 1) => {
       for (const f of [1, 0.85, 0.7, 0.55]) {
         const r = want * f
         if (r < 100) break
+        const ry = Math.max(64, r * ay)
         if (
           cx > r + 16 &&
           cx < width - r - 16 &&
-          cy > r + 16 &&
-          cy < height - r - 16 &&
-          clearOfMask(cx, cy, r)
+          cy > ry + 16 &&
+          cy < height - ry - 16 &&
+          clearOfMask(cx, cy, r, ry)
         )
           return r
       }
@@ -638,9 +741,11 @@ export function PixelField({
     }
 
     let lastShape = -1
+    let holdRange: [number, number] = [3.5, 8]
     const toConstruction = () => {
       const idx = (lastShape + 1 + Math.floor(rand(0, playlist.length - 1))) % playlist.length
       const def = SHAPES[playlist[idx]]
+      const ay = def.aspect ? def.aspect() : 1
       const want = Math.min(280, Math.max(130, Math.min(width, height) * 0.27)) * def.scaleMul
       // first acceptable candidate wins: attempts are random, so positions
       // spread instead of converging on the roomiest corner every time
@@ -650,7 +755,7 @@ export function PixelField({
       for (let attempt = 0; attempt < 24; attempt++) {
         const x = rand(0, width)
         const y = rand(0, height)
-        const fit = fitRadius(x, y, want)
+        const fit = fitRadius(x, y, want, ay)
         if (fit >= want * 0.7) {
           cx = x
           cy = y
@@ -665,6 +770,7 @@ export function PixelField({
       }
       if (r === 0) return false
       lastShape = idx
+      holdRange = def.hold ?? [3.5, 8]
       homeTarget = false
       beginMorph(
         (out) => def.gen(out, N_MAX),
@@ -674,7 +780,7 @@ export function PixelField({
           scale: r,
           rot: 0,
           rotSpeed: def.spin ? (Math.random() < 0.5 ? -1 : 1) * rand(0.18, 0.3) : 0,
-          wobbleAmp: def.spin ? 0 : 0.3,
+          wobbleAmp: def.spin ? 0 : (def.wobble ?? 0.3),
           wobblePhase: 0,
           alpha: def.alpha,
           brand: 0,
@@ -800,7 +906,7 @@ export function PixelField({
             stateUntil = t + rand(5, 14)
           } else {
             state = 'holding'
-            stateUntil = t + rand(3.5, 8)
+            stateUntil = t + rand(holdRange[0], holdRange[1])
           }
         }
       } else if (state === 'home') {
