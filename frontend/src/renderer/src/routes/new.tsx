@@ -2,11 +2,13 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { motion } from 'motion/react'
 import { useState } from 'react'
 import { ComposerCard } from '@/components/session/Composer'
-import { DirectoryPicker, RuntimeSelect } from '@/components/session/NewThreadControls'
+import { DirectoryPicker, ModelSelect, RuntimeSelect } from '@/components/session/NewThreadControls'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { PixelField } from '@/components/ui/PixelField'
 import { useToast } from '@/components/ui/toast'
 import { acpAgentsQuery, createSession } from '@/lib/api/sessions'
+import { agentSettingsQuery } from '@/lib/api/settings'
+import { acpAgentModelSuggestions, OPENAI_MODELS, openRouterModelsQuery } from '@/lib/models'
 import { setPendingMessage, setPendingVoice } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
 import type { SendMessageOptions } from '@/lib/sendMessage'
@@ -33,19 +35,53 @@ function NewSessionPage() {
   // when the chosen directory is a git repository.
   const [directoryIsGit, setDirectoryIsGit] = useState(false)
   const [worktree, setWorktree] = useState(false)
+  // Per-session overrides of the Settings > Agents defaults; null follows the
+  // default for the chosen runtime (and, for native, provider).
+  const [providerOverride, setProviderOverride] = useState<string | null>(null)
+  const [modelOverride, setModelOverride] = useState<string | null>(null)
   const { data: agents = [] } = useQuery(acpAgentsQuery)
+  const { data: agentSettings } = useQuery(agentSettingsQuery)
   // PixelField samples the palette at mount; remount it when the theme flips.
   const { resolved } = useTheme()
+
+  const isNative = runtime === 'native'
+  const defaultProvider = agentSettings?.native.model_provider ?? ''
+  const provider = providerOverride ?? defaultProvider
+  const defaultModel = isNative
+    ? provider === defaultProvider
+      ? (agentSettings?.native.model ?? '')
+      : (agentSettings?.providers.find((p) => p.id === provider)?.default_model ?? '')
+    : (agentSettings?.acp[runtime]?.model ?? '')
+  const model = modelOverride ?? defaultModel
+
+  const openRouterModels = useQuery({
+    ...openRouterModelsQuery,
+    enabled: isNative && provider === 'openrouter',
+  })
+  const modelSuggestions = isNative
+    ? provider === 'openrouter'
+      ? (openRouterModels.data ?? [])
+      : OPENAI_MODELS
+    : acpAgentModelSuggestions(runtime)
 
   const startThread = async (title: string | undefined, prepare: (sessionId: string) => void) => {
     setCreating(true)
     try {
       const session = await createSession(
-        runtime === 'native'
-          ? title
-            ? { title }
-            : {}
-          : { ...(title ? { title } : {}), runtime: 'acp', agent: runtime, directory, worktree },
+        isNative
+          ? {
+              ...(title ? { title } : {}),
+              ...(provider ? { model_provider: provider } : {}),
+              ...(model ? { model } : {}),
+            }
+          : {
+              ...(title ? { title } : {}),
+              runtime: 'acp',
+              agent: runtime,
+              directory,
+              worktree,
+              ...(model ? { model } : {}),
+            },
       )
       prepare(session.id)
       queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
@@ -101,46 +137,73 @@ function NewSessionPage() {
             placeholder="Ask anything, or hand your assistant a task…"
             planAvailable={runtime !== 'native'}
             leftSlot={
-              agents.length > 0 ? (
-                <>
+              <>
+                {agents.length > 0 ? (
                   <RuntimeSelect
                     value={runtime}
                     agents={agents}
                     disabled={creating}
-                    onChange={setRuntime}
+                    onChange={(next) => {
+                      setRuntime(next)
+                      setProviderOverride(null)
+                      setModelOverride(null)
+                    }}
                   />
-                  {runtime !== 'native' ? (
-                    <DirectoryPicker
-                      value={directory}
+                ) : null}
+                <ModelSelect
+                  value={model}
+                  suggestions={modelSuggestions}
+                  loading={openRouterModels.isLoading}
+                  disabled={creating}
+                  onChange={setModelOverride}
+                  providers={
+                    isNative
+                      ? (agentSettings?.providers ?? [])
+                          .filter((p) => p.implemented)
+                          .map((p) => ({ value: p.id, label: p.label }))
+                      : undefined
+                  }
+                  provider={isNative ? provider : undefined}
+                  onProviderChange={
+                    isNative
+                      ? (next) => {
+                          setProviderOverride(next)
+                          setModelOverride(null)
+                        }
+                      : undefined
+                  }
+                />
+                {runtime !== 'native' ? (
+                  <DirectoryPicker
+                    value={directory}
+                    disabled={creating}
+                    onChange={(path, git) => {
+                      setDirectory(path)
+                      setDirectoryIsGit(git)
+                      if (!git) setWorktree(false)
+                    }}
+                  />
+                ) : null}
+                {runtime !== 'native' && directoryIsGit ? (
+                  <div className="flex items-center gap-1.5 text-[13px] text-ink-2">
+                    <Checkbox
+                      checked={worktree}
+                      onChange={setWorktree}
                       disabled={creating}
-                      onChange={(path, git) => {
-                        setDirectory(path)
-                        setDirectoryIsGit(git)
-                        if (!git) setWorktree(false)
-                      }}
+                      aria-label="Run on a git worktree"
                     />
-                  ) : null}
-                  {runtime !== 'native' && directoryIsGit ? (
-                    <div className="flex items-center gap-1.5 text-[13px] text-ink-2">
-                      <Checkbox
-                        checked={worktree}
-                        onChange={setWorktree}
-                        disabled={creating}
-                        aria-label="Run on a git worktree"
-                      />
-                      <button
-                        type="button"
-                        tabIndex={-1}
-                        disabled={creating}
-                        onClick={() => setWorktree((v) => !v)}
-                        className="cursor-pointer select-none disabled:cursor-default disabled:opacity-50"
-                      >
-                        Worktree
-                      </button>
-                    </div>
-                  ) : null}
-                </>
-              ) : undefined
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      disabled={creating}
+                      onClick={() => setWorktree((v) => !v)}
+                      className="cursor-pointer select-none disabled:cursor-default disabled:opacity-50"
+                    >
+                      Worktree
+                    </button>
+                  </div>
+                ) : null}
+              </>
             }
             onSend={handleSend}
             onVoice={runtime === 'native' ? handleVoice : undefined}

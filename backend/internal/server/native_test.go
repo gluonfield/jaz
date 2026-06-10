@@ -85,6 +85,52 @@ func TestNativeTurnUsesStoredProviderModelAndReasoning(t *testing.T) {
 	}
 }
 
+func TestCreateNativeSessionAppliesModelOverrides(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	handler := (&Server{Store: store}).Handler()
+
+	post := func(body string) (*httptest.ResponseRecorder, storage.Session) {
+		req := httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, req)
+		var session storage.Session
+		if res.Code == http.StatusOK {
+			if err := json.Unmarshal(res.Body.Bytes(), &session); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return res, session
+	}
+
+	res, session := post(`{"model_provider":"openai","model":"gpt-5.5"}`)
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	if session.ModelProvider != "openai" || session.Model != "gpt-5.5" {
+		t.Fatalf("session = %#v, want openai/gpt-5.5", session)
+	}
+
+	// Switching providers without naming a model falls back to that provider's
+	// default model rather than keeping the other provider's default.
+	res, session = post(`{"model_provider":"openai"}`)
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	if session.ModelProvider != "openai" || session.Model != "gpt-5.4-mini" {
+		t.Fatalf("session = %#v, want openai/gpt-5.4-mini", session)
+	}
+
+	res, _ = post(`{"model_provider":"bogus"}`)
+	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "unknown native provider") {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
 func TestCreateNativeSessionErrorsWhenStoredDefaultsAreIncomplete(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {

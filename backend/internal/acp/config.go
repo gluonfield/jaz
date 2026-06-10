@@ -97,7 +97,7 @@ func BuiltinAgents() AgentCatalog {
 		},
 		AgentClaude: {
 			Command:         "npx",
-			Args:            []string{"-y", "@agentclientprotocol/claude-agent-acp@0.43.0"},
+			Args:            []string{"-y", "@agentclientprotocol/claude-agent-acp@0.44.0"},
 			Model:           "default",
 			ReasoningEffort: "medium",
 		},

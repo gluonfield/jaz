@@ -504,6 +504,50 @@ func TestManagerEncodesCodexReasoningEffortInModel(t *testing.T) {
 	}
 }
 
+func TestManagerSpawnModelOverrideWinsOverConfiguredModel(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := acp.NewManager(store, acp.Config{
+		Root:      t.TempDir(),
+		Workspace: t.TempDir(),
+		Agents: map[string]acp.AgentConfig{
+			"codex": {
+				Command:         os.Args[0],
+				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
+				Model:           "fake-large",
+				ReasoningEffort: "medium",
+				Env: map[string]string{
+					"JAZ_FAKE_ACP_AGENT":        "1",
+					"JAZ_FAKE_ACP_MODELS":       "fake-large/medium,fake-mini/medium",
+					"JAZ_FAKE_ACP_SET_MODEL":    "1",
+					"JAZ_FAKE_ACP_EXPECT_MODEL": "fake-mini/medium",
+				},
+			},
+		},
+	}, log.New(io.Discard))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{
+		ACPAgent: "codex",
+		Slug:     "codex-model-override",
+		Model:    "fake-mini",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	session, err := store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.Model != "fake-mini" || session.ReasoningEffort != "medium" {
+		t.Fatalf("unexpected stored model metadata %#v", session)
+	}
+}
+
 func TestManagerRejectsUnavailableCodexModel(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

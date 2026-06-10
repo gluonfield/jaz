@@ -29,7 +29,7 @@ function LoopsSection() {
       <div className="flex items-center justify-between pr-1">
         <Link
           to="/loops"
-          className="rounded-control px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3 transition-colors duration-150 hover:text-ink"
+          className="rounded-full px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3 transition-colors duration-150 hover:text-ink"
           activeOptions={{ exact: true }}
           activeProps={{ className: 'text-ink!' }}
         >
@@ -54,7 +54,7 @@ function LoopsSection() {
         <button
           type="button"
           onClick={() => setCreating(true)}
-          className="rounded-control px-2 py-1 text-left text-[13px] text-ink-3 transition-colors duration-150 hover:text-ink"
+          className="rounded-full px-2.5 py-1 text-left text-[13px] text-ink-3 transition-colors duration-150 hover:text-ink"
         >
           Create your first loop
         </button>
@@ -76,7 +76,7 @@ function LoopsSection() {
           {loops.data.length > SIDEBAR_LOOP_LIMIT ? (
             <Link
               to="/loops"
-              className="mt-1 rounded-control px-2 py-1 text-[13px] text-primary transition-colors duration-150 hover:bg-surface-2"
+              className="mt-1 rounded-full px-2.5 py-1 text-[13px] text-primary transition-colors duration-150 hover:bg-surface-2"
               activeOptions={{ exact: true }}
               activeProps={{ className: 'bg-primary-soft!' }}
             >
@@ -117,7 +117,7 @@ export function Sidebar({
       <nav className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-3 pt-3">
         <Link
           to="/new"
-          className="group flex items-center gap-2 rounded-control px-2 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2"
+          className="group flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2"
           activeProps={{ className: 'bg-primary-soft!' }}
         >
           <SquarePen size={15} className="text-ink-2" />
@@ -154,7 +154,7 @@ export function Sidebar({
               {sessions.data.length > SIDEBAR_SESSION_LIMIT ? (
                 <Link
                   to="/sessions"
-                  className="mt-1 rounded-control px-2 py-1 text-[13px] text-primary transition-colors duration-150 hover:bg-surface-2"
+                  className="mt-1 rounded-full px-2.5 py-1 text-[13px] text-primary transition-colors duration-150 hover:bg-surface-2"
                   activeOptions={{ exact: true }}
                   activeProps={{ className: 'bg-primary-soft!' }}
                 >
@@ -172,7 +172,7 @@ export function Sidebar({
         <button
           type="button"
           onClick={onOpenSettings}
-          className="group flex w-full items-center gap-2 rounded-control px-2 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2"
+          className="group flex w-full items-center gap-2 rounded-full px-2.5 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2"
         >
           <Settings size={15} className="text-ink-2" />
           <span className="flex-1 text-left">Settings</span>

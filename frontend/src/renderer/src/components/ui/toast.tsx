@@ -40,7 +40,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 4, scale: 0.97 }}
               transition={{ type: 'spring', stiffness: 420, damping: 30 }}
-              className={`rounded-control border px-3.5 py-2 text-sm shadow-md ${
+              className={`rounded-full border px-4 py-2 text-sm shadow-md ${
                 toast.tone === 'ok'
                   ? 'border-border bg-bg text-ink'
                   : 'border-danger/30 bg-danger-soft text-danger'

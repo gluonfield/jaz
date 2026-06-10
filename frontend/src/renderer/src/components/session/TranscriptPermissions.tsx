@@ -36,7 +36,7 @@ function QuestionPermissionCard({
         type="button"
         aria-expanded={false}
         onClick={() => setOpen(true)}
-        className="inline-flex min-h-7 items-center gap-1.5 self-start rounded-control px-1 text-left font-mono text-[12px] text-ink-3 transition-colors hover:text-ink"
+        className="inline-flex min-h-7 items-center gap-1.5 self-start rounded-full px-1 text-left font-mono text-[12px] text-ink-3 transition-colors hover:text-ink"
       >
         <ChevronRight size={12} className="shrink-0" aria-hidden />
         Asked {questions.length} question{questions.length === 1 ? '' : 's'}
@@ -114,7 +114,7 @@ function QuestionPermissionCard({
                           type="button"
                           disabled={locked}
                           onClick={() => setAnswer(question.id, option.label)}
-                          className={`inline-flex min-h-8 items-center rounded-control border px-2 py-1 text-left text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                          className={`inline-flex min-h-8 items-center rounded-full border px-2.5 py-1 text-left text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                             selected === option.label
                               ? 'border-primary bg-primary-soft text-primary-strong'
                               : 'border-border bg-surface text-ink hover:border-primary hover:text-primary'
@@ -132,7 +132,7 @@ function QuestionPermissionCard({
                       value={!options.length || !options.some((option) => option.label === selected) ? selected : ''}
                       disabled={locked}
                       placeholder={options.length ? 'Other answer...' : 'Answer...'}
-                      className="mt-2 h-8 w-full rounded-control border border-border bg-surface px-2 text-[12px] text-ink placeholder:text-ink-3 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="mt-2 h-8 w-full rounded-full border border-border bg-surface px-3 text-[12px] text-ink placeholder:text-ink-3 disabled:cursor-not-allowed disabled:opacity-60"
                       onChange={(e) => setAnswer(question.id, e.target.value)}
                     />
                   ) : null}
@@ -149,7 +149,7 @@ function QuestionPermissionCard({
             type="button"
             disabled={!complete || locked}
             onClick={() => void submit()}
-            className="inline-flex h-8 items-center gap-1.5 rounded-control bg-primary px-3 text-[12px] font-medium text-on-primary transition hover:bg-primary-strong disabled:cursor-not-allowed disabled:bg-bg disabled:text-ink-3"
+            className="inline-flex h-8 items-center gap-1.5 rounded-full bg-primary px-3.5 text-[12px] font-medium text-on-primary transition hover:bg-primary-strong disabled:cursor-not-allowed disabled:bg-bg disabled:text-ink-3"
           >
             {submitting ? (
               <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
@@ -262,7 +262,7 @@ export function PermissionCard({
               type="button"
               disabled={locked}
               onClick={() => void choose(option.id)}
-              className="inline-flex h-7 items-center gap-1.5 rounded-control border border-border bg-bg px-2 text-[12px] font-medium text-ink transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-bg px-2.5 text-[12px] font-medium text-ink transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
             >
               {submitting === option.id ? (
                 <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
@@ -294,7 +294,7 @@ export function PermissionCard({
             type="button"
             disabled={!text.trim() || locked}
             onClick={() => void sendText()}
-            className="inline-flex h-8 items-center gap-1.5 rounded-control border border-border bg-bg px-2 text-[12px] font-medium text-ink transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-bg px-2.5 text-[12px] font-medium text-ink transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
           >
             {submitting === 'text' ? (
               <LoaderCircle className="size-3.5 animate-spin" aria-hidden />

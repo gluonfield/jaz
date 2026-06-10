@@ -26,10 +26,10 @@ Warm companion. Friendly, personable, calm — a capable assistant, not an indus
 
 1. **Glanceable state.** The primary job is "what is my assistant doing?" — session state, live activity, and freshness must read in under a second.
 2. **The files are the product.** Editing SOUL.md should feel consequential and pleasant — editor quality over feature count.
-3. **Warmth through brand, not surface.** Pure white surfaces; warmth carried by the sage/clay palette, type, spacing, and copy.
+3. **Brand through restraint.** Cobalt-tinted neutrals and one cobalt accent; the rainbow ramp appears only when jaz is alive (composer comet, live indicators, welcome field). Personality carried by color discipline, type, spacing, and copy.
 4. **Earned familiarity.** Standard affordances (sidebar nav, tabs, save buttons) done precisely; no invented controls.
 5. **Quiet motion.** Transitions convey state (live updates, saves, navigation), 150–250ms, nothing decorative.
 
 ## Accessibility & Inclusion
 
-Light theme only in v1, WCAG AA: body text ≥4.5:1 (target ≥7:1 for primary text), secondary text ≥3.5:1, focus visible on every interactive element, full `prefers-reduced-motion` alternatives. Keyboard: sidebar and tabs navigable, Cmd+S saves.
+Light and dark themes, WCAG AA: body text ≥4.5:1 (target ≥7:1 for primary text), secondary text ≥3.5:1, focus visible on every interactive element, full `prefers-reduced-motion` alternatives. Keyboard: sidebar and tabs navigable, Cmd+S saves.

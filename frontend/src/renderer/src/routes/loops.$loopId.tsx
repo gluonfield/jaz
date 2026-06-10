@@ -247,7 +247,7 @@ function RunRow({ run }: { run: LoopRun }) {
       <Link
         to="/sessions/$sessionId"
         params={{ sessionId: run.thread_id }}
-        className="group flex items-center gap-2.5 rounded-control px-2 py-2 transition-colors duration-150 hover:bg-surface-2"
+        className="group flex items-center gap-2.5 rounded-card px-3 py-2 transition-colors duration-150 hover:bg-surface-2"
       >
         {body}
         <ChevronRight size={14} className="-mr-0.5 shrink-0 text-ink-3 opacity-0 transition-opacity group-hover:opacity-100" />

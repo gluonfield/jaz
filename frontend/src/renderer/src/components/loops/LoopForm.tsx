@@ -66,7 +66,7 @@ export function loopDraftToInput(draft: LoopDraft): LoopInput {
 }
 
 const inputClass =
-  'w-full rounded-control bg-ink/10 px-3 py-2 text-[13px] text-ink outline-none transition duration-150 placeholder:text-ink-3 focus:bg-ink/15 focus:ring-1 focus:ring-ink/25'
+  'w-full rounded-control bg-bg px-3 py-2 text-[13px] text-ink ring-1 ring-border outline-none transition duration-150 placeholder:text-ink-3 focus:ring-primary'
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (

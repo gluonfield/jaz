@@ -8,7 +8,7 @@ export function GeneralSettings() {
         <p className="mt-0.5 text-[13px] text-ink-2">How the interface looks.</p>
       </div>
 
-      <div className="mt-4 overflow-hidden rounded-control bg-surface">
+      <div className="mt-4 overflow-hidden rounded-card bg-surface">
         <div className="grid grid-cols-1 gap-2 px-3 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
           <div className="min-w-0">
             <p className="text-[13px] font-medium text-ink">Theme</p>

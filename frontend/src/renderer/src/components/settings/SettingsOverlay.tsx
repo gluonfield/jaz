@@ -79,7 +79,7 @@ export function SettingsOverlay({ open, onClose }: { open: boolean; onClose: () 
               <button
                 type="button"
                 onClick={onClose}
-                className="flex w-full items-center gap-2 rounded-control px-2 py-1.5 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+                className="flex w-full items-center gap-2 rounded-full px-2.5 py-1.5 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
               >
                 <ArrowLeft size={15} className="text-ink-3" />
                 <span className="flex-1">Back to jaz</span>
@@ -98,7 +98,7 @@ export function SettingsOverlay({ open, onClose }: { open: boolean; onClose: () 
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="Search settings…"
                   aria-label="Search settings"
-                  className="h-8 w-full rounded-control bg-ink/10 pl-8 pr-2.5 text-[13px] text-ink outline-none transition duration-150 placeholder:text-ink-3 focus:bg-ink/15 focus:ring-1 focus:ring-ink/25"
+                  className="h-8 w-full rounded-full bg-ink/10 pl-8 pr-3 text-[13px] text-ink outline-none transition duration-150 placeholder:text-ink-3 focus:bg-ink/15 focus:ring-1 focus:ring-ink/25"
                 />
               </div>
             </div>
@@ -112,7 +112,7 @@ export function SettingsOverlay({ open, onClose }: { open: boolean; onClose: () 
                     key={item.id}
                     type="button"
                     onClick={() => setSection(item.id)}
-                    className={`flex items-center gap-2 rounded-control px-2 py-1.5 text-left text-[13px] transition-colors duration-150 ${
+                    className={`flex items-center gap-2 rounded-full px-2.5 py-1.5 text-left text-[13px] transition-colors duration-150 ${
                       selected
                         ? 'bg-primary-soft font-medium text-ink'
                         : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
