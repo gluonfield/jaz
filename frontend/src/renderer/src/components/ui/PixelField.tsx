@@ -33,7 +33,8 @@ const sphere = (out: Float32Array, n: number) => {
     const a = golden * i
     out[i * 3] = Math.cos(a) * r
     out[i * 3 + 1] = y * rand(0.94, 1)
-    out[i * 3 + 2] = Math.sin(a) * r * 0.5
+    // full-depth z: a squashed shell reads as an ellipsoid once it spins
+    out[i * 3 + 2] = Math.sin(a) * r
   }
 }
 
@@ -492,6 +493,28 @@ export function PixelField({
     let width = 0
     let height = 0
     let drawCount = N_MAX
+    let alphaMul = 1
+    let lastT = 0
+
+    const drawFrame = (t: number) => {
+      gl.clearColor(0, 0, 0, 0)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+      gl.uniform1f(uni.time, t)
+      gl.uniform1f(uni.progress, progress)
+      gl.uniform1f(uni.swirl, swirl)
+      gl.uniform1f(uni.alphaMul, alphaMul)
+      gl.uniform1f(uni.alphaFrom, frameFrom.alpha)
+      gl.uniform1f(uni.alphaTo, frameTo.alpha)
+      gl.uniform1f(uni.brandFrom, frameFrom.brand)
+      gl.uniform1f(uni.brandTo, frameTo.brand)
+      gl.uniform2f(uni.centerFrom, frameFrom.cx, frameFrom.cy)
+      gl.uniform2f(uni.centerTo, frameTo.cx, frameTo.cy)
+      gl.uniform1f(uni.scaleFrom, frameFrom.scale)
+      gl.uniform1f(uni.scaleTo, frameTo.scale)
+      gl.uniform1f(uni.rotFrom, frameFrom.rot)
+      gl.uniform1f(uni.rotTo, frameTo.rot)
+      gl.drawArrays(gl.POINTS, 0, drawCount)
+    }
 
     // wordmark frame: somewhere in the open bands above or below the
     // composer. The jitter is rolled once per homecoming (not in here) so
@@ -516,6 +539,20 @@ export function PixelField({
         alpha: 0.62,
         brand: 1,
       }
+    }
+    // the assembled wordmark never sits still: a slow mostly-horizontal slide
+    // around its anchor, clamped to the band homeFrame allows. Both draw paths
+    // (the rAF loop and resize's synchronous repaint) must go through this, or
+    // the mark jumps by the drift offset whenever they alternate.
+    const applyHomeDrift = (t: number) => {
+      const halfH = frameTo.scale * markAspect
+      const dx = Math.sin(t * 0.06 + driftPhase) * frameTo.scale * 0.55
+      const dy = Math.sin(t * 0.037 + driftPhase * 2.3) * halfH * 0.3
+      frameTo.cx = Math.min(
+        width - frameTo.scale - 32,
+        Math.max(frameTo.scale + 32, homeBaseCx + dx),
+      )
+      frameTo.cy = Math.min(height - halfH - 28, Math.max(halfH + 40, homeBaseCy + dy))
     }
 
     const scatter = (out: Float32Array) => {
@@ -665,32 +702,18 @@ export function PixelField({
         const home = homeFrame()
         homeBaseCx = home.cx
         homeBaseCy = home.cy
-        Object.assign(frameTo, home, { wobblePhase: frameTo.wobblePhase })
+        Object.assign(frameTo, home, { rot: frameTo.rot, wobblePhase: frameTo.wobblePhase })
+        applyHomeDrift(lastT)
       }
+      // Setting canvas.width/height wipes the drawing buffer, and ResizeObserver
+      // fires after this frame's rAF — so without an immediate repaint the
+      // browser presents a blank canvas for one frame on every resize tick
+      // (e.g. each step of the sidebar's width spring).
+      drawFrame(lastT)
     }
     resize()
     const observer = new ResizeObserver(resize)
     observer.observe(canvas)
-
-    const drawFrame = (t: number, alphaMul: number) => {
-      gl.clearColor(0, 0, 0, 0)
-      gl.clear(gl.COLOR_BUFFER_BIT)
-      gl.uniform1f(uni.time, t)
-      gl.uniform1f(uni.progress, progress)
-      gl.uniform1f(uni.swirl, swirl)
-      gl.uniform1f(uni.alphaMul, alphaMul)
-      gl.uniform1f(uni.alphaFrom, frameFrom.alpha)
-      gl.uniform1f(uni.alphaTo, frameTo.alpha)
-      gl.uniform1f(uni.brandFrom, frameFrom.brand)
-      gl.uniform1f(uni.brandTo, frameTo.brand)
-      gl.uniform2f(uni.centerFrom, frameFrom.cx, frameFrom.cy)
-      gl.uniform2f(uni.centerTo, frameTo.cx, frameTo.cy)
-      gl.uniform1f(uni.scaleFrom, frameFrom.scale)
-      gl.uniform1f(uni.scaleTo, frameTo.scale)
-      gl.uniform1f(uni.rotFrom, frameFrom.rot)
-      gl.uniform1f(uni.rotTo, frameTo.rot)
-      gl.drawArrays(gl.POINTS, 0, drawCount)
-    }
 
     // boot: dust condenses into the wordmark
     const writeTo = () => {
@@ -733,12 +756,12 @@ export function PixelField({
           rot: frameTo.rot,
           wobblePhase: frameTo.wobblePhase,
         })
-        if (reducedMotion) drawFrame(0, 1)
+        if (reducedMotion) drawFrame(0)
       }
     })
 
     if (reducedMotion) {
-      drawFrame(0, 1)
+      drawFrame(0)
       return () => {
         disposed = true
         observer.disconnect()
@@ -749,7 +772,6 @@ export function PixelField({
     let state: 'home' | 'forming' | 'holding' = 'forming'
     let stateUntil = 0
     let chain = 0
-    let alphaMul = 1
 
     let raf = 0
     let lastMs = performance.now()
@@ -758,6 +780,7 @@ export function PixelField({
       const dt = Math.min(0.05, (ms - lastMs) / 1000)
       lastMs = ms
       const t = ms / 1000
+      lastT = t
       const calmNow = calmRef.current
 
       alphaMul += ((calmNow ? 0.55 : 1) - alphaMul) * (1 - Math.exp(-dt * 2.5))
@@ -768,18 +791,7 @@ export function PixelField({
         else f.rot += f.rotSpeed * dt
       }
 
-      // the assembled wordmark never sits still: a slow mostly-horizontal
-      // slide around its anchor, clamped to the band homeFrame allows
-      if (homeTarget) {
-        const halfH = frameTo.scale * markAspect
-        const dx = Math.sin(t * 0.06 + driftPhase) * frameTo.scale * 0.55
-        const dy = Math.sin(t * 0.037 + driftPhase * 2.3) * halfH * 0.3
-        frameTo.cx = Math.min(
-          width - frameTo.scale - 32,
-          Math.max(frameTo.scale + 32, homeBaseCx + dx),
-        )
-        frameTo.cy = Math.min(height - halfH - 28, Math.max(halfH + 40, homeBaseCy + dy))
-      }
+      if (homeTarget) applyHomeDrift(t)
 
       if (state === 'forming') {
         if (progress >= 1) {
@@ -810,7 +822,7 @@ export function PixelField({
         }
       }
 
-      drawFrame(t, alphaMul)
+      drawFrame(t)
     }
     raf = requestAnimationFrame(frame)
 
