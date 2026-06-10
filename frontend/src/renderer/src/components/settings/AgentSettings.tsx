@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, Save, Terminal } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { REASONING_EFFORT_OPTIONS } from '@/components/loops/ReasoningEffortSelect'
 import { Button } from '@/components/ui/Button'
 import { ModelCombobox } from '@/components/ui/ModelCombobox'
 import { Select } from '@/components/ui/Select'
@@ -19,15 +20,11 @@ const inputClass =
 
 const rowControlClass = 'w-full md:w-[320px]'
 
-const nativeReasoningOptions = [
-  { value: '', label: 'None' },
-  { value: 'minimal', label: 'Minimal' },
-  { value: 'low', label: 'Low' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'high', label: 'High' },
-]
-
-const acpReasoningOptions = [...nativeReasoningOptions, { value: 'xhigh', label: 'Extra high' }]
+// Same efforts everywhere; here '' means "no effort configured" rather than
+// "inherit the default", hence the relabel.
+const reasoningOptions = REASONING_EFFORT_OPTIONS.map((option) =>
+  option.value === '' ? { ...option, label: 'None' } : option,
+)
 
 function cloneSettings(settings: AgentSettingsData): AgentSettingsData {
   return {
@@ -181,7 +178,7 @@ export function AgentSettings() {
                 >
                   <Select
                     value={draft.native.reasoning_effort ?? ''}
-                    options={nativeReasoningOptions}
+                    options={reasoningOptions}
                     disabled={save.isPending}
                     onChange={(reasoning_effort) =>
                       setDraft({ ...draft, native: { ...draft.native, reasoning_effort } })
@@ -278,7 +275,7 @@ function ACPAgentRow({
       <SettingsRow title="Reasoning" description="Reasoning effort copied into new threads.">
         <Select
           value={current.reasoning_effort ?? ''}
-          options={acpReasoningOptions}
+          options={reasoningOptions}
           disabled={controlsDisabled}
           onChange={(reasoning_effort) => update({ reasoning_effort })}
           aria-label={`${agentLabel(agent)} reasoning effort`}

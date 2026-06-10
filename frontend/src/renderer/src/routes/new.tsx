@@ -39,6 +39,7 @@ function NewSessionPage() {
   // default for the chosen runtime (and, for native, provider).
   const [providerOverride, setProviderOverride] = useState<string | null>(null)
   const [modelOverride, setModelOverride] = useState<string | null>(null)
+  const [effortOverride, setEffortOverride] = useState<string | null>(null)
   const { data: agents = [] } = useQuery(acpAgentsQuery)
   const { data: agentSettings } = useQuery(agentSettingsQuery)
   // PixelField samples the palette at mount; remount it when the theme flips.
@@ -53,6 +54,13 @@ function NewSessionPage() {
       : (agentSettings?.providers.find((p) => p.id === provider)?.default_model ?? '')
     : (agentSettings?.acp[runtime]?.model ?? '')
   const model = modelOverride ?? defaultModel
+  // The backend applies the native settings effort whatever the provider, and
+  // each ACP agent falls back to its configured effort; mirror that here so the
+  // picker shows the effort a new session will actually run with.
+  const defaultEffort = isNative
+    ? (agentSettings?.native.reasoning_effort ?? '')
+    : (agentSettings?.acp[runtime]?.reasoning_effort ?? '')
+  const reasoningEffort = effortOverride ?? defaultEffort
 
   const openRouterModels = useQuery({
     ...openRouterModelsQuery,
@@ -74,6 +82,7 @@ function NewSessionPage() {
               ...(directory ? { directory } : {}),
               ...(provider ? { model_provider: provider } : {}),
               ...(model ? { model } : {}),
+              ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
             }
           : {
               ...(title ? { title } : {}),
@@ -82,6 +91,7 @@ function NewSessionPage() {
               directory,
               worktree,
               ...(model ? { model } : {}),
+              ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
             },
       )
       prepare(session.id)
@@ -148,6 +158,7 @@ function NewSessionPage() {
                       setRuntime(next)
                       setProviderOverride(null)
                       setModelOverride(null)
+                      setEffortOverride(null)
                       if (next === 'native') setWorktree(false)
                     }}
                   />
@@ -171,9 +182,14 @@ function NewSessionPage() {
                       ? (next) => {
                           setProviderOverride(next)
                           setModelOverride(null)
+                          setEffortOverride(null)
                         }
                       : undefined
                   }
+                  effort={reasoningEffort}
+                  // Default clears the override, falling back to the settings
+                  // effort — the selection snaps to whatever that resolves to.
+                  onEffortChange={(next) => setEffortOverride(next === '' ? null : next)}
                 />
                 <DirectoryPicker
                   value={directory}

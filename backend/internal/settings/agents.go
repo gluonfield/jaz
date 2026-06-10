@@ -187,7 +187,7 @@ func NormalizeAgentDefaults(input AgentDefaults, catalog acp.AgentCatalog) (Agen
 		name = acp.CanonicalAgentName(name)
 		base, _ := catalog.Agent(name)
 		current := inputACP[name]
-		effort, err := normalizeACPReasoningEffort(current.ReasoningEffort)
+		effort, err := provider.NormalizeReasoningEffort(current.ReasoningEffort)
 		if err != nil {
 			return AgentDefaults{}, err
 		}
@@ -377,18 +377,6 @@ func sortedAgentNames(names []string) []string {
 	out := append([]string(nil), names...)
 	sort.Strings(out)
 	return out
-}
-
-func normalizeACPReasoningEffort(value string) (string, error) {
-	value = strings.ToLower(strings.TrimSpace(value))
-	switch value {
-	case "", "none":
-		return "", nil
-	case "minimal", "low", "medium", "high", "xhigh":
-		return value, nil
-	default:
-		return "", fmt.Errorf("unknown acp reasoning effort %q; valid values are none, minimal, low, medium, high, xhigh", value)
-	}
 }
 
 func CommandLine(command string, args []string) string {

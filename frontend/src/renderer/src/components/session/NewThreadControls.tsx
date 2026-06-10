@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Check, ChevronDown, CornerLeftUp, Folder, GitBranch, LoaderCircle } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { REASONING_EFFORT_OPTIONS } from '@/components/loops/ReasoningEffortSelect'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { MenuRow, Popover } from '@/components/ui/Popover'
@@ -67,7 +68,9 @@ export function RuntimeSelect({
 
 // Picks the model for a new thread: curated suggestions for the chosen
 // runtime/provider plus free-text entry for anything else. For native threads
-// a provider section sits above the model list.
+// a provider section sits above the model list; a reasoning-effort section
+// sits below it when the caller wires one up. The trigger shows the effective
+// effort as a tinted suffix ("GPT-5.4 Mini xhigh").
 export function ModelSelect({
   value,
   suggestions,
@@ -77,6 +80,8 @@ export function ModelSelect({
   providers,
   provider,
   onProviderChange,
+  effort,
+  onEffortChange,
 }: {
   value: string
   suggestions: ModelSuggestion[]
@@ -86,6 +91,9 @@ export function ModelSelect({
   providers?: { value: string; label: string }[]
   provider?: string
   onProviderChange?: (provider: string) => void
+  // '' inherits the Settings > Agents default for the chosen runtime/provider.
+  effort?: string
+  onEffortChange?: (effort: string) => void
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -101,6 +109,10 @@ export function ModelSelect({
   const typed = query.trim()
   const typedIsNew = typed !== '' && !suggestions.some((s) => s.value === typed)
   const label = value === '' ? 'Model' : modelSuggestionLabel(suggestions, value)
+  const effortValue = effort ?? ''
+  const description = `Model: ${value === '' ? 'default' : value}${
+    effortValue ? `, reasoning effort: ${effortValue}` : ''
+  }`
   const select = (model: string) => {
     onChange(model)
     setOpen(false)
@@ -114,15 +126,16 @@ export function ModelSelect({
         <Button
           variant="secondary"
           size="sm"
-          className="max-w-[11rem]"
+          className="max-w-[13rem]"
           aria-haspopup="listbox"
           aria-expanded={open}
-          aria-label={`Model: ${value === '' ? 'default' : value}`}
-          title={`Model: ${value === '' ? 'default' : value}`}
+          aria-label={description}
+          title={description}
           disabled={disabled}
           onClick={() => setOpen((v) => !v)}
         >
           <span className="truncate">{label}</span>
+          {effortValue ? <span className="shrink-0 text-primary">{effortValue}</span> : null}
           <ChevronDown size={13} className="shrink-0" />
         </Button>
       }
@@ -154,10 +167,18 @@ export function ModelSelect({
             className="h-7 w-full rounded-full bg-ink/10 px-2.5 text-[12px] text-ink outline-none placeholder:text-ink-3 focus:bg-ink/15"
           />
         </div>
-        {/* Shorter list when the provider section stacks above it, so the
-            popover stays inside the window above a centered composer. */}
+        {/* Shorter list when the provider/effort sections stack around it, so
+            the popover stays inside the window above a centered composer. */}
         <div
-          className={`${providers && providers.length > 1 ? 'max-h-[170px]' : 'max-h-[240px]'} overflow-y-auto`}
+          className={`${
+            providers && providers.length > 1
+              ? onEffortChange
+                ? 'max-h-[120px]'
+                : 'max-h-[170px]'
+              : onEffortChange
+                ? 'max-h-[200px]'
+                : 'max-h-[240px]'
+          } overflow-y-auto`}
         >
           {typedIsNew ? (
             <MenuRow selected={typed === value} onClick={() => select(typed)}>
@@ -192,6 +213,29 @@ export function ModelSelect({
             <div className="px-2 py-1 text-[13px] text-ink-3">No matching models.</div>
           ) : null}
         </div>
+        {onEffortChange ? (
+          <>
+            <div className="my-1 border-t border-border" />
+            <p className="px-2 pt-1 pb-0.5 text-[11px] text-ink-3">Reasoning effort</p>
+            <div className="flex flex-wrap gap-1 px-1.5 pb-1">
+              {REASONING_EFFORT_OPTIONS.map((option) => (
+                <button
+                  key={option.value || 'default'}
+                  type="button"
+                  // Stays open: effort is a refinement, not the menu's main action.
+                  onClick={() => onEffortChange(option.value)}
+                  className={`h-6 rounded-full px-2 text-[12px] transition-colors duration-150 ${
+                    effortValue === option.value
+                      ? 'bg-primary-soft text-primary-strong'
+                      : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : null}
       </div>
     </Popover>
   )
