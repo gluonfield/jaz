@@ -464,7 +464,7 @@ func TestManagerRejectsUnsupportedClaudeModel(t *testing.T) {
 	}
 }
 
-func TestManagerEncodesCodexReasoningEffortInModel(t *testing.T) {
+func TestManagerUsesCodexModelAndEffortConfigOptions(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -479,10 +479,11 @@ func TestManagerEncodesCodexReasoningEffortInModel(t *testing.T) {
 				Model:           "fake-large",
 				ReasoningEffort: "xhigh",
 				Env: map[string]string{
-					"JAZ_FAKE_ACP_AGENT":        "1",
-					"JAZ_FAKE_ACP_MODELS":       "fake-large/xhigh",
-					"JAZ_FAKE_ACP_SET_MODEL":    "1",
-					"JAZ_FAKE_ACP_EXPECT_MODEL": "fake-large/xhigh",
+					"JAZ_FAKE_ACP_AGENT":               "1",
+					"JAZ_FAKE_ACP_MODELS":              "fake-large",
+					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG": "fake-large",
+					"JAZ_FAKE_ACP_SET_CONFIG":          "1",
+					"JAZ_FAKE_ACP_EXPECT_EFFORT":       "xhigh",
 				},
 			},
 		},
@@ -519,10 +520,11 @@ func TestManagerSpawnModelOverrideWinsOverConfiguredModel(t *testing.T) {
 				Model:           "fake-large",
 				ReasoningEffort: "medium",
 				Env: map[string]string{
-					"JAZ_FAKE_ACP_AGENT":        "1",
-					"JAZ_FAKE_ACP_MODELS":       "fake-large/medium,fake-mini/medium",
-					"JAZ_FAKE_ACP_SET_MODEL":    "1",
-					"JAZ_FAKE_ACP_EXPECT_MODEL": "fake-mini/medium",
+					"JAZ_FAKE_ACP_AGENT":               "1",
+					"JAZ_FAKE_ACP_MODELS":              "fake-large,fake-mini",
+					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG": "fake-mini",
+					"JAZ_FAKE_ACP_SET_CONFIG":          "1",
+					"JAZ_FAKE_ACP_EXPECT_EFFORT":       "medium",
 				},
 			},
 		},
@@ -603,8 +605,11 @@ func TestManagerRejectsUnavailableCodexReasoningEffort(t *testing.T) {
 				Model:           "fake-large",
 				ReasoningEffort: "xhigh",
 				Env: map[string]string{
-					"JAZ_FAKE_ACP_AGENT":  "1",
-					"JAZ_FAKE_ACP_MODELS": "fake-large/medium",
+					"JAZ_FAKE_ACP_AGENT":               "1",
+					"JAZ_FAKE_ACP_MODELS":              "fake-large",
+					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG": "fake-large",
+					"JAZ_FAKE_ACP_SET_CONFIG":          "1",
+					"JAZ_FAKE_ACP_EXPECT_EFFORT":       "medium",
 				},
 			},
 		},
@@ -616,7 +621,7 @@ func TestManagerRejectsUnavailableCodexReasoningEffort(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected spawn to fail")
 	}
-	if !strings.Contains(err.Error(), "fake-large/xhigh") || !strings.Contains(err.Error(), "fake-large/medium") {
+	if !strings.Contains(err.Error(), `reasoning effort "xhigh"`) || !strings.Contains(err.Error(), "expected configured reasoning effort") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

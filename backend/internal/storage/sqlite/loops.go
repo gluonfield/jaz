@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/loops"
-	loopdb "github.com/wins/jaz/backend/internal/storage/sqlite/generated/loops"
+	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/loopdb"
 )
 
 func (s *Store) NewLoopID() string {
@@ -258,10 +258,6 @@ func runFromDB(row loopdb.LoopRun) loops.Run {
 		Error:        row.Error.String,
 		CreatedAt:    msToTime(row.CreatedAtMs),
 	}
-}
-
-func nullDBString(value string) sql.NullString {
-	return sql.NullString{String: value, Valid: value != ""}
 }
 
 func loopTimeToMs(t time.Time) int64 {
