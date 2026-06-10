@@ -138,6 +138,16 @@ func TestInteractiveRequestPermissionWaitsForAnswer(t *testing.T) {
 }
 
 func TestInteractiveRequestUserInputPublishesStructuredQuestions(t *testing.T) {
+	runInteractiveRequestUserInputTest(t, codexRequestUserInputMetaKey, "__user_input_submit__", userInputResponseOptionPrefix)
+}
+
+func TestInteractiveRequestUserInputAcceptsLegacyJazMeta(t *testing.T) {
+	runInteractiveRequestUserInputTest(t, legacyCodexRequestUserInputMetaKey, "__jaz_user_input_submit__", legacyUserInputResponseOptionPrefix)
+}
+
+func runInteractiveRequestUserInputTest(t *testing.T, metaKey, submitOptionID, responseOptionPrefix string) {
+	t.Helper()
+
 	root := t.TempDir()
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -161,7 +171,7 @@ func TestInteractiveRequestUserInputPublishesStructuredQuestions(t *testing.T) {
 			Params: mustJSON(t, acpschema.RequestPermissionRequest{
 				SessionID: "acp-session",
 				Options: []acpschema.PermissionOption{{
-					OptionID: "__jaz_user_input_submit__",
+					OptionID: acpschema.PermissionOptionID(submitOptionID),
 					Name:     "Submit answers",
 					Kind:     acpschema.PermissionOptionKindAllowOnce,
 				}},
@@ -169,7 +179,7 @@ func TestInteractiveRequestUserInputPublishesStructuredQuestions(t *testing.T) {
 					ToolCallID: "request-user-input-call-1",
 					Title:      "Clarifying questions",
 					Meta: map[string]any{
-						codexRequestUserInputMetaKey: map[string]any{
+						metaKey: map[string]any{
 							"call_id": "call-1",
 							"turn_id": "turn-1",
 							"questions": []map[string]any{
@@ -233,7 +243,7 @@ func TestInteractiveRequestUserInputPublishesStructuredQuestions(t *testing.T) {
 			t.Fatal(err)
 		}
 		optionID := got["outcome"]["optionId"]
-		if got["outcome"]["outcome"] != "selected" || !strings.HasPrefix(optionID, userInputResponseOptionPrefix) {
+		if got["outcome"]["outcome"] != "selected" || !strings.HasPrefix(optionID, responseOptionPrefix) {
 			t.Fatalf("unexpected user input response: %s", raw)
 		}
 	case err := <-errs:
