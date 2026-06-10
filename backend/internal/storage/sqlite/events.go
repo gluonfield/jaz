@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/eventdb"
+	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/threaddb"
 )
 
 func (s *Store) LoadSessionEvents(id string) ([]sessionevents.Event, error) {
@@ -34,7 +36,9 @@ func (s *Store) AppendSessionEvents(id string, events ...sessionevents.Event) er
 		return err
 	}
 	defer tx.Rollback()
-	nextSeq, err := nextSessionEventSeq(tx, id)
+	eventq := eventdb.New(tx)
+	threadq := threaddb.New(tx)
+	nextSeq, err := eventq.NextSessionEventSeq(context.Background(), id)
 	if err != nil {
 		s.mu.Unlock()
 		return err
@@ -51,12 +55,12 @@ func (s *Store) AppendSessionEvents(id string, events ...sessionevents.Event) er
 			events[i].Seq = nextSeq
 			nextSeq++
 		}
-		if err := insertSessionEvent(tx, events[i]); err != nil {
+		if err := insertSessionEvent(eventq, events[i]); err != nil {
 			s.mu.Unlock()
 			return err
 		}
 	}
-	if _, err := tx.Exec(`UPDATE threads SET updated_at_ms = ? WHERE id = ?`, timeToMs(now), id); err != nil {
+	if err := threadq.TouchThread(context.Background(), threaddb.TouchThreadParams{UpdatedAtMs: timeToMs(now), ID: id}); err != nil {
 		s.mu.Unlock()
 		return err
 	}
@@ -73,63 +77,22 @@ func (s *Store) AppendSessionEvents(id string, events ...sessionevents.Event) er
 }
 
 func (s *Store) loadSessionEventsLocked(id string) ([]sessionevents.Event, error) {
-	rows, err := s.db.Query(`SELECT thread_id, seq, type, content, acp, plan, permission, created_at_ms
-FROM session_events WHERE thread_id = ? ORDER BY seq`, id)
+	rows, err := eventdb.New(s.db).ListSessionEvents(context.Background(), id)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var events []sessionevents.Event
-	for rows.Next() {
-		var event sessionevents.Event
-		var rawACP, rawPlan, rawPermission sql.NullString
-		var createdMs int64
-		if err := rows.Scan(&event.SessionID, &event.Seq, &event.Type, &event.Content, &rawACP, &rawPlan, &rawPermission, &createdMs); err != nil {
+	events := make([]sessionevents.Event, 0, len(rows))
+	for _, row := range rows {
+		event, err := eventFromDB(row)
+		if err != nil {
 			return nil, err
 		}
-		if rawACP.Valid && rawACP.String != "" && rawACP.String != "null" {
-			var acp sessionevents.ACPEvent
-			if err := stdjson.Unmarshal([]byte(rawACP.String), &acp); err != nil {
-				return nil, err
-			}
-			event.ACP = &acp
-		}
-		if rawPlan.Valid && rawPlan.String != "" && rawPlan.String != "null" {
-			var plan sessionevents.PlanEvent
-			if err := stdjson.Unmarshal([]byte(rawPlan.String), &plan); err != nil {
-				return nil, err
-			}
-			event.Plan = &plan
-		}
-		if rawPermission.Valid && rawPermission.String != "" && rawPermission.String != "null" {
-			var permission sessionevents.ACPPermission
-			if err := stdjson.Unmarshal([]byte(rawPermission.String), &permission); err != nil {
-				return nil, err
-			}
-			event.Permission = &permission
-		}
-		event.At = msToTime(createdMs)
 		events = append(events, event)
 	}
-	return events, rows.Err()
+	return events, nil
 }
 
-type queryer interface {
-	QueryRow(string, ...any) *sql.Row
-}
-
-func nextSessionEventSeq(db queryer, threadID string) (int64, error) {
-	var maxSeq sql.NullInt64
-	if err := db.QueryRow(`SELECT MAX(seq) FROM session_events WHERE thread_id = ?`, threadID).Scan(&maxSeq); err != nil {
-		return 0, err
-	}
-	if !maxSeq.Valid {
-		return 1, nil
-	}
-	return maxSeq.Int64 + 1, nil
-}
-
-func insertSessionEvent(db execer, event sessionevents.Event) error {
+func insertSessionEvent(q *eventdb.Queries, event sessionevents.Event) error {
 	rawACP, err := marshalOptionalJSON(event.ACP)
 	if err != nil {
 		return err
@@ -142,30 +105,61 @@ func insertSessionEvent(db execer, event sessionevents.Event) error {
 	if err != nil {
 		return err
 	}
-	_, err = db.Exec(`INSERT INTO session_events (thread_id, seq, type, content, acp, plan, permission, created_at_ms)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(thread_id, seq) DO UPDATE SET
-type = excluded.type,
-content = excluded.content,
-acp = excluded.acp,
-plan = excluded.plan,
-permission = excluded.permission,
-created_at_ms = excluded.created_at_ms`,
-		event.SessionID, event.Seq, event.Type, event.Content, rawACP, rawPlan, rawPermission, timeToMs(event.At))
-	return err
+	return q.UpsertSessionEvent(context.Background(), eventdb.UpsertSessionEventParams{
+		ThreadID:    event.SessionID,
+		Seq:         event.Seq,
+		Type:        event.Type,
+		Content:     event.Content,
+		Acp:         rawACP,
+		Plan:        rawPlan,
+		Permission:  rawPermission,
+		CreatedAtMs: timeToMs(event.At),
+	})
 }
 
-func marshalOptionalJSON(value any) (any, error) {
+func eventFromDB(row eventdb.ListSessionEventsRow) (sessionevents.Event, error) {
+	event := sessionevents.Event{
+		SessionID: row.ThreadID,
+		Seq:       row.Seq,
+		Type:      row.Type,
+		Content:   row.Content,
+		At:        msToTime(row.CreatedAtMs),
+	}
+	if row.Acp.Valid && row.Acp.String != "" && row.Acp.String != "null" {
+		var acp sessionevents.ACPEvent
+		if err := stdjson.Unmarshal([]byte(row.Acp.String), &acp); err != nil {
+			return sessionevents.Event{}, err
+		}
+		event.ACP = &acp
+	}
+	if row.Plan.Valid && row.Plan.String != "" && row.Plan.String != "null" {
+		var plan sessionevents.PlanEvent
+		if err := stdjson.Unmarshal([]byte(row.Plan.String), &plan); err != nil {
+			return sessionevents.Event{}, err
+		}
+		event.Plan = &plan
+	}
+	if row.Permission.Valid && row.Permission.String != "" && row.Permission.String != "null" {
+		var permission sessionevents.ACPPermission
+		if err := stdjson.Unmarshal([]byte(row.Permission.String), &permission); err != nil {
+			return sessionevents.Event{}, err
+		}
+		event.Permission = &permission
+	}
+	return event, nil
+}
+
+func marshalOptionalJSON(value any) (sql.NullString, error) {
 	if value == nil {
-		return nil, nil
+		return sql.NullString{}, nil
 	}
 	data, err := stdjson.Marshal(value)
 	if err != nil {
-		return nil, err
+		return sql.NullString{}, err
 	}
 	// Typed nils marshal to "null", which round-trips into a bogus empty struct.
 	if string(data) == "null" {
-		return nil, nil
+		return sql.NullString{}, nil
 	}
-	return string(data), nil
+	return sql.NullString{String: string(data), Valid: true}, nil
 }

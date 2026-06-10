@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/settingsdb"
 )
 
 func (s *Store) LoadSetting(namespace, key string) (storage.Setting, error) {
@@ -17,9 +19,14 @@ func (s *Store) LoadSetting(namespace, key string) (storage.Setting, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	row := s.db.QueryRow(`SELECT namespace, key, value_json, created_at_ms, updated_at_ms
-FROM settings WHERE namespace = ? AND key = ?`, namespace, key)
-	return scanSetting(row)
+	row, err := settingsdb.New(s.db).GetSetting(context.Background(), settingsdb.GetSettingParams{
+		Namespace: namespace,
+		Key:       key,
+	})
+	if err != nil {
+		return storage.Setting{}, settingError(err)
+	}
+	return settingFromDB(row), nil
 }
 
 func (s *Store) SaveSetting(namespace, key string, value json.RawMessage) (storage.Setting, error) {
@@ -33,12 +40,13 @@ func (s *Store) SaveSetting(namespace, key string, value json.RawMessage) (stora
 	}
 	now := time.Now().UTC()
 	s.mu.Lock()
-	_, err = s.db.Exec(`INSERT INTO settings (namespace, key, value_json, created_at_ms, updated_at_ms)
-VALUES (?, ?, ?, ?, ?)
-ON CONFLICT(namespace, key) DO UPDATE SET
-value_json = excluded.value_json,
-updated_at_ms = excluded.updated_at_ms`,
-		namespace, key, string(value), timeToMs(now), timeToMs(now))
+	err = settingsdb.New(s.db).UpsertSetting(context.Background(), settingsdb.UpsertSettingParams{
+		Namespace:   namespace,
+		Key:         key,
+		ValueJson:   string(value),
+		CreatedAtMs: timeToMs(now),
+		UpdatedAtMs: timeToMs(now),
+	})
 	s.mu.Unlock()
 	if err != nil {
 		return storage.Setting{}, err
@@ -53,11 +61,14 @@ func (s *Store) DeleteSetting(namespace, key string) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	res, err := s.db.Exec(`DELETE FROM settings WHERE namespace = ? AND key = ?`, namespace, key)
+	changed, err := settingsdb.New(s.db).DeleteSetting(context.Background(), settingsdb.DeleteSettingParams{
+		Namespace: namespace,
+		Key:       key,
+	})
 	if err != nil {
 		return err
 	}
-	if changed, _ := res.RowsAffected(); changed == 0 {
+	if changed == 0 {
 		return fmt.Errorf("%w: %s/%s", storage.ErrSettingNotFound, namespace, key)
 	}
 	return nil
@@ -70,41 +81,32 @@ func (s *Store) ListSettings(namespace string) ([]storage.Setting, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rows, err := s.db.Query(`SELECT namespace, key, value_json, created_at_ms, updated_at_ms
-FROM settings WHERE namespace = ? ORDER BY key`, namespace)
+	rows, err := settingsdb.New(s.db).ListSettings(context.Background(), namespace)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []storage.Setting
-	for rows.Next() {
-		setting, err := scanSetting(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, setting)
+	out := make([]storage.Setting, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, settingFromDB(row))
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
-type settingScanner interface {
-	Scan(dest ...any) error
+func settingFromDB(row settingsdb.Setting) storage.Setting {
+	return storage.Setting{
+		Namespace: row.Namespace,
+		Key:       row.Key,
+		Value:     json.RawMessage(row.ValueJson),
+		CreatedAt: msToTime(row.CreatedAtMs),
+		UpdatedAt: msToTime(row.UpdatedAtMs),
+	}
 }
 
-func scanSetting(row settingScanner) (storage.Setting, error) {
-	var setting storage.Setting
-	var value string
-	var createdMS, updatedMS int64
-	if err := row.Scan(&setting.Namespace, &setting.Key, &value, &createdMS, &updatedMS); err != nil {
-		if err == sql.ErrNoRows {
-			return storage.Setting{}, fmt.Errorf("%w", storage.ErrSettingNotFound)
-		}
-		return storage.Setting{}, err
+func settingError(err error) error {
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("%w", storage.ErrSettingNotFound)
 	}
-	setting.Value = json.RawMessage(value)
-	setting.CreatedAt = msToTime(createdMS)
-	setting.UpdatedAt = msToTime(updatedMS)
-	return setting, nil
+	return err
 }
 
 func normalizeSettingRef(namespace, key string) (string, string, error) {

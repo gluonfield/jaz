@@ -1,18 +1,19 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"time"
 
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/mcpdb"
 )
 
 func (s *Store) LoadMCPOAuthToken(serverID string) (mcpconfig.OAuthToken, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var data string
-	err := s.db.QueryRow(`SELECT token_json FROM mcp_oauth_tokens WHERE server_id = ?`, serverID).Scan(&data)
+	data, err := mcpdb.New(s.db).GetMCPOAuthToken(context.Background(), serverID)
 	if err == sql.ErrNoRows {
 		return mcpconfig.OAuthToken{}, false, nil
 	}
@@ -33,16 +34,15 @@ func (s *Store) SaveMCPOAuthToken(serverID string, token mcpconfig.OAuthToken) e
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err = s.db.Exec(`INSERT INTO mcp_oauth_tokens (server_id, token_json, updated_at_ms)
-VALUES (?, ?, ?)
-ON CONFLICT(server_id) DO UPDATE SET token_json = excluded.token_json, updated_at_ms = excluded.updated_at_ms`,
-		serverID, string(data), timeToMs(time.Now().UTC()))
-	return err
+	return mcpdb.New(s.db).UpsertMCPOAuthToken(context.Background(), mcpdb.UpsertMCPOAuthTokenParams{
+		ServerID:    serverID,
+		TokenJson:   string(data),
+		UpdatedAtMs: timeToMs(time.Now().UTC()),
+	})
 }
 
 func (s *Store) DeleteMCPOAuthToken(serverID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err := s.db.Exec(`DELETE FROM mcp_oauth_tokens WHERE server_id = ?`, serverID)
-	return err
+	return mcpdb.New(s.db).DeleteMCPOAuthToken(context.Background(), serverID)
 }

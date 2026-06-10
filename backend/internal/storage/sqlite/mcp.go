@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -9,36 +10,35 @@ import (
 	"time"
 
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/mcpdb"
 )
 
 func (s *Store) ListMCPServers() ([]mcpconfig.Server, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rows, err := s.db.Query(`SELECT id, name, transport, url, enabled, bearer_token_env_var,
-headers_json, env_headers_json, created_at_ms, updated_at_ms
-FROM mcp_servers ORDER BY updated_at_ms DESC`)
+	rows, err := mcpdb.New(s.db).ListMCPServers(context.Background())
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var servers []mcpconfig.Server
-	for rows.Next() {
-		server, err := scanMCPServer(rows)
+	servers := make([]mcpconfig.Server, 0, len(rows))
+	for _, row := range rows {
+		server, err := mcpServerFromDB(row)
 		if err != nil {
 			return nil, err
 		}
 		servers = append(servers, server)
 	}
-	return servers, rows.Err()
+	return servers, nil
 }
 
 func (s *Store) LoadMCPServer(id string) (mcpconfig.Server, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	row := s.db.QueryRow(`SELECT id, name, transport, url, enabled, bearer_token_env_var,
-headers_json, env_headers_json, created_at_ms, updated_at_ms
-FROM mcp_servers WHERE id = ?`, id)
-	return scanMCPServer(row)
+	row, err := mcpdb.New(s.db).GetMCPServer(context.Background(), id)
+	if err != nil {
+		return mcpconfig.Server{}, mcpServerError(err)
+	}
+	return mcpServerFromDB(row)
 }
 
 func (s *Store) CreateMCPServer(input mcpconfig.ServerInput) (mcpconfig.Server, error) {
@@ -64,12 +64,18 @@ func (s *Store) CreateMCPServer(input mcpconfig.ServerInput) (mcpconfig.Server, 
 		UpdatedAt:         now,
 	}
 	s.mu.Lock()
-	_, err = s.db.Exec(`INSERT INTO mcp_servers (
-id, name, transport, url, enabled, bearer_token_env_var, headers_json, env_headers_json,
-created_at_ms, updated_at_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		server.ID, server.Name, server.Transport, server.URL, boolInt(server.Enabled),
-		nullString(server.BearerTokenEnvVar), headers, envHeaders, timeToMs(server.CreatedAt), timeToMs(server.UpdatedAt))
+	err = mcpdb.New(s.db).CreateMCPServer(context.Background(), mcpdb.CreateMCPServerParams{
+		ID:                server.ID,
+		Name:              server.Name,
+		Transport:         server.Transport,
+		Url:               server.URL,
+		Enabled:           boolInt(server.Enabled),
+		BearerTokenEnvVar: nullDBString(server.BearerTokenEnvVar),
+		HeadersJson:       headers,
+		EnvHeadersJson:    envHeaders,
+		CreatedAtMs:       timeToMs(server.CreatedAt),
+		UpdatedAtMs:       timeToMs(server.UpdatedAt),
+	})
 	s.mu.Unlock()
 	if err != nil {
 		return mcpconfig.Server{}, err
@@ -88,17 +94,22 @@ func (s *Store) UpdateMCPServer(id string, input mcpconfig.ServerInput) (mcpconf
 	}
 	now := time.Now().UTC()
 	s.mu.Lock()
-	res, err := s.db.Exec(`UPDATE mcp_servers SET
-name = ?, transport = ?, url = ?, enabled = ?, bearer_token_env_var = ?,
-headers_json = ?, env_headers_json = ?, updated_at_ms = ?
-WHERE id = ?`,
-		input.Name, mcpconfig.TransportStreamableHTTP, input.URL, boolInt(input.Enabled),
-		nullString(input.BearerTokenEnvVar), headers, envHeaders, timeToMs(now), id)
+	changed, err := mcpdb.New(s.db).UpdateMCPServer(context.Background(), mcpdb.UpdateMCPServerParams{
+		Name:              input.Name,
+		Transport:         mcpconfig.TransportStreamableHTTP,
+		Url:               input.URL,
+		Enabled:           boolInt(input.Enabled),
+		BearerTokenEnvVar: nullDBString(input.BearerTokenEnvVar),
+		HeadersJson:       headers,
+		EnvHeadersJson:    envHeaders,
+		UpdatedAtMs:       timeToMs(now),
+		ID:                id,
+	})
 	s.mu.Unlock()
 	if err != nil {
 		return mcpconfig.Server{}, err
 	}
-	if changed, _ := res.RowsAffected(); changed == 0 {
+	if changed == 0 {
 		return mcpconfig.Server{}, fmt.Errorf("mcp server not found: %s", id)
 	}
 	return s.LoadMCPServer(id)
@@ -107,59 +118,60 @@ WHERE id = ?`,
 func (s *Store) DeleteMCPServer(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	res, err := s.db.Exec(`DELETE FROM mcp_servers WHERE id = ?`, id)
+	q := mcpdb.New(s.db)
+	changed, err := q.DeleteMCPServer(context.Background(), id)
 	if err != nil {
 		return err
 	}
-	if changed, _ := res.RowsAffected(); changed == 0 {
+	if changed == 0 {
 		return fmt.Errorf("mcp server not found: %s", id)
 	}
-	_, _ = s.db.Exec(`DELETE FROM mcp_oauth_tokens WHERE server_id = ?`, id)
+	_ = q.DeleteMCPOAuthToken(context.Background(), id)
 	return nil
 }
 
 func (s *Store) SetMCPServerEnabled(id string, enabled bool) (mcpconfig.Server, error) {
 	s.mu.Lock()
-	res, err := s.db.Exec(`UPDATE mcp_servers SET enabled = ?, updated_at_ms = ? WHERE id = ?`,
-		boolInt(enabled), timeToMs(time.Now().UTC()), id)
+	changed, err := mcpdb.New(s.db).SetMCPServerEnabled(context.Background(), mcpdb.SetMCPServerEnabledParams{
+		Enabled:     boolInt(enabled),
+		UpdatedAtMs: timeToMs(time.Now().UTC()),
+		ID:          id,
+	})
 	s.mu.Unlock()
 	if err != nil {
 		return mcpconfig.Server{}, err
 	}
-	if changed, _ := res.RowsAffected(); changed == 0 {
+	if changed == 0 {
 		return mcpconfig.Server{}, fmt.Errorf("mcp server not found: %s", id)
 	}
 	return s.LoadMCPServer(id)
 }
 
-type mcpServerScanner interface {
-	Scan(dest ...any) error
-}
-
-func scanMCPServer(row mcpServerScanner) (mcpconfig.Server, error) {
-	var server mcpconfig.Server
-	var enabled int
-	var bearer sql.NullString
-	var headersJSON, envHeadersJSON string
-	var createdMS, updatedMS int64
-	if err := row.Scan(&server.ID, &server.Name, &server.Transport, &server.URL, &enabled, &bearer,
-		&headersJSON, &envHeadersJSON, &createdMS, &updatedMS); err != nil {
-		if err == sql.ErrNoRows {
-			return mcpconfig.Server{}, fmt.Errorf("mcp server not found")
-		}
+func mcpServerFromDB(row mcpdb.McpServer) (mcpconfig.Server, error) {
+	server := mcpconfig.Server{
+		ID:                row.ID,
+		Name:              row.Name,
+		Transport:         row.Transport,
+		URL:               row.Url,
+		Enabled:           row.Enabled != 0,
+		BearerTokenEnvVar: row.BearerTokenEnvVar.String,
+		CreatedAt:         msToTime(row.CreatedAtMs),
+		UpdatedAt:         msToTime(row.UpdatedAtMs),
+	}
+	if err := json.Unmarshal([]byte(row.HeadersJson), &server.Headers); err != nil {
 		return mcpconfig.Server{}, err
 	}
-	server.Enabled = enabled != 0
-	server.BearerTokenEnvVar = bearer.String
-	server.CreatedAt = msToTime(createdMS)
-	server.UpdatedAt = msToTime(updatedMS)
-	if err := json.Unmarshal([]byte(headersJSON), &server.Headers); err != nil {
-		return mcpconfig.Server{}, err
-	}
-	if err := json.Unmarshal([]byte(envHeadersJSON), &server.EnvHeaders); err != nil {
+	if err := json.Unmarshal([]byte(row.EnvHeadersJson), &server.EnvHeaders); err != nil {
 		return mcpconfig.Server{}, err
 	}
 	return server, nil
+}
+
+func mcpServerError(err error) error {
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("mcp server not found")
+	}
+	return err
 }
 
 func encodeMCPHeaders(input mcpconfig.ServerInput) (string, string, error) {
@@ -180,11 +192,4 @@ func newMCPServerID() string {
 		return fmt.Sprintf("mcp_%d", time.Now().UTC().UnixNano())
 	}
 	return "mcp_" + hex.EncodeToString(b[:])
-}
-
-func boolInt(v bool) int {
-	if v {
-		return 1
-	}
-	return 0
 }

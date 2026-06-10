@@ -24,6 +24,56 @@ type setSessionModelRequest struct {
 	ModelID   string              `json:"modelId"`
 }
 
+type modelValidationKind int
+
+const (
+	modelValidationNone modelValidationKind = iota
+	modelValidationClaude
+	modelValidationCodex
+)
+
+type agentModelPolicy struct {
+	modelConfigID       string
+	effortConfigID      string
+	effortInModelSuffix bool
+	modelValidationKind modelValidationKind
+}
+
+func modelPolicyForAgent(agentName string) agentModelPolicy {
+	switch strings.ToLower(strings.TrimSpace(agentName)) {
+	case AgentClaude:
+		return agentModelPolicy{
+			modelConfigID:       sessionConfigModel,
+			effortConfigID:      claudeSessionConfigEffort,
+			modelValidationKind: modelValidationClaude,
+		}
+	case AgentCodex:
+		return agentModelPolicy{
+			modelConfigID:       sessionConfigModel,
+			effortConfigID:      sessionConfigReasoningEffort,
+			effortInModelSuffix: true,
+			modelValidationKind: modelValidationCodex,
+		}
+	default:
+		return agentModelPolicy{
+			effortConfigID:      sessionConfigReasoningEffort,
+			modelValidationKind: modelValidationNone,
+		}
+	}
+}
+
+func (p agentModelPolicy) usesModelConfigOption() bool {
+	return p.modelConfigID != ""
+}
+
+func (p agentModelPolicy) reasoningEffortConfigID() string {
+	return p.effortConfigID
+}
+
+func (p agentModelPolicy) effortEncodedInModel(model string) bool {
+	return p.effortInModelSuffix && modelHasReasoningEffort(model)
+}
+
 type acpSessionInfo struct {
 	response      acpschema.NewSessionResponse
 	modelState    sessionModelState
@@ -38,19 +88,20 @@ type sessionModelState struct {
 // setConfiguredSessionModel applies the configured model and returns the
 // agent's raw response: it carries refreshed config options (e.g. the effort
 // levels valid for the newly selected model).
-func (m *Manager) setConfiguredSessionModel(ctx context.Context, peer *jsonrpc.Peer, agentName string, sessionID acpschema.SessionID, rawModel string, effort string, state sessionModelState) (json.RawMessage, error) {
-	model := configuredSessionModel(agentName, rawModel, effort)
-	if err := validateConfiguredSessionModel(agentName, rawModel, model, state); err != nil {
+func (m *Manager) setConfiguredSessionModel(ctx context.Context, peer *jsonrpc.Peer, agentName string, sessionID acpschema.SessionID, rawModel string, state sessionModelState) (json.RawMessage, error) {
+	policy := modelPolicyForAgent(agentName)
+	model := configuredSessionModel(rawModel)
+	if err := policy.validateConfiguredSessionModel(agentName, rawModel, model, state); err != nil {
 		return nil, err
 	}
 	model = strings.TrimSpace(model)
 	if model == "" {
 		return nil, nil
 	}
-	if strings.ToLower(strings.TrimSpace(agentName)) == AgentClaude {
+	if policy.usesModelConfigOption() {
 		raw, err := peer.Call(ctx, acpschema.AgentMethodSessionSetConfigOption, acpschema.SetSessionConfigOptionRequest{
 			SessionID: sessionID,
-			ConfigID:  acpschema.SessionConfigID(sessionConfigModel),
+			ConfigID:  acpschema.SessionConfigID(policy.modelConfigID),
 			Value:     acpschema.SessionConfigValueID(model),
 		})
 		if err == nil {
@@ -84,7 +135,7 @@ func (m *Manager) setConfiguredReasoningEffort(ctx context.Context, peer *jsonrp
 	if effort == "" {
 		return nil
 	}
-	configID := reasoningEffortConfigID(agentName)
+	configID := modelPolicyForAgent(agentName).reasoningEffortConfigID()
 	_, err = peer.Call(ctx, acpschema.AgentMethodSessionSetConfigOption, acpschema.SetSessionConfigOptionRequest{
 		SessionID: sessionID,
 		ConfigID:  acpschema.SessionConfigID(configID),
@@ -101,15 +152,16 @@ func (m *Manager) setConfiguredReasoningEffort(ctx context.Context, peer *jsonrp
 }
 
 func (m *Manager) configuredModeState(ctx context.Context, peer *jsonrpc.Peer, agentName string, session acpSessionInfo, cfg AgentConfig) (ModeState, error) {
+	policy := modelPolicyForAgent(agentName)
 	effort, err := provider.NormalizeReasoningEffort(cfg.ReasoningEffort)
 	if err != nil {
 		return ModeState{}, err
 	}
-	modelRaw, err := m.setConfiguredSessionModel(ctx, peer, agentName, session.response.SessionID, cfg.Model, effort, session.modelState)
+	modelRaw, err := m.setConfiguredSessionModel(ctx, peer, agentName, session.response.SessionID, cfg.Model, session.modelState)
 	if err != nil {
 		return ModeState{}, err
 	}
-	if !reasoningEffortEncodedInModel(agentName, cfg.Model, effort) {
+	if !policy.effortEncodedInModel(cfg.Model) {
 		// Valid effort levels depend on the active model (claude's sonnet
 		// drops xhigh); switching models refreshes the advertised list.
 		advertised := session.effortOptions
@@ -251,12 +303,12 @@ func parseConfigOptionValues(raw json.RawMessage) []string {
 	return values
 }
 
-func validateConfiguredSessionModel(agentName, rawModel, effectiveModel string, state sessionModelState) error {
+func (p agentModelPolicy) validateConfiguredSessionModel(agentName, rawModel, effectiveModel string, state sessionModelState) error {
 	if strings.TrimSpace(rawModel) == "" || state.empty() {
 		return nil
 	}
-	switch strings.ToLower(strings.TrimSpace(agentName)) {
-	case AgentClaude:
+	switch p.modelValidationKind {
+	case modelValidationClaude:
 		if state.hasExact(effectiveModel) || state.hasBase(effectiveModel) {
 			return nil
 		}
@@ -268,7 +320,7 @@ func validateConfiguredSessionModel(agentName, rawModel, effectiveModel string, 
 			return nil
 		}
 		return fmt.Errorf("configured acp agent %q model %q is not advertised by the agent; available model ids: %s", agentName, effectiveModel, strings.Join(available, ", "))
-	case AgentCodex:
+	case modelValidationCodex:
 	default:
 		return nil
 	}
@@ -367,25 +419,8 @@ func configuredReasoningEffort(value string) string {
 	return effort
 }
 
-func configuredSessionModel(agentName, rawModel, effort string) string {
-	model := strings.TrimSpace(rawModel)
-	if model == "" || effort == "" || strings.ToLower(strings.TrimSpace(agentName)) != AgentCodex || modelHasReasoningEffort(model) {
-		return model
-	}
-	return model + "/" + effort
-}
-
-func reasoningEffortEncodedInModel(agentName, model, effort string) bool {
-	return strings.ToLower(strings.TrimSpace(agentName)) == AgentCodex && strings.TrimSpace(model) != "" && effort != ""
-}
-
-func reasoningEffortConfigID(agentName string) string {
-	switch strings.ToLower(strings.TrimSpace(agentName)) {
-	case AgentClaude:
-		return claudeSessionConfigEffort
-	default:
-		return sessionConfigReasoningEffort
-	}
+func configuredSessionModel(rawModel string) string {
+	return strings.TrimSpace(rawModel)
 }
 
 func modelHasReasoningEffort(model string) bool {

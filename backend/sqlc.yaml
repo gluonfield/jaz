@@ -2,12 +2,73 @@ version: "2"
 sql:
   - engine: "sqlite"
     schema: "internal/storage/sqlite/migrations"
-    queries: "internal/storage/sqlite/queries/loops"
+    queries: "internal/storage/sqlite/queries/loopdb"
     gen:
       go:
         package: "loopdb"
-        out: "internal/storage/sqlite/generated/loops"
+        out: "internal/storage/sqlite/generated/loopdb"
         sql_package: "database/sql"
         emit_json_tags: true
         emit_interface: true
         emit_empty_slices: true
+        omit_unused_structs: true
+  - engine: "sqlite"
+    schema: "internal/storage/sqlite/migrations"
+    queries: "internal/storage/sqlite/queries/threaddb"
+    gen:
+      go:
+        package: "threaddb"
+        out: "internal/storage/sqlite/generated/threaddb"
+        sql_package: "database/sql"
+        emit_json_tags: true
+        emit_interface: true
+        emit_empty_slices: true
+        omit_unused_structs: true
+  - engine: "sqlite"
+    schema: "internal/storage/sqlite/migrations"
+    queries: "internal/storage/sqlite/queries/messagedb"
+    gen:
+      go:
+        package: "messagedb"
+        out: "internal/storage/sqlite/generated/messagedb"
+        sql_package: "database/sql"
+        emit_json_tags: true
+        emit_interface: true
+        emit_empty_slices: true
+        omit_unused_structs: true
+  - engine: "sqlite"
+    schema: "internal/storage/sqlite/migrations"
+    queries: "internal/storage/sqlite/queries/eventdb"
+    gen:
+      go:
+        package: "eventdb"
+        out: "internal/storage/sqlite/generated/eventdb"
+        sql_package: "database/sql"
+        emit_json_tags: true
+        emit_interface: true
+        emit_empty_slices: true
+        omit_unused_structs: true
+  - engine: "sqlite"
+    schema: "internal/storage/sqlite/migrations"
+    queries: "internal/storage/sqlite/queries/settingsdb"
+    gen:
+      go:
+        package: "settingsdb"
+        out: "internal/storage/sqlite/generated/settingsdb"
+        sql_package: "database/sql"
+        emit_json_tags: true
+        emit_interface: true
+        emit_empty_slices: true
+        omit_unused_structs: true
+  - engine: "sqlite"
+    schema: "internal/storage/sqlite/migrations"
+    queries: "internal/storage/sqlite/queries/mcpdb"
+    gen:
+      go:
+        package: "mcpdb"
+        out: "internal/storage/sqlite/generated/mcpdb"
+        sql_package: "database/sql"
+        emit_json_tags: true
+        emit_interface: true
+        emit_empty_slices: true
+        omit_unused_structs: true

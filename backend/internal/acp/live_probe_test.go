@@ -110,14 +110,15 @@ func TestLiveACPProbe(t *testing.T) {
 
 func probeApplyConfiguredSessionOptions(t *testing.T, ctx context.Context, conn jsonrpc.MessageConn, agent string, sessionID acpschema.SessionID) {
 	t.Helper()
+	policy := modelPolicyForAgent(agent)
 	rawModel := strings.TrimSpace(os.Getenv("ACP_PROBE_MODEL"))
 	effort := strings.TrimSpace(os.Getenv("ACP_PROBE_REASONING_EFFORT"))
 	if rawModel != "" {
-		model := configuredSessionModel(agent, rawModel, effort)
-		if strings.ToLower(strings.TrimSpace(agent)) == AgentClaude {
+		model := configuredSessionModel(rawModel)
+		if policy.usesModelConfigOption() {
 			setModel := probeCall(t, ctx, conn, "10", acpschema.AgentMethodSessionSetConfigOption, acpschema.SetSessionConfigOptionRequest{
 				SessionID: sessionID,
-				ConfigID:  acpschema.SessionConfigID(sessionConfigModel),
+				ConfigID:  acpschema.SessionConfigID(policy.modelConfigID),
 				Value:     acpschema.SessionConfigValueID(model),
 			})
 			t.Logf("session/set_config_option(model=%s) result: %s", model, setModel.Result)
@@ -129,8 +130,8 @@ func probeApplyConfiguredSessionOptions(t *testing.T, ctx context.Context, conn 
 			t.Logf("session/set_model(%s) result: %s", model, setModel.Result)
 		}
 	}
-	if effort != "" && !reasoningEffortEncodedInModel(agent, rawModel, effort) {
-		configID := reasoningEffortConfigID(agent)
+	if effort != "" && !policy.effortEncodedInModel(rawModel) {
+		configID := policy.reasoningEffortConfigID()
 		setEffort := probeCall(t, ctx, conn, "11", acpschema.AgentMethodSessionSetConfigOption, acpschema.SetSessionConfigOptionRequest{
 			SessionID: sessionID,
 			ConfigID:  acpschema.SessionConfigID(configID),
