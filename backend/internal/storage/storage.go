@@ -21,6 +21,13 @@ const (
 	SourceLoopRun = "loop_run"
 )
 
+const (
+	BlockTypeText       = "text"
+	BlockTypeReasoning  = "reasoning"
+	BlockTypeTool       = "tool"
+	BlockTypeAttachment = "attachment"
+)
+
 func SessionStatusForACPState(state string) string {
 	switch state {
 	case "starting", "running":
@@ -154,6 +161,8 @@ type SessionFilter struct {
 	SourceType      string
 	SourceID        string
 	IncludeSourced  bool
+	// UpdatedSince selects only sessions updated strictly after this time.
+	UpdatedSince time.Time
 	// Archived selects only archived sessions; by default they are excluded.
 	Archived bool
 	Limit    int
@@ -182,6 +191,9 @@ func SessionMatchesFilter(session Session, filter SessionFilter) bool {
 		return false
 	}
 	if filter.SourceType == "" && filter.SourceID == "" && !filter.IncludeSourced && session.SourceType != "" {
+		return false
+	}
+	if !filter.UpdatedSince.IsZero() && !session.UpdatedAt.After(filter.UpdatedSince) {
 		return false
 	}
 	return session.Archived == filter.Archived

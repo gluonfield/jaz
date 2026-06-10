@@ -1,10 +1,10 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
-import type { ComposerSendOptions } from '@/components/session/Composer'
 import { useToast } from '@/components/ui/toast'
 import { mutateSessionQueue, type QueueMutation } from '@/lib/api/sessions'
 import type { Session, SessionMessages } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
+import type { SendMessageOptions } from '@/lib/sendMessage'
 
 export function useSessionQueue({
   sessionId,
@@ -17,7 +17,7 @@ export function useSessionQueue({
   session?: Session
   acpState?: string
   streaming: boolean
-  onSend: (text: string, options?: ComposerSendOptions) => void
+  onSend: (text: string, options?: SendMessageOptions) => void
 }) {
   const queryClient = useQueryClient()
   const toast = useToast()
@@ -47,7 +47,7 @@ export function useSessionQueue({
     toast(`Queue update failed: ${(error as Error).message}`, 'danger')
   }, [toast])
 
-  const send = useCallback((text: string, options: ComposerSendOptions = {}) => {
+  const send = useCallback((text: string, options: SendMessageOptions = {}) => {
     if (running) {
       if (options.files?.length) {
         toast("Attachments can't be queued.", 'danger')

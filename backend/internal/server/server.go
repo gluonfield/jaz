@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/acp"
@@ -41,21 +42,16 @@ type MCPRuntime interface {
 }
 
 type Server struct {
-	Agent  *agent.Agent
-	Store  storage.Store
-	ACP    ACPManager
-	MCP    MCPRuntime
-	Locks  *sessionlock.Locks
-	Events *sessionevents.Bus
-	Loops  *loops.Service
-	STT    voice.STT
-	TTS    voice.TTS
-	// NativeModel* captures configured model metadata for native Jaz sessions.
-	// The provider object only executes requests; it does not own config metadata.
-	NativeModelProvider   string
-	NativeModel           string
-	NativeReasoningEffort string
-	AgentCatalog          acp.AgentCatalog
+	Agent        *agent.Agent
+	Store        storage.Store
+	ACP          ACPManager
+	MCP          MCPRuntime
+	Locks        *sessionlock.Locks
+	Events       *sessionevents.Bus
+	Loops        *loops.Service
+	STT          voice.STT
+	TTS          voice.TTS
+	AgentCatalog acp.AgentCatalog
 	// Prompts derives the system prompt fresh per turn from disk, so skill
 	// and prompt-file edits apply without a restart.
 	Prompts *coordinator.Builder
@@ -128,7 +124,11 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		s.createACPSession(w, req)
 		return
 	}
-	input := s.nativeSessionDefaults()
+	input, err := s.nativeSessionDefaults()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
 	input.Slug = req.Slug
 	input.Title = req.Title
 	session, err := s.Store.CreateSession(input)
@@ -136,7 +136,7 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, session)
+	writeJSON(w, http.StatusOK, canonicalSessionResponse(session))
 }
 
 // createACPSession spawns the agent process and its session synchronously, so
@@ -167,7 +167,7 @@ func (s *Server) createACPSession(w http.ResponseWriter, req createSessionReques
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, result.Session)
+	writeJSON(w, http.StatusOK, canonicalSessionResponse(result.Session))
 }
 
 func (s *Server) handleListACPAgents(w http.ResponseWriter, r *http.Request) {
@@ -208,7 +208,7 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, session)
+		writeJSON(w, http.StatusOK, canonicalSessionResponse(session))
 		return
 	}
 	limit := 0
@@ -227,18 +227,52 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		Archived:        query.Get("archived") == "true",
 		Limit:           limit,
 	}
+	if raw := strings.TrimSpace(query.Get("updated_since")); raw != "" {
+		parsed, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("updated_since must be RFC3339: %w", err))
+			return
+		}
+		filter.UpdatedSince = parsed
+	}
 	sessions, err := s.Store.ListSessions(filter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"sessions": sessions})
+	writeJSON(w, http.StatusOK, map[string]any{"sessions": canonicalSessionResponses(sessions)})
+}
+
+func canonicalSessionResponses(sessions []storage.Session) []storage.Session {
+	out := make([]storage.Session, 0, len(sessions))
+	for _, session := range sessions {
+		out = append(out, canonicalSessionResponse(session))
+	}
+	return out
+}
+
+func canonicalSessionResponse(session storage.Session) storage.Session {
+	if session.Runtime != storage.RuntimeACP || session.RuntimeRef == nil {
+		return session
+	}
+	ref := *session.RuntimeRef
+	canonical := acp.CanonicalAgentName(ref.Agent)
+	if canonical == "" {
+		session.RuntimeRef = &ref
+		return session
+	}
+	if session.ModelProvider != "" && acp.CanonicalAgentName(session.ModelProvider) == canonical {
+		session.ModelProvider = canonical
+	}
+	ref.Agent = canonical
+	session.RuntimeRef = &ref
+	return session
 }
 
 func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
 	sessionRef, action, hasAction := strings.Cut(rest, "/")
-	if sessionRef == "" || (hasAction && action != "messages" && action != "events") {
+	if sessionRef == "" || (hasAction && action != "messages" && action != "events" && action != "transcript") {
 		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
 		return
 	}
@@ -248,11 +282,15 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !hasAction {
-		writeJSON(w, http.StatusOK, session)
+		writeJSON(w, http.StatusOK, canonicalSessionResponse(session))
 		return
 	}
 	if action == "events" {
 		s.streamSessionEvents(w, r, session.ID)
+		return
+	}
+	if action == "transcript" {
+		s.writeSessionTranscript(w, r, session)
 		return
 	}
 	var messages any
@@ -282,7 +320,7 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp := map[string]any{
-		"session":  session,
+		"session":  canonicalSessionResponse(session),
 		"messages": messages,
 		"activity": activity,
 		"events":   transcriptEvents,
@@ -301,19 +339,19 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 func (s *Server) acpSnapshot(session storage.Session) (storage.ACPState, bool) {
 	if s.ACP != nil {
 		if job, err := s.ACP.Status(session.ID); err == nil && job.State != "not_running" {
-			return acpJobState(job), true
+			return canonicalACPStateResponse(acpJobState(job)), true
 		}
 	}
 	if state, err := s.Store.LoadACPState(session.ID); err == nil {
-		return state, true
+		return canonicalACPStateResponse(state), true
 	}
 	if s.ACP != nil {
 		if job, err := s.ACP.Status(session.ID); err == nil {
-			return acpJobState(job), true
+			return canonicalACPStateResponse(acpJobState(job)), true
 		}
 	}
 	if session.Runtime == storage.RuntimeACP {
-		return acpStateFromSession(session), true
+		return canonicalACPStateResponse(acpStateFromSession(session)), true
 	}
 	return storage.ACPState{}, false
 }
@@ -338,7 +376,7 @@ func (s *Server) acpChildSnapshots(parentID string) []storage.ACPState {
 	if s.ACP != nil {
 		for _, job := range s.ACP.List() {
 			if job.ParentID == parentID && job.ParentVisible {
-				byID[job.ID] = acpJobState(job)
+				byID[job.ID] = canonicalACPStateResponse(acpJobState(job))
 			}
 		}
 	}
@@ -353,6 +391,7 @@ func (s *Server) acpChildSnapshots(parentID string) []storage.ACPState {
 }
 
 func applyACPStateResponse(resp map[string]any, state storage.ACPState) {
+	state = canonicalACPStateResponse(state)
 	resp["acp_state"] = state.State
 	resp["acp_assistant"] = state.Assistant
 	resp["acp_thought"] = state.Thought
@@ -361,6 +400,13 @@ func applyACPStateResponse(resp map[string]any, state storage.ACPState) {
 	resp["acp_tool_calls"] = state.ToolCalls
 	resp["acp_permissions"] = state.Permissions
 	resp["acp_error"] = state.Error
+}
+
+func canonicalACPStateResponse(state storage.ACPState) storage.ACPState {
+	if canonical := acp.CanonicalAgentName(state.ACPAgent); canonical != "" {
+		state.ACPAgent = canonical
+	}
+	return state
 }
 
 func acpJobState(job acp.Job) storage.ACPState {
@@ -385,7 +431,7 @@ func acpJobState(job acp.Job) storage.ACPState {
 		Slug:        job.Slug,
 		Title:       job.Title,
 		ParentID:    job.ParentID,
-		ACPAgent:    job.ACPAgent,
+		ACPAgent:    acp.CanonicalAgentName(job.ACPAgent),
 		ACPSession:  job.ACPSession,
 		Cwd:         job.Cwd,
 		State:       job.State,
@@ -421,6 +467,7 @@ func acpModes(in []acp.ModeSnapshot) []sessionevents.ACPMode {
 }
 
 func acpStateFromSession(session storage.Session) storage.ACPState {
+	session = canonicalSessionResponse(session)
 	state := storage.ACPState{
 		ID:        session.ID,
 		Slug:      session.Slug,
@@ -482,7 +529,7 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		session.Archived = action == "archive"
-		writeJSON(w, http.StatusOK, session)
+		writeJSON(w, http.StatusOK, canonicalSessionResponse(session))
 		return
 	}
 	if action == "attachments" {

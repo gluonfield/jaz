@@ -9,7 +9,6 @@ import (
 const (
 	ProviderOpenRouter = "openrouter"
 	ProviderOpenAI     = "openai"
-	ProviderAnthropic  = "anthropic"
 	ProviderMock       = "mock"
 )
 
@@ -43,15 +42,6 @@ func NativeProviders() []NativeProvider {
 			DefaultReasoningEffort: "medium",
 			Implemented:            true,
 		},
-		{
-			ID:                     ProviderAnthropic,
-			Label:                  "Anthropic",
-			BaseURL:                "https://api.anthropic.com/v1",
-			APIKeyEnv:              "ANTHROPIC_API_KEY",
-			DefaultModel:           "claude-sonnet-4-5",
-			DefaultReasoningEffort: "medium",
-			Implemented:            true,
-		},
 	}
 }
 
@@ -69,9 +59,6 @@ func NormalizeNativeProviderID(id string) (string, error) {
 	id = strings.ToLower(strings.TrimSpace(id))
 	if id == "" {
 		return "", nil
-	}
-	if id == ProviderMock {
-		return id, nil
 	}
 	if _, ok := NativeProviderByID(id); ok {
 		return id, nil

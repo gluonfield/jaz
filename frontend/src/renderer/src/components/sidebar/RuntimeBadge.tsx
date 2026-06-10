@@ -25,8 +25,10 @@ export function RuntimeBadge({
   // "Codex" / "Claude Code" rather than a raw identifier.
   const name = isACP ? agentLabel(session.runtime_ref?.agent) : session.model_provider || 'native'
   const title = fullModelLabel ? `${name} · ${fullModelLabel}` : name
-  // The accent is reserved for agent-backed sessions; native stays neutral.
-  const pillTone = isACP ? 'bg-accent-soft text-accent-strong' : 'bg-surface-2 text-ink-2'
+  // Monochrome palette: agent-backed sessions get the emphasized neutral fill
+  // (the same pill the loops list uses for its active state); native stays a
+  // quieter neutral. No brand hue — that clashed with the rest of the UI.
+  const pillTone = isACP ? 'bg-primary-soft text-primary-strong' : 'bg-surface-2 text-ink-2'
 
   return (
     <span title={title} className={`inline-flex min-w-0 items-center gap-1.5 ${className}`}>

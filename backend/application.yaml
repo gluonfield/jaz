@@ -6,9 +6,6 @@ jaz:
     dbpath: ""
     scheduler: true
 
-providers:
-  default: "openrouter"
-
 openrouter:
   apikey: ""
 

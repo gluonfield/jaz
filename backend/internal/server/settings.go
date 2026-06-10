@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/provider"
@@ -40,7 +39,7 @@ func (s *Server) handleAgentSettings(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		normalized, err := agentsettings.NormalizeAgentDefaults(input, s.acpAgentCatalog(), s.NativeModelProvider)
+		normalized, err := agentsettings.NormalizeAgentDefaults(input, s.acpAgentCatalog())
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
@@ -81,11 +80,7 @@ func (s *Server) agentSettingsResponse(defaults agentsettings.AgentDefaults) age
 }
 
 func (s *Server) agentSettingsSeed() agentsettings.AgentDefaults {
-	return agentsettings.AgentDefaultsFromCatalog(agentsettings.NativeAgentDefaults{
-		ModelProvider:   strings.TrimSpace(s.NativeModelProvider),
-		Model:           strings.TrimSpace(s.NativeModel),
-		ReasoningEffort: strings.TrimSpace(s.NativeReasoningEffort),
-	}, s.acpAgentCatalog())
+	return agentsettings.AgentDefaultsFromCatalog(s.acpAgentCatalog())
 }
 
 func (s *Server) allACPAgentNames() []string {

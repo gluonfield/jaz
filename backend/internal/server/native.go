@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -97,7 +98,7 @@ func (s *Server) runNativeSessionWithClaim(ctx context.Context, session storage.
 	s.turnCancels.Store(session.ID, cancelTurn)
 	defer s.turnCancels.Delete(session.ID)
 
-	messages, transient, modelMessage, err := s.nativeRequestMessages(session.ID, message, attachments, voiceMode)
+	turn, err := s.nativeRequestMessages(session.ID, message, attachments, voiceMode)
 	if err != nil {
 		send(agent.StreamEvent{Type: agent.StreamError, Error: err.Error()})
 		send(agent.StreamEvent{Type: agent.StreamDone})
@@ -113,10 +114,10 @@ func (s *Server) runNativeSessionWithClaim(ctx context.Context, session storage.
 		Provider:        session.ModelProvider,
 		Model:           session.Model,
 		ReasoningEffort: session.ReasoningEffort,
-		Messages:        messages,
+		Messages:        turn.Messages,
 	}) {
 		if len(event.Messages) > 0 {
-			toSave, reasoning := stripTransientSystem(cleanNativeSnapshotUser(event.Messages, modelMessage, message), event.ReasoningByMessage, transient)
+			toSave, reasoning := stripTransientSystem(turn.storageSnapshot(event.Messages), event.ReasoningByMessage, turn.Transient)
 			var err error
 			if store, ok := s.Store.(reasoningMessageStore); ok && len(reasoning) > 0 {
 				err = store.SaveMessagesWithReasoning(session.ID, toSave, reasoning)
@@ -171,7 +172,9 @@ func (s *Server) beginNativeTurn(session storage.Session, message string, claime
 	if session.Runtime == "" {
 		session.Runtime = storage.RuntimeNative
 	}
-	s.applyNativeSessionDefaults(&session)
+	if err := s.applyNativeSessionDefaults(&session); err != nil {
+		return session, storage.StatusError, err
+	}
 	if session.Title == "" {
 		session.Title = titleFromMessage(message)
 	}
@@ -181,25 +184,24 @@ func (s *Server) beginNativeTurn(session storage.Session, message string, claime
 	return session, storage.StatusRunning, nil
 }
 
-func (s *Server) nativeSessionDefaults() storage.CreateSession {
-	if defaults, ok := s.agentDefaults(); ok {
-		return storage.CreateSession{
-			Runtime:         storage.RuntimeNative,
-			ModelProvider:   strings.TrimSpace(defaults.Native.ModelProvider),
-			Model:           strings.TrimSpace(defaults.Native.Model),
-			ReasoningEffort: strings.TrimSpace(defaults.Native.ReasoningEffort),
-		}
+func (s *Server) nativeSessionDefaults() (storage.CreateSession, error) {
+	defaults, err := s.agentDefaults()
+	if err != nil {
+		return storage.CreateSession{}, err
 	}
 	return storage.CreateSession{
 		Runtime:         storage.RuntimeNative,
-		ModelProvider:   strings.TrimSpace(s.NativeModelProvider),
-		Model:           s.nativeModel(),
-		ReasoningEffort: strings.TrimSpace(s.NativeReasoningEffort),
-	}
+		ModelProvider:   strings.TrimSpace(defaults.Native.ModelProvider),
+		Model:           strings.TrimSpace(defaults.Native.Model),
+		ReasoningEffort: strings.TrimSpace(defaults.Native.ReasoningEffort),
+	}, nil
 }
 
-func (s *Server) applyNativeSessionDefaults(session *storage.Session) {
-	defaults := s.nativeSessionDefaults()
+func (s *Server) applyNativeSessionDefaults(session *storage.Session) error {
+	defaults, err := s.nativeSessionDefaults()
+	if err != nil {
+		return err
+	}
 	if defaults.ModelProvider != "" && session.ModelProvider == "" {
 		session.ModelProvider = defaults.ModelProvider
 	}
@@ -209,37 +211,53 @@ func (s *Server) applyNativeSessionDefaults(session *storage.Session) {
 	if defaults.ReasoningEffort != "" && session.ReasoningEffort == "" {
 		session.ReasoningEffort = defaults.ReasoningEffort
 	}
+	return nil
 }
 
-func (s *Server) nativeModel() string {
-	if defaults, ok := s.agentDefaults(); ok && strings.TrimSpace(defaults.Native.Model) != "" {
-		return strings.TrimSpace(defaults.Native.Model)
-	}
-	if model := strings.TrimSpace(s.NativeModel); model != "" {
-		return model
-	}
-	if s.Agent == nil {
-		return ""
-	}
-	return strings.TrimSpace(s.Agent.Model)
-}
-
-func (s *Server) agentDefaults() (agentsettings.AgentDefaults, bool) {
+func (s *Server) agentDefaults() (agentsettings.AgentDefaults, error) {
 	store, ok := s.Store.(storage.SettingsStorage)
 	if !ok {
-		return agentsettings.AgentDefaults{}, false
+		return agentsettings.AgentDefaults{}, fmt.Errorf("settings store is not configured")
 	}
 	defaults, err := agentsettings.LoadAgentDefaults(store)
 	if err != nil {
-		return agentsettings.AgentDefaults{}, false
+		if !errors.Is(err, storage.ErrSettingNotFound) {
+			return agentsettings.AgentDefaults{}, err
+		}
+		seed := s.agentSettingsSeed()
+		if _, err := agentsettings.SaveAgentDefaults(store, seed); err != nil {
+			return agentsettings.AgentDefaults{}, err
+		}
+		defaults = seed
 	}
-	return defaults, true
+	native, err := agentsettings.NormalizeNativeDefaults(defaults.Native)
+	if err != nil {
+		return agentsettings.AgentDefaults{}, err
+	}
+	defaults.Native = native
+	return defaults, nil
 }
 
-func (s *Server) nativeRequestMessages(sessionID, message string, attachments []storage.Attachment, voiceMode bool) ([]provider.Message, []string, string, error) {
+type nativeTurnRequest struct {
+	Messages         []provider.Message
+	Transient        []string
+	userMessageIndex int
+	displayUser      provider.Message
+}
+
+func (r nativeTurnRequest) storageSnapshot(messages []provider.Message) []provider.Message {
+	if r.userMessageIndex < 0 || r.userMessageIndex >= len(messages) {
+		return messages
+	}
+	out := append([]provider.Message(nil), messages...)
+	out[r.userMessageIndex] = r.displayUser
+	return out
+}
+
+func (s *Server) nativeRequestMessages(sessionID, message string, attachments []storage.Attachment, voiceMode bool) (nativeTurnRequest, error) {
 	messages, err := s.Store.LoadMessages(sessionID)
 	if err != nil {
-		return nil, nil, "", err
+		return nativeTurnRequest{}, err
 	}
 	// The system prompt is derived fresh for every turn (skills, SOUL.md and
 	// friends are re-read from disk) and never persisted. Older sessions stored
@@ -258,25 +276,15 @@ func (s *Server) nativeRequestMessages(sessionID, message string, attachments []
 		messages = append(messages, provider.SystemMessage(voiceModeNote))
 		transient = append(transient, voiceModeNote)
 	}
-	modelMessage := messageWithAttachmentLinks(message, attachments)
-	messages = append(messages, provider.UserMessage(modelMessage))
-	if err := appendUserMessage(s.Store, sessionID, message, attachments); err != nil {
-		return nil, nil, "", err
+	userMessageIndex := len(messages)
+	messages = append(messages, provider.UserMessage(nativeMessageWithAttachmentLinks(message, attachments)))
+	if err := storage.AppendUserMessage(s.Store, sessionID, message, attachments); err != nil {
+		return nativeTurnRequest{}, err
 	}
-	return messages, transient, modelMessage, nil
-}
-
-func cleanNativeSnapshotUser(messages []provider.Message, modelMessage, displayMessage string) []provider.Message {
-	if modelMessage == displayMessage {
-		return messages
-	}
-	out := append([]provider.Message(nil), messages...)
-	for i := len(out) - 1; i >= 0; i-- {
-		if provider.MessageRole(out[i]) != "user" || provider.MessageContent(out[i]) != modelMessage {
-			continue
-		}
-		out[i] = provider.UserMessage(displayMessage)
-		return out
-	}
-	return out
+	return nativeTurnRequest{
+		Messages:         messages,
+		Transient:        transient,
+		userMessageIndex: userMessageIndex,
+		displayUser:      provider.UserMessage(message),
+	}, nil
 }
