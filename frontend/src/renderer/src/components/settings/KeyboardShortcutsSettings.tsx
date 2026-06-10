@@ -30,7 +30,7 @@ export function KeyboardShortcutsSettings() {
         <p className="mt-0.5 text-[13px] text-ink-2">Built-in shortcuts for common actions.</p>
       </div>
 
-      <div className="mt-4 overflow-hidden rounded-control bg-surface">
+      <div className="mt-4 overflow-hidden rounded-card bg-surface">
         <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-border px-3 py-2.5 text-[12px] font-medium text-ink-3">
           <span>Command</span>
           <span>Keybinding</span>

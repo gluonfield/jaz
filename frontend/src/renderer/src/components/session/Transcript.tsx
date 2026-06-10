@@ -60,7 +60,7 @@ function MessageAttachments({ message }: { message: ChatMessage }) {
       {attachments.map((attachment) => (
         <span
           key={attachment.id}
-          className="inline-flex max-w-full items-center gap-1.5 rounded-control bg-bg px-2 py-1 text-xs text-ink-2"
+          className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-bg px-2.5 py-1 text-xs text-ink-2"
           title={attachment.server_path ?? attachment.uri}
         >
           <FileText size={13} className="shrink-0 text-primary" />
@@ -259,7 +259,7 @@ function ToolDisclosure({ label, calls, active = false }: { label: string; calls
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="inline-flex min-h-7 items-center gap-1.5 rounded-control px-1 text-left font-mono text-[12px] text-ink-3 transition-colors hover:text-ink"
+        className="inline-flex min-h-7 items-center gap-1.5 rounded-full px-1 text-left font-mono text-[12px] text-ink-3 transition-colors hover:text-ink"
       >
         <ChevronRight
           size={12}
@@ -372,7 +372,6 @@ function PlanChecklist({
           <IconButton
             variant="ghost"
             size="md"
-            round
             aria-expanded={expanded}
             aria-label={expanded ? 'Collapse plan' : 'Expand plan'}
             title={expanded ? 'Collapse plan' : 'Expand plan'}
@@ -612,7 +611,7 @@ function WorkSection({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="inline-flex min-h-7 items-center gap-1.5 self-start rounded-control px-1 text-left text-[12px] font-medium text-ink-3 transition-colors hover:text-ink"
+        className="inline-flex min-h-7 items-center gap-1.5 self-start rounded-full px-1 text-left text-[12px] font-medium text-ink-3 transition-colors hover:text-ink"
       >
         <ChevronRight
           size={12}

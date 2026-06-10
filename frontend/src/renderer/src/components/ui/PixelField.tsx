@@ -390,7 +390,7 @@ export function PixelField({
     const rainbow = Array.from({ length: 5 }, (_, i) =>
       cssToRgb(styles.getPropertyValue(`--color-rainbow-${i + 1}`).trim(), sctx),
     )
-    const sage = cssToRgb(styles.getPropertyValue('--color-primary').trim(), sctx)
+    const brand = cssToRgb(styles.getPropertyValue('--color-primary').trim(), sctx)
     gl.uniform3fv(U('uRain[0]'), rainbow.flat())
 
     /* ---- particle buffers ---- */
@@ -403,8 +403,8 @@ export function PixelField({
       seedArr[i * 4 + 1] = Math.random()
       seedArr[i * 4 + 2] = rand(0.3, 1.2)
       seedArr[i * 4 + 3] = Math.random()
-      // mostly sage, the rainbow ramp as confetti, with lightness jitter
-      const rgb = Math.random() < 0.62 ? sage : rainbow[Math.floor(rand(0, 5))]
+      // mostly brand cobalt, the rainbow ramp as confetti, with lightness jitter
+      const rgb = Math.random() < 0.62 ? brand : rainbow[Math.floor(rand(0, 5))]
       const jitter = rand(0.82, 1.18)
       colorArr[i * 3] = Math.min(1, rgb[0] * jitter)
       colorArr[i * 3 + 1] = Math.min(1, rgb[1] * jitter)

@@ -105,14 +105,14 @@ function RootLayout() {
               aria-label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
               title={`${sidebarOpen ? 'Hide' : 'Show'} sidebar (⌘S)`}
               onClick={() => setSidebarOpen((open) => !open)}
-              className={`grid size-8 cursor-pointer place-items-center rounded-control text-ink-2 transition-all duration-200 hover:bg-surface-2 hover:text-ink ${
+              className={`grid size-8 cursor-pointer place-items-center rounded-full text-ink-2 transition-all duration-200 hover:bg-surface-2 hover:text-ink ${
                 sidebarOpen ? '' : 'ml-[64px]'
               }`}
             >
               {sidebarOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
             </button>
             {/* slot routes portal into (e.g. the session runtime tag) */}
-            <div id="titlebar-slot" className="flex items-center" />
+            <div id="titlebar-slot" className="flex items-center gap-1.5" />
           </div>
           {/* light crossfade between routes; state-only, never blocking */}
           <motion.div

@@ -85,7 +85,7 @@ function LoopRow({ loop }: { loop: Loop }) {
     <Link
       to="/loops/$loopId"
       params={{ loopId: loop.id }}
-      className="group flex items-center gap-3 rounded-control px-2 py-2.5 transition-colors duration-150 hover:bg-surface"
+      className="group flex items-center gap-3 rounded-card px-3 py-2.5 transition-colors duration-150 hover:bg-surface"
     >
       <StatusDot loop={loop} />
       <div className="min-w-0 flex-1">

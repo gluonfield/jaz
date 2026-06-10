@@ -3,6 +3,7 @@ import { ChevronDown, Save, Terminal } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/Button'
+import { ModelCombobox } from '@/components/ui/ModelCombobox'
 import { Select } from '@/components/ui/Select'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { Switch } from '@/components/ui/Switch'
@@ -10,10 +11,11 @@ import { useToast } from '@/components/ui/toast'
 import { agentLabel } from '@/lib/agentLabel'
 import { agentSettingsQuery, updateAgentSettings } from '@/lib/api/settings'
 import type { AgentSettings as AgentSettingsData } from '@/lib/api/types'
+import { acpAgentModelSuggestions, OPENAI_MODELS, openRouterModelsQuery } from '@/lib/models'
 import { keys } from '@/lib/query/keys'
 
 const inputClass =
-  'h-7 w-full rounded-control bg-ink/10 px-2.5 text-[12px] text-ink outline-none transition duration-150 placeholder:text-ink-3 focus:bg-ink/15 focus:ring-1 focus:ring-ink/25 disabled:opacity-50'
+  'h-7 w-full rounded-full bg-ink/10 px-3 text-[12px] text-ink outline-none transition duration-150 placeholder:text-ink-3 focus:bg-ink/15 focus:ring-1 focus:ring-ink/25 disabled:opacity-50'
 
 const rowControlClass = 'w-full md:w-[320px]'
 
@@ -79,6 +81,12 @@ export function AgentSettings() {
     () => settingsKey(draft) !== settingsKey(settings.data ?? null),
     [draft, settings.data],
   )
+  const openRouterModels = useQuery({
+    ...openRouterModelsQuery,
+    enabled: draft?.native.model_provider === 'openrouter',
+  })
+  const nativeModelSuggestions =
+    draft?.native.model_provider === 'openrouter' ? (openRouterModels.data ?? []) : OPENAI_MODELS
   const invalid = draft
     ? (draft.native.model_provider ?? '').trim() === '' ||
       draft.native.model.trim() === '' ||
@@ -115,7 +123,7 @@ export function AgentSettings() {
           <div className="flex flex-col gap-4">
             <div>
               <p className="pb-2 text-[12px] font-medium text-ink-2">Native</p>
-              <div className="overflow-hidden rounded-control bg-surface">
+              <div className="overflow-hidden rounded-card bg-surface">
                 <SettingsRow
                   title="Provider"
                   description="API provider used for native threads."
@@ -152,16 +160,19 @@ export function AgentSettings() {
                   />
                 </SettingsRow>
                 <SettingsRow title="Model" description="Default model for native threads.">
-                  <input
+                  <ModelCombobox
                     value={draft.native.model}
+                    suggestions={nativeModelSuggestions}
+                    loading={openRouterModels.isLoading}
                     disabled={save.isPending}
-                    onChange={(event) =>
+                    onChange={(model) =>
                       setDraft({
                         ...draft,
-                        native: { ...draft.native, model: event.target.value },
+                        native: { ...draft.native, model },
                       })
                     }
-                    className={`${inputClass} ${rowControlClass}`}
+                    aria-label="Native model"
+                    className={rowControlClass}
                   />
                 </SettingsRow>
                 <SettingsRow
@@ -235,7 +246,7 @@ function ACPAgentRow({
     })
 
   return (
-    <div className="overflow-hidden rounded-control bg-surface">
+    <div className="overflow-hidden rounded-card bg-surface">
       <div className="flex items-center gap-2 px-3 py-3">
         <span className="min-w-0 truncate text-[13px] font-medium text-ink" title={agent}>
           {agentLabel(agent)}
@@ -254,11 +265,13 @@ function ACPAgentRow({
       </SettingsRow>
 
       <SettingsRow title="Model" description="Model copied into new threads for this client.">
-        <input
+        <ModelCombobox
           value={current.model ?? ''}
+          suggestions={acpAgentModelSuggestions(agent)}
           disabled={controlsDisabled}
-          onChange={(event) => update({ model: event.target.value })}
-          className={`${inputClass} ${rowControlClass}`}
+          onChange={(model) => update({ model })}
+          aria-label={`${agentLabel(agent)} model`}
+          className={rowControlClass}
         />
       </SettingsRow>
 

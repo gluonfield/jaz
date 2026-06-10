@@ -10,6 +10,10 @@ export function createSession(
     agent?: string
     directory?: string
     worktree?: boolean
+    // Per-session overrides of the Settings > Agents defaults; model_provider
+    // only applies to native sessions.
+    model_provider?: string
+    model?: string
   } = {},
 ): Promise<Session> {
   return post<Session>('/v1/sessions', input)

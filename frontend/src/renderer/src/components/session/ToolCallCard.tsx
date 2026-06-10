@@ -45,7 +45,7 @@ export function ToolCallCard({
         {name}
         {pending ? (
           <span className="ml-1.5 inline-flex items-center gap-1 text-[11px]">
-            <span className="size-1.5 animate-pulse rounded-full bg-running" />
+            <span className="jaz-shimmer size-1.5 rounded-full" />
             running
           </span>
         ) : null}

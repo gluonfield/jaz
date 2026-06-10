@@ -4,12 +4,12 @@ type Variant = 'primary' | 'secondary' | 'ghost' | 'danger'
 type Size = 'sm' | 'md' | 'lg'
 
 const base =
-  'inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-control font-medium transition-colors duration-150 disabled:cursor-default'
+  'inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-full font-medium transition-colors duration-150 disabled:cursor-default'
 
 const sizes: Record<Size, string> = {
-  sm: 'h-7 px-2 text-[12px]',
-  md: 'h-8 px-2.5 text-[13px]',
-  lg: 'h-9 px-3.5 text-[13px]',
+  sm: 'h-7 px-2.5 text-[12px]',
+  md: 'h-8 px-3 text-[13px]',
+  lg: 'h-9 px-4 text-[13px]',
 }
 
 const variants: Record<Variant, string> = {

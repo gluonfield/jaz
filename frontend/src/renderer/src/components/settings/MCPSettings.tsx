@@ -36,7 +36,7 @@ import { keys } from '@/lib/query/keys'
 type Draft = MCPServerInput & { id?: string }
 
 const inputClass =
-  'w-full rounded-control bg-ink/10 px-3 py-2 text-[13px] text-ink outline-none transition duration-150 placeholder:text-ink-3 focus:bg-ink/15 focus:ring-1 focus:ring-ink/25'
+  'w-full rounded-control bg-bg px-3 py-2 text-[13px] text-ink ring-1 ring-border outline-none transition duration-150 placeholder:text-ink-3 focus:ring-primary'
 
 function emptyDraft(): Draft {
   return {
@@ -253,14 +253,14 @@ function MCPServerRow({
 }) {
   const needsAuth = server.status === 'needs_auth'
   return (
-    <div className="flex items-center gap-3 rounded-control px-2.5 py-2 text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface">
+    <div className="flex items-center gap-3 rounded-card px-3 py-2 text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface">
       <StatusIcon server={server} authorizing={authorizing} />
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate font-medium text-ink" title={server.name}>
             {server.name}
           </span>
-          <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[11px] text-ink-2">HTTP</span>
+          <span className="rounded-full bg-surface-2 px-1.5 py-[3px] text-[11px] leading-none text-ink-2">HTTP</span>
         </div>
         <p className="mt-0.5 truncate text-[12px] text-ink-3" title={server.url}>
           {server.url}
@@ -588,7 +588,7 @@ function AddRowButton({ children, onClick }: { children: ReactNode; onClick: () 
   return (
     <button
       type="button"
-      className="flex cursor-pointer items-center gap-1.5 text-[12px] font-medium text-ink-2 transition-colors duration-150 hover:text-ink"
+      className="-ml-1 flex cursor-pointer items-center gap-1.5 rounded-full px-2 py-1 text-[12px] font-medium text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
       onClick={onClick}
     >
       <Plus size={13} />

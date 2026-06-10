@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -13,12 +14,18 @@ import (
 )
 
 const (
-	AgentSettingsNamespace  = "agents"
-	AgentDefaultsKey        = "defaults"
-	legacyCodexACPCommand   = `npx -y @zed-industries/codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'`
-	legacyClaudeCodeCommand = "npx -y @agentclientprotocol/claude-agent-acp@0.39.0"
-	legacyClaudeCodeModel   = "claude-sonnet-4-5"
+	AgentSettingsNamespace = "agents"
+	AgentDefaultsKey       = "defaults"
+	legacyCodexACPCommand  = `npx -y @zed-industries/codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'`
+	legacyClaudeCodeModel  = "claude-sonnet-4-5"
 )
+
+// Previous built-in claude commands; stored settings still matching one are
+// auto-upgraded to the current default on merge.
+var legacyClaudeCodeCommands = []string{
+	"npx -y @agentclientprotocol/claude-agent-acp@0.39.0",
+	"npx -y @agentclientprotocol/claude-agent-acp@0.43.0",
+}
 
 type NativeAgentDefaults struct {
 	ModelProvider   string `json:"model_provider,omitempty"`
@@ -262,13 +269,17 @@ func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentD
 		stored.Command = seed.Command
 	case name == acp.AgentCodex && strings.TrimSpace(stored.Command) == legacyCodexACPCommand:
 		stored.Command = seed.Command
-	case name == acp.AgentClaude && strings.TrimSpace(stored.Command) == legacyClaudeCodeCommand:
+	case name == acp.AgentClaude && isLegacyClaudeCodeCommand(stored.Command):
 		stored.Command = seed.Command
 	}
 	if name == acp.AgentClaude && strings.TrimSpace(stored.Model) == legacyClaudeCodeModel {
 		stored.Model = seed.Model
 	}
 	return stored
+}
+
+func isLegacyClaudeCodeCommand(command string) bool {
+	return slices.Contains(legacyClaudeCodeCommands, strings.TrimSpace(command))
 }
 
 func canonicalizeACPDefaults(in map[string]ACPAgentDefaults) map[string]ACPAgentDefaults {

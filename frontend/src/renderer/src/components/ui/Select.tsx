@@ -74,15 +74,20 @@ export function Select({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') closeMenu()
     }
+    // The menu is fixed-positioned to the trigger; close rather than chase it
+    // on outside scroll/resize. Scrolling the menu's own list stays open.
+    const onScroll = (e: Event) => {
+      if (menuRef.current?.contains(e.target as Node)) return
+      closeMenu(false)
+    }
     document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey)
-    // The menu is fixed-positioned to the trigger; close rather than chase it on scroll/resize.
-    window.addEventListener('scroll', close, true)
+    window.addEventListener('scroll', onScroll, true)
     window.addEventListener('resize', close)
     return () => {
       document.removeEventListener('mousedown', onDown)
       document.removeEventListener('keydown', onKey)
-      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('scroll', onScroll, true)
       window.removeEventListener('resize', close)
     }
   }, [open])
@@ -121,7 +126,7 @@ export function Select({
               break
           }
         }}
-        className={`flex h-7 items-center justify-between gap-2 rounded-control bg-ink/10 px-2.5 text-[12px] text-ink transition-colors duration-150 hover:bg-ink/15 disabled:cursor-default disabled:opacity-50 ${className}`}
+        className={`flex h-7 items-center justify-between gap-2 rounded-full bg-ink/10 px-3 text-[12px] text-ink transition-colors duration-150 hover:bg-ink/15 disabled:cursor-default disabled:opacity-50 ${className}`}
       >
         <span className="truncate">{current?.label}</span>
         <ChevronDown size={13} className="shrink-0 text-ink-3" />

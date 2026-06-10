@@ -134,6 +134,23 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	if requested := strings.TrimSpace(req.ModelProvider); requested != "" {
+		id, err := provider.NormalizeNativeProviderID(requested)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		// Switching providers invalidates the default model; fall back to the
+		// provider's own default until the request names one.
+		if id != input.ModelProvider {
+			meta, _ := provider.NativeProviderByID(id)
+			input.Model = strings.TrimSpace(meta.DefaultModel)
+		}
+		input.ModelProvider = id
+	}
+	if model := strings.TrimSpace(req.Model); model != "" {
+		input.Model = model
+	}
 	input.Slug = req.Slug
 	input.Title = req.Title
 	session, err := s.Store.CreateSession(input)
@@ -167,6 +184,7 @@ func (s *Server) createACPSession(w http.ResponseWriter, req createSessionReques
 		Title:     req.Title,
 		Directory: directory,
 		Worktree:  req.Worktree,
+		Model:     strings.TrimSpace(req.Model),
 	})
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
@@ -760,6 +778,11 @@ type createSessionRequest struct {
 	Agent     string `json:"agent,omitempty"`
 	Directory string `json:"directory,omitempty"`
 	Worktree  bool   `json:"worktree,omitempty"`
+	// ModelProvider/Model override the defaults from Settings > Agents for this
+	// session. ModelProvider only applies to native sessions; for ACP sessions
+	// the provider is implied by the agent.
+	ModelProvider string `json:"model_provider,omitempty"`
+	Model         string `json:"model,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

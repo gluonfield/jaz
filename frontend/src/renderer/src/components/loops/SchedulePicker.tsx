@@ -10,7 +10,7 @@ import {
 } from './schedule'
 
 const fieldClass =
-  'rounded-control bg-ink/10 px-2.5 py-1.5 text-[13px] text-ink outline-none transition duration-150 focus:bg-ink/15 focus:ring-1 focus:ring-ink/25'
+  'rounded-control bg-bg px-2.5 py-1.5 text-[13px] text-ink ring-1 ring-border outline-none transition duration-150 focus:ring-primary'
 
 function formatRun(d: Date): string {
   return d.toLocaleString(undefined, {
@@ -37,7 +37,7 @@ export function SchedulePicker({
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-3 gap-1 sm:grid-cols-6">
+      <div className="flex flex-wrap gap-1">
         {SCHEDULE_PRESETS.map((preset) => {
           const active = value.preset === preset.value
           return (
@@ -47,9 +47,9 @@ export function SchedulePicker({
               disabled={disabled}
               onClick={() => set({ preset: preset.value })}
               aria-pressed={active}
-              className={`rounded-control px-2 py-1.5 text-[12px] font-medium transition-colors duration-150 disabled:opacity-50 ${
+              className={`rounded-full px-3 py-1.5 text-[12px] font-medium transition-colors duration-150 disabled:opacity-50 ${
                 active
-                  ? 'bg-ink/15 text-ink'
+                  ? 'bg-primary-soft text-ink'
                   : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
               }`}
             >
@@ -103,7 +103,7 @@ export function SchedulePicker({
         />
       )}
 
-      <div className="rounded-control bg-surface px-3 py-2">
+      <div className="rounded-card bg-surface px-3.5 py-2.5">
         <div className="flex items-center gap-1.5 text-[12px] font-medium text-ink-2">
           <CalendarClock size={13} className="text-ink-3" />
           {describeSchedule(value)}

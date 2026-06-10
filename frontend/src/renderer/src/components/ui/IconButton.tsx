@@ -19,27 +19,22 @@ const variants: Record<Variant, string> = {
   danger: 'text-ink-3 hover:bg-danger-soft hover:text-danger disabled:opacity-50',
 }
 
-// Square/round icon-only button. `round` is for the composer's circular send /
-// voice controls; everything else uses the 8px control radius.
+// Circular icon-only button, matching the pill control language.
 export function IconButton({
   variant = 'ghost',
   size = 'md',
-  round = false,
   className = '',
   children,
   ...props
 }: {
   variant?: Variant
   size?: Size
-  round?: boolean
 } & HTMLMotionProps<'button'>) {
   return (
     <motion.button
       type="button"
       whileTap={props.disabled ? undefined : { scale: 0.92 }}
-      className={`grid shrink-0 cursor-pointer place-items-center transition-colors duration-150 disabled:cursor-default ${
-        round ? 'rounded-full' : 'rounded-control'
-      } ${sizes[size]} ${variants[variant]} ${className}`}
+      className={`grid shrink-0 cursor-pointer place-items-center rounded-full transition-colors duration-150 disabled:cursor-default ${sizes[size]} ${variants[variant]} ${className}`}
       {...props}
     >
       {children}

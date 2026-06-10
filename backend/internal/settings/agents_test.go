@@ -102,6 +102,42 @@ func TestEnsureAgentDefaultsKeepsCustomCodexCommand(t *testing.T) {
 	}
 }
 
+func TestEnsureAgentDefaultsUpgradesPreviousClaudeCommands(t *testing.T) {
+	for _, legacy := range legacyClaudeCodeCommands {
+		store, err := jsonstore.New(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		seed := testAgentDefaultsSeed()
+		old := seed
+		old.ACP = map[string]ACPAgentDefaults{
+			"claude": {
+				Enabled: true,
+				Command: legacy,
+				Model:   "default",
+			},
+		}
+		data, err := json.Marshal(old)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.SaveSetting(AgentSettingsNamespace, AgentDefaultsKey, data); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := EnsureAgentDefaults(store, seed); err != nil {
+			t.Fatal(err)
+		}
+		loaded, err := LoadAgentDefaults(store)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if loaded.ACP["claude"].Command != seed.ACP["claude"].Command {
+			t.Fatalf("claude command = %q, want upgraded from %q", loaded.ACP["claude"].Command, legacy)
+		}
+	}
+}
+
 func TestEnsureAgentDefaultsMigratesLegacyClaudeCodeModel(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -113,7 +149,7 @@ func TestEnsureAgentDefaultsMigratesLegacyClaudeCodeModel(t *testing.T) {
 	old.ACP = map[string]ACPAgentDefaults{
 		legacyClaudeName: {
 			Enabled:         true,
-			Command:         legacyClaudeCodeCommand,
+			Command:         legacyClaudeCodeCommands[0],
 			Model:           legacyClaudeCodeModel,
 			ReasoningEffort: "xhigh",
 		},

@@ -80,6 +80,28 @@ func TestCreateACPSessionForwardsWorktree(t *testing.T) {
 	}
 }
 
+func TestCreateACPSessionForwardsModelOverride(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeACPManager{spawnStore: store}
+
+	body := `{"runtime":"acp","agent":"claude","model":"sonnet"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store, ACP: manager}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	if manager.spawned.Model != "sonnet" {
+		t.Fatalf("spawn request = %#v, want Model=sonnet", manager.spawned)
+	}
+}
+
 func TestLegacyClaudeACPAgentCanonicalizedInSessionResponses(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

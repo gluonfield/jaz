@@ -185,7 +185,7 @@ func probeAgentConfig(t *testing.T, agent string) AgentConfig {
 	case AgentClaude:
 		pkg := strings.TrimSpace(os.Getenv("ACP_PROBE_CLAUDE_PACKAGE"))
 		if pkg == "" {
-			pkg = "@agentclientprotocol/claude-agent-acp@0.43.0"
+			pkg = "@agentclientprotocol/claude-agent-acp@0.44.0"
 		}
 		return AgentConfig{
 			Command: "npx",

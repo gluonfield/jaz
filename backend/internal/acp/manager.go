@@ -72,6 +72,9 @@ type SpawnRequest struct {
 	Directory string
 	// Worktree runs the session on a disposable git worktree of Directory.
 	Worktree bool
+	// Model overrides the agent's configured model for this session (empty
+	// keeps the agent default).
+	Model string
 	// ReasoningEffort overrides the agent's configured reasoning effort for this
 	// session (empty keeps the agent default).
 	ReasoningEffort string
@@ -251,8 +254,12 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	if req.ReasoningEffort != "" {
 		effort = req.ReasoningEffort
 	}
-	// Apply the effective effort (per-request override wins) to the agent config
-	// so configuredModeState pushes it to the agent, not just the session record.
+	// Apply the effective model and effort (per-request overrides win) to the
+	// agent config so configuredModeState pushes them to the agent, not just
+	// the session record.
+	if model := strings.TrimSpace(req.Model); model != "" {
+		cfg.Model = model
+	}
 	cfg.ReasoningEffort = effort
 	// The session row is created first: its unique slug names the default
 	// directory and the worktree branch.

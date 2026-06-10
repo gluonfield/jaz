@@ -33,7 +33,7 @@ function PlanMenuToggle({
       aria-checked={checked}
       disabled={disabled}
       onClick={onToggle}
-      className={`flex h-7 w-full items-center gap-2 rounded-control px-2 text-left text-[13px] transition-colors duration-150 hover:bg-surface-2 disabled:cursor-default disabled:opacity-50 ${
+      className={`flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] transition-colors duration-150 hover:bg-surface-2 disabled:cursor-default disabled:opacity-50 ${
         checked ? 'text-ink' : 'text-ink-2'
       }`}
     >
@@ -43,14 +43,14 @@ function PlanMenuToggle({
       <span
         aria-hidden
         className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors duration-150 ${
-          checked ? 'bg-ink' : 'bg-ink/20'
+          checked ? 'bg-primary' : 'bg-ink/20'
         }`}
       >
         <motion.span
           layout
           transition={{ type: 'spring', stiffness: 500, damping: 34 }}
           className={`absolute size-3 rounded-full ${
-            checked ? 'right-0.5 bg-bg' : 'left-0.5 bg-ink/60'
+            checked ? 'right-0.5 bg-on-primary' : 'left-0.5 bg-ink/60'
           }`}
         />
       </span>
@@ -236,7 +236,7 @@ export function ComposerCard({
             {files.map((file, index) => (
               <div
                 key={`${file.name}-${file.size}-${index}`}
-                className="flex max-w-full items-center gap-1.5 rounded-control bg-bg px-2 py-1 text-xs text-ink-2"
+                className="flex max-w-full items-center gap-1.5 rounded-full bg-bg px-2.5 py-1 text-xs text-ink-2"
               >
                 <FileText size={13} className="shrink-0 text-primary" />
                 <span className="max-w-[220px] truncate text-ink">{file.name}</span>
@@ -322,7 +322,7 @@ export function ComposerCard({
                   animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
                   exit={{ opacity: 0, scale: 0.8, filter: 'blur(4px)' }}
                   transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
-                  className="group flex h-8 shrink-0 items-center gap-1 rounded-control pr-2 pl-1 text-[13px] font-medium text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+                  className="group flex h-8 shrink-0 items-center gap-1 rounded-full pr-2.5 pl-1 text-[13px] font-medium text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
                 >
                   <IconButton
                     variant="ghost"
@@ -352,7 +352,6 @@ export function ComposerCard({
               <IconButton
                 variant="ghost"
                 size="lg"
-                round
                 aria-label="Voice mode"
                 title="Voice mode"
                 disabled={streaming || disabled}
@@ -365,7 +364,6 @@ export function ComposerCard({
               <IconButton
                 variant="primary"
                 size="lg"
-                round
                 aria-label="Stop response"
                 title="Stop response"
                 onClick={onStop}
@@ -376,7 +374,6 @@ export function ComposerCard({
               <IconButton
                 variant="primary"
                 size="lg"
-                round
                 aria-label={streaming ? 'Queue message' : 'Send message'}
                 title={streaming ? 'Queue message' : 'Send message'}
                 disabled={!text.trim() || disabled || (streaming && (!queueWhenStreaming || files.length > 0))}
@@ -505,7 +502,7 @@ export function PlanDecisionDock({
               disabled={disabled || pending}
               onClick={onImplement}
               whileTap={{ scale: 0.99 }}
-              className="flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-control px-2 text-left text-sm font-medium text-ink transition-colors duration-150 hover:bg-primary-soft disabled:cursor-default disabled:opacity-60"
+              className="flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-full px-3 text-left text-sm font-medium text-ink transition-colors duration-150 hover:bg-primary-soft disabled:cursor-default disabled:opacity-60"
             >
               {pending ? (
                 <LoaderCircle size={15} className="shrink-0 animate-spin text-primary" />
@@ -521,7 +518,7 @@ export function PlanDecisionDock({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.15, ease: 'easeOut' }}
-                className="flex h-9 items-center gap-2 rounded-control bg-bg pr-1 pl-2.5"
+                className="flex h-9 items-center gap-2 rounded-full bg-bg pr-1 pl-3"
               >
                 <input
                   ref={inputRef}
@@ -545,7 +542,6 @@ export function PlanDecisionDock({
                 <IconButton
                   variant="primary"
                   size="sm"
-                  round
                   aria-label="Send clarification"
                   title="Send clarification"
                   disabled={!text.trim() || disabled}
@@ -560,7 +556,7 @@ export function PlanDecisionDock({
                 disabled={disabled || pending}
                 onClick={() => setClarifying(true)}
                 whileTap={{ scale: 0.99 }}
-                className="flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-control px-2 text-left text-sm text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink disabled:cursor-default disabled:opacity-60"
+                className="flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-full px-3 text-left text-sm text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink disabled:cursor-default disabled:opacity-60"
               >
                 <X size={15} className="shrink-0 text-ink-3" />
                 No, I'll clarify first
