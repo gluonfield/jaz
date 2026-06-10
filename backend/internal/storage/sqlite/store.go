@@ -282,38 +282,12 @@ func (s *Store) AppendMessages(id string, messages ...provider.Message) error {
 		return nil
 	}
 	now := time.Now().UTC()
-	s.mu.Lock()
-	records, err := s.loadMessageRecordsLocked(id)
-	if err != nil {
-		s.mu.Unlock()
-		return err
-	}
 	next, err := recordsFromProviderMessages(messages, now)
 	if err != nil {
-		s.mu.Unlock()
 		return err
 	}
-	for i := range next {
-		next[i].ThreadID = id
-		next[i].Seq = int64(len(records) + i + 1)
-		next[i].CreatedAt = now.Add(time.Duration(i+1) * time.Millisecond)
-	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
-	if err != nil {
-		s.mu.Unlock()
-		return err
-	}
-	defer tx.Rollback()
-	for _, record := range next {
-		if err := insertMessage(tx, record); err != nil {
-			s.mu.Unlock()
-			return err
-		}
-	}
-	_, err = tx.Exec(`UPDATE threads SET updated_at_ms = ? WHERE id = ?`, timeToMs(now), id)
-	if err == nil {
-		err = tx.Commit()
-	}
+	s.mu.Lock()
+	err = s.appendMessageRecordsLocked(id, next, now)
 	s.mu.Unlock()
 	if err != nil {
 		return err
@@ -330,9 +304,22 @@ func (s *Store) AppendMessageRecords(id string, records ...storage.Message) erro
 	}
 	now := time.Now().UTC()
 	s.mu.Lock()
+	err := s.appendMessageRecordsLocked(id, records, now)
+	s.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	if s.mirror != nil {
+		if messages, err := providerMessagesFromRecords(records); err == nil {
+			_ = s.mirror.AppendMessages(id, messages...)
+		}
+	}
+	return nil
+}
+
+func (s *Store) appendMessageRecordsLocked(id string, records []storage.Message, now time.Time) error {
 	existing, err := s.loadMessageRecordsLocked(id)
 	if err != nil {
-		s.mu.Unlock()
 		return err
 	}
 	for i := range records {
@@ -344,13 +331,11 @@ func (s *Store) AppendMessageRecords(id string, records ...storage.Message) erro
 	}
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
-		s.mu.Unlock()
 		return err
 	}
 	defer tx.Rollback()
 	for _, record := range records {
 		if err := insertMessage(tx, record); err != nil {
-			s.mu.Unlock()
 			return err
 		}
 	}
@@ -358,16 +343,7 @@ func (s *Store) AppendMessageRecords(id string, records ...storage.Message) erro
 	if err == nil {
 		err = tx.Commit()
 	}
-	s.mu.Unlock()
-	if err != nil {
-		return err
-	}
-	if s.mirror != nil {
-		if messages, err := providerMessagesFromRecords(records); err == nil {
-			_ = s.mirror.AppendMessages(id, messages...)
-		}
-	}
-	return nil
+	return err
 }
 
 func (s *Store) LoadActivity(id string) ([]storage.ActivityEntry, error) {
@@ -698,7 +674,7 @@ func (s *Store) replaceMessagesLocked(id string, records []storage.Message) erro
 		// Already-stored rows keep their timestamps; only new rows are stamped.
 		if i < len(existing) && existing[i].Role == record.Role {
 			record.CreatedAt = existing[i].CreatedAt
-			record = preserveAttachmentBlocks(record, existing[i])
+			record = storage.MergeDurableBlocks(record, existing[i])
 		} else if record.CreatedAt.IsZero() {
 			record.CreatedAt = now.Add(time.Duration(i+1) * time.Millisecond)
 		}
@@ -710,31 +686,6 @@ func (s *Store) replaceMessagesLocked(id string, records []storage.Message) erro
 		return err
 	}
 	return tx.Commit()
-}
-
-func preserveAttachmentBlocks(record, existing storage.Message) storage.Message {
-	if record.Role != "user" || existing.Role != "user" || record.Content != existing.Content {
-		return record
-	}
-	var attachments []storage.Block
-	seen := map[string]bool{}
-	for _, block := range record.Blocks {
-		if block.Type == blockAttachment {
-			seen[block.ID] = true
-		}
-	}
-	for _, block := range existing.Blocks {
-		if block.Type != blockAttachment || seen[block.ID] {
-			continue
-		}
-		attachments = append(attachments, block)
-		seen[block.ID] = true
-	}
-	if len(attachments) == 0 {
-		return record
-	}
-	record.Blocks = append(record.Blocks, attachments...)
-	return record
 }
 
 type execer interface {

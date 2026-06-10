@@ -21,7 +21,7 @@ type LoopRunner struct {
 }
 
 type loopNativeHost interface {
-	nativeSessionDefaults() storage.CreateSession
+	nativeSessionDefaults() (storage.CreateSession, error)
 	runClaimedNativeSession(context.Context, storage.Session, string) string
 	logger() *log.Logger
 }
@@ -55,7 +55,11 @@ func (r *LoopRunner) startNativeLoopRun(ctx context.Context, execution loops.Exe
 	}
 	loop := execution.Loop
 	run := execution.Run
-	input := r.native.nativeSessionDefaults()
+	input, err := r.native.nativeSessionDefaults()
+	if err != nil {
+		r.finishLoopRun(execution, loops.RunStatusError, err.Error())
+		return
+	}
 	input.Slug = loopRunSlug(loop, run)
 	input.Title = loop.Name
 	input.SourceType = storage.SourceLoopRun

@@ -431,6 +431,39 @@ func TestManagerCanonicalizesClaudeAliasBeforeSettingModel(t *testing.T) {
 	}
 }
 
+func TestManagerRejectsUnsupportedClaudeModel(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := acp.NewManager(store, acp.Config{
+		Root:      t.TempDir(),
+		Workspace: t.TempDir(),
+		Agents: map[string]acp.AgentConfig{
+			"claude": {
+				Command:         os.Args[0],
+				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
+				Model:           "claude-opus-4.8",
+				ReasoningEffort: "xhigh",
+				Env: map[string]string{
+					"JAZ_FAKE_ACP_AGENT":  "1",
+					"JAZ_FAKE_ACP_MODELS": "default,sonnet",
+				},
+			},
+		},
+	}, log.New(io.Discard))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	_, err = manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "claude", Slug: "bad-claude-model"})
+	if err == nil {
+		t.Fatal("expected unsupported claude model to fail")
+	}
+	if !strings.Contains(err.Error(), "available model ids: default, sonnet") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestManagerEncodesCodexReasoningEffortInModel(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

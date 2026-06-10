@@ -71,7 +71,10 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string, attac
 
 func promptContentBlocks(message string, attachments []storage.Attachment) ([]acpschema.ContentBlock, error) {
 	out := make([]acpschema.ContentBlock, 0, 1+len(attachments))
-	text, err := marshalContentBlock(map[string]any{"type": "text", "text": message})
+	text, err := marshalContentBlock(acpschema.TextContentBlock{
+		Kind:        acpschema.ContentBlockText,
+		TextContent: acpschema.TextContent{Text: message},
+	})
 	if err != nil {
 		return nil, err
 	}

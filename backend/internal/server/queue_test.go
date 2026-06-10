@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,6 +18,32 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
+
+type blockingProvider struct {
+	started     chan struct{}
+	startedOnce sync.Once
+	release     chan struct{}
+}
+
+func (p *blockingProvider) Complete(context.Context, provider.Request) (provider.Response, error) {
+	return provider.Response{Message: provider.AssistantMessage("done", nil)}, nil
+}
+
+func (p *blockingProvider) StreamComplete(ctx context.Context, _ provider.Request) (<-chan provider.Event, error) {
+	ch := make(chan provider.Event, 2)
+	go func() {
+		defer close(ch)
+		p.startedOnce.Do(func() { close(p.started) })
+		select {
+		case <-p.release:
+			ch <- provider.Event{Type: provider.EventDelta, Delta: "done"}
+			ch <- provider.Event{Type: provider.EventDone}
+		case <-ctx.Done():
+			ch <- provider.Event{Type: provider.EventError, Err: ctx.Err()}
+		}
+	}()
+	return ch, nil
+}
 
 func TestSessionQueueActionReplacesQueuedMessages(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
@@ -171,6 +198,27 @@ func TestSessionQueueActionDoesNotWaitForRunningNativeTurn(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("native stream did not finish after release")
 	}
+	waitForNativeQueueIdle(t, store, session.ID)
+}
+
+func waitForNativeQueueIdle(t *testing.T, store storage.SessionStore, sessionID string) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		session, err := store.LoadSession(sessionID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if session.Status == storage.StatusIdle && len(session.QueuedMessages) == 0 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	session, err := store.LoadSession(sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Fatalf("native queue did not drain: status=%s queued=%#v", session.Status, session.QueuedMessages)
 }
 
 func TestACPTurnFinishedDrainsQueuedPromptWithoutActiveClient(t *testing.T) {

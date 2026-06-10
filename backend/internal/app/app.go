@@ -13,7 +13,6 @@ import (
 	"github.com/wins/jaz/backend/internal/coordinator"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/provider"
-	anthropicprovider "github.com/wins/jaz/backend/internal/provider/anthropic"
 	mockprovider "github.com/wins/jaz/backend/internal/provider/mock"
 	openaiprovider "github.com/wins/jaz/backend/internal/provider/openai"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
@@ -40,7 +39,6 @@ import (
 type Config struct {
 	Root           string
 	Workspace      string
-	Provider       ProviderConfig
 	ModelProviders map[string]ProviderConfig
 	Voice          VoiceConfig
 	ACP            acp.Config
@@ -48,11 +46,9 @@ type Config struct {
 }
 
 type ProviderConfig struct {
-	Type            string
-	BaseURL         string
-	APIKey          string
-	Model           string
-	ReasoningEffort string
+	Type    string
+	BaseURL string
+	APIKey  string
 }
 
 type VoiceConfig struct {
@@ -93,7 +89,7 @@ func NewStore(cfg Config, catalog acp.AgentCatalog) (Stores, error) {
 	if err != nil {
 		return Stores{}, err
 	}
-	if err := agentsettings.EnsureAgentDefaults(store, agentDefaultsSeed(cfg, catalog)); err != nil {
+	if err := agentsettings.EnsureAgentDefaults(store, agentDefaultsSeed(catalog)); err != nil {
 		_ = store.Close()
 		return Stores{}, err
 	}
@@ -134,12 +130,8 @@ func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, pro
 	return cfg.ACP
 }
 
-func agentDefaultsSeed(cfg Config, catalog acp.AgentCatalog) agentsettings.AgentDefaults {
-	return agentsettings.AgentDefaultsFromCatalog(agentsettings.NativeAgentDefaults{
-		ModelProvider:   strings.TrimSpace(cfg.Provider.Type),
-		Model:           strings.TrimSpace(cfg.Provider.Model),
-		ReasoningEffort: strings.TrimSpace(cfg.Provider.ReasoningEffort),
-	}, catalog)
+func agentDefaultsSeed(catalog acp.AgentCatalog) agentsettings.AgentDefaults {
+	return agentsettings.AgentDefaultsFromCatalog(catalog)
 }
 
 func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, memory *jazmem.Memory) *tools.Registry {
@@ -222,35 +214,25 @@ func StartMemoryScheduler(lc fx.Lifecycle, cfg Config, memory *jazmem.Memory, lo
 }
 
 func NewProvider(cfg Config) (provider.Provider, error) {
-	defaultProvider := strings.ToLower(strings.TrimSpace(cfg.Provider.Type))
-	if defaultProvider == "" {
-		defaultProvider = provider.ProviderOpenAI
-	}
-	configs := cfg.ModelProviders
-	if len(configs) == 0 {
-		configs = map[string]ProviderConfig{defaultProvider: cfg.Provider}
-	}
-	if _, ok := configs[defaultProvider]; !ok {
-		configs[defaultProvider] = cfg.Provider
-	}
-
 	clients := map[string]provider.Provider{}
-	for id, config := range configs {
-		id = strings.ToLower(strings.TrimSpace(id))
-		if id == "" {
-			continue
+	for _, meta := range provider.NativeProviders() {
+		id := meta.ID
+		config := cfg.ModelProviders[id]
+		config.Type = id
+		if strings.TrimSpace(config.BaseURL) == "" {
+			config.BaseURL = meta.BaseURL
 		}
 		client, err := nativeProviderClient(id, config)
 		if err != nil {
-			if id == defaultProvider {
-				return nil, err
-			}
 			clients[id] = provider.UnavailableProvider{ID: id, Reason: err.Error()}
 			continue
 		}
 		clients[id] = client
 	}
-	return provider.NewRouter(defaultProvider, clients), nil
+	if _, ok := cfg.ModelProviders[provider.ProviderMock]; ok {
+		clients[provider.ProviderMock] = mockprovider.New()
+	}
+	return provider.NewRouter("", clients), nil
 }
 
 func nativeProviderClient(id string, cfg ProviderConfig) (provider.Provider, error) {
@@ -269,26 +251,11 @@ func nativeProviderClient(id string, cfg ProviderConfig) (provider.Provider, err
 			meta, _ := provider.NativeProviderByID(id)
 			baseURL = meta.BaseURL
 		}
-		return openaiprovider.New(baseURL, cfg.APIKey, cfg.Model), nil
-	case provider.ProviderAnthropic:
-		if cfg.APIKey == "" {
-			meta, _ := provider.NativeProviderByID(id)
-			keyEnv := meta.APIKeyEnv
-			if keyEnv == "" {
-				keyEnv = "ANTHROPIC_API_KEY"
-			}
-			return nil, fmt.Errorf("set %s or %s.apikey", keyEnv, id)
-		}
-		baseURL := strings.TrimSpace(cfg.BaseURL)
-		if baseURL == "" {
-			meta, _ := provider.NativeProviderByID(id)
-			baseURL = meta.BaseURL
-		}
-		return anthropicprovider.New(baseURL, cfg.APIKey, cfg.Model), nil
+		return openaiprovider.New(baseURL, cfg.APIKey, ""), nil
 	case provider.ProviderMock:
 		return mockprovider.New(), nil
 	default:
-		return nil, fmt.Errorf("unknown provider %q; valid providers are openai, openrouter, anthropic, mock", id)
+		return nil, fmt.Errorf("unknown provider %q; valid providers are openai, openrouter, mock", id)
 	}
 }
 
@@ -348,12 +315,9 @@ func newTTS(cfg VoiceConfig) (voice.TTS, error) {
 
 func NewAgent(cfg Config, modelProvider provider.Provider, registry *tools.Registry) *agent.Agent {
 	return &agent.Agent{
-		Provider:        modelProvider,
-		ModelProvider:   cfg.Provider.Type,
-		Model:           cfg.Provider.Model,
-		ReasoningEffort: cfg.Provider.ReasoningEffort,
-		Tools:           registry,
-		MaxTurns:        agent.DefaultMaxTurns,
+		Provider: modelProvider,
+		Tools:    registry,
+		MaxTurns: agent.DefaultMaxTurns,
 	}
 }
 

@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { motion } from 'motion/react'
 import { useState } from 'react'
-import { ComposerCard, type ComposerSendOptions } from '@/components/session/Composer'
+import { ComposerCard } from '@/components/session/Composer'
 import { DirectoryPicker, RuntimeSelect } from '@/components/session/NewThreadControls'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { PixelField } from '@/components/ui/PixelField'
@@ -9,6 +9,7 @@ import { useToast } from '@/components/ui/toast'
 import { acpAgentsQuery, createSession } from '@/lib/api/sessions'
 import { setPendingMessage, setPendingVoice } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
+import type { SendMessageOptions } from '@/lib/sendMessage'
 import { useTheme } from '@/lib/theme'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -56,7 +57,7 @@ function NewSessionPage() {
     }
   }
 
-  const handleSend = (text: string, options: ComposerSendOptions = {}) =>
+  const handleSend = (text: string, options: SendMessageOptions = {}) =>
     startThread(text.trim(), (id) =>
       setPendingMessage(id, {
         text,

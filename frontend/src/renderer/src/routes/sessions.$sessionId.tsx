@@ -4,7 +4,7 @@ import { FileText } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Composer, PlanDecisionDock, type ComposerSendOptions } from '@/components/session/Composer'
+import { Composer, PlanDecisionDock } from '@/components/session/Composer'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
 import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
 import { ThinkingBlock } from '@/components/session/ThinkingBlock'
@@ -25,6 +25,7 @@ import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
 import { takePendingMessage, takePendingVoice } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
+import type { SendMessageOptions } from '@/lib/sendMessage'
 
 export const Route = createFileRoute('/sessions/$sessionId')({
   component: SessionPage,
@@ -276,7 +277,7 @@ function SessionPage() {
   // Abandon an in-flight stream when leaving the session.
   useEffect(() => () => abortRef.current?.abort(), [sessionId])
 
-  const handleSend = useCallback((text: string, options: ComposerSendOptions = {}) => {
+  const handleSend = useCallback((text: string, options: SendMessageOptions = {}) => {
     const controller = new AbortController()
     const files = options.files ?? []
     abortRef.current = controller

@@ -2,6 +2,7 @@ import { ArrowUp, AudioLines, Check, FileText, ListChecks, LoaderCircle, Papercl
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { IconButton } from '@/components/ui/IconButton'
+import type { SendMessageOptions } from '@/lib/sendMessage'
 import { MenuRow, Popover } from './NewThreadControls'
 import { QueuedPromptList } from './QueuedPromptList'
 
@@ -9,11 +10,6 @@ import { QueuedPromptList } from './QueuedPromptList'
 // the card while focused; the rest of the perimeter stays a quiet track.
 const RAINBOW_BEAM =
   'conic-gradient(from var(--ring-angle, 0deg), transparent 0deg 250deg, var(--color-rainbow-1) 278deg, var(--color-rainbow-2) 296deg, var(--color-rainbow-3) 312deg, var(--color-rainbow-4) 326deg, var(--color-rainbow-5) 340deg, transparent 352deg 360deg)'
-
-export interface ComposerSendOptions {
-  planRequested?: boolean
-  files?: File[]
-}
 
 function formatFileSize(size: number): string {
   if (size < 1024) return `${size} B`
@@ -88,7 +84,7 @@ export function ComposerCard({
   translucent?: boolean
   /** leading toolbar content (e.g. the new-thread runtime/directory pickers) */
   leftSlot?: ReactNode
-  onSend: (text: string, options?: ComposerSendOptions) => void
+  onSend: (text: string, options?: SendMessageOptions) => void
   onStop?: () => void
   onVoice?: () => void
 }) {
@@ -419,7 +415,7 @@ export function Composer({
   planAvailable?: boolean
   queuedPrompts?: string[]
   steerDisabled?: boolean
-  onSend: (text: string, options?: ComposerSendOptions) => void
+  onSend: (text: string, options?: SendMessageOptions) => void
   onStop: () => void
   onVoice?: () => void
   onSteerQueuedPrompt?: (index: number) => void

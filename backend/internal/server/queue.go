@@ -34,7 +34,7 @@ func (s *Server) handleQueueAction(w http.ResponseWriter, r *http.Request, sessi
 			writeQueueError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, updated)
+		writeJSON(w, http.StatusOK, canonicalSessionResponse(updated))
 		return
 	}
 	updated, err := s.mutateSessionQueue(session.ID, req)
@@ -43,7 +43,7 @@ func (s *Server) handleQueueAction(w http.ResponseWriter, r *http.Request, sessi
 		return
 	}
 	s.publishMessagesChanged(session.ID)
-	writeJSON(w, http.StatusOK, updated)
+	writeJSON(w, http.StatusOK, canonicalSessionResponse(updated))
 	if updated.Status == storage.StatusIdle && len(updated.QueuedMessages) > 0 && s.canStartQueuedPrompt(updated) {
 		s.drainQueueSoon(updated.ID)
 	}

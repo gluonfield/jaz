@@ -14,7 +14,6 @@ import (
 	"github.com/charmbracelet/log"
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
-	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -499,41 +498,12 @@ func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {
 	if err := m.prepareModeForTurn(ctx, job, req.PlanRequested); err != nil {
 		return Job{}, err
 	}
-	_ = m.appendUserMessage(job.ID, req.Message, req.Attachments)
+	_ = storage.AppendUserMessage(m.store, job.ID, req.Message, req.Attachments)
 	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested)
 	job.startTurn(req.Completion, req.Interactive, req.PlanRequested, req.ParentVisible)
 	m.publishACP(job.Snapshot())
 	go m.runPrompt(context.Background(), job, req.Message, req.Attachments)
 	return job.Snapshot(), nil
-}
-
-func (m *Manager) appendUserMessage(sessionID, message string, attachments []storage.Attachment) error {
-	if len(attachments) > 0 {
-		if appender, ok := m.store.(storage.MessageRecordAppender); ok {
-			return appender.AppendMessageRecords(sessionID, acpUserMessageRecord(message, attachments))
-		}
-	}
-	return m.store.AppendMessages(sessionID, provider.UserMessage(message))
-}
-
-func acpUserMessageRecord(message string, attachments []storage.Attachment) storage.Message {
-	blocks := []storage.Block{{Type: "text", Text: message}}
-	for _, attachment := range attachments {
-		blocks = append(blocks, storage.Block{
-			Type:       "attachment",
-			ID:         attachment.ID,
-			Name:       attachment.Name,
-			URI:        attachment.URI,
-			MimeType:   attachment.MimeType,
-			Size:       attachment.Size,
-			ServerPath: attachment.ServerPath,
-		})
-	}
-	return storage.Message{
-		Role:    "user",
-		Content: message,
-		Blocks:  blocks,
-	}
 }
 
 func (m *Manager) Status(ref string) (Job, error) {

@@ -10,74 +10,32 @@ import (
 	openrouterprovider "github.com/wins/jaz/backend/internal/provider/openrouter"
 )
 
-func TestApplyProviderSelectsOpenAI(t *testing.T) {
+func TestApplyProviderBuildsNativeProviderCatalog(t *testing.T) {
 	cfg := Config{
-		Providers:  ProvidersConfig{Default: "openai"},
-		OpenRouter: openrouterprovider.Config{APIKey: "openrouter-key", Model: "openai/gpt-5.4-mini", ReasoningEffort: "high"},
-		OpenAI:     openaiprovider.Config{APIKey: "openai-key", Model: "gpt-4.1-mini", ReasoningEffort: "low"},
+		OpenRouter: openrouterprovider.Config{APIKey: "openrouter-key"},
+		OpenAI:     openaiprovider.Config{APIKey: "openai-key"},
 	}
 
 	if err := applyProvider(&cfg); err != nil {
 		t.Fatal(err)
 	}
 
-	provider := cfg.Jaz.Provider
-	if provider.Type != "openai" || provider.APIKey != "openai-key" || provider.Model != "gpt-4.1-mini" || provider.ReasoningEffort != "low" {
-		t.Fatalf("unexpected provider %#v", provider)
+	openRouter := cfg.Jaz.ModelProviders["openrouter"]
+	if openRouter.Type != "openrouter" || openRouter.APIKey != "openrouter-key" || openRouter.BaseURL != "https://openrouter.ai/api/v1" {
+		t.Fatalf("unexpected openrouter catalog entry %#v", openRouter)
 	}
-	if cfg.Jaz.ModelProviders["openrouter"].APIKey != "openrouter-key" {
-		t.Fatalf("provider catalog did not keep openrouter config: %#v", cfg.Jaz.ModelProviders)
+	openAI := cfg.Jaz.ModelProviders["openai"]
+	if openAI.Type != "openai" || openAI.APIKey != "openai-key" || openAI.BaseURL != "https://api.openai.com/v1" {
+		t.Fatalf("unexpected openai catalog entry %#v", openAI)
 	}
-}
-
-func TestApplyProviderSelectsOpenRouter(t *testing.T) {
-	cfg := Config{
-		Providers:  ProvidersConfig{Default: "openrouter"},
-		OpenRouter: openrouterprovider.Config{APIKey: "openrouter-key", Model: "openai/gpt-5.4-mini", ReasoningEffort: "high"},
-		OpenAI:     openaiprovider.Config{APIKey: "openai-key", Model: "gpt-4.1-mini"},
-	}
-
-	if err := applyProvider(&cfg); err != nil {
-		t.Fatal(err)
-	}
-
-	provider := cfg.Jaz.Provider
-	if provider.Type != "openrouter" || provider.APIKey != "openrouter-key" || provider.Model != "openai/gpt-5.4-mini" || provider.ReasoningEffort != "high" {
-		t.Fatalf("unexpected provider %#v", provider)
-	}
-}
-
-func TestApplyProviderBuildsAnthropicCatalogEntry(t *testing.T) {
-	cfg := Config{
-		Providers: ProvidersConfig{Default: "openrouter"},
-		OpenRouter: openrouterprovider.Config{
-			APIKey:          "openrouter-key",
-			Model:           "openai/gpt-5.4-mini",
-			ReasoningEffort: "medium",
-		},
-		Anthropic: AnthropicConfig{
-			APIKey:          "anthropic-key",
-			Model:           "claude-sonnet-4-5",
-			ReasoningEffort: "high",
-		},
-	}
-
-	if err := applyProvider(&cfg); err != nil {
-		t.Fatal(err)
-	}
-
-	anthropic := cfg.Jaz.ModelProviders["anthropic"]
-	if anthropic.Type != "anthropic" || anthropic.APIKey != "anthropic-key" ||
-		anthropic.BaseURL != "https://api.anthropic.com/v1" || anthropic.Model != "claude-sonnet-4-5" ||
-		anthropic.ReasoningEffort != "high" {
-		t.Fatalf("unexpected anthropic catalog entry %#v", anthropic)
+	if _, ok := cfg.Jaz.ModelProviders["anthropic"]; ok {
+		t.Fatalf("anthropic should not be a native provider: %#v", cfg.Jaz.ModelProviders)
 	}
 }
 
 func TestProviderKeysStayOutOfACPEnv(t *testing.T) {
 	cfg := Config{
-		Providers: ProvidersConfig{Default: "openai"},
-		OpenAI:    openaiprovider.Config{APIKey: "openai-key", Model: "gpt-4.1-mini"},
+		OpenAI: openaiprovider.Config{APIKey: "openai-key"},
 	}
 
 	if err := applyProvider(&cfg); err != nil {
@@ -89,7 +47,7 @@ func TestProviderKeysStayOutOfACPEnv(t *testing.T) {
 	}
 }
 
-func TestLoadConfigUnmarshalsACPAgentModel(t *testing.T) {
+func TestLoadConfigUnmarshalsACPAgentModelAndProviderKeys(t *testing.T) {
 	viper.Reset()
 	t.Cleanup(viper.Reset)
 
@@ -102,16 +60,16 @@ jaz:
         command: codex-acp
         model: gpt-5.5
         reasoningeffort: high
-providers:
-  default: openrouter
 openrouter:
   apikey: openrouter-key
-  model: openai/gpt-5.4-mini
-  reasoningeffort: medium
+openai:
+  apikey: openai-key
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("APPLICATION_CONFIG", path)
+	t.Setenv("OPENROUTER_API_KEY", "openrouter-key")
+	t.Setenv("OPENAI_API_KEY", "openai-key")
 
 	cfg, err := Load()
 	if err != nil {
@@ -127,7 +85,7 @@ openrouter:
 	if agent.ReasoningEffort != "high" {
 		t.Fatalf("agent reasoning effort = %q", agent.ReasoningEffort)
 	}
-	if cfg.Jaz.Provider.Type != "openrouter" || cfg.Jaz.Provider.Model != "openai/gpt-5.4-mini" || cfg.Jaz.Provider.ReasoningEffort != "medium" {
-		t.Fatalf("unexpected native provider config %#v", cfg.Jaz.Provider)
+	if cfg.Jaz.ModelProviders["openrouter"].APIKey != "openrouter-key" || cfg.Jaz.ModelProviders["openai"].APIKey != "openai-key" {
+		t.Fatalf("unexpected native provider catalog %#v", cfg.Jaz.ModelProviders)
 	}
 }

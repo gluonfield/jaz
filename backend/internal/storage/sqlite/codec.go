@@ -11,10 +11,10 @@ import (
 )
 
 const (
-	blockText       = "text"
-	blockReasoning  = "reasoning"
-	blockTool       = "tool"
-	blockAttachment = "attachment"
+	blockText       = storage.BlockTypeText
+	blockReasoning  = storage.BlockTypeReasoning
+	blockTool       = storage.BlockTypeTool
+	blockAttachment = storage.BlockTypeAttachment
 )
 
 func recordsFromProviderMessages(messages []provider.Message, start time.Time) ([]storage.Message, error) {

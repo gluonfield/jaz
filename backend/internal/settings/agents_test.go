@@ -10,7 +10,7 @@ import (
 )
 
 func testAgentDefaultsSeed() AgentDefaults {
-	return AgentDefaultsFromCatalog(NativeAgentDefaults{}, acp.BuiltinAgents())
+	return AgentDefaultsFromCatalog(acp.BuiltinAgents())
 }
 
 func TestParseCommandLinePreservesQuotedArgs(t *testing.T) {
