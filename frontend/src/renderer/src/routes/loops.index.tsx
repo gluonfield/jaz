@@ -71,6 +71,7 @@ function LoopsPage() {
               <LoopRow loop={loop} />
             </motion.div>
           ))}
+          <DotLegend />
         </motion.div>
       )}
 
@@ -110,6 +111,26 @@ function LoopRow({ loop }: { loop: Loop }) {
       ) : null}
       <ChevronRight size={15} className="-mr-0.5 shrink-0 text-ink-3 opacity-0 transition-opacity group-hover:opacity-100" />
     </Link>
+  )
+}
+
+const LEGEND: Array<{ label: string; dot: string }> = [
+  { label: 'active', dot: 'bg-primary' },
+  { label: 'running', dot: 'bg-running animate-pulse' },
+  { label: 'failed', dot: 'bg-danger' },
+  { label: 'paused', dot: 'bg-ink-3/40' },
+]
+
+function DotLegend() {
+  return (
+    <div className="mt-4 flex items-center gap-4 px-3">
+      {LEGEND.map(({ label, dot }) => (
+        <span key={label} className="flex items-center gap-1.5 text-[11px] text-ink-3">
+          <span className={`size-1.5 shrink-0 rounded-full ${dot}`} />
+          {label}
+        </span>
+      ))}
+    </div>
   )
 }
 
