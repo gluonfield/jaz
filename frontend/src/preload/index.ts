@@ -6,4 +6,6 @@ contextBridge.exposeInMainWorld('jaz', {
   apiBaseUrl,
   setNativeTheme: (source: 'light' | 'dark' | 'system') =>
     ipcRenderer.send('jaz:set-native-theme', source),
+  startLocalBackend: (): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('jaz:start-local-backend'),
 })

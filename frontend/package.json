@@ -8,6 +8,8 @@
   "scripts": {
     "dev": "electron-vite dev --watch",
     "build": "electron-vite build",
+    "build:backend": "cd ../backend && go build -o ../frontend/resources/bin/jaz ./cmd/jaz",
+    "build:app": "npm run build:backend && electron-vite build && electron-builder",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json"
   },
@@ -45,6 +47,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
     "electron": "^42.3.3",
+    "electron-builder": "^26.15.2",
     "electron-vite": "^5.0.0",
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",

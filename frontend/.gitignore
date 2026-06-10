@@ -1,6 +1,7 @@
 node_modules/
 out/
 dist/
+resources/bin/
 *.local
 *.tsbuildinfo
 src/renderer/src/routeTree.gen.ts

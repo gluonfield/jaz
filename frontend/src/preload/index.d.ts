@@ -5,6 +5,7 @@ declare global {
     jaz: {
       apiBaseUrl: string
       setNativeTheme: (source: 'light' | 'dark' | 'system') => void
+      startLocalBackend: () => Promise<{ ok: boolean; error?: string }>
     }
   }
 }
