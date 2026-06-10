@@ -145,7 +145,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Native.ModelProvider != "openrouter" || got.Native.Model != "openai/gpt-5.4-mini" || strings.Join(got.Agents, ",") != "claude,codex" {
+	if got.Native.ModelProvider != "openrouter" || got.Native.Model != "openai/gpt-5.4-mini" || strings.Join(got.Agents, ",") != "claude,codex,grok" {
 		t.Fatalf("unexpected seeded settings %#v", got)
 	}
 	if !hasNativeProvider(got.Providers, "openai", "https://api.openai.com/v1") ||
@@ -156,6 +156,11 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		got.ACP["codex"].Command != `codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'` ||
 		got.ACP["codex"].Model != "gpt-5.5" {
 		t.Fatalf("unexpected codex defaults %#v", got.ACP["codex"])
+	}
+	if !got.ACP["grok"].Enabled ||
+		got.ACP["grok"].Command != `grok --no-auto-update agent --no-leader --always-approve stdio` ||
+		got.ACP["grok"].Model != "grok-build" {
+		t.Fatalf("unexpected grok defaults %#v", got.ACP["grok"])
 	}
 
 	putReq := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
@@ -227,7 +232,7 @@ func TestAgentSettingsAPIRoundTripsConfiguredACPAgent(t *testing.T) {
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(got.Agents, ",") != "claude,codex,local_helper" {
+	if strings.Join(got.Agents, ",") != "claude,codex,grok,local_helper" {
 		t.Fatalf("agents = %#v", got.Agents)
 	}
 	if got.ACP["local_helper"].Command != "/opt/jaz/local-helper --stdio" || got.ACP["local_helper"].Model != "helper-model" {

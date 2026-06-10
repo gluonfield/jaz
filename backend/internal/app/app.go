@@ -11,6 +11,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/coordinator"
+	"github.com/wins/jaz/backend/internal/loops"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/provider"
 	mockprovider "github.com/wins/jaz/backend/internal/provider/mock"
@@ -33,7 +34,9 @@ import (
 	memorytool "github.com/wins/jaz/backend/internal/tools/memory"
 	plantool "github.com/wins/jaz/backend/internal/tools/plan"
 	viewimagetool "github.com/wins/jaz/backend/internal/tools/viewimage"
+	widgettool "github.com/wins/jaz/backend/internal/tools/widget"
 	"github.com/wins/jaz/backend/internal/voice"
+	"github.com/wins/jaz/backend/internal/widgets"
 	mistralvoice "github.com/wins/jaz/backend/internal/voice/mistral"
 	"go.uber.org/fx"
 )
@@ -136,13 +139,22 @@ func agentDefaultsSeed(catalog acp.AgentCatalog) agentsettings.AgentDefaults {
 	return agentsettings.AgentDefaultsFromCatalog(catalog)
 }
 
-func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, memory *jazmem.Memory, store *sqlitestore.Store, events *sessionevents.Bus) *tools.Registry {
+func NewWidgetService(store *sqlitestore.Store, logger *log.Logger) *widgets.Service {
+	return widgets.NewService(store, logger)
+}
+
+func NewWidgetSessionPublisher(service *widgets.Service, store *sqlitestore.Store) *widgets.SessionPublisher {
+	return &widgets.SessionPublisher{Service: service, Sessions: store, Loops: store}
+}
+
+func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, memory *jazmem.Memory, store *sqlitestore.Store, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher) *tools.Registry {
 	return tools.NewRegistry(
 		&plantool.Tool{Store: store, Events: events},
 		&exectool.ExecCommandTool{Manager: commandManager, Workspace: string(workspace)},
 		&exectool.WriteStdinTool{Manager: commandManager},
-		&applypatch.Tool{Workspace: string(workspace)},
+		&applypatch.Tool{Workspace: string(workspace), ExtraRoots: []string{loops.AutomationsDir(store.RootDir())}},
 		&viewimagetool.Tool{Workspace: string(workspace)},
+		&widgettool.Tool{Publisher: widgetPublisher},
 		&agentspawn.Tool{Manager: manager},
 		&agentsend.Tool{Manager: manager},
 		&agentstatus.Tool{Manager: manager},

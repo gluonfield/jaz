@@ -15,6 +15,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/coordinator"
+	"github.com/wins/jaz/backend/internal/gitinfo"
 	"github.com/wins/jaz/backend/internal/loops"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/media"
@@ -24,6 +25,7 @@ import (
 	"github.com/wins/jaz/backend/internal/sessionlock"
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/voice"
+	"github.com/wins/jaz/backend/internal/widgets"
 )
 
 type ACPManager interface {
@@ -51,6 +53,7 @@ type Server struct {
 	Locks        *sessionlock.Locks
 	Events       *sessionevents.Bus
 	Loops        *loops.Service
+	Widgets      *widgets.Service
 	STT          voice.STT
 	TTS          voice.TTS
 	AgentCatalog acp.AgentCatalog
@@ -100,6 +103,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/loops", s.handleListLoops)
 	mux.HandleFunc("POST /v1/loops", s.handleCreateLoop)
 	mux.HandleFunc("/v1/loops/", s.handleLoopAction)
+	mux.HandleFunc("GET /v1/boards", s.handleListBoards)
+	mux.HandleFunc("POST /v1/boards", s.handleCreateBoard)
+	mux.HandleFunc("/v1/boards/", s.handleBoardAction)
+	mux.HandleFunc("GET /v1/widgets", s.handleListWidgets)
+	mux.HandleFunc("GET /v1/widgets/assets/tailwind.js", s.handleWidgetTailwindAsset)
+	mux.HandleFunc("/v1/widgets/", s.handleWidgetAction)
+	mux.HandleFunc("GET /v1/music/chart-feed", s.handleMusicChartFeed)
 	mux.HandleFunc("/v1/settings/agents", s.handleAgentSettings)
 	mux.HandleFunc("GET /v1/acp/agents", s.handleListACPAgents)
 	mux.HandleFunc("GET /v1/workspace/dirs", s.handleListWorkspaceDirs)
@@ -163,12 +173,34 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		}
 		input.RuntimeRef = &storage.RuntimeRef{Type: storage.RuntimeNative, Cwd: cwd}
 	}
+	if req.Worktree && input.RuntimeRef == nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("worktree requires a directory pointing at a git repository"))
+		return
+	}
 	input.Slug = req.Slug
 	input.Title = req.Title
 	session, err := s.Store.CreateSession(input)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
+	}
+	// The worktree branch is named after the session slug, so it is created
+	// after the row exists — mirroring ACP spawn, which marks the session
+	// errored when directory preparation fails.
+	if req.Worktree {
+		worktree, err := gitinfo.AddWorktree(r.Context(), s.Workspace, session.RuntimeRef.Cwd, session.Slug)
+		if err != nil {
+			session.Status = storage.StatusError
+			session.Error = err.Error()
+			_ = s.Store.SaveSession(session)
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		session.RuntimeRef.Cwd = worktree
+		if err := s.Store.SaveSession(session); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, canonicalSessionResponse(session))
 }
@@ -319,7 +351,7 @@ func canonicalSessionResponse(session storage.Session) storage.Session {
 func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
 	sessionRef, action, hasAction := strings.Cut(rest, "/")
-	if sessionRef == "" || (hasAction && action != "messages" && action != "events" && action != "transcript") {
+	if sessionRef == "" || (hasAction && action != "messages" && action != "events" && action != "transcript" && action != "repo") {
 		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
 		return
 	}
@@ -338,6 +370,10 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	}
 	if action == "transcript" {
 		s.writeSessionTranscript(w, r, session)
+		return
+	}
+	if action == "repo" {
+		s.handleSessionRepo(w, r, session)
 		return
 	}
 	var messages any
@@ -556,7 +592,7 @@ func (s *Server) streamSessionEvents(w http.ResponseWriter, r *http.Request, ses
 func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
 	sessionRef, action, ok := strings.Cut(rest, "/")
-	if !ok || (action != "messages:stream" && action != "attachments" && action != "archive" && action != "unarchive" && action != "interactive-response" && action != "permission" && action != "cancel" && action != "queue") {
+	if !ok || (action != "messages:stream" && action != "attachments" && action != "archive" && action != "unarchive" && action != "interactive-response" && action != "permission" && action != "cancel" && action != "queue" && action != "repo/push" && action != "repo/commit" && action != "repo/merge") {
 		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
 		return
 	}
@@ -589,6 +625,18 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	}
 	if action == "queue" {
 		s.handleQueueAction(w, r, session)
+		return
+	}
+	if action == "repo/push" {
+		s.handleSessionRepoPush(w, r, session)
+		return
+	}
+	if action == "repo/commit" {
+		s.handleSessionRepoCommit(w, r, session)
+		return
+	}
+	if action == "repo/merge" {
+		s.handleSessionRepoMerge(w, r, session)
 		return
 	}
 	if action == "cancel" {

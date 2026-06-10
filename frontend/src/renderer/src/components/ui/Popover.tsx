@@ -10,12 +10,16 @@ export function Popover({
   trigger,
   children,
   placement = 'above',
+  align = 'start',
 }: {
   open: boolean
   onClose: () => void
   trigger: ReactNode
   children: ReactNode
   placement?: 'above' | 'below'
+  // 'end' anchors the panel to the trigger's right edge, for triggers near
+  // the window's right side.
+  align?: 'start' | 'end'
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const reducedMotion = useReducedMotion()
@@ -49,9 +53,9 @@ export function Popover({
             transition={{ duration: 0.15, ease: 'easeOut' }}
             // no-drag keeps the panel clickable when it overlaps the titlebar
             // drag region (harmless everywhere else).
-            className={`absolute left-0 z-20 min-w-[176px] rounded-[14px] bg-surface p-1.5 shadow-xl ring-1 ring-border [-webkit-app-region:no-drag] ${
-              placement === 'above' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-            }`}
+            className={`absolute z-20 min-w-[176px] rounded-[14px] bg-surface p-1.5 shadow-xl ring-1 ring-border [-webkit-app-region:no-drag] ${
+              align === 'end' ? 'right-0' : 'left-0'
+            } ${placement === 'above' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'}`}
           >
             {children}
           </motion.div>

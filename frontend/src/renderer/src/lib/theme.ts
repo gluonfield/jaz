@@ -6,6 +6,8 @@ export type ThemePref = 'light' | 'dark' | 'system'
 export type ResolvedTheme = 'light' | 'dark'
 
 const KEY = 'jaz.theme'
+const LIGHT_BG = 'oklch(0.963 0.007 262)'
+const DARK_BG = 'oklch(0.208 0.007 262)'
 
 const media = window.matchMedia('(prefers-color-scheme: dark)')
 const listeners = new Set<() => void>()
@@ -27,8 +29,17 @@ function apply(p: ThemePref) {
   const root = document.documentElement
   root.classList.toggle('dark', resolved === 'dark')
   root.style.colorScheme = resolved
+  root.style.background = root.classList.contains('vibrant')
+    ? 'transparent'
+    : resolved === 'dark'
+      ? DARK_BG
+      : LIGHT_BG
   // keep the native window chrome (macOS traffic lights, scrollbars) in step
   window.jaz?.setNativeTheme?.(p)
+}
+
+function notify() {
+  for (const l of listeners) l()
 }
 
 export function getThemePref(): ThemePref {
@@ -39,7 +50,7 @@ export function setThemePref(next: ThemePref) {
   pref = next
   localStorage.setItem(KEY, next)
   apply(next)
-  for (const l of listeners) l()
+  notify()
 }
 
 function subscribe(fn: () => void) {
@@ -53,7 +64,18 @@ function subscribe(fn: () => void) {
 media.addEventListener('change', () => {
   if (pref !== 'system') return
   apply('system')
-  for (const l of listeners) l()
+  notify()
+})
+
+// Keep sibling Electron windows, especially detached board windows, in step
+// when the theme switcher writes the shared preference from the main window.
+window.addEventListener('storage', (event) => {
+  if (event.storageArea !== localStorage || event.key !== KEY) return
+  const next = readStored()
+  if (next === pref) return
+  pref = next
+  apply(next)
+  notify()
 })
 
 // Run once at import so nativeTheme is synced even though the inline FOUC

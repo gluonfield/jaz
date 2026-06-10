@@ -11,6 +11,12 @@ type MemoryPaths struct {
 	dir string
 }
 
+// AutomationsDir is where per-loop state (memory.md, widget/) lives under the
+// jaz root; shared so tool roots and the scheduler agree on the location.
+func AutomationsDir(root string) string {
+	return filepath.Join(root, "automations")
+}
+
 func NewMemoryPaths(automationsDir string) *MemoryPaths {
 	dir := strings.TrimSpace(automationsDir)
 	if dir == "" {

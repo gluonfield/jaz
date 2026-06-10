@@ -4,6 +4,7 @@ export const keys = {
   allSessions: ['sessions', 'all'] as const,
   archivedSessions: ['sessions', 'archived'] as const,
   sessionMessages: (id: string) => ['sessions', id, 'messages'] as const,
+  sessionRepo: (id: string) => ['sessions', id, 'repo'] as const,
   sessionEvents: (id: string) => ['sessions', id, 'events'] as const,
   agentFiles: ['agent', 'files'] as const,
   agentSettings: ['settings', 'agents'] as const,
@@ -13,4 +14,6 @@ export const keys = {
   workspaceDirs: (path: string) => ['workspace', 'dirs', path] as const,
   loops: ['loops'] as const,
   loopDetail: (id: string) => ['loops', id] as const,
+  boards: ['boards'] as const,
+  boardDetail: (id: string) => ['boards', id] as const,
 }

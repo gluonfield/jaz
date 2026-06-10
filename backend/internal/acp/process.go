@@ -34,7 +34,8 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	if cfg.Command == "" {
 		return nil, fmt.Errorf("acp agent %q has no command", name)
 	}
-	cmd := exec.CommandContext(ctx, cfg.Command, cfg.Args...)
+	command, args := processCommand(name, cfg)
+	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Env = envList(env)
 	if cwd != "" {
 		cmd.Dir = cwd
@@ -49,7 +50,7 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	}
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start acp agent %q (%s): %w", name, strings.Join(append([]string{cfg.Command}, cfg.Args...), " "), err)
+		return nil, fmt.Errorf("start acp agent %q (%s): %w", name, strings.Join(append([]string{command}, args...), " "), err)
 	}
 	conn := stdio.New(stdout, stdin)
 	go func() {
@@ -75,6 +76,7 @@ func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
 	}
 	normalizeEnv(env, "OPENAI_API_KEY", "OPENAI_APIKEY")
 	normalizeEnv(env, "ANTHROPIC_API_KEY", "ANTHROPIC_APIKEY")
+	normalizeEnv(env, "XAI_API_KEY", "XAI_APIKEY")
 
 	root := firstNonEmpty(m.cfg.Root, filepath.Join(os.TempDir(), "jaz"))
 	home := filepath.Join(root, "acp", "home")
@@ -118,6 +120,30 @@ func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
 		}
 		normalizeEnv(env, "ANTHROPIC_API_KEY", "ANTHROPIC_APIKEY")
 	}
+	if name == AgentGrok {
+		configuredHome := strings.TrimSpace(env["HOME"])
+		preserveHostEnv(env, []string{
+			"HOME",
+			"HTTP_PROXY",
+			"HTTPS_PROXY",
+			"LANG",
+			"LC_ALL",
+			"LC_CTYPE",
+			"LOGNAME",
+			"NO_PROXY",
+			"SHELL",
+			"SSH_AUTH_SOCK",
+			"USER",
+			"XAI_API_KEY",
+			"XAI_APIKEY",
+		})
+		if configuredHome != "" {
+			home = configuredHome
+		} else if userHome, err := os.UserHomeDir(); err == nil && userHome != "" {
+			home = userHome
+		}
+		normalizeEnv(env, "XAI_API_KEY", "XAI_APIKEY")
+	}
 	tmp := filepath.Join(root, "acp", "tmp")
 	cache := filepath.Join(root, "acp", "npm-cache")
 	_ = os.MkdirAll(home, 0o700)
@@ -133,6 +159,70 @@ func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
 	env["npm_config_fund"] = "false"
 	env["npm_config_update_notifier"] = "false"
 	return env
+}
+
+func processCommand(name string, cfg AgentConfig) (string, []string) {
+	args := append([]string(nil), cfg.Args...)
+	if CanonicalAgentName(name) == AgentGrok && isGrokCommand(cfg.Command) {
+		args = withGrokAlwaysApproveArg(args)
+		args = withGrokReasoningEffortArg(args, configuredReasoningEffort(cfg.ReasoningEffort))
+	}
+	return cfg.Command, args
+}
+
+func isGrokCommand(command string) bool {
+	return filepath.Base(strings.TrimSpace(command)) == "grok"
+}
+
+func withGrokReasoningEffortArg(args []string, effort string) []string {
+	if strings.TrimSpace(effort) == "" || hasFlag(args, "--reasoning-effort", "--effort") {
+		return args
+	}
+	insertAt := len(args)
+	for i, arg := range args {
+		if arg == "stdio" {
+			insertAt = i
+			break
+		}
+	}
+	next := make([]string, 0, len(args)+2)
+	next = append(next, args[:insertAt]...)
+	next = append(next, "--reasoning-effort", effort)
+	next = append(next, args[insertAt:]...)
+	return next
+}
+
+func withGrokAlwaysApproveArg(args []string) []string {
+	if hasFlag(args, "--always-approve") || hasFlag(args, "--permission-mode") {
+		return args
+	}
+	return insertBeforeArg(args, "stdio", "--always-approve")
+}
+
+func insertBeforeArg(args []string, marker string, values ...string) []string {
+	insertAt := len(args)
+	for i, arg := range args {
+		if arg == marker {
+			insertAt = i
+			break
+		}
+	}
+	next := make([]string, 0, len(args)+len(values))
+	next = append(next, args[:insertAt]...)
+	next = append(next, values...)
+	next = append(next, args[insertAt:]...)
+	return next
+}
+
+func hasFlag(args []string, names ...string) bool {
+	for _, arg := range args {
+		for _, name := range names {
+			if arg == name || strings.HasPrefix(arg, name+"=") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func prepareCodexHome(root, sourceHome string) string {
@@ -216,11 +306,31 @@ func autoAuthMethod(agent string, raw json.RawMessage, env map[string]string) (s
 			}
 		}
 	}
+	if agent == AgentGrok {
+		for _, method := range init.AuthMethods {
+			if method.ID == "xai.api_key" && env["XAI_API_KEY"] != "" {
+				return method.ID, nil
+			}
+		}
+		for _, method := range init.AuthMethods {
+			if method.ID == "cached_token" && grokAuthAvailable(env) {
+				return method.ID, nil
+			}
+		}
+	}
 	var missing []string
 	if agent == AgentCodex {
 		for _, method := range init.AuthMethods {
 			if method.ID == "chatgpt" {
 				missing = appendMissing(missing, codexAuthHint(env))
+				break
+			}
+		}
+	}
+	if agent == AgentGrok {
+		for _, method := range init.AuthMethods {
+			if method.ID == "cached_token" || method.ID == "xai.api_key" || method.ID == "grok.com" {
+				missing = appendMissing(missing, grokAuthHint(env))
 				break
 			}
 		}
@@ -264,6 +374,25 @@ func codexAuthHint(env map[string]string) string {
 		return "Codex OAuth login at " + filepath.Join(env["CODEX_HOME"], "auth.json")
 	}
 	return "Codex OAuth login at ~/.codex/auth.json"
+}
+
+func grokAuthAvailable(env map[string]string) bool {
+	home := env["HOME"]
+	if home == "" {
+		userHome, err := os.UserHomeDir()
+		if err != nil {
+			return false
+		}
+		home = userHome
+	}
+	return fileExists(filepath.Join(home, ".grok", "auth.json"))
+}
+
+func grokAuthHint(env map[string]string) string {
+	if env["HOME"] != "" {
+		return "Grok login at " + filepath.Join(env["HOME"], ".grok", "auth.json") + " or XAI_API_KEY"
+	}
+	return "Grok login at ~/.grok/auth.json or XAI_API_KEY"
 }
 
 func fileExists(path string) bool {

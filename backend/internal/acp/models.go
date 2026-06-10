@@ -53,6 +53,10 @@ func modelPolicyForAgent(agentName string) agentModelPolicy {
 			effortInModelSuffix: true,
 			modelValidationKind: modelValidationNone,
 		}
+	case AgentGrok:
+		return agentModelPolicy{
+			modelValidationKind: modelValidationNone,
+		}
 	default:
 		return agentModelPolicy{
 			effortConfigID:      sessionConfigReasoningEffort,
@@ -67,6 +71,10 @@ func (p agentModelPolicy) usesModelConfigOption() bool {
 
 func (p agentModelPolicy) reasoningEffortConfigID() string {
 	return p.effortConfigID
+}
+
+func (p agentModelPolicy) usesReasoningEffortConfigOption() bool {
+	return p.effortConfigID != ""
 }
 
 func (p agentModelPolicy) effortEncodedInModel(model string) bool {
@@ -141,7 +149,11 @@ func (m *Manager) setConfiguredReasoningEffort(ctx context.Context, peer *jsonrp
 	if effort == "" {
 		return nil
 	}
-	configID := modelPolicyForAgent(agentName).reasoningEffortConfigID()
+	policy := modelPolicyForAgent(agentName)
+	if !policy.usesReasoningEffortConfigOption() {
+		return nil
+	}
+	configID := policy.reasoningEffortConfigID()
 	_, err = peer.Call(ctx, acpschema.AgentMethodSessionSetConfigOption, acpschema.SetSessionConfigOptionRequest{
 		SessionID: sessionID,
 		ConfigID:  acpschema.SessionConfigID(configID),
@@ -193,7 +205,7 @@ func (m *Manager) configuredModeState(
 			return ModeState{}, err
 		}
 	}
-	return m.initializeModeState(ctx, peer, session.response)
+	return m.initializeModeState(ctx, peer, agentName, session.response)
 }
 
 func (m *Manager) applyConfiguredReasoningEffort(
@@ -207,6 +219,9 @@ func (m *Manager) applyConfiguredReasoningEffort(
 	requireAdvertisedEffort bool,
 ) error {
 	if effort == "" {
+		return nil
+	}
+	if !modelPolicyForAgent(agentName).usesReasoningEffortConfigOption() {
 		return nil
 	}
 	if requireAdvertisedEffort && !options.effortConfigPresent {

@@ -4,7 +4,7 @@ import { Repeat } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import { createLoop, updateLoop } from '@/lib/api/loops'
+import { createLoop, runLoopNow, updateLoop } from '@/lib/api/loops'
 import { acpAgentsQuery } from '@/lib/api/sessions'
 import type { Loop } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
@@ -23,26 +23,43 @@ export function LoopModal({
   open,
   onClose,
   loop,
+  boardIds,
+  initialBoardIds,
+  onCreated,
 }: {
   open: boolean
   onClose: () => void
   loop?: Loop
+  // Current board assignments when editing (from the loop detail response).
+  boardIds?: string[]
+  // Preselected boards when creating (e.g. "New widget" from a board).
+  initialBoardIds?: string[]
+  // When set, creating stays in place (no navigation) and reports the loop —
+  // the board scrolls its new tile into view instead.
+  onCreated?: (loop: Loop) => void
 }) {
   const isEdit = !!loop
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { data: agents = [] } = useQuery(acpAgentsQuery)
   const [draft, setDraft] = useState<LoopDraft | null>(null)
-  const current = draft ?? (loop ? loopDraftFromLoop(loop) : emptyLoopDraft(agents))
+  const current = draft ?? (loop ? loopDraftFromLoop(loop, boardIds) : emptyLoopDraft(initialBoardIds))
 
   const save = useMutation({
-    mutationFn: () =>
+    mutationFn: ({ run: _run }: { run: boolean }) =>
       isEdit ? updateLoop(loop.id, loopDraftToInput(current)) : createLoop(loopDraftToInput(current)),
-    onSuccess: (saved) => {
+    onSuccess: (saved, { run }) => {
+      if (!isEdit && run) void runLoopNow(saved.id).catch(() => {})
       queryClient.invalidateQueries({ queryKey: keys.loops })
+      queryClient.invalidateQueries({ queryKey: keys.boards })
       if (isEdit) queryClient.invalidateQueries({ queryKey: keys.loopDetail(loop.id) })
       close()
-      if (!isEdit) navigate({ to: '/loops/$loopId', params: { loopId: saved.id } })
+      if (!isEdit) {
+        if (onCreated) onCreated(saved)
+        // Board OS windows never navigate; the new loop opens in the main app.
+        else if (window.jaz?.windowKind === 'board') window.jaz.openInMain(`/loops/${saved.id}`)
+        else navigate({ to: '/loops/$loopId', params: { loopId: saved.id } })
+      }
     },
   })
 
@@ -69,14 +86,35 @@ export function LoopModal({
             <Button variant="ghost" size="md" onClick={close}>
               Cancel
             </Button>
-            <Button
-              variant="primary"
-              size="md"
-              disabled={!canSaveLoop(current) || save.isPending}
-              onClick={() => save.mutate()}
-            >
-              {save.isPending ? 'Saving…' : isEdit ? 'Save changes' : 'Create loop'}
-            </Button>
+            {isEdit ? (
+              <Button
+                variant="primary"
+                size="md"
+                disabled={!canSaveLoop(current) || save.isPending}
+                onClick={() => save.mutate({ run: false })}
+              >
+                {save.isPending ? 'Saving…' : 'Save changes'}
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="secondary"
+                  size="md"
+                  disabled={!canSaveLoop(current) || save.isPending}
+                  onClick={() => save.mutate({ run: false })}
+                >
+                  {save.isPending && !save.variables?.run ? 'Creating…' : 'Create'}
+                </Button>
+                <Button
+                  variant="primary"
+                  size="md"
+                  disabled={!canSaveLoop(current) || save.isPending}
+                  onClick={() => save.mutate({ run: true })}
+                >
+                  {save.isPending && save.variables?.run ? 'Creating…' : 'Create & Run'}
+                </Button>
+              </>
+            )}
           </div>
         </>
       }

@@ -30,6 +30,8 @@ func NormalizeCreate(input CreateLoop, now time.Time) (CreateLoop, time.Time, er
 		return input, time.Time{}, err
 	}
 	input.ReasoningEffort = effort
+	input.ModelProvider = strings.TrimSpace(input.ModelProvider)
+	input.Model = strings.TrimSpace(input.Model)
 	input.Directory = strings.TrimSpace(input.Directory)
 	if input.Name == "" {
 		input.Name = titleFromPrompt(input.Prompt)
@@ -68,6 +70,12 @@ func NormalizeUpdate(current Loop, input UpdateLoop, now time.Time) (Loop, bool,
 			return next, false, err
 		}
 		next.ReasoningEffort = effort
+	}
+	if input.ModelProvider != nil {
+		next.ModelProvider = strings.TrimSpace(*input.ModelProvider)
+	}
+	if input.Model != nil {
+		next.Model = strings.TrimSpace(*input.Model)
 	}
 	if input.Directory != nil {
 		next.Directory = strings.TrimSpace(*input.Directory)

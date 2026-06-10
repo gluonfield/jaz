@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -25,6 +24,7 @@ import (
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	exectool "github.com/wins/jaz/backend/internal/tools/exec"
 	"github.com/wins/jaz/backend/internal/voice"
+	"github.com/wins/jaz/backend/internal/widgets"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxevent"
 )
@@ -49,6 +49,8 @@ func runServe(args []string) error {
 			acp.NewManager,
 			sessionlock.New,
 			sessionevents.New,
+			app.NewWidgetService,
+			app.NewWidgetSessionPublisher,
 			app.NewToolRegistry,
 			app.NewMCPManager,
 			app.NewProvider,
@@ -155,6 +157,8 @@ func startServer(
 	cfg app.Config,
 	catalog acp.AgentCatalog,
 	opts serveOptions,
+	widgetService *widgets.Service,
+	widgetPublisher *widgets.SessionPublisher,
 ) {
 	handler := &server.Server{
 		Agent:                 a,
@@ -172,9 +176,39 @@ func startServer(
 		Log:                   logger.WithPrefix("server"),
 	}
 	loopRunner := server.NewLoopRunner(handler)
-	loopMemoryPaths := loops.NewMemoryPaths(filepath.Join(store.RootDir(), "automations"))
-	loopService := loops.NewService(store, loopRunner, logger, loops.WithMemoryPaths(loopMemoryPaths))
+	loopMemoryPaths := loops.NewMemoryPaths(loops.AutomationsDir(store.RootDir()))
+	loopService := loops.NewService(store, loopRunner, logger,
+		loops.WithMemoryPaths(loopMemoryPaths),
+		// Board assignment is the widget enablement: no boards, no section.
+		loops.WithPromptExtra(widgetService.LoopPromptExtra),
+		loops.WithRunFinished(func(loop loops.Loop, run loops.Run) {
+			if run.Status == loops.RunStatusOK {
+				widgetService.MaybeAutoPublish(loop, run.ID)
+			}
+		}),
+	)
 	handler.Loops = loopService
+	handler.Widgets = widgetService
+	// Heal boards from the era when drags could drop tiles onto each other:
+	// buried tiles get moved to free cells so they're visible again.
+	widgetService.NormalizeBoardLayouts()
+	manager.PublishWidget = func(req acp.WidgetPublishRequest) (acp.WidgetPublishResult, error) {
+		widget, warnings, err := widgetPublisher.PublishForSession(req.SessionID, widgets.PublishInput{
+			Title:    req.Title,
+			SizeHint: req.SizeHint,
+			HTML:     req.HTML,
+		})
+		if err != nil {
+			return acp.WidgetPublishResult{}, err
+		}
+		return acp.WidgetPublishResult{
+			WidgetID: widget.ID,
+			Title:    widget.Title,
+			Version:  widget.CurrentVersion,
+			SizeHint: widget.SizeHint,
+			Warnings: warnings,
+		}, nil
+	}
 	manager.TurnFinished = func(ctx context.Context, job acp.Job) {
 		finishLoopFromACP(loopService, logger, job)
 		handler.HandleACPTurnFinished(ctx, job)

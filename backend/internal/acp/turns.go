@@ -1,13 +1,16 @@
 package acp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
+	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -116,10 +119,74 @@ func (m *Manager) failTurn(job *Job, err error) {
 		job.setState(StateCancelled, "cancelled", "")
 		m.log.Info("acp turn cancelled", "session", job.ID)
 	} else {
-		job.setState(StateFailed, "", err.Error())
+		message := acpTurnErrorMessage(err)
+		job.setState(StateFailed, "", message)
 		m.log.Error("acp turn failed", "session", job.ID, "error", err)
 	}
 	m.publishACPStatus(job.Snapshot())
+}
+
+func acpTurnErrorMessage(err error) string {
+	var rpcErr *jsonrpc.Error
+	if errors.As(err, &rpcErr) {
+		if message := jsonRPCErrorDataMessage(rpcErr.Data); message != "" {
+			return message
+		}
+		if message := strings.TrimSpace(rpcErr.Message); message != "" && message != "Internal error" {
+			return message
+		}
+	}
+	return err.Error()
+}
+
+func jsonRPCErrorDataMessage(raw json.RawMessage) string {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return ""
+	}
+	var data struct {
+		Message json.RawMessage `json:"message"`
+		Error   json.RawMessage `json:"error"`
+	}
+	if json.Unmarshal(raw, &data) == nil && (len(data.Message) > 0 || len(data.Error) > 0) {
+		if message := jsonErrorMessage(data.Message); message != "" {
+			return message
+		}
+		if message := jsonErrorMessage(data.Error); message != "" {
+			return message
+		}
+	}
+	return jsonErrorMessage(raw)
+}
+
+func jsonErrorMessage(raw json.RawMessage) string {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 {
+		return ""
+	}
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		text = strings.TrimSpace(text)
+		if nested := jsonErrorMessage(json.RawMessage(text)); nested != "" {
+			return nested
+		}
+		return text
+	}
+	if raw[0] != '{' {
+		return ""
+	}
+	var payload struct {
+		Message string `json:"message"`
+		Error   struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(raw, &payload) != nil {
+		return ""
+	}
+	if message := strings.TrimSpace(payload.Error.Message); message != "" {
+		return message
+	}
+	return strings.TrimSpace(payload.Message)
 }
 
 func (m *Manager) finishTurn(done chan struct{}, job *Job) {

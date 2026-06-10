@@ -1,10 +1,8 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { motion } from 'motion/react'
 import { useState } from 'react'
-import { ComposerCard } from '@/components/session/Composer'
+import { NewSessionHome } from '@/components/home/NewSessionHome'
 import { DirectoryPicker, ModelSelect, RuntimeSelect } from '@/components/session/NewThreadControls'
 import { Checkbox } from '@/components/ui/Checkbox'
-import { PixelField } from '@/components/ui/PixelField'
 import { useToast } from '@/components/ui/toast'
 import { acpAgentsQuery, createSession } from '@/lib/api/sessions'
 import { agentSettingsQuery } from '@/lib/api/settings'
@@ -31,8 +29,8 @@ function NewSessionPage() {
   // 'native' or a configured ACP agent name; directory is the session cwd.
   const [runtime, setRuntime] = useState('native')
   const [directory, setDirectory] = useState('')
-  // Worktree runs the ACP session on a disposable git worktree; only offered
-  // when the chosen directory is a git repository.
+  // Worktree runs the session on a disposable git worktree (any runtime);
+  // only offered when the chosen directory is a git repository.
   const [directoryIsGit, setDirectoryIsGit] = useState(false)
   const [worktree, setWorktree] = useState(false)
   // Per-session overrides of the Settings > Agents defaults; null follows the
@@ -80,6 +78,7 @@ function NewSessionPage() {
           ? {
               ...(title ? { title } : {}),
               ...(directory ? { directory } : {}),
+              ...(worktree ? { worktree } : {}),
               ...(provider ? { model_provider: provider } : {}),
               ...(model ? { model } : {}),
               ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
@@ -114,118 +113,88 @@ function NewSessionPage() {
     )
   const handleVoice = () => startThread(undefined, (id) => setPendingVoice(id))
 
-  return (
-    <div
-      className="relative flex h-full flex-col items-center justify-center px-10 pb-16"
-      // composer keystrokes bubble up here; a non-empty draft settles the field
-      onInput={(e) => {
-        const el = e.target as HTMLElement
-        if (el instanceof HTMLTextAreaElement) setComposing(el.value.trim().length > 0)
-      }}
-    >
-      <PixelField key={resolved} calm={composing || creating} />
-      <motion.div
-        className="relative w-full max-w-[640px]"
-        initial="hidden"
-        animate="show"
-        variants={{ hidden: {}, show: { transition: { staggerChildren: 0.07 } } }}
-      >
-        <motion.div
-          variants={{
-            hidden: { opacity: 0, y: 14, scale: 0.985 },
-            show: {
-              opacity: 1,
-              y: 0,
-              scale: 1,
-              transition: { type: 'spring', stiffness: 320, damping: 28 },
-            },
+  const composerControls = (
+    <>
+      {agents.length > 0 ? (
+        <RuntimeSelect
+          value={runtime}
+          agents={agents}
+          disabled={creating}
+          onChange={(next) => {
+            setRuntime(next)
+            setProviderOverride(null)
+            setModelOverride(null)
+            setEffortOverride(null)
           }}
-        >
-          <ComposerCard
-            streaming={creating}
-            autoFocus
-            translucent
-            placeholder="Ask anything, or hand your assistant a task…"
-            planAvailable
-            leftSlot={
-              <>
-                {agents.length > 0 ? (
-                  <RuntimeSelect
-                    value={runtime}
-                    agents={agents}
-                    disabled={creating}
-                    onChange={(next) => {
-                      setRuntime(next)
-                      setProviderOverride(null)
-                      setModelOverride(null)
-                      setEffortOverride(null)
-                      if (next === 'native') setWorktree(false)
-                    }}
-                  />
-                ) : null}
-                <ModelSelect
-                  value={model}
-                  suggestions={modelSuggestions}
-                  loading={openRouterModels.isLoading}
-                  disabled={creating}
-                  onChange={setModelOverride}
-                  providers={
-                    isNative
-                      ? (agentSettings?.providers ?? [])
-                          .filter((p) => p.implemented)
-                          .map((p) => ({ value: p.id, label: p.label }))
-                      : undefined
-                  }
-                  provider={isNative ? provider : undefined}
-                  onProviderChange={
-                    isNative
-                      ? (next) => {
-                          setProviderOverride(next)
-                          setModelOverride(null)
-                          setEffortOverride(null)
-                        }
-                      : undefined
-                  }
-                  effort={reasoningEffort}
-                  // Default clears the override, falling back to the settings
-                  // effort — the selection snaps to whatever that resolves to.
-                  onEffortChange={(next) => setEffortOverride(next === '' ? null : next)}
-                />
-                <DirectoryPicker
-                  value={directory}
-                  disabled={creating}
-                  onChange={(path, git) => {
-                    setDirectory(path)
-                    setDirectoryIsGit(git)
-                    if (!git || runtime === 'native') setWorktree(false)
-                  }}
-                />
-                {runtime !== 'native' && directoryIsGit ? (
-                  <div className="flex items-center gap-1.5 text-[13px] text-ink-2">
-                    <Checkbox
-                      checked={worktree}
-                      onChange={setWorktree}
-                      disabled={creating}
-                      aria-label="Run on a git worktree"
-                    />
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      disabled={creating}
-                      onClick={() => setWorktree((v) => !v)}
-                      className="cursor-pointer select-none disabled:cursor-default disabled:opacity-50"
-                    >
-                      Worktree
-                    </button>
-                  </div>
-                ) : null}
-              </>
-            }
-            onSend={handleSend}
-            onVoice={runtime === 'native' ? handleVoice : undefined}
+        />
+      ) : null}
+      <ModelSelect
+        value={model}
+        suggestions={modelSuggestions}
+        loading={openRouterModels.isLoading}
+        disabled={creating}
+        onChange={setModelOverride}
+        providers={
+          isNative
+            ? (agentSettings?.providers ?? [])
+                .filter((p) => p.implemented)
+                .map((p) => ({ value: p.id, label: p.label }))
+            : undefined
+        }
+        provider={isNative ? provider : undefined}
+        onProviderChange={
+          isNative
+            ? (next) => {
+                setProviderOverride(next)
+                setModelOverride(null)
+                setEffortOverride(null)
+              }
+            : undefined
+        }
+        effort={reasoningEffort}
+        // Default clears the override, falling back to the settings effort.
+        onEffortChange={(next) => setEffortOverride(next === '' ? null : next)}
+      />
+      <DirectoryPicker
+        value={directory}
+        disabled={creating}
+        onChange={(path, git) => {
+          setDirectory(path)
+          setDirectoryIsGit(git)
+          if (!git) setWorktree(false)
+        }}
+      />
+      {directoryIsGit ? (
+        <div className="flex items-center gap-1.5 text-[13px] text-ink-2">
+          <Checkbox
+            checked={worktree}
+            onChange={setWorktree}
+            disabled={creating}
+            aria-label="Run on a git worktree"
           />
-        </motion.div>
-      </motion.div>
-    </div>
+          <button
+            type="button"
+            tabIndex={-1}
+            disabled={creating}
+            onClick={() => setWorktree((v) => !v)}
+            className="cursor-pointer select-none disabled:cursor-default disabled:opacity-50"
+          >
+            Worktree
+          </button>
+        </div>
+      ) : null}
+    </>
+  )
+
+  return (
+    <NewSessionHome
+      themeKey={resolved}
+      calm={composing || creating}
+      creating={creating}
+      leftSlot={composerControls}
+      onDraftActivity={setComposing}
+      onSend={handleSend}
+      onVoice={runtime === 'native' ? handleVoice : undefined}
+    />
   )
 }

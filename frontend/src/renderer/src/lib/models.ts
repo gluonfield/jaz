@@ -16,6 +16,13 @@ export const OPENAI_MODELS: ModelSuggestion[] = [
   { value: 'gpt-5.3-codex-spark', label: 'GPT-5.3 Codex Spark', description: 'Tuned for coding', contextLength: 400_000 },
 ]
 
+export const CODEX_ACP_MODELS: ModelSuggestion[] = [
+  { value: 'gpt-5.5', label: 'GPT-5.5', description: 'Most capable', contextLength: 1_050_000 },
+  { value: 'gpt-5.3-codex-spark', label: 'GPT-5.3 Codex Spark', description: 'Account-gated research preview', contextLength: 400_000 },
+  { value: 'gpt-5.4', label: 'GPT-5.4', description: 'Strong coding model', contextLength: 400_000 },
+  { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini', description: 'Fast and inexpensive', contextLength: 400_000 },
+]
+
 // Model config values advertised by @agentclientprotocol/claude-agent-acp@0.44.0;
 // the backend rejects ids the adapter doesn't advertise.
 export const ANTHROPIC_MODELS: ModelSuggestion[] = [
@@ -26,10 +33,16 @@ export const ANTHROPIC_MODELS: ModelSuggestion[] = [
   { value: 'haiku', label: 'Haiku 4.5', description: 'Fastest for quick answers', contextLength: 200_000 },
 ]
 
+export const GROK_MODELS: ModelSuggestion[] = [
+  { value: 'grok-build', label: 'Grok Build', description: 'Best for advanced coding tasks', contextLength: 512_000 },
+  { value: 'grok-composer-2.5-fast', label: 'Composer 2.5', description: "Cursor's coding model", contextLength: 200_000 },
+]
+
 // ACP agents imply their provider; native resolves through its provider setting.
 const ACP_AGENT_MODELS: Record<string, ModelSuggestion[]> = {
   claude: ANTHROPIC_MODELS,
-  codex: OPENAI_MODELS,
+  codex: CODEX_ACP_MODELS,
+  grok: GROK_MODELS,
 }
 
 export function acpAgentModelSuggestions(agent: string): ModelSuggestion[] {
@@ -108,8 +121,11 @@ function contextWindowHeuristic(model?: string, acpAgent?: string): number | nul
   if (id.includes('[1m]')) return 1_000_000
   // Claude ACP without an explicit pick runs the adapter default: Opus 4.8 (1M).
   if (acpAgent === 'claude' && id === '') return 1_000_000
+  if (acpAgent === 'grok' && id === '') return 512_000
   if (/claude|sonnet|haiku|opus|fable/.test(id)) return 200_000
   if (/gpt-5|codex/.test(id)) return 400_000
+  if (/grok-build/.test(id)) return 512_000
+  if (/grok|composer/.test(id)) return 200_000
   if (/gemini/.test(id)) return 1_000_000
   return null
 }

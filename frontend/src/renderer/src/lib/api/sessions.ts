@@ -1,7 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '../query/keys'
 import { apiBaseUrl, ApiError, get, post } from './client'
-import type { Attachment, Session, SessionMessages } from './types'
+import type { Attachment, RepoInfo, Session, SessionMessages } from './types'
 
 export function createSession(
   input: {
@@ -70,6 +70,48 @@ export function listWorkspaceDirs(
   return get<{ path: string; git?: boolean; dirs: WorkspaceDir[] | null }>(
     `/v1/workspace/dirs?path=${encodeURIComponent(path)}`,
   ).then((data) => ({ path: data.path, git: data.git ?? false, dirs: data.dirs ?? [] }))
+}
+
+// Git/forge state of the session's working directory. Resilient: any failure
+// (older backend without the route) reads as "not a repo" so the titlebar repo
+// button simply doesn't render. Polled while mounted — the branch and upstream
+// change as agents work.
+export const sessionRepoQuery = (id: string) =>
+  queryOptions({
+    queryKey: keys.sessionRepo(id),
+    queryFn: async (): Promise<RepoInfo> => {
+      try {
+        return await get<RepoInfo>(`/v1/sessions/${id}/repo`)
+      } catch {
+        return { git: false }
+      }
+    },
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  })
+
+// Publishes the session's current branch to its remote (git push -u) and
+// returns the refreshed repo state; Create PR calls this first when the
+// branch has no upstream yet.
+export function pushSessionRepoBranch(id: string): Promise<RepoInfo> {
+  return post<RepoInfo>(`/v1/sessions/${id}/repo/push`)
+}
+
+// Stages and commits everything in the session's working directory; the
+// backend defaults the message to the session title.
+export function commitSessionRepo(id: string, message?: string): Promise<RepoInfo> {
+  return post<RepoInfo>(`/v1/sessions/${id}/repo/commit`, message ? { message } : {})
+}
+
+// Commits the worktree's outstanding work on its branch and merges that
+// branch into the repo's main checkout. `moved` reports whether the session's
+// cwd followed — true for native sessions, false for ACP agents bound to
+// their spawn cwd. Conflicting merges are aborted server-side and surface as
+// errors; the main checkout is never left mid-merge.
+export function mergeSessionRepo(
+  id: string,
+): Promise<{ cwd: string; moved: boolean; info: RepoInfo }> {
+  return post<{ cwd: string; moved: boolean; info: RepoInfo }>(`/v1/sessions/${id}/repo/merge`)
 }
 
 export function setSessionArchived(id: string, archived: boolean): Promise<Session> {

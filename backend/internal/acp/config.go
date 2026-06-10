@@ -7,17 +7,21 @@ import (
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 )
 
-var fullAccessModes = []string{"full-access", "yolo"}
+var fullAccessModes = []string{"full-access", "yolo", "always-approve"}
 
 const (
 	AgentCodex  = "codex"
 	AgentClaude = "claude"
+	AgentGrok   = "grok"
 )
 
 func CanonicalAgentName(name string) string {
 	name = strings.ToLower(strings.TrimSpace(name))
 	if strings.ReplaceAll(name, "_", "-") == "claude-code" {
 		return AgentClaude
+	}
+	if strings.ReplaceAll(name, "_", "-") == "grok-build" {
+		return AgentGrok
 	}
 	return name
 }
@@ -99,6 +103,18 @@ func BuiltinAgents() AgentCatalog {
 			Command:         "npx",
 			Args:            []string{"-y", "@agentclientprotocol/claude-agent-acp@0.44.0"},
 			Model:           "default",
+			ReasoningEffort: "medium",
+		},
+		AgentGrok: {
+			Command: "grok",
+			Args: []string{
+				"--no-auto-update",
+				"agent",
+				"--no-leader",
+				"--always-approve",
+				"stdio",
+			},
+			Model:           "grok-build",
 			ReasoningEffort: "medium",
 		},
 	}

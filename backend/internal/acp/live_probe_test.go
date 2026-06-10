@@ -44,7 +44,7 @@ func TestLiveACPProbe(t *testing.T) {
 		env["HOME"] = home
 	}
 	applyProbeEnvOverrides(env)
-	conn, cleanup := probeOpenConn(t, ctx, cfg, env, cwd)
+	conn, cleanup := probeOpenConn(t, ctx, agent, cfg, env, cwd)
 	defer cleanup()
 
 	init := probeCall(t, ctx, conn, "1", acpschema.AgentMethodInitialize, acpschema.InitializeRequest{
@@ -87,9 +87,15 @@ func TestLiveACPProbe(t *testing.T) {
 		t.Log("skipping prompt")
 		return
 	}
+	availableModes := []acpschema.SessionMode(nil)
+	if sessionResp.Modes != nil {
+		availableModes = sessionResp.Modes.AvailableModes
+	} else if agent == AgentGrok {
+		availableModes = grokFallbackModes().AvailableModes
+	}
 	if os.Getenv("ACP_PROBE_SKIP_PLAN_MODE") == "1" {
 		t.Log("skipping plan mode switch")
-	} else if modeID := planModeID(sessionResp.Modes.AvailableModes); modeID != "" {
+	} else if modeID := planModeID(availableModes); modeID != "" {
 		setMode := probeCall(t, ctx, conn, "4", acpschema.AgentMethodSessionSetMode, acpschema.SetSessionModeRequest{
 			SessionID: sessionResp.SessionID,
 			ModeID:    acpschema.SessionModeID(modeID),
@@ -130,7 +136,7 @@ func probeApplyConfiguredSessionOptions(t *testing.T, ctx context.Context, conn 
 			t.Logf("session/set_model(%s) result: %s", model, setModel.Result)
 		}
 	}
-	if effort != "" && !policy.effortEncodedInModel(rawModel) {
+	if effort != "" && policy.usesReasoningEffortConfigOption() && !policy.effortEncodedInModel(rawModel) {
 		configID := policy.reasoningEffortConfigID()
 		setEffort := probeCall(t, ctx, conn, "11", acpschema.AgentMethodSessionSetConfigOption, acpschema.SetSessionConfigOptionRequest{
 			SessionID: sessionID,
@@ -158,6 +164,7 @@ func applyProbeEnvOverrides(env map[string]string) {
 		"CLAUDE_CODE_USE_VERTEX",
 		"CLAUDE_CODE_USE_BEDROCK",
 		"CLAUDE_CODE_REMOTE",
+		"XAI_API_KEY",
 	} {
 		if value := os.Getenv(key); value != "" {
 			env[key] = value
@@ -192,15 +199,33 @@ func probeAgentConfig(t *testing.T, agent string) AgentConfig {
 			Command: "npx",
 			Args:    []string{"-y", pkg},
 		}
+	case AgentGrok:
+		command := strings.TrimSpace(os.Getenv("ACP_PROBE_GROK_COMMAND"))
+		if command == "" {
+			return AgentConfig{
+				Command: "grok",
+				Args: []string{
+					"--no-auto-update",
+					"agent",
+					"--no-leader",
+					"stdio",
+				},
+			}
+		}
+		return AgentConfig{
+			Command: command,
+			Args:    strings.Fields(strings.TrimSpace(os.Getenv("ACP_PROBE_GROK_ARGS"))),
+		}
 	default:
 		t.Fatalf("unknown probe agent %q", agent)
 		return AgentConfig{}
 	}
 }
 
-func probeOpenConn(t *testing.T, ctx context.Context, cfg AgentConfig, env map[string]string, cwd string) (jsonrpc.MessageConn, func()) {
+func probeOpenConn(t *testing.T, ctx context.Context, agent string, cfg AgentConfig, env map[string]string, cwd string) (jsonrpc.MessageConn, func()) {
 	t.Helper()
-	cmd := exec.CommandContext(ctx, cfg.Command, cfg.Args...)
+	command, args := processCommand(agent, cfg)
+	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Env = envList(env)
 	cmd.Dir = cwd
 	stdin, err := cmd.StdinPipe()

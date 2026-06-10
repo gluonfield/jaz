@@ -42,6 +42,29 @@ export interface Session {
   updated_at: string
 }
 
+// Git/forge state of a session's working directory (GET /v1/sessions/:id/repo).
+// git=false means "no cwd or not a git repo".
+export interface RepoInfo {
+  git: boolean
+  branch?: string
+  default_branch?: string
+  remote_url?: string
+  web_url?: string
+  host?: string
+  owner?: string
+  repo?: string
+  has_upstream?: boolean
+  // Confirmed zero commits on top of the default branch (a PR would be empty).
+  no_commits?: boolean
+  // Commits exist that the remote doesn't have.
+  needs_push?: boolean
+  dirty?: boolean
+  // Linked worktree (not the main checkout); main_branch is the branch the
+  // main checkout is on — the handoff destination.
+  is_worktree?: boolean
+  main_branch?: string
+}
+
 export interface LoopSchedule {
   kind: string
   expr: string
@@ -56,6 +79,8 @@ export interface Loop {
   status: 'active' | 'paused' | 'deleted'
   runtime: 'native' | 'acp'
   acp_agent?: string
+  model_provider?: string
+  model?: string
   reasoning_effort?: string
   directory?: string
   memory_path?: string
@@ -81,6 +106,51 @@ export interface LoopRun {
   status: LoopRunStatus
   error?: string
   created_at: string
+}
+
+export interface Board {
+  id: string
+  name: string
+  grid_cols: number
+  row_height: number
+  // Zooms every widget document on the board (big-screen comfort).
+  font_scale: number
+  window_bounds?: string
+  is_default: boolean
+  created_at: string
+  updated_at: string
+}
+
+// board_widgets joined with the widget and its loop (backend/internal/widgets).
+export interface BoardItem {
+  board_id: string
+  widget_id: string
+  x: number
+  y: number
+  w: number
+  h: number
+  placed_by: 'llm' | 'user'
+  loop_id: string
+  loop_name: string
+  loop_status: string
+  loop_last_run_status?: string
+  loop_last_run_at?: string
+  title: string
+  current_version: number
+  size_hint?: string
+  last_error?: string
+  widget_updated_at: string
+}
+
+export interface WidgetSummary {
+  id: string
+  loop_id: string
+  title: string
+  current_version: number
+  size_hint?: string
+  last_error?: string
+  created_at: string
+  updated_at: string
 }
 
 export interface ActivityEntry {

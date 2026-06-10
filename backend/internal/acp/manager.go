@@ -43,6 +43,9 @@ type Manager struct {
 	Done         func(context.Context, Job)
 	TurnFinished func(context.Context, Job)
 	Events       *sessionevents.Bus
+	// PublishWidget backs the _jaz.dev/widget/publish extension method; the
+	// session id is the jaz session linked to the calling agent's ACP session.
+	PublishWidget func(WidgetPublishRequest) (WidgetPublishResult, error)
 
 	mu           sync.RWMutex
 	jobsByID     map[string]*Job
@@ -182,7 +185,8 @@ func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd
 		},
 		ClientCapabilities: &acpschema.ClientCapabilities{
 			Meta: map[string]any{
-				"terminal-auth": true,
+				"terminal-auth":  true,
+				"jaz.dev/widget": map[string]any{"version": 1},
 			},
 			FS: &acpschema.FileSystemCapabilities{
 				ReadTextFile:  true,
@@ -344,15 +348,19 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	}, nil
 }
 
-func (m *Manager) initializeModeState(ctx context.Context, peer *jsonrpc.Peer, session acpschema.NewSessionResponse) (ModeState, error) {
-	modes := modeStateFromACP(session.Modes)
-	if session.Modes == nil {
+func (m *Manager) initializeModeState(ctx context.Context, peer *jsonrpc.Peer, agentName string, session acpschema.NewSessionResponse) (ModeState, error) {
+	acpModes := session.Modes
+	if acpModes == nil && CanonicalAgentName(agentName) == AgentGrok {
+		acpModes = grokFallbackModes()
+	}
+	modes := modeStateFromACP(acpModes)
+	if acpModes == nil {
 		return modes, nil
 	}
 	if modes.ExecutionModeID == "" {
 		modes.ExecutionModeID = modes.CurrentModeID
 	}
-	if preferred := preferredExecutionMode(session.Modes.AvailableModes); preferred != "" {
+	if preferred := preferredExecutionMode(acpModes.AvailableModes); preferred != "" {
 		modes.ExecutionModeID = preferred
 		if modes.CurrentModeID != preferred {
 			if err := m.setSessionMode(ctx, peer, session.SessionID, preferred); err != nil {

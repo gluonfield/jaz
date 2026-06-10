@@ -21,7 +21,11 @@
           el.style.colorScheme = dark ? 'dark' : 'light'
           var vibrant = !!window.jaz && /Mac/.test(navigator.platform)
           if (vibrant) el.classList.add('vibrant')
-          el.style.background = vibrant ? 'transparent' : dark ? 'oklch(0.208 0.007 262)' : '#ffffff'
+          el.style.background = vibrant
+            ? 'transparent'
+            : dark
+              ? 'oklch(0.208 0.007 262)'
+              : 'oklch(0.963 0.007 262)'
         } catch (e) {}
       })()
     </script>
