@@ -30,6 +30,27 @@ func TestParseEffortOptions(t *testing.T) {
 	}
 }
 
+func TestParseSessionConfigOptions(t *testing.T) {
+	state := parseSessionConfigOptions(json.RawMessage(sonnetConfigResponse))
+	if !state.configOptionsPresent {
+		t.Fatal("expected config options to be present")
+	}
+	if !state.effortConfigPresent {
+		t.Fatal("expected effort config to be present")
+	}
+	if len(state.modelOptions) != 2 || state.modelOptions[1] != "sonnet" {
+		t.Fatalf("model options = %#v", state.modelOptions)
+	}
+	if len(state.effortOptions) != 5 || state.effortOptions[4] != "max" {
+		t.Fatalf("effort options = %#v", state.effortOptions)
+	}
+
+	withoutEffort := parseSessionConfigOptions(json.RawMessage(`{"configOptions":[{"id":"model","options":[{"value":"spark"}]}]}`))
+	if !withoutEffort.configOptionsPresent || withoutEffort.effortConfigPresent {
+		t.Fatalf("expected config options without effort, got %#v", withoutEffort)
+	}
+}
+
 func TestClampReasoningEffort(t *testing.T) {
 	sonnet := []string{"default", "low", "medium", "high", "max"}
 	cases := []struct {
@@ -37,12 +58,12 @@ func TestClampReasoningEffort(t *testing.T) {
 		advertised []string
 		want       string
 	}{
-		{"xhigh", sonnet, "high"},               // nearest weaker level
-		{"high", sonnet, "high"},                // advertised as-is
-		{"xhigh", nil, "xhigh"},                 // unknown advertisement: untouched
-		{"", sonnet, ""},                        // nothing configured
-		{"low", []string{"medium"}, "medium"},   // nothing weaker: nearest stronger
-		{"medium", []string{"default"}, ""},     // no ladder level advertised: skip
+		{"xhigh", sonnet, "high"},                          // nearest weaker level
+		{"high", sonnet, "high"},                           // advertised as-is
+		{"xhigh", nil, "xhigh"},                            // unknown advertisement: untouched
+		{"", sonnet, ""},                                   // nothing configured
+		{"low", []string{"medium"}, "medium"},              // nothing weaker: nearest stronger
+		{"medium", []string{"default"}, ""},                // no compatible ladder level
 		{"xhigh", []string{"Default", " XHIGH "}, "xhigh"}, // case/space insensitive
 	}
 	for _, tc := range cases {

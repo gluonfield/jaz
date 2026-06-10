@@ -29,7 +29,6 @@ type modelValidationKind int
 const (
 	modelValidationNone modelValidationKind = iota
 	modelValidationClaude
-	modelValidationCodex
 )
 
 type agentModelPolicy struct {
@@ -52,7 +51,7 @@ func modelPolicyForAgent(agentName string) agentModelPolicy {
 			modelConfigID:       sessionConfigModel,
 			effortConfigID:      sessionConfigReasoningEffort,
 			effortInModelSuffix: true,
-			modelValidationKind: modelValidationCodex,
+			modelValidationKind: modelValidationNone,
 		}
 	default:
 		return agentModelPolicy{
@@ -77,12 +76,19 @@ func (p agentModelPolicy) effortEncodedInModel(model string) bool {
 type acpSessionInfo struct {
 	response      acpschema.NewSessionResponse
 	modelState    sessionModelState
-	effortOptions []string
+	configOptions sessionConfigOptionsState
 }
 
 type sessionModelState struct {
 	exact map[string]struct{}
 	base  map[string]struct{}
+}
+
+type sessionConfigOptionsState struct {
+	configOptionsPresent bool
+	modelOptions         []string
+	effortConfigPresent  bool
+	effortOptions        []string
 }
 
 // setConfiguredSessionModel applies the configured model and returns the
@@ -151,7 +157,13 @@ func (m *Manager) setConfiguredReasoningEffort(ctx context.Context, peer *jsonrp
 	return fmt.Errorf("set acp agent %q reasoning effort %q: %w", agentName, effort, err)
 }
 
-func (m *Manager) configuredModeState(ctx context.Context, peer *jsonrpc.Peer, agentName string, session acpSessionInfo, cfg AgentConfig) (ModeState, error) {
+func (m *Manager) configuredModeState(
+	ctx context.Context,
+	peer *jsonrpc.Peer,
+	agentName string,
+	session acpSessionInfo,
+	cfg AgentConfig,
+) (ModeState, error) {
 	policy := modelPolicyForAgent(agentName)
 	effort, err := provider.NormalizeReasoningEffort(cfg.ReasoningEffort)
 	if err != nil {
@@ -162,31 +174,71 @@ func (m *Manager) configuredModeState(ctx context.Context, peer *jsonrpc.Peer, a
 		return ModeState{}, err
 	}
 	if !policy.effortEncodedInModel(cfg.Model) {
-		// Valid effort levels depend on the active model (claude's sonnet
-		// drops xhigh); switching models refreshes the advertised list.
-		advertised := session.effortOptions
-		if updated := parseEffortOptions(modelRaw); len(updated) > 0 {
-			advertised = updated
+		options := session.configOptions
+		requireAdvertisedEffort := false
+		if refreshed := parseSessionConfigOptions(modelRaw); refreshed.configOptionsPresent {
+			options = refreshed
+			requireAdvertisedEffort = true
 		}
-		if clamped := clampReasoningEffort(effort, advertised); clamped != effort {
-			m.log.Info("clamped acp reasoning effort to the active model",
-				"agent", agentName, "model", cfg.Model, "requested", effort,
-				"using", firstNonEmpty(clamped, "agent default"))
-			effort = clamped
-		}
-		if err := m.setConfiguredReasoningEffort(ctx, peer, agentName, session.response.SessionID, effort); err != nil {
+		if err := m.applyConfiguredReasoningEffort(
+			ctx,
+			peer,
+			agentName,
+			session.response.SessionID,
+			cfg.Model,
+			effort,
+			options,
+			requireAdvertisedEffort,
+		); err != nil {
 			return ModeState{}, err
 		}
 	}
 	return m.initializeModeState(ctx, peer, session.response)
 }
 
+func (m *Manager) applyConfiguredReasoningEffort(
+	ctx context.Context,
+	peer *jsonrpc.Peer,
+	agentName string,
+	sessionID acpschema.SessionID,
+	model string,
+	effort string,
+	options sessionConfigOptionsState,
+	requireAdvertisedEffort bool,
+) error {
+	if effort == "" {
+		return nil
+	}
+	if requireAdvertisedEffort && !options.effortConfigPresent {
+		return fmt.Errorf(
+			"set acp agent %q reasoning effort %q for model %q: the agent did not advertise a reasoning effort config option for the active model",
+			agentName,
+			effort,
+			configuredSessionModel(model),
+		)
+	}
+	if clamped := clampReasoningEffort(effort, options.effortOptions); clamped != effort {
+		if clamped == "" {
+			return fmt.Errorf(
+				"set acp agent %q reasoning effort %q for model %q: no compatible advertised reasoning effort is available",
+				agentName,
+				effort,
+				configuredSessionModel(model),
+			)
+		}
+		m.log.Info("clamped acp reasoning effort to the active model",
+			"agent", agentName, "model", model, "requested", effort, "using", clamped)
+		effort = clamped
+	}
+	return m.setConfiguredReasoningEffort(ctx, peer, agentName, sessionID, effort)
+}
+
 var effortLadder = []string{"minimal", "low", "medium", "high", "xhigh"}
 
 // clampReasoningEffort fits the configured effort to the agent's advertised
 // levels: the nearest weaker level wins, then the nearest stronger. Empty
-// result means skip the option and let the agent use its default; an unknown
-// advertisement leaves the effort untouched.
+// result means there is no compatible advertised effort; an unknown
+// advertisement leaves the effort untouched so the agent can accept or reject it.
 func clampReasoningEffort(effort string, advertised []string) string {
 	if effort == "" || len(advertised) == 0 {
 		return effort
@@ -224,21 +276,36 @@ func clampReasoningEffort(effort string, advertised []string) string {
 // parseEffortOptions extracts the advertised reasoning effort values from a
 // session/new or set-config response's configOptions.
 func parseEffortOptions(raw json.RawMessage) []string {
-	var resp struct {
-		ConfigOptions []struct {
-			ID      string          `json:"id"`
-			Options json.RawMessage `json:"options"`
-		} `json:"configOptions"`
+	return parseSessionConfigOptions(raw).effortOptions
+}
+
+func parseSessionConfigOptions(raw json.RawMessage) sessionConfigOptionsState {
+	var envelope map[string]json.RawMessage
+	if len(raw) == 0 || json.Unmarshal(raw, &envelope) != nil {
+		return sessionConfigOptionsState{}
 	}
-	if len(raw) == 0 || json.Unmarshal(raw, &resp) != nil {
-		return nil
+	rawOptions, ok := envelope["configOptions"]
+	if !ok {
+		return sessionConfigOptionsState{}
 	}
-	for _, option := range resp.ConfigOptions {
-		if option.ID == claudeSessionConfigEffort || option.ID == sessionConfigReasoningEffort {
-			return parseConfigOptionValues(option.Options)
+	state := sessionConfigOptionsState{configOptionsPresent: true}
+	var options []struct {
+		ID      string          `json:"id"`
+		Options json.RawMessage `json:"options"`
+	}
+	if json.Unmarshal(rawOptions, &options) != nil {
+		return state
+	}
+	for _, option := range options {
+		switch option.ID {
+		case sessionConfigModel:
+			state.modelOptions = parseConfigOptionValues(option.Options)
+		case claudeSessionConfigEffort, sessionConfigReasoningEffort:
+			state.effortConfigPresent = true
+			state.effortOptions = parseConfigOptionValues(option.Options)
 		}
 	}
-	return nil
+	return state
 }
 
 func parseSessionModelState(raw json.RawMessage) sessionModelState {
@@ -248,10 +315,6 @@ func parseSessionModelState(raw json.RawMessage) sessionModelState {
 				ModelID string `json:"modelId"`
 			} `json:"availableModels"`
 		} `json:"models"`
-		ConfigOptions []struct {
-			ID      string          `json:"id"`
-			Options json.RawMessage `json:"options"`
-		} `json:"configOptions"`
 	}
 	if len(raw) == 0 || json.Unmarshal(raw, &resp) != nil {
 		return sessionModelState{}
@@ -260,13 +323,9 @@ func parseSessionModelState(raw json.RawMessage) sessionModelState {
 	for _, model := range resp.Models.AvailableModels {
 		state.addExact(model.ModelID)
 	}
-	for _, option := range resp.ConfigOptions {
-		if option.ID != "model" {
-			continue
-		}
-		for _, value := range parseConfigOptionValues(option.Options) {
-			state.addBase(value)
-		}
+	configOptions := parseSessionConfigOptions(raw)
+	for _, value := range configOptions.modelOptions {
+		state.addBase(value)
 	}
 	return state
 }
@@ -320,27 +379,9 @@ func (p agentModelPolicy) validateConfiguredSessionModel(agentName, rawModel, ef
 			return nil
 		}
 		return fmt.Errorf("configured acp agent %q model %q is not advertised by the agent; available model ids: %s", agentName, effectiveModel, strings.Join(available, ", "))
-	case modelValidationCodex:
 	default:
 		return nil
 	}
-	if modelHasReasoningEffort(effectiveModel) && len(state.exact) > 0 {
-		if state.hasExact(effectiveModel) {
-			return nil
-		}
-		return fmt.Errorf("configured acp agent %q model %q is not advertised by the agent; available model ids: %s", agentName, effectiveModel, strings.Join(state.availableExact(), ", "))
-	}
-	if state.hasBase(rawModel) {
-		return nil
-	}
-	available := state.availableBases()
-	if len(available) == 0 {
-		available = state.availableExact()
-	}
-	if len(available) == 0 {
-		return nil
-	}
-	return fmt.Errorf("configured acp agent %q model %q is not advertised by the agent; available models: %s", agentName, effectiveModel, strings.Join(available, ", "))
 }
 
 func (s *sessionModelState) addExact(model string) {
@@ -407,7 +448,7 @@ func newACPSessionInfo(raw json.RawMessage, session acpschema.NewSessionResponse
 	return acpSessionInfo{
 		response:      session,
 		modelState:    parseSessionModelState(raw),
-		effortOptions: parseEffortOptions(raw),
+		configOptions: parseSessionConfigOptions(raw),
 	}
 }
 

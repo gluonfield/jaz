@@ -550,7 +550,47 @@ func TestManagerSpawnModelOverrideWinsOverConfiguredModel(t *testing.T) {
 	}
 }
 
-func TestManagerRejectsUnavailableCodexModel(t *testing.T) {
+func TestManagerAllowsUnadvertisedCodexModel(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := acp.NewManager(store, acp.Config{
+		Root:      t.TempDir(),
+		Workspace: t.TempDir(),
+		Agents: map[string]acp.AgentConfig{
+			"codex": {
+				Command: os.Args[0],
+				Args:    []string{"-test.run=TestFakeACPAgentProcess"},
+				Model:   "missing-model",
+				Env: map[string]string{
+					"JAZ_FAKE_ACP_AGENT":                     "1",
+					"JAZ_FAKE_ACP_MODELS":                    "fake-large",
+					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG":       "missing-model",
+					"JAZ_FAKE_ACP_SET_CONFIG":                "1",
+					"JAZ_FAKE_ACP_MODEL_CONFIG_OMITS_EFFORT": "1",
+				},
+			},
+		},
+	}, log.New(io.Discard))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "codex", Slug: "missing-codex-model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	session, err := store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.Model != "missing-model" || session.ReasoningEffort != "" {
+		t.Fatalf("unexpected stored model metadata %#v", session)
+	}
+}
+
+func TestManagerRejectsConfiguredCodexEffortWhenModelOmitsEffortConfig(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -563,10 +603,13 @@ func TestManagerRejectsUnavailableCodexModel(t *testing.T) {
 				Command:         os.Args[0],
 				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
 				Model:           "missing-model",
-				ReasoningEffort: "medium",
+				ReasoningEffort: "xhigh",
 				Env: map[string]string{
-					"JAZ_FAKE_ACP_AGENT":  "1",
-					"JAZ_FAKE_ACP_MODELS": "fake-large/medium",
+					"JAZ_FAKE_ACP_AGENT":                     "1",
+					"JAZ_FAKE_ACP_MODELS":                    "fake-large",
+					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG":       "missing-model",
+					"JAZ_FAKE_ACP_SET_CONFIG":                "1",
+					"JAZ_FAKE_ACP_MODEL_CONFIG_OMITS_EFFORT": "1",
 				},
 			},
 		},
@@ -574,19 +617,19 @@ func TestManagerRejectsUnavailableCodexModel(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	_, err = manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "codex", Slug: "missing-codex-model"})
+	_, err = manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "codex", Slug: "missing-codex-effort-config"})
 	if err == nil {
 		t.Fatal("expected spawn to fail")
 	}
-	if !strings.Contains(err.Error(), "not advertised") || !strings.Contains(err.Error(), "fake-large") {
+	if !strings.Contains(err.Error(), `reasoning effort "xhigh"`) || !strings.Contains(err.Error(), "did not advertise a reasoning effort config option") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	session, loadErr := store.LoadSession("missing-codex-model")
+	session, loadErr := store.LoadSession("missing-codex-effort-config")
 	if loadErr != nil {
 		t.Fatal(loadErr)
 	}
-	if session.Status != storage.StatusError || !strings.Contains(session.Error, "not advertised") {
-		t.Fatalf("unavailable model failure was not stored: %#v", session)
+	if session.Status != storage.StatusError || !strings.Contains(session.Error, "did not advertise a reasoning effort config option") {
+		t.Fatalf("missing effort config failure was not stored: %#v", session)
 	}
 }
 
