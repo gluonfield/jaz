@@ -3,9 +3,11 @@ import { apiBaseUrl, localBaseUrl, normalizeBaseUrl, setApiBaseUrl } from './api
 import { queryClient } from './query/queryClient'
 
 // Gate for the whole app: 'checking' on first probe of the remembered URL,
-// then 'connected' while periodic /health polls pass, 'disconnected' once
-// they fail — which swaps the app out for the launch screen.
-export type ConnectionStatus = 'checking' | 'connected' | 'disconnected'
+// 'connected' while periodic /health polls pass. On loss the app stays
+// mounted as 'reconnecting' (banner over live UI, state preserved); only a
+// sustained outage degrades to 'disconnected', which swaps in the launch
+// screen.
+export type ConnectionStatus = 'checking' | 'connected' | 'reconnecting' | 'disconnected'
 
 export type ConnectionState = {
   status: ConnectionStatus
@@ -17,8 +19,11 @@ export type ConnectionState = {
 
 const POLL_INTERVAL_MS = 5_000
 // One missed poll can be a transient blip (remote backends especially);
-// only drop to the launch screen after consecutive failures.
+// only treat the connection as lost after consecutive failures.
 const FAILURES_BEFORE_DISCONNECT = 2
+// How long 'reconnecting' keeps the app mounted before giving up and
+// falling back to the launch screen.
+const RECONNECT_GRACE_MS = 30_000
 
 let state: ConnectionState = { status: 'checking', url: apiBaseUrl(), error: null }
 const listeners = new Set<() => void>()
@@ -51,27 +56,36 @@ export async function checkHealth(url: string): Promise<boolean> {
 }
 
 let pollTimer: ReturnType<typeof setTimeout> | null = null
+let pollGen = 0
 let failures = 0
+let lostAt = 0
 
-function stopPolling() {
-  if (pollTimer) clearTimeout(pollTimer)
-  pollTimer = null
-}
-
+// Polls in every state: while connected it watches for loss; while
+// reconnecting/disconnected it keeps probing so the app recovers by itself
+// the moment the backend comes back (slow `go run` compile, backend restart,
+// login race).
 function schedulePoll() {
-  stopPolling()
+  const gen = ++pollGen
+  if (pollTimer) clearTimeout(pollTimer)
   pollTimer = setTimeout(async () => {
     const url = state.url
     const healthy = await checkHealth(url)
-    if (state.status !== 'connected' || state.url !== url) return
-    if (healthy) {
-      failures = 0
-    } else {
-      failures += 1
-      if (failures >= FAILURES_BEFORE_DISCONNECT) {
-        setState({ status: 'disconnected', error: `Lost connection to the backend at ${url}` })
-        return
+    if (gen !== pollGen || state.url !== url) return
+    if (state.status === 'connected') {
+      if (healthy) {
+        failures = 0
+      } else {
+        failures += 1
+        if (failures >= FAILURES_BEFORE_DISCONNECT) {
+          lostAt = Date.now()
+          setState({ status: 'reconnecting', error: `Lost connection to the backend at ${url}` })
+        }
       }
+    } else if (healthy) {
+      markConnected(url)
+      return
+    } else if (state.status === 'reconnecting' && Date.now() - lostAt > RECONNECT_GRACE_MS) {
+      setState({ status: 'disconnected' })
     }
     schedulePoll()
   }, POLL_INTERVAL_MS)
@@ -114,7 +128,8 @@ export async function startLocal(): Promise<string | null> {
   }
   const result = await window.jaz.startLocalBackend()
   if (!result.ok) return result.error ?? 'Failed to start the backend'
-  markConnected(localBaseUrl())
+  // connect to the URL the main process actually verified, not the env default
+  markConnected((result as { url?: string }).url ?? localBaseUrl())
   return null
 }
 
@@ -125,6 +140,7 @@ async function init() {
     markConnected(url)
   } else {
     setState({ status: 'disconnected' })
+    schedulePoll()
   }
 }
 

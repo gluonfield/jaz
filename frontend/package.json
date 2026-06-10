@@ -4,12 +4,14 @@
   "version": "0.1.0",
   "private": true,
   "description": "Jaz desktop control plane",
+  "author": "Augustinas Malinauskas",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev --watch",
-    "build": "electron-vite build",
+    "build": "npm run build:app",
+    "build:bundle": "electron-vite build",
     "build:backend": "cd ../backend && go build -o ../frontend/resources/bin/jaz ./cmd/jaz",
-    "build:app": "npm run build:backend && electron-vite build && electron-builder",
+    "build:app": "npm run build:backend && npm run build:bundle && electron-builder",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json"
   },

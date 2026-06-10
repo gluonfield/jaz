@@ -2,13 +2,11 @@ import { Globe, LoaderCircle, Play } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type FormEvent, useState } from 'react'
 import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 import { PixelField } from '@/components/ui/PixelField'
 import { apiBaseUrl } from '@/lib/api/client'
 import { connectRemote, rememberedRemoteUrl, startLocal, useConnection } from '@/lib/connection'
 import { useTheme } from '@/lib/theme'
-
-const inputClass =
-  'w-full rounded-control bg-bg px-3 py-2 text-[13px] text-ink ring-1 ring-border outline-none transition duration-150 placeholder:text-ink-3 focus:ring-primary'
 
 const EASE = [0.22, 1, 0.36, 1] as const
 
@@ -27,6 +25,29 @@ const swap = {
   animate: { opacity: 1, y: 0 },
   exit: { opacity: 0, y: -8 },
   transition: { duration: 0.18, ease: 'easeOut' as const },
+}
+
+// Floats over the live app while the health poll retries a lost backend; the
+// window only falls back to the launch screen after the reconnect grace.
+export function ReconnectingBanner({ show }: { show: boolean }) {
+  return (
+    <div className="pointer-events-none fixed inset-x-0 top-[60px] z-50 flex justify-center">
+      <AnimatePresence>
+        {show && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            className="flex items-center gap-2 rounded-full bg-surface-2 px-3 py-1.5 text-[12px] text-ink-2 ring-1 ring-border"
+          >
+            <LoaderCircle size={12} className="animate-spin" />
+            Reconnecting to backend…
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
 }
 
 // Full-window gate shown whenever no backend is reachable: first launch,
@@ -67,7 +88,10 @@ export function LaunchScreen() {
 
   return (
     <div className="relative flex h-full flex-col bg-bg">
-      <PixelField key={resolved} calm={mode === 'remote' || busy !== null} />
+      {/* skip the GPU spin-up during the sub-second checking flash at boot */}
+      {status === 'disconnected' && (
+        <PixelField key={resolved} calm={mode === 'remote' || busy !== null} />
+      )}
       <div className="titlebar-drag relative h-[52px] shrink-0" />
       {/* offset the titlebar so the content is optically centered */}
       <div className="relative flex flex-1 flex-col items-center justify-center px-6 pb-[52px]">
@@ -138,13 +162,12 @@ export function LaunchScreen() {
                       onSubmit={onConnect}
                       className="mx-auto flex w-full max-w-[360px] flex-col gap-2.5"
                     >
-                      <input
+                      <Input
                         autoFocus
                         value={url}
                         onChange={(e) => setUrl(e.target.value)}
                         placeholder="http://192.168.1.10:8080"
                         spellCheck={false}
-                        className={inputClass}
                       />
                       <div className="flex items-center justify-end gap-2">
                         <Button

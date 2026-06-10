@@ -1,22 +1,32 @@
 const BACKEND_URL_KEY = 'jaz.backendUrl'
+const DEFAULT_LOCAL_URL = 'http://localhost:8080'
 
 // The local default bridged by the preload script; fall back for
 // plain-browser debugging.
 export function localBaseUrl(): string {
-  return window.jaz?.apiBaseUrl ?? 'http://localhost:8080'
+  return window.jaz?.apiBaseUrl ?? DEFAULT_LOCAL_URL
 }
 
 export function normalizeBaseUrl(url: string): string {
   let trimmed = url.trim().replace(/\/+$/, '')
   if (trimmed && !/^https?:\/\//i.test(trimmed)) trimmed = `http://${trimmed}`
-  return trimmed
+  // keep only the origin: a pasted path like /health would break every request
+  try {
+    return new URL(trimmed).origin
+  } catch {
+    return trimmed
+  }
 }
 
 // A remembered remote URL wins over the local default so the next launch
-// reconnects to wherever the user pointed the app last.
+// reconnects to wherever the user pointed the app last — unless JAZ_API_URL
+// was set explicitly (≠ default), which is a developer override that beats
+// the remembered URL.
 let baseUrl = ((): string => {
+  const local = localBaseUrl()
+  if (local !== DEFAULT_LOCAL_URL) return normalizeBaseUrl(local)
   const stored = localStorage.getItem(BACKEND_URL_KEY)
-  return stored ? normalizeBaseUrl(stored) : localBaseUrl()
+  return stored ? normalizeBaseUrl(stored) : local
 })()
 
 export function apiBaseUrl(): string {

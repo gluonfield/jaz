@@ -17,6 +17,7 @@ import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
+import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { Switch } from '@/components/ui/Switch'
@@ -34,9 +35,6 @@ import type { MCPEnvHeader, MCPHeader, MCPServer, MCPServerInput } from '@/lib/a
 import { keys } from '@/lib/query/keys'
 
 type Draft = MCPServerInput & { id?: string }
-
-const inputClass =
-  'w-full rounded-control bg-bg px-3 py-2 text-[13px] text-ink ring-1 ring-border outline-none transition duration-150 placeholder:text-ink-3 focus:ring-primary'
 
 function emptyDraft(): Draft {
   return {
@@ -359,8 +357,7 @@ function MCPServerForm({
   return (
     <div className="space-y-4">
       <Field label="Name">
-        <input
-          className={inputClass}
+        <Input
           placeholder="Linear"
           value={draft.name}
           onChange={(event) => onChange({ ...draft, name: event.target.value })}
@@ -368,8 +365,7 @@ function MCPServerForm({
       </Field>
 
       <Field label="Server URL" hint="The remote Streamable HTTP endpoint.">
-        <input
-          className={inputClass}
+        <Input
           placeholder="https://mcp.example.com/mcp"
           value={draft.url}
           onChange={(event) => onChange({ ...draft, url: event.target.value })}
@@ -377,8 +373,7 @@ function MCPServerForm({
       </Field>
 
       <Field label="Bearer token" hint="Optional — read from this environment variable.">
-        <input
-          className={inputClass}
+        <Input
           placeholder="MCP_TOKEN"
           value={draft.bearer_token_env_var ?? ''}
           onChange={(event) => onChange({ ...draft, bearer_token_env_var: event.target.value })}
@@ -473,16 +468,14 @@ function HeaderEditor({
       <div className="flex flex-col gap-2">
         {headers.map((header, index) => (
           <div key={index} className="grid gap-2 sm:grid-cols-[1fr_1fr_28px]">
-            <input
-              className={inputClass}
+            <Input
               placeholder="Header"
               value={header.name}
               onChange={(event) =>
                 replaceHeader(headers, index, { ...header, name: event.target.value }, onChange)
               }
             />
-            <input
-              className={inputClass}
+            <Input
               placeholder="Value"
               value={header.value}
               onChange={(event) =>
@@ -515,16 +508,14 @@ function EnvHeaderEditor({
       <div className="flex flex-col gap-2">
         {headers.map((header, index) => (
           <div key={index} className="grid gap-2 sm:grid-cols-[1fr_1fr_28px]">
-            <input
-              className={inputClass}
+            <Input
               placeholder="Header"
               value={header.name}
               onChange={(event) =>
                 replaceEnvHeader(headers, index, { ...header, name: event.target.value }, onChange)
               }
             />
-            <input
-              className={inputClass}
+            <Input
               placeholder="ENV_VAR"
               value={header.env_var}
               onChange={(event) =>
