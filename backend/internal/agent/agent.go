@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/media"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/tools"
 )
@@ -25,18 +26,19 @@ const (
 var DefaultMaxTurns = 25
 
 type StreamEvent struct {
-	Type               string             `json:"type"`
-	Delta              string             `json:"delta,omitempty"`
-	Reasoning          string             `json:"reasoning,omitempty"`
-	ToolCall           *provider.ToolCall `json:"tool_call,omitempty"`
-	ToolName           string             `json:"tool_name,omitempty"`
-	Result             string             `json:"result,omitempty"`
-	Error              string             `json:"error,omitempty"`
-	Usage              *provider.Usage    `json:"usage,omitempty"`
-	Metadata           map[string]any     `json:"metadata,omitempty"`
-	At                 time.Time          `json:"at"`
-	Messages           []provider.Message `json:"-"`
-	ReasoningByMessage map[int]string     `json:"-"`
+	Type               string                 `json:"type"`
+	Delta              string                 `json:"delta,omitempty"`
+	Reasoning          string                 `json:"reasoning,omitempty"`
+	ToolCall           *provider.ToolCall     `json:"tool_call,omitempty"`
+	ToolName           string                 `json:"tool_name,omitempty"`
+	Result             string                 `json:"result,omitempty"`
+	Error              string                 `json:"error,omitempty"`
+	Usage              *provider.Usage        `json:"usage,omitempty"`
+	Metadata           map[string]any         `json:"metadata,omitempty"`
+	At                 time.Time              `json:"at"`
+	Messages           []provider.Message     `json:"-"`
+	MediaRefs          map[string][]media.Ref `json:"-"`
+	ReasoningByMessage map[int]string         `json:"-"`
 }
 
 type Agent struct {
@@ -49,16 +51,18 @@ type Agent struct {
 }
 
 type Result struct {
-	Message        provider.Message   `json:"message"`
-	Messages       []provider.Message `json:"messages"`
-	Content        string             `json:"content"`
-	Usage          provider.Usage     `json:"usage,omitempty"`
-	ToolExecutions []ToolExecution    `json:"tool_executions,omitempty"`
+	Message        provider.Message       `json:"message"`
+	Messages       []provider.Message     `json:"messages"`
+	Content        string                 `json:"content"`
+	Usage          provider.Usage         `json:"usage,omitempty"`
+	ToolExecutions []ToolExecution        `json:"tool_executions,omitempty"`
+	MediaRefs      map[string][]media.Ref `json:"-"`
 }
 
 type ToolExecution struct {
-	Call   provider.ToolCall `json:"call"`
-	Result string            `json:"result"`
+	Call      provider.ToolCall `json:"call"`
+	Result    string            `json:"result"`
+	MediaRefs []media.Ref       `json:"-"`
 }
 
 func (a *Agent) Complete(ctx context.Context, req provider.Request) (Result, error) {
@@ -67,19 +71,24 @@ func (a *Agent) Complete(ctx context.Context, req provider.Request) (Result, err
 		return Result{}, err
 	}
 	messages := append([]provider.Message(nil), req.Messages...)
+	mediaRefs := media.CloneRefMap(req.MediaRefs)
 	var toolExecutions []ToolExecution
 	var usage provider.Usage
 
 	for turn := 0; turn < a.MaxTurns; turn++ {
+		requestMessages, err := requestMessagesWithMediaRefs(messages, mediaRefs)
+		if err != nil {
+			return Result{Messages: messages, ToolExecutions: toolExecutions, Usage: usage, MediaRefs: mediaRefs}, err
+		}
 		resp, err := a.Provider.Complete(ctx, provider.Request{
 			Provider:        req.Provider,
 			Model:           req.Model,
 			ReasoningEffort: req.ReasoningEffort,
-			Messages:        messages,
+			Messages:        requestMessages,
 			Tools:           req.Tools,
 		})
 		if err != nil {
-			return Result{Messages: messages, ToolExecutions: toolExecutions}, err
+			return Result{Messages: messages, ToolExecutions: toolExecutions, MediaRefs: mediaRefs}, err
 		}
 		usage = addUsage(usage, resp.Usage)
 
@@ -92,15 +101,20 @@ func (a *Agent) Complete(ctx context.Context, req provider.Request) (Result, err
 				Content:        provider.MessageContent(resp.Message),
 				Usage:          usage,
 				ToolExecutions: toolExecutions,
+				MediaRefs:      mediaRefs,
 			}, nil
 		}
 		for _, call := range calls {
 			result := a.executeTool(ctx, call)
-			messages = append(messages, provider.ToolMessage(result, provider.ToolCallID(call)))
-			toolExecutions = append(toolExecutions, ToolExecution{Call: call, Result: result})
+			callID := provider.ToolCallID(call)
+			if len(result.MediaRefs) > 0 {
+				mediaRefs = withMediaRefs(mediaRefs, callID, result.MediaRefs)
+			}
+			messages = append(messages, provider.ToolMessage(result.Content, callID))
+			toolExecutions = append(toolExecutions, ToolExecution{Call: call, Result: result.Content, MediaRefs: media.CloneRefs(result.MediaRefs)})
 		}
 	}
-	return Result{Messages: messages, ToolExecutions: toolExecutions}, fmt.Errorf("stopped after %d tool turns", a.MaxTurns)
+	return Result{Messages: messages, ToolExecutions: toolExecutions, MediaRefs: mediaRefs}, fmt.Errorf("stopped after %d tool turns", a.MaxTurns)
 }
 
 func (a *Agent) Run(ctx context.Context, req provider.Request) <-chan StreamEvent {
@@ -119,19 +133,25 @@ func (a *Agent) run(ctx context.Context, req provider.Request, out chan<- Stream
 		return
 	}
 	messages := append([]provider.Message(nil), req.Messages...)
+	mediaRefs := media.CloneRefMap(req.MediaRefs)
 	var usage provider.Usage
 	reasoningByMessage := map[int]string{}
 
 	for turn := 0; turn < a.MaxTurns; turn++ {
+		requestMessages, err := requestMessagesWithMediaRefs(messages, mediaRefs)
+		if err != nil {
+			a.emit(out, StreamEvent{Type: StreamError, Error: err.Error(), Messages: messages, MediaRefs: mediaRefs})
+			return
+		}
 		stream, err := a.Provider.StreamComplete(ctx, provider.Request{
 			Provider:        req.Provider,
 			Model:           req.Model,
 			ReasoningEffort: req.ReasoningEffort,
-			Messages:        messages,
+			Messages:        requestMessages,
 			Tools:           req.Tools,
 		})
 		if err != nil {
-			a.emit(out, StreamEvent{Type: StreamError, Error: err.Error(), Messages: messages})
+			a.emit(out, StreamEvent{Type: StreamError, Error: err.Error(), Messages: messages, MediaRefs: mediaRefs})
 			return
 		}
 
@@ -156,7 +176,7 @@ func (a *Agent) run(ctx context.Context, req provider.Request, out chan<- Stream
 				if event.Err != nil {
 					msg = event.Err.Error()
 				}
-				a.emit(out, StreamEvent{Type: StreamError, Error: msg, Messages: messages})
+				a.emit(out, StreamEvent{Type: StreamError, Error: msg, Messages: messages, MediaRefs: mediaRefs})
 				return
 			case provider.EventDone:
 				usage = addUsage(usage, event.Usage)
@@ -166,28 +186,37 @@ func (a *Agent) run(ctx context.Context, req provider.Request, out chan<- Stream
 		if len(calls) == 0 {
 			messages = append(messages, provider.AssistantMessage(assistantText.String(), nil))
 			recordReasoning(reasoningByMessage, len(messages)-1, reasoningText.String())
-			a.emit(out, StreamEvent{Type: StreamDone, Messages: messages, ReasoningByMessage: reasoningByMessage, Usage: &usage})
+			a.emit(out, StreamEvent{Type: StreamDone, Messages: messages, MediaRefs: mediaRefs, ReasoningByMessage: reasoningByMessage, Usage: &usage})
 			return
 		}
 
 		messages = append(messages, provider.AssistantMessage(assistantText.String(), calls))
 		recordReasoning(reasoningByMessage, len(messages)-1, reasoningText.String())
 		// Snapshot pre-execution so the round is stamped when the model produced it.
-		a.emit(out, snapshotEvent(messages, reasoningByMessage))
+		a.emit(out, snapshotEvent(messages, reasoningByMessage, mediaRefs))
 		for _, call := range calls {
 			result := a.executeTool(ctx, call)
-			messages = append(messages, provider.ToolMessage(result, provider.ToolCallID(call)))
-			a.emit(out, StreamEvent{
+			callID := provider.ToolCallID(call)
+			if len(result.MediaRefs) > 0 {
+				mediaRefs = withMediaRefs(mediaRefs, callID, result.MediaRefs)
+			}
+			messages = append(messages, provider.ToolMessage(result.Content, callID))
+			event := StreamEvent{
 				Type:     StreamToolResult,
 				ToolName: provider.ToolCallName(call),
-				Result:   result,
-			})
+				Result:   result.Content,
+				Metadata: result.Metadata,
+			}
+			if len(result.MediaRefs) > 0 {
+				event.MediaRefs = map[string][]media.Ref{callID: media.CloneRefs(result.MediaRefs)}
+			}
+			a.emit(out, event)
 		}
-		a.emit(out, snapshotEvent(messages, reasoningByMessage))
+		a.emit(out, snapshotEvent(messages, reasoningByMessage, mediaRefs))
 	}
 
 	errMsg := fmt.Sprintf("stopped after %d tool turns", a.MaxTurns)
-	a.emit(out, StreamEvent{Type: StreamError, Error: errMsg, Messages: messages})
+	a.emit(out, StreamEvent{Type: StreamError, Error: errMsg, Messages: messages, MediaRefs: mediaRefs})
 }
 
 func recordReasoning(out map[int]string, index int, reasoning string) {
@@ -196,13 +225,25 @@ func recordReasoning(out map[int]string, index int, reasoning string) {
 	}
 }
 
+func withMediaRefs(refsByToolCall map[string][]media.Ref, callID string, refs []media.Ref) map[string][]media.Ref {
+	if len(refs) == 0 {
+		return refsByToolCall
+	}
+	if refsByToolCall == nil {
+		refsByToolCall = map[string][]media.Ref{}
+	}
+	refsByToolCall[callID] = media.CloneRefs(refs)
+	return refsByToolCall
+}
+
 // Copies state so the consumer can persist it while the run keeps appending.
-func snapshotEvent(messages []provider.Message, reasoningByMessage map[int]string) StreamEvent {
+func snapshotEvent(messages []provider.Message, reasoningByMessage map[int]string, mediaRefs map[string][]media.Ref) StreamEvent {
 	reasoning := make(map[int]string, len(reasoningByMessage))
 	maps.Copy(reasoning, reasoningByMessage)
 	return StreamEvent{
 		Type:               StreamTurn,
 		Messages:           append([]provider.Message(nil), messages...),
+		MediaRefs:          media.CloneRefMap(mediaRefs),
 		ReasoningByMessage: reasoning,
 	}
 }
@@ -227,32 +268,78 @@ func (a *Agent) normalize(req provider.Request) (provider.Request, error) {
 		req.ReasoningEffort = a.ReasoningEffort
 	}
 	req.Messages = append([]provider.Message(nil), req.Messages...)
+	req.MediaRefs = media.CloneRefMap(req.MediaRefs)
 	if len(req.Tools) == 0 {
 		req.Tools = a.Tools.Definitions()
 	}
 	return req, nil
 }
 
-func (a *Agent) executeTool(ctx context.Context, call provider.ToolCall) string {
+func requestMessagesWithMediaRefs(messages []provider.Message, refsByToolCall map[string][]media.Ref) ([]provider.Message, error) {
+	out := make([]provider.Message, 0, len(messages))
+	var pendingRefs []media.Ref
+	for i, msg := range messages {
+		out = append(out, msg)
+		if provider.MessageRole(msg) != "tool" {
+			continue
+		}
+		pendingRefs = append(pendingRefs, refsByToolCall[provider.MessageToolCallID(msg)]...)
+		if i+1 < len(messages) && provider.MessageRole(messages[i+1]) == "tool" {
+			continue
+		}
+		if len(pendingRefs) == 0 {
+			continue
+		}
+		mediaMessage, err := mediaMessageForRefs(pendingRefs)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, mediaMessage)
+		pendingRefs = nil
+	}
+	return out, nil
+}
+
+func mediaMessageForRefs(refs []media.Ref) (provider.Message, error) {
+	parts := make([]provider.ContentPart, 0, len(refs)*2)
+	for _, ref := range refs {
+		text := strings.TrimSpace(ref.Text)
+		if text == "" {
+			text = "Image returned by view_image"
+			if ref.Filename != "" {
+				text += ": " + ref.Filename
+			}
+		}
+		parts = append(parts, provider.TextPart(text))
+		part, err := media.MaterializeRef(ref)
+		if err != nil {
+			return provider.Message{}, err
+		}
+		parts = append(parts, provider.ImageURLPart(part.ImageURL, part.Detail))
+	}
+	return provider.UserMessageParts(parts...), nil
+}
+
+func (a *Agent) executeTool(ctx context.Context, call provider.ToolCall) tools.Result {
 	name := provider.ToolCallName(call)
 	tool, ok := a.Tools.Get(name)
 	if !ok {
-		return marshalToolError(fmt.Sprintf("unknown tool %q", name))
+		return tools.Result{Content: marshalToolError(fmt.Sprintf("unknown tool %q", name))}
 	}
 	inputs := map[string]any{}
 	if args := provider.ToolCallArguments(call); strings.TrimSpace(args) != "" {
 		if err := json.Unmarshal([]byte(args), &inputs); err != nil {
-			return marshalToolError("invalid tool arguments: " + err.Error())
+			return tools.Result{Content: marshalToolError("invalid tool arguments: " + err.Error())}
 		}
 	}
 	result, err := tool.Execute(ctx, inputs)
 	if err != nil {
-		return marshalToolError(err.Error())
+		return tools.Result{Content: marshalToolError(err.Error())}
 	}
 	if result.Content == "" {
-		return "{}"
+		result.Content = "{}"
 	}
-	return result.Content
+	return result
 }
 
 func marshalToolError(msg string) string {

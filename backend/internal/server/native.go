@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/agent"
+	"github.com/wins/jaz/backend/internal/media"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
 	agentsettings "github.com/wins/jaz/backend/internal/settings"
@@ -115,11 +116,14 @@ func (s *Server) runNativeSessionWithClaim(ctx context.Context, session storage.
 		Model:           session.Model,
 		ReasoningEffort: session.ReasoningEffort,
 		Messages:        turn.Messages,
+		MediaRefs:       turn.MediaRefs,
 	}) {
 		if len(event.Messages) > 0 {
 			toSave, reasoning := stripTransientSystem(turn.storageSnapshot(event.Messages), event.ReasoningByMessage, turn.Transient)
 			var err error
-			if store, ok := s.Store.(reasoningMessageStore); ok && len(reasoning) > 0 {
+			if store, ok := s.Store.(mediaReasoningMessageStore); ok && (len(reasoning) > 0 || len(event.MediaRefs) > 0) {
+				err = store.SaveMessagesWithReasoningAndMedia(session.ID, toSave, reasoning, event.MediaRefs)
+			} else if store, ok := s.Store.(reasoningMessageStore); ok && len(reasoning) > 0 {
 				err = store.SaveMessagesWithReasoning(session.ID, toSave, reasoning)
 			} else {
 				err = s.Store.SaveMessages(session.ID, toSave)
@@ -240,6 +244,7 @@ func (s *Server) agentDefaults() (agentsettings.AgentDefaults, error) {
 
 type nativeTurnRequest struct {
 	Messages         []provider.Message
+	MediaRefs        map[string][]media.Ref
 	Transient        []string
 	userMessageIndex int
 	displayUser      provider.Message
@@ -256,6 +261,10 @@ func (r nativeTurnRequest) storageSnapshot(messages []provider.Message) []provid
 
 func (s *Server) nativeRequestMessages(sessionID, message string, attachments []storage.Attachment, voiceMode bool) (nativeTurnRequest, error) {
 	messages, err := s.Store.LoadMessages(sessionID)
+	if err != nil {
+		return nativeTurnRequest{}, err
+	}
+	mediaRefs, err := s.nativeMediaRefs(sessionID)
 	if err != nil {
 		return nativeTurnRequest{}, err
 	}
@@ -283,8 +292,21 @@ func (s *Server) nativeRequestMessages(sessionID, message string, attachments []
 	}
 	return nativeTurnRequest{
 		Messages:         messages,
+		MediaRefs:        mediaRefs,
 		Transient:        transient,
 		userMessageIndex: userMessageIndex,
 		displayUser:      provider.UserMessage(message),
 	}, nil
+}
+
+func (s *Server) nativeMediaRefs(sessionID string) (map[string][]media.Ref, error) {
+	recordStore, ok := s.Store.(messageRecordStore)
+	if !ok {
+		return nil, nil
+	}
+	records, err := recordStore.LoadMessageRecords(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	return storage.MediaRefsByToolCall(records), nil
 }

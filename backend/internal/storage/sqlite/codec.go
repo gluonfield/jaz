@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/media"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -22,6 +23,10 @@ func recordsFromProviderMessages(messages []provider.Message, start time.Time) (
 }
 
 func recordsFromProviderMessagesWithReasoning(messages []provider.Message, reasoningByMessage map[int]string, start time.Time) ([]storage.Message, error) {
+	return recordsFromProviderMessagesWithReasoningAndMedia(messages, reasoningByMessage, nil, start)
+}
+
+func recordsFromProviderMessagesWithReasoningAndMedia(messages []provider.Message, reasoningByMessage map[int]string, mediaRefs map[string][]media.Ref, start time.Time) ([]storage.Message, error) {
 	records := make([]storage.Message, 0, len(messages))
 	for i := 0; i < len(messages); i++ {
 		msg := messages[i]
@@ -43,6 +48,7 @@ func recordsFromProviderMessagesWithReasoning(messages []provider.Message, reaso
 						ID:        provider.ToolCallID(call),
 						Name:      provider.ToolCallName(call),
 						InputJSON: provider.ToolCallArguments(call),
+						MediaRefs: media.CloneRefs(mediaRefs[provider.ToolCallID(call)]),
 					})
 					continue
 				}
@@ -58,6 +64,7 @@ func recordsFromProviderMessagesWithReasoning(messages []provider.Message, reaso
 					Name:      provider.ToolCallName(call),
 					InputJSON: provider.ToolCallArguments(call),
 					Result:    provider.MessageContent(result),
+					MediaRefs: media.CloneRefs(mediaRefs[provider.ToolCallID(call)]),
 				})
 			}
 			records = append(records, messageRecord(role, provider.MessageContent(msg), blocks, start, len(records)+1))

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/media"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -518,6 +519,62 @@ func TestToolCallAndResultPersistAsOneAssistantRecord(t *testing.T) {
 	}
 	if len(mirrored) != 4 {
 		t.Fatalf("mirrored JSON messages = %d, want 4", len(mirrored))
+	}
+}
+
+func TestToolMediaRefsPersistOnToolBlock(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	session, err := store.CreateSession(storage.CreateSession{Slug: "tool-media"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := provider.FunctionToolCall("call_1", "view_image", `{"path":"image.png"}`)
+	ref := media.Ref{
+		Type:     media.TypeInputImage,
+		Text:     "Image returned by view_image: image.png",
+		BlobPath: "/tmp/blob",
+		MimeType: "image/png",
+		Size:     3,
+		SHA256:   "abc",
+		Detail:   "high",
+		Filename: "image.png",
+	}
+	messages := []provider.Message{
+		provider.UserMessage("look"),
+		provider.AssistantMessage("", []provider.ToolCall{call}),
+		provider.ToolMessage(`{"status":"ok"}`, "call_1"),
+	}
+	if err := store.SaveMessagesWithReasoningAndMedia(session.ID, messages, nil, map[string][]media.Ref{"call_1": []media.Ref{ref}}); err != nil {
+		t.Fatal(err)
+	}
+
+	records, err := store.LoadMessageRecords(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 2 || len(records[1].Blocks) != 1 {
+		t.Fatalf("records = %#v", records)
+	}
+	if got := records[1].Blocks[0].MediaRefs; len(got) != 1 || got[0].BlobPath != ref.BlobPath {
+		t.Fatalf("media refs = %#v, want persisted ref", got)
+	}
+
+	// Full-message saves that do not know about the sidecar must not erase it.
+	if err := store.SaveMessages(session.ID, messages); err != nil {
+		t.Fatal(err)
+	}
+	records, err = store.LoadMessageRecords(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refs := storage.MediaRefsByToolCall(records)
+	if got := refs["call_1"]; len(got) != 1 || got[0].BlobPath != ref.BlobPath {
+		t.Fatalf("sidecar refs after plain save = %#v", refs)
 	}
 }
 

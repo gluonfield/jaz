@@ -17,6 +17,7 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/viper v1.21.0
 	go.uber.org/fx v1.24.0
+	golang.org/x/image v0.39.0
 	golang.org/x/oauth2 v0.35.0
 	modernc.org/sqlite v1.52.0
 )

@@ -1,6 +1,9 @@
 package storage
 
-import "github.com/wins/jaz/backend/internal/provider"
+import (
+	"github.com/wins/jaz/backend/internal/media"
+	"github.com/wins/jaz/backend/internal/provider"
+)
 
 func TextBlock(text string) Block {
 	return Block{Type: BlockTypeText, Text: text}
@@ -43,6 +46,7 @@ func MergeDurableBlocks(record, existing Message) Message {
 	if record.Role != existing.Role || record.Content != existing.Content {
 		return record
 	}
+	record = mergeToolMediaRefs(record, existing)
 	var missing []Block
 	seen := map[string]bool{}
 	for _, block := range record.Blocks {
@@ -66,6 +70,44 @@ func MergeDurableBlocks(record, existing Message) Message {
 		return record
 	}
 	record.Blocks = append(record.Blocks, missing...)
+	return record
+}
+
+func MediaRefsByToolCall(records []Message) map[string][]media.Ref {
+	out := map[string][]media.Ref{}
+	for _, record := range records {
+		for _, block := range record.Blocks {
+			if block.Type != BlockTypeTool || block.ID == "" || len(block.MediaRefs) == 0 {
+				continue
+			}
+			out[block.ID] = media.CloneRefs(block.MediaRefs)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func mergeToolMediaRefs(record, existing Message) Message {
+	refsByID := map[string][]media.Ref{}
+	for _, block := range existing.Blocks {
+		if block.Type == BlockTypeTool && block.ID != "" && len(block.MediaRefs) > 0 {
+			refsByID[block.ID] = media.CloneRefs(block.MediaRefs)
+		}
+	}
+	if len(refsByID) == 0 {
+		return record
+	}
+	for i := range record.Blocks {
+		block := &record.Blocks[i]
+		if block.Type != BlockTypeTool || block.ID == "" || len(block.MediaRefs) > 0 {
+			continue
+		}
+		if refs := refsByID[block.ID]; len(refs) > 0 {
+			block.MediaRefs = media.CloneRefs(refs)
+		}
+	}
 	return record
 }
 
