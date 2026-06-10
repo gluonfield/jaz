@@ -100,12 +100,18 @@
 
   /* Re-measure when the tile is resized: a user fixing dead space by
    * resizing must replace the stale problem report, not leave it for the
-   * loop to "fix" on its next run. */
+   * loop to "fix" on its next run. ResizeObserver on the document element is
+   * the reliable signal for the iframe being resized by the host. */
   var resizeTimer = null;
-  window.addEventListener('resize', function () {
+  function scheduleMeasure() {
     if (resizeTimer) window.clearTimeout(resizeTimer);
     resizeTimer = window.setTimeout(measureLayout, 500);
-  });
+  }
+  if (typeof ResizeObserver === 'function') {
+    new ResizeObserver(scheduleMeasure).observe(document.documentElement);
+  } else {
+    window.addEventListener('resize', scheduleMeasure);
+  }
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', onReady);
