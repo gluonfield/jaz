@@ -1,6 +1,8 @@
 package skills
 
 import (
+	"embed"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -21,20 +23,83 @@ type Catalog struct {
 	Skills []Skill
 }
 
+//go:embed defaults
+var defaultSkillFS embed.FS
+
+const (
+	defaultSkillsRoot = "defaults"
+	userSkillsDir     = "skills"
+	managedSkillsDir  = "system/skills"
+)
+
+func UserRoot(root string) string {
+	return filepath.Join(root, userSkillsDir)
+}
+
+func ManagedRoot(root string) string {
+	return filepath.Join(root, managedSkillsDir)
+}
+
+func InstallDefaults(root string) error {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return fmt.Errorf("runtime root is empty")
+	}
+	managed := ManagedRoot(root)
+	if err := os.MkdirAll(filepath.Dir(managed), 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.MkdirTemp(filepath.Dir(managed), ".skills-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmp)
+	if err := copyDefaults(tmp); err != nil {
+		return err
+	}
+	if err := os.RemoveAll(managed); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, managed); err != nil {
+		return err
+	}
+	return os.MkdirAll(UserRoot(root), 0o755)
+}
+
 func Load(root string) (Catalog, error) {
 	if root == "" {
 		return Catalog{}, nil
 	}
-	skillsRoot := filepath.Join(root, "skills")
+	userRoot := UserRoot(root)
+	seen := map[string]struct{}{}
+	out := []Skill{}
+	for _, dir := range []string{userRoot, ManagedRoot(root)} {
+		items, err := loadDir(dir)
+		if err != nil {
+			return Catalog{}, err
+		}
+		for _, skill := range items {
+			key := strings.ToLower(skill.Name)
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, skill)
+		}
+	}
+	return Catalog{Root: userRoot, Skills: out}, nil
+}
+
+func loadDir(skillsRoot string) ([]Skill, error) {
 	info, err := os.Stat(skillsRoot)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return Catalog{Root: skillsRoot}, nil
+			return nil, nil
 		}
-		return Catalog{}, err
+		return nil, err
 	}
 	if !info.IsDir() {
-		return Catalog{Root: skillsRoot}, nil
+		return nil, nil
 	}
 
 	var paths []string
@@ -50,7 +115,7 @@ func Load(root string) (Catalog, error) {
 		}
 		return nil
 	}); err != nil {
-		return Catalog{}, err
+		return nil, err
 	}
 	sort.Strings(paths)
 
@@ -68,7 +133,7 @@ func Load(root string) (Catalog, error) {
 		seen[key] = struct{}{}
 		out = append(out, skill)
 	}
-	return Catalog{Root: skillsRoot, Skills: out}, nil
+	return out, nil
 }
 
 func (c Catalog) Prompt() string {
@@ -141,4 +206,31 @@ func trimScalar(value string) string {
 	value = strings.TrimSpace(value)
 	value = strings.Trim(value, `"'`)
 	return strings.TrimSpace(value)
+}
+
+func copyDefaults(dstRoot string) error {
+	return fs.WalkDir(defaultSkillFS, defaultSkillsRoot, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(defaultSkillsRoot, path)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+		dst := filepath.Join(dstRoot, filepath.FromSlash(rel))
+		if d.IsDir() {
+			return os.MkdirAll(dst, 0o755)
+		}
+		data, err := defaultSkillFS.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(dst, data, 0o644)
+	})
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/gluonfield/acp-transport/stdio"
 	"github.com/gluonfield/acp-transport/streamhttp"
+	"github.com/wins/jaz/backend/internal/runtimefiles"
 )
 
 func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, env map[string]string, cwd string) (jsonrpc.MessageConn, error) {
@@ -79,7 +80,8 @@ func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
 	normalizeEnv(env, "XAI_API_KEY", "XAI_APIKEY")
 
 	root := firstNonEmpty(m.cfg.Root, filepath.Join(os.TempDir(), "jaz"))
-	home := filepath.Join(root, "acp", "home")
+	layout := runtimefiles.New(root)
+	home := layout.ACPHome
 	if name == AgentCodex {
 		if codexHome := prepareCodexHome(root, env["CODEX_HOME"]); codexHome != "" {
 			env["CODEX_HOME"] = codexHome
@@ -144,8 +146,8 @@ func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
 		}
 		normalizeEnv(env, "XAI_API_KEY", "XAI_APIKEY")
 	}
-	tmp := filepath.Join(root, "acp", "tmp")
-	cache := filepath.Join(root, "acp", "npm-cache")
+	tmp := layout.ACPTmp
+	cache := layout.ACPNPMCache
 	_ = os.MkdirAll(home, 0o700)
 	_ = os.MkdirAll(tmp, 0o700)
 	_ = os.MkdirAll(cache, 0o700)
@@ -237,7 +239,7 @@ func prepareCodexHome(root, sourceHome string) string {
 	if !fileExists(src) {
 		return ""
 	}
-	dstHome := filepath.Join(root, "acp", "codex-home")
+	dstHome := runtimefiles.New(root).ACPCodexHome
 	dst := filepath.Join(dstHome, "auth.json")
 	_ = os.MkdirAll(dstHome, 0o700)
 	if !fileExists(dst) {

@@ -51,6 +51,58 @@ func TestLoadMissingRootIsEmptyCatalog(t *testing.T) {
 	}
 }
 
+func TestInstallDefaultsRefreshesManagedSkills(t *testing.T) {
+	root := t.TempDir()
+	if err := InstallDefaults(root); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(ManagedRoot(root), "jazmem", "SKILL.md")
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("default skill missing: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("---\nname: stale\ndescription: stale\n---\nstale\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := InstallDefaults(root); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "name: stale") || !strings.Contains(string(data), "name: jazmem") {
+		t.Fatalf("managed skill was not refreshed:\n%s", data)
+	}
+}
+
+func TestLoadIncludesManagedDefaultsAndUserOverrides(t *testing.T) {
+	root := t.TempDir()
+	if err := InstallDefaults(root); err != nil {
+		t.Fatal(err)
+	}
+	writeSkill(t, root, "jazmem", "jazmem", "Custom memory skill")
+
+	catalog, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]Skill{}
+	for _, skill := range catalog.Skills {
+		got[skill.Name] = skill
+	}
+	for _, name := range []string{"jazmem", "make-interfaces-feel-better", "thermo-nuclear-code-quality-review"} {
+		if got[name].Name == "" {
+			t.Fatalf("missing skill %q from %#v", name, catalog.Skills)
+		}
+	}
+	if got["jazmem"].Description != "Custom memory skill" {
+		t.Fatalf("user skill did not override managed default: %#v", got["jazmem"])
+	}
+	if !strings.HasPrefix(got["make-interfaces-feel-better"].Path, ManagedRoot(root)) {
+		t.Fatalf("default skill path = %q, want managed root", got["make-interfaces-feel-better"].Path)
+	}
+}
+
 func writeSkill(t *testing.T, root, dir, name, description string) {
 	t.Helper()
 	writeFile(t, filepath.Join(root, "skills", dir, "SKILL.md"), "---\nname: "+name+"\ndescription: "+description+"\n---\nbody")
