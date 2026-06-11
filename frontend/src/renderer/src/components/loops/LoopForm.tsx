@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Check, LayoutGrid } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { DirectoryPicker, ModelSelect, RuntimeSelect } from '@/components/session/NewThreadControls'
+import { ModelSelect, ProjectPicker, RuntimeSelect } from '@/components/session/NewThreadControls'
 import { boardsQuery } from '@/lib/api/boards'
 import type { LoopInput } from '@/lib/api/loops'
 import { agentSettingsQuery } from '@/lib/api/settings'
@@ -208,7 +208,7 @@ export function LoopForm({
             // resolved settings effort.
             onEffortChange={(next) => set({ reasoningEffort: next })}
           />
-          <DirectoryPicker
+          <ProjectPicker
             value={draft.directory}
             disabled={disabled}
             onChange={(directory) => set({ directory })}

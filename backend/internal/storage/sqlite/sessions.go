@@ -168,7 +168,7 @@ func (s *Store) saveSessionLocked(session storage.Session, touchUpdated bool) er
 }
 
 func insertSession(db threaddb.DBTX, session storage.Session) error {
-	acpAgent, acpSessionID, cwd := runtimeRefColumns(session)
+	acpAgent, acpSessionID, cwd, projectPath := runtimeRefColumns(session)
 	queuedMessages, err := marshalStringList(session.QueuedMessages)
 	if err != nil {
 		return err
@@ -183,6 +183,7 @@ func insertSession(db threaddb.DBTX, session storage.Session) error {
 		AcpAgent:              nullDBString(acpAgent),
 		AcpSessionID:          nullDBString(acpSessionID),
 		Cwd:                   nullDBString(cwd),
+		ProjectPath:           nullDBString(projectPath),
 		Error:                 nullDBString(session.Error),
 		ModelProvider:         nullDBString(session.ModelProvider),
 		Model:                 nullDBString(session.Model),
@@ -243,12 +244,13 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 	if session.Status == "" {
 		session.Status = storage.StatusIdle
 	}
-	if row.AcpAgent.Valid || row.AcpSessionID.Valid || row.Cwd.Valid {
+	if row.AcpAgent.Valid || row.AcpSessionID.Valid || row.Cwd.Valid || row.ProjectPath.Valid {
 		session.RuntimeRef = &storage.RuntimeRef{
-			Type:      session.Runtime,
-			Agent:     row.AcpAgent.String,
-			SessionID: row.AcpSessionID.String,
-			Cwd:       row.Cwd.String,
+			Type:        session.Runtime,
+			Agent:       row.AcpAgent.String,
+			SessionID:   row.AcpSessionID.String,
+			Cwd:         row.Cwd.String,
+			ProjectPath: row.ProjectPath.String,
 		}
 	}
 	return session, nil
@@ -294,11 +296,11 @@ func (s *Store) uniqueSlugLocked(value, currentID string) (string, error) {
 	}
 }
 
-func runtimeRefColumns(session storage.Session) (string, string, string) {
+func runtimeRefColumns(session storage.Session) (string, string, string, string) {
 	if session.RuntimeRef == nil {
-		return "", "", ""
+		return "", "", "", ""
 	}
-	return session.RuntimeRef.Agent, session.RuntimeRef.SessionID, session.RuntimeRef.Cwd
+	return session.RuntimeRef.Agent, session.RuntimeRef.SessionID, session.RuntimeRef.Cwd, session.RuntimeRef.ProjectPath
 }
 
 func marshalStringList(values []string) (string, error) {

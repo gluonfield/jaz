@@ -55,6 +55,26 @@ func TestListWorkspaceFiles(t *testing.T) {
 		t.Fatalf("entries should skip node_modules: %v", got)
 	}
 
+	project := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(project, "cmd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(project, "cmd", "main.go"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/v1/workspace/files?path="+project, nil)
+	res = httptest.NewRecorder()
+	(&Server{Workspace: workspace}).Handler().ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("absolute status = %d, body = %s", res.Code, res.Body.String())
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Root != project {
+		t.Fatalf("absolute root = %q, want %q", body.Root, project)
+	}
+
 	escape := httptest.NewRequest(http.MethodGet, "/v1/workspace/files?path=../outside", nil)
 	res = httptest.NewRecorder()
 	(&Server{Workspace: workspace}).Handler().ServeHTTP(res, escape)

@@ -8,7 +8,7 @@ import { LoopModal } from '@/components/loops/LoopModal'
 import { IconButton } from '@/components/ui/IconButton'
 import { boardsQuery, deleteBoard } from '@/lib/api/boards'
 import { loopsQuery } from '@/lib/api/loops'
-import { SIDEBAR_SESSION_LIMIT, sidebarSessionsQuery } from '@/lib/api/sessions'
+import { sidebarSessionsQuery, type SessionListItem } from '@/lib/api/sessions'
 import type { Board } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 import { SkeletonRows } from '../ui/Skeleton'
@@ -16,11 +16,77 @@ import { LoopRow } from './LoopRow'
 import { SessionRow } from './SessionRow'
 
 const SIDEBAR_LOOP_LIMIT = 6
+const DEFAULT_PROJECT_LABEL = 'Default'
 
-function SectionLabel({ children }: { children: string }) {
-  return (
-    <p className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3">{children}</p>
-  )
+function SectionLabel({ children, to }: { children: string; to?: '/sessions' }) {
+  const className =
+    'rounded-full px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3 transition-colors duration-150 hover:text-ink'
+  if (to) {
+    return (
+      <Link to={to} className={className} activeOptions={{ exact: true }} activeProps={{ className: 'text-ink!' }}>
+        {children}
+      </Link>
+    )
+  }
+  return <p className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3">{children}</p>
+}
+
+type SessionProjectGroup = {
+  key: string
+  label: string
+  updatedAt: number
+  items: SessionListItem[]
+}
+
+function projectName(path: string): string {
+  const parts = path.split(/[\\/]+/).filter(Boolean)
+  return parts.at(-1) ?? path
+}
+
+function isDefaultWorkspace(path: string): boolean {
+  const parts = path.split(/[\\/]+/).filter(Boolean)
+  return parts.at(-1) === 'default' && parts.at(-2) === 'workspaces'
+}
+
+function sessionProject(item: SessionListItem): { key: string; label: string } {
+  const cwd =
+    item.session.runtime_ref?.project_path?.trim() ||
+    item.session.runtime_ref?.cwd?.trim()
+  if (!cwd || isDefaultWorkspace(cwd)) return { key: '', label: DEFAULT_PROJECT_LABEL }
+  return { key: cwd, label: projectName(cwd) }
+}
+
+function sessionUpdatedAt(item: SessionListItem): number {
+  const ms = Date.parse(item.session.updated_at)
+  return Number.isNaN(ms) ? 0 : ms
+}
+
+function groupSessionsByProject(items: SessionListItem[]): SessionProjectGroup[] {
+  const groups = new Map<string, SessionProjectGroup>()
+  for (const item of items) {
+    const project = sessionProject(item)
+    const group = groups.get(project.key) ?? {
+      key: project.key,
+      label: project.label,
+      updatedAt: 0,
+      items: [],
+    }
+    group.updatedAt = Math.max(group.updatedAt, sessionUpdatedAt(item))
+    group.items.push(item)
+    groups.set(project.key, group)
+  }
+  return [...groups.values()]
+    .map((group) => {
+      const ids = new Set(group.items.map((item) => item.session.id))
+      return {
+        ...group,
+        items: group.items.map((item) => ({
+          ...item,
+          child: item.child && Boolean(item.session.parent_id && ids.has(item.session.parent_id)),
+        })),
+      }
+    })
+    .sort((a, b) => b.updatedAt - a.updatedAt || a.label.localeCompare(b.label))
 }
 
 function LoopsSection() {
@@ -181,7 +247,7 @@ export function Sidebar({
   onOpenSettings: () => void
 }) {
   const sessions = useQuery(sidebarSessionsQuery)
-  const visibleSessions = sessions.data?.slice(0, SIDEBAR_SESSION_LIMIT) ?? []
+  const sessionGroups = groupSessionsByProject(sessions.data ?? [])
 
   return (
     <aside
@@ -206,38 +272,48 @@ export function Sidebar({
         </Link>
 
         <section>
-          <SectionLabel>Sessions</SectionLabel>
+          <SectionLabel to="/sessions">Sessions</SectionLabel>
           {sessions.isPending ? (
             <SkeletonRows count={4} />
           ) : sessions.isError ? (
             <p className="px-2.5 py-1 text-[13px] text-ink-3">Backend unreachable</p>
-          ) : visibleSessions.length === 0 ? (
+          ) : sessionGroups.length === 0 ? (
             <p className="px-2.5 py-1 text-[13px] text-ink-3">No sessions yet</p>
           ) : (
-            <div className="flex flex-col gap-px">
-              <AnimatePresence initial={false} mode="popLayout">
-                {visibleSessions.map((item) => (
-                  <motion.div
-                    key={item.session.id}
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -8 }}
-                    transition={{ type: 'spring', stiffness: 420, damping: 34 }}
-                  >
-                    <SessionRow session={item.session} child={item.child} />
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-              {sessions.data.length > SIDEBAR_SESSION_LIMIT ? (
-                <Link
-                  to="/sessions"
-                  className="mt-1 rounded-full px-2.5 py-1 text-[13px] text-primary transition-colors duration-150 hover:bg-surface-2"
-                  activeOptions={{ exact: true }}
-                  activeProps={{ className: 'bg-primary-soft!' }}
-                >
-                  Show all sessions
-                </Link>
-              ) : null}
+            <div className="flex flex-col gap-3">
+              {sessionGroups.map((group) => (
+                <div key={group.key || 'default'}>
+                  <div className="group/project flex items-center justify-between pr-1">
+                    <p className="min-w-0 truncate px-2 pb-1 text-[11px] font-medium text-ink-3" title={group.label}>
+                      {group.label}
+                    </p>
+                    <Link
+                      to="/new"
+                      search={group.key ? { project: group.key } : {}}
+                      className="-mt-1 grid size-6 place-items-center rounded-full text-ink-3 opacity-0 transition-colors duration-150 hover:bg-surface-2 hover:text-ink focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none group-hover/project:opacity-100"
+                      aria-label={`New thread in ${group.label}`}
+                      title={`New thread in ${group.label}`}
+                    >
+                      <SquarePen size={13} />
+                    </Link>
+                  </div>
+                  <div className="flex flex-col gap-px">
+                    <AnimatePresence initial={false} mode="popLayout">
+                      {group.items.map((item) => (
+                        <motion.div
+                          key={item.session.id}
+                          initial={{ opacity: 0, x: -8 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, x: -8 }}
+                          transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                        >
+                          <SessionRow session={item.session} child={item.child} />
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </section>
