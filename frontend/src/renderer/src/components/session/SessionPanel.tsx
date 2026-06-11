@@ -1,4 +1,5 @@
 import {
+  Archive,
   ArrowLeftRight,
   ArrowUpFromLine,
   Check,
@@ -10,18 +11,19 @@ import {
   type LucideIcon,
   LoaderCircle,
 } from 'lucide-react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
+import { useToast } from '@/components/ui/toast'
+import { setSessionArchived } from '@/lib/api/sessions'
 import type { Session } from '@/lib/api/types'
 import { planStepState, type PlanSurface } from '@/lib/planSurface'
+import { keys } from '@/lib/query/keys'
 import { MessageMarkdown } from './MessageMarkdown'
 import { PlanStepIcon } from './Transcript'
 import { useRepoActions } from './useRepoActions'
 
 export const SESSION_PANEL_WIDTH = 300
 
-// Right-hand session panel: the current plan with live step progress, plus
-// the working directory's git state and forge actions — the same surfaces
-// the transcript and titlebar offer, kept visible at a glance.
 export function SessionPanel({
   session,
   plan,
@@ -40,11 +42,7 @@ export function SessionPanel({
     >
       {plan ? <PlanSection plan={plan} working={working} /> : null}
       {showGit ? <GitSection repo={repo} /> : null}
-      {!plan && !showGit ? (
-        <p className="text-[12px] leading-snug text-ink-3">
-          Nothing here yet — the agent&apos;s plan and repo actions appear as the session works.
-        </p>
-      ) : null}
+      <ManageSection session={session} />
     </aside>
   )
 }
@@ -144,6 +142,39 @@ function PlanSection({ plan, working }: { plan: PlanSurface; working: boolean })
           )}
         </>
       ) : null}
+    </section>
+  )
+}
+
+function ManageSection({ session }: { session: Session }) {
+  const queryClient = useQueryClient()
+  const toast = useToast()
+  const archive = useMutation({
+    mutationFn: () => setSessionArchived(session.id, true),
+    onSuccess: () => toast('Archived thread'),
+    onError: (error: Error) => toast(`Couldn't archive: ${error.message}`, 'danger'),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: keys.sessionMessages(session.id) })
+      queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
+      queryClient.invalidateQueries({ queryKey: keys.allSessions })
+      queryClient.invalidateQueries({ queryKey: keys.archivedSessions })
+    },
+  })
+
+  return (
+    <section className="flex flex-col gap-0.5">
+      <div className="mb-1.5">
+        <SectionHeader>Manage</SectionHeader>
+      </div>
+      <ActionRow
+        icon={archive.isPending ? LoaderCircle : Archive}
+        spin={archive.isPending}
+        disabled={session.archived || archive.isPending}
+        hint={session.archived ? 'Thread is archived' : 'Archives this thread and its children'}
+        onClick={() => archive.mutate()}
+      >
+        {session.archived ? 'Archived' : 'Archive thread'}
+      </ActionRow>
     </section>
   )
 }
