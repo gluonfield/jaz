@@ -413,28 +413,28 @@ export function ComposerCard({
           </div>
         ) : null}
         <div className="relative">
-          {/* Mirror painting the token highlights: identical box/text metrics
-              to the textarea, whose own glyphs go transparent while tokens
-              exist (the caret stays via caret-ink). */}
-          {tokens.size > 0 ? (
-            <div
-              ref={mirrorRef}
-              aria-hidden
-              className={`pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap [overflow-wrap:break-word] ${COMPOSER_TEXT_CLASSES} text-ink`}
-            >
-              {segments.map((segment, index) =>
-                segment.token ? (
-                  <span key={index} className="rounded-[4px] bg-primary-soft text-primary-strong">
-                    {segment.text}
-                  </span>
-                ) : (
-                  <span key={index}>{segment.text}</span>
-                ),
-              )}
-              {/* keeps a trailing newline's empty line box in the mirror */}
-              {'\u200b'}
-            </div>
-          ) : null}
+          {/* Mirror painting the text and token highlights: identical
+              box/text metrics to the textarea, whose own glyphs stay
+              transparent (the caret via caret-ink). The textarea sits above,
+              so its selection highlight must be translucent for the mirror
+              glyphs to read through it. */}
+          <div
+            ref={mirrorRef}
+            aria-hidden
+            className={`pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap [overflow-wrap:break-word] ${COMPOSER_TEXT_CLASSES} text-ink`}
+          >
+            {segments.map((segment, index) =>
+              segment.token ? (
+                <span key={index} className="rounded-[4px] bg-primary-soft text-primary-strong">
+                  {segment.text}
+                </span>
+              ) : (
+                <span key={index}>{segment.text}</span>
+              ),
+            )}
+            {/* keeps a trailing newline's empty line box in the mirror */}
+            {'\u200b'}
+          </div>
           <textarea
             ref={textareaRef}
             value={text}
@@ -444,9 +444,7 @@ export function ComposerCard({
             placeholder={placeholder}
             aria-autocomplete="list"
             aria-expanded={menuOpen}
-            className={`relative z-[1] max-h-[200px] min-h-[30px] w-full resize-none bg-transparent ${COMPOSER_TEXT_CLASSES} ${
-              tokens.size > 0 ? 'text-transparent' : 'text-ink'
-            } caret-ink select-text placeholder:text-ink-3 disabled:cursor-default`}
+            className={`relative z-[1] max-h-[200px] min-h-[30px] w-full resize-none bg-transparent ${COMPOSER_TEXT_CLASSES} text-transparent caret-ink select-text selection:bg-primary/25 placeholder:text-ink-3 disabled:cursor-default`}
             onScroll={(e) => {
               if (mirrorRef.current) mirrorRef.current.scrollTop = e.currentTarget.scrollTop
             }}

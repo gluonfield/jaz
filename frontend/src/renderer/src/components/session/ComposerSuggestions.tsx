@@ -116,11 +116,19 @@ export function ComposerSuggestions({
               >
                 <ItemIcon kind={item.kind} />
                 <span className="flex min-w-0 flex-1 items-baseline gap-2">
-                  <span className="truncate text-[13px]">
+                  {/* the name never collapses in favor of its description —
+                      flex may shrink overflow-hidden items to zero */}
+                  <span
+                    className={`truncate text-[13px] ${
+                      item.detail ? 'max-w-[60%] shrink-0' : 'min-w-0'
+                    }`}
+                  >
                     <HighlightedLabel text={item.label} indices={item.indices} />
                   </span>
                   {item.detail ? (
-                    <span className="min-w-0 truncate text-[11px] text-ink-3">{item.detail}</span>
+                    <span className="min-w-0 flex-1 truncate text-[11px] text-ink-3">
+                      {item.detail}
+                    </span>
                   ) : null}
                 </span>
               </button>
