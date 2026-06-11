@@ -47,7 +47,7 @@ export function BoardGrid({
   const [width, setWidth] = useState(0)
   const [drag, setDrag] = useState<DragState | null>(null)
   const dragRef = useRef<DragState | null>(null)
-  // Free cell under the pointer; hovering it offers "+ New widget".
+  // Free cell under the pointer; hovering it offers "+ Add widget".
   const [hover, setHover] = useState<{ x: number; y: number } | null>(null)
 
   useEffect(() => {
@@ -152,7 +152,7 @@ export function BoardGrid({
   const ghost = drag ? target(drag) : null
   const ghostBlocked = ghost ? overlapsOthers(ghost) : false
   // While dragging the grid extends past the content so every legal cell is
-  // visible; at rest it keeps one blank row so "+ New widget" can start a
+  // visible; at rest it keeps one blank row so "+ Add widget" can start a
   // fresh line below the content, not just fill gaps between tiles.
   const contentRows = Math.max(4, ...items.map((item) => item.y + item.h))
   const rows = drag
@@ -229,7 +229,7 @@ export function BoardGrid({
           }}
         >
           <Plus size={14} />
-          New widget
+          Add widget
         </button>
       ) : null}
       {items.map((item) => {
