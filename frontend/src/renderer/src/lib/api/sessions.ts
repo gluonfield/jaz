@@ -72,6 +72,41 @@ export function listWorkspaceDirs(
   ).then((data) => ({ path: data.path, git: data.git ?? false, dirs: data.dirs ?? [] }))
 }
 
+export interface WorkspaceFileEntry {
+  path: string
+  dir: boolean
+}
+
+export interface WorkspaceFileIndex {
+  root: string
+  entries: WorkspaceFileEntry[]
+  truncated: boolean
+}
+
+// Shallow file/dir index of a workspace directory for the composer's
+// @-mention picker. `root` echoes the server-resolved absolute directory so
+// tagged entries can expand to full paths. Resilient: any failure (older
+// backend without the route) yields an empty index so @ is simply inert. The
+// short staleTime avoids per-keystroke refetches while the menu is open but
+// still picks up files the agent just created on the next mention.
+export const workspaceFilesQuery = (path: string) =>
+  queryOptions({
+    queryKey: keys.workspaceFiles(path),
+    queryFn: async (): Promise<WorkspaceFileIndex> => {
+      try {
+        const data = await get<{
+          root: string
+          entries: WorkspaceFileEntry[] | null
+          truncated?: boolean
+        }>(`/v1/workspace/files?path=${encodeURIComponent(path)}`)
+        return { root: data.root, entries: data.entries ?? [], truncated: data.truncated ?? false }
+      } catch {
+        return { root: '', entries: [], truncated: false }
+      }
+    },
+    staleTime: 30_000,
+  })
+
 // Git/forge state of the session's working directory. Resilient: any failure
 // (older backend without the route) reads as "not a repo" so the titlebar repo
 // button simply doesn't render. Polled while mounted — the branch and upstream
