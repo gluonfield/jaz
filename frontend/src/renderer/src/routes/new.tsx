@@ -4,7 +4,7 @@ import { NewSessionHome } from '@/components/home/NewSessionHome'
 import { ModelSelect, ProjectPicker, RuntimeSelect } from '@/components/session/NewThreadControls'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { useToast } from '@/components/ui/toast'
-import { acpAgentsQuery, createSession } from '@/lib/api/sessions'
+import { acpAgentsQuery, createSession, projectsQuery } from '@/lib/api/sessions'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import { acpAgentModelSuggestions, OPENAI_MODELS, openRouterModelsQuery } from '@/lib/models'
 import { setPendingMessage, setPendingVoice } from '@/lib/pendingMessage'
@@ -47,6 +47,7 @@ function NewSessionPage() {
   const [effortOverride, setEffortOverride] = useState<string | null>(null)
   const { data: agents = [] } = useQuery(acpAgentsQuery)
   const { data: agentSettings } = useQuery(agentSettingsQuery)
+  const projects = useQuery(projectsQuery)
   // PixelField samples the palette at mount; remount it when the theme flips.
   const { resolved } = useTheme()
 
@@ -55,6 +56,19 @@ function NewSessionPage() {
     setDirectoryIsGit(false)
     setWorktree(false)
   }, [search.project])
+
+  useEffect(() => {
+    if (!directory) {
+      setDirectoryIsGit(false)
+      setWorktree(false)
+      return
+    }
+    const project = projects.data?.find((item) => item.path === directory)
+    if (project) {
+      setDirectoryIsGit(project.git)
+      if (!project.git) setWorktree(false)
+    }
+  }, [directory, projects.data])
 
   const isNative = runtime === 'native'
   const defaultProvider = agentSettings?.native.model_provider ?? ''

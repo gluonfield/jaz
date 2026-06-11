@@ -10,7 +10,6 @@ SELECT
   acp_agent,
   acp_session_id,
   cwd,
-  project_path,
   model_provider,
   model,
   reasoning_effort,
@@ -27,7 +26,8 @@ SELECT
   updated_at_ms,
   context_tokens,
   context_window_tokens,
-  cached_write_tokens
+  cached_write_tokens,
+  project_path
 FROM threads;
 
 -- name: GetSession :one
@@ -42,7 +42,6 @@ SELECT
   acp_agent,
   acp_session_id,
   cwd,
-  project_path,
   model_provider,
   model,
   reasoning_effort,
@@ -59,7 +58,8 @@ SELECT
   updated_at_ms,
   context_tokens,
   context_window_tokens,
-  cached_write_tokens
+  cached_write_tokens,
+  project_path
 FROM threads
 WHERE id = sqlc.arg(ref) OR slug = sqlc.arg(ref)
 LIMIT 1;

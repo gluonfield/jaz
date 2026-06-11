@@ -121,7 +121,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/projects", s.handleListProjects)
 	mux.HandleFunc("POST /v1/projects", s.handleCreateProject)
 	mux.HandleFunc("GET /v1/filesystem/dirs", s.handleListFilesystemDirs)
-	mux.HandleFunc("GET /v1/workspace/dirs", s.handleListWorkspaceDirs)
 	mux.HandleFunc("GET /v1/workspace/files", s.handleListWorkspaceFiles)
 	mux.HandleFunc("GET /v1/skills", s.handleListSkills)
 	mux.HandleFunc("GET /v1/mcp/servers", s.handleListMCPServers)
@@ -247,7 +246,7 @@ func (s *Server) createACPSession(w http.ResponseWriter, req createSessionReques
 		return
 	}
 	// "" would create a fresh per-slug subdirectory; "." is the workspace root,
-	// which is the default users expect from the new-thread directory picker.
+	// which is the default users expect when no project is selected.
 	directory := strings.TrimSpace(req.Directory)
 	if directory == "" {
 		directory = "."
@@ -276,28 +275,6 @@ func (s *Server) handleListACPAgents(w http.ResponseWriter, r *http.Request) {
 		agents = s.ACP.Agents()
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"agents": agents})
-}
-
-// handleListWorkspaceDirs browses the workspace (the server's filesystem) one
-// level at a time so the new-thread directory picker can choose where an ACP
-// session runs. path is workspace-relative; "" is the root.
-func (s *Server) handleListWorkspaceDirs(w http.ResponseWriter, r *http.Request) {
-	if strings.TrimSpace(s.Workspace) == "" {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("workspace is not configured"))
-		return
-	}
-	path := r.URL.Query().Get("path")
-	abs, err := pathsafe.Resolve(s.Workspace, path)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-	dirs, err := pathsafe.Subdirs(abs)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"path": path, "git": pathsafe.IsGitRepo(abs), "dirs": dirs})
 }
 
 // Caps for the @-mention file index: enough to cover a working tree's

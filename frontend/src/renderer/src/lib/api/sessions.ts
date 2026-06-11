@@ -56,11 +56,6 @@ export const acpAgentsQuery = queryOptions({
   },
 })
 
-export interface WorkspaceDir {
-  name: string
-  git: boolean
-}
-
 export interface Project {
   name: string
   path: string
@@ -99,17 +94,6 @@ export function listFilesystemDirs(
     git: data.git ?? false,
     dirs: data.dirs ?? [],
   }))
-}
-
-// Lists immediate subdirectories of a workspace-relative path so the directory
-// picker can browse where an ACP session runs ('' is the workspace root). `git`
-// flags whether the browsed path (and each entry) is a git repository root.
-export function listWorkspaceDirs(
-  path: string,
-): Promise<{ path: string; git: boolean; dirs: WorkspaceDir[] }> {
-  return get<{ path: string; git?: boolean; dirs: WorkspaceDir[] | null }>(
-    `/v1/workspace/dirs?path=${encodeURIComponent(path)}`,
-  ).then((data) => ({ path: data.path, git: data.git ?? false, dirs: data.dirs ?? [] }))
 }
 
 export interface WorkspaceFileEntry {

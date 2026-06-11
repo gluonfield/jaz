@@ -99,7 +99,7 @@ func (s *Store) ListSessions(filter storage.SessionFilter) ([]storage.Session, e
 
 	var sessions []storage.Session
 	for _, row := range rows {
-		session, err := sessionFromListRow(row)
+		session, err := sessionFromDB(row)
 		if err != nil {
 			return nil, err
 		}
@@ -137,7 +137,7 @@ func (s *Store) loadSessionLocked(ref string) (storage.Session, error) {
 	if err != nil {
 		return storage.Session{}, err
 	}
-	return sessionFromGetRow(row)
+	return sessionFromDB(row)
 }
 
 func (s *Store) saveSessionLocked(session storage.Session, touchUpdated bool) error {
@@ -205,46 +205,7 @@ func insertSession(db threaddb.DBTX, session storage.Session) error {
 	})
 }
 
-type sessionDBRow struct {
-	ID                    string
-	Slug                  string
-	Title                 sql.NullString
-	ParentID              sql.NullString
-	Status                string
-	Error                 sql.NullString
-	Runtime               string
-	AcpAgent              sql.NullString
-	AcpSessionID          sql.NullString
-	Cwd                   sql.NullString
-	ProjectPath           sql.NullString
-	ModelProvider         sql.NullString
-	Model                 sql.NullString
-	ReasoningEffort       sql.NullString
-	InputTokens           int64
-	CachedInputTokens     int64
-	OutputTokens          int64
-	ReasoningOutputTokens int64
-	TotalTokens           int64
-	QueuedMessages        string
-	SourceType            sql.NullString
-	SourceID              sql.NullString
-	Archived              int64
-	CreatedAtMs           int64
-	UpdatedAtMs           int64
-	ContextTokens         int64
-	ContextWindowTokens   int64
-	CachedWriteTokens     int64
-}
-
-func sessionFromGetRow(row threaddb.GetSessionRow) (storage.Session, error) {
-	return sessionFromDB(sessionDBRow(row))
-}
-
-func sessionFromListRow(row threaddb.ListSessionsRow) (storage.Session, error) {
-	return sessionFromDB(sessionDBRow(row))
-}
-
-func sessionFromDB(row sessionDBRow) (storage.Session, error) {
+func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 	queuedMessages, err := unmarshalStringList(row.QueuedMessages)
 	if err != nil {
 		return storage.Session{}, err

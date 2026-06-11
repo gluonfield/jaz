@@ -71,7 +71,6 @@ SELECT
   acp_agent,
   acp_session_id,
   cwd,
-  project_path,
   model_provider,
   model,
   reasoning_effort,
@@ -88,46 +87,16 @@ SELECT
   updated_at_ms,
   context_tokens,
   context_window_tokens,
-  cached_write_tokens
+  cached_write_tokens,
+  project_path
 FROM threads
 WHERE id = ?1 OR slug = ?1
 LIMIT 1
 `
 
-type GetSessionRow struct {
-	ID                    string         `json:"id"`
-	Slug                  string         `json:"slug"`
-	Title                 sql.NullString `json:"title"`
-	ParentID              sql.NullString `json:"parent_id"`
-	Status                string         `json:"status"`
-	Error                 sql.NullString `json:"error"`
-	Runtime               string         `json:"runtime"`
-	AcpAgent              sql.NullString `json:"acp_agent"`
-	AcpSessionID          sql.NullString `json:"acp_session_id"`
-	Cwd                   sql.NullString `json:"cwd"`
-	ProjectPath           sql.NullString `json:"project_path"`
-	ModelProvider         sql.NullString `json:"model_provider"`
-	Model                 sql.NullString `json:"model"`
-	ReasoningEffort       sql.NullString `json:"reasoning_effort"`
-	InputTokens           int64          `json:"input_tokens"`
-	CachedInputTokens     int64          `json:"cached_input_tokens"`
-	OutputTokens          int64          `json:"output_tokens"`
-	ReasoningOutputTokens int64          `json:"reasoning_output_tokens"`
-	TotalTokens           int64          `json:"total_tokens"`
-	QueuedMessages        string         `json:"queued_messages"`
-	SourceType            sql.NullString `json:"source_type"`
-	SourceID              sql.NullString `json:"source_id"`
-	Archived              int64          `json:"archived"`
-	CreatedAtMs           int64          `json:"created_at_ms"`
-	UpdatedAtMs           int64          `json:"updated_at_ms"`
-	ContextTokens         int64          `json:"context_tokens"`
-	ContextWindowTokens   int64          `json:"context_window_tokens"`
-	CachedWriteTokens     int64          `json:"cached_write_tokens"`
-}
-
-func (q *Queries) GetSession(ctx context.Context, ref string) (GetSessionRow, error) {
+func (q *Queries) GetSession(ctx context.Context, ref string) (Thread, error) {
 	row := q.db.QueryRowContext(ctx, getSession, ref)
-	var i GetSessionRow
+	var i Thread
 	err := row.Scan(
 		&i.ID,
 		&i.Slug,
@@ -139,7 +108,6 @@ func (q *Queries) GetSession(ctx context.Context, ref string) (GetSessionRow, er
 		&i.AcpAgent,
 		&i.AcpSessionID,
 		&i.Cwd,
-		&i.ProjectPath,
 		&i.ModelProvider,
 		&i.Model,
 		&i.ReasoningEffort,
@@ -157,6 +125,7 @@ func (q *Queries) GetSession(ctx context.Context, ref string) (GetSessionRow, er
 		&i.ContextTokens,
 		&i.ContextWindowTokens,
 		&i.CachedWriteTokens,
+		&i.ProjectPath,
 	)
 	return i, err
 }
@@ -231,7 +200,6 @@ SELECT
   acp_agent,
   acp_session_id,
   cwd,
-  project_path,
   model_provider,
   model,
   reasoning_effort,
@@ -248,50 +216,20 @@ SELECT
   updated_at_ms,
   context_tokens,
   context_window_tokens,
-  cached_write_tokens
+  cached_write_tokens,
+  project_path
 FROM threads
 `
 
-type ListSessionsRow struct {
-	ID                    string         `json:"id"`
-	Slug                  string         `json:"slug"`
-	Title                 sql.NullString `json:"title"`
-	ParentID              sql.NullString `json:"parent_id"`
-	Status                string         `json:"status"`
-	Error                 sql.NullString `json:"error"`
-	Runtime               string         `json:"runtime"`
-	AcpAgent              sql.NullString `json:"acp_agent"`
-	AcpSessionID          sql.NullString `json:"acp_session_id"`
-	Cwd                   sql.NullString `json:"cwd"`
-	ProjectPath           sql.NullString `json:"project_path"`
-	ModelProvider         sql.NullString `json:"model_provider"`
-	Model                 sql.NullString `json:"model"`
-	ReasoningEffort       sql.NullString `json:"reasoning_effort"`
-	InputTokens           int64          `json:"input_tokens"`
-	CachedInputTokens     int64          `json:"cached_input_tokens"`
-	OutputTokens          int64          `json:"output_tokens"`
-	ReasoningOutputTokens int64          `json:"reasoning_output_tokens"`
-	TotalTokens           int64          `json:"total_tokens"`
-	QueuedMessages        string         `json:"queued_messages"`
-	SourceType            sql.NullString `json:"source_type"`
-	SourceID              sql.NullString `json:"source_id"`
-	Archived              int64          `json:"archived"`
-	CreatedAtMs           int64          `json:"created_at_ms"`
-	UpdatedAtMs           int64          `json:"updated_at_ms"`
-	ContextTokens         int64          `json:"context_tokens"`
-	ContextWindowTokens   int64          `json:"context_window_tokens"`
-	CachedWriteTokens     int64          `json:"cached_write_tokens"`
-}
-
-func (q *Queries) ListSessions(ctx context.Context) ([]ListSessionsRow, error) {
+func (q *Queries) ListSessions(ctx context.Context) ([]Thread, error) {
 	rows, err := q.db.QueryContext(ctx, listSessions)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListSessionsRow{}
+	items := []Thread{}
 	for rows.Next() {
-		var i ListSessionsRow
+		var i Thread
 		if err := rows.Scan(
 			&i.ID,
 			&i.Slug,
@@ -303,7 +241,6 @@ func (q *Queries) ListSessions(ctx context.Context) ([]ListSessionsRow, error) {
 			&i.AcpAgent,
 			&i.AcpSessionID,
 			&i.Cwd,
-			&i.ProjectPath,
 			&i.ModelProvider,
 			&i.Model,
 			&i.ReasoningEffort,
@@ -321,6 +258,7 @@ func (q *Queries) ListSessions(ctx context.Context) ([]ListSessionsRow, error) {
 			&i.ContextTokens,
 			&i.ContextWindowTokens,
 			&i.CachedWriteTokens,
+			&i.ProjectPath,
 		); err != nil {
 			return nil, err
 		}
