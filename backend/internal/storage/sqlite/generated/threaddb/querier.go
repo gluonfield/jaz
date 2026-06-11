@@ -10,11 +10,11 @@ import (
 
 type Querier interface {
 	AddUsage(ctx context.Context, arg AddUsageParams) error
-	GetSession(ctx context.Context, ref string) (Thread, error)
+	GetSession(ctx context.Context, ref string) (GetSessionRow, error)
 	GetThreadIDByID(ctx context.Context, id string) (string, error)
 	GetThreadIDBySlug(ctx context.Context, slug string) (string, error)
 	ListErrorThreadIDsWithoutError(ctx context.Context, status string) ([]string, error)
-	ListSessions(ctx context.Context) ([]Thread, error)
+	ListSessions(ctx context.Context) ([]ListSessionsRow, error)
 	ResetRunningThreads(ctx context.Context, arg ResetRunningThreadsParams) error
 	SetArchived(ctx context.Context, arg SetArchivedParams) error
 	SetThreadError(ctx context.Context, arg SetThreadErrorParams) error

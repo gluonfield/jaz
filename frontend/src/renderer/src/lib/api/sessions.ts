@@ -61,6 +61,46 @@ export interface WorkspaceDir {
   git: boolean
 }
 
+export interface Project {
+  name: string
+  path: string
+  git: boolean
+}
+
+export interface FilesystemDir {
+  name: string
+  path: string
+  git: boolean
+}
+
+export const projectsQuery = queryOptions({
+  queryKey: keys.projects,
+  queryFn: async () => {
+    const data = await get<{ projects: Project[] | null }>('/v1/projects')
+    return data.projects ?? []
+  },
+})
+
+export function addProject(path: string): Promise<Project> {
+  return post<Project>('/v1/projects', { path })
+}
+
+export function listFilesystemDirs(
+  path: string,
+): Promise<{ path: string; parent: string; git: boolean; dirs: FilesystemDir[] }> {
+  return get<{
+    path: string
+    parent?: string
+    git?: boolean
+    dirs: FilesystemDir[] | null
+  }>(`/v1/filesystem/dirs?path=${encodeURIComponent(path)}`).then((data) => ({
+    path: data.path,
+    parent: data.parent ?? '',
+    git: data.git ?? false,
+    dirs: data.dirs ?? [],
+  }))
+}
+
 // Lists immediate subdirectories of a workspace-relative path so the directory
 // picker can browse where an ACP session runs ('' is the workspace root). `git`
 // flags whether the browsed path (and each entry) is a git repository root.
@@ -83,12 +123,12 @@ export interface WorkspaceFileIndex {
   truncated: boolean
 }
 
-// Shallow file/dir index of a workspace directory for the composer's
-// @-mention picker. `root` echoes the server-resolved absolute directory so
-// tagged entries can expand to full paths. Resilient: any failure (older
-// backend without the route) yields an empty index so @ is simply inert. The
-// short staleTime avoids per-keystroke refetches while the menu is open but
-// still picks up files the agent just created on the next mention.
+// Shallow file/dir index of a session directory for the composer's @-mention
+// picker. `root` echoes the server-resolved absolute directory so tagged
+// entries can expand to full paths. Resilient: any failure (older backend
+// without the route) yields an empty index so @ is simply inert. The short
+// staleTime avoids per-keystroke refetches while the menu is open but still
+// picks up files the agent just created on the next mention.
 export const workspaceFilesQuery = (path: string) =>
   queryOptions({
     queryKey: keys.workspaceFiles(path),

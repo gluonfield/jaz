@@ -11,49 +11,64 @@ import (
 	"github.com/wins/jaz/backend/internal/pathsafe"
 )
 
-// prepareSessionDir resolves where a spawned session works. An explicit
-// directory (relative to the workspace, confined to it) is created if
-// missing; without one each session gets a fresh directory named after its
-// slug. worktree=true swaps the directory for a disposable git worktree on a
-// session branch.
-func (m *Manager) prepareSessionDir(req SpawnRequest, cfg AgentConfig, slug string) (string, error) {
+// prepareSessionDir resolves where a spawned session works. A relative
+// explicit directory is workspace-confined and created if missing; an absolute
+// one is an existing server-side project directory. Without one each session
+// gets a fresh directory named after its slug. worktree=true swaps the
+// directory for a disposable git worktree on a session branch.
+func (m *Manager) prepareSessionDir(req SpawnRequest, cfg AgentConfig, slug string) (string, string, error) {
 	directory := strings.TrimSpace(req.Directory)
 	workspace, err := m.resolveCwd("")
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	var abs string
+	var projectPath string
 	switch {
 	case directory != "":
-		if abs, err = pathsafe.Resolve(workspace, directory); err != nil {
-			return "", err
+		if filepath.IsAbs(directory) {
+			abs = filepath.Clean(directory)
+			info, err := os.Stat(abs)
+			if err != nil {
+				return "", "", err
+			}
+			if !info.IsDir() {
+				return "", "", fmt.Errorf("path is not a directory: %s", abs)
+			}
+		} else {
+			if abs, err = pathsafe.Resolve(workspace, directory); err != nil {
+				return "", "", err
+			}
+			if err := os.MkdirAll(abs, 0o755); err != nil {
+				return "", "", err
+			}
 		}
-		if err := os.MkdirAll(abs, 0o755); err != nil {
-			return "", err
+		if directory != "." {
+			projectPath = abs
 		}
 	case cfg.Cwd != "":
 		if abs, err = m.resolveCwd(cfg.Cwd); err != nil {
-			return "", err
+			return "", "", err
 		}
 	case req.Worktree:
-		return "", fmt.Errorf("worktree requires a directory pointing at a git repository")
+		return "", "", fmt.Errorf("worktree requires a directory pointing at a git repository")
 	default:
 		if abs, err = pathsafe.Resolve(workspace, slug); err != nil {
-			return "", err
+			return "", "", err
 		}
 		if err := os.MkdirAll(abs, 0o755); err != nil {
-			return "", err
+			return "", "", err
 		}
 	}
 	if !req.Worktree {
-		return abs, nil
+		return abs, projectPath, nil
 	}
 	worktree, err := gitinfo.AddWorktree(context.Background(), workspace, abs, slug)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	m.log.Info("created worktree", "dir", abs, "worktree", worktree, "branch", "jaz/"+slug)
-	return worktree, nil
+	return worktree, projectPath, nil
 }
 
 func (m *Manager) resolveCwd(configured string) (string, error) {

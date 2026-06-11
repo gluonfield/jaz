@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NewSessionHome } from '@/components/home/NewSessionHome'
-import { DirectoryPicker, ModelSelect, RuntimeSelect } from '@/components/session/NewThreadControls'
+import { ModelSelect, ProjectPicker, RuntimeSelect } from '@/components/session/NewThreadControls'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { useToast } from '@/components/ui/toast'
 import { acpAgentsQuery, createSession } from '@/lib/api/sessions'
@@ -13,7 +13,13 @@ import type { SendMessageOptions } from '@/lib/sendMessage'
 import { useTheme } from '@/lib/theme'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
+type NewSearch = {
+  project?: string
+}
+
 export const Route = createFileRoute('/new')({
+  validateSearch: (search): NewSearch =>
+    typeof search.project === 'string' ? { project: search.project } : {},
   component: NewSessionPage,
 })
 
@@ -22,13 +28,14 @@ export const Route = createFileRoute('/new')({
 // first message is on its way.
 function NewSessionPage() {
   const navigate = useNavigate()
+  const search = Route.useSearch()
   const queryClient = useQueryClient()
   const toast = useToast()
   const [creating, setCreating] = useState(false)
   const [composing, setComposing] = useState(false)
   // 'native' or a configured ACP agent name; directory is the session cwd.
   const [runtime, setRuntime] = useState('native')
-  const [directory, setDirectory] = useState('')
+  const [directory, setDirectory] = useState(search.project ?? '')
   // Worktree runs the session on a disposable git worktree (any runtime);
   // only offered when the chosen directory is a git repository.
   const [directoryIsGit, setDirectoryIsGit] = useState(false)
@@ -42,6 +49,12 @@ function NewSessionPage() {
   const { data: agentSettings } = useQuery(agentSettingsQuery)
   // PixelField samples the palette at mount; remount it when the theme flips.
   const { resolved } = useTheme()
+
+  useEffect(() => {
+    setDirectory(search.project ?? '')
+    setDirectoryIsGit(false)
+    setWorktree(false)
+  }, [search.project])
 
   const isNative = runtime === 'native'
   const defaultProvider = agentSettings?.native.model_provider ?? ''
@@ -155,7 +168,7 @@ function NewSessionPage() {
         // Default clears the override, falling back to the settings effort.
         onEffortChange={(next) => setEffortOverride(next === '' ? null : next)}
       />
-      <DirectoryPicker
+      <ProjectPicker
         value={directory}
         disabled={creating}
         onChange={(path, git) => {

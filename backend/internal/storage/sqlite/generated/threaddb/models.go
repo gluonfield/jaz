@@ -3,37 +3,3 @@
 //   sqlc v1.31.1
 
 package threaddb
-
-import (
-	"database/sql"
-)
-
-type Thread struct {
-	ID                    string         `json:"id"`
-	Slug                  string         `json:"slug"`
-	Title                 sql.NullString `json:"title"`
-	ParentID              sql.NullString `json:"parent_id"`
-	Status                string         `json:"status"`
-	Error                 sql.NullString `json:"error"`
-	Runtime               string         `json:"runtime"`
-	AcpAgent              sql.NullString `json:"acp_agent"`
-	AcpSessionID          sql.NullString `json:"acp_session_id"`
-	Cwd                   sql.NullString `json:"cwd"`
-	ModelProvider         sql.NullString `json:"model_provider"`
-	Model                 sql.NullString `json:"model"`
-	ReasoningEffort       sql.NullString `json:"reasoning_effort"`
-	InputTokens           int64          `json:"input_tokens"`
-	CachedInputTokens     int64          `json:"cached_input_tokens"`
-	OutputTokens          int64          `json:"output_tokens"`
-	ReasoningOutputTokens int64          `json:"reasoning_output_tokens"`
-	TotalTokens           int64          `json:"total_tokens"`
-	QueuedMessages        string         `json:"queued_messages"`
-	SourceType            sql.NullString `json:"source_type"`
-	SourceID              sql.NullString `json:"source_id"`
-	Archived              int64          `json:"archived"`
-	CreatedAtMs           int64          `json:"created_at_ms"`
-	UpdatedAtMs           int64          `json:"updated_at_ms"`
-	ContextTokens         int64          `json:"context_tokens"`
-	ContextWindowTokens   int64          `json:"context_window_tokens"`
-	CachedWriteTokens     int64          `json:"cached_write_tokens"`
-}
