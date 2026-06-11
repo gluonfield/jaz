@@ -12,6 +12,8 @@ export const keys = {
   mcpServers: ['mcp', 'servers'] as const,
   acpAgents: ['acp', 'agents'] as const,
   openRouterModels: ['openrouter', 'models'] as const,
+  projects: ['projects'] as const,
+  filesystemDirs: (path: string) => ['filesystem', 'dirs', path] as const,
   workspaceDirs: (path: string) => ['workspace', 'dirs', path] as const,
   workspaceFiles: (root: string) => ['workspace', 'files', root] as const,
   skills: ['skills'] as const,
