@@ -1,4 +1,5 @@
 import { FileText } from 'lucide-react'
+import { memo, useMemo } from 'react'
 import Markdown from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
@@ -41,7 +42,10 @@ function isLocalPathLink(href: unknown, children: unknown): boolean {
 
 // Shared renderer for assistant prose: GitHub-flavored markdown + LaTeX
 // ($...$ / $$...$$ via KaTeX). Styles live in globals.css under .chat-prose.
-export function MessageMarkdown({ text }: { text: string }) {
+// Memoized: the remark/rehype pipeline is the priciest per-item work in a
+// transcript, so it must only run when the text actually changes.
+export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: string }) {
+  const normalized = useMemo(() => normalizeMath(text), [text])
   return (
     <div className="chat-prose">
       <Markdown
@@ -68,8 +72,8 @@ export function MessageMarkdown({ text }: { text: string }) {
           },
         }}
       >
-        {normalizeMath(text)}
+        {normalized}
       </Markdown>
     </div>
   )
-}
+})
