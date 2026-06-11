@@ -1,4 +1,3 @@
-import { motion } from 'motion/react'
 import { Link } from '@tanstack/react-router'
 import {
   Check,
@@ -475,12 +474,7 @@ function LiveEvent({
     event.type === 'acp' && hasWorkingStatusSurface(event) && !eventPlan && !ownSession
   const parentChild = isParentChildACPEvent(event)
   return (
-    <motion.div
-      className="flex max-w-[72ch] flex-col gap-2"
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-    >
+    <div className="flex max-w-[72ch] flex-col gap-2">
       {event.acp && showHeader ? (
         <p className="text-[12px] text-ink-3">
           <span className="font-mono">{event.acp.agent}</span>
@@ -511,7 +505,7 @@ function LiveEvent({
       {planSurface ? (
         <PlanChecklist surface={planSurface} active={working} onApprovePlan={onApprovePlan} />
       ) : null}
-    </motion.div>
+    </div>
   )
 }
 
