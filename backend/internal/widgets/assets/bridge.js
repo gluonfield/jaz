@@ -44,33 +44,6 @@
     post('jaz:error', { message: String((event && event.message) || 'widget error') });
   });
 
-  /* Broken images render as a broken-glyph icon the author never sees. Hide
-   * them (visibility keeps the layout stable) and count them in the layout
-   * report so the loop drops or replaces the URL on its next run. Resource
-   * error events don't bubble, hence the capture phase; images that failed
-   * before this script ran are caught by the sweep in measureLayout. */
-  document.addEventListener(
-    'error',
-    function (event) {
-      var el = event && event.target;
-      if (el && el.tagName === 'IMG') el.style.visibility = 'hidden';
-    },
-    true
-  );
-
-  function hideBrokenImages() {
-    var broken = 0;
-    var imgs = document.images;
-    for (var i = 0; i < imgs.length; i++) {
-      var img = imgs[i];
-      if (img.complete && img.naturalWidth === 0 && img.getAttribute('src')) {
-        img.style.visibility = 'hidden';
-        broken++;
-      }
-    }
-    return broken;
-  }
-
   window.addEventListener('unhandledrejection', function (event) {
     var reason = event && event.reason;
     var message = reason && reason.message ? reason.message : String(reason);
@@ -103,10 +76,11 @@
       var rect = el.getBoundingClientRect();
       if (rect.width < 4 || rect.height < 4) continue;
       var visible =
-        (el.textContent && el.textContent.trim() !== '') ||
-        /^(IMG|SVG|CANVAS|VIDEO)$/.test(el.tagName) ||
-        (style.backgroundColor && !/rgba?\(\s*0\s*,\s*0\s*,\s*0\s*,\s*0\s*\)/.test(style.backgroundColor)) ||
-        parseFloat(style.borderTopWidth) > 0;
+        style.visibility !== 'hidden' &&
+        ((el.textContent && el.textContent.trim() !== '') ||
+          /^(IMG|SVG|CANVAS|VIDEO)$/.test(el.tagName) ||
+          (style.backgroundColor && !/rgba?\(\s*0\s*,\s*0\s*,\s*0\s*,\s*0\s*\)/.test(style.backgroundColor)) ||
+          parseFloat(style.borderTopWidth) > 0);
       if (visible && rect.bottom > contentBottom) contentBottom = rect.bottom;
     }
     var available = root.clientHeight - 12; /* bottom padding */
@@ -139,6 +113,37 @@
     new ResizeObserver(scheduleMeasure).observe(document.documentElement);
   } else {
     window.addEventListener('resize', scheduleMeasure);
+  }
+
+  /* Broken images render as a broken-glyph icon the author never sees. Hide
+   * them (visibility keeps the layout stable) and re-measure, so the sweep
+   * below counts them into the layout report no matter how late they fail —
+   * a slow timeout after the initial measure still replaces the stale
+   * report. Resource error events don't bubble, hence the capture phase;
+   * images that failed before this script ran fire no event and are caught
+   * by the sweep alone. */
+  document.addEventListener(
+    'error',
+    function (event) {
+      var el = event && event.target;
+      if (!el || el.tagName !== 'IMG') return;
+      el.style.visibility = 'hidden';
+      scheduleMeasure();
+    },
+    true
+  );
+
+  function hideBrokenImages() {
+    var broken = 0;
+    var imgs = document.images;
+    for (var i = 0; i < imgs.length; i++) {
+      var img = imgs[i];
+      if (img.complete && img.naturalWidth === 0 && img.getAttribute('src')) {
+        img.style.visibility = 'hidden';
+        broken++;
+      }
+    }
+    return broken;
   }
 
   if (document.readyState === 'loading') {
