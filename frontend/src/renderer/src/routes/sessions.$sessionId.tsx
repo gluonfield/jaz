@@ -352,6 +352,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
 // hides or the window is wide enough.
 const PANEL_CHAT_COMFORT = 800
 const PANEL_PREF_KEY = 'jaz.sessionPanel'
+const SESSION_DRAFT_KEY_PREFIX = 'jaz.sessionDraft.'
 type PanelPref = 'auto' | 'open' | 'closed'
 
 function storedPanelPref(): PanelPref {
@@ -811,6 +812,7 @@ function SessionPage() {
             planAvailable={planAvailable}
             queuedPrompts={queue.queuedPrompts}
             steerDisabled={queue.steerDisabled}
+            draftStorageKey={`${SESSION_DRAFT_KEY_PREFIX}${session.id}`}
             fileRoot={session.runtime_ref?.cwd}
             onSend={queue.onSend}
             onStop={() => {

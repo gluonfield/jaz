@@ -11,14 +11,13 @@ import { ComposerSuggestions, type SuggestionItem, type SuggestionSection } from
 import {
   expandTokens,
   findActiveTrigger,
-  pruneTokens,
   segmentValue,
   tokenEndingAt,
-  type InlineToken,
 } from './composerTokens'
 import { fuzzyMatch } from './fuzzy'
 import { encodeMention } from './mentions'
 import { QueuedPromptList } from './QueuedPromptList'
+import { useComposerDraft, type ComposerDraftStorage } from './useComposerDraft'
 
 // A rainbow comet (~100° arc fading in and out of transparency) that orbits
 // the card while focused; the rest of the perimeter stays a quiet track.
@@ -91,11 +90,14 @@ export function ComposerCard({
   planAvailable = false,
   queueWhenStreaming = false,
   translucent = false,
+  draftStorageKey,
+  draftStorage = 'session',
   leftSlot,
   fileRoot,
   onSend,
   onStop,
   onVoice,
+  onTextChange,
 }: {
   streaming: boolean
   autoFocus?: boolean
@@ -105,6 +107,8 @@ export function ComposerCard({
   queueWhenStreaming?: boolean
   /** let a backdrop (e.g. the welcome particle field) read through the card */
   translucent?: boolean
+  draftStorageKey?: string
+  draftStorage?: ComposerDraftStorage
   /** leading toolbar content (e.g. the new-thread runtime/project controls) */
   leftSlot?: ReactNode
   /** server-side directory the @-mention picker indexes (a project path, a
@@ -113,8 +117,13 @@ export function ComposerCard({
   onSend: (text: string, options?: SendMessageOptions) => void
   onStop?: () => void
   onVoice?: () => void
+  onTextChange?: (text: string) => void
 }) {
-  const [text, setText] = useState('')
+  const { text, tokens, setDraft, clearDraft } = useComposerDraft({
+    storageKey: draftStorageKey,
+    storage: draftStorage,
+    onTextChange,
+  })
   const [files, setFiles] = useState<File[]>([])
   const [focused, setFocused] = useState(false)
   const [draggingFiles, setDraggingFiles] = useState(false)
@@ -123,14 +132,15 @@ export function ComposerCard({
   // Inline $skill / @path tokens: display text lives in `text`, keyed here by
   // that display. `dismissedAt` remembers an Escape'd trigger position so the
   // menu stays closed until the trigger changes.
-  const [tokens, setTokens] = useState<Map<string, InlineToken>>(new Map())
-  const [caret, setCaret] = useState(0)
+  const [caret, setCaret] = useState(text.length)
   const [dismissedAt, setDismissedAt] = useState<number | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const mirrorRef = useRef<HTMLDivElement>(null)
   const composingRef = useRef(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const draftIdentity = `${draftStorage}:${draftStorageKey ?? ''}`
+  const draftIdentityRef = useRef(draftIdentity)
   const reducedMotion = useReducedMotion()
 
   // Open-ness is derived from text + caret, never stored: moving the caret
@@ -138,7 +148,7 @@ export function ComposerCard({
   // free. Fetches prewarm on focus so the menu opens populated.
   const trigger = useMemo(() => findActiveTrigger(text, caret), [text, caret])
   const menuTrigger = trigger && trigger.start !== dismissedAt && !disabled ? trigger : null
-  const skills = useQuery({ ...skillsQuery, enabled: focused })
+  const { data: skillsData, refetch: refetchSkills } = useQuery({ ...skillsQuery, enabled: focused })
   const fileIndex = useQuery({
     ...workspaceFilesQuery(fileRoot ?? ''),
     enabled: fileRoot !== undefined && focused,
@@ -146,15 +156,30 @@ export function ComposerCard({
   const skillMentionStart = focused && menuTrigger?.trigger === '$' ? menuTrigger.start : null
 
   useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`
+  }, [text])
+
+  useEffect(() => {
+    if (draftIdentityRef.current === draftIdentity) return
+    draftIdentityRef.current = draftIdentity
+    setCaret(text.length)
+    setDismissedAt(null)
+    setActiveIndex(0)
+  }, [draftIdentity, text.length])
+
+  useEffect(() => {
     if (skillMentionStart === null) return
-    void skills.refetch()
-  }, [skillMentionStart, skills.refetch])
+    void refetchSkills()
+  }, [skillMentionStart, refetchSkills])
 
   const sections = useMemo<SuggestionSection[]>(() => {
     if (!menuTrigger) return []
     const query = menuTrigger.query
     if (menuTrigger.trigger === '$') {
-      const items = (skills.data ?? [])
+      const items = (skillsData ?? [])
         .flatMap((skill) => {
           const match = fuzzyMatch(query, skill.name)
           return match ? [{ skill, match }] : []
@@ -203,7 +228,7 @@ export function ComposerCard({
         expansion: encodeMention('@', entry.path, `${index.root}/${entry.path}`),
       }))
     return items.length > 0 ? [{ title: 'Files', items }] : []
-  }, [menuTrigger, skills.data, fileIndex.data])
+  }, [menuTrigger, skillsData, fileIndex.data])
 
   const flatItems = useMemo(() => sections.flatMap((section) => section.items), [sections])
   const menuOpen = menuTrigger !== null && flatItems.length > 0 && focused
@@ -233,14 +258,12 @@ export function ComposerCard({
     // atomic backspace an obvious feel: one press eats the space, the next
     // eats the whole token.
     const next = `${text.slice(0, menuTrigger.start)}${item.insert} ${text.slice(caret)}`
-    setTokens((prev) =>
-      new Map(prev).set(item.insert, {
-        trigger: menuTrigger.trigger,
-        display: item.insert,
-        expansion: item.expansion,
-      }),
-    )
-    setText(next)
+    const nextTokens = new Map(tokens).set(item.insert, {
+      trigger: menuTrigger.trigger,
+      display: item.insert,
+      expansion: item.expansion,
+    })
+    setDraft({ text: next, tokens: nextTokens })
     const pos = menuTrigger.start + item.insert.length + 1
     setCaret(pos)
     placeCaret(pos)
@@ -295,8 +318,7 @@ export function ComposerCard({
       planRequested: !streaming && planAvailable && planRequested,
       files: streaming ? [] : files,
     })
-    setText('')
-    setTokens(new Map())
+    clearDraft()
     setCaret(0)
     setDismissedAt(null)
     setFiles([])
@@ -468,9 +490,8 @@ export function ComposerCard({
             }}
             onChange={(e) => {
               const next = e.target.value
-              setText(next)
               setCaret(e.target.selectionStart ?? next.length)
-              setTokens((prev) => pruneTokens(prev, next))
+              setDraft({ text: next, tokens })
               // an Escape'd trigger stays dismissed only while it's still the
               // same trigger; editing elsewhere re-arms the menu
               setDismissedAt((dismissed) => {
@@ -514,8 +535,7 @@ export function ComposerCard({
                   if (hit) {
                     e.preventDefault()
                     const next = text.slice(0, hit.start) + text.slice(el.selectionStart)
-                    setTokens((prev) => pruneTokens(prev, next))
-                    setText(next)
+                    setDraft({ text: next, tokens })
                     setCaret(hit.start)
                     placeCaret(hit.start)
                     return
@@ -654,6 +674,7 @@ export function Composer({
   planAvailable,
   queuedPrompts = [],
   steerDisabled,
+  draftStorageKey,
   fileRoot,
   onSend,
   onStop,
@@ -669,6 +690,7 @@ export function Composer({
   planAvailable?: boolean
   queuedPrompts?: string[]
   steerDisabled?: boolean
+  draftStorageKey?: string
   /** directory the @-mention picker indexes; undefined disables @ */
   fileRoot?: string
   onSend: (text: string, options?: SendMessageOptions) => void
@@ -709,6 +731,8 @@ export function Composer({
           placeholder={placeholder}
           planAvailable={planAvailable}
           queueWhenStreaming
+          draftStorageKey={draftStorageKey}
+          draftStorage="local"
           fileRoot={fileRoot}
           onSend={onSend}
           onStop={onStop}
