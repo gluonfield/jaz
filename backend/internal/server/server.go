@@ -120,6 +120,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/acp/agents", s.handleListACPAgents)
 	mux.HandleFunc("GET /v1/projects", s.handleListProjects)
 	mux.HandleFunc("POST /v1/projects", s.handleCreateProject)
+	mux.HandleFunc("PUT /v1/projects/order", s.handleReorderProjects)
 	mux.HandleFunc("GET /v1/filesystem/dirs", s.handleListFilesystemDirs)
 	mux.HandleFunc("GET /v1/workspace/files", s.handleListWorkspaceFiles)
 	mux.HandleFunc("GET /v1/skills", s.handleListSkills)
