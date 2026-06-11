@@ -7,6 +7,7 @@ import { createPortal } from 'react-dom'
 import { BottomDock } from '@/components/session/BottomDock'
 import { Composer, PlanDecisionCard } from '@/components/session/Composer'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
+import { SessionErrorNotice } from '@/components/session/SessionErrorNotice'
 import { SESSION_PANEL_WIDTH, SessionPanel } from '@/components/session/SessionPanel'
 import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
 import { ThinkingBlock } from '@/components/session/ThinkingBlock'
@@ -634,7 +635,9 @@ function SessionPage() {
       !live &&
       !hasPendingPermission,
   )
-  const empty = messages.length === 0 && transcriptEvents.length === 0 && !live
+  const sessionError = session.status === 'error' ? session.error?.trim() || 'Unknown error.' : ''
+  const sessionErrorContext = [session.model_provider, session.model].filter(Boolean).join(' · ')
+  const empty = messages.length === 0 && transcriptEvents.length === 0 && !live && !sessionError
   const isACP = session.runtime === 'acp'
   // Covers turns started elsewhere (parent-triggered, or refresh mid-turn).
   const sessionRunning = queue.sessionRunning
@@ -719,45 +722,51 @@ function SessionPage() {
                 <p>Messages stream in live as your assistant thinks and works.</p>
               </EmptyState>
             ) : (
-              <Transcript
-                messages={transcriptMessages}
-                events={displayEvents}
-                sessionId={session.id}
-                groupTurns={isACP}
-                working={sessionRunning}
-                tail={
-                  live && !isACP ? (
-                    <div className="flex flex-col gap-5">
-                      <motion.div
-                        className="flex justify-end"
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                      >
-                        <div className="max-w-[80%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap select-text">
-                          {live.user}
-                          <LiveAttachmentList attachments={live.attachments} />
-                        </div>
-                      </motion.div>
-                      <ThinkingBlock text={live.reasoning} pending={streaming} />
-                      {live.tools.map((tool) => (
-                        <ToolCallCard
-                          key={tool.key}
-                          name={tool.name}
-                          args={tool.args}
-                          result={tool.result}
-                          pending={streaming && tool.result === undefined}
-                        />
-                      ))}
-                      {live.assistant ? (
-                        <MessageMarkdown text={live.assistant} />
-                      ) : streaming ? (
-                        <p className="animate-pulse text-sm text-ink-3">Thinking…</p>
-                      ) : null}
-                    </div>
-                  ) : null
-                }
-              />
+              <>
+                <Transcript
+                  messages={transcriptMessages}
+                  events={displayEvents}
+                  sessionId={session.id}
+                  groupTurns={isACP}
+                  working={sessionRunning}
+                  tail={
+                    live && !isACP ? (
+                      <div className="flex flex-col gap-5">
+                        <motion.div
+                          className="flex justify-end"
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                        >
+                          <div className="max-w-[80%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap select-text">
+                            {live.user}
+                            <LiveAttachmentList attachments={live.attachments} />
+                          </div>
+                        </motion.div>
+                        <ThinkingBlock text={live.reasoning} pending={streaming} />
+                        {live.tools.map((tool) => (
+                          <ToolCallCard
+                            key={tool.key}
+                            name={tool.name}
+                            args={tool.args}
+                            result={tool.result}
+                            pending={streaming && tool.result === undefined}
+                          />
+                        ))}
+                        {live.assistant ? (
+                          <MessageMarkdown text={live.assistant} />
+                        ) : streaming ? (
+                          <p className="animate-pulse text-sm text-ink-3">Thinking…</p>
+                        ) : null}
+                        {live.error ? <SessionErrorNotice message={live.error} /> : null}
+                      </div>
+                    ) : null
+                  }
+                />
+                {sessionError ? (
+                  <SessionErrorNotice message={sessionError} context={sessionErrorContext} />
+                ) : null}
+              </>
             )}
           </div>
         </div>

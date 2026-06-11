@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { Check, Copy, X } from 'lucide-react'
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { writeClipboard } from '@/lib/clipboard'
 
 interface Toast {
   id: number
@@ -20,29 +21,6 @@ const toastMotion = {
 } as const
 
 const ToastContext = createContext<(message: string, tone?: Toast['tone']) => void>(() => {})
-
-function writeClipboardFallback(text: string) {
-  const textarea = document.createElement('textarea')
-  textarea.value = text
-  textarea.readOnly = true
-  textarea.style.position = 'fixed'
-  textarea.style.opacity = '0'
-  document.body.append(textarea)
-  textarea.select()
-  const copied = document.execCommand('copy')
-  textarea.remove()
-  return copied
-}
-
-async function writeClipboard(text: string) {
-  if (!navigator.clipboard?.writeText) return writeClipboardFallback(text)
-  try {
-    await navigator.clipboard.writeText(text)
-    return true
-  } catch {
-    return writeClipboardFallback(text)
-  }
-}
 
 export function useToast() {
   return useContext(ToastContext)
