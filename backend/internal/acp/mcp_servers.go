@@ -45,6 +45,9 @@ func enabledHTTPMCPServers(store mcpconfig.ServerReader) ([]json.RawMessage, err
 		if err != nil {
 			return nil, err
 		}
+		if headers == nil {
+			headers = []mcpconfig.Header{}
+		}
 		payload := struct {
 			Type    string             `json:"type"`
 			Name    string             `json:"name"`
