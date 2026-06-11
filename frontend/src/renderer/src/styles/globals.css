@@ -381,12 +381,13 @@ html.vibrant.dark .sidebar-material {
 }
 
 html.dark .sidebar-material {
+  color: var(--color-ink);
   --color-ink-2: var(--color-ink);
   --color-ink-3: var(--color-ink);
 }
 
-html.dark .sidebar-material :is(.text-primary, .text-primary-strong) {
-  color: var(--color-ink);
+html.dark .sidebar-material :is(a, button, p, span, kbd, svg) {
+  color: var(--color-ink) !important;
 }
 
 h1,
