@@ -3,16 +3,10 @@
 # exits 0 quickly when the piece version is already installed.
 set -eu
 
-apk add --no-cache curl >/dev/null 2>&1
+apk add --no-cache curl jq >/dev/null 2>&1
 
-PIECE_NAME=$(sed -n 's/.*"name": *"\([^"]*\)".*/\1/p' /piece-package.json)
-PIECE_VERSION=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' /piece-package.json)
-TGZ=$(ls /piece-dist/*.tgz 2>/dev/null | head -1 || true)
-
-if [ -z "$TGZ" ]; then
-  echo "piece-installer: no .tgz in pieces/lake-writer/dist/ — run pieces/lake-writer/build.sh first. Skipping."
-  exit 0
-fi
+PIECE_NAME="${PIECE_NAME:-@activepieces/piece-lake-writer}"
+PIECE_VERSION="${PIECE_VERSION:-0.1.2}"
 
 echo "piece-installer: waiting for activepieces..."
 i=0
@@ -41,18 +35,34 @@ fi
 [ -z "$TOKEN" ] && echo "piece-installer: could not authenticate (check AP_EMAIL/AP_PASSWORD in .env)" && exit 1
 
 INSTALLED=$(curl -sf "$AP_URL/api/v1/pieces" -H "Authorization: Bearer $TOKEN" || true)
-if printf '%s' "$INSTALLED" | grep -q "\"name\":\"$PIECE_NAME\".*\"version\":\"$PIECE_VERSION\"\|\"version\":\"$PIECE_VERSION\".*\"name\":\"$PIECE_NAME\""; then
+if printf '%s' "$INSTALLED" | jq -e --arg name "$PIECE_NAME" --arg version "$PIECE_VERSION" '
+  (if type == "array" then . else .data // [] end)[]
+  | select(.name == $name and .version == $version)
+' >/dev/null; then
   echo "piece-installer: $PIECE_NAME@$PIECE_VERSION already installed."
   exit 0
+fi
+
+TGZ=$(ls /piece-dist/*-"$PIECE_VERSION".tgz 2>/dev/null | head -1 || true)
+if [ -z "$TGZ" ] && [ -n "${PIECE_ARCHIVE_URL:-}" ]; then
+  TGZ="/tmp/lake-writer-$PIECE_VERSION.tgz"
+  echo "piece-installer: downloading $PIECE_NAME@$PIECE_VERSION from $PIECE_ARCHIVE_URL"
+  curl -fL "$PIECE_ARCHIVE_URL" -o "$TGZ"
+fi
+
+if [ -z "$TGZ" ]; then
+  echo "piece-installer: $PIECE_NAME@$PIECE_VERSION is not installed and no archive is available."
+  echo "piece-installer: bundle piece-archives/*-$PIECE_VERSION.tgz or set JAZ_LAKE_WRITER_ARCHIVE_URL."
+  exit 1
 fi
 
 echo "piece-installer: installing $PIECE_NAME@$PIECE_VERSION from $TGZ"
 curl -sf "$AP_URL/api/v1/pieces" \
   -H "Authorization: Bearer $TOKEN" \
   -F "pieceArchive=@$TGZ" \
-  -F "packageType=ARCHIVE" \
-  -F "scope=PLATFORM" \
-  -F "pieceName=$PIECE_NAME" \
-  -F "pieceVersion=$PIECE_VERSION"
+  --form-string "packageType=ARCHIVE" \
+  --form-string "scope=PLATFORM" \
+  --form-string "pieceName=$PIECE_NAME" \
+  --form-string "pieceVersion=$PIECE_VERSION"
 echo
 echo "piece-installer: done."
