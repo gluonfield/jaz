@@ -15,12 +15,20 @@ type ToolCall = oa.ChatCompletionMessageToolCallUnion
 type ContentPart = oa.ChatCompletionContentPartUnionParam
 
 type Request struct {
-	Provider        string
-	Model           string
-	ReasoningEffort string
-	Messages        []Message
-	Tools           []tools.Definition
-	MediaRefs       map[string][]media.Ref
+	Provider         string
+	Model            string
+	ReasoningEffort  string
+	Messages         []Message
+	Tools            []tools.Definition
+	MediaRefs        map[string][]media.Ref
+	StructuredOutput *StructuredOutput
+}
+
+type StructuredOutput struct {
+	Name        string
+	Description string
+	Schema      any
+	Strict      bool
 }
 
 type Response struct {

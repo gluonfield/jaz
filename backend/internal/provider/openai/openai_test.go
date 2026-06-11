@@ -180,3 +180,56 @@ func TestProviderCompleteRequestsOpenRouterUsage(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestProviderCompleteRequestsStructuredOutput(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/chat/completions" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		var req struct {
+			ResponseFormat struct {
+				Type       string `json:"type"`
+				JSONSchema struct {
+					Name   string         `json:"name"`
+					Strict bool           `json:"strict"`
+					Schema map[string]any `json:"schema"`
+				} `json:"json_schema"`
+			} `json:"response_format"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatal(err)
+		}
+		if req.ResponseFormat.Type != "json_schema" || req.ResponseFormat.JSONSchema.Name != "session_title" || !req.ResponseFormat.JSONSchema.Strict {
+			t.Fatalf("response_format = %#v", req.ResponseFormat)
+		}
+		if req.ResponseFormat.JSONSchema.Schema["type"] != "object" {
+			t.Fatalf("schema = %#v", req.ResponseFormat.JSONSchema.Schema)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{
+			"id": "chatcmpl-test",
+			"object": "chat.completion",
+			"created": 1,
+			"model": "test-model",
+			"choices": [{
+				"index": 0,
+				"message": {"role": "assistant", "content": "{\"title\":\"Fix login\"}"},
+				"finish_reason": "stop"
+			}]
+		}`)
+	}))
+	defer server.Close()
+
+	p := New(server.URL, "test-key", "test-model")
+	_, err := p.Complete(context.Background(), provider.Request{
+		Model: "test-model",
+		StructuredOutput: &provider.StructuredOutput{
+			Name:   "session_title",
+			Strict: true,
+			Schema: map[string]any{"type": "object"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
