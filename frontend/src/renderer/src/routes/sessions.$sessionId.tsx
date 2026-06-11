@@ -59,46 +59,13 @@ interface LiveAttachment {
   uploading?: boolean
 }
 
-interface CriticalErrorToast {
-  message: string
-}
-
-function addCriticalErrorToast(
-  out: CriticalErrorToast[],
-  seen: Set<string>,
-  message?: string,
-) {
-  const text = message?.trim()
-  if (!text || seen.has(text)) return
-  seen.add(text)
-  out.push({ message: text })
-}
-
-function criticalSessionErrors(
-  data: SessionMessages,
-  liveEvents: SessionEvent[],
-  pageSessionID: string,
-): CriticalErrorToast[] {
-  const out: CriticalErrorToast[] = []
-  const seen = new Set<string>()
-
-  if (data.session.status === 'error') {
-    addCriticalErrorToast(out, seen, data.session.error)
-  }
-  addCriticalErrorToast(out, seen, data.acp_error)
-  for (const child of data.acp_children ?? []) {
-    if (child.parent_id === pageSessionID && child.parent_visible === false) continue
-    addCriticalErrorToast(out, seen, child.error)
-  }
-  for (const event of [...(data.events ?? []), ...liveEvents]) {
-    addCriticalErrorToast(out, seen, event.acp?.error)
-  }
-  return out
-}
-
 function stripACPError(event: SessionEvent): SessionEvent {
   if (!event.acp?.error) return event
   return { ...event, acp: { ...event.acp, error: undefined } }
+}
+
+function sessionEventErrorMessage(event: SessionEvent): string {
+  return event.acp?.error?.trim() ?? ''
 }
 
 function finishLiveAttachments(attachments: LiveAttachment[]): LiveAttachment[] {
@@ -352,6 +319,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
 // hides or the window is wide enough.
 const PANEL_CHAT_COMFORT = 800
 const PANEL_PREF_KEY = 'jaz.sessionPanel'
+const SESSION_DRAFT_KEY_PREFIX = 'jaz.sessionDraft.'
 type PanelPref = 'auto' | 'open' | 'closed'
 
 function storedPanelPref(): PanelPref {
@@ -372,7 +340,19 @@ function SessionPage() {
     gcTime: Infinity,
   })
   const streamingRef = useRef(false)
-  useSessionEvents(sessionId, streamingRef)
+  const shownCriticalErrors = useRef(new Set<string>())
+  const notifyCriticalError = useCallback((message: string) => {
+    const text = message.trim()
+    if (!text) return
+    const toastKey = `${sessionId}:${text}`
+    if (shownCriticalErrors.current.has(toastKey)) return
+    shownCriticalErrors.current.add(toastKey)
+    toast(text, 'danger')
+  }, [sessionId, toast])
+  const notifySessionEventError = useCallback((event: SessionEvent) => {
+    notifyCriticalError(sessionEventErrorMessage(event))
+  }, [notifyCriticalError])
+  useSessionEvents(sessionId, streamingRef, notifySessionEventError)
 
   const [live, setLive] = useState<LiveExchange | null>(null)
   const [streaming, setStreaming] = useState(false)
@@ -389,15 +369,6 @@ function SessionPage() {
   const [panelPref, setPanelPref] = useState<PanelPref>(storedPanelPref)
   const [hasPanelSpace, setHasPanelSpace] = useState(false)
   const panelObserver = useRef<ResizeObserver | null>(null)
-  const shownCriticalErrors = useRef(new Set<string>())
-  const notifyCriticalError = useCallback((message: string) => {
-    const text = message.trim()
-    if (!text) return
-    const toastKey = `${sessionId}:${text}`
-    if (shownCriticalErrors.current.has(toastKey)) return
-    shownCriticalErrors.current.add(toastKey)
-    toast(text, 'danger')
-  }, [sessionId, toast])
   const measureRef = useCallback((el: HTMLDivElement | null) => {
     panelObserver.current?.disconnect()
     panelObserver.current = null
@@ -585,13 +556,6 @@ function SessionPage() {
     () => (data ? deriveSessionView(data, events.data) : undefined),
     [data, events.data],
   )
-
-  useEffect(() => {
-    if (!detail.data) return
-    for (const error of criticalSessionErrors(detail.data, events.data, sessionId)) {
-      notifyCriticalError(error.message)
-    }
-  }, [detail.data, events.data, notifyCriticalError, sessionId])
 
   const panelOpen = panelPref === 'auto' ? hasPanelSpace : panelPref === 'open'
   const togglePanel = useCallback(() => {
@@ -811,6 +775,7 @@ function SessionPage() {
             planAvailable={planAvailable}
             queuedPrompts={queue.queuedPrompts}
             steerDisabled={queue.steerDisabled}
+            draftStorageKey={`${SESSION_DRAFT_KEY_PREFIX}${session.id}`}
             fileRoot={session.runtime_ref?.cwd}
             onSend={queue.onSend}
             onStop={() => {

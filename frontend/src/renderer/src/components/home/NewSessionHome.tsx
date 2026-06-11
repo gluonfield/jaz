@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react'
+import { type ReactNode, useCallback } from 'react'
 import { motion } from 'motion/react'
 import { HomePixelField } from '@/components/home/HomePixelField'
 import { ComposerCard } from '@/components/session/Composer'
@@ -9,6 +9,7 @@ export function NewSessionHome({
   calm,
   creating,
   leftSlot,
+  draftStorageKey,
   fileRoot,
   onDraftActivity,
   onSend,
@@ -18,20 +19,20 @@ export function NewSessionHome({
   calm: boolean
   creating: boolean
   leftSlot: ReactNode
+  draftStorageKey?: string
   /** directory the composer's @-mention picker indexes ('' = workspace root) */
   fileRoot?: string
   onDraftActivity: (active: boolean) => void
   onSend: (text: string, options?: SendMessageOptions) => void
   onVoice?: () => void
 }) {
+  const handleTextChange = useCallback(
+    (text: string) => onDraftActivity(text.trim().length > 0),
+    [onDraftActivity],
+  )
+
   return (
-    <div
-      className="relative flex h-full flex-col items-center justify-center overflow-hidden px-10 pb-16"
-      onInput={(event) => {
-        const el = event.target as HTMLElement
-        if (el instanceof HTMLTextAreaElement) onDraftActivity(el.value.trim().length > 0)
-      }}
-    >
+    <div className="relative flex h-full flex-col items-center justify-center overflow-hidden px-10 pb-16">
       <HomePixelField themeKey={themeKey} calm={calm} />
       <motion.div
         className="relative z-[2] w-full max-w-[640px]"
@@ -57,9 +58,11 @@ export function NewSessionHome({
             placeholder="Ask anything, or hand your assistant a task…"
             planAvailable
             leftSlot={leftSlot}
+            draftStorageKey={draftStorageKey}
             fileRoot={fileRoot}
             onSend={onSend}
             onVoice={onVoice}
+            onTextChange={handleTextChange}
           />
         </motion.div>
       </motion.div>

@@ -16,13 +16,13 @@ import { ComposerSuggestions, type SuggestionItem, type SuggestionSection } from
 import {
   expandTokens,
   findActiveTrigger,
-  pruneTokens,
   segmentValue,
   tokenEndingAt,
   type InlineToken,
 } from './composerTokens'
 import { fuzzyMatch } from './fuzzy'
 import { decodeMentions, encodeMention } from './mentions'
+import { useComposerDraft, type ComposerDraftStorage } from './useComposerDraft'
 
 // Result cap for the $/@ popups, mirroring Codex's file-search page size.
 const MAX_SUGGESTIONS = 20
@@ -60,7 +60,10 @@ export function useMentionInput({
   disabled,
   maxHeight = 200,
   initialValue = '',
+  storageKey,
+  storage = 'session',
   onValueChange,
+  onTextChange,
 }: {
   /** server-side directory the @-mention picker indexes (a project path, a
       session cwd, or '' for the workspace root). undefined disables @ */
@@ -68,14 +71,24 @@ export function useMentionInput({
   disabled?: boolean
   /** auto-grow cap for the textarea, in px */
   maxHeight?: number
-  /** initial value in wire form (text with encoded mentions) */
+  /** initial value in wire form (text with encoded mentions); a persisted
+      draft under storageKey wins over it */
   initialValue?: string
+  /** persists the draft across unmounts/navigation; omit for ephemeral fields */
+  storageKey?: string
+  storage?: ComposerDraftStorage
   /** reports the wire-form value after every edit */
   onValueChange?: (value: string) => void
+  /** reports the display text on every change, including draft restores */
+  onTextChange?: (text: string) => void
 }) {
-  const [text, setText] = useState(() => fromWire(initialValue).text)
-  const [tokens, setTokens] = useState(() => fromWire(initialValue).tokens)
-  const [caret, setCaret] = useState(0)
+  const { text, tokens, setDraft, clearDraft } = useComposerDraft({
+    storageKey,
+    storage,
+    initial: () => fromWire(initialValue),
+    onTextChange,
+  })
+  const [caret, setCaret] = useState(text.length)
   const [dismissedAt, setDismissedAt] = useState<number | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
   // Fetches prewarm and the menu only opens while the textarea is focused;
@@ -89,6 +102,18 @@ export function useMentionInput({
   useEffect(() => {
     if (document.activeElement === textareaRef.current) setFocused(true)
   }, [])
+
+  // Switching to another persisted draft (e.g. navigating between sessions)
+  // swaps the text out from under the caret and menu state; resync them.
+  const draftIdentity = `${storage}:${storageKey ?? ''}`
+  const draftIdentityRef = useRef(draftIdentity)
+  useEffect(() => {
+    if (draftIdentityRef.current === draftIdentity) return
+    draftIdentityRef.current = draftIdentity
+    setCaret(text.length)
+    setDismissedAt(null)
+    setActiveIndex(0)
+  }, [draftIdentity, text.length])
 
   // Open-ness is derived from text + caret, never stored: moving the caret
   // away, typing whitespace, or deleting the trigger all close the menu for
@@ -194,10 +219,11 @@ export function useMentionInput({
     [maxHeight],
   )
 
-  // Size to any prefilled value on mount; rows={1} would collapse it.
+  // Size to the current value — a prefilled prompt, a restored draft, or a
+  // draft swapped in by navigation; rows={1} would collapse them all.
   useEffect(() => {
     autoGrow()
-  }, [autoGrow])
+  }, [text, autoGrow])
 
   // Programmatic edits don't fire onChange; restore the caret and replay the
   // auto-grow after React commits the new value.
@@ -217,22 +243,19 @@ export function useMentionInput({
     // atomic backspace an obvious feel: one press eats the space, the next
     // eats the whole token.
     const next = `${text.slice(0, menuTrigger.start)}${item.insert} ${text.slice(caret)}`
-    setTokens((prev) =>
-      new Map(prev).set(item.insert, {
-        trigger: menuTrigger.trigger,
-        display: item.insert,
-        expansion: item.expansion,
-      }),
-    )
-    setText(next)
+    const nextTokens = new Map(tokens).set(item.insert, {
+      trigger: menuTrigger.trigger,
+      display: item.insert,
+      expansion: item.expansion,
+    })
+    setDraft({ text: next, tokens: nextTokens })
     const pos = menuTrigger.start + item.insert.length + 1
     setCaret(pos)
     placeCaret(pos)
   }
 
   const reset = () => {
-    setText('')
-    setTokens(new Map())
+    clearDraft()
     setCaret(0)
     setDismissedAt(null)
     const el = textareaRef.current
@@ -244,9 +267,9 @@ export function useMentionInput({
 
   const onChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     const next = e.target.value
-    setText(next)
+    // setDraft prunes tokens whose display no longer occurs in the text.
+    setDraft({ text: next, tokens })
     setCaret(e.target.selectionStart ?? next.length)
-    setTokens((prev) => pruneTokens(prev, next))
     // an Escape'd trigger stays dismissed only while it's still the same
     // trigger; editing elsewhere re-arms the menu
     setDismissedAt((dismissed) => {
@@ -309,8 +332,7 @@ export function useMentionInput({
         if (hit) {
           e.preventDefault()
           const next = text.slice(0, hit.start) + text.slice(el.selectionStart)
-          setTokens((prev) => pruneTokens(prev, next))
-          setText(next)
+          setDraft({ text: next, tokens })
           setCaret(hit.start)
           placeCaret(hit.start)
           return true
