@@ -199,11 +199,16 @@ export interface ChatMessage {
   created_at: string
 }
 
+// Stored events carry only the acp session id; labels resolve through this
+// once-per-response map (old rows may still embed title/slug as a fallback).
+export type ACPMeta = Record<string, { title?: string; slug?: string }>
+
 export interface SessionMessages {
   session: Session
   messages: ChatMessage[]
   activity: ActivityEntry[]
   events?: SessionEvent[]
+  acp_meta?: ACPMeta
   acp_state?: string
   acp_assistant?: string
   acp_thought?: string

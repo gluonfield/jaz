@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type {
+  ACPMeta,
   ACPPermission,
   ACPToolCall,
   ChatMessage,
@@ -173,9 +174,10 @@ function hasVisibleACPSurface(event: SessionEvent): boolean {
 }
 
 
-function childLabel(event: SessionEvent): string {
+function childLabel(event: SessionEvent, meta?: ACPMeta): string {
   const acp = event.acp
-  return acp?.title || acp?.slug || 'child task'
+  const named = acp ? meta?.[acp.id] : undefined
+  return acp?.title || named?.title || acp?.slug || named?.slug || 'child task'
 }
 
 interface ToolGroup {
@@ -461,6 +463,7 @@ const PlanChecklist = memo(function PlanChecklist({
 const LiveEvent = memo(function LiveEvent({
   event,
   sessionId,
+  acpMeta,
   showHeader,
   working = false,
   permissionResolution,
@@ -469,6 +472,7 @@ const LiveEvent = memo(function LiveEvent({
 }: {
   event: SessionEvent
   sessionId?: string
+  acpMeta?: ACPMeta
   showHeader: boolean
   working?: boolean
   permissionResolution?: ACPPermission
@@ -477,6 +481,7 @@ const LiveEvent = memo(function LiveEvent({
 }) {
   const eventPlan = planSurfaceFromEvent(event)
   const planSurface = showPlan ? eventPlan : undefined
+  const headerTitle = event.acp ? event.acp.title || acpMeta?.[event.acp.id]?.title : undefined
   const ownSession = Boolean(event.acp && event.acp.id === sessionId)
   const showWorkingStatus =
     event.type === 'acp' && hasWorkingStatusSurface(event) && !eventPlan && !ownSession
@@ -491,7 +496,7 @@ const LiveEvent = memo(function LiveEvent({
       {event.acp && showHeader ? (
         <p className="text-[12px] text-ink-3">
           <span className="font-mono">{event.acp.agent}</span>
-          {event.acp.title ? ` · ${event.acp.title}` : ''} · {relativeTime(event.at)}
+          {headerTitle ? ` · ${headerTitle}` : ''} · {relativeTime(event.at)}
         </p>
       ) : null}
       {event.acp?.thought ? <ThinkingBlock text={event.acp.thought} /> : null}
@@ -508,7 +513,7 @@ const LiveEvent = memo(function LiveEvent({
           className="inline-flex w-fit items-center gap-2 rounded-card border border-border bg-surface px-3 py-2 text-sm text-ink-2 transition-colors hover:border-primary hover:text-primary"
         >
           <LoaderCircle className="size-4 animate-spin text-running" aria-hidden />
-          <span>{agentLabel(event.acp?.agent)} is working on {childLabel(event)}</span>
+          <span>{agentLabel(event.acp?.agent)} is working on {childLabel(event, acpMeta)}</span>
         </Link>
       ) : null}
       {!parentChild ? <ToolSummary calls={event.acp?.tool_calls} active={working} /> : null}
@@ -797,6 +802,7 @@ export const Transcript = memo(function Transcript({
   messages,
   events,
   sessionId,
+  acpMeta,
   groupTurns = false,
   working = false,
   tail,
@@ -805,6 +811,7 @@ export const Transcript = memo(function Transcript({
   messages: ChatMessage[]
   events: SessionEvent[]
   sessionId?: string
+  acpMeta?: ACPMeta
   groupTurns?: boolean
   working?: boolean
   // in-flight live exchange, rendered between history and anchored live state
@@ -843,6 +850,7 @@ export const Transcript = memo(function Transcript({
             key={`event-${stableEventKey(item.event)}`}
             event={item.event}
             sessionId={sessionId}
+            acpMeta={acpMeta}
             showHeader={item.showHeader}
             working={working}
             showPlan={
