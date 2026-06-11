@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/gluonfield/jazmem/pkg/jazmem"
 	"github.com/gluonfield/jazmem/pkg/jazmemhttp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -33,6 +34,9 @@ type Service struct {
 	mcpOnce sync.Once
 	mcp     http.Handler
 
+	mcpServerOnce sync.Once
+	mcpServer     *mcpsdk.Server
+
 	apiOnce sync.Once
 	api     http.Handler
 }
@@ -51,6 +55,11 @@ func (s *Service) MCPURL() string { return s.mcpURL }
 func (s *Service) MCPHandler() http.Handler {
 	s.mcpOnce.Do(func() { s.mcp = jazmemhttp.NewMCPHandler(s.Memory) })
 	return s.mcp
+}
+
+func (s *Service) MCPServer() *mcpsdk.Server {
+	s.mcpServerOnce.Do(func() { s.mcpServer = jazmemhttp.NewMCPServer(s.Memory) })
+	return s.mcpServer
 }
 
 // APIHandler serves jazmem's full HTTP API; jaz mounts it under /jazmem so

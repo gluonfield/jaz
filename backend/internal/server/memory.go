@@ -109,6 +109,7 @@ func (s *Server) handleMemoryUpdate(w http.ResponseWriter, r *http.Request) {
 			s.Memory.Scheduler.Stop()
 		}
 	}
+	s.refreshMCP()
 	status, err := s.memoryStatus(r)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
