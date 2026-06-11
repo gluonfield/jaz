@@ -457,6 +457,24 @@ function SessionPage() {
     }
   }, [detail.data, events.data, notifyCriticalError, sessionId])
 
+  const hasPanelSpace = pageWidth >= PANEL_CHAT_COMFORT + SESSION_PANEL_WIDTH
+  const panelOpen = panelPref === 'auto' ? hasPanelSpace : panelPref === 'open'
+  const togglePanel = useCallback(() => {
+    const next = !panelOpen
+    // Landing on what auto would do re-arms auto-show.
+    setPanelPref(next === hasPanelSpace ? 'auto' : next ? 'open' : 'closed')
+  }, [hasPanelSpace, panelOpen])
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.defaultPrevented) return
+      if (e.key.toLowerCase() !== 's') return
+      e.preventDefault()
+      togglePanel()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [togglePanel])
+
   if (detail.isPending) {
     return (
       <div className="mx-auto max-w-[720px] px-10">
@@ -557,13 +575,6 @@ function SessionPage() {
     .reverse()
     .find((event) => planSurfaceFromEvent(event) && planSurfaceBelongsToSession(event, session.id))
   const panelPlan = panelPlanEvent ? planSurfaceFromEvent(panelPlanEvent) : undefined
-  const hasPanelSpace = pageWidth >= PANEL_CHAT_COMFORT + SESSION_PANEL_WIDTH
-  const panelOpen = panelPref === 'auto' ? hasPanelSpace : panelPref === 'open'
-  const togglePanel = () => {
-    const next = !panelOpen
-    // Landing on what auto would do re-arms auto-show.
-    setPanelPref(next === hasPanelSpace ? 'auto' : next ? 'open' : 'closed')
-  }
   // Plan progress lives in the side panel, never in the thread; only a
   // proposed plan that needs the user's approval stays inline.
   const displayEvents = transcriptEvents.map((event) => {
@@ -665,7 +676,7 @@ function SessionPage() {
             <button
               type="button"
               aria-label={panelOpen ? 'Hide session panel' : 'Show session panel'}
-              title={`${panelOpen ? 'Hide' : 'Show'} session panel`}
+              title={`${panelOpen ? 'Hide' : 'Show'} session panel (Shift+⌘S)`}
               onClick={togglePanel}
               className="grid size-8 cursor-pointer place-items-center rounded-full text-ink-2 transition-colors duration-200 hover:bg-surface-2 hover:text-ink"
             >

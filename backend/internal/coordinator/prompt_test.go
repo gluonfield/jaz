@@ -85,6 +85,7 @@ func TestPromptInjectsMemoryHorizons(t *testing.T) {
 	}
 	assertOrder(t, got,
 		"## AGENTS.md",
+		"## memory\n", "Capture as you go",
 		"## memory/LONG_TERM.md", "$5m through agent products",
 		"## memory/SHORT_TERM.md", "jaz memory system",
 		"## memory/daily/"+today+".md", "shipped provenance fields",
@@ -96,6 +97,17 @@ func TestPromptInjectsMemoryHorizons(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.Contains(missing, "## memory/") {
-		t.Fatalf("missing memory files must not add sections:\n%s", missing)
+		t.Fatalf("missing memory files must not add content sections:\n%s", missing)
+	}
+	if !strings.Contains(missing, "Capture as you go") {
+		t.Fatalf("memory protocol should inject whenever memory is enabled:\n%s", missing)
+	}
+
+	disabled, err := prompt(root, "", "", "", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(disabled, "Capture as you go") {
+		t.Fatalf("disabled memory must not inject the protocol:\n%s", disabled)
 	}
 }
