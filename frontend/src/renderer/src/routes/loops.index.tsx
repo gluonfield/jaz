@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { ChevronRight, Plus } from 'lucide-react'
-import { type Variants, motion, useReducedMotion } from 'motion/react'
 import { useState } from 'react'
 import { LoopModal } from '@/components/loops/LoopModal'
 import { compactSchedule } from '@/components/loops/schedule'
@@ -20,16 +19,6 @@ export const Route = createFileRoute('/loops/')({
 function LoopsPage() {
   const loops = useQuery(loopsQuery)
   const [creating, setCreating] = useState(false)
-  const reduce = useReducedMotion()
-
-  const container: Variants = {
-    hidden: {},
-    show: { transition: { staggerChildren: reduce ? 0 : 0.04, delayChildren: reduce ? 0 : 0.03 } },
-  }
-  const row: Variants = {
-    hidden: reduce ? { opacity: 0 } : { opacity: 0, y: 8 },
-    show: { opacity: 1, y: 0, transition: { duration: 0.26, ease: [0.22, 1, 0.36, 1] } },
-  }
 
   return (
     <div className="mx-auto max-w-[620px] px-10 pb-16 pt-6">
@@ -65,14 +54,12 @@ function LoopsPage() {
           </span>
         </button>
       ) : (
-        <motion.div variants={container} initial="hidden" animate="show" className="-mx-2">
+        <div className="-mx-2">
           {loops.data.map((loop) => (
-            <motion.div key={loop.id} variants={row}>
-              <LoopRow loop={loop} />
-            </motion.div>
+            <LoopRow key={loop.id} loop={loop} />
           ))}
           <DotLegend />
-        </motion.div>
+        </div>
       )}
 
       <LoopModal open={creating} onClose={() => setCreating(false)} />
