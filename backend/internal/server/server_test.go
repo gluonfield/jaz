@@ -201,6 +201,54 @@ func TestLegacyClaudeACPAgentCanonicalizedInSessionResponses(t *testing.T) {
 	}
 }
 
+func TestSessionPinRoutesKeepProjectPath(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := filepath.Join(t.TempDir(), "project")
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug: "pin-me",
+		RuntimeRef: &storage.RuntimeRef{
+			Type:        storage.RuntimeNative,
+			Cwd:         project,
+			ProjectPath: project,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := (&Server{Store: store}).Handler()
+
+	pinReq := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/pin", nil)
+	pinRes := httptest.NewRecorder()
+	handler.ServeHTTP(pinRes, pinReq)
+	if pinRes.Code != http.StatusOK {
+		t.Fatalf("pin status = %d, body = %s", pinRes.Code, pinRes.Body.String())
+	}
+	var pinned storage.Session
+	if err := json.Unmarshal(pinRes.Body.Bytes(), &pinned); err != nil {
+		t.Fatal(err)
+	}
+	if !pinned.Pinned || pinned.RuntimeRef == nil || pinned.RuntimeRef.ProjectPath != project {
+		t.Fatalf("pinned response = %#v, want pinned with project %q intact", pinned, project)
+	}
+
+	unpinReq := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/unpin", nil)
+	unpinRes := httptest.NewRecorder()
+	handler.ServeHTTP(unpinRes, unpinReq)
+	if unpinRes.Code != http.StatusOK {
+		t.Fatalf("unpin status = %d, body = %s", unpinRes.Code, unpinRes.Body.String())
+	}
+	var unpinned storage.Session
+	if err := json.Unmarshal(unpinRes.Body.Bytes(), &unpinned); err != nil {
+		t.Fatal(err)
+	}
+	if unpinned.Pinned || unpinned.RuntimeRef == nil || unpinned.RuntimeRef.ProjectPath != project {
+		t.Fatalf("unpinned response = %#v, want project %q intact", unpinned, project)
+	}
+}
+
 func TestProjectRoutesPersistServerDirectories(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

@@ -32,6 +32,7 @@ export interface Session {
   status: 'idle' | 'running' | 'error'
   error?: string
   archived?: boolean
+  pinned?: boolean
   runtime: 'native' | 'acp'
   runtime_ref?: RuntimeRef
   model_provider?: string
