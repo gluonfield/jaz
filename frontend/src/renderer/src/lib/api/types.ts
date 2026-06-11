@@ -68,6 +68,43 @@ export interface RepoInfo {
   main_branch?: string
 }
 
+// One changed file in a session's working tree relative to its diff base —
+// the worktree's fork point from main, or HEAD in a shared checkout.
+export interface RepoFileChange {
+  path: string
+  // Rename source when status is "renamed".
+  old_path?: string
+  status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'
+  added: number
+  deleted: number
+  binary?: boolean
+}
+
+// Identity of a changed file, for React keys and diff-cache keys alike.
+// Status is part of it because one path can legitimately be two rows —
+// tracked-deleted and recreated untracked.
+export function fileKey(file: RepoFileChange): string {
+  return `${file.status}:${file.path}`
+}
+
+// Numstat-level view of a session's work (GET /v1/sessions/:id/repo/changes):
+// which files changed and by how many lines, no patch text.
+export interface RepoChanges {
+  base?: string
+  files: RepoFileChange[]
+  total_added: number
+  total_deleted: number
+}
+
+// One file's unified diff (GET /v1/sessions/:id/repo/diff?path=…), fetched
+// only when the user opens the file.
+export interface RepoFilePatch {
+  path: string
+  patch: string
+  binary?: boolean
+  truncated?: boolean
+}
+
 export interface LoopSchedule {
   kind: string
   expr: string

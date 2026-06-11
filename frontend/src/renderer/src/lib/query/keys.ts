@@ -5,6 +5,14 @@ export const keys = {
   archivedSessions: ['sessions', 'archived'] as const,
   sessionMessages: (id: string) => ['sessions', id, 'messages'] as const,
   sessionRepo: (id: string) => ['sessions', id, 'repo'] as const,
+  // Children of sessionRepo so one prefix invalidation refreshes repo state,
+  // the changes summary, and any cached file diffs together.
+  sessionRepoChanges: (id: string) => ['sessions', id, 'repo', 'changes'] as const,
+  // The key carries the full request identity (base, rename source) so a
+  // moved base creates a fresh entry instead of silently reusing a patch
+  // pinned to the old one.
+  sessionRepoDiff: (id: string, fileKey: string, base: string, oldPath: string) =>
+    ['sessions', id, 'repo', 'diff', fileKey, base, oldPath] as const,
   sessionEvents: (id: string) => ['sessions', id, 'events'] as const,
   agentFiles: ['agent', 'files'] as const,
   agentSettings: ['settings', 'agents'] as const,
