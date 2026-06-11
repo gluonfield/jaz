@@ -45,6 +45,7 @@ func runServe(args []string) error {
 			app.NewWorkspace,
 			app.NewMemory,
 			newMemoryService,
+			app.NewMCPServerReader,
 			exectool.NewCommandManager,
 			app.NewPromptBuilder,
 			app.NewACPAgentConfigSource,
@@ -196,7 +197,6 @@ func startServer(
 		Log:          logger.WithPrefix("server"),
 		Memory:       memory,
 	}
-	manager.MemoryMCP = acp.MemoryMCP{URL: memory.MCPURL(), Enabled: memory.Enabled}
 	loopRunner := server.NewLoopRunner(handler)
 	loopMemoryPaths := loops.NewMemoryPaths(loops.AutomationsDir(store.RootDir()))
 	loopService := loops.NewService(store, loopRunner, logger,

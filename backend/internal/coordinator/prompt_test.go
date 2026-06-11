@@ -12,7 +12,6 @@ func TestPromptCombinesCoordinatorFiles(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "AGENTS.md", "agents")
 	write(t, root, "SOUL.md", "soul")
-	write(t, root, "HEARTBEAT.md", "heartbeat")
 
 	now := time.Date(2026, 6, 2, 9, 8, 7, 0, time.FixedZone("BST", 3600))
 	workspace := filepath.Join(root, "workspaces", "default")
@@ -20,7 +19,7 @@ func TestPromptCombinesCoordinatorFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertOrder(t, prompt, "Date: June 2, 2026", "Time: 09:08:07 BST", "Timezone: BST (UTC+01:00)", "Weekday: Tuesday", "Current working directory: "+workspace, "~/.jaz: runtime state", "~/.jaz/workspaces/default: default tool cwd", "## AGENTS.md\n\nagents", "## SOUL.md\n\nsoul", "## HEARTBEAT.md\n\nheartbeat", "skills")
+	assertOrder(t, prompt, "Date: June 2, 2026", "Time: 09:08:07 BST", "Timezone: BST (UTC+01:00)", "Weekday: Tuesday", "Current working directory: "+workspace, "~/.jaz: runtime state", "~/.jaz/workspaces/default: default tool cwd", "## AGENTS.md\n\nagents", "## SOUL.md\n\nsoul", "skills")
 }
 
 func TestPromptOmitsMissingFiles(t *testing.T) {
@@ -28,8 +27,21 @@ func TestPromptOmitsMissingFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(prompt, "## AGENTS.md") || strings.Contains(prompt, "## SOUL.md") || strings.Contains(prompt, "## HEARTBEAT.md") {
+	if strings.Contains(prompt, "## AGENTS.md") || strings.Contains(prompt, "## SOUL.md") {
 		t.Fatalf("prompt includes missing file sections:\n%s", prompt)
+	}
+}
+
+func TestPromptIgnoresHeartbeatFile(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "HEARTBEAT.md", "heartbeat")
+
+	prompt, err := Prompt(root, "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(prompt, "HEARTBEAT.md") || strings.Contains(prompt, "heartbeat") {
+		t.Fatalf("prompt includes retired heartbeat file:\n%s", prompt)
 	}
 }
 
@@ -73,6 +85,7 @@ func TestPromptInjectsMemoryHorizons(t *testing.T) {
 	}
 	assertOrder(t, got,
 		"## AGENTS.md",
+		"## memory\n", "Capture as you go",
 		"## memory/LONG_TERM.md", "$5m through agent products",
 		"## memory/SHORT_TERM.md", "jaz memory system",
 		"## memory/daily/"+today+".md", "shipped provenance fields",
@@ -84,6 +97,17 @@ func TestPromptInjectsMemoryHorizons(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.Contains(missing, "## memory/") {
-		t.Fatalf("missing memory files must not add sections:\n%s", missing)
+		t.Fatalf("missing memory files must not add content sections:\n%s", missing)
+	}
+	if !strings.Contains(missing, "Capture as you go") {
+		t.Fatalf("memory protocol should inject whenever memory is enabled:\n%s", missing)
+	}
+
+	disabled, err := prompt(root, "", "", "", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(disabled, "Capture as you go") {
+		t.Fatalf("disabled memory must not inject the protocol:\n%s", disabled)
 	}
 }

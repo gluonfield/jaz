@@ -87,7 +87,7 @@ func TestMigrationsAddLegacyThreadColumns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, column := range []string{"archived", "error", "cwd", "queued_messages", "source_type", "source_id"} {
+	for _, column := range []string{"archived", "error", "cwd", "project_path", "queued_messages", "source_type", "source_id"} {
 		if !columns[column] {
 			t.Fatalf("legacy migration did not add threads.%s", column)
 		}

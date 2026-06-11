@@ -7,12 +7,13 @@ import {
   GitBranch,
   GitPullRequest,
   GitPullRequestArrow,
+  type LucideIcon,
   LoaderCircle,
 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import type { Session } from '@/lib/api/types'
 import { planStepState, type PlanSurface } from '@/lib/planSurface'
-import { ActionRow } from './RepoActions'
+import { MessageMarkdown } from './MessageMarkdown'
 import { PlanStepIcon } from './Transcript'
 import { useRepoActions } from './useRepoActions'
 
@@ -52,9 +53,39 @@ function SectionHeader({ children }: { children: ReactNode }) {
   return <p className="text-[11px] font-medium tracking-wide text-ink-3 uppercase">{children}</p>
 }
 
+function ActionRow({
+  icon: Icon,
+  onClick,
+  disabled,
+  hint,
+  spin,
+  children,
+}: {
+  icon: LucideIcon
+  onClick: () => void
+  disabled?: boolean
+  hint?: string
+  spin?: boolean
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={hint}
+      className="flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] text-ink-2 transition-colors duration-150 enabled:cursor-pointer enabled:hover:bg-surface-2 enabled:hover:text-ink disabled:opacity-50"
+    >
+      <Icon size={13} className={`shrink-0 text-ink-3 ${spin ? 'animate-spin' : ''}`} />
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+    </button>
+  )
+}
+
 function PlanSection({ plan, working }: { plan: PlanSurface; working: boolean }) {
   const [open, setOpen] = useState(true)
   const entries = plan.entries ?? []
+  const explanation = plan.explanation?.trim() ?? ''
   const states = entries.map(planStepState)
   const showSteps = states.some(Boolean)
   const completedCount = states.filter((state) => state === 'completed').length
@@ -81,30 +112,37 @@ function PlanSection({ plan, working }: { plan: PlanSurface; working: boolean })
         />
       </button>
       {open ? (
-        entries.length ? (
-          <ul className="mt-2.5 flex flex-col gap-2">
-            {entries.map((entry, index) => {
-              const state = states[index]
-              return (
-                <li
-                  key={`${entry.content}-${index}`}
-                  className="flex min-w-0 items-start gap-2 text-[13px] leading-snug text-ink-2"
-                >
-                  {showSteps ? (
-                    <span className="mt-[2px] shrink-0" title={state}>
-                      <PlanStepIcon state={state ?? 'pending'} active={working} />
+        <>
+          {explanation ? (
+            <div className="mt-2.5 text-[12px] leading-snug text-ink-2">
+              <MessageMarkdown text={explanation} />
+            </div>
+          ) : null}
+          {entries.length ? (
+            <ul className="mt-2.5 flex flex-col gap-2">
+              {entries.map((entry, index) => {
+                const state = states[index]
+                return (
+                  <li
+                    key={`${entry.content}-${index}`}
+                    className="flex min-w-0 items-start gap-2 text-[13px] leading-snug text-ink-2"
+                  >
+                    {showSteps ? (
+                      <span className="mt-[2px] shrink-0" title={state}>
+                        <PlanStepIcon state={state ?? 'pending'} active={working} />
+                      </span>
+                    ) : null}
+                    <span className={`min-w-0 flex-1 ${state === 'completed' ? 'opacity-50' : ''}`}>
+                      {entry.content}
                     </span>
-                  ) : null}
-                  <span className={`min-w-0 flex-1 ${state === 'completed' ? 'opacity-50' : ''}`}>
-                    {entry.content}
-                  </span>
-                </li>
-              )
-            })}
-          </ul>
-        ) : (
-          <p className="mt-2.5 text-[12px] italic text-ink-3">(no steps provided)</p>
-        )
+                  </li>
+                )
+              })}
+            </ul>
+          ) : explanation ? null : (
+            <p className="mt-2.5 text-[12px] italic text-ink-3">(no steps provided)</p>
+          )}
+        </>
       ) : null}
     </section>
   )

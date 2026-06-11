@@ -6,6 +6,7 @@ export interface RuntimeRef {
   agent?: string
   session_id?: string
   cwd?: string
+  project_path?: string
 }
 
 // Disjoint components: input is fresh, uncached input; cache reads/writes

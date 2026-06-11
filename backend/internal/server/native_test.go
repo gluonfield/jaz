@@ -75,6 +75,28 @@ func (p *requestRecorderProvider) StreamComplete(_ context.Context, req provider
 	return ch, nil
 }
 
+type titleProvider struct {
+	titleRequests  []provider.Request
+	streamRequests []provider.Request
+}
+
+func (p *titleProvider) Complete(_ context.Context, req provider.Request) (provider.Response, error) {
+	if req.StructuredOutput != nil {
+		p.titleRequests = append(p.titleRequests, req)
+		return provider.Response{Message: provider.AssistantMessage(`{"title":"Fix login redirect"}`, nil)}, nil
+	}
+	return provider.Response{Message: provider.AssistantMessage("done", nil)}, nil
+}
+
+func (p *titleProvider) StreamComplete(_ context.Context, req provider.Request) (<-chan provider.Event, error) {
+	p.streamRequests = append(p.streamRequests, req)
+	ch := make(chan provider.Event, 2)
+	ch <- provider.Event{Type: provider.EventDelta, Delta: "done"}
+	ch <- provider.Event{Type: provider.EventDone}
+	close(ch)
+	return ch, nil
+}
+
 func TestNativeTurnUsesStoredProviderModelAndReasoning(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
@@ -135,6 +157,47 @@ func TestNativeTurnFailsWhenPromptCannotBuild(t *testing.T) {
 	}
 	if len(recorder.requests) != 0 {
 		t.Fatalf("provider was called after prompt build failure: %#v", recorder.requests)
+	}
+}
+
+func TestNativeFirstTurnGeneratesStructuredTitle(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	message := "please fix the login redirect after OAuth callback"
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:          "oauth-redirect",
+		Title:         message,
+		Runtime:       storage.RuntimeNative,
+		ModelProvider: "openai",
+		Model:         "gpt-test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := &titleProvider{}
+	srv := &Server{
+		Store: store,
+		Agent: &agent.Agent{Provider: provider, MaxTurns: 1},
+	}
+
+	if status := srv.runNativeSession(context.Background(), session, message, false, nil); status != storage.StatusIdle {
+		t.Fatalf("status = %s", status)
+	}
+	if len(provider.titleRequests) != 1 || provider.titleRequests[0].StructuredOutput == nil {
+		t.Fatalf("title requests = %#v", provider.titleRequests)
+	}
+	if len(provider.streamRequests) != 1 {
+		t.Fatalf("stream requests = %#v", provider.streamRequests)
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Title != "Fix login redirect" {
+		t.Fatalf("title = %q", loaded.Title)
 	}
 }
 
@@ -205,7 +268,8 @@ func TestCreateNativeSessionPersistsWorkingDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := filepath.Join(workspace, "repo")
-	if session.RuntimeRef == nil || session.RuntimeRef.Type != storage.RuntimeNative || session.RuntimeRef.Cwd != want {
+	if session.RuntimeRef == nil || session.RuntimeRef.Type != storage.RuntimeNative ||
+		session.RuntimeRef.Cwd != want || session.RuntimeRef.ProjectPath != want {
 		t.Fatalf("runtime ref = %#v, want native cwd %q", session.RuntimeRef, want)
 	}
 	if info, err := os.Stat(want); err != nil || !info.IsDir() {
@@ -215,8 +279,32 @@ func TestCreateNativeSessionPersistsWorkingDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.RuntimeRef == nil || loaded.RuntimeRef.Type != storage.RuntimeNative || loaded.RuntimeRef.Cwd != want {
+	if loaded.RuntimeRef == nil || loaded.RuntimeRef.Type != storage.RuntimeNative ||
+		loaded.RuntimeRef.Cwd != want || loaded.RuntimeRef.ProjectPath != want {
 		t.Fatalf("loaded runtime ref = %#v, want native cwd %q", loaded.RuntimeRef, want)
+	}
+
+	project := filepath.Join(t.TempDir(), "project")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(map[string]string{"directory": project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("absolute status = %d, body = %s", res.Code, res.Body.String())
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &session); err != nil {
+		t.Fatal(err)
+	}
+	if session.RuntimeRef == nil || session.RuntimeRef.Type != storage.RuntimeNative ||
+		session.RuntimeRef.Cwd != project || session.RuntimeRef.ProjectPath != project {
+		t.Fatalf("absolute runtime ref = %#v, want native cwd %q", session.RuntimeRef, project)
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{"directory":"../outside"}`))

@@ -1,12 +1,12 @@
-import { useQuery } from '@tanstack/react-query'
-import { Check, ChevronDown, CornerLeftUp, Folder, GitBranch, LoaderCircle } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Check, ChevronDown, CornerLeftUp, Folder, FolderPlus, GitBranch, LoaderCircle } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { REASONING_EFFORT_OPTIONS } from '@/components/loops/ReasoningEffortSelect'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { agentLabel } from '@/lib/agentLabel'
-import { listWorkspaceDirs } from '@/lib/api/sessions'
+import { addProject, listFilesystemDirs, projectsQuery } from '@/lib/api/sessions'
 import {
   filterModelSuggestions,
   modelSuggestionLabel,
@@ -241,44 +241,52 @@ export function ModelSelect({
   )
 }
 
-function joinPath(base: string, name: string): string {
-  return base ? `${base}/${name}` : name
+function directoryName(path: string): string {
+  const parts = path.split(/[\\/]+/).filter(Boolean)
+  return parts.at(-1) ?? path
 }
 
-function parentPath(path: string): string {
-  const idx = path.lastIndexOf('/')
-  return idx === -1 ? '' : path.slice(0, idx)
-}
-
-// Browses the workspace (confined server-side) to choose the session working
-// directory. `value` is a workspace-relative path; '' is the workspace root.
-export function DirectoryPicker({
+export function ProjectPicker({
   value,
   disabled,
   onChange,
 }: {
   value: string
   disabled?: boolean
-  // git reports whether the chosen path is a git repository root, so callers can
-  // offer worktree-only options for it.
   onChange: (path: string, git: boolean) => void
 }) {
+  const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
-  // The path currently being browsed; it starts at the selection each time the
-  // picker opens so reopening lands where the user left off.
+  const [adding, setAdding] = useState(false)
   const [browse, setBrowse] = useState(value)
+
   useEffect(() => {
-    if (open) setBrowse(value)
+    if (open) {
+      setAdding(false)
+      setBrowse(value)
+    }
   }, [open, value])
 
-  const query = useQuery({
-    queryKey: keys.workspaceDirs(browse),
-    queryFn: () => listWorkspaceDirs(browse),
-    enabled: open,
+  const projects = useQuery({ ...projectsQuery, enabled: open })
+  const dirs = useQuery({
+    queryKey: keys.filesystemDirs(browse),
+    queryFn: () => listFilesystemDirs(browse),
+    enabled: open && adding,
+  })
+  const add = useMutation({
+    mutationFn: addProject,
+    onSuccess: (project) => {
+      queryClient.invalidateQueries({ queryKey: keys.projects })
+      onChange(project.path, project.git)
+      setOpen(false)
+      setAdding(false)
+    },
   })
 
-  const label = value === '' ? 'workspace' : (value.split('/').at(-1) ?? value)
-  const browseLabel = browse === '' ? 'workspace' : browse
+  const selected = projects.data?.find((project) => project.path === value)
+  const label = value ? (selected?.name ?? directoryName(value)) : 'Work in a Project'
+  const currentPath = dirs.data?.path ?? browse
+
   const select = (path: string, git: boolean) => {
     onChange(path, git)
     setOpen(false)
@@ -292,11 +300,11 @@ export function DirectoryPicker({
         <Button
           variant="secondary"
           size="sm"
-          className="max-w-[12rem]"
+          className="max-w-[13rem]"
           aria-haspopup="dialog"
           aria-expanded={open}
-          aria-label={`Directory: ${value === '' ? 'workspace root' : value}`}
-          title={value === '' ? 'Workspace root' : value}
+          aria-label={value ? `Project: ${value}` : 'Work in a Project'}
+          title={value || 'Work in a Project'}
           disabled={disabled}
           onClick={() => setOpen((v) => !v)}
         >
@@ -305,58 +313,132 @@ export function DirectoryPicker({
         </Button>
       }
     >
-      <div className="flex items-center gap-1 px-2 pt-1 pb-1.5">
-        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-ink-3" title={browseLabel}>
-          {browseLabel}
-        </span>
-        {browse !== '' ? (
-          <IconButton
-            variant="ghost"
-            size="xs"
-            aria-label="Parent directory"
-            title="Parent directory"
-            onClick={() => setBrowse(parentPath(browse))}
-          >
-            <CornerLeftUp size={14} />
-          </IconButton>
-        ) : null}
-      </div>
-      <div className="max-h-[220px] overflow-y-auto">
-        {query.isLoading ? (
-          <div className="flex h-7 items-center gap-2 px-2 text-[13px] text-ink-3">
-            <LoaderCircle size={13} className="animate-spin" />
-            Loading…
-          </div>
-        ) : query.isError ? (
-          <div className="px-2 py-1 text-[13px] text-ink-3">Couldn't read this folder.</div>
-        ) : query.data && query.data.dirs.length > 0 ? (
-          query.data.dirs.map((dir) => (
-            <button
-              key={dir.name}
-              type="button"
-              onClick={() => setBrowse(joinPath(browse, dir.name))}
-              className="flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
-            >
-              <Folder size={13} className="shrink-0 text-ink-3" />
-              <span className="min-w-0 flex-1 truncate">{dir.name}</span>
-              {dir.git ? (
-                <GitBranch size={12} className="shrink-0 text-ink-3" aria-label="git repository" />
-              ) : null}
-            </button>
-          ))
+      <div className="w-[270px]">
+        {!adding ? (
+          <>
+            <MenuRow selected={value === ''} onClick={() => select('', false)}>
+              Default directory
+            </MenuRow>
+            <div className="my-1 border-t border-border" />
+            <div className="max-h-[220px] overflow-y-auto">
+              {projects.isLoading ? (
+                <div className="flex h-7 items-center gap-2 px-2 text-[13px] text-ink-3">
+                  <LoaderCircle size={13} className="animate-spin" />
+                  Loading…
+                </div>
+              ) : projects.isError ? (
+                <div className="px-2 py-1 text-[13px] text-ink-3">Couldn't read projects.</div>
+              ) : projects.data && projects.data.length > 0 ? (
+                projects.data.map((project) => (
+                  <button
+                    key={project.path}
+                    type="button"
+                    onClick={() => select(project.path, project.git)}
+                    className={`flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] transition-colors duration-150 hover:bg-surface-2 ${
+                      project.path === value ? 'text-ink' : 'text-ink-2'
+                    }`}
+                    title={project.path}
+                  >
+                    <Folder size={13} className="shrink-0 text-ink-3" />
+                    <span className="min-w-0 flex-1 truncate">{project.name}</span>
+                    {project.git ? (
+                      <GitBranch size={12} className="shrink-0 text-ink-3" aria-label="git repository" />
+                    ) : null}
+                    {project.path === value ? <Check size={13} className="shrink-0 text-primary" /> : null}
+                  </button>
+                ))
+              ) : (
+                <div className="px-2 py-1 text-[13px] text-ink-3">No projects yet.</div>
+              )}
+            </div>
+            <div className="mt-1 border-t border-border pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setBrowse(value)
+                  setAdding(true)
+                }}
+                className="flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-primary-soft"
+              >
+                <FolderPlus size={13} className="shrink-0 text-primary" />
+                Add new project
+              </button>
+            </div>
+          </>
         ) : (
-          <div className="px-2 py-1 text-[13px] text-ink-3">No subfolders.</div>
+          <>
+            <div className="flex items-center gap-1 px-2 pt-1 pb-1.5">
+              <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-ink-3" title={currentPath}>
+                {currentPath || 'home'}
+              </span>
+              {dirs.data?.parent ? (
+                <IconButton
+                  variant="ghost"
+                  size="xs"
+                  aria-label="Parent directory"
+                  title="Parent directory"
+                  onClick={() => setBrowse(dirs.data?.parent ?? '')}
+                >
+                  <CornerLeftUp size={14} />
+                </IconButton>
+              ) : null}
+            </div>
+            <div className="max-h-[220px] overflow-y-auto">
+              {dirs.isLoading ? (
+                <div className="flex h-7 items-center gap-2 px-2 text-[13px] text-ink-3">
+                  <LoaderCircle size={13} className="animate-spin" />
+                  Loading…
+                </div>
+              ) : dirs.isError ? (
+                <div className="px-2 py-1 text-[13px] text-ink-3">Couldn't read this folder.</div>
+              ) : dirs.data && dirs.data.dirs.length > 0 ? (
+                dirs.data.dirs.map((dir) => (
+                  <button
+                    key={dir.path}
+                    type="button"
+                    onClick={() => setBrowse(dir.path)}
+                    className="flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+                    title={dir.path}
+                  >
+                    <Folder size={13} className="shrink-0 text-ink-3" />
+                    <span className="min-w-0 flex-1 truncate">{dir.name}</span>
+                    {dir.git ? (
+                      <GitBranch size={12} className="shrink-0 text-ink-3" aria-label="git repository" />
+                    ) : null}
+                  </button>
+                ))
+              ) : (
+                <div className="px-2 py-1 text-[13px] text-ink-3">No subfolders.</div>
+              )}
+            </div>
+            <div className="mt-1 border-t border-border pt-1">
+              <button
+                type="button"
+                disabled={!dirs.data || add.isPending}
+                onClick={() => dirs.data && add.mutate(dirs.data.path)}
+                className="flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-primary-soft disabled:cursor-default disabled:opacity-50"
+              >
+                {add.isPending ? (
+                  <LoaderCircle size={13} className="shrink-0 animate-spin text-primary" />
+                ) : (
+                  <Check size={13} className="shrink-0 text-primary" />
+                )}
+                Use this folder
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdding(false)}
+                className="flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+              >
+                <CornerLeftUp size={13} className="shrink-0 text-ink-3" />
+                Back to projects
+              </button>
+            </div>
+            {add.isError ? (
+              <div className="px-2 pt-1 text-[12px] text-danger">{(add.error as Error).message}</div>
+            ) : null}
+          </>
         )}
-      </div>
-      <div className="mt-1 border-t border-border pt-1">
-        <button
-          type="button"
-          onClick={() => select(browse, query.data?.git ?? false)}
-          className="flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-primary-soft"
-        >
-          <Check size={13} className="shrink-0 text-primary" />
-          Use this folder
-        </button>
       </div>
     </Popover>
   )

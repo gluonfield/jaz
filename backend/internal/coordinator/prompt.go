@@ -11,7 +11,7 @@ import (
 
 // PromptFiles are the agent prompt files read from the jaz root directory,
 // in the order they are rendered into the coordinator system prompt.
-var PromptFiles = []string{"AGENTS.md", "SOUL.md", "HEARTBEAT.md"}
+var PromptFiles = []string{"AGENTS.md", "SOUL.md"}
 
 func Prompt(root, workspace, memoryRoot, skillsPrompt string) (string, error) {
 	return prompt(root, workspace, memoryRoot, skillsPrompt, time.Now())

@@ -23,9 +23,9 @@ const pidFilePath = (): string => join(app.getPath('userData'), 'local-backend.p
 // probing health, or we'd silently adopt a server running stale code. Backends
 // the user started themselves have no pid file and are still adopted.
 async function reapOrphan(): Promise<void> {
-  let pid = 0
+  let rawPid: string
   try {
-    pid = Number(readFileSync(pidFilePath(), 'utf8').trim())
+    rawPid = readFileSync(pidFilePath(), 'utf8')
   } catch {
     return
   }
@@ -34,6 +34,7 @@ async function reapOrphan(): Promise<void> {
   } catch {
     // best effort
   }
+  const pid = Number(rawPid.trim())
   if (!Number.isInteger(pid) || pid <= 1) return
   try {
     process.kill(-pid, 'SIGTERM')

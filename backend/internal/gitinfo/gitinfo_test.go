@@ -270,12 +270,70 @@ func TestCommitAllAndMergeIntoMain(t *testing.T) {
 	}
 	if _, err := MergeIntoMain(ctx, worktree, "make it teal"); err == nil {
 		t.Error("conflicting MergeIntoMain succeeded, want error")
+	} else if !strings.Contains(err.Error(), "CONFLICT") {
+		t.Errorf("conflicting MergeIntoMain error = %q, want conflict detail", err)
 	}
 	if out := git(main, "status", "--porcelain"); strings.TrimSpace(out) != "" {
 		t.Errorf("main checkout not pristine after aborted merge:\n%s", out)
 	}
 	if got, _ := os.ReadFile(filepath.Join(main, "index.html")); string(got) != "purple\n" {
 		t.Errorf("main index.html = %q after aborted merge, want purple", got)
+	}
+}
+
+func TestListFiles(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	ctx := context.Background()
+
+	if _, err := ListFiles(ctx, t.TempDir()); err == nil {
+		t.Fatal("ListFiles(non-repo) should error so callers fall back to a plain walk")
+	}
+
+	dir := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("init", "-b", "main")
+	if err := os.MkdirAll(filepath.Join(dir, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "node_modules", "pkg"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		".gitignore":            "node_modules/\n",
+		"src/main.go":           "package main\n",
+		"untracked.txt":         "new\n",
+		"node_modules/pkg/x.js": "ignored\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(name)), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run("add", ".gitignore", "src/main.go")
+
+	files, err := ListFiles(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make(map[string]bool, len(files))
+	for _, file := range files {
+		got[file] = true
+	}
+	// Tracked and untracked files are listed; gitignored ones are not.
+	for _, want := range []string{".gitignore", "src/main.go", "untracked.txt"} {
+		if !got[want] {
+			t.Fatalf("ListFiles missing %q; got %v", want, files)
+		}
+	}
+	if got["node_modules/pkg/x.js"] {
+		t.Fatalf("ListFiles should respect .gitignore; got %v", files)
 	}
 }
 

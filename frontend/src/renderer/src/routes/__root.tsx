@@ -3,7 +3,6 @@ import {
   createRootRoute,
   useNavigate,
   useRouter,
-  useRouterState,
 } from '@tanstack/react-router'
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { motion } from 'motion/react'
@@ -44,7 +43,6 @@ const clampSidebarWidth = (w: number) =>
   Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(w)))
 
 function RootLayout() {
-  const pathname = useRouterState({ select: (s) => s.location.pathname })
   const navigate = useNavigate()
   const router = useRouter()
 
@@ -97,7 +95,7 @@ function RootLayout() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.defaultPrevented) return
-      if (e.key === 's') {
+      if (!e.shiftKey && e.key.toLowerCase() === 's') {
         e.preventDefault()
         setSidebarOpen((open) => !open)
       }
@@ -143,19 +141,12 @@ function RootLayout() {
             </button>
             {/* slot routes portal into (e.g. the session runtime tag) */}
             <div id="titlebar-slot" className="flex min-w-0 items-center gap-1.5" />
-            {/* right-aligned slot for contextual actions (e.g. repo actions) */}
+            {/* right-aligned slot for route-level actions */}
             <div id="titlebar-actions" className="ml-auto flex items-center gap-1.5" />
           </div>
-          {/* light crossfade between routes; state-only, never blocking */}
-          <motion.div
-            key={pathname}
-            className="min-h-0 flex-1 overflow-y-auto"
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.15, ease: 'easeOut' }}
-          >
+          <div className="min-h-0 flex-1 overflow-y-auto">
             <Outlet />
-          </motion.div>
+          </div>
         </main>
       </div>
       <SettingsOverlay open={settingsOpen} onClose={() => setSettingsOpen(false)} />

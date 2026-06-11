@@ -49,7 +49,6 @@ function hasVisibleACPSurface(event: SessionEvent): boolean {
     return Boolean(
       event.content ||
         acp.thought ||
-        acp.error ||
         hasPlan ||
         hasWorkingStatusSurface(event),
     )
@@ -57,7 +56,6 @@ function hasVisibleACPSurface(event: SessionEvent): boolean {
   return Boolean(
     event.content ||
       acp.thought ||
-      acp.error ||
       acp.tool_calls?.length ||
       hasPlan ||
       hasWorkingStatusSurface(event),
@@ -174,7 +172,6 @@ export function isCollapsibleWork(
     return event.acp ? latestPlanIndex.get(event.acp.id) !== item.eventIndex : false
   }
   if (event.type === 'acp') {
-    if (event.acp?.error) return false
     return true
   }
   return false
@@ -235,10 +232,10 @@ export function buildTimeline(
       if (isWorkingLinkOnly(event) && acp.id === sessionId) return false
       if (planSurface) {
         const isLatestPlan = latestPlanEvent.get(acp.id) === index
-        if (!isLatestPlan && !event.content && !acp.error && !acp.tool_calls?.length) return false
+        if (!isLatestPlan && !event.content && !acp.tool_calls?.length) return false
       }
       if (event.type === 'acp' && acp.tool_calls?.length && latestToolEvent.get(acp.id) !== index) {
-        return Boolean(event.content || acp.error || planSurface)
+        return Boolean(event.content || planSurface)
       }
       return true
     })
