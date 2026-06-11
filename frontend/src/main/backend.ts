@@ -6,7 +6,7 @@ import { app } from 'electron'
 
 // Single source of truth for where the spawned backend lives; returned to the
 // renderer through the IPC result so both sides always agree.
-const LOCAL_BACKEND_URL = 'http://127.0.0.1:8080'
+const LOCAL_BACKEND_URL = 'http://127.0.0.1:5299'
 const LOCAL_HEALTH_URL = `${LOCAL_BACKEND_URL}/health`
 const START_TIMEOUT_MS = 30_000
 

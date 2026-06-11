@@ -67,3 +67,27 @@ func TestBuilderReturnsPromptReadErrors(t *testing.T) {
 		t.Fatal("expected prompt read error")
 	}
 }
+
+func TestBuilderSkipsMemoryWhenDisabled(t *testing.T) {
+	root := t.TempDir()
+	memoryRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(memoryRoot, "LONG_TERM.md"), []byte("# Long Term Memory\n\n- Goal: $5m."), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	enabled, err := NewBuilder(root, "", memoryRoot, func() bool { return true }).SystemPrompt()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(enabled, "## memory/LONG_TERM.md") {
+		t.Fatalf("enabled builder should inject memory:\n%s", enabled)
+	}
+
+	disabled, err := NewBuilder(root, "", memoryRoot, func() bool { return false }).SystemPrompt()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(disabled, "## memory/") {
+		t.Fatalf("disabled builder must not inject memory:\n%s", disabled)
+	}
+}

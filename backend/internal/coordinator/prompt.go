@@ -28,7 +28,11 @@ func prompt(root, workspace, memoryRoot, skillsPrompt string, now time.Time) (st
 			sections = append(sections, prompttemplate.Section{Name: name, Body: content})
 		}
 	}
-	sections = append(sections, memorySections(memoryRoot, now)...)
+	memory, err := memorySections(memoryRoot, now)
+	if err != nil {
+		return "", err
+	}
+	sections = append(sections, memory...)
 	if strings.TrimSpace(workspace) == "" {
 		workspace = "~/.jaz/workspaces/default"
 	}

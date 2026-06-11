@@ -3,18 +3,18 @@ package coordinator
 import (
 	"strings"
 
-	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/skills"
 )
 
 type Builder struct {
-	root       string
-	workspace  string
-	memoryRoot string
+	root          string
+	workspace     string
+	memoryRoot    string
+	memoryEnabled func() bool
 }
 
-func NewBuilder(root, workspace, memoryRoot string, _ *log.Logger) *Builder {
-	return &Builder{root: root, workspace: workspace, memoryRoot: memoryRoot}
+func NewBuilder(root, workspace, memoryRoot string, memoryEnabled func() bool) *Builder {
+	return &Builder{root: root, workspace: workspace, memoryRoot: memoryRoot, memoryEnabled: memoryEnabled}
 }
 
 func (b *Builder) SystemPrompt() (string, error) {
@@ -40,6 +40,10 @@ func (b *Builder) build(workspace string) (system, skillsPrompt string, err erro
 		return "", "", err
 	}
 	skillsPrompt = catalog.Prompt()
-	system, err = Prompt(b.root, workspace, b.memoryRoot, skillsPrompt)
+	memoryRoot := b.memoryRoot
+	if b.memoryEnabled != nil && !b.memoryEnabled() {
+		memoryRoot = ""
+	}
+	system, err = Prompt(b.root, workspace, memoryRoot, skillsPrompt)
 	return system, skillsPrompt, err
 }

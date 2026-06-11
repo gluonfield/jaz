@@ -166,7 +166,7 @@ export function LaunchScreen() {
                         autoFocus
                         value={url}
                         onChange={(e) => setUrl(e.target.value)}
-                        placeholder="http://192.168.1.10:8080"
+                        placeholder="http://192.168.1.10:5299"
                         spellCheck={false}
                       />
                       <div className="flex items-center justify-end gap-2">

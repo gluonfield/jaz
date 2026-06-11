@@ -2,6 +2,7 @@ import {
   ArchiveRestore,
   ArrowLeft,
   Bot,
+  Brain,
   Keyboard,
   Plug,
   Search,
@@ -16,15 +17,17 @@ import { ArchivedThreadsSettings } from './ArchivedThreadsSettings'
 import { GeneralSettings } from './GeneralSettings'
 import { KeyboardShortcutsSettings } from './KeyboardShortcutsSettings'
 import { MCPSettings } from './MCPSettings'
+import { MemorySettings } from './MemorySettings'
 import { PersonalizationSettings } from './PersonalizationSettings'
 
-type Section = 'general' | 'personalization' | 'keyboard' | 'mcp' | 'agents' | 'archived'
+type Section = 'general' | 'personalization' | 'memory' | 'keyboard' | 'mcp' | 'agents' | 'archived'
 
 type NavItem = { id: Section; label: string; icon: typeof Bot; fullHeight?: boolean }
 
 const NAV: NavItem[] = [
   { id: 'general', label: 'General', icon: SlidersHorizontal },
   { id: 'personalization', label: 'Personalization', icon: Sparkles, fullHeight: true },
+  { id: 'memory', label: 'Memory', icon: Brain },
   { id: 'keyboard', label: 'Keyboard shortcuts', icon: Keyboard },
   { id: 'mcp', label: 'MCP servers', icon: Plug },
   { id: 'agents', label: 'Agents (ACP)', icon: Bot },
@@ -175,5 +178,7 @@ function SectionContent({ section }: { section: Section }) {
       return <ArchivedThreadsSettings />
     case 'personalization':
       return <PersonalizationSettings />
+    case 'memory':
+      return <MemorySettings />
   }
 }

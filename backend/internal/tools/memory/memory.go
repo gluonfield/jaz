@@ -13,10 +13,19 @@ import (
 
 type SearchTool struct {
 	Memory *jazmem.Memory
+	// Enabled gates execution on the live memory setting; nil means always on.
+	Enabled func() bool
 }
 
 type GetTool struct {
-	Memory *jazmem.Memory
+	Memory  *jazmem.Memory
+	Enabled func() bool
+}
+
+const disabledText = "memory is disabled in settings"
+
+func memoryOff(enabled func() bool) bool {
+	return enabled != nil && !enabled()
 }
 
 type searchInput struct {
@@ -32,6 +41,9 @@ func (t *SearchTool) Definition() tools.Definition {
 }
 
 func (t *SearchTool) Execute(ctx context.Context, inputs map[string]any) (tools.Result, error) {
+	if memoryOff(t.Enabled) {
+		return tools.Result{Content: disabledText}, nil
+	}
 	req, err := helpers.DecodeMap[searchInput](inputs)
 	if err != nil {
 		return tools.Result{}, err
@@ -48,6 +60,9 @@ func (t *GetTool) Definition() tools.Definition {
 }
 
 func (t *GetTool) Execute(ctx context.Context, inputs map[string]any) (tools.Result, error) {
+	if memoryOff(t.Enabled) {
+		return tools.Result{Content: disabledText}, nil
+	}
 	req, err := helpers.DecodeMap[getInput](inputs)
 	if err != nil {
 		return tools.Result{}, err

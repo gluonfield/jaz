@@ -1,5 +1,5 @@
 const BACKEND_URL_KEY = 'jaz.backendUrl'
-const DEFAULT_LOCAL_URL = 'http://localhost:8080'
+const DEFAULT_LOCAL_URL = 'http://localhost:5299'
 
 // The local default bridged by the preload script; fall back for
 // plain-browser debugging.
@@ -22,10 +22,18 @@ export function normalizeBaseUrl(url: string): string {
 // reconnects to wherever the user pointed the app last — unless JAZ_API_URL
 // was set explicitly (≠ default), which is a developer override that beats
 // the remembered URL.
+// Local URLs remembered before the default port moved to 5299; a stored
+// value pointing at the old local default should not pin the app to it.
+const LEGACY_LOCAL_URLS = new Set(['http://localhost:8080', 'http://127.0.0.1:8080'])
+
 let baseUrl = ((): string => {
   const local = localBaseUrl()
   if (local !== DEFAULT_LOCAL_URL) return normalizeBaseUrl(local)
   const stored = localStorage.getItem(BACKEND_URL_KEY)
+  if (stored && LEGACY_LOCAL_URLS.has(normalizeBaseUrl(stored))) {
+    localStorage.removeItem(BACKEND_URL_KEY)
+    return local
+  }
   return stored ? normalizeBaseUrl(stored) : local
 })()
 

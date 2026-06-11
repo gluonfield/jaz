@@ -12,7 +12,7 @@ import (
 
 func runChat(args []string) error {
 	fs := flag.NewFlagSet("chat", flag.ContinueOnError)
-	serverURL := fs.String("server", "http://127.0.0.1:8080", "Jaz server URL")
+	serverURL := fs.String("server", "http://127.0.0.1:5299", "Jaz server URL")
 	sessionID := fs.String("session", "", "existing session ID")
 	last := fs.Bool("last", false, "connect to the last root session")
 	if err := fs.Parse(args); err != nil {
