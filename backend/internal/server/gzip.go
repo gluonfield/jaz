@@ -24,6 +24,8 @@ func withGzip(next http.Handler) http.Handler {
 	})
 }
 
+// Forwards Flusher only. No handler hijacks connections today; one that does
+// (websockets) must bypass or extend this wrapper, or the assertion fails.
 type gzipResponseWriter struct {
 	http.ResponseWriter
 	gz *gzip.Writer

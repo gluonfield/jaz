@@ -595,14 +595,14 @@ func (m *Manager) publishACPTranscriptEvent(job Job, eventType, content string, 
 // title and mode catalog on every row dominated transcript payloads (~70-90%
 // of bytes on tool-heavy threads). /messages rebuilds them once per response
 // via acp_meta. The live copy keeps them so subscribers can label sessions
-// they haven't fetched yet.
+// they haven't fetched yet. The slug stays embedded: it is small and keeps
+// rows labelable even if the referenced thread later becomes unloadable.
 func slimStoredACP(acp *sessionevents.ACPEvent) *sessionevents.ACPEvent {
 	if acp == nil {
 		return nil
 	}
 	slim := *acp
 	slim.Title = ""
-	slim.Slug = ""
 	// Plan approval needs the current/plan mode ids; the catalog never does.
 	slim.Modes.AvailableModes = nil
 	if len(slim.Plan) == 0 {
