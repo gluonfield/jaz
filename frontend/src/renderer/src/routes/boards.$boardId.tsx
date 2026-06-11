@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, createFileRoute } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { ExternalLink, Plus, ZoomIn, ZoomOut } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { AddWidgetModal } from '@/components/boards/AddWidgetModal'
 import { BoardGrid } from '@/components/boards/BoardGrid'
 import { LoopModal } from '@/components/loops/LoopModal'
 import { Button } from '@/components/ui/Button'
@@ -19,20 +20,33 @@ import { keys } from '@/lib/query/keys'
 import { useTheme } from '@/lib/theme'
 
 export const Route = createFileRoute('/boards/$boardId')({
+  // ?add=1 opens the widget picker on arrival (set by BoardModal after create).
+  validateSearch: (search): { add?: boolean } => (search.add ? { add: true } : {}),
   component: BoardPage,
 })
 
 function BoardPage() {
   const { boardId } = Route.useParams()
+  const { add } = Route.useSearch()
+  const navigate = Route.useNavigate()
   const detail = useQuery(boardDetailQuery(boardId))
   const queryClient = useQueryClient()
   const { resolved } = useTheme()
   const scaleTimer = useRef<number | null>(null)
   const isBoardWindow = window.jaz?.windowKind === 'board'
-  // "New widget" = a new loop with this board preselected. After creating,
-  // the board stays put and scrolls the fresh tile into view once it appears.
-  const [creating, setCreating] = useState(false)
+  // "Add widget" opens a picker of existing loops first; "New loop" inside it
+  // hands off to the loop modal with this board preselected. Either way the
+  // board stays put and scrolls the fresh tile into view once it appears.
+  const [modal, setModal] = useState<'add' | 'new-loop' | null>(null)
   const pendingLoopId = useRef<string | null>(null)
+
+  // Consume ?add=1 once: open the picker and strip the param so a reload
+  // doesn't reopen it.
+  useEffect(() => {
+    if (!add) return
+    setModal('add')
+    void navigate({ search: {}, replace: true })
+  }, [add, navigate])
 
   useEffect(() => {
     const loopId = pendingLoopId.current
@@ -173,18 +187,11 @@ function BoardPage() {
       </div>
       {items.length === 0 ? (
         <EmptyState title="Nothing on this board yet">
-          <p>
-            Add a widget (a loop that publishes a live tile here), or assign an existing loop
-            from{' '}
-            <Link to="/loops" className="text-primary hover:underline">
-              the loops list
-            </Link>
-            .
-          </p>
+          <p>Widgets are live tiles your loops keep up to date. Add one to get started.</p>
           <div className="mt-3 flex justify-center">
-            <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
+            <Button variant="primary" size="sm" onClick={() => setModal('add')}>
               <Plus size={13} />
-              New widget
+              Add widget
             </Button>
           </div>
         </EmptyState>
@@ -203,13 +210,23 @@ function BoardPage() {
             scale={scale}
             onLayoutChange={(entry) => layoutMutation.mutate(entry)}
             onRemove={(widgetId) => removeMutation.mutate(widgetId)}
-            onNewWidget={() => setCreating(true)}
+            onNewWidget={() => setModal('add')}
           />
         </div>
       )}
+      <AddWidgetModal
+        open={modal === 'add'}
+        onClose={() => setModal(null)}
+        boardId={boardId}
+        assignedLoopIds={items.map((item) => item.loop_id)}
+        onCreateNew={() => setModal('new-loop')}
+        onAssigned={(loopIds) => {
+          pendingLoopId.current = loopIds[0] ?? null
+        }}
+      />
       <LoopModal
-        open={creating}
-        onClose={() => setCreating(false)}
+        open={modal === 'new-loop'}
+        onClose={() => setModal(null)}
         initialBoardIds={[boardId]}
         onCreated={(created) => {
           pendingLoopId.current = created.id
