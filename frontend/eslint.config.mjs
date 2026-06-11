@@ -5,7 +5,7 @@ import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
   {
-    ignores: ['out/**', 'dist/**', 'resources/**'],
+    ignores: ['out/**', 'dist/**', 'resources/**', 'src/renderer/src/routeTree.gen.ts'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
