@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -62,10 +63,24 @@ func (s *Server) mutateSessionQueue(sessionID string, req queueRequest) (storage
 		return storage.Session{}, err
 	}
 	session.QueuedMessages = queue
+	if queueMutationTouchesAttention(req, queue) {
+		storage.MarkSessionAttention(&session, time.Now().UTC())
+	}
 	if err := s.Store.SaveSession(session); err != nil {
 		return storage.Session{}, err
 	}
 	return s.Store.LoadSession(sessionID)
+}
+
+func queueMutationTouchesAttention(req queueRequest, queue []string) bool {
+	switch req.op() {
+	case "", "replace":
+		return len(queue) > 0
+	case "append":
+		return true
+	default:
+		return false
+	}
 }
 
 func applyQueueMutation(queue []string, req queueRequest) ([]string, error) {
@@ -212,6 +227,7 @@ func (s *Server) claimQueuedPrompt(sessionID string) (storage.Session, string, b
 	session.QueuedMessages = prompts[1:]
 	session.Status = storage.StatusRunning
 	session.Error = ""
+	storage.MarkSessionAttention(&session, time.Now().UTC())
 	if session.Title == "" {
 		session.Title = titleFromMessage(prompt)
 	}
@@ -278,6 +294,7 @@ func (s *Server) claimSteeredQueuedPrompt(sessionID string, req queueRequest) (s
 	prompt := queue[req.Index]
 	session.QueuedMessages = removeQueuedPrompt(queue, req.Index)
 	session.Error = ""
+	storage.MarkSessionAttention(&session, time.Now().UTC())
 	if !running {
 		session.Status = storage.StatusRunning
 		if session.Title == "" {
@@ -372,6 +389,7 @@ func (s *Server) restoreQueuedPrompt(sessionID, prompt string, index int, messag
 	session.QueuedMessages = queue
 	session.Status = storage.StatusError
 	session.Error = firstNonEmpty(message, session.Error, "Queued prompt failed.")
+	storage.MarkSessionAttention(&session, time.Now().UTC())
 	_ = s.Store.SaveSession(session)
 	s.publishMessagesChanged(sessionID)
 }

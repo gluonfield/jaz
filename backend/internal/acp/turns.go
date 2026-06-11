@@ -237,6 +237,9 @@ func (m *Manager) finishTurn(done chan struct{}, job *Job) {
 	m.cancelPendingPermissions(job.ID)
 	m.resolveDanglingToolCalls(job)
 	snapshot := job.Snapshot()
+	if snapshot.State == StateIdle || snapshot.State == StateFailed || snapshot.State == StateCancelled {
+		m.touchAttention(surfaceSessionIDs(&snapshot)...)
+	}
 	if m.TurnFinished != nil {
 		m.TurnFinished(context.Background(), snapshot)
 	}

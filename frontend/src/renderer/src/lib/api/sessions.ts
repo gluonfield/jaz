@@ -225,7 +225,7 @@ export const archivedSessionsQuery = queryOptions({
 export const SIDEBAR_SESSION_LIMIT = 7
 
 function sessionTime(session: Session): number {
-  const ms = Date.parse(session.updated_at)
+  const ms = Date.parse(session.last_attention_at || session.updated_at)
   return Number.isNaN(ms) ? 0 : ms
 }
 

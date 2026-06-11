@@ -842,6 +842,9 @@ func (s *Server) setSessionStatusWithError(session storage.Session, status, mess
 	} else {
 		session.Error = ""
 	}
+	if status == storage.StatusIdle || status == storage.StatusError {
+		storage.MarkSessionAttention(&session, time.Now().UTC())
+	}
 	_ = s.Store.SaveSession(session)
 }
 

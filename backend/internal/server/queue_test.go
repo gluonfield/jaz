@@ -129,6 +129,53 @@ func TestSessionQueueActionMutatesStoredQueue(t *testing.T) {
 	}
 }
 
+func TestSessionQueueAttentionFollowsUserSendNotQueueEdits(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "queue-attention"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldAttention := time.Now().UTC().Add(-time.Hour).Truncate(time.Millisecond)
+	session.QueuedMessages = []string{"first"}
+	storage.MarkSessionAttention(&session, oldAttention)
+	if err := store.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"edit","index":0,"expected":"first","text":"changed"}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	(&Server{Store: store}).Handler().ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("edit status = %d, body = %s", res.Code, res.Body.String())
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.LastAttentionAt.Equal(oldAttention) {
+		t.Fatalf("edit changed attention: %s -> %s", oldAttention, loaded.LastAttentionAt)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"append","text":"new prompt"}`))
+	req.Header.Set("Content-Type", "application/json")
+	res = httptest.NewRecorder()
+	(&Server{Store: store}).Handler().ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("append status = %d, body = %s", res.Code, res.Body.String())
+	}
+	loaded, err = store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.LastAttentionAt.After(oldAttention) {
+		t.Fatalf("append did not advance attention: %s -> %s", oldAttention, loaded.LastAttentionAt)
+	}
+}
+
 func TestSessionQueueActionDoesNotWaitForRunningNativeTurn(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
