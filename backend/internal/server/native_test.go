@@ -268,7 +268,8 @@ func TestCreateNativeSessionPersistsWorkingDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := filepath.Join(workspace, "repo")
-	if session.RuntimeRef == nil || session.RuntimeRef.Type != storage.RuntimeNative || session.RuntimeRef.Cwd != want {
+	if session.RuntimeRef == nil || session.RuntimeRef.Type != storage.RuntimeNative ||
+		session.RuntimeRef.Cwd != want || session.RuntimeRef.ProjectPath != want {
 		t.Fatalf("runtime ref = %#v, want native cwd %q", session.RuntimeRef, want)
 	}
 	if info, err := os.Stat(want); err != nil || !info.IsDir() {
@@ -278,8 +279,32 @@ func TestCreateNativeSessionPersistsWorkingDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.RuntimeRef == nil || loaded.RuntimeRef.Type != storage.RuntimeNative || loaded.RuntimeRef.Cwd != want {
+	if loaded.RuntimeRef == nil || loaded.RuntimeRef.Type != storage.RuntimeNative ||
+		loaded.RuntimeRef.Cwd != want || loaded.RuntimeRef.ProjectPath != want {
 		t.Fatalf("loaded runtime ref = %#v, want native cwd %q", loaded.RuntimeRef, want)
+	}
+
+	project := filepath.Join(t.TempDir(), "project")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(map[string]string{"directory": project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("absolute status = %d, body = %s", res.Code, res.Body.String())
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &session); err != nil {
+		t.Fatal(err)
+	}
+	if session.RuntimeRef == nil || session.RuntimeRef.Type != storage.RuntimeNative ||
+		session.RuntimeRef.Cwd != project || session.RuntimeRef.ProjectPath != project {
+		t.Fatalf("absolute runtime ref = %#v, want native cwd %q", session.RuntimeRef, project)
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{"directory":"../outside"}`))

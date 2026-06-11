@@ -36,4 +36,5 @@ type Thread struct {
 	ContextTokens         int64          `json:"context_tokens"`
 	ContextWindowTokens   int64          `json:"context_window_tokens"`
 	CachedWriteTokens     int64          `json:"cached_write_tokens"`
+	ProjectPath           sql.NullString `json:"project_path"`
 }

@@ -296,7 +296,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		_ = m.store.SaveSession(session)
 		return SpawnResult{}, err
 	}
-	absCwd, err := m.prepareSessionDir(req, cfg, session.Slug)
+	absCwd, projectPath, err := m.prepareSessionDir(req, cfg, session.Slug)
 	if err != nil {
 		return fail(err)
 	}
@@ -316,6 +316,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	}
 	session.RuntimeRef.SessionID = string(acpSession.response.SessionID)
 	session.RuntimeRef.Cwd = absCwd
+	session.RuntimeRef.ProjectPath = projectPath
 	if err := m.store.SaveSession(session); err != nil {
 		ac.close()
 		return fail(err)

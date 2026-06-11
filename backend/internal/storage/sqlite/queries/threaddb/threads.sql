@@ -26,7 +26,8 @@ SELECT
   updated_at_ms,
   context_tokens,
   context_window_tokens,
-  cached_write_tokens
+  cached_write_tokens,
+  project_path
 FROM threads;
 
 -- name: GetSession :one
@@ -57,7 +58,8 @@ SELECT
   updated_at_ms,
   context_tokens,
   context_window_tokens,
-  cached_write_tokens
+  cached_write_tokens,
+  project_path
 FROM threads
 WHERE id = sqlc.arg(ref) OR slug = sqlc.arg(ref)
 LIMIT 1;
@@ -85,6 +87,7 @@ INSERT INTO threads (
   acp_agent,
   acp_session_id,
   cwd,
+  project_path,
   error,
   model_provider,
   model,
@@ -113,6 +116,7 @@ INSERT INTO threads (
   sqlc.narg(acp_agent),
   sqlc.narg(acp_session_id),
   sqlc.narg(cwd),
+  sqlc.narg(project_path),
   sqlc.narg(error),
   sqlc.narg(model_provider),
   sqlc.narg(model),
@@ -142,6 +146,7 @@ ON CONFLICT(id) DO UPDATE SET
   acp_agent = excluded.acp_agent,
   acp_session_id = excluded.acp_session_id,
   cwd = excluded.cwd,
+  project_path = excluded.project_path,
   model_provider = excluded.model_provider,
   model = excluded.model,
   reasoning_effort = excluded.reasoning_effort,
