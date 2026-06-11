@@ -54,8 +54,12 @@ func TestRecordAndPublishSlimsStoredCopy(t *testing.T) {
 		t.Fatalf("stored %d events, want 2", len(stored))
 	}
 	for _, event := range stored {
-		if event.ACP.Title != "" || event.ACP.Slug != "" || len(event.ACP.Modes.AvailableModes) != 0 {
+		if event.ACP.Title != "" || len(event.ACP.Modes.AvailableModes) != 0 {
 			t.Fatalf("stored event still carries envelope: %+v", event.ACP)
+		}
+		// The slug survives as a durable label fallback.
+		if event.ACP.Slug != "main" {
+			t.Fatalf("stored event lost its slug: %+v", event.ACP)
 		}
 	}
 	if stored[0].ACP.Modes.CurrentModeID != "" {
