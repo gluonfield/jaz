@@ -368,12 +368,12 @@ func TestPublishLintsAndClearsLayout(t *testing.T) {
 	}
 
 	// Board telemetry lands on the widget and the prompt surfaces it…
-	if err := service.ReportLayout(widget.ID, `{"dead_space_pct":40,"overflow_px":0,"clipped":1}`); err != nil {
+	if err := service.ReportLayout(widget.ID, `{"dead_space_pct":40,"overflow_px":0,"clipped":1,"img_errors":2}`); err != nil {
 		t.Fatalf("report layout: %v", err)
 	}
 	stored, _ := store.LoadWidget(widget.ID)
 	section := widgets.PromptSection(loop, &stored)
-	for _, want := range []string{"40% of the tile is empty", "clip their content"} {
+	for _, want := range []string{"40% of the tile is empty", "clip their content", "2 image(s) failed to load"} {
 		if !strings.Contains(section, want) {
 			t.Fatalf("prompt missing telemetry %q:\n%s", want, section)
 		}

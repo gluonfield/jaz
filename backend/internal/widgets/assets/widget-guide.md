@@ -16,6 +16,7 @@ The tile is a fixed box; trailing empty space looks broken. Design for the full 
 - Use ONE root element. The host stretches it to the tile's height automatically.
 - Make the root a vertical flex (`jz-stack` or `flex flex-col`). Fixed parts (KPI row, summary) go on top; give the main content area `jz-fill jz-scroll` (Tailwind: `flex-1 min-h-0 overflow-y-auto`) so it grows to the bottom edge and scrolls internally when long.
 - Keep KPIs and headings visible; scroll the list, not the page. Never set a fixed pixel height on the root.
+- The user can resize the tile wider than your size_hint — rows must still read at full board width. A lone value hugging the far right edge of a wide row reads as dead space; keep metadata adjacent to the text it describes, and right-align only true value columns.
 - The host caps the root at the tile height ONLY when it contains a `jz-scroll`/`overflow-y-auto` scroller; otherwise the root keeps its natural height and the tile scrolls as a whole. So: long content → designate one scroller. Without one, never assume extra vertical room exists.
 - Content must never be squeezed or cropped to fit. Avoid `grid-template-rows: 1fr`-style tracks combined with fixed-size or `aspect-ratio` content (clock faces, gauges, album art) — when the tile is short, the tracks compress and the content gets clipped. Bound such visuals by the available height too (`max-height`, `min()` with a height term) or let the container scroll.
 
@@ -53,7 +54,7 @@ Inter is loaded. The Tailwind scale is remapped to the Jaz sizes — use it inst
 
 ## Radius
 
-Small radii look cheap. The Tailwind scale is remapped: `rounded-sm` 8px, `rounded-md` 10px, `rounded-lg`/`rounded-card` 12px, `rounded-xl` 16px, `rounded-full` for pills and dots. Visible boxes never go below 8px; match nested radii (card 12 → inner chip 8).
+Small radii look cheap. The Tailwind scale is remapped: `rounded-sm` 8px, `rounded-md` 10px, `rounded-lg`/`rounded-card` 12px, `rounded-xl` 16px, `rounded-full` for pills and dots. Visible boxes never go below 8px. Nested radii are concentric: inner = outer − padding (card 12 with 4px padding → inner chip 8); the same radius on parent and child is the most common thing that makes a tile feel off.
 
 ## Lists: pick ONE row style
 
@@ -75,7 +76,19 @@ Canonical ranked row (flat style — note: rank fixed-width and faint, title tru
 </ul>
 ```
 
-Don't add a second text line per row unless it carries real information — a ticker/timestamp usually belongs inline after the title in `text-xs text-ink-3`, not on its own line. Don't render a table-style header row over a list; if columns need labels, use a real `jz-table`.
+Match the row style to the data:
+
+- **Name + number data** (rankings, prices, counts) → flat rows. Don't add a second text line unless it carries real information — a ticker/timestamp usually belongs inline after the title in `text-xs text-ink-3`, not on its own line.
+- **Feeds of sentences** (tweets, headlines, jokes, commit messages) are not ranked lists — the text IS the content. Use chip rows with the text as the body (`text-pretty`, `line-clamp-2` so long posts wrap to two lines instead of truncating to nothing) and one `text-xs text-ink-3` metadata line under it (time · count, with a small inline SVG icon to label what the count is — a bare "3.1k" means nothing).
+- Rows that link somewhere should show it on hover: tint the chip (`hover:bg-primary-soft`) or underline the title, transitioning only the property that changes (`transition-colors`), never `transition-all`.
+
+Don't render a table-style header row over a list; if columns need labels, use a real `jz-table`.
+
+## Images
+
+- Hotlink only URLs you verified THIS run (fetched them and got an image back). The board hides images that fail to load and reports the count in your next run's prompt — but a hidden image still leaves a hole, so a guessed URL is never worth it.
+- An image that is identical on every row (the same avatar on each tweet, the same logo on each item) carries no information — show it once or drop it entirely.
+- Give photos, logos, and avatars a hairline outline so they sit cleanly on any surface: `outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10`.
 
 ## Components (jz-*)
 
@@ -98,7 +111,7 @@ Tailwind v4 utilities compile inside the tile (no build step), themed to the tok
 
 ## Quality bar
 
-Before publishing, check: the widget fills the tile with no dead space at the bottom; nothing is squeezed, overlapping, or cropped; long lists scroll internally; long titles `truncate`; numbers are tabular and right-aligned in lists/tables; spacing follows a 4/8/12px rhythm; row style is consistent (flat OR chips, never mixed); at most one accent color; no box-in-box-in-box nesting; empty data shows `jz-empty`, not a blank tile.
+Before publishing, check: the widget fills the tile with no dead space at the bottom; nothing is squeezed, overlapping, or cropped; long lists scroll internally; long titles `truncate` (feed text `line-clamp-2` instead); numbers are tabular, labeled, and right-aligned in lists/tables; spacing follows a 4/8/12px rhythm; row style is consistent (flat OR chips, never mixed); at most one accent color; no box-in-box-in-box nesting; every image URL was verified this run and no image repeats on every row; empty data shows `jz-empty`, not a blank tile.
 
 ## Publishing
 

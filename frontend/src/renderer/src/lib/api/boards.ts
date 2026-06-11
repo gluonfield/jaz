@@ -73,7 +73,7 @@ export function reportWidgetError(widgetId: string, message: string): Promise<{ 
 // the backend surfaces problems in the loop's next-run prompt.
 export function reportWidgetLayout(
   widgetId: string,
-  layout: { dead_space_pct: number; overflow_px: number; clipped: number },
+  layout: { dead_space_pct: number; overflow_px: number; clipped: number; img_errors: number },
 ): Promise<{ ok: boolean }> {
   return post<{ ok: boolean }>(`/v1/widgets/${widgetId}/layout`, layout)
 }

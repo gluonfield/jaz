@@ -87,6 +87,7 @@ type layoutReport struct {
 	DeadSpacePct int `json:"dead_space_pct"`
 	OverflowPx   int `json:"overflow_px"`
 	Clipped      int `json:"clipped"`
+	ImgErrors    int `json:"img_errors"`
 }
 
 // layoutFeedback turns stored telemetry into actionable prompt text; empty
@@ -108,6 +109,9 @@ func layoutFeedback(payload string) string {
 	}
 	if r.Clipped > 0 {
 		parts = append(parts, fmt.Sprintf("%d element(s) clip their content with overflow:hidden — never crop content to fit; let it scroll or size it by the available space", r.Clipped))
+	}
+	if r.ImgErrors > 0 {
+		parts = append(parts, fmt.Sprintf("%d image(s) failed to load (the board hid them, leaving holes) — remove them or switch to URLs you verified this run", r.ImgErrors))
 	}
 	return strings.Join(parts, "; ")
 }
