@@ -10,6 +10,7 @@ import { type PointerEvent as ReactPointerEvent, useEffect, useState } from 'rea
 import { SettingsOverlay } from '@/components/settings/SettingsOverlay'
 import { Sidebar } from '@/components/sidebar/Sidebar'
 import { ToastProvider } from '@/components/ui/toast'
+import { UpdatePanel } from '@/components/update/UpdatePanel'
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -150,6 +151,7 @@ function RootLayout() {
         </main>
       </div>
       <SettingsOverlay open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <UpdatePanel />
     </ToastProvider>
   )
 }

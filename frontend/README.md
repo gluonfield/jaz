@@ -28,6 +28,22 @@ JAZ_API_URL=http://127.0.0.1:18080 bun run dev
 - `bun run build:bundle` — just the electron-vite production bundle into `out/`
 - `bun run typecheck` — renderer + main/preload TypeScript
 
+## Release
+
+GitHub Actions builds signed macOS artifacts when a GitHub Release is published in `amgauge/jaz`, then attaches the DMG, ZIP, blockmaps, and `latest-mac.yml` to that release. Add these repository secrets:
+
+- `APPLE_CERTIFICATE_P12_BASE64`
+- `APPLE_CERTIFICATE_PASSWORD`
+- `APPLE_API_KEY_P8_BASE64`
+
+Add these repository variables:
+
+- `APPLE_TEAM_ID`
+- `APPLE_API_KEY_ID`
+- `APPLE_API_ISSUER`
+
+The release tag must match `frontend/package.json`, for example `v0.1.0`.
+
 ## Layout
 
 - `src/main/` — Electron main process (window, titlebar style)

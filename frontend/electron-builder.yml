@@ -2,10 +2,8 @@ appId: dev.wins.jaz
 productName: Jaz
 directories:
   output: dist
-# electron-vite bundles all deps into out/, so node_modules stays out of the app
 files:
   - out/**
-# the Go backend binary, built by `build:backend`; spawned for "Start locally"
 extraResources:
   - from: resources/bin
     to: bin
@@ -15,13 +13,18 @@ mac:
     - target: dmg
       arch:
         - arm64
+    - target: zip
+      arch:
+        - arm64
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     NSMicrophoneUsageDescription: Jaz uses the microphone for voice input.
-  # Notarization runs automatically when credentials are in the environment
-  # (APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID); without them the
-  # build still succeeds, signed but unnotarized, for local testing.
+publish:
+  provider: github
+  owner: amgauge
+  repo: jaz
+  releaseType: release
 npmRebuild: false
