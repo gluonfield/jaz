@@ -21,6 +21,9 @@ export function useSessionEvents(
     const refetchMessages = () => {
       if (streamingRef?.current) return
       queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
+      // Turn boundaries are when the working tree changes — refresh repo
+      // state and the changes summary here instead of polling for them.
+      queryClient.invalidateQueries({ queryKey: keys.sessionRepo(sessionId) })
     }
     let pending: SessionEvent[] = []
     let flushTimer: ReturnType<typeof setTimeout> | null = null

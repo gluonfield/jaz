@@ -386,7 +386,7 @@ func canonicalSessionResponse(session storage.Session) storage.Session {
 func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
 	sessionRef, action, hasAction := strings.Cut(rest, "/")
-	if sessionRef == "" || (hasAction && action != "messages" && action != "events" && action != "transcript" && action != "repo") {
+	if sessionRef == "" {
 		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
 		return
 	}
@@ -399,18 +399,27 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, canonicalSessionResponse(session))
 		return
 	}
-	if action == "events" {
+	switch action {
+	case "messages":
+		s.writeSessionMessages(w, session)
+	case "events":
 		s.streamSessionEvents(w, r, session.ID)
-		return
-	}
-	if action == "transcript" {
+	case "transcript":
 		s.writeSessionTranscript(w, r, session)
-		return
-	}
-	if action == "repo" {
+	case "repo":
 		s.handleSessionRepo(w, r, session)
-		return
+	case "repo/changes":
+		s.handleSessionRepoChanges(w, r, session)
+	case "repo/diff":
+		s.handleSessionRepoDiff(w, r, session)
+	default:
+		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
 	}
+}
+
+// writeSessionMessages serves the thread page's full hydration payload:
+// persisted messages, activity, transcript events, and ACP state.
+func (s *Server) writeSessionMessages(w http.ResponseWriter, session storage.Session) {
 	var messages any
 	if recordStore, ok := s.Store.(messageRecordStore); ok {
 		records, err := recordStore.LoadMessageRecords(session.ID)

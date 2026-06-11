@@ -1,7 +1,17 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '../query/keys'
 import { apiBaseUrl, ApiError, get, post, put } from './client'
-import type { Attachment, RepoInfo, Session, SessionEvent, SessionMessages } from './types'
+import {
+  fileKey,
+  type Attachment,
+  type RepoChanges,
+  type RepoFileChange,
+  type RepoFilePatch,
+  type RepoInfo,
+  type Session,
+  type SessionEvent,
+  type SessionMessages,
+} from './types'
 
 export function createSession(
   input: {
@@ -151,6 +161,42 @@ export const sessionRepoQuery = (id: string) =>
     },
     staleTime: 15_000,
     refetchInterval: 30_000,
+  })
+
+// What the session changed: per-file +/− line counts vs the session's diff
+// base. Deliberately not polled — computing it walks the whole tree, so it
+// refreshes via invalidation at turn boundaries and after repo actions, and
+// runs only while a surface showing it is mounted. Failures (older backend)
+// read as "no changes" so the section simply doesn't render.
+export const sessionRepoChangesQuery = (id: string) =>
+  queryOptions({
+    queryKey: keys.sessionRepoChanges(id),
+    queryFn: async (): Promise<RepoChanges> => {
+      try {
+        return await get<RepoChanges>(`/v1/sessions/${id}/repo/changes`)
+      } catch {
+        return { files: [], total_added: 0, total_deleted: 0 }
+      }
+    },
+    staleTime: 30_000,
+  })
+
+// One file's unified diff, fetched only when the user opens that file in the
+// review modal. The request carries the summary row's identity — status,
+// rename source, resolved base — so the patch matches the row even if the
+// tree moves between fetches. Cached per fileKey; the sessionRepo prefix
+// invalidation marks it stale alongside the summary.
+export const sessionRepoFileDiffQuery = (id: string, file: RepoFileChange, base?: string) =>
+  queryOptions({
+    queryKey: keys.sessionRepoDiff(id, fileKey(file), base ?? '', file.old_path ?? ''),
+    queryFn: () => {
+      const params = new URLSearchParams({ path: file.path })
+      if (file.old_path) params.set('old_path', file.old_path)
+      if (file.status === 'untracked') params.set('untracked', '1')
+      if (base) params.set('base', base)
+      return get<RepoFilePatch>(`/v1/sessions/${id}/repo/diff?${params}`)
+    },
+    staleTime: 30_000,
   })
 
 // Publishes the session's current branch to its remote (git push -u) and
