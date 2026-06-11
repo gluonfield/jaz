@@ -192,6 +192,10 @@ function NewSessionPage() {
       calm={composing || creating}
       creating={creating}
       leftSlot={composerControls}
+      // Tokens freeze their absolute expansion at insert time, so re-picking
+      // the directory after tagging keeps old tags valid rather than rebasing
+      // them.
+      fileRoot={directory}
       onDraftActivity={setComposing}
       onSend={handleSend}
       onVoice={runtime === 'native' ? handleVoice : undefined}

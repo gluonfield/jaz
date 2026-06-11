@@ -290,6 +290,29 @@ func AddWorktree(ctx context.Context, workspace, dir, slug string) (string, erro
 	return worktree, nil
 }
 
+// ListFiles returns the repository's non-ignored files under dir (tracked
+// plus untracked), slash-separated and relative to dir — the same view of the
+// tree a `.gitignore`-respecting walker would produce. Errors when dir is not
+// inside a git working tree (or git is unavailable); callers fall back to a
+// plain filesystem walk.
+func ListFiles(ctx context.Context, dir string) ([]string, error) {
+	out, err := git(ctx, dir, "ls-files", "--cached", "--others", "--exclude-standard", "-z")
+	if err != nil {
+		return nil, err
+	}
+	if out == "" {
+		return nil, nil
+	}
+	parts := strings.Split(strings.TrimSuffix(out, "\x00"), "\x00")
+	files := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part != "" {
+			files = append(files, part)
+		}
+	}
+	return files, nil
+}
+
 func git(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
 	var out, stderr bytes.Buffer
