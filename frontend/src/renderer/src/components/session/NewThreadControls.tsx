@@ -20,11 +20,13 @@ export function RuntimeSelect({
   value,
   agents,
   disabled,
+  placement,
   onChange,
 }: {
   value: string
   agents: string[]
   disabled?: boolean
+  placement?: 'above' | 'below'
   onChange: (runtime: string) => void
 }) {
   const [open, setOpen] = useState(false)
@@ -37,6 +39,7 @@ export function RuntimeSelect({
     <Popover
       open={open}
       onClose={() => setOpen(false)}
+      placement={placement}
       trigger={
         <Button
           variant="secondary"
@@ -76,6 +79,7 @@ export function ModelSelect({
   suggestions,
   loading,
   disabled,
+  placement,
   onChange,
   providers,
   provider,
@@ -87,6 +91,7 @@ export function ModelSelect({
   suggestions: ModelSuggestion[]
   loading?: boolean
   disabled?: boolean
+  placement?: 'above' | 'below'
   onChange: (model: string) => void
   providers?: { value: string; label: string }[]
   provider?: string
@@ -122,6 +127,7 @@ export function ModelSelect({
     <Popover
       open={open}
       onClose={() => setOpen(false)}
+      placement={placement}
       trigger={
         <Button
           variant="secondary"
@@ -249,10 +255,12 @@ function directoryName(path: string): string {
 export function ProjectPicker({
   value,
   disabled,
+  placement,
   onChange,
 }: {
   value: string
   disabled?: boolean
+  placement?: 'above' | 'below'
   onChange: (path: string, git: boolean) => void
 }) {
   const queryClient = useQueryClient()
@@ -296,6 +304,7 @@ export function ProjectPicker({
     <Popover
       open={open}
       onClose={() => setOpen(false)}
+      placement={placement}
       trigger={
         <Button
           variant="secondary"

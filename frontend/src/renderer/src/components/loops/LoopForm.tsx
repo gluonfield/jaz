@@ -1,6 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { Check, LayoutGrid } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { AnimatePresence } from 'motion/react'
+import { type ReactNode, useState } from 'react'
+import { ComposerSuggestions } from '@/components/session/ComposerSuggestions'
+import { MentionTextarea, useMentionInput } from '@/components/session/MentionInput'
 import { ModelSelect, ProjectPicker, RuntimeSelect } from '@/components/session/NewThreadControls'
 import { boardsQuery } from '@/lib/api/boards'
 import type { LoopInput } from '@/lib/api/loops'
@@ -99,8 +102,8 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   )
 }
 
-// Like Field but a plain block — used for groups of controls (the agent pills,
-// the schedule picker) where a <label> would forward hover/click to one child.
+// Like Field but a plain block — used for groups of controls (the schedule
+// picker, the board pills) where a <label> would forward hover/click to one child.
 function FieldGroup({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
@@ -122,6 +125,18 @@ export function LoopForm({
   onChange: (next: LoopDraft) => void
 }) {
   const set = (patch: Partial<LoopDraft>) => onChange({ ...draft, ...patch })
+
+  const [promptFocused, setPromptFocused] = useState(false)
+  const mention = useMentionInput({
+    fileRoot: draft.directory,
+    focused: promptFocused,
+    disabled,
+    maxHeight: 240,
+    initialValue: draft.prompt,
+    onValueChange: (prompt) => {
+      if (prompt !== draft.prompt) set({ prompt })
+    },
+  })
 
   // Resolve the Settings > Agents defaults so the picker always shows the
   // model and effort a run will actually use — never an opaque "Default".
@@ -152,6 +167,89 @@ export function LoopForm({
 
   return (
     <div className="space-y-5">
+      <div>
+        <div
+          className="relative"
+          onFocusCapture={() => setPromptFocused(true)}
+          onBlurCapture={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setPromptFocused(false)
+          }}
+        >
+          <AnimatePresence>
+            {mention.menuOpen ? (
+              <div key="suggestions" className="absolute inset-x-0 top-full z-30 mt-2">
+                <ComposerSuggestions
+                  sections={mention.sections}
+                  activeIndex={mention.activeIndex}
+                  onHover={mention.setActiveIndex}
+                  onSelect={mention.selectItem}
+                />
+              </div>
+            ) : null}
+          </AnimatePresence>
+          {/* Composer-style card: the prompt with its run setup in the toolbar. */}
+          <div
+            className="flex cursor-text flex-col gap-1.5 rounded-[12px] bg-surface p-2.5 ring-1 ring-border transition duration-150 focus-within:ring-primary"
+            onClick={(e) => {
+              if ((e.target as HTMLElement).closest('button, textarea, input')) return
+              mention.textareaRef.current?.focus()
+            }}
+          >
+            <MentionTextarea
+              mention={mention}
+              placeholder="Review yesterday's commits and flag anything concerning…"
+              disabled={disabled}
+              heightClass="max-h-[240px] min-h-[54px]"
+            />
+            <div className="flex flex-wrap items-center gap-1.5">
+              <RuntimeSelect
+                value={draft.runtime}
+                agents={agents}
+                disabled={disabled}
+                placement="below"
+                onChange={(runtime) =>
+                  set({ runtime, provider: '', model: '', reasoningEffort: '' })
+                }
+              />
+              <ModelSelect
+                value={model}
+                suggestions={modelSuggestions}
+                loading={openRouterModels.isLoading}
+                disabled={disabled}
+                placement="below"
+                onChange={(next) => set({ model: next })}
+                providers={
+                  isNative
+                    ? (agentSettings?.providers ?? [])
+                        .filter((p) => p.implemented)
+                        .map((p) => ({ value: p.id, label: p.label }))
+                    : undefined
+                }
+                provider={isNative ? provider : undefined}
+                onProviderChange={
+                  isNative
+                    ? (next) => set({ provider: next, model: '', reasoningEffort: '' })
+                    : undefined
+                }
+                effort={reasoningEffort}
+                // 'Default' clears the override; the selection snaps back to the
+                // resolved settings effort.
+                onEffortChange={(next) => set({ reasoningEffort: next })}
+              />
+              <ProjectPicker
+                value={draft.directory}
+                disabled={disabled}
+                placement="below"
+                onChange={(directory) => set({ directory })}
+              />
+            </div>
+          </div>
+        </div>
+        <span className="mt-1.5 block text-[12px] text-ink-3">
+          Type $ to tag a skill, @ to tag a file.
+        </span>
+      </div>
+
       <Field label="Name" hint="Optional — defaults to the start of the prompt.">
         <input
           type="text"
@@ -162,59 +260,6 @@ export function LoopForm({
           className={inputClass}
         />
       </Field>
-
-      <Field label="Prompt" hint="Sent to a fresh thread on each run.">
-        <textarea
-          rows={4}
-          disabled={disabled}
-          value={draft.prompt}
-          onChange={(e) => set({ prompt: e.target.value })}
-          placeholder="Review yesterday's commits and flag anything concerning…"
-          className={`${inputClass} resize-y`}
-        />
-      </Field>
-
-      <FieldGroup label="Agent">
-        <div className="flex flex-wrap items-center gap-2">
-          <RuntimeSelect
-            value={draft.runtime}
-            agents={agents}
-            disabled={disabled}
-            onChange={(runtime) =>
-              set({ runtime, provider: '', model: '', reasoningEffort: '' })
-            }
-          />
-          <ModelSelect
-            value={model}
-            suggestions={modelSuggestions}
-            loading={openRouterModels.isLoading}
-            disabled={disabled}
-            onChange={(next) => set({ model: next })}
-            providers={
-              isNative
-                ? (agentSettings?.providers ?? [])
-                    .filter((p) => p.implemented)
-                    .map((p) => ({ value: p.id, label: p.label }))
-                : undefined
-            }
-            provider={isNative ? provider : undefined}
-            onProviderChange={
-              isNative
-                ? (next) => set({ provider: next, model: '', reasoningEffort: '' })
-                : undefined
-            }
-            effort={reasoningEffort}
-            // 'Default' clears the override; the selection snaps back to the
-            // resolved settings effort.
-            onEffortChange={(next) => set({ reasoningEffort: next })}
-          />
-          <ProjectPicker
-            value={draft.directory}
-            disabled={disabled}
-            onChange={(directory) => set({ directory })}
-          />
-        </div>
-      </FieldGroup>
 
       <FieldGroup label="Schedule">
         <SchedulePicker
