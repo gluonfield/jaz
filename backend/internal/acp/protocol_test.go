@@ -73,15 +73,28 @@ func TestRequestPermissionCancelsWorkspaceEscape(t *testing.T) {
 
 func TestInteractiveRequestPermissionWaitsForAnswer(t *testing.T) {
 	root := t.TempDir()
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "permission", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldAttention := time.Now().UTC().Add(-time.Hour).Truncate(time.Millisecond)
+	storage.MarkSessionAttention(&session, oldAttention)
+	if err := store.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
 	events := sessionevents.New()
-	manager := NewManager(nil, Config{}, nil)
+	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	manager.jobsByID["session"] = &Job{ID: "session", ACPSession: "acp-session", Cwd: root, interactive: true}
-	manager.jobsByACP["acp-session"] = manager.jobsByID["session"]
+	manager.jobsByID[session.ID] = &Job{ID: session.ID, ACPSession: "acp-session", Cwd: root, interactive: true}
+	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	sub := events.Subscribe(ctx, "session")
+	sub := events.Subscribe(ctx, session.ID)
 	result := make(chan json.RawMessage, 1)
 	errs := make(chan *jsonrpc.Error, 1)
 
@@ -112,13 +125,20 @@ func TestInteractiveRequestPermissionWaitsForAnswer(t *testing.T) {
 			t.Fatalf("unexpected event %#v", event)
 		}
 		requestID = event.Permission.ID
+		loaded, err := store.LoadSession(session.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !loaded.LastAttentionAt.After(oldAttention) {
+			t.Fatalf("permission request did not advance attention: %s -> %s", oldAttention, loaded.LastAttentionAt)
+		}
 	case err := <-errs:
 		t.Fatal(err)
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 	}
 
-	if err := manager.AnswerInteractive(ctx, InteractiveAnswer{Session: "session", RequestID: requestID, OptionID: "approve"}); err != nil {
+	if err := manager.AnswerInteractive(ctx, InteractiveAnswer{Session: session.ID, RequestID: requestID, OptionID: "approve"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -307,17 +327,26 @@ func TestPlanSessionUpdatePublishesAndPersistsPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "claude-plan", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldAttention := time.Now().UTC().Add(-time.Hour).Truncate(time.Millisecond)
+	storage.MarkSessionAttention(&session, oldAttention)
+	if err := store.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
 	events := sessionevents.New()
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	manager.jobsByID["session"] = &Job{ID: "session", ACPSession: "acp-session", Slug: "claude-plan"}
-	manager.jobsByACP["acp-session"] = manager.jobsByID["session"]
+	manager.jobsByID[session.ID] = &Job{ID: session.ID, ACPSession: "acp-session", Slug: session.Slug}
+	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	sub := events.Subscribe(ctx, "session")
+	sub := events.Subscribe(ctx, session.ID)
 
-	raw, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
+	request := jsonrpc.Request{
 		Method: acpschema.ClientMethodSessionUpdate,
 		Params: mustJSON(t, map[string]any{
 			"sessionId": "acp-session",
@@ -329,7 +358,8 @@ func TestPlanSessionUpdatePublishesAndPersistsPlan(t *testing.T) {
 				},
 			},
 		}),
-	})
+	}
+	raw, rpcErr := manager.handleJSONRPC(ctx, request)
 	if rpcErr != nil {
 		t.Fatal(rpcErr)
 	}
@@ -349,12 +379,30 @@ func TestPlanSessionUpdatePublishesAndPersistsPlan(t *testing.T) {
 		t.Fatal(ctx.Err())
 	}
 
-	state, err := store.LoadACPState("session")
+	state, err := store.LoadACPState(session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(state.Plan) != 2 || state.Plan[1].Status != "in_progress" {
 		t.Fatalf("persisted plan = %#v", state.Plan)
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.LastAttentionAt.After(oldAttention) {
+		t.Fatalf("plan update did not advance attention: %s -> %s", oldAttention, loaded.LastAttentionAt)
+	}
+	attentionAfterPlan := loaded.LastAttentionAt
+	if _, rpcErr := manager.handleJSONRPC(ctx, request); rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	loaded, err = store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.LastAttentionAt.Equal(attentionAfterPlan) {
+		t.Fatalf("unchanged plan advanced attention: %s -> %s", attentionAfterPlan, loaded.LastAttentionAt)
 	}
 }
 

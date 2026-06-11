@@ -93,6 +93,7 @@ func (s *Server) beginACPTurn(session storage.Session, message string) (storage.
 	}
 	session.Status = storage.StatusRunning
 	session.Error = ""
+	storage.MarkSessionAttention(&session, time.Now().UTC())
 	if session.Title == "" {
 		session.Title = titleFromMessage(message)
 	}

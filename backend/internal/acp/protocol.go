@@ -176,6 +176,7 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	var messageChunk string
 	var thoughtChunk string
 	var toolEvent *ToolCallSnapshot
+	var attention bool
 	now := time.Now().UTC()
 	update, err := acpschema.DecodeSessionUpdate(raw)
 	if err != nil {
@@ -239,9 +240,10 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 				Priority: string(entry.Priority),
 			})
 		}
-		// Agents re-send the plan constantly; only persist actual changes.
+		wasEmpty := len(job.Plan) == 0
 		publishACP = !slices.Equal(job.Plan, plan)
 		job.Plan = plan
+		attention = publishACP && wasEmpty && len(plan) > 0
 	case acpschema.CurrentModeSessionUpdate:
 		publishACP = job.Modes.CurrentModeID != string(event.CurrentModeID)
 		job.Modes.CurrentModeID = string(event.CurrentModeID)
@@ -258,6 +260,9 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 
 	if activity != nil {
 		_ = m.store.UpsertActivity(sessionID, *activity)
+	}
+	if attention {
+		m.touchJobAttention(job)
 	}
 	if title != "" {
 		if session, err := m.store.LoadSession(sessionID); err == nil {

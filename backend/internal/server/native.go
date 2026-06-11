@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/media"
@@ -211,6 +212,7 @@ func (s *Server) beginNativeTurn(session storage.Session, message string, claime
 	if err := s.applyNativeSessionDefaults(&session); err != nil {
 		return session, storage.StatusError, false, err
 	}
+	storage.MarkSessionAttention(&session, time.Now().UTC())
 	generateTitle := shouldGenerateTitleFromMessage(session.Title, message, existingMessages)
 	if session.Title == "" {
 		session.Title = titleFromMessage(message)

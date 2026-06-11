@@ -107,6 +107,24 @@ type Session struct {
 	Archived        bool        `json:"archived,omitempty"`
 	CreatedAt       time.Time   `json:"created_at"`
 	UpdatedAt       time.Time   `json:"updated_at"`
+	LastAttentionAt time.Time   `json:"last_attention_at"`
+}
+
+func MarkSessionAttention(session *Session, at time.Time) {
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+	session.LastAttentionAt = at
+}
+
+func SessionAttentionAt(session Session) time.Time {
+	if !session.LastAttentionAt.IsZero() {
+		return session.LastAttentionAt
+	}
+	if !session.UpdatedAt.IsZero() {
+		return session.UpdatedAt
+	}
+	return session.CreatedAt
 }
 
 type Block struct {

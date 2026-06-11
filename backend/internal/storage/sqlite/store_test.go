@@ -54,6 +54,77 @@ func TestSessionsHaveStableUniqueSlugsAndRootListing(t *testing.T) {
 	}
 }
 
+func TestListSessionsOrdersByAttentionNotActivity(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	attentionFirst, err := store.CreateSession(storage.CreateSession{Slug: "attention-first"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	activityFirst, err := store.CreateSession(storage.CreateSession{Slug: "activity-first"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	base := time.Now().UTC().Add(-time.Hour).Truncate(time.Millisecond)
+	setSessionTimes(t, store, attentionFirst, base, base.Add(2*time.Minute))
+	setSessionTimes(t, store, activityFirst, base.Add(30*time.Minute), base.Add(time.Minute))
+
+	sessions, err := store.ListSessions(storage.SessionFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) < 2 || sessions[0].ID != attentionFirst.ID {
+		t.Fatalf("sessions = %#v, want attention-first before activity-first", sessions)
+	}
+
+	before := sessions[1].LastAttentionAt
+	if err := store.AddUsage(activityFirst.ID, storage.Usage{InputTokens: 1}); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := store.LoadSession(activityFirst.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.LastAttentionAt.Equal(before) {
+		t.Fatalf("last attention changed on usage write: %s -> %s", before, loaded.LastAttentionAt)
+	}
+
+	sessions, err = store.ListSessions(storage.SessionFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sessions[0].ID != attentionFirst.ID {
+		t.Fatalf("activity write reordered sessions: %#v", sessions)
+	}
+
+	if err := store.TouchSessionAttention(activityFirst.ID); err != nil {
+		t.Fatal(err)
+	}
+	sessions, err = store.ListSessions(storage.SessionFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sessions[0].ID != activityFirst.ID {
+		t.Fatalf("attention touch did not reorder sessions: %#v", sessions)
+	}
+}
+
+func setSessionTimes(t *testing.T, store *Store, session storage.Session, updatedAt, lastAttentionAt time.Time) {
+	t.Helper()
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	session.UpdatedAt = updatedAt
+	session.LastAttentionAt = lastAttentionAt
+	if err := store.saveSessionLocked(session, false); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSessionQueuedMessagesRoundTrip(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {

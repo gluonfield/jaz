@@ -41,6 +41,7 @@ export interface Session {
   queued_messages?: string[]
   created_at: string
   updated_at: string
+  last_attention_at: string
 }
 
 // Git/forge state of a session's working directory (GET /v1/sessions/:id/repo).

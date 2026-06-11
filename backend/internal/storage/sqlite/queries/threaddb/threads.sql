@@ -27,7 +27,8 @@ SELECT
   context_tokens,
   context_window_tokens,
   cached_write_tokens,
-  project_path
+  project_path,
+  last_attention_at_ms
 FROM threads;
 
 -- name: GetSession :one
@@ -59,7 +60,8 @@ SELECT
   context_tokens,
   context_window_tokens,
   cached_write_tokens,
-  project_path
+  project_path,
+  last_attention_at_ms
 FROM threads
 WHERE id = sqlc.arg(ref) OR slug = sqlc.arg(ref)
 LIMIT 1;
@@ -105,7 +107,8 @@ INSERT INTO threads (
   source_id,
   archived,
   created_at_ms,
-  updated_at_ms
+  updated_at_ms,
+  last_attention_at_ms
 ) VALUES (
   sqlc.arg(id),
   sqlc.arg(slug),
@@ -134,7 +137,8 @@ INSERT INTO threads (
   sqlc.narg(source_id),
   sqlc.arg(archived),
   sqlc.arg(created_at_ms),
-  sqlc.arg(updated_at_ms)
+  sqlc.arg(updated_at_ms),
+  sqlc.arg(last_attention_at_ms)
 )
 ON CONFLICT(id) DO UPDATE SET
   slug = excluded.slug,
@@ -163,7 +167,8 @@ ON CONFLICT(id) DO UPDATE SET
   source_id = excluded.source_id,
   archived = excluded.archived,
   created_at_ms = excluded.created_at_ms,
-  updated_at_ms = excluded.updated_at_ms;
+  updated_at_ms = excluded.updated_at_ms,
+  last_attention_at_ms = excluded.last_attention_at_ms;
 
 -- name: SetArchived :exec
 UPDATE threads
@@ -173,6 +178,13 @@ WHERE id = sqlc.arg(id) OR parent_id = sqlc.arg(id);
 -- name: TouchThread :exec
 UPDATE threads
 SET updated_at_ms = sqlc.arg(updated_at_ms)
+WHERE id = sqlc.arg(id);
+
+-- name: TouchSessionAttention :exec
+UPDATE threads
+SET
+  updated_at_ms = sqlc.arg(updated_at_ms),
+  last_attention_at_ms = sqlc.arg(last_attention_at_ms)
 WHERE id = sqlc.arg(id);
 
 -- name: UpdateACPState :exec
