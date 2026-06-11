@@ -1,64 +1,55 @@
 services:
-  activepieces:
-    image: activepieces/activepieces:latest
+  app:
+    image: ghcr.io/activepieces/activepieces:${ACTIVEPIECES_VERSION}
+    container_name: jaz-activepieces-app
     restart: unless-stopped
     ports:
-      - "8081:80" # jaz owns 8080
+      - "${ACTIVEPIECES_PORT}:80" # jaz owns 8080
     depends_on:
       - postgres
       - redis
+    env_file: .env
     environment:
-      AP_ENVIRONMENT: prod
-      AP_FRONTEND_URL: http://localhost:8081
-      AP_ENCRYPTION_KEY: ${AP_ENCRYPTION_KEY}
-      AP_JWT_SECRET: ${AP_JWT_SECRET}
-      AP_POSTGRES_DATABASE: activepieces
-      AP_POSTGRES_HOST: postgres
-      AP_POSTGRES_PORT: "5432"
-      AP_POSTGRES_USERNAME: postgres
-      AP_POSTGRES_PASSWORD: ${AP_POSTGRES_PASSWORD}
-      AP_REDIS_HOST: redis
-      AP_REDIS_PORT: "6379"
-      # lake-writer needs filesystem access from code/piece execution
-      AP_EXECUTION_MODE: UNSANDBOXED
-      AP_TELEMETRY_ENABLED: "false"
+      AP_CONTAINER_TYPE: WORKER_AND_APP
     volumes:
-      - ${HOME}/data:/data
-      - ${HOME}/.jaz/memory/inbox:/memory-inbox
+      - ${JAZ_INGEST_ROOT:-${HOME}/.jaz/ingest}:/jaz-ingest
+      - ./data/cache:/usr/src/app/cache
+      - ${JAZ_MEMORY_ROOT:-${HOME}/.jaz/memory}/inbox:/memory-inbox
 
   postgres:
-    image: postgres:16
+    image: pgvector/pgvector:0.8.0-pg14
+    container_name: jaz-activepieces-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: activepieces
-      POSTGRES_USER: postgres
+      POSTGRES_DB: ${AP_POSTGRES_DATABASE}
+      POSTGRES_USER: ${AP_POSTGRES_USERNAME}
       POSTGRES_PASSWORD: ${AP_POSTGRES_PASSWORD}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./data/postgres:/var/lib/postgresql/data
 
   redis:
-    image: redis:7
+    image: redis:7.0.7
+    container_name: jaz-activepieces-redis
     restart: unless-stopped
     volumes:
-      - redis_data:/data
+      - ./data/redis:/data
 
-  # One-shot: waits for AP, creates/signs in the admin from .env, and installs
-  # pieces/lake-writer/dist/*.tgz if that name+version is not already present.
+  # One-shot: waits for AP, signs in with the admin account, and installs the
+  # Jaz ingest writer archive if that name+version is not already present.
+  # Exits immediately when there is nothing to do; re-runs on every `up`.
   piece-installer:
     image: alpine:3.20
     restart: "no"
     depends_on:
-      - activepieces
+      - app
     environment:
-      AP_URL: http://activepieces:80
-      AP_EMAIL: ${AP_EMAIL}
-      AP_PASSWORD: ${AP_PASSWORD}
+      AP_URL: http://app:80
+      AP_EMAIL: ${AP_ADMIN_EMAIL}
+      AP_PASSWORD: ${AP_ADMIN_PASSWORD}
+      PIECE_NAME: ${JAZ_LAKE_WRITER_PIECE_NAME:-@activepieces/piece-lake-writer}
+      PIECE_VERSION: ${JAZ_LAKE_WRITER_PIECE_VERSION:-0.1.2}
+      PIECE_ARCHIVE_URL: ${JAZ_LAKE_WRITER_ARCHIVE_URL:-}
     volumes:
-      - ./pieces/lake-writer/dist:/piece-dist:ro
-      - ./pieces/lake-writer/package.json:/piece-package.json:ro
+      - ./piece-archives:/piece-dist:ro
       - ./installer/install-piece.sh:/install-piece.sh:ro
     command: sh /install-piece.sh
-
-volumes:
-  postgres_data:
-  redis_data:

@@ -7,6 +7,7 @@
 backend/jaz
 activepieces/.env
 activepieces/data/
+activepieces/piece-archives/*.tgz
 activepieces/io/**
 !activepieces/io/
 !activepieces/io/**/
