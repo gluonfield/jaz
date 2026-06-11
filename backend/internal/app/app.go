@@ -154,7 +154,11 @@ func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspac
 		&plantool.Tool{Store: store, Events: events},
 		&exectool.ExecCommandTool{Manager: commandManager, Workspace: string(workspace)},
 		&exectool.WriteStdinTool{Manager: commandManager},
-		&applypatch.Tool{Workspace: string(workspace), ExtraRoots: []string{loops.AutomationsDir(store.RootDir())}},
+		&applypatch.Tool{
+			Workspace:  string(workspace),
+			ExtraRoots: []string{loops.AutomationsDir(store.RootDir())},
+			PathScope:  applypatch.AbsolutePaths,
+		},
 		&viewimagetool.Tool{Workspace: string(workspace)},
 		&widgettool.Tool{Publisher: widgetPublisher},
 		&agentspawn.Tool{Manager: manager},

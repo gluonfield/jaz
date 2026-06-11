@@ -114,7 +114,7 @@ func (t *ExecCommandTool) Execute(ctx context.Context, inputs map[string]any) (t
 	yield := tools.Clamp(tools.IntInput(inputs, "yield_time_ms", 10000), 250, 30000)
 	maxTokens := tools.Clamp(tools.IntInput(inputs, "max_output_tokens", 10000), 1, 50000)
 	maxChars := maxTokens * 4
-	base, err := sessioncontext.WorkspaceBase(ctx, t.Workspace)
+	base, err := sessioncontext.SessionBase(ctx, t.Workspace)
 	if err != nil {
 		return tools.Result{}, err
 	}

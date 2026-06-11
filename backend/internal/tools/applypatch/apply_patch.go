@@ -14,12 +14,17 @@ import (
 )
 
 type Tool struct {
-	Workspace string
-	// ExtraRoots are additional writable directories outside the workspace —
-	// the loop automations dir (memory.md, widget/) lives there. The shell can
-	// already write anywhere, so this widens convenience, not capability.
+	Workspace  string
 	ExtraRoots []string
+	PathScope  PathScope
 }
+
+type PathScope int
+
+const (
+	RootedPaths PathScope = iota
+	AbsolutePaths
+)
 
 func (t *Tool) Definition() tools.Definition {
 	return tools.Function(
@@ -51,13 +56,16 @@ func (t *Tool) Execute(ctx context.Context, inputs map[string]any) (tools.Result
 		return tools.Result{}, err
 	}
 	changed := make([]string, 0, len(hunks))
-	base, err := sessioncontext.WorkspaceBase(ctx, t.Workspace)
+	base, err := sessioncontext.SessionBase(ctx, t.Workspace)
 	if err != nil {
 		return tools.Result{}, err
 	}
-	roots := append([]string{base}, t.ExtraRoots...)
+	resolver := pathResolver{
+		roots: append([]string{base}, t.ExtraRoots...),
+		scope: t.PathScope,
+	}
 	for _, hunk := range hunks {
-		if err := applyHunk(roots, hunk); err != nil {
+		if err := applyHunk(resolver, hunk); err != nil {
 			return tools.Result{}, err
 		}
 		changed = append(changed, hunk.pathForResult())
@@ -147,8 +155,8 @@ func isHunkMarker(line string) bool {
 		strings.HasPrefix(line, "*** Update File: ")
 }
 
-func applyHunk(roots []string, h patchHunk) error {
-	path, err := resolvePatchPath(roots, h.path)
+func applyHunk(resolver pathResolver, h patchHunk) error {
+	path, err := resolver.resolve(h.path)
 	if err != nil {
 		return err
 	}
@@ -165,13 +173,13 @@ func applyHunk(roots []string, h patchHunk) error {
 	case patchDelete:
 		return os.Remove(path)
 	case patchUpdate:
-		return applyUpdateHunk(roots, path, h)
+		return applyUpdateHunk(resolver, path, h)
 	default:
 		return errors.New("unknown hunk kind")
 	}
 }
 
-func applyUpdateHunk(roots []string, path string, h patchHunk) error {
+func applyUpdateHunk(resolver pathResolver, path string, h patchHunk) error {
 	originalBytes, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -196,7 +204,7 @@ func applyUpdateHunk(roots []string, path string, h patchHunk) error {
 	out := joinContent(lines, finalNewline)
 	writePath := path
 	if h.moveTo != "" {
-		writePath, err = resolvePatchPath(roots, h.moveTo)
+		writePath, err = resolver.resolve(h.moveTo)
 		if err != nil {
 			return err
 		}
@@ -260,13 +268,31 @@ func parseUpdateChunks(lines []string) ([]updateChunk, error) {
 	return chunks, nil
 }
 
-// resolvePatchPath confines a patch path to one of the allowed roots; relative
-// paths resolve against the first root (the session workspace).
-func resolvePatchPath(roots []string, p string) (string, error) {
+type pathResolver struct {
+	roots []string
+	scope PathScope
+}
+
+func (r pathResolver) resolve(p string) (string, error) {
 	if p == "" {
 		return "", errors.New("patch path is empty")
 	}
-	for _, root := range roots {
+	if !filepath.IsAbs(p) {
+		if len(r.roots) > 0 {
+			root := r.roots[0]
+			if root == "" {
+				return "", fmt.Errorf("patch path escapes allowed roots: %s", p)
+			}
+			if path, err := pathsafe.Resolve(root, p); err == nil {
+				return path, nil
+			}
+		}
+		return "", fmt.Errorf("patch path escapes allowed roots: %s", p)
+	}
+	if r.scope == AbsolutePaths {
+		return filepath.Clean(p), nil
+	}
+	for _, root := range r.roots {
 		if root == "" {
 			continue
 		}
@@ -274,7 +300,7 @@ func resolvePatchPath(roots []string, p string) (string, error) {
 			return path, nil
 		}
 	}
-	return "", fmt.Errorf("patch path escapes workspace: %s", p)
+	return "", fmt.Errorf("patch path escapes allowed roots: %s", p)
 }
 
 func splitContent(s string) ([]string, bool) {
