@@ -61,6 +61,9 @@ func (p *Provider) StreamComplete(ctx context.Context, req provider.Request) (<-
 			IncludeUsage: oa.Bool(true),
 		},
 	}
+	if format := structuredOutputFormat(req.StructuredOutput); format != nil {
+		params.ResponseFormat = *format
+	}
 	if reasoningEffort != "" {
 		params.ReasoningEffort = shared.ReasoningEffort(reasoningEffort)
 	}
@@ -128,6 +131,9 @@ func (p *Provider) Complete(ctx context.Context, req provider.Request) (provider
 		Messages: req.Messages,
 		Tools:    req.Tools,
 	}
+	if format := structuredOutputFormat(req.StructuredOutput); format != nil {
+		params.ResponseFormat = *format
+	}
 	if reasoningEffort != "" {
 		params.ReasoningEffort = shared.ReasoningEffort(reasoningEffort)
 	}
@@ -167,6 +173,27 @@ func (p *Provider) requestOptions() []option.RequestOption {
 		return nil
 	}
 	return []option.RequestOption{option.WithJSONSet("usage", map[string]any{"include": true})}
+}
+
+func structuredOutputFormat(format *provider.StructuredOutput) *oa.ChatCompletionNewParamsResponseFormatUnion {
+	if format == nil {
+		return nil
+	}
+	jsonSchema := shared.ResponseFormatJSONSchemaJSONSchemaParam{
+		Name:   format.Name,
+		Schema: format.Schema,
+	}
+	if format.Description != "" {
+		jsonSchema.Description = oa.String(format.Description)
+	}
+	if format.Strict {
+		jsonSchema.Strict = oa.Bool(true)
+	}
+	return &oa.ChatCompletionNewParamsResponseFormatUnion{
+		OfJSONSchema: &shared.ResponseFormatJSONSchemaParam{
+			JSONSchema: jsonSchema,
+		},
+	}
 }
 
 func mergeUsageSnapshot(current, next provider.Usage) provider.Usage {

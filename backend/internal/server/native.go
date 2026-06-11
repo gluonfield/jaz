@@ -104,11 +104,14 @@ func (s *Server) runNativeSessionWithClaim(ctx context.Context, session storage.
 	if send == nil {
 		send = func(agent.StreamEvent) {}
 	}
-	session, startStatus, err := s.beginNativeTurn(session, message, claimed)
+	session, startStatus, generateTitle, err := s.beginNativeTurn(session, message, claimed)
 	if err != nil {
 		send(agent.StreamEvent{Type: agent.StreamError, Error: err.Error()})
 		send(agent.StreamEvent{Type: agent.StreamDone})
 		return startStatus
+	}
+	if generateTitle {
+		session = s.generateAndSaveSessionTitle(ctx, session, message)
 	}
 
 	logger := s.logger().With("session", session.ID)
@@ -185,32 +188,37 @@ func (s *Server) runNativeSessionWithClaim(ctx context.Context, session storage.
 	return finalStatus
 }
 
-func (s *Server) beginNativeTurn(session storage.Session, message string, claimed bool) (storage.Session, string, error) {
+func (s *Server) beginNativeTurn(session storage.Session, message string, claimed bool) (storage.Session, string, bool, error) {
 	unlock := s.lockSession(session.ID)
 	defer unlock()
 
 	current, err := s.Store.LoadSession(session.ID)
 	if err != nil {
-		return session, storage.StatusError, err
+		return session, storage.StatusError, false, err
 	}
 	session = current
 	if session.Status == storage.StatusRunning && !claimed {
-		return session, storage.StatusRunning, fmt.Errorf("session %s is already running", session.Slug)
+		return session, storage.StatusRunning, false, fmt.Errorf("session %s is already running", session.Slug)
+	}
+	existingMessages, err := s.Store.LoadMessages(session.ID)
+	if err != nil {
+		return session, storage.StatusError, false, err
 	}
 	session.Status = storage.StatusRunning
 	if session.Runtime == "" {
 		session.Runtime = storage.RuntimeNative
 	}
 	if err := s.applyNativeSessionDefaults(&session); err != nil {
-		return session, storage.StatusError, err
+		return session, storage.StatusError, false, err
 	}
+	generateTitle := shouldGenerateTitleFromMessage(session.Title, message, existingMessages)
 	if session.Title == "" {
 		session.Title = titleFromMessage(message)
 	}
 	if err := s.Store.SaveSession(session); err != nil {
-		return session, storage.StatusError, err
+		return session, storage.StatusError, false, err
 	}
-	return session, storage.StatusRunning, nil
+	return session, storage.StatusRunning, generateTitle, nil
 }
 
 func (s *Server) nativeSessionDefaults() (storage.CreateSession, error) {
