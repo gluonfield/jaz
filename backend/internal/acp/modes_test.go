@@ -6,16 +6,22 @@ import (
 	acpschema "github.com/gluonfield/acp-transport/acp"
 )
 
-func TestPreferredExecutionModeAcceptsAgentFlavors(t *testing.T) {
-	for _, id := range fullAccessModes {
-		got := preferredExecutionMode([]acpschema.SessionMode{{ID: acpschema.SessionModeID(id)}})
-		if got != id {
-			t.Fatalf("preferredExecutionMode(%q) = %q", id, got)
-		}
+func TestExecutionModeForAgentUsesAgentPolicy(t *testing.T) {
+	modes := []acpschema.SessionMode{
+		{ID: "auto", Name: "Auto"},
+		{ID: "bypassPermissions", Name: "Bypass Permissions"},
+		{ID: "acceptEdits", Name: "Accept Edits"},
+		{ID: "plan", Name: "Plan"},
+	}
+	if got := executionModeForAgent(AgentClaude, modes); got != "bypassPermissions" {
+		t.Fatalf("claude execution mode = %q, want bypassPermissions", got)
+	}
+	if got := executionModeForAgent("other", modes); got != "" {
+		t.Fatalf("generic execution mode = %q, want empty", got)
 	}
 }
 
-func TestModeStateDoesNotForceClaudeBypassPermissions(t *testing.T) {
+func TestModeStateFromACPDoesNotApplyExecutionPolicy(t *testing.T) {
 	state := modeStateFromACP(&acpschema.SessionModeState{
 		CurrentModeID: "auto",
 		AvailableModes: []acpschema.SessionMode{
@@ -24,8 +30,8 @@ func TestModeStateDoesNotForceClaudeBypassPermissions(t *testing.T) {
 			{ID: "plan", Name: "Plan"},
 		},
 	})
-	if state.ExecutionModeID != "auto" {
-		t.Fatalf("ExecutionModeID = %q, want auto", state.ExecutionModeID)
+	if state.ExecutionModeID != "" {
+		t.Fatalf("ExecutionModeID = %q, want empty", state.ExecutionModeID)
 	}
 }
 
@@ -40,7 +46,7 @@ func TestModeStateDetectsPlanWithoutFullAccess(t *testing.T) {
 	if state.PlanModeID != "plan" {
 		t.Fatalf("PlanModeID = %q", state.PlanModeID)
 	}
-	if state.ExecutionModeID != "default" {
-		t.Fatalf("ExecutionModeID = %q", state.ExecutionModeID)
+	if state.ExecutionModeID != "" {
+		t.Fatalf("ExecutionModeID = %q, want empty", state.ExecutionModeID)
 	}
 }

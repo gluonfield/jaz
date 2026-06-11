@@ -25,22 +25,7 @@ func modeStateFromACP(state *acpschema.SessionModeState) ModeState {
 			Description: mode.Description,
 		})
 	}
-	out.ExecutionModeID = preferredExecutionMode(state.AvailableModes)
-	if out.ExecutionModeID == "" {
-		out.ExecutionModeID = out.CurrentModeID
-	}
 	return out
-}
-
-func preferredExecutionMode(modes []acpschema.SessionMode) string {
-	for _, id := range fullAccessModes {
-		for _, mode := range modes {
-			if string(mode.ID) == id {
-				return id
-			}
-		}
-	}
-	return ""
 }
 
 func planModeID(modes []acpschema.SessionMode) string {
