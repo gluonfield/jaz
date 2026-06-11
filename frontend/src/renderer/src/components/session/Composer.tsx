@@ -396,8 +396,6 @@ export function ComposerCard({
   )
 }
 
-// Bottom dock for the session view: content scrolls beneath a fade into the
-// page background; only the card itself receives pointer events.
 export function Composer({
   streaming,
   disabled,
@@ -433,48 +431,41 @@ export function Composer({
   onMoveQueuedPrompt?: (from: number, to: number) => void
 }) {
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-b from-transparent to-bg to-45% px-10 pt-6 pb-5">
-      <motion.div
-        className="pointer-events-auto mx-auto max-w-[640px]"
-        initial={{ y: 12, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-      >
-        <AnimatePresence initial={false}>
-          {queuedPrompts.length > 0 &&
-          onSteerQueuedPrompt &&
-          onDeleteQueuedPrompt &&
-          onEditQueuedPrompt &&
-          onMoveQueuedPrompt ? (
-            <QueuedPromptList
-              prompts={queuedPrompts}
-              steerDisabled={steerDisabled}
-              onSteer={onSteerQueuedPrompt}
-              onDelete={onDeleteQueuedPrompt}
-              onEdit={onEditQueuedPrompt}
-              onMove={onMoveQueuedPrompt}
-            />
-          ) : null}
-        </AnimatePresence>
-        <ComposerCard
-          streaming={streaming}
-          disabled={disabled}
-          placeholder={placeholder}
-          planAvailable={planAvailable}
-          queueWhenStreaming
-          draftStorageKey={draftStorageKey}
-          draftStorage="local"
-          fileRoot={fileRoot}
-          onSend={onSend}
-          onStop={onStop}
-          onVoice={onVoice}
-        />
-      </motion.div>
-    </div>
+    <>
+      <AnimatePresence initial={false}>
+        {queuedPrompts.length > 0 &&
+        onSteerQueuedPrompt &&
+        onDeleteQueuedPrompt &&
+        onEditQueuedPrompt &&
+        onMoveQueuedPrompt ? (
+          <QueuedPromptList
+            prompts={queuedPrompts}
+            steerDisabled={steerDisabled}
+            onSteer={onSteerQueuedPrompt}
+            onDelete={onDeleteQueuedPrompt}
+            onEdit={onEditQueuedPrompt}
+            onMove={onMoveQueuedPrompt}
+          />
+        ) : null}
+      </AnimatePresence>
+      <ComposerCard
+        streaming={streaming}
+        disabled={disabled}
+        placeholder={placeholder}
+        planAvailable={planAvailable}
+        queueWhenStreaming
+        draftStorageKey={draftStorageKey}
+        draftStorage="local"
+        fileRoot={fileRoot}
+        onSend={onSend}
+        onStop={onStop}
+        onVoice={onVoice}
+      />
+    </>
   )
 }
 
-export function PlanDecisionDock({
+export function PlanDecisionCard({
   disabled,
   pending,
   onImplement,
@@ -502,84 +493,75 @@ export function PlanDecisionDock({
   }
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-b from-transparent to-bg to-45% px-10 pt-6 pb-5">
-      <motion.div
-        className="pointer-events-auto mx-auto max-w-[640px]"
-        initial={{ y: 12, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-      >
-        <div className="rounded-[12px] bg-surface p-2.5">
-          <p className="px-2 pt-0.5 pb-2 text-sm font-medium text-ink">Implement this plan?</p>
-          <div className="flex flex-col gap-0.5">
-            <motion.button
-              type="button"
-              disabled={disabled || pending}
-              onClick={onImplement}
-              whileTap={{ scale: 0.99 }}
-              className="flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-full px-3 text-left text-sm font-medium text-ink transition-colors duration-150 hover:bg-primary-soft disabled:cursor-default disabled:opacity-60"
-            >
-              {pending ? (
-                <LoaderCircle size={15} className="shrink-0 animate-spin text-primary" />
-              ) : (
-                <Check size={15} className="shrink-0 text-primary" />
-              )}
-              {pending ? 'Starting implementation…' : 'Yes, implement this plan'}
-            </motion.button>
+    <div className="rounded-[12px] bg-surface p-2.5">
+      <p className="px-2 pt-0.5 pb-2 text-sm font-medium text-ink">Implement this plan?</p>
+      <div className="flex flex-col gap-0.5">
+        <motion.button
+          type="button"
+          disabled={disabled || pending}
+          onClick={onImplement}
+          whileTap={{ scale: 0.99 }}
+          className="flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-full px-3 text-left text-sm font-medium text-ink transition-colors duration-150 hover:bg-primary-soft disabled:cursor-default disabled:opacity-60"
+        >
+          {pending ? (
+            <LoaderCircle size={15} className="shrink-0 animate-spin text-primary" />
+          ) : (
+            <Check size={15} className="shrink-0 text-primary" />
+          )}
+          {pending ? 'Starting implementation…' : 'Yes, implement this plan'}
+        </motion.button>
 
-            {clarifying ? (
-              // the "no" row, morphed in place into the clarification field
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.15, ease: 'easeOut' }}
-                className="flex h-9 items-center gap-2 rounded-full bg-bg pr-1 pl-3"
-              >
-                <input
-                  ref={inputRef}
-                  value={text}
-                  disabled={disabled}
-                  placeholder="What should change in this plan?"
-                  className="h-full min-w-0 flex-1 bg-transparent text-sm text-ink placeholder:text-ink-3 disabled:cursor-default"
-                  onChange={(e) => setText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      submitClarification()
-                    }
-                    if (e.key === 'Escape') {
-                      e.preventDefault()
-                      setClarifying(false)
-                      setText('')
-                    }
-                  }}
-                />
-                <IconButton
-                  variant="primary"
-                  size="sm"
-                  aria-label="Send clarification"
-                  title="Send clarification"
-                  disabled={!text.trim() || disabled}
-                  onClick={submitClarification}
-                >
-                  <ArrowUp size={14} />
-                </IconButton>
-              </motion.div>
-            ) : (
-              <motion.button
-                type="button"
-                disabled={disabled || pending}
-                onClick={() => setClarifying(true)}
-                whileTap={{ scale: 0.99 }}
-                className="flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-full px-3 text-left text-sm text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink disabled:cursor-default disabled:opacity-60"
-              >
-                <X size={15} className="shrink-0 text-ink-3" />
-                No, I'll clarify first
-              </motion.button>
-            )}
-          </div>
-        </div>
-      </motion.div>
+        {clarifying ? (
+          // the "no" row, morphed in place into the clarification field
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
+            className="flex h-9 items-center gap-2 rounded-full bg-bg pr-1 pl-3"
+          >
+            <input
+              ref={inputRef}
+              value={text}
+              disabled={disabled}
+              placeholder="What should change in this plan?"
+              className="h-full min-w-0 flex-1 bg-transparent text-sm text-ink placeholder:text-ink-3 disabled:cursor-default"
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  submitClarification()
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setClarifying(false)
+                  setText('')
+                }
+              }}
+            />
+            <IconButton
+              variant="primary"
+              size="sm"
+              aria-label="Send clarification"
+              title="Send clarification"
+              disabled={!text.trim() || disabled}
+              onClick={submitClarification}
+            >
+              <ArrowUp size={14} />
+            </IconButton>
+          </motion.div>
+        ) : (
+          <motion.button
+            type="button"
+            disabled={disabled || pending}
+            onClick={() => setClarifying(true)}
+            whileTap={{ scale: 0.99 }}
+            className="flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-full px-3 text-left text-sm text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink disabled:cursor-default disabled:opacity-60"
+          >
+            <X size={15} className="shrink-0 text-ink-3" />
+            No, I'll clarify first
+          </motion.button>
+        )}
+      </div>
     </div>
   )
 }
