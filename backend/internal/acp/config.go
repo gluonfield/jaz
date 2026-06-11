@@ -7,8 +7,6 @@ import (
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 )
 
-var fullAccessModes = []string{"full-access", "yolo", "always-approve"}
-
 const (
 	AgentCodex  = "codex"
 	AgentClaude = "claude"
