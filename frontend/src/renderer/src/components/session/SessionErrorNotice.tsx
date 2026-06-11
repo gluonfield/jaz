@@ -1,8 +1,16 @@
-import { Check, CircleAlert, Copy } from 'lucide-react'
+import { Check, Copy } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { writeClipboard } from '@/lib/clipboard'
 
-export function SessionErrorNotice({ message, context }: { message: string; context?: string }) {
+export function SessionErrorNotice({
+  message,
+  context,
+  className = '',
+}: {
+  message: string
+  context?: string
+  className?: string
+}) {
   const [copied, setCopied] = useState(false)
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -18,26 +26,24 @@ export function SessionErrorNotice({ message, context }: { message: string; cont
   }, [])
 
   return (
-    <div role="alert" className="flex max-w-[72ch] items-start gap-3 rounded-card bg-danger-soft px-3.5 py-3 text-sm text-danger ring-1 ring-danger/20">
-      <CircleAlert size={16} className="mt-0.5 shrink-0" aria-hidden />
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center justify-between gap-3">
-          <p className="min-w-0 flex-1 truncate text-[11px] font-semibold tracking-[0.08em] uppercase">
-            Error
-            {context ? <span className="ml-2 font-mono font-normal normal-case tracking-normal">{context}</span> : null}
-          </p>
-          <button
-            type="button"
-            aria-label="Copy error"
-            title={copied ? 'Copied' : 'Copy error'}
-            onClick={copy}
-            className="-my-2 -mr-2 grid size-10 shrink-0 cursor-pointer place-items-center rounded-full transition-[background-color,color,transform] duration-150 hover:bg-surface/70 active:scale-[0.96]"
-          >
-            {copied ? <Check size={14} /> : <Copy size={14} />}
-          </button>
+    <div role="alert" className={`max-w-[72ch] rounded-card bg-surface px-3.5 py-3 ring-1 ring-danger/25 ${className}`}>
+      <div className="flex items-center gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="size-1.5 shrink-0 rounded-full bg-danger" aria-hidden />
+          <span className="shrink-0 text-[11px] font-semibold tracking-[0.08em] uppercase text-danger">Error</span>
+          {context ? <span className="truncate font-mono text-[11px] text-ink-3">{context}</span> : null}
         </div>
-        <p className="mt-1 whitespace-pre-wrap break-words leading-[1.55] select-text">{message}</p>
+        <button
+          type="button"
+          aria-label="Copy error"
+          title={copied ? 'Copied' : 'Copy error'}
+          onClick={copy}
+          className="relative -my-1.5 -mr-1.5 grid size-8 shrink-0 cursor-pointer place-items-center rounded-full text-ink-3 transition-[background-color,color,transform] duration-150 before:absolute before:-inset-1 hover:bg-surface-2 hover:text-ink active:scale-[0.96]"
+        >
+          {copied ? <Check size={14} /> : <Copy size={14} />}
+        </button>
       </div>
+      <p className="mt-1.5 whitespace-pre-wrap break-words text-[13px] leading-[1.55] text-ink select-text">{message}</p>
     </div>
   )
 }
