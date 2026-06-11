@@ -10,10 +10,12 @@ export function useThreadAutoScroll({
   resetKey,
   itemCount,
   liveSize,
+  bottomInset,
 }: {
   resetKey: string
   itemCount: number
   liveSize: number
+  bottomInset: number
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const nearBottom = useRef(true)
@@ -28,7 +30,7 @@ export function useThreadAutoScroll({
 
   useEffect(() => {
     if (nearBottom.current) pinToBottom()
-  }, [itemCount, liveSize, pinToBottom])
+  }, [bottomInset, itemCount, liveSize, pinToBottom])
 
   useEffect(() => {
     pinToBottom()
