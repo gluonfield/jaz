@@ -419,6 +419,9 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		"activity": activity,
 		"events":   transcriptEvents,
 	}
+	if meta := s.acpMeta(transcriptEvents); len(meta) > 0 {
+		resp["acp_meta"] = meta
+	}
 	if session.Runtime == storage.RuntimeACP {
 		if state, ok := s.acpSnapshot(session); ok {
 			applyACPStateResponse(resp, state)
@@ -428,6 +431,29 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		resp["acp_children"] = children
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+type acpMetaEntry struct {
+	Title string `json:"title,omitempty"`
+	Slug  string `json:"slug,omitempty"`
+}
+
+// Stored events carry only the acp session id; the title and slug the UI
+// labels them with live here, once per response instead of per row.
+func (s *Server) acpMeta(events []sessionevents.Event) map[string]acpMetaEntry {
+	meta := map[string]acpMetaEntry{}
+	for _, event := range events {
+		if event.ACP == nil || event.ACP.ID == "" {
+			continue
+		}
+		if _, ok := meta[event.ACP.ID]; ok {
+			continue
+		}
+		if ref, err := s.Store.LoadSession(event.ACP.ID); err == nil {
+			meta[event.ACP.ID] = acpMetaEntry{Title: ref.Title, Slug: ref.Slug}
+		}
+	}
+	return meta
 }
 
 func (s *Server) acpSnapshot(session storage.Session) (storage.ACPState, bool) {

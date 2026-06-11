@@ -591,17 +591,40 @@ func (m *Manager) publishACPTranscriptEvent(job Job, eventType, content string, 
 	}
 }
 
+// Session-constant fields are stripped from the stored copy: repeating the
+// title and mode catalog on every row dominated transcript payloads (~70-90%
+// of bytes on tool-heavy threads). /messages rebuilds them once per response
+// via acp_meta. The live copy keeps them so subscribers can label sessions
+// they haven't fetched yet.
+func slimStoredACP(acp *sessionevents.ACPEvent) *sessionevents.ACPEvent {
+	if acp == nil {
+		return nil
+	}
+	slim := *acp
+	slim.Title = ""
+	slim.Slug = ""
+	// Plan approval needs the current/plan mode ids; the catalog never does.
+	slim.Modes.AvailableModes = nil
+	if len(slim.Plan) == 0 {
+		slim.Modes = sessionevents.ACPModeState{}
+	}
+	return &slim
+}
+
 func (m *Manager) recordAndPublish(event sessionevents.Event) {
 	if event.At.IsZero() {
 		event.At = time.Now().UTC()
 	}
-	// Publish the stored copy (with Seq) so clients can dedupe against history.
-	events := []sessionevents.Event{event}
+	stored := event
+	stored.ACP = slimStoredACP(event.ACP)
+	events := []sessionevents.Event{stored}
 	if m != nil && m.store != nil && event.SessionID != "" {
 		_ = m.store.AppendSessionEvents(event.SessionID, events...)
 	}
+	// Publish with the stored Seq so clients can dedupe against history.
+	event.Seq = events[0].Seq
 	if m != nil && m.Events != nil {
-		m.Events.Publish(events[0])
+		m.Events.Publish(event)
 	}
 }
 

@@ -29,7 +29,7 @@ type ACPEvent struct {
 	Assistant   string          `json:"assistant,omitempty"`
 	Thought     string          `json:"thought,omitempty"`
 	Error       string          `json:"error,omitempty"`
-	Modes       ACPModeState    `json:"modes,omitempty"`
+	Modes       ACPModeState    `json:"modes,omitzero"`
 	Plan        []PlanEntry     `json:"plan,omitempty"`
 	ToolCalls   []ACPToolCall   `json:"tool_calls,omitempty"`
 	Permissions []ACPPermission `json:"permissions,omitempty"`

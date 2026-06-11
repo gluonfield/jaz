@@ -658,6 +658,7 @@ function SessionPage() {
                 messages={transcriptMessages}
                 events={transcriptEvents}
                 sessionId={session.id}
+                acpMeta={detail.data.acp_meta}
                 groupTurns={isACP}
                 working={sessionRunning}
                 tail={
