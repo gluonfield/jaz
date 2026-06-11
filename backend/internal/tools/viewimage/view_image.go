@@ -38,10 +38,10 @@ type Tool struct {
 func (t *Tool) Definition() tools.Definition {
 	return tools.Function(
 		"view_image",
-		"Loads an image from the server-side workspace so the model can inspect it visually.",
+		"Loads an image from the server-side session working directory so the model can inspect it visually.",
 		false,
 		tools.ObjectSchema(map[string]any{
-			"path": tools.StringSchema("Path to a server-side image file inside the workspace."),
+			"path": tools.StringSchema("Path to a server-side image file inside the session working directory."),
 			"detail": map[string]any{
 				"type":        "string",
 				"description": "Image detail budget: auto, low, or high. Defaults to high.",
@@ -71,7 +71,7 @@ func (t *Tool) Execute(ctx context.Context, inputs map[string]any) (tools.Result
 		return tools.Result{}, err
 	}
 
-	base, err := sessioncontext.WorkspaceBase(ctx, workspace)
+	base, err := sessioncontext.SessionBase(ctx, workspace)
 	if err != nil {
 		return tools.Result{}, err
 	}
