@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { motion } from 'motion/react'
 import { useState } from 'react'
 import { MarkdownEditor } from '@/components/agent/MarkdownEditor'
+import { FileTabs } from './FileTabs'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -105,39 +105,20 @@ export function PersonalizationSettings() {
         </div>
       </header>
 
-      <div role="tablist" className="flex gap-1 border-b border-border">
-        {fileList.map((file) => {
+      <FileTabs
+        className="border-b border-border"
+        underlineId="personalization-tab-underline"
+        active={activeFile.name}
+        onSelect={setActive}
+        tabs={fileList.map((file) => {
           const fileDraft = drafts[file.name]
-          const fileDirty = fileDraft !== undefined && fileDraft !== file.content
-          const isActive = file.name === activeFile.name
-          return (
-            <button
-              key={file.name}
-              role="tab"
-              type="button"
-              aria-selected={isActive}
-              onClick={() => setActive(file.name)}
-              className={`relative -mb-px flex items-center gap-1.5 rounded-t-control px-3 py-2 font-mono text-[12px] transition-colors duration-150 ${
-                isActive ? 'font-medium text-ink' : 'text-ink-2 hover:bg-surface hover:text-ink'
-              }`}
-            >
-              {isActive ? (
-                <motion.span
-                  layoutId="personalization-tab-underline"
-                  className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-primary"
-                  transition={{ type: 'spring', stiffness: 480, damping: 38 }}
-                />
-              ) : null}
-              {file.name}
-              {fileDirty ? (
-                <span aria-label="unsaved changes" className="size-1.5 rounded-full bg-accent" />
-              ) : !file.exists ? (
-                <span className="rounded bg-surface-2 px-1 text-[10px] text-ink-3">new</span>
-              ) : null}
-            </button>
-          )
+          return {
+            name: file.name,
+            dirty: fileDraft !== undefined && fileDraft !== file.content,
+            badge: file.exists ? undefined : 'new',
+          }
         })}
-      </div>
+      />
 
       <div className="min-h-0 flex-1 overflow-hidden rounded-b-card border border-t-0 border-border">
         <MarkdownEditor

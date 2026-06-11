@@ -13,6 +13,7 @@ import (
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/loops"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
+	"github.com/wins/jaz/backend/internal/memoryservice"
 	"github.com/wins/jaz/backend/internal/provider"
 	mockprovider "github.com/wins/jaz/backend/internal/provider/mock"
 	openaiprovider "github.com/wins/jaz/backend/internal/provider/openai"
@@ -36,8 +37,8 @@ import (
 	viewimagetool "github.com/wins/jaz/backend/internal/tools/viewimage"
 	widgettool "github.com/wins/jaz/backend/internal/tools/widget"
 	"github.com/wins/jaz/backend/internal/voice"
-	"github.com/wins/jaz/backend/internal/widgets"
 	mistralvoice "github.com/wins/jaz/backend/internal/voice/mistral"
+	"github.com/wins/jaz/backend/internal/widgets"
 	"go.uber.org/fx"
 )
 
@@ -113,8 +114,8 @@ func NewMemory(cfg Config) (*jazmem.Memory, error) {
 	return jazmem.Open(jazmem.Config{Root: cfg.Memory.Root, DBPath: cfg.Memory.DBPath})
 }
 
-func NewPromptBuilder(store *sqlitestore.Store, workspace Workspace, memory *jazmem.Memory, logger *log.Logger) *coordinator.Builder {
-	return coordinator.NewBuilder(store.RootDir(), string(workspace), memory.Root(), logger.WithPrefix("prompt"))
+func NewPromptBuilder(store *sqlitestore.Store, workspace Workspace, memory *memoryservice.Service) *coordinator.Builder {
+	return coordinator.NewBuilder(store.RootDir(), string(workspace), memory.Root(), memory.Enabled)
 }
 
 func NewACPAgentCatalog(cfg Config) acp.AgentCatalog {
@@ -147,7 +148,7 @@ func NewWidgetSessionPublisher(service *widgets.Service, store *sqlitestore.Stor
 	return &widgets.SessionPublisher{Service: service, Sessions: store, Loops: store}
 }
 
-func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, memory *jazmem.Memory, store *sqlitestore.Store, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher) *tools.Registry {
+func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, memory *memoryservice.Service, store *sqlitestore.Store, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher) *tools.Registry {
 	return tools.NewRegistry(
 		&plantool.Tool{Store: store, Events: events},
 		&exectool.ExecCommandTool{Manager: commandManager, Workspace: string(workspace)},
@@ -161,8 +162,8 @@ func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspac
 		&agentwait.Tool{Manager: manager},
 		&agentcancel.Tool{Manager: manager},
 		&agentlist.Tool{Manager: manager},
-		&memorytool.SearchTool{Memory: memory},
-		&memorytool.GetTool{Memory: memory},
+		&memorytool.SearchTool{Memory: memory.Memory, Enabled: memory.Enabled},
+		&memorytool.GetTool{Memory: memory.Memory, Enabled: memory.Enabled},
 	)
 }
 
@@ -204,26 +205,16 @@ func CloseMemory(lc fx.Lifecycle, memory *jazmem.Memory) {
 	})
 }
 
-func StartMemoryScheduler(lc fx.Lifecycle, cfg Config, memory *jazmem.Memory, logger *log.Logger) {
-	if !cfg.Memory.Scheduler {
-		return
-	}
-	var cancel context.CancelFunc
+func StartMemoryScheduler(lc fx.Lifecycle, memory *memoryservice.Service) {
 	lc.Append(fx.Hook{
 		OnStart: func(context.Context) error {
-			ctx, stop := context.WithCancel(context.Background())
-			cancel = stop
-			go func() {
-				if err := memory.StartScheduler(ctx); err != nil && ctx.Err() == nil {
-					logger.WithPrefix("memory").Error("scheduler stopped", "error", err)
-				}
-			}()
+			if memory.Enabled() {
+				memory.Scheduler.Start()
+			}
 			return nil
 		},
 		OnStop: func(context.Context) error {
-			if cancel != nil {
-				cancel()
-			}
+			memory.Scheduler.Stop()
 			return nil
 		},
 	})

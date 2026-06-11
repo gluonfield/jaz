@@ -19,6 +19,7 @@ import (
 	"github.com/wins/jaz/backend/internal/loops"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/media"
+	"github.com/wins/jaz/backend/internal/memoryservice"
 	"github.com/wins/jaz/backend/internal/pathsafe"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessionevents"
@@ -65,6 +66,10 @@ type Server struct {
 	// picker browses it (confined by pathsafe).
 	Workspace string
 	Log       *log.Logger
+
+	// Memory owns the embedded jazmem instance, its enabled gate, scheduler,
+	// and MCP surface.
+	Memory *memoryservice.Service
 
 	// in-flight native turns by session id, cancellable via the cancel action
 	turnCancels sync.Map
@@ -122,6 +127,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /v1/agent/files/{name}", s.handleWriteAgentFile)
 	mux.HandleFunc("POST /v1/audio/transcribe", s.handleTranscribe)
 	mux.HandleFunc("POST /v1/audio/speak", s.handleSpeak)
+	mux.HandleFunc("GET /v1/memory", s.handleMemoryStatus)
+	mux.HandleFunc("PUT /v1/memory", s.handleMemoryUpdate)
+	mux.HandleFunc("PUT /v1/memory/horizons/{name}", s.handleMemoryHorizon)
+	mux.HandleFunc("POST /v1/memory/reindex", s.handleMemoryReindex)
+	mux.Handle("/mcp/jazmem", s.memoryMCPHandler())
+	mux.Handle("/jazmem/", http.StripPrefix("/jazmem", s.memoryAPIHandler()))
 	return withCORS(mux)
 }
 

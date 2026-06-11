@@ -36,13 +36,13 @@ type Schedule struct {
 }
 
 type Loop struct {
-	ID              string    `json:"id"`
-	Name            string    `json:"name"`
-	Prompt          string    `json:"prompt"`
-	Schedule        Schedule  `json:"schedule"`
-	Status          string    `json:"status"`
-	Runtime         string    `json:"runtime"`
-	ACPAgent        string    `json:"acp_agent,omitempty"`
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	Prompt   string   `json:"prompt"`
+	Schedule Schedule `json:"schedule"`
+	Status   string   `json:"status"`
+	Runtime  string   `json:"runtime"`
+	ACPAgent string   `json:"acp_agent,omitempty"`
 	// ModelProvider/Model override the Settings > Agents defaults for runs;
 	// empty follows settings at run time (like sessions).
 	ModelProvider   string    `json:"model_provider,omitempty"`

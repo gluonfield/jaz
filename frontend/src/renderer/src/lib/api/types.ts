@@ -340,6 +340,51 @@ export interface AgentFile {
   exists: boolean
 }
 
+export interface MemoryHorizon {
+  name: string
+  content: string
+  chars: number
+  max_chars: number
+}
+
+export interface MemoryTask {
+  name: string
+  last_run_at?: string
+  status?: string
+  error?: string
+  next_due?: string
+}
+
+export interface MemoryDoctor {
+  root: string
+  db_path: string
+  page_count: number
+  chunk_count: number
+  link_count: number
+  typed_link_count: number
+  unresolved_count: number
+}
+
+export interface MemoryStatus {
+  enabled: boolean
+  scheduler_running: boolean
+  root: string
+  db_path: string
+  doctor: MemoryDoctor
+  horizons: MemoryHorizon[]
+  tasks: MemoryTask[]
+  mcp_url?: string
+}
+
+export interface MemoryIndexReport {
+  page_count: number
+  chunk_count: number
+  explicit_links: number
+  typed_links: number
+  mention_links: number
+  unresolved_links: number
+}
+
 export interface AgentFilesResponse {
   files: AgentFile[]
   root: string

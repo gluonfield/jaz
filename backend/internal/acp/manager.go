@@ -42,7 +42,12 @@ type Manager struct {
 	log          *log.Logger
 	Done         func(context.Context, Job)
 	TurnFinished func(context.Context, Job)
-	Events       *sessionevents.Bus
+
+	// MemoryMCP, when configured, is appended to the MCP servers handed to
+	// HTTP-capable ACP agents. It is synthetic: never stored, never listed by
+	// the MCP settings API.
+	MemoryMCP MemoryMCP
+	Events    *sessionevents.Bus
 	// PublishWidget backs the _jaz.dev/widget/publish extension method; the
 	// session id is the jaz session linked to the calling agent's ACP session.
 	PublishWidget func(WidgetPublishRequest) (WidgetPublishResult, error)

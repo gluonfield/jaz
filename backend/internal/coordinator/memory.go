@@ -19,11 +19,11 @@ const (
 
 // memorySections loads the always-injected jazmem horizons: LONG_TERM.md,
 // SHORT_TERM.md, and today's + yesterday's daily pages. Missing files are
-// skipped; the memory root is jazmem's markdown root, separate from the jaz
-// root that holds AGENTS.md.
-func memorySections(memoryRoot string, now time.Time) []prompttemplate.Section {
+// skipped (ReadPromptFile returns ""); real read errors propagate like the
+// jaz prompt files so memory never vanishes silently.
+func memorySections(memoryRoot string, now time.Time) ([]prompttemplate.Section, error) {
 	if strings.TrimSpace(memoryRoot) == "" {
-		return nil
+		return nil, nil
 	}
 	var sections []prompttemplate.Section
 	add := func(name, content string) {
@@ -31,16 +31,25 @@ func memorySections(memoryRoot string, now time.Time) []prompttemplate.Section {
 			sections = append(sections, prompttemplate.Section{Name: "memory/" + name, Body: content})
 		}
 	}
-	longTerm, _ := ReadPromptFile(memoryRoot, "LONG_TERM.md")
+	longTerm, err := ReadPromptFile(memoryRoot, "LONG_TERM.md")
+	if err != nil {
+		return nil, err
+	}
 	add("LONG_TERM.md", truncateHead(longTerm, longTermPromptChars))
-	shortTerm, _ := ReadPromptFile(memoryRoot, "SHORT_TERM.md")
+	shortTerm, err := ReadPromptFile(memoryRoot, "SHORT_TERM.md")
+	if err != nil {
+		return nil, err
+	}
 	add("SHORT_TERM.md", truncateHead(shortTerm, shortTermPromptChars))
 	for _, day := range []time.Time{now, now.AddDate(0, 0, -1)} {
 		name := fmt.Sprintf("daily/%s.md", day.Local().Format("2006-01-02"))
-		daily, _ := ReadPromptFile(memoryRoot, name)
+		daily, err := ReadPromptFile(memoryRoot, name)
+		if err != nil {
+			return nil, err
+		}
 		add(name, truncateTail(daily, dailyPromptChars))
 	}
-	return sections
+	return sections, nil
 }
 
 func truncateHead(content string, maxChars int) string {

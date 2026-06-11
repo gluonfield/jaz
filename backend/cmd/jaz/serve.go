@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
+	"github.com/gluonfield/jazmem/pkg/jazmem"
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/app"
@@ -18,6 +19,7 @@ import (
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/loops"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
+	"github.com/wins/jaz/backend/internal/memoryservice"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
@@ -42,6 +44,7 @@ func runServe(args []string) error {
 			app.NewStore,
 			app.NewWorkspace,
 			app.NewMemory,
+			newMemoryService,
 			exectool.NewCommandManager,
 			app.NewPromptBuilder,
 			app.NewACPAgentConfigSource,
@@ -114,11 +117,27 @@ func loadConfig() (config, error) {
 
 func parseServeOptions(args serveArgs) (serveOptions, error) {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
-	addr := fs.String("addr", ":8080", "HTTP listen address")
+	addr := fs.String("addr", ":5299", "HTTP listen address")
 	if err := fs.Parse(args.Args); err != nil {
 		return serveOptions{}, err
 	}
 	return serveOptions{Addr: *addr}, nil
+}
+
+func newMemoryService(cfg app.Config, memory *jazmem.Memory, store *sqlitestore.Store, logger *log.Logger, opts serveOptions) *memoryservice.Service {
+	scheduler := memoryservice.NewScheduler(memory, cfg.Memory.Scheduler, logger)
+	return memoryservice.New(memory, store, scheduler, memoryMCPURL(opts.Addr))
+}
+
+// memoryMCPURL derives the loopback URL ACP agents and the settings UI use to
+// reach the embedded jazmem MCP endpoint.
+func memoryMCPURL(addr string) string {
+	addr = strings.TrimSpace(addr)
+	host := addr
+	if strings.HasPrefix(addr, ":") {
+		host = "127.0.0.1" + addr
+	}
+	return "http://" + host + "/mcp/jazmem"
 }
 
 func conciseError(err error) error {
@@ -159,22 +178,25 @@ func startServer(
 	opts serveOptions,
 	widgetService *widgets.Service,
 	widgetPublisher *widgets.SessionPublisher,
+	memory *memoryservice.Service,
 ) {
 	handler := &server.Server{
-		Agent:                 a,
-		Store:                 store,
-		ACP:                   manager,
-		MCP:                   mcpManager,
-		Locks:                 locks,
-		Events:                events,
-		STT:                   stt,
-		TTS:                   tts,
-		AgentCatalog:          catalog,
-		Prompts:               prompts,
-		Root:                  store.RootDir(),
-		Workspace:             string(workspace),
-		Log:                   logger.WithPrefix("server"),
+		Agent:        a,
+		Store:        store,
+		ACP:          manager,
+		MCP:          mcpManager,
+		Locks:        locks,
+		Events:       events,
+		STT:          stt,
+		TTS:          tts,
+		AgentCatalog: catalog,
+		Prompts:      prompts,
+		Root:         store.RootDir(),
+		Workspace:    string(workspace),
+		Log:          logger.WithPrefix("server"),
+		Memory:       memory,
 	}
+	manager.MemoryMCP = acp.MemoryMCP{URL: memory.MCPURL(), Enabled: memory.Enabled}
 	loopRunner := server.NewLoopRunner(handler)
 	loopMemoryPaths := loops.NewMemoryPaths(loops.AutomationsDir(store.RootDir()))
 	loopService := loops.NewService(store, loopRunner, logger,

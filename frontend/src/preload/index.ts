@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
-const apiBaseUrl = process.env['JAZ_API_URL'] ?? 'http://localhost:8080'
+const apiBaseUrl = process.env['JAZ_API_URL'] ?? 'http://localhost:5299'
 
 // Board windows are spawned with this flag so the renderer can drop the app
 // chrome (sidebar, titlebar) and render the board full-bleed.

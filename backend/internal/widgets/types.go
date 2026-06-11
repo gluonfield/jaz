@@ -17,12 +17,12 @@ const (
 )
 
 type Widget struct {
-	ID             string    `json:"id"`
-	LoopID         string    `json:"loop_id"`
-	Title          string    `json:"title"`
-	CurrentVersion int       `json:"current_version"`
-	SizeHint       string    `json:"size_hint,omitempty"`
-	LastError      string    `json:"last_error,omitempty"`
+	ID             string `json:"id"`
+	LoopID         string `json:"loop_id"`
+	Title          string `json:"title"`
+	CurrentVersion int    `json:"current_version"`
+	SizeHint       string `json:"size_hint,omitempty"`
+	LastError      string `json:"last_error,omitempty"`
 	// LastLayout holds the board's most recent layout telemetry for the
 	// current version (JSON from the bridge); cleared on publish.
 	LastLayout string    `json:"last_layout,omitempty"`
