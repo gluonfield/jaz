@@ -143,6 +143,12 @@ export function ComposerCard({
     ...workspaceFilesQuery(fileRoot ?? ''),
     enabled: fileRoot !== undefined && focused,
   })
+  const skillMentionStart = focused && menuTrigger?.trigger === '$' ? menuTrigger.start : null
+
+  useEffect(() => {
+    if (skillMentionStart === null) return
+    void skills.refetch()
+  }, [skillMentionStart, skills.refetch])
 
   const sections = useMemo<SuggestionSection[]>(() => {
     if (!menuTrigger) return []
