@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -278,6 +279,218 @@ func TestCommitAllAndMergeIntoMain(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(filepath.Join(main, "index.html")); string(got) != "purple\n" {
 		t.Errorf("main index.html = %q after aborted merge, want purple", got)
+	}
+}
+
+func TestDiffSummaryAndFileDiff(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	ctx := context.Background()
+
+	if _, err := DiffSummary(ctx, t.TempDir()); err == nil {
+		t.Fatal("DiffSummary(non-repo) should error so the handler can degrade to empty")
+	}
+
+	workspace, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	main := filepath.Join(workspace, "repo")
+	git := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir, "-c", "user.email=t@t", "-c", "user.name=t"}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	if err := exec.Command("git", "init", "-q", "-b", "main", main).Run(); err != nil {
+		t.Fatal(err)
+	}
+	write := func(dir, name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(main, "keep.txt", "one\ntwo\nthree\n")
+	write(main, "gone.txt", "bye\n")
+	write(main, "moved.txt", "a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n")
+	git(main, "add", "-A")
+	git(main, "commit", "-q", "-m", "init")
+
+	worktree, err := AddWorktree(ctx, workspace, main, "diff-wt")
+	if err != nil {
+		t.Fatalf("AddWorktree: %v", err)
+	}
+
+	// Session work in every flavor: a committed edit, a dirty edit on top, a
+	// deletion, a rename, an untracked text file, and an untracked binary.
+	write(worktree, "keep.txt", "one\nTWO\nthree\n")
+	git(worktree, "commit", "-q", "-am", "edit keep")
+	write(worktree, "keep.txt", "one\nTWO\nthree\nfour\n")
+	git(worktree, "rm", "-q", "gone.txt")
+	git(worktree, "mv", "moved.txt", "renamed.txt")
+	write(worktree, "fresh.txt", "hi\nthere")
+	if err := os.WriteFile(filepath.Join(worktree, "blob.bin"), []byte("a\x00b"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	summary, err := DiffSummary(ctx, worktree)
+	if err != nil {
+		t.Fatalf("DiffSummary: %v", err)
+	}
+	byPath := map[string]FileChange{}
+	for _, file := range summary.Files {
+		byPath[file.Path] = file
+	}
+	// Committed and uncommitted edits both count against the fork point.
+	if got := byPath["keep.txt"]; got.Status != "modified" || got.Added != 2 || got.Deleted != 1 {
+		t.Errorf("keep.txt = %+v, want modified +2 -1", got)
+	}
+	if got := byPath["gone.txt"]; got.Status != "deleted" || got.Deleted != 1 {
+		t.Errorf("gone.txt = %+v, want deleted -1", got)
+	}
+	if got := byPath["renamed.txt"]; got.Status != "renamed" || got.OldPath != "moved.txt" {
+		t.Errorf("renamed.txt = %+v, want renamed from moved.txt", got)
+	}
+	if got := byPath["fresh.txt"]; got.Status != "untracked" || got.Added != 2 {
+		t.Errorf("fresh.txt = %+v, want untracked +2 (no trailing newline)", got)
+	}
+	if got := byPath["blob.bin"]; got.Status != "untracked" || !got.Binary || got.Added != 0 {
+		t.Errorf("blob.bin = %+v, want untracked binary", got)
+	}
+	if summary.TotalAdded != 4 || summary.TotalDeleted != 2 {
+		t.Errorf("totals = +%d -%d, want +4 -2", summary.TotalAdded, summary.TotalDeleted)
+	}
+
+	// Main moving on must not leak into the session's summary (merge-base).
+	write(main, "mainonly.txt", "main work\n")
+	git(main, "add", "-A")
+	git(main, "commit", "-q", "-m", "main moves")
+	after, err := DiffSummary(ctx, worktree)
+	if err != nil {
+		t.Fatalf("DiffSummary after main moved: %v", err)
+	}
+	if !reflect.DeepEqual(after, summary) {
+		t.Errorf("summary changed when main moved:\n got %+v\nwant %+v", after, summary)
+	}
+
+	// The main checkout itself shows only uncommitted work, not history.
+	write(main, "mainonly.txt", "main work\nedited\n")
+	mainSummary, err := DiffSummary(ctx, main)
+	if err != nil {
+		t.Fatalf("DiffSummary(main): %v", err)
+	}
+	if len(mainSummary.Files) != 1 || mainSummary.Files[0].Path != "mainonly.txt" {
+		t.Errorf("main summary = %+v, want just the dirty mainonly.txt", mainSummary.Files)
+	}
+
+	// Per-file patches: a tracked edit pinned to the summary's base, an
+	// untracked file, a rename, and the binary sniff on both diff flavors.
+	patch, err := FileDiff(ctx, worktree, FileDiffSpec{Path: "keep.txt", Base: summary.Base})
+	if err != nil {
+		t.Fatalf("FileDiff(keep.txt): %v", err)
+	}
+	if !strings.Contains(patch.Patch, "@@") || !strings.Contains(patch.Patch, "+TWO") || !strings.Contains(patch.Patch, "+four") {
+		t.Errorf("keep.txt patch missing combined edits:\n%s", patch.Patch)
+	}
+	patch, err = FileDiff(ctx, worktree, FileDiffSpec{Path: "fresh.txt", Untracked: true})
+	if err != nil {
+		t.Fatalf("FileDiff(fresh.txt): %v", err)
+	}
+	if !strings.Contains(patch.Patch, "+hi") {
+		t.Errorf("fresh.txt patch should show the untracked file as added:\n%s", patch.Patch)
+	}
+	patch, err = FileDiff(ctx, worktree, FileDiffSpec{Path: "renamed.txt", OldPath: "moved.txt"})
+	if err != nil {
+		t.Fatalf("FileDiff(renamed.txt): %v", err)
+	}
+	if !strings.Contains(patch.Patch, "rename") {
+		t.Errorf("renamed.txt patch should mention the rename:\n%s", patch.Patch)
+	}
+	patch, err = FileDiff(ctx, worktree, FileDiffSpec{Path: "blob.bin", Untracked: true})
+	if err != nil {
+		t.Fatalf("FileDiff(blob.bin untracked): %v", err)
+	}
+	if !patch.Binary || patch.Patch != "" {
+		t.Errorf("untracked blob.bin = %+v, want binary with empty patch", patch)
+	}
+	git(worktree, "add", "blob.bin")
+	git(worktree, "commit", "-q", "-m", "binary")
+	patch, err = FileDiff(ctx, worktree, FileDiffSpec{Path: "blob.bin"})
+	if err != nil {
+		t.Fatalf("FileDiff(blob.bin): %v", err)
+	}
+	if !patch.Binary || patch.Patch != "" {
+		t.Errorf("blob.bin = %+v, want binary with empty patch", patch)
+	}
+
+	// One path, two rows: gone.txt is deleted vs base AND recreated
+	// untracked. Each row's patch must tell its own story — the spec's
+	// Untracked flag is what keeps them apart.
+	write(worktree, "gone.txt", "reborn\n")
+	reborn, err := DiffSummary(ctx, worktree)
+	if err != nil {
+		t.Fatalf("DiffSummary after recreating gone.txt: %v", err)
+	}
+	rows := map[string]bool{}
+	for _, file := range reborn.Files {
+		if file.Path == "gone.txt" {
+			rows[file.Status] = true
+		}
+	}
+	if len(rows) != 2 || !rows["deleted"] || !rows["untracked"] {
+		t.Errorf("gone.txt rows = %v, want deleted + untracked", rows)
+	}
+	patch, err = FileDiff(ctx, worktree, FileDiffSpec{Path: "gone.txt", Base: reborn.Base})
+	if err != nil {
+		t.Fatalf("FileDiff(gone.txt deleted): %v", err)
+	}
+	if !strings.Contains(patch.Patch, "-bye") || strings.Contains(patch.Patch, "+reborn") {
+		t.Errorf("deleted row should diff the tracked deletion:\n%s", patch.Patch)
+	}
+	patch, err = FileDiff(ctx, worktree, FileDiffSpec{Path: "gone.txt", Untracked: true})
+	if err != nil {
+		t.Fatalf("FileDiff(gone.txt untracked): %v", err)
+	}
+	if !strings.Contains(patch.Patch, "+reborn") || strings.Contains(patch.Patch, "-bye") {
+		t.Errorf("untracked row should diff the recreation:\n%s", patch.Patch)
+	}
+}
+
+func TestFileDiffKeepsTrailingBlankContext(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	ctx := context.Background()
+	dir := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir, "-c", "user.email=t@t", "-c", "user.name=t"}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("init", "-q", "-b", "main")
+	if err := os.WriteFile(filepath.Join(dir, "f.txt"), []byte("x\n\n\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run("add", "-A")
+	run("commit", "-q", "-m", "init")
+	if err := os.WriteFile(filepath.Join(dir, "f.txt"), []byte("y\n\n\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	patch, err := FileDiff(ctx, dir, FileDiffSpec{Path: "f.txt"})
+	if err != nil {
+		t.Fatalf("FileDiff: %v", err)
+	}
+	// git renders unchanged blank lines as a single space; a whitespace-
+	// trimming runner would eat them off the end and the hunk would render
+	// shorter than its @@ header claims.
+	if !strings.HasSuffix(patch.Patch, "\n \n ") {
+		t.Errorf("trailing blank context lines were trimmed:\n%q", patch.Patch)
 	}
 }
 

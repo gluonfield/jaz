@@ -300,17 +300,20 @@ func ListFiles(ctx context.Context, dir string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	if out == "" {
-		return nil, nil
-	}
+	return splitNul(out), nil
+}
+
+// splitNul splits NUL-terminated git output (-z flags) into its non-empty
+// records.
+func splitNul(out string) []string {
 	parts := strings.Split(strings.TrimSuffix(out, "\x00"), "\x00")
-	files := make([]string, 0, len(parts))
+	fields := parts[:0]
 	for _, part := range parts {
 		if part != "" {
-			files = append(files, part)
+			fields = append(fields, part)
 		}
 	}
-	return files, nil
+	return fields
 }
 
 func git(ctx context.Context, dir string, args ...string) (string, error) {

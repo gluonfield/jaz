@@ -531,6 +531,9 @@ function SessionPage() {
         await queryClient.refetchQueries({ queryKey: keys.sessionMessages(sessionId) })
         queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
         queryClient.invalidateQueries({ queryKey: keys.allSessions })
+        // The turn likely touched the working tree; the SSE hook skips this
+        // page while it streams (streamingRef), so refresh repo state here.
+        queryClient.invalidateQueries({ queryKey: keys.sessionRepo(sessionId) })
         setLive((prev) => (prev?.error ? { ...prev, error: undefined } : null))
       })
   }, [notifyCriticalError, pinToBottom, queryClient, sessionId])
@@ -842,7 +845,7 @@ function SessionPage() {
         animate={{ width: panelOpen ? SESSION_PANEL_WIDTH : 0 }}
         transition={{ type: 'spring', stiffness: 400, damping: 36 }}
       >
-        <SessionPanel session={session} plan={panelPlan} working={sessionRunning} />
+        <SessionPanel session={session} plan={panelPlan} working={sessionRunning} visible={panelOpen} />
       </motion.div>
     </div>
   )
