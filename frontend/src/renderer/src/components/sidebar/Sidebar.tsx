@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Plus, Settings, SquarePen, Trash2 } from 'lucide-react'
+import { GripVertical, Plus, Settings, SquarePen, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { type DragEvent, type PointerEvent as ReactPointerEvent, useState } from 'react'
+import { type DragEvent, type PointerEvent as ReactPointerEvent, useRef, useState } from 'react'
 import { BoardModal } from '@/components/boards/BoardModal'
 import { LoopModal } from '@/components/loops/LoopModal'
 import { IconButton } from '@/components/ui/IconButton'
@@ -82,7 +82,9 @@ function moveProjectPath(projects: Project[], source: string, target: string): s
   const to = paths.indexOf(target)
   if (from === -1 || to === -1 || from === to) return paths
   const [path] = paths.splice(from, 1)
-  paths.splice(paths.indexOf(target), 0, path)
+  // Insert at the target's slot: moving down lands after the target, moving
+  // up lands before it — the dragged project takes the drop row's place.
+  paths.splice(to, 0, path)
   return paths
 }
 
@@ -269,12 +271,15 @@ export function Sidebar({
   const sessionSections = sessionsBySavedProject(sessions.data ?? [], projects.data ?? [])
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set())
   const [draggingProject, setDraggingProject] = useState('')
+  const dragStartFrame = useRef(0)
+  const [dropProjectTarget, setDropProjectTarget] = useState('')
   const reorder = useMutation({
     mutationFn: reorderProjects,
     onSuccess: (ordered) => queryClient.setQueryData(keys.projects, ordered),
     onSettled: () => queryClient.invalidateQueries({ queryKey: keys.projects }),
   })
   const hasSessions = sessionSections.groups.length > 0 || sessionSections.ungrouped.length > 0
+  const draggedIndex = sessionSections.groups.findIndex((group) => group.key === draggingProject)
   const visibleUngrouped = sessionSections.ungrouped.slice(0, DEFAULT_SESSION_LIMIT)
   const expandProject = (key: string) =>
     setExpandedProjects((current) => {
@@ -283,7 +288,6 @@ export function Sidebar({
       return next
     })
   const startProjectDrag = (event: DragEvent, key: string) => {
-    setDraggingProject(key)
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData('text/plain', key)
     const block = event.currentTarget.closest('[data-project-group]')
@@ -291,16 +295,29 @@ export function Sidebar({
       const rect = block.getBoundingClientRect()
       event.dataTransfer.setDragImage(block, event.clientX - rect.left, event.clientY - rect.top)
     }
+    // Chromium aborts a drag whose DOM mutates during dragstart, so the
+    // re-render this state update causes has to wait until the next frame.
+    dragStartFrame.current = requestAnimationFrame(() => setDraggingProject(key))
   }
-  const allowProjectDrop = (event: DragEvent) => {
+  const endProjectDrag = () => {
+    cancelAnimationFrame(dragStartFrame.current)
+    setDraggingProject('')
+    setDropProjectTarget('')
+  }
+  const allowProjectDrop = (event: DragEvent, key: string) => {
     if (!draggingProject) return
     event.preventDefault()
     event.dataTransfer.dropEffect = 'move'
+    setDropProjectTarget(key)
+  }
+  const leaveProjectDrop = (event: DragEvent, key: string) => {
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+    setDropProjectTarget((current) => (current === key ? '' : current))
   }
   const dropProject = (event: DragEvent, target: string) => {
     event.preventDefault()
     const source = draggingProject || event.dataTransfer.getData('text/plain')
-    setDraggingProject('')
+    endProjectDrag()
     if (!source || source === target || reorder.isPending) return
     reorder.mutate(moveProjectPath(projects.data ?? [], source, target))
   }
@@ -336,31 +353,49 @@ export function Sidebar({
             <p className="px-2.5 py-1 text-[13px] text-ink-3">No sessions yet</p>
           ) : (
             <div className="flex flex-col gap-3">
-              {sessionSections.groups.map((group) => {
+              {sessionSections.groups.map((group, index) => {
                 const expanded = expandedProjects.has(group.key)
                 const visibleItems = expanded ? group.items : group.items.slice(0, PROJECT_SESSION_LIMIT)
+                const isDropTarget =
+                  dropProjectTarget === group.key && draggedIndex !== -1 && draggingProject !== group.key
                 return (
                   <motion.div
                     key={group.key}
-                    layout
+                    layout={resizing ? false : 'position'}
                     transition={{ type: 'spring', stiffness: 420, damping: 34 }}
                     data-project-group
-                    onDragOver={allowProjectDrop}
+                    onDragOver={(event) => allowProjectDrop(event, group.key)}
+                    onDragLeave={(event) => leaveProjectDrop(event, group.key)}
                     onDrop={(event) => dropProject(event, group.key)}
-                    className={draggingProject === group.key ? 'opacity-60' : undefined}
+                    className={`relative ${draggingProject === group.key ? 'opacity-60' : ''}`}
                   >
+                    {isDropTarget ? (
+                      <span
+                        className={`pointer-events-none absolute inset-x-2 h-0.5 rounded-full bg-primary ${
+                          index > draggedIndex ? '-bottom-[7px]' : '-top-[7px]'
+                        }`}
+                      />
+                    ) : null}
                     <div className="group/project flex items-center justify-between pr-1">
-                      <button
-                        type="button"
-                        draggable
-                        onDragStart={(event) => startProjectDrag(event, group.key)}
-                        onDragEnd={() => setDraggingProject('')}
-                        className="min-w-0 flex-1 cursor-grab truncate px-2 pb-1 text-left text-[11px] font-medium text-ink-3 active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none"
-                        aria-label={`Reorder ${group.label}`}
-                        title={group.label}
-                      >
-                        {group.label}
-                      </button>
+                      <div className="flex min-w-0 flex-1 items-center">
+                        <button
+                          type="button"
+                          draggable
+                          onDragStart={(event) => startProjectDrag(event, group.key)}
+                          onDragEnd={endProjectDrag}
+                          className="-ml-3 grid size-5 shrink-0 cursor-grab place-items-center rounded-full text-ink-3 opacity-0 transition-colors duration-150 hover:bg-surface-2 hover:text-ink active:cursor-grabbing focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none group-hover/project:opacity-100"
+                          aria-label={`Reorder ${group.label}`}
+                          title="Drag to reorder"
+                        >
+                          <GripVertical size={13} />
+                        </button>
+                        <p
+                          className="min-w-0 truncate pb-1 text-[11px] font-medium text-ink-3"
+                          title={group.label}
+                        >
+                          {group.label}
+                        </p>
+                      </div>
                       <Link
                         to="/new"
                         search={{ project: group.key }}
