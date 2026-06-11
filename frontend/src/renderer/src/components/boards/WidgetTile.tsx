@@ -8,7 +8,12 @@ import {
   useState,
 } from 'react'
 import { IconButton } from '@/components/ui/IconButton'
-import { reportWidgetError, reportWidgetLayout, widgetContentUrl } from '@/lib/api/boards'
+import {
+  reportWidgetError,
+  reportWidgetLayout,
+  widgetContentUrl,
+  type WidgetLayoutReport,
+} from '@/lib/api/boards'
 import { runLoopNow } from '@/lib/api/loops'
 import type { BoardItem } from '@/lib/api/types'
 import { hasTime, relativeTime } from '@/lib/format/time'
@@ -186,7 +191,7 @@ export function WidgetTile({
         void reportWidgetError(item.widget_id, msg.message).catch(() => {})
       }
       if (msg?.type === 'jaz:layout' && typeof msg.dead_space_pct === 'number') {
-        const layout = {
+        const layout: WidgetLayoutReport = {
           dead_space_pct: msg.dead_space_pct,
           overflow_px: msg.overflow_px ?? 0,
           clipped: msg.clipped ?? 0,

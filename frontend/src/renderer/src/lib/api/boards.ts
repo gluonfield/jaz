@@ -69,11 +69,18 @@ export function reportWidgetError(widgetId: string, message: string): Promise<{ 
   return post<{ ok: boolean }>(`/v1/widgets/${widgetId}/errors`, { message })
 }
 
-// Bridge-measured layout telemetry (dead space, overflow, clipped elements);
-// the backend surfaces problems in the loop's next-run prompt.
+// Bridge-measured layout telemetry (dead space, overflow, clipped elements,
+// broken images); the backend surfaces problems in the loop's next-run prompt.
+export interface WidgetLayoutReport {
+  dead_space_pct: number
+  overflow_px: number
+  clipped: number
+  img_errors: number
+}
+
 export function reportWidgetLayout(
   widgetId: string,
-  layout: { dead_space_pct: number; overflow_px: number; clipped: number; img_errors: number },
+  layout: WidgetLayoutReport,
 ): Promise<{ ok: boolean }> {
   return post<{ ok: boolean }>(`/v1/widgets/${widgetId}/layout`, layout)
 }
