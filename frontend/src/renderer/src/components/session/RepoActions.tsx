@@ -1,4 +1,3 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeftRight,
   ArrowUpFromLine,
@@ -12,111 +11,22 @@ import {
 } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { Popover } from '@/components/ui/Popover'
-import { useToast } from '@/components/ui/toast'
-import {
-  commitSessionRepo,
-  mergeSessionRepo,
-  pushSessionRepoBranch,
-  sessionRepoQuery,
-} from '@/lib/api/sessions'
 import type { Session } from '@/lib/api/types'
-import { keys } from '@/lib/query/keys'
-
-type Busy = 'pr' | 'commit' | 'push' | 'merge' | null
+import { useRepoActions } from './useRepoActions'
 
 // Titlebar repo capsule: shows the working directory's branch and unfolds
 // into repo actions. Forge link-outs (create PR, open repo) need a parseable
 // web remote; the local actions (commit, handoff) work on any git cwd.
 export function RepoActions({ session }: { session: Session }) {
   const [open, setOpen] = useState(false)
-  const [busy, setBusy] = useState<Busy>(null)
-  const toast = useToast()
-  const queryClient = useQueryClient()
-  const cwd = session.runtime_ref?.cwd
-  const repo = useQuery({ ...sessionRepoQuery(session.id), enabled: Boolean(cwd) })
-  const info = repo.data
-  if (!cwd || !info?.git) return null
+  const repo = useRepoActions(session)
+  const { info, busy, web, branch, branchPath } = repo
+  if (!repo.cwd || !info?.git) return null
 
-  const web = info.web_url
-  const branch = info.branch ?? ''
-  const onDefaultBranch = Boolean(branch) && branch === info.default_branch
-  // Keep slashes literal so feature/x branches map onto forge URLs.
-  const branchPath = branch.split('/').map(encodeURIComponent).join('/')
-  const defaultPath = (info.default_branch ?? '').split('/').map(encodeURIComponent).join('/')
-  const compareUrl = info.default_branch
-    ? `${web}/compare/${defaultPath}...${branchPath}?expand=1`
-    : `${web}/pull/new/${branchPath}`
-  // Cases no automation can fix stay disabled with an explanation; dirty work
-  // and a missing upstream are handled by createPR committing/pushing first.
-  const prHint = !branch
-    ? 'Detached HEAD — check out a branch first'
-    : onDefaultBranch
-      ? 'Already on the default branch'
-      : info.no_commits && !info.dirty
-        ? 'No changes on this branch yet'
-        : info.dirty
-          ? 'Commits, pushes, then opens GitHub'
-          : !info.has_upstream
-            ? 'Pushes the branch, then opens GitHub'
-            : undefined
-  const prDisabled = !branch || onDefaultBranch || Boolean(info.no_commits && !info.dirty)
-
-  const setRepoData = (next: typeof info) =>
-    queryClient.setQueryData(keys.sessionRepo(session.id), next)
   const openUrl = (url: string) => {
-    // The main process routes window.open to the system browser.
-    window.open(url, '_blank', 'noopener')
+    repo.openUrl(url)
     setOpen(false)
   }
-  const run = async (kind: Exclude<Busy, null>, fn: () => Promise<void>) => {
-    setBusy(kind)
-    try {
-      await fn()
-    } catch (error) {
-      toast((error as Error).message, 'danger')
-      // The repo may have changed server-side even when the action failed.
-      void repo.refetch()
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  const createPR = () =>
-    run('pr', async () => {
-      let state = info
-      if (state.dirty) {
-        state = await commitSessionRepo(session.id)
-        setRepoData(state)
-      }
-      if (!state.has_upstream) {
-        state = await pushSessionRepoBranch(session.id)
-        setRepoData(state)
-      }
-      openUrl(compareUrl)
-    })
-  const commit = () =>
-    run('commit', async () => {
-      setRepoData(await commitSessionRepo(session.id))
-      toast('Changes committed')
-    })
-  const push = () =>
-    run('push', async () => {
-      setRepoData(await pushSessionRepoBranch(session.id))
-      toast('Branch pushed')
-    })
-  const merge = () =>
-    run('merge', async () => {
-      const result = await mergeSessionRepo(session.id)
-      setRepoData(result.info)
-      // A moved cwd changes the session row; refetch it.
-      if (result.moved) void queryClient.invalidateQueries({ queryKey: keys.sessionMessages(session.id) })
-      toast(
-        result.moved
-          ? `Merged into ${info.main_branch} — the session now works in the main checkout`
-          : `Merged into ${info.main_branch} — the agent keeps working in the worktree`,
-      )
-      setOpen(false)
-    })
 
   return (
     <Popover
@@ -127,11 +37,11 @@ export function RepoActions({ session }: { session: Session }) {
       trigger={
         <button
           type="button"
-          title={`${web ? `${info.owner}/${info.repo}` : cwd} · ${branch || 'detached'}`}
+          title={`${web ? `${info.owner}/${info.repo}` : repo.cwd} · ${branch || 'detached'}`}
           onClick={() => {
             // Reads can go stale mid-session (agent pushes, switches branch);
             // refresh on open so the menu reflects the repo right now.
-            if (!open) void repo.refetch()
+            if (!open) repo.refetch()
             setOpen((value) => !value)
           }}
           className="flex h-7 cursor-pointer items-center gap-1.5 rounded-full px-2.5 text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
@@ -150,9 +60,9 @@ export function RepoActions({ session }: { session: Session }) {
         <ActionRow
           icon={busy === 'pr' ? LoaderCircle : GitPullRequestArrow}
           spin={busy === 'pr'}
-          disabled={prDisabled || busy !== null}
-          hint={prHint}
-          onClick={createPR}
+          disabled={repo.prDisabled || busy !== null}
+          hint={repo.prHint}
+          onClick={() => void repo.createPR().then((ok) => ok && setOpen(false))}
         >
           {busy === 'pr' ? 'Creating pull request…' : 'Create pull request'}
         </ActionRow>
@@ -163,7 +73,7 @@ export function RepoActions({ session }: { session: Session }) {
           spin={busy === 'commit'}
           disabled={busy !== null}
           hint="Commits everything, message from the session title"
-          onClick={commit}
+          onClick={() => void repo.commit()}
         >
           {busy === 'commit' ? 'Committing…' : 'Commit changes'}
         </ActionRow>
@@ -174,7 +84,7 @@ export function RepoActions({ session }: { session: Session }) {
           icon={busy === 'push' ? LoaderCircle : ArrowUpFromLine}
           spin={busy === 'push'}
           disabled={busy !== null}
-          onClick={push}
+          onClick={() => void repo.push()}
         >
           {busy === 'push' ? 'Pushing…' : 'Push branch'}
         </ActionRow>
@@ -185,7 +95,7 @@ export function RepoActions({ session }: { session: Session }) {
           spin={busy === 'merge'}
           disabled={busy !== null}
           hint={`Commits this session's work and merges its branch into ${info.main_branch}`}
-          onClick={merge}
+          onClick={() => void repo.merge().then((ok) => ok && setOpen(false))}
         >
           {busy === 'merge' ? 'Merging…' : `Merge into ${info.main_branch}`}
         </ActionRow>
@@ -216,7 +126,7 @@ export function RepoActions({ session }: { session: Session }) {
   )
 }
 
-function ActionRow({
+export function ActionRow({
   icon: Icon,
   onClick,
   disabled,
