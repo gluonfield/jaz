@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { LoopModal } from '@/components/loops/LoopModal'
 import { compactSchedule } from '@/components/loops/schedule'
 import { Button } from '@/components/ui/Button'
+import { DashedCta } from '@/components/ui/DashedCta'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { agentLabel } from '@/lib/agentLabel'
@@ -40,19 +41,11 @@ function LoopsPage() {
           <p>{loops.error.message}</p>
         </EmptyState>
       ) : loops.data.length === 0 ? (
-        <button
-          type="button"
+        <DashedCta
           onClick={() => setCreating(true)}
-          className="flex w-full flex-col items-center gap-2 rounded-card border border-dashed border-border px-6 py-12 text-center transition-colors duration-150 hover:border-primary/50 hover:bg-surface"
-        >
-          <span className="grid size-10 place-items-center rounded-full bg-surface-2 text-ink-3">
-            <Plus size={18} />
-          </span>
-          <span className="text-[14px] font-medium text-ink">Create your first loop</span>
-          <span className="max-w-[42ch] text-[13px] text-ink-3">
-            Run a prompt on a schedule — each run gets its own thread you can open later.
-          </span>
-        </button>
+          title="Create your first loop"
+          subtitle="Run a prompt on a schedule — each run gets its own thread you can open later."
+        />
       ) : (
         <div className="-mx-2">
           {loops.data.map((loop) => (
