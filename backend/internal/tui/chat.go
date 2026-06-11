@@ -735,7 +735,6 @@ var (
 	inputBoxStyle    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#3a4150")).Padding(0, 1)
 	userMessageStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#d6deeb")).Background(lipgloss.Color("#303336")).Padding(1, 1)
 	promptStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#c0c6d4"))
-	errorStyle       = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#f38ba8"))
 	messageTextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#d6deeb"))
 	toolTextStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#9aa3b5"))
 	errorTextStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#f38ba8"))
