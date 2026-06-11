@@ -6,7 +6,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Composer, PlanDecisionDock } from '@/components/session/Composer'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
-import { RepoActions } from '@/components/session/RepoActions'
 import { SESSION_PANEL_WIDTH, SessionPanel } from '@/components/session/SessionPanel'
 import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
 import { ThinkingBlock } from '@/components/session/ThinkingBlock'
@@ -597,18 +596,15 @@ function SessionPage() {
         : null}
       {titlebarActions
         ? createPortal(
-            <>
-              <RepoActions session={session} />
-              <button
-                type="button"
-                aria-label={panelOpen ? 'Hide session panel' : 'Show session panel'}
-                title={`${panelOpen ? 'Hide' : 'Show'} session panel`}
-                onClick={togglePanel}
-                className="grid size-8 cursor-pointer place-items-center rounded-full text-ink-2 transition-colors duration-200 hover:bg-surface-2 hover:text-ink"
-              >
-                {panelOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
-              </button>
-            </>,
+            <button
+              type="button"
+              aria-label={panelOpen ? 'Hide session panel' : 'Show session panel'}
+              title={`${panelOpen ? 'Hide' : 'Show'} session panel`}
+              onClick={togglePanel}
+              className="grid size-8 cursor-pointer place-items-center rounded-full text-ink-2 transition-colors duration-200 hover:bg-surface-2 hover:text-ink"
+            >
+              {panelOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
+            </button>,
             titlebarActions,
           )
         : null}

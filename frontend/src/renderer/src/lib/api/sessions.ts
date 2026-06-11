@@ -108,9 +108,9 @@ export const workspaceFilesQuery = (path: string) =>
   })
 
 // Git/forge state of the session's working directory. Resilient: any failure
-// (older backend without the route) reads as "not a repo" so the titlebar repo
-// button simply doesn't render. Polled while mounted — the branch and upstream
-// change as agents work.
+// (older backend without the route) reads as "not a repo" so repo actions
+// simply don't render. Polled while mounted — the branch and upstream change
+// as agents work.
 export const sessionRepoQuery = (id: string) =>
   queryOptions({
     queryKey: keys.sessionRepo(id),

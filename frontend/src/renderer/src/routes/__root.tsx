@@ -141,7 +141,7 @@ function RootLayout() {
             </button>
             {/* slot routes portal into (e.g. the session runtime tag) */}
             <div id="titlebar-slot" className="flex min-w-0 items-center gap-1.5" />
-            {/* right-aligned slot for contextual actions (e.g. repo actions) */}
+            {/* right-aligned slot for route-level actions */}
             <div id="titlebar-actions" className="ml-auto flex items-center gap-1.5" />
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
