@@ -416,7 +416,8 @@ function SessionPage() {
 
   const itemCount = (detail.data?.messages.length ?? 0) + events.data.length
   const liveSize = live
-    ? live.reasoning.length +
+    ? live.user.length +
+      live.reasoning.length +
       live.assistant.length +
       live.tools.length +
       live.attachments.length +
