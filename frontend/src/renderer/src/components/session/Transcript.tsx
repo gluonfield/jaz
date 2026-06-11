@@ -4,6 +4,8 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Circle,
+  CircleCheck,
   FileText,
   LoaderCircle,
 } from 'lucide-react'
@@ -19,7 +21,13 @@ import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { agentLabel } from '@/lib/agentLabel'
 import { relativeTime } from '@/lib/format/time'
-import { planSurfaceFromEvent, planSurfaceKey, type PlanSurface } from '@/lib/planSurface'
+import {
+  planStepState,
+  planSurfaceFromEvent,
+  planSurfaceKey,
+  type PlanStepState,
+  type PlanSurface,
+} from '@/lib/planSurface'
 import { MentionText } from './mentions'
 import { MessageMarkdown } from './MessageMarkdown'
 import { ThinkingBlock } from './ThinkingBlock'
@@ -305,7 +313,32 @@ function ToolSummary({ calls, active = false }: { calls?: ACPToolCall[]; active?
   )
 }
 
-function PlanChecklist({ surface, onApprovePlan }: { surface: PlanSurface; onApprovePlan?: () => void }) {
+export function PlanStepIcon({ state, active }: { state: PlanStepState; active: boolean }) {
+  switch (state) {
+    case 'completed':
+      return <CircleCheck size={14} className="text-ok" aria-hidden />
+    case 'active':
+      return (
+        <LoaderCircle
+          size={14}
+          className={`text-running ${active ? 'animate-spin' : ''}`}
+          aria-hidden
+        />
+      )
+    default:
+      return <Circle size={14} className="text-ink-3" aria-hidden />
+  }
+}
+
+function PlanChecklist({
+  surface,
+  active = false,
+  onApprovePlan,
+}: {
+  surface: PlanSurface
+  active?: boolean
+  onApprovePlan?: () => void
+}) {
   const [expanded, setExpanded] = useState(false)
   const [overflowing, setOverflowing] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -328,11 +361,21 @@ function PlanChecklist({ surface, onApprovePlan }: { surface: PlanSurface; onApp
   const showExpandControl = expanded || overflowing
   const planEntries = entries ?? []
   const explanationText = explanation?.trim() ?? ''
+  const stepStates = planEntries.map(planStepState)
+  const showSteps = stepStates.some(Boolean)
+  const completedCount = stepStates.filter((state) => state === 'completed').length
 
   return (
     <div className="rounded-card border border-border bg-surface/60 px-3 py-2.5">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="text-[11px] font-medium tracking-wide text-ink-3 uppercase">{title}</p>
+        <p className="text-[11px] font-medium tracking-wide text-ink-3 uppercase">
+          {title}
+          {showSteps ? (
+            <span className="ml-2 font-mono normal-case tracking-normal">
+              {completedCount}/{planEntries.length}
+            </span>
+          ) : null}
+        </p>
         {surface.awaitingApproval && onApprovePlan ? (
           <Button variant="primary" size="sm" onClick={onApprovePlan}>
             <Check size={13} />
@@ -352,13 +395,23 @@ function PlanChecklist({ surface, onApprovePlan }: { surface: PlanSurface; onApp
         {planEntries.length ? (
           <ul className="flex flex-col gap-2.5">
             {planEntries.map((entry, index) => {
-              const done = strikeCompleted && ['completed', 'complete'].includes(normalized(entry.status))
+              const state = stepStates[index]
+              const done = state === 'completed'
               return (
                 <li
                   key={`${entry.content}-${index}`}
-                  className={`min-w-0 text-sm text-ink-2 ${done ? 'line-through opacity-50' : ''}`}
+                  className="flex min-w-0 items-start gap-2 text-sm text-ink-2"
                 >
-                  <MessageMarkdown text={entry.content} />
+                  {showSteps ? (
+                    <span className="mt-[3px] shrink-0" title={state}>
+                      <PlanStepIcon state={state ?? 'pending'} active={active} />
+                    </span>
+                  ) : null}
+                  <div
+                    className={`min-w-0 flex-1 ${done ? `opacity-50 ${strikeCompleted ? 'line-through' : ''}` : ''}`}
+                  >
+                    <MessageMarkdown text={entry.content} />
+                  </div>
                 </li>
               )
             })}
@@ -455,7 +508,9 @@ function LiveEvent({
       {event.permission ? (
         <PermissionCard event={event} resolution={permissionResolution} />
       ) : null}
-      {planSurface ? <PlanChecklist surface={planSurface} onApprovePlan={onApprovePlan} /> : null}
+      {planSurface ? (
+        <PlanChecklist surface={planSurface} active={working} onApprovePlan={onApprovePlan} />
+      ) : null}
     </motion.div>
   )
 }
