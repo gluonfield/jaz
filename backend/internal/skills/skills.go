@@ -11,9 +11,9 @@ import (
 )
 
 type Skill struct {
-	Name        string
-	Description string
-	Path        string
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Path        string `json:"path"`
 }
 
 type Catalog struct {
@@ -77,7 +77,7 @@ func (c Catalog) Prompt() string {
 	}
 	var b strings.Builder
 	b.WriteString("## Skills\n")
-	b.WriteString("Use a listed skill when named or when its description matches the task. Read its SKILL.md first; resolve relative paths from that file; load extras only as needed.\n\n")
+	b.WriteString("Use a listed skill when named or when its description matches the task. Users may reference a skill inline as $name in their messages. Read its SKILL.md first; resolve relative paths from that file; load extras only as needed.\n\n")
 	b.WriteString("<available_skills>\n")
 	for _, skill := range c.Skills {
 		fmt.Fprintf(&b, "  <skill>\n    <name>%s</name>\n    <description>%s</description>\n    <location>%s</location>\n  </skill>\n", html.EscapeString(skill.Name), html.EscapeString(skill.Description), html.EscapeString(skill.Path))

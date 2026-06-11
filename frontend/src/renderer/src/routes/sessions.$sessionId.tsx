@@ -715,6 +715,7 @@ function SessionPage() {
             planAvailable={planAvailable}
             queuedPrompts={queue.queuedPrompts}
             steerDisabled={queue.steerDisabled}
+            fileRoot={session.runtime_ref?.cwd}
             onSend={queue.onSend}
             onStop={() => {
               // the turn runs detached server-side; stop it there first
