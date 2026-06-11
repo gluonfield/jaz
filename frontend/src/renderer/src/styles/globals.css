@@ -380,6 +380,15 @@ html.vibrant.dark .sidebar-material {
   backdrop-filter: saturate(1.12);
 }
 
+html.dark .sidebar-material {
+  --color-ink-2: var(--color-ink);
+  --color-ink-3: var(--color-ink);
+}
+
+html.dark .sidebar-material :is(.text-primary, .text-primary-strong) {
+  color: var(--color-ink);
+}
+
 h1,
 h2,
 h3 {
