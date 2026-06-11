@@ -43,11 +43,7 @@ type Manager struct {
 	Done         func(context.Context, Job)
 	TurnFinished func(context.Context, Job)
 
-	// MemoryMCP, when configured, is appended to the MCP servers handed to
-	// HTTP-capable ACP agents. It is synthetic: never stored, never listed by
-	// the MCP settings API.
-	MemoryMCP MemoryMCP
-	Events    *sessionevents.Bus
+	Events *sessionevents.Bus
 	// PublishWidget backs the _jaz.dev/widget/publish extension method; the
 	// session id is the jaz session linked to the calling agent's ACP session.
 	PublishWidget func(WidgetPublishRequest) (WidgetPublishResult, error)
@@ -300,7 +296,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		_ = m.store.SaveSession(session)
 		return SpawnResult{}, err
 	}
-	absCwd, err := m.prepareSessionDir(req, cfg, session.Slug)
+	absCwd, projectPath, err := m.prepareSessionDir(req, cfg, session.Slug)
 	if err != nil {
 		return fail(err)
 	}
@@ -320,6 +316,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	}
 	session.RuntimeRef.SessionID = string(acpSession.response.SessionID)
 	session.RuntimeRef.Cwd = absCwd
+	session.RuntimeRef.ProjectPath = projectPath
 	if err := m.store.SaveSession(session); err != nil {
 		ac.close()
 		return fail(err)

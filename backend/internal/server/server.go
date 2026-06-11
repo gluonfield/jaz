@@ -24,6 +24,7 @@ import (
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
+	"github.com/wins/jaz/backend/internal/skills"
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/voice"
 	"github.com/wins/jaz/backend/internal/widgets"
@@ -117,7 +118,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/music/chart-feed", s.handleMusicChartFeed)
 	mux.HandleFunc("/v1/settings/agents", s.handleAgentSettings)
 	mux.HandleFunc("GET /v1/acp/agents", s.handleListACPAgents)
-	mux.HandleFunc("GET /v1/workspace/dirs", s.handleListWorkspaceDirs)
+	mux.HandleFunc("GET /v1/projects", s.handleListProjects)
+	mux.HandleFunc("POST /v1/projects", s.handleCreateProject)
+	mux.HandleFunc("GET /v1/filesystem/dirs", s.handleListFilesystemDirs)
+	mux.HandleFunc("GET /v1/workspace/files", s.handleListWorkspaceFiles)
+	mux.HandleFunc("GET /v1/skills", s.handleListSkills)
 	mux.HandleFunc("GET /v1/mcp/servers", s.handleListMCPServers)
 	mux.HandleFunc("POST /v1/mcp/servers", s.handleCreateMCPServer)
 	mux.HandleFunc("PUT /v1/mcp/servers/", s.handleMCPServerAction)
@@ -179,12 +184,16 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		input.ReasoningEffort = effort
 	}
 	if directory := strings.TrimSpace(req.Directory); directory != "" {
-		cwd, err := s.resolveWorkspaceDir(directory)
+		cwd, err := s.resolveWorkingDir(directory)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		input.RuntimeRef = &storage.RuntimeRef{Type: storage.RuntimeNative, Cwd: cwd}
+		input.RuntimeRef = &storage.RuntimeRef{
+			Type:        storage.RuntimeNative,
+			Cwd:         cwd,
+			ProjectPath: projectPathForRequest(directory, cwd),
+		}
 	}
 	if req.Worktree && input.RuntimeRef == nil {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("worktree requires a directory pointing at a git repository"))
@@ -239,7 +248,7 @@ func (s *Server) createACPSession(w http.ResponseWriter, req createSessionReques
 		return
 	}
 	// "" would create a fresh per-slug subdirectory; "." is the workspace root,
-	// which is the default users expect from the new-thread directory picker.
+	// which is the default users expect when no project is selected.
 	directory := strings.TrimSpace(req.Directory)
 	if directory == "" {
 		directory = "."
@@ -270,26 +279,43 @@ func (s *Server) handleListACPAgents(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"agents": agents})
 }
 
-// handleListWorkspaceDirs browses the workspace (the server's filesystem) one
-// level at a time so the new-thread directory picker can choose where an ACP
-// session runs. path is workspace-relative; "" is the root.
-func (s *Server) handleListWorkspaceDirs(w http.ResponseWriter, r *http.Request) {
-	if strings.TrimSpace(s.Workspace) == "" {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("workspace is not configured"))
-		return
-	}
-	path := r.URL.Query().Get("path")
-	abs, err := pathsafe.Resolve(s.Workspace, path)
+// Caps for the @-mention file index: enough to cover a working tree's
+// surface without shipping a monorepo over the wire.
+const workspaceFileIndexMaxEntries = 5000
+const workspaceFileIndexMaxDepth = 8
+
+// handleListWorkspaceFiles returns a file/directory index of a session working
+// directory for the composer's @-mention picker. Relative paths stay confined
+// to the workspace; absolute paths are server-side project directories. Inside
+// a git repository the index follows .gitignore (tracked + untracked files via
+// git ls-files); elsewhere it falls back to a breadth-first walk that skips
+// dotfiles and dependency/build directories. The echoed absolute root lets the
+// client expand tagged entries to full paths.
+func (s *Server) handleListWorkspaceFiles(w http.ResponseWriter, r *http.Request) {
+	abs, err := s.resolveWorkspaceFileRoot(r.URL.Query().Get("path"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	dirs, err := pathsafe.Subdirs(abs)
-	if err != nil {
+	var entries []pathsafe.Entry
+	var truncated bool
+	if files, gitErr := gitinfo.ListFiles(r.Context(), abs); gitErr == nil {
+		entries, truncated = pathsafe.EntriesFromFiles(files, workspaceFileIndexMaxEntries)
+	} else if entries, truncated, err = pathsafe.Tree(abs, workspaceFileIndexMaxDepth, workspaceFileIndexMaxEntries); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"path": path, "git": pathsafe.IsGitRepo(abs), "dirs": dirs})
+	writeJSON(w, http.StatusOK, map[string]any{"root": abs, "entries": entries, "truncated": truncated})
+}
+
+// handleListSkills lists the skill catalog for the composer's $-mention picker.
+func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
+	catalog, err := skills.Load(s.Root)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"skills": catalog.Skills})
 }
 
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {

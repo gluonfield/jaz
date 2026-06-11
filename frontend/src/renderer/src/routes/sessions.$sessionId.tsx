@@ -6,7 +6,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Composer, PlanDecisionDock } from '@/components/session/Composer'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
-import { RepoActions } from '@/components/session/RepoActions'
 import { SESSION_PANEL_WIDTH, SessionPanel } from '@/components/session/SessionPanel'
 import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
 import { ThinkingBlock } from '@/components/session/ThinkingBlock'
@@ -17,6 +16,7 @@ import { VoiceMode } from '@/components/session/VoiceMode'
 import { isHiddenToolName } from '@/components/session/toolVisibility'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Skeleton, SkeletonRows } from '@/components/ui/Skeleton'
+import { useToast } from '@/components/ui/toast'
 import {
   answerSessionInteractiveResponse,
   cancelSession,
@@ -24,13 +24,7 @@ import {
   uploadSessionAttachment,
 } from '@/lib/api/sessions'
 import { streamSessionMessage } from '@/lib/api/stream'
-import type {
-  ACPJobSnapshot,
-  ACPPermission,
-  ChatMessage,
-  SessionEvent,
-  SessionMessages,
-} from '@/lib/api/types'
+import type { ACPJobSnapshot, ACPPermission, ChatMessage, SessionEvent, SessionMessages } from '@/lib/api/types'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
 import { takePendingMessage, takePendingVoice } from '@/lib/pendingMessage'
@@ -63,6 +57,52 @@ interface LiveAttachment {
   size?: number
   server_path?: string
   uploading?: boolean
+}
+
+interface CriticalErrorToast {
+  message: string
+}
+
+function addCriticalErrorToast(
+  out: CriticalErrorToast[],
+  seen: Set<string>,
+  message?: string,
+) {
+  const text = message?.trim()
+  if (!text || seen.has(text)) return
+  seen.add(text)
+  out.push({ message: text })
+}
+
+function criticalSessionErrors(
+  data: SessionMessages,
+  liveEvents: SessionEvent[],
+  pageSessionID: string,
+): CriticalErrorToast[] {
+  const out: CriticalErrorToast[] = []
+  const seen = new Set<string>()
+
+  if (data.session.status === 'error') {
+    addCriticalErrorToast(out, seen, data.session.error)
+  }
+  addCriticalErrorToast(out, seen, data.acp_error)
+  for (const child of data.acp_children ?? []) {
+    if (child.parent_id === pageSessionID && child.parent_visible === false) continue
+    addCriticalErrorToast(out, seen, child.error)
+  }
+  for (const event of [...(data.events ?? []), ...liveEvents]) {
+    addCriticalErrorToast(out, seen, event.acp?.error)
+  }
+  return out
+}
+
+function stripACPError(event: SessionEvent): SessionEvent {
+  if (!event.acp?.error) return event
+  return { ...event, acp: { ...event.acp, error: undefined } }
+}
+
+function finishLiveAttachments(attachments: LiveAttachment[]): LiveAttachment[] {
+  return attachments.map((attachment) => ({ ...attachment, uploading: false }))
 }
 
 function formatAttachmentSize(size?: number): string {
@@ -280,17 +320,26 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
     ? planSurfaceFromEvent(latestPlanDecisionEvent)
     : undefined
   const planDecisionAt = Date.parse(latestPlanDecisionEvent?.at ?? '')
-  const hasACPErrorEvent = transcriptEvents.some((event) => Boolean(event.acp?.error))
   // The panel mirrors the transcript's notion of "current plan": the latest
   // plan-bearing event that belongs to this session.
   const panelPlanEvent = transcriptEvents.findLast((event) =>
     Boolean(planSurfaceFromEvent(event) && planSurfaceBelongsToSession(event, session.id)),
   )
+  // Plan progress lives in the side panel, never in the thread; only a
+  // proposed plan that needs the user's approval stays inline. Errors are
+  // notified as toasts, not rendered as rows.
+  const displayEvents = transcriptEvents.map((event) => {
+    const withoutError = stripACPError(event)
+    const surface = planSurfaceFromEvent(withoutError)
+    if (!surface || surface.awaitingApproval) return withoutError
+    if (withoutError.acp) return { ...withoutError, acp: { ...withoutError.acp, plan: undefined } }
+    return { ...withoutError, plan: undefined }
+  })
   return {
     transcriptEvents,
+    displayEvents,
     planAvailable,
     hasPendingPermission,
-    hasACPErrorEvent,
     latestPlanDecisionSurface,
     planDecisionSessionID: latestPlanDecisionSurface?.approvalSessionId,
     planDecisionIsCurrent: !Number.isNaN(planDecisionAt) && planDecisionAt >= latestUserAt,
@@ -313,6 +362,7 @@ function storedPanelPref(): PanelPref {
 function SessionPage() {
   const { sessionId } = Route.useParams()
   const queryClient = useQueryClient()
+  const toast = useToast()
   const detail = useQuery(sessionMessagesQuery(sessionId))
   const events = useQuery<SessionEvent[]>({
     queryKey: keys.sessionEvents(sessionId),
@@ -339,6 +389,15 @@ function SessionPage() {
   const [panelPref, setPanelPref] = useState<PanelPref>(storedPanelPref)
   const [hasPanelSpace, setHasPanelSpace] = useState(false)
   const panelObserver = useRef<ResizeObserver | null>(null)
+  const shownCriticalErrors = useRef(new Set<string>())
+  const notifyCriticalError = useCallback((message: string) => {
+    const text = message.trim()
+    if (!text) return
+    const toastKey = `${sessionId}:${text}`
+    if (shownCriticalErrors.current.has(toastKey)) return
+    shownCriticalErrors.current.add(toastKey)
+    toast(text, 'danger')
+  }, [sessionId, toast])
   const measureRef = useCallback((el: HTMLDivElement | null) => {
     panelObserver.current?.disconnect()
     panelObserver.current = null
@@ -404,6 +463,9 @@ function SessionPage() {
         planRequested: options.planRequested,
         signal: controller.signal,
         onEvent: (event) => {
+          if (event.type === 'error') {
+            notifyCriticalError(event.error || 'Something went wrong.')
+          }
           setLive((prev) => {
             if (!prev) return prev
             switch (event.type) {
@@ -443,7 +505,11 @@ function SessionPage() {
                 return { ...prev, tools }
               }
               case 'error':
-                return { ...prev, error: event.error || 'Something went wrong.' }
+                return {
+                  ...prev,
+                  attachments: finishLiveAttachments(prev.attachments),
+                  error: event.error || 'Something went wrong.',
+                }
               default:
                 return prev
             }
@@ -453,7 +519,10 @@ function SessionPage() {
     })()
       .catch((err: Error) => {
         if (controller.signal.aborted) return
-        setLive((prev) => (prev ? { ...prev, error: err.message } : prev))
+        notifyCriticalError(err.message || 'Something went wrong.')
+        setLive((prev) =>
+          prev ? { ...prev, attachments: finishLiveAttachments(prev.attachments), error: err.message } : prev,
+        )
       })
       .finally(async () => {
         setStreaming(false)
@@ -463,9 +532,9 @@ function SessionPage() {
         await queryClient.refetchQueries({ queryKey: keys.sessionMessages(sessionId) })
         queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
         queryClient.invalidateQueries({ queryKey: keys.allSessions })
-        setLive((prev) => (prev?.error ? prev : null))
+        setLive((prev) => (prev?.error ? { ...prev, error: undefined } : null))
       })
-  }, [queryClient, sessionId])
+  }, [notifyCriticalError, queryClient, sessionId])
 
   const sendACPFallback = useCallback(async (
     targetSessionID: string,
@@ -517,6 +586,30 @@ function SessionPage() {
     [data, events.data],
   )
 
+  useEffect(() => {
+    if (!detail.data) return
+    for (const error of criticalSessionErrors(detail.data, events.data, sessionId)) {
+      notifyCriticalError(error.message)
+    }
+  }, [detail.data, events.data, notifyCriticalError, sessionId])
+
+  const panelOpen = panelPref === 'auto' ? hasPanelSpace : panelPref === 'open'
+  const togglePanel = useCallback(() => {
+    const next = !panelOpen
+    // Landing on what auto would do re-arms auto-show.
+    setPanelPref(next === hasPanelSpace ? 'auto' : next ? 'open' : 'closed')
+  }, [hasPanelSpace, panelOpen])
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.defaultPrevented) return
+      if (e.key.toLowerCase() !== 's') return
+      e.preventDefault()
+      togglePanel()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [togglePanel])
+
   if (detail.isPending) {
     return (
       <div className="mx-auto max-w-[720px] px-10">
@@ -538,20 +631,14 @@ function SessionPage() {
   const { session, messages } = detail.data
   const {
     transcriptEvents,
+    displayEvents,
     planAvailable,
     hasPendingPermission,
-    hasACPErrorEvent,
     latestPlanDecisionSurface,
     planDecisionSessionID,
     planDecisionIsCurrent,
     panelPlan,
   } = derived
-  // A failed native turn carries its error only on the session; ACP turns and
-  // the in-flight live exchange already surface it inline, so showing the
-  // banner too would duplicate it. When it's the only carrier, anchor it at
-  // the bottom so it reads chronologically after the prompt that triggered it.
-  const showErrorBanner =
-    session.status === 'error' && Boolean(session.error) && !live?.error && !hasACPErrorEvent
   const showPlanDecision = Boolean(
     latestPlanDecisionSurface?.awaitingApproval &&
       planDecisionSessionID &&
@@ -597,12 +684,6 @@ function SessionPage() {
           },
         ]
       : messages
-  const panelOpen = panelPref === 'auto' ? hasPanelSpace : panelPref === 'open'
-  const togglePanel = () => {
-    const next = !panelOpen
-    // Landing on what auto would do re-arms auto-show.
-    setPanelPref(next === hasPanelSpace ? 'auto' : next ? 'open' : 'closed')
-  }
   const titlebarSlot = document.getElementById('titlebar-slot')
   const titlebarActions = document.getElementById('titlebar-actions')
 
@@ -623,18 +704,15 @@ function SessionPage() {
         : null}
       {titlebarActions
         ? createPortal(
-            <>
-              <RepoActions session={session} />
-              <button
-                type="button"
-                aria-label={panelOpen ? 'Hide session panel' : 'Show session panel'}
-                title={`${panelOpen ? 'Hide' : 'Show'} session panel`}
-                onClick={togglePanel}
-                className="grid size-8 cursor-pointer place-items-center rounded-full text-ink-2 transition-colors duration-200 hover:bg-surface-2 hover:text-ink"
-              >
-                {panelOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
-              </button>
-            </>,
+            <button
+              type="button"
+              aria-label={panelOpen ? 'Hide session panel' : 'Show session panel'}
+              title={`${panelOpen ? 'Hide' : 'Show'} session panel (Shift+⌘S)`}
+              onClick={togglePanel}
+              className="grid size-8 cursor-pointer place-items-center rounded-full text-ink-2 transition-colors duration-200 hover:bg-surface-2 hover:text-ink"
+            >
+              {panelOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
+            </button>,
             titlebarActions,
           )
         : null}
@@ -656,7 +734,7 @@ function SessionPage() {
             ) : (
               <Transcript
                 messages={transcriptMessages}
-                events={transcriptEvents}
+                events={displayEvents}
                 sessionId={session.id}
                 groupTurns={isACP}
                 working={sessionRunning}
@@ -689,26 +767,11 @@ function SessionPage() {
                       ) : streaming ? (
                         <p className="animate-pulse text-sm text-ink-3">Thinking…</p>
                       ) : null}
-                      {live.error ? (
-                        <p className="max-w-[72ch] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
-                          {live.error}
-                        </p>
-                      ) : null}
                     </div>
-                  ) : live?.error && isACP ? (
-                    <p className="max-w-[72ch] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
-                      {live.error}
-                    </p>
                   ) : null
                 }
               />
             )}
-  
-            {showErrorBanner ? (
-              <p className="mt-5 max-w-[72ch] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
-                {session.error}
-              </p>
-            ) : null}
           </div>
         </div>
   
@@ -748,6 +811,7 @@ function SessionPage() {
             planAvailable={planAvailable}
             queuedPrompts={queue.queuedPrompts}
             steerDisabled={queue.steerDisabled}
+            fileRoot={session.runtime_ref?.cwd}
             onSend={queue.onSend}
             onStop={() => {
               // the turn runs detached server-side; stop it there first

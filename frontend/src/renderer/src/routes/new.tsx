@@ -1,10 +1,10 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NewSessionHome } from '@/components/home/NewSessionHome'
-import { DirectoryPicker, ModelSelect, RuntimeSelect } from '@/components/session/NewThreadControls'
+import { ModelSelect, ProjectPicker, RuntimeSelect } from '@/components/session/NewThreadControls'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { useToast } from '@/components/ui/toast'
-import { acpAgentsQuery, createSession } from '@/lib/api/sessions'
+import { acpAgentsQuery, createSession, projectsQuery } from '@/lib/api/sessions'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import { acpAgentModelSuggestions, OPENAI_MODELS, openRouterModelsQuery } from '@/lib/models'
 import { setPendingMessage, setPendingVoice } from '@/lib/pendingMessage'
@@ -13,7 +13,13 @@ import type { SendMessageOptions } from '@/lib/sendMessage'
 import { useTheme } from '@/lib/theme'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
+type NewSearch = {
+  project?: string
+}
+
 export const Route = createFileRoute('/new')({
+  validateSearch: (search): NewSearch =>
+    typeof search.project === 'string' ? { project: search.project } : {},
   component: NewSessionPage,
 })
 
@@ -22,13 +28,14 @@ export const Route = createFileRoute('/new')({
 // first message is on its way.
 function NewSessionPage() {
   const navigate = useNavigate()
+  const search = Route.useSearch()
   const queryClient = useQueryClient()
   const toast = useToast()
   const [creating, setCreating] = useState(false)
   const [composing, setComposing] = useState(false)
   // 'native' or a configured ACP agent name; directory is the session cwd.
   const [runtime, setRuntime] = useState('native')
-  const [directory, setDirectory] = useState('')
+  const [directory, setDirectory] = useState(search.project ?? '')
   // Worktree runs the session on a disposable git worktree (any runtime);
   // only offered when the chosen directory is a git repository.
   const [directoryIsGit, setDirectoryIsGit] = useState(false)
@@ -40,8 +47,28 @@ function NewSessionPage() {
   const [effortOverride, setEffortOverride] = useState<string | null>(null)
   const { data: agents = [] } = useQuery(acpAgentsQuery)
   const { data: agentSettings } = useQuery(agentSettingsQuery)
+  const projects = useQuery(projectsQuery)
   // PixelField samples the palette at mount; remount it when the theme flips.
   const { resolved } = useTheme()
+
+  useEffect(() => {
+    setDirectory(search.project ?? '')
+    setDirectoryIsGit(false)
+    setWorktree(false)
+  }, [search.project])
+
+  useEffect(() => {
+    if (!directory) {
+      setDirectoryIsGit(false)
+      setWorktree(false)
+      return
+    }
+    const project = projects.data?.find((item) => item.path === directory)
+    if (project) {
+      setDirectoryIsGit(project.git)
+      if (!project.git) setWorktree(false)
+    }
+  }, [directory, projects.data])
 
   const isNative = runtime === 'native'
   const defaultProvider = agentSettings?.native.model_provider ?? ''
@@ -155,7 +182,7 @@ function NewSessionPage() {
         // Default clears the override, falling back to the settings effort.
         onEffortChange={(next) => setEffortOverride(next === '' ? null : next)}
       />
-      <DirectoryPicker
+      <ProjectPicker
         value={directory}
         disabled={creating}
         onChange={(path, git) => {
@@ -192,6 +219,10 @@ function NewSessionPage() {
       calm={composing || creating}
       creating={creating}
       leftSlot={composerControls}
+      // Tokens freeze their absolute expansion at insert time, so re-picking
+      // the directory after tagging keeps old tags valid rather than rebasing
+      // them.
+      fileRoot={directory}
       onDraftActivity={setComposing}
       onSend={handleSend}
       onVoice={runtime === 'native' ? handleVoice : undefined}

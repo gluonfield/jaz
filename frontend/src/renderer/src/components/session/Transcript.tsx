@@ -1,4 +1,3 @@
-import { motion } from 'motion/react'
 import { Link } from '@tanstack/react-router'
 import {
   Check,
@@ -27,6 +26,7 @@ import {
   type PlanStepState,
   type PlanSurface,
 } from '@/lib/planSurface'
+import { MentionText } from './mentions'
 import { MessageMarkdown } from './MessageMarkdown'
 import { ThinkingBlock } from './ThinkingBlock'
 import { PermissionCard } from './TranscriptPermissions'
@@ -99,7 +99,7 @@ const Bubble = memo(function Bubble({ message }: { message: ChatMessage }) {
       return (
         <div className="flex justify-end">
           <div className="max-w-[80%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap select-text">
-            {messageText(message)}
+            <MentionText text={messageText(message)} />
             <MessageAttachments message={message} />
           </div>
         </div>
@@ -440,12 +440,7 @@ const LiveEvent = memo(function LiveEvent({
     event.type === 'acp' && hasWorkingStatusSurface(event) && !eventPlan && !ownSession
   const parentChild = isParentChildACPEvent(event)
   return (
-    <motion.div
-      className="flex max-w-[72ch] flex-col gap-2"
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-    >
+    <div className="flex max-w-[72ch] flex-col gap-2">
       {event.acp && showHeader ? (
         <p className="text-[12px] text-ink-3">
           <span className="font-mono">{event.acp.agent}</span>
@@ -454,11 +449,6 @@ const LiveEvent = memo(function LiveEvent({
       ) : null}
       {event.acp?.thought ? <ThinkingBlock text={event.acp.thought} /> : null}
       {event.content ? <MessageMarkdown text={event.content} /> : null}
-      {event.acp?.error ? (
-        <p className="rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
-          {event.acp.error}
-        </p>
-      ) : null}
       {showWorkingStatus ? (
         <Link
           to="/sessions/$sessionId"
@@ -476,7 +466,7 @@ const LiveEvent = memo(function LiveEvent({
       {planSurface ? (
         <PlanChecklist surface={planSurface} active={working} onApprovePlan={onApprovePlan} />
       ) : null}
-    </motion.div>
+    </div>
   )
 })
 

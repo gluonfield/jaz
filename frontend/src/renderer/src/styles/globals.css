@@ -247,8 +247,8 @@
   }
 }
 
-/* Live-state dot: rainbow appears only while jaz is working (wordmark
- * heartbeat, live thinking/tool indicators). At rest the dot is brand cobalt. */
+/* Live-state dot: rainbow appears only while jaz is working (wordmark,
+ * live thinking/tool indicators). At rest the dot is brand cobalt. */
 .jaz-shimmer {
   animation: jaz-shimmer 4.5s ease-in-out infinite;
 }
@@ -415,6 +415,14 @@ input {
 
 ::selection {
   background: var(--color-primary-soft);
+}
+
+/* The composer paints its text in a mirror div behind a transparent-text
+   textarea, so an opaque selection background would cover the glyphs; a
+   translucent wash lets them read through. (Un-layered on purpose: the
+   global ::selection above would beat a layered utility.) */
+.composer-input::selection {
+  background: color-mix(in oklab, var(--color-primary) 28%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -62,3 +62,42 @@ func TestEnabledHTTPMCPServersEmitsRawHTTPPayloads(t *testing.T) {
 		t.Fatalf("headers = %#v", headers)
 	}
 }
+
+func TestEnabledHTTPMCPServersEmitsEmptyHeadersArray(t *testing.T) {
+	servers, err := enabledHTTPMCPServers(staticMCPServerStore{servers: []mcpconfig.Server{
+		{
+			Name:      "Memory",
+			URL:       "http://127.0.0.1:5299/mcp/jazmem",
+			Enabled:   true,
+			Transport: mcpconfig.TransportStreamableHTTP,
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(servers) != 1 {
+		t.Fatalf("servers = %d, want 1", len(servers))
+	}
+	var payload struct {
+		Type    string             `json:"type"`
+		Name    string             `json:"name"`
+		URL     string             `json:"url"`
+		Headers []mcpconfig.Header `json:"headers"`
+	}
+	if err := json.Unmarshal(servers[0], &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Type != "http" || payload.Name != "Memory" || payload.URL != "http://127.0.0.1:5299/mcp/jazmem" {
+		t.Fatalf("payload = %#v", payload)
+	}
+	if payload.Headers == nil || len(payload.Headers) != 0 {
+		t.Fatalf("headers = %#v, want empty array", payload.Headers)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(servers[0], &raw); err != nil {
+		t.Fatal(err)
+	}
+	if string(raw["headers"]) != "[]" {
+		t.Fatalf("raw headers = %s, want []", raw["headers"])
+	}
+}
