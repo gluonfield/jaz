@@ -150,6 +150,7 @@ function NewSessionPage() {
             },
       )
       prepare(session.id)
+      sessionStorage.removeItem(NEW_SESSION_DRAFT_KEY)
       queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
       queryClient.invalidateQueries({ queryKey: keys.allSessions })
       navigate({ to: '/sessions/$sessionId', params: { sessionId: session.id } })
