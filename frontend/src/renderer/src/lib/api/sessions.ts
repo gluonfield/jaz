@@ -1,6 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '../query/keys'
-import { apiBaseUrl, ApiError, get, post } from './client'
+import { apiBaseUrl, ApiError, get, post, put } from './client'
 import type { Attachment, RepoInfo, Session, SessionEvent, SessionMessages } from './types'
 
 export function createSession(
@@ -78,6 +78,10 @@ export const projectsQuery = queryOptions({
 
 export function addProject(path: string): Promise<Project> {
   return post<Project>('/v1/projects', { path })
+}
+
+export function reorderProjects(paths: string[]): Promise<Project[]> {
+  return put<{ projects: Project[] | null }>('/v1/projects/order', { paths }).then((data) => data.projects ?? [])
 }
 
 export function listFilesystemDirs(
