@@ -48,6 +48,10 @@ export function Modal({
     if (!open) return
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        // An open transient surface inside the panel (popover menu, mention
+        // suggestions) owns Escape — it dismisses itself via its own listener,
+        // and the modal only closes on the next press.
+        if (panelRef.current?.querySelector('[data-escape-surface]')) return
         event.stopPropagation()
         onClose()
         return

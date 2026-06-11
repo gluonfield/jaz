@@ -2,6 +2,7 @@ package loops
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -209,7 +210,12 @@ func normalizeRuntime(runtime string) string {
 	}
 }
 
+// Inline mentions arrive as markdown-style links ("[$skill](/path)",
+// "[@rel/path](</abs path>)"); titles keep just the visible token.
+var mentionLink = regexp.MustCompile(`\[([$@][^\]\n]+)\]\([^)\n]+\)`)
+
 func titleFromPrompt(prompt string) string {
+	prompt = mentionLink.ReplaceAllString(prompt, "$1")
 	words := strings.Fields(prompt)
 	if len(words) == 0 {
 		return "Loop"

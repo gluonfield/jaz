@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { EqBars } from '@/components/home/MusicBubbles'
-import { RAINBOW_BEAM } from '@/components/session/Composer'
+import { RAINBOW_BEAM } from '@/components/ui/rainbow'
 import { IconButton } from '@/components/ui/IconButton'
 import type { PixelFieldShapeFrame } from '@/components/ui/PixelField.types'
 

@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { Repeat } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -74,7 +73,6 @@ export function LoopModal({
       open={open}
       onClose={close}
       size="md"
-      icon={<Repeat size={16} />}
       title={isEdit ? 'Edit loop' : 'New loop'}
       description="A prompt that runs on a schedule, each run in its own thread."
       footer={

@@ -4,6 +4,7 @@ import { ArrowLeft, ChevronRight, Pencil, Play, Trash2 } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { LoopModal } from '@/components/loops/LoopModal'
 import { reasoningEffortLabel } from '@/components/loops/ReasoningEffortSelect'
+import { MentionText } from '@/components/session/mentions'
 import { describeSchedule, draftFromLoop } from '@/components/loops/schedule'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -145,7 +146,7 @@ function LoopDetail({
       </header>
 
       <div className="mt-6 whitespace-pre-wrap rounded-card bg-surface px-4 py-3.5 text-[13.5px] leading-relaxed text-ink">
-        {loop.prompt}
+        <MentionText text={loop.prompt} />
       </div>
 
       <dl className="mt-5 flex flex-wrap gap-x-10 gap-y-3">
