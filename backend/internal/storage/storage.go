@@ -105,6 +105,7 @@ type Session struct {
 	SourceType      string      `json:"source_type,omitempty"`
 	SourceID        string      `json:"source_id,omitempty"`
 	Archived        bool        `json:"archived,omitempty"`
+	Pinned          bool        `json:"pinned,omitempty"`
 	CreatedAt       time.Time   `json:"created_at"`
 	UpdatedAt       time.Time   `json:"updated_at"`
 	LastAttentionAt time.Time   `json:"last_attention_at"`

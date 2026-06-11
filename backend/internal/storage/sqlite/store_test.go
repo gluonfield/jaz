@@ -114,6 +114,77 @@ func TestListSessionsOrdersByAttentionNotActivity(t *testing.T) {
 	}
 }
 
+func TestSetPinnedKeepsProjectPathAndPinsChildren(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	project := filepath.Join(t.TempDir(), "project")
+	parent, err := store.CreateSession(storage.CreateSession{
+		Slug: "parent",
+		RuntimeRef: &storage.RuntimeRef{
+			Type:        storage.RuntimeNative,
+			Cwd:         project,
+			ProjectPath: project,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	childProject := filepath.Join(t.TempDir(), "child-project")
+	child, err := store.CreateSession(storage.CreateSession{
+		Slug:     "child",
+		ParentID: parent.ID,
+		Runtime:  storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:        storage.RuntimeACP,
+			Cwd:         childProject,
+			ProjectPath: childProject,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.SetPinned(parent.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	pinnedParent, err := store.LoadSession(parent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinnedChild, err := store.LoadSession(child.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pinnedParent.Pinned || pinnedParent.RuntimeRef.ProjectPath != project {
+		t.Fatalf("pinned parent = %#v, want pinned with project %q intact", pinnedParent, project)
+	}
+	if !pinnedChild.Pinned || pinnedChild.RuntimeRef.ProjectPath != childProject {
+		t.Fatalf("pinned child = %#v, want pinned with project %q intact", pinnedChild, childProject)
+	}
+
+	if err := store.SetPinned(parent.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	unpinnedParent, err := store.LoadSession(parent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unpinnedChild, err := store.LoadSession(child.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unpinnedParent.Pinned || unpinnedParent.RuntimeRef.ProjectPath != project {
+		t.Fatalf("unpinned parent = %#v, want project %q unchanged", unpinnedParent, project)
+	}
+	if unpinnedChild.Pinned || unpinnedChild.RuntimeRef.ProjectPath != childProject {
+		t.Fatalf("unpinned child = %#v, want project %q unchanged", unpinnedChild, childProject)
+	}
+}
+
 func setSessionTimes(t *testing.T, store *Store, session storage.Session, updatedAt, lastAttentionAt time.Time) {
 	t.Helper()
 	store.mu.Lock()

@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Archive, CornerDownRight } from 'lucide-react'
-import { setSessionArchived } from '@/lib/api/sessions'
+import { Archive, CornerDownRight, Pin } from 'lucide-react'
+import { setSessionArchived, setSessionPinned } from '@/lib/api/sessions'
 import type { Session } from '@/lib/api/types'
 import { relativeTime } from '@/lib/format/time'
 import { keys } from '@/lib/query/keys'
@@ -64,8 +64,38 @@ export function SessionRow({ session, child = false }: { session: Session; child
       <span className="shrink-0 text-[11px] tabular-nums text-ink-3 group-hover:hidden">
         {relativeTime(session.last_attention_at || session.updated_at)}
       </span>
+      <PinButton session={session} />
       <ArchiveButton sessionId={session.id} />
     </Link>
+  )
+}
+
+function PinButton({ session }: { session: Session }) {
+  const queryClient = useQueryClient()
+  const pinned = Boolean(session.pinned)
+  const pin = useMutation({
+    mutationFn: () => setSessionPinned(session.id, !pinned),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
+      queryClient.invalidateQueries({ queryKey: keys.allSessions })
+    },
+  })
+
+  return (
+    <button
+      type="button"
+      aria-label={pinned ? 'Unpin thread' : 'Pin thread'}
+      aria-pressed={pinned}
+      title={pinned ? 'Unpin thread' : 'Pin thread'}
+      onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        pin.mutate()
+      }}
+      className={`${pinned ? 'grid text-primary' : 'hidden text-ink-3 group-hover:grid'} size-5 shrink-0 cursor-pointer place-items-center rounded transition-colors duration-150 hover:bg-surface-2 hover:text-ink`}
+    >
+      <Pin size={13} className={pinned ? 'fill-current' : ''} />
+    </button>
   )
 }
 

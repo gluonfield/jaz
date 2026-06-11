@@ -17,6 +17,7 @@ type Querier interface {
 	ListSessions(ctx context.Context) ([]Thread, error)
 	ResetRunningThreads(ctx context.Context, arg ResetRunningThreadsParams) error
 	SetArchived(ctx context.Context, arg SetArchivedParams) error
+	SetPinned(ctx context.Context, arg SetPinnedParams) error
 	SetThreadError(ctx context.Context, arg SetThreadErrorParams) error
 	TouchSessionAttention(ctx context.Context, arg TouchSessionAttentionParams) error
 	TouchThread(ctx context.Context, arg TouchThreadParams) error
