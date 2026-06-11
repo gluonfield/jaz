@@ -257,7 +257,7 @@ func TestCreateNativeSessionPersistsWorkingDirectory(t *testing.T) {
 	workspace := t.TempDir()
 	handler := (&Server{Store: store, Workspace: workspace}).Handler()
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{"directory":"repo"}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 	handler.ServeHTTP(res, req)
@@ -265,6 +265,37 @@ func TestCreateNativeSessionPersistsWorkingDirectory(t *testing.T) {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
 	var session storage.Session
+	if err := json.Unmarshal(res.Body.Bytes(), &session); err != nil {
+		t.Fatal(err)
+	}
+	if session.RuntimeRef == nil || session.RuntimeRef.Type != storage.RuntimeNative ||
+		session.RuntimeRef.Cwd != workspace || session.RuntimeRef.ProjectPath != "" {
+		t.Fatalf("default runtime ref = %#v, want native cwd %q", session.RuntimeRef, workspace)
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.RuntimeRef == nil || loaded.RuntimeRef.Type != storage.RuntimeNative ||
+		loaded.RuntimeRef.Cwd != workspace || loaded.RuntimeRef.ProjectPath != "" {
+		t.Fatalf("loaded default runtime ref = %#v, want native cwd %q", loaded.RuntimeRef, workspace)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{"worktree":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "worktree requires") {
+		t.Fatalf("worktree default status = %d, body = %s", res.Code, res.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{"directory":"repo"}`))
+	req.Header.Set("Content-Type", "application/json")
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("directory status = %d, body = %s", res.Code, res.Body.String())
+	}
 	if err := json.Unmarshal(res.Body.Bytes(), &session); err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +307,7 @@ func TestCreateNativeSessionPersistsWorkingDirectory(t *testing.T) {
 	if info, err := os.Stat(want); err != nil || !info.IsDir() {
 		t.Fatalf("working directory was not created: %v", err)
 	}
-	loaded, err := store.LoadSession(session.ID)
+	loaded, err = store.LoadSession(session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

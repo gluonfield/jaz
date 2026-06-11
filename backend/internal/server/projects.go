@@ -128,7 +128,7 @@ func (s *Server) handleReorderProjects(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleListFilesystemDirs(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimSpace(r.URL.Query().Get("path"))
 	if path == "" {
-		path = firstNonEmpty(serverHomeDir(), s.Workspace, ".")
+		path = firstNonEmpty(s.Workspace, serverHomeDir(), ".")
 	}
 	abs, err := cleanExistingDir(path)
 	if err != nil {
@@ -163,6 +163,29 @@ func (s *Server) resolveWorkingDir(directory string) (string, error) {
 		return cleanExistingDir(directory)
 	}
 	return s.resolveWorkspaceDir(directory)
+}
+
+func (s *Server) nativeRuntimeRef(directory string) (*storage.RuntimeRef, error) {
+	directory = strings.TrimSpace(directory)
+	if directory == "" {
+		if strings.TrimSpace(s.Workspace) == "" {
+			return nil, nil
+		}
+		cwd, err := s.resolveWorkspaceDir(".")
+		if err != nil {
+			return nil, err
+		}
+		return &storage.RuntimeRef{Type: storage.RuntimeNative, Cwd: cwd}, nil
+	}
+	cwd, err := s.resolveWorkingDir(directory)
+	if err != nil {
+		return nil, err
+	}
+	return &storage.RuntimeRef{
+		Type:        storage.RuntimeNative,
+		Cwd:         cwd,
+		ProjectPath: projectPathForRequest(directory, cwd),
+	}, nil
 }
 
 func (s *Server) resolveWorkspaceFileRoot(path string) (string, error) {
