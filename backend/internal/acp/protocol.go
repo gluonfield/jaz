@@ -135,18 +135,20 @@ func selectPermissionOption(options []acpschema.PermissionOption) string {
 }
 
 func autoApprovedPermissionOption(job *Job, req acpschema.RequestPermissionRequest) string {
-	if CanonicalAgentName(job.ACPAgent) != AgentGrok {
-		return ""
-	}
 	if len(codexUserInputQuestions(req)) > 0 {
 		return ""
 	}
-	return selectPermissionOption(req.Options)
+	if optionID := planExitPermissionOptionForAgent(job.ACPAgent, req); optionID != "" {
+		return optionID
+	}
+	if CanonicalAgentName(job.ACPAgent) == AgentGrok {
+		return selectPermissionOption(req.Options)
+	}
+	return ""
 }
 
 func permissionOptionAllows(option acpschema.PermissionOption) bool {
-	switch option.Kind {
-	case acpschema.PermissionOptionKindAllowAlways, acpschema.PermissionOptionKindAllowOnce:
+	if permissionOptionKindAllows(option.Kind) {
 		return true
 	}
 	text := strings.ToLower(string(option.OptionID) + " " + option.Name)

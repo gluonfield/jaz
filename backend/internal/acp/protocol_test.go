@@ -470,96 +470,55 @@ func TestSessionInfoUpdatePublishesAndPersistsTitle(t *testing.T) {
 	}
 }
 
-func TestClaudeStylePlanExitPermissionPublishesGenericPermission(t *testing.T) {
+func TestClaudeStylePlanExitPermissionAutoSelectsExecutionMode(t *testing.T) {
 	root := t.TempDir()
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
 	events := sessionevents.New()
-	manager := NewManager(store, Config{}, nil)
+	manager := NewManager(nil, Config{}, nil)
 	manager.Events = events
-	manager.jobsByID["session"] = &Job{ID: "session", ACPSession: "acp-session", Cwd: root, interactive: true}
+	manager.jobsByID["session"] = &Job{
+		ID:          "session",
+		ACPAgent:    AgentClaude,
+		ACPSession:  "acp-session",
+		Cwd:         root,
+		interactive: true,
+	}
 	manager.jobsByACP["acp-session"] = manager.jobsByID["session"]
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	ctx := context.Background()
 	sub := events.Subscribe(ctx, "session")
-	result := make(chan json.RawMessage, 1)
-	errs := make(chan *jsonrpc.Error, 1)
 
-	go func() {
-		raw, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
-			Method: acpschema.ClientMethodSessionRequestPermission,
-			Params: mustJSON(t, acpschema.RequestPermissionRequest{
-				SessionID: "acp-session",
-				Options: []acpschema.PermissionOption{
-					{OptionID: "default", Name: "Yes, and manually approve edits", Kind: acpschema.PermissionOptionKindAllowOnce},
-					{OptionID: "plan", Name: "No, keep planning", Kind: acpschema.PermissionOptionKindRejectOnce},
-				},
-				ToolCall: acpschema.ToolCallUpdate{
-					ToolCallID: "exit-plan-mode",
-					Title:      "Ready to code?",
-				},
-			}),
-		})
-		if rpcErr != nil {
-			errs <- rpcErr
-			return
-		}
-		result <- raw
-	}()
+	raw, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
+		Method: acpschema.ClientMethodSessionRequestPermission,
+		Params: mustJSON(t, acpschema.RequestPermissionRequest{
+			SessionID: "acp-session",
+			Options: []acpschema.PermissionOption{
+				{OptionID: "default", Name: "Yes, and manually approve edits", Kind: acpschema.PermissionOptionKindAllowOnce},
+				{OptionID: "auto", Name: `Yes, and use "auto" mode`, Kind: acpschema.PermissionOptionKindAllowAlways},
+				{OptionID: "bypassPermissions", Name: "Yes, and bypass permissions", Kind: acpschema.PermissionOptionKindAllowAlways},
+				{OptionID: "plan", Name: "No, keep planning", Kind: acpschema.PermissionOptionKindRejectOnce},
+			},
+			ToolCall: acpschema.ToolCallUpdate{
+				Kind:       ptr(acpschema.ToolKindSwitchMode),
+				ToolCallID: "toolu-plan-exit",
+				Title:      "Ready to code?",
+			},
+		}),
+	})
+	if rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
 
-	var requestID string
+	var got map[string]map[string]string
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["outcome"]["outcome"] != "selected" || got["outcome"]["optionId"] != "bypassPermissions" {
+		t.Fatalf("unexpected permission response: %s", raw)
+	}
 	select {
 	case event := <-sub:
-		if event.Type != "permission_request" || event.Permission == nil {
-			t.Fatalf("unexpected event %#v", event)
-		}
-		requestID = event.Permission.ID
-		if event.Permission.Title != "Ready to code?" {
-			t.Fatalf("title = %q", event.Permission.Title)
-		}
-		if len(event.Permission.Questions) != 0 {
-			t.Fatalf("Claude-style permission should not synthesize questions: %#v", event.Permission.Questions)
-		}
-		if len(event.Permission.Options) != 2 || event.Permission.Options[1].ID != "plan" {
-			t.Fatalf("options = %#v", event.Permission.Options)
-		}
-	case err := <-errs:
-		t.Fatal(err)
-	case <-ctx.Done():
-		t.Fatal(ctx.Err())
-	}
-	state, err := store.LoadACPState("session")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(state.Permissions) != 1 || state.Permissions[0].Title != "Ready to code?" {
-		t.Fatalf("persisted permissions = %#v", state.Permissions)
-	}
-
-	if err := manager.AnswerInteractive(ctx, InteractiveAnswer{
-		Session:   "session",
-		RequestID: requestID,
-		OptionID:  "plan",
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	select {
-	case raw := <-result:
-		var got map[string]map[string]string
-		if err := json.Unmarshal(raw, &got); err != nil {
-			t.Fatal(err)
-		}
-		if got["outcome"]["outcome"] != "selected" || got["outcome"]["optionId"] != "plan" {
-			t.Fatalf("unexpected permission response: %s", raw)
-		}
-	case err := <-errs:
-		t.Fatal(err)
-	case <-ctx.Done():
-		t.Fatal(ctx.Err())
+		t.Fatalf("unexpected permission event %#v", event)
+	default:
 	}
 }
 
@@ -570,4 +529,8 @@ func mustJSON(t *testing.T, value any) json.RawMessage {
 		t.Fatal(err)
 	}
 	return raw
+}
+
+func ptr[T any](value T) *T {
+	return &value
 }

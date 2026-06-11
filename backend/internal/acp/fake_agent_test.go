@@ -121,7 +121,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			var req struct {
 				ModeID string `json:"modeId"`
 			}
-			if err := json.Unmarshal(msg.Params, &req); err != nil || (req.ModeID != "full-access" && req.ModeID != "always-approve" && req.ModeID != "plan") {
+			if err := json.Unmarshal(msg.Params, &req); err != nil || !fakeModeSupported(req.ModeID) {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("expected supported mode", nil))
 				_ = conn.Send(context.Background(), resp)
 				continue
@@ -264,6 +264,17 @@ func fakeModes() map[string]any {
 	if os.Getenv("JAZ_FAKE_ACP_NO_MODES") == "1" {
 		return nil
 	}
+	if os.Getenv("JAZ_FAKE_ACP_CLAUDE_MODES") == "1" {
+		return map[string]any{
+			"currentModeId": "auto",
+			"availableModes": []map[string]any{
+				{"id": "auto", "name": "Auto"},
+				{"id": "bypassPermissions", "name": "Bypass Permissions"},
+				{"id": "acceptEdits", "name": "Accept Edits"},
+				{"id": "plan", "name": "Plan"},
+			},
+		}
+	}
 	return map[string]any{
 		"currentModeId": "auto",
 		"availableModes": []map[string]any{
@@ -272,6 +283,15 @@ func fakeModes() map[string]any {
 			{"id": "plan", "name": "Plan"},
 		},
 	}
+}
+
+func fakeModeSupported(mode string) bool {
+	for _, id := range []string{"full-access", "always-approve", "bypassPermissions", "acceptEdits", "auto", "plan"} {
+		if mode == id {
+			return true
+		}
+	}
+	return false
 }
 
 func sendResult(conn jsonrpc.MessageConn, req *jsonrpc.Message, result any) {
