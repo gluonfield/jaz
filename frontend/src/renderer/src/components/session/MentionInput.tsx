@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { AnimatePresence } from 'motion/react'
 import {
   type ChangeEvent,
   type KeyboardEvent,
@@ -11,7 +12,7 @@ import {
 } from 'react'
 import { workspaceFilesQuery } from '@/lib/api/sessions'
 import { skillsQuery } from '@/lib/api/skills'
-import type { SuggestionItem, SuggestionSection } from './ComposerSuggestions'
+import { ComposerSuggestions, type SuggestionItem, type SuggestionSection } from './ComposerSuggestions'
 import {
   expandTokens,
   findActiveTrigger,
@@ -56,7 +57,6 @@ export type MentionInput = ReturnType<typeof useMentionInput>
 // Escape'd trigger position so the menu stays closed until the trigger changes.
 export function useMentionInput({
   fileRoot,
-  focused,
   disabled,
   maxHeight = 200,
   initialValue = '',
@@ -65,8 +65,6 @@ export function useMentionInput({
   /** server-side directory the @-mention picker indexes (a project path, a
       session cwd, or '' for the workspace root). undefined disables @ */
   fileRoot?: string
-  /** fetches prewarm and the menu only opens while the field is focused */
-  focused: boolean
   disabled?: boolean
   /** auto-grow cap for the textarea, in px */
   maxHeight?: number
@@ -80,9 +78,17 @@ export function useMentionInput({
   const [caret, setCaret] = useState(0)
   const [dismissedAt, setDismissedAt] = useState<number | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
+  // Fetches prewarm and the menu only opens while the textarea is focused;
+  // MentionTextarea wires the focus/blur events.
+  const [focused, setFocused] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const mirrorRef = useRef<HTMLDivElement>(null)
   const composingRef = useRef(false)
+
+  // autoFocus lands before React's focus listeners attach; sync the initial state.
+  useEffect(() => {
+    if (document.activeElement === textareaRef.current) setFocused(true)
+  }, [])
 
   // Open-ness is derived from text + caret, never stored: moving the caret
   // away, typing whitespace, or deleting the trigger all close the menu for
@@ -96,10 +102,11 @@ export function useMentionInput({
   })
   const skillMentionStart = focused && menuTrigger?.trigger === '$' ? menuTrigger.start : null
 
+  const { refetch: refetchSkills } = skills
   useEffect(() => {
     if (skillMentionStart === null) return
-    void skills.refetch()
-  }, [skillMentionStart, skills.refetch])
+    void refetchSkills()
+  }, [skillMentionStart, refetchSkills])
 
   const sections = useMemo<SuggestionSection[]>(() => {
     if (!menuTrigger) return []
@@ -165,9 +172,15 @@ export function useMentionInput({
 
   const segments = useMemo(() => segmentValue(text, tokens), [text, tokens])
 
+  // Reports edits only — the mount pass over initialValue stays silent.
   const onValueChangeRef = useRef(onValueChange)
   onValueChangeRef.current = onValueChange
+  const editedRef = useRef(false)
   useEffect(() => {
+    if (!editedRef.current) {
+      editedRef.current = true
+      return
+    }
     onValueChangeRef.current?.(expandTokens(text, tokens))
   }, [text, tokens])
 
@@ -318,9 +331,12 @@ export function useMentionInput({
     selectItem,
     textareaRef,
     mirrorRef,
+    maxHeight,
     /** the current value in wire form (encoded mentions) */
     value: () => expandTokens(text, tokens),
     reset,
+    onFocus: () => setFocused(true),
+    onBlur: () => setFocused(false),
     onChange,
     onSelect,
     onScroll,
@@ -328,6 +344,36 @@ export function useMentionInput({
     onCompositionEnd,
     onKeyDown,
   }
+}
+
+// The floating $/@ menu for a mention field. Renders into the nearest
+// positioned ancestor — callers wrap their field in a `relative` container.
+export function MentionSuggestions({
+  mention,
+  placement,
+}: {
+  mention: MentionInput
+  placement: 'above' | 'below'
+}) {
+  return (
+    <AnimatePresence>
+      {mention.menuOpen ? (
+        <div
+          key="suggestions"
+          className={`absolute inset-x-0 z-30 ${
+            placement === 'above' ? 'bottom-full mb-2' : 'top-full mt-2'
+          }`}
+        >
+          <ComposerSuggestions
+            sections={mention.sections}
+            activeIndex={mention.activeIndex}
+            onHover={mention.setActiveIndex}
+            onSelect={mention.selectItem}
+          />
+        </div>
+      ) : null}
+    </AnimatePresence>
+  )
 }
 
 // The painted pair behind every mention-capable field: a mirror painting the
@@ -339,15 +385,14 @@ export function MentionTextarea({
   placeholder,
   disabled,
   autoFocus,
-  heightClass = 'max-h-[200px] min-h-[30px]',
+  minHeightClass = 'min-h-[30px]',
   onKeyDown,
 }: {
   mention: MentionInput
   placeholder?: string
   disabled?: boolean
   autoFocus?: boolean
-  /** height utilities for the textarea; the max must match the hook's maxHeight */
-  heightClass?: string
+  minHeightClass?: string
   /** runs only when the mention machinery didn't consume the key */
   onKeyDown?: (e: KeyboardEvent<HTMLTextAreaElement>) => void
 }) {
@@ -381,7 +426,10 @@ export function MentionTextarea({
         aria-expanded={mention.menuOpen}
         // No spellcheck: squiggles under skill/path tokens read as errors.
         spellCheck={false}
-        className={`composer-input relative z-[1] w-full resize-none bg-transparent ${heightClass} ${TEXT_CLASSES} text-transparent caret-ink select-text placeholder:text-ink-3 disabled:cursor-default`}
+        className={`composer-input relative z-[1] w-full resize-none bg-transparent ${minHeightClass} ${TEXT_CLASSES} text-transparent caret-ink select-text placeholder:text-ink-3 disabled:cursor-default`}
+        style={{ maxHeight: mention.maxHeight }}
+        onFocus={mention.onFocus}
+        onBlur={mention.onBlur}
         onScroll={mention.onScroll}
         onCompositionStart={mention.onCompositionStart}
         onCompositionEnd={mention.onCompositionEnd}

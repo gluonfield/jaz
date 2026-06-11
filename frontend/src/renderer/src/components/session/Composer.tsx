@@ -4,15 +4,9 @@ import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { IconButton } from '@/components/ui/IconButton'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { MenuRow, Popover } from '@/components/ui/Popover'
-import { ComposerSuggestions } from './ComposerSuggestions'
-import { MentionTextarea, useMentionInput } from './MentionInput'
+import { RAINBOW_BEAM } from '@/components/ui/rainbow'
+import { MentionSuggestions, MentionTextarea, useMentionInput } from './MentionInput'
 import { QueuedPromptList } from './QueuedPromptList'
-
-// A rainbow comet (~100° arc fading in and out of transparency) that orbits
-// the card while focused; the rest of the perimeter stays a quiet track.
-// Shared with the music bubbles' now-playing ring.
-export const RAINBOW_BEAM =
-  'conic-gradient(from var(--ring-angle, 0deg), transparent 0deg 250deg, var(--color-rainbow-1) 278deg, var(--color-rainbow-2) 296deg, var(--color-rainbow-3) 312deg, var(--color-rainbow-4) 326deg, var(--color-rainbow-5) 340deg, transparent 352deg 360deg)'
 
 function formatFileSize(size: number): string {
   if (size < 1024) return `${size} B`
@@ -102,9 +96,9 @@ export function ComposerCard({
   const [planRequested, setPlanRequested] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const reducedMotion = useReducedMotion()
-  const mention = useMentionInput({ fileRoot, focused, disabled })
+  const mention = useMentionInput({ fileRoot, disabled })
 
-  // autoFocus lands before React's focus listeners attach; sync the initial state.
+  // autoFocus lands before React's focus listeners attach; sync the ring state.
   useEffect(() => {
     if (document.activeElement === mention.textareaRef.current) setFocused(true)
   }, [mention.textareaRef])
@@ -184,18 +178,7 @@ export function ComposerCard({
         addFiles(Array.from(e.dataTransfer.files))
       }}
     >
-      <AnimatePresence>
-        {mention.menuOpen ? (
-          <div key="suggestions" className="absolute inset-x-0 bottom-full z-30 mb-2">
-            <ComposerSuggestions
-              sections={mention.sections}
-              activeIndex={mention.activeIndex}
-              onHover={mention.setActiveIndex}
-              onSelect={mention.selectItem}
-            />
-          </div>
-        ) : null}
-      </AnimatePresence>
+      <MentionSuggestions mention={mention} placement="above" />
       <AnimatePresence>
         {focused ? (
           <motion.div
