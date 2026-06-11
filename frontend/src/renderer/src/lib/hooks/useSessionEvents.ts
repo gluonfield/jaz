@@ -8,6 +8,8 @@ import { mergeSessionEvent } from '@/lib/sessionEvents'
 // Subscribes to a session's SSE stream while mounted; events accumulate in
 // the query cache. streamingRef suppresses mid-turn message refetches on the
 // page that is itself streaming — its live exchange already renders the turn.
+// Cache writes are batched and sidebar invalidations debounced so a busy turn
+// costs one render per flush, not one per event.
 export function useSessionEvents(sessionId: string, streamingRef?: RefObject<boolean>): void {
   const queryClient = useQueryClient()
 
@@ -16,23 +18,43 @@ export function useSessionEvents(sessionId: string, streamingRef?: RefObject<boo
       if (streamingRef?.current) return
       queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
     }
+    let pending: SessionEvent[] = []
+    let flushTimer: ReturnType<typeof setTimeout> | null = null
+    let listsTimer: ReturnType<typeof setTimeout> | null = null
+    const flush = () => {
+      flushTimer = null
+      const batch = pending
+      pending = []
+      queryClient.setQueryData<SessionEvent[]>(keys.sessionEvents(sessionId), (prev = []) =>
+        batch.reduce(mergeSessionEvent, prev),
+      )
+    }
+    const invalidateLists = () => {
+      listsTimer = null
+      queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
+      queryClient.invalidateQueries({ queryKey: keys.allSessions })
+    }
     const stop = openSessionEvents(sessionId, (event: SessionEvent) => {
       // 'assistant' events are refresh signals, not transcript items.
       if (event.type === 'assistant') {
         refetchMessages()
       } else {
-        queryClient.setQueryData<SessionEvent[]>(keys.sessionEvents(sessionId), (prev = []) =>
-          mergeSessionEvent(prev, event),
-        )
+        pending.push(event)
+        flushTimer ??= setTimeout(flush, 50)
         // turn finished: new rows were persisted
         const state = (event.acp?.state ?? '').toLowerCase()
         if (event.type === 'acp' && ['idle', 'failed', 'cancelled'].includes(state)) {
           refetchMessages()
         }
       }
-      queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
-      queryClient.invalidateQueries({ queryKey: keys.allSessions })
+      listsTimer ??= setTimeout(invalidateLists, 500)
     })
-    return stop
+    return () => {
+      stop()
+      if (flushTimer !== null) clearTimeout(flushTimer)
+      // Don't drop a partial batch on unmount: the cache outlives this page.
+      if (pending.length) flush()
+      if (listsTimer !== null) clearTimeout(listsTimer)
+    }
   }, [sessionId, queryClient, streamingRef])
 }

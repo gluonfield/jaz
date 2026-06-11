@@ -9,7 +9,7 @@ import {
   FileText,
   LoaderCircle,
 } from 'lucide-react'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type {
   ACPPermission,
   ACPToolCall,
@@ -86,7 +86,7 @@ function MessageAttachments({ message }: { message: ChatMessage }) {
   )
 }
 
-function Bubble({ message }: { message: ChatMessage }) {
+const Bubble = memo(function Bubble({ message }: { message: ChatMessage }) {
   switch (message.role) {
     case 'user':
       return (
@@ -122,7 +122,7 @@ function Bubble({ message }: { message: ChatMessage }) {
     default:
       return null
   }
-}
+})
 
 function isParentChildACPEvent(event: SessionEvent): boolean {
   return Boolean(
@@ -255,7 +255,15 @@ function toolRunLabel(calls: ACPToolCall[]): string {
   return failed ? `${label}, ${failed} failed` : label
 }
 
-function ToolDisclosure({ label, calls, active = false }: { label: string; calls: ACPToolCall[]; active?: boolean }) {
+const ToolDisclosure = memo(function ToolDisclosure({
+  label,
+  calls,
+  active = false,
+}: {
+  label: string
+  calls: ACPToolCall[]
+  active?: boolean
+}) {
   const [open, setOpen] = useState(false)
   // Old sessions can hold stale non-terminal statuses; only spin while the
   // session is actually working.
@@ -299,7 +307,7 @@ function ToolDisclosure({ label, calls, active = false }: { label: string; calls
       ) : null}
     </div>
   )
-}
+})
 
 function ToolSummary({ calls, active = false }: { calls?: ACPToolCall[]; active?: boolean }) {
   if (!calls?.length) return null
@@ -329,7 +337,7 @@ export function PlanStepIcon({ state, active }: { state: PlanStepState; active: 
   }
 }
 
-function PlanChecklist({
+const PlanChecklist = memo(function PlanChecklist({
   surface,
   active = false,
   onApprovePlan,
@@ -448,9 +456,9 @@ function PlanChecklist({
       ) : null}
     </div>
   )
-}
+})
 
-function LiveEvent({
+const LiveEvent = memo(function LiveEvent({
   event,
   sessionId,
   showHeader,
@@ -512,7 +520,7 @@ function LiveEvent({
       ) : null}
     </motion.div>
   )
-}
+})
 
 type TimelineItem =
   | { kind: 'message'; message: ChatMessage; at: number }
@@ -686,24 +694,15 @@ function WorkSection({
   )
 }
 
-export function Transcript({
-  messages,
-  events,
-  sessionId,
-  groupTurns = false,
-  working = false,
-  tail,
-  onApprovePlan,
-}: {
-  messages: ChatMessage[]
-  events: SessionEvent[]
-  sessionId?: string
-  groupTurns?: boolean
-  working?: boolean
-  // in-flight live exchange, rendered between history and anchored live state
-  tail?: ReactNode
-  onApprovePlan?: () => void
-}) {
+// Everything between raw history and JSX that doesn't depend on render-only
+// state (working, tail). The component memoizes one call per data change so
+// parent renders and streaming flags don't rebuild the timeline.
+function buildTimeline(
+  messages: ChatMessage[],
+  events: SessionEvent[],
+  sessionId: string | undefined,
+  groupTurns: boolean,
+) {
   const combinedEvents = combineSequentialACPText(events)
   const permissionResolutions = new Map<string, ACPPermission>()
   const latestPermissionRequest = new Map<string, number>()
@@ -784,6 +783,45 @@ export function Transcript({
   // "Working on …" next to a question that's waiting for the user is noise.
   const anchored = [...(pendingCards.length ? [] : workingLinks), ...pendingCards]
   markEventHeaders([...chronological, ...anchored], sessionId)
+  return {
+    chronological,
+    anchored,
+    turns: groupTurns ? splitTurns(chronological) : [],
+    permissionResolutions,
+    latestPlanEvent,
+    pendingPermissionIds,
+  }
+}
+
+export const Transcript = memo(function Transcript({
+  messages,
+  events,
+  sessionId,
+  groupTurns = false,
+  working = false,
+  tail,
+  onApprovePlan,
+}: {
+  messages: ChatMessage[]
+  events: SessionEvent[]
+  sessionId?: string
+  groupTurns?: boolean
+  working?: boolean
+  // in-flight live exchange, rendered between history and anchored live state
+  tail?: ReactNode
+  onApprovePlan?: () => void
+}) {
+  const {
+    chronological,
+    anchored,
+    turns,
+    permissionResolutions,
+    latestPlanEvent,
+    pendingPermissionIds,
+  } = useMemo(
+    () => buildTimeline(messages, events, sessionId, groupTurns),
+    [messages, events, sessionId, groupTurns],
+  )
 
   const renderItem = (item: TimelineItem): ReactNode => {
     switch (item.kind) {
@@ -833,7 +871,6 @@ export function Transcript({
     )
   }
 
-  const turns = splitTurns(chronological)
   return (
     <div className="flex flex-col gap-5">
       {turns.map((turn, turnIndex) => {
@@ -883,7 +920,7 @@ export function Transcript({
       {anchored.map((item) => renderItem(item))}
     </div>
   )
-}
+})
 
 // Coalesced events keep their latest copy whose seq changes per update; key by
 // identity so streamed deltas patch in place instead of remounting.
