@@ -31,8 +31,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const push = useCallback((message: string, tone: Toast['tone'] = 'ok') => {
     const id = nextId.current++
+    const autoDismiss = tone !== 'danger'
     setToasts((prev) => [...prev, { id, message, tone }])
-    timers.current.set(id, setTimeout(() => dismiss(id), TOAST_AUTO_DISMISS_MS))
+    if (autoDismiss) {
+      timers.current.set(id, setTimeout(() => dismiss(id), TOAST_AUTO_DISMISS_MS))
+    }
   }, [dismiss])
 
   useEffect(() => () => {
