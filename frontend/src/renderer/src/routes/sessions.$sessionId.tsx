@@ -10,11 +10,13 @@ import { MessageMarkdown } from '@/components/session/MessageMarkdown'
 import { SESSION_PANEL_WIDTH, SessionPanel } from '@/components/session/SessionPanel'
 import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
 import { ThinkingBlock } from '@/components/session/ThinkingBlock'
+import { ThreadFindBar } from '@/components/session/ThreadFindBar'
 import { TokenStats } from '@/components/session/TokenStats'
 import { ToolCallCard } from '@/components/session/ToolCallCard'
 import { Transcript } from '@/components/session/Transcript'
 import { VoiceMode } from '@/components/session/VoiceMode'
 import { isHiddenToolName } from '@/components/session/toolVisibility'
+import { useThreadFind } from '@/components/session/useThreadFind'
 import { useThreadAutoScroll } from '@/components/session/useThreadAutoScroll'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Skeleton, SkeletonRows } from '@/components/ui/Skeleton'
@@ -423,6 +425,7 @@ function SessionPage() {
   const transcriptBottomPadding = Math.max(bottomDockHeight + TRANSCRIPT_DOCK_GAP_PX, 160)
   const { scrollRef, showScrollToBottom, onScroll: onThreadScroll, scrollToBottom, pinToBottom } =
     useThreadAutoScroll({ resetKey: sessionId, itemCount, liveSize, bottomInset: transcriptBottomPadding })
+  const threadFind = useThreadFind(sessionId)
 
   // Abandon an in-flight stream when leaving the session.
   useEffect(() => () => abortRef.current?.abort(), [sessionId])
@@ -711,6 +714,7 @@ function SessionPage() {
           onScroll={onThreadScroll}
         >
           <div
+            ref={threadFind.rootRef}
             className="mx-auto max-w-[720px] px-10 pt-2"
             style={{ paddingBottom: transcriptBottomPadding }}
           >
@@ -725,6 +729,7 @@ function SessionPage() {
                 sessionId={session.id}
                 groupTurns={isACP}
                 working={sessionRunning}
+                findActive={threadFind.open && Boolean(threadFind.query.trim())}
                 tail={
                   live && !isACP ? (
                     <div className="flex flex-col gap-5">
@@ -761,7 +766,8 @@ function SessionPage() {
             )}
           </div>
         </div>
-  
+        <ThreadFindBar find={threadFind} />
+
         {showPlanDecision && planDecisionError ? (
           <p className="absolute inset-x-0 bottom-32 mx-auto max-w-[640px] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
             {planDecisionError}

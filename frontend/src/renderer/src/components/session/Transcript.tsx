@@ -484,30 +484,34 @@ function WorkSection({
   items,
   durationMs,
   defaultOpen,
+  findActive = false,
   render,
 }: {
   items: TimelineItem[]
   durationMs: number
   defaultOpen: boolean
+  findActive?: boolean
   render: (item: TimelineItem) => ReactNode
 }) {
   const [open, setOpen] = useState(defaultOpen)
+  const effectiveOpen = open || findActive
+
   return (
     <div className="flex flex-col gap-5">
       <button
         type="button"
-        aria-expanded={open}
+        aria-expanded={effectiveOpen}
         onClick={() => setOpen((value) => !value)}
         className="inline-flex min-h-7 items-center gap-1.5 self-start rounded-full px-1 text-left text-[12px] font-medium text-ink-3 transition-colors hover:text-ink"
       >
         <ChevronRight
           size={12}
-          className={`shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}
+          className={`shrink-0 transition-transform ${effectiveOpen ? 'rotate-90' : ''}`}
           aria-hidden
         />
         Worked for {formatDuration(durationMs)}
       </button>
-      {open ? (
+      {effectiveOpen ? (
         <div className="flex flex-col gap-5 border-l border-border pl-4">
           {items.map((item) => render(item))}
         </div>
@@ -522,6 +526,7 @@ export const Transcript = memo(function Transcript({
   sessionId,
   groupTurns = false,
   working = false,
+  findActive = false,
   tail,
   onApprovePlan,
 }: {
@@ -530,6 +535,7 @@ export const Transcript = memo(function Transcript({
   sessionId?: string
   groupTurns?: boolean
   working?: boolean
+  findActive?: boolean
   // in-flight live exchange, rendered between history and anchored live state
   tail?: ReactNode
   onApprovePlan?: () => void
@@ -616,6 +622,7 @@ export const Transcript = memo(function Transcript({
               items={batch}
               durationMs={durationMs}
               defaultOpen={false}
+              findActive={findActive}
               render={renderItem}
             />,
           )
