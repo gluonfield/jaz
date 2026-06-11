@@ -6,7 +6,7 @@ product
 
 ## Users
 
-One person: the owner of this jaz instance. A technical user running a personal AI assistant platform on their own machine, usually alongside terminals and editors. They open the desktop app to check what their assistant and its agent sessions are doing, to read transcripts, and to tune the agent's identity files (AGENTS.md, SOUL.md, HEARTBEAT.md). Sessions of use are short and frequent: glance, read, edit, close.
+One person: the owner of this jaz instance. A technical user running a personal AI assistant platform on their own machine, usually alongside terminals and editors. They open the desktop app to check what their assistant and its agent sessions are doing, to read transcripts, and to tune the agent's identity files (AGENTS.md, SOUL.md). Sessions of use are short and frequent: glance, read, edit, close.
 
 ## Product Purpose
 
