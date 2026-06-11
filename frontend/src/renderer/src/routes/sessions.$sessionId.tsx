@@ -769,7 +769,7 @@ function SessionPage() {
                   }
                 />
                 {sessionError ? (
-                  <SessionErrorNotice message={sessionError} context={sessionErrorContext} />
+                  <SessionErrorNotice message={sessionError} context={sessionErrorContext} className="mt-5" />
                 ) : null}
               </>
             )}
