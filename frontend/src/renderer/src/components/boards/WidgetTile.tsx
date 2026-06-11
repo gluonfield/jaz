@@ -174,6 +174,7 @@ export function WidgetTile({
         dead_space_pct?: number
         overflow_px?: number
         clipped?: number
+        img_errors?: number
       }
       if (msg?.type === 'jaz:link' && typeof msg.href === 'string') {
         window.open(msg.href, '_blank')
@@ -189,6 +190,7 @@ export function WidgetTile({
           dead_space_pct: msg.dead_space_pct,
           overflow_px: msg.overflow_px ?? 0,
           clipped: msg.clipped ?? 0,
+          img_errors: msg.img_errors ?? 0,
         }
         // Dedupe on version + measurement, not just version: a resize that
         // changes the layout must replace the stale report, while identical

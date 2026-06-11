@@ -44,6 +44,33 @@
     post('jaz:error', { message: String((event && event.message) || 'widget error') });
   });
 
+  /* Broken images render as a broken-glyph icon the author never sees. Hide
+   * them (visibility keeps the layout stable) and count them in the layout
+   * report so the loop drops or replaces the URL on its next run. Resource
+   * error events don't bubble, hence the capture phase; images that failed
+   * before this script ran are caught by the sweep in measureLayout. */
+  document.addEventListener(
+    'error',
+    function (event) {
+      var el = event && event.target;
+      if (el && el.tagName === 'IMG') el.style.visibility = 'hidden';
+    },
+    true
+  );
+
+  function hideBrokenImages() {
+    var broken = 0;
+    var imgs = document.images;
+    for (var i = 0; i < imgs.length; i++) {
+      var img = imgs[i];
+      if (img.complete && img.naturalWidth === 0 && img.getAttribute('src')) {
+        img.style.visibility = 'hidden';
+        broken++;
+      }
+    }
+    return broken;
+  }
+
   window.addEventListener('unhandledrejection', function (event) {
     var reason = event && event.reason;
     var message = reason && reason.message ? reason.message : String(reason);
@@ -89,6 +116,7 @@
       dead_space_pct: deadPct,
       overflow_px: Math.round(overflowPx),
       clipped: clipped,
+      img_errors: hideBrokenImages(),
     });
   }
 

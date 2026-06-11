@@ -99,8 +99,12 @@ body {
 }
 /* Only widgets that manage their own overflow get capped at the tile height
  * (so the inner scroller engages). Without an inner scroller, capping would
- * squeeze the content's flex/grid tracks instead of letting the page scroll. */
-#jz-root > :only-child:has(.jz-scroll, .overflow-y-auto, .overflow-auto) {
+ * squeeze the content's flex/grid tracks instead of letting the page scroll.
+ * :has() only sees descendants, so the root element being the scroller
+ * itself needs the :is() clause — otherwise its cap never engages and the
+ * telemetry reports phantom overflow forever. */
+#jz-root > :only-child:has(.jz-scroll, .overflow-y-auto, .overflow-auto),
+#jz-root > :only-child:is(.jz-scroll, .overflow-y-auto, .overflow-auto) {
   flex: 1 1 auto;
   min-height: 0;
 }
