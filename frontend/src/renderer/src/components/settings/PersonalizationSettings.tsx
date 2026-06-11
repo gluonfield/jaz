@@ -13,7 +13,6 @@ import { keys } from '@/lib/query/keys'
 const FILE_DESCRIPTIONS: Record<string, string> = {
   'AGENTS.md': 'How your assistant works: roles, capabilities, and rules of engagement.',
   'SOUL.md': 'Who your assistant is: personality, voice, and values.',
-  'HEARTBEAT.md': 'What your assistant does on its own: periodic and background behaviors.',
 }
 
 export function PersonalizationSettings() {

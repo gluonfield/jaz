@@ -247,8 +247,8 @@
   }
 }
 
-/* Live-state dot: rainbow appears only while jaz is working (wordmark
- * heartbeat, live thinking/tool indicators). At rest the dot is brand cobalt. */
+/* Live-state dot: rainbow appears only while jaz is working (wordmark,
+ * live thinking/tool indicators). At rest the dot is brand cobalt. */
 .jaz-shimmer {
   animation: jaz-shimmer 4.5s ease-in-out infinite;
 }
