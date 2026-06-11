@@ -10,7 +10,11 @@ import { mergeSessionEvent } from '@/lib/sessionEvents'
 // page that is itself streaming — its live exchange already renders the turn.
 // Cache writes are batched and sidebar invalidations debounced so a busy turn
 // costs one render per flush, not one per event.
-export function useSessionEvents(sessionId: string, streamingRef?: RefObject<boolean>): void {
+export function useSessionEvents(
+  sessionId: string,
+  streamingRef?: RefObject<boolean>,
+  onEvent?: (event: SessionEvent) => void,
+): void {
   const queryClient = useQueryClient()
 
   useEffect(() => {
@@ -35,6 +39,7 @@ export function useSessionEvents(sessionId: string, streamingRef?: RefObject<boo
       queryClient.invalidateQueries({ queryKey: keys.allSessions })
     }
     const stop = openSessionEvents(sessionId, (event: SessionEvent) => {
+      onEvent?.(event)
       // 'assistant' events are refresh signals, not transcript items.
       if (event.type === 'assistant') {
         refetchMessages()
@@ -56,5 +61,5 @@ export function useSessionEvents(sessionId: string, streamingRef?: RefObject<boo
       if (pending.length) flush()
       if (listsTimer !== null) clearTimeout(listsTimer)
     }
-  }, [sessionId, queryClient, streamingRef])
+  }, [sessionId, queryClient, streamingRef, onEvent])
 }
