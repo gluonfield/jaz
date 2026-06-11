@@ -346,6 +346,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
 const PANEL_CHAT_COMFORT = 800
 const PANEL_PREF_KEY = 'jaz.sessionPanel'
 const SESSION_DRAFT_KEY_PREFIX = 'jaz.sessionDraft.'
+const TRANSCRIPT_DOCK_GAP_PX = 20
 type PanelPref = 'auto' | 'open' | 'closed'
 
 function storedPanelPref(): PanelPref {
@@ -418,8 +419,10 @@ function SessionPage() {
       live.attachments.length +
       (live.error?.length ?? 0)
     : 0
+  const [bottomDockHeight, setBottomDockHeight] = useState(0)
+  const transcriptBottomPadding = Math.max(bottomDockHeight + TRANSCRIPT_DOCK_GAP_PX, 160)
   const { scrollRef, showScrollToBottom, onScroll: onThreadScroll, scrollToBottom, pinToBottom } =
-    useThreadAutoScroll({ resetKey: sessionId, itemCount, liveSize })
+    useThreadAutoScroll({ resetKey: sessionId, itemCount, liveSize, bottomInset: transcriptBottomPadding })
 
   // Abandon an in-flight stream when leaving the session.
   useEffect(() => () => abortRef.current?.abort(), [sessionId])
@@ -707,7 +710,10 @@ function SessionPage() {
           className="h-full overflow-y-auto"
           onScroll={onThreadScroll}
         >
-          <div className={`mx-auto max-w-[720px] px-10 pt-2 ${queue.queuedPrompts.length ? 'pb-72' : 'pb-40'}`}>
+          <div
+            className="mx-auto max-w-[720px] px-10 pt-2"
+            style={{ paddingBottom: transcriptBottomPadding }}
+          >
             {empty ? (
               <EmptyState title="Start the conversation">
                 <p>Messages stream in live as your assistant thinks and works.</p>
@@ -761,7 +767,10 @@ function SessionPage() {
             {planDecisionError}
           </p>
         ) : null}
-        <BottomDock before={<ScrollToBottomButton visible={showScrollToBottom} onClick={scrollToBottom} />}>
+        <BottomDock
+          before={<ScrollToBottomButton visible={showScrollToBottom} onClick={scrollToBottom} />}
+          onHeightChange={setBottomDockHeight}
+        >
           {showPlanDecision ? (
             <PlanDecisionCard
               pending={planDecisionPending}
