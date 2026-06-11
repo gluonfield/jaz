@@ -246,9 +246,10 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 		publishACP = job.Modes.CurrentModeID != string(event.CurrentModeID)
 		job.Modes.CurrentModeID = string(event.CurrentModeID)
 	case acpschema.SessionInfoSessionUpdate:
-		if event.Title != "" {
-			job.Title = event.Title
-			title = event.Title
+		if nextTitle := strings.TrimSpace(event.Title); nextTitle != "" && nextTitle != job.Title {
+			job.Title = nextTitle
+			title = nextTitle
+			publishACP = true
 		}
 	}
 	job.UpdatedAt = now
