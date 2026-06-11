@@ -444,7 +444,9 @@ export function ComposerCard({
             placeholder={placeholder}
             aria-autocomplete="list"
             aria-expanded={menuOpen}
-            className={`relative z-[1] max-h-[200px] min-h-[30px] w-full resize-none bg-transparent ${COMPOSER_TEXT_CLASSES} text-transparent caret-ink select-text selection:bg-primary/25 placeholder:text-ink-3 disabled:cursor-default`}
+            // No spellcheck: squiggles under skill/path tokens read as errors.
+            spellCheck={false}
+            className={`composer-input relative z-[1] max-h-[200px] min-h-[30px] w-full resize-none bg-transparent ${COMPOSER_TEXT_CLASSES} text-transparent caret-ink select-text placeholder:text-ink-3 disabled:cursor-default`}
             onScroll={(e) => {
               if (mirrorRef.current) mirrorRef.current.scrollTop = e.currentTarget.scrollTop
             }}
