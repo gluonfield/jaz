@@ -469,6 +469,7 @@ func (m *Manager) appendUserAnswerMessage(job *Job, text string, parentVisible b
 	for _, sessionID := range sessionIDs {
 		_ = m.store.AppendMessages(sessionID, provider.UserMessage(text))
 	}
+	m.touchAttention(sessionIDs...)
 }
 
 func (m *Manager) setJobPermission(job *Job, permission sessionevents.ACPPermission) {
@@ -499,6 +500,9 @@ func (m *Manager) removeJobPermission(job *Job, requestID string) {
 
 func (m *Manager) publishPermission(job *Job, permission sessionevents.ACPPermission, eventType string) {
 	m.saveACPState(job.Snapshot())
+	if eventType == "permission_request" {
+		m.touchJobAttention(job)
+	}
 	for _, sessionID := range surfaceSessionIDs(job) {
 		m.recordAndPublish(sessionevents.Event{
 			SessionID:  sessionID,
@@ -506,6 +510,25 @@ func (m *Manager) publishPermission(job *Job, permission sessionevents.ACPPermis
 			Permission: &permission,
 			At:         time.Now().UTC(),
 		})
+	}
+}
+
+func (m *Manager) touchJobAttention(job *Job) {
+	snapshot := job.Snapshot()
+	m.touchAttention(surfaceSessionIDs(&snapshot)...)
+}
+
+func (m *Manager) touchAttention(sessionIDs ...string) {
+	if m.store == nil {
+		return
+	}
+	seen := map[string]bool{}
+	for _, sessionID := range sessionIDs {
+		if sessionID == "" || seen[sessionID] {
+			continue
+		}
+		seen[sessionID] = true
+		_ = m.store.TouchSessionAttention(sessionID)
 	}
 }
 

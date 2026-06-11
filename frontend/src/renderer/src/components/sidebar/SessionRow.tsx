@@ -62,7 +62,7 @@ export function SessionRow({ session, child = false }: { session: Session; child
         {sessionLabel(session)}
       </span>
       <span className="shrink-0 text-[11px] tabular-nums text-ink-3 group-hover:hidden">
-        {relativeTime(session.updated_at)}
+        {relativeTime(session.last_attention_at || session.updated_at)}
       </span>
       <ArchiveButton sessionId={session.id} />
     </Link>

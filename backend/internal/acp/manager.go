@@ -30,6 +30,7 @@ type Store interface {
 	CreateSession(storage.CreateSession) (storage.Session, error)
 	LoadSession(string) (storage.Session, error)
 	SaveSession(storage.Session) error
+	TouchSessionAttention(string) error
 	storage.MessageAppender
 	storage.SessionEventAppender
 	storage.ActivityUpserter
@@ -541,6 +542,7 @@ func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {
 	_ = storage.AppendUserMessage(m.store, job.ID, req.Message, req.Attachments)
 	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested)
 	job.startTurn(req.Completion, req.Interactive, req.PlanRequested, req.ParentVisible)
+	m.touchJobAttention(job)
 	m.publishACP(job.Snapshot())
 	go m.runPrompt(context.Background(), job, req.Message, req.Attachments)
 	return job.Snapshot(), nil
