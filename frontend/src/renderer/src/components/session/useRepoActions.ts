@@ -57,6 +57,9 @@ export function useRepoActions(session: Session) {
     setBusy(kind)
     try {
       await fn()
+      // Commit/merge move what the diff-vs-base view shows; the prefix also
+      // covers the changes summary and cached file diffs.
+      queryClient.invalidateQueries({ queryKey: keys.sessionRepo(session.id) })
       return true
     } catch (error) {
       toast((error as Error).message, 'danger')
