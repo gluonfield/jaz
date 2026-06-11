@@ -100,6 +100,54 @@ func TestManagerRefreshMapsAndExecutesRemoteTools(t *testing.T) {
 	}
 }
 
+func TestManagerRefreshLocalCanUseLocalServer(t *testing.T) {
+	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "local-mcp", Version: "1.0.0"}, nil)
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
+		Name:        "echo",
+		Description: "echoes a value",
+	}, func(ctx context.Context, req *mcpsdk.CallToolRequest, input echoInput) (*mcpsdk.CallToolResult, map[string]string, error) {
+		return &mcpsdk.CallToolResult{
+			Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: "local " + input.Value}},
+		}, map[string]string{"value": input.Value}, nil
+	})
+
+	registry := tools.NewRegistry()
+	manager := NewManager(&testStore{servers: []mcpconfig.Server{{
+		ID:        "jazmem",
+		Name:      "jazmem",
+		Transport: mcpconfig.TransportStreamableHTTP,
+		URL:       "http://127.0.0.1:1/mcp/jazmem",
+		Enabled:   true,
+	}, {
+		ID:        "remote",
+		Name:      "Remote",
+		Transport: mcpconfig.TransportStreamableHTTP,
+		URL:       "http://127.0.0.1:1/mcp/remote",
+		Enabled:   true,
+	}}}, nil, registry, log.New(io.Discard), WithLocalServer("jazmem", server))
+	manager.RefreshLocal(context.Background())
+	defer manager.Close()
+
+	status := manager.Status("jazmem")
+	if status.Status != "connected" || status.ToolCount != 1 {
+		t.Fatalf("status = %#v", status)
+	}
+	if status := manager.Status("remote"); status.Status != "" {
+		t.Fatalf("remote status = %#v, want unset", status)
+	}
+	tool, ok := registry.Get("mcp_jazmem_echo")
+	if !ok {
+		t.Fatalf("local handler tool not registered")
+	}
+	result, err := tool.Execute(context.Background(), map[string]any{"value": "ok"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "local ok") {
+		t.Fatalf("result = %s", result.Content)
+	}
+}
+
 func TestResolvedHeadersUsesEnvAndBearerToken(t *testing.T) {
 	t.Setenv("MCP_HEADER_VALUE", "from-env")
 	t.Setenv("MCP_TOKEN", "token")
