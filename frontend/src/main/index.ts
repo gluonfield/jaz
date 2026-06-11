@@ -2,7 +2,10 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   BrowserWindow,
+  Menu,
+  type MenuItemConstructorOptions,
   type Rectangle,
+  type WebContents,
   app,
   ipcMain,
   nativeTheme,
@@ -22,6 +25,64 @@ const APP_NAME = 'Jaz'
 app.setName(APP_NAME)
 
 let mainWindow: BrowserWindow | null = null
+
+// Electron ships no default right-click menu; build the standard text one
+// (spelling fixes, Look Up, Search with Google, Cut/Copy/Paste) wherever the
+// click lands on an editable field or a text selection.
+function attachContextMenu(contents: WebContents): void {
+  contents.on('context-menu', (_event, params) => {
+    const editable = params.isEditable
+    const selection = params.selectionText.trim()
+    if (!editable && selection === '') return
+
+    const items: MenuItemConstructorOptions[] = []
+    if (editable && params.misspelledWord) {
+      for (const suggestion of params.dictionarySuggestions.slice(0, 5)) {
+        items.push({ label: suggestion, click: () => contents.replaceMisspelling(suggestion) })
+      }
+      items.push(
+        {
+          label: 'Add to Dictionary',
+          click: () => contents.session.addWordToSpellCheckerDictionary(params.misspelledWord),
+        },
+        { type: 'separator' },
+      )
+    }
+    if (selection !== '') {
+      const preview = selection.length > 30 ? `${selection.slice(0, 30)}…` : selection
+      if (process.platform === 'darwin') {
+        items.push({
+          label: `Look Up “${preview}”`,
+          click: () => contents.showDefinitionForSelection(),
+        })
+      }
+      items.push(
+        {
+          label: `Search with Google “${preview}”`,
+          click: () =>
+            shell.openExternal(`https://www.google.com/search?q=${encodeURIComponent(selection)}`),
+        },
+        { type: 'separator' },
+      )
+    }
+    if (editable) {
+      items.push(
+        { role: 'cut', enabled: params.editFlags.canCut },
+        { role: 'copy', enabled: params.editFlags.canCopy },
+        { role: 'paste', enabled: params.editFlags.canPaste },
+        { role: 'selectAll', enabled: params.editFlags.canSelectAll },
+      )
+    } else {
+      items.push({ role: 'copy', enabled: params.editFlags.canCopy })
+    }
+    Menu.buildFromTemplate(items).popup({
+      window: BrowserWindow.fromWebContents(contents) ?? undefined,
+    })
+  })
+}
+
+// Covers every window — main and per-board — including ones created later.
+app.on('web-contents-created', (_event, contents) => attachContextMenu(contents))
 
 function createWindow(): void {
   const mac = process.platform === 'darwin'
