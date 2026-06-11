@@ -7,13 +7,13 @@ import {
   GitBranch,
   GitPullRequest,
   GitPullRequestArrow,
+  type LucideIcon,
   LoaderCircle,
 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import type { Session } from '@/lib/api/types'
 import { planStepState, type PlanSurface } from '@/lib/planSurface'
 import { MessageMarkdown } from './MessageMarkdown'
-import { ActionRow } from './RepoActions'
 import { PlanStepIcon } from './Transcript'
 import { useRepoActions } from './useRepoActions'
 
@@ -51,6 +51,35 @@ export function SessionPanel({
 
 function SectionHeader({ children }: { children: ReactNode }) {
   return <p className="text-[11px] font-medium tracking-wide text-ink-3 uppercase">{children}</p>
+}
+
+function ActionRow({
+  icon: Icon,
+  onClick,
+  disabled,
+  hint,
+  spin,
+  children,
+}: {
+  icon: LucideIcon
+  onClick: () => void
+  disabled?: boolean
+  hint?: string
+  spin?: boolean
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={hint}
+      className="flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] text-ink-2 transition-colors duration-150 enabled:cursor-pointer enabled:hover:bg-surface-2 enabled:hover:text-ink disabled:opacity-50"
+    >
+      <Icon size={13} className={`shrink-0 text-ink-3 ${spin ? 'animate-spin' : ''}`} />
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+    </button>
+  )
 }
 
 function PlanSection({ plan, working }: { plan: PlanSurface; working: boolean }) {
