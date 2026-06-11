@@ -3,20 +3,22 @@ package acp
 import (
 	"encoding/json"
 	"testing"
+
+	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 )
 
-func TestMemoryMCPInjectedForCapableAgents(t *testing.T) {
-	m := &Manager{}
+func TestMCPServersForAgentUsesConfiguredStore(t *testing.T) {
+	m := &Manager{cfg: Config{MCPStore: staticMCPServerStore{servers: []mcpconfig.Server{{
+		ID:        "jazmem",
+		Name:      "jazmem",
+		Transport: mcpconfig.TransportStreamableHTTP,
+		URL:       "http://127.0.0.1:5299/mcp/jazmem",
+		Enabled:   true,
+	}}}}}
 	capable := json.RawMessage(`{"agentCapabilities":{"mcpCapabilities":{"http":true}}}`)
-
-	if servers := m.mcpServersForAgent(capable); len(servers) != 0 {
-		t.Fatalf("no memory mcp configured, expected none, got %v", servers)
-	}
-
-	m.MemoryMCP = MemoryMCP{URL: "http://127.0.0.1:5299/mcp/jazmem"}
 	servers := m.mcpServersForAgent(capable)
 	if len(servers) != 1 {
-		t.Fatalf("expected synthetic jazmem entry, got %v", servers)
+		t.Fatalf("expected configured jazmem entry, got %v", servers)
 	}
 	var entry struct {
 		Type string `json:"type"`
@@ -30,12 +32,6 @@ func TestMemoryMCPInjectedForCapableAgents(t *testing.T) {
 		t.Fatalf("unexpected entry %#v", entry)
 	}
 
-	m.MemoryMCP.Enabled = func() bool { return false }
-	if servers := m.mcpServersForAgent(capable); len(servers) != 0 {
-		t.Fatalf("disabled memory must not be injected, got %v", servers)
-	}
-
-	m.MemoryMCP.Enabled = nil
 	incapable := json.RawMessage(`{"agentCapabilities":{}}`)
 	if servers := m.mcpServersForAgent(incapable); len(servers) != 0 {
 		t.Fatalf("non-http-capable agent must get nothing, got %v", servers)

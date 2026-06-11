@@ -29,15 +29,30 @@ type Manager struct {
 	registry *tools.Registry
 	log      *log.Logger
 
+	localServers map[string]*mcpsdk.Server
+
 	mu       sync.RWMutex
 	sessions map[string]*serverSession
 	statuses map[string]mcpconfig.ServerStatus
 	refresh  uint64
 }
 
+type Option func(*Manager)
+
+func WithLocalServer(serverID string, server *mcpsdk.Server) Option {
+	return func(m *Manager) {
+		serverID = strings.TrimSpace(serverID)
+		if serverID == "" || server == nil {
+			return
+		}
+		m.localServers[serverID] = server
+	}
+}
+
 type serverSession struct {
-	session *mcpsdk.ClientSession
-	tools   []remoteTool
+	session      *mcpsdk.ClientSession
+	localSession *mcpsdk.ServerSession
+	tools        []remoteTool
 }
 
 type remoteTool struct {
@@ -55,18 +70,23 @@ type refreshResult struct {
 	status  mcpconfig.ServerStatus
 }
 
-func NewManager(store mcpconfig.ServerReader, tokens mcpconfig.OAuthTokenStore, registry *tools.Registry, logger *log.Logger) *Manager {
+func NewManager(store mcpconfig.ServerReader, tokens mcpconfig.OAuthTokenStore, registry *tools.Registry, logger *log.Logger, opts ...Option) *Manager {
 	if logger == nil {
 		logger = log.Default()
 	}
-	return &Manager{
-		store:    store,
-		tokens:   tokens,
-		registry: registry,
-		log:      logger.WithPrefix("mcp"),
-		sessions: make(map[string]*serverSession),
-		statuses: make(map[string]mcpconfig.ServerStatus),
+	m := &Manager{
+		store:        store,
+		tokens:       tokens,
+		registry:     registry,
+		log:          logger.WithPrefix("mcp"),
+		localServers: make(map[string]*mcpsdk.Server),
+		sessions:     make(map[string]*serverSession),
+		statuses:     make(map[string]mcpconfig.ServerStatus),
 	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
 }
 
 // backgroundHandler builds a non-interactive OAuth handler that serves stored
@@ -84,7 +104,18 @@ func (m *Manager) Refresh(ctx context.Context) {
 		return
 	}
 	seq := m.beginRefresh()
-	m.refreshServers(ctx, seq)
+	m.refreshServers(ctx, seq, nil)
+}
+
+func (m *Manager) RefreshLocal(ctx context.Context) {
+	if m == nil || m.store == nil || m.registry == nil {
+		return
+	}
+	seq := m.beginRefresh()
+	m.refreshServers(ctx, seq, func(server mcpconfig.Server) bool {
+		_, ok := m.localServers[server.ID]
+		return ok
+	})
 }
 
 func (m *Manager) beginRefresh() uint64 {
@@ -94,11 +125,20 @@ func (m *Manager) beginRefresh() uint64 {
 	return m.refresh
 }
 
-func (m *Manager) refreshServers(ctx context.Context, seq uint64) {
+func (m *Manager) refreshServers(ctx context.Context, seq uint64, include func(mcpconfig.Server) bool) {
 	servers, err := m.store.ListMCPServers()
 	if err != nil {
 		m.log.Error("load mcp servers failed", "error", err)
 		return
+	}
+	if include != nil {
+		filtered := make([]mcpconfig.Server, 0, len(servers))
+		for _, server := range servers {
+			if include(server) {
+				filtered = append(filtered, server)
+			}
+		}
+		servers = filtered
 	}
 
 	results := make([]refreshResult, len(servers))
@@ -179,6 +219,9 @@ func (m *Manager) Close() {
 func closeSessions(sessions map[string]*serverSession) {
 	for _, ss := range sessions {
 		_ = ss.session.Close()
+		if ss.localSession != nil {
+			_ = ss.localSession.Close()
+		}
 	}
 }
 
@@ -202,7 +245,7 @@ func (m *Manager) Test(ctx context.Context, server mcpconfig.Server) mcpconfig.S
 	if err != nil {
 		return connectErrorStatus(handler, err)
 	}
-	_ = ss.session.Close()
+	closeSessions(map[string]*serverSession{server.ID: ss})
 	return mcpconfig.ServerStatus{Status: "connected", ToolCount: len(ss.tools), CheckedAt: time.Now().UTC()}
 }
 
@@ -231,7 +274,7 @@ func (m *Manager) Authorize(ctx context.Context, server mcpconfig.Server) mcpcon
 	if err != nil {
 		return mcpconfig.ServerStatus{Status: "error", Error: err.Error(), CheckedAt: time.Now().UTC()}
 	}
-	_ = ss.session.Close()
+	closeSessions(map[string]*serverSession{server.ID: ss})
 
 	// Reconnect everything so this server's tools are installed in the registry
 	// using the token we just persisted.
@@ -259,6 +302,9 @@ func connectErrorStatus(handler *oauthHandler, err error) mcpconfig.ServerStatus
 }
 
 func (m *Manager) connect(ctx context.Context, server mcpconfig.Server, handler auth.OAuthHandler) (*serverSession, error) {
+	if local := m.localServers[server.ID]; local != nil {
+		return m.connectLocal(ctx, server, local)
+	}
 	headers, err := mcpconfig.ResolvedHeaders(server, true)
 	if err != nil {
 		return nil, err
@@ -281,6 +327,41 @@ func (m *Manager) connect(ctx context.Context, server mcpconfig.Server, handler 
 		return nil, err
 	}
 	ss := &serverSession{session: session}
+	for _, tool := range list.Tools {
+		if tool == nil || strings.TrimSpace(tool.Name) == "" {
+			continue
+		}
+		rt := remoteTool{
+			serverName:  server.Name,
+			remoteName:  tool.Name,
+			session:     session,
+			description: toolDescription(server, tool),
+			inputSchema: inputSchema(tool.InputSchema),
+		}
+		ss.tools = append(ss.tools, rt)
+	}
+	return ss, nil
+}
+
+func (m *Manager) connectLocal(ctx context.Context, server mcpconfig.Server, local *mcpsdk.Server) (*serverSession, error) {
+	clientTransport, serverTransport := mcpsdk.NewInMemoryTransports()
+	localSession, err := local.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		return nil, err
+	}
+	client := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "jaz", Version: "0.1.0"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		_ = localSession.Close()
+		return nil, err
+	}
+	list, err := session.ListTools(ctx, nil)
+	if err != nil {
+		_ = session.Close()
+		_ = localSession.Close()
+		return nil, err
+	}
+	ss := &serverSession{session: session, localSession: localSession}
 	for _, tool := range list.Tools {
 		if tool == nil || strings.TrimSpace(tool.Name) == "" {
 			continue

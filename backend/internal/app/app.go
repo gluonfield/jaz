@@ -13,6 +13,7 @@ import (
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/loops"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
+	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/memoryservice"
 	"github.com/wins/jaz/backend/internal/provider"
 	mockprovider "github.com/wins/jaz/backend/internal/provider/mock"
@@ -32,7 +33,6 @@ import (
 	agentwait "github.com/wins/jaz/backend/internal/tools/agent/wait"
 	applypatch "github.com/wins/jaz/backend/internal/tools/applypatch"
 	exectool "github.com/wins/jaz/backend/internal/tools/exec"
-	memorytool "github.com/wins/jaz/backend/internal/tools/memory"
 	plantool "github.com/wins/jaz/backend/internal/tools/plan"
 	viewimagetool "github.com/wins/jaz/backend/internal/tools/viewimage"
 	widgettool "github.com/wins/jaz/backend/internal/tools/widget"
@@ -126,13 +126,13 @@ func NewACPAgentConfigSource(store *sqlitestore.Store, catalog acp.AgentCatalog)
 	return agentsettings.NewACPConfigSource(store, catalog)
 }
 
-func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, prompts *coordinator.Builder, catalog acp.AgentCatalog, source acp.AgentConfigSource) acp.Config {
+func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, prompts *coordinator.Builder, catalog acp.AgentCatalog, source acp.AgentConfigSource, mcpServers mcpconfig.ServerReader) acp.Config {
 	cfg.ACP.Agents = catalog
 	cfg.ACP.AgentSource = source
 	cfg.ACP.Root = store.RootDir()
 	cfg.ACP.Workspace = string(workspace)
 	cfg.ACP.SystemPrompt = prompts
-	cfg.ACP.MCPStore = store
+	cfg.ACP.MCPStore = mcpServers
 	return cfg.ACP
 }
 
@@ -148,7 +148,7 @@ func NewWidgetSessionPublisher(service *widgets.Service, store *sqlitestore.Stor
 	return &widgets.SessionPublisher{Service: service, Sessions: store, Loops: store}
 }
 
-func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, memory *memoryservice.Service, store *sqlitestore.Store, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher) *tools.Registry {
+func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, store *sqlitestore.Store, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher) *tools.Registry {
 	return tools.NewRegistry(
 		&plantool.Tool{Store: store, Events: events},
 		&exectool.ExecCommandTool{Manager: commandManager, Workspace: string(workspace)},
@@ -162,13 +162,7 @@ func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspac
 		&agentwait.Tool{Manager: manager},
 		&agentcancel.Tool{Manager: manager},
 		&agentlist.Tool{Manager: manager},
-		&memorytool.SearchTool{Memory: memory.Memory, Enabled: memory.Enabled},
-		&memorytool.GetTool{Memory: memory.Memory, Enabled: memory.Enabled},
 	)
-}
-
-func NewMCPManager(store *sqlitestore.Store, registry *tools.Registry, logger *log.Logger) *mcpruntime.Manager {
-	return mcpruntime.NewManager(store, store, registry, logger)
 }
 
 func StartMCPManager(lc fx.Lifecycle, manager *mcpruntime.Manager, logger *log.Logger) {
@@ -184,6 +178,7 @@ func StartMCPManager(lc fx.Lifecycle, manager *mcpruntime.Manager, logger *log.L
 		OnStart: func(context.Context) error {
 			ctx, stop := context.WithCancel(context.Background())
 			cancel = stop
+			manager.RefreshLocal(ctx)
 			go manager.Refresh(ctx)
 			return nil
 		},
