@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, ChevronRight, Pencil, Play, Trash2 } from 'lucide-react'
-import { type Variants, motion, useReducedMotion } from 'motion/react'
 import { type ReactNode, useState } from 'react'
 import { LoopModal } from '@/components/loops/LoopModal'
 import { reasoningEffortLabel } from '@/components/loops/ReasoningEffortSelect'
@@ -62,7 +61,6 @@ function LoopDetail({
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const toast = useToast()
-  const reduce = useReducedMotion()
   const [editing, setEditing] = useState(false)
 
   const invalidate = () => {
@@ -102,23 +100,9 @@ function LoopDetail({
       ? new Date(loop.next_run_at as string).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
       : ''
 
-  const container: Variants = {
-    hidden: {},
-    show: { transition: { staggerChildren: reduce ? 0 : 0.05, delayChildren: reduce ? 0 : 0.02 } },
-  }
-  const item: Variants = {
-    hidden: reduce ? { opacity: 0 } : { opacity: 0, y: 8 },
-    show: { opacity: 1, y: 0, transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] } },
-  }
-
   return (
-    <motion.div
-      className="mx-auto max-w-[620px] px-10 pb-20 pt-6"
-      variants={container}
-      initial="hidden"
-      animate="show"
-    >
-      <motion.div variants={item} className="pb-3">
+    <div className="mx-auto max-w-[620px] px-10 pb-20 pt-6">
+      <div className="pb-3">
         <Link
           to="/loops"
           className="inline-flex items-center gap-1.5 text-[12px] text-ink-3 transition-colors duration-150 hover:text-ink"
@@ -126,9 +110,9 @@ function LoopDetail({
           <ArrowLeft size={14} />
           All loops
         </Link>
-      </motion.div>
+      </div>
 
-      <motion.header variants={item} className="flex items-start justify-between gap-4">
+      <header className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2.5">
             <h1 className="truncate text-[22px] font-semibold tracking-[-0.01em] text-ink">{loop.name}</h1>
@@ -158,13 +142,13 @@ function LoopDetail({
             <Trash2 size={15} />
           </IconButton>
         </div>
-      </motion.header>
+      </header>
 
-      <motion.div variants={item} className="mt-6 whitespace-pre-wrap rounded-card bg-surface px-4 py-3.5 text-[13.5px] leading-relaxed text-ink">
+      <div className="mt-6 whitespace-pre-wrap rounded-card bg-surface px-4 py-3.5 text-[13.5px] leading-relaxed text-ink">
         {loop.prompt}
-      </motion.div>
+      </div>
 
-      <motion.dl variants={item} className="mt-5 flex flex-wrap gap-x-10 gap-y-3">
+      <dl className="mt-5 flex flex-wrap gap-x-10 gap-y-3">
         <Fact label="Agent" value={isAcp ? agentLabel(loop.acp_agent) : 'Native'} />
         {/* Only pinned overrides show; otherwise runs follow Settings > Agents. */}
         {loop.model?.trim() ? <Fact label="Model" value={loop.model} mono /> : null}
@@ -172,9 +156,9 @@ function LoopDetail({
           <Fact label="Reasoning effort" value={reasoningEffortLabel(loop.reasoning_effort)} />
         ) : null}
         <Fact label="Folder" value={loop.directory?.trim() || 'workspace'} mono />
-      </motion.dl>
+      </dl>
 
-      <motion.section variants={item} className="mt-10">
+      <section className="mt-10">
         <div className="flex items-baseline justify-between border-b border-border pb-2">
           <h2 className="text-[13px] font-semibold text-ink">Last runs</h2>
           {runs.length > 0 ? (
@@ -190,10 +174,10 @@ function LoopDetail({
             ))}
           </div>
         )}
-      </motion.section>
+      </section>
 
       <LoopModal open={editing} onClose={() => setEditing(false)} loop={loop} boardIds={boardIds} />
-    </motion.div>
+    </div>
   )
 }
 
