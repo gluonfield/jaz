@@ -1,12 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { FileText } from 'lucide-react'
+import { FileText, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Composer, PlanDecisionDock } from '@/components/session/Composer'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
 import { RepoActions } from '@/components/session/RepoActions'
+import { SESSION_PANEL_WIDTH, SessionPanel } from '@/components/session/SessionPanel'
 import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
 import { ThinkingBlock } from '@/components/session/ThinkingBlock'
 import { TokenStats } from '@/components/session/TokenStats'
@@ -174,6 +175,18 @@ function hasStoredAssistantMessage(messages: ChatMessage[], text?: string): bool
   })
 }
 
+// The chat column at its widest (max-w-[720px] + px-10 each side); the panel
+// auto-shows only when it fits beside it — which is exactly when the sidebar
+// hides or the window is wide enough.
+const PANEL_CHAT_COMFORT = 800
+const PANEL_PREF_KEY = 'jaz.sessionPanel'
+type PanelPref = 'auto' | 'open' | 'closed'
+
+function storedPanelPref(): PanelPref {
+  const value = localStorage.getItem(PANEL_PREF_KEY)
+  return value === 'open' || value === 'closed' ? value : 'auto'
+}
+
 function SessionPage() {
   const { sessionId } = Route.useParams()
   const queryClient = useQueryClient()
@@ -195,6 +208,24 @@ function SessionPage() {
   const [planDecisionError, setPlanDecisionError] = useState('')
   const abortRef = useRef<AbortController | null>(null)
   const sentPendingRef = useRef<string | null>(null)
+
+  // Right panel: 'auto' follows available width; an explicit choice wins
+  // until toggling lands back on what auto would do anyway.
+  const [panelPref, setPanelPref] = useState<PanelPref>(storedPanelPref)
+  const [pageWidth, setPageWidth] = useState(0)
+  const panelObserver = useRef<ResizeObserver | null>(null)
+  const measureRef = useCallback((el: HTMLDivElement | null) => {
+    panelObserver.current?.disconnect()
+    panelObserver.current = null
+    if (!el) return
+    const observer = new ResizeObserver(() => setPageWidth(el.clientWidth))
+    observer.observe(el)
+    setPageWidth(el.clientWidth)
+    panelObserver.current = observer
+  }, [])
+  useEffect(() => {
+    localStorage.setItem(PANEL_PREF_KEY, panelPref)
+  }, [panelPref])
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const nearBottom = useRef(true)
@@ -526,6 +557,19 @@ function SessionPage() {
           },
         ]
       : messages
+  // The panel mirrors the transcript's notion of "current plan": the latest
+  // plan-bearing event that belongs to this session.
+  const panelPlanEvent = [...transcriptEvents]
+    .reverse()
+    .find((event) => planSurfaceFromEvent(event) && planSurfaceBelongsToSession(event, session.id))
+  const panelPlan = panelPlanEvent ? planSurfaceFromEvent(panelPlanEvent) : undefined
+  const hasPanelSpace = pageWidth >= PANEL_CHAT_COMFORT + SESSION_PANEL_WIDTH
+  const panelOpen = panelPref === 'auto' ? hasPanelSpace : panelPref === 'open'
+  const togglePanel = () => {
+    const next = !panelOpen
+    // Landing on what auto would do re-arms auto-show.
+    setPanelPref(next === hasPanelSpace ? 'auto' : next ? 'open' : 'closed')
+  }
   const titlebarSlot = document.getElementById('titlebar-slot')
   const titlebarActions = document.getElementById('titlebar-actions')
 
@@ -534,7 +578,7 @@ function SessionPage() {
   }
 
   return (
-    <div className="relative h-full">
+    <div ref={measureRef} className="flex h-full">
       {titlebarSlot
         ? createPortal(
             <>
@@ -544,129 +588,158 @@ function SessionPage() {
             titlebarSlot,
           )
         : null}
-      {titlebarActions ? createPortal(<RepoActions session={session} />, titlebarActions) : null}
+      {titlebarActions
+        ? createPortal(
+            <>
+              <RepoActions session={session} />
+              <button
+                type="button"
+                aria-label={panelOpen ? 'Hide session panel' : 'Show session panel'}
+                title={`${panelOpen ? 'Hide' : 'Show'} session panel`}
+                onClick={togglePanel}
+                className="grid size-8 cursor-pointer place-items-center rounded-full text-ink-2 transition-colors duration-200 hover:bg-surface-2 hover:text-ink"
+              >
+                {panelOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
+              </button>
+            </>,
+            titlebarActions,
+          )
+        : null}
 
-      <div
-        ref={scrollRef}
-        className="h-full overflow-y-auto"
-        onScroll={(e) => {
-          const el = e.currentTarget
-          nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
-        }}
-      >
-        <div className={`mx-auto max-w-[720px] px-10 pt-2 ${queue.queuedPrompts.length ? 'pb-72' : 'pb-40'}`}>
-          {empty ? (
-            <EmptyState title="Start the conversation">
-              <p>Messages stream in live as your assistant thinks and works.</p>
-            </EmptyState>
-          ) : (
-            <Transcript
-              messages={transcriptMessages}
-              events={displayEvents}
-              sessionId={session.id}
-              groupTurns={isACP}
-              working={sessionRunning}
-              tail={
-                live && !isACP ? (
-                  <div className="flex flex-col gap-5">
-                    <motion.div
-                      className="flex justify-end"
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                    >
-                      <div className="max-w-[80%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap select-text">
-                        {live.user}
-                        <LiveAttachmentList attachments={live.attachments} />
-                      </div>
-                    </motion.div>
-                    <ThinkingBlock text={live.reasoning} pending={streaming} />
-                    {live.tools.map((tool) => (
-                      <ToolCallCard
-                        key={tool.key}
-                        name={tool.name}
-                        args={tool.args}
-                        result={tool.result}
-                        pending={streaming && tool.result === undefined}
-                      />
-                    ))}
-                    {live.assistant ? (
-                      <MessageMarkdown text={live.assistant} />
-                    ) : streaming ? (
-                      <p className="animate-pulse text-sm text-ink-3">Thinking…</p>
-                    ) : null}
-                    {live.error ? (
-                      <p className="max-w-[72ch] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
-                        {live.error}
-                      </p>
-                    ) : null}
-                  </div>
-                ) : live?.error && isACP ? (
-                  <p className="max-w-[72ch] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
-                    {live.error}
-                  </p>
-                ) : null
-              }
-            />
-          )}
-
-          {showErrorBanner ? (
-            <p className="mt-5 max-w-[72ch] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
-              {session.error}
-            </p>
-          ) : null}
+      <div className="relative h-full min-w-0 flex-1">
+        <div
+          ref={scrollRef}
+          className="h-full overflow-y-auto"
+          onScroll={(e) => {
+            const el = e.currentTarget
+            nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+          }}
+        >
+          <div className={`mx-auto max-w-[720px] px-10 pt-2 ${queue.queuedPrompts.length ? 'pb-72' : 'pb-40'}`}>
+            {empty ? (
+              <EmptyState title="Start the conversation">
+                <p>Messages stream in live as your assistant thinks and works.</p>
+              </EmptyState>
+            ) : (
+              <Transcript
+                messages={transcriptMessages}
+                events={displayEvents}
+                sessionId={session.id}
+                groupTurns={isACP}
+                working={sessionRunning}
+                tail={
+                  live && !isACP ? (
+                    <div className="flex flex-col gap-5">
+                      <motion.div
+                        className="flex justify-end"
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                      >
+                        <div className="max-w-[80%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap select-text">
+                          {live.user}
+                          <LiveAttachmentList attachments={live.attachments} />
+                        </div>
+                      </motion.div>
+                      <ThinkingBlock text={live.reasoning} pending={streaming} />
+                      {live.tools.map((tool) => (
+                        <ToolCallCard
+                          key={tool.key}
+                          name={tool.name}
+                          args={tool.args}
+                          result={tool.result}
+                          pending={streaming && tool.result === undefined}
+                        />
+                      ))}
+                      {live.assistant ? (
+                        <MessageMarkdown text={live.assistant} />
+                      ) : streaming ? (
+                        <p className="animate-pulse text-sm text-ink-3">Thinking…</p>
+                      ) : null}
+                      {live.error ? (
+                        <p className="max-w-[72ch] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
+                          {live.error}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : live?.error && isACP ? (
+                    <p className="max-w-[72ch] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
+                      {live.error}
+                    </p>
+                  ) : null
+                }
+              />
+            )}
+  
+            {showErrorBanner ? (
+              <p className="mt-5 max-w-[72ch] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
+                {session.error}
+              </p>
+            ) : null}
+          </div>
         </div>
+  
+        {showPlanDecision ? (
+          <>
+            {planDecisionError ? (
+              <p className="absolute inset-x-0 bottom-32 mx-auto max-w-[640px] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
+                {planDecisionError}
+              </p>
+            ) : null}
+            <PlanDecisionDock
+              pending={planDecisionPending}
+              onImplement={() => {
+                setPlanDecisionPending(true)
+                setPlanDecisionError('')
+                void sendACPFallback(planDecisionSessionID!, 'Implement the plan.', {
+                  parentVisible: planDecisionSessionID !== session.id,
+                })
+                  .catch((err: Error) => setPlanDecisionError(err.message || 'Sending the approval failed.'))
+                  .finally(() => setPlanDecisionPending(false))
+              }}
+              onClarify={(text) => {
+                setPlanDecisionPending(true)
+                setPlanDecisionError('')
+                void sendACPFallback(planDecisionSessionID!, text, {
+                  planRequested: true,
+                  parentVisible: planDecisionSessionID !== session.id,
+                })
+                  .catch((err: Error) => setPlanDecisionError(err.message || 'Sending the reply failed.'))
+                  .finally(() => setPlanDecisionPending(false))
+              }}
+            />
+          </>
+        ) : (
+          <Composer
+            streaming={sessionRunning}
+            planAvailable={planAvailable}
+            queuedPrompts={queue.queuedPrompts}
+            steerDisabled={queue.steerDisabled}
+            onSend={queue.onSend}
+            onStop={() => {
+              // the turn runs detached server-side; stop it there first
+              void cancelSession(sessionId).catch(() => {})
+              abortRef.current?.abort()
+            }}
+            onVoice={session.runtime !== 'acp' ? () => setVoiceMode(true) : undefined}
+            onSteerQueuedPrompt={queue.onSteerQueuedPrompt}
+            onDeleteQueuedPrompt={queue.onDeleteQueuedPrompt}
+            onEditQueuedPrompt={queue.onEditQueuedPrompt}
+            onMoveQueuedPrompt={queue.onMoveQueuedPrompt}
+          />
+        )}
       </div>
 
-      {showPlanDecision ? (
-        <>
-          {planDecisionError ? (
-            <p className="absolute inset-x-0 bottom-32 mx-auto max-w-[640px] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
-              {planDecisionError}
-            </p>
-          ) : null}
-          <PlanDecisionDock
-            pending={planDecisionPending}
-            onImplement={() => {
-              setPlanDecisionPending(true)
-              setPlanDecisionError('')
-              void sendACPFallback(planDecisionSessionID!, 'Implement the plan.', {
-                parentVisible: planDecisionSessionID !== session.id,
-              })
-                .catch((err: Error) => setPlanDecisionError(err.message || 'Sending the approval failed.'))
-                .finally(() => setPlanDecisionPending(false))
-            }}
-            onClarify={(text) => {
-              setPlanDecisionPending(true)
-              setPlanDecisionError('')
-              void sendACPFallback(planDecisionSessionID!, text, {
-                planRequested: true,
-                parentVisible: planDecisionSessionID !== session.id,
-              })
-                .catch((err: Error) => setPlanDecisionError(err.message || 'Sending the reply failed.'))
-                .finally(() => setPlanDecisionPending(false))
-            }}
-          />
-        </>
-      ) : (
-        <Composer
-          streaming={sessionRunning}
-          planAvailable={planAvailable}
-          queuedPrompts={queue.queuedPrompts}
-          steerDisabled={queue.steerDisabled}
-          onSend={queue.onSend}
-          onStop={() => {
-            // the turn runs detached server-side; stop it there first
-            void cancelSession(sessionId).catch(() => {})
-            abortRef.current?.abort()
-          }}
-          onVoice={session.runtime !== 'acp' ? () => setVoiceMode(true) : undefined}
-          onSteerQueuedPrompt={queue.onSteerQueuedPrompt}
-          onDeleteQueuedPrompt={queue.onDeleteQueuedPrompt}
-          onEditQueuedPrompt={queue.onEditQueuedPrompt}
-          onMoveQueuedPrompt={queue.onMoveQueuedPrompt}
-        />
-      )}
+      {/* Docked, never overlapping: the chat pane flexes and stays centered
+          between the sidebar and this panel. */}
+      <motion.div
+        className="h-full shrink-0 overflow-hidden"
+        initial={false}
+        animate={{ width: panelOpen ? SESSION_PANEL_WIDTH : 0 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 36 }}
+      >
+        <SessionPanel session={session} plan={panelPlan} working={sessionRunning} />
+      </motion.div>
     </div>
   )
 }
