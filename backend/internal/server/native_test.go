@@ -75,6 +75,28 @@ func (p *requestRecorderProvider) StreamComplete(_ context.Context, req provider
 	return ch, nil
 }
 
+type titleProvider struct {
+	titleRequests  []provider.Request
+	streamRequests []provider.Request
+}
+
+func (p *titleProvider) Complete(_ context.Context, req provider.Request) (provider.Response, error) {
+	if req.StructuredOutput != nil {
+		p.titleRequests = append(p.titleRequests, req)
+		return provider.Response{Message: provider.AssistantMessage(`{"title":"Fix login redirect"}`, nil)}, nil
+	}
+	return provider.Response{Message: provider.AssistantMessage("done", nil)}, nil
+}
+
+func (p *titleProvider) StreamComplete(_ context.Context, req provider.Request) (<-chan provider.Event, error) {
+	p.streamRequests = append(p.streamRequests, req)
+	ch := make(chan provider.Event, 2)
+	ch <- provider.Event{Type: provider.EventDelta, Delta: "done"}
+	ch <- provider.Event{Type: provider.EventDone}
+	close(ch)
+	return ch, nil
+}
+
 func TestNativeTurnUsesStoredProviderModelAndReasoning(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
@@ -135,6 +157,47 @@ func TestNativeTurnFailsWhenPromptCannotBuild(t *testing.T) {
 	}
 	if len(recorder.requests) != 0 {
 		t.Fatalf("provider was called after prompt build failure: %#v", recorder.requests)
+	}
+}
+
+func TestNativeFirstTurnGeneratesStructuredTitle(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	message := "please fix the login redirect after OAuth callback"
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:          "oauth-redirect",
+		Title:         message,
+		Runtime:       storage.RuntimeNative,
+		ModelProvider: "openai",
+		Model:         "gpt-test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := &titleProvider{}
+	srv := &Server{
+		Store: store,
+		Agent: &agent.Agent{Provider: provider, MaxTurns: 1},
+	}
+
+	if status := srv.runNativeSession(context.Background(), session, message, false, nil); status != storage.StatusIdle {
+		t.Fatalf("status = %s", status)
+	}
+	if len(provider.titleRequests) != 1 || provider.titleRequests[0].StructuredOutput == nil {
+		t.Fatalf("title requests = %#v", provider.titleRequests)
+	}
+	if len(provider.streamRequests) != 1 {
+		t.Fatalf("stream requests = %#v", provider.streamRequests)
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Title != "Fix login redirect" {
+		t.Fatalf("title = %q", loaded.Title)
 	}
 }
 

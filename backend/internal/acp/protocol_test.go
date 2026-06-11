@@ -11,6 +11,7 @@ import (
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
@@ -354,6 +355,70 @@ func TestPlanSessionUpdatePublishesAndPersistsPlan(t *testing.T) {
 	}
 	if len(state.Plan) != 2 || state.Plan[1].Status != "in_progress" {
 		t.Fatalf("persisted plan = %#v", state.Plan)
+	}
+}
+
+func TestSessionInfoUpdatePublishesAndPersistsTitle(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "codex-task",
+		Title:   "old title",
+		Runtime: storage.RuntimeACP,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := sessionevents.New()
+	manager := NewManager(store, Config{}, nil)
+	manager.Events = events
+	manager.jobsByID[session.ID] = &Job{
+		ID:         session.ID,
+		Slug:       session.Slug,
+		Title:      session.Title,
+		ACPAgent:   AgentCodex,
+		ACPSession: "acp-session",
+		State:      StateRunning,
+	}
+	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	sub := events.Subscribe(ctx, session.ID)
+
+	raw, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
+		Method: acpschema.ClientMethodSessionUpdate,
+		Params: mustJSON(t, map[string]any{
+			"sessionId": "acp-session",
+			"update": map[string]any{
+				"sessionUpdate": "session_info_update",
+				"title":         "Derived ACP title",
+			},
+		}),
+	})
+	if rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	if string(raw) != "{}" {
+		t.Fatalf("response = %s", raw)
+	}
+
+	select {
+	case event := <-sub:
+		if event.Type != "acp" || event.ACP == nil || event.ACP.Title != "Derived ACP title" {
+			t.Fatalf("unexpected event %#v", event)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Title != "Derived ACP title" {
+		t.Fatalf("stored title = %q", loaded.Title)
 	}
 }
 
