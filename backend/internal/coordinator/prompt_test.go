@@ -19,7 +19,7 @@ func TestPromptCombinesCoordinatorFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertOrder(t, prompt, "Date: June 2, 2026", "Time: 09:08:07 BST", "Timezone: BST (UTC+01:00)", "Weekday: Tuesday", "Current working directory: "+workspace, "~/.jaz: runtime state", "~/.jaz/workspaces/default: default tool cwd", "## AGENTS.md\n\nagents", "## SOUL.md\n\nsoul", "skills")
+	assertOrder(t, prompt, "Date: June 2, 2026", "Time: 09:08:07 BST", "Timezone: BST (UTC+01:00)", "Weekday: Tuesday", "Current working directory: "+workspace, "~/.jaz: runtime state", "~/.jaz/workspaces/default: default tool cwd", "## Jaz platform", "## AGENTS.md\n\nagents", "## SOUL.md\n\nsoul", "skills")
 }
 
 func TestPromptOmitsMissingFiles(t *testing.T) {
@@ -27,8 +27,8 @@ func TestPromptOmitsMissingFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(prompt, "## AGENTS.md") || strings.Contains(prompt, "## SOUL.md") {
-		t.Fatalf("prompt includes missing file sections:\n%s", prompt)
+	if !strings.Contains(prompt, "## AGENTS.md\n\n(empty)") || !strings.Contains(prompt, "## SOUL.md\n\n(empty)") {
+		t.Fatalf("missing files must render as (empty) sections:\n%s", prompt)
 	}
 }
 
@@ -75,29 +75,30 @@ func TestPromptInjectsMemoryHorizons(t *testing.T) {
 	}
 	now := time.Date(2026, 6, 10, 9, 0, 0, 0, time.UTC)
 	today := now.Local().Format("2006-01-02")
-	yesterday := now.AddDate(0, 0, -1).Local().Format("2006-01-02")
 	write(t, memoryRoot, "daily/"+today+".md", "# Daily\n\n- shipped provenance fields")
-	write(t, memoryRoot, "daily/"+yesterday+".md", "# Daily\n\n- reviewed gbrain")
 
 	got, err := prompt(root, "", memoryRoot, "", now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertOrder(t, got,
+		"## Jaz platform",
 		"## AGENTS.md",
 		"## memory\n", "Capture as you go",
 		"## memory/LONG_TERM.md", "$5m through agent products",
 		"## memory/SHORT_TERM.md", "jaz memory system",
 		"## memory/daily/"+today+".md", "shipped provenance fields",
-		"## memory/daily/"+yesterday+".md", "reviewed gbrain",
 	)
 
 	missing, err := prompt(root, "", t.TempDir(), "", now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(missing, "## memory/") {
-		t.Fatalf("missing memory files must not add content sections:\n%s", missing)
+	if !strings.Contains(missing, "## memory/LONG_TERM.md\n\n(empty)") || !strings.Contains(missing, "## memory/SHORT_TERM.md\n\n(empty)") {
+		t.Fatalf("horizons must always render when memory is enabled:\n%s", missing)
+	}
+	if strings.Contains(missing, "## memory/daily/") {
+		t.Fatalf("absent daily pages must not add sections:\n%s", missing)
 	}
 	if !strings.Contains(missing, "Capture as you go") {
 		t.Fatalf("memory protocol should inject whenever memory is enabled:\n%s", missing)

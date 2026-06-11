@@ -1,0 +1,10 @@
+ACP session {{.Slug}} ({{.Agent}}) completed with state {{.State}}.
+{{- if .Error}}
+Error: {{.Error}}
+{{- end}}
+{{- if .Assistant}}
+Assistant result:
+{{.Assistant}}
+{{- end}}
+
+Report the outcome to the user now: what was delivered, where it lives (files, paths, URLs), and how it was verified. Be concrete and base it only on the result above; do not say work is still in progress.

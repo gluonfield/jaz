@@ -49,7 +49,7 @@ func (b *Builder) ACPPrompt() (string, error) {
 	if b.memoryEnabled != nil && !b.memoryEnabled() {
 		memoryRoot = ""
 	}
-	return acpPrompt(b.root, memoryRoot, catalog.Prompt(), time.Now())
+	return platformPrompt(b.root, memoryRoot, catalog.Prompt(), time.Now())
 }
 
 func (b *Builder) build(workspace string) (system, skillsPrompt string, err error) {
