@@ -58,7 +58,10 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		Path string `json:"path"`
 	}
 	if r.Body != nil {
-		_ = json.NewDecoder(r.Body).Decode(&req)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
 	}
 	p, err := projectFromPath(req.Path)
 	if err != nil {

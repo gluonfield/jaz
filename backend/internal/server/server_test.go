@@ -201,46 +201,6 @@ func TestLegacyClaudeACPAgentCanonicalizedInSessionResponses(t *testing.T) {
 	}
 }
 
-func TestListWorkspaceDirsReportsGit(t *testing.T) {
-	workspace := t.TempDir()
-	for _, name := range []string{"repo", "plain"} {
-		if err := os.Mkdir(filepath.Join(workspace, name), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := os.Mkdir(filepath.Join(workspace, "repo", ".git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/v1/workspace/dirs?path=", nil)
-	res := httptest.NewRecorder()
-	(&Server{Workspace: workspace}).Handler().ServeHTTP(res, req)
-
-	if res.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
-	}
-	var got struct {
-		Path string `json:"path"`
-		Git  bool   `json:"git"`
-		Dirs []struct {
-			Name string `json:"name"`
-			Git  bool   `json:"git"`
-		} `json:"dirs"`
-	}
-	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if len(got.Dirs) != 2 {
-		t.Fatalf("dirs = %#v, want 2 entries", got.Dirs)
-	}
-	want := map[string]bool{"repo": true, "plain": false}
-	for _, dir := range got.Dirs {
-		if got, ok := want[dir.Name]; !ok || got != dir.Git {
-			t.Fatalf("dir %q git = %v, want %v", dir.Name, dir.Git, want[dir.Name])
-		}
-	}
-}
-
 func TestProjectRoutesPersistServerDirectories(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -291,6 +251,14 @@ func TestProjectRoutesPersistServerDirectories(t *testing.T) {
 	}
 	if len(got.Projects) != 1 || got.Projects[0].Name != "jaz" || got.Projects[0].Path != dir || !got.Projects[0].Git {
 		t.Fatalf("projects = %#v, want jaz %q git", got.Projects, dir)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/projects", strings.NewReader(`{`))
+	req.Header.Set("Content-Type", "application/json")
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("malformed create status = %d, body = %s", res.Code, res.Body.String())
 	}
 }
 

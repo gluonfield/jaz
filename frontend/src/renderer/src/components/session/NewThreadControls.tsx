@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { agentLabel } from '@/lib/agentLabel'
-import { addProject, listFilesystemDirs, listWorkspaceDirs, projectsQuery } from '@/lib/api/sessions'
+import { addProject, listFilesystemDirs, projectsQuery } from '@/lib/api/sessions'
 import {
   filterModelSuggestions,
   modelSuggestionLabel,
@@ -241,15 +241,6 @@ export function ModelSelect({
   )
 }
 
-function joinPath(base: string, name: string): string {
-  return base ? `${base}/${name}` : name
-}
-
-function parentPath(path: string): string {
-  const idx = path.lastIndexOf('/')
-  return idx === -1 ? '' : path.slice(0, idx)
-}
-
 function directoryName(path: string): string {
   const parts = path.split(/[\\/]+/).filter(Boolean)
   return parts.at(-1) ?? path
@@ -448,118 +439,6 @@ export function ProjectPicker({
             ) : null}
           </>
         )}
-      </div>
-    </Popover>
-  )
-}
-
-// Browses the workspace (confined server-side) to choose the session working
-// directory. `value` is a workspace-relative path; '' is the workspace root.
-export function DirectoryPicker({
-  value,
-  disabled,
-  onChange,
-}: {
-  value: string
-  disabled?: boolean
-  // git reports whether the chosen path is a git repository root, so callers can
-  // offer worktree-only options for it.
-  onChange: (path: string, git: boolean) => void
-}) {
-  const [open, setOpen] = useState(false)
-  // The path currently being browsed; it starts at the selection each time the
-  // picker opens so reopening lands where the user left off.
-  const [browse, setBrowse] = useState(value)
-  useEffect(() => {
-    if (open) setBrowse(value)
-  }, [open, value])
-
-  const query = useQuery({
-    queryKey: keys.workspaceDirs(browse),
-    queryFn: () => listWorkspaceDirs(browse),
-    enabled: open,
-  })
-
-  const label = value === '' ? 'workspace' : (value.split('/').at(-1) ?? value)
-  const browseLabel = browse === '' ? 'workspace' : browse
-  const select = (path: string, git: boolean) => {
-    onChange(path, git)
-    setOpen(false)
-  }
-
-  return (
-    <Popover
-      open={open}
-      onClose={() => setOpen(false)}
-      trigger={
-        <Button
-          variant="secondary"
-          size="sm"
-          className="max-w-[12rem]"
-          aria-haspopup="dialog"
-          aria-expanded={open}
-          aria-label={`Directory: ${value === '' ? 'workspace root' : value}`}
-          title={value === '' ? 'Workspace root' : value}
-          disabled={disabled}
-          onClick={() => setOpen((v) => !v)}
-        >
-          <Folder size={13} className="shrink-0" />
-          <span className="truncate">{label}</span>
-        </Button>
-      }
-    >
-      <div className="flex items-center gap-1 px-2 pt-1 pb-1.5">
-        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-ink-3" title={browseLabel}>
-          {browseLabel}
-        </span>
-        {browse !== '' ? (
-          <IconButton
-            variant="ghost"
-            size="xs"
-            aria-label="Parent directory"
-            title="Parent directory"
-            onClick={() => setBrowse(parentPath(browse))}
-          >
-            <CornerLeftUp size={14} />
-          </IconButton>
-        ) : null}
-      </div>
-      <div className="max-h-[220px] overflow-y-auto">
-        {query.isLoading ? (
-          <div className="flex h-7 items-center gap-2 px-2 text-[13px] text-ink-3">
-            <LoaderCircle size={13} className="animate-spin" />
-            Loading…
-          </div>
-        ) : query.isError ? (
-          <div className="px-2 py-1 text-[13px] text-ink-3">Couldn't read this folder.</div>
-        ) : query.data && query.data.dirs.length > 0 ? (
-          query.data.dirs.map((dir) => (
-            <button
-              key={dir.name}
-              type="button"
-              onClick={() => setBrowse(joinPath(browse, dir.name))}
-              className="flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
-            >
-              <Folder size={13} className="shrink-0 text-ink-3" />
-              <span className="min-w-0 flex-1 truncate">{dir.name}</span>
-              {dir.git ? (
-                <GitBranch size={12} className="shrink-0 text-ink-3" aria-label="git repository" />
-              ) : null}
-            </button>
-          ))
-        ) : (
-          <div className="px-2 py-1 text-[13px] text-ink-3">No subfolders.</div>
-        )}
-      </div>
-      <div className="mt-1 border-t border-border pt-1">
-        <button
-          type="button"
-          onClick={() => select(browse, query.data?.git ?? false)}
-          className="flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-primary-soft"
-        >
-          <Check size={13} className="shrink-0 text-primary" />
-          Use this folder
-        </button>
       </div>
     </Popover>
   )
