@@ -351,6 +351,26 @@ func TestListFilesystemDirsReportsServerPaths(t *testing.T) {
 	}
 }
 
+func TestListFilesystemDirsDefaultsToWorkspace(t *testing.T) {
+	workspace := t.TempDir()
+	req := httptest.NewRequest(http.MethodGet, "/v1/filesystem/dirs", nil)
+	res := httptest.NewRecorder()
+	(&Server{Workspace: workspace}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var got struct {
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Path != workspace {
+		t.Fatalf("path = %q, want workspace %q", got.Path, workspace)
+	}
+}
+
 func TestACPStreamUsesServerContextAfterRequestCancel(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

@@ -267,6 +267,27 @@ func TestNativeLoopRunCreatesFreshThreadWithMetadata(t *testing.T) {
 		absoluteSession.RuntimeRef.ProjectPath != project {
 		t.Fatalf("native project loop runtime ref = %#v, want %q", absoluteSession.RuntimeRef, project)
 	}
+
+	defaultLoop, err := service.Create(loops.CreateLoop{
+		Name:     "Workspace check",
+		Prompt:   "check workspace",
+		Runtime:  loops.RuntimeNative,
+		Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "* * * * *", Timezone: "UTC"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defaultRun, err := service.RunNow(context.Background(), defaultLoop.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForLoopRun(t, service, defaultLoop.ID, defaultRun.ID, loops.RunStatusOK)
+	defaultSession := sessionForRun(t, store, defaultRun.ID)
+	if defaultSession.RuntimeRef == nil ||
+		defaultSession.RuntimeRef.Cwd != workspace ||
+		defaultSession.RuntimeRef.ProjectPath != "" {
+		t.Fatalf("native default loop runtime ref = %#v, want workspace %q", defaultSession.RuntimeRef, workspace)
+	}
 }
 
 func TestACPLoopRunCreatesHiddenThreadAndFinishesFromCallback(t *testing.T) {

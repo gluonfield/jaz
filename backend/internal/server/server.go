@@ -184,22 +184,17 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	if effort := strings.TrimSpace(req.ReasoningEffort); effort != "" {
 		input.ReasoningEffort = effort
 	}
-	if directory := strings.TrimSpace(req.Directory); directory != "" {
-		cwd, err := s.resolveWorkingDir(directory)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, err)
-			return
-		}
-		input.RuntimeRef = &storage.RuntimeRef{
-			Type:        storage.RuntimeNative,
-			Cwd:         cwd,
-			ProjectPath: projectPathForRequest(directory, cwd),
-		}
-	}
-	if req.Worktree && input.RuntimeRef == nil {
+	directory := strings.TrimSpace(req.Directory)
+	if req.Worktree && directory == "" {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("worktree requires a directory pointing at a git repository"))
 		return
 	}
+	ref, err := s.nativeRuntimeRef(directory)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	input.RuntimeRef = ref
 	input.Slug = req.Slug
 	input.Title = req.Title
 	session, err := s.Store.CreateSession(input)
