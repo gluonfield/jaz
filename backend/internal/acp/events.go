@@ -595,13 +595,18 @@ func (m *Manager) recordAndPublish(event sessionevents.Event) {
 	if event.At.IsZero() {
 		event.At = time.Now().UTC()
 	}
-	// Publish the stored copy (with Seq) so clients can dedupe against history.
-	events := []sessionevents.Event{event}
+	// Store slim; publish full so subscribers can label sessions they
+	// haven't fetched yet.
+	stored := event
+	stored.ACP = event.ACP.SlimForStorage()
+	events := []sessionevents.Event{stored}
 	if m != nil && m.store != nil && event.SessionID != "" {
 		_ = m.store.AppendSessionEvents(event.SessionID, events...)
 	}
+	// Publish with the stored Seq so clients can dedupe against history.
+	event.Seq = events[0].Seq
 	if m != nil && m.Events != nil {
-		m.Events.Publish(events[0])
+		m.Events.Publish(event)
 	}
 }
 

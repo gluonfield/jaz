@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { FileText } from 'lucide-react'
-import { useMemo } from 'react'
+import { memo, useMemo } from 'react'
 import Markdown from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
@@ -84,7 +84,9 @@ function mentionSigil(label: string): '$' | '@' | null {
 
 // Shared renderer for assistant prose: GitHub-flavored markdown + LaTeX
 // ($...$ / $$...$$ via KaTeX). Styles live in globals.css under .chat-prose.
-export function MessageMarkdown({ text }: { text: string }) {
+// Memoized: the remark/rehype pipeline is the priciest per-item work in a
+// transcript, so it must only run when the text actually changes.
+export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: string }) {
   // Cached by the composer; lets assistant echoes of $skill-name render as
   // mention pills. An empty catalog simply skips the pass.
   const skills = useQuery(skillsQuery)
@@ -133,7 +135,7 @@ export function MessageMarkdown({ text }: { text: string }) {
       </Markdown>
     </div>
   )
-}
+})
 
 // The markdown pipeline percent-encodes hrefs; show the filesystem path.
 function decodeMentionHref(href: string): string {

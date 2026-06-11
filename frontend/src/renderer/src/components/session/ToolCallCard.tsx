@@ -1,6 +1,6 @@
 import { ChevronRight } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useState } from 'react'
+import { memo, useState } from 'react'
 
 function prettyArgs(raw: string): string {
   try {
@@ -12,7 +12,7 @@ function prettyArgs(raw: string): string {
 
 // Minimal inline affordance: just a chevron + tool name in the flow of the
 // conversation. Expanding reveals a bordered panel with arguments and result.
-export function ToolCallCard({
+export const ToolCallCard = memo(function ToolCallCard({
   name,
   args,
   result,
@@ -78,4 +78,4 @@ export function ToolCallCard({
       </AnimatePresence>
     </div>
   )
-}
+})
