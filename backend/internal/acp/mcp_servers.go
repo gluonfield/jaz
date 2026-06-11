@@ -45,6 +45,10 @@ func enabledHTTPMCPServers(store mcpconfig.ServerReader) ([]json.RawMessage, err
 		if err != nil {
 			return nil, err
 		}
+		if headers == nil {
+			// codex-acp's schema requires an array; null fails session/new.
+			headers = []mcpconfig.Header{}
+		}
 		payload := struct {
 			Type    string             `json:"type"`
 			Name    string             `json:"name"`
