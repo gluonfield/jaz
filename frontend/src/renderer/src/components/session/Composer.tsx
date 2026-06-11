@@ -7,6 +7,7 @@ import { MenuRow, Popover } from '@/components/ui/Popover'
 import { RAINBOW_BEAM } from '@/components/ui/rainbow'
 import { MentionSuggestions, MentionTextarea, useMentionInput } from './MentionInput'
 import { QueuedPromptList } from './QueuedPromptList'
+import type { ComposerDraftStorage } from './useComposerDraft'
 
 function formatFileSize(size: number): string {
   if (size < 1024) return `${size} B`
@@ -66,11 +67,14 @@ export function ComposerCard({
   planAvailable = false,
   queueWhenStreaming = false,
   translucent = false,
+  draftStorageKey,
+  draftStorage = 'session',
   leftSlot,
   fileRoot,
   onSend,
   onStop,
   onVoice,
+  onTextChange,
 }: {
   streaming: boolean
   autoFocus?: boolean
@@ -80,6 +84,8 @@ export function ComposerCard({
   queueWhenStreaming?: boolean
   /** let a backdrop (e.g. the welcome particle field) read through the card */
   translucent?: boolean
+  draftStorageKey?: string
+  draftStorage?: ComposerDraftStorage
   /** leading toolbar content (e.g. the new-thread runtime/project controls) */
   leftSlot?: ReactNode
   /** server-side directory the @-mention picker indexes (a project path, a
@@ -88,6 +94,7 @@ export function ComposerCard({
   onSend: (text: string, options?: SendMessageOptions) => void
   onStop?: () => void
   onVoice?: () => void
+  onTextChange?: (text: string) => void
 }) {
   const [files, setFiles] = useState<File[]>([])
   const [focused, setFocused] = useState(false)
@@ -96,7 +103,13 @@ export function ComposerCard({
   const [planRequested, setPlanRequested] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const reducedMotion = useReducedMotion()
-  const mention = useMentionInput({ fileRoot, disabled })
+  const mention = useMentionInput({
+    fileRoot,
+    disabled,
+    storageKey: draftStorageKey,
+    storage: draftStorage,
+    onTextChange,
+  })
 
   // autoFocus lands before React's focus listeners attach; sync the ring state.
   useEffect(() => {
@@ -388,6 +401,7 @@ export function Composer({
   planAvailable,
   queuedPrompts = [],
   steerDisabled,
+  draftStorageKey,
   fileRoot,
   onSend,
   onStop,
@@ -403,6 +417,7 @@ export function Composer({
   planAvailable?: boolean
   queuedPrompts?: string[]
   steerDisabled?: boolean
+  draftStorageKey?: string
   /** directory the @-mention picker indexes; undefined disables @ */
   fileRoot?: string
   onSend: (text: string, options?: SendMessageOptions) => void
@@ -443,6 +458,8 @@ export function Composer({
           placeholder={placeholder}
           planAvailable={planAvailable}
           queueWhenStreaming
+          draftStorageKey={draftStorageKey}
+          draftStorage="local"
           fileRoot={fileRoot}
           onSend={onSend}
           onStop={onStop}

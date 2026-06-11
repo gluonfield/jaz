@@ -9,7 +9,7 @@ import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
 import { encodeMention, MentionPill } from './mentions'
 
 // Models often emit \[...\] / \(...\) math delimiters; remark-math only
-// parses $-style. Convert outside of code spans/fences.
+// parses dollar-style math. Convert outside of code spans/fences.
 function normalizeMath(text: string): string {
   return text
     .split(/(```[\s\S]*?```|`[^`]*`)/g)
@@ -17,8 +17,8 @@ function normalizeMath(text: string): string {
       i % 2 === 1
         ? part
         : part
-            .replace(/\\\[([\s\S]*?)\\\]/g, (_, expr: string) => `$$${expr}$$`)
-            .replace(/\\\(([\s\S]*?)\\\)/g, (_, expr: string) => `$${expr}$`),
+            .replace(/\\\[([\s\S]*?)\\\]/g, (_, expr: string) => `\n$$\n${expr}\n$$\n`)
+            .replace(/\\\(([\s\S]*?)\\\)/g, (_, expr: string) => `$$${expr}$$`),
     )
     .join('')
 }
@@ -47,13 +47,6 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-// Escape the $ of [$skill](path) links so remark-math can't pair the dollar
-// signs of two mentions in one paragraph into a formula (the backslash is
-// consumed by markdown, so the rendered label is still `$name`).
-function escapeMentionDollars(text: string): string {
-  return text.replace(/\[\$(?=[^\]\n]*\]\()/g, '[\\$')
-}
-
 // When the assistant echoes a skill by its $name (without the linked-mention
 // form the composer sends), wrap it as a linked mention so it renders as the
 // same pill the user's message shows. Only catalog names qualify — arbitrary
@@ -66,12 +59,8 @@ function linkifyKnownSkills(text: string, skills: SkillInfo[]): string {
       if (i % 2 === 1) return part
       let out = part
       for (const skill of skills) {
-        // The lookbehind skips $names already inside a link ('[' or the '\'
-        // escapeMentionDollars adds) and mid-word matches.
         const pattern = new RegExp(`(?<![\\w[\\\\-])\\$${escapeRegExp(skill.name)}(?![\\w-])`, 'g')
-        out = out.replace(pattern, () =>
-          encodeMention('$', skill.name, skill.path).replace('[$', '[\\$'),
-        )
+        out = out.replace(pattern, () => encodeMention('$', skill.name, skill.path))
       }
       return out
     })
@@ -82,8 +71,7 @@ function mentionSigil(label: string): '$' | '@' | null {
   return label.startsWith('$') || label.startsWith('@') ? (label[0] as '$' | '@') : null
 }
 
-// Shared renderer for assistant prose: GitHub-flavored markdown + LaTeX
-// ($...$ / $$...$$ via KaTeX). Styles live in globals.css under .chat-prose.
+// Shared renderer for assistant prose: GitHub-flavored markdown + LaTeX via KaTeX.
 // Memoized: the remark/rehype pipeline is the priciest per-item work in a
 // transcript, so it must only run when the text actually changes.
 export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: string }) {
@@ -91,13 +79,13 @@ export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: s
   // mention pills. An empty catalog simply skips the pass.
   const skills = useQuery(skillsQuery)
   const prepared = useMemo(
-    () => normalizeMath(linkifyKnownSkills(escapeMentionDollars(text), skills.data ?? [])),
+    () => normalizeMath(linkifyKnownSkills(text, skills.data ?? [])),
     [text, skills.data],
   )
   return (
     <div className="chat-prose">
       <Markdown
-        remarkPlugins={[remarkGfm, remarkMath]}
+        remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: false }]]}
         rehypePlugins={[rehypeKatex]}
         components={{
           // External links open in the system browser (main process denies
