@@ -478,7 +478,27 @@ function SessionPage() {
   }
   const activePermissionEvent = [...pendingPermissionEvents.values()].at(-1)
   const hasPendingPermission = Boolean(activePermissionEvent)
-  const displayEvents = transcriptEvents
+  // The panel mirrors the transcript's notion of "current plan": the latest
+  // plan-bearing event that belongs to this session.
+  const panelPlanEvent = [...transcriptEvents]
+    .reverse()
+    .find((event) => planSurfaceFromEvent(event) && planSurfaceBelongsToSession(event, session.id))
+  const panelPlan = panelPlanEvent ? planSurfaceFromEvent(panelPlanEvent) : undefined
+  const hasPanelSpace = pageWidth >= PANEL_CHAT_COMFORT + SESSION_PANEL_WIDTH
+  const panelOpen = panelPref === 'auto' ? hasPanelSpace : panelPref === 'open'
+  const togglePanel = () => {
+    const next = !panelOpen
+    // Landing on what auto would do re-arms auto-show.
+    setPanelPref(next === hasPanelSpace ? 'auto' : next ? 'open' : 'closed')
+  }
+  // Plan progress lives in the side panel, never in the thread; only a
+  // proposed plan that needs the user's approval stays inline.
+  const displayEvents = transcriptEvents.map((event) => {
+    const surface = planSurfaceFromEvent(event)
+    if (!surface || surface.awaitingApproval) return event
+    if (event.acp) return { ...event, acp: { ...event.acp, plan: undefined } }
+    return { ...event, plan: undefined }
+  })
   const latestUserAt = Math.max(
     0,
     ...messages
@@ -557,19 +577,6 @@ function SessionPage() {
           },
         ]
       : messages
-  // The panel mirrors the transcript's notion of "current plan": the latest
-  // plan-bearing event that belongs to this session.
-  const panelPlanEvent = [...transcriptEvents]
-    .reverse()
-    .find((event) => planSurfaceFromEvent(event) && planSurfaceBelongsToSession(event, session.id))
-  const panelPlan = panelPlanEvent ? planSurfaceFromEvent(panelPlanEvent) : undefined
-  const hasPanelSpace = pageWidth >= PANEL_CHAT_COMFORT + SESSION_PANEL_WIDTH
-  const panelOpen = panelPref === 'auto' ? hasPanelSpace : panelPref === 'open'
-  const togglePanel = () => {
-    const next = !panelOpen
-    // Landing on what auto would do re-arms auto-show.
-    setPanelPref(next === hasPanelSpace ? 'auto' : next ? 'open' : 'closed')
-  }
   const titlebarSlot = document.getElementById('titlebar-slot')
   const titlebarActions = document.getElementById('titlebar-actions')
 
