@@ -89,6 +89,15 @@ func (s *Store) SetArchived(id string, archived bool) error {
 	})
 }
 
+func (s *Store) SetPinned(id string, pinned bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return threaddb.New(s.db).SetPinned(context.Background(), threaddb.SetPinnedParams{
+		Pinned: boolInt(pinned),
+		ID:     id,
+	})
+}
+
 func (s *Store) ListSessions(filter storage.SessionFilter) ([]storage.Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -212,6 +221,7 @@ func insertSession(db threaddb.DBTX, session storage.Session) error {
 		SourceType:            nullDBString(session.SourceType),
 		SourceID:              nullDBString(session.SourceID),
 		Archived:              boolInt(session.Archived),
+		Pinned:                boolInt(session.Pinned),
 		CreatedAtMs:           timeToMs(session.CreatedAt),
 		UpdatedAtMs:           timeToMs(session.UpdatedAt),
 		LastAttentionAtMs:     timeToMs(session.LastAttentionAt),
@@ -248,6 +258,7 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 		SourceType:      row.SourceType.String,
 		SourceID:        row.SourceID.String,
 		Archived:        row.Archived != 0,
+		Pinned:          row.Pinned != 0,
 		CreatedAt:       msToTime(row.CreatedAtMs),
 		UpdatedAt:       msToTime(row.UpdatedAtMs),
 		LastAttentionAt: msToTime(row.LastAttentionAtMs),

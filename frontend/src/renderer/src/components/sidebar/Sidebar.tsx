@@ -175,7 +175,11 @@ function SessionsSection() {
   const queryClient = useQueryClient()
   const sessions = useQuery(sidebarSessionsQuery)
   const projects = useQuery(projectsQuery)
-  const sections = sessionsBySavedProject(sessions.data ?? [], projects.data ?? [])
+  const pinnedItems = withLocalChildState((sessions.data ?? []).filter((item) => item.session.pinned))
+  const sections = sessionsBySavedProject(
+    (sessions.data ?? []).filter((item) => !item.session.pinned),
+    projects.data ?? [],
+  )
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set())
   // Group keys in their live mid-drag order; null while no drag is happening.
   const [dragOrder, setDragOrder] = useState<string[] | null>(null)
@@ -186,7 +190,7 @@ function SessionsSection() {
   })
   const groups = applyDragOrder(sections.groups, dragOrder)
   const visibleUngrouped = sections.ungrouped.slice(0, DEFAULT_SESSION_LIMIT)
-  const hasSessions = groups.length > 0 || sections.ungrouped.length > 0
+  const hasSessions = pinnedItems.length > 0 || groups.length > 0 || sections.ungrouped.length > 0
 
   const expandProject = (key: string) =>
     setExpandedProjects((current) => {
@@ -221,6 +225,7 @@ function SessionsSection() {
         <p className="px-2.5 py-1 text-[13px] text-ink-3">No sessions yet</p>
       ) : (
         <div className="flex flex-col gap-3">
+          {pinnedItems.length > 0 ? <SessionRows items={pinnedItems} /> : null}
           {groups.length > 0 ? (
             <Reorder.Group
               as="div"

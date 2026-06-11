@@ -28,7 +28,8 @@ SELECT
   context_window_tokens,
   cached_write_tokens,
   project_path,
-  last_attention_at_ms
+  last_attention_at_ms,
+  pinned
 FROM threads;
 
 -- name: GetSession :one
@@ -61,7 +62,8 @@ SELECT
   context_window_tokens,
   cached_write_tokens,
   project_path,
-  last_attention_at_ms
+  last_attention_at_ms,
+  pinned
 FROM threads
 WHERE id = sqlc.arg(ref) OR slug = sqlc.arg(ref)
 LIMIT 1;
@@ -108,7 +110,8 @@ INSERT INTO threads (
   archived,
   created_at_ms,
   updated_at_ms,
-  last_attention_at_ms
+  last_attention_at_ms,
+  pinned
 ) VALUES (
   sqlc.arg(id),
   sqlc.arg(slug),
@@ -138,7 +141,8 @@ INSERT INTO threads (
   sqlc.arg(archived),
   sqlc.arg(created_at_ms),
   sqlc.arg(updated_at_ms),
-  sqlc.arg(last_attention_at_ms)
+  sqlc.arg(last_attention_at_ms),
+  sqlc.arg(pinned)
 )
 ON CONFLICT(id) DO UPDATE SET
   slug = excluded.slug,
@@ -168,11 +172,17 @@ ON CONFLICT(id) DO UPDATE SET
   archived = excluded.archived,
   created_at_ms = excluded.created_at_ms,
   updated_at_ms = excluded.updated_at_ms,
-  last_attention_at_ms = excluded.last_attention_at_ms;
+  last_attention_at_ms = excluded.last_attention_at_ms,
+  pinned = excluded.pinned;
 
 -- name: SetArchived :exec
 UPDATE threads
 SET archived = sqlc.arg(archived)
+WHERE id = sqlc.arg(id) OR parent_id = sqlc.arg(id);
+
+-- name: SetPinned :exec
+UPDATE threads
+SET pinned = sqlc.arg(pinned)
 WHERE id = sqlc.arg(id) OR parent_id = sqlc.arg(id);
 
 -- name: TouchThread :exec
