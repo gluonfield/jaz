@@ -89,7 +89,8 @@ SELECT
   context_window_tokens,
   cached_write_tokens,
   project_path,
-  last_attention_at_ms
+  last_attention_at_ms,
+  pinned
 FROM threads
 WHERE id = ?1 OR slug = ?1
 LIMIT 1
@@ -128,6 +129,7 @@ func (q *Queries) GetSession(ctx context.Context, ref string) (Thread, error) {
 		&i.CachedWriteTokens,
 		&i.ProjectPath,
 		&i.LastAttentionAtMs,
+		&i.Pinned,
 	)
 	return i, err
 }
@@ -220,7 +222,8 @@ SELECT
   context_window_tokens,
   cached_write_tokens,
   project_path,
-  last_attention_at_ms
+  last_attention_at_ms,
+  pinned
 FROM threads
 `
 
@@ -263,6 +266,7 @@ func (q *Queries) ListSessions(ctx context.Context) ([]Thread, error) {
 			&i.CachedWriteTokens,
 			&i.ProjectPath,
 			&i.LastAttentionAtMs,
+			&i.Pinned,
 		); err != nil {
 			return nil, err
 		}
@@ -316,6 +320,22 @@ type SetArchivedParams struct {
 
 func (q *Queries) SetArchived(ctx context.Context, arg SetArchivedParams) error {
 	_, err := q.db.ExecContext(ctx, setArchived, arg.Archived, arg.ID)
+	return err
+}
+
+const setPinned = `-- name: SetPinned :exec
+UPDATE threads
+SET pinned = ?1
+WHERE id = ?2 OR parent_id = ?2
+`
+
+type SetPinnedParams struct {
+	Pinned int64  `json:"pinned"`
+	ID     string `json:"id"`
+}
+
+func (q *Queries) SetPinned(ctx context.Context, arg SetPinnedParams) error {
+	_, err := q.db.ExecContext(ctx, setPinned, arg.Pinned, arg.ID)
 	return err
 }
 
@@ -426,7 +446,8 @@ INSERT INTO threads (
   archived,
   created_at_ms,
   updated_at_ms,
-  last_attention_at_ms
+  last_attention_at_ms,
+  pinned
 ) VALUES (
   ?1,
   ?2,
@@ -456,7 +477,8 @@ INSERT INTO threads (
   ?26,
   ?27,
   ?28,
-  ?29
+  ?29,
+  ?30
 )
 ON CONFLICT(id) DO UPDATE SET
   slug = excluded.slug,
@@ -486,7 +508,8 @@ ON CONFLICT(id) DO UPDATE SET
   archived = excluded.archived,
   created_at_ms = excluded.created_at_ms,
   updated_at_ms = excluded.updated_at_ms,
-  last_attention_at_ms = excluded.last_attention_at_ms
+  last_attention_at_ms = excluded.last_attention_at_ms,
+  pinned = excluded.pinned
 `
 
 type UpsertSessionParams struct {
@@ -519,6 +542,7 @@ type UpsertSessionParams struct {
 	CreatedAtMs           int64          `json:"created_at_ms"`
 	UpdatedAtMs           int64          `json:"updated_at_ms"`
 	LastAttentionAtMs     int64          `json:"last_attention_at_ms"`
+	Pinned                int64          `json:"pinned"`
 }
 
 func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) error {
@@ -552,6 +576,7 @@ func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) er
 		arg.CreatedAtMs,
 		arg.UpdatedAtMs,
 		arg.LastAttentionAtMs,
+		arg.Pinned,
 	)
 	return err
 }

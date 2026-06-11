@@ -208,6 +208,28 @@ func (s *Store) SetArchived(id string, archived bool) error {
 	return nil
 }
 
+func (s *Store) SetPinned(id string, pinned bool) error {
+	session, err := s.loadSessionByID(id)
+	if err != nil {
+		return err
+	}
+	session.Pinned = pinned
+	if err := s.saveSession(session); err != nil {
+		return err
+	}
+	children, err := s.ListSessions(storage.SessionFilter{ParentID: id, ParentOnly: true})
+	if err != nil {
+		return err
+	}
+	for _, child := range children {
+		child.Pinned = pinned
+		if err := s.saveSession(child); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Store) ListSessions(filter storage.SessionFilter) ([]storage.Session, error) {
 	entries, err := os.ReadDir(s.SessionsDir())
 	if os.IsNotExist(err) {

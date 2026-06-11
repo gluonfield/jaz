@@ -38,4 +38,5 @@ type Thread struct {
 	CachedWriteTokens     int64          `json:"cached_write_tokens"`
 	ProjectPath           sql.NullString `json:"project_path"`
 	LastAttentionAtMs     int64          `json:"last_attention_at_ms"`
+	Pinned                int64          `json:"pinned"`
 }
