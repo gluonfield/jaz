@@ -26,11 +26,14 @@ func CanonicalAgentName(name string) string {
 	return name
 }
 
-// SystemPromptSource supplies the system prompt for new ACP sessions. It is
-// consulted at session creation, not at startup, so prompt and skill edits
-// reach new sessions without a restart.
+// SystemPromptSource supplies prompts for ACP sessions: ACPPrompt is the full
+// session extension (AGENTS.md, memory, skills) injected at session creation,
+// SkillsPrompt is the skills catalog alone for per-turn $skill resolution.
+// Both are consulted on use, not at startup, so prompt and skill edits reach
+// new sessions and turns without a restart.
 type SystemPromptSource interface {
 	ACPPrompt() (string, error)
+	SkillsPrompt() (string, error)
 }
 
 // systemPromptMeta wraps prompt in the session _meta payload understood by

@@ -157,7 +157,6 @@ function hasVisibleACPSurface(event: SessionEvent): boolean {
     return Boolean(
       event.content ||
         acp.thought ||
-        acp.error ||
         hasPlan ||
         hasWorkingStatusSurface(event),
     )
@@ -165,7 +164,6 @@ function hasVisibleACPSurface(event: SessionEvent): boolean {
   return Boolean(
     event.content ||
       acp.thought ||
-      acp.error ||
       acp.tool_calls?.length ||
       hasPlan ||
       hasWorkingStatusSurface(event),
@@ -483,11 +481,6 @@ function LiveEvent({
       ) : null}
       {event.acp?.thought ? <ThinkingBlock text={event.acp.thought} /> : null}
       {event.content ? <MessageMarkdown text={event.content} /> : null}
-      {event.acp?.error ? (
-        <p className="rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
-          {event.acp.error}
-        </p>
-      ) : null}
       {showWorkingStatus ? (
         <Link
           to="/sessions/$sessionId"
@@ -639,7 +632,6 @@ function isCollapsibleWork(
     return event.acp ? latestPlanIndex.get(event.acp.id) !== item.eventIndex : false
   }
   if (event.type === 'acp') {
-    if (event.acp?.error) return false
     return true
   }
   return false
@@ -745,10 +737,10 @@ export function Transcript({
       if (isWorkingLinkOnly(event) && acp.id === sessionId) return false
       if (planSurface) {
         const isLatestPlan = latestPlanEvent.get(acp.id) === index
-        if (!isLatestPlan && !event.content && !acp.error && !acp.tool_calls?.length) return false
+        if (!isLatestPlan && !event.content && !acp.tool_calls?.length) return false
       }
       if (event.type === 'acp' && acp.tool_calls?.length && latestToolEvent.get(acp.id) !== index) {
-        return Boolean(event.content || acp.error || planSurface)
+        return Boolean(event.content || planSurface)
       }
       return true
     })

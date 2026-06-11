@@ -9,6 +9,8 @@ interface Toast {
   tone: 'ok' | 'danger'
 }
 
+const TOAST_AUTO_DISMISS_MS = 30_000
+
 const ToastContext = createContext<(message: string, tone?: Toast['tone']) => void>(() => {})
 
 export function useToast() {
@@ -29,9 +31,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const push = useCallback((message: string, tone: Toast['tone'] = 'ok') => {
     const id = nextId.current++
+    const autoDismiss = tone !== 'danger'
     setToasts((prev) => [...prev, { id, message, tone }])
-    if (tone === 'ok') {
-      timers.current.set(id, setTimeout(() => dismiss(id), 2_500))
+    if (autoDismiss) {
+      timers.current.set(id, setTimeout(() => dismiss(id), TOAST_AUTO_DISMISS_MS))
     }
   }, [dismiss])
 
@@ -43,7 +46,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={push}>
       {children}
-      <div className="pointer-events-none fixed right-4 bottom-4 z-toast flex flex-col items-end gap-2">
+      <div className="pointer-events-none fixed right-4 bottom-4 z-toast flex max-h-[calc(100vh-2rem)] flex-col items-end gap-2 overflow-y-auto">
         <AnimatePresence>
           {toasts.map((toast) => (
             <motion.div

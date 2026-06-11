@@ -105,10 +105,10 @@ export function ComposerCard({
   queueWhenStreaming?: boolean
   /** let a backdrop (e.g. the welcome particle field) read through the card */
   translucent?: boolean
-  /** leading toolbar content (e.g. the new-thread runtime/directory pickers) */
+  /** leading toolbar content (e.g. the new-thread runtime/project controls) */
   leftSlot?: ReactNode
-  /** server-side directory the @-mention picker indexes (a session cwd, or a
-      workspace-relative pick; '' is the workspace root). undefined disables @ */
+  /** server-side directory the @-mention picker indexes (a project path, a
+      session cwd, or '' for the workspace root). undefined disables @ */
   fileRoot?: string
   onSend: (text: string, options?: SendMessageOptions) => void
   onStop?: () => void
@@ -143,6 +143,12 @@ export function ComposerCard({
     ...workspaceFilesQuery(fileRoot ?? ''),
     enabled: fileRoot !== undefined && focused,
   })
+  const skillMentionStart = focused && menuTrigger?.trigger === '$' ? menuTrigger.start : null
+
+  useEffect(() => {
+    if (skillMentionStart === null) return
+    void skills.refetch()
+  }, [skillMentionStart, skills.refetch])
 
   const sections = useMemo<SuggestionSection[]>(() => {
     if (!menuTrigger) return []

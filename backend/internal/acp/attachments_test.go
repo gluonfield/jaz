@@ -8,7 +8,7 @@ import (
 )
 
 func TestPromptContentBlocksUsesResourceLinks(t *testing.T) {
-	blocks, err := promptContentBlocks("read this", []storage.Attachment{{
+	blocks, err := promptContentBlocks("", "read this", []storage.Attachment{{
 		Name:     "note.txt",
 		URI:      "file:///tmp/note.txt",
 		MimeType: "text/plain",

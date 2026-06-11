@@ -95,7 +95,7 @@ function RootLayout() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.defaultPrevented) return
-      if (e.key === 's') {
+      if (!e.shiftKey && e.key.toLowerCase() === 's') {
         e.preventDefault()
         setSidebarOpen((open) => !open)
       }

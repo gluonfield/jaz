@@ -87,7 +87,8 @@ SELECT
   updated_at_ms,
   context_tokens,
   context_window_tokens,
-  cached_write_tokens
+  cached_write_tokens,
+  project_path
 FROM threads
 WHERE id = ?1 OR slug = ?1
 LIMIT 1
@@ -124,6 +125,7 @@ func (q *Queries) GetSession(ctx context.Context, ref string) (Thread, error) {
 		&i.ContextTokens,
 		&i.ContextWindowTokens,
 		&i.CachedWriteTokens,
+		&i.ProjectPath,
 	)
 	return i, err
 }
@@ -214,7 +216,8 @@ SELECT
   updated_at_ms,
   context_tokens,
   context_window_tokens,
-  cached_write_tokens
+  cached_write_tokens,
+  project_path
 FROM threads
 `
 
@@ -255,6 +258,7 @@ func (q *Queries) ListSessions(ctx context.Context) ([]Thread, error) {
 			&i.ContextTokens,
 			&i.ContextWindowTokens,
 			&i.CachedWriteTokens,
+			&i.ProjectPath,
 		); err != nil {
 			return nil, err
 		}
@@ -380,6 +384,7 @@ INSERT INTO threads (
   acp_agent,
   acp_session_id,
   cwd,
+  project_path,
   error,
   model_provider,
   model,
@@ -425,7 +430,8 @@ INSERT INTO threads (
   ?24,
   ?25,
   ?26,
-  ?27
+  ?27,
+  ?28
 )
 ON CONFLICT(id) DO UPDATE SET
   slug = excluded.slug,
@@ -437,6 +443,7 @@ ON CONFLICT(id) DO UPDATE SET
   acp_agent = excluded.acp_agent,
   acp_session_id = excluded.acp_session_id,
   cwd = excluded.cwd,
+  project_path = excluded.project_path,
   model_provider = excluded.model_provider,
   model = excluded.model,
   reasoning_effort = excluded.reasoning_effort,
@@ -466,6 +473,7 @@ type UpsertSessionParams struct {
 	AcpAgent              sql.NullString `json:"acp_agent"`
 	AcpSessionID          sql.NullString `json:"acp_session_id"`
 	Cwd                   sql.NullString `json:"cwd"`
+	ProjectPath           sql.NullString `json:"project_path"`
 	Error                 sql.NullString `json:"error"`
 	ModelProvider         sql.NullString `json:"model_provider"`
 	Model                 sql.NullString `json:"model"`
@@ -497,6 +505,7 @@ func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) er
 		arg.AcpAgent,
 		arg.AcpSessionID,
 		arg.Cwd,
+		arg.ProjectPath,
 		arg.Error,
 		arg.ModelProvider,
 		arg.Model,

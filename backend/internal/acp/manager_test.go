@@ -23,7 +23,8 @@ import (
 // staticPrompt is a fixed acp.SystemPromptSource for tests.
 type staticPrompt string
 
-func (s staticPrompt) ACPPrompt() (string, error) { return string(s), nil }
+func (s staticPrompt) ACPPrompt() (string, error)    { return string(s), nil }
+func (s staticPrompt) SkillsPrompt() (string, error) { return string(s), nil }
 
 func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
@@ -1048,8 +1049,28 @@ func TestSpawnSessionDirectories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if session.RuntimeRef == nil || session.RuntimeRef.Cwd != want {
+	if session.RuntimeRef == nil || session.RuntimeRef.Cwd != want || session.RuntimeRef.ProjectPath != want {
 		t.Fatalf("cwd not persisted: %#v", session.RuntimeRef)
+	}
+
+	absolute := filepath.Join(t.TempDir(), "outside-project")
+	if err := os.MkdirAll(absolute, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	spawned, err = manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "absolute-dir-task", Directory: absolute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	if spawned.Cwd != absolute {
+		t.Fatalf("absolute cwd = %q, want %q", spawned.Cwd, absolute)
+	}
+	session, err = store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.RuntimeRef == nil || session.RuntimeRef.ProjectPath != absolute {
+		t.Fatalf("absolute project path not persisted: %#v", session.RuntimeRef)
 	}
 
 	// No directory: a fresh per-session directory named after the slug.
@@ -1128,6 +1149,13 @@ func TestSpawnWorktree(t *testing.T) {
 	}
 	if got := strings.TrimSpace(string(branch)); got != "jaz/"+spawned.Slug {
 		t.Fatalf("worktree branch = %q", got)
+	}
+	session, err := store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.RuntimeRef == nil || session.RuntimeRef.Cwd != want || session.RuntimeRef.ProjectPath != repo {
+		t.Fatalf("worktree runtime ref = %#v, want cwd %q project %q", session.RuntimeRef, want, repo)
 	}
 
 	// Worktree without a repository directory is an explicit error.

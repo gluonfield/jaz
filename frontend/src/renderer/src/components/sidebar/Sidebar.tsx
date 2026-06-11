@@ -1,14 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Plus, Settings, SquarePen, Trash2 } from 'lucide-react'
+import { GripVertical, Plus, Settings, SquarePen, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { type PointerEvent as ReactPointerEvent, useState } from 'react'
+import { type DragEvent, type PointerEvent as ReactPointerEvent, useState } from 'react'
 import { BoardModal } from '@/components/boards/BoardModal'
 import { LoopModal } from '@/components/loops/LoopModal'
 import { IconButton } from '@/components/ui/IconButton'
 import { boardsQuery, deleteBoard } from '@/lib/api/boards'
 import { loopsQuery } from '@/lib/api/loops'
-import { SIDEBAR_SESSION_LIMIT, sidebarSessionsQuery } from '@/lib/api/sessions'
+import { projectsQuery, reorderProjects, sidebarSessionsQuery, type Project, type SessionListItem } from '@/lib/api/sessions'
 import type { Board } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 import { SkeletonRows } from '../ui/Skeleton'
@@ -16,10 +16,106 @@ import { LoopRow } from './LoopRow'
 import { SessionRow } from './SessionRow'
 
 const SIDEBAR_LOOP_LIMIT = 6
+const PROJECT_SESSION_LIMIT = 5
+const DEFAULT_SESSION_LIMIT = 5
 
-function SectionLabel({ children }: { children: string }) {
+function SectionLabel({ children, to }: { children: string; to?: '/sessions' }) {
+  const className =
+    'rounded-full px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3 transition-colors duration-150 hover:text-ink'
+  if (to) {
+    return (
+      <Link to={to} className={className} activeOptions={{ exact: true }} activeProps={{ className: 'text-ink!' }}>
+        {children}
+      </Link>
+    )
+  }
+  return <p className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3">{children}</p>
+}
+
+type SessionProjectGroup = {
+  key: string
+  label: string
+  items: SessionListItem[]
+}
+
+type SessionSections = {
+  groups: SessionProjectGroup[]
+  ungrouped: SessionListItem[]
+}
+
+function sessionProjectPath(item: SessionListItem): string {
   return (
-    <p className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3">{children}</p>
+    item.session.runtime_ref?.project_path?.trim() ||
+    item.session.runtime_ref?.cwd?.trim() ||
+    ''
+  )
+}
+
+function withLocalChildState(items: SessionListItem[]): SessionListItem[] {
+  const ids = new Set(items.map((item) => item.session.id))
+  return items.map((item) => ({
+    ...item,
+    child: item.child && Boolean(item.session.parent_id && ids.has(item.session.parent_id)),
+  }))
+}
+
+function sessionsBySavedProject(items: SessionListItem[], projects: Project[]): SessionSections {
+  const projectByPath = new Map(projects.map((project) => [project.path, project]))
+  const groups = new Map<string, SessionProjectGroup>()
+  const ungrouped: SessionListItem[] = []
+
+  for (const item of items) {
+    const project = projectByPath.get(sessionProjectPath(item))
+    if (!project) {
+      ungrouped.push(item)
+      continue
+    }
+
+    const group = groups.get(project.path) ?? {
+      key: project.path,
+      label: project.name,
+      items: [],
+    }
+    group.items.push(item)
+    groups.set(project.path, group)
+  }
+
+  return {
+    groups: projects
+      .map((project) => groups.get(project.path))
+      .filter((group): group is SessionProjectGroup => Boolean(group))
+      .map((group) => ({ ...group, items: withLocalChildState(group.items) })),
+    ungrouped: withLocalChildState(ungrouped),
+  }
+}
+
+function moveProjectPath(projects: Project[], source: string, target: string): string[] {
+  const paths = projects.map((project) => project.path)
+  const from = paths.indexOf(source)
+  const to = paths.indexOf(target)
+  if (from === -1 || to === -1 || from === to) return paths
+  const [path] = paths.splice(from, 1)
+  paths.splice(paths.indexOf(target), 0, path)
+  return paths
+}
+
+function SessionRows({ items }: { items: SessionListItem[] }) {
+  return (
+    <div className="flex flex-col gap-px">
+      <AnimatePresence initial={false} mode="popLayout">
+        {items.map((item) => (
+          <motion.div
+            key={item.session.id}
+            initial={{ opacity: 0, x: -8 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -8 }}
+            transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+          >
+            <SessionRow session={item.session} child={item.child} />
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
   )
 }
 
@@ -180,8 +276,42 @@ export function Sidebar({
   onResizeReset: () => void
   onOpenSettings: () => void
 }) {
+  const queryClient = useQueryClient()
   const sessions = useQuery(sidebarSessionsQuery)
-  const visibleSessions = sessions.data?.slice(0, SIDEBAR_SESSION_LIMIT) ?? []
+  const projects = useQuery(projectsQuery)
+  const sessionSections = sessionsBySavedProject(sessions.data ?? [], projects.data ?? [])
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set())
+  const [draggingProject, setDraggingProject] = useState('')
+  const reorder = useMutation({
+    mutationFn: reorderProjects,
+    onSuccess: (ordered) => queryClient.setQueryData(keys.projects, ordered),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: keys.projects }),
+  })
+  const hasSessions = sessionSections.groups.length > 0 || sessionSections.ungrouped.length > 0
+  const visibleUngrouped = sessionSections.ungrouped.slice(0, DEFAULT_SESSION_LIMIT)
+  const expandProject = (key: string) =>
+    setExpandedProjects((current) => {
+      const next = new Set(current)
+      next.add(key)
+      return next
+    })
+  const startProjectDrag = (event: DragEvent, key: string) => {
+    setDraggingProject(key)
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', key)
+  }
+  const allowProjectDrop = (event: DragEvent) => {
+    if (!draggingProject) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+  }
+  const dropProject = (event: DragEvent, target: string) => {
+    event.preventDefault()
+    const source = draggingProject || event.dataTransfer.getData('text/plain')
+    setDraggingProject('')
+    if (!source || source === target || reorder.isPending) return
+    reorder.mutate(moveProjectPath(projects.data ?? [], source, target))
+  }
 
   return (
     <aside
@@ -206,37 +336,79 @@ export function Sidebar({
         </Link>
 
         <section>
-          <SectionLabel>Sessions</SectionLabel>
-          {sessions.isPending ? (
+          <SectionLabel to="/sessions">Sessions</SectionLabel>
+          {sessions.isPending || projects.isPending ? (
             <SkeletonRows count={4} />
           ) : sessions.isError ? (
             <p className="px-2.5 py-1 text-[13px] text-ink-3">Backend unreachable</p>
-          ) : visibleSessions.length === 0 ? (
+          ) : !hasSessions ? (
             <p className="px-2.5 py-1 text-[13px] text-ink-3">No sessions yet</p>
           ) : (
-            <div className="flex flex-col gap-px">
-              <AnimatePresence initial={false} mode="popLayout">
-                {visibleSessions.map((item) => (
-                  <motion.div
-                    key={item.session.id}
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -8 }}
-                    transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+            <div className="flex flex-col gap-3">
+              {sessionSections.groups.map((group) => {
+                const expanded = expandedProjects.has(group.key)
+                const visibleItems = expanded ? group.items : group.items.slice(0, PROJECT_SESSION_LIMIT)
+                return (
+                  <div
+                    key={group.key}
+                    onDragOver={allowProjectDrop}
+                    onDrop={(event) => dropProject(event, group.key)}
+                    className={draggingProject === group.key ? 'opacity-60' : undefined}
                   >
-                    <SessionRow session={item.session} child={item.child} />
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-              {sessions.data.length > SIDEBAR_SESSION_LIMIT ? (
-                <Link
-                  to="/sessions"
-                  className="mt-1 rounded-full px-2.5 py-1 text-[13px] text-primary transition-colors duration-150 hover:bg-surface-2"
-                  activeOptions={{ exact: true }}
-                  activeProps={{ className: 'bg-primary-soft!' }}
-                >
-                  Show all sessions
-                </Link>
+                    <div className="group/project flex items-center justify-between pr-1">
+                      <div className="flex min-w-0 items-center">
+                        <button
+                          type="button"
+                          draggable
+                          onDragStart={(event) => startProjectDrag(event, group.key)}
+                          onDragEnd={() => setDraggingProject('')}
+                          className="-ml-1 grid size-5 shrink-0 cursor-grab place-items-center rounded-full text-ink-3 opacity-0 transition-colors duration-150 hover:bg-surface-2 hover:text-ink active:cursor-grabbing focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none group-hover/project:opacity-100"
+                          aria-label={`Reorder ${group.label}`}
+                          title="Drag project"
+                        >
+                          <GripVertical size={13} />
+                        </button>
+                        <p className="min-w-0 truncate px-1 pb-1 text-[11px] font-medium text-ink-3" title={group.label}>
+                          {group.label}
+                        </p>
+                      </div>
+                      <Link
+                        to="/new"
+                        search={{ project: group.key }}
+                        className="-mt-1 grid size-6 place-items-center rounded-full text-ink-3 opacity-0 transition-colors duration-150 hover:bg-surface-2 hover:text-ink focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none group-hover/project:opacity-100"
+                        aria-label={`New thread in ${group.label}`}
+                        title={`New thread in ${group.label}`}
+                      >
+                        <SquarePen size={13} />
+                      </Link>
+                    </div>
+                    <SessionRows items={visibleItems} />
+                    {!expanded && group.items.length > PROJECT_SESSION_LIMIT ? (
+                      <button
+                        type="button"
+                        onClick={() => expandProject(group.key)}
+                        className="mt-1 rounded-full px-2.5 py-1 text-left text-[13px] text-primary transition-colors duration-150 hover:bg-surface-2"
+                      >
+                        Show more
+                      </button>
+                    ) : null}
+                  </div>
+                )
+              })}
+              {sessionSections.ungrouped.length > 0 ? (
+                <div>
+                  <SessionRows items={visibleUngrouped} />
+                  {sessionSections.ungrouped.length > DEFAULT_SESSION_LIMIT ? (
+                    <Link
+                      to="/sessions"
+                      className="mt-1 block rounded-full px-2.5 py-1 text-[13px] text-primary transition-colors duration-150 hover:bg-surface-2"
+                      activeOptions={{ exact: true }}
+                      activeProps={{ className: 'bg-primary-soft!' }}
+                    >
+                      Show all threads
+                    </Link>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           )}

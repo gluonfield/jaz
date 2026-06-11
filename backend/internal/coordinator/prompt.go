@@ -11,7 +11,7 @@ import (
 
 // PromptFiles are the agent prompt files read from the jaz root directory,
 // in the order they are rendered into the coordinator system prompt.
-var PromptFiles = []string{"AGENTS.md", "SOUL.md", "HEARTBEAT.md"}
+var PromptFiles = []string{"AGENTS.md", "SOUL.md"}
 
 func Prompt(root, workspace, memoryRoot, skillsPrompt string) (string, error) {
 	return prompt(root, workspace, memoryRoot, skillsPrompt, time.Now())
@@ -47,8 +47,8 @@ const acpPromptHeader = "The user runs you through Jaz, their personal assistant
 	"durable facts, decisions, and the user's goals as you learn them."
 
 // acpPrompt composes the system prompt extension for ACP agent sessions:
-// AGENTS.md plus the jazmem horizons and the skills catalog. SOUL.md and
-// HEARTBEAT.md stay coordinator-only.
+// AGENTS.md plus the jazmem horizons and the skills catalog. SOUL.md stays
+// coordinator-only.
 func acpPrompt(root, memoryRoot, skillsPrompt string, now time.Time) (string, error) {
 	var sections []prompttemplate.Section
 	agents, err := ReadPromptFile(root, "AGENTS.md")
