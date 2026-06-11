@@ -68,6 +68,59 @@ func TestBuilderReturnsPromptReadErrors(t *testing.T) {
 	}
 }
 
+// The ACP prompt extends the agent's own system prompt, so it must carry the
+// user's rules, memory, and skills — but never the coordinator identity or
+// persona files.
+func TestBuilderACPPrompt(t *testing.T) {
+	root := t.TempDir()
+	memoryRoot := t.TempDir()
+	write(t, root, "AGENTS.md", "save durable facts with jazmem")
+	write(t, root, "SOUL.md", "be kind")
+	write(t, memoryRoot, "LONG_TERM.md", "- Goal: $5m.")
+	skillDir := filepath.Join(root, "skills", "deploy")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(t, skillDir, "SKILL.md", "---\nname: deploy\ndescription: ship it\n---\nsteps")
+
+	prompt, err := NewBuilder(root, "", memoryRoot, func() bool { return true }).ACPPrompt()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"## AGENTS.md",
+		"save durable facts with jazmem",
+		"## memory/LONG_TERM.md",
+		"- Goal: $5m.",
+		"<name>deploy</name>",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("acp prompt missing %q:\n%s", want, prompt)
+		}
+	}
+	for _, banned := range []string{"You are Jaz", "SOUL.md", "be kind"} {
+		if strings.Contains(prompt, banned) {
+			t.Fatalf("acp prompt must not contain %q:\n%s", banned, prompt)
+		}
+	}
+
+	disabled, err := NewBuilder(root, "", memoryRoot, func() bool { return false }).ACPPrompt()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(disabled, "## memory/") {
+		t.Fatalf("disabled memory must not be injected:\n%s", disabled)
+	}
+
+	empty, err := NewBuilder(t.TempDir(), "", "", nil).ACPPrompt()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if empty != "" {
+		t.Fatalf("empty root should produce no acp prompt, got:\n%s", empty)
+	}
+}
+
 func TestBuilderSkipsMemoryWhenDisabled(t *testing.T) {
 	root := t.TempDir()
 	memoryRoot := t.TempDir()

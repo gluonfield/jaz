@@ -3,6 +3,7 @@ package acp
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -34,6 +35,28 @@ func TestProcessEnvIsMinimalAndCanonical(t *testing.T) {
 	}
 	if !strings.HasPrefix(env["HOME"], filepath.Join(root, "acp")) {
 		t.Fatalf("HOME = %q, want under %q", env["HOME"], root)
+	}
+}
+
+// Each adapter reads its own _meta extension key; every form below appends to
+// the agent's prompt rather than replacing it (a bare string would replace the
+// preset on claude, and grok ignores systemPrompt entirely).
+func TestSystemPromptMetaPerAgent(t *testing.T) {
+	cases := []struct {
+		agent string
+		want  map[string]any
+	}{
+		{AgentClaude, map[string]any{"systemPrompt": map[string]any{"append": "jaz prompt"}}},
+		{"claude-code", map[string]any{"systemPrompt": map[string]any{"append": "jaz prompt"}}},
+		{AgentGrok, map[string]any{"rules": "jaz prompt"}},
+		{"grok-build", map[string]any{"rules": "jaz prompt"}},
+		{AgentCodex, map[string]any{"systemPrompt": "jaz prompt"}},
+		{"unknown-agent", map[string]any{"systemPrompt": "jaz prompt"}},
+	}
+	for _, tc := range cases {
+		if got := systemPromptMeta(tc.agent, "jaz prompt"); !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("systemPromptMeta(%q) = %#v, want %#v", tc.agent, got, tc.want)
+		}
 	}
 }
 

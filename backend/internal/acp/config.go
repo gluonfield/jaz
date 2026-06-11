@@ -27,10 +27,32 @@ func CanonicalAgentName(name string) string {
 }
 
 // SystemPromptSource supplies the system prompt for new ACP sessions. It is
-// consulted at session creation, not at startup, so skill edits reach new
-// sessions without a restart.
+// consulted at session creation, not at startup, so prompt and skill edits
+// reach new sessions without a restart.
 type SystemPromptSource interface {
-	SkillsPrompt() (string, error)
+	ACPPrompt() (string, error)
+}
+
+// systemPromptMeta wraps prompt in the session _meta payload understood by
+// the named agent. ACP has no standard system-prompt field, so each adapter
+// defines its own extension key; every form below appends to the agent's own
+// system prompt rather than replacing it:
+//   - claude-agent-acp reads _meta.systemPrompt; {"append": ...} extends the
+//     Claude Code preset, while a bare string would replace it.
+//   - grok reads _meta.rules and ignores _meta.systemPrompt.
+//   - codex-acp (Jaz fork) appends a _meta.systemPrompt string as developer
+//     instructions; upstream codex-acp ignores _meta entirely.
+//
+// Unknown agents get the codex-style bare string.
+func systemPromptMeta(agent, prompt string) map[string]any {
+	switch CanonicalAgentName(agent) {
+	case AgentClaude:
+		return map[string]any{"systemPrompt": map[string]any{"append": prompt}}
+	case AgentGrok:
+		return map[string]any{"rules": prompt}
+	default:
+		return map[string]any{"systemPrompt": prompt}
+	}
 }
 
 type Config struct {
