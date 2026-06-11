@@ -35,13 +35,13 @@ function draftStore(kind: ComposerDraftStorage): Storage {
   return kind === 'local' ? localStorage : sessionStorage
 }
 
-function readStoredDraft(key: string | undefined, kind: ComposerDraftStorage): ComposerDraft {
-  if (!key) return emptyDraft()
+function readStoredDraft(key: string | undefined, kind: ComposerDraftStorage): ComposerDraft | null {
+  if (!key) return null
   try {
     const raw = draftStore(kind).getItem(key)
-    if (!raw) return emptyDraft()
+    if (!raw) return null
     const parsed = JSON.parse(raw) as unknown
-    if (!parsed || typeof parsed !== 'object') return emptyDraft()
+    if (!parsed || typeof parsed !== 'object') return null
     const draft = parsed as Record<string, unknown>
     const text = typeof draft.text === 'string' ? draft.text : ''
     const tokens = Array.isArray(draft.tokens)
@@ -52,7 +52,7 @@ function readStoredDraft(key: string | undefined, kind: ComposerDraftStorage): C
       : []
     return { text, tokens: tokenMap(tokens) }
   } catch {
-    return emptyDraft()
+    return null
   }
 }
 
@@ -82,22 +82,36 @@ function normalizedDraft(draft: ComposerDraft): ComposerDraft {
   return tokens === draft.tokens ? draft : { ...draft, tokens }
 }
 
+function sameDraft(a: ComposerDraft, b: ComposerDraft): boolean {
+  if (a.text !== b.text || a.tokens.size !== b.tokens.size) return false
+  for (const [display, token] of a.tokens) {
+    const other = b.tokens.get(display)
+    if (!other || other.trigger !== token.trigger || other.expansion !== token.expansion) return false
+  }
+  return true
+}
+
 export function useComposerDraft({
   storageKey,
   storage = 'session',
+  initial,
   onTextChange,
 }: {
   storageKey?: string
   storage?: ComposerDraftStorage
+  /** fallback when nothing is stored (e.g. editing an existing loop); read once */
+  initial?: () => ComposerDraft
   onTextChange?: (text: string) => void
 }) {
-  const [draft, setDraftState] = useState(() => readStoredDraft(storageKey, storage))
+  // Resolved once; the lazy initializer keeps a stable fallback identity.
+  const [fallback] = useState(() => initial?.() ?? emptyDraft())
+  const [draft, setDraftState] = useState(() => readStoredDraft(storageKey, storage) ?? fallback)
 
   useLayoutEffect(() => {
-    const next = readStoredDraft(storageKey, storage)
-    setDraftState(next)
+    const next = readStoredDraft(storageKey, storage) ?? fallback
+    setDraftState((current) => (sameDraft(current, next) ? current : next))
     onTextChange?.(next.text)
-  }, [storage, storageKey, onTextChange])
+  }, [storage, storageKey, fallback, onTextChange])
 
   const setDraft = useCallback(
     (next: ComposerDraft) => {
