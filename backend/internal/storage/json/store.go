@@ -90,6 +90,7 @@ func (s *Store) CreateSession(input storage.CreateSession) (storage.Session, err
 		SourceID:        input.SourceID,
 		CreatedAt:       now,
 		UpdatedAt:       now,
+		LastAttentionAt: now,
 	}
 	if session.Slug == "" {
 		session.Slug = defaultSlug(session)
@@ -165,6 +166,9 @@ func (s *Store) saveSession(session storage.Session) error {
 	if session.CreatedAt.IsZero() {
 		session.CreatedAt = time.Now().UTC()
 	}
+	if session.LastAttentionAt.IsZero() {
+		storage.MarkSessionAttention(&session, storage.SessionAttentionAt(session))
+	}
 	session.UpdatedAt = time.Now().UTC()
 	slug, err := s.uniqueSlug(session.Slug, session.ID)
 	if err != nil {
@@ -227,7 +231,12 @@ func (s *Store) ListSessions(filter storage.SessionFilter) ([]storage.Session, e
 		sessions = append(sessions, session)
 	}
 	sort.Slice(sessions, func(i, j int) bool {
-		return sessions[i].UpdatedAt.After(sessions[j].UpdatedAt)
+		left := storage.SessionAttentionAt(sessions[i])
+		right := storage.SessionAttentionAt(sessions[j])
+		if left.Equal(right) {
+			return sessions[i].ID < sessions[j].ID
+		}
+		return left.After(right)
 	})
 	if filter.Limit > 0 && len(sessions) > filter.Limit {
 		sessions = sessions[:filter.Limit]
@@ -244,6 +253,19 @@ func (s *Store) LastRootSession() (storage.Session, error) {
 		return storage.Session{}, fmt.Errorf("no root sessions found")
 	}
 	return sessions[0], nil
+}
+
+func (s *Store) TouchSessionAttention(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, err := s.loadSessionByID(id)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	session.UpdatedAt = now
+	storage.MarkSessionAttention(&session, now)
+	return s.saveSession(session)
 }
 
 func (s *Store) AddUsage(id string, usage storage.Usage) error {

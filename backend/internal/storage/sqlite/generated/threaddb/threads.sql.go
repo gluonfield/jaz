@@ -88,7 +88,8 @@ SELECT
   context_tokens,
   context_window_tokens,
   cached_write_tokens,
-  project_path
+  project_path,
+  last_attention_at_ms
 FROM threads
 WHERE id = ?1 OR slug = ?1
 LIMIT 1
@@ -126,6 +127,7 @@ func (q *Queries) GetSession(ctx context.Context, ref string) (Thread, error) {
 		&i.ContextWindowTokens,
 		&i.CachedWriteTokens,
 		&i.ProjectPath,
+		&i.LastAttentionAtMs,
 	)
 	return i, err
 }
@@ -217,7 +219,8 @@ SELECT
   context_tokens,
   context_window_tokens,
   cached_write_tokens,
-  project_path
+  project_path,
+  last_attention_at_ms
 FROM threads
 `
 
@@ -259,6 +262,7 @@ func (q *Queries) ListSessions(ctx context.Context) ([]Thread, error) {
 			&i.ContextWindowTokens,
 			&i.CachedWriteTokens,
 			&i.ProjectPath,
+			&i.LastAttentionAtMs,
 		); err != nil {
 			return nil, err
 		}
@@ -328,6 +332,25 @@ type SetThreadErrorParams struct {
 
 func (q *Queries) SetThreadError(ctx context.Context, arg SetThreadErrorParams) error {
 	_, err := q.db.ExecContext(ctx, setThreadError, arg.Error, arg.ID)
+	return err
+}
+
+const touchSessionAttention = `-- name: TouchSessionAttention :exec
+UPDATE threads
+SET
+  updated_at_ms = ?1,
+  last_attention_at_ms = ?2
+WHERE id = ?3
+`
+
+type TouchSessionAttentionParams struct {
+	UpdatedAtMs       int64  `json:"updated_at_ms"`
+	LastAttentionAtMs int64  `json:"last_attention_at_ms"`
+	ID                string `json:"id"`
+}
+
+func (q *Queries) TouchSessionAttention(ctx context.Context, arg TouchSessionAttentionParams) error {
+	_, err := q.db.ExecContext(ctx, touchSessionAttention, arg.UpdatedAtMs, arg.LastAttentionAtMs, arg.ID)
 	return err
 }
 
@@ -402,7 +425,8 @@ INSERT INTO threads (
   source_id,
   archived,
   created_at_ms,
-  updated_at_ms
+  updated_at_ms,
+  last_attention_at_ms
 ) VALUES (
   ?1,
   ?2,
@@ -431,7 +455,8 @@ INSERT INTO threads (
   ?25,
   ?26,
   ?27,
-  ?28
+  ?28,
+  ?29
 )
 ON CONFLICT(id) DO UPDATE SET
   slug = excluded.slug,
@@ -460,7 +485,8 @@ ON CONFLICT(id) DO UPDATE SET
   source_id = excluded.source_id,
   archived = excluded.archived,
   created_at_ms = excluded.created_at_ms,
-  updated_at_ms = excluded.updated_at_ms
+  updated_at_ms = excluded.updated_at_ms,
+  last_attention_at_ms = excluded.last_attention_at_ms
 `
 
 type UpsertSessionParams struct {
@@ -492,6 +518,7 @@ type UpsertSessionParams struct {
 	Archived              int64          `json:"archived"`
 	CreatedAtMs           int64          `json:"created_at_ms"`
 	UpdatedAtMs           int64          `json:"updated_at_ms"`
+	LastAttentionAtMs     int64          `json:"last_attention_at_ms"`
 }
 
 func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) error {
@@ -524,6 +551,7 @@ func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) er
 		arg.Archived,
 		arg.CreatedAtMs,
 		arg.UpdatedAtMs,
+		arg.LastAttentionAtMs,
 	)
 	return err
 }

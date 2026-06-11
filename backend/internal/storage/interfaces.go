@@ -11,6 +11,7 @@ type SessionStore interface {
 	EnsureSession(id string) error
 	LoadSession(ref string) (Session, error)
 	SaveSession(session Session) error
+	TouchSessionAttention(id string) error
 	SetArchived(id string, archived bool) error
 	ListSessions(filter SessionFilter) ([]Session, error)
 	LastRootSession() (Session, error)

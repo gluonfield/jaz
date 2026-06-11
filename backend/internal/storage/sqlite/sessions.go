@@ -33,6 +33,7 @@ func (s *Store) CreateSession(input storage.CreateSession) (storage.Session, err
 		SourceID:        input.SourceID,
 		CreatedAt:       now,
 		UpdatedAt:       now,
+		LastAttentionAt: now,
 	}
 	if session.Slug == "" {
 		session.Slug = defaultSlug(session)
@@ -109,7 +110,12 @@ func (s *Store) ListSessions(filter storage.SessionFilter) ([]storage.Session, e
 		sessions = append(sessions, session)
 	}
 	sort.Slice(sessions, func(i, j int) bool {
-		return sessions[i].UpdatedAt.After(sessions[j].UpdatedAt)
+		left := storage.SessionAttentionAt(sessions[i])
+		right := storage.SessionAttentionAt(sessions[j])
+		if left.Equal(right) {
+			return sessions[i].ID < sessions[j].ID
+		}
+		return left.After(right)
 	})
 	if filter.Limit > 0 && len(sessions) > filter.Limit {
 		sessions = sessions[:filter.Limit]
@@ -156,6 +162,9 @@ func (s *Store) saveSessionLocked(session storage.Session, touchUpdated bool) er
 	if session.CreatedAt.IsZero() {
 		session.CreatedAt = time.Now().UTC()
 	}
+	if session.LastAttentionAt.IsZero() {
+		storage.MarkSessionAttention(&session, storage.SessionAttentionAt(session))
+	}
 	if touchUpdated || session.UpdatedAt.IsZero() {
 		session.UpdatedAt = time.Now().UTC()
 	}
@@ -168,6 +177,9 @@ func (s *Store) saveSessionLocked(session storage.Session, touchUpdated bool) er
 }
 
 func insertSession(db threaddb.DBTX, session storage.Session) error {
+	if session.LastAttentionAt.IsZero() {
+		storage.MarkSessionAttention(&session, storage.SessionAttentionAt(session))
+	}
 	acpAgent, acpSessionID, cwd, projectPath := runtimeRefColumns(session)
 	queuedMessages, err := marshalStringList(session.QueuedMessages)
 	if err != nil {
@@ -202,6 +214,7 @@ func insertSession(db threaddb.DBTX, session storage.Session) error {
 		Archived:              boolInt(session.Archived),
 		CreatedAtMs:           timeToMs(session.CreatedAt),
 		UpdatedAtMs:           timeToMs(session.UpdatedAt),
+		LastAttentionAtMs:     timeToMs(session.LastAttentionAt),
 	})
 }
 
@@ -231,12 +244,16 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 			ContextTokens:         row.ContextTokens,
 			ContextWindowTokens:   row.ContextWindowTokens,
 		},
-		QueuedMessages: queuedMessages,
-		SourceType:     row.SourceType.String,
-		SourceID:       row.SourceID.String,
-		Archived:       row.Archived != 0,
-		CreatedAt:      msToTime(row.CreatedAtMs),
-		UpdatedAt:      msToTime(row.UpdatedAtMs),
+		QueuedMessages:  queuedMessages,
+		SourceType:      row.SourceType.String,
+		SourceID:        row.SourceID.String,
+		Archived:        row.Archived != 0,
+		CreatedAt:       msToTime(row.CreatedAtMs),
+		UpdatedAt:       msToTime(row.UpdatedAtMs),
+		LastAttentionAt: msToTime(row.LastAttentionAtMs),
+	}
+	if session.LastAttentionAt.IsZero() {
+		storage.MarkSessionAttention(&session, storage.SessionAttentionAt(session))
 	}
 	if session.Runtime == "" {
 		session.Runtime = storage.RuntimeNative
@@ -254,6 +271,24 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 		}
 	}
 	return session, nil
+}
+
+func (s *Store) TouchSessionAttention(id string) error {
+	now := time.Now().UTC()
+	s.mu.Lock()
+	err := threaddb.New(s.db).TouchSessionAttention(context.Background(), threaddb.TouchSessionAttentionParams{
+		UpdatedAtMs:       timeToMs(now),
+		LastAttentionAtMs: timeToMs(now),
+		ID:                id,
+	})
+	s.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	if current, err := s.LoadSession(id); err == nil {
+		s.mirrorSession(current)
+	}
+	return nil
 }
 
 var slugUnsafe = regexp.MustCompile(`[^a-z0-9]+`)
