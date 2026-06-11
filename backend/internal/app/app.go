@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/log"
@@ -18,10 +19,12 @@ import (
 	"github.com/wins/jaz/backend/internal/provider"
 	mockprovider "github.com/wins/jaz/backend/internal/provider/mock"
 	openaiprovider "github.com/wins/jaz/backend/internal/provider/openai"
+	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
 	agentsettings "github.com/wins/jaz/backend/internal/settings"
+	"github.com/wins/jaz/backend/internal/skills"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/templates/acpcompletion"
@@ -91,8 +94,23 @@ type Stores struct {
 	StorageStore storage.Store
 }
 
-func NewStore(cfg Config, catalog acp.AgentCatalog) (Stores, error) {
-	store, err := sqlitestore.New(cfg.Root)
+func NewRuntimeLayout(cfg Config) (runtimefiles.Layout, error) {
+	root := strings.TrimSpace(cfg.Root)
+	if root == "" {
+		root = sqlitestore.DefaultRoot()
+	}
+	layout, err := runtimefiles.Ensure(root)
+	if err != nil {
+		return runtimefiles.Layout{}, err
+	}
+	if err := skills.InstallDefaults(layout.Root); err != nil {
+		return runtimefiles.Layout{}, err
+	}
+	return layout, nil
+}
+
+func NewStore(layout runtimefiles.Layout, catalog acp.AgentCatalog) (Stores, error) {
+	store, err := sqlitestore.New(layout.Root)
 	if err != nil {
 		return Stores{}, err
 	}
@@ -103,16 +121,24 @@ func NewStore(cfg Config, catalog acp.AgentCatalog) (Stores, error) {
 	return Stores{Store: store, ACPStore: store, StorageStore: store}, nil
 }
 
-func NewWorkspace(cfg Config, store *sqlitestore.Store) (Workspace, error) {
+func NewWorkspace(cfg Config, layout runtimefiles.Layout) (Workspace, error) {
 	workspace := cfg.Workspace
 	if workspace == "" {
-		workspace = store.DefaultWorkspace()
+		workspace = layout.DefaultWorkspace
 	}
 	return Workspace(workspace), os.MkdirAll(workspace, 0o755)
 }
 
-func NewMemory(cfg Config) (*jazmem.Memory, error) {
-	return jazmem.Open(jazmem.Config{Root: cfg.Memory.Root, DBPath: cfg.Memory.DBPath})
+func NewMemory(cfg Config, layout runtimefiles.Layout) (*jazmem.Memory, error) {
+	memoryRoot := strings.TrimSpace(cfg.Memory.Root)
+	dbPath := strings.TrimSpace(cfg.Memory.DBPath)
+	if memoryRoot == "" {
+		memoryRoot = filepath.Join(layout.Root, "memory")
+		if dbPath == "" {
+			dbPath = filepath.Join(layout.Root, "jazmem.sqlite")
+		}
+	}
+	return jazmem.Open(jazmem.Config{Root: memoryRoot, DBPath: dbPath})
 }
 
 func NewPromptBuilder(store *sqlitestore.Store, workspace Workspace, memory *memoryservice.Service) *coordinator.Builder {
