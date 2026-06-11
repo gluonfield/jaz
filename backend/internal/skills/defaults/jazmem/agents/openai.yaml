@@ -1,0 +1,7 @@
+interface:
+  display_name: "Jazmem"
+  short_description: "Search and maintain jazmem memory"
+  default_prompt: "Use $jazmem to search memory before answering and store durable context in markdown."
+
+policy:
+  allow_implicit_invocation: true

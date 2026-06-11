@@ -41,6 +41,7 @@ func runServe(args []string) error {
 			loadConfig,
 			parseServeOptions,
 			app.NewACPAgentCatalog,
+			app.NewRuntimeLayout,
 			app.NewStore,
 			app.NewWorkspace,
 			app.NewMemory,
