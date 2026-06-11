@@ -1,10 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { FileText, PanelRightClose, PanelRightOpen } from 'lucide-react'
-import { motion } from 'motion/react'
+import { ArrowDown, FileText, PanelRightClose, PanelRightOpen } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Composer, PlanDecisionDock } from '@/components/session/Composer'
+import { BottomDock } from '@/components/session/BottomDock'
+import { Composer, PlanDecisionCard } from '@/components/session/Composer'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
 import { SESSION_PANEL_WIDTH, SessionPanel } from '@/components/session/SessionPanel'
 import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
@@ -14,6 +15,7 @@ import { ToolCallCard } from '@/components/session/ToolCallCard'
 import { Transcript } from '@/components/session/Transcript'
 import { VoiceMode } from '@/components/session/VoiceMode'
 import { isHiddenToolName } from '@/components/session/toolVisibility'
+import { useThreadAutoScroll } from '@/components/session/useThreadAutoScroll'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Skeleton, SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
@@ -96,6 +98,30 @@ function LiveAttachmentList({ attachments }: { attachments: LiveAttachment[] }) 
         </span>
       ))}
     </div>
+  )
+}
+
+function ScrollToBottomButton({ visible, onClick }: { visible: boolean; onClick: () => void }) {
+  return (
+    <AnimatePresence initial={false}>
+      {visible ? (
+        <motion.button
+          type="button"
+          key="scroll-to-bottom"
+          aria-label="Scroll to latest message"
+          title="Scroll to latest message"
+          onClick={onClick}
+          initial={{ opacity: 0, scale: 0.85, y: 6 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.85, y: 6 }}
+          whileTap={{ scale: 0.96 }}
+          transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
+          className="mx-auto mb-2 grid size-10 place-items-center rounded-full bg-surface text-ink shadow-[0_8px_24px_rgba(0,0,0,0.14)] transition-colors duration-150 hover:bg-surface-2"
+        >
+          <ArrowDown size={17} />
+        </motion.button>
+      ) : null}
+    </AnimatePresence>
   )
 }
 
@@ -384,8 +410,6 @@ function SessionPage() {
     localStorage.setItem(PANEL_PREF_KEY, panelPref)
   }, [panelPref])
 
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const nearBottom = useRef(true)
   const itemCount = (detail.data?.messages.length ?? 0) + events.data.length
   const liveSize = live
     ? live.reasoning.length +
@@ -394,12 +418,8 @@ function SessionPage() {
       live.attachments.length +
       (live.error?.length ?? 0)
     : 0
-
-  // Stick to the bottom only when the reader is already there.
-  useEffect(() => {
-    const el = scrollRef.current
-    if (el && nearBottom.current) el.scrollTop = el.scrollHeight
-  }, [itemCount, liveSize])
+  const { scrollRef, showScrollToBottom, onScroll: onThreadScroll, scrollToBottom, pinToBottom } =
+    useThreadAutoScroll({ resetKey: sessionId, itemCount, liveSize })
 
   // Abandon an in-flight stream when leaving the session.
   useEffect(() => () => abortRef.current?.abort(), [sessionId])
@@ -408,7 +428,7 @@ function SessionPage() {
     const controller = new AbortController()
     const files = options.files ?? []
     abortRef.current = controller
-    nearBottom.current = true
+    pinToBottom()
     setLive({
       user: text,
       at: new Date().toISOString(),
@@ -505,7 +525,7 @@ function SessionPage() {
         queryClient.invalidateQueries({ queryKey: keys.allSessions })
         setLive((prev) => (prev?.error ? { ...prev, error: undefined } : null))
       })
-  }, [notifyCriticalError, queryClient, sessionId])
+  }, [notifyCriticalError, pinToBottom, queryClient, sessionId])
 
   const sendACPFallback = useCallback(async (
     targetSessionID: string,
@@ -685,10 +705,7 @@ function SessionPage() {
         <div
           ref={scrollRef}
           className="h-full overflow-y-auto"
-          onScroll={(e) => {
-            const el = e.currentTarget
-            nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
-          }}
+          onScroll={onThreadScroll}
         >
           <div className={`mx-auto max-w-[720px] px-10 pt-2 ${queue.queuedPrompts.length ? 'pb-72' : 'pb-40'}`}>
             {empty ? (
@@ -739,14 +756,14 @@ function SessionPage() {
           </div>
         </div>
   
-        {showPlanDecision ? (
-          <>
-            {planDecisionError ? (
-              <p className="absolute inset-x-0 bottom-32 mx-auto max-w-[640px] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
-                {planDecisionError}
-              </p>
-            ) : null}
-            <PlanDecisionDock
+        {showPlanDecision && planDecisionError ? (
+          <p className="absolute inset-x-0 bottom-32 mx-auto max-w-[640px] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
+            {planDecisionError}
+          </p>
+        ) : null}
+        <BottomDock before={<ScrollToBottomButton visible={showScrollToBottom} onClick={scrollToBottom} />}>
+          {showPlanDecision ? (
+            <PlanDecisionCard
               pending={planDecisionPending}
               onImplement={() => {
                 setPlanDecisionPending(true)
@@ -768,28 +785,28 @@ function SessionPage() {
                   .finally(() => setPlanDecisionPending(false))
               }}
             />
-          </>
-        ) : (
-          <Composer
-            streaming={sessionRunning}
-            planAvailable={planAvailable}
-            queuedPrompts={queue.queuedPrompts}
-            steerDisabled={queue.steerDisabled}
-            draftStorageKey={`${SESSION_DRAFT_KEY_PREFIX}${session.id}`}
-            fileRoot={session.runtime_ref?.cwd}
-            onSend={queue.onSend}
-            onStop={() => {
-              // the turn runs detached server-side; stop it there first
-              void cancelSession(sessionId).catch(() => {})
-              abortRef.current?.abort()
-            }}
-            onVoice={session.runtime !== 'acp' ? () => setVoiceMode(true) : undefined}
-            onSteerQueuedPrompt={queue.onSteerQueuedPrompt}
-            onDeleteQueuedPrompt={queue.onDeleteQueuedPrompt}
-            onEditQueuedPrompt={queue.onEditQueuedPrompt}
-            onMoveQueuedPrompt={queue.onMoveQueuedPrompt}
-          />
-        )}
+          ) : (
+            <Composer
+              streaming={sessionRunning}
+              planAvailable={planAvailable}
+              queuedPrompts={queue.queuedPrompts}
+              steerDisabled={queue.steerDisabled}
+              draftStorageKey={`${SESSION_DRAFT_KEY_PREFIX}${session.id}`}
+              fileRoot={session.runtime_ref?.cwd}
+              onSend={queue.onSend}
+              onStop={() => {
+                // the turn runs detached server-side; stop it there first
+                void cancelSession(sessionId).catch(() => {})
+                abortRef.current?.abort()
+              }}
+              onVoice={session.runtime !== 'acp' ? () => setVoiceMode(true) : undefined}
+              onSteerQueuedPrompt={queue.onSteerQueuedPrompt}
+              onDeleteQueuedPrompt={queue.onDeleteQueuedPrompt}
+              onEditQueuedPrompt={queue.onEditQueuedPrompt}
+              onMoveQueuedPrompt={queue.onMoveQueuedPrompt}
+            />
+          )}
+        </BottomDock>
       </div>
 
       {/* Docked, never overlapping: the chat pane flexes and stays centered
