@@ -47,6 +47,7 @@ export function Popover({
       <AnimatePresence>
         {open ? (
           <motion.div
+            data-escape-surface=""
             initial={{ opacity: 0, y: slide }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: slide }}
