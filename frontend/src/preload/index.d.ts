@@ -1,5 +1,7 @@
 export {}
 
+import type { UpdateStatus } from '../shared/update'
+
 declare global {
   interface Window {
     jaz: {
@@ -7,6 +9,9 @@ declare global {
       windowKind: 'main' | 'board'
       setNativeTheme: (source: 'light' | 'dark' | 'system') => void
       startLocalBackend: () => Promise<{ ok: boolean; error?: string }>
+      getUpdateStatus: () => Promise<UpdateStatus>
+      installUpdate: () => Promise<{ ok: boolean; error?: string }>
+      onUpdateStatus: (handler: (status: UpdateStatus) => void) => () => void
       openBoardWindow: (boardId: string) => void
       openInMain: (path: string) => void
       onOpenRoute: (handler: (path: string) => void) => () => void
