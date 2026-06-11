@@ -17,6 +17,15 @@ type NewSearch = {
   project?: string
 }
 
+const NEW_SESSION_AGENT_KEY = 'jaz.newSession.agent'
+const NEW_SESSION_DIRECTORY_KEY = 'jaz.newSession.directory'
+const NEW_SESSION_DRAFT_KEY = 'jaz.newSession.prompt'
+const EMPTY_AGENTS: string[] = []
+
+function storedString(key: string): string {
+  return localStorage.getItem(key) ?? ''
+}
+
 export const Route = createFileRoute('/new')({
   validateSearch: (search): NewSearch =>
     typeof search.project === 'string' ? { project: search.project } : {},
@@ -34,8 +43,10 @@ function NewSessionPage() {
   const [creating, setCreating] = useState(false)
   const [composing, setComposing] = useState(false)
   // 'native' or a configured ACP agent name; directory is the session cwd.
-  const [runtime, setRuntime] = useState('native')
-  const [directory, setDirectory] = useState(search.project ?? '')
+  const [runtime, setRuntime] = useState(() => storedString(NEW_SESSION_AGENT_KEY) || 'native')
+  const [directory, setDirectory] = useState(
+    () => search.project ?? storedString(NEW_SESSION_DIRECTORY_KEY),
+  )
   // Worktree runs the session on a disposable git worktree (any runtime);
   // only offered when the chosen directory is a git repository.
   const [directoryIsGit, setDirectoryIsGit] = useState(false)
@@ -45,17 +56,35 @@ function NewSessionPage() {
   const [providerOverride, setProviderOverride] = useState<string | null>(null)
   const [modelOverride, setModelOverride] = useState<string | null>(null)
   const [effortOverride, setEffortOverride] = useState<string | null>(null)
-  const { data: agents = [] } = useQuery(acpAgentsQuery)
+  const agentsQuery = useQuery(acpAgentsQuery)
+  const agents = agentsQuery.data ?? EMPTY_AGENTS
   const { data: agentSettings } = useQuery(agentSettingsQuery)
   const projects = useQuery(projectsQuery)
   // PixelField samples the palette at mount; remount it when the theme flips.
   const { resolved } = useTheme()
 
   useEffect(() => {
-    setDirectory(search.project ?? '')
+    if (search.project === undefined) return
+    setDirectory(search.project)
     setDirectoryIsGit(false)
     setWorktree(false)
   }, [search.project])
+
+  useEffect(() => {
+    localStorage.setItem(NEW_SESSION_AGENT_KEY, runtime)
+  }, [runtime])
+
+  useEffect(() => {
+    localStorage.setItem(NEW_SESSION_DIRECTORY_KEY, directory)
+  }, [directory])
+
+  useEffect(() => {
+    if (!agentsQuery.isSuccess || runtime === 'native' || agents.includes(runtime)) return
+    setRuntime('native')
+    setProviderOverride(null)
+    setModelOverride(null)
+    setEffortOverride(null)
+  }, [agents, agentsQuery.isSuccess, runtime])
 
   useEffect(() => {
     if (!directory) {
@@ -219,6 +248,7 @@ function NewSessionPage() {
       calm={composing || creating}
       creating={creating}
       leftSlot={composerControls}
+      draftStorageKey={NEW_SESSION_DRAFT_KEY}
       // Tokens freeze their absolute expansion at insert time, so re-picking
       // the directory after tagging keeps old tags valid rather than rebasing
       // them.
