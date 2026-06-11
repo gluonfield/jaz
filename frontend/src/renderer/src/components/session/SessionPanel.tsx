@@ -162,6 +162,7 @@ const CHANGES_PREVIEW_ROWS = 10
 // turn boundaries), runs only while this panel is mounted, and patch text is
 // fetched per file inside the modal — never here.
 function ChangesSection({ session, enabled }: { session: Session; enabled: boolean }) {
+  const [open, setOpen] = useState(false)
   // The opener owns the modal's expansion state: each open starts fresh with
   // the clicked file (or the first) expanded, with no reliance on the modal
   // remounting between opens.
@@ -182,40 +183,56 @@ function ChangesSection({ session, enabled }: { session: Session; enabled: boole
     setReview((prev) => ({ ...prev, expanded: { ...prev.expanded, [key]: !prev.expanded[key] } }))
   return (
     <section className="flex flex-col gap-0.5">
-      <div className="mb-1.5 flex items-center justify-between gap-2">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="mb-1.5 flex w-full cursor-pointer items-center justify-between gap-2 rounded-md text-left transition-colors hover:text-ink"
+      >
         <SectionHeader>Changes</SectionHeader>
-        <span className="shrink-0 font-mono text-[11px] tabular-nums">
-          <span className="text-ok">+{data.total_added}</span> <span className="text-danger">−{data.total_deleted}</span>
-        </span>
-      </div>
-      {visible.map((file) => (
-        <button
-          key={fileKey(file)}
-          type="button"
-          onClick={() => openReview(fileKey(file))}
-          title={file.old_path ? `${file.old_path} → ${file.path}` : file.path}
-          className="flex h-7 w-full cursor-pointer items-center gap-2 rounded-full px-2.5 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
-        >
-          <span
-            className={`min-w-0 flex-1 truncate font-mono text-[12px] ${file.status === 'deleted' ? 'line-through opacity-60' : ''}`}
-          >
-            {basename(file.path)}
+        <span className="flex shrink-0 items-center gap-2">
+          <span className="font-mono text-[11px] tabular-nums">
+            <span className="text-ok">+{data.total_added}</span> <span className="text-danger">−{data.total_deleted}</span>
           </span>
-          <FileCounts file={file} />
-        </button>
-      ))}
-      {hidden > 0 ? (
-        <button
-          type="button"
-          onClick={() => openReview(null)}
-          className="h-7 w-full cursor-pointer rounded-full px-2.5 text-left text-[12px] text-ink-3 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
-        >
-          +{hidden} more {hidden === 1 ? 'file' : 'files'}
-        </button>
+          <ChevronDown
+            size={13}
+            className={`shrink-0 text-ink-3 transition-transform duration-200 ease-out ${open ? '' : '-rotate-90'}`}
+            aria-hidden
+          />
+        </span>
+      </button>
+      {open ? (
+        <>
+          {visible.map((file) => (
+            <button
+              key={fileKey(file)}
+              type="button"
+              onClick={() => openReview(fileKey(file))}
+              title={file.old_path ? `${file.old_path} → ${file.path}` : file.path}
+              className="flex h-7 w-full cursor-pointer items-center gap-2 rounded-full px-2.5 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+            >
+              <span
+                className={`min-w-0 flex-1 truncate font-mono text-[12px] ${file.status === 'deleted' ? 'line-through opacity-60' : ''}`}
+              >
+                {basename(file.path)}
+              </span>
+              <FileCounts file={file} />
+            </button>
+          ))}
+          {hidden > 0 ? (
+            <button
+              type="button"
+              onClick={() => openReview(null)}
+              className="h-7 w-full cursor-pointer rounded-full px-2.5 text-left text-[12px] text-ink-3 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+            >
+              +{hidden} more {hidden === 1 ? 'file' : 'files'}
+            </button>
+          ) : null}
+          <ActionRow icon={FileDiff} onClick={() => openReview(null)} hint="Opens every file's diff">
+            Review changes
+          </ActionRow>
+        </>
       ) : null}
-      <ActionRow icon={FileDiff} onClick={() => openReview(null)} hint="Opens every file's diff">
-        Review changes
-      </ActionRow>
       <DiffModal
         sessionId={session.id}
         changes={data}
