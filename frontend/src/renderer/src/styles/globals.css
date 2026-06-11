@@ -417,6 +417,14 @@ input {
   background: var(--color-primary-soft);
 }
 
+/* The composer paints its text in a mirror div behind a transparent-text
+   textarea, so an opaque selection background would cover the glyphs; a
+   translucent wash lets them read through. (Un-layered on purpose: the
+   global ::selection above would beat a layered utility.) */
+.composer-input::selection {
+  background: color-mix(in oklab, var(--color-primary) 28%, transparent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
