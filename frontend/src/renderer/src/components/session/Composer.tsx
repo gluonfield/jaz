@@ -69,6 +69,7 @@ export function ComposerCard({
   translucent = false,
   draftStorageKey,
   draftStorage = 'session',
+  clearOnSend = true,
   leftSlot,
   fileRoot,
   onSend,
@@ -86,6 +87,7 @@ export function ComposerCard({
   translucent?: boolean
   draftStorageKey?: string
   draftStorage?: ComposerDraftStorage
+  clearOnSend?: boolean
   /** leading toolbar content (e.g. the new-thread runtime/project controls) */
   leftSlot?: ReactNode
   /** server-side directory the @-mention picker indexes (a project path, a
@@ -160,9 +162,11 @@ export function ComposerCard({
       planRequested: !streaming && planAvailable && planRequested,
       files: streaming ? [] : files,
     })
-    mention.reset()
-    setFiles([])
-    setPlanRequested(false)
+    if (clearOnSend) {
+      mention.reset()
+      setFiles([])
+      setPlanRequested(false)
+    }
   }
 
   return (
