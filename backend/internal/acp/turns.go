@@ -32,7 +32,13 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string, attac
 		m.finishTurn(done, job)
 		return
 	}
-	prompt, err := promptContentBlocks(message, attachments)
+	context, err := m.turnPromptContext(message)
+	if err != nil {
+		m.failTurn(job, err)
+		m.finishTurn(done, job)
+		return
+	}
+	prompt, err := promptContentBlocks(context, message, attachments)
 	if err != nil {
 		m.failTurn(job, err)
 		m.finishTurn(done, job)
@@ -72,16 +78,35 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string, attac
 	m.finishTurn(done, job)
 }
 
-func promptContentBlocks(message string, attachments []storage.Attachment) ([]acpschema.ContentBlock, error) {
-	out := make([]acpschema.ContentBlock, 0, 1+len(attachments))
-	text, err := marshalContentBlock(acpschema.TextContentBlock{
-		Kind:        acpschema.ContentBlockText,
-		TextContent: acpschema.TextContent{Text: message},
-	})
+func (m *Manager) turnPromptContext(message string) (string, error) {
+	if !strings.Contains(message, "$") || m.cfg.SystemPrompt == nil {
+		return "", nil
+	}
+	prompt, err := m.cfg.SystemPrompt.SkillsPrompt()
+	if err != nil {
+		return "", fmt.Errorf("build acp skills prompt: %w", err)
+	}
+	prompt = strings.TrimSpace(prompt)
+	if prompt == "" {
+		return "", nil
+	}
+	return "Current skills catalog for this turn. Use it to resolve any $skill references in the user's message.\n\n" + prompt, nil
+}
+
+func promptContentBlocks(context, message string, attachments []storage.Attachment) ([]acpschema.ContentBlock, error) {
+	out := make([]acpschema.ContentBlock, 0, 2+len(attachments))
+	if strings.TrimSpace(context) != "" {
+		var err error
+		out, err = appendTextBlock(out, context)
+		if err != nil {
+			return nil, err
+		}
+	}
+	var err error
+	out, err = appendTextBlock(out, message)
 	if err != nil {
 		return nil, err
 	}
-	out = append(out, text)
 	for _, attachment := range attachments {
 		block := acpschema.ResourceLinkContentBlock{
 			Kind: acpschema.ContentBlockResourceLink,
@@ -99,6 +124,17 @@ func promptContentBlocks(message string, attachments []storage.Attachment) ([]ac
 		out = append(out, raw)
 	}
 	return out, nil
+}
+
+func appendTextBlock(out []acpschema.ContentBlock, text string) ([]acpschema.ContentBlock, error) {
+	block, err := marshalContentBlock(acpschema.TextContentBlock{
+		Kind:        acpschema.ContentBlockText,
+		TextContent: acpschema.TextContent{Text: text},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return append(out, block), nil
 }
 
 func marshalContentBlock(block any) (acpschema.ContentBlock, error) {

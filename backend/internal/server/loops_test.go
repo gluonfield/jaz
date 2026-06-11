@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -208,7 +209,9 @@ func TestNativeLoopRunCreatesFreshThreadWithMetadata(t *testing.T) {
 	waitForLoopRun(t, service, loop.ID, first.ID, loops.RunStatusOK)
 	firstSession := sessionForRun(t, store, first.ID)
 	wantCWD := filepath.Join(workspace, "repo")
-	if firstSession.RuntimeRef == nil || firstSession.RuntimeRef.Cwd != wantCWD {
+	if firstSession.RuntimeRef == nil ||
+		firstSession.RuntimeRef.Cwd != wantCWD ||
+		firstSession.RuntimeRef.ProjectPath != wantCWD {
 		t.Fatalf("native loop cwd = %#v, want %q", firstSession.RuntimeRef, wantCWD)
 	}
 
@@ -237,6 +240,32 @@ func TestNativeLoopRunCreatesFreshThreadWithMetadata(t *testing.T) {
 	}
 	if strings.Contains(content, "old transcript text") {
 		t.Fatalf("second run prompt included previous assistant transcript:\n%s", content)
+	}
+
+	project := filepath.Join(t.TempDir(), "project")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	absoluteLoop, err := service.Create(loops.CreateLoop{
+		Name:      "Project check",
+		Prompt:    "check project",
+		Runtime:   loops.RuntimeNative,
+		Directory: project,
+		Schedule:  loops.Schedule{Kind: loops.ScheduleCron, Expr: "* * * * *", Timezone: "UTC"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	absoluteRun, err := service.RunNow(context.Background(), absoluteLoop.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForLoopRun(t, service, absoluteLoop.ID, absoluteRun.ID, loops.RunStatusOK)
+	absoluteSession := sessionForRun(t, store, absoluteRun.ID)
+	if absoluteSession.RuntimeRef == nil ||
+		absoluteSession.RuntimeRef.Cwd != project ||
+		absoluteSession.RuntimeRef.ProjectPath != project {
+		t.Fatalf("native project loop runtime ref = %#v, want %q", absoluteSession.RuntimeRef, project)
 	}
 }
 

@@ -16,6 +16,11 @@ const SHORTCUTS: Shortcut[] = [
     keys: ['⌘', 'S'],
   },
   {
+    command: 'Toggle thread panel',
+    description: 'Show or hide the right panel in a thread.',
+    keys: ['Shift', '⌘', 'S'],
+  },
+  {
     command: 'Toggle Plan mode',
     description: 'Turn Plan mode on or off for the current composer.',
     keys: ['Shift', 'Tab'],

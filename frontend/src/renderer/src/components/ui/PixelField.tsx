@@ -297,6 +297,8 @@ const SHAPES: Record<string, ShapeDef> = {
   ...Object.fromEntries(PHRASES.map(([p, f]) => [p, textShape(p, f)])),
 }
 
+const DEFAULT_PLAYLIST = Object.keys(SHAPES) as PixelFieldShapeName[]
+
 /* ---------------- shaders ----------------
  * Every particle owns a `from` and `to` position, each in its own frame
  * (center px / scale px / Y-rotation / brand factor). Morphs ease per particle
@@ -428,8 +430,7 @@ export function PixelField({
   const onShapeFrameRef = useRef(onShapeFrame)
   const lifecycleRef = useRef(lifecycle)
   const reducedMotion = useReducedMotion()
-  const playlist = (shapes?.length ? shapes : Object.keys(SHAPES)) as PixelFieldShapeName[]
-  const playlistKey = playlist.join(',')
+  const playlistKey = (shapes?.length ? shapes : DEFAULT_PLAYLIST).join(',')
 
   useEffect(() => {
     calmRef.current = calm
@@ -448,6 +449,7 @@ export function PixelField({
     if (!canvas) return
     const gl = canvas.getContext('webgl2', { alpha: true, antialias: false })
     if (!gl) return
+    const playlist = playlistKey.split(',') as PixelFieldShapeName[]
 
     /* ---- program ---- */
     const compile = (type: number, src: string) => {

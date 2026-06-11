@@ -350,6 +350,9 @@ func validateFakeMCPServers(rawServers []json.RawMessage) error {
 	if server.Type != "http" || server.Name != "Remote Docs" || server.URL != "https://mcp.example.com/mcp" {
 		return fmt.Errorf("unexpected mcp server %#v", server)
 	}
+	if server.Headers == nil {
+		return fmt.Errorf("mcp headers must be an array")
+	}
 	headers := map[string]string{}
 	for _, header := range server.Headers {
 		headers[header.Name] = header.Value

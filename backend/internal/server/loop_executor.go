@@ -23,7 +23,7 @@ type LoopRunner struct {
 
 type loopNativeHost interface {
 	nativeSessionDefaults() (storage.CreateSession, error)
-	resolveWorkspaceDir(directory string) (string, error)
+	resolveWorkingDir(directory string) (string, error)
 	runClaimedNativeSession(context.Context, storage.Session, string) string
 	logger() *log.Logger
 }
@@ -80,12 +80,16 @@ func (r *LoopRunner) startNativeLoopRun(ctx context.Context, execution loops.Exe
 		input.Model = loop.Model
 	}
 	if directory := strings.TrimSpace(loop.Directory); directory != "" {
-		cwd, err := r.native.resolveWorkspaceDir(directory)
+		cwd, err := r.native.resolveWorkingDir(directory)
 		if err != nil {
 			r.finishLoopRun(execution, loops.RunStatusError, err.Error())
 			return
 		}
-		input.RuntimeRef = &storage.RuntimeRef{Type: storage.RuntimeNative, Cwd: cwd}
+		input.RuntimeRef = &storage.RuntimeRef{
+			Type:        storage.RuntimeNative,
+			Cwd:         cwd,
+			ProjectPath: projectPathForRequest(directory, cwd),
+		}
 	}
 	session, err := r.store.CreateSession(input)
 	if err != nil {
