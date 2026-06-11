@@ -127,7 +127,6 @@ function ProjectGroup({
       transition={ROW_SPRING}
       dragListener={false}
       dragControls={dragControls}
-      whileDrag={{ opacity: 0.7 }}
       onDragEnd={onReorderEnd}
     >
       <div className="group/project flex items-center justify-between pr-1">
