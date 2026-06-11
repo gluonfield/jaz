@@ -59,6 +59,7 @@ export function NewSessionHome({
             planAvailable
             leftSlot={leftSlot}
             draftStorageKey={draftStorageKey}
+            clearOnSend={false}
             fileRoot={fileRoot}
             onSend={onSend}
             onVoice={onVoice}
