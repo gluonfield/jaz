@@ -133,7 +133,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/memory/reindex", s.handleMemoryReindex)
 	mux.Handle("/mcp/jazmem", s.memoryMCPHandler())
 	mux.Handle("/jazmem/", http.StripPrefix("/jazmem", s.memoryAPIHandler()))
-	return withCORS(mux)
+	return withCORS(withGzip(mux))
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
