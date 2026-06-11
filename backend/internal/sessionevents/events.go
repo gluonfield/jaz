@@ -35,6 +35,26 @@ type ACPEvent struct {
 	Permissions []ACPPermission `json:"permissions,omitempty"`
 }
 
+// SlimForStorage returns a copy without session-constant fields: repeating
+// the title and mode catalog on every stored row dominated transcript
+// payloads (~70-90% of bytes on tool-heavy threads); /messages serves them
+// once per response via acp_meta instead. The slug stays embedded as a
+// durable label fallback, and plan-bearing events keep the current/plan mode
+// ids that approval state reads. Migration 0013 applies the same rule to
+// historical rows.
+func (e *ACPEvent) SlimForStorage() *ACPEvent {
+	if e == nil {
+		return nil
+	}
+	slim := *e
+	slim.Title = ""
+	slim.Modes.AvailableModes = nil
+	if len(slim.Plan) == 0 {
+		slim.Modes = ACPModeState{}
+	}
+	return &slim
+}
+
 type PlanEvent struct {
 	Explanation      string      `json:"explanation,omitempty"`
 	Plan             []PlanEntry `json:"plan,omitempty"`

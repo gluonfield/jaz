@@ -133,6 +133,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/memory/reindex", s.handleMemoryReindex)
 	mux.Handle("/mcp/jazmem", s.memoryMCPHandler())
 	mux.Handle("/jazmem/", http.StripPrefix("/jazmem", s.memoryAPIHandler()))
+	// CORS stays outermost: it answers OPTIONS preflights itself, which must
+	// not pass through the gzip wrapper.
 	return withCORS(withGzip(mux))
 }
 
