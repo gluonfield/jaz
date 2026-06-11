@@ -9,6 +9,7 @@ export function NewSessionHome({
   calm,
   creating,
   leftSlot,
+  fileRoot,
   onDraftActivity,
   onSend,
   onVoice,
@@ -17,6 +18,8 @@ export function NewSessionHome({
   calm: boolean
   creating: boolean
   leftSlot: ReactNode
+  /** directory the composer's @-mention picker indexes ('' = workspace root) */
+  fileRoot?: string
   onDraftActivity: (active: boolean) => void
   onSend: (text: string, options?: SendMessageOptions) => void
   onVoice?: () => void
@@ -54,6 +57,7 @@ export function NewSessionHome({
             placeholder="Ask anything, or hand your assistant a task…"
             planAvailable
             leftSlot={leftSlot}
+            fileRoot={fileRoot}
             onSend={onSend}
             onVoice={onVoice}
           />

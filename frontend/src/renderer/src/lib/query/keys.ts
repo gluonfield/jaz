@@ -13,6 +13,8 @@ export const keys = {
   acpAgents: ['acp', 'agents'] as const,
   openRouterModels: ['openrouter', 'models'] as const,
   workspaceDirs: (path: string) => ['workspace', 'dirs', path] as const,
+  workspaceFiles: (root: string) => ['workspace', 'files', root] as const,
+  skills: ['skills'] as const,
   loops: ['loops'] as const,
   loopDetail: (id: string) => ['loops', id] as const,
   boards: ['boards'] as const,

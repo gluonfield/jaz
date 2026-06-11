@@ -24,6 +24,7 @@ import (
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
+	"github.com/wins/jaz/backend/internal/skills"
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/voice"
 	"github.com/wins/jaz/backend/internal/widgets"
@@ -118,6 +119,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/settings/agents", s.handleAgentSettings)
 	mux.HandleFunc("GET /v1/acp/agents", s.handleListACPAgents)
 	mux.HandleFunc("GET /v1/workspace/dirs", s.handleListWorkspaceDirs)
+	mux.HandleFunc("GET /v1/workspace/files", s.handleListWorkspaceFiles)
+	mux.HandleFunc("GET /v1/skills", s.handleListSkills)
 	mux.HandleFunc("GET /v1/mcp/servers", s.handleListMCPServers)
 	mux.HandleFunc("POST /v1/mcp/servers", s.handleCreateMCPServer)
 	mux.HandleFunc("PUT /v1/mcp/servers/", s.handleMCPServerAction)
@@ -288,6 +291,50 @@ func (s *Server) handleListWorkspaceDirs(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"path": path, "git": pathsafe.IsGitRepo(abs), "dirs": dirs})
+}
+
+// Caps for the @-mention file index: enough to cover a working tree's
+// surface without shipping a monorepo over the wire.
+const workspaceFileIndexMaxEntries = 5000
+const workspaceFileIndexMaxDepth = 8
+
+// handleListWorkspaceFiles returns a file/directory index of a workspace
+// directory for the composer's @-mention picker. path may be
+// workspace-relative or absolute (a session cwd); either way it is confined
+// to the workspace. Inside a git repository the index follows .gitignore
+// (tracked + untracked files via git ls-files); elsewhere it falls back to a
+// breadth-first walk that skips dotfiles and dependency/build directories.
+// The echoed absolute root lets the client expand tagged entries to full
+// paths.
+func (s *Server) handleListWorkspaceFiles(w http.ResponseWriter, r *http.Request) {
+	if strings.TrimSpace(s.Workspace) == "" {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("workspace is not configured"))
+		return
+	}
+	abs, err := pathsafe.Resolve(s.Workspace, r.URL.Query().Get("path"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	var entries []pathsafe.Entry
+	var truncated bool
+	if files, gitErr := gitinfo.ListFiles(r.Context(), abs); gitErr == nil {
+		entries, truncated = pathsafe.EntriesFromFiles(files, workspaceFileIndexMaxEntries)
+	} else if entries, truncated, err = pathsafe.Tree(abs, workspaceFileIndexMaxDepth, workspaceFileIndexMaxEntries); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"root": abs, "entries": entries, "truncated": truncated})
+}
+
+// handleListSkills lists the skill catalog for the composer's $-mention picker.
+func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
+	catalog, err := skills.Load(s.Root)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"skills": catalog.Skills})
 }
 
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
