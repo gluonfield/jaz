@@ -321,7 +321,14 @@ func git(ctx context.Context, dir string, args ...string) (string, error) {
 	if err := cmd.Run(); err != nil {
 		// Surface git's own message (e.g. "branch already exists") over the
 		// bare exit status; probes that expect failure just discard it.
-		if detail := strings.TrimSpace(stderr.String()); detail != "" {
+		detail := strings.TrimSpace(out.String())
+		if extra := strings.TrimSpace(stderr.String()); extra != "" {
+			if detail != "" {
+				detail += "\n"
+			}
+			detail += extra
+		}
+		if detail != "" {
 			return "", fmt.Errorf("git %s: %s", args[0], detail)
 		}
 		return "", err

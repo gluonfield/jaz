@@ -270,6 +270,8 @@ func TestCommitAllAndMergeIntoMain(t *testing.T) {
 	}
 	if _, err := MergeIntoMain(ctx, worktree, "make it teal"); err == nil {
 		t.Error("conflicting MergeIntoMain succeeded, want error")
+	} else if !strings.Contains(err.Error(), "CONFLICT") {
+		t.Errorf("conflicting MergeIntoMain error = %q, want conflict detail", err)
 	}
 	if out := git(main, "status", "--porcelain"); strings.TrimSpace(out) != "" {
 		t.Errorf("main checkout not pristine after aborted merge:\n%s", out)
