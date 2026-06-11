@@ -1,0 +1,72 @@
+package acp_test
+
+import (
+	"context"
+	"io"
+	"os"
+	"testing"
+	"time"
+
+	"github.com/charmbracelet/log"
+
+	"github.com/wins/jaz/backend/internal/acp"
+	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
+)
+
+func TestManagerForcesClaudeExecutionModeAfterPlan(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := acp.NewManager(store, acp.Config{
+		Root:      t.TempDir(),
+		Workspace: t.TempDir(),
+		Agents: map[string]acp.AgentConfig{
+			"claude": {
+				Command: os.Args[0],
+				Args:    []string{"-test.run=TestFakeACPAgentProcess"},
+				Env: map[string]string{
+					"JAZ_FAKE_ACP_AGENT":        "1",
+					"JAZ_FAKE_ACP_CLAUDE_MODES": "1",
+				},
+			},
+		},
+	}, log.New(io.Discard))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "claude", Slug: "claude-force-mode"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	status, err := manager.Status(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Modes.CurrentModeID != "bypassPermissions" || status.Modes.ExecutionModeID != "bypassPermissions" {
+		t.Fatalf("spawn modes = %#v, want forced bypassPermissions", status.Modes)
+	}
+
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "make a plan", Completion: acp.CompletionInline, PlanRequested: true}); err != nil {
+		t.Fatal(err)
+	}
+	job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Modes.CurrentModeID != "plan" {
+		t.Fatalf("plan mode = %q, want plan", job.Modes.CurrentModeID)
+	}
+
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "approved", Completion: acp.CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
+	job, err = manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Modes.CurrentModeID != "bypassPermissions" {
+		t.Fatalf("execution mode after plan = %q, want bypassPermissions", job.Modes.CurrentModeID)
+	}
+}

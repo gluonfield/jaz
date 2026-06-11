@@ -374,17 +374,16 @@ func (m *Manager) initializeModeState(ctx context.Context, peer *jsonrpc.Peer, a
 	if acpModes == nil {
 		return modes, nil
 	}
-	if modes.ExecutionModeID == "" {
-		modes.ExecutionModeID = modes.CurrentModeID
+	target := executionModeForAgent(agentName, acpModes.AvailableModes)
+	if target == "" {
+		target = modes.CurrentModeID
 	}
-	if preferred := preferredExecutionMode(acpModes.AvailableModes); preferred != "" {
-		modes.ExecutionModeID = preferred
-		if modes.CurrentModeID != preferred {
-			if err := m.setSessionMode(ctx, peer, session.SessionID, preferred); err != nil {
-				return modes, err
-			}
-			modes.CurrentModeID = preferred
+	modes.ExecutionModeID = target
+	if target != "" && modes.CurrentModeID != target {
+		if err := m.setSessionMode(ctx, peer, session.SessionID, target); err != nil {
+			return modes, err
 		}
+		modes.CurrentModeID = target
 	}
 	return modes, nil
 }

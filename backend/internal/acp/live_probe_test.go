@@ -83,20 +83,27 @@ func TestLiveACPProbe(t *testing.T) {
 		t.Fatal("empty session id")
 	}
 	probeApplyConfiguredSessionOptions(t, ctx, conn, agent, sessionResp.SessionID)
-	if os.Getenv("ACP_PROBE_SKIP_PROMPT") == "1" {
-		t.Log("skipping prompt")
-		return
-	}
 	availableModes := []acpschema.SessionMode(nil)
 	if sessionResp.Modes != nil {
 		availableModes = sessionResp.Modes.AvailableModes
 	} else if agent == AgentGrok {
 		availableModes = grokFallbackModes().AvailableModes
 	}
+	if modeID := executionModeForAgent(agent, availableModes); modeID != "" && (sessionResp.Modes == nil || string(sessionResp.Modes.CurrentModeID) != modeID) {
+		setMode := probeCall(t, ctx, conn, "4", acpschema.AgentMethodSessionSetMode, acpschema.SetSessionModeRequest{
+			SessionID: sessionResp.SessionID,
+			ModeID:    acpschema.SessionModeID(modeID),
+		})
+		t.Logf("session/set_mode(%s) result: %s", modeID, setMode.Result)
+	}
+	if os.Getenv("ACP_PROBE_SKIP_PROMPT") == "1" {
+		t.Log("skipping prompt")
+		return
+	}
 	if os.Getenv("ACP_PROBE_SKIP_PLAN_MODE") == "1" {
 		t.Log("skipping plan mode switch")
 	} else if modeID := planModeID(availableModes); modeID != "" {
-		setMode := probeCall(t, ctx, conn, "4", acpschema.AgentMethodSessionSetMode, acpschema.SetSessionModeRequest{
+		setMode := probeCall(t, ctx, conn, "5", acpschema.AgentMethodSessionSetMode, acpschema.SetSessionModeRequest{
 			SessionID: sessionResp.SessionID,
 			ModeID:    acpschema.SessionModeID(modeID),
 		})
@@ -105,7 +112,7 @@ func TestLiveACPProbe(t *testing.T) {
 		t.Log("agent did not expose plan mode")
 	}
 
-	final := probeCall(t, ctx, conn, "5", acpschema.AgentMethodSessionPrompt, map[string]any{
+	final := probeCall(t, ctx, conn, "6", acpschema.AgentMethodSessionPrompt, map[string]any{
 		"sessionId": sessionResp.SessionID,
 		"prompt": []any{
 			map[string]any{"type": "text", "text": prompt},
