@@ -23,7 +23,7 @@ import (
 // staticPrompt is a fixed acp.SystemPromptSource for tests.
 type staticPrompt string
 
-func (s staticPrompt) SkillsPrompt() (string, error) { return string(s), nil }
+func (s staticPrompt) ACPPrompt() (string, error) { return string(s), nil }
 
 func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())

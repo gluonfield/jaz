@@ -215,23 +215,37 @@ func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd
 	return &agentConn{conn: conn, peer: peer, cancel: cancel, initRaw: initRaw}, nil
 }
 
-func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, cwd string) (acpSessionInfo, error) {
+// sessionPromptMeta builds the _meta payload carrying the Jaz system prompt
+// in the form the named agent understands, or nil when no prompt is
+// configured.
+func (m *Manager) sessionPromptMeta(agent string) (map[string]any, error) {
+	if m.cfg.SystemPrompt == nil {
+		return nil, nil
+	}
+	prompt, err := m.cfg.SystemPrompt.ACPPrompt()
+	if err != nil {
+		return nil, fmt.Errorf("build acp system prompt: %w", err)
+	}
+	prompt = strings.TrimSpace(prompt)
+	if prompt == "" {
+		return nil, nil
+	}
+	return systemPromptMeta(agent, prompt), nil
+}
+
+func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent, cwd string) (acpSessionInfo, error) {
+	meta, err := m.sessionPromptMeta(agent)
+	if err != nil {
+		return acpSessionInfo{}, err
+	}
 	newSession := struct {
 		Meta       map[string]any    `json:"_meta,omitempty"`
 		Cwd        string            `json:"cwd"`
 		MCPServers []json.RawMessage `json:"mcpServers"`
 	}{
+		Meta:       meta,
 		Cwd:        cwd,
 		MCPServers: m.mcpServersForAgent(ac.initRaw),
-	}
-	if m.cfg.SystemPrompt != nil {
-		prompt, err := m.cfg.SystemPrompt.SkillsPrompt()
-		if err != nil {
-			return acpSessionInfo{}, fmt.Errorf("build acp system prompt: %w", err)
-		}
-		if prompt := strings.TrimSpace(prompt); prompt != "" {
-			newSession.Meta = map[string]any{"systemPrompt": prompt}
-		}
 	}
 	sessionRaw, err := ac.peer.Call(ctx, acpschema.AgentMethodSessionNew, newSession)
 	if err != nil {
@@ -304,7 +318,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	if err != nil {
 		return fail(err)
 	}
-	acpSession, err := m.newACPSession(ctx, ac, absCwd)
+	acpSession, err := m.newACPSession(ctx, ac, req.ACPAgent, absCwd)
 	if err != nil {
 		ac.close()
 		return fail(err)
@@ -468,12 +482,17 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 	_ = json.Unmarshal(ac.initRaw, &caps)
 	storedID := session.RuntimeRef.SessionID
 	if caps.AgentCapabilities.LoadSession && storedID != "" {
+		meta, err := m.sessionPromptMeta(agentName)
+		if err != nil {
+			return "", ModeState{}, err
+		}
 		raw, err := ac.peer.Call(ctx, acpschema.AgentMethodSessionLoad, struct {
 			Meta       map[string]any      `json:"_meta,omitempty"`
 			Cwd        string              `json:"cwd"`
 			MCPServers []json.RawMessage   `json:"mcpServers"`
 			SessionID  acpschema.SessionID `json:"sessionId"`
 		}{
+			Meta:       meta,
 			Cwd:        cwd,
 			MCPServers: m.mcpServersForAgent(ac.initRaw),
 			SessionID:  acpschema.SessionID(storedID),
@@ -491,7 +510,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 		}
 		// The agent lost this session — fall through to a fresh one.
 	}
-	acpSession, err := m.newACPSession(ctx, ac, cwd)
+	acpSession, err := m.newACPSession(ctx, ac, agentName, cwd)
 	if err != nil {
 		return "", ModeState{}, err
 	}
