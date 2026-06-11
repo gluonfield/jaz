@@ -62,14 +62,31 @@ func TestExecCommandDefaultsToSessionCWD(t *testing.T) {
 	}
 }
 
-func TestExecCommandRejectsSessionCWDOutsideWorkspace(t *testing.T) {
+func TestExecCommandUsesSessionCWDOutsideWorkspace(t *testing.T) {
 	manager := NewCommandManager()
+	cwd := t.TempDir()
 	tool := &ExecCommandTool{Manager: manager, Workspace: t.TempDir()}
-	_, err := tool.Execute(sessioncontext.WithCWD(context.Background(), t.TempDir()), map[string]any{
-		"cmd": "pwd",
+	result, err := tool.Execute(sessioncontext.WithCWD(context.Background(), cwd), map[string]any{
+		"cmd":           "pwd",
+		"yield_time_ms": float64(1000),
 	})
-	if err == nil || !strings.Contains(err.Error(), "escapes workspace") {
-		t.Fatalf("err = %v, want workspace escape", err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(result.Content), &payload); err != nil {
+		t.Fatal(err)
+	}
+	got, err := filepath.EvalSymlinks(strings.TrimSpace(payload["output"].(string)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := filepath.EvalSymlinks(cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("pwd output = %#v, want %q", payload["output"], cwd)
 	}
 }
 

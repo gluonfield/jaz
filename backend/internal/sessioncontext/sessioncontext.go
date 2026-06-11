@@ -2,11 +2,8 @@ package sessioncontext
 
 import (
 	"context"
-	"fmt"
 	"path/filepath"
 	"strings"
-
-	"github.com/wins/jaz/backend/internal/pathsafe"
 )
 
 type sessionIDKey struct{}
@@ -36,27 +33,15 @@ func CWD(ctx context.Context) string {
 	return cwd
 }
 
-func WorkspaceBase(ctx context.Context, workspace string) (string, error) {
-	root := strings.TrimSpace(workspace)
-	if root == "" {
-		root = "."
+func SessionBase(ctx context.Context, fallback string) (string, error) {
+	base := strings.TrimSpace(fallback)
+	if base == "" {
+		base = "."
 	}
-	rootAbs, err := filepath.Abs(root)
-	if err != nil {
-		return "", err
+	if cwd := strings.TrimSpace(CWD(ctx)); cwd != "" {
+		base = cwd
 	}
-	cwd := strings.TrimSpace(CWD(ctx))
-	if cwd == "" {
-		return rootAbs, nil
-	}
-	cwdAbs, err := filepath.Abs(cwd)
-	if err != nil {
-		return "", err
-	}
-	if !pathsafe.Within(rootAbs, cwdAbs) {
-		return "", fmt.Errorf("session cwd escapes workspace: %s", cwd)
-	}
-	return cwdAbs, nil
+	return filepath.Abs(base)
 }
 
 func WithCollaborationMode(ctx context.Context, mode string) context.Context {
