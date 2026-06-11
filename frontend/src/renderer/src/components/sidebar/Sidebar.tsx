@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Plus, Settings, SquarePen, Trash2 } from 'lucide-react'
-import { AnimatePresence, motion } from 'motion/react'
-import { type DragEvent, type PointerEvent as ReactPointerEvent, useState } from 'react'
+import { GripVertical, Plus, Settings, SquarePen, Trash2 } from 'lucide-react'
+import { AnimatePresence, motion, Reorder, type Transition, useDragControls } from 'motion/react'
+import { type PointerEvent as ReactPointerEvent, useState } from 'react'
 import { BoardModal } from '@/components/boards/BoardModal'
 import { LoopModal } from '@/components/loops/LoopModal'
 import { IconButton } from '@/components/ui/IconButton'
@@ -18,6 +18,8 @@ import { SessionRow } from './SessionRow'
 const SIDEBAR_LOOP_LIMIT = 6
 const PROJECT_SESSION_LIMIT = 5
 const DEFAULT_SESSION_LIMIT = 5
+
+const ROW_SPRING: Transition = { type: 'spring', stiffness: 420, damping: 34 }
 
 type SessionProjectGroup = {
   key: string
@@ -76,14 +78,12 @@ function sessionsBySavedProject(items: SessionListItem[], projects: Project[]): 
   }
 }
 
-function moveProjectPath(projects: Project[], source: string, target: string): string[] {
-  const paths = projects.map((project) => project.path)
-  const from = paths.indexOf(source)
-  const to = paths.indexOf(target)
-  if (from === -1 || to === -1 || from === to) return paths
-  const [path] = paths.splice(from, 1)
-  paths.splice(paths.indexOf(target), 0, path)
-  return paths
+// Groups missing from the drag order (e.g. refetched mid-drag) keep their
+// relative order at the end.
+function applyDragOrder(groups: SessionProjectGroup[], order: string[] | null): SessionProjectGroup[] {
+  if (!order) return groups
+  const rank = new Map(order.map((key, index) => [key, index]))
+  return [...groups].sort((a, b) => (rank.get(a.key) ?? order.length) - (rank.get(b.key) ?? order.length))
 }
 
 function SessionRows({ items }: { items: SessionListItem[] }) {
@@ -96,13 +96,168 @@ function SessionRows({ items }: { items: SessionListItem[] }) {
             initial={{ opacity: 0, x: -8 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -8 }}
-            transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+            transition={ROW_SPRING}
           >
             <SessionRow session={item.session} child={item.child} />
           </motion.div>
         ))}
       </AnimatePresence>
     </div>
+  )
+}
+
+function ProjectGroup({
+  group,
+  expanded,
+  onExpand,
+  onReorderEnd,
+}: {
+  group: SessionProjectGroup
+  expanded: boolean
+  onExpand: () => void
+  onReorderEnd: () => void
+}) {
+  const dragControls = useDragControls()
+  const visibleItems = expanded ? group.items : group.items.slice(0, PROJECT_SESSION_LIMIT)
+  return (
+    <Reorder.Item
+      as="div"
+      value={group.key}
+      layout="position"
+      transition={ROW_SPRING}
+      dragListener={false}
+      dragControls={dragControls}
+      whileDrag={{ opacity: 0.7 }}
+      onDragEnd={onReorderEnd}
+    >
+      <div className="group/project flex items-center justify-between pr-1">
+        <div className="flex min-w-0 flex-1 items-center">
+          {/* -ml-3 hangs the grip in the nav's left padding so the project
+              name stays aligned with the Loops/Boards labels */}
+          <button
+            type="button"
+            onPointerDown={(event) => dragControls.start(event)}
+            className="-ml-3 grid size-5 shrink-0 cursor-grab touch-none place-items-center rounded-full text-ink-3 opacity-0 transition-colors duration-150 hover:bg-surface-2 hover:text-ink active:cursor-grabbing focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none group-hover/project:opacity-100"
+            aria-label={`Reorder ${group.label}`}
+            title="Drag to reorder"
+          >
+            <GripVertical size={13} />
+          </button>
+          <p className="min-w-0 truncate pb-1 text-[11px] font-medium text-ink-3" title={group.label}>
+            {group.label}
+          </p>
+        </div>
+        <Link
+          to="/new"
+          search={{ project: group.key }}
+          className="-mt-1 grid size-6 place-items-center rounded-full text-ink-3 opacity-0 transition-colors duration-150 hover:bg-surface-2 hover:text-ink focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none group-hover/project:opacity-100"
+          aria-label={`New thread in ${group.label}`}
+          title={`New thread in ${group.label}`}
+        >
+          <SquarePen size={13} />
+        </Link>
+      </div>
+      <SessionRows items={visibleItems} />
+      {!expanded && group.items.length > PROJECT_SESSION_LIMIT ? (
+        <button
+          type="button"
+          onClick={onExpand}
+          className="mt-1 rounded-full px-2.5 py-1 text-left text-[13px] text-primary transition-colors duration-150 hover:bg-surface-2"
+        >
+          Show more
+        </button>
+      ) : null}
+    </Reorder.Item>
+  )
+}
+
+function SessionsSection() {
+  const queryClient = useQueryClient()
+  const sessions = useQuery(sidebarSessionsQuery)
+  const projects = useQuery(projectsQuery)
+  const sections = sessionsBySavedProject(sessions.data ?? [], projects.data ?? [])
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set())
+  // Group keys in their live mid-drag order; null while no drag is happening.
+  const [dragOrder, setDragOrder] = useState<string[] | null>(null)
+  const reorder = useMutation({
+    mutationFn: reorderProjects,
+    onSuccess: (ordered) => queryClient.setQueryData(keys.projects, ordered),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: keys.projects }),
+  })
+  const groups = applyDragOrder(sections.groups, dragOrder)
+  const visibleUngrouped = sections.ungrouped.slice(0, DEFAULT_SESSION_LIMIT)
+  const hasSessions = groups.length > 0 || sections.ungrouped.length > 0
+
+  const expandProject = (key: string) =>
+    setExpandedProjects((current) => {
+      const next = new Set(current)
+      next.add(key)
+      return next
+    })
+
+  const commitReorder = () => {
+    if (!dragOrder) return
+    // Permute the dragged (visible) groups within the full saved project
+    // list; projects with no sidebar sessions keep their slots.
+    const all = projects.data ?? []
+    const byPath = new Map(all.map((project) => [project.path, project]))
+    const queue = dragOrder
+      .map((key) => byPath.get(key))
+      .filter((project): project is Project => Boolean(project))
+    const draggedSet = new Set(queue.map((project) => project.path))
+    const next = all.map((project) => (draggedSet.has(project.path) ? queue.shift()! : project))
+    queryClient.setQueryData(keys.projects, next)
+    setDragOrder(null)
+    reorder.mutate(next.map((project) => project.path))
+  }
+
+  return (
+    <section>
+      {sessions.isPending || projects.isPending ? (
+        <SkeletonRows count={4} />
+      ) : sessions.isError ? (
+        <p className="px-2.5 py-1 text-[13px] text-ink-3">Backend unreachable</p>
+      ) : !hasSessions ? (
+        <p className="px-2.5 py-1 text-[13px] text-ink-3">No sessions yet</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {groups.length > 0 ? (
+            <Reorder.Group
+              as="div"
+              axis="y"
+              values={groups.map((group) => group.key)}
+              onReorder={setDragOrder}
+              className="flex flex-col gap-3"
+            >
+              {groups.map((group) => (
+                <ProjectGroup
+                  key={group.key}
+                  group={group}
+                  expanded={expandedProjects.has(group.key)}
+                  onExpand={() => expandProject(group.key)}
+                  onReorderEnd={commitReorder}
+                />
+              ))}
+            </Reorder.Group>
+          ) : null}
+          {sections.ungrouped.length > 0 ? (
+            <div>
+              <SessionRows items={visibleUngrouped} />
+              {sections.ungrouped.length > DEFAULT_SESSION_LIMIT ? (
+                <Link
+                  to="/sessions"
+                  className="mt-1 block rounded-full px-2.5 py-1 text-[13px] text-primary transition-colors duration-150 hover:bg-surface-2"
+                  activeOptions={{ exact: true }}
+                  activeProps={{ className: 'bg-primary-soft!' }}
+                >
+                  Show all threads
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      )}
+    </section>
   )
 }
 
@@ -154,7 +309,7 @@ function LoopsSection() {
                 initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -8 }}
-                transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                transition={ROW_SPRING}
               >
                 <LoopRow loop={loop} />
               </motion.div>
@@ -263,48 +418,6 @@ export function Sidebar({
   onResizeReset: () => void
   onOpenSettings: () => void
 }) {
-  const queryClient = useQueryClient()
-  const sessions = useQuery(sidebarSessionsQuery)
-  const projects = useQuery(projectsQuery)
-  const sessionSections = sessionsBySavedProject(sessions.data ?? [], projects.data ?? [])
-  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set())
-  const [draggingProject, setDraggingProject] = useState('')
-  const reorder = useMutation({
-    mutationFn: reorderProjects,
-    onSuccess: (ordered) => queryClient.setQueryData(keys.projects, ordered),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: keys.projects }),
-  })
-  const hasSessions = sessionSections.groups.length > 0 || sessionSections.ungrouped.length > 0
-  const visibleUngrouped = sessionSections.ungrouped.slice(0, DEFAULT_SESSION_LIMIT)
-  const expandProject = (key: string) =>
-    setExpandedProjects((current) => {
-      const next = new Set(current)
-      next.add(key)
-      return next
-    })
-  const startProjectDrag = (event: DragEvent, key: string) => {
-    setDraggingProject(key)
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', key)
-    const block = event.currentTarget.closest('[data-project-group]')
-    if (block instanceof HTMLElement) {
-      const rect = block.getBoundingClientRect()
-      event.dataTransfer.setDragImage(block, event.clientX - rect.left, event.clientY - rect.top)
-    }
-  }
-  const allowProjectDrop = (event: DragEvent) => {
-    if (!draggingProject) return
-    event.preventDefault()
-    event.dataTransfer.dropEffect = 'move'
-  }
-  const dropProject = (event: DragEvent, target: string) => {
-    event.preventDefault()
-    const source = draggingProject || event.dataTransfer.getData('text/plain')
-    setDraggingProject('')
-    if (!source || source === target || reorder.isPending) return
-    reorder.mutate(moveProjectPath(projects.data ?? [], source, target))
-  }
-
   return (
     <aside
       className="sidebar-material relative flex h-full shrink-0 flex-col border-r border-border"
@@ -327,81 +440,7 @@ export function Sidebar({
           </span>
         </Link>
 
-        <section>
-          {sessions.isPending || projects.isPending ? (
-            <SkeletonRows count={4} />
-          ) : sessions.isError ? (
-            <p className="px-2.5 py-1 text-[13px] text-ink-3">Backend unreachable</p>
-          ) : !hasSessions ? (
-            <p className="px-2.5 py-1 text-[13px] text-ink-3">No sessions yet</p>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {sessionSections.groups.map((group) => {
-                const expanded = expandedProjects.has(group.key)
-                const visibleItems = expanded ? group.items : group.items.slice(0, PROJECT_SESSION_LIMIT)
-                return (
-                  <motion.div
-                    key={group.key}
-                    layout
-                    transition={{ type: 'spring', stiffness: 420, damping: 34 }}
-                    data-project-group
-                    onDragOver={allowProjectDrop}
-                    onDrop={(event) => dropProject(event, group.key)}
-                    className={draggingProject === group.key ? 'opacity-60' : undefined}
-                  >
-                    <div className="group/project flex items-center justify-between pr-1">
-                      <button
-                        type="button"
-                        draggable
-                        onDragStart={(event) => startProjectDrag(event, group.key)}
-                        onDragEnd={() => setDraggingProject('')}
-                        className="min-w-0 flex-1 cursor-grab truncate px-2 pb-1 text-left text-[11px] font-medium text-ink-3 active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none"
-                        aria-label={`Reorder ${group.label}`}
-                        title={group.label}
-                      >
-                        {group.label}
-                      </button>
-                      <Link
-                        to="/new"
-                        search={{ project: group.key }}
-                        className="-mt-1 grid size-6 place-items-center rounded-full text-ink-3 opacity-0 transition-colors duration-150 hover:bg-surface-2 hover:text-ink focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none group-hover/project:opacity-100"
-                        aria-label={`New thread in ${group.label}`}
-                        title={`New thread in ${group.label}`}
-                      >
-                        <SquarePen size={13} />
-                      </Link>
-                    </div>
-                    <SessionRows items={visibleItems} />
-                    {!expanded && group.items.length > PROJECT_SESSION_LIMIT ? (
-                      <button
-                        type="button"
-                        onClick={() => expandProject(group.key)}
-                        className="mt-1 rounded-full px-2.5 py-1 text-left text-[13px] text-primary transition-colors duration-150 hover:bg-surface-2"
-                      >
-                        Show more
-                      </button>
-                    ) : null}
-                  </motion.div>
-                )
-              })}
-              {sessionSections.ungrouped.length > 0 ? (
-                <div>
-                  <SessionRows items={visibleUngrouped} />
-                  {sessionSections.ungrouped.length > DEFAULT_SESSION_LIMIT ? (
-                    <Link
-                      to="/sessions"
-                      className="mt-1 block rounded-full px-2.5 py-1 text-[13px] text-primary transition-colors duration-150 hover:bg-surface-2"
-                      activeOptions={{ exact: true }}
-                      activeProps={{ className: 'bg-primary-soft!' }}
-                    >
-                      Show all threads
-                    </Link>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          )}
-        </section>
+        <SessionsSection />
 
         <LoopsSection />
 
