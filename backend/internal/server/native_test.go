@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -242,6 +243,41 @@ func TestCreateNativeSessionPersistsWorkingDirectory(t *testing.T) {
 	if session.RuntimeRef == nil || session.RuntimeRef.Type != storage.RuntimeNative ||
 		session.RuntimeRef.Cwd != project || session.RuntimeRef.ProjectPath != project {
 		t.Fatalf("absolute runtime ref = %#v, want native cwd %q", session.RuntimeRef, project)
+	}
+
+	repo := filepath.Join(workspace, "worktree-repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := exec.Command("git", "--version").Run(); err != nil {
+		t.Skip("git is not available")
+	}
+	for _, args := range [][]string{
+		{"init"},
+		{"config", "user.email", "test@jaz"},
+		{"config", "user.name", "jaz"},
+		{"commit", "--allow-empty", "-m", "init"},
+	} {
+		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	req = httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{"directory":"worktree-repo","worktree":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("worktree status = %d, body = %s", res.Code, res.Body.String())
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &session); err != nil {
+		t.Fatal(err)
+	}
+	wantWorktree := filepath.Join(workspace, ".worktrees", session.Slug)
+	if session.RuntimeRef == nil ||
+		session.RuntimeRef.Cwd != wantWorktree ||
+		session.RuntimeRef.ProjectPath != repo {
+		t.Fatalf("worktree runtime ref = %#v, want cwd %q project %q", session.RuntimeRef, wantWorktree, repo)
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{"directory":"../outside"}`))
