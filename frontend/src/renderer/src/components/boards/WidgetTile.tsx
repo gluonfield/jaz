@@ -8,6 +8,7 @@ import {
   useState,
 } from 'react'
 import { IconButton } from '@/components/ui/IconButton'
+import { SCANLINE_BACKGROUND, SCANLINE_MASK } from '@/components/ui/rainbow'
 import {
   reportWidgetError,
   reportWidgetLayout,
@@ -340,12 +341,9 @@ export function WidgetTile({
               <motion.div
                 className="absolute inset-0"
                 style={{
-                  background:
-                    'linear-gradient(180deg, var(--color-rainbow-1), var(--color-rainbow-2), var(--color-rainbow-3), var(--color-rainbow-4), var(--color-rainbow-5))',
-                  maskImage:
-                    'linear-gradient(90deg, transparent 30%, black 50%, transparent 54%)',
-                  WebkitMaskImage:
-                    'linear-gradient(90deg, transparent 30%, black 50%, transparent 54%)',
+                  background: SCANLINE_BACKGROUND,
+                  maskImage: SCANLINE_MASK,
+                  WebkitMaskImage: SCANLINE_MASK,
                 }}
                 initial={{ x: '-50%', opacity: 0 }}
                 animate={{ x: '50%', opacity: [0, 0.85, 0.85, 0] }}

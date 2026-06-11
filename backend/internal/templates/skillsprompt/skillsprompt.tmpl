@@ -1,0 +1,12 @@
+## Skills
+Use a listed skill when named or when its description matches the task. Users may reference a skill inline as $name in their messages. Read its SKILL.md first; resolve relative paths from that file; load extras only as needed.
+
+<available_skills>
+{{- range .Skills}}
+  <skill>
+    <name>{{escape .Name}}</name>
+    <description>{{escape .Description}}</description>
+    <location>{{escape .Location}}</location>
+  </skill>
+{{- end}}
+</available_skills>

@@ -24,6 +24,7 @@ import (
 	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
+	"github.com/wins/jaz/backend/internal/templates/acpcompletion"
 	"github.com/wins/jaz/backend/internal/tools"
 	agentcancel "github.com/wins/jaz/backend/internal/tools/agent/cancel"
 	agentlist "github.com/wins/jaz/backend/internal/tools/agent/list"
@@ -429,16 +430,18 @@ func setStoredSessionError(store *sqlitestore.Store, sessionID, message string) 
 }
 
 func acpCompletion(job acp.Job) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "ACP session %s (%s) completed with state %s.", job.Slug, job.ACPAgent, job.State)
-	if job.Error != "" {
-		fmt.Fprintf(&b, "\nError: %s", job.Error)
+	prompt, err := acpcompletion.Render(acpcompletion.Data{
+		Slug:      job.Slug,
+		Agent:     job.ACPAgent,
+		State:     job.State,
+		Error:     job.Error,
+		Assistant: job.Assistant,
+	})
+	if err != nil {
+		// Embedded and parse-checked at init; the completion turn must still fire.
+		return fmt.Sprintf("ACP session %s (%s) completed with state %s. Report the outcome to the user now.", job.Slug, job.ACPAgent, job.State)
 	}
-	if job.Assistant != "" {
-		fmt.Fprintf(&b, "\nAssistant result:\n%s", job.Assistant)
-	}
-	b.WriteString("\n\nReport the outcome to the user now: what was delivered, where it lives (files, paths, URLs), and how it was verified. Be concrete and base it only on the result above; do not say work is still in progress.")
-	return b.String()
+	return prompt
 }
 
 func acpEvent(job acp.Job) *sessionevents.ACPEvent {

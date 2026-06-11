@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { GripVertical, Plus, Settings, SquarePen, Trash2 } from 'lucide-react'
+import { Plus, Settings, SquarePen, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type DragEvent, type PointerEvent as ReactPointerEvent, useState } from 'react'
 import { BoardModal } from '@/components/boards/BoardModal'
@@ -18,19 +18,6 @@ import { SessionRow } from './SessionRow'
 const SIDEBAR_LOOP_LIMIT = 6
 const PROJECT_SESSION_LIMIT = 5
 const DEFAULT_SESSION_LIMIT = 5
-
-function SectionLabel({ children, to }: { children: string; to?: '/sessions' }) {
-  const className =
-    'rounded-full px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3 transition-colors duration-150 hover:text-ink'
-  if (to) {
-    return (
-      <Link to={to} className={className} activeOptions={{ exact: true }} activeProps={{ className: 'text-ink!' }}>
-        {children}
-      </Link>
-    )
-  }
-  return <p className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3">{children}</p>
-}
 
 type SessionProjectGroup = {
   key: string
@@ -299,6 +286,11 @@ export function Sidebar({
     setDraggingProject(key)
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData('text/plain', key)
+    const block = event.currentTarget.closest('[data-project-group]')
+    if (block instanceof HTMLElement) {
+      const rect = block.getBoundingClientRect()
+      event.dataTransfer.setDragImage(block, event.clientX - rect.left, event.clientY - rect.top)
+    }
   }
   const allowProjectDrop = (event: DragEvent) => {
     if (!draggingProject) return
@@ -336,7 +328,6 @@ export function Sidebar({
         </Link>
 
         <section>
-          <SectionLabel to="/sessions">Sessions</SectionLabel>
           {sessions.isPending || projects.isPending ? (
             <SkeletonRows count={4} />
           ) : sessions.isError ? (
@@ -349,29 +340,27 @@ export function Sidebar({
                 const expanded = expandedProjects.has(group.key)
                 const visibleItems = expanded ? group.items : group.items.slice(0, PROJECT_SESSION_LIMIT)
                 return (
-                  <div
+                  <motion.div
                     key={group.key}
+                    layout
+                    transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                    data-project-group
                     onDragOver={allowProjectDrop}
                     onDrop={(event) => dropProject(event, group.key)}
                     className={draggingProject === group.key ? 'opacity-60' : undefined}
                   >
                     <div className="group/project flex items-center justify-between pr-1">
-                      <div className="flex min-w-0 items-center">
-                        <button
-                          type="button"
-                          draggable
-                          onDragStart={(event) => startProjectDrag(event, group.key)}
-                          onDragEnd={() => setDraggingProject('')}
-                          className="-ml-1 grid size-5 shrink-0 cursor-grab place-items-center rounded-full text-ink-3 opacity-0 transition-colors duration-150 hover:bg-surface-2 hover:text-ink active:cursor-grabbing focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none group-hover/project:opacity-100"
-                          aria-label={`Reorder ${group.label}`}
-                          title="Drag project"
-                        >
-                          <GripVertical size={13} />
-                        </button>
-                        <p className="min-w-0 truncate px-1 pb-1 text-[11px] font-medium text-ink-3" title={group.label}>
-                          {group.label}
-                        </p>
-                      </div>
+                      <button
+                        type="button"
+                        draggable
+                        onDragStart={(event) => startProjectDrag(event, group.key)}
+                        onDragEnd={() => setDraggingProject('')}
+                        className="min-w-0 flex-1 cursor-grab truncate px-2 pb-1 text-left text-[11px] font-medium text-ink-3 active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none"
+                        aria-label={`Reorder ${group.label}`}
+                        title={group.label}
+                      >
+                        {group.label}
+                      </button>
                       <Link
                         to="/new"
                         search={{ project: group.key }}
@@ -392,7 +381,7 @@ export function Sidebar({
                         Show more
                       </button>
                     ) : null}
-                  </div>
+                  </motion.div>
                 )
               })}
               {sessionSections.ungrouped.length > 0 ? (

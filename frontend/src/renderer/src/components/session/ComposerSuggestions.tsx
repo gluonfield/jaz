@@ -83,6 +83,7 @@ export function ComposerSuggestions({
     <motion.div
       ref={listRef}
       role="listbox"
+      data-escape-surface=""
       initial={{ opacity: 0, y: reducedMotion ? 0 : 6 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: reducedMotion ? 0 : 6 }}

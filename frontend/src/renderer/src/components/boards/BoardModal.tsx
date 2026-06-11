@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { Check, LayoutGrid } from 'lucide-react'
-import { motion, useReducedMotion } from 'motion/react'
+import { Check } from 'lucide-react'
 import { useState } from 'react'
+import { BoardIllustration } from '@/components/boards/BoardIllustration'
 import { compactSchedule } from '@/components/loops/schedule'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -66,8 +66,7 @@ export function BoardModal({ open, onClose }: { open: boolean; onClose: () => vo
     <Modal
       open={open}
       onClose={close}
-      size="md"
-      icon={<LayoutGrid size={16} />}
+      size="lg"
       title={board ? `Add loops to ${board.name}` : 'New board'}
       description={
         board
@@ -139,11 +138,11 @@ export function BoardModal({ open, onClose }: { open: boolean; onClose: () => vo
         )
       ) : (
         <div className="space-y-5">
+          <BoardIllustration />
           <p className="text-[13px] leading-relaxed text-ink-2">
             Assign a loop to a board and every run rewrites its widget — counts, lists, charts —
             using data it just gathered. Drag and resize tiles; your layout always wins.
           </p>
-          <DemoTile />
           <label className="block">
             <span className="mb-1.5 block text-[12px] font-medium text-ink-2">Name</span>
             <input
@@ -161,39 +160,6 @@ export function BoardModal({ open, onClose }: { open: boolean; onClose: () => vo
         </div>
       )}
     </Modal>
-  )
-}
-
-// A static mock of a widget tile so the explanation has something to point at.
-function DemoTile() {
-  const reduce = useReducedMotion()
-  const bars = [35, 60, 45, 85, 65]
-  return (
-    <div className="overflow-hidden rounded-card bg-surface ring-1 ring-border">
-      <div className="flex h-8 items-center gap-1.5 px-2.5">
-        <span className="size-1.5 rounded-full bg-primary" />
-        <span className="flex-1 text-[12px] font-medium text-ink">Open PRs</span>
-        <span className="text-[11px] tabular-nums text-ink-3">2m</span>
-      </div>
-      <div className="flex items-end gap-6 px-4 pb-4 pt-1">
-        <div>
-          <div className="text-[22px] font-semibold leading-tight tabular-nums text-ink">7</div>
-          <div className="text-[11px] text-ink-2">open</div>
-          <div className="text-[11px] font-medium text-ok">+2 today</div>
-        </div>
-        <div className="flex h-14 flex-1 items-end gap-1.5">
-          {bars.map((height, index) => (
-            <motion.div
-              key={index}
-              initial={reduce ? false : { height: 0 }}
-              animate={{ height: `${height}%` }}
-              transition={{ delay: 0.25 + index * 0.07, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-              className={`flex-1 rounded-t-[3px] ${index === 3 ? 'bg-accent' : 'bg-primary/80'}`}
-            />
-          ))}
-        </div>
-      </div>
-    </div>
   )
 }
 

@@ -1,0 +1,41 @@
+// Package jazplatform renders the jaz extension shared by every agent on the
+// platform — the native coordinator and ACP agents (claude, codex, grok)
+// alike. Every injected surface is named explicitly in jazplatform.tmpl:
+// AGENTS.md, SOUL.md, the memory horizons, daily pages, and skills.
+package jazplatform
+
+import (
+	"bytes"
+	_ "embed"
+	"text/template"
+)
+
+//go:embed jazplatform.tmpl
+var promptTemplate string
+
+var tmpl = template.Must(template.New("jazplatform").Parse(promptTemplate))
+
+// MemoryData carries the live jazmem horizons. LongTerm and ShortTerm always
+// render (callers pass "(empty)" placeholders when blank); today's daily page
+// renders only when it has content — SHORT_TERM.md is the curated carry-over,
+// so older dailies are not injected. Nil MemoryData means memory is disabled
+// and the whole memory block, protocol included, is omitted.
+type MemoryData struct {
+	LongTerm  string
+	ShortTerm string
+	TodayName string
+	Today     string
+}
+
+type Data struct {
+	Agents string
+	Soul   string
+	Memory *MemoryData
+	Skills string
+}
+
+func Render(data Data) (string, error) {
+	var out bytes.Buffer
+	err := tmpl.Execute(&out, data)
+	return out.String(), err
+}

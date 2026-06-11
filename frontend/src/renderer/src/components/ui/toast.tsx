@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { X } from 'lucide-react'
+import { Check, Copy, X } from 'lucide-react'
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 
@@ -13,14 +13,39 @@ const TOAST_AUTO_DISMISS_MS = 30_000
 
 const ToastContext = createContext<(message: string, tone?: Toast['tone']) => void>(() => {})
 
+function writeClipboardFallback(text: string) {
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.readOnly = true
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.append(textarea)
+  textarea.select()
+  const copied = document.execCommand('copy')
+  textarea.remove()
+  return copied
+}
+
+async function writeClipboard(text: string) {
+  if (!navigator.clipboard?.writeText) return writeClipboardFallback(text)
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    return writeClipboardFallback(text)
+  }
+}
+
 export function useToast() {
   return useContext(ToastContext)
 }
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
+  const [copiedId, setCopiedId] = useState<number | null>(null)
   const nextId = useRef(0)
   const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>())
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const dismiss = useCallback((id: number) => {
     const timer = timers.current.get(id)
@@ -38,8 +63,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     }
   }, [dismiss])
 
+  const copy = useCallback(async (id: number, message: string) => {
+    if (!(await writeClipboard(message))) return
+    if (copiedTimer.current) clearTimeout(copiedTimer.current)
+    setCopiedId(id)
+    copiedTimer.current = setTimeout(() => setCopiedId(null), 1500)
+  }, [])
+
   useEffect(() => () => {
     for (const timer of timers.current.values()) clearTimeout(timer)
+    if (copiedTimer.current) clearTimeout(copiedTimer.current)
     timers.current.clear()
   }, [])
 
@@ -63,7 +96,18 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                   : 'border-danger/30 bg-danger-soft text-danger'
               }`}
             >
-              <span className="min-w-0 whitespace-pre-wrap break-words">{toast.message}</span>
+              <span className="min-w-0 whitespace-pre-wrap break-words select-text">{toast.message}</span>
+              {toast.tone === 'danger' ? (
+                <button
+                  type="button"
+                  aria-label="Copy error"
+                  title={copiedId === toast.id ? 'Copied' : 'Copy error'}
+                  onClick={() => void copy(toast.id, toast.message)}
+                  className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-current opacity-65 transition-opacity hover:opacity-100"
+                >
+                  {copiedId === toast.id ? <Check size={13} /> : <Copy size={13} />}
+                </button>
+              ) : null}
               <button
                 type="button"
                 aria-label="Dismiss notification"
