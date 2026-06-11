@@ -42,7 +42,7 @@ Add these repository variables:
 - `APPLE_API_KEY_ID`
 - `APPLE_API_ISSUER`
 
-The release tag must match `frontend/package.json`, for example `v0.1.0`.
+The release tag must match `frontend/package.json`, for example `v0.0.1`.
 
 ## Layout
 
