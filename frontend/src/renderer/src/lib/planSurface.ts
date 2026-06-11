@@ -10,13 +10,26 @@ export interface PlanSurface {
 }
 
 const activeStatuses = new Set(['in_progress', 'in-progress', 'running'])
+const completedStatuses = new Set(['completed', 'complete'])
 
 function normalized(value?: string): string {
   return (value ?? '').trim().toLowerCase()
 }
 
+export type PlanStepState = 'pending' | 'active' | 'completed'
+
+// undefined means the entry carries no status, so the UI should not render a
+// fake checkbox for it.
+export function planStepState(entry: PlanEntry): PlanStepState | undefined {
+  const status = normalized(entry.status)
+  if (!status) return undefined
+  if (completedStatuses.has(status)) return 'completed'
+  if (activeStatuses.has(status)) return 'active'
+  return 'pending'
+}
+
 function hasActiveProgress(entries?: PlanEntry[]): boolean {
-  return Boolean(entries?.some((entry) => activeStatuses.has(normalized(entry.status))))
+  return Boolean(entries?.some((entry) => planStepState(entry) === 'active'))
 }
 
 function acpAwaitingApproval(acp: ACPEvent): boolean {
