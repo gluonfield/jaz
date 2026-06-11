@@ -63,7 +63,7 @@ export function VoiceVisualizer({
       raf = requestAnimationFrame(frame)
       const a = analyserRef.current
       const p = phaseRef.current
-      let target = 0
+      let target: number
 
       if (a && (p === 'listening' || p === 'speaking')) {
         if (freq.length !== a.frequencyBinCount) freq = new Uint8Array(a.frequencyBinCount)
