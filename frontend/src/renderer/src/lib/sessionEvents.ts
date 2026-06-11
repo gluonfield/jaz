@@ -53,15 +53,18 @@ export function coalesceSessionEvents(events: SessionEvent[]): SessionEvent[] {
       deduped[existing] = event
     }
   }
-  const indexed = deduped.reduce<{ event: SessionEvent; index: number }[]>((acc, event, sourceIndex) => {
+  const byKey = new Map<string, number>()
+  const indexed: { event: SessionEvent; index: number }[] = []
+  deduped.forEach((event, sourceIndex) => {
     const key = sessionEventCoalesceKey(event)
-    if (!key) return [...acc, { event, index: sourceIndex }]
-    const index = acc.findIndex((item) => sessionEventCoalesceKey(item.event) === key)
-    if (index === -1) return [...acc, { event, index: sourceIndex }]
-    const next = [...acc]
-    next[index] = { event, index: next[index].index }
-    return next
-  }, [])
+    const slot = key ? byKey.get(key) : undefined
+    if (slot === undefined) {
+      if (key) byKey.set(key, indexed.length)
+      indexed.push({ event, index: sourceIndex })
+    } else {
+      indexed[slot] = { event, index: indexed[slot].index }
+    }
+  })
   return indexed
     .sort((a, b) => {
       const seqA = a.event.seq ?? 0

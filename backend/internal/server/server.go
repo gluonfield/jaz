@@ -139,7 +139,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/memory/reindex", s.handleMemoryReindex)
 	mux.Handle("/mcp/jazmem", s.memoryMCPHandler())
 	mux.Handle("/jazmem/", http.StripPrefix("/jazmem", s.memoryAPIHandler()))
-	return withCORS(mux)
+	// CORS stays outermost: it answers OPTIONS preflights itself, which must
+	// not pass through the gzip wrapper.
+	return withCORS(withGzip(mux))
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -440,21 +442,62 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	children := s.acpChildSnapshots(session.ID)
 	resp := map[string]any{
 		"session":  canonicalSessionResponse(session),
 		"messages": messages,
 		"activity": activity,
 		"events":   transcriptEvents,
 	}
+	if meta := s.acpMeta(transcriptEvents, session, children); len(meta) > 0 {
+		resp["acp_meta"] = meta
+	}
 	if session.Runtime == storage.RuntimeACP {
 		if state, ok := s.acpSnapshot(session); ok {
 			applyACPStateResponse(resp, state)
 		}
 	}
-	if children := s.acpChildSnapshots(session.ID); len(children) > 0 {
+	if len(children) > 0 {
 		resp["acp_children"] = children
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+type acpMetaEntry struct {
+	Title string `json:"title,omitempty"`
+	Slug  string `json:"slug,omitempty"`
+}
+
+// Stored events carry only the acp session id and slug; the titles the UI
+// labels them with live here, once per response instead of per row. The page
+// session and child snapshots are already in hand, so only ids outside that
+// set hit the store.
+func (s *Server) acpMeta(events []sessionevents.Event, session storage.Session, children []storage.ACPState) map[string]acpMetaEntry {
+	ids := map[string]bool{}
+	for _, event := range events {
+		if event.ACP != nil && event.ACP.ID != "" {
+			ids[event.ACP.ID] = true
+		}
+	}
+	childByID := make(map[string]storage.ACPState, len(children))
+	for _, child := range children {
+		childByID[child.ID] = child
+	}
+	meta := make(map[string]acpMetaEntry, len(ids))
+	for id := range ids {
+		if id == session.ID {
+			meta[id] = acpMetaEntry{Title: session.Title, Slug: session.Slug}
+			continue
+		}
+		if child, ok := childByID[id]; ok {
+			meta[id] = acpMetaEntry{Title: child.Title, Slug: child.Slug}
+			continue
+		}
+		if ref, err := s.Store.LoadSession(id); err == nil {
+			meta[id] = acpMetaEntry{Title: ref.Title, Slug: ref.Slug}
+		}
+	}
+	return meta
 }
 
 func (s *Server) acpSnapshot(session storage.Session) (storage.ACPState, bool) {

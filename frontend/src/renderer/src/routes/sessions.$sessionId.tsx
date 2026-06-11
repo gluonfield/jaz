@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { FileText, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { motion } from 'motion/react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Composer, PlanDecisionDock } from '@/components/session/Composer'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
@@ -221,6 +221,132 @@ function hasStoredAssistantMessage(messages: ChatMessage[], text?: string): bool
   })
 }
 
+// Everything the page derives from server data, computed once per data change
+// (one useMemo) so renders driven by unrelated state — panel width ticks,
+// composer state, live stream flags — skip the O(events) pipeline.
+function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
+  const {
+    session,
+    messages,
+    acp_state: acpState,
+    acp_assistant: acpAssistant,
+    acp_thought: acpThought,
+    acp_modes: acpModes,
+    acp_plan: acpPlan,
+    acp_tool_calls: acpToolCalls,
+    acp_permissions: acpPermissions,
+    acp_error: acpError,
+    acp_children: acpChildren,
+    events: persistedEvents = [],
+  } = data
+  // The job snapshot is only a fallback: when events record the run, the
+  // snapshot would repeat it and dump every tool call at the end.
+  const eventsCoverOwnACP =
+    [...persistedEvents, ...liveEvents].some(
+      (event) =>
+        (event.type === 'acp_message' || event.type === 'acp_thought' || event.type === 'acp_tool') &&
+        event.acp?.id === session.id,
+    ) || hasStoredAssistantMessage(messages, acpAssistant)
+  const snapshotEvents: SessionEvent[] = [
+    ...(session.runtime === 'acp'
+      ? acpSnapshotEvents(
+          {
+            id: session.id,
+            slug: session.slug,
+            title: session.title,
+            parent_id: session.parent_id,
+            acp_agent: session.runtime_ref?.agent ?? 'acp',
+            acp_session: session.runtime_ref?.session_id ?? '',
+            state: acpState ?? session.status,
+            assistant: eventsCoverOwnACP ? undefined : acpAssistant,
+            thought: eventsCoverOwnACP ? undefined : acpThought,
+            error: acpError,
+            modes: acpModes,
+            plan: acpPlan,
+            tool_calls: eventsCoverOwnACP ? undefined : acpToolCalls,
+            permissions: acpPermissions,
+            updated_at: session.updated_at,
+          },
+          session.id,
+        )
+      : []),
+    ...((acpChildren ?? []).flatMap((child) => acpSnapshotEvents(child, session.id))),
+  ]
+  const transcriptEvents = coalesceSessionEvents(
+    [...persistedEvents, ...snapshotEvents, ...liveEvents].flatMap((event) => {
+      // 'assistant' events are refresh signals; the message store has the content.
+      if (event.type === 'assistant') return []
+      // Old rows round-tripped a typed-nil ACP into an empty struct.
+      if (event.acp && !event.acp.id) event = { ...event, acp: undefined }
+      const sanitized = sanitizeParentChildACPEvent(event, session.id)
+      return sanitized ? [sanitized] : []
+    }),
+  )
+  const acpModesKnown = Boolean(
+    acpModes?.plan_mode_id ||
+      acpModes?.current_mode_id ||
+      acpModes?.execution_mode_id ||
+      acpModes?.available_modes?.length,
+  )
+  const planAvailable = session.runtime !== 'acp' || !acpModesKnown || Boolean(acpModes?.plan_mode_id)
+  const pendingPermissionEvents = new Map<string, SessionEvent>()
+  for (const event of transcriptEvents) {
+    if (event.type === 'permission_request' && event.permission?.id) {
+      if (hasPermissionSurface(event.permission)) {
+        pendingPermissionEvents.set(event.permission.id, event)
+      }
+    }
+    if (event.type === 'permission_response' && event.permission?.id) {
+      pendingPermissionEvents.delete(event.permission.id)
+    }
+  }
+  const hasPendingPermission = pendingPermissionEvents.size > 0
+  const latestUserAt = Math.max(
+    0,
+    ...messages
+      .filter((message) => message.role === 'user')
+      .map((message) => Date.parse(message.created_at))
+      .filter((time) => !Number.isNaN(time)),
+  )
+  const latestPlanDecisionEvent = transcriptEvents.findLast((event) => {
+    const surface = planSurfaceFromEvent(event)
+    return Boolean(
+      surface?.awaitingApproval &&
+        surface.approvalSessionId &&
+        planSurfaceBelongsToSession(event, session.id),
+    )
+  })
+  const latestPlanDecisionSurface = latestPlanDecisionEvent
+    ? planSurfaceFromEvent(latestPlanDecisionEvent)
+    : undefined
+  const planDecisionAt = Date.parse(latestPlanDecisionEvent?.at ?? '')
+  // The panel mirrors the transcript's notion of "current plan": the latest
+  // plan-bearing event that belongs to this session.
+  const panelPlanEvent = transcriptEvents.findLast((event) =>
+    Boolean(planSurfaceFromEvent(event) && planSurfaceBelongsToSession(event, session.id)),
+  )
+  // Plan progress lives in the side panel, never in the thread; only a
+  // proposed plan that needs the user's approval stays inline. Errors are
+  // notified as toasts, not rendered as rows.
+  const displayEvents = transcriptEvents.map((event) => {
+    const withoutError = stripACPError(event)
+    const surface = planSurfaceFromEvent(withoutError)
+    if (!surface || surface.awaitingApproval) return withoutError
+    if (withoutError.acp) return { ...withoutError, acp: { ...withoutError.acp, plan: undefined } }
+    return { ...withoutError, plan: undefined }
+  })
+  return {
+    transcriptEvents,
+    displayEvents,
+    planAvailable,
+    hasPendingPermission,
+    latestPlanDecisionSurface,
+    planDecisionSessionID: latestPlanDecisionSurface?.approvalSessionId,
+    planDecisionIsCurrent: !Number.isNaN(planDecisionAt) && planDecisionAt >= latestUserAt,
+    panelPlan: panelPlanEvent ? planSurfaceFromEvent(panelPlanEvent) : undefined,
+  }
+}
+
 // The chat column at its widest (max-w-[720px] + px-10 each side); the panel
 // auto-shows only when it fits beside it — which is exactly when the sidebar
 // hides or the window is wide enough.
@@ -257,9 +383,11 @@ function SessionPage() {
   const sentPendingRef = useRef<string | null>(null)
 
   // Right panel: 'auto' follows available width; an explicit choice wins
-  // until toggling lands back on what auto would do anyway.
+  // until toggling lands back on what auto would do anyway. Width is tracked
+  // as the breakpoint boolean so resize ticks (e.g. the sidebar's width
+  // animation) only re-render when crossing it, not per pixel.
   const [panelPref, setPanelPref] = useState<PanelPref>(storedPanelPref)
-  const [pageWidth, setPageWidth] = useState(0)
+  const [hasPanelSpace, setHasPanelSpace] = useState(false)
   const panelObserver = useRef<ResizeObserver | null>(null)
   const shownCriticalErrors = useRef(new Set<string>())
   const notifyCriticalError = useCallback((message: string) => {
@@ -274,9 +402,11 @@ function SessionPage() {
     panelObserver.current?.disconnect()
     panelObserver.current = null
     if (!el) return
-    const observer = new ResizeObserver(() => setPageWidth(el.clientWidth))
+    const update = () =>
+      setHasPanelSpace(el.clientWidth >= PANEL_CHAT_COMFORT + SESSION_PANEL_WIDTH)
+    const observer = new ResizeObserver(update)
     observer.observe(el)
-    setPageWidth(el.clientWidth)
+    update()
     panelObserver.current = observer
   }, [])
   useEffect(() => {
@@ -450,6 +580,12 @@ function SessionPage() {
     if (takePendingVoice(sessionId)) setVoiceMode(true)
   }, [sessionId])
 
+  const data = detail.data
+  const derived = useMemo(
+    () => (data ? deriveSessionView(data, events.data) : undefined),
+    [data, events.data],
+  )
+
   useEffect(() => {
     if (!detail.data) return
     for (const error of criticalSessionErrors(detail.data, events.data, sessionId)) {
@@ -457,7 +593,6 @@ function SessionPage() {
     }
   }, [detail.data, events.data, notifyCriticalError, sessionId])
 
-  const hasPanelSpace = pageWidth >= PANEL_CHAT_COMFORT + SESSION_PANEL_WIDTH
   const panelOpen = panelPref === 'auto' ? hasPanelSpace : panelPref === 'open'
   const togglePanel = useCallback(() => {
     const next = !panelOpen
@@ -492,122 +627,18 @@ function SessionPage() {
     )
   }
 
+  if (!derived) return null // unreachable: derived exists whenever detail.data does
+  const { session, messages } = detail.data
   const {
-    session,
-    messages,
-    acp_state: acpState,
-    acp_assistant: acpAssistant,
-    acp_thought: acpThought,
-    acp_modes: acpModes,
-    acp_plan: acpPlan,
-    acp_tool_calls: acpToolCalls,
-    acp_permissions: acpPermissions,
-    acp_error: acpError,
-    acp_children: acpChildren,
-    events: persistedEvents = [],
-  } = detail.data
-  // The job snapshot is only a fallback: when events record the run, the
-  // snapshot would repeat it and dump every tool call at the end.
-  const eventsCoverOwnACP =
-    [...persistedEvents, ...events.data].some(
-      (event) =>
-        (event.type === 'acp_message' || event.type === 'acp_thought' || event.type === 'acp_tool') &&
-        event.acp?.id === session.id,
-    ) || hasStoredAssistantMessage(messages, acpAssistant)
-  const snapshotEvents: SessionEvent[] = [
-    ...(session.runtime === 'acp'
-      ? acpSnapshotEvents(
-          {
-            id: session.id,
-            slug: session.slug,
-            title: session.title,
-            parent_id: session.parent_id,
-            acp_agent: session.runtime_ref?.agent ?? 'acp',
-            acp_session: session.runtime_ref?.session_id ?? '',
-            state: acpState ?? session.status,
-            assistant: eventsCoverOwnACP ? undefined : acpAssistant,
-            thought: eventsCoverOwnACP ? undefined : acpThought,
-            error: acpError,
-            modes: acpModes,
-            plan: acpPlan,
-            tool_calls: eventsCoverOwnACP ? undefined : acpToolCalls,
-            permissions: acpPermissions,
-            updated_at: session.updated_at,
-          },
-          session.id,
-        )
-      : []),
-    ...((acpChildren ?? []).flatMap((child) => acpSnapshotEvents(child, session.id))),
-  ]
-  const transcriptEvents = coalesceSessionEvents(
-    [...persistedEvents, ...snapshotEvents, ...events.data].flatMap((event) => {
-      // 'assistant' events are refresh signals; the message store has the content.
-      if (event.type === 'assistant') return []
-      // Old rows round-tripped a typed-nil ACP into an empty struct.
-      if (event.acp && !event.acp.id) event = { ...event, acp: undefined }
-      const sanitized = sanitizeParentChildACPEvent(event, session.id)
-      return sanitized ? [sanitized] : []
-    }),
-  )
-  const acpModesKnown = Boolean(
-    acpModes?.plan_mode_id ||
-      acpModes?.current_mode_id ||
-      acpModes?.execution_mode_id ||
-      acpModes?.available_modes?.length,
-  )
-  const planAvailable = session.runtime !== 'acp' || !acpModesKnown || Boolean(acpModes?.plan_mode_id)
-  const pendingPermissionEvents = new Map<string, SessionEvent>()
-  for (const event of transcriptEvents) {
-    if (event.type === 'permission_request' && event.permission?.id) {
-      if (hasPermissionSurface(event.permission)) {
-        pendingPermissionEvents.set(event.permission.id, event)
-      }
-    }
-    if (event.type === 'permission_response' && event.permission?.id) {
-      pendingPermissionEvents.delete(event.permission.id)
-    }
-  }
-  const activePermissionEvent = [...pendingPermissionEvents.values()].at(-1)
-  const hasPendingPermission = Boolean(activePermissionEvent)
-  // The panel mirrors the transcript's notion of "current plan": the latest
-  // plan-bearing event that belongs to this session.
-  const panelPlanEvent = [...transcriptEvents]
-    .reverse()
-    .find((event) => planSurfaceFromEvent(event) && planSurfaceBelongsToSession(event, session.id))
-  const panelPlan = panelPlanEvent ? planSurfaceFromEvent(panelPlanEvent) : undefined
-  // Plan progress lives in the side panel, never in the thread; only a
-  // proposed plan that needs the user's approval stays inline.
-  const displayEvents = transcriptEvents.map((event) => {
-    const withoutError = stripACPError(event)
-    const surface = planSurfaceFromEvent(withoutError)
-    if (!surface || surface.awaitingApproval) return withoutError
-    if (withoutError.acp) return { ...withoutError, acp: { ...withoutError.acp, plan: undefined } }
-    return { ...withoutError, plan: undefined }
-  })
-  const latestUserAt = Math.max(
-    0,
-    ...messages
-      .filter((message) => message.role === 'user')
-      .map((message) => Date.parse(message.created_at))
-      .filter((time) => !Number.isNaN(time)),
-  )
-  const latestPlanDecisionEvent = [...transcriptEvents]
-    .reverse()
-    .find((event) => {
-      const surface = planSurfaceFromEvent(event)
-      return Boolean(
-        surface?.awaitingApproval &&
-          surface.approvalSessionId &&
-          planSurfaceBelongsToSession(event, session.id),
-      )
-    })
-  const latestPlanDecisionSurface = latestPlanDecisionEvent
-    ? planSurfaceFromEvent(latestPlanDecisionEvent)
-    : undefined
-  const planDecisionSessionID = latestPlanDecisionSurface?.approvalSessionId
-  const planDecisionAt = Date.parse(latestPlanDecisionEvent?.at ?? '')
-  const planDecisionIsCurrent =
-    !Number.isNaN(planDecisionAt) && planDecisionAt >= latestUserAt
+    transcriptEvents,
+    displayEvents,
+    planAvailable,
+    hasPendingPermission,
+    latestPlanDecisionSurface,
+    planDecisionSessionID,
+    planDecisionIsCurrent,
+    panelPlan,
+  } = derived
   const showPlanDecision = Boolean(
     latestPlanDecisionSurface?.awaitingApproval &&
       planDecisionSessionID &&
@@ -616,13 +647,13 @@ function SessionPage() {
       !live &&
       !hasPendingPermission,
   )
-  const empty = messages.length === 0 && displayEvents.length === 0 && !live
+  const empty = messages.length === 0 && transcriptEvents.length === 0 && !live
   const isACP = session.runtime === 'acp'
   // Covers turns started elsewhere (parent-triggered, or refresh mid-turn).
   const sessionRunning = queue.sessionRunning
   // ACP turns stream through events; the live exchange only contributes the
   // not-yet-refetched user bubble, injected so mid-turn events sort after it.
-  const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user')
+  const lastUserMessage = messages.findLast((message) => message.role === 'user')
   const transcriptMessages =
     isACP && live && lastUserMessage?.content.trim() !== live.user.trim()
       ? [

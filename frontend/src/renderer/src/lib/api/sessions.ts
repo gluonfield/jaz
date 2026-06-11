@@ -1,7 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '../query/keys'
 import { apiBaseUrl, ApiError, get, post, put } from './client'
-import type { Attachment, RepoInfo, Session, SessionMessages } from './types'
+import type { Attachment, RepoInfo, Session, SessionEvent, SessionMessages } from './types'
 
 export function createSession(
   input: {
@@ -308,6 +308,24 @@ export const allSessionsQuery = queryOptions({
   },
 })
 
+// Stored events carry only the acp session id and slug; titles arrive once
+// per response in acp_meta. Fold them back onto events here so the rest of
+// the app keeps the single contract: labels live on event.acp.
+function hydrateEventLabels(data: SessionMessages): SessionEvent[] {
+  return (data.events ?? []).map((event) => {
+    const named = event.acp ? data.acp_meta?.[event.acp.id] : undefined
+    if (!named) return event
+    return {
+      ...event,
+      acp: {
+        ...event.acp!,
+        title: event.acp!.title || named.title,
+        slug: event.acp!.slug || named.slug || '',
+      },
+    }
+  })
+}
+
 export const sessionMessagesQuery = (id: string) =>
   queryOptions({
     queryKey: keys.sessionMessages(id),
@@ -318,7 +336,7 @@ export const sessionMessagesQuery = (id: string) =>
         ...data,
         messages: data.messages ?? [],
         activity: data.activity ?? [],
-        events: data.events ?? [],
+        events: hydrateEventLabels(data),
       }
     },
   })
