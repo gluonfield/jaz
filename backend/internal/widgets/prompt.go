@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/templates/widgetprompt"
 )
 
 // What the loop's agent is told: a short prompt section with the contract
@@ -51,35 +52,24 @@ func EnsureGuide(loop loops.Loop) (string, error) {
 // assigned to a board: the contract essentials plus current publish state.
 // The design system and quality bar live in the guide file, not the prompt.
 func PromptSection(loop loops.Loop, widget *Widget) string {
-	path := WidgetFilePath(loop)
-	var b strings.Builder
-	b.WriteString("## Widget instructions\n\n")
-	b.WriteString("- This loop owns a widget: a small HTML tile on the user's Jaz board, updated by you on every run.\n")
-	if path != "" {
-		fmt.Fprintf(&b, "- Widget file: %s (iterate on the existing file rather than starting over).\n", path)
+	data := widgetprompt.Data{
+		FilePath:  WidgetFilePath(loop),
+		GuidePath: WidgetGuidePath(loop),
 	}
-	if guide := WidgetGuidePath(loop); guide != "" {
-		fmt.Fprintf(&b, "- Before editing, read the style guide next to it: %s. It defines the required design system (Jaz palette + Tailwind), the fill-the-tile layout rules, and the quality bar. Follow it.\n", guide)
-	}
-	b.WriteString("- The file must be a self-contained HTML FRAGMENT (no <!doctype>, <html>, <head>, or <body>), under 1 MB. It lives outside the session workspace; if a file tool refuses the path, write it via the shell (like the memory file).\n")
-	b.WriteString("- Publish by calling the publish_widget tool or the _jaz.dev/widget/publish extension method if available (it validates and returns errors); otherwise the file is published automatically when the run finishes.\n")
-	b.WriteString("- Show ONLY the data the user asked the loop to track — the tile chrome already shows the title and freshness; no meta commentary, captions, or repeated headings. Read-only: no forms or action buttons.\n")
 	if widget != nil {
-		fmt.Fprintf(&b, "Current widget: version %d, title %q", widget.CurrentVersion, widget.Title)
-		if widget.SizeHint != "" {
-			fmt.Fprintf(&b, ", size %s", widget.SizeHint)
-		}
-		b.WriteString(".\n")
-		if widget.LastError != "" {
-			fmt.Fprintf(&b, "Runtime error reported by the board since the last publish (fix it this run): %s\n", widget.LastError)
-		}
-		if feedback := layoutFeedback(widget.LastLayout); feedback != "" {
-			fmt.Fprintf(&b, "Board layout telemetry for the current version (fix this run): %s.\n", feedback)
-		}
-	} else {
-		b.WriteString("Current widget: never published. Create the first version this run.\n")
+		data.Published = true
+		data.Version = widget.CurrentVersion
+		data.Title = widget.Title
+		data.SizeHint = widget.SizeHint
+		data.LastError = widget.LastError
+		data.LayoutFeedback = layoutFeedback(widget.LastLayout)
 	}
-	return b.String()
+	section, err := widgetprompt.Render(data)
+	if err != nil {
+		// Embedded and parse-checked at init; a run must not lose the contract.
+		return "## Widget instructions\n\nUpdate the widget file for this loop and publish it.\n"
+	}
+	return section
 }
 
 // layoutReport mirrors the bridge's jaz:layout measurement payload.

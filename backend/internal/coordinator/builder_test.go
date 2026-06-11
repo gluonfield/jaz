@@ -15,8 +15,8 @@ func TestBuilderPicksUpEditsWithoutRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(prompt, "## SOUL.md") {
-		t.Fatalf("empty root should have no SOUL.md section:\n%s", prompt)
+	if !strings.Contains(prompt, "## SOUL.md\n\n(empty)") {
+		t.Fatalf("empty root should render SOUL.md as (empty):\n%s", prompt)
 	}
 
 	// Files created after the builder exists must appear on the next call.
@@ -90,6 +90,8 @@ func TestBuilderACPPrompt(t *testing.T) {
 	for _, want := range []string{
 		"## AGENTS.md",
 		"save durable facts with jazmem",
+		"## SOUL.md",
+		"be kind",
 		"## memory/LONG_TERM.md",
 		"- Goal: $5m.",
 		"<name>deploy</name>",
@@ -98,10 +100,8 @@ func TestBuilderACPPrompt(t *testing.T) {
 			t.Fatalf("acp prompt missing %q:\n%s", want, prompt)
 		}
 	}
-	for _, banned := range []string{"You are Jaz", "SOUL.md", "be kind"} {
-		if strings.Contains(prompt, banned) {
-			t.Fatalf("acp prompt must not contain %q:\n%s", banned, prompt)
-		}
+	if strings.Contains(prompt, "You are Jaz") {
+		t.Fatalf("acp prompt must not contain the coordinator identity:\n%s", prompt)
 	}
 
 	disabled, err := NewBuilder(root, "", memoryRoot, func() bool { return false }).ACPPrompt()
@@ -116,8 +116,8 @@ func TestBuilderACPPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if empty != "" {
-		t.Fatalf("empty root should produce no acp prompt, got:\n%s", empty)
+	if !strings.Contains(empty, "## AGENTS.md\n\n(empty)") || !strings.Contains(empty, "## SOUL.md\n\n(empty)") {
+		t.Fatalf("empty root must still render the platform with (empty) files:\n%s", empty)
 	}
 }
 

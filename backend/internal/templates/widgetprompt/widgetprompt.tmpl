@@ -1,0 +1,23 @@
+## Widget instructions
+
+- This loop owns a widget: a small HTML tile on the user's Jaz board, updated by you on every run.
+{{- if .FilePath}}
+- Widget file: {{.FilePath}} (iterate on the existing file rather than starting over).
+{{- end}}
+{{- if .GuidePath}}
+- Before editing, read the style guide next to it: {{.GuidePath}}. It defines the required design system (Jaz palette + Tailwind), the fill-the-tile layout rules, and the quality bar. Follow it.
+{{- end}}
+- The file must be a self-contained HTML FRAGMENT (no <!doctype>, <html>, <head>, or <body>), under 1 MB. It lives outside the session workspace; if a file tool refuses the path, write it via the shell (like the memory file).
+- Publish by calling the publish_widget tool or the _jaz.dev/widget/publish extension method if available (it validates and returns errors); otherwise the file is published automatically when the run finishes.
+- Show ONLY the data the user asked the loop to track — the tile chrome already shows the title and freshness; no meta commentary, captions, or repeated headings. Read-only: no forms or action buttons.
+{{- if .Published}}
+Current widget: version {{.Version}}, title {{printf "%q" .Title}}{{if .SizeHint}}, size {{.SizeHint}}{{end}}.
+{{- if .LastError}}
+Runtime error reported by the board since the last publish (fix it this run): {{.LastError}}
+{{- end}}
+{{- if .LayoutFeedback}}
+Board layout telemetry for the current version (fix this run): {{.LayoutFeedback}}.
+{{- end}}
+{{- else}}
+Current widget: never published. Create the first version this run.
+{{- end}}

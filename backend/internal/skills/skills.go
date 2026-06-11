@@ -1,13 +1,13 @@
 package skills
 
 import (
-	"fmt"
-	"html"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/wins/jaz/backend/internal/templates/skillsprompt"
 )
 
 type Skill struct {
@@ -75,15 +75,20 @@ func (c Catalog) Prompt() string {
 	if len(c.Skills) == 0 {
 		return ""
 	}
-	var b strings.Builder
-	b.WriteString("## Skills\n")
-	b.WriteString("Use a listed skill when named or when its description matches the task. Users may reference a skill inline as $name in their messages. Read its SKILL.md first; resolve relative paths from that file; load extras only as needed.\n\n")
-	b.WriteString("<available_skills>\n")
+	data := skillsprompt.Data{Skills: make([]skillsprompt.Skill, 0, len(c.Skills))}
 	for _, skill := range c.Skills {
-		fmt.Fprintf(&b, "  <skill>\n    <name>%s</name>\n    <description>%s</description>\n    <location>%s</location>\n  </skill>\n", html.EscapeString(skill.Name), html.EscapeString(skill.Description), html.EscapeString(skill.Path))
+		data.Skills = append(data.Skills, skillsprompt.Skill{
+			Name:        skill.Name,
+			Description: skill.Description,
+			Location:    skill.Path,
+		})
 	}
-	b.WriteString("</available_skills>")
-	return b.String()
+	prompt, err := skillsprompt.Render(data)
+	if err != nil {
+		// Embedded and parse-checked at init; execution cannot realistically fail.
+		return ""
+	}
+	return prompt
 }
 
 func shouldSkipDir(name string) bool {
