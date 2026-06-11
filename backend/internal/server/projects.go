@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/pathsafe"
@@ -37,20 +36,7 @@ func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	projects := make([]project, 0, len(paths))
-	for _, path := range paths {
-		p, err := projectFromPath(path)
-		if err == nil {
-			projects = append(projects, p)
-		}
-	}
-	sort.Slice(projects, func(i, j int) bool {
-		if projects[i].Name != projects[j].Name {
-			return projects[i].Name < projects[j].Name
-		}
-		return projects[i].Path < projects[j].Path
-	})
-	writeJSON(w, http.StatusOK, map[string]any{"projects": projects})
+	writeJSON(w, http.StatusOK, map[string]any{"projects": projectsFromPaths(paths)})
 }
 
 func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
@@ -88,6 +74,55 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, p)
+}
+
+func (s *Server) handleReorderProjects(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Paths []string `json:"paths"`
+	}
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+	}
+	paths, err := s.loadProjectPaths()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	saved := make(map[string]struct{}, len(paths))
+	for _, path := range paths {
+		saved[path] = struct{}{}
+	}
+	ordered := make([]string, 0, len(paths))
+	seen := make(map[string]struct{}, len(paths))
+	for _, raw := range req.Paths {
+		path, err := cleanExistingDir(raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		if _, ok := saved[path]; !ok {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("project is not saved: %s", path))
+			return
+		}
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		seen[path] = struct{}{}
+		ordered = append(ordered, path)
+	}
+	for _, path := range paths {
+		if _, ok := seen[path]; !ok {
+			ordered = append(ordered, path)
+		}
+	}
+	if err := s.saveProjectPaths(ordered); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"projects": projectsFromPaths(ordered)})
 }
 
 func (s *Server) handleListFilesystemDirs(w http.ResponseWriter, r *http.Request) {
@@ -175,6 +210,17 @@ func projectFromPath(path string) (project, error) {
 		return project{}, err
 	}
 	return project{Name: projectName(abs), Path: abs, Git: pathsafe.IsGitRepo(abs)}, nil
+}
+
+func projectsFromPaths(paths []string) []project {
+	projects := make([]project, 0, len(paths))
+	for _, path := range paths {
+		p, err := projectFromPath(path)
+		if err == nil {
+			projects = append(projects, p)
+		}
+	}
+	return projects
 }
 
 func projectPathForRequest(directory, cwd string) string {

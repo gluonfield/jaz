@@ -210,13 +210,20 @@ func TestProjectRoutesPersistServerDirectories(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	handler := (&Server{Store: store}).Handler()
-
-	rawDir, err := json.Marshal(dir)
-	if err != nil {
+	alpha := filepath.Join(t.TempDir(), "alpha")
+	if err := os.MkdirAll(alpha, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	body := `{"path":` + string(rawDir) + `}`
+	handler := (&Server{Store: store}).Handler()
+
+	projectBody := func(path string) string {
+		raw, err := json.Marshal(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return `{"path":` + string(raw) + `}`
+	}
+	body := projectBody(dir)
 	req := httptest.NewRequest(http.MethodPost, "/v1/projects", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
@@ -231,6 +238,14 @@ func TestProjectRoutesPersistServerDirectories(t *testing.T) {
 	handler.ServeHTTP(res, req)
 	if res.Code != http.StatusOK {
 		t.Fatalf("duplicate status = %d, body = %s", res.Code, res.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/projects", strings.NewReader(projectBody(alpha)))
+	req.Header.Set("Content-Type", "application/json")
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("second create status = %d, body = %s", res.Code, res.Body.String())
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/v1/projects", nil)
@@ -249,8 +264,48 @@ func TestProjectRoutesPersistServerDirectories(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Projects) != 1 || got.Projects[0].Name != "jaz" || got.Projects[0].Path != dir || !got.Projects[0].Git {
-		t.Fatalf("projects = %#v, want jaz %q git", got.Projects, dir)
+	if len(got.Projects) != 2 ||
+		got.Projects[0].Name != "jaz" ||
+		got.Projects[0].Path != dir ||
+		!got.Projects[0].Git ||
+		got.Projects[1].Name != "alpha" ||
+		got.Projects[1].Path != alpha {
+		t.Fatalf("projects = %#v, want creation order jaz then alpha", got.Projects)
+	}
+
+	rawAlpha, err := json.Marshal(alpha)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodPut, "/v1/projects/order", strings.NewReader(`{"paths":[`+string(rawAlpha)+`]}`))
+	req.Header.Set("Content-Type", "application/json")
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("reorder status = %d, body = %s", res.Code, res.Body.String())
+	}
+	got.Projects = nil
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Projects) != 2 || got.Projects[0].Path != alpha || got.Projects[1].Path != dir {
+		t.Fatalf("reordered projects = %#v, want alpha then jaz", got.Projects)
+	}
+
+	other := filepath.Join(t.TempDir(), "other")
+	if err := os.MkdirAll(other, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	rawOther, err := json.Marshal(other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodPut, "/v1/projects/order", strings.NewReader(`{"paths":[`+string(rawOther)+`]}`))
+	req.Header.Set("Content-Type", "application/json")
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("unknown reorder status = %d, body = %s", res.Code, res.Body.String())
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/v1/projects", strings.NewReader(`{`))
