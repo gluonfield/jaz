@@ -1,0 +1,88 @@
+import { CircleAlert, LoaderCircle } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
+import { useEffect, useState } from 'react'
+import { agentLabel } from '@/lib/agentLabel'
+import type { SessionEvent } from '@/lib/api/types'
+import {
+  deriveSessionRunSignal,
+  type RunSignal,
+} from '@/lib/sessionLiveness'
+
+function formatDuration(ms: number | undefined): string {
+  if (ms === undefined) return ''
+  const seconds = Math.max(1, Math.floor(ms / 1000))
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m`
+  return `${Math.floor(minutes / 60)}h`
+}
+
+function detailFor(signal: RunSignal, ageMs: number | undefined): string {
+  const age = formatDuration(ageMs)
+  if (signal === 'live') return age ? `live - ${age} ago` : 'live'
+  if (signal === 'quiet') return age ? `quiet for ${age}` : 'quiet'
+  if (signal === 'stale') return age ? `no updates for ${age}` : 'no recent updates'
+  return ''
+}
+
+export function SessionLivenessIndicator({
+  agent,
+  running,
+  updatedAt,
+  events,
+  lastEventAt,
+}: {
+  agent?: string
+  running: boolean
+  updatedAt: string
+  events: SessionEvent[]
+  lastEventAt?: string
+}) {
+  const [, setTick] = useState(0)
+  const { signal, ageMs } = deriveSessionRunSignal({
+    running,
+    updatedAt,
+    events,
+    lastEventAt,
+    now: Date.now(),
+  })
+
+  useEffect(() => {
+    if (signal === 'idle') return
+    const timer = window.setInterval(() => setTick((tick) => tick + 1), 1000)
+    return () => window.clearInterval(timer)
+  }, [signal])
+
+  const stale = signal === 'stale'
+  const detail = detailFor(signal, ageMs)
+  const label = stale
+    ? `${agentLabel(agent)} is still marked running`
+    : `${agentLabel(agent)} is working`
+
+  return (
+    <AnimatePresence initial={false}>
+      {signal !== 'idle' ? (
+        <motion.div
+          role="status"
+          initial={{ opacity: 0, y: 4, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 4, scale: 0.98 }}
+          transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
+          className={`flex min-h-8 w-fit max-w-full items-center gap-2 rounded-full px-3 py-1.5 text-[12px] shadow-sm ${
+            stale ? 'bg-danger-soft text-danger' : 'bg-surface text-ink-2'
+          }`}
+        >
+          {stale ? (
+            <CircleAlert className="size-3.5 shrink-0" aria-hidden />
+          ) : (
+            <LoaderCircle className="size-3.5 shrink-0 animate-spin text-running" aria-hidden />
+          )}
+          <span className="min-w-0 truncate">{label}</span>
+          {detail ? (
+            <span className="shrink-0 font-mono tabular-nums opacity-75">{detail}</span>
+          ) : null}
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
+  )
+}
