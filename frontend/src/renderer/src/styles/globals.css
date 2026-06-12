@@ -98,11 +98,13 @@
 
 /* Rendered markdown inside chat messages: compact, token-based typography. */
 .chat-prose {
-  max-width: 72ch;
+  min-width: 0;
+  max-width: 76ch;
   font-size: 0.875rem;
   line-height: 1.6;
   color: var(--color-ink);
   overflow-wrap: break-word;
+  word-break: normal;
   user-select: text;
 }
 .chat-prose > :first-child {

@@ -98,7 +98,7 @@ const Bubble = memo(function Bubble({ message }: { message: ChatMessage }) {
     case 'user':
       return (
         <div className="flex justify-end">
-          <div className="max-w-[80%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap select-text">
+          <div className="min-w-0 max-w-[84%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap [overflow-wrap:break-word] select-text">
             <MentionText text={messageText(message)} />
             <MessageAttachments message={message} />
           </div>
@@ -108,7 +108,7 @@ const Bubble = memo(function Bubble({ message }: { message: ChatMessage }) {
       const text = messageText(message)
       const reasoning = messageReasoning(message)
       return (
-        <div className="flex max-w-[72ch] flex-col gap-2">
+        <div className="flex min-w-0 max-w-[76ch] flex-col gap-2">
           <ThinkingBlock text={reasoning} />
           {text ? <MessageMarkdown text={text} /> : null}
           {message.blocks
@@ -440,7 +440,7 @@ const LiveEvent = memo(function LiveEvent({
     event.type === 'acp' && hasWorkingStatusSurface(event) && !eventPlan && !ownSession
   const parentChild = isParentChildACPEvent(event)
   return (
-    <div className="flex max-w-[72ch] flex-col gap-2">
+    <div className="flex min-w-0 max-w-[76ch] flex-col gap-2">
       {event.acp && showHeader ? (
         <p className="text-[12px] text-ink-3">
           <span className="font-mono">{event.acp.agent}</span>

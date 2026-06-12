@@ -26,7 +26,7 @@ export function SessionErrorNotice({
   }, [])
 
   return (
-    <div role="alert" className={`max-w-[72ch] rounded-card bg-surface px-3.5 py-3 ring-1 ring-danger/25 ${className}`}>
+    <div role="alert" className={`min-w-0 max-w-[76ch] rounded-card bg-surface px-3.5 py-3 ring-1 ring-danger/25 ${className}`}>
       <div className="flex items-center gap-3">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <span className="size-1.5 shrink-0 rounded-full bg-danger" aria-hidden />
@@ -43,7 +43,7 @@ export function SessionErrorNotice({
           {copied ? <Check size={14} /> : <Copy size={14} />}
         </button>
       </div>
-      <p className="mt-1.5 whitespace-pre-wrap break-words text-[13px] leading-[1.55] text-ink select-text">{message}</p>
+      <p className="mt-1.5 whitespace-pre-wrap [overflow-wrap:break-word] text-[13px] leading-[1.55] text-ink select-text">{message}</p>
     </div>
   )
 }
