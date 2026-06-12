@@ -6,6 +6,9 @@
 - Keep concrete implementations focused and interfaces small.
 - Put behavior in the layer that owns the concept. Shared transcript/message shapes belong in storage or a dedicated shared package, not copied through server, ACP, and UI paths.
 - Keep provider-facing data separate from display/transcript data. Do not mutate prompts and then repair snapshots by string matching; carry explicit typed boundaries instead.
+- Architect the native Jaz agent behind protocol-shaped interfaces, modeled after MCP-style request/response/event contracts. Typed content blocks, tool calls/results, permissions, streaming updates, and capabilities should cross explicit interfaces instead of direct server/provider coupling.
+- Keep native runtime behavior transport-neutral. Native, ACP, and future protocol adapters should share internal turn/session/tool contracts; protocol-specific code translates only at the boundary.
+- Preserve migration paths to ACP or MCP-style protocols when adding agent features. Prefer capabilities and feature detection over hardcoded runtime branches, and do not hide native-only semantics inside prompts.
 - Split files when a feature starts mixing transport, persistence, formatting, and UI concerns. Avoid pushing files toward 1k lines without a strong structural reason.
 - Frontend shared hooks and lib code must not import component-owned types. Put cross-layer contracts in `lib`.
 - Keep feature diffs scoped. Do not mix unrelated UI polish, settings work, dependency churn, or generated output into behavioral changes.
