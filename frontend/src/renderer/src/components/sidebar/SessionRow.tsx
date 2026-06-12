@@ -75,7 +75,7 @@ export function SessionRow({
         {sessionLabel(session)}
       </span>
       {shortcut ? (
-        <span className="flex min-w-11 shrink-0 justify-end">
+        <span className="flex min-w-8 shrink-0 justify-end">
           <KeyboardShortcut value={shortcut} />
         </span>
       ) : (
