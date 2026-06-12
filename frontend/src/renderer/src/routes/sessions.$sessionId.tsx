@@ -17,6 +17,7 @@ import { TokenStats } from '@/components/session/TokenStats'
 import { ToolCallCard } from '@/components/session/ToolCallCard'
 import { Transcript } from '@/components/session/Transcript'
 import { VoiceMode } from '@/components/session/VoiceMode'
+import { THREAD_COLUMN_CLASS } from '@/components/session/threadLayout'
 import { isHiddenToolName } from '@/components/session/toolVisibility'
 import { useThreadFind } from '@/components/session/useThreadFind'
 import { useThreadAutoScroll } from '@/components/session/useThreadAutoScroll'
@@ -735,7 +736,7 @@ function SessionPage() {
         >
           <div
             ref={threadFind.rootRef}
-            className="mx-auto max-w-[760px] px-10 pt-2"
+            className={`${THREAD_COLUMN_CLASS} pt-2`}
             style={{ paddingBottom: transcriptBottomPadding }}
           >
             {empty ? (
