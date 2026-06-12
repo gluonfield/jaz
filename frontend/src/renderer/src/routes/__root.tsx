@@ -11,6 +11,7 @@ import { SettingsOverlay } from '@/components/settings/SettingsOverlay'
 import { Sidebar } from '@/components/sidebar/Sidebar'
 import { ToastProvider } from '@/components/ui/toast'
 import { UpdatePanel } from '@/components/update/UpdatePanel'
+import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -93,21 +94,17 @@ function RootLayout() {
 
   // Cmd+S toggles the sidebar — unless something closer (the agent-file
   // editor's save keymap) already claimed the event. Cmd+N starts a thread.
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.defaultPrevented) return
-      if (!e.shiftKey && e.key.toLowerCase() === 's') {
-        e.preventDefault()
-        setSidebarOpen((open) => !open)
-      }
-      if (e.key === 'n') {
-        e.preventDefault()
-        navigate({ to: '/new' })
-      }
+  useWindowEvent('keydown', (e) => {
+    if (!(e.metaKey || e.ctrlKey) || e.defaultPrevented) return
+    if (!e.shiftKey && e.key.toLowerCase() === 's') {
+      e.preventDefault()
+      setSidebarOpen((open) => !open)
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [navigate])
+    if (e.key === 'n') {
+      e.preventDefault()
+      navigate({ to: '/new' })
+    }
+  })
 
   return (
     <ToastProvider>
@@ -119,6 +116,7 @@ function RootLayout() {
           transition={resizing ? { duration: 0 } : { type: 'spring', stiffness: 400, damping: 36 }}
         >
           <Sidebar
+            open={sidebarOpen}
             width={sidebarWidth}
             resizing={resizing}
             onResizeStart={startResize}
