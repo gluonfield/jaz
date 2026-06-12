@@ -68,8 +68,8 @@ export function SessionLivenessIndicator({
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 4, scale: 0.98 }}
           transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
-          className={`flex min-h-8 w-fit max-w-full items-center gap-2 rounded-full px-3 py-1.5 text-[12px] shadow-sm ${
-            stale ? 'bg-danger-soft text-danger' : 'bg-surface text-ink-2'
+          className={`flex w-fit max-w-full items-center gap-1.5 text-[12px] leading-5 ${
+            stale ? 'text-danger' : 'text-ink-3'
           }`}
         >
           {stale ? (
@@ -79,7 +79,7 @@ export function SessionLivenessIndicator({
           )}
           <span className="min-w-0 truncate">{label}</span>
           {detail ? (
-            <span className="shrink-0 font-mono tabular-nums opacity-75">{detail}</span>
+            <span className="shrink-0 tabular-nums opacity-80">{detail}</span>
           ) : null}
         </motion.div>
       ) : null}
