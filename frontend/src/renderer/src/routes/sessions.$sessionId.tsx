@@ -722,7 +722,7 @@ function SessionPage() {
         >
           <div
             ref={threadFind.rootRef}
-            className="mx-auto max-w-[720px] px-10 pt-2"
+            className="mx-auto max-w-[760px] px-10 pt-2"
             style={{ paddingBottom: transcriptBottomPadding }}
           >
             {empty ? (
@@ -747,7 +747,7 @@ function SessionPage() {
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ type: 'spring', stiffness: 380, damping: 30 }}
                         >
-                          <div className="max-w-[80%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap select-text">
+                          <div className="min-w-0 max-w-[84%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap [overflow-wrap:break-word] select-text">
                             {live.user}
                             <LiveAttachmentList attachments={live.attachments} />
                           </div>
