@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { Archive, CornerDownRight, Pin } from 'lucide-react'
+import { KeyboardShortcut } from '@/components/ui/KeyboardShortcut'
 import { setSessionArchived, setSessionPinned } from '@/lib/api/sessions'
 import type { Session } from '@/lib/api/types'
 import { relativeTime } from '@/lib/format/time'
@@ -52,7 +53,7 @@ export function SessionRow({
   shortcutIndex?: number
   shortcutMode?: boolean
 }) {
-  const showShortcut = shortcutMode && Boolean(shortcutIndex)
+  const shortcut = shortcutMode && shortcutIndex ? shortcutIndex : undefined
 
   return (
     <Link
@@ -73,17 +74,19 @@ export function SessionRow({
       <span className="min-w-0 flex-1 truncate" title={sessionLabel(session)}>
         {sessionLabel(session)}
       </span>
-      <span
-        className={`min-w-8 shrink-0 text-right text-[11px] tabular-nums ${
-          showShortcut
-            ? 'font-medium text-primary'
-            : shortcutMode
-              ? 'text-ink-3'
-              : 'text-ink-3 group-hover:hidden'
-        }`}
-      >
-        {showShortcut ? shortcutIndex : relativeTime(session.last_attention_at || session.updated_at)}
-      </span>
+      {shortcut ? (
+        <span className="flex min-w-11 shrink-0 justify-end">
+          <KeyboardShortcut value={shortcut} />
+        </span>
+      ) : (
+        <span
+          className={`min-w-8 shrink-0 text-right text-[11px] tabular-nums ${
+            shortcutMode ? 'text-ink-3' : 'text-ink-3 group-hover:hidden'
+          }`}
+        >
+          {relativeTime(session.last_attention_at || session.updated_at)}
+        </span>
+      )}
       {shortcutMode ? null : (
         <>
           <PinButton session={session} />
