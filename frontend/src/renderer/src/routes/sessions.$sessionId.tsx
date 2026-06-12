@@ -8,6 +8,7 @@ import { BottomDock } from '@/components/session/BottomDock'
 import { Composer, PlanDecisionCard } from '@/components/session/Composer'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
 import { SessionErrorNotice } from '@/components/session/SessionErrorNotice'
+import { SessionLivenessIndicator } from '@/components/session/SessionLivenessIndicator'
 import { SESSION_PANEL_WIDTH, SessionPanel } from '@/components/session/SessionPanel'
 import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
 import { ThinkingBlock } from '@/components/session/ThinkingBlock'
@@ -37,6 +38,7 @@ import { keys } from '@/lib/query/keys'
 import { planSurfaceBelongsToSession, planSurfaceFromEvent } from '@/lib/planSurface'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { coalesceSessionEvents } from '@/lib/sessionEvents'
+import { latestEventTimeISO } from '@/lib/sessionLiveness'
 
 export const Route = createFileRoute('/sessions/$sessionId')({
   component: SessionPage,
@@ -371,6 +373,7 @@ function SessionPage() {
   })
   const streamingRef = useRef(false)
   const shownCriticalErrors = useRef(new Set<string>())
+  const [lastSessionEventAt, setLastSessionEventAt] = useState<string>()
   const notifyCriticalError = useCallback((message: string) => {
     const text = message.trim()
     if (!text) return
@@ -382,7 +385,13 @@ function SessionPage() {
   const notifySessionEventError = useCallback((event: SessionEvent) => {
     notifyCriticalError(sessionEventErrorMessage(event))
   }, [notifyCriticalError])
-  useSessionEvents(sessionId, streamingRef, notifySessionEventError)
+  const handleSessionEvent = useCallback((event: SessionEvent) => {
+    const at = event.at || new Date().toISOString()
+    setLastSessionEventAt((current) => latestEventTimeISO(current, at))
+    notifySessionEventError(event)
+  }, [notifySessionEventError])
+  useEffect(() => setLastSessionEventAt(undefined), [sessionId])
+  useSessionEvents(sessionId, streamingRef, handleSessionEvent)
 
   const [live, setLive] = useState<LiveExchange | null>(null)
   const [streaming, setStreaming] = useState(false)
@@ -587,6 +596,10 @@ function SessionPage() {
     () => (data ? deriveSessionView(data, events.data) : undefined),
     [data, events.data],
   )
+  const livenessEvents = useMemo(
+    () => [...(data?.events ?? []), ...events.data],
+    [data?.events, events.data],
+  )
 
   const panelOpen = panelPref === 'auto' ? hasPanelSpace : panelPref === 'open'
   const togglePanel = useCallback(() => {
@@ -644,10 +657,10 @@ function SessionPage() {
   )
   const sessionError = session.status === 'error' ? session.error?.trim() || 'Unknown error.' : ''
   const sessionErrorContext = [session.model_provider, session.model].filter(Boolean).join(' · ')
-  const empty = messages.length === 0 && transcriptEvents.length === 0 && !live && !sessionError
   const isACP = session.runtime === 'acp'
   // Covers turns started elsewhere (parent-triggered, or refresh mid-turn).
   const sessionRunning = queue.sessionRunning
+  const empty = messages.length === 0 && transcriptEvents.length === 0 && !live && !sessionError && !sessionRunning
   // ACP turns stream through events; the live exchange only contributes the
   // not-yet-refetched user bubble, injected so mid-turn events sort after it.
   const lastUserMessage = messages.findLast((message) => message.role === 'user')
@@ -739,7 +752,15 @@ function SessionPage() {
                   working={sessionRunning}
                   findActive={threadFind.open && Boolean(threadFind.query.trim())}
                   tail={
-                    live && !isACP ? (
+                    isACP ? (
+                      <SessionLivenessIndicator
+                        agent={session.runtime_ref?.agent}
+                        running={sessionRunning}
+                        updatedAt={session.updated_at}
+                        events={livenessEvents}
+                        lastEventAt={latestEventTimeISO(lastSessionEventAt, live?.at)}
+                      />
+                    ) : live ? (
                       <div className="flex flex-col gap-5">
                         <motion.div
                           className="flex justify-end"
