@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { FileText } from 'lucide-react'
+import { FileText, Globe } from 'lucide-react'
 import { memo, useMemo } from 'react'
 import Markdown from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
@@ -41,6 +41,10 @@ function isLocalPathLink(href: unknown, children: unknown): boolean {
     (typeof href === 'string' && isAbsoluteLocalPath(href)) ||
     isAbsoluteLocalPath(textFromChildren(children).trim())
   )
+}
+
+function isUrlLink(href: unknown): boolean {
+  return typeof href === 'string' && /^https?:\/\//i.test(href)
 }
 
 function escapeRegExp(value: string): string {
@@ -103,10 +107,11 @@ export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: s
               )
             }
             const localPath = isLocalPathLink(href, children)
+            const Icon = localPath ? FileText : isUrlLink(href) ? Globe : null
             return (
               <a {...props} href={href} target="_blank" rel="noreferrer">
-                {localPath ? (
-                  <FileText
+                {Icon ? (
+                  <Icon
                     aria-hidden="true"
                     className="chat-prose-link-icon"
                     size={13}

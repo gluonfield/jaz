@@ -167,8 +167,8 @@
 }
 .chat-prose a {
   color: var(--color-primary);
-  text-decoration-line: none;
-  text-decoration-style: dashed;
+  text-decoration-line: underline;
+  text-decoration-style: solid;
   text-decoration-thickness: 1px;
   text-decoration-color: color-mix(in oklab, currentColor 65%, transparent);
   text-underline-offset: 0.18em;
@@ -179,7 +179,7 @@
 .chat-prose a:hover,
 .chat-prose a:focus-visible {
   color: var(--color-primary-strong);
-  text-decoration-line: underline;
+  text-decoration-color: currentColor;
 }
 .chat-prose-link-icon {
   display: inline-block;
