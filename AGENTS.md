@@ -18,3 +18,14 @@
 - Target deployments run the Jaz server on a VM and clients on user computers; never assume client-local file paths are visible to the server or agents.
 - Every test you add must be useful: it must protect real behavior or clarify a tricky contract, never exist only to raise coverage.
 - Reference repos (`openclaw`, `hermes`) are learning material, not authority.
+
+## Integrations Goal
+
+- Build Jaz integrations around `Observe + Act + Materialize`: providers observe external changes into typed records, expose actions for agents, and optionally materialize records into logical artifacts.
+- Keep connector packages reusable and provider-focused. Connectors must not know `~/.jaz`, jazmem paths, source-page layout, scheduler internals, dedupe, retries, notifications, or exact filesystem destinations.
+- Jaz runtime owns connection lookup, OAuth client construction, scheduling, cursors, dedupe, retries, notifications, raw JSONL writing, artifact writing, and jazmem-compatible source-page writing.
+- Store observed provider data as append-only raw JSONL first, then materialize into source pages or artifacts. Do not write directly into curated jazmem lanes like `people/` or `projects/`; dream/promotion owns curated memory.
+- Prefer source materialization by domain lane, for example `sources/email` and `sources/chat`. For chat/social data, batch by conversation/day or importance instead of creating one markdown page per event.
+- Use generic OAuth connection storage and refresh for both first-party integrations such as Gmail/Calendar and user-added OAuth MCP servers such as Linear or n8n.
+- Expose connected accounts to agents through a Jaz-managed MCP surface with stable, readable tool names. Support multiple accounts per provider through connection aliases such as `personal` or `work`.
+- Treat Matrix as the first chat/social connector model: observe Matrix sync events into chat records, expose conversation/message actions, and materialize chat artifacts through the Jaz runtime rather than from the connector.
