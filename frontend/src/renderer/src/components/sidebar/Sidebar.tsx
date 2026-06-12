@@ -6,6 +6,7 @@ import { type PointerEvent as ReactPointerEvent, useEffect, useMemo, useState } 
 import { BoardModal } from '@/components/boards/BoardModal'
 import { LoopModal } from '@/components/loops/LoopModal'
 import { IconButton } from '@/components/ui/IconButton'
+import { KeyboardShortcut } from '@/components/ui/KeyboardShortcut'
 import { boardsQuery, deleteBoard } from '@/lib/api/boards'
 import { loopsQuery } from '@/lib/api/loops'
 import { projectsQuery, reorderProjects, sidebarSessionsQuery, type Project, type SessionListItem } from '@/lib/api/sessions'
@@ -561,10 +562,7 @@ export function Sidebar({
         >
           <SquarePen size={15} className="text-ink-2" />
           <span className="flex-1">New Thread</span>
-          <span className="flex items-center gap-0.5 text-[10px] text-ink-3">
-            <kbd className="rounded border border-border bg-bg px-1 font-sans">⌘</kbd>
-            <kbd className="rounded border border-border bg-bg px-1 font-sans">N</kbd>
-          </span>
+          <KeyboardShortcut value="N" />
         </Link>
 
         <SessionsSection open={open} />
