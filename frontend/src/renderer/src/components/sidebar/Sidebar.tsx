@@ -1,14 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { GripVertical, Plus, Settings, SquarePen, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion, Reorder, type Transition, useDragControls } from 'motion/react'
-import { type PointerEvent as ReactPointerEvent, useState } from 'react'
+import { type PointerEvent as ReactPointerEvent, useEffect, useMemo, useState } from 'react'
 import { BoardModal } from '@/components/boards/BoardModal'
 import { LoopModal } from '@/components/loops/LoopModal'
 import { IconButton } from '@/components/ui/IconButton'
 import { boardsQuery, deleteBoard } from '@/lib/api/boards'
 import { loopsQuery } from '@/lib/api/loops'
 import { projectsQuery, reorderProjects, sidebarSessionsQuery, type Project, type SessionListItem } from '@/lib/api/sessions'
+import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import type { Board } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 import { SkeletonRows } from '../ui/Skeleton'
@@ -31,6 +32,11 @@ type SessionSections = {
   groups: SessionProjectGroup[]
   ungrouped: SessionListItem[]
 }
+
+type SessionDisplayBlock =
+  | { kind: 'pinned'; key: 'pinned'; label: 'Pinned'; items: SessionListItem[] }
+  | { kind: 'project'; key: string; group: SessionProjectGroup; items: SessionListItem[] }
+  | { kind: 'ungrouped'; key: 'ungrouped'; items: SessionListItem[]; total: number }
 
 function sessionProjectPath(item: SessionListItem): string {
   return (
@@ -86,7 +92,84 @@ function applyDragOrder(groups: SessionProjectGroup[], order: string[] | null): 
   return [...groups].sort((a, b) => (rank.get(a.key) ?? order.length) - (rank.get(b.key) ?? order.length))
 }
 
-function SessionRows({ items }: { items: SessionListItem[] }) {
+function visibleProjectItems(group: SessionProjectGroup, expanded: boolean): SessionListItem[] {
+  return expanded ? group.items : group.items.slice(0, PROJECT_SESSION_LIMIT)
+}
+
+function sessionDisplayBlocks(
+  pinnedItems: SessionListItem[],
+  groups: SessionProjectGroup[],
+  ungrouped: SessionListItem[],
+  expandedProjects: Set<string>,
+): SessionDisplayBlock[] {
+  const blocks: SessionDisplayBlock[] = []
+  if (pinnedItems.length) blocks.push({ kind: 'pinned', key: 'pinned', label: 'Pinned', items: pinnedItems })
+  for (const group of groups) {
+    blocks.push({
+      kind: 'project',
+      key: group.key,
+      group,
+      items: visibleProjectItems(group, expandedProjects.has(group.key)),
+    })
+  }
+  if (ungrouped.length) {
+    blocks.push({
+      kind: 'ungrouped',
+      key: 'ungrouped',
+      items: ungrouped.slice(0, DEFAULT_SESSION_LIMIT),
+      total: ungrouped.length,
+    })
+  }
+  return blocks
+}
+
+function modalOpen(): boolean {
+  return Boolean(document.querySelector('[role="dialog"][aria-modal="true"]'))
+}
+
+function useThreadShortcuts(items: SessionListItem[], enabled: boolean): boolean {
+  const navigate = useNavigate()
+  const [shortcutMode, setShortcutMode] = useState(false)
+
+  useEffect(() => {
+    if (!enabled) setShortcutMode(false)
+  }, [enabled])
+
+  useWindowEvent(
+    'keydown',
+    (event) => {
+      if (modalOpen()) {
+        setShortcutMode(false)
+        return
+      }
+      if (event.key === 'Meta' || event.metaKey) setShortcutMode(true)
+      if (!event.metaKey || event.defaultPrevented || event.altKey || event.ctrlKey) return
+      if (!/^[1-9]$/.test(event.key)) return
+      const item = items[Number(event.key) - 1]
+      if (!item) return
+      event.preventDefault()
+      navigate({ to: '/sessions/$sessionId', params: { sessionId: item.session.id } })
+    },
+    enabled,
+  )
+
+  useWindowEvent('keyup', (event) => {
+    if (event.key === 'Meta') setShortcutMode(false)
+  }, enabled)
+  useWindowEvent('blur', () => setShortcutMode(false), enabled)
+
+  return enabled && shortcutMode
+}
+
+function SessionRows({
+  items,
+  shortcutByID,
+  shortcutMode,
+}: {
+  items: SessionListItem[]
+  shortcutByID?: Map<string, number>
+  shortcutMode?: boolean
+}) {
   return (
     <div className="flex flex-col gap-px">
       <AnimatePresence initial={false} mode="popLayout">
@@ -98,7 +181,12 @@ function SessionRows({ items }: { items: SessionListItem[] }) {
             exit={{ x: -8 }}
             transition={ROW_SPRING}
           >
-            <SessionRow session={item.session} child={item.child} />
+            <SessionRow
+              session={item.session}
+              child={item.child}
+              shortcutIndex={shortcutByID?.get(item.session.id)}
+              shortcutMode={shortcutMode}
+            />
           </motion.div>
         ))}
       </AnimatePresence>
@@ -108,17 +196,20 @@ function SessionRows({ items }: { items: SessionListItem[] }) {
 
 function ProjectGroup({
   group,
-  expanded,
+  items,
   onExpand,
   onReorderEnd,
+  shortcutByID,
+  shortcutMode,
 }: {
   group: SessionProjectGroup
-  expanded: boolean
+  items: SessionListItem[]
   onExpand: () => void
   onReorderEnd: () => void
+  shortcutByID: Map<string, number>
+  shortcutMode: boolean
 }) {
   const dragControls = useDragControls()
-  const visibleItems = expanded ? group.items : group.items.slice(0, PROJECT_SESSION_LIMIT)
   return (
     <Reorder.Item
       as="div"
@@ -156,8 +247,8 @@ function ProjectGroup({
           <SquarePen size={13} />
         </Link>
       </div>
-      <SessionRows items={visibleItems} />
-      {!expanded && group.items.length > PROJECT_SESSION_LIMIT ? (
+      <SessionRows items={items} shortcutByID={shortcutByID} shortcutMode={shortcutMode} />
+      {items.length < group.items.length ? (
         <button
           type="button"
           onClick={onExpand}
@@ -170,7 +261,7 @@ function ProjectGroup({
   )
 }
 
-function SessionsSection() {
+function SessionsSection({ open }: { open: boolean }) {
   const queryClient = useQueryClient()
   const sessions = useQuery(sidebarSessionsQuery)
   const projects = useQuery(projectsQuery)
@@ -188,8 +279,29 @@ function SessionsSection() {
     onSettled: () => queryClient.invalidateQueries({ queryKey: keys.projects }),
   })
   const groups = applyDragOrder(sections.groups, dragOrder)
-  const visibleUngrouped = sections.ungrouped.slice(0, DEFAULT_SESSION_LIMIT)
-  const hasSessions = pinnedItems.length > 0 || groups.length > 0 || sections.ungrouped.length > 0
+  const blocks = useMemo(
+    () => sessionDisplayBlocks(pinnedItems, groups, sections.ungrouped, expandedProjects),
+    [expandedProjects, groups, pinnedItems, sections.ungrouped],
+  )
+  const hasSessions = blocks.length > 0
+  const shortcutItems = useMemo(
+    () => blocks.flatMap((block) => block.items).slice(0, 9),
+    [blocks],
+  )
+  const shortcutByID = useMemo(
+    () => new Map(shortcutItems.map((item, index) => [item.session.id, index + 1])),
+    [shortcutItems],
+  )
+  const shortcutMode = useThreadShortcuts(shortcutItems, open && hasSessions)
+  const pinnedBlock = blocks.find((block): block is Extract<SessionDisplayBlock, { kind: 'pinned' }> =>
+    block.kind === 'pinned',
+  )
+  const projectBlocks = blocks.filter((block): block is Extract<SessionDisplayBlock, { kind: 'project' }> =>
+    block.kind === 'project',
+  )
+  const ungroupedBlock = blocks.find((block): block is Extract<SessionDisplayBlock, { kind: 'ungrouped' }> =>
+    block.kind === 'ungrouped',
+  )
 
   const expandProject = (key: string) =>
     setExpandedProjects((current) => {
@@ -224,30 +336,39 @@ function SessionsSection() {
         <p className="px-2.5 py-1 text-[13px] text-ink-3">No sessions yet</p>
       ) : (
         <div className="flex flex-col gap-3">
-          {pinnedItems.length > 0 ? <SessionRows items={pinnedItems} /> : null}
-          {groups.length > 0 ? (
+          {pinnedBlock ? (
+            <div>
+              <p className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3">
+                {pinnedBlock.label}
+              </p>
+              <SessionRows items={pinnedBlock.items} shortcutByID={shortcutByID} shortcutMode={shortcutMode} />
+            </div>
+          ) : null}
+          {projectBlocks.length > 0 ? (
             <Reorder.Group
               as="div"
               axis="y"
-              values={groups.map((group) => group.key)}
+              values={projectBlocks.map((block) => block.key)}
               onReorder={setDragOrder}
               className="flex flex-col gap-3"
             >
-              {groups.map((group) => (
+              {projectBlocks.map((block) => (
                 <ProjectGroup
-                  key={group.key}
-                  group={group}
-                  expanded={expandedProjects.has(group.key)}
-                  onExpand={() => expandProject(group.key)}
+                  key={block.key}
+                  group={block.group}
+                  items={block.items}
+                  onExpand={() => expandProject(block.key)}
                   onReorderEnd={commitReorder}
+                  shortcutByID={shortcutByID}
+                  shortcutMode={shortcutMode}
                 />
               ))}
             </Reorder.Group>
           ) : null}
-          {sections.ungrouped.length > 0 ? (
+          {ungroupedBlock ? (
             <div>
-              <SessionRows items={visibleUngrouped} />
-              {sections.ungrouped.length > DEFAULT_SESSION_LIMIT ? (
+              <SessionRows items={ungroupedBlock.items} shortcutByID={shortcutByID} shortcutMode={shortcutMode} />
+              {ungroupedBlock.total > DEFAULT_SESSION_LIMIT ? (
                 <Link
                   to="/sessions"
                   className="mt-1 block rounded-full px-2.5 py-1 text-[13px] text-primary transition-colors duration-150 hover:bg-surface-2"
@@ -410,12 +531,14 @@ function BoardsSection() {
 }
 
 export function Sidebar({
+  open,
   width,
   resizing,
   onResizeStart,
   onResizeReset,
   onOpenSettings,
 }: {
+  open: boolean
   width: number
   resizing?: boolean
   onResizeStart: (e: ReactPointerEvent) => void
@@ -444,7 +567,7 @@ export function Sidebar({
           </span>
         </Link>
 
-        <SessionsSection />
+        <SessionsSection open={open} />
 
         <LoopsSection />
 
