@@ -235,7 +235,7 @@ func TestNativeLoopRunCreatesFreshThreadWithMetadata(t *testing.T) {
 	if !strings.Contains(content, "Previous run: id="+first.ID) || !strings.Contains(content, "thread_id="+firstSession.ID) {
 		t.Fatalf("second run prompt missing previous run metadata:\n%s", content)
 	}
-	if !strings.Contains(content, "Memory file: "+loop.MemoryPath) || !strings.Contains(content, "read the memory file if it exists") {
+	if !strings.Contains(content, "Memory file: "+loop.MemoryPath) || !strings.Contains(content, "create or update the memory file") {
 		t.Fatalf("second run prompt missing memory instructions:\n%s", content)
 	}
 	if strings.Contains(content, "old transcript text") {
