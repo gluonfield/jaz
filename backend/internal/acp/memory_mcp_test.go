@@ -1,6 +1,7 @@
 package acp
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -16,7 +17,7 @@ func TestMCPServersForAgentUsesConfiguredStore(t *testing.T) {
 		Enabled:   true,
 	}}}}}
 	capable := json.RawMessage(`{"agentCapabilities":{"mcpCapabilities":{"http":true}}}`)
-	servers := m.mcpServersForAgent(capable)
+	servers := m.mcpServersForAgent(context.Background(), capable)
 	if len(servers) != 1 {
 		t.Fatalf("expected configured jazmem entry, got %v", servers)
 	}
@@ -33,7 +34,7 @@ func TestMCPServersForAgentUsesConfiguredStore(t *testing.T) {
 	}
 
 	incapable := json.RawMessage(`{"agentCapabilities":{}}`)
-	if servers := m.mcpServersForAgent(incapable); len(servers) != 0 {
+	if servers := m.mcpServersForAgent(context.Background(), incapable); len(servers) != 0 {
 		t.Fatalf("non-http-capable agent must get nothing, got %v", servers)
 	}
 }

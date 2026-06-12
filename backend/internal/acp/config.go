@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
 
 const (
@@ -64,6 +65,7 @@ type Config struct {
 	Env          map[string]string
 	SystemPrompt SystemPromptSource
 	MCPStore     mcpconfig.ServerReader
+	MCPTokens    integrationoauth.Store
 }
 
 type AgentConfig struct {
