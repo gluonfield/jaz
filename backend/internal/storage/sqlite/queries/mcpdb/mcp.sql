@@ -78,26 +78,6 @@ SET
   updated_at_ms = sqlc.arg(updated_at_ms)
 WHERE id = sqlc.arg(id);
 
--- name: GetMCPOAuthToken :one
-SELECT token_json
-FROM mcp_oauth_tokens
-WHERE server_id = sqlc.arg(server_id)
-LIMIT 1;
-
--- name: UpsertMCPOAuthToken :exec
-INSERT INTO mcp_oauth_tokens (
-  server_id,
-  token_json,
-  updated_at_ms
-) VALUES (
-  sqlc.arg(server_id),
-  sqlc.arg(token_json),
-  sqlc.arg(updated_at_ms)
-)
-ON CONFLICT(server_id) DO UPDATE SET
-  token_json = excluded.token_json,
-  updated_at_ms = excluded.updated_at_ms;
-
 -- name: DeleteMCPOAuthToken :exec
 DELETE FROM mcp_oauth_tokens
 WHERE server_id = sqlc.arg(server_id);

@@ -20,6 +20,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/oauthex"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 	"golang.org/x/oauth2"
 )
 
@@ -35,7 +36,7 @@ var errNeedsAuthorization = errors.New("authorization required")
 type oauthHandler struct {
 	serverID   string
 	serverURL  string
-	store      mcpconfig.OAuthTokenStore
+	store      integrationoauth.Store
 	httpClient *http.Client
 	log        *log.Logger
 
@@ -52,7 +53,7 @@ type oauthHandler struct {
 // and returns the authorization code and state once the redirect arrives.
 type codeFetcher func(ctx context.Context, authURL string) (code, state string, err error)
 
-func newOAuthHandler(server mcpconfig.Server, store mcpconfig.OAuthTokenStore, httpClient *http.Client, logger *log.Logger) *oauthHandler {
+func newOAuthHandler(server mcpconfig.Server, store integrationoauth.Store, httpClient *http.Client, logger *log.Logger) *oauthHandler {
 	return &oauthHandler{
 		serverID:   server.ID,
 		serverURL:  server.URL,
@@ -68,16 +69,17 @@ func (h *oauthHandler) TokenSource(ctx context.Context) (oauth2.TokenSource, err
 	if h.src != nil {
 		return h.src, nil
 	}
-	tok, ok, err := h.store.LoadMCPOAuthToken(h.serverID)
+	src, err := (integrationoauth.Refresher{
+		Store:      h.store,
+		HTTPClient: h.httpClient,
+	}).TokenSource(ctx, mcpconfig.OAuthConnectionID(h.serverID))
+	if errors.Is(err, integrationoauth.ErrTokenNotFound) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
-	if !ok {
-		return nil, nil
-	}
-	cfg := configFromStored(tok)
-	base := cfg.TokenSource(h.clientContext(), oauth2Token(tok))
-	h.src = &persistingTokenSource{base: base, handler: h, stored: tok, last: tok.AccessToken}
+	h.src = src
 	return h.src, nil
 }
 
@@ -96,7 +98,7 @@ func (h *oauthHandler) Authorize(ctx context.Context, req *http.Request, resp *h
 	if err != nil {
 		return err
 	}
-	if err := h.store.SaveMCPOAuthToken(h.serverID, tok); err != nil {
+	if err := h.store.SaveToken(ctx, mcpconfig.OAuthConnectionID(h.serverID), tok); err != nil {
 		return fmt.Errorf("persist token: %w", err)
 	}
 	h.mu.Lock()
@@ -113,16 +115,12 @@ func (h *oauthHandler) needsAuthorization() bool {
 	return h.authRequested
 }
 
-func (h *oauthHandler) clientContext() context.Context {
-	return context.WithValue(context.Background(), oauth2.HTTPClient, h.httpClient)
-}
-
 // runAuthorization performs the OAuth 2.0 authorization-code flow with PKCE and
 // dynamic client registration, following the MCP authorization spec. The logic
 // mirrors the go-sdk's AuthorizationCodeHandler but captures the resolved client
 // and endpoints so the token can be refreshed across restarts.
-func (h *oauthHandler) runAuthorization(ctx context.Context, resp *http.Response) (mcpconfig.OAuthToken, error) {
-	var zero mcpconfig.OAuthToken
+func (h *oauthHandler) runAuthorization(ctx context.Context, resp *http.Response) (integrationoauth.Token, error) {
+	var zero integrationoauth.Token
 	challenges, err := oauthex.ParseWWWAuthenticate(resp.Header[http.CanonicalHeaderKey("WWW-Authenticate")])
 	if err != nil {
 		return zero, fmt.Errorf("parse WWW-Authenticate: %w", err)
@@ -208,7 +206,7 @@ func (h *oauthHandler) runAuthorization(ctx context.Context, resp *http.Response
 		return zero, fmt.Errorf("token exchange: %w", err)
 	}
 
-	return mcpconfig.OAuthToken{
+	return integrationoauth.Token{
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
 		TokenType:    token.TokenType,
@@ -292,60 +290,6 @@ func scopesFromChallenges(cs []oauthex.Challenge) []string {
 		}
 	}
 	return nil
-}
-
-// persistingTokenSource saves the token back to the store whenever the underlying
-// source mints a new access token (e.g. after a refresh).
-type persistingTokenSource struct {
-	base    oauth2.TokenSource
-	handler *oauthHandler
-	stored  mcpconfig.OAuthToken
-	last    string
-}
-
-func (p *persistingTokenSource) Token() (*oauth2.Token, error) {
-	tok, err := p.base.Token()
-	if err != nil {
-		return nil, err
-	}
-	if tok != nil && tok.AccessToken != p.last {
-		p.last = tok.AccessToken
-		updated := p.stored
-		updated.AccessToken = tok.AccessToken
-		updated.TokenType = tok.TokenType
-		updated.Expiry = tok.Expiry
-		if tok.RefreshToken != "" {
-			updated.RefreshToken = tok.RefreshToken
-		}
-		p.stored = updated
-		if err := p.handler.store.SaveMCPOAuthToken(p.handler.serverID, updated); err != nil && p.handler.log != nil {
-			p.handler.log.Warn("persist refreshed mcp token failed", "server", p.handler.serverID, "error", err)
-		}
-	}
-	return tok, nil
-}
-
-func configFromStored(tok mcpconfig.OAuthToken) *oauth2.Config {
-	return &oauth2.Config{
-		ClientID:     tok.ClientID,
-		ClientSecret: tok.ClientSecret,
-		Endpoint: oauth2.Endpoint{
-			AuthURL:   tok.AuthURL,
-			TokenURL:  tok.TokenURL,
-			AuthStyle: oauth2.AuthStyle(tok.AuthStyle),
-		},
-		RedirectURL: tok.RedirectURL,
-		Scopes:      tok.Scopes,
-	}
-}
-
-func oauth2Token(tok mcpconfig.OAuthToken) *oauth2.Token {
-	return &oauth2.Token{
-		AccessToken:  tok.AccessToken,
-		TokenType:    tok.TokenType,
-		RefreshToken: tok.RefreshToken,
-		Expiry:       tok.Expiry,
-	}
 }
 
 func randomState() (string, error) {
