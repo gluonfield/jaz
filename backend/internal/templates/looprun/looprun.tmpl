@@ -13,7 +13,12 @@ Run context:
 Rules:
 - Do not assume access to prior run transcripts unless you explicitly inspect their thread IDs through available tools; prior transcripts are not injected automatically.
 {{- if .MemoryPath }}
-- At the start of the run, read the memory file if it exists.
+{{- if .MemoryExists }}
+- Read the memory file before starting the task.
+{{- else }}
+- The memory file does not exist yet (this is a fresh start) — do not try to read it.
+{{- end }}
+- This loop's files live in the memory file's directory. Sibling directories under the automations root belong to other loops — never read, copy, or take conventions from them.
 - Before finishing, create parent directories as needed and create or update the memory file with concise Markdown containing only durable context useful for future runs.
 - Do not store secrets, credentials, or full transcripts in the memory file.
 - If filesystem or sandbox permissions prevent reading or writing the memory file, continue the run and report the memory update failure.
