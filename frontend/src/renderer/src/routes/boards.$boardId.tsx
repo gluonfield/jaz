@@ -39,6 +39,8 @@ function BoardPage() {
   // board stays put and scrolls the fresh tile into view once it appears.
   const [modal, setModal] = useState<'add' | 'new-loop' | null>(null)
   const pendingLoopId = useRef<string | null>(null)
+  // null = displaying; a string = the draft name being edited inline.
+  const [draftName, setDraftName] = useState<string | null>(null)
 
   // Consume ?add=1 once: open the picker and strip the param so a reload
   // doesn't reopen it.
@@ -97,6 +99,19 @@ function BoardPage() {
     onSettled: () => queryClient.invalidateQueries({ queryKey: keys.boardDetail(boardId) }),
   })
 
+  const renameMutation = useMutation({
+    mutationFn: (name: string) => patchBoard(boardId, { name }),
+    onMutate: async (name) => {
+      await queryClient.cancelQueries({ queryKey: keys.boardDetail(boardId) })
+      queryClient.setQueryData<BoardDetail>(keys.boardDetail(boardId), (prev) =>
+        prev ? { ...prev, board: { ...prev.board, name } } : prev,
+      )
+    },
+    // keys.boards is a prefix of boardDetail, so this refreshes the sidebar
+    // list and this page in one invalidation.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: keys.boards }),
+  })
+
   if (detail.isPending) {
     return (
       <div className="mx-auto max-w-5xl p-6">
@@ -109,6 +124,14 @@ function BoardPage() {
   }
 
   const { board, items } = detail.data
+  // Single commit path: Enter blurs the input, blur commits. Escape unmounts
+  // the input without blurring, so a cancel never saves.
+  const commitRename = () => {
+    if (draftName === null) return
+    const name = draftName.trim()
+    setDraftName(null)
+    if (name && name !== board.name) renameMutation.mutate(name)
+  }
   const scale = board.font_scale > 0 ? board.font_scale : 1
   // Steps apply to the cache immediately; the PATCH is debounced so rapid
   // clicks settle on one absolute value instead of racing over HTTP.
@@ -142,9 +165,32 @@ function BoardPage() {
         }`}
       >
         {isBoardWindow ? null : (
-          <div className="min-w-0">
-            <h1 className="truncate text-lg font-semibold text-ink">{board.name}</h1>
-          </div>
+          <h1 className="min-w-0 flex-1 text-lg font-semibold text-ink">
+            {draftName === null ? (
+              <button
+                type="button"
+                title="Rename board"
+                onClick={() => setDraftName(board.name)}
+                className="-mx-1.5 block max-w-full cursor-text truncate rounded-md px-1.5 text-left transition-colors duration-150 hover:bg-surface-2"
+              >
+                {board.name}
+              </button>
+            ) : (
+              <input
+                autoFocus
+                value={draftName}
+                aria-label="Board name"
+                onFocus={(e) => e.currentTarget.select()}
+                onChange={(e) => setDraftName(e.target.value)}
+                onBlur={commitRename}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.currentTarget.blur()
+                  if (e.key === 'Escape') setDraftName(null)
+                }}
+                className="-mx-1.5 w-full rounded-md bg-surface-2 px-1.5 text-lg font-semibold text-ink outline-none"
+              />
+            )}
+          </h1>
         )}
         <div className="flex shrink-0 items-center gap-1">
           {isBoardWindow ? null : (
