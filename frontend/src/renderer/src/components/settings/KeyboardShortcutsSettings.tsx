@@ -21,6 +21,11 @@ const SHORTCUTS: Shortcut[] = [
     keys: ['Shift', '⌘', 'S'],
   },
   {
+    command: 'Open sidebar thread',
+    description: 'Jump to the numbered visible thread while holding Command.',
+    keys: ['⌘', '1-9'],
+  },
+  {
     command: 'Toggle Plan mode',
     description: 'Turn Plan mode on or off for the current composer.',
     keys: ['Shift', 'Tab'],
