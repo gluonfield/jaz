@@ -25,6 +25,8 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"## AGENTS.md\n\nagents",
 		"## SOUL.md\n\nsoul",
 		"## memory",
+		"broad context from the user's past behavior",
+		"start from the user's question",
 		"Capture as you go",
 		"## memory/LONG_TERM.md\n\n- Goal: $5m.",
 		"## memory/SHORT_TERM.md\n\n- Focus: jaz memory.",
