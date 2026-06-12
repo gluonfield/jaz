@@ -1,10 +1,16 @@
 package acp
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
+	"golang.org/x/oauth2"
 )
 
 type staticMCPServerStore struct {
@@ -15,9 +21,21 @@ func (s staticMCPServerStore) ListMCPServers() ([]mcpconfig.Server, error) {
 	return append([]mcpconfig.Server(nil), s.servers...), nil
 }
 
+type staticMCPTokens map[string]integrationoauth.Token
+
+func (s staticMCPTokens) LoadToken(_ context.Context, id string) (integrationoauth.Token, bool, error) {
+	token, ok := s[id]
+	return token, ok, nil
+}
+
+func (s staticMCPTokens) SaveToken(_ context.Context, id string, token integrationoauth.Token) error {
+	s[id] = token
+	return nil
+}
+
 func TestEnabledHTTPMCPServersEmitsRawHTTPPayloads(t *testing.T) {
 	t.Setenv("MCP_SECRET", "secret")
-	servers, err := enabledHTTPMCPServers(staticMCPServerStore{servers: []mcpconfig.Server{
+	servers, err := enabledHTTPMCPServers(context.Background(), staticMCPServerStore{servers: []mcpconfig.Server{
 		{
 			Name:       "Docs",
 			URL:        "https://mcp.example.com/mcp",
@@ -32,7 +50,7 @@ func TestEnabledHTTPMCPServersEmitsRawHTTPPayloads(t *testing.T) {
 			Enabled:   false,
 			Transport: mcpconfig.TransportStreamableHTTP,
 		},
-	}})
+	}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,15 +81,174 @@ func TestEnabledHTTPMCPServersEmitsRawHTTPPayloads(t *testing.T) {
 	}
 }
 
+func TestEnabledHTTPMCPServersAddsStoredOAuthToken(t *testing.T) {
+	servers, err := enabledHTTPMCPServers(context.Background(), staticMCPServerStore{servers: []mcpconfig.Server{
+		{
+			ID:        "n8n",
+			Name:      "n8n",
+			URL:       "https://mcp.example.com/mcp",
+			Enabled:   true,
+			Transport: mcpconfig.TransportStreamableHTTP,
+		},
+	}}, staticMCPTokens{mcpconfig.OAuthConnectionID("n8n"): {AccessToken: "oauth-token"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		Headers []mcpconfig.Header `json:"headers"`
+	}
+	if err := json.Unmarshal(servers[0], &payload); err != nil {
+		t.Fatal(err)
+	}
+	headers := map[string]string{}
+	for _, header := range payload.Headers {
+		headers[header.Name] = header.Value
+	}
+	if headers["Authorization"] != "Bearer oauth-token" {
+		t.Fatalf("headers = %#v", headers)
+	}
+}
+
+func TestEnabledHTTPMCPServersRefreshesStoredOAuthToken(t *testing.T) {
+	tokenEndpointCalled := false
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tokenEndpointCalled = true
+		if err := r.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		if r.Form.Get("grant_type") != "refresh_token" || r.Form.Get("refresh_token") != "old-refresh" {
+			t.Fatalf("unexpected refresh request %s", r.Form.Encode())
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token":  "fresh-token",
+			"refresh_token": "new-refresh",
+			"token_type":    "Bearer",
+			"expires_in":    3600,
+		})
+	}))
+	defer tokenServer.Close()
+
+	tokenID := mcpconfig.OAuthConnectionID("n8n")
+	tokens := staticMCPTokens{tokenID: {
+		AccessToken:  "old-token",
+		RefreshToken: "old-refresh",
+		TokenType:    "Bearer",
+		Expiry:       time.Now().Add(-time.Hour),
+		ClientID:     "client",
+		TokenURL:     tokenServer.URL,
+		AuthStyle:    int(oauth2.AuthStyleInParams),
+	}}
+	servers, err := enabledHTTPMCPServers(context.Background(), staticMCPServerStore{servers: []mcpconfig.Server{
+		{
+			ID:        "n8n",
+			Name:      "n8n",
+			URL:       "https://mcp.example.com/mcp",
+			Enabled:   true,
+			Transport: mcpconfig.TransportStreamableHTTP,
+		},
+	}}, tokens)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !tokenEndpointCalled {
+		t.Fatal("expected token refresh")
+	}
+	var payload struct {
+		Headers []mcpconfig.Header `json:"headers"`
+	}
+	if err := json.Unmarshal(servers[0], &payload); err != nil {
+		t.Fatal(err)
+	}
+	headers := map[string]string{}
+	for _, header := range payload.Headers {
+		headers[header.Name] = header.Value
+	}
+	if headers["Authorization"] != "Bearer fresh-token" || tokens[tokenID].AccessToken != "fresh-token" {
+		t.Fatalf("headers = %#v token = %#v", headers, tokens[tokenID])
+	}
+}
+
+func TestEnabledHTTPMCPServersSkipsOnlyServerWithBrokenOAuth(t *testing.T) {
+	tokens := staticMCPTokens{mcpconfig.OAuthConnectionID("broken"): {
+		AccessToken:  "old-token",
+		RefreshToken: "old-refresh",
+		Expiry:       time.Now().Add(-time.Hour),
+		ClientID:     "client",
+		TokenURL:     "://bad-token-url",
+		AuthStyle:    int(oauth2.AuthStyleInParams),
+	}}
+	servers, err := enabledHTTPMCPServers(context.Background(), staticMCPServerStore{servers: []mcpconfig.Server{
+		{
+			ID:        "broken",
+			Name:      "Broken",
+			URL:       "https://broken.example.com/mcp",
+			Enabled:   true,
+			Transport: mcpconfig.TransportStreamableHTTP,
+		},
+		{
+			ID:        "memory",
+			Name:      "Memory",
+			URL:       "https://memory.example.com/mcp",
+			Enabled:   true,
+			Transport: mcpconfig.TransportStreamableHTTP,
+		},
+	}}, tokens)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(servers) != 1 {
+		t.Fatalf("servers = %d, want 1", len(servers))
+	}
+	var payload struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(servers[0], &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Name != "Memory" {
+		t.Fatalf("payload = %#v", payload)
+	}
+}
+
+func TestEnabledHTTPMCPServersKeepsConfiguredAuthorization(t *testing.T) {
+	servers, err := enabledHTTPMCPServers(context.Background(), staticMCPServerStore{servers: []mcpconfig.Server{
+		{
+			ID:        "n8n",
+			Name:      "n8n",
+			URL:       "https://mcp.example.com/mcp",
+			Enabled:   true,
+			Transport: mcpconfig.TransportStreamableHTTP,
+			Headers:   []mcpconfig.Header{{Name: "Authorization", Value: "Bearer configured"}},
+		},
+	}}, staticMCPTokens{mcpconfig.OAuthConnectionID("n8n"): {AccessToken: "oauth-token"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		Headers []mcpconfig.Header `json:"headers"`
+	}
+	if err := json.Unmarshal(servers[0], &payload); err != nil {
+		t.Fatal(err)
+	}
+	headers := map[string]string{}
+	for _, header := range payload.Headers {
+		headers[header.Name] = header.Value
+	}
+	if headers["Authorization"] != "Bearer configured" {
+		t.Fatalf("headers = %#v", headers)
+	}
+}
+
 func TestEnabledHTTPMCPServersEmitsEmptyHeadersArray(t *testing.T) {
-	servers, err := enabledHTTPMCPServers(staticMCPServerStore{servers: []mcpconfig.Server{
+	servers, err := enabledHTTPMCPServers(context.Background(), staticMCPServerStore{servers: []mcpconfig.Server{
 		{
 			Name:      "Memory",
 			URL:       "http://127.0.0.1:5299/mcp/jazmem",
 			Enabled:   true,
 			Transport: mcpconfig.TransportStreamableHTTP,
 		},
-	}})
+	}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

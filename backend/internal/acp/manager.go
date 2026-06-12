@@ -246,7 +246,7 @@ func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent, cwd s
 	}{
 		Meta:       meta,
 		Cwd:        cwd,
-		MCPServers: m.mcpServersForAgent(ac.initRaw),
+		MCPServers: m.mcpServersForAgent(ctx, ac.initRaw),
 	}
 	sessionRaw, err := ac.peer.Call(ctx, acpschema.AgentMethodSessionNew, newSession)
 	if err != nil {
@@ -495,7 +495,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 		}{
 			Meta:       meta,
 			Cwd:        cwd,
-			MCPServers: m.mcpServersForAgent(ac.initRaw),
+			MCPServers: m.mcpServersForAgent(ctx, ac.initRaw),
 			SessionID:  acpschema.SessionID(storedID),
 		})
 		if err == nil {
