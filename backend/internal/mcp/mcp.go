@@ -16,6 +16,7 @@ import (
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/tools"
+	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
 
 const (
@@ -25,7 +26,7 @@ const (
 
 type Manager struct {
 	store    mcpconfig.ServerReader
-	tokens   mcpconfig.OAuthTokenStore
+	tokens   integrationoauth.Store
 	registry *tools.Registry
 	log      *log.Logger
 
@@ -70,7 +71,7 @@ type refreshResult struct {
 	status  mcpconfig.ServerStatus
 }
 
-func NewManager(store mcpconfig.ServerReader, tokens mcpconfig.OAuthTokenStore, registry *tools.Registry, logger *log.Logger, opts ...Option) *Manager {
+func NewManager(store mcpconfig.ServerReader, tokens integrationoauth.Store, registry *tools.Registry, logger *log.Logger, opts ...Option) *Manager {
 	if logger == nil {
 		logger = log.Default()
 	}

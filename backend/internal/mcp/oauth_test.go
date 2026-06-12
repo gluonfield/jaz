@@ -13,35 +13,29 @@ import (
 
 	"github.com/charmbracelet/log"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
 
 type memTokenStore struct {
 	mu     sync.Mutex
-	tokens map[string]mcpconfig.OAuthToken
+	tokens map[string]integrationoauth.Token
 }
 
 func newMemTokenStore() *memTokenStore {
-	return &memTokenStore{tokens: map[string]mcpconfig.OAuthToken{}}
+	return &memTokenStore{tokens: map[string]integrationoauth.Token{}}
 }
 
-func (m *memTokenStore) LoadMCPOAuthToken(id string) (mcpconfig.OAuthToken, bool, error) {
+func (m *memTokenStore) LoadToken(_ context.Context, id string) (integrationoauth.Token, bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	t, ok := m.tokens[id]
 	return t, ok, nil
 }
 
-func (m *memTokenStore) SaveMCPOAuthToken(id string, t mcpconfig.OAuthToken) error {
+func (m *memTokenStore) SaveToken(_ context.Context, id string, t integrationoauth.Token) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.tokens[id] = t
-	return nil
-}
-
-func (m *memTokenStore) DeleteMCPOAuthToken(id string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	delete(m.tokens, id)
 	return nil
 }
 

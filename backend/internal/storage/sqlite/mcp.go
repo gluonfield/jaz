@@ -118,7 +118,12 @@ func (s *Store) UpdateMCPServer(id string, input mcpconfig.ServerInput) (mcpconf
 func (s *Store) DeleteMCPServer(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	q := mcpdb.New(s.db)
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	q := mcpdb.New(s.db).WithTx(tx)
 	changed, err := q.DeleteMCPServer(context.Background(), id)
 	if err != nil {
 		return err
@@ -126,8 +131,13 @@ func (s *Store) DeleteMCPServer(id string) error {
 	if changed == 0 {
 		return fmt.Errorf("mcp server not found: %s", id)
 	}
-	_ = q.DeleteMCPOAuthToken(context.Background(), id)
-	return nil
+	if _, err := tx.ExecContext(context.Background(), `DELETE FROM integration_oauth_tokens WHERE connection_id = ?`, mcpconfig.OAuthConnectionID(id)); err != nil {
+		return err
+	}
+	if err := q.DeleteMCPOAuthToken(context.Background(), id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) SetMCPServerEnabled(id string, enabled bool) (mcpconfig.Server, error) {

@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"path/filepath"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
+	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
 
 func TestSessionsHaveStableUniqueSlugsAndRootListing(t *testing.T) {
@@ -281,8 +283,15 @@ func TestMCPServersCRUDRoundTrip(t *testing.T) {
 	if len(servers) != 1 || servers[0].ID != created.ID {
 		t.Fatalf("servers = %#v", servers)
 	}
+	tokenID := mcpconfig.OAuthConnectionID(created.ID)
+	if err := store.SaveToken(context.Background(), tokenID, integrationoauth.Token{AccessToken: "token"}); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.DeleteMCPServer(created.ID); err != nil {
 		t.Fatal(err)
+	}
+	if _, ok, err := store.LoadToken(context.Background(), tokenID); err != nil || ok {
+		t.Fatalf("deleted token ok=%v err=%v", ok, err)
 	}
 	servers, err = store.ListMCPServers()
 	if err != nil {

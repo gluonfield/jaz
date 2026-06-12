@@ -88,20 +88,6 @@ func (q *Queries) DeleteMCPServer(ctx context.Context, id string) (int64, error)
 	return result.RowsAffected()
 }
 
-const getMCPOAuthToken = `-- name: GetMCPOAuthToken :one
-SELECT token_json
-FROM mcp_oauth_tokens
-WHERE server_id = ?1
-LIMIT 1
-`
-
-func (q *Queries) GetMCPOAuthToken(ctx context.Context, serverID string) (string, error) {
-	row := q.db.QueryRowContext(ctx, getMCPOAuthToken, serverID)
-	var token_json string
-	err := row.Scan(&token_json)
-	return token_json, err
-}
-
 const getMCPServer = `-- name: GetMCPServer :one
 SELECT
   id,
@@ -251,30 +237,4 @@ func (q *Queries) UpdateMCPServer(ctx context.Context, arg UpdateMCPServerParams
 		return 0, err
 	}
 	return result.RowsAffected()
-}
-
-const upsertMCPOAuthToken = `-- name: UpsertMCPOAuthToken :exec
-INSERT INTO mcp_oauth_tokens (
-  server_id,
-  token_json,
-  updated_at_ms
-) VALUES (
-  ?1,
-  ?2,
-  ?3
-)
-ON CONFLICT(server_id) DO UPDATE SET
-  token_json = excluded.token_json,
-  updated_at_ms = excluded.updated_at_ms
-`
-
-type UpsertMCPOAuthTokenParams struct {
-	ServerID    string `json:"server_id"`
-	TokenJson   string `json:"token_json"`
-	UpdatedAtMs int64  `json:"updated_at_ms"`
-}
-
-func (q *Queries) UpsertMCPOAuthToken(ctx context.Context, arg UpsertMCPOAuthTokenParams) error {
-	_, err := q.db.ExecContext(ctx, upsertMCPOAuthToken, arg.ServerID, arg.TokenJson, arg.UpdatedAtMs)
-	return err
 }
