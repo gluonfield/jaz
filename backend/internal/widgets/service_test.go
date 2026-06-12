@@ -463,6 +463,23 @@ func TestPromptSectionMentionsFileAndErrors(t *testing.T) {
 	if strings.Contains(section, "jz-stat") {
 		t.Fatal("design cheatsheet leaked back into the prompt; it belongs in the guide file")
 	}
+
+	// A missing widget file is announced up front, not discovered via a failed read…
+	if !strings.Contains(section, "does not exist yet") {
+		t.Fatalf("prompt must announce a missing widget file:\n%s", section)
+	}
+	// …and once it exists the agent is told to iterate on it.
+	path := widgets.WidgetFilePath(loop)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("<p>v3</p>"), 0o644); err != nil {
+		t.Fatalf("write widget file: %v", err)
+	}
+	section = widgets.PromptSection(loop, &widgets.Widget{CurrentVersion: 3, Title: "Open PRs"})
+	if !strings.Contains(section, "iterate on it") || strings.Contains(section, "does not exist yet") {
+		t.Fatalf("prompt must tell the agent to iterate on the existing file:\n%s", section)
+	}
 }
 
 func TestEnsureGuideWritesAndRefreshes(t *testing.T) {

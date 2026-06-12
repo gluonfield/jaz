@@ -13,6 +13,7 @@ func TestRenderOrdersContextExtrasThenTask(t *testing.T) {
 		ScheduledFor: "2026-06-11T23:30:00Z",
 		Now:          "2026-06-11T23:30:02Z",
 		MemoryPath:   "/tmp/automations/memory-consolidation/memory.md",
+		MemoryExists: true,
 		PreviousRun:  `id=run-8 status=error error="dial tcp: timeout"`,
 		Extras:       []string{"## Widget instructions\n\n- update the tile"},
 		Prompt:       "Review yesterday's sessions.",
@@ -26,7 +27,7 @@ func TestRenderOrdersContextExtrasThenTask(t *testing.T) {
 		"Run ID: run-9",
 		"Memory file: /tmp/automations/memory-consolidation/memory.md",
 		`Previous run: id=run-8 status=error error="dial tcp: timeout"`,
-		"read the memory file if it exists",
+		"Read the memory file before starting the task.",
 		"## Widget instructions",
 		"## Your task",
 		"Review yesterday's sessions.",
@@ -38,6 +39,23 @@ func TestRenderOrdersContextExtrasThenTask(t *testing.T) {
 			t.Fatalf("missing %q in order in:\n%s", part, prompt)
 		}
 		offset += i + len(part)
+	}
+}
+
+func TestRenderFreshMemorySaysDoNotRead(t *testing.T) {
+	prompt, err := Render(Data{
+		LoopName: "n", LoopID: "l", RunID: "r", ScheduledFor: "s", Now: "n",
+		MemoryPath:  "/tmp/automations/n/memory.md",
+		PreviousRun: "none", Prompt: "task",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(prompt, "does not exist yet") || !strings.Contains(prompt, "do not try to read it") {
+		t.Fatalf("fresh memory must be announced instead of discovered via a failed read:\n%s", prompt)
+	}
+	if strings.Contains(prompt, "Read the memory file before starting") {
+		t.Fatalf("fresh memory must not instruct a read:\n%s", prompt)
 	}
 }
 

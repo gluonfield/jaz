@@ -1,23 +1,30 @@
 package loops
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
 
 func TestRunPromptUsesFreshRunMetadataOnly(t *testing.T) {
+	memoryPath := filepath.Join(t.TempDir(), "memory.md")
+	if err := os.WriteFile(memoryPath, []byte("# notes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	runAt := time.Date(2026, 6, 8, 9, 30, 0, 0, time.UTC)
-	prompt := RunPrompt(Loop{
+	loop := Loop{
 		ID:              "loop-1",
 		Name:            "Morning check",
 		Prompt:          "Check overnight alerts.",
-		MemoryPath:      "/tmp/jaz/automations/morning-check/memory.md",
+		MemoryPath:      memoryPath,
 		LastRunID:       "run-prev",
 		LastRunThreadID: "thread-prev",
 		LastRunStatus:   RunStatusOK,
 		LastRunAt:       runAt.Add(-24 * time.Hour),
-	}, Run{
+	}
+	prompt := RunPrompt(loop, Run{
 		ID:           "run-now",
 		ScheduledFor: runAt,
 	}, runAt)
@@ -25,8 +32,8 @@ func TestRunPromptUsesFreshRunMetadataOnly(t *testing.T) {
 	for _, want := range []string{
 		"Loop: Morning check (id loop-1)",
 		"Run ID: run-now",
-		"Memory file: /tmp/jaz/automations/morning-check/memory.md",
-		"read the memory file if it exists",
+		"Memory file: " + memoryPath,
+		"Read the memory file before starting the task.",
 		"create or update the memory file with concise Markdown",
 		"thread_id=thread-prev",
 		"Check overnight alerts.",
@@ -37,6 +44,13 @@ func TestRunPromptUsesFreshRunMetadataOnly(t *testing.T) {
 	}
 	if strings.Contains(prompt, "assistant said") {
 		t.Fatalf("run prompt should not include previous transcript content:\n%s", prompt)
+	}
+
+	// A missing memory file is announced up front, not discovered via a failed read.
+	loop.MemoryPath = filepath.Join(t.TempDir(), "memory.md")
+	prompt = RunPrompt(loop, Run{ID: "run-now", ScheduledFor: runAt}, runAt)
+	if !strings.Contains(prompt, "does not exist yet") {
+		t.Fatalf("run prompt must announce a missing memory file:\n%s", prompt)
 	}
 }
 
@@ -53,7 +67,7 @@ func TestRunPromptPutsTaskLastAfterExtras(t *testing.T) {
 
 	task := strings.Index(prompt, "## Your task")
 	widget := strings.Index(prompt, "## Widget instructions")
-	memory := strings.Index(prompt, "read the memory file")
+	memory := strings.Index(prompt, "create or update the memory file")
 	user := strings.Index(prompt, "Check overnight alerts.")
 	if task == -1 || widget == -1 || memory == -1 || user == -1 {
 		t.Fatalf("prompt missing sections (task=%d widget=%d memory=%d user=%d):\n%s", task, widget, memory, user, prompt)

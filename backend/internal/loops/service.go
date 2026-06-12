@@ -3,6 +3,7 @@ package loops
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -497,6 +498,17 @@ func (s *Service) loopUpdateForRunLocked(run Run, now time.Time) (*Loop, error) 
 	return &loop, nil
 }
 
+// fileExists reports whether path names an existing regular file, so prompts
+// can tell the agent up front instead of letting it discover via failed reads.
+func fileExists(path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return false
+	}
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular()
+}
+
 // RunPrompt renders the full prompt for a run via the looprun template:
 // context and rules first, capability extras (widget instructions, …) next,
 // and the user's task last so it carries the emphasis.
@@ -523,6 +535,7 @@ func RunPrompt(loop Loop, run Run, now time.Time, extras ...string) string {
 		ScheduledFor: run.ScheduledFor.Format(time.RFC3339),
 		Now:          now.UTC().Format(time.RFC3339),
 		MemoryPath:   loop.MemoryPath,
+		MemoryExists: fileExists(loop.MemoryPath),
 		PreviousRun:  previous,
 		Extras:       extras,
 		Prompt:       loop.Prompt,

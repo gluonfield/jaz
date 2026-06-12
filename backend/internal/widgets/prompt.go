@@ -56,6 +56,11 @@ func PromptSection(loop loops.Loop, widget *Widget) string {
 		FilePath:  WidgetFilePath(loop),
 		GuidePath: WidgetGuidePath(loop),
 	}
+	if data.FilePath != "" {
+		if info, err := os.Stat(data.FilePath); err == nil && info.Mode().IsRegular() {
+			data.FileExists = true
+		}
+	}
 	if widget != nil {
 		data.Published = true
 		data.Version = widget.CurrentVersion

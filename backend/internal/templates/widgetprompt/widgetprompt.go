@@ -14,8 +14,11 @@ var promptTemplate string
 var tmpl = template.Must(template.New("widgetprompt").Parse(promptTemplate))
 
 type Data struct {
-	FilePath  string
-	GuidePath string
+	FilePath string
+	// FileExists is checked at render time so the agent is told whether to
+	// iterate on the file or create it, instead of discovering via a failed read.
+	FileExists bool
+	GuidePath  string
 	// Published is false for a widget that has never shipped a version.
 	Published      bool
 	Version        int
