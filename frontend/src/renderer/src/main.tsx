@@ -8,9 +8,14 @@ import { RouterProvider, createHashHistory, createRouter } from '@tanstack/react
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { LaunchScreen, ReconnectingBanner } from './components/launch/LaunchScreen'
+import { installFileDropGuard } from './components/ui/FileDrop'
 import { useConnection } from './lib/connection'
 import { queryClient } from './lib/query/queryClient'
 import { routeTree } from './routeTree.gen'
+
+// Without this, a file dropped outside a drop zone navigates the window to
+// its file:// URL, replacing the app shell.
+installFileDropGuard()
 
 const router = createRouter({
   routeTree,

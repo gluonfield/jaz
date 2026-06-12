@@ -1,6 +1,7 @@
 import { ArrowUp, AudioLines, Check, FileText, ListChecks, LoaderCircle, Paperclip, Plus, Square, X } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { FileDropOverlay, useWindowFileDrop } from '@/components/ui/FileDrop'
 import { IconButton } from '@/components/ui/IconButton'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { MenuRow, Popover } from '@/components/ui/Popover'
@@ -100,7 +101,6 @@ export function ComposerCard({
 }) {
   const [files, setFiles] = useState<File[]>([])
   const [focused, setFocused] = useState(false)
-  const [draggingFiles, setDraggingFiles] = useState(false)
   const [optionsOpen, setOptionsOpen] = useState(false)
   const [planRequested, setPlanRequested] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -122,10 +122,14 @@ export function ComposerCard({
     if (!planAvailable) setPlanRequested(false)
   }, [planAvailable])
 
-  const addFiles = (next: File[]) => {
+  const addFiles = useCallback((next: File[]) => {
     if (disabled || streaming || next.length === 0) return
     setFiles((current) => [...current, ...next])
-  }
+  }, [disabled, streaming])
+
+  // Drop intent is page-level: a file dragged anywhere in the window attaches
+  // to this composer (the page's only one).
+  const draggingFiles = useWindowFileDrop({ disabled: disabled || streaming, onDrop: addFiles })
 
   const togglePlanRequested = () => {
     if (disabled || streaming || !planAvailable) return
@@ -176,25 +180,8 @@ export function ComposerCard({
       onBlurCapture={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(false)
       }}
-      onDragEnter={(e) => {
-        if (!Array.from(e.dataTransfer.types).includes('Files')) return
-        e.preventDefault()
-        if (!disabled && !streaming) setDraggingFiles(true)
-      }}
-      onDragOver={(e) => {
-        if (!Array.from(e.dataTransfer.types).includes('Files')) return
-        e.preventDefault()
-      }}
-      onDragLeave={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDraggingFiles(false)
-      }}
-      onDrop={(e) => {
-        if (!Array.from(e.dataTransfer.types).includes('Files')) return
-        e.preventDefault()
-        setDraggingFiles(false)
-        addFiles(Array.from(e.dataTransfer.files))
-      }}
     >
+      <FileDropOverlay visible={draggingFiles} />
       <MentionSuggestions mention={mention} placement="above" />
       <AnimatePresence>
         {focused ? (
