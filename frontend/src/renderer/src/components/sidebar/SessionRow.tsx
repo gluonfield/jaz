@@ -41,7 +41,19 @@ function StatusDot({ session }: { session: Session }) {
   return null
 }
 
-export function SessionRow({ session, child = false }: { session: Session; child?: boolean }) {
+export function SessionRow({
+  session,
+  child = false,
+  shortcutIndex,
+  shortcutMode = false,
+}: {
+  session: Session
+  child?: boolean
+  shortcutIndex?: number
+  shortcutMode?: boolean
+}) {
+  const showShortcut = shortcutMode && Boolean(shortcutIndex)
+
   return (
     <Link
       to="/sessions/$sessionId"
@@ -61,11 +73,23 @@ export function SessionRow({ session, child = false }: { session: Session; child
       <span className="min-w-0 flex-1 truncate" title={sessionLabel(session)}>
         {sessionLabel(session)}
       </span>
-      <span className="shrink-0 text-[11px] tabular-nums text-ink-3 group-hover:hidden">
-        {relativeTime(session.last_attention_at || session.updated_at)}
+      <span
+        className={`min-w-8 shrink-0 text-right text-[11px] tabular-nums ${
+          showShortcut
+            ? 'font-medium text-primary'
+            : shortcutMode
+              ? 'text-ink-3'
+              : 'text-ink-3 group-hover:hidden'
+        }`}
+      >
+        {showShortcut ? shortcutIndex : relativeTime(session.last_attention_at || session.updated_at)}
       </span>
-      <PinButton session={session} />
-      <ArchiveButton sessionId={session.id} />
+      {shortcutMode ? null : (
+        <>
+          <PinButton session={session} />
+          <ArchiveButton sessionId={session.id} />
+        </>
+      )}
     </Link>
   )
 }
@@ -92,7 +116,7 @@ function PinButton({ session }: { session: Session }) {
         e.stopPropagation()
         pin.mutate()
       }}
-      className={`${pinned ? 'grid text-primary' : 'hidden text-ink-3 group-hover:grid'} size-5 shrink-0 cursor-pointer place-items-center rounded transition-colors duration-150 hover:bg-surface-2 hover:text-ink`}
+      className={`${pinned ? 'text-primary' : 'text-ink-3'} hidden size-5 shrink-0 cursor-pointer place-items-center rounded transition-colors duration-150 hover:bg-surface-2 hover:text-ink group-hover:grid`}
     >
       <Pin size={13} className={pinned ? 'fill-current' : ''} />
     </button>
