@@ -22,6 +22,8 @@ mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     NSMicrophoneUsageDescription: Jaz uses the microphone for voice input.
+dmg:
+  icon: src/assets/jaz.icns
 publish:
   provider: github
   owner: amgauge
