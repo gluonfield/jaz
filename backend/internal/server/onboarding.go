@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/onboardingstate"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 	agentsettings "github.com/wins/jaz/backend/internal/settings"
@@ -16,13 +17,9 @@ import (
 )
 
 const (
-	onboardingSettingsNamespace = "onboarding"
-	onboardingSettingsKey       = "state"
+	legacyOnboardingSettingsNamespace = "onboarding"
+	legacyOnboardingSettingsKey       = "state"
 )
-
-type onboardingState struct {
-	Completed bool `json:"completed"`
-}
 
 type onboardingResponse struct {
 	Completed       bool                       `json:"completed"`
@@ -106,7 +103,7 @@ func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if input.Completed {
-			if err := saveOnboardingState(store, onboardingState{Completed: true}); err != nil {
+			if err := onboardingstate.Save(s.onboardingStatePath(), onboardingstate.State{Completed: true}); err != nil {
 				writeError(w, http.StatusInternalServerError, err)
 				return
 			}
@@ -123,7 +120,7 @@ func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) onboardingStatus(store storage.SettingsStorage) (onboardingResponse, error) {
-	state, err := loadOnboardingState(store)
+	state, err := s.loadOnboardingState(store)
 	if err != nil {
 		return onboardingResponse{}, err
 	}
@@ -139,28 +136,39 @@ func (s *Server) onboardingStatus(store storage.SettingsStorage) (onboardingResp
 	}, nil
 }
 
-func loadOnboardingState(store storage.SettingsStorage) (onboardingState, error) {
-	setting, err := store.LoadSetting(onboardingSettingsNamespace, onboardingSettingsKey)
-	if err != nil {
-		if errors.Is(err, storage.ErrSettingNotFound) {
-			return onboardingState{}, nil
-		}
-		return onboardingState{}, err
+func (s *Server) loadOnboardingState(store storage.SettingsStorage) (onboardingstate.State, error) {
+	path := s.onboardingStatePath()
+	state, found, err := onboardingstate.Load(path)
+	if err != nil || found {
+		return state, err
 	}
-	var state onboardingState
-	if err := json.Unmarshal(setting.Value, &state); err != nil {
-		return onboardingState{}, err
+	state, err = loadLegacyOnboardingState(store)
+	if err != nil {
+		return onboardingstate.State{}, err
+	}
+	if state.Completed {
+		return state, onboardingstate.Save(path, state)
 	}
 	return state, nil
 }
 
-func saveOnboardingState(store storage.SettingsStorage, state onboardingState) error {
-	data, err := json.Marshal(state)
+func loadLegacyOnboardingState(store storage.SettingsStorage) (onboardingstate.State, error) {
+	setting, err := store.LoadSetting(legacyOnboardingSettingsNamespace, legacyOnboardingSettingsKey)
 	if err != nil {
-		return err
+		if errors.Is(err, storage.ErrSettingNotFound) {
+			return onboardingstate.State{}, nil
+		}
+		return onboardingstate.State{}, err
 	}
-	_, err = store.SaveSetting(onboardingSettingsNamespace, onboardingSettingsKey, data)
-	return err
+	var state onboardingstate.State
+	if err := json.Unmarshal(setting.Value, &state); err != nil {
+		return onboardingstate.State{}, err
+	}
+	return state, nil
+}
+
+func (s *Server) onboardingStatePath() string {
+	return onboardingstate.Path(s.runtimeRoot())
 }
 
 func (s *Server) probeACPAgents(defaults agentsettings.AgentDefaults) []onboardingACPProbe {

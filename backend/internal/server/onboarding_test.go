@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/onboardingstate"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
@@ -90,6 +91,7 @@ func TestOnboardingAPIProbesAgentsAndSavesProviderKey(t *testing.T) {
 		t.Fatalf("post status = %d, body = %s", postRes.Code, postRes.Body.String())
 	}
 	assertRuntimeKeySaved(t, root)
+	assertOnboardingStateSaved(t, root)
 	var saved struct {
 		Completed       bool `json:"completed"`
 		NativeProviders []struct {
@@ -103,6 +105,35 @@ func TestOnboardingAPIProbesAgentsAndSavesProviderKey(t *testing.T) {
 	if !saved.Completed || !nativeProviderConfigured(saved.NativeProviders, "openrouter") {
 		t.Fatalf("unexpected saved onboarding status: %#v", saved)
 	}
+}
+
+func TestOnboardingMigratesLegacySQLStateToFile(t *testing.T) {
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, err := store.SaveSetting(legacyOnboardingSettingsNamespace, legacyOnboardingSettingsKey, []byte(`{"completed":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	handler := (&Server{Store: store, Root: root}).Handler()
+
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/onboarding", nil))
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var got struct {
+		Completed bool `json:"completed"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.Completed {
+		t.Fatalf("legacy onboarding state was not loaded: %#v", got)
+	}
+	assertOnboardingStateSaved(t, root)
 }
 
 func TestOnboardingAllowsAuthenticatedRemoteProviderKeySetup(t *testing.T) {
@@ -194,6 +225,24 @@ func TestOnboardingRejectsUnauthenticatedRemoteProviderKeySetup(t *testing.T) {
 	}
 	if _, err := os.Stat(runtimeenv.Path(root)); !os.IsNotExist(err) {
 		t.Fatalf("runtime env should not be written, err = %v", err)
+	}
+}
+
+func assertOnboardingStateSaved(t *testing.T, root string) {
+	t.Helper()
+	state, found, err := onboardingstate.Load(onboardingstate.Path(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found || !state.Completed {
+		t.Fatalf("onboarding state = %#v, found = %v", state, found)
+	}
+	info, err := os.Stat(onboardingstate.Path(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("onboarding state permissions = %v", info.Mode().Perm())
 	}
 }
 
