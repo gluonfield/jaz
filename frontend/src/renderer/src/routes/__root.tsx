@@ -4,7 +4,7 @@ import {
   useNavigate,
   useRouter,
 } from '@tanstack/react-router'
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { PanelLeft } from 'lucide-react'
 import { motion } from 'motion/react'
 import { type PointerEvent as ReactPointerEvent, useEffect, useState } from 'react'
 import { SettingsOverlay } from '@/components/settings/SettingsOverlay'
@@ -40,6 +40,11 @@ const SIDEBAR_MIN_WIDTH = 200
 const SIDEBAR_MAX_WIDTH = 480
 const SIDEBAR_PREF_KEY = 'jaz.sidebar'
 const SIDEBAR_WIDTH_KEY = 'jaz.sidebarWidth'
+
+// On macOS the toggle lives next to the hidden-titlebar traffic lights, so it
+// (and the content header) clear them. Off mac the OS draws its own titlebar
+// and there is nothing at the window's top-left to dodge.
+const isMac = /Mac/.test(navigator.platform)
 
 const clampSidebarWidth = (w: number) =>
   Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(w)))
@@ -108,7 +113,7 @@ function RootLayout() {
 
   return (
     <ToastProvider>
-      <div className="flex h-full">
+      <div className="relative flex h-full">
         <motion.div
           className="shrink-0 overflow-hidden"
           initial={false}
@@ -126,18 +131,13 @@ function RootLayout() {
         </motion.div>
 
         <main className="flex min-w-0 flex-1 flex-col bg-bg">
-          <div className="titlebar-drag flex h-[52px] shrink-0 items-center gap-2 px-3">
-            <button
-              type="button"
-              aria-label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
-              title={`${sidebarOpen ? 'Hide' : 'Show'} sidebar (⌘S)`}
-              onClick={() => setSidebarOpen((open) => !open)}
-              className={`grid size-8 cursor-pointer place-items-center rounded-full text-ink-2 transition-all duration-200 hover:bg-surface-2 hover:text-ink ${
-                sidebarOpen ? '' : 'ml-[64px]'
-              }`}
-            >
-              {sidebarOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
-            </button>
+          {/* When collapsed, the content owns the window's top-left, so its
+              header indents past the traffic lights and the pinned toggle. */}
+          <div
+            className={`titlebar-drag flex h-[52px] shrink-0 items-center gap-2 pr-3 ${
+              sidebarOpen ? 'pl-3' : isMac ? 'pl-[108px]' : 'pl-12'
+            }`}
+          >
             {/* slot routes portal into (e.g. the session runtime tag) */}
             <div id="titlebar-slot" className="flex min-w-0 items-center gap-1.5" />
             {/* right-aligned slot for route-level actions */}
@@ -147,6 +147,23 @@ function RootLayout() {
             <Outlet />
           </div>
         </main>
+
+        {/* Sidebar toggle, pinned beside the macOS traffic lights and sized to
+            match them. Kept LAST and explicitly no-drag because Electron unions
+            the .titlebar-drag strips then subtracts no-drag rects in document
+            order — so this cutout only stays clickable when subtracted after
+            the strips it overlaps. */}
+        <button
+          type="button"
+          aria-label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+          title={`${sidebarOpen ? 'Hide' : 'Show'} sidebar (⌘S)`}
+          onClick={() => setSidebarOpen((open) => !open)}
+          className={`absolute top-[11px] z-30 grid size-7 cursor-pointer place-items-center rounded-full text-ink-2 transition-colors duration-150 [-webkit-app-region:no-drag] hover:bg-surface-2 hover:text-ink ${
+            isMac ? 'left-[80px]' : 'left-2'
+          }`}
+        >
+          <PanelLeft size={16} />
+        </button>
       </div>
       <SettingsOverlay open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <UpdatePanel />
