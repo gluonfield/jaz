@@ -1,4 +1,4 @@
-import { type UIEvent, useCallback, useEffect, useRef, useState } from 'react'
+import { type UIEvent, useCallback, useLayoutEffect, useRef, useState } from 'react'
 
 const NEAR_BOTTOM_PX = 80
 
@@ -28,11 +28,11 @@ export function useThreadAutoScroll({
     if (el) el.scrollTop = el.scrollHeight
   }, [])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (nearBottom.current) pinToBottom()
   }, [bottomInset, itemCount, liveSize, pinToBottom])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     pinToBottom()
   }, [resetKey, pinToBottom])
 
