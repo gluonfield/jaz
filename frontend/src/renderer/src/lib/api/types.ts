@@ -518,6 +518,12 @@ export interface ACPAgentDefaults {
   command?: string
   model?: string
   reasoning_effort?: string
+  auth?: ACPAgentAuth
+}
+
+export interface ACPAgentAuth {
+  mode?: 'auto' | 'existing_cli' | 'jaz_profile'
+  path?: string
 }
 
 export interface ReasoningEffortOption {
@@ -545,6 +551,11 @@ export interface OnboardingACPProbe {
   available: boolean
   reason?: string
   storage_path?: string
+  auth_mode?: 'auto' | 'existing_cli' | 'jaz_profile'
+  auth_path?: string
+  auth_source?: string
+  auth_evidence?: string
+  recommended_auth?: ACPAgentAuth
   auth_command?: string
   auth_command_available: boolean
   auth_command_reason?: string

@@ -86,36 +86,19 @@ func TestProcessEnvSetsCodexHomeFromSystemLogin(t *testing.T) {
 	root := t.TempDir()
 	env := NewManager(nil, Config{Root: root}, nil).processEnv("codex", AgentConfig{})
 
-	want := filepath.Join(root, "acp", "codex-home")
+	want := filepath.Join(home, ".codex")
 	if env["CODEX_HOME"] != want {
 		t.Fatalf("CODEX_HOME = %q", env["CODEX_HOME"])
-	}
-	if !fileExists(filepath.Join(want, "auth.json")) {
-		t.Fatalf("isolated codex auth was not prepared")
-	}
-	info, err := os.Lstat(filepath.Join(want, "auth.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		t.Fatal("codex auth import should copy credentials, not symlink them")
 	}
 	if env["HOME"] == home {
 		t.Fatal("subprocess HOME should stay isolated")
 	}
+	if fileExists(filepath.Join(root, "acp", "codex-home", "auth.json")) {
+		t.Fatal("codex auth should not be silently imported into the Jaz profile")
+	}
 }
 
-func TestProcessEnvPreparedReportsCredentialCopyFailure(t *testing.T) {
-	home := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(home, ".codex", "auth.json"), []byte(`{}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("HOME", home)
-	t.Setenv("CODEX_HOME", "")
-
+func TestProcessEnvPreparedReportsProfilePreparationFailure(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "acp"), 0o700); err != nil {
 		t.Fatal(err)
@@ -124,9 +107,11 @@ func TestProcessEnvPreparedReportsCredentialCopyFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared("codex", AgentConfig{})
-	if err == nil || !strings.Contains(err.Error(), "prepare codex auth") {
-		t.Fatalf("err = %v, want codex auth preparation error", err)
+	_, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared("codex", AgentConfig{
+		Auth: AgentAuthConfig{Mode: AuthModeJazProfile},
+	})
+	if err == nil || !strings.Contains(err.Error(), "prepare codex profile") {
+		t.Fatalf("err = %v, want codex profile preparation error", err)
 	}
 }
 
@@ -151,6 +136,27 @@ func TestProbeAgentAuthDoesNotImportCredentials(t *testing.T) {
 	}
 }
 
+func TestProbeAgentAuthDetectsCodexKeyringProfile(t *testing.T) {
+	home := t.TempDir()
+	codexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(codexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(codexHome, "config.toml"), []byte(`cli_auth_credentials_store = "keyring"`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", "")
+
+	status := ProbeAgentAuth(AgentCodex, AgentConfig{}, t.TempDir(), nil)
+	if !status.Authenticated || status.AuthEvidence != "keyring_config" {
+		t.Fatalf("status = %#v, want keyring-backed auth", status)
+	}
+	if status.AuthSource != AuthModeExistingCLI || status.AuthPath != codexHome {
+		t.Fatalf("status = %#v, want existing CLI profile at %s", status, codexHome)
+	}
+}
+
 func TestProcessEnvUsesJazHomeForClaudeCode(t *testing.T) {
 	home := t.TempDir()
 	configDir := filepath.Join(home, "claude-config")
@@ -164,7 +170,9 @@ func TestProcessEnvUsesJazHomeForClaudeCode(t *testing.T) {
 	t.Setenv("USER", "wins")
 
 	root := t.TempDir()
-	env := NewManager(nil, Config{Root: root}, nil).processEnv("claude", AgentConfig{})
+	env := NewManager(nil, Config{Root: root}, nil).processEnv("claude", AgentConfig{
+		Auth: AgentAuthConfig{Mode: AuthModeJazProfile},
+	})
 
 	wantHome := filepath.Join(root, "acp", "home")
 	if env["HOME"] != wantHome {
@@ -224,7 +232,9 @@ func TestProcessEnvUsesJazHomeForGrok(t *testing.T) {
 	t.Setenv("USER", "wins")
 
 	root := t.TempDir()
-	env := NewManager(nil, Config{Root: root}, nil).processEnv("grok", AgentConfig{})
+	env := NewManager(nil, Config{Root: root}, nil).processEnv("grok", AgentConfig{
+		Auth: AgentAuthConfig{Mode: AuthModeJazProfile},
+	})
 
 	wantHome := filepath.Join(root, "acp", "home")
 	if env["HOME"] != wantHome {

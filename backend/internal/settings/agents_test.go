@@ -243,3 +243,21 @@ func TestNormalizeAgentDefaultsRejectsClaudeOnlyReasoningForOtherACPAgents(t *te
 		t.Fatal("expected codex ultracode effort to be rejected")
 	}
 }
+
+func TestNormalizeAgentDefaultsPreservesACPAuthProfile(t *testing.T) {
+	input := testAgentDefaultsSeed()
+	codex := input.ACP["codex"]
+	codex.Auth = acp.AgentAuthConfig{Mode: acp.AuthModeExistingCLI, Path: "~/custom-codex"}
+	input.ACP["codex"] = codex
+
+	normalized, err := NormalizeAgentDefaults(input, acp.BuiltinAgents())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if normalized.ACP["codex"].Auth.Mode != acp.AuthModeExistingCLI {
+		t.Fatalf("auth = %#v", normalized.ACP["codex"].Auth)
+	}
+	if normalized.ACP["codex"].Auth.Path != "~/custom-codex" {
+		t.Fatalf("auth path = %q", normalized.ACP["codex"].Auth.Path)
+	}
+}
