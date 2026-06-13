@@ -38,11 +38,13 @@ export function OverviewPanel({
   return (
     <aside
       style={{ width: OVERVIEW_PANEL_WIDTH }}
-      className="flex h-full shrink-0 flex-col gap-6 overflow-y-auto border-l border-border px-4 py-4"
+      className="flex h-full shrink-0 flex-col bg-bg p-2"
     >
-      {plan ? <PlanSection plan={plan} working={working} /> : null}
-      {showGit ? <GitSection repo={repo} /> : null}
-      <ManageSection session={session} />
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto rounded-[14px] bg-surface px-4 py-4 shadow-[0_18px_46px_rgba(0,0,0,0.18)] ring-1 ring-border">
+        {plan ? <PlanSection plan={plan} working={working} /> : null}
+        {showGit ? <GitSection repo={repo} /> : null}
+        <ManageSection session={session} />
+      </div>
     </aside>
   )
 }

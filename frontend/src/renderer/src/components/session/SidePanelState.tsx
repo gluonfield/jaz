@@ -1,4 +1,5 @@
-import { FileDiff, FileText, Globe, PanelRightClose, PanelRightOpen, X } from 'lucide-react'
+import { FileDiff, FileText, Globe, PanelRightOpen } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import { parseFileReference, type FileReference } from '../../../../shared/fileReader'
@@ -131,73 +132,94 @@ export function SidePanelControl({
   onSelectView: (view: SidePanelView) => void
 }) {
   const options = fileAvailable || view === 'file' ? [...BASE_VIEW_OPTIONS, 'file' as const] : BASE_VIEW_OPTIONS
-  const compactClick = () => {
-    if (open) return
-    onSelectView(view === 'file' && !fileAvailable ? 'overview' : view)
+  const currentView = view === 'file' && !fileAvailable ? 'overview' : view
+  const controlRef = useRef<HTMLDivElement>(null)
+  const [expanded, setExpanded] = useState(false)
+  const collapseIfUnfocused = () => {
+    if (!controlRef.current?.contains(document.activeElement)) setExpanded(false)
+  }
+  const toggleView = (next: SidePanelView) => {
+    if (open && view === next) {
+      onToggle()
+      return
+    }
+    onSelectView(next)
   }
   return (
-    <div className="group flex h-10 items-center rounded-[12px] bg-surface/95 p-1 shadow-[0_10px_28px_rgba(0,0,0,0.14)] ring-1 ring-border/80">
-      <div className="flex items-center group-hover:hidden group-focus-within:hidden">
-        {open ? (
-          <>
-            <button
-              type="button"
-              aria-label={`Side panel: ${SIDE_PANEL_VIEW_LABEL[view]}`}
-              className="flex h-8 cursor-default items-center gap-1.5 rounded-[8px] px-2.5 text-[13px] text-ink-2"
-            >
-              <SidePanelViewIcon view={view} />
-              <span className="max-w-24 truncate">{SIDE_PANEL_VIEW_LABEL[view]}</span>
-            </button>
-            <button
-              type="button"
-              aria-label="Hide side panel"
-              title="Hide side panel"
-              onClick={onToggle}
-              className="grid size-8 cursor-pointer place-items-center rounded-[8px] text-ink-3 transition-[background-color,color,transform] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96]"
-            >
-              <X size={15} />
-            </button>
-          </>
+    <motion.div
+      ref={controlRef}
+      layout
+      onPointerEnter={() => setExpanded(true)}
+      onPointerLeave={collapseIfUnfocused}
+      onFocus={() => setExpanded(true)}
+      onBlur={(event) => {
+        if (!controlRef.current?.contains(event.relatedTarget as Node | null)) setExpanded(false)
+      }}
+      className="group flex h-10 items-center rounded-full bg-surface/95 p-1 shadow-sm ring-1 ring-border/70"
+    >
+      <AnimatePresence initial={false} mode="popLayout">
+        {expanded ? (
+          <motion.div
+            key="expanded"
+            layout
+            initial={{ opacity: 0, scale: 0.96, filter: 'blur(4px)' }}
+            animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+            exit={{ opacity: 0, scale: 0.96, filter: 'blur(4px)' }}
+            transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
+            className="flex items-center gap-0.5"
+          >
+            {options.map((option) => {
+              const active = open && view === option
+              return (
+                <motion.button
+                  key={option}
+                  type="button"
+                  aria-pressed={active}
+                  title={active ? `Hide ${SIDE_PANEL_VIEW_LABEL[option]} panel` : `Open ${SIDE_PANEL_VIEW_LABEL[option]}`}
+                  onClick={() => toggleView(option)}
+                  whileTap={{ scale: 0.96 }}
+                  className={`relative h-8 cursor-pointer rounded-full px-2.5 text-[13px] font-medium transition-colors duration-150 ${
+                    active ? 'text-ink' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
+                  }`}
+                >
+                  {active ? (
+                    <motion.span
+                      layoutId="side-panel-active-pill"
+                      transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
+                      className="absolute inset-0 rounded-full bg-bg shadow-sm ring-1 ring-border/60"
+                    />
+                  ) : null}
+                  <span className="relative">{SIDE_PANEL_VIEW_LABEL[option]}</span>
+                </motion.button>
+              )
+            })}
+          </motion.div>
         ) : (
-          <button
-            type="button"
-            aria-label="Show side panel"
-            title="Show side panel"
-            onClick={compactClick}
-            className="grid size-8 cursor-pointer place-items-center rounded-[8px] text-ink-2 transition-[background-color,color,transform] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96]"
+          <motion.div
+            key="compact"
+            layout
+            initial={{ opacity: 0, scale: 0.96, filter: 'blur(4px)' }}
+            animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+            exit={{ opacity: 0, scale: 0.96, filter: 'blur(4px)' }}
+            transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
+            className="flex"
           >
-            <PanelRightOpen size={16} />
-          </button>
+            <motion.button
+              type="button"
+              aria-label={open ? `Hide ${SIDE_PANEL_VIEW_LABEL[currentView]} panel` : 'Show side panel'}
+              title={open ? `Hide ${SIDE_PANEL_VIEW_LABEL[currentView]} panel` : 'Show side panel'}
+              onClick={() => toggleView(currentView)}
+              whileTap={{ scale: 0.96 }}
+              className="flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-2.5 text-[13px] font-medium text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+            >
+              {open ? <SidePanelViewIcon view={currentView} size={13} /> : <PanelRightOpen size={13} />}
+              <span className="hidden max-w-24 truncate sm:inline">
+                {open ? SIDE_PANEL_VIEW_LABEL[currentView] : 'Panel'}
+              </span>
+            </motion.button>
+          </motion.div>
         )}
-      </div>
-      <div className="hidden items-center gap-0.5 group-hover:flex group-focus-within:flex">
-        {options.map((option) => (
-          <button
-            key={option}
-            type="button"
-            aria-pressed={open && view === option}
-            onClick={() => onSelectView(option)}
-            className={`h-8 cursor-pointer rounded-[8px] px-2.5 text-[13px] transition-[background-color,color,transform] duration-150 active:scale-[0.96] ${
-              open && view === option
-                ? 'bg-bg text-ink shadow-sm ring-1 ring-border/70'
-                : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
-            }`}
-          >
-            {SIDE_PANEL_VIEW_LABEL[option]}
-          </button>
-        ))}
-        {open ? (
-          <button
-            type="button"
-            aria-label="Hide side panel"
-            title="Hide side panel"
-            onClick={onToggle}
-            className="grid size-8 cursor-pointer place-items-center rounded-[8px] text-ink-3 transition-[background-color,color,transform] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96]"
-          >
-            <PanelRightClose size={15} />
-          </button>
-        ) : null}
-      </div>
-    </div>
+      </AnimatePresence>
+    </motion.div>
   )
 }
