@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { FileText, LoaderCircle, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { sessionFileQuery } from '@/lib/api/sessions'
-import type { Session } from '@/lib/api/types'
+import { ApiError } from '@/lib/api/client'
+import { healthQuery, sessionFileQuery } from '@/lib/api/sessions'
+import type { HealthResponse, Session } from '@/lib/api/types'
 import { parseFileReference, type FileReference } from '../../../../shared/fileReader'
 
 export const FILE_READER_PANEL_WIDTH = 640
@@ -23,6 +24,7 @@ export function FileReaderPanel({
 }) {
   const filePath = fileRef?.path ?? ''
   const file = useQuery({ ...sessionFileQuery(session.id, filePath), enabled: visible && Boolean(filePath) })
+  const health = useQuery({ ...healthQuery, enabled: visible && Boolean(filePath) })
   const [draft, setDraft] = useState(filePath)
   const [inputError, setInputError] = useState('')
 
@@ -87,9 +89,20 @@ export function FileReaderPanel({
               Loading file…
             </div>
           ) : file.isError ? (
-            <p className="px-3 py-4 text-[12px] text-danger">
-              Couldn&apos;t open the file: {(file.error as Error).message}
-            </p>
+            health.isPending ? (
+              <div className="flex items-center gap-2 px-3 py-4 text-[12px] text-ink-3">
+                <LoaderCircle size={13} className="animate-spin" aria-hidden />
+                Checking backend…
+              </div>
+            ) : unsupportedFileReader(file.error, health.data) ? (
+              <p className="px-3 py-4 text-[12px] text-danger">
+                This backend does not expose server-side file reading. Restart or update the Jaz server, then try again.
+              </p>
+            ) : (
+              <p className="px-3 py-4 text-[12px] text-danger">
+                Couldn&apos;t open the file: {(file.error as Error).message}
+              </p>
+            )
           ) : file.data.binary ? (
             <p className="px-3 py-4 text-[12px] text-ink-3">Binary file — no text preview.</p>
           ) : (
@@ -110,6 +123,11 @@ export function FileReaderPanel({
       </div>
     </aside>
   )
+}
+
+function unsupportedFileReader(error: unknown, health?: HealthResponse): boolean {
+  if (health?.capabilities?.session_file_read) return false
+  return error instanceof ApiError && error.status === 404 && error.message.trim().toLowerCase() === 'not found'
 }
 
 function FileTextView({ content, highlightLine }: { content: string; highlightLine?: number }) {

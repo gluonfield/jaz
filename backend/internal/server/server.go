@@ -145,7 +145,21 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	writeJSON(w, http.StatusOK, healthResponse{
+		OK: true,
+		Capabilities: healthCapabilities{
+			SessionFileRead: true,
+		},
+	})
+}
+
+type healthResponse struct {
+	OK           bool               `json:"ok"`
+	Capabilities healthCapabilities `json:"capabilities"`
+}
+
+type healthCapabilities struct {
+	SessionFileRead bool `json:"session_file_read"`
 }
 
 func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
