@@ -105,6 +105,15 @@ export interface RepoFilePatch {
   truncated?: boolean
 }
 
+export interface SessionFileRead {
+  path: string
+  relative_path?: string
+  content?: string
+  size: number
+  binary?: boolean
+  truncated?: boolean
+}
+
 export interface LoopSchedule {
   kind: string
   expr: string

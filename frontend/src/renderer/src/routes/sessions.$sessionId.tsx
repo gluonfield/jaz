@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BottomDock } from '@/components/session/BottomDock'
 import { Composer, PlanDecisionCard } from '@/components/session/Composer'
-import { MessageMarkdown, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
+import { FileReaderLinkProvider, MessageMarkdown, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
 import { SessionErrorNotice } from '@/components/session/SessionErrorNotice'
 import { SessionLivenessIndicator } from '@/components/session/SessionLivenessIndicator'
 import { SidePanel } from '@/components/session/SidePanel'
@@ -655,179 +655,181 @@ function SessionPage() {
   }
 
   return (
-    <PreviewLinkProvider onOpen={sidePanel.openPreview}>
-      <div ref={sidePanel.measureRef} className="flex h-full">
-        {titlebarSlot
-          ? createPortal(
-              <>
-                <RuntimeBadge session={session} truncate={false} />
-                <TokenStats session={session} />
-              </>,
-              titlebarSlot,
-            )
-          : null}
-        {titlebarActions
-          ? createPortal(
-              <SidePanelControl
-                open={sidePanel.open}
-                view={sidePanel.view}
-                onToggle={sidePanel.toggle}
-                onSelectView={sidePanel.selectView}
-              />,
-              titlebarActions,
-            )
-          : null}
+    <FileReaderLinkProvider onOpen={sidePanel.openFile}>
+      <PreviewLinkProvider onOpen={sidePanel.openPreview}>
+        <div ref={sidePanel.measureRef} className="flex h-full">
+          {titlebarSlot
+            ? createPortal(
+                <>
+                  <RuntimeBadge session={session} truncate={false} />
+                  <TokenStats session={session} />
+                </>,
+                titlebarSlot,
+              )
+            : null}
+          {titlebarActions
+            ? createPortal(
+                <SidePanelControl
+                  open={sidePanel.open}
+                  view={sidePanel.view}
+                  fileAvailable={Boolean(sidePanel.fileRef)}
+                  onToggle={sidePanel.toggle}
+                  onSelectView={sidePanel.selectView}
+                />,
+                titlebarActions,
+              )
+            : null}
 
-      <div className="relative h-full min-w-0 flex-1">
-        <div
-          ref={scrollRef}
-          className="h-full overflow-y-auto"
-          onScroll={onThreadScroll}
-        >
-          <div
-            ref={threadFind.rootRef}
-            className={`${THREAD_COLUMN_CLASS} pt-2`}
-            style={{ paddingBottom: transcriptBottomPadding }}
-          >
-            {empty ? (
-              <EmptyState title="Start the conversation">
-                <p>Messages stream in live as your assistant thinks and works.</p>
-              </EmptyState>
-            ) : (
-              <>
-                <Transcript
-                  messages={transcriptMessages}
-                  events={displayEvents}
-                  sessionId={session.id}
-                  groupTurns={isACP}
-                  working={sessionRunning}
-                  findActive={threadFind.open && Boolean(threadFind.query.trim())}
-                  tail={
-                    isACP ? (
-                      <SessionLivenessIndicator
-                        agent={session.runtime_ref?.agent}
-                        running={sessionRunning}
-                        updatedAt={session.updated_at}
-                        events={livenessEvents}
-                        lastEventAt={latestEventTimeISO(lastSessionEventAt, live?.at)}
-                      />
-                    ) : live ? (
-                      <div className="flex flex-col gap-5">
-                        <motion.div
-                          className="flex justify-end"
-                          initial={{ opacity: 0, y: 8 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                        >
-                          <div className="min-w-0 max-w-[84%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap [overflow-wrap:break-word] select-text">
-                            {live.user}
-                            <LiveAttachmentList attachments={live.attachments} />
-                          </div>
-                        </motion.div>
-                        <ThinkingBlock text={live.reasoning} pending={streaming} />
-                        {live.tools.map((tool) => (
-                          <ToolCallCard
-                            key={tool.key}
-                            name={tool.name}
-                            args={tool.args}
-                            result={tool.result}
-                            pending={streaming && tool.result === undefined}
+          <div className="relative h-full min-w-0 flex-1">
+            <div ref={scrollRef} className="h-full overflow-y-auto" onScroll={onThreadScroll}>
+              <div
+                ref={threadFind.rootRef}
+                className={`${THREAD_COLUMN_CLASS} pt-2`}
+                style={{ paddingBottom: transcriptBottomPadding }}
+              >
+                {empty ? (
+                  <EmptyState title="Start the conversation">
+                    <p>Messages stream in live as your assistant thinks and works.</p>
+                  </EmptyState>
+                ) : (
+                  <>
+                    <Transcript
+                      messages={transcriptMessages}
+                      events={displayEvents}
+                      sessionId={session.id}
+                      groupTurns={isACP}
+                      working={sessionRunning}
+                      findActive={threadFind.open && Boolean(threadFind.query.trim())}
+                      tail={
+                        isACP ? (
+                          <SessionLivenessIndicator
+                            agent={session.runtime_ref?.agent}
+                            running={sessionRunning}
+                            updatedAt={session.updated_at}
+                            events={livenessEvents}
+                            lastEventAt={latestEventTimeISO(lastSessionEventAt, live?.at)}
                           />
-                        ))}
-                        {live.assistant ? (
-                          <MessageMarkdown text={live.assistant} />
-                        ) : streaming ? (
-                          <p className="animate-pulse text-sm text-ink-3">Thinking…</p>
-                        ) : null}
-                        {live.error ? <SessionErrorNotice message={live.error} /> : null}
-                      </div>
-                    ) : null
-                  }
+                        ) : live ? (
+                          <div className="flex flex-col gap-5">
+                            <motion.div
+                              className="flex justify-end"
+                              initial={{ opacity: 0, y: 8 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                            >
+                              <div className="min-w-0 max-w-[84%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap [overflow-wrap:break-word] select-text">
+                                {live.user}
+                                <LiveAttachmentList attachments={live.attachments} />
+                              </div>
+                            </motion.div>
+                            <ThinkingBlock text={live.reasoning} pending={streaming} />
+                            {live.tools.map((tool) => (
+                              <ToolCallCard
+                                key={tool.key}
+                                name={tool.name}
+                                args={tool.args}
+                                result={tool.result}
+                                pending={streaming && tool.result === undefined}
+                              />
+                            ))}
+                            {live.assistant ? (
+                              <MessageMarkdown text={live.assistant} />
+                            ) : streaming ? (
+                              <p className="animate-pulse text-sm text-ink-3">Thinking…</p>
+                            ) : null}
+                            {live.error ? <SessionErrorNotice message={live.error} /> : null}
+                          </div>
+                        ) : null
+                      }
+                    />
+                    {sessionError ? (
+                      <SessionErrorNotice message={sessionError} context={sessionErrorContext} className="mt-5" />
+                    ) : null}
+                  </>
+                )}
+              </div>
+            </div>
+            <ThreadFindBar find={threadFind} />
+
+            {showPlanDecision && planDecisionError ? (
+              <p className="absolute inset-x-0 bottom-32 mx-auto max-w-[640px] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
+                {planDecisionError}
+              </p>
+            ) : null}
+            <BottomDock
+              before={<ScrollToBottomButton visible={showScrollToBottom} onClick={scrollToBottom} />}
+              onHeightChange={setBottomDockHeight}
+            >
+              {showPlanDecision ? (
+                <PlanDecisionCard
+                  pending={planDecisionPending}
+                  onImplement={() => {
+                    setPlanDecisionPending(true)
+                    setPlanDecisionError('')
+                    void sendACPFallback(planDecisionSessionID!, 'Implement the plan.', {
+                      parentVisible: planDecisionSessionID !== session.id,
+                    })
+                      .catch((err: Error) => setPlanDecisionError(err.message || 'Sending the approval failed.'))
+                      .finally(() => setPlanDecisionPending(false))
+                  }}
+                  onClarify={(text) => {
+                    setPlanDecisionPending(true)
+                    setPlanDecisionError('')
+                    void sendACPFallback(planDecisionSessionID!, text, {
+                      planRequested: true,
+                      parentVisible: planDecisionSessionID !== session.id,
+                    })
+                      .catch((err: Error) => setPlanDecisionError(err.message || 'Sending the reply failed.'))
+                      .finally(() => setPlanDecisionPending(false))
+                  }}
                 />
-                {sessionError ? (
-                  <SessionErrorNotice message={sessionError} context={sessionErrorContext} className="mt-5" />
-                ) : null}
-              </>
-            )}
+              ) : (
+                <Composer
+                  streaming={sessionRunning}
+                  planAvailable={planAvailable}
+                  queuedPrompts={queue.queuedPrompts}
+                  steerDisabled={queue.steerDisabled}
+                  draftStorageKey={`${SESSION_DRAFT_KEY_PREFIX}${session.id}`}
+                  fileRoot={session.runtime_ref?.cwd}
+                  onSend={queue.onSend}
+                  onStop={() => {
+                    // the turn runs detached server-side; stop it there first
+                    void cancelSession(sessionId).catch(() => {})
+                    abortRef.current?.abort()
+                  }}
+                  onVoice={session.runtime !== 'acp' ? () => setVoiceMode(true) : undefined}
+                  onSteerQueuedPrompt={queue.onSteerQueuedPrompt}
+                  onDeleteQueuedPrompt={queue.onDeleteQueuedPrompt}
+                  onEditQueuedPrompt={queue.onEditQueuedPrompt}
+                  onMoveQueuedPrompt={queue.onMoveQueuedPrompt}
+                />
+              )}
+            </BottomDock>
           </div>
+
+          {/* Docked, never overlapping: the chat pane flexes and stays centered
+              between the sidebar and this panel. */}
+          <motion.div
+            className="h-full shrink-0 overflow-hidden"
+            initial={false}
+            animate={{ width: sidePanel.open ? sidePanel.width : 0 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 36 }}
+          >
+            <SidePanel
+              session={session}
+              plan={panelPlan}
+              working={sessionRunning}
+              visible={sidePanel.open}
+              view={sidePanel.view}
+              previewUrl={sidePanel.previewUrl}
+              fileRef={sidePanel.fileRef}
+              onPreviewUrlChange={sidePanel.setPreviewUrl}
+              onOpenFile={sidePanel.openFile}
+              onClose={sidePanel.toggle}
+            />
+          </motion.div>
         </div>
-        <ThreadFindBar find={threadFind} />
-
-        {showPlanDecision && planDecisionError ? (
-          <p className="absolute inset-x-0 bottom-32 mx-auto max-w-[640px] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
-            {planDecisionError}
-          </p>
-        ) : null}
-        <BottomDock
-          before={<ScrollToBottomButton visible={showScrollToBottom} onClick={scrollToBottom} />}
-          onHeightChange={setBottomDockHeight}
-        >
-          {showPlanDecision ? (
-            <PlanDecisionCard
-              pending={planDecisionPending}
-              onImplement={() => {
-                setPlanDecisionPending(true)
-                setPlanDecisionError('')
-                void sendACPFallback(planDecisionSessionID!, 'Implement the plan.', {
-                  parentVisible: planDecisionSessionID !== session.id,
-                })
-                  .catch((err: Error) => setPlanDecisionError(err.message || 'Sending the approval failed.'))
-                  .finally(() => setPlanDecisionPending(false))
-              }}
-              onClarify={(text) => {
-                setPlanDecisionPending(true)
-                setPlanDecisionError('')
-                void sendACPFallback(planDecisionSessionID!, text, {
-                  planRequested: true,
-                  parentVisible: planDecisionSessionID !== session.id,
-                })
-                  .catch((err: Error) => setPlanDecisionError(err.message || 'Sending the reply failed.'))
-                  .finally(() => setPlanDecisionPending(false))
-              }}
-            />
-          ) : (
-            <Composer
-              streaming={sessionRunning}
-              planAvailable={planAvailable}
-              queuedPrompts={queue.queuedPrompts}
-              steerDisabled={queue.steerDisabled}
-              draftStorageKey={`${SESSION_DRAFT_KEY_PREFIX}${session.id}`}
-              fileRoot={session.runtime_ref?.cwd}
-              onSend={queue.onSend}
-              onStop={() => {
-                // the turn runs detached server-side; stop it there first
-                void cancelSession(sessionId).catch(() => {})
-                abortRef.current?.abort()
-              }}
-              onVoice={session.runtime !== 'acp' ? () => setVoiceMode(true) : undefined}
-              onSteerQueuedPrompt={queue.onSteerQueuedPrompt}
-              onDeleteQueuedPrompt={queue.onDeleteQueuedPrompt}
-              onEditQueuedPrompt={queue.onEditQueuedPrompt}
-              onMoveQueuedPrompt={queue.onMoveQueuedPrompt}
-            />
-          )}
-        </BottomDock>
-      </div>
-
-      {/* Docked, never overlapping: the chat pane flexes and stays centered
-          between the sidebar and this panel. */}
-      <motion.div
-        className="h-full shrink-0 overflow-hidden"
-        initial={false}
-        animate={{ width: sidePanel.open ? sidePanel.width : 0 }}
-        transition={{ type: 'spring', stiffness: 400, damping: 36 }}
-      >
-        <SidePanel
-          session={session}
-          plan={panelPlan}
-          working={sessionRunning}
-          visible={sidePanel.open}
-          view={sidePanel.view}
-          previewUrl={sidePanel.previewUrl}
-          onPreviewUrlChange={sidePanel.setPreviewUrl}
-        />
-      </motion.div>
-      </div>
-    </PreviewLinkProvider>
+      </PreviewLinkProvider>
+    </FileReaderLinkProvider>
   )
 }
