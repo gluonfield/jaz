@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/wins/jaz/backend/internal/chat"
+	"github.com/wins/jaz/backend/internal/serverclient"
 	"github.com/wins/jaz/backend/internal/tui"
 )
 
@@ -22,11 +23,11 @@ func runChat(args []string) error {
 		return fmt.Errorf("use either --last or --session, not both")
 	}
 
-	conn, err := parseServerConnection(*serverURL)
+	conn, err := serverclient.ParseConnection(*serverURL)
 	if err != nil {
 		return err
 	}
-	client := authHTTPClient(conn.Key)
+	client := serverclient.HTTPClient(conn.Key)
 	session, err := openChatSession(client, conn.URL, *sessionID, *last)
 	if err != nil {
 		return err
@@ -37,17 +38,17 @@ func runChat(args []string) error {
 	})
 }
 
-func openChatSession(client *http.Client, serverURL, sessionID string, last bool) (sessionResponse, error) {
+func openChatSession(client *http.Client, serverURL, sessionID string, last bool) (serverclient.Session, error) {
 	if last {
-		return lastSession(client, serverURL)
+		return serverclient.LastSession(client, serverURL)
 	}
 	if sessionID != "" {
-		return getSession(client, serverURL, sessionID)
+		return serverclient.GetSession(client, serverURL, sessionID)
 	}
-	return createSession(client, serverURL)
+	return serverclient.CreateSession(client, serverURL)
 }
 
-func chatSession(session sessionResponse) chat.Session {
+func chatSession(session serverclient.Session) chat.Session {
 	out := chat.Session{ID: session.ID, Slug: session.Slug, Runtime: session.Runtime}
 	if session.RuntimeRef != nil {
 		out.ACPAgent = session.RuntimeRef.Agent

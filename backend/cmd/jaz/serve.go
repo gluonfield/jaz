@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -246,8 +245,8 @@ func startServer(
 	var stopLoops context.CancelFunc
 	lc.Append(fx.Hook{
 		OnStart: func(context.Context) error {
-			fmt.Printf("jaz server listening on %s\n", displayAddr(serverConfig.Addr))
-			fmt.Printf("client: %s\n", serveConnectURL(serverConfig, authKey))
+			fmt.Printf("jaz server listening on %s\n", serverconfig.DisplayAddr(serverConfig.Addr))
+			fmt.Printf("client: %s\n", serverconfig.ClientURL(serverConfig, authKey))
 			fmt.Printf("root: %s\n", store.RootDir())
 			fmt.Printf("workspace: %s\n", workspace)
 			if err := loopMemoryPaths.EnsureDir(); err != nil {
@@ -284,24 +283,6 @@ func startServer(
 func nativeProviderControl(p provider.Provider) provider.ReloadableProvider {
 	control, _ := p.(provider.ReloadableProvider)
 	return control
-}
-
-func serveConnectURL(config serverconfig.Config, key string) string {
-	base := strings.TrimSpace(config.PublicURL)
-	if base == "" {
-		base = config.Addr
-	}
-	u, err := url.Parse(displayAddr(base))
-	if err != nil || u.Scheme == "" || u.Host == "" {
-		return displayAddr(base) + "?key=" + url.QueryEscape(key)
-	}
-	u.Path = ""
-	u.RawPath = ""
-	u.Fragment = ""
-	q := u.Query()
-	q.Set("key", key)
-	u.RawQuery = q.Encode()
-	return u.String()
 }
 
 func finishLoopFromACP(service *loops.Service, logger *log.Logger, job acp.Job) {
