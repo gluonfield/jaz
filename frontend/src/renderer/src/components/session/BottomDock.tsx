@@ -29,13 +29,13 @@ export function BottomDock({
       className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-b from-transparent to-bg to-45% pt-6 pb-5"
     >
       <motion.div
-        className={`pointer-events-none ${THREAD_COLUMN_CLASS}`}
+        className={`pointer-events-none relative ${THREAD_COLUMN_CLASS}`}
         initial={{ y: 12, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ type: 'spring', stiffness: 380, damping: 32 }}
       >
+        <div className="pointer-events-auto absolute inset-x-0 bottom-full">{before}</div>
         <div className="pointer-events-auto">
-          {before}
           {children}
         </div>
       </motion.div>
