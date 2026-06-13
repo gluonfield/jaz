@@ -412,6 +412,8 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		s.handleSessionRepoChanges(w, r, session)
 	case "repo/diff":
 		s.handleSessionRepoDiff(w, r, session)
+	case "file":
+		s.handleSessionFile(w, r, session)
 	default:
 		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
 	}
