@@ -40,7 +40,9 @@ export function OverviewPanel({
       style={{ width: OVERVIEW_PANEL_WIDTH }}
       className="flex h-full shrink-0 flex-col bg-bg p-2"
     >
-      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto rounded-[14px] bg-surface px-4 py-4 shadow-[0_18px_46px_rgba(0,0,0,0.18)] ring-1 ring-border">
+      {/* Hugs its content — only grows to fill the column if there's enough to
+          scroll, so a short overview doesn't stretch a full-height card. */}
+      <div className="flex max-h-full flex-col gap-6 overflow-y-auto rounded-[14px] bg-surface px-4 py-4 shadow-[0_18px_46px_rgba(0,0,0,0.18)] ring-1 ring-border">
         {plan ? <PlanSection plan={plan} working={working} /> : null}
         {showGit ? <GitSection repo={repo} /> : null}
         <ManageSection session={session} />

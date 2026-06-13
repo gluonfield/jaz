@@ -29,6 +29,7 @@ import {
   answerSessionInteractiveResponse,
   cancelSession,
   sessionMessagesQuery,
+  sessionRepoQuery,
   uploadSessionAttachment,
 } from '@/lib/api/sessions'
 import { streamSessionMessage } from '@/lib/api/stream'
@@ -391,7 +392,11 @@ function SessionPage() {
   const [planDecisionError, setPlanDecisionError] = useState('')
   const abortRef = useRef<AbortController | null>(null)
   const sentPendingRef = useRef<string | null>(null)
-  const sidePanel = useSidePanelState()
+  // The panel only auto-opens on a git repo, so the picker needs to know up
+  // front — query it from the session's cwd (shares cache with the panel).
+  const sessionCwd = detail.data?.session.runtime_ref?.cwd
+  const repoInfo = useQuery({ ...sessionRepoQuery(sessionId), enabled: Boolean(sessionCwd) })
+  const sidePanel = useSidePanelState(Boolean(repoInfo.data?.git))
 
   const itemCount = (detail.data?.messages.length ?? 0) + events.data.length
   const liveSize = live

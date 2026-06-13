@@ -1,4 +1,3 @@
-import { FileDiff, FileText, Globe, PanelRightOpen } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
@@ -21,7 +20,7 @@ function storedSidePanelView(): SidePanelView {
   return value === 'diff' || value === 'preview' || value === 'file' ? value : 'overview'
 }
 
-export function useSidePanelState() {
+export function useSidePanelState(gitAvailable: boolean) {
   const [panelPref, setPanelPref] = useState<PanelPref>(storedPanelPref)
   const [view, setView] = useState<SidePanelView>(storedSidePanelView)
   const [previewUrl, setPreviewUrl] = useState('')
@@ -29,7 +28,10 @@ export function useSidePanelState() {
   const [hasPanelSpace, setHasPanelSpace] = useState(false)
   const observerRef = useRef<ResizeObserver | null>(null)
   const width = SIDE_PANEL_WIDTHS[view]
-  const open = panelPref === 'auto' ? hasPanelSpace : panelPref === 'open'
+  // Auto-open only earns its keep on a git repo — Overview/Diff have little to
+  // show otherwise. Explicit 'open' (a user pick) still opens anywhere.
+  const autoOpen = hasPanelSpace && gitAvailable
+  const open = panelPref === 'auto' ? autoOpen : panelPref === 'open'
 
   const measureRef = useCallback((el: HTMLDivElement | null) => {
     observerRef.current?.disconnect()
@@ -51,8 +53,8 @@ export function useSidePanelState() {
 
   const toggle = useCallback(() => {
     const next = !open
-    setPanelPref(next === hasPanelSpace ? 'auto' : next ? 'open' : 'closed')
-  }, [hasPanelSpace, open])
+    setPanelPref(next === autoOpen ? 'auto' : next ? 'open' : 'closed')
+  }, [autoOpen, open])
 
   const selectView = useCallback((next: SidePanelView) => {
     setView(next)
@@ -103,25 +105,13 @@ const SIDE_PANEL_VIEW_LABEL: Record<SidePanelView, string> = {
   file: 'File Reader',
 }
 
-function SidePanelViewIcon({ view, size = 14 }: { view: SidePanelView; size?: number }) {
-  switch (view) {
-    case 'diff':
-      return <FileDiff size={size} />
-    case 'preview':
-      return <Globe size={size} />
-    case 'file':
-      return <FileText size={size} />
-    default:
-      return <PanelRightOpen size={size} />
-  }
-}
-
 const BASE_VIEW_OPTIONS: SidePanelView[] = ['overview', 'diff', 'preview']
 
-// Always-visible segmented picker, in the home composer's flat-pill language:
-// the views sit in a row of quiet buttons (no container chrome, no hover-to-
-// reveal). The open view wears a lifted chip that springs between segments via
-// a shared layoutId; closing leaves no chip, so an idle panel reads at a glance.
+// A quiet segmented control on a single surface track, sized like the home
+// composer's pills. At rest with the panel closed it collapses to just the
+// current view; hover (or focus) unfurls the full row, and an open panel keeps
+// it unfurled. The current view is the same keyed button throughout, so the
+// siblings simply fan in beside it rather than the whole control flickering.
 export function SidePanelControl({
   open,
   view,
@@ -136,6 +126,15 @@ export function SidePanelControl({
   onSelectView: (view: SidePanelView) => void
 }) {
   const options = fileAvailable || view === 'file' ? [...BASE_VIEW_OPTIONS, 'file' as const] : BASE_VIEW_OPTIONS
+  const currentView = view === 'file' && !fileAvailable ? 'overview' : view
+  const controlRef = useRef<HTMLDivElement>(null)
+  const [hovered, setHovered] = useState(false)
+  const expanded = open || hovered
+  const visible = options.filter((option) => expanded || option === currentView)
+
+  const collapseIfUnfocused = () => {
+    if (!controlRef.current?.contains(document.activeElement)) setHovered(false)
+  }
   const toggleView = (next: SidePanelView) => {
     // Tapping the open view closes the panel; any other view opens to it.
     if (open && view === next) {
@@ -144,10 +143,21 @@ export function SidePanelControl({
     }
     onSelectView(next)
   }
+
   return (
-    <motion.div layout className="flex items-center gap-0.5">
+    <motion.div
+      ref={controlRef}
+      layout
+      onPointerEnter={() => setHovered(true)}
+      onPointerLeave={collapseIfUnfocused}
+      onFocus={() => setHovered(true)}
+      onBlur={(event) => {
+        if (!controlRef.current?.contains(event.relatedTarget as Node | null)) setHovered(false)
+      }}
+      className="flex h-8 items-center gap-0.5 rounded-full bg-surface p-0.5"
+    >
       <AnimatePresence initial={false} mode="popLayout">
-        {options.map((option) => {
+        {visible.map((option) => {
           const active = open && view === option
           return (
             <motion.button
@@ -158,11 +168,11 @@ export function SidePanelControl({
               title={active ? `Hide ${SIDE_PANEL_VIEW_LABEL[option]} panel` : `Open ${SIDE_PANEL_VIEW_LABEL[option]}`}
               onClick={() => toggleView(option)}
               whileTap={{ scale: 0.96 }}
-              initial={{ opacity: 0, scale: 0.9, filter: 'blur(4px)' }}
-              animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-              exit={{ opacity: 0, scale: 0.9, filter: 'blur(4px)' }}
-              transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
-              className={`relative flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-2.5 text-[13px] font-medium transition-colors duration-150 ${
+              initial={{ opacity: 0, scale: 0.92 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.92 }}
+              transition={{ type: 'spring', duration: 0.26, bounce: 0 }}
+              className={`relative h-7 cursor-pointer rounded-full px-2.5 text-[13px] font-medium whitespace-nowrap transition-colors duration-150 ${
                 active ? 'text-ink' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
               }`}
             >
@@ -170,13 +180,10 @@ export function SidePanelControl({
                 <motion.span
                   layoutId="side-panel-active-pill"
                   transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
-                  className="absolute inset-0 rounded-full bg-surface shadow-sm ring-1 ring-border/60"
+                  className="absolute inset-0 rounded-full bg-bg shadow-sm ring-1 ring-border/50"
                 />
               ) : null}
-              <span className="relative flex items-center gap-1.5">
-                <SidePanelViewIcon view={option} size={13} />
-                {SIDE_PANEL_VIEW_LABEL[option]}
-              </span>
+              <span className="relative">{SIDE_PANEL_VIEW_LABEL[option]}</span>
             </motion.button>
           )
         })}
