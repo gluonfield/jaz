@@ -11,6 +11,7 @@ function normalizeAgentSettings(settings: AgentSettings): AgentSettings {
       reasoning_effort: settings.native.reasoning_effort ?? '',
     },
     providers: settings.providers ?? [],
+    acp_options: settings.acp_options ?? {},
     acp: Object.fromEntries(
       (settings.agents ?? []).map((agent) => {
         const current = settings.acp?.[agent] ?? { enabled: false }

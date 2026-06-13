@@ -13,10 +13,11 @@ import (
 )
 
 type agentSettingsResponse struct {
-	Native    agentsettings.NativeAgentDefaults         `json:"native"`
-	Providers []provider.NativeProvider                 `json:"providers"`
-	ACP       map[string]agentsettings.ACPAgentDefaults `json:"acp"`
-	Agents    []string                                  `json:"agents"`
+	Native     agentsettings.NativeAgentDefaults         `json:"native"`
+	Providers  []provider.NativeProvider                 `json:"providers"`
+	ACP        map[string]agentsettings.ACPAgentDefaults `json:"acp"`
+	ACPOptions map[string]acp.AgentOptions               `json:"acp_options"`
+	Agents     []string                                  `json:"agents"`
 }
 
 func (s *Server) handleAgentSettings(w http.ResponseWriter, r *http.Request) {
@@ -71,12 +72,22 @@ func (s *Server) loadAgentSettings(store storage.SettingsStorage) (agentsettings
 }
 
 func (s *Server) agentSettingsResponse(defaults agentsettings.AgentDefaults) agentSettingsResponse {
+	agentNames := s.allACPAgentNames()
 	return agentSettingsResponse{
-		Native:    defaults.Native,
-		Providers: provider.NativeProviders(),
-		ACP:       defaults.ACP,
-		Agents:    s.allACPAgentNames(),
+		Native:     defaults.Native,
+		Providers:  provider.NativeProviders(),
+		ACP:        defaults.ACP,
+		ACPOptions: acpOptions(agentNames),
+		Agents:     agentNames,
 	}
+}
+
+func acpOptions(agentNames []string) map[string]acp.AgentOptions {
+	options := make(map[string]acp.AgentOptions, len(agentNames))
+	for _, name := range agentNames {
+		options[name] = acp.AgentOptionsFor(name)
+	}
+	return options
 }
 
 func (s *Server) agentSettingsSeed() agentsettings.AgentDefaults {
