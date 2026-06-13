@@ -9,6 +9,7 @@ import { agentSettingsQuery } from '@/lib/api/settings'
 import { acpAgentModelSuggestions, OPENAI_MODELS, openRouterModelsQuery } from '@/lib/models'
 import { setPendingMessage, setPendingVoice } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
+import { acpReasoningEffortOptions, REASONING_EFFORT_OPTIONS } from '@/lib/reasoningEfforts'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { useTheme } from '@/lib/theme'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -209,6 +210,9 @@ function NewSessionPage() {
             : undefined
         }
         effort={reasoningEffort}
+        effortOptions={
+          isNative ? REASONING_EFFORT_OPTIONS : acpReasoningEffortOptions(agentSettings, runtime)
+        }
         // Default clears the override, falling back to the settings effort.
         onEffortChange={(next) => setEffortOverride(next === '' ? null : next)}
       />
