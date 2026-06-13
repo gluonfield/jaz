@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'motion/react'
+import { motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import { parseFileReference, type FileReference } from '../../../../shared/fileReader'
@@ -131,7 +131,6 @@ export function SidePanelControl({
   const closeTimer = useRef<number | null>(null)
   const [hovered, setHovered] = useState(false)
   const expanded = open || hovered
-  const visible = options.filter((option) => expanded || option === currentView)
 
   // Hover intent: collapse on a short delay, cancelled the moment the pointer
   // (or focus) comes back. Without it a transient pointerleave during the
@@ -167,6 +166,32 @@ export function SidePanelControl({
     onSelectView(next)
   }
 
+  const renderButton = (option: SidePanelView) => {
+    const active = open && view === option
+    return (
+      <motion.button
+        key={option}
+        type="button"
+        aria-pressed={active}
+        title={active ? `Hide ${SIDE_PANEL_VIEW_LABEL[option]} panel` : `Open ${SIDE_PANEL_VIEW_LABEL[option]}`}
+        onClick={() => toggleView(option)}
+        whileTap={{ scale: 0.96 }}
+        className={`relative flex h-7 cursor-pointer items-center rounded-full px-2.5 text-[13px] font-medium whitespace-nowrap transition-colors duration-150 ${
+          active ? 'text-ink' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
+        }`}
+      >
+        {active ? (
+          <motion.span
+            layoutId="side-panel-active-pill"
+            transition={{ type: 'spring', duration: 0.32, bounce: 0 }}
+            className="absolute inset-0 rounded-full bg-bg shadow-sm ring-1 ring-border/50"
+          />
+        ) : null}
+        <span className="relative">{SIDE_PANEL_VIEW_LABEL[option]}</span>
+      </motion.button>
+    )
+  }
+
   return (
     <div
       ref={controlRef}
@@ -176,47 +201,29 @@ export function SidePanelControl({
       onBlur={(event) => {
         if (!controlRef.current?.contains(event.relatedTarget as Node | null)) collapseSoon()
       }}
-      className="flex h-8 items-center gap-0.5 rounded-full bg-surface p-0.5"
+      className="flex h-8 items-center rounded-full bg-surface p-0.5"
     >
-      {/* No layout/transform animation: the row lives in real flex layout,
-          pinned to the titlebar's right edge. The current view is the rightmost
-          child, so its box is fixed — it stays perfectly still while siblings
-          grow/shrink their own max-width to its left. */}
-      <AnimatePresence initial={false}>
-        {visible.map((option) => {
-          const active = open && view === option
-          const isCurrent = option === currentView
-          return (
-            <motion.button
-              key={option}
-              type="button"
-              aria-pressed={active}
-              title={active ? `Hide ${SIDE_PANEL_VIEW_LABEL[option]} panel` : `Open ${SIDE_PANEL_VIEW_LABEL[option]}`}
-              onClick={() => toggleView(option)}
-              whileTap={{ scale: 0.96 }}
-              initial={isCurrent ? false : { opacity: 0, maxWidth: 0 }}
-              animate={{ opacity: 1, maxWidth: 160 }}
-              exit={{ opacity: 0, maxWidth: 0 }}
-              transition={{
-                maxWidth: { duration: 0.24, ease: [0.22, 1, 0.36, 1] },
-                opacity: { duration: 0.16, ease: 'easeOut' },
-              }}
-              className={`relative h-7 shrink-0 cursor-pointer rounded-full px-2.5 text-[13px] font-medium whitespace-nowrap transition-colors duration-150 ${
-                isCurrent ? '' : 'overflow-hidden'
-              } ${active ? 'text-ink' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'}`}
-            >
-              {active ? (
-                <motion.span
-                  layoutId="side-panel-active-pill"
-                  transition={{ type: 'spring', duration: 0.32, bounce: 0 }}
-                  className="absolute inset-0 rounded-full bg-bg shadow-sm ring-1 ring-border/50"
-                />
-              ) : null}
-              <span className="relative">{SIDE_PANEL_VIEW_LABEL[option]}</span>
-            </motion.button>
-          )
-        })}
-      </AnimatePresence>
+      {options.map((option) => {
+        // The current view is a plain flex child (the rigid anchor); the others
+        // sit in a grid track that animates 1fr↔0fr. Collapsing the fr unit
+        // shrinks real width with no dead zone, so the pill and its label fade
+        // out together in one motion instead of text-then-whitespace.
+        if (option === currentView) return renderButton(option)
+        return (
+          <div
+            key={option}
+            aria-hidden={!expanded}
+            className="grid min-w-0 transition-[grid-template-columns,opacity] duration-200 ease-out"
+            style={{
+              gridTemplateColumns: expanded ? '1fr' : '0fr',
+              opacity: expanded ? 1 : 0,
+              pointerEvents: expanded ? undefined : 'none',
+            }}
+          >
+            <div className="overflow-hidden">{renderButton(option)}</div>
+          </div>
+        )
+      })}
     </div>
   )
 }
