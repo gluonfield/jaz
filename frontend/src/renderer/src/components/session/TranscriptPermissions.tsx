@@ -83,7 +83,7 @@ function QuestionPermissionCard({
     setAnswer(current.id, label)
     if (isLast) return
     clearTimeout(advanceTimer.current)
-    advanceTimer.current = setTimeout(() => goTo(safeIndex + 1), reduce ? 0 : 240)
+    advanceTimer.current = setTimeout(() => goTo(safeIndex + 1), reduce ? 0 : 150)
   }
 
   const submit = async () => {
@@ -147,7 +147,7 @@ function QuestionPermissionCard({
             initial="enter"
             animate="center"
             exit="exit"
-            transition={{ type: 'spring', duration: 0.32, bounce: 0 }}
+            transition={{ type: 'spring', duration: 0.18, bounce: 0 }}
           >
             {current.header ? (
               <p className="text-[11px] font-medium tracking-wide text-ink-3 uppercase">
@@ -157,7 +157,7 @@ function QuestionPermissionCard({
             <p className="mt-0.5 text-[15px] leading-snug text-ink text-pretty">{current.question}</p>
 
             {options.length ? (
-              <div className="mt-3 flex flex-wrap gap-1.5">
+              <div className="mt-3 flex flex-col gap-1.5">
                 {options.map((option) => {
                   const active = selected === option.label
                   return (
@@ -166,7 +166,7 @@ function QuestionPermissionCard({
                       type="button"
                       disabled={locked}
                       onClick={() => pickOption(option.label)}
-                      className={`inline-flex min-h-8 items-center rounded-full border px-3 py-1 text-left text-[12px] font-medium transition duration-150 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-60 ${
+                      className={`flex min-h-9 w-full items-center rounded-control border px-3 py-1.5 text-left text-[12px] font-medium transition duration-150 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 ${
                         active
                           ? 'border-primary bg-primary-soft text-primary-strong'
                           : 'border-border bg-bg text-ink hover:border-primary hover:text-primary'
@@ -186,7 +186,7 @@ function QuestionPermissionCard({
                 value={otherValue}
                 disabled={locked}
                 placeholder={options.length ? 'Other answer…' : 'Type your answer…'}
-                className="mt-2.5 h-9 w-full rounded-full border border-border bg-bg px-3.5 text-[12px] text-ink transition-colors placeholder:text-ink-3 focus:border-primary focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                className={`${options.length ? 'mt-1.5' : 'mt-3'} h-9 w-full rounded-control border border-border bg-bg px-3 text-[12px] text-ink transition-colors placeholder:text-ink-3 focus:border-primary focus:outline-none disabled:cursor-not-allowed disabled:opacity-60`}
                 onChange={(e) => setAnswer(current.id, e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key !== 'Enter') return
@@ -227,7 +227,7 @@ function QuestionPermissionCard({
                 >
                   <motion.span
                     layout
-                    transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
+                    transition={{ type: 'spring', duration: 0.2, bounce: 0 }}
                     className={`h-1.5 rounded-full transition-colors ${
                       dotCurrent
                         ? 'w-5 bg-primary'
