@@ -72,3 +72,29 @@ func TestClampReasoningEffort(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeAgentReasoningEffort(t *testing.T) {
+	cases := []struct {
+		agent string
+		value string
+		want  string
+		err   bool
+	}{
+		{AgentClaude, "max", "max", false},
+		{AgentClaude, "ultracode", "ultracode", false},
+		{AgentCodex, "max", "", true},
+		{AgentGrok, "ultracode", "", true},
+	}
+	for _, tc := range cases {
+		got, err := NormalizeAgentReasoningEffort(tc.agent, tc.value)
+		if tc.err {
+			if err == nil {
+				t.Fatalf("NormalizeAgentReasoningEffort(%q, %q) succeeded, want error", tc.agent, tc.value)
+			}
+			continue
+		}
+		if err != nil || got != tc.want {
+			t.Fatalf("NormalizeAgentReasoningEffort(%q, %q) = %q, %v; want %q", tc.agent, tc.value, got, err, tc.want)
+		}
+	}
+}

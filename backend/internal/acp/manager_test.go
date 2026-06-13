@@ -388,6 +388,91 @@ func TestManagerUsesClaudeEffortConfigOption(t *testing.T) {
 	}
 }
 
+func TestManagerUsesClaudeMaxEffortConfigOption(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := acp.NewManager(store, acp.Config{
+		Root:      t.TempDir(),
+		Workspace: t.TempDir(),
+		Agents: map[string]acp.AgentConfig{
+			"claude": {
+				Command:         os.Args[0],
+				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
+				Model:           "default",
+				ReasoningEffort: "max",
+				Env: map[string]string{
+					"JAZ_FAKE_ACP_AGENT":               "1",
+					"JAZ_FAKE_ACP_MODELS":              "default,sonnet",
+					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG": "default",
+					"JAZ_FAKE_ACP_SET_CONFIG":          "1",
+					"JAZ_FAKE_ACP_EXPECT_CONFIG_ID":    "effort",
+					"JAZ_FAKE_ACP_EXPECT_EFFORT":       "max",
+				},
+			},
+		},
+	}, log.New(io.Discard))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "claude", Slug: "claude-max-effort"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	session, err := store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.ReasoningEffort != "max" {
+		t.Fatalf("claude effort = %q, want max", session.ReasoningEffort)
+	}
+}
+
+func TestManagerUsesClaudeUltracodeSessionMeta(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := acp.NewManager(store, acp.Config{
+		Root:      t.TempDir(),
+		Workspace: t.TempDir(),
+		Agents: map[string]acp.AgentConfig{
+			"claude": {
+				Command:         os.Args[0],
+				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
+				Model:           "default",
+				ReasoningEffort: "ultracode",
+				Env: map[string]string{
+					"JAZ_FAKE_ACP_AGENT":               "1",
+					"JAZ_FAKE_ACP_MODELS":              "default,sonnet",
+					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG": "default",
+					"JAZ_FAKE_ACP_EXPECT_ULTRACODE":    "1",
+					"JAZ_FAKE_ACP_SET_CONFIG":          "1",
+					"JAZ_FAKE_ACP_EXPECT_CONFIG_ID":    "effort",
+					"JAZ_FAKE_ACP_EXPECT_EFFORT":       "xhigh",
+				},
+			},
+		},
+	}, log.New(io.Discard))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "claude", Slug: "claude-ultracode"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	session, err := store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.ReasoningEffort != "ultracode" {
+		t.Fatalf("claude effort = %q, want ultracode", session.ReasoningEffort)
+	}
+}
+
 func TestManagerCanonicalizesClaudeAliasBeforeSettingModel(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

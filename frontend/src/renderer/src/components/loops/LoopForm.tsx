@@ -8,6 +8,7 @@ import type { LoopInput } from '@/lib/api/loops'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import type { Loop } from '@/lib/api/types'
 import { acpAgentModelSuggestions, OPENAI_MODELS, openRouterModelsQuery } from '@/lib/models'
+import { acpReasoningEffortOptions, REASONING_EFFORT_OPTIONS } from '@/lib/reasoningEfforts'
 import { SchedulePicker } from './SchedulePicker'
 import {
   type ScheduleDraft,
@@ -252,6 +253,11 @@ function LoopPromptCard({
                   : undefined
               }
               effort={reasoningEffort}
+              effortOptions={
+                isNative
+                  ? REASONING_EFFORT_OPTIONS
+                  : acpReasoningEffortOptions(agentSettings, draft.runtime)
+              }
               // 'Default' clears the override; the selection snaps back to the
               // resolved settings effort.
               onEffortChange={(next) => set({ reasoningEffort: next })}
