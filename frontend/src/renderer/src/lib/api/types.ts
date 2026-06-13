@@ -116,6 +116,7 @@ export interface SessionFileRead {
 
 export interface HealthResponse {
   ok: boolean
+  auth_required?: boolean
   capabilities?: {
     session_file_read?: boolean
   }
@@ -521,4 +522,37 @@ export interface AgentSettings {
   providers: NativeProviderOption[]
   acp: Record<string, ACPAgentDefaults>
   agents: string[]
+}
+
+export interface OnboardingACPProbe {
+  agent: string
+  command?: string
+  installed: boolean
+  authenticated: boolean
+  available: boolean
+  reason?: string
+  storage_path?: string
+  auth_command?: string
+  auth_command_available: boolean
+  auth_command_reason?: string
+  refresh_owner?: string
+}
+
+export interface OnboardingNativeProvider {
+  id: string
+  api_key_env?: string
+  configured: boolean
+}
+
+export interface OnboardingStatus {
+  completed: boolean
+  acp: OnboardingACPProbe[]
+  native_providers: OnboardingNativeProvider[]
+  settings: AgentSettings
+}
+
+export interface OnboardingInput {
+  settings?: AgentSettings
+  provider_keys?: Record<string, string>
+  completed: boolean
 }

@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/wins/jaz/backend/internal/provider"
+	openaiprovider "github.com/wins/jaz/backend/internal/provider/openai"
+	"github.com/wins/jaz/backend/internal/runtimeenv"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -94,5 +97,36 @@ func TestNewMemoryRespectsExplicitMemoryConfig(t *testing.T) {
 	}
 	if memory.DBPath() != dbPath {
 		t.Fatalf("memory db = %q, want %q", memory.DBPath(), dbPath)
+	}
+}
+
+func TestReloadableProviderReadsRuntimeEnv(t *testing.T) {
+	t.Setenv("OPENROUTER_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	root := t.TempDir()
+
+	loaded, err := NewProvider(Config{Root: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloadable := loaded.(*ReloadableProvider)
+	router := reloadable.currentProvider().(*provider.Router)
+	if _, ok := router.Provider[provider.ProviderOpenRouter].(provider.UnavailableProvider); !ok {
+		t.Fatalf("openrouter should start unavailable: %#v", router.Provider[provider.ProviderOpenRouter])
+	}
+
+	if err := runtimeenv.Save(runtimeenv.Path(root), map[string]string{"OPENROUTER_API_KEY": "runtime-key"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := reloadable.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	router = reloadable.currentProvider().(*provider.Router)
+	openRouter, ok := router.Provider[provider.ProviderOpenRouter].(*openaiprovider.Provider)
+	if !ok {
+		t.Fatalf("openrouter provider = %T", router.Provider[provider.ProviderOpenRouter])
+	}
+	if openRouter.APIKey != "runtime-key" {
+		t.Fatalf("openrouter key = %q", openRouter.APIKey)
 	}
 }

@@ -175,6 +175,15 @@ func TestWidgetContentAndErrorsAPI(t *testing.T) {
 			t.Fatalf("content missing %q", want)
 		}
 	}
+	res = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/widgets/"+widget.ID+"/content?inline_assets=1", nil))
+	if res.Code != http.StatusOK {
+		t.Fatalf("inline content = %d: %s", res.Code, res.Body.String())
+	}
+	body = res.Body.String()
+	if strings.Contains(body, `src="`+widgets.TailwindAssetPath+`"`) || !strings.Contains(body, widgets.TailwindJS[:64]) {
+		t.Fatal("inline widget content did not embed Tailwind")
+	}
 
 	report := httptest.NewRequest(http.MethodPost, "/v1/widgets/"+widget.ID+"/errors",
 		strings.NewReader(`{"message":"TypeError: x is undefined"}`))

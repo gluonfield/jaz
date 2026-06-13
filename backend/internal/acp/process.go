@@ -36,6 +36,9 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 		return nil, fmt.Errorf("acp agent %q has no command", name)
 	}
 	command, args := processCommand(name, cfg)
+	if resolved, err := ResolveExecutable(command); err == nil {
+		command = resolved
+	}
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Env = envList(env)
 	if cwd != "" {
@@ -62,8 +65,23 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 }
 
 func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
+	env, _ := m.buildProcessEnv(name, agent, true)
+	return env
+}
+
+func (m *Manager) processEnvPrepared(name string, agent AgentConfig) (map[string]string, error) {
+	return m.buildProcessEnv(name, agent, true)
+}
+
+func (m *Manager) probeEnv(name string, agent AgentConfig) map[string]string {
+	env, _ := m.buildProcessEnv(name, agent, false)
+	return env
+}
+
+func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) (map[string]string, error) {
 	name = CanonicalAgentName(name)
 	env := map[string]string{}
+	var prepareErr error
 	for _, key := range []string{"PATH", "CODEX_HOME"} {
 		if value := os.Getenv(key); value != "" {
 			env[key] = value
@@ -83,7 +101,13 @@ func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
 	layout := runtimefiles.New(root)
 	home := layout.ACPHome
 	if name == AgentCodex {
-		if codexHome := prepareCodexHome(root, env["CODEX_HOME"]); codexHome != "" {
+		codexHome := layout.ACPCodexHome
+		if prepare {
+			var err error
+			codexHome, err = prepareCodexHome(root, env["CODEX_HOME"])
+			prepareErr = firstError(prepareErr, err)
+		}
+		if codexHome != "" {
 			env["CODEX_HOME"] = codexHome
 		}
 		for _, key := range []string{"OPENAI_API_KEY", "OPENAI_APIKEY", "OPENROUTER_API_KEY", "OPENROUTER_APIKEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"} {
@@ -92,6 +116,7 @@ func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
 	}
 	if name == AgentClaude {
 		configuredHome := strings.TrimSpace(env["HOME"])
+		configuredConfigDir := strings.TrimSpace(env["CLAUDE_CONFIG_DIR"])
 		preserveHostEnv(env, []string{
 			"ANTHROPIC_API_KEY",
 			"ANTHROPIC_APIKEY",
@@ -101,7 +126,6 @@ func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
 			"CLAUDE_CODE_OAUTH_TOKEN",
 			"CLAUDE_CODE_USE_BEDROCK",
 			"CLAUDE_CODE_USE_VERTEX",
-			"CLAUDE_CONFIG_DIR",
 			"LANG",
 			"LC_ALL",
 			"LC_CTYPE",
@@ -112,11 +136,19 @@ func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
 		})
 		if configuredHome != "" {
 			home = configuredHome
-		} else if userHome, err := os.UserHomeDir(); err == nil && userHome != "" {
-			home = userHome
+		}
+		if configuredConfigDir != "" {
+			env["CLAUDE_CONFIG_DIR"] = configuredConfigDir
+		} else {
+			env["CLAUDE_CONFIG_DIR"] = layout.ACPClaudeConfig
+			if prepare {
+				var err error
+				env["CLAUDE_CONFIG_DIR"], err = prepareClaudeConfig(root, os.Getenv("CLAUDE_CONFIG_DIR"))
+				prepareErr = firstError(prepareErr, err)
+			}
 		}
 		if env["CLAUDE_CODE_EXECUTABLE"] == "" {
-			if cli, err := exec.LookPath("claude"); err == nil {
+			if cli, err := ResolveExecutable("claude"); err == nil {
 				env["CLAUDE_CODE_EXECUTABLE"] = cli
 			}
 		}
@@ -125,7 +157,6 @@ func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
 	if name == AgentGrok {
 		configuredHome := strings.TrimSpace(env["HOME"])
 		preserveHostEnv(env, []string{
-			"HOME",
 			"HTTP_PROXY",
 			"HTTPS_PROXY",
 			"LANG",
@@ -141,16 +172,25 @@ func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
 		})
 		if configuredHome != "" {
 			home = configuredHome
-		} else if userHome, err := os.UserHomeDir(); err == nil && userHome != "" {
-			home = userHome
+		} else {
+			home = layout.ACPHome
+			if prepare {
+				var err error
+				home, err = prepareGrokHome(root, "")
+				prepareErr = firstError(prepareErr, err)
+			}
 		}
 		normalizeEnv(env, "XAI_API_KEY", "XAI_APIKEY")
 	}
 	tmp := layout.ACPTmp
 	cache := layout.ACPNPMCache
-	_ = os.MkdirAll(home, 0o700)
-	_ = os.MkdirAll(tmp, 0o700)
-	_ = os.MkdirAll(cache, 0o700)
+	if prepare {
+		for _, dir := range []string{home, tmp, cache} {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				prepareErr = firstError(prepareErr, fmt.Errorf("prepare acp directory %s: %w", dir, err))
+			}
+		}
+	}
 	env["HOME"] = home
 	env["TMPDIR"] = tmp
 	env["TMP"] = tmp
@@ -160,7 +200,7 @@ func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
 	env["npm_config_audit"] = "false"
 	env["npm_config_fund"] = "false"
 	env["npm_config_update_notifier"] = "false"
-	return env
+	return env, prepareErr
 }
 
 func processCommand(name string, cfg AgentConfig) (string, []string) {
@@ -227,32 +267,98 @@ func hasFlag(args []string, names ...string) bool {
 	return false
 }
 
-func prepareCodexHome(root, sourceHome string) string {
+func prepareCodexHome(root, sourceHome string) (string, error) {
+	dstHome := runtimefiles.New(root).ACPCodexHome
 	if sourceHome == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return ""
+			return dstHome, nil
 		}
 		sourceHome = filepath.Join(home, ".codex")
 	}
 	src := filepath.Join(sourceHome, "auth.json")
-	if !fileExists(src) {
-		return ""
-	}
-	dstHome := runtimefiles.New(root).ACPCodexHome
 	dst := filepath.Join(dstHome, "auth.json")
-	_ = os.MkdirAll(dstHome, 0o700)
-	if !fileExists(dst) {
-		if err := os.Symlink(src, dst); err != nil {
-			if data, err := os.ReadFile(src); err == nil {
-				_ = os.WriteFile(dst, data, 0o600)
-			}
+	if err := os.MkdirAll(dstHome, 0o700); err != nil {
+		return dstHome, fmt.Errorf("prepare codex auth: %w", err)
+	}
+	if fileExists(src) && !fileExists(dst) {
+		if err := copyFile(src, dst); err != nil {
+			return dstHome, fmt.Errorf("prepare codex auth: %w", err)
 		}
 	}
-	if fileExists(dst) {
-		return dstHome
+	return dstHome, nil
+}
+
+func prepareGrokHome(root, sourceHome string) (string, error) {
+	dstHome := runtimefiles.New(root).ACPHome
+	if sourceHome == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return dstHome, nil
+		}
+		sourceHome = home
 	}
-	return ""
+	src := filepath.Join(sourceHome, ".grok", "auth.json")
+	dstDir := filepath.Join(dstHome, ".grok")
+	dst := filepath.Join(dstDir, "auth.json")
+	if err := os.MkdirAll(dstDir, 0o700); err != nil {
+		return dstHome, fmt.Errorf("prepare grok auth: %w", err)
+	}
+	if fileExists(src) && !fileExists(dst) {
+		if err := copyFile(src, dst); err != nil {
+			return dstHome, fmt.Errorf("prepare grok auth: %w", err)
+		}
+	}
+	return dstHome, nil
+}
+
+func prepareClaudeConfig(root, sourceDir string) (string, error) {
+	dstDir := runtimefiles.New(root).ACPClaudeConfig
+	if err := os.MkdirAll(dstDir, 0o700); err != nil {
+		return dstDir, fmt.Errorf("prepare claude auth: %w", err)
+	}
+	dst := filepath.Join(dstDir, ".credentials.json")
+	for _, src := range claudeCredentialCandidates(sourceDir) {
+		if fileExists(src) && !fileExists(dst) {
+			if err := copyFile(src, dst); err != nil {
+				return dstDir, fmt.Errorf("prepare claude auth: %w", err)
+			}
+			break
+		}
+	}
+	return dstDir, nil
+}
+
+func claudeCredentialCandidates(sourceDir string) []string {
+	candidates := []string{}
+	if strings.TrimSpace(sourceDir) != "" {
+		candidates = append(candidates, filepath.Join(sourceDir, ".credentials.json"))
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		candidates = append(candidates, filepath.Join(home, ".claude", ".credentials.json"))
+	}
+	return candidates
+}
+
+func copyFile(src, dst string) error {
+	if src == dst {
+		return nil
+	}
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return fmt.Errorf("copy %s to %s: %w", src, dst, err)
+	}
+	if err := os.WriteFile(dst, data, 0o600); err != nil {
+		return fmt.Errorf("copy %s to %s: %w", src, dst, err)
+	}
+	return nil
+}
+
+func firstError(current, next error) error {
+	if current != nil {
+		return current
+	}
+	return next
 }
 
 func preserveHostEnv(env map[string]string, keys []string) {
@@ -376,6 +482,26 @@ func codexAuthHint(env map[string]string) string {
 		return "Codex OAuth login at " + filepath.Join(env["CODEX_HOME"], "auth.json")
 	}
 	return "Codex OAuth login at ~/.codex/auth.json"
+}
+
+func claudeAuthAvailable(env map[string]string) bool {
+	for _, key := range []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"} {
+		if strings.TrimSpace(env[key]) != "" {
+			return true
+		}
+	}
+	configDir := env["CLAUDE_CONFIG_DIR"]
+	if configDir == "" {
+		return false
+	}
+	return fileExists(filepath.Join(configDir, ".credentials.json"))
+}
+
+func claudeAuthHint(env map[string]string) string {
+	if env["CLAUDE_CONFIG_DIR"] != "" {
+		return "Claude login at " + filepath.Join(env["CLAUDE_CONFIG_DIR"], ".credentials.json")
+	}
+	return "Claude login at ~/.claude/.credentials.json"
 }
 
 func grokAuthAvailable(env map[string]string) bool {

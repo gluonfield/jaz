@@ -41,33 +41,35 @@ func TestParseCommandLineRejectsUnterminatedQuote(t *testing.T) {
 }
 
 func TestEnsureAgentDefaultsReplacesLegacyCodexDefaultCommand(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	seed := testAgentDefaultsSeed()
-	old := seed
-	old.ACP = map[string]ACPAgentDefaults{
-		"codex": {
-			Enabled:         true,
-			Command:         legacyCodexACPCommand,
-			Model:           "gpt-5.5",
-			ReasoningEffort: "medium",
-		},
-	}
-	if _, err := SaveAgentDefaults(store, old); err != nil {
-		t.Fatal(err)
-	}
+	for _, legacy := range legacyCodexACPCommands {
+		store, err := jsonstore.New(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		seed := testAgentDefaultsSeed()
+		old := seed
+		old.ACP = map[string]ACPAgentDefaults{
+			"codex": {
+				Enabled:         true,
+				Command:         legacy,
+				Model:           "gpt-5.5",
+				ReasoningEffort: "medium",
+			},
+		}
+		if _, err := SaveAgentDefaults(store, old); err != nil {
+			t.Fatal(err)
+		}
 
-	if err := EnsureAgentDefaults(store, seed); err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadAgentDefaults(store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loaded.ACP["codex"].Command != seed.ACP["codex"].Command {
-		t.Fatalf("codex command = %q", loaded.ACP["codex"].Command)
+		if err := EnsureAgentDefaults(store, seed); err != nil {
+			t.Fatal(err)
+		}
+		loaded, err := LoadAgentDefaults(store)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if loaded.ACP["codex"].Command != seed.ACP["codex"].Command {
+			t.Fatalf("codex command = %q, want upgraded from %q", loaded.ACP["codex"].Command, legacy)
+		}
 	}
 }
 

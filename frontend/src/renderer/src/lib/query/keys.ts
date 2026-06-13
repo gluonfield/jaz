@@ -17,6 +17,7 @@ export const keys = {
   sessionEvents: (id: string) => ['sessions', id, 'events'] as const,
   agentFiles: ['agent', 'files'] as const,
   agentSettings: ['settings', 'agents'] as const,
+  onboarding: ['onboarding'] as const,
   memory: ['memory'] as const,
   mcpServers: ['mcp', 'servers'] as const,
   acpAgents: ['acp', 'agents'] as const,

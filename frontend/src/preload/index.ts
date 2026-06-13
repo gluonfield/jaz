@@ -12,7 +12,7 @@ contextBridge.exposeInMainWorld('jaz', {
   windowKind,
   setNativeTheme: (source: 'light' | 'dark' | 'system') =>
     ipcRenderer.send('jaz:set-native-theme', source),
-  startLocalBackend: (): Promise<{ ok: boolean; error?: string }> =>
+  startLocalBackend: (): Promise<{ ok: boolean; url?: string; key?: string; error?: string }> =>
     ipcRenderer.invoke('jaz:start-local-backend'),
   getUpdateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke('jaz:get-update-status'),
   installUpdate: (): Promise<{ ok: boolean; error?: string }> =>

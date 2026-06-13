@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 )
@@ -106,6 +107,50 @@ func getSession(client *http.Client, serverURL, sessionID string) (sessionRespon
 		return sessionResponse{}, err
 	}
 	return out, nil
+}
+
+type serverConnection struct {
+	URL string
+	Key string
+}
+
+func parseServerConnection(raw string) (serverConnection, error) {
+	u, err := url.Parse(displayAddr(raw))
+	if err != nil {
+		return serverConnection{}, err
+	}
+	key := strings.TrimSpace(u.Query().Get("key"))
+	u.RawQuery = ""
+	u.Fragment = ""
+	if key == "" {
+		key = strings.TrimSpace(os.Getenv("JAZ_API_KEY"))
+	}
+	return serverConnection{URL: strings.TrimRight(u.String(), "/"), Key: key}, nil
+}
+
+func authHTTPClient(key string) *http.Client {
+	if strings.TrimSpace(key) == "" {
+		return http.DefaultClient
+	}
+	return &http.Client{Transport: authTransport{key: strings.TrimSpace(key), base: http.DefaultTransport}}
+}
+
+type authTransport struct {
+	key  string
+	base http.RoundTripper
+}
+
+func (t authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	if req.Header.Get("Authorization") != "" {
+		return base.RoundTrip(req)
+	}
+	clone := req.Clone(req.Context())
+	clone.Header.Set("Authorization", "Bearer "+t.key)
+	return base.RoundTrip(clone)
 }
 
 func displayAddr(addr string) string {

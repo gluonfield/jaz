@@ -1,0 +1,67 @@
+package server
+
+import (
+	"crypto/subtle"
+	"fmt"
+	"net"
+	"net/http"
+	"strings"
+)
+
+func (s *Server) withAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := strings.TrimSpace(s.AuthKey)
+		if key == "" || r.URL.Path == "/health" || internalMCPRequest(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if subtle.ConstantTimeCompare([]byte(requestAuthKey(r)), []byte(key)) != 1 {
+			writeError(w, http.StatusUnauthorized, fmt.Errorf("missing or invalid backend API key"))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) handleAuthCheck(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func requestAuthKey(r *http.Request) string {
+	if token := bearerToken(r.Header.Get("Authorization")); token != "" {
+		return token
+	}
+	if !queryAuthAllowed(r) {
+		return ""
+	}
+	return strings.TrimSpace(r.URL.Query().Get("key"))
+}
+
+func queryAuthAllowed(r *http.Request) bool {
+	if r.Method != http.MethodGet {
+		return false
+	}
+	path := r.URL.Path
+	return strings.HasPrefix(path, "/v1/sessions/") && strings.HasSuffix(path, "/events")
+}
+
+func bearerToken(header string) string {
+	fields := strings.Fields(header)
+	if len(fields) == 2 && strings.EqualFold(fields[0], "Bearer") {
+		return strings.TrimSpace(fields[1])
+	}
+	return ""
+}
+
+func internalMCPRequest(r *http.Request) bool {
+	return r.URL.Path == "/mcp/jazmem" && loopbackRequest(r)
+}
+
+func loopbackRequest(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}

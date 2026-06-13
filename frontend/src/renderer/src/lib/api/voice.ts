@@ -1,9 +1,9 @@
-import { apiBaseUrl, ApiError } from './client'
+import { apiFetch, ApiError } from './client'
 
 export async function transcribeAudio(blob: Blob, signal?: AbortSignal): Promise<string> {
   const form = new FormData()
   form.append('file', blob, 'clip.webm')
-  const res = await fetch(`${apiBaseUrl()}/v1/audio/transcribe`, {
+  const res = await apiFetch('/v1/audio/transcribe', {
     method: 'POST',
     body: form,
     signal,
@@ -23,7 +23,7 @@ export async function transcribeAudio(blob: Blob, signal?: AbortSignal): Promise
 }
 
 export async function speakStream(text: string, signal?: AbortSignal): Promise<Response> {
-  const res = await fetch(`${apiBaseUrl()}/v1/audio/speak`, {
+  const res = await apiFetch('/v1/audio/speak', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),

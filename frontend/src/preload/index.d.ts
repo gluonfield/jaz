@@ -8,7 +8,7 @@ declare global {
       apiBaseUrl: string
       windowKind: 'main' | 'board'
       setNativeTheme: (source: 'light' | 'dark' | 'system') => void
-      startLocalBackend: () => Promise<{ ok: boolean; error?: string }>
+      startLocalBackend: () => Promise<{ ok: boolean; url?: string; key?: string; error?: string }>
       getUpdateStatus: () => Promise<UpdateStatus>
       installUpdate: () => Promise<{ ok: boolean; error?: string }>
       onUpdateStatus: (handler: (status: UpdateStatus) => void) => () => void

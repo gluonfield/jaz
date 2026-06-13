@@ -1,6 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '../query/keys'
-import { apiBaseUrl, ApiError, get, post, put } from './client'
+import { apiFetch, ApiError, get, post, put } from './client'
 import {
   fileKey,
   type Attachment,
@@ -35,7 +35,7 @@ export function createSession(
 export async function uploadSessionAttachment(sessionId: string, file: File, signal?: AbortSignal): Promise<Attachment> {
   const form = new FormData()
   form.append('file', file)
-  const res = await fetch(`${apiBaseUrl()}/v1/sessions/${sessionId}/attachments`, {
+  const res = await apiFetch(`/v1/sessions/${sessionId}/attachments`, {
     method: 'POST',
     body: form,
     signal,

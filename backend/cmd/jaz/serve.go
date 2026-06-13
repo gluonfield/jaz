@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -20,6 +21,8 @@ import (
 	"github.com/wins/jaz/backend/internal/loops"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/memoryservice"
+	"github.com/wins/jaz/backend/internal/provider"
+	"github.com/wins/jaz/backend/internal/runtimeauth"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
@@ -106,7 +109,8 @@ type config struct {
 }
 
 type serveOptions struct {
-	Addr string
+	Addr      string
+	PublicURL string
 }
 
 func loadConfig() (config, error) {
@@ -120,10 +124,11 @@ func loadConfig() (config, error) {
 func parseServeOptions(args serveArgs) (serveOptions, error) {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	addr := fs.String("addr", ":5299", "HTTP listen address")
+	publicURL := fs.String("public-url", "", "URL shown to Jaz clients")
 	if err := fs.Parse(args.Args); err != nil {
 		return serveOptions{}, err
 	}
-	return serveOptions{Addr: *addr}, nil
+	return serveOptions{Addr: *addr, PublicURL: *publicURL}, nil
 }
 
 func newMemoryService(cfg app.Config, memory *jazmem.Memory, store *sqlitestore.Store, logger *log.Logger, opts serveOptions) *memoryservice.Service {
@@ -174,6 +179,7 @@ func startServer(
 	workspace app.Workspace,
 	stt voice.STT,
 	tts voice.TTS,
+	nativeProviders provider.Provider,
 	logger *log.Logger,
 	cfg app.Config,
 	catalog acp.AgentCatalog,
@@ -181,22 +187,28 @@ func startServer(
 	widgetService *widgets.Service,
 	widgetPublisher *widgets.SessionPublisher,
 	memory *memoryservice.Service,
-) {
+) error {
+	authKey, err := runtimeauth.Ensure(store.RootDir())
+	if err != nil {
+		return err
+	}
 	handler := &server.Server{
-		Agent:        a,
-		Store:        store,
-		ACP:          manager,
-		MCP:          mcpManager,
-		Locks:        locks,
-		Events:       events,
-		STT:          stt,
-		TTS:          tts,
-		AgentCatalog: catalog,
-		Prompts:      prompts,
-		Root:         store.RootDir(),
-		Workspace:    string(workspace),
-		Log:          logger.WithPrefix("server"),
-		Memory:       memory,
+		Agent:           a,
+		Store:           store,
+		ACP:             manager,
+		MCP:             mcpManager,
+		Locks:           locks,
+		Events:          events,
+		STT:             stt,
+		TTS:             tts,
+		NativeProviders: nativeProviderControl(nativeProviders),
+		AgentCatalog:    catalog,
+		AuthKey:         authKey,
+		Prompts:         prompts,
+		Root:            store.RootDir(),
+		Workspace:       string(workspace),
+		Log:             logger.WithPrefix("server"),
+		Memory:          memory,
 	}
 	loopRunner := server.NewLoopRunner(handler)
 	loopMemoryPaths := loops.NewMemoryPaths(loops.AutomationsDir(store.RootDir()))
@@ -244,6 +256,7 @@ func startServer(
 	lc.Append(fx.Hook{
 		OnStart: func(context.Context) error {
 			fmt.Printf("jaz server listening on %s\n", displayAddr(opts.Addr))
+			fmt.Printf("client: %s\n", serveConnectURL(opts, authKey))
 			fmt.Printf("root: %s\n", store.RootDir())
 			fmt.Printf("workspace: %s\n", workspace)
 			if err := loopMemoryPaths.EnsureDir(); err != nil {
@@ -274,6 +287,30 @@ func startServer(
 			return stopHTTPServer(ctx, srv)
 		},
 	})
+	return nil
+}
+
+func nativeProviderControl(p provider.Provider) provider.ReloadableProvider {
+	control, _ := p.(provider.ReloadableProvider)
+	return control
+}
+
+func serveConnectURL(opts serveOptions, key string) string {
+	base := strings.TrimSpace(opts.PublicURL)
+	if base == "" {
+		base = opts.Addr
+	}
+	u, err := url.Parse(displayAddr(base))
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return displayAddr(base) + "?key=" + url.QueryEscape(key)
+	}
+	u.Path = ""
+	u.RawPath = ""
+	u.Fragment = ""
+	q := u.Query()
+	q.Set("key", key)
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 func finishLoopFromACP(service *loops.Service, logger *log.Logger, job acp.Job) {

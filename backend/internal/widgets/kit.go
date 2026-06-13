@@ -92,6 +92,14 @@ const tailwindTheme = `
 // carries the design-system CSS, Tailwind, the bridge script, and the CSP.
 // zoom scales the whole document (the board's font-size control); 0 means 1.
 func RenderDocument(title, fragment, theme string, zoom float64) string {
+	return RenderDocumentWithOptions(title, fragment, theme, zoom, RenderOptions{})
+}
+
+type RenderOptions struct {
+	InlineAssets bool
+}
+
+func RenderDocumentWithOptions(title, fragment, theme string, zoom float64, opts RenderOptions) string {
 	themeClass := ""
 	if theme == "dark" {
 		themeClass = ` class="dark"`
@@ -112,7 +120,13 @@ func RenderDocument(title, fragment, theme string, zoom float64) string {
 	b.WriteString("<style>\n")
 	b.WriteString(BaseCSS)
 	b.WriteString("</style>\n")
-	fmt.Fprintf(&b, "<script src=\"%s\"></script>\n", TailwindAssetPath)
+	if opts.InlineAssets {
+		b.WriteString("<script>\n")
+		b.WriteString(TailwindJS)
+		b.WriteString("\n</script>\n")
+	} else {
+		fmt.Fprintf(&b, "<script src=\"%s\"></script>\n", TailwindAssetPath)
+	}
 	b.WriteString("<style type=\"text/tailwindcss\">")
 	b.WriteString(tailwindTheme)
 	b.WriteString("</style>\n</head>\n<body>\n<div id=\"jz-root\"")

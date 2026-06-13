@@ -68,6 +68,13 @@ type Provider interface {
 	StreamComplete(ctx context.Context, req Request) (<-chan Event, error)
 }
 
+type ReloadableProvider interface {
+	Provider
+	Reload() error
+	APIKeyConfigured(id string) bool
+	APIKeyEnvPath() string
+}
+
 func NormalizeReasoningEffort(value string) (string, error) {
 	value = strings.ToLower(strings.TrimSpace(value))
 	switch value {

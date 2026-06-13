@@ -1,4 +1,4 @@
-import { apiBaseUrl } from '@/lib/api/client'
+import { apiFetch } from '@/lib/api/client'
 
 export type MusicPreviewCategory = {
   id: string
@@ -176,9 +176,7 @@ async function fetchChartFeed(feed: ChartFeed): Promise<LegacyTopSongsFeed | Mar
     if (!response.ok) throw new Error(`${feed.label} failed with ${response.status}`)
     return (await response.json()) as LegacyTopSongsFeed | MarketingToolsFeed
   } catch {
-    const proxy = new URL(`${apiBaseUrl()}/v1/music/chart-feed`)
-    proxy.searchParams.set('url', feed.url)
-    const response = await fetch(proxy)
+    const response = await apiFetch(`/v1/music/chart-feed?url=${encodeURIComponent(feed.url)}`)
     if (!response.ok) throw new Error(`${feed.label} failed with ${response.status}`)
     return (await response.json()) as LegacyTopSongsFeed | MarketingToolsFeed
   }

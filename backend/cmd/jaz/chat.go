@@ -22,13 +22,17 @@ func runChat(args []string) error {
 		return fmt.Errorf("use either --last or --session, not both")
 	}
 
-	client := http.DefaultClient
-	session, err := openChatSession(client, *serverURL, *sessionID, *last)
+	conn, err := parseServerConnection(*serverURL)
+	if err != nil {
+		return err
+	}
+	client := authHTTPClient(conn.Key)
+	session, err := openChatSession(client, conn.URL, *sessionID, *last)
 	if err != nil {
 		return err
 	}
 	return tui.Run(context.Background(), tui.Config{
-		Chat:    chat.NewClient(client, *serverURL),
+		Chat:    chat.NewClient(client, conn.URL),
 		Session: chatSession(session),
 	})
 }

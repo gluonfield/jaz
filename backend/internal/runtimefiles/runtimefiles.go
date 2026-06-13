@@ -17,6 +17,7 @@ type Layout struct {
 	Automations      string
 	ACPHome          string
 	ACPCodexHome     string
+	ACPClaudeConfig  string
 	ACPTmp           string
 	ACPNPMCache      string
 }
@@ -33,6 +34,7 @@ func New(root string) Layout {
 		Automations:      filepath.Join(root, "automations"),
 		ACPHome:          filepath.Join(root, "acp", "home"),
 		ACPCodexHome:     filepath.Join(root, "acp", "codex-home"),
+		ACPClaudeConfig:  filepath.Join(root, "acp", "claude"),
 		ACPTmp:           filepath.Join(root, "acp", "tmp"),
 		ACPNPMCache:      filepath.Join(root, "acp", "npm-cache"),
 	}
@@ -58,6 +60,7 @@ func Ensure(root string) (Layout, error) {
 	for _, dir := range []string{
 		layout.ACPHome,
 		layout.ACPCodexHome,
+		layout.ACPClaudeConfig,
 		layout.ACPTmp,
 		layout.ACPNPMCache,
 	} {
