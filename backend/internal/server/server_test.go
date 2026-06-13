@@ -18,6 +18,24 @@ import (
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
+func TestHealthReportsFileReadCapability(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	res := httptest.NewRecorder()
+
+	(&Server{}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var got healthResponse
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.OK || !got.Capabilities.SessionFileRead {
+		t.Fatalf("health = %#v, want ok with session_file_read", got)
+	}
+}
+
 func TestACPBackedSessionRoutesToACPManager(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

@@ -4,6 +4,7 @@ import { apiBaseUrl, ApiError, get, post, put } from './client'
 import {
   fileKey,
   type Attachment,
+  type HealthResponse,
   type RepoChanges,
   type RepoFileChange,
   type RepoFilePatch,
@@ -402,7 +403,7 @@ export const sessionMessagesQuery = (id: string) =>
 
 export const healthQuery = queryOptions({
   queryKey: keys.health,
-  queryFn: () => get<{ ok: boolean }>('/health'),
+  queryFn: () => get<HealthResponse>('/health'),
   retry: false,
   refetchInterval: (query) => (query.state.status === 'error' ? 3_000 : 30_000),
 })

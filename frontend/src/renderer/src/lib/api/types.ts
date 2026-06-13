@@ -114,6 +114,13 @@ export interface SessionFileRead {
   truncated?: boolean
 }
 
+export interface HealthResponse {
+  ok: boolean
+  capabilities?: {
+    session_file_read?: boolean
+  }
+}
+
 export interface LoopSchedule {
   kind: string
   expr: string
