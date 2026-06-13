@@ -7,8 +7,10 @@ require (
 	charm.land/bubbletea/v2 v2.0.7
 	charm.land/lipgloss/v2 v2.0.3
 	github.com/charmbracelet/log v0.4.2
+	github.com/creack/pty v1.1.24
 	github.com/gluonfield/acp-transport v0.0.0-20260607112912-bd05483092e7
 	github.com/gluonfield/jazmem v0.0.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/invopop/jsonschema v0.14.0
 	github.com/joho/godotenv v1.5.1
 	github.com/modelcontextprotocol/go-sdk v1.6.1

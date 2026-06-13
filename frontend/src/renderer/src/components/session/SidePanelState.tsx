@@ -17,7 +17,7 @@ function storedPanelPref(): PanelPref {
 
 function storedSidePanelView(): SidePanelView {
   const value = localStorage.getItem(PANEL_VIEW_PREF_KEY)
-  return value === 'diff' || value === 'preview' || value === 'file' ? value : 'overview'
+  return value === 'diff' || value === 'preview' || value === 'terminal' || value === 'file' ? value : 'overview'
 }
 
 export function useSidePanelState(gitAvailable: boolean) {
@@ -102,13 +102,14 @@ const SIDE_PANEL_VIEW_LABEL: Record<SidePanelView, string> = {
   overview: 'Overview',
   diff: 'Code Diff',
   preview: 'Preview',
+  terminal: 'Terminal',
   file: 'File Reader',
 }
 
 // Overview sits last so it lands on the right edge of the row. It's the default
 // view, so when the panel is closed the collapsed pill is Overview pinned to
 // the right — the others fan in to its left and it never moves on hover.
-const BASE_VIEW_OPTIONS: SidePanelView[] = ['diff', 'preview', 'overview']
+const BASE_VIEW_OPTIONS: SidePanelView[] = ['diff', 'preview', 'terminal', 'overview']
 
 export function SidePanelControl({
   open,

@@ -27,6 +27,7 @@ import (
 	"github.com/wins/jaz/backend/internal/sessionlock"
 	"github.com/wins/jaz/backend/internal/skills"
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/terminal"
 	"github.com/wins/jaz/backend/internal/voice"
 	"github.com/wins/jaz/backend/internal/widgets"
 )
@@ -75,6 +76,9 @@ type Server struct {
 	// and MCP surface.
 	Memory   *memoryservice.Service
 	JazTools *jaztools.Service
+
+	Terminal     *terminal.Manager
+	terminalOnce sync.Once
 
 	// in-flight native turns by session id, cancellable via the cancel action
 	turnCancels sync.Map
@@ -369,6 +373,8 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		s.handleSessionRepoDiff(w, r, session)
 	case "file":
 		s.handleSessionFile(w, r, session)
+	case "terminal":
+		s.handleSessionTerminal(w, r, session)
 	default:
 		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
 	}

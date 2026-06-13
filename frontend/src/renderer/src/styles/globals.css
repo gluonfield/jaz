@@ -96,6 +96,26 @@
   --color-rainbow-5: oklch(0.66 0.18 300);
 }
 
+.jaz-terminal,
+.jaz-terminal .xterm {
+  height: 100%;
+  min-height: 0;
+}
+
+.jaz-terminal .xterm {
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.jaz-terminal .xterm-viewport,
+.jaz-terminal .xterm-screen {
+  background: transparent !important;
+}
+
+.jaz-terminal .xterm-viewport {
+  scrollbar-width: thin;
+}
+
 /* Rendered markdown inside chat messages: compact, token-based typography. */
 .chat-prose {
   min-width: 0;

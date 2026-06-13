@@ -5,13 +5,15 @@ import { CODE_DIFF_PANEL_WIDTH, CodeDiffPanel } from './CodeDiffPanel'
 import { FILE_READER_PANEL_WIDTH, FileReaderPanel } from './FileReaderPanel'
 import { OVERVIEW_PANEL_WIDTH, OverviewPanel } from './OverviewPanel'
 import { PREVIEW_PANEL_WIDTH, PreviewPanel } from './PreviewPanel'
+import { TERMINAL_PANEL_WIDTH, TerminalPanel } from './TerminalPanel'
 
-export type SidePanelView = 'overview' | 'diff' | 'preview' | 'file'
+export type SidePanelView = 'overview' | 'diff' | 'preview' | 'terminal' | 'file'
 
 export const SIDE_PANEL_WIDTHS: Record<SidePanelView, number> = {
   overview: OVERVIEW_PANEL_WIDTH,
   diff: CODE_DIFF_PANEL_WIDTH,
   preview: PREVIEW_PANEL_WIDTH,
+  terminal: TERMINAL_PANEL_WIDTH,
   file: FILE_READER_PANEL_WIDTH,
 }
 
@@ -43,6 +45,8 @@ export function SidePanel({
       return <CodeDiffPanel session={session} visible={visible} onClose={onClose} />
     case 'preview':
       return <PreviewPanel url={previewUrl} onUrlChange={onPreviewUrlChange} onClose={onClose} />
+    case 'terminal':
+      return <TerminalPanel session={session} visible={visible} onClose={onClose} />
     case 'file':
       return (
         <FileReaderPanel
