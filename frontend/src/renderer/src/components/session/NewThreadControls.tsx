@@ -1,18 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, ChevronDown, CornerLeftUp, Folder, FolderPlus, GitBranch, LoaderCircle } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { REASONING_EFFORT_OPTIONS } from '@/components/loops/ReasoningEffortSelect'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { agentLabel } from '@/lib/agentLabel'
 import { addProject, listFilesystemDirs, projectsQuery } from '@/lib/api/sessions'
+import type { ReasoningEffortOption } from '@/lib/api/types'
 import {
   filterModelSuggestions,
   modelSuggestionLabel,
   type ModelSuggestion,
 } from '@/lib/models'
 import { keys } from '@/lib/query/keys'
+import { REASONING_EFFORT_OPTIONS } from '@/lib/reasoningEfforts'
 
 // Selects the runtime backing a new thread: Native (the default Jaz session) or
 // one of the configured ACP agents. `value` is 'native' or an agent name.
@@ -85,6 +86,7 @@ export function ModelSelect({
   provider,
   onProviderChange,
   effort,
+  effortOptions = REASONING_EFFORT_OPTIONS,
   onEffortChange,
 }: {
   value: string
@@ -98,6 +100,7 @@ export function ModelSelect({
   onProviderChange?: (provider: string) => void
   // '' inherits the Settings > Agents default for the chosen runtime/provider.
   effort?: string
+  effortOptions?: ReasoningEffortOption[]
   onEffortChange?: (effort: string) => void
 }) {
   const [open, setOpen] = useState(false)
@@ -224,7 +227,7 @@ export function ModelSelect({
             <div className="my-1 border-t border-border" />
             <p className="px-2 pt-1 pb-0.5 text-[11px] text-ink-3">Reasoning effort</p>
             <div className="flex flex-wrap gap-1 px-1.5 pb-1">
-              {REASONING_EFFORT_OPTIONS.map((option) => (
+              {effortOptions.map((option) => (
                 <button
                   key={option.value || 'default'}
                   type="button"

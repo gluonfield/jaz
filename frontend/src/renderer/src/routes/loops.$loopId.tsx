@@ -3,7 +3,6 @@ import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, ChevronRight, Pencil, Play, Trash2 } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { LoopModal } from '@/components/loops/LoopModal'
-import { reasoningEffortLabel } from '@/components/loops/ReasoningEffortSelect'
 import { MentionText } from '@/components/session/mentions'
 import { describeSchedule, draftFromLoop } from '@/components/loops/schedule'
 import { Button } from '@/components/ui/Button'
@@ -16,6 +15,7 @@ import { deleteLoop, loopDetailQuery, runLoopNow } from '@/lib/api/loops'
 import type { Loop, LoopRun } from '@/lib/api/types'
 import { fullTime, hasTime, relativeTime } from '@/lib/format/time'
 import { keys } from '@/lib/query/keys'
+import { reasoningEffortLabel } from '@/lib/reasoningEfforts'
 
 export const Route = createFileRoute('/loops/$loopId')({
   component: LoopDetailPage,

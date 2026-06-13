@@ -18,6 +18,16 @@ const agentMethodSessionSetModel = "session/set_model"
 const sessionConfigModel = "model"
 const sessionConfigReasoningEffort = "reasoning_effort"
 const claudeSessionConfigEffort = "effort"
+const claudeReasoningEffortUltracode = "ultracode"
+
+type ReasoningEffortOption struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
+type AgentOptions struct {
+	ReasoningEfforts []ReasoningEffortOption `json:"reasoning_efforts"`
+}
 
 type setSessionModelRequest struct {
 	SessionID acpschema.SessionID `json:"sessionId"`
@@ -31,54 +41,137 @@ const (
 	modelValidationClaude
 )
 
-type agentModelPolicy struct {
+type agentPolicy struct {
 	modelConfigID       string
 	effortConfigID      string
 	effortInModelSuffix bool
 	modelValidationKind modelValidationKind
+	effortOptions       []ReasoningEffortOption
+	ultracodeSetting    bool
 }
 
-func modelPolicyForAgent(agentName string) agentModelPolicy {
+var baseReasoningEffortOptions = []ReasoningEffortOption{
+	{Value: "", Label: "Default"},
+	{Value: "minimal", Label: "Minimal"},
+	{Value: "low", Label: "Low"},
+	{Value: "medium", Label: "Medium"},
+	{Value: "high", Label: "High"},
+	{Value: "xhigh", Label: "Extra high"},
+}
+
+var claudeReasoningEffortOptions = append(append([]ReasoningEffortOption(nil), baseReasoningEffortOptions...),
+	ReasoningEffortOption{Value: "max", Label: "Max"},
+	ReasoningEffortOption{Value: claudeReasoningEffortUltracode, Label: "Ultracode"},
+)
+
+func agentPolicyForAgent(agentName string) agentPolicy {
 	switch strings.ToLower(strings.TrimSpace(agentName)) {
 	case AgentClaude:
-		return agentModelPolicy{
+		return agentPolicy{
 			modelConfigID:       sessionConfigModel,
 			effortConfigID:      claudeSessionConfigEffort,
 			modelValidationKind: modelValidationClaude,
+			effortOptions:       claudeReasoningEffortOptions,
+			ultracodeSetting:    true,
 		}
 	case AgentCodex:
-		return agentModelPolicy{
+		return agentPolicy{
 			modelConfigID:       sessionConfigModel,
 			effortConfigID:      sessionConfigReasoningEffort,
 			effortInModelSuffix: true,
 			modelValidationKind: modelValidationNone,
+			effortOptions:       baseReasoningEffortOptions,
 		}
 	case AgentGrok:
-		return agentModelPolicy{
+		return agentPolicy{
 			modelValidationKind: modelValidationNone,
+			effortOptions:       baseReasoningEffortOptions,
 		}
 	default:
-		return agentModelPolicy{
+		return agentPolicy{
 			effortConfigID:      sessionConfigReasoningEffort,
 			modelValidationKind: modelValidationNone,
+			effortOptions:       baseReasoningEffortOptions,
 		}
 	}
 }
 
-func (p agentModelPolicy) usesModelConfigOption() bool {
+func (p agentPolicy) usesModelConfigOption() bool {
 	return p.modelConfigID != ""
 }
 
-func (p agentModelPolicy) reasoningEffortConfigID() string {
+func (p agentPolicy) reasoningEffortConfigID() string {
 	return p.effortConfigID
 }
 
-func (p agentModelPolicy) usesReasoningEffortConfigOption() bool {
+func (p agentPolicy) usesReasoningEffortConfigOption() bool {
 	return p.effortConfigID != ""
 }
 
-func (p agentModelPolicy) effortEncodedInModel(model string) bool {
+func (p agentPolicy) effortEncodedInModel(model string) bool {
 	return p.effortInModelSuffix && modelHasReasoningEffort(model)
+}
+
+func (p agentPolicy) reasoningEffortOptions() []ReasoningEffortOption {
+	return append([]ReasoningEffortOption(nil), p.effortOptions...)
+}
+
+func (p agentPolicy) normalizeReasoningEffort(value string) (string, error) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "none" {
+		value = ""
+	}
+	for _, option := range p.effortOptions {
+		if option.Value == value {
+			return value, nil
+		}
+	}
+	return "", fmt.Errorf("unknown reasoning effort %q; valid values are %s", value, strings.Join(reasoningEffortValues(p.effortOptions), ", "))
+}
+
+func (p agentPolicy) sessionConfigEffort(value string) string {
+	effort, err := p.normalizeReasoningEffort(value)
+	if err != nil {
+		return strings.TrimSpace(value)
+	}
+	if p.ultracodeSetting && effort == claudeReasoningEffortUltracode {
+		return "xhigh"
+	}
+	return effort
+}
+
+func (p agentPolicy) mergeSessionMeta(meta map[string]any, effort string) map[string]any {
+	normalized, err := p.normalizeReasoningEffort(effort)
+	if err != nil || !p.ultracodeSetting || normalized != claudeReasoningEffortUltracode {
+		return meta
+	}
+	if meta == nil {
+		meta = map[string]any{}
+	}
+	claudeCode := nestedMap(meta, "claudeCode")
+	options := nestedMap(claudeCode, "options")
+	settings := nestedMap(options, "settings")
+	settings[claudeReasoningEffortUltracode] = true
+	return meta
+}
+
+func reasoningEffortValues(options []ReasoningEffortOption) []string {
+	values := []string{"none"}
+	for _, option := range options {
+		if option.Value != "" {
+			values = append(values, option.Value)
+		}
+	}
+	return values
+}
+
+func nestedMap(parent map[string]any, key string) map[string]any {
+	if child, ok := parent[key].(map[string]any); ok {
+		return child
+	}
+	child := map[string]any{}
+	parent[key] = child
+	return child
 }
 
 type acpSessionInfo struct {
@@ -103,7 +196,7 @@ type sessionConfigOptionsState struct {
 // agent's raw response: it carries refreshed config options (e.g. the effort
 // levels valid for the newly selected model).
 func (m *Manager) setConfiguredSessionModel(ctx context.Context, peer *jsonrpc.Peer, agentName string, sessionID acpschema.SessionID, rawModel string, state sessionModelState) (json.RawMessage, error) {
-	policy := modelPolicyForAgent(agentName)
+	policy := agentPolicyForAgent(agentName)
 	model := configuredSessionModel(rawModel)
 	if err := policy.validateConfiguredSessionModel(agentName, rawModel, model, state); err != nil {
 		return nil, err
@@ -142,14 +235,14 @@ func (m *Manager) setConfiguredSessionModel(ctx context.Context, peer *jsonrpc.P
 }
 
 func (m *Manager) setConfiguredReasoningEffort(ctx context.Context, peer *jsonrpc.Peer, agentName string, sessionID acpschema.SessionID, effort string) error {
-	effort, err := provider.NormalizeReasoningEffort(effort)
+	effort, err := NormalizeAgentReasoningEffort(agentName, effort)
 	if err != nil {
 		return err
 	}
 	if effort == "" {
 		return nil
 	}
-	policy := modelPolicyForAgent(agentName)
+	policy := agentPolicyForAgent(agentName)
 	if !policy.usesReasoningEffortConfigOption() {
 		return nil
 	}
@@ -176,11 +269,8 @@ func (m *Manager) configuredModeState(
 	session acpSessionInfo,
 	cfg AgentConfig,
 ) (ModeState, error) {
-	policy := modelPolicyForAgent(agentName)
-	effort, err := provider.NormalizeReasoningEffort(cfg.ReasoningEffort)
-	if err != nil {
-		return ModeState{}, err
-	}
+	policy := agentPolicyForAgent(agentName)
+	effort := policy.sessionConfigEffort(cfg.ReasoningEffort)
 	modelRaw, err := m.setConfiguredSessionModel(ctx, peer, agentName, session.response.SessionID, cfg.Model, session.modelState)
 	if err != nil {
 		return ModeState{}, err
@@ -221,7 +311,7 @@ func (m *Manager) applyConfiguredReasoningEffort(
 	if effort == "" {
 		return nil
 	}
-	if !modelPolicyForAgent(agentName).usesReasoningEffortConfigOption() {
+	if !agentPolicyForAgent(agentName).usesReasoningEffortConfigOption() {
 		return nil
 	}
 	if requireAdvertisedEffort && !options.effortConfigPresent {
@@ -377,7 +467,7 @@ func parseConfigOptionValues(raw json.RawMessage) []string {
 	return values
 }
 
-func (p agentModelPolicy) validateConfiguredSessionModel(agentName, rawModel, effectiveModel string, state sessionModelState) error {
+func (p agentPolicy) validateConfiguredSessionModel(agentName, rawModel, effectiveModel string, state sessionModelState) error {
 	if strings.TrimSpace(rawModel) == "" || state.empty() {
 		return nil
 	}
@@ -469,6 +559,24 @@ func newACPSessionInfo(raw json.RawMessage, session acpschema.NewSessionResponse
 
 func configuredReasoningEffort(value string) string {
 	effort, err := provider.NormalizeReasoningEffort(value)
+	if err != nil {
+		return strings.TrimSpace(value)
+	}
+	return effort
+}
+
+func AgentOptionsFor(name string) AgentOptions {
+	return AgentOptions{
+		ReasoningEfforts: agentPolicyForAgent(CanonicalAgentName(name)).reasoningEffortOptions(),
+	}
+}
+
+func NormalizeAgentReasoningEffort(agentName, value string) (string, error) {
+	return agentPolicyForAgent(CanonicalAgentName(agentName)).normalizeReasoningEffort(value)
+}
+
+func configuredAgentReasoningEffort(agentName, value string) string {
+	effort, err := NormalizeAgentReasoningEffort(agentName, value)
 	if err != nil {
 		return strings.TrimSpace(value)
 	}

@@ -1,11 +1,12 @@
 import {
   Archive,
-  ArrowLeftRight,
+  ArrowDownToLine,
   ArrowUpFromLine,
   Check,
   ChevronDown,
   ExternalLink,
   GitBranch,
+  GitMerge,
   GitPullRequest,
   GitPullRequestArrow,
   type LucideIcon,
@@ -232,15 +233,26 @@ function GitSection({ repo }: { repo: ReturnType<typeof useRepoActions> }) {
             {busy === 'push' ? 'Pushing…' : 'Push branch'}
           </ActionRow>
         ) : null}
+        {info.is_worktree && info.main_branch && (info.behind ?? 0) > 0 ? (
+          <ActionRow
+            icon={busy === 'update' ? LoaderCircle : ArrowDownToLine}
+            spin={busy === 'update'}
+            disabled={busy !== null}
+            hint={`Commits this session's work, then merges the latest ${info.main_branch} into this worktree`}
+            onClick={() => void repo.update()}
+          >
+            {busy === 'update' ? 'Updating…' : `Update from ${info.main_branch}`}
+          </ActionRow>
+        ) : null}
         {info.is_worktree && info.main_branch && (info.dirty || !info.no_commits) ? (
           <ActionRow
-            icon={busy === 'merge' ? LoaderCircle : ArrowLeftRight}
+            icon={busy === 'merge' ? LoaderCircle : GitMerge}
             spin={busy === 'merge'}
             disabled={busy !== null}
-            hint={`Commits this session's work and merges its branch into ${info.main_branch}`}
+            hint={`Commits this session's work and hands its branch off to ${info.main_branch}`}
             onClick={() => void repo.merge()}
           >
-            {busy === 'merge' ? 'Merging…' : `Merge into ${info.main_branch}`}
+            {busy === 'merge' ? 'Handing off…' : `Hand off to ${info.main_branch}`}
           </ActionRow>
         ) : null}
       </section>

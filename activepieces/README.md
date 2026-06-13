@@ -7,7 +7,7 @@ Self-hosted Activepieces serving two surfaces for jaz:
 - **Act**: AP exposes write actions (gmail send, slack post, linear create) to jaz
   as MCP tools.
 
-Stack: AP `${ACTIVEPIECES_VERSION}` on **http://localhost:8090** (jaz owns 8080),
+Stack: AP `${ACTIVEPIECES_VERSION}` on **http://localhost:8090** (jaz defaults to 5299),
 pgvector postgres + redis, with AP runtime state under this directory
 (`data/postgres`, `data/redis`, `data/cache`) and connector exports under
 `${JAZ_INGEST_ROOT:-$HOME/.jaz/ingest}`.
