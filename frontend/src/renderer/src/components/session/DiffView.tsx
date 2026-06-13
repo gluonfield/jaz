@@ -1,3 +1,4 @@
+import { ChevronDown } from 'lucide-react'
 import { memo } from 'react'
 import type { RepoFileChange } from '@/lib/api/types'
 import { parseUnifiedDiff, type DiffHunk } from '@/lib/diff/parseUnifiedDiff'
@@ -35,11 +36,11 @@ export const DiffView = memo(function DiffView({
     return <Notice>No changes to show.</Notice>
   }
   return (
-    <div className="overflow-x-auto font-mono text-[12px] leading-[1.5] select-text">
-      <table className="w-full border-separate border-spacing-0">
+    <div className="overflow-x-auto bg-bg/45 font-mono text-[12px] leading-[1.55] select-text">
+      <table className="w-full min-w-max border-separate border-spacing-0">
         <tbody>
           {hunks.map((hunk, index) => (
-            <Hunk key={index} hunk={hunk} first={index === 0} />
+            <Hunk key={index} hunk={hunk} previous={hunks[index - 1]} />
           ))}
         </tbody>
       </table>
@@ -48,32 +49,53 @@ export const DiffView = memo(function DiffView({
   )
 })
 
-function Hunk({ hunk, first }: { hunk: DiffHunk; first: boolean }) {
+function Hunk({ hunk, previous }: { hunk: DiffHunk; previous?: DiffHunk }) {
+  const collapsed = collapsedLineCount(previous, hunk)
   return (
     <>
-      {!first ? (
-        <tr aria-hidden>
-          <td colSpan={3} className="select-none truncate px-3 py-0.5 text-ink-3">
-            ⋯{hunk.context ? <span className="pl-2 opacity-80">{hunk.context}</span> : null}
+      {previous ? (
+        <tr>
+          <td
+            colSpan={4}
+            className="border-y border-border/50 bg-bg/65 px-3 py-3 text-[12px] text-ink-3 select-none"
+          >
+            <span className="inline-flex items-center gap-3">
+              <ChevronDown size={13} className="text-ink-3/70" aria-hidden />
+              <span>
+                {collapsed > 0 ? `${collapsed} unmodified ${collapsed === 1 ? 'line' : 'lines'}` : 'Unmodified lines'}
+                {hunk.context ? <span className="pl-3 opacity-75">{hunk.context}</span> : null}
+              </span>
+            </span>
           </td>
         </tr>
       ) : null}
       {hunk.lines.map((line, index) => {
         const row =
-          line.kind === 'add' ? 'bg-ok/10' : line.kind === 'del' ? 'bg-danger/10' : ''
+          line.kind === 'add'
+            ? 'bg-ok/18'
+            : line.kind === 'del'
+              ? 'bg-danger/18'
+              : 'bg-transparent'
+        const gutter =
+          line.kind === 'add'
+            ? 'bg-ok/10 text-ok'
+            : line.kind === 'del'
+              ? 'bg-danger/10 text-danger'
+              : 'text-ink-3'
         const marker = line.kind === 'add' ? '+' : line.kind === 'del' ? '−' : ' '
         const markerColor =
           line.kind === 'add' ? 'text-ok' : line.kind === 'del' ? 'text-danger' : 'text-transparent'
         return (
           <tr key={index} className={row}>
-            <td className="w-10 min-w-10 select-none border-r border-border/60 pr-2 text-right align-top text-[11px] text-ink-3 tabular-nums">
+            <td className={`w-11 min-w-11 pr-2 text-right align-top text-[11px] tabular-nums select-none ${gutter}`}>
               {line.oldNo ?? ''}
             </td>
-            <td className="w-10 min-w-10 select-none border-r border-border/60 pr-2 text-right align-top text-[11px] text-ink-3 tabular-nums">
+            <td className={`w-11 min-w-11 pr-2 text-right align-top text-[11px] tabular-nums select-none ${gutter}`}>
               {line.newNo ?? ''}
             </td>
-            <td className="whitespace-pre pl-2 pr-3 align-top text-ink-2 select-text">
-              <span className={`select-none ${markerColor}`}>{marker}</span> {line.text}
+            <td className={`w-5 min-w-5 text-center align-top select-none ${markerColor}`}>{marker}</td>
+            <td className="whitespace-pre pr-5 align-top text-ink-2 select-text">
+              {line.text || ' '}
             </td>
           </tr>
         )
@@ -82,6 +104,13 @@ function Hunk({ hunk, first }: { hunk: DiffHunk; first: boolean }) {
   )
 }
 
+function collapsedLineCount(previous: DiffHunk | undefined, hunk: DiffHunk): number {
+  if (!previous) return 0
+  const oldGap = hunk.oldStart - (previous.oldStart + previous.oldLines)
+  const newGap = hunk.newStart - (previous.newStart + previous.newLines)
+  return Math.max(0, oldGap, newGap)
+}
+
 function Notice({ children }: { children: string }) {
-  return <p className="px-2.5 py-2 text-[12px] italic text-ink-3">{children}</p>
+  return <p className="px-3 py-3 text-[12px] italic text-ink-3">{children}</p>
 }

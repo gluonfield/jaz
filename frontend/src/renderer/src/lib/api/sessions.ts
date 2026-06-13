@@ -8,6 +8,7 @@ import {
   type RepoFileChange,
   type RepoFilePatch,
   type RepoInfo,
+  type SessionFileRead,
   type Session,
   type SessionEvent,
   type SessionMessages,
@@ -197,6 +198,14 @@ export const sessionRepoFileDiffQuery = (id: string, file: RepoFileChange, base?
       return get<RepoFilePatch>(`/v1/sessions/${id}/repo/diff?${params}`)
     },
     staleTime: 30_000,
+  })
+
+export const sessionFileQuery = (id: string, path: string) =>
+  queryOptions({
+    queryKey: keys.sessionFile(id, path),
+    queryFn: () =>
+      get<SessionFileRead>(`/v1/sessions/${id}/file?path=${encodeURIComponent(path)}`),
+    staleTime: 15_000,
   })
 
 // Publishes the session's current branch to its remote (git push -u) and

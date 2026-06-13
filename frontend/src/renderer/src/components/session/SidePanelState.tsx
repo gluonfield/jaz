@@ -1,7 +1,7 @@
-import { ChevronDown, FileDiff, Globe, PanelRightClose, PanelRightOpen } from 'lucide-react'
+import { FileDiff, FileText, Globe, PanelRightClose, PanelRightOpen, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { MenuRow, Popover } from '@/components/ui/Popover'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
+import { parseFileReference, type FileReference } from '../../../../shared/fileReader'
 import { SIDE_PANEL_WIDTHS, type SidePanelView } from './SidePanel'
 
 const PANEL_CHAT_COMFORT = 800
@@ -17,13 +17,14 @@ function storedPanelPref(): PanelPref {
 
 function storedSidePanelView(): SidePanelView {
   const value = localStorage.getItem(PANEL_VIEW_PREF_KEY)
-  return value === 'diff' || value === 'preview' ? value : 'overview'
+  return value === 'diff' || value === 'preview' || value === 'file' ? value : 'overview'
 }
 
 export function useSidePanelState() {
   const [panelPref, setPanelPref] = useState<PanelPref>(storedPanelPref)
   const [view, setView] = useState<SidePanelView>(storedSidePanelView)
   const [previewUrl, setPreviewUrl] = useState('')
+  const [fileRef, setFileRef] = useState<FileReference | null>(null)
   const [hasPanelSpace, setHasPanelSpace] = useState(false)
   const observerRef = useRef<ResizeObserver | null>(null)
   const width = SIDE_PANEL_WIDTHS[view]
@@ -63,6 +64,15 @@ export function useSidePanelState() {
     setPanelPref('open')
   }, [])
 
+  const openFile = useCallback((file: string | FileReference) => {
+    const ref = typeof file === 'string' ? parseFileReference(file) : file
+    if (!ref) return false
+    setFileRef(ref)
+    setView('file')
+    setPanelPref('open')
+    return true
+  }, [])
+
   useWindowEvent('keydown', (e) => {
     if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.defaultPrevented) return
     if (e.key.toLowerCase() !== 's') return
@@ -72,6 +82,7 @@ export function useSidePanelState() {
 
   return {
     measureRef,
+    fileRef,
     open,
     previewUrl,
     selectView,
@@ -79,6 +90,7 @@ export function useSidePanelState() {
     toggle,
     view,
     width,
+    openFile,
     openPreview,
   }
 }
@@ -87,6 +99,7 @@ const SIDE_PANEL_VIEW_LABEL: Record<SidePanelView, string> = {
   overview: 'Overview',
   diff: 'Code Diff',
   preview: 'Preview',
+  file: 'File Reader',
 }
 
 function SidePanelViewIcon({ view, size = 14 }: { view: SidePanelView; size?: number }) {
@@ -95,67 +108,96 @@ function SidePanelViewIcon({ view, size = 14 }: { view: SidePanelView; size?: nu
       return <FileDiff size={size} />
     case 'preview':
       return <Globe size={size} />
+    case 'file':
+      return <FileText size={size} />
     default:
       return <PanelRightOpen size={size} />
   }
 }
 
+const BASE_VIEW_OPTIONS: SidePanelView[] = ['overview', 'diff', 'preview']
+
 export function SidePanelControl({
   open,
   view,
+  fileAvailable,
   onToggle,
   onSelectView,
 }: {
   open: boolean
   view: SidePanelView
+  fileAvailable: boolean
   onToggle: () => void
   onSelectView: (view: SidePanelView) => void
 }) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const select = (next: SidePanelView) => {
-    onSelectView(next)
-    setMenuOpen(false)
+  const options = fileAvailable || view === 'file' ? [...BASE_VIEW_OPTIONS, 'file' as const] : BASE_VIEW_OPTIONS
+  const compactClick = () => {
+    if (open) return
+    onSelectView(view === 'file' && !fileAvailable ? 'overview' : view)
   }
   return (
-    <div className="flex items-center rounded-full bg-surface p-0.5">
-      <button
-        type="button"
-        aria-label={open ? 'Hide side panel' : 'Show side panel'}
-        title={`${open ? 'Hide' : 'Show'} side panel (Shift+⌘S)`}
-        onClick={onToggle}
-        className="grid size-8 cursor-pointer place-items-center rounded-full text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
-      >
-        {open ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
-      </button>
-      <Popover
-        open={menuOpen}
-        onClose={() => setMenuOpen(false)}
-        placement="below"
-        align="end"
-        trigger={
+    <div className="group flex h-10 items-center rounded-[12px] bg-surface/95 p-1 shadow-[0_10px_28px_rgba(0,0,0,0.14)] ring-1 ring-border/80">
+      <div className="flex items-center group-hover:hidden group-focus-within:hidden">
+        {open ? (
+          <>
+            <button
+              type="button"
+              aria-label={`Side panel: ${SIDE_PANEL_VIEW_LABEL[view]}`}
+              className="flex h-8 cursor-default items-center gap-1.5 rounded-[8px] px-2.5 text-[13px] text-ink-2"
+            >
+              <SidePanelViewIcon view={view} />
+              <span className="max-w-24 truncate">{SIDE_PANEL_VIEW_LABEL[view]}</span>
+            </button>
+            <button
+              type="button"
+              aria-label="Hide side panel"
+              title="Hide side panel"
+              onClick={onToggle}
+              className="grid size-8 cursor-pointer place-items-center rounded-[8px] text-ink-3 transition-[background-color,color,transform] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96]"
+            >
+              <X size={15} />
+            </button>
+          </>
+        ) : (
           <button
             type="button"
-            aria-label="Choose side panel view"
-            title="Choose side panel view"
-            onClick={() => setMenuOpen((value) => !value)}
-            className="flex h-8 cursor-pointer items-center gap-1 rounded-full px-2 text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+            aria-label="Show side panel"
+            title="Show side panel"
+            onClick={compactClick}
+            className="grid size-8 cursor-pointer place-items-center rounded-[8px] text-ink-2 transition-[background-color,color,transform] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96]"
           >
-            <SidePanelViewIcon view={view} />
-            <span className="hidden max-w-20 truncate sm:inline">{SIDE_PANEL_VIEW_LABEL[view]}</span>
-            <ChevronDown size={13} className="shrink-0 text-ink-3" aria-hidden />
+            <PanelRightOpen size={16} />
           </button>
-        }
-      >
-        <MenuRow selected={view === 'overview'} onClick={() => select('overview')}>
-          Overview
-        </MenuRow>
-        <MenuRow selected={view === 'diff'} onClick={() => select('diff')}>
-          Code Diff
-        </MenuRow>
-        <MenuRow selected={view === 'preview'} onClick={() => select('preview')}>
-          Preview
-        </MenuRow>
-      </Popover>
+        )}
+      </div>
+      <div className="hidden items-center gap-0.5 group-hover:flex group-focus-within:flex">
+        {options.map((option) => (
+          <button
+            key={option}
+            type="button"
+            aria-pressed={open && view === option}
+            onClick={() => onSelectView(option)}
+            className={`h-8 cursor-pointer rounded-[8px] px-2.5 text-[13px] transition-[background-color,color,transform] duration-150 active:scale-[0.96] ${
+              open && view === option
+                ? 'bg-bg text-ink shadow-sm ring-1 ring-border/70'
+                : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
+            }`}
+          >
+            {SIDE_PANEL_VIEW_LABEL[option]}
+          </button>
+        ))}
+        {open ? (
+          <button
+            type="button"
+            aria-label="Hide side panel"
+            title="Hide side panel"
+            onClick={onToggle}
+            className="grid size-8 cursor-pointer place-items-center rounded-[8px] text-ink-3 transition-[background-color,color,transform] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96]"
+          >
+            <PanelRightClose size={15} />
+          </button>
+        ) : null}
+      </div>
     </div>
   )
 }

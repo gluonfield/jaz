@@ -6,9 +6,11 @@ import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
+import { parseFileReference, type FileReference } from '../../../../shared/fileReader'
 import { encodeMention, MentionPill } from './mentions'
 
 const PreviewLinkContext = createContext<((url: string) => void) | null>(null)
+const FileReaderLinkContext = createContext<((file: FileReference) => void) | null>(null)
 
 export function PreviewLinkProvider({
   onOpen,
@@ -18,6 +20,16 @@ export function PreviewLinkProvider({
   children: ReactNode
 }) {
   return <PreviewLinkContext.Provider value={onOpen}>{children}</PreviewLinkContext.Provider>
+}
+
+export function FileReaderLinkProvider({
+  onOpen,
+  children,
+}: {
+  onOpen: (file: FileReference) => void
+  children: ReactNode
+}) {
+  return <FileReaderLinkContext.Provider value={onOpen}>{children}</FileReaderLinkContext.Provider>
 }
 
 // Models often emit \[...\] / \(...\) math delimiters; remark-math only
@@ -44,15 +56,12 @@ function textFromChildren(children: unknown): string {
   return ''
 }
 
-function isAbsoluteLocalPath(value: string): boolean {
-  return (value.startsWith('/') && !value.startsWith('//')) || value.startsWith('file:///')
-}
-
-function isLocalPathLink(href: unknown, children: unknown): boolean {
-  return (
-    (typeof href === 'string' && isAbsoluteLocalPath(href)) ||
-    isAbsoluteLocalPath(textFromChildren(children).trim())
-  )
+function localFileFromLink(href: unknown, children: unknown): FileReference | null {
+  if (typeof href === 'string') {
+    const fromHref = parseFileReference(decodeMentionHref(href))
+    if (fromHref) return fromHref
+  }
+  return parseFileReference(textFromChildren(children).trim())
 }
 
 function isUrlLink(href: unknown): boolean {
@@ -94,6 +103,27 @@ function linkifyKnownSkills(text: string, skills: SkillInfo[]): string {
     .join('')
 }
 
+const FILE_REFERENCE_PATTERN =
+  /(?:file:\/\/\/|\/)(?:[^\s<>(){}]+\/)+[^\s<>(){}]+\.[A-Za-z0-9][A-Za-z0-9]*(?::\d+)?/g
+
+function linkifyFileReferences(text: string): string {
+  if (!text.includes('/')) return text
+  return text
+    .split(/(```[\s\S]*?```|`[^`]*`)/g)
+    .map((part, i) => {
+      if (i % 2 === 1) return part
+      return part.replace(FILE_REFERENCE_PATTERN, (match, offset: number) => {
+        const before = part.slice(Math.max(0, offset - 8), offset)
+        if (before.endsWith('](') || before.includes('://')) return match
+        const ref = parseFileReference(match)
+        if (!ref) return match
+        const href = ref.line ? `${ref.path}:${ref.line}` : ref.path
+        return `[${match}](${href})`
+      })
+    })
+    .join('')
+}
+
 function mentionSigil(label: string): '$' | '@' | null {
   return label.startsWith('$') || label.startsWith('@') ? (label[0] as '$' | '@') : null
 }
@@ -106,8 +136,9 @@ export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: s
   // mention pills. An empty catalog simply skips the pass.
   const skills = useQuery(skillsQuery)
   const openPreview = useContext(PreviewLinkContext)
+  const openFile = useContext(FileReaderLinkContext)
   const prepared = useMemo(
-    () => normalizeMath(linkifyKnownSkills(text, skills.data ?? [])),
+    () => normalizeMath(linkifyFileReferences(linkifyKnownSkills(text, skills.data ?? []))),
     [text, skills.data],
   )
   return (
@@ -128,20 +159,26 @@ export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: s
                 />
               )
             }
-            const localPath = isLocalPathLink(href, children)
-            const Icon = localPath ? FileText : isUrlLink(href) ? Globe : null
+            const localFile = localFileFromLink(href, children)
+            const urlLink = isUrlLink(href)
+            const Icon = localFile ? FileText : urlLink ? Globe : null
             return (
               <a
                 {...props}
                 href={href}
-                target="_blank"
+                target={localFile ? undefined : '_blank'}
                 rel="noreferrer"
                 onClick={(event) => {
                   onClick?.(event)
+                  if (localFile && openFile && shouldPreviewLink(event)) {
+                    event.preventDefault()
+                    openFile(localFile)
+                    return
+                  }
                   if (
                     !openPreview ||
                     typeof href !== 'string' ||
-                    !isUrlLink(href) ||
+                    !urlLink ||
                     !shouldPreviewLink(event)
                   ) {
                     return
