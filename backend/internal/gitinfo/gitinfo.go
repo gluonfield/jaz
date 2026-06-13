@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -43,6 +44,9 @@ type Info struct {
 	// destination.
 	IsWorktree bool   `json:"is_worktree,omitempty"`
 	MainBranch string `json:"main_branch,omitempty"`
+	// Behind counts commits on MainBranch the worktree's branch doesn't have
+	// yet — what an "update from main" would pull in (0 when up to date).
+	Behind int `json:"behind,omitempty"`
 }
 
 // Inspect collects Info for dir. It never errors: a non-repo (or missing git
@@ -66,6 +70,11 @@ func Inspect(ctx context.Context, dir string) Info {
 	if _, branch, ok := mainCheckout(ctx, dir); ok {
 		info.IsWorktree = true
 		info.MainBranch = branch
+		if branch != "" {
+			if count, err := git(ctx, dir, "rev-list", "--count", "HEAD.."+branch); err == nil {
+				info.Behind, _ = strconv.Atoi(count)
+			}
+		}
 	}
 	remote, err := git(ctx, dir, "remote", "get-url", "origin")
 	if err != nil {
@@ -189,6 +198,32 @@ func MergeIntoMain(ctx context.Context, dir, message string) (string, error) {
 		return "", fmt.Errorf("merging %s into %s: %w", worktreeBranch, branch, err)
 	}
 	return root, nil
+}
+
+func MergeFromMain(ctx context.Context, dir, message string) error {
+	_, branch, ok := mainCheckout(ctx, dir)
+	if !ok {
+		return fmt.Errorf("the session is not running on a worktree")
+	}
+	if branch == "" {
+		return fmt.Errorf("the main checkout is on a detached HEAD")
+	}
+	worktreeBranch, _ := git(ctx, dir, "symbolic-ref", "--short", "-q", "HEAD")
+	if worktreeBranch == "" {
+		return fmt.Errorf("the worktree is on a detached HEAD")
+	}
+	if err := CommitAll(ctx, dir, message); err != nil {
+		return err
+	}
+	if count, err := git(ctx, dir, "rev-list", "--count", worktreeBranch+".."+branch); err == nil && count == "0" {
+		return fmt.Errorf("nothing to merge — %s already has everything from %s", worktreeBranch, branch)
+	}
+	if _, err := git(ctx, dir, "merge", "--no-edit", branch); err != nil {
+		// Abort a conflicted merge so the worktree never sits mid-merge.
+		_, _ = git(ctx, dir, "merge", "--abort")
+		return fmt.Errorf("merging %s into %s: %w", branch, worktreeBranch, err)
+	}
+	return nil
 }
 
 // Push publishes the current branch to the repository's remote (origin, or
