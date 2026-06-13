@@ -5,50 +5,42 @@ import {
   Check,
   ChevronDown,
   ExternalLink,
-  FileDiff,
   GitBranch,
   GitPullRequest,
   GitPullRequestArrow,
   type LucideIcon,
   LoaderCircle,
 } from 'lucide-react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import { useToast } from '@/components/ui/toast'
-import { sessionRepoChangesQuery, setSessionArchived } from '@/lib/api/sessions'
-import { fileKey, type Session } from '@/lib/api/types'
+import { setSessionArchived } from '@/lib/api/sessions'
+import type { Session } from '@/lib/api/types'
 import { planStepState, type PlanSurface } from '@/lib/planSurface'
 import { keys } from '@/lib/query/keys'
-import { DiffModal } from './DiffModal'
-import { FileCounts } from './DiffView'
 import { MessageMarkdown } from './MessageMarkdown'
 import { PlanStepIcon } from './Transcript'
 import { useRepoActions } from './useRepoActions'
 
-export const SESSION_PANEL_WIDTH = 300
+export const OVERVIEW_PANEL_WIDTH = 300
 
-export function SessionPanel({
+export function OverviewPanel({
   session,
   plan,
   working,
-  visible = true,
 }: {
   session: Session
   plan?: PlanSurface
   working: boolean
-  // The page keeps the panel mounted while collapsed (the wrapper animates to
-  // width 0); visible=false pauses work that should not run off-screen.
-  visible?: boolean
 }) {
   const repo = useRepoActions(session)
   const showGit = Boolean(repo.cwd && repo.info?.git)
   return (
     <aside
-      style={{ width: SESSION_PANEL_WIDTH }}
+      style={{ width: OVERVIEW_PANEL_WIDTH }}
       className="flex h-full shrink-0 flex-col gap-6 overflow-y-auto border-l border-border px-4 py-4"
     >
       {plan ? <PlanSection plan={plan} working={working} /> : null}
-      {showGit ? <ChangesSection session={session} enabled={visible} /> : null}
       {showGit ? <GitSection repo={repo} /> : null}
       <ManageSection session={session} />
     </aside>
@@ -152,102 +144,6 @@ function PlanSection({ plan, working }: { plan: PlanSurface; working: boolean })
       ) : null}
     </section>
   )
-}
-
-// How many file rows the panel shows before deferring to the review modal.
-const CHANGES_PREVIEW_ROWS = 10
-
-// What the session changed, at a glance: per-file +/− counts vs the
-// worktree's fork point. The summary query is event-driven (invalidated at
-// turn boundaries), runs only while this panel is mounted, and patch text is
-// fetched per file inside the modal — never here.
-function ChangesSection({ session, enabled }: { session: Session; enabled: boolean }) {
-  const [open, setOpen] = useState(false)
-  // The opener owns the modal's expansion state: each open starts fresh with
-  // the clicked file (or the first) expanded, with no reliance on the modal
-  // remounting between opens.
-  const [review, setReview] = useState<{ open: boolean; expanded: Record<string, boolean> }>({
-    open: false,
-    expanded: {},
-  })
-  const changes = useQuery({ ...sessionRepoChangesQuery(session.id), enabled })
-  const data = changes.data
-  if (!data || data.files.length === 0) return null
-  const visible = data.files.slice(0, CHANGES_PREVIEW_ROWS)
-  const hidden = data.files.length - visible.length
-  const openReview = (key: string | null) => {
-    const first = key ?? (data.files[0] ? fileKey(data.files[0]) : null)
-    setReview({ open: true, expanded: first ? { [first]: true } : {} })
-  }
-  const toggleFile = (key: string) =>
-    setReview((prev) => ({ ...prev, expanded: { ...prev.expanded, [key]: !prev.expanded[key] } }))
-  return (
-    <section className="flex flex-col gap-0.5">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        className="mb-1.5 flex w-full cursor-pointer items-center justify-between gap-2 rounded-md text-left transition-colors hover:text-ink"
-      >
-        <SectionHeader>Changes</SectionHeader>
-        <span className="flex shrink-0 items-center gap-2">
-          <span className="font-mono text-[11px] tabular-nums">
-            <span className="text-ok">+{data.total_added}</span> <span className="text-danger">−{data.total_deleted}</span>
-          </span>
-          <ChevronDown
-            size={13}
-            className={`shrink-0 text-ink-3 transition-transform duration-200 ease-out ${open ? '' : '-rotate-90'}`}
-            aria-hidden
-          />
-        </span>
-      </button>
-      {open ? (
-        <>
-          {visible.map((file) => (
-            <button
-              key={fileKey(file)}
-              type="button"
-              onClick={() => openReview(fileKey(file))}
-              title={file.old_path ? `${file.old_path} → ${file.path}` : file.path}
-              className="flex h-7 w-full cursor-pointer items-center gap-2 rounded-full px-2.5 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
-            >
-              <span
-                className={`min-w-0 flex-1 truncate font-mono text-[12px] ${file.status === 'deleted' ? 'line-through opacity-60' : ''}`}
-              >
-                {basename(file.path)}
-              </span>
-              <FileCounts file={file} />
-            </button>
-          ))}
-          {hidden > 0 ? (
-            <button
-              type="button"
-              onClick={() => openReview(null)}
-              className="h-7 w-full cursor-pointer rounded-full px-2.5 text-left text-[12px] text-ink-3 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
-            >
-              +{hidden} more {hidden === 1 ? 'file' : 'files'}
-            </button>
-          ) : null}
-          <ActionRow icon={FileDiff} onClick={() => openReview(null)} hint="Opens every file's diff">
-            Review changes
-          </ActionRow>
-        </>
-      ) : null}
-      <DiffModal
-        sessionId={session.id}
-        changes={data}
-        expanded={review.expanded}
-        onToggle={toggleFile}
-        open={review.open}
-        onClose={() => setReview((prev) => ({ ...prev, open: false }))}
-      />
-    </section>
-  )
-}
-
-function basename(path: string): string {
-  const index = path.lastIndexOf('/')
-  return index < 0 ? path : path.slice(index + 1)
 }
 
 function ManageSection({ session }: { session: Session }) {

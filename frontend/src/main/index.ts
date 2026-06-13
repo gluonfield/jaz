@@ -6,6 +6,7 @@ import {
   type MenuItemConstructorOptions,
   type Rectangle,
   type WebContents,
+  type WebPreferences,
   app,
   ipcMain,
   nativeTheme,
@@ -15,6 +16,7 @@ import {
 } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import appIcon from '../assets/jaz-icon-1024.png?asset'
+import { isPreviewURL } from '../shared/preview'
 import type { UpdateStatus } from '../shared/update'
 import { startLocalBackend, stopLocalBackend } from './backend'
 
@@ -30,6 +32,34 @@ app.setName(APP_NAME)
 let mainWindow: BrowserWindow | null = null
 let updateTimer: NodeJS.Timeout | null = null
 let updateStatus: UpdateStatus = { state: 'idle' }
+
+function lockPreviewWebviewPreferences(webPreferences: WebPreferences): void {
+  const prefs = webPreferences as WebPreferences & { preloadURL?: string }
+  delete prefs.preload
+  delete prefs.preloadURL
+  webPreferences.nodeIntegration = false
+  webPreferences.contextIsolation = true
+  webPreferences.sandbox = true
+  webPreferences.webSecurity = true
+  webPreferences.allowRunningInsecureContent = false
+}
+
+function attachExternalOpenHandler(contents: WebContents): void {
+  contents.setWindowOpenHandler(({ url }) => {
+    if (contents.getType() === 'webview' && !isPreviewURL(url)) {
+      return { action: 'deny' }
+    }
+    shell.openExternal(url)
+    return { action: 'deny' }
+  })
+}
+
+function attachPreviewNavigationGuard(contents: WebContents): void {
+  contents.on('will-navigate', (event, url) => {
+    if (contents.getType() !== 'webview' || isPreviewURL(url)) return
+    event.preventDefault()
+  })
+}
 
 // Electron ships no default right-click menu; build the standard text one
 // (spelling fixes, Look Up, Search with Google, Cut/Copy/Paste) wherever the
@@ -86,8 +116,12 @@ function attachContextMenu(contents: WebContents): void {
   })
 }
 
-// Covers every window — main and per-board — including ones created later.
-app.on('web-contents-created', (_event, contents) => attachContextMenu(contents))
+// Covers every window — main, preview webviews, and per-board windows.
+app.on('web-contents-created', (_event, contents) => {
+  attachContextMenu(contents)
+  attachExternalOpenHandler(contents)
+  attachPreviewNavigationGuard(contents)
+})
 
 function createWindow(): void {
   const mac = process.platform === 'darwin'
@@ -110,6 +144,7 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      webviewTag: true,
     },
   })
 
@@ -122,10 +157,12 @@ function createWindow(): void {
     if (updateStatus.state !== 'idle') win.webContents.send('jaz:update-status', updateStatus)
   })
 
-  // External links open in the system browser, never in the app.
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
-    return { action: 'deny' }
+  win.webContents.on('will-attach-webview', (event, webPreferences, params) => {
+    if (!isPreviewURL(params.src)) {
+      event.preventDefault()
+      return
+    }
+    lockPreviewWebviewPreferences(webPreferences)
   })
 
   if (process.env['ELECTRON_RENDERER_URL']) {
