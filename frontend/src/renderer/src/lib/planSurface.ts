@@ -78,6 +78,12 @@ export function planSurfaceFromEvent(event: SessionEvent): PlanSurface | undefin
   return undefined
 }
 
+export function planProgressSurfaceFromEvent(event: SessionEvent): PlanSurface | undefined {
+  if (event.type === 'proposed_plan') return undefined
+  const surface = planSurfaceFromEvent(event)
+  return surface && !surface.awaitingApproval ? surface : undefined
+}
+
 export function planSurfaceKey(event: SessionEvent): string {
   if (event.type === 'plan_update' && event.plan) return `plan_update:${event.session_id}`
   if (event.type === 'proposed_plan' && event.plan) return `proposed_plan:${event.session_id}`
