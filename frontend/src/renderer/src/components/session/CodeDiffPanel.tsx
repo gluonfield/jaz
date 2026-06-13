@@ -38,7 +38,7 @@ export function CodeDiffPanel({
   return (
     <aside
       style={{ width: CODE_DIFF_PANEL_WIDTH }}
-      className="flex h-full shrink-0 flex-col border-l border-border bg-bg p-2"
+      className="flex h-full shrink-0 flex-col bg-bg p-2"
     >
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[14px] bg-surface shadow-[0_18px_46px_rgba(0,0,0,0.18)] ring-1 ring-border">
         <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
