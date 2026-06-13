@@ -177,7 +177,7 @@ func startServer(
 	widgetPublisher *widgets.SessionPublisher,
 	memory *memoryservice.Service,
 	jazTools *jaztools.Service,
-<<<<<<< HEAD
+	terminals *terminal.Manager,
 ) error {
 	authKey, err := runtimeauth.Ensure(store.RootDir())
 	if err != nil {
@@ -201,27 +201,7 @@ func startServer(
 		Log:             logger.WithPrefix("server"),
 		Memory:          memory,
 		JazTools:        jazTools,
-=======
-	terminals *terminal.Manager,
-) {
-	handler := &server.Server{
-		Agent:        a,
-		Store:        store,
-		ACP:          manager,
-		MCP:          mcpManager,
-		Locks:        locks,
-		Events:       events,
-		STT:          stt,
-		TTS:          tts,
-		AgentCatalog: catalog,
-		Prompts:      prompts,
-		Root:         store.RootDir(),
-		Workspace:    string(workspace),
-		Log:          logger.WithPrefix("server"),
-		Memory:       memory,
-		JazTools:     jazTools,
-		Terminal:     terminals,
->>>>>>> main
+		Terminal:        terminals,
 	}
 	lc.Append(fx.Hook{
 		OnStop: func(context.Context) error {
