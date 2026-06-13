@@ -9,7 +9,9 @@ import (
 	"testing"
 
 	"github.com/gluonfield/jazmem/pkg/jazmem"
+	"github.com/wins/jaz/backend/internal/jaztools"
 	"github.com/wins/jaz/backend/internal/memoryservice"
+	"github.com/wins/jaz/backend/internal/serverconfig"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
@@ -34,7 +36,8 @@ func testMemoryServer(t *testing.T) (*Server, *fakeMemoryScheduler) {
 	t.Cleanup(func() { _ = memory.Close() })
 	scheduler := &fakeMemoryScheduler{running: true}
 	svc := memoryservice.New(memory, store, scheduler, "http://127.0.0.1:5299/mcp/jazmem")
-	return &Server{Store: store, Memory: svc}, scheduler
+	tools := jaztools.New(svc, serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"})
+	return &Server{Store: store, Memory: svc, JazTools: tools}, scheduler
 }
 
 func TestMemoryStatusAndToggle(t *testing.T) {

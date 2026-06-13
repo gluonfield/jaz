@@ -282,6 +282,109 @@ func TestCommitAllAndMergeIntoMain(t *testing.T) {
 	}
 }
 
+func TestMergeFromMain(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	ctx := context.Background()
+	workspace, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	main := filepath.Join(workspace, "repo")
+	git := func(dir string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir, "-c", "user.email=t@t", "-c", "user.name=t"}, args...)...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return string(out)
+	}
+	if err := exec.Command("git", "init", "-q", "-b", "main", main).Run(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(main, "index.html"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(main, "add", "-A")
+	git(main, "commit", "-q", "-m", "init")
+
+	worktree, err := AddWorktree(ctx, workspace, main, "wt")
+	if err != nil {
+		t.Fatalf("AddWorktree: %v", err)
+	}
+
+	// Even with main: nothing to pull in, and Behind reports 0.
+	if info := Inspect(ctx, worktree); info.Behind != 0 {
+		t.Errorf("Behind = %d before main advances, want 0", info.Behind)
+	}
+	if err := MergeFromMain(ctx, worktree, "noop"); err == nil || !strings.Contains(err.Error(), "nothing to merge") {
+		t.Errorf("MergeFromMain with main even: err = %v, want nothing-to-merge", err)
+	}
+	// The main checkout itself has no main to pull from — rejected.
+	if err := MergeFromMain(ctx, main, "x"); err == nil {
+		t.Error("MergeFromMain from the main checkout succeeded, want error")
+	}
+
+	// main advances with a new file; the worktree is now one commit behind.
+	if err := os.WriteFile(filepath.Join(main, "feature.txt"), []byte("from main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(main, "add", "-A")
+	git(main, "commit", "-q", "-m", "main adds feature")
+	if info := Inspect(ctx, worktree); info.Behind != 1 {
+		t.Errorf("Behind = %d after main advances, want 1", info.Behind)
+	}
+
+	// The worktree has its own dirty edit: MergeFromMain commits it on the
+	// worktree branch, then pulls main in. Both end up present in the worktree.
+	if err := os.WriteFile(filepath.Join(worktree, "notes.txt"), []byte("agent work\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := MergeFromMain(ctx, worktree, "agent work"); err != nil {
+		t.Fatalf("MergeFromMain: %v", err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(worktree, "feature.txt")); string(got) != "from main\n" {
+		t.Errorf("worktree feature.txt = %q, want main's content", got)
+	}
+	if got, _ := os.ReadFile(filepath.Join(worktree, "notes.txt")); string(got) != "agent work\n" {
+		t.Errorf("worktree notes.txt = %q, want the agent's committed work", got)
+	}
+	if out := git(worktree, "status", "--porcelain"); strings.TrimSpace(out) != "" {
+		t.Errorf("worktree dirty after merge:\n%s", out)
+	}
+	if info := Inspect(ctx, worktree); info.Behind != 0 {
+		t.Errorf("Behind = %d after update, want 0", info.Behind)
+	}
+	// An inbound merge never touches the main checkout.
+	if _, err := os.Stat(filepath.Join(main, "notes.txt")); err == nil {
+		t.Error("worktree's notes.txt leaked into the main checkout")
+	}
+
+	// Conflict: main and the worktree change the same line; the merge aborts
+	// and the worktree stays pristine with its own (committed) content.
+	if err := os.WriteFile(filepath.Join(main, "index.html"), []byte("purple\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(main, "add", "-A")
+	git(main, "commit", "-q", "-m", "main goes purple")
+	if err := os.WriteFile(filepath.Join(worktree, "index.html"), []byte("teal\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := MergeFromMain(ctx, worktree, "make it teal"); err == nil {
+		t.Error("conflicting MergeFromMain succeeded, want error")
+	} else if !strings.Contains(err.Error(), "CONFLICT") {
+		t.Errorf("conflicting MergeFromMain error = %q, want conflict detail", err)
+	}
+	if out := git(worktree, "status", "--porcelain"); strings.TrimSpace(out) != "" {
+		t.Errorf("worktree not pristine after aborted merge:\n%s", out)
+	}
+	if got, _ := os.ReadFile(filepath.Join(worktree, "index.html")); string(got) != "teal\n" {
+		t.Errorf("worktree index.html = %q after aborted merge, want teal", got)
+	}
+}
+
 func TestDiffSummaryAndFileDiff(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")

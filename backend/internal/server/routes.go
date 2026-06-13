@@ -3,6 +3,8 @@ package server
 import (
 	"net/http"
 	"strings"
+
+	"github.com/wins/jaz/backend/internal/serverconfig"
 )
 
 func (s *Server) Handler() http.Handler {
@@ -45,7 +47,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /v1/memory", s.handleMemoryUpdate)
 	mux.HandleFunc("PUT /v1/memory/horizons/{name}", s.handleMemoryHorizon)
 	mux.HandleFunc("POST /v1/memory/reindex", s.handleMemoryReindex)
-	mux.Handle("/mcp/jazmem", s.memoryMCPHandler())
+	mux.Handle(serverconfig.JazToolsMCPPath, s.jazToolsHandler())
+	mux.Handle(serverconfig.JazToolsMCPCompatPath, s.jazToolsHandler())
+	mux.Handle(serverconfig.JazmemMCPPath, s.memoryMCPHandler())
 	mux.Handle("/jazmem/", http.StripPrefix("/jazmem", s.memoryAPIHandler()))
 	return withCORS(withGzip(s.withAuth(mux)))
 }

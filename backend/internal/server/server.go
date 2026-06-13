@@ -16,6 +16,7 @@ import (
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/gitinfo"
+	"github.com/wins/jaz/backend/internal/jaztools"
 	"github.com/wins/jaz/backend/internal/loops"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/media"
@@ -72,7 +73,8 @@ type Server struct {
 
 	// Memory owns the embedded jazmem instance, its enabled gate, scheduler,
 	// and MCP surface.
-	Memory *memoryservice.Service
+	Memory   *memoryservice.Service
+	JazTools *jaztools.Service
 
 	// in-flight native turns by session id, cancellable via the cancel action
 	turnCancels sync.Map
@@ -632,7 +634,7 @@ func (s *Server) streamSessionEvents(w http.ResponseWriter, r *http.Request, ses
 func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
 	sessionRef, action, ok := strings.Cut(rest, "/")
-	if !ok || (action != "messages:stream" && action != "attachments" && action != "archive" && action != "unarchive" && action != "pin" && action != "unpin" && action != "interactive-response" && action != "permission" && action != "cancel" && action != "queue" && action != "repo/push" && action != "repo/commit" && action != "repo/merge") {
+	if !ok || (action != "messages:stream" && action != "attachments" && action != "archive" && action != "unarchive" && action != "pin" && action != "unpin" && action != "interactive-response" && action != "permission" && action != "cancel" && action != "queue" && action != "repo/push" && action != "repo/commit" && action != "repo/merge" && action != "repo/merge-from-main") {
 		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
 		return
 	}
@@ -694,6 +696,10 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	}
 	if action == "repo/merge" {
 		s.handleSessionRepoMerge(w, r, session)
+		return
+	}
+	if action == "repo/merge-from-main" {
+		s.handleSessionRepoMergeFromMain(w, r, session)
 		return
 	}
 	if action == "cancel" {

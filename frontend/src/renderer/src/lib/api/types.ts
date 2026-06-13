@@ -66,6 +66,9 @@ export interface RepoInfo {
   // main checkout is on — the handoff destination.
   is_worktree?: boolean
   main_branch?: string
+  // Commits on main_branch the worktree's branch doesn't have yet — what
+  // "Update from main" would pull in (omitted/0 when up to date).
+  behind?: number
 }
 
 // One changed file in a session's working tree relative to its diff base —
@@ -517,10 +520,20 @@ export interface ACPAgentDefaults {
   reasoning_effort?: string
 }
 
+export interface ReasoningEffortOption {
+  value: string
+  label: string
+}
+
+export interface ACPAgentOptions {
+  reasoning_efforts: ReasoningEffortOption[]
+}
+
 export interface AgentSettings {
   native: NativeAgentDefaults
   providers: NativeProviderOption[]
   acp: Record<string, ACPAgentDefaults>
+  acp_options?: Record<string, ACPAgentOptions>
   agents: string[]
 }
 

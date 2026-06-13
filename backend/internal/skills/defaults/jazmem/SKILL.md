@@ -88,9 +88,9 @@ Details: [references/writing-memory.md](references/writing-memory.md). Commands/
 
 Served by jaz at `http://127.0.0.1:5299/mcp/jazmem` (or standalone `jazmem-server` at `:9477/mcp`). Read-only — writes happen by editing markdown.
 
-- `jazmem_search`: agentic cited answer; `deep: true` when thin.
-- `jazmem_search_raw`: deterministic retrieval (`limit`, `deep`); drives your own search→get→follow-links loop.
-- `jazmem_get`: raw markdown + links/backlinks + near-miss suggestions.
+- `memory_search`: agentic cited answer; `deep: true` when thin.
+- `memory_search_raw`: deterministic retrieval (`limit`, `deep`); drives your own search→get→follow-links loop.
+- `memory_get`: raw markdown + links/backlinks + near-miss suggestions.
 
 ## Maintenance
 
