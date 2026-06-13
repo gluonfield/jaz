@@ -182,7 +182,7 @@ export const sessionRepoChangesQuery = (id: string) =>
   })
 
 // One file's unified diff, fetched only when the user opens that file in the
-// review modal. The request carries the summary row's identity — status,
+// Code Diff panel. The request carries the summary row's identity — status,
 // rename source, resolved base — so the patch matches the row even if the
 // tree moves between fetches. Cached per fileKey; the sessionRepo prefix
 // invalidation marks it stale alongside the summary.

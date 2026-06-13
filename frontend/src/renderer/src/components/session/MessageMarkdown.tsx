@@ -1,12 +1,24 @@
 import { useQuery } from '@tanstack/react-query'
 import { FileText, Globe } from 'lucide-react'
-import { memo, useMemo } from 'react'
+import { createContext, memo, useContext, useMemo, type MouseEvent, type ReactNode } from 'react'
 import Markdown from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
 import { encodeMention, MentionPill } from './mentions'
+
+const PreviewLinkContext = createContext<((url: string) => void) | null>(null)
+
+export function PreviewLinkProvider({
+  onOpen,
+  children,
+}: {
+  onOpen: (url: string) => void
+  children: ReactNode
+}) {
+  return <PreviewLinkContext.Provider value={onOpen}>{children}</PreviewLinkContext.Provider>
+}
 
 // Models often emit \[...\] / \(...\) math delimiters; remark-math only
 // parses dollar-style math. Convert outside of code spans/fences.
@@ -47,6 +59,17 @@ function isUrlLink(href: unknown): boolean {
   return typeof href === 'string' && /^https?:\/\//i.test(href)
 }
 
+function shouldPreviewLink(event: MouseEvent<HTMLAnchorElement>): boolean {
+  return (
+    event.button === 0 &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.shiftKey &&
+    !event.altKey &&
+    !event.defaultPrevented
+  )
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -82,6 +105,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: s
   // Cached by the composer; lets assistant echoes of $skill-name render as
   // mention pills. An empty catalog simply skips the pass.
   const skills = useQuery(skillsQuery)
+  const openPreview = useContext(PreviewLinkContext)
   const prepared = useMemo(
     () => normalizeMath(linkifyKnownSkills(text, skills.data ?? [])),
     [text, skills.data],
@@ -92,9 +116,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: s
         remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: false }]]}
         rehypePlugins={[rehypeKatex]}
         components={{
-          // External links open in the system browser (main process denies
-          // window.open and calls shell.openExternal).
-          a: ({ node: _node, children, href, ...props }) => {
+          a: ({ node: _node, children, href, onClick, ...props }) => {
             // Linked mentions ([$skill](path) / [@path](abs)) render as the
             // composer's pills, not as links.
             const label = textFromChildren(children)
@@ -109,7 +131,25 @@ export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: s
             const localPath = isLocalPathLink(href, children)
             const Icon = localPath ? FileText : isUrlLink(href) ? Globe : null
             return (
-              <a {...props} href={href} target="_blank" rel="noreferrer">
+              <a
+                {...props}
+                href={href}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(event) => {
+                  onClick?.(event)
+                  if (
+                    !openPreview ||
+                    typeof href !== 'string' ||
+                    !isUrlLink(href) ||
+                    !shouldPreviewLink(event)
+                  ) {
+                    return
+                  }
+                  event.preventDefault()
+                  openPreview(href)
+                }}
+              >
                 {Icon ? (
                   <Icon
                     aria-hidden="true"

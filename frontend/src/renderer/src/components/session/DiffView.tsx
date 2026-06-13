@@ -2,8 +2,7 @@ import { memo } from 'react'
 import type { RepoFileChange } from '@/lib/api/types'
 import { parseUnifiedDiff, type DiffHunk } from '@/lib/diff/parseUnifiedDiff'
 
-// A file's +/− counts, shared by the panel's changed-file rows and the
-// review modal's section headers.
+// A file's +/− counts, shared by changed-file rows and diff section headers.
 export function FileCounts({ file }: { file: RepoFileChange }) {
   if (file.binary) return <span className="shrink-0 text-[11px] text-ink-3">binary</span>
   return (
@@ -36,7 +35,7 @@ export const DiffView = memo(function DiffView({
     return <Notice>No changes to show.</Notice>
   }
   return (
-    <div className="overflow-x-auto font-mono text-[12px] leading-[1.5]">
+    <div className="overflow-x-auto font-mono text-[12px] leading-[1.5] select-text">
       <table className="w-full border-separate border-spacing-0">
         <tbody>
           {hunks.map((hunk, index) => (
@@ -73,7 +72,7 @@ function Hunk({ hunk, first }: { hunk: DiffHunk; first: boolean }) {
             <td className="w-10 min-w-10 select-none border-r border-border/60 pr-2 text-right align-top text-[11px] text-ink-3 tabular-nums">
               {line.newNo ?? ''}
             </td>
-            <td className="whitespace-pre pl-2 pr-3 align-top text-ink-2">
+            <td className="whitespace-pre pl-2 pr-3 align-top text-ink-2 select-text">
               <span className={`select-none ${markerColor}`}>{marker}</span> {line.text}
             </td>
           </tr>
