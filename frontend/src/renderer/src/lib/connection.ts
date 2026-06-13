@@ -1,5 +1,13 @@
 import { useSyncExternalStore } from 'react'
-import { apiBaseUrl, localBaseUrl, normalizeBaseUrl, setApiBaseUrl } from './api/client'
+import {
+  apiAuthToken,
+  apiBaseUrl,
+  localBaseUrl,
+  normalizeBaseUrl,
+  parseBackendConnectUrl,
+  setApiAuthToken,
+  setApiBaseUrl,
+} from './api/client'
 import { queryClient } from './query/queryClient'
 
 // Gate for the whole app: 'checking' on first probe of the remembered URL,
@@ -28,6 +36,11 @@ const RECONNECT_GRACE_MS = 30_000
 let state: ConnectionState = { status: 'checking', url: apiBaseUrl(), error: null }
 const listeners = new Set<() => void>()
 
+type HealthStatus = {
+  ok: boolean
+  authRequired: boolean
+}
+
 function setState(next: Partial<ConnectionState>) {
   state = { ...state, ...next }
   for (const l of listeners) l()
@@ -44,15 +57,47 @@ export function useConnection(): ConnectionState {
   return useSyncExternalStore(subscribe, () => state)
 }
 
-export async function checkHealth(url: string): Promise<boolean> {
+async function readHealth(url: string): Promise<HealthStatus | null> {
   try {
     const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(3_000) })
-    if (!res.ok) return false
-    const body = (await res.json()) as { ok?: boolean }
-    return body.ok === true
+    if (!res.ok) return null
+    const body = (await res.json()) as { ok?: boolean; auth_required?: boolean }
+    return { ok: body.ok === true, authRequired: body.auth_required === true }
   } catch {
-    return false
+    return null
   }
+}
+
+export async function checkHealth(url: string): Promise<boolean> {
+  return (await readHealth(url))?.ok === true
+}
+
+async function checkAuthAccess(url: string, token: string): Promise<string | null> {
+  try {
+    const headers = new Headers()
+    headers.set('Authorization', `Bearer ${token}`)
+    const res = await fetch(`${url}/v1/auth/check`, {
+      headers,
+      signal: AbortSignal.timeout(3_000),
+    })
+    if (res.status === 401) return 'Backend key was rejected'
+    if (!res.ok) return `Backend auth check failed with ${res.status}`
+    return null
+  } catch {
+    return 'Backend auth check failed'
+  }
+}
+
+async function verifyBackend(
+  url: string,
+  token = apiAuthToken(url),
+  missingKeyMessage = `Backend at ${url} requires a key`,
+): Promise<string | null> {
+  const health = await readHealth(url)
+  if (!health?.ok) return `No backend responded at ${url}`
+  if (!health.authRequired) return null
+  if (!token) return missingKeyMessage
+  return checkAuthAccess(url, token)
 }
 
 let pollTimer: ReturnType<typeof setTimeout> | null = null
@@ -69,10 +114,10 @@ function schedulePoll() {
   if (pollTimer) clearTimeout(pollTimer)
   pollTimer = setTimeout(async () => {
     const url = state.url
-    const healthy = await checkHealth(url)
+    const healthError = await verifyBackend(url)
     if (gen !== pollGen || state.url !== url) return
     if (state.status === 'connected') {
-      if (healthy) {
+      if (!healthError) {
         failures = 0
       } else {
         failures += 1
@@ -81,11 +126,11 @@ function schedulePoll() {
           setState({ status: 'reconnecting', error: `Lost connection to the backend at ${url}` })
         }
       }
-    } else if (healthy) {
+    } else if (!healthError) {
       markConnected(url)
       return
     } else if (state.status === 'reconnecting' && Date.now() - lostAt > RECONNECT_GRACE_MS) {
-      setState({ status: 'disconnected' })
+      setState({ status: 'disconnected', error: healthError })
     }
     schedulePoll()
   }, POLL_INTERVAL_MS)
@@ -112,14 +157,16 @@ export function rememberedRemoteUrl(): string {
 
 // Probe whatever URL the user typed; persist it only once it answers.
 export async function connectRemote(url: string): Promise<string | null> {
-  const target = normalizeBaseUrl(url)
+  const parsed = parseBackendConnectUrl(url)
+  const target = normalizeBaseUrl(parsed.url)
   if (!target) return 'Enter a backend URL'
-  if (await checkHealth(target)) {
-    localStorage.setItem(REMOTE_URL_KEY, target)
-    markConnected(target)
-    return null
-  }
-  return `No backend responded at ${target}`
+  const token = parsed.key || apiAuthToken(target)
+  const error = await verifyBackend(target, token, 'Paste the client URL from the backend; it includes the key')
+  if (error) return error
+  if (parsed.key) setApiAuthToken(target, parsed.key)
+  localStorage.setItem(REMOTE_URL_KEY, target)
+  markConnected(target)
+  return null
 }
 
 export async function startLocal(): Promise<string | null> {
@@ -129,17 +176,20 @@ export async function startLocal(): Promise<string | null> {
   const result = await window.jaz.startLocalBackend()
   if (!result.ok) return result.error ?? 'Failed to start the backend'
   // connect to the URL the main process actually verified, not the env default
-  markConnected((result as { url?: string }).url ?? localBaseUrl())
+  const url = result.url ?? localBaseUrl()
+  if (result.key) setApiAuthToken(url, result.key)
+  markConnected(url)
   return null
 }
 
 // First probe of the remembered URL, run once at app start.
 async function init() {
   const url = state.url
-  if (await checkHealth(url)) {
+  const error = await verifyBackend(url)
+  if (!error) {
     markConnected(url)
   } else {
-    setState({ status: 'disconnected' })
+    setState({ status: 'disconnected', error })
     schedulePoll()
   }
 }

@@ -153,7 +153,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		t.Fatalf("providers = %#v", got.Providers)
 	}
 	if !got.ACP["codex"].Enabled ||
-		got.ACP["codex"].Command != `codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'` ||
+		got.ACP["codex"].Command != `npx -y @zed-industries/codex-acp@0.16.0 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'` ||
 		got.ACP["codex"].Model != "gpt-5.5" {
 		t.Fatalf("unexpected codex defaults %#v", got.ACP["codex"])
 	}
@@ -362,6 +362,9 @@ func TestCORSAllowsDeletePreflight(t *testing.T) {
 	}
 	if allow := res.Header().Get("Access-Control-Allow-Methods"); !strings.Contains(allow, http.MethodDelete) {
 		t.Fatalf("Access-Control-Allow-Methods = %q, missing DELETE", allow)
+	}
+	if allow := res.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(allow, "Authorization") {
+		t.Fatalf("Access-Control-Allow-Headers = %q, missing Authorization", allow)
 	}
 }
 

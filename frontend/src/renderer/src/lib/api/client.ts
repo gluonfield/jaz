@@ -1,4 +1,5 @@
 const BACKEND_URL_KEY = 'jaz.backendUrl'
+const AUTH_KEY_PREFIX = 'jaz.backendAuth.'
 const DEFAULT_LOCAL_URL = 'http://localhost:5299'
 
 // The local default bridged by the preload script; fall back for
@@ -15,6 +16,22 @@ export function normalizeBaseUrl(url: string): string {
     return new URL(trimmed).origin
   } catch {
     return trimmed
+  }
+}
+
+export function parseBackendConnectUrl(input: string): { url: string; key: string } {
+  let raw = input.trim()
+  if (raw && !/^https?:\/\//i.test(raw)) raw = `http://${raw}`
+  try {
+    const parsed = new URL(raw)
+    const key = parsed.searchParams.get('key')?.trim() ?? ''
+    parsed.searchParams.delete('key')
+    parsed.pathname = ''
+    parsed.hash = ''
+    parsed.search = ''
+    return { url: parsed.origin, key }
+  } catch {
+    return { url: normalizeBaseUrl(input), key: '' }
   }
 }
 
@@ -41,9 +58,59 @@ export function apiBaseUrl(): string {
   return baseUrl
 }
 
+export function apiUrl(path: string): string {
+  return `${apiBaseUrl()}${path}`
+}
+
 export function setApiBaseUrl(url: string): void {
   baseUrl = normalizeBaseUrl(url)
   localStorage.setItem(BACKEND_URL_KEY, baseUrl)
+}
+
+function authStorageKey(url: string): string {
+  return `${AUTH_KEY_PREFIX}${normalizeBaseUrl(url)}`
+}
+
+export function apiAuthToken(url = apiBaseUrl()): string {
+  return localStorage.getItem(authStorageKey(url))?.trim() ?? ''
+}
+
+export function setApiAuthToken(url: string, token?: string | null): void {
+  const key = authStorageKey(url)
+  const value = token?.trim() ?? ''
+  if (value) localStorage.setItem(key, value)
+  else localStorage.removeItem(key)
+}
+
+function withAuth(init: RequestInit = {}, url = apiBaseUrl()): RequestInit {
+  const token = apiAuthToken(url)
+  if (!token) return init
+  const headers = new Headers(init.headers)
+  if (!headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`)
+  return { ...init, headers }
+}
+
+function appendAuthQuery(rawUrl: string, url = apiBaseUrl()): string {
+  const token = apiAuthToken(url)
+  if (!token) return rawUrl
+  try {
+    const parsed = new URL(rawUrl)
+    parsed.searchParams.set('key', token)
+    return parsed.toString()
+  } catch {
+    return `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}key=${encodeURIComponent(token)}`
+  }
+}
+
+export function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  if (/^https?:\/\//i.test(path)) {
+    throw new Error('apiFetch only accepts backend-relative paths')
+  }
+  return fetch(apiUrl(path), withAuth(init))
+}
+
+export function apiEventSourceUrl(path: string): string {
+	return appendAuthQuery(apiUrl(path))
 }
 
 export class ApiError extends Error {
@@ -56,7 +123,7 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${apiBaseUrl()}${path}`, init)
+  const res = await apiFetch(path, init)
   if (!res.ok) {
     let message = `${res.status} ${res.statusText}`
     try {

@@ -250,7 +250,9 @@ func (s *Server) handleWidgetContent(w http.ResponseWriter, r *http.Request, wid
 			zoom = v
 		}
 	}
-	doc := widgets.RenderDocument(widget.Title, snapshot.HTML, theme, zoom)
+	doc := widgets.RenderDocumentWithOptions(widget.Title, snapshot.HTML, theme, zoom, widgets.RenderOptions{
+		InlineAssets: r.URL.Query().Get("inline_assets") == "1",
+	})
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write([]byte(doc))

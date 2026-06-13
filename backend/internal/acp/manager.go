@@ -163,7 +163,10 @@ func (c *agentConn) close() {
 }
 
 func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd string) (*agentConn, error) {
-	env := m.processEnv(name, cfg)
+	env, err := m.processEnvPrepared(name, cfg)
+	if err != nil {
+		return nil, err
+	}
 	runCtx, cancel := context.WithCancel(context.Background())
 	conn, err := m.openConn(runCtx, name, cfg, env, cwd)
 	if err != nil {

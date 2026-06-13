@@ -1,4 +1,4 @@
-import { apiBaseUrl } from './client'
+import { apiFetch } from './client'
 import type { ToolCallJSON } from './types'
 
 // agent.StreamEvent on the wire (backend/internal/agent/agent.go).
@@ -32,7 +32,7 @@ export async function streamSessionMessage({
   signal: AbortSignal
   onEvent: (event: AgentStreamEvent) => void
 }): Promise<void> {
-  const res = await fetch(`${apiBaseUrl()}/v1/sessions/${sessionId}/messages:stream`, {
+  const res = await apiFetch(`/v1/sessions/${sessionId}/messages:stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, attachment_ids: attachmentIds, plan_requested: planRequested, voice }),

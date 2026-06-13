@@ -93,12 +93,65 @@ func TestProcessEnvSetsCodexHomeFromSystemLogin(t *testing.T) {
 	if !fileExists(filepath.Join(want, "auth.json")) {
 		t.Fatalf("isolated codex auth was not prepared")
 	}
+	info, err := os.Lstat(filepath.Join(want, "auth.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Fatal("codex auth import should copy credentials, not symlink them")
+	}
 	if env["HOME"] == home {
 		t.Fatal("subprocess HOME should stay isolated")
 	}
 }
 
-func TestProcessEnvUsesUserHomeForClaudeCode(t *testing.T) {
+func TestProcessEnvPreparedReportsCredentialCopyFailure(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".codex", "auth.json"), []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", "")
+
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "acp"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "acp", "codex-home"), []byte("not a dir"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared("codex", AgentConfig{})
+	if err == nil || !strings.Contains(err.Error(), "prepare codex auth") {
+		t.Fatalf("err = %v, want codex auth preparation error", err)
+	}
+}
+
+func TestProbeAgentAuthDoesNotImportCredentials(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".codex", "auth.json"), []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", "")
+
+	root := t.TempDir()
+	status := ProbeAgentAuth(AgentCodex, AgentConfig{}, root, nil)
+	if !status.Authenticated {
+		t.Fatalf("source codex auth should be detected: %#v", status)
+	}
+	if _, err := os.Stat(filepath.Join(root, "acp", "codex-home", "auth.json")); !os.IsNotExist(err) {
+		t.Fatalf("probe should not import credentials, err = %v", err)
+	}
+}
+
+func TestProcessEnvUsesJazHomeForClaudeCode(t *testing.T) {
 	home := t.TempDir()
 	configDir := filepath.Join(home, "claude-config")
 	t.Setenv("HOME", home)
@@ -113,8 +166,9 @@ func TestProcessEnvUsesUserHomeForClaudeCode(t *testing.T) {
 	root := t.TempDir()
 	env := NewManager(nil, Config{Root: root}, nil).processEnv("claude", AgentConfig{})
 
-	if env["HOME"] != home {
-		t.Fatalf("HOME = %q, want %q", env["HOME"], home)
+	wantHome := filepath.Join(root, "acp", "home")
+	if env["HOME"] != wantHome {
+		t.Fatalf("HOME = %q, want %q", env["HOME"], wantHome)
 	}
 	if env["ANTHROPIC_API_KEY"] != "host-anthropic-key" {
 		t.Fatalf("ANTHROPIC_API_KEY was not preserved and normalized")
@@ -134,8 +188,9 @@ func TestProcessEnvUsesUserHomeForClaudeCode(t *testing.T) {
 	if env["CLAUDE_CODE_USE_VERTEX"] != "0" {
 		t.Fatalf("CLAUDE_CODE_USE_VERTEX = %q", env["CLAUDE_CODE_USE_VERTEX"])
 	}
-	if env["CLAUDE_CONFIG_DIR"] != configDir {
-		t.Fatalf("CLAUDE_CONFIG_DIR = %q, want %q", env["CLAUDE_CONFIG_DIR"], configDir)
+	wantConfigDir := filepath.Join(root, "acp", "claude")
+	if env["CLAUDE_CONFIG_DIR"] != wantConfigDir {
+		t.Fatalf("CLAUDE_CONFIG_DIR = %q, want %q", env["CLAUDE_CONFIG_DIR"], wantConfigDir)
 	}
 	if env["USER"] != "wins" {
 		t.Fatalf("USER = %q, want wins", env["USER"])
@@ -162,7 +217,7 @@ func TestProcessEnvHonorsConfiguredClaudeHome(t *testing.T) {
 	}
 }
 
-func TestProcessEnvUsesUserHomeForGrok(t *testing.T) {
+func TestProcessEnvUsesJazHomeForGrok(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XAI_APIKEY", "host-xai-key")
@@ -171,8 +226,9 @@ func TestProcessEnvUsesUserHomeForGrok(t *testing.T) {
 	root := t.TempDir()
 	env := NewManager(nil, Config{Root: root}, nil).processEnv("grok", AgentConfig{})
 
-	if env["HOME"] != home {
-		t.Fatalf("HOME = %q, want %q", env["HOME"], home)
+	wantHome := filepath.Join(root, "acp", "home")
+	if env["HOME"] != wantHome {
+		t.Fatalf("HOME = %q, want %q", env["HOME"], wantHome)
 	}
 	if env["XAI_API_KEY"] != "host-xai-key" {
 		t.Fatalf("XAI_API_KEY was not preserved and normalized")
@@ -216,6 +272,72 @@ func TestProcessEnvNeverLeaksAPIKeysToCodex(t *testing.T) {
 	}
 	if env["CODEX_HOME"] == "" || !fileExists(filepath.Join(env["CODEX_HOME"], "auth.json")) {
 		t.Fatalf("codex oauth auth was not prepared: %#v", env)
+	}
+}
+
+func TestProbeReadinessRequiresCodexOAuth(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEX_HOME", t.TempDir())
+	exe := testExecutable(t)
+
+	ready := ProbeReadiness(AgentCodex, AgentConfig{Command: exe}, t.TempDir(), nil)
+	if ready.Available || !strings.Contains(ready.Reason, "Codex OAuth login") {
+		t.Fatalf("ready = %#v", ready)
+	}
+
+	codexHome := t.TempDir()
+	if err := os.WriteFile(filepath.Join(codexHome, "auth.json"), []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ready = ProbeReadiness(AgentCodex, AgentConfig{Command: exe}, t.TempDir(), map[string]string{"CODEX_HOME": codexHome})
+	if !ready.Available {
+		t.Fatalf("codex should be ready with oauth auth: %#v", ready)
+	}
+}
+
+func TestProbeReadinessRequiresClaudeExecutable(t *testing.T) {
+	exe := testExecutable(t)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	t.Setenv("PATH", filepath.Dir(exe))
+
+	ready := ProbeReadiness(AgentClaude, AgentConfig{Command: exe}, t.TempDir(), nil)
+	if ready.Available || !strings.Contains(ready.Reason, "Claude Code executable") {
+		t.Fatalf("ready = %#v", ready)
+	}
+
+	ready = ProbeReadiness(AgentClaude, AgentConfig{Command: exe}, t.TempDir(), map[string]string{"CLAUDE_CODE_EXECUTABLE": exe})
+	if ready.Available || !strings.Contains(ready.Reason, "Claude login") {
+		t.Fatalf("ready = %#v", ready)
+	}
+
+	ready = ProbeReadiness(AgentClaude, AgentConfig{Command: exe}, t.TempDir(), map[string]string{
+		"CLAUDE_CODE_EXECUTABLE":  exe,
+		"CLAUDE_CODE_OAUTH_TOKEN": "setup-token",
+	})
+	if !ready.Available {
+		t.Fatalf("claude should be ready with executable and auth: %#v", ready)
+	}
+}
+
+func TestProbeReadinessRequiresGrokAuth(t *testing.T) {
+	exe := testExecutable(t)
+	home := t.TempDir()
+
+	ready := ProbeReadiness(AgentGrok, AgentConfig{Command: exe}, t.TempDir(), map[string]string{"HOME": home})
+	if ready.Available || !strings.Contains(ready.Reason, "Grok login") {
+		t.Fatalf("ready = %#v", ready)
+	}
+
+	if err := os.MkdirAll(filepath.Join(home, ".grok"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".grok", "auth.json"), []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ready = ProbeReadiness(AgentGrok, AgentConfig{Command: exe}, t.TempDir(), map[string]string{"HOME": home})
+	if !ready.Available {
+		t.Fatalf("grok should be ready with cached token: %#v", ready)
 	}
 }
 
@@ -376,4 +498,13 @@ func grokInitializeAuthMethods() []byte {
 			{"id": "xai.api_key", "name": "XAI API Key"}
 		]
 	}`)
+}
+
+func testExecutable(t *testing.T) string {
+	t.Helper()
+	exe := filepath.Join(t.TempDir(), "agent")
+	if err := os.WriteFile(exe, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return exe
 }

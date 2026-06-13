@@ -116,8 +116,9 @@ func (c AgentCatalog) EnabledAgentNames() ([]string, error) {
 func BuiltinAgents() AgentCatalog {
 	return AgentCatalog{
 		AgentCodex: {
-			Command: "codex-acp",
+			Command: "npx",
 			Args: []string{
+				"-y", "@zed-industries/codex-acp@0.16.0",
 				"-c", `sandbox_mode="danger-full-access"`,
 				"-c", `approval_policy="never"`,
 			},
