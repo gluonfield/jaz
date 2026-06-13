@@ -6,6 +6,10 @@ export interface DiffLine {
 }
 
 export interface DiffHunk {
+  oldStart: number
+  oldLines: number
+  newStart: number
+  newLines: number
   // The trailing function/section hint from the @@ header, when git found one.
   context: string
   lines: DiffLine[]
@@ -31,7 +35,14 @@ export function parseUnifiedDiff(patch: string): DiffHunk[] {
         newNo = Number(header[3])
         oldLeft = Number(header[2] ?? '1')
         newLeft = Number(header[4] ?? '1')
-        hunk = { context: header[5] ?? '', lines: [] }
+        hunk = {
+          oldStart: oldNo,
+          oldLines: oldLeft,
+          newStart: newNo,
+          newLines: newLeft,
+          context: header[5] ?? '',
+          lines: [],
+        }
         hunks.push(hunk)
       }
       // Anything else out here is file-header noise (diff --git, index, ±±±).
