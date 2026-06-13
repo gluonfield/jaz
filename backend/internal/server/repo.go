@@ -190,6 +190,25 @@ func (s *Server) handleSessionRepoMerge(w http.ResponseWriter, r *http.Request, 
 	})
 }
 
+func (s *Server) handleSessionRepoMergeFromMain(w http.ResponseWriter, r *http.Request, session storage.Session) {
+	cwd, ok := sessionCwd(w, session)
+	if !ok {
+		return
+	}
+	var req repoCommitRequest
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&req)
+	}
+	message := firstNonEmpty(strings.TrimSpace(req.Message), strings.TrimSpace(session.Title), "jaz session changes")
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	if err := gitinfo.MergeFromMain(ctx, cwd, message); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, gitinfo.Inspect(ctx, cwd))
+}
+
 // optionalCwd is for read-only handlers that degrade gracefully without a
 // working directory; handlers that require one go through sessionCwd.
 func optionalCwd(session storage.Session) string {

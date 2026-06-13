@@ -232,6 +232,10 @@ export function mergeSessionRepo(
   return post<{ cwd: string; moved: boolean; info: RepoInfo }>(`/v1/sessions/${id}/repo/merge`)
 }
 
+export function mergeFromMainSessionRepo(id: string): Promise<RepoInfo> {
+  return post<RepoInfo>(`/v1/sessions/${id}/repo/merge-from-main`)
+}
+
 export function setSessionArchived(id: string, archived: boolean): Promise<Session> {
   return post<Session>(`/v1/sessions/${id}/${archived ? 'archive' : 'unarchive'}`)
 }

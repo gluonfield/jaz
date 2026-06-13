@@ -679,7 +679,7 @@ func (s *Server) streamSessionEvents(w http.ResponseWriter, r *http.Request, ses
 func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
 	sessionRef, action, ok := strings.Cut(rest, "/")
-	if !ok || (action != "messages:stream" && action != "attachments" && action != "archive" && action != "unarchive" && action != "pin" && action != "unpin" && action != "interactive-response" && action != "permission" && action != "cancel" && action != "queue" && action != "repo/push" && action != "repo/commit" && action != "repo/merge") {
+	if !ok || (action != "messages:stream" && action != "attachments" && action != "archive" && action != "unarchive" && action != "pin" && action != "unpin" && action != "interactive-response" && action != "permission" && action != "cancel" && action != "queue" && action != "repo/push" && action != "repo/commit" && action != "repo/merge" && action != "repo/merge-from-main") {
 		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
 		return
 	}
@@ -741,6 +741,10 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	}
 	if action == "repo/merge" {
 		s.handleSessionRepoMerge(w, r, session)
+		return
+	}
+	if action == "repo/merge-from-main" {
+		s.handleSessionRepoMergeFromMain(w, r, session)
 		return
 	}
 	if action == "cancel" {
