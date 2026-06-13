@@ -105,13 +105,17 @@ const SIDE_PANEL_VIEW_LABEL: Record<SidePanelView, string> = {
   file: 'File Reader',
 }
 
-const BASE_VIEW_OPTIONS: SidePanelView[] = ['overview', 'diff', 'preview']
+// Overview sits last so it lands on the right edge of the row. It's the default
+// view, so when the panel is closed the collapsed pill is Overview pinned to
+// the right — the others fan in to its left and it never moves on hover.
+const BASE_VIEW_OPTIONS: SidePanelView[] = ['diff', 'preview', 'overview']
 
 // A quiet segmented control on a single surface track, sized like the home
 // composer's pills. At rest with the panel closed it collapses to just the
 // current view; hover (or focus) unfurls the full row, and an open panel keeps
-// it unfurled. The current view is the same keyed button throughout, so the
-// siblings simply fan in beside it rather than the whole control flickering.
+// it unfurled. The current view renders as a plain (non-collapsing) child so it
+// stays fixed; the others live in grid tracks that animate 1fr↔0fr, shrinking
+// their real width with no transforms — so nothing the eye is tracking moves.
 export function SidePanelControl({
   open,
   view,
