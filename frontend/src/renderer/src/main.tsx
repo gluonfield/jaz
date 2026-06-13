@@ -1,6 +1,7 @@
 import '@fontsource-variable/inter'
 import '@fontsource-variable/jetbrains-mono'
 import '@fontsource/instrument-serif/400-italic.css'
+import '@xterm/xterm/css/xterm.css'
 import './styles/globals.css'
 
 import { QueryClientProvider } from '@tanstack/react-query'

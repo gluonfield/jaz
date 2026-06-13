@@ -28,6 +28,7 @@ import (
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
+	"github.com/wins/jaz/backend/internal/terminal"
 	exectool "github.com/wins/jaz/backend/internal/tools/exec"
 	"github.com/wins/jaz/backend/internal/voice"
 	"github.com/wins/jaz/backend/internal/widgets"
@@ -52,6 +53,7 @@ func runServe(args []string) error {
 			app.NewMemory,
 			newMemoryService,
 			jaztools.New,
+			terminal.New,
 			app.NewMCPServerReader,
 			exectool.NewCommandManager,
 			app.NewPromptBuilder,
@@ -175,6 +177,7 @@ func startServer(
 	widgetPublisher *widgets.SessionPublisher,
 	memory *memoryservice.Service,
 	jazTools *jaztools.Service,
+<<<<<<< HEAD
 ) error {
 	authKey, err := runtimeauth.Ensure(store.RootDir())
 	if err != nil {
@@ -198,7 +201,34 @@ func startServer(
 		Log:             logger.WithPrefix("server"),
 		Memory:          memory,
 		JazTools:        jazTools,
+=======
+	terminals *terminal.Manager,
+) {
+	handler := &server.Server{
+		Agent:        a,
+		Store:        store,
+		ACP:          manager,
+		MCP:          mcpManager,
+		Locks:        locks,
+		Events:       events,
+		STT:          stt,
+		TTS:          tts,
+		AgentCatalog: catalog,
+		Prompts:      prompts,
+		Root:         store.RootDir(),
+		Workspace:    string(workspace),
+		Log:          logger.WithPrefix("server"),
+		Memory:       memory,
+		JazTools:     jazTools,
+		Terminal:     terminals,
+>>>>>>> main
 	}
+	lc.Append(fx.Hook{
+		OnStop: func(context.Context) error {
+			terminals.Close()
+			return nil
+		},
+	})
 	loopRunner := server.NewLoopRunner(handler)
 	loopMemoryPaths := loops.NewMemoryPaths(loops.AutomationsDir(store.RootDir()))
 	loopService := loops.NewService(store, loopRunner, logger,

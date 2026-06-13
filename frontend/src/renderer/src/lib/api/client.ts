@@ -58,8 +58,15 @@ export function apiBaseUrl(): string {
   return baseUrl
 }
 
+<<<<<<< HEAD
 export function apiUrl(path: string): string {
   return `${apiBaseUrl()}${path}`
+=======
+export function apiWebSocketUrl(path: string): string {
+  const url = new URL(path, `${apiBaseUrl()}/`)
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  return url.toString()
+>>>>>>> main
 }
 
 export function setApiBaseUrl(url: string): void {
