@@ -128,13 +128,36 @@ export function SidePanelControl({
   const options = fileAvailable || view === 'file' ? [...BASE_VIEW_OPTIONS, 'file' as const] : BASE_VIEW_OPTIONS
   const currentView = view === 'file' && !fileAvailable ? 'overview' : view
   const controlRef = useRef<HTMLDivElement>(null)
+  const closeTimer = useRef<number | null>(null)
   const [hovered, setHovered] = useState(false)
   const expanded = open || hovered
   const visible = options.filter((option) => expanded || option === currentView)
 
-  const collapseIfUnfocused = () => {
-    if (!controlRef.current?.contains(document.activeElement)) setHovered(false)
+  // Hover intent: collapse on a short delay, cancelled the moment the pointer
+  // (or focus) comes back. Without it a transient pointerleave during the
+  // expand reflow tears the row down mid-reach, so a tab you're moving toward
+  // disappears before you can click it.
+  const cancelClose = () => {
+    if (closeTimer.current !== null) {
+      window.clearTimeout(closeTimer.current)
+      closeTimer.current = null
+    }
   }
+  const expand = () => {
+    cancelClose()
+    setHovered(true)
+  }
+  const collapseSoon = () => {
+    cancelClose()
+    closeTimer.current = window.setTimeout(() => {
+      closeTimer.current = null
+      if (!controlRef.current?.contains(document.activeElement)) setHovered(false)
+    }, 160)
+  }
+  useEffect(() => () => {
+    if (closeTimer.current !== null) window.clearTimeout(closeTimer.current)
+  }, [])
+
   const toggleView = (next: SidePanelView) => {
     // Tapping the open view closes the panel; any other view opens to it.
     if (open && view === next) {
@@ -148,12 +171,13 @@ export function SidePanelControl({
     <motion.div
       ref={controlRef}
       layout
-      onPointerEnter={() => setHovered(true)}
-      onPointerLeave={collapseIfUnfocused}
-      onFocus={() => setHovered(true)}
+      onPointerEnter={expand}
+      onPointerLeave={collapseSoon}
+      onFocus={expand}
       onBlur={(event) => {
-        if (!controlRef.current?.contains(event.relatedTarget as Node | null)) setHovered(false)
+        if (!controlRef.current?.contains(event.relatedTarget as Node | null)) collapseSoon()
       }}
+      transition={{ type: 'spring', duration: 0.34, bounce: 0 }}
       className="flex h-8 items-center gap-0.5 rounded-full bg-surface p-0.5"
     >
       <AnimatePresence initial={false} mode="popLayout">
@@ -168,10 +192,13 @@ export function SidePanelControl({
               title={active ? `Hide ${SIDE_PANEL_VIEW_LABEL[option]} panel` : `Open ${SIDE_PANEL_VIEW_LABEL[option]}`}
               onClick={() => toggleView(option)}
               whileTap={{ scale: 0.96 }}
-              initial={{ opacity: 0, scale: 0.92 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.92 }}
-              transition={{ type: 'spring', duration: 0.26, bounce: 0 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{
+                layout: { type: 'spring', duration: 0.34, bounce: 0 },
+                opacity: { duration: 0.14, ease: 'easeOut' },
+              }}
               className={`relative h-7 cursor-pointer rounded-full px-2.5 text-[13px] font-medium whitespace-nowrap transition-colors duration-150 ${
                 active ? 'text-ink' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
               }`}
@@ -179,7 +206,7 @@ export function SidePanelControl({
               {active ? (
                 <motion.span
                   layoutId="side-panel-active-pill"
-                  transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
+                  transition={{ type: 'spring', duration: 0.34, bounce: 0 }}
                   className="absolute inset-0 rounded-full bg-bg shadow-sm ring-1 ring-border/50"
                 />
               ) : null}
