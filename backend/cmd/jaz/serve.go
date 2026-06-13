@@ -24,6 +24,7 @@ import (
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
+	"github.com/wins/jaz/backend/internal/terminal"
 	exectool "github.com/wins/jaz/backend/internal/tools/exec"
 	"github.com/wins/jaz/backend/internal/voice"
 	"github.com/wins/jaz/backend/internal/widgets"
@@ -197,7 +198,14 @@ func startServer(
 		Workspace:    string(workspace),
 		Log:          logger.WithPrefix("server"),
 		Memory:       memory,
+		Terminal:     terminal.New(),
 	}
+	lc.Append(fx.Hook{
+		OnStop: func(context.Context) error {
+			handler.Terminal.Close()
+			return nil
+		},
+	})
 	loopRunner := server.NewLoopRunner(handler)
 	loopMemoryPaths := loops.NewMemoryPaths(loops.AutomationsDir(store.RootDir()))
 	loopService := loops.NewService(store, loopRunner, logger,
