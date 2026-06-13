@@ -1,15 +1,16 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { ArrowDown, FileText, PanelRightClose, PanelRightOpen } from 'lucide-react'
+import { ArrowDown, FileText } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BottomDock } from '@/components/session/BottomDock'
 import { Composer, PlanDecisionCard } from '@/components/session/Composer'
-import { MessageMarkdown } from '@/components/session/MessageMarkdown'
+import { MessageMarkdown, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
 import { SessionErrorNotice } from '@/components/session/SessionErrorNotice'
 import { SessionLivenessIndicator } from '@/components/session/SessionLivenessIndicator'
-import { SESSION_PANEL_WIDTH, SessionPanel } from '@/components/session/SessionPanel'
+import { SidePanel } from '@/components/session/SidePanel'
+import { SidePanelControl, useSidePanelState } from '@/components/session/SidePanelState'
 import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
 import { ThinkingBlock } from '@/components/session/ThinkingBlock'
 import { ThreadFindBar } from '@/components/session/ThreadFindBar'
@@ -346,19 +347,8 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
   }
 }
 
-// The chat column at its widest (max-w-[720px] + px-10 each side); the panel
-// auto-shows only when it fits beside it — which is exactly when the sidebar
-// hides or the window is wide enough.
-const PANEL_CHAT_COMFORT = 800
-const PANEL_PREF_KEY = 'jaz.sessionPanel'
 const SESSION_DRAFT_KEY_PREFIX = 'jaz.sessionDraft.'
 const TRANSCRIPT_DOCK_GAP_PX = 20
-type PanelPref = 'auto' | 'open' | 'closed'
-
-function storedPanelPref(): PanelPref {
-  const value = localStorage.getItem(PANEL_PREF_KEY)
-  return value === 'open' || value === 'closed' ? value : 'auto'
-}
 
 function SessionPage() {
   const { sessionId } = Route.useParams()
@@ -401,28 +391,7 @@ function SessionPage() {
   const [planDecisionError, setPlanDecisionError] = useState('')
   const abortRef = useRef<AbortController | null>(null)
   const sentPendingRef = useRef<string | null>(null)
-
-  // Right panel: 'auto' follows available width; an explicit choice wins
-  // until toggling lands back on what auto would do anyway. Width is tracked
-  // as the breakpoint boolean so resize ticks (e.g. the sidebar's width
-  // animation) only re-render when crossing it, not per pixel.
-  const [panelPref, setPanelPref] = useState<PanelPref>(storedPanelPref)
-  const [hasPanelSpace, setHasPanelSpace] = useState(false)
-  const panelObserver = useRef<ResizeObserver | null>(null)
-  const measureRef = useCallback((el: HTMLDivElement | null) => {
-    panelObserver.current?.disconnect()
-    panelObserver.current = null
-    if (!el) return
-    const update = () =>
-      setHasPanelSpace(el.clientWidth >= PANEL_CHAT_COMFORT + SESSION_PANEL_WIDTH)
-    const observer = new ResizeObserver(update)
-    observer.observe(el)
-    update()
-    panelObserver.current = observer
-  }, [])
-  useEffect(() => {
-    localStorage.setItem(PANEL_PREF_KEY, panelPref)
-  }, [panelPref])
+  const sidePanel = useSidePanelState()
 
   const itemCount = (detail.data?.messages.length ?? 0) + events.data.length
   const liveSize = live
@@ -602,23 +571,6 @@ function SessionPage() {
     [data?.events, events.data],
   )
 
-  const panelOpen = panelPref === 'auto' ? hasPanelSpace : panelPref === 'open'
-  const togglePanel = useCallback(() => {
-    const next = !panelOpen
-    // Landing on what auto would do re-arms auto-show.
-    setPanelPref(next === hasPanelSpace ? 'auto' : next ? 'open' : 'closed')
-  }, [hasPanelSpace, panelOpen])
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.defaultPrevented) return
-      if (e.key.toLowerCase() !== 's') return
-      e.preventDefault()
-      togglePanel()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [togglePanel])
-
   if (detail.isPending) {
     return (
       <div className="mx-auto max-w-[720px] px-10">
@@ -703,30 +655,28 @@ function SessionPage() {
   }
 
   return (
-    <div ref={measureRef} className="flex h-full">
-      {titlebarSlot
-        ? createPortal(
-            <>
-              <RuntimeBadge session={session} truncate={false} />
-              <TokenStats session={session} />
-            </>,
-            titlebarSlot,
-          )
-        : null}
-      {titlebarActions
-        ? createPortal(
-            <button
-              type="button"
-              aria-label={panelOpen ? 'Hide session panel' : 'Show session panel'}
-              title={`${panelOpen ? 'Hide' : 'Show'} session panel (Shift+⌘S)`}
-              onClick={togglePanel}
-              className="grid size-8 cursor-pointer place-items-center rounded-full text-ink-2 transition-colors duration-200 hover:bg-surface-2 hover:text-ink"
-            >
-              {panelOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
-            </button>,
-            titlebarActions,
-          )
-        : null}
+    <PreviewLinkProvider onOpen={sidePanel.openPreview}>
+      <div ref={sidePanel.measureRef} className="flex h-full">
+        {titlebarSlot
+          ? createPortal(
+              <>
+                <RuntimeBadge session={session} truncate={false} />
+                <TokenStats session={session} />
+              </>,
+              titlebarSlot,
+            )
+          : null}
+        {titlebarActions
+          ? createPortal(
+              <SidePanelControl
+                open={sidePanel.open}
+                view={sidePanel.view}
+                onToggle={sidePanel.toggle}
+                onSelectView={sidePanel.selectView}
+              />,
+              titlebarActions,
+            )
+          : null}
 
       <div className="relative h-full min-w-0 flex-1">
         <div
@@ -864,11 +814,20 @@ function SessionPage() {
       <motion.div
         className="h-full shrink-0 overflow-hidden"
         initial={false}
-        animate={{ width: panelOpen ? SESSION_PANEL_WIDTH : 0 }}
+        animate={{ width: sidePanel.open ? sidePanel.width : 0 }}
         transition={{ type: 'spring', stiffness: 400, damping: 36 }}
       >
-        <SessionPanel session={session} plan={panelPlan} working={sessionRunning} visible={panelOpen} />
+        <SidePanel
+          session={session}
+          plan={panelPlan}
+          working={sessionRunning}
+          visible={sidePanel.open}
+          view={sidePanel.view}
+          previewUrl={sidePanel.previewUrl}
+          onPreviewUrlChange={sidePanel.setPreviewUrl}
+        />
       </motion.div>
-    </div>
+      </div>
+    </PreviewLinkProvider>
   )
 }
