@@ -12,6 +12,10 @@ const (
 	AgentCodex  = "codex"
 	AgentClaude = "claude"
 	AgentGrok   = "grok"
+
+	AuthModeAuto        = "auto"
+	AuthModeExistingCLI = "existing_cli"
+	AuthModeJazProfile  = "jaz_profile"
 )
 
 func CanonicalAgentName(name string) string {
@@ -75,8 +79,14 @@ type AgentConfig struct {
 	ReasoningEffort string
 	URL             string
 	Token           string
+	Auth            AgentAuthConfig
 	Env             map[string]string
 	Cwd             string
+}
+
+type AgentAuthConfig struct {
+	Mode string `json:"mode,omitempty"`
+	Path string `json:"path,omitempty"`
 }
 
 type AgentCatalog map[string]AgentConfig

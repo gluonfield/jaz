@@ -29,17 +29,22 @@ type onboardingResponse struct {
 }
 
 type onboardingACPProbe struct {
-	Agent                string `json:"agent"`
-	Command              string `json:"command,omitempty"`
-	Installed            bool   `json:"installed"`
-	Authenticated        bool   `json:"authenticated"`
-	Available            bool   `json:"available"`
-	Reason               string `json:"reason,omitempty"`
-	StoragePath          string `json:"storage_path,omitempty"`
-	AuthCommand          string `json:"auth_command,omitempty"`
-	AuthCommandAvailable bool   `json:"auth_command_available"`
-	AuthCommandReason    string `json:"auth_command_reason,omitempty"`
-	RefreshOwner         string `json:"refresh_owner,omitempty"`
+	Agent                string              `json:"agent"`
+	Command              string              `json:"command,omitempty"`
+	Installed            bool                `json:"installed"`
+	Authenticated        bool                `json:"authenticated"`
+	Available            bool                `json:"available"`
+	Reason               string              `json:"reason,omitempty"`
+	StoragePath          string              `json:"storage_path,omitempty"`
+	AuthMode             string              `json:"auth_mode,omitempty"`
+	AuthPath             string              `json:"auth_path,omitempty"`
+	AuthSource           string              `json:"auth_source,omitempty"`
+	AuthEvidence         string              `json:"auth_evidence,omitempty"`
+	RecommendedAuth      acp.AgentAuthConfig `json:"recommended_auth,omitempty"`
+	AuthCommand          string              `json:"auth_command,omitempty"`
+	AuthCommandAvailable bool                `json:"auth_command_available"`
+	AuthCommandReason    string              `json:"auth_command_reason,omitempty"`
+	RefreshOwner         string              `json:"refresh_owner,omitempty"`
 }
 
 type onboardingNativeProvider struct {
@@ -204,6 +209,11 @@ func (s *Server) probeACPAgents(defaults agentsettings.AgentDefaults) []onboardi
 			Available:            readiness.Available,
 			Reason:               reason,
 			StoragePath:          auth.StoragePath,
+			AuthMode:             auth.AuthMode,
+			AuthPath:             auth.AuthPath,
+			AuthSource:           auth.AuthSource,
+			AuthEvidence:         auth.AuthEvidence,
+			RecommendedAuth:      auth.RecommendedAuth,
 			AuthCommand:          auth.LoginCommand,
 			AuthCommandAvailable: auth.LoginCommandAvailable,
 			AuthCommandReason:    auth.LoginCommandReason,
@@ -269,6 +279,7 @@ func (s *Server) acpProbeConfig(name string, defaults agentsettings.AgentDefault
 	}
 	cfg.Model = strings.TrimSpace(defaults.ACP[name].Model)
 	cfg.ReasoningEffort = strings.TrimSpace(defaults.ACP[name].ReasoningEffort)
+	cfg.Auth = defaults.ACP[name].Auth
 	return cfg, command, nil
 }
 

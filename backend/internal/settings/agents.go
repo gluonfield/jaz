@@ -39,11 +39,12 @@ type NativeAgentDefaults struct {
 }
 
 type ACPAgentDefaults struct {
-	Enabled         bool     `json:"enabled"`
-	Command         string   `json:"command,omitempty"`
-	LegacyArgs      []string `json:"args,omitempty"`
-	Model           string   `json:"model,omitempty"`
-	ReasoningEffort string   `json:"reasoning_effort,omitempty"`
+	Enabled         bool                `json:"enabled"`
+	Command         string              `json:"command,omitempty"`
+	LegacyArgs      []string            `json:"args,omitempty"`
+	Model           string              `json:"model,omitempty"`
+	ReasoningEffort string              `json:"reasoning_effort,omitempty"`
+	Auth            acp.AgentAuthConfig `json:"auth,omitempty"`
 }
 
 type AgentDefaults struct {
@@ -79,6 +80,7 @@ func AgentDefaultsFromCatalog(catalog acp.AgentCatalog) AgentDefaults {
 			Command:         command,
 			Model:           strings.TrimSpace(agent.Model),
 			ReasoningEffort: strings.TrimSpace(agent.ReasoningEffort),
+			Auth:            acp.AgentAuthConfig{Mode: acp.AuthModeAuto},
 		}
 	}
 	return seed
@@ -196,6 +198,10 @@ func NormalizeAgentDefaults(input AgentDefaults, catalog acp.AgentCatalog) (Agen
 		if err != nil {
 			return AgentDefaults{}, err
 		}
+		auth, err := acp.NormalizeAgentAuthConfig(name, current.Auth)
+		if err != nil {
+			return AgentDefaults{}, err
+		}
 		command := strings.TrimSpace(current.Command)
 		if current.Enabled && command == "" && strings.TrimSpace(base.URL) == "" {
 			return AgentDefaults{}, fmt.Errorf("acp agent %q command is required when enabled", name)
@@ -212,6 +218,7 @@ func NormalizeAgentDefaults(input AgentDefaults, catalog acp.AgentCatalog) (Agen
 			Command:         command,
 			Model:           strings.TrimSpace(current.Model),
 			ReasoningEffort: effort,
+			Auth:            auth,
 		}
 	}
 	return next, nil
@@ -353,6 +360,7 @@ func (s *ACPConfigSource) AgentConfig(name string) (acp.AgentConfig, bool, error
 	}
 	cfg.Model = strings.TrimSpace(agent.Model)
 	cfg.ReasoningEffort = strings.TrimSpace(agent.ReasoningEffort)
+	cfg.Auth = agent.Auth
 	return cfg, true, nil
 }
 

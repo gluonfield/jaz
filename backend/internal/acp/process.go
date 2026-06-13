@@ -101,14 +101,14 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 	layout := runtimefiles.New(root)
 	home := layout.ACPHome
 	if name == AgentCodex {
-		codexHome := layout.ACPCodexHome
-		if prepare {
-			var err error
-			codexHome, err = prepareCodexHome(root, env["CODEX_HOME"])
-			prepareErr = firstError(prepareErr, err)
-		}
+		codexHome := resolveAgentAuth(name, agent, root, env).Config.Path
 		if codexHome != "" {
 			env["CODEX_HOME"] = codexHome
+			if prepare {
+				if err := os.MkdirAll(codexHome, 0o700); err != nil {
+					prepareErr = firstError(prepareErr, fmt.Errorf("prepare codex profile %s: %w", codexHome, err))
+				}
+			}
 		}
 		for _, key := range []string{"OPENAI_API_KEY", "OPENAI_APIKEY", "OPENROUTER_API_KEY", "OPENROUTER_APIKEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"} {
 			delete(env, key)
@@ -134,17 +134,20 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 			"SSH_AUTH_SOCK",
 			"USER",
 		})
+		auth := resolveAgentAuth(name, agent, root, env)
 		if configuredHome != "" {
 			home = configuredHome
+		} else if auth.Config.Mode == AuthModeExistingCLI {
+			home = defaultHomePath("")
 		}
 		if configuredConfigDir != "" {
 			env["CLAUDE_CONFIG_DIR"] = configuredConfigDir
 		} else {
-			env["CLAUDE_CONFIG_DIR"] = layout.ACPClaudeConfig
+			env["CLAUDE_CONFIG_DIR"] = auth.Config.Path
 			if prepare {
-				var err error
-				env["CLAUDE_CONFIG_DIR"], err = prepareClaudeConfig(root, os.Getenv("CLAUDE_CONFIG_DIR"))
-				prepareErr = firstError(prepareErr, err)
+				if err := os.MkdirAll(env["CLAUDE_CONFIG_DIR"], 0o700); err != nil {
+					prepareErr = firstError(prepareErr, fmt.Errorf("prepare claude profile %s: %w", env["CLAUDE_CONFIG_DIR"], err))
+				}
 			}
 		}
 		if env["CLAUDE_CODE_EXECUTABLE"] == "" {
@@ -170,14 +173,15 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 			"XAI_API_KEY",
 			"XAI_APIKEY",
 		})
+		auth := resolveAgentAuth(name, agent, root, env)
 		if configuredHome != "" {
 			home = configuredHome
 		} else {
-			home = layout.ACPHome
+			home = auth.Config.Path
 			if prepare {
-				var err error
-				home, err = prepareGrokHome(root, "")
-				prepareErr = firstError(prepareErr, err)
+				if err := os.MkdirAll(filepath.Join(home, ".grok"), 0o700); err != nil {
+					prepareErr = firstError(prepareErr, fmt.Errorf("prepare grok profile %s: %w", home, err))
+				}
 			}
 		}
 		normalizeEnv(env, "XAI_API_KEY", "XAI_APIKEY")
@@ -265,93 +269,6 @@ func hasFlag(args []string, names ...string) bool {
 		}
 	}
 	return false
-}
-
-func prepareCodexHome(root, sourceHome string) (string, error) {
-	dstHome := runtimefiles.New(root).ACPCodexHome
-	if sourceHome == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return dstHome, nil
-		}
-		sourceHome = filepath.Join(home, ".codex")
-	}
-	src := filepath.Join(sourceHome, "auth.json")
-	dst := filepath.Join(dstHome, "auth.json")
-	if err := os.MkdirAll(dstHome, 0o700); err != nil {
-		return dstHome, fmt.Errorf("prepare codex auth: %w", err)
-	}
-	if fileExists(src) && !fileExists(dst) {
-		if err := copyFile(src, dst); err != nil {
-			return dstHome, fmt.Errorf("prepare codex auth: %w", err)
-		}
-	}
-	return dstHome, nil
-}
-
-func prepareGrokHome(root, sourceHome string) (string, error) {
-	dstHome := runtimefiles.New(root).ACPHome
-	if sourceHome == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return dstHome, nil
-		}
-		sourceHome = home
-	}
-	src := filepath.Join(sourceHome, ".grok", "auth.json")
-	dstDir := filepath.Join(dstHome, ".grok")
-	dst := filepath.Join(dstDir, "auth.json")
-	if err := os.MkdirAll(dstDir, 0o700); err != nil {
-		return dstHome, fmt.Errorf("prepare grok auth: %w", err)
-	}
-	if fileExists(src) && !fileExists(dst) {
-		if err := copyFile(src, dst); err != nil {
-			return dstHome, fmt.Errorf("prepare grok auth: %w", err)
-		}
-	}
-	return dstHome, nil
-}
-
-func prepareClaudeConfig(root, sourceDir string) (string, error) {
-	dstDir := runtimefiles.New(root).ACPClaudeConfig
-	if err := os.MkdirAll(dstDir, 0o700); err != nil {
-		return dstDir, fmt.Errorf("prepare claude auth: %w", err)
-	}
-	dst := filepath.Join(dstDir, ".credentials.json")
-	for _, src := range claudeCredentialCandidates(sourceDir) {
-		if fileExists(src) && !fileExists(dst) {
-			if err := copyFile(src, dst); err != nil {
-				return dstDir, fmt.Errorf("prepare claude auth: %w", err)
-			}
-			break
-		}
-	}
-	return dstDir, nil
-}
-
-func claudeCredentialCandidates(sourceDir string) []string {
-	candidates := []string{}
-	if strings.TrimSpace(sourceDir) != "" {
-		candidates = append(candidates, filepath.Join(sourceDir, ".credentials.json"))
-	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		candidates = append(candidates, filepath.Join(home, ".claude", ".credentials.json"))
-	}
-	return candidates
-}
-
-func copyFile(src, dst string) error {
-	if src == dst {
-		return nil
-	}
-	data, err := os.ReadFile(src)
-	if err != nil {
-		return fmt.Errorf("copy %s to %s: %w", src, dst, err)
-	}
-	if err := os.WriteFile(dst, data, 0o600); err != nil {
-		return fmt.Errorf("copy %s to %s: %w", src, dst, err)
-	}
-	return nil
 }
 
 func firstError(current, next error) error {
@@ -474,7 +391,7 @@ func codexAuthAvailable(env map[string]string) bool {
 		}
 		home = filepath.Join(userHome, ".codex")
 	}
-	return fileExists(filepath.Join(home, "auth.json"))
+	return codexAuthFileAvailable(home) || codexKeyringConfigured(home)
 }
 
 func codexAuthHint(env map[string]string) string {
@@ -494,7 +411,7 @@ func claudeAuthAvailable(env map[string]string) bool {
 	if configDir == "" {
 		return false
 	}
-	return fileExists(filepath.Join(configDir, ".credentials.json"))
+	return claudeAuthFileAvailable(configDir)
 }
 
 func claudeAuthHint(env map[string]string) string {
@@ -513,7 +430,7 @@ func grokAuthAvailable(env map[string]string) bool {
 		}
 		home = userHome
 	}
-	return fileExists(filepath.Join(home, ".grok", "auth.json"))
+	return grokAuthFileAvailable(home)
 }
 
 func grokAuthHint(env map[string]string) string {

@@ -22,6 +22,10 @@ function normalizeAgentSettings(settings: AgentSettings): AgentSettings {
             command: current.command?.trim() || '',
             model: current.model?.trim() || '',
             reasoning_effort: current.reasoning_effort ?? '',
+            auth: {
+              mode: current.auth?.mode || 'auto',
+              path: current.auth?.path?.trim() || '',
+            },
           },
         ]
       }),
