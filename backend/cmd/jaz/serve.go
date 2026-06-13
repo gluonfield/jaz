@@ -17,10 +17,12 @@ import (
 	"github.com/wins/jaz/backend/internal/app"
 	configloader "github.com/wins/jaz/backend/internal/config"
 	"github.com/wins/jaz/backend/internal/coordinator"
+	"github.com/wins/jaz/backend/internal/jaztools"
 	"github.com/wins/jaz/backend/internal/loops"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/memoryservice"
 	"github.com/wins/jaz/backend/internal/server"
+	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -39,13 +41,15 @@ func runServe(args []string) error {
 		fx.Provide(
 			newLogger,
 			loadConfig,
-			parseServeOptions,
+			parseServeConfig,
+			serverconfig.NewURLs,
 			app.NewACPAgentCatalog,
 			app.NewRuntimeLayout,
 			app.NewStore,
 			app.NewWorkspace,
 			app.NewMemory,
 			newMemoryService,
+			jaztools.New,
 			app.NewMCPServerReader,
 			exectool.NewCommandManager,
 			app.NewPromptBuilder,
@@ -66,8 +70,8 @@ func runServe(args []string) error {
 			app.ConnectACPCompletion,
 			app.CloseMemory,
 			app.StartMemoryScheduler,
-			app.StartMCPManager,
 			startServer,
+			app.StartMCPManager,
 		),
 	)
 	if err := fxApp.Err(); err != nil {
@@ -105,10 +109,6 @@ type config struct {
 	Jaz app.Config
 }
 
-type serveOptions struct {
-	Addr string
-}
-
 func loadConfig() (config, error) {
 	loaded, err := configloader.Load()
 	if err != nil {
@@ -117,29 +117,18 @@ func loadConfig() (config, error) {
 	return config{Jaz: loaded.Jaz}, nil
 }
 
-func parseServeOptions(args serveArgs) (serveOptions, error) {
+func parseServeConfig(args serveArgs) (serverconfig.Config, error) {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	addr := fs.String("addr", ":5299", "HTTP listen address")
 	if err := fs.Parse(args.Args); err != nil {
-		return serveOptions{}, err
+		return serverconfig.Config{}, err
 	}
-	return serveOptions{Addr: *addr}, nil
+	return serverconfig.New(*addr), nil
 }
 
-func newMemoryService(cfg app.Config, memory *jazmem.Memory, store *sqlitestore.Store, logger *log.Logger, opts serveOptions) *memoryservice.Service {
+func newMemoryService(cfg app.Config, memory *jazmem.Memory, store *sqlitestore.Store, logger *log.Logger, urls serverconfig.URLs) *memoryservice.Service {
 	scheduler := memoryservice.NewScheduler(memory, cfg.Memory.Scheduler, logger)
-	return memoryservice.New(memory, store, scheduler, memoryMCPURL(opts.Addr))
-}
-
-// memoryMCPURL derives the loopback URL ACP agents and the settings UI use to
-// reach the embedded jazmem MCP endpoint.
-func memoryMCPURL(addr string) string {
-	addr = strings.TrimSpace(addr)
-	host := addr
-	if strings.HasPrefix(addr, ":") {
-		host = "127.0.0.1" + addr
-	}
-	return "http://" + host + "/mcp/jazmem"
+	return memoryservice.New(memory, store, scheduler, urls.JazmemMCP)
 }
 
 func conciseError(err error) error {
@@ -177,10 +166,11 @@ func startServer(
 	logger *log.Logger,
 	cfg app.Config,
 	catalog acp.AgentCatalog,
-	opts serveOptions,
+	serverConfig serverconfig.Config,
 	widgetService *widgets.Service,
 	widgetPublisher *widgets.SessionPublisher,
 	memory *memoryservice.Service,
+	jazTools *jaztools.Service,
 ) {
 	handler := &server.Server{
 		Agent:        a,
@@ -197,6 +187,7 @@ func startServer(
 		Workspace:    string(workspace),
 		Log:          logger.WithPrefix("server"),
 		Memory:       memory,
+		JazTools:     jazTools,
 	}
 	loopRunner := server.NewLoopRunner(handler)
 	loopMemoryPaths := loops.NewMemoryPaths(loops.AutomationsDir(store.RootDir()))
@@ -210,6 +201,7 @@ func startServer(
 			}
 		}),
 	)
+	jazTools.SetLoops(loopService)
 	handler.Loops = loopService
 	handler.Widgets = widgetService
 	// Heal boards from the era when drags could drop tiles onto each other:
@@ -237,13 +229,13 @@ func startServer(
 		handler.HandleACPTurnFinished(ctx, job)
 	}
 	srv := &http.Server{
-		Addr:    opts.Addr,
+		Addr:    serverConfig.Addr,
 		Handler: handler.Handler(),
 	}
 	var stopLoops context.CancelFunc
 	lc.Append(fx.Hook{
 		OnStart: func(context.Context) error {
-			fmt.Printf("jaz server listening on %s\n", displayAddr(opts.Addr))
+			fmt.Printf("jaz server listening on %s\n", displayAddr(serverConfig.Addr))
 			fmt.Printf("root: %s\n", store.RootDir())
 			fmt.Printf("workspace: %s\n", workspace)
 			if err := loopMemoryPaths.EnsureDir(); err != nil {
