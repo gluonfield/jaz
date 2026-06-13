@@ -10,16 +10,16 @@ import (
 
 func TestMCPServersForAgentUsesConfiguredStore(t *testing.T) {
 	m := &Manager{cfg: Config{MCPStore: staticMCPServerStore{servers: []mcpconfig.Server{{
-		ID:        "jazmem",
-		Name:      "jazmem",
+		ID:        "jaztools",
+		Name:      "jaztools",
 		Transport: mcpconfig.TransportStreamableHTTP,
-		URL:       "http://127.0.0.1:5299/mcp/jazmem",
+		URL:       "http://127.0.0.1:5299/mcp/jaztools",
 		Enabled:   true,
 	}}}}}
 	capable := json.RawMessage(`{"agentCapabilities":{"mcpCapabilities":{"http":true}}}`)
 	servers := m.mcpServersForAgent(context.Background(), capable)
 	if len(servers) != 1 {
-		t.Fatalf("expected configured jazmem entry, got %v", servers)
+		t.Fatalf("expected configured jaz entry, got %v", servers)
 	}
 	var entry struct {
 		Type string `json:"type"`
@@ -29,7 +29,7 @@ func TestMCPServersForAgentUsesConfiguredStore(t *testing.T) {
 	if err := json.Unmarshal(servers[0], &entry); err != nil {
 		t.Fatal(err)
 	}
-	if entry.Type != "http" || entry.Name != "jazmem" || entry.URL != "http://127.0.0.1:5299/mcp/jazmem" {
+	if entry.Type != "http" || entry.Name != "jaztools" || entry.URL != "http://127.0.0.1:5299/mcp/jaztools" {
 		t.Fatalf("unexpected entry %#v", entry)
 	}
 

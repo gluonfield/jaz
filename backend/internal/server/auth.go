@@ -6,6 +6,8 @@ import (
 	"net"
 	"net/http"
 	"strings"
+
+	"github.com/wins/jaz/backend/internal/serverconfig"
 )
 
 func (s *Server) withAuth(next http.Handler) http.Handler {
@@ -54,7 +56,12 @@ func bearerToken(header string) string {
 }
 
 func internalMCPRequest(r *http.Request) bool {
-	return r.URL.Path == "/mcp/jazmem" && loopbackRequest(r)
+	switch r.URL.Path {
+	case serverconfig.JazToolsMCPPath, serverconfig.JazToolsMCPCompatPath, serverconfig.JazmemMCPPath:
+		return loopbackRequest(r)
+	default:
+		return false
+	}
 }
 
 func loopbackRequest(r *http.Request) bool {

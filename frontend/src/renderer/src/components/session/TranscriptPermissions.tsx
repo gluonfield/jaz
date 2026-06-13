@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Check, ChevronRight, LoaderCircle, X } from 'lucide-react'
-import { useState } from 'react'
+import { ArrowLeft, ArrowRight, Check, ChevronRight, LoaderCircle, X } from 'lucide-react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { useEffect, useRef, useState } from 'react'
 import { answerSessionInteractiveResponse } from '@/lib/api/sessions'
 import type { ACPPermission, SessionEvent } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
@@ -15,22 +16,30 @@ function QuestionPermissionCard({
 }) {
   const permission = event.permission
   const queryClient = useQueryClient()
+  const reduce = useReducedMotion()
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
   const [localAnswered, setLocalAnswered] = useState(false)
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
+  // Which question is on screen, and the direction we last moved (for the slide).
+  const [index, setIndex] = useState(0)
+  const [direction, setDirection] = useState(1)
+  const advanceTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => () => clearTimeout(advanceTimer.current), [])
+
   if (!permission?.questions?.length) return null
   const questions = permission.questions
 
   const status = normalized(resolution?.status || permission.status)
   const answered = localAnswered || status === 'selected' || Boolean(resolution?.selected_option_id)
   const cancelled = status === 'cancelled'
-  const locked = answered || cancelled || submitting
+  const settled = answered || cancelled
+  const locked = settled || submitting
   const complete = questions.every((question) => answers[question.id]?.trim())
 
   // Settled questions collapse to a single line, codex-style.
-  if ((answered || cancelled) && !open) {
+  if (settled && !open) {
     return (
       <button
         type="button"
@@ -45,8 +54,36 @@ function QuestionPermissionCard({
     )
   }
 
+  const total = questions.length
+  const safeIndex = Math.min(index, total - 1)
+  const current = questions[safeIndex]
+  const isFirst = safeIndex === 0
+  const isLast = safeIndex === total - 1
+  const options = current.options ?? []
+  const selected = answers[current.id] ?? ''
+  const showOther = current.is_other || !options.length
+  const otherValue =
+    !options.length || !options.some((option) => option.label === selected) ? selected : ''
+
   const setAnswer = (questionID: string, value: string) => {
-    setAnswers((current) => ({ ...current, [questionID]: value }))
+    setAnswers((prev) => ({ ...prev, [questionID]: value }))
+  }
+
+  const goTo = (next: number) => {
+    if (next < 0 || next >= total || next === safeIndex) return
+    clearTimeout(advanceTimer.current)
+    setDirection(next > safeIndex ? 1 : -1)
+    setIndex(next)
+  }
+
+  // Picking an option settles the question and glides to the next one, so the
+  // whole set answers in a quick rhythm of taps — last one waits for Submit.
+  const pickOption = (label: string) => {
+    if (locked) return
+    setAnswer(current.id, label)
+    if (isLast) return
+    clearTimeout(advanceTimer.current)
+    advanceTimer.current = setTimeout(() => goTo(safeIndex + 1), reduce ? 0 : 150)
   }
 
   const submit = async () => {
@@ -74,9 +111,15 @@ function QuestionPermissionCard({
     }
   }
 
+  const slide = {
+    enter: (dir: number) => ({ opacity: 0, x: reduce ? 0 : dir >= 0 ? 24 : -24, filter: 'blur(4px)' }),
+    center: { opacity: 1, x: 0, filter: 'blur(0px)' },
+    exit: (dir: number) => ({ opacity: 0, x: reduce ? 0 : dir >= 0 ? -16 : 16, filter: 'blur(4px)' }),
+  }
+
   return (
-    <div className="rounded-card border border-border bg-surface px-3 py-2.5">
-      <div className="flex items-start justify-between gap-3">
+    <div className="rounded-card border border-border bg-surface px-3 py-3">
+      <div className="flex items-center justify-between gap-3">
         <p className="text-sm font-medium text-ink">{permission.title || 'Clarifying questions'}</p>
         {answered ? (
           <span className="inline-flex shrink-0 items-center gap-1 text-[12px] text-ok">
@@ -88,78 +131,147 @@ function QuestionPermissionCard({
             <X className="size-3.5" aria-hidden />
             Cancelled
           </span>
-        ) : null}
+        ) : (
+          <span className="shrink-0 font-mono text-[11px] tabular-nums text-ink-3">
+            {safeIndex + 1} / {total}
+          </span>
+        )}
       </div>
 
-      <div className="mt-3 flex flex-col gap-3">
-        {questions.map((question, index) => {
-          const selected = answers[question.id] ?? ''
-          const options = question.options ?? []
-          return (
-            <div key={question.id} className="rounded-control bg-bg px-2.5 py-2">
-              <div className="flex gap-2">
-                <span className="mt-0.5 font-mono text-[11px] text-ink-3">{index + 1}</span>
-                <div className="min-w-0 flex-1">
-                  {question.header ? (
-                    <p className="text-[11px] font-medium tracking-wide text-ink-3 uppercase">
-                      {question.header}
-                    </p>
-                  ) : null}
-                  <p className="text-sm text-ink">{question.question}</p>
-                  {options.length ? (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {options.map((option) => (
-                        <button
-                          key={option.label}
-                          type="button"
-                          disabled={locked}
-                          onClick={() => setAnswer(question.id, option.label)}
-                          className={`inline-flex min-h-8 items-center rounded-full border px-2.5 py-1 text-left text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                            selected === option.label
-                              ? 'border-primary bg-primary-soft text-primary-strong'
-                              : 'border-border bg-surface text-ink hover:border-primary hover:text-primary'
-                          }`}
-                          title={option.description || option.label}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                  {question.is_other || !options.length ? (
-                    <input
-                      type={question.is_secret ? 'password' : 'text'}
-                      value={!options.length || !options.some((option) => option.label === selected) ? selected : ''}
+      <div className="relative mt-3 min-h-[124px]">
+        <AnimatePresence mode="wait" custom={direction} initial={false}>
+          <motion.div
+            key={current.id}
+            custom={direction}
+            variants={slide}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={{ type: 'spring', duration: 0.18, bounce: 0 }}
+          >
+            {current.header ? (
+              <p className="text-[11px] font-medium tracking-wide text-ink-3 uppercase">
+                {current.header}
+              </p>
+            ) : null}
+            <p className="mt-0.5 text-[15px] leading-snug text-ink text-pretty">{current.question}</p>
+
+            {options.length ? (
+              <div className="mt-3 flex flex-col gap-1.5">
+                {options.map((option) => {
+                  const active = selected === option.label
+                  return (
+                    <button
+                      key={option.label}
+                      type="button"
                       disabled={locked}
-                      placeholder={options.length ? 'Other answer...' : 'Answer...'}
-                      className="mt-2 h-8 w-full rounded-full border border-border bg-surface px-3 text-[12px] text-ink placeholder:text-ink-3 disabled:cursor-not-allowed disabled:opacity-60"
-                      onChange={(e) => setAnswer(question.id, e.target.value)}
-                    />
-                  ) : null}
-                </div>
+                      onClick={() => pickOption(option.label)}
+                      className={`flex min-h-9 w-full items-center rounded-control border px-3 py-1.5 text-left text-[12px] font-medium transition duration-150 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 ${
+                        active
+                          ? 'border-primary bg-primary-soft text-primary-strong'
+                          : 'border-border bg-bg text-ink hover:border-primary hover:text-primary'
+                      }`}
+                      title={option.description || option.label}
+                    >
+                      {option.label}
+                    </button>
+                  )
+                })}
               </div>
-            </div>
-          )
-        })}
+            ) : null}
+
+            {showOther ? (
+              <input
+                type={current.is_secret ? 'password' : 'text'}
+                value={otherValue}
+                disabled={locked}
+                placeholder={options.length ? 'Other answer…' : 'Type your answer…'}
+                className={`${options.length ? 'mt-1.5' : 'mt-3'} h-9 w-full rounded-control border border-border bg-bg px-3 text-[12px] text-ink transition-colors placeholder:text-ink-3 focus:border-primary focus:outline-none disabled:cursor-not-allowed disabled:opacity-60`}
+                onChange={(e) => setAnswer(current.id, e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return
+                  e.preventDefault()
+                  if (isLast) void submit()
+                  else goTo(safeIndex + 1)
+                }}
+              />
+            ) : null}
+          </motion.div>
+        </AnimatePresence>
       </div>
 
-      {!answered && !cancelled ? (
-        <div className="mt-3 flex justify-end">
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => goTo(safeIndex - 1)}
+          disabled={isFirst}
+          className="inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-[12px] font-medium text-ink-2 transition duration-150 hover:text-ink active:scale-[0.96] disabled:pointer-events-none disabled:opacity-0"
+        >
+          <ArrowLeft className="size-3.5" aria-hidden />
+          Back
+        </button>
+
+        {total > 1 ? (
+          <div className="flex items-center gap-1.5">
+            {questions.map((question, dotIndex) => {
+              const dotAnswered = Boolean(answers[question.id]?.trim())
+              const dotCurrent = dotIndex === safeIndex
+              return (
+                <button
+                  key={question.id}
+                  type="button"
+                  aria-label={`Go to question ${dotIndex + 1}`}
+                  aria-current={dotCurrent}
+                  onClick={() => goTo(dotIndex)}
+                  className="group grid place-items-center py-1.5"
+                >
+                  <motion.span
+                    layout
+                    transition={{ type: 'spring', duration: 0.2, bounce: 0 }}
+                    className={`h-1.5 rounded-full transition-colors ${
+                      dotCurrent
+                        ? 'w-5 bg-primary'
+                        : dotAnswered
+                          ? 'w-1.5 bg-ink-3 group-hover:bg-ink-2'
+                          : 'w-1.5 bg-border group-hover:bg-ink-3'
+                    }`}
+                  />
+                </button>
+              )
+            })}
+          </div>
+        ) : (
+          <span />
+        )}
+
+        {!settled && isLast ? (
           <button
             type="button"
-            disabled={!complete || locked}
+            disabled={!complete || submitting}
             onClick={() => void submit()}
-            className="inline-flex h-8 items-center gap-1.5 rounded-full bg-primary px-3.5 text-[12px] font-medium text-on-primary transition hover:bg-primary-strong disabled:cursor-not-allowed disabled:bg-bg disabled:text-ink-3"
+            className="inline-flex h-8 items-center gap-1.5 rounded-full bg-primary px-3.5 text-[12px] font-medium text-on-primary transition duration-150 hover:bg-primary-strong active:scale-[0.96] disabled:cursor-not-allowed disabled:bg-bg disabled:text-ink-3"
           >
             {submitting ? (
               <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
             ) : (
               <Check className="size-3.5" aria-hidden />
             )}
-            Submit answers
+            Submit
           </button>
-        </div>
-      ) : null}
+        ) : !isLast ? (
+          <button
+            type="button"
+            onClick={() => goTo(safeIndex + 1)}
+            className="inline-flex h-8 items-center gap-1 rounded-full border border-border bg-bg px-3 text-[12px] font-medium text-ink transition duration-150 hover:border-primary hover:text-primary active:scale-[0.96]"
+          >
+            Next
+            <ArrowRight className="size-3.5" aria-hidden />
+          </button>
+        ) : (
+          <span />
+        )}
+      </div>
+
       {error ? <p className="mt-2 text-[12px] text-danger">{error}</p> : null}
     </div>
   )

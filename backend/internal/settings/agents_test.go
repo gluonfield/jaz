@@ -215,3 +215,31 @@ func TestEnsureAgentDefaultsMigratesLegacyClaudeCodeModel(t *testing.T) {
 		t.Fatalf("legacy claude key was not migrated: %#v", loaded.ACP)
 	}
 }
+
+func TestNormalizeAgentDefaultsAllowsClaudeOnlyReasoningEffort(t *testing.T) {
+	for _, effort := range []string{"max", "ultracode"} {
+		input := testAgentDefaultsSeed()
+		claude := input.ACP["claude"]
+		claude.ReasoningEffort = effort
+		input.ACP["claude"] = claude
+
+		normalized, err := NormalizeAgentDefaults(input, acp.BuiltinAgents())
+		if err != nil {
+			t.Fatalf("NormalizeAgentDefaults(%q) error: %v", effort, err)
+		}
+		if normalized.ACP["claude"].ReasoningEffort != effort {
+			t.Fatalf("claude effort = %q, want %q", normalized.ACP["claude"].ReasoningEffort, effort)
+		}
+	}
+}
+
+func TestNormalizeAgentDefaultsRejectsClaudeOnlyReasoningForOtherACPAgents(t *testing.T) {
+	input := testAgentDefaultsSeed()
+	codex := input.ACP["codex"]
+	codex.ReasoningEffort = "ultracode"
+	input.ACP["codex"] = codex
+
+	if _, err := NormalizeAgentDefaults(input, acp.BuiltinAgents()); err == nil {
+		t.Fatal("expected codex ultracode effort to be rejected")
+	}
+}

@@ -123,7 +123,7 @@ func TestLiveACPProbe(t *testing.T) {
 
 func probeApplyConfiguredSessionOptions(t *testing.T, ctx context.Context, conn jsonrpc.MessageConn, agent string, sessionID acpschema.SessionID) {
 	t.Helper()
-	policy := modelPolicyForAgent(agent)
+	policy := agentPolicyForAgent(agent)
 	rawModel := strings.TrimSpace(os.Getenv("ACP_PROBE_MODEL"))
 	effort := strings.TrimSpace(os.Getenv("ACP_PROBE_REASONING_EFFORT"))
 	if rawModel != "" {

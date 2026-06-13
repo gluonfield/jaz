@@ -219,9 +219,16 @@ func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd
 	return &agentConn{conn: conn, peer: peer, cancel: cancel, initRaw: initRaw}, nil
 }
 
-// sessionPromptMeta builds the _meta payload carrying the Jaz system prompt
-// in the form the named agent understands, or nil when no prompt is
-// configured.
+// sessionMeta builds the session _meta payload for prompt and agent-specific
+// options.
+func (m *Manager) sessionMeta(agent string, cfg AgentConfig) (map[string]any, error) {
+	meta, err := m.sessionPromptMeta(agent)
+	if err != nil {
+		return nil, err
+	}
+	return agentPolicyForAgent(agent).mergeSessionMeta(meta, cfg.ReasoningEffort), nil
+}
+
 func (m *Manager) sessionPromptMeta(agent string) (map[string]any, error) {
 	if m.cfg.SystemPrompt == nil {
 		return nil, nil
@@ -237,8 +244,8 @@ func (m *Manager) sessionPromptMeta(agent string) (map[string]any, error) {
 	return systemPromptMeta(agent, prompt), nil
 }
 
-func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent, cwd string) (acpSessionInfo, error) {
-	meta, err := m.sessionPromptMeta(agent)
+func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent string, cfg AgentConfig, cwd string) (acpSessionInfo, error) {
+	meta, err := m.sessionMeta(agent, cfg)
 	if err != nil {
 		return acpSessionInfo{}, err
 	}
@@ -277,9 +284,9 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	if !ok {
 		return SpawnResult{}, fmt.Errorf("acp agent %q is not configured", req.ACPAgent)
 	}
-	effort := configuredReasoningEffort(cfg.ReasoningEffort)
+	effort := configuredAgentReasoningEffort(req.ACPAgent, cfg.ReasoningEffort)
 	if req.ReasoningEffort != "" {
-		effort = req.ReasoningEffort
+		effort = configuredAgentReasoningEffort(req.ACPAgent, req.ReasoningEffort)
 	}
 	// Apply the effective model and effort (per-request overrides win) to the
 	// agent config so configuredModeState pushes them to the agent, not just
@@ -322,7 +329,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	if err != nil {
 		return fail(err)
 	}
-	acpSession, err := m.newACPSession(ctx, ac, req.ACPAgent, absCwd)
+	acpSession, err := m.newACPSession(ctx, ac, req.ACPAgent, cfg, absCwd)
 	if err != nil {
 		ac.close()
 		return fail(err)
@@ -486,7 +493,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 	_ = json.Unmarshal(ac.initRaw, &caps)
 	storedID := session.RuntimeRef.SessionID
 	if caps.AgentCapabilities.LoadSession && storedID != "" {
-		meta, err := m.sessionPromptMeta(agentName)
+		meta, err := m.sessionMeta(agentName, cfg)
 		if err != nil {
 			return "", ModeState{}, err
 		}
@@ -514,7 +521,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 		}
 		// The agent lost this session — fall through to a fresh one.
 	}
-	acpSession, err := m.newACPSession(ctx, ac, agentName, cwd)
+	acpSession, err := m.newACPSession(ctx, ac, agentName, cfg, cwd)
 	if err != nil {
 		return "", ModeState{}, err
 	}
