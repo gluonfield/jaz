@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, Save, Terminal } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { REASONING_EFFORT_OPTIONS } from '@/components/loops/ReasoningEffortSelect'
 import { Button } from '@/components/ui/Button'
 import { ModelCombobox } from '@/components/ui/ModelCombobox'
 import { Select } from '@/components/ui/Select'
@@ -14,17 +13,16 @@ import { agentSettingsQuery, updateAgentSettings } from '@/lib/api/settings'
 import type { AgentSettings as AgentSettingsData } from '@/lib/api/types'
 import { acpAgentModelSuggestions, OPENAI_MODELS, openRouterModelsQuery } from '@/lib/models'
 import { keys } from '@/lib/query/keys'
+import { acpReasoningEffortOptions, REASONING_EFFORT_OPTIONS } from '@/lib/reasoningEfforts'
 
 const inputClass =
   'h-7 w-full rounded-full bg-ink/10 px-3 text-[12px] text-ink outline-none transition duration-150 placeholder:text-ink-3 focus:bg-ink/15 focus:ring-1 focus:ring-ink/25 disabled:opacity-50'
 
 const rowControlClass = 'w-full md:w-[320px]'
 
-// Same efforts everywhere; here '' means "no effort configured" rather than
-// "inherit the default", hence the relabel.
-const reasoningOptions = REASONING_EFFORT_OPTIONS.map((option) =>
-  option.value === '' ? { ...option, label: 'None' } : option,
-)
+// Here '' means "no effort configured" rather than "inherit the default".
+const settingsReasoningOptions = (options = REASONING_EFFORT_OPTIONS) =>
+  options.map((option) => (option.value === '' ? { ...option, label: 'None' } : option))
 
 function cloneSettings(settings: AgentSettingsData): AgentSettingsData {
   return {
@@ -37,6 +35,12 @@ function cloneSettings(settings: AgentSettingsData): AgentSettingsData {
       ]),
     ),
     agents: [...settings.agents],
+    acp_options: Object.fromEntries(
+      Object.entries(settings.acp_options ?? {}).map(([agent, value]) => [
+        agent,
+        { reasoning_efforts: [...value.reasoning_efforts] },
+      ]),
+    ),
   }
 }
 
@@ -178,7 +182,7 @@ export function AgentSettings() {
                 >
                   <Select
                     value={draft.native.reasoning_effort ?? ''}
-                    options={reasoningOptions}
+                    options={settingsReasoningOptions()}
                     disabled={save.isPending}
                     onChange={(reasoning_effort) =>
                       setDraft({ ...draft, native: { ...draft.native, reasoning_effort } })
@@ -275,7 +279,7 @@ function ACPAgentRow({
       <SettingsRow title="Reasoning" description="Reasoning effort copied into new threads.">
         <Select
           value={current.reasoning_effort ?? ''}
-          options={reasoningOptions}
+          options={settingsReasoningOptions(acpReasoningEffortOptions(settings, agent))}
           disabled={controlsDisabled}
           onChange={(reasoning_effort) => update({ reasoning_effort })}
           aria-label={`${agentLabel(agent)} reasoning effort`}

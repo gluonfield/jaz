@@ -109,6 +109,11 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				_ = conn.Send(context.Background(), resp)
 				continue
 			}
+			if os.Getenv("JAZ_FAKE_ACP_EXPECT_ULTRACODE") == "1" && !fakeUltracodeMeta(req.Meta) {
+				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("missing ultracode setting", nil))
+				_ = conn.Send(context.Background(), resp)
+				continue
+			}
 			result := map[string]any{
 				"sessionId": "fake-session",
 			}
@@ -343,6 +348,23 @@ func addFakeModels(result map[string]any) {
 			"options": modelOptions,
 		},
 	}
+}
+
+func fakeUltracodeMeta(meta map[string]any) bool {
+	claudeCode, ok := meta["claudeCode"].(map[string]any)
+	if !ok {
+		return false
+	}
+	options, ok := claudeCode["options"].(map[string]any)
+	if !ok {
+		return false
+	}
+	settings, ok := options["settings"].(map[string]any)
+	if !ok {
+		return false
+	}
+	value, ok := settings["ultracode"].(bool)
+	return ok && value
 }
 
 func validateFakeMCPServers(rawServers []json.RawMessage) error {

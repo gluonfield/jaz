@@ -4,7 +4,7 @@ services:
     container_name: jaz-activepieces-app
     restart: unless-stopped
     ports:
-      - "${ACTIVEPIECES_PORT}:80" # jaz owns 8080
+      - "${ACTIVEPIECES_PORT}:80" # jaz defaults to 5299
     depends_on:
       - postgres
       - redis

@@ -237,8 +237,8 @@ MCP client config:
 
 Tools:
 
-- `jazmem_search`: input `{ "query": "...", "deep": true }` (`deep` optional); output `AgenticResponse`; requires the configured provider's key, such as `OPENROUTER_API_KEY` or `OPENAI_API_KEY`.
-- `jazmem_search_raw`: input `{ "query": "...", "limit": 10, "deep": false }` (`limit` and `deep` optional); output `SearchResponse`; deterministic, no LLM call.
-- `jazmem_get`: input `{ "slug": "people/alice" }`; primary text content is raw markdown. Structured output is `{ "found": true, "slug": "...", "path": "...", "title": "...", "raw": "..." }` or `{ "found": false, "error": "not found: people/alice", "suggestions": [...] }`.
+- `memory_search`: input `{ "query": "...", "deep": true }` (`deep` optional); output `AgenticResponse`; requires the configured provider's key, such as `OPENROUTER_API_KEY` or `OPENAI_API_KEY`.
+- `memory_search_raw`: input `{ "query": "...", "limit": 10, "deep": false }` (`limit` and `deep` optional); output `SearchResponse`; deterministic, no LLM call.
+- `memory_get`: input `{ "slug": "people/alice" }`; primary text content is raw markdown. Structured output is `{ "found": true, "slug": "...", "path": "...", "title": "...", "raw": "..." }` or `{ "found": false, "error": "not found: people/alice", "suggestions": [...] }`.
 
 MCP is read-only. There is no MCP write/capture/index/dream tool. To store data, edit markdown directly. Indexing, dreaming, and link hygiene are CLI/server/scheduler operations.

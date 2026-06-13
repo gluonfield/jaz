@@ -30,7 +30,7 @@ type Manager struct {
 	registry *tools.Registry
 	log      *log.Logger
 
-	localServers map[string]*mcpsdk.Server
+	localServers map[string]func() *mcpsdk.Server
 
 	mu       sync.RWMutex
 	sessions map[string]*serverSession
@@ -41,12 +41,16 @@ type Manager struct {
 type Option func(*Manager)
 
 func WithLocalServer(serverID string, server *mcpsdk.Server) Option {
+	return WithLocalServerProvider(serverID, func() *mcpsdk.Server { return server })
+}
+
+func WithLocalServerProvider(serverID string, provider func() *mcpsdk.Server) Option {
 	return func(m *Manager) {
 		serverID = strings.TrimSpace(serverID)
-		if serverID == "" || server == nil {
+		if serverID == "" || provider == nil {
 			return
 		}
-		m.localServers[serverID] = server
+		m.localServers[serverID] = provider
 	}
 }
 
@@ -80,7 +84,7 @@ func NewManager(store mcpconfig.ServerReader, tokens integrationoauth.Store, reg
 		tokens:       tokens,
 		registry:     registry,
 		log:          logger.WithPrefix("mcp"),
-		localServers: make(map[string]*mcpsdk.Server),
+		localServers: make(map[string]func() *mcpsdk.Server),
 		sessions:     make(map[string]*serverSession),
 		statuses:     make(map[string]mcpconfig.ServerStatus),
 	}
@@ -101,17 +105,11 @@ func (m *Manager) backgroundHandler(server mcpconfig.Server) *oauthHandler {
 }
 
 func (m *Manager) Refresh(ctx context.Context) {
-	if m == nil || m.store == nil || m.registry == nil {
-		return
-	}
 	seq := m.beginRefresh()
 	m.refreshServers(ctx, seq, nil)
 }
 
 func (m *Manager) RefreshLocal(ctx context.Context) {
-	if m == nil || m.store == nil || m.registry == nil {
-		return
-	}
 	seq := m.beginRefresh()
 	m.refreshServers(ctx, seq, func(server mcpconfig.Server) bool {
 		_, ok := m.localServers[server.ID]
@@ -203,17 +201,12 @@ func (m *Manager) refreshServers(ctx context.Context, seq uint64, include func(m
 }
 
 func (m *Manager) Close() {
-	if m == nil {
-		return
-	}
 	m.mu.Lock()
 	sessions := m.sessions
 	m.sessions = make(map[string]*serverSession)
 	m.statuses = make(map[string]mcpconfig.ServerStatus)
 	m.mu.Unlock()
-	if m.registry != nil {
-		m.registry.RemoveGroup(registryGroup)
-	}
+	m.registry.RemoveGroup(registryGroup)
 	closeSessions(sessions)
 }
 
@@ -227,9 +220,6 @@ func closeSessions(sessions map[string]*serverSession) {
 }
 
 func (m *Manager) Status(id string) mcpconfig.ServerStatus {
-	if m == nil {
-		return mcpconfig.ServerStatus{}
-	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.statuses[id]
@@ -255,7 +245,7 @@ func (m *Manager) Test(ctx context.Context, server mcpconfig.Server) mcpconfig.S
 // the server's tools become available. It blocks until the user completes sign-in
 // or ctx is cancelled.
 func (m *Manager) Authorize(ctx context.Context, server mcpconfig.Server) mcpconfig.ServerStatus {
-	if m == nil || m.tokens == nil {
+	if m.tokens == nil {
 		return mcpconfig.ServerStatus{Status: "error", Error: "token store is not configured", CheckedAt: time.Now().UTC()}
 	}
 	receiver, err := newLoopbackReceiver()
@@ -303,7 +293,7 @@ func connectErrorStatus(handler *oauthHandler, err error) mcpconfig.ServerStatus
 }
 
 func (m *Manager) connect(ctx context.Context, server mcpconfig.Server, handler auth.OAuthHandler) (*serverSession, error) {
-	if local := m.localServers[server.ID]; local != nil {
+	if local := m.localServer(server.ID); local != nil {
 		return m.connectLocal(ctx, server, local)
 	}
 	headers, err := mcpconfig.ResolvedHeaders(server, true)
@@ -342,6 +332,14 @@ func (m *Manager) connect(ctx context.Context, server mcpconfig.Server, handler 
 		ss.tools = append(ss.tools, rt)
 	}
 	return ss, nil
+}
+
+func (m *Manager) localServer(id string) *mcpsdk.Server {
+	provider := m.localServers[id]
+	if provider == nil {
+		return nil
+	}
+	return provider()
 }
 
 func (m *Manager) connectLocal(ctx context.Context, server mcpconfig.Server, local *mcpsdk.Server) (*serverSession, error) {

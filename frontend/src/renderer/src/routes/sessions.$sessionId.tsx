@@ -38,7 +38,7 @@ import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
 import { takePendingMessage, takePendingVoice } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
-import { planSurfaceBelongsToSession, planSurfaceFromEvent } from '@/lib/planSurface'
+import { planProgressSurfaceFromEvent, planSurfaceBelongsToSession, planSurfaceFromEvent } from '@/lib/planSurface'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { coalesceSessionEvents } from '@/lib/sessionEvents'
 import { latestEventTimeISO } from '@/lib/sessionLiveness'
@@ -321,10 +321,10 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
     ? planSurfaceFromEvent(latestPlanDecisionEvent)
     : undefined
   const planDecisionAt = Date.parse(latestPlanDecisionEvent?.at ?? '')
-  // The panel mirrors the transcript's notion of "current plan": the latest
-  // plan-bearing event that belongs to this session.
+  // The panel shows execution progress; plan-mode approval proposals stay in
+  // the transcript and bottom approval UI.
   const panelPlanEvent = transcriptEvents.findLast((event) =>
-    Boolean(planSurfaceFromEvent(event) && planSurfaceBelongsToSession(event, session.id)),
+    Boolean(planProgressSurfaceFromEvent(event) && planSurfaceBelongsToSession(event, session.id)),
   )
   // Plan progress lives in the side panel, never in the thread; only a
   // proposed plan that needs the user's approval stays inline. Errors are
@@ -344,7 +344,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
     latestPlanDecisionSurface,
     planDecisionSessionID: latestPlanDecisionSurface?.approvalSessionId,
     planDecisionIsCurrent: !Number.isNaN(planDecisionAt) && planDecisionAt >= latestUserAt,
-    panelPlan: panelPlanEvent ? planSurfaceFromEvent(panelPlanEvent) : undefined,
+    panelPlan: panelPlanEvent ? planProgressSurfaceFromEvent(panelPlanEvent) : undefined,
   }
 }
 
