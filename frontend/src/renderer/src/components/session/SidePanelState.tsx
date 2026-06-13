@@ -168,45 +168,47 @@ export function SidePanelControl({
   }
 
   return (
-    <motion.div
+    <div
       ref={controlRef}
-      layout
       onPointerEnter={expand}
       onPointerLeave={collapseSoon}
       onFocus={expand}
       onBlur={(event) => {
         if (!controlRef.current?.contains(event.relatedTarget as Node | null)) collapseSoon()
       }}
-      transition={{ type: 'spring', duration: 0.34, bounce: 0 }}
       className="flex h-8 items-center gap-0.5 rounded-full bg-surface p-0.5"
     >
-      <AnimatePresence initial={false} mode="popLayout">
+      {/* No layout/transform animation: the row lives in real flex layout,
+          pinned to the titlebar's right edge. The current view is the rightmost
+          child, so its box is fixed — it stays perfectly still while siblings
+          grow/shrink their own max-width to its left. */}
+      <AnimatePresence initial={false}>
         {visible.map((option) => {
           const active = open && view === option
+          const isCurrent = option === currentView
           return (
             <motion.button
               key={option}
               type="button"
-              layout
               aria-pressed={active}
               title={active ? `Hide ${SIDE_PANEL_VIEW_LABEL[option]} panel` : `Open ${SIDE_PANEL_VIEW_LABEL[option]}`}
               onClick={() => toggleView(option)}
               whileTap={{ scale: 0.96 }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
+              initial={isCurrent ? false : { opacity: 0, maxWidth: 0 }}
+              animate={{ opacity: 1, maxWidth: 160 }}
+              exit={{ opacity: 0, maxWidth: 0 }}
               transition={{
-                layout: { type: 'spring', duration: 0.34, bounce: 0 },
-                opacity: { duration: 0.14, ease: 'easeOut' },
+                maxWidth: { duration: 0.24, ease: [0.22, 1, 0.36, 1] },
+                opacity: { duration: 0.16, ease: 'easeOut' },
               }}
-              className={`relative h-7 cursor-pointer rounded-full px-2.5 text-[13px] font-medium whitespace-nowrap transition-colors duration-150 ${
-                active ? 'text-ink' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
-              }`}
+              className={`relative h-7 shrink-0 cursor-pointer rounded-full px-2.5 text-[13px] font-medium whitespace-nowrap transition-colors duration-150 ${
+                isCurrent ? '' : 'overflow-hidden'
+              } ${active ? 'text-ink' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'}`}
             >
               {active ? (
                 <motion.span
                   layoutId="side-panel-active-pill"
-                  transition={{ type: 'spring', duration: 0.34, bounce: 0 }}
+                  transition={{ type: 'spring', duration: 0.32, bounce: 0 }}
                   className="absolute inset-0 rounded-full bg-bg shadow-sm ring-1 ring-border/50"
                 />
               ) : null}
@@ -215,6 +217,6 @@ export function SidePanelControl({
           )
         })}
       </AnimatePresence>
-    </motion.div>
+    </div>
   )
 }
