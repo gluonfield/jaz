@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
 import { agentLabel } from '@/lib/agentLabel'
 import { completeOnboarding, onboardingQuery } from '@/lib/api/onboarding'
-import type { AgentSettings, OnboardingACPProbe, OnboardingStatus } from '@/lib/api/types'
+import type { ACPAgentAuth, AgentSettings, OnboardingACPProbe, OnboardingStatus } from '@/lib/api/types'
 import { writeClipboard } from '@/lib/clipboard'
 import { keys } from '@/lib/query/keys'
 
@@ -101,6 +101,10 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
         <div className="mb-5">
           <p className="text-[12px] font-medium uppercase tracking-[0.16em] text-ink-3">Setup</p>
           <h1 className="mt-2 text-balance text-2xl font-semibold text-ink">Connect Jaz to its agents</h1>
+          <p className="mt-2 max-w-[620px] text-pretty text-[13px] text-ink-3">
+            Agent credentials are checked on the backend machine. A remote backend needs its own
+            Codex, Claude, and Grok sign-ins.
+          </p>
         </div>
 
         <div className="overflow-hidden rounded-card bg-surface shadow-[0_18px_60px_rgba(0,0,0,0.10)]">
@@ -186,7 +190,7 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
 
         <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="min-h-5 text-[12px] text-ink-3">
-            {!canFinish ? 'Sign in to an ACP client or add a Native Agent key.' : save.error?.message}
+            {!canFinish ? 'Sign in to an ACP client on this backend or add a Native Agent key.' : save.error?.message}
           </p>
           <Button
             variant="primary"
@@ -216,6 +220,7 @@ function AgentToggle({
 }) {
   const status = agentStatusText(probe)
   const canCopyAuth = Boolean(probe.auth_command && probe.auth_command_available)
+  const profile = authProfileText(probe)
   return (
     <div className="rounded-control bg-bg px-3 py-3">
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
@@ -227,6 +232,7 @@ function AgentToggle({
           <p className={`mt-1 text-pretty text-[12px] ${probe.available ? 'text-ink-3' : 'text-danger'}`}>
             {probe.reason || authStorageText(probe)}
           </p>
+          <p className="mt-1 text-pretty text-[12px] text-ink-3">{profile}</p>
           {probe.storage_path && (
             <p className="mt-1 truncate font-mono text-[11px] text-ink-3">{probe.storage_path}</p>
           )}
@@ -278,6 +284,21 @@ function authStorageText(probe: OnboardingACPProbe): string {
   return 'Detected'
 }
 
+function authProfileText(probe: OnboardingACPProbe): string {
+  const label = probe.auth_source === 'existing_cli' ? 'Using existing CLI profile' : 'Using Jaz profile'
+  const evidence =
+    probe.auth_evidence === 'keyring_config'
+      ? 'keychain configured'
+      : probe.auth_evidence === 'auth_json'
+        ? 'auth.json found'
+        : probe.auth_evidence === 'credentials_json'
+          ? 'credentials file found'
+          : probe.auth_evidence === 'env'
+            ? 'environment credential found'
+            : ''
+  return evidence ? `${label}; ${evidence}.` : `${label}.`
+}
+
 function StepRow({ icon, title, detail, children }: { icon: ReactNode; title: string; detail: string; children: ReactNode }) {
   return (
     <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-4">
@@ -317,12 +338,22 @@ function OnboardingShell({ children }: { children: ReactNode }) {
 function draftFromStatus(status: OnboardingStatus): AgentSettings {
   const settings = cloneSettings(status.settings)
   for (const probe of status.acp) {
+    const current = settings.acp[probe.agent]
     settings.acp[probe.agent] = {
-      ...settings.acp[probe.agent],
+      ...current,
+      auth: onboardingAuth(current?.auth, probe.recommended_auth),
       enabled: probe.available && Boolean(settings.acp[probe.agent]?.enabled ?? true),
     }
   }
   return settings
+}
+
+function onboardingAuth(current?: ACPAgentAuth, recommended?: ACPAgentAuth): ACPAgentAuth {
+  if (current?.mode && current.mode !== 'auto') return current
+  return {
+    mode: recommended?.mode || current?.mode || 'auto',
+    path: recommended?.path ?? current?.path ?? '',
+  }
 }
 
 function cloneSettings(settings: AgentSettings): AgentSettings {
@@ -330,7 +361,10 @@ function cloneSettings(settings: AgentSettings): AgentSettings {
     native: { ...settings.native },
     providers: [...(settings.providers ?? [])],
     acp: Object.fromEntries(
-      Object.entries(settings.acp ?? {}).map(([agent, value]) => [agent, { ...value }]),
+      Object.entries(settings.acp ?? {}).map(([agent, value]) => [
+        agent,
+        { ...value, auth: value.auth ? { ...value.auth } : undefined },
+      ]),
     ),
     agents: [...(settings.agents ?? [])],
   }

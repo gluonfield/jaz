@@ -19,6 +19,11 @@ const inputClass =
   'h-7 w-full rounded-full bg-ink/10 px-3 text-[12px] text-ink outline-none transition duration-150 placeholder:text-ink-3 focus:bg-ink/15 focus:ring-1 focus:ring-ink/25 disabled:opacity-50'
 
 const rowControlClass = 'w-full md:w-[320px]'
+const AUTH_MODE_OPTIONS = [
+  { value: 'auto', label: 'Auto', description: 'Use the best profile detected on the backend' },
+  { value: 'existing_cli', label: 'Existing CLI', description: 'Reuse the backend user profile' },
+  { value: 'jaz_profile', label: 'Jaz profile', description: 'Use isolated Jaz agent auth' },
+]
 
 // Here '' means "no effort configured" rather than "inherit the default".
 const settingsReasoningOptions = (options = REASONING_EFFORT_OPTIONS) =>
@@ -31,7 +36,7 @@ function cloneSettings(settings: AgentSettingsData): AgentSettingsData {
     acp: Object.fromEntries(
       Object.entries(settings.acp).map(([agent, value]) => [
         agent,
-        { ...value },
+        { ...value, auth: value.auth ? { ...value.auth } : undefined },
       ]),
     ),
     agents: [...settings.agents],
@@ -231,6 +236,7 @@ function ACPAgentRow({
     command: '',
     model: '',
     reasoning_effort: '',
+    auth: { mode: 'auto', path: '' },
   }
   const [commandOpen, setCommandOpen] = useState((current.command ?? '').trim() === '')
   useEffect(() => {
@@ -262,6 +268,22 @@ function ACPAgentRow({
             onChange={(enabled) => update({ enabled })}
             aria-label={`Enable ${agentLabel(agent)}`}
           />
+        </div>
+      </SettingsRow>
+
+      <SettingsRow title="Auth" description="Credential profile used on the backend machine.">
+        <div className="grid gap-1 md:w-[320px]">
+          <Select
+            value={current.auth?.mode ?? 'auto'}
+            options={AUTH_MODE_OPTIONS}
+            disabled={controlsDisabled}
+            onChange={(mode) => update({ auth: { mode: mode as 'auto' | 'existing_cli' | 'jaz_profile', path: '' } })}
+            aria-label={`${agentLabel(agent)} auth profile`}
+            className={rowControlClass}
+          />
+          {current.auth?.path ? (
+            <p className="truncate font-mono text-[11px] text-ink-3">{current.auth.path}</p>
+          ) : null}
         </div>
       </SettingsRow>
 

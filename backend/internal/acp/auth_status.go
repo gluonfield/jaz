@@ -1,19 +1,20 @@
 package acp
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 )
 
-const RefreshOwnerAgentCLI = "coding_agent_cli"
-
 type AgentAuthStatus struct {
 	Authenticated         bool
 	Reason                string
 	StoragePath           string
+	AuthMode              string
+	AuthPath              string
+	AuthSource            string
+	AuthEvidence          string
+	RecommendedAuth       AgentAuthConfig
 	LoginCommand          string
 	LoginCommandAvailable bool
 	LoginCommandReason    string
@@ -23,71 +24,35 @@ type AgentAuthStatus struct {
 func ProbeAgentAuth(name string, cfg AgentConfig, root string, env map[string]string) AgentAuthStatus {
 	name = CanonicalAgentName(name)
 	probeEnv := NewManager(nil, Config{Root: root, Env: env}, nil).probeEnv(name, cfg)
-	status := agentLoginCommand(name, root)
+	resolved := resolveAgentAuth(name, cfg, root, probeEnv)
+	status := agentLoginCommand(name, root, resolved.Config)
 	status.RefreshOwner = RefreshOwnerAgentCLI
-	switch name {
-	case AgentCodex:
-		status.StoragePath = filepath.Join(probeEnv["CODEX_HOME"], "auth.json")
-		status.Authenticated = codexAuthAvailable(probeEnv) || codexSourceAuthAvailable(cfg, env)
-		status.Reason = codexAuthHint(probeEnv)
-	case AgentClaude:
-		status.StoragePath = filepath.Join(probeEnv["CLAUDE_CONFIG_DIR"], ".credentials.json")
-		status.Authenticated = claudeAuthAvailable(probeEnv) || claudeSourceAuthAvailable(cfg, env)
-		status.Reason = claudeAuthHint(probeEnv)
-	case AgentGrok:
-		status.StoragePath = filepath.Join(probeEnv["HOME"], ".grok", "auth.json")
-		status.Authenticated = grokAuthAvailable(probeEnv) || grokSourceAuthAvailable(cfg, env) || strings.TrimSpace(probeEnv["XAI_API_KEY"]) != ""
-		status.Reason = grokAuthHint(probeEnv)
-	}
+	status.StoragePath = resolved.StoragePath
+	status.Authenticated = resolved.Authenticated
+	status.Reason = resolved.Reason
+	status.AuthMode = resolved.Config.Mode
+	status.AuthPath = resolved.Config.Path
+	status.AuthSource = resolved.Source
+	status.AuthEvidence = resolved.Evidence
+	status.RecommendedAuth = resolved.Config
 	if status.Authenticated {
 		status.Reason = ""
 	}
 	return status
 }
 
-func codexSourceAuthAvailable(cfg AgentConfig, env map[string]string) bool {
-	home := firstNonEmpty(cfg.Env["CODEX_HOME"], env["CODEX_HOME"], os.Getenv("CODEX_HOME"))
-	if home == "" {
-		userHome, err := os.UserHomeDir()
-		if err != nil {
-			return false
-		}
-		home = filepath.Join(userHome, ".codex")
-	}
-	return fileExists(filepath.Join(home, "auth.json"))
-}
-
-func claudeSourceAuthAvailable(cfg AgentConfig, env map[string]string) bool {
-	sourceDir := firstNonEmpty(cfg.Env["CLAUDE_CONFIG_DIR"], env["CLAUDE_CONFIG_DIR"], os.Getenv("CLAUDE_CONFIG_DIR"))
-	for _, candidate := range claudeCredentialCandidates(sourceDir) {
-		if fileExists(candidate) {
-			return true
-		}
-	}
-	return false
-}
-
-func grokSourceAuthAvailable(cfg AgentConfig, env map[string]string) bool {
-	home := firstNonEmpty(cfg.Env["HOME"], env["HOME"])
-	if home == "" {
-		userHome, err := os.UserHomeDir()
-		if err != nil {
-			return false
-		}
-		home = userHome
-	}
-	return fileExists(filepath.Join(home, ".grok", "auth.json"))
-}
-
-func agentLoginCommand(name, root string) AgentAuthStatus {
+func agentLoginCommand(name, root string, auth AgentAuthConfig) AgentAuthStatus {
 	layout := runtimefiles.New(root)
 	switch CanonicalAgentName(name) {
 	case AgentCodex:
-		return loginCommand(map[string]string{"CODEX_HOME": layout.ACPCodexHome}, "codex", "login", "--device-auth")
+		home := firstNonEmpty(auth.Path, layout.ACPCodexHome)
+		return loginCommand(map[string]string{"CODEX_HOME": home}, "codex", "login", "--device-auth")
 	case AgentClaude:
-		return loginCommand(map[string]string{"CLAUDE_CONFIG_DIR": layout.ACPClaudeConfig}, "claude", "auth", "login", "--claudeai")
+		configDir := firstNonEmpty(auth.Path, layout.ACPClaudeConfig)
+		return loginCommand(map[string]string{"CLAUDE_CONFIG_DIR": configDir}, "claude", "auth", "login", "--claudeai")
 	case AgentGrok:
-		return loginCommand(map[string]string{"HOME": layout.ACPHome}, "grok", "login", "--device-auth")
+		home := firstNonEmpty(auth.Path, layout.ACPHome)
+		return loginCommand(map[string]string{"HOME": home}, "grok", "login", "--device-auth")
 	default:
 		return AgentAuthStatus{}
 	}
