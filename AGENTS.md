@@ -14,6 +14,7 @@
 - Keep feature diffs scoped. Do not mix unrelated UI polish, settings work, dependency churn, or generated output into behavioral changes.
 - Prefer Viper's default field mapping. Add `mapstructure` tags only for real mismatches.
 - Use Fx constructors directly in `fx.Provide`; avoid pass-through wrappers.
+- Do not add defensive nil checks for required constructor-injected dependencies. If a required Fx service is missing, fail fast instead of silently degrading; model truly optional dependencies explicitly.
 - Codex ACP uses the user's Codex OAuth credentials. Never pass coordinator provider keys to Codex subprocesses.
 - Target deployments run the Jaz server on a VM and clients on user computers; never assume client-local file paths are visible to the server or agents.
 - Every test you add must be useful: it must protect real behavior or clarify a tricky contract, never exist only to raise coverage.
