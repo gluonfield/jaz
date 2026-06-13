@@ -17,7 +17,7 @@ function storedPanelPref(): PanelPref {
 
 function storedSidePanelView(): SidePanelView {
   const value = localStorage.getItem(PANEL_VIEW_PREF_KEY)
-  return value === 'diff' || value === 'preview' || value === 'file' ? value : 'overview'
+  return value === 'diff' || value === 'preview' || value === 'terminal' || value === 'file' ? value : 'overview'
 }
 
 export function useSidePanelState(gitAvailable: boolean) {
@@ -102,10 +102,11 @@ const SIDE_PANEL_VIEW_LABEL: Record<SidePanelView, string> = {
   overview: 'Overview',
   diff: 'Code Diff',
   preview: 'Preview',
+  terminal: 'Terminal',
   file: 'File Reader',
 }
 
-const BASE_VIEW_OPTIONS: SidePanelView[] = ['overview', 'diff', 'preview']
+const BASE_VIEW_OPTIONS: SidePanelView[] = ['overview', 'diff', 'preview', 'terminal']
 
 // A quiet segmented control on a single surface track, sized like the home
 // composer's pills. At rest with the panel closed it collapses to just the

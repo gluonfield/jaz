@@ -141,7 +141,7 @@ function DiffFileSection({
       </button>
       {expanded && file.binary ? (
         <div className="border-t border-border">
-          <DiffView patch="" binary />
+          <DiffView patch="" path={file.path} binary />
         </div>
       ) : null}
       {expanded && !file.binary ? <FileDiffBody sessionId={sessionId} base={base} file={file} /> : null}
@@ -176,7 +176,12 @@ function FileDiffBody({
   }
   return (
     <div className="border-t border-border">
-      <DiffView patch={diff.data.patch} binary={diff.data.binary} truncated={diff.data.truncated} />
+      <DiffView
+        patch={diff.data.patch}
+        path={diff.data.path || file.path}
+        binary={diff.data.binary}
+        truncated={diff.data.truncated}
+      />
     </div>
   )
 }

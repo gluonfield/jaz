@@ -41,6 +41,12 @@ export function apiBaseUrl(): string {
   return baseUrl
 }
 
+export function apiWebSocketUrl(path: string): string {
+  const url = new URL(path, `${apiBaseUrl()}/`)
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  return url.toString()
+}
+
 export function setApiBaseUrl(url: string): void {
   baseUrl = normalizeBaseUrl(url)
   localStorage.setItem(BACKEND_URL_KEY, baseUrl)
