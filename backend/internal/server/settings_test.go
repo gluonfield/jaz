@@ -141,6 +141,12 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 			Model           string `json:"model"`
 			ReasoningEffort string `json:"reasoning_effort"`
 		} `json:"acp"`
+		ACPOptions map[string]struct {
+			ReasoningEfforts []struct {
+				Value string `json:"value"`
+				Label string `json:"label"`
+			} `json:"reasoning_efforts"`
+		} `json:"acp_options"`
 	}
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
@@ -161,6 +167,10 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		got.ACP["grok"].Command != `grok --no-auto-update agent --no-leader --always-approve stdio` ||
 		got.ACP["grok"].Model != "grok-build" {
 		t.Fatalf("unexpected grok defaults %#v", got.ACP["grok"])
+	}
+	if !hasReasoningEffort(got.ACPOptions["claude"].ReasoningEfforts, "ultracode") ||
+		hasReasoningEffort(got.ACPOptions["codex"].ReasoningEfforts, "ultracode") {
+		t.Fatalf("unexpected acp options %#v", got.ACPOptions)
 	}
 
 	putReq := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
@@ -193,6 +203,18 @@ func hasNativeProvider(providers []struct {
 }, id, baseURL string) bool {
 	for _, provider := range providers {
 		if provider.ID == id && provider.BaseURL == baseURL {
+			return true
+		}
+	}
+	return false
+}
+
+func hasReasoningEffort(options []struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}, value string) bool {
+	for _, option := range options {
+		if option.Value == value {
 			return true
 		}
 	}

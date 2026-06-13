@@ -516,9 +516,19 @@ export interface ACPAgentDefaults {
   reasoning_effort?: string
 }
 
+export interface ReasoningEffortOption {
+  value: string
+  label: string
+}
+
+export interface ACPAgentOptions {
+  reasoning_efforts: ReasoningEffortOption[]
+}
+
 export interface AgentSettings {
   native: NativeAgentDefaults
   providers: NativeProviderOption[]
   acp: Record<string, ACPAgentDefaults>
+  acp_options?: Record<string, ACPAgentOptions>
   agents: string[]
 }

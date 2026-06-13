@@ -188,7 +188,7 @@ func NormalizeAgentDefaults(input AgentDefaults, catalog acp.AgentCatalog) (Agen
 		name = acp.CanonicalAgentName(name)
 		base, _ := catalog.Agent(name)
 		current := inputACP[name]
-		effort, err := provider.NormalizeReasoningEffort(current.ReasoningEffort)
+		effort, err := acp.NormalizeAgentReasoningEffort(name, current.ReasoningEffort)
 		if err != nil {
 			return AgentDefaults{}, err
 		}
