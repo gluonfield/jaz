@@ -1,13 +1,8 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"os"
-	"strings"
 )
 
 func main() {
@@ -31,136 +26,6 @@ func main() {
 		usage()
 		os.Exit(2)
 	}
-}
-
-type sessionResponse struct {
-	ID         string          `json:"id"`
-	Slug       string          `json:"slug"`
-	Runtime    string          `json:"runtime"`
-	RuntimeRef *runtimeRefJSON `json:"runtime_ref,omitempty"`
-}
-
-type runtimeRefJSON struct {
-	Agent string `json:"agent,omitempty"`
-}
-
-func createSession(client *http.Client, serverURL string) (sessionResponse, error) {
-	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(serverURL, "/")+"/v1/sessions", nil)
-	if err != nil {
-		return sessionResponse{}, err
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return sessionResponse{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		return sessionResponse{}, fmt.Errorf("create session failed: %s", strings.TrimSpace(string(body)))
-	}
-	var out sessionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return sessionResponse{}, err
-	}
-	return out, nil
-}
-
-func lastSession(client *http.Client, serverURL string) (sessionResponse, error) {
-	endpoint := strings.TrimRight(serverURL, "/") + "/v1/sessions?last=true"
-	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
-	if err != nil {
-		return sessionResponse{}, err
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return sessionResponse{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		return sessionResponse{}, fmt.Errorf("last session failed: %s", strings.TrimSpace(string(body)))
-	}
-	var out sessionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return sessionResponse{}, err
-	}
-	return out, nil
-}
-
-func getSession(client *http.Client, serverURL, sessionID string) (sessionResponse, error) {
-	endpoint := fmt.Sprintf("%s/v1/sessions/%s", strings.TrimRight(serverURL, "/"), sessionID)
-	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
-	if err != nil {
-		return sessionResponse{}, err
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return sessionResponse{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		return sessionResponse{}, fmt.Errorf("load session failed: %s", strings.TrimSpace(string(body)))
-	}
-	var out sessionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return sessionResponse{}, err
-	}
-	return out, nil
-}
-
-type serverConnection struct {
-	URL string
-	Key string
-}
-
-func parseServerConnection(raw string) (serverConnection, error) {
-	u, err := url.Parse(displayAddr(raw))
-	if err != nil {
-		return serverConnection{}, err
-	}
-	key := strings.TrimSpace(u.Query().Get("key"))
-	u.RawQuery = ""
-	u.Fragment = ""
-	if key == "" {
-		key = strings.TrimSpace(os.Getenv("JAZ_API_KEY"))
-	}
-	return serverConnection{URL: strings.TrimRight(u.String(), "/"), Key: key}, nil
-}
-
-func authHTTPClient(key string) *http.Client {
-	if strings.TrimSpace(key) == "" {
-		return http.DefaultClient
-	}
-	return &http.Client{Transport: authTransport{key: strings.TrimSpace(key), base: http.DefaultTransport}}
-}
-
-type authTransport struct {
-	key  string
-	base http.RoundTripper
-}
-
-func (t authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	base := t.base
-	if base == nil {
-		base = http.DefaultTransport
-	}
-	if req.Header.Get("Authorization") != "" {
-		return base.RoundTrip(req)
-	}
-	clone := req.Clone(req.Context())
-	clone.Header.Set("Authorization", "Bearer "+t.key)
-	return base.RoundTrip(clone)
-}
-
-func displayAddr(addr string) string {
-	if strings.HasPrefix(addr, ":") {
-		return "http://127.0.0.1" + addr
-	}
-	if strings.HasPrefix(addr, "http://") || strings.HasPrefix(addr, "https://") {
-		return addr
-	}
-	return "http://" + addr
 }
 
 func usage() {

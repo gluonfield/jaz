@@ -13,6 +13,7 @@
 - Frontend shared hooks and lib code must not import component-owned types. Put cross-layer contracts in `lib`.
 - Keep feature diffs scoped. Do not mix unrelated UI polish, settings work, dependency churn, or generated output into behavioral changes.
 - Prefer Viper's default field mapping. Add `mapstructure` tags only for real mismatches.
+- Keep `main.go` files as command dispatch and process entrypoints only. Arbitrary domain types, helper functions, clients, transports, URL builders, and request/response shapes belong in the package that owns that concept; the only allowed exception is global Viper bootstrap/config wiring.
 - Use Fx constructors directly in `fx.Provide`; avoid pass-through wrappers.
 - Do not add defensive nil checks for required constructor-injected dependencies. If a required Fx service is missing, fail fast instead of silently degrading; model truly optional dependencies explicitly.
 - Codex ACP uses the user's Codex OAuth credentials. Never pass coordinator provider keys to Codex subprocesses.
