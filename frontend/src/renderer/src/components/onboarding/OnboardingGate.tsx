@@ -23,9 +23,10 @@ import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import { authProviderLabel, onboardingAgentLabel } from '@/lib/agentLabel'
 import { completeOnboarding, onboardingQuery } from '@/lib/api/onboarding'
-import { getACPAuthLogin, startACPAuthLogin } from '@/lib/api/settings'
+import { cloneAgentSettings, compactKeys, startACPAuthLogin } from '@/lib/api/settings'
 import type { ACPAgentAuth, ACPAuthLogin, AgentSettings, OnboardingACPProbe, OnboardingStatus } from '@/lib/api/types'
 import { isLoopbackUrl, useConnection } from '@/lib/connection'
+import { useACPLoginPolling } from '@/lib/hooks/useACPLoginPolling'
 import { keys } from '@/lib/query/keys'
 
 const EASE = [0.22, 1, 0.36, 1] as const
@@ -75,11 +76,17 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
   const [draft, setDraft] = useState(() => draftFromStatus(status))
   const [keysByProvider, setKeysByProvider] = useState<Record<string, string>>({})
   const [acpKeysByAgent, setACPKeysByAgent] = useState<Record<string, string>>({})
-  const [loginJobs, setLoginJobs] = useState<Record<string, ACPAuthLogin>>({})
 
   useEffect(() => {
     setDraft(draftFromStatus(status))
   }, [status])
+
+  // A finished sign-in changes what's available on the backend — re-probe.
+  const { loginJobs, trackLoginJob } = useACPLoginPolling(() => {
+    queryClient.invalidateQueries({ queryKey: keys.onboarding })
+    queryClient.invalidateQueries({ queryKey: keys.agentSettings })
+    queryClient.invalidateQueries({ queryKey: keys.acpAgents })
+  })
 
   const providerStatus = useMemo(
     () => new Map(status.native_providers.map((provider) => [provider.id, provider])),
@@ -104,35 +111,17 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
   const login = useMutation({
     mutationFn: ({ agent, auth }: { agent: string; auth?: ACPAgentAuth }) => startACPAuthLogin(agent, auth),
     onSuccess: (job) => {
-      setLoginJobs((current) => ({ ...current, [job.agent]: job }))
+      trackLoginJob(job)
       toast(`Started ${authProviderLabel(job.agent)} sign-in`)
     },
     onError: (error: Error) => toast(`Couldn't start sign-in: ${error.message}`, 'danger'),
   })
 
-  useEffect(() => {
-    const running = Object.values(loginJobs).filter((job) => job.status === 'running')
-    if (running.length === 0) return
-    const timer = window.setInterval(() => {
-      for (const job of running) {
-        void getACPAuthLogin(job.id).then((next) => {
-          setLoginJobs((current) => ({ ...current, [next.agent]: next }))
-          if (next.status !== 'running') {
-            queryClient.invalidateQueries({ queryKey: keys.onboarding })
-            queryClient.invalidateQueries({ queryKey: keys.agentSettings })
-            queryClient.invalidateQueries({ queryKey: keys.acpAgents })
-          }
-        })
-      }
-    }, 1000)
-    return () => window.clearInterval(timer)
-  }, [loginJobs, queryClient])
-
   const save = useMutation({
     mutationFn: () => {
       // No enable toggles in onboarding: every agent that ended up with a
       // credential turns on; the rest stay off. Users refine this in Settings.
-      const next = cloneSettings(draft)
+      const next = cloneAgentSettings(draft)
       for (const probe of status.acp) {
         next.acp[probe.agent] = {
           ...next.acp[probe.agent],
@@ -142,7 +131,7 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
       return completeOnboarding({
         settings: next,
         provider_keys: selectedProviderKey ? { [selectedProvider]: selectedProviderKey } : undefined,
-        acp_keys: compactSecrets(acpKeysByAgent),
+        acp_keys: compactKeys(acpKeysByAgent),
         completed: true,
       })
     },
@@ -568,7 +557,7 @@ function OnboardingShell({ children }: { children: ReactNode }) {
 }
 
 function draftFromStatus(status: OnboardingStatus): AgentSettings {
-  const settings = cloneSettings(status.settings)
+  const settings = cloneAgentSettings(status.settings)
   for (const probe of status.acp) {
     const current = settings.acp[probe.agent]
     settings.acp[probe.agent] = {
@@ -586,29 +575,4 @@ function onboardingAuth(current?: ACPAgentAuth, recommended?: ACPAgentAuth): ACP
     mode: recommended?.mode || current?.mode || 'auto',
     path: recommended?.path ?? current?.path ?? '',
   }
-}
-
-function cloneSettings(settings: AgentSettings): AgentSettings {
-  return {
-    native: { ...settings.native },
-    providers: [...(settings.providers ?? [])],
-    acp_auth: { ...(settings.acp_auth ?? {}) },
-    acp_keys: { ...(settings.acp_keys ?? {}) },
-    acp: Object.fromEntries(
-      Object.entries(settings.acp ?? {}).map(([agent, value]) => [
-        agent,
-        { ...value, auth: value.auth ? { ...value.auth } : undefined },
-      ]),
-    ),
-    agents: [...(settings.agents ?? [])],
-  }
-}
-
-function compactSecrets(values: Record<string, string>): Record<string, string> | undefined {
-  const out = Object.fromEntries(
-    Object.entries(values)
-      .map(([key, value]) => [key, value.trim()] as const)
-      .filter(([, value]) => value.length > 0),
-  )
-  return Object.keys(out).length > 0 ? out : undefined
 }

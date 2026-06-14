@@ -52,7 +52,9 @@ function inputFromSettings(
   }
 }
 
-function compactKeys(values?: Record<string, string>): Record<string, string> | undefined {
+// Trims a secret map and drops blanks; undefined when nothing remains. Used for
+// both native provider keys and ACP agent keys before they hit the backend.
+export function compactKeys(values?: Record<string, string>): Record<string, string> | undefined {
   if (!values) return undefined
   const out = Object.fromEntries(
     Object.entries(values)
@@ -60,6 +62,31 @@ function compactKeys(values?: Record<string, string>): Record<string, string> | 
       .filter(([, value]) => value.length > 0),
   )
   return Object.keys(out).length > 0 ? out : undefined
+}
+
+// A deep-ish clone of the editable agent settings, so a draft can be mutated
+// without touching the cached query data. The canonical copy — both the
+// onboarding and settings screens edit drafts of this shape.
+export function cloneAgentSettings(settings: AgentSettings): AgentSettings {
+  return {
+    native: { ...settings.native },
+    providers: [...(settings.providers ?? [])],
+    acp_auth: { ...(settings.acp_auth ?? {}) },
+    acp_keys: { ...(settings.acp_keys ?? {}) },
+    acp: Object.fromEntries(
+      Object.entries(settings.acp ?? {}).map(([agent, value]) => [
+        agent,
+        { ...value, auth: value.auth ? { ...value.auth } : undefined },
+      ]),
+    ),
+    agents: [...(settings.agents ?? [])],
+    acp_options: Object.fromEntries(
+      Object.entries(settings.acp_options ?? {}).map(([agent, value]) => [
+        agent,
+        { reasoning_efforts: [...value.reasoning_efforts] },
+      ]),
+    ),
+  }
 }
 
 export const agentSettingsQuery = queryOptions({

@@ -59,25 +59,8 @@ func (s *Server) handleAgentSettings(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		keyUpdates, err := s.providerKeyUpdates(input.ProviderKeys)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, err)
-			return
-		}
-		acpKeyUpdates, err := s.acpKeyUpdates(input.ACPKeys)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, err)
-			return
-		}
-		for key, value := range acpKeyUpdates {
-			keyUpdates[key] = value
-		}
-		if len(keyUpdates) > 0 && !s.providerKeySetupAllowed(r) {
-			writeError(w, http.StatusForbidden, fmt.Errorf("agent key setup is only available from the backend host"))
-			return
-		}
-		if err := s.saveRuntimeKeyUpdates(keyUpdates); err != nil {
-			writeError(w, http.StatusBadRequest, err)
+		if status, err := s.applyRuntimeKeyUpdates(r, input.ProviderKeys, input.ACPKeys); err != nil {
+			writeError(w, status, err)
 			return
 		}
 		saved, err := agentsettings.SaveAgentDefaults(store, normalized)

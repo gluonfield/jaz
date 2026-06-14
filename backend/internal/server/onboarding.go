@@ -79,25 +79,8 @@ func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) {
 			}
 			normalized = &next
 		}
-		keyUpdates, err := s.providerKeyUpdates(input.ProviderKeys)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, err)
-			return
-		}
-		acpKeyUpdates, err := s.acpKeyUpdates(input.ACPKeys)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, err)
-			return
-		}
-		for key, value := range acpKeyUpdates {
-			keyUpdates[key] = value
-		}
-		if len(keyUpdates) > 0 && !s.providerKeySetupAllowed(r) {
-			writeError(w, http.StatusForbidden, fmt.Errorf("key setup is only available from the backend host"))
-			return
-		}
-		if err := s.saveRuntimeKeyUpdates(keyUpdates); err != nil {
-			writeError(w, http.StatusBadRequest, err)
+		if status, err := s.applyRuntimeKeyUpdates(r, input.ProviderKeys, input.ACPKeys); err != nil {
+			writeError(w, status, err)
 			return
 		}
 		if normalized != nil {
