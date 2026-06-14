@@ -122,7 +122,7 @@ func loadConfig() (config, error) {
 }
 
 func parseServeConfig(args serveArgs) (serverconfig.Config, error) {
-	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
+	fs := flag.NewFlagSet("jaz", flag.ContinueOnError)
 	addr := fs.String("addr", ":5299", "HTTP listen address")
 	publicURL := fs.String("public-url", "", "URL shown to Jaz clients")
 	if err := fs.Parse(args.Args); err != nil {

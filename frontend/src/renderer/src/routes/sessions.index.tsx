@@ -33,7 +33,7 @@ function SessionsPage() {
         <EmptyState title="No sessions yet">
           <p>
             Start one from a terminal with{' '}
-            <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[12px]">jaz chat</code>{' '}
+            <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[12px]">jaz-chat</code>{' '}
             and it will appear here.
           </p>
         </EmptyState>
