@@ -106,22 +106,71 @@ function linkifyKnownSkills(text: string, skills: SkillInfo[]): string {
 const FILE_REFERENCE_PATTERN =
   /(?:file:\/\/\/|\/)(?:[^\s<>(){}]+\/)+[^\s<>(){}]+\.[A-Za-z0-9][A-Za-z0-9]*(?::\d+)?/g
 
-function linkifyFileReferences(text: string): string {
-  if (!text.includes('/')) return text
-  return text
-    .split(/(```[\s\S]*?```|`[^`]*`)/g)
-    .map((part, i) => {
-      if (i % 2 === 1) return part
-      return part.replace(FILE_REFERENCE_PATTERN, (match, offset: number) => {
-        const before = part.slice(Math.max(0, offset - 8), offset)
-        if (before.endsWith('](') || before.includes('://')) return match
-        const ref = parseFileReference(match)
-        if (!ref) return match
-        const href = ref.line ? `${ref.path}:${ref.line}` : ref.path
-        return `[${match}](${href})`
-      })
+type MarkdownNode = {
+  type: string
+  value?: string
+  url?: string
+  title?: string | null
+  children?: MarkdownNode[]
+}
+
+const FILE_REFERENCE_SKIP_NODES = new Set([
+  'code',
+  'definition',
+  'html',
+  'image',
+  'imageReference',
+  'inlineCode',
+  'inlineMath',
+  'link',
+  'linkReference',
+  'math',
+])
+
+function remarkFileReferences() {
+  return (tree: MarkdownNode) => {
+    linkifyFileReferenceNodes(tree)
+  }
+}
+
+function linkifyFileReferenceNodes(node: MarkdownNode): void {
+  if (!node.children || FILE_REFERENCE_SKIP_NODES.has(node.type)) return
+  for (let i = 0; i < node.children.length; i++) {
+    const child = node.children[i]
+    if (child.type === 'text' && typeof child.value === 'string') {
+      const replacement = fileReferenceTextNodes(child.value)
+      if (replacement) {
+        node.children.splice(i, 1, ...replacement)
+        i += replacement.length - 1
+      }
+      continue
+    }
+    linkifyFileReferenceNodes(child)
+  }
+}
+
+function fileReferenceTextNodes(value: string): MarkdownNode[] | null {
+  if (!value.includes('/')) return null
+  const nodes: MarkdownNode[] = []
+  let lastIndex = 0
+  FILE_REFERENCE_PATTERN.lastIndex = 0
+  for (const match of value.matchAll(FILE_REFERENCE_PATTERN)) {
+    const raw = match[0]
+    const ref = parseFileReference(raw)
+    if (!ref) continue
+    const index = match.index ?? 0
+    if (index > lastIndex) nodes.push({ type: 'text', value: value.slice(lastIndex, index) })
+    nodes.push({
+      type: 'link',
+      url: ref.line ? `${ref.path}:${ref.line}` : ref.path,
+      title: null,
+      children: [{ type: 'text', value: raw }],
     })
-    .join('')
+    lastIndex = index + raw.length
+  }
+  if (!nodes.length) return null
+  if (lastIndex < value.length) nodes.push({ type: 'text', value: value.slice(lastIndex) })
+  return nodes
 }
 
 function mentionSigil(label: string): '$' | '@' | null {
@@ -138,13 +187,13 @@ export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: s
   const openPreview = useContext(PreviewLinkContext)
   const openFile = useContext(FileReaderLinkContext)
   const prepared = useMemo(
-    () => normalizeMath(linkifyFileReferences(linkifyKnownSkills(text, skills.data ?? []))),
+    () => normalizeMath(linkifyKnownSkills(text, skills.data ?? [])),
     [text, skills.data],
   )
   return (
     <div className="chat-prose">
       <Markdown
-        remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: false }]]}
+        remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: false }], remarkFileReferences]}
         rehypePlugins={[rehypeKatex]}
         components={{
           a: ({ node: _node, children, href, onClick, ...props }) => {
