@@ -22,7 +22,7 @@ import { RAINBOW_BEAM } from '@/components/ui/rainbow'
 import { Select } from '@/components/ui/Select'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
-import { agentLabel, authProviderLabel } from '@/lib/agentLabel'
+import { authProviderLabel, onboardingAgentLabel } from '@/lib/agentLabel'
 import { completeOnboarding, onboardingQuery } from '@/lib/api/onboarding'
 import { getACPAuthLogin, startACPAuthLogin } from '@/lib/api/settings'
 import type { ACPAgentAuth, ACPAuthLogin, AgentSettings, OnboardingACPProbe, OnboardingStatus } from '@/lib/api/types'
@@ -106,7 +106,7 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
     mutationFn: ({ agent, auth }: { agent: string; auth?: ACPAgentAuth }) => startACPAuthLogin(agent, auth),
     onSuccess: (job) => {
       setLoginJobs((current) => ({ ...current, [job.agent]: job }))
-      toast(`Started ${agentLabel(job.agent)} sign-in`)
+      toast(`Started ${authProviderLabel(job.agent)} sign-in`)
     },
     onError: (error: Error) => toast(`Couldn't start sign-in: ${error.message}`, 'danger'),
   })
@@ -170,14 +170,14 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
         variants={stagger}
         initial="hidden"
         animate="show"
-        className="min-w-0 w-full max-w-[calc(100vw-40px)] md:max-w-[520px]"
+        className="min-w-0 w-full max-w-[calc(100vw-40px)] md:max-w-[460px]"
       >
-        <motion.div variants={rise} className="mb-6">
+        <motion.div variants={rise} className="mb-5">
           <BackendChip remote={remote} url={connection.url} />
-          <h1 className="mt-3.5 text-balance text-[24px] font-semibold tracking-tight text-ink">
+          <h1 className="mt-3 text-balance text-[20px] font-semibold tracking-tight text-ink">
             Connect your agents
           </h1>
-          <p className="mt-1.5 text-pretty text-[13px] leading-relaxed text-ink-2">
+          <p className="mt-1 text-pretty text-[13px] leading-relaxed text-ink-2">
             Sign in to a coding agent, or give jaz its own provider key. Anything you connect turns on
             automatically.
           </p>
@@ -185,7 +185,7 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
 
         <motion.div variants={rise}>
           <SectionLabel>Coding agents</SectionLabel>
-          <div className="grid gap-2">
+          <div className="grid gap-1.5">
             {status.acp.map((probe) => (
               <AgentCard
                 key={probe.agent}
@@ -304,31 +304,33 @@ function AgentCard({
               '--ring-angle': { duration: 2.6, ease: 'linear', repeat: Infinity },
             }}
           >
-            <div className="absolute inset-0 rounded-[16px]" style={{ background: RAINBOW_BEAM }} />
+            <div className="absolute inset-0 rounded-[12px]" style={{ background: RAINBOW_BEAM }} />
           </motion.div>
         ) : null}
       </AnimatePresence>
 
-      <div className="relative overflow-hidden rounded-[16px] bg-surface">
+      <div className="relative overflow-hidden rounded-[12px] bg-surface">
         <button
           type="button"
           aria-expanded={expanded}
           disabled={!actionable}
           onClick={() => setExpanded((open) => !open)}
-          className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors duration-150 enabled:hover:bg-surface-2/50 disabled:cursor-default"
+          className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors duration-150 enabled:hover:bg-surface-2/50 disabled:cursor-default"
         >
-          <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-bg text-ink">
+          <span className="grid size-8 shrink-0 place-items-center rounded-[8px] bg-bg text-ink">
             <AgentLogo agent={probe.agent} />
           </span>
-          <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-ink">
-            {agentLabel(probe.agent)}
+          <span className="flex min-w-0 flex-1 items-center gap-2">
+            <span className="truncate text-[13.5px] font-medium text-ink">
+              {onboardingAgentLabel(probe.agent)}
+            </span>
+            <StatePill state={state} />
           </span>
-          <StatePill state={state} />
           {state === 'ready' ? (
-            <CheckCircle2 size={18} className="shrink-0 text-primary" />
+            <CheckCircle2 size={17} className="shrink-0 text-primary" />
           ) : actionable ? (
             <ChevronDown
-              size={16}
+              size={15}
               className={`shrink-0 text-ink-3 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
             />
           ) : null}
@@ -344,7 +346,7 @@ function AgentCard({
               transition={{ duration: 0.2, ease: EASE }}
               className="overflow-hidden"
             >
-              <div className="flex flex-col gap-3 px-4 pb-4 pt-0.5">
+              <div className="flex flex-col gap-2.5 px-3 pb-3 pt-0.5">
                 {canKey ? (
                   <Segmented
                     layoutId={`onboarding-method-${probe.agent}`}
@@ -385,10 +387,10 @@ function AgentCard({
                       autoComplete="off"
                       spellCheck={false}
                       className="font-mono text-[12px]"
-                      aria-label={`${agentLabel(probe.agent)} API key`}
+                      aria-label={`${onboardingAgentLabel(probe.agent)} API key`}
                     />
                     <p className="text-[12px] text-ink-3">
-                      jaz passes this key straight to {agentLabel(probe.agent)}.
+                      jaz passes this key straight to {onboardingAgentLabel(probe.agent)}.
                     </p>
                   </div>
                 )}
@@ -424,11 +426,11 @@ function NativeAgentCard({
   const ready = configured || apiKeyValue.trim().length > 0
 
   return (
-    <div className="overflow-hidden rounded-[16px] bg-surface">
-      <div className="flex items-center gap-2.5 px-4 py-3.5">
+    <div className="overflow-hidden rounded-[12px] bg-surface">
+      <div className="flex items-center gap-2.5 px-3 py-3">
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
-            <p className="truncate text-[14px] font-medium text-ink">jaz native</p>
+            <p className="truncate text-[13.5px] font-medium text-ink">jaz native</p>
           </div>
           <p className="mt-0.5 text-pretty text-[12px] text-ink-3">
             jaz’s own agent connects directly to {label}.
@@ -437,12 +439,12 @@ function NativeAgentCard({
         {ready ? (
           <>
             <StatePill state="ready" label={configured ? 'Connected' : 'Key added'} />
-            <CheckCircle2 size={18} className="shrink-0 text-primary" />
+            <CheckCircle2 size={17} className="shrink-0 text-primary" />
           </>
         ) : null}
       </div>
 
-      <div className="flex flex-col gap-3 px-4 pb-4 pt-0.5">
+      <div className="flex flex-col gap-2.5 px-3 pb-3 pt-0.5">
         <div className="flex items-center justify-between gap-3">
           <span className="text-[13px] text-ink-2">Provider</span>
           <Select
@@ -456,8 +458,8 @@ function NativeAgentCard({
         </div>
 
         {configured ? (
-          <div className="flex min-h-9 items-center gap-2 rounded-[12px] bg-primary/10 px-3 text-[13px] text-ink">
-            <Check size={15} className="shrink-0 text-primary" />
+          <div className="flex items-center gap-1.5 px-0.5 text-[12px] text-ink-2">
+            <Check size={14} className="shrink-0 text-primary" />
             Your {label} key is already set up.
           </div>
         ) : (
