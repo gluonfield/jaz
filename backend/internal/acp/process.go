@@ -4,24 +4,75 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/gluonfield/acp-transport/stdio"
 	"github.com/gluonfield/acp-transport/streamhttp"
 )
 
-func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, env map[string]string, cwd string) (jsonrpc.MessageConn, error) {
+const processStderrTailLimit = 2000
+
+type processStderrTail struct {
+	mu   sync.Mutex
+	text string
+	done chan struct{}
+}
+
+func newProcessStderrTail() *processStderrTail {
+	return &processStderrTail{done: make(chan struct{})}
+}
+
+func (t *processStderrTail) Write(p []byte) (int, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.text += string(p)
+	if len(t.text) > processStderrTailLimit {
+		t.text = t.text[len(t.text)-processStderrTailLimit:]
+	}
+	return len(p), nil
+}
+
+func (t *processStderrTail) close() {
+	close(t.done)
+}
+
+func (t *processStderrTail) String() string {
+	if t == nil {
+		return ""
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return strings.TrimSpace(t.text)
+}
+
+func withProcessStderr(err error, stderr *processStderrTail) error {
+	if stderr != nil {
+		select {
+		case <-stderr.done:
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	if detail := stderr.String(); detail != "" {
+		return fmt.Errorf("%w: %s", err, detail)
+	}
+	return err
+}
+
+func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, env map[string]string, cwd string) (jsonrpc.MessageConn, *processStderrTail, error) {
 	if cfg.URL != "" {
 		opts := []streamhttp.ClientOption{}
 		parsed, err := url.Parse(cfg.URL)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if parsed.Scheme == "http" {
 			opts = append(opts, streamhttp.WithH2C())
@@ -29,10 +80,11 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 		if cfg.Token != "" {
 			opts = append(opts, streamhttp.WithBearerToken(cfg.Token))
 		}
-		return streamhttp.Dial(cfg.URL, opts...)
+		conn, err := streamhttp.Dial(cfg.URL, opts...)
+		return conn, nil, err
 	}
 	if cfg.Command == "" {
-		return nil, fmt.Errorf("acp agent %q has no command", name)
+		return nil, nil, fmt.Errorf("acp agent %q has no command", name)
 	}
 	command, args := processCommand(name, cfg)
 	if resolved, err := ResolveExecutable(command); err == nil {
@@ -45,22 +97,24 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	cmd.Stderr = os.Stderr
+	stderr := newProcessStderrTail()
+	cmd.Stderr = io.MultiWriter(os.Stderr, stderr)
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start acp agent %q (%s): %w", name, strings.Join(append([]string{command}, args...), " "), err)
+		return nil, nil, fmt.Errorf("start acp agent %q (%s): %w", name, strings.Join(append([]string{command}, args...), " "), err)
 	}
 	conn := stdio.New(stdout, stdin)
 	go func() {
 		_ = cmd.Wait()
+		stderr.close()
 		_ = conn.Close()
 	}()
-	return conn, nil
+	return conn, stderr, nil
 }
 
 func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
@@ -145,7 +199,7 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 			}
 		}
 		if env["CLAUDE_CODE_EXECUTABLE"] == "" {
-			if cli, err := exec.LookPath("claude"); err == nil {
+			if cli, err := ResolveExecutable("claude"); err == nil {
 				env["CLAUDE_CODE_EXECUTABLE"] = cli
 			}
 		}

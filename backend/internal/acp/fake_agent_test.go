@@ -16,6 +16,10 @@ func TestFakeACPAgentProcess(t *testing.T) {
 	if os.Getenv("JAZ_FAKE_ACP_AGENT") != "1" {
 		return
 	}
+	if msg := os.Getenv("JAZ_FAKE_ACP_EXIT_BEFORE_INIT"); msg != "" {
+		_, _ = fmt.Fprintln(os.Stderr, msg)
+		os.Exit(2)
+	}
 	conn := stdio.New(os.Stdin, os.Stdout)
 	currentMode := "auto"
 	currentModel := ""

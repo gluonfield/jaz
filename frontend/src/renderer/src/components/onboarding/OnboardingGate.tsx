@@ -174,6 +174,7 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
               <AgentCard
                 key={probe.agent}
                 probe={probe}
+                agentHost={remote ? 'your server' : 'this Mac'}
                 apiKeyValue={acpKeysByAgent[probe.agent] ?? ''}
                 loginJob={loginJobs[probe.agent]}
                 loginPending={login.isPending && login.variables?.agent === probe.agent}
@@ -245,6 +246,7 @@ function agentState(probe: OnboardingACPProbe, keyDraft: string): AgentState {
 
 function AgentCard({
   probe,
+  agentHost,
   apiKeyValue,
   loginJob,
   loginPending,
@@ -252,6 +254,7 @@ function AgentCard({
   onAPIKeyChange,
 }: {
   probe: OnboardingACPProbe
+  agentHost: string
   apiKeyValue: string
   loginJob?: ACPAuthLogin
   loginPending: boolean
@@ -268,6 +271,13 @@ function AgentCard({
   const [expanded, setExpanded] = useState(false)
   const [method, setMethod] = useState<'login' | 'key'>(apiKeyReady && canKey ? 'key' : 'login')
   const actionable = state === 'action'
+  const companionAppBlocked = Boolean(probe.app_installed && !probe.available && !probe.auth_command_available)
+  const missingLabel = companionAppBlocked ? `Needs ${onboardingAgentLabel(probe.agent)}` : undefined
+  const missingDetail = companionAppBlocked
+    ? `${probe.app_name || authProviderLabel(probe.agent)} is installed on ${agentHost}, but ${onboardingAgentLabel(probe.agent)} is not available to jaz.`
+    : state === 'missing'
+      ? probe.reason
+      : ''
 
   return (
     <div className="relative">
@@ -306,7 +316,7 @@ function AgentCard({
             <span className="truncate text-[13.5px] font-medium text-ink">
               {onboardingAgentLabel(probe.agent)}
             </span>
-            <StatePill state={state} />
+            <StatePill state={state} label={missingLabel} />
           </span>
           {state === 'ready' ? (
             <CheckCircle2 size={17} className="shrink-0 text-primary" />
@@ -317,6 +327,9 @@ function AgentCard({
             />
           ) : null}
         </button>
+        {missingDetail ? (
+          <p className="px-3 pb-2 text-pretty text-[12px] leading-relaxed text-ink-3">{missingDetail}</p>
+        ) : null}
 
         <AnimatePresence initial={false}>
           {expanded && actionable ? (
