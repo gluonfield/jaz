@@ -248,6 +248,24 @@ func TestProcessEnvUsesJazConfigForClaudeCode(t *testing.T) {
 	})
 }
 
+func TestProcessEnvFindsClaudeCodeFromLoginShell(t *testing.T) {
+	clearHostEnv(t)
+	claude := testExecutable(t)
+	shell := filepath.Join(t.TempDir(), "shell")
+	if err := os.WriteFile(shell, []byte("#!/bin/sh\nprintf '%s\n' \"$JAZ_TEST_CLAUDE\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", "/bin")
+	t.Setenv("SHELL", shell)
+	t.Setenv("JAZ_TEST_CLAUDE", claude)
+
+	env := NewManager(nil, Config{Root: t.TempDir()}, nil).probeEnv("claude", AgentConfig{})
+
+	if env["CLAUDE_CODE_EXECUTABLE"] != claude {
+		t.Fatalf("CLAUDE_CODE_EXECUTABLE = %q, want %q", env["CLAUDE_CODE_EXECUTABLE"], claude)
+	}
+}
+
 func TestProcessEnvIgnoresConfiguredClaudeHome(t *testing.T) {
 	clearHostEnv(t)
 	home := t.TempDir()
