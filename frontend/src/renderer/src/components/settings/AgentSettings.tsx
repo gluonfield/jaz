@@ -10,7 +10,7 @@ import { Select } from '@/components/ui/Select'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
-import { agentLabel } from '@/lib/agentLabel'
+import { agentLabel, authProviderLabel } from '@/lib/agentLabel'
 import { agentSettingsQuery, getACPAuthLogin, startACPAuthLogin, updateAgentSettings } from '@/lib/api/settings'
 import type { ACPAgentAuthStatus, ACPAuthLogin, AgentSettings as AgentSettingsData } from '@/lib/api/types'
 import { acpAgentModelSuggestions, OPENAI_MODELS, openRouterModelsQuery } from '@/lib/models'
@@ -100,7 +100,7 @@ export function AgentSettings() {
       startACPAuthLogin(agent, auth),
     onSuccess: (job) => {
       setLoginJobs((current) => ({ ...current, [job.agent]: job }))
-      toast(`Started ${agentLabel(job.agent)} sign-in`)
+      toast(`Started ${authProviderLabel(job.agent)} sign-in`)
     },
     onError: (error: Error) => toast(`Couldn't start sign-in: ${error.message}`, 'danger'),
   })
@@ -489,7 +489,7 @@ function AgentAuthPanel({
             className="w-full"
           >
             {running ? <LoaderCircle size={14} className="animate-spin" /> : <LogIn size={14} />}
-            {running ? 'Waiting for sign-in...' : `Sign in with ${agentLabel(agent)}`}
+            {running ? 'Waiting for sign-in...' : `Sign in with ${authProviderLabel(agent)}`}
           </Button>
           <AuthLoginStatus job={loginJob} running={running} />
         </div>
