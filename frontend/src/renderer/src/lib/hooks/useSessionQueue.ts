@@ -1,8 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
 import { useToast } from '@/components/ui/toast'
-import { mutateSessionQueue, type QueueMutation } from '@/lib/api/sessions'
-import type { Session, SessionMessages } from '@/lib/api/types'
+import { mutateSessionQueue, type QueueMutation, uploadSessionAttachment } from '@/lib/api/sessions'
+import type { QueuedMessage, Session, SessionMessages } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 
@@ -24,7 +24,7 @@ export function useSessionQueue({
   const queuedPrompts = normalizeQueuedPrompts(session?.queued_messages ?? [])
   const running = isSessionRunning({ session, acpState, streaming })
 
-  const mutateQueue = useCallback(async (mutation: QueueMutation, optimisticPrompts: string[]) => {
+  const mutateQueue = useCallback(async (mutation: QueueMutation, optimisticPrompts: QueuedMessage[]) => {
     const next = normalizeQueuedPrompts(optimisticPrompts)
     queryClient.setQueryData<SessionMessages>(keys.sessionMessages(sessionId), (prev) =>
       prev ? { ...prev, session: { ...prev.session, queued_messages: next } } : prev,
@@ -49,33 +49,39 @@ export function useSessionQueue({
 
   const send = useCallback((text: string, options: SendMessageOptions = {}) => {
     if (running) {
-      if (options.files?.length) {
-        toast("Attachments can't be queued.", 'danger')
-        return
-      }
-      void mutateQueue({ op: 'append', text }, [...queuedPrompts, text]).catch(showQueueError)
+      void (async () => {
+        const attachments = options.files?.length
+          ? await Promise.all(options.files.map((file) => uploadSessionAttachment(sessionId, file)))
+          : []
+        const prompt = normalizeQueuedPrompt({ text, attachment_ids: attachments.map((attachment) => attachment.id) })
+        if (!prompt) return
+        await mutateQueue(
+          { op: 'append', text: prompt.text, attachment_ids: prompt.attachment_ids },
+          [...queuedPrompts, prompt],
+        )
+      })().catch(showQueueError)
       return
     }
     onSend(text, options)
-  }, [mutateQueue, onSend, queuedPrompts, running, showQueueError, toast])
+  }, [mutateQueue, onSend, queuedPrompts, running, sessionId, showQueueError])
 
   const deletePrompt = useCallback((index: number) => {
     void mutateQueue(
-      { op: 'delete', index, expected: queuedPrompts[index] },
+      { op: 'delete', index, expected: queuedPrompts[index]?.text },
       removeQueuedPrompt(queuedPrompts, index),
     ).catch(showQueueError)
   }, [mutateQueue, queuedPrompts, showQueueError])
 
   const editPrompt = useCallback((index: number, text: string) => {
     void mutateQueue(
-      { op: 'edit', index, text, expected: queuedPrompts[index] },
-      queuedPrompts.map((prompt, i) => (i === index ? text : prompt)),
+      { op: 'edit', index, text, expected: queuedPrompts[index]?.text },
+      queuedPrompts.map((prompt, i) => (i === index ? { ...prompt, text } : prompt)),
     ).catch(showQueueError)
   }, [mutateQueue, queuedPrompts, showQueueError])
 
   const movePrompt = useCallback((from: number, to: number) => {
     void mutateQueue(
-      { op: 'move', from, to, expected: queuedPrompts[from] },
+      { op: 'move', from, to, expected: queuedPrompts[from]?.text },
       moveQueuedPrompt(queuedPrompts, from, to),
     ).catch(showQueueError)
   }, [mutateQueue, queuedPrompts, showQueueError])
@@ -87,7 +93,7 @@ export function useSessionQueue({
     const nextQueue = removeQueuedPrompt(queuedPrompts, index)
     void (async () => {
       try {
-        await mutateQueue({ op: 'steer', index, expected: prompt }, nextQueue)
+        await mutateQueue({ op: 'steer', index, expected: prompt.text }, nextQueue)
         queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
         queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
         queryClient.invalidateQueries({ queryKey: keys.allSessions })
@@ -126,15 +132,25 @@ function isSessionRunning({
   )
 }
 
-function normalizeQueuedPrompts(prompts: string[]): string[] {
-  return prompts.map((prompt) => prompt.trim()).filter(Boolean)
+function normalizeQueuedPrompts(prompts: QueuedMessage[]): QueuedMessage[] {
+  return prompts.flatMap((prompt) => {
+    const normalized = normalizeQueuedPrompt(prompt)
+    return normalized ? [normalized] : []
+  })
 }
 
-function removeQueuedPrompt(prompts: string[], index: number): string[] {
+function normalizeQueuedPrompt(prompt: QueuedMessage): QueuedMessage | null {
+  const text = prompt.text.trim()
+  if (!text) return null
+  const attachmentIds = (prompt.attachment_ids ?? []).map((id) => id.trim()).filter(Boolean)
+  return attachmentIds.length ? { text, attachment_ids: attachmentIds } : { text }
+}
+
+function removeQueuedPrompt(prompts: QueuedMessage[], index: number): QueuedMessage[] {
   return prompts.filter((_, i) => i !== index)
 }
 
-function moveQueuedPrompt(prompts: string[], from: number, to: number): string[] {
+function moveQueuedPrompt(prompts: QueuedMessage[], from: number, to: number): QueuedMessage[] {
   if (from === to || from < 0 || from >= prompts.length || to < 0 || to >= prompts.length) {
     return prompts
   }

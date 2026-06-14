@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { FileDropOverlay, useWindowFileDrop } from '@/components/ui/FileDrop'
 import { IconButton } from '@/components/ui/IconButton'
+import type { QueuedMessage } from '@/lib/api/types'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { RAINBOW_BEAM } from '@/components/ui/rainbow'
@@ -113,9 +114,9 @@ export function ComposerCard({
     storage: draftStorage,
     onTextChange,
   })
-  const canQueueWhileStreaming = streaming && queueWhenStreaming && files.length === 0
+  const canQueueWhileStreaming = streaming && queueWhenStreaming
   const submitDisabled = mention.isEmpty || disabled || (streaming && !canQueueWhileStreaming)
-  const showStopButton = streaming && onStop && (!queueWhenStreaming || mention.isEmpty || files.length > 0)
+  const showStopButton = streaming && onStop && (!queueWhenStreaming || mention.isEmpty)
 
   // autoFocus lands before React's focus listeners attach; sync the ring state.
   useEffect(() => {
@@ -168,7 +169,7 @@ export function ComposerCard({
     if (!trimmed || disabled || (streaming && !canQueueWhileStreaming)) return
     onSend(trimmed, {
       planRequested: !streaming && planAvailable && planRequested,
-      files: streaming ? [] : files,
+      files,
     })
     if (clearOnSend) {
       mention.reset()
@@ -409,7 +410,7 @@ export function Composer({
   disabled?: boolean
   placeholder?: string
   planAvailable?: boolean
-  queuedPrompts?: string[]
+  queuedPrompts?: QueuedMessage[]
   steerDisabled?: boolean
   draftStorageKey?: string
   /** directory the @-mention picker indexes; undefined disables @ */
