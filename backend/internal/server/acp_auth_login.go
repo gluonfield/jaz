@@ -121,6 +121,13 @@ func (s *Server) runACPAuthLogin(ctx context.Context, agent string, invocation a
 		Status:    "running",
 		StartedAt: time.Now().UTC(),
 	}
+	// Login writes credentials into the agent's profile dir (CODEX_HOME /
+	// CLAUDE_CONFIG_DIR). The CLI won't create it — codex aborts with "CODEX_HOME
+	// points to … but that path does not exist" — so make it first. These are
+	// the explicit Jaz-owned profile paths, the only dirs Jaz creates for agents.
+	if err := ensureLoginProfileDirs(invocation.Env); err != nil {
+		return nil, err
+	}
 	cmdCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), acpAuthLoginTimeout)
 	cmd := exec.CommandContext(cmdCtx, invocation.Executable, invocation.Args...)
 	cmd.Env = acpAuthLoginEnv(invocation)
@@ -141,6 +148,22 @@ func (s *Server) runACPAuthLogin(ctx context.Context, agent string, invocation a
 		job.finish(err, cmdCtx.Err())
 	}()
 	return job, nil
+}
+
+// ensureLoginProfileDirs creates the profile directories a login invocation
+// points its CLI at. The invocation env only carries explicit profile paths
+// (CODEX_HOME, CLAUDE_CONFIG_DIR); Grok carries none and uses the real home.
+func ensureLoginProfileDirs(env map[string]string) error {
+	for key, dir := range env {
+		dir = strings.TrimSpace(dir)
+		if dir == "" {
+			continue
+		}
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return fmt.Errorf("prepare %s profile %s: %w", key, dir, err)
+		}
+	}
+	return nil
 }
 
 func newACPAuthLoginID() (string, error) {
