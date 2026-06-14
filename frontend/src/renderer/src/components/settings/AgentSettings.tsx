@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, KeyRound, LoaderCircle, LogIn, Save, ShieldCheck, Terminal } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { AuthLoginStatus } from '@/components/acp/AuthLoginStatus'
 import { Button } from '@/components/ui/Button'
@@ -64,6 +64,15 @@ function settingsKey(settings: AgentSettingsData | null): string {
   return settings ? JSON.stringify(settings) : ''
 }
 
+// Returns a clone with one ACP agent turned on — used when a sign-in or API key
+// connects an agent, so it becomes a usable runtime without a separate toggle.
+function withEnabledAgent(settings: AgentSettingsData, agent: string): AgentSettingsData {
+  const next = cloneSettings(settings)
+  const current = next.acp[agent]
+  if (current) next.acp[agent] = { ...current, enabled: true }
+  return next
+}
+
 function hasEnabledACPWithoutCommand(settings: AgentSettingsData): boolean {
   return settings.agents.some((agent) => {
     const current = settings.acp[agent]
@@ -77,15 +86,19 @@ export function AgentSettings() {
   const settings = useQuery(agentSettingsQuery)
   const [draft, setDraft] = useState<AgentSettingsData | null>(null)
   const [loginJobs, setLoginJobs] = useState<Record<string, ACPAuthLogin>>({})
+  // A freshly pasted native provider key, keyed by provider id. Write-only —
+  // the backend never returns the value, so it lives outside the draft.
+  const [providerKeys, setProviderKeys] = useState<Record<string, string>>({})
 
   useEffect(() => {
     if (settings.data) setDraft(cloneSettings(settings.data))
   }, [settings.data])
 
   const save = useMutation({
-    mutationFn: (input: AgentSettingsData) => updateAgentSettings(input),
+    mutationFn: (input: AgentSettingsData) => updateAgentSettings(input, providerKeys),
     onSuccess: (saved) => {
       setDraft(cloneSettings(saved))
+      setProviderKeys({})
       toast('Saved agent settings')
     },
     onError: (error: Error) => toast(`Couldn't save agent settings: ${error.message}`, 'danger'),
@@ -105,6 +118,12 @@ export function AgentSettings() {
     onError: (error: Error) => toast(`Couldn't start sign-in: ${error.message}`, 'danger'),
   })
 
+  // Latest draft / save, read inside the polling interval without re-creating it.
+  const draftRef = useRef(draft)
+  draftRef.current = draft
+  const saveRef = useRef(save)
+  saveRef.current = save
+
   useEffect(() => {
     const running = Object.values(loginJobs).filter((job) => job.status === 'running')
     if (running.length === 0) return
@@ -112,10 +131,16 @@ export function AgentSettings() {
       for (const job of running) {
         void getACPAuthLogin(job.id).then((next) => {
           setLoginJobs((current) => ({ ...current, [next.agent]: next }))
-          if (next.status !== 'running') {
+          if (next.status === 'running') return
+          const latest = draftRef.current
+          if (next.status === 'succeeded' && latest?.acp[next.agent] && !latest.acp[next.agent].enabled) {
+            // A fresh sign-in connects this agent — turn it on and persist so it
+            // works right away, matching onboarding (no extra Enabled toggle).
+            saveRef.current.mutate(withEnabledAgent(latest, next.agent))
+          } else {
             queryClient.invalidateQueries({ queryKey: keys.agentSettings })
-            queryClient.invalidateQueries({ queryKey: keys.acpAgents })
           }
+          queryClient.invalidateQueries({ queryKey: keys.acpAgents })
         })
       }
     }, 1000)
@@ -132,12 +157,18 @@ export function AgentSettings() {
   })
   const nativeModelSuggestions =
     draft?.native.model_provider === 'openrouter' ? (openRouterModels.data ?? []) : OPENAI_MODELS
+  const nativeKeyDirty = Object.values(providerKeys).some((value) => value.trim().length > 0)
   const invalid = draft
     ? (draft.native.model_provider ?? '').trim() === '' ||
       draft.native.model.trim() === '' ||
       hasEnabledACPWithoutCommand(draft)
     : true
-  const canSave = draft != null && !invalid && dirty && !save.isPending
+  const canSave = draft != null && !invalid && (dirty || nativeKeyDirty) && !save.isPending
+
+  const selectedProvider = draft?.native.model_provider ?? ''
+  const selectedNativeProvider = draft?.providers.find((provider) => provider.id === selectedProvider)
+  const selectedProviderEnv = selectedNativeProvider?.api_key_env
+  const selectedProviderConfigured = Boolean(selectedNativeProvider?.configured)
 
   return (
     <section className="py-5">
@@ -202,6 +233,32 @@ export function AgentSettings() {
                     }}
                     aria-label="Native provider"
                     className={rowControlClass}
+                  />
+                </SettingsRow>
+                <SettingsRow
+                  title="Provider key"
+                  description={
+                    selectedProviderConfigured
+                      ? `${selectedProviderEnv} is configured — paste a new key to replace it.`
+                      : `Paste an API key; stored on the backend as ${selectedProviderEnv ?? 'the provider env var'}.`
+                  }
+                >
+                  <Input
+                    type="password"
+                    value={providerKeys[selectedProvider] ?? ''}
+                    disabled={save.isPending || !selectedProvider}
+                    onChange={(event) =>
+                      setProviderKeys({ ...providerKeys, [selectedProvider]: event.target.value })
+                    }
+                    placeholder={
+                      selectedProviderConfigured
+                        ? `${selectedProviderEnv} configured`
+                        : (selectedProviderEnv ?? 'API key')
+                    }
+                    autoComplete="off"
+                    spellCheck={false}
+                    className={`${rowControlClass} h-8 rounded-full bg-bg px-3 py-0 font-mono text-[12px]`}
+                    aria-label="Native provider API key"
                   />
                 </SettingsRow>
                 <SettingsRow title="Model" description="Default model for native threads.">
@@ -320,10 +377,12 @@ function ACPAgentRow({
         </div>
       </SettingsRow>
 
+      {/* Auth is never gated by the Enabled toggle: you must be able to connect
+          an agent you skipped in onboarding. Connecting it turns it on. */}
       <div className="border-t border-border/70 px-3 py-3">
         <AgentAuthPanel
           agent={agent}
-          disabled={controlsDisabled}
+          disabled={disabled}
           authMode={authModeValue(agent, current.auth?.mode)}
           authPath={agent === 'grok' ? '' : (current.auth?.path ?? '')}
           status={authStatus}
@@ -335,6 +394,8 @@ function ACPAgentRow({
           onAPIKeyChange={(value) =>
             onChange({
               ...settings,
+              // Adding a key connects the agent — enable it so it's usable.
+              acp: value.trim() ? { ...settings.acp, [agent]: { ...current, enabled: true } } : settings.acp,
               acp_keys: {
                 ...(settings.acp_keys ?? {}),
                 [agent]: value,
