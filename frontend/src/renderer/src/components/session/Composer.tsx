@@ -32,7 +32,7 @@ function PlanMenuToggle({
       aria-checked={checked}
       disabled={disabled}
       onClick={onToggle}
-      className={`flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] transition-colors duration-150 hover:bg-surface-2 disabled:cursor-default disabled:opacity-50 ${
+      className={`flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] transition-colors duration-150 enabled:hover:bg-surface-2 disabled:cursor-default disabled:opacity-50 ${
         checked ? 'text-ink' : 'text-ink-2'
       }`}
     >
@@ -105,6 +105,7 @@ export function ComposerCard({
   const [planRequested, setPlanRequested] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const reducedMotion = useReducedMotion()
+  const actionDisabled = disabled || streaming
   const mention = useMentionInput({
     fileRoot,
     disabled,
@@ -123,21 +124,21 @@ export function ComposerCard({
   }, [planAvailable])
 
   const addFiles = useCallback((next: File[]) => {
-    if (disabled || streaming || next.length === 0) return
+    if (actionDisabled || next.length === 0) return
     setFiles((current) => [...current, ...next])
-  }, [disabled, streaming])
+  }, [actionDisabled])
 
   // Drop intent is page-level: a file dragged anywhere in the window attaches
   // to this composer (the page's only one).
-  const draggingFiles = useWindowFileDrop({ disabled: disabled || streaming, onDrop: addFiles })
+  const draggingFiles = useWindowFileDrop({ disabled: actionDisabled, onDrop: addFiles })
 
   const togglePlanRequested = () => {
-    if (disabled || streaming || !planAvailable) return
+    if (actionDisabled || !planAvailable) return
     setPlanRequested((value) => !value)
   }
 
   useEffect(() => {
-    if (disabled || streaming || !planAvailable) return
+    if (actionDisabled || !planAvailable) return
     const onKeyDown = (event: KeyboardEvent) => {
       if (
         event.defaultPrevented ||
@@ -155,7 +156,7 @@ export function ComposerCard({
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [disabled, planAvailable, streaming])
+  }, [actionDisabled, planAvailable])
 
   const submit = () => {
     // Tokens expand on the way out: tagged paths become absolute, skill
@@ -227,7 +228,7 @@ export function ComposerCard({
           type="file"
           multiple
           className="hidden"
-          disabled={disabled || streaming}
+          disabled={actionDisabled}
           onChange={(e) => {
             addFiles(Array.from(e.currentTarget.files ?? []))
             e.currentTarget.value = ''
@@ -280,7 +281,7 @@ export function ComposerCard({
                   aria-expanded={optionsOpen}
                   aria-label="Composer options"
                   title="Composer options"
-                  disabled={streaming || disabled}
+                  disabled={disabled}
                   onClick={() => setOptionsOpen((value) => !value)}
                 >
                   <Plus
@@ -293,6 +294,7 @@ export function ComposerCard({
               }
             >
               <MenuRow
+                disabled={actionDisabled}
                 onClick={() => {
                   setOptionsOpen(false)
                   fileInputRef.current?.click()
@@ -304,7 +306,7 @@ export function ComposerCard({
                 </span>
               </MenuRow>
               {planAvailable ? (
-                <PlanMenuToggle checked={planRequested} disabled={streaming || disabled} onToggle={togglePlanRequested} />
+                <PlanMenuToggle checked={planRequested} disabled={actionDisabled} onToggle={togglePlanRequested} />
               ) : null}
             </Popover>
             {leftSlot}
