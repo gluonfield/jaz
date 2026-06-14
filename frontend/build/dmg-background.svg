@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="540" height="380" viewBox="0 0 540 380">
+  <defs>
+    <linearGradient id="header" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#15181d"/>
+      <stop offset="0.55" stop-color="#1d2027"/>
+      <stop offset="1" stop-color="#111419"/>
+    </linearGradient>
+  </defs>
+  <rect width="540" height="380" fill="#f7f6f2"/>
+  <rect width="540" height="118" fill="url(#header)"/>
+  <circle cx="34" cy="31" r="7" fill="#00d4ff" opacity="0.95"/>
+  <circle cx="58" cy="31" r="7" fill="#ffe66d" opacity="0.95"/>
+  <circle cx="82" cy="31" r="7" fill="#ff6b8a" opacity="0.95"/>
+  <circle cx="106" cy="31" r="7" fill="#72f29a" opacity="0.95"/>
+  <text x="270" y="58" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700" fill="#ffffff">Install Jaz</text>
+  <text x="270" y="86" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="600" fill="#d5d8df">Drag Jaz into Applications</text>
+  <path d="M70 270H470" stroke="#dedbd4" stroke-width="1"/>
+  <path d="M230 242H310M288 220L312 242L288 264" fill="none" stroke="#77736b" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -23,7 +23,21 @@ mac:
   extendInfo:
     NSMicrophoneUsageDescription: Jaz uses the microphone for voice input.
 dmg:
+  background: build/dmg-background.png
+  window:
+    width: 540
+    height: 380
   icon: src/assets/jaz.icns
+  iconSize: 96
+  iconTextSize: 12
+  contents:
+    - x: 136
+      y: 242
+      type: file
+    - x: 404
+      y: 242
+      type: link
+      path: /Applications
 publish:
   provider: github
   owner: gluonfield
