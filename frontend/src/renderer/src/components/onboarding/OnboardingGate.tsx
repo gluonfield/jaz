@@ -366,7 +366,7 @@ function AgentCard({
                       onClick={onStartLogin}
                     >
                       {running ? <LoaderCircle size={14} className="animate-spin" /> : <LogIn size={14} />}
-                      {running ? 'Waiting for sign-in…' : `Sign in with ${agentLabel(probe.agent)}`}
+                      {running ? 'Waiting for sign-in…' : `Sign in with ${authProviderLabel(probe.agent)}`}
                     </Button>
                     {!probe.auth_command_available && probe.auth_command_reason ? (
                       <p className="text-[12px] text-danger">{probe.auth_command_reason}</p>
