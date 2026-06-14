@@ -3,11 +3,11 @@
 // title-casing the slug ("local_helper" → "Local Helper").
 const DISPLAY_NAMES: Record<string, string> = {
   codex: 'Codex',
-  claude: 'Claude Code',
+  claude: 'Claude',
   grok: 'Grok',
 }
 
-// Prettifies an ACP agent name for display, e.g. "claude" → "Claude Code".
+// Prettifies an ACP agent name for display, e.g. "claude" → "Claude".
 export function agentLabel(value: string | undefined): string {
   const slug = (value || '').trim()
   if (!slug) return 'Agent'
@@ -32,4 +32,16 @@ const AUTH_PROVIDERS: Record<string, string> = {
 export function authProviderLabel(value: string | undefined): string {
   const slug = (value || '').trim().toLowerCase().replace(/[\s-]+/g, '_')
   return AUTH_PROVIDERS[slug] ?? agentLabel(value)
+}
+
+// Onboarding spells Claude out as "Claude Code" so first-time users recognise
+// the CLI they're connecting; everywhere else (sidebar, runtime badges) the
+// shorter "Claude" reads better. Only the onboarding screen uses this variant.
+const ONBOARDING_NAMES: Record<string, string> = {
+  claude: 'Claude Code',
+}
+
+export function onboardingAgentLabel(value: string | undefined): string {
+  const slug = (value || '').trim().toLowerCase().replace(/[\s-]+/g, '_')
+  return ONBOARDING_NAMES[slug] ?? agentLabel(value)
 }
