@@ -1,7 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertCircle, Bot, CheckCircle2, Copy, KeyRound, LoaderCircle, RefreshCw, Server } from 'lucide-react'
+import {
+  AlertCircle,
+  Bot,
+  CheckCircle2,
+  ChevronDown,
+  KeyRound,
+  LoaderCircle,
+  LogIn,
+  RefreshCw,
+  Server,
+} from 'lucide-react'
 import { motion } from 'motion/react'
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -10,8 +20,8 @@ import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
 import { agentLabel } from '@/lib/agentLabel'
 import { completeOnboarding, onboardingQuery } from '@/lib/api/onboarding'
-import type { ACPAgentAuth, AgentSettings, OnboardingACPProbe, OnboardingStatus } from '@/lib/api/types'
-import { writeClipboard } from '@/lib/clipboard'
+import { getACPAuthLogin, startACPAuthLogin } from '@/lib/api/settings'
+import type { ACPAgentAuth, ACPAuthLogin, AgentSettings, OnboardingACPProbe, OnboardingStatus } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 
 const EASE = [0.22, 1, 0.36, 1] as const
@@ -42,9 +52,12 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
   const [draft, setDraft] = useState(() => draftFromStatus(status))
   const [keysByProvider, setKeysByProvider] = useState<Record<string, string>>({})
   const [acpKeysByAgent, setACPKeysByAgent] = useState<Record<string, string>>({})
+  const [openAgent, setOpenAgent] = useState(status.acp[0]?.agent ?? '')
+  const [loginJobs, setLoginJobs] = useState<Record<string, ACPAuthLogin>>({})
 
   useEffect(() => {
     setDraft(draftFromStatus(status))
+    setOpenAgent((current) => current || status.acp[0]?.agent || '')
   }, [status])
 
   const providerStatus = useMemo(
@@ -63,13 +76,32 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
   const nativeReady = Boolean(selectedProviderStatus?.configured || selectedProviderKey)
   const canFinish = acpEnabled || nativeReady
 
-  const copyAuthCommand = useCallback(async (command: string) => {
-    if (await writeClipboard(command)) {
-      toast('Copied sign-in command')
-    } else {
-      toast("Couldn't copy sign-in command", 'danger')
-    }
-  }, [toast])
+  const login = useMutation({
+    mutationFn: ({ agent, auth }: { agent: string; auth?: ACPAgentAuth }) => startACPAuthLogin(agent, auth),
+    onSuccess: (job) => {
+      setLoginJobs((current) => ({ ...current, [job.agent]: job }))
+      toast(`Started ${agentLabel(job.agent)} sign-in`)
+    },
+    onError: (error: Error) => toast(`Couldn't start sign-in: ${error.message}`, 'danger'),
+  })
+
+  useEffect(() => {
+    const running = Object.values(loginJobs).filter((job) => job.status === 'running')
+    if (running.length === 0) return
+    const timer = window.setInterval(() => {
+      for (const job of running) {
+        void getACPAuthLogin(job.id).then((next) => {
+          setLoginJobs((current) => ({ ...current, [next.agent]: next }))
+          if (next.status !== 'running') {
+            queryClient.invalidateQueries({ queryKey: keys.onboarding })
+            queryClient.invalidateQueries({ queryKey: keys.agentSettings })
+            queryClient.invalidateQueries({ queryKey: keys.acpAgents })
+          }
+        })
+      }
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [loginJobs, queryClient])
 
   const save = useMutation({
     mutationFn: () =>
@@ -139,8 +171,15 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
                   key={probe.agent}
                   probe={probe}
                   enabled={Boolean(draft.acp[probe.agent]?.enabled)}
+                  open={openAgent === probe.agent}
+                  auth={draft.acp[probe.agent]?.auth}
                   apiKeyValue={acpKeysByAgent[probe.agent] ?? ''}
-                  onCopyAuthCommand={copyAuthCommand}
+                  loginJob={loginJobs[probe.agent]}
+                  loginPending={login.isPending && login.variables?.agent === probe.agent}
+                  onOpenChange={() => setOpenAgent((current) => current === probe.agent ? '' : probe.agent)}
+                  onStartLogin={() =>
+                    login.mutate({ agent: probe.agent, auth: draft.acp[probe.agent]?.auth })
+                  }
                   onAPIKeyChange={(value) =>
                     setACPKeysByAgent({ ...acpKeysByAgent, [probe.agent]: value })
                   }
@@ -219,91 +258,150 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
 function AgentToggle({
   probe,
   enabled,
+  open,
+  auth,
   apiKeyValue,
-  onCopyAuthCommand,
+  loginJob,
+  loginPending,
+  onOpenChange,
+  onStartLogin,
   onAPIKeyChange,
   onChange,
 }: {
   probe: OnboardingACPProbe
   enabled: boolean
+  open: boolean
+  auth?: ACPAgentAuth
   apiKeyValue: string
-  onCopyAuthCommand: (command: string) => void
+  loginJob?: ACPAuthLogin
+  loginPending: boolean
+  onOpenChange: () => void
+  onStartLogin: () => void
   onAPIKeyChange: (value: string) => void
   onChange: (enabled: boolean) => void
 }) {
   const status = agentStatusText(probe)
-  const canCopyAuth = Boolean(probe.auth_command && probe.auth_command_available)
-  const profile = authProfileText(probe)
   const apiKeyEnv = probe.api_key?.source_env
   const apiKeyReady = Boolean(probe.api_key_configured || apiKeyValue.trim())
+  const running = loginPending || loginJob?.status === 'running'
+  const [method, setMethod] = useState<'login' | 'key'>(apiKeyReady ? 'key' : 'login')
+  const ready = Boolean(probe.available || apiKeyReady)
   return (
-    <div className="rounded-[12px] bg-bg p-2.5 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-border)_70%,transparent)]">
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
-        <div className="min-w-0">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-            <p className="truncate text-[13px] font-medium text-ink">{agentLabel(probe.agent)}</p>
-            <span className={`text-[12px] ${probe.available ? 'text-primary' : 'text-ink-3'}`}>{status}</span>
+    <div className="overflow-hidden rounded-[12px] bg-bg shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-border)_70%,transparent)]">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={onOpenChange}
+        className="flex min-h-[58px] w-full items-center gap-3 px-3 py-2.5 text-left transition-colors duration-150 hover:bg-surface/70"
+      >
+        <span className={`size-2 rounded-full ${ready ? 'bg-primary' : 'bg-ink/30'}`} />
+        <span className="min-w-0 flex-1">
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-[13px] font-medium text-ink">{agentLabel(probe.agent)}</span>
+            <span className={`text-[12px] ${ready ? 'text-primary' : 'text-ink-3'}`}>{status}</span>
+          </span>
+          <span className="mt-0.5 block truncate text-[12px] text-ink-3">
+            {probe.authenticated ? authReadyText(probe) : probe.reason || authLoginHint(probe, auth)}
+          </span>
+        </span>
+        <span
+          className="flex items-center gap-2"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <Switch
+            checked={enabled}
+            disabled={!probe.installed || !ready}
+            onChange={onChange}
+            aria-label={`Enable ${agentLabel(probe.agent)}`}
+          />
+          <ChevronDown
+            size={15}
+            className={`text-ink-3 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
+          />
+        </span>
+      </button>
+
+      {open ? (
+        <motion.div
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          transition={{ duration: 0.16, ease: EASE }}
+          className="border-t border-border/70 px-3 pb-3 pt-2.5"
+        >
+          <div className="mb-3 flex rounded-full bg-surface p-1">
+            <Button
+              size="sm"
+              active={method === 'login'}
+              className="flex-1"
+              onClick={() => setMethod('login')}
+            >
+              <LogIn size={13} />
+              Auth login
+            </Button>
+            <Button
+              size="sm"
+              active={method === 'key'}
+              className="flex-1"
+              disabled={!apiKeyEnv}
+              onClick={() => setMethod('key')}
+            >
+              <KeyRound size={13} />
+              API key
+            </Button>
           </div>
-          <p className={`mt-1 break-words text-pretty text-[12px] ${probe.available ? 'text-ink-3' : 'text-danger'}`}>
-            {probe.reason || authStorageText(probe)}
-          </p>
-          <p className="mt-1 text-pretty text-[12px] text-ink-3">{profile}</p>
-          {probe.storage_path && (
-            <p className="mt-1 truncate font-mono text-[11px] text-ink-3">{probe.storage_path}</p>
-          )}
-          {apiKeyEnv ? (
-            <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+
+          {method === 'login' ? (
+            <div className="grid gap-2">
+              <p className="text-pretty text-[12px] text-ink-3">{authLoginHint(probe, auth)}</p>
+              <Button
+                variant="primary"
+                size="md"
+                disabled={!probe.auth_command_available || running}
+                onClick={onStartLogin}
+                className="w-full"
+              >
+                {running ? <LoaderCircle size={14} className="animate-spin" /> : <LogIn size={14} />}
+                {running ? 'Waiting for sign-in...' : `Sign in with ${agentLabel(probe.agent)}`}
+              </Button>
+              {!probe.auth_command_available && probe.auth_command_reason ? (
+                <p className="text-[12px] text-danger">{probe.auth_command_reason}</p>
+              ) : null}
+              {loginJob?.output ? (
+                <pre className="max-h-36 overflow-auto whitespace-pre-wrap rounded-[8px] bg-surface px-3 py-2 font-mono text-[11px] leading-relaxed text-ink-2">
+                  {loginJob.output}
+                </pre>
+              ) : null}
+              {loginJob?.status === 'failed' && loginJob.error ? (
+                <p className="text-[12px] text-danger">{loginJob.error}</p>
+              ) : null}
+            </div>
+          ) : (
+            <div className="grid gap-2">
+              <p className="text-pretty text-[12px] text-ink-3">
+                Use this only when you want Jaz to pass an explicit provider key to this agent.
+              </p>
               <Input
                 type="password"
                 value={apiKeyValue}
                 onChange={(event) => onAPIKeyChange(event.target.value)}
-                placeholder={probe.api_key_configured ? `${apiKeyEnv} configured` : apiKeyEnv}
+                placeholder={probe.api_key_configured ? `${apiKeyEnv} configured` : apiKeyEnv || 'API key'}
                 autoComplete="off"
                 spellCheck={false}
-                className="h-8 rounded-full bg-surface px-3 py-0 text-[12px]"
+                className="h-9 rounded-full bg-surface px-3 py-0 text-[12px]"
                 aria-label={`${agentLabel(probe.agent)} API key fallback`}
               />
               <span
-                className={`inline-flex h-8 items-center justify-center rounded-full px-2.5 text-[12px] ${
+                className={`inline-flex h-7 w-fit items-center rounded-full px-2.5 text-[12px] ${
                   apiKeyReady ? 'bg-primary-soft text-primary-strong' : 'bg-surface text-ink-3'
                 }`}
               >
-                {apiKeyReady ? 'API key ready' : 'Fallback'}
+                {apiKeyReady ? 'API key ready' : apiKeyEnv || 'No API key option'}
               </span>
             </div>
-          ) : null}
-          {!probe.authenticated && probe.auth_command && (
-            <div className="mt-2 grid gap-2 rounded-[calc(var(--radius-control)-2px)] bg-surface px-2.5 py-2">
-              <p className="text-[11px] text-ink-3">Run this on the backend host, then refresh.</p>
-              <code className="overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11px] text-ink-2">
-                {probe.auth_command}
-              </code>
-              {!probe.auth_command_available && probe.auth_command_reason && (
-                <p className="text-[11px] text-danger">{probe.auth_command_reason}</p>
-              )}
-            </div>
           )}
-        </div>
-        <div className="flex items-center justify-between gap-2 sm:justify-end">
-          {!probe.authenticated && probe.auth_command && (
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={!canCopyAuth}
-              onClick={() => onCopyAuthCommand(probe.auth_command || '')}
-            >
-              <Copy size={13} />
-              Copy
-            </Button>
-          )}
-          <Switch
-            checked={enabled}
-            disabled={!probe.installed || (!probe.available && !apiKeyReady)}
-            onChange={onChange}
-            aria-label={`Enable ${agentLabel(probe.agent)}`}
-          />
-        </div>
-      </div>
+        </motion.div>
+      ) : null}
     </div>
   )
 }
@@ -315,26 +413,16 @@ function agentStatusText(probe: OnboardingACPProbe): string {
   return 'Ready'
 }
 
-function authStorageText(probe: OnboardingACPProbe): string {
+function authReadyText(probe: OnboardingACPProbe): string {
   if (probe.auth_kind === 'api_key') return 'Using explicit API key fallback.'
   if (probe.refresh_owner === 'coding_agent_cli') return 'The coding agent owns token refresh.'
-  return 'Detected'
+  return 'Signed in.'
 }
 
-function authProfileText(probe: OnboardingACPProbe): string {
-  if (probe.auth_kind === 'api_key') return `${probe.api_key?.source_env || 'API key'} configured.`
-  const label = probe.auth_source === 'existing_cli' ? 'Using existing CLI profile' : 'Using Jaz profile'
-  const evidence =
-    probe.auth_evidence === 'keyring_config'
-      ? 'keychain configured'
-      : probe.auth_evidence === 'auth_json'
-        ? 'auth.json found'
-        : probe.auth_evidence === 'credentials_json'
-          ? 'credentials file found'
-          : probe.auth_evidence === 'env'
-            ? 'environment credential found'
-            : ''
-  return evidence ? `${label}; ${evidence}.` : `${label}.`
+function authLoginHint(probe: OnboardingACPProbe, auth?: ACPAgentAuth): string {
+  if (probe.agent === 'grok') return "Jaz runs Grok's normal login on this backend."
+  if (auth?.mode === 'existing_cli') return `Jaz runs ${agentLabel(probe.agent)} login against the backend user profile.`
+  return `Jaz runs ${agentLabel(probe.agent)} login and stores it for this backend.`
 }
 
 function StepRow({ icon, title, detail, children }: { icon: ReactNode; title: string; detail: string; children: ReactNode }) {

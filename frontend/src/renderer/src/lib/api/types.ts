@@ -546,6 +546,16 @@ export interface ACPAgentAuthStatus {
   refresh_owner?: string
 }
 
+export interface ACPAuthLogin {
+  id: string
+  agent: string
+  status: 'running' | 'succeeded' | 'failed'
+  output?: string
+  error?: string
+  started_at: string
+  finished_at?: string
+}
+
 export interface ReasoningEffortOption {
   value: string
   label: string

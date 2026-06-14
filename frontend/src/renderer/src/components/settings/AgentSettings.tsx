@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, KeyRound, Save, ShieldCheck, Terminal } from 'lucide-react'
+import { ChevronDown, KeyRound, LoaderCircle, LogIn, Save, ShieldCheck, Terminal } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/Button'
@@ -10,8 +10,8 @@ import { SkeletonRows } from '@/components/ui/Skeleton'
 import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
 import { agentLabel } from '@/lib/agentLabel'
-import { agentSettingsQuery, updateAgentSettings } from '@/lib/api/settings'
-import type { ACPAgentAuthStatus, AgentSettings as AgentSettingsData } from '@/lib/api/types'
+import { agentSettingsQuery, getACPAuthLogin, startACPAuthLogin, updateAgentSettings } from '@/lib/api/settings'
+import type { ACPAgentAuthStatus, ACPAuthLogin, AgentSettings as AgentSettingsData } from '@/lib/api/types'
 import { acpAgentModelSuggestions, OPENAI_MODELS, openRouterModelsQuery } from '@/lib/models'
 import { keys } from '@/lib/query/keys'
 import { acpReasoningEffortOptions, REASONING_EFFORT_OPTIONS } from '@/lib/reasoningEfforts'
@@ -20,6 +20,7 @@ const inputClass =
   'h-7 w-full rounded-full bg-ink/10 px-3 text-[12px] text-ink outline-none transition duration-150 placeholder:text-ink-3 focus:bg-ink/15 focus:ring-1 focus:ring-ink/25 disabled:opacity-50'
 
 const rowControlClass = 'w-full md:w-[320px]'
+type ACPAuthDraft = AgentSettingsData['acp'][string]['auth']
 const AUTH_MODE_OPTIONS = [
   { value: 'auto', label: 'Auto', description: 'Use the best profile detected on the backend' },
   { value: 'existing_cli', label: 'Existing CLI', description: 'Reuse the backend user profile' },
@@ -74,6 +75,7 @@ export function AgentSettings() {
   const toast = useToast()
   const settings = useQuery(agentSettingsQuery)
   const [draft, setDraft] = useState<AgentSettingsData | null>(null)
+  const [loginJobs, setLoginJobs] = useState<Record<string, ACPAuthLogin>>({})
 
   useEffect(() => {
     if (settings.data) setDraft(cloneSettings(settings.data))
@@ -91,6 +93,33 @@ export function AgentSettings() {
       queryClient.invalidateQueries({ queryKey: keys.acpAgents })
     },
   })
+
+  const login = useMutation({
+    mutationFn: ({ agent, auth }: { agent: string; auth?: AgentSettingsData['acp'][string]['auth'] }) =>
+      startACPAuthLogin(agent, auth),
+    onSuccess: (job) => {
+      setLoginJobs((current) => ({ ...current, [job.agent]: job }))
+      toast(`Started ${agentLabel(job.agent)} sign-in`)
+    },
+    onError: (error: Error) => toast(`Couldn't start sign-in: ${error.message}`, 'danger'),
+  })
+
+  useEffect(() => {
+    const running = Object.values(loginJobs).filter((job) => job.status === 'running')
+    if (running.length === 0) return
+    const timer = window.setInterval(() => {
+      for (const job of running) {
+        void getACPAuthLogin(job.id).then((next) => {
+          setLoginJobs((current) => ({ ...current, [next.agent]: next }))
+          if (next.status !== 'running') {
+            queryClient.invalidateQueries({ queryKey: keys.agentSettings })
+            queryClient.invalidateQueries({ queryKey: keys.acpAgents })
+          }
+        })
+      }
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [loginJobs, queryClient])
 
   const dirty = useMemo(
     () => settingsKey(draft) !== settingsKey(settings.data ?? null),
@@ -217,6 +246,9 @@ export function AgentSettings() {
                     agent={agent}
                     settings={draft}
                     disabled={save.isPending}
+                    loginJob={loginJobs[agent]}
+                    loginPending={login.isPending && login.variables?.agent === agent}
+                    onStartLogin={(auth) => login.mutate({ agent, auth })}
                     onChange={setDraft}
                   />
                 ))}
@@ -233,11 +265,17 @@ function ACPAgentRow({
   agent,
   settings,
   disabled,
+  loginJob,
+  loginPending,
+  onStartLogin,
   onChange,
 }: {
   agent: string
   settings: AgentSettingsData
   disabled: boolean
+  loginJob?: ACPAuthLogin
+  loginPending: boolean
+  onStartLogin: (auth: ACPAuthDraft) => void
   onChange: (settings: AgentSettingsData) => void
 }) {
   const current = settings.acp[agent] ?? {
@@ -289,7 +327,10 @@ function ACPAgentRow({
           authPath={agent === 'grok' ? '' : (current.auth?.path ?? '')}
           status={authStatus}
           apiKeyValue={settings.acp_keys?.[agent] ?? ''}
+          loginJob={loginJob}
+          loginPending={loginPending}
           onAuthModeChange={(mode) => update({ auth: { mode, path: '' } })}
+          onStartLogin={() => onStartLogin(current.auth)}
           onAPIKeyChange={(value) =>
             onChange({
               ...settings,
@@ -365,7 +406,10 @@ function AgentAuthPanel({
   authPath,
   status,
   apiKeyValue,
+  loginJob,
+  loginPending,
   onAuthModeChange,
+  onStartLogin,
   onAPIKeyChange,
 }: {
   agent: string
@@ -374,11 +418,18 @@ function AgentAuthPanel({
   authPath: string
   status?: ACPAgentAuthStatus
   apiKeyValue: string
+  loginJob?: ACPAuthLogin
+  loginPending: boolean
   onAuthModeChange: (mode: 'auto' | 'existing_cli' | 'jaz_profile') => void
+  onStartLogin: () => void
   onAPIKeyChange: (value: string) => void
 }) {
   const apiKeyEnv = status?.api_key?.source_env
   const hasDraftKey = apiKeyValue.trim().length > 0
+  const [method, setMethod] = useState<'login' | 'key'>(
+    hasDraftKey || status?.api_key_configured ? 'key' : 'login',
+  )
+  const running = loginPending || loginJob?.status === 'running'
   return (
     <div className="grid gap-3 rounded-[12px] bg-bg p-2.5 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-border)_70%,transparent)]">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -386,18 +437,15 @@ function AgentAuthPanel({
           <p className="text-[13px] font-medium text-ink">Auth</p>
           <p className="mt-0.5 text-[12px] text-ink-3">{authStatusText(status)}</p>
         </div>
-        <div className="flex flex-wrap gap-1">
-          {authModeOptions(agent).map((option) => (
-            <Button
-              key={option.value}
-              size="sm"
-              active={authMode === option.value}
-              disabled={disabled}
-              onClick={() => onAuthModeChange(option.value as 'auto' | 'existing_cli' | 'jaz_profile')}
-            >
-              {option.label}
-            </Button>
-          ))}
+        <div className="flex rounded-full bg-surface p-1">
+          <Button size="sm" active={method === 'login'} disabled={disabled} onClick={() => setMethod('login')}>
+            <LogIn size={13} />
+            Auth login
+          </Button>
+          <Button size="sm" active={method === 'key'} disabled={disabled || !apiKeyEnv} onClick={() => setMethod('key')}>
+            <KeyRound size={13} />
+            API key
+          </Button>
         </div>
       </div>
 
@@ -416,18 +464,58 @@ function AgentAuthPanel({
         />
       </div>
 
-      {apiKeyEnv ? (
-        <Input
-          type="password"
-          value={apiKeyValue}
-          disabled={disabled}
-          onChange={(event) => onAPIKeyChange(event.target.value)}
-          placeholder={status?.api_key_configured ? `${apiKeyEnv} configured` : apiKeyEnv}
-          autoComplete="off"
-          spellCheck={false}
-          className="h-8 rounded-full bg-surface px-3 py-0 text-[12px]"
-          aria-label={`${agentLabel(agent)} API key fallback`}
-        />
+      {method === 'login' ? (
+        <div className="grid gap-2">
+          <div className="flex flex-wrap gap-1">
+            {authModeOptions(agent).map((option) => (
+              <Button
+                key={option.value}
+                size="sm"
+                active={authMode === option.value}
+                disabled={disabled}
+                onClick={() => onAuthModeChange(option.value as 'auto' | 'existing_cli' | 'jaz_profile')}
+                title={option.description}
+              >
+                {option.label}
+              </Button>
+            ))}
+          </div>
+          <Button
+            variant="primary"
+            size="md"
+            disabled={disabled || running}
+            onClick={onStartLogin}
+            className="w-full"
+          >
+            {running ? <LoaderCircle size={14} className="animate-spin" /> : <LogIn size={14} />}
+            {running ? 'Waiting for sign-in...' : `Sign in with ${agentLabel(agent)}`}
+          </Button>
+          {loginJob?.output ? (
+            <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded-[8px] bg-surface px-3 py-2 font-mono text-[11px] leading-relaxed text-ink-2">
+              {loginJob.output}
+            </pre>
+          ) : null}
+          {loginJob?.status === 'failed' && loginJob.error ? (
+            <p className="text-[12px] text-danger">{loginJob.error}</p>
+          ) : null}
+        </div>
+      ) : apiKeyEnv ? (
+        <div className="grid gap-2">
+          <Input
+            type="password"
+            value={apiKeyValue}
+            disabled={disabled}
+            onChange={(event) => onAPIKeyChange(event.target.value)}
+            placeholder={status?.api_key_configured ? `${apiKeyEnv} configured` : apiKeyEnv}
+            autoComplete="off"
+            spellCheck={false}
+            className="h-8 rounded-full bg-surface px-3 py-0 text-[12px]"
+            aria-label={`${agentLabel(agent)} API key fallback`}
+          />
+          <p className="px-1 text-[12px] text-ink-3">
+            Stored as {apiKeyEnv}; passed to the agent as {status?.api_key?.target_env || 'provider key'}.
+          </p>
+        </div>
       ) : null}
 
       {authPath ? (
