@@ -423,71 +423,93 @@ function NativeAgentCard({
   const provider = providers.find((item) => item.id === selectedProvider)
   const label = provider?.label || 'a model provider'
   const keyUrl = PROVIDER_KEY_URLS[selectedProvider]
-  const ready = configured || apiKeyValue.trim().length > 0
+  const hasDraft = apiKeyValue.trim().length > 0
+  const pillState: AgentState = configured || hasDraft ? 'ready' : 'action'
+  const pillLabel = configured ? 'Connected' : hasDraft ? 'Key added' : 'Needs key'
+  // Like the coding agents, native collapses by default and opens on tap. It
+  // stays expandable in every state (no auto-collapse) because its key is typed
+  // in the body — collapsing on the first keystroke would yank the field away.
+  const [expanded, setExpanded] = useState(false)
 
   return (
     <div className="overflow-hidden rounded-[12px] bg-surface">
-      <div className="flex items-center gap-2.5 px-3 py-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2">
-            <p className="truncate text-[13.5px] font-medium text-ink">jaz native</p>
-          </div>
-          <p className="mt-0.5 text-pretty text-[12px] text-ink-3">
-            jaz’s own agent connects directly to {label}.
-          </p>
-        </div>
-        {ready ? (
-          <>
-            <StatePill state="ready" label={configured ? 'Connected' : 'Key added'} />
-            <CheckCircle2 size={17} className="shrink-0 text-primary" />
-          </>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((open) => !open)}
+        className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors duration-150 hover:bg-surface-2/50"
+      >
+        <span className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="truncate text-[13.5px] font-medium text-ink">jaz native</span>
+          <StatePill state={pillState} label={pillLabel} />
+        </span>
+        {configured ? <CheckCircle2 size={17} className="shrink-0 text-primary" /> : null}
+        <ChevronDown
+          size={15}
+          className={`shrink-0 text-ink-3 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      <AnimatePresence initial={false}>
+        {expanded ? (
+          <motion.div
+            key="body"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: EASE }}
+            className="overflow-hidden"
+          >
+            <div className="flex flex-col gap-2.5 px-3 pb-3 pt-0.5">
+              <p className="text-pretty text-[12px] text-ink-3">
+                jaz’s own agent connects directly to {label} with an API key you provide.
+              </p>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[13px] text-ink-2">Provider</span>
+                <Select
+                  value={selectedProvider}
+                  options={providers.map((item) => ({ value: item.id, label: item.label }))}
+                  onChange={onProviderChange}
+                  disabled={disabled}
+                  aria-label="Native provider"
+                  className="h-8 min-w-[160px]"
+                />
+              </div>
+
+              {configured ? (
+                <div className="flex items-center gap-1.5 px-0.5 text-[12px] text-ink-2">
+                  <Check size={14} className="shrink-0 text-primary" />
+                  Your {label} key is already set up.
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <Input
+                    type="password"
+                    value={apiKeyValue}
+                    onChange={(event) => onAPIKeyChange(event.target.value)}
+                    disabled={disabled || !selectedProvider}
+                    placeholder={`Paste your ${label} API key`}
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="font-mono text-[12px]"
+                    aria-label={`${label} API key`}
+                  />
+                  {keyUrl ? (
+                    <button
+                      type="button"
+                      onClick={() => window.open(keyUrl, '_blank', 'noopener,noreferrer')}
+                      className="inline-flex w-fit items-center gap-1 text-[12px] text-primary transition-colors duration-150 hover:text-primary-strong"
+                    >
+                      Where do I find my {label} key?
+                      <ExternalLink size={12} />
+                    </button>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          </motion.div>
         ) : null}
-      </div>
-
-      <div className="flex flex-col gap-2.5 px-3 pb-3 pt-0.5">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-[13px] text-ink-2">Provider</span>
-          <Select
-            value={selectedProvider}
-            options={providers.map((item) => ({ value: item.id, label: item.label }))}
-            onChange={onProviderChange}
-            disabled={disabled}
-            aria-label="Native provider"
-            className="h-8 min-w-[160px]"
-          />
-        </div>
-
-        {configured ? (
-          <div className="flex items-center gap-1.5 px-0.5 text-[12px] text-ink-2">
-            <Check size={14} className="shrink-0 text-primary" />
-            Your {label} key is already set up.
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            <Input
-              type="password"
-              value={apiKeyValue}
-              onChange={(event) => onAPIKeyChange(event.target.value)}
-              disabled={disabled || !selectedProvider}
-              placeholder={`Paste your ${label} API key`}
-              autoComplete="off"
-              spellCheck={false}
-              className="font-mono text-[12px]"
-              aria-label={`${label} API key`}
-            />
-            {keyUrl ? (
-              <button
-                type="button"
-                onClick={() => window.open(keyUrl, '_blank', 'noopener,noreferrer')}
-                className="inline-flex w-fit items-center gap-1 text-[12px] text-primary transition-colors duration-150 hover:text-primary-strong"
-              >
-                Where do I find my {label} key?
-                <ExternalLink size={12} />
-              </button>
-            ) : null}
-          </div>
-        )}
-      </div>
+      </AnimatePresence>
     </div>
   )
 }
