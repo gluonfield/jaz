@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { FileText, LoaderCircle, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { HighlightedCodeLine, useSyntaxHighlightedLines } from '@/components/session/HighlightedCode'
 import { ApiError } from '@/lib/api/client'
 import { healthQuery, sessionFileQuery } from '@/lib/api/sessions'
 import type { HealthResponse, Session } from '@/lib/api/types'
@@ -116,7 +117,11 @@ export function FileReaderPanel({
                   {file.data.truncated ? ' · truncated' : ''}
                 </span>
               </div>
-              <FileTextView content={file.data.content ?? ''} highlightLine={fileRef?.line} />
+              <FileTextView
+                path={file.data.relative_path || file.data.path}
+                content={file.data.content ?? ''}
+                highlightLine={fileRef?.line}
+              />
             </>
           )}
         </div>
@@ -130,8 +135,17 @@ function unsupportedFileReader(error: unknown, health?: HealthResponse): boolean
   return error instanceof ApiError && error.status === 404 && error.message.trim().toLowerCase() === 'not found'
 }
 
-function FileTextView({ content, highlightLine }: { content: string; highlightLine?: number }) {
-  const lines = content.split('\n')
+function FileTextView({
+  path,
+  content,
+  highlightLine,
+}: {
+  path: string
+  content: string
+  highlightLine?: number
+}) {
+  const lines = useMemo(() => content.split('\n'), [content])
+  const highlighted = useSyntaxHighlightedLines(path, lines)
   return (
     <div className="overflow-x-auto bg-bg/45 font-mono text-[12px] leading-[1.55] select-text">
       <table className="w-full min-w-max border-separate border-spacing-0">
@@ -145,7 +159,7 @@ function FileTextView({ content, highlightLine }: { content: string; highlightLi
                   {lineNo}
                 </td>
                 <td className="whitespace-pre pr-5 align-top text-ink-2 select-text">
-                  {line || ' '}
+                  <HighlightedCodeLine text={line} tokens={highlighted?.[index]} />
                 </td>
               </tr>
             )
