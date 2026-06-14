@@ -1,4 +1,4 @@
-import { ArrowUp, AudioLines, Check, FileText, ListChecks, LoaderCircle, Paperclip, Plus, Square, X } from 'lucide-react'
+import { ArrowUp, AudioLines, FileText, ListChecks, LoaderCircle, Paperclip, Plus, Square, X } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { FileDropOverlay, useWindowFileDrop } from '@/components/ui/FileDrop'
@@ -498,9 +498,7 @@ export function PlanDecisionCard({
         >
           {pending ? (
             <LoaderCircle size={15} className="shrink-0 animate-spin text-primary" />
-          ) : (
-            <Check size={15} className="shrink-0 text-primary" />
-          )}
+          ) : null}
           {pending ? 'Starting implementation…' : 'Yes, implement this plan'}
         </motion.button>
 
