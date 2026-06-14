@@ -1,7 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '../query/keys'
-import { get, put } from './client'
-import type { AgentSettings } from './types'
+import { get, post, put } from './client'
+import type { ACPAgentAuth, ACPAuthLogin, AgentSettings } from './types'
 
 function normalizeAgentSettings(settings: AgentSettings): AgentSettings {
   return {
@@ -56,4 +56,12 @@ export function updateAgentSettings(settings: AgentSettings): Promise<AgentSetti
   return put<AgentSettings>('/v1/settings/agents', inputFromSettings(settings)).then(
     normalizeAgentSettings,
   )
+}
+
+export function startACPAuthLogin(agent: string, auth?: ACPAgentAuth): Promise<ACPAuthLogin> {
+  return post<ACPAuthLogin>(`/v1/acp/agents/${encodeURIComponent(agent)}/auth/login`, { auth })
+}
+
+export function getACPAuthLogin(id: string): Promise<ACPAuthLogin> {
+  return get<ACPAuthLogin>(`/v1/acp/auth-logins/${encodeURIComponent(id)}`)
 }
