@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"unicode/utf8"
 
@@ -84,7 +85,7 @@ func resolveSessionFile(session storage.Session, raw string) (string, string, er
 	if err != nil {
 		return "", "", err
 	}
-	roots := sessionFileRoots(session, cwd)
+	roots := sessionFileRoots(session, cwd, path)
 	var last error
 	for _, root := range roots {
 		abs, err := resolveFileUnderRoot(root, path)
@@ -104,12 +105,38 @@ func resolveSessionFile(session storage.Session, raw string) (string, string, er
 	return "", "", fmt.Errorf("path is outside the session workspace: %s", raw)
 }
 
-func sessionFileRoots(session storage.Session, cwd string) []string {
+func sessionFileRoots(session storage.Session, cwd, requested string) []string {
 	roots := []string{cwd}
-	if session.RuntimeRef != nil {
-		if project := strings.TrimSpace(session.RuntimeRef.ProjectPath); project != "" && project != cwd {
-			roots = append(roots, project)
+	appendRoot := func(root string) {
+		root = strings.TrimSpace(root)
+		if root == "" {
+			return
 		}
+		root = filepath.Clean(root)
+		for _, existing := range roots {
+			if filepath.Clean(existing) == root {
+				return
+			}
+		}
+		roots = append(roots, root)
+	}
+	if session.RuntimeRef != nil {
+		if project := strings.TrimSpace(session.RuntimeRef.ProjectPath); project != "" {
+			appendRoot(project)
+		}
+	}
+	if filepath.IsAbs(requested) {
+		for _, root := range sessionFileTempRoots() {
+			appendRoot(root)
+		}
+	}
+	return roots
+}
+
+func sessionFileTempRoots() []string {
+	roots := []string{os.TempDir()}
+	if runtime.GOOS != "windows" {
+		roots = append(roots, "/tmp")
 	}
 	return roots
 }

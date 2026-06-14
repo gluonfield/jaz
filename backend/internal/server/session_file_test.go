@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -23,10 +24,7 @@ func TestSessionFileRead(t *testing.T) {
 	if err := os.WriteFile(file, []byte("export type Preview = string\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	outside := filepath.Join(t.TempDir(), "secret.txt")
-	if err := os.WriteFile(outside, []byte("secret\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	outside := filepath.Join(string(filepath.Separator), "definitely-not-a-jaz-session-file")
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -69,6 +67,30 @@ func TestSessionFileRead(t *testing.T) {
 	absolute := get("/v1/sessions/"+session.ID+"/file?path="+url.QueryEscape(file), http.StatusOK)
 	if absolute.Path != file || absolute.Content != relative.Content {
 		t.Fatalf("absolute read = %#v", absolute)
+	}
+
+	tempFile := filepath.Join(t.TempDir(), "agent-output.txt")
+	if err := os.WriteFile(tempFile, []byte("from temp\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tempRead := get("/v1/sessions/"+session.ID+"/file?path="+url.QueryEscape(tempFile), http.StatusOK)
+	if tempRead.Path != tempFile || tempRead.RelativePath != "" || tempRead.Content != "from temp\n" {
+		t.Fatalf("temp read = %#v", tempRead)
+	}
+
+	if runtime.GOOS != "windows" && filepath.Clean(os.TempDir()) != "/tmp" {
+		tmpDir, err := os.MkdirTemp("/tmp", "jaz-session-file-")
+		if err == nil {
+			defer os.RemoveAll(tmpDir)
+			tmpFile := filepath.Join(tmpDir, "agent-output.txt")
+			if err := os.WriteFile(tmpFile, []byte("from /tmp\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			tmpRead := get("/v1/sessions/"+session.ID+"/file?path="+url.QueryEscape(tmpFile), http.StatusOK)
+			if tmpRead.Path != tmpFile || tmpRead.Content != "from /tmp\n" {
+				t.Fatalf("/tmp read = %#v", tmpRead)
+			}
+		}
 	}
 
 	get("/v1/sessions/"+session.ID+"/file?path="+url.QueryEscape(outside), http.StatusBadRequest)
