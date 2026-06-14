@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/runtimeenv"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
@@ -112,6 +114,8 @@ func TestMCPServerSettingsAPI(t *testing.T) {
 }
 
 func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEX_HOME", t.TempDir())
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -178,9 +182,11 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		"acp":{
 			"codex":{"enabled":true,"command":"/opt/jaz/codex-acp -c 'sandbox_mode=\"danger-full-access\"'","model":"gpt-5.5","reasoning_effort":"high"},
 			"claude":{"enabled":false,"command":"npx -y @agentclientprotocol/claude-agent-acp@0.43.0","model":"default","reasoning_effort":"medium"}
-		}
+		},
+		"acp_keys":{"codex":"codex-key"}
 	}`))
 	putReq.Header.Set("Content-Type", "application/json")
+	putReq.RemoteAddr = "127.0.0.1:1234"
 	putRes := httptest.NewRecorder()
 	handler.ServeHTTP(putRes, putReq)
 	if putRes.Code != http.StatusOK {
@@ -194,6 +200,51 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		!strings.Contains(string(loaded.Value), `/opt/jaz/codex-acp`) ||
 		!strings.Contains(string(loaded.Value), `"reasoning_effort":"high"`) {
 		t.Fatalf("stored settings = %s", loaded.Value)
+	}
+	env, err := os.ReadFile(runtimeenv.Path(store.RootDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(env), `JAZ_ACP_CODEX_API_KEY="codex-key"`) {
+		t.Fatalf("runtime env = %s", env)
+	}
+	var saved struct {
+		ACPAuth map[string]struct {
+			APIKeyConfigured bool   `json:"api_key_configured"`
+			AuthKind         string `json:"auth_kind"`
+		} `json:"acp_auth"`
+	}
+	if err := json.Unmarshal(putRes.Body.Bytes(), &saved); err != nil {
+		t.Fatal(err)
+	}
+	if !saved.ACPAuth["codex"].APIKeyConfigured || saved.ACPAuth["codex"].AuthKind != acp.AuthKindAPIKey {
+		t.Fatalf("unexpected acp auth status %#v", saved.ACPAuth)
+	}
+}
+
+func TestAgentSettingsRejectsInvalidSettingsBeforeSavingACPKeys(t *testing.T) {
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	req := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
+		"native":{"model_provider":"openrouter","model":"openai/gpt-5.4-mini","reasoning_effort":"medium"},
+		"acp":{"codex":{"enabled":true,"command":"codex-acp","model":"gpt-5.5","reasoning_effort":"medium","auth":{"mode":"broken"}}},
+		"acp_keys":{"codex":"should-not-save"}
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:1234"
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store, Root: root}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "auth mode") {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	if _, err := os.Stat(runtimeenv.Path(root)); !os.IsNotExist(err) {
+		t.Fatalf("runtime env should not be written, err = %v", err)
 	}
 }
 

@@ -101,7 +101,8 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 	layout := runtimefiles.New(root)
 	home := layout.ACPHome
 	if name == AgentCodex {
-		codexHome := resolveAgentAuth(name, agent, root, env).Config.Path
+		auth := resolveAgentAuth(name, agent, root, env)
+		codexHome := auth.Config.Path
 		if codexHome != "" {
 			env["CODEX_HOME"] = codexHome
 			if prepare {
@@ -113,13 +114,14 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 		for _, key := range []string{"OPENAI_API_KEY", "OPENAI_APIKEY", "OPENROUTER_API_KEY", "OPENROUTER_APIKEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"} {
 			delete(env, key)
 		}
+		if target, value, ok := auth.APIKeyBinding(); ok {
+			env[target] = value
+		}
 	}
 	if name == AgentClaude {
 		configuredHome := strings.TrimSpace(env["HOME"])
 		configuredConfigDir := strings.TrimSpace(env["CLAUDE_CONFIG_DIR"])
 		preserveHostEnv(env, []string{
-			"ANTHROPIC_API_KEY",
-			"ANTHROPIC_APIKEY",
 			"ANTHROPIC_AUTH_TOKEN",
 			"ANTHROPIC_BASE_URL",
 			"CLAUDE_CODE_EXECUTABLE",
@@ -156,6 +158,10 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 			}
 		}
 		normalizeEnv(env, "ANTHROPIC_API_KEY", "ANTHROPIC_APIKEY")
+		delete(env, "ANTHROPIC_API_KEY")
+		if target, value, ok := auth.APIKeyBinding(); ok {
+			env[target] = value
+		}
 	}
 	if name == AgentGrok {
 		configuredHome := strings.TrimSpace(env["HOME"])
@@ -170,8 +176,6 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 			"SHELL",
 			"SSH_AUTH_SOCK",
 			"USER",
-			"XAI_API_KEY",
-			"XAI_APIKEY",
 		})
 		auth := resolveAgentAuth(name, agent, root, env)
 		if configuredHome != "" {
@@ -185,6 +189,15 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 			}
 		}
 		normalizeEnv(env, "XAI_API_KEY", "XAI_APIKEY")
+		delete(env, "XAI_API_KEY")
+		if target, value, ok := auth.APIKeyBinding(); ok {
+			env[target] = value
+		}
+	}
+	if prepare {
+		if spec, ok := resolveAgentAPIKeySpec(name); ok {
+			delete(env, spec.SourceEnv)
+		}
 	}
 	tmp := layout.ACPTmp
 	cache := layout.ACPNPMCache
@@ -333,12 +346,12 @@ func autoAuthMethod(agent string, raw json.RawMessage, env map[string]string) (s
 	}
 	if agent == AgentGrok {
 		for _, method := range init.AuthMethods {
-			if method.ID == "xai.api_key" && env["XAI_API_KEY"] != "" {
+			if method.ID == "cached_token" && grokAuthAvailable(env) {
 				return method.ID, nil
 			}
 		}
 		for _, method := range init.AuthMethods {
-			if method.ID == "cached_token" && grokAuthAvailable(env) {
+			if method.ID == "xai.api_key" && env["XAI_API_KEY"] != "" {
 				return method.ID, nil
 			}
 		}
@@ -364,14 +377,11 @@ func autoAuthMethod(agent string, raw json.RawMessage, env map[string]string) (s
 		if method.Type != "env_var" && len(method.Vars) == 0 {
 			continue
 		}
-		if agent == AgentCodex {
-			continue
-		}
 		allSet := len(method.Vars) > 0
 		for _, v := range method.Vars {
 			if env[v.Name] == "" {
 				allSet = false
-				missing = appendMissing(missing, v.Name)
+				missing = appendMissing(missing, authMissingEnvName(agent, v.Name))
 				break
 			}
 		}
@@ -401,26 +411,6 @@ func codexAuthHint(env map[string]string) string {
 	return "Codex OAuth login at ~/.codex/auth.json"
 }
 
-func claudeAuthAvailable(env map[string]string) bool {
-	for _, key := range []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"} {
-		if strings.TrimSpace(env[key]) != "" {
-			return true
-		}
-	}
-	configDir := env["CLAUDE_CONFIG_DIR"]
-	if configDir == "" {
-		return false
-	}
-	return claudeAuthFileAvailable(configDir)
-}
-
-func claudeAuthHint(env map[string]string) string {
-	if env["CLAUDE_CONFIG_DIR"] != "" {
-		return "Claude login at " + filepath.Join(env["CLAUDE_CONFIG_DIR"], ".credentials.json")
-	}
-	return "Claude login at ~/.claude/.credentials.json"
-}
-
 func grokAuthAvailable(env map[string]string) bool {
 	home := env["HOME"]
 	if home == "" {
@@ -434,10 +424,11 @@ func grokAuthAvailable(env map[string]string) bool {
 }
 
 func grokAuthHint(env map[string]string) string {
+	apiKeyEnv := agentAPIKeySourceEnv(AgentGrok, "XAI_API_KEY")
 	if env["HOME"] != "" {
-		return "Grok login at " + filepath.Join(env["HOME"], ".grok", "auth.json") + " or XAI_API_KEY"
+		return "Grok login at " + filepath.Join(env["HOME"], ".grok", "auth.json") + " or " + apiKeyEnv
 	}
-	return "Grok login at ~/.grok/auth.json or XAI_API_KEY"
+	return "Grok login at ~/.grok/auth.json or " + apiKeyEnv
 }
 
 func fileExists(path string) bool {
@@ -455,4 +446,20 @@ func appendMissing(values []string, value string) []string {
 		}
 	}
 	return append(values, value)
+}
+
+func authMissingEnvName(agent, targetEnv string) string {
+	spec, ok := resolveAgentAPIKeySpec(agent)
+	if ok && targetEnv == spec.TargetEnv {
+		return spec.SourceEnv
+	}
+	return targetEnv
+}
+
+func agentAPIKeySourceEnv(agent, fallback string) string {
+	spec, ok := resolveAgentAPIKeySpec(agent)
+	if ok && spec.SourceEnv != "" {
+		return spec.SourceEnv
+	}
+	return fallback
 }

@@ -14,7 +14,10 @@ type AgentAuthStatus struct {
 	AuthPath              string
 	AuthSource            string
 	AuthEvidence          string
+	AuthKind              string
 	RecommendedAuth       AgentAuthConfig
+	APIKey                AgentAPIKeySpec
+	APIKeyConfigured      bool
 	LoginCommand          string
 	LoginCommandAvailable bool
 	LoginCommandReason    string
@@ -34,7 +37,10 @@ func ProbeAgentAuth(name string, cfg AgentConfig, root string, env map[string]st
 	status.AuthPath = resolved.Config.Path
 	status.AuthSource = resolved.Source
 	status.AuthEvidence = resolved.Evidence
+	status.AuthKind = resolved.Kind
 	status.RecommendedAuth = resolved.Config
+	status.APIKey = resolved.APIKey
+	status.APIKeyConfigured = resolved.APIKeySet
 	if status.Authenticated {
 		status.Reason = ""
 	}

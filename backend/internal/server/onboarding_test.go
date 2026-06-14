@@ -80,6 +80,7 @@ func TestOnboardingAPIProbesAgentsAndSavesProviderKey(t *testing.T) {
 			}
 		},
 		"provider_keys":{"openrouter":"runtime-key"},
+		"acp_keys":{"codex":"codex-key"},
 		"completed":true
 	}`
 	postRes := httptest.NewRecorder()
@@ -91,6 +92,7 @@ func TestOnboardingAPIProbesAgentsAndSavesProviderKey(t *testing.T) {
 		t.Fatalf("post status = %d, body = %s", postRes.Code, postRes.Body.String())
 	}
 	assertRuntimeKeySaved(t, root)
+	assertACPKeySaved(t, root)
 	assertOnboardingStateSaved(t, root)
 	var saved struct {
 		Completed       bool `json:"completed"`
@@ -261,6 +263,17 @@ func assertRuntimeKeySaved(t *testing.T, root string) {
 	}
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("env permissions = %v", info.Mode().Perm())
+	}
+}
+
+func assertACPKeySaved(t *testing.T, root string) {
+	t.Helper()
+	env, err := os.ReadFile(runtimeenv.Path(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(env), `JAZ_ACP_CODEX_API_KEY="codex-key"`) {
+		t.Fatalf("runtime env = %s", env)
 	}
 }
 

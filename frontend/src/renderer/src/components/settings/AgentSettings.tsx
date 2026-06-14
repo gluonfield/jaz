@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, Save, Terminal } from 'lucide-react'
+import { ChevronDown, KeyRound, Save, ShieldCheck, Terminal } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 import { ModelCombobox } from '@/components/ui/ModelCombobox'
 import { Select } from '@/components/ui/Select'
 import { SkeletonRows } from '@/components/ui/Skeleton'
@@ -10,7 +11,7 @@ import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
 import { agentLabel } from '@/lib/agentLabel'
 import { agentSettingsQuery, updateAgentSettings } from '@/lib/api/settings'
-import type { AgentSettings as AgentSettingsData } from '@/lib/api/types'
+import type { ACPAgentAuthStatus, AgentSettings as AgentSettingsData } from '@/lib/api/types'
 import { acpAgentModelSuggestions, OPENAI_MODELS, openRouterModelsQuery } from '@/lib/models'
 import { keys } from '@/lib/query/keys'
 import { acpReasoningEffortOptions, REASONING_EFFORT_OPTIONS } from '@/lib/reasoningEfforts'
@@ -33,6 +34,8 @@ function cloneSettings(settings: AgentSettingsData): AgentSettingsData {
   return {
     native: { ...settings.native },
     providers: [...(settings.providers ?? [])],
+    acp_auth: { ...(settings.acp_auth ?? {}) },
+    acp_keys: { ...(settings.acp_keys ?? {}) },
     acp: Object.fromEntries(
       Object.entries(settings.acp).map(([agent, value]) => [
         agent,
@@ -238,6 +241,7 @@ function ACPAgentRow({
     reasoning_effort: '',
     auth: { mode: 'auto', path: '' },
   }
+  const authStatus = settings.acp_auth?.[agent]
   const [commandOpen, setCommandOpen] = useState((current.command ?? '').trim() === '')
   useEffect(() => {
     if (current.enabled && (current.command ?? '').trim() === '') setCommandOpen(true)
@@ -271,21 +275,26 @@ function ACPAgentRow({
         </div>
       </SettingsRow>
 
-      <SettingsRow title="Auth" description="Credential profile used on the backend machine.">
-        <div className="grid gap-1 md:w-[320px]">
-          <Select
-            value={current.auth?.mode ?? 'auto'}
-            options={AUTH_MODE_OPTIONS}
-            disabled={controlsDisabled}
-            onChange={(mode) => update({ auth: { mode: mode as 'auto' | 'existing_cli' | 'jaz_profile', path: '' } })}
-            aria-label={`${agentLabel(agent)} auth profile`}
-            className={rowControlClass}
-          />
-          {current.auth?.path ? (
-            <p className="truncate font-mono text-[11px] text-ink-3">{current.auth.path}</p>
-          ) : null}
-        </div>
-      </SettingsRow>
+      <div className="border-t border-border/70 px-3 py-3">
+        <AgentAuthPanel
+          agent={agent}
+          disabled={controlsDisabled}
+          authMode={current.auth?.mode ?? 'auto'}
+          authPath={current.auth?.path ?? ''}
+          status={authStatus}
+          apiKeyValue={settings.acp_keys?.[agent] ?? ''}
+          onAuthModeChange={(mode) => update({ auth: { mode, path: '' } })}
+          onAPIKeyChange={(value) =>
+            onChange({
+              ...settings,
+              acp_keys: {
+                ...(settings.acp_keys ?? {}),
+                [agent]: value,
+              },
+            })
+          }
+        />
+      </div>
 
       <SettingsRow title="Model" description="Model copied into new threads for this client.">
         <ModelCombobox
@@ -341,6 +350,128 @@ function ACPAgentRow({
       ) : null}
     </div>
   )
+}
+
+function AgentAuthPanel({
+  agent,
+  disabled,
+  authMode,
+  authPath,
+  status,
+  apiKeyValue,
+  onAuthModeChange,
+  onAPIKeyChange,
+}: {
+  agent: string
+  disabled: boolean
+  authMode: 'auto' | 'existing_cli' | 'jaz_profile'
+  authPath: string
+  status?: ACPAgentAuthStatus
+  apiKeyValue: string
+  onAuthModeChange: (mode: 'auto' | 'existing_cli' | 'jaz_profile') => void
+  onAPIKeyChange: (value: string) => void
+}) {
+  const apiKeyEnv = status?.api_key?.source_env
+  const hasDraftKey = apiKeyValue.trim().length > 0
+  return (
+    <div className="grid gap-3 rounded-[12px] bg-bg p-2.5 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-border)_70%,transparent)]">
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div className="min-w-0">
+          <p className="text-[13px] font-medium text-ink">Auth</p>
+          <p className="mt-0.5 text-[12px] text-ink-3">{authStatusText(status)}</p>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {AUTH_MODE_OPTIONS.map((option) => (
+            <Button
+              key={option.value}
+              size="sm"
+              active={authMode === option.value}
+              disabled={disabled}
+              onClick={() => onAuthModeChange(option.value as 'auto' | 'existing_cli' | 'jaz_profile')}
+            >
+              {option.label}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-2 md:grid-cols-2">
+        <AuthStatusPill
+          icon={<ShieldCheck size={13} />}
+          label={status?.auth_kind === 'oauth' ? 'Account auth' : 'Account'}
+          active={status?.auth_kind === 'oauth'}
+          detail={authEvidenceText(status)}
+        />
+        <AuthStatusPill
+          icon={<KeyRound size={13} />}
+          label="API key"
+          active={Boolean(status?.api_key_configured || hasDraftKey)}
+          detail={hasDraftKey ? 'Ready to save' : status?.api_key_configured ? 'Configured' : apiKeyEnv || 'Not configured'}
+        />
+      </div>
+
+      {apiKeyEnv ? (
+        <Input
+          type="password"
+          value={apiKeyValue}
+          disabled={disabled}
+          onChange={(event) => onAPIKeyChange(event.target.value)}
+          placeholder={status?.api_key_configured ? `${apiKeyEnv} configured` : apiKeyEnv}
+          autoComplete="off"
+          spellCheck={false}
+          className="h-8 rounded-full bg-surface px-3 py-0 text-[12px]"
+          aria-label={`${agentLabel(agent)} API key fallback`}
+        />
+      ) : null}
+
+      {authPath ? (
+        <p className="truncate px-1 font-mono text-[11px] text-ink-3">{authPath}</p>
+      ) : null}
+    </div>
+  )
+}
+
+function AuthStatusPill({
+  icon,
+  label,
+  detail,
+  active,
+}: {
+  icon: ReactNode
+  label: string
+  detail: string
+  active: boolean
+}) {
+  return (
+    <div
+      className={`flex min-h-10 items-center gap-2 rounded-full px-3 text-[12px] ${
+        active ? 'bg-primary-soft text-primary-strong' : 'bg-surface text-ink-3'
+      }`}
+    >
+      <span className="shrink-0">{icon}</span>
+      <span className="min-w-0 flex-1 truncate">
+        <span className="font-medium">{label}</span>
+        <span className="ml-1 text-ink-3">{detail}</span>
+      </span>
+    </div>
+  )
+}
+
+function authStatusText(status?: ACPAgentAuthStatus): string {
+  if (!status) return 'Checked on the backend machine.'
+  if (status.auth_kind === 'oauth') return 'Account login is active.'
+  if (status.auth_kind === 'api_key') return 'Using explicit API key fallback.'
+  return status.reason || 'No credential detected.'
+}
+
+function authEvidenceText(status?: ACPAgentAuthStatus): string {
+  if (!status?.authenticated) return 'Needs login'
+  if (status.auth_evidence === 'keyring_config') return 'Keychain'
+  if (status.auth_evidence === 'auth_json') return 'auth.json'
+  if (status.auth_evidence === 'credentials_json') return 'credentials'
+  if (status.auth_evidence === 'env') return 'environment'
+  if (status.auth_evidence === 'api_key_env') return 'fallback'
+  return 'Ready'
 }
 
 function SettingsRow({

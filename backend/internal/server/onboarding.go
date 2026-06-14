@@ -5,13 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/onboardingstate"
 	"github.com/wins/jaz/backend/internal/provider"
-	"github.com/wins/jaz/backend/internal/runtimeenv"
 	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -29,22 +27,14 @@ type onboardingResponse struct {
 }
 
 type onboardingACPProbe struct {
-	Agent                string              `json:"agent"`
-	Command              string              `json:"command,omitempty"`
-	Installed            bool                `json:"installed"`
-	Authenticated        bool                `json:"authenticated"`
-	Available            bool                `json:"available"`
-	Reason               string              `json:"reason,omitempty"`
-	StoragePath          string              `json:"storage_path,omitempty"`
-	AuthMode             string              `json:"auth_mode,omitempty"`
-	AuthPath             string              `json:"auth_path,omitempty"`
-	AuthSource           string              `json:"auth_source,omitempty"`
-	AuthEvidence         string              `json:"auth_evidence,omitempty"`
-	RecommendedAuth      acp.AgentAuthConfig `json:"recommended_auth,omitempty"`
-	AuthCommand          string              `json:"auth_command,omitempty"`
-	AuthCommandAvailable bool                `json:"auth_command_available"`
-	AuthCommandReason    string              `json:"auth_command_reason,omitempty"`
-	RefreshOwner         string              `json:"refresh_owner,omitempty"`
+	acpAuthStatusResponse
+	Agent                string `json:"agent"`
+	Command              string `json:"command,omitempty"`
+	Installed            bool   `json:"installed"`
+	Available            bool   `json:"available"`
+	AuthCommand          string `json:"auth_command,omitempty"`
+	AuthCommandAvailable bool   `json:"auth_command_available"`
+	AuthCommandReason    string `json:"auth_command_reason,omitempty"`
 }
 
 type onboardingNativeProvider struct {
@@ -56,6 +46,7 @@ type onboardingNativeProvider struct {
 type onboardingRequest struct {
 	Settings     *agentsettings.AgentDefaults `json:"settings,omitempty"`
 	ProviderKeys map[string]string            `json:"provider_keys,omitempty"`
+	ACPKeys      map[string]string            `json:"acp_keys,omitempty"`
 	Completed    bool                         `json:"completed"`
 }
 
@@ -93,11 +84,19 @@ func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		if len(keyUpdates) > 0 && !s.providerKeySetupAllowed(r) {
-			writeError(w, http.StatusForbidden, fmt.Errorf("provider key setup is only available from the backend host"))
+		acpKeyUpdates, err := s.acpKeyUpdates(input.ACPKeys)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		if err := s.saveProviderKeyUpdates(keyUpdates); err != nil {
+		for key, value := range acpKeyUpdates {
+			keyUpdates[key] = value
+		}
+		if len(keyUpdates) > 0 && !s.providerKeySetupAllowed(r) {
+			writeError(w, http.StatusForbidden, fmt.Errorf("key setup is only available from the backend host"))
+			return
+		}
+		if err := s.saveRuntimeKeyUpdates(keyUpdates); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
@@ -182,7 +181,11 @@ func (s *Server) probeACPAgents(defaults agentsettings.AgentDefaults) []onboardi
 		name = acp.CanonicalAgentName(name)
 		cfg, command, err := s.acpProbeConfig(name, defaults)
 		if err != nil {
-			out = append(out, onboardingACPProbe{Agent: name, Command: command, Reason: err.Error()})
+			out = append(out, onboardingACPProbe{
+				acpAuthStatusResponse: acpAuthStatusResponse{Reason: err.Error()},
+				Agent:                 name,
+				Command:               command,
+			})
 			continue
 		}
 		adapterInstalled := acpCommandInstalled(cfg)
@@ -201,23 +204,17 @@ func (s *Server) probeACPAgents(defaults agentsettings.AgentDefaults) []onboardi
 		} else if !readiness.Available {
 			reason = firstMessage(readiness.Reason, auth.LoginCommandReason, auth.Reason)
 		}
+		authResponse := newACPAuthStatusResponse(auth)
+		authResponse.Reason = reason
 		out = append(out, onboardingACPProbe{
-			Agent:                name,
-			Command:              command,
-			Installed:            installed,
-			Authenticated:        auth.Authenticated,
-			Available:            readiness.Available,
-			Reason:               reason,
-			StoragePath:          auth.StoragePath,
-			AuthMode:             auth.AuthMode,
-			AuthPath:             auth.AuthPath,
-			AuthSource:           auth.AuthSource,
-			AuthEvidence:         auth.AuthEvidence,
-			RecommendedAuth:      auth.RecommendedAuth,
-			AuthCommand:          auth.LoginCommand,
-			AuthCommandAvailable: auth.LoginCommandAvailable,
-			AuthCommandReason:    auth.LoginCommandReason,
-			RefreshOwner:         auth.RefreshOwner,
+			acpAuthStatusResponse: authResponse,
+			Agent:                 name,
+			Command:               command,
+			Installed:             installed,
+			Available:             readiness.Available,
+			AuthCommand:           auth.LoginCommand,
+			AuthCommandAvailable:  auth.LoginCommandAvailable,
+			AuthCommandReason:     auth.LoginCommandReason,
 		})
 	}
 	return out
@@ -293,75 +290,4 @@ func (s *Server) nativeProviderStatuses() []onboardingNativeProvider {
 		})
 	}
 	return out
-}
-
-func (s *Server) providerKeyUpdates(keys map[string]string) (map[string]string, error) {
-	if len(keys) == 0 {
-		return nil, nil
-	}
-	updates := map[string]string{}
-	for id, key := range keys {
-		meta, ok := provider.NativeProviderByID(id)
-		if !ok {
-			return nil, fmt.Errorf("unknown native provider %q", id)
-		}
-		if strings.TrimSpace(meta.APIKeyEnv) == "" {
-			return nil, fmt.Errorf("native provider %q has no API key env var", id)
-		}
-		if strings.TrimSpace(key) != "" {
-			updates[meta.APIKeyEnv] = key
-		}
-	}
-	return updates, nil
-}
-
-func (s *Server) saveProviderKeyUpdates(updates map[string]string) error {
-	if len(updates) == 0 {
-		return nil
-	}
-	if err := runtimeenv.Save(s.providerEnvPath(), updates); err != nil {
-		return err
-	}
-	if s.NativeProviders != nil {
-		return s.NativeProviders.Reload()
-	}
-	return nil
-}
-
-func (s *Server) providerKeySetupAllowed(r *http.Request) bool {
-	return strings.TrimSpace(s.AuthKey) != "" || loopbackRequest(r)
-}
-
-func (s *Server) providerKeyConfigured(id string) bool {
-	if s.NativeProviders != nil {
-		return s.NativeProviders.APIKeyConfigured(id)
-	}
-	meta, ok := provider.NativeProviderByID(id)
-	if !ok || strings.TrimSpace(meta.APIKeyEnv) == "" {
-		return false
-	}
-	if strings.TrimSpace(os.Getenv(meta.APIKeyEnv)) != "" {
-		return true
-	}
-	_, ok = runtimeenv.Lookup(s.providerEnvPath(), meta.APIKeyEnv)
-	return ok
-}
-
-func (s *Server) providerEnvPath() string {
-	if s.NativeProviders != nil {
-		if path := strings.TrimSpace(s.NativeProviders.APIKeyEnvPath()); path != "" {
-			return path
-		}
-	}
-	return runtimeenv.Path(s.runtimeRoot())
-}
-
-func (s *Server) runtimeRoot() string {
-	if strings.TrimSpace(s.Root) != "" {
-		return s.Root
-	}
-	if rooter, ok := s.Store.(interface{ RootDir() string }); ok {
-		return rooter.RootDir()
-	}
-	return "."
 }

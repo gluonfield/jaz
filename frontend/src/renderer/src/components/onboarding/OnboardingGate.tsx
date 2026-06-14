@@ -41,6 +41,7 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
   const toast = useToast()
   const [draft, setDraft] = useState(() => draftFromStatus(status))
   const [keysByProvider, setKeysByProvider] = useState<Record<string, string>>({})
+  const [acpKeysByAgent, setACPKeysByAgent] = useState<Record<string, string>>({})
 
   useEffect(() => {
     setDraft(draftFromStatus(status))
@@ -54,7 +55,11 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
   const selectedProviderStatus = providerStatus.get(selectedProvider)
   const selectedProviderKey = keysByProvider[selectedProvider]?.trim() ?? ''
   const acpStatus = useMemo(() => new Map(status.acp.map((probe) => [probe.agent, probe])), [status.acp])
-  const acpEnabled = draft.agents.some((agent) => draft.acp[agent]?.enabled && acpStatus.get(agent)?.available)
+  const acpEnabled = draft.agents.some((agent) => {
+    if (!draft.acp[agent]?.enabled) return false
+    const probe = acpStatus.get(agent)
+    return Boolean(probe?.available || acpKeysByAgent[agent]?.trim())
+  })
   const nativeReady = Boolean(selectedProviderStatus?.configured || selectedProviderKey)
   const canFinish = acpEnabled || nativeReady
 
@@ -71,6 +76,7 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
       completeOnboarding({
         settings: draft,
         provider_keys: selectedProviderKey ? { [selectedProvider]: selectedProviderKey } : undefined,
+        acp_keys: compactSecrets(acpKeysByAgent),
         completed: true,
       }),
     onSuccess: (saved) => {
@@ -96,23 +102,22 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
         initial={{ opacity: 0, y: 10, filter: 'blur(6px)' }}
         animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
         transition={{ duration: 0.45, ease: EASE }}
-        className="w-full max-w-[720px]"
+        className="min-w-0 w-full max-w-[calc(100vw-40px)] md:max-w-[640px]"
       >
         <div className="mb-5">
-          <p className="text-[12px] font-medium uppercase tracking-[0.16em] text-ink-3">Setup</p>
-          <h1 className="mt-2 text-balance text-2xl font-semibold text-ink">Connect Jaz to its agents</h1>
+          <h1 className="text-balance text-[22px] font-semibold text-ink">Connect Jaz to its agents</h1>
           <p className="mt-2 max-w-[620px] text-pretty text-[13px] text-ink-3">
             Agent credentials are checked on the backend machine. A remote backend needs its own
             Codex, Claude, and Grok sign-ins.
           </p>
         </div>
 
-        <div className="overflow-hidden rounded-card bg-surface shadow-[0_18px_60px_rgba(0,0,0,0.10)]">
+        <div className="overflow-hidden rounded-[14px] bg-surface/85 p-1 shadow-[0_0_0_1px_color-mix(in_oklab,var(--color-border)_70%,transparent),0_18px_60px_rgba(0,0,0,0.10)] backdrop-blur-[2px]">
           <StepRow icon={<Server size={16} />} title="Backend" detail="Connected">
             <CheckCircle2 size={17} className="text-primary" />
           </StepRow>
 
-          <div className="border-t border-border/70 px-4 py-4">
+          <div className="border-t border-border/70 px-3 py-3">
             <div className="mb-3 flex items-center gap-2">
               <Bot size={16} className="text-ink-3" />
               <p className="text-[13px] font-medium text-ink">ACP clients</p>
@@ -134,7 +139,11 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
                   key={probe.agent}
                   probe={probe}
                   enabled={Boolean(draft.acp[probe.agent]?.enabled)}
+                  apiKeyValue={acpKeysByAgent[probe.agent] ?? ''}
                   onCopyAuthCommand={copyAuthCommand}
+                  onAPIKeyChange={(value) =>
+                    setACPKeysByAgent({ ...acpKeysByAgent, [probe.agent]: value })
+                  }
                   onChange={(enabled) =>
                     setDraft({
                       ...draft,
@@ -149,7 +158,7 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
             </div>
           </div>
 
-          <div className="border-t border-border/70 px-4 py-4">
+          <div className="border-t border-border/70 px-3 py-3">
             <div className="mb-3 flex items-center gap-2">
               <KeyRound size={16} className="text-ink-3" />
               <p className="text-[13px] font-medium text-ink">Native Agent</p>
@@ -210,32 +219,59 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
 function AgentToggle({
   probe,
   enabled,
+  apiKeyValue,
   onCopyAuthCommand,
+  onAPIKeyChange,
   onChange,
 }: {
   probe: OnboardingACPProbe
   enabled: boolean
+  apiKeyValue: string
   onCopyAuthCommand: (command: string) => void
+  onAPIKeyChange: (value: string) => void
   onChange: (enabled: boolean) => void
 }) {
   const status = agentStatusText(probe)
   const canCopyAuth = Boolean(probe.auth_command && probe.auth_command_available)
   const profile = authProfileText(probe)
+  const apiKeyEnv = probe.api_key?.source_env
+  const apiKeyReady = Boolean(probe.api_key_configured || apiKeyValue.trim())
   return (
-    <div className="rounded-control bg-bg px-3 py-3">
+    <div className="rounded-[12px] bg-bg p-2.5 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-border)_70%,transparent)]">
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             <p className="truncate text-[13px] font-medium text-ink">{agentLabel(probe.agent)}</p>
             <span className={`text-[12px] ${probe.available ? 'text-primary' : 'text-ink-3'}`}>{status}</span>
           </div>
-          <p className={`mt-1 text-pretty text-[12px] ${probe.available ? 'text-ink-3' : 'text-danger'}`}>
+          <p className={`mt-1 break-words text-pretty text-[12px] ${probe.available ? 'text-ink-3' : 'text-danger'}`}>
             {probe.reason || authStorageText(probe)}
           </p>
           <p className="mt-1 text-pretty text-[12px] text-ink-3">{profile}</p>
           {probe.storage_path && (
             <p className="mt-1 truncate font-mono text-[11px] text-ink-3">{probe.storage_path}</p>
           )}
+          {apiKeyEnv ? (
+            <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+              <Input
+                type="password"
+                value={apiKeyValue}
+                onChange={(event) => onAPIKeyChange(event.target.value)}
+                placeholder={probe.api_key_configured ? `${apiKeyEnv} configured` : apiKeyEnv}
+                autoComplete="off"
+                spellCheck={false}
+                className="h-8 rounded-full bg-surface px-3 py-0 text-[12px]"
+                aria-label={`${agentLabel(probe.agent)} API key fallback`}
+              />
+              <span
+                className={`inline-flex h-8 items-center justify-center rounded-full px-2.5 text-[12px] ${
+                  apiKeyReady ? 'bg-primary-soft text-primary-strong' : 'bg-surface text-ink-3'
+                }`}
+              >
+                {apiKeyReady ? 'API key ready' : 'Fallback'}
+              </span>
+            </div>
+          ) : null}
           {!probe.authenticated && probe.auth_command && (
             <div className="mt-2 grid gap-2 rounded-[calc(var(--radius-control)-2px)] bg-surface px-2.5 py-2">
               <p className="text-[11px] text-ink-3">Run this on the backend host, then refresh.</p>
@@ -262,7 +298,7 @@ function AgentToggle({
           )}
           <Switch
             checked={enabled}
-            disabled={!probe.available}
+            disabled={!probe.installed || (!probe.available && !apiKeyReady)}
             onChange={onChange}
             aria-label={`Enable ${agentLabel(probe.agent)}`}
           />
@@ -280,11 +316,13 @@ function agentStatusText(probe: OnboardingACPProbe): string {
 }
 
 function authStorageText(probe: OnboardingACPProbe): string {
+  if (probe.auth_kind === 'api_key') return 'Using explicit API key fallback.'
   if (probe.refresh_owner === 'coding_agent_cli') return 'The coding agent owns token refresh.'
   return 'Detected'
 }
 
 function authProfileText(probe: OnboardingACPProbe): string {
+  if (probe.auth_kind === 'api_key') return `${probe.api_key?.source_env || 'API key'} configured.`
   const label = probe.auth_source === 'existing_cli' ? 'Using existing CLI profile' : 'Using Jaz profile'
   const evidence =
     probe.auth_evidence === 'keyring_config'
@@ -301,8 +339,8 @@ function authProfileText(probe: OnboardingACPProbe): string {
 
 function StepRow({ icon, title, detail, children }: { icon: ReactNode; title: string; detail: string; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-4">
-      <span className="grid size-8 place-items-center rounded-full bg-bg text-ink-3">{icon}</span>
+    <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3">
+      <span className="grid size-8 place-items-center rounded-full bg-bg text-ink-3 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-border)_70%,transparent)]">{icon}</span>
       <div className="min-w-0">
         <p className="text-[13px] font-medium text-ink">{title}</p>
         <p className="mt-0.5 text-[12px] text-ink-3">{detail}</p>
@@ -328,8 +366,10 @@ function OnboardingShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-full flex-col bg-bg">
       <div className="titlebar-drag h-[52px] shrink-0" />
-      <main className="flex min-h-0 flex-1 items-center justify-center px-5 pb-[52px]">
-        {children}
+      <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-5 pb-[52px]">
+        <div className="flex min-h-full w-full items-start justify-center py-6 md:py-8">
+          {children}
+        </div>
       </main>
     </div>
   )
@@ -360,6 +400,8 @@ function cloneSettings(settings: AgentSettings): AgentSettings {
   return {
     native: { ...settings.native },
     providers: [...(settings.providers ?? [])],
+    acp_auth: { ...(settings.acp_auth ?? {}) },
+    acp_keys: { ...(settings.acp_keys ?? {}) },
     acp: Object.fromEntries(
       Object.entries(settings.acp ?? {}).map(([agent, value]) => [
         agent,
@@ -368,4 +410,13 @@ function cloneSettings(settings: AgentSettings): AgentSettings {
     ),
     agents: [...(settings.agents ?? [])],
   }
+}
+
+function compactSecrets(values: Record<string, string>): Record<string, string> | undefined {
+  const out = Object.fromEntries(
+    Object.entries(values)
+      .map(([key, value]) => [key, value.trim()] as const)
+      .filter(([, value]) => value.length > 0),
+  )
+  return Object.keys(out).length > 0 ? out : undefined
 }

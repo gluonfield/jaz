@@ -178,8 +178,8 @@ func TestProcessEnvUsesJazHomeForClaudeCode(t *testing.T) {
 	if env["HOME"] != wantHome {
 		t.Fatalf("HOME = %q, want %q", env["HOME"], wantHome)
 	}
-	if env["ANTHROPIC_API_KEY"] != "host-anthropic-key" {
-		t.Fatalf("ANTHROPIC_API_KEY was not preserved and normalized")
+	if env["ANTHROPIC_API_KEY"] != "" {
+		t.Fatalf("ANTHROPIC_API_KEY leaked into claude subprocess env")
 	}
 	if _, ok := env["ANTHROPIC_APIKEY"]; ok {
 		t.Fatal("ANTHROPIC_APIKEY alias leaked into subprocess env")
@@ -240,8 +240,8 @@ func TestProcessEnvUsesJazHomeForGrok(t *testing.T) {
 	if env["HOME"] != wantHome {
 		t.Fatalf("HOME = %q, want %q", env["HOME"], wantHome)
 	}
-	if env["XAI_API_KEY"] != "host-xai-key" {
-		t.Fatalf("XAI_API_KEY was not preserved and normalized")
+	if env["XAI_API_KEY"] != "" {
+		t.Fatalf("XAI_API_KEY leaked into grok subprocess env")
 	}
 	if _, ok := env["XAI_APIKEY"]; ok {
 		t.Fatal("XAI_APIKEY alias leaked into subprocess env")
@@ -285,14 +285,57 @@ func TestProcessEnvNeverLeaksAPIKeysToCodex(t *testing.T) {
 	}
 }
 
-func TestProbeReadinessRequiresCodexOAuth(t *testing.T) {
+func TestProcessEnvMapsExplicitACPAPIKeysOnlyWhenNeeded(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEX_HOME", t.TempDir())
+	t.Setenv("JAZ_ACP_CODEX_API_KEY", "codex-key")
+	t.Setenv("JAZ_ACP_CLAUDE_API_KEY", "claude-key")
+	t.Setenv("JAZ_ACP_GROK_API_KEY", "grok-key")
+
+	manager := NewManager(nil, Config{Root: root}, nil)
+	codexEnv := manager.processEnv("codex", AgentConfig{})
+	if codexEnv["OPENAI_API_KEY"] != "codex-key" || codexEnv["JAZ_ACP_CODEX_API_KEY"] != "" {
+		t.Fatalf("codex explicit key not mapped cleanly: %#v", codexEnv)
+	}
+	claudeEnv := manager.processEnv("claude", AgentConfig{})
+	if claudeEnv["ANTHROPIC_API_KEY"] != "claude-key" || claudeEnv["JAZ_ACP_CLAUDE_API_KEY"] != "" {
+		t.Fatalf("claude explicit key not mapped cleanly: %#v", claudeEnv)
+	}
+	grokEnv := manager.processEnv("grok", AgentConfig{})
+	if grokEnv["XAI_API_KEY"] != "grok-key" || grokEnv["JAZ_ACP_GROK_API_KEY"] != "" {
+		t.Fatalf("grok explicit key not mapped cleanly: %#v", grokEnv)
+	}
+}
+
+func TestProcessEnvPrefersAccountAuthOverExplicitAPIKeys(t *testing.T) {
+	root := t.TempDir()
+	codexHome := t.TempDir()
+	if err := os.WriteFile(filepath.Join(codexHome, "auth.json"), []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("JAZ_ACP_CODEX_API_KEY", "codex-key")
+
+	env := NewManager(nil, Config{Root: root}, nil).processEnv("codex", AgentConfig{})
+	if env["OPENAI_API_KEY"] != "" {
+		t.Fatalf("codex api key should not be injected when oauth is available: %#v", env)
+	}
+}
+
+func TestProbeReadinessAllowsCodexOAuthOrExplicitAPIKey(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("CODEX_HOME", t.TempDir())
 	exe := testExecutable(t)
 
 	ready := ProbeReadiness(AgentCodex, AgentConfig{Command: exe}, t.TempDir(), nil)
-	if ready.Available || !strings.Contains(ready.Reason, "Codex OAuth login") {
+	if ready.Available || !strings.Contains(ready.Reason, "Codex login") {
 		t.Fatalf("ready = %#v", ready)
+	}
+
+	ready = ProbeReadiness(AgentCodex, AgentConfig{Command: exe}, t.TempDir(), map[string]string{"JAZ_ACP_CODEX_API_KEY": "key"})
+	if !ready.Available {
+		t.Fatalf("codex should be ready with explicit api key: %#v", ready)
 	}
 
 	codexHome := t.TempDir()
@@ -360,11 +403,11 @@ func TestAutoAuthMethodSelectsConfiguredEnvVarForGenericAgent(t *testing.T) {
 	}
 }
 
-func TestAutoAuthMethodDoesNotUseAPIKeyForCodex(t *testing.T) {
+func TestAutoAuthMethodUsesAPIKeyForCodexWhenOAuthMissing(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	method, missing := autoAuthMethod("codex", codexInitializeAuthMethods(), map[string]string{"OPENAI_API_KEY": "key"})
 
-	if method != "" || strings.Join(missing, ",") != "Codex OAuth login at ~/.codex/auth.json" {
+	if method != "openai-api-key" || len(missing) != 0 {
 		t.Fatalf("method=%q missing=%v", method, missing)
 	}
 }
@@ -394,6 +437,24 @@ func TestAutoAuthMethodPrefersGrokAPIKeyWhenAdvertised(t *testing.T) {
 	}
 }
 
+func TestAutoAuthMethodPrefersGrokCachedTokenOverAPIKey(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".grok"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".grok", "auth.json"), []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	method, missing := autoAuthMethod("grok", grokInitializeAuthMethods(), map[string]string{
+		"HOME":        home,
+		"XAI_API_KEY": "key",
+	})
+
+	if method != "cached_token" || len(missing) != 0 {
+		t.Fatalf("method=%q missing=%v", method, missing)
+	}
+}
+
 func TestAutoAuthMethodUsesGrokCachedToken(t *testing.T) {
 	home := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(home, ".grok"), 0o700); err != nil {
@@ -414,7 +475,7 @@ func TestAutoAuthMethodReportsMissingGrokAuth(t *testing.T) {
 	home := t.TempDir()
 	method, missing := autoAuthMethod("grok", grokInitializeAuthMethods(), map[string]string{"HOME": home})
 
-	if method != "" || strings.Join(missing, ",") != "Grok login at "+filepath.Join(home, ".grok", "auth.json")+" or XAI_API_KEY" {
+	if method != "" || strings.Join(missing, ",") != "Grok login at "+filepath.Join(home, ".grok", "auth.json")+" or JAZ_ACP_GROK_API_KEY" {
 		t.Fatalf("method=%q missing=%v", method, missing)
 	}
 }
@@ -486,7 +547,7 @@ func TestAutoAuthMethodReportsMissingEnvVars(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	method, missing := autoAuthMethod("codex", codexInitializeAuthMethods(), nil)
 
-	if method != "" || strings.Join(missing, ",") != "Codex OAuth login at ~/.codex/auth.json" {
+	if method != "" || strings.Join(missing, ",") != "Codex OAuth login at ~/.codex/auth.json,JAZ_ACP_CODEX_API_KEY" {
 		t.Fatalf("method=%q missing=%v", method, missing)
 	}
 }
