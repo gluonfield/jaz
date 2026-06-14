@@ -89,26 +89,26 @@ func (u Usage) LiveContextTokens() int64 {
 }
 
 type Session struct {
-	ID              string      `json:"id"`
-	Slug            string      `json:"slug"`
-	Title           string      `json:"title,omitempty"`
-	ParentID        string      `json:"parent_id,omitempty"`
-	Status          string      `json:"status"`
-	Error           string      `json:"error,omitempty"`
-	Runtime         string      `json:"runtime"`
-	RuntimeRef      *RuntimeRef `json:"runtime_ref,omitempty"`
-	ModelProvider   string      `json:"model_provider,omitempty"`
-	Model           string      `json:"model,omitempty"`
-	ReasoningEffort string      `json:"reasoning_effort,omitempty"`
-	Usage           Usage       `json:"usage,omitempty"`
-	QueuedMessages  []string    `json:"queued_messages,omitempty"`
-	SourceType      string      `json:"source_type,omitempty"`
-	SourceID        string      `json:"source_id,omitempty"`
-	Archived        bool        `json:"archived,omitempty"`
-	Pinned          bool        `json:"pinned,omitempty"`
-	CreatedAt       time.Time   `json:"created_at"`
-	UpdatedAt       time.Time   `json:"updated_at"`
-	LastAttentionAt time.Time   `json:"last_attention_at"`
+	ID              string          `json:"id"`
+	Slug            string          `json:"slug"`
+	Title           string          `json:"title,omitempty"`
+	ParentID        string          `json:"parent_id,omitempty"`
+	Status          string          `json:"status"`
+	Error           string          `json:"error,omitempty"`
+	Runtime         string          `json:"runtime"`
+	RuntimeRef      *RuntimeRef     `json:"runtime_ref,omitempty"`
+	ModelProvider   string          `json:"model_provider,omitempty"`
+	Model           string          `json:"model,omitempty"`
+	ReasoningEffort string          `json:"reasoning_effort,omitempty"`
+	Usage           Usage           `json:"usage,omitempty"`
+	QueuedMessages  []QueuedMessage `json:"queued_messages,omitempty"`
+	SourceType      string          `json:"source_type,omitempty"`
+	SourceID        string          `json:"source_id,omitempty"`
+	Archived        bool            `json:"archived,omitempty"`
+	Pinned          bool            `json:"pinned,omitempty"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
+	LastAttentionAt time.Time       `json:"last_attention_at"`
 }
 
 func MarkSessionAttention(session *Session, at time.Time) {

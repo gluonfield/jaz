@@ -5,6 +5,7 @@ import {
   fileKey,
   type Attachment,
   type HealthResponse,
+  type QueuedMessage,
   type RepoChanges,
   type RepoFileChange,
   type RepoFilePatch,
@@ -251,12 +252,12 @@ export function cancelSession(id: string): Promise<{ ok: boolean }> {
 }
 
 export type QueueMutation =
-  | { op: 'append'; text: string }
+  | { op: 'append'; text: string; attachment_ids?: string[] }
   | { op: 'delete'; index: number; expected?: string }
   | { op: 'edit'; index: number; text: string; expected?: string }
   | { op: 'move'; from: number; to: number; expected?: string }
   | { op: 'steer'; index: number; expected?: string }
-  | { op: 'replace'; messages: string[] }
+  | { op: 'replace'; messages: QueuedMessage[] }
 
 export function mutateSessionQueue(id: string, mutation: QueueMutation): Promise<Session> {
   return post<Session>(`/v1/sessions/${id}/queue`, mutation)

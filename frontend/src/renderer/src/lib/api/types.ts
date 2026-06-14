@@ -39,10 +39,15 @@ export interface Session {
   model?: string
   reasoning_effort?: string
   usage?: Usage
-  queued_messages?: string[]
+  queued_messages?: QueuedMessage[]
   created_at: string
   updated_at: string
   last_attention_at: string
+}
+
+export interface QueuedMessage {
+  text: string
+  attachment_ids?: string[]
 }
 
 // Git/forge state of a session's working directory (GET /v1/sessions/:id/repo).
