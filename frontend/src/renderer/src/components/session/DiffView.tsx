@@ -1,9 +1,12 @@
 import { ChevronDown } from 'lucide-react'
-import { type CSSProperties, memo, useEffect, useMemo, useState } from 'react'
+import { memo, useMemo } from 'react'
+import {
+  HighlightedCodeLine,
+  useSyntaxHighlightedLines,
+  type HighlightedCodeLines,
+} from '@/components/session/HighlightedCode'
 import type { RepoFileChange } from '@/lib/api/types'
 import { parseUnifiedDiff, type DiffHunk } from '@/lib/diff/parseUnifiedDiff'
-import { highlightLines, syntaxTheme, type SyntaxLine, type SyntaxToken } from '@/lib/diff/syntaxHighlight'
-import { useTheme } from '@/lib/theme'
 
 // A file's +/− counts, shared by changed-file rows and diff section headers.
 export function FileCounts({ file }: { file: RepoFileChange }) {
@@ -32,10 +35,9 @@ export const DiffView = memo(function DiffView({
   binary?: boolean
   truncated?: boolean
 }) {
-  const { resolved } = useTheme()
   const hunks = useMemo(() => parseUnifiedDiff(patch), [patch])
   const lines = useMemo(() => hunks.flatMap((hunk) => hunk.lines.map((line) => line.text)), [hunks])
-  const highlighted = useHighlightedLines(binary ? '' : (path ?? ''), lines, resolved)
+  const highlighted = useSyntaxHighlightedLines(binary ? '' : (path ?? ''), lines)
   if (binary) {
     return <Notice>Binary file — no text diff.</Notice>
   }
@@ -66,26 +68,6 @@ export const DiffView = memo(function DiffView({
   )
 })
 
-function useHighlightedLines(path: string, lines: string[], resolvedTheme: 'light' | 'dark') {
-  const [highlighted, setHighlighted] = useState<SyntaxLine[] | null>(null)
-  useEffect(() => {
-    let cancelled = false
-    setHighlighted(null)
-    if (!path || !lines.length) return
-    void highlightLines(path, lines, syntaxTheme(resolvedTheme))
-      .then((next) => {
-        if (!cancelled) setHighlighted(next)
-      })
-      .catch(() => {
-        if (!cancelled) setHighlighted(null)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [lines, path, resolvedTheme])
-  return highlighted
-}
-
 function Hunk({
   hunk,
   previous,
@@ -93,7 +75,7 @@ function Hunk({
 }: {
   hunk: DiffHunk
   previous?: DiffHunk
-  highlighted?: SyntaxLine[] | null
+  highlighted?: HighlightedCodeLines | null
 }) {
   const collapsed = collapsedLineCount(previous, hunk)
   return (
@@ -140,36 +122,13 @@ function Hunk({
             </td>
             <td className={`w-5 min-w-5 text-center align-top select-none ${markerColor}`}>{marker}</td>
             <td className="whitespace-pre pr-5 align-top text-ink-2 select-text">
-              <HighlightedLine text={line.text} tokens={highlighted?.[index]} />
+              <HighlightedCodeLine text={line.text} tokens={highlighted?.[index]} />
             </td>
           </tr>
         )
       })}
     </>
   )
-}
-
-function HighlightedLine({ text, tokens }: { text: string; tokens?: SyntaxLine }) {
-  if (!tokens?.length) return <>{text || ' '}</>
-  return (
-    <>
-      {tokens.map((token, index) => (
-        <span key={index} style={tokenStyle(token)}>
-          {token.content}
-        </span>
-      ))}
-    </>
-  )
-}
-
-function tokenStyle(token: SyntaxToken): CSSProperties {
-  const fontStyle = token.fontStyle ?? 0
-  return {
-    color: token.color,
-    fontStyle: fontStyle & 1 ? 'italic' : undefined,
-    fontWeight: fontStyle & 2 ? 600 : undefined,
-    textDecorationLine: fontStyle & 4 ? 'underline' : undefined,
-  }
 }
 
 function collapsedLineCount(previous: DiffHunk | undefined, hunk: DiffHunk): number {

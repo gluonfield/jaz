@@ -9,8 +9,8 @@ export interface SyntaxToken {
 
 export type SyntaxLine = SyntaxToken[]
 
-type DiffTheme = 'github-light' | 'github-dark'
-type DiffLanguage =
+type CodeTheme = 'github-light' | 'github-dark'
+type CodeLanguage =
   | 'astro'
   | 'bash'
   | 'c'
@@ -50,12 +50,12 @@ type DiffLanguage =
   | 'zig'
   | 'zsh'
 
-const LIGHT_THEME: DiffTheme = 'github-light'
-const DARK_THEME: DiffTheme = 'github-dark'
+const LIGHT_THEME: CodeTheme = 'github-light'
+const DARK_THEME: CodeTheme = 'github-dark'
 const MAX_HIGHLIGHT_LINES = 2500
 const MAX_HIGHLIGHT_CHARS = 120 * 1024
 
-const createHighlighter = createBundledHighlighter<DiffLanguage, DiffTheme>({
+const createHighlighter = createBundledHighlighter<CodeLanguage, CodeTheme>({
   langs: {
     astro: () => import('@shikijs/langs/astro'),
     bash: () => import('@shikijs/langs/bash'),
@@ -103,9 +103,9 @@ const createHighlighter = createBundledHighlighter<DiffLanguage, DiffTheme>({
   engine: () => createJavaScriptRegexEngine(),
 })
 
-let highlighter: Promise<HighlighterGeneric<DiffLanguage, DiffTheme>> | null = null
+let highlighter: Promise<HighlighterGeneric<CodeLanguage, CodeTheme>> | null = null
 
-const EXTENSIONS: Record<string, DiffLanguage> = {
+const EXTENSIONS: Record<string, CodeLanguage> = {
   astro: 'astro',
   bash: 'bash',
   c: 'c',
@@ -155,16 +155,16 @@ const EXTENSIONS: Record<string, DiffLanguage> = {
   zsh: 'zsh',
 }
 
-const FILENAMES: Record<string, DiffLanguage> = {
+const FILENAMES: Record<string, CodeLanguage> = {
   dockerfile: 'dockerfile',
   makefile: 'makefile',
 }
 
-export function syntaxTheme(resolvedTheme: 'light' | 'dark'): DiffTheme {
+export function syntaxTheme(resolvedTheme: 'light' | 'dark'): CodeTheme {
   return resolvedTheme === 'dark' ? DARK_THEME : LIGHT_THEME
 }
 
-export function languageForPath(path: string): DiffLanguage | null {
+export function languageForPath(path: string): CodeLanguage | null {
   const filename = path.split('/').pop()?.toLowerCase() ?? ''
   if (FILENAMES[filename]) return FILENAMES[filename]
   const extension = filename.includes('.') ? filename.split('.').pop() : ''
@@ -174,7 +174,7 @@ export function languageForPath(path: string): DiffLanguage | null {
 export async function highlightLines(
   path: string,
   lines: string[],
-  theme: DiffTheme,
+  theme: CodeTheme,
 ): Promise<SyntaxLine[] | null> {
   const lang = languageForPath(path)
   if (!lang) return null
@@ -183,13 +183,13 @@ export async function highlightLines(
   const shiki = await highlighter
   await shiki.loadLanguage(lang)
   const result = shiki.codeToTokens(lines.join('\n'), { lang, theme })
-	  return result.tokens.map((line) =>
-	    line.map((token) => ({
-	      content: token.content,
-	      color: token.color,
-	      fontStyle: token.fontStyle,
-	    })),
-	  )
+  return result.tokens.map((line) =>
+    line.map((token) => ({
+      content: token.content,
+      color: token.color,
+      fontStyle: token.fontStyle,
+    })),
+  )
 }
 
 function withinHighlightBudget(lines: string[]): boolean {
