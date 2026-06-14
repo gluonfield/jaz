@@ -289,6 +289,11 @@ func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentD
 	if name == acp.AgentClaude && strings.TrimSpace(stored.Model) == legacyClaudeCodeModel {
 		stored.Model = seed.Model
 	}
+	if auth, err := acp.NormalizeAgentAuthConfig(name, stored.Auth); err == nil {
+		stored.Auth = auth
+	} else {
+		stored.Auth = seed.Auth
+	}
 	return stored
 }
 

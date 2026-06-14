@@ -14,7 +14,6 @@ import (
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/gluonfield/acp-transport/stdio"
 	"github.com/gluonfield/acp-transport/streamhttp"
-	"github.com/wins/jaz/backend/internal/runtimefiles"
 )
 
 func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, env map[string]string, cwd string) (jsonrpc.MessageConn, error) {
@@ -82,7 +81,7 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 	name = CanonicalAgentName(name)
 	env := map[string]string{}
 	var prepareErr error
-	for _, key := range []string{"PATH", "CODEX_HOME"} {
+	for _, key := range []string{"PATH"} {
 		if value := os.Getenv(key); value != "" {
 			env[key] = value
 		}
@@ -93,19 +92,18 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 	for key, value := range agent.Env {
 		env[key] = value
 	}
+	delete(env, "HOME")
 	normalizeEnv(env, "OPENAI_API_KEY", "OPENAI_APIKEY")
 	normalizeEnv(env, "ANTHROPIC_API_KEY", "ANTHROPIC_APIKEY")
 	normalizeEnv(env, "XAI_API_KEY", "XAI_APIKEY")
 
 	root := firstNonEmpty(m.cfg.Root, filepath.Join(os.TempDir(), "jaz"))
-	layout := runtimefiles.New(root)
-	home := layout.ACPHome
 	if name == AgentCodex {
 		auth := resolveAgentAuth(name, agent, root, env)
 		codexHome := auth.Config.Path
 		if codexHome != "" {
 			env["CODEX_HOME"] = codexHome
-			if prepare {
+			if prepare && auth.Config.Mode == AuthModeJazProfile {
 				if err := os.MkdirAll(codexHome, 0o700); err != nil {
 					prepareErr = firstError(prepareErr, fmt.Errorf("prepare codex profile %s: %w", codexHome, err))
 				}
@@ -119,7 +117,6 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 		}
 	}
 	if name == AgentClaude {
-		configuredHome := strings.TrimSpace(env["HOME"])
 		configuredConfigDir := strings.TrimSpace(env["CLAUDE_CONFIG_DIR"])
 		preserveHostEnv(env, []string{
 			"ANTHROPIC_AUTH_TOKEN",
@@ -137,16 +134,11 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 			"USER",
 		})
 		auth := resolveAgentAuth(name, agent, root, env)
-		if configuredHome != "" {
-			home = configuredHome
-		} else if auth.Config.Mode == AuthModeExistingCLI {
-			home = defaultHomePath("")
-		}
 		if configuredConfigDir != "" {
 			env["CLAUDE_CONFIG_DIR"] = configuredConfigDir
 		} else {
 			env["CLAUDE_CONFIG_DIR"] = auth.Config.Path
-			if prepare {
+			if prepare && auth.Config.Mode == AuthModeJazProfile {
 				if err := os.MkdirAll(env["CLAUDE_CONFIG_DIR"], 0o700); err != nil {
 					prepareErr = firstError(prepareErr, fmt.Errorf("prepare claude profile %s: %w", env["CLAUDE_CONFIG_DIR"], err))
 				}
@@ -164,7 +156,6 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 		}
 	}
 	if name == AgentGrok {
-		configuredHome := strings.TrimSpace(env["HOME"])
 		preserveHostEnv(env, []string{
 			"HTTP_PROXY",
 			"HTTPS_PROXY",
@@ -178,16 +169,6 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 			"USER",
 		})
 		auth := resolveAgentAuth(name, agent, root, env)
-		if configuredHome != "" {
-			home = configuredHome
-		} else {
-			home = auth.Config.Path
-			if prepare {
-				if err := os.MkdirAll(filepath.Join(home, ".grok"), 0o700); err != nil {
-					prepareErr = firstError(prepareErr, fmt.Errorf("prepare grok profile %s: %w", home, err))
-				}
-			}
-		}
 		normalizeEnv(env, "XAI_API_KEY", "XAI_APIKEY")
 		delete(env, "XAI_API_KEY")
 		if target, value, ok := auth.APIKeyBinding(); ok {
@@ -199,24 +180,6 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 			delete(env, spec.SourceEnv)
 		}
 	}
-	tmp := layout.ACPTmp
-	cache := layout.ACPNPMCache
-	if prepare {
-		for _, dir := range []string{home, tmp, cache} {
-			if err := os.MkdirAll(dir, 0o700); err != nil {
-				prepareErr = firstError(prepareErr, fmt.Errorf("prepare acp directory %s: %w", dir, err))
-			}
-		}
-	}
-	env["HOME"] = home
-	env["TMPDIR"] = tmp
-	env["TMP"] = tmp
-	env["TEMP"] = tmp
-	env["npm_config_cache"] = cache
-	env["npm_config_ignore_scripts"] = "true"
-	env["npm_config_audit"] = "false"
-	env["npm_config_fund"] = "false"
-	env["npm_config_update_notifier"] = "false"
 	return env, prepareErr
 }
 
@@ -307,6 +270,9 @@ func normalizeEnv(env map[string]string, canonical, alias string) {
 		env[canonical] = env[alias]
 	}
 	delete(env, alias)
+	if env[canonical] == "" {
+		delete(env, canonical)
+	}
 }
 
 func envList(env map[string]string) []string {

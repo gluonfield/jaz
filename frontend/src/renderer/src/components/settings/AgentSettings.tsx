@@ -26,6 +26,12 @@ const AUTH_MODE_OPTIONS = [
   { value: 'jaz_profile', label: 'Jaz profile', description: 'Use isolated Jaz agent auth' },
 ]
 
+const authModeOptions = (agent: string) =>
+  agent === 'grok' ? AUTH_MODE_OPTIONS.filter((option) => option.value !== 'jaz_profile') : AUTH_MODE_OPTIONS
+
+const authModeValue = (agent: string, mode: 'auto' | 'existing_cli' | 'jaz_profile' | undefined) =>
+  agent === 'grok' && mode === 'jaz_profile' ? 'auto' : (mode ?? 'auto')
+
 // Here '' means "no effort configured" rather than "inherit the default".
 const settingsReasoningOptions = (options = REASONING_EFFORT_OPTIONS) =>
   options.map((option) => (option.value === '' ? { ...option, label: 'None' } : option))
@@ -279,8 +285,8 @@ function ACPAgentRow({
         <AgentAuthPanel
           agent={agent}
           disabled={controlsDisabled}
-          authMode={current.auth?.mode ?? 'auto'}
-          authPath={current.auth?.path ?? ''}
+          authMode={authModeValue(agent, current.auth?.mode)}
+          authPath={agent === 'grok' ? '' : (current.auth?.path ?? '')}
           status={authStatus}
           apiKeyValue={settings.acp_keys?.[agent] ?? ''}
           onAuthModeChange={(mode) => update({ auth: { mode, path: '' } })}
@@ -381,7 +387,7 @@ function AgentAuthPanel({
           <p className="mt-0.5 text-[12px] text-ink-3">{authStatusText(status)}</p>
         </div>
         <div className="flex flex-wrap gap-1">
-          {AUTH_MODE_OPTIONS.map((option) => (
+          {authModeOptions(agent).map((option) => (
             <Button
               key={option.value}
               size="sm"
