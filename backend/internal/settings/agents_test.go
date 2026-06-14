@@ -261,3 +261,39 @@ func TestNormalizeAgentDefaultsPreservesACPAuthProfile(t *testing.T) {
 		t.Fatalf("auth path = %q", normalized.ACP["codex"].Auth.Path)
 	}
 }
+
+func TestNormalizeAgentDefaultsRejectsGrokPathBearingAuth(t *testing.T) {
+	for _, auth := range []acp.AgentAuthConfig{
+		{Mode: acp.AuthModeJazProfile},
+		{Mode: acp.AuthModeExistingCLI, Path: "~/custom-grok"},
+	} {
+		input := testAgentDefaultsSeed()
+		grok := input.ACP["grok"]
+		grok.Auth = auth
+		input.ACP["grok"] = grok
+
+		if _, err := NormalizeAgentDefaults(input, acp.BuiltinAgents()); err == nil {
+			t.Fatalf("expected grok auth %#v to be rejected", auth)
+		}
+	}
+}
+
+func TestMergeAgentDefaultsDropsLegacyGrokJazProfile(t *testing.T) {
+	seed := testAgentDefaultsSeed()
+	stored := AgentDefaults{
+		Native: seed.Native,
+		ACP:    map[string]ACPAgentDefaults{},
+	}
+	for name, agent := range seed.ACP {
+		stored.ACP[name] = agent
+	}
+	grok := stored.ACP["grok"]
+	grok.Auth = acp.AgentAuthConfig{Mode: acp.AuthModeJazProfile, Path: "~/fake-grok"}
+	stored.ACP["grok"] = grok
+
+	merged := MergeAgentDefaults(stored, seed, agentNames(seed))
+
+	if merged.ACP["grok"].Auth.Mode != acp.AuthModeAuto || merged.ACP["grok"].Auth.Path != "" {
+		t.Fatalf("grok auth = %#v, want auto without path", merged.ACP["grok"].Auth)
+	}
+}

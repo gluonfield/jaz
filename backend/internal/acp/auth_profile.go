@@ -47,9 +47,21 @@ func NormalizeAgentAuthConfig(name string, auth AgentAuthConfig) (AgentAuthConfi
 	default:
 		return AgentAuthConfig{}, fmt.Errorf("acp agent %q auth mode %q is not supported", name, mode)
 	}
+	path := strings.TrimSpace(auth.Path)
+	if mode == AuthModeAuto {
+		path = ""
+	}
+	if name == AgentGrok {
+		if mode == AuthModeJazProfile {
+			return AgentAuthConfig{}, fmt.Errorf("acp agent %q auth mode %q is not supported because Grok has no explicit profile path", name, mode)
+		}
+		if path != "" {
+			return AgentAuthConfig{}, fmt.Errorf("acp agent %q auth path is not supported because Grok has no explicit profile path", name)
+		}
+	}
 	return AgentAuthConfig{
 		Mode: mode,
-		Path: strings.TrimSpace(auth.Path),
+		Path: path,
 	}, nil
 }
 
@@ -73,7 +85,7 @@ func resolveAgentAuth(name string, cfg AgentConfig, root string, env map[string]
 
 func resolveCodexAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env map[string]string) resolvedAgentAuth {
 	layout := runtimefiles.New(root)
-	existing := expandAuthPath(firstNonEmpty(auth.Path, cfg.Env["CODEX_HOME"], env["CODEX_HOME"], os.Getenv("CODEX_HOME"), defaultHomePath(".codex")))
+	existing := expandAuthPath(firstNonEmpty(existingAuthPath(auth), cfg.Env["CODEX_HOME"], env["CODEX_HOME"], os.Getenv("CODEX_HOME"), defaultHomePath(".codex")))
 	jaz := layout.ACPCodexHome
 	if auth.Mode == AuthModeJazProfile && strings.TrimSpace(auth.Path) != "" {
 		jaz = expandAuthPath(auth.Path)
@@ -114,7 +126,7 @@ func resolveCodexAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env ma
 
 func resolveClaudeAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env map[string]string) resolvedAgentAuth {
 	layout := runtimefiles.New(root)
-	existing := expandAuthPath(firstNonEmpty(auth.Path, cfg.Env["CLAUDE_CONFIG_DIR"], env["CLAUDE_CONFIG_DIR"], os.Getenv("CLAUDE_CONFIG_DIR"), defaultHomePath(".claude")))
+	existing := expandAuthPath(firstNonEmpty(existingAuthPath(auth), cfg.Env["CLAUDE_CONFIG_DIR"], env["CLAUDE_CONFIG_DIR"], os.Getenv("CLAUDE_CONFIG_DIR"), defaultHomePath(".claude")))
 	jaz := layout.ACPClaudeConfig
 	if auth.Mode == AuthModeJazProfile && strings.TrimSpace(auth.Path) != "" {
 		jaz = expandAuthPath(auth.Path)
@@ -153,43 +165,45 @@ func resolveClaudeAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env m
 	return status
 }
 
-func resolveGrokAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env map[string]string) resolvedAgentAuth {
-	layout := runtimefiles.New(root)
-	existing := expandAuthPath(firstNonEmpty(auth.Path, cfg.Env["HOME"], env["HOME"], os.Getenv("HOME"), defaultHomePath("")))
-	jaz := layout.ACPHome
-	if auth.Mode == AuthModeJazProfile && strings.TrimSpace(auth.Path) != "" {
-		jaz = expandAuthPath(auth.Path)
-	}
+func resolveGrokAuth(auth AgentAuthConfig, _ AgentConfig, root string, env map[string]string) resolvedAgentAuth {
+	existing := defaultHomePath("")
 	mode := auth.Mode
 	if mode == AuthModeAuto || mode == "" {
-		mode = AuthModeJazProfile
-		if grokAuthFileAvailable(jaz) {
-			mode = AuthModeJazProfile
-		} else if grokAuthFileAvailable(existing) {
-			mode = AuthModeExistingCLI
-		}
+		mode = AuthModeExistingCLI
 	}
-	path := jaz
-	source := AuthModeJazProfile
-	if mode == AuthModeExistingCLI {
-		path = existing
-		source = AuthModeExistingCLI
+	storagePath := ""
+	if existing != "" {
+		storagePath = filepath.Join(existing, ".grok", "auth.json")
 	}
 	status := resolvedAgentAuth{
-		Config:      AgentAuthConfig{Mode: mode, Path: path},
-		StoragePath: filepath.Join(path, ".grok", "auth.json"),
-		Source:      source,
+		Config:      AgentAuthConfig{Mode: mode},
+		StoragePath: storagePath,
+		Source:      AuthModeExistingCLI,
 	}
 	apiKeyConfigured := status.resolveAPIKey(AgentGrok, root, env)
 	switch {
-	case grokAuthFileAvailable(path):
+	case existing != "" && grokAuthFileAvailable(existing):
 		status.markAuthenticated("auth_json", AuthKindOAuth)
 	case apiKeyConfigured:
 		status.markAuthenticated("api_key_env", AuthKindAPIKey)
 	default:
-		status.Reason = "Grok login at " + filepath.Join(path, ".grok", "auth.json") + " or " + status.APIKey.SourceEnv
+		status.Reason = "Grok login at " + grokAuthPath(existing) + " or " + status.APIKey.SourceEnv
 	}
 	return status
+}
+
+func grokAuthPath(home string) string {
+	if strings.TrimSpace(home) == "" {
+		return "~/.grok/auth.json"
+	}
+	return filepath.Join(home, ".grok", "auth.json")
+}
+
+func existingAuthPath(auth AgentAuthConfig) string {
+	if auth.Mode == AuthModeExistingCLI {
+		return auth.Path
+	}
+	return ""
 }
 
 func (a *resolvedAgentAuth) resolveAPIKey(name, root string, env map[string]string) bool {

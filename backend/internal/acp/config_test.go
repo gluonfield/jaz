@@ -9,7 +9,9 @@ import (
 )
 
 func TestProcessEnvIsMinimalAndCanonical(t *testing.T) {
+	clearHostEnv(t)
 	t.Setenv("PATH", "/bin")
+	t.Setenv("CODEX_HOME", "/host/codex")
 	t.Setenv("OPENAI_APIKEY", "host-openai-key")
 	t.Setenv("ANTHROPIC_APIKEY", "host-anthropic-key")
 	t.Setenv("SHOULD_NOT_LEAK", "secret")
@@ -30,12 +32,15 @@ func TestProcessEnvIsMinimalAndCanonical(t *testing.T) {
 	if _, ok := env["SHOULD_NOT_LEAK"]; ok {
 		t.Fatal("unexpected host env leaked into subprocess env")
 	}
-	if env["EXPLICIT"] != "yes" || env["npm_config_ignore_scripts"] != "true" {
-		t.Fatalf("expected explicit env and npm safety flags: %#v", env)
+	if env["EXPLICIT"] != "yes" {
+		t.Fatalf("explicit env missing: %#v", env)
 	}
-	if !strings.HasPrefix(env["HOME"], filepath.Join(root, "acp")) {
-		t.Fatalf("HOME = %q, want under %q", env["HOME"], root)
-	}
+	assertEnv(t, env, map[string]string{
+		"PATH":              "/bin",
+		"EXPLICIT":          "yes",
+		"OPENAI_API_KEY":    "openai-key",
+		"ANTHROPIC_API_KEY": "anthropic-key",
+	})
 }
 
 // Each adapter reads its own _meta extension key; every form below appends to
@@ -73,6 +78,7 @@ func TestResolveCwdRejectsWorkspaceEscape(t *testing.T) {
 }
 
 func TestProcessEnvSetsCodexHomeFromSystemLogin(t *testing.T) {
+	clearHostEnv(t)
 	home := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o700); err != nil {
 		t.Fatal(err)
@@ -82,6 +88,7 @@ func TestProcessEnvSetsCodexHomeFromSystemLogin(t *testing.T) {
 	}
 	t.Setenv("HOME", home)
 	t.Setenv("CODEX_HOME", "")
+	t.Setenv("PATH", "/bin")
 
 	root := t.TempDir()
 	env := NewManager(nil, Config{Root: root}, nil).processEnv("codex", AgentConfig{})
@@ -90,9 +97,13 @@ func TestProcessEnvSetsCodexHomeFromSystemLogin(t *testing.T) {
 	if env["CODEX_HOME"] != want {
 		t.Fatalf("CODEX_HOME = %q", env["CODEX_HOME"])
 	}
-	if env["HOME"] == home {
-		t.Fatal("subprocess HOME should stay isolated")
+	if _, ok := env["HOME"]; ok {
+		t.Fatal("codex subprocess HOME should not be set")
 	}
+	assertEnv(t, env, map[string]string{
+		"PATH":       "/bin",
+		"CODEX_HOME": want,
+	})
 	if fileExists(filepath.Join(root, "acp", "codex-home", "auth.json")) {
 		t.Fatal("codex auth should not be silently imported into the Jaz profile")
 	}
@@ -157,9 +168,11 @@ func TestProbeAgentAuthDetectsCodexKeyringProfile(t *testing.T) {
 	}
 }
 
-func TestProcessEnvUsesJazHomeForClaudeCode(t *testing.T) {
+func TestProcessEnvUsesJazConfigForClaudeCode(t *testing.T) {
+	clearHostEnv(t)
 	home := t.TempDir()
 	configDir := filepath.Join(home, "claude-config")
+	t.Setenv("PATH", "/bin")
 	t.Setenv("HOME", home)
 	t.Setenv("ANTHROPIC_APIKEY", "host-anthropic-key")
 	t.Setenv("ANTHROPIC_AUTH_TOKEN", "host-auth-token")
@@ -174,9 +187,8 @@ func TestProcessEnvUsesJazHomeForClaudeCode(t *testing.T) {
 		Auth: AgentAuthConfig{Mode: AuthModeJazProfile},
 	})
 
-	wantHome := filepath.Join(root, "acp", "home")
-	if env["HOME"] != wantHome {
-		t.Fatalf("HOME = %q, want %q", env["HOME"], wantHome)
+	if _, ok := env["HOME"]; ok {
+		t.Fatalf("claude subprocess HOME should not be set: %#v", env)
 	}
 	if env["ANTHROPIC_API_KEY"] != "" {
 		t.Fatalf("ANTHROPIC_API_KEY leaked into claude subprocess env")
@@ -203,13 +215,21 @@ func TestProcessEnvUsesJazHomeForClaudeCode(t *testing.T) {
 	if env["USER"] != "wins" {
 		t.Fatalf("USER = %q, want wins", env["USER"])
 	}
-	if !strings.HasPrefix(env["TMPDIR"], filepath.Join(root, "acp")) || !strings.HasPrefix(env["npm_config_cache"], filepath.Join(root, "acp")) {
-		t.Fatalf("expected claude temp/cache under jaz root: %#v", env)
-	}
+	assertEnv(t, env, map[string]string{
+		"PATH":                    "/bin",
+		"ANTHROPIC_AUTH_TOKEN":    "host-auth-token",
+		"CLAUDE_CODE_EXECUTABLE":  "/usr/local/bin/claude",
+		"CLAUDE_CODE_OAUTH_TOKEN": "setup-token",
+		"CLAUDE_CODE_USE_VERTEX":  "0",
+		"CLAUDE_CONFIG_DIR":       wantConfigDir,
+		"USER":                    "wins",
+	})
 }
 
-func TestProcessEnvHonorsConfiguredClaudeHome(t *testing.T) {
+func TestProcessEnvIgnoresConfiguredClaudeHome(t *testing.T) {
+	clearHostEnv(t)
 	home := t.TempDir()
+	t.Setenv("PATH", "/bin")
 	t.Setenv("HOME", t.TempDir())
 
 	root := t.TempDir()
@@ -217,28 +237,32 @@ func TestProcessEnvHonorsConfiguredClaudeHome(t *testing.T) {
 		Env: map[string]string{"HOME": home},
 	})
 
-	if env["HOME"] != home {
-		t.Fatalf("HOME = %q, want configured claude home %q", env["HOME"], home)
+	if _, ok := env["HOME"]; ok {
+		t.Fatalf("claude subprocess HOME should not be set: %#v", env)
 	}
-	if !strings.HasPrefix(env["TMPDIR"], filepath.Join(root, "acp")) || !strings.HasPrefix(env["npm_config_cache"], filepath.Join(root, "acp")) {
-		t.Fatalf("expected claude temp/cache under jaz root: %#v", env)
+	wantConfigDir := filepath.Join(root, "acp", "claude")
+	if env["CLAUDE_CONFIG_DIR"] != wantConfigDir {
+		t.Fatalf("CLAUDE_CONFIG_DIR = %q, want %q", env["CLAUDE_CONFIG_DIR"], wantConfigDir)
 	}
+	assertEnv(t, env, map[string]string{
+		"PATH":              "/bin",
+		"CLAUDE_CONFIG_DIR": wantConfigDir,
+	})
 }
 
-func TestProcessEnvUsesJazHomeForGrok(t *testing.T) {
+func TestProcessEnvDoesNotSetHomeForGrok(t *testing.T) {
+	clearHostEnv(t)
 	home := t.TempDir()
+	t.Setenv("PATH", "/bin")
 	t.Setenv("HOME", home)
 	t.Setenv("XAI_APIKEY", "host-xai-key")
 	t.Setenv("USER", "wins")
 
 	root := t.TempDir()
-	env := NewManager(nil, Config{Root: root}, nil).processEnv("grok", AgentConfig{
-		Auth: AgentAuthConfig{Mode: AuthModeJazProfile},
-	})
+	env := NewManager(nil, Config{Root: root}, nil).processEnv("grok", AgentConfig{})
 
-	wantHome := filepath.Join(root, "acp", "home")
-	if env["HOME"] != wantHome {
-		t.Fatalf("HOME = %q, want %q", env["HOME"], wantHome)
+	if _, ok := env["HOME"]; ok {
+		t.Fatalf("grok subprocess HOME should not be set: %#v", env)
 	}
 	if env["XAI_API_KEY"] != "" {
 		t.Fatalf("XAI_API_KEY leaked into grok subprocess env")
@@ -249,12 +273,17 @@ func TestProcessEnvUsesJazHomeForGrok(t *testing.T) {
 	if env["USER"] != "wins" {
 		t.Fatalf("USER = %q, want wins", env["USER"])
 	}
-	if !strings.HasPrefix(env["TMPDIR"], filepath.Join(root, "acp")) || !strings.HasPrefix(env["npm_config_cache"], filepath.Join(root, "acp")) {
-		t.Fatalf("expected grok temp/cache under jaz root: %#v", env)
+	if _, err := os.Stat(filepath.Join(root, "acp", "home")); !os.IsNotExist(err) {
+		t.Fatalf("grok fake home should not be created, err = %v", err)
 	}
+	assertEnv(t, env, map[string]string{
+		"PATH": "/bin",
+		"USER": "wins",
+	})
 }
 
 func TestProcessEnvNeverLeaksAPIKeysToCodex(t *testing.T) {
+	clearHostEnv(t)
 	home := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o700); err != nil {
 		t.Fatal(err)
@@ -263,6 +292,7 @@ func TestProcessEnvNeverLeaksAPIKeysToCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
+	t.Setenv("PATH", "/bin")
 	t.Setenv("OPENAI_APIKEY", "openai-key")
 
 	env := NewManager(nil, Config{
@@ -283,6 +313,10 @@ func TestProcessEnvNeverLeaksAPIKeysToCodex(t *testing.T) {
 	if env["CODEX_HOME"] == "" || !fileExists(filepath.Join(env["CODEX_HOME"], "auth.json")) {
 		t.Fatalf("codex oauth auth was not prepared: %#v", env)
 	}
+	assertEnv(t, env, map[string]string{
+		"PATH":       "/bin",
+		"CODEX_HOME": filepath.Join(home, ".codex"),
+	})
 }
 
 func TestProcessEnvMapsExplicitACPAPIKeysOnlyWhenNeeded(t *testing.T) {
@@ -376,8 +410,9 @@ func TestProbeReadinessRequiresClaudeExecutable(t *testing.T) {
 func TestProbeReadinessRequiresGrokAuth(t *testing.T) {
 	exe := testExecutable(t)
 	home := t.TempDir()
+	t.Setenv("HOME", home)
 
-	ready := ProbeReadiness(AgentGrok, AgentConfig{Command: exe}, t.TempDir(), map[string]string{"HOME": home})
+	ready := ProbeReadiness(AgentGrok, AgentConfig{Command: exe}, t.TempDir(), nil)
 	if ready.Available || !strings.Contains(ready.Reason, "Grok login") {
 		t.Fatalf("ready = %#v", ready)
 	}
@@ -388,7 +423,7 @@ func TestProbeReadinessRequiresGrokAuth(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, ".grok", "auth.json"), []byte(`{}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	ready = ProbeReadiness(AgentGrok, AgentConfig{Command: exe}, t.TempDir(), map[string]string{"HOME": home})
+	ready = ProbeReadiness(AgentGrok, AgentConfig{Command: exe}, t.TempDir(), nil)
 	if !ready.Available {
 		t.Fatalf("grok should be ready with cached token: %#v", ready)
 	}
@@ -578,4 +613,19 @@ func testExecutable(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return exe
+}
+
+func clearHostEnv(t *testing.T) {
+	t.Helper()
+	for _, entry := range os.Environ() {
+		key, _, _ := strings.Cut(entry, "=")
+		t.Setenv(key, "")
+	}
+}
+
+func assertEnv(t *testing.T, got, want map[string]string) {
+	t.Helper()
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("env = %#v, want %#v", got, want)
+	}
 }

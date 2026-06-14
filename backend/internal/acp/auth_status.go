@@ -57,8 +57,7 @@ func agentLoginCommand(name, root string, auth AgentAuthConfig) AgentAuthStatus 
 		configDir := firstNonEmpty(auth.Path, layout.ACPClaudeConfig)
 		return loginCommand(map[string]string{"CLAUDE_CONFIG_DIR": configDir}, "claude", "auth", "login", "--claudeai")
 	case AgentGrok:
-		home := firstNonEmpty(auth.Path, layout.ACPHome)
-		return loginCommand(map[string]string{"HOME": home}, "grok", "login", "--device-auth")
+		return loginCommand(nil, "grok", "login", "--device-auth")
 	default:
 		return AgentAuthStatus{}
 	}
