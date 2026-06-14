@@ -165,6 +165,7 @@ func TestOnboardingAllowsAuthenticatedRemoteProviderKeySetup(t *testing.T) {
 func TestOnboardingUsesACPReadiness(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("PATH", root)
+	t.Setenv("SHELL", "/bin/sh")
 	t.Setenv("CLAUDE_CODE_EXECUTABLE", "")
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "token")
 	store, err := sqlitestore.New(root)
