@@ -27,9 +27,8 @@ type Catalog struct {
 var defaultSkillFS embed.FS
 
 const (
-	defaultSkillsRoot  = "defaults"
-	userSkillsDir      = "skills"
-	defaultSkillMarker = ".jaz-default-skill"
+	defaultSkillsRoot = "defaults"
+	userSkillsDir     = "skills"
 )
 
 func UserRoot(root string) string {
@@ -45,18 +44,7 @@ func InstallDefaults(root string) error {
 	if err := os.MkdirAll(userRoot, 0o755); err != nil {
 		return err
 	}
-	tmp, err := os.MkdirTemp(root, ".skills-*")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(tmp)
-	if err := copyDefaults(tmp); err != nil {
-		return err
-	}
-	if err := markDefaultSkills(tmp); err != nil {
-		return err
-	}
-	return installDefaultSkills(userRoot, tmp)
+	return copyDefaults(userRoot)
 }
 
 func Load(root string) (Catalog, error) {
@@ -214,63 +202,4 @@ func copyDefaults(dstRoot string) error {
 		}
 		return os.WriteFile(dst, data, 0o644)
 	})
-}
-
-func markDefaultSkills(root string) error {
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		if err := os.WriteFile(filepath.Join(root, entry.Name(), defaultSkillMarker), []byte("managed by Jaz\n"), 0o644); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func installDefaultSkills(dstRoot, srcRoot string) error {
-	entries, err := os.ReadDir(srcRoot)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		dst := filepath.Join(dstRoot, entry.Name())
-		replace, err := canReplaceDefaultSkill(dst)
-		if err != nil {
-			return err
-		}
-		if !replace {
-			continue
-		}
-		if err := os.RemoveAll(dst); err != nil {
-			return err
-		}
-		if err := os.Rename(filepath.Join(srcRoot, entry.Name()), dst); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func canReplaceDefaultSkill(path string) (bool, error) {
-	if _, err := os.Stat(path); err != nil {
-		if os.IsNotExist(err) {
-			return true, nil
-		}
-		return false, err
-	}
-	if _, err := os.Stat(filepath.Join(path, defaultSkillMarker)); err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
 }
