@@ -59,7 +59,10 @@ func TestSessionQueuedMessagesRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	session.QueuedMessages = []string{"one prompt", "second prompt"}
+	session.QueuedMessages = []storage.QueuedMessage{
+		storage.NewQueuedMessage("one prompt", nil),
+		storage.NewQueuedMessage("second prompt", []string{"abc123"}),
+	}
 	if err := store.SaveSession(session); err != nil {
 		t.Fatal(err)
 	}
@@ -68,8 +71,11 @@ func TestSessionQueuedMessagesRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(loaded.QueuedMessages, "|") != "one prompt|second prompt" {
+	if len(loaded.QueuedMessages) != 2 || loaded.QueuedMessages[0].Text != "one prompt" || loaded.QueuedMessages[1].Text != "second prompt" {
 		t.Fatalf("queued messages = %#v", loaded.QueuedMessages)
+	}
+	if got := loaded.QueuedMessages[1].AttachmentIDs; len(got) != 1 || got[0] != "abc123" {
+		t.Fatalf("queued attachment ids = %#v", got)
 	}
 }
 
