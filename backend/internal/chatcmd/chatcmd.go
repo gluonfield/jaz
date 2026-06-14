@@ -1,7 +1,8 @@
-package main
+package chatcmd
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -11,12 +12,15 @@ import (
 	"github.com/wins/jaz/backend/internal/tui"
 )
 
-func runChat(args []string) error {
-	fs := flag.NewFlagSet("chat", flag.ContinueOnError)
+func Run(args []string) error {
+	fs := flag.NewFlagSet("jaz-chat", flag.ContinueOnError)
 	serverURL := fs.String("server", "http://127.0.0.1:5299", "Jaz server URL")
 	sessionID := fs.String("session", "", "existing session ID")
 	last := fs.Bool("last", false, "connect to the last root session")
 	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
 		return err
 	}
 	if *last && *sessionID != "" {
@@ -28,7 +32,7 @@ func runChat(args []string) error {
 		return err
 	}
 	client := serverclient.HTTPClient(conn.Key)
-	session, err := openChatSession(client, conn.URL, *sessionID, *last)
+	session, err := openSession(client, conn.URL, *sessionID, *last)
 	if err != nil {
 		return err
 	}
@@ -38,7 +42,7 @@ func runChat(args []string) error {
 	})
 }
 
-func openChatSession(client *http.Client, serverURL, sessionID string, last bool) (serverclient.Session, error) {
+func openSession(client *http.Client, serverURL, sessionID string, last bool) (serverclient.Session, error) {
 	if last {
 		return serverclient.LastSession(client, serverURL)
 	}
