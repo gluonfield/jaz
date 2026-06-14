@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, KeyRound, LoaderCircle, LogIn, Save, ShieldCheck, Terminal } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { AuthLoginStatus } from '@/components/acp/AuthLoginStatus'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { ModelCombobox } from '@/components/ui/ModelCombobox'
@@ -490,14 +491,7 @@ function AgentAuthPanel({
             {running ? <LoaderCircle size={14} className="animate-spin" /> : <LogIn size={14} />}
             {running ? 'Waiting for sign-in...' : `Sign in with ${agentLabel(agent)}`}
           </Button>
-          {loginJob?.output ? (
-            <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded-[8px] bg-surface px-3 py-2 font-mono text-[11px] leading-relaxed text-ink-2">
-              {loginJob.output}
-            </pre>
-          ) : null}
-          {loginJob?.status === 'failed' && loginJob.error ? (
-            <p className="text-[12px] text-danger">{loginJob.error}</p>
-          ) : null}
+          <AuthLoginStatus job={loginJob} running={running} />
         </div>
       ) : apiKeyEnv ? (
         <div className="grid gap-2">
@@ -562,6 +556,7 @@ function authEvidenceText(status?: ACPAgentAuthStatus): string {
   if (!status?.authenticated) return 'Needs login'
   if (status.auth_evidence === 'keyring_config') return 'Keychain'
   if (status.auth_evidence === 'auth_json') return 'auth.json'
+  if (status.auth_evidence === 'claude_json') return '.claude.json'
   if (status.auth_evidence === 'credentials_json') return 'credentials'
   if (status.auth_evidence === 'env') return 'environment'
   if (status.auth_evidence === 'api_key_env') return 'fallback'

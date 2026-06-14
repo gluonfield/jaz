@@ -148,7 +148,7 @@ func resolveClaudeAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env m
 	}
 	status := resolvedAgentAuth{
 		Config:      AgentAuthConfig{Mode: mode, Path: path},
-		StoragePath: filepath.Join(path, ".credentials.json"),
+		StoragePath: claudeAuthPath(path),
 		Source:      source,
 	}
 	apiKeyConfigured := status.resolveAPIKey(AgentClaude, root, env)
@@ -156,11 +156,11 @@ func resolveClaudeAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env m
 	case claudeAccountAuthAvailable(cfg.Env) || claudeAccountAuthAvailable(env):
 		status.markAuthenticated("env", AuthKindOAuth)
 	case claudeAuthFileAvailable(path):
-		status.markAuthenticated("credentials_json", AuthKindOAuth)
+		status.markAuthenticated("claude_json", AuthKindOAuth)
 	case apiKeyConfigured:
 		status.markAuthenticated("api_key_env", AuthKindAPIKey)
 	default:
-		status.Reason = "Claude login at " + filepath.Join(path, ".credentials.json") + " or " + status.APIKey.SourceEnv
+		status.Reason = "Claude login at " + claudeAuthPath(path) + " or " + status.APIKey.SourceEnv
 	}
 	return status
 }
@@ -281,7 +281,11 @@ func codexKeyringConfigured(home string) bool {
 }
 
 func claudeAuthFileAvailable(configDir string) bool {
-	return fileExists(filepath.Join(configDir, ".credentials.json"))
+	return fileExists(claudeAuthPath(configDir)) || fileExists(filepath.Join(configDir, ".credentials.json"))
+}
+
+func claudeAuthPath(configDir string) string {
+	return filepath.Join(configDir, ".claude.json")
 }
 
 func claudeAccountAuthAvailable(env map[string]string) bool {

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -30,6 +31,8 @@ type acpAuthLoginResponse struct {
 	Agent      string `json:"agent"`
 	Status     string `json:"status"`
 	Output     string `json:"output,omitempty"`
+	AuthURL    string `json:"auth_url,omitempty"`
+	AuthCode   string `json:"auth_code,omitempty"`
 	Error      string `json:"error,omitempty"`
 	StartedAt  string `json:"started_at"`
 	FinishedAt string `json:"finished_at,omitempty"`
@@ -196,11 +199,14 @@ func (j *acpAuthLoginJob) finish(runErr, ctxErr error) {
 func (j *acpAuthLoginJob) response() acpAuthLoginResponse {
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	authURL, authCode := acpAuthLoginHints(j.Output)
 	res := acpAuthLoginResponse{
 		ID:        j.ID,
 		Agent:     j.Agent,
 		Status:    j.Status,
 		Output:    j.Output,
+		AuthURL:   authURL,
+		AuthCode:  authCode,
 		Error:     j.Error,
 		StartedAt: j.StartedAt.Format(time.RFC3339),
 	}
@@ -208,6 +214,29 @@ func (j *acpAuthLoginJob) response() acpAuthLoginResponse {
 		res.FinishedAt = j.FinishedAt.Format(time.RFC3339)
 	}
 	return res
+}
+
+var (
+	acpANSISequence = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
+	acpAuthURL      = regexp.MustCompile(`https://[^\s<>"']+`)
+	acpAuthCode     = regexp.MustCompile(`\b[A-Z0-9]{4}-[A-Z0-9]{4,6}\b`)
+)
+
+func acpAuthLoginHints(output string) (string, string) {
+	clean := acpANSISequence.ReplaceAllString(output, "")
+	url := ""
+	for _, match := range acpAuthURL.FindAllString(clean, -1) {
+		match = strings.TrimRight(match, ".,)")
+		if strings.Contains(match, "auth.") || strings.Contains(match, "claude.com") {
+			url = match
+			break
+		}
+		if url == "" {
+			url = match
+		}
+	}
+	code := acpAuthCode.FindString(clean)
+	return url, code
 }
 
 type acpAuthLoginWriter struct {
