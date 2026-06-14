@@ -30,7 +30,7 @@ JAZ_API_URL=http://127.0.0.1:18080 bun run dev
 
 ## Release
 
-GitHub Actions builds signed macOS artifacts when a GitHub Release is published in `amgauge/jaz`, then attaches the DMG, ZIP, blockmaps, and `latest-mac.yml` to that release. Add these repository secrets:
+GitHub Actions builds signed macOS artifacts when a GitHub Release is published in `gluonfield/jaz`, then attaches the DMG, ZIP, blockmaps, and `latest-mac.yml` to that release. Add these repository secrets:
 
 - `APPLE_CERTIFICATE_P12_BASE64`
 - `APPLE_CERTIFICATE_PASSWORD`
