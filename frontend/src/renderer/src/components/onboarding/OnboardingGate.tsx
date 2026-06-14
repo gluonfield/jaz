@@ -6,11 +6,9 @@ import {
   ChevronDown,
   ExternalLink,
   KeyRound,
-  Laptop,
   LoaderCircle,
   Lock,
   LogIn,
-  Server,
 } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
@@ -19,6 +17,7 @@ import { AuthLoginStatus } from '@/components/acp/AuthLoginStatus'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { RAINBOW_BEAM } from '@/components/ui/rainbow'
+import { Segmented } from '@/components/ui/Segmented'
 import { Select } from '@/components/ui/Select'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
@@ -177,10 +176,6 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
           <h1 className="mt-3 text-balance text-[20px] font-semibold tracking-tight text-ink">
             Connect your agents
           </h1>
-          <p className="mt-1 text-pretty text-[13px] leading-relaxed text-ink-2">
-            Sign in to a coding agent, or give jaz its own provider key. Anything you connect turns on
-            automatically.
-          </p>
         </motion.div>
 
         <motion.div variants={rise}>
@@ -229,9 +224,7 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
           <p className="min-h-5 text-pretty text-[12px] text-ink-3">
             {!canFinish
               ? 'Connect one coding agent or a native key to continue.'
-              : save.error
-                ? save.error.message
-                : "You're ready — finish whenever you like."}
+              : (save.error?.message ?? '')}
           </p>
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="lg" onClick={onRefresh} title="Re-check agent status">
@@ -514,53 +507,6 @@ function NativeAgentCard({
   )
 }
 
-// Inline segmented control, the elegant SidePanelControl pattern: a quiet pill
-// track where the active option carries a spring-animated lozenge. Sizes to its
-// content — never full width.
-function Segmented<T extends string>({
-  value,
-  options,
-  onChange,
-  layoutId,
-}: {
-  value: T
-  options: { value: T; label: string; icon?: ReactNode }[]
-  onChange: (value: T) => void
-  layoutId: string
-}) {
-  return (
-    <div className="inline-flex h-8 items-center self-start rounded-full bg-bg p-0.5">
-      {options.map((option) => {
-        const active = option.value === value
-        return (
-          <motion.button
-            key={option.value}
-            type="button"
-            aria-pressed={active}
-            onClick={() => onChange(option.value)}
-            whileTap={{ scale: 0.96 }}
-            className={`relative flex h-7 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[13px] font-medium whitespace-nowrap transition-colors duration-150 ${
-              active ? 'text-ink' : 'text-ink-2 hover:text-ink'
-            }`}
-          >
-            {active ? (
-              <motion.span
-                layoutId={layoutId}
-                transition={{ type: 'spring', duration: 0.32, bounce: 0 }}
-                className="absolute inset-0 rounded-full bg-surface-2 shadow-sm ring-1 ring-border/50"
-              />
-            ) : null}
-            <span className="relative flex items-center gap-1.5">
-              {option.icon}
-              {option.label}
-            </span>
-          </motion.button>
-        )
-      })}
-    </div>
-  )
-}
-
 function StatePill({ state, label }: { state: AgentState; label?: string }) {
   const tone =
     state === 'ready'
@@ -590,7 +536,6 @@ function BackendChip({ remote, url }: { remote: boolean; url: string }) {
   })()
   return (
     <span className="inline-flex items-center gap-2 rounded-full bg-surface px-2.5 py-1 text-[12px] text-ink-2">
-      {remote ? <Server size={13} className="text-primary" /> : <Laptop size={13} className="text-primary" />}
       <span className="text-ink">{remote ? 'Connected to server' : 'Running on this Mac'}</span>
       <span className="font-mono text-[11px] text-ink-3">{host}</span>
     </span>

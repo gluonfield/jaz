@@ -1,17 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, KeyRound, LoaderCircle, LogIn, Save, ShieldCheck, Terminal } from 'lucide-react'
+import { CheckCircle2, ChevronDown, KeyRound, LoaderCircle, LogIn, Save, Terminal } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { AuthLoginStatus } from '@/components/acp/AuthLoginStatus'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { ModelCombobox } from '@/components/ui/ModelCombobox'
+import { Segmented } from '@/components/ui/Segmented'
 import { Select } from '@/components/ui/Select'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
 import { agentLabel, authProviderLabel } from '@/lib/agentLabel'
-import { agentSettingsQuery, getACPAuthLogin, startACPAuthLogin, updateAgentSettings } from '@/lib/api/settings'
+import {
+  agentSettingsQuery,
+  disconnectACPAuth,
+  getACPAuthLogin,
+  startACPAuthLogin,
+  updateAgentSettings,
+} from '@/lib/api/settings'
 import type { ACPAgentAuthStatus, ACPAuthLogin, AgentSettings as AgentSettingsData } from '@/lib/api/types'
 import { acpAgentModelSuggestions, OPENAI_MODELS, openRouterModelsQuery } from '@/lib/models'
 import { keys } from '@/lib/query/keys'
@@ -22,17 +29,6 @@ const inputClass =
 
 const rowControlClass = 'w-full md:w-[320px]'
 type ACPAuthDraft = AgentSettingsData['acp'][string]['auth']
-const AUTH_MODE_OPTIONS = [
-  { value: 'auto', label: 'Auto', description: 'Use the best profile detected on the backend' },
-  { value: 'existing_cli', label: 'Existing CLI', description: 'Reuse the backend user profile' },
-  { value: 'jaz_profile', label: 'Jaz profile', description: 'Use isolated Jaz agent auth' },
-]
-
-const authModeOptions = (agent: string) =>
-  agent === 'grok' ? AUTH_MODE_OPTIONS.filter((option) => option.value !== 'jaz_profile') : AUTH_MODE_OPTIONS
-
-const authModeValue = (agent: string, mode: 'auto' | 'existing_cli' | 'jaz_profile' | undefined) =>
-  agent === 'grok' && mode === 'jaz_profile' ? 'auto' : (mode ?? 'auto')
 
 // Here '' means "no effort configured" rather than "inherit the default".
 const settingsReasoningOptions = (options = REASONING_EFFORT_OPTIONS) =>
@@ -116,6 +112,21 @@ export function AgentSettings() {
       toast(`Started ${authProviderLabel(job.agent)} sign-in`)
     },
     onError: (error: Error) => toast(`Couldn't start sign-in: ${error.message}`, 'danger'),
+  })
+
+  const disconnect = useMutation({
+    mutationFn: (agent: string) => disconnectACPAuth(agent),
+    onSuccess: (_status, agent) => {
+      setLoginJobs((current) => {
+        const next = { ...current }
+        delete next[agent]
+        return next
+      })
+      toast(`Disconnected ${authProviderLabel(agent)}`)
+      queryClient.invalidateQueries({ queryKey: keys.agentSettings })
+      queryClient.invalidateQueries({ queryKey: keys.acpAgents })
+    },
+    onError: (error: Error) => toast(`Couldn't disconnect: ${error.message}`, 'danger'),
   })
 
   // Latest draft / save, read inside the polling interval without re-creating it.
@@ -306,7 +317,9 @@ export function AgentSettings() {
                     disabled={save.isPending}
                     loginJob={loginJobs[agent]}
                     loginPending={login.isPending && login.variables?.agent === agent}
+                    disconnecting={disconnect.isPending && disconnect.variables === agent}
                     onStartLogin={(auth) => login.mutate({ agent, auth })}
+                    onDisconnect={() => disconnect.mutate(agent)}
                     onChange={setDraft}
                   />
                 ))}
@@ -325,7 +338,9 @@ function ACPAgentRow({
   disabled,
   loginJob,
   loginPending,
+  disconnecting,
   onStartLogin,
+  onDisconnect,
   onChange,
 }: {
   agent: string
@@ -333,7 +348,9 @@ function ACPAgentRow({
   disabled: boolean
   loginJob?: ACPAuthLogin
   loginPending: boolean
+  disconnecting: boolean
   onStartLogin: (auth: ACPAuthDraft) => void
+  onDisconnect: () => void
   onChange: (settings: AgentSettingsData) => void
 }) {
   const current = settings.acp[agent] ?? {
@@ -383,14 +400,13 @@ function ACPAgentRow({
         <AgentAuthPanel
           agent={agent}
           disabled={disabled}
-          authMode={authModeValue(agent, current.auth?.mode)}
-          authPath={agent === 'grok' ? '' : (current.auth?.path ?? '')}
           status={authStatus}
           apiKeyValue={settings.acp_keys?.[agent] ?? ''}
           loginJob={loginJob}
           loginPending={loginPending}
-          onAuthModeChange={(mode) => update({ auth: { mode, path: '' } })}
+          disconnecting={disconnecting}
           onStartLogin={() => onStartLogin(current.auth)}
+          onDisconnect={onDisconnect}
           onAPIKeyChange={(value) =>
             onChange({
               ...settings,
@@ -464,164 +480,96 @@ function ACPAgentRow({
 function AgentAuthPanel({
   agent,
   disabled,
-  authMode,
-  authPath,
   status,
   apiKeyValue,
   loginJob,
   loginPending,
-  onAuthModeChange,
+  disconnecting,
   onStartLogin,
+  onDisconnect,
   onAPIKeyChange,
 }: {
   agent: string
   disabled: boolean
-  authMode: 'auto' | 'existing_cli' | 'jaz_profile'
-  authPath: string
   status?: ACPAgentAuthStatus
   apiKeyValue: string
   loginJob?: ACPAuthLogin
   loginPending: boolean
-  onAuthModeChange: (mode: 'auto' | 'existing_cli' | 'jaz_profile') => void
+  disconnecting: boolean
   onStartLogin: () => void
+  onDisconnect: () => void
   onAPIKeyChange: (value: string) => void
 }) {
   const apiKeyEnv = status?.api_key?.source_env
+  const canKey = Boolean(apiKeyEnv)
   const hasDraftKey = apiKeyValue.trim().length > 0
-  const [method, setMethod] = useState<'login' | 'key'>(
-    hasDraftKey || status?.api_key_configured ? 'key' : 'login',
-  )
   const running = loginPending || loginJob?.status === 'running'
+  const [method, setMethod] = useState<'login' | 'key'>(
+    (hasDraftKey || status?.api_key_configured) && canKey ? 'key' : 'login',
+  )
+
+  // Connected: a clean confirmation + a way to disconnect (or switch method).
+  if (status?.authenticated) {
+    const viaKey = status.auth_kind === 'api_key'
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-[10px] bg-bg px-3 py-2.5">
+        <span className="flex min-w-0 items-center gap-2 text-[13px] text-ink">
+          <CheckCircle2 size={16} className="shrink-0 text-primary" />
+          {viaKey ? 'Connected with an API key' : `Connected with your ${authProviderLabel(agent)} account`}
+        </span>
+        <Button variant="ghost" size="sm" disabled={disabled || disconnecting} onClick={onDisconnect}>
+          {disconnecting ? <LoaderCircle size={13} className="animate-spin" /> : null}
+          Disconnect
+        </Button>
+      </div>
+    )
+  }
+
   return (
-    <div className="grid gap-3 rounded-[12px] bg-bg p-2.5 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-border)_70%,transparent)]">
-      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <div className="min-w-0">
-          <p className="text-[13px] font-medium text-ink">Auth</p>
-          <p className="mt-0.5 text-[12px] text-ink-3">{authStatusText(status)}</p>
-        </div>
-        <div className="flex rounded-full bg-surface p-1">
-          <Button size="sm" active={method === 'login'} disabled={disabled} onClick={() => setMethod('login')}>
-            <LogIn size={13} />
-            Auth login
-          </Button>
-          <Button size="sm" active={method === 'key'} disabled={disabled || !apiKeyEnv} onClick={() => setMethod('key')}>
-            <KeyRound size={13} />
-            API key
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid gap-2 md:grid-cols-2">
-        <AuthStatusPill
-          icon={<ShieldCheck size={13} />}
-          label={status?.auth_kind === 'oauth' ? 'Account auth' : 'Account'}
-          active={status?.auth_kind === 'oauth'}
-          detail={authEvidenceText(status)}
+    <div className="flex flex-col gap-2.5">
+      {canKey ? (
+        <Segmented
+          layoutId={`settings-auth-${agent}`}
+          value={method}
+          onChange={setMethod}
+          disabled={disabled}
+          options={[
+            { value: 'login', label: 'Sign in', icon: <LogIn size={13} /> },
+            { value: 'key', label: 'API key', icon: <KeyRound size={13} /> },
+          ]}
         />
-        <AuthStatusPill
-          icon={<KeyRound size={13} />}
-          label="API key"
-          active={Boolean(status?.api_key_configured || hasDraftKey)}
-          detail={hasDraftKey ? 'Ready to save' : status?.api_key_configured ? 'Configured' : apiKeyEnv || 'Not configured'}
-        />
-      </div>
+      ) : null}
 
-      {method === 'login' ? (
-        <div className="grid gap-2">
-          <div className="flex flex-wrap gap-1">
-            {authModeOptions(agent).map((option) => (
-              <Button
-                key={option.value}
-                size="sm"
-                active={authMode === option.value}
-                disabled={disabled}
-                onClick={() => onAuthModeChange(option.value as 'auto' | 'existing_cli' | 'jaz_profile')}
-                title={option.description}
-              >
-                {option.label}
-              </Button>
-            ))}
-          </div>
-          <Button
-            variant="primary"
-            size="md"
-            disabled={disabled || running}
-            onClick={onStartLogin}
-            className="w-full"
-          >
+      {method === 'login' || !canKey ? (
+        <div className="flex flex-col items-start gap-2">
+          <Button variant="primary" size="md" disabled={disabled || running} onClick={onStartLogin}>
             {running ? <LoaderCircle size={14} className="animate-spin" /> : <LogIn size={14} />}
-            {running ? 'Waiting for sign-in...' : `Sign in with ${authProviderLabel(agent)}`}
+            {running ? 'Waiting for sign-in…' : `Sign in with ${authProviderLabel(agent)}`}
           </Button>
-          <AuthLoginStatus job={loginJob} running={running} />
+          <div className="w-full">
+            <AuthLoginStatus job={loginJob} running={running} />
+          </div>
         </div>
-      ) : apiKeyEnv ? (
-        <div className="grid gap-2">
+      ) : (
+        <div className="flex flex-col gap-2">
           <Input
             type="password"
             value={apiKeyValue}
             disabled={disabled}
             onChange={(event) => onAPIKeyChange(event.target.value)}
-            placeholder={status?.api_key_configured ? `${apiKeyEnv} configured` : apiKeyEnv}
+            placeholder={status?.api_key_configured ? 'Already set up' : 'Paste an API key'}
             autoComplete="off"
             spellCheck={false}
-            className="h-8 rounded-full bg-surface px-3 py-0 text-[12px]"
-            aria-label={`${agentLabel(agent)} API key fallback`}
+            className="h-8 rounded-full bg-bg px-3 py-0 font-mono text-[12px]"
+            aria-label={`${agentLabel(agent)} API key`}
           />
-          <p className="px-1 text-[12px] text-ink-3">
-            Stored as {apiKeyEnv}; passed to the agent as {status?.api_key?.target_env || 'provider key'}.
+          <p className="text-[12px] text-ink-3">
+            jaz passes this key straight to {authProviderLabel(agent)}.
           </p>
         </div>
-      ) : null}
-
-      {authPath ? (
-        <p className="truncate px-1 font-mono text-[11px] text-ink-3">{authPath}</p>
-      ) : null}
+      )}
     </div>
   )
-}
-
-function AuthStatusPill({
-  icon,
-  label,
-  detail,
-  active,
-}: {
-  icon: ReactNode
-  label: string
-  detail: string
-  active: boolean
-}) {
-  return (
-    <div
-      className={`flex min-h-10 items-center gap-2 rounded-full px-3 text-[12px] ${
-        active ? 'bg-primary-soft text-primary-strong' : 'bg-surface text-ink-3'
-      }`}
-    >
-      <span className="shrink-0">{icon}</span>
-      <span className="min-w-0 flex-1 truncate">
-        <span className="font-medium">{label}</span>
-        <span className="ml-1 text-ink-3">{detail}</span>
-      </span>
-    </div>
-  )
-}
-
-function authStatusText(status?: ACPAgentAuthStatus): string {
-  if (!status) return 'Checked on the backend machine.'
-  if (status.auth_kind === 'oauth') return 'Account login is active.'
-  if (status.auth_kind === 'api_key') return 'Using explicit API key fallback.'
-  return status.reason || 'No credential detected.'
-}
-
-function authEvidenceText(status?: ACPAgentAuthStatus): string {
-  if (!status?.authenticated) return 'Needs login'
-  if (status.auth_evidence === 'keyring_config') return 'Keychain'
-  if (status.auth_evidence === 'auth_json') return 'auth.json'
-  if (status.auth_evidence === 'claude_json') return '.claude.json'
-  if (status.auth_evidence === 'credentials_json') return 'credentials'
-  if (status.auth_evidence === 'env') return 'environment'
-  if (status.auth_evidence === 'api_key_env') return 'fallback'
-  return 'Ready'
 }
 
 function SettingsRow({
