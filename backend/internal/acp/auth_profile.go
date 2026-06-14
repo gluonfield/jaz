@@ -192,6 +192,44 @@ func resolveGrokAuth(auth AgentAuthConfig, _ AgentConfig, root string, env map[s
 	return status
 }
 
+// RemoveOwnedCredential deletes an agent's OAuth credential, but ONLY when Jaz
+// owns it — stored in Jaz's own profile (under root) or Grok's ~/.grok/auth.json.
+// It never deletes the user's global ~/.claude.json / ~/.codex config. A no-op
+// when the path is empty, absent, or not Jaz-owned.
+func RemoveOwnedCredential(name, storagePath, root string) error {
+	name = CanonicalAgentName(name)
+	storagePath = strings.TrimSpace(storagePath)
+	if storagePath == "" {
+		return nil
+	}
+	if !pathUnderRoot(storagePath, root) && name != AgentGrok {
+		return nil
+	}
+	if err := os.Remove(storagePath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	// Claude can keep a sibling .credentials.json next to .claude.json.
+	if name == AgentClaude {
+		creds := filepath.Join(filepath.Dir(storagePath), ".credentials.json")
+		if err := os.Remove(creds); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+func pathUnderRoot(path, root string) bool {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return false
+	}
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
 func grokAuthPath(home string) string {
 	if strings.TrimSpace(home) == "" {
 		return "~/.grok/auth.json"
