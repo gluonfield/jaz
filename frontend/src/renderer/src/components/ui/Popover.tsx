@@ -68,18 +68,21 @@ export function Popover({
 
 export function MenuRow({
   selected,
+  disabled,
   onClick,
   children,
 }: {
   selected?: boolean
+  disabled?: boolean
   onClick: () => void
   children: ReactNode
 }) {
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={onClick}
-      className={`flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] transition-colors duration-150 hover:bg-surface-2 ${
+      className={`flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] transition-colors duration-150 enabled:hover:bg-surface-2 disabled:cursor-default disabled:opacity-50 ${
         selected ? 'text-ink' : 'text-ink-2'
       }`}
     >
