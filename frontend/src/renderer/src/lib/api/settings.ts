@@ -36,15 +36,30 @@ function normalizeAgentSettings(settings: AgentSettings): AgentSettings {
   }
 }
 
-function inputFromSettings(settings: AgentSettings): AgentSettings {
+function inputFromSettings(
+  settings: AgentSettings,
+  providerKeys?: Record<string, string>,
+): AgentSettings & { provider_keys?: Record<string, string> } {
   const normalized = normalizeAgentSettings(settings)
+  const keys = compactKeys(providerKeys)
   return {
     native: normalized.native,
     providers: normalized.providers,
     acp: normalized.acp,
     acp_keys: normalized.acp_keys,
     agents: normalized.agents,
+    ...(keys ? { provider_keys: keys } : {}),
   }
+}
+
+function compactKeys(values?: Record<string, string>): Record<string, string> | undefined {
+  if (!values) return undefined
+  const out = Object.fromEntries(
+    Object.entries(values)
+      .map(([key, value]) => [key, value.trim()] as const)
+      .filter(([, value]) => value.length > 0),
+  )
+  return Object.keys(out).length > 0 ? out : undefined
 }
 
 export const agentSettingsQuery = queryOptions({
@@ -52,8 +67,13 @@ export const agentSettingsQuery = queryOptions({
   queryFn: async () => normalizeAgentSettings(await get<AgentSettings>('/v1/settings/agents')),
 })
 
-export function updateAgentSettings(settings: AgentSettings): Promise<AgentSettings> {
-  return put<AgentSettings>('/v1/settings/agents', inputFromSettings(settings)).then(
+// providerKeys maps a native provider id (e.g. "openrouter") to a freshly
+// pasted API key; the backend stores it as that provider's key env var.
+export function updateAgentSettings(
+  settings: AgentSettings,
+  providerKeys?: Record<string, string>,
+): Promise<AgentSettings> {
+  return put<AgentSettings>('/v1/settings/agents', inputFromSettings(settings, providerKeys)).then(
     normalizeAgentSettings,
   )
 }
