@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, ChevronDown, KeyRound, LoaderCircle, LogIn, Save, Terminal } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { AuthLoginStatus } from '@/components/acp/AuthLoginStatus'
 import { Button } from '@/components/ui/Button'
@@ -14,11 +14,12 @@ import { useToast } from '@/components/ui/toast'
 import { agentLabel, authProviderLabel } from '@/lib/agentLabel'
 import {
   agentSettingsQuery,
+  cloneAgentSettings,
   disconnectACPAuth,
-  getACPAuthLogin,
   startACPAuthLogin,
   updateAgentSettings,
 } from '@/lib/api/settings'
+import { useACPLoginPolling } from '@/lib/hooks/useACPLoginPolling'
 import type { ACPAgentAuthStatus, ACPAuthLogin, AgentSettings as AgentSettingsData } from '@/lib/api/types'
 import { acpAgentModelSuggestions, OPENAI_MODELS, openRouterModelsQuery } from '@/lib/models'
 import { keys } from '@/lib/query/keys'
@@ -34,28 +35,6 @@ type ACPAuthDraft = AgentSettingsData['acp'][string]['auth']
 const settingsReasoningOptions = (options = REASONING_EFFORT_OPTIONS) =>
   options.map((option) => (option.value === '' ? { ...option, label: 'None' } : option))
 
-function cloneSettings(settings: AgentSettingsData): AgentSettingsData {
-  return {
-    native: { ...settings.native },
-    providers: [...(settings.providers ?? [])],
-    acp_auth: { ...(settings.acp_auth ?? {}) },
-    acp_keys: { ...(settings.acp_keys ?? {}) },
-    acp: Object.fromEntries(
-      Object.entries(settings.acp).map(([agent, value]) => [
-        agent,
-        { ...value, auth: value.auth ? { ...value.auth } : undefined },
-      ]),
-    ),
-    agents: [...settings.agents],
-    acp_options: Object.fromEntries(
-      Object.entries(settings.acp_options ?? {}).map(([agent, value]) => [
-        agent,
-        { reasoning_efforts: [...value.reasoning_efforts] },
-      ]),
-    ),
-  }
-}
-
 function settingsKey(settings: AgentSettingsData | null): string {
   return settings ? JSON.stringify(settings) : ''
 }
@@ -63,7 +42,7 @@ function settingsKey(settings: AgentSettingsData | null): string {
 // Returns a clone with one ACP agent turned on — used when a sign-in or API key
 // connects an agent, so it becomes a usable runtime without a separate toggle.
 function withEnabledAgent(settings: AgentSettingsData, agent: string): AgentSettingsData {
-  const next = cloneSettings(settings)
+  const next = cloneAgentSettings(settings)
   const current = next.acp[agent]
   if (current) next.acp[agent] = { ...current, enabled: true }
   return next
@@ -81,19 +60,18 @@ export function AgentSettings() {
   const toast = useToast()
   const settings = useQuery(agentSettingsQuery)
   const [draft, setDraft] = useState<AgentSettingsData | null>(null)
-  const [loginJobs, setLoginJobs] = useState<Record<string, ACPAuthLogin>>({})
   // A freshly pasted native provider key, keyed by provider id. Write-only —
   // the backend never returns the value, so it lives outside the draft.
   const [providerKeys, setProviderKeys] = useState<Record<string, string>>({})
 
   useEffect(() => {
-    if (settings.data) setDraft(cloneSettings(settings.data))
+    if (settings.data) setDraft(cloneAgentSettings(settings.data))
   }, [settings.data])
 
   const save = useMutation({
     mutationFn: (input: AgentSettingsData) => updateAgentSettings(input, providerKeys),
     onSuccess: (saved) => {
-      setDraft(cloneSettings(saved))
+      setDraft(cloneAgentSettings(saved))
       setProviderKeys({})
       toast('Saved agent settings')
     },
@@ -104,11 +82,23 @@ export function AgentSettings() {
     },
   })
 
+  // A finished sign-in connects the agent: turn it on and persist so it works
+  // right away (matching onboarding, no extra Enabled toggle). The hook reads
+  // this through a ref, so `draft`/`save` are always current here.
+  const { loginJobs, trackLoginJob, forgetLoginJob } = useACPLoginPolling((job) => {
+    if (job.status === 'succeeded' && draft?.acp[job.agent] && !draft.acp[job.agent].enabled) {
+      save.mutate(withEnabledAgent(draft, job.agent))
+    } else {
+      queryClient.invalidateQueries({ queryKey: keys.agentSettings })
+    }
+    queryClient.invalidateQueries({ queryKey: keys.acpAgents })
+  })
+
   const login = useMutation({
     mutationFn: ({ agent, auth }: { agent: string; auth?: AgentSettingsData['acp'][string]['auth'] }) =>
       startACPAuthLogin(agent, auth),
     onSuccess: (job) => {
-      setLoginJobs((current) => ({ ...current, [job.agent]: job }))
+      trackLoginJob(job)
       toast(`Started ${authProviderLabel(job.agent)} sign-in`)
     },
     onError: (error: Error) => toast(`Couldn't start sign-in: ${error.message}`, 'danger'),
@@ -117,46 +107,13 @@ export function AgentSettings() {
   const disconnect = useMutation({
     mutationFn: (agent: string) => disconnectACPAuth(agent),
     onSuccess: (_status, agent) => {
-      setLoginJobs((current) => {
-        const next = { ...current }
-        delete next[agent]
-        return next
-      })
+      forgetLoginJob(agent)
       toast(`Disconnected ${authProviderLabel(agent)}`)
       queryClient.invalidateQueries({ queryKey: keys.agentSettings })
       queryClient.invalidateQueries({ queryKey: keys.acpAgents })
     },
     onError: (error: Error) => toast(`Couldn't disconnect: ${error.message}`, 'danger'),
   })
-
-  // Latest draft / save, read inside the polling interval without re-creating it.
-  const draftRef = useRef(draft)
-  draftRef.current = draft
-  const saveRef = useRef(save)
-  saveRef.current = save
-
-  useEffect(() => {
-    const running = Object.values(loginJobs).filter((job) => job.status === 'running')
-    if (running.length === 0) return
-    const timer = window.setInterval(() => {
-      for (const job of running) {
-        void getACPAuthLogin(job.id).then((next) => {
-          setLoginJobs((current) => ({ ...current, [next.agent]: next }))
-          if (next.status === 'running') return
-          const latest = draftRef.current
-          if (next.status === 'succeeded' && latest?.acp[next.agent] && !latest.acp[next.agent].enabled) {
-            // A fresh sign-in connects this agent — turn it on and persist so it
-            // works right away, matching onboarding (no extra Enabled toggle).
-            saveRef.current.mutate(withEnabledAgent(latest, next.agent))
-          } else {
-            queryClient.invalidateQueries({ queryKey: keys.agentSettings })
-          }
-          queryClient.invalidateQueries({ queryKey: keys.acpAgents })
-        })
-      }
-    }, 1000)
-    return () => window.clearInterval(timer)
-  }, [loginJobs, queryClient])
 
   const dirty = useMemo(
     () => settingsKey(draft) !== settingsKey(settings.data ?? null),

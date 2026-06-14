@@ -3,8 +3,6 @@ package server
 import (
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/acp"
@@ -54,41 +52,13 @@ func (s *Server) handleDisconnectACPAuth(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	if auth.AuthKind == acp.AuthKindOAuth && strings.TrimSpace(auth.StoragePath) != "" {
-		if pathUnderRoot(auth.StoragePath, s.runtimeRoot()) || agent == acp.AgentGrok {
-			if err := removeACPCredentialFiles(agent, auth.StoragePath); err != nil {
-				writeError(w, http.StatusInternalServerError, err)
-				return
-			}
+	if auth.AuthKind == acp.AuthKindOAuth {
+		if err := acp.RemoveOwnedCredential(agent, auth.StoragePath, s.runtimeRoot()); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
 		}
 	}
 
 	fresh := acp.ProbeAgentAuth(agent, cfg, s.runtimeRoot(), nil)
 	writeJSON(w, http.StatusOK, newACPAuthStatusResponse(fresh))
-}
-
-func removeACPCredentialFiles(agent, storagePath string) error {
-	if err := os.Remove(storagePath); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	// Claude can keep a sibling .credentials.json alongside .claude.json.
-	if acp.CanonicalAgentName(agent) == acp.AgentClaude {
-		creds := filepath.Join(filepath.Dir(storagePath), ".credentials.json")
-		if err := os.Remove(creds); err != nil && !os.IsNotExist(err) {
-			return err
-		}
-	}
-	return nil
-}
-
-func pathUnderRoot(path, root string) bool {
-	root = strings.TrimSpace(root)
-	if root == "" {
-		return false
-	}
-	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
-	if err != nil {
-		return false
-	}
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

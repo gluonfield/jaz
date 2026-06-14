@@ -56,6 +56,31 @@ func (s *Server) acpKeyUpdates(keys map[string]string) (map[string]string, error
 	return updates, nil
 }
 
+// applyRuntimeKeyUpdates collects native provider + ACP agent key updates from a
+// request, enforces the host-only guard, and persists them. Returns the HTTP
+// status to use on failure (0 on success) so handlers stay one line. Shared by
+// the settings and onboarding endpoints.
+func (s *Server) applyRuntimeKeyUpdates(r *http.Request, providerKeys, acpKeys map[string]string) (int, error) {
+	keyUpdates, err := s.providerKeyUpdates(providerKeys)
+	if err != nil {
+		return http.StatusBadRequest, err
+	}
+	acpKeyUpdates, err := s.acpKeyUpdates(acpKeys)
+	if err != nil {
+		return http.StatusBadRequest, err
+	}
+	for key, value := range acpKeyUpdates {
+		keyUpdates[key] = value
+	}
+	if len(keyUpdates) > 0 && !s.providerKeySetupAllowed(r) {
+		return http.StatusForbidden, fmt.Errorf("key setup is only available from the backend host")
+	}
+	if err := s.saveRuntimeKeyUpdates(keyUpdates); err != nil {
+		return http.StatusBadRequest, err
+	}
+	return 0, nil
+}
+
 func (s *Server) saveRuntimeKeyUpdates(updates map[string]string) error {
 	if len(updates) == 0 {
 		return nil
