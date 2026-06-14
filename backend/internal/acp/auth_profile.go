@@ -7,18 +7,33 @@ import (
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
+	"github.com/wins/jaz/backend/internal/runtimeenv"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 )
 
 const RefreshOwnerAgentCLI = "coding_agent_cli"
+
+const (
+	AuthKindOAuth  = "oauth"
+	AuthKindAPIKey = "api_key"
+)
+
+type AgentAPIKeySpec struct {
+	SourceEnv string `json:"source_env"`
+	TargetEnv string `json:"target_env"`
+}
 
 type resolvedAgentAuth struct {
 	Config        AgentAuthConfig
 	StoragePath   string
 	Source        string
 	Evidence      string
+	Kind          string
 	Authenticated bool
 	Reason        string
+	APIKey        AgentAPIKeySpec
+	APIKeySet     bool
+	APIKeyValue   string
 }
 
 func NormalizeAgentAuthConfig(name string, auth AgentAuthConfig) (AgentAuthConfig, error) {
@@ -83,15 +98,16 @@ func resolveCodexAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env ma
 		StoragePath: filepath.Join(path, "auth.json"),
 		Source:      source,
 	}
+	apiKeyConfigured := status.resolveAPIKey(AgentCodex, root, env)
 	switch {
 	case codexAuthFileAvailable(path):
-		status.Authenticated = true
-		status.Evidence = "auth_json"
+		status.markAuthenticated("auth_json", AuthKindOAuth)
 	case codexKeyringConfigured(path):
-		status.Authenticated = true
-		status.Evidence = "keyring_config"
+		status.markAuthenticated("keyring_config", AuthKindOAuth)
+	case apiKeyConfigured:
+		status.markAuthenticated("api_key_env", AuthKindAPIKey)
 	default:
-		status.Reason = "Codex OAuth login at " + filepath.Join(path, "auth.json")
+		status.Reason = "Codex login at " + filepath.Join(path, "auth.json") + " or " + status.APIKey.SourceEnv
 	}
 	return status
 }
@@ -108,7 +124,7 @@ func resolveClaudeAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env m
 		mode = AuthModeJazProfile
 		if claudeAuthFileAvailable(jaz) {
 			mode = AuthModeJazProfile
-		} else if claudeEnvAuthAvailable(cfg.Env) || claudeEnvAuthAvailable(env) || claudeAuthFileAvailable(existing) {
+		} else if claudeAccountAuthAvailable(cfg.Env) || claudeAccountAuthAvailable(env) || claudeAuthFileAvailable(existing) {
 			mode = AuthModeExistingCLI
 		}
 	}
@@ -123,15 +139,16 @@ func resolveClaudeAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env m
 		StoragePath: filepath.Join(path, ".credentials.json"),
 		Source:      source,
 	}
+	apiKeyConfigured := status.resolveAPIKey(AgentClaude, root, env)
 	switch {
-	case claudeEnvAuthAvailable(cfg.Env) || claudeEnvAuthAvailable(env):
-		status.Authenticated = true
-		status.Evidence = "env"
+	case claudeAccountAuthAvailable(cfg.Env) || claudeAccountAuthAvailable(env):
+		status.markAuthenticated("env", AuthKindOAuth)
 	case claudeAuthFileAvailable(path):
-		status.Authenticated = true
-		status.Evidence = "credentials_json"
+		status.markAuthenticated("credentials_json", AuthKindOAuth)
+	case apiKeyConfigured:
+		status.markAuthenticated("api_key_env", AuthKindAPIKey)
 	default:
-		status.Reason = "Claude login at " + filepath.Join(path, ".credentials.json")
+		status.Reason = "Claude login at " + filepath.Join(path, ".credentials.json") + " or " + status.APIKey.SourceEnv
 	}
 	return status
 }
@@ -148,7 +165,7 @@ func resolveGrokAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env map
 		mode = AuthModeJazProfile
 		if grokAuthFileAvailable(jaz) {
 			mode = AuthModeJazProfile
-		} else if grokEnvAuthAvailable(cfg.Env) || grokEnvAuthAvailable(env) || grokAuthFileAvailable(existing) {
+		} else if grokAuthFileAvailable(existing) {
 			mode = AuthModeExistingCLI
 		}
 	}
@@ -163,17 +180,71 @@ func resolveGrokAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env map
 		StoragePath: filepath.Join(path, ".grok", "auth.json"),
 		Source:      source,
 	}
+	apiKeyConfigured := status.resolveAPIKey(AgentGrok, root, env)
 	switch {
-	case grokEnvAuthAvailable(cfg.Env) || grokEnvAuthAvailable(env):
-		status.Authenticated = true
-		status.Evidence = "env"
 	case grokAuthFileAvailable(path):
-		status.Authenticated = true
-		status.Evidence = "auth_json"
+		status.markAuthenticated("auth_json", AuthKindOAuth)
+	case apiKeyConfigured:
+		status.markAuthenticated("api_key_env", AuthKindAPIKey)
 	default:
-		status.Reason = "Grok login at " + filepath.Join(path, ".grok", "auth.json") + " or XAI_API_KEY"
+		status.Reason = "Grok login at " + filepath.Join(path, ".grok", "auth.json") + " or " + status.APIKey.SourceEnv
 	}
 	return status
+}
+
+func (a *resolvedAgentAuth) resolveAPIKey(name, root string, env map[string]string) bool {
+	a.APIKey, _ = resolveAgentAPIKeySpec(name)
+	value, ok := explicitAgentAPIKey(name, root, env)
+	a.APIKeySet = ok
+	a.APIKeyValue = value
+	return ok
+}
+
+func (a *resolvedAgentAuth) markAuthenticated(evidence, kind string) {
+	a.Authenticated = true
+	a.Evidence = evidence
+	a.Kind = kind
+}
+
+func (a resolvedAgentAuth) APIKeyBinding() (string, string, bool) {
+	if a.Kind != AuthKindAPIKey || strings.TrimSpace(a.APIKeyValue) == "" || strings.TrimSpace(a.APIKey.TargetEnv) == "" {
+		return "", "", false
+	}
+	return a.APIKey.TargetEnv, a.APIKeyValue, true
+}
+
+func AgentAPIKey(name string) (AgentAPIKeySpec, bool) {
+	return resolveAgentAPIKeySpec(name)
+}
+
+func resolveAgentAPIKeySpec(name string) (AgentAPIKeySpec, bool) {
+	switch CanonicalAgentName(name) {
+	case AgentCodex:
+		return AgentAPIKeySpec{SourceEnv: "JAZ_ACP_CODEX_API_KEY", TargetEnv: "OPENAI_API_KEY"}, true
+	case AgentClaude:
+		return AgentAPIKeySpec{SourceEnv: "JAZ_ACP_CLAUDE_API_KEY", TargetEnv: "ANTHROPIC_API_KEY"}, true
+	case AgentGrok:
+		return AgentAPIKeySpec{SourceEnv: "JAZ_ACP_GROK_API_KEY", TargetEnv: "XAI_API_KEY"}, true
+	default:
+		return AgentAPIKeySpec{}, false
+	}
+}
+
+func explicitAgentAPIKey(name, root string, env map[string]string) (string, bool) {
+	spec, ok := resolveAgentAPIKeySpec(name)
+	if !ok {
+		return "", false
+	}
+	if value := strings.TrimSpace(env[spec.SourceEnv]); value != "" {
+		return value, true
+	}
+	if value, ok := runtimeenv.Lookup(runtimeenv.Path(root), spec.SourceEnv); ok {
+		return value, true
+	}
+	if value := strings.TrimSpace(os.Getenv(spec.SourceEnv)); value != "" {
+		return value, true
+	}
+	return "", false
 }
 
 func codexAuthFileAvailable(home string) bool {
@@ -199,8 +270,8 @@ func claudeAuthFileAvailable(configDir string) bool {
 	return fileExists(filepath.Join(configDir, ".credentials.json"))
 }
 
-func claudeEnvAuthAvailable(env map[string]string) bool {
-	for _, key := range []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"} {
+func claudeAccountAuthAvailable(env map[string]string) bool {
+	for _, key := range []string{"ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"} {
 		if strings.TrimSpace(env[key]) != "" {
 			return true
 		}
@@ -210,10 +281,6 @@ func claudeEnvAuthAvailable(env map[string]string) bool {
 
 func grokAuthFileAvailable(home string) bool {
 	return fileExists(filepath.Join(home, ".grok", "auth.json"))
-}
-
-func grokEnvAuthAvailable(env map[string]string) bool {
-	return strings.TrimSpace(env["XAI_API_KEY"]) != "" || strings.TrimSpace(env["XAI_APIKEY"]) != ""
 }
 
 func defaultHomePath(child string) string {

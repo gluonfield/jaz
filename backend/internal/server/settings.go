@@ -16,8 +16,14 @@ type agentSettingsResponse struct {
 	Native     agentsettings.NativeAgentDefaults         `json:"native"`
 	Providers  []provider.NativeProvider                 `json:"providers"`
 	ACP        map[string]agentsettings.ACPAgentDefaults `json:"acp"`
+	ACPAuth    map[string]acpAuthStatusResponse          `json:"acp_auth"`
 	ACPOptions map[string]acp.AgentOptions               `json:"acp_options"`
 	Agents     []string                                  `json:"agents"`
+}
+
+type agentSettingsRequest struct {
+	agentsettings.AgentDefaults
+	ACPKeys map[string]string `json:"acp_keys,omitempty"`
 }
 
 func (s *Server) handleAgentSettings(w http.ResponseWriter, r *http.Request) {
@@ -35,13 +41,26 @@ func (s *Server) handleAgentSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, s.agentSettingsResponse(defaults))
 	case http.MethodPut:
-		var input agentsettings.AgentDefaults
+		var input agentSettingsRequest
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		normalized, err := agentsettings.NormalizeAgentDefaults(input, s.acpAgentCatalog())
+		normalized, err := agentsettings.NormalizeAgentDefaults(input.AgentDefaults, s.acpAgentCatalog())
 		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		keyUpdates, err := s.acpKeyUpdates(input.ACPKeys)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		if len(keyUpdates) > 0 && !s.providerKeySetupAllowed(r) {
+			writeError(w, http.StatusForbidden, fmt.Errorf("agent key setup is only available from the backend host"))
+			return
+		}
+		if err := s.saveRuntimeKeyUpdates(keyUpdates); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
@@ -77,9 +96,24 @@ func (s *Server) agentSettingsResponse(defaults agentsettings.AgentDefaults) age
 		Native:     defaults.Native,
 		Providers:  provider.NativeProviders(),
 		ACP:        defaults.ACP,
+		ACPAuth:    s.acpAgentAuthStatuses(defaults),
 		ACPOptions: acpOptions(agentNames),
 		Agents:     agentNames,
 	}
+}
+
+func (s *Server) acpAgentAuthStatuses(defaults agentsettings.AgentDefaults) map[string]acpAuthStatusResponse {
+	out := make(map[string]acpAuthStatusResponse, len(s.allACPAgentNames()))
+	for _, name := range s.allACPAgentNames() {
+		cfg, _, err := s.acpProbeConfig(name, defaults)
+		if err != nil {
+			out[name] = acpAuthStatusResponse{Reason: err.Error()}
+			continue
+		}
+		auth := acp.ProbeAgentAuth(name, cfg, s.runtimeRoot(), nil)
+		out[name] = newACPAuthStatusResponse(auth)
+	}
+	return out
 }
 
 func acpOptions(agentNames []string) map[string]acp.AgentOptions {

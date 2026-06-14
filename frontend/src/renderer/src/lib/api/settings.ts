@@ -11,6 +11,8 @@ function normalizeAgentSettings(settings: AgentSettings): AgentSettings {
       reasoning_effort: settings.native.reasoning_effort ?? '',
     },
     providers: settings.providers ?? [],
+    acp_auth: settings.acp_auth ?? {},
+    acp_keys: settings.acp_keys ?? {},
     acp_options: settings.acp_options ?? {},
     acp: Object.fromEntries(
       (settings.agents ?? []).map((agent) => {
@@ -40,6 +42,7 @@ function inputFromSettings(settings: AgentSettings): AgentSettings {
     native: normalized.native,
     providers: normalized.providers,
     acp: normalized.acp,
+    acp_keys: normalized.acp_keys,
     agents: normalized.agents,
   }
 }

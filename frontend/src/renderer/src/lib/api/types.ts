@@ -526,6 +526,26 @@ export interface ACPAgentAuth {
   path?: string
 }
 
+export interface ACPAgentAPIKey {
+  source_env?: string
+  target_env?: string
+}
+
+export interface ACPAgentAuthStatus {
+  authenticated: boolean
+  reason?: string
+  storage_path?: string
+  auth_mode?: 'auto' | 'existing_cli' | 'jaz_profile'
+  auth_path?: string
+  auth_source?: string
+  auth_evidence?: string
+  auth_kind?: 'oauth' | 'api_key'
+  recommended_auth?: ACPAgentAuth
+  api_key?: ACPAgentAPIKey
+  api_key_configured: boolean
+  refresh_owner?: string
+}
+
 export interface ReasoningEffortOption {
   value: string
   label: string
@@ -539,27 +559,20 @@ export interface AgentSettings {
   native: NativeAgentDefaults
   providers: NativeProviderOption[]
   acp: Record<string, ACPAgentDefaults>
+  acp_auth?: Record<string, ACPAgentAuthStatus>
+  acp_keys?: Record<string, string>
   acp_options?: Record<string, ACPAgentOptions>
   agents: string[]
 }
 
-export interface OnboardingACPProbe {
+export interface OnboardingACPProbe extends ACPAgentAuthStatus {
   agent: string
   command?: string
   installed: boolean
-  authenticated: boolean
   available: boolean
-  reason?: string
-  storage_path?: string
-  auth_mode?: 'auto' | 'existing_cli' | 'jaz_profile'
-  auth_path?: string
-  auth_source?: string
-  auth_evidence?: string
-  recommended_auth?: ACPAgentAuth
   auth_command?: string
   auth_command_available: boolean
   auth_command_reason?: string
-  refresh_owner?: string
 }
 
 export interface OnboardingNativeProvider {
@@ -578,5 +591,6 @@ export interface OnboardingStatus {
 export interface OnboardingInput {
   settings?: AgentSettings
   provider_keys?: Record<string, string>
+  acp_keys?: Record<string, string>
   completed: boolean
 }
