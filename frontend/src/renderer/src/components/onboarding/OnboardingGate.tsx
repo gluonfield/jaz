@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { motion } from 'motion/react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { AuthLoginStatus } from '@/components/acp/AuthLoginStatus'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -367,14 +368,7 @@ function AgentToggle({
               {!probe.auth_command_available && probe.auth_command_reason ? (
                 <p className="text-[12px] text-danger">{probe.auth_command_reason}</p>
               ) : null}
-              {loginJob?.output ? (
-                <pre className="max-h-36 overflow-auto whitespace-pre-wrap rounded-[8px] bg-surface px-3 py-2 font-mono text-[11px] leading-relaxed text-ink-2">
-                  {loginJob.output}
-                </pre>
-              ) : null}
-              {loginJob?.status === 'failed' && loginJob.error ? (
-                <p className="text-[12px] text-danger">{loginJob.error}</p>
-              ) : null}
+              <AuthLoginStatus job={loginJob} running={running} />
             </div>
           ) : (
             <div className="grid gap-2">

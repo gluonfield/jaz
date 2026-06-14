@@ -168,6 +168,28 @@ func TestProbeAgentAuthDetectsCodexKeyringProfile(t *testing.T) {
 	}
 }
 
+func TestProbeAgentAuthDetectsClaudeJSONProfile(t *testing.T) {
+	clearHostEnv(t)
+	home := t.TempDir()
+	configDir := filepath.Join(home, "claude-config")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, ".claude.json"), []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("CLAUDE_CONFIG_DIR", configDir)
+
+	status := ProbeAgentAuth(AgentClaude, AgentConfig{}, t.TempDir(), nil)
+	if !status.Authenticated || status.AuthEvidence != "claude_json" {
+		t.Fatalf("status = %#v, want .claude.json auth", status)
+	}
+	if status.StoragePath != filepath.Join(configDir, ".claude.json") {
+		t.Fatalf("storage path = %q, want .claude.json", status.StoragePath)
+	}
+}
+
 func TestProcessEnvUsesJazConfigForClaudeCode(t *testing.T) {
 	clearHostEnv(t)
 	home := t.TempDir()

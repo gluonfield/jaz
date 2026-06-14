@@ -116,6 +116,22 @@ printf ok
 	}
 }
 
+func TestACPAuthLoginResponseExtractsDeviceAuthHints(t *testing.T) {
+	job := &acpAuthLoginJob{
+		ID:     "login_test",
+		Agent:  "codex",
+		Status: "running",
+		Output: "Open \x1b[94mhttps://auth.openai.com/codex/device\x1b[0m\ncode \x1b[94mM17M-3K1Z5\x1b[0m\n",
+	}
+	res := job.response()
+	if res.AuthURL != "https://auth.openai.com/codex/device" {
+		t.Fatalf("auth url = %q", res.AuthURL)
+	}
+	if res.AuthCode != "M17M-3K1Z5" {
+		t.Fatalf("auth code = %q", res.AuthCode)
+	}
+}
+
 func waitForACPAuthLogin(t *testing.T, handler http.Handler, id string) acpAuthLoginResponse {
 	t.Helper()
 	var got acpAuthLoginResponse

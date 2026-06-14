@@ -551,6 +551,8 @@ export interface ACPAuthLogin {
   agent: string
   status: 'running' | 'succeeded' | 'failed'
   output?: string
+  auth_url?: string
+  auth_code?: string
   error?: string
   started_at: string
   finished_at?: string
