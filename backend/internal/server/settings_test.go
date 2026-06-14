@@ -222,6 +222,55 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	}
 }
 
+func TestAgentSettingsSavesNativeProviderKey(t *testing.T) {
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	handler := (&Server{Store: store, Root: root}).Handler()
+
+	putReq := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
+		"native":{"model_provider":"openrouter","model":"openai/gpt-5.4-mini","reasoning_effort":"medium"},
+		"provider_keys":{"openrouter":"sk-or-test"}
+	}`))
+	putReq.Header.Set("Content-Type", "application/json")
+	putReq.RemoteAddr = "127.0.0.1:1234"
+	putRes := httptest.NewRecorder()
+	handler.ServeHTTP(putRes, putReq)
+	if putRes.Code != http.StatusOK {
+		t.Fatalf("put status = %d, body = %s", putRes.Code, putRes.Body.String())
+	}
+
+	env, err := os.ReadFile(runtimeenv.Path(store.RootDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(env), `OPENROUTER_API_KEY="sk-or-test"`) {
+		t.Fatalf("runtime env = %s", env)
+	}
+
+	var saved struct {
+		Providers []struct {
+			ID         string `json:"id"`
+			Configured bool   `json:"configured"`
+		} `json:"providers"`
+	}
+	if err := json.Unmarshal(putRes.Body.Bytes(), &saved); err != nil {
+		t.Fatal(err)
+	}
+	configured := false
+	for _, provider := range saved.Providers {
+		if provider.ID == "openrouter" {
+			configured = provider.Configured
+		}
+	}
+	if !configured {
+		t.Fatalf("openrouter not reported configured: %#v", saved.Providers)
+	}
+}
+
 func TestAgentSettingsRejectsInvalidSettingsBeforeSavingACPKeys(t *testing.T) {
 	root := t.TempDir()
 	store, err := sqlitestore.New(root)

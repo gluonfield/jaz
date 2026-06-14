@@ -511,6 +511,8 @@ export interface NativeProviderOption {
   default_model?: string
   default_reasoning_effort?: string
   implemented: boolean
+  /** whether this provider's API key is already configured on the backend */
+  configured?: boolean
 }
 
 export interface ACPAgentDefaults {
