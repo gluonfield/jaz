@@ -145,7 +145,7 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 			}
 		}
 		if env["CLAUDE_CODE_EXECUTABLE"] == "" {
-			if cli, err := ResolveExecutable("claude"); err == nil {
+			if cli, err := exec.LookPath("claude"); err == nil {
 				env["CLAUDE_CODE_EXECUTABLE"] = cli
 			}
 		}

@@ -24,6 +24,16 @@ type AgentAuthStatus struct {
 	RefreshOwner          string
 }
 
+type AgentLoginInvocation struct {
+	Env         map[string]string
+	Executable  string
+	Args        []string
+	Display     string
+	Available   bool
+	Reason      string
+	InheritHome bool
+}
+
 func ProbeAgentAuth(name string, cfg AgentConfig, root string, env map[string]string) AgentAuthStatus {
 	name = CanonicalAgentName(name)
 	probeEnv := NewManager(nil, Config{Root: root, Env: env}, nil).probeEnv(name, cfg)
@@ -48,22 +58,31 @@ func ProbeAgentAuth(name string, cfg AgentConfig, root string, env map[string]st
 }
 
 func agentLoginCommand(name, root string, auth AgentAuthConfig) AgentAuthStatus {
+	invocation := AgentLoginInvocationFor(name, root, auth)
+	return AgentAuthStatus{
+		LoginCommand:          invocation.Display,
+		LoginCommandAvailable: invocation.Available,
+		LoginCommandReason:    invocation.Reason,
+	}
+}
+
+func AgentLoginInvocationFor(name, root string, auth AgentAuthConfig) AgentLoginInvocation {
 	layout := runtimefiles.New(root)
 	switch CanonicalAgentName(name) {
 	case AgentCodex:
 		home := firstNonEmpty(auth.Path, layout.ACPCodexHome)
-		return loginCommand(map[string]string{"CODEX_HOME": home}, "codex", "login", "--device-auth")
+		return loginInvocation(map[string]string{"CODEX_HOME": home}, false, "codex", "login", "--device-auth")
 	case AgentClaude:
 		configDir := firstNonEmpty(auth.Path, layout.ACPClaudeConfig)
-		return loginCommand(map[string]string{"CLAUDE_CONFIG_DIR": configDir}, "claude", "auth", "login", "--claudeai")
+		return loginInvocation(map[string]string{"CLAUDE_CONFIG_DIR": configDir}, false, "claude", "auth", "login", "--claudeai")
 	case AgentGrok:
-		return loginCommand(nil, "grok", "login", "--device-auth")
+		return loginInvocation(nil, true, "grok", "login", "--device-auth")
 	default:
-		return AgentAuthStatus{}
+		return AgentLoginInvocation{}
 	}
 }
 
-func loginCommand(env map[string]string, executable string, args ...string) AgentAuthStatus {
+func loginInvocation(env map[string]string, inheritHome bool, executable string, args ...string) AgentLoginInvocation {
 	resolved, err := ResolveExecutable(executable)
 	if err != nil {
 		resolved = executable
@@ -78,14 +97,18 @@ func loginCommand(env map[string]string, executable string, args ...string) Agen
 	if cmd != "" {
 		parts = append(parts, cmd)
 	}
-	status := AgentAuthStatus{
-		LoginCommand:          strings.Join(parts, " "),
-		LoginCommandAvailable: err == nil,
+	invocation := AgentLoginInvocation{
+		Env:         env,
+		Executable:  resolved,
+		Args:        args,
+		Display:     strings.Join(parts, " "),
+		Available:   err == nil,
+		InheritHome: inheritHome,
 	}
 	if err != nil {
-		status.LoginCommandReason = executable + " not found"
+		invocation.Reason = executable + " not found"
 	}
-	return status
+	return invocation
 }
 
 func shellCommand(executable string, args ...string) string {

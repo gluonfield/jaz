@@ -81,7 +81,8 @@ type Server struct {
 	terminalOnce sync.Once
 
 	// in-flight native turns by session id, cancellable via the cancel action
-	turnCancels sync.Map
+	turnCancels      sync.Map
+	acpAuthLoginJobs sync.Map
 }
 
 func (s *Server) logger() *log.Logger {
