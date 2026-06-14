@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/acp"
@@ -31,6 +34,8 @@ type onboardingACPProbe struct {
 	Agent                string `json:"agent"`
 	Command              string `json:"command,omitempty"`
 	Installed            bool   `json:"installed"`
+	AppInstalled         bool   `json:"app_installed,omitempty"`
+	AppName              string `json:"app_name,omitempty"`
 	Available            bool   `json:"available"`
 	AuthCommand          string `json:"auth_command,omitempty"`
 	AuthCommandAvailable bool   `json:"auth_command_available"`
@@ -194,6 +199,7 @@ func (s *Server) probeACPAgents(defaults agentsettings.AgentDefaults) []onboardi
 			auth.Authenticated = true
 			auth.Reason = ""
 		}
+		appName, appInstalled := agentAppInstall(name)
 		readiness := acp.ProbeReadiness(name, cfg, s.runtimeRoot(), nil)
 		installed := adapterInstalled || auth.LoginCommandAvailable
 		reason := ""
@@ -211,6 +217,8 @@ func (s *Server) probeACPAgents(defaults agentsettings.AgentDefaults) []onboardi
 			Agent:                 name,
 			Command:               command,
 			Installed:             installed,
+			AppInstalled:          appInstalled,
+			AppName:               appName,
 			Available:             readiness.Available,
 			AuthCommand:           auth.LoginCommand,
 			AuthCommandAvailable:  auth.LoginCommandAvailable,
@@ -218,6 +226,34 @@ func (s *Server) probeACPAgents(defaults agentsettings.AgentDefaults) []onboardi
 		})
 	}
 	return out
+}
+
+func agentAppInstall(name string) (string, bool) {
+	if name == acp.AgentClaude && appBundleInstalled("Claude.app") {
+		return "Claude app", true
+	}
+	return "", false
+}
+
+func appBundleInstalled(bundle string) bool {
+	if runtime.GOOS != "darwin" {
+		return false
+	}
+	dirs := []string{"/Applications"}
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		dirs = append(dirs, filepath.Join(home, "Applications"))
+	}
+	return appBundleInstalledIn(dirs, bundle)
+}
+
+func appBundleInstalledIn(dirs []string, bundle string) bool {
+	for _, dir := range dirs {
+		info, err := os.Stat(filepath.Join(dir, bundle))
+		if err == nil && info.IsDir() {
+			return true
+		}
+	}
+	return false
 }
 
 func firstMessage(values ...string) string {

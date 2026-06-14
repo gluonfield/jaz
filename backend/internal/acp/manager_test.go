@@ -211,6 +211,37 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	}
 }
 
+func TestManagerIncludesAgentStderrWhenInitializeConnectionCloses(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := acp.NewManager(store, acp.Config{
+		Root:      t.TempDir(),
+		Workspace: t.TempDir(),
+		Agents: map[string]acp.AgentConfig{
+			"fake": {
+				Command: os.Args[0],
+				Args:    []string{"-test.run=TestFakeACPAgentProcess"},
+				Env: map[string]string{
+					"JAZ_FAKE_ACP_AGENT":            "1",
+					"JAZ_FAKE_ACP_EXIT_BEFORE_INIT": "claude: command not found",
+				},
+			},
+		},
+	}, log.New(io.Discard))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	_, err = manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-crash"})
+	if err == nil {
+		t.Fatal("expected spawn to fail")
+	}
+	if !strings.Contains(err.Error(), "initialize acp agent") || !strings.Contains(err.Error(), "claude: command not found") {
+		t.Fatalf("error = %q", err)
+	}
+}
+
 func TestManagerUsesStoredACPCommandArgs(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

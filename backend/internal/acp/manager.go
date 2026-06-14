@@ -155,11 +155,16 @@ type agentConn struct {
 	peer    *jsonrpc.Peer
 	cancel  context.CancelFunc
 	initRaw json.RawMessage
+	stderr  *processStderrTail
 }
 
 func (c *agentConn) close() {
 	_ = c.peer.Close()
 	c.cancel()
+}
+
+func (c *agentConn) withProcessStderr(err error) error {
+	return withProcessStderr(err, c.stderr)
 }
 
 func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd string) (*agentConn, error) {
@@ -168,7 +173,7 @@ func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd
 		return nil, err
 	}
 	runCtx, cancel := context.WithCancel(context.Background())
-	conn, err := m.openConn(runCtx, name, cfg, env, cwd)
+	conn, stderr, err := m.openConn(runCtx, name, cfg, env, cwd)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -202,21 +207,21 @@ func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd
 	if err != nil {
 		_ = peer.Close()
 		cancel()
-		return nil, fmt.Errorf("initialize acp agent: %w", err)
+		return nil, fmt.Errorf("initialize acp agent: %w", withProcessStderr(err, stderr))
 	}
 	methodID, missingAuth := autoAuthMethod(name, initRaw, env)
 	if methodID != "" {
 		if _, err := peer.Call(ctx, acpschema.AgentMethodAuthenticate, acpschema.AuthenticateRequest{MethodID: methodID}); err != nil {
 			_ = peer.Close()
 			cancel()
-			return nil, fmt.Errorf("authenticate acp agent: %w", err)
+			return nil, fmt.Errorf("authenticate acp agent: %w", withProcessStderr(err, stderr))
 		}
 	} else if len(missingAuth) > 0 {
 		_ = peer.Close()
 		cancel()
 		return nil, fmt.Errorf("authenticate acp agent %q: missing %s", name, strings.Join(missingAuth, " or "))
 	}
-	return &agentConn{conn: conn, peer: peer, cancel: cancel, initRaw: initRaw}, nil
+	return &agentConn{conn: conn, peer: peer, cancel: cancel, initRaw: initRaw, stderr: stderr}, nil
 }
 
 // sessionMeta builds the session _meta payload for prompt and agent-specific
@@ -260,7 +265,7 @@ func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent string
 	}
 	sessionRaw, err := ac.peer.Call(ctx, acpschema.AgentMethodSessionNew, newSession)
 	if err != nil {
-		return acpSessionInfo{}, fmt.Errorf("create acp session: %w", err)
+		return acpSessionInfo{}, fmt.Errorf("create acp session: %w", ac.withProcessStderr(err))
 	}
 	var acpSession acpschema.NewSessionResponse
 	if err := json.Unmarshal(sessionRaw, &acpSession); err != nil {

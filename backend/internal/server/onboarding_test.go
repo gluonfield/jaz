@@ -165,7 +165,11 @@ func TestOnboardingAllowsAuthenticatedRemoteProviderKeySetup(t *testing.T) {
 func TestOnboardingUsesACPReadiness(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("PATH", root)
-	t.Setenv("SHELL", "/bin/sh")
+	shell := filepath.Join(root, "shell")
+	if err := os.WriteFile(shell, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SHELL", shell)
 	t.Setenv("CLAUDE_CODE_EXECUTABLE", "")
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "token")
 	store, err := sqlitestore.New(root)
@@ -203,6 +207,19 @@ func TestOnboardingUsesACPReadiness(t *testing.T) {
 	}
 	if len(got.ACP) != 1 || got.ACP[0].Agent != "claude" || !got.ACP[0].Authenticated || got.ACP[0].Available || !strings.Contains(got.ACP[0].Reason, "Claude Code executable") {
 		t.Fatalf("unexpected claude probe: %#v", got.ACP)
+	}
+}
+
+func TestAppBundleInstalledIn(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "Claude.app"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if !appBundleInstalledIn([]string{root}, "Claude.app") {
+		t.Fatal("expected Claude.app to be detected")
+	}
+	if appBundleInstalledIn([]string{root}, "Missing.app") {
+		t.Fatal("unexpected app bundle detection")
 	}
 }
 
