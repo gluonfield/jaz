@@ -63,9 +63,14 @@ export function apiUrl(path: string): string {
 }
 
 export function apiWebSocketUrl(path: string): string {
+  assertBackendRelativePath(path, 'apiWebSocketUrl')
   const url = new URL(path, `${apiBaseUrl()}/`)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   return url.toString()
+}
+
+export function apiAuthenticatedWebSocketUrl(path: string): string {
+  return appendAuthQuery(apiWebSocketUrl(path))
 }
 
 export function setApiBaseUrl(url: string): void {
@@ -109,9 +114,7 @@ function appendAuthQuery(rawUrl: string, url = apiBaseUrl()): string {
 }
 
 export function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  if (/^https?:\/\//i.test(path)) {
-    throw new Error('apiFetch only accepts backend-relative paths')
-  }
+  assertBackendRelativePath(path, 'apiFetch')
   return fetch(apiUrl(path), withAuth(init))
 }
 
@@ -173,4 +176,10 @@ export function post<T>(path: string, body?: unknown): Promise<T> {
 
 export function del<T>(path: string): Promise<T> {
   return request<T>(path, { method: 'DELETE' })
+}
+
+function assertBackendRelativePath(path: string, helper: string): void {
+  if (/^(?:https?|wss?):\/\//i.test(path)) {
+    throw new Error(`${helper} only accepts backend-relative paths`)
+  }
 }
