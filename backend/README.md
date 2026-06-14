@@ -5,9 +5,22 @@ Native Go agent backend with a provider-neutral loop, native model providers, Co
 ## Run
 
 ```sh
-go run ./cmd/jaz serve
-go run ./cmd/jaz chat
+go run ./cmd/jaz
+go run ./cmd/jaz-chat
 ```
+
+Release assets include standalone CLI archives:
+
+- `jaz-server_<version>_<os>_<arch>.tar.gz` contains `jaz`, the server.
+- `jaz-chat_<version>_<os>_<arch>.tar.gz` contains `jaz-chat`, the TUI client.
+
+Run the server binary directly on the server:
+
+```sh
+./jaz --addr :5299 --public-url https://jaz.example.com
+```
+
+`jaz serve` and `jaz server` remain compatibility aliases for `jaz`.
 
 Native Jaz defaults are stored in the database and edited from Settings >
 Agents as the provider, model, and reasoning effort copied into new threads.

@@ -2,32 +2,68 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"strings"
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		usage()
+	args, action := serverArgs(os.Args[1:])
+	switch action {
+	case mainHelp:
+		usage(os.Stdout)
+		return
+	case mainChat:
+		fmt.Fprintln(os.Stderr, "jaz chat moved to jaz-chat")
+		usage(os.Stderr)
+		os.Exit(2)
+	case mainInvalid:
+		usage(os.Stderr)
 		os.Exit(2)
 	}
-
-	switch os.Args[1] {
-	case "serve", "server":
-		if err := runServe(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, "serve:", err)
-			os.Exit(1)
-		}
-	case "chat":
-		if err := runChat(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, "chat:", err)
-			os.Exit(1)
-		}
-	default:
-		usage()
-		os.Exit(2)
+	if err := runServe(args); err != nil {
+		fmt.Fprintln(os.Stderr, "serve:", err)
+		os.Exit(1)
 	}
 }
 
-func usage() {
-	fmt.Fprintln(os.Stderr, "usage: jaz serve [flags] | jaz server [flags] | jaz chat [flags]")
+type mainAction int
+
+const (
+	mainRun mainAction = iota
+	mainHelp
+	mainChat
+	mainInvalid
+)
+
+func serverArgs(args []string) ([]string, mainAction) {
+	if len(args) == 0 {
+		return nil, mainRun
+	}
+	switch args[0] {
+	case "serve", "server":
+		if len(args) > 1 && isHelp(args[1]) {
+			return nil, mainHelp
+		}
+		return args[1:], mainRun
+	case "help":
+		return nil, mainHelp
+	case "chat":
+		return nil, mainChat
+	}
+	if isHelp(args[0]) {
+		return nil, mainHelp
+	}
+	if strings.HasPrefix(args[0], "-") {
+		return args, mainRun
+	}
+	return nil, mainInvalid
+}
+
+func isHelp(arg string) bool {
+	return arg == "-h" || arg == "--help"
+}
+
+func usage(w io.Writer) {
+	fmt.Fprintln(w, "usage: jaz [--addr addr] [--public-url url]\n       jaz serve [flags]\n       jaz server [flags]\n\nRun the Jaz server. Use jaz-chat for the TUI client.")
 }

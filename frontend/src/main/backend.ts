@@ -190,7 +190,7 @@ function spawnBackend(): ChildProcess {
     const bin = join(process.resourcesPath, 'bin', 'jaz')
     const cwd = join(homedir(), '.jaz')
     mkdirSync(cwd, { recursive: true })
-    return spawn(bin, ['serve'], {
+    return spawn(bin, [], {
       cwd,
       detached: true,
       env: localBackendEnv(),
@@ -199,7 +199,7 @@ function spawnBackend(): ChildProcess {
   }
   // Dev: out/main → frontend/out/main, so the backend module sits three up.
   const backendDir = resolve(__dirname, '../../../backend')
-  return spawn('go', ['run', './cmd/jaz', 'serve'], {
+  return spawn('go', ['run', './cmd/jaz'], {
     cwd: backendDir,
     detached: true,
     stdio: ['ignore', 'pipe', 'pipe'],
