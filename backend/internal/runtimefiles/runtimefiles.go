@@ -13,7 +13,6 @@ type Layout struct {
 	Workspaces       string
 	DefaultWorkspace string
 	UserSkills       string
-	ManagedSkills    string
 	Automations      string
 	ACPCodexHome     string
 	ACPClaudeConfig  string
@@ -27,7 +26,6 @@ func New(root string) Layout {
 		Workspaces:       filepath.Join(root, "workspaces"),
 		DefaultWorkspace: filepath.Join(root, "workspaces", "default"),
 		UserSkills:       filepath.Join(root, "skills"),
-		ManagedSkills:    filepath.Join(root, "system", "skills"),
 		Automations:      filepath.Join(root, "automations"),
 		ACPCodexHome:     filepath.Join(root, "acp", "codex-home"),
 		ACPClaudeConfig:  filepath.Join(root, "acp", "claude"),
