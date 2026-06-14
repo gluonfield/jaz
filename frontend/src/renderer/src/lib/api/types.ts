@@ -583,6 +583,8 @@ export interface OnboardingACPProbe extends ACPAgentAuthStatus {
   agent: string
   command?: string
   installed: boolean
+  app_installed?: boolean
+  app_name?: string
   available: boolean
   auth_command?: string
   auth_command_available: boolean

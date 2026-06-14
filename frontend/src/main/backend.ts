@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn } from 'node:child_process'
+import { execFileSync, type ChildProcess, spawn } from 'node:child_process'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -35,6 +35,29 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const pidFilePath = (): string => join(app.getPath('userData'), 'local-backend.pid')
 const defaultRootPath = (): string => join(homedir(), '.jaz')
 const authFilePath = (root = defaultRootPath()): string => join(root, 'auth.json')
+
+function localBackendEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env }
+  if (process.platform !== 'darwin') return env
+  const shell = env['SHELL']?.trim() || '/bin/zsh'
+  try {
+    const out = execFileSync(shell, ['-l', '-i', '-c', 'printf "\\n__JAZ_PATH__%s\\n" "$PATH"'], {
+      encoding: 'utf8',
+      timeout: 3_000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+    let line = ''
+    for (const entry of out.split(/\r?\n/).reverse()) {
+      if (!entry.startsWith('__JAZ_PATH__')) continue
+      line = entry.slice('__JAZ_PATH__'.length).trim()
+      break
+    }
+    if (line) env['PATH'] = line
+  } catch {
+    // Keep LaunchServices env.
+  }
+  return env
+}
 
 // The pid file marks a backend WE spawned. If it survives into a new session
 // (dev-watcher restart, crash — before-quit never ran), kill that group before
@@ -167,7 +190,12 @@ function spawnBackend(): ChildProcess {
     const bin = join(process.resourcesPath, 'bin', 'jaz')
     const cwd = join(homedir(), '.jaz')
     mkdirSync(cwd, { recursive: true })
-    return spawn(bin, ['serve'], { cwd, detached: true, stdio: ['ignore', 'pipe', 'pipe'] })
+    return spawn(bin, ['serve'], {
+      cwd,
+      detached: true,
+      env: localBackendEnv(),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
   }
   // Dev: out/main → frontend/out/main, so the backend module sits three up.
   const backendDir = resolve(__dirname, '../../../backend')
