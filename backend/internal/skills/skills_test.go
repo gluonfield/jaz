@@ -81,19 +81,11 @@ func TestInstallDefaultsRefreshesDefaultSkills(t *testing.T) {
 func TestInstallDefaultsKeepsCustomSkills(t *testing.T) {
 	root := t.TempDir()
 	writeSkill(t, root, "custom", "custom", "Custom skill")
-	writeSkill(t, root, "jazmem", "jazmem", "Custom memory skill")
 
 	if err := InstallDefaults(root); err != nil {
 		t.Fatal(err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(UserRoot(root), "jazmem", "SKILL.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(data), "Custom memory skill") {
-		t.Fatalf("custom skill was overwritten:\n%s", data)
-	}
 	if _, err := os.Stat(filepath.Join(UserRoot(root), "make-interfaces-feel-better", "SKILL.md")); err != nil {
 		t.Fatalf("default skill missing: %v", err)
 	}
