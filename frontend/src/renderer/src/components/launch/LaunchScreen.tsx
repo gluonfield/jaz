@@ -1,6 +1,6 @@
-import { ArrowRight, Globe, Laptop, LoaderCircle } from 'lucide-react'
+import { LoaderCircle } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { type FormEvent, type ReactNode, useState } from 'react'
+import { type FormEvent, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { PixelField } from '@/components/ui/PixelField'
@@ -123,7 +123,7 @@ export function LaunchScreen() {
               variants={stagger}
               initial="hidden"
               animate="show"
-              className="flex w-full max-w-[440px] flex-col items-center"
+              className="flex w-full max-w-[320px] flex-col items-center"
             >
               <motion.h1
                 variants={rise}
@@ -131,45 +131,31 @@ export function LaunchScreen() {
               >
                 {error ? 'Reconnect to jaz' : 'Welcome to jaz'}
               </motion.h1>
-              <motion.p
-                variants={rise}
-                className="mt-2 max-w-[340px] text-pretty text-center text-[13px] text-ink-2"
-              >
-                {error
-                  ? 'The backend jaz was using is unreachable. Start one here or point jaz at another server.'
-                  : 'Your personal assistant runs on a backend. Choose where this one lives — you can change it any time.'}
-              </motion.p>
 
-              <AnimatePresence>
-                {error && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    className="mt-4 w-full rounded-control bg-danger-soft px-3 py-2 text-center text-[12px] text-danger"
-                  >
-                    {error}
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              {error && (
+                <motion.p
+                  variants={rise}
+                  className="mt-2 text-pretty text-center text-[13px] text-ink-2"
+                >
+                  The backend jaz was using is unreachable. Start one here or point jaz at another
+                  server.
+                </motion.p>
+              )}
 
               <motion.div variants={rise} className="mt-6 w-full">
                 <AnimatePresence mode="wait" initial={false}>
                   {mode === 'options' ? (
-                    <motion.div key="opts" {...swap} className="flex flex-col gap-2.5">
-                      <ChoiceCard
-                        icon={<Laptop size={18} />}
-                        title="Run on this Mac"
-                        detail="Start a local backend automatically each time."
+                    <motion.div key="opts" {...swap} className="flex flex-col gap-2">
+                      <ChoiceButton
+                        primary
+                        label="Run on this Mac"
+                        busyLabel="Starting backend…"
                         busy={busy === 'local'}
-                        busyLabel="Starting…"
                         disabled={busy !== null}
                         onClick={onStartLocal}
                       />
-                      <ChoiceCard
-                        icon={<Globe size={18} />}
-                        title="Connect to a server"
-                        detail="Use a jaz backend on a VM or another machine."
+                      <ChoiceButton
+                        label="Connect to a server"
                         disabled={busy !== null}
                         onClick={() => setMode('remote')}
                       />
@@ -179,16 +165,11 @@ export function LaunchScreen() {
                       key="remote"
                       {...swap}
                       onSubmit={onConnect}
-                      className="flex w-full flex-col gap-2.5 rounded-[14px] bg-surface/85 p-3 shadow-[0_0_0_1px_color-mix(in_oklab,var(--color-border)_70%,transparent),0_18px_60px_rgba(0,0,0,0.10)] backdrop-blur-[2px]"
+                      className="flex w-full flex-col gap-2.5 rounded-[16px] bg-surface/90 p-3 shadow-[0_8px_30px_rgba(0,0,0,0.10)] backdrop-blur-[2px]"
                     >
-                      <div className="flex items-center gap-2 px-0.5">
-                        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-bg text-ink-2 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-border)_70%,transparent)]">
-                          <Globe size={16} />
-                        </span>
-                        <div className="min-w-0">
-                          <p className="text-[13px] font-medium text-ink">Connect to a server</p>
-                          <p className="text-[12px] text-ink-3">Paste the client URL your server printed.</p>
-                        </div>
+                      <div className="px-0.5">
+                        <p className="text-[13px] font-medium text-ink">Connect to a server</p>
+                        <p className="mt-0.5 text-[12px] text-ink-3">Paste the client URL your server printed.</p>
                       </div>
                       <Input
                         autoFocus
@@ -196,11 +177,8 @@ export function LaunchScreen() {
                         onChange={(e) => setUrl(e.target.value)}
                         placeholder="http://192.168.1.10:5299?key=…"
                         spellCheck={false}
-                        className="font-mono text-[12px]"
+                        className="rounded-full font-mono text-[12px]"
                       />
-                      <p className="px-0.5 text-[12px] text-ink-3">
-                        The client URL includes the access key. A plain host works if the server has no key.
-                      </p>
                       <div className="flex items-center justify-end gap-2">
                         <Button
                           variant="ghost"
@@ -228,7 +206,7 @@ export function LaunchScreen() {
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0 }}
-                    className="mt-4 max-w-[380px] text-pretty text-center text-[12px] text-danger"
+                    className="mt-4 max-w-[320px] text-pretty text-center text-[12px] text-danger"
                   >
                     {actionError}
                   </motion.p>
@@ -242,23 +220,22 @@ export function LaunchScreen() {
   )
 }
 
-// A large, tactile choice row: icon avatar, title + detail, trailing affordance.
-// Borrows the composer's surface-card language (concentric radii, soft lift,
-// scale-on-press) so first contact already feels like the rest of the app.
-function ChoiceCard({
-  icon,
-  title,
-  detail,
-  busy = false,
+// Full-width rounded pill: the welcome's two ways to run jaz. No icons — the
+// label carries it. Primary = the cobalt recommended path (run locally),
+// secondary = a quiet surface pill (connect to a server). Soft drop shadow
+// floats it over the particle field; scales on press.
+function ChoiceButton({
+  label,
   busyLabel,
+  busy = false,
+  primary = false,
   disabled,
   onClick,
 }: {
-  icon: ReactNode
-  title: string
-  detail: string
-  busy?: boolean
+  label: string
   busyLabel?: string
+  busy?: boolean
+  primary?: boolean
   disabled?: boolean
   onClick: () => void
 }) {
@@ -267,20 +244,15 @@ function ChoiceCard({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      whileTap={disabled ? undefined : { scale: 0.985 }}
-      className="group flex w-full items-center gap-3 rounded-[14px] bg-surface/85 p-3 text-left shadow-[0_0_0_1px_color-mix(in_oklab,var(--color-border)_70%,transparent),0_10px_30px_rgba(0,0,0,0.06)] backdrop-blur-[2px] transition-[box-shadow,background-color] duration-150 hover:bg-surface enabled:hover:shadow-[0_0_0_1px_color-mix(in_oklab,var(--color-primary)_45%,transparent),0_16px_44px_rgba(0,0,0,0.12)] disabled:cursor-default disabled:opacity-60"
+      whileTap={disabled ? undefined : { scale: 0.97 }}
+      className={`flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-full text-[14px] font-medium transition-colors duration-150 disabled:cursor-default disabled:opacity-60 ${
+        primary
+          ? 'bg-primary text-on-primary shadow-[0_8px_24px_rgba(0,0,0,0.14)] enabled:hover:bg-primary-strong'
+          : 'bg-surface/90 text-ink shadow-[0_6px_20px_rgba(0,0,0,0.08)] backdrop-blur-[2px] enabled:hover:bg-surface'
+      }`}
     >
-      <span className="grid size-10 shrink-0 place-items-center rounded-full bg-bg text-primary shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-border)_70%,transparent)] transition-colors duration-150 group-enabled:group-hover:text-primary-strong">
-        {busy ? <LoaderCircle size={18} className="animate-spin" /> : icon}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-[14px] font-medium text-ink">{busy && busyLabel ? busyLabel : title}</span>
-        <span className="mt-0.5 block text-pretty text-[12px] text-ink-3">{detail}</span>
-      </span>
-      <ArrowRight
-        size={16}
-        className="shrink-0 text-ink-3 transition-transform duration-150 group-enabled:group-hover:translate-x-0.5 group-enabled:group-hover:text-ink-2"
-      />
+      {busy ? <LoaderCircle size={15} className="animate-spin" /> : null}
+      {busy && busyLabel ? busyLabel : label}
     </motion.button>
   )
 }
