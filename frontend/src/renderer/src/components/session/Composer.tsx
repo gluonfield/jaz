@@ -113,6 +113,9 @@ export function ComposerCard({
     storage: draftStorage,
     onTextChange,
   })
+  const canQueueWhileStreaming = streaming && queueWhenStreaming && files.length === 0
+  const submitDisabled = mention.isEmpty || disabled || (streaming && !canQueueWhileStreaming)
+  const showStopButton = streaming && onStop && (!queueWhenStreaming || mention.isEmpty || files.length > 0)
 
   // autoFocus lands before React's focus listeners attach; sync the ring state.
   useEffect(() => {
@@ -124,13 +127,13 @@ export function ComposerCard({
   }, [planAvailable])
 
   const addFiles = useCallback((next: File[]) => {
-    if (actionDisabled || next.length === 0) return
+    if (disabled || next.length === 0) return
     setFiles((current) => [...current, ...next])
-  }, [actionDisabled])
+  }, [disabled])
 
   // Drop intent is page-level: a file dragged anywhere in the window attaches
   // to this composer (the page's only one).
-  const draggingFiles = useWindowFileDrop({ disabled: actionDisabled, onDrop: addFiles })
+  const draggingFiles = useWindowFileDrop({ disabled, onDrop: addFiles })
 
   const togglePlanRequested = () => {
     if (actionDisabled || !planAvailable) return
@@ -162,7 +165,7 @@ export function ComposerCard({
     // Tokens expand on the way out: tagged paths become absolute, skill
     // references pass through for the agent's skill catalog to resolve.
     const trimmed = mention.value().trim()
-    if (!trimmed || disabled || (streaming && (!queueWhenStreaming || files.length > 0))) return
+    if (!trimmed || disabled || (streaming && !canQueueWhileStreaming)) return
     onSend(trimmed, {
       planRequested: !streaming && planAvailable && planRequested,
       files: streaming ? [] : files,
@@ -228,7 +231,7 @@ export function ComposerCard({
           type="file"
           multiple
           className="hidden"
-          disabled={actionDisabled}
+          disabled={disabled}
           onChange={(e) => {
             addFiles(Array.from(e.currentTarget.files ?? []))
             e.currentTarget.value = ''
@@ -294,7 +297,7 @@ export function ComposerCard({
               }
             >
               <MenuRow
-                disabled={actionDisabled}
+                disabled={disabled}
                 onClick={() => {
                   setOptionsOpen(false)
                   fileInputRef.current?.click()
@@ -356,7 +359,7 @@ export function ComposerCard({
                 <AudioLines size={16} />
               </IconButton>
             ) : null}
-            {streaming && onStop && (mention.isEmpty || !queueWhenStreaming) ? (
+            {showStopButton ? (
               <IconButton
                 variant="primary"
                 size="lg"
@@ -372,7 +375,7 @@ export function ComposerCard({
                 size="lg"
                 aria-label={streaming ? 'Queue message' : 'Send message'}
                 title={streaming ? 'Queue message' : 'Send message'}
-                disabled={mention.isEmpty || disabled || (streaming && (!queueWhenStreaming || files.length > 0))}
+                disabled={submitDisabled}
                 onClick={submit}
               >
                 <ArrowUp size={18} />
