@@ -20,7 +20,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 )
 
-const acpAuthLoginTimeout = 10 * time.Minute
+const acpAuthLoginTimeout = 16 * time.Minute
 
 type acpAuthLoginRequest struct {
 	Auth acp.AgentAuthConfig `json:"auth,omitempty"`
@@ -187,7 +187,7 @@ func (j *acpAuthLoginJob) finish(runErr, ctxErr error) {
 	switch {
 	case ctxErr == context.DeadlineExceeded:
 		j.Status = "failed"
-		j.Error = "sign-in timed out"
+		j.Error = "sign-in timed out; start sign-in again to get a fresh code"
 	case runErr != nil:
 		j.Status = "failed"
 		j.Error = runErr.Error()

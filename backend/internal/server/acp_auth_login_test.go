@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -129,6 +130,17 @@ func TestACPAuthLoginResponseExtractsDeviceAuthHints(t *testing.T) {
 	}
 	if res.AuthCode != "M17M-3K1Z5" {
 		t.Fatalf("auth code = %q", res.AuthCode)
+	}
+}
+
+func TestACPAuthLoginTimeoutAsksForFreshCode(t *testing.T) {
+	job := &acpAuthLoginJob{Status: "running"}
+	job.finish(nil, context.DeadlineExceeded)
+	if job.Status != "failed" {
+		t.Fatalf("status = %q", job.Status)
+	}
+	if !strings.Contains(job.Error, "fresh code") {
+		t.Fatalf("error = %q", job.Error)
 	}
 }
 
