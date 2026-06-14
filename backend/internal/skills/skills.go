@@ -27,17 +27,13 @@ type Catalog struct {
 var defaultSkillFS embed.FS
 
 const (
-	defaultSkillsRoot = "defaults"
-	userSkillsDir     = "skills"
-	managedSkillsDir  = "system/skills"
+	defaultSkillsRoot  = "defaults"
+	userSkillsDir      = "skills"
+	defaultSkillMarker = ".jaz-default-skill"
 )
 
 func UserRoot(root string) string {
 	return filepath.Join(root, userSkillsDir)
-}
-
-func ManagedRoot(root string) string {
-	return filepath.Join(root, managedSkillsDir)
 }
 
 func InstallDefaults(root string) error {
@@ -45,11 +41,11 @@ func InstallDefaults(root string) error {
 	if root == "" {
 		return fmt.Errorf("runtime root is empty")
 	}
-	managed := ManagedRoot(root)
-	if err := os.MkdirAll(filepath.Dir(managed), 0o755); err != nil {
+	userRoot := UserRoot(root)
+	if err := os.MkdirAll(userRoot, 0o755); err != nil {
 		return err
 	}
-	tmp, err := os.MkdirTemp(filepath.Dir(managed), ".skills-*")
+	tmp, err := os.MkdirTemp(root, ".skills-*")
 	if err != nil {
 		return err
 	}
@@ -57,13 +53,10 @@ func InstallDefaults(root string) error {
 	if err := copyDefaults(tmp); err != nil {
 		return err
 	}
-	if err := os.RemoveAll(managed); err != nil {
+	if err := markDefaultSkills(tmp); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, managed); err != nil {
-		return err
-	}
-	return os.MkdirAll(UserRoot(root), 0o755)
+	return installDefaultSkills(userRoot, tmp)
 }
 
 func Load(root string) (Catalog, error) {
@@ -71,21 +64,9 @@ func Load(root string) (Catalog, error) {
 		return Catalog{}, nil
 	}
 	userRoot := UserRoot(root)
-	seen := map[string]struct{}{}
-	out := []Skill{}
-	for _, dir := range []string{userRoot, ManagedRoot(root)} {
-		items, err := loadDir(dir)
-		if err != nil {
-			return Catalog{}, err
-		}
-		for _, skill := range items {
-			key := strings.ToLower(skill.Name)
-			if _, exists := seen[key]; exists {
-				continue
-			}
-			seen[key] = struct{}{}
-			out = append(out, skill)
-		}
+	out, err := loadDir(userRoot)
+	if err != nil {
+		return Catalog{}, err
 	}
 	return Catalog{Root: userRoot, Skills: out}, nil
 }
@@ -157,7 +138,7 @@ func (c Catalog) Prompt() string {
 }
 
 func shouldSkipDir(name string) bool {
-	return name == ".git" || name == ".archive" || name == "node_modules"
+	return strings.HasPrefix(name, ".") || name == "node_modules"
 }
 
 func readSkill(path string) (Skill, bool) {
@@ -233,4 +214,63 @@ func copyDefaults(dstRoot string) error {
 		}
 		return os.WriteFile(dst, data, 0o644)
 	})
+}
+
+func markDefaultSkills(root string) error {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(root, entry.Name(), defaultSkillMarker), []byte("managed by Jaz\n"), 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func installDefaultSkills(dstRoot, srcRoot string) error {
+	entries, err := os.ReadDir(srcRoot)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		dst := filepath.Join(dstRoot, entry.Name())
+		replace, err := canReplaceDefaultSkill(dst)
+		if err != nil {
+			return err
+		}
+		if !replace {
+			continue
+		}
+		if err := os.RemoveAll(dst); err != nil {
+			return err
+		}
+		if err := os.Rename(filepath.Join(srcRoot, entry.Name()), dst); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func canReplaceDefaultSkill(path string) (bool, error) {
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return true, nil
+		}
+		return false, err
+	}
+	if _, err := os.Stat(filepath.Join(path, defaultSkillMarker)); err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }

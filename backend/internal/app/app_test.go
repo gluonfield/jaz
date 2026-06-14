@@ -43,7 +43,7 @@ func TestNewToolRegistryAllowsNativeApplyPatchAbsolutePaths(t *testing.T) {
 	}
 }
 
-func TestNewRuntimeLayoutEnsuresDirsAndManagedSkills(t *testing.T) {
+func TestNewRuntimeLayoutEnsuresDirsAndSkills(t *testing.T) {
 	root := t.TempDir()
 
 	layout, err := NewRuntimeLayout(Config{Root: root})
@@ -51,13 +51,16 @@ func TestNewRuntimeLayoutEnsuresDirsAndManagedSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, dir := range []string{layout.Root, layout.Sessions, layout.DefaultWorkspace, layout.UserSkills, layout.ManagedSkills} {
+	for _, dir := range []string{layout.Root, layout.Sessions, layout.DefaultWorkspace, layout.UserSkills} {
 		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 			t.Fatalf("runtime dir %s missing: %v", dir, err)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(layout.ManagedSkills, "jazmem", "SKILL.md")); err != nil {
-		t.Fatalf("managed skill missing: %v", err)
+	if _, err := os.Stat(filepath.Join(layout.UserSkills, "jazmem", "SKILL.md")); err != nil {
+		t.Fatalf("default skill missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(layout.Root, "system", "skills")); !os.IsNotExist(err) {
+		t.Fatalf("system skills dir should not exist, err = %v", err)
 	}
 }
 

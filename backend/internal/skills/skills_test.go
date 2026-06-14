@@ -22,21 +22,24 @@ func TestLoadScansJazSkillsOnly(t *testing.T) {
 	if catalog.Root != filepath.Join(root, "skills") {
 		t.Fatalf("root = %q", catalog.Root)
 	}
-	if len(catalog.Skills) != 2 {
+	if len(catalog.Skills) != 1 {
 		t.Fatalf("skills = %#v", catalog.Skills)
 	}
 	got := map[string]string{}
 	for _, skill := range catalog.Skills {
 		got[skill.Name] = skill.Description
 	}
-	if got["alpha"] != "Alpha tasks" || got["beta"] != "Beta tasks" {
+	if got["alpha"] != "Alpha tasks" {
 		t.Fatalf("unexpected skills: %#v", catalog.Skills)
 	}
 	prompt := catalog.Prompt()
-	for _, want := range []string{"<available_skills>", "<name>alpha</name>", "<name>beta</name>", "SKILL.md"} {
+	for _, want := range []string{"<available_skills>", "<name>alpha</name>", "SKILL.md"} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("prompt missing %q:\n%s", want, prompt)
 		}
+	}
+	if strings.Contains(prompt, "<name>beta</name>") {
+		t.Fatalf("prompt includes hidden skill:\n%s", prompt)
 	}
 }
 
@@ -51,12 +54,12 @@ func TestLoadMissingRootIsEmptyCatalog(t *testing.T) {
 	}
 }
 
-func TestInstallDefaultsRefreshesManagedSkills(t *testing.T) {
+func TestInstallDefaultsRefreshesDefaultSkills(t *testing.T) {
 	root := t.TempDir()
 	if err := InstallDefaults(root); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(ManagedRoot(root), "jazmem", "SKILL.md")
+	path := filepath.Join(UserRoot(root), "jazmem", "SKILL.md")
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("default skill missing: %v", err)
 	}
@@ -71,16 +74,39 @@ func TestInstallDefaultsRefreshesManagedSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(data), "name: stale") || !strings.Contains(string(data), "name: jazmem") {
-		t.Fatalf("managed skill was not refreshed:\n%s", data)
+		t.Fatalf("default skill was not refreshed:\n%s", data)
 	}
 }
 
-func TestLoadIncludesManagedDefaultsAndUserOverrides(t *testing.T) {
+func TestInstallDefaultsKeepsCustomSkills(t *testing.T) {
+	root := t.TempDir()
+	writeSkill(t, root, "custom", "custom", "Custom skill")
+	writeSkill(t, root, "jazmem", "jazmem", "Custom memory skill")
+
+	if err := InstallDefaults(root); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(UserRoot(root), "jazmem", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "Custom memory skill") {
+		t.Fatalf("custom skill was overwritten:\n%s", data)
+	}
+	if _, err := os.Stat(filepath.Join(UserRoot(root), "make-interfaces-feel-better", "SKILL.md")); err != nil {
+		t.Fatalf("default skill missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(UserRoot(root), "custom", "SKILL.md")); err != nil {
+		t.Fatalf("custom skill missing: %v", err)
+	}
+}
+
+func TestLoadIncludesDefaultSkills(t *testing.T) {
 	root := t.TempDir()
 	if err := InstallDefaults(root); err != nil {
 		t.Fatal(err)
 	}
-	writeSkill(t, root, "jazmem", "jazmem", "Custom memory skill")
 
 	catalog, err := Load(root)
 	if err != nil {
@@ -95,11 +121,10 @@ func TestLoadIncludesManagedDefaultsAndUserOverrides(t *testing.T) {
 			t.Fatalf("missing skill %q from %#v", name, catalog.Skills)
 		}
 	}
-	if got["jazmem"].Description != "Custom memory skill" {
-		t.Fatalf("user skill did not override managed default: %#v", got["jazmem"])
-	}
-	if !strings.HasPrefix(got["make-interfaces-feel-better"].Path, ManagedRoot(root)) {
-		t.Fatalf("default skill path = %q, want managed root", got["make-interfaces-feel-better"].Path)
+	for _, skill := range got {
+		if !strings.HasPrefix(skill.Path, UserRoot(root)) {
+			t.Fatalf("default skill path = %q, want user root", skill.Path)
+		}
 	}
 }
 
