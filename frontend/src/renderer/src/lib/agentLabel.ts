@@ -3,7 +3,7 @@
 // title-casing the slug ("local_helper" → "Local Helper").
 const DISPLAY_NAMES: Record<string, string> = {
   codex: 'Codex',
-  claude: 'Claude',
+  claude: 'Claude Code',
   grok: 'Grok',
 }
 
