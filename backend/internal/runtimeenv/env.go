@@ -34,6 +34,39 @@ func Save(path string, values map[string]string) error {
 			env[key] = strings.TrimSpace(value)
 		}
 	}
+	return write(path, env)
+}
+
+// Remove deletes the given keys from the env file. A no-op when the file or
+// keys are absent; if the file ends up empty it is removed entirely.
+func Remove(path string, keys ...string) error {
+	env, err := godotenv.Read(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	changed := false
+	for _, key := range keys {
+		if _, ok := env[key]; ok {
+			delete(env, key)
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	if len(env) == 0 {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	return write(path, env)
+}
+
+func write(path string, env map[string]string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
