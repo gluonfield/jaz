@@ -1,7 +1,9 @@
-import { AlertCircle, CheckCircle2, ExternalLink, LoaderCircle } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Copy, ExternalLink, LoaderCircle } from 'lucide-react'
 import { useEffect, useMemo, useRef } from 'react'
 import { Button } from '@/components/ui/Button'
+import { useToast } from '@/components/ui/toast'
 import type { ACPAuthLogin } from '@/lib/api/types'
+import { writeClipboard } from '@/lib/clipboard'
 
 export function AuthLoginStatus({
   job,
@@ -10,21 +12,23 @@ export function AuthLoginStatus({
   job?: ACPAuthLogin
   running: boolean
 }) {
+  const toast = useToast()
   const opened = useRef('')
   const details = useMemo(() => authDetails(job), [job])
 
   useEffect(() => {
-    if (job?.agent !== 'codex' || !details.url) return
+    if (job?.agent !== 'codex' || job.status !== 'running' || !details.url) return
     const key = `${job.id}:${details.url}`
     if (opened.current === key) return
     opened.current = key
     openAuthURL(details.url)
-  }, [details.url, job?.agent, job?.id])
+  }, [details.url, job?.agent, job?.id, job?.status])
 
   if (!job && !running) return null
 
   const failed = job?.status === 'failed'
   const succeeded = job?.status === 'succeeded'
+  const showAuthDetails = !failed && !succeeded && (details.url || details.code)
   const title = failed
     ? 'Sign-in failed'
     : succeeded
@@ -64,7 +68,7 @@ export function AuthLoginStatus({
         </div>
       </div>
 
-      {details.url || details.code ? (
+      {showAuthDetails ? (
         <div className="flex flex-wrap items-center gap-2">
           {details.url ? (
             <Button size="sm" variant="primary" onClick={() => openAuthURL(details.url)}>
@@ -73,9 +77,16 @@ export function AuthLoginStatus({
             </Button>
           ) : null}
           {details.code ? (
-            <span className="inline-flex h-7 items-center rounded-full bg-bg px-2.5 font-mono text-[12px] text-ink shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-border)_70%,transparent)]">
-              {details.code}
-            </span>
+            <Button
+              size="sm"
+              aria-label="Copy auth code"
+              title="Copy auth code"
+              onClick={() => void copyAuthCode(details.code, toast)}
+              className="bg-bg font-mono text-[12px] text-ink shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-border)_70%,transparent)] hover:bg-bg hover:text-ink"
+            >
+              <span className="tabular-nums">{details.code}</span>
+              <Copy size={13} />
+            </Button>
           ) : null}
         </div>
       ) : null}
@@ -106,4 +117,12 @@ function firstAuthCode(value: string): string {
 function openAuthURL(url: string): void {
   if (!/^https:\/\//i.test(url)) return
   window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+async function copyAuthCode(code: string, toast: (message: string, tone?: 'ok' | 'danger') => void): Promise<void> {
+  if (await writeClipboard(code)) {
+    toast('Copied auth code')
+  } else {
+    toast("Couldn't copy auth code", 'danger')
+  }
 }
