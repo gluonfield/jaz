@@ -155,6 +155,51 @@ export function rememberedRemoteUrl(): string {
   return localStorage.getItem(REMOTE_URL_KEY) ?? ''
 }
 
+// How the app should reach a backend on launch. 'local' = start (or adopt) a
+// backend on this machine every time; 'remote' = connect to a saved server.
+// Persisting the choice is what lets a first launch present a clean welcome
+// instead of a connection error, and lets later launches act without asking.
+export type ConnectionMode = 'local' | 'remote'
+type ConnectionPreference = { mode: ConnectionMode; remoteUrl?: string }
+
+const PREFERENCE_KEY = 'jaz.connection'
+
+export function connectionPreference(): ConnectionPreference | null {
+  try {
+    const raw = localStorage.getItem(PREFERENCE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<ConnectionPreference>
+    if (parsed.mode === 'local') return { mode: 'local' }
+    if (parsed.mode === 'remote') return { mode: 'remote', remoteUrl: parsed.remoteUrl }
+    return null
+  } catch {
+    return null
+  }
+}
+
+function savePreference(pref: ConnectionPreference): void {
+  try {
+    localStorage.setItem(PREFERENCE_KEY, JSON.stringify(pref))
+  } catch {
+    // preference is a convenience; never fail a connect over storage
+  }
+}
+
+export function clearConnectionPreference(): void {
+  localStorage.removeItem(PREFERENCE_KEY)
+}
+
+// A loopback host is "this machine" — treat localhost and 127.0.0.1 alike since
+// the spawned backend reports 127.0.0.1 while the env default is localhost.
+export function isLoopbackUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0'
+  } catch {
+    return false
+  }
+}
+
 // Probe whatever URL the user typed; persist it only once it answers.
 export async function connectRemote(url: string): Promise<string | null> {
   const parsed = parseBackendConnectUrl(url)
@@ -166,6 +211,7 @@ export async function connectRemote(url: string): Promise<string | null> {
   if (parsed.key) setApiAuthToken(target, parsed.key)
   localStorage.setItem(REMOTE_URL_KEY, target)
   markConnected(target)
+  savePreference({ mode: 'remote', remoteUrl: target })
   return null
 }
 
@@ -179,19 +225,54 @@ export async function startLocal(): Promise<string | null> {
   const url = result.url ?? localBaseUrl()
   if (result.key) setApiAuthToken(url, result.key)
   markConnected(url)
+  savePreference({ mode: 'local' })
   return null
 }
 
-// First probe of the remembered URL, run once at app start.
+// Run once at app start. The branch hinges on the saved preference so first
+// launch never shows a connection error: only an *expected* backend (a saved
+// remote, or a local start the user already opted into) can surface one.
 async function init() {
+  const pref = connectionPreference()
+
+  if (pref?.mode === 'remote') {
+    const url = normalizeBaseUrl(pref.remoteUrl || state.url)
+    setState({ status: 'checking', url, error: null })
+    const error = await verifyBackend(url)
+    if (!error) {
+      markConnected(url)
+      return
+    }
+    // A remote server was expected here, so naming the failure is right.
+    setState({ status: 'disconnected', url, error })
+    schedulePoll()
+    return
+  }
+
+  if (pref?.mode === 'local') {
+    setState({ status: 'checking', error: null })
+    // startLocal() flips the store to connected on success; only a genuine
+    // failure (or a non-desktop runtime) falls through to the choice screen.
+    const error = await startLocal()
+    if (error) {
+      setState({ status: 'disconnected', error })
+      schedulePoll()
+    }
+    return
+  }
+
+  // First launch, no saved preference. Adopt a backend if one already answers,
+  // but otherwise present the welcome choice with NO error — there is no
+  // expectation to disappoint yet.
   const url = state.url
   const error = await verifyBackend(url)
   if (!error) {
+    savePreference({ mode: 'local' })
     markConnected(url)
-  } else {
-    setState({ status: 'disconnected', error })
-    schedulePoll()
+    return
   }
+  setState({ status: 'disconnected', error: null })
+  schedulePoll()
 }
 
 void init()
