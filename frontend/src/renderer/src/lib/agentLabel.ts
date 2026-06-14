@@ -7,7 +7,7 @@ const DISPLAY_NAMES: Record<string, string> = {
   grok: 'Grok',
 }
 
-// Prettifies an ACP agent name for display, e.g. "claude" → "Claude".
+// Prettifies an ACP agent name for display, e.g. "claude" → "Claude Code".
 export function agentLabel(value: string | undefined): string {
   const slug = (value || '').trim()
   if (!slug) return 'Agent'
@@ -18,4 +18,18 @@ export function agentLabel(value: string | undefined): string {
     .filter(Boolean)
     .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
     .join(' ')
+}
+
+// The identity provider you actually authenticate against — the OAuth is with
+// the model maker, not the CLI. "claude" (Claude Code) signs in with Anthropic,
+// "codex" with OpenAI, "grok" with xAI. Used for "Sign in with …" copy.
+const AUTH_PROVIDERS: Record<string, string> = {
+  codex: 'OpenAI',
+  claude: 'Anthropic',
+  grok: 'xAI',
+}
+
+export function authProviderLabel(value: string | undefined): string {
+  const slug = (value || '').trim().toLowerCase().replace(/[\s-]+/g, '_')
+  return AUTH_PROVIDERS[slug] ?? agentLabel(value)
 }
