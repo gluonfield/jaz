@@ -1,31 +1,50 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircle,
-  Bot,
+  Check,
   CheckCircle2,
   ChevronDown,
+  ExternalLink,
   KeyRound,
+  Laptop,
   LoaderCircle,
   LogIn,
-  RefreshCw,
   Server,
 } from 'lucide-react'
-import { motion } from 'motion/react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { AuthLoginStatus } from '@/components/acp/AuthLoginStatus'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { RAINBOW_BEAM } from '@/components/ui/rainbow'
 import { Select } from '@/components/ui/Select'
 import { SkeletonRows } from '@/components/ui/Skeleton'
-import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
 import { agentLabel } from '@/lib/agentLabel'
 import { completeOnboarding, onboardingQuery } from '@/lib/api/onboarding'
 import { getACPAuthLogin, startACPAuthLogin } from '@/lib/api/settings'
 import type { ACPAgentAuth, ACPAuthLogin, AgentSettings, OnboardingACPProbe, OnboardingStatus } from '@/lib/api/types'
+import { isLoopbackUrl, useConnection } from '@/lib/connection'
 import { keys } from '@/lib/query/keys'
 
 const EASE = [0.22, 1, 0.36, 1] as const
+
+const stagger = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.07, delayChildren: 0.08 } },
+}
+
+const rise = {
+  hidden: { opacity: 0, y: 12, filter: 'blur(5px)' },
+  show: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.42, ease: EASE } },
+}
+
+// Where to grab a key for each native provider — the answer to "where does the
+// key even come from?". Keyed by the backend provider id.
+const PROVIDER_KEY_URLS: Record<string, string> = {
+  openrouter: 'https://openrouter.ai/keys',
+  openai: 'https://platform.openai.com/api-keys',
+}
 
 export function OnboardingGate({ children }: { children: ReactNode }) {
   const onboarding = useQuery(onboardingQuery)
@@ -50,15 +69,15 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
 function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onRefresh: () => void }) {
   const queryClient = useQueryClient()
   const toast = useToast()
+  const connection = useConnection()
+  const remote = !isLoopbackUrl(connection.url)
   const [draft, setDraft] = useState(() => draftFromStatus(status))
   const [keysByProvider, setKeysByProvider] = useState<Record<string, string>>({})
   const [acpKeysByAgent, setACPKeysByAgent] = useState<Record<string, string>>({})
-  const [openAgent, setOpenAgent] = useState(status.acp[0]?.agent ?? '')
   const [loginJobs, setLoginJobs] = useState<Record<string, ACPAuthLogin>>({})
 
   useEffect(() => {
     setDraft(draftFromStatus(status))
-    setOpenAgent((current) => current || status.acp[0]?.agent || '')
   }, [status])
 
   const providerStatus = useMemo(
@@ -68,14 +87,18 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
   const selectedProvider = draft.native.model_provider || draft.providers[0]?.id || ''
   const selectedProviderStatus = providerStatus.get(selectedProvider)
   const selectedProviderKey = keysByProvider[selectedProvider]?.trim() ?? ''
-  const acpStatus = useMemo(() => new Map(status.acp.map((probe) => [probe.agent, probe])), [status.acp])
-  const acpEnabled = draft.agents.some((agent) => {
-    if (!draft.acp[agent]?.enabled) return false
-    const probe = acpStatus.get(agent)
-    return Boolean(probe?.available || acpKeysByAgent[agent]?.trim())
-  })
   const nativeReady = Boolean(selectedProviderStatus?.configured || selectedProviderKey)
-  const canFinish = acpEnabled || nativeReady
+
+  const readyAgents = useMemo(
+    () =>
+      new Set(
+        status.acp
+          .filter((probe) => probe.available || acpKeysByAgent[probe.agent]?.trim())
+          .map((probe) => probe.agent),
+      ),
+    [status.acp, acpKeysByAgent],
+  )
+  const canFinish = readyAgents.size > 0 || nativeReady
 
   const login = useMutation({
     mutationFn: ({ agent, auth }: { agent: string; auth?: ACPAgentAuth }) => startACPAuthLogin(agent, auth),
@@ -105,13 +128,23 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
   }, [loginJobs, queryClient])
 
   const save = useMutation({
-    mutationFn: () =>
-      completeOnboarding({
-        settings: draft,
+    mutationFn: () => {
+      // No enable toggles in onboarding: every agent that ended up with a
+      // credential turns on; the rest stay off. Users refine this in Settings.
+      const next = cloneSettings(draft)
+      for (const probe of status.acp) {
+        next.acp[probe.agent] = {
+          ...next.acp[probe.agent],
+          enabled: readyAgents.has(probe.agent),
+        }
+      }
+      return completeOnboarding({
+        settings: next,
         provider_keys: selectedProviderKey ? { [selectedProvider]: selectedProviderKey } : undefined,
         acp_keys: compactSecrets(acpKeysByAgent),
         completed: true,
-      }),
+      })
+    },
     onSuccess: (saved) => {
       queryClient.setQueryData(keys.onboarding, saved)
       queryClient.invalidateQueries({ queryKey: keys.agentSettings })
@@ -132,303 +165,432 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
   return (
     <OnboardingShell>
       <motion.div
-        initial={{ opacity: 0, y: 10, filter: 'blur(6px)' }}
-        animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-        transition={{ duration: 0.45, ease: EASE }}
-        className="min-w-0 w-full max-w-[calc(100vw-40px)] md:max-w-[640px]"
+        variants={stagger}
+        initial="hidden"
+        animate="show"
+        className="min-w-0 w-full max-w-[calc(100vw-40px)] md:max-w-[560px]"
       >
-        <div className="mb-5">
-          <h1 className="text-balance text-[22px] font-semibold text-ink">Connect Jaz to its agents</h1>
-          <p className="mt-2 max-w-[620px] text-pretty text-[13px] text-ink-3">
-            Agent credentials are checked on the backend machine. A remote backend needs its own
-            Codex, Claude, and Grok sign-ins.
+        <motion.div variants={rise} className="mb-5">
+          <BackendChip remote={remote} url={connection.url} />
+          <h1 className="mt-3 text-balance text-[22px] font-semibold tracking-tight text-ink">
+            Connect your agents
+          </h1>
+          <p className="mt-2 text-pretty text-[13px] text-ink-2">
+            {remote
+              ? 'Credentials live on your server. Sign in to a coding agent there, or give jaz its own provider key — whichever you add turns on automatically.'
+              : 'Sign in to a coding agent on this Mac, or give jaz its own provider key. Whatever you add turns on automatically.'}
           </p>
-        </div>
+        </motion.div>
 
-        <div className="overflow-hidden rounded-[14px] bg-surface/85 p-1 shadow-[0_0_0_1px_color-mix(in_oklab,var(--color-border)_70%,transparent),0_18px_60px_rgba(0,0,0,0.10)] backdrop-blur-[2px]">
-          <StepRow icon={<Server size={16} />} title="Backend" detail="Connected">
-            <CheckCircle2 size={17} className="text-primary" />
-          </StepRow>
-
-          <div className="border-t border-border/70 px-3 py-3">
-            <div className="mb-3 flex items-center gap-2">
-              <Bot size={16} className="text-ink-3" />
-              <p className="text-[13px] font-medium text-ink">ACP clients</p>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="ml-auto"
-                onClick={onRefresh}
-                aria-label="Refresh agent status"
-                title="Refresh agent status"
-              >
-                <RefreshCw size={13} />
-                Refresh
-              </Button>
-            </div>
-            <div className="grid gap-2">
-              {status.acp.map((probe) => (
-                <AgentToggle
-                  key={probe.agent}
-                  probe={probe}
-                  enabled={Boolean(draft.acp[probe.agent]?.enabled)}
-                  open={openAgent === probe.agent}
-                  auth={draft.acp[probe.agent]?.auth}
-                  apiKeyValue={acpKeysByAgent[probe.agent] ?? ''}
-                  loginJob={loginJobs[probe.agent]}
-                  loginPending={login.isPending && login.variables?.agent === probe.agent}
-                  onOpenChange={() => setOpenAgent((current) => current === probe.agent ? '' : probe.agent)}
-                  onStartLogin={() =>
-                    login.mutate({ agent: probe.agent, auth: draft.acp[probe.agent]?.auth })
-                  }
-                  onAPIKeyChange={(value) =>
-                    setACPKeysByAgent({ ...acpKeysByAgent, [probe.agent]: value })
-                  }
-                  onChange={(enabled) =>
-                    setDraft({
-                      ...draft,
-                      acp: {
-                        ...draft.acp,
-                        [probe.agent]: { ...draft.acp[probe.agent], enabled },
-                      },
-                    })
-                  }
-                />
-              ))}
-            </div>
-          </div>
-
-          <div className="border-t border-border/70 px-3 py-3">
-            <div className="mb-3 flex items-center gap-2">
-              <KeyRound size={16} className="text-ink-3" />
-              <p className="text-[13px] font-medium text-ink">Native Agent</p>
-            </div>
-            <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)] md:items-start">
-              <Select
-                value={selectedProvider}
-                options={draft.providers.map((provider) => ({
-                  value: provider.id,
-                  label: provider.label,
-                  description: provider.api_key_env,
-                }))}
-                onChange={setProvider}
-                disabled={save.isPending}
-                aria-label="Native provider"
-                className="h-9"
+        <motion.div variants={rise}>
+          <SectionLabel>Coding agents</SectionLabel>
+          <div className="grid gap-2.5">
+            {status.acp.map((probe) => (
+              <AgentCard
+                key={probe.agent}
+                probe={probe}
+                auth={draft.acp[probe.agent]?.auth}
+                apiKeyValue={acpKeysByAgent[probe.agent] ?? ''}
+                loginJob={loginJobs[probe.agent]}
+                loginPending={login.isPending && login.variables?.agent === probe.agent}
+                onStartLogin={() => login.mutate({ agent: probe.agent, auth: draft.acp[probe.agent]?.auth })}
+                onAPIKeyChange={(value) => setACPKeysByAgent({ ...acpKeysByAgent, [probe.agent]: value })}
               />
-              {selectedProviderStatus?.configured ? (
-                <div className="flex min-h-9 items-center rounded-control bg-primary/10 px-3 text-[13px] text-ink">
-                  {selectedProviderStatus.api_key_env} configured
-                </div>
-              ) : (
-                <Input
-                  type="password"
-                  value={keysByProvider[selectedProvider] ?? ''}
-                  onChange={(event) =>
-                    setKeysByProvider({ ...keysByProvider, [selectedProvider]: event.target.value })
-                  }
-                  disabled={save.isPending || !selectedProvider}
-                  placeholder={selectedProviderStatus?.api_key_env || 'API key'}
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-              )}
-            </div>
+            ))}
           </div>
-        </div>
+        </motion.div>
 
-        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="min-h-5 text-[12px] text-ink-3">
-            {!canFinish ? 'Sign in to an ACP client on this backend or add a Native Agent key.' : save.error?.message}
+        <motion.div variants={rise} className="mt-5">
+          <SectionLabel>Native agent</SectionLabel>
+          <NativeAgentCard
+            providers={draft.providers}
+            selectedProvider={selectedProvider}
+            configured={Boolean(selectedProviderStatus?.configured)}
+            apiKeyEnv={selectedProviderStatus?.api_key_env}
+            apiKeyValue={keysByProvider[selectedProvider] ?? ''}
+            remote={remote}
+            disabled={save.isPending}
+            onProviderChange={setProvider}
+            onAPIKeyChange={(value) => setKeysByProvider({ ...keysByProvider, [selectedProvider]: value })}
+          />
+        </motion.div>
+
+        <motion.div
+          variants={rise}
+          className="mt-5 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <p className="min-h-5 text-pretty text-[12px] text-ink-3">
+            {!canFinish
+              ? 'Add one coding agent or a native key to continue.'
+              : save.error
+                ? save.error.message
+                : `${summary(readyAgents.size, nativeReady)} ready.`}
           </p>
-          <Button
-            variant="primary"
-            size="lg"
-            disabled={!canFinish || save.isPending}
-            onClick={() => save.mutate()}
-          >
-            {save.isPending && <LoaderCircle size={14} className="animate-spin" />}
-            Finish setup
-          </Button>
-        </div>
+          <div className="flex items-center gap-1.5">
+            <Button variant="ghost" size="lg" onClick={onRefresh} title="Re-check agent status">
+              Refresh
+            </Button>
+            <Button
+              variant="primary"
+              size="lg"
+              disabled={!canFinish || save.isPending}
+              onClick={() => save.mutate()}
+            >
+              {save.isPending && <LoaderCircle size={14} className="animate-spin" />}
+              Finish setup
+            </Button>
+          </div>
+        </motion.div>
       </motion.div>
     </OnboardingShell>
   )
 }
 
-function AgentToggle({
+type AgentState = 'ready' | 'action' | 'missing'
+
+function agentState(probe: OnboardingACPProbe, keyDraft: string): AgentState {
+  if (probe.available || keyDraft.trim()) return 'ready'
+  if (!probe.installed) return 'missing'
+  return 'action'
+}
+
+function AgentCard({
   probe,
-  enabled,
-  open,
   auth,
   apiKeyValue,
   loginJob,
   loginPending,
-  onOpenChange,
   onStartLogin,
   onAPIKeyChange,
-  onChange,
 }: {
   probe: OnboardingACPProbe
-  enabled: boolean
-  open: boolean
   auth?: ACPAgentAuth
   apiKeyValue: string
   loginJob?: ACPAuthLogin
   loginPending: boolean
-  onOpenChange: () => void
   onStartLogin: () => void
   onAPIKeyChange: (value: string) => void
-  onChange: (enabled: boolean) => void
 }) {
-  const status = agentStatusText(probe)
+  const reducedMotion = useReducedMotion()
   const apiKeyEnv = probe.api_key?.source_env
   const apiKeyReady = Boolean(probe.api_key_configured || apiKeyValue.trim())
+  const state = agentState(probe, apiKeyValue)
   const running = loginPending || loginJob?.status === 'running'
-  const [method, setMethod] = useState<'login' | 'key'>(apiKeyReady ? 'key' : 'login')
-  const ready = Boolean(probe.available || apiKeyReady)
+  const canLogin = state !== 'missing'
+  const canKey = Boolean(apiKeyEnv)
+  // A ready agent collapses to a confirmation row; an actionable one opens to
+  // its sign-in / key controls. "missing" can't act, so it never opens.
+  const [expanded, setExpanded] = useState(state === 'action')
+  const [method, setMethod] = useState<'login' | 'key'>(apiKeyReady && canKey ? 'key' : 'login')
+
+  const monogram = agentLabel(probe.agent).charAt(0).toUpperCase()
+  const headline = state === 'ready' ? readyHeadline(probe, apiKeyValue) : agentStateLabel(state)
+  const subtext =
+    state === 'ready'
+      ? readySubtext(probe, apiKeyValue)
+      : state === 'missing'
+        ? probe.reason || 'Install this agent’s CLI to use it.'
+        : probe.reason || 'Sign in once and jaz keeps using it.'
+
   return (
-    <div className="overflow-hidden rounded-[12px] bg-bg shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-border)_70%,transparent)]">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={onOpenChange}
-        className="flex min-h-[58px] w-full items-center gap-3 px-3 py-2.5 text-left transition-colors duration-150 hover:bg-surface/70"
+    <div className="relative">
+      {/* live state: a rainbow comet circles the card while a sign-in runs,
+          the same vocabulary the composer uses while jaz is alive */}
+      <AnimatePresence>
+        {running ? (
+          <motion.div
+            aria-hidden
+            className="pointer-events-none absolute -inset-[1.5px]"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1, ...(reducedMotion ? {} : { '--ring-angle': ['0deg', '360deg'] }) }}
+            exit={{ opacity: 0 }}
+            transition={{
+              opacity: { duration: 0.25, ease: 'easeOut' },
+              '--ring-angle': { duration: 2.6, ease: 'linear', repeat: Infinity },
+            }}
+          >
+            <div className="absolute inset-0 rounded-[16px]" style={{ background: RAINBOW_BEAM }} />
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <div
+        className={`relative overflow-hidden rounded-[16px] bg-surface transition-shadow duration-150 ${
+          running ? '' : 'shadow-[0_0_0_1px_color-mix(in_oklab,var(--color-border)_70%,transparent)]'
+        }`}
       >
-        <span className={`size-2 rounded-full ${ready ? 'bg-primary' : 'bg-ink/30'}`} />
-        <span className="min-w-0 flex-1">
-          <span className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-[13px] font-medium text-ink">{agentLabel(probe.agent)}</span>
-            <span className={`text-[12px] ${ready ? 'text-primary' : 'text-ink-3'}`}>{status}</span>
-          </span>
-          <span className="mt-0.5 block truncate text-[12px] text-ink-3">
-            {probe.authenticated ? authReadyText(probe) : probe.reason || authLoginHint(probe, auth)}
-          </span>
-        </span>
-        <span
-          className="flex items-center gap-2"
-          onClick={(event) => event.stopPropagation()}
+        <button
+          type="button"
+          aria-expanded={expanded}
+          disabled={state === 'missing'}
+          onClick={() => setExpanded((open) => !open)}
+          className="flex w-full items-center gap-3 px-3 py-3 text-left transition-colors duration-150 enabled:hover:bg-surface-2/60 disabled:cursor-default"
         >
-          <Switch
-            checked={enabled}
-            disabled={!probe.installed || !ready}
-            onChange={onChange}
-            aria-label={`Enable ${agentLabel(probe.agent)}`}
-          />
-          <ChevronDown
-            size={15}
-            className={`text-ink-3 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
-          />
-        </span>
-      </button>
+          <span
+            className={`grid size-10 shrink-0 place-items-center rounded-full text-[15px] font-semibold ${
+              state === 'ready'
+                ? 'bg-primary-soft text-primary-strong'
+                : state === 'missing'
+                  ? 'bg-bg text-ink-3 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-border)_70%,transparent)]'
+                  : 'bg-bg text-ink-2 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-border)_70%,transparent)]'
+            }`}
+          >
+            {monogram}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="truncate text-[14px] font-medium text-ink">{agentLabel(probe.agent)}</span>
+              <StatePill state={state} label={headline} />
+            </span>
+            <span className="mt-0.5 block truncate text-[12px] text-ink-3">{subtext}</span>
+          </span>
+          {state === 'ready' ? (
+            <CheckCircle2 size={18} className="shrink-0 text-primary" />
+          ) : state === 'action' ? (
+            <ChevronDown
+              size={16}
+              className={`shrink-0 text-ink-3 transition-transform duration-150 ${expanded ? 'rotate-180' : ''}`}
+            />
+          ) : null}
+        </button>
 
-      {open ? (
-        <motion.div
-          initial={{ opacity: 0, y: -4 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -4 }}
-          transition={{ duration: 0.16, ease: EASE }}
-          className="border-t border-border/70 px-3 pb-3 pt-2.5"
-        >
-          <div className="mb-3 flex rounded-full bg-surface p-1">
-            <Button
-              size="sm"
-              active={method === 'login'}
-              className="flex-1"
-              onClick={() => setMethod('login')}
+        <AnimatePresence initial={false}>
+          {expanded && state !== 'missing' ? (
+            <motion.div
+              key="body"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.18, ease: EASE }}
+              className="overflow-hidden"
             >
-              <LogIn size={13} />
-              Auth login
-            </Button>
-            <Button
-              size="sm"
-              active={method === 'key'}
-              className="flex-1"
-              disabled={!apiKeyEnv}
-              onClick={() => setMethod('key')}
-            >
-              <KeyRound size={13} />
-              API key
-            </Button>
-          </div>
+              <div className="border-t border-border/70 px-3 pb-3 pt-3">
+                {canLogin && canKey ? (
+                  <div className="mb-3 flex gap-1 rounded-full bg-bg p-1 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-border)_70%,transparent)]">
+                    <Button size="sm" active={method === 'login'} className="flex-1" onClick={() => setMethod('login')}>
+                      <LogIn size={13} />
+                      Sign in
+                    </Button>
+                    <Button size="sm" active={method === 'key'} className="flex-1" onClick={() => setMethod('key')}>
+                      <KeyRound size={13} />
+                      API key
+                    </Button>
+                  </div>
+                ) : null}
 
-          {method === 'login' ? (
-            <div className="grid gap-2">
-              <p className="text-pretty text-[12px] text-ink-3">{authLoginHint(probe, auth)}</p>
-              <Button
-                variant="primary"
-                size="md"
-                disabled={!probe.auth_command_available || running}
-                onClick={onStartLogin}
-                className="w-full"
-              >
-                {running ? <LoaderCircle size={14} className="animate-spin" /> : <LogIn size={14} />}
-                {running ? 'Waiting for sign-in...' : `Sign in with ${agentLabel(probe.agent)}`}
-              </Button>
-              {!probe.auth_command_available && probe.auth_command_reason ? (
-                <p className="text-[12px] text-danger">{probe.auth_command_reason}</p>
-              ) : null}
-              <AuthLoginStatus job={loginJob} running={running} />
-            </div>
-          ) : (
-            <div className="grid gap-2">
-              <p className="text-pretty text-[12px] text-ink-3">
-                Use this only when you want Jaz to pass an explicit provider key to this agent.
-              </p>
-              <Input
-                type="password"
-                value={apiKeyValue}
-                onChange={(event) => onAPIKeyChange(event.target.value)}
-                placeholder={probe.api_key_configured ? `${apiKeyEnv} configured` : apiKeyEnv || 'API key'}
-                autoComplete="off"
-                spellCheck={false}
-                className="h-9 rounded-full bg-surface px-3 py-0 text-[12px]"
-                aria-label={`${agentLabel(probe.agent)} API key fallback`}
-              />
-              <span
-                className={`inline-flex h-7 w-fit items-center rounded-full px-2.5 text-[12px] ${
-                  apiKeyReady ? 'bg-primary-soft text-primary-strong' : 'bg-surface text-ink-3'
-                }`}
-              >
-                {apiKeyReady ? 'API key ready' : apiKeyEnv || 'No API key option'}
-              </span>
-            </div>
-          )}
-        </motion.div>
-      ) : null}
+                {(method === 'login' || !canKey) && canLogin ? (
+                  <div className="grid gap-2">
+                    <p className="text-pretty text-[12px] text-ink-3">{authLoginHint(probe, auth)}</p>
+                    <Button
+                      variant="primary"
+                      size="md"
+                      disabled={!probe.auth_command_available || running}
+                      onClick={onStartLogin}
+                      className="w-full"
+                    >
+                      {running ? <LoaderCircle size={14} className="animate-spin" /> : <LogIn size={14} />}
+                      {running ? 'Waiting for sign-in…' : `Sign in with ${agentLabel(probe.agent)}`}
+                    </Button>
+                    {!probe.auth_command_available && probe.auth_command_reason ? (
+                      <p className="text-[12px] text-danger">{probe.auth_command_reason}</p>
+                    ) : null}
+                    <AuthLoginStatus job={loginJob} running={running} />
+                  </div>
+                ) : canKey ? (
+                  <div className="grid gap-2">
+                    <p className="text-pretty text-[12px] text-ink-3">
+                      Paste a provider key and jaz passes it to {agentLabel(probe.agent)} directly.
+                    </p>
+                    <Input
+                      type="password"
+                      value={apiKeyValue}
+                      onChange={(event) => onAPIKeyChange(event.target.value)}
+                      placeholder={probe.api_key_configured ? `${apiKeyEnv} already set` : apiKeyEnv || 'API key'}
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="font-mono text-[12px]"
+                      aria-label={`${agentLabel(probe.agent)} API key`}
+                    />
+                    <p className="text-[12px] text-ink-3">Stored on the backend as {apiKeyEnv}.</p>
+                  </div>
+                ) : null}
+              </div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </div>
     </div>
   )
 }
 
-function agentStatusText(probe: OnboardingACPProbe): string {
-  if (!probe.installed) return 'Missing'
-  if (!probe.authenticated) return 'Needs sign-in'
-  if (!probe.available) return 'Needs setup'
-  return 'Ready'
+function NativeAgentCard({
+  providers,
+  selectedProvider,
+  configured,
+  apiKeyEnv,
+  apiKeyValue,
+  remote,
+  disabled,
+  onProviderChange,
+  onAPIKeyChange,
+}: {
+  providers: AgentSettings['providers']
+  selectedProvider: string
+  configured: boolean
+  apiKeyEnv?: string
+  apiKeyValue: string
+  remote: boolean
+  disabled: boolean
+  onProviderChange: (value: string) => void
+  onAPIKeyChange: (value: string) => void
+}) {
+  const provider = providers.find((item) => item.id === selectedProvider)
+  const label = provider?.label || 'your provider'
+  const keyUrl = PROVIDER_KEY_URLS[selectedProvider]
+  const ready = configured || apiKeyValue.trim().length > 0
+
+  return (
+    <div className="overflow-hidden rounded-[16px] bg-surface shadow-[0_0_0_1px_color-mix(in_oklab,var(--color-border)_70%,transparent)]">
+      <div className="flex items-center gap-3 px-3 py-3">
+        <span
+          className={`grid size-10 shrink-0 place-items-center rounded-full ${
+            ready ? 'bg-primary-soft text-primary-strong' : 'bg-bg text-ink-2 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-border)_70%,transparent)]'
+          }`}
+        >
+          <Laptop size={18} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="truncate text-[14px] font-medium text-ink">jaz native</p>
+            {ready ? <StatePill state="ready" label={configured ? 'Connected' : 'Key added'} /> : null}
+          </div>
+          <p className="mt-0.5 text-pretty text-[12px] text-ink-3">
+            jaz’s own agent calls {label} directly with an API key you provide.
+          </p>
+        </div>
+        {ready ? <CheckCircle2 size={18} className="shrink-0 text-primary" /> : null}
+      </div>
+
+      <div className="grid gap-3 border-t border-border/70 px-3 py-3">
+        <div className="grid gap-2 md:grid-cols-[150px_minmax(0,1fr)] md:items-center">
+          <span className="text-[12px] font-medium text-ink-2">Provider</span>
+          <Select
+            value={selectedProvider}
+            options={providers.map((item) => ({
+              value: item.id,
+              label: item.label,
+              description: item.api_key_env,
+            }))}
+            onChange={onProviderChange}
+            disabled={disabled}
+            aria-label="Native provider"
+            className="h-9"
+          />
+        </div>
+
+        {configured ? (
+          <div className="flex min-h-9 items-center gap-2 rounded-[12px] bg-primary/10 px-3 text-[13px] text-ink">
+            <Check size={15} className="shrink-0 text-primary" />
+            {apiKeyEnv} is already configured on the backend.
+          </div>
+        ) : (
+          <div className="grid gap-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[12px] font-medium text-ink-2">Paste your {label} API key</span>
+              {keyUrl ? (
+                <button
+                  type="button"
+                  onClick={() => window.open(keyUrl, '_blank', 'noopener,noreferrer')}
+                  className="inline-flex items-center gap-1 text-[12px] text-primary transition-colors duration-150 hover:text-primary-strong"
+                >
+                  Where do I get this?
+                  <ExternalLink size={12} />
+                </button>
+              ) : null}
+            </div>
+            <Input
+              type="password"
+              value={apiKeyValue}
+              onChange={(event) => onAPIKeyChange(event.target.value)}
+              disabled={disabled || !selectedProvider}
+              placeholder={apiKeyEnv ? `${apiKeyEnv} (sk-…)` : 'API key'}
+              autoComplete="off"
+              spellCheck={false}
+              className="font-mono text-[12px]"
+              aria-label={`${label} API key`}
+            />
+            <p className="text-[12px] text-ink-3">
+              {remote ? 'Stored on your server' : 'Stored on this Mac'} as {apiKeyEnv}. Never leaves the backend.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
-function authReadyText(probe: OnboardingACPProbe): string {
-  if (probe.auth_kind === 'api_key') return 'Using explicit API key fallback.'
-  if (probe.refresh_owner === 'coding_agent_cli') return 'The coding agent owns token refresh.'
-  return 'Signed in.'
+function StatePill({ state, label }: { state: AgentState; label: string }) {
+  const tone =
+    state === 'ready'
+      ? 'bg-primary-soft text-primary-strong'
+      : state === 'missing'
+        ? 'bg-surface-2 text-ink-3'
+        : 'bg-accent-soft text-accent-strong'
+  return (
+    <span className={`inline-flex shrink-0 items-center rounded-full px-1.5 py-[3px] text-[11px] font-medium ${tone}`}>
+      {label}
+    </span>
+  )
+}
+
+function SectionLabel({ children }: { children: ReactNode }) {
+  return <p className="mb-2 px-0.5 text-[12px] font-medium text-ink-2">{children}</p>
+}
+
+function summary(agentCount: number, nativeReady: boolean): string {
+  const parts: string[] = []
+  if (agentCount > 0) parts.push(`${agentCount} agent${agentCount === 1 ? '' : 's'}`)
+  if (nativeReady) parts.push('native')
+  return parts.join(' + ') || 'Nothing'
+}
+
+function agentStateLabel(state: AgentState): string {
+  if (state === 'missing') return 'Not installed'
+  return 'Needs sign-in'
+}
+
+function readyHeadline(probe: OnboardingACPProbe, keyDraft: string): string {
+  if (!probe.available && keyDraft.trim()) return 'Key added'
+  return 'Connected'
+}
+
+function readySubtext(probe: OnboardingACPProbe, keyDraft: string): string {
+  if (!probe.available && keyDraft.trim()) return `Will pass your key to ${agentLabel(probe.agent)}.`
+  if (probe.auth_kind === 'api_key') return 'Using an explicit API key.'
+  if (probe.refresh_owner === 'coding_agent_cli') return `${agentLabel(probe.agent)} manages its own token.`
+  return 'Signed in and ready.'
 }
 
 function authLoginHint(probe: OnboardingACPProbe, auth?: ACPAgentAuth): string {
-  if (probe.agent === 'grok') return "Jaz runs Grok's normal login on this backend."
-  if (auth?.mode === 'existing_cli') return `Jaz runs ${agentLabel(probe.agent)} login against the backend user profile.`
-  return `Jaz runs ${agentLabel(probe.agent)} login and stores it for this backend.`
+  if (probe.agent === 'grok') return 'jaz runs Grok’s normal login on this backend.'
+  if (auth?.mode === 'existing_cli') return `jaz reuses the ${agentLabel(probe.agent)} login on this backend.`
+  return `jaz runs ${agentLabel(probe.agent)} login and stores it for this backend.`
 }
 
-function StepRow({ icon, title, detail, children }: { icon: ReactNode; title: string; detail: string; children: ReactNode }) {
+function BackendChip({ remote, url }: { remote: boolean; url: string }) {
+  const host = (() => {
+    try {
+      return new URL(url).host
+    } catch {
+      return url
+    }
+  })()
   return (
-    <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3">
-      <span className="grid size-8 place-items-center rounded-full bg-bg text-ink-3 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-border)_70%,transparent)]">{icon}</span>
-      <div className="min-w-0">
-        <p className="text-[13px] font-medium text-ink">{title}</p>
-        <p className="mt-0.5 text-[12px] text-ink-3">{detail}</p>
-      </div>
-      {children}
-    </div>
+    <span className="inline-flex items-center gap-2 rounded-full bg-surface px-2.5 py-1 text-[12px] text-ink-2 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-border)_70%,transparent)]">
+      {remote ? <Server size={13} className="text-primary" /> : <Laptop size={13} className="text-primary" />}
+      <span className="text-ink">{remote ? 'Connected to server' : 'Running on this Mac'}</span>
+      <span className="font-mono text-[11px] text-ink-3">{host}</span>
+    </span>
   )
 }
 
