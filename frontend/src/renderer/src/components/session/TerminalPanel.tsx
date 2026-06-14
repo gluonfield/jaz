@@ -3,7 +3,7 @@ import { Terminal as XTerm } from '@xterm/xterm'
 import { Copy, Eraser, LoaderCircle, Power, RotateCw, Terminal, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { IconButton } from '@/components/ui/IconButton'
-import { apiWebSocketUrl } from '@/lib/api/client'
+import { apiAuthenticatedWebSocketUrl } from '@/lib/api/client'
 import type { Session } from '@/lib/api/types'
 
 export const TERMINAL_PANEL_WIDTH = 640
@@ -68,7 +68,7 @@ export function TerminalPanel({
       cols: String(term.cols),
       rows: String(term.rows),
     })
-    const socket = new WebSocket(apiWebSocketUrl(`/v1/sessions/${session.id}/terminal?${params}`))
+    const socket = new WebSocket(apiAuthenticatedWebSocketUrl(`/v1/sessions/${session.id}/terminal?${params}`))
     socketRef.current = socket
     setStatus('connecting')
     setError('')

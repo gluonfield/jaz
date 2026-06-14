@@ -43,8 +43,12 @@ func queryAuthAllowed(r *http.Request) bool {
 	if r.Method != http.MethodGet {
 		return false
 	}
-	path := r.URL.Path
-	return strings.HasPrefix(path, "/v1/sessions/") && strings.HasSuffix(path, "/events")
+	sessionPath := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
+	if sessionPath == r.URL.Path {
+		return false
+	}
+	sessionRef, action, ok := strings.Cut(sessionPath, "/")
+	return ok && sessionRef != "" && (action == "events" || action == "terminal")
 }
 
 func bearerToken(header string) string {
