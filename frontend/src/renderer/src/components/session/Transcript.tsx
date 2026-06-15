@@ -25,6 +25,7 @@ import {
   type PlanStepState,
   type PlanSurface,
 } from '@/lib/planSurface'
+import { ArtifactBlock } from './ArtifactBlock'
 import { MentionText } from './mentions'
 import { MessageMarkdown } from './MessageMarkdown'
 import { ThinkingBlock } from './ThinkingBlock'
@@ -39,7 +40,7 @@ import {
   type TimelineItem,
 } from './timeline'
 import { ToolCallCard } from './ToolCallCard'
-import { isHiddenToolName } from './toolVisibility'
+import { isArtifactToolName, isHiddenToolName } from './toolVisibility'
 
 function messageText(message: ChatMessage): string {
   // Each text block is a separate utterance; join as paragraphs so block
@@ -92,7 +93,13 @@ function MessageAttachments({ message }: { message: ChatMessage }) {
   )
 }
 
-const Bubble = memo(function Bubble({ message }: { message: ChatMessage }) {
+const Bubble = memo(function Bubble({
+  message,
+  onArtifactPrompt,
+}: {
+  message: ChatMessage
+  onArtifactPrompt?: (text: string) => void
+}) {
   switch (message.role) {
     case 'user':
       return (
@@ -112,15 +119,25 @@ const Bubble = memo(function Bubble({ message }: { message: ChatMessage }) {
           {text ? <MessageMarkdown text={text} /> : null}
           {message.blocks
             ?.filter(isVisibleToolBlock)
-            .map((block) => (
-              <ToolCallCard
-                key={block.id}
-                name={block.name}
-                args={block.input_json}
-                result={block.result}
-                pending={block.result === undefined || block.result === ''}
-              />
-          ))}
+            .map((block) =>
+              isArtifactToolName(block.name) ? (
+                <ArtifactBlock
+                  key={block.id}
+                  args={block.input_json}
+                  result={block.result}
+                  pending={block.result === undefined || block.result === ''}
+                  onSendPrompt={onArtifactPrompt}
+                />
+              ) : (
+                <ToolCallCard
+                  key={block.id}
+                  name={block.name}
+                  args={block.input_json}
+                  result={block.result}
+                  pending={block.result === undefined || block.result === ''}
+                />
+              ),
+            )}
         </div>
       )
     }
@@ -421,6 +438,7 @@ const LiveEvent = memo(function LiveEvent({
   permissionResolution,
   showPlan,
   onApprovePlan,
+  onArtifactPrompt,
 }: {
   event: SessionEvent
   sessionId?: string
@@ -429,6 +447,7 @@ const LiveEvent = memo(function LiveEvent({
   permissionResolution?: ACPPermission
   showPlan?: boolean
   onApprovePlan?: () => void
+  onArtifactPrompt?: (text: string) => void
 }) {
   const eventPlan = planSurfaceFromEvent(event)
   const planSurface = showPlan ? eventPlan : undefined
@@ -436,6 +455,7 @@ const LiveEvent = memo(function LiveEvent({
   const showWorkingStatus =
     event.type === 'acp' && hasWorkingStatusSurface(event) && !eventPlan && !ownSession
   const parentChild = isParentChildACPEvent(event)
+  const artifact = event.type === 'artifact' ? event.artifact : undefined
   return (
     <div className="flex min-w-0 max-w-[76ch] flex-col gap-2">
       {event.acp && showHeader ? (
@@ -445,7 +465,10 @@ const LiveEvent = memo(function LiveEvent({
         </p>
       ) : null}
       {event.acp?.thought ? <ThinkingBlock text={event.acp.thought} /> : null}
-      {event.content ? <MessageMarkdown text={event.content} /> : null}
+      {artifact ? (
+        <ArtifactBlock artifact={artifact} onSendPrompt={onArtifactPrompt} />
+      ) : null}
+      {event.content && !artifact ? <MessageMarkdown text={event.content} /> : null}
       {showWorkingStatus ? (
         <Link
           to="/sessions/$sessionId"
@@ -526,6 +549,7 @@ export const Transcript = memo(function Transcript({
   findActive = false,
   tail,
   onApprovePlan,
+  onArtifactPrompt,
 }: {
   messages: ChatMessage[]
   events: SessionEvent[]
@@ -536,6 +560,7 @@ export const Transcript = memo(function Transcript({
   // in-flight live exchange, rendered between history and anchored live state
   tail?: ReactNode
   onApprovePlan?: () => void
+  onArtifactPrompt?: (text: string) => void
 }) {
   const {
     chronological,
@@ -552,7 +577,13 @@ export const Transcript = memo(function Transcript({
   const renderItem = (item: TimelineItem): ReactNode => {
     switch (item.kind) {
       case 'message':
-        return <Bubble key={`message-${item.message.seq}`} message={item.message} />
+        return (
+          <Bubble
+            key={`message-${item.message.seq}`}
+            message={item.message}
+            onArtifactPrompt={onArtifactPrompt}
+          />
+        )
       case 'tools':
         return (
           <ToolDisclosure
@@ -578,6 +609,7 @@ export const Transcript = memo(function Transcript({
               )
             }
             onApprovePlan={onApprovePlan}
+            onArtifactPrompt={onArtifactPrompt}
             permissionResolution={
               item.event.permission ? permissionResolutions.get(item.event.permission.id) : undefined
             }

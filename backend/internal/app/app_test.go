@@ -59,6 +59,9 @@ func TestNewRuntimeLayoutEnsuresDirsAndSkills(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(layout.UserSkills, "jazmem", "SKILL.md")); err != nil {
 		t.Fatalf("default skill missing: %v", err)
 	}
+	if _, err := os.Stat(filepath.Join(layout.UserSkills, "web-artifacts-builder", "scripts", "bundle-artifact.sh")); err != nil {
+		t.Fatalf("web artifacts builder skill missing: %v", err)
+	}
 	if _, err := os.Stat(filepath.Join(layout.Root, "system", "skills")); !os.IsNotExist(err) {
 		t.Fatalf("system skills dir should not exist, err = %v", err)
 	}

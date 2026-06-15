@@ -322,6 +322,14 @@ export interface PlanEvent {
   awaiting_approval?: boolean
 }
 
+export interface ArtifactEvent {
+  title: string
+  widget_code: string
+  loading_messages?: string[]
+  artifact_type?: 'svg' | 'html'
+  bytes?: number
+}
+
 export interface ACPEvent {
   id: string
   slug: string
@@ -405,6 +413,7 @@ export interface SessionEvent {
   acp?: ACPEvent
   plan?: PlanEvent
   permission?: ACPPermission
+  artifact?: ArtifactEvent
   at: string
 }
 

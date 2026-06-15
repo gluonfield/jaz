@@ -1,8 +1,6 @@
 package app
 
 import (
-	"strings"
-
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/jaztools"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
@@ -11,32 +9,23 @@ import (
 	"github.com/wins/jaz/backend/internal/tools"
 )
 
-const jazToolsServerID = "jaztools"
-
-type jazToolsServerReader struct {
+type acpMCPServerReader struct {
 	base mcpconfig.ServerReader
 	url  string
 }
 
-func (r jazToolsServerReader) ListMCPServers() ([]mcpconfig.Server, error) {
+func (r acpMCPServerReader) ListMCPServers() ([]mcpconfig.Server, error) {
 	out, err := r.base.ListMCPServers()
 	if err != nil {
 		return nil, err
 	}
-	url := strings.TrimSpace(r.url)
-	return append(out, mcpconfig.Server{
-		ID:        jazToolsServerID,
-		Name:      "jaztools",
-		Transport: mcpconfig.TransportStreamableHTTP,
-		URL:       url,
-		Enabled:   true,
-	}), nil
+	return append(out, jaztools.ServerConfig(r.url)), nil
 }
 
-func NewMCPServerReader(store *sqlitestore.Store, jaz *jaztools.Service) mcpconfig.ServerReader {
-	return jazToolsServerReader{base: store, url: jaz.URL()}
+func NewACPMCPServerReader(store *sqlitestore.Store, jaz *jaztools.Service) mcpconfig.ServerReader {
+	return acpMCPServerReader{base: store, url: jaz.URL()}
 }
 
-func NewMCPManager(reader mcpconfig.ServerReader, store *sqlitestore.Store, registry *tools.Registry, jaz *jaztools.Service, logger *log.Logger) *mcpruntime.Manager {
-	return mcpruntime.NewManager(reader, store, registry, logger, mcpruntime.WithLocalServerProvider(jazToolsServerID, jaz.Server))
+func NewMCPManager(store *sqlitestore.Store, registry *tools.Registry, jaz *jaztools.Service, logger *log.Logger) *mcpruntime.Manager {
+	return mcpruntime.NewManager(store, store, registry, logger, mcpruntime.WithBuiltinServerProvider(jaztools.ServerConfig(jaz.URL()), jaz.Server))
 }
