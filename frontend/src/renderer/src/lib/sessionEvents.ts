@@ -23,9 +23,15 @@ export function mergeSessionEvent(prev: SessionEvent[], event: SessionEvent): Se
     const seqIndex = prev.findIndex((item) => item.seq === event.seq && item.session_id === event.session_id)
     if (seqIndex !== -1) {
       const next = [...prev]
-      next[seqIndex] = event
+      next[seqIndex] = preferredDuplicateEvent(next[seqIndex], event)
       return next
     }
+  }
+  const merged = mergeAdjacentACPText(prev.at(-1), event)
+  if (merged) {
+    const next = [...prev]
+    next[next.length - 1] = merged
+    return next
   }
   const key = sessionEventCoalesceKey(event)
   if (!key) return [...prev, event]
@@ -50,7 +56,7 @@ export function coalesceSessionEvents(events: SessionEvent[]): SessionEvent[] {
       bySeq.set(seqKey, deduped.length)
       deduped.push(event)
     } else {
-      deduped[existing] = event
+      deduped[existing] = preferredDuplicateEvent(deduped[existing], event)
     }
   }
   const byKey = new Map<string, number>()
@@ -79,4 +85,87 @@ export function coalesceSessionEvents(events: SessionEvent[]): SessionEvent[] {
       return timeA - timeB || seqA - seqB || a.index - b.index
     })
     .map((item) => item.event)
+}
+
+export function combineSequentialACPText(events: SessionEvent[]): SessionEvent[] {
+  const out: SessionEvent[] = []
+  let lastSourceSeq = 0
+  for (const event of events) {
+    const prev = out.at(-1)
+    const contiguous = !prev?.seq || !event.seq || event.seq === lastSourceSeq + 1
+    lastSourceSeq = event.seq ?? 0
+    if (contiguous) {
+      const merged = mergeACPText(prev, event)
+      if (merged) {
+        out[out.length - 1] = merged
+        continue
+      }
+    }
+    out.push(event)
+  }
+  return out
+}
+
+function mergeAdjacentACPText(prev: SessionEvent | undefined, event: SessionEvent): SessionEvent | undefined {
+  if (!prev?.seq || !event.seq || event.seq === prev.seq + 1) {
+    return mergeACPText(prev, event)
+  }
+  return undefined
+}
+
+function mergeACPText(prev: SessionEvent | undefined, event: SessionEvent): SessionEvent | undefined {
+  if (!prev || !canMergeACPText(prev, event)) return undefined
+  const acp = prev.acp
+    ? {
+        ...prev.acp,
+        state: event.acp?.state ?? prev.acp.state,
+        stop_reason: event.acp?.stop_reason ?? prev.acp.stop_reason,
+        error: event.acp?.error ?? prev.acp.error,
+      }
+    : prev.acp
+  return {
+    ...prev,
+    seq: event.seq ?? prev.seq,
+    at: event.at || prev.at,
+    content:
+      event.type === 'acp_message'
+        ? `${prev.content ?? ''}${event.content ?? ''}`
+        : prev.content,
+    acp: acp
+      ? {
+          ...acp,
+          thought:
+            event.type === 'acp_thought'
+              ? `${prev.acp?.thought ?? ''}${event.acp?.thought ?? ''}`
+              : acp.thought,
+        }
+      : acp,
+  }
+}
+
+function canMergeACPText(prev: SessionEvent | undefined, event: SessionEvent): boolean {
+  if (!prev?.acp || !event.acp) return false
+  if (prev.type !== event.type) return false
+  if (event.type !== 'acp_message' && event.type !== 'acp_thought') return false
+  return prev.acp.id === event.acp.id
+}
+
+function preferredDuplicateEvent(existing: SessionEvent, incoming: SessionEvent): SessionEvent {
+  if (!sameACPTextEvent(existing, incoming)) return incoming
+  return acpTextLength(existing) >= acpTextLength(incoming) ? existing : incoming
+}
+
+function sameACPTextEvent(a: SessionEvent, b: SessionEvent): boolean {
+  return Boolean(
+    a.type === b.type &&
+      (a.type === 'acp_message' || a.type === 'acp_thought') &&
+      a.acp?.id &&
+      a.acp.id === b.acp?.id,
+  )
+}
+
+function acpTextLength(event: SessionEvent): number {
+  if (event.type === 'acp_message') return event.content?.length ?? 0
+  if (event.type === 'acp_thought') return event.acp?.thought?.length ?? 0
+  return 0
 }
