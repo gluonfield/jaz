@@ -39,7 +39,11 @@ import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
 import { takePendingMessage, takePendingVoice } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
-import { planProgressSurfaceFromEvent, planSurfaceBelongsToSession, planSurfaceFromEvent } from '@/lib/planSurface'
+import {
+  approvalPlanSurfaceFromEvent,
+  progressSurfaceFromEvent,
+  taskSurfaceBelongsToSession,
+} from '@/lib/taskSurface'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { coalesceSessionEvents } from '@/lib/sessionEvents'
 import { activePermissionIDs, isPermissionAwaitingResponse, resolveInactivePermissions } from '@/lib/sessionPermissions'
@@ -300,29 +304,27 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
       .filter((time) => !Number.isNaN(time)),
   )
   const latestPlanDecisionEvent = settledTranscriptEvents.findLast((event) => {
-    const surface = planSurfaceFromEvent(event)
+    const surface = approvalPlanSurfaceFromEvent(event)
     return Boolean(
       surface?.awaitingApproval &&
         surface.approvalSessionId &&
-        planSurfaceBelongsToSession(event, session.id),
+        taskSurfaceBelongsToSession(event, session.id),
     )
   })
   const latestPlanDecisionSurface = latestPlanDecisionEvent
-    ? planSurfaceFromEvent(latestPlanDecisionEvent)
+    ? approvalPlanSurfaceFromEvent(latestPlanDecisionEvent)
     : undefined
   const planDecisionAt = Date.parse(latestPlanDecisionEvent?.at ?? '')
-  // The panel shows execution progress; plan-mode approval proposals stay in
-  // the transcript and bottom approval UI.
-  const panelPlanEvent = settledTranscriptEvents.findLast((event) =>
-    Boolean(planProgressSurfaceFromEvent(event) && planSurfaceBelongsToSession(event, session.id)),
+  const panelProgressEvent = settledTranscriptEvents.findLast((event) =>
+    Boolean(progressSurfaceFromEvent(event) && taskSurfaceBelongsToSession(event, session.id)),
   )
-  // Plan progress lives in the side panel, never in the thread; only a
-  // proposed plan that needs the user's approval stays inline. Errors are
+  // Progress lives in the side panel, never in the thread; only a proposed
+  // plan that needs the user's approval stays inline. Errors are
   // notified as toasts, not rendered as rows.
   const displayEvents = settledTranscriptEvents.map((event) => {
     const withoutError = stripACPError(event)
-    const surface = planSurfaceFromEvent(withoutError)
-    if (!surface || surface.awaitingApproval) return withoutError
+    const surface = progressSurfaceFromEvent(withoutError)
+    if (!surface) return withoutError
     if (withoutError.acp) return { ...withoutError, acp: { ...withoutError.acp, plan: undefined } }
     return { ...withoutError, plan: undefined }
   })
@@ -334,7 +336,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
     latestPlanDecisionSurface,
     planDecisionSessionID: latestPlanDecisionSurface?.approvalSessionId,
     planDecisionIsCurrent: !Number.isNaN(planDecisionAt) && planDecisionAt >= latestUserAt,
-    panelPlan: panelPlanEvent ? planProgressSurfaceFromEvent(panelPlanEvent) : undefined,
+    panelProgress: panelProgressEvent ? progressSurfaceFromEvent(panelProgressEvent) : undefined,
   }
 }
 
@@ -603,7 +605,7 @@ function SessionPage() {
     latestPlanDecisionSurface,
     planDecisionSessionID,
     planDecisionIsCurrent,
-    panelPlan,
+    panelProgress,
   } = derived
   const showPlanDecision = Boolean(
     latestPlanDecisionSurface?.awaitingApproval &&
@@ -832,7 +834,7 @@ function SessionPage() {
           >
             <SidePanel
               session={session}
-              plan={panelPlan}
+              progress={panelProgress}
               working={sessionRunning}
               visible={sidePanel.open}
               view={sidePanel.view}

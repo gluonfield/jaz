@@ -80,7 +80,7 @@ type ACPEvent struct {
 // the title and mode catalog on every stored row dominated transcript
 // payloads (~70-90% of bytes on tool-heavy threads); /messages serves them
 // once per response via acp_meta instead. The slug stays embedded as a
-// durable label fallback, and plan-bearing events keep the current/plan mode
+// durable label fallback, and task-bearing events keep the current/plan mode
 // ids that approval state reads. Migration 0014 applies the same rule to
 // historical rows.
 func (e *ACPEvent) SlimForStorage() *ACPEvent {

@@ -169,8 +169,12 @@ func planEntries(items []planItem) ([]sessionevents.PlanEntry, error) {
 				return nil, errors.New("at most one plan step can be in_progress")
 			}
 		}
+		content, ok := sessionevents.NormalizeProgressEntryContent(*item.Step)
+		if !ok {
+			return nil, fmt.Errorf("plan[%d].step must be a short plain-text task", i)
+		}
 		entries = append(entries, sessionevents.PlanEntry{
-			Content: *item.Step,
+			Content: content,
 			Status:  string(*item.Status),
 		})
 	}

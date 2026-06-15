@@ -20,7 +20,7 @@ type Job struct {
 	StopReason    string                        `json:"stop_reason,omitempty"`
 	Assistant     string                        `json:"assistant,omitempty"`
 	Thought       string                        `json:"thought,omitempty"`
-	Plan          []PlanEntry                   `json:"plan,omitempty"`
+	Plan          []sessionevents.PlanEntry     `json:"plan,omitempty"`
 	ToolCalls     []ToolCallSnapshot            `json:"tool_calls,omitempty"`
 	Permissions   []sessionevents.ACPPermission `json:"permissions,omitempty"`
 	Modes         ModeState                     `json:"modes,omitempty"`
@@ -39,12 +39,6 @@ type Job struct {
 	toolByID          map[string]ToolCallSnapshot
 	savedAssistantLen int
 	usage             storage.Usage
-}
-
-type PlanEntry struct {
-	Content  string `json:"content"`
-	Status   string `json:"status,omitempty"`
-	Priority string `json:"priority,omitempty"`
 }
 
 type ToolCallSnapshot struct {
@@ -81,7 +75,7 @@ func (j *Job) Snapshot() Job {
 		StopReason:    j.StopReason,
 		Assistant:     j.Assistant,
 		Thought:       j.Thought,
-		Plan:          append([]PlanEntry(nil), j.Plan...),
+		Plan:          append([]sessionevents.PlanEntry(nil), j.Plan...),
 		ToolCalls:     append([]ToolCallSnapshot(nil), j.ToolCalls...),
 		Permissions:   clonePermissions(j.Permissions),
 		Modes:         j.Modes.Clone(),
