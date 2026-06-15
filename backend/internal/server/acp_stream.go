@@ -103,6 +103,7 @@ func (s *Server) beginACPTurn(ctx context.Context, session storage.Session, mess
 	if err := s.Store.SaveSession(session); err != nil {
 		return session, err
 	}
+	s.publishSessionChanged(session.ID)
 	return session, nil
 }
 

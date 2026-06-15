@@ -3,7 +3,7 @@
 // renders. Pure data — no JSX — so the component can memoize one buildTimeline
 // call per data change.
 import type { ACPPermission, ACPToolCall, ChatMessage, SessionEvent } from '@/lib/api/types'
-import { planSurfaceFromEvent, planSurfaceKey } from '@/lib/planSurface'
+import { taskSurfaceFromEvent, taskSurfaceKey } from '@/lib/taskSurface'
 import { combineSequentialACPText } from '@/lib/sessionEvents'
 import { hasPermissionSurface, normalized } from './TranscriptUtils'
 
@@ -34,7 +34,7 @@ function isWorkingLinkOnly(event: SessionEvent): boolean {
   return (
     event.type === 'acp' &&
     hasWorkingStatusSurface(event) &&
-    !planSurfaceFromEvent(event) &&
+    !taskSurfaceFromEvent(event) &&
     !event.content &&
     !event.acp?.thought &&
     !event.acp?.error &&
@@ -45,12 +45,12 @@ function isWorkingLinkOnly(event: SessionEvent): boolean {
 function hasVisibleACPSurface(event: SessionEvent): boolean {
   const acp = event.acp
   if (!acp) return false
-  const hasPlan = Boolean(planSurfaceFromEvent(event))
+  const hasTaskSurface = Boolean(taskSurfaceFromEvent(event))
   if (isParentChildACPEvent(event)) {
     return Boolean(
       event.content ||
         acp.thought ||
-        hasPlan ||
+        hasTaskSurface ||
         hasWorkingStatusSurface(event),
     )
   }
@@ -58,7 +58,7 @@ function hasVisibleACPSurface(event: SessionEvent): boolean {
     event.content ||
       acp.thought ||
       acp.tool_calls?.length ||
-      hasPlan ||
+      hasTaskSurface ||
       hasWorkingStatusSurface(event),
   )
 }
@@ -154,11 +154,11 @@ function splitTurns(items: TimelineItem[]): Turn[] {
   return turns
 }
 
-// Work that may fold under "Worked for Xs"; plans, pending questions, and errors stay out.
+// Work that may fold under "Worked for Xs"; task surfaces, pending questions, and errors stay out.
 export function isCollapsibleWork(
   item: TimelineItem,
   pendingPermissionIds: Set<string>,
-  latestPlanIndex: Map<string, number>,
+  latestTaskSurfaceIndex: Map<string, number>,
 ): boolean {
   if (item.kind === 'tools') return true
   if (item.kind !== 'event') return false
@@ -169,9 +169,9 @@ export function isCollapsibleWork(
   if (event.type === 'permission_request') {
     return !pendingPermissionIds.has(event.permission?.id ?? '')
   }
-  const planSurface = planSurfaceFromEvent(event)
-  if (planSurface) {
-    return event.acp ? latestPlanIndex.get(event.acp.id) !== item.eventIndex : false
+  const taskSurface = taskSurfaceFromEvent(event)
+  if (taskSurface) {
+    return event.acp ? latestTaskSurfaceIndex.get(event.acp.id) !== item.eventIndex : false
   }
   if (event.type === 'acp') {
     return true
@@ -191,7 +191,7 @@ export function buildTimeline(
   const combinedEvents = combineSequentialACPText(events)
   const permissionResolutions = new Map<string, ACPPermission>()
   const latestPermissionRequest = new Map<string, number>()
-  const latestPlanEvent = new Map<string, number>()
+  const latestTaskSurfaceEvent = new Map<string, number>()
   const latestToolEvent = new Map<string, number>()
   combinedEvents.forEach((event, index) => {
     if (event.type === 'permission_request' && event.permission) {
@@ -201,8 +201,8 @@ export function buildTimeline(
       permissionResolutions.set(event.permission.id, event.permission)
     }
     const acp = event.acp
-    if (acp && planSurfaceFromEvent(event)) {
-      latestPlanEvent.set(acp.id, index)
+    if (acp && taskSurfaceFromEvent(event)) {
+      latestTaskSurfaceEvent.set(acp.id, index)
     }
     if (event.type === 'acp' && acp?.tool_calls?.length) {
       latestToolEvent.set(acp.id, index)
@@ -223,22 +223,22 @@ export function buildTimeline(
         return false
       }
       const acp = event.acp
-      const planSurface = planSurfaceFromEvent(event)
+      const taskSurface = taskSurfaceFromEvent(event)
       if (event.type === 'artifact') return Boolean(event.artifact)
       if (!acp) {
-        if (planSurface) return true
+        if (taskSurface) return true
         return Boolean(event.content || event.permission)
       }
       if (!hasVisibleACPSurface(event)) return false
       // This page's own running state has no link to render — drop the event
       // instead of leaving an empty row.
       if (isWorkingLinkOnly(event) && acp.id === sessionId) return false
-      if (planSurface) {
-        const isLatestPlan = latestPlanEvent.get(acp.id) === index
-        if (!isLatestPlan && !event.content && !acp.tool_calls?.length) return false
+      if (taskSurface) {
+        const isLatestTaskSurface = latestTaskSurfaceEvent.get(acp.id) === index
+        if (!isLatestTaskSurface && !event.content && !acp.tool_calls?.length) return false
       }
       if (event.type === 'acp' && acp.tool_calls?.length && latestToolEvent.get(acp.id) !== index) {
-        return Boolean(event.content || planSurface)
+        return Boolean(event.content || taskSurface)
       }
       return true
     })
@@ -274,7 +274,7 @@ export function buildTimeline(
     anchored,
     turns: groupTurns ? splitTurns(chronological) : [],
     permissionResolutions,
-    latestPlanEvent,
+    latestTaskSurfaceEvent,
     pendingPermissionIds,
   }
 }
@@ -282,8 +282,8 @@ export function buildTimeline(
 // Coalesced events keep their latest copy whose seq changes per update; key by
 // identity so streamed deltas patch in place instead of remounting.
 export function stableEventKey(event: SessionEvent, eventIndex = 0): string {
-  const planKey = planSurfaceKey(event)
-  if (planKey) return planKey
+  const taskKey = taskSurfaceKey(event)
+  if (taskKey) return taskKey
   if ((event.type === 'acp_message' || event.type === 'acp_thought') && event.acp?.id) {
     return `${event.type}:${event.acp.id}:${event.session_id}:${eventIndex}`
   }

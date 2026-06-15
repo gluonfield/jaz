@@ -115,6 +115,7 @@ func TestUpdatePlanRejectsMalformedPayloads(t *testing.T) {
 		{name: "unknown field", inputs: map[string]any{"plan": []any{}, "extra": true}, want: "unknown field"},
 		{name: "missing step", inputs: map[string]any{"plan": []any{map[string]any{"status": "pending"}}}, want: "missing field `step`"},
 		{name: "invalid status", inputs: map[string]any{"plan": []any{map[string]any{"step": "One", "status": "running"}}}, want: "invalid status"},
+		{name: "markdown document step", inputs: map[string]any{"plan": []any{map[string]any{"step": "# Plan\n\n- Inspect\n- Patch", "status": "pending"}}}, want: "short plain-text task"},
 		{name: "multiple in progress", inputs: map[string]any{"plan": []any{
 			map[string]any{"step": "One", "status": "in_progress"},
 			map[string]any{"step": "Two", "status": "in_progress"},

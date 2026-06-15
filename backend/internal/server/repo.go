@@ -247,9 +247,11 @@ func (s *Server) handleSessionRepoRestoreWorktree(w http.ResponseWriter, r *http
 }
 
 func (s *Server) PruneManagedWorktrees(ctx context.Context) {
-	if s.Store == nil || strings.TrimSpace(s.Workspace) == "" {
+	if strings.TrimSpace(s.Workspace) == "" {
 		return
 	}
+	s.worktreePruneMu.Lock()
+	defer s.worktreePruneMu.Unlock()
 	sessions, err := s.worktreeSessions()
 	if err != nil {
 		s.logger().WithPrefix("worktrees").Warn("list sessions failed", "error", err)

@@ -115,10 +115,6 @@ func (s *Server) runNativeSessionWithClaim(ctx context.Context, session storage.
 		send(agent.StreamEvent{Type: agent.StreamDone})
 		return startStatus
 	}
-	if generateTitle {
-		session = s.generateAndSaveSessionTitle(ctx, session, message)
-	}
-
 	logger := s.logger().With("session", session.ID)
 	logger.Info("native turn started")
 	turnCtx, cancelTurn := context.WithCancel(ctx)
@@ -134,6 +130,9 @@ func (s *Server) runNativeSessionWithClaim(ctx context.Context, session storage.
 		return storage.StatusError
 	}
 	s.publishMessagesChanged(session.ID)
+	if generateTitle {
+		go s.generateAndSaveSessionTitle(context.WithoutCancel(ctx), session, message)
+	}
 
 	runCtx := sessioncontext.WithSessionID(turnCtx, session.ID)
 	if session.RuntimeRef != nil && strings.TrimSpace(session.RuntimeRef.Cwd) != "" {
@@ -213,6 +212,7 @@ func (s *Server) beginNativeTurn(ctx context.Context, session storage.Session, m
 		return session, storage.StatusError, false, err
 	}
 	session.Status = storage.StatusRunning
+	session.Error = ""
 	if session.Runtime == "" {
 		session.Runtime = storage.RuntimeNative
 	}
@@ -227,6 +227,7 @@ func (s *Server) beginNativeTurn(ctx context.Context, session storage.Session, m
 	if err := s.Store.SaveSession(session); err != nil {
 		return session, storage.StatusError, false, err
 	}
+	s.publishSessionChanged(session.ID)
 	return session, storage.StatusRunning, generateTitle, nil
 }
 

@@ -21,38 +21,31 @@ import { useToast } from '@/components/ui/toast'
 import { setSessionArchived } from '@/lib/api/sessions'
 import type { Session } from '@/lib/api/types'
 import { writeClipboard } from '@/lib/clipboard'
-import { planStepState, type PlanSurface } from '@/lib/planSurface'
+import { taskStepState, type TaskSurface } from '@/lib/taskSurface'
 import { keys } from '@/lib/query/keys'
-import { MessageMarkdown } from './MessageMarkdown'
-import { PlanStepIcon } from './Transcript'
+import { SidePanelShell } from './SidePanelShell'
+import { TaskStepIcon } from './Transcript'
 import { useRepoActions } from './useRepoActions'
 
 export const OVERVIEW_PANEL_WIDTH = 300
 
 export function OverviewPanel({
   session,
-  plan,
+  progress,
   working,
 }: {
   session: Session
-  plan?: PlanSurface
+  progress?: TaskSurface
   working: boolean
 }) {
   const repo = useRepoActions(session)
   const showGit = Boolean(repo.cwd && (repo.info?.git || repo.info?.worktree_missing))
   return (
-    <aside
-      style={{ width: OVERVIEW_PANEL_WIDTH }}
-      className="flex h-full shrink-0 flex-col bg-bg p-2"
-    >
-      {/* Hugs its content — only grows to fill the column if there's enough to
-          scroll, so a short overview doesn't stretch a full-height card. */}
-      <div className="flex max-h-full flex-col gap-6 overflow-y-auto rounded-[14px] bg-surface px-4 py-4 shadow-[0_18px_46px_rgba(0,0,0,0.18)] ring-1 ring-border">
-        {plan ? <PlanSection plan={plan} working={working} /> : null}
-        {showGit ? <GitSection repo={repo} /> : null}
-        <ManageSection session={session} />
-      </div>
-    </aside>
+    <SidePanelShell width={OVERVIEW_PANEL_WIDTH} variant="hug" className="gap-6 px-4 py-4">
+      {progress ? <ProgressSection progress={progress} working={working} /> : null}
+      {showGit ? <GitSection repo={repo} /> : null}
+      <ManageSection session={session} />
+    </SidePanelShell>
   )
 }
 
@@ -89,11 +82,10 @@ function ActionRow({
   )
 }
 
-function PlanSection({ plan, working }: { plan: PlanSurface; working: boolean }) {
+function ProgressSection({ progress, working }: { progress: TaskSurface; working: boolean }) {
   const [open, setOpen] = useState(true)
-  const entries = plan.entries ?? []
-  const explanation = plan.explanation?.trim() ?? ''
-  const states = entries.map(planStepState)
+  const entries = progress.entries ?? []
+  const states = entries.map(taskStepState)
   const showSteps = states.some(Boolean)
   const completedCount = states.filter((state) => state === 'completed').length
   return (
@@ -105,7 +97,7 @@ function PlanSection({ plan, working }: { plan: PlanSurface; working: boolean })
         className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-md text-left transition-colors hover:text-ink"
       >
         <SectionHeader>
-          {plan.title}
+          {progress.title}
           {showSteps ? (
             <span className="ml-2 font-mono normal-case tracking-normal">
               {completedCount}/{entries.length}
@@ -120,11 +112,6 @@ function PlanSection({ plan, working }: { plan: PlanSurface; working: boolean })
       </button>
       {open ? (
         <>
-          {explanation ? (
-            <div className="mt-2.5 text-[12px] leading-snug text-ink-2">
-              <MessageMarkdown text={explanation} />
-            </div>
-          ) : null}
           {entries.length ? (
             <ul className="mt-2.5 flex flex-col gap-2">
               {entries.map((entry, index) => {
@@ -136,7 +123,7 @@ function PlanSection({ plan, working }: { plan: PlanSurface; working: boolean })
                   >
                     {showSteps ? (
                       <span className="mt-[2px] shrink-0" title={state}>
-                        <PlanStepIcon state={state ?? 'pending'} active={working} />
+                        <TaskStepIcon state={state ?? 'pending'} active={working} />
                       </span>
                     ) : null}
                     <span className={`min-w-0 flex-1 ${state === 'completed' ? 'opacity-50' : ''}`}>
@@ -146,7 +133,7 @@ function PlanSection({ plan, working }: { plan: PlanSurface; working: boolean })
                 )
               })}
             </ul>
-          ) : explanation ? null : (
+          ) : (
             <p className="mt-2.5 text-[12px] italic text-ink-3">(no steps provided)</p>
           )}
         </>

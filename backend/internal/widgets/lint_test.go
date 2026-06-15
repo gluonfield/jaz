@@ -13,13 +13,11 @@ func TestLintHTMLFlagsAntipatterns(t *testing.T) {
 		html string
 		want string
 	}{
-		{"viewport units", `<div style="height: 100vh">x</div>`, "viewport units"},
-		{"screen class", `<div class="min-h-screen">x</div>`, "viewport units"},
-		{"hex color", `<div style="color: #ff0000">x</div>`, "hardcoded color"},
-		{"rgb color", `<div style="background: rgb(255, 0, 0)">x</div>`, "hardcoded color"},
-		{"stock palette", `<span class="bg-red-500">x</span>`, "compiles to NOTHING"},
+		{"full document", `<!doctype html><html><body><p>x</p></body></html>`, "fragment, not a full document"},
+		{"head element", `<head><title>x</title></head><div>x</div>`, "fragment, not a full document"},
+		{"viewport height", `<div style="height: 100vh">x</div>`, "viewport units"},
+		{"viewport width", `<div style="width: 50vw">x</div>`, "viewport units"},
 		{"fixed position", `<div style="position: fixed">x</div>`, "position: fixed"},
-		{"important abuse", `<style>a{color:red !important;b{x:1 !important}c{y:2 !important}</style>`, "!important"},
 	}
 	for _, tc := range cases {
 		warnings := widgets.LintHTML(tc.html)
@@ -36,7 +34,9 @@ func TestLintHTMLFlagsAntipatterns(t *testing.T) {
 }
 
 func TestLintHTMLCleanFragment(t *testing.T) {
-	clean := `<div class="jz-stack"><div class="jz-kpis"><div class="jz-stat"><div class="jz-stat-value">42</div></div></div><ul class="jz-list jz-fill jz-scroll"><li class="jz-item"><span class="jz-item-title">A</span><span class="jz-item-value tabular-nums text-primary">7</span></li></ul></div>`
+	// An artifact-style fragment: design-system vars, a ramp class, a fill-the-
+	// tile flex column, and a hardcoded series color (legitimate on canvas).
+	clean := `<div style="height:100%;display:flex;flex-direction:column;color:var(--color-text-primary)"><div class="c-blue" style="padding:8px">42</div><div style="flex:1;overflow:auto"><canvas></canvas></div></div>`
 	if warnings := widgets.LintHTML(clean); len(warnings) != 0 {
 		t.Fatalf("clean fragment produced warnings: %v", warnings)
 	}
