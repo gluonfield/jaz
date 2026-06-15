@@ -39,15 +39,25 @@ import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
 import { takePendingMessage, takePendingVoice } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
-import { planProgressSurfaceFromEvent, planSurfaceBelongsToSession, planSurfaceFromEvent } from '@/lib/planSurface'
+import {
+  approvalPlanSurfaceFromEvent,
+  hasProgressSignal,
+  progressSurfaceFromEvent,
+  taskSurfaceBelongsToSession,
+} from '@/lib/taskSurface'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { coalesceSessionEvents } from '@/lib/sessionEvents'
 import { activePermissionIDs, isPermissionAwaitingResponse, resolveInactivePermissions } from '@/lib/sessionPermissions'
 import { latestEventTimeISO } from '@/lib/sessionLiveness'
 
 export const Route = createFileRoute('/sessions/$sessionId')({
-  component: SessionPage,
+  component: SessionRoute,
 })
+
+function SessionRoute() {
+  const { sessionId } = Route.useParams()
+  return <SessionPage key={sessionId} sessionId={sessionId} />
+}
 
 // One in-flight user → assistant exchange, rendered after the transcript
 // while it streams; replaced by the refetched server history on completion.
@@ -74,6 +84,15 @@ interface LiveAttachment {
 function stripACPError(event: SessionEvent): SessionEvent {
   if (!event.acp?.error) return event
   return { ...event, acp: { ...event.acp, error: undefined } }
+}
+
+function stripProgressSignal(event: SessionEvent): SessionEvent {
+  if (event.acp) {
+    const { plan: _plan, ...acp } = event.acp
+    return { ...event, acp }
+  }
+  const { plan: _plan, ...out } = event
+  return out
 }
 
 function sessionEventErrorMessage(event: SessionEvent): string {
@@ -300,31 +319,27 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
       .filter((time) => !Number.isNaN(time)),
   )
   const latestPlanDecisionEvent = settledTranscriptEvents.findLast((event) => {
-    const surface = planSurfaceFromEvent(event)
+    const surface = approvalPlanSurfaceFromEvent(event)
     return Boolean(
       surface?.awaitingApproval &&
         surface.approvalSessionId &&
-        planSurfaceBelongsToSession(event, session.id),
+        taskSurfaceBelongsToSession(event, session.id),
     )
   })
   const latestPlanDecisionSurface = latestPlanDecisionEvent
-    ? planSurfaceFromEvent(latestPlanDecisionEvent)
+    ? approvalPlanSurfaceFromEvent(latestPlanDecisionEvent)
     : undefined
   const planDecisionAt = Date.parse(latestPlanDecisionEvent?.at ?? '')
-  // The panel shows execution progress; plan-mode approval proposals stay in
-  // the transcript and bottom approval UI.
-  const panelPlanEvent = settledTranscriptEvents.findLast((event) =>
-    Boolean(planProgressSurfaceFromEvent(event) && planSurfaceBelongsToSession(event, session.id)),
+  const panelProgressEvent = settledTranscriptEvents.findLast((event) =>
+    Boolean(progressSurfaceFromEvent(event) && taskSurfaceBelongsToSession(event, session.id)),
   )
-  // Plan progress lives in the side panel, never in the thread; only a
-  // proposed plan that needs the user's approval stays inline. Errors are
+  // Progress lives in the side panel, never in the thread; only a proposed
+  // plan that needs the user's approval stays inline. Errors are
   // notified as toasts, not rendered as rows.
   const displayEvents = settledTranscriptEvents.map((event) => {
     const withoutError = stripACPError(event)
-    const surface = planSurfaceFromEvent(withoutError)
-    if (!surface || surface.awaitingApproval) return withoutError
-    if (withoutError.acp) return { ...withoutError, acp: { ...withoutError.acp, plan: undefined } }
-    return { ...withoutError, plan: undefined }
+    if (!hasProgressSignal(withoutError)) return withoutError
+    return stripProgressSignal(withoutError)
   })
   return {
     transcriptEvents: settledTranscriptEvents,
@@ -334,15 +349,14 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
     latestPlanDecisionSurface,
     planDecisionSessionID: latestPlanDecisionSurface?.approvalSessionId,
     planDecisionIsCurrent: !Number.isNaN(planDecisionAt) && planDecisionAt >= latestUserAt,
-    panelPlan: panelPlanEvent ? planProgressSurfaceFromEvent(panelPlanEvent) : undefined,
+    panelProgress: panelProgressEvent ? progressSurfaceFromEvent(panelProgressEvent) : undefined,
   }
 }
 
 const SESSION_DRAFT_KEY_PREFIX = 'jaz.sessionDraft.'
 const TRANSCRIPT_DOCK_GAP_PX = 20
 
-function SessionPage() {
-  const { sessionId } = Route.useParams()
+function SessionPage({ sessionId }: { sessionId: string }) {
   const queryClient = useQueryClient()
   const toast = useToast()
   const detail = useQuery(sessionMessagesQuery(sessionId))
@@ -603,7 +617,7 @@ function SessionPage() {
     latestPlanDecisionSurface,
     planDecisionSessionID,
     planDecisionIsCurrent,
-    panelPlan,
+    panelProgress,
   } = derived
   const showPlanDecision = Boolean(
     latestPlanDecisionSurface?.awaitingApproval &&
@@ -832,7 +846,7 @@ function SessionPage() {
           >
             <SidePanel
               session={session}
-              plan={panelPlan}
+              progress={panelProgress}
               working={sessionRunning}
               visible={sidePanel.open}
               view={sidePanel.view}
