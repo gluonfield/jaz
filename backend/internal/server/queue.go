@@ -391,6 +391,9 @@ func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session,
 		if s.ACP == nil {
 			return fmt.Errorf("acp manager is not configured")
 		}
+		if err := s.ensureManagedWorktree(ctx, session); err != nil {
+			return err
+		}
 		if _, err := s.ACP.Send(ctx, acp.SendRequest{
 			Session:     session.ID,
 			Message:     prompt.Text,

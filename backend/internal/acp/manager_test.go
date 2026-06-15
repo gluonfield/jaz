@@ -1270,12 +1270,45 @@ func TestSpawnWorktree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if session.RuntimeRef == nil || session.RuntimeRef.Cwd != want || session.RuntimeRef.ProjectPath != repo {
-		t.Fatalf("worktree runtime ref = %#v, want cwd %q project %q", session.RuntimeRef, want, repo)
+	wantRepo, err := filepath.EvalSymlinks(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.RuntimeRef == nil || session.RuntimeRef.Cwd != want || session.RuntimeRef.ProjectPath != wantRepo {
+		t.Fatalf("worktree runtime ref = %#v, want cwd %q project %q", session.RuntimeRef, want, wantRepo)
 	}
 
 	// Worktree without a repository directory is an explicit error.
 	if _, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "wt-bad", Directory: "not-a-repo", Worktree: true}); err == nil {
 		t.Fatal("expected worktree on plain directory to fail")
+	}
+
+	for _, args := range [][]string{
+		{"init"},
+		{"config", "user.email", "test@jaz"},
+		{"config", "user.name", "jaz"},
+		{"commit", "--allow-empty", "-m", "init"},
+	} {
+		cmd := exec.Command("git", append([]string{"-C", workspace}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git workspace %v: %v: %s", args, err, out)
+		}
+	}
+	rootSpawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "wt-root", Directory: ".", Worktree: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), rootSpawned.SessionID) }()
+	rootWant := filepath.Join(workspace, ".worktrees", rootSpawned.Slug)
+	session, err = store.LoadSession(rootSpawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantWorkspace, err := filepath.EvalSymlinks(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.RuntimeRef == nil || session.RuntimeRef.Cwd != rootWant || session.RuntimeRef.ProjectPath != wantWorkspace {
+		t.Fatalf("root worktree runtime ref = %#v, want cwd %q project %q", session.RuntimeRef, rootWant, wantWorkspace)
 	}
 }

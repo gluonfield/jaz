@@ -5,13 +5,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/gitinfo"
+	"github.com/wins/jaz/backend/internal/pathsafe"
 	"github.com/wins/jaz/backend/internal/storage"
 )
+
+const managedWorktreeKeep = 15
 
 // handleSessionRepo reports the git/forge state of the session's working
 // directory so the titlebar can offer repo actions (create PR, open repo).
@@ -24,6 +29,10 @@ func (s *Server) handleSessionRepo(w http.ResponseWriter, r *http.Request, sessi
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
+	if info, ok := s.missingWorktreeInfo(ctx, session); ok {
+		writeJSON(w, http.StatusOK, info)
+		return
+	}
 	writeJSON(w, http.StatusOK, gitinfo.Inspect(ctx, cwd))
 }
 
@@ -207,6 +216,216 @@ func (s *Server) handleSessionRepoMergeFromMain(w http.ResponseWriter, r *http.R
 		return
 	}
 	writeJSON(w, http.StatusOK, gitinfo.Inspect(ctx, cwd))
+}
+
+func (s *Server) handleSessionRepoRestoreWorktree(w http.ResponseWriter, r *http.Request, session storage.Session) {
+	worktree, ok := s.managedWorktree(session)
+	if !ok {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("session is not on a managed worktree"))
+		return
+	}
+	if _, err := os.Stat(worktree.Cwd); err == nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		writeJSON(w, http.StatusOK, gitinfo.Inspect(ctx, worktree.Cwd))
+		return
+	} else if !os.IsNotExist(err) {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if worktree.ProjectPath == "" {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("session has no project path to restore from"))
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+	if err := s.ensureManagedWorktree(ctx, session); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, gitinfo.Inspect(ctx, worktree.Cwd))
+}
+
+func (s *Server) PruneManagedWorktrees(ctx context.Context) {
+	if s.Store == nil || strings.TrimSpace(s.Workspace) == "" {
+		return
+	}
+	sessions, err := s.worktreeSessions()
+	if err != nil {
+		s.logger().WithPrefix("worktrees").Warn("list sessions failed", "error", err)
+		return
+	}
+	liveACP := s.liveACPSessions()
+	type candidate struct {
+		session  storage.Session
+		worktree managedWorktree
+	}
+	var capCandidates []candidate
+	for _, session := range sessions {
+		if err := ctx.Err(); err != nil {
+			s.logger().WithPrefix("worktrees").Warn("prune cancelled", "error", err)
+			return
+		}
+		worktree, ok := s.managedWorktree(session)
+		if !ok {
+			continue
+		}
+		missing, err := pathMissing(worktree.Cwd)
+		if err != nil {
+			s.logger().WithPrefix("worktrees").Warn("stat worktree failed", "session", session.ID, "slug", session.Slug, "path", worktree.Cwd, "error", err)
+			continue
+		}
+		if missing {
+			if worktree.ProjectPath != "" {
+				_ = gitinfo.PruneWorktreeMetadata(ctx, worktree.ProjectPath)
+			}
+			continue
+		}
+		if session.Pinned || sessionHasLiveACP(session, liveACP) || s.sessionRuntimeRunning(session) {
+			continue
+		}
+		if session.Archived {
+			s.removeSessionWorktree(ctx, session, worktree)
+			continue
+		}
+		capCandidates = append(capCandidates, candidate{session: session, worktree: worktree})
+	}
+	sort.Slice(capCandidates, func(i, j int) bool {
+		return storage.SessionAttentionAt(capCandidates[i].session).After(storage.SessionAttentionAt(capCandidates[j].session))
+	})
+	if len(capCandidates) <= managedWorktreeKeep {
+		return
+	}
+	for _, item := range capCandidates[managedWorktreeKeep:] {
+		if err := ctx.Err(); err != nil {
+			s.logger().WithPrefix("worktrees").Warn("prune cancelled", "error", err)
+			return
+		}
+		s.removeSessionWorktree(ctx, item.session, item.worktree)
+	}
+}
+
+func (s *Server) liveACPSessions() map[string]struct{} {
+	if s.ACP == nil {
+		return nil
+	}
+	jobs := s.ACP.List()
+	if len(jobs) == 0 {
+		return nil
+	}
+	live := make(map[string]struct{}, len(jobs)*2)
+	for _, job := range jobs {
+		if job.ID != "" {
+			live[job.ID] = struct{}{}
+		}
+		if job.Slug != "" {
+			live[job.Slug] = struct{}{}
+		}
+	}
+	return live
+}
+
+func sessionHasLiveACP(session storage.Session, live map[string]struct{}) bool {
+	if session.Runtime != storage.RuntimeACP || len(live) == 0 {
+		return false
+	}
+	if _, ok := live[session.ID]; ok {
+		return true
+	}
+	_, ok := live[session.Slug]
+	return ok
+}
+
+func (s *Server) worktreeSessions() ([]storage.Session, error) {
+	active, err := s.Store.ListSessions(storage.SessionFilter{IncludeChildren: true})
+	if err != nil {
+		return nil, err
+	}
+	archived, err := s.Store.ListSessions(storage.SessionFilter{IncludeChildren: true, Archived: true})
+	if err != nil {
+		return nil, err
+	}
+	return append(active, archived...), nil
+}
+
+type managedWorktree struct {
+	Cwd         string
+	ProjectPath string
+	Branch      string
+}
+
+func (s *Server) managedWorktree(session storage.Session) (managedWorktree, bool) {
+	if session.RuntimeRef == nil || session.RuntimeRef.Cwd == "" || s.Workspace == "" || session.Slug == "" {
+		return managedWorktree{}, false
+	}
+	root, err := filepath.Abs(filepath.Join(s.Workspace, ".worktrees"))
+	if err != nil {
+		return managedWorktree{}, false
+	}
+	cwd, err := filepath.Abs(session.RuntimeRef.Cwd)
+	if err != nil || !pathsafe.Within(root, cwd) {
+		return managedWorktree{}, false
+	}
+	return managedWorktree{
+		Cwd:         cwd,
+		ProjectPath: strings.TrimSpace(session.RuntimeRef.ProjectPath),
+		Branch:      "jaz/" + session.Slug,
+	}, true
+}
+
+func (s *Server) missingWorktreeInfo(ctx context.Context, session storage.Session) (gitinfo.Info, bool) {
+	worktree, ok := s.managedWorktree(session)
+	if !ok {
+		return gitinfo.Info{}, false
+	}
+	if _, err := os.Stat(worktree.Cwd); err == nil || !os.IsNotExist(err) {
+		return gitinfo.Info{}, false
+	}
+	info := gitinfo.Info{
+		Branch:          worktree.Branch,
+		WorktreeMissing: true,
+		WorktreeBranch:  worktree.Branch,
+	}
+	if worktree.ProjectPath != "" && gitinfo.BranchExists(ctx, worktree.ProjectPath, worktree.Branch) {
+		info.WorktreeRestorable = true
+	}
+	return info, true
+}
+
+func (s *Server) ensureManagedWorktree(ctx context.Context, session storage.Session) error {
+	worktree, ok := s.managedWorktree(session)
+	if !ok {
+		return nil
+	}
+	if _, err := os.Stat(worktree.Cwd); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if worktree.ProjectPath == "" {
+		return fmt.Errorf("session worktree is missing and has no project path")
+	}
+	return gitinfo.RestoreManagedWorktree(ctx, worktree.ProjectPath, worktree.Cwd, worktree.Branch)
+}
+
+func (s *Server) removeSessionWorktree(ctx context.Context, session storage.Session, worktree managedWorktree) {
+	message := firstNonEmpty(strings.TrimSpace(session.Title), "jaz session changes")
+	if err := gitinfo.RemoveManagedWorktree(ctx, worktree.Cwd, worktree.Branch, message); err != nil {
+		s.logger().WithPrefix("worktrees").Warn("remove worktree failed", "session", session.ID, "slug", session.Slug, "path", worktree.Cwd, "error", err)
+		return
+	}
+	s.logger().WithPrefix("worktrees").Info("removed worktree", "session", session.ID, "slug", session.Slug, "path", worktree.Cwd)
+}
+
+func pathMissing(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return false, nil
+	}
+	if os.IsNotExist(err) {
+		return true, nil
+	}
+	return false, err
 }
 
 // optionalCwd is for read-only handlers that degrade gracefully without a

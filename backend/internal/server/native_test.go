@@ -368,10 +368,14 @@ func TestCreateNativeSessionPersistsWorkingDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantWorktree := filepath.Join(workspace, ".worktrees", session.Slug)
+	wantProject, err := filepath.EvalSymlinks(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if session.RuntimeRef == nil ||
 		session.RuntimeRef.Cwd != wantWorktree ||
-		session.RuntimeRef.ProjectPath != repo {
-		t.Fatalf("worktree runtime ref = %#v, want cwd %q project %q", session.RuntimeRef, wantWorktree, repo)
+		session.RuntimeRef.ProjectPath != wantProject {
+		t.Fatalf("worktree runtime ref = %#v, want cwd %q project %q", session.RuntimeRef, wantWorktree, wantProject)
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{"directory":"../outside"}`))
@@ -380,6 +384,51 @@ func TestCreateNativeSessionPersistsWorkingDirectory(t *testing.T) {
 	handler.ServeHTTP(res, req)
 	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "escapes") {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
+func TestCreateNativeWorktreeFromWorkspaceRootPersistsProjectPath(t *testing.T) {
+	if err := exec.Command("git", "--version").Run(); err != nil {
+		t.Skip("git is not available")
+	}
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	workspace := t.TempDir()
+	for _, args := range [][]string{
+		{"init", "-b", "main"},
+		{"config", "user.email", "test@jaz"},
+		{"config", "user.name", "jaz"},
+		{"commit", "--allow-empty", "-m", "init"},
+	} {
+		cmd := exec.Command("git", append([]string{"-C", workspace}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	handler := (&Server{Store: store, Workspace: workspace}).Handler()
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{"directory":".","worktree":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var session storage.Session
+	if err := json.Unmarshal(res.Body.Bytes(), &session); err != nil {
+		t.Fatal(err)
+	}
+	wantWorktree := filepath.Join(workspace, ".worktrees", session.Slug)
+	wantProject, err := filepath.EvalSymlinks(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.RuntimeRef == nil ||
+		session.RuntimeRef.Cwd != wantWorktree ||
+		session.RuntimeRef.ProjectPath != wantProject {
+		t.Fatalf("worktree runtime ref = %#v, want cwd %q project %q", session.RuntimeRef, wantWorktree, wantProject)
 	}
 }
 

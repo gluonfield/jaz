@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/gitinfo"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
@@ -120,4 +121,152 @@ func TestSessionRepoChangesAndDiff(t *testing.T) {
 	}
 	// Diffs need a working directory, unlike the degrading changes summary.
 	getJSON("/v1/sessions/"+noCwd.ID+"/repo/diff?path=file.txt", http.StatusBadRequest, nil)
+}
+
+func TestArchivePrunesAndRestoresManagedWorktree(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	workspace, _, worktree, store, session := managedWorktreeSession(t, "managed-thread", storage.RuntimeNative)
+	server := &Server{Store: store, Workspace: workspace}
+	handler := server.Handler()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/archive", nil)
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("archive status = %d, body = %s", res.Code, res.Body.String())
+	}
+	if _, err := os.Stat(worktree); !os.IsNotExist(err) {
+		t.Fatalf("worktree still exists after archive: %v", err)
+	}
+
+	var info gitinfo.Info
+	req = httptest.NewRequest(http.MethodGet, "/v1/sessions/"+session.ID+"/repo", nil)
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("repo status = %d, body = %s", res.Code, res.Body.String())
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &info); err != nil {
+		t.Fatal(err)
+	}
+	if !info.WorktreeMissing || !info.WorktreeRestorable || info.WorktreeBranch != "jaz/managed-thread" {
+		t.Fatalf("repo info = %+v, want restorable missing worktree", info)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/repo/restore-worktree", nil)
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("restore status = %d, body = %s", res.Code, res.Body.String())
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &info); err != nil {
+		t.Fatal(err)
+	}
+	if !info.Git || info.Branch != "jaz/managed-thread" || !info.IsWorktree {
+		t.Fatalf("restored repo info = %+v", info)
+	}
+	if got, err := os.ReadFile(filepath.Join(worktree, "file.txt")); err != nil || string(got) != "two\n" {
+		t.Fatalf("restored file.txt = %q, %v", got, err)
+	}
+}
+
+func TestBeginACPTurnRestoresMissingManagedWorktree(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	ctx := t.Context()
+	workspace, repo, worktree, store, session := managedWorktreeSession(t, "resume-thread", storage.RuntimeACP)
+	if err := gitinfo.RemoveManagedWorktree(ctx, worktree, "jaz/resume-thread", "snapshot"); err != nil {
+		t.Fatalf("RemoveManagedWorktree: %v", err)
+	}
+	server := &Server{Store: store, Workspace: workspace}
+	if _, err := server.beginACPTurn(ctx, session, "continue"); err != nil {
+		t.Fatalf("beginACPTurn: %v", err)
+	}
+	if info := gitinfo.Inspect(ctx, worktree); !info.Git || info.Branch != "jaz/resume-thread" || !info.IsWorktree {
+		t.Fatalf("restored repo info = %+v", info)
+	}
+	if got, err := os.ReadFile(filepath.Join(worktree, "file.txt")); err != nil || string(got) != "two\n" {
+		t.Fatalf("restored file.txt = %q, %v", got, err)
+	}
+	if !gitinfo.BranchExists(ctx, repo, "jaz/resume-thread") {
+		t.Fatal("restored branch missing")
+	}
+}
+
+func TestPruneSkipsLiveACPManagedWorktree(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	workspace, _, worktree, store, session := managedWorktreeSession(t, "live-acp-thread", storage.RuntimeACP)
+	if err := store.SetArchived(session.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{
+		Store:     store,
+		Workspace: workspace,
+		ACP: &fakeACPManager{jobs: []acp.Job{{
+			ID:    session.ID,
+			Slug:  session.Slug,
+			State: acp.StateIdle,
+		}}},
+	}
+	server.PruneManagedWorktrees(t.Context())
+	if _, err := os.Stat(worktree); err != nil {
+		t.Fatalf("live ACP worktree was pruned: %v", err)
+	}
+
+	server.ACP = &fakeACPManager{}
+	server.PruneManagedWorktrees(t.Context())
+	if _, err := os.Stat(worktree); !os.IsNotExist(err) {
+		t.Fatalf("inactive ACP worktree still exists after prune: %v", err)
+	}
+}
+
+func managedWorktreeSession(t *testing.T, slug, runtime string) (workspace, repo, worktree string, store *jsonstore.Store, session storage.Session) {
+	t.Helper()
+	ctx := t.Context()
+	workspace = t.TempDir()
+	repo = filepath.Join(workspace, "repo")
+	git := func(target string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", target, "-c", "user.email=t@t", "-c", "user.name=t"}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	if err := exec.Command("git", "init", "-q", "-b", "main", repo).Run(); err != nil {
+		t.Fatal(err)
+	}
+	git(repo, "config", "user.email", "t@t")
+	git(repo, "config", "user.name", "t")
+	if err := os.WriteFile(filepath.Join(repo, "file.txt"), []byte("one\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(repo, "add", "-A")
+	git(repo, "commit", "-q", "-m", "init")
+	var err error
+	worktree, repo, err = gitinfo.AddWorktree(ctx, workspace, repo, slug)
+	if err != nil {
+		t.Fatalf("AddWorktree: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(worktree, "file.txt"), []byte("two\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store, err = jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err = store.CreateSession(storage.CreateSession{
+		Slug:       slug,
+		Title:      "managed thread",
+		Runtime:    runtime,
+		RuntimeRef: &storage.RuntimeRef{Type: runtime, Cwd: worktree, ProjectPath: repo},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return workspace, repo, worktree, store, session
 }

@@ -166,7 +166,7 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	// after the row exists — mirroring ACP spawn, which marks the session
 	// errored when directory preparation fails.
 	if req.Worktree {
-		worktree, err := gitinfo.AddWorktree(r.Context(), s.Workspace, session.RuntimeRef.Cwd, session.Slug)
+		worktree, repo, err := gitinfo.AddWorktree(r.Context(), s.Workspace, session.RuntimeRef.Cwd, session.Slug)
 		if err != nil {
 			session.Status = storage.StatusError
 			session.Error = err.Error()
@@ -175,10 +175,14 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		session.RuntimeRef.Cwd = worktree
+		session.RuntimeRef.ProjectPath = repo
 		if err := s.Store.SaveSession(session); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+		defer cancel()
+		s.PruneManagedWorktrees(ctx)
 	}
 	writeJSON(w, http.StatusOK, canonicalSessionResponse(session))
 }
@@ -223,6 +227,11 @@ func (s *Server) createACPSession(w http.ResponseWriter, req createSessionReques
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
+	}
+	if req.Worktree {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		s.PruneManagedWorktrees(ctx)
 	}
 	writeJSON(w, http.StatusOK, canonicalSessionResponse(result.Session))
 }
@@ -641,7 +650,7 @@ func (s *Server) streamSessionEvents(w http.ResponseWriter, r *http.Request, ses
 func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
 	sessionRef, action, ok := strings.Cut(rest, "/")
-	if !ok || (action != "messages:stream" && action != "attachments" && action != "archive" && action != "unarchive" && action != "pin" && action != "unpin" && action != "interactive-response" && action != "permission" && action != "cancel" && action != "queue" && action != "repo/push" && action != "repo/commit" && action != "repo/merge" && action != "repo/merge-from-main") {
+	if !ok || (action != "messages:stream" && action != "attachments" && action != "archive" && action != "unarchive" && action != "pin" && action != "unpin" && action != "interactive-response" && action != "permission" && action != "cancel" && action != "queue" && action != "repo/push" && action != "repo/commit" && action != "repo/merge" && action != "repo/merge-from-main" && action != "repo/restore-worktree") {
 		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
 		return
 	}
@@ -664,6 +673,11 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
+		}
+		if action == "archive" {
+			ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+			defer cancel()
+			s.PruneManagedWorktrees(ctx)
 		}
 		writeJSON(w, http.StatusOK, canonicalSessionResponse(session))
 		return
@@ -707,6 +721,10 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	}
 	if action == "repo/merge-from-main" {
 		s.handleSessionRepoMergeFromMain(w, r, session)
+		return
+	}
+	if action == "repo/restore-worktree" {
+		s.handleSessionRepoRestoreWorktree(w, r, session)
 		return
 	}
 	if action == "cancel" {
