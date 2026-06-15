@@ -1,5 +1,3 @@
-import type { SessionEvent } from '@/lib/api/types'
-
 const LIVE_MS = 30_000
 const STALE_MS = 120_000
 
@@ -21,30 +19,20 @@ export function latestEventTimeISO(a: string | undefined, b: string | undefined)
   return eventTime(a) >= eventTime(b) ? a : b
 }
 
-function latestEventAt(events: SessionEvent[]): string | undefined {
-  let lastEventAt: string | undefined
-  for (const event of events) {
-    lastEventAt = latestEventTimeISO(lastEventAt, event.at)
-  }
-  return lastEventAt
-}
-
 export function deriveSessionRunSignal({
   running,
   updatedAt,
-  events,
-  lastEventAt,
+  lastActivityAt,
   now,
 }: {
   running: boolean
   updatedAt: string
-  events: SessionEvent[]
-  lastEventAt?: string
+  lastActivityAt?: string
   now: number
 }): SessionRunSignal {
   if (!running) return { signal: 'idle' }
 
-  const at = eventTime(latestEventTimeISO(latestEventAt(events), lastEventAt) ?? updatedAt)
+  const at = eventTime(latestEventTimeISO(updatedAt, lastActivityAt))
   const ageMs = at ? Math.max(0, now - at) : undefined
   if (ageMs === undefined) return { signal: 'quiet' }
   if (ageMs <= LIVE_MS) return { signal: 'live', ageMs }

@@ -571,10 +571,20 @@ function SessionPage() {
     () => (data ? deriveSessionView(data, events.data) : undefined),
     [data, events.data],
   )
-  const livenessEvents = useMemo(
-    () => [...(data?.events ?? []), ...events.data],
-    [data?.events, events.data],
-  )
+  const maxPersistedEventSeq = useMemo(() => {
+    let max = 0
+    for (const event of data?.events ?? []) {
+      if ((event.seq ?? 0) > max) max = event.seq ?? 0
+    }
+    return max
+  }, [data?.events])
+  useEffect(() => {
+    if (!maxPersistedEventSeq) return
+    queryClient.setQueryData<SessionEvent[]>(keys.sessionEvents(sessionId), (prev = []) => {
+      const next = prev.filter((event) => !event.seq || event.seq > maxPersistedEventSeq)
+      return next.length === prev.length ? prev : next
+    })
+  }, [maxPersistedEventSeq, queryClient, sessionId])
 
   if (detail.isPending) {
     return (
@@ -711,8 +721,7 @@ function SessionPage() {
                             agent={session.runtime_ref?.agent}
                             running={sessionRunning}
                             updatedAt={session.updated_at}
-                            events={livenessEvents}
-                            lastEventAt={latestEventTimeISO(lastSessionEventAt, live?.at)}
+                            lastActivityAt={latestEventTimeISO(lastSessionEventAt, live?.at)}
                           />
                         ) : live ? (
                           <div className="flex flex-col gap-5">
