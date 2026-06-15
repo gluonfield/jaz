@@ -58,7 +58,7 @@
 :root {
   color-scheme: light;
 
-  --shadow-panel:
+  --shadow-raised:
     0 1px 2px rgba(18, 20, 30, 0.05),
     0 12px 30px -8px rgba(18, 20, 30, 0.12);
 }
@@ -93,7 +93,7 @@
 
   --color-border: oklch(0.325 0.009 262);
 
-  --shadow-panel: 0 18px 46px rgba(0, 0, 0, 0.18);
+  --shadow-raised: 0 18px 46px rgba(0, 0, 0, 0.18);
 
   --color-rainbow-1: oklch(0.68 0.19 25);
   --color-rainbow-2: oklch(0.8 0.14 90);
