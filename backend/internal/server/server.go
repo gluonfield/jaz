@@ -837,6 +837,13 @@ func (s *Server) publishMessagesChanged(sessionID string) {
 	s.Events.Publish(sessionevents.Event{SessionID: sessionID, Type: "assistant"})
 }
 
+func (s *Server) publishSessionChanged(sessionID string) {
+	if s.Events == nil {
+		return
+	}
+	s.Events.Publish(sessionevents.Event{SessionID: sessionID, Type: sessionevents.TypeSession})
+}
+
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if value != "" {
