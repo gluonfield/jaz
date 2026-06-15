@@ -14,6 +14,7 @@ import {
   LoaderCircle,
 } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useToast } from '@/components/ui/toast'
 import { setSessionArchived } from '@/lib/api/sessions'
@@ -191,6 +192,7 @@ function GitSection({ repo }: { repo: ReturnType<typeof useRepoActions> }) {
   const branchLabel = branch || 'detached'
   const [copied, setCopied] = useState(false)
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const reduceMotion = useReducedMotion()
 
   useEffect(() => {
     setCopied(false)
@@ -233,11 +235,24 @@ function GitSection({ repo }: { repo: ReturnType<typeof useRepoActions> }) {
         >
           <GitBranch size={13} className="shrink-0 text-ink-3" />
           <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{branchLabel}</span>
-          {copied ? (
-            <Check size={12} className="shrink-0 text-primary" />
-          ) : (
-            <Copy size={12} className="shrink-0 text-ink-3 opacity-70 transition-opacity group-hover:opacity-100" />
-          )}
+          <span className="grid size-3 shrink-0 place-items-center">
+            <AnimatePresence initial={false} mode="popLayout">
+              <motion.span
+                key={copied ? 'copied' : 'copy'}
+                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.25, filter: 'blur(4px)' }}
+                animate={reduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, filter: 'blur(0px)' }}
+                exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.25, filter: 'blur(4px)' }}
+                transition={reduceMotion ? { duration: 0.12 } : { type: 'spring', duration: 0.3, bounce: 0 }}
+                className="grid size-3 place-items-center"
+              >
+                {copied ? (
+                  <Check size={12} className="text-primary" />
+                ) : (
+                  <Copy size={12} className="text-ink-3 opacity-70 transition-opacity group-hover:opacity-100" />
+                )}
+              </motion.span>
+            </AnimatePresence>
+          </span>
         </button>
         <div className="flex h-7 items-center gap-2 px-2.5 text-[13px] text-ink-2">
           <span className={`size-[9px] shrink-0 rounded-full ${changes.color} mx-0.5`} aria-hidden />
