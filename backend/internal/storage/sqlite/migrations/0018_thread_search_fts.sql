@@ -3,13 +3,12 @@ CREATE TABLE IF NOT EXISTS message_search_docs (
   id INTEGER PRIMARY KEY,
   thread_id TEXT NOT NULL,
   seq INTEGER NOT NULL,
-  role TEXT NOT NULL,
   UNIQUE(thread_id, seq),
   FOREIGN KEY (thread_id, seq) REFERENCES messages(thread_id, seq) ON DELETE CASCADE
 );
 
 CREATE VIEW IF NOT EXISTS message_search_content AS
-SELECT d.id, d.thread_id, d.seq, d.role, m.content
+SELECT d.id, d.thread_id, d.seq, m.content
 FROM message_search_docs d
 JOIN messages m ON m.thread_id = d.thread_id AND m.seq = d.seq;
 
@@ -21,8 +20,8 @@ CREATE VIRTUAL TABLE IF NOT EXISTS message_search_fts USING fts5(
   prefix='2 3 4'
 );
 
-INSERT INTO message_search_docs(thread_id, seq, role)
-SELECT thread_id, seq, role
+INSERT INTO message_search_docs(thread_id, seq)
+SELECT thread_id, seq
 FROM messages
 WHERE role IN ('user', 'assistant')
   AND trim(content) <> '';
@@ -36,8 +35,8 @@ CREATE TRIGGER IF NOT EXISTS message_search_fts_ai
 AFTER INSERT ON messages
 WHEN new.role IN ('user', 'assistant') AND trim(new.content) <> ''
 BEGIN
-  INSERT INTO message_search_docs(thread_id, seq, role)
-  VALUES (new.thread_id, new.seq, new.role);
+  INSERT INTO message_search_docs(thread_id, seq)
+  VALUES (new.thread_id, new.seq);
 
   INSERT INTO message_search_fts(rowid, content)
   SELECT id, content
@@ -78,8 +77,8 @@ END;
 CREATE TRIGGER IF NOT EXISTS message_search_fts_au
 AFTER UPDATE ON messages
 BEGIN
-  INSERT INTO message_search_docs(thread_id, seq, role)
-  SELECT new.thread_id, new.seq, new.role
+  INSERT INTO message_search_docs(thread_id, seq)
+  SELECT new.thread_id, new.seq
   WHERE new.role IN ('user', 'assistant') AND trim(new.content) <> '';
 
   INSERT INTO message_search_fts(rowid, content)

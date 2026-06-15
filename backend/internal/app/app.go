@@ -504,6 +504,7 @@ func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, 
 	_ = store.AddUsage(job.ParentID, storage.Usage{
 		InputTokens:           result.Usage.InputTokens,
 		CachedInputTokens:     result.Usage.CachedInputTokens,
+		CachedWriteTokens:     result.Usage.CachedWriteTokens,
 		OutputTokens:          result.Usage.OutputTokens,
 		ReasoningOutputTokens: result.Usage.ReasoningOutputTokens,
 		TotalTokens:           result.Usage.TotalTokens,

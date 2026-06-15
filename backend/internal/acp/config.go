@@ -128,7 +128,7 @@ func BuiltinAgents() AgentCatalog {
 		AgentCodex: {
 			Command: "npx",
 			Args: []string{
-				"-y", "@zed-industries/codex-acp@0.16.0",
+				"-y", "@jazchat/codex-acp@0.16.0",
 				"-c", `sandbox_mode="danger-full-access"`,
 				"-c", `approval_policy="never"`,
 			},

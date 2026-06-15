@@ -15,14 +15,47 @@ func TestUsageFromRawReadsOpenRouterExtras(t *testing.T) {
 			"prompt_tokens": 128,
 			"completion_tokens": 16,
 			"total_tokens": 144,
-			"cache_read_input_tokens": 96,
+			"prompt_tokens_details": {"cached_tokens": 90, "cache_write_tokens": 6},
 			"completion_tokens_details": {"reasoning_tokens": 4}
 		}
 	}`))
 	// prompt_tokens counts cached reads inclusively; normalized to disjoint.
-	if usage.InputTokens != 32 || usage.CachedInputTokens != 96 || usage.OutputTokens != 16 ||
+	if usage.InputTokens != 32 || usage.CachedInputTokens != 90 || usage.CachedWriteTokens != 6 || usage.OutputTokens != 16 ||
 		usage.ReasoningOutputTokens != 4 || usage.TotalTokens != 144 {
 		t.Fatalf("usage = %#v", usage)
+	}
+}
+
+func TestUsageFromRawReadsGrokPromptMeta(t *testing.T) {
+	usage := usageFromRaw(json.RawMessage(`{
+		"stopReason": "end_turn",
+		"_meta": {
+			"totalTokens": 14112,
+			"modelId": "grok-composer-2.5-fast",
+			"inputTokens": 14080,
+			"outputTokens": 32,
+			"cachedReadTokens": 7628,
+			"reasoningTokens": 0
+		}
+	}`))
+	if usage.InputTokens != 6452 || usage.CachedInputTokens != 7628 ||
+		usage.OutputTokens != 32 || usage.TotalTokens != 14112 {
+		t.Fatalf("usage = %#v", usage)
+	}
+}
+
+func TestUsageFromRawIgnoresTelemetryTotalOnly(t *testing.T) {
+	usage := usageFromRaw(json.RawMessage(`{
+		"sessionUpdate": "agent_message_chunk",
+		"content": {"type": "text", "text": "ok"},
+		"_meta": {
+			"totalTokens": 78220,
+			"eventId": "event-1",
+			"updateType": "AgentMessageChunk"
+		}
+	}`))
+	if !usage.IsZero() {
+		t.Fatalf("usage = %#v, want zero", usage)
 	}
 }
 
