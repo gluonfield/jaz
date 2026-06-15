@@ -7,7 +7,7 @@ Electron desktop app for the jaz backend. React + TypeScript + TanStack Router (
 ```bash
 # 1. backend (from ../backend) — or skip this and click "Start locally"
 #    on the launch screen, which runs it for you
-go run ./cmd/jaz serve
+go run ./cmd/jaz
 
 # 2. desktop app
 bun install
@@ -30,7 +30,7 @@ JAZ_API_URL=http://127.0.0.1:18080 bun run dev
 
 ## Release
 
-GitHub Actions builds signed macOS artifacts when a GitHub Release is published in `gluonfield/jaz`, then attaches the DMG, ZIP, blockmaps, and `latest-mac.yml` to that release. Add these repository secrets:
+GitHub Actions builds standalone CLI tarballs for Linux/macOS and signed macOS desktop artifacts when a GitHub Release is published in `gluonfield/jaz`. The CLI assets are named `jaz-server_<version>_<os>_<arch>.tar.gz` for the bare `jaz` server binary and `jaz-chat_<version>_<os>_<arch>.tar.gz` for the TUI client. The desktop job attaches the DMG, ZIP, blockmaps, and `latest-mac.yml` to that release. Add these repository secrets:
 
 - `APPLE_CERTIFICATE_P12_BASE64`
 - `APPLE_CERTIFICATE_PASSWORD`

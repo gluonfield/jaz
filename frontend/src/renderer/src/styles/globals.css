@@ -30,8 +30,8 @@
   --color-accent-soft: oklch(0.94 0.035 55);
 
   /* status */
-  --color-running: oklch(0.65 0.13 75);
-  --color-ok: oklch(0.6 0.13 145);
+  --color-running: oklch(0.52 0.12 75);
+  --color-ok: oklch(0.45 0.14 145);
   --color-danger: oklch(0.55 0.19 25);
   --color-danger-soft: oklch(0.95 0.025 25);
 
