@@ -78,14 +78,15 @@ func (t *MCPTools) AddTo(server *mcp.Server) {
 	}, t.ShowWidget)
 }
 
-func (t *MCPTools) ReadMe(context.Context, *mcp.CallToolRequest, ReadMeInput) (*mcp.CallToolResult, map[string]string, error) {
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: ReadMeGuide}}}, map[string]string{"status": "ok"}, nil
+func (t *MCPTools) ReadMe(context.Context, *mcp.CallToolRequest, ReadMeInput) (*mcp.CallToolResult, any, error) {
+	return textResult(ReadMeGuide)
 }
 
-func (t *MCPTools) ShowWidget(_ context.Context, req *mcp.CallToolRequest, input ShowWidgetInput) (*mcp.CallToolResult, ShowWidgetOutput, error) {
-	output, artifact, err := BuildArtifact(input)
+// The rendered artifact reaches the UI via the event bus below, not the return.
+func (t *MCPTools) ShowWidget(_ context.Context, req *mcp.CallToolRequest, input ShowWidgetInput) (*mcp.CallToolResult, any, error) {
+	_, artifact, err := BuildArtifact(input)
 	if err != nil {
-		return nil, ShowWidgetOutput{}, err
+		return nil, nil, err
 	}
 	if sessionID := sessionIDFromRequest(req); sessionID != "" && t.Store != nil {
 		event := sessionevents.Event{
@@ -95,16 +96,26 @@ func (t *MCPTools) ShowWidget(_ context.Context, req *mcp.CallToolRequest, input
 		}
 		events := []sessionevents.Event{event}
 		if err := t.Store.AppendSessionEvents(sessionID, events...); err != nil {
-			return nil, ShowWidgetOutput{}, err
+			return nil, nil, err
 		}
 		if t.Events != nil {
 			t.Events.Publish(events[0])
 		}
 	}
-	return &mcp.CallToolResult{Content: []mcp.Content{
-		&mcp.TextContent{Text: RenderedMessage},
-		&mcp.TextContent{Text: RenderedReminder},
-	}}, output, nil
+	return textResult(RenderedMessage, RenderedReminder)
+}
+
+// textResult builds a text-only MCP result with a deliberately nil structured
+// output. Any handler whose Out type isn't `any` makes the SDK emit an
+// outputSchema + structuredContent, which some clients surface in place of
+// content — dropping the text. Returning through this helper keeps Out as `any`
+// by construction, so text-only tools can't silently reintroduce that.
+func textResult(texts ...string) (*mcp.CallToolResult, any, error) {
+	content := make([]mcp.Content, len(texts))
+	for i, text := range texts {
+		content[i] = &mcp.TextContent{Text: text}
+	}
+	return &mcp.CallToolResult{Content: content}, nil, nil
 }
 
 func BuildArtifact(input ShowWidgetInput) (ShowWidgetOutput, *sessionevents.ArtifactEvent, error) {
