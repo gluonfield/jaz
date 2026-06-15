@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { sessionRepoChangesQuery, sessionRepoFileDiffQuery, sessionRepoQuery } from '@/lib/api/sessions'
 import { fileKey, type RepoFileChange, type Session } from '@/lib/api/types'
 import { DiffView, FileCounts } from './DiffView'
+import { SidePanelShell } from './SidePanelShell'
 
 export const CODE_DIFF_PANEL_WIDTH = 640
 
@@ -36,62 +37,57 @@ export function CodeDiffPanel({
   const base = shortRef(repo.data?.main_branch || repo.data?.default_branch || data?.base || 'main')
 
   return (
-    <aside
-      style={{ width: CODE_DIFF_PANEL_WIDTH }}
-      className="flex h-full shrink-0 flex-col bg-bg p-2"
-    >
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[14px] bg-surface shadow-[0_18px_46px_rgba(0,0,0,0.18)] ring-1 ring-border">
-        <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
-          <FolderGit2 size={15} className="shrink-0 text-ink-3" aria-hidden />
-          <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
-            <span className="min-w-0 truncate font-mono text-[13px] text-ink-2">{base}</span>
-            <span className="text-[13px] text-ink-3" aria-hidden>
-              →
-            </span>
-            <span className="shrink-0 text-[13px] text-ink-2">working tree</span>
-            <span className="ml-1 hidden shrink-0 font-mono text-[11px] text-ink-3 tabular-nums sm:inline">
-              {summary}
-            </span>
-          </div>
-          <button
-            type="button"
-            aria-label="Hide side panel"
-            onClick={onClose}
-            className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-[8px] text-ink-3 transition-[background-color,color,transform] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96]"
-          >
-            <X size={15} />
-          </button>
+    <SidePanelShell width={CODE_DIFF_PANEL_WIDTH}>
+      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
+        <FolderGit2 size={15} className="shrink-0 text-ink-3" aria-hidden />
+        <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
+          <span className="min-w-0 truncate font-mono text-[13px] text-ink-2">{base}</span>
+          <span className="text-[13px] text-ink-3" aria-hidden>
+            →
+          </span>
+          <span className="shrink-0 text-[13px] text-ink-2">working tree</span>
+          <span className="ml-1 hidden shrink-0 font-mono text-[11px] text-ink-3 tabular-nums sm:inline">
+            {summary}
+          </span>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {changes.isPending ? (
-            <div className="flex items-center gap-2 px-3 py-4 text-[12px] text-ink-3">
-              <LoaderCircle size={13} className="animate-spin" aria-hidden />
-              Loading changes…
-            </div>
-          ) : null}
-          {data && data.files.length === 0 ? (
-            <div className="px-3 py-4 text-[12px] text-ink-3">No code changes to show.</div>
-          ) : null}
-          {data?.files.length
-            ? data.files.map((file) => {
-                const key = fileKey(file)
-                return (
-                  <DiffFileSection
-                    key={key}
-                    sessionId={session.id}
-                    base={data.base}
-                    file={file}
-                    expanded={Boolean(expanded[key])}
-                    onToggle={() =>
-                      setExpanded((current) => ({ ...current, [key]: !current[key] }))
-                    }
-                  />
-                )
-              })
-            : null}
-        </div>
+        <button
+          type="button"
+          aria-label="Hide side panel"
+          onClick={onClose}
+          className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-[8px] text-ink-3 transition-[background-color,color,transform] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96]"
+        >
+          <X size={15} />
+        </button>
       </div>
-    </aside>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {changes.isPending ? (
+          <div className="flex items-center gap-2 px-3 py-4 text-[12px] text-ink-3">
+            <LoaderCircle size={13} className="animate-spin" aria-hidden />
+            Loading changes…
+          </div>
+        ) : null}
+        {data && data.files.length === 0 ? (
+          <div className="px-3 py-4 text-[12px] text-ink-3">No code changes to show.</div>
+        ) : null}
+        {data?.files.length
+          ? data.files.map((file) => {
+              const key = fileKey(file)
+              return (
+                <DiffFileSection
+                  key={key}
+                  sessionId={session.id}
+                  base={data.base}
+                  file={file}
+                  expanded={Boolean(expanded[key])}
+                  onToggle={() =>
+                    setExpanded((current) => ({ ...current, [key]: !current[key] }))
+                  }
+                />
+              )
+            })
+          : null}
+      </div>
+    </SidePanelShell>
   )
 }
 

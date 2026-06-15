@@ -1,9 +1,9 @@
 import type { SessionEvent } from '@/lib/api/types'
-import { planSurfaceKey } from '@/lib/planSurface'
+import { taskSurfaceKey } from '@/lib/taskSurface'
 
 export function sessionEventCoalesceKey(event: SessionEvent): string {
-  const planKey = planSurfaceKey(event)
-  if (planKey) return planKey
+  const taskKey = taskSurfaceKey(event)
+  if (taskKey) return taskKey
   if (event.type === 'acp' && event.acp?.id) {
     if (event.acp.tool_calls?.length) return `acp_tools:${event.acp.id}`
     if (event.acp.error) return `acp_error:${event.acp.id}`

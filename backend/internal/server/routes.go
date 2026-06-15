@@ -22,7 +22,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/boards", s.handleCreateBoard)
 	mux.HandleFunc("/v1/boards/", s.handleBoardAction)
 	mux.HandleFunc("GET /v1/widgets", s.handleListWidgets)
-	mux.HandleFunc("GET /v1/widgets/assets/tailwind.js", s.handleWidgetTailwindAsset)
 	mux.HandleFunc("/v1/widgets/", s.handleWidgetAction)
 	mux.HandleFunc("GET /v1/music/chart-feed", s.handleMusicChartFeed)
 	mux.HandleFunc("/v1/onboarding", s.handleOnboarding)

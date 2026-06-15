@@ -671,8 +671,72 @@ func TestSessionMessagesIncludesPersistedACPChildren(t *testing.T) {
 	if len(childState.Plan) != 1 || childState.Plan[0].Content != "Inspect current page" {
 		t.Fatalf("plan = %#v", childState.Plan)
 	}
-	if len(childState.Permissions) != 1 || len(childState.Permissions[0].Questions) != 1 {
+	if len(childState.Permissions) != 0 {
 		t.Fatalf("permissions = %#v", childState.Permissions)
+	}
+}
+
+func TestSessionMessagesTreatsStoredACPStateAsInactive(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "codex-stale",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     "codex",
+			SessionID: "acp-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveACPState(session.ID, storage.ACPState{
+		ID:         session.ID,
+		Slug:       session.Slug,
+		ACPAgent:   "codex",
+		ACPSession: "acp-session",
+		State:      acp.StateRunning,
+		Plan:       []sessionevents.ACPPlanEntry{{Content: "Inspect current page", Status: "completed"}},
+		Permissions: []sessionevents.ACPPermission{{
+			ID:     "perm-1",
+			Status: "pending",
+			Questions: []sessionevents.ACPQuestion{{
+				ID:       "audience",
+				Question: "Who is the page for?",
+			}},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/"+session.ID+"/messages", nil)
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var got struct {
+		Session        storage.Session               `json:"session"`
+		ACPState       string                        `json:"acp_state"`
+		ACPPlan        []sessionevents.ACPPlanEntry  `json:"acp_plan"`
+		ACPPermissions []sessionevents.ACPPermission `json:"acp_permissions"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Session.Status != storage.StatusIdle || got.ACPState != acp.StateIdle {
+		t.Fatalf("status = %q, acp_state = %q", got.Session.Status, got.ACPState)
+	}
+	if len(got.ACPPlan) != 1 || got.ACPPlan[0].Content != "Inspect current page" {
+		t.Fatalf("plan = %#v", got.ACPPlan)
+	}
+	if len(got.ACPPermissions) != 0 {
+		t.Fatalf("permissions = %#v", got.ACPPermissions)
 	}
 }
 

@@ -212,6 +212,7 @@ func (s *Server) beginNativeTurn(ctx context.Context, session storage.Session, m
 		return session, storage.StatusError, false, err
 	}
 	session.Status = storage.StatusRunning
+	session.Error = ""
 	if session.Runtime == "" {
 		session.Runtime = storage.RuntimeNative
 	}
@@ -226,6 +227,7 @@ func (s *Server) beginNativeTurn(ctx context.Context, session storage.Session, m
 	if err := s.Store.SaveSession(session); err != nil {
 		return session, storage.StatusError, false, err
 	}
+	s.publishSessionChanged(session.ID)
 	return session, storage.StatusRunning, generateTitle, nil
 }
 
