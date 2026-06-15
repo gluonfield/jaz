@@ -19,6 +19,20 @@ func cachedInputTokens(usage oa.CompletionUsage) int64 {
 	return 0
 }
 
+func cachedWriteTokens(usage oa.CompletionUsage) int64 {
+	for _, fields := range []map[string]respjson.Field{
+		usage.PromptTokensDetails.JSON.ExtraFields,
+		usage.JSON.ExtraFields,
+	} {
+		for _, key := range []string{"cache_write_tokens", "cached_write_tokens", "cache_creation_input_tokens"} {
+			if value, ok := extraInt64(fields, key); ok {
+				return value
+			}
+		}
+	}
+	return 0
+}
+
 func extraInt64(extras map[string]respjson.Field, key string) (int64, bool) {
 	field, ok := extras[key]
 	if !ok {

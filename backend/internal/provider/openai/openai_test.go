@@ -123,8 +123,7 @@ func TestProviderCompleteMapsCachedUsage(t *testing.T) {
 				"prompt_tokens": 128,
 				"completion_tokens": 16,
 				"total_tokens": 144,
-				"cache_read_input_tokens": 96,
-				"prompt_tokens_details": {},
+				"prompt_tokens_details": {"cached_tokens": 90, "cache_write_tokens": 6},
 				"completion_tokens_details": {"reasoning_tokens": 4}
 			}
 		}`)
@@ -136,8 +135,8 @@ func TestProviderCompleteMapsCachedUsage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// prompt_tokens (128) counts the 96 cached tokens; stored disjoint.
-	if resp.Usage.InputTokens != 32 || resp.Usage.CachedInputTokens != 96 || resp.Usage.OutputTokens != 16 ||
+	// prompt_tokens (128) counts cached read/write tokens; stored disjoint.
+	if resp.Usage.InputTokens != 32 || resp.Usage.CachedInputTokens != 90 || resp.Usage.CachedWriteTokens != 6 || resp.Usage.OutputTokens != 16 ||
 		resp.Usage.ReasoningOutputTokens != 4 || resp.Usage.TotalTokens != 144 {
 		t.Fatalf("usage = %#v", resp.Usage)
 	}

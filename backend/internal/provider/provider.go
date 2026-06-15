@@ -39,6 +39,7 @@ type Response struct {
 type Usage struct {
 	InputTokens           int64 `json:"input_tokens,omitempty"`
 	CachedInputTokens     int64 `json:"cached_input_tokens,omitempty"`
+	CachedWriteTokens     int64 `json:"cached_write_tokens,omitempty"`
 	OutputTokens          int64 `json:"output_tokens,omitempty"`
 	ReasoningOutputTokens int64 `json:"reasoning_output_tokens,omitempty"`
 	TotalTokens           int64 `json:"total_tokens,omitempty"`

@@ -16,8 +16,9 @@ export function TokenStats({ session }: { session: Session }) {
   const output = usage?.output_tokens ?? 0
   const cached = usage?.cached_input_tokens ?? 0
   const cacheWrite = usage?.cached_write_tokens ?? 0
+  const reasoning = usage?.reasoning_output_tokens ?? 0
   const context = usage?.context_tokens ?? 0
-  if (input + output + cached + cacheWrite + context === 0) return null
+  if (input + output + cached + cacheWrite + reasoning + context === 0) return null
 
   const pct = contextWindow && context > 0 ? Math.min(100, Math.round((context / contextWindow) * 100)) : null
 
@@ -40,8 +41,9 @@ export function TokenStats({ session }: { session: Session }) {
       <div className="flex min-w-[200px] flex-col gap-1 px-2 py-1.5">
         <StatRow label="Input" value={formatTokens(input)} />
         <StatRow label="Output" value={formatTokens(output)} />
-        <StatRow label="Cached" value={formatTokens(cached)} />
+        <StatRow label="Cache read" value={formatTokens(cached)} />
         {cacheWrite > 0 ? <StatRow label="Cache write" value={formatTokens(cacheWrite)} /> : null}
+        {reasoning > 0 ? <StatRow label="Reasoning" value={formatTokens(reasoning)} /> : null}
         {context > 0 ? (
           <>
             <StatRow

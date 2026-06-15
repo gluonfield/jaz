@@ -46,7 +46,7 @@ func (m *Manager) persistUsage(job *Job) {
 // in isolation are not.
 func usageFromRaw(raw json.RawMessage) storage.Usage {
 	usage, inclusive := usageFragment(raw)
-	return normalizeDisjoint(usage, inclusive)
+	return dropTotalOnly(normalizeDisjoint(usage, inclusive))
 }
 
 // usageFragment recursively collects token fields without normalizing.
@@ -131,15 +131,28 @@ func usageFromFields(fields map[string]json.RawMessage) (storage.Usage, bool) {
 // arithmetically; without one, the key vocabulary decides.
 func normalizeDisjoint(usage storage.Usage, inclusiveVocabulary bool) storage.Usage {
 	read := usage.CachedInputTokens
-	confirmedDisjoint := usage.CachedWriteTokens > 0 ||
-		(usage.TotalTokens > 0 && usage.TotalTokens == usage.ComponentTotal())
+	write := usage.CachedWriteTokens
+	cached := read + write
+	confirmedDisjoint := usage.TotalTokens > 0 && usage.TotalTokens == usage.ComponentTotal()
 	confirmedInclusive := usage.TotalTokens > 0 && usage.TotalTokens == usage.InputTokens+usage.OutputTokens
-	if read > 0 && read <= usage.InputTokens && !confirmedDisjoint &&
+	if cached > 0 && cached <= usage.InputTokens && !confirmedDisjoint &&
 		(confirmedInclusive || (usage.TotalTokens == 0 && inclusiveVocabulary)) {
-		usage.InputTokens -= read
+		usage.InputTokens -= cached
 	}
 	if usage.TotalTokens == 0 {
 		usage.TotalTokens = usage.ComponentTotal()
+	}
+	return usage
+}
+
+func dropTotalOnly(usage storage.Usage) storage.Usage {
+	if usage.TotalTokens == 0 {
+		return usage
+	}
+	if usage.InputTokens == 0 && usage.CachedInputTokens == 0 && usage.CachedWriteTokens == 0 &&
+		usage.OutputTokens == 0 && usage.ReasoningOutputTokens == 0 &&
+		usage.ContextTokens == 0 && usage.ContextWindowTokens == 0 {
+		return storage.Usage{}
 	}
 	return usage
 }
