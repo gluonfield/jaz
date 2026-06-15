@@ -75,6 +75,25 @@ type ACPEvent struct {
 	Permissions []ACPPermission `json:"permissions,omitempty"`
 }
 
+func (e ACPEvent) MarshalJSON() ([]byte, error) {
+	type acpEvent ACPEvent
+	if e.Plan != nil {
+		return json.Marshal(struct {
+			acpEvent
+			Plan []PlanEntry `json:"plan"`
+		}{
+			acpEvent: acpEvent(e),
+			Plan:     e.Plan,
+		})
+	}
+	return json.Marshal(struct {
+		acpEvent
+		Plan []PlanEntry `json:"plan,omitempty"`
+	}{
+		acpEvent: acpEvent(e),
+	})
+}
+
 // SlimForStorage returns a copy without session-constant fields: repeating
 // the title and mode catalog on every stored row dominated transcript
 // payloads (~70-90% of bytes on tool-heavy threads); /messages serves them

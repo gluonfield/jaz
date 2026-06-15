@@ -1,6 +1,8 @@
 package sessionevents
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -124,5 +126,42 @@ func TestCompactTranscriptCoalescesSemanticUpdates(t *testing.T) {
 	}
 	if got[3].Type != "permission_request" || got[4].Type != "permission_response" {
 		t.Fatalf("permission events = %#v", got[3:])
+	}
+}
+
+func TestCompactTranscriptCoalescesACPProgressClear(t *testing.T) {
+	plan := compactACPState("thread", "running")
+	plan.Plan = []ACPPlanEntry{{Content: "first"}}
+	clear := compactACPState("thread", "running")
+	clear.Plan = []ACPPlanEntry{}
+
+	got := CompactTranscript([]Event{
+		compactACP(1, "acp", "", plan),
+		compactACP(2, "acp", "", clear),
+	})
+
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1: %#v", len(got), got)
+	}
+	if got[0].Seq != 2 || got[0].ACP == nil || got[0].ACP.Plan == nil || len(got[0].ACP.Plan) != 0 {
+		t.Fatalf("clear event = %#v", got[0])
+	}
+}
+
+func TestACPEventMarshalPreservesExplicitEmptyPlan(t *testing.T) {
+	withoutPlan, err := json.Marshal(ACPEvent{ID: "thread", Agent: "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(withoutPlan), `"plan"`) {
+		t.Fatalf("plan-less event encoded plan: %s", withoutPlan)
+	}
+
+	withEmptyPlan, err := json.Marshal(ACPEvent{ID: "thread", Agent: "codex", Plan: []ACPPlanEntry{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(withEmptyPlan), `"plan":[]`) {
+		t.Fatalf("empty plan was not preserved: %s", withEmptyPlan)
 	}
 }

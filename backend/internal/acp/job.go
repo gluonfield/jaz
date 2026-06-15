@@ -75,7 +75,7 @@ func (j *Job) Snapshot() Job {
 		StopReason:    j.StopReason,
 		Assistant:     j.Assistant,
 		Thought:       j.Thought,
-		Plan:          append([]sessionevents.PlanEntry(nil), j.Plan...),
+		Plan:          clonePlanEntries(j.Plan),
 		ToolCalls:     append([]ToolCallSnapshot(nil), j.ToolCalls...),
 		Permissions:   clonePermissions(j.Permissions),
 		Modes:         j.Modes.Clone(),
@@ -84,6 +84,13 @@ func (j *Job) Snapshot() Job {
 		CreatedAt:     j.CreatedAt,
 		UpdatedAt:     j.UpdatedAt,
 	}
+}
+
+func clonePlanEntries(in []sessionevents.PlanEntry) []sessionevents.PlanEntry {
+	if in == nil {
+		return nil
+	}
+	return append(make([]sessionevents.PlanEntry, 0, len(in)), in...)
 }
 
 func (s ModeState) Clone() ModeState {

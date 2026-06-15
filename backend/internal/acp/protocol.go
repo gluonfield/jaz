@@ -247,7 +247,7 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 		plan, ok = sessionevents.NormalizeProgressEntries(plan)
 		if !ok {
 			if len(job.Plan) > 0 {
-				job.Plan = nil
+				job.Plan = []sessionevents.PlanEntry{}
 				publishACP = true
 			}
 			break

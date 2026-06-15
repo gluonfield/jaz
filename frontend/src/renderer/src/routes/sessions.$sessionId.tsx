@@ -41,6 +41,7 @@ import { takePendingMessage, takePendingVoice } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
 import {
   approvalPlanSurfaceFromEvent,
+  hasProgressSignal,
   progressSurfaceFromEvent,
   taskSurfaceBelongsToSession,
 } from '@/lib/taskSurface'
@@ -78,6 +79,15 @@ interface LiveAttachment {
 function stripACPError(event: SessionEvent): SessionEvent {
   if (!event.acp?.error) return event
   return { ...event, acp: { ...event.acp, error: undefined } }
+}
+
+function stripProgressSignal(event: SessionEvent): SessionEvent {
+  if (event.acp) {
+    const { plan: _plan, ...acp } = event.acp
+    return { ...event, acp }
+  }
+  const { plan: _plan, ...out } = event
+  return out
 }
 
 function sessionEventErrorMessage(event: SessionEvent): string {
@@ -323,10 +333,8 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
   // notified as toasts, not rendered as rows.
   const displayEvents = settledTranscriptEvents.map((event) => {
     const withoutError = stripACPError(event)
-    const surface = progressSurfaceFromEvent(withoutError)
-    if (!surface) return withoutError
-    if (withoutError.acp) return { ...withoutError, acp: { ...withoutError.acp, plan: undefined } }
-    return { ...withoutError, plan: undefined }
+    if (!hasProgressSignal(withoutError)) return withoutError
+    return stripProgressSignal(withoutError)
   })
   return {
     transcriptEvents: settledTranscriptEvents,

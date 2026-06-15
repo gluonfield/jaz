@@ -43,9 +43,15 @@ function progressEntries(entries?: PlanEntry[]): PlanEntry[] | undefined {
 
 function progressEntryContent(content?: string): string {
   const text = content?.trim() ?? ''
-  if (!text || text.length > maxProgressEntryContentLength || /[\r\n]/.test(text)) return ''
+  if (!text || Array.from(text).length > maxProgressEntryContentLength || /[\r\n]/.test(text)) {
+    return ''
+  }
   if (looksLikeMarkdownBlock(text)) return ''
   return text
+}
+
+function hasACPPlanSignal(acp: SessionEvent['acp']): boolean {
+  return Boolean(acp && Object.prototype.hasOwnProperty.call(acp, 'plan'))
 }
 
 function looksLikeMarkdownBlock(text: string): boolean {
@@ -79,7 +85,7 @@ export function approvalPlanSurfaceFromEvent(event: SessionEvent): TaskSurface |
 export function progressSurfaceFromEvent(event: SessionEvent): TaskSurface | undefined {
   if (event.type === 'plan_update' && event.plan) {
     const entries = progressEntries(event.plan.plan)
-    if (!entries) return undefined
+    if (!entries?.length) return undefined
     return {
       kind: 'progress',
       title: 'Progress',
@@ -89,9 +95,9 @@ export function progressSurfaceFromEvent(event: SessionEvent): TaskSurface | und
     }
   }
   const acp = event.acp
-  if (acp?.plan?.length) {
+  if (acp && hasACPPlanSignal(acp)) {
     const entries = progressEntries(acp.plan)
-    if (!entries) return undefined
+    if (!entries?.length) return undefined
     return {
       kind: 'progress',
       title: 'Progress',
@@ -107,15 +113,22 @@ export function taskSurfaceFromEvent(event: SessionEvent): TaskSurface | undefin
   return approvalPlanSurfaceFromEvent(event) ?? progressSurfaceFromEvent(event)
 }
 
+export function progressSignalKey(event: SessionEvent): string {
+  if (event.type === 'plan_update' && event.plan) return `progress:${event.session_id}`
+  const acp = event.acp
+  if (acp && hasACPPlanSignal(acp) && acp.id) return `progress:${acp.id}`
+  return ''
+}
+
+export function hasProgressSignal(event: SessionEvent): boolean {
+  return Boolean(progressSignalKey(event))
+}
+
 export function taskSurfaceKey(event: SessionEvent): string {
   if (approvalPlanSurfaceFromEvent(event)) {
     return `approval_plan:${event.acp?.id ?? event.session_id}`
   }
-  if (event.type === 'plan_update' && event.plan && progressSurfaceFromEvent(event)) {
-    return `progress:${event.session_id}`
-  }
-  if (event.acp?.plan?.length && progressSurfaceFromEvent(event)) return `progress:${event.acp.id}`
-  return ''
+  return progressSignalKey(event)
 }
 
 export function taskSurfaceBelongsToSession(event: SessionEvent, sessionId: string): boolean {
