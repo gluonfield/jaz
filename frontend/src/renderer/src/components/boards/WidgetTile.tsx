@@ -13,11 +13,11 @@ import {
   fetchWidgetContent,
   reportWidgetError,
   reportWidgetLayout,
-  widgetContentPath,
   type WidgetLayoutReport,
 } from '@/lib/api/boards'
 import { runLoopNow } from '@/lib/api/loops'
 import type { BoardItem } from '@/lib/api/types'
+import { buildArtifactDocument, buildArtifactThemeCSS } from '@/lib/artifacts'
 import { hasTime, relativeTime } from '@/lib/format/time'
 
 function TileStatusDot({ item }: { item: BoardItem }) {
@@ -117,10 +117,11 @@ export function WidgetTile({
   onRemove: () => void
 }) {
   const reduce = useReducedMotion()
+  // Keyed by version + theme: a new version or theme change builds a fresh
+  // document and crossfades; zoom changes are applied live (postMessage) and
+  // deliberately stay out of the key so they never reload the tile.
   const contentKey =
-    item.current_version > 0
-      ? widgetContentPath(item.widget_id, item.current_version, theme, scale)
-      : ''
+    item.current_version > 0 ? `${item.widget_id}:${item.current_version}:${theme}` : ''
 
   // Double-buffered content: the old document stays visible until the new one
   // has loaded. Fresh versions are then wiped in by the rainbow scanline;
@@ -150,8 +151,16 @@ export function WidgetTile({
     const key = contentKey
     const controller = new AbortController()
     const fresh = pulsePendingRef.current
-    void fetchWidgetContent(item.widget_id, item.current_version, theme, scale, controller.signal)
-      .then((html) => {
+    void fetchWidgetContent(item.widget_id, item.current_version, controller.signal)
+      .then((fragment) => {
+        // Wrap the raw fragment in the shared artifact document — same design
+        // system, theme, and CSP as inline artifacts. measureLayout adds the
+        // tile telemetry bridge.
+        const html = buildArtifactDocument(
+          { title: item.title, code: fragment, loadingMessages: [] },
+          buildArtifactThemeCSS(theme === 'dark'),
+          { measureLayout: true },
+        )
         setLayers((current) => {
           const top = current[current.length - 1]
           if (top && top.key === key) return current
@@ -166,9 +175,11 @@ export function WidgetTile({
         console.error(err)
       })
     return () => controller.abort()
-  }, [contentKey, item.widget_id, item.current_version, theme, scale])
+  }, [contentKey, item.widget_id, item.current_version, item.title, theme])
 
   const onLayerLoad = (loaded: string, fresh: boolean) => {
+    // A freshly built document loads at zoom 1; push the board's scale in now.
+    framesRef.current.get(loaded)?.contentWindow?.postMessage({ type: 'jaz:scale', scale }, '*')
     setLayers((current) =>
       current.map((layer) => (layer.key === loaded ? { ...layer, ready: true } : layer)),
     )
@@ -201,16 +212,16 @@ export function WidgetTile({
         clipped?: number
         img_errors?: number
       }
-      if (msg?.type === 'jaz:link' && typeof msg.href === 'string') {
+      if (msg?.type === 'jaz:artifact-link' && typeof msg.href === 'string') {
         window.open(msg.href, '_blank')
       }
-      if (msg?.type === 'jaz:error' && typeof msg.message === 'string') {
+      if (msg?.type === 'jaz:artifact-error' && typeof msg.message === 'string') {
         const key = `${item.widget_id}@${item.current_version}`
         if (reportedRef.current === key) return
         reportedRef.current = key
         void reportWidgetError(item.widget_id, msg.message).catch(() => {})
       }
-      if (msg?.type === 'jaz:layout' && typeof msg.dead_space_pct === 'number') {
+      if (msg?.type === 'jaz:artifact-layout' && typeof msg.dead_space_pct === 'number') {
         const layout: WidgetLayoutReport = {
           dead_space_pct: msg.dead_space_pct,
           overflow_px: msg.overflow_px ?? 0,
@@ -230,11 +241,13 @@ export function WidgetTile({
     return () => window.removeEventListener('message', onMessage)
   }, [item.widget_id, item.current_version])
 
+  // Zoom is applied live to every frame — theme, by contrast, is baked into the
+  // rebuilt document (contentKey), so it needs no message here.
   useEffect(() => {
     for (const frame of framesRef.current.values()) {
-      frame.contentWindow?.postMessage({ type: 'jaz:theme', theme }, '*')
+      frame.contentWindow?.postMessage({ type: 'jaz:scale', scale }, '*')
     }
-  }, [theme])
+  }, [scale])
 
   const paused = item.loop_status === 'paused'
   const updated = hasTime(item.widget_updated_at) ? relativeTime(item.widget_updated_at) : ''

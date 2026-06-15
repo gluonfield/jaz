@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 )
 
 func TestPlanModeResultHidesAssistantProse(t *testing.T) {
@@ -17,7 +18,7 @@ func TestPlanModeResultHidesAssistantProse(t *testing.T) {
 			CurrentModeID: "plan",
 			PlanModeID:    "plan",
 		},
-		Plan: []acp.PlanEntry{{Content: "Inspect files", Status: "completed"}},
+		Plan: []sessionevents.PlanEntry{{Content: "Inspect files", Status: "completed"}},
 	})
 
 	if result["assistant"] != nil {

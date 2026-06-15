@@ -34,6 +34,7 @@ import (
 )
 
 type ACPManager interface {
+	CreateSession(context.Context, acp.SpawnRequest) (storage.Session, error)
 	Spawn(context.Context, acp.SpawnRequest) (acp.SpawnResult, error)
 	Send(context.Context, acp.SendRequest) (acp.Job, error)
 	Status(string) (acp.Job, error)
@@ -85,6 +86,7 @@ type Server struct {
 	// in-flight native turns by session id, cancellable via the cancel action
 	turnCancels      sync.Map
 	acpAuthLoginJobs sync.Map
+	worktreePruneMu  sync.Mutex
 }
 
 func (s *Server) logger() *log.Logger {
@@ -110,85 +112,6 @@ type usageStore interface {
 	AddUsage(string, storage.Usage) error
 }
 
-func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
-	var req createSessionRequest
-	if r.Body != nil {
-		_ = json.NewDecoder(r.Body).Decode(&req)
-	}
-	// An ACP runtime spawns an external agent session up front; everything else
-	// (including a missing runtime) is a native Jaz session.
-	if req.Runtime == storage.RuntimeACP && strings.TrimSpace(req.Agent) != "" {
-		s.createACPSession(w, req)
-		return
-	}
-	input, err := s.nativeSessionDefaults()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	if requested := strings.TrimSpace(req.ModelProvider); requested != "" {
-		id, err := provider.NormalizeNativeProviderID(requested)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, err)
-			return
-		}
-		// Switching providers invalidates the default model; fall back to the
-		// provider's own default until the request names one.
-		if id != input.ModelProvider {
-			meta, _ := provider.NativeProviderByID(id)
-			input.Model = strings.TrimSpace(meta.DefaultModel)
-		}
-		input.ModelProvider = id
-	}
-	if model := strings.TrimSpace(req.Model); model != "" {
-		input.Model = model
-	}
-	if effort := strings.TrimSpace(req.ReasoningEffort); effort != "" {
-		input.ReasoningEffort = effort
-	}
-	directory := strings.TrimSpace(req.Directory)
-	if req.Worktree && directory == "" {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("worktree requires a directory pointing at a git repository"))
-		return
-	}
-	ref, err := s.nativeRuntimeRef(directory)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-	input.RuntimeRef = ref
-	input.Slug = req.Slug
-	input.Title = req.Title
-	session, err := s.Store.CreateSession(input)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	// The worktree branch is named after the session slug, so it is created
-	// after the row exists — mirroring ACP spawn, which marks the session
-	// errored when directory preparation fails.
-	if req.Worktree {
-		worktree, repo, err := gitinfo.AddWorktree(r.Context(), s.Workspace, session.RuntimeRef.Cwd, session.Slug)
-		if err != nil {
-			session.Status = storage.StatusError
-			session.Error = err.Error()
-			_ = s.Store.SaveSession(session)
-			writeError(w, http.StatusBadRequest, err)
-			return
-		}
-		session.RuntimeRef.Cwd = worktree
-		session.RuntimeRef.ProjectPath = repo
-		if err := s.Store.SaveSession(session); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
-		defer cancel()
-		s.PruneManagedWorktrees(ctx)
-	}
-	writeJSON(w, http.StatusOK, canonicalSessionResponse(session))
-}
-
 func (s *Server) resolveWorkspaceDir(directory string) (string, error) {
 	if strings.TrimSpace(s.Workspace) == "" {
 		return "", fmt.Errorf("workspace is not configured")
@@ -198,44 +121,6 @@ func (s *Server) resolveWorkspaceDir(directory string) (string, error) {
 		return "", err
 	}
 	return cwd, os.MkdirAll(cwd, 0o755)
-}
-
-// createACPSession spawns the agent process and its session synchronously, so
-// the row returned to the client already carries the populated runtime_ref. The
-// spawn outlives this request (the agent process runs under a background
-// context), so it uses a bounded action context rather than the request's.
-func (s *Server) createACPSession(w http.ResponseWriter, req createSessionRequest) {
-	if s.ACP == nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("acp manager is not configured"))
-		return
-	}
-	// "" would create a fresh per-slug subdirectory; "." is the workspace root,
-	// which is the default users expect when no project is selected.
-	directory := strings.TrimSpace(req.Directory)
-	if directory == "" {
-		directory = "."
-	}
-	ctx, cancel := serverActionContext()
-	defer cancel()
-	result, err := s.ACP.Spawn(ctx, acp.SpawnRequest{
-		ACPAgent:        strings.TrimSpace(req.Agent),
-		Slug:            req.Slug,
-		Title:           req.Title,
-		Directory:       directory,
-		Worktree:        req.Worktree,
-		Model:           strings.TrimSpace(req.Model),
-		ReasoningEffort: strings.TrimSpace(req.ReasoningEffort),
-	})
-	if err != nil {
-		writeError(w, http.StatusBadGateway, err)
-		return
-	}
-	if req.Worktree {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		defer cancel()
-		s.PruneManagedWorktrees(ctx)
-	}
-	writeJSON(w, http.StatusOK, canonicalSessionResponse(result.Session))
 }
 
 func (s *Server) handleListACPAgents(w http.ResponseWriter, r *http.Request) {
@@ -423,6 +308,14 @@ func (s *Server) writeSessionMessages(w http.ResponseWriter, session storage.Ses
 	}
 	transcriptEvents = sessionevents.CompactTranscript(transcriptEvents)
 	children := s.acpChildSnapshots(session.ID)
+	var acpSnapshot storage.ACPState
+	var hasACPSnapshot bool
+	if session.Runtime == storage.RuntimeACP {
+		acpSnapshot, hasACPSnapshot = s.acpSnapshot(session)
+		if status := storage.SessionStatusForACPState(acpSnapshot.State); session.Status == storage.StatusRunning && status != "" {
+			session.Status = status
+		}
+	}
 	resp := map[string]any{
 		"session":  canonicalSessionResponse(session),
 		"messages": messages,
@@ -432,10 +325,8 @@ func (s *Server) writeSessionMessages(w http.ResponseWriter, session storage.Ses
 	if meta := s.acpMeta(transcriptEvents, session, children); len(meta) > 0 {
 		resp["acp_meta"] = meta
 	}
-	if session.Runtime == storage.RuntimeACP {
-		if state, ok := s.acpSnapshot(session); ok {
-			applyACPStateResponse(resp, state)
-		}
+	if hasACPSnapshot {
+		applyACPStateResponse(resp, acpSnapshot)
 	}
 	if len(children) > 0 {
 		resp["acp_children"] = children
@@ -482,20 +373,20 @@ func (s *Server) acpMeta(events []sessionevents.Event, session storage.Session, 
 
 func (s *Server) acpSnapshot(session storage.Session) (storage.ACPState, bool) {
 	if s.ACP != nil {
-		if job, err := s.ACP.Status(session.ID); err == nil && job.State != "not_running" {
+		if job, err := s.ACP.Status(session.ID); err == nil && job.State != acp.StateNotRunning {
 			return canonicalACPStateResponse(acpJobState(job)), true
 		}
 	}
 	if state, err := s.Store.LoadACPState(session.ID); err == nil {
-		return canonicalACPStateResponse(state), true
+		return canonicalACPStateResponse(inactiveACPStateResponse(state)), true
 	}
 	if s.ACP != nil {
 		if job, err := s.ACP.Status(session.ID); err == nil {
-			return canonicalACPStateResponse(acpJobState(job)), true
+			return canonicalACPStateResponse(inactiveACPStateResponse(acpJobState(job))), true
 		}
 	}
 	if session.Runtime == storage.RuntimeACP {
-		return canonicalACPStateResponse(acpStateFromSession(session)), true
+		return canonicalACPStateResponse(inactiveACPStateResponse(acpStateFromSession(session))), true
 	}
 	return storage.ACPState{}, false
 }
@@ -550,6 +441,14 @@ func canonicalACPStateResponse(state storage.ACPState) storage.ACPState {
 	if canonical := acp.CanonicalAgentName(state.ACPAgent); canonical != "" {
 		state.ACPAgent = canonical
 	}
+	return state
+}
+
+func inactiveACPStateResponse(state storage.ACPState) storage.ACPState {
+	if state.State == acp.StateStarting || state.State == acp.StateRunning || state.State == acp.StateNotRunning {
+		state.State = acp.StateIdle
+	}
+	state.Permissions = nil
 	return state
 }
 
@@ -617,13 +516,14 @@ func acpStateFromSession(session storage.Session) storage.ACPState {
 		Slug:      session.Slug,
 		Title:     session.Title,
 		ParentID:  session.ParentID,
-		State:     "not_running",
+		State:     acp.StateNotRunning,
 		CreatedAt: session.CreatedAt,
 		UpdatedAt: session.UpdatedAt,
 	}
 	if session.RuntimeRef != nil {
 		state.ACPAgent = session.RuntimeRef.Agent
 		state.ACPSession = session.RuntimeRef.SessionID
+		state.Cwd = session.RuntimeRef.Cwd
 	}
 	return state
 }
@@ -678,9 +578,11 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if action == "archive" {
-			ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
-			defer cancel()
-			s.PruneManagedWorktrees(ctx)
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+				defer cancel()
+				s.PruneManagedWorktrees(ctx)
+			}()
 		}
 		writeJSON(w, http.StatusOK, canonicalSessionResponse(session))
 		return
@@ -825,6 +727,13 @@ func (s *Server) publishMessagesChanged(sessionID string) {
 	s.Events.Publish(sessionevents.Event{SessionID: sessionID, Type: "assistant"})
 }
 
+func (s *Server) publishSessionChanged(sessionID string) {
+	if s.Events == nil {
+		return
+	}
+	s.Events.Publish(sessionevents.Event{SessionID: sessionID, Type: sessionevents.TypeSession})
+}
+
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if value != "" {
@@ -935,21 +844,6 @@ type interactiveResponseRequest struct {
 	Answers       map[string]acp.InteractiveAnswerValue `json:"answers,omitempty"`
 	PlanRequested bool                                  `json:"plan_requested,omitempty"`
 	ParentVisible bool                                  `json:"parent_visible,omitempty"`
-}
-
-type createSessionRequest struct {
-	Slug      string `json:"slug,omitempty"`
-	Title     string `json:"title,omitempty"`
-	Runtime   string `json:"runtime,omitempty"`
-	Agent     string `json:"agent,omitempty"`
-	Directory string `json:"directory,omitempty"`
-	Worktree  bool   `json:"worktree,omitempty"`
-	// ModelProvider/Model/ReasoningEffort override the defaults from
-	// Settings > Agents for this session. ModelProvider only applies to native
-	// sessions; for ACP sessions the provider is implied by the agent.
-	ModelProvider   string `json:"model_provider,omitempty"`
-	Model           string `json:"model,omitempty"`
-	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

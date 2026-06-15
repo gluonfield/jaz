@@ -7,6 +7,7 @@ import type { SessionEvent } from './types'
 // as a catch-all for unnamed frames.
 const KNOWN_EVENT_TYPES = [
   'assistant',
+  'session',
   'user',
   'tool',
   'tool_result',

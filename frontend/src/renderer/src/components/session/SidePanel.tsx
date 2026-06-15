@@ -1,5 +1,5 @@
 import type { Session } from '@/lib/api/types'
-import type { PlanSurface } from '@/lib/planSurface'
+import type { TaskSurface } from '@/lib/taskSurface'
 import type { FileReference } from '../../../../shared/fileReader'
 import { CODE_DIFF_PANEL_WIDTH, CodeDiffPanel } from './CodeDiffPanel'
 import { FILE_READER_PANEL_WIDTH, FileReaderPanel } from './FileReaderPanel'
@@ -19,7 +19,7 @@ export const SIDE_PANEL_WIDTHS: Record<SidePanelView, number> = {
 
 export function SidePanel({
   session,
-  plan,
+  progress,
   working,
   visible,
   view,
@@ -30,7 +30,7 @@ export function SidePanel({
   onClose,
 }: {
   session: Session
-  plan?: PlanSurface
+  progress?: TaskSurface
   working: boolean
   visible: boolean
   view: SidePanelView
@@ -58,6 +58,6 @@ export function SidePanel({
         />
       )
     default:
-      return <OverviewPanel session={session} plan={plan} working={working} />
+      return <OverviewPanel session={session} progress={progress} working={working} />
   }
 }

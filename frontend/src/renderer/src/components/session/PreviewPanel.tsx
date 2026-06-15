@@ -10,6 +10,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { IconButton } from '@/components/ui/IconButton'
 import { normalizePreviewURL } from '../../../../shared/preview'
+import { SidePanelShell } from './SidePanelShell'
 import type { PreviewNavigationEvent, PreviewWebviewElement } from './previewWebview'
 
 export const PREVIEW_PANEL_WIDTH = 640
@@ -136,93 +137,88 @@ export function PreviewPanel({
   }
 
   return (
-    <aside
-      style={{ width: PREVIEW_PANEL_WIDTH }}
-      className="flex h-full shrink-0 flex-col bg-bg p-2"
-    >
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[14px] bg-surface shadow-[0_18px_46px_rgba(0,0,0,0.18)] ring-1 ring-border">
-        <form
-          onSubmit={(event) => {
-            event.preventDefault()
-            openDraft()
-          }}
-          className="flex h-11 shrink-0 items-center gap-1.5 border-b border-border px-2.5"
+    <SidePanelShell width={PREVIEW_PANEL_WIDTH}>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault()
+          openDraft()
+        }}
+        className="flex h-11 shrink-0 items-center gap-1.5 border-b border-border px-2.5"
+      >
+        <IconButton
+          size="sm"
+          aria-label="Back"
+          title="Back"
+          disabled={!webviewReady || !canGoBack}
+          onClick={() => runWhenReady((view) => view.goBack())}
         >
-          <IconButton
-            size="sm"
-            aria-label="Back"
-            title="Back"
-            disabled={!webviewReady || !canGoBack}
-            onClick={() => runWhenReady((view) => view.goBack())}
-          >
-            <ArrowLeft size={14} />
-          </IconButton>
-          <IconButton
-            size="sm"
-            aria-label="Forward"
-            title="Forward"
-            disabled={!webviewReady || !canGoForward}
-            onClick={() => runWhenReady((view) => view.goForward())}
-          >
-            <ArrowRight size={14} />
-          </IconButton>
-          <IconButton
-            size="sm"
-            aria-label="Reload preview"
-            title="Reload"
-            disabled={!url || !webviewReady}
-            onClick={() => runWhenReady((view) => view.reload())}
-          >
-            {loading ? <LoaderCircle size={14} className="animate-spin" /> : <RotateCw size={14} />}
-          </IconButton>
-          <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-[8px] bg-bg/60 px-2.5 py-1.5 ring-1 ring-border/70">
-            <Globe size={13} className="shrink-0 text-ink-3" aria-hidden />
-            <input
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder="https://localhost:3000"
-              spellCheck={false}
-              className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-ink outline-none placeholder:text-ink-3"
-            />
-          </div>
-          <IconButton
-            size="sm"
-            aria-label="Open preview externally"
-            title="Open externally"
-            disabled={!url}
-            onClick={() => window.open(url, '_blank', 'noopener')}
-          >
-            <ExternalLink size={14} />
-          </IconButton>
-          <button
-            type="button"
-            aria-label="Hide side panel"
-            onClick={onClose}
-            className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-[8px] text-ink-3 transition-[background-color,color,transform] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96]"
-          >
-            <X size={15} />
-          </button>
-        </form>
-        {error ? (
-          <p className="shrink-0 border-b border-border px-3 py-2 text-[12px] text-danger">{error}</p>
-        ) : null}
-        <div className="min-h-0 flex-1 bg-bg">
-          {url ? (
-            <webview
-              ref={bindWebview}
-              src={url}
-              partition="persist:jaz-preview"
-              allowpopups
-              className="h-full w-full bg-bg"
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center px-8 text-center text-[13px] text-ink-3">
-              No preview selected.
-            </div>
-          )}
+          <ArrowLeft size={14} />
+        </IconButton>
+        <IconButton
+          size="sm"
+          aria-label="Forward"
+          title="Forward"
+          disabled={!webviewReady || !canGoForward}
+          onClick={() => runWhenReady((view) => view.goForward())}
+        >
+          <ArrowRight size={14} />
+        </IconButton>
+        <IconButton
+          size="sm"
+          aria-label="Reload preview"
+          title="Reload"
+          disabled={!url || !webviewReady}
+          onClick={() => runWhenReady((view) => view.reload())}
+        >
+          {loading ? <LoaderCircle size={14} className="animate-spin" /> : <RotateCw size={14} />}
+        </IconButton>
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-[8px] bg-bg/60 px-2.5 py-1.5 ring-1 ring-border/70">
+          <Globe size={13} className="shrink-0 text-ink-3" aria-hidden />
+          <input
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder="https://localhost:3000"
+            spellCheck={false}
+            className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-ink outline-none placeholder:text-ink-3"
+          />
         </div>
+        <IconButton
+          size="sm"
+          aria-label="Open preview externally"
+          title="Open externally"
+          disabled={!url}
+          onClick={() => window.open(url, '_blank', 'noopener')}
+        >
+          <ExternalLink size={14} />
+        </IconButton>
+        <button
+          type="button"
+          aria-label="Hide side panel"
+          onClick={onClose}
+          className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-[8px] text-ink-3 transition-[background-color,color,transform] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96]"
+        >
+          <X size={15} />
+        </button>
+      </form>
+      {error ? (
+        <p className="shrink-0 border-b border-border px-3 py-2 text-[12px] text-danger">{error}</p>
+      ) : null}
+      <div className="min-h-0 flex-1 bg-bg">
+        {url ? (
+          <webview
+            ref={bindWebview}
+            src={url}
+            partition="persist:jaz-preview"
+            allowpopups
+            className="h-full w-full bg-bg"
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center px-8 text-center text-[13px] text-ink-3">
+            No preview selected.
+          </div>
+        )}
       </div>
-    </aside>
+    </SidePanelShell>
   )
 }
 
