@@ -13,10 +13,6 @@ func main() {
 	case mainHelp:
 		usage(os.Stdout)
 		return
-	case mainChat:
-		fmt.Fprintln(os.Stderr, "jaz chat moved to jaz-chat")
-		usage(os.Stderr)
-		os.Exit(2)
 	case mainInvalid:
 		usage(os.Stderr)
 		os.Exit(2)
@@ -32,7 +28,6 @@ type mainAction int
 const (
 	mainRun mainAction = iota
 	mainHelp
-	mainChat
 	mainInvalid
 )
 
@@ -48,8 +43,6 @@ func serverArgs(args []string) ([]string, mainAction) {
 		return args[1:], mainRun
 	case "help":
 		return nil, mainHelp
-	case "chat":
-		return nil, mainChat
 	}
 	if isHelp(args[0]) {
 		return nil, mainHelp
@@ -65,5 +58,5 @@ func isHelp(arg string) bool {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprintln(w, "usage: jaz [--addr addr] [--public-url url]\n       jaz serve [flags]\n       jaz server [flags]\n\nRun the Jaz server. Use jaz-chat for the TUI client.")
+	fmt.Fprintln(w, "usage: jaz [--addr addr] [--public-url url]\n       jaz serve [flags]\n       jaz server [flags]\n\nRun the Jaz backend server.")
 }

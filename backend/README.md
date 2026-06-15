@@ -6,13 +6,7 @@ Native Go agent backend with a provider-neutral loop, native model providers, Co
 
 ```sh
 go run ./cmd/jaz
-go run ./cmd/jaz-chat
 ```
-
-Release assets include standalone CLI archives:
-
-- `jaz-server_<version>_<os>_<arch>.tar.gz` contains `jaz`, the server.
-- `jaz-chat_<version>_<os>_<arch>.tar.gz` contains `jaz-chat`, the TUI client.
 
 Run the server binary directly on the server:
 
