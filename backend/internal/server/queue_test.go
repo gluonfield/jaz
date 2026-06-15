@@ -94,7 +94,7 @@ func TestSessionQueueActionMutatesStoredQueue(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"edit","index":1,"expected":"second","text":"changed"}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"edit","index":1,"expected":"second","message":{"text":"changed"}}`))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 
@@ -142,7 +142,7 @@ func TestSessionQueueActionAppendsAttachmentIDs(t *testing.T) {
 	handler := srv.Handler()
 	attachment := uploadTestAttachment(t, handler, session.ID, "image.png", "image-bytes")
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"append","text":"inspect this","attachment_ids":["`+attachment.ID+`"]}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"append","message":{"text":"inspect this","attachment_ids":["`+attachment.ID+`"]}}`))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 	handler.ServeHTTP(res, req)
@@ -178,7 +178,7 @@ func TestSessionQueueAttentionFollowsUserSendNotQueueEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"edit","index":0,"expected":"first","text":"changed"}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"edit","index":0,"expected":"first","message":{"text":"changed"}}`))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 	(&Server{Store: store}).Handler().ServeHTTP(res, req)
@@ -193,7 +193,7 @@ func TestSessionQueueAttentionFollowsUserSendNotQueueEdits(t *testing.T) {
 		t.Fatalf("edit changed attention: %s -> %s", oldAttention, loaded.LastAttentionAt)
 	}
 
-	req = httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"append","text":"new prompt"}`))
+	req = httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"append","message":{"text":"new prompt"}}`))
 	req.Header.Set("Content-Type", "application/json")
 	res = httptest.NewRecorder()
 	(&Server{Store: store}).Handler().ServeHTTP(res, req)

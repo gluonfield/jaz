@@ -252,9 +252,9 @@ export function cancelSession(id: string): Promise<{ ok: boolean }> {
 }
 
 export type QueueMutation =
-  | { op: 'append'; text: string; attachment_ids?: string[] }
+  | { op: 'append'; message: QueuedMessage }
   | { op: 'delete'; index: number; expected?: string }
-  | { op: 'edit'; index: number; text: string; expected?: string }
+  | { op: 'edit'; index: number; message: { text: string }; expected?: string }
   | { op: 'move'; from: number; to: number; expected?: string }
   | { op: 'steer'; index: number; expected?: string }
   | { op: 'replace'; messages: QueuedMessage[] }
