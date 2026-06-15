@@ -42,6 +42,11 @@ import {
 import { ToolCallCard } from './ToolCallCard'
 import { isArtifactToolName, isHiddenToolName } from './toolVisibility'
 
+const INITIAL_VISIBLE_TURNS = 14
+const VISIBLE_TURN_BATCH = 24
+const INITIAL_VISIBLE_ITEMS = 90
+const VISIBLE_ITEM_BATCH = 120
+
 function messageText(message: ChatMessage): string {
   // Each text block is a separate utterance; join as paragraphs so block
   // boundaries don't fuse sentences together ("…intact.Updated…").
@@ -544,6 +549,32 @@ function WorkSection({
   )
 }
 
+function EarlierHistoryButton({
+  hiddenCount,
+  unit,
+  onClick,
+}: {
+  hiddenCount: number
+  unit: string
+  onClick: () => void
+}) {
+  if (hiddenCount <= 0) return null
+  return (
+    <div className="flex justify-center">
+      <Button
+        variant="ghost"
+        size="sm"
+        className="border border-border bg-bg/90"
+        title={`${hiddenCount} earlier ${unit}`}
+        onClick={onClick}
+      >
+        <ChevronDown size={13} className="rotate-180" aria-hidden />
+        Earlier history
+      </Button>
+    </div>
+  )
+}
+
 export const Transcript = memo(function Transcript({
   messages,
   events,
@@ -577,6 +608,23 @@ export const Transcript = memo(function Transcript({
     () => buildTimeline(messages, events, sessionId, groupTurns),
     [messages, events, sessionId, groupTurns],
   )
+  const [visibleHistoryCount, setVisibleHistoryCount] = useState(
+    groupTurns ? INITIAL_VISIBLE_TURNS : INITIAL_VISIBLE_ITEMS,
+  )
+  const historyCount = groupTurns ? turns.length : chronological.length
+  const baselineVisibleHistory = groupTurns ? INITIAL_VISIBLE_TURNS : INITIAL_VISIBLE_ITEMS
+  const historyBatchSize = groupTurns ? VISIBLE_TURN_BATCH : VISIBLE_ITEM_BATCH
+
+  useEffect(() => {
+    setVisibleHistoryCount((count) =>
+      Math.min(historyCount, Math.max(count, baselineVisibleHistory)),
+    )
+  }, [baselineVisibleHistory, historyCount])
+
+  const historyStart = findActive ? 0 : Math.max(0, historyCount - visibleHistoryCount)
+  const hiddenHistoryCount = historyStart
+  const visibleChronological = chronological.slice(historyStart)
+  const visibleTurns = turns.slice(historyStart)
 
   const renderItem = (item: TimelineItem): ReactNode => {
     switch (item.kind) {
@@ -627,7 +675,14 @@ export const Transcript = memo(function Transcript({
   if (!groupTurns) {
     return (
       <div className="flex flex-col gap-5">
-        {chronological.map((item) => renderItem(item))}
+        <EarlierHistoryButton
+          hiddenCount={hiddenHistoryCount}
+          unit="history items"
+          onClick={() =>
+            setVisibleHistoryCount((count) => Math.min(historyCount, count + historyBatchSize))
+          }
+        />
+        {visibleChronological.map((item) => renderItem(item))}
         {tail}
         {anchored.map((item) => renderItem(item))}
       </div>
@@ -636,7 +691,15 @@ export const Transcript = memo(function Transcript({
 
   return (
     <div className="flex flex-col gap-5">
-      {turns.map((turn, turnIndex) => {
+      <EarlierHistoryButton
+        hiddenCount={hiddenHistoryCount}
+        unit="turns"
+        onClick={() =>
+          setVisibleHistoryCount((count) => Math.min(historyCount, count + historyBatchSize))
+        }
+      />
+      {visibleTurns.map((turn, visibleTurnIndex) => {
+        const turnIndex = historyStart + visibleTurnIndex
         const active = working && turnIndex === turns.length - 1
         const lastContentIndex = turn.items.findLastIndex(
           (item) => item.kind === 'event' && Boolean(item.event.content?.trim()),
