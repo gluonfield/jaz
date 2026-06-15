@@ -547,6 +547,7 @@ export const Transcript = memo(function Transcript({
   groupTurns = false,
   working = false,
   findActive = false,
+  highlightedSeq,
   tail,
   onApprovePlan,
   onArtifactPrompt,
@@ -557,6 +558,7 @@ export const Transcript = memo(function Transcript({
   groupTurns?: boolean
   working?: boolean
   findActive?: boolean
+  highlightedSeq?: number
   // in-flight live exchange, rendered between history and anchored live state
   tail?: ReactNode
   onApprovePlan?: () => void
@@ -578,11 +580,20 @@ export const Transcript = memo(function Transcript({
     switch (item.kind) {
       case 'message':
         return (
-          <Bubble
+          <div
             key={`message-${item.message.seq}`}
-            message={item.message}
-            onArtifactPrompt={onArtifactPrompt}
-          />
+            data-message-seq={item.message.seq}
+            className={`scroll-mt-24 rounded-card transition-[outline-color,box-shadow] duration-200 ${
+              highlightedSeq === item.message.seq
+                ? 'outline-2 outline-offset-4 outline-primary/50 shadow-[0_0_0_8px_color-mix(in_oklab,var(--color-primary)_10%,transparent)]'
+                : 'outline-2 outline-offset-4 outline-transparent'
+            }`}
+          >
+            <Bubble
+              message={item.message}
+              onArtifactPrompt={onArtifactPrompt}
+            />
+          </div>
         )
       case 'tools':
         return (

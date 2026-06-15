@@ -45,6 +45,22 @@ export interface Session {
   last_attention_at: string
 }
 
+export interface ThreadSearchResult {
+  thread_id: string
+  thread_slug: string
+  thread_title?: string
+  thread_status?: 'idle' | 'running' | 'error'
+  thread_runtime?: 'native' | 'acp'
+  parent_id?: string
+  archived?: boolean
+  message_seq?: number
+  role?: 'user' | 'assistant'
+  snippet?: string
+  hit_count?: number
+  updated_at: string
+  last_attention_at: string
+}
+
 export interface QueuedMessage {
   text: string
   attachment_ids?: string[]

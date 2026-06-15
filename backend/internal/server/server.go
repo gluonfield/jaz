@@ -28,6 +28,7 @@ import (
 	"github.com/wins/jaz/backend/internal/skills"
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/terminal"
+	"github.com/wins/jaz/backend/internal/threads"
 	"github.com/wins/jaz/backend/internal/voice"
 	"github.com/wins/jaz/backend/internal/widgets"
 )
@@ -57,6 +58,7 @@ type Server struct {
 	Locks           *sessionlock.Locks
 	Events          *sessionevents.Bus
 	Loops           *loops.Service
+	Threads         *threads.Service
 	Widgets         *widgets.Service
 	STT             voice.STT
 	TTS             voice.TTS

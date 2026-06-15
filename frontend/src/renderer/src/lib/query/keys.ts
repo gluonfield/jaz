@@ -3,6 +3,8 @@ export const keys = {
   sidebarSessions: ['sessions', 'sidebar'] as const,
   allSessions: ['sessions', 'all'] as const,
   archivedSessions: ['sessions', 'archived'] as const,
+  threadSearch: (query: string, roles: string, includeArchived = false) =>
+    ['search', 'threads', query, roles, includeArchived] as const,
   sessionMessages: (id: string) => ['sessions', id, 'messages'] as const,
   sessionRepo: (id: string) => ['sessions', id, 'repo'] as const,
   // Children of sessionRepo so one prefix invalidation refreshes repo state,

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { modalDialogOpen } from '@/lib/dom/modal'
 
 const FIND_HIGHLIGHT = 'jaz-thread-find'
 const ACTIVE_HIGHLIGHT = 'jaz-thread-find-active'
@@ -112,10 +113,6 @@ function scrollRangeIntoView(range: Range, scrollRoot: HTMLElement): void {
   parent?.scrollIntoView({ block: 'center', inline: 'nearest' })
 }
 
-function modalOpen(): boolean {
-  return Boolean(document.querySelector('[role="dialog"][aria-modal="true"]'))
-}
-
 export function useThreadFind(contentKey: string, scrollRef: RefObject<HTMLElement | null>) {
   const rootRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -180,7 +177,7 @@ export function useThreadFind(contentKey: string, scrollRef: RefObject<HTMLEleme
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (modalOpen()) return
+      if (modalDialogOpen()) return
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
         event.preventDefault()
         event.stopPropagation()
