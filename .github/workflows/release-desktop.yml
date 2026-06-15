@@ -9,6 +9,74 @@ permissions:
   contents: write
 
 jobs:
+  cli:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - uses: actions/checkout@v4
+        with:
+          repository: gluonfield/jazmem
+          path: _deps/jazmem
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: backend/go.sum
+
+      - name: Point backend at jazmem checkout
+        working-directory: backend
+        run: go mod edit -replace=github.com/gluonfield/jazmem="$GITHUB_WORKSPACE/_deps/jazmem"
+
+      - name: Build CLI archives
+        working-directory: backend
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+
+          build() {
+            name="$1"
+            cmd="$2"
+            bin="$3"
+            goos="$4"
+            goarch="$5"
+            dir="${name}_${RELEASE_TAG}_${goos}_${goarch}"
+            rm -rf "dist/$dir"
+            mkdir -p "dist/$dir"
+            GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "dist/$dir/$bin" "./cmd/$cmd"
+            tar -C dist -czf "dist/$dir.tar.gz" "$dir"
+            rm -rf "dist/$dir"
+          }
+
+          build_all() {
+            name="$1"
+            cmd="$2"
+            bin="$3"
+            build "$name" "$cmd" "$bin" linux amd64
+            build "$name" "$cmd" "$bin" linux arm64
+            build "$name" "$cmd" "$bin" darwin amd64
+            build "$name" "$cmd" "$bin" darwin arm64
+          }
+
+          build_all jaz-server jaz jaz
+          build_all jaz-chat jaz-chat jaz-chat
+          (cd dist && sha256sum *.tar.gz > SHA256SUMS)
+
+      - name: Attach CLI assets
+        working-directory: backend
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          gh release upload "$RELEASE_TAG" \
+            dist/jaz-*.tar.gz \
+            dist/SHA256SUMS \
+            --clobber
+
   macos:
     runs-on: macos-latest
     steps:

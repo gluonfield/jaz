@@ -4,7 +4,6 @@ import {
   ChevronDown,
   ChevronRight,
   Circle,
-  CircleCheck,
   FileText,
   LoaderCircle,
 } from 'lucide-react'
@@ -280,8 +279,6 @@ function ToolSummary({ calls, active = false }: { calls?: ACPToolCall[]; active?
 
 export function PlanStepIcon({ state, active }: { state: PlanStepState; active: boolean }) {
   switch (state) {
-    case 'completed':
-      return <CircleCheck size={14} className="text-ok" aria-hidden />
     case 'active':
       return (
         <LoaderCircle
@@ -331,9 +328,9 @@ const PlanChecklist = memo(function PlanChecklist({
   const completedCount = stepStates.filter((state) => state === 'completed').length
 
   return (
-    <div className="rounded-card border border-border bg-surface/60 px-3 py-2.5">
+    <div className="rounded-card border border-border bg-surface px-3 py-2.5">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="text-[11px] font-medium tracking-wide text-ink-3 uppercase">
+        <p className="text-[11px] font-medium tracking-wide text-ink-2 uppercase">
           {title}
           {showSteps ? (
             <span className="ml-2 font-mono normal-case tracking-normal">
