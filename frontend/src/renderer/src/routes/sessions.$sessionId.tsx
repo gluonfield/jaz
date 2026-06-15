@@ -46,8 +46,13 @@ import { activePermissionIDs, isPermissionAwaitingResponse, resolveInactivePermi
 import { latestEventTimeISO } from '@/lib/sessionLiveness'
 
 export const Route = createFileRoute('/sessions/$sessionId')({
-  component: SessionPage,
+  component: SessionRoute,
 })
+
+function SessionRoute() {
+  const { sessionId } = Route.useParams()
+  return <SessionPage key={sessionId} sessionId={sessionId} />
+}
 
 // One in-flight user → assistant exchange, rendered after the transcript
 // while it streams; replaced by the refetched server history on completion.
@@ -341,8 +346,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
 const SESSION_DRAFT_KEY_PREFIX = 'jaz.sessionDraft.'
 const TRANSCRIPT_DOCK_GAP_PX = 20
 
-function SessionPage() {
-  const { sessionId } = Route.useParams()
+function SessionPage({ sessionId }: { sessionId: string }) {
   const queryClient = useQueryClient()
   const toast = useToast()
   const detail = useQuery(sessionMessagesQuery(sessionId))
