@@ -41,6 +41,7 @@ import (
 	exectool "github.com/wins/jaz/backend/internal/tools/exec"
 	plantool "github.com/wins/jaz/backend/internal/tools/plan"
 	viewimagetool "github.com/wins/jaz/backend/internal/tools/viewimage"
+	visualizetool "github.com/wins/jaz/backend/internal/tools/visualize"
 	widgettool "github.com/wins/jaz/backend/internal/tools/widget"
 	"github.com/wins/jaz/backend/internal/voice"
 	mistralvoice "github.com/wins/jaz/backend/internal/voice/mistral"
@@ -188,6 +189,8 @@ func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspac
 			ExtraRoots: []string{loops.AutomationsDir(store.RootDir())},
 			PathScope:  applypatch.AbsolutePaths,
 		},
+		&visualizetool.ReadMeTool{},
+		&visualizetool.ShowWidgetTool{},
 		&viewimagetool.Tool{Workspace: string(workspace)},
 		&widgettool.Tool{Publisher: widgetPublisher},
 		&agentspawn.Tool{Manager: manager},

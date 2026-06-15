@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/log"
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
+	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -334,7 +335,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	if err != nil {
 		return fail(err)
 	}
-	acpSession, err := m.newACPSession(ctx, ac, req.ACPAgent, cfg, absCwd)
+	acpSession, err := m.newACPSession(mcpsession.With(ctx, session.ID), ac, req.ACPAgent, cfg, absCwd)
 	if err != nil {
 		ac.close()
 		return fail(err)
@@ -502,7 +503,8 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 		if err != nil {
 			return "", ModeState{}, err
 		}
-		raw, err := ac.peer.Call(ctx, acpschema.AgentMethodSessionLoad, struct {
+		mcpCtx := mcpsession.With(ctx, session.ID)
+		raw, err := ac.peer.Call(mcpCtx, acpschema.AgentMethodSessionLoad, struct {
 			Meta       map[string]any      `json:"_meta,omitempty"`
 			Cwd        string              `json:"cwd"`
 			MCPServers []json.RawMessage   `json:"mcpServers"`
@@ -510,7 +512,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 		}{
 			Meta:       meta,
 			Cwd:        cwd,
-			MCPServers: m.mcpServersForAgent(ctx, ac.initRaw),
+			MCPServers: m.mcpServersForAgent(mcpCtx, ac.initRaw),
 			SessionID:  acpschema.SessionID(storedID),
 		})
 		if err == nil {
@@ -526,7 +528,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 		}
 		// The agent lost this session — fall through to a fresh one.
 	}
-	acpSession, err := m.newACPSession(ctx, ac, agentName, cfg, cwd)
+	acpSession, err := m.newACPSession(mcpsession.With(ctx, session.ID), ac, agentName, cfg, cwd)
 	if err != nil {
 		return "", ModeState{}, err
 	}

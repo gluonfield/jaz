@@ -162,6 +162,7 @@ export function isCollapsibleWork(
   if (item.kind === 'tools') return true
   if (item.kind !== 'event') return false
   const event = item.event
+  if (event.type === 'artifact') return false
   if (event.type === 'acp_thought') return true
   if (event.type === 'acp_message') return true
   if (event.type === 'permission_request') {
@@ -222,6 +223,7 @@ export function buildTimeline(
       }
       const acp = event.acp
       const planSurface = planSurfaceFromEvent(event)
+      if (event.type === 'artifact') return Boolean(event.artifact)
       if (!acp) {
         if (planSurface) return true
         return Boolean(event.content || event.permission)

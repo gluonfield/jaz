@@ -54,7 +54,7 @@ func runServe(args []string) error {
 			newMemoryService,
 			jaztools.New,
 			terminal.New,
-			app.NewMCPServerReader,
+			app.NewACPMCPServerReader,
 			exectool.NewCommandManager,
 			app.NewPromptBuilder,
 			app.NewACPAgentConfigSource,

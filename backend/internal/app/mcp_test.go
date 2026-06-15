@@ -4,7 +4,9 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/wins/jaz/backend/internal/jaztools"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/mcpsession"
 )
 
 type testMCPReader struct {
@@ -16,8 +18,8 @@ func (r testMCPReader) ListMCPServers() ([]mcpconfig.Server, error) {
 	return append([]mcpconfig.Server(nil), r.servers...), r.err
 }
 
-func TestJazToolsServerReaderAppendsManagedServer(t *testing.T) {
-	reader := jazToolsServerReader{
+func TestACPMCPServerReaderAppendsJazTools(t *testing.T) {
+	reader := acpMCPServerReader{
 		base: testMCPReader{servers: []mcpconfig.Server{{
 			ID:      "docs",
 			Name:    "Docs",
@@ -35,16 +37,19 @@ func TestJazToolsServerReaderAppendsManagedServer(t *testing.T) {
 		t.Fatalf("server count = %d, want 2", len(servers))
 	}
 	jaz := servers[1]
-	if jaz.ID != jazToolsServerID || jaz.Name != "jaztools" ||
+	if jaz.ID != jaztools.ServerID || jaz.Name != jaztools.ServerName ||
 		jaz.Transport != mcpconfig.TransportStreamableHTTP ||
 		jaz.URL != "http://127.0.0.1:5299/mcp/jaztools" || !jaz.Enabled {
 		t.Fatalf("jaz server = %#v", jaz)
 	}
+	if len(jaz.Headers) != 1 || jaz.Headers[0].Name != mcpsession.HeaderName || jaz.Headers[0].Value != mcpsession.HeaderPlaceholder {
+		t.Fatalf("jaz headers = %#v", jaz.Headers)
+	}
 }
 
-func TestJazToolsServerReaderReturnsBaseError(t *testing.T) {
+func TestACPMCPServerReaderReturnsBaseError(t *testing.T) {
 	want := errors.New("load failed")
-	reader := jazToolsServerReader{
+	reader := acpMCPServerReader{
 		base: testMCPReader{err: want},
 		url:  "http://127.0.0.1:5299/mcp/jaztools",
 	}
