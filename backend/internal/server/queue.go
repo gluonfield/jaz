@@ -14,14 +14,13 @@ import (
 )
 
 type queueRequest struct {
-	Op            string                  `json:"op,omitempty"`
-	Messages      []storage.QueuedMessage `json:"messages,omitempty"`
-	Text          string                  `json:"text,omitempty"`
-	AttachmentIDs []string                `json:"attachment_ids,omitempty"`
-	Expected      string                  `json:"expected,omitempty"`
-	Index         int                     `json:"index,omitempty"`
-	From          int                     `json:"from,omitempty"`
-	To            int                     `json:"to,omitempty"`
+	Op       string                  `json:"op,omitempty"`
+	Messages []storage.QueuedMessage `json:"messages,omitempty"`
+	Message  storage.QueuedMessage   `json:"message,omitempty"`
+	Expected string                  `json:"expected,omitempty"`
+	Index    int                     `json:"index,omitempty"`
+	From     int                     `json:"from,omitempty"`
+	To       int                     `json:"to,omitempty"`
 }
 
 func (s *Server) handleQueueAction(w http.ResponseWriter, r *http.Request, session storage.Session) {
@@ -93,18 +92,18 @@ func applyQueueMutation(queue []storage.QueuedMessage, req queueRequest) ([]stor
 	case "", "replace":
 		return storage.NormalizeQueuedMessages(req.Messages), nil
 	case "append":
-		prompt := storage.NewQueuedMessage(req.Text, req.AttachmentIDs)
-		if prompt.Text == "" {
+		msgs := storage.NormalizeQueuedMessages([]storage.QueuedMessage{req.Message})
+		if len(msgs) == 0 {
 			return queue, queueInputError{"queued prompt text is required"}
 		}
-		return append(queue, prompt), nil
+		return append(queue, msgs[0]), nil
 	case "delete":
 		if err := validateQueueIndex(queue, req.Index, req.Expected); err != nil {
 			return queue, err
 		}
 		return removeQueuedPrompt(queue, req.Index), nil
 	case "edit":
-		text := strings.TrimSpace(req.Text)
+		text := strings.TrimSpace(req.Message.Text)
 		if text == "" {
 			return queue, queueInputError{"queued prompt text is required"}
 		}
@@ -151,10 +150,10 @@ func validateQueueIndex(queue []storage.QueuedMessage, index int, expected strin
 func (s *Server) validateQueueAttachmentMutation(sessionID string, req queueRequest) error {
 	switch req.op() {
 	case "append":
-		if len(req.AttachmentIDs) == 0 {
+		if len(req.Message.AttachmentIDs) == 0 {
 			return nil
 		}
-		_, err := s.resolveAttachments(sessionID, req.AttachmentIDs)
+		_, err := s.resolveAttachments(sessionID, req.Message.AttachmentIDs)
 		return err
 	case "", "replace":
 		for _, message := range req.Messages {
@@ -346,8 +345,9 @@ func (s *Server) startSteeredQueuedPrompt(ctx context.Context, claimed steeredQu
 			return fmt.Errorf("acp manager is not configured")
 		}
 		return s.ACP.AnswerInteractive(ctx, acp.InteractiveAnswer{
-			Session: claimed.session.ID,
-			Text:    claimed.prompt.Text,
+			Session:       claimed.session.ID,
+			Text:          claimed.prompt.Text,
+			PlanRequested: claimed.prompt.PlanRequested,
 		})
 	}
 	return s.startQueuedPrompt(ctx, claimed.session, claimed.prompt)
@@ -383,7 +383,7 @@ func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session,
 		if s.Agent == nil {
 			return fmt.Errorf("agent is not configured")
 		}
-		if s.runClaimedNativeSessionWithAttachments(ctx, session, prompt.Text, attachments) == storage.StatusIdle {
+		if s.runClaimedNativeSessionWithAttachments(ctx, session, prompt.Text, attachments, prompt.PlanRequested) == storage.StatusIdle {
 			s.drainQueueSoon(session.ID)
 		}
 		return nil
@@ -392,11 +392,12 @@ func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session,
 			return fmt.Errorf("acp manager is not configured")
 		}
 		if _, err := s.ACP.Send(ctx, acp.SendRequest{
-			Session:     session.ID,
-			Message:     prompt.Text,
-			Attachments: attachments,
-			Completion:  acp.CompletionAsync,
-			Interactive: true,
+			Session:       session.ID,
+			Message:       prompt.Text,
+			Attachments:   attachments,
+			Completion:    acp.CompletionAsync,
+			Interactive:   true,
+			PlanRequested: prompt.PlanRequested,
 		}); err != nil {
 			return acpSendError(session, err)
 		}

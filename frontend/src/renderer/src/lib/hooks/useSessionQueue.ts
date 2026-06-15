@@ -53,10 +53,10 @@ export function useSessionQueue({
         const attachments = options.files?.length
           ? await Promise.all(options.files.map((file) => uploadSessionAttachment(sessionId, file)))
           : []
-        const prompt = normalizeQueuedPrompt({ text, attachment_ids: attachments.map((attachment) => attachment.id) })
+        const prompt = normalizeQueuedPrompt({ text, attachment_ids: attachments.map((attachment) => attachment.id), plan_requested: options.planRequested })
         if (!prompt) return
         await mutateQueue(
-          { op: 'append', text: prompt.text, attachment_ids: prompt.attachment_ids },
+          { op: 'append', message: prompt },
           [...queuedPrompts, prompt],
         )
       })().catch(showQueueError)
@@ -74,7 +74,7 @@ export function useSessionQueue({
 
   const editPrompt = useCallback((index: number, text: string) => {
     void mutateQueue(
-      { op: 'edit', index, text, expected: queuedPrompts[index]?.text },
+      { op: 'edit', index, message: { text }, expected: queuedPrompts[index]?.text },
       queuedPrompts.map((prompt, i) => (i === index ? { ...prompt, text } : prompt)),
     ).catch(showQueueError)
   }, [mutateQueue, queuedPrompts, showQueueError])
@@ -143,7 +143,11 @@ function normalizeQueuedPrompt(prompt: QueuedMessage): QueuedMessage | null {
   const text = prompt.text.trim()
   if (!text) return null
   const attachmentIds = (prompt.attachment_ids ?? []).map((id) => id.trim()).filter(Boolean)
-  return attachmentIds.length ? { text, attachment_ids: attachmentIds } : { text }
+  return {
+    text,
+    ...(attachmentIds.length ? { attachment_ids: attachmentIds } : {}),
+    ...(prompt.plan_requested ? { plan_requested: true } : {}),
+  }
 }
 
 function removeQueuedPrompt(prompts: QueuedMessage[], index: number): QueuedMessage[] {

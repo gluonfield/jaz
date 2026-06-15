@@ -48,6 +48,7 @@ export interface Session {
 export interface QueuedMessage {
   text: string
   attachment_ids?: string[]
+  plan_requested?: boolean
 }
 
 // Git/forge state of a session's working directory (GET /v1/sessions/:id/repo).

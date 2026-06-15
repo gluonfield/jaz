@@ -101,8 +101,8 @@ func (s *Server) runClaimedNativeSession(ctx context.Context, session storage.Se
 	return s.runNativeSessionWithClaim(ctx, session, message, nil, false, false, nil, true)
 }
 
-func (s *Server) runClaimedNativeSessionWithAttachments(ctx context.Context, session storage.Session, message string, attachments []storage.Attachment) string {
-	return s.runNativeSessionWithClaim(ctx, session, message, attachments, false, false, nil, true)
+func (s *Server) runClaimedNativeSessionWithAttachments(ctx context.Context, session storage.Session, message string, attachments []storage.Attachment, planRequested bool) string {
+	return s.runNativeSessionWithClaim(ctx, session, message, attachments, false, planRequested, nil, true)
 }
 
 func (s *Server) runNativeSessionWithClaim(ctx context.Context, session storage.Session, message string, attachments []storage.Attachment, voiceMode bool, planRequested bool, send func(agent.StreamEvent), claimed bool) string {
