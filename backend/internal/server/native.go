@@ -109,7 +109,7 @@ func (s *Server) runNativeSessionWithClaim(ctx context.Context, session storage.
 	if send == nil {
 		send = func(agent.StreamEvent) {}
 	}
-	session, startStatus, generateTitle, err := s.beginNativeTurn(session, message, claimed)
+	session, startStatus, generateTitle, err := s.beginNativeTurn(ctx, session, message, claimed)
 	if err != nil {
 		send(agent.StreamEvent{Type: agent.StreamError, Error: err.Error()})
 		send(agent.StreamEvent{Type: agent.StreamDone})
@@ -193,7 +193,7 @@ func (s *Server) runNativeSessionWithClaim(ctx context.Context, session storage.
 	return finalStatus
 }
 
-func (s *Server) beginNativeTurn(session storage.Session, message string, claimed bool) (storage.Session, string, bool, error) {
+func (s *Server) beginNativeTurn(ctx context.Context, session storage.Session, message string, claimed bool) (storage.Session, string, bool, error) {
 	unlock := s.lockSession(session.ID)
 	defer unlock()
 
@@ -204,6 +204,9 @@ func (s *Server) beginNativeTurn(session storage.Session, message string, claime
 	session = current
 	if session.Status == storage.StatusRunning && !claimed {
 		return session, storage.StatusRunning, false, fmt.Errorf("session %s is already running", session.Slug)
+	}
+	if err := s.ensureManagedWorktree(ctx, session); err != nil {
+		return session, storage.StatusError, false, err
 	}
 	existingMessages, err := s.Store.LoadMessages(session.ID)
 	if err != nil {

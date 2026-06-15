@@ -6,12 +6,13 @@ import {
   mergeFromMainSessionRepo,
   mergeSessionRepo,
   pushSessionRepoBranch,
+  restoreSessionWorktree,
   sessionRepoQuery,
 } from '@/lib/api/sessions'
 import type { RepoInfo, Session } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 
-export type RepoBusy = 'pr' | 'commit' | 'push' | 'merge' | 'update' | null
+export type RepoBusy = 'pr' | 'commit' | 'push' | 'merge' | 'update' | 'restore' | null
 
 // Shared repo state and actions for the titlebar capsule and the session
 // panel: one query, one busy state, one set of mutations against the same
@@ -112,6 +113,11 @@ export function useRepoActions(session: Session) {
       setRepoData(await mergeFromMainSessionRepo(session.id))
       toast(`Updated from ${info?.main_branch}`)
     })
+  const restore = () =>
+    run('restore', async () => {
+      setRepoData(await restoreSessionWorktree(session.id))
+      toast('Worktree restored')
+    })
 
   return {
     cwd,
@@ -131,5 +137,6 @@ export function useRepoActions(session: Session) {
     push,
     merge,
     update,
+    restore,
   }
 }

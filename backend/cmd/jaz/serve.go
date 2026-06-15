@@ -273,6 +273,11 @@ func startServer(
 				}
 			}()
 			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+				defer cancel()
+				handler.PruneManagedWorktrees(ctx)
+			}()
+			go func() {
 				if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 					fmt.Fprintln(os.Stderr, "serve:", err)
 				}

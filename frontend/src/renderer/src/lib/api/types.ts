@@ -74,6 +74,9 @@ export interface RepoInfo {
   // Commits on main_branch the worktree's branch doesn't have yet — what
   // "Update from main" would pull in (omitted/0 when up to date).
   behind?: number
+  worktree_missing?: boolean
+  worktree_restorable?: boolean
+  worktree_branch?: string
 }
 
 // One changed file in a session's working tree relative to its diff base —

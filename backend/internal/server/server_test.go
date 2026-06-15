@@ -755,6 +755,7 @@ type fakeACPManager struct {
 	sendErr      error
 	answerErr    error
 	job          acp.Job
+	jobs         []acp.Job
 	spawnStore   storage.SessionStore
 	spawned      acp.SpawnRequest
 	spawnErr     error
@@ -812,6 +813,14 @@ func (f *fakeACPManager) Status(string) (acp.Job, error) {
 }
 
 func (f *fakeACPManager) List() []acp.Job {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.jobs != nil {
+		return append([]acp.Job(nil), f.jobs...)
+	}
+	if f.job.ID == "" && f.job.Slug == "" {
+		return nil
+	}
 	return []acp.Job{f.job}
 }
 

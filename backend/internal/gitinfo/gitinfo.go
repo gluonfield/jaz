@@ -47,6 +47,12 @@ type Info struct {
 	// Behind counts commits on MainBranch the worktree's branch doesn't have
 	// yet — what an "update from main" would pull in (0 when up to date).
 	Behind int `json:"behind,omitempty"`
+	// WorktreeMissing reports a managed worktree path that no longer exists.
+	WorktreeMissing bool `json:"worktree_missing,omitempty"`
+	// WorktreeRestorable reports whether the saved session branch can recreate
+	// the missing worktree.
+	WorktreeRestorable bool   `json:"worktree_restorable,omitempty"`
+	WorktreeBranch     string `json:"worktree_branch,omitempty"`
 }
 
 // Inspect collects Info for dir. It never errors: a non-repo (or missing git
@@ -243,6 +249,68 @@ func Push(ctx context.Context, dir string) error {
 	return err
 }
 
+func BranchExists(ctx context.Context, dir, branch string) bool {
+	if strings.TrimSpace(branch) == "" {
+		return false
+	}
+	_, err := git(ctx, dir, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch)
+	return err == nil
+}
+
+func RemoveManagedWorktree(ctx context.Context, dir, branch, message string) error {
+	root, _, ok := mainCheckout(ctx, dir)
+	if !ok {
+		return fmt.Errorf("the session is not running on a worktree")
+	}
+	current, _ := git(ctx, dir, "symbolic-ref", "--short", "-q", "HEAD")
+	if current == "" {
+		return fmt.Errorf("the worktree is on a detached HEAD")
+	}
+	if current != branch {
+		return fmt.Errorf("worktree branch %q does not match %q", current, branch)
+	}
+	if err := CommitAll(ctx, dir, message); err != nil {
+		return err
+	}
+	if _, err := git(ctx, root, "worktree", "remove", "--force", dir); err != nil {
+		return fmt.Errorf("remove worktree: %w", err)
+	}
+	_, _ = git(ctx, root, "worktree", "prune")
+	return nil
+}
+
+func RestoreManagedWorktree(ctx context.Context, repo, worktree, branch string) error {
+	root, err := git(ctx, repo, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return fmt.Errorf("restore worktree requires a git repository at %s: %w", repo, err)
+	}
+	if !BranchExists(ctx, root, branch) {
+		return fmt.Errorf("worktree branch %q was not found", branch)
+	}
+	if _, err := os.Stat(worktree); err == nil {
+		return fmt.Errorf("worktree already exists: %s", worktree)
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(worktree), 0o755); err != nil {
+		return err
+	}
+	_, _ = git(ctx, root, "worktree", "prune")
+	if _, err := git(ctx, root, "worktree", "add", worktree, branch); err != nil {
+		return fmt.Errorf("restore worktree: %w", err)
+	}
+	return nil
+}
+
+func PruneWorktreeMetadata(ctx context.Context, repo string) error {
+	root, err := git(ctx, repo, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return err
+	}
+	_, err = git(ctx, root, "worktree", "prune")
+	return err
+}
+
 func firstRemoteURL(ctx context.Context, dir string) string {
 	names, err := git(ctx, dir, "remote")
 	if err != nil || names == "" {
@@ -308,21 +376,21 @@ func ParseRemote(remote string) (host, owner, repo string) {
 
 // AddWorktree creates a disposable git worktree of the repository containing
 // dir at workspace/.worktrees/<slug>, on a fresh "jaz/<slug>" branch, and
-// returns the worktree path. Both native and ACP sessions run on worktrees
-// through this, so the layout and branch naming stay identical across runtimes.
-func AddWorktree(ctx context.Context, workspace, dir, slug string) (string, error) {
+// returns the worktree path and source repo root. Both native and ACP sessions
+// run on worktrees through this, so the layout and branch naming stay identical.
+func AddWorktree(ctx context.Context, workspace, dir, slug string) (string, string, error) {
 	repo, err := git(ctx, dir, "rev-parse", "--show-toplevel")
 	if err != nil {
-		return "", fmt.Errorf("worktree requires a git repository at %s: %w", dir, err)
+		return "", "", fmt.Errorf("worktree requires a git repository at %s: %w", dir, err)
 	}
 	worktree := filepath.Join(workspace, ".worktrees", slug)
 	if err := os.MkdirAll(filepath.Dir(worktree), 0o755); err != nil {
-		return "", err
+		return "", "", err
 	}
 	if _, err := git(ctx, repo, "worktree", "add", "-b", "jaz/"+slug, worktree); err != nil {
-		return "", fmt.Errorf("create worktree: %w", err)
+		return "", "", fmt.Errorf("create worktree: %w", err)
 	}
-	return worktree, nil
+	return worktree, repo, nil
 }
 
 // ListFiles returns the repository's non-ignored files under dir (tracked

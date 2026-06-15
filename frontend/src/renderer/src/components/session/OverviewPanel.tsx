@@ -1,5 +1,6 @@
 import {
   Archive,
+  ArchiveRestore,
   ArrowDownToLine,
   ArrowUpFromLine,
   Check,
@@ -35,7 +36,7 @@ export function OverviewPanel({
   working: boolean
 }) {
   const repo = useRepoActions(session)
-  const showGit = Boolean(repo.cwd && repo.info?.git)
+  const showGit = Boolean(repo.cwd && (repo.info?.git || repo.info?.worktree_missing))
   return (
     <aside
       style={{ width: OVERVIEW_PANEL_WIDTH }}
@@ -187,6 +188,31 @@ function ManageSection({ session }: { session: Session }) {
 function GitSection({ repo }: { repo: ReturnType<typeof useRepoActions> }) {
   const { info, busy, web, branch, branchPath } = repo
   if (!info) return null
+  if (info.worktree_missing) {
+    return (
+      <section className="flex flex-col gap-0.5">
+        <div className="mb-1.5">
+          <SectionHeader>Worktree</SectionHeader>
+        </div>
+        <div className="flex h-7 items-center gap-2 px-2.5 text-[13px] text-ink-2">
+          <GitBranch size={13} className="shrink-0 text-ink-3" />
+          <span className="min-w-0 flex-1 truncate font-mono text-[12px]">
+            {info.worktree_branch || branch || 'removed'}
+          </span>
+        </div>
+        <p className="px-2.5 py-1 text-[12px] leading-snug text-ink-3">Worktree removed to save space.</p>
+        <ActionRow
+          icon={busy === 'restore' ? LoaderCircle : ArchiveRestore}
+          spin={busy === 'restore'}
+          disabled={busy !== null || !info.worktree_restorable}
+          hint={info.worktree_restorable ? 'Restores the saved session branch' : 'Saved branch is unavailable'}
+          onClick={() => void repo.restore()}
+        >
+          {busy === 'restore' ? 'Restoring…' : 'Restore worktree'}
+        </ActionRow>
+      </section>
+    )
+  }
   const changes = info.dirty
     ? { color: 'bg-running', label: 'Uncommitted changes' }
     : info.needs_push
