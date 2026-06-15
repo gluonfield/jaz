@@ -15,7 +15,7 @@ func TestServerArgs(t *testing.T) {
 		{name: "server alias", in: []string{"server"}, action: mainRun},
 		{name: "help", in: []string{"--help"}, action: mainHelp},
 		{name: "serve help", in: []string{"serve", "--help"}, action: mainHelp},
-		{name: "chat is not a subcommand", in: []string{"chat"}, action: mainChat},
+		{name: "chat is not a subcommand", in: []string{"chat"}, action: mainInvalid},
 		{name: "unknown subcommand", in: []string{"worker"}, action: mainInvalid},
 	}
 	for _, tt := range tests {

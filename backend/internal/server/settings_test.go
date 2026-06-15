@@ -163,7 +163,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		t.Fatalf("providers = %#v", got.Providers)
 	}
 	if !got.ACP["codex"].Enabled ||
-		got.ACP["codex"].Command != `npx -y @zed-industries/codex-acp@0.16.0 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'` ||
+		got.ACP["codex"].Command != `npx -y @jazchat/codex-acp@0.16.0 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'` ||
 		got.ACP["codex"].Model != "gpt-5.5" {
 		t.Fatalf("unexpected codex defaults %#v", got.ACP["codex"])
 	}

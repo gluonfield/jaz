@@ -780,6 +780,7 @@ func (s *Server) addUsage(sessionID string, usage *provider.Usage) {
 		_ = usageStore.AddUsage(sessionID, storage.Usage{
 			InputTokens:           usage.InputTokens,
 			CachedInputTokens:     usage.CachedInputTokens,
+			CachedWriteTokens:     usage.CachedWriteTokens,
 			OutputTokens:          usage.OutputTokens,
 			ReasoningOutputTokens: usage.ReasoningOutputTokens,
 			TotalTokens:           usage.TotalTokens,
