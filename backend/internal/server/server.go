@@ -421,6 +421,14 @@ func (s *Server) writeSessionMessages(w http.ResponseWriter, session storage.Ses
 	}
 	transcriptEvents = sessionevents.CompactTranscript(transcriptEvents)
 	children := s.acpChildSnapshots(session.ID)
+	var acpSnapshot storage.ACPState
+	var hasACPSnapshot bool
+	if session.Runtime == storage.RuntimeACP {
+		acpSnapshot, hasACPSnapshot = s.acpSnapshot(session)
+		if status := storage.SessionStatusForACPState(acpSnapshot.State); session.Status == storage.StatusRunning && status != "" {
+			session.Status = status
+		}
+	}
 	resp := map[string]any{
 		"session":  canonicalSessionResponse(session),
 		"messages": messages,
@@ -430,10 +438,8 @@ func (s *Server) writeSessionMessages(w http.ResponseWriter, session storage.Ses
 	if meta := s.acpMeta(transcriptEvents, session, children); len(meta) > 0 {
 		resp["acp_meta"] = meta
 	}
-	if session.Runtime == storage.RuntimeACP {
-		if state, ok := s.acpSnapshot(session); ok {
-			applyACPStateResponse(resp, state)
-		}
+	if hasACPSnapshot {
+		applyACPStateResponse(resp, acpSnapshot)
 	}
 	if len(children) > 0 {
 		resp["acp_children"] = children
@@ -480,20 +486,20 @@ func (s *Server) acpMeta(events []sessionevents.Event, session storage.Session, 
 
 func (s *Server) acpSnapshot(session storage.Session) (storage.ACPState, bool) {
 	if s.ACP != nil {
-		if job, err := s.ACP.Status(session.ID); err == nil && job.State != "not_running" {
+		if job, err := s.ACP.Status(session.ID); err == nil && job.State != acp.StateNotRunning {
 			return canonicalACPStateResponse(acpJobState(job)), true
 		}
 	}
 	if state, err := s.Store.LoadACPState(session.ID); err == nil {
-		return canonicalACPStateResponse(state), true
+		return canonicalACPStateResponse(inactiveACPStateResponse(state)), true
 	}
 	if s.ACP != nil {
 		if job, err := s.ACP.Status(session.ID); err == nil {
-			return canonicalACPStateResponse(acpJobState(job)), true
+			return canonicalACPStateResponse(inactiveACPStateResponse(acpJobState(job))), true
 		}
 	}
 	if session.Runtime == storage.RuntimeACP {
-		return canonicalACPStateResponse(acpStateFromSession(session)), true
+		return canonicalACPStateResponse(inactiveACPStateResponse(acpStateFromSession(session))), true
 	}
 	return storage.ACPState{}, false
 }
@@ -548,6 +554,14 @@ func canonicalACPStateResponse(state storage.ACPState) storage.ACPState {
 	if canonical := acp.CanonicalAgentName(state.ACPAgent); canonical != "" {
 		state.ACPAgent = canonical
 	}
+	return state
+}
+
+func inactiveACPStateResponse(state storage.ACPState) storage.ACPState {
+	if state.State == acp.StateStarting || state.State == acp.StateRunning || state.State == acp.StateNotRunning {
+		state.State = acp.StateIdle
+	}
+	state.Permissions = nil
 	return state
 }
 
@@ -615,7 +629,7 @@ func acpStateFromSession(session storage.Session) storage.ACPState {
 		Slug:      session.Slug,
 		Title:     session.Title,
 		ParentID:  session.ParentID,
-		State:     "not_running",
+		State:     acp.StateNotRunning,
 		CreatedAt: session.CreatedAt,
 		UpdatedAt: session.UpdatedAt,
 	}
