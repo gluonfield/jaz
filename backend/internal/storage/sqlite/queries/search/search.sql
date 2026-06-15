@@ -8,7 +8,6 @@ SELECT
   coalesce(t.parent_id, '') AS parent_id,
   t.archived,
   d.seq,
-  d.role,
   snippet(message_search_fts, 0, char(31), char(30), '...', 18) AS snippet,
   bm25(message_search_fts) AS score,
   t.updated_at_ms,
@@ -16,8 +15,7 @@ SELECT
 FROM message_search_fts(CAST(sqlc.arg(match) AS TEXT))
 JOIN message_search_docs d ON d.id = message_search_fts.rowid
 JOIN threads t ON t.id = d.thread_id
-WHERE ((CAST(sqlc.arg(include_user) AS INTEGER) = 1 AND d.role = 'user') OR (CAST(sqlc.arg(include_assistant) AS INTEGER) = 1 AND d.role = 'assistant'))
-  AND (CAST(sqlc.arg(include_archived) AS INTEGER) = 1 OR t.archived = 0)
+WHERE (CAST(sqlc.arg(include_archived) AS INTEGER) = 1 OR t.archived = 0)
 ORDER BY bm25(message_search_fts)
 LIMIT sqlc.arg(limit);
 

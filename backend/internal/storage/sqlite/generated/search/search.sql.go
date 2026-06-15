@@ -19,7 +19,6 @@ SELECT
   coalesce(t.parent_id, '') AS parent_id,
   t.archived,
   d.seq,
-  d.role,
   snippet(message_search_fts, 0, char(31), char(30), '...', 18) AS snippet,
   bm25(message_search_fts) AS score,
   t.updated_at_ms,
@@ -27,18 +26,15 @@ SELECT
 FROM message_search_fts(CAST(?1 AS TEXT))
 JOIN message_search_docs d ON d.id = message_search_fts.rowid
 JOIN threads t ON t.id = d.thread_id
-WHERE ((CAST(?2 AS INTEGER) = 1 AND d.role = 'user') OR (CAST(?3 AS INTEGER) = 1 AND d.role = 'assistant'))
-  AND (CAST(?4 AS INTEGER) = 1 OR t.archived = 0)
+WHERE (CAST(?2 AS INTEGER) = 1 OR t.archived = 0)
 ORDER BY bm25(message_search_fts)
-LIMIT ?5
+LIMIT ?3
 `
 
 type SearchThreadMessagesParams struct {
-	Match            string `json:"match"`
-	IncludeUser      int64  `json:"include_user"`
-	IncludeAssistant int64  `json:"include_assistant"`
-	IncludeArchived  int64  `json:"include_archived"`
-	Limit            int64  `json:"limit"`
+	Match           string `json:"match"`
+	IncludeArchived int64  `json:"include_archived"`
+	Limit           int64  `json:"limit"`
 }
 
 type SearchThreadMessagesRow struct {
@@ -50,7 +46,6 @@ type SearchThreadMessagesRow struct {
 	ParentID          string  `json:"parent_id"`
 	Archived          int64   `json:"archived"`
 	Seq               int64   `json:"seq"`
-	Role              string  `json:"role"`
 	Snippet           string  `json:"snippet"`
 	Score             float64 `json:"score"`
 	UpdatedAtMs       int64   `json:"updated_at_ms"`
@@ -58,13 +53,7 @@ type SearchThreadMessagesRow struct {
 }
 
 func (q *Queries) SearchThreadMessages(ctx context.Context, arg SearchThreadMessagesParams) ([]SearchThreadMessagesRow, error) {
-	rows, err := q.db.QueryContext(ctx, searchThreadMessages,
-		arg.Match,
-		arg.IncludeUser,
-		arg.IncludeAssistant,
-		arg.IncludeArchived,
-		arg.Limit,
-	)
+	rows, err := q.db.QueryContext(ctx, searchThreadMessages, arg.Match, arg.IncludeArchived, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +70,6 @@ func (q *Queries) SearchThreadMessages(ctx context.Context, arg SearchThreadMess
 			&i.ParentID,
 			&i.Archived,
 			&i.Seq,
-			&i.Role,
 			&i.Snippet,
 			&i.Score,
 			&i.UpdatedAtMs,
