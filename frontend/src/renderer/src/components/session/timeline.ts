@@ -4,6 +4,7 @@
 // call per data change.
 import type { ACPPermission, ACPToolCall, ChatMessage, SessionEvent } from '@/lib/api/types'
 import { planSurfaceFromEvent, planSurfaceKey } from '@/lib/planSurface'
+import { combineSequentialACPText } from '@/lib/sessionEvents'
 import { hasPermissionSurface, normalized } from './TranscriptUtils'
 
 export type TimelineItem =
@@ -278,9 +279,12 @@ export function buildTimeline(
 
 // Coalesced events keep their latest copy whose seq changes per update; key by
 // identity so streamed deltas patch in place instead of remounting.
-export function stableEventKey(event: SessionEvent): string {
+export function stableEventKey(event: SessionEvent, eventIndex = 0): string {
   const planKey = planSurfaceKey(event)
   if (planKey) return planKey
+  if ((event.type === 'acp_message' || event.type === 'acp_thought') && event.acp?.id) {
+    return `${event.type}:${event.acp.id}:${event.session_id}:${eventIndex}`
+  }
   if (event.type === 'acp' && event.acp?.id) {
     if (event.acp.tool_calls?.length) return `acp_tools:${event.acp.id}`
     if (event.acp.error) return `acp_error:${event.acp.id}`
@@ -293,47 +297,4 @@ export function stableEventKey(event: SessionEvent): string {
     return `${event.type}:${event.permission.id}`
   }
   return `${event.session_id}:${event.seq ?? 'live'}`
-}
-
-function combineSequentialACPText(events: SessionEvent[]): SessionEvent[] {
-  const out: SessionEvent[] = []
-  let lastSourceSeq = 0
-  for (const event of events) {
-    const prev = out.at(-1)
-    // A seq gap means another event sat between these chunks; keep the boundary.
-    const contiguous = !prev?.seq || !event.seq || event.seq === lastSourceSeq + 1
-    lastSourceSeq = event.seq ?? 0
-    if (canMergeACPText(prev, event) && contiguous) {
-      const merged: SessionEvent = {
-        ...prev!,
-        content:
-          event.type === 'acp_message'
-            ? `${prev!.content ?? ''}${event.content ?? ''}`
-            : prev!.content,
-        acp: prev!.acp
-          ? {
-              ...prev!.acp,
-              thought:
-                event.type === 'acp_thought'
-                  ? `${prev!.acp.thought ?? ''}${event.acp?.thought ?? ''}`
-                  : prev!.acp.thought,
-              state: event.acp?.state ?? prev!.acp.state,
-              stop_reason: event.acp?.stop_reason ?? prev!.acp.stop_reason,
-              error: event.acp?.error ?? prev!.acp.error,
-            }
-          : prev!.acp,
-      }
-      out[out.length - 1] = merged
-      continue
-    }
-    out.push(event)
-  }
-  return out
-}
-
-function canMergeACPText(prev: SessionEvent | undefined, event: SessionEvent): boolean {
-  if (!prev?.acp || !event.acp) return false
-  if (prev.type !== event.type) return false
-  if (event.type !== 'acp_message' && event.type !== 'acp_thought') return false
-  return prev.acp.id === event.acp.id
 }

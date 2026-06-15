@@ -15,7 +15,8 @@ import {
   LoaderCircle,
 } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState, type ReactNode } from 'react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useToast } from '@/components/ui/toast'
 import { setSessionArchived } from '@/lib/api/sessions'
 import type { Session } from '@/lib/api/types'
@@ -189,7 +190,19 @@ function ManageSection({ session }: { session: Session }) {
 
 function GitSection({ repo }: { repo: ReturnType<typeof useRepoActions> }) {
   const { info, busy, web, branch, branchPath } = repo
-  const toast = useToast()
+  const branchLabel = branch || 'detached'
+  const [copied, setCopied] = useState(false)
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const reduceMotion = useReducedMotion()
+
+  useEffect(() => {
+    setCopied(false)
+  }, [branchLabel])
+
+  useEffect(() => () => {
+    if (copiedTimer.current) clearTimeout(copiedTimer.current)
+  }, [])
+
   if (!info) return null
   if (info.worktree_missing) {
     return (
@@ -216,13 +229,12 @@ function GitSection({ repo }: { repo: ReturnType<typeof useRepoActions> }) {
       </section>
     )
   }
-  const branchLabel = branch || 'detached'
+
   const copyBranch = async () => {
-    if (await writeClipboard(branchLabel)) {
-      toast(info.is_worktree ? 'Copied worktree branch' : 'Copied branch')
-    } else {
-      toast("Couldn't copy branch", 'danger')
-    }
+    if (!(await writeClipboard(branchLabel))) return
+    if (copiedTimer.current) clearTimeout(copiedTimer.current)
+    setCopied(true)
+    copiedTimer.current = setTimeout(() => setCopied(false), 1500)
   }
   const changes = info.dirty
     ? { color: 'bg-running', label: 'Uncommitted changes' }
@@ -242,14 +254,31 @@ function GitSection({ repo }: { repo: ReturnType<typeof useRepoActions> }) {
         </div>
         <button
           type="button"
-          aria-label={`Copy branch name ${branchLabel}`}
-          title="Copy branch name"
+          aria-label={copied ? `Copied branch name ${branchLabel}` : `Copy branch name ${branchLabel}`}
+          title={copied ? 'Copied' : 'Copy branch name'}
           onClick={() => void copyBranch()}
           className="group flex h-7 w-full cursor-pointer items-center gap-2 rounded-full px-2.5 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
         >
           <GitBranch size={13} className="shrink-0 text-ink-3" />
           <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{branchLabel}</span>
-          <Copy size={12} className="shrink-0 text-ink-3 opacity-70 transition-opacity group-hover:opacity-100" />
+          <span className="grid size-3 shrink-0 place-items-center">
+            <AnimatePresence initial={false} mode="popLayout">
+              <motion.span
+                key={copied ? 'copied' : 'copy'}
+                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.25, filter: 'blur(4px)' }}
+                animate={reduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, filter: 'blur(0px)' }}
+                exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.25, filter: 'blur(4px)' }}
+                transition={reduceMotion ? { duration: 0.12 } : { type: 'spring', duration: 0.3, bounce: 0 }}
+                className="grid size-3 place-items-center"
+              >
+                {copied ? (
+                  <Check size={12} className="text-primary" />
+                ) : (
+                  <Copy size={12} className="text-ink-3 opacity-70 transition-opacity group-hover:opacity-100" />
+                )}
+              </motion.span>
+            </AnimatePresence>
+          </span>
         </button>
         <div className="flex h-7 items-center gap-2 px-2.5 text-[13px] text-ink-2">
           <span className={`size-[9px] shrink-0 rounded-full ${changes.color} mx-0.5`} aria-hidden />

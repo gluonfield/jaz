@@ -419,6 +419,7 @@ func (s *Server) writeSessionMessages(w http.ResponseWriter, session storage.Ses
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	transcriptEvents = sessionevents.CompactTranscript(transcriptEvents)
 	children := s.acpChildSnapshots(session.ID)
 	resp := map[string]any{
 		"session":  canonicalSessionResponse(session),
