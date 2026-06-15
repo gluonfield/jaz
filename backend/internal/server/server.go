@@ -180,9 +180,11 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
-		defer cancel()
-		s.PruneManagedWorktrees(ctx)
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			s.PruneManagedWorktrees(ctx)
+		}()
 	}
 	writeJSON(w, http.StatusOK, canonicalSessionResponse(session))
 }
@@ -229,9 +231,11 @@ func (s *Server) createACPSession(w http.ResponseWriter, req createSessionReques
 		return
 	}
 	if req.Worktree {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		defer cancel()
-		s.PruneManagedWorktrees(ctx)
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			s.PruneManagedWorktrees(ctx)
+		}()
 	}
 	writeJSON(w, http.StatusOK, canonicalSessionResponse(result.Session))
 }
@@ -690,9 +694,11 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if action == "archive" {
-			ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
-			defer cancel()
-			s.PruneManagedWorktrees(ctx)
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+				defer cancel()
+				s.PruneManagedWorktrees(ctx)
+			}()
 		}
 		writeJSON(w, http.StatusOK, canonicalSessionResponse(session))
 		return
