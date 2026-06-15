@@ -327,7 +327,6 @@ export interface ArtifactEvent {
   widget_code: string
   loading_messages?: string[]
   artifact_type?: 'svg' | 'html'
-  bytes?: number
 }
 
 export interface ACPEvent {

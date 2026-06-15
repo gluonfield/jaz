@@ -26,7 +26,6 @@ type ArtifactEvent struct {
 	WidgetCode      string   `json:"widget_code"`
 	LoadingMessages []string `json:"loading_messages,omitempty"`
 	ArtifactType    string   `json:"artifact_type,omitempty"`
-	Bytes           int      `json:"bytes,omitempty"`
 }
 
 func (e *Event) NormalizePayload() {

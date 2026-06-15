@@ -367,7 +367,7 @@ const TaskChecklist = memo(function TaskChecklist({
         className={`relative ${expanded ? '' : 'max-h-[340px] overflow-hidden'}`}
       >
         {explanationText ? (
-          <div className="mb-2 text-sm text-ink-2">
+          <div className="mb-2 text-sm text-ink">
             <MessageMarkdown text={explanationText} />
           </div>
         ) : null}

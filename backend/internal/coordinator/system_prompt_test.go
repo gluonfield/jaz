@@ -37,6 +37,8 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		"## Jaz platform",
 		"## AGENTS.md\n\nalways cite sources",
 		"## SOUL.md\n\nbe direct",
+		"## Inline artifacts",
+		"Few-shot trace:",
 		"## memory",
 		"Capture as you go",
 		"## memory/LONG_TERM.md\n\n- Goal: $5m through agent products.",
@@ -68,6 +70,11 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 	}
 	if strings.Contains(acp, "You are Jaz") || strings.Contains(acp, "agent_spawn") {
 		t.Fatalf("acp extension must carry no coordinator identity or delegation rules:\n%s", acp)
+	}
+	if !strings.Contains(acp, "prefer an inline artifact over plain text") ||
+		!strings.Contains(acp, "visualize_show_widget") ||
+		!strings.Contains(acp, "Never pass raw JSX, TSX, or an unbundled app to the render tool") {
+		t.Fatalf("acp extension must carry the artifact policy:\n%s", acp)
 	}
 
 	// The master switch strips memory from both layers identically.
