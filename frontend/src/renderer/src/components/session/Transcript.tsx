@@ -566,7 +566,7 @@ export const Transcript = memo(function Transcript({
         const planSurface = planSurfaceFromEvent(item.event)
         return (
           <LiveEvent
-            key={`event-${stableEventKey(item.event)}`}
+            key={`event-${stableEventKey(item.event, item.eventIndex)}`}
             event={item.event}
             sessionId={sessionId}
             showHeader={item.showHeader}
