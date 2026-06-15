@@ -12,12 +12,20 @@ export function relativeTime(iso: string, now = Date.now()): string {
   if (diff < HOUR) return `${Math.floor(diff / MINUTE)}m`
   if (diff < DAY) return `${Math.floor(diff / HOUR)}h`
   if (diff < 7 * DAY) return `${Math.floor(diff / DAY)}d`
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  return shortDate(iso)
+}
+
+// "Jun 16" — the app's standard compact calendar label.
+export function shortDate(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
 // Go marshals zero-value times as "0001-01-01T00:00:00Z" (a large negative
 // epoch) even with `omitempty`; treat those — and unset values — as no time.
-export function hasTime(iso?: string): boolean {
+// A type guard so callers can use the narrowed value without casting back to string.
+export function hasTime(iso?: string): iso is string {
   if (!iso) return false
   const ms = new Date(iso).getTime()
   return Number.isFinite(ms) && ms > 0
