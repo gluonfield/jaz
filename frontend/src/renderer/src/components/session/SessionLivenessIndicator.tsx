@@ -2,7 +2,6 @@ import { CircleAlert, LoaderCircle } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { agentLabel } from '@/lib/agentLabel'
-import type { SessionEvent } from '@/lib/api/types'
 import {
   deriveSessionRunSignal,
   type RunSignal,
@@ -29,21 +28,18 @@ export function SessionLivenessIndicator({
   agent,
   running,
   updatedAt,
-  events,
-  lastEventAt,
+  lastActivityAt,
 }: {
   agent?: string
   running: boolean
   updatedAt: string
-  events: SessionEvent[]
-  lastEventAt?: string
+  lastActivityAt?: string
 }) {
   const [, setTick] = useState(0)
   const { signal, ageMs } = deriveSessionRunSignal({
     running,
     updatedAt,
-    events,
-    lastEventAt,
+    lastActivityAt,
     now: Date.now(),
   })
 
