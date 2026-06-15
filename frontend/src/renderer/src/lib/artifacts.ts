@@ -184,8 +184,12 @@ export function buildArtifactDocument(
   opts: { measureLayout?: boolean } = {},
 ): string {
   const bridge = opts.measureLayout ? `${bridgeScript}${widgetBridgeScript}` : bridgeScript
+  // A board tile fills a fixed cell, so the document height must resolve to the
+  // viewport — then a fragment using height:100% fills the tile. Inline
+  // artifacts grow to their content instead, so they must NOT get this.
+  const css = opts.measureLayout ? `${artifactCSS(theme)} html,body{height:100%}` : artifactCSS(theme)
   if (isFullHTMLDocument(input.code)) return injectArtifactHost(input.code, theme, bridge)
-  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${ARTIFACT_CSP}"><style>${artifactCSS(theme)}</style><script>${bridge}</script></head><body>${input.code}</body></html>`
+  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${ARTIFACT_CSP}"><style>${css}</style><script>${bridge}</script></head><body>${input.code}</body></html>`
 }
 
 function isFullHTMLDocument(code: string): boolean {
