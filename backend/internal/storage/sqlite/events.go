@@ -109,7 +109,7 @@ func insertSessionEvent(q *eventdb.Queries, event sessionevents.Event) error {
 		ThreadID:    event.SessionID,
 		Seq:         event.Seq,
 		Type:        event.Type,
-		Content:     event.Content,
+		Content:     event.StorageContent(),
 		Acp:         rawACP,
 		Plan:        rawPlan,
 		Permission:  rawPermission,
@@ -146,6 +146,7 @@ func eventFromDB(row eventdb.ListSessionEventsRow) (sessionevents.Event, error) 
 		}
 		event.Permission = &permission
 	}
+	event.NormalizePayload()
 	return event, nil
 }
 

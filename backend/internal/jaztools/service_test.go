@@ -53,7 +53,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	service := New(memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"), serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"})
+	service := New(memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"), serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"}, store, nil)
 	executor := &fakeExecutor{started: make(chan loops.Run, 1)}
 	service.SetLoops(loops.NewService(store, executor, nil))
 
@@ -71,6 +71,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 	for _, name := range []string{
 		"memory_search", "memory_search_raw", "memory_get",
 		"loop_list", "loop_get", "loop_create", "loop_update", "loop_run", "loop_delete",
+		"visualize:read_me", "visualize:show_widget",
 	} {
 		if !names[name] {
 			t.Fatalf("missing tool %s in %#v", name, names)
@@ -194,7 +195,7 @@ func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = memory.Close() })
 
-	service := New(memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jazmem"), serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"})
+	service := New(memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jazmem"), serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"}, store, nil)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 
 	session, closeSession := connectClient(t, service.Server())

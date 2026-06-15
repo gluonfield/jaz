@@ -2,9 +2,12 @@ package sessionevents
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 	"time"
 )
+
+const TypeArtifact = "artifact"
 
 type Event struct {
 	Seq        int64          `json:"seq,omitempty"`
@@ -14,7 +17,45 @@ type Event struct {
 	ACP        *ACPEvent      `json:"acp,omitempty"`
 	Plan       *PlanEvent     `json:"plan,omitempty"`
 	Permission *ACPPermission `json:"permission,omitempty"`
+	Artifact   *ArtifactEvent `json:"artifact,omitempty"`
 	At         time.Time      `json:"at"`
+}
+
+type ArtifactEvent struct {
+	Title           string   `json:"title"`
+	WidgetCode      string   `json:"widget_code"`
+	LoadingMessages []string `json:"loading_messages,omitempty"`
+	ArtifactType    string   `json:"artifact_type,omitempty"`
+	Bytes           int      `json:"bytes,omitempty"`
+}
+
+func (e *Event) NormalizePayload() {
+	if e == nil || e.Type != TypeArtifact {
+		return
+	}
+	if e.Artifact != nil {
+		e.Content = ""
+		return
+	}
+	if e.Content == "" {
+		return
+	}
+	var artifact ArtifactEvent
+	if err := json.Unmarshal([]byte(e.Content), &artifact); err == nil && artifact.Title != "" && artifact.WidgetCode != "" {
+		e.Artifact = &artifact
+		e.Content = ""
+	}
+}
+
+func (e Event) StorageContent() string {
+	if e.Type != TypeArtifact || e.Artifact == nil {
+		return e.Content
+	}
+	data, err := json.Marshal(e.Artifact)
+	if err != nil {
+		return e.Content
+	}
+	return string(data)
 }
 
 type ACPEvent struct {
