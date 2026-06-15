@@ -1,4 +1,4 @@
-import type { ACPEvent, PlanEntry, SessionEvent } from '@/lib/api/types'
+import type { PlanEntry, SessionEvent } from '@/lib/api/types'
 
 export type TaskSurfaceKind = 'approval_plan' | 'progress'
 
@@ -28,21 +28,6 @@ export function taskStepState(entry: PlanEntry): TaskStepState | undefined {
   if (completedStatuses.has(status)) return 'completed'
   if (activeStatuses.has(status)) return 'active'
   return 'pending'
-}
-
-function hasActiveProgress(entries?: PlanEntry[]): boolean {
-  return Boolean(entries?.some((entry) => taskStepState(entry) === 'active'))
-}
-
-function acpAwaitingApproval(acp: ACPEvent): boolean {
-  const modes = acp.modes
-  return Boolean(
-    acp.plan?.length &&
-      modes?.plan_mode_id &&
-      modes.current_mode_id === modes.plan_mode_id &&
-      normalized(acp.state) !== 'running' &&
-      !hasActiveProgress(acp.plan),
-  )
 }
 
 function progressEntries(entries?: PlanEntry[]): PlanEntry[] | undefined {
@@ -78,34 +63,17 @@ function looksLikeMarkdownBlock(text: string): boolean {
 }
 
 export function approvalPlanSurfaceFromEvent(event: SessionEvent): TaskSurface | undefined {
-  if (event.type === 'proposed_plan' && event.plan) {
-    const awaitingApproval = Boolean(event.plan.awaiting_approval)
-    return {
-      kind: 'approval_plan',
-      title: 'Proposed Plan',
-      explanation: event.plan.explanation || event.content,
-      entries: event.plan.plan ?? [],
-      awaitingApproval,
-      approvalSessionId: awaitingApproval ? event.session_id : undefined,
-      strikeCompleted: false,
-    }
+  if (event.type !== 'proposed_plan' || !event.plan) return undefined
+  const awaitingApproval = Boolean(event.plan.awaiting_approval)
+  return {
+    kind: 'approval_plan',
+    title: 'Proposed Plan',
+    explanation: event.plan.explanation || event.content,
+    entries: event.plan.plan ?? [],
+    awaitingApproval,
+    approvalSessionId: awaitingApproval ? event.session_id : undefined,
+    strikeCompleted: false,
   }
-  const acp = event.acp
-  if (acp?.plan?.length) {
-    const entries = progressEntries(acp.plan)
-    if (!entries) return undefined
-    const awaitingApproval = acpAwaitingApproval({ ...acp, plan: entries })
-    if (!awaitingApproval) return undefined
-    return {
-      kind: 'approval_plan',
-      title: 'Proposed Plan',
-      entries,
-      awaitingApproval,
-      approvalSessionId: acp.id,
-      strikeCompleted: false,
-    }
-  }
-  return undefined
 }
 
 export function progressSurfaceFromEvent(event: SessionEvent): TaskSurface | undefined {
@@ -124,8 +92,6 @@ export function progressSurfaceFromEvent(event: SessionEvent): TaskSurface | und
   if (acp?.plan?.length) {
     const entries = progressEntries(acp.plan)
     if (!entries) return undefined
-    const awaitingApproval = acpAwaitingApproval({ ...acp, plan: entries })
-    if (awaitingApproval) return undefined
     return {
       kind: 'progress',
       title: 'Progress',

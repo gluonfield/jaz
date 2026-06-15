@@ -479,6 +479,86 @@ func TestPlanSessionUpdateIgnoresMarkdownDocumentEntry(t *testing.T) {
 	}
 }
 
+func TestPlanSessionUpdateInvalidReplacementClearsProgress(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "codex-progress", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := sessionevents.New()
+	manager := NewManager(store, Config{}, nil)
+	manager.Events = events
+	manager.jobsByID[session.ID] = &Job{ID: session.ID, ACPSession: "acp-session", Slug: session.Slug}
+	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	sub := events.Subscribe(ctx, session.ID)
+
+	valid := jsonrpc.Request{
+		Method: acpschema.ClientMethodSessionUpdate,
+		Params: mustJSON(t, map[string]any{
+			"sessionId": "acp-session",
+			"update": map[string]any{
+				"sessionUpdate": "plan",
+				"entries": []map[string]any{{
+					"content":  "Inspect existing page",
+					"status":   "in_progress",
+					"priority": "medium",
+				}},
+			},
+		}),
+	}
+	if _, rpcErr := manager.handleJSONRPC(ctx, valid); rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	select {
+	case event := <-sub:
+		if len(event.ACP.Plan) != 1 {
+			t.Fatalf("valid progress event = %#v", event)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+
+	invalid := jsonrpc.Request{
+		Method: acpschema.ClientMethodSessionUpdate,
+		Params: mustJSON(t, map[string]any{
+			"sessionId": "acp-session",
+			"update": map[string]any{
+				"sessionUpdate": "plan",
+				"entries": []map[string]any{{
+					"content":  "# Full markdown plan\n\n- one\n- two",
+					"status":   "in_progress",
+					"priority": "medium",
+				}},
+			},
+		}),
+	}
+	if _, rpcErr := manager.handleJSONRPC(ctx, invalid); rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	select {
+	case event := <-sub:
+		if event.ACP == nil || len(event.ACP.Plan) != 0 {
+			t.Fatalf("clear progress event = %#v", event)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+
+	state, err := store.LoadACPState(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Plan) != 0 {
+		t.Fatalf("persisted progress = %#v", state.Plan)
+	}
+}
+
 func TestSessionInfoUpdatePublishesAndPersistsTitle(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
