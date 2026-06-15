@@ -77,7 +77,7 @@ func TestACPBackedSessionRoutesToACPManager(t *testing.T) {
 	}
 }
 
-func TestCreateACPSessionForwardsWorktree(t *testing.T) {
+func TestCreateACPSessionCreatesStoredSessionAndForwardsWorktree(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -94,8 +94,39 @@ func TestCreateACPSessionForwardsWorktree(t *testing.T) {
 	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
-	if manager.spawned.Directory != "repo" || !manager.spawned.Worktree {
-		t.Fatalf("spawn request = %#v, want Directory=repo Worktree=true", manager.spawned)
+	if manager.spawned.ACPAgent != "" {
+		t.Fatalf("create should defer eager spawn: %#v", manager.spawned)
+	}
+	if manager.created.Directory != "repo" || !manager.created.Worktree {
+		t.Fatalf("create request = %#v, want Directory=repo Worktree=true", manager.created)
+	}
+	var session storage.Session
+	if err := json.Unmarshal(res.Body.Bytes(), &session); err != nil {
+		t.Fatal(err)
+	}
+	if session.RuntimeRef == nil || session.RuntimeRef.SessionID != "" {
+		t.Fatalf("session runtime ref = %#v, want stored acp session without runtime session id", session.RuntimeRef)
+	}
+}
+
+func TestCreateACPSessionRequiresDirectoryForWorktree(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeACPManager{spawnStore: store}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{"runtime":"acp","agent":"codex","worktree":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store, ACP: manager}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "worktree requires") {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	if manager.created.ACPAgent != "" || manager.spawned.ACPAgent != "" {
+		t.Fatalf("manager was called: created=%#v spawned=%#v", manager.created, manager.spawned)
 	}
 }
 
@@ -116,8 +147,11 @@ func TestCreateACPSessionForwardsModelOverride(t *testing.T) {
 	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
-	if manager.spawned.Model != "sonnet" {
-		t.Fatalf("spawn request = %#v, want Model=sonnet", manager.spawned)
+	if manager.spawned.ACPAgent != "" {
+		t.Fatalf("create should defer eager spawn: %#v", manager.spawned)
+	}
+	if manager.created.Model != "sonnet" {
+		t.Fatalf("create request = %#v, want Model=sonnet", manager.created)
 	}
 }
 
@@ -758,7 +792,37 @@ type fakeACPManager struct {
 	jobs         []acp.Job
 	spawnStore   storage.SessionStore
 	spawned      acp.SpawnRequest
+	created      acp.SpawnRequest
 	spawnErr     error
+}
+
+func (f *fakeACPManager) CreateSession(_ context.Context, req acp.SpawnRequest) (storage.Session, error) {
+	f.mu.Lock()
+	f.created = req
+	spawnStore := f.spawnStore
+	spawnErr := f.spawnErr
+	f.mu.Unlock()
+	if spawnErr != nil {
+		return storage.Session{}, spawnErr
+	}
+	if spawnStore == nil {
+		return storage.Session{}, nil
+	}
+	return spawnStore.CreateSession(storage.CreateSession{
+		Slug:            req.Slug,
+		Title:           req.Title,
+		Runtime:         storage.RuntimeACP,
+		ModelProvider:   req.ACPAgent,
+		Model:           req.Model,
+		ReasoningEffort: req.ReasoningEffort,
+		SourceType:      req.SourceType,
+		SourceID:        req.SourceID,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:  storage.RuntimeACP,
+			Agent: req.ACPAgent,
+			Cwd:   req.Directory,
+		},
+	})
 }
 
 func (f *fakeACPManager) Spawn(_ context.Context, req acp.SpawnRequest) (acp.SpawnResult, error) {
