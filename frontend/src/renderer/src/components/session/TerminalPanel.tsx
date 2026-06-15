@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { IconButton } from '@/components/ui/IconButton'
 import { apiAuthenticatedWebSocketUrl } from '@/lib/api/client'
 import type { Session } from '@/lib/api/types'
+import { SidePanelShell } from './SidePanelShell'
 
 export const TERMINAL_PANEL_WIDTH = 640
 
@@ -179,42 +180,40 @@ export function TerminalPanel({
   }
 
   return (
-    <aside style={{ width: TERMINAL_PANEL_WIDTH }} className="flex h-full shrink-0 flex-col bg-bg p-2">
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[14px] bg-surface shadow-[0_18px_46px_rgba(0,0,0,0.18)] ring-1 ring-border">
-        <div className="flex h-11 shrink-0 items-center gap-1.5 border-b border-border px-2.5">
-          <Terminal size={15} className="shrink-0 text-ink-3" aria-hidden />
-          <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-ink-2" title={remoteCwd || cwd}>
-            {remoteCwd || cwd || 'No working directory'}
-          </span>
-          <TerminalStatusBadge status={status} exitCode={exitCode} />
-          <IconButton size="sm" aria-label="Restart terminal" title="Restart terminal" onClick={restart} disabled={!cwd}>
-            {status === 'connecting' ? <LoaderCircle size={14} className="animate-spin" /> : <RotateCw size={14} />}
-          </IconButton>
-          <IconButton size="sm" aria-label="Copy selection" title="Copy selection" onClick={copySelection} disabled={!cwd}>
-            <Copy size={14} />
-          </IconButton>
-          <IconButton size="sm" aria-label="Clear terminal" title="Clear terminal" onClick={clear} disabled={!cwd}>
-            <Eraser size={14} />
-          </IconButton>
-          <IconButton size="sm" variant="danger" aria-label="Terminate terminal" title="Terminate terminal" onClick={terminate} disabled={!cwd || status === 'exited'}>
-            <Power size={14} />
-          </IconButton>
-          <IconButton size="sm" aria-label="Hide side panel" title="Hide side panel" onClick={onClose}>
-            <X size={15} />
-          </IconButton>
-        </div>
-        {error ? <p className="shrink-0 border-b border-border px-3 py-2 text-[12px] text-danger">{error}</p> : null}
-        <div className="min-h-0 flex-1 bg-[#111318]">
-          {cwd ? (
-            <div ref={hostRef} className="jaz-terminal h-full w-full" />
-          ) : (
-            <div className="flex h-full items-center justify-center px-8 text-center text-[13px] text-ink-3">
-              This session has no working directory.
-            </div>
-          )}
-        </div>
+    <SidePanelShell width={TERMINAL_PANEL_WIDTH}>
+      <div className="flex h-11 shrink-0 items-center gap-1.5 border-b border-border px-2.5">
+        <Terminal size={15} className="shrink-0 text-ink-3" aria-hidden />
+        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-ink-2" title={remoteCwd || cwd}>
+          {remoteCwd || cwd || 'No working directory'}
+        </span>
+        <TerminalStatusBadge status={status} exitCode={exitCode} />
+        <IconButton size="sm" aria-label="Restart terminal" title="Restart terminal" onClick={restart} disabled={!cwd}>
+          {status === 'connecting' ? <LoaderCircle size={14} className="animate-spin" /> : <RotateCw size={14} />}
+        </IconButton>
+        <IconButton size="sm" aria-label="Copy selection" title="Copy selection" onClick={copySelection} disabled={!cwd}>
+          <Copy size={14} />
+        </IconButton>
+        <IconButton size="sm" aria-label="Clear terminal" title="Clear terminal" onClick={clear} disabled={!cwd}>
+          <Eraser size={14} />
+        </IconButton>
+        <IconButton size="sm" variant="danger" aria-label="Terminate terminal" title="Terminate terminal" onClick={terminate} disabled={!cwd || status === 'exited'}>
+          <Power size={14} />
+        </IconButton>
+        <IconButton size="sm" aria-label="Hide side panel" title="Hide side panel" onClick={onClose}>
+          <X size={15} />
+        </IconButton>
       </div>
-    </aside>
+      {error ? <p className="shrink-0 border-b border-border px-3 py-2 text-[12px] text-danger">{error}</p> : null}
+      <div className="min-h-0 flex-1 bg-[#111318]">
+        {cwd ? (
+          <div ref={hostRef} className="jaz-terminal h-full w-full" />
+        ) : (
+          <div className="flex h-full items-center justify-center px-8 text-center text-[13px] text-ink-3">
+            This session has no working directory.
+          </div>
+        )}
+      </div>
+    </SidePanelShell>
   )
 }
 
@@ -251,29 +250,29 @@ function parseServerMessage(data: string): ServerMessage | null {
   }
 }
 
+// The terminal surface is always dark, so its palette is fixed light-on-dark —
+// deriving it from the app's theme tokens turns text dark-on-dark in light mode.
 function terminalTheme() {
-  const style = getComputedStyle(document.documentElement)
-  const color = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback
   return {
     background: '#111318',
-    foreground: color('--color-ink', '#f0f1f4'),
-    cursor: color('--color-primary', '#9aadff'),
-    selectionBackground: color('--color-primary-soft', '#384767'),
+    foreground: '#f0f1f4',
+    cursor: '#9aadff',
+    selectionBackground: '#384767',
     black: '#17191f',
-    red: color('--color-danger', '#ff7a70'),
-    green: color('--color-ok', '#77d694'),
-    yellow: color('--color-running', '#e1c86a'),
-    blue: color('--color-primary', '#9aadff'),
+    red: '#ff7a70',
+    green: '#77d694',
+    yellow: '#e1c86a',
+    blue: '#9aadff',
     magenta: '#d89cff',
     cyan: '#72d8e5',
-    white: color('--color-ink-2', '#c9cbd3'),
-    brightBlack: color('--color-ink-3', '#8b909e'),
-    brightRed: color('--color-danger', '#ff8d82'),
-    brightGreen: color('--color-ok', '#8ae5a5'),
-    brightYellow: color('--color-running', '#edd779'),
-    brightBlue: color('--color-primary-strong', '#b7c3ff'),
+    white: '#c9cbd3',
+    brightBlack: '#8b909e',
+    brightRed: '#ff8d82',
+    brightGreen: '#8ae5a5',
+    brightYellow: '#edd779',
+    brightBlue: '#b7c3ff',
     brightMagenta: '#e6b5ff',
     brightCyan: '#93e6ef',
-    brightWhite: color('--color-ink', '#f0f1f4'),
+    brightWhite: '#f0f1f4',
   }
 }

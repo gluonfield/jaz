@@ -23,6 +23,7 @@ import type { Session } from '@/lib/api/types'
 import { writeClipboard } from '@/lib/clipboard'
 import { taskStepState, type TaskSurface } from '@/lib/taskSurface'
 import { keys } from '@/lib/query/keys'
+import { SidePanelShell } from './SidePanelShell'
 import { TaskStepIcon } from './Transcript'
 import { useRepoActions } from './useRepoActions'
 
@@ -40,18 +41,11 @@ export function OverviewPanel({
   const repo = useRepoActions(session)
   const showGit = Boolean(repo.cwd && (repo.info?.git || repo.info?.worktree_missing))
   return (
-    <aside
-      style={{ width: OVERVIEW_PANEL_WIDTH }}
-      className="flex h-full shrink-0 flex-col bg-bg p-2"
-    >
-      {/* Hugs its content — only grows to fill the column if there's enough to
-          scroll, so a short overview doesn't stretch a full-height card. */}
-      <div className="flex max-h-full flex-col gap-6 overflow-y-auto rounded-[14px] bg-surface px-4 py-4 shadow-[0_18px_46px_rgba(0,0,0,0.18)] ring-1 ring-border">
-        {progress ? <ProgressSection progress={progress} working={working} /> : null}
-        {showGit ? <GitSection repo={repo} /> : null}
-        <ManageSection session={session} />
-      </div>
-    </aside>
+    <SidePanelShell width={OVERVIEW_PANEL_WIDTH} variant="hug" className="gap-6 px-4 py-4">
+      {progress ? <ProgressSection progress={progress} working={working} /> : null}
+      {showGit ? <GitSection repo={repo} /> : null}
+      <ManageSection session={session} />
+    </SidePanelShell>
   )
 }
 
