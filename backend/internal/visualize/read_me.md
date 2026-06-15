@@ -726,9 +726,13 @@ Use HTML. Wrap the entire thing in a single raised card. All content is sans-ser
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
+  const css = getComputedStyle(document.documentElement);
+  const theme = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
+  Chart.defaults.color = theme('--color-ink-2', '#5F5E5A');            // tick + legend text
+  Chart.defaults.borderColor = theme('--color-border', 'rgba(128,128,128,.2)'); // grid + axis lines
   new Chart(document.getElementById('myChart'), {
     type: 'bar',
-    data: { labels: ['Q1','Q2','Q3','Q4'], datasets: [{ label: 'Revenue', data: [12,19,8,15] }] },
+    data: { labels: ['Q1','Q2','Q3','Q4'], datasets: [{ label: 'Revenue', data: [12,19,8,15], backgroundColor: '#378ADD' }] },
     options: { responsive: true, maintainAspectRatio: false }
   });
 </script>
@@ -737,7 +741,9 @@ Use HTML. Wrap the entire thing in a single raised card. All content is sans-ser
 **Chart.js rules**:
 - Every `<canvas>` MUST have `role="img"` and a descriptive `aria-label` summarizing what the chart shows, plus fallback text between the tags. Without these the chart is invisible to screen readers.
 - Never rely on color alone to distinguish data series. Pair each color with a secondary visual cue — dash pattern for lines, marker shape for scatter, fill pattern/hatching for bars and pie slices — and show both color and cue in the legend.
-- Canvas cannot resolve CSS variables. Use hardcoded hex or Chart.js defaults.
+- **Dark mode (critical): canvas paints fixed pixels and does NOT restyle with the theme, so any hardcoded gray vanishes on a dark background.** Read the injected theme once and feed concrete values to Chart.js: `const css = getComputedStyle(document.documentElement); const theme = (n, fb) => css.getPropertyValue(n).trim() || fb;` then `Chart.defaults.color = theme('--color-ink-2', '#5F5E5A')` (tick/legend text) and `Chart.defaults.borderColor = theme('--color-border', 'rgba(128,128,128,.2)')` (grid/axis lines). These vars already hold the correct value for the active mode, so the chart adapts. Available theme primitives: `--color-ink` (primary text), `--color-ink-2` (muted/ticks), `--color-ink-3` (faint), `--color-border` (grid/axis lines), `--color-surface` / `--color-surface-2` (surfaces). Read the primitive `--color-ink`, NOT the `--color-text-primary` alias — alias resolution via `getPropertyValue` is unreliable on canvas. For custom canvas drawing (value-label plugins, annotations), set `ctx.fillStyle` from the same theme read, never a literal.
+- Series fills are the exception: use vivid mid-tone hexes from the palette (e.g. `#378ADD` blue, `#1D9E75` teal, `#D85A30` coral) — they read well on both light and dark canvases. Do NOT use the `--artifact-{ramp}-fill` vars for series; those are SVG box tints (near-white in light mode, dark in dark mode) and will paint invisible or muddy bars. Only text and gridlines come from the theme.
+- Dark mode is a class on the host, not an OS setting — detect it with `getComputedStyle(document.documentElement).getPropertyValue('color-scheme').trim() === 'dark'`, never `matchMedia('(prefers-color-scheme: dark)')` (which reads the OS and ignores the in-app toggle).
 - Wrap `<canvas>` in `<div>` with explicit `height` and `position: relative`.
 - **Canvas sizing**: set height ONLY on the wrapper div, never on the canvas element itself. Use position: relative on the wrapper and responsive: true, maintainAspectRatio: false in Chart.js options. Never set CSS height directly on canvas — this causes wrong dimensions, especially for horizontal bar charts.
 - For horizontal bar charts: wrapper div height should be at least (number_of_bars * 40) + 80 pixels.
@@ -782,7 +788,7 @@ Three topology sources on jsdelivr. Topology JSON may only be fetched from `cdnj
 <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
 <script>
 const values = { 'California': 39, 'Texas': 30, 'New York': 19 /* ...keyed on what you saw in web_fetch */ };
-const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+const isDark = getComputedStyle(document.documentElement).getPropertyValue('color-scheme').trim() === 'dark';
 const color = d3.scaleQuantize([0, 40], isDark ? d3.schemeBlues[5].slice().reverse() : d3.schemeBlues[5]);
 const svg = d3.select('#map').append('svg').attr('viewBox', '0 0 900 560').attr('width', '100%');
 const path = d3.geoPath(d3.geoAlbersUsa().scale(1100).translate([450, 280]));

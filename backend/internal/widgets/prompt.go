@@ -10,13 +10,19 @@ import (
 
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/templates/widgetprompt"
+	"github.com/wins/jaz/backend/internal/visualize"
 )
 
 // What the loop's agent is told: a short prompt section with the contract
 // essentials, backed by the full style guide kept on disk next to the widget.
 
-//go:embed assets/widget-guide.md
-var GuideMD string
+//go:embed assets/tile-addendum.md
+var tileAddendum string
+
+// GuideMD is the design contract written next to the widget file. It is the
+// inline-artifact design system (the same guide visualize_read_me serves) plus
+// a short tile-mode addendum — so loops author widgets identically to artifacts.
+var GuideMD = visualize.ReadMeGuide + tileAddendum
 
 // GuideFileName sits next to the widget file; agents conventionally read
 // AGENTS.md before touching a directory.
@@ -77,7 +83,7 @@ func PromptSection(loop loops.Loop, widget *Widget) string {
 	return section
 }
 
-// layoutReport mirrors the bridge's jaz:layout measurement payload.
+// layoutReport mirrors the bridge's jaz:artifact-layout measurement payload.
 type layoutReport struct {
 	DeadSpacePct int `json:"dead_space_pct"`
 	OverflowPx   int `json:"overflow_px"`
@@ -97,10 +103,10 @@ func layoutFeedback(payload string) string {
 	}
 	var parts []string
 	if r.DeadSpacePct >= 20 {
-		parts = append(parts, fmt.Sprintf("~%d%% of the tile is empty at the bottom — let the main content area grow (jz-fill) or publish a smaller size_hint", r.DeadSpacePct))
+		parts = append(parts, fmt.Sprintf("~%d%% of the tile is empty at the bottom — let the main content area grow to fill the height or publish a smaller size_hint", r.DeadSpacePct))
 	}
 	if r.OverflowPx > 8 {
-		parts = append(parts, fmt.Sprintf("content overflows the tile by ~%dpx — designate one internal scroller (jz-fill jz-scroll) or tighten the layout", r.OverflowPx))
+		parts = append(parts, fmt.Sprintf("content overflows the tile by ~%dpx — give one region overflow:auto to scroll inside the tile, or tighten the layout", r.OverflowPx))
 	}
 	if r.Clipped > 0 {
 		parts = append(parts, fmt.Sprintf("%d element(s) clip their content with overflow:hidden — never crop content to fit; let it scroll or size it by the available space", r.Clipped))

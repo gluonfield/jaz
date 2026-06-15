@@ -1,11 +1,8 @@
 import type { ArtifactEvent } from './api/types'
 
-export type ArtifactKind = 'svg' | 'html'
-
 export interface ArtifactInput {
   title: string
   code: string
-  kind: ArtifactKind
   loadingMessages: string[]
 }
 
@@ -82,6 +79,62 @@ const bridgeScript = `
 })();
 `
 
+// Tile-only extension: the widget author designs blind, so the host measures
+// what actually rendered — dead space below the content, overflow past the
+// tile, clipped elements, broken images — and reports it as jaz:artifact-layout.
+// The loop sees the problems in its next-run prompt. Inline artifacts auto-size
+// to content, so they never load this.
+const widgetBridgeScript = `
+(() => {
+  const post = (data) => parent.postMessage(Object.assign({ type: 'jaz:artifact-layout' }, data), '*');
+  const doc = document.documentElement;
+  window.addEventListener('message', (event) => {
+    const m = event && event.data;
+    if (m && m.type === 'jaz:scale' && typeof m.scale === 'number') doc.style.zoom = String(m.scale);
+  });
+  function hideBroken() {
+    let broken = 0;
+    const imgs = document.images;
+    for (let i = 0; i < imgs.length; i++) {
+      const img = imgs[i];
+      if (img.complete && img.naturalWidth === 0 && img.getAttribute('src')) { img.style.visibility = 'hidden'; broken++; }
+    }
+    return broken;
+  }
+  function measure() {
+    const body = document.body;
+    if (!body) return;
+    const overflowPx = Math.max(0, doc.scrollHeight - doc.clientHeight);
+    const nodes = body.querySelectorAll('*');
+    let contentBottom = 0, clipped = 0;
+    const count = Math.min(nodes.length, 600);
+    for (let i = 0; i < count; i++) {
+      const el = nodes[i];
+      const style = getComputedStyle(el);
+      if (el.scrollHeight > el.clientHeight + 2 && (style.overflowY === 'hidden' || style.overflowY === 'clip')) clipped++;
+      if (el.childElementCount !== 0) continue;
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 4 || rect.height < 4) continue;
+      const visible = style.visibility !== 'hidden' && ((el.textContent && el.textContent.trim() !== '') || /^(IMG|SVG|CANVAS|VIDEO)$/.test(el.tagName) || (style.backgroundColor && !/rgba?\\(\\s*0\\s*,\\s*0\\s*,\\s*0\\s*,\\s*0\\s*\\)/.test(style.backgroundColor)) || parseFloat(style.borderTopWidth) > 0);
+      if (visible && rect.bottom > contentBottom) contentBottom = rect.bottom;
+    }
+    const ch = doc.clientHeight;
+    const deadPx = Math.max(0, (ch - 12) - contentBottom);
+    const deadPct = overflowPx > 0 ? 0 : Math.round((100 * deadPx) / Math.max(1, ch));
+    post({ dead_space_pct: deadPct, overflow_px: Math.round(overflowPx), clipped: clipped, img_errors: hideBroken() });
+  }
+  let timer = null;
+  function schedule() { if (timer) clearTimeout(timer); timer = setTimeout(measure, 500); }
+  document.addEventListener('error', (event) => {
+    const el = event && event.target;
+    if (el && el.tagName === 'IMG') { el.style.visibility = 'hidden'; schedule(); }
+  }, true);
+  if (typeof ResizeObserver === 'function') new ResizeObserver(schedule).observe(doc);
+  window.addEventListener('load', () => setTimeout(measure, 800));
+  setTimeout(measure, 800);
+})();
+`
+
 export function parseArtifactToolArgs(raw?: string): ArtifactInput | null {
   if (!raw) return null
   let parsed: unknown
@@ -98,7 +151,6 @@ export function parseArtifactToolArgs(raw?: string): ArtifactInput | null {
   return {
     title,
     code,
-    kind: artifactKind(input.artifact_type, code),
     loadingMessages: loadingMessages(input.loading_messages),
   }
 }
@@ -108,24 +160,36 @@ export function artifactInputFromEvent(artifact?: ArtifactEvent): ArtifactInput 
   return {
     title: artifact.title.trim(),
     code: artifact.widget_code,
-    kind: artifactKind(artifact.artifact_type, artifact.widget_code),
     loadingMessages: loadingMessages(artifact.loading_messages),
   }
 }
 
-export function buildArtifactThemeCSS(): string {
-  if (typeof window === 'undefined') return themeCSS(FALLBACKS, false)
+export function buildArtifactThemeCSS(darkOverride?: boolean): string {
+  if (typeof window === 'undefined') return themeCSS(FALLBACKS, darkOverride ?? false)
   const root = document.documentElement
   const style = getComputedStyle(root)
   const values = Object.fromEntries(
     THEME_VARS.map((name) => [name, style.getPropertyValue(name).trim() || FALLBACKS[name]]),
   )
-  return themeCSS(values, root.classList.contains('dark'))
+  return themeCSS(values, darkOverride ?? root.classList.contains('dark'))
 }
 
-export function buildArtifactDocument(input: ArtifactInput, theme: string): string {
-  if (isFullHTMLDocument(input.code)) return injectArtifactHost(input.code, theme)
-  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${ARTIFACT_CSP}"><style>${artifactCSS(theme)}</style><script>${bridgeScript}</script></head><body>${input.code}</body></html>`
+// Inline artifacts and board widgets render through this one builder, so both
+// get the same design system, theme, color-scheme, CSP, and CDN allowlist. The
+// only difference is the bridge: board tiles also report layout telemetry back
+// to their loop, opted in via measureLayout.
+export function buildArtifactDocument(
+  input: ArtifactInput,
+  theme: string,
+  opts: { measureLayout?: boolean } = {},
+): string {
+  const bridge = opts.measureLayout ? `${bridgeScript}${widgetBridgeScript}` : bridgeScript
+  // A board tile fills a fixed cell, so the document height must resolve to the
+  // viewport — then a fragment using height:100% fills the tile. Inline
+  // artifacts grow to their content instead, so they must NOT get this.
+  const css = opts.measureLayout ? `${artifactCSS(theme)} html,body{height:100%}` : artifactCSS(theme)
+  if (isFullHTMLDocument(input.code)) return injectArtifactHost(input.code, theme, bridge)
+  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${ARTIFACT_CSP}"><style>${css}</style><script>${bridge}</script></head><body>${input.code}</body></html>`
 }
 
 function isFullHTMLDocument(code: string): boolean {
@@ -133,8 +197,8 @@ function isFullHTMLDocument(code: string): boolean {
   return head.startsWith('<!doctype') || head.startsWith('<html')
 }
 
-function injectArtifactHost(code: string, theme: string): string {
-  const support = `${contentSecurityMeta(code)}<style>${theme}</style><script>${bridgeScript}</script>`
+function injectArtifactHost(code: string, theme: string, bridge: string): string {
+  const support = `${contentSecurityMeta(code)}<style>${theme}</style><script>${bridge}</script>`
   const headOpen = code.search(/<head(?:\s[^>]*)?>/i)
   if (headOpen >= 0) {
     const end = code.indexOf('>', headOpen)
@@ -154,11 +218,6 @@ function contentSecurityMeta(code: string): string {
   return /content-security-policy/i.test(code)
     ? ''
     : `<meta http-equiv="Content-Security-Policy" content="${ARTIFACT_CSP}">`
-}
-
-function artifactKind(value: unknown, code: string): ArtifactKind {
-  if (value === 'svg' || value === 'html') return value
-  return code.trimStart().startsWith('<svg') ? 'svg' : 'html'
 }
 
 function loadingMessages(value: unknown): string[] {
@@ -197,7 +256,11 @@ function themeCSS(values: Record<string, string>, dark: boolean): string {
         : `--artifact-${name}-fill:${fill};--artifact-${name}-stroke:${stroke};--artifact-${name}-text:${title};`
     })
     .join('')
-  return `:root{${vars}${aliases}${rampVars}}`
+  // color-scheme themes native controls/scrollbars and is the OS-independent
+  // dark signal artifact JS reads (Jaz's dark mode is a class, not a media
+  // query, so prefers-color-scheme inside the iframe is unreliable).
+  const scheme = `color-scheme:${dark ? 'dark' : 'light'};`
+  return `:root{${scheme}${vars}${aliases}${rampVars}}`
 }
 
 function artifactCSS(theme: string): string {

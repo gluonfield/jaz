@@ -13,7 +13,7 @@ import { useToast } from '@/components/ui/toast'
 import { agentLabel } from '@/lib/agentLabel'
 import { deleteLoop, loopDetailQuery, runLoopNow } from '@/lib/api/loops'
 import type { Loop, LoopRun } from '@/lib/api/types'
-import { fullTime, hasTime, relativeTime } from '@/lib/format/time'
+import { fullTime, hasTime, relativeTime, shortDate } from '@/lib/format/time'
 import { keys } from '@/lib/query/keys'
 import { reasoningEffortLabel } from '@/lib/reasoningEfforts'
 
@@ -27,14 +27,14 @@ function LoopDetailPage() {
 
   if (detail.isPending) {
     return (
-      <div className="mx-auto max-w-[620px] px-10 pb-12 pt-6">
+      <div className="mx-auto max-w-[820px] px-10 pb-12 pt-6">
         <SkeletonRows count={6} />
       </div>
     )
   }
   if (detail.isError) {
     return (
-      <div className="mx-auto max-w-[620px] px-10 pb-12">
+      <div className="mx-auto max-w-[820px] px-10 pb-12">
         <EmptyState title="Couldn't load this loop">
           <p>{detail.error.message}</p>
         </EmptyState>
@@ -96,13 +96,10 @@ function LoopDetail({
   const paused = loop.status === 'paused'
   const isAcp = loop.runtime === 'acp'
   const summary = describeSchedule(draftFromLoop(loop.schedule?.expr ?? '', paused))
-  const nextRun =
-    !paused && hasTime(loop.next_run_at)
-      ? new Date(loop.next_run_at as string).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-      : ''
+  const nextRun = !paused && hasTime(loop.next_run_at) ? shortDate(loop.next_run_at) : ''
 
   return (
-    <div className="mx-auto max-w-[620px] px-10 pb-20 pt-6">
+    <div className="mx-auto max-w-[820px] px-10 pb-20 pt-6">
       <div className="pb-3">
         <Link
           to="/loops"
@@ -113,10 +110,10 @@ function LoopDetail({
         </Link>
       </div>
 
-      <header className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2.5">
-            <h1 className="truncate text-[22px] font-semibold tracking-[-0.01em] text-ink">{loop.name}</h1>
+      <header className="flex items-start justify-between gap-6">
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <h1 className="min-w-0 truncate text-[24px] font-semibold tracking-[-0.01em] text-ink">{loop.name}</h1>
             <StatusPill loop={loop} />
           </div>
           <p className="mt-1 text-[13px] text-ink-2">
@@ -145,7 +142,7 @@ function LoopDetail({
         </div>
       </header>
 
-      <div className="mt-6 whitespace-pre-wrap rounded-card bg-surface px-4 py-3.5 text-[13.5px] leading-relaxed text-ink">
+      <div className="mt-5 whitespace-pre-wrap rounded-card bg-surface px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink-2">
         <MentionText text={loop.prompt} />
       </div>
 
