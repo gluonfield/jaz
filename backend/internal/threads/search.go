@@ -18,17 +18,9 @@ const (
 
 type SearchQuery struct {
 	Query           string
-	Roles           []SearchRole
 	IncludeArchived bool
 	Limit           int
 }
-
-type SearchRole string
-
-const (
-	SearchRoleUser      SearchRole = "user"
-	SearchRoleAssistant SearchRole = "assistant"
-)
 
 type SearchResult struct {
 	ThreadID        string
@@ -39,7 +31,6 @@ type SearchResult struct {
 	ParentID        string
 	Archived        bool
 	MessageSeq      int64
-	Role            string
 	Snippet         string
 	HitCount        int
 	UpdatedAt       time.Time
@@ -69,7 +60,6 @@ func (s *Service) Search(ctx context.Context, query SearchQuery) ([]SearchResult
 	}
 	limit := clampSearchLimit(query.Limit)
 	candidateLimit := min(maxSearchCandidates, max(limit*8, 80))
-	includeUser, includeAssistant := searchRoles(query.Roles)
 
 	byThread := map[string]*searchAccumulator{}
 	metadataRows, err := s.store.SearchThreadMetadata(ctx, search.SearchThreadMetadataParams{
@@ -86,20 +76,16 @@ func (s *Service) Search(ctx context.Context, query SearchQuery) ([]SearchResult
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if includeUser || includeAssistant {
-		messageRows, err := s.store.SearchThreadMessages(ctx, search.SearchThreadMessagesParams{
-			Match:            match,
-			IncludeUser:      boolInt(includeUser),
-			IncludeAssistant: boolInt(includeAssistant),
-			IncludeArchived:  boolInt(query.IncludeArchived),
-			Limit:            int64(candidateLimit),
-		})
-		if err != nil {
-			return nil, err
-		}
-		for _, row := range messageRows {
-			addMessageRow(byThread, row)
-		}
+	messageRows, err := s.store.SearchThreadMessages(ctx, search.SearchThreadMessagesParams{
+		Match:           match,
+		IncludeArchived: boolInt(query.IncludeArchived),
+		Limit:           int64(candidateLimit),
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range messageRows {
+		addMessageRow(byThread, row)
 	}
 
 	results := make([]SearchResult, 0, len(byThread))
@@ -126,9 +112,6 @@ func (s *Service) Search(ctx context.Context, query SearchQuery) ([]SearchResult
 
 func addMessageRow(byThread map[string]*searchAccumulator, row search.SearchThreadMessagesRow) {
 	score := -row.Score * 1_000_000
-	if row.Role == "user" {
-		score += 1.5
-	}
 	addSearchHit(byThread, SearchResult{
 		ThreadID:        row.ID,
 		ThreadSlug:      row.Slug,
@@ -138,7 +121,6 @@ func addMessageRow(byThread map[string]*searchAccumulator, row search.SearchThre
 		ParentID:        row.ParentID,
 		Archived:        row.Archived != 0,
 		MessageSeq:      row.Seq,
-		Role:            row.Role,
 		Snippet:         row.Snippet,
 		UpdatedAt:       msToTime(row.UpdatedAtMs),
 		LastAttentionAt: msToTime(row.LastAttentionAtMs),
@@ -170,7 +152,6 @@ func addSearchHit(byThread map[string]*searchAccumulator, result SearchResult, s
 	if item.result.Snippet == "" || score > item.bestScore {
 		item.bestScore = score
 		item.result.MessageSeq = result.MessageSeq
-		item.result.Role = result.Role
 		item.result.Snippet = result.Snippet
 	}
 }
@@ -206,22 +187,6 @@ func ftsTokens(query string) []string {
 	}
 	flush()
 	return tokens
-}
-
-func searchRoles(roles []SearchRole) (bool, bool) {
-	if len(roles) == 0 {
-		return true, true
-	}
-	var user, assistant bool
-	for _, role := range roles {
-		switch role {
-		case SearchRoleUser:
-			user = true
-		case SearchRoleAssistant:
-			assistant = true
-		}
-	}
-	return user, assistant
 }
 
 func clampSearchLimit(limit int) int {

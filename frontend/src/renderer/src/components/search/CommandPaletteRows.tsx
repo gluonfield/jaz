@@ -1,12 +1,12 @@
-import { Bot, Clock, MessageSquare, User } from 'lucide-react'
+import { MessageSquare } from 'lucide-react'
 import { motion, type Transition } from 'motion/react'
 import { KeyboardShortcut } from '@/components/ui/KeyboardShortcut'
 import type { ThreadSearchResult } from '@/lib/api/types'
 import { relativeTime } from '@/lib/format/time'
-import type { PaletteCommand, PaletteItem, RoleMode } from './commandPaletteTypes'
+import type { PaletteCommand } from './commandPaletteTypes'
 import { threadTitle } from './commandPaletteTypes'
 
-const ITEM_TRANSITION: Transition = { duration: 0.16, ease: [0.2, 0, 0, 1] }
+const ITEM_TRANSITION: Transition = { type: 'spring', duration: 0.22, bounce: 0 }
 const SNIPPET_START = '\u001f'
 const SNIPPET_END = '\u001e'
 
@@ -41,23 +41,6 @@ function snippetSegments(text: string): SnippetSegment[] {
   return segments.filter((segment) => segment.text)
 }
 
-function roleLabel(role?: string): string {
-  switch (role) {
-    case 'user':
-      return 'User'
-    case 'assistant':
-      return 'Assistant'
-    default:
-      return 'Thread'
-  }
-}
-
-function ResultIcon({ result }: { result: ThreadSearchResult }) {
-  if (result.role === 'user') return <User size={16} className="text-primary" />
-  if (result.role === 'assistant') return <Bot size={16} className="text-primary" />
-  return <MessageSquare size={16} className="text-primary" />
-}
-
 function HighlightedSnippet({ text }: { text: string }) {
   if (!text) return null
   return (
@@ -75,34 +58,6 @@ function HighlightedSnippet({ text }: { text: string }) {
         ),
       )}
     </>
-  )
-}
-
-export function RoleToggle({
-  mode,
-  value,
-  children,
-  onChange,
-}: {
-  mode: RoleMode
-  value: RoleMode
-  children: string
-  onChange: (mode: RoleMode) => void
-}) {
-  const active = mode === value
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={() => onChange(value)}
-      className={`h-7 rounded-full px-3 text-[12px] font-medium transition-colors duration-150 ${
-        active
-          ? 'bg-primary text-on-primary shadow-sm'
-          : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
-      }`}
-    >
-      {children}
-    </button>
   )
 }
 
@@ -127,24 +82,25 @@ export function CommandRow({
       type="button"
       data-command-index={index}
       layout
-      initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 5, filter: 'blur(3px)' }}
+      initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 4, filter: 'blur(3px)' }}
       animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-      exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -3, filter: 'blur(3px)' }}
-      transition={ITEM_TRANSITION}
+      exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -2, filter: 'blur(2px)' }}
+      transition={reduceMotion ? { duration: 0.08 } : { ...ITEM_TRANSITION, delay: Math.min(index, 6) * 0.012 }}
+      whileTap={reduceMotion ? undefined : { scale: 0.96 }}
       onClick={onSelect}
       onMouseEnter={onActive}
-      className={`group flex min-h-14 w-full items-center gap-3 rounded-control px-3 text-left transition-colors duration-150 ${
-        active ? 'bg-primary-soft text-ink' : 'hover:bg-surface'
+      className={`group flex min-h-11 w-full items-center gap-2.5 rounded-[10px] px-2.5 text-left transition-colors duration-150 ${
+        active ? 'bg-surface text-ink shadow-[inset_0_0_0_1px_var(--color-border)]' : 'hover:bg-surface/70'
       }`}
     >
-      <span className={`grid size-8 shrink-0 place-items-center rounded-full ${active ? 'bg-bg' : 'bg-surface'}`}>
-        <Icon size={16} className="text-primary" />
+      <span className={`grid size-7 shrink-0 place-items-center rounded-[8px] ${active ? 'bg-bg' : 'bg-surface'}`}>
+        <Icon size={15} className={active ? 'text-ink' : 'text-ink-3'} />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13px] font-medium text-ink">{item.title}</span>
         <span className="block truncate text-[12px] text-ink-3">{item.detail}</span>
       </span>
-      {item.shortcut ? <KeyboardShortcut value={item.shortcut} /> : null}
+      {item.shortcut ? <KeyboardShortcut value={item.shortcut} className="bg-surface" /> : null}
     </motion.button>
   )
 }
@@ -169,50 +125,31 @@ export function ThreadRow({
       type="button"
       data-command-index={index}
       layout
-      initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 5, filter: 'blur(3px)' }}
+      initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 4, filter: 'blur(3px)' }}
       animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-      exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -3, filter: 'blur(3px)' }}
-      transition={ITEM_TRANSITION}
+      exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -2, filter: 'blur(2px)' }}
+      transition={reduceMotion ? { duration: 0.08 } : { ...ITEM_TRANSITION, delay: Math.min(index, 6) * 0.012 }}
+      whileTap={reduceMotion ? undefined : { scale: 0.96 }}
       onClick={onSelect}
       onMouseEnter={onActive}
-      className={`group flex min-h-[68px] w-full items-start gap-3 rounded-control px-3 py-2.5 text-left transition-colors duration-150 ${
-        active ? 'bg-primary-soft text-ink' : 'hover:bg-surface'
+      className={`group flex min-h-[58px] w-full items-start gap-2.5 rounded-[10px] px-2.5 py-2 text-left transition-colors duration-150 ${
+        active ? 'bg-surface text-ink shadow-[inset_0_0_0_1px_var(--color-border)]' : 'hover:bg-surface/70'
       }`}
     >
-      <span className={`mt-0.5 grid size-8 shrink-0 place-items-center rounded-full ${active ? 'bg-bg' : 'bg-surface'}`}>
-        <ResultIcon result={result} />
+      <span className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-[8px] ${active ? 'bg-bg' : 'bg-surface'}`}>
+        <MessageSquare size={15} className="text-ink-3" />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="flex min-w-0 items-center gap-2">
+        <span className="flex min-w-0 items-center">
           <span className="truncate text-[13px] font-medium text-ink">{threadTitle(result)}</span>
-          <span className="shrink-0 rounded-full bg-bg px-1.5 py-[2px] text-[10px] font-medium text-ink-3">
-            {roleLabel(result.role)}
-          </span>
         </span>
-        <span className="mt-1 line-clamp-2 text-[12px] leading-5 text-ink-2">
+        <span className="mt-0.5 line-clamp-1 text-[12px] leading-5 text-ink-2">
           <HighlightedSnippet text={result.snippet || result.thread_slug} />
         </span>
       </span>
-      <span className="mt-1 flex shrink-0 items-center gap-1 text-[11px] tabular-nums text-ink-3">
-        <Clock size={12} />
+      <span className="mt-1 shrink-0 text-[11px] tabular-nums text-ink-3">
         {relativeTime(result.last_attention_at || result.updated_at)}
       </span>
     </motion.button>
-  )
-}
-
-export function PaletteFooter({ activeItem }: { activeItem?: PaletteItem }) {
-  return (
-    <div className="flex items-center justify-between border-t border-border px-3 py-2 text-[11px] text-ink-3">
-      <div className="flex items-center gap-1.5">
-        <span className="rounded-full bg-bg px-2 py-1 font-mono">Up/Down</span>
-        <span>Move</span>
-        <span className="ml-2 rounded-full bg-bg px-2 py-1 font-mono">Enter</span>
-        <span>Open</span>
-      </div>
-      <span className="max-w-[45%] truncate">
-        {activeItem?.kind === 'thread' ? activeItem.result.thread_slug : activeItem?.detail}
-      </span>
-    </div>
   )
 }
