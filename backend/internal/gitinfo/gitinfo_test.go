@@ -191,6 +191,53 @@ func TestRemoveAndRestoreManagedWorktree(t *testing.T) {
 	}
 }
 
+func TestRemoveManagedWorktreeSnapshotsWithoutUserGitConfig(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	configDir := t.TempDir()
+	globalConfig := filepath.Join(configDir, "global")
+	if err := os.WriteFile(globalConfig, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_CONFIG_GLOBAL", globalConfig)
+	t.Setenv("HOME", t.TempDir())
+
+	ctx := context.Background()
+	workspace := t.TempDir()
+	dir := filepath.Join(workspace, "repo")
+	run := func(target string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", target}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	if err := exec.Command("git", "init", "-q", "-b", "main", dir).Run(); err != nil {
+		t.Fatal(err)
+	}
+	run(dir, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "--allow-empty", "-q", "-m", "init")
+
+	worktree, _, err := AddWorktree(ctx, workspace, dir, "snapshot-thread")
+	if err != nil {
+		t.Fatalf("AddWorktree: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(worktree, "file.txt"), []byte("saved\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	branch := "jaz/snapshot-thread"
+	if err := RemoveManagedWorktree(ctx, worktree, branch, "snapshot"); err != nil {
+		t.Fatalf("RemoveManagedWorktree: %v", err)
+	}
+	if err := RestoreManagedWorktree(ctx, dir, worktree, branch); err != nil {
+		t.Fatalf("RestoreManagedWorktree: %v", err)
+	}
+	if got, err := os.ReadFile(filepath.Join(worktree, "file.txt")); err != nil || string(got) != "saved\n" {
+		t.Fatalf("restored file.txt = %q, %v", got, err)
+	}
+}
+
 func TestPushAndCommitState(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")

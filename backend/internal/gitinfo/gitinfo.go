@@ -170,6 +170,25 @@ func CommitAll(ctx context.Context, dir, message string) error {
 	return err
 }
 
+func snapshotAll(ctx context.Context, dir, message string) error {
+	out, err := git(ctx, dir, "status", "--porcelain")
+	if err != nil {
+		return err
+	}
+	if out == "" {
+		return nil
+	}
+	if _, err := git(ctx, dir, "add", "-A"); err != nil {
+		return err
+	}
+	_, err = gitWithOptions(ctx, dir, []string{
+		"-c", "user.email=jaz@local",
+		"-c", "user.name=Jaz",
+		"-c", "commit.gpgsign=false",
+	}, "commit", "--no-verify", "-m", message)
+	return err
+}
+
 // Handoff applies the worktree's changes — committed and uncommitted,
 // relative to where it branched off — onto the repository's main checkout as
 // committed history: any dirty work in the worktree is committed on its
@@ -269,7 +288,7 @@ func RemoveManagedWorktree(ctx context.Context, dir, branch, message string) err
 	if current != branch {
 		return fmt.Errorf("worktree branch %q does not match %q", current, branch)
 	}
-	if err := CommitAll(ctx, dir, message); err != nil {
+	if err := snapshotAll(ctx, dir, message); err != nil {
 		return err
 	}
 	if _, err := git(ctx, root, "worktree", "remove", "--force", dir); err != nil {
@@ -420,7 +439,13 @@ func splitNul(out string) []string {
 }
 
 func git(ctx context.Context, dir string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	return gitWithOptions(ctx, dir, nil, args...)
+}
+
+func gitWithOptions(ctx context.Context, dir string, options []string, args ...string) (string, error) {
+	gitArgs := append([]string{"-C", dir}, options...)
+	gitArgs = append(gitArgs, args...)
+	cmd := exec.CommandContext(ctx, "git", gitArgs...)
 	var out, stderr bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &stderr
