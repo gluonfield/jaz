@@ -15,6 +15,7 @@ import (
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/wins/jaz/backend/internal/pathsafe"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -234,13 +235,22 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 			At:     now,
 		}
 	case acpschema.PlanSessionUpdate:
-		plan := make([]PlanEntry, 0, len(event.Entries))
+		plan := make([]sessionevents.PlanEntry, 0, len(event.Entries))
 		for _, entry := range event.Entries {
-			plan = append(plan, PlanEntry{
+			plan = append(plan, sessionevents.PlanEntry{
 				Content:  entry.Content,
 				Status:   string(entry.Status),
 				Priority: string(entry.Priority),
 			})
+		}
+		var ok bool
+		plan, ok = sessionevents.NormalizeProgressEntries(plan)
+		if !ok {
+			if len(job.Plan) > 0 {
+				job.Plan = []sessionevents.PlanEntry{}
+				publishACP = true
+			}
+			break
 		}
 		wasEmpty := len(job.Plan) == 0
 		publishACP = !slices.Equal(job.Plan, plan)
