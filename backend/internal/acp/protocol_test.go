@@ -291,8 +291,13 @@ func runInteractiveRequestUserInputTest(t *testing.T, metaKey, submitOptionID, r
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(state.Permissions) != 1 || len(state.Permissions[0].Questions) != 1 || state.Permissions[0].Questions[0].ID != "audience" {
+	if len(state.Permissions) != 0 {
 		t.Fatalf("persisted permissions = %#v", state.Permissions)
+	}
+	if len(manager.jobsByID["session"].Permissions) != 1 ||
+		len(manager.jobsByID["session"].Permissions[0].Questions) != 1 ||
+		manager.jobsByID["session"].Permissions[0].Questions[0].ID != "audience" {
+		t.Fatalf("live permissions = %#v", manager.jobsByID["session"].Permissions)
 	}
 
 	if err := manager.AnswerInteractive(ctx, InteractiveAnswer{
