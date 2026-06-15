@@ -536,6 +536,15 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 
 func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {
 	job, err := m.job(req.Session)
+	if err == nil && m.serveErr(job.ID) != nil {
+		job.mu.RLock()
+		running := job.State == StateRunning || job.State == StateStarting
+		job.mu.RUnlock()
+		if !running {
+			m.teardown(job.ID)
+			job, err = m.resume(ctx, req.Session)
+		}
+	}
 	if err != nil {
 		if job, err = m.resume(ctx, req.Session); err != nil {
 			return Job{}, err
@@ -727,6 +736,7 @@ func (m *Manager) teardown(id string) {
 	delete(m.connsByID, id)
 	delete(m.peersByID, id)
 	delete(m.cancelByID, id)
+	delete(m.serveErrByID, id)
 	if job != nil {
 		delete(m.jobsBySlug, job.Slug)
 		delete(m.jobsByACP, job.ACPSession)
@@ -852,16 +862,37 @@ func (m *Manager) peer(id string) *jsonrpc.Peer {
 }
 
 func (m *Manager) setServeErr(peer *jsonrpc.Peer, err error) {
+	var id string
+	var job *Job
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	for id, candidate := range m.peersByID {
+	for candidateID, candidate := range m.peersByID {
 		if candidate == peer {
+			id = candidateID
 			m.serveErrByID[id] = err
-			m.log.Error("acp agent connection failed", "session", id, "error", err)
-			if job := m.jobsByID[id]; job != nil {
-				job.setState(StateFailed, "", err.Error())
-			}
-			return
+			job = m.jobsByID[id]
+			break
 		}
 	}
+	m.mu.Unlock()
+	if id == "" {
+		return
+	}
+	m.log.Error("acp agent connection failed", "session", id, "error", err)
+	if job == nil {
+		return
+	}
+	job.mu.RLock()
+	running := job.State == StateRunning || job.State == StateStarting
+	job.mu.RUnlock()
+	if running {
+		return
+	}
+	job.setState(StateFailed, "", err.Error())
+	m.publishACPStatus(job.Snapshot())
+}
+
+func (m *Manager) serveErr(id string) error {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.serveErrByID[id]
 }

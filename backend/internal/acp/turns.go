@@ -155,6 +155,9 @@ func (m *Manager) failTurn(job *Job, err error) {
 		job.setState(StateCancelled, "cancelled", "")
 		m.log.Info("acp turn cancelled", "session", job.ID)
 	} else {
+		if serveErr := m.serveErr(job.ID); serveErr != nil && errors.Is(err, jsonrpc.ErrClosed) {
+			err = serveErr
+		}
 		message := acpTurnErrorMessage(err)
 		job.setState(StateFailed, "", message)
 		m.log.Error("acp turn failed", "session", job.ID, "error", err)
