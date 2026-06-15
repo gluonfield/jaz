@@ -683,7 +683,6 @@ func acpStorageState(job Job) storage.ACPState {
 		Thought:       job.Thought,
 		Plan:          plan,
 		ToolCalls:     calls,
-		Permissions:   clonePermissions(job.Permissions),
 		Modes:         acpModeEvent(job.Modes),
 		Error:         job.Error,
 		ParentVisible: job.ParentVisible,

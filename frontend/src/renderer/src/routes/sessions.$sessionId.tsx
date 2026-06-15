@@ -33,7 +33,7 @@ import {
   uploadSessionAttachment,
 } from '@/lib/api/sessions'
 import { streamSessionMessage } from '@/lib/api/stream'
-import type { ACPJobSnapshot, ACPPermission, ChatMessage, SessionEvent, SessionMessages } from '@/lib/api/types'
+import type { ACPJobSnapshot, ChatMessage, SessionEvent, SessionMessages } from '@/lib/api/types'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
 import { takePendingMessage, takePendingVoice } from '@/lib/pendingMessage'
@@ -41,6 +41,7 @@ import { keys } from '@/lib/query/keys'
 import { planProgressSurfaceFromEvent, planSurfaceBelongsToSession, planSurfaceFromEvent } from '@/lib/planSurface'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { coalesceSessionEvents } from '@/lib/sessionEvents'
+import { activePermissionIDs, isPermissionAwaitingResponse, resolveInactivePermissions } from '@/lib/sessionPermissions'
 import { latestEventTimeISO } from '@/lib/sessionLiveness'
 
 export const Route = createFileRoute('/sessions/$sessionId')({
@@ -168,25 +169,22 @@ function acpSnapshotEvents(job: ACPJobSnapshot, pageSessionID: string): SessionE
       },
     })
   }
-  for (const permission of job.permissions ?? []) {
-    if (!hasPermissionSurface(permission)) continue
-    events.push({
-      session_id: pageSessionID,
-      type: 'permission_request',
-      at,
-      permission,
-    })
+  if (isACPStateRunning(job.state)) {
+    for (const permission of job.permissions ?? []) {
+      if (!isPermissionAwaitingResponse(permission)) continue
+      events.push({
+        session_id: pageSessionID,
+        type: 'permission_request',
+        at,
+        permission,
+      })
+    }
   }
   return events
 }
 
-function hasPermissionSurface(permission: ACPPermission | undefined): boolean {
-  if (!permission?.id?.trim()) return false
-  return Boolean(
-    permission.questions?.length ||
-      permission.options?.length ||
-      permission.locations?.length,
-  )
+function isACPStateRunning(state?: string): boolean {
+  return state === 'running' || state === 'starting'
 }
 
 function sanitizeParentChildACPEvent(event: SessionEvent, pageSessionID: string): SessionEvent | null {
@@ -273,6 +271,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
       : []),
     ...((acpChildren ?? []).flatMap((child) => acpSnapshotEvents(child, session.id))),
   ]
+  const activePermissions = activePermissionIDs([...snapshotEvents, ...liveEvents])
   const transcriptEvents = coalesceSessionEvents(
     [...persistedEvents, ...snapshotEvents, ...liveEvents].flatMap((event) => {
       // 'assistant' events are refresh signals; the message store has the content.
@@ -283,6 +282,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
       return sanitized ? [sanitized] : []
     }),
   )
+  const settledTranscriptEvents = resolveInactivePermissions(transcriptEvents, activePermissions)
   const acpModesKnown = Boolean(
     acpModes?.plan_mode_id ||
       acpModes?.current_mode_id ||
@@ -290,18 +290,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
       acpModes?.available_modes?.length,
   )
   const planAvailable = session.runtime !== 'acp' || !acpModesKnown || Boolean(acpModes?.plan_mode_id)
-  const pendingPermissionEvents = new Map<string, SessionEvent>()
-  for (const event of transcriptEvents) {
-    if (event.type === 'permission_request' && event.permission?.id) {
-      if (hasPermissionSurface(event.permission)) {
-        pendingPermissionEvents.set(event.permission.id, event)
-      }
-    }
-    if (event.type === 'permission_response' && event.permission?.id) {
-      pendingPermissionEvents.delete(event.permission.id)
-    }
-  }
-  const hasPendingPermission = pendingPermissionEvents.size > 0
+  const hasPendingPermission = activePermissions.size > 0
   const latestUserAt = Math.max(
     0,
     ...messages
@@ -309,7 +298,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
       .map((message) => Date.parse(message.created_at))
       .filter((time) => !Number.isNaN(time)),
   )
-  const latestPlanDecisionEvent = transcriptEvents.findLast((event) => {
+  const latestPlanDecisionEvent = settledTranscriptEvents.findLast((event) => {
     const surface = planSurfaceFromEvent(event)
     return Boolean(
       surface?.awaitingApproval &&
@@ -323,13 +312,13 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
   const planDecisionAt = Date.parse(latestPlanDecisionEvent?.at ?? '')
   // The panel shows execution progress; plan-mode approval proposals stay in
   // the transcript and bottom approval UI.
-  const panelPlanEvent = transcriptEvents.findLast((event) =>
+  const panelPlanEvent = settledTranscriptEvents.findLast((event) =>
     Boolean(planProgressSurfaceFromEvent(event) && planSurfaceBelongsToSession(event, session.id)),
   )
   // Plan progress lives in the side panel, never in the thread; only a
   // proposed plan that needs the user's approval stays inline. Errors are
   // notified as toasts, not rendered as rows.
-  const displayEvents = transcriptEvents.map((event) => {
+  const displayEvents = settledTranscriptEvents.map((event) => {
     const withoutError = stripACPError(event)
     const surface = planSurfaceFromEvent(withoutError)
     if (!surface || surface.awaitingApproval) return withoutError
@@ -337,7 +326,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
     return { ...withoutError, plan: undefined }
   })
   return {
-    transcriptEvents,
+    transcriptEvents: settledTranscriptEvents,
     displayEvents,
     planAvailable,
     hasPendingPermission,

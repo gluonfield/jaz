@@ -19,11 +19,12 @@ import (
 )
 
 const (
-	StateStarting  = "starting"
-	StateRunning   = "running"
-	StateIdle      = "idle"
-	StateFailed    = "failed"
-	StateCancelled = "cancelled"
+	StateStarting   = "starting"
+	StateRunning    = "running"
+	StateIdle       = "idle"
+	StateFailed     = "failed"
+	StateCancelled  = "cancelled"
+	StateNotRunning = "not_running"
 )
 
 type Store interface {
@@ -589,7 +590,7 @@ func (m *Manager) Status(ref string) (Job, error) {
 		ParentID:   session.ParentID,
 		ACPAgent:   CanonicalAgentName(session.RuntimeRef.Agent),
 		ACPSession: session.RuntimeRef.SessionID,
-		State:      "not_running",
+		State:      StateNotRunning,
 		CreatedAt:  session.CreatedAt,
 		UpdatedAt:  session.UpdatedAt,
 	}, nil
@@ -693,6 +694,7 @@ func (m *Manager) cancelStored(ref string) (Job, error) {
 	}
 	state.State = StateCancelled
 	state.StopReason = "cancelled"
+	state.Permissions = nil
 	if saver, ok := m.store.(acpStateSaver); ok {
 		if err := saver.SaveACPState(session.ID, state); err != nil {
 			m.log.Warn("clearing stored acp state failed", "session", session.ID, "error", err)
