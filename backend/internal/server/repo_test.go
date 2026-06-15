@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/gitinfo"
@@ -137,9 +138,10 @@ func TestArchivePrunesAndRestoresManagedWorktree(t *testing.T) {
 	if res.Code != http.StatusOK {
 		t.Fatalf("archive status = %d, body = %s", res.Code, res.Body.String())
 	}
-	if _, err := os.Stat(worktree); !os.IsNotExist(err) {
-		t.Fatalf("worktree still exists after archive: %v", err)
-	}
+	waitFor(t, 2*time.Second, func() bool {
+		_, err := os.Stat(worktree)
+		return os.IsNotExist(err)
+	})
 
 	var info gitinfo.Info
 	req = httptest.NewRequest(http.MethodGet, "/v1/sessions/"+session.ID+"/repo", nil)
