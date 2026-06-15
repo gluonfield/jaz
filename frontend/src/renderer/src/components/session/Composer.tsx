@@ -106,7 +106,7 @@ export function ComposerCard({
   const [planRequested, setPlanRequested] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const reducedMotion = useReducedMotion()
-  const actionDisabled = disabled || streaming
+  const planToggleDisabled = disabled || !planAvailable
   const mention = useMentionInput({
     fileRoot,
     disabled,
@@ -137,12 +137,12 @@ export function ComposerCard({
   const draggingFiles = useWindowFileDrop({ disabled, onDrop: addFiles })
 
   const togglePlanRequested = () => {
-    if (actionDisabled || !planAvailable) return
+    if (planToggleDisabled) return
     setPlanRequested((value) => !value)
   }
 
   useEffect(() => {
-    if (actionDisabled || !planAvailable) return
+    if (planToggleDisabled) return
     const onKeyDown = (event: KeyboardEvent) => {
       if (
         event.defaultPrevented ||
@@ -160,7 +160,7 @@ export function ComposerCard({
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [actionDisabled, planAvailable])
+  }, [planToggleDisabled])
 
   const submit = () => {
     // Tokens expand on the way out: tagged paths become absolute, skill
@@ -168,7 +168,7 @@ export function ComposerCard({
     const trimmed = mention.value().trim()
     if (!trimmed || disabled || (streaming && !canQueueWhileStreaming)) return
     onSend(trimmed, {
-      planRequested: !streaming && planAvailable && planRequested,
+      planRequested: planAvailable && planRequested,
       files,
     })
     if (clearOnSend) {
@@ -310,7 +310,7 @@ export function ComposerCard({
                 </span>
               </MenuRow>
               {planAvailable ? (
-                <PlanMenuToggle checked={planRequested} disabled={actionDisabled} onToggle={togglePlanRequested} />
+                <PlanMenuToggle checked={planRequested} disabled={disabled} onToggle={togglePlanRequested} />
               ) : null}
             </Popover>
             {leftSlot}
@@ -329,7 +329,7 @@ export function ComposerCard({
                     size="xs"
                     aria-label="Remove plan mode"
                     title="Remove plan mode"
-                    disabled={streaming || disabled}
+                    disabled={disabled}
                     className="grid"
                     onClick={() => setPlanRequested(false)}
                   >
