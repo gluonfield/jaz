@@ -33,6 +33,10 @@ export function createSession(
   return post<Session>('/v1/sessions', input)
 }
 
+export function getSession(id: string): Promise<Session> {
+  return get<Session>(`/v1/sessions/${id}`)
+}
+
 export async function uploadSessionAttachment(sessionId: string, file: File, signal?: AbortSignal): Promise<Attachment> {
   const form = new FormData()
   form.append('file', file)
