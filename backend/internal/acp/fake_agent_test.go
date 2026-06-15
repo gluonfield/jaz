@@ -208,6 +208,10 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				_ = conn.Send(context.Background(), resp)
 				continue
 			}
+			if strings.Contains(string(msg.Params), "break transport") {
+				_, _ = fmt.Fprintln(os.Stdout, "not-json")
+				os.Exit(0)
+			}
 			if want := os.Getenv("JAZ_FAKE_ACP_EXPECT_EFFORT"); want != "" && currentEffort != want {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("configured reasoning effort was not set", nil))
 				_ = conn.Send(context.Background(), resp)
