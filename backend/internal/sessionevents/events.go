@@ -7,7 +7,10 @@ import (
 	"time"
 )
 
-const TypeArtifact = "artifact"
+const (
+	TypeArtifact = "artifact"
+	TypeSession  = "session"
+)
 
 type Event struct {
 	Seq        int64          `json:"seq,omitempty"`
