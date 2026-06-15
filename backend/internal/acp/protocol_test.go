@@ -543,7 +543,7 @@ func TestPlanSessionUpdateInvalidReplacementClearsProgress(t *testing.T) {
 	}
 	select {
 	case event := <-sub:
-		if event.ACP == nil || len(event.ACP.Plan) != 0 {
+		if event.ACP == nil || event.ACP.Plan == nil || len(event.ACP.Plan) != 0 {
 			t.Fatalf("clear progress event = %#v", event)
 		}
 	case <-ctx.Done():
