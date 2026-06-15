@@ -6,7 +6,6 @@ import { SIDE_PANEL_WIDTHS, type SidePanelView } from './SidePanel'
 
 const PANEL_CHAT_COMFORT = 800
 const PANEL_PREF_KEY = 'jaz.sessionPanel'
-const PANEL_VIEW_PREF_KEY = 'jaz.sessionPanelView'
 
 type PanelPref = 'auto' | 'open' | 'closed'
 
@@ -15,14 +14,9 @@ function storedPanelPref(): PanelPref {
   return value === 'open' || value === 'closed' ? value : 'auto'
 }
 
-function storedSidePanelView(): SidePanelView {
-  const value = localStorage.getItem(PANEL_VIEW_PREF_KEY)
-  return value === 'diff' || value === 'preview' || value === 'terminal' || value === 'file' ? value : 'overview'
-}
-
 export function useSidePanelState(gitAvailable: boolean) {
   const [panelPref, setPanelPref] = useState<PanelPref>(storedPanelPref)
-  const [view, setView] = useState<SidePanelView>(storedSidePanelView)
+  const [view, setView] = useState<SidePanelView>('overview')
   const [previewUrl, setPreviewUrl] = useState('')
   const [fileRef, setFileRef] = useState<FileReference | null>(null)
   const [hasPanelSpace, setHasPanelSpace] = useState(false)
@@ -47,9 +41,6 @@ export function useSidePanelState(gitAvailable: boolean) {
   useEffect(() => {
     localStorage.setItem(PANEL_PREF_KEY, panelPref)
   }, [panelPref])
-  useEffect(() => {
-    localStorage.setItem(PANEL_VIEW_PREF_KEY, view)
-  }, [view])
 
   const toggle = useCallback(() => {
     const next = !open

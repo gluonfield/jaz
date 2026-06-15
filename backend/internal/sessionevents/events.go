@@ -7,7 +7,10 @@ import (
 	"time"
 )
 
-const TypeArtifact = "artifact"
+const (
+	TypeArtifact = "artifact"
+	TypeSession  = "session"
+)
 
 type Event struct {
 	Seq        int64          `json:"seq,omitempty"`
@@ -26,7 +29,6 @@ type ArtifactEvent struct {
 	WidgetCode      string   `json:"widget_code"`
 	LoadingMessages []string `json:"loading_messages,omitempty"`
 	ArtifactType    string   `json:"artifact_type,omitempty"`
-	Bytes           int      `json:"bytes,omitempty"`
 }
 
 func (e *Event) NormalizePayload() {
@@ -76,11 +78,30 @@ type ACPEvent struct {
 	Permissions []ACPPermission `json:"permissions,omitempty"`
 }
 
+func (e ACPEvent) MarshalJSON() ([]byte, error) {
+	type acpEvent ACPEvent
+	if e.Plan != nil {
+		return json.Marshal(struct {
+			acpEvent
+			Plan []PlanEntry `json:"plan"`
+		}{
+			acpEvent: acpEvent(e),
+			Plan:     e.Plan,
+		})
+	}
+	return json.Marshal(struct {
+		acpEvent
+		Plan []PlanEntry `json:"plan,omitempty"`
+	}{
+		acpEvent: acpEvent(e),
+	})
+}
+
 // SlimForStorage returns a copy without session-constant fields: repeating
 // the title and mode catalog on every stored row dominated transcript
 // payloads (~70-90% of bytes on tool-heavy threads); /messages serves them
 // once per response via acp_meta instead. The slug stays embedded as a
-// durable label fallback, and plan-bearing events keep the current/plan mode
+// durable label fallback, and task-bearing events keep the current/plan mode
 // ids that approval state reads. Migration 0014 applies the same rule to
 // historical rows.
 func (e *ACPEvent) SlimForStorage() *ACPEvent {

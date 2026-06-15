@@ -20,6 +20,7 @@ import (
 	"github.com/wins/jaz/backend/internal/media"
 	"github.com/wins/jaz/backend/internal/provider"
 	mockprovider "github.com/wins/jaz/backend/internal/provider/mock"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -176,6 +177,60 @@ func TestNativeTurnUsesStoredProviderModelAndReasoning(t *testing.T) {
 	req := recorder.requests[0]
 	if req.Provider != "openai" || req.Model != "gpt-test" || req.ReasoningEffort != "high" {
 		t.Fatalf("unexpected provider request %#v", req)
+	}
+}
+
+func TestBeginNativeTurnClearsStaleError(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:          "native-retry",
+		Runtime:       storage.RuntimeNative,
+		ModelProvider: "openai",
+		Model:         "gpt-test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.Status = storage.StatusError
+	session.Error = "Server restarted while this thread was still running."
+	if err := store.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+	events := sessionevents.New()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sub := events.Subscribe(ctx, session.ID)
+
+	_, status, _, err := (&Server{Store: store, Events: events}).beginNativeTurn(context.Background(), session, "continue", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status != storage.StatusRunning {
+		t.Fatalf("status = %s, want %s", status, storage.StatusRunning)
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Status != storage.StatusRunning || loaded.Error != "" {
+		t.Fatalf("loaded status/error = %q/%q, want running with no error", loaded.Status, loaded.Error)
+	}
+	expectSessionChangedEvent(t, sub, session.ID)
+}
+
+func expectSessionChangedEvent(t *testing.T, sub <-chan sessionevents.Event, sessionID string) {
+	t.Helper()
+	select {
+	case event := <-sub:
+		if event.SessionID != sessionID || event.Type != sessionevents.TypeSession {
+			t.Fatalf("event = %#v, want session change for %s", event, sessionID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for session change event")
 	}
 }
 

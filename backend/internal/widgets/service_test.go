@@ -359,12 +359,12 @@ func TestPublishLintsAndClearsLayout(t *testing.T) {
 	if _, err := service.AssignLoopBoards(loop, []string{board.ID}); err != nil {
 		t.Fatalf("assign: %v", err)
 	}
-	widget, warnings, err := service.Publish(loop, "run-1", widgets.PublishInput{HTML: `<div style="height:100vh;color:#fff">x</div>`})
+	widget, warnings, err := service.Publish(loop, "run-1", widgets.PublishInput{HTML: `<div style="height:100vh;position:fixed">x</div>`})
 	if err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 	if len(warnings) < 2 {
-		t.Fatalf("expected lint warnings for vh + hex, got %v", warnings)
+		t.Fatalf("expected lint warnings for viewport units + fixed position, got %v", warnings)
 	}
 
 	// Board telemetry lands on the widget and the prompt surfaces it…
@@ -460,8 +460,8 @@ func TestPromptSectionMentionsFileAndErrors(t *testing.T) {
 			t.Fatalf("prompt section missing %q:\n%s", want, section)
 		}
 	}
-	if strings.Contains(section, "jz-stat") {
-		t.Fatal("design cheatsheet leaked back into the prompt; it belongs in the guide file")
+	if strings.Contains(section, "Visual Creation Suite") {
+		t.Fatal("design system leaked back into the prompt; it belongs in the guide file")
 	}
 
 	// A missing widget file is announced up front, not discovered via a failed read…
@@ -495,7 +495,8 @@ func TestEnsureGuideWritesAndRefreshes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read guide: %v", err)
 	}
-	for _, want := range []string{"jz-stat", "bg-surface-2", "fill the tile", "publish_widget"} {
+	// The guide is the inline-artifact design system plus the tile-mode addendum.
+	for _, want := range []string{"Visual Creation Suite", "Board tile mode", "Fill the tile"} {
 		if !strings.Contains(string(data), want) {
 			t.Fatalf("guide missing %q", want)
 		}
@@ -513,14 +514,6 @@ func TestEnsureGuideWritesAndRefreshes(t *testing.T) {
 	}
 }
 
-func TestRenderDocumentWrapsFragment(t *testing.T) {
-	doc := widgets.RenderDocument("Open PRs", "<p>hello</p>", "dark", 1.3)
-	if !strings.Contains(doc, `<div id="jz-root" style="zoom: 1.30">`) {
-		t.Fatalf("document missing zoom wrapper: %s", doc[:400])
-	}
-	for _, want := range []string{"<!doctype html>", `class="dark"`, "Content-Security-Policy", "<p>hello</p>", "jz-stat-value", "jaz:error", widgets.TailwindAssetPath, "text/tailwindcss", "--color-*: initial"} {
-		if !strings.Contains(doc, want) {
-			t.Fatalf("document missing %q", want)
-		}
-	}
-}
+// Widget documents are now built client-side by the shared artifact renderer;
+// the server returns the raw fragment (see TestWidgetContentServesRawFragment
+// in the server package).

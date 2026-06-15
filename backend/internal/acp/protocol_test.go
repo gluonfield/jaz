@@ -291,8 +291,13 @@ func runInteractiveRequestUserInputTest(t *testing.T, metaKey, submitOptionID, r
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(state.Permissions) != 1 || len(state.Permissions[0].Questions) != 1 || state.Permissions[0].Questions[0].ID != "audience" {
+	if len(state.Permissions) != 0 {
 		t.Fatalf("persisted permissions = %#v", state.Permissions)
+	}
+	if len(manager.jobsByID["session"].Permissions) != 1 ||
+		len(manager.jobsByID["session"].Permissions[0].Questions) != 1 ||
+		manager.jobsByID["session"].Permissions[0].Questions[0].ID != "audience" {
+		t.Fatalf("live permissions = %#v", manager.jobsByID["session"].Permissions)
 	}
 
 	if err := manager.AnswerInteractive(ctx, InteractiveAnswer{
@@ -322,7 +327,7 @@ func runInteractiveRequestUserInputTest(t *testing.T, metaKey, submitOptionID, r
 	}
 }
 
-func TestPlanSessionUpdatePublishesAndPersistsPlan(t *testing.T) {
+func TestPlanSessionUpdatePublishesAndPersistsProgress(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -373,7 +378,7 @@ func TestPlanSessionUpdatePublishesAndPersistsPlan(t *testing.T) {
 			t.Fatalf("unexpected event %#v", event)
 		}
 		if len(event.ACP.Plan) != 2 || event.ACP.Plan[0].Content != "Inspect existing page" {
-			t.Fatalf("plan event = %#v", event.ACP.Plan)
+			t.Fatalf("progress event = %#v", event.ACP.Plan)
 		}
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
@@ -384,16 +389,16 @@ func TestPlanSessionUpdatePublishesAndPersistsPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(state.Plan) != 2 || state.Plan[1].Status != "in_progress" {
-		t.Fatalf("persisted plan = %#v", state.Plan)
+		t.Fatalf("persisted progress = %#v", state.Plan)
 	}
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !loaded.LastAttentionAt.After(oldAttention) {
-		t.Fatalf("plan update did not advance attention: %s -> %s", oldAttention, loaded.LastAttentionAt)
+		t.Fatalf("progress update did not advance attention: %s -> %s", oldAttention, loaded.LastAttentionAt)
 	}
-	attentionAfterPlan := loaded.LastAttentionAt
+	attentionAfterProgress := loaded.LastAttentionAt
 	if _, rpcErr := manager.handleJSONRPC(ctx, request); rpcErr != nil {
 		t.Fatal(rpcErr)
 	}
@@ -401,8 +406,156 @@ func TestPlanSessionUpdatePublishesAndPersistsPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !loaded.LastAttentionAt.Equal(attentionAfterPlan) {
-		t.Fatalf("unchanged plan advanced attention: %s -> %s", attentionAfterPlan, loaded.LastAttentionAt)
+	if !loaded.LastAttentionAt.Equal(attentionAfterProgress) {
+		t.Fatalf("unchanged progress advanced attention: %s -> %s", attentionAfterProgress, loaded.LastAttentionAt)
+	}
+}
+
+func TestPlanSessionUpdateIgnoresMarkdownDocumentEntry(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "codex-progress", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldAttention := time.Now().UTC().Add(-time.Hour).Truncate(time.Millisecond)
+	storage.MarkSessionAttention(&session, oldAttention)
+	if err := store.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+	events := sessionevents.New()
+	manager := NewManager(store, Config{}, nil)
+	manager.Events = events
+	manager.jobsByID[session.ID] = &Job{ID: session.ID, ACPSession: "acp-session", Slug: session.Slug}
+	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	sub := events.Subscribe(ctx, session.ID)
+
+	request := jsonrpc.Request{
+		Method: acpschema.ClientMethodSessionUpdate,
+		Params: mustJSON(t, map[string]any{
+			"sessionId": "acp-session",
+			"update": map[string]any{
+				"sessionUpdate": "plan",
+				"entries": []map[string]any{{
+					"content":  "# Keep `npx` for Built-In ACP Adapters\n\n## Summary\n- Do not add managed downloads yet.",
+					"status":   "in_progress",
+					"priority": "medium",
+				}},
+			},
+		}),
+	}
+	raw, rpcErr := manager.handleJSONRPC(ctx, request)
+	if rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	if string(raw) != "{}" {
+		t.Fatalf("response = %s", raw)
+	}
+
+	select {
+	case event := <-sub:
+		t.Fatalf("unexpected event %#v", event)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	state, err := store.LoadACPState(session.ID)
+	if err != nil && !strings.Contains(err.Error(), "acp state not found") {
+		t.Fatal(err)
+	}
+	if err == nil && len(state.Plan) != 0 {
+		t.Fatalf("persisted progress = %#v", state.Plan)
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.LastAttentionAt.Equal(oldAttention) {
+		t.Fatalf("invalid progress advanced attention: %s -> %s", oldAttention, loaded.LastAttentionAt)
+	}
+}
+
+func TestPlanSessionUpdateInvalidReplacementClearsProgress(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "codex-progress", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := sessionevents.New()
+	manager := NewManager(store, Config{}, nil)
+	manager.Events = events
+	manager.jobsByID[session.ID] = &Job{ID: session.ID, ACPSession: "acp-session", Slug: session.Slug}
+	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	sub := events.Subscribe(ctx, session.ID)
+
+	valid := jsonrpc.Request{
+		Method: acpschema.ClientMethodSessionUpdate,
+		Params: mustJSON(t, map[string]any{
+			"sessionId": "acp-session",
+			"update": map[string]any{
+				"sessionUpdate": "plan",
+				"entries": []map[string]any{{
+					"content":  "Inspect existing page",
+					"status":   "in_progress",
+					"priority": "medium",
+				}},
+			},
+		}),
+	}
+	if _, rpcErr := manager.handleJSONRPC(ctx, valid); rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	select {
+	case event := <-sub:
+		if len(event.ACP.Plan) != 1 {
+			t.Fatalf("valid progress event = %#v", event)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+
+	invalid := jsonrpc.Request{
+		Method: acpschema.ClientMethodSessionUpdate,
+		Params: mustJSON(t, map[string]any{
+			"sessionId": "acp-session",
+			"update": map[string]any{
+				"sessionUpdate": "plan",
+				"entries": []map[string]any{{
+					"content":  "# Full markdown plan\n\n- one\n- two",
+					"status":   "in_progress",
+					"priority": "medium",
+				}},
+			},
+		}),
+	}
+	if _, rpcErr := manager.handleJSONRPC(ctx, invalid); rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	select {
+	case event := <-sub:
+		if event.ACP == nil || event.ACP.Plan == nil || len(event.ACP.Plan) != 0 {
+			t.Fatalf("clear progress event = %#v", event)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+
+	state, err := store.LoadACPState(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Plan) != 0 {
+		t.Fatalf("persisted progress = %#v", state.Plan)
 	}
 }
 
