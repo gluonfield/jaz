@@ -21,6 +21,11 @@ const (
 	MaxWidgetCodeBytes = 5 << 20
 )
 
+const (
+	RenderedMessage  = "Content rendered and shown to the user. Please do not duplicate the shown content in text because it's already visually represented."
+	RenderedReminder = "[This tool call rendered an interactive widget in the chat. The user can already see the result — do not repeat it in text or with another visualization tool.]"
+)
+
 //go:embed read_me.md
 var ReadMeGuide string
 
@@ -47,7 +52,6 @@ type ShowWidgetOutput struct {
 	Status       string `json:"status"`
 	Title        string `json:"title"`
 	ArtifactType string `json:"artifact_type"`
-	Bytes        int    `json:"bytes"`
 }
 
 type MCPTools struct {
@@ -63,13 +67,13 @@ func (t *MCPTools) AddTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        ReadMeMCPToolName,
 		Title:       "Read artifact guidance",
-		Description: "Loads design-system and module guidance before creating an SVG or HTML inline artifact. Call this silently before the first visual artifact in a turn.",
+		Description: "Loads design-system and module guidance before creating a real SVG or HTML inline artifact. Call this silently before the first visual artifact in a turn.",
 		InputSchema: readMeInputSchema(),
 	}, t.ReadMe)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        ShowWidgetMCPToolName,
 		Title:       "Show inline artifact",
-		Description: "Renders an SVG, HTML fragment, or full self-contained HTML document inline in the Jaz transcript.",
+		Description: "Renders a finished SVG, HTML fragment, or full self-contained HTML document inline in the Jaz transcript. Do not use for placeholder or plumbing-demo widgets.",
 		InputSchema: showWidgetInputSchema(),
 	}, t.ShowWidget)
 }
@@ -97,7 +101,10 @@ func (t *MCPTools) ShowWidget(_ context.Context, req *mcp.CallToolRequest, input
 			t.Events.Publish(events[0])
 		}
 	}
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "Rendered inline artifact."}}}, output, nil
+	return &mcp.CallToolResult{Content: []mcp.Content{
+		&mcp.TextContent{Text: RenderedMessage},
+		&mcp.TextContent{Text: RenderedReminder},
+	}}, output, nil
 }
 
 func BuildArtifact(input ShowWidgetInput) (ShowWidgetOutput, *sessionevents.ArtifactEvent, error) {
@@ -109,8 +116,8 @@ func BuildArtifact(input ShowWidgetInput) (ShowWidgetOutput, *sessionevents.Arti
 	if strings.TrimSpace(code) == "" {
 		return ShowWidgetOutput{}, nil, errors.New("widget_code is required")
 	}
-	bytes := len([]byte(code))
-	if bytes > MaxWidgetCodeBytes {
+	codeBytes := len([]byte(code))
+	if codeBytes > MaxWidgetCodeBytes {
 		return ShowWidgetOutput{}, nil, fmt.Errorf("widget_code exceeds %d bytes", MaxWidgetCodeBytes)
 	}
 	messages, err := normalizeLoadingMessages(input.LoadingMessages)
@@ -122,14 +129,12 @@ func BuildArtifact(input ShowWidgetInput) (ShowWidgetOutput, *sessionevents.Arti
 		Status:       "ok",
 		Title:        title,
 		ArtifactType: kind,
-		Bytes:        bytes,
 	}
 	return output, &sessionevents.ArtifactEvent{
 		Title:           title,
 		WidgetCode:      code,
 		LoadingMessages: messages,
 		ArtifactType:    kind,
-		Bytes:           bytes,
 	}, nil
 }
 
@@ -165,6 +170,10 @@ func sessionIDFromRequest(req *mcp.CallToolRequest) string {
 }
 
 func readMeInputSchema() map[string]any {
+	return ReadMeInputSchema()
+}
+
+func ReadMeInputSchema() map[string]any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -178,14 +187,18 @@ func readMeInputSchema() map[string]any {
 			},
 			"platform": map[string]any{
 				"type":        "string",
-				"description": "Target surface size.",
 				"enum":        []string{"mobile", "desktop", "unknown"},
+				"description": "The client platform the widget will render on. Pass 'mobile' when your system prompt indicates a mobile client (narrow ~380px viewport) so SVG viewBox and layout guidance are sized accordingly; otherwise pass 'desktop'. Defaults to 'unknown' (desktop sizing).",
 			},
 		},
 	}
 }
 
 func showWidgetInputSchema() map[string]any {
+	return ShowWidgetInputSchema()
+}
+
+func ShowWidgetInputSchema() map[string]any {
 	return map[string]any{
 		"type":     "object",
 		"required": []string{"loading_messages", "title", "widget_code"},

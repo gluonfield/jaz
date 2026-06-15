@@ -25,7 +25,22 @@ func TestReadMeIncludesReferenceGuidance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Complete Reference", "SVG Setup", "visualize:show_widget"} {
+	for _, want := range []string{
+		"# Imagine — Visual Creation Suite",
+		"Call read_me again with the modules parameter",
+		"Core Design System",
+		"Color palette",
+		"SVG setup",
+		"The 680 in viewBox is load-bearing",
+		"c-{ramp} nesting",
+		"Diagram types",
+		"UI components",
+		"Charts (Chart.js)",
+		"Geographic maps (D3 choropleth)",
+		"Art and illustration",
+		"Elicitation — collecting skill arguments",
+		"Selected files appear as 120×120 tiles",
+	} {
 		if !strings.Contains(result.Content, want) {
 			t.Fatalf("guide missing %q", want)
 		}
@@ -41,8 +56,14 @@ func TestShowWidgetAutoDetectsSVG(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, `"artifact_type":"svg"`) {
+	if !strings.Contains(result.Content, visualizesvc.RenderedMessage) {
 		t.Fatalf("result = %s", result.Content)
+	}
+	if result.Metadata["artifact_type"] != "svg" {
+		t.Fatalf("metadata = %#v", result.Metadata)
+	}
+	if _, ok := result.Metadata["bytes"]; ok {
+		t.Fatalf("metadata must not expose storage/debug fields: %#v", result.Metadata)
 	}
 }
 
