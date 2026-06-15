@@ -9,6 +9,7 @@ import (
 type QueuedMessage struct {
 	Text          string   `json:"text"`
 	AttachmentIDs []string `json:"attachment_ids,omitempty"`
+	PlanRequested bool     `json:"plan_requested,omitempty"`
 }
 
 func (m *QueuedMessage) UnmarshalJSON(data []byte) error {
@@ -16,17 +17,20 @@ func (m *QueuedMessage) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &text); err == nil {
 		m.Text = text
 		m.AttachmentIDs = nil
+		m.PlanRequested = false
 		return nil
 	}
 	var raw struct {
 		Text          string   `json:"text"`
 		AttachmentIDs []string `json:"attachment_ids"`
+		PlanRequested bool     `json:"plan_requested"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 	m.Text = raw.Text
 	m.AttachmentIDs = raw.AttachmentIDs
+	m.PlanRequested = raw.PlanRequested
 	return nil
 }
 
