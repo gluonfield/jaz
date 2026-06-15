@@ -166,14 +166,6 @@ func (s *Server) handleListWidgets(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"widgets": items})
 }
 
-// The vendored Tailwind build is served same-origin so the widget document's
-// CSP 'self' covers it and tiles work offline.
-func (s *Server) handleWidgetTailwindAsset(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
-	_, _ = w.Write([]byte(widgets.TailwindJS))
-}
-
 func (s *Server) handleWidgetAction(w http.ResponseWriter, r *http.Request) {
 	if s.Widgets == nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("widgets are not configured"))
@@ -240,20 +232,10 @@ func (s *Server) handleWidgetContent(w http.ResponseWriter, r *http.Request, wid
 		writeError(w, http.StatusNotFound, err)
 		return
 	}
-	theme := "light"
-	if r.URL.Query().Get("theme") == "dark" {
-		theme = "dark"
-	}
-	zoom := 0.0
-	if raw := strings.TrimSpace(r.URL.Query().Get("zoom")); raw != "" {
-		if v, err := strconv.ParseFloat(raw, 64); err == nil {
-			zoom = v
-		}
-	}
-	doc := widgets.RenderDocumentWithOptions(widget.Title, snapshot.HTML, theme, zoom, widgets.RenderOptions{
-		InlineAssets: r.URL.Query().Get("inline_assets") == "1",
-	})
+	// Serve the raw fragment. The board wraps it in the shared artifact document
+	// (theme, color-scheme, CSP, bridge) client-side, identical to inline
+	// artifacts — so theme and zoom are applied by the host, not baked here.
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write([]byte(doc))
+	_, _ = w.Write([]byte(snapshot.HTML))
 }
