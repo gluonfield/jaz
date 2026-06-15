@@ -246,6 +246,10 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 		var ok bool
 		plan, ok = sessionevents.NormalizeProgressEntries(plan)
 		if !ok {
+			if len(job.Plan) > 0 {
+				job.Plan = nil
+				publishACP = true
+			}
 			break
 		}
 		wasEmpty := len(job.Plan) == 0
