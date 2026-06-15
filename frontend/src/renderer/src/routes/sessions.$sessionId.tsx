@@ -713,6 +713,7 @@ function SessionPage({ sessionId }: { sessionId: string }) {
                 ) : (
                   <>
                     <Transcript
+                      key={session.id}
                       messages={transcriptMessages}
                       events={displayEvents}
                       sessionId={session.id}

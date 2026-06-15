@@ -85,29 +85,18 @@ export function reportWidgetLayout(
   return post<{ ok: boolean }>(`/v1/widgets/${widgetId}/layout`, layout)
 }
 
-export function widgetContentPath(
-  widgetId: string,
-  version: number,
-  theme: string,
-  zoom = 1,
-): string {
-  const params = new URLSearchParams({
-    version: String(version),
-    theme,
-    inline_assets: '1',
-  })
-  if (zoom !== 1) params.set('zoom', String(zoom))
-  return `/v1/widgets/${encodeURIComponent(widgetId)}/content?${params.toString()}`
+// The endpoint serves the raw widget fragment; the board wraps it in the shared
+// artifact document client-side, so theme and zoom are applied by the host.
+export function widgetContentPath(widgetId: string, version: number): string {
+  return `/v1/widgets/${encodeURIComponent(widgetId)}/content?version=${version}`
 }
 
 export async function fetchWidgetContent(
   widgetId: string,
   version: number,
-  theme: string,
-  zoom = 1,
   signal?: AbortSignal,
 ): Promise<string> {
-  const res = await apiFetch(widgetContentPath(widgetId, version, theme, zoom), { signal })
+  const res = await apiFetch(widgetContentPath(widgetId, version), { signal })
   if (!res.ok) throw new Error(`Widget content failed with ${res.status}`)
   return res.text()
 }
