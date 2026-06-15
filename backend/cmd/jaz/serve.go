@@ -29,6 +29,7 @@ import (
 	"github.com/wins/jaz/backend/internal/sessionlock"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/terminal"
+	"github.com/wins/jaz/backend/internal/threads"
 	exectool "github.com/wins/jaz/backend/internal/tools/exec"
 	"github.com/wins/jaz/backend/internal/voice"
 	"github.com/wins/jaz/backend/internal/widgets"
@@ -49,6 +50,7 @@ func runServe(args []string) error {
 			app.NewACPAgentCatalog,
 			app.NewRuntimeLayout,
 			app.NewStore,
+			sqlitestore.NewSearchQueries,
 			app.NewWorkspace,
 			app.NewMemory,
 			newMemoryService,
@@ -62,6 +64,7 @@ func runServe(args []string) error {
 			acp.NewManager,
 			sessionlock.New,
 			sessionevents.New,
+			threads.NewService,
 			app.NewWidgetService,
 			app.NewWidgetSessionPublisher,
 			app.NewToolRegistry,
@@ -178,6 +181,7 @@ func startServer(
 	memory *memoryservice.Service,
 	jazTools *jaztools.Service,
 	terminals *terminal.Manager,
+	threadService *threads.Service,
 ) error {
 	authKey, err := runtimeauth.Ensure(store.RootDir())
 	if err != nil {
@@ -190,6 +194,7 @@ func startServer(
 		MCP:             mcpManager,
 		Locks:           locks,
 		Events:          events,
+		Threads:         threadService,
 		STT:             stt,
 		TTS:             tts,
 		NativeProviders: nativeProviderControl(nativeProviders),

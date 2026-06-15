@@ -50,13 +50,23 @@ import { coalesceSessionEvents } from '@/lib/sessionEvents'
 import { activePermissionIDs, isPermissionAwaitingResponse, resolveInactivePermissions } from '@/lib/sessionPermissions'
 import { latestEventTimeISO } from '@/lib/sessionLiveness'
 
+type SessionSearch = {
+  message?: number
+}
+
 export const Route = createFileRoute('/sessions/$sessionId')({
+  validateSearch: (search): SessionSearch => {
+    const raw = search.message
+    const message = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : 0
+    return Number.isSafeInteger(message) && message > 0 ? { message } : {}
+  },
   component: SessionRoute,
 })
 
 function SessionRoute() {
   const { sessionId } = Route.useParams()
-  return <SessionPage key={sessionId} sessionId={sessionId} />
+  const search = Route.useSearch()
+  return <SessionPage key={sessionId} sessionId={sessionId} search={search} />
 }
 
 // One in-flight user → assistant exchange, rendered after the transcript
@@ -356,7 +366,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
 const SESSION_DRAFT_KEY_PREFIX = 'jaz.sessionDraft.'
 const TRANSCRIPT_DOCK_GAP_PX = 20
 
-function SessionPage({ sessionId }: { sessionId: string }) {
+function SessionPage({ sessionId, search }: { sessionId: string; search: SessionSearch }) {
   const queryClient = useQueryClient()
   const toast = useToast()
   const detail = useQuery(sessionMessagesQuery(sessionId))
@@ -416,6 +426,7 @@ function SessionPage({ sessionId }: { sessionId: string }) {
   const { scrollRef, showScrollToBottom, onScroll: onThreadScroll, scrollToBottom, pinToBottom } =
     useThreadAutoScroll({ resetKey: sessionId, itemCount, liveSize, bottomInset: transcriptBottomPadding })
   const threadFind = useThreadFind(sessionId, scrollRef)
+  const [highlightedMessageSeq, setHighlightedMessageSeq] = useState<number>()
 
   // Abandon an in-flight stream when leaving the session.
   useEffect(() => () => abortRef.current?.abort(), [sessionId])
@@ -570,6 +581,23 @@ function SessionPage({ sessionId }: { sessionId: string }) {
     if (takePendingVoice(sessionId)) setVoiceMode(true)
   }, [sessionId])
 
+  useEffect(() => {
+    if (!detail.isSuccess || !search.message) return
+    const messageSeq = search.message
+    setHighlightedMessageSeq(messageSeq)
+    const frame = requestAnimationFrame(() => {
+      const target = scrollRef.current?.querySelector<HTMLElement>(`[data-message-seq="${messageSeq}"]`)
+      target?.scrollIntoView({ block: 'center', inline: 'nearest' })
+    })
+    const timer = window.setTimeout(() => {
+      setHighlightedMessageSeq((current) => (current === messageSeq ? undefined : current))
+    }, 2200)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.clearTimeout(timer)
+    }
+  }, [detail.isSuccess, detail.data?.messages.length, scrollRef, search.message, sessionId])
+
   const data = detail.data
   const derived = useMemo(
     () => (data ? deriveSessionView(data, events.data) : undefined),
@@ -720,6 +748,7 @@ function SessionPage({ sessionId }: { sessionId: string }) {
                       groupTurns={isACP}
                       working={sessionRunning}
                       findActive={threadFind.open && Boolean(threadFind.query.trim())}
+                      highlightedSeq={highlightedMessageSeq}
                       onArtifactPrompt={queue.onSend}
                       tail={
                         isACP ? (

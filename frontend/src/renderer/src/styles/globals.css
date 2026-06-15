@@ -46,6 +46,7 @@
   --z-dropdown: 10;
   --z-toast: 20;
   --z-tooltip: 30;
+  --z-command: 70;
 
   /* rainbow ramp shared by the Jaz wordmark and the composer focus ring */
   --color-rainbow-1: oklch(0.62 0.19 25);
