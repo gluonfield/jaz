@@ -4,8 +4,7 @@ import { Settings, SquarePen } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { searchThreads } from '@/lib/api/search'
 import { keys } from '@/lib/query/keys'
-import type { PaletteCommand, PaletteItem, RoleMode } from './commandPaletteTypes'
-import { roleModeRoles } from './commandPaletteTypes'
+import type { PaletteCommand, PaletteItem } from './commandPaletteTypes'
 
 function useDebouncedValue(value: string, delay: number): string {
   const [debounced, setDebounced] = useState(value)
@@ -25,21 +24,17 @@ function commandMatches(item: PaletteCommand, query: string): boolean {
 export function useCommandPaletteItems({
   open,
   query,
-  roleMode,
   onOpenChange,
   onOpenSettings,
 }: {
   open: boolean
   query: string
-  roleMode: RoleMode
   onOpenChange: (open: boolean) => void
   onOpenSettings: () => void
 }) {
   const navigate = useNavigate()
   const debouncedQuery = useDebouncedValue(query.trim(), 140)
   const searchEnabled = open && debouncedQuery.length >= 2
-  const roles = roleModeRoles(roleMode)
-  const roleKey = roles.join(',')
 
   const commands = useMemo<PaletteCommand[]>(
     () => [
@@ -71,11 +66,10 @@ export function useCommandPaletteItems({
   )
 
   const threadSearch = useQuery({
-    queryKey: keys.threadSearch(debouncedQuery, roleKey),
+    queryKey: keys.threadSearch(debouncedQuery),
     queryFn: ({ signal }) =>
       searchThreads({
         query: debouncedQuery,
-        roles,
         limit: 16,
         signal,
       }),

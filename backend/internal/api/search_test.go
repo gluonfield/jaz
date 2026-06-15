@@ -27,7 +27,7 @@ func TestThreadSearchHandler(t *testing.T) {
 	handler := NewThreadSearchHandler(threads.NewService(sqlitestore.NewSearchQueries(store)))
 
 	res := httptest.NewRecorder()
-	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/search/threads?q=palette&roles=user", nil))
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/search/threads?q=palette", nil))
 	if res.Code != http.StatusOK {
 		t.Fatalf("search status = %d, body = %s", res.Code, res.Body.String())
 	}
@@ -43,11 +43,5 @@ func TestThreadSearchHandler(t *testing.T) {
 	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/search/threads?q=palette&limit=-1", nil))
 	if res.Code != http.StatusBadRequest {
 		t.Fatalf("expected bad request for malformed limit, got %d", res.Code)
-	}
-
-	res = httptest.NewRecorder()
-	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/search/threads?q=palette&roles=system", nil))
-	if res.Code != http.StatusBadRequest {
-		t.Fatalf("expected bad request for invalid role, got %d", res.Code)
 	}
 }
