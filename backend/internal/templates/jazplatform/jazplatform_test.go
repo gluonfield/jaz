@@ -24,6 +24,9 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"## Jaz platform",
 		"## AGENTS.md\n\nagents",
 		"## SOUL.md\n\nsoul",
+		"## Inline artifacts",
+		"Always call `visualize:read_me` before the first visual artifact",
+		"Few-shot trace:",
 		"## memory",
 		"broad context from the user's past behavior",
 		"start from the user's question",
@@ -35,6 +38,21 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 	)
 	if strings.Contains(prompt, "You are Jaz") {
 		t.Fatalf("platform prompt must not carry the coordinator identity:\n%s", prompt)
+	}
+	for _, want := range []string{
+		"verify the data and choose the source/method before loading artifact guidance",
+		"Pass `platform:\"mobile\"` for mobile targets, `platform:\"desktop\"` for desktop targets",
+		"`visualize_read_me` when the provider exposes only underscore-safe native function names",
+		"`visualize_show_widget` on underscore-safe native function-tool surfaces",
+		"meaningful snake_case title",
+		"Stacking millions into bars",
+		"prefer an inline artifact over plain text",
+		"Never pass raw JSX, TSX, or an unbundled app to the render tool",
+		"`visualize:read_me` is the visual styling authority",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("artifact policy missing %q:\n%s", want, prompt)
+		}
 	}
 }
 

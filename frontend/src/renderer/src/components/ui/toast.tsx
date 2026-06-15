@@ -89,7 +89,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           {toasts.map((toast) => (
             <motion.div key={toast.id} role={toast.tone === 'danger' ? 'alert' : 'status'} layout {...toastMotion}>
               {toast.tone === 'danger' ? (
-                <div className="pointer-events-auto max-w-[min(520px,calc(100vw-2rem))] rounded-card bg-surface px-3.5 py-3 text-sm leading-snug text-ink shadow-[0_18px_42px_rgba(18,20,30,0.16)] ring-1 ring-danger/25 dark:shadow-[0_18px_42px_rgba(0,0,0,0.32)]">
+                <div className="pointer-events-auto max-w-[min(520px,calc(100vw-2rem))] rounded-card bg-surface px-3.5 py-3 text-sm leading-snug text-ink shadow-[var(--shadow-raised)] ring-1 ring-danger/25">
                   <div className="flex items-center gap-3">
                     <div className="flex min-w-0 flex-1 items-center gap-2">
                       <span className="size-1.5 shrink-0 rounded-full bg-danger" />
