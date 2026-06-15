@@ -247,7 +247,7 @@ func (s *Server) handleSessionRepoRestoreWorktree(w http.ResponseWriter, r *http
 }
 
 func (s *Server) PruneManagedWorktrees(ctx context.Context) {
-	if s.Store == nil || strings.TrimSpace(s.Workspace) == "" {
+	if strings.TrimSpace(s.Workspace) == "" {
 		return
 	}
 	sessions, err := s.worktreeSessions()
