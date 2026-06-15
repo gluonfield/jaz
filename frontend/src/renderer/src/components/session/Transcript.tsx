@@ -19,12 +19,7 @@ import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { agentLabel } from '@/lib/agentLabel'
 import { relativeTime } from '@/lib/format/time'
-import {
-  planStepState,
-  planSurfaceFromEvent,
-  type PlanStepState,
-  type PlanSurface,
-} from '@/lib/planSurface'
+import { planSurfaceFromEvent, type PlanStepState, type PlanSurface } from '@/lib/planSurface'
 import { ArtifactBlock } from './ArtifactBlock'
 import { MentionText } from './mentions'
 import { MessageMarkdown } from './MessageMarkdown'
@@ -311,17 +306,15 @@ export function PlanStepIcon({ state, active }: { state: PlanStepState; active: 
 
 const PlanChecklist = memo(function PlanChecklist({
   surface,
-  active = false,
   onApprovePlan,
 }: {
   surface: PlanSurface
-  active?: boolean
   onApprovePlan?: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const [overflowing, setOverflowing] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
-  const { title, explanation, entries, strikeCompleted } = surface
+  const { title, explanation, entries } = surface
 
   useEffect(() => {
     const el = contentRef.current
@@ -340,21 +333,11 @@ const PlanChecklist = memo(function PlanChecklist({
   const showExpandControl = expanded || overflowing
   const planEntries = entries ?? []
   const explanationText = explanation?.trim() ?? ''
-  const stepStates = planEntries.map(planStepState)
-  const showSteps = stepStates.some(Boolean)
-  const completedCount = stepStates.filter((state) => state === 'completed').length
 
   return (
     <div className="rounded-card border border-border bg-surface px-3 py-2.5">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="text-[11px] font-medium tracking-wide text-ink-2 uppercase">
-          {title}
-          {showSteps ? (
-            <span className="ml-2 font-mono normal-case tracking-normal">
-              {completedCount}/{planEntries.length}
-            </span>
-          ) : null}
-        </p>
+        <p className="text-[11px] font-medium tracking-wide text-ink-2 uppercase">{title}</p>
         {surface.awaitingApproval && onApprovePlan ? (
           <Button variant="primary" size="sm" onClick={onApprovePlan}>
             <Check size={13} />
@@ -367,33 +350,17 @@ const PlanChecklist = memo(function PlanChecklist({
         className={`relative ${expanded ? '' : 'max-h-[340px] overflow-hidden'}`}
       >
         {explanationText ? (
-          <div className="mb-2 text-sm text-ink-2">
+          <div className="mb-2 text-sm text-ink">
             <MessageMarkdown text={explanationText} />
           </div>
         ) : null}
         {planEntries.length ? (
           <ul className="flex flex-col gap-2.5">
-            {planEntries.map((entry, index) => {
-              const state = stepStates[index]
-              const done = state === 'completed'
-              return (
-                <li
-                  key={`${entry.content}-${index}`}
-                  className="flex min-w-0 items-start gap-2 text-sm text-ink-2"
-                >
-                  {showSteps ? (
-                    <span className="mt-[3px] shrink-0" title={state}>
-                      <PlanStepIcon state={state ?? 'pending'} active={active} />
-                    </span>
-                  ) : null}
-                  <div
-                    className={`min-w-0 flex-1 ${done ? `opacity-50 ${strikeCompleted ? 'line-through' : ''}` : ''}`}
-                  >
-                    <MessageMarkdown text={entry.content} />
-                  </div>
-                </li>
-              )
-            })}
+            {planEntries.map((entry, index) => (
+              <li key={`${entry.content}-${index}`} className="min-w-0 text-sm text-ink">
+                <MessageMarkdown text={entry.content} />
+              </li>
+            ))}
           </ul>
         ) : explanationText ? null : (
           <p className="text-sm italic text-ink-3">(no steps provided)</p>
@@ -484,7 +451,7 @@ const LiveEvent = memo(function LiveEvent({
         <PermissionCard event={event} resolution={permissionResolution} />
       ) : null}
       {planSurface ? (
-        <PlanChecklist surface={planSurface} active={working} onApprovePlan={onApprovePlan} />
+        <PlanChecklist surface={planSurface} onApprovePlan={onApprovePlan} />
       ) : null}
     </div>
   )
