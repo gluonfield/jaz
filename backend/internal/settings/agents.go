@@ -23,6 +23,7 @@ const (
 var legacyCodexACPCommands = []string{
 	`codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'`,
 	`npx -y @zed-industries/codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'`,
+	`npx -y @zed-industries/codex-acp@0.16.0 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'`,
 }
 
 // Previous built-in claude commands; stored settings still matching one are
