@@ -9,6 +9,7 @@ import (
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/mcpsession"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
 
@@ -79,6 +80,7 @@ func resolvedACPHeaders(ctx context.Context, server mcpconfig.Server, tokens int
 	if err != nil {
 		return nil, err
 	}
+	headers = resolveSessionHeaders(ctx, headers)
 	if hasHeader(headers, "Authorization") || tokens == nil || strings.TrimSpace(server.ID) == "" {
 		return headers, nil
 	}
@@ -98,6 +100,22 @@ func resolvedACPHeaders(ctx context.Context, server mcpconfig.Server, tokens int
 		tokenType = "Bearer"
 	}
 	return append(headers, mcpconfig.Header{Name: "Authorization", Value: tokenType + " " + strings.TrimSpace(token.AccessToken)}), nil
+}
+
+func resolveSessionHeaders(ctx context.Context, headers []mcpconfig.Header) []mcpconfig.Header {
+	sessionID := mcpsession.ID(ctx)
+	out := make([]mcpconfig.Header, 0, len(headers))
+	for _, header := range headers {
+		if header.Value != mcpsession.HeaderPlaceholder {
+			out = append(out, header)
+			continue
+		}
+		if sessionID != "" {
+			header.Value = sessionID
+			out = append(out, header)
+		}
+	}
+	return out
 }
 
 func hasHeader(headers []mcpconfig.Header, name string) bool {
