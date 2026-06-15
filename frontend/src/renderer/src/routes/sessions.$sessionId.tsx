@@ -411,7 +411,7 @@ function SessionPage() {
   const transcriptBottomPadding = Math.max(bottomDockHeight + TRANSCRIPT_DOCK_GAP_PX, 160)
   const { scrollRef, showScrollToBottom, onScroll: onThreadScroll, scrollToBottom, pinToBottom } =
     useThreadAutoScroll({ resetKey: sessionId, itemCount, liveSize, bottomInset: transcriptBottomPadding })
-  const threadFind = useThreadFind(sessionId)
+  const threadFind = useThreadFind(sessionId, scrollRef)
 
   // Abandon an in-flight stream when leaving the session.
   useEffect(() => () => abortRef.current?.abort(), [sessionId])
