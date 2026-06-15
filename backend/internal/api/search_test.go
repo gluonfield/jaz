@@ -44,4 +44,10 @@ func TestThreadSearchHandler(t *testing.T) {
 	if res.Code != http.StatusBadRequest {
 		t.Fatalf("expected bad request for malformed limit, got %d", res.Code)
 	}
+
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/search/threads?q=palette&roles=system", nil))
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("expected bad request for invalid role, got %d", res.Code)
+	}
 }

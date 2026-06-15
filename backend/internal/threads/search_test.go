@@ -41,7 +41,7 @@ func TestSearchFindsMessagesAndThreadMetadata(t *testing.T) {
 	}
 
 	search := NewService(sqlitestore.NewSearchQueries(store))
-	results, err := search.Search(context.Background(), SearchQuery{Query: "migra", Roles: []string{"user"}, Limit: 10})
+	results, err := search.Search(context.Background(), SearchQuery{Query: "migra", Roles: []SearchRole{SearchRoleUser}, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestSearchFindsMessagesAndThreadMetadata(t *testing.T) {
 		t.Fatalf("snippet = %q, want highlighted migration", results[0].Snippet)
 	}
 
-	results, err = search.Search(context.Background(), SearchQuery{Query: "matrix sync", Roles: []string{"assistant"}, Limit: 10})
+	results, err = search.Search(context.Background(), SearchQuery{Query: "matrix sync", Roles: []SearchRole{SearchRoleAssistant}, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestSearchRoleFilterAndIndexMaintenance(t *testing.T) {
 	}
 
 	search := NewService(sqlitestore.NewSearchQueries(store))
-	results, err := search.Search(context.Background(), SearchQuery{Query: "quartz", Roles: []string{"user"}})
+	results, err := search.Search(context.Background(), SearchQuery{Query: "quartz", Roles: []SearchRole{SearchRoleUser}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestSearchRoleFilterAndIndexMaintenance(t *testing.T) {
 		t.Fatalf("user-only search found assistant hit: %#v", results)
 	}
 
-	results, err = search.Search(context.Background(), SearchQuery{Query: "quartz", Roles: []string{"assistant"}})
+	results, err = search.Search(context.Background(), SearchQuery{Query: "quartz", Roles: []SearchRole{SearchRoleAssistant}})
 	if err != nil {
 		t.Fatal(err)
 	}
