@@ -653,14 +653,6 @@ func (m *Manager) saveACPState(job Job) {
 }
 
 func acpStorageState(job Job) storage.ACPState {
-	plan := make([]sessionevents.ACPPlanEntry, 0, len(job.Plan))
-	for _, entry := range job.Plan {
-		plan = append(plan, sessionevents.ACPPlanEntry{
-			Content:  entry.Content,
-			Status:   entry.Status,
-			Priority: entry.Priority,
-		})
-	}
 	calls := make([]sessionevents.ACPToolCall, 0, len(job.ToolCalls))
 	for _, call := range job.ToolCalls {
 		calls = append(calls, sessionevents.ACPToolCall{
@@ -681,7 +673,7 @@ func acpStorageState(job Job) storage.ACPState {
 		StopReason:    job.StopReason,
 		Assistant:     job.Assistant,
 		Thought:       job.Thought,
-		Plan:          plan,
+		Plan:          clonePlanEntries(job.Plan),
 		ToolCalls:     calls,
 		Modes:         acpModeEvent(job.Modes),
 		Error:         job.Error,
@@ -692,14 +684,6 @@ func acpStorageState(job Job) storage.ACPState {
 }
 
 func acpEvent(job Job) *sessionevents.ACPEvent {
-	plan := make([]sessionevents.ACPPlanEntry, 0, len(job.Plan))
-	for _, entry := range job.Plan {
-		plan = append(plan, sessionevents.ACPPlanEntry{
-			Content:  entry.Content,
-			Status:   entry.Status,
-			Priority: entry.Priority,
-		})
-	}
 	calls := make([]sessionevents.ACPToolCall, 0, len(job.ToolCalls))
 	for _, call := range job.ToolCalls {
 		calls = append(calls, sessionevents.ACPToolCall{ID: call.ID, Title: call.Title, Status: call.Status})
@@ -717,7 +701,7 @@ func acpEvent(job Job) *sessionevents.ACPEvent {
 		Thought:     job.Thought,
 		Error:       job.Error,
 		Modes:       acpModeEvent(job.Modes),
-		Plan:        plan,
+		Plan:        clonePlanEntries(job.Plan),
 		ToolCalls:   calls,
 		Permissions: clonePermissions(job.Permissions),
 	}

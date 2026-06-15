@@ -19,7 +19,12 @@ import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { agentLabel } from '@/lib/agentLabel'
 import { relativeTime } from '@/lib/format/time'
-import { planSurfaceFromEvent, type PlanStepState, type PlanSurface } from '@/lib/planSurface'
+import {
+  taskStepState,
+  taskSurfaceFromEvent,
+  type TaskStepState,
+  type TaskSurface,
+} from '@/lib/taskSurface'
 import { ArtifactBlock } from './ArtifactBlock'
 import { MentionText } from './mentions'
 import { MessageMarkdown } from './MessageMarkdown'
@@ -289,7 +294,7 @@ function ToolSummary({ calls, active = false }: { calls?: ACPToolCall[]; active?
   )
 }
 
-export function PlanStepIcon({ state, active }: { state: PlanStepState; active: boolean }) {
+export function TaskStepIcon({ state, active }: { state: TaskStepState; active: boolean }) {
   switch (state) {
     case 'active':
       return (
@@ -304,17 +309,19 @@ export function PlanStepIcon({ state, active }: { state: PlanStepState; active: 
   }
 }
 
-const PlanChecklist = memo(function PlanChecklist({
+const TaskChecklist = memo(function TaskChecklist({
   surface,
+  active = false,
   onApprovePlan,
 }: {
-  surface: PlanSurface
+  surface: TaskSurface
+  active?: boolean
   onApprovePlan?: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const [overflowing, setOverflowing] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
-  const { title, explanation, entries } = surface
+  const { title, explanation, entries, strikeCompleted } = surface
 
   useEffect(() => {
     const el = contentRef.current
@@ -331,13 +338,23 @@ const PlanChecklist = memo(function PlanChecklist({
   }, [entries, expanded, explanation])
 
   const showExpandControl = expanded || overflowing
-  const planEntries = entries ?? []
+  const taskEntries = entries ?? []
   const explanationText = explanation?.trim() ?? ''
+  const stepStates = taskEntries.map(taskStepState)
+  const showSteps = stepStates.some(Boolean)
+  const completedCount = stepStates.filter((state) => state === 'completed').length
 
   return (
     <div className="rounded-card border border-border bg-surface px-3 py-2.5">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="text-[11px] font-medium tracking-wide text-ink-2 uppercase">{title}</p>
+        <p className="text-[11px] font-medium tracking-wide text-ink-2 uppercase">
+          {title}
+          {showSteps ? (
+            <span className="ml-2 font-mono normal-case tracking-normal">
+              {completedCount}/{taskEntries.length}
+            </span>
+          ) : null}
+        </p>
         {surface.awaitingApproval && onApprovePlan ? (
           <Button variant="primary" size="sm" onClick={onApprovePlan}>
             <Check size={13} />
@@ -354,13 +371,33 @@ const PlanChecklist = memo(function PlanChecklist({
             <MessageMarkdown text={explanationText} />
           </div>
         ) : null}
-        {planEntries.length ? (
+        {taskEntries.length ? (
           <ul className="flex flex-col gap-2.5">
-            {planEntries.map((entry, index) => (
-              <li key={`${entry.content}-${index}`} className="min-w-0 text-sm text-ink">
-                <MessageMarkdown text={entry.content} />
-              </li>
-            ))}
+            {taskEntries.map((entry, index) => {
+              const state = stepStates[index]
+              const done = state === 'completed'
+              return (
+                <li
+                  key={`${entry.content}-${index}`}
+                  className="flex min-w-0 items-start gap-2 text-sm text-ink-2"
+                >
+                  {showSteps ? (
+                    <span className="mt-[3px] shrink-0" title={state}>
+                      <TaskStepIcon state={state ?? 'pending'} active={active} />
+                    </span>
+                  ) : null}
+                  <div
+                    className={`min-w-0 flex-1 ${done ? `opacity-50 ${strikeCompleted ? 'line-through' : ''}` : ''}`}
+                  >
+                    {surface.kind === 'progress' ? (
+                      entry.content
+                    ) : (
+                      <MessageMarkdown text={entry.content} />
+                    )}
+                  </div>
+                </li>
+              )
+            })}
           </ul>
         ) : explanationText ? null : (
           <p className="text-sm italic text-ink-3">(no steps provided)</p>
@@ -380,8 +417,8 @@ const PlanChecklist = memo(function PlanChecklist({
             variant="ghost"
             size="md"
             aria-expanded={expanded}
-            aria-label={expanded ? 'Collapse plan' : 'Expand plan'}
-            title={expanded ? 'Collapse plan' : 'Expand plan'}
+            aria-label={expanded ? `Collapse ${title}` : `Expand ${title}`}
+            title={expanded ? `Collapse ${title}` : `Expand ${title}`}
             className="border border-border bg-surface shadow-sm"
             onClick={() => setExpanded((value) => !value)}
           >
@@ -403,7 +440,7 @@ const LiveEvent = memo(function LiveEvent({
   showHeader,
   working = false,
   permissionResolution,
-  showPlan,
+  showTaskSurface,
   onApprovePlan,
   onArtifactPrompt,
 }: {
@@ -412,15 +449,15 @@ const LiveEvent = memo(function LiveEvent({
   showHeader: boolean
   working?: boolean
   permissionResolution?: ACPPermission
-  showPlan?: boolean
+  showTaskSurface?: boolean
   onApprovePlan?: () => void
   onArtifactPrompt?: (text: string) => void
 }) {
-  const eventPlan = planSurfaceFromEvent(event)
-  const planSurface = showPlan ? eventPlan : undefined
+  const eventTaskSurface = taskSurfaceFromEvent(event)
+  const taskSurface = showTaskSurface ? eventTaskSurface : undefined
   const ownSession = Boolean(event.acp && event.acp.id === sessionId)
   const showWorkingStatus =
-    event.type === 'acp' && hasWorkingStatusSurface(event) && !eventPlan && !ownSession
+    event.type === 'acp' && hasWorkingStatusSurface(event) && !eventTaskSurface && !ownSession
   const parentChild = isParentChildACPEvent(event)
   const artifact = event.type === 'artifact' ? event.artifact : undefined
   return (
@@ -450,8 +487,8 @@ const LiveEvent = memo(function LiveEvent({
       {event.permission ? (
         <PermissionCard event={event} resolution={permissionResolution} />
       ) : null}
-      {planSurface ? (
-        <PlanChecklist surface={planSurface} onApprovePlan={onApprovePlan} />
+      {taskSurface ? (
+        <TaskChecklist surface={taskSurface} active={working} onApprovePlan={onApprovePlan} />
       ) : null}
     </div>
   )
@@ -534,7 +571,7 @@ export const Transcript = memo(function Transcript({
     anchored,
     turns,
     permissionResolutions,
-    latestPlanEvent,
+    latestTaskSurfaceEvent,
     pendingPermissionIds,
   } = useMemo(
     () => buildTimeline(messages, events, sessionId, groupTurns),
@@ -561,7 +598,7 @@ export const Transcript = memo(function Transcript({
           />
         )
       case 'event': {
-        const planSurface = planSurfaceFromEvent(item.event)
+        const taskSurface = taskSurfaceFromEvent(item.event)
         return (
           <LiveEvent
             key={`event-${stableEventKey(item.event, item.eventIndex)}`}
@@ -569,10 +606,11 @@ export const Transcript = memo(function Transcript({
             sessionId={sessionId}
             showHeader={item.showHeader}
             working={working}
-            showPlan={
+            showTaskSurface={
               Boolean(
-                planSurface &&
-                  (!item.event.acp || latestPlanEvent.get(item.event.acp.id) === item.eventIndex),
+                taskSurface &&
+                  (!item.event.acp ||
+                    latestTaskSurfaceEvent.get(item.event.acp.id) === item.eventIndex),
               )
             }
             onApprovePlan={onApprovePlan}
@@ -627,7 +665,7 @@ export const Transcript = memo(function Transcript({
           const collapsible =
             !active &&
             index < lastContentIndex &&
-            isCollapsibleWork(item, pendingPermissionIds, latestPlanEvent)
+            isCollapsibleWork(item, pendingPermissionIds, latestTaskSurfaceEvent)
           if (collapsible) {
             work.push(item)
             return
