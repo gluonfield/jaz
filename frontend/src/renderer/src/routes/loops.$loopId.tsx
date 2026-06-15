@@ -13,7 +13,7 @@ import { useToast } from '@/components/ui/toast'
 import { agentLabel } from '@/lib/agentLabel'
 import { deleteLoop, loopDetailQuery, runLoopNow } from '@/lib/api/loops'
 import type { Loop, LoopRun } from '@/lib/api/types'
-import { fullTime, hasTime, relativeTime } from '@/lib/format/time'
+import { fullTime, hasTime, relativeTime, shortDate } from '@/lib/format/time'
 import { keys } from '@/lib/query/keys'
 import { reasoningEffortLabel } from '@/lib/reasoningEfforts'
 
@@ -96,10 +96,7 @@ function LoopDetail({
   const paused = loop.status === 'paused'
   const isAcp = loop.runtime === 'acp'
   const summary = describeSchedule(draftFromLoop(loop.schedule?.expr ?? '', paused))
-  const nextRun =
-    !paused && hasTime(loop.next_run_at)
-      ? new Date(loop.next_run_at as string).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-      : ''
+  const nextRun = !paused && hasTime(loop.next_run_at) ? shortDate(loop.next_run_at) : ''
 
   return (
     <div className="mx-auto max-w-[820px] px-10 pb-20 pt-6">
