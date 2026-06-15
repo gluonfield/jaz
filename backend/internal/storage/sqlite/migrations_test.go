@@ -108,8 +108,10 @@ func TestSearchDocTablesDoNotDuplicateIndexedText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if messageColumns["content"] {
-		t.Fatal("message_search_docs must not duplicate message content")
+	for _, column := range []string{"content", "role"} {
+		if messageColumns[column] {
+			t.Fatalf("message_search_docs must not duplicate %s", column)
+		}
 	}
 
 	threadColumns, err := tableColumns(store.db, "thread_search_docs")

@@ -2,7 +2,6 @@ import { useNavigate } from '@tanstack/react-router'
 import { Search, X } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion, type Transition } from 'motion/react'
 import {
-  Fragment,
   useCallback,
   useEffect,
   useRef,
@@ -105,6 +104,9 @@ export function CommandPalette({
       selectItem(items[activeIndex])
     }
   }
+  const indexedItems = items.map((item, index) => ({ item, index }))
+  const commandItems = indexedItems.filter(({ item }) => item.kind === 'command')
+  const threadItems = indexedItems.filter(({ item }) => item.kind === 'thread')
 
   return createPortal(
     <AnimatePresence initial={false}>
@@ -145,7 +147,7 @@ export function CommandPalette({
                   aria-label="Clear search"
                   title="Clear search"
                   onClick={() => setQuery('')}
-                  className="grid size-8 shrink-0 place-items-center rounded-[9px] text-ink-3 transition-colors duration-150 hover:bg-surface hover:text-ink"
+                  className="relative grid size-8 shrink-0 place-items-center rounded-[9px] text-ink-3 transition-colors duration-150 before:absolute before:-inset-1 before:content-[''] hover:bg-surface hover:text-ink"
                 >
                   <X size={15} />
                 </button>
@@ -153,38 +155,45 @@ export function CommandPalette({
             </div>
 
             <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-1.5 py-1.5">
-              <AnimatePresence initial={false} mode="popLayout">
-                {items.map((item, index) => {
-                  const showSection = index === 0 || items[index - 1]?.kind !== item.kind
-                  return (
-                    <Fragment key={item.id}>
-                      {showSection ? (
-                        <div className="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-3">
-                          {item.kind === 'command' ? 'Actions' : 'Threads'}
-                        </div>
-                      ) : null}
-                      {item.kind === 'command' ? (
-                        <CommandRow
-                          item={item}
-                          active={index === activeIndex}
-                          index={index}
-                          reduceMotion={Boolean(reduceMotion)}
-                          onActive={() => setActiveIndex(index)}
-                          onSelect={() => selectItem(item)}
-                        />
-                      ) : (
-                        <ThreadRow
-                          result={item.result}
-                          active={index === activeIndex}
-                          index={index}
-                          reduceMotion={Boolean(reduceMotion)}
-                          onActive={() => setActiveIndex(index)}
-                          onSelect={() => selectItem(item)}
-                        />
-                      )}
-                    </Fragment>
-                  )
-                })}
+              {commandItems.length ? (
+                <div className="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+                  Actions
+                </div>
+              ) : null}
+              <AnimatePresence initial={false}>
+                {commandItems.map(({ item, index }) => (
+                  item.kind === 'command' ? (
+                    <CommandRow
+                      key={item.id}
+                      item={item}
+                      active={index === activeIndex}
+                      index={index}
+                      reduceMotion={Boolean(reduceMotion)}
+                      onActive={() => setActiveIndex(index)}
+                      onSelect={() => selectItem(item)}
+                    />
+                  ) : null
+                ))}
+              </AnimatePresence>
+              {threadItems.length ? (
+                <div className="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+                  Threads
+                </div>
+              ) : null}
+              <AnimatePresence initial={false}>
+                {threadItems.map(({ item, index }) => (
+                  item.kind === 'thread' ? (
+                    <ThreadRow
+                      key={item.id}
+                      result={item.result}
+                      active={index === activeIndex}
+                      index={index}
+                      reduceMotion={Boolean(reduceMotion)}
+                      onActive={() => setActiveIndex(index)}
+                      onSelect={() => selectItem(item)}
+                    />
+                  ) : null
+                ))}
               </AnimatePresence>
               {threadSearch.isFetching && searchEnabled ? (
                 <div className="flex flex-col gap-1 px-0.5 py-1">
