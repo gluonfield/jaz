@@ -50,9 +50,14 @@ func (h ThreadSearchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = parsed
 	}
+	roles, err := searchRolesParam(r.URL.Query().Get("roles"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
 	results, err := h.threads.Search(r.Context(), threads.SearchQuery{
 		Query:           query,
-		Roles:           splitParam(r.URL.Query().Get("roles")),
+		Roles:           roles,
 		IncludeArchived: r.URL.Query().Get("include_archived") == "true",
 		Limit:           limit,
 	})
@@ -85,15 +90,23 @@ func threadSearchResults(results []threads.SearchResult) []ThreadSearchResult {
 	return out
 }
 
-func splitParam(raw string) []string {
-	var out []string
+func searchRolesParam(raw string) ([]threads.SearchRole, error) {
+	var out []threads.SearchRole
 	for _, part := range strings.Split(raw, ",") {
 		part = strings.TrimSpace(part)
-		if part != "" {
-			out = append(out, part)
+		if part == "" {
+			continue
+		}
+		switch strings.ToLower(part) {
+		case string(threads.SearchRoleUser):
+			out = append(out, threads.SearchRoleUser)
+		case string(threads.SearchRoleAssistant):
+			out = append(out, threads.SearchRoleAssistant)
+		default:
+			return nil, errors.New("roles must be user or assistant")
 		}
 	}
-	return out
+	return out, nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

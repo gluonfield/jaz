@@ -7,7 +7,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/searchdb"
+	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/search"
 )
 
 const (
@@ -18,10 +18,17 @@ const (
 
 type SearchQuery struct {
 	Query           string
-	Roles           []string
+	Roles           []SearchRole
 	IncludeArchived bool
 	Limit           int
 }
+
+type SearchRole string
+
+const (
+	SearchRoleUser      SearchRole = "user"
+	SearchRoleAssistant SearchRole = "assistant"
+)
 
 type SearchResult struct {
 	ThreadID        string
@@ -40,10 +47,10 @@ type SearchResult struct {
 }
 
 type Service struct {
-	store searchdb.Querier
+	store search.Querier
 }
 
-func NewService(store searchdb.Querier) *Service {
+func NewService(store search.Querier) *Service {
 	return &Service{store: store}
 }
 
@@ -65,7 +72,7 @@ func (s *Service) Search(ctx context.Context, query SearchQuery) ([]SearchResult
 	includeUser, includeAssistant := searchRoles(query.Roles)
 
 	byThread := map[string]*searchAccumulator{}
-	metadataRows, err := s.store.SearchThreadMetadata(ctx, searchdb.SearchThreadMetadataParams{
+	metadataRows, err := s.store.SearchThreadMetadata(ctx, search.SearchThreadMetadataParams{
 		Match:           match,
 		IncludeArchived: boolInt(query.IncludeArchived),
 		Limit:           int64(candidateLimit),
@@ -80,7 +87,7 @@ func (s *Service) Search(ctx context.Context, query SearchQuery) ([]SearchResult
 		return nil, err
 	}
 	if includeUser || includeAssistant {
-		messageRows, err := s.store.SearchThreadMessages(ctx, searchdb.SearchThreadMessagesParams{
+		messageRows, err := s.store.SearchThreadMessages(ctx, search.SearchThreadMessagesParams{
 			Match:            match,
 			IncludeUser:      boolInt(includeUser),
 			IncludeAssistant: boolInt(includeAssistant),
@@ -117,7 +124,7 @@ func (s *Service) Search(ctx context.Context, query SearchQuery) ([]SearchResult
 	return results, nil
 }
 
-func addMessageRow(byThread map[string]*searchAccumulator, row searchdb.SearchThreadMessagesRow) {
+func addMessageRow(byThread map[string]*searchAccumulator, row search.SearchThreadMessagesRow) {
 	score := -row.Score * 1_000_000
 	if row.Role == "user" {
 		score += 1.5
@@ -138,7 +145,7 @@ func addMessageRow(byThread map[string]*searchAccumulator, row searchdb.SearchTh
 	}, score)
 }
 
-func addMetadataRow(byThread map[string]*searchAccumulator, row searchdb.SearchThreadMetadataRow) {
+func addMetadataRow(byThread map[string]*searchAccumulator, row search.SearchThreadMetadataRow) {
 	addSearchHit(byThread, SearchResult{
 		ThreadID:        row.ID,
 		ThreadSlug:      row.Slug,
@@ -201,16 +208,16 @@ func ftsTokens(query string) []string {
 	return tokens
 }
 
-func searchRoles(roles []string) (bool, bool) {
+func searchRoles(roles []SearchRole) (bool, bool) {
 	if len(roles) == 0 {
 		return true, true
 	}
 	var user, assistant bool
 	for _, role := range roles {
-		switch strings.ToLower(strings.TrimSpace(role)) {
-		case "user":
+		switch role {
+		case SearchRoleUser:
 			user = true
-		case "assistant":
+		case SearchRoleAssistant:
 			assistant = true
 		}
 	}
