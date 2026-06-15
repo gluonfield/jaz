@@ -2,6 +2,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { Search, X } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion, type Transition } from 'motion/react'
 import {
+  Fragment,
   useCallback,
   useEffect,
   useRef,
@@ -9,17 +10,14 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { KeyboardShortcut } from '@/components/ui/KeyboardShortcut'
-import type { PaletteItem, RoleMode } from './commandPaletteTypes'
+import type { PaletteItem } from './commandPaletteTypes'
 import {
   CommandRow,
-  PaletteFooter,
-  RoleToggle,
   ThreadRow,
 } from './CommandPaletteRows'
 import { useCommandPaletteItems } from './useCommandPaletteItems'
 
-const PANEL_TRANSITION: Transition = { type: 'spring', stiffness: 520, damping: 40 }
+const PANEL_TRANSITION: Transition = { type: 'spring', duration: 0.28, bounce: 0 }
 
 export function CommandPalette({
   open,
@@ -35,7 +33,6 @@ export function CommandPalette({
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const [query, setQuery] = useState('')
-  const [roleMode, setRoleMode] = useState<RoleMode>('all')
   const [activeIndex, setActiveIndex] = useState(0)
   const {
     debouncedQuery,
@@ -45,7 +42,6 @@ export function CommandPalette({
   } = useCommandPaletteItems({
     open,
     query,
-    roleMode,
     onOpenChange,
     onOpenSettings,
   })
@@ -79,7 +75,7 @@ export function CommandPalette({
   useEffect(() => {
     if (!open) return
     setActiveIndex(0)
-  }, [debouncedQuery, items.length, open, roleMode])
+  }, [debouncedQuery, items.length, open])
 
   useEffect(() => {
     if (!open) return
@@ -114,11 +110,11 @@ export function CommandPalette({
     <AnimatePresence initial={false}>
       {open ? (
         <motion.div
-          className="fixed inset-0 z-command bg-black/35 px-3 pt-[12dvh] backdrop-blur-[2px]"
+          className="fixed inset-0 z-command bg-black/25 px-3 pt-[9dvh] backdrop-blur-[1.5px]"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: reduceMotion ? 0.08 : 0.16, ease: [0.2, 0, 0, 1] }}
+          transition={{ duration: reduceMotion ? 0.08 : 0.14, ease: [0.2, 0, 0, 1] }}
           onMouseDown={close}
         >
           <motion.div
@@ -127,21 +123,21 @@ export function CommandPalette({
             aria-label="Command palette"
             onKeyDown={onPaletteKeyDown}
             onMouseDown={(event) => event.stopPropagation()}
-            initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -10, scale: 0.985 }}
+            initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -8, scale: 0.982 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -6, scale: 0.985 }}
+            exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4, scale: 0.988 }}
             transition={PANEL_TRANSITION}
-            className="mx-auto flex max-h-[min(680px,76dvh)] w-full max-w-[720px] flex-col overflow-hidden rounded-[18px] bg-bg shadow-[0_24px_80px_rgba(0,0,0,0.26)] ring-1 ring-border"
+            className="mx-auto flex max-h-[min(590px,76dvh)] w-full max-w-[640px] flex-col overflow-hidden rounded-[14px] bg-bg shadow-[0_24px_70px_rgba(0,0,0,0.24),0_2px_10px_rgba(0,0,0,0.08)] ring-1 ring-border"
           >
-            <div className="flex items-center gap-3 border-b border-border px-4 py-3">
-              <Search size={18} className="shrink-0 text-primary" />
+            <div className="flex items-center gap-2 px-3 py-2.5 shadow-[inset_0_-1px_0_var(--color-border)]">
+              <Search size={17} className="shrink-0 text-ink-3" />
               <input
                 ref={inputRef}
                 value={query}
                 onChange={(event) => setQuery(event.currentTarget.value)}
-                placeholder="Search threads or run a command"
+                placeholder="Search threads, actions, settings"
                 aria-label="Search threads or run a command"
-                className="h-9 min-w-0 flex-1 bg-transparent text-[15px] text-ink outline-none placeholder:text-ink-3"
+                className="h-9 min-w-0 flex-1 bg-transparent text-[14px] text-ink outline-none placeholder:text-ink-3"
               />
               {query ? (
                 <button
@@ -149,81 +145,71 @@ export function CommandPalette({
                   aria-label="Clear search"
                   title="Clear search"
                   onClick={() => setQuery('')}
-                  className="grid size-8 shrink-0 place-items-center rounded-full text-ink-3 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+                  className="grid size-8 shrink-0 place-items-center rounded-[9px] text-ink-3 transition-colors duration-150 hover:bg-surface hover:text-ink"
                 >
                   <X size={15} />
                 </button>
-              ) : (
-                <KeyboardShortcut value="K" />
-              )}
+              ) : null}
             </div>
 
-            <div className="flex items-center border-b border-border px-3 py-2">
-              <div className="flex items-center rounded-full bg-surface p-0.5">
-                <RoleToggle mode={roleMode} value="all" onChange={setRoleMode}>
-                  All
-                </RoleToggle>
-                <RoleToggle mode={roleMode} value="user" onChange={setRoleMode}>
-                  User
-                </RoleToggle>
-                <RoleToggle mode={roleMode} value="assistant" onChange={setRoleMode}>
-                  Assistant
-                </RoleToggle>
-              </div>
-            </div>
-
-            <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto p-2">
+            <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-1.5 py-1.5">
               <AnimatePresence initial={false} mode="popLayout">
-                {items.map((item, index) =>
-                  item.kind === 'command' ? (
-                    <CommandRow
-                      key={item.id}
-                      item={item}
-                      active={index === activeIndex}
-                      index={index}
-                      reduceMotion={Boolean(reduceMotion)}
-                      onActive={() => setActiveIndex(index)}
-                      onSelect={() => selectItem(item)}
-                    />
-                  ) : (
-                    <ThreadRow
-                      key={item.id}
-                      result={item.result}
-                      active={index === activeIndex}
-                      index={index}
-                      reduceMotion={Boolean(reduceMotion)}
-                      onActive={() => setActiveIndex(index)}
-                      onSelect={() => selectItem(item)}
-                    />
-                  ),
-                )}
+                {items.map((item, index) => {
+                  const showSection = index === 0 || items[index - 1]?.kind !== item.kind
+                  return (
+                    <Fragment key={item.id}>
+                      {showSection ? (
+                        <div className="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+                          {item.kind === 'command' ? 'Actions' : 'Threads'}
+                        </div>
+                      ) : null}
+                      {item.kind === 'command' ? (
+                        <CommandRow
+                          item={item}
+                          active={index === activeIndex}
+                          index={index}
+                          reduceMotion={Boolean(reduceMotion)}
+                          onActive={() => setActiveIndex(index)}
+                          onSelect={() => selectItem(item)}
+                        />
+                      ) : (
+                        <ThreadRow
+                          result={item.result}
+                          active={index === activeIndex}
+                          index={index}
+                          reduceMotion={Boolean(reduceMotion)}
+                          onActive={() => setActiveIndex(index)}
+                          onSelect={() => selectItem(item)}
+                        />
+                      )}
+                    </Fragment>
+                  )
+                })}
               </AnimatePresence>
               {threadSearch.isFetching && searchEnabled ? (
-                <div className="flex flex-col gap-1 px-1 py-1">
+                <div className="flex flex-col gap-1 px-0.5 py-1">
                   {[0, 1, 2].map((row) => (
                     <motion.div
                       key={row}
                       initial={false}
-                      animate={{ opacity: [0.45, 0.7, 0.45] }}
-                      transition={{ repeat: Infinity, duration: 1.2, delay: row * 0.08 }}
-                      className="h-14 rounded-control bg-surface"
+                      animate={{ opacity: [0.38, 0.66, 0.38] }}
+                      transition={{ repeat: Infinity, duration: 1.1, delay: row * 0.07 }}
+                      className="h-12 rounded-[10px] bg-surface"
                     />
                   ))}
                 </div>
               ) : null}
               {!threadSearch.isFetching && searchEnabled && items.length === 0 ? (
-                <div className="grid min-h-36 place-items-center px-6 text-center">
+                <div className="grid min-h-28 place-items-center px-6 text-center">
                   <p className="text-[13px] text-ink-3">No thread matches "{debouncedQuery}".</p>
                 </div>
               ) : null}
               {!searchEnabled && items.length === 0 ? (
-                <div className="grid min-h-28 place-items-center px-6 text-center">
-                  <p className="text-[13px] text-ink-3">Type at least two characters.</p>
+                <div className="grid min-h-24 place-items-center px-6 text-center">
+                  <p className="text-[13px] text-ink-3">No results.</p>
                 </div>
               ) : null}
             </div>
-
-            <PaletteFooter activeItem={items[activeIndex]} />
           </motion.div>
         </motion.div>
       ) : null}

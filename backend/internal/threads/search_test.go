@@ -41,21 +41,21 @@ func TestSearchFindsMessagesAndThreadMetadata(t *testing.T) {
 	}
 
 	search := NewService(sqlitestore.NewSearchQueries(store))
-	results, err := search.Search(context.Background(), SearchQuery{Query: "migra", Roles: []SearchRole{SearchRoleUser}, Limit: 10})
+	results, err := search.Search(context.Background(), SearchQuery{Query: "migra", Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(results) != 1 || results[0].ThreadID != thread.ID {
 		t.Fatalf("results = %#v, want only active matrix thread", results)
 	}
-	if results[0].Role != "user" || results[0].MessageSeq == 0 {
-		t.Fatalf("message hit = role %q seq %d, want user message", results[0].Role, results[0].MessageSeq)
+	if results[0].MessageSeq == 0 {
+		t.Fatalf("message hit seq = %d, want message hit", results[0].MessageSeq)
 	}
 	if !strings.Contains(results[0].Snippet, "\x1fmigration\x1e") {
 		t.Fatalf("snippet = %q, want highlighted migration", results[0].Snippet)
 	}
 
-	results, err = search.Search(context.Background(), SearchQuery{Query: "matrix sync", Roles: []SearchRole{SearchRoleAssistant}, Limit: 10})
+	results, err = search.Search(context.Background(), SearchQuery{Query: "matrix sync", Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,14 +64,14 @@ func TestSearchFindsMessagesAndThreadMetadata(t *testing.T) {
 	}
 }
 
-func TestSearchRoleFilterAndIndexMaintenance(t *testing.T) {
+func TestSearchIndexMaintenance(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
 
-	thread, err := store.CreateSession(storage.CreateSession{Slug: "roles"})
+	thread, err := store.CreateSession(storage.CreateSession{Slug: "search-index"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,20 +83,12 @@ func TestSearchRoleFilterAndIndexMaintenance(t *testing.T) {
 	}
 
 	search := NewService(sqlitestore.NewSearchQueries(store))
-	results, err := search.Search(context.Background(), SearchQuery{Query: "quartz", Roles: []SearchRole{SearchRoleUser}})
+	results, err := search.Search(context.Background(), SearchQuery{Query: "quartz"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 0 {
-		t.Fatalf("user-only search found assistant hit: %#v", results)
-	}
-
-	results, err = search.Search(context.Background(), SearchQuery{Query: "quartz", Roles: []SearchRole{SearchRoleAssistant}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(results) != 1 || results[0].Role != "assistant" {
-		t.Fatalf("assistant search = %#v, want assistant hit", results)
+	if len(results) != 1 || results[0].ThreadID != thread.ID {
+		t.Fatalf("search = %#v, want thread hit", results)
 	}
 
 	if err := store.SaveMessages(thread.ID, []provider.Message{provider.UserMessage("new vector prompt")}); err != nil {

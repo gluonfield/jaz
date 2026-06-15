@@ -54,7 +54,6 @@ export interface ThreadSearchResult {
   parent_id?: string
   archived?: boolean
   message_seq?: number
-  role?: 'user' | 'assistant'
   snippet?: string
   hit_count?: number
   updated_at: string
