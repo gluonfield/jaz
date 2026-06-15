@@ -1,4 +1,4 @@
-//go:build acpprobe
+//go:build acpprobe && !windows
 
 package acp
 
@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -181,52 +182,32 @@ func applyProbeEnvOverrides(env map[string]string) {
 
 func probeAgentConfig(t *testing.T, agent string) AgentConfig {
 	t.Helper()
+	agent = CanonicalAgentName(agent)
+	cfg, ok := BuiltinAgents()[agent]
+	if !ok {
+		t.Fatalf("unknown probe agent %q", agent)
+	}
 	switch agent {
 	case AgentCodex:
 		command := strings.TrimSpace(os.Getenv("ACP_PROBE_CODEX_COMMAND"))
-		if command == "" {
-			return AgentConfig{
-				Command: "codex-acp",
-				Args: []string{
-					"-c", `sandbox_mode="danger-full-access"`,
-					"-c", `approval_policy="never"`,
-				},
-			}
-		}
-		return AgentConfig{
-			Command: command,
-			Args:    strings.Fields(strings.TrimSpace(os.Getenv("ACP_PROBE_CODEX_ARGS"))),
+		if command != "" {
+			cfg.Command = command
+			cfg.Args = strings.Fields(strings.TrimSpace(os.Getenv("ACP_PROBE_CODEX_ARGS")))
 		}
 	case AgentClaude:
 		pkg := strings.TrimSpace(os.Getenv("ACP_PROBE_CLAUDE_PACKAGE"))
-		if pkg == "" {
-			pkg = "@agentclientprotocol/claude-agent-acp@0.44.0"
-		}
-		return AgentConfig{
-			Command: "npx",
-			Args:    []string{"-y", pkg},
+		if pkg != "" {
+			cfg.Command = "npx"
+			cfg.Args = []string{"-y", pkg}
 		}
 	case AgentGrok:
 		command := strings.TrimSpace(os.Getenv("ACP_PROBE_GROK_COMMAND"))
-		if command == "" {
-			return AgentConfig{
-				Command: "grok",
-				Args: []string{
-					"--no-auto-update",
-					"agent",
-					"--no-leader",
-					"stdio",
-				},
-			}
+		if command != "" {
+			cfg.Command = command
+			cfg.Args = strings.Fields(strings.TrimSpace(os.Getenv("ACP_PROBE_GROK_ARGS")))
 		}
-		return AgentConfig{
-			Command: command,
-			Args:    strings.Fields(strings.TrimSpace(os.Getenv("ACP_PROBE_GROK_ARGS"))),
-		}
-	default:
-		t.Fatalf("unknown probe agent %q", agent)
-		return AgentConfig{}
 	}
+	return cfg
 }
 
 func probeOpenConn(t *testing.T, ctx context.Context, agent string, cfg AgentConfig, env map[string]string, cwd string) (jsonrpc.MessageConn, func()) {
@@ -235,6 +216,7 @@ func probeOpenConn(t *testing.T, ctx context.Context, agent string, cfg AgentCon
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Env = envList(env)
 	cmd.Dir = cwd
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -251,6 +233,7 @@ func probeOpenConn(t *testing.T, ctx context.Context, agent string, cfg AgentCon
 	return conn, func() {
 		_ = conn.Close()
 		if cmd.Process != nil {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 			_ = cmd.Process.Kill()
 		}
 		_ = cmd.Wait()
@@ -322,6 +305,9 @@ func probeHandleClientRequest(t *testing.T, ctx context.Context, conn jsonrpc.Me
 
 func probeLogMessage(t *testing.T, prefix string, msg *jsonrpc.Message) {
 	t.Helper()
+	if os.Getenv("ACP_PROBE_LOG_JSON") != "1" {
+		return
+	}
 	raw, err := json.MarshalIndent(msg, "", "  ")
 	if err != nil {
 		t.Fatal(err)

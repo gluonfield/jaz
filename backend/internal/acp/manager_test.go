@@ -211,6 +211,65 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	}
 }
 
+func TestManagerSendStartsStoredACPSession(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	manager := acp.NewManager(store, acp.Config{
+		Root:      t.TempDir(),
+		Workspace: workspace,
+		Agents: map[string]acp.AgentConfig{
+			"fake": {
+				Command: os.Args[0],
+				Args:    []string{"-test.run=TestFakeACPAgentProcess"},
+				Env:     map[string]string{"JAZ_FAKE_ACP_AGENT": "1"},
+			},
+		},
+	}, log.New(io.Discard))
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	session, err := manager.CreateSession(ctx, acp.SpawnRequest{
+		ACPAgent:  "fake",
+		Slug:      "fake-stored",
+		Directory: ".",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.RuntimeRef == nil || session.RuntimeRef.SessionID != "" || session.RuntimeRef.Cwd != workspace {
+		t.Fatalf("stored runtime ref = %#v", session.RuntimeRef)
+	}
+	status, err := manager.Status(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != "not_running" {
+		t.Fatalf("stored status = %s, want not_running", status.State)
+	}
+
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: session.ID, Message: "say hello", Completion: acp.CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
+	job, err := manager.Wait(ctx, acp.WaitRequest{Session: session.ID, Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), session.ID) }()
+	if job.ACPSession == "" || job.State != acp.StateIdle {
+		t.Fatalf("job = %#v", job)
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.RuntimeRef == nil || loaded.RuntimeRef.SessionID == "" {
+		t.Fatalf("loaded runtime ref = %#v", loaded.RuntimeRef)
+	}
+}
+
 func TestManagerIncludesAgentStderrWhenInitializeConnectionCloses(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

@@ -278,17 +278,58 @@ func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent string
 	return newACPSessionInfo(sessionRaw, acpSession), nil
 }
 
-func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, error) {
+type createdSession struct {
+	Request SpawnRequest
+	Config  AgentConfig
+	Session storage.Session
+}
+
+func (m *Manager) CreateSession(ctx context.Context, req SpawnRequest) (storage.Session, error) {
+	created, err := m.createSession(ctx, req)
+	if err != nil {
+		return storage.Session{}, err
+	}
+	return created.Session, nil
+}
+
+func (m *Manager) createSession(ctx context.Context, req SpawnRequest) (createdSession, error) {
+	req, cfg, effort, err := m.spawnConfig(req)
+	if err != nil {
+		return createdSession{}, err
+	}
+	session, err := m.createStoredSession(req, cfg, effort)
+	if err != nil {
+		return createdSession{}, err
+	}
+	fail := func(err error) (createdSession, error) {
+		session.Status = storage.StatusError
+		session.Error = err.Error()
+		_ = m.store.SaveSession(session)
+		return createdSession{}, err
+	}
+	absCwd, projectPath, err := m.prepareSessionDir(ctx, req, cfg, session.Slug)
+	if err != nil {
+		return fail(err)
+	}
+	session.RuntimeRef.Cwd = absCwd
+	session.RuntimeRef.ProjectPath = projectPath
+	if err := m.store.SaveSession(session); err != nil {
+		return fail(err)
+	}
+	return createdSession{Request: req, Config: cfg, Session: session}, nil
+}
+
+func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, string, error) {
 	req.ACPAgent = CanonicalAgentName(req.ACPAgent)
 	if req.ACPAgent == "" {
 		req.ACPAgent = AgentCodex
 	}
 	cfg, ok, err := m.configuredAgent(req.ACPAgent)
 	if err != nil {
-		return SpawnResult{}, err
+		return SpawnRequest{}, AgentConfig{}, "", err
 	}
 	if !ok {
-		return SpawnResult{}, fmt.Errorf("acp agent %q is not configured", req.ACPAgent)
+		return SpawnRequest{}, AgentConfig{}, "", fmt.Errorf("acp agent %q is not configured", req.ACPAgent)
 	}
 	effort := configuredAgentReasoningEffort(req.ACPAgent, cfg.ReasoningEffort)
 	if req.ReasoningEffort != "" {
@@ -301,9 +342,11 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		cfg.Model = model
 	}
 	cfg.ReasoningEffort = effort
-	// The session row is created first: its unique slug names the default
-	// directory and the worktree branch.
-	session, err := m.store.CreateSession(storage.CreateSession{
+	return req, cfg, effort, nil
+}
+
+func (m *Manager) createStoredSession(req SpawnRequest, cfg AgentConfig, effort string) (storage.Session, error) {
+	return m.store.CreateSession(storage.CreateSession{
 		Slug:            req.Slug,
 		Title:           req.Title,
 		ParentID:        req.ParentID,
@@ -318,19 +361,23 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 			Agent: req.ACPAgent,
 		},
 	})
+}
+
+func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, error) {
+	created, err := m.createSession(ctx, req)
 	if err != nil {
 		return SpawnResult{}, err
 	}
+	req = created.Request
+	cfg := created.Config
+	session := created.Session
 	fail := func(err error) (SpawnResult, error) {
 		session.Status = storage.StatusError
 		session.Error = err.Error()
 		_ = m.store.SaveSession(session)
 		return SpawnResult{}, err
 	}
-	absCwd, projectPath, err := m.prepareSessionDir(req, cfg, session.Slug)
-	if err != nil {
-		return fail(err)
-	}
+	absCwd := session.RuntimeRef.Cwd
 	ac, err := m.connect(ctx, req.ACPAgent, cfg, absCwd)
 	if err != nil {
 		return fail(err)
@@ -347,7 +394,6 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	}
 	session.RuntimeRef.SessionID = string(acpSession.response.SessionID)
 	session.RuntimeRef.Cwd = absCwd
-	session.RuntimeRef.ProjectPath = projectPath
 	if err := m.store.SaveSession(session); err != nil {
 		ac.close()
 		return fail(err)

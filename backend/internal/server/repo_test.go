@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/gitinfo"
@@ -137,9 +138,7 @@ func TestArchivePrunesAndRestoresManagedWorktree(t *testing.T) {
 	if res.Code != http.StatusOK {
 		t.Fatalf("archive status = %d, body = %s", res.Code, res.Body.String())
 	}
-	if _, err := os.Stat(worktree); !os.IsNotExist(err) {
-		t.Fatalf("worktree still exists after archive: %v", err)
-	}
+	waitForMissingPath(t, worktree)
 
 	var info gitinfo.Info
 	req = httptest.NewRequest(http.MethodGet, "/v1/sessions/"+session.ID+"/repo", nil)
@@ -169,6 +168,24 @@ func TestArchivePrunesAndRestoresManagedWorktree(t *testing.T) {
 	}
 	if got, err := os.ReadFile(filepath.Join(worktree, "file.txt")); err != nil || string(got) != "two\n" {
 		t.Fatalf("restored file.txt = %q, %v", got, err)
+	}
+}
+
+func waitForMissingPath(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			return
+		}
+		if time.Now().After(deadline) {
+			if _, err := os.Stat(path); err == nil {
+				t.Fatalf("path still exists: %s", path)
+			} else {
+				t.Fatalf("path stat failed: %v", err)
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
