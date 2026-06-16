@@ -177,9 +177,10 @@ function SessionRows({
         {items.map((item) => (
           <motion.div
             key={item.session.id}
-            initial={{ x: -8 }}
-            animate={{ x: 0 }}
-            exit={{ x: -8 }}
+            layout="position"
+            initial={{ opacity: 0, x: -8 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -8 }}
             transition={ROW_SPRING}
           >
             <SessionRow
@@ -432,9 +433,10 @@ function LoopsSection() {
             {visibleLoops.map((loop) => (
               <motion.div
                 key={loop.id}
-                initial={{ x: -8 }}
-                animate={{ x: 0 }}
-                exit={{ x: -8 }}
+                layout="position"
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -8 }}
                 transition={ROW_SPRING}
               >
                 <LoopRow loop={loop} />
