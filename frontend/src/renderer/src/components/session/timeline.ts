@@ -165,7 +165,6 @@ export function isCollapsibleWork(
   const event = item.event
   if (event.type === 'artifact') return false
   if (event.type === 'acp_thought') return true
-  if (event.type === 'acp_message') return true
   if (event.type === 'permission_request') {
     return !pendingPermissionIds.has(event.permission?.id ?? '')
   }
