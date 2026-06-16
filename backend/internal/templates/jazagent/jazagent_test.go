@@ -21,6 +21,8 @@ func TestRenderContextAndRulesOnly(t *testing.T) {
 		"Current working directory: /tmp/jaz/workspaces/default",
 		"Directory guide:",
 		"agent_spawn only starts a session; send work with agent_send.",
+		"Use worktree=true for isolated repo changes; add branch when the new worktree should start from a specific branch/ref.",
+		"For reviewing another session's worktree, pass that worktree as directory without worktree=true.",
 		"Use plan=true for delegated planning/review/proposal tasks.",
 		"If an ACP agent asks questions, say the questions are waiting above and stop.",
 	} {
