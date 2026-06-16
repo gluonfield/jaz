@@ -2,7 +2,6 @@ package visualize
 
 import (
 	"context"
-	_ "embed"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,6 +9,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/templates/visualizeguide"
 )
 
 const (
@@ -25,9 +25,6 @@ const (
 	RenderedMessage  = "Content rendered and shown to the user. Please do not duplicate the shown content in text because it's already visually represented."
 	RenderedReminder = "[This tool call rendered an interactive widget in the chat. The user can already see the result — do not repeat it in text or with another visualization tool.]"
 )
-
-//go:embed read_me.md
-var ReadMeGuide string
 
 type SessionEventAppender interface {
 	AppendSessionEvents(id string, events ...sessionevents.Event) error
@@ -78,8 +75,8 @@ func (t *MCPTools) AddTo(server *mcp.Server) {
 	}, t.ShowWidget)
 }
 
-func (t *MCPTools) ReadMe(context.Context, *mcp.CallToolRequest, ReadMeInput) (*mcp.CallToolResult, any, error) {
-	return textResult(ReadMeGuide)
+func (t *MCPTools) ReadMe(_ context.Context, _ *mcp.CallToolRequest, input ReadMeInput) (*mcp.CallToolResult, any, error) {
+	return textResult(BuildReadMeGuide(input.Modules))
 }
 
 // The rendered artifact reaches the UI via the event bus below, not the return.
@@ -116,6 +113,14 @@ func textResult(texts ...string) (*mcp.CallToolResult, any, error) {
 		content[i] = &mcp.TextContent{Text: text}
 	}
 	return &mcp.CallToolResult{Content: content}, nil, nil
+}
+
+// BuildReadMeGuide returns the design guidance scoped to the requested modules.
+// The full guide overflows the agent's tool-result cap, so callers pass only the
+// modules in play (e.g. "chart") and get the design-system core plus those
+// sections. Structure lives in the visualizeguide template package.
+func BuildReadMeGuide(modules []string) string {
+	return visualizeguide.Render(visualizeguide.For(modules))
 }
 
 func BuildArtifact(input ShowWidgetInput) (ShowWidgetOutput, *sessionevents.ArtifactEvent, error) {
