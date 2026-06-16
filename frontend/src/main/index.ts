@@ -77,13 +77,13 @@ function attachContextMenu(contents: WebContents): void {
     if (previewLinkURL) {
       if (canOpenSideBrowser) {
         items.push({
-          label: 'Open Link in Side Browser',
+          label: 'Open in Side Browser',
           click: () => openPreviewURL(previewLinkURL, contents),
         })
       }
       items.push(
         {
-          label: 'Open Link in System Browser',
+          label: 'Open in Browser',
           click: () => shell.openExternal(previewLinkURL),
         },
       )
