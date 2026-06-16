@@ -120,6 +120,81 @@ func TestLoadIncludesDefaultSkills(t *testing.T) {
 	}
 }
 
+func TestSyncToCopiesAndRefreshesManagedSkills(t *testing.T) {
+	root := t.TempDir()
+	dst := t.TempDir()
+	writeSkill(t, root, "alpha", "alpha", "Alpha tasks")
+	writeFile(t, filepath.Join(root, "skills", "alpha", "references", "guide.md"), "guide")
+	script := filepath.Join(root, "skills", "alpha", "scripts", "run.sh")
+	writeFile(t, script, "#!/bin/sh\n")
+	if err := os.Chmod(script, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := SyncTo(root, dst); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(filepath.Join(dst, "alpha", managedMarker)); err != nil {
+		t.Fatalf("managed marker missing: %v", err)
+	}
+	if data, err := os.ReadFile(filepath.Join(dst, "alpha", "references", "guide.md")); err != nil || string(data) != "guide" {
+		t.Fatalf("copied reference = %q, %v", data, err)
+	}
+	if info, err := os.Stat(filepath.Join(dst, "alpha", "scripts", "run.sh")); err != nil || info.Mode().Perm() != 0o755 {
+		t.Fatalf("copied script mode = %v, %v", info.Mode().Perm(), err)
+	}
+
+	writeFile(t, filepath.Join(root, "skills", "alpha", "SKILL.md"), "---\nname: alpha\ndescription: Updated\n---\nnew body")
+	if err := SyncTo(root, dst); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dst, "alpha", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "Updated") {
+		t.Fatalf("managed copy was not refreshed:\n%s", data)
+	}
+}
+
+func TestSyncToSkipsUserOwnedSkillConflictsAndLeavesOrphans(t *testing.T) {
+	root := t.TempDir()
+	dst := t.TempDir()
+	writeSkill(t, root, "alpha", "alpha", "Alpha tasks")
+	writeSkill(t, root, "stale", "stale", "Stale tasks")
+	writeFile(t, filepath.Join(dst, "alpha", "SKILL.md"), "user-owned")
+	writeFile(t, filepath.Join(dst, "orphan", "SKILL.md"), "user-owned orphan")
+
+	if err := SyncTo(root, dst); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "stale", managedMarker)); err != nil {
+		t.Fatalf("managed stale skill missing before source removal: %v", err)
+	}
+
+	if err := os.RemoveAll(filepath.Join(root, "skills", "stale")); err != nil {
+		t.Fatal(err)
+	}
+	if err := SyncTo(root, dst); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dst, "alpha", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "user-owned" {
+		t.Fatalf("user-owned skill was overwritten:\n%s", data)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "orphan", "SKILL.md")); err != nil {
+		t.Fatalf("user-owned orphan should stay: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "stale", managedMarker)); err != nil {
+		t.Fatalf("additive sync should leave old managed skills in place: %v", err)
+	}
+}
+
 func writeSkill(t *testing.T, root, dir, name, description string) {
 	t.Helper()
 	writeFile(t, filepath.Join(root, "skills", dir, "SKILL.md"), "---\nname: "+name+"\ndescription: "+description+"\n---\nbody")
