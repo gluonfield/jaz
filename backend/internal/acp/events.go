@@ -17,10 +17,8 @@ import (
 )
 
 const (
-	codexRequestUserInputMetaKey        = "codex.request_user_input"
-	legacyCodexRequestUserInputMetaKey  = "jaz.codex_request_user_input"
-	userInputResponseOptionPrefix       = "__user_input_response__:"
-	legacyUserInputResponseOptionPrefix = "__jaz_user_input_response__:"
+	codexRequestUserInputMetaKey  = "codex.request_user_input"
+	userInputResponseOptionPrefix = "__user_input_response__:"
 )
 
 type pendingPermission struct {
@@ -43,7 +41,7 @@ func (m *Manager) awaitPermission(ctx context.Context, job *Job, req acpschema.R
 	pending := &pendingPermission{
 		sessionID:                     job.ID,
 		request:                       permission,
-		userInputResponseOptionPrefix: codexUserInputResponsePrefix(req),
+		userInputResponseOptionPrefix: userInputResponseOptionPrefix,
 		answer:                        make(chan string, 1),
 	}
 	m.permissionMu.Lock()
@@ -345,22 +343,8 @@ func codexUserInputQuestions(req acpschema.RequestPermissionRequest) []sessionev
 }
 
 func decodeCodexUserInputMeta(req acpschema.RequestPermissionRequest, out *codexUserInputMeta) bool {
-	for _, key := range []string{codexRequestUserInputMetaKey, legacyCodexRequestUserInputMetaKey} {
-		if decodeMeta(req.ToolCall.Meta, key, out) || decodeMeta(req.Meta, key, out) {
-			return true
-		}
-	}
-	return false
-}
-
-func codexUserInputResponsePrefix(req acpschema.RequestPermissionRequest) string {
-	if hasMetaKey(req.ToolCall.Meta, codexRequestUserInputMetaKey) || hasMetaKey(req.Meta, codexRequestUserInputMetaKey) {
-		return userInputResponseOptionPrefix
-	}
-	if hasMetaKey(req.ToolCall.Meta, legacyCodexRequestUserInputMetaKey) || hasMetaKey(req.Meta, legacyCodexRequestUserInputMetaKey) {
-		return legacyUserInputResponseOptionPrefix
-	}
-	return userInputResponseOptionPrefix
+	return decodeMeta(req.ToolCall.Meta, codexRequestUserInputMetaKey, out) ||
+		decodeMeta(req.Meta, codexRequestUserInputMetaKey, out)
 }
 
 func decodeMeta(meta map[string]any, key string, out any) bool {
@@ -376,14 +360,6 @@ func decodeMeta(meta map[string]any, key string, out any) bool {
 		return false
 	}
 	return json.Unmarshal(raw, out) == nil
-}
-
-func hasMetaKey(meta map[string]any, key string) bool {
-	if len(meta) == 0 {
-		return false
-	}
-	_, ok := meta[key]
-	return ok
 }
 
 func permissionOption(options []sessionevents.ACPPermissionOption, optionID string) (sessionevents.ACPPermissionOption, bool) {
