@@ -94,7 +94,7 @@ func TestAddWorktree(t *testing.T) {
 	}
 	run("commit", "--allow-empty", "-m", "init")
 
-	worktree, repo, err := AddWorktree(ctx, workspace, dir, "my-thread")
+	worktree, repo, err := AddWorktree(ctx, workspace, dir, "my-thread", "")
 	if err != nil {
 		t.Fatalf("AddWorktree: %v", err)
 	}
@@ -117,8 +117,91 @@ func TestAddWorktree(t *testing.T) {
 	}
 
 	// A second worktree for the same slug must fail, not silently reuse it.
-	if _, _, err := AddWorktree(ctx, workspace, dir, "my-thread"); err == nil {
+	if _, _, err := AddWorktree(ctx, workspace, dir, "my-thread", ""); err == nil {
 		t.Error("AddWorktree with a duplicate slug succeeded, want error")
+	}
+}
+
+func TestAddWorktreeBaseRef(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	ctx := context.Background()
+	workspace := t.TempDir()
+	dir := filepath.Join(workspace, "repo")
+	run := func(target string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", target, "-c", "user.email=t@t", "-c", "user.name=t"}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	write := func(target, name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(target, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := exec.Command("git", "init", "-q", "-b", "main", dir).Run(); err != nil {
+		t.Fatal(err)
+	}
+	write(dir, "base.txt", "base\n")
+	run(dir, "add", "-A")
+	run(dir, "commit", "-q", "-m", "init")
+	run(dir, "switch", "-q", "-c", "feature")
+	write(dir, "feature.txt", "feature\n")
+	run(dir, "add", "-A")
+	run(dir, "commit", "-q", "-m", "feature")
+	run(dir, "switch", "-q", "main")
+
+	featureWorktree, repo, err := AddWorktree(ctx, workspace, dir, "from-feature", "feature")
+	if err != nil {
+		t.Fatalf("AddWorktree(feature): %v", err)
+	}
+	wantRepo, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotRepo, err := filepath.EvalSymlinks(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotRepo != wantRepo {
+		t.Errorf("repo root = %q, want %q", repo, dir)
+	}
+	if _, err := os.Stat(filepath.Join(featureWorktree, "feature.txt")); err != nil {
+		t.Fatalf("worktree did not start from feature: %v", err)
+	}
+
+	parent, _, err := AddWorktree(ctx, workspace, dir, "parent", "feature")
+	if err != nil {
+		t.Fatalf("AddWorktree(parent): %v", err)
+	}
+	write(parent, "parent.txt", "parent\n")
+	run(parent, "add", "-A")
+	run(parent, "commit", "-q", "-m", "parent")
+
+	child, repo, err := AddWorktree(ctx, workspace, parent, "child", "")
+	if err != nil {
+		t.Fatalf("AddWorktree(child): %v", err)
+	}
+	gotRepo, err = filepath.EvalSymlinks(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotRepo != wantRepo {
+		t.Errorf("source worktree project path = %q, want primary repo %q", repo, dir)
+	}
+	if _, err := os.Stat(filepath.Join(child, "parent.txt")); err != nil {
+		t.Fatalf("empty base ref did not use source worktree HEAD: %v", err)
+	}
+
+	mainChild, _, err := AddWorktree(ctx, workspace, parent, "from-main", "main")
+	if err != nil {
+		t.Fatalf("AddWorktree(main): %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(mainChild, "parent.txt")); !os.IsNotExist(err) {
+		t.Fatalf("explicit main base included parent work: %v", err)
 	}
 }
 
@@ -150,7 +233,7 @@ func TestRemoveAndRestoreManagedWorktree(t *testing.T) {
 	run(dir, "add", "-A")
 	run(dir, "commit", "-q", "-m", "init")
 
-	worktree, _, err := AddWorktree(ctx, workspace, dir, "restore-thread")
+	worktree, _, err := AddWorktree(ctx, workspace, dir, "restore-thread", "")
 	if err != nil {
 		t.Fatalf("AddWorktree: %v", err)
 	}
@@ -219,7 +302,7 @@ func TestRemoveManagedWorktreeSnapshotsWithoutUserGitConfig(t *testing.T) {
 	}
 	run(dir, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "--allow-empty", "-q", "-m", "init")
 
-	worktree, _, err := AddWorktree(ctx, workspace, dir, "snapshot-thread")
+	worktree, _, err := AddWorktree(ctx, workspace, dir, "snapshot-thread", "")
 	if err != nil {
 		t.Fatalf("AddWorktree: %v", err)
 	}
@@ -326,7 +409,7 @@ func TestCommitAllAndMergeIntoMain(t *testing.T) {
 	git(main, "add", "-A")
 	git(main, "commit", "-q", "-m", "init")
 
-	worktree, _, err := AddWorktree(ctx, workspace, main, "wt")
+	worktree, _, err := AddWorktree(ctx, workspace, main, "wt", "")
 	if err != nil {
 		t.Fatalf("AddWorktree: %v", err)
 	}
@@ -437,7 +520,7 @@ func TestMergeFromMain(t *testing.T) {
 	git(main, "add", "-A")
 	git(main, "commit", "-q", "-m", "init")
 
-	worktree, _, err := AddWorktree(ctx, workspace, main, "wt")
+	worktree, _, err := AddWorktree(ctx, workspace, main, "wt", "")
 	if err != nil {
 		t.Fatalf("AddWorktree: %v", err)
 	}
@@ -549,7 +632,7 @@ func TestDiffSummaryAndFileDiff(t *testing.T) {
 	git(main, "add", "-A")
 	git(main, "commit", "-q", "-m", "init")
 
-	worktree, _, err := AddWorktree(ctx, workspace, main, "diff-wt")
+	worktree, _, err := AddWorktree(ctx, workspace, main, "diff-wt", "")
 	if err != nil {
 		t.Fatalf("AddWorktree: %v", err)
 	}

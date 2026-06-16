@@ -394,22 +394,29 @@ func ParseRemote(remote string) (host, owner, repo string) {
 }
 
 // AddWorktree creates a disposable git worktree of the repository containing
-// dir at workspace/.worktrees/<slug>, on a fresh "jaz/<slug>" branch, and
-// returns the worktree path and source repo root. Both native and ACP sessions
-// run on worktrees through this, so the layout and branch naming stay identical.
-func AddWorktree(ctx context.Context, workspace, dir, slug string) (string, string, error) {
+// dir at workspace/.worktrees/<slug>, on a fresh "jaz/<slug>" branch. baseRef
+// selects the branch point; empty uses dir's current HEAD.
+func AddWorktree(ctx context.Context, workspace, dir, slug, baseRef string) (string, string, error) {
 	repo, err := git(ctx, dir, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return "", "", fmt.Errorf("worktree requires a git repository at %s: %w", dir, err)
+	}
+	projectPath := repo
+	if root, _, ok := mainCheckout(ctx, dir); ok {
+		projectPath = root
 	}
 	worktree := filepath.Join(workspace, ".worktrees", slug)
 	if err := os.MkdirAll(filepath.Dir(worktree), 0o755); err != nil {
 		return "", "", err
 	}
-	if _, err := git(ctx, repo, "worktree", "add", "-b", "jaz/"+slug, worktree); err != nil {
+	args := []string{"worktree", "add", "-b", "jaz/" + slug, worktree}
+	if baseRef = strings.TrimSpace(baseRef); baseRef != "" {
+		args = append(args, baseRef)
+	}
+	if _, err := git(ctx, repo, args...); err != nil {
 		return "", "", fmt.Errorf("create worktree: %w", err)
 	}
-	return worktree, repo, nil
+	return worktree, projectPath, nil
 }
 
 // ListFiles returns the repository's non-ignored files under dir (tracked

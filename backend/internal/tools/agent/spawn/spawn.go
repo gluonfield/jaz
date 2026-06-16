@@ -19,12 +19,13 @@ type input struct {
 	Title     string `json:"title,omitempty" jsonschema_description:"Optional display title for the spawned session."`
 	Directory string `json:"directory,omitempty" jsonschema_description:"Working directory for the agent, relative to the jaz workspace; created if missing. Set this when the user names an existing project, repo, or folder. Omit for ad-hoc tasks: a fresh directory named after the session is created."`
 	Worktree  bool   `json:"worktree,omitempty" jsonschema_description:"Run the session on a disposable git worktree of directory (which must be a git repository), isolating its changes on a session branch."`
+	Branch    string `json:"branch,omitempty" jsonschema_description:"Base branch or ref for the disposable worktree. Only valid with worktree=true. Omit to branch from directory's current HEAD."`
 }
 
 func (t *Tool) Definition() tools.Definition {
 	return tools.Function(
 		"agent_spawn",
-		"Create an idle ACP-backed agent session, such as codex, claude, or grok. This only creates the session; send tasks with agent_send and choose wait=true or wait=false per task. Pass directory to work inside an existing project; pass worktree=true to isolate repo changes on a session branch.",
+		"Create an idle ACP-backed agent session, such as codex, claude, or grok. This only creates the session; send tasks with agent_send and choose wait=true or wait=false per task. Pass directory to work inside an existing project; pass worktree=true to isolate repo changes on a session branch. With worktree=true, branch optionally chooses the base branch/ref; omit it to branch from directory's current HEAD.",
 		true,
 		helpers.GenerateSchema[input](),
 	)
@@ -42,6 +43,7 @@ func (t *Tool) Execute(ctx context.Context, inputs map[string]any) (tools.Result
 		Title:     req.Title,
 		Directory: req.Directory,
 		Worktree:  req.Worktree,
+		Branch:    req.Branch,
 	})
 	if err != nil {
 		return tools.Result{}, err

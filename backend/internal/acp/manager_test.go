@@ -1316,6 +1316,10 @@ func TestSpawnSessionDirectories(t *testing.T) {
 	if failed.Status != storage.StatusError || failed.Error == "" {
 		t.Fatalf("spawn failure not recorded on session: %#v", failed)
 	}
+
+	if _, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "branch-without-worktree", Directory: "ink-backend", Branch: "main"}); err == nil {
+		t.Fatal("expected branch without worktree to fail")
+	}
 }
 
 func TestSpawnWorktree(t *testing.T) {
@@ -1332,10 +1336,20 @@ func TestSpawnWorktree(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{
-		{"init"},
+		{"init", "-b", "main"},
 		{"config", "user.email", "test@jaz"},
 		{"config", "user.name", "jaz"},
 		{"commit", "--allow-empty", "-m", "init"},
+	} {
+		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	for _, args := range [][]string{
+		{"switch", "-q", "-c", "feature"},
+		{"commit", "--allow-empty", "-m", "feature"},
+		{"switch", "-q", "main"},
 	} {
 		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
 		if out, err := cmd.CombinedOutput(); err != nil {
@@ -1382,6 +1396,23 @@ func TestSpawnWorktree(t *testing.T) {
 	}
 	if session.RuntimeRef == nil || session.RuntimeRef.Cwd != want || session.RuntimeRef.ProjectPath != wantRepo {
 		t.Fatalf("worktree runtime ref = %#v, want cwd %q project %q", session.RuntimeRef, want, wantRepo)
+	}
+
+	branchSpawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "wt-feature", Directory: "ink-backend", Worktree: true, Branch: "feature"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), branchSpawned.SessionID) }()
+	branchBase, err := exec.Command("git", "-C", branchSpawned.Cwd, "merge-base", "HEAD", "feature").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	featureHead, err := exec.Command("git", "-C", branchSpawned.Cwd, "rev-parse", "feature").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(branchBase)) != strings.TrimSpace(string(featureHead)) {
+		t.Fatalf("branch worktree did not start from feature")
 	}
 
 	// Worktree without a repository directory is an explicit error.

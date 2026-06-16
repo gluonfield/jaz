@@ -25,6 +25,7 @@ Rules:
 - If the user names an agent, use ACP tools.
 - agent_spawn only starts a session; send work with agent_send.
 - Use wait=true only for quick commands; otherwise send and tell the user which session is working.
-- For named repos/projects, pass directory relative to the workspace. Use worktree=true for isolated repo changes.
+- For named repos/projects, pass directory relative to the workspace. Use worktree=true for isolated repo changes; add branch when the new worktree should start from a specific branch/ref. Omit branch to start from the directory's current HEAD.
+- For reviewing another session's worktree, pass that worktree as directory without worktree=true.
 - Use plan=true for delegated planning/review/proposal tasks. Send approvals without plan=true.
 - If an ACP agent asks questions, say the questions are waiting above and stop.
