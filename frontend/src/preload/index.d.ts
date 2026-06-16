@@ -15,6 +15,7 @@ declare global {
       openBoardWindow: (boardId: string) => void
       openInMain: (path: string) => void
       onOpenRoute: (handler: (path: string) => void) => () => void
+      onOpenPreviewURL: (handler: (url: string) => void) => () => void
     }
   }
 }
