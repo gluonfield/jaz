@@ -18,6 +18,10 @@ import (
 // directory for a disposable git worktree on a session branch.
 func (m *Manager) prepareSessionDir(ctx context.Context, req SpawnRequest, cfg AgentConfig, slug string) (string, string, error) {
 	directory := strings.TrimSpace(req.Directory)
+	branch := strings.TrimSpace(req.Branch)
+	if branch != "" && !req.Worktree {
+		return "", "", fmt.Errorf("branch requires worktree=true")
+	}
 	workspace, err := m.resolveCwd("")
 	if err != nil {
 		return "", "", err
@@ -63,7 +67,7 @@ func (m *Manager) prepareSessionDir(ctx context.Context, req SpawnRequest, cfg A
 	if !req.Worktree {
 		return abs, projectPath, nil
 	}
-	worktree, repo, err := gitinfo.AddWorktree(ctx, workspace, abs, slug)
+	worktree, repo, err := gitinfo.AddWorktree(ctx, workspace, abs, slug, branch)
 	if err != nil {
 		return "", "", err
 	}

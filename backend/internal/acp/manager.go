@@ -79,6 +79,8 @@ type SpawnRequest struct {
 	Directory string
 	// Worktree runs the session on a disposable git worktree of Directory.
 	Worktree bool
+	// Branch selects the base branch/ref for Worktree. Empty means Directory's HEAD.
+	Branch string
 	// Model overrides the agent's configured model for this session (empty
 	// keeps the agent default).
 	Model string

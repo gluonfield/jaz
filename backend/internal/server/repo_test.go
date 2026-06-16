@@ -250,7 +250,7 @@ func managedWorktreeSession(t *testing.T, slug, runtime string) (workspace, repo
 	git(repo, "add", "-A")
 	git(repo, "commit", "-q", "-m", "init")
 	var err error
-	worktree, repo, err = gitinfo.AddWorktree(ctx, workspace, repo, slug)
+	worktree, repo, err = gitinfo.AddWorktree(ctx, workspace, repo, slug, "")
 	if err != nil {
 		t.Fatalf("AddWorktree: %v", err)
 	}
