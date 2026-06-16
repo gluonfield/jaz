@@ -415,11 +415,22 @@ func TestAddUsageStoresCachedTokensAndMirrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantDaily := loaded.Usage
-	wantDaily.ContextTokens = 0
-	wantDaily.ContextWindowTokens = 0
+	wantDaily := usagecore.UsageTotals{
+		InputTokens:           loaded.Usage.InputTokens,
+		CachedInputTokens:     loaded.Usage.CachedInputTokens,
+		CachedWriteTokens:     loaded.Usage.CachedWriteTokens,
+		OutputTokens:          loaded.Usage.OutputTokens,
+		ReasoningOutputTokens: loaded.Usage.ReasoningOutputTokens,
+	}
 	if len(daily) != 1 || daily[0].SessionCount != 1 || daily[0].Usage != wantDaily {
 		t.Fatalf("daily usage = %#v, want one bucket with %#v", daily, wantDaily)
+	}
+	events, err := store.UsageEventsSince(time.Unix(0, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 || events[0].Source != storage.UsageEventSourceTurn || events[1].Source != storage.UsageEventSourceTurn {
+		t.Fatalf("usage event sources = %#v, want turn events", events)
 	}
 }
 

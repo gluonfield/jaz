@@ -7,13 +7,16 @@ import type { DailyUsage } from '@/lib/api/types'
 import { formatTokens } from '@/lib/format/tokens'
 import {
   formatUsageDate,
+  inputOutputTokens,
   peakDay,
   sumUsage,
-  totalTokens,
+  USAGE_CHART_DAYS,
   type UsageCell,
   usageCells,
   usageLevel,
   usageMonthLabels,
+  usageWeekCount,
+  visibleUsageDays,
 } from '@/lib/usageDaily'
 
 type TooltipState = {
@@ -21,6 +24,9 @@ type TooltipState = {
   x: number
   y: number
 }
+
+const usageSquarePx = 12
+const usageGapPx = 3
 
 export function UsageSettings() {
   const usage = useQuery(dailyUsageQuery(365))
@@ -60,30 +66,34 @@ function UsageSkeleton() {
 
 function UsagePanel({ days }: { days: DailyUsage[] }) {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
-  const cells = useMemo(() => usageCells(days), [days])
+  const chartDays = useMemo(() => visibleUsageDays(days), [days])
+  const cells = useMemo(() => usageCells(chartDays), [chartDays])
   const monthLabels = useMemo(() => usageMonthLabels(cells), [cells])
+  const weekCount = useMemo(() => usageWeekCount(cells), [cells])
   const last7 = sumUsage(days.slice(-7))
   const last30 = sumUsage(days.slice(-30))
-  const total30 = totalTokens(last30)
-  const peak = peakDay(days)
-  const activeDays = days.filter((day) => totalTokens(day.usage) > 0).length
-  const maxTotal = Math.max(1, ...days.map((day) => totalTokens(day.usage)))
-  const hasUsage = days.some((day) => totalTokens(day.usage) > 0)
+  const peak = peakDay(chartDays)
+  const activeDays = chartDays.filter((day) => inputOutputTokens(day.usage) > 0).length
+  const maxTotal = Math.max(1, ...chartDays.map((day) => inputOutputTokens(day.usage)))
+  const hasUsage = chartDays.some((day) => inputOutputTokens(day.usage) > 0)
+  const cacheRead = last30.cached_input_tokens ?? 0
+  const cacheWrite = last30.cached_write_tokens ?? 0
+  const reasoning = last30.reasoning_output_tokens ?? 0
 
   return (
-    <div className="mt-4 rounded-card bg-surface p-4">
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-        <UsageStat label="Last 7 days" value={formatTokens(totalTokens(last7))} />
-        <UsageStat label="Last 30 days" value={formatTokens(total30)} />
-        <UsageStat label="Input" value={formatTokens(last30.input_tokens ?? 0)} />
-        <UsageStat label="Output" value={formatTokens(last30.output_tokens ?? 0)} />
+    <div className="mt-4 rounded-card bg-surface p-4 ring-1 ring-border/70">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-control bg-border/70 md:grid-cols-4">
+        <UsageStat label="Last 7 days" value={formatTokens(inputOutputTokens(last7))} detail="input + output" />
+        <UsageStat label="Last 30 days" value={formatTokens(inputOutputTokens(last30))} detail="input + output" />
+        <UsageStat label="Input" value={formatTokens(last30.input_tokens ?? 0)} detail="last 30 days" />
+        <UsageStat label="Output" value={formatTokens(last30.output_tokens ?? 0)} detail="last 30 days" />
       </div>
 
-      <div className="mt-5 min-w-0">
+      <div className="mt-5 min-w-0 rounded-control bg-bg/45 px-3 py-3 ring-1 ring-border/60">
         <div className="mb-2 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2 text-[12px] font-medium text-ink">
             <ChartNoAxesColumn size={14} className="text-ink-3" />
-            <span>Past year</span>
+            <span>Last 6 months</span>
           </div>
           <div className="flex items-center gap-1.5 text-[11px] text-ink-3">
             <span>Less</span>
@@ -98,31 +108,44 @@ function UsagePanel({ days }: { days: DailyUsage[] }) {
           </div>
         </div>
 
-        <div className="overflow-x-auto pb-1">
+        <div className="pb-1">
           <div
-            className="grid w-max grid-cols-[24px_auto] gap-x-2 gap-y-1"
-            style={{ gridTemplateRows: '16px repeat(7, 10px)' }}
+            className="grid w-full grid-cols-[24px_auto] gap-x-2 gap-y-1"
+            style={{ gridTemplateRows: `16px repeat(7, ${usageSquarePx}px)` }}
           >
             <div />
             <div
               className="grid h-4 gap-[3px]"
-              style={{ gridTemplateColumns: `repeat(${monthLabels.length}, 10px)` }}
+              style={{
+                gap: `${usageGapPx}px`,
+                gridTemplateColumns: `repeat(${weekCount}, ${usageSquarePx}px)`,
+              }}
             >
-              {monthLabels.map((label, index) => (
-                <span key={`${label}-${index}`} className="text-[10px] leading-none text-ink-3">
-                  {label}
+              {monthLabels.map((label) => (
+                <span
+                  key={`${label.label}-${label.week}`}
+                  className="text-[10px] leading-none text-ink-3"
+                  style={{ gridColumn: `${label.week + 1} / span 3` }}
+                >
+                  {label.label}
                 </span>
               ))}
             </div>
 
             <div
-              className="grid gap-[3px]"
-              style={{ gridColumn: 1, gridRow: '2 / span 7', gridTemplateRows: 'repeat(7, 10px)' }}
+              className="grid"
+              style={{
+                gap: `${usageGapPx}px`,
+                gridColumn: 1,
+                gridRow: '2 / span 7',
+                gridTemplateRows: `repeat(7, ${usageSquarePx}px)`,
+              }}
             >
               {['', 'Mon', '', 'Wed', '', 'Fri', ''].map((label, index) => (
                 <div
                   key={`${label}-${index}`}
-                  className="h-2.5 text-right text-[10px] leading-[10px] text-ink-3"
+                  className="text-right text-[10px] text-ink-3"
+                  style={{ height: usageSquarePx, lineHeight: `${usageSquarePx}px` }}
                 >
                   {label}
                 </div>
@@ -130,11 +153,12 @@ function UsagePanel({ days }: { days: DailyUsage[] }) {
             </div>
 
             <div
-              className="grid grid-flow-col grid-rows-7 gap-[3px]"
+              className="grid grid-flow-col grid-rows-7"
               style={{
+                gap: `${usageGapPx}px`,
                 gridColumn: 2,
                 gridRow: '2 / span 7',
-                gridTemplateColumns: `repeat(${monthLabels.length}, 10px)`,
+                gridTemplateColumns: `repeat(${weekCount}, ${usageSquarePx}px)`,
               }}
             >
               {cells.map((cell) => (
@@ -151,16 +175,11 @@ function UsagePanel({ days }: { days: DailyUsage[] }) {
 
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-ink-3">
           {!hasUsage ? <span>No token usage recorded yet.</span> : null}
-          <span>{activeDays} active day{activeDays === 1 ? '' : 's'}</span>
-          {peak ? <span>Peak {formatUsageDate(peak.date)}: {formatTokens(totalTokens(peak.usage))}</span> : null}
-          {(last30.cached_input_tokens ?? 0) + (last30.cached_write_tokens ?? 0) > 0 ? (
-            <span>
-              Cache {formatTokens((last30.cached_input_tokens ?? 0) + (last30.cached_write_tokens ?? 0))}
-            </span>
-          ) : null}
-          {(last30.reasoning_output_tokens ?? 0) > 0 ? (
-            <span>Reasoning {formatTokens(last30.reasoning_output_tokens ?? 0)}</span>
-          ) : null}
+          <span>{activeDays} active day{activeDays === 1 ? '' : 's'} in {USAGE_CHART_DAYS} days</span>
+          {peak ? <span>Peak {formatUsageDate(peak.date)}: {formatTokens(inputOutputTokens(peak.usage))}</span> : null}
+          {cacheRead > 0 ? <span>Cache read {formatTokens(cacheRead)}</span> : null}
+          {cacheWrite > 0 ? <span>Cache write {formatTokens(cacheWrite)}</span> : null}
+          {reasoning > 0 ? <span>Reasoning {formatTokens(reasoning)}</span> : null}
         </div>
       </div>
 
@@ -169,11 +188,12 @@ function UsagePanel({ days }: { days: DailyUsage[] }) {
   )
 }
 
-function UsageStat({ label, value }: { label: string; value: string }) {
+function UsageStat({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
-    <div className="rounded-control bg-bg px-3 py-2">
-      <div className="font-mono text-[15px] leading-none text-ink">{value}</div>
-      <div className="mt-1 text-[11px] text-ink-3">{label}</div>
+    <div className="min-w-0 bg-bg px-3 py-2">
+      <div className="truncate font-mono text-[15px] leading-none text-ink tabular-nums">{value}</div>
+      <div className="mt-1 truncate text-[11px] font-medium text-ink-2">{label}</div>
+      <div className="mt-0.5 truncate text-[10px] text-ink-3">{detail}</div>
     </div>
   )
 }
@@ -188,11 +208,11 @@ function UsageSquare({
   onHover: (state: TooltipState | null) => void
 }) {
   const day = cell.day
-  const dayTotal = day ? totalTokens(day.usage) : 0
+  const dayTotal = day ? inputOutputTokens(day.usage) : 0
   const level = cell.inRange ? usageLevel(dayTotal, maxTotal) : 0
 
   if (!day) {
-    return <span className="size-2.5" />
+    return <span style={{ width: usageSquarePx, height: usageSquarePx }} />
   }
   const activeDay = day
 
@@ -207,29 +227,50 @@ function UsageSquare({
       onMouseEnter={show}
       onMouseMove={show}
       onMouseLeave={() => onHover(null)}
-      className="size-2.5 cursor-default rounded-[3px] ring-1 ring-border/60 transition-transform duration-150 hover:scale-125 hover:ring-ink/25"
-      style={{ background: levelColor(level) }}
+      className="cursor-default rounded-[3px] ring-1 ring-border/60 transition-[scale,box-shadow] duration-150 hover:scale-125 hover:ring-ink/25"
+      style={{ width: usageSquarePx, height: usageSquarePx, background: levelColor(level) }}
     />
   )
 }
 
 function UsageTooltip({ state }: { state: TooltipState }) {
-  const left = Math.max(8, Math.min(window.innerWidth - 210, state.x + 14))
+  const left = Math.max(8, Math.min(window.innerWidth - 238, state.x + 14))
   const top = Math.max(8, state.y - 96)
+  const cacheRead = state.day.usage.cached_input_tokens ?? 0
+  const cacheWrite = state.day.usage.cached_write_tokens ?? 0
+  const reasoning = state.day.usage.reasoning_output_tokens ?? 0
 
   return (
     <div
-      className="pointer-events-none fixed z-tooltip w-[190px] rounded-control bg-ink px-3 py-2 text-[11px] text-bg shadow-raised"
+      className="pointer-events-none fixed z-tooltip w-[220px] rounded-control bg-bg px-3 py-2 text-[11px] text-ink shadow-raised ring-1 ring-border"
       style={{ left, top }}
     >
       <div className="font-medium">{formatUsageDate(state.day.date)}</div>
       <div className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
-        <span className="text-bg/70">Input</span>
-        <span className="text-right font-mono">{formatTokens(state.day.usage.input_tokens ?? 0)}</span>
-        <span className="text-bg/70">Output</span>
-        <span className="text-right font-mono">{formatTokens(state.day.usage.output_tokens ?? 0)}</span>
-        <span className="text-bg/70">Total</span>
-        <span className="text-right font-mono">{formatTokens(totalTokens(state.day.usage))}</span>
+        <span className="text-ink-3">Input</span>
+        <span className="text-right font-mono tabular-nums">{formatTokens(state.day.usage.input_tokens ?? 0)}</span>
+        <span className="text-ink-3">Output</span>
+        <span className="text-right font-mono tabular-nums">{formatTokens(state.day.usage.output_tokens ?? 0)}</span>
+        <span className="text-ink-3">Input + output</span>
+        <span className="text-right font-mono tabular-nums">{formatTokens(inputOutputTokens(state.day.usage))}</span>
+        {cacheRead > 0 ? (
+          <>
+            <span className="text-ink-3">Cache read</span>
+            <span className="text-right font-mono tabular-nums">{formatTokens(cacheRead)}</span>
+          </>
+        ) : null}
+        {cacheWrite > 0 ? (
+          <>
+            <span className="text-ink-3">Cache write</span>
+            <span className="text-right font-mono tabular-nums">{formatTokens(cacheWrite)}</span>
+          </>
+        ) : null}
+        {reasoning > 0 ? (
+          <>
+            <span className="text-ink-3">Reasoning</span>
+            <span className="text-right font-mono tabular-nums">{formatTokens(reasoning)}</span>
+          </>
+        ) : null}
       </div>
     </div>
   )
@@ -255,6 +296,8 @@ function usageTooltipText(day: DailyUsage): string {
     formatUsageDate(day.date),
     `Input ${formatTokens(day.usage.input_tokens ?? 0)}`,
     `Output ${formatTokens(day.usage.output_tokens ?? 0)}`,
-    `Total ${formatTokens(totalTokens(day.usage))}`,
+    `Input + output ${formatTokens(inputOutputTokens(day.usage))}`,
+    `Cache read ${formatTokens(day.usage.cached_input_tokens ?? 0)}`,
+    `Cache write ${formatTokens(day.usage.cached_write_tokens ?? 0)}`,
   ].join('\n')
 }

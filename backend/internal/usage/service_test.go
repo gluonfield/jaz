@@ -29,6 +29,7 @@ func TestDailyAggregatesUsageByLocalDay(t *testing.T) {
 		{
 			SessionID: "ignored",
 			Usage:     storage.Usage{InputTokens: 100},
+			Source:    storage.UsageEventSourceTurn,
 			CreatedAt: time.Date(2026, 6, 14, 21, 59, 0, 0,
 				time.UTC),
 		},
@@ -38,7 +39,17 @@ func TestDailyAggregatesUsageByLocalDay(t *testing.T) {
 				InputTokens:  10,
 				OutputTokens: 2,
 			},
+			Source:    storage.UsageEventSourceTurn,
 			CreatedAt: time.Date(2026, 6, 14, 22, 30, 0, 0, time.UTC),
+		},
+		{
+			SessionID: "imported",
+			Usage: storage.Usage{
+				InputTokens:  1_000_000,
+				OutputTokens: 1_000_000,
+			},
+			Source:    storage.UsageEventSourceSessionImport,
+			CreatedAt: time.Date(2026, 6, 14, 22, 45, 0, 0, time.UTC),
 		},
 		{
 			SessionID: "session-1",
@@ -47,6 +58,7 @@ func TestDailyAggregatesUsageByLocalDay(t *testing.T) {
 				CachedWriteTokens: 4,
 				OutputTokens:      5,
 			},
+			Source:    storage.UsageEventSourceTurn,
 			CreatedAt: time.Date(2026, 6, 15, 21, 59, 0, 0, time.UTC),
 		},
 		{
@@ -58,6 +70,7 @@ func TestDailyAggregatesUsageByLocalDay(t *testing.T) {
 				OutputTokens:          17,
 				ReasoningOutputTokens: 19,
 			},
+			Source:    storage.UsageEventSourceTurn,
 			CreatedAt: time.Date(2026, 6, 15, 22, 15, 0, 0, time.UTC),
 		},
 	}}
@@ -82,7 +95,7 @@ func TestDailyAggregatesUsageByLocalDay(t *testing.T) {
 		daily[0].Usage.CachedInputTokens != 3 ||
 		daily[0].Usage.CachedWriteTokens != 4 ||
 		daily[0].Usage.OutputTokens != 7 ||
-		daily[0].Usage.TotalTokens != 24 {
+		daily[0].Usage.InputOutputTokens() != 17 {
 		t.Fatalf("first bucket usage = %#v", daily[0].Usage)
 	}
 	if daily[1].Date != "2026-06-16" || daily[1].SessionCount != 1 {
@@ -93,7 +106,7 @@ func TestDailyAggregatesUsageByLocalDay(t *testing.T) {
 		daily[1].Usage.CachedWriteTokens != 13 ||
 		daily[1].Usage.OutputTokens != 17 ||
 		daily[1].Usage.ReasoningOutputTokens != 19 ||
-		daily[1].Usage.TotalTokens != 48 {
+		daily[1].Usage.InputOutputTokens() != 24 {
 		t.Fatalf("second bucket usage = %#v", daily[1].Usage)
 	}
 }
