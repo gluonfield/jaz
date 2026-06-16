@@ -24,7 +24,6 @@ func TestSessionFileRead(t *testing.T) {
 	if err := os.WriteFile(file, []byte("export type Preview = string\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	outside := filepath.Join(string(filepath.Separator), "definitely-not-a-jaz-session-file")
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -93,6 +92,21 @@ func TestSessionFileRead(t *testing.T) {
 		}
 	}
 
-	get("/v1/sessions/"+session.ID+"/file?path="+url.QueryEscape(outside), http.StatusBadRequest)
+	outsideDir, err := os.MkdirTemp("", "jaz-outside-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(outsideDir)
+	outsideFile := filepath.Join(outsideDir, "elsewhere.txt")
+	if err := os.WriteFile(outsideFile, []byte("from outside\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outsideRead := get("/v1/sessions/"+session.ID+"/file?path="+url.QueryEscape(outsideFile), http.StatusOK)
+	if outsideRead.Path != outsideFile || outsideRead.RelativePath != "" || outsideRead.Content != "from outside\n" {
+		t.Fatalf("outside read = %#v", outsideRead)
+	}
+
+	missing := filepath.Join(string(filepath.Separator), "definitely-not-a-jaz-session-file")
+	get("/v1/sessions/"+session.ID+"/file?path="+url.QueryEscape(missing), http.StatusNotFound)
 	get("/v1/sessions/"+noCwd.ID+"/file?path=src/previewWebview.ts", http.StatusBadRequest)
 }
