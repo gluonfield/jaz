@@ -83,7 +83,7 @@ export function Modal({
     <AnimatePresence>
       {open ? (
         <motion.div
-          className="fixed inset-0 z-[60] overflow-y-auto bg-black/40 backdrop-blur-[2px]"
+          className="fixed inset-0 z-modal overflow-y-auto bg-black/40 backdrop-blur-[2px]"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
