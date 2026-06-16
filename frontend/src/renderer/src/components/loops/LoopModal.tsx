@@ -1,10 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { createLoop, runLoopNow, updateLoop } from '@/lib/api/loops'
-import { acpAgentsQuery } from '@/lib/api/sessions'
 import type { Loop } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 import {
@@ -40,7 +39,6 @@ export function LoopModal({
   const isEdit = !!loop
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { data: agents = [] } = useQuery(acpAgentsQuery)
   const [draft, setDraft] = useState<LoopDraft | null>(null)
   const current = draft ?? (loop ? loopDraftFromLoop(loop, boardIds) : emptyLoopDraft(initialBoardIds))
 
@@ -117,7 +115,11 @@ export function LoopModal({
         </>
       }
     >
-      <LoopForm draft={current} agents={agents} disabled={save.isPending} onChange={setDraft} />
+      <LoopForm
+        draft={current}
+        disabled={save.isPending}
+        onChange={setDraft}
+      />
     </Modal>
   )
 }

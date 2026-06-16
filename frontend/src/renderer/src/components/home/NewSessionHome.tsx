@@ -8,6 +8,7 @@ export function NewSessionHome({
   themeKey,
   calm,
   creating,
+  disabled = false,
   leftSlot,
   draftStorageKey,
   fileRoot,
@@ -18,6 +19,7 @@ export function NewSessionHome({
   themeKey: string
   calm: boolean
   creating: boolean
+  disabled?: boolean
   leftSlot: ReactNode
   draftStorageKey?: string
   /** directory the composer's @-mention picker indexes ('' = workspace root) */
@@ -57,6 +59,7 @@ export function NewSessionHome({
             translucent
             placeholder="Ask anything, or hand your assistant a task…"
             planAvailable
+            disabled={creating || disabled}
             leftSlot={leftSlot}
             draftStorageKey={draftStorageKey}
             clearOnSend={false}

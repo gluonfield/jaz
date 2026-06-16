@@ -113,6 +113,9 @@ func (s *Server) runNativeSessionWithClaim(ctx context.Context, session storage.
 	if err != nil {
 		send(agent.StreamEvent{Type: agent.StreamError, Error: err.Error()})
 		send(agent.StreamEvent{Type: agent.StreamDone})
+		if startStatus == storage.StatusError {
+			s.setSessionError(session, err.Error())
+		}
 		return startStatus
 	}
 	logger := s.logger().With("session", session.ID)
@@ -258,7 +261,7 @@ func (s *Server) applyNativeSessionDefaults(session *storage.Session) error {
 	if defaults.ReasoningEffort != "" && session.ReasoningEffort == "" {
 		session.ReasoningEffort = defaults.ReasoningEffort
 	}
-	return nil
+	return s.validateNativeProviderRunnable(session.ModelProvider)
 }
 
 func (s *Server) agentDefaults() (agentsettings.AgentDefaults, error) {
