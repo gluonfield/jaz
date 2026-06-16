@@ -164,8 +164,11 @@ export function LoopForm({
 }
 
 // The composer-style prompt card: a mention-capable textarea ($skill / @file)
-// with the loop's run setup — runtime and model — as its toolbar. Loops always
-// run in the workspace, so there is no per-loop project picker here.
+// with the loop's run setup — runtime and model — as its toolbar. The UI no
+// longer offers a project picker (new loops default to the workspace), but a
+// loop's `directory` is still honored end-to-end — it can be set via the
+// API/MCP and is round-tripped on edit — so the draft deliberately keeps
+// reading and sending it. Don't drop that plumbing.
 function LoopPromptCard({
   draft,
   disabled,
