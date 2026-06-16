@@ -1,17 +1,19 @@
 import { ArrowUp, AudioLines, FileText, ListChecks, LoaderCircle, Paperclip, Plus, Square, X } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { FileDropOverlay, useWindowFileDrop } from '@/components/ui/FileDrop'
 import { IconButton } from '@/components/ui/IconButton'
-import type { QueuedMessage } from '@/lib/api/types'
+import type { Attachment, QueuedMessage } from '@/lib/api/types'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { RAINBOW_BEAM } from '@/components/ui/rainbow'
 import { MentionSuggestions, MentionTextarea, useMentionInput } from './MentionInput'
 import { QueuedPromptList } from './QueuedPromptList'
+import { useComposerAttachments } from './useComposerAttachments'
 import type { ComposerDraftStorage } from './useComposerDraft'
 
-function formatFileSize(size: number): string {
+function formatFileSize(size?: number): string {
+  if (size === undefined) return ''
   if (size < 1024) return `${size} B`
   if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
   return `${(size / (1024 * 1024)).toFixed(1)} MB`
@@ -78,6 +80,7 @@ export function ComposerCard({
   onSend,
   onStop,
   onVoice,
+  onUploadAttachment,
   onTextChange,
 }: {
   streaming: boolean
@@ -100,9 +103,9 @@ export function ComposerCard({
   onSend: (text: string, options?: SendMessageOptions) => void
   onStop?: () => void
   onVoice?: () => void
+  onUploadAttachment?: (file: File) => Promise<Attachment>
   onTextChange?: (text: string) => void
 }) {
-  const [files, setFiles] = useState<File[]>([])
   const [focused, setFocused] = useState(false)
   const [optionsOpen, setOptionsOpen] = useState(false)
   const [planRequested, setPlanRequested] = useState(false)
@@ -117,8 +120,14 @@ export function ComposerCard({
     storage: draftStorage,
     onTextChange,
   })
+  const attachmentDraft = useComposerAttachments({
+    storageKey: draftStorageKey,
+    storage: draftStorage,
+    disabled,
+    onUploadAttachment,
+  })
   const canQueueWhileStreaming = streaming && queueWhenStreaming
-  const submitDisabled = mention.isEmpty || disabled || (streaming && !canQueueWhileStreaming)
+  const submitDisabled = mention.isEmpty || disabled || attachmentDraft.busy || (streaming && !canQueueWhileStreaming)
   const showStopButton = streaming && onStop && (!queueWhenStreaming || mention.isEmpty)
 
   // autoFocus lands before React's focus listeners attach; sync the ring state.
@@ -130,14 +139,9 @@ export function ComposerCard({
     if (!planAvailable) setPlanRequested(false)
   }, [planAvailable])
 
-  const addFiles = useCallback((next: File[]) => {
-    if (disabled || next.length === 0) return
-    setFiles((current) => [...current, ...next])
-  }, [disabled])
-
   // Drop intent is page-level: a file dragged anywhere in the window attaches
   // to this composer (the page's only one).
-  const draggingFiles = useWindowFileDrop({ disabled, onDrop: addFiles })
+  const draggingFiles = useWindowFileDrop({ disabled, onDrop: attachmentDraft.addFiles })
 
   const togglePlanRequested = () => {
     if (planToggleDisabled) return
@@ -169,14 +173,15 @@ export function ComposerCard({
     // Tokens expand on the way out: tagged paths become absolute, skill
     // references pass through for the agent's skill catalog to resolve.
     const trimmed = mention.value().trim()
-    if (!trimmed || disabled || (streaming && !canQueueWhileStreaming)) return
+    if (!trimmed || disabled || attachmentDraft.busy || (streaming && !canQueueWhileStreaming)) return
     onSend(trimmed, {
       planRequested: planAvailable && planRequested,
-      files,
+      files: attachmentDraft.files,
+      attachments: attachmentDraft.uploaded,
     })
     if (clearOnSend) {
       mention.reset()
-      setFiles([])
+      attachmentDraft.clearAttachments()
       setPlanRequested(false)
     }
   }
@@ -237,25 +242,31 @@ export function ComposerCard({
           className="hidden"
           disabled={disabled}
           onChange={(e) => {
-            addFiles(Array.from(e.currentTarget.files ?? []))
+            attachmentDraft.addFiles(Array.from(e.currentTarget.files ?? []))
             e.currentTarget.value = ''
           }}
         />
-        {files.length > 0 ? (
+        {attachmentDraft.attachments.length > 0 ? (
           <div className="flex flex-wrap gap-1 px-1.5 pt-0.5">
-            {files.map((file, index) => (
+            {attachmentDraft.attachments.map((attachment) => (
               <div
-                key={`${file.name}-${file.size}-${index}`}
+                key={attachment.localId}
+                title={attachment.error}
                 className="flex max-w-full items-center gap-1.5 rounded-full bg-bg px-2.5 py-1 text-xs text-ink-2"
               >
-                <FileText size={13} className="shrink-0 text-primary" />
-                <span className="max-w-[220px] truncate text-ink">{file.name}</span>
-                <span className="shrink-0 text-ink-3">{formatFileSize(file.size)}</span>
+                <FileText
+                  size={13}
+                  className={`shrink-0 ${attachment.error ? 'text-danger' : 'text-primary'}`}
+                />
+                <span className="max-w-[220px] truncate text-ink">{attachment.name}</span>
+                <span className="shrink-0 text-ink-3">
+                  {attachment.uploading ? 'Uploading' : attachment.error ? 'Failed' : formatFileSize(attachment.size)}
+                </span>
                 <button
                   type="button"
                   className="ml-0.5 rounded-full p-0.5 text-ink-3 transition-colors hover:bg-surface hover:text-ink"
-                  aria-label={`Remove ${file.name}`}
-                  onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}
+                  aria-label={`Remove ${attachment.name}`}
+                  onClick={() => attachmentDraft.removeAttachment(attachment.localId)}
                 >
                   <X size={12} />
                 </button>
@@ -414,6 +425,7 @@ export function Composer({
   onSend,
   onStop,
   onVoice,
+  onUploadAttachment,
   onSteerQueuedPrompt,
   onDeleteQueuedPrompt,
   onEditQueuedPrompt,
@@ -432,6 +444,7 @@ export function Composer({
   onSend: (text: string, options?: SendMessageOptions) => void
   onStop: () => void
   onVoice?: () => void
+  onUploadAttachment?: (file: File) => Promise<Attachment>
   onSteerQueuedPrompt?: (index: number) => void
   onDeleteQueuedPrompt?: (index: number) => void
   onEditQueuedPrompt?: (index: number, text: string) => void
@@ -468,6 +481,7 @@ export function Composer({
         onSend={onSend}
         onStop={onStop}
         onVoice={onVoice}
+        onUploadAttachment={onUploadAttachment}
       />
     </>
   )
