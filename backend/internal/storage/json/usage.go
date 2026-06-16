@@ -39,6 +39,7 @@ func (s *Store) appendUsageEvent(session storage.Session, usage storage.Usage, t
 		ModelProvider: session.ModelProvider,
 		Model:         session.Model,
 		Usage:         usage,
+		Source:        storage.UsageEventSourceTurn,
 		CreatedAt:     createdAt,
 	}
 	file, err := os.OpenFile(s.usageEventsPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
@@ -92,6 +93,7 @@ func (s *Store) usageEventsFromSessions(since time.Time) ([]storage.UsageEvent, 
 			ModelProvider: session.ModelProvider,
 			Model:         session.Model,
 			Usage:         session.Usage,
+			Source:        storage.UsageEventSourceSessionImport,
 			CreatedAt:     session.UpdatedAt,
 		})
 	}

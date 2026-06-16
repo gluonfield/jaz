@@ -76,14 +76,14 @@ type UsageEvent struct {
 	ModelProvider string    `json:"model_provider,omitempty"`
 	Model         string    `json:"model,omitempty"`
 	Usage         Usage     `json:"usage"`
+	Source        string    `json:"source,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`
 }
 
-type DailyUsage struct {
-	Date         string `json:"date"`
-	Usage        Usage  `json:"usage"`
-	SessionCount int    `json:"session_count"`
-}
+const (
+	UsageEventSourceTurn          = "turn"
+	UsageEventSourceSessionImport = "session_import"
+)
 
 // ComponentTotal is the full processed-token count for a turn: every
 // disjoint component the model touched.

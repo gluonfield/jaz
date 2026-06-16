@@ -28,11 +28,29 @@ type DailyQuery struct {
 	Location *time.Location
 }
 
+type DailyBucket struct {
+	Date         string
+	Usage        UsageTotals
+	SessionCount int
+}
+
+type UsageTotals struct {
+	InputTokens           int64
+	CachedInputTokens     int64
+	CachedWriteTokens     int64
+	OutputTokens          int64
+	ReasoningOutputTokens int64
+}
+
+func (u UsageTotals) InputOutputTokens() int64 {
+	return u.InputTokens + u.OutputTokens
+}
+
 func NewService(store storage.UsageEventStore) Service {
 	return Service{store: store, now: time.Now}
 }
 
-func (s Service) Daily(query DailyQuery) ([]storage.DailyUsage, error) {
+func (s Service) Daily(query DailyQuery) ([]DailyBucket, error) {
 	days, err := ValidateDays(query.Days)
 	if err != nil {
 		return nil, err
@@ -54,6 +72,9 @@ func (s Service) Daily(query DailyQuery) ([]storage.DailyUsage, error) {
 		return nil, err
 	}
 	for _, event := range events {
+		if event.Source != storage.UsageEventSourceTurn {
+			continue
+		}
 		if event.CreatedAt.Before(start) {
 			continue
 		}
@@ -102,33 +123,28 @@ func (s Service) currentTime() time.Time {
 	return time.Now()
 }
 
-func DailyBuckets(days int, loc *time.Location) ([]storage.DailyUsage, map[string]int, time.Time) {
+func DailyBuckets(days int, loc *time.Location) ([]DailyBucket, map[string]int, time.Time) {
 	return dailyBucketsAt(days, loc, time.Now())
 }
 
-func dailyBucketsAt(days int, loc *time.Location, now time.Time) ([]storage.DailyUsage, map[string]int, time.Time) {
+func dailyBucketsAt(days int, loc *time.Location, now time.Time) ([]DailyBucket, map[string]int, time.Time) {
 	days = NormalizeDays(days)
 	now = now.In(loc)
 	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc).AddDate(0, 0, -days+1)
-	out := make([]storage.DailyUsage, days)
+	out := make([]DailyBucket, days)
 	index := make(map[string]int, days)
 	for i := range days {
 		date := start.AddDate(0, 0, i).Format(DateLayout)
-		out[i] = storage.DailyUsage{Date: date}
+		out[i] = DailyBucket{Date: date}
 		index[date] = i
 	}
 	return out, index, start
 }
 
-func AddDaily(total *storage.Usage, event storage.Usage) {
-	eventTotal := event.TotalTokens
-	if eventTotal == 0 {
-		eventTotal = event.ComponentTotal()
-	}
+func AddDaily(total *UsageTotals, event storage.Usage) {
 	total.InputTokens += event.InputTokens
 	total.CachedInputTokens += event.CachedInputTokens
 	total.CachedWriteTokens += event.CachedWriteTokens
 	total.OutputTokens += event.OutputTokens
 	total.ReasoningOutputTokens += event.ReasoningOutputTokens
-	total.TotalTokens += eventTotal
 }

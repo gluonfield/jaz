@@ -1,4 +1,5 @@
 import { CalendarClock } from 'lucide-react'
+import { Segmented } from '@/components/ui/Segmented'
 import {
   type ScheduleDraft,
   type SchedulePreset,
@@ -37,27 +38,13 @@ export function SchedulePicker({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-1">
-        {SCHEDULE_PRESETS.map((preset) => {
-          const active = value.preset === preset.value
-          return (
-            <button
-              key={preset.value}
-              type="button"
-              disabled={disabled}
-              onClick={() => set({ preset: preset.value })}
-              aria-pressed={active}
-              className={`rounded-full px-3 py-1.5 text-[12px] font-medium transition-colors duration-150 disabled:opacity-50 ${
-                active
-                  ? 'bg-primary-soft text-ink'
-                  : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
-              }`}
-            >
-              {preset.label}
-            </button>
-          )
-        })}
-      </div>
+      <Segmented
+        layoutId="loop-schedule-preset"
+        value={value.preset}
+        disabled={disabled}
+        onChange={(preset) => set({ preset })}
+        options={SCHEDULE_PRESETS}
+      />
 
       {(showTime || value.preset === 'weekly') && (
         <div className="flex flex-wrap items-center gap-2">

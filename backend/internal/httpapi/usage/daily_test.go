@@ -37,17 +37,23 @@ func TestDailyHandler(t *testing.T) {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
 	var got struct {
-		Days []storage.DailyUsage `json:"days"`
+		Days []struct {
+			Usage        map[string]int64 `json:"usage"`
+			SessionCount int              `json:"session_count"`
+		} `json:"days"`
 	}
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
 	if len(got.Days) != 1 || got.Days[0].SessionCount != 1 ||
-		got.Days[0].Usage.InputTokens != 12 ||
-		got.Days[0].Usage.CachedInputTokens != 30 ||
-		got.Days[0].Usage.OutputTokens != 4 ||
-		got.Days[0].Usage.TotalTokens != 46 {
+		got.Days[0].Usage["input_tokens"] != 12 ||
+		got.Days[0].Usage["cached_input_tokens"] != 30 ||
+		got.Days[0].Usage["output_tokens"] != 4 ||
+		got.Days[0].Usage["input_output_tokens"] != 16 {
 		t.Fatalf("daily usage = %#v", got.Days)
+	}
+	if _, ok := got.Days[0].Usage["total_tokens"]; ok {
+		t.Fatalf("daily response must not overload total_tokens: %#v", got.Days[0].Usage)
 	}
 }
 
