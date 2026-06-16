@@ -26,7 +26,7 @@ import {
   type TaskSurface,
 } from '@/lib/taskSurface'
 import { ArtifactBlock } from './ArtifactBlock'
-import { AssistantCopyButton } from './AssistantCopyButton'
+import { AssistantMarkdown } from './AssistantMarkdown'
 import { MentionText } from './mentions'
 import { MessageMarkdown } from './MessageMarkdown'
 import { ThinkingBlock } from './ThinkingBlock'
@@ -122,12 +122,7 @@ const Bubble = memo(function Bubble({
       return (
         <div className="flex min-w-0 max-w-[76ch] flex-col gap-2">
           <ThinkingBlock text={reasoning} />
-          {text ? (
-            <div className="flex min-w-0 flex-col items-start gap-1">
-              <MessageMarkdown text={text} />
-              <AssistantCopyButton text={text} />
-            </div>
-          ) : null}
+          {text ? <AssistantMarkdown text={text} /> : null}
           {message.blocks
             ?.filter(isVisibleToolBlock)
             .map((block) =>
@@ -483,7 +478,7 @@ const LiveEvent = memo(function LiveEvent({
       {artifact ? (
         <ArtifactBlock artifact={artifact} onSendPrompt={onArtifactPrompt} />
       ) : null}
-      {event.content && !artifact ? <MessageMarkdown text={event.content} /> : null}
+      {event.content && !artifact ? <AssistantMarkdown text={event.content} /> : null}
       {showWorkingStatus ? (
         <Link
           to="/sessions/$sessionId"
