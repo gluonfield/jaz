@@ -69,7 +69,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		names[tool.Name] = true
 	}
 	for _, name := range []string{
-		"memory_search", "memory_search_raw", "memory_get",
+		"memory_search", "memory_get",
 		"loop_list", "loop_get", "loop_create", "loop_update", "loop_run", "loop_delete",
 		"visualize:read_me", "visualize:show_widget",
 	} {
