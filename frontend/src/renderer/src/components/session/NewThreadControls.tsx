@@ -20,12 +20,14 @@ import { REASONING_EFFORT_OPTIONS } from '@/lib/reasoningEfforts'
 export function RuntimeSelect({
   value,
   agents,
+  nativeAvailable = true,
   disabled,
   placement,
   onChange,
 }: {
   value: string
   agents: string[]
+  nativeAvailable?: boolean
   disabled?: boolean
   placement?: 'above' | 'below'
   onChange: (runtime: string) => void
@@ -58,9 +60,11 @@ export function RuntimeSelect({
         </Button>
       }
     >
-      <MenuRow selected={value === 'native'} onClick={() => select('native')}>
-        Native
-      </MenuRow>
+      {nativeAvailable ? (
+        <MenuRow selected={value === 'native'} onClick={() => select('native')}>
+          Native
+        </MenuRow>
+      ) : null}
       {agents.map((agent) => (
         <MenuRow key={agent} selected={value === agent} onClick={() => select(agent)}>
           {agentLabel(agent)}

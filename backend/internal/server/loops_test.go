@@ -290,6 +290,57 @@ func TestNativeLoopRunCreatesFreshThreadWithMetadata(t *testing.T) {
 	}
 }
 
+func TestNativeLoopRunRecordsNativeStartupFailure(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	srv := &Server{
+		Agent: &agent.Agent{Provider: &recordingProvider{}, MaxTurns: 1},
+		Store: store,
+		NativeProviders: nativeProviderKeys{configured: map[string]bool{
+			"openrouter": true,
+		}},
+		Workspace: t.TempDir(),
+	}
+	service := newLoopServiceForTest(store, NewLoopRunner(srv))
+	srv.Loops = service
+	loop, err := service.Create(loops.CreateLoop{
+		Name:          "Bad provider",
+		Prompt:        "check status",
+		Runtime:       loops.RuntimeNative,
+		ModelProvider: "openai",
+		Schedule:      loops.Schedule{Kind: loops.ScheduleCron, Expr: "* * * * *", Timezone: "UTC"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	run, err := service.RunNow(context.Background(), loop.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForLoopRun(t, service, loop.ID, run.ID, loops.RunStatusError)
+	runs, err := service.Runs(loop.ID, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(runs[0].Error, "OPENAI_API_KEY") {
+		t.Fatalf("run error = %q", runs[0].Error)
+	}
+	sessions, err := store.ListSessions(storage.SessionFilter{SourceType: storage.SourceLoopRun})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("sessions = %#v, want one failed native run thread", sessions)
+	}
+	if sessions[0].Status != storage.StatusError || !strings.Contains(sessions[0].Error, "OPENAI_API_KEY") {
+		t.Fatalf("session = %#v, want native startup error", sessions[0])
+	}
+}
+
 func TestACPLoopRunCreatesHiddenThreadAndFinishesFromCallback(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
