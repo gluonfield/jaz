@@ -27,8 +27,6 @@ export function RuntimeBadge({
   // rather than a raw identifier.
   const name = isACP ? agentLabel(agent) : session.model_provider || 'native'
   const title = fullModelLabel ? `${name} · ${fullModelLabel}` : name
-  // Known agents wear their brand mark instead of a text tag; native sessions
-  // (and any agent we don't have a mark for) keep the prettified name pill.
   const showLogo = isACP && hasAgentLogo(agent ?? '')
   // Agent-backed sessions get the emphasized brand-soft fill (the same pill
   // the loops list uses for its active state); native stays a quieter neutral.
@@ -37,11 +35,8 @@ export function RuntimeBadge({
   return (
     <span title={title} className={`inline-flex min-w-0 items-center gap-1.5 ${className}`}>
       {showLogo ? (
-        // Bare brand mark, tinted to ink — no chip behind it. Keeps the text
-        // pill's px-1.5 so the sidebar's leading negative margin still lands the
-        // mark where the name used to sit.
         <span className="inline-flex shrink-0 items-center px-1.5 text-ink">
-          <AgentLogo agent={agent ?? ''} size={16} />
+          <AgentLogo agent={agent ?? ''} size={15} />
         </span>
       ) : (
         <span

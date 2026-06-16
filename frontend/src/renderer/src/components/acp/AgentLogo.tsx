@@ -6,9 +6,8 @@
 
 type Props = { agent: string; className?: string; size?: number }
 
-// Per-mark optical sizing in px: each viewBox fills its frame differently, so
-// the three glyphs need slightly different boxes to read at the same visual
-// weight. Claude (the fullest viewBox) is the reference the `size` prop targets.
+// Per-mark optical sizing: each viewBox fills its frame differently, so nudge
+// the rendered box so the three glyphs read at the same visual weight.
 const SIZES: Record<string, number> = {
   claude: 18,
   codex: 17,
@@ -22,8 +21,6 @@ function canonical(agent: string): string {
   return slug
 }
 
-// Whether we ship a brand mark for this agent — lets callers fall back to a
-// text label for agents we don't recognise rather than render nothing.
 export function hasAgentLogo(agent: string): boolean {
   return canonical(agent) in SIZES
 }
@@ -31,8 +28,6 @@ export function hasAgentLogo(agent: string): boolean {
 export function AgentLogo({ agent, className = '', size }: Props) {
   const slug = canonical(agent)
   const base = SIZES[slug] ?? 17
-  // Scale every mark by the same ratio off Claude's reference box so the
-  // optical balance survives at smaller sizes (e.g. inline chat tags).
   const px = size ? Math.round((base / SIZES.claude) * size) : base
   const dims = { width: px, height: px }
   const cls = `shrink-0 ${className}`
