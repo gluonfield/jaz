@@ -194,7 +194,8 @@
   padding: 0;
   font-size: 0.8125rem;
 }
-.chat-prose a {
+.chat-prose a,
+.chat-prose-link-button {
   color: var(--color-primary);
   text-decoration-line: underline;
   text-decoration-style: solid;
@@ -205,8 +206,18 @@
   transition-duration: 160ms;
   transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
 }
+.chat-prose-link-button {
+  display: inline;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
 .chat-prose a:hover,
-.chat-prose a:focus-visible {
+.chat-prose a:focus-visible,
+.chat-prose-link-button:hover,
+.chat-prose-link-button:focus-visible {
   color: var(--color-primary-strong);
   text-decoration-color: currentColor;
 }
