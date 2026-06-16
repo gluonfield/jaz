@@ -127,7 +127,7 @@ export function CommandPalette({
     <AnimatePresence initial={false}>
       {open ? (
         <motion.div
-          className="fixed inset-0 z-command bg-black/25 px-3 pt-[9dvh] backdrop-blur-[1.5px]"
+          className="fixed inset-0 z-command flex items-center justify-center bg-black/25 px-3 py-[6dvh] backdrop-blur-[1.5px]"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -144,7 +144,7 @@ export function CommandPalette({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4, scale: 0.99 }}
             transition={PANEL_TRANSITION}
-            className="relative mx-auto w-full max-w-[620px]"
+            className="relative w-full max-w-[620px]"
           >
             {/* Rainbow comet border — the same "alive right now" ring the
                 composer wears while focused, orbiting the palette the whole
