@@ -8,11 +8,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"unicode/utf8"
 
-	"github.com/wins/jaz/backend/internal/pathsafe"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -77,82 +75,32 @@ func (s *Server) handleSessionFile(w http.ResponseWriter, r *http.Request, sessi
 }
 
 func resolveSessionFile(session storage.Session, raw string) (string, string, error) {
-	cwd := optionalCwd(session)
-	if cwd == "" {
-		return "", "", fmt.Errorf("session has no working directory")
-	}
 	path, err := filePathFromRequest(raw)
 	if err != nil {
 		return "", "", err
 	}
-	roots := sessionFileRoots(session, cwd, path)
-	var last error
-	for _, root := range roots {
-		abs, err := resolveFileUnderRoot(root, path)
-		if err != nil {
-			last = err
-			continue
+	cwd := optionalCwd(session)
+	var abs string
+	if filepath.IsAbs(path) {
+		abs = filepath.Clean(path)
+	} else {
+		if cwd == "" {
+			return "", "", fmt.Errorf("session has no working directory")
 		}
-		rel, _ := filepath.Rel(cwd, abs)
-		if rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			rel = ""
-		}
-		return abs, filepath.ToSlash(rel), nil
+		abs = filepath.Join(cwd, path)
 	}
-	if last != nil {
-		return "", "", last
-	}
-	return "", "", fmt.Errorf("path is outside the session workspace: %s", raw)
+	return abs, relativeToCwd(cwd, abs), nil
 }
 
-func sessionFileRoots(session storage.Session, cwd, requested string) []string {
-	roots := []string{cwd}
-	appendRoot := func(root string) {
-		root = strings.TrimSpace(root)
-		if root == "" {
-			return
-		}
-		root = filepath.Clean(root)
-		for _, existing := range roots {
-			if filepath.Clean(existing) == root {
-				return
-			}
-		}
-		roots = append(roots, root)
+func relativeToCwd(cwd, abs string) string {
+	if cwd == "" {
+		return ""
 	}
-	if session.RuntimeRef != nil {
-		if project := strings.TrimSpace(session.RuntimeRef.ProjectPath); project != "" {
-			appendRoot(project)
-		}
+	rel, err := filepath.Rel(cwd, abs)
+	if err != nil || rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return ""
 	}
-	if filepath.IsAbs(requested) {
-		for _, root := range sessionFileTempRoots() {
-			appendRoot(root)
-		}
-	}
-	return roots
-}
-
-func sessionFileTempRoots() []string {
-	roots := []string{os.TempDir()}
-	if runtime.GOOS != "windows" {
-		roots = append(roots, "/tmp")
-	}
-	return roots
-}
-
-func resolveFileUnderRoot(root, raw string) (string, error) {
-	root = filepath.Clean(root)
-	abs, err := pathsafe.Resolve(root, raw)
-	if err != nil {
-		return "", err
-	}
-	realRoot, rootErr := filepath.EvalSymlinks(root)
-	realAbs, absErr := filepath.EvalSymlinks(abs)
-	if rootErr == nil && absErr == nil && !pathsafe.Within(realRoot, realAbs) {
-		return "", fmt.Errorf("path escapes the allowed directory: %s", raw)
-	}
-	return abs, nil
+	return filepath.ToSlash(rel)
 }
 
 func filePathFromRequest(raw string) (string, error) {

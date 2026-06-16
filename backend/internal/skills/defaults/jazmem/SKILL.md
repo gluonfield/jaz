@@ -13,7 +13,11 @@ The CLI auto-connects to a running server (jaz at `:5299/jazmem`, or jazmem-serv
 
 ## Memory Horizons
 
-Three files are injected into every jaz turn. Know who writes what:
+Jaz injects memory as a system-prompt extension when memory is enabled. Native
+Jaz receives a fresh extension with each native request; ACP agents receive it
+when Jaz creates or loads their ACP session. Prompt sections may be bounded; if
+content is omitted, the rendered prompt carries an explicit `<truncated ...>`
+marker. Know who writes what:
 
 | Surface | Holds | You (agent) | Dream (nightly) |
 |---|---|---|---|
@@ -25,7 +29,8 @@ Rules:
 
 - SHORT_TERM.md says what is true about the present and gets overwritten; daily/ says what happened and never does.
 - Capture immediately when you learn something durable: append to today's daily page, update SHORT_TERM.md if focus/loops changed, run `jazmem index`. Memory is a behavior, not a backup.
-- The current daily page is in your context — append what's new, amend the bullet that changed, never rewrite the page.
+- The current daily page may be in the prompt extension; if it is truncated or
+  missing, use jazmem tools or the CLI before concluding memory is absent.
 - Never edit LONG_TERM.md; if something belongs there, it will earn its way in via dream. Mention it in daily/ with a citation.
 
 ## Core Rules
