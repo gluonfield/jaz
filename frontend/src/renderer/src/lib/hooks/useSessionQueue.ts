@@ -50,10 +50,14 @@ export function useSessionQueue({
   const send = useCallback((text: string, options: SendMessageOptions = {}) => {
     if (running) {
       void (async () => {
-        const attachments = options.files?.length
+        const uploaded = options.files?.length
           ? await Promise.all(options.files.map((file) => uploadSessionAttachment(sessionId, file)))
           : []
-        const prompt = normalizeQueuedPrompt({ text, attachment_ids: attachments.map((attachment) => attachment.id), plan_requested: options.planRequested })
+        const attachmentIDs = [
+          ...(options.attachments ?? []).map((attachment) => attachment.id),
+          ...uploaded.map((attachment) => attachment.id),
+        ]
+        const prompt = normalizeQueuedPrompt({ text, attachment_ids: attachmentIDs, plan_requested: options.planRequested })
         if (!prompt) return
         await mutateQueue(
           { op: 'append', message: prompt },
