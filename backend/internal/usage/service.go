@@ -2,6 +2,7 @@ package usage
 
 import (
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/storage"
@@ -40,6 +41,14 @@ type UsageTotals struct {
 	CachedWriteTokens     int64
 	OutputTokens          int64
 	ReasoningOutputTokens int64
+}
+
+type ModelUsage struct {
+	Agent         string
+	ModelProvider string
+	Model         string
+	Usage         UsageTotals
+	SessionCount  int
 }
 
 func (u UsageTotals) InputOutputTokens() int64 {
@@ -90,6 +99,72 @@ func (s Service) Daily(query DailyQuery) ([]DailyBucket, error) {
 	for i := range out {
 		out[i].SessionCount = len(sessionIDs[i])
 	}
+	return out, nil
+}
+
+func (s Service) Models(query DailyQuery) ([]ModelUsage, error) {
+	days, err := ValidateDays(query.Days)
+	if err != nil {
+		return nil, err
+	}
+	if s.store == nil {
+		return nil, ErrUnsupported
+	}
+	loc := query.Location
+	if loc == nil {
+		loc = time.Local
+	}
+	_, _, start := dailyBucketsAt(days, loc, s.currentTime())
+	end := start.AddDate(0, 0, days)
+	events, err := s.store.UsageEventsSince(start.In(time.UTC))
+	if err != nil {
+		return nil, err
+	}
+	groups := map[string]*modelUsageGroup{}
+	for _, event := range events {
+		if event.Source != storage.UsageEventSourceTurn || event.Runtime != storage.RuntimeACP {
+			continue
+		}
+		if event.CreatedAt.Before(start) || !event.CreatedAt.Before(end) {
+			continue
+		}
+		key := modelUsageKey(event)
+		group := groups[key]
+		if group == nil {
+			group = &modelUsageGroup{
+				ModelUsage: ModelUsage{
+					Agent:         event.Agent,
+					ModelProvider: event.ModelProvider,
+					Model:         event.Model,
+				},
+				sessionIDs: map[string]struct{}{},
+			}
+			groups[key] = group
+		}
+		AddDaily(&group.Usage, event.Usage)
+		if event.Usage.Countable() {
+			group.sessionIDs[event.SessionID] = struct{}{}
+		}
+	}
+	out := make([]ModelUsage, 0, len(groups))
+	for _, group := range groups {
+		group.SessionCount = len(group.sessionIDs)
+		out = append(out, group.ModelUsage)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		left := out[i].Usage.InputOutputTokens()
+		right := out[j].Usage.InputOutputTokens()
+		if left != right {
+			return left > right
+		}
+		if out[i].Agent != out[j].Agent {
+			return out[i].Agent < out[j].Agent
+		}
+		if out[i].ModelProvider != out[j].ModelProvider {
+			return out[i].ModelProvider < out[j].ModelProvider
+		}
+		return out[i].Model < out[j].Model
+	})
 	return out, nil
 }
 
@@ -147,4 +222,13 @@ func AddDaily(total *UsageTotals, event storage.Usage) {
 	total.CachedWriteTokens += event.CachedWriteTokens
 	total.OutputTokens += event.OutputTokens
 	total.ReasoningOutputTokens += event.ReasoningOutputTokens
+}
+
+type modelUsageGroup struct {
+	ModelUsage
+	sessionIDs map[string]struct{}
+}
+
+func modelUsageKey(event storage.UsageEvent) string {
+	return event.Agent + "\x00" + event.ModelProvider + "\x00" + event.Model
 }

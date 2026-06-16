@@ -39,6 +39,14 @@ export interface DailyUsage {
   session_count: number
 }
 
+export interface ModelUsage {
+  agent?: string
+  model_provider?: string
+  model?: string
+  usage: DailyUsageTotals
+  session_count: number
+}
+
 export interface Session {
   id: string
   slug: string
@@ -479,6 +487,7 @@ export interface MemoryDoctor {
 
 export interface MemoryStatus {
   enabled: boolean
+  dream_agent?: string
   scheduler_running: boolean
   root: string
   db_path: string
@@ -495,6 +504,24 @@ export interface MemoryIndexReport {
   typed_links: number
   mention_links: number
   unresolved_links: number
+}
+
+export interface MemoryDreamReport {
+  run_slug: string
+  review_slug?: string
+  input_slugs?: string[]
+  promoted: number
+  review_items: number
+  skipped: number
+  long_term_updated?: boolean
+  short_term_updated?: boolean
+  model_used?: string
+  warnings?: string[]
+}
+
+export interface MemoryDreamRunResponse {
+  index: MemoryIndexReport
+  dream: MemoryDreamReport
 }
 
 export interface AgentFilesResponse {

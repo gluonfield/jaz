@@ -29,7 +29,11 @@ func TestUsageModuleProvidesRoute(t *testing.T) {
 	if err := app.Err(); err != nil {
 		t.Fatal(err)
 	}
-	if len(routes) != 1 || routes[0].Pattern != "GET /v1/usage/daily" || routes[0].Handler == nil {
+	if len(routes) != 2 ||
+		routes[0].Pattern != "GET /v1/usage/daily" ||
+		routes[0].Handler == nil ||
+		routes[1].Pattern != "GET /v1/usage/models" ||
+		routes[1].Handler == nil {
 		t.Fatalf("routes = %#v", routes)
 	}
 }
@@ -49,7 +53,7 @@ func TestUsageModuleWiresWithNewStore(t *testing.T) {
 	}
 	defer store.Close()
 
-	if len(routes) != 1 || routes[0].Handler == nil {
+	if len(routes) != 2 || routes[0].Handler == nil || routes[1].Handler == nil {
 		t.Fatalf("routes = %#v", routes)
 	}
 }
