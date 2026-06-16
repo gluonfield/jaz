@@ -14,6 +14,7 @@ declare global {
       onUpdateStatus: (handler: (status: UpdateStatus) => void) => () => void
       openBoardWindow: (boardId: string) => void
       openInMain: (path: string) => void
+      onOpenSideBrowserURL: (handler: (url: string) => void) => () => void
       onOpenRoute: (handler: (path: string) => void) => () => void
     }
   }

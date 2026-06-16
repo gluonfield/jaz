@@ -61,16 +61,28 @@ function attachPreviewNavigationGuard(contents: WebContents): void {
   })
 }
 
-// Electron ships no default right-click menu; build the standard text one
-// (spelling fixes, Look Up, Search with Google, Cut/Copy/Paste) wherever the
-// click lands on an editable field or a text selection.
+// Electron ships no default right-click menu; build the standard link/text one.
 function attachContextMenu(contents: WebContents): void {
   contents.on('context-menu', (_event, params) => {
     const editable = params.isEditable
     const selection = params.selectionText.trim()
-    if (!editable && selection === '') return
+    const linkURL = isPreviewURL(params.linkURL) ? params.linkURL : ''
+    if (!linkURL && !editable && selection === '') return
 
     const items: MenuItemConstructorOptions[] = []
+    if (linkURL) {
+      items.push({
+        label: 'Open in Browser',
+        click: () => shell.openExternal(linkURL),
+      })
+      if (contents === mainWindow?.webContents) {
+        items.push({
+          label: 'Open in Side Browser',
+          click: () => contents.send('jaz:open-side-browser-url', linkURL),
+        })
+      }
+      if (editable || selection !== '') items.push({ type: 'separator' })
+    }
     if (editable && params.misspelledWord) {
       for (const suggestion of params.dictionarySuggestions.slice(0, 5)) {
         items.push({ label: suggestion, click: () => contents.replaceMisspelling(suggestion) })
