@@ -37,10 +37,11 @@ export function RuntimeBadge({
   return (
     <span title={title} className={`inline-flex min-w-0 items-center gap-1.5 ${className}`}>
       {showLogo ? (
-        // Same px-1.5 as the text pill so the leading negative margin in the
-        // sidebar still lands the mark where the name used to sit.
-        <span className="inline-flex shrink-0 items-center rounded-full bg-primary-soft px-1.5 py-1 text-primary-strong">
-          <AgentLogo agent={agent ?? ''} size={14} />
+        // Bare brand mark, tinted to ink — no chip behind it. Keeps the text
+        // pill's px-1.5 so the sidebar's leading negative margin still lands the
+        // mark where the name used to sit.
+        <span className="inline-flex shrink-0 items-center px-1.5 text-ink">
+          <AgentLogo agent={agent ?? ''} size={16} />
         </span>
       ) : (
         <span
