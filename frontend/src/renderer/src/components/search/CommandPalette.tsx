@@ -173,8 +173,8 @@ export function CommandPalette({
               <div className="absolute inset-0 rounded-[14px]" style={{ background: RAINBOW_BEAM }} />
             </motion.div>
 
-            <div className="relative flex max-h-[min(590px,76dvh)] flex-col overflow-hidden rounded-[12px] bg-bg shadow-[0_18px_48px_rgba(0,0,0,0.22),0_2px_8px_rgba(0,0,0,0.08)] ring-1 ring-border">
-              <div className="flex items-center gap-2 px-3 py-2.5 shadow-[inset_0_-1px_0_var(--color-border)]">
+            <div className="relative flex max-h-[min(590px,76dvh)] flex-col overflow-hidden rounded-[12px] bg-bg shadow-[0_18px_48px_rgba(0,0,0,0.22),0_2px_8px_rgba(0,0,0,0.08)]">
+              <div className="flex items-center gap-2 px-3 py-2.5">
               <Search size={17} className="shrink-0 text-ink-3" />
               <input
                 ref={inputRef}
