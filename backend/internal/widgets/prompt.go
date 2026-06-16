@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/templates/visualizeguide"
 	"github.com/wins/jaz/backend/internal/templates/widgetprompt"
-	"github.com/wins/jaz/backend/internal/visualize"
 )
 
 // What the loop's agent is told: a short prompt section with the contract
@@ -20,9 +20,10 @@ import (
 var tileAddendum string
 
 // GuideMD is the design contract written next to the widget file. It is the
-// inline-artifact design system (the same guide visualize_read_me serves) plus
-// a short tile-mode addendum — so loops author widgets identically to artifacts.
-var GuideMD = visualize.ReadMeGuide + tileAddendum
+// full inline-artifact design system (every section of the guide visualize_read_me
+// serves per-module) plus a short tile-mode addendum — so loops author widgets
+// identically to artifacts.
+var GuideMD = visualizeguide.Render(visualizeguide.Full()) + tileAddendum
 
 // GuideFileName sits next to the widget file; agents conventionally read
 // AGENTS.md before touching a directory.

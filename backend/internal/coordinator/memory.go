@@ -59,12 +59,12 @@ func truncateHead(content string, maxChars int) string {
 	if len(content) <= maxChars {
 		return content
 	}
-	return content[:maxChars] + "\n...[truncated]"
+	return content[:maxChars] + fmt.Sprintf("\n<truncated after %d characters>", maxChars)
 }
 
 func truncateTail(content string, maxChars int) string {
 	if len(content) <= maxChars {
 		return content
 	}
-	return "...[truncated]\n" + content[len(content)-maxChars:]
+	return fmt.Sprintf("<truncated before last %d characters>\n", maxChars) + content[len(content)-maxChars:]
 }

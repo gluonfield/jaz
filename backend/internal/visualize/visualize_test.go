@@ -2,6 +2,7 @@ package visualize
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -57,7 +58,7 @@ func TestShowWidgetPublishesArtifactEventFromMCPHeader(t *testing.T) {
 	}
 }
 
-func TestReadMeReturnsGuideAsContentWithoutStructured(t *testing.T) {
+func TestReadMeFiltersToRequestedModules(t *testing.T) {
 	tools := NewMCPTools(nil, nil)
 	result, structured, err := tools.ReadMe(context.Background(), &mcp.CallToolRequest{}, ReadMeInput{Modules: []string{"chart"}})
 	if err != nil {
@@ -70,8 +71,49 @@ func TestReadMeReturnsGuideAsContentWithoutStructured(t *testing.T) {
 		t.Fatalf("content = %d, want 1", len(result.Content))
 	}
 	text, ok := result.Content[0].(*mcp.TextContent)
-	if !ok || text.Text != ReadMeGuide {
-		t.Fatalf("content[0] must carry the full design-system guide, got %#v", result.Content[0])
+	if !ok {
+		t.Fatalf("content[0] = %#v, want TextContent", result.Content[0])
+	}
+	guide := text.Text
+
+	for _, want := range []string{"## Modules", "## Core Design System", "## Color palette", "## UI components", "## Charts (Chart.js)", "## Geographic maps (D3 choropleth)"} {
+		if !strings.Contains(guide, want) {
+			t.Fatalf("chart guide missing required section %q", want)
+		}
+	}
+	for _, skip := range []string{"## SVG setup", "## Diagram types", "## Art and illustration", "## Elicitation"} {
+		if strings.Contains(guide, skip) {
+			t.Fatalf("chart guide should not include unrelated section %q", skip)
+		}
+	}
+	// Stay well under the agent tool-result cap that spilled the full guide to a file.
+	if len(guide) > 50_000 {
+		t.Fatalf("chart guide = %d bytes, want under the tool-result budget", len(guide))
+	}
+}
+
+func TestBuildReadMeGuideByModule(t *testing.T) {
+	diagram := BuildReadMeGuide([]string{"diagram"})
+	if !strings.Contains(diagram, "## SVG setup") || !strings.Contains(diagram, "## Diagram types") {
+		t.Fatal("diagram guide must include SVG setup and Diagram types")
+	}
+	if strings.Contains(diagram, "## Charts (Chart.js)") {
+		t.Fatal("diagram guide must exclude chart sections")
+	}
+
+	core := BuildReadMeGuide(nil)
+	if !strings.Contains(core, "## Modules") || !strings.Contains(core, "## Core Design System") {
+		t.Fatal("empty-modules guide must keep the index and design-system core")
+	}
+	for _, skip := range []string{"## Charts (Chart.js)", "## Diagram types", "## Elicitation", "## UI components"} {
+		if strings.Contains(core, skip) {
+			t.Fatalf("empty-modules guide should exclude module section %q", skip)
+		}
+	}
+
+	multi := BuildReadMeGuide([]string{"chart", "diagram"})
+	if !strings.Contains(multi, "## Charts (Chart.js)") || !strings.Contains(multi, "## Diagram types") {
+		t.Fatal("multi-module guide must union the requested modules' sections")
 	}
 }
 
