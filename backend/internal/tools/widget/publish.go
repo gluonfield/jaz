@@ -24,7 +24,7 @@ type Tool struct {
 func (t *Tool) Definition() tools.Definition {
 	return tools.Function(
 		ToolName,
-		"Publishes this loop's board widget. Write the widget HTML fragment to the loop's widget file first, then call this; alternatively pass the fragment inline via html. Validation errors are returned so you can fix and retry within the run.",
+		"Publishes this loop's board widget. Use visualize_read_me first for artifact design guidance when building or materially changing the tile. Write the widget HTML fragment to the loop's widget file first, then call this; alternatively pass the fragment inline via html. Validation errors are returned so you can fix and retry within the run.",
 		false,
 		tools.ObjectSchema(map[string]any{
 			"title":     tools.StringSchema("Widget title shown on the tile header. Defaults to the loop name."),

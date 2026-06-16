@@ -1,67 +1,18 @@
 package widgets
 
 import (
-	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/loops"
-	"github.com/wins/jaz/backend/internal/templates/visualizeguide"
 	"github.com/wins/jaz/backend/internal/templates/widgetprompt"
 )
 
-// What the loop's agent is told: a short prompt section with the contract
-// essentials, backed by the full style guide kept on disk next to the widget.
-
-//go:embed assets/tile-addendum.md
-var tileAddendum string
-
-// GuideMD is the design contract written next to the widget file. It is the
-// full inline-artifact design system (every section of the guide visualize_read_me
-// serves per-module) plus a short tile-mode addendum — so loops author widgets
-// identically to artifacts.
-var GuideMD = visualizeguide.Render(visualizeguide.Full()) + tileAddendum
-
-// GuideFileName sits next to the widget file; agents conventionally read
-// AGENTS.md before touching a directory.
-const GuideFileName = "AGENTS.md"
-
-// WidgetGuidePath is where EnsureGuide writes the style guide for the loop.
-func WidgetGuidePath(loop loops.Loop) string {
-	dir := WidgetDir(loop)
-	if dir == "" {
-		return ""
-	}
-	return filepath.Join(dir, GuideFileName)
-}
-
-// EnsureGuide keeps the full design contract in a file next to the widget so
-// the run prompt can stay short. Jaz owns the file: it is rewritten whenever
-// the embedded guide changes.
-func EnsureGuide(loop loops.Loop) (string, error) {
-	path := WidgetGuidePath(loop)
-	if path == "" {
-		return "", nil
-	}
-	if data, err := os.ReadFile(path); err == nil && string(data) == GuideMD {
-		return path, nil
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return "", err
-	}
-	return path, os.WriteFile(path, []byte(GuideMD), 0o644)
-}
-
-// PromptSection is appended to a loop's metadata prompt when the loop is
-// assigned to a board: the contract essentials plus current publish state.
-// The design system and quality bar live in the guide file, not the prompt.
 func PromptSection(loop loops.Loop, widget *Widget) string {
 	data := widgetprompt.Data{
-		FilePath:  WidgetFilePath(loop),
-		GuidePath: WidgetGuidePath(loop),
+		FilePath: WidgetFilePath(loop),
 	}
 	if data.FilePath != "" {
 		if info, err := os.Stat(data.FilePath); err == nil && info.Mode().IsRegular() {
@@ -76,12 +27,7 @@ func PromptSection(loop loops.Loop, widget *Widget) string {
 		data.LastError = widget.LastError
 		data.LayoutFeedback = layoutFeedback(widget.LastLayout)
 	}
-	section, err := widgetprompt.Render(data)
-	if err != nil {
-		// Embedded and parse-checked at init; a run must not lose the contract.
-		return "## Widget instructions\n\nUpdate the widget file for this loop and publish it.\n"
-	}
-	return section
+	return widgetprompt.Render(data)
 }
 
 // layoutReport mirrors the bridge's jaz:artifact-layout measurement payload.

@@ -18,6 +18,7 @@ func TestLintHTMLFlagsAntipatterns(t *testing.T) {
 		{"viewport height", `<div style="height: 100vh">x</div>`, "viewport units"},
 		{"viewport width", `<div style="width: 50vw">x</div>`, "viewport units"},
 		{"fixed position", `<div style="position: fixed">x</div>`, "position: fixed"},
+		{"bare markup", `<section><p>42</p></section>`, "no local styling"},
 	}
 	for _, tc := range cases {
 		warnings := widgets.LintHTML(tc.html)

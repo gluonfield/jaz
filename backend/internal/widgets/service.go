@@ -168,16 +168,10 @@ func (s *Service) MaybeAutoPublish(loop loops.Loop, runID string) {
 	}
 }
 
-// LoopPromptExtra is the loops.WithPromptExtra hook: it gates the widget
-// section on board assignment, keeps the on-disk style guide fresh, and
-// renders the prompt section — widget-domain sequencing in one place.
 func (s *Service) LoopPromptExtra(loop loops.Loop, _ loops.Run) string {
 	widget, boards, err := s.StateForLoop(loop.ID)
 	if err != nil || widget == nil || len(boards) == 0 {
 		return ""
-	}
-	if _, err := EnsureGuide(loop); err != nil {
-		s.Log.Warn("writing widget style guide failed", "loop", loop.ID, "error", err)
 	}
 	return PromptSection(loop, widget)
 }
