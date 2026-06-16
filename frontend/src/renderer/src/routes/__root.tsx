@@ -102,7 +102,7 @@ function RootLayout() {
 
   // Cmd+S toggles the sidebar — unless something closer (the agent-file
   // editor's save keymap) already claimed the event. Cmd+N starts a thread.
-  // Cmd+K opens the command palette.
+  // Cmd+K toggles the command palette.
   useWindowEvent('keydown', (e) => {
     if (!(e.metaKey || e.ctrlKey) || e.defaultPrevented) return
     const key = e.key.toLowerCase()
@@ -117,7 +117,7 @@ function RootLayout() {
     if (key === 'k') {
       if (!commandOpen && modalDialogOpen()) return
       e.preventDefault()
-      setCommandOpen(true)
+      setCommandOpen((open) => !open)
     }
   })
 
