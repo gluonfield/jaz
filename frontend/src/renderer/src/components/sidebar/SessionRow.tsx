@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Archive, CornerDownRight, Loader2, Pin } from 'lucide-react'
+import { Archive, CornerDownRight, Pin } from 'lucide-react'
 import { KeyboardShortcut } from '@/components/ui/KeyboardShortcut'
 import { setSessionArchived, setSessionPinned } from '@/lib/api/sessions'
 import type { Session } from '@/lib/api/types'
@@ -23,14 +23,6 @@ export function sessionLabel(session: Session): string {
 }
 
 function StatusDot({ session }: { session: Session }) {
-  if (session.status === 'running') {
-    return (
-      <span
-        title="Running"
-        className="size-1.5 shrink-0 animate-pulse rounded-full bg-running"
-      />
-    )
-  }
   if (session.status === 'error') {
     return (
       <span
@@ -79,15 +71,13 @@ export function SessionRow({
           <KeyboardShortcut value={shortcut} />
         </span>
       ) : session.status === 'running' ? (
-        // While the thread works, the progress spinner stands in for the
-        // timestamp; hover still swaps in the pin/archive actions.
         <span
           title="Running"
-          className={`flex min-w-8 shrink-0 justify-end ${
+          className={`flex min-w-8 shrink-0 items-center justify-end ${
             shortcutMode ? '' : 'group-hover:hidden'
           }`}
         >
-          <Loader2 size={12} className="animate-spin text-running" />
+          <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-running" />
         </span>
       ) : (
         <span
