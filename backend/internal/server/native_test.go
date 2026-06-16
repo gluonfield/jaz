@@ -43,6 +43,28 @@ type requestRecorderProvider struct {
 	requests []provider.Request
 }
 
+type nativeProviderKeys struct {
+	configured map[string]bool
+}
+
+func (p nativeProviderKeys) Complete(context.Context, provider.Request) (provider.Response, error) {
+	return provider.Response{Message: provider.AssistantMessage("done", nil)}, nil
+}
+
+func (p nativeProviderKeys) StreamComplete(context.Context, provider.Request) (<-chan provider.Event, error) {
+	ch := make(chan provider.Event)
+	close(ch)
+	return ch, nil
+}
+
+func (p nativeProviderKeys) Reload() error { return nil }
+
+func (p nativeProviderKeys) APIKeyConfigured(id string) bool {
+	return p.configured[id]
+}
+
+func (p nativeProviderKeys) APIKeyEnvPath() string { return "" }
+
 func (p *requestRecorderProvider) Complete(context.Context, provider.Request) (provider.Response, error) {
 	return provider.Response{Message: provider.AssistantMessage("done", nil)}, nil
 }
@@ -397,6 +419,41 @@ func TestCreateNativeSessionAppliesModelOverrides(t *testing.T) {
 
 	res, _ = post(`{"model_provider":"bogus"}`)
 	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "unknown native provider") {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
+func TestCreateNativeSessionRejectsProviderWithoutKey(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	keys := nativeProviderKeys{configured: map[string]bool{}}
+	handler := (&Server{Store: store, NativeProviders: keys}).Handler()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "OPENROUTER_API_KEY") {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+
+	keys.configured["openrouter"] = true
+	req = httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{"model_provider":"openai"}`))
+	req.Header.Set("Content-Type", "application/json")
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "OPENAI_API_KEY") {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
 }
