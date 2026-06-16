@@ -20,9 +20,6 @@ const (
 
 func CanonicalAgentName(name string) string {
 	name = strings.ToLower(strings.TrimSpace(name))
-	if strings.ReplaceAll(name, "_", "-") == "claude-code" {
-		return AgentClaude
-	}
 	if strings.ReplaceAll(name, "_", "-") == "grok-build" {
 		return AgentGrok
 	}

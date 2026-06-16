@@ -2,6 +2,7 @@ export const keys = {
   health: ['health'] as const,
   sidebarSessions: ['sessions', 'sidebar'] as const,
   allSessions: ['sessions', 'all'] as const,
+  usageDaily: (days: number, timezone: string) => ['usage', 'daily', days, timezone] as const,
   archivedSessions: ['sessions', 'archived'] as const,
   threadSearch: (query: string, includeArchived = false) =>
     ['search', 'threads', query, includeArchived] as const,

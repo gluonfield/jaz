@@ -30,7 +30,7 @@ func TestProviderStreamsTextReasoningAndToolCalls(t *testing.T) {
 		_, _ = fmt.Fprint(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1,"model":"test-model","choices":[{"index":0,"delta":{"reasoning_content":"thinking "},"finish_reason":null}]}`+"\n\n")
 		_, _ = fmt.Fprint(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1,"model":"test-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"exec_","arguments":"{\"cmd\":"}}]},"finish_reason":null}]}`+"\n\n")
 		_, _ = fmt.Fprint(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1,"model":"test-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"name":"command","arguments":"\"pwd\"}"}}]},"finish_reason":"tool_calls"}]}`+"\n\n")
-		_, _ = fmt.Fprint(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1,"model":"test-model","choices":[],"usage":{"prompt_tokens":100,"completion_tokens":20,"total_tokens":120,"cache_read_input_tokens":80}}`+"\n\n")
+		_, _ = fmt.Fprint(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1,"model":"test-model","choices":[],"usage":{"prompt_tokens":105,"completion_tokens":20,"total_tokens":125,"cache_read_input_tokens":80,"cache_write_tokens":5}}`+"\n\n")
 		_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
 	}))
 	defer server.Close()
@@ -71,8 +71,9 @@ func TestProviderStreamsTextReasoningAndToolCalls(t *testing.T) {
 	if call == nil || provider.ToolCallName(*call) != "exec_command" || provider.ToolCallArguments(*call) != `{"cmd":"pwd"}` {
 		t.Fatalf("unexpected call %#v", call)
 	}
-	// prompt_tokens (100) counts the 80 cached tokens; stored disjoint.
-	if usage.InputTokens != 20 || usage.CachedInputTokens != 80 || usage.OutputTokens != 20 || usage.TotalTokens != 120 {
+	// prompt_tokens (105) counts the 85 cached tokens; stored disjoint.
+	if usage.InputTokens != 20 || usage.CachedInputTokens != 80 || usage.CachedWriteTokens != 5 ||
+		usage.OutputTokens != 20 || usage.TotalTokens != 125 {
 		t.Fatalf("usage = %#v", usage)
 	}
 }

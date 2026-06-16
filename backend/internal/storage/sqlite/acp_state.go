@@ -7,6 +7,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/threaddb"
+	usagequeries "github.com/wins/jaz/backend/internal/storage/sqlite/generated/usage"
 )
 
 func (s *Store) LoadACPState(id string) (storage.ACPState, error) {
@@ -56,6 +57,7 @@ func (s *Store) AddUsage(id string, usage storage.Usage) error {
 	if usage.IsZero() {
 		return nil
 	}
+	now := time.Now().UTC()
 	s.mu.Lock()
 	total := usage.TotalTokens
 	if total == 0 {
@@ -65,18 +67,28 @@ func (s *Store) AddUsage(id string, usage storage.Usage) error {
 	// the latest turn's live context (so it can shrink after compaction),
 	// keeping the previous value when a turn reports nothing.
 	liveContext := usage.LiveContextTokens()
-	err := threaddb.New(s.db).AddUsage(context.Background(), threaddb.AddUsageParams{
-		InputTokens:           usage.InputTokens,
-		CachedInputTokens:     usage.CachedInputTokens,
-		CachedWriteTokens:     usage.CachedWriteTokens,
-		OutputTokens:          usage.OutputTokens,
-		ReasoningOutputTokens: usage.ReasoningOutputTokens,
-		TotalTokens:           total,
-		ContextTokens:         liveContext,
-		ContextWindowTokens:   usage.ContextWindowTokens,
-		UpdatedAtMs:           timeToMs(time.Now().UTC()),
-		ID:                    id,
-	})
+	ctx := context.Background()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	q := threaddb.New(tx)
+	usageq := usagequeries.New(tx)
+	thread, err := q.GetSession(ctx, id)
+	if err == nil {
+		nowMs := timeToMs(now)
+		err = insertUsageEvent(ctx, usageq, thread, usage, total, liveContext, nowMs)
+		if err == nil {
+			err = q.AddUsage(ctx, addUsageParams(id, usage, total, liveContext, nowMs))
+		}
+	}
+	if err != nil {
+		_ = tx.Rollback()
+		s.mu.Unlock()
+		return err
+	}
+	err = tx.Commit()
 	s.mu.Unlock()
 	if err != nil {
 		return err
@@ -85,4 +97,19 @@ func (s *Store) AddUsage(id string, usage storage.Usage) error {
 		s.mirrorSession(session)
 	}
 	return nil
+}
+
+func addUsageParams(id string, usage storage.Usage, total, liveContext, updatedAtMs int64) threaddb.AddUsageParams {
+	return threaddb.AddUsageParams{
+		InputTokens:           usage.InputTokens,
+		CachedInputTokens:     usage.CachedInputTokens,
+		CachedWriteTokens:     usage.CachedWriteTokens,
+		OutputTokens:          usage.OutputTokens,
+		ReasoningOutputTokens: usage.ReasoningOutputTokens,
+		TotalTokens:           total,
+		ContextTokens:         liveContext,
+		ContextWindowTokens:   usage.ContextWindowTokens,
+		UpdatedAtMs:           updatedAtMs,
+		ID:                    id,
+	}
 }

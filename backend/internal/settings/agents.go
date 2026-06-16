@@ -17,20 +17,12 @@ const (
 	AgentSettingsNamespace = "agents"
 	AgentDefaultsKey       = "defaults"
 	legacyGrokACPCommand   = `grok --no-auto-update agent --no-leader stdio`
-	legacyClaudeCodeModel  = "claude-sonnet-4-5"
 )
 
 var legacyCodexACPCommands = []string{
 	`codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'`,
 	`npx -y @zed-industries/codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'`,
 	`npx -y @zed-industries/codex-acp@0.16.0 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'`,
-}
-
-// Previous built-in claude commands; stored settings still matching one are
-// auto-upgraded to the current default on merge.
-var legacyClaudeCodeCommands = []string{
-	"npx -y @agentclientprotocol/claude-agent-acp@0.39.0",
-	"npx -y @agentclientprotocol/claude-agent-acp@0.43.0",
 }
 
 type NativeAgentDefaults struct {
@@ -282,13 +274,8 @@ func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentD
 		stored.Command = seed.Command
 	case name == acp.AgentCodex && isLegacyCodexACPCommand(stored.Command):
 		stored.Command = seed.Command
-	case name == acp.AgentClaude && isLegacyClaudeCodeCommand(stored.Command):
-		stored.Command = seed.Command
 	case name == acp.AgentGrok && strings.TrimSpace(stored.Command) == legacyGrokACPCommand:
 		stored.Command = seed.Command
-	}
-	if name == acp.AgentClaude && strings.TrimSpace(stored.Model) == legacyClaudeCodeModel {
-		stored.Model = seed.Model
 	}
 	if auth, err := acp.NormalizeAgentAuthConfig(name, stored.Auth); err == nil {
 		stored.Auth = auth
@@ -300,10 +287,6 @@ func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentD
 
 func isLegacyCodexACPCommand(command string) bool {
 	return slices.Contains(legacyCodexACPCommands, strings.TrimSpace(command))
-}
-
-func isLegacyClaudeCodeCommand(command string) bool {
-	return slices.Contains(legacyClaudeCodeCommands, strings.TrimSpace(command))
 }
 
 func canonicalizeACPDefaults(in map[string]ACPAgentDefaults) map[string]ACPAgentDefaults {
