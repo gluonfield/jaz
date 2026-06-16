@@ -20,12 +20,6 @@ const (
 	legacyClaudeCodeModel  = "claude-sonnet-4-5"
 )
 
-var legacyCodexACPCommands = []string{
-	`codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'`,
-	`npx -y @zed-industries/codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'`,
-	`npx -y @zed-industries/codex-acp@0.16.0 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'`,
-}
-
 // Previous built-in claude commands; stored settings still matching one are
 // auto-upgraded to the current default on merge.
 var legacyClaudeCodeCommands = []string{
@@ -280,8 +274,6 @@ func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentD
 	switch {
 	case strings.TrimSpace(stored.Command) == "":
 		stored.Command = seed.Command
-	case name == acp.AgentCodex && isLegacyCodexACPCommand(stored.Command):
-		stored.Command = seed.Command
 	case name == acp.AgentClaude && isLegacyClaudeCodeCommand(stored.Command):
 		stored.Command = seed.Command
 	case name == acp.AgentGrok && strings.TrimSpace(stored.Command) == legacyGrokACPCommand:
@@ -296,10 +288,6 @@ func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentD
 		stored.Auth = seed.Auth
 	}
 	return stored
-}
-
-func isLegacyCodexACPCommand(command string) bool {
-	return slices.Contains(legacyCodexACPCommands, strings.TrimSpace(command))
 }
 
 func isLegacyClaudeCodeCommand(command string) bool {
