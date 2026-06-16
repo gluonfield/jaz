@@ -58,6 +58,8 @@ export function useSidePanelState(gitAvailable: boolean) {
     setPanelPref('open')
   }, [])
 
+  useEffect(() => window.jaz?.onOpenPreviewURL?.(openPreview), [openPreview])
+
   const openFile = useCallback((file: string | FileReference) => {
     const ref = typeof file === 'string' ? parseFileReference(file) : file
     if (!ref) return false
