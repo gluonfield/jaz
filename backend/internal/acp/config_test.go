@@ -61,7 +61,6 @@ func TestSystemPromptMetaPerAgent(t *testing.T) {
 		want  map[string]any
 	}{
 		{AgentClaude, map[string]any{"systemPrompt": map[string]any{"append": "jaz prompt"}}},
-		{"claude-code", map[string]any{"systemPrompt": map[string]any{"append": "jaz prompt"}}},
 		{AgentGrok, map[string]any{"rules": "jaz prompt"}},
 		{"grok-build", map[string]any{"rules": "jaz prompt"}},
 		{AgentCodex, map[string]any{"systemPrompt": "jaz prompt"}},
@@ -132,6 +131,24 @@ func TestProcessEnvPreparedReportsProfilePreparationFailure(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "prepare codex profile") {
 		t.Fatalf("err = %v, want codex profile preparation error", err)
+	}
+}
+
+func TestProcessEnvPreparedSyncsCodexSkills(t *testing.T) {
+	clearHostEnv(t)
+	root := t.TempDir()
+	writeACPTestSkill(t, root, "alpha")
+
+	env, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared("codex", AgentConfig{
+		Auth: AgentAuthConfig{Mode: AuthModeJazProfile},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(env["CODEX_HOME"], "skills", "alpha", "SKILL.md")
+	if data, err := os.ReadFile(path); err != nil || !strings.Contains(string(data), "Alpha skill") {
+		t.Fatalf("codex skill copy = %q, %v", data, err)
 	}
 }
 
@@ -255,6 +272,25 @@ func TestProcessEnvUsesJazConfigForClaudeCode(t *testing.T) {
 		"CLAUDE_CONFIG_DIR":       wantConfigDir,
 		"USER":                    "wins",
 	})
+}
+
+func TestProcessEnvPreparedSyncsClaudeSkills(t *testing.T) {
+	clearHostEnv(t)
+	root := t.TempDir()
+	writeACPTestSkill(t, root, "alpha")
+	t.Setenv("CLAUDE_CODE_EXECUTABLE", "/usr/local/bin/claude")
+
+	env, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared("claude", AgentConfig{
+		Auth: AgentAuthConfig{Mode: AuthModeJazProfile},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(env["CLAUDE_CONFIG_DIR"], "skills", "alpha", "SKILL.md")
+	if data, err := os.ReadFile(path); err != nil || !strings.Contains(string(data), "Alpha skill") {
+		t.Fatalf("claude skill copy = %q, %v", data, err)
+	}
 }
 
 func TestProcessEnvFindsClaudeCodeFromLoginShell(t *testing.T) {
@@ -853,6 +889,18 @@ func testExecutable(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return exe
+}
+
+func writeACPTestSkill(t *testing.T, root, name string) {
+	t.Helper()
+	path := filepath.Join(root, "skills", name, "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\nname: " + name + "\ndescription: Alpha skill\n---\nbody"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func clearHostEnv(t *testing.T) {

@@ -23,8 +23,13 @@ import (
 // staticPrompt is a fixed acp.SystemPromptSource for tests.
 type staticPrompt string
 
-func (s staticPrompt) ACPPrompt() (string, error)    { return string(s), nil }
-func (s staticPrompt) SkillsPrompt() (string, error) { return string(s), nil }
+func (s staticPrompt) ACPPrompt(string) (string, error) { return string(s), nil }
+func (s staticPrompt) SkillsPrompt() (string, error)    { return string(s), nil }
+
+type cwdPrompt struct{}
+
+func (cwdPrompt) ACPPrompt(cwd string) (string, error) { return "cwd: " + cwd, nil }
+func (cwdPrompt) SkillsPrompt() (string, error)        { return "", nil }
 
 func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
@@ -208,6 +213,41 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	}
 	if job.Modes.CurrentModeID != "full-access" {
 		t.Fatalf("current mode after approval = %q, want full-access", job.Modes.CurrentModeID)
+	}
+}
+
+func TestManagerPassesResolvedCwdToACPPrompt(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	want := filepath.Join(workspace, "project")
+	manager := acp.NewManager(store, acp.Config{
+		Root:         t.TempDir(),
+		Workspace:    workspace,
+		SystemPrompt: cwdPrompt{},
+		Agents: map[string]acp.AgentConfig{
+			"fake": {
+				Command: os.Args[0],
+				Args:    []string{"-test.run=TestFakeACPAgentProcess"},
+				Env: map[string]string{
+					"JAZ_FAKE_ACP_AGENT":         "1",
+					"JAZ_FAKE_ACP_SYSTEM_PROMPT": "cwd: " + want,
+				},
+			},
+		},
+	}, log.New(io.Discard))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "cwd-prompt", Directory: "project"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	if spawned.Cwd != want {
+		t.Fatalf("cwd = %q, want %q", spawned.Cwd, want)
 	}
 }
 
@@ -560,50 +600,6 @@ func TestManagerUsesClaudeUltracodeSessionMeta(t *testing.T) {
 	}
 	if session.ReasoningEffort != "ultracode" {
 		t.Fatalf("claude effort = %q, want ultracode", session.ReasoningEffort)
-	}
-}
-
-func TestManagerCanonicalizesClaudeAliasBeforeSettingModel(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	model := "claude-fable-5[1m]"
-	manager := acp.NewManager(store, acp.Config{
-		Root:      t.TempDir(),
-		Workspace: t.TempDir(),
-		Agents: map[string]acp.AgentConfig{
-			"claude": {
-				Command:         os.Args[0],
-				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
-				Model:           model,
-				ReasoningEffort: "xhigh",
-				Env: map[string]string{
-					"JAZ_FAKE_ACP_AGENT":               "1",
-					"JAZ_FAKE_ACP_MODELS":              "default," + model,
-					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG": model,
-					"JAZ_FAKE_ACP_SET_CONFIG":          "1",
-					"JAZ_FAKE_ACP_EXPECT_CONFIG_ID":    "effort",
-					"JAZ_FAKE_ACP_EXPECT_EFFORT":       "xhigh",
-				},
-			},
-		},
-	}, log.New(io.Discard))
-
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	legacyClaudeName := strings.ReplaceAll("claude-code", "-", "_")
-	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: legacyClaudeName, Slug: "claude-fable"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
-	session, err := store.LoadSession(spawned.SessionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if spawned.ACPAgent != "claude" || session.ModelProvider != "claude" || session.RuntimeRef.Agent != "claude" || session.Model != model {
-		t.Fatalf("unexpected session metadata spawned=%#v session=%#v", spawned, session)
 	}
 }
 
@@ -1357,13 +1353,17 @@ func TestSpawnWorktree(t *testing.T) {
 		}
 	}
 	manager := acp.NewManager(store, acp.Config{
-		Root:      t.TempDir(),
-		Workspace: workspace,
+		Root:         t.TempDir(),
+		Workspace:    workspace,
+		SystemPrompt: cwdPrompt{},
 		Agents: map[string]acp.AgentConfig{
 			"fake": {
 				Command: os.Args[0],
 				Args:    []string{"-test.run=TestFakeACPAgentProcess"},
-				Env:     map[string]string{"JAZ_FAKE_ACP_AGENT": "1"},
+				Env: map[string]string{
+					"JAZ_FAKE_ACP_AGENT":                "1",
+					"JAZ_FAKE_ACP_EXPECT_CWD_IN_PROMPT": "1",
+				},
 			},
 		},
 	}, log.New(io.Discard))

@@ -17,6 +17,7 @@ import (
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/gluonfield/acp-transport/stdio"
 	"github.com/gluonfield/acp-transport/streamhttp"
+	"github.com/wins/jaz/backend/internal/skills"
 )
 
 const processStderrTailLimit = 2000
@@ -163,6 +164,11 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 					prepareErr = firstError(prepareErr, fmt.Errorf("prepare codex profile %s: %w", codexHome, err))
 				}
 			}
+			if prepare {
+				if err := skills.SyncTo(root, filepath.Join(codexHome, "skills")); err != nil {
+					prepareErr = firstError(prepareErr, fmt.Errorf("sync codex skills: %w", err))
+				}
+			}
 		}
 		for _, key := range []string{"OPENAI_API_KEY", "OPENAI_APIKEY", "OPENROUTER_API_KEY", "OPENROUTER_APIKEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"} {
 			delete(env, key)
@@ -197,6 +203,11 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 				if err := os.MkdirAll(env["CLAUDE_CONFIG_DIR"], 0o700); err != nil {
 					prepareErr = firstError(prepareErr, fmt.Errorf("prepare claude profile %s: %w", env["CLAUDE_CONFIG_DIR"], err))
 				}
+			}
+		}
+		if prepare && env["CLAUDE_CONFIG_DIR"] != "" {
+			if err := skills.SyncTo(root, filepath.Join(env["CLAUDE_CONFIG_DIR"], "skills")); err != nil {
+				prepareErr = firstError(prepareErr, fmt.Errorf("sync claude skills: %w", err))
 			}
 		}
 		if env["CLAUDE_CODE_EXECUTABLE"] == "" {

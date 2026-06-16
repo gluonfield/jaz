@@ -4,6 +4,7 @@ import { apiFetch, ApiError, get, post, put } from './client'
 import {
   fileKey,
   type Attachment,
+  type DailyUsage,
   type HealthResponse,
   type QueuedMessage,
   type RepoChanges,
@@ -72,6 +73,30 @@ export const acpAgentsQuery = queryOptions({
     }
   },
 })
+
+export const dailyUsageQuery = (days = 30) => {
+  const timezone = usageTimezone()
+  return queryOptions({
+    queryKey: keys.usageDaily(days, timezone),
+    queryFn: async (): Promise<DailyUsage[]> => {
+      const params = new URLSearchParams({ days: String(days) })
+      if (timezone) params.set('timezone', timezone)
+      else params.set('tz_offset_minutes', String(new Date().getTimezoneOffset()))
+      const data = await get<{ days: DailyUsage[] | null }>(`/v1/usage/daily?${params}`)
+      return data.days ?? []
+    },
+    staleTime: 60_000,
+    refetchInterval: 300_000,
+  })
+}
+
+function usageTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+  } catch {
+    return ''
+  }
+}
 
 export interface Project {
   name: string

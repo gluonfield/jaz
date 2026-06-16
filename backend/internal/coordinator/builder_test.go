@@ -83,11 +83,18 @@ func TestBuilderACPPrompt(t *testing.T) {
 	}
 	write(t, skillDir, "SKILL.md", "---\nname: deploy\ndescription: ship it\n---\nsteps")
 
-	prompt, err := NewBuilder(root, "", memoryRoot, func() bool { return true }).ACPPrompt()
+	cwd := filepath.Join(root, ".worktrees", "agent-task")
+	prompt, err := NewBuilder(root, "", memoryRoot, func() bool { return true }).ACPPrompt(cwd)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
+		"Date: ",
+		"Time: ",
+		"Timezone: ",
+		"Weekday: ",
+		"Now: ",
+		"Current working directory: " + cwd,
 		"## AGENTS.md",
 		"save durable facts with jazmem",
 		"## SOUL.md",
@@ -100,11 +107,14 @@ func TestBuilderACPPrompt(t *testing.T) {
 			t.Fatalf("acp prompt missing %q:\n%s", want, prompt)
 		}
 	}
+	if strings.Contains(prompt, "Session context") {
+		t.Fatalf("acp prompt should not spend tokens on a session context heading:\n%s", prompt)
+	}
 	if strings.Contains(prompt, "You are Jaz") {
 		t.Fatalf("acp prompt must not contain the coordinator identity:\n%s", prompt)
 	}
 
-	disabled, err := NewBuilder(root, "", memoryRoot, func() bool { return false }).ACPPrompt()
+	disabled, err := NewBuilder(root, "", memoryRoot, func() bool { return false }).ACPPrompt(cwd)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +122,7 @@ func TestBuilderACPPrompt(t *testing.T) {
 		t.Fatalf("disabled memory must not be injected:\n%s", disabled)
 	}
 
-	empty, err := NewBuilder(t.TempDir(), "", "", nil).ACPPrompt()
+	empty, err := NewBuilder(t.TempDir(), "", "", nil).ACPPrompt("")
 	if err != nil {
 		t.Fatal(err)
 	}

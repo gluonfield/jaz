@@ -99,8 +99,13 @@ function PaletteRow({
       whileTap={reduceMotion ? undefined : { scale: 0.985 }}
       onClick={onSelect}
       onMouseEnter={onActive}
-      className={`group flex w-full gap-2 rounded-[6px] px-2.5 text-left transition-colors duration-150 ${className} ${
-        active ? 'bg-surface text-ink' : 'hover:bg-surface/70'
+      // Selection must snap on keypress, so the highlight has no color
+      // transition — fading it would make arrow-nav read as laggy. Hover keeps
+      // a hair of fade since the pointer moves continuously.
+      className={`group flex w-full gap-2 rounded-[6px] px-2.5 text-left ${className} ${
+        active
+          ? 'bg-surface text-ink'
+          : 'text-ink transition-colors duration-100 hover:bg-surface/70'
       }`}
     >
       {children}
@@ -115,12 +120,12 @@ export function CommandRow({
   item: PaletteCommand
 } & Omit<PaletteRowProps, 'className' | 'children'>) {
   return (
-    <PaletteRow {...row} className="min-h-10 items-center">
+    <PaletteRow {...row} className="min-h-[52px] items-center py-2">
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13px] font-medium text-ink">{item.title}</span>
         <span className="block truncate text-[12px] text-ink-3">{item.detail}</span>
       </span>
-      {item.shortcut ? <KeyboardShortcut value={item.shortcut} className="bg-surface" /> : null}
+      {item.shortcut ? <KeyboardShortcut value={item.shortcut} className="bg-surface-2" /> : null}
     </PaletteRow>
   )
 }

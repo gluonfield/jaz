@@ -19,7 +19,7 @@ func TestPromptCombinesCoordinatorFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertOrder(t, prompt, "Date: June 2, 2026", "Time: 09:08:07 BST", "Timezone: BST (UTC+01:00)", "Weekday: Tuesday", "Current working directory: "+workspace, "~/.jaz: runtime state", "~/.jaz/workspaces/default: default tool cwd", "## Jaz platform", "## AGENTS.md\n\nagents", "## SOUL.md\n\nsoul", "skills")
+	assertOrder(t, prompt, "~/.jaz: runtime state", "~/.jaz/workspaces/default: default tool cwd", "## Jaz platform", "Date: June 2, 2026", "Time: 09:08:07 BST", "Timezone: BST (UTC+01:00)", "Weekday: Tuesday", "Current working directory: "+workspace, "## AGENTS.md\n\nagents", "## SOUL.md\n\nsoul", "skills")
 }
 
 func TestPromptOmitsMissingFiles(t *testing.T) {
@@ -110,5 +110,33 @@ func TestPromptInjectsMemoryHorizons(t *testing.T) {
 	}
 	if strings.Contains(disabled, "Capture as you go") {
 		t.Fatalf("disabled memory must not inject the protocol:\n%s", disabled)
+	}
+}
+
+func TestPromptMarksTruncatedMemorySections(t *testing.T) {
+	root := t.TempDir()
+	memoryRoot := t.TempDir()
+	write(t, root, "AGENTS.md", "agents")
+	write(t, memoryRoot, "LONG_TERM.md", strings.Repeat("l", longTermPromptChars+1))
+	write(t, memoryRoot, "SHORT_TERM.md", strings.Repeat("s", shortTermPromptChars+1))
+	if err := os.MkdirAll(filepath.Join(memoryRoot, "daily"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 6, 10, 9, 0, 0, 0, time.UTC)
+	today := now.Local().Format("2006-01-02")
+	write(t, memoryRoot, "daily/"+today+".md", strings.Repeat("d", dailyPromptChars+1))
+
+	got, err := prompt(root, "", memoryRoot, "", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, marker := range []string{
+		"<truncated after 2500 characters>",
+		"<truncated after 1500 characters>",
+		"<truncated before last 1200 characters>",
+	} {
+		if !strings.Contains(got, marker) {
+			t.Fatalf("missing truncation marker %q in:\n%s", marker, got)
+		}
 	}
 }

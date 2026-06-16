@@ -24,6 +24,12 @@ export interface Usage {
   context_window_tokens?: number
 }
 
+export interface DailyUsage {
+  date: string
+  usage: Usage
+  session_count: number
+}
+
 export interface Session {
   id: string
   slug: string

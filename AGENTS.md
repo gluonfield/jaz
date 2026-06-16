@@ -22,6 +22,23 @@
 - Every test you add must be useful: it must protect real behavior or clarify a tricky contract, never exist only to raise coverage.
 - Reference repos (`openclaw`, `hermes`) are learning material, not authority.
 
+## Backend Architecture
+
+- Add boundaries to control real growth, not to satisfy a template. A tiny endpoint may stay direct; once transport parsing, feature policy, persistence, or presentation concerns mix, split them before the file becomes a dumping ground.
+- Treat `backend/internal/server` as the HTTP process shell: router mounting, middleware, auth wrapping, health, and cross-cutting server lifecycle only. New feature behavior should not be added as `Server` methods unless it is truly server infrastructure.
+- Keep backend imports pointed in one direction: `server` -> `httpapi/<feature>` -> `internal/<feature>` -> `storage` contracts. Feature packages must not import `server`, `httpapi`, or concrete storage implementations such as `storage/sqlite`; production storage adapters must not import feature packages.
+- Put HTTP adapters in `backend/internal/httpapi/<feature>` when an endpoint has meaningful request parsing, response DTOs, or status-code mapping. HTTP DTOs live there; feature packages expose domain records/views unless the wire shape is genuinely the domain shape.
+- Put feature semantics in `backend/internal/<feature>` when there is validation, aggregation, orchestration, policy, or a reusable view. Keep services small, depend on storage contracts, and return typed/domain errors only where callers need to distinguish them.
+- Prefer app/Fx wiring for concrete stores, services, and handlers as slices mature. Avoid pushing new feature constructors into `server`; move toward mounted handlers or route modules without introducing pass-through wrapper constructors.
+- Keep multi-record writes atomic in storage methods. Introduce a transaction/unit-of-work abstraction only when repeated cross-record operations need it; never smuggle concrete SQLite handles into feature services.
+- Add explicit clock/`Now` dependencies only when date/time behavior needs deterministic tests or policy control. Add actor/workspace context only where authorization or workspace policy depends on it; services must not read HTTP request headers.
+- Keep durable data contracts in `backend/internal/storage`. Storage exposes records, events, and mutation primitives; feature services derive user-facing views. Add projection storage only when a derived view is demonstrably expensive.
+- For SQLite, put migrations in `backend/internal/storage/sqlite/migrations`, query SQL in `backend/internal/storage/sqlite/queries/<feature>`, and generated Go in `backend/internal/storage/sqlite/generated/<feature>` using plain feature names, not redundant `*db` suffixes. Handwritten `backend/internal/storage/sqlite/*.go` files may open/configure the DB, run migrations, manage transactions, and map rows, but must not contain raw query SQL strings.
+- Test at the lowest boundary that protects behavior: service tests with fake storage for policy, SQLite adapter tests against a temp DB for persistence, HTTP API tests for status/DTO mapping, and end-to-end route tests only for routing or middleware behavior.
+- Split packages before they sprawl: if `httpapi/<feature>` or `internal/<feature>` starts mixing routing, validation, aggregation, formatting, errors, and storage contracts in one large file, split into focused files such as `handler.go`, `service.go`, `errors.go`, and `types.go`.
+- Use the usage feature as the golden slice for nontrivial features: `internal/usage` owns usage semantics and derived daily buckets, `internal/httpapi/usage` owns HTTP, `storage` exposes usage events, `internal/storage/sqlite/queries/usage` owns SQL, and `internal/storage/sqlite/generated/usage` is sqlc output.
+- For ACP/native/runtime work, keep protocol adapters at the boundary. Internal runtime contracts own turns, tools, permissions, usage, capabilities, and streaming events; adapters translate protocol-specific shapes only at the edge.
+
 ## Integrations Goal
 
 - Build Jaz integrations around `Observe + Act + Materialize`: providers observe external changes into typed records, expose actions for agents, and optionally materialize records into logical artifacts.

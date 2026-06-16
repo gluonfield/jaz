@@ -119,7 +119,10 @@ func usageFromFields(fields map[string]json.RawMessage) (storage.Usage, bool) {
 	usage.CachedWriteTokens = firstIntField(fields,
 		"cache_creation_input_tokens", "cacheCreationInputTokens",
 		"cached_write_tokens", "cachedWriteTokens", "cache_write_tokens", "cacheWriteTokens")
-	usage.ReasoningOutputTokens = firstIntField(fields, "reasoning_output_tokens", "reasoningOutputTokens", "reasoning_tokens", "reasoningTokens")
+	usage.ReasoningOutputTokens = firstIntField(fields,
+		"reasoning_output_tokens", "reasoningOutputTokens",
+		"reasoning_tokens", "reasoningTokens",
+		"thought_tokens", "thoughtTokens")
 	usage.TotalTokens = firstIntField(fields, "total_tokens", "totalTokens")
 	usage.ContextTokens = firstIntField(fields, "context_tokens", "contextTokens", "context_used_tokens", "contextUsedTokens")
 	return usage, inclusive
@@ -167,7 +170,7 @@ func usageFromTokens(raw json.RawMessage) storage.Usage {
 	usage := storage.Usage{
 		InputTokens:           firstIntField(fields, "input", "input_tokens", "inputTokens"),
 		OutputTokens:          firstIntField(fields, "output", "output_tokens", "outputTokens"),
-		ReasoningOutputTokens: firstIntField(fields, "reasoning", "reasoning_tokens", "reasoningTokens"),
+		ReasoningOutputTokens: firstIntField(fields, "reasoning", "reasoning_tokens", "reasoningTokens", "thought_tokens", "thoughtTokens"),
 	}
 	if nested, ok := fields["cache"]; ok {
 		var cache map[string]json.RawMessage
