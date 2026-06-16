@@ -165,6 +165,11 @@ export function isCollapsibleWork(
   const event = item.event
   if (event.type === 'artifact') return false
   if (event.type === 'acp_thought') return true
+  // Interim narration ("I'll check the project memory first…") is work, not the
+  // answer — fold it into "Worked for" like Codex does. The turn's final content
+  // is shielded by the `index < lastContentIndex` gate in Transcript, so only the
+  // answer stays expanded; everything before it collapses into one disclosure.
+  if (event.type === 'acp_message') return true
   if (event.type === 'permission_request') {
     return !pendingPermissionIds.has(event.permission?.id ?? '')
   }
