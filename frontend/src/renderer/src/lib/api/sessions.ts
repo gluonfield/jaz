@@ -25,7 +25,8 @@ export function createSession(
     agent?: string
     directory?: string
     worktree?: boolean
-    // Per-session overrides of the Settings > Agents defaults.
+    // Per-session overrides of the Settings > Agents defaults; model_provider
+    // applies to native sessions and ACP agents with provider-backed models.
     model_provider?: string
     model?: string
     reasoning_effort?: string

@@ -12,10 +12,16 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/jazagent"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
+
+func testACPAgentCatalog(extra map[string]acp.AgentConfig) acp.AgentCatalog {
+	return acp.MergeAgents(acp.MergeAgents(acp.BuiltinAgents(), jazagent.ACPAgentCatalog()), extra)
+}
 
 func TestMCPServerSettingsAPI(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
@@ -121,7 +127,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler := (&Server{Store: store}).Handler()
+	handler := (&Server{Store: store, AgentCatalog: testACPAgentCatalog(nil)}).Handler()
 
 	getReq := httptest.NewRequest(http.MethodGet, "/v1/settings/agents", nil)
 	getRes := httptest.NewRecorder()
@@ -142,6 +148,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		ACP    map[string]struct {
 			Enabled         bool   `json:"enabled"`
 			Command         string `json:"command"`
+			ModelProvider   string `json:"model_provider"`
 			Model           string `json:"model"`
 			ReasoningEffort string `json:"reasoning_effort"`
 		} `json:"acp"`
@@ -150,12 +157,17 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 				Value string `json:"value"`
 				Label string `json:"label"`
 			} `json:"reasoning_efforts"`
+			Local            bool     `json:"local"`
+			ProviderMode     string   `json:"provider_mode"`
+			ModelProviderIDs []string `json:"model_provider_ids"`
+			RequiresCommand  bool     `json:"requires_command"`
+			SupportsAuth     bool     `json:"supports_auth"`
 		} `json:"acp_options"`
 	}
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Native.ModelProvider != "openrouter" || got.Native.Model != "openai/gpt-5.4-mini" || strings.Join(got.Agents, ",") != "claude,codex,grok" {
+	if got.Native.ModelProvider != "openrouter" || got.Native.Model != "openai/gpt-5.4-mini" || strings.Join(got.Agents, ",") != "claude,codex,grok,jaz,opencode" {
 		t.Fatalf("unexpected seeded settings %#v", got)
 	}
 	if !hasNativeProvider(got.Providers, "openai", "https://api.openai.com/v1") ||
@@ -172,9 +184,31 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		got.ACP["grok"].Model != "grok-build" {
 		t.Fatalf("unexpected grok defaults %#v", got.ACP["grok"])
 	}
+	if !got.ACP["jaz"].Enabled ||
+		got.ACP["jaz"].Command != "" ||
+		got.ACP["jaz"].Model != "openai/gpt-5.4-mini" {
+		t.Fatalf("unexpected jaz defaults %#v", got.ACP["jaz"])
+	}
+	if !got.ACP["opencode"].Enabled ||
+		got.ACP["opencode"].Command != `npx -y opencode-ai@1.17.7 acp` ||
+		got.ACP["opencode"].ModelProvider != "openrouter" ||
+		got.ACP["opencode"].Model != "openai/gpt-5.4-mini" {
+		t.Fatalf("unexpected opencode defaults %#v", got.ACP["opencode"])
+	}
 	if !hasReasoningEffort(got.ACPOptions["claude"].ReasoningEfforts, "ultracode") ||
 		hasReasoningEffort(got.ACPOptions["codex"].ReasoningEfforts, "ultracode") {
 		t.Fatalf("unexpected acp options %#v", got.ACPOptions)
+	}
+	if !got.ACPOptions["jaz"].Local ||
+		got.ACPOptions["jaz"].ProviderMode != acp.AgentProviderModeNativeDefaults ||
+		got.ACPOptions["jaz"].RequiresCommand ||
+		got.ACPOptions["jaz"].SupportsAuth {
+		t.Fatalf("unexpected jaz capabilities %#v", got.ACPOptions["jaz"])
+	}
+	if got.ACPOptions["opencode"].ProviderMode != acp.AgentProviderModeAgentDefaults ||
+		!hasString(got.ACPOptions["opencode"].ModelProviderIDs, "openrouter") ||
+		!hasString(got.ACPOptions["opencode"].ModelProviderIDs, "openai") {
+		t.Fatalf("unexpected opencode capabilities %#v", got.ACPOptions["opencode"])
 	}
 
 	putReq := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
@@ -271,6 +305,45 @@ func TestAgentSettingsSavesNativeProviderKey(t *testing.T) {
 	}
 }
 
+func TestAgentSettingsSavesCustomModelProviderKey(t *testing.T) {
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	handler := (&Server{
+		Store: store,
+		Root:  root,
+		ModelProviders: map[string]provider.ModelProviderConfig{
+			"internal": {
+				Type:    "openai-compatible",
+				BaseURL: "https://llm.internal/v1",
+			},
+		},
+	}).Handler()
+
+	putReq := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
+		"native":{"model_provider":"openrouter","model":"openai/gpt-5.4-mini","reasoning_effort":"medium"},
+		"provider_keys":{"internal":"internal-key"}
+	}`))
+	putReq.Header.Set("Content-Type", "application/json")
+	putReq.RemoteAddr = "127.0.0.1:1234"
+	putRes := httptest.NewRecorder()
+	handler.ServeHTTP(putRes, putReq)
+	if putRes.Code != http.StatusOK {
+		t.Fatalf("put status = %d, body = %s", putRes.Code, putRes.Body.String())
+	}
+
+	env, err := os.ReadFile(runtimeenv.Path(store.RootDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(env), `JAZ_PROVIDER_INTERNAL_API_KEY="internal-key"`) {
+		t.Fatalf("runtime env = %s", env)
+	}
+}
+
 func TestAgentSettingsRejectsInvalidSettingsBeforeSavingACPKeys(t *testing.T) {
 	root := t.TempDir()
 	store, err := sqlitestore.New(root)
@@ -321,13 +394,101 @@ func hasReasoningEffort(options []struct {
 	return false
 }
 
+func hasString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestAgentSettingsAPIIncludesCustomOpenCodeProvider(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	catalog := testACPAgentCatalog(acp.AgentCatalog{
+		acp.AgentOpenCode: {
+			Command:       "opencode",
+			ModelProvider: "internal",
+			Model:         "chat",
+		},
+	})
+	handler := (&Server{
+		Store:        store,
+		AgentCatalog: catalog,
+		ModelProviders: map[string]provider.ModelProviderConfig{
+			"internal": {
+				Type:    "openai-compatible",
+				Label:   "Internal",
+				BaseURL: "https://llm.internal/v1",
+				APIKey:  "internal-key",
+			},
+		},
+	}).Handler()
+
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/settings/agents", nil))
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var got struct {
+		Providers []struct {
+			ID               string `json:"id"`
+			Label            string `json:"label"`
+			BaseURL          string `json:"base_url"`
+			OpenCode         bool   `json:"opencode"`
+			OpenAICompatible bool   `json:"openai_compatible"`
+			Configured       bool   `json:"configured"`
+		} `json:"providers"`
+		ACPAuth map[string]struct {
+			Authenticated bool   `json:"authenticated"`
+			AuthKind      string `json:"auth_kind"`
+		} `json:"acp_auth"`
+		ACPOptions map[string]struct {
+			ProviderMode     string   `json:"provider_mode"`
+			ModelProviderIDs []string `json:"model_provider_ids"`
+		} `json:"acp_options"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	var custom *struct {
+		ID               string `json:"id"`
+		Label            string `json:"label"`
+		BaseURL          string `json:"base_url"`
+		OpenCode         bool   `json:"opencode"`
+		OpenAICompatible bool   `json:"openai_compatible"`
+		Configured       bool   `json:"configured"`
+	}
+	for i := range got.Providers {
+		if got.Providers[i].ID == "internal" {
+			custom = &got.Providers[i]
+			break
+		}
+	}
+	if custom == nil || custom.Label != "Internal" || custom.BaseURL != "https://llm.internal/v1" ||
+		!custom.OpenCode || !custom.OpenAICompatible || !custom.Configured {
+		t.Fatalf("custom provider not exposed correctly: %#v", got.Providers)
+	}
+	if options := got.ACPOptions["opencode"]; options.ProviderMode != acp.AgentProviderModeAgentDefaults ||
+		!hasString(options.ModelProviderIDs, "internal") {
+		t.Fatalf("opencode capabilities lost: %#v", options)
+	}
+	if auth := got.ACPAuth["opencode"]; !auth.Authenticated || auth.AuthKind != acp.AuthKindAPIKey {
+		t.Fatalf("opencode auth did not use custom provider config: %#v", auth)
+	}
+}
+
 func TestAgentSettingsAPIRoundTripsConfiguredACPAgent(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	catalog := acp.MergeAgents(acp.BuiltinAgents(), map[string]acp.AgentConfig{
+	catalog := testACPAgentCatalog(map[string]acp.AgentConfig{
 		"local_helper": {
 			Command:         "/opt/jaz/local-helper",
 			Args:            []string{"--stdio"},
@@ -354,7 +515,7 @@ func TestAgentSettingsAPIRoundTripsConfiguredACPAgent(t *testing.T) {
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(got.Agents, ",") != "claude,codex,grok,local_helper" {
+	if strings.Join(got.Agents, ",") != "claude,codex,grok,jaz,local_helper,opencode" {
 		t.Fatalf("agents = %#v", got.Agents)
 	}
 	if got.ACP["local_helper"].Command != "/opt/jaz/local-helper --stdio" || got.ACP["local_helper"].Model != "helper-model" {

@@ -85,6 +85,15 @@ func (m *Manager) prepareModeForTurn(ctx context.Context, job *Job, planRequeste
 	}
 	peer := m.peer(jobID)
 	if peer == nil {
+		if m.configuredLocal(job.ACPAgent) {
+			job.mu.Lock()
+			job.Modes.CurrentModeID = target
+			if !planRequested && job.Modes.ExecutionModeID == "" {
+				job.Modes.ExecutionModeID = target
+			}
+			job.mu.Unlock()
+			return nil
+		}
 		return fmt.Errorf("acp peer is not active")
 	}
 	if err := m.setSessionMode(ctx, peer, acpschema.SessionID(acpSessionID), target); err != nil {

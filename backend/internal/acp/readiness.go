@@ -1,6 +1,10 @@
 package acp
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/wins/jaz/backend/internal/provider"
+)
 
 type Readiness struct {
 	Available bool
@@ -8,7 +12,14 @@ type Readiness struct {
 }
 
 func ProbeReadiness(name string, cfg AgentConfig, root string, env map[string]string) Readiness {
+	return ProbeReadinessWithProviders(name, cfg, root, env, nil)
+}
+
+func ProbeReadinessWithProviders(name string, cfg AgentConfig, root string, env map[string]string, providers map[string]provider.ModelProviderConfig) Readiness {
 	name = CanonicalAgentName(name)
+	if cfg.Local {
+		return Readiness{Available: true}
+	}
 	if strings.TrimSpace(cfg.URL) != "" {
 		return Readiness{Available: true}
 	}
@@ -19,8 +30,8 @@ func ProbeReadiness(name string, cfg AgentConfig, root string, env map[string]st
 	if err := executableAvailable(command); err != nil {
 		return Readiness{Reason: err.Error()}
 	}
-	probeEnv := NewManager(nil, Config{Root: root, Env: env}, nil).probeEnv(name, cfg)
-	auth := ProbeAgentAuth(name, cfg, root, env)
+	probeEnv := NewManager(nil, Config{Root: root, Env: env, Providers: providers}, nil).probeEnv(name, cfg)
+	auth := ProbeAgentAuthWithProviders(name, cfg, root, env, providers)
 	switch name {
 	case AgentCodex:
 		if !auth.Authenticated {
@@ -34,6 +45,10 @@ func ProbeReadiness(name string, cfg AgentConfig, root string, env map[string]st
 			return Readiness{Reason: auth.Reason}
 		}
 	case AgentGrok:
+		if !auth.Authenticated {
+			return Readiness{Reason: auth.Reason}
+		}
+	case AgentOpenCode:
 		if !auth.Authenticated {
 			return Readiness{Reason: auth.Reason}
 		}

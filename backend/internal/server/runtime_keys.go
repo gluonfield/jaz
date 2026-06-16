@@ -17,15 +17,22 @@ func (s *Server) providerKeyUpdates(keys map[string]string) (map[string]string, 
 	}
 	updates := map[string]string{}
 	for id, key := range keys {
-		meta, ok := provider.NativeProviderByID(id)
+		id = strings.TrimSpace(id)
+		cfg := s.ModelProviders[id]
+		meta, ok := provider.ModelProviderByID(id)
 		if !ok {
-			return nil, fmt.Errorf("unknown native provider %q", id)
+			if !provider.ModelProviderConfigPresent(cfg) {
+				return nil, fmt.Errorf("unknown model provider %q", id)
+			}
+			meta = provider.ModelProvider{ID: id}
 		}
-		if strings.TrimSpace(meta.APIKeyEnv) == "" {
-			return nil, fmt.Errorf("native provider %q has no API key env var", id)
+		meta = provider.ApplyModelProviderConfig(meta, cfg)
+		keyEnv := strings.TrimSpace(meta.APIKeyEnv)
+		if keyEnv == "" {
+			return nil, fmt.Errorf("model provider %q has no API key env var", id)
 		}
 		if strings.TrimSpace(key) != "" {
-			updates[meta.APIKeyEnv] = key
+			updates[keyEnv] = key
 		}
 	}
 	return updates, nil

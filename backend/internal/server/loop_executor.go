@@ -116,7 +116,7 @@ func (r *LoopRunner) startACPLoopRun(execution loops.Execution) {
 	defer cancel()
 	agent := strings.TrimSpace(loop.ACPAgent)
 	if agent == "" {
-		agent = "codex"
+		agent = acp.AgentJaz
 	}
 	directory := strings.TrimSpace(loop.Directory)
 	if directory == "" {
@@ -127,6 +127,7 @@ func (r *LoopRunner) startACPLoopRun(execution loops.Execution) {
 		Slug:            loopRunSlug(loop, run),
 		Title:           loop.Name,
 		Directory:       directory,
+		ModelProvider:   loop.ModelProvider,
 		Model:           loop.Model,
 		ReasoningEffort: loop.ReasoningEffort,
 		SourceType:      storage.SourceLoopRun,

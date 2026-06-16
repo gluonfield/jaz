@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
+	modelprovider "github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 )
@@ -16,6 +17,7 @@ const RefreshOwnerAgentCLI = "coding_agent_cli"
 const (
 	AuthKindOAuth  = "oauth"
 	AuthKindAPIKey = "api_key"
+	AuthKindNone   = "none"
 )
 
 type AgentAPIKeySpec struct {
@@ -66,6 +68,10 @@ func NormalizeAgentAuthConfig(name string, auth AgentAuthConfig) (AgentAuthConfi
 }
 
 func resolveAgentAuth(name string, cfg AgentConfig, root string, env map[string]string) resolvedAgentAuth {
+	return resolveAgentAuthWithProviders(name, cfg, root, env, nil)
+}
+
+func resolveAgentAuthWithProviders(name string, cfg AgentConfig, root string, env map[string]string, providers map[string]modelprovider.ModelProviderConfig) resolvedAgentAuth {
 	name = CanonicalAgentName(name)
 	auth, err := NormalizeAgentAuthConfig(name, cfg.Auth)
 	if err != nil {
@@ -78,6 +84,8 @@ func resolveAgentAuth(name string, cfg AgentConfig, root string, env map[string]
 		return resolveClaudeAuth(auth, cfg, root, env)
 	case AgentGrok:
 		return resolveGrokAuth(auth, cfg, root, env)
+	case AgentOpenCode:
+		return resolveOpenCodeAuth(auth, cfg, root, env, providers)
 	default:
 		return resolvedAgentAuth{Config: auth}
 	}
@@ -192,6 +200,72 @@ func resolveGrokAuth(auth AgentAuthConfig, _ AgentConfig, root string, env map[s
 	return status
 }
 
+func resolveOpenCodeAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env map[string]string, providers map[string]modelprovider.ModelProviderConfig) resolvedAgentAuth {
+	layout := runtimefiles.New(root)
+	status := resolvedAgentAuth{
+		Config:      AgentAuthConfig{Mode: AuthModeJazProfile, Path: layout.ACPOpenCodeConfig},
+		StoragePath: layout.ACPOpenCodeConfig,
+		Source:      AuthModeJazProfile,
+	}
+	explicit := status.resolveAPIKey(AgentOpenCode, root, env)
+	providerID := openCodeProviderID(cfg.ProviderQualifiedModel())
+	meta, known := modelprovider.OpenCodeProviderByID(providerID)
+	cfgProvider, configured := providers[providerID]
+	keyEnv := strings.TrimSpace(meta.APIKeyEnv)
+	if configured {
+		if customKeyEnv := openCodeConfiguredProviderEnv(providerID, cfgProvider); customKeyEnv != "" {
+			keyEnv = customKeyEnv
+		}
+	}
+	requiresAPIKey := known && meta.RequiresAPIKey
+	if !known && configured {
+		requiresAPIKey = keyEnv != "" || strings.TrimSpace(cfgProvider.APIKey) != ""
+	}
+	switch {
+	case known && !meta.RequiresAPIKey:
+		status.markAuthenticated("no_api_key_required", AuthKindNone)
+	case providerID == modelprovider.ProviderOpenRouter && explicit:
+		status.markAuthenticated("api_key_env", AuthKindAPIKey)
+	case configured && strings.TrimSpace(cfgProvider.APIKey) != "":
+		status.markAuthenticated("configured_provider_key", AuthKindAPIKey)
+		status.APIKeySet = true
+	case keyEnv != "" && providerAPIKeyConfigured(root, env, keyEnv, apiKeyAlias(keyEnv)):
+		status.markAuthenticated(strings.ToLower(keyEnv)+"_env", AuthKindAPIKey)
+		status.APIKeySet = true
+	case configured && !requiresAPIKey:
+		status.markAuthenticated("no_api_key_required", AuthKindNone)
+	default:
+		status.Reason = openCodeAPIKeyReason(providerID, meta, keyEnv, status.APIKey.SourceEnv, known || configured)
+	}
+	return status
+}
+
+func openCodeProviderID(model string) string {
+	providerID := modelprovider.OpenCodeProviderIDFromModel(model)
+	if providerID == "" {
+		return modelprovider.ProviderOpenRouter
+	}
+	return providerID
+}
+
+func openCodeAPIKeyReason(providerID string, meta modelprovider.ModelProvider, keyEnv, explicitEnv string, configured bool) string {
+	if !configured {
+		return "OpenCode provider " + providerID + " is not configured"
+	}
+	label := firstNonEmpty(meta.Label, providerID)
+	if providerID == modelprovider.ProviderOpenRouter {
+		return "OpenCode " + label + " key via " + explicitEnv + " or " + keyEnv
+	}
+	return "OpenCode " + label + " key via " + keyEnv
+}
+
+func apiKeyAlias(key string) string {
+	if strings.HasSuffix(key, "_API_KEY") {
+		return strings.TrimSuffix(key, "_API_KEY") + "_APIKEY"
+	}
+	return ""
+}
+
 // RemoveOwnedCredential deletes an agent's OAuth credential, but ONLY when Jaz
 // owns it — stored in Jaz's own profile (under root) or Grok's ~/.grok/auth.json.
 // It never deletes the user's global ~/.claude.json / ~/.codex config. A no-op
@@ -277,6 +351,8 @@ func resolveAgentAPIKeySpec(name string) (AgentAPIKeySpec, bool) {
 		return AgentAPIKeySpec{SourceEnv: "JAZ_ACP_CLAUDE_API_KEY", TargetEnv: "ANTHROPIC_API_KEY"}, true
 	case AgentGrok:
 		return AgentAPIKeySpec{SourceEnv: "JAZ_ACP_GROK_API_KEY", TargetEnv: "XAI_API_KEY"}, true
+	case AgentOpenCode:
+		return AgentAPIKeySpec{SourceEnv: "JAZ_ACP_OPENCODE_API_KEY", TargetEnv: "OPENROUTER_API_KEY"}, true
 	default:
 		return AgentAPIKeySpec{}, false
 	}
@@ -297,6 +373,27 @@ func explicitAgentAPIKey(name, root string, env map[string]string) (string, bool
 		return value, true
 	}
 	return "", false
+}
+
+func providerAPIKeyConfigured(root string, env map[string]string, canonical string, aliases ...string) bool {
+	if strings.TrimSpace(canonical) == "" {
+		return false
+	}
+	if strings.TrimSpace(env[canonical]) != "" {
+		return true
+	}
+	if value, ok := runtimeenv.Lookup(runtimeenv.Path(root), canonical); ok && strings.TrimSpace(value) != "" {
+		return true
+	}
+	if strings.TrimSpace(os.Getenv(canonical)) != "" {
+		return true
+	}
+	for _, alias := range aliases {
+		if strings.TrimSpace(env[alias]) != "" || strings.TrimSpace(os.Getenv(alias)) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func codexAuthFileAvailable(home string) bool {
