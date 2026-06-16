@@ -4,8 +4,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/storage"
+	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"go.uber.org/fx"
 )
 
@@ -27,6 +30,26 @@ func TestUsageModuleProvidesRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(routes) != 1 || routes[0].Pattern != "GET /v1/usage/daily" || routes[0].Handler == nil {
+		t.Fatalf("routes = %#v", routes)
+	}
+}
+
+func TestUsageModuleWiresWithNewStore(t *testing.T) {
+	var routes server.Routes
+	var store *sqlitestore.Store
+	app := fx.New(
+		fx.NopLogger,
+		fx.Supply(runtimefiles.New(t.TempDir()), acp.AgentCatalog{}),
+		fx.Provide(NewStore),
+		UsageModule(),
+		fx.Populate(&routes, &store),
+	)
+	if err := app.Err(); err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	if len(routes) != 1 || routes[0].Handler == nil {
 		t.Fatalf("routes = %#v", routes)
 	}
 }
