@@ -161,8 +161,10 @@ func TestWidgetContentAndErrorsAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// The content endpoint serves the raw fragment; the board wraps it in the
+	// shared artifact document client-side, so no host chrome leaks here.
 	res := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/widgets/"+widget.ID+"/content?theme=dark", nil))
+	srv.Handler().ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/widgets/"+widget.ID+"/content", nil))
 	if res.Code != http.StatusOK {
 		t.Fatalf("content = %d: %s", res.Code, res.Body.String())
 	}
@@ -170,10 +172,8 @@ func TestWidgetContentAndErrorsAPI(t *testing.T) {
 		t.Fatalf("content type = %q", got)
 	}
 	body := res.Body.String()
-	for _, want := range []string{`<p id="hello">hi</p>`, `class="dark"`, "Content-Security-Policy", "jz-stat-value", "jaz:error"} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("content missing %q", want)
-		}
+	if strings.TrimSpace(body) != `<p id="hello">hi</p>` {
+		t.Fatalf("content should be the raw fragment, got: %q", body)
 	}
 
 	report := httptest.NewRequest(http.MethodPost, "/v1/widgets/"+widget.ID+"/errors",

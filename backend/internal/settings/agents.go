@@ -16,16 +16,13 @@ import (
 const (
 	AgentSettingsNamespace = "agents"
 	AgentDefaultsKey       = "defaults"
-	legacyCodexACPCommand  = `npx -y @zed-industries/codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'`
 	legacyGrokACPCommand   = `grok --no-auto-update agent --no-leader stdio`
-	legacyClaudeCodeModel  = "claude-sonnet-4-5"
 )
 
-// Previous built-in claude commands; stored settings still matching one are
-// auto-upgraded to the current default on merge.
-var legacyClaudeCodeCommands = []string{
-	"npx -y @agentclientprotocol/claude-agent-acp@0.39.0",
-	"npx -y @agentclientprotocol/claude-agent-acp@0.43.0",
+var legacyCodexACPCommands = []string{
+	`codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'`,
+	`npx -y @zed-industries/codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'`,
+	`npx -y @zed-industries/codex-acp@0.16.0 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'`,
 }
 
 type NativeAgentDefaults struct {
@@ -35,11 +32,12 @@ type NativeAgentDefaults struct {
 }
 
 type ACPAgentDefaults struct {
-	Enabled         bool     `json:"enabled"`
-	Command         string   `json:"command,omitempty"`
-	LegacyArgs      []string `json:"args,omitempty"`
-	Model           string   `json:"model,omitempty"`
-	ReasoningEffort string   `json:"reasoning_effort,omitempty"`
+	Enabled         bool                `json:"enabled"`
+	Command         string              `json:"command,omitempty"`
+	LegacyArgs      []string            `json:"args,omitempty"`
+	Model           string              `json:"model,omitempty"`
+	ReasoningEffort string              `json:"reasoning_effort,omitempty"`
+	Auth            acp.AgentAuthConfig `json:"auth,omitempty"`
 }
 
 type AgentDefaults struct {
@@ -75,6 +73,7 @@ func AgentDefaultsFromCatalog(catalog acp.AgentCatalog) AgentDefaults {
 			Command:         command,
 			Model:           strings.TrimSpace(agent.Model),
 			ReasoningEffort: strings.TrimSpace(agent.ReasoningEffort),
+			Auth:            acp.AgentAuthConfig{Mode: acp.AuthModeAuto},
 		}
 	}
 	return seed
@@ -188,7 +187,11 @@ func NormalizeAgentDefaults(input AgentDefaults, catalog acp.AgentCatalog) (Agen
 		name = acp.CanonicalAgentName(name)
 		base, _ := catalog.Agent(name)
 		current := inputACP[name]
-		effort, err := provider.NormalizeReasoningEffort(current.ReasoningEffort)
+		effort, err := acp.NormalizeAgentReasoningEffort(name, current.ReasoningEffort)
+		if err != nil {
+			return AgentDefaults{}, err
+		}
+		auth, err := acp.NormalizeAgentAuthConfig(name, current.Auth)
 		if err != nil {
 			return AgentDefaults{}, err
 		}
@@ -208,6 +211,7 @@ func NormalizeAgentDefaults(input AgentDefaults, catalog acp.AgentCatalog) (Agen
 			Command:         command,
 			Model:           strings.TrimSpace(current.Model),
 			ReasoningEffort: effort,
+			Auth:            auth,
 		}
 	}
 	return next, nil
@@ -268,21 +272,21 @@ func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentD
 	switch {
 	case strings.TrimSpace(stored.Command) == "":
 		stored.Command = seed.Command
-	case name == acp.AgentCodex && strings.TrimSpace(stored.Command) == legacyCodexACPCommand:
-		stored.Command = seed.Command
-	case name == acp.AgentClaude && isLegacyClaudeCodeCommand(stored.Command):
+	case name == acp.AgentCodex && isLegacyCodexACPCommand(stored.Command):
 		stored.Command = seed.Command
 	case name == acp.AgentGrok && strings.TrimSpace(stored.Command) == legacyGrokACPCommand:
 		stored.Command = seed.Command
 	}
-	if name == acp.AgentClaude && strings.TrimSpace(stored.Model) == legacyClaudeCodeModel {
-		stored.Model = seed.Model
+	if auth, err := acp.NormalizeAgentAuthConfig(name, stored.Auth); err == nil {
+		stored.Auth = auth
+	} else {
+		stored.Auth = seed.Auth
 	}
 	return stored
 }
 
-func isLegacyClaudeCodeCommand(command string) bool {
-	return slices.Contains(legacyClaudeCodeCommands, strings.TrimSpace(command))
+func isLegacyCodexACPCommand(command string) bool {
+	return slices.Contains(legacyCodexACPCommands, strings.TrimSpace(command))
 }
 
 func canonicalizeACPDefaults(in map[string]ACPAgentDefaults) map[string]ACPAgentDefaults {
@@ -345,6 +349,7 @@ func (s *ACPConfigSource) AgentConfig(name string) (acp.AgentConfig, bool, error
 	}
 	cfg.Model = strings.TrimSpace(agent.Model)
 	cfg.ReasoningEffort = strings.TrimSpace(agent.ReasoningEffort)
+	cfg.Auth = agent.Auth
 	return cfg, true, nil
 }
 

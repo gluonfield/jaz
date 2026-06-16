@@ -9,8 +9,8 @@ import (
 
 // TestSystemPromptEndToEnd builds the full native prompt with every layer
 // populated and pins the construction invariants: layer order, the skills
-// catalog appearing exactly once at the end, and the ACP extension being
-// byte-identical to the platform tail of the native prompt.
+// catalog appearing exactly once at the end, and the ACP extension sharing the
+// prompt-file/memory/skills tail of the native prompt.
 func TestSystemPromptEndToEnd(t *testing.T) {
 	root := t.TempDir()
 	memoryRoot := t.TempDir()
@@ -32,11 +32,13 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 
 	assertOrder(t, system,
 		"You are Jaz",
-		"Current working directory:",
 		"agent_spawn only starts a session",
 		"## Jaz platform",
+		"Current working directory:",
 		"## AGENTS.md\n\nalways cite sources",
 		"## SOUL.md\n\nbe direct",
+		"## Artifacts and visualizations",
+		"Few-shot trace:",
 		"## memory",
 		"Capture as you go",
 		"## memory/LONG_TERM.md\n\n- Goal: $5m through agent products.",
@@ -50,6 +52,11 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		"<available_skills>":  1,
 		"</available_skills>": 1,
 		"## Skills":           1,
+		"Date: ":              1,
+		"Time: ":              1,
+		"Timezone: ":          1,
+		"Weekday: ":           1,
+		"Now: ":               1,
 		"## AGENTS.md":        1,
 		"## SOUL.md":          1,
 		"Capture as you go":   1,
@@ -59,15 +66,35 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		}
 	}
 
-	acp, err := builder.ACPPrompt()
+	acpCwd := filepath.Join(root, "workspaces", "default", ".worktrees", "agent-task")
+	acp, err := builder.ACPPrompt(acpCwd)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if acp == "" || !strings.HasSuffix(system, acp) {
-		t.Fatalf("the ACP extension must be the exact platform tail of the native prompt.\nACP:\n%s\nSYSTEM:\n%s", acp, system)
+	if !strings.Contains(acp, "Current working directory: "+acpCwd) {
+		t.Fatalf("acp extension must carry the resolved session cwd:\n%s", acp)
+	}
+	for _, want := range []string{"Date: ", "Time: ", "Timezone: ", "Weekday: ", "Now: "} {
+		if !strings.Contains(acp, want) {
+			t.Fatalf("acp extension missing runtime context %q:\n%s", want, acp)
+		}
+	}
+	sharedOffset := strings.Index(acp, "## AGENTS.md")
+	if sharedOffset < 0 {
+		t.Fatalf("acp extension missing shared prompt-file tail:\n%s", acp)
+	}
+	if !strings.HasSuffix(system, acp[sharedOffset:]) {
+		t.Fatalf("the ACP shared tail must match the native shared tail.\nACP:\n%s\nSYSTEM:\n%s", acp, system)
 	}
 	if strings.Contains(acp, "You are Jaz") || strings.Contains(acp, "agent_spawn") {
 		t.Fatalf("acp extension must carry no coordinator identity or delegation rules:\n%s", acp)
+	}
+	if !strings.Contains(acp, "prefer an inline artifact over plain text") ||
+		!strings.Contains(acp, "any reusable code snippet over 20 lines") ||
+		!strings.Contains(acp, "plain lists, plain tables, enumerated content") ||
+		!strings.Contains(acp, "visualize_show_widget") ||
+		!strings.Contains(acp, "Never pass raw JSX, TSX, or an unbundled app to the render tool") {
+		t.Fatalf("acp extension must carry the artifact policy:\n%s", acp)
 	}
 
 	// The master switch strips memory from both layers identically.
@@ -76,7 +103,7 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	disabledACP, err := disabledBuilder.ACPPrompt()
+	disabledACP, err := disabledBuilder.ACPPrompt("")
 	if err != nil {
 		t.Fatal(err)
 	}

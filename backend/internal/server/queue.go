@@ -14,13 +14,13 @@ import (
 )
 
 type queueRequest struct {
-	Op       string   `json:"op,omitempty"`
-	Messages []string `json:"messages,omitempty"`
-	Text     string   `json:"text,omitempty"`
-	Expected string   `json:"expected,omitempty"`
-	Index    int      `json:"index,omitempty"`
-	From     int      `json:"from,omitempty"`
-	To       int      `json:"to,omitempty"`
+	Op       string                  `json:"op,omitempty"`
+	Messages []storage.QueuedMessage `json:"messages,omitempty"`
+	Message  storage.QueuedMessage   `json:"message,omitempty"`
+	Expected string                  `json:"expected,omitempty"`
+	Index    int                     `json:"index,omitempty"`
+	From     int                     `json:"from,omitempty"`
+	To       int                     `json:"to,omitempty"`
 }
 
 func (s *Server) handleQueueAction(w http.ResponseWriter, r *http.Request, session storage.Session) {
@@ -62,6 +62,9 @@ func (s *Server) mutateSessionQueue(sessionID string, req queueRequest) (storage
 	if err != nil {
 		return storage.Session{}, err
 	}
+	if err := s.validateQueueAttachmentMutation(session.ID, req); err != nil {
+		return storage.Session{}, err
+	}
 	session.QueuedMessages = queue
 	if queueMutationTouchesAttention(req, queue) {
 		storage.MarkSessionAttention(&session, time.Now().UTC())
@@ -72,7 +75,7 @@ func (s *Server) mutateSessionQueue(sessionID string, req queueRequest) (storage
 	return s.Store.LoadSession(sessionID)
 }
 
-func queueMutationTouchesAttention(req queueRequest, queue []string) bool {
+func queueMutationTouchesAttention(req queueRequest, queue []storage.QueuedMessage) bool {
 	switch req.op() {
 	case "", "replace":
 		return len(queue) > 0
@@ -83,32 +86,32 @@ func queueMutationTouchesAttention(req queueRequest, queue []string) bool {
 	}
 }
 
-func applyQueueMutation(queue []string, req queueRequest) ([]string, error) {
-	queue = sanitizeQueuedMessages(queue)
+func applyQueueMutation(queue []storage.QueuedMessage, req queueRequest) ([]storage.QueuedMessage, error) {
+	queue = storage.NormalizeQueuedMessages(queue)
 	switch req.op() {
 	case "", "replace":
-		return sanitizeQueuedMessages(req.Messages), nil
+		return storage.NormalizeQueuedMessages(req.Messages), nil
 	case "append":
-		text := strings.TrimSpace(req.Text)
-		if text == "" {
+		msgs := storage.NormalizeQueuedMessages([]storage.QueuedMessage{req.Message})
+		if len(msgs) == 0 {
 			return queue, queueInputError{"queued prompt text is required"}
 		}
-		return append(queue, text), nil
+		return append(queue, msgs[0]), nil
 	case "delete":
 		if err := validateQueueIndex(queue, req.Index, req.Expected); err != nil {
 			return queue, err
 		}
-		return append(append([]string(nil), queue[:req.Index]...), queue[req.Index+1:]...), nil
+		return removeQueuedPrompt(queue, req.Index), nil
 	case "edit":
-		text := strings.TrimSpace(req.Text)
+		text := strings.TrimSpace(req.Message.Text)
 		if text == "" {
 			return queue, queueInputError{"queued prompt text is required"}
 		}
 		if err := validateQueueIndex(queue, req.Index, req.Expected); err != nil {
 			return queue, err
 		}
-		next := append([]string(nil), queue...)
-		next[req.Index] = text
+		next := append([]storage.QueuedMessage(nil), queue...)
+		next[req.Index].Text = text
 		return next, nil
 	case "move":
 		if err := validateQueueIndex(queue, req.From, req.Expected); err != nil {
@@ -120,10 +123,10 @@ func applyQueueMutation(queue []string, req queueRequest) ([]string, error) {
 		if req.From == req.To {
 			return queue, nil
 		}
-		next := append([]string(nil), queue...)
+		next := append([]storage.QueuedMessage(nil), queue...)
 		item := next[req.From]
 		next = append(next[:req.From], next[req.From+1:]...)
-		next = append(next[:req.To], append([]string{item}, next[req.To:]...)...)
+		next = append(next[:req.To], append([]storage.QueuedMessage{item}, next[req.To:]...)...)
 		return next, nil
 	default:
 		return queue, queueInputError{fmt.Sprintf("unknown queue operation %q", req.Op)}
@@ -134,12 +137,33 @@ func (req queueRequest) op() string {
 	return strings.TrimSpace(req.Op)
 }
 
-func validateQueueIndex(queue []string, index int, expected string) error {
+func validateQueueIndex(queue []storage.QueuedMessage, index int, expected string) error {
 	if index < 0 || index >= len(queue) {
 		return queueInputError{"queued prompt index out of range"}
 	}
-	if expected = strings.TrimSpace(expected); expected != "" && queue[index] != expected {
+	if expected = strings.TrimSpace(expected); expected != "" && queue[index].Text != expected {
 		return queueInputError{"queued prompt changed; refresh and try again"}
+	}
+	return nil
+}
+
+func (s *Server) validateQueueAttachmentMutation(sessionID string, req queueRequest) error {
+	switch req.op() {
+	case "append":
+		if len(req.Message.AttachmentIDs) == 0 {
+			return nil
+		}
+		_, err := s.resolveAttachments(sessionID, req.Message.AttachmentIDs)
+		return err
+	case "", "replace":
+		for _, message := range req.Messages {
+			if len(message.AttachmentIDs) == 0 {
+				continue
+			}
+			if _, err := s.resolveAttachments(sessionID, message.AttachmentIDs); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -198,29 +222,29 @@ func (s *Server) drainQueuedPrompt(ctx context.Context, sessionID string) {
 	}
 }
 
-func (s *Server) claimQueuedPrompt(sessionID string) (storage.Session, string, bool, error) {
+func (s *Server) claimQueuedPrompt(sessionID string) (storage.Session, storage.QueuedMessage, bool, error) {
 	unlock := s.lockSession(sessionID)
 	defer unlock()
 
 	session, err := s.Store.LoadSession(sessionID)
 	if err != nil {
-		return storage.Session{}, "", false, err
+		return storage.Session{}, storage.QueuedMessage{}, false, err
 	}
 	if session.Runtime == "" {
 		session.Runtime = storage.RuntimeNative
 	}
 	if s.sessionRuntimeRunning(session) || session.Status != storage.StatusIdle {
-		return session, "", false, nil
+		return session, storage.QueuedMessage{}, false, nil
 	}
-	prompts := sanitizeQueuedMessages(session.QueuedMessages)
+	prompts := storage.NormalizeQueuedMessages(session.QueuedMessages)
 	if len(prompts) == 0 {
 		if len(session.QueuedMessages) > 0 {
 			session.QueuedMessages = nil
 			if err := s.Store.SaveSession(session); err != nil {
-				return storage.Session{}, "", false, err
+				return storage.Session{}, storage.QueuedMessage{}, false, err
 			}
 		}
-		return session, "", false, nil
+		return session, storage.QueuedMessage{}, false, nil
 	}
 
 	prompt := prompts[0]
@@ -229,17 +253,17 @@ func (s *Server) claimQueuedPrompt(sessionID string) (storage.Session, string, b
 	session.Error = ""
 	storage.MarkSessionAttention(&session, time.Now().UTC())
 	if session.Title == "" {
-		session.Title = titleFromMessage(prompt)
+		session.Title = titleFromMessage(prompt.Text)
 	}
 	if err := s.Store.SaveSession(session); err != nil {
-		return storage.Session{}, "", false, err
+		return storage.Session{}, storage.QueuedMessage{}, false, err
 	}
 	return session, prompt, true, nil
 }
 
 type steeredQueuedPrompt struct {
 	session    storage.Session
-	prompt     string
+	prompt     storage.QueuedMessage
 	index      int
 	interrupts bool
 }
@@ -278,7 +302,7 @@ func (s *Server) claimSteeredQueuedPrompt(sessionID string, req queueRequest) (s
 	if session.Runtime == "" {
 		session.Runtime = storage.RuntimeNative
 	}
-	queue := sanitizeQueuedMessages(session.QueuedMessages)
+	queue := storage.NormalizeQueuedMessages(session.QueuedMessages)
 	if err := validateQueueIndex(queue, req.Index, req.Expected); err != nil {
 		return steeredQueuedPrompt{}, err
 	}
@@ -286,6 +310,9 @@ func (s *Server) claimSteeredQueuedPrompt(sessionID string, req queueRequest) (s
 	running := s.sessionRuntimeRunning(session)
 	if running && session.Runtime != storage.RuntimeACP {
 		return steeredQueuedPrompt{}, queueInputError{"queued prompts can only steer running ACP sessions"}
+	}
+	if running && len(queue[req.Index].AttachmentIDs) > 0 {
+		return steeredQueuedPrompt{}, queueInputError{"queued prompts with attachments cannot steer a running ACP session"}
 	}
 	if !running && !s.canStartQueuedPrompt(session) {
 		return steeredQueuedPrompt{}, queueInputError{"session runtime is not configured"}
@@ -298,7 +325,7 @@ func (s *Server) claimSteeredQueuedPrompt(sessionID string, req queueRequest) (s
 	if !running {
 		session.Status = storage.StatusRunning
 		if session.Title == "" {
-			session.Title = titleFromMessage(prompt)
+			session.Title = titleFromMessage(prompt.Text)
 		}
 	}
 	if err := s.Store.SaveSession(session); err != nil {
@@ -318,8 +345,9 @@ func (s *Server) startSteeredQueuedPrompt(ctx context.Context, claimed steeredQu
 			return fmt.Errorf("acp manager is not configured")
 		}
 		return s.ACP.AnswerInteractive(ctx, acp.InteractiveAnswer{
-			Session: claimed.session.ID,
-			Text:    claimed.prompt,
+			Session:       claimed.session.ID,
+			Text:          claimed.prompt.Text,
+			PlanRequested: claimed.prompt.PlanRequested,
 		})
 	}
 	return s.startQueuedPrompt(ctx, claimed.session, claimed.prompt)
@@ -345,13 +373,17 @@ func (s *Server) canStartQueuedPrompt(session storage.Session) bool {
 	}
 }
 
-func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session, prompt string) error {
+func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session, prompt storage.QueuedMessage) error {
+	attachments, err := s.resolveAttachments(session.ID, prompt.AttachmentIDs)
+	if err != nil {
+		return err
+	}
 	switch session.Runtime {
 	case "", storage.RuntimeNative:
 		if s.Agent == nil {
 			return fmt.Errorf("agent is not configured")
 		}
-		if s.runClaimedNativeSession(ctx, session, prompt) == storage.StatusIdle {
+		if s.runClaimedNativeSessionWithAttachments(ctx, session, prompt.Text, attachments, prompt.PlanRequested) == storage.StatusIdle {
 			s.drainQueueSoon(session.ID)
 		}
 		return nil
@@ -359,11 +391,16 @@ func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session,
 		if s.ACP == nil {
 			return fmt.Errorf("acp manager is not configured")
 		}
+		if err := s.ensureManagedWorktree(ctx, session); err != nil {
+			return err
+		}
 		if _, err := s.ACP.Send(ctx, acp.SendRequest{
-			Session:     session.ID,
-			Message:     prompt,
-			Completion:  acp.CompletionAsync,
-			Interactive: true,
+			Session:       session.ID,
+			Message:       prompt.Text,
+			Attachments:   attachments,
+			Completion:    acp.CompletionAsync,
+			Interactive:   true,
+			PlanRequested: prompt.PlanRequested,
 		}); err != nil {
 			return acpSendError(session, err)
 		}
@@ -373,7 +410,7 @@ func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session,
 	}
 }
 
-func (s *Server) restoreQueuedPrompt(sessionID, prompt string, index int, message string) {
+func (s *Server) restoreQueuedPrompt(sessionID string, prompt storage.QueuedMessage, index int, message string) {
 	unlock := s.lockSession(sessionID)
 	defer unlock()
 
@@ -381,11 +418,11 @@ func (s *Server) restoreQueuedPrompt(sessionID, prompt string, index int, messag
 	if err != nil {
 		return
 	}
-	queue := sanitizeQueuedMessages(session.QueuedMessages)
+	queue := storage.NormalizeQueuedMessages(session.QueuedMessages)
 	if index < 0 || index > len(queue) {
 		index = len(queue)
 	}
-	queue = append(queue[:index], append([]string{prompt}, queue[index:]...)...)
+	queue = append(queue[:index], append([]storage.QueuedMessage{prompt}, queue[index:]...)...)
 	session.QueuedMessages = queue
 	session.Status = storage.StatusError
 	session.Error = firstNonEmpty(message, session.Error, "Queued prompt failed.")
@@ -394,21 +431,6 @@ func (s *Server) restoreQueuedPrompt(sessionID, prompt string, index int, messag
 	s.publishMessagesChanged(sessionID)
 }
 
-func removeQueuedPrompt(prompts []string, index int) []string {
-	return append(append([]string(nil), prompts[:index]...), prompts[index+1:]...)
-}
-
-func sanitizeQueuedMessages(messages []string) []string {
-	if len(messages) == 0 {
-		return nil
-	}
-	out := make([]string, 0, len(messages))
-	for _, message := range messages {
-		message = strings.TrimSpace(message)
-		if message == "" {
-			continue
-		}
-		out = append(out, message)
-	}
-	return out
+func removeQueuedPrompt(prompts []storage.QueuedMessage, index int) []storage.QueuedMessage {
+	return append(append([]storage.QueuedMessage(nil), prompts[:index]...), prompts[index+1:]...)
 }

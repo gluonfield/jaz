@@ -29,15 +29,10 @@ var defaultSkillFS embed.FS
 const (
 	defaultSkillsRoot = "defaults"
 	userSkillsDir     = "skills"
-	managedSkillsDir  = "system/skills"
 )
 
 func UserRoot(root string) string {
 	return filepath.Join(root, userSkillsDir)
-}
-
-func ManagedRoot(root string) string {
-	return filepath.Join(root, managedSkillsDir)
 }
 
 func InstallDefaults(root string) error {
@@ -45,25 +40,11 @@ func InstallDefaults(root string) error {
 	if root == "" {
 		return fmt.Errorf("runtime root is empty")
 	}
-	managed := ManagedRoot(root)
-	if err := os.MkdirAll(filepath.Dir(managed), 0o755); err != nil {
+	userRoot := UserRoot(root)
+	if err := os.MkdirAll(userRoot, 0o755); err != nil {
 		return err
 	}
-	tmp, err := os.MkdirTemp(filepath.Dir(managed), ".skills-*")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(tmp)
-	if err := copyDefaults(tmp); err != nil {
-		return err
-	}
-	if err := os.RemoveAll(managed); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, managed); err != nil {
-		return err
-	}
-	return os.MkdirAll(UserRoot(root), 0o755)
+	return copyDefaults(userRoot)
 }
 
 func Load(root string) (Catalog, error) {
@@ -71,21 +52,9 @@ func Load(root string) (Catalog, error) {
 		return Catalog{}, nil
 	}
 	userRoot := UserRoot(root)
-	seen := map[string]struct{}{}
-	out := []Skill{}
-	for _, dir := range []string{userRoot, ManagedRoot(root)} {
-		items, err := loadDir(dir)
-		if err != nil {
-			return Catalog{}, err
-		}
-		for _, skill := range items {
-			key := strings.ToLower(skill.Name)
-			if _, exists := seen[key]; exists {
-				continue
-			}
-			seen[key] = struct{}{}
-			out = append(out, skill)
-		}
+	out, err := loadDir(userRoot)
+	if err != nil {
+		return Catalog{}, err
 	}
 	return Catalog{Root: userRoot, Skills: out}, nil
 }
@@ -157,7 +126,7 @@ func (c Catalog) Prompt() string {
 }
 
 func shouldSkipDir(name string) bool {
-	return name == ".git" || name == ".archive" || name == "node_modules"
+	return strings.HasPrefix(name, ".") || name == "node_modules"
 }
 
 func readSkill(path string) (Skill, bool) {

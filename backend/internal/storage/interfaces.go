@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"time"
+
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 )
@@ -60,6 +62,10 @@ type ACPStateStore interface {
 	SaveACPState(id string, state ACPState) error
 }
 
+type UsageEventStore interface {
+	UsageEventsSince(since time.Time) ([]UsageEvent, error)
+}
+
 type Store interface {
 	SessionStore
 	MessageStore
@@ -67,4 +73,5 @@ type Store interface {
 	SessionEventStore
 	ACPStateStore
 	SettingsStorage
+	UsageEventStore
 }

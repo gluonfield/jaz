@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/wins/jaz/backend/internal/media"
 	"github.com/wins/jaz/backend/internal/provider"
 	mockprovider "github.com/wins/jaz/backend/internal/provider/mock"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -40,6 +42,28 @@ func (s *slowTool) Execute(context.Context, map[string]any) (tools.Result, error
 type requestRecorderProvider struct {
 	requests []provider.Request
 }
+
+type nativeProviderKeys struct {
+	configured map[string]bool
+}
+
+func (p nativeProviderKeys) Complete(context.Context, provider.Request) (provider.Response, error) {
+	return provider.Response{Message: provider.AssistantMessage("done", nil)}, nil
+}
+
+func (p nativeProviderKeys) StreamComplete(context.Context, provider.Request) (<-chan provider.Event, error) {
+	ch := make(chan provider.Event)
+	close(ch)
+	return ch, nil
+}
+
+func (p nativeProviderKeys) Reload() error { return nil }
+
+func (p nativeProviderKeys) APIKeyConfigured(id string) bool {
+	return p.configured[id]
+}
+
+func (p nativeProviderKeys) APIKeyEnvPath() string { return "" }
 
 func (p *requestRecorderProvider) Complete(context.Context, provider.Request) (provider.Response, error) {
 	return provider.Response{Message: provider.AssistantMessage("done", nil)}, nil
@@ -77,25 +101,71 @@ func (p *requestRecorderProvider) StreamComplete(_ context.Context, req provider
 }
 
 type titleProvider struct {
+	mu             sync.Mutex
 	titleRequests  []provider.Request
 	streamRequests []provider.Request
 }
 
 func (p *titleProvider) Complete(_ context.Context, req provider.Request) (provider.Response, error) {
 	if req.StructuredOutput != nil {
+		p.mu.Lock()
 		p.titleRequests = append(p.titleRequests, req)
+		p.mu.Unlock()
 		return provider.Response{Message: provider.AssistantMessage(`{"title":"Fix login redirect"}`, nil)}, nil
 	}
 	return provider.Response{Message: provider.AssistantMessage("done", nil)}, nil
 }
 
 func (p *titleProvider) StreamComplete(_ context.Context, req provider.Request) (<-chan provider.Event, error) {
+	p.mu.Lock()
 	p.streamRequests = append(p.streamRequests, req)
+	p.mu.Unlock()
 	ch := make(chan provider.Event, 2)
 	ch <- provider.Event{Type: provider.EventDelta, Delta: "done"}
 	ch <- provider.Event{Type: provider.EventDone}
 	close(ch)
 	return ch, nil
+}
+
+func (p *titleProvider) counts() (int, int, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	structured := len(p.titleRequests) == 1 && p.titleRequests[0].StructuredOutput != nil
+	return len(p.titleRequests), len(p.streamRequests), structured
+}
+
+type blockingTitleProvider struct {
+	streamStarted chan struct{}
+	releaseTitle  chan struct{}
+}
+
+func (p *blockingTitleProvider) Complete(ctx context.Context, req provider.Request) (provider.Response, error) {
+	if req.StructuredOutput == nil {
+		return provider.Response{Message: provider.AssistantMessage("done", nil)}, nil
+	}
+	select {
+	case <-p.releaseTitle:
+		return provider.Response{Message: provider.AssistantMessage(`{"title":"Async title"}`, nil)}, nil
+	case <-ctx.Done():
+		return provider.Response{}, ctx.Err()
+	}
+}
+
+func (p *blockingTitleProvider) StreamComplete(context.Context, provider.Request) (<-chan provider.Event, error) {
+	closeOnce(p.streamStarted)
+	ch := make(chan provider.Event, 2)
+	ch <- provider.Event{Type: provider.EventDelta, Delta: "done"}
+	ch <- provider.Event{Type: provider.EventDone}
+	close(ch)
+	return ch, nil
+}
+
+func closeOnce(ch chan struct{}) {
+	select {
+	case <-ch:
+	default:
+		close(ch)
+	}
 }
 
 func TestNativeTurnUsesStoredProviderModelAndReasoning(t *testing.T) {
@@ -129,6 +199,60 @@ func TestNativeTurnUsesStoredProviderModelAndReasoning(t *testing.T) {
 	req := recorder.requests[0]
 	if req.Provider != "openai" || req.Model != "gpt-test" || req.ReasoningEffort != "high" {
 		t.Fatalf("unexpected provider request %#v", req)
+	}
+}
+
+func TestBeginNativeTurnClearsStaleError(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:          "native-retry",
+		Runtime:       storage.RuntimeNative,
+		ModelProvider: "openai",
+		Model:         "gpt-test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.Status = storage.StatusError
+	session.Error = "Server restarted while this thread was still running."
+	if err := store.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+	events := sessionevents.New()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sub := events.Subscribe(ctx, session.ID)
+
+	_, status, _, err := (&Server{Store: store, Events: events}).beginNativeTurn(context.Background(), session, "continue", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status != storage.StatusRunning {
+		t.Fatalf("status = %s, want %s", status, storage.StatusRunning)
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Status != storage.StatusRunning || loaded.Error != "" {
+		t.Fatalf("loaded status/error = %q/%q, want running with no error", loaded.Status, loaded.Error)
+	}
+	expectSessionChangedEvent(t, sub, session.ID)
+}
+
+func expectSessionChangedEvent(t *testing.T, sub <-chan sessionevents.Event, sessionID string) {
+	t.Helper()
+	select {
+	case event := <-sub:
+		if event.SessionID != sessionID || event.Type != sessionevents.TypeSession {
+			t.Fatalf("event = %#v, want session change for %s", event, sessionID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for session change event")
 	}
 }
 
@@ -187,18 +311,69 @@ func TestNativeFirstTurnGeneratesStructuredTitle(t *testing.T) {
 	if status := srv.runNativeSession(context.Background(), session, message, false, nil); status != storage.StatusIdle {
 		t.Fatalf("status = %s", status)
 	}
-	if len(provider.titleRequests) != 1 || provider.titleRequests[0].StructuredOutput == nil {
-		t.Fatalf("title requests = %#v", provider.titleRequests)
+	deadline := time.Now().Add(time.Second)
+	for {
+		titleRequests, streamRequests, structured := provider.counts()
+		loaded, err := store.LoadSession(session.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if titleRequests == 1 && streamRequests == 1 && structured && loaded.Title == "Fix login redirect" {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("title requests = %d, stream requests = %d, structured = %v, title = %q", titleRequests, streamRequests, structured, loaded.Title)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
-	if len(provider.streamRequests) != 1 {
-		t.Fatalf("stream requests = %#v", provider.streamRequests)
-	}
-	loaded, err := store.LoadSession(session.ID)
+}
+
+func TestNativeFirstTurnDoesNotWaitForStructuredTitle(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Title != "Fix login redirect" {
-		t.Fatalf("title = %q", loaded.Title)
+	defer store.Close()
+	message := "please fix the login redirect after OAuth callback"
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:          "oauth-redirect",
+		Title:         message,
+		Runtime:       storage.RuntimeNative,
+		ModelProvider: "openai",
+		Model:         "gpt-test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := &blockingTitleProvider{
+		streamStarted: make(chan struct{}),
+		releaseTitle:  make(chan struct{}),
+	}
+	srv := &Server{
+		Store: store,
+		Agent: &agent.Agent{Provider: provider, MaxTurns: 1},
+	}
+
+	done := make(chan string, 1)
+	go func() {
+		done <- srv.runNativeSession(context.Background(), session, message, false, nil)
+	}()
+
+	select {
+	case <-provider.streamStarted:
+	case <-time.After(200 * time.Millisecond):
+		closeOnce(provider.releaseTitle)
+		t.Fatal("native stream waited for title generation")
+	}
+	closeOnce(provider.releaseTitle)
+
+	select {
+	case status := <-done:
+		if status != storage.StatusIdle {
+			t.Fatalf("status = %s", status)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("native turn did not finish")
 	}
 }
 
@@ -244,6 +419,41 @@ func TestCreateNativeSessionAppliesModelOverrides(t *testing.T) {
 
 	res, _ = post(`{"model_provider":"bogus"}`)
 	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "unknown native provider") {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
+func TestCreateNativeSessionRejectsProviderWithoutKey(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	keys := nativeProviderKeys{configured: map[string]bool{}}
+	handler := (&Server{Store: store, NativeProviders: keys}).Handler()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "OPENROUTER_API_KEY") {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+
+	keys.configured["openrouter"] = true
+	req = httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{"model_provider":"openai"}`))
+	req.Header.Set("Content-Type", "application/json")
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "OPENAI_API_KEY") {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
 }
@@ -368,10 +578,14 @@ func TestCreateNativeSessionPersistsWorkingDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantWorktree := filepath.Join(workspace, ".worktrees", session.Slug)
+	wantProject, err := filepath.EvalSymlinks(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if session.RuntimeRef == nil ||
 		session.RuntimeRef.Cwd != wantWorktree ||
-		session.RuntimeRef.ProjectPath != repo {
-		t.Fatalf("worktree runtime ref = %#v, want cwd %q project %q", session.RuntimeRef, wantWorktree, repo)
+		session.RuntimeRef.ProjectPath != wantProject {
+		t.Fatalf("worktree runtime ref = %#v, want cwd %q project %q", session.RuntimeRef, wantWorktree, wantProject)
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{"directory":"../outside"}`))
@@ -380,6 +594,51 @@ func TestCreateNativeSessionPersistsWorkingDirectory(t *testing.T) {
 	handler.ServeHTTP(res, req)
 	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "escapes") {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
+func TestCreateNativeWorktreeFromWorkspaceRootPersistsProjectPath(t *testing.T) {
+	if err := exec.Command("git", "--version").Run(); err != nil {
+		t.Skip("git is not available")
+	}
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	workspace := t.TempDir()
+	for _, args := range [][]string{
+		{"init", "-b", "main"},
+		{"config", "user.email", "test@jaz"},
+		{"config", "user.name", "jaz"},
+		{"commit", "--allow-empty", "-m", "init"},
+	} {
+		cmd := exec.Command("git", append([]string{"-C", workspace}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	handler := (&Server{Store: store, Workspace: workspace}).Handler()
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{"directory":".","worktree":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var session storage.Session
+	if err := json.Unmarshal(res.Body.Bytes(), &session); err != nil {
+		t.Fatal(err)
+	}
+	wantWorktree := filepath.Join(workspace, ".worktrees", session.Slug)
+	wantProject, err := filepath.EvalSymlinks(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.RuntimeRef == nil ||
+		session.RuntimeRef.Cwd != wantWorktree ||
+		session.RuntimeRef.ProjectPath != wantProject {
+		t.Fatalf("worktree runtime ref = %#v, want cwd %q project %q", session.RuntimeRef, wantWorktree, wantProject)
 	}
 }
 

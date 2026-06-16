@@ -1,16 +1,19 @@
-import { ArrowUp, AudioLines, Check, FileText, ListChecks, LoaderCircle, Paperclip, Plus, Square, X } from 'lucide-react'
+import { ArrowUp, AudioLines, FileText, ListChecks, LoaderCircle, Paperclip, Plus, Square, X } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { FileDropOverlay, useWindowFileDrop } from '@/components/ui/FileDrop'
 import { IconButton } from '@/components/ui/IconButton'
+import type { Attachment, QueuedMessage } from '@/lib/api/types'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { RAINBOW_BEAM } from '@/components/ui/rainbow'
 import { MentionSuggestions, MentionTextarea, useMentionInput } from './MentionInput'
 import { QueuedPromptList } from './QueuedPromptList'
+import { useComposerAttachments } from './useComposerAttachments'
 import type { ComposerDraftStorage } from './useComposerDraft'
 
-function formatFileSize(size: number): string {
+function formatFileSize(size?: number): string {
+  if (size === undefined) return ''
   if (size < 1024) return `${size} B`
   if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
   return `${(size / (1024 * 1024)).toFixed(1)} MB`
@@ -32,7 +35,7 @@ function PlanMenuToggle({
       aria-checked={checked}
       disabled={disabled}
       onClick={onToggle}
-      className={`flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] transition-colors duration-150 hover:bg-surface-2 disabled:cursor-default disabled:opacity-50 ${
+      className={`flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] transition-colors duration-150 enabled:hover:bg-surface-2 disabled:cursor-default disabled:opacity-50 ${
         checked ? 'text-ink' : 'text-ink-2'
       }`}
     >
@@ -63,9 +66,10 @@ function PlanMenuToggle({
 export function ComposerCard({
   streaming,
   autoFocus,
-  placeholder = 'Message your assistant…',
+  placeholder = 'Ask anything, or hand your assistant a task…',
   disabled = false,
   planAvailable = false,
+  planModeActive = false,
   queueWhenStreaming = false,
   translucent = false,
   draftStorageKey,
@@ -76,6 +80,7 @@ export function ComposerCard({
   onSend,
   onStop,
   onVoice,
+  onUploadAttachment,
   onTextChange,
 }: {
   streaming: boolean
@@ -83,6 +88,7 @@ export function ComposerCard({
   placeholder?: string
   disabled?: boolean
   planAvailable?: boolean
+  planModeActive?: boolean
   queueWhenStreaming?: boolean
   /** let a backdrop (e.g. the welcome particle field) read through the card */
   translucent?: boolean
@@ -97,14 +103,16 @@ export function ComposerCard({
   onSend: (text: string, options?: SendMessageOptions) => void
   onStop?: () => void
   onVoice?: () => void
+  onUploadAttachment?: (file: File) => Promise<Attachment>
   onTextChange?: (text: string) => void
 }) {
-  const [files, setFiles] = useState<File[]>([])
   const [focused, setFocused] = useState(false)
   const [optionsOpen, setOptionsOpen] = useState(false)
   const [planRequested, setPlanRequested] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const reducedMotion = useReducedMotion()
+  const planToggleDisabled = disabled || !planAvailable
+  const showPlanChip = planAvailable && (planRequested || planModeActive)
   const mention = useMentionInput({
     fileRoot,
     disabled,
@@ -112,6 +120,15 @@ export function ComposerCard({
     storage: draftStorage,
     onTextChange,
   })
+  const attachmentDraft = useComposerAttachments({
+    storageKey: draftStorageKey,
+    storage: draftStorage,
+    disabled,
+    onUploadAttachment,
+  })
+  const canQueueWhileStreaming = streaming && queueWhenStreaming
+  const submitDisabled = mention.isEmpty || disabled || attachmentDraft.busy || (streaming && !canQueueWhileStreaming)
+  const showStopButton = streaming && onStop && (!queueWhenStreaming || mention.isEmpty)
 
   // autoFocus lands before React's focus listeners attach; sync the ring state.
   useEffect(() => {
@@ -122,22 +139,17 @@ export function ComposerCard({
     if (!planAvailable) setPlanRequested(false)
   }, [planAvailable])
 
-  const addFiles = useCallback((next: File[]) => {
-    if (disabled || streaming || next.length === 0) return
-    setFiles((current) => [...current, ...next])
-  }, [disabled, streaming])
-
   // Drop intent is page-level: a file dragged anywhere in the window attaches
   // to this composer (the page's only one).
-  const draggingFiles = useWindowFileDrop({ disabled: disabled || streaming, onDrop: addFiles })
+  const draggingFiles = useWindowFileDrop({ disabled, onDrop: attachmentDraft.addFiles })
 
   const togglePlanRequested = () => {
-    if (disabled || streaming || !planAvailable) return
+    if (planToggleDisabled) return
     setPlanRequested((value) => !value)
   }
 
   useEffect(() => {
-    if (disabled || streaming || !planAvailable) return
+    if (planToggleDisabled) return
     const onKeyDown = (event: KeyboardEvent) => {
       if (
         event.defaultPrevented ||
@@ -155,20 +167,21 @@ export function ComposerCard({
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [disabled, planAvailable, streaming])
+  }, [planToggleDisabled])
 
   const submit = () => {
     // Tokens expand on the way out: tagged paths become absolute, skill
     // references pass through for the agent's skill catalog to resolve.
     const trimmed = mention.value().trim()
-    if (!trimmed || disabled || (streaming && (!queueWhenStreaming || files.length > 0))) return
+    if (!trimmed || disabled || attachmentDraft.busy || (streaming && !canQueueWhileStreaming)) return
     onSend(trimmed, {
-      planRequested: !streaming && planAvailable && planRequested,
-      files: streaming ? [] : files,
+      planRequested: planAvailable && planRequested,
+      files: attachmentDraft.files,
+      attachments: attachmentDraft.uploaded,
     })
     if (clearOnSend) {
       mention.reset()
-      setFiles([])
+      attachmentDraft.clearAttachments()
       setPlanRequested(false)
     }
   }
@@ -227,27 +240,33 @@ export function ComposerCard({
           type="file"
           multiple
           className="hidden"
-          disabled={disabled || streaming}
+          disabled={disabled}
           onChange={(e) => {
-            addFiles(Array.from(e.currentTarget.files ?? []))
+            attachmentDraft.addFiles(Array.from(e.currentTarget.files ?? []))
             e.currentTarget.value = ''
           }}
         />
-        {files.length > 0 ? (
+        {attachmentDraft.attachments.length > 0 ? (
           <div className="flex flex-wrap gap-1 px-1.5 pt-0.5">
-            {files.map((file, index) => (
+            {attachmentDraft.attachments.map((attachment) => (
               <div
-                key={`${file.name}-${file.size}-${index}`}
+                key={attachment.localId}
+                title={attachment.error}
                 className="flex max-w-full items-center gap-1.5 rounded-full bg-bg px-2.5 py-1 text-xs text-ink-2"
               >
-                <FileText size={13} className="shrink-0 text-primary" />
-                <span className="max-w-[220px] truncate text-ink">{file.name}</span>
-                <span className="shrink-0 text-ink-3">{formatFileSize(file.size)}</span>
+                <FileText
+                  size={13}
+                  className={`shrink-0 ${attachment.error ? 'text-danger' : 'text-primary'}`}
+                />
+                <span className="max-w-[220px] truncate text-ink">{attachment.name}</span>
+                <span className="shrink-0 text-ink-3">
+                  {attachment.uploading ? 'Uploading' : attachment.error ? 'Failed' : formatFileSize(attachment.size)}
+                </span>
                 <button
                   type="button"
                   className="ml-0.5 rounded-full p-0.5 text-ink-3 transition-colors hover:bg-surface hover:text-ink"
-                  aria-label={`Remove ${file.name}`}
-                  onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}
+                  aria-label={`Remove ${attachment.name}`}
+                  onClick={() => attachmentDraft.removeAttachment(attachment.localId)}
                 >
                   <X size={12} />
                 </button>
@@ -280,7 +299,7 @@ export function ComposerCard({
                   aria-expanded={optionsOpen}
                   aria-label="Composer options"
                   title="Composer options"
-                  disabled={streaming || disabled}
+                  disabled={disabled}
                   onClick={() => setOptionsOpen((value) => !value)}
                 >
                   <Plus
@@ -293,6 +312,7 @@ export function ComposerCard({
               }
             >
               <MenuRow
+                disabled={disabled}
                 onClick={() => {
                   setOptionsOpen(false)
                   fileInputRef.current?.click()
@@ -304,38 +324,47 @@ export function ComposerCard({
                 </span>
               </MenuRow>
               {planAvailable ? (
-                <PlanMenuToggle checked={planRequested} disabled={streaming || disabled} onToggle={togglePlanRequested} />
+                <PlanMenuToggle checked={planRequested} disabled={disabled} onToggle={togglePlanRequested} />
               ) : null}
             </Popover>
             {leftSlot}
             <AnimatePresence initial={false}>
-              {planRequested ? (
+              {showPlanChip ? (
                 <motion.div
                   key="plan-chip"
                   initial={{ opacity: 0, scale: 0.8, filter: 'blur(4px)' }}
                   animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
                   exit={{ opacity: 0, scale: 0.8, filter: 'blur(4px)' }}
                   transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
-                  className="group flex h-8 shrink-0 items-center gap-1 rounded-full pr-2.5 pl-1 text-[13px] font-medium text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+                  title={planRequested ? undefined : 'Plan mode active'}
+                  className={`flex h-8 shrink-0 items-center gap-1 rounded-full pr-2.5 pl-1 text-[13px] font-medium text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink ${
+                    planRequested ? 'group' : ''
+                  }`}
                 >
-                  <IconButton
-                    variant="ghost"
-                    size="xs"
-                    aria-label="Remove plan mode"
-                    title="Remove plan mode"
-                    disabled={streaming || disabled}
-                    className="grid"
-                    onClick={() => setPlanRequested(false)}
-                  >
-                    <ListChecks
-                      size={13}
-                      className="col-start-1 row-start-1 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0"
-                    />
-                    <X
-                      size={13}
-                      className="col-start-1 row-start-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-                    />
-                  </IconButton>
+                  {planRequested ? (
+                    <IconButton
+                      variant="ghost"
+                      size="xs"
+                      aria-label="Remove plan mode"
+                      title="Remove plan mode"
+                      disabled={disabled}
+                      className="grid"
+                      onClick={() => setPlanRequested(false)}
+                    >
+                      <ListChecks
+                        size={13}
+                        className="col-start-1 row-start-1 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0"
+                      />
+                      <X
+                        size={13}
+                        className="col-start-1 row-start-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                      />
+                    </IconButton>
+                  ) : (
+                    <span className="grid size-6 place-items-center" aria-hidden>
+                      <ListChecks size={13} />
+                    </span>
+                  )}
                   <span>Plan</span>
                 </motion.div>
               ) : null}
@@ -354,7 +383,7 @@ export function ComposerCard({
                 <AudioLines size={16} />
               </IconButton>
             ) : null}
-            {streaming && onStop && (mention.isEmpty || !queueWhenStreaming) ? (
+            {showStopButton ? (
               <IconButton
                 variant="primary"
                 size="lg"
@@ -370,7 +399,7 @@ export function ComposerCard({
                 size="lg"
                 aria-label={streaming ? 'Queue message' : 'Send message'}
                 title={streaming ? 'Queue message' : 'Send message'}
-                disabled={mention.isEmpty || disabled || (streaming && (!queueWhenStreaming || files.length > 0))}
+                disabled={submitDisabled}
                 onClick={submit}
               >
                 <ArrowUp size={18} />
@@ -388,6 +417,7 @@ export function Composer({
   disabled,
   placeholder,
   planAvailable,
+  planModeActive,
   queuedPrompts = [],
   steerDisabled,
   draftStorageKey,
@@ -395,6 +425,7 @@ export function Composer({
   onSend,
   onStop,
   onVoice,
+  onUploadAttachment,
   onSteerQueuedPrompt,
   onDeleteQueuedPrompt,
   onEditQueuedPrompt,
@@ -404,7 +435,8 @@ export function Composer({
   disabled?: boolean
   placeholder?: string
   planAvailable?: boolean
-  queuedPrompts?: string[]
+  planModeActive?: boolean
+  queuedPrompts?: QueuedMessage[]
   steerDisabled?: boolean
   draftStorageKey?: string
   /** directory the @-mention picker indexes; undefined disables @ */
@@ -412,6 +444,7 @@ export function Composer({
   onSend: (text: string, options?: SendMessageOptions) => void
   onStop: () => void
   onVoice?: () => void
+  onUploadAttachment?: (file: File) => Promise<Attachment>
   onSteerQueuedPrompt?: (index: number) => void
   onDeleteQueuedPrompt?: (index: number) => void
   onEditQueuedPrompt?: (index: number, text: string) => void
@@ -440,6 +473,7 @@ export function Composer({
         disabled={disabled}
         placeholder={placeholder}
         planAvailable={planAvailable}
+        planModeActive={planModeActive}
         queueWhenStreaming
         draftStorageKey={draftStorageKey}
         draftStorage="local"
@@ -447,6 +481,7 @@ export function Composer({
         onSend={onSend}
         onStop={onStop}
         onVoice={onVoice}
+        onUploadAttachment={onUploadAttachment}
       />
     </>
   )
@@ -492,9 +527,7 @@ export function PlanDecisionCard({
         >
           {pending ? (
             <LoaderCircle size={15} className="shrink-0 animate-spin text-primary" />
-          ) : (
-            <Check size={15} className="shrink-0 text-primary" />
-          )}
+          ) : null}
           {pending ? 'Starting implementation…' : 'Yes, implement this plan'}
         </motion.button>
 

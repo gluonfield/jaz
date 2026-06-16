@@ -38,18 +38,26 @@ func (b *Builder) SkillsPrompt() (string, error) {
 // ACPPrompt builds the prompt extension delivered to ACP agent sessions
 // (codex, claude, grok). Unlike the coordinator prompt it carries no Jaz
 // identity or delegation rules — agents keep their own system prompt and this
-// is appended to it: the user's standing rules (AGENTS.md), the jazmem memory
-// horizons, and the skills catalog.
-func (b *Builder) ACPPrompt() (string, error) {
+// is appended to it: runtime context, the user's standing rules (AGENTS.md),
+// the jazmem memory horizons, and the skills catalog.
+func (b *Builder) ACPPrompt(cwd string) (string, error) {
 	catalog, err := skills.Load(b.root)
 	if err != nil {
 		return "", err
 	}
+	cwd = strings.TrimSpace(cwd)
+	if cwd == "" {
+		cwd = strings.TrimSpace(b.workspace)
+	}
+	if cwd == "" {
+		cwd = "~/.jaz/workspaces/default"
+	}
+	now := time.Now()
 	memoryRoot := b.memoryRoot
 	if b.memoryEnabled != nil && !b.memoryEnabled() {
 		memoryRoot = ""
 	}
-	return platformPrompt(b.root, memoryRoot, catalog.Prompt(), time.Now())
+	return platformPrompt(b.root, cwd, memoryRoot, catalog.Prompt(), now)
 }
 
 func (b *Builder) build(workspace string) (system, skillsPrompt string, err error) {

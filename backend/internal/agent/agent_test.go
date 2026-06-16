@@ -106,6 +106,28 @@ func TestAgentCompleteReturnsFinalResult(t *testing.T) {
 	}
 }
 
+func TestAddUsageAccumulatesCacheWrites(t *testing.T) {
+	usage := addUsage(provider.Usage{
+		InputTokens:           10,
+		CachedInputTokens:     20,
+		CachedWriteTokens:     30,
+		OutputTokens:          40,
+		ReasoningOutputTokens: 5,
+		TotalTokens:           100,
+	}, provider.Usage{
+		InputTokens:           1,
+		CachedInputTokens:     2,
+		CachedWriteTokens:     3,
+		OutputTokens:          4,
+		ReasoningOutputTokens: 6,
+		TotalTokens:           15,
+	})
+	if usage.InputTokens != 11 || usage.CachedInputTokens != 22 || usage.CachedWriteTokens != 33 ||
+		usage.OutputTokens != 44 || usage.ReasoningOutputTokens != 11 || usage.TotalTokens != 115 {
+		t.Fatalf("usage = %#v", usage)
+	}
+}
+
 func TestAgentUsesDefaultReasoningEffort(t *testing.T) {
 	fp := &fakeProvider{}
 	a := &Agent{

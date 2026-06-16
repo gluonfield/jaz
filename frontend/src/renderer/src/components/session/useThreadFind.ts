@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { modalDialogOpen } from '@/lib/dom/modal'
 
 const FIND_HIGHLIGHT = 'jaz-thread-find'
 const ACTIVE_HIGHLIGHT = 'jaz-thread-find-active'
@@ -92,7 +93,17 @@ function paintHighlights(ranges: Range[], activeIndex: number): boolean {
   return true
 }
 
-function scrollRangeIntoView(range: Range): void {
+function scrollRangeIntoView(range: Range, scrollRoot: HTMLElement): void {
+  const rootRect = scrollRoot.getBoundingClientRect()
+  const rangeRect = range.getBoundingClientRect()
+  if (rootRect.height && rangeRect.height) {
+    const top = rangeRect.top - rootRect.top + scrollRoot.scrollTop
+    scrollRoot.scrollTo({
+      top: Math.max(0, top - (scrollRoot.clientHeight - rangeRect.height) / 2),
+    })
+    return
+  }
+
   const parent =
     range.startContainer instanceof Element
       ? range.startContainer
@@ -102,11 +113,7 @@ function scrollRangeIntoView(range: Range): void {
   parent?.scrollIntoView({ block: 'center', inline: 'nearest' })
 }
 
-function modalOpen(): boolean {
-  return Boolean(document.querySelector('[role="dialog"][aria-modal="true"]'))
-}
-
-export function useThreadFind(contentKey: string) {
+export function useThreadFind(contentKey: string, scrollRef: RefObject<HTMLElement | null>) {
   const rootRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const rangesRef = useRef<Range[]>([])
@@ -170,7 +177,7 @@ export function useThreadFind(contentKey: string) {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (modalOpen()) return
+      if (modalDialogOpen()) return
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
         event.preventDefault()
         event.stopPropagation()
@@ -214,13 +221,14 @@ export function useThreadFind(contentKey: string) {
     const index = Math.min(activeIndex, ranges.length - 1)
     const highlighted = paintHighlights(ranges, index)
     const activeRange = ranges[index]
-    scrollRangeIntoView(activeRange)
+    const scrollRoot = scrollRef.current
+    if (scrollRoot) scrollRangeIntoView(activeRange, scrollRoot)
     if (!highlighted) {
       const selection = window.getSelection()
       selection?.removeAllRanges()
       selection?.addRange(activeRange)
     }
-  }, [activeIndex, open, rangeVersion, trimmedQuery])
+  }, [activeIndex, open, rangeVersion, scrollRef, trimmedQuery])
 
   useEffect(() => clearHighlights, [])
 

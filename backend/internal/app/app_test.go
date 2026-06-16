@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/wins/jaz/backend/internal/provider"
+	openaiprovider "github.com/wins/jaz/backend/internal/provider/openai"
+	"github.com/wins/jaz/backend/internal/runtimeenv"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -40,7 +43,7 @@ func TestNewToolRegistryAllowsNativeApplyPatchAbsolutePaths(t *testing.T) {
 	}
 }
 
-func TestNewRuntimeLayoutEnsuresDirsAndManagedSkills(t *testing.T) {
+func TestNewRuntimeLayoutEnsuresDirsAndSkills(t *testing.T) {
 	root := t.TempDir()
 
 	layout, err := NewRuntimeLayout(Config{Root: root})
@@ -48,13 +51,19 @@ func TestNewRuntimeLayoutEnsuresDirsAndManagedSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, dir := range []string{layout.Root, layout.Sessions, layout.DefaultWorkspace, layout.UserSkills, layout.ManagedSkills} {
+	for _, dir := range []string{layout.Root, layout.Sessions, layout.DefaultWorkspace, layout.UserSkills} {
 		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 			t.Fatalf("runtime dir %s missing: %v", dir, err)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(layout.ManagedSkills, "jazmem", "SKILL.md")); err != nil {
-		t.Fatalf("managed skill missing: %v", err)
+	if _, err := os.Stat(filepath.Join(layout.UserSkills, "jazmem", "SKILL.md")); err != nil {
+		t.Fatalf("default skill missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(layout.UserSkills, "web-artifacts-builder", "scripts", "bundle-artifact.sh")); err != nil {
+		t.Fatalf("web artifacts builder skill missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(layout.Root, "system", "skills")); !os.IsNotExist(err) {
+		t.Fatalf("system skills dir should not exist, err = %v", err)
 	}
 }
 
@@ -94,5 +103,36 @@ func TestNewMemoryRespectsExplicitMemoryConfig(t *testing.T) {
 	}
 	if memory.DBPath() != dbPath {
 		t.Fatalf("memory db = %q, want %q", memory.DBPath(), dbPath)
+	}
+}
+
+func TestReloadableProviderReadsRuntimeEnv(t *testing.T) {
+	t.Setenv("OPENROUTER_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	root := t.TempDir()
+
+	loaded, err := NewProvider(Config{Root: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloadable := loaded.(*ReloadableProvider)
+	router := reloadable.currentProvider().(*provider.Router)
+	if _, ok := router.Provider[provider.ProviderOpenRouter].(provider.UnavailableProvider); !ok {
+		t.Fatalf("openrouter should start unavailable: %#v", router.Provider[provider.ProviderOpenRouter])
+	}
+
+	if err := runtimeenv.Save(runtimeenv.Path(root), map[string]string{"OPENROUTER_API_KEY": "runtime-key"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := reloadable.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	router = reloadable.currentProvider().(*provider.Router)
+	openRouter, ok := router.Provider[provider.ProviderOpenRouter].(*openaiprovider.Provider)
+	if !ok {
+		t.Fatalf("openrouter provider = %T", router.Provider[provider.ProviderOpenRouter])
+	}
+	if openRouter.APIKey != "runtime-key" {
+		t.Fatalf("openrouter key = %q", openRouter.APIKey)
 	}
 }

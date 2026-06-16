@@ -1,14 +1,16 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { NewSessionHome } from '@/components/home/NewSessionHome'
 import { ModelSelect, ProjectPicker, RuntimeSelect } from '@/components/session/NewThreadControls'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { useToast } from '@/components/ui/toast'
-import { acpAgentsQuery, createSession, projectsQuery } from '@/lib/api/sessions'
+import { createSession, projectsQuery } from '@/lib/api/sessions'
 import { agentSettingsQuery } from '@/lib/api/settings'
+import { enabledACPAgents, configuredNativeProviders, effectiveNativeProvider } from '@/lib/agentRuntimes'
 import { acpAgentModelSuggestions, OPENAI_MODELS, openRouterModelsQuery } from '@/lib/models'
 import { setPendingMessage, setPendingVoice } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
+import { acpReasoningEffortOptions, REASONING_EFFORT_OPTIONS } from '@/lib/reasoningEfforts'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { useTheme } from '@/lib/theme'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -20,7 +22,6 @@ type NewSearch = {
 const NEW_SESSION_AGENT_KEY = 'jaz.newSession.agent'
 const NEW_SESSION_DIRECTORY_KEY = 'jaz.newSession.directory'
 const NEW_SESSION_DRAFT_KEY = 'jaz.newSession.prompt'
-const EMPTY_AGENTS: string[] = []
 
 function storedString(key: string): string {
   return localStorage.getItem(key) ?? ''
@@ -56,9 +57,13 @@ function NewSessionPage() {
   const [providerOverride, setProviderOverride] = useState<string | null>(null)
   const [modelOverride, setModelOverride] = useState<string | null>(null)
   const [effortOverride, setEffortOverride] = useState<string | null>(null)
-  const agentsQuery = useQuery(acpAgentsQuery)
-  const agents = agentsQuery.data ?? EMPTY_AGENTS
-  const { data: agentSettings } = useQuery(agentSettingsQuery)
+  const settingsQuery = useQuery(agentSettingsQuery)
+  const agentSettings = settingsQuery.data
+  const agents = useMemo(() => enabledACPAgents(agentSettings), [agentSettings])
+  const nativeProviders = useMemo(() => configuredNativeProviders(agentSettings), [agentSettings])
+  const nativeAvailable = nativeProviders.length > 0
+  const runtimeReady = settingsQuery.isSuccess
+  const runtimeAvailable = runtimeReady && (nativeAvailable || agents.length > 0)
   const projects = useQuery(projectsQuery)
   // PixelField samples the palette at mount; remount it when the theme flips.
   const { resolved } = useTheme()
@@ -79,12 +84,16 @@ function NewSessionPage() {
   }, [directory])
 
   useEffect(() => {
-    if (!agentsQuery.isSuccess || runtime === 'native' || agents.includes(runtime)) return
-    setRuntime('native')
+    if (!runtimeReady) return
+    const valid = runtime === 'native' ? nativeAvailable : agents.includes(runtime)
+    if (valid) return
+    const next = nativeAvailable ? 'native' : (agents[0] ?? '')
+    if (next === runtime) return
+    setRuntime(next)
     setProviderOverride(null)
     setModelOverride(null)
     setEffortOverride(null)
-  }, [agents, agentsQuery.isSuccess, runtime])
+  }, [agents, nativeAvailable, runtime, runtimeReady])
 
   useEffect(() => {
     if (!directory) {
@@ -101,11 +110,11 @@ function NewSessionPage() {
 
   const isNative = runtime === 'native'
   const defaultProvider = agentSettings?.native.model_provider ?? ''
-  const provider = providerOverride ?? defaultProvider
+  const provider = isNative ? effectiveNativeProvider(agentSettings, providerOverride) : ''
   const defaultModel = isNative
     ? provider === defaultProvider
       ? (agentSettings?.native.model ?? '')
-      : (agentSettings?.providers.find((p) => p.id === provider)?.default_model ?? '')
+      : (nativeProviders.find((p) => p.id === provider)?.default_model ?? '')
     : (agentSettings?.acp[runtime]?.model ?? '')
   const model = modelOverride ?? defaultModel
   // The backend applies the native settings effort whatever the provider, and
@@ -127,6 +136,10 @@ function NewSessionPage() {
     : acpAgentModelSuggestions(runtime)
 
   const startThread = async (title: string | undefined, prepare: (sessionId: string) => void) => {
+    if (!runtimeAvailable) {
+      toast('Connect an agent in Settings before starting a session.', 'danger')
+      return
+    }
     setCreating(true)
     try {
       const session = await createSession(
@@ -172,10 +185,14 @@ function NewSessionPage() {
 
   const composerControls = (
     <>
-      {agents.length > 0 ? (
+      {runtimeReady && !runtimeAvailable ? (
+        <span className="px-1.5 text-[13px] text-ink-3">Connect an agent in Settings</span>
+      ) : null}
+      {runtimeAvailable && agents.length > 0 ? (
         <RuntimeSelect
           value={runtime}
           agents={agents}
+          nativeAvailable={nativeAvailable}
           disabled={creating}
           onChange={(next) => {
             setRuntime(next)
@@ -185,33 +202,36 @@ function NewSessionPage() {
           }}
         />
       ) : null}
-      <ModelSelect
-        value={model}
-        suggestions={modelSuggestions}
-        loading={openRouterModels.isLoading}
-        disabled={creating}
-        onChange={setModelOverride}
-        providers={
-          isNative
-            ? (agentSettings?.providers ?? [])
-                .filter((p) => p.implemented)
-                .map((p) => ({ value: p.id, label: p.label }))
-            : undefined
-        }
-        provider={isNative ? provider : undefined}
-        onProviderChange={
-          isNative
-            ? (next) => {
-                setProviderOverride(next)
-                setModelOverride(null)
-                setEffortOverride(null)
-              }
-            : undefined
-        }
-        effort={reasoningEffort}
-        // Default clears the override, falling back to the settings effort.
-        onEffortChange={(next) => setEffortOverride(next === '' ? null : next)}
-      />
+      {runtimeAvailable ? (
+        <ModelSelect
+          value={model}
+          suggestions={modelSuggestions}
+          loading={openRouterModels.isLoading}
+          disabled={creating}
+          onChange={setModelOverride}
+          providers={
+            isNative
+              ? nativeProviders.map((p) => ({ value: p.id, label: p.label }))
+              : undefined
+          }
+          provider={isNative ? provider : undefined}
+          onProviderChange={
+            isNative
+              ? (next) => {
+                  setProviderOverride(next)
+                  setModelOverride(null)
+                  setEffortOverride(null)
+                }
+              : undefined
+          }
+          effort={reasoningEffort}
+          effortOptions={
+            isNative ? REASONING_EFFORT_OPTIONS : acpReasoningEffortOptions(agentSettings, runtime)
+          }
+          // Default clears the override, falling back to the settings effort.
+          onEffortChange={(next) => setEffortOverride(next === '' ? null : next)}
+        />
+      ) : null}
       <ProjectPicker
         value={directory}
         disabled={creating}
@@ -248,6 +268,7 @@ function NewSessionPage() {
       themeKey={resolved}
       calm={composing || creating}
       creating={creating}
+      disabled={!runtimeAvailable}
       leftSlot={composerControls}
       draftStorageKey={NEW_SESSION_DRAFT_KEY}
       // Tokens freeze their absolute expansion at insert time, so re-picking
@@ -256,7 +277,7 @@ function NewSessionPage() {
       fileRoot={directory}
       onDraftActivity={setComposing}
       onSend={handleSend}
-      onVoice={runtime === 'native' ? handleVoice : undefined}
+      onVoice={runtime === 'native' && nativeAvailable ? handleVoice : undefined}
     />
   )
 }

@@ -1,7 +1,6 @@
 package settings
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -37,37 +36,6 @@ func TestParseCommandLineRejectsUnterminatedQuote(t *testing.T) {
 	_, _, err := ParseCommandLine(`/opt/jaz/codex-acp -c 'sandbox_mode="danger-full-access"`)
 	if err == nil || !strings.Contains(err.Error(), "unterminated") {
 		t.Fatalf("err = %v, want unterminated quote", err)
-	}
-}
-
-func TestEnsureAgentDefaultsReplacesLegacyCodexDefaultCommand(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	seed := testAgentDefaultsSeed()
-	old := seed
-	old.ACP = map[string]ACPAgentDefaults{
-		"codex": {
-			Enabled:         true,
-			Command:         legacyCodexACPCommand,
-			Model:           "gpt-5.5",
-			ReasoningEffort: "medium",
-		},
-	}
-	if _, err := SaveAgentDefaults(store, old); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := EnsureAgentDefaults(store, seed); err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadAgentDefaults(store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loaded.ACP["codex"].Command != seed.ACP["codex"].Command {
-		t.Fatalf("codex command = %q", loaded.ACP["codex"].Command)
 	}
 }
 
@@ -133,83 +101,84 @@ func TestEnsureAgentDefaultsUpgradesLegacyGrokCommand(t *testing.T) {
 	}
 }
 
-func TestEnsureAgentDefaultsUpgradesPreviousClaudeCommands(t *testing.T) {
-	for _, legacy := range legacyClaudeCodeCommands {
-		store, err := jsonstore.New(t.TempDir())
-		if err != nil {
-			t.Fatal(err)
-		}
-		seed := testAgentDefaultsSeed()
-		old := seed
-		old.ACP = map[string]ACPAgentDefaults{
-			"claude": {
-				Enabled: true,
-				Command: legacy,
-				Model:   "default",
-			},
-		}
-		data, err := json.Marshal(old)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := store.SaveSetting(AgentSettingsNamespace, AgentDefaultsKey, data); err != nil {
-			t.Fatal(err)
-		}
+func TestNormalizeAgentDefaultsAllowsClaudeOnlyReasoningEffort(t *testing.T) {
+	for _, effort := range []string{"max", "ultracode"} {
+		input := testAgentDefaultsSeed()
+		claude := input.ACP["claude"]
+		claude.ReasoningEffort = effort
+		input.ACP["claude"] = claude
 
-		if err := EnsureAgentDefaults(store, seed); err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadAgentDefaults(store)
+		normalized, err := NormalizeAgentDefaults(input, acp.BuiltinAgents())
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("NormalizeAgentDefaults(%q) error: %v", effort, err)
 		}
-		if loaded.ACP["claude"].Command != seed.ACP["claude"].Command {
-			t.Fatalf("claude command = %q, want upgraded from %q", loaded.ACP["claude"].Command, legacy)
+		if normalized.ACP["claude"].ReasoningEffort != effort {
+			t.Fatalf("claude effort = %q, want %q", normalized.ACP["claude"].ReasoningEffort, effort)
 		}
 	}
 }
 
-func TestEnsureAgentDefaultsMigratesLegacyClaudeCodeModel(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	seed := testAgentDefaultsSeed()
-	legacyClaudeName := strings.ReplaceAll("claude-code", "-", "_")
-	old := seed
-	old.ACP = map[string]ACPAgentDefaults{
-		legacyClaudeName: {
-			Enabled:         true,
-			Command:         legacyClaudeCodeCommands[0],
-			Model:           legacyClaudeCodeModel,
-			ReasoningEffort: "xhigh",
-		},
-	}
-	data, err := json.Marshal(old)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.SaveSetting(AgentSettingsNamespace, AgentDefaultsKey, data); err != nil {
-		t.Fatal(err)
-	}
+func TestNormalizeAgentDefaultsRejectsClaudeOnlyReasoningForOtherACPAgents(t *testing.T) {
+	input := testAgentDefaultsSeed()
+	codex := input.ACP["codex"]
+	codex.ReasoningEffort = "ultracode"
+	input.ACP["codex"] = codex
 
-	if err := EnsureAgentDefaults(store, seed); err != nil {
-		t.Fatal(err)
+	if _, err := NormalizeAgentDefaults(input, acp.BuiltinAgents()); err == nil {
+		t.Fatal("expected codex ultracode effort to be rejected")
 	}
-	loaded, err := LoadAgentDefaults(store)
+}
+
+func TestNormalizeAgentDefaultsPreservesACPAuthProfile(t *testing.T) {
+	input := testAgentDefaultsSeed()
+	codex := input.ACP["codex"]
+	codex.Auth = acp.AgentAuthConfig{Mode: acp.AuthModeExistingCLI, Path: "~/custom-codex"}
+	input.ACP["codex"] = codex
+
+	normalized, err := NormalizeAgentDefaults(input, acp.BuiltinAgents())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.ACP["claude"].Model != "default" {
-		t.Fatalf("claude model = %q", loaded.ACP["claude"].Model)
+	if normalized.ACP["codex"].Auth.Mode != acp.AuthModeExistingCLI {
+		t.Fatalf("auth = %#v", normalized.ACP["codex"].Auth)
 	}
-	if loaded.ACP["claude"].Command != seed.ACP["claude"].Command {
-		t.Fatalf("claude command = %q", loaded.ACP["claude"].Command)
+	if normalized.ACP["codex"].Auth.Path != "~/custom-codex" {
+		t.Fatalf("auth path = %q", normalized.ACP["codex"].Auth.Path)
 	}
-	if loaded.ACP["claude"].ReasoningEffort != "xhigh" {
-		t.Fatalf("claude effort = %q", loaded.ACP["claude"].ReasoningEffort)
+}
+
+func TestNormalizeAgentDefaultsRejectsGrokPathBearingAuth(t *testing.T) {
+	for _, auth := range []acp.AgentAuthConfig{
+		{Mode: acp.AuthModeJazProfile},
+		{Mode: acp.AuthModeExistingCLI, Path: "~/custom-grok"},
+	} {
+		input := testAgentDefaultsSeed()
+		grok := input.ACP["grok"]
+		grok.Auth = auth
+		input.ACP["grok"] = grok
+
+		if _, err := NormalizeAgentDefaults(input, acp.BuiltinAgents()); err == nil {
+			t.Fatalf("expected grok auth %#v to be rejected", auth)
+		}
 	}
-	if _, ok := loaded.ACP[legacyClaudeName]; ok {
-		t.Fatalf("legacy claude key was not migrated: %#v", loaded.ACP)
+}
+
+func TestMergeAgentDefaultsDropsLegacyGrokJazProfile(t *testing.T) {
+	seed := testAgentDefaultsSeed()
+	stored := AgentDefaults{
+		Native: seed.Native,
+		ACP:    map[string]ACPAgentDefaults{},
+	}
+	for name, agent := range seed.ACP {
+		stored.ACP[name] = agent
+	}
+	grok := stored.ACP["grok"]
+	grok.Auth = acp.AgentAuthConfig{Mode: acp.AuthModeJazProfile, Path: "~/fake-grok"}
+	stored.ACP["grok"] = grok
+
+	merged := MergeAgentDefaults(stored, seed, agentNames(seed))
+
+	if merged.ACP["grok"].Auth.Mode != acp.AuthModeAuto || merged.ACP["grok"].Auth.Path != "" {
+		t.Fatalf("grok auth = %#v, want auto without path", merged.ACP["grok"].Auth)
 	}
 }

@@ -23,8 +23,13 @@ import (
 // staticPrompt is a fixed acp.SystemPromptSource for tests.
 type staticPrompt string
 
-func (s staticPrompt) ACPPrompt() (string, error)    { return string(s), nil }
-func (s staticPrompt) SkillsPrompt() (string, error) { return string(s), nil }
+func (s staticPrompt) ACPPrompt(string) (string, error) { return string(s), nil }
+func (s staticPrompt) SkillsPrompt() (string, error)    { return string(s), nil }
+
+type cwdPrompt struct{}
+
+func (cwdPrompt) ACPPrompt(cwd string) (string, error) { return "cwd: " + cwd, nil }
+func (cwdPrompt) SkillsPrompt() (string, error)        { return "", nil }
 
 func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
@@ -211,6 +216,131 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	}
 }
 
+func TestManagerPassesResolvedCwdToACPPrompt(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	want := filepath.Join(workspace, "project")
+	manager := acp.NewManager(store, acp.Config{
+		Root:         t.TempDir(),
+		Workspace:    workspace,
+		SystemPrompt: cwdPrompt{},
+		Agents: map[string]acp.AgentConfig{
+			"fake": {
+				Command: os.Args[0],
+				Args:    []string{"-test.run=TestFakeACPAgentProcess"},
+				Env: map[string]string{
+					"JAZ_FAKE_ACP_AGENT":         "1",
+					"JAZ_FAKE_ACP_SYSTEM_PROMPT": "cwd: " + want,
+				},
+			},
+		},
+	}, log.New(io.Discard))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "cwd-prompt", Directory: "project"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	if spawned.Cwd != want {
+		t.Fatalf("cwd = %q, want %q", spawned.Cwd, want)
+	}
+}
+
+func TestManagerSendStartsStoredACPSession(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	manager := acp.NewManager(store, acp.Config{
+		Root:      t.TempDir(),
+		Workspace: workspace,
+		Agents: map[string]acp.AgentConfig{
+			"fake": {
+				Command: os.Args[0],
+				Args:    []string{"-test.run=TestFakeACPAgentProcess"},
+				Env:     map[string]string{"JAZ_FAKE_ACP_AGENT": "1"},
+			},
+		},
+	}, log.New(io.Discard))
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	session, err := manager.CreateSession(ctx, acp.SpawnRequest{
+		ACPAgent:  "fake",
+		Slug:      "fake-stored",
+		Directory: ".",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.RuntimeRef == nil || session.RuntimeRef.SessionID != "" || session.RuntimeRef.Cwd != workspace {
+		t.Fatalf("stored runtime ref = %#v", session.RuntimeRef)
+	}
+	status, err := manager.Status(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != "not_running" {
+		t.Fatalf("stored status = %s, want not_running", status.State)
+	}
+
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: session.ID, Message: "say hello", Completion: acp.CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
+	job, err := manager.Wait(ctx, acp.WaitRequest{Session: session.ID, Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), session.ID) }()
+	if job.ACPSession == "" || job.State != acp.StateIdle {
+		t.Fatalf("job = %#v", job)
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.RuntimeRef == nil || loaded.RuntimeRef.SessionID == "" {
+		t.Fatalf("loaded runtime ref = %#v", loaded.RuntimeRef)
+	}
+}
+
+func TestManagerIncludesAgentStderrWhenInitializeConnectionCloses(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := acp.NewManager(store, acp.Config{
+		Root:      t.TempDir(),
+		Workspace: t.TempDir(),
+		Agents: map[string]acp.AgentConfig{
+			"fake": {
+				Command: os.Args[0],
+				Args:    []string{"-test.run=TestFakeACPAgentProcess"},
+				Env: map[string]string{
+					"JAZ_FAKE_ACP_AGENT":            "1",
+					"JAZ_FAKE_ACP_EXIT_BEFORE_INIT": "claude: command not found",
+				},
+			},
+		},
+	}, log.New(io.Discard))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	_, err = manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-crash"})
+	if err == nil {
+		t.Fatal("expected spawn to fail")
+	}
+	if !strings.Contains(err.Error(), "initialize acp agent") || !strings.Contains(err.Error(), "claude: command not found") {
+		t.Fatalf("error = %q", err)
+	}
+}
+
 func TestManagerUsesStoredACPCommandArgs(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -388,12 +518,11 @@ func TestManagerUsesClaudeEffortConfigOption(t *testing.T) {
 	}
 }
 
-func TestManagerCanonicalizesClaudeAliasBeforeSettingModel(t *testing.T) {
+func TestManagerUsesClaudeMaxEffortConfigOption(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	model := "claude-fable-5[1m]"
 	manager := acp.NewManager(store, acp.Config{
 		Root:      t.TempDir(),
 		Workspace: t.TempDir(),
@@ -401,12 +530,55 @@ func TestManagerCanonicalizesClaudeAliasBeforeSettingModel(t *testing.T) {
 			"claude": {
 				Command:         os.Args[0],
 				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
-				Model:           model,
-				ReasoningEffort: "xhigh",
+				Model:           "default",
+				ReasoningEffort: "max",
 				Env: map[string]string{
 					"JAZ_FAKE_ACP_AGENT":               "1",
-					"JAZ_FAKE_ACP_MODELS":              "default," + model,
-					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG": model,
+					"JAZ_FAKE_ACP_MODELS":              "default,sonnet",
+					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG": "default",
+					"JAZ_FAKE_ACP_SET_CONFIG":          "1",
+					"JAZ_FAKE_ACP_EXPECT_CONFIG_ID":    "effort",
+					"JAZ_FAKE_ACP_EXPECT_EFFORT":       "max",
+				},
+			},
+		},
+	}, log.New(io.Discard))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "claude", Slug: "claude-max-effort"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	session, err := store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.ReasoningEffort != "max" {
+		t.Fatalf("claude effort = %q, want max", session.ReasoningEffort)
+	}
+}
+
+func TestManagerUsesClaudeUltracodeSessionMeta(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := acp.NewManager(store, acp.Config{
+		Root:      t.TempDir(),
+		Workspace: t.TempDir(),
+		Agents: map[string]acp.AgentConfig{
+			"claude": {
+				Command:         os.Args[0],
+				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
+				Model:           "default",
+				ReasoningEffort: "ultracode",
+				Env: map[string]string{
+					"JAZ_FAKE_ACP_AGENT":               "1",
+					"JAZ_FAKE_ACP_MODELS":              "default,sonnet",
+					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG": "default",
+					"JAZ_FAKE_ACP_EXPECT_ULTRACODE":    "1",
 					"JAZ_FAKE_ACP_SET_CONFIG":          "1",
 					"JAZ_FAKE_ACP_EXPECT_CONFIG_ID":    "effort",
 					"JAZ_FAKE_ACP_EXPECT_EFFORT":       "xhigh",
@@ -417,8 +589,7 @@ func TestManagerCanonicalizesClaudeAliasBeforeSettingModel(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	legacyClaudeName := strings.ReplaceAll("claude-code", "-", "_")
-	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: legacyClaudeName, Slug: "claude-fable"})
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "claude", Slug: "claude-ultracode"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -427,8 +598,8 @@ func TestManagerCanonicalizesClaudeAliasBeforeSettingModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if spawned.ACPAgent != "claude" || session.ModelProvider != "claude" || session.RuntimeRef.Agent != "claude" || session.Model != model {
-		t.Fatalf("unexpected session metadata spawned=%#v session=%#v", spawned, session)
+	if session.ReasoningEffort != "ultracode" {
+		t.Fatalf("claude effort = %q, want ultracode", session.ReasoningEffort)
 	}
 }
 
@@ -851,6 +1022,53 @@ func TestManagerResumesStoredSessionAfterRestart(t *testing.T) {
 	}
 }
 
+func TestManagerResumesStoredSessionAfterServeError(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	manager := newFakeAgentManager(t, store, root, map[string]string{
+		"JAZ_FAKE_ACP_LOAD": "1",
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-serve-error"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "break transport", Completion: acp.CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
+	failed, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.State != acp.StateFailed || !strings.Contains(failed.Error, "invalid character") {
+		t.Fatalf("failed turn state=%s error=%q", failed.State, failed.Error)
+	}
+
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "after transport failure", Completion: acp.CompletionInline}); err != nil {
+		t.Fatalf("send after serve error: %v", err)
+	}
+	job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	if job.State != acp.StateIdle || job.Assistant != "hello from fake agent" {
+		t.Fatalf("resumed turn state=%s assistant=%q error=%q", job.State, job.Assistant, job.Error)
+	}
+	messages, err := store.LoadMessages(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 2 || provider.MessageContent(messages[1]) != "after transport failure" {
+		t.Fatalf("unexpected messages %#v", messages)
+	}
+}
+
 func TestCancelStopsRunningTurn(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -1094,6 +1312,10 @@ func TestSpawnSessionDirectories(t *testing.T) {
 	if failed.Status != storage.StatusError || failed.Error == "" {
 		t.Fatalf("spawn failure not recorded on session: %#v", failed)
 	}
+
+	if _, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "branch-without-worktree", Directory: "ink-backend", Branch: "main"}); err == nil {
+		t.Fatal("expected branch without worktree to fail")
+	}
 }
 
 func TestSpawnWorktree(t *testing.T) {
@@ -1110,7 +1332,7 @@ func TestSpawnWorktree(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{
-		{"init"},
+		{"init", "-b", "main"},
 		{"config", "user.email", "test@jaz"},
 		{"config", "user.name", "jaz"},
 		{"commit", "--allow-empty", "-m", "init"},
@@ -1120,14 +1342,28 @@ func TestSpawnWorktree(t *testing.T) {
 			t.Fatalf("git %v: %v: %s", args, err, out)
 		}
 	}
+	for _, args := range [][]string{
+		{"switch", "-q", "-c", "feature"},
+		{"commit", "--allow-empty", "-m", "feature"},
+		{"switch", "-q", "main"},
+	} {
+		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
 	manager := acp.NewManager(store, acp.Config{
-		Root:      t.TempDir(),
-		Workspace: workspace,
+		Root:         t.TempDir(),
+		Workspace:    workspace,
+		SystemPrompt: cwdPrompt{},
 		Agents: map[string]acp.AgentConfig{
 			"fake": {
 				Command: os.Args[0],
 				Args:    []string{"-test.run=TestFakeACPAgentProcess"},
-				Env:     map[string]string{"JAZ_FAKE_ACP_AGENT": "1"},
+				Env: map[string]string{
+					"JAZ_FAKE_ACP_AGENT":                "1",
+					"JAZ_FAKE_ACP_EXPECT_CWD_IN_PROMPT": "1",
+				},
 			},
 		},
 	}, log.New(io.Discard))
@@ -1154,12 +1390,62 @@ func TestSpawnWorktree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if session.RuntimeRef == nil || session.RuntimeRef.Cwd != want || session.RuntimeRef.ProjectPath != repo {
-		t.Fatalf("worktree runtime ref = %#v, want cwd %q project %q", session.RuntimeRef, want, repo)
+	wantRepo, err := filepath.EvalSymlinks(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.RuntimeRef == nil || session.RuntimeRef.Cwd != want || session.RuntimeRef.ProjectPath != wantRepo {
+		t.Fatalf("worktree runtime ref = %#v, want cwd %q project %q", session.RuntimeRef, want, wantRepo)
+	}
+
+	branchSpawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "wt-feature", Directory: "ink-backend", Worktree: true, Branch: "feature"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), branchSpawned.SessionID) }()
+	branchBase, err := exec.Command("git", "-C", branchSpawned.Cwd, "merge-base", "HEAD", "feature").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	featureHead, err := exec.Command("git", "-C", branchSpawned.Cwd, "rev-parse", "feature").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(branchBase)) != strings.TrimSpace(string(featureHead)) {
+		t.Fatalf("branch worktree did not start from feature")
 	}
 
 	// Worktree without a repository directory is an explicit error.
 	if _, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "wt-bad", Directory: "not-a-repo", Worktree: true}); err == nil {
 		t.Fatal("expected worktree on plain directory to fail")
+	}
+
+	for _, args := range [][]string{
+		{"init"},
+		{"config", "user.email", "test@jaz"},
+		{"config", "user.name", "jaz"},
+		{"commit", "--allow-empty", "-m", "init"},
+	} {
+		cmd := exec.Command("git", append([]string{"-C", workspace}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git workspace %v: %v: %s", args, err, out)
+		}
+	}
+	rootSpawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "wt-root", Directory: ".", Worktree: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), rootSpawned.SessionID) }()
+	rootWant := filepath.Join(workspace, ".worktrees", rootSpawned.Slug)
+	session, err = store.LoadSession(rootSpawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantWorkspace, err := filepath.EvalSymlinks(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.RuntimeRef == nil || session.RuntimeRef.Cwd != rootWant || session.RuntimeRef.ProjectPath != wantWorkspace {
+		t.Fatalf("root worktree runtime ref = %#v, want cwd %q project %q", session.RuntimeRef, rootWant, wantWorkspace)
 	}
 }

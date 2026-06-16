@@ -1,47 +1,51 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, Save, Terminal } from 'lucide-react'
+import { CheckCircle2, ChevronDown, KeyRound, LoaderCircle, LogIn, Save, Terminal } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { REASONING_EFFORT_OPTIONS } from '@/components/loops/ReasoningEffortSelect'
+import { AuthLoginStatus } from '@/components/acp/AuthLoginStatus'
 import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 import { ModelCombobox } from '@/components/ui/ModelCombobox'
+import { Segmented } from '@/components/ui/Segmented'
 import { Select } from '@/components/ui/Select'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
-import { agentLabel } from '@/lib/agentLabel'
-import { agentSettingsQuery, updateAgentSettings } from '@/lib/api/settings'
-import type { AgentSettings as AgentSettingsData } from '@/lib/api/types'
+import { agentLabel, authProviderLabel } from '@/lib/agentLabel'
+import {
+  agentSettingsQuery,
+  cloneAgentSettings,
+  disconnectACPAuth,
+  startACPAuthLogin,
+  updateAgentSettings,
+} from '@/lib/api/settings'
+import { useACPLoginPolling } from '@/lib/hooks/useACPLoginPolling'
+import type { ACPAgentAuthStatus, ACPAuthLogin, AgentSettings as AgentSettingsData } from '@/lib/api/types'
 import { acpAgentModelSuggestions, OPENAI_MODELS, openRouterModelsQuery } from '@/lib/models'
 import { keys } from '@/lib/query/keys'
+import { acpReasoningEffortOptions, REASONING_EFFORT_OPTIONS } from '@/lib/reasoningEfforts'
 
 const inputClass =
   'h-7 w-full rounded-full bg-ink/10 px-3 text-[12px] text-ink outline-none transition duration-150 placeholder:text-ink-3 focus:bg-ink/15 focus:ring-1 focus:ring-ink/25 disabled:opacity-50'
 
 const rowControlClass = 'w-full md:w-[320px]'
+type ACPAuthDraft = AgentSettingsData['acp'][string]['auth']
 
-// Same efforts everywhere; here '' means "no effort configured" rather than
-// "inherit the default", hence the relabel.
-const reasoningOptions = REASONING_EFFORT_OPTIONS.map((option) =>
-  option.value === '' ? { ...option, label: 'None' } : option,
-)
-
-function cloneSettings(settings: AgentSettingsData): AgentSettingsData {
-  return {
-    native: { ...settings.native },
-    providers: [...(settings.providers ?? [])],
-    acp: Object.fromEntries(
-      Object.entries(settings.acp).map(([agent, value]) => [
-        agent,
-        { ...value },
-      ]),
-    ),
-    agents: [...settings.agents],
-  }
-}
+// Here '' means "no effort configured" rather than "inherit the default".
+const settingsReasoningOptions = (options = REASONING_EFFORT_OPTIONS) =>
+  options.map((option) => (option.value === '' ? { ...option, label: 'None' } : option))
 
 function settingsKey(settings: AgentSettingsData | null): string {
   return settings ? JSON.stringify(settings) : ''
+}
+
+// Returns a clone with one ACP agent turned on — used when a sign-in or API key
+// connects an agent, so it becomes a usable runtime without a separate toggle.
+function withEnabledAgent(settings: AgentSettingsData, agent: string): AgentSettingsData {
+  const next = cloneAgentSettings(settings)
+  const current = next.acp[agent]
+  if (current) next.acp[agent] = { ...current, enabled: true }
+  return next
 }
 
 function hasEnabledACPWithoutCommand(settings: AgentSettingsData): boolean {
@@ -56,15 +60,19 @@ export function AgentSettings() {
   const toast = useToast()
   const settings = useQuery(agentSettingsQuery)
   const [draft, setDraft] = useState<AgentSettingsData | null>(null)
+  // A freshly pasted native provider key, keyed by provider id. Write-only —
+  // the backend never returns the value, so it lives outside the draft.
+  const [providerKeys, setProviderKeys] = useState<Record<string, string>>({})
 
   useEffect(() => {
-    if (settings.data) setDraft(cloneSettings(settings.data))
+    if (settings.data) setDraft(cloneAgentSettings(settings.data))
   }, [settings.data])
 
   const save = useMutation({
-    mutationFn: (input: AgentSettingsData) => updateAgentSettings(input),
+    mutationFn: (input: AgentSettingsData) => updateAgentSettings(input, providerKeys),
     onSuccess: (saved) => {
-      setDraft(cloneSettings(saved))
+      setDraft(cloneAgentSettings(saved))
+      setProviderKeys({})
       toast('Saved agent settings')
     },
     onError: (error: Error) => toast(`Couldn't save agent settings: ${error.message}`, 'danger'),
@@ -72,6 +80,39 @@ export function AgentSettings() {
       queryClient.invalidateQueries({ queryKey: keys.agentSettings })
       queryClient.invalidateQueries({ queryKey: keys.acpAgents })
     },
+  })
+
+  // A finished sign-in connects the agent: turn it on and persist so it works
+  // right away (matching onboarding, no extra Enabled toggle). The hook reads
+  // this through a ref, so `draft`/`save` are always current here.
+  const { loginJobs, trackLoginJob, forgetLoginJob } = useACPLoginPolling((job) => {
+    if (job.status === 'succeeded' && draft?.acp[job.agent] && !draft.acp[job.agent].enabled) {
+      save.mutate(withEnabledAgent(draft, job.agent))
+    } else {
+      queryClient.invalidateQueries({ queryKey: keys.agentSettings })
+    }
+    queryClient.invalidateQueries({ queryKey: keys.acpAgents })
+  })
+
+  const login = useMutation({
+    mutationFn: ({ agent, auth }: { agent: string; auth?: AgentSettingsData['acp'][string]['auth'] }) =>
+      startACPAuthLogin(agent, auth),
+    onSuccess: (job) => {
+      trackLoginJob(job)
+      toast(`Started ${authProviderLabel(job.agent)} sign-in`)
+    },
+    onError: (error: Error) => toast(`Couldn't start sign-in: ${error.message}`, 'danger'),
+  })
+
+  const disconnect = useMutation({
+    mutationFn: (agent: string) => disconnectACPAuth(agent),
+    onSuccess: (_status, agent) => {
+      forgetLoginJob(agent)
+      toast(`Disconnected ${authProviderLabel(agent)}`)
+      queryClient.invalidateQueries({ queryKey: keys.agentSettings })
+      queryClient.invalidateQueries({ queryKey: keys.acpAgents })
+    },
+    onError: (error: Error) => toast(`Couldn't disconnect: ${error.message}`, 'danger'),
   })
 
   const dirty = useMemo(
@@ -84,12 +125,18 @@ export function AgentSettings() {
   })
   const nativeModelSuggestions =
     draft?.native.model_provider === 'openrouter' ? (openRouterModels.data ?? []) : OPENAI_MODELS
+  const nativeKeyDirty = Object.values(providerKeys).some((value) => value.trim().length > 0)
   const invalid = draft
     ? (draft.native.model_provider ?? '').trim() === '' ||
       draft.native.model.trim() === '' ||
       hasEnabledACPWithoutCommand(draft)
     : true
-  const canSave = draft != null && !invalid && dirty && !save.isPending
+  const canSave = draft != null && !invalid && (dirty || nativeKeyDirty) && !save.isPending
+
+  const selectedProvider = draft?.native.model_provider ?? ''
+  const selectedNativeProvider = draft?.providers.find((provider) => provider.id === selectedProvider)
+  const selectedProviderEnv = selectedNativeProvider?.api_key_env
+  const selectedProviderConfigured = Boolean(selectedNativeProvider?.configured)
 
   return (
     <section className="py-5">
@@ -156,6 +203,32 @@ export function AgentSettings() {
                     className={rowControlClass}
                   />
                 </SettingsRow>
+                <SettingsRow
+                  title="Provider key"
+                  description={
+                    selectedProviderConfigured
+                      ? `${selectedProviderEnv} is configured — paste a new key to replace it.`
+                      : `Paste an API key; stored on the backend as ${selectedProviderEnv ?? 'the provider env var'}.`
+                  }
+                >
+                  <Input
+                    type="password"
+                    value={providerKeys[selectedProvider] ?? ''}
+                    disabled={save.isPending || !selectedProvider}
+                    onChange={(event) =>
+                      setProviderKeys({ ...providerKeys, [selectedProvider]: event.target.value })
+                    }
+                    placeholder={
+                      selectedProviderConfigured
+                        ? `${selectedProviderEnv} configured`
+                        : (selectedProviderEnv ?? 'API key')
+                    }
+                    autoComplete="off"
+                    spellCheck={false}
+                    className={`${rowControlClass} h-8 rounded-full bg-bg px-3 py-0 font-mono text-[12px]`}
+                    aria-label="Native provider API key"
+                  />
+                </SettingsRow>
                 <SettingsRow title="Model" description="Default model for native threads.">
                   <ModelCombobox
                     value={draft.native.model}
@@ -178,7 +251,7 @@ export function AgentSettings() {
                 >
                   <Select
                     value={draft.native.reasoning_effort ?? ''}
-                    options={reasoningOptions}
+                    options={settingsReasoningOptions()}
                     disabled={save.isPending}
                     onChange={(reasoning_effort) =>
                       setDraft({ ...draft, native: { ...draft.native, reasoning_effort } })
@@ -199,6 +272,11 @@ export function AgentSettings() {
                     agent={agent}
                     settings={draft}
                     disabled={save.isPending}
+                    loginJob={loginJobs[agent]}
+                    loginPending={login.isPending && login.variables?.agent === agent}
+                    disconnecting={disconnect.isPending && disconnect.variables === agent}
+                    onStartLogin={(auth) => login.mutate({ agent, auth })}
+                    onDisconnect={() => disconnect.mutate(agent)}
                     onChange={setDraft}
                   />
                 ))}
@@ -215,11 +293,21 @@ function ACPAgentRow({
   agent,
   settings,
   disabled,
+  loginJob,
+  loginPending,
+  disconnecting,
+  onStartLogin,
+  onDisconnect,
   onChange,
 }: {
   agent: string
   settings: AgentSettingsData
   disabled: boolean
+  loginJob?: ACPAuthLogin
+  loginPending: boolean
+  disconnecting: boolean
+  onStartLogin: (auth: ACPAuthDraft) => void
+  onDisconnect: () => void
   onChange: (settings: AgentSettingsData) => void
 }) {
   const current = settings.acp[agent] ?? {
@@ -227,7 +315,9 @@ function ACPAgentRow({
     command: '',
     model: '',
     reasoning_effort: '',
+    auth: { mode: 'auto', path: '' },
   }
+  const authStatus = settings.acp_auth?.[agent]
   const [commandOpen, setCommandOpen] = useState((current.command ?? '').trim() === '')
   useEffect(() => {
     if (current.enabled && (current.command ?? '').trim() === '') setCommandOpen(true)
@@ -261,6 +351,33 @@ function ACPAgentRow({
         </div>
       </SettingsRow>
 
+      {/* Auth is never gated by the Enabled toggle: you must be able to connect
+          an agent you skipped in onboarding. Connecting it turns it on. */}
+      <div className="border-t border-border/70 px-3 py-3">
+        <AgentAuthPanel
+          agent={agent}
+          disabled={disabled}
+          status={authStatus}
+          apiKeyValue={settings.acp_keys?.[agent] ?? ''}
+          loginJob={loginJob}
+          loginPending={loginPending}
+          disconnecting={disconnecting}
+          onStartLogin={() => onStartLogin(current.auth)}
+          onDisconnect={onDisconnect}
+          onAPIKeyChange={(value) =>
+            onChange({
+              ...settings,
+              // Adding a key connects the agent — enable it so it's usable.
+              acp: value.trim() ? { ...settings.acp, [agent]: { ...current, enabled: true } } : settings.acp,
+              acp_keys: {
+                ...(settings.acp_keys ?? {}),
+                [agent]: value,
+              },
+            })
+          }
+        />
+      </div>
+
       <SettingsRow title="Model" description="Model copied into new threads for this client.">
         <ModelCombobox
           value={current.model ?? ''}
@@ -275,7 +392,7 @@ function ACPAgentRow({
       <SettingsRow title="Reasoning" description="Reasoning effort copied into new threads.">
         <Select
           value={current.reasoning_effort ?? ''}
-          options={reasoningOptions}
+          options={settingsReasoningOptions(acpReasoningEffortOptions(settings, agent))}
           disabled={controlsDisabled}
           onChange={(reasoning_effort) => update({ reasoning_effort })}
           aria-label={`${agentLabel(agent)} reasoning effort`}
@@ -313,6 +430,101 @@ function ACPAgentRow({
           />
         </label>
       ) : null}
+    </div>
+  )
+}
+
+function AgentAuthPanel({
+  agent,
+  disabled,
+  status,
+  apiKeyValue,
+  loginJob,
+  loginPending,
+  disconnecting,
+  onStartLogin,
+  onDisconnect,
+  onAPIKeyChange,
+}: {
+  agent: string
+  disabled: boolean
+  status?: ACPAgentAuthStatus
+  apiKeyValue: string
+  loginJob?: ACPAuthLogin
+  loginPending: boolean
+  disconnecting: boolean
+  onStartLogin: () => void
+  onDisconnect: () => void
+  onAPIKeyChange: (value: string) => void
+}) {
+  const apiKeyEnv = status?.api_key?.source_env
+  const canKey = Boolean(apiKeyEnv)
+  const hasDraftKey = apiKeyValue.trim().length > 0
+  const running = loginPending || loginJob?.status === 'running'
+  const [method, setMethod] = useState<'login' | 'key'>(
+    (hasDraftKey || status?.api_key_configured) && canKey ? 'key' : 'login',
+  )
+
+  // Connected: a clean confirmation + a way to disconnect (or switch method).
+  if (status?.authenticated) {
+    const viaKey = status.auth_kind === 'api_key'
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-[10px] bg-bg px-3 py-2.5">
+        <span className="flex min-w-0 items-center gap-2 text-[13px] text-ink">
+          <CheckCircle2 size={16} className="shrink-0 text-primary" />
+          {viaKey ? 'Connected with an API key' : `Connected with your ${authProviderLabel(agent)} account`}
+        </span>
+        <Button variant="ghost" size="sm" disabled={disabled || disconnecting} onClick={onDisconnect}>
+          {disconnecting ? <LoaderCircle size={13} className="animate-spin" /> : null}
+          Disconnect
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-2.5">
+      {canKey ? (
+        <Segmented
+          layoutId={`settings-auth-${agent}`}
+          value={method}
+          onChange={setMethod}
+          disabled={disabled}
+          options={[
+            { value: 'login', label: 'Sign in', icon: <LogIn size={13} /> },
+            { value: 'key', label: 'API key', icon: <KeyRound size={13} /> },
+          ]}
+        />
+      ) : null}
+
+      {method === 'login' || !canKey ? (
+        <div className="flex flex-col items-start gap-2">
+          <Button variant="primary" size="md" disabled={disabled || running} onClick={onStartLogin}>
+            {running ? <LoaderCircle size={14} className="animate-spin" /> : <LogIn size={14} />}
+            {running ? 'Waiting for sign-in…' : `Sign in with ${authProviderLabel(agent)}`}
+          </Button>
+          <div className="w-full">
+            <AuthLoginStatus job={loginJob} running={running} />
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <Input
+            type="password"
+            value={apiKeyValue}
+            disabled={disabled}
+            onChange={(event) => onAPIKeyChange(event.target.value)}
+            placeholder={status?.api_key_configured ? 'Already set up' : 'Paste an API key'}
+            autoComplete="off"
+            spellCheck={false}
+            className="h-8 rounded-full bg-bg px-3 py-0 font-mono text-[12px]"
+            aria-label={`${agentLabel(agent)} API key`}
+          />
+          <p className="text-[12px] text-ink-3">
+            jaz passes this key straight to {authProviderLabel(agent)}.
+          </p>
+        </div>
+      )}
     </div>
   )
 }

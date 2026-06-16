@@ -3,7 +3,6 @@ package sqlite
 import (
 	"context"
 	"database/sql"
-	stdjson "encoding/json"
 	"fmt"
 	"regexp"
 	"sort"
@@ -190,7 +189,7 @@ func insertSession(db threaddb.DBTX, session storage.Session) error {
 		storage.MarkSessionAttention(&session, storage.SessionAttentionAt(session))
 	}
 	acpAgent, acpSessionID, cwd, projectPath := runtimeRefColumns(session)
-	queuedMessages, err := marshalStringList(session.QueuedMessages)
+	queuedMessages, err := storage.MarshalQueuedMessages(session.QueuedMessages)
 	if err != nil {
 		return err
 	}
@@ -229,7 +228,7 @@ func insertSession(db threaddb.DBTX, session storage.Session) error {
 }
 
 func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
-	queuedMessages, err := unmarshalStringList(row.QueuedMessages)
+	queuedMessages, err := storage.UnmarshalQueuedMessages(row.QueuedMessages)
 	if err != nil {
 		return storage.Session{}, err
 	}
@@ -347,28 +346,6 @@ func runtimeRefColumns(session storage.Session) (string, string, string, string)
 		return "", "", "", ""
 	}
 	return session.RuntimeRef.Agent, session.RuntimeRef.SessionID, session.RuntimeRef.Cwd, session.RuntimeRef.ProjectPath
-}
-
-func marshalStringList(values []string) (string, error) {
-	if len(values) == 0 {
-		return "[]", nil
-	}
-	data, err := stdjson.Marshal(values)
-	if err != nil {
-		return "", err
-	}
-	return string(data), nil
-}
-
-func unmarshalStringList(raw string) ([]string, error) {
-	if strings.TrimSpace(raw) == "" {
-		return nil, nil
-	}
-	var values []string
-	if err := stdjson.Unmarshal([]byte(raw), &values); err != nil {
-		return nil, err
-	}
-	return values, nil
 }
 
 func firstNonEmpty(values ...string) string {

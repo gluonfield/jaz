@@ -24,6 +24,12 @@ export interface Usage {
   context_window_tokens?: number
 }
 
+export interface DailyUsage {
+  date: string
+  usage: Usage
+  session_count: number
+}
+
 export interface Session {
   id: string
   slug: string
@@ -39,10 +45,31 @@ export interface Session {
   model?: string
   reasoning_effort?: string
   usage?: Usage
-  queued_messages?: string[]
+  queued_messages?: QueuedMessage[]
   created_at: string
   updated_at: string
   last_attention_at: string
+}
+
+export interface ThreadSearchResult {
+  thread_id: string
+  thread_slug: string
+  thread_title?: string
+  thread_status?: 'idle' | 'running' | 'error'
+  thread_runtime?: 'native' | 'acp'
+  parent_id?: string
+  archived?: boolean
+  message_seq?: number
+  snippet?: string
+  hit_count?: number
+  updated_at: string
+  last_attention_at: string
+}
+
+export interface QueuedMessage {
+  text: string
+  attachment_ids?: string[]
+  plan_requested?: boolean
 }
 
 // Git/forge state of a session's working directory (GET /v1/sessions/:id/repo).
@@ -66,6 +93,12 @@ export interface RepoInfo {
   // main checkout is on — the handoff destination.
   is_worktree?: boolean
   main_branch?: string
+  // Commits on main_branch the worktree's branch doesn't have yet — what
+  // "Update from main" would pull in (omitted/0 when up to date).
+  behind?: number
+  worktree_missing?: boolean
+  worktree_restorable?: boolean
+  worktree_branch?: string
 }
 
 // One changed file in a session's working tree relative to its diff base —
@@ -103,6 +136,23 @@ export interface RepoFilePatch {
   patch: string
   binary?: boolean
   truncated?: boolean
+}
+
+export interface SessionFileRead {
+  path: string
+  relative_path?: string
+  content?: string
+  size: number
+  binary?: boolean
+  truncated?: boolean
+}
+
+export interface HealthResponse {
+  ok: boolean
+  auth_required?: boolean
+  capabilities?: {
+    session_file_read?: boolean
+  }
 }
 
 export interface LoopSchedule {
@@ -293,6 +343,13 @@ export interface PlanEvent {
   awaiting_approval?: boolean
 }
 
+export interface ArtifactEvent {
+  title: string
+  widget_code: string
+  loading_messages?: string[]
+  artifact_type?: 'svg' | 'html'
+}
+
 export interface ACPEvent {
   id: string
   slug: string
@@ -376,6 +433,7 @@ export interface SessionEvent {
   acp?: ACPEvent
   plan?: PlanEvent
   permission?: ACPPermission
+  artifact?: ArtifactEvent
   at: string
 }
 
@@ -491,6 +549,8 @@ export interface NativeProviderOption {
   default_model?: string
   default_reasoning_effort?: string
   implemented: boolean
+  /** whether this provider's API key is already configured on the backend */
+  configured?: boolean
 }
 
 export interface ACPAgentDefaults {
@@ -498,11 +558,93 @@ export interface ACPAgentDefaults {
   command?: string
   model?: string
   reasoning_effort?: string
+  auth?: ACPAgentAuth
+}
+
+export interface ACPAgentAuth {
+  mode?: 'auto' | 'existing_cli' | 'jaz_profile'
+  path?: string
+}
+
+export interface ACPAgentAPIKey {
+  source_env?: string
+  target_env?: string
+}
+
+export interface ACPAgentAuthStatus {
+  authenticated: boolean
+  reason?: string
+  storage_path?: string
+  auth_mode?: 'auto' | 'existing_cli' | 'jaz_profile'
+  auth_path?: string
+  auth_source?: string
+  auth_evidence?: string
+  auth_kind?: 'oauth' | 'api_key'
+  recommended_auth?: ACPAgentAuth
+  api_key?: ACPAgentAPIKey
+  api_key_configured: boolean
+  refresh_owner?: string
+}
+
+export interface ACPAuthLogin {
+  id: string
+  agent: string
+  status: 'running' | 'succeeded' | 'failed'
+  output?: string
+  auth_url?: string
+  auth_code?: string
+  error?: string
+  started_at: string
+  finished_at?: string
+}
+
+export interface ReasoningEffortOption {
+  value: string
+  label: string
+}
+
+export interface ACPAgentOptions {
+  reasoning_efforts: ReasoningEffortOption[]
 }
 
 export interface AgentSettings {
   native: NativeAgentDefaults
   providers: NativeProviderOption[]
   acp: Record<string, ACPAgentDefaults>
+  acp_auth?: Record<string, ACPAgentAuthStatus>
+  acp_keys?: Record<string, string>
+  acp_options?: Record<string, ACPAgentOptions>
   agents: string[]
+}
+
+export interface OnboardingACPProbe extends ACPAgentAuthStatus {
+  agent: string
+  command?: string
+  installed: boolean
+  app_installed?: boolean
+  app_name?: string
+  available: boolean
+  auth_command?: string
+  auth_command_available: boolean
+  auth_command_reason?: string
+}
+
+export interface OnboardingNativeProvider {
+  id: string
+  api_key_env?: string
+  configured: boolean
+}
+
+export interface OnboardingStatus {
+  completed: boolean
+  acp: OnboardingACPProbe[]
+  native_providers: OnboardingNativeProvider[]
+  settings: AgentSettings
+}
+
+export interface OnboardingInput {
+  settings?: AgentSettings
+  provider_keys?: Record<string, string>
+  acp_keys?: Record<string, string>
+  completed: boolean
 }

@@ -1,13 +1,17 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '../query/keys'
-import { apiBaseUrl, ApiError, get, post, put } from './client'
+import { apiFetch, ApiError, get, post, put } from './client'
 import {
   fileKey,
   type Attachment,
+  type DailyUsage,
+  type HealthResponse,
+  type QueuedMessage,
   type RepoChanges,
   type RepoFileChange,
   type RepoFilePatch,
   type RepoInfo,
+  type SessionFileRead,
   type Session,
   type SessionEvent,
   type SessionMessages,
@@ -30,10 +34,14 @@ export function createSession(
   return post<Session>('/v1/sessions', input)
 }
 
+export function getSession(id: string): Promise<Session> {
+  return get<Session>(`/v1/sessions/${id}`)
+}
+
 export async function uploadSessionAttachment(sessionId: string, file: File, signal?: AbortSignal): Promise<Attachment> {
   const form = new FormData()
   form.append('file', file)
-  const res = await fetch(`${apiBaseUrl()}/v1/sessions/${sessionId}/attachments`, {
+  const res = await apiFetch(`/v1/sessions/${sessionId}/attachments`, {
     method: 'POST',
     body: form,
     signal,
@@ -65,6 +73,30 @@ export const acpAgentsQuery = queryOptions({
     }
   },
 })
+
+export const dailyUsageQuery = (days = 30) => {
+  const timezone = usageTimezone()
+  return queryOptions({
+    queryKey: keys.usageDaily(days, timezone),
+    queryFn: async (): Promise<DailyUsage[]> => {
+      const params = new URLSearchParams({ days: String(days) })
+      if (timezone) params.set('timezone', timezone)
+      else params.set('tz_offset_minutes', String(new Date().getTimezoneOffset()))
+      const data = await get<{ days: DailyUsage[] | null }>(`/v1/usage/daily?${params}`)
+      return data.days ?? []
+    },
+    staleTime: 60_000,
+    refetchInterval: 300_000,
+  })
+}
+
+function usageTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+  } catch {
+    return ''
+  }
+}
 
 export interface Project {
   name: string
@@ -182,7 +214,7 @@ export const sessionRepoChangesQuery = (id: string) =>
   })
 
 // One file's unified diff, fetched only when the user opens that file in the
-// review modal. The request carries the summary row's identity — status,
+// Code Diff panel. The request carries the summary row's identity — status,
 // rename source, resolved base — so the patch matches the row even if the
 // tree moves between fetches. Cached per fileKey; the sessionRepo prefix
 // invalidation marks it stale alongside the summary.
@@ -197,6 +229,14 @@ export const sessionRepoFileDiffQuery = (id: string, file: RepoFileChange, base?
       return get<RepoFilePatch>(`/v1/sessions/${id}/repo/diff?${params}`)
     },
     staleTime: 30_000,
+  })
+
+export const sessionFileQuery = (id: string, path: string) =>
+  queryOptions({
+    queryKey: keys.sessionFile(id, path),
+    queryFn: () =>
+      get<SessionFileRead>(`/v1/sessions/${id}/file?path=${encodeURIComponent(path)}`),
+    staleTime: 15_000,
   })
 
 // Publishes the session's current branch to its remote (git push -u) and
@@ -223,6 +263,14 @@ export function mergeSessionRepo(
   return post<{ cwd: string; moved: boolean; info: RepoInfo }>(`/v1/sessions/${id}/repo/merge`)
 }
 
+export function mergeFromMainSessionRepo(id: string): Promise<RepoInfo> {
+  return post<RepoInfo>(`/v1/sessions/${id}/repo/merge-from-main`)
+}
+
+export function restoreSessionWorktree(id: string): Promise<RepoInfo> {
+  return post<RepoInfo>(`/v1/sessions/${id}/repo/restore-worktree`)
+}
+
 export function setSessionArchived(id: string, archived: boolean): Promise<Session> {
   return post<Session>(`/v1/sessions/${id}/${archived ? 'archive' : 'unarchive'}`)
 }
@@ -237,12 +285,12 @@ export function cancelSession(id: string): Promise<{ ok: boolean }> {
 }
 
 export type QueueMutation =
-  | { op: 'append'; text: string }
+  | { op: 'append'; message: QueuedMessage }
   | { op: 'delete'; index: number; expected?: string }
-  | { op: 'edit'; index: number; text: string; expected?: string }
+  | { op: 'edit'; index: number; message: { text: string }; expected?: string }
   | { op: 'move'; from: number; to: number; expected?: string }
   | { op: 'steer'; index: number; expected?: string }
-  | { op: 'replace'; messages: string[] }
+  | { op: 'replace'; messages: QueuedMessage[] }
 
 export function mutateSessionQueue(id: string, mutation: QueueMutation): Promise<Session> {
   return post<Session>(`/v1/sessions/${id}/queue`, mutation)
@@ -393,7 +441,7 @@ export const sessionMessagesQuery = (id: string) =>
 
 export const healthQuery = queryOptions({
   queryKey: keys.health,
-  queryFn: () => get<{ ok: boolean }>('/health'),
+  queryFn: () => get<HealthResponse>('/health'),
   retry: false,
   refetchInterval: (query) => (query.state.status === 'error' ? 3_000 : 30_000),
 })

@@ -4,25 +4,76 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/gluonfield/acp-transport/stdio"
 	"github.com/gluonfield/acp-transport/streamhttp"
-	"github.com/wins/jaz/backend/internal/runtimefiles"
+	"github.com/wins/jaz/backend/internal/skills"
 )
 
-func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, env map[string]string, cwd string) (jsonrpc.MessageConn, error) {
+const processStderrTailLimit = 2000
+
+type processStderrTail struct {
+	mu   sync.Mutex
+	text string
+	done chan struct{}
+}
+
+func newProcessStderrTail() *processStderrTail {
+	return &processStderrTail{done: make(chan struct{})}
+}
+
+func (t *processStderrTail) Write(p []byte) (int, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.text += string(p)
+	if len(t.text) > processStderrTailLimit {
+		t.text = t.text[len(t.text)-processStderrTailLimit:]
+	}
+	return len(p), nil
+}
+
+func (t *processStderrTail) close() {
+	close(t.done)
+}
+
+func (t *processStderrTail) String() string {
+	if t == nil {
+		return ""
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return strings.TrimSpace(t.text)
+}
+
+func withProcessStderr(err error, stderr *processStderrTail) error {
+	if stderr != nil {
+		select {
+		case <-stderr.done:
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	if detail := stderr.String(); detail != "" {
+		return fmt.Errorf("%w: %s", err, detail)
+	}
+	return err
+}
+
+func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, env map[string]string, cwd string) (jsonrpc.MessageConn, *processStderrTail, error) {
 	if cfg.URL != "" {
 		opts := []streamhttp.ClientOption{}
 		parsed, err := url.Parse(cfg.URL)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if parsed.Scheme == "http" {
 			opts = append(opts, streamhttp.WithH2C())
@@ -30,12 +81,16 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 		if cfg.Token != "" {
 			opts = append(opts, streamhttp.WithBearerToken(cfg.Token))
 		}
-		return streamhttp.Dial(cfg.URL, opts...)
+		conn, err := streamhttp.Dial(cfg.URL, opts...)
+		return conn, nil, err
 	}
 	if cfg.Command == "" {
-		return nil, fmt.Errorf("acp agent %q has no command", name)
+		return nil, nil, fmt.Errorf("acp agent %q has no command", name)
 	}
 	command, args := processCommand(name, cfg)
+	if resolved, err := ResolveExecutable(command); err == nil {
+		command = resolved
+	}
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Env = envList(env)
 	if cwd != "" {
@@ -43,28 +98,45 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	cmd.Stderr = os.Stderr
+	stderr := newProcessStderrTail()
+	cmd.Stderr = io.MultiWriter(os.Stderr, stderr)
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start acp agent %q (%s): %w", name, strings.Join(append([]string{command}, args...), " "), err)
+		return nil, nil, fmt.Errorf("start acp agent %q (%s): %w", name, strings.Join(append([]string{command}, args...), " "), err)
 	}
 	conn := stdio.New(stdout, stdin)
 	go func() {
 		_ = cmd.Wait()
+		stderr.close()
 		_ = conn.Close()
 	}()
-	return conn, nil
+	return conn, stderr, nil
 }
 
 func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
+	env, _ := m.buildProcessEnv(name, agent, true)
+	return env
+}
+
+func (m *Manager) processEnvPrepared(name string, agent AgentConfig) (map[string]string, error) {
+	return m.buildProcessEnv(name, agent, true)
+}
+
+func (m *Manager) probeEnv(name string, agent AgentConfig) map[string]string {
+	env, _ := m.buildProcessEnv(name, agent, false)
+	return env
+}
+
+func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) (map[string]string, error) {
 	name = CanonicalAgentName(name)
 	env := map[string]string{}
-	for _, key := range []string{"PATH", "CODEX_HOME"} {
+	var prepareErr error
+	for _, key := range []string{"PATH"} {
 		if value := os.Getenv(key); value != "" {
 			env[key] = value
 		}
@@ -75,33 +147,44 @@ func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
 	for key, value := range agent.Env {
 		env[key] = value
 	}
+	delete(env, "HOME")
 	normalizeEnv(env, "OPENAI_API_KEY", "OPENAI_APIKEY")
 	normalizeEnv(env, "ANTHROPIC_API_KEY", "ANTHROPIC_APIKEY")
 	normalizeEnv(env, "XAI_API_KEY", "XAI_APIKEY")
 
 	root := firstNonEmpty(m.cfg.Root, filepath.Join(os.TempDir(), "jaz"))
-	layout := runtimefiles.New(root)
-	home := layout.ACPHome
 	if name == AgentCodex {
-		if codexHome := prepareCodexHome(root, env["CODEX_HOME"]); codexHome != "" {
+		auth := resolveAgentAuth(name, agent, root, env)
+		codexHome := auth.Config.Path
+		if codexHome != "" {
 			env["CODEX_HOME"] = codexHome
+			if prepare && auth.Config.Mode == AuthModeJazProfile {
+				if err := os.MkdirAll(codexHome, 0o700); err != nil {
+					prepareErr = firstError(prepareErr, fmt.Errorf("prepare codex profile %s: %w", codexHome, err))
+				}
+			}
+			if prepare {
+				if err := skills.SyncTo(root, filepath.Join(codexHome, "skills")); err != nil {
+					prepareErr = firstError(prepareErr, fmt.Errorf("sync codex skills: %w", err))
+				}
+			}
 		}
 		for _, key := range []string{"OPENAI_API_KEY", "OPENAI_APIKEY", "OPENROUTER_API_KEY", "OPENROUTER_APIKEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"} {
 			delete(env, key)
 		}
+		if target, value, ok := auth.APIKeyBinding(); ok {
+			env[target] = value
+		}
 	}
 	if name == AgentClaude {
-		configuredHome := strings.TrimSpace(env["HOME"])
+		configuredConfigDir := strings.TrimSpace(env["CLAUDE_CONFIG_DIR"])
 		preserveHostEnv(env, []string{
-			"ANTHROPIC_API_KEY",
-			"ANTHROPIC_APIKEY",
 			"ANTHROPIC_AUTH_TOKEN",
 			"ANTHROPIC_BASE_URL",
 			"CLAUDE_CODE_EXECUTABLE",
 			"CLAUDE_CODE_OAUTH_TOKEN",
 			"CLAUDE_CODE_USE_BEDROCK",
 			"CLAUDE_CODE_USE_VERTEX",
-			"CLAUDE_CONFIG_DIR",
 			"LANG",
 			"LC_ALL",
 			"LC_CTYPE",
@@ -110,22 +193,35 @@ func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
 			"SSH_AUTH_SOCK",
 			"USER",
 		})
-		if configuredHome != "" {
-			home = configuredHome
-		} else if userHome, err := os.UserHomeDir(); err == nil && userHome != "" {
-			home = userHome
+		auth := resolveAgentAuth(name, agent, root, env)
+		if configuredConfigDir != "" {
+			env["CLAUDE_CONFIG_DIR"] = configuredConfigDir
+		} else {
+			env["CLAUDE_CONFIG_DIR"] = auth.Config.Path
+			if prepare && auth.Config.Mode == AuthModeJazProfile {
+				if err := os.MkdirAll(env["CLAUDE_CONFIG_DIR"], 0o700); err != nil {
+					prepareErr = firstError(prepareErr, fmt.Errorf("prepare claude profile %s: %w", env["CLAUDE_CONFIG_DIR"], err))
+				}
+			}
+		}
+		if prepare && env["CLAUDE_CONFIG_DIR"] != "" {
+			if err := skills.SyncTo(root, filepath.Join(env["CLAUDE_CONFIG_DIR"], "skills")); err != nil {
+				prepareErr = firstError(prepareErr, fmt.Errorf("sync claude skills: %w", err))
+			}
 		}
 		if env["CLAUDE_CODE_EXECUTABLE"] == "" {
-			if cli, err := exec.LookPath("claude"); err == nil {
+			if cli, err := ResolveExecutable("claude"); err == nil {
 				env["CLAUDE_CODE_EXECUTABLE"] = cli
 			}
 		}
 		normalizeEnv(env, "ANTHROPIC_API_KEY", "ANTHROPIC_APIKEY")
+		delete(env, "ANTHROPIC_API_KEY")
+		if target, value, ok := auth.APIKeyBinding(); ok {
+			env[target] = value
+		}
 	}
 	if name == AgentGrok {
-		configuredHome := strings.TrimSpace(env["HOME"])
 		preserveHostEnv(env, []string{
-			"HOME",
 			"HTTP_PROXY",
 			"HTTPS_PROXY",
 			"LANG",
@@ -136,31 +232,20 @@ func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
 			"SHELL",
 			"SSH_AUTH_SOCK",
 			"USER",
-			"XAI_API_KEY",
-			"XAI_APIKEY",
 		})
-		if configuredHome != "" {
-			home = configuredHome
-		} else if userHome, err := os.UserHomeDir(); err == nil && userHome != "" {
-			home = userHome
-		}
+		auth := resolveAgentAuth(name, agent, root, env)
 		normalizeEnv(env, "XAI_API_KEY", "XAI_APIKEY")
+		delete(env, "XAI_API_KEY")
+		if target, value, ok := auth.APIKeyBinding(); ok {
+			env[target] = value
+		}
 	}
-	tmp := layout.ACPTmp
-	cache := layout.ACPNPMCache
-	_ = os.MkdirAll(home, 0o700)
-	_ = os.MkdirAll(tmp, 0o700)
-	_ = os.MkdirAll(cache, 0o700)
-	env["HOME"] = home
-	env["TMPDIR"] = tmp
-	env["TMP"] = tmp
-	env["TEMP"] = tmp
-	env["npm_config_cache"] = cache
-	env["npm_config_ignore_scripts"] = "true"
-	env["npm_config_audit"] = "false"
-	env["npm_config_fund"] = "false"
-	env["npm_config_update_notifier"] = "false"
-	return env
+	if prepare {
+		if spec, ok := resolveAgentAPIKeySpec(name); ok {
+			delete(env, spec.SourceEnv)
+		}
+	}
+	return env, prepareErr
 }
 
 func processCommand(name string, cfg AgentConfig) (string, []string) {
@@ -227,32 +312,11 @@ func hasFlag(args []string, names ...string) bool {
 	return false
 }
 
-func prepareCodexHome(root, sourceHome string) string {
-	if sourceHome == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return ""
-		}
-		sourceHome = filepath.Join(home, ".codex")
+func firstError(current, next error) error {
+	if current != nil {
+		return current
 	}
-	src := filepath.Join(sourceHome, "auth.json")
-	if !fileExists(src) {
-		return ""
-	}
-	dstHome := runtimefiles.New(root).ACPCodexHome
-	dst := filepath.Join(dstHome, "auth.json")
-	_ = os.MkdirAll(dstHome, 0o700)
-	if !fileExists(dst) {
-		if err := os.Symlink(src, dst); err != nil {
-			if data, err := os.ReadFile(src); err == nil {
-				_ = os.WriteFile(dst, data, 0o600)
-			}
-		}
-	}
-	if fileExists(dst) {
-		return dstHome
-	}
-	return ""
+	return next
 }
 
 func preserveHostEnv(env map[string]string, keys []string) {
@@ -271,6 +335,9 @@ func normalizeEnv(env map[string]string, canonical, alias string) {
 		env[canonical] = env[alias]
 	}
 	delete(env, alias)
+	if env[canonical] == "" {
+		delete(env, canonical)
+	}
 }
 
 func envList(env map[string]string) []string {
@@ -310,12 +377,12 @@ func autoAuthMethod(agent string, raw json.RawMessage, env map[string]string) (s
 	}
 	if agent == AgentGrok {
 		for _, method := range init.AuthMethods {
-			if method.ID == "xai.api_key" && env["XAI_API_KEY"] != "" {
+			if method.ID == "cached_token" && grokAuthAvailable(env) {
 				return method.ID, nil
 			}
 		}
 		for _, method := range init.AuthMethods {
-			if method.ID == "cached_token" && grokAuthAvailable(env) {
+			if method.ID == "xai.api_key" && env["XAI_API_KEY"] != "" {
 				return method.ID, nil
 			}
 		}
@@ -341,14 +408,11 @@ func autoAuthMethod(agent string, raw json.RawMessage, env map[string]string) (s
 		if method.Type != "env_var" && len(method.Vars) == 0 {
 			continue
 		}
-		if agent == AgentCodex {
-			continue
-		}
 		allSet := len(method.Vars) > 0
 		for _, v := range method.Vars {
 			if env[v.Name] == "" {
 				allSet = false
-				missing = appendMissing(missing, v.Name)
+				missing = appendMissing(missing, authMissingEnvName(agent, v.Name))
 				break
 			}
 		}
@@ -368,7 +432,7 @@ func codexAuthAvailable(env map[string]string) bool {
 		}
 		home = filepath.Join(userHome, ".codex")
 	}
-	return fileExists(filepath.Join(home, "auth.json"))
+	return codexAuthFileAvailable(home) || codexKeyringConfigured(home)
 }
 
 func codexAuthHint(env map[string]string) string {
@@ -387,14 +451,15 @@ func grokAuthAvailable(env map[string]string) bool {
 		}
 		home = userHome
 	}
-	return fileExists(filepath.Join(home, ".grok", "auth.json"))
+	return grokAuthFileAvailable(home)
 }
 
 func grokAuthHint(env map[string]string) string {
+	apiKeyEnv := agentAPIKeySourceEnv(AgentGrok, "XAI_API_KEY")
 	if env["HOME"] != "" {
-		return "Grok login at " + filepath.Join(env["HOME"], ".grok", "auth.json") + " or XAI_API_KEY"
+		return "Grok login at " + filepath.Join(env["HOME"], ".grok", "auth.json") + " or " + apiKeyEnv
 	}
-	return "Grok login at ~/.grok/auth.json or XAI_API_KEY"
+	return "Grok login at ~/.grok/auth.json or " + apiKeyEnv
 }
 
 func fileExists(path string) bool {
@@ -412,4 +477,20 @@ func appendMissing(values []string, value string) []string {
 		}
 	}
 	return append(values, value)
+}
+
+func authMissingEnvName(agent, targetEnv string) string {
+	spec, ok := resolveAgentAPIKeySpec(agent)
+	if ok && targetEnv == spec.TargetEnv {
+		return spec.SourceEnv
+	}
+	return targetEnv
+}
+
+func agentAPIKeySourceEnv(agent, fallback string) string {
+	spec, ok := resolveAgentAPIKeySpec(agent)
+	if ok && spec.SourceEnv != "" {
+		return spec.SourceEnv
+	}
+	return fallback
 }

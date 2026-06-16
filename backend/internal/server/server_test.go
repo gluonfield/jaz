@@ -18,6 +18,24 @@ import (
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
+func TestHealthReportsFileReadCapability(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	res := httptest.NewRecorder()
+
+	(&Server{}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var got healthResponse
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.OK || !got.Capabilities.SessionFileRead {
+		t.Fatalf("health = %#v, want ok with session_file_read", got)
+	}
+}
+
 func TestACPBackedSessionRoutesToACPManager(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -59,7 +77,7 @@ func TestACPBackedSessionRoutesToACPManager(t *testing.T) {
 	}
 }
 
-func TestCreateACPSessionForwardsWorktree(t *testing.T) {
+func TestCreateACPSessionCreatesStoredSessionAndForwardsWorktree(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -76,8 +94,39 @@ func TestCreateACPSessionForwardsWorktree(t *testing.T) {
 	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
-	if manager.spawned.Directory != "repo" || !manager.spawned.Worktree {
-		t.Fatalf("spawn request = %#v, want Directory=repo Worktree=true", manager.spawned)
+	if manager.spawned.ACPAgent != "" {
+		t.Fatalf("create should defer eager spawn: %#v", manager.spawned)
+	}
+	if manager.created.Directory != "repo" || !manager.created.Worktree {
+		t.Fatalf("create request = %#v, want Directory=repo Worktree=true", manager.created)
+	}
+	var session storage.Session
+	if err := json.Unmarshal(res.Body.Bytes(), &session); err != nil {
+		t.Fatal(err)
+	}
+	if session.RuntimeRef == nil || session.RuntimeRef.SessionID != "" {
+		t.Fatalf("session runtime ref = %#v, want stored acp session without runtime session id", session.RuntimeRef)
+	}
+}
+
+func TestCreateACPSessionRequiresDirectoryForWorktree(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeACPManager{spawnStore: store}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{"runtime":"acp","agent":"codex","worktree":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store, ACP: manager}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "worktree requires") {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	if manager.created.ACPAgent != "" || manager.spawned.ACPAgent != "" {
+		t.Fatalf("manager was called: created=%#v spawned=%#v", manager.created, manager.spawned)
 	}
 }
 
@@ -98,106 +147,11 @@ func TestCreateACPSessionForwardsModelOverride(t *testing.T) {
 	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
-	if manager.spawned.Model != "sonnet" {
-		t.Fatalf("spawn request = %#v, want Model=sonnet", manager.spawned)
+	if manager.spawned.ACPAgent != "" {
+		t.Fatalf("create should defer eager spawn: %#v", manager.spawned)
 	}
-}
-
-func TestLegacyClaudeACPAgentCanonicalizedInSessionResponses(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	legacyClaudeName := strings.ReplaceAll("claude-code", "-", "_")
-	legacy, err := store.CreateSession(storage.CreateSession{
-		Slug:          "legacy-claude",
-		Runtime:       storage.RuntimeACP,
-		ModelProvider: legacyClaudeName,
-		RuntimeRef: &storage.RuntimeRef{
-			Type:      storage.RuntimeACP,
-			Agent:     legacyClaudeName,
-			SessionID: "acp-session",
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	handler := (&Server{Store: store}).Handler()
-
-	listReq := httptest.NewRequest(http.MethodGet, "/v1/sessions", nil)
-	listRes := httptest.NewRecorder()
-	handler.ServeHTTP(listRes, listReq)
-	if listRes.Code != http.StatusOK {
-		t.Fatalf("list status = %d, body = %s", listRes.Code, listRes.Body.String())
-	}
-	var listed struct {
-		Sessions []storage.Session `json:"sessions"`
-	}
-	if err := json.Unmarshal(listRes.Body.Bytes(), &listed); err != nil {
-		t.Fatal(err)
-	}
-	if len(listed.Sessions) != 1 || listed.Sessions[0].RuntimeRef == nil ||
-		listed.Sessions[0].RuntimeRef.Agent != acp.AgentClaude ||
-		listed.Sessions[0].ModelProvider != acp.AgentClaude {
-		t.Fatalf("listed sessions = %#v", listed.Sessions)
-	}
-
-	getReq := httptest.NewRequest(http.MethodGet, "/v1/sessions/"+legacy.ID, nil)
-	getRes := httptest.NewRecorder()
-	handler.ServeHTTP(getRes, getReq)
-	if getRes.Code != http.StatusOK {
-		t.Fatalf("get status = %d, body = %s", getRes.Code, getRes.Body.String())
-	}
-	var got storage.Session
-	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.RuntimeRef == nil || got.RuntimeRef.Agent != acp.AgentClaude || got.ModelProvider != acp.AgentClaude {
-		t.Fatalf("session = %#v", got)
-	}
-
-	parent, err := store.CreateSession(storage.CreateSession{Slug: "parent", Runtime: storage.RuntimeNative})
-	if err != nil {
-		t.Fatal(err)
-	}
-	child, err := store.CreateSession(storage.CreateSession{
-		Slug:     "legacy-child",
-		ParentID: parent.ID,
-		Runtime:  storage.RuntimeACP,
-		RuntimeRef: &storage.RuntimeRef{
-			Type:      storage.RuntimeACP,
-			Agent:     legacyClaudeName,
-			SessionID: "child-acp-session",
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.SaveACPState(child.ID, storage.ACPState{
-		ID:            child.ID,
-		Slug:          child.Slug,
-		ParentID:      parent.ID,
-		ACPAgent:      legacyClaudeName,
-		ACPSession:    "child-acp-session",
-		State:         acp.StateIdle,
-		ParentVisible: true,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	messagesReq := httptest.NewRequest(http.MethodGet, "/v1/sessions/"+parent.ID+"/messages", nil)
-	messagesRes := httptest.NewRecorder()
-	handler.ServeHTTP(messagesRes, messagesReq)
-	if messagesRes.Code != http.StatusOK {
-		t.Fatalf("messages status = %d, body = %s", messagesRes.Code, messagesRes.Body.String())
-	}
-	var messages struct {
-		ACPChildren []storage.ACPState `json:"acp_children"`
-	}
-	if err := json.Unmarshal(messagesRes.Body.Bytes(), &messages); err != nil {
-		t.Fatal(err)
-	}
-	if len(messages.ACPChildren) != 1 || messages.ACPChildren[0].ACPAgent != acp.AgentClaude {
-		t.Fatalf("acp children = %#v", messages.ACPChildren)
+	if manager.created.Model != "sonnet" {
+		t.Fatalf("create request = %#v, want Model=sonnet", manager.created)
 	}
 }
 
@@ -619,8 +573,72 @@ func TestSessionMessagesIncludesPersistedACPChildren(t *testing.T) {
 	if len(childState.Plan) != 1 || childState.Plan[0].Content != "Inspect current page" {
 		t.Fatalf("plan = %#v", childState.Plan)
 	}
-	if len(childState.Permissions) != 1 || len(childState.Permissions[0].Questions) != 1 {
+	if len(childState.Permissions) != 0 {
 		t.Fatalf("permissions = %#v", childState.Permissions)
+	}
+}
+
+func TestSessionMessagesTreatsStoredACPStateAsInactive(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "codex-stale",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     "codex",
+			SessionID: "acp-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveACPState(session.ID, storage.ACPState{
+		ID:         session.ID,
+		Slug:       session.Slug,
+		ACPAgent:   "codex",
+		ACPSession: "acp-session",
+		State:      acp.StateRunning,
+		Plan:       []sessionevents.ACPPlanEntry{{Content: "Inspect current page", Status: "completed"}},
+		Permissions: []sessionevents.ACPPermission{{
+			ID:     "perm-1",
+			Status: "pending",
+			Questions: []sessionevents.ACPQuestion{{
+				ID:       "audience",
+				Question: "Who is the page for?",
+			}},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/"+session.ID+"/messages", nil)
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var got struct {
+		Session        storage.Session               `json:"session"`
+		ACPState       string                        `json:"acp_state"`
+		ACPPlan        []sessionevents.ACPPlanEntry  `json:"acp_plan"`
+		ACPPermissions []sessionevents.ACPPermission `json:"acp_permissions"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Session.Status != storage.StatusIdle || got.ACPState != acp.StateIdle {
+		t.Fatalf("status = %q, acp_state = %q", got.Session.Status, got.ACPState)
+	}
+	if len(got.ACPPlan) != 1 || got.ACPPlan[0].Content != "Inspect current page" {
+		t.Fatalf("plan = %#v", got.ACPPlan)
+	}
+	if len(got.ACPPermissions) != 0 {
+		t.Fatalf("permissions = %#v", got.ACPPermissions)
 	}
 }
 
@@ -737,9 +755,40 @@ type fakeACPManager struct {
 	sendErr      error
 	answerErr    error
 	job          acp.Job
+	jobs         []acp.Job
 	spawnStore   storage.SessionStore
 	spawned      acp.SpawnRequest
+	created      acp.SpawnRequest
 	spawnErr     error
+}
+
+func (f *fakeACPManager) CreateSession(_ context.Context, req acp.SpawnRequest) (storage.Session, error) {
+	f.mu.Lock()
+	f.created = req
+	spawnStore := f.spawnStore
+	spawnErr := f.spawnErr
+	f.mu.Unlock()
+	if spawnErr != nil {
+		return storage.Session{}, spawnErr
+	}
+	if spawnStore == nil {
+		return storage.Session{}, nil
+	}
+	return spawnStore.CreateSession(storage.CreateSession{
+		Slug:            req.Slug,
+		Title:           req.Title,
+		Runtime:         storage.RuntimeACP,
+		ModelProvider:   req.ACPAgent,
+		Model:           req.Model,
+		ReasoningEffort: req.ReasoningEffort,
+		SourceType:      req.SourceType,
+		SourceID:        req.SourceID,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:  storage.RuntimeACP,
+			Agent: req.ACPAgent,
+			Cwd:   req.Directory,
+		},
+	})
 }
 
 func (f *fakeACPManager) Spawn(_ context.Context, req acp.SpawnRequest) (acp.SpawnResult, error) {
@@ -794,6 +843,14 @@ func (f *fakeACPManager) Status(string) (acp.Job, error) {
 }
 
 func (f *fakeACPManager) List() []acp.Job {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.jobs != nil {
+		return append([]acp.Job(nil), f.jobs...)
+	}
+	if f.job.ID == "" && f.job.Slug == "" {
+		return nil
+	}
 	return []acp.Job{f.job}
 }
 

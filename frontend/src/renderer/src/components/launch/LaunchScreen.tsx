@@ -1,18 +1,18 @@
-import { Globe, LoaderCircle, Play } from 'lucide-react'
+import { LoaderCircle } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type FormEvent, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { PixelField } from '@/components/ui/PixelField'
 import { apiBaseUrl } from '@/lib/api/client'
-import { connectRemote, rememberedRemoteUrl, startLocal, useConnection } from '@/lib/connection'
+import { connectionPreference, connectRemote, rememberedRemoteUrl, startLocal, useConnection } from '@/lib/connection'
 import { useTheme } from '@/lib/theme'
 
 const EASE = [0.22, 1, 0.36, 1] as const
 
 const stagger = {
   hidden: {},
-  show: { transition: { staggerChildren: 0.08, delayChildren: 0.15 } },
+  show: { transition: { staggerChildren: 0.08, delayChildren: 0.12 } },
 }
 
 const rise = {
@@ -24,7 +24,7 @@ const swap = {
   initial: { opacity: 0, y: 8 },
   animate: { opacity: 1, y: 0 },
   exit: { opacity: 0, y: -8 },
-  transition: { duration: 0.18, ease: 'easeOut' as const },
+  transition: { duration: 0.2, ease: 'easeOut' as const },
 }
 
 // Floats over the live app while the health poll retries a lost backend; the
@@ -52,7 +52,8 @@ export function ReconnectingBanner({ show }: { show: boolean }) {
 
 // Full-window gate shown whenever no backend is reachable: first launch,
 // failed startup probe, or a lost connection mid-session. The particle field
-// renders the wordmark, so the chrome stays text-light.
+// renders the wordmark, so the chrome stays text-light. First launch is a
+// welcome — two ways to run jaz — not an error.
 export function LaunchScreen() {
   const { status, error } = useConnection()
   // PixelField samples the palette at mount; remount it when the theme flips.
@@ -86,12 +87,21 @@ export function LaunchScreen() {
     }
   }
 
+  // The launch screen flashes for a sub-second on every boot while the first
+  // probe runs; only spin up the GPU field once we know we're staying.
+  const showField = status === 'disconnected'
+  // While 'checking' we know what we're waiting on — tailor the copy so a
+  // remembered server or a local start reads as intentional, not a hang.
+  const checkingCopy =
+    connectionPreference()?.mode === 'remote'
+      ? 'Connecting to your server…'
+      : connectionPreference()?.mode === 'local'
+        ? 'Starting jaz on this Mac…'
+        : 'Connecting to backend…'
+
   return (
     <div className="relative flex h-full flex-col bg-bg">
-      {/* skip the GPU spin-up during the sub-second checking flash at boot */}
-      {status === 'disconnected' && (
-        <PixelField key={resolved} calm={mode === 'remote' || busy !== null} />
-      )}
+      {showField && <PixelField key={resolved} calm={mode === 'remote' || busy !== null} />}
       <div className="titlebar-drag relative h-[52px] shrink-0" />
       {/* offset the titlebar so the content is optically centered */}
       <div className="relative flex flex-1 flex-col items-center justify-center px-6 pb-[52px]">
@@ -105,7 +115,7 @@ export function LaunchScreen() {
               className="flex flex-col items-center gap-3"
             >
               <span className="size-2 animate-pulse rounded-full bg-primary" />
-              <p className="text-[13px] text-ink-3">Connecting to backend…</p>
+              <p className="text-[13px] text-ink-3">{checkingCopy}</p>
             </motion.div>
           ) : (
             <motion.div
@@ -113,78 +123,75 @@ export function LaunchScreen() {
               variants={stagger}
               initial="hidden"
               animate="show"
-              className="flex w-full max-w-[380px] flex-col items-center gap-6"
+              className="flex w-full max-w-[320px] flex-col items-center"
             >
-              <motion.p variants={rise} className="max-w-[300px] text-center text-[13px] text-ink-2">
-                No backend is running. Start one on this machine or connect to a remote server.
-              </motion.p>
+              <motion.h1
+                variants={rise}
+                className="text-balance text-center text-[22px] font-semibold tracking-tight text-ink"
+              >
+                {error ? 'Reconnect to jaz' : 'Welcome to jaz'}
+              </motion.h1>
 
               {error && (
-                <motion.div
+                <motion.p
                   variants={rise}
-                  className="w-full rounded-control bg-danger-soft px-3 py-2 text-center text-[12px] text-danger"
+                  className="mt-2 text-pretty text-center text-[13px] text-ink-2"
                 >
-                  {error}
-                </motion.div>
+                  The backend jaz was using is unreachable. Start one here or point jaz at another
+                  server.
+                </motion.p>
               )}
 
-              <motion.div variants={rise} className="w-full">
+              <motion.div variants={rise} className="mt-6 w-full">
                 <AnimatePresence mode="wait" initial={false}>
                   {mode === 'options' ? (
-                    <motion.div key="opts" {...swap} className="flex flex-col items-center gap-2">
-                      <Button
-                        variant="primary"
-                        size="lg"
+                    <motion.div key="opts" {...swap} className="flex flex-col gap-2">
+                      <ChoiceButton
+                        primary
+                        label="Run on this Mac"
+                        busyLabel="Starting backend…"
+                        busy={busy === 'local'}
                         disabled={busy !== null}
                         onClick={onStartLocal}
-                      >
-                        {busy === 'local' ? (
-                          <LoaderCircle size={14} className="animate-spin" />
-                        ) : (
-                          <Play size={14} />
-                        )}
-                        {busy === 'local' ? 'Starting backend…' : 'Start locally'}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="lg"
+                      />
+                      <ChoiceButton
+                        label="Connect to a server"
                         disabled={busy !== null}
                         onClick={() => setMode('remote')}
-                      >
-                        <Globe size={14} />
-                        Connect to remote
-                      </Button>
+                      />
                     </motion.div>
                   ) : (
                     <motion.form
                       key="remote"
                       {...swap}
                       onSubmit={onConnect}
-                      className="mx-auto flex w-full max-w-[360px] flex-col gap-2.5"
+                      className="flex w-full flex-col gap-2.5 rounded-[16px] bg-surface/90 p-3 shadow-[0_8px_30px_rgba(0,0,0,0.10)] backdrop-blur-[2px]"
                     >
+                      <div className="px-0.5">
+                        <p className="text-[13px] font-medium text-ink">Connect to a server</p>
+                        <p className="mt-0.5 text-[12px] text-ink-3">Paste the client URL your server printed.</p>
+                      </div>
                       <Input
                         autoFocus
                         value={url}
                         onChange={(e) => setUrl(e.target.value)}
-                        placeholder="http://192.168.1.10:5299"
+                        placeholder="http://192.168.1.10:5299?key=…"
                         spellCheck={false}
+                        className="rounded-full font-mono text-[12px]"
                       />
                       <div className="flex items-center justify-end gap-2">
                         <Button
                           variant="ghost"
                           disabled={busy !== null}
-                          onClick={() => setMode('options')}
+                          onClick={() => {
+                            setMode('options')
+                            setActionError(null)
+                          }}
                         >
                           Back
                         </Button>
-                        <Button
-                          variant="primary"
-                          type="submit"
-                          disabled={busy !== null || !url.trim()}
-                        >
-                          {busy === 'remote' && (
-                            <LoaderCircle size={14} className="animate-spin" />
-                          )}
+                        <Button variant="primary" type="submit" disabled={busy !== null || !url.trim()}>
+                          {busy === 'remote' && <LoaderCircle size={14} className="animate-spin" />}
                           {busy === 'remote' ? 'Connecting…' : 'Connect'}
                         </Button>
                       </div>
@@ -199,7 +206,7 @@ export function LaunchScreen() {
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0 }}
-                    className="text-center text-[12px] text-danger"
+                    className="mt-4 max-w-[320px] text-pretty text-center text-[12px] text-danger"
                   >
                     {actionError}
                   </motion.p>
@@ -210,5 +217,42 @@ export function LaunchScreen() {
         </AnimatePresence>
       </div>
     </div>
+  )
+}
+
+// Full-width rounded pill: the welcome's two ways to run jaz. No icons — the
+// label carries it. Primary = the cobalt recommended path (run locally),
+// secondary = a quiet surface pill (connect to a server). Soft drop shadow
+// floats it over the particle field; scales on press.
+function ChoiceButton({
+  label,
+  busyLabel,
+  busy = false,
+  primary = false,
+  disabled,
+  onClick,
+}: {
+  label: string
+  busyLabel?: string
+  busy?: boolean
+  primary?: boolean
+  disabled?: boolean
+  onClick: () => void
+}) {
+  return (
+    <motion.button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      whileTap={disabled ? undefined : { scale: 0.97 }}
+      className={`flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-full text-[14px] font-medium transition-colors duration-150 disabled:cursor-default disabled:opacity-60 ${
+        primary
+          ? 'bg-primary text-on-primary shadow-[0_8px_24px_rgba(0,0,0,0.14)] enabled:hover:bg-primary-strong'
+          : 'bg-surface/90 text-ink shadow-[0_6px_20px_rgba(0,0,0,0.08)] backdrop-blur-[2px] enabled:hover:bg-surface'
+      }`}
+    >
+      {busy ? <LoaderCircle size={15} className="animate-spin" /> : null}
+      {busy && busyLabel ? busyLabel : label}
+    </motion.button>
   )
 }

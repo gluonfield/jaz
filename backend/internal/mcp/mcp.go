@@ -30,7 +30,7 @@ type Manager struct {
 	registry *tools.Registry
 	log      *log.Logger
 
-	localServers map[string]*mcpsdk.Server
+	localServers map[string]localServer
 
 	mu       sync.RWMutex
 	sessions map[string]*serverSession
@@ -40,13 +40,35 @@ type Manager struct {
 
 type Option func(*Manager)
 
+type localServer struct {
+	server   mcpconfig.Server
+	provider func() *mcpsdk.Server
+}
+
 func WithLocalServer(serverID string, server *mcpsdk.Server) Option {
+	return WithLocalServerProvider(serverID, func() *mcpsdk.Server { return server })
+}
+
+func WithLocalServerProvider(serverID string, provider func() *mcpsdk.Server) Option {
+	return WithBuiltinServerProvider(mcpconfig.Server{
+		ID:      serverID,
+		Name:    serverID,
+		Enabled: true,
+	}, provider)
+}
+
+func WithBuiltinServerProvider(server mcpconfig.Server, provider func() *mcpsdk.Server) Option {
 	return func(m *Manager) {
-		serverID = strings.TrimSpace(serverID)
-		if serverID == "" || server == nil {
+		server.ID = strings.TrimSpace(server.ID)
+		if server.ID == "" || provider == nil {
 			return
 		}
-		m.localServers[serverID] = server
+		server.Name = strings.TrimSpace(server.Name)
+		if server.Name == "" {
+			server.Name = server.ID
+		}
+		server.Enabled = true
+		m.localServers[server.ID] = localServer{server: server, provider: provider}
 	}
 }
 
@@ -80,7 +102,7 @@ func NewManager(store mcpconfig.ServerReader, tokens integrationoauth.Store, reg
 		tokens:       tokens,
 		registry:     registry,
 		log:          logger.WithPrefix("mcp"),
-		localServers: make(map[string]*mcpsdk.Server),
+		localServers: make(map[string]localServer),
 		sessions:     make(map[string]*serverSession),
 		statuses:     make(map[string]mcpconfig.ServerStatus),
 	}
@@ -101,22 +123,17 @@ func (m *Manager) backgroundHandler(server mcpconfig.Server) *oauthHandler {
 }
 
 func (m *Manager) Refresh(ctx context.Context) {
-	if m == nil || m.store == nil || m.registry == nil {
-		return
-	}
 	seq := m.beginRefresh()
-	m.refreshServers(ctx, seq, nil)
+	servers := m.servers(ctx, nil)
+	m.refreshServerList(ctx, seq, servers)
 }
 
 func (m *Manager) RefreshLocal(ctx context.Context) {
-	if m == nil || m.store == nil || m.registry == nil {
-		return
-	}
 	seq := m.beginRefresh()
-	m.refreshServers(ctx, seq, func(server mcpconfig.Server) bool {
-		_, ok := m.localServers[server.ID]
-		return ok
+	servers := m.servers(ctx, func(server mcpconfig.Server) bool {
+		return m.hasLocalServer(server.ID)
 	})
+	m.refreshServerList(ctx, seq, servers)
 }
 
 func (m *Manager) beginRefresh() uint64 {
@@ -126,11 +143,11 @@ func (m *Manager) beginRefresh() uint64 {
 	return m.refresh
 }
 
-func (m *Manager) refreshServers(ctx context.Context, seq uint64, include func(mcpconfig.Server) bool) {
+func (m *Manager) servers(ctx context.Context, include func(mcpconfig.Server) bool) []mcpconfig.Server {
 	servers, err := m.store.ListMCPServers()
 	if err != nil {
 		m.log.Error("load mcp servers failed", "error", err)
-		return
+		servers = nil
 	}
 	if include != nil {
 		filtered := make([]mcpconfig.Server, 0, len(servers))
@@ -141,7 +158,24 @@ func (m *Manager) refreshServers(ctx context.Context, seq uint64, include func(m
 		}
 		servers = filtered
 	}
+	seen := make(map[string]bool, len(servers)+len(m.localServers))
+	for _, server := range servers {
+		if strings.TrimSpace(server.ID) != "" {
+			seen[strings.TrimSpace(server.ID)] = true
+		}
+	}
+	for _, local := range m.localServers {
+		if seen[local.server.ID] {
+			continue
+		}
+		if include == nil || include(local.server) {
+			servers = append(servers, local.server)
+		}
+	}
+	return servers
+}
 
+func (m *Manager) refreshServerList(ctx context.Context, seq uint64, servers []mcpconfig.Server) {
 	results := make([]refreshResult, len(servers))
 	var wg sync.WaitGroup
 	for i, server := range servers {
@@ -203,17 +237,12 @@ func (m *Manager) refreshServers(ctx context.Context, seq uint64, include func(m
 }
 
 func (m *Manager) Close() {
-	if m == nil {
-		return
-	}
 	m.mu.Lock()
 	sessions := m.sessions
 	m.sessions = make(map[string]*serverSession)
 	m.statuses = make(map[string]mcpconfig.ServerStatus)
 	m.mu.Unlock()
-	if m.registry != nil {
-		m.registry.RemoveGroup(registryGroup)
-	}
+	m.registry.RemoveGroup(registryGroup)
 	closeSessions(sessions)
 }
 
@@ -227,9 +256,6 @@ func closeSessions(sessions map[string]*serverSession) {
 }
 
 func (m *Manager) Status(id string) mcpconfig.ServerStatus {
-	if m == nil {
-		return mcpconfig.ServerStatus{}
-	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.statuses[id]
@@ -255,7 +281,7 @@ func (m *Manager) Test(ctx context.Context, server mcpconfig.Server) mcpconfig.S
 // the server's tools become available. It blocks until the user completes sign-in
 // or ctx is cancelled.
 func (m *Manager) Authorize(ctx context.Context, server mcpconfig.Server) mcpconfig.ServerStatus {
-	if m == nil || m.tokens == nil {
+	if m.tokens == nil {
 		return mcpconfig.ServerStatus{Status: "error", Error: "token store is not configured", CheckedAt: time.Now().UTC()}
 	}
 	receiver, err := newLoopbackReceiver()
@@ -303,7 +329,7 @@ func connectErrorStatus(handler *oauthHandler, err error) mcpconfig.ServerStatus
 }
 
 func (m *Manager) connect(ctx context.Context, server mcpconfig.Server, handler auth.OAuthHandler) (*serverSession, error) {
-	if local := m.localServers[server.ID]; local != nil {
+	if local := m.localServer(server.ID); local != nil {
 		return m.connectLocal(ctx, server, local)
 	}
 	headers, err := mcpconfig.ResolvedHeaders(server, true)
@@ -342,6 +368,19 @@ func (m *Manager) connect(ctx context.Context, server mcpconfig.Server, handler 
 		ss.tools = append(ss.tools, rt)
 	}
 	return ss, nil
+}
+
+func (m *Manager) localServer(id string) *mcpsdk.Server {
+	local, ok := m.localServers[strings.TrimSpace(id)]
+	if !ok || local.provider == nil {
+		return nil
+	}
+	return local.provider()
+}
+
+func (m *Manager) hasLocalServer(id string) bool {
+	local, ok := m.localServers[strings.TrimSpace(id)]
+	return ok && local.provider != nil
 }
 
 func (m *Manager) connectLocal(ctx context.Context, server mcpconfig.Server, local *mcpsdk.Server) (*serverSession, error) {

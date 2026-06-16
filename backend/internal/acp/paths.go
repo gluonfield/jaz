@@ -16,8 +16,12 @@ import (
 // one is an existing server-side project directory. Without one each session
 // gets a fresh directory named after its slug. worktree=true swaps the
 // directory for a disposable git worktree on a session branch.
-func (m *Manager) prepareSessionDir(req SpawnRequest, cfg AgentConfig, slug string) (string, string, error) {
+func (m *Manager) prepareSessionDir(ctx context.Context, req SpawnRequest, cfg AgentConfig, slug string) (string, string, error) {
 	directory := strings.TrimSpace(req.Directory)
+	branch := strings.TrimSpace(req.Branch)
+	if branch != "" && !req.Worktree {
+		return "", "", fmt.Errorf("branch requires worktree=true")
+	}
 	workspace, err := m.resolveCwd("")
 	if err != nil {
 		return "", "", err
@@ -43,7 +47,7 @@ func (m *Manager) prepareSessionDir(req SpawnRequest, cfg AgentConfig, slug stri
 				return "", "", err
 			}
 		}
-		if directory != "." {
+		if !req.Worktree && directory != "." {
 			projectPath = abs
 		}
 	case cfg.Cwd != "":
@@ -63,12 +67,12 @@ func (m *Manager) prepareSessionDir(req SpawnRequest, cfg AgentConfig, slug stri
 	if !req.Worktree {
 		return abs, projectPath, nil
 	}
-	worktree, err := gitinfo.AddWorktree(context.Background(), workspace, abs, slug)
+	worktree, repo, err := gitinfo.AddWorktree(ctx, workspace, abs, slug, branch)
 	if err != nil {
 		return "", "", err
 	}
 	m.log.Info("created worktree", "dir", abs, "worktree", worktree, "branch", "jaz/"+slug)
-	return worktree, projectPath, nil
+	return worktree, repo, nil
 }
 
 func (m *Manager) resolveCwd(configured string) (string, error) {

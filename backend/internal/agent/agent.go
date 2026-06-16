@@ -363,6 +363,7 @@ func (a *Agent) emit(out chan<- StreamEvent, event StreamEvent) {
 func addUsage(a, b provider.Usage) provider.Usage {
 	a.InputTokens += b.InputTokens
 	a.CachedInputTokens += b.CachedInputTokens
+	a.CachedWriteTokens += b.CachedWriteTokens
 	a.OutputTokens += b.OutputTokens
 	a.ReasoningOutputTokens += b.ReasoningOutputTokens
 	a.TotalTokens += b.TotalTokens

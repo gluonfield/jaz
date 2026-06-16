@@ -75,6 +75,7 @@ func unmarshalSessionEventsJSONL(data []byte) ([]sessionevents.Event, error) {
 			}
 			return nil, err
 		}
+		event.NormalizePayload()
 		events = append(events, event)
 	}
 }

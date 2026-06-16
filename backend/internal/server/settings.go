@@ -13,10 +13,25 @@ import (
 )
 
 type agentSettingsResponse struct {
-	Native    agentsettings.NativeAgentDefaults         `json:"native"`
-	Providers []provider.NativeProvider                 `json:"providers"`
-	ACP       map[string]agentsettings.ACPAgentDefaults `json:"acp"`
-	Agents    []string                                  `json:"agents"`
+	Native     agentsettings.NativeAgentDefaults         `json:"native"`
+	Providers  []settingsNativeProvider                  `json:"providers"`
+	ACP        map[string]agentsettings.ACPAgentDefaults `json:"acp"`
+	ACPAuth    map[string]acpAuthStatusResponse          `json:"acp_auth"`
+	ACPOptions map[string]acp.AgentOptions               `json:"acp_options"`
+	Agents     []string                                  `json:"agents"`
+}
+
+// A native provider plus whether its API key is already configured on this
+// backend, so Settings can show "configured" and offer to set/replace it.
+type settingsNativeProvider struct {
+	provider.NativeProvider
+	Configured bool `json:"configured"`
+}
+
+type agentSettingsRequest struct {
+	agentsettings.AgentDefaults
+	ProviderKeys map[string]string `json:"provider_keys,omitempty"`
+	ACPKeys      map[string]string `json:"acp_keys,omitempty"`
 }
 
 func (s *Server) handleAgentSettings(w http.ResponseWriter, r *http.Request) {
@@ -34,14 +49,18 @@ func (s *Server) handleAgentSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, s.agentSettingsResponse(defaults))
 	case http.MethodPut:
-		var input agentsettings.AgentDefaults
+		var input agentSettingsRequest
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		normalized, err := agentsettings.NormalizeAgentDefaults(input, s.acpAgentCatalog())
+		normalized, err := agentsettings.NormalizeAgentDefaults(input.AgentDefaults, s.acpAgentCatalog())
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		if status, err := s.applyRuntimeKeyUpdates(r, input.ProviderKeys, input.ACPKeys); err != nil {
+			writeError(w, status, err)
 			return
 		}
 		saved, err := agentsettings.SaveAgentDefaults(store, normalized)
@@ -71,12 +90,48 @@ func (s *Server) loadAgentSettings(store storage.SettingsStorage) (agentsettings
 }
 
 func (s *Server) agentSettingsResponse(defaults agentsettings.AgentDefaults) agentSettingsResponse {
+	agentNames := s.allACPAgentNames()
 	return agentSettingsResponse{
-		Native:    defaults.Native,
-		Providers: provider.NativeProviders(),
-		ACP:       defaults.ACP,
-		Agents:    s.allACPAgentNames(),
+		Native:     defaults.Native,
+		Providers:  s.nativeProvidersWithStatus(),
+		ACP:        defaults.ACP,
+		ACPAuth:    s.acpAgentAuthStatuses(defaults),
+		ACPOptions: acpOptions(agentNames),
+		Agents:     agentNames,
 	}
+}
+
+func (s *Server) nativeProvidersWithStatus() []settingsNativeProvider {
+	out := []settingsNativeProvider{}
+	for _, meta := range provider.NativeProviders() {
+		out = append(out, settingsNativeProvider{
+			NativeProvider: meta,
+			Configured:     s.providerKeyConfigured(meta.ID),
+		})
+	}
+	return out
+}
+
+func (s *Server) acpAgentAuthStatuses(defaults agentsettings.AgentDefaults) map[string]acpAuthStatusResponse {
+	out := make(map[string]acpAuthStatusResponse, len(s.allACPAgentNames()))
+	for _, name := range s.allACPAgentNames() {
+		cfg, _, err := s.acpProbeConfig(name, defaults)
+		if err != nil {
+			out[name] = acpAuthStatusResponse{Reason: err.Error()}
+			continue
+		}
+		auth := acp.ProbeAgentAuth(name, cfg, s.runtimeRoot(), nil)
+		out[name] = newACPAuthStatusResponse(auth)
+	}
+	return out
+}
+
+func acpOptions(agentNames []string) map[string]acp.AgentOptions {
+	options := make(map[string]acp.AgentOptions, len(agentNames))
+	for _, name := range agentNames {
+		options[name] = acp.AgentOptionsFor(name)
+	}
+	return options
 }
 
 func (s *Server) agentSettingsSeed() agentsettings.AgentDefaults {

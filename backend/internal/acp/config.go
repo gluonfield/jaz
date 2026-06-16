@@ -12,13 +12,14 @@ const (
 	AgentCodex  = "codex"
 	AgentClaude = "claude"
 	AgentGrok   = "grok"
+
+	AuthModeAuto        = "auto"
+	AuthModeExistingCLI = "existing_cli"
+	AuthModeJazProfile  = "jaz_profile"
 )
 
 func CanonicalAgentName(name string) string {
 	name = strings.ToLower(strings.TrimSpace(name))
-	if strings.ReplaceAll(name, "_", "-") == "claude-code" {
-		return AgentClaude
-	}
 	if strings.ReplaceAll(name, "_", "-") == "grok-build" {
 		return AgentGrok
 	}
@@ -31,7 +32,7 @@ func CanonicalAgentName(name string) string {
 // Both are consulted on use, not at startup, so prompt and skill edits reach
 // new sessions and turns without a restart.
 type SystemPromptSource interface {
-	ACPPrompt() (string, error)
+	ACPPrompt(cwd string) (string, error)
 	SkillsPrompt() (string, error)
 }
 
@@ -75,8 +76,14 @@ type AgentConfig struct {
 	ReasoningEffort string
 	URL             string
 	Token           string
+	Auth            AgentAuthConfig
 	Env             map[string]string
 	Cwd             string
+}
+
+type AgentAuthConfig struct {
+	Mode string `json:"mode,omitempty"`
+	Path string `json:"path,omitempty"`
 }
 
 type AgentCatalog map[string]AgentConfig
@@ -116,8 +123,9 @@ func (c AgentCatalog) EnabledAgentNames() ([]string, error) {
 func BuiltinAgents() AgentCatalog {
 	return AgentCatalog{
 		AgentCodex: {
-			Command: "codex-acp",
+			Command: "npx",
 			Args: []string{
+				"-y", "@jazchat/codex-acp@0.16.1",
 				"-c", `sandbox_mode="danger-full-access"`,
 				"-c", `approval_policy="never"`,
 			},

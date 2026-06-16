@@ -1,16 +1,18 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { ArrowDown, FileText, PanelRightClose, PanelRightOpen } from 'lucide-react'
+import { ArrowDown, FileText } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BottomDock } from '@/components/session/BottomDock'
 import { Composer, PlanDecisionCard } from '@/components/session/Composer'
-import { MessageMarkdown } from '@/components/session/MessageMarkdown'
+import { FileReaderLinkProvider, MessageMarkdown, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
 import { SessionErrorNotice } from '@/components/session/SessionErrorNotice'
 import { SessionLivenessIndicator } from '@/components/session/SessionLivenessIndicator'
-import { SESSION_PANEL_WIDTH, SessionPanel } from '@/components/session/SessionPanel'
+import { SidePanel } from '@/components/session/SidePanel'
+import { SidePanelControl, useSidePanelState } from '@/components/session/SidePanelState'
 import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
+import { ArtifactBlock } from '@/components/session/ArtifactBlock'
 import { ThinkingBlock } from '@/components/session/ThinkingBlock'
 import { ThreadFindBar } from '@/components/session/ThreadFindBar'
 import { TokenStats } from '@/components/session/TokenStats'
@@ -18,7 +20,7 @@ import { ToolCallCard } from '@/components/session/ToolCallCard'
 import { Transcript } from '@/components/session/Transcript'
 import { VoiceMode } from '@/components/session/VoiceMode'
 import { THREAD_COLUMN_CLASS } from '@/components/session/threadLayout'
-import { isHiddenToolName } from '@/components/session/toolVisibility'
+import { isArtifactToolName, isHiddenToolName } from '@/components/session/toolVisibility'
 import { useThreadFind } from '@/components/session/useThreadFind'
 import { useThreadAutoScroll } from '@/components/session/useThreadAutoScroll'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -28,28 +30,51 @@ import {
   answerSessionInteractiveResponse,
   cancelSession,
   sessionMessagesQuery,
+  sessionRepoQuery,
   uploadSessionAttachment,
 } from '@/lib/api/sessions'
 import { streamSessionMessage } from '@/lib/api/stream'
-import type { ACPJobSnapshot, ACPPermission, ChatMessage, SessionEvent, SessionMessages } from '@/lib/api/types'
+import type { ACPJobSnapshot, ACPModeState, ChatMessage, SessionEvent, SessionMessages } from '@/lib/api/types'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
 import { takePendingMessage, takePendingVoice } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
-import { planSurfaceBelongsToSession, planSurfaceFromEvent } from '@/lib/planSurface'
+import {
+  approvalPlanSurfaceFromEvent,
+  hasProgressSignal,
+  progressSurfaceFromEvent,
+  taskSurfaceBelongsToSession,
+} from '@/lib/taskSurface'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { coalesceSessionEvents } from '@/lib/sessionEvents'
+import { activePermissionIDs, isPermissionAwaitingResponse, resolveInactivePermissions } from '@/lib/sessionPermissions'
 import { latestEventTimeISO } from '@/lib/sessionLiveness'
 
+type SessionSearch = {
+  message?: number
+}
+
 export const Route = createFileRoute('/sessions/$sessionId')({
-  component: SessionPage,
+  validateSearch: (search): SessionSearch => {
+    const raw = search.message
+    const message = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : 0
+    return Number.isSafeInteger(message) && message > 0 ? { message } : {}
+  },
+  component: SessionRoute,
 })
+
+function SessionRoute() {
+  const { sessionId } = Route.useParams()
+  const search = Route.useSearch()
+  return <SessionPage key={sessionId} sessionId={sessionId} search={search} />
+}
 
 // One in-flight user → assistant exchange, rendered after the transcript
 // while it streams; replaced by the refetched server history on completion.
 interface LiveExchange {
   user: string
   at: string
+  planRequested: boolean
   attachments: LiveAttachment[]
   reasoning: string
   assistant: string
@@ -72,6 +97,15 @@ function stripACPError(event: SessionEvent): SessionEvent {
   return { ...event, acp: { ...event.acp, error: undefined } }
 }
 
+function stripProgressSignal(event: SessionEvent): SessionEvent {
+  if (event.acp) {
+    const { plan: _plan, ...acp } = event.acp
+    return { ...event, acp }
+  }
+  const { plan: _plan, ...out } = event
+  return out
+}
+
 function sessionEventErrorMessage(event: SessionEvent): string {
   return event.acp?.error?.trim() ?? ''
 }
@@ -85,6 +119,28 @@ function formatAttachmentSize(size?: number): string {
   if (size < 1024) return `${size} B`
   if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
   return `${(size / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function modeStateKnown(modes?: ACPModeState): boolean {
+  return Boolean(
+    modes?.plan_mode_id ||
+      modes?.current_mode_id ||
+      modes?.execution_mode_id ||
+      modes?.available_modes?.length,
+  )
+}
+
+function planModeActive(modes?: ACPModeState): boolean {
+  return Boolean(modes?.plan_mode_id && modes.current_mode_id === modes.plan_mode_id)
+}
+
+function latestACPModeState(sessionId: string, events: SessionEvent[]): ACPModeState | undefined {
+  let latest: ACPModeState | undefined
+  for (const event of events) {
+    if (event.acp?.id !== sessionId || !modeStateKnown(event.acp.modes)) continue
+    latest = event.acp.modes
+  }
+  return latest
 }
 
 function LiveAttachmentList({ attachments }: { attachments: LiveAttachment[] }) {
@@ -166,25 +222,22 @@ function acpSnapshotEvents(job: ACPJobSnapshot, pageSessionID: string): SessionE
       },
     })
   }
-  for (const permission of job.permissions ?? []) {
-    if (!hasPermissionSurface(permission)) continue
-    events.push({
-      session_id: pageSessionID,
-      type: 'permission_request',
-      at,
-      permission,
-    })
+  if (isACPStateRunning(job.state)) {
+    for (const permission of job.permissions ?? []) {
+      if (!isPermissionAwaitingResponse(permission)) continue
+      events.push({
+        session_id: pageSessionID,
+        type: 'permission_request',
+        at,
+        permission,
+      })
+    }
   }
   return events
 }
 
-function hasPermissionSurface(permission: ACPPermission | undefined): boolean {
-  if (!permission?.id?.trim()) return false
-  return Boolean(
-    permission.questions?.length ||
-      permission.options?.length ||
-      permission.locations?.length,
-  )
+function isACPStateRunning(state?: string): boolean {
+  return state === 'running' || state === 'starting'
 }
 
 function sanitizeParentChildACPEvent(event: SessionEvent, pageSessionID: string): SessionEvent | null {
@@ -271,6 +324,9 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
       : []),
     ...((acpChildren ?? []).flatMap((child) => acpSnapshotEvents(child, session.id))),
   ]
+  const modeEvents = [...persistedEvents, ...snapshotEvents, ...liveEvents]
+  const currentModes = latestACPModeState(session.id, modeEvents) ?? acpModes
+  const activePermissions = activePermissionIDs([...snapshotEvents, ...liveEvents])
   const transcriptEvents = coalesceSessionEvents(
     [...persistedEvents, ...snapshotEvents, ...liveEvents].flatMap((event) => {
       // 'assistant' events are refresh signals; the message store has the content.
@@ -281,25 +337,11 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
       return sanitized ? [sanitized] : []
     }),
   )
-  const acpModesKnown = Boolean(
-    acpModes?.plan_mode_id ||
-      acpModes?.current_mode_id ||
-      acpModes?.execution_mode_id ||
-      acpModes?.available_modes?.length,
-  )
-  const planAvailable = session.runtime !== 'acp' || !acpModesKnown || Boolean(acpModes?.plan_mode_id)
-  const pendingPermissionEvents = new Map<string, SessionEvent>()
-  for (const event of transcriptEvents) {
-    if (event.type === 'permission_request' && event.permission?.id) {
-      if (hasPermissionSurface(event.permission)) {
-        pendingPermissionEvents.set(event.permission.id, event)
-      }
-    }
-    if (event.type === 'permission_response' && event.permission?.id) {
-      pendingPermissionEvents.delete(event.permission.id)
-    }
-  }
-  const hasPendingPermission = pendingPermissionEvents.size > 0
+  const settledTranscriptEvents = resolveInactivePermissions(transcriptEvents, activePermissions)
+  const acpModesKnown = modeStateKnown(currentModes)
+  const planAvailable = session.runtime !== 'acp' || !acpModesKnown || Boolean(currentModes?.plan_mode_id)
+  const planActive = planModeActive(currentModes)
+  const hasPendingPermission = activePermissions.size > 0
   const latestUserAt = Math.max(
     0,
     ...messages
@@ -307,61 +349,46 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
       .map((message) => Date.parse(message.created_at))
       .filter((time) => !Number.isNaN(time)),
   )
-  const latestPlanDecisionEvent = transcriptEvents.findLast((event) => {
-    const surface = planSurfaceFromEvent(event)
+  const latestPlanDecisionEvent = settledTranscriptEvents.findLast((event) => {
+    const surface = approvalPlanSurfaceFromEvent(event)
     return Boolean(
       surface?.awaitingApproval &&
         surface.approvalSessionId &&
-        planSurfaceBelongsToSession(event, session.id),
+        taskSurfaceBelongsToSession(event, session.id),
     )
   })
   const latestPlanDecisionSurface = latestPlanDecisionEvent
-    ? planSurfaceFromEvent(latestPlanDecisionEvent)
+    ? approvalPlanSurfaceFromEvent(latestPlanDecisionEvent)
     : undefined
   const planDecisionAt = Date.parse(latestPlanDecisionEvent?.at ?? '')
-  // The panel mirrors the transcript's notion of "current plan": the latest
-  // plan-bearing event that belongs to this session.
-  const panelPlanEvent = transcriptEvents.findLast((event) =>
-    Boolean(planSurfaceFromEvent(event) && planSurfaceBelongsToSession(event, session.id)),
+  const panelProgressEvent = settledTranscriptEvents.findLast((event) =>
+    Boolean(progressSurfaceFromEvent(event) && taskSurfaceBelongsToSession(event, session.id)),
   )
-  // Plan progress lives in the side panel, never in the thread; only a
-  // proposed plan that needs the user's approval stays inline. Errors are
+  // Progress lives in the side panel, never in the thread; only a proposed
+  // plan that needs the user's approval stays inline. Errors are
   // notified as toasts, not rendered as rows.
-  const displayEvents = transcriptEvents.map((event) => {
+  const displayEvents = settledTranscriptEvents.map((event) => {
     const withoutError = stripACPError(event)
-    const surface = planSurfaceFromEvent(withoutError)
-    if (!surface || surface.awaitingApproval) return withoutError
-    if (withoutError.acp) return { ...withoutError, acp: { ...withoutError.acp, plan: undefined } }
-    return { ...withoutError, plan: undefined }
+    if (!hasProgressSignal(withoutError)) return withoutError
+    return stripProgressSignal(withoutError)
   })
   return {
-    transcriptEvents,
+    transcriptEvents: settledTranscriptEvents,
     displayEvents,
     planAvailable,
+    planActive,
     hasPendingPermission,
     latestPlanDecisionSurface,
     planDecisionSessionID: latestPlanDecisionSurface?.approvalSessionId,
     planDecisionIsCurrent: !Number.isNaN(planDecisionAt) && planDecisionAt >= latestUserAt,
-    panelPlan: panelPlanEvent ? planSurfaceFromEvent(panelPlanEvent) : undefined,
+    panelProgress: panelProgressEvent ? progressSurfaceFromEvent(panelProgressEvent) : undefined,
   }
 }
 
-// The chat column at its widest (max-w-[720px] + px-10 each side); the panel
-// auto-shows only when it fits beside it — which is exactly when the sidebar
-// hides or the window is wide enough.
-const PANEL_CHAT_COMFORT = 800
-const PANEL_PREF_KEY = 'jaz.sessionPanel'
 const SESSION_DRAFT_KEY_PREFIX = 'jaz.sessionDraft.'
 const TRANSCRIPT_DOCK_GAP_PX = 20
-type PanelPref = 'auto' | 'open' | 'closed'
 
-function storedPanelPref(): PanelPref {
-  const value = localStorage.getItem(PANEL_PREF_KEY)
-  return value === 'open' || value === 'closed' ? value : 'auto'
-}
-
-function SessionPage() {
-  const { sessionId } = Route.useParams()
+function SessionPage({ sessionId, search }: { sessionId: string; search: SessionSearch }) {
   const queryClient = useQueryClient()
   const toast = useToast()
   const detail = useQuery(sessionMessagesQuery(sessionId))
@@ -401,28 +428,11 @@ function SessionPage() {
   const [planDecisionError, setPlanDecisionError] = useState('')
   const abortRef = useRef<AbortController | null>(null)
   const sentPendingRef = useRef<string | null>(null)
-
-  // Right panel: 'auto' follows available width; an explicit choice wins
-  // until toggling lands back on what auto would do anyway. Width is tracked
-  // as the breakpoint boolean so resize ticks (e.g. the sidebar's width
-  // animation) only re-render when crossing it, not per pixel.
-  const [panelPref, setPanelPref] = useState<PanelPref>(storedPanelPref)
-  const [hasPanelSpace, setHasPanelSpace] = useState(false)
-  const panelObserver = useRef<ResizeObserver | null>(null)
-  const measureRef = useCallback((el: HTMLDivElement | null) => {
-    panelObserver.current?.disconnect()
-    panelObserver.current = null
-    if (!el) return
-    const update = () =>
-      setHasPanelSpace(el.clientWidth >= PANEL_CHAT_COMFORT + SESSION_PANEL_WIDTH)
-    const observer = new ResizeObserver(update)
-    observer.observe(el)
-    update()
-    panelObserver.current = observer
-  }, [])
-  useEffect(() => {
-    localStorage.setItem(PANEL_PREF_KEY, panelPref)
-  }, [panelPref])
+  // The panel only auto-opens on a git repo, so the picker needs to know up
+  // front — query it from the session's cwd (shares cache with the panel).
+  const sessionCwd = detail.data?.session.runtime_ref?.cwd
+  const repoInfo = useQuery({ ...sessionRepoQuery(sessionId), enabled: Boolean(sessionCwd) })
+  const sidePanel = useSidePanelState(Boolean(repoInfo.data?.git))
 
   const itemCount = (detail.data?.messages.length ?? 0) + events.data.length
   const liveSize = live
@@ -437,7 +447,8 @@ function SessionPage() {
   const transcriptBottomPadding = Math.max(bottomDockHeight + TRANSCRIPT_DOCK_GAP_PX, 160)
   const { scrollRef, showScrollToBottom, onScroll: onThreadScroll, scrollToBottom, pinToBottom } =
     useThreadAutoScroll({ resetKey: sessionId, itemCount, liveSize, bottomInset: transcriptBottomPadding })
-  const threadFind = useThreadFind(sessionId)
+  const threadFind = useThreadFind(sessionId, scrollRef)
+  const [highlightedMessageSeq, setHighlightedMessageSeq] = useState<number>()
 
   // Abandon an in-flight stream when leaving the session.
   useEffect(() => () => abortRef.current?.abort(), [sessionId])
@@ -445,12 +456,17 @@ function SessionPage() {
   const handleSend = useCallback((text: string, options: SendMessageOptions = {}) => {
     const controller = new AbortController()
     const files = options.files ?? []
+    const draftAttachments = options.attachments ?? []
     abortRef.current = controller
     pinToBottom()
     setLive({
       user: text,
       at: new Date().toISOString(),
-      attachments: files.map((file) => ({ name: file.name, size: file.size, uploading: true })),
+      planRequested: Boolean(options.planRequested),
+      attachments: [
+        ...draftAttachments,
+        ...files.map((file) => ({ name: file.name, size: file.size, uploading: true })),
+      ],
       reasoning: '',
       assistant: '',
       tools: [],
@@ -463,12 +479,15 @@ function SessionPage() {
         ? await Promise.all(files.map((file) => uploadSessionAttachment(sessionId, file, controller.signal)))
         : []
       if (attachments.length) {
-        setLive((prev) => (prev ? { ...prev, attachments } : prev))
+        setLive((prev) => (prev ? { ...prev, attachments: [...draftAttachments, ...attachments] } : prev))
       }
       await streamSessionMessage({
         sessionId,
         message: text,
-        attachmentIds: attachments.map((attachment) => attachment.id),
+        attachmentIds: [
+          ...draftAttachments.map((attachment) => attachment.id),
+          ...attachments.map((attachment) => attachment.id),
+        ],
         planRequested: options.planRequested,
         signal: controller.signal,
         onEvent: (event) => {
@@ -592,32 +611,42 @@ function SessionPage() {
     if (takePendingVoice(sessionId)) setVoiceMode(true)
   }, [sessionId])
 
+  useEffect(() => {
+    if (!detail.isSuccess || !search.message) return
+    const messageSeq = search.message
+    setHighlightedMessageSeq(messageSeq)
+    const frame = requestAnimationFrame(() => {
+      const target = scrollRef.current?.querySelector<HTMLElement>(`[data-message-seq="${messageSeq}"]`)
+      target?.scrollIntoView({ block: 'center', inline: 'nearest' })
+    })
+    const timer = window.setTimeout(() => {
+      setHighlightedMessageSeq((current) => (current === messageSeq ? undefined : current))
+    }, 2200)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.clearTimeout(timer)
+    }
+  }, [detail.isSuccess, detail.data?.messages.length, scrollRef, search.message, sessionId])
+
   const data = detail.data
   const derived = useMemo(
     () => (data ? deriveSessionView(data, events.data) : undefined),
     [data, events.data],
   )
-  const livenessEvents = useMemo(
-    () => [...(data?.events ?? []), ...events.data],
-    [data?.events, events.data],
-  )
-
-  const panelOpen = panelPref === 'auto' ? hasPanelSpace : panelPref === 'open'
-  const togglePanel = useCallback(() => {
-    const next = !panelOpen
-    // Landing on what auto would do re-arms auto-show.
-    setPanelPref(next === hasPanelSpace ? 'auto' : next ? 'open' : 'closed')
-  }, [hasPanelSpace, panelOpen])
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.defaultPrevented) return
-      if (e.key.toLowerCase() !== 's') return
-      e.preventDefault()
-      togglePanel()
+  const maxPersistedEventSeq = useMemo(() => {
+    let max = 0
+    for (const event of data?.events ?? []) {
+      if ((event.seq ?? 0) > max) max = event.seq ?? 0
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [togglePanel])
+    return max
+  }, [data?.events])
+  useEffect(() => {
+    if (!maxPersistedEventSeq) return
+    queryClient.setQueryData<SessionEvent[]>(keys.sessionEvents(sessionId), (prev = []) => {
+      const next = prev.filter((event) => !event.seq || event.seq > maxPersistedEventSeq)
+      return next.length === prev.length ? prev : next
+    })
+  }, [maxPersistedEventSeq, queryClient, sessionId])
 
   if (detail.isPending) {
     return (
@@ -642,11 +671,12 @@ function SessionPage() {
     transcriptEvents,
     displayEvents,
     planAvailable,
+    planActive,
     hasPendingPermission,
     latestPlanDecisionSurface,
     planDecisionSessionID,
     planDecisionIsCurrent,
-    panelPlan,
+    panelProgress,
   } = derived
   const showPlanDecision = Boolean(
     latestPlanDecisionSurface?.awaitingApproval &&
@@ -703,172 +733,195 @@ function SessionPage() {
   }
 
   return (
-    <div ref={measureRef} className="flex h-full">
-      {titlebarSlot
-        ? createPortal(
-            <>
-              <RuntimeBadge session={session} truncate={false} />
-              <TokenStats session={session} />
-            </>,
-            titlebarSlot,
-          )
-        : null}
-      {titlebarActions
-        ? createPortal(
-            <button
-              type="button"
-              aria-label={panelOpen ? 'Hide session panel' : 'Show session panel'}
-              title={`${panelOpen ? 'Hide' : 'Show'} session panel (Shift+⌘S)`}
-              onClick={togglePanel}
-              className="grid size-8 cursor-pointer place-items-center rounded-full text-ink-2 transition-colors duration-200 hover:bg-surface-2 hover:text-ink"
-            >
-              {panelOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
-            </button>,
-            titlebarActions,
-          )
-        : null}
+    <FileReaderLinkProvider onOpen={sidePanel.openFile}>
+      <PreviewLinkProvider onOpen={sidePanel.openPreview}>
+        <div ref={sidePanel.measureRef} className="flex h-full">
+          {titlebarSlot
+            ? createPortal(
+                <>
+                  <RuntimeBadge session={session} truncate={false} />
+                  <TokenStats session={session} />
+                </>,
+                titlebarSlot,
+              )
+            : null}
+          {titlebarActions
+            ? createPortal(
+                <SidePanelControl
+                  open={sidePanel.open}
+                  view={sidePanel.view}
+                  fileAvailable={Boolean(sidePanel.fileRef)}
+                  onToggle={sidePanel.toggle}
+                  onSelectView={sidePanel.selectView}
+                />,
+                titlebarActions,
+              )
+            : null}
 
-      <div className="relative h-full min-w-0 flex-1">
-        <div
-          ref={scrollRef}
-          className="h-full overflow-y-auto"
-          onScroll={onThreadScroll}
-        >
-          <div
-            ref={threadFind.rootRef}
-            className={`${THREAD_COLUMN_CLASS} pt-2`}
-            style={{ paddingBottom: transcriptBottomPadding }}
-          >
-            {empty ? (
-              <EmptyState title="Start the conversation">
-                <p>Messages stream in live as your assistant thinks and works.</p>
-              </EmptyState>
-            ) : (
-              <>
-                <Transcript
-                  messages={transcriptMessages}
-                  events={displayEvents}
-                  sessionId={session.id}
-                  groupTurns={isACP}
-                  working={sessionRunning}
-                  findActive={threadFind.open && Boolean(threadFind.query.trim())}
-                  tail={
-                    isACP ? (
-                      <SessionLivenessIndicator
-                        agent={session.runtime_ref?.agent}
-                        running={sessionRunning}
-                        updatedAt={session.updated_at}
-                        events={livenessEvents}
-                        lastEventAt={latestEventTimeISO(lastSessionEventAt, live?.at)}
-                      />
-                    ) : live ? (
-                      <div className="flex flex-col gap-5">
-                        <motion.div
-                          className="flex justify-end"
-                          initial={{ opacity: 0, y: 8 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                        >
-                          <div className="min-w-0 max-w-[84%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap [overflow-wrap:break-word] select-text">
-                            {live.user}
-                            <LiveAttachmentList attachments={live.attachments} />
-                          </div>
-                        </motion.div>
-                        <ThinkingBlock text={live.reasoning} pending={streaming} />
-                        {live.tools.map((tool) => (
-                          <ToolCallCard
-                            key={tool.key}
-                            name={tool.name}
-                            args={tool.args}
-                            result={tool.result}
-                            pending={streaming && tool.result === undefined}
+          <div className="relative h-full min-w-0 flex-1">
+            <div ref={scrollRef} className="h-full overflow-y-auto" onScroll={onThreadScroll}>
+              <div
+                ref={threadFind.rootRef}
+                className={`${THREAD_COLUMN_CLASS} pt-2`}
+                style={{ paddingBottom: transcriptBottomPadding }}
+              >
+                {empty ? (
+                  <EmptyState title="Start the conversation">
+                    <p>Messages stream in live as your assistant thinks and works.</p>
+                  </EmptyState>
+                ) : (
+                  <>
+                    <Transcript
+                      key={session.id}
+                      messages={transcriptMessages}
+                      events={displayEvents}
+                      sessionId={session.id}
+                      groupTurns={isACP}
+                      working={sessionRunning}
+                      findActive={threadFind.open && Boolean(threadFind.query.trim())}
+                      highlightedSeq={highlightedMessageSeq}
+                      onArtifactPrompt={queue.onSend}
+                      tail={
+                        isACP ? (
+                          <SessionLivenessIndicator
+                            agent={session.runtime_ref?.agent}
+                            running={sessionRunning}
+                            updatedAt={session.updated_at}
+                            lastActivityAt={latestEventTimeISO(lastSessionEventAt, live?.at)}
                           />
-                        ))}
-                        {live.assistant ? (
-                          <MessageMarkdown text={live.assistant} />
-                        ) : streaming ? (
-                          <p className="animate-pulse text-sm text-ink-3">Thinking…</p>
-                        ) : null}
-                        {live.error ? <SessionErrorNotice message={live.error} /> : null}
-                      </div>
-                    ) : null
-                  }
+                        ) : live ? (
+                          <div className="flex flex-col gap-5">
+                            <motion.div
+                              className="flex justify-end"
+                              initial={{ opacity: 0, y: 8 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                            >
+                              <div className="min-w-0 max-w-[84%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap [overflow-wrap:break-word] select-text">
+                                {live.user}
+                                <LiveAttachmentList attachments={live.attachments} />
+                              </div>
+                            </motion.div>
+                            <ThinkingBlock text={live.reasoning} pending={streaming} />
+                            {live.tools.map((tool) =>
+                              isArtifactToolName(tool.name) ? (
+                                <ArtifactBlock
+                                  key={tool.key}
+                                  args={tool.args}
+                                  result={tool.result}
+                                  pending={streaming && tool.result === undefined}
+                                  onSendPrompt={queue.onSend}
+                                />
+                              ) : (
+                                <ToolCallCard
+                                  key={tool.key}
+                                  name={tool.name}
+                                  args={tool.args}
+                                  result={tool.result}
+                                  pending={streaming && tool.result === undefined}
+                                />
+                              ),
+                            )}
+                            {live.assistant ? (
+                              <MessageMarkdown text={live.assistant} />
+                            ) : streaming ? (
+                              <p className="animate-pulse text-sm text-ink-3">Thinking…</p>
+                            ) : null}
+                            {live.error ? <SessionErrorNotice message={live.error} /> : null}
+                          </div>
+                        ) : null
+                      }
+                    />
+                    {sessionError ? (
+                      <SessionErrorNotice message={sessionError} context={sessionErrorContext} className="mt-5" />
+                    ) : null}
+                  </>
+                )}
+              </div>
+            </div>
+            <ThreadFindBar find={threadFind} />
+
+            {showPlanDecision && planDecisionError ? (
+              <p className="absolute inset-x-0 bottom-32 mx-auto max-w-[640px] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
+                {planDecisionError}
+              </p>
+            ) : null}
+            <BottomDock
+              before={<ScrollToBottomButton visible={showScrollToBottom} onClick={scrollToBottom} />}
+              onHeightChange={setBottomDockHeight}
+            >
+              {showPlanDecision ? (
+                <PlanDecisionCard
+                  pending={planDecisionPending}
+                  onImplement={() => {
+                    setPlanDecisionPending(true)
+                    setPlanDecisionError('')
+                    void sendACPFallback(planDecisionSessionID!, 'Implement the plan.', {
+                      parentVisible: planDecisionSessionID !== session.id,
+                    })
+                      .catch((err: Error) => setPlanDecisionError(err.message || 'Sending the approval failed.'))
+                      .finally(() => setPlanDecisionPending(false))
+                  }}
+                  onClarify={(text) => {
+                    setPlanDecisionPending(true)
+                    setPlanDecisionError('')
+                    void sendACPFallback(planDecisionSessionID!, text, {
+                      planRequested: true,
+                      parentVisible: planDecisionSessionID !== session.id,
+                    })
+                      .catch((err: Error) => setPlanDecisionError(err.message || 'Sending the reply failed.'))
+                      .finally(() => setPlanDecisionPending(false))
+                  }}
                 />
-                {sessionError ? (
-                  <SessionErrorNotice message={sessionError} context={sessionErrorContext} className="mt-5" />
-                ) : null}
-              </>
-            )}
+              ) : (
+                <Composer
+                  streaming={sessionRunning}
+                  planAvailable={planAvailable}
+                  planModeActive={Boolean(live?.planRequested) || planActive}
+                  queuedPrompts={queue.queuedPrompts}
+                  steerDisabled={queue.steerDisabled}
+                  draftStorageKey={`${SESSION_DRAFT_KEY_PREFIX}${session.id}`}
+                  fileRoot={session.runtime_ref?.cwd}
+                  onSend={queue.onSend}
+                  onStop={() => {
+                    // the turn runs detached server-side; stop it there first
+                    void cancelSession(sessionId).catch(() => {})
+                    abortRef.current?.abort()
+                  }}
+                  onVoice={session.runtime !== 'acp' ? () => setVoiceMode(true) : undefined}
+                  onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
+                  onSteerQueuedPrompt={queue.onSteerQueuedPrompt}
+                  onDeleteQueuedPrompt={queue.onDeleteQueuedPrompt}
+                  onEditQueuedPrompt={queue.onEditQueuedPrompt}
+                  onMoveQueuedPrompt={queue.onMoveQueuedPrompt}
+                />
+              )}
+            </BottomDock>
           </div>
+
+          {/* Docked, never overlapping: the chat pane flexes and stays centered
+              between the sidebar and this panel. */}
+          <motion.div
+            className="h-full shrink-0 overflow-hidden"
+            initial={false}
+            animate={{ width: sidePanel.open ? sidePanel.width : 0 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 36 }}
+          >
+            <SidePanel
+              session={session}
+              progress={panelProgress}
+              working={sessionRunning}
+              visible={sidePanel.open}
+              view={sidePanel.view}
+              previewUrl={sidePanel.previewUrl}
+              fileRef={sidePanel.fileRef}
+              onPreviewUrlChange={sidePanel.setPreviewUrl}
+              onOpenFile={sidePanel.openFile}
+              onClose={sidePanel.toggle}
+            />
+          </motion.div>
         </div>
-        <ThreadFindBar find={threadFind} />
-
-        {showPlanDecision && planDecisionError ? (
-          <p className="absolute inset-x-0 bottom-32 mx-auto max-w-[640px] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
-            {planDecisionError}
-          </p>
-        ) : null}
-        <BottomDock
-          before={<ScrollToBottomButton visible={showScrollToBottom} onClick={scrollToBottom} />}
-          onHeightChange={setBottomDockHeight}
-        >
-          {showPlanDecision ? (
-            <PlanDecisionCard
-              pending={planDecisionPending}
-              onImplement={() => {
-                setPlanDecisionPending(true)
-                setPlanDecisionError('')
-                void sendACPFallback(planDecisionSessionID!, 'Implement the plan.', {
-                  parentVisible: planDecisionSessionID !== session.id,
-                })
-                  .catch((err: Error) => setPlanDecisionError(err.message || 'Sending the approval failed.'))
-                  .finally(() => setPlanDecisionPending(false))
-              }}
-              onClarify={(text) => {
-                setPlanDecisionPending(true)
-                setPlanDecisionError('')
-                void sendACPFallback(planDecisionSessionID!, text, {
-                  planRequested: true,
-                  parentVisible: planDecisionSessionID !== session.id,
-                })
-                  .catch((err: Error) => setPlanDecisionError(err.message || 'Sending the reply failed.'))
-                  .finally(() => setPlanDecisionPending(false))
-              }}
-            />
-          ) : (
-            <Composer
-              streaming={sessionRunning}
-              planAvailable={planAvailable}
-              queuedPrompts={queue.queuedPrompts}
-              steerDisabled={queue.steerDisabled}
-              draftStorageKey={`${SESSION_DRAFT_KEY_PREFIX}${session.id}`}
-              fileRoot={session.runtime_ref?.cwd}
-              onSend={queue.onSend}
-              onStop={() => {
-                // the turn runs detached server-side; stop it there first
-                void cancelSession(sessionId).catch(() => {})
-                abortRef.current?.abort()
-              }}
-              onVoice={session.runtime !== 'acp' ? () => setVoiceMode(true) : undefined}
-              onSteerQueuedPrompt={queue.onSteerQueuedPrompt}
-              onDeleteQueuedPrompt={queue.onDeleteQueuedPrompt}
-              onEditQueuedPrompt={queue.onEditQueuedPrompt}
-              onMoveQueuedPrompt={queue.onMoveQueuedPrompt}
-            />
-          )}
-        </BottomDock>
-      </div>
-
-      {/* Docked, never overlapping: the chat pane flexes and stays centered
-          between the sidebar and this panel. */}
-      <motion.div
-        className="h-full shrink-0 overflow-hidden"
-        initial={false}
-        animate={{ width: panelOpen ? SESSION_PANEL_WIDTH : 0 }}
-        transition={{ type: 'spring', stiffness: 400, damping: 36 }}
-      >
-        <SessionPanel session={session} plan={panelPlan} working={sessionRunning} visible={panelOpen} />
-      </motion.div>
-    </div>
+      </PreviewLinkProvider>
+    </FileReaderLinkProvider>
   )
 }

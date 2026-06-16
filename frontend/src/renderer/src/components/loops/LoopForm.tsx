@@ -1,13 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
 import { Check, LayoutGrid } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { type ReactNode, useEffect, useMemo } from 'react'
 import { MentionSuggestions, MentionTextarea, useMentionInput } from '@/components/session/MentionInput'
 import { ModelSelect, ProjectPicker, RuntimeSelect } from '@/components/session/NewThreadControls'
 import { boardsQuery } from '@/lib/api/boards'
 import type { LoopInput } from '@/lib/api/loops'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import type { Loop } from '@/lib/api/types'
+import { enabledACPAgents, configuredNativeProviders, effectiveNativeProvider } from '@/lib/agentRuntimes'
 import { acpAgentModelSuggestions, OPENAI_MODELS, openRouterModelsQuery } from '@/lib/models'
+import { acpReasoningEffortOptions, REASONING_EFFORT_OPTIONS } from '@/lib/reasoningEfforts'
 import { SchedulePicker } from './SchedulePicker'
 import {
   type ScheduleDraft,
@@ -64,6 +66,7 @@ export function loopDraftFromLoop(loop: Loop, boardIds: string[] = []): LoopDraf
 
 export function canSaveLoop(draft: LoopDraft): boolean {
   if (draft.prompt.trim() === '') return false
+  if (draft.runtime.trim() === '') return false
   if (draft.schedule.preset === 'custom' && draft.schedule.expr.trim() === '') return false
   return true
 }
@@ -113,12 +116,10 @@ function FieldGroup({ label, children }: { label: string; children: ReactNode })
 
 export function LoopForm({
   draft,
-  agents,
   disabled,
   onChange,
 }: {
   draft: LoopDraft
-  agents: string[]
   disabled?: boolean
   onChange: (next: LoopDraft) => void
 }) {
@@ -126,7 +127,11 @@ export function LoopForm({
 
   return (
     <div className="space-y-5">
-      <LoopPromptCard draft={draft} agents={agents} disabled={disabled} set={set} />
+      <LoopPromptCard
+        draft={draft}
+        disabled={disabled}
+        set={set}
+      />
 
       <Field label="Name" hint="Optional — defaults to the start of the prompt.">
         <input
@@ -162,12 +167,10 @@ export function LoopForm({
 // with the loop's run setup — runtime, model, project — as its toolbar.
 function LoopPromptCard({
   draft,
-  agents,
   disabled,
   set,
 }: {
   draft: LoopDraft
-  agents: string[]
   disabled?: boolean
   set: (patch: Partial<LoopDraft>) => void
 }) {
@@ -181,14 +184,30 @@ function LoopPromptCard({
 
   // Resolve the Settings > Agents defaults so the picker always shows the
   // model and effort a run will actually use — never an opaque "Default".
-  const { data: agentSettings } = useQuery(agentSettingsQuery)
+  const settingsQuery = useQuery(agentSettingsQuery)
+  const agentSettings = settingsQuery.data
+  const agents = useMemo(() => enabledACPAgents(agentSettings), [agentSettings])
+  const nativeProviders = useMemo(() => configuredNativeProviders(agentSettings), [agentSettings])
+  const nativeAvailable = nativeProviders.length > 0
+  const runtimeReady = settingsQuery.isSuccess
+  const runtimeAvailable = runtimeReady && (nativeAvailable || agents.length > 0)
+
+  useEffect(() => {
+    if (!runtimeReady) return
+    const valid = draft.runtime === 'native' ? nativeAvailable : agents.includes(draft.runtime)
+    if (valid) return
+    const runtime = nativeAvailable ? 'native' : (agents[0] ?? '')
+    if (runtime === draft.runtime) return
+    set({ runtime, provider: '', model: '', reasoningEffort: '' })
+  }, [agents, draft.runtime, nativeAvailable, runtimeReady, set])
+
   const isNative = draft.runtime === 'native'
   const defaultProvider = agentSettings?.native.model_provider ?? ''
-  const provider = draft.provider || defaultProvider
+  const provider = isNative ? effectiveNativeProvider(agentSettings, draft.provider) : ''
   const defaultModel = isNative
     ? provider === defaultProvider
       ? (agentSettings?.native.model ?? '')
-      : (agentSettings?.providers.find((p) => p.id === provider)?.default_model ?? '')
+      : (nativeProviders.find((p) => p.id === provider)?.default_model ?? '')
     : (agentSettings?.acp[draft.runtime]?.model ?? '')
   const model = draft.model || defaultModel
   const defaultEffort = isNative
@@ -224,38 +243,49 @@ function LoopPromptCard({
             minHeightClass="min-h-[54px]"
           />
           <div className="flex flex-wrap items-center gap-1.5">
-            <RuntimeSelect
-              value={draft.runtime}
-              agents={agents}
-              disabled={disabled}
-              placement="below"
-              onChange={(runtime) => set({ runtime, provider: '', model: '', reasoningEffort: '' })}
-            />
-            <ModelSelect
-              value={model}
-              suggestions={modelSuggestions}
-              loading={openRouterModels.isLoading}
-              disabled={disabled}
-              placement="below"
-              onChange={(next) => set({ model: next })}
-              providers={
-                isNative
-                  ? (agentSettings?.providers ?? [])
-                      .filter((p) => p.implemented)
-                      .map((p) => ({ value: p.id, label: p.label }))
-                  : undefined
-              }
-              provider={isNative ? provider : undefined}
-              onProviderChange={
-                isNative
-                  ? (next) => set({ provider: next, model: '', reasoningEffort: '' })
-                  : undefined
-              }
-              effort={reasoningEffort}
-              // 'Default' clears the override; the selection snaps back to the
-              // resolved settings effort.
-              onEffortChange={(next) => set({ reasoningEffort: next })}
-            />
+            {runtimeReady && !runtimeAvailable ? (
+              <span className="px-1.5 text-[13px] text-ink-3">Connect an agent in Settings</span>
+            ) : null}
+            {runtimeAvailable ? (
+              <>
+                <RuntimeSelect
+                  value={draft.runtime}
+                  agents={agents}
+                  nativeAvailable={nativeAvailable}
+                  disabled={disabled}
+                  placement="below"
+                  onChange={(runtime) => set({ runtime, provider: '', model: '', reasoningEffort: '' })}
+                />
+                <ModelSelect
+                  value={model}
+                  suggestions={modelSuggestions}
+                  loading={openRouterModels.isLoading}
+                  disabled={disabled}
+                  placement="below"
+                  onChange={(next) => set({ model: next })}
+                  providers={
+                    isNative
+                      ? nativeProviders.map((p) => ({ value: p.id, label: p.label }))
+                      : undefined
+                  }
+                  provider={isNative ? provider : undefined}
+                  onProviderChange={
+                    isNative
+                      ? (next) => set({ provider: next, model: '', reasoningEffort: '' })
+                      : undefined
+                  }
+                  effort={reasoningEffort}
+                  effortOptions={
+                    isNative
+                      ? REASONING_EFFORT_OPTIONS
+                      : acpReasoningEffortOptions(agentSettings, draft.runtime)
+                  }
+                  // 'Default' clears the override; the selection snaps back to the
+                  // resolved settings effort.
+                  onEffortChange={(next) => set({ reasoningEffort: next })}
+                />
+              </>
+            ) : null}
             <ProjectPicker
               value={draft.directory}
               disabled={disabled}

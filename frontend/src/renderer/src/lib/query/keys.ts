@@ -2,7 +2,10 @@ export const keys = {
   health: ['health'] as const,
   sidebarSessions: ['sessions', 'sidebar'] as const,
   allSessions: ['sessions', 'all'] as const,
+  usageDaily: (days: number, timezone: string) => ['usage', 'daily', days, timezone] as const,
   archivedSessions: ['sessions', 'archived'] as const,
+  threadSearch: (query: string, includeArchived = false) =>
+    ['search', 'threads', query, includeArchived] as const,
   sessionMessages: (id: string) => ['sessions', id, 'messages'] as const,
   sessionRepo: (id: string) => ['sessions', id, 'repo'] as const,
   // Children of sessionRepo so one prefix invalidation refreshes repo state,
@@ -13,9 +16,11 @@ export const keys = {
   // pinned to the old one.
   sessionRepoDiff: (id: string, fileKey: string, base: string, oldPath: string) =>
     ['sessions', id, 'repo', 'diff', fileKey, base, oldPath] as const,
+  sessionFile: (id: string, path: string) => ['sessions', id, 'file', path] as const,
   sessionEvents: (id: string) => ['sessions', id, 'events'] as const,
   agentFiles: ['agent', 'files'] as const,
   agentSettings: ['settings', 'agents'] as const,
+  onboarding: ['onboarding'] as const,
   memory: ['memory'] as const,
   mcpServers: ['mcp', 'servers'] as const,
   acpAgents: ['acp', 'agents'] as const,

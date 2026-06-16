@@ -13,12 +13,9 @@ type Layout struct {
 	Workspaces       string
 	DefaultWorkspace string
 	UserSkills       string
-	ManagedSkills    string
 	Automations      string
-	ACPHome          string
 	ACPCodexHome     string
-	ACPTmp           string
-	ACPNPMCache      string
+	ACPClaudeConfig  string
 }
 
 func New(root string) Layout {
@@ -29,12 +26,9 @@ func New(root string) Layout {
 		Workspaces:       filepath.Join(root, "workspaces"),
 		DefaultWorkspace: filepath.Join(root, "workspaces", "default"),
 		UserSkills:       filepath.Join(root, "skills"),
-		ManagedSkills:    filepath.Join(root, "system", "skills"),
 		Automations:      filepath.Join(root, "automations"),
-		ACPHome:          filepath.Join(root, "acp", "home"),
 		ACPCodexHome:     filepath.Join(root, "acp", "codex-home"),
-		ACPTmp:           filepath.Join(root, "acp", "tmp"),
-		ACPNPMCache:      filepath.Join(root, "acp", "npm-cache"),
+		ACPClaudeConfig:  filepath.Join(root, "acp", "claude"),
 	}
 }
 
@@ -56,10 +50,8 @@ func Ensure(root string) (Layout, error) {
 		}
 	}
 	for _, dir := range []string{
-		layout.ACPHome,
 		layout.ACPCodexHome,
-		layout.ACPTmp,
-		layout.ACPNPMCache,
+		layout.ACPClaudeConfig,
 	} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return Layout{}, err

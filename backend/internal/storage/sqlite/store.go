@@ -11,14 +11,16 @@ import (
 	"time"
 
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
+	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/search"
 	_ "modernc.org/sqlite"
 )
 
 type Store struct {
-	root   string
-	db     *sql.DB
-	mirror *jsonstore.Store
-	mu     sync.Mutex
+	root          string
+	db            *sql.DB
+	searchQueries search.Querier
+	mirror        *jsonstore.Store
+	mu            sync.Mutex
 }
 
 func DefaultRoot() string {
@@ -50,6 +52,7 @@ func New(root string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 	store.db = db
+	store.searchQueries = search.New(db)
 	if err := store.configure(); err != nil {
 		_ = db.Close()
 		return nil, err
