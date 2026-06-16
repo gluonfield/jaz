@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { Settings, SquarePen } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { searchThreads } from '@/lib/api/search'
 import { keys } from '@/lib/query/keys'
@@ -43,7 +42,6 @@ export function useCommandPaletteItems({
         kind: 'command',
         title: 'New Thread',
         detail: 'Start a fresh session',
-        Icon: SquarePen,
         shortcut: 'N',
         run: () => {
           onOpenChange(false)
@@ -55,7 +53,6 @@ export function useCommandPaletteItems({
         kind: 'command',
         title: 'Settings',
         detail: 'Open app settings',
-        Icon: Settings,
         run: () => {
           onOpenChange(false)
           onOpenSettings()
