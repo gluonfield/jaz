@@ -76,7 +76,7 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Worktree {
-		worktree, repo, err := gitinfo.AddWorktree(r.Context(), s.Workspace, session.RuntimeRef.Cwd, session.Slug)
+		worktree, repo, err := gitinfo.AddWorktree(r.Context(), s.Workspace, session.RuntimeRef.Cwd, session.Slug, "")
 		if err != nil {
 			session.Status = storage.StatusError
 			session.Error = err.Error()
