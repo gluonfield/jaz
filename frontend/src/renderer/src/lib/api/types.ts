@@ -39,6 +39,14 @@ export interface DailyUsage {
   session_count: number
 }
 
+export interface ModelUsage {
+  agent?: string
+  model_provider?: string
+  model?: string
+  usage: DailyUsageTotals
+  session_count: number
+}
+
 export interface Session {
   id: string
   slug: string
@@ -479,6 +487,7 @@ export interface MemoryDoctor {
 
 export interface MemoryStatus {
   enabled: boolean
+  dream_agent?: string
   scheduler_running: boolean
   root: string
   db_path: string
@@ -495,6 +504,24 @@ export interface MemoryIndexReport {
   typed_links: number
   mention_links: number
   unresolved_links: number
+}
+
+export interface MemoryDreamReport {
+  run_slug: string
+  review_slug?: string
+  input_slugs?: string[]
+  promoted: number
+  review_items: number
+  skipped: number
+  long_term_updated?: boolean
+  short_term_updated?: boolean
+  model_used?: string
+  warnings?: string[]
+}
+
+export interface MemoryDreamRunResponse {
+  index: MemoryIndexReport
+  dream: MemoryDreamReport
 }
 
 export interface AgentFilesResponse {
@@ -558,6 +585,9 @@ export interface NativeProviderOption {
   default_model?: string
   default_reasoning_effort?: string
   implemented: boolean
+  opencode?: boolean
+  openai_compatible?: boolean
+  requires_api_key?: boolean
   /** whether this provider's API key is already configured on the backend */
   configured?: boolean
 }
@@ -565,6 +595,7 @@ export interface NativeProviderOption {
 export interface ACPAgentDefaults {
   enabled: boolean
   command?: string
+  model_provider?: string
   model?: string
   reasoning_effort?: string
   auth?: ACPAgentAuth
@@ -588,10 +619,13 @@ export interface ACPAgentAuthStatus {
   auth_path?: string
   auth_source?: string
   auth_evidence?: string
-  auth_kind?: 'oauth' | 'api_key'
+  auth_kind?: 'oauth' | 'api_key' | 'none'
   recommended_auth?: ACPAgentAuth
   api_key?: ACPAgentAPIKey
   api_key_configured: boolean
+  login_command?: string
+  login_command_available: boolean
+  login_command_reason?: string
   refresh_owner?: string
 }
 
@@ -614,6 +648,11 @@ export interface ReasoningEffortOption {
 
 export interface ACPAgentOptions {
   reasoning_efforts: ReasoningEffortOption[]
+  local?: boolean
+  provider_mode?: 'native_defaults' | 'agent_defaults'
+  model_provider_ids?: string[]
+  requires_command?: boolean
+  supports_auth?: boolean
 }
 
 export interface AgentSettings {

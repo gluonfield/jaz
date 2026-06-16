@@ -102,7 +102,7 @@ type MCPCreateInput struct {
 	Schedule        Schedule `json:"schedule"`
 	Status          string   `json:"status,omitempty" jsonschema:"active or paused; default active"`
 	Runtime         string   `json:"runtime,omitempty" jsonschema:"acp or native; default acp"`
-	ACPAgent        string   `json:"acp_agent,omitempty" jsonschema:"ACP agent name when runtime is acp; default codex"`
+	ACPAgent        string   `json:"acp_agent,omitempty" jsonschema:"ACP agent name when runtime is acp; default jaz"`
 	ModelProvider   string   `json:"model_provider,omitempty"`
 	Model           string   `json:"model,omitempty"`
 	ReasoningEffort string   `json:"reasoning_effort,omitempty" jsonschema:"none, minimal, low, medium, high, xhigh"`

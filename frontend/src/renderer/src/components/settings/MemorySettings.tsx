@@ -4,16 +4,27 @@ import { MarkdownEditor } from '@/components/agent/MarkdownEditor'
 import { FileTabs } from './FileTabs'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { Select } from '@/components/ui/Select'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
-import { memoryQuery, reindexMemory, saveMemoryHorizon, updateMemoryEnabled } from '@/lib/api/memory'
+import { agentLabel } from '@/lib/agentLabel'
+import { agentSettingsQuery } from '@/lib/api/settings'
+import {
+  dreamMemory,
+  memoryQuery,
+  reindexMemory,
+  saveMemoryHorizon,
+  updateMemoryEnabled,
+  updateMemorySettings,
+} from '@/lib/api/memory'
 import type { MemoryHorizon, MemoryStatus, MemoryTask } from '@/lib/api/types'
+import { enabledACPAgents } from '@/lib/agentRuntimes'
 import { keys } from '@/lib/query/keys'
 
 const HORIZON_DESCRIPTIONS: Record<string, string> = {
   'LONG_TERM.md':
-    'Who you are and where you are going: identity, goals, standing preferences. Rewritten nightly by dream; agents read it every turn.',
+    'Who you are and where you are going: identity, goals, standing preferences. Rewritten by dream; agents receive it through memory context.',
   'SHORT_TERM.md':
     'What is true right now: current focus, active projects, open loops. Agents update it live; dream prunes stale entries.',
 }
@@ -41,6 +52,7 @@ function formatTime(value?: string): string {
 
 export function MemorySettings() {
   const status = useQuery(memoryQuery)
+  const agentSettings = useQuery(agentSettingsQuery)
   const queryClient = useQueryClient()
   const toast = useToast()
 
@@ -55,6 +67,12 @@ export function MemorySettings() {
     onError: (error: Error) => toast(`Couldn't update memory: ${error.message}`, 'danger'),
   })
 
+  const setDreamAgent = useMutation({
+    mutationFn: (dream_agent: string) => updateMemorySettings({ dream_agent }),
+    onSuccess: setStatus,
+    onError: (error: Error) => toast(`Couldn't update dream agent: ${error.message}`, 'danger'),
+  })
+
   const reindex = useMutation({
     mutationFn: reindexMemory,
     onSuccess: (report) => {
@@ -62,6 +80,15 @@ export function MemorySettings() {
       void queryClient.invalidateQueries({ queryKey: keys.memory })
     },
     onError: (error: Error) => toast(`Index failed: ${error.message}`, 'danger'),
+  })
+
+  const runDream = useMutation({
+    mutationFn: dreamMemory,
+    onSuccess: (result) => {
+      toast(result.dream.run_slug ? `Dream finished: ${result.dream.run_slug}` : 'Dream finished')
+      void queryClient.invalidateQueries({ queryKey: keys.memory })
+    },
+    onError: (error: Error) => toast(`Dream failed: ${error.message}`, 'danger'),
   })
 
   const saveHorizon = useMutation({
@@ -113,6 +140,28 @@ export function MemorySettings() {
   const horizons = memory.horizons
   const activeName = activeHorizon ?? horizons[0]?.name
   const active = horizons.find((h) => h.name === activeName)
+  const dreamAgents = enabledACPAgents(agentSettings.data)
+  const selectedDreamAgent = memory.dream_agent ?? ''
+  const staleDreamAgent = selectedDreamAgent && !dreamAgents.includes(selectedDreamAgent)
+  const dreamAgentOptions = [
+    { value: '', label: 'Not selected', description: 'Use provider-backed dream when available' },
+    ...(staleDreamAgent
+      ? [
+          {
+            value: selectedDreamAgent,
+            label: `${agentLabel(selectedDreamAgent)} (disabled)`,
+            description: 'Enable this ACP agent or choose another one',
+          },
+        ]
+      : []),
+    ...dreamAgents.map((agent) => ({
+      value: agent,
+      label: agentLabel(agent),
+      description: 'Run dream through this ACP agent',
+    })),
+  ]
+  const dreamAgentValid =
+    !selectedDreamAgent || dreamAgents.includes(selectedDreamAgent) || agentSettings.isPending
 
   return (
     <div className="mx-auto flex max-w-[860px] flex-col gap-5 px-10 pb-8 pt-2">
@@ -120,9 +169,8 @@ export function MemorySettings() {
         <div>
           <h1 className="text-lg font-semibold text-ink">Memory</h1>
           <p className="mt-0.5 max-w-[58ch] text-[13px] text-ink-2">
-            Markdown-first personal memory. When enabled, agents read your long-term and
-            short-term context every turn, capture into daily pages, and dream consolidates
-            nightly.
+            Markdown-first personal memory. When enabled, agents receive long-term and
+            short-term context, capture into daily pages, and dream consolidates periodically.
           </p>
         </div>
         <div className="flex h-8 shrink-0 items-center gap-2">
@@ -145,14 +193,24 @@ export function MemorySettings() {
               <span className="text-ink-2">{memory.doctor.link_count} links</span>
               <span className="text-ink-2">{memory.doctor.typed_link_count} typed</span>
             </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => reindex.mutate()}
-              disabled={reindex.isPending}
-            >
-              {reindex.isPending ? 'Indexing…' : 'Index now'}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => reindex.mutate()}
+                disabled={reindex.isPending || runDream.isPending}
+              >
+                {reindex.isPending ? 'Indexing…' : 'Index now'}
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => runDream.mutate()}
+                disabled={reindex.isPending || runDream.isPending}
+              >
+                {runDream.isPending ? 'Dreaming…' : 'Run dream'}
+              </Button>
+            </div>
           </div>
           <ul className="divide-y divide-border">
             {memory.tasks.map((task: MemoryTask) => (
@@ -178,6 +236,30 @@ export function MemorySettings() {
               </li>
             ))}
           </ul>
+        </section>
+
+        <section className="rounded-card border border-border bg-surface px-4 py-3">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <span className="text-[13px] font-medium text-ink">Dream agent</span>
+              <p className="mt-0.5 text-[12px] text-ink-2">
+                Coding agent used for memory consolidation.
+              </p>
+              {!dreamAgentValid ? (
+                <p className="mt-1 text-[12px] text-danger">
+                  {agentLabel(memory.dream_agent)} is no longer enabled.
+                </p>
+              ) : null}
+            </div>
+            <Select
+              value={selectedDreamAgent}
+              options={dreamAgentOptions}
+              disabled={setDreamAgent.isPending || agentSettings.isPending}
+              onChange={(dreamAgent) => setDreamAgent.mutate(dreamAgent)}
+              aria-label="Dream agent"
+              className="w-full md:w-[260px]"
+            />
+          </div>
         </section>
 
         {active ? (

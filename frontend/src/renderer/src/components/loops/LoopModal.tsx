@@ -1,9 +1,10 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { createLoop, runLoopNow, updateLoop } from '@/lib/api/loops'
+import { agentSettingsQuery } from '@/lib/api/settings'
 import type { Loop } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 import {
@@ -39,12 +40,15 @@ export function LoopModal({
   const isEdit = !!loop
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const settingsQuery = useQuery(agentSettingsQuery)
   const [draft, setDraft] = useState<LoopDraft | null>(null)
   const current = draft ?? (loop ? loopDraftFromLoop(loop, boardIds) : emptyLoopDraft(initialBoardIds))
 
   const save = useMutation({
     mutationFn: ({ run: _run }: { run: boolean }) =>
-      isEdit ? updateLoop(loop.id, loopDraftToInput(current)) : createLoop(loopDraftToInput(current)),
+      isEdit
+        ? updateLoop(loop.id, loopDraftToInput(current, settingsQuery.data))
+        : createLoop(loopDraftToInput(current, settingsQuery.data)),
     onSuccess: (saved, { run }) => {
       if (!isEdit && run) void runLoopNow(saved.id).catch(() => {})
       queryClient.invalidateQueries({ queryKey: keys.loops })

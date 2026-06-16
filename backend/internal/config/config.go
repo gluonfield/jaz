@@ -76,19 +76,34 @@ func Init() error {
 }
 
 func applyProvider(cfg *Config) error {
-	cfg.Jaz.ModelProviders = map[string]app.ProviderConfig{
-		"openai": {
-			Type:    "openai",
-			BaseURL: nativeProviderBaseURL("openai"),
-			APIKey:  cfg.OpenAI.APIKey,
-		},
-		"openrouter": {
-			Type:    "openrouter",
-			BaseURL: nativeProviderBaseURL("openrouter"),
-			APIKey:  cfg.OpenRouter.APIKey,
-		},
+	if cfg.Jaz.ModelProviders == nil {
+		cfg.Jaz.ModelProviders = map[string]provider.ModelProviderConfig{}
 	}
+	mergeProviderConfig(cfg.Jaz.ModelProviders, provider.ProviderOpenAI, provider.ModelProviderConfig{
+		Type:    provider.ProviderOpenAI,
+		BaseURL: nativeProviderBaseURL(provider.ProviderOpenAI),
+		APIKey:  cfg.OpenAI.APIKey,
+	})
+	mergeProviderConfig(cfg.Jaz.ModelProviders, provider.ProviderOpenRouter, provider.ModelProviderConfig{
+		Type:    provider.ProviderOpenRouter,
+		BaseURL: nativeProviderBaseURL(provider.ProviderOpenRouter),
+		APIKey:  cfg.OpenRouter.APIKey,
+	})
 	return nil
+}
+
+func mergeProviderConfig(providers map[string]provider.ModelProviderConfig, id string, defaults provider.ModelProviderConfig) {
+	current := providers[id]
+	if current.Type == "" {
+		current.Type = defaults.Type
+	}
+	if current.BaseURL == "" {
+		current.BaseURL = defaults.BaseURL
+	}
+	if current.APIKey == "" {
+		current.APIKey = defaults.APIKey
+	}
+	providers[id] = current
 }
 
 func nativeProviderBaseURL(id string) string {

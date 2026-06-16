@@ -1,6 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import { get, post, put } from './client'
-import type { MemoryHorizon, MemoryIndexReport, MemoryStatus } from './types'
+import type { MemoryDreamRunResponse, MemoryHorizon, MemoryIndexReport, MemoryStatus } from './types'
 import { keys } from '@/lib/query/keys'
 
 export const memoryQuery = queryOptions({
@@ -8,8 +8,17 @@ export const memoryQuery = queryOptions({
   queryFn: () => get<MemoryStatus>('/v1/memory'),
 })
 
+export interface MemorySettingsInput {
+  enabled?: boolean
+  dream_agent?: string
+}
+
+export function updateMemorySettings(input: MemorySettingsInput): Promise<MemoryStatus> {
+  return put<MemoryStatus>('/v1/memory', input)
+}
+
 export function updateMemoryEnabled(enabled: boolean): Promise<MemoryStatus> {
-  return put<MemoryStatus>('/v1/memory', { enabled })
+  return updateMemorySettings({ enabled })
 }
 
 export function saveMemoryHorizon(name: string, content: string): Promise<MemoryHorizon> {
@@ -18,4 +27,8 @@ export function saveMemoryHorizon(name: string, content: string): Promise<Memory
 
 export function reindexMemory(): Promise<MemoryIndexReport> {
   return post<MemoryIndexReport>('/v1/memory/reindex')
+}
+
+export function dreamMemory(): Promise<MemoryDreamRunResponse> {
+  return post<MemoryDreamRunResponse>('/v1/memory/dream')
 }

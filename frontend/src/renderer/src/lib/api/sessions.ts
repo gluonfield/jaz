@@ -6,6 +6,7 @@ import {
   type Attachment,
   type DailyUsage,
   type HealthResponse,
+  type ModelUsage,
   type QueuedMessage,
   type RepoChanges,
   type RepoFileChange,
@@ -25,7 +26,7 @@ export function createSession(
     directory?: string
     worktree?: boolean
     // Per-session overrides of the Settings > Agents defaults; model_provider
-    // only applies to native sessions.
+    // applies to native sessions and ACP agents with provider-backed models.
     model_provider?: string
     model?: string
     reasoning_effort?: string
@@ -79,15 +80,34 @@ export const dailyUsageQuery = (days = 30) => {
   return queryOptions({
     queryKey: keys.usageDaily(days, timezone),
     queryFn: async (): Promise<DailyUsage[]> => {
-      const params = new URLSearchParams({ days: String(days) })
-      if (timezone) params.set('timezone', timezone)
-      else params.set('tz_offset_minutes', String(new Date().getTimezoneOffset()))
+      const params = usageParams(days, timezone)
       const data = await get<{ days: DailyUsage[] | null }>(`/v1/usage/daily?${params}`)
       return data.days ?? []
     },
     staleTime: 60_000,
     refetchInterval: 300_000,
   })
+}
+
+export const modelUsageQuery = (days = 30) => {
+  const timezone = usageTimezone()
+  return queryOptions({
+    queryKey: keys.usageModels(days, timezone),
+    queryFn: async (): Promise<ModelUsage[]> => {
+      const params = usageParams(days, timezone)
+      const data = await get<{ models: ModelUsage[] | null }>(`/v1/usage/models?${params}`)
+      return data.models ?? []
+    },
+    staleTime: 60_000,
+    refetchInterval: 300_000,
+  })
+}
+
+function usageParams(days: number, timezone: string): URLSearchParams {
+  const params = new URLSearchParams({ days: String(days) })
+  if (timezone) params.set('timezone', timezone)
+  else params.set('tz_offset_minutes', String(new Date().getTimezoneOffset()))
+  return params
 }
 
 function usageTimezone(): string {
