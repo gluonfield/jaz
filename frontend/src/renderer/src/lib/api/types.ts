@@ -543,6 +543,9 @@ export interface NativeProviderOption {
   default_model?: string
   default_reasoning_effort?: string
   implemented: boolean
+  opencode?: boolean
+  openai_compatible?: boolean
+  requires_api_key?: boolean
   /** whether this provider's API key is already configured on the backend */
   configured?: boolean
 }
@@ -573,10 +576,13 @@ export interface ACPAgentAuthStatus {
   auth_path?: string
   auth_source?: string
   auth_evidence?: string
-  auth_kind?: 'oauth' | 'api_key'
+  auth_kind?: 'oauth' | 'api_key' | 'none'
   recommended_auth?: ACPAgentAuth
   api_key?: ACPAgentAPIKey
   api_key_configured: boolean
+  login_command?: string
+  login_command_available: boolean
+  login_command_reason?: string
   refresh_owner?: string
 }
 

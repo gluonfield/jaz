@@ -8,27 +8,29 @@ import (
 )
 
 type Layout struct {
-	Root             string
-	Sessions         string
-	Workspaces       string
-	DefaultWorkspace string
-	UserSkills       string
-	Automations      string
-	ACPCodexHome     string
-	ACPClaudeConfig  string
+	Root              string
+	Sessions          string
+	Workspaces        string
+	DefaultWorkspace  string
+	UserSkills        string
+	Automations       string
+	ACPCodexHome      string
+	ACPClaudeConfig   string
+	ACPOpenCodeConfig string
 }
 
 func New(root string) Layout {
 	root = strings.TrimSpace(root)
 	return Layout{
-		Root:             root,
-		Sessions:         filepath.Join(root, "sessions"),
-		Workspaces:       filepath.Join(root, "workspaces"),
-		DefaultWorkspace: filepath.Join(root, "workspaces", "default"),
-		UserSkills:       filepath.Join(root, "skills"),
-		Automations:      filepath.Join(root, "automations"),
-		ACPCodexHome:     filepath.Join(root, "acp", "codex-home"),
-		ACPClaudeConfig:  filepath.Join(root, "acp", "claude"),
+		Root:              root,
+		Sessions:          filepath.Join(root, "sessions"),
+		Workspaces:        filepath.Join(root, "workspaces"),
+		DefaultWorkspace:  filepath.Join(root, "workspaces", "default"),
+		UserSkills:        filepath.Join(root, "skills"),
+		Automations:       filepath.Join(root, "automations"),
+		ACPCodexHome:      filepath.Join(root, "acp", "codex-home"),
+		ACPClaudeConfig:   filepath.Join(root, "acp", "claude"),
+		ACPOpenCodeConfig: filepath.Join(root, "acp", "opencode"),
 	}
 }
 
@@ -52,6 +54,7 @@ func Ensure(root string) (Layout, error) {
 	for _, dir := range []string{
 		layout.ACPCodexHome,
 		layout.ACPClaudeConfig,
+		layout.ACPOpenCodeConfig,
 	} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return Layout{}, err

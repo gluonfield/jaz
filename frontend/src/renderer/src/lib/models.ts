@@ -38,11 +38,20 @@ export const GROK_MODELS: ModelSuggestion[] = [
   { value: 'grok-composer-2.5-fast', label: 'Composer 2.5', description: "Cursor's coding model", contextLength: 200_000 },
 ]
 
+export const OPENCODE_MODELS: ModelSuggestion[] = [
+  { value: 'openrouter/openai/gpt-5.4-mini', label: 'GPT-5.4 Mini via OpenRouter', description: 'Fast and inexpensive', contextLength: 400_000 },
+  { value: 'openrouter/openai/gpt-5.5', label: 'GPT-5.5 via OpenRouter', description: 'Most capable', contextLength: 1_050_000 },
+  { value: 'openai/gpt-5.4-mini', label: 'GPT-5.4 Mini via OpenAI', description: 'Direct OpenAI provider', contextLength: 400_000 },
+  { value: 'openai/gpt-5.5', label: 'GPT-5.5 via OpenAI', description: 'Direct OpenAI provider', contextLength: 1_050_000 },
+  { value: 'ollama/llama3.2', label: 'Llama 3.2 via Ollama', description: 'Local OpenAI-compatible endpoint', contextLength: 128_000 },
+]
+
 // ACP agents imply their provider; native resolves through its provider setting.
 const ACP_AGENT_MODELS: Record<string, ModelSuggestion[]> = {
   claude: ANTHROPIC_MODELS,
   codex: CODEX_ACP_MODELS,
   grok: GROK_MODELS,
+  opencode: OPENCODE_MODELS,
 }
 
 export function acpAgentModelSuggestions(agent: string): ModelSuggestion[] {
@@ -122,6 +131,8 @@ function contextWindowHeuristic(model?: string, acpAgent?: string): number | nul
   // Claude ACP without an explicit pick runs the adapter default: Opus 4.8 (1M).
   if (acpAgent === 'claude' && id === '') return 1_000_000
   if (acpAgent === 'grok' && id === '') return 512_000
+  if (id.startsWith('openrouter/')) return 400_000
+  if (id.startsWith('ollama/')) return 128_000
   if (/claude|sonnet|haiku|opus|fable/.test(id)) return 200_000
   if (/gpt-5|codex/.test(id)) return 400_000
   if (/grok-build/.test(id)) return 512_000

@@ -3,6 +3,7 @@ package acp
 import (
 	"strings"
 
+	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 )
 
@@ -35,9 +36,13 @@ type AgentLoginInvocation struct {
 }
 
 func ProbeAgentAuth(name string, cfg AgentConfig, root string, env map[string]string) AgentAuthStatus {
+	return ProbeAgentAuthWithProviders(name, cfg, root, env, nil)
+}
+
+func ProbeAgentAuthWithProviders(name string, cfg AgentConfig, root string, env map[string]string, providers map[string]provider.ModelProviderConfig) AgentAuthStatus {
 	name = CanonicalAgentName(name)
-	probeEnv := NewManager(nil, Config{Root: root, Env: env}, nil).probeEnv(name, cfg)
-	resolved := resolveAgentAuth(name, cfg, root, probeEnv)
+	probeEnv := NewManager(nil, Config{Root: root, Env: env, Providers: providers}, nil).probeEnv(name, cfg)
+	resolved := resolveAgentAuthWithProviders(name, cfg, root, probeEnv, providers)
 	status := agentLoginCommand(name, root, resolved.Config)
 	status.RefreshOwner = RefreshOwnerAgentCLI
 	status.StoragePath = resolved.StoragePath

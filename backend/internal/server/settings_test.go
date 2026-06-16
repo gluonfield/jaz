@@ -13,6 +13,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
@@ -155,7 +156,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Native.ModelProvider != "openrouter" || got.Native.Model != "openai/gpt-5.4-mini" || strings.Join(got.Agents, ",") != "claude,codex,grok" {
+	if got.Native.ModelProvider != "openrouter" || got.Native.Model != "openai/gpt-5.4-mini" || strings.Join(got.Agents, ",") != "claude,codex,grok,opencode" {
 		t.Fatalf("unexpected seeded settings %#v", got)
 	}
 	if !hasNativeProvider(got.Providers, "openai", "https://api.openai.com/v1") ||
@@ -171,6 +172,11 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		got.ACP["grok"].Command != `grok --no-auto-update agent --no-leader --always-approve stdio` ||
 		got.ACP["grok"].Model != "grok-build" {
 		t.Fatalf("unexpected grok defaults %#v", got.ACP["grok"])
+	}
+	if !got.ACP["opencode"].Enabled ||
+		got.ACP["opencode"].Command != `npx -y opencode-ai@1.17.7 acp` ||
+		got.ACP["opencode"].Model != "openrouter/openai/gpt-5.4-mini" {
+		t.Fatalf("unexpected opencode defaults %#v", got.ACP["opencode"])
 	}
 	if !hasReasoningEffort(got.ACPOptions["claude"].ReasoningEfforts, "ultracode") ||
 		hasReasoningEffort(got.ACPOptions["codex"].ReasoningEfforts, "ultracode") {
@@ -321,6 +327,76 @@ func hasReasoningEffort(options []struct {
 	return false
 }
 
+func TestAgentSettingsAPIIncludesCustomOpenCodeProvider(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	catalog := acp.MergeAgents(acp.BuiltinAgents(), acp.AgentCatalog{
+		acp.AgentOpenCode: {
+			Command: "opencode",
+			Model:   "internal/chat",
+		},
+	})
+	handler := (&Server{
+		Store:        store,
+		AgentCatalog: catalog,
+		ModelProviders: map[string]provider.ModelProviderConfig{
+			"internal": {
+				Type:    "openai-compatible",
+				Label:   "Internal",
+				BaseURL: "https://llm.internal/v1",
+				APIKey:  "internal-key",
+			},
+		},
+	}).Handler()
+
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/settings/agents", nil))
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var got struct {
+		Providers []struct {
+			ID               string `json:"id"`
+			Label            string `json:"label"`
+			BaseURL          string `json:"base_url"`
+			OpenCode         bool   `json:"opencode"`
+			OpenAICompatible bool   `json:"openai_compatible"`
+			Configured       bool   `json:"configured"`
+		} `json:"providers"`
+		ACPAuth map[string]struct {
+			Authenticated bool   `json:"authenticated"`
+			AuthKind      string `json:"auth_kind"`
+		} `json:"acp_auth"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	var custom *struct {
+		ID               string `json:"id"`
+		Label            string `json:"label"`
+		BaseURL          string `json:"base_url"`
+		OpenCode         bool   `json:"opencode"`
+		OpenAICompatible bool   `json:"openai_compatible"`
+		Configured       bool   `json:"configured"`
+	}
+	for i := range got.Providers {
+		if got.Providers[i].ID == "internal" {
+			custom = &got.Providers[i]
+			break
+		}
+	}
+	if custom == nil || custom.Label != "Internal" || custom.BaseURL != "https://llm.internal/v1" ||
+		!custom.OpenCode || !custom.OpenAICompatible || !custom.Configured {
+		t.Fatalf("custom provider not exposed correctly: %#v", got.Providers)
+	}
+	if auth := got.ACPAuth["opencode"]; !auth.Authenticated || auth.AuthKind != acp.AuthKindAPIKey {
+		t.Fatalf("opencode auth did not use custom provider config: %#v", auth)
+	}
+}
+
 func TestAgentSettingsAPIRoundTripsConfiguredACPAgent(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
@@ -354,7 +430,7 @@ func TestAgentSettingsAPIRoundTripsConfiguredACPAgent(t *testing.T) {
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(got.Agents, ",") != "claude,codex,grok,local_helper" {
+	if strings.Join(got.Agents, ",") != "claude,codex,grok,local_helper,opencode" {
 		t.Fatalf("agents = %#v", got.Agents)
 	}
 	if got.ACP["local_helper"].Command != "/opt/jaz/local-helper --stdio" || got.ACP["local_helper"].Model != "helper-model" {

@@ -126,6 +126,7 @@ export function AgentSettings() {
   const nativeModelSuggestions =
     draft?.native.model_provider === 'openrouter' ? (openRouterModels.data ?? []) : OPENAI_MODELS
   const nativeKeyDirty = Object.values(providerKeys).some((value) => value.trim().length > 0)
+  const nativeProviders = (draft?.providers ?? []).filter((provider) => provider.implemented)
   const invalid = draft
     ? (draft.native.model_provider ?? '').trim() === '' ||
       draft.native.model.trim() === '' ||
@@ -134,7 +135,7 @@ export function AgentSettings() {
   const canSave = draft != null && !invalid && (dirty || nativeKeyDirty) && !save.isPending
 
   const selectedProvider = draft?.native.model_provider ?? ''
-  const selectedNativeProvider = draft?.providers.find((provider) => provider.id === selectedProvider)
+  const selectedNativeProvider = nativeProviders.find((provider) => provider.id === selectedProvider)
   const selectedProviderEnv = selectedNativeProvider?.api_key_env
   const selectedProviderConfigured = Boolean(selectedNativeProvider?.configured)
 
@@ -174,15 +175,15 @@ export function AgentSettings() {
                 >
                   <Select
                     value={draft.native.model_provider ?? ''}
-                    options={(draft.providers ?? []).map((provider) => ({
+                    options={nativeProviders.map((provider) => ({
                       value: provider.id,
                       label: provider.label,
                       description: provider.base_url,
                     }))}
                     disabled={save.isPending}
                     onChange={(model_provider) => {
-                      const nextProvider = draft.providers.find((provider) => provider.id === model_provider)
-                      const currentProvider = draft.providers.find(
+                      const nextProvider = nativeProviders.find((provider) => provider.id === model_provider)
+                      const currentProvider = nativeProviders.find(
                         (provider) => provider.id === draft.native.model_provider,
                       )
                       const model =
@@ -459,25 +460,36 @@ function AgentAuthPanel({
 }) {
   const apiKeyEnv = status?.api_key?.source_env
   const canKey = Boolean(apiKeyEnv)
+  const canLogin = Boolean(status?.login_command && status.login_command_available)
   const hasDraftKey = apiKeyValue.trim().length > 0
   const running = loginPending || loginJob?.status === 'running'
   const [method, setMethod] = useState<'login' | 'key'>(
-    (hasDraftKey || status?.api_key_configured) && canKey ? 'key' : 'login',
+    canKey && (!canLogin || hasDraftKey || status?.api_key_configured) ? 'key' : 'login',
   )
+  useEffect(() => {
+    if (canKey && !canLogin && method === 'login') setMethod('key')
+  }, [canKey, canLogin, method])
 
   // Connected: a clean confirmation + a way to disconnect (or switch method).
   if (status?.authenticated) {
     const viaKey = status.auth_kind === 'api_key'
+    const noKey = status.auth_kind === 'none'
     return (
       <div className="flex items-center justify-between gap-3 rounded-[10px] bg-bg px-3 py-2.5">
         <span className="flex min-w-0 items-center gap-2 text-[13px] text-ink">
           <CheckCircle2 size={16} className="shrink-0 text-primary" />
-          {viaKey ? 'Connected with an API key' : `Connected with your ${authProviderLabel(agent)} account`}
+          {noKey
+            ? 'No provider key required'
+            : viaKey
+              ? 'Connected with an API key'
+              : `Connected with your ${authProviderLabel(agent)} account`}
         </span>
-        <Button variant="ghost" size="sm" disabled={disabled || disconnecting} onClick={onDisconnect}>
-          {disconnecting ? <LoaderCircle size={13} className="animate-spin" /> : null}
-          Disconnect
-        </Button>
+        {noKey ? null : (
+          <Button variant="ghost" size="sm" disabled={disabled || disconnecting} onClick={onDisconnect}>
+            {disconnecting ? <LoaderCircle size={13} className="animate-spin" /> : null}
+            Disconnect
+          </Button>
+        )}
       </div>
     )
   }
@@ -485,19 +497,21 @@ function AgentAuthPanel({
   return (
     <div className="flex flex-col gap-2.5">
       {canKey ? (
-        <Segmented
-          layoutId={`settings-auth-${agent}`}
-          value={method}
-          onChange={setMethod}
-          disabled={disabled}
-          options={[
-            { value: 'login', label: 'Sign in', icon: <LogIn size={13} /> },
-            { value: 'key', label: 'API key', icon: <KeyRound size={13} /> },
-          ]}
-        />
+        canLogin ? (
+          <Segmented
+            layoutId={`settings-auth-${agent}`}
+            value={method}
+            onChange={setMethod}
+            disabled={disabled}
+            options={[
+              { value: 'login', label: 'Sign in', icon: <LogIn size={13} /> },
+              { value: 'key', label: 'API key', icon: <KeyRound size={13} /> },
+            ]}
+          />
+        ) : null
       ) : null}
 
-      {method === 'login' || !canKey ? (
+      {(method === 'login' && canLogin) || !canKey ? (
         <div className="flex flex-col items-start gap-2">
           <Button variant="primary" size="md" disabled={disabled || running} onClick={onStartLogin}>
             {running ? <LoaderCircle size={14} className="animate-spin" /> : <LogIn size={14} />}

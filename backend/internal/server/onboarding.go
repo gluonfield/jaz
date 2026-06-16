@@ -177,13 +177,13 @@ func (s *Server) probeACPAgents(defaults agentsettings.AgentDefaults) []onboardi
 			continue
 		}
 		adapterInstalled := acpCommandInstalled(cfg)
-		auth := acp.ProbeAgentAuth(name, cfg, s.runtimeRoot(), nil)
+		auth := acp.ProbeAgentAuthWithProviders(name, cfg, s.runtimeRoot(), nil, s.ModelProviders)
 		if strings.TrimSpace(cfg.URL) != "" {
 			auth.Authenticated = true
 			auth.Reason = ""
 		}
 		appName, appInstalled := agentAppInstall(name)
-		readiness := acp.ProbeReadiness(name, cfg, s.runtimeRoot(), nil)
+		readiness := acp.ProbeReadinessWithProviders(name, cfg, s.runtimeRoot(), nil, s.ModelProviders)
 		installed := adapterInstalled || auth.LoginCommandAvailable
 		reason := ""
 		if !installed {

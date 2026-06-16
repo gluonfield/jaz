@@ -5,26 +5,28 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"sort"
+	"strings"
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/provider"
+	"github.com/wins/jaz/backend/internal/runtimeenv"
 	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
 type agentSettingsResponse struct {
 	Native     agentsettings.NativeAgentDefaults         `json:"native"`
-	Providers  []settingsNativeProvider                  `json:"providers"`
+	Providers  []settingsModelProvider                   `json:"providers"`
 	ACP        map[string]agentsettings.ACPAgentDefaults `json:"acp"`
 	ACPAuth    map[string]acpAuthStatusResponse          `json:"acp_auth"`
 	ACPOptions map[string]acp.AgentOptions               `json:"acp_options"`
 	Agents     []string                                  `json:"agents"`
 }
 
-// A native provider plus whether its API key is already configured on this
-// backend, so Settings can show "configured" and offer to set/replace it.
-type settingsNativeProvider struct {
-	provider.NativeProvider
+type settingsModelProvider struct {
+	provider.ModelProvider
 	Configured bool `json:"configured"`
 }
 
@@ -93,7 +95,7 @@ func (s *Server) agentSettingsResponse(defaults agentsettings.AgentDefaults) age
 	agentNames := s.allACPAgentNames()
 	return agentSettingsResponse{
 		Native:     defaults.Native,
-		Providers:  s.nativeProvidersWithStatus(),
+		Providers:  s.modelProvidersWithStatus(),
 		ACP:        defaults.ACP,
 		ACPAuth:    s.acpAgentAuthStatuses(defaults),
 		ACPOptions: acpOptions(agentNames),
@@ -101,15 +103,82 @@ func (s *Server) agentSettingsResponse(defaults agentsettings.AgentDefaults) age
 	}
 }
 
-func (s *Server) nativeProvidersWithStatus() []settingsNativeProvider {
-	out := []settingsNativeProvider{}
-	for _, meta := range provider.NativeProviders() {
-		out = append(out, settingsNativeProvider{
-			NativeProvider: meta,
-			Configured:     s.providerKeyConfigured(meta.ID),
+func (s *Server) modelProvidersWithStatus() []settingsModelProvider {
+	out := []settingsModelProvider{}
+	seen := map[string]struct{}{}
+	for _, meta := range provider.ModelProviders() {
+		cfg := s.ModelProviders[meta.ID]
+		meta = configuredModelProvider(meta, cfg)
+		out = append(out, settingsModelProvider{
+			ModelProvider: meta,
+			Configured:    s.modelProviderKeyConfigured(meta.ID, cfg, meta),
+		})
+		seen[meta.ID] = struct{}{}
+	}
+	ids := make([]string, 0, len(s.ModelProviders))
+	for id := range s.ModelProviders {
+		if _, ok := seen[id]; !ok {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		cfg := s.ModelProviders[id]
+		meta := configuredModelProvider(provider.ModelProvider{ID: id}, cfg)
+		out = append(out, settingsModelProvider{
+			ModelProvider: meta,
+			Configured:    s.modelProviderKeyConfigured(id, cfg, meta),
 		})
 	}
 	return out
+}
+
+func configuredModelProvider(meta provider.ModelProvider, cfg provider.ModelProviderConfig) provider.ModelProvider {
+	_, builtIn := provider.ModelProviderByID(meta.ID)
+	if strings.TrimSpace(cfg.Label) != "" {
+		meta.Label = cfg.Label
+	}
+	if strings.TrimSpace(meta.Label) == "" {
+		meta.Label = meta.ID
+	}
+	if strings.TrimSpace(cfg.BaseURL) != "" {
+		meta.BaseURL = cfg.BaseURL
+	}
+	if strings.TrimSpace(cfg.APIKeyEnv) != "" {
+		meta.APIKeyEnv = cfg.APIKeyEnv
+	}
+	if cfg.OpenCode {
+		meta.OpenCode = true
+	}
+	if !builtIn && strings.TrimSpace(cfg.BaseURL) != "" {
+		meta.OpenCode = true
+	}
+	if strings.EqualFold(strings.TrimSpace(cfg.Type), "openai-compatible") {
+		meta.OpenCode = true
+		meta.OpenAICompatible = true
+	}
+	if strings.TrimSpace(cfg.APIKey) != "" || strings.TrimSpace(meta.APIKeyEnv) != "" {
+		meta.RequiresAPIKey = true
+	}
+	return meta
+}
+
+func (s *Server) modelProviderKeyConfigured(id string, cfg provider.ModelProviderConfig, meta provider.ModelProvider) bool {
+	if s.providerKeyConfigured(id) {
+		return true
+	}
+	if strings.TrimSpace(cfg.APIKey) != "" {
+		return true
+	}
+	keyEnv := firstNonEmpty(cfg.APIKeyEnv, meta.APIKeyEnv)
+	if keyEnv == "" {
+		return false
+	}
+	if strings.TrimSpace(os.Getenv(keyEnv)) != "" {
+		return true
+	}
+	_, ok := runtimeenv.Lookup(s.runtimeKeyEnvPath(), keyEnv)
+	return ok
 }
 
 func (s *Server) acpAgentAuthStatuses(defaults agentsettings.AgentDefaults) map[string]acpAuthStatusResponse {
@@ -120,7 +189,7 @@ func (s *Server) acpAgentAuthStatuses(defaults agentsettings.AgentDefaults) map[
 			out[name] = acpAuthStatusResponse{Reason: err.Error()}
 			continue
 		}
-		auth := acp.ProbeAgentAuth(name, cfg, s.runtimeRoot(), nil)
+		auth := acp.ProbeAgentAuthWithProviders(name, cfg, s.runtimeRoot(), nil, s.ModelProviders)
 		out[name] = newACPAuthStatusResponse(auth)
 	}
 	return out

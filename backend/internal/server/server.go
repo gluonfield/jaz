@@ -64,6 +64,7 @@ type Server struct {
 	STT             voice.STT
 	TTS             voice.TTS
 	NativeProviders provider.ReloadableProvider
+	ModelProviders  map[string]provider.ModelProviderConfig
 	AgentCatalog    acp.AgentCatalog
 	AuthKey         string
 	// Prompts derives the system prompt fresh per turn from disk, so skill

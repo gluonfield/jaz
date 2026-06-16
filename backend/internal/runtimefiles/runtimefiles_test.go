@@ -20,12 +20,13 @@ func TestEnsureCreatesRuntimeLayout(t *testing.T) {
 		layout.Automations,
 		layout.ACPCodexHome,
 		layout.ACPClaudeConfig,
+		layout.ACPOpenCodeConfig,
 	} {
 		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 			t.Fatalf("runtime dir %s missing: %v", dir, err)
 		}
 	}
-	for _, dir := range []string{layout.ACPCodexHome, layout.ACPClaudeConfig} {
+	for _, dir := range []string{layout.ACPCodexHome, layout.ACPClaudeConfig, layout.ACPOpenCodeConfig} {
 		info, err := os.Stat(dir)
 		if err != nil {
 			t.Fatalf("private runtime dir %s missing: %v", dir, err)

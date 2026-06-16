@@ -87,6 +87,13 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 			modelValidationKind: modelValidationNone,
 			effortOptions:       baseReasoningEffortOptions,
 		}
+	case AgentOpenCode:
+		return agentPolicy{
+			modelConfigID:       sessionConfigModel,
+			effortConfigID:      claudeSessionConfigEffort,
+			modelValidationKind: modelValidationNone,
+			effortOptions:       baseReasoningEffortOptions,
+		}
 	default:
 		return agentPolicy{
 			effortConfigID:      sessionConfigReasoningEffort,
