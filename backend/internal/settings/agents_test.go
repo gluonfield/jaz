@@ -70,37 +70,6 @@ func TestEnsureAgentDefaultsKeepsCustomCodexCommand(t *testing.T) {
 	}
 }
 
-func TestEnsureAgentDefaultsUpgradesLegacyGrokCommand(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	seed := testAgentDefaultsSeed()
-	old := seed
-	old.ACP = map[string]ACPAgentDefaults{
-		"grok": {
-			Enabled:         true,
-			Command:         legacyGrokACPCommand,
-			Model:           "grok-build",
-			ReasoningEffort: "medium",
-		},
-	}
-	if _, err := SaveAgentDefaults(store, old); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := EnsureAgentDefaults(store, seed); err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadAgentDefaults(store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loaded.ACP["grok"].Command != seed.ACP["grok"].Command {
-		t.Fatalf("grok command = %q", loaded.ACP["grok"].Command)
-	}
-}
-
 func TestNormalizeAgentDefaultsAllowsClaudeOnlyReasoningEffort(t *testing.T) {
 	for _, effort := range []string{"max", "ultracode"} {
 		input := testAgentDefaultsSeed()
@@ -126,6 +95,23 @@ func TestNormalizeAgentDefaultsRejectsClaudeOnlyReasoningForOtherACPAgents(t *te
 
 	if _, err := NormalizeAgentDefaults(input, acp.BuiltinAgents()); err == nil {
 		t.Fatal("expected codex ultracode effort to be rejected")
+	}
+}
+
+func TestNormalizeAgentDefaultsSplitsOpenCodeProviderModel(t *testing.T) {
+	input := testAgentDefaultsSeed()
+	opencode := input.ACP["opencode"]
+	opencode.ModelProvider = ""
+	opencode.Model = "openrouter/openai/gpt-5.5"
+	input.ACP["opencode"] = opencode
+
+	normalized, err := NormalizeAgentDefaults(input, acp.BuiltinAgents())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := normalized.ACP["opencode"]
+	if got.ModelProvider != "openrouter" || got.Model != "openai/gpt-5.5" {
+		t.Fatalf("opencode defaults = %#v", got)
 	}
 }
 
@@ -163,7 +149,7 @@ func TestNormalizeAgentDefaultsRejectsGrokPathBearingAuth(t *testing.T) {
 	}
 }
 
-func TestMergeAgentDefaultsDropsLegacyGrokJazProfile(t *testing.T) {
+func TestMergeAgentDefaultsDropsInvalidGrokAuthProfile(t *testing.T) {
 	seed := testAgentDefaultsSeed()
 	stored := AgentDefaults{
 		Native: seed.Native,

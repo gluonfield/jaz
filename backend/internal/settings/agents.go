@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"sort"
 	"strings"
 
@@ -16,14 +15,7 @@ import (
 const (
 	AgentSettingsNamespace = "agents"
 	AgentDefaultsKey       = "defaults"
-	legacyGrokACPCommand   = `grok --no-auto-update agent --no-leader stdio`
 )
-
-var legacyCodexACPCommands = []string{
-	`codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'`,
-	`npx -y @zed-industries/codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'`,
-	`npx -y @zed-industries/codex-acp@0.16.0 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'`,
-}
 
 type NativeAgentDefaults struct {
 	ModelProvider   string `json:"model_provider,omitempty"`
@@ -35,6 +27,7 @@ type ACPAgentDefaults struct {
 	Enabled         bool                `json:"enabled"`
 	Command         string              `json:"command,omitempty"`
 	LegacyArgs      []string            `json:"args,omitempty"`
+	ModelProvider   string              `json:"model_provider,omitempty"`
 	Model           string              `json:"model,omitempty"`
 	ReasoningEffort string              `json:"reasoning_effort,omitempty"`
 	Auth            acp.AgentAuthConfig `json:"auth,omitempty"`
@@ -69,8 +62,9 @@ func AgentDefaultsFromCatalog(catalog acp.AgentCatalog) AgentDefaults {
 		agent, _ := catalog.Agent(name)
 		command := CommandLine(agent.Command, agent.Args)
 		seed.ACP[name] = ACPAgentDefaults{
-			Enabled:         strings.TrimSpace(command) != "" || strings.TrimSpace(agent.URL) != "",
+			Enabled:         agent.Local || strings.TrimSpace(command) != "" || strings.TrimSpace(agent.URL) != "",
 			Command:         command,
+			ModelProvider:   strings.TrimSpace(agent.ModelProvider),
 			Model:           strings.TrimSpace(agent.Model),
 			ReasoningEffort: strings.TrimSpace(agent.ReasoningEffort),
 			Auth:            acp.AgentAuthConfig{Mode: acp.AuthModeAuto},
@@ -196,7 +190,7 @@ func NormalizeAgentDefaults(input AgentDefaults, catalog acp.AgentCatalog) (Agen
 			return AgentDefaults{}, err
 		}
 		command := strings.TrimSpace(current.Command)
-		if current.Enabled && command == "" && strings.TrimSpace(base.URL) == "" {
+		if current.Enabled && base.RequiresCommand() && command == "" {
 			return AgentDefaults{}, fmt.Errorf("acp agent %q command is required when enabled", name)
 		}
 		if current.Enabled && command != "" {
@@ -206,10 +200,22 @@ func NormalizeAgentDefaults(input AgentDefaults, catalog acp.AgentCatalog) (Agen
 				return AgentDefaults{}, fmt.Errorf("acp agent %q command is required when enabled", name)
 			}
 		}
+		modelProvider := strings.TrimSpace(current.ModelProvider)
+		model := strings.TrimSpace(current.Model)
+		if base.UsesModelProvider() {
+			cfg := acp.AgentConfig{
+				ProviderMode:  acp.AgentProviderModeAgentDefaults,
+				ModelProvider: modelProvider,
+				Model:         model,
+			}.NormalizeProviderModel(base.ModelProvider)
+			modelProvider = cfg.ModelProvider
+			model = cfg.Model
+		}
 		next.ACP[name] = ACPAgentDefaults{
 			Enabled:         current.Enabled,
 			Command:         command,
-			Model:           strings.TrimSpace(current.Model),
+			ModelProvider:   modelProvider,
+			Model:           model,
 			ReasoningEffort: effort,
 			Auth:            auth,
 		}
@@ -269,12 +275,7 @@ func MergeAgentDefaults(stored, seed AgentDefaults, agentNames []string) AgentDe
 
 func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentDefaults {
 	stored = collapseLegacyACPCommand(stored)
-	switch {
-	case strings.TrimSpace(stored.Command) == "":
-		stored.Command = seed.Command
-	case name == acp.AgentCodex && isLegacyCodexACPCommand(stored.Command):
-		stored.Command = seed.Command
-	case name == acp.AgentGrok && strings.TrimSpace(stored.Command) == legacyGrokACPCommand:
+	if strings.TrimSpace(stored.Command) == "" {
 		stored.Command = seed.Command
 	}
 	if auth, err := acp.NormalizeAgentAuthConfig(name, stored.Auth); err == nil {
@@ -282,11 +283,19 @@ func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentD
 	} else {
 		stored.Auth = seed.Auth
 	}
+	if strings.TrimSpace(seed.ModelProvider) != "" {
+		cfg := acp.AgentConfig{
+			ProviderMode:  acp.AgentProviderModeAgentDefaults,
+			ModelProvider: stored.ModelProvider,
+			Model:         stored.Model,
+		}.NormalizeProviderModel(seed.ModelProvider)
+		stored.ModelProvider = cfg.ModelProvider
+		stored.Model = cfg.Model
+		if strings.TrimSpace(stored.Model) == "" {
+			stored.Model = seed.Model
+		}
+	}
 	return stored
-}
-
-func isLegacyCodexACPCommand(command string) bool {
-	return slices.Contains(legacyCodexACPCommands, strings.TrimSpace(command))
 }
 
 func canonicalizeACPDefaults(in map[string]ACPAgentDefaults) map[string]ACPAgentDefaults {
@@ -334,7 +343,7 @@ func (s *ACPConfigSource) AgentConfig(name string) (acp.AgentConfig, bool, error
 		return acp.AgentConfig{}, false, nil
 	}
 	command := strings.TrimSpace(agent.Command)
-	if command == "" && strings.TrimSpace(cfg.URL) == "" {
+	if command == "" && cfg.RequiresCommand() {
 		return acp.AgentConfig{}, false, fmt.Errorf("acp agent %q command is required when enabled", name)
 	}
 	if command != "" {
@@ -347,9 +356,18 @@ func (s *ACPConfigSource) AgentConfig(name string) (acp.AgentConfig, bool, error
 		}
 		cfg.Command, cfg.Args = executable, args
 	}
+	defaultModelProvider := strings.TrimSpace(cfg.ModelProvider)
+	cfg.ModelProvider = strings.TrimSpace(agent.ModelProvider)
 	cfg.Model = strings.TrimSpace(agent.Model)
 	cfg.ReasoningEffort = strings.TrimSpace(agent.ReasoningEffort)
 	cfg.Auth = agent.Auth
+	if cfg.UsesNativeProvider() {
+		cfg.ModelProvider = defaults.Native.ModelProvider
+		cfg.Model = defaults.Native.Model
+		cfg.ReasoningEffort = defaults.Native.ReasoningEffort
+	} else if cfg.UsesModelProvider() {
+		cfg = cfg.NormalizeProviderModel(defaultModelProvider)
+	}
 	return cfg, true, nil
 }
 
@@ -365,7 +383,7 @@ func (s *ACPConfigSource) EnabledAgentNames() ([]string, error) {
 			continue
 		}
 		base, _ := s.catalog.Agent(name)
-		if strings.TrimSpace(agent.Command) == "" && strings.TrimSpace(base.URL) == "" {
+		if strings.TrimSpace(agent.Command) == "" && base.RequiresCommand() {
 			return nil, fmt.Errorf("acp agent %q command is required when enabled", name)
 		}
 		names = append(names, name)

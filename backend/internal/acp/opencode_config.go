@@ -87,13 +87,14 @@ func (m *Manager) prepareOpenCodeConfig(env map[string]string, agent AgentConfig
 		return nil
 	}
 	content := openCodeConfigContent{}
-	if instruction, err := m.prepareOpenCodeInstructionFile(env); err != nil {
+	if instruction, err := m.prepareOpenCodeInstructionFile(env, agent.Cwd); err != nil {
 		return err
 	} else if instruction != "" {
 		content.Instructions = []string{instruction}
 	}
-	if providerConfig, ok := m.openCodeProviderConfig(env, agent.Model); ok {
-		providerID := openCodeProviderID(agent.Model)
+	model := agent.ProviderQualifiedModel()
+	if providerConfig, ok := m.openCodeProviderConfig(env, model); ok {
+		providerID := openCodeProviderID(model)
 		content.Provider = map[string]openCodeProviderConfig{providerID: providerConfig}
 	}
 	if len(content.Instructions) == 0 && len(content.Provider) == 0 {
@@ -107,11 +108,11 @@ func (m *Manager) prepareOpenCodeConfig(env map[string]string, agent AgentConfig
 	return nil
 }
 
-func (m *Manager) prepareOpenCodeInstructionFile(env map[string]string) (string, error) {
+func (m *Manager) prepareOpenCodeInstructionFile(env map[string]string, cwd string) (string, error) {
 	if m.cfg.SystemPrompt == nil {
 		return "", nil
 	}
-	prompt, err := m.cfg.SystemPrompt.ACPPrompt()
+	prompt, err := m.cfg.SystemPrompt.ACPPrompt(cwd)
 	if err != nil {
 		return "", fmt.Errorf("build opencode instructions: %w", err)
 	}
@@ -184,32 +185,5 @@ func shouldWriteOpenCodeProviderConfig(cfg modelprovider.ModelProviderConfig, me
 }
 
 func openCodeConfiguredProviderEnv(id string, cfg modelprovider.ModelProviderConfig) string {
-	if key := strings.TrimSpace(cfg.APIKeyEnv); key != "" {
-		return key
-	}
-	if meta, ok := modelprovider.OpenCodeProviderByID(id); ok && strings.TrimSpace(meta.APIKeyEnv) != "" {
-		return meta.APIKeyEnv
-	}
-	if strings.TrimSpace(cfg.APIKey) == "" {
-		return ""
-	}
-	return "JAZ_PROVIDER_" + envKeyName(id) + "_API_KEY"
-}
-
-func envKeyName(id string) string {
-	id = strings.ToUpper(strings.TrimSpace(id))
-	var b strings.Builder
-	lastUnderscore := false
-	for _, r := range id {
-		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
-			b.WriteRune(r)
-			lastUnderscore = false
-			continue
-		}
-		if !lastUnderscore {
-			b.WriteByte('_')
-			lastUnderscore = true
-		}
-	}
-	return strings.Trim(b.String(), "_")
+	return modelprovider.ConfiguredAPIKeyEnv(id, cfg)
 }

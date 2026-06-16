@@ -14,8 +14,8 @@ import (
 
 type testPrompt string
 
-func (p testPrompt) ACPPrompt() (string, error)    { return string(p), nil }
-func (p testPrompt) SkillsPrompt() (string, error) { return string(p), nil }
+func (p testPrompt) ACPPrompt(string) (string, error) { return string(p), nil }
+func (p testPrompt) SkillsPrompt() (string, error)    { return string(p), nil }
 
 func TestProcessEnvIsMinimalAndCanonical(t *testing.T) {
 	clearHostEnv(t)
@@ -70,6 +70,31 @@ func TestSystemPromptMetaPerAgent(t *testing.T) {
 		if got := systemPromptMeta(tc.agent, "jaz prompt"); !reflect.DeepEqual(got, tc.want) {
 			t.Errorf("systemPromptMeta(%q) = %#v, want %#v", tc.agent, got, tc.want)
 		}
+	}
+}
+
+func TestMergeAgentsPreservesCapabilitiesOnPartialOverride(t *testing.T) {
+	merged := MergeAgents(BuiltinAgents(), map[string]AgentConfig{
+		AgentOpenCode: {
+			Command: "opencode",
+			Model:   "anthropic/claude-sonnet-4.5",
+			Env:     map[string]string{"EXTRA": "yes"},
+		},
+	})
+	got, ok := merged.Agent(AgentOpenCode)
+	if !ok {
+		t.Fatal("opencode missing")
+	}
+	if got.Command != "opencode" || len(got.Args) != 0 {
+		t.Fatalf("command override = %q %#v", got.Command, got.Args)
+	}
+	if got.ProviderMode != AgentProviderModeAgentDefaults ||
+		got.ModelProviderCapability != modelprovider.CapabilityOpenCode ||
+		got.ModelProvider != modelprovider.ProviderOpenRouter {
+		t.Fatalf("capabilities not preserved: %#v", got)
+	}
+	if got.Model != "anthropic/claude-sonnet-4.5" || got.Env["EXTRA"] != "yes" {
+		t.Fatalf("override fields not applied: %#v", got)
 	}
 }
 
@@ -534,6 +559,31 @@ func TestProcessEnvWritesOpenCodeProviderConfig(t *testing.T) {
 	}
 	if _, ok := ollama.Models["llama3.2"]; !ok {
 		t.Fatalf("ollama models = %#v", ollama.Models)
+	}
+}
+
+func TestProcessEnvUsesSplitOpenCodeProviderModel(t *testing.T) {
+	root := t.TempDir()
+	env, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared("opencode", AgentConfig{
+		ProviderMode:  AgentProviderModeAgentDefaults,
+		ModelProvider: "ollama",
+		Model:         "llama3.2",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var content struct {
+		Provider map[string]struct {
+			Models map[string]struct {
+				ID string `json:"id"`
+			} `json:"models"`
+		} `json:"provider"`
+	}
+	if err := json.Unmarshal([]byte(env["OPENCODE_CONFIG_CONTENT"]), &content); err != nil {
+		t.Fatalf("config content = %q: %v", env["OPENCODE_CONFIG_CONTENT"], err)
+	}
+	if _, ok := content.Provider["ollama"].Models["llama3.2"]; !ok {
+		t.Fatalf("ollama models = %#v", content.Provider["ollama"].Models)
 	}
 }
 

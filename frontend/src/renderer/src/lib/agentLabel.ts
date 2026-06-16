@@ -2,6 +2,7 @@
 // backend identifier, not what we want to show. Everything else falls back to
 // title-casing the slug ("local_helper" → "Local Helper").
 const DISPLAY_NAMES: Record<string, string> = {
+  jaz: 'Jaz',
   codex: 'Codex',
   claude: 'Claude',
   grok: 'Grok',

@@ -19,9 +19,19 @@ import {
   startACPAuthLogin,
   updateAgentSettings,
 } from '@/lib/api/settings'
+import {
+  acpUsesModelProvider,
+  acpUsesNativeProvider,
+  selectableACPModelProviders,
+} from '@/lib/agentRuntimes'
 import { useACPLoginPolling } from '@/lib/hooks/useACPLoginPolling'
 import type { ACPAgentAuthStatus, ACPAuthLogin, AgentSettings as AgentSettingsData } from '@/lib/api/types'
-import { acpAgentModelSuggestions, OPENAI_MODELS, openRouterModelsQuery } from '@/lib/models'
+import {
+  acpAgentModelSuggestions,
+  modelSuggestionsForProvider,
+  OPENAI_MODELS,
+  openRouterModelsQuery,
+} from '@/lib/models'
 import { keys } from '@/lib/query/keys'
 import { acpReasoningEffortOptions, REASONING_EFFORT_OPTIONS } from '@/lib/reasoningEfforts'
 
@@ -50,8 +60,26 @@ function withEnabledAgent(settings: AgentSettingsData, agent: string): AgentSett
 
 function hasEnabledACPWithoutCommand(settings: AgentSettingsData): boolean {
   return settings.agents.some((agent) => {
+    if (!agentRequiresCommand(settings, agent)) return false
     const current = settings.acp[agent]
     return Boolean(current?.enabled) && (current.command ?? '').trim() === ''
+  })
+}
+
+function agentRequiresCommand(settings: AgentSettingsData, agent: string): boolean {
+  return settings.acp_options?.[agent]?.requires_command ?? true
+}
+
+function agentUsesModelProvider(settings: AgentSettingsData, agent: string): boolean {
+  return acpUsesModelProvider(settings, agent)
+}
+
+function hasInvalidACPProvider(settings: AgentSettingsData): boolean {
+  return settings.agents.some((agent) => {
+    if (!agentUsesModelProvider(settings, agent)) return false
+    const current = settings.acp[agent]
+    if (!current?.enabled) return false
+    return (current.model_provider ?? '').trim() === '' || (current.model ?? '').trim() === ''
   })
 }
 
@@ -125,14 +153,15 @@ export function AgentSettings() {
   })
   const nativeModelSuggestions =
     draft?.native.model_provider === 'openrouter' ? (openRouterModels.data ?? []) : OPENAI_MODELS
-  const nativeKeyDirty = Object.values(providerKeys).some((value) => value.trim().length > 0)
+  const providerKeyDirty = Object.values(providerKeys).some((value) => value.trim().length > 0)
   const nativeProviders = (draft?.providers ?? []).filter((provider) => provider.implemented)
   const invalid = draft
     ? (draft.native.model_provider ?? '').trim() === '' ||
       draft.native.model.trim() === '' ||
-      hasEnabledACPWithoutCommand(draft)
+      hasEnabledACPWithoutCommand(draft) ||
+      hasInvalidACPProvider(draft)
     : true
-  const canSave = draft != null && !invalid && (dirty || nativeKeyDirty) && !save.isPending
+  const canSave = draft != null && !invalid && (dirty || providerKeyDirty) && !save.isPending
 
   const selectedProvider = draft?.native.model_provider ?? ''
   const selectedNativeProvider = nativeProviders.find((provider) => provider.id === selectedProvider)
@@ -272,12 +301,16 @@ export function AgentSettings() {
                     key={agent}
                     agent={agent}
                     settings={draft}
+                    providerKeys={providerKeys}
                     disabled={save.isPending}
                     loginJob={loginJobs[agent]}
                     loginPending={login.isPending && login.variables?.agent === agent}
                     disconnecting={disconnect.isPending && disconnect.variables === agent}
                     onStartLogin={(auth) => login.mutate({ agent, auth })}
                     onDisconnect={() => disconnect.mutate(agent)}
+                    onProviderKeyChange={(provider, value) =>
+                      setProviderKeys({ ...providerKeys, [provider]: value })
+                    }
                     onChange={setDraft}
                   />
                 ))}
@@ -293,37 +326,58 @@ export function AgentSettings() {
 function ACPAgentRow({
   agent,
   settings,
+  providerKeys,
   disabled,
   loginJob,
   loginPending,
   disconnecting,
   onStartLogin,
   onDisconnect,
+  onProviderKeyChange,
   onChange,
 }: {
   agent: string
   settings: AgentSettingsData
+  providerKeys: Record<string, string>
   disabled: boolean
   loginJob?: ACPAuthLogin
   loginPending: boolean
   disconnecting: boolean
   onStartLogin: (auth: ACPAuthDraft) => void
   onDisconnect: () => void
+  onProviderKeyChange: (provider: string, value: string) => void
   onChange: (settings: AgentSettingsData) => void
 }) {
   const current = settings.acp[agent] ?? {
     enabled: false,
     command: '',
+    model_provider: '',
     model: '',
     reasoning_effort: '',
     auth: { mode: 'auto', path: '' },
   }
   const authStatus = settings.acp_auth?.[agent]
-  const [commandOpen, setCommandOpen] = useState((current.command ?? '').trim() === '')
+  const options = settings.acp_options?.[agent]
+  const requiresCommand = options?.requires_command ?? true
+  const supportsAuth = options?.supports_auth ?? true
+  const usesNativeProvider = acpUsesNativeProvider(settings, agent)
+  const usesModelProvider = acpUsesModelProvider(settings, agent)
+  const [commandOpen, setCommandOpen] = useState(requiresCommand && (current.command ?? '').trim() === '')
   useEffect(() => {
-    if (current.enabled && (current.command ?? '').trim() === '') setCommandOpen(true)
-  }, [current.command, current.enabled])
+    if (requiresCommand && current.enabled && (current.command ?? '').trim() === '') setCommandOpen(true)
+  }, [current.command, current.enabled, requiresCommand])
   const controlsDisabled = disabled || !current.enabled
+  const providerOptions = selectableACPModelProviders(settings, agent)
+  const selectedProvider = providerOptions.find((provider) => provider.id === current.model_provider)
+  const selectedProviderEnv = selectedProvider?.api_key_env
+  const selectedProviderConfigured = Boolean(selectedProvider?.configured)
+  const openRouterModels = useQuery({
+    ...openRouterModelsQuery,
+    enabled: usesModelProvider && current.model_provider === 'openrouter',
+  })
+  const modelSuggestions = usesModelProvider
+    ? modelSuggestionsForProvider(selectedProvider, openRouterModels.data ?? [])
+    : acpAgentModelSuggestions(agent)
   const update = (next: Partial<typeof current>) =>
     onChange({
       ...settings,
@@ -352,84 +406,155 @@ function ACPAgentRow({
         </div>
       </SettingsRow>
 
+      {supportsAuth ? (
+        <div className="border-t border-border/70 px-3 py-3">
       {/* Auth is never gated by the Enabled toggle: you must be able to connect
           an agent you skipped in onboarding. Connecting it turns it on. */}
-      <div className="border-t border-border/70 px-3 py-3">
-        <AgentAuthPanel
-          agent={agent}
-          disabled={disabled}
-          status={authStatus}
-          apiKeyValue={settings.acp_keys?.[agent] ?? ''}
-          loginJob={loginJob}
-          loginPending={loginPending}
-          disconnecting={disconnecting}
-          onStartLogin={() => onStartLogin(current.auth)}
-          onDisconnect={onDisconnect}
-          onAPIKeyChange={(value) =>
-            onChange({
-              ...settings,
-              // Adding a key connects the agent — enable it so it's usable.
-              acp: value.trim() ? { ...settings.acp, [agent]: { ...current, enabled: true } } : settings.acp,
-              acp_keys: {
-                ...(settings.acp_keys ?? {}),
-                [agent]: value,
-              },
-            })
-          }
-        />
-      </div>
-
-      <SettingsRow title="Model" description="Model copied into new threads for this client.">
-        <ModelCombobox
-          value={current.model ?? ''}
-          suggestions={acpAgentModelSuggestions(agent)}
-          disabled={controlsDisabled}
-          onChange={(model) => update({ model })}
-          aria-label={`${agentLabel(agent)} model`}
-          className={rowControlClass}
-        />
-      </SettingsRow>
-
-      <SettingsRow title="Reasoning" description="Reasoning effort copied into new threads.">
-        <Select
-          value={current.reasoning_effort ?? ''}
-          options={settingsReasoningOptions(acpReasoningEffortOptions(settings, agent))}
-          disabled={controlsDisabled}
-          onChange={(reasoning_effort) => update({ reasoning_effort })}
-          aria-label={`${agentLabel(agent)} reasoning effort`}
-          className={rowControlClass}
-        />
-      </SettingsRow>
-
-      <SettingsRow title="Command" description="Advanced startup command for this ACP client.">
-        <Button
-          variant="ghost"
-          size="md"
-          active={commandOpen}
-          aria-expanded={commandOpen}
-          disabled={disabled}
-          onClick={() => setCommandOpen((open) => !open)}
-          className="w-full md:w-auto md:justify-self-end"
-        >
-          <Terminal size={13} />
-          {commandOpen ? 'Hide command' : 'Edit command'}
-          <ChevronDown
-            size={13}
-            className={`transition-transform duration-150 ${commandOpen ? 'rotate-180' : ''}`}
+          <AgentAuthPanel
+            agent={agent}
+            disabled={disabled}
+            status={authStatus}
+            apiKeyValue={settings.acp_keys?.[agent] ?? ''}
+            loginJob={loginJob}
+            loginPending={loginPending}
+            disconnecting={disconnecting}
+            onStartLogin={() => onStartLogin(current.auth)}
+            onDisconnect={onDisconnect}
+            onAPIKeyChange={(value) =>
+              onChange({
+                ...settings,
+                // Adding a key connects the agent — enable it so it's usable.
+                acp: value.trim() ? { ...settings.acp, [agent]: { ...current, enabled: true } } : settings.acp,
+                acp_keys: {
+                  ...(settings.acp_keys ?? {}),
+                  [agent]: value,
+                },
+              })
+            }
           />
-        </Button>
-      </SettingsRow>
+        </div>
+      ) : null}
 
-      {commandOpen ? (
-        <label className="block border-t border-border/70 px-3 py-3">
-          <span className="mb-1 block text-[11px] text-ink-3">Startup command</span>
-          <input
-            value={current.command ?? ''}
-            disabled={controlsDisabled}
-            onChange={(event) => update({ command: event.target.value })}
-            className={`${inputClass} font-mono`}
-          />
-        </label>
+      {usesNativeProvider ? null : (
+        <>
+          {usesModelProvider ? (
+            <>
+              <SettingsRow title="Provider" description="API provider used for this ACP client.">
+                <Select
+                  value={current.model_provider ?? ''}
+                  options={providerOptions.map((provider) => ({
+                    value: provider.id,
+                    label: provider.label,
+                    description: provider.base_url,
+                  }))}
+                  disabled={controlsDisabled}
+                  onChange={(model_provider) => {
+                    const nextProvider = providerOptions.find((provider) => provider.id === model_provider)
+                    const model =
+                      (current.model ?? '').trim() === '' ||
+                      current.model === selectedProvider?.default_model
+                        ? (nextProvider?.default_model ?? '')
+                        : current.model
+                    update({ model_provider, model })
+                  }}
+                  aria-label={`${agentLabel(agent)} provider`}
+                  className={rowControlClass}
+                />
+              </SettingsRow>
+              <SettingsRow
+                title="Provider key"
+                description={
+                  selectedProvider?.requires_api_key === false
+                    ? 'This provider does not need an API key.'
+                    : selectedProviderConfigured
+                      ? `${selectedProviderEnv} is configured — paste a new key to replace it.`
+                      : `Paste an API key; stored on the backend as ${selectedProviderEnv ?? 'the provider env var'}.`
+                }
+              >
+                <Input
+                  type="password"
+                  value={providerKeys[current.model_provider ?? ''] ?? ''}
+                  disabled={
+                    disabled ||
+                    !(current.model_provider ?? '').trim() ||
+                    selectedProvider?.requires_api_key === false
+                  }
+                  onChange={(event) =>
+                    onProviderKeyChange(current.model_provider ?? '', event.target.value)
+                  }
+                  placeholder={
+                    selectedProvider?.requires_api_key === false
+                      ? 'No key required'
+                      : selectedProviderConfigured
+                        ? `${selectedProviderEnv} configured`
+                        : (selectedProviderEnv ?? 'API key')
+                  }
+                  autoComplete="off"
+                  spellCheck={false}
+                  className={`${rowControlClass} h-8 rounded-full bg-bg px-3 py-0 font-mono text-[12px]`}
+                  aria-label={`${agentLabel(agent)} provider API key`}
+                />
+              </SettingsRow>
+            </>
+          ) : null}
+          <SettingsRow title="Model" description="Model copied into new threads for this client.">
+            <ModelCombobox
+              value={current.model ?? ''}
+              suggestions={modelSuggestions}
+              loading={openRouterModels.isLoading}
+              disabled={controlsDisabled}
+              onChange={(model) => update({ model })}
+              aria-label={`${agentLabel(agent)} model`}
+              className={rowControlClass}
+            />
+          </SettingsRow>
+
+          <SettingsRow title="Reasoning" description="Reasoning effort copied into new threads.">
+            <Select
+              value={current.reasoning_effort ?? ''}
+              options={settingsReasoningOptions(acpReasoningEffortOptions(settings, agent))}
+              disabled={controlsDisabled}
+              onChange={(reasoning_effort) => update({ reasoning_effort })}
+              aria-label={`${agentLabel(agent)} reasoning effort`}
+              className={rowControlClass}
+            />
+          </SettingsRow>
+        </>
+      )}
+
+      {requiresCommand ? (
+        <>
+          <SettingsRow title="Command" description="Advanced startup command for this ACP client.">
+            <Button
+              variant="ghost"
+              size="md"
+              active={commandOpen}
+              aria-expanded={commandOpen}
+              disabled={disabled}
+              onClick={() => setCommandOpen((open) => !open)}
+              className="w-full md:w-auto md:justify-self-end"
+            >
+              <Terminal size={13} />
+              {commandOpen ? 'Hide command' : 'Edit command'}
+              <ChevronDown
+                size={13}
+                className={`transition-transform duration-150 ${commandOpen ? 'rotate-180' : ''}`}
+              />
+            </Button>
+          </SettingsRow>
+
+          {commandOpen ? (
+            <label className="block border-t border-border/70 px-3 py-3">
+              <span className="mb-1 block text-[11px] text-ink-3">Startup command</span>
+              <input
+                value={current.command ?? ''}
+                disabled={controlsDisabled}
+                onChange={(event) => update({ command: event.target.value })}
+                className={`${inputClass} font-mono`}
+              />
+            </label>
+          ) : null}
+        </>
       ) : null}
     </div>
   )

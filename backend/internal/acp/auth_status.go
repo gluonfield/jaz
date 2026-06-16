@@ -41,6 +41,14 @@ func ProbeAgentAuth(name string, cfg AgentConfig, root string, env map[string]st
 
 func ProbeAgentAuthWithProviders(name string, cfg AgentConfig, root string, env map[string]string, providers map[string]provider.ModelProviderConfig) AgentAuthStatus {
 	name = CanonicalAgentName(name)
+	if cfg.Local {
+		return AgentAuthStatus{
+			Authenticated: true,
+			AuthKind:      AuthKindNone,
+			AuthMode:      AuthModeAuto,
+			RefreshOwner:  "jaz",
+		}
+	}
 	probeEnv := NewManager(nil, Config{Root: root, Env: env, Providers: providers}, nil).probeEnv(name, cfg)
 	resolved := resolveAgentAuthWithProviders(name, cfg, root, probeEnv, providers)
 	status := agentLoginCommand(name, root, resolved.Config)

@@ -75,6 +75,7 @@ func runServe(args []string) error {
 		),
 		app.UsageModule(),
 		fx.Invoke(
+			app.ConnectLocalJazAgent,
 			app.ConnectACPCompletion,
 			app.CloseMemory,
 			app.StartMemoryScheduler,

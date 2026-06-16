@@ -559,6 +559,7 @@ export interface NativeProviderOption {
 export interface ACPAgentDefaults {
   enabled: boolean
   command?: string
+  model_provider?: string
   model?: string
   reasoning_effort?: string
   auth?: ACPAgentAuth
@@ -611,6 +612,11 @@ export interface ReasoningEffortOption {
 
 export interface ACPAgentOptions {
   reasoning_efforts: ReasoningEffortOption[]
+  local?: boolean
+  provider_mode?: 'native_defaults' | 'agent_defaults'
+  model_provider_ids?: string[]
+  requires_command?: boolean
+  supports_auth?: boolean
 }
 
 export interface AgentSettings {

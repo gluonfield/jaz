@@ -13,6 +13,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/coordinator"
+	"github.com/wins/jaz/backend/internal/jazagent"
 	"github.com/wins/jaz/backend/internal/loops"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
@@ -143,7 +144,7 @@ func NewPromptBuilder(store *sqlitestore.Store, workspace Workspace, memory *mem
 }
 
 func NewACPAgentCatalog(cfg Config) acp.AgentCatalog {
-	return acp.MergeAgents(acp.BuiltinAgents(), cfg.ACP.Agents)
+	return acp.MergeAgents(acp.MergeAgents(acp.BuiltinAgents(), jazagent.ACPAgentCatalog()), cfg.ACP.Agents)
 }
 
 func NewACPAgentConfigSource(store *sqlitestore.Store, catalog acp.AgentCatalog) acp.AgentConfigSource {
@@ -427,6 +428,15 @@ func NewAgent(cfg Config, modelProvider provider.Provider, registry *tools.Regis
 		Tools:    registry,
 		MaxTurns: agent.DefaultMaxTurns,
 	}
+}
+
+func ConnectLocalJazAgent(manager *acp.Manager, a *agent.Agent, store *sqlitestore.Store, prompts *coordinator.Builder, logger *log.Logger) {
+	jazagent.RegisterACP(manager, jazagent.ACPDependencies{
+		Agent:   a,
+		Store:   store,
+		Prompts: prompts,
+		Log:     logger.WithPrefix("jazagent"),
+	})
 }
 
 func ConnectACPCompletion(manager *acp.Manager, a *agent.Agent, store *sqlitestore.Store, locks *sessionlock.Locks, events *sessionevents.Bus, prompts *coordinator.Builder, logger *log.Logger) {

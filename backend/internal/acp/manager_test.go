@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/log"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	agentsettings "github.com/wins/jaz/backend/internal/settings"
@@ -30,6 +31,30 @@ type cwdPrompt struct{}
 
 func (cwdPrompt) ACPPrompt(cwd string) (string, error) { return "cwd: " + cwd, nil }
 func (cwdPrompt) SkillsPrompt() (string, error)        { return "", nil }
+
+type localRunner struct {
+	seen chan acp.LocalAgentRequest
+}
+
+func (r localRunner) Run(ctx context.Context, req acp.LocalAgentRequest) <-chan agent.StreamEvent {
+	out := make(chan agent.StreamEvent, 4)
+	go func() {
+		defer close(out)
+		r.seen <- req
+		select {
+		case <-ctx.Done():
+			out <- agent.StreamEvent{Type: agent.StreamError, Error: ctx.Err().Error()}
+			return
+		default:
+		}
+		out <- agent.StreamEvent{Type: agent.StreamDelta, Delta: "local reply"}
+		call := provider.FunctionToolCall("tool-1", "inspect", "{}")
+		out <- agent.StreamEvent{Type: agent.StreamToolCall, ToolCall: &call}
+		out <- agent.StreamEvent{Type: agent.StreamToolResult, ToolName: "inspect"}
+		out <- agent.StreamEvent{Type: agent.StreamDone, Usage: &provider.Usage{InputTokens: 3, OutputTokens: 5, TotalTokens: 8}}
+	}()
+	return out
+}
 
 func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
@@ -213,6 +238,85 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	}
 	if job.Modes.CurrentModeID != "full-access" {
 		t.Fatalf("current mode after approval = %q, want full-access", job.Modes.CurrentModeID)
+	}
+}
+
+func TestManagerRunsLocalJazAgentThroughACPJob(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := localRunner{seen: make(chan acp.LocalAgentRequest, 1)}
+	manager := acp.NewManager(store, acp.Config{
+		Root:      t.TempDir(),
+		Workspace: t.TempDir(),
+		Agents: map[string]acp.AgentConfig{
+			acp.AgentJaz: {
+				Local:           true,
+				ModelProvider:   "openrouter",
+				Model:           "openai/gpt-test",
+				ReasoningEffort: "medium",
+			},
+		},
+	}, log.New(io.Discard))
+	manager.RegisterLocalAgent(acp.AgentJaz, runner)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{Slug: "local-jaz"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spawned.ACPAgent != acp.AgentJaz || spawned.State != acp.StateIdle {
+		t.Fatalf("spawned = %#v", spawned)
+	}
+	session, err := store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.Runtime != storage.RuntimeACP ||
+		session.RuntimeRef.Agent != acp.AgentJaz ||
+		session.RuntimeRef.SessionID != session.ID ||
+		session.ModelProvider != "openrouter" ||
+		session.Model != "openai/gpt-test" {
+		t.Fatalf("local session metadata = %#v", session)
+	}
+
+	if _, err := manager.Send(ctx, acp.SendRequest{
+		Session:       spawned.SessionID,
+		Message:       "make a plan",
+		PlanRequested: true,
+		Completion:    acp.CompletionInline,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	req := <-runner.seen
+	if req.Session.ID != spawned.SessionID || req.Message != "make a plan" || !req.PlanRequested {
+		t.Fatalf("local runner request = %#v", req)
+	}
+	job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.State != acp.StateIdle || job.Assistant != "local reply" {
+		t.Fatalf("job = %#v", job)
+	}
+	if len(job.ToolCalls) != 1 || job.ToolCalls[0].ID != "tool-1" || job.ToolCalls[0].Status != "completed" {
+		t.Fatalf("tool calls = %#v", job.ToolCalls)
+	}
+	messages, err := store.LoadMessages(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 || provider.MessageContent(messages[0]) != "make a plan" {
+		t.Fatalf("stored messages = %#v", messages)
+	}
+	session, err = store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.Usage.InputTokens != 3 || session.Usage.OutputTokens != 5 || session.Usage.TotalTokens != 8 {
+		t.Fatalf("usage = %#v", session.Usage)
 	}
 }
 

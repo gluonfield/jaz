@@ -208,7 +208,7 @@ func resolveOpenCodeAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env
 		Source:      AuthModeJazProfile,
 	}
 	explicit := status.resolveAPIKey(AgentOpenCode, root, env)
-	providerID := openCodeProviderID(cfg.Model)
+	providerID := openCodeProviderID(cfg.ProviderQualifiedModel())
 	meta, known := modelprovider.OpenCodeProviderByID(providerID)
 	cfgProvider, configured := providers[providerID]
 	keyEnv := strings.TrimSpace(meta.APIKeyEnv)

@@ -11,6 +11,8 @@ const (
 	ProviderOpenAI     = "openai"
 	ProviderOllama     = "ollama"
 	ProviderMock       = "mock"
+
+	CapabilityOpenCode = "opencode"
 )
 
 type ModelProvider struct {
@@ -106,6 +108,69 @@ func OpenCodeProviderByID(id string) (ModelProvider, bool) {
 	return provider, ok && provider.OpenCode
 }
 
+func ApplyModelProviderConfig(meta ModelProvider, cfg ModelProviderConfig) ModelProvider {
+	_, builtIn := ModelProviderByID(meta.ID)
+	if strings.TrimSpace(cfg.Label) != "" {
+		meta.Label = cfg.Label
+	}
+	if strings.TrimSpace(meta.Label) == "" {
+		meta.Label = meta.ID
+	}
+	if strings.TrimSpace(cfg.BaseURL) != "" {
+		meta.BaseURL = cfg.BaseURL
+	}
+	if strings.TrimSpace(cfg.APIKeyEnv) != "" {
+		meta.APIKeyEnv = cfg.APIKeyEnv
+	}
+	if cfg.OpenCode {
+		meta.OpenCode = true
+	}
+	if !builtIn && strings.TrimSpace(cfg.BaseURL) != "" {
+		meta.OpenCode = true
+	}
+	if strings.EqualFold(strings.TrimSpace(cfg.Type), "openai-compatible") {
+		meta.OpenCode = true
+		meta.OpenAICompatible = true
+	}
+	if strings.TrimSpace(meta.APIKeyEnv) == "" {
+		meta.APIKeyEnv = ConfiguredAPIKeyEnv(meta.ID, cfg)
+	}
+	if strings.TrimSpace(cfg.APIKey) != "" || strings.TrimSpace(meta.APIKeyEnv) != "" {
+		meta.RequiresAPIKey = true
+	}
+	return meta
+}
+
+func ModelProviderConfigPresent(cfg ModelProviderConfig) bool {
+	return strings.TrimSpace(cfg.Type) != "" ||
+		strings.TrimSpace(cfg.Label) != "" ||
+		strings.TrimSpace(cfg.BaseURL) != "" ||
+		strings.TrimSpace(cfg.APIKey) != "" ||
+		cfg.OpenCode
+}
+
+func (p ModelProvider) SupportsCapability(capability string) bool {
+	switch strings.TrimSpace(capability) {
+	case CapabilityOpenCode:
+		return p.OpenCode
+	default:
+		return false
+	}
+}
+
+func ConfiguredAPIKeyEnv(id string, cfg ModelProviderConfig) string {
+	if key := strings.TrimSpace(cfg.APIKeyEnv); key != "" {
+		return key
+	}
+	if meta, ok := ModelProviderByID(id); ok && strings.TrimSpace(meta.APIKeyEnv) != "" {
+		return meta.APIKeyEnv
+	}
+	if ModelProviderConfigPresent(cfg) {
+		return "JAZ_PROVIDER_" + EnvKeyName(id) + "_API_KEY"
+	}
+	return ""
+}
+
 func OpenCodeProviderIDFromModel(model string) string {
 	providerID, _ := SplitProviderModel(model)
 	return providerID
@@ -118,6 +183,24 @@ func SplitProviderModel(model string) (string, string) {
 		return "", model
 	}
 	return strings.ToLower(strings.TrimSpace(before)), strings.TrimSpace(after)
+}
+
+func EnvKeyName(id string) string {
+	id = strings.ToUpper(strings.TrimSpace(id))
+	var b strings.Builder
+	lastUnderscore := false
+	for _, r := range id {
+		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			lastUnderscore = false
+			continue
+		}
+		if !lastUnderscore {
+			b.WriteByte('_')
+			lastUnderscore = true
+		}
+	}
+	return strings.Trim(b.String(), "_")
 }
 
 func NormalizeNativeProviderID(id string) (string, error) {

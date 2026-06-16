@@ -93,12 +93,13 @@ func (s *Server) loadAgentSettings(store storage.SettingsStorage) (agentsettings
 
 func (s *Server) agentSettingsResponse(defaults agentsettings.AgentDefaults) agentSettingsResponse {
 	agentNames := s.allACPAgentNames()
+	providers := s.modelProvidersWithStatus()
 	return agentSettingsResponse{
 		Native:     defaults.Native,
-		Providers:  s.modelProvidersWithStatus(),
+		Providers:  providers,
 		ACP:        defaults.ACP,
 		ACPAuth:    s.acpAgentAuthStatuses(defaults),
-		ACPOptions: acpOptions(agentNames),
+		ACPOptions: acpOptions(s.acpAgentCatalog(), agentNames, providers),
 		Agents:     agentNames,
 	}
 }
@@ -108,7 +109,7 @@ func (s *Server) modelProvidersWithStatus() []settingsModelProvider {
 	seen := map[string]struct{}{}
 	for _, meta := range provider.ModelProviders() {
 		cfg := s.ModelProviders[meta.ID]
-		meta = configuredModelProvider(meta, cfg)
+		meta = provider.ApplyModelProviderConfig(meta, cfg)
 		out = append(out, settingsModelProvider{
 			ModelProvider: meta,
 			Configured:    s.modelProviderKeyConfigured(meta.ID, cfg, meta),
@@ -124,43 +125,13 @@ func (s *Server) modelProvidersWithStatus() []settingsModelProvider {
 	sort.Strings(ids)
 	for _, id := range ids {
 		cfg := s.ModelProviders[id]
-		meta := configuredModelProvider(provider.ModelProvider{ID: id}, cfg)
+		meta := provider.ApplyModelProviderConfig(provider.ModelProvider{ID: id}, cfg)
 		out = append(out, settingsModelProvider{
 			ModelProvider: meta,
 			Configured:    s.modelProviderKeyConfigured(id, cfg, meta),
 		})
 	}
 	return out
-}
-
-func configuredModelProvider(meta provider.ModelProvider, cfg provider.ModelProviderConfig) provider.ModelProvider {
-	_, builtIn := provider.ModelProviderByID(meta.ID)
-	if strings.TrimSpace(cfg.Label) != "" {
-		meta.Label = cfg.Label
-	}
-	if strings.TrimSpace(meta.Label) == "" {
-		meta.Label = meta.ID
-	}
-	if strings.TrimSpace(cfg.BaseURL) != "" {
-		meta.BaseURL = cfg.BaseURL
-	}
-	if strings.TrimSpace(cfg.APIKeyEnv) != "" {
-		meta.APIKeyEnv = cfg.APIKeyEnv
-	}
-	if cfg.OpenCode {
-		meta.OpenCode = true
-	}
-	if !builtIn && strings.TrimSpace(cfg.BaseURL) != "" {
-		meta.OpenCode = true
-	}
-	if strings.EqualFold(strings.TrimSpace(cfg.Type), "openai-compatible") {
-		meta.OpenCode = true
-		meta.OpenAICompatible = true
-	}
-	if strings.TrimSpace(cfg.APIKey) != "" || strings.TrimSpace(meta.APIKeyEnv) != "" {
-		meta.RequiresAPIKey = true
-	}
-	return meta
 }
 
 func (s *Server) modelProviderKeyConfigured(id string, cfg provider.ModelProviderConfig, meta provider.ModelProvider) bool {
@@ -181,6 +152,19 @@ func (s *Server) modelProviderKeyConfigured(id string, cfg provider.ModelProvide
 	return ok
 }
 
+func (s *Server) modelProviderConfigured(id string) bool {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return false
+	}
+	for _, provider := range s.modelProvidersWithStatus() {
+		if provider.ID == id {
+			return provider.Implemented && provider.Configured
+		}
+	}
+	return false
+}
+
 func (s *Server) acpAgentAuthStatuses(defaults agentsettings.AgentDefaults) map[string]acpAuthStatusResponse {
 	out := make(map[string]acpAuthStatusResponse, len(s.allACPAgentNames()))
 	for _, name := range s.allACPAgentNames() {
@@ -195,12 +179,27 @@ func (s *Server) acpAgentAuthStatuses(defaults agentsettings.AgentDefaults) map[
 	return out
 }
 
-func acpOptions(agentNames []string) map[string]acp.AgentOptions {
+func acpOptions(catalog acp.AgentCatalog, agentNames []string, providers []settingsModelProvider) map[string]acp.AgentOptions {
 	options := make(map[string]acp.AgentOptions, len(agentNames))
 	for _, name := range agentNames {
-		options[name] = acp.AgentOptionsFor(name)
+		cfg, _ := catalog.Agent(name)
+		option := acp.AgentOptionsForConfig(name, cfg)
+		if cfg.UsesModelProvider() {
+			option.ModelProviderIDs = compatibleModelProviderIDs(cfg.ModelProviderCapability, providers)
+		}
+		options[name] = option
 	}
 	return options
+}
+
+func compatibleModelProviderIDs(capability string, providers []settingsModelProvider) []string {
+	ids := []string{}
+	for _, modelProvider := range providers {
+		if modelProvider.SupportsCapability(capability) {
+			ids = append(ids, modelProvider.ID)
+		}
+	}
+	return ids
 }
 
 func (s *Server) agentSettingsSeed() agentsettings.AgentDefaults {

@@ -1,5 +1,5 @@
 import { queryOptions, useQuery } from '@tanstack/react-query'
-import type { Session } from './api/types'
+import type { NativeProviderOption, Session } from './api/types'
 import { keys } from './query/keys'
 
 export interface ModelSuggestion {
@@ -56,6 +56,19 @@ const ACP_AGENT_MODELS: Record<string, ModelSuggestion[]> = {
 
 export function acpAgentModelSuggestions(agent: string): ModelSuggestion[] {
   return ACP_AGENT_MODELS[agent] ?? []
+}
+
+export function modelSuggestionsForProvider(
+  provider: NativeProviderOption | undefined,
+  openRouterModels: ModelSuggestion[] = [],
+): ModelSuggestion[] {
+  if (!provider) return []
+  if (provider.id === 'openrouter') return openRouterModels
+  if (provider.id === 'openai') return OPENAI_MODELS
+  if (provider.default_model) {
+    return [{ value: provider.default_model, label: provider.default_model, description: provider.label }]
+  }
+  return []
 }
 
 export const openRouterModelsQuery = queryOptions({
