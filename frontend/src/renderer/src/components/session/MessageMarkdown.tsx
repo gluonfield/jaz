@@ -68,6 +68,20 @@ function isUrlLink(href: unknown): boolean {
   return typeof href === 'string' && /^https?:\/\//i.test(href)
 }
 
+function opensInSideBrowserByDefault(href: string): boolean {
+  try {
+    const hostname = new URL(href).hostname.toLowerCase()
+    return (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '0.0.0.0' ||
+      hostname === '[::1]'
+    )
+  } catch {
+    return false
+  }
+}
+
 function shouldPreviewLink(event: MouseEvent<HTMLAnchorElement>): boolean {
   return (
     event.button === 0 &&
@@ -228,6 +242,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: s
                     !openPreview ||
                     typeof href !== 'string' ||
                     !urlLink ||
+                    !opensInSideBrowserByDefault(href) ||
                     !shouldPreviewLink(event)
                   ) {
                     return

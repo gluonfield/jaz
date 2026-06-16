@@ -433,6 +433,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   const sessionCwd = detail.data?.session.runtime_ref?.cwd
   const repoInfo = useQuery({ ...sessionRepoQuery(sessionId), enabled: Boolean(sessionCwd) })
   const sidePanel = useSidePanelState(Boolean(repoInfo.data?.git))
+  useEffect(() => window.jaz?.onOpenSideBrowserURL?.(sidePanel.openPreview), [sidePanel.openPreview])
 
   const itemCount = (detail.data?.messages.length ?? 0) + events.data.length
   const liveSize = live

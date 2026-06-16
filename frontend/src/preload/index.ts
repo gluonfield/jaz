@@ -34,6 +34,13 @@ contextBridge.exposeInMainWorld('jaz', {
   openBoardWindow: (boardId: string) => ipcRenderer.send('jaz:open-board-window', boardId),
   // Board windows deep-link into the main app instead of navigating themselves.
   openInMain: (path: string) => ipcRenderer.send('jaz:open-in-main', path),
+  onOpenSideBrowserURL: (handler: (url: string) => void): (() => void) => {
+    const listener = (_event: unknown, url: unknown): void => {
+      if (typeof url === 'string') handler(url)
+    }
+    ipcRenderer.on('jaz:open-side-browser-url', listener)
+    return () => ipcRenderer.removeListener('jaz:open-side-browser-url', listener)
+  },
   onOpenRoute: (handler: (path: string) => void): (() => void) => {
     const listener = (_event: unknown, path: unknown): void => {
       if (typeof path === 'string') handler(path)
