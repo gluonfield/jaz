@@ -113,7 +113,7 @@ export function FileDropOverlay({ visible }: { visible: boolean }) {
       {visible ? (
         <motion.div
           key="drop-overlay"
-          className="pointer-events-none fixed inset-0 z-[70] bg-bg/60 backdrop-blur-[2px]"
+          className="pointer-events-none fixed inset-0 z-file-drop bg-bg/60 backdrop-blur-[2px]"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
