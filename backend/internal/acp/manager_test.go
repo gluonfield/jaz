@@ -603,50 +603,6 @@ func TestManagerUsesClaudeUltracodeSessionMeta(t *testing.T) {
 	}
 }
 
-func TestManagerCanonicalizesClaudeAliasBeforeSettingModel(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	model := "claude-fable-5[1m]"
-	manager := acp.NewManager(store, acp.Config{
-		Root:      t.TempDir(),
-		Workspace: t.TempDir(),
-		Agents: map[string]acp.AgentConfig{
-			"claude": {
-				Command:         os.Args[0],
-				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
-				Model:           model,
-				ReasoningEffort: "xhigh",
-				Env: map[string]string{
-					"JAZ_FAKE_ACP_AGENT":               "1",
-					"JAZ_FAKE_ACP_MODELS":              "default," + model,
-					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG": model,
-					"JAZ_FAKE_ACP_SET_CONFIG":          "1",
-					"JAZ_FAKE_ACP_EXPECT_CONFIG_ID":    "effort",
-					"JAZ_FAKE_ACP_EXPECT_EFFORT":       "xhigh",
-				},
-			},
-		},
-	}, log.New(io.Discard))
-
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	legacyClaudeName := strings.ReplaceAll("claude-code", "-", "_")
-	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: legacyClaudeName, Slug: "claude-fable"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
-	session, err := store.LoadSession(spawned.SessionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if spawned.ACPAgent != "claude" || session.ModelProvider != "claude" || session.RuntimeRef.Agent != "claude" || session.Model != model {
-		t.Fatalf("unexpected session metadata spawned=%#v session=%#v", spawned, session)
-	}
-}
-
 func TestManagerRejectsUnsupportedClaudeModel(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

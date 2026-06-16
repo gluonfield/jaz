@@ -205,6 +205,9 @@ func mergeUsageSnapshot(current, next provider.Usage) provider.Usage {
 	if next.CachedInputTokens > 0 {
 		current.CachedInputTokens = next.CachedInputTokens
 	}
+	if next.CachedWriteTokens > 0 {
+		current.CachedWriteTokens = next.CachedWriteTokens
+	}
 	if next.OutputTokens > 0 {
 		current.OutputTokens = next.OutputTokens
 	}

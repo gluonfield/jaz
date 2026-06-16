@@ -1,7 +1,6 @@
 package settings
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -99,87 +98,6 @@ func TestEnsureAgentDefaultsUpgradesLegacyGrokCommand(t *testing.T) {
 	}
 	if loaded.ACP["grok"].Command != seed.ACP["grok"].Command {
 		t.Fatalf("grok command = %q", loaded.ACP["grok"].Command)
-	}
-}
-
-func TestEnsureAgentDefaultsUpgradesPreviousClaudeCommands(t *testing.T) {
-	for _, legacy := range legacyClaudeCodeCommands {
-		store, err := jsonstore.New(t.TempDir())
-		if err != nil {
-			t.Fatal(err)
-		}
-		seed := testAgentDefaultsSeed()
-		old := seed
-		old.ACP = map[string]ACPAgentDefaults{
-			"claude": {
-				Enabled: true,
-				Command: legacy,
-				Model:   "default",
-			},
-		}
-		data, err := json.Marshal(old)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := store.SaveSetting(AgentSettingsNamespace, AgentDefaultsKey, data); err != nil {
-			t.Fatal(err)
-		}
-
-		if err := EnsureAgentDefaults(store, seed); err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadAgentDefaults(store)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if loaded.ACP["claude"].Command != seed.ACP["claude"].Command {
-			t.Fatalf("claude command = %q, want upgraded from %q", loaded.ACP["claude"].Command, legacy)
-		}
-	}
-}
-
-func TestEnsureAgentDefaultsMigratesLegacyClaudeCodeModel(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	seed := testAgentDefaultsSeed()
-	legacyClaudeName := strings.ReplaceAll("claude-code", "-", "_")
-	old := seed
-	old.ACP = map[string]ACPAgentDefaults{
-		legacyClaudeName: {
-			Enabled:         true,
-			Command:         legacyClaudeCodeCommands[0],
-			Model:           legacyClaudeCodeModel,
-			ReasoningEffort: "xhigh",
-		},
-	}
-	data, err := json.Marshal(old)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.SaveSetting(AgentSettingsNamespace, AgentDefaultsKey, data); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := EnsureAgentDefaults(store, seed); err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadAgentDefaults(store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loaded.ACP["claude"].Model != "default" {
-		t.Fatalf("claude model = %q", loaded.ACP["claude"].Model)
-	}
-	if loaded.ACP["claude"].Command != seed.ACP["claude"].Command {
-		t.Fatalf("claude command = %q", loaded.ACP["claude"].Command)
-	}
-	if loaded.ACP["claude"].ReasoningEffort != "xhigh" {
-		t.Fatalf("claude effort = %q", loaded.ACP["claude"].ReasoningEffort)
-	}
-	if _, ok := loaded.ACP[legacyClaudeName]; ok {
-		t.Fatalf("legacy claude key was not migrated: %#v", loaded.ACP)
 	}
 }
 

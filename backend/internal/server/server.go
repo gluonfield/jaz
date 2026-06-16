@@ -54,6 +54,7 @@ type MCPRuntime interface {
 type Server struct {
 	Agent           *agent.Agent
 	Store           storage.Store
+	Routes          Routes
 	ACP             ACPManager
 	MCP             MCPRuntime
 	Locks           *sessionlock.Locks
@@ -88,6 +89,13 @@ type Server struct {
 	acpAuthLoginJobs sync.Map
 	worktreePruneMu  sync.Mutex
 }
+
+type Route struct {
+	Pattern string
+	Handler http.Handler
+}
+
+type Routes []Route
 
 func (s *Server) logger() *log.Logger {
 	if s.Log != nil {

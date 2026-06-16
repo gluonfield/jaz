@@ -231,6 +231,12 @@ func (s *Store) SetPinned(id string, pinned bool) error {
 }
 
 func (s *Store) ListSessions(filter storage.SessionFilter) ([]storage.Session, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.listSessionsLocked(filter)
+}
+
+func (s *Store) listSessionsLocked(filter storage.SessionFilter) ([]storage.Session, error) {
 	entries, err := os.ReadDir(s.SessionsDir())
 	if os.IsNotExist(err) {
 		return nil, nil
@@ -316,7 +322,10 @@ func (s *Store) AddUsage(id string, usage storage.Usage) error {
 	if usage.ContextWindowTokens > 0 {
 		session.Usage.ContextWindowTokens = usage.ContextWindowTokens
 	}
-	return s.saveSession(session)
+	if err := s.saveSession(session); err != nil {
+		return err
+	}
+	return s.appendUsageEvent(session, usage, total, usage.LiveContextTokens(), time.Now().UTC())
 }
 
 func (s *Store) LoadMessages(id string) ([]provider.Message, error) {

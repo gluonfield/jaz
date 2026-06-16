@@ -6,10 +6,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
+	usagecore "github.com/wins/jaz/backend/internal/usage"
 )
 
 func TestSessionsHaveStableUniqueSlugsAndRootListing(t *testing.T) {
@@ -92,6 +94,7 @@ func TestAddUsageStoresCachedTokens(t *testing.T) {
 	if err := store.AddUsage(session.ID, storage.Usage{
 		InputTokens:           100,
 		CachedInputTokens:     64,
+		CachedWriteTokens:     6,
 		OutputTokens:          25,
 		ReasoningOutputTokens: 7,
 	}); err != nil {
@@ -110,14 +113,24 @@ func TestAddUsageStoresCachedTokens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Missing totals derive from the disjoint components (100+64+25 = 189).
-	if loaded.Usage.InputTokens != 110 || loaded.Usage.CachedInputTokens != 72 || loaded.Usage.OutputTokens != 30 ||
-		loaded.Usage.ReasoningOutputTokens != 7 || loaded.Usage.TotalTokens != 209 {
+	// Missing totals derive from the disjoint components (100+64+6+25 = 195).
+	if loaded.Usage.InputTokens != 110 || loaded.Usage.CachedInputTokens != 72 || loaded.Usage.CachedWriteTokens != 6 ||
+		loaded.Usage.OutputTokens != 30 || loaded.Usage.ReasoningOutputTokens != 7 || loaded.Usage.TotalTokens != 215 {
 		t.Fatalf("usage = %#v", loaded.Usage)
 	}
 	// Context reflects only the latest turn (10+8+5), never accumulates.
 	if loaded.Usage.ContextTokens != 23 {
 		t.Fatalf("context tokens = %d, want 23", loaded.Usage.ContextTokens)
+	}
+	daily, err := usagecore.NewService(store).Daily(usagecore.DailyQuery{Days: 1, Location: time.UTC})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantDaily := loaded.Usage
+	wantDaily.ContextTokens = 0
+	wantDaily.ContextWindowTokens = 0
+	if len(daily) != 1 || daily[0].SessionCount != 1 || daily[0].Usage != wantDaily {
+		t.Fatalf("daily usage = %#v, want one bucket with %#v", daily, wantDaily)
 	}
 }
 
