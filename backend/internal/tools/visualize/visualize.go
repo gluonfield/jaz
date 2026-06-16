@@ -21,8 +21,24 @@ func (ReadMeTool) Definition() tools.Definition {
 	)
 }
 
-func (ReadMeTool) Execute(context.Context, map[string]any) (tools.Result, error) {
-	return tools.Result{Content: visualizesvc.ReadMeGuide}, nil
+func (ReadMeTool) Execute(_ context.Context, inputs map[string]any) (tools.Result, error) {
+	return tools.Result{Content: visualizesvc.BuildReadMeGuide(moduleNames(inputs["modules"]))}, nil
+}
+
+// moduleNames leniently coerces the optional "modules" argument into a slice;
+// a missing or malformed value yields the core guide rather than an error.
+func moduleNames(value any) []string {
+	items, ok := value.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		if text, ok := item.(string); ok {
+			out = append(out, text)
+		}
+	}
+	return out
 }
 
 func (ShowWidgetTool) Definition() tools.Definition {
