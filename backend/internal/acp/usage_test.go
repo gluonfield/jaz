@@ -44,6 +44,15 @@ func TestUsageFromRawReadsGrokPromptMeta(t *testing.T) {
 	}
 }
 
+func TestUsageFromRawReadsThoughtTokens(t *testing.T) {
+	usage := usageFromRaw(json.RawMessage(`{
+		"usage": {"inputTokens": 10, "outputTokens": 2, "thoughtTokens": 7}
+	}`))
+	if usage.InputTokens != 10 || usage.OutputTokens != 2 || usage.ReasoningOutputTokens != 7 {
+		t.Fatalf("usage = %#v", usage)
+	}
+}
+
 func TestUsageFromRawIgnoresTelemetryTotalOnly(t *testing.T) {
 	usage := usageFromRaw(json.RawMessage(`{
 		"sessionUpdate": "agent_message_chunk",
