@@ -9,6 +9,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
+import { RAINBOW_BEAM } from '@/components/ui/rainbow'
 import type { PaletteItem } from './commandPaletteTypes'
 import { CommandRow, ThreadRow } from './CommandPaletteRows'
 import { useCommandPaletteItems } from './useCommandPaletteItems'
@@ -143,9 +144,37 @@ export function CommandPalette({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4, scale: 0.99 }}
             transition={PANEL_TRANSITION}
-            className="mx-auto flex max-h-[min(590px,76dvh)] w-full max-w-[620px] flex-col overflow-hidden rounded-[8px] bg-bg shadow-[0_18px_48px_rgba(0,0,0,0.22),0_2px_8px_rgba(0,0,0,0.08)] ring-1 ring-border"
+            className="relative mx-auto w-full max-w-[620px]"
           >
-            <div className="flex items-center gap-2 px-3 py-2.5 shadow-[inset_0_-1px_0_var(--color-border)]">
+            {/* Rainbow comet border — the same "alive right now" ring the
+                composer wears while focused, orbiting the palette the whole
+                time it's open. It rides this wrapper (not the clipped surface),
+                so the comet shows on the perimeter while the opaque surface
+                covers its center. */}
+            <motion.div
+              aria-hidden
+              className="pointer-events-none absolute -inset-[2px]"
+              initial={{ opacity: 0 }}
+              animate={{
+                opacity: 1,
+                ...(reduceMotion ? {} : { '--ring-angle': ['0deg', '360deg'] }),
+              }}
+              transition={{
+                opacity: { duration: 0.25, ease: 'easeOut' },
+                '--ring-angle': { duration: 2.6, ease: 'linear', repeat: Infinity },
+              }}
+            >
+              {/* glow trailing the comet, bleeding softly outside the panel */}
+              <div
+                className="absolute -inset-[4px] rounded-[18px] opacity-50 blur-[10px]"
+                style={{ background: RAINBOW_BEAM }}
+              />
+              {/* the comet itself; the panel's opaque surface covers the center */}
+              <div className="absolute inset-0 rounded-[14px]" style={{ background: RAINBOW_BEAM }} />
+            </motion.div>
+
+            <div className="relative flex max-h-[min(590px,76dvh)] flex-col overflow-hidden rounded-[12px] bg-bg shadow-[0_18px_48px_rgba(0,0,0,0.22),0_2px_8px_rgba(0,0,0,0.08)] ring-1 ring-border">
+              <div className="flex items-center gap-2 px-3 py-2.5 shadow-[inset_0_-1px_0_var(--color-border)]">
               <Search size={17} className="shrink-0 text-ink-3" />
               <input
                 ref={inputRef}
@@ -173,7 +202,7 @@ export function CommandPalette({
 
             <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1.5 py-1.5">
               {commandItems.length ? (
-                <div className="px-2 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+                <div className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-3">
                   Actions
                 </div>
               ) : null}
@@ -194,7 +223,7 @@ export function CommandPalette({
                   initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 2 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={LABEL_TRANSITION}
-                  className="px-2 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-3"
+                  className="px-2.5 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-3"
                 >
                   Threads
                 </motion.div>
@@ -239,6 +268,7 @@ export function CommandPalette({
                   <p className="text-[13px] text-ink-3">No results.</p>
                 </div>
               ) : null}
+            </div>
             </div>
           </motion.div>
         </motion.div>
