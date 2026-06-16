@@ -34,7 +34,7 @@ import {
   uploadSessionAttachment,
 } from '@/lib/api/sessions'
 import { streamSessionMessage } from '@/lib/api/stream'
-import type { ACPJobSnapshot, ChatMessage, SessionEvent, SessionMessages } from '@/lib/api/types'
+import type { ACPJobSnapshot, ACPModeState, ChatMessage, SessionEvent, SessionMessages } from '@/lib/api/types'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
 import { takePendingMessage, takePendingVoice } from '@/lib/pendingMessage'
@@ -74,6 +74,7 @@ function SessionRoute() {
 interface LiveExchange {
   user: string
   at: string
+  planRequested: boolean
   attachments: LiveAttachment[]
   reasoning: string
   assistant: string
@@ -118,6 +119,28 @@ function formatAttachmentSize(size?: number): string {
   if (size < 1024) return `${size} B`
   if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
   return `${(size / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function modeStateKnown(modes?: ACPModeState): boolean {
+  return Boolean(
+    modes?.plan_mode_id ||
+      modes?.current_mode_id ||
+      modes?.execution_mode_id ||
+      modes?.available_modes?.length,
+  )
+}
+
+function planModeActive(modes?: ACPModeState): boolean {
+  return Boolean(modes?.plan_mode_id && modes.current_mode_id === modes.plan_mode_id)
+}
+
+function latestACPModeState(sessionId: string, events: SessionEvent[]): ACPModeState | undefined {
+  let latest: ACPModeState | undefined
+  for (const event of events) {
+    if (event.acp?.id !== sessionId || !modeStateKnown(event.acp.modes)) continue
+    latest = event.acp.modes
+  }
+  return latest
 }
 
 function LiveAttachmentList({ attachments }: { attachments: LiveAttachment[] }) {
@@ -301,6 +324,8 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
       : []),
     ...((acpChildren ?? []).flatMap((child) => acpSnapshotEvents(child, session.id))),
   ]
+  const modeEvents = [...persistedEvents, ...snapshotEvents, ...liveEvents]
+  const currentModes = latestACPModeState(session.id, modeEvents) ?? acpModes
   const activePermissions = activePermissionIDs([...snapshotEvents, ...liveEvents])
   const transcriptEvents = coalesceSessionEvents(
     [...persistedEvents, ...snapshotEvents, ...liveEvents].flatMap((event) => {
@@ -313,13 +338,9 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
     }),
   )
   const settledTranscriptEvents = resolveInactivePermissions(transcriptEvents, activePermissions)
-  const acpModesKnown = Boolean(
-    acpModes?.plan_mode_id ||
-      acpModes?.current_mode_id ||
-      acpModes?.execution_mode_id ||
-      acpModes?.available_modes?.length,
-  )
-  const planAvailable = session.runtime !== 'acp' || !acpModesKnown || Boolean(acpModes?.plan_mode_id)
+  const acpModesKnown = modeStateKnown(currentModes)
+  const planAvailable = session.runtime !== 'acp' || !acpModesKnown || Boolean(currentModes?.plan_mode_id)
+  const planActive = planModeActive(currentModes)
   const hasPendingPermission = activePermissions.size > 0
   const latestUserAt = Math.max(
     0,
@@ -355,6 +376,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
     transcriptEvents: settledTranscriptEvents,
     displayEvents,
     planAvailable,
+    planActive,
     hasPendingPermission,
     latestPlanDecisionSurface,
     planDecisionSessionID: latestPlanDecisionSurface?.approvalSessionId,
@@ -439,6 +461,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     setLive({
       user: text,
       at: new Date().toISOString(),
+      planRequested: Boolean(options.planRequested),
       attachments: files.map((file) => ({ name: file.name, size: file.size, uploading: true })),
       reasoning: '',
       assistant: '',
@@ -641,6 +664,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     transcriptEvents,
     displayEvents,
     planAvailable,
+    planActive,
     hasPendingPermission,
     latestPlanDecisionSurface,
     planDecisionSessionID,
@@ -846,6 +870,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                 <Composer
                   streaming={sessionRunning}
                   planAvailable={planAvailable}
+                  planModeActive={Boolean(live?.planRequested) || planActive}
                   queuedPrompts={queue.queuedPrompts}
                   steerDisabled={queue.steerDisabled}
                   draftStorageKey={`${SESSION_DRAFT_KEY_PREFIX}${session.id}`}

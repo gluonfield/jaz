@@ -67,6 +67,7 @@ export function ComposerCard({
   placeholder = 'Ask anything, or hand your assistant a task…',
   disabled = false,
   planAvailable = false,
+  planModeActive = false,
   queueWhenStreaming = false,
   translucent = false,
   draftStorageKey,
@@ -84,6 +85,7 @@ export function ComposerCard({
   placeholder?: string
   disabled?: boolean
   planAvailable?: boolean
+  planModeActive?: boolean
   queueWhenStreaming?: boolean
   /** let a backdrop (e.g. the welcome particle field) read through the card */
   translucent?: boolean
@@ -107,6 +109,7 @@ export function ComposerCard({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const reducedMotion = useReducedMotion()
   const planToggleDisabled = disabled || !planAvailable
+  const showPlanChip = planAvailable && (planRequested || planModeActive)
   const mention = useMentionInput({
     fileRoot,
     disabled,
@@ -315,33 +318,42 @@ export function ComposerCard({
             </Popover>
             {leftSlot}
             <AnimatePresence initial={false}>
-              {planRequested ? (
+              {showPlanChip ? (
                 <motion.div
                   key="plan-chip"
                   initial={{ opacity: 0, scale: 0.8, filter: 'blur(4px)' }}
                   animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
                   exit={{ opacity: 0, scale: 0.8, filter: 'blur(4px)' }}
                   transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
-                  className="group flex h-8 shrink-0 items-center gap-1 rounded-full pr-2.5 pl-1 text-[13px] font-medium text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+                  title={planRequested ? undefined : 'Plan mode active'}
+                  className={`flex h-8 shrink-0 items-center gap-1 rounded-full pr-2.5 pl-1 text-[13px] font-medium text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink ${
+                    planRequested ? 'group' : ''
+                  }`}
                 >
-                  <IconButton
-                    variant="ghost"
-                    size="xs"
-                    aria-label="Remove plan mode"
-                    title="Remove plan mode"
-                    disabled={disabled}
-                    className="grid"
-                    onClick={() => setPlanRequested(false)}
-                  >
-                    <ListChecks
-                      size={13}
-                      className="col-start-1 row-start-1 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0"
-                    />
-                    <X
-                      size={13}
-                      className="col-start-1 row-start-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-                    />
-                  </IconButton>
+                  {planRequested ? (
+                    <IconButton
+                      variant="ghost"
+                      size="xs"
+                      aria-label="Remove plan mode"
+                      title="Remove plan mode"
+                      disabled={disabled}
+                      className="grid"
+                      onClick={() => setPlanRequested(false)}
+                    >
+                      <ListChecks
+                        size={13}
+                        className="col-start-1 row-start-1 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0"
+                      />
+                      <X
+                        size={13}
+                        className="col-start-1 row-start-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                      />
+                    </IconButton>
+                  ) : (
+                    <span className="grid size-6 place-items-center" aria-hidden>
+                      <ListChecks size={13} />
+                    </span>
+                  )}
                   <span>Plan</span>
                 </motion.div>
               ) : null}
@@ -394,6 +406,7 @@ export function Composer({
   disabled,
   placeholder,
   planAvailable,
+  planModeActive,
   queuedPrompts = [],
   steerDisabled,
   draftStorageKey,
@@ -410,6 +423,7 @@ export function Composer({
   disabled?: boolean
   placeholder?: string
   planAvailable?: boolean
+  planModeActive?: boolean
   queuedPrompts?: QueuedMessage[]
   steerDisabled?: boolean
   draftStorageKey?: string
@@ -446,6 +460,7 @@ export function Composer({
         disabled={disabled}
         placeholder={placeholder}
         planAvailable={planAvailable}
+        planModeActive={planModeActive}
         queueWhenStreaming
         draftStorageKey={draftStorageKey}
         draftStorage="local"
