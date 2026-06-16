@@ -7,8 +7,14 @@ import (
 
 func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 	prompt, err := Render(Data{
-		Agents: "agents",
-		Soul:   "soul",
+		Agents:   "agents",
+		Date:     "June 16, 2026",
+		Time:     "12:34:56 BST",
+		Timezone: "BST (UTC+01:00)",
+		Weekday:  "Tuesday",
+		Human:    "Tuesday, June 16, 2026 at 12:34:56 BST",
+		Cwd:      "/tmp/jaz/workspaces/default/.worktrees/task",
+		Soul:     "soul",
 		Memory: &MemoryData{
 			LongTerm:  "- Goal: $5m.",
 			ShortTerm: "- Focus: jaz memory.",
@@ -22,6 +28,12 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 	}
 	assertOrder(t, prompt,
 		"## Jaz platform",
+		"Date: June 16, 2026",
+		"Time: 12:34:56 BST",
+		"Timezone: BST (UTC+01:00)",
+		"Weekday: Tuesday",
+		"Now: Tuesday, June 16, 2026 at 12:34:56 BST",
+		"Current working directory: /tmp/jaz/workspaces/default/.worktrees/task",
 		"## AGENTS.md\n\nagents",
 		"## SOUL.md\n\nsoul",
 		"## Artifacts and visualizations",
@@ -65,7 +77,7 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 }
 
 func TestRenderMemoryStates(t *testing.T) {
-	disabled, err := Render(Data{Agents: "agents", Soul: "(empty)"})
+	disabled, err := Render(testData("agents", "(empty)"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,13 +88,28 @@ func TestRenderMemoryStates(t *testing.T) {
 		t.Fatalf("prompt files must render regardless of memory:\n%s", disabled)
 	}
 
-	fresh, err := Render(Data{Agents: "(empty)", Soul: "(empty)", Memory: &MemoryData{LongTerm: "(empty)", ShortTerm: "(empty)"}})
+	freshData := testData("(empty)", "(empty)")
+	freshData.Memory = &MemoryData{LongTerm: "(empty)", ShortTerm: "(empty)"}
+	fresh, err := Render(freshData)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertOrder(t, fresh, "Capture as you go", "## memory/LONG_TERM.md\n\n(empty)", "## memory/SHORT_TERM.md\n\n(empty)")
 	if strings.Contains(fresh, "## memory/daily/") {
 		t.Fatalf("no daily content means no daily sections:\n%s", fresh)
+	}
+}
+
+func testData(agents, soul string) Data {
+	return Data{
+		Agents:   agents,
+		Date:     "June 16, 2026",
+		Time:     "12:34:56 BST",
+		Timezone: "BST (UTC+01:00)",
+		Weekday:  "Tuesday",
+		Human:    "Tuesday, June 16, 2026 at 12:34:56 BST",
+		Cwd:      "/tmp/jaz/workspaces/default",
+		Soul:     soul,
 	}
 }
 

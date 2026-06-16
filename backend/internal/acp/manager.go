@@ -230,19 +230,19 @@ func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd
 
 // sessionMeta builds the session _meta payload for prompt and agent-specific
 // options.
-func (m *Manager) sessionMeta(agent string, cfg AgentConfig) (map[string]any, error) {
-	meta, err := m.sessionPromptMeta(agent)
+func (m *Manager) sessionMeta(agent string, cfg AgentConfig, cwd string) (map[string]any, error) {
+	meta, err := m.sessionPromptMeta(agent, cwd)
 	if err != nil {
 		return nil, err
 	}
 	return agentPolicyForAgent(agent).mergeSessionMeta(meta, cfg.ReasoningEffort), nil
 }
 
-func (m *Manager) sessionPromptMeta(agent string) (map[string]any, error) {
+func (m *Manager) sessionPromptMeta(agent, cwd string) (map[string]any, error) {
 	if m.cfg.SystemPrompt == nil {
 		return nil, nil
 	}
-	prompt, err := m.cfg.SystemPrompt.ACPPrompt()
+	prompt, err := m.cfg.SystemPrompt.ACPPrompt(cwd)
 	if err != nil {
 		return nil, fmt.Errorf("build acp system prompt: %w", err)
 	}
@@ -254,7 +254,7 @@ func (m *Manager) sessionPromptMeta(agent string) (map[string]any, error) {
 }
 
 func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent string, cfg AgentConfig, cwd string) (acpSessionInfo, error) {
-	meta, err := m.sessionMeta(agent, cfg)
+	meta, err := m.sessionMeta(agent, cfg, cwd)
 	if err != nil {
 		return acpSessionInfo{}, err
 	}
@@ -548,7 +548,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 	_ = json.Unmarshal(ac.initRaw, &caps)
 	storedID := session.RuntimeRef.SessionID
 	if caps.AgentCapabilities.LoadSession && storedID != "" {
-		meta, err := m.sessionMeta(agentName, cfg)
+		meta, err := m.sessionMeta(agentName, cfg, cwd)
 		if err != nil {
 			return "", ModeState{}, err
 		}

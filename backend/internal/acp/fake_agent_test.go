@@ -69,11 +69,18 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			})
 		case "session/load":
 			var req struct {
+				Meta       map[string]any    `json:"_meta"`
+				Cwd        string            `json:"cwd"`
 				SessionID  string            `json:"sessionId"`
 				MCPServers []json.RawMessage `json:"mcpServers"`
 			}
 			if err := json.Unmarshal(msg.Params, &req); err != nil || req.SessionID != "fake-session" {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("unknown session", nil))
+				_ = conn.Send(context.Background(), resp)
+				continue
+			}
+			if err := validateFakeCwdPrompt(req.Cwd, req.Meta); err != nil {
+				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams(err.Error(), nil))
 				_ = conn.Send(context.Background(), resp)
 				continue
 			}
@@ -96,6 +103,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 		case "session/new":
 			var req struct {
 				Meta       map[string]any    `json:"_meta"`
+				Cwd        string            `json:"cwd"`
 				MCPServers []json.RawMessage `json:"mcpServers"`
 			}
 			if err := json.Unmarshal(msg.Params, &req); err != nil {
@@ -110,6 +118,11 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			}
 			if want := os.Getenv("JAZ_FAKE_ACP_SYSTEM_PROMPT"); want != "" && req.Meta["systemPrompt"] != want {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("missing system prompt", nil))
+				_ = conn.Send(context.Background(), resp)
+				continue
+			}
+			if err := validateFakeCwdPrompt(req.Cwd, req.Meta); err != nil {
+				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams(err.Error(), nil))
 				_ = conn.Send(context.Background(), resp)
 				continue
 			}
@@ -271,6 +284,17 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			_ = conn.Send(context.Background(), resp)
 		}
 	}
+}
+
+func validateFakeCwdPrompt(cwd string, meta map[string]any) error {
+	if os.Getenv("JAZ_FAKE_ACP_EXPECT_CWD_IN_PROMPT") != "1" {
+		return nil
+	}
+	prompt, _ := meta["systemPrompt"].(string)
+	if cwd == "" || !strings.Contains(prompt, cwd) {
+		return fmt.Errorf("system prompt missing cwd %q", cwd)
+	}
+	return nil
 }
 
 func fakeModes() map[string]any {

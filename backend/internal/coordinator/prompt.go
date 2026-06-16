@@ -18,31 +18,25 @@ func Prompt(root, workspace, memoryRoot, skillsPrompt string) (string, error) {
 	return prompt(root, workspace, memoryRoot, skillsPrompt, time.Now())
 }
 
-// prompt joins the two layers: the agent prompt (identity, environment,
-// operating rules) and the platform prompt (AGENTS.md, SOUL.md, memory,
+// prompt joins the two layers: the native agent prompt (identity and operating
+// rules) and the platform prompt (runtime context, AGENTS.md, SOUL.md, memory,
 // skills) that every agent in Jaz shares.
 func prompt(root, workspace, memoryRoot, skillsPrompt string, now time.Time) (string, error) {
 	if strings.TrimSpace(workspace) == "" {
 		workspace = "~/.jaz/workspaces/default"
 	}
-	agentPrompt, err := jazagent.Render(now, workspace)
+	agentPrompt := jazagent.Render()
+	platform, err := platformPrompt(root, workspace, memoryRoot, skillsPrompt, now)
 	if err != nil {
 		return "", err
-	}
-	platform, err := platformPrompt(root, memoryRoot, skillsPrompt, now)
-	if err != nil {
-		return "", err
-	}
-	if platform == "" {
-		return agentPrompt, nil
 	}
 	return strings.TrimRight(agentPrompt, "\n") + "\n\n" + platform, nil
 }
 
-// platformPrompt renders the jaz extension shared by all agents: the user's
-// prompt files (AGENTS.md, SOUL.md), the memory protocol with live horizons,
-// and the skills catalog. Empty when there is nothing to say.
-func platformPrompt(root, memoryRoot, skillsPrompt string, now time.Time) (string, error) {
+// platformPrompt renders the jaz extension shared by all agents: runtime
+// context, prompt files, the memory protocol with live horizons, and the
+// skills catalog.
+func platformPrompt(root, cwd, memoryRoot, skillsPrompt string, now time.Time) (string, error) {
 	// AGENTS.md and SOUL.md always render — an empty section tells every
 	// agent the file exists and is editable, instead of silently vanishing.
 	agents, err := ReadPromptFile(root, "AGENTS.md")
@@ -58,10 +52,16 @@ func platformPrompt(root, memoryRoot, skillsPrompt string, now time.Time) (strin
 		return "", err
 	}
 	return jazplatform.Render(jazplatform.Data{
-		Agents: orEmpty(agents),
-		Soul:   orEmpty(soul),
-		Memory: memory,
-		Skills: strings.TrimSpace(skillsPrompt),
+		Agents:   orEmpty(agents),
+		Date:     now.Format("January 2, 2006"),
+		Time:     now.Format("15:04:05 MST"),
+		Timezone: now.Format("MST (UTCZ07:00)"),
+		Weekday:  now.Format("Monday"),
+		Human:    now.Format("Monday, January 2, 2006 at 15:04:05 MST"),
+		Cwd:      strings.TrimSpace(cwd),
+		Soul:     orEmpty(soul),
+		Memory:   memory,
+		Skills:   strings.TrimSpace(skillsPrompt),
 	})
 }
 

@@ -73,6 +73,7 @@ func runServe(args []string) error {
 			app.NewVoice,
 			app.NewAgent,
 		),
+		app.UsageModule(),
 		fx.Invoke(
 			app.ConnectACPCompletion,
 			app.CloseMemory,
@@ -182,6 +183,7 @@ func startServer(
 	jazTools *jaztools.Service,
 	terminals *terminal.Manager,
 	threadService *threads.Service,
+	routes server.Routes,
 ) error {
 	authKey, err := runtimeauth.Ensure(store.RootDir())
 	if err != nil {
@@ -190,6 +192,7 @@ func startServer(
 	handler := &server.Server{
 		Agent:           a,
 		Store:           store,
+		Routes:          routes,
 		ACP:             manager,
 		MCP:             mcpManager,
 		Locks:           locks,
