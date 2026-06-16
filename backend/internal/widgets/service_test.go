@@ -457,8 +457,8 @@ func TestPromptSectionMentionsFileAndErrors(t *testing.T) {
 	for _, want := range []string{
 		widgets.WidgetFilePath(loop),
 		"visualize:read_me",
-		"visualize_read_me",
-		"jaztools MCP-mapped read_me",
+		"jaztools",
+		"agent-side MCP-mapped read_me",
 		"Tile quality floor",
 		"publish_widget",
 		"Do not call `visualize:show_widget`",

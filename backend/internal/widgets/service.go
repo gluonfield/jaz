@@ -135,8 +135,7 @@ func (s *Service) StateForLoop(loopID string) (*Widget, []string, error) {
 }
 
 // MaybeAutoPublish publishes at run end when the widget file changed since the
-// last snapshot. It covers agents that cannot call the publish tool or the ACP
-// extension method.
+// last snapshot. It covers ACP agents that cannot call a publish channel.
 func (s *Service) MaybeAutoPublish(loop loops.Loop, runID string) {
 	if _, boards, err := s.StateForLoop(loop.ID); err != nil || len(boards) == 0 {
 		return
