@@ -69,6 +69,22 @@ type Usage struct {
 	ContextWindowTokens int64 `json:"context_window_tokens,omitempty"`
 }
 
+type UsageEvent struct {
+	SessionID     string    `json:"session_id"`
+	Runtime       string    `json:"runtime"`
+	Agent         string    `json:"agent,omitempty"`
+	ModelProvider string    `json:"model_provider,omitempty"`
+	Model         string    `json:"model,omitempty"`
+	Usage         Usage     `json:"usage"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+type DailyUsage struct {
+	Date         string `json:"date"`
+	Usage        Usage  `json:"usage"`
+	SessionCount int    `json:"session_count"`
+}
+
 // ComponentTotal is the full processed-token count for a turn: every
 // disjoint component the model touched.
 func (u Usage) ComponentTotal() int64 {
@@ -77,6 +93,11 @@ func (u Usage) ComponentTotal() int64 {
 
 func (u Usage) IsZero() bool {
 	return u == Usage{}
+}
+
+func (u Usage) Countable() bool {
+	return u.InputTokens+u.CachedInputTokens+u.CachedWriteTokens+
+		u.OutputTokens+u.ReasoningOutputTokens+u.TotalTokens > 0
 }
 
 // LiveContextTokens estimates the context occupied after a turn when the

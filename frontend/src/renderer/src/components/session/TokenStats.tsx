@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { IconButton } from '@/components/ui/IconButton'
 import { Popover } from '@/components/ui/Popover'
 import type { Session } from '@/lib/api/types'
+import { formatTokens } from '@/lib/format/tokens'
 import { useContextWindow } from '@/lib/models'
 
 // Titlebar token meter: an icon that unfolds into the session's cumulative
@@ -76,14 +77,4 @@ function StatRow({ label, value }: { label: string; value: string }) {
       <span className="font-mono text-ink">{value}</span>
     </div>
   )
-}
-
-function formatTokens(value: number): string {
-  if (value < 1_000) return String(value)
-  if (value < 1_000_000) return trimZero((value / 1_000).toFixed(1)) + 'k'
-  return trimZero((value / 1_000_000).toFixed(1)) + 'M'
-}
-
-function trimZero(value: string): string {
-  return value.endsWith('.0') ? value.slice(0, -2) : value
 }

@@ -1,6 +1,6 @@
 ---
 name: jazmem
-description: Use jazmem CLI and markdown memory. Trigger when searching, reading, citing, storing, organizing, reindexing, evaluating, dreaming, or maintaining durable personal memory in jazmem, including the LONG_TERM/SHORT_TERM/daily memory horizons.
+description: Use jazmem CLI and markdown memory. Trigger when searching, reading, citing, storing, organizing, evaluating, or maintaining durable personal memory in jazmem, including compressed insights, people/company/network facts, and the LONG_TERM/SHORT_TERM/daily memory horizons.
 metadata:
   short-description: Search and maintain jazmem memory
 ---
@@ -19,7 +19,7 @@ when Jaz creates or loads their ACP session. Prompt sections may be bounded; if
 content is omitted, the rendered prompt carries an explicit `<truncated ...>`
 marker. Know who writes what:
 
-| Surface | Holds | You (agent) | Dream (nightly) |
+| Surface | Holds | You (agent) | Dream (periodic) |
 |---|---|---|---|
 | `LONG_TERM.md` | identity, goals, standing preferences, key people | **read-only** | sole writer; facts must recur or be directly stated |
 | `SHORT_TERM.md` | current focus, active projects, open loops | **update in place, live**, when the present changes | prunes stale entries |
@@ -28,18 +28,36 @@ marker. Know who writes what:
 Rules:
 
 - SHORT_TERM.md says what is true about the present and gets overwritten; daily/ says what happened and never does.
-- Capture immediately when you learn something durable: append to today's daily page, update SHORT_TERM.md if focus/loops changed, run `jazmem index`. Memory is a behavior, not a backup.
+- Capture immediately when you learn something durable: append to today's daily page and update SHORT_TERM.md if focus/loops changed. Memory is a compression behavior, not a backup.
+- Jaz owns indexing and maintenance. Do not run memory maintenance commands unless the user explicitly asks for memory internals work.
 - The current daily page may be in the prompt extension; if it is truncated or
   missing, use jazmem tools or the CLI before concluding memory is absent.
 - Never edit LONG_TERM.md; if something belongs there, it will earn its way in via dream. Mention it in daily/ with a citation.
 
+## What To Capture
+
+Memory should preserve compressed insight and reusable situational awareness, not raw transcript volume. Write the smallest sourced statement that would let a future agent recover what matters.
+
+Capture these while working:
+
+- Facts about people, companies, projects, and the user's network.
+- Who said what, who is working on what, who is blocked, who is excited, unhappy, skeptical, or aligned.
+- Decisions, preferences, goals, open loops, commitments, and relationship changes.
+- Synthesis after sustained work: what was learned from a deck, paper, repository, meeting, artifact, strategy discussion, or debugging session.
+- Reusable concepts, framings, arguments, risks, and opportunity assessments that should survive beyond the current chat.
+
+For significant research, artifact, deck, strategy, or long diagnostic sessions, write a session compression with: key insight, entities involved, facts learned, decisions made, sources/artifacts, and the next open loop. Then update canonical `people/`, `companies/`, `projects/`, or `concepts/` pages.
+
+People/company/network notability is intentionally low: if the user discusses an entity beyond public-knowledge facts, capture it with sources. Do not require proof that it will recur.
+
 ## Core Rules
 
-- Check jazmem before answering about people, projects, preferences, decisions, relationships, open loops, "what do we know".
+- Read this skill and check jazmem before answering about people, companies, projects, preferences, decisions, relationships, open loops, prior work, network context, or "what do we know".
+- The main case where jazmem may be unnecessary is a purely mechanical coding task with no dependence on past context and no durable insight produced.
 - Ground claims in citations; absolute dates only (`2026-06-10`, never "yesterday").
 - Write declarative facts, not instructions: "User prefers concise updates" ✓, "Always be concise" ✗.
 - If a fact will be stale in 7 days, it belongs in daily/, not on a canonical page. No PR numbers, SHAs, "fixed bug X". Reusable procedures belong in skills, not memory.
-- Store data by editing markdown, then `jazmem index`. Never treat SQLite as truth or edit it directly.
+- Store data by editing markdown. Never treat SQLite as truth or edit it directly.
 - Record every known name variant in `aliases:` frontmatter — exact title/alias match is the strongest retrieval signal.
 - Keep `## Current` current: displaced facts move to `## History` with date ranges; ended relationships move out of `## Relationships` (that drops the typed edge).
 - Uncertain or raw material goes to `inbox/`, exact wording preserved, not to canonical pages.
@@ -76,7 +94,7 @@ jazmem get --raw people/alice  # raw markdown
 jazmem file people/alice       # path for editing; not-found returns suggestions
 ```
 
-Write path: search first → `jazmem file <slug>` → edit markdown → for new pages create `<root>/<slug>.md` with frontmatter, H1, aliases → cite every fact `[Source: ..., YYYY-MM-DD]` → close with `jazmem index && jazmem search "<verifying query>"`. New canonical pages must pass the notability gate; when unsure, `inbox/` instead.
+Write path: search first → `jazmem file <slug>` or resolve `<root>/<slug>.md` → edit markdown → for new pages create `<root>/<slug>.md` with frontmatter, H1, aliases → cite every fact `[Source: ..., YYYY-MM-DD]`. Jaz's scheduler/index writer makes edits searchable; do not run maintenance commands yourself unless explicitly asked. New canonical pages must pass the notability gate; when unsure, `inbox/` instead.
 
 Lanes: `people/ companies/ projects/ concepts/ notes/` (canonical) · `daily/ inbox/ sources/{email,chat,agent}/` (raw) · `dreams/{runs,review}/` (dream's).
 
@@ -94,12 +112,11 @@ Details: [references/writing-memory.md](references/writing-memory.md). Commands/
 Served by jaz at `http://127.0.0.1:5299/mcp/jazmem` (or standalone `jazmem-server` at `:9477/mcp`). Read-only — writes happen by editing markdown.
 
 - `memory_search`: agentic cited answer; `deep: true` when thin.
-- `memory_search_raw`: deterministic retrieval (`limit`, `deep`); drives your own search→get→follow-links loop.
 - `memory_get`: raw markdown + links/backlinks + near-miss suggestions.
 
 ## Maintenance
 
-`jazmem index` (rebuild after edits) · `jazmem doctor` (counts) · `jazmem eval` (fixed retrieval eval, no LLM) · `jazmem dream` (consolidation: promotes cited bullets, maintains LONG_TERM/SHORT_TERM) · `jazmem link-hygiene` (relationship proposals → review). The jazmem scheduler runs reindex/dream/hygiene automatically inside jaz.
+Maintenance commands exist for explicit jazmem-internals work only. They are not normal agent responsibilities; the jazmem scheduler runs indexing, six-hour dream consolidation, and hygiene automatically inside Jaz.
 
 ## Anti-Patterns
 
@@ -107,4 +124,4 @@ Served by jaz at `http://127.0.0.1:5299/mcp/jazmem` (or standalone `jazmem-serve
 - Deferring capture to session end; editing LONG_TERM.md directly.
 - Unsourced facts; relative dates; imperative phrasing; artifact IDs that rot in a week.
 - Alias-less new pages; stale `## Current` bullets; relationships buried in prose.
-- Forgetting `jazmem index`; treating SQLite as truth; `--deep` on every query.
+- Running maintenance commands during ordinary memory writing; treating SQLite as truth; `--deep` on every query.
