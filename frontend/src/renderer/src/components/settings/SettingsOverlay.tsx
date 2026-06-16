@@ -69,7 +69,7 @@ export function SettingsOverlay({ open, onClose }: { open: boolean; onClose: () 
     <AnimatePresence>
       {open ? (
         <motion.div
-          className="fixed inset-0 z-[60] flex bg-bg"
+          className="fixed inset-0 z-modal flex bg-bg"
           initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.99 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.99 }}

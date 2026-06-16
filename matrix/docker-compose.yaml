@@ -1,0 +1,85 @@
+services:
+  postgres:
+    image: postgres:${POSTGRES_VERSION:-16.14-alpine}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-jaz}
+      POSTGRES_DB: ${SYNAPSE_DB:-synapse}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: --locale=C --encoding=UTF8
+    secrets:
+      - postgres_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ${JAZ_MATRIX_ROOT:-${JAZ_RUNTIME_ROOT:-${HOME}/.jaz}/node/matrix}/postgres:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+
+  synapse-generate:
+    image: matrixdotorg/synapse:${SYNAPSE_VERSION:-v1.132.0}
+    profiles: ["setup"]
+    environment:
+      SYNAPSE_SERVER_NAME: ${SYNAPSE_SERVER_NAME:?set SYNAPSE_SERVER_NAME or run scripts/init-config.sh with JAZ_MATRIX_LOCAL=1 for local development}
+      SYNAPSE_REPORT_STATS: ${SYNAPSE_REPORT_STATS:-no}
+    command: ["generate"]
+    volumes:
+      - ${JAZ_MATRIX_ROOT:-${JAZ_RUNTIME_ROOT:-${HOME}/.jaz}/node/matrix}/synapse:/data
+
+  synapse:
+    image: matrixdotorg/synapse:${SYNAPSE_VERSION:-v1.132.0}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SYNAPSE_CONFIG_PATH: /data/homeserver.yaml
+    ports:
+      - "${SYNAPSE_HTTP_PORT:-127.0.0.1:8008}:8008"
+    volumes:
+      - ${JAZ_MATRIX_ROOT:-${JAZ_RUNTIME_ROOT:-${HOME}/.jaz}/node/matrix}/synapse:/data
+      - ${JAZ_MATRIX_ROOT:-${JAZ_RUNTIME_ROOT:-${HOME}/.jaz}/node/matrix}/registrations:/data/appservices:ro
+
+  mautrix-whatsapp:
+    image: dock.mau.dev/mautrix/whatsapp:${MAUTRIX_WHATSAPP_VERSION:-v26.05}
+    profiles: ["bridges"]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      synapse:
+        condition: service_started
+    volumes:
+      - ${JAZ_MATRIX_ROOT:-${JAZ_RUNTIME_ROOT:-${HOME}/.jaz}/node/matrix}/bridges/whatsapp:/data
+
+  mautrix-telegram:
+    image: dock.mau.dev/mautrix/telegram:${MAUTRIX_TELEGRAM_VERSION:-v26.05}
+    profiles: ["bridges"]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      synapse:
+        condition: service_started
+    volumes:
+      - ${JAZ_MATRIX_ROOT:-${JAZ_RUNTIME_ROOT:-${HOME}/.jaz}/node/matrix}/bridges/telegram:/data
+
+  caddy:
+    image: caddy:${CADDY_VERSION:-2.10.2-alpine}
+    profiles: ["public"]
+    restart: unless-stopped
+    environment:
+      MATRIX_PUBLIC_HOST: ${MATRIX_PUBLIC_HOST:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${JAZ_MATRIX_ROOT:-${JAZ_RUNTIME_ROOT:-${HOME}/.jaz}/node/matrix}/caddy/data:/data
+      - ${JAZ_MATRIX_ROOT:-${JAZ_RUNTIME_ROOT:-${HOME}/.jaz}/node/matrix}/caddy/config:/config
+
+secrets:
+  postgres_password:
+    file: ${JAZ_MATRIX_ROOT:-${JAZ_RUNTIME_ROOT:-${HOME}/.jaz}/node/matrix}/secrets/postgres_password

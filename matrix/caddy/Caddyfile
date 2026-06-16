@@ -1,0 +1,17 @@
+{$MATRIX_PUBLIC_HOST} {
+	handle /.well-known/matrix/* {
+		reverse_proxy synapse:8008
+	}
+
+	handle /_matrix/client/* {
+		reverse_proxy synapse:8008
+	}
+
+	handle /_matrix/media/* {
+		reverse_proxy synapse:8008
+	}
+
+	handle {
+		respond 404
+	}
+}

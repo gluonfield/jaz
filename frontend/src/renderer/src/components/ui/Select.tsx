@@ -173,7 +173,7 @@ export function Select({
                 top: rect.bottom + 4,
                 left: rect.left,
                 minWidth: rect.width,
-                zIndex: 60,
+                zIndex: 'var(--z-modal)',
               }}
               className="max-h-[280px] overflow-y-auto rounded-[8px] bg-surface p-1 shadow-xl ring-1 ring-border"
             >
