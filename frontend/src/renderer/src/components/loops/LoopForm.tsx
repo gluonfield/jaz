@@ -6,9 +6,20 @@ import { ModelSelect, RuntimeSelect } from '@/components/session/NewThreadContro
 import { boardsQuery } from '@/lib/api/boards'
 import type { LoopInput } from '@/lib/api/loops'
 import { agentSettingsQuery } from '@/lib/api/settings'
-import type { Loop } from '@/lib/api/types'
-import { enabledACPAgents, configuredNativeProviders, effectiveNativeProvider } from '@/lib/agentRuntimes'
-import { acpAgentModelSuggestions, OPENAI_MODELS, openRouterModelsQuery } from '@/lib/models'
+import type { AgentSettings, Loop } from '@/lib/api/types'
+import {
+  acpUsesModelProvider,
+  acpUsesNativeProvider,
+  enabledACPAgents,
+  configuredNativeProviders,
+  runtimeModelState,
+} from '@/lib/agentRuntimes'
+import {
+  acpAgentModelSuggestions,
+  modelSuggestionsForProvider,
+  OPENAI_MODELS,
+  openRouterModelsQuery,
+} from '@/lib/models'
 import { acpReasoningEffortOptions, REASONING_EFFORT_OPTIONS } from '@/lib/reasoningEfforts'
 import { SchedulePicker } from './SchedulePicker'
 import {
@@ -40,7 +51,7 @@ export function emptyLoopDraft(boardIds: string[] = []): LoopDraft {
   return {
     name: '',
     prompt: '',
-    runtime: 'native',
+    runtime: 'jaz',
     directory: '',
     provider: '',
     model: '',
@@ -54,7 +65,7 @@ export function loopDraftFromLoop(loop: Loop, boardIds: string[] = []): LoopDraf
   return {
     name: loop.name ?? '',
     prompt: loop.prompt ?? '',
-    runtime: loop.runtime === 'acp' ? (loop.acp_agent || 'codex') : 'native',
+    runtime: loop.runtime === 'acp' ? (loop.acp_agent || 'jaz') : 'native',
     directory: loop.directory ?? '',
     provider: loop.model_provider ?? '',
     model: loop.model ?? '',
@@ -71,8 +82,10 @@ export function canSaveLoop(draft: LoopDraft): boolean {
   return true
 }
 
-export function loopDraftToInput(draft: LoopDraft): LoopInput {
+export function loopDraftToInput(draft: LoopDraft, settings?: AgentSettings): LoopInput {
   const native = draft.runtime === 'native'
+  const usesNativeProvider = native || acpUsesNativeProvider(settings, draft.runtime)
+  const usesModelProvider = !native && acpUsesModelProvider(settings, draft.runtime)
   return {
     prompt: draft.prompt.trim(),
     name: draft.name.trim() || undefined,
@@ -81,7 +94,7 @@ export function loopDraftToInput(draft: LoopDraft): LoopInput {
     runtime: native ? 'native' : 'acp',
     acp_agent: native ? undefined : draft.runtime,
     // Overrides are always sent: '' clears one back to following settings.
-    model_provider: native ? draft.provider : '',
+    model_provider: usesNativeProvider || usesModelProvider ? draft.provider : '',
     model: draft.model,
     reasoning_effort: draft.reasoningEffort,
     directory: draft.directory || undefined,
@@ -200,33 +213,25 @@ function LoopPromptCard({
     if (!runtimeReady) return
     const valid = draft.runtime === 'native' ? nativeAvailable : agents.includes(draft.runtime)
     if (valid) return
-    const runtime = nativeAvailable ? 'native' : (agents[0] ?? '')
+    const runtime = agents.includes('jaz') ? 'jaz' : nativeAvailable ? 'native' : (agents[0] ?? '')
     if (runtime === draft.runtime) return
     set({ runtime, provider: '', model: '', reasoningEffort: '' })
   }, [agents, draft.runtime, nativeAvailable, runtimeReady, set])
 
-  const isNative = draft.runtime === 'native'
-  const defaultProvider = agentSettings?.native.model_provider ?? ''
-  const provider = isNative ? effectiveNativeProvider(agentSettings, draft.provider) : ''
-  const defaultModel = isNative
-    ? provider === defaultProvider
-      ? (agentSettings?.native.model ?? '')
-      : (nativeProviders.find((p) => p.id === provider)?.default_model ?? '')
-    : (agentSettings?.acp[draft.runtime]?.model ?? '')
+  const runtimeModel = runtimeModelState(agentSettings, draft.runtime, draft.provider)
+  const { usesNativeProvider, usesProvider, providers: runtimeProviders, provider, selectedProvider } = runtimeModel
+  const defaultModel = runtimeModel.defaultModel
   const model = draft.model || defaultModel
-  const defaultEffort = isNative
-    ? (agentSettings?.native.reasoning_effort ?? '')
-    : (agentSettings?.acp[draft.runtime]?.reasoning_effort ?? '')
-  const reasoningEffort = draft.reasoningEffort || defaultEffort
+  const reasoningEffort = draft.reasoningEffort || runtimeModel.defaultEffort
 
   const openRouterModels = useQuery({
     ...openRouterModelsQuery,
-    enabled: isNative && provider === 'openrouter',
+    enabled: usesProvider && provider === 'openrouter',
   })
-  const modelSuggestions = isNative
-    ? provider === 'openrouter'
-      ? (openRouterModels.data ?? [])
-      : OPENAI_MODELS
+  const modelSuggestions = usesProvider
+    ? usesNativeProvider && provider === 'openai'
+      ? OPENAI_MODELS
+      : modelSuggestionsForProvider(selectedProvider, openRouterModels.data ?? [])
     : acpAgentModelSuggestions(draft.runtime)
 
   return (
@@ -268,19 +273,19 @@ function LoopPromptCard({
                   placement="below"
                   onChange={(next) => set({ model: next })}
                   providers={
-                    isNative
-                      ? nativeProviders.map((p) => ({ value: p.id, label: p.label }))
+                    usesProvider
+                      ? runtimeProviders.map((p) => ({ value: p.id, label: p.label }))
                       : undefined
                   }
-                  provider={isNative ? provider : undefined}
+                  provider={usesProvider ? provider : undefined}
                   onProviderChange={
-                    isNative
+                    usesProvider
                       ? (next) => set({ provider: next, model: '', reasoningEffort: '' })
                       : undefined
                   }
                   effort={reasoningEffort}
                   effortOptions={
-                    isNative
+                    usesNativeProvider
                       ? REASONING_EFFORT_OPTIONS
                       : acpReasoningEffortOptions(agentSettings, draft.runtime)
                   }

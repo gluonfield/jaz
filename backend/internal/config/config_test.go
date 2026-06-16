@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/spf13/viper"
+	"github.com/wins/jaz/backend/internal/app"
+	"github.com/wins/jaz/backend/internal/provider"
 	openaiprovider "github.com/wins/jaz/backend/internal/provider/openai"
 	openrouterprovider "github.com/wins/jaz/backend/internal/provider/openrouter"
 )
@@ -14,6 +16,13 @@ func TestApplyProviderBuildsNativeProviderCatalog(t *testing.T) {
 	cfg := Config{
 		OpenRouter: openrouterprovider.Config{APIKey: "openrouter-key"},
 		OpenAI:     openaiprovider.Config{APIKey: "openai-key"},
+		Jaz: appConfigWithProvider("internal", provider.ModelProviderConfig{
+			Type:      "openai-compatible",
+			Label:     "Internal",
+			BaseURL:   "https://llm.internal/v1",
+			APIKeyEnv: "INTERNAL_LLM_API_KEY",
+			OpenCode:  true,
+		}),
 	}
 
 	if err := applyProvider(&cfg); err != nil {
@@ -31,6 +40,14 @@ func TestApplyProviderBuildsNativeProviderCatalog(t *testing.T) {
 	if _, ok := cfg.Jaz.ModelProviders["anthropic"]; ok {
 		t.Fatalf("anthropic should not be a native provider: %#v", cfg.Jaz.ModelProviders)
 	}
+	internal := cfg.Jaz.ModelProviders["internal"]
+	if internal.Type != "openai-compatible" || internal.BaseURL != "https://llm.internal/v1" || !internal.OpenCode {
+		t.Fatalf("custom provider not preserved: %#v", internal)
+	}
+}
+
+func appConfigWithProvider(id string, cfg provider.ModelProviderConfig) app.Config {
+	return app.Config{ModelProviders: map[string]provider.ModelProviderConfig{id: cfg}}
 }
 
 func TestProviderKeysStayOutOfACPEnv(t *testing.T) {

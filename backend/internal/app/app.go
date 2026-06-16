@@ -13,6 +13,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/coordinator"
+	"github.com/wins/jaz/backend/internal/jazagent"
 	"github.com/wins/jaz/backend/internal/loops"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
@@ -52,16 +53,10 @@ import (
 type Config struct {
 	Root           string
 	Workspace      string
-	ModelProviders map[string]ProviderConfig
+	ModelProviders map[string]provider.ModelProviderConfig
 	Voice          VoiceConfig
 	ACP            acp.Config
 	Memory         MemoryConfig
-}
-
-type ProviderConfig struct {
-	Type    string
-	BaseURL string
-	APIKey  string
 }
 
 type VoiceConfig struct {
@@ -150,7 +145,7 @@ func NewPromptBuilder(store *sqlitestore.Store, workspace Workspace, memory *mem
 }
 
 func NewACPAgentCatalog(cfg Config) acp.AgentCatalog {
-	return acp.MergeAgents(acp.BuiltinAgents(), cfg.ACP.Agents)
+	return acp.MergeAgents(acp.MergeAgents(acp.BuiltinAgents(), jazagent.ACPAgentCatalog()), cfg.ACP.Agents)
 }
 
 func NewACPAgentConfigSource(store *sqlitestore.Store, catalog acp.AgentCatalog) acp.AgentConfigSource {
@@ -162,6 +157,7 @@ func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, pro
 	cfg.ACP.AgentSource = source
 	cfg.ACP.Root = store.RootDir()
 	cfg.ACP.Workspace = string(workspace)
+	cfg.ACP.Providers = cfg.ModelProviders
 	cfg.ACP.SystemPrompt = prompts
 	cfg.ACP.MCPStore = mcpServers
 	cfg.ACP.MCPTokens = store
@@ -327,7 +323,7 @@ func buildProvider(cfg Config, envPath string) provider.Provider {
 	return provider.NewRouter("", clients)
 }
 
-func providerConfigWithRuntimeEnv(cfg ProviderConfig, id, envPath string) ProviderConfig {
+func providerConfigWithRuntimeEnv(cfg provider.ModelProviderConfig, id, envPath string) provider.ModelProviderConfig {
 	if strings.TrimSpace(cfg.APIKey) != "" {
 		return cfg
 	}
@@ -349,7 +345,7 @@ func runtimeRoot(root string) string {
 	return sqlitestore.DefaultRoot()
 }
 
-func nativeProviderClient(id string, cfg ProviderConfig) (provider.Provider, error) {
+func nativeProviderClient(id string, cfg provider.ModelProviderConfig) (provider.Provider, error) {
 	switch id {
 	case provider.ProviderOpenAI, provider.ProviderOpenRouter:
 		if cfg.APIKey == "" {
@@ -433,6 +429,15 @@ func NewAgent(cfg Config, modelProvider provider.Provider, registry *tools.Regis
 		Tools:    registry,
 		MaxTurns: agent.DefaultMaxTurns,
 	}
+}
+
+func ConnectLocalJazAgent(manager *acp.Manager, a *agent.Agent, store *sqlitestore.Store, prompts *coordinator.Builder, logger *log.Logger) {
+	jazagent.RegisterACP(manager, jazagent.ACPDependencies{
+		Agent:   a,
+		Store:   store,
+		Prompts: prompts,
+		Log:     logger.WithPrefix("jazagent"),
+	})
 }
 
 func ConnectACPCompletion(manager *acp.Manager, a *agent.Agent, store *sqlitestore.Store, locks *sessionlock.Locks, events *sessionevents.Bus, prompts *coordinator.Builder, logger *log.Logger) {

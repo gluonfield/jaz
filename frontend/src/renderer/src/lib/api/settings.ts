@@ -22,6 +22,7 @@ function normalizeAgentSettings(settings: AgentSettings): AgentSettings {
           {
             enabled: Boolean(current.enabled),
             command: current.command?.trim() || '',
+            model_provider: current.model_provider?.trim() || '',
             model: current.model?.trim() || '',
             reasoning_effort: current.reasoning_effort ?? '',
             auth: {
@@ -83,7 +84,11 @@ export function cloneAgentSettings(settings: AgentSettings): AgentSettings {
     acp_options: Object.fromEntries(
       Object.entries(settings.acp_options ?? {}).map(([agent, value]) => [
         agent,
-        { reasoning_efforts: [...value.reasoning_efforts] },
+        {
+          ...value,
+          reasoning_efforts: [...value.reasoning_efforts],
+          model_provider_ids: [...(value.model_provider_ids ?? [])],
+        },
       ]),
     ),
   }

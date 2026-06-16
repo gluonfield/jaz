@@ -111,6 +111,101 @@ func TestDailyAggregatesUsageByLocalDay(t *testing.T) {
 	}
 }
 
+func TestModelsAggregatesACPUsageByModel(t *testing.T) {
+	loc := time.FixedZone("plus2", 2*60*60)
+	now := time.Date(2026, 6, 16, 12, 0, 0, 0, loc)
+	store := &fakeUsageEventStore{events: []storage.UsageEvent{
+		{
+			SessionID:     "codex-1",
+			Runtime:       storage.RuntimeACP,
+			Agent:         "codex",
+			ModelProvider: "openai",
+			Model:         "gpt-5.4",
+			Usage: storage.Usage{
+				InputTokens:  10,
+				OutputTokens: 5,
+			},
+			Source:    storage.UsageEventSourceTurn,
+			CreatedAt: time.Date(2026, 6, 14, 22, 30, 0, 0, time.UTC),
+		},
+		{
+			SessionID:     "codex-1",
+			Runtime:       storage.RuntimeACP,
+			Agent:         "codex",
+			ModelProvider: "openai",
+			Model:         "gpt-5.4",
+			Usage: storage.Usage{
+				CachedInputTokens: 3,
+				OutputTokens:      7,
+			},
+			Source:    storage.UsageEventSourceTurn,
+			CreatedAt: time.Date(2026, 6, 15, 22, 15, 0, 0, time.UTC),
+		},
+		{
+			SessionID:     "claude-1",
+			Runtime:       storage.RuntimeACP,
+			Agent:         "claude",
+			ModelProvider: "anthropic",
+			Model:         "sonnet",
+			Usage: storage.Usage{
+				InputTokens:  50,
+				OutputTokens: 30,
+			},
+			Source:    storage.UsageEventSourceTurn,
+			CreatedAt: time.Date(2026, 6, 15, 22, 20, 0, 0, time.UTC),
+		},
+		{
+			SessionID: "native",
+			Runtime:   storage.RuntimeNative,
+			Model:     "native-model",
+			Usage: storage.Usage{
+				InputTokens:  1_000_000,
+				OutputTokens: 1_000_000,
+			},
+			Source:    storage.UsageEventSourceTurn,
+			CreatedAt: time.Date(2026, 6, 15, 22, 25, 0, 0, time.UTC),
+		},
+		{
+			SessionID: "imported",
+			Runtime:   storage.RuntimeACP,
+			Agent:     "codex",
+			Model:     "gpt-5.4",
+			Usage: storage.Usage{
+				InputTokens:  1_000_000,
+				OutputTokens: 1_000_000,
+			},
+			Source:    storage.UsageEventSourceSessionImport,
+			CreatedAt: time.Date(2026, 6, 15, 22, 30, 0, 0, time.UTC),
+		},
+	}}
+	models, err := (Service{
+		store: store,
+		now:   func() time.Time { return now },
+	}).Models(DailyQuery{Days: 2, Location: loc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 2 {
+		t.Fatalf("models = %#v, want 2 groups", models)
+	}
+	if models[0].Agent != "claude" || models[0].ModelProvider != "anthropic" || models[0].Model != "sonnet" {
+		t.Fatalf("first model = %#v", models[0])
+	}
+	if models[0].Usage.InputOutputTokens() != 80 || models[0].SessionCount != 1 {
+		t.Fatalf("first model totals = %#v", models[0])
+	}
+	if models[1].Agent != "codex" || models[1].ModelProvider != "openai" || models[1].Model != "gpt-5.4" {
+		t.Fatalf("second model = %#v", models[1])
+	}
+	if models[1].Usage.InputTokens != 10 ||
+		models[1].Usage.CachedInputTokens != 3 ||
+		models[1].Usage.OutputTokens != 12 ||
+		models[1].Usage.InputOutputTokens() != 22 ||
+		models[1].SessionCount != 1 {
+		t.Fatalf("second model totals = %#v", models[1])
+	}
+}
+
 func TestDailyDefaultsAndClampsDays(t *testing.T) {
 	now := time.Date(2026, 2, 3, 10, 0, 0, 0, time.UTC)
 	service := Service{

@@ -3,6 +3,7 @@ export const keys = {
   sidebarSessions: ['sessions', 'sidebar'] as const,
   allSessions: ['sessions', 'all'] as const,
   usageDaily: (days: number, timezone: string) => ['usage', 'daily', days, timezone] as const,
+  usageModels: (days: number, timezone: string) => ['usage', 'models', days, timezone] as const,
   archivedSessions: ['sessions', 'archived'] as const,
   threadSearch: (query: string, includeArchived = false) =>
     ['search', 'threads', query, includeArchived] as const,

@@ -3,6 +3,7 @@ package settings
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -13,7 +14,8 @@ const (
 )
 
 type MemorySettings struct {
-	Enabled bool `json:"enabled"`
+	Enabled    bool   `json:"enabled"`
+	DreamAgent string `json:"dream_agent,omitempty"`
 }
 
 func DefaultMemorySettings() MemorySettings {
@@ -36,6 +38,7 @@ func LoadMemorySettings(store storage.SettingsStorage) (MemorySettings, error) {
 }
 
 func SaveMemorySettings(store storage.SettingsStorage, settings MemorySettings) (MemorySettings, error) {
+	settings.DreamAgent = strings.TrimSpace(settings.DreamAgent)
 	data, err := json.Marshal(settings)
 	if err != nil {
 		return MemorySettings{}, err

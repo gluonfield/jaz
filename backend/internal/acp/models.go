@@ -27,6 +27,11 @@ type ReasoningEffortOption struct {
 
 type AgentOptions struct {
 	ReasoningEfforts []ReasoningEffortOption `json:"reasoning_efforts"`
+	Local            bool                    `json:"local,omitempty"`
+	ProviderMode     string                  `json:"provider_mode,omitempty"`
+	ModelProviderIDs []string                `json:"model_provider_ids,omitempty"`
+	RequiresCommand  bool                    `json:"requires_command,omitempty"`
+	SupportsAuth     bool                    `json:"supports_auth,omitempty"`
 }
 
 type setSessionModelRequest struct {
@@ -84,6 +89,13 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 		}
 	case AgentGrok:
 		return agentPolicy{
+			modelValidationKind: modelValidationNone,
+			effortOptions:       baseReasoningEffortOptions,
+		}
+	case AgentOpenCode:
+		return agentPolicy{
+			modelConfigID:       sessionConfigModel,
+			effortConfigID:      claudeSessionConfigEffort,
 			modelValidationKind: modelValidationNone,
 			effortOptions:       baseReasoningEffortOptions,
 		}
@@ -271,11 +283,12 @@ func (m *Manager) configuredModeState(
 ) (ModeState, error) {
 	policy := agentPolicyForAgent(agentName)
 	effort := policy.sessionConfigEffort(cfg.ReasoningEffort)
-	modelRaw, err := m.setConfiguredSessionModel(ctx, peer, agentName, session.response.SessionID, cfg.Model, session.modelState)
+	model := cfg.ProviderQualifiedModel()
+	modelRaw, err := m.setConfiguredSessionModel(ctx, peer, agentName, session.response.SessionID, model, session.modelState)
 	if err != nil {
 		return ModeState{}, err
 	}
-	if !policy.effortEncodedInModel(cfg.Model) {
+	if !policy.effortEncodedInModel(model) {
 		options := session.configOptions
 		requireAdvertisedEffort := false
 		if refreshed := parseSessionConfigOptions(modelRaw); refreshed.configOptionsPresent {
@@ -287,7 +300,7 @@ func (m *Manager) configuredModeState(
 			peer,
 			agentName,
 			session.response.SessionID,
-			cfg.Model,
+			model,
 			effort,
 			options,
 			requireAdvertisedEffort,
@@ -566,9 +579,18 @@ func configuredReasoningEffort(value string) string {
 }
 
 func AgentOptionsFor(name string) AgentOptions {
-	return AgentOptions{
+	return AgentOptionsForConfig(name, AgentConfig{})
+}
+
+func AgentOptionsForConfig(name string, cfg AgentConfig) AgentOptions {
+	options := AgentOptions{
 		ReasoningEfforts: agentPolicyForAgent(CanonicalAgentName(name)).reasoningEffortOptions(),
 	}
+	options.Local = cfg.Local
+	options.ProviderMode = strings.TrimSpace(cfg.ProviderMode)
+	options.RequiresCommand = cfg.RequiresCommand()
+	options.SupportsAuth = cfg.SupportsAuth()
+	return options
 }
 
 func NormalizeAgentReasoningEffort(agentName, value string) (string, error) {

@@ -59,6 +59,7 @@ type Manager struct {
 	peersByID    map[string]*jsonrpc.Peer
 	cancelByID   map[string]context.CancelFunc
 	serveErrByID map[string]error
+	localAgents  map[string]LocalAgentRunner
 
 	permissionSeq     uint64
 	pendingPermission map[string]*pendingPermission
@@ -84,6 +85,8 @@ type SpawnRequest struct {
 	// Model overrides the agent's configured model for this session (empty
 	// keeps the agent default).
 	Model string
+	// ModelProvider selects the provider for in-process agents such as Jaz.
+	ModelProvider string
 	// ReasoningEffort overrides the agent's configured reasoning effort for this
 	// session (empty keeps the agent default).
 	ReasoningEffort string
@@ -150,6 +153,7 @@ func NewManager(store Store, cfg Config, logger *log.Logger) *Manager {
 		peersByID:         make(map[string]*jsonrpc.Peer),
 		cancelByID:        make(map[string]context.CancelFunc),
 		serveErrByID:      make(map[string]error),
+		localAgents:       make(map[string]LocalAgentRunner),
 		pendingPermission: make(map[string]*pendingPermission),
 	}
 }
@@ -322,50 +326,6 @@ func (m *Manager) createSession(ctx context.Context, req SpawnRequest) (createdS
 	return createdSession{Request: req, Config: cfg, Session: session}, nil
 }
 
-func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, string, error) {
-	req.ACPAgent = CanonicalAgentName(req.ACPAgent)
-	if req.ACPAgent == "" {
-		req.ACPAgent = AgentCodex
-	}
-	cfg, ok, err := m.configuredAgent(req.ACPAgent)
-	if err != nil {
-		return SpawnRequest{}, AgentConfig{}, "", err
-	}
-	if !ok {
-		return SpawnRequest{}, AgentConfig{}, "", fmt.Errorf("acp agent %q is not configured", req.ACPAgent)
-	}
-	effort := configuredAgentReasoningEffort(req.ACPAgent, cfg.ReasoningEffort)
-	if req.ReasoningEffort != "" {
-		effort = configuredAgentReasoningEffort(req.ACPAgent, req.ReasoningEffort)
-	}
-	// Apply the effective model and effort (per-request overrides win) to the
-	// agent config so configuredModeState pushes them to the agent, not just
-	// the session record.
-	if model := strings.TrimSpace(req.Model); model != "" {
-		cfg.Model = model
-	}
-	cfg.ReasoningEffort = effort
-	return req, cfg, effort, nil
-}
-
-func (m *Manager) createStoredSession(req SpawnRequest, cfg AgentConfig, effort string) (storage.Session, error) {
-	return m.store.CreateSession(storage.CreateSession{
-		Slug:            req.Slug,
-		Title:           req.Title,
-		ParentID:        req.ParentID,
-		Runtime:         storage.RuntimeACP,
-		ModelProvider:   req.ACPAgent,
-		Model:           strings.TrimSpace(cfg.Model),
-		ReasoningEffort: effort,
-		SourceType:      req.SourceType,
-		SourceID:        req.SourceID,
-		RuntimeRef: &storage.RuntimeRef{
-			Type:  storage.RuntimeACP,
-			Agent: req.ACPAgent,
-		},
-	})
-}
-
 func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, error) {
 	created, err := m.createSession(ctx, req)
 	if err != nil {
@@ -381,6 +341,9 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		return SpawnResult{}, err
 	}
 	absCwd := session.RuntimeRef.Cwd
+	if cfg.Local {
+		return m.spawnLocalSession(session, req.ACPAgent, absCwd)
+	}
 	ac, err := m.connect(ctx, req.ACPAgent, cfg, absCwd)
 	if err != nil {
 		return fail(err)
@@ -485,7 +448,14 @@ func (m *Manager) resume(ctx context.Context, ref string) (*Job, error) {
 		return nil, fmt.Errorf("acp agent %q is not configured", agentName)
 	}
 	cfg.Model = strings.TrimSpace(session.Model)
+	if cfg.UsesModelProvider() {
+		cfg.ModelProvider = strings.TrimSpace(session.ModelProvider)
+		cfg = cfg.NormalizeProviderModel(cfg.ModelProvider)
+	}
 	cfg.ReasoningEffort = strings.TrimSpace(session.ReasoningEffort)
+	if cfg.Local {
+		return m.resumeLocalSession(session, agentName, cfg)
+	}
 	var state storage.ACPState
 	if loader, ok := m.store.(acpStateLoader); ok {
 		state, _ = loader.LoadACPState(session.ID)
@@ -613,12 +583,20 @@ func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {
 	if err := m.prepareModeForTurn(ctx, job, req.PlanRequested); err != nil {
 		return Job{}, err
 	}
+	local := m.localAgent(job.ACPAgent)
+	if m.configuredLocal(job.ACPAgent) && local == nil {
+		return Job{}, fmt.Errorf("local acp agent %q is not registered", job.ACPAgent)
+	}
 	_ = storage.AppendUserMessage(m.store, job.ID, req.Message, req.Attachments)
 	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested)
 	job.startTurn(req.Completion, req.Interactive, req.PlanRequested, req.ParentVisible)
 	m.touchJobAttention(job)
 	m.publishACP(job.Snapshot())
-	go m.runPrompt(context.Background(), job, req.Message, req.Attachments)
+	if local != nil {
+		go m.runLocalPrompt(context.Background(), job, local, req.Message, req.Attachments)
+	} else {
+		go m.runPrompt(context.Background(), job, req.Message, req.Attachments)
+	}
 	return job.Snapshot(), nil
 }
 
@@ -699,6 +677,8 @@ func (m *Manager) Cancel(ctx context.Context, ref string) (Job, error) {
 		}); err != nil {
 			m.log.Warn("acp cancel notify failed", "session", job.ID, "error", err)
 		}
+	} else if cancel := m.cancelFunc(job.ID); cancel != nil {
+		cancel()
 	}
 	if !running || done == nil {
 		return job.Snapshot(), nil
@@ -841,7 +821,9 @@ func (m *Manager) Close() {
 	conns := make([]jsonrpc.MessageConn, 0, len(m.connsByID))
 	jobs := make([]*Job, 0, len(m.jobsByID))
 	for _, cancel := range m.cancelByID {
-		cancels = append(cancels, cancel)
+		if cancel != nil {
+			cancels = append(cancels, cancel)
+		}
 	}
 	for _, peer := range m.peersByID {
 		peers = append(peers, peer)
@@ -877,9 +859,15 @@ func (m *Manager) addJob(job *Job, conn jsonrpc.MessageConn, peer *jsonrpc.Peer,
 	m.jobsByID[job.ID] = job
 	m.jobsBySlug[job.Slug] = job
 	m.jobsByACP[job.ACPSession] = job
-	m.connsByID[job.ID] = conn
-	m.peersByID[job.ID] = peer
-	m.cancelByID[job.ID] = cancel
+	if conn != nil {
+		m.connsByID[job.ID] = conn
+	}
+	if peer != nil {
+		m.peersByID[job.ID] = peer
+	}
+	if cancel != nil {
+		m.cancelByID[job.ID] = cancel
+	}
 }
 
 func (m *Manager) job(ref string) (*Job, error) {

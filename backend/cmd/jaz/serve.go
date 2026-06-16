@@ -75,8 +75,10 @@ func runServe(args []string) error {
 		),
 		app.UsageModule(),
 		fx.Invoke(
+			app.ConnectLocalJazAgent,
 			app.ConnectACPCompletion,
 			app.CloseMemory,
+			app.ConfigureMemoryDreamRunner,
 			app.StartMemoryScheduler,
 			startServer,
 			app.StartMCPManager,
@@ -201,6 +203,7 @@ func startServer(
 		STT:             stt,
 		TTS:             tts,
 		NativeProviders: nativeProviderControl(nativeProviders),
+		ModelProviders:  cfg.ModelProviders,
 		AgentCatalog:    catalog,
 		AuthKey:         authKey,
 		Prompts:         prompts,

@@ -19,7 +19,8 @@ const (
 )
 
 const (
-	SourceLoopRun = "loop_run"
+	SourceLoopRun     = "loop_run"
+	SourceMemoryDream = "memory_dream"
 )
 
 const (
