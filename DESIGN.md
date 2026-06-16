@@ -59,4 +59,4 @@ Text on saturated fills: `--color-on-primary`. Dark text only on `-soft` tints.
 - Shell: resizable sidebar (default 264px) + fluid content column. macOS hiddenInset titlebar: 52px draggable strip above sidebar.
 - Radius: pills for one-line controls; `--radius-control` 10px for inputs, `--radius-card` 12px for cards/popovers/modals.
 - Motion: 150–250ms ease-out; state only (route fade, toast slide-in, live rows fade-in, shimmer on live dots). Full `prefers-reduced-motion: reduce` fallbacks.
-- Z-scale: `--z-dropdown: 10`, `--z-toast: 20`, `--z-tooltip: 30`.
+- Z-scale: `--z-dropdown: 10`, `--z-modal: 60`, `--z-file-drop: 70`, `--z-command: 80`, `--z-toast: 90`, `--z-tooltip: 100`.

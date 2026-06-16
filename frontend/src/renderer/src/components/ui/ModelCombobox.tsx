@@ -139,7 +139,7 @@ export function ModelCombobox({
                 left: rect.left,
                 minWidth: rect.width,
                 maxWidth: Math.max(rect.width, 320),
-                zIndex: 60,
+                zIndex: 'var(--z-modal)',
               }}
               className="max-h-[280px] overflow-y-auto rounded-[8px] bg-surface p-1 shadow-xl ring-1 ring-border"
             >
