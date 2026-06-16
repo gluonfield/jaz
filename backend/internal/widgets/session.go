@@ -17,8 +17,8 @@ type LoopSource interface {
 }
 
 // SessionPublisher resolves a session back to its loop run so agents can
-// publish through session-scoped channels (the native tool and the ACP
-// extension method).
+// publish through session-scoped channels (the MCP tool and the ACP extension
+// method).
 type SessionPublisher struct {
 	Service  *Service
 	Sessions SessionSource

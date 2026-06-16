@@ -17,7 +17,7 @@ func TestDefinitionPointsAtArtifactGuidance(t *testing.T) {
 		t.Fatal("missing function definition")
 	}
 	desc := fn.Description.Value
-	for _, want := range []string{"visualize_read_me", "artifact design guidance"} {
+	for _, want := range []string{"jaztools MCP artifact guidance", "visualize:read_me"} {
 		if !strings.Contains(desc, want) {
 			t.Fatalf("description missing %q: %s", want, desc)
 		}
