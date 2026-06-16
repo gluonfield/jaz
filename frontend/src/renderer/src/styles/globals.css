@@ -43,11 +43,6 @@
   --radius-control: 10px;
   --radius-card: 12px;
 
-  --z-dropdown: 10;
-  --z-toast: 20;
-  --z-tooltip: 30;
-  --z-command: 70;
-
   /* rainbow ramp shared by the Jaz wordmark and the composer focus ring */
   --color-rainbow-1: oklch(0.62 0.19 25);
   --color-rainbow-2: oklch(0.72 0.14 90);
@@ -59,9 +54,40 @@
 :root {
   color-scheme: light;
 
+  --z-dropdown: 10;
+  --z-modal: 60;
+  --z-file-drop: 70;
+  --z-command: 80;
+  --z-toast: 90;
+  --z-tooltip: 100;
+
   --shadow-raised:
     0 1px 2px rgba(18, 20, 30, 0.05),
     0 12px 30px -8px rgba(18, 20, 30, 0.12);
+}
+
+@utility z-dropdown {
+  z-index: var(--z-dropdown);
+}
+
+@utility z-modal {
+  z-index: var(--z-modal);
+}
+
+@utility z-file-drop {
+  z-index: var(--z-file-drop);
+}
+
+@utility z-command {
+  z-index: var(--z-command);
+}
+
+@utility z-toast {
+  z-index: var(--z-toast);
+}
+
+@utility z-tooltip {
+  z-index: var(--z-tooltip);
 }
 
 /* Dark theme — cobalt-tinted charcoal. Surfaces grow *lighter* as they come
