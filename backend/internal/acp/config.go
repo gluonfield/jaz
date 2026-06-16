@@ -5,13 +5,15 @@ import (
 	"strings"
 
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/provider"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
 
 const (
-	AgentCodex  = "codex"
-	AgentClaude = "claude"
-	AgentGrok   = "grok"
+	AgentCodex    = "codex"
+	AgentClaude   = "claude"
+	AgentGrok     = "grok"
+	AgentOpenCode = "opencode"
 
 	AuthModeAuto        = "auto"
 	AuthModeExistingCLI = "existing_cli"
@@ -67,6 +69,7 @@ type Config struct {
 	Root         string
 	Workspace    string
 	Env          map[string]string
+	Providers    map[string]provider.ModelProviderConfig
 	SystemPrompt SystemPromptSource
 	MCPStore     mcpconfig.ServerReader
 	MCPTokens    integrationoauth.Store
@@ -152,6 +155,12 @@ func BuiltinAgents() AgentCatalog {
 			},
 			Model:           "grok-build",
 			ReasoningEffort: "medium",
+		},
+		AgentOpenCode: {
+			Command:         "npx",
+			Args:            []string{"-y", "opencode-ai@1.17.7", "acp"},
+			Model:           "openrouter/openai/gpt-5.4-mini",
+			ReasoningEffort: "",
 		},
 	}
 }

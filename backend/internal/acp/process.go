@@ -149,11 +149,12 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 	delete(env, "HOME")
 	normalizeEnv(env, "OPENAI_API_KEY", "OPENAI_APIKEY")
 	normalizeEnv(env, "ANTHROPIC_API_KEY", "ANTHROPIC_APIKEY")
+	normalizeEnv(env, "OPENROUTER_API_KEY", "OPENROUTER_APIKEY")
 	normalizeEnv(env, "XAI_API_KEY", "XAI_APIKEY")
 
 	root := firstNonEmpty(m.cfg.Root, filepath.Join(os.TempDir(), "jaz"))
 	if name == AgentCodex {
-		auth := resolveAgentAuth(name, agent, root, env)
+		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.cfg.Providers)
 		codexHome := auth.Config.Path
 		if codexHome != "" {
 			env["CODEX_HOME"] = codexHome
@@ -187,7 +188,7 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 			"SSH_AUTH_SOCK",
 			"USER",
 		})
-		auth := resolveAgentAuth(name, agent, root, env)
+		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.cfg.Providers)
 		if configuredConfigDir != "" {
 			env["CLAUDE_CONFIG_DIR"] = configuredConfigDir
 		} else {
@@ -222,9 +223,35 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 			"SSH_AUTH_SOCK",
 			"USER",
 		})
-		auth := resolveAgentAuth(name, agent, root, env)
+		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.cfg.Providers)
 		normalizeEnv(env, "XAI_API_KEY", "XAI_APIKEY")
 		delete(env, "XAI_API_KEY")
+		if target, value, ok := auth.APIKeyBinding(); ok {
+			env[target] = value
+		}
+	}
+	if name == AgentOpenCode {
+		preserveHostEnv(env, []string{
+			"HTTP_PROXY",
+			"HTTPS_PROXY",
+			"LANG",
+			"LC_ALL",
+			"LC_CTYPE",
+			"NO_PROXY",
+		})
+		m.loadOpenCodeProviderEnv(env, root)
+		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.cfg.Providers)
+		if strings.TrimSpace(env["OPENCODE_CONFIG_DIR"]) == "" {
+			env["OPENCODE_CONFIG_DIR"] = auth.Config.Path
+		}
+		if prepare {
+			if err := os.MkdirAll(env["OPENCODE_CONFIG_DIR"], 0o700); err != nil {
+				prepareErr = firstError(prepareErr, fmt.Errorf("prepare opencode profile %s: %w", env["OPENCODE_CONFIG_DIR"], err))
+			}
+			if err := m.prepareOpenCodeConfig(env, agent); err != nil {
+				prepareErr = firstError(prepareErr, err)
+			}
+		}
 		if target, value, ok := auth.APIKeyBinding(); ok {
 			env[target] = value
 		}

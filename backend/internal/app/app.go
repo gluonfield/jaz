@@ -52,16 +52,10 @@ import (
 type Config struct {
 	Root           string
 	Workspace      string
-	ModelProviders map[string]ProviderConfig
+	ModelProviders map[string]provider.ModelProviderConfig
 	Voice          VoiceConfig
 	ACP            acp.Config
 	Memory         MemoryConfig
-}
-
-type ProviderConfig struct {
-	Type    string
-	BaseURL string
-	APIKey  string
 }
 
 type VoiceConfig struct {
@@ -161,6 +155,7 @@ func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, pro
 	cfg.ACP.AgentSource = source
 	cfg.ACP.Root = store.RootDir()
 	cfg.ACP.Workspace = string(workspace)
+	cfg.ACP.Providers = cfg.ModelProviders
 	cfg.ACP.SystemPrompt = prompts
 	cfg.ACP.MCPStore = mcpServers
 	cfg.ACP.MCPTokens = store
@@ -326,7 +321,7 @@ func buildProvider(cfg Config, envPath string) provider.Provider {
 	return provider.NewRouter("", clients)
 }
 
-func providerConfigWithRuntimeEnv(cfg ProviderConfig, id, envPath string) ProviderConfig {
+func providerConfigWithRuntimeEnv(cfg provider.ModelProviderConfig, id, envPath string) provider.ModelProviderConfig {
 	if strings.TrimSpace(cfg.APIKey) != "" {
 		return cfg
 	}
@@ -348,7 +343,7 @@ func runtimeRoot(root string) string {
 	return sqlitestore.DefaultRoot()
 }
 
-func nativeProviderClient(id string, cfg ProviderConfig) (provider.Provider, error) {
+func nativeProviderClient(id string, cfg provider.ModelProviderConfig) (provider.Provider, error) {
 	switch id {
 	case provider.ProviderOpenAI, provider.ProviderOpenRouter:
 		if cfg.APIKey == "" {

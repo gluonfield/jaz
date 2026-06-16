@@ -92,7 +92,8 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
     () => new Map(status.native_providers.map((provider) => [provider.id, provider])),
     [status.native_providers],
   )
-  const selectedProvider = draft.native.model_provider || draft.providers[0]?.id || ''
+  const nativeProviders = draft.providers.filter((provider) => provider.implemented)
+  const selectedProvider = draft.native.model_provider || nativeProviders[0]?.id || ''
   const selectedProviderStatus = providerStatus.get(selectedProvider)
   const selectedProviderKey = keysByProvider[selectedProvider]?.trim() ?? ''
   const nativeReady = Boolean(selectedProviderStatus?.configured || selectedProviderKey)
@@ -143,8 +144,8 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
   })
 
   const setProvider = (model_provider: string) => {
-    const next = draft.providers.find((provider) => provider.id === model_provider)
-    const current = draft.providers.find((provider) => provider.id === draft.native.model_provider)
+    const next = nativeProviders.find((provider) => provider.id === model_provider)
+    const current = nativeProviders.find((provider) => provider.id === draft.native.model_provider)
     const model =
       draft.native.model.trim() === '' || draft.native.model === current?.default_model
         ? next?.default_model || draft.native.model
@@ -188,7 +189,7 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
         <motion.div variants={rise} className="mt-5">
           <SectionLabel>Native agent</SectionLabel>
           <NativeAgentCard
-            providers={draft.providers}
+            providers={nativeProviders}
             selectedProvider={selectedProvider}
             configured={Boolean(selectedProviderStatus?.configured)}
             apiKeyValue={keysByProvider[selectedProvider] ?? ''}
@@ -267,9 +268,13 @@ function AgentCard({
   const state = agentState(probe, apiKeyValue)
   const running = loginPending || loginJob?.status === 'running'
   const canKey = Boolean(apiKeyEnv)
+  const canLogin = Boolean(probe.auth_command_available)
   // Everything starts collapsed; a row only opens when the user taps it.
   const [expanded, setExpanded] = useState(false)
-  const [method, setMethod] = useState<'login' | 'key'>(apiKeyReady && canKey ? 'key' : 'login')
+  const [method, setMethod] = useState<'login' | 'key'>(canKey && (!canLogin || apiKeyReady) ? 'key' : 'login')
+  useEffect(() => {
+    if (canKey && !canLogin && method === 'login') setMethod('key')
+  }, [canKey, canLogin, method])
   const actionable = state === 'action'
   const companionAppBlocked = Boolean(probe.app_installed && !probe.available && !probe.auth_command_available)
   const missingLabel = companionAppBlocked ? `Needs ${onboardingAgentLabel(probe.agent)}` : undefined
@@ -342,7 +347,7 @@ function AgentCard({
               className="overflow-hidden"
             >
               <div className="flex flex-col gap-2.5 px-3 pb-3 pt-0.5">
-                {canKey ? (
+                {canKey && canLogin ? (
                   <Segmented
                     layoutId={`onboarding-method-${probe.agent}`}
                     value={method}
@@ -354,7 +359,7 @@ function AgentCard({
                   />
                 ) : null}
 
-                {method === 'login' || !canKey ? (
+                {(method === 'login' && canLogin) || !canKey ? (
                   <div className="flex flex-col items-start gap-2.5">
                     <Button
                       variant="primary"

@@ -5,6 +5,7 @@ const DISPLAY_NAMES: Record<string, string> = {
   codex: 'Codex',
   claude: 'Claude',
   grok: 'Grok',
+  opencode: 'OpenCode',
 }
 
 // Prettifies an ACP agent name for display, e.g. "claude" → "Claude".
@@ -27,6 +28,7 @@ const AUTH_PROVIDERS: Record<string, string> = {
   codex: 'OpenAI',
   claude: 'Anthropic',
   grok: 'xAI',
+  opencode: 'OpenRouter',
 }
 
 export function authProviderLabel(value: string | undefined): string {
