@@ -2,8 +2,18 @@ import { Check, Copy } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { writeClipboard } from '@/lib/clipboard'
+import { MessageMarkdown } from './MessageMarkdown'
 
-export function AssistantCopyButton({ text }: { text: string }) {
+export function AssistantMarkdown({ text }: { text: string }) {
+  return (
+    <div className="flex min-w-0 flex-col items-start gap-1">
+      <MessageMarkdown text={text} />
+      <AssistantCopyButton text={text} />
+    </div>
+  )
+}
+
+function AssistantCopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reduceMotion = useReducedMotion()
