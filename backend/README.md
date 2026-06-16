@@ -46,11 +46,17 @@ settings record; Settings controls whether each client is enabled, the
 command used to start it, plus the model and reasoning effort copied into new
 threads.
 
-For local development with the custom Codex ACP fork built under this workspace,
-set the Codex command in Settings > Agents to:
+The built-in Codex ACP command uses the Jaz-published adapter:
 
 ```sh
-/Users/wins/Projects/personal/jarvis/codex-acp-zed/target/debug/codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'
+npx -y @jazchat/codex-acp@0.16.1 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'
+```
+
+When developing the Codex ACP adapter itself, override the Codex command in
+Settings > Agents with the locally built binary:
+
+```sh
+/path/to/codex-acp/target/debug/codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'
 ```
 
 When an ACP agent does not support `session/set_model` or

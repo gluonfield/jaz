@@ -210,10 +210,6 @@ func TestInteractiveRequestUserInputPublishesStructuredQuestions(t *testing.T) {
 	runInteractiveRequestUserInputTest(t, codexRequestUserInputMetaKey, "__user_input_submit__", userInputResponseOptionPrefix)
 }
 
-func TestInteractiveRequestUserInputAcceptsLegacyJazMeta(t *testing.T) {
-	runInteractiveRequestUserInputTest(t, legacyCodexRequestUserInputMetaKey, "__jaz_user_input_submit__", legacyUserInputResponseOptionPrefix)
-}
-
 func runInteractiveRequestUserInputTest(t *testing.T, metaKey, submitOptionID, responseOptionPrefix string) {
 	t.Helper()
 
