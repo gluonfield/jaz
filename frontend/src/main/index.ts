@@ -32,6 +32,7 @@ app.setName(APP_NAME)
 let mainWindow: BrowserWindow | null = null
 let updateTimer: NodeJS.Timeout | null = null
 let updateStatus: UpdateStatus = { state: 'idle' }
+const previewURLTargets = new Set<number>()
 
 function lockPreviewWebviewPreferences(webPreferences: WebPreferences): void {
   const prefs = webPreferences as WebPreferences & { preloadURL?: string }
@@ -61,16 +62,33 @@ function attachPreviewNavigationGuard(contents: WebContents): void {
   })
 }
 
-// Electron ships no default right-click menu; build the standard text one
-// (spelling fixes, Look Up, Search with Google, Cut/Copy/Paste) wherever the
-// click lands on an editable field or a text selection.
+// Electron ships no default right-click menu; build the link and standard text
+// actions wherever the click lands on a link, editable field, or text selection.
 function attachContextMenu(contents: WebContents): void {
   contents.on('context-menu', (_event, params) => {
+    const linkURL = params.linkURL.trim()
+    const previewLinkURL = isPreviewURL(linkURL) ? linkURL : ''
+    const canOpenSideBrowser = previewLinkURL !== '' && canOpenPreviewURL(contents)
     const editable = params.isEditable
     const selection = params.selectionText.trim()
-    if (!editable && selection === '') return
+    if (!previewLinkURL && !editable && selection === '') return
 
     const items: MenuItemConstructorOptions[] = []
+    if (previewLinkURL) {
+      if (canOpenSideBrowser) {
+        items.push({
+          label: 'Open in Side Browser',
+          click: () => openPreviewURL(previewLinkURL, contents),
+        })
+      }
+      items.push(
+        {
+          label: 'Open in Browser',
+          click: () => shell.openExternal(previewLinkURL),
+        },
+      )
+      if (editable || selection !== '') items.push({ type: 'separator' })
+    }
     if (editable && params.misspelledWord) {
       for (const suggestion of params.dictionarySuggestions.slice(0, 5)) {
         items.push({ label: suggestion, click: () => contents.replaceMisspelling(suggestion) })
@@ -116,8 +134,28 @@ function attachContextMenu(contents: WebContents): void {
   })
 }
 
+function previewURLTarget(contents: WebContents): WebContents {
+  return contents.hostWebContents ?? contents
+}
+
+function canOpenPreviewURL(contents: WebContents): boolean {
+  const target = previewURLTarget(contents)
+  return !target.isDestroyed() && previewURLTargets.has(target.id)
+}
+
+function openPreviewURL(url: string, contents: WebContents): void {
+  if (!canOpenPreviewURL(contents)) return
+  const target = previewURLTarget(contents)
+  const win = BrowserWindow.fromWebContents(target)
+  if (!win || win.isDestroyed()) return
+  win.show()
+  win.focus()
+  target.send('jaz:open-preview-url', url)
+}
+
 // Covers every window — main, preview webviews, and per-board windows.
 app.on('web-contents-created', (_event, contents) => {
+  contents.once('destroyed', () => previewURLTargets.delete(contents.id))
   attachContextMenu(contents)
   attachExternalOpenHandler(contents)
   attachPreviewNavigationGuard(contents)
@@ -319,6 +357,11 @@ app.whenReady().then(() => {
 
   ipcMain.on('jaz:open-in-main', (_event, path) => {
     if (typeof path === 'string' && path.startsWith('/')) openInMain(path)
+  })
+
+  ipcMain.on('jaz:set-preview-url-target-active', (event, active) => {
+    if (active === true) previewURLTargets.add(event.sender.id)
+    else previewURLTargets.delete(event.sender.id)
   })
 
   // Voice mode records from the mic; allow media (macOS still shows its own

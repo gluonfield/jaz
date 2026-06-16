@@ -7,6 +7,7 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
 import { parseFileReference, type FileReference } from '../../../../shared/fileReader'
+import { shouldPreviewURLByDefault } from '../../../../shared/preview'
 import { encodeMention, MentionPill } from './mentions'
 
 const PreviewLinkContext = createContext<((url: string) => void) | null>(null)
@@ -68,7 +69,7 @@ function isUrlLink(href: unknown): boolean {
   return typeof href === 'string' && /^https?:\/\//i.test(href)
 }
 
-function shouldPreviewLink(event: MouseEvent<HTMLAnchorElement>): boolean {
+function shouldPreviewLink(event: MouseEvent<HTMLElement>): boolean {
   return (
     event.button === 0 &&
     !event.metaKey &&
@@ -211,23 +212,38 @@ export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: s
             const localFile = localFileFromLink(href, children)
             const urlLink = isUrlLink(href)
             const Icon = localFile ? FileText : urlLink ? Globe : null
+            if (localFile) {
+              return (
+                <button
+                  type="button"
+                  className="chat-prose-link-button"
+                  onClick={(event) => {
+                    if (openFile && shouldPreviewLink(event)) openFile(localFile)
+                  }}
+                >
+                  <FileText
+                    aria-hidden="true"
+                    className="chat-prose-link-icon"
+                    size={13}
+                    strokeWidth={1.7}
+                  />
+                  {children}
+                </button>
+              )
+            }
+            if (!urlLink) return <>{children}</>
             return (
               <a
                 {...props}
                 href={href}
-                target={localFile ? undefined : '_blank'}
+                target="_blank"
                 rel="noreferrer"
                 onClick={(event) => {
                   onClick?.(event)
-                  if (localFile && openFile && shouldPreviewLink(event)) {
-                    event.preventDefault()
-                    openFile(localFile)
-                    return
-                  }
                   if (
                     !openPreview ||
                     typeof href !== 'string' ||
-                    !urlLink ||
+                    !shouldPreviewURLByDefault(href) ||
                     !shouldPreviewLink(event)
                   ) {
                     return

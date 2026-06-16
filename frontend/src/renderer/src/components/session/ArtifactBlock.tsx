@@ -100,7 +100,7 @@ export const ArtifactBlock = memo(function ArtifactBlock({
   }
 
   return (
-    <div className="w-full overflow-hidden rounded-card border border-border bg-surface">
+    <div className="w-full">
       {executionError ? (
         <pre className="m-0 whitespace-pre-wrap bg-danger-soft px-3 py-2 font-mono text-[12px] text-danger">
           {executionError}
