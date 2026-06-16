@@ -129,7 +129,7 @@ export function CommandPalette({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4, scale: 0.988 }}
             transition={PANEL_TRANSITION}
-            className="mx-auto flex max-h-[min(590px,76dvh)] w-full max-w-[640px] flex-col overflow-hidden rounded-[14px] bg-bg shadow-[0_24px_70px_rgba(0,0,0,0.24),0_2px_10px_rgba(0,0,0,0.08)] ring-1 ring-border"
+            className="mx-auto flex max-h-[min(590px,76dvh)] w-full max-w-[620px] flex-col overflow-hidden rounded-[8px] bg-bg shadow-[0_18px_48px_rgba(0,0,0,0.22),0_2px_8px_rgba(0,0,0,0.08)] ring-1 ring-border"
           >
             <div className="flex items-center gap-2 px-3 py-2.5 shadow-[inset_0_-1px_0_var(--color-border)]">
               <Search size={17} className="shrink-0 text-ink-3" />
@@ -147,7 +147,7 @@ export function CommandPalette({
                   aria-label="Clear search"
                   title="Clear search"
                   onClick={() => setQuery('')}
-                  className="relative grid size-8 shrink-0 place-items-center rounded-[9px] text-ink-3 transition-colors duration-150 before:absolute before:-inset-1 before:content-[''] hover:bg-surface hover:text-ink"
+                  className="relative grid size-8 shrink-0 place-items-center rounded-[6px] text-ink-3 transition-colors duration-150 before:absolute before:-inset-1 before:content-[''] hover:bg-surface hover:text-ink"
                 >
                   <X size={15} />
                 </button>
@@ -203,7 +203,7 @@ export function CommandPalette({
                       initial={false}
                       animate={{ opacity: [0.38, 0.66, 0.38] }}
                       transition={{ repeat: Infinity, duration: 1.1, delay: row * 0.07 }}
-                      className="h-12 rounded-[10px] bg-surface"
+                      className="h-10 rounded-[6px] bg-surface"
                     />
                   ))}
                 </div>

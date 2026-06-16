@@ -1,4 +1,3 @@
-import { MessageSquare } from 'lucide-react'
 import { motion, type Transition } from 'motion/react'
 import { KeyboardShortcut } from '@/components/ui/KeyboardShortcut'
 import type { ThreadSearchResult } from '@/lib/api/types'
@@ -49,7 +48,7 @@ function HighlightedSnippet({ text }: { text: string }) {
         segment.highlighted ? (
           <mark
             key={`${segment.text}-${index}`}
-            className="rounded-[5px] bg-primary-soft px-0.5 text-primary-strong"
+            className="rounded-[3px] bg-primary-soft px-0.5 text-primary-strong"
           >
             {segment.text}
           </mark>
@@ -76,7 +75,6 @@ export function CommandRow({
   onActive: () => void
   onSelect: () => void
 }) {
-  const Icon = item.Icon
   return (
     <motion.button
       type="button"
@@ -89,13 +87,10 @@ export function CommandRow({
       whileTap={reduceMotion ? undefined : { scale: 0.96 }}
       onClick={onSelect}
       onMouseEnter={onActive}
-      className={`group flex min-h-11 w-full items-center gap-2.5 rounded-[10px] px-2.5 text-left transition-colors duration-150 ${
-        active ? 'bg-surface text-ink shadow-[inset_0_0_0_1px_var(--color-border)]' : 'hover:bg-surface/70'
+      className={`group flex min-h-10 w-full items-center gap-2 rounded-[6px] px-2.5 text-left transition-colors duration-150 ${
+        active ? 'bg-surface text-ink' : 'hover:bg-surface/70'
       }`}
     >
-      <span className={`grid size-7 shrink-0 place-items-center rounded-[8px] ${active ? 'bg-bg' : 'bg-surface'}`}>
-        <Icon size={15} className={active ? 'text-ink' : 'text-ink-3'} />
-      </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13px] font-medium text-ink">{item.title}</span>
         <span className="block truncate text-[12px] text-ink-3">{item.detail}</span>
@@ -132,13 +127,10 @@ export function ThreadRow({
       whileTap={reduceMotion ? undefined : { scale: 0.96 }}
       onClick={onSelect}
       onMouseEnter={onActive}
-      className={`group flex min-h-[58px] w-full items-start gap-2.5 rounded-[10px] px-2.5 py-2 text-left transition-colors duration-150 ${
-        active ? 'bg-surface text-ink shadow-[inset_0_0_0_1px_var(--color-border)]' : 'hover:bg-surface/70'
+      className={`group flex min-h-[52px] w-full items-start gap-2 rounded-[6px] px-2.5 py-2 text-left transition-colors duration-150 ${
+        active ? 'bg-surface text-ink' : 'hover:bg-surface/70'
       }`}
     >
-      <span className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-[8px] ${active ? 'bg-bg' : 'bg-surface'}`}>
-        <MessageSquare size={15} className="text-ink-3" />
-      </span>
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center">
           <span className="truncate text-[13px] font-medium text-ink">{threadTitle(result)}</span>

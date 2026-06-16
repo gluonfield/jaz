@@ -1,4 +1,3 @@
-import type { ComponentType } from 'react'
 import type { ThreadSearchResult } from '@/lib/api/types'
 
 export type PaletteCommand = {
@@ -6,7 +5,6 @@ export type PaletteCommand = {
   kind: 'command'
   title: string
   detail: string
-  Icon: ComponentType<{ size?: number; className?: string }>
   shortcut?: string
   run: () => void
 }
