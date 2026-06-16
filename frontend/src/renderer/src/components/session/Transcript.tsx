@@ -474,7 +474,7 @@ const LiveEvent = memo(function LiveEvent({
           {hasAgentLogo(event.acp.agent) ? (
             <AgentLogo
               agent={event.acp.agent}
-              size={13}
+              size={12}
               className="inline-block translate-y-[2px] text-ink-2"
             />
           ) : (
