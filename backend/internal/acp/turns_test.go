@@ -21,7 +21,7 @@ func (s *mutablePromptSource) SkillsPrompt() (string, error) {
 	return s.prompt, s.err
 }
 
-func (s *mutablePromptSource) ACPPrompt() (string, error) { return s.prompt, s.err }
+func (s *mutablePromptSource) ACPPrompt(string) (string, error) { return s.prompt, s.err }
 
 func TestACPTurnPromptContextRefreshesSkillsForMentions(t *testing.T) {
 	source := &mutablePromptSource{prompt: "old skills"}

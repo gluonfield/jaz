@@ -92,9 +92,10 @@ type Workspace string
 type Stores struct {
 	fx.Out
 
-	Store        *sqlitestore.Store
-	ACPStore     acp.Store
-	StorageStore storage.Store
+	Store           *sqlitestore.Store
+	ACPStore        acp.Store
+	StorageStore    storage.Store
+	UsageEventStore storage.UsageEventStore
 }
 
 func NewRuntimeLayout(cfg Config) (runtimefiles.Layout, error) {
@@ -121,7 +122,7 @@ func NewStore(layout runtimefiles.Layout, catalog acp.AgentCatalog) (Stores, err
 		_ = store.Close()
 		return Stores{}, err
 	}
-	return Stores{Store: store, ACPStore: store, StorageStore: store}, nil
+	return Stores{Store: store, ACPStore: store, StorageStore: store, UsageEventStore: store}, nil
 }
 
 func NewWorkspace(cfg Config, layout runtimefiles.Layout) (Workspace, error) {
