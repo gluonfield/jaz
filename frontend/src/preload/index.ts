@@ -6,6 +6,7 @@ const apiBaseUrl = process.env['JAZ_API_URL'] ?? 'http://localhost:5299'
 // Board windows are spawned with this flag so the renderer can drop the app
 // chrome (sidebar, titlebar) and render the board full-bleed.
 const windowKind = process.argv.includes('--jaz-board-window') ? 'board' : 'main'
+let previewURLTargetSubscriptions = 0
 
 contextBridge.exposeInMainWorld('jaz', {
   apiBaseUrl,
@@ -47,5 +48,22 @@ contextBridge.exposeInMainWorld('jaz', {
     }
     ipcRenderer.on('jaz:open-route', listener)
     return () => ipcRenderer.removeListener('jaz:open-route', listener)
+  },
+  onOpenPreviewURL: (handler: (url: string) => void): (() => void) => {
+    const listener = (_event: unknown, url: unknown): void => {
+      if (typeof url === 'string') handler(url)
+    }
+    ipcRenderer.on('jaz:open-preview-url', listener)
+    previewURLTargetSubscriptions += 1
+    if (previewURLTargetSubscriptions === 1) {
+      ipcRenderer.send('jaz:set-preview-url-target-active', true)
+    }
+    return () => {
+      ipcRenderer.removeListener('jaz:open-preview-url', listener)
+      previewURLTargetSubscriptions = Math.max(0, previewURLTargetSubscriptions - 1)
+      if (previewURLTargetSubscriptions === 0) {
+        ipcRenderer.send('jaz:set-preview-url-target-active', false)
+      }
+    }
   },
 })

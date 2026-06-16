@@ -94,6 +94,11 @@ func (s *Service) Search(ctx context.Context, query SearchQuery) ([]SearchResult
 		results = append(results, item.result)
 	}
 	sort.Slice(results, func(i, j int) bool {
+		// Active threads always rank above archived ones: archived chats stay
+		// searchable but sit beneath the live ones.
+		if results[i].Archived != results[j].Archived {
+			return !results[i].Archived
+		}
 		left := byThread[results[i].ThreadID].bestScore
 		right := byThread[results[j].ThreadID].bestScore
 		if left != right {

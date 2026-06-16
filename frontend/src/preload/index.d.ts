@@ -16,6 +16,7 @@ declare global {
       openInMain: (path: string) => void
       onOpenSideBrowserURL: (handler: (url: string) => void) => () => void
       onOpenRoute: (handler: (path: string) => void) => () => void
+      onOpenPreviewURL: (handler: (url: string) => void) => () => void
     }
   }
 }

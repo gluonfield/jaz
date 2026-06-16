@@ -9,13 +9,13 @@ export type PaletteCommand = {
   run: () => void
 }
 
-export type PaletteItem =
-  | PaletteCommand
-  | {
-      id: string
-      kind: 'thread'
-      result: ThreadSearchResult
-    }
+export type PaletteThread = {
+  id: string
+  kind: 'thread'
+  result: ThreadSearchResult
+}
+
+export type PaletteItem = PaletteCommand | PaletteThread
 
 export function threadTitle(result: ThreadSearchResult): string {
   return result.thread_title || result.thread_slug || result.thread_id

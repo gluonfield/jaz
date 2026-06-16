@@ -86,8 +86,97 @@ Pick the closest use case below and adapt. When nothing fits cleanly:
 - Default to editorial layout if the content is explanatory
 - Default to card layout if the content is a bounded object
 - All core design system rules still apply
-- Use `sendPrompt()` for any action that benefits from Claude thinking
+- Use `sendPrompt()` for any action that benefits from Claude thinking{{if .UIComponents}}
 
+## UI components
+
+### Layout width
+The widget container is 680px wide. Use `repeat(auto-fit, minmax(160px, 1fr))` for responsive columns — auto-fit lets the grid pick column count by available width.
+
+### Aesthetic
+Flat, clean, white surfaces. Minimal 0.5px borders. Generous whitespace. No gradients, no shadows (except functional focus rings). Everything should feel native to claude.ai — like it belongs on the page, not embedded from somewhere else.
+
+### Tokens
+- Borders: always `0.5px solid var(--color-border-tertiary)` (or `-secondary` for emphasis)
+- Corner radius: `var(--border-radius-md)` for most elements, `var(--border-radius-lg)` for cards
+- Cards: white bg (`var(--color-background-primary)`), 0.5px border, radius-lg, padding 1rem 1.25rem
+- Form elements (input, select, textarea, button, range slider) are pre-styled — write bare tags. Text inputs are 36px with hover/focus built in; range sliders have 4px track + 18px thumb; buttons have outline style with hover/active. Only add inline styles to override (e.g., different width).
+- Buttons: pre-styled with transparent bg, 0.5px border-secondary, hover bg-secondary, active scale(0.98). If it triggers sendPrompt, append a ↗ arrow.
+- **Round every displayed number.** JS float math leaks artifacts — `0.1 + 0.2` gives `0.30000000000000004`, `7 * 1.1` gives `7.700000000000001`. Any number that reaches the screen (slider readouts, stat card values, axis labels, data-point labels, tooltips, computed totals) must go through `Math.round()`, `.toFixed(n)`, or `Intl.NumberFormat`. Pick the precision that makes sense for the context — integers for counts, 1–2 decimals for percentages, `toLocaleString()` for currency. For range sliders, also set `step="1"` (or step="0.1" etc.) so the input itself emits round values.
+- Spacing: use rem for vertical rhythm (1rem, 1.5rem, 2rem), px for component-internal gaps (8px, 12px, 16px)
+- Box-shadows: none, except `box-shadow: 0 0 0 Npx` focus rings on inputs
+
+### Metric cards
+For summary numbers (revenue, count, percentage) — surface card with muted 13px label above, 24px/500 number below. `background: var(--color-background-secondary)`, no border, `border-radius: var(--border-radius-md)`, padding 1rem. Use in grids of 2-4 with `gap: 12px`. Distinct from raised cards (which have white bg + border).
+
+### Layout
+- Editorial (explanatory content): no card wrapper, prose flows naturally
+- Card (bounded objects like a contact record, receipt): single raised card wraps the whole thing
+- Don't put tables here — output them as markdown in your response text
+
+**Grid overflow:** `grid-template-columns: 1fr` has `min-width: auto` by default — children with large min-content push the column past the container. Use `minmax(0, 1fr)` to clamp.
+
+**Table overflow:** Tables with many columns auto-expand past `width: 100%` if cell contents exceed it. In constrained layouts (≤700px), use `table-layout: fixed` and set explicit column widths, or reduce columns, or allow horizontal scroll on a wrapper.
+
+### Mockup presentation
+Contained mockups — mobile screens, chat threads, single cards, modals, small UI components — should sit on a background surface (`var(--color-background-secondary)` container with `border-radius: var(--border-radius-lg)` and padding, or a device frame) so they don't float naked on the widget canvas. Full-width mockups like dashboards, settings pages, or data tables that naturally fill the viewport do not need an extra wrapper.
+
+### 1. Interactive explainer — learn how something works
+*"Explain how compound interest works" / "Teach me about sorting algorithms"*
+
+Use HTML for the interactive controls — sliders, buttons, live state displays, charts. Keep prose explanations in your normal response text (outside the tool call), not embedded in the HTML. No card wrapper. Whitespace is the container.
+
+```html
+<div style="display: flex; align-items: center; gap: 12px; margin: 0 0 1.5rem;">
+  <label style="font-size: 14px; color: var(--color-text-secondary);">Years</label>
+  <input type="range" min="1" max="40" value="20" id="years" style="flex: 1;" />
+  <span style="font-size: 14px; font-weight: 500; min-width: 24px;" id="years-out">20</span>
+</div>
+
+<div style="display: flex; align-items: baseline; gap: 8px; margin: 0 0 1.5rem;">
+  <span style="font-size: 14px; color: var(--color-text-secondary);">£1,000 →</span>
+  <span style="font-size: 24px; font-weight: 500;" id="result">£3,870</span>
+</div>
+
+<div style="margin: 2rem 0; position: relative; height: 240px;">
+  <canvas id="chart"></canvas>
+</div>
+```
+
+Use `sendPrompt()` to let users ask follow-ups: `sendPrompt('What if I increase the rate to 10%?')`
+
+### 2. Compare options — decision making
+*"Compare pricing and features of these products" / "Help me choose between React and Vue"*
+
+Use HTML. Side-by-side card grid for options. Highlight differences with semantic colors. Interactive elements for filtering or weighting.
+
+- Each option in a card. Use badges for key differentiators. A leading Tabler icon (`<i class="ti ti-NAME">` at 20px, `aria-hidden`) anchors each option visually — pick the most apt name per option.
+- Add `sendPrompt()` buttons: `sendPrompt('Tell me more about the Pro plan')`
+- Don't put comparison tables inside this tool — output them as regular markdown tables in your response text instead. The tool is for the visual card grid only.
+- When one option is recommended or "most popular", accent its card with `border: 2px solid var(--color-border-info)` only (2px is deliberate — the only exception to the 0.5px rule, used to accent featured items) — keep the same background and border as the other cards. Add a small badge (e.g. "Most popular") above or inside the card header using `background: var(--color-background-info); color: var(--color-text-info); font-size: 12px; padding: 4px 12px; border-radius: var(--border-radius-md)`.
+
+### 3. Data record — bounded UI object
+*"Show me a Salesforce contact card" / "Create a receipt for this order"*
+
+Use HTML. Wrap the entire thing in a single raised card. All content is sans-serif since it's pure UI. Use an avatar/initials circle for people (see example below).
+
+```html
+<div style="background: var(--color-background-primary); border-radius: var(--border-radius-lg); border: 0.5px solid var(--color-border-tertiary); padding: 1rem 1.25rem;">
+  <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+    <div style="width: 44px; height: 44px; border-radius: 50%; background: var(--color-background-info); display: flex; align-items: center; justify-content: center; font-weight: 500; font-size: 14px; color: var(--color-text-info);">MR</div>
+    <div>
+      <p style="font-weight: 500; font-size: 15px; margin: 0;">Maya Rodriguez</p>
+      <p style="font-size: 13px; color: var(--color-text-secondary); margin: 0;">VP of Engineering</p>
+    </div>
+  </div>
+  <div style="border-top: 0.5px solid var(--color-border-tertiary); padding-top: 12px;">
+    <table style="width: 100%; font-size: 13px;">
+      <tr><td style="color: var(--color-text-secondary); padding: 4px 0;"><i class="ti ti-mail" style="font-size:16px; vertical-align:-2px; margin-right:6px" aria-hidden="true"></i>Email</td><td style="text-align: right; padding: 4px 0; color: var(--color-text-info);">m.rodriguez@acme.com</td></tr>
+      <tr><td style="color: var(--color-text-secondary); padding: 4px 0;"><i class="ti ti-phone" style="font-size:16px; vertical-align:-2px; margin-right:6px" aria-hidden="true"></i>Phone</td><td style="text-align: right; padding: 4px 0;">+1 (415) 555-0172</td></tr>
+    </table>
+  </div>
+</div>
+```{{end}}{{if .ColorPalette}}
 
 ## Color palette
 
@@ -119,8 +208,7 @@ Pick the closest use case below and adapt. When nothing fits cleanly:
 - **Dark mode**: 800 fill + 200 stroke + **100 title / 200 subtitle**
 - Apply `c-{ramp}` to a `<g>` wrapping shape+text, or directly to a `<rect>`/`<circle>`/`<ellipse>`. Never to `<path>` — paths don't get ramp fill. For colored connector strokes use inline `stroke="#..."` (any mid-ramp hex works in both modes). Dark mode is automatic for ramp classes. Available: c-gray, c-blue, c-red, c-amber, c-green, c-teal, c-purple, c-coral, c-pink.
 
-For status/semantic meaning in UI (success, warning, danger) use CSS variables. For categorical coloring in both diagrams and UI, use these ramps.
-
+For status/semantic meaning in UI (success, warning, danger) use CSS variables. For categorical coloring in both diagrams and UI, use these ramps.{{end}}{{if .SVGSetup}}
 
 ## SVG setup
 
@@ -195,8 +283,7 @@ Before placing text in a box, check: does (text width + 2×padding) fit the cont
 
 **Physical-color scenes (sky, water, grass, skin, materials):** Use ALL hardcoded hex — never mix with `c-*` theme classes. The scene should not invert in dark mode. If you need a dark variant, provide it explicitly with `@media (prefers-color-scheme: dark)` — this is the one place that's allowed. Mixing hardcoded backgrounds with theme-responsive `c-*` foreground breaks: half inverts, half doesn't.
 
-**No rotated text**. `<defs>` may contain the arrow marker, a `<clipPath>`, subtle `<pattern>` fills used as a secondary visual cue alongside color for categorical data, and — in illustrative diagrams only — a single `<linearGradient>`. Nothing else: no filters, no extra markers.
-
+**No rotated text**. `<defs>` may contain the arrow marker, a `<clipPath>`, subtle `<pattern>` fills used as a secondary visual cue alongside color for categorical data, and — in illustrative diagrams only — a single `<linearGradient>`. Nothing else: no filters, no extra markers.{{end}}{{if .DiagramTypes}}
 
 ## Diagram types
 *"Explain how compound interest works" / "How does a process scheduler work"*
@@ -624,100 +711,7 @@ function toggleHeat(on) {
 
 Note what's *not* here: no boxes labelled "multi-head attention", no arrows labelled "Q/K/V". Those belong in the structural diagram. This one is about the *feeling* of attention — one token looking at every other token with varying intensity.
 
-These are starting points, not ceilings. For the water heater: add a thermostat slider, animate the convection current, toggle heating vs standby. For the attention diagram: let the user click any token to become the query, scrub through layers, animate the weights settling. The goal is always to *show* how the thing works, not just *label* it.
-
-
-## UI components
-
-### Layout width
-The widget container is 680px wide. Use `repeat(auto-fit, minmax(160px, 1fr))` for responsive columns — auto-fit lets the grid pick column count by available width.
-
-### Aesthetic
-Flat, clean, white surfaces. Minimal 0.5px borders. Generous whitespace. No gradients, no shadows (except functional focus rings). Everything should feel native to claude.ai — like it belongs on the page, not embedded from somewhere else.
-
-### Tokens
-- Borders: always `0.5px solid var(--color-border-tertiary)` (or `-secondary` for emphasis)
-- Corner radius: `var(--border-radius-md)` for most elements, `var(--border-radius-lg)` for cards
-- Cards: white bg (`var(--color-background-primary)`), 0.5px border, radius-lg, padding 1rem 1.25rem
-- Form elements (input, select, textarea, button, range slider) are pre-styled — write bare tags. Text inputs are 36px with hover/focus built in; range sliders have 4px track + 18px thumb; buttons have outline style with hover/active. Only add inline styles to override (e.g., different width).
-- Buttons: pre-styled with transparent bg, 0.5px border-secondary, hover bg-secondary, active scale(0.98). If it triggers sendPrompt, append a ↗ arrow.
-- **Round every displayed number.** JS float math leaks artifacts — `0.1 + 0.2` gives `0.30000000000000004`, `7 * 1.1` gives `7.700000000000001`. Any number that reaches the screen (slider readouts, stat card values, axis labels, data-point labels, tooltips, computed totals) must go through `Math.round()`, `.toFixed(n)`, or `Intl.NumberFormat`. Pick the precision that makes sense for the context — integers for counts, 1–2 decimals for percentages, `toLocaleString()` for currency. For range sliders, also set `step="1"` (or step="0.1" etc.) so the input itself emits round values.
-- Spacing: use rem for vertical rhythm (1rem, 1.5rem, 2rem), px for component-internal gaps (8px, 12px, 16px)
-- Box-shadows: none, except `box-shadow: 0 0 0 Npx` focus rings on inputs
-
-### Metric cards
-For summary numbers (revenue, count, percentage) — surface card with muted 13px label above, 24px/500 number below. `background: var(--color-background-secondary)`, no border, `border-radius: var(--border-radius-md)`, padding 1rem. Use in grids of 2-4 with `gap: 12px`. Distinct from raised cards (which have white bg + border).
-
-### Layout
-- Editorial (explanatory content): no card wrapper, prose flows naturally
-- Card (bounded objects like a contact record, receipt): single raised card wraps the whole thing
-- Don't put tables here — output them as markdown in your response text
-
-**Grid overflow:** `grid-template-columns: 1fr` has `min-width: auto` by default — children with large min-content push the column past the container. Use `minmax(0, 1fr)` to clamp.
-
-**Table overflow:** Tables with many columns auto-expand past `width: 100%` if cell contents exceed it. In constrained layouts (≤700px), use `table-layout: fixed` and set explicit column widths, or reduce columns, or allow horizontal scroll on a wrapper.
-
-### Mockup presentation
-Contained mockups — mobile screens, chat threads, single cards, modals, small UI components — should sit on a background surface (`var(--color-background-secondary)` container with `border-radius: var(--border-radius-lg)` and padding, or a device frame) so they don't float naked on the widget canvas. Full-width mockups like dashboards, settings pages, or data tables that naturally fill the viewport do not need an extra wrapper.
-
-### 1. Interactive explainer — learn how something works
-*"Explain how compound interest works" / "Teach me about sorting algorithms"*
-
-Use HTML for the interactive controls — sliders, buttons, live state displays, charts. Keep prose explanations in your normal response text (outside the tool call), not embedded in the HTML. No card wrapper. Whitespace is the container.
-
-```html
-<div style="display: flex; align-items: center; gap: 12px; margin: 0 0 1.5rem;">
-  <label style="font-size: 14px; color: var(--color-text-secondary);">Years</label>
-  <input type="range" min="1" max="40" value="20" id="years" style="flex: 1;" />
-  <span style="font-size: 14px; font-weight: 500; min-width: 24px;" id="years-out">20</span>
-</div>
-
-<div style="display: flex; align-items: baseline; gap: 8px; margin: 0 0 1.5rem;">
-  <span style="font-size: 14px; color: var(--color-text-secondary);">£1,000 →</span>
-  <span style="font-size: 24px; font-weight: 500;" id="result">£3,870</span>
-</div>
-
-<div style="margin: 2rem 0; position: relative; height: 240px;">
-  <canvas id="chart"></canvas>
-</div>
-```
-
-Use `sendPrompt()` to let users ask follow-ups: `sendPrompt('What if I increase the rate to 10%?')`
-
-### 2. Compare options — decision making
-*"Compare pricing and features of these products" / "Help me choose between React and Vue"*
-
-Use HTML. Side-by-side card grid for options. Highlight differences with semantic colors. Interactive elements for filtering or weighting.
-
-- Each option in a card. Use badges for key differentiators. A leading Tabler icon (`<i class="ti ti-NAME">` at 20px, `aria-hidden`) anchors each option visually — pick the most apt name per option.
-- Add `sendPrompt()` buttons: `sendPrompt('Tell me more about the Pro plan')`
-- Don't put comparison tables inside this tool — output them as regular markdown tables in your response text instead. The tool is for the visual card grid only.
-- When one option is recommended or "most popular", accent its card with `border: 2px solid var(--color-border-info)` only (2px is deliberate — the only exception to the 0.5px rule, used to accent featured items) — keep the same background and border as the other cards. Add a small badge (e.g. "Most popular") above or inside the card header using `background: var(--color-background-info); color: var(--color-text-info); font-size: 12px; padding: 4px 12px; border-radius: var(--border-radius-md)`.
-
-### 3. Data record — bounded UI object
-*"Show me a Salesforce contact card" / "Create a receipt for this order"*
-
-Use HTML. Wrap the entire thing in a single raised card. All content is sans-serif since it's pure UI. Use an avatar/initials circle for people (see example below).
-
-```html
-<div style="background: var(--color-background-primary); border-radius: var(--border-radius-lg); border: 0.5px solid var(--color-border-tertiary); padding: 1rem 1.25rem;">
-  <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
-    <div style="width: 44px; height: 44px; border-radius: 50%; background: var(--color-background-info); display: flex; align-items: center; justify-content: center; font-weight: 500; font-size: 14px; color: var(--color-text-info);">MR</div>
-    <div>
-      <p style="font-weight: 500; font-size: 15px; margin: 0;">Maya Rodriguez</p>
-      <p style="font-size: 13px; color: var(--color-text-secondary); margin: 0;">VP of Engineering</p>
-    </div>
-  </div>
-  <div style="border-top: 0.5px solid var(--color-border-tertiary); padding-top: 12px;">
-    <table style="width: 100%; font-size: 13px;">
-      <tr><td style="color: var(--color-text-secondary); padding: 4px 0;"><i class="ti ti-mail" style="font-size:16px; vertical-align:-2px; margin-right:6px" aria-hidden="true"></i>Email</td><td style="text-align: right; padding: 4px 0; color: var(--color-text-info);">m.rodriguez@acme.com</td></tr>
-      <tr><td style="color: var(--color-text-secondary); padding: 4px 0;"><i class="ti ti-phone" style="font-size:16px; vertical-align:-2px; margin-right:6px" aria-hidden="true"></i>Phone</td><td style="text-align: right; padding: 4px 0;">+1 (415) 555-0172</td></tr>
-    </table>
-  </div>
-</div>
-```
-
-
+These are starting points, not ceilings. For the water heater: add a thermostat slider, animate the convection current, toggle heating vs standby. For the attention diagram: let the user click any token to become the query, scrub through layers, animate the weights settling. The goal is always to *show* how the thing works, not just *label* it.{{end}}{{if .Charts}}
 
 ## Charts (Chart.js)
 ```html
@@ -769,7 +763,7 @@ plugins: { legend: { display: false } }
 
 Include the value/percentage in each label when the data is categorical (pie, donut, single-series bar). Position the legend above the chart (`margin-bottom`) or below (`margin-top`) — not inside the canvas.
 
-**Dashboard layout** — wrap summary numbers in metric cards (see UI fragment) above the chart. Chart canvas flows below without a card wrapper. Use `sendPrompt()` for drill-down: `sendPrompt('Break down Q4 by region')`.
+**Dashboard layout** — wrap summary numbers in metric cards (see UI fragment) above the chart. Chart canvas flows below without a card wrapper. Use `sendPrompt()` for drill-down: `sendPrompt('Break down Q4 by region')`.{{end}}{{if .GeoMaps}}
 
 ## Geographic maps (D3 choropleth)
 
@@ -798,8 +792,7 @@ d3.json('https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json').then(us => {
     .attr('fill', d => color(values[d.properties.name] ?? 0));
 });
 </script>
-```
-
+```{{end}}{{if .Art}}
 
 ## Art and illustration
 *"Draw me a sunset" / "Create a geometric pattern"*
@@ -811,8 +804,7 @@ Use SVG. Same technical rules (viewBox, safe area) but the aesthetic is differen
 - Layer overlapping opaque shapes for depth
 - Organic forms with `<path>` curves, `<ellipse>`, `<circle>`
 - Texture via repetition (parallel lines, dots, hatching) not raster effects
-- Geometric patterns with `<g transform="rotate()">` for radial symmetry
-
+- Geometric patterns with `<g transform="rotate()">` for radial symmetry{{end}}{{if .Elicitation}}
 
 ## Elicitation — collecting skill arguments
 
@@ -992,4 +984,4 @@ Answers arrive as your next message on a single line:
 Contract details — Side: Customer · Diet: Vegan, Gluten-free · Deadline: 2027-01-05
 ```
 
-Labels are your `data-name` attributes humanized to sentence case (`output_format` → `Output format`; `_text` is dropped, `_file` → ` file`, `_other` → ` (other)`). Multi-select values are comma-joined. Short textarea values have newlines flattened to ` / `; values 81–200 chars are wrapped in quotes. Values over 200 chars appear as `Label: (N chars — see below)` in the compact line and are repeated verbatim — newlines intact — under a `--- Full content ---` fold. Nothing is truncated. If skipped, you'll see `(Skipped the form — proceed with defaults or ask me in plain text)`. Parse and proceed.
+Labels are your `data-name` attributes humanized to sentence case (`output_format` → `Output format`; `_text` is dropped, `_file` → ` file`, `_other` → ` (other)`). Multi-select values are comma-joined. Short textarea values have newlines flattened to ` / `; values 81–200 chars are wrapped in quotes. Values over 200 chars appear as `Label: (N chars — see below)` in the compact line and are repeated verbatim — newlines intact — under a `--- Full content ---` fold. Nothing is truncated. If skipped, you'll see `(Skipped the form — proceed with defaults or ask me in plain text)`. Parse and proceed.{{end}}
