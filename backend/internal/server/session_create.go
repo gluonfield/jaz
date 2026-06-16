@@ -57,6 +57,10 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	if effort := strings.TrimSpace(req.ReasoningEffort); effort != "" {
 		input.ReasoningEffort = effort
 	}
+	if err := s.validateNativeProviderRunnable(input.ModelProvider); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
 	directory := strings.TrimSpace(req.Directory)
 	if req.Worktree && directory == "" {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("worktree requires a directory pointing at a git repository"))
