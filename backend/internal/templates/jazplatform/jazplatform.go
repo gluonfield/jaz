@@ -1,7 +1,8 @@
 // Package jazplatform renders the jaz extension shared by every agent on the
 // platform — the native coordinator and ACP agents (claude, codex, grok)
 // alike. Every injected surface is named explicitly in jazplatform.tmpl:
-// AGENTS.md, SOUL.md, the memory horizons, daily pages, and skills.
+// runtime context, AGENTS.md, SOUL.md, memory horizons, daily pages, and
+// skills.
 package jazplatform
 
 import (
@@ -28,10 +29,16 @@ type MemoryData struct {
 }
 
 type Data struct {
-	Agents string
-	Soul   string
-	Memory *MemoryData
-	Skills string
+	Agents   string
+	Date     string
+	Time     string
+	Timezone string
+	Weekday  string
+	Human    string
+	Cwd      string
+	Soul     string
+	Memory   *MemoryData
+	Skills   string
 }
 
 func Render(data Data) (string, error) {
