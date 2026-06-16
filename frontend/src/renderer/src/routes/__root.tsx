@@ -7,10 +7,12 @@ import {
 import { PanelLeft } from 'lucide-react'
 import { motion } from 'motion/react'
 import { type PointerEvent as ReactPointerEvent, useEffect, useState } from 'react'
+import { CommandPalette } from '@/components/search/CommandPalette'
 import { SettingsOverlay } from '@/components/settings/SettingsOverlay'
 import { Sidebar } from '@/components/sidebar/Sidebar'
 import { ToastProvider } from '@/components/ui/toast'
 import { UpdatePanel } from '@/components/update/UpdatePanel'
+import { modalDialogOpen } from '@/lib/dom/modal'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 
 export const Route = createRootRoute({
@@ -66,6 +68,7 @@ function RootLayout() {
   })
   const [resizing, setResizing] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [commandOpen, setCommandOpen] = useState(false)
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_PREF_KEY, sidebarOpen ? 'open' : 'closed')
@@ -99,15 +102,22 @@ function RootLayout() {
 
   // Cmd+S toggles the sidebar — unless something closer (the agent-file
   // editor's save keymap) already claimed the event. Cmd+N starts a thread.
+  // Cmd+K toggles the command palette.
   useWindowEvent('keydown', (e) => {
     if (!(e.metaKey || e.ctrlKey) || e.defaultPrevented) return
+    const key = e.key.toLowerCase()
     if (!e.shiftKey && e.key.toLowerCase() === 's') {
       e.preventDefault()
       setSidebarOpen((open) => !open)
     }
-    if (e.key === 'n') {
+    if (key === 'n') {
       e.preventDefault()
       navigate({ to: '/new' })
+    }
+    if (key === 'k') {
+      if (!commandOpen && modalDialogOpen()) return
+      e.preventDefault()
+      setCommandOpen((open) => !open)
     }
   })
 
@@ -166,6 +176,11 @@ function RootLayout() {
         </button>
       </div>
       <SettingsOverlay open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <CommandPalette
+        open={commandOpen}
+        onOpenChange={setCommandOpen}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
       <UpdatePanel />
     </ToastProvider>
   )

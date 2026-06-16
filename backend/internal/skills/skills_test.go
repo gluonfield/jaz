@@ -22,21 +22,24 @@ func TestLoadScansJazSkillsOnly(t *testing.T) {
 	if catalog.Root != filepath.Join(root, "skills") {
 		t.Fatalf("root = %q", catalog.Root)
 	}
-	if len(catalog.Skills) != 2 {
+	if len(catalog.Skills) != 1 {
 		t.Fatalf("skills = %#v", catalog.Skills)
 	}
 	got := map[string]string{}
 	for _, skill := range catalog.Skills {
 		got[skill.Name] = skill.Description
 	}
-	if got["alpha"] != "Alpha tasks" || got["beta"] != "Beta tasks" {
+	if got["alpha"] != "Alpha tasks" {
 		t.Fatalf("unexpected skills: %#v", catalog.Skills)
 	}
 	prompt := catalog.Prompt()
-	for _, want := range []string{"<available_skills>", "<name>alpha</name>", "<name>beta</name>", "SKILL.md"} {
+	for _, want := range []string{"<available_skills>", "<name>alpha</name>", "SKILL.md"} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("prompt missing %q:\n%s", want, prompt)
 		}
+	}
+	if strings.Contains(prompt, "<name>beta</name>") {
+		t.Fatalf("prompt includes hidden skill:\n%s", prompt)
 	}
 }
 
@@ -51,12 +54,12 @@ func TestLoadMissingRootIsEmptyCatalog(t *testing.T) {
 	}
 }
 
-func TestInstallDefaultsRefreshesManagedSkills(t *testing.T) {
+func TestInstallDefaultsRefreshesDefaultSkills(t *testing.T) {
 	root := t.TempDir()
 	if err := InstallDefaults(root); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(ManagedRoot(root), "jazmem", "SKILL.md")
+	path := filepath.Join(UserRoot(root), "jazmem", "SKILL.md")
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("default skill missing: %v", err)
 	}
@@ -71,16 +74,31 @@ func TestInstallDefaultsRefreshesManagedSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(data), "name: stale") || !strings.Contains(string(data), "name: jazmem") {
-		t.Fatalf("managed skill was not refreshed:\n%s", data)
+		t.Fatalf("default skill was not refreshed:\n%s", data)
 	}
 }
 
-func TestLoadIncludesManagedDefaultsAndUserOverrides(t *testing.T) {
+func TestInstallDefaultsKeepsCustomSkills(t *testing.T) {
+	root := t.TempDir()
+	writeSkill(t, root, "custom", "custom", "Custom skill")
+
+	if err := InstallDefaults(root); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(filepath.Join(UserRoot(root), "make-interfaces-feel-better", "SKILL.md")); err != nil {
+		t.Fatalf("default skill missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(UserRoot(root), "custom", "SKILL.md")); err != nil {
+		t.Fatalf("custom skill missing: %v", err)
+	}
+}
+
+func TestLoadIncludesDefaultSkills(t *testing.T) {
 	root := t.TempDir()
 	if err := InstallDefaults(root); err != nil {
 		t.Fatal(err)
 	}
-	writeSkill(t, root, "jazmem", "jazmem", "Custom memory skill")
 
 	catalog, err := Load(root)
 	if err != nil {
@@ -95,11 +113,85 @@ func TestLoadIncludesManagedDefaultsAndUserOverrides(t *testing.T) {
 			t.Fatalf("missing skill %q from %#v", name, catalog.Skills)
 		}
 	}
-	if got["jazmem"].Description != "Custom memory skill" {
-		t.Fatalf("user skill did not override managed default: %#v", got["jazmem"])
+	for _, skill := range got {
+		if !strings.HasPrefix(skill.Path, UserRoot(root)) {
+			t.Fatalf("default skill path = %q, want user root", skill.Path)
+		}
 	}
-	if !strings.HasPrefix(got["make-interfaces-feel-better"].Path, ManagedRoot(root)) {
-		t.Fatalf("default skill path = %q, want managed root", got["make-interfaces-feel-better"].Path)
+}
+
+func TestSyncToCopiesAndRefreshesManagedSkills(t *testing.T) {
+	root := t.TempDir()
+	dst := t.TempDir()
+	writeSkill(t, root, "alpha", "alpha", "Alpha tasks")
+	writeFile(t, filepath.Join(root, "skills", "alpha", "references", "guide.md"), "guide")
+	script := filepath.Join(root, "skills", "alpha", "scripts", "run.sh")
+	writeFile(t, script, "#!/bin/sh\n")
+	if err := os.Chmod(script, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := SyncTo(root, dst); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(filepath.Join(dst, "alpha", managedMarker)); err != nil {
+		t.Fatalf("managed marker missing: %v", err)
+	}
+	if data, err := os.ReadFile(filepath.Join(dst, "alpha", "references", "guide.md")); err != nil || string(data) != "guide" {
+		t.Fatalf("copied reference = %q, %v", data, err)
+	}
+	if info, err := os.Stat(filepath.Join(dst, "alpha", "scripts", "run.sh")); err != nil || info.Mode().Perm() != 0o755 {
+		t.Fatalf("copied script mode = %v, %v", info.Mode().Perm(), err)
+	}
+
+	writeFile(t, filepath.Join(root, "skills", "alpha", "SKILL.md"), "---\nname: alpha\ndescription: Updated\n---\nnew body")
+	if err := SyncTo(root, dst); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dst, "alpha", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "Updated") {
+		t.Fatalf("managed copy was not refreshed:\n%s", data)
+	}
+}
+
+func TestSyncToSkipsUserOwnedSkillConflictsAndLeavesOrphans(t *testing.T) {
+	root := t.TempDir()
+	dst := t.TempDir()
+	writeSkill(t, root, "alpha", "alpha", "Alpha tasks")
+	writeSkill(t, root, "stale", "stale", "Stale tasks")
+	writeFile(t, filepath.Join(dst, "alpha", "SKILL.md"), "user-owned")
+	writeFile(t, filepath.Join(dst, "orphan", "SKILL.md"), "user-owned orphan")
+
+	if err := SyncTo(root, dst); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "stale", managedMarker)); err != nil {
+		t.Fatalf("managed stale skill missing before source removal: %v", err)
+	}
+
+	if err := os.RemoveAll(filepath.Join(root, "skills", "stale")); err != nil {
+		t.Fatal(err)
+	}
+	if err := SyncTo(root, dst); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dst, "alpha", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "user-owned" {
+		t.Fatalf("user-owned skill was overwritten:\n%s", data)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "orphan", "SKILL.md")); err != nil {
+		t.Fatalf("user-owned orphan should stay: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "stale", managedMarker)); err != nil {
+		t.Fatalf("additive sync should leave old managed skills in place: %v", err)
 	}
 }
 

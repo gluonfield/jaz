@@ -1,123 +1,62 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"strings"
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		usage()
+	args, action := serverArgs(os.Args[1:])
+	switch action {
+	case mainHelp:
+		usage(os.Stdout)
+		return
+	case mainInvalid:
+		usage(os.Stderr)
 		os.Exit(2)
 	}
+	if err := runServe(args); err != nil {
+		fmt.Fprintln(os.Stderr, "serve:", err)
+		os.Exit(1)
+	}
+}
 
-	switch os.Args[1] {
+type mainAction int
+
+const (
+	mainRun mainAction = iota
+	mainHelp
+	mainInvalid
+)
+
+func serverArgs(args []string) ([]string, mainAction) {
+	if len(args) == 0 {
+		return nil, mainRun
+	}
+	switch args[0] {
 	case "serve", "server":
-		if err := runServe(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, "serve:", err)
-			os.Exit(1)
+		if len(args) > 1 && isHelp(args[1]) {
+			return nil, mainHelp
 		}
-	case "chat":
-		if err := runChat(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, "chat:", err)
-			os.Exit(1)
-		}
-	default:
-		usage()
-		os.Exit(2)
+		return args[1:], mainRun
+	case "help":
+		return nil, mainHelp
 	}
+	if isHelp(args[0]) {
+		return nil, mainHelp
+	}
+	if strings.HasPrefix(args[0], "-") {
+		return args, mainRun
+	}
+	return nil, mainInvalid
 }
 
-type sessionResponse struct {
-	ID         string          `json:"id"`
-	Slug       string          `json:"slug"`
-	Runtime    string          `json:"runtime"`
-	RuntimeRef *runtimeRefJSON `json:"runtime_ref,omitempty"`
+func isHelp(arg string) bool {
+	return arg == "-h" || arg == "--help"
 }
 
-type runtimeRefJSON struct {
-	Agent string `json:"agent,omitempty"`
-}
-
-func createSession(client *http.Client, serverURL string) (sessionResponse, error) {
-	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(serverURL, "/")+"/v1/sessions", nil)
-	if err != nil {
-		return sessionResponse{}, err
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return sessionResponse{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		return sessionResponse{}, fmt.Errorf("create session failed: %s", strings.TrimSpace(string(body)))
-	}
-	var out sessionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return sessionResponse{}, err
-	}
-	return out, nil
-}
-
-func lastSession(client *http.Client, serverURL string) (sessionResponse, error) {
-	endpoint := strings.TrimRight(serverURL, "/") + "/v1/sessions?last=true"
-	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
-	if err != nil {
-		return sessionResponse{}, err
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return sessionResponse{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		return sessionResponse{}, fmt.Errorf("last session failed: %s", strings.TrimSpace(string(body)))
-	}
-	var out sessionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return sessionResponse{}, err
-	}
-	return out, nil
-}
-
-func getSession(client *http.Client, serverURL, sessionID string) (sessionResponse, error) {
-	endpoint := fmt.Sprintf("%s/v1/sessions/%s", strings.TrimRight(serverURL, "/"), sessionID)
-	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
-	if err != nil {
-		return sessionResponse{}, err
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return sessionResponse{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		return sessionResponse{}, fmt.Errorf("load session failed: %s", strings.TrimSpace(string(body)))
-	}
-	var out sessionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return sessionResponse{}, err
-	}
-	return out, nil
-}
-
-func displayAddr(addr string) string {
-	if strings.HasPrefix(addr, ":") {
-		return "http://127.0.0.1" + addr
-	}
-	if strings.HasPrefix(addr, "http://") || strings.HasPrefix(addr, "https://") {
-		return addr
-	}
-	return "http://" + addr
-}
-
-func usage() {
-	fmt.Fprintln(os.Stderr, "usage: jaz serve [flags] | jaz server [flags] | jaz chat [flags]")
+func usage(w io.Writer) {
+	fmt.Fprintln(w, "usage: jaz [--addr addr] [--public-url url]\n       jaz serve [flags]\n       jaz server [flags]\n\nRun the Jaz backend server.")
 }

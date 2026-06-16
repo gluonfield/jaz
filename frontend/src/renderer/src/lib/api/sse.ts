@@ -1,4 +1,4 @@
-import { apiBaseUrl } from './client'
+import { apiEventSourceUrl } from './client'
 import type { SessionEvent } from './types'
 
 // Event types the backend names in its SSE frames (event: <type>).
@@ -7,6 +7,7 @@ import type { SessionEvent } from './types'
 // as a catch-all for unnamed frames.
 const KNOWN_EVENT_TYPES = [
   'assistant',
+  'session',
   'user',
   'tool',
   'tool_result',
@@ -24,7 +25,7 @@ export function openSessionEvents(
   sessionId: string,
   onEvent: (event: SessionEvent) => void,
 ): () => void {
-  const es = new EventSource(`${apiBaseUrl()}/v1/sessions/${sessionId}/events`)
+  const es = new EventSource(apiEventSourceUrl(`/v1/sessions/${sessionId}/events`))
 
   const handle = (ev: MessageEvent) => {
     try {

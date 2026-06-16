@@ -1,6 +1,7 @@
 import '@fontsource-variable/inter'
 import '@fontsource-variable/jetbrains-mono'
 import '@fontsource/instrument-serif/400-italic.css'
+import '@xterm/xterm/css/xterm.css'
 import './styles/globals.css'
 
 import { QueryClientProvider } from '@tanstack/react-query'
@@ -8,6 +9,7 @@ import { RouterProvider, createHashHistory, createRouter } from '@tanstack/react
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { LaunchScreen, ReconnectingBanner } from './components/launch/LaunchScreen'
+import { OnboardingGate } from './components/onboarding/OnboardingGate'
 import { installFileDropGuard } from './components/ui/FileDrop'
 import { useConnection } from './lib/connection'
 import { queryClient } from './lib/query/queryClient'
@@ -37,9 +39,10 @@ declare module '@tanstack/react-router' {
 function App() {
   const { status } = useConnection()
   if (status === 'connected' || status === 'reconnecting') {
+    const app = <RouterProvider router={router} />
     return (
       <>
-        <RouterProvider router={router} />
+        {window.jaz?.windowKind === 'board' ? app : <OnboardingGate>{app}</OnboardingGate>}
         <ReconnectingBanner show={status === 'reconnecting'} />
       </>
     )

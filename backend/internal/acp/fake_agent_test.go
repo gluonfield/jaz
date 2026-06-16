@@ -16,6 +16,10 @@ func TestFakeACPAgentProcess(t *testing.T) {
 	if os.Getenv("JAZ_FAKE_ACP_AGENT") != "1" {
 		return
 	}
+	if msg := os.Getenv("JAZ_FAKE_ACP_EXIT_BEFORE_INIT"); msg != "" {
+		_, _ = fmt.Fprintln(os.Stderr, msg)
+		os.Exit(2)
+	}
 	conn := stdio.New(os.Stdin, os.Stdout)
 	currentMode := "auto"
 	currentModel := ""
@@ -65,11 +69,18 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			})
 		case "session/load":
 			var req struct {
+				Meta       map[string]any    `json:"_meta"`
+				Cwd        string            `json:"cwd"`
 				SessionID  string            `json:"sessionId"`
 				MCPServers []json.RawMessage `json:"mcpServers"`
 			}
 			if err := json.Unmarshal(msg.Params, &req); err != nil || req.SessionID != "fake-session" {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("unknown session", nil))
+				_ = conn.Send(context.Background(), resp)
+				continue
+			}
+			if err := validateFakeCwdPrompt(req.Cwd, req.Meta); err != nil {
+				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams(err.Error(), nil))
 				_ = conn.Send(context.Background(), resp)
 				continue
 			}
@@ -92,6 +103,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 		case "session/new":
 			var req struct {
 				Meta       map[string]any    `json:"_meta"`
+				Cwd        string            `json:"cwd"`
 				MCPServers []json.RawMessage `json:"mcpServers"`
 			}
 			if err := json.Unmarshal(msg.Params, &req); err != nil {
@@ -106,6 +118,16 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			}
 			if want := os.Getenv("JAZ_FAKE_ACP_SYSTEM_PROMPT"); want != "" && req.Meta["systemPrompt"] != want {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("missing system prompt", nil))
+				_ = conn.Send(context.Background(), resp)
+				continue
+			}
+			if err := validateFakeCwdPrompt(req.Cwd, req.Meta); err != nil {
+				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams(err.Error(), nil))
+				_ = conn.Send(context.Background(), resp)
+				continue
+			}
+			if os.Getenv("JAZ_FAKE_ACP_EXPECT_ULTRACODE") == "1" && !fakeUltracodeMeta(req.Meta) {
+				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("missing ultracode setting", nil))
 				_ = conn.Send(context.Background(), resp)
 				continue
 			}
@@ -199,6 +221,10 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				_ = conn.Send(context.Background(), resp)
 				continue
 			}
+			if strings.Contains(string(msg.Params), "break transport") {
+				_, _ = fmt.Fprintln(os.Stdout, "not-json")
+				os.Exit(0)
+			}
 			if want := os.Getenv("JAZ_FAKE_ACP_EXPECT_EFFORT"); want != "" && currentEffort != want {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("configured reasoning effort was not set", nil))
 				_ = conn.Send(context.Background(), resp)
@@ -258,6 +284,17 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			_ = conn.Send(context.Background(), resp)
 		}
 	}
+}
+
+func validateFakeCwdPrompt(cwd string, meta map[string]any) error {
+	if os.Getenv("JAZ_FAKE_ACP_EXPECT_CWD_IN_PROMPT") != "1" {
+		return nil
+	}
+	prompt, _ := meta["systemPrompt"].(string)
+	if cwd == "" || !strings.Contains(prompt, cwd) {
+		return fmt.Errorf("system prompt missing cwd %q", cwd)
+	}
+	return nil
 }
 
 func fakeModes() map[string]any {
@@ -343,6 +380,23 @@ func addFakeModels(result map[string]any) {
 			"options": modelOptions,
 		},
 	}
+}
+
+func fakeUltracodeMeta(meta map[string]any) bool {
+	claudeCode, ok := meta["claudeCode"].(map[string]any)
+	if !ok {
+		return false
+	}
+	options, ok := claudeCode["options"].(map[string]any)
+	if !ok {
+		return false
+	}
+	settings, ok := options["settings"].(map[string]any)
+	if !ok {
+		return false
+	}
+	value, ok := settings["ultracode"].(bool)
+	return ok && value
 }
 
 func validateFakeMCPServers(rawServers []json.RawMessage) error {

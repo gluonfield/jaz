@@ -20,11 +20,10 @@ Agents store data by editing raw markdown files. Jazmem indexes it.
 4. For new pages, create `<root>/<slug>.md` with frontmatter and an H1.
 5. Preserve exact user wording for ideas, preferences, decisions, and concerns.
 6. Add source citations to every durable fact.
-7. Run `jazmem index`.
-8. Verify with a search query that should find the new memory.
-9. Commit with plain git only if the memory root is a git repo and the user explicitly asks.
+7. Verify the markdown file contents directly when needed.
+8. Commit with plain git only if the memory root is a git repo and the user explicitly asks.
 
-Do not manually update SQLite after markdown edits.
+Do not manually update SQLite after markdown edits, and do not run memory maintenance commands during ordinary memory writing. Jaz owns indexing.
 
 ## Raw Or Uncertain Information
 
@@ -73,8 +72,7 @@ Before creating a canonical page:
 3. If no page exists, apply the notability gate.
 4. Pick the most specific directory and slug.
 5. Create the page with frontmatter, H1, citations, and wikilinks.
-6. Run `jazmem index`.
-7. Verify the page is findable by name and alias.
+6. Verify the markdown file contents directly when needed. Search may lag until Jaz's index writer runs.
 
 ## Page Taxonomy
 
@@ -105,7 +103,7 @@ Exact title/alias matches are the strongest retrieval signal. Aliases are not op
 
 - On page creation, record every name variant seen so far in `aliases:` frontmatter: nicknames, short forms, initials, legal names, handles, product names.
 - Keep `title` canonical; variants belong in `aliases`.
-- When a reasonable search variant fails to find an existing page, add that variant as an alias and run `jazmem index`. This is how retrieval self-heals.
+- When a reasonable search variant fails to find an existing page, add that variant as an alias. Jaz's index writer makes the retrieval fix searchable.
 - Do not add generic words as aliases (`engineer`, `the company`); an alias must point to this page specifically.
 
 ```md
@@ -247,8 +245,8 @@ Rules:
 - Do not create reciprocal relationship bullets for ordinary mentions.
 - Do create reciprocal relationship bullets for durable relationships such as friend, works with, founder, advisor, investor, collaborator.
 - If unsure, write a raw markdown note to `inbox/` or `dreams/review/`.
-- After creating a new entity page, run `jazmem link-hygiene` to generate relationship proposals.
-- Promote proposals only by manually editing canonical markdown, then run `jazmem index`.
+- Relationship-proposal generation is maintenance work; do not run it during ordinary memory writing unless explicitly asked.
+- Promote proposals only by manually editing canonical markdown.
 
 ## Acquiring Context While Working
 

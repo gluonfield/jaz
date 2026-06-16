@@ -96,3 +96,31 @@ func TestMigrationsAddLegacyThreadColumns(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSearchDocTablesDoNotDuplicateIndexedText(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	messageColumns, err := tableColumns(store.db, "message_search_docs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, column := range []string{"content", "role"} {
+		if messageColumns[column] {
+			t.Fatalf("message_search_docs must not duplicate %s", column)
+		}
+	}
+
+	threadColumns, err := tableColumns(store.db, "thread_search_docs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, column := range []string{"title", "slug", "project_path"} {
+		if threadColumns[column] {
+			t.Fatalf("thread_search_docs must not duplicate %s", column)
+		}
+	}
+}

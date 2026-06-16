@@ -101,20 +101,23 @@ func (s *Server) runClaimedNativeSession(ctx context.Context, session storage.Se
 	return s.runNativeSessionWithClaim(ctx, session, message, nil, false, false, nil, true)
 }
 
+func (s *Server) runClaimedNativeSessionWithAttachments(ctx context.Context, session storage.Session, message string, attachments []storage.Attachment, planRequested bool) string {
+	return s.runNativeSessionWithClaim(ctx, session, message, attachments, false, planRequested, nil, true)
+}
+
 func (s *Server) runNativeSessionWithClaim(ctx context.Context, session storage.Session, message string, attachments []storage.Attachment, voiceMode bool, planRequested bool, send func(agent.StreamEvent), claimed bool) string {
 	if send == nil {
 		send = func(agent.StreamEvent) {}
 	}
-	session, startStatus, generateTitle, err := s.beginNativeTurn(session, message, claimed)
+	session, startStatus, generateTitle, err := s.beginNativeTurn(ctx, session, message, claimed)
 	if err != nil {
 		send(agent.StreamEvent{Type: agent.StreamError, Error: err.Error()})
 		send(agent.StreamEvent{Type: agent.StreamDone})
+		if startStatus == storage.StatusError {
+			s.setSessionError(session, err.Error())
+		}
 		return startStatus
 	}
-	if generateTitle {
-		session = s.generateAndSaveSessionTitle(ctx, session, message)
-	}
-
 	logger := s.logger().With("session", session.ID)
 	logger.Info("native turn started")
 	turnCtx, cancelTurn := context.WithCancel(ctx)
@@ -130,6 +133,9 @@ func (s *Server) runNativeSessionWithClaim(ctx context.Context, session storage.
 		return storage.StatusError
 	}
 	s.publishMessagesChanged(session.ID)
+	if generateTitle {
+		go s.generateAndSaveSessionTitle(context.WithoutCancel(ctx), session, message)
+	}
 
 	runCtx := sessioncontext.WithSessionID(turnCtx, session.ID)
 	if session.RuntimeRef != nil && strings.TrimSpace(session.RuntimeRef.Cwd) != "" {
@@ -189,7 +195,7 @@ func (s *Server) runNativeSessionWithClaim(ctx context.Context, session storage.
 	return finalStatus
 }
 
-func (s *Server) beginNativeTurn(session storage.Session, message string, claimed bool) (storage.Session, string, bool, error) {
+func (s *Server) beginNativeTurn(ctx context.Context, session storage.Session, message string, claimed bool) (storage.Session, string, bool, error) {
 	unlock := s.lockSession(session.ID)
 	defer unlock()
 
@@ -201,11 +207,15 @@ func (s *Server) beginNativeTurn(session storage.Session, message string, claime
 	if session.Status == storage.StatusRunning && !claimed {
 		return session, storage.StatusRunning, false, fmt.Errorf("session %s is already running", session.Slug)
 	}
+	if err := s.ensureManagedWorktree(ctx, session); err != nil {
+		return session, storage.StatusError, false, err
+	}
 	existingMessages, err := s.Store.LoadMessages(session.ID)
 	if err != nil {
 		return session, storage.StatusError, false, err
 	}
 	session.Status = storage.StatusRunning
+	session.Error = ""
 	if session.Runtime == "" {
 		session.Runtime = storage.RuntimeNative
 	}
@@ -220,6 +230,7 @@ func (s *Server) beginNativeTurn(session storage.Session, message string, claime
 	if err := s.Store.SaveSession(session); err != nil {
 		return session, storage.StatusError, false, err
 	}
+	s.publishSessionChanged(session.ID)
 	return session, storage.StatusRunning, generateTitle, nil
 }
 
@@ -250,7 +261,7 @@ func (s *Server) applyNativeSessionDefaults(session *storage.Session) error {
 	if defaults.ReasoningEffort != "" && session.ReasoningEffort == "" {
 		session.ReasoningEffort = defaults.ReasoningEffort
 	}
-	return nil
+	return s.validateNativeProviderRunnable(session.ModelProvider)
 }
 
 func (s *Server) agentDefaults() (agentsettings.AgentDefaults, error) {

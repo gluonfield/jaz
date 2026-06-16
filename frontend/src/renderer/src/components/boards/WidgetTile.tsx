@@ -10,13 +10,14 @@ import {
 import { IconButton } from '@/components/ui/IconButton'
 import { SCANLINE_BACKGROUND, SCANLINE_MASK } from '@/components/ui/rainbow'
 import {
+  fetchWidgetContent,
   reportWidgetError,
   reportWidgetLayout,
-  widgetContentUrl,
   type WidgetLayoutReport,
 } from '@/lib/api/boards'
 import { runLoopNow } from '@/lib/api/loops'
 import type { BoardItem } from '@/lib/api/types'
+import { buildArtifactDocument, buildArtifactThemeCSS } from '@/lib/artifacts'
 import { hasTime, relativeTime } from '@/lib/format/time'
 
 function TileStatusDot({ item }: { item: BoardItem }) {
@@ -41,7 +42,8 @@ function TileStatusDot({ item }: { item: BoardItem }) {
 }
 
 interface Layer {
-  src: string
+  key: string
+  html: string
   ready: boolean
   // Created by a version bump (fresh data), as opposed to a theme/zoom reload.
   fresh: boolean
@@ -115,14 +117,16 @@ export function WidgetTile({
   onRemove: () => void
 }) {
   const reduce = useReducedMotion()
-  const src = widgetContentUrl(item.widget_id, item.current_version, theme, scale)
+  // Keyed by version + theme: a new version or theme change builds a fresh
+  // document and crossfades; zoom changes are applied live (postMessage) and
+  // deliberately stay out of the key so they never reload the tile.
+  const contentKey =
+    item.current_version > 0 ? `${item.widget_id}:${item.current_version}:${theme}` : ''
 
   // Double-buffered content: the old document stays visible until the new one
   // has loaded. Fresh versions are then wiped in by the rainbow scanline;
   // theme/zoom reloads quietly crossfade — no blank flash either way.
-  const [layers, setLayers] = useState<Layer[]>(() =>
-    item.current_version > 0 ? [{ src, ready: true, fresh: false }] : [],
-  )
+  const [layers, setLayers] = useState<Layer[]>([])
   const framesRef = useRef(new Map<string, HTMLIFrameElement>())
   // One report per loaded version: a render-loop error would otherwise spam
   // the backend (and the loop's next-run prompt) on every poll.
@@ -144,30 +148,56 @@ export function WidgetTile({
       setLayers([])
       return
     }
-    setLayers((current) => {
-      const top = current[current.length - 1]
-      if (top && top.src === src) return current
-      // A still-loading layer is superseded by the newest target.
-      return [
-        ...current.filter((layer) => layer.ready),
-        { src, ready: false, fresh: pulsePendingRef.current },
-      ]
-    })
-  }, [src, item.current_version])
+    const key = contentKey
+    const controller = new AbortController()
+    const fresh = pulsePendingRef.current
+    void fetchWidgetContent(item.widget_id, item.current_version, controller.signal)
+      .then((fragment) => {
+        // Wrap the raw fragment in the shared artifact document — same design
+        // system, theme, and CSP as inline artifacts. measureLayout adds the
+        // tile telemetry bridge.
+        const html = buildArtifactDocument(
+          { title: item.title, code: fragment, loadingMessages: [] },
+          buildArtifactThemeCSS(theme === 'dark'),
+          { measureLayout: true },
+        )
+        setLayers((current) => {
+          const top = current[current.length - 1]
+          if (top && top.key === key) return current
+          return [
+            ...current.filter((layer) => layer.ready),
+            { key, html, ready: false, fresh },
+          ]
+        })
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        console.error(err)
+      })
+    return () => controller.abort()
+  }, [contentKey, item.widget_id, item.current_version, item.title, theme])
 
-  const onLayerLoad = (loaded: string) => {
+  const onLayerLoad = (loaded: string, fresh: boolean) => {
+    // A freshly built document loads at zoom 1; push the board's scale in now.
+    framesRef.current.get(loaded)?.contentWindow?.postMessage({ type: 'jaz:scale', scale }, '*')
     setLayers((current) =>
-      current.map((layer) => (layer.src === loaded ? { ...layer, ready: true } : layer)),
+      current.map((layer) => (layer.key === loaded ? { ...layer, ready: true } : layer)),
     )
-    if (pulsePendingRef.current) {
+    if (fresh) {
       pulsePendingRef.current = false
       setPulse((p) => p + 1)
     }
-    // Drop covered layers once the crossfade/wipe is over.
     window.setTimeout(() => {
       setLayers((current) => (current.length > 1 ? current.slice(-1) : current))
     }, 800)
   }
+
+  useEffect(() => {
+    setLayers((current) => {
+      const top = current[current.length - 1]
+      return top && top.key === contentKey ? current : current.filter((layer) => layer.ready)
+    })
+  }, [contentKey])
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -182,16 +212,16 @@ export function WidgetTile({
         clipped?: number
         img_errors?: number
       }
-      if (msg?.type === 'jaz:link' && typeof msg.href === 'string') {
+      if (msg?.type === 'jaz:artifact-link' && typeof msg.href === 'string') {
         window.open(msg.href, '_blank')
       }
-      if (msg?.type === 'jaz:error' && typeof msg.message === 'string') {
+      if (msg?.type === 'jaz:artifact-error' && typeof msg.message === 'string') {
         const key = `${item.widget_id}@${item.current_version}`
         if (reportedRef.current === key) return
         reportedRef.current = key
         void reportWidgetError(item.widget_id, msg.message).catch(() => {})
       }
-      if (msg?.type === 'jaz:layout' && typeof msg.dead_space_pct === 'number') {
+      if (msg?.type === 'jaz:artifact-layout' && typeof msg.dead_space_pct === 'number') {
         const layout: WidgetLayoutReport = {
           dead_space_pct: msg.dead_space_pct,
           overflow_px: msg.overflow_px ?? 0,
@@ -211,11 +241,13 @@ export function WidgetTile({
     return () => window.removeEventListener('message', onMessage)
   }, [item.widget_id, item.current_version])
 
+  // Zoom is applied live to every frame — theme, by contrast, is baked into the
+  // rebuilt document (contentKey), so it needs no message here.
   useEffect(() => {
     for (const frame of framesRef.current.values()) {
-      frame.contentWindow?.postMessage({ type: 'jaz:theme', theme }, '*')
+      frame.contentWindow?.postMessage({ type: 'jaz:scale', scale }, '*')
     }
-  }, [theme])
+  }, [scale])
 
   const paused = item.loop_status === 'paused'
   const updated = hasTime(item.widget_updated_at) ? relativeTime(item.widget_updated_at) : ''
@@ -289,7 +321,7 @@ export function WidgetTile({
             const wipe = layer.fresh && !reduce
             return (
               <motion.div
-                key={layer.src}
+                key={layer.key}
                 className="absolute inset-0"
                 initial={false}
                 animate={
@@ -317,13 +349,13 @@ export function WidgetTile({
               >
                 <iframe
                   ref={(el) => {
-                    if (el) framesRef.current.set(layer.src, el)
-                    else framesRef.current.delete(layer.src)
+                    if (el) framesRef.current.set(layer.key, el)
+                    else framesRef.current.delete(layer.key)
                   }}
                   title={item.title}
                   sandbox="allow-scripts"
-                  src={layer.src}
-                  onLoad={() => onLayerLoad(layer.src)}
+                  srcDoc={layer.html}
+                  onLoad={() => onLayerLoad(layer.key, layer.fresh)}
                   className={`h-full w-full border-0 ${dragging ? 'pointer-events-none' : ''}`}
                 />
               </motion.div>

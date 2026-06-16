@@ -30,8 +30,8 @@
   --color-accent-soft: oklch(0.94 0.035 55);
 
   /* status */
-  --color-running: oklch(0.65 0.13 75);
-  --color-ok: oklch(0.6 0.13 145);
+  --color-running: oklch(0.52 0.12 75);
+  --color-ok: oklch(0.45 0.14 145);
   --color-danger: oklch(0.55 0.19 25);
   --color-danger-soft: oklch(0.95 0.025 25);
 
@@ -46,6 +46,7 @@
   --z-dropdown: 10;
   --z-toast: 20;
   --z-tooltip: 30;
+  --z-command: 70;
 
   /* rainbow ramp shared by the Jaz wordmark and the composer focus ring */
   --color-rainbow-1: oklch(0.62 0.19 25);
@@ -57,6 +58,10 @@
 
 :root {
   color-scheme: light;
+
+  --shadow-raised:
+    0 1px 2px rgba(18, 20, 30, 0.05),
+    0 12px 30px -8px rgba(18, 20, 30, 0.12);
 }
 
 /* Dark theme — cobalt-tinted charcoal. Surfaces grow *lighter* as they come
@@ -89,11 +94,33 @@
 
   --color-border: oklch(0.325 0.009 262);
 
+  --shadow-raised: 0 18px 46px rgba(0, 0, 0, 0.18);
+
   --color-rainbow-1: oklch(0.68 0.19 25);
   --color-rainbow-2: oklch(0.8 0.14 90);
   --color-rainbow-3: oklch(0.7 0.15 145);
   --color-rainbow-4: oklch(0.68 0.15 230);
   --color-rainbow-5: oklch(0.66 0.18 300);
+}
+
+.jaz-terminal,
+.jaz-terminal .xterm {
+  height: 100%;
+  min-height: 0;
+}
+
+.jaz-terminal .xterm {
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.jaz-terminal .xterm-viewport,
+.jaz-terminal .xterm-screen {
+  background: transparent !important;
+}
+
+.jaz-terminal .xterm-viewport {
+  scrollbar-width: thin;
 }
 
 /* Rendered markdown inside chat messages: compact, token-based typography. */
@@ -167,7 +194,8 @@
   padding: 0;
   font-size: 0.8125rem;
 }
-.chat-prose a {
+.chat-prose a,
+.chat-prose-link-button {
   color: var(--color-primary);
   text-decoration-line: underline;
   text-decoration-style: solid;
@@ -178,8 +206,18 @@
   transition-duration: 160ms;
   transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
 }
+.chat-prose-link-button {
+  display: inline;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
 .chat-prose a:hover,
-.chat-prose a:focus-visible {
+.chat-prose a:focus-visible,
+.chat-prose-link-button:hover,
+.chat-prose-link-button:focus-visible {
   color: var(--color-primary-strong);
   text-decoration-color: currentColor;
 }

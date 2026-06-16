@@ -3,14 +3,16 @@ import { useState } from 'react'
 import { useToast } from '@/components/ui/toast'
 import {
   commitSessionRepo,
+  mergeFromMainSessionRepo,
   mergeSessionRepo,
   pushSessionRepoBranch,
+  restoreSessionWorktree,
   sessionRepoQuery,
 } from '@/lib/api/sessions'
 import type { RepoInfo, Session } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 
-export type RepoBusy = 'pr' | 'commit' | 'push' | 'merge' | null
+export type RepoBusy = 'pr' | 'commit' | 'push' | 'merge' | 'update' | 'restore' | null
 
 // Shared repo state and actions for the titlebar capsule and the session
 // panel: one query, one busy state, one set of mutations against the same
@@ -102,9 +104,19 @@ export function useRepoActions(session: Session) {
       if (result.moved) void queryClient.invalidateQueries({ queryKey: keys.sessionMessages(session.id) })
       toast(
         result.moved
-          ? `Merged into ${info?.main_branch} — the session now works in the main checkout`
-          : `Merged into ${info?.main_branch} — the agent keeps working in the worktree`,
+          ? `Handed off to ${info?.main_branch} — the session now works in the main checkout`
+          : `Handed off to ${info?.main_branch} — the agent keeps working in the worktree`,
       )
+    })
+  const update = () =>
+    run('update', async () => {
+      setRepoData(await mergeFromMainSessionRepo(session.id))
+      toast(`Updated from ${info?.main_branch}`)
+    })
+  const restore = () =>
+    run('restore', async () => {
+      setRepoData(await restoreSessionWorktree(session.id))
+      toast('Worktree restored')
     })
 
   return {
@@ -124,5 +136,7 @@ export function useRepoActions(session: Session) {
     commit,
     push,
     merge,
+    update,
+    restore,
   }
 }

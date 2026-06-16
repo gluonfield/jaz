@@ -2,6 +2,7 @@ package runtimefiles
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -17,22 +18,25 @@ func TestEnsureCreatesRuntimeLayout(t *testing.T) {
 		layout.DefaultWorkspace,
 		layout.UserSkills,
 		layout.Automations,
-		layout.ACPHome,
 		layout.ACPCodexHome,
-		layout.ACPTmp,
-		layout.ACPNPMCache,
+		layout.ACPClaudeConfig,
 	} {
 		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 			t.Fatalf("runtime dir %s missing: %v", dir, err)
 		}
 	}
-	for _, dir := range []string{layout.ACPHome, layout.ACPCodexHome, layout.ACPTmp, layout.ACPNPMCache} {
+	for _, dir := range []string{layout.ACPCodexHome, layout.ACPClaudeConfig} {
 		info, err := os.Stat(dir)
 		if err != nil {
 			t.Fatalf("private runtime dir %s missing: %v", dir, err)
 		}
 		if info.Mode().Perm() != 0o700 {
 			t.Fatalf("private runtime dir %s mode = %o, want 700", dir, info.Mode().Perm())
+		}
+	}
+	for _, dir := range []string{"home", "tmp", "npm-cache"} {
+		if _, err := os.Stat(filepath.Join(layout.Root, "acp", dir)); !os.IsNotExist(err) {
+			t.Fatalf("generic ACP runtime dir %s should not be created, err = %v", dir, err)
 		}
 	}
 }

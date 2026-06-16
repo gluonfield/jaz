@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/runtimeenv"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
@@ -112,6 +114,8 @@ func TestMCPServerSettingsAPI(t *testing.T) {
 }
 
 func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEX_HOME", t.TempDir())
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -141,6 +145,12 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 			Model           string `json:"model"`
 			ReasoningEffort string `json:"reasoning_effort"`
 		} `json:"acp"`
+		ACPOptions map[string]struct {
+			ReasoningEfforts []struct {
+				Value string `json:"value"`
+				Label string `json:"label"`
+			} `json:"reasoning_efforts"`
+		} `json:"acp_options"`
 	}
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
@@ -153,7 +163,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		t.Fatalf("providers = %#v", got.Providers)
 	}
 	if !got.ACP["codex"].Enabled ||
-		got.ACP["codex"].Command != `codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'` ||
+		got.ACP["codex"].Command != `npx -y @jazchat/codex-acp@0.16.1 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'` ||
 		got.ACP["codex"].Model != "gpt-5.5" {
 		t.Fatalf("unexpected codex defaults %#v", got.ACP["codex"])
 	}
@@ -162,15 +172,21 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		got.ACP["grok"].Model != "grok-build" {
 		t.Fatalf("unexpected grok defaults %#v", got.ACP["grok"])
 	}
+	if !hasReasoningEffort(got.ACPOptions["claude"].ReasoningEfforts, "ultracode") ||
+		hasReasoningEffort(got.ACPOptions["codex"].ReasoningEfforts, "ultracode") {
+		t.Fatalf("unexpected acp options %#v", got.ACPOptions)
+	}
 
 	putReq := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
 		"native":{"model_provider":"openrouter","model":"openai/gpt-5.4-mini","reasoning_effort":"medium"},
 		"acp":{
 			"codex":{"enabled":true,"command":"/opt/jaz/codex-acp -c 'sandbox_mode=\"danger-full-access\"'","model":"gpt-5.5","reasoning_effort":"high"},
 			"claude":{"enabled":false,"command":"npx -y @agentclientprotocol/claude-agent-acp@0.43.0","model":"default","reasoning_effort":"medium"}
-		}
+		},
+		"acp_keys":{"codex":"codex-key"}
 	}`))
 	putReq.Header.Set("Content-Type", "application/json")
+	putReq.RemoteAddr = "127.0.0.1:1234"
 	putRes := httptest.NewRecorder()
 	handler.ServeHTTP(putRes, putReq)
 	if putRes.Code != http.StatusOK {
@@ -185,6 +201,100 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		!strings.Contains(string(loaded.Value), `"reasoning_effort":"high"`) {
 		t.Fatalf("stored settings = %s", loaded.Value)
 	}
+	env, err := os.ReadFile(runtimeenv.Path(store.RootDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(env), `JAZ_ACP_CODEX_API_KEY="codex-key"`) {
+		t.Fatalf("runtime env = %s", env)
+	}
+	var saved struct {
+		ACPAuth map[string]struct {
+			APIKeyConfigured bool   `json:"api_key_configured"`
+			AuthKind         string `json:"auth_kind"`
+		} `json:"acp_auth"`
+	}
+	if err := json.Unmarshal(putRes.Body.Bytes(), &saved); err != nil {
+		t.Fatal(err)
+	}
+	if !saved.ACPAuth["codex"].APIKeyConfigured || saved.ACPAuth["codex"].AuthKind != acp.AuthKindAPIKey {
+		t.Fatalf("unexpected acp auth status %#v", saved.ACPAuth)
+	}
+}
+
+func TestAgentSettingsSavesNativeProviderKey(t *testing.T) {
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	handler := (&Server{Store: store, Root: root}).Handler()
+
+	putReq := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
+		"native":{"model_provider":"openrouter","model":"openai/gpt-5.4-mini","reasoning_effort":"medium"},
+		"provider_keys":{"openrouter":"sk-or-test"}
+	}`))
+	putReq.Header.Set("Content-Type", "application/json")
+	putReq.RemoteAddr = "127.0.0.1:1234"
+	putRes := httptest.NewRecorder()
+	handler.ServeHTTP(putRes, putReq)
+	if putRes.Code != http.StatusOK {
+		t.Fatalf("put status = %d, body = %s", putRes.Code, putRes.Body.String())
+	}
+
+	env, err := os.ReadFile(runtimeenv.Path(store.RootDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(env), `OPENROUTER_API_KEY="sk-or-test"`) {
+		t.Fatalf("runtime env = %s", env)
+	}
+
+	var saved struct {
+		Providers []struct {
+			ID         string `json:"id"`
+			Configured bool   `json:"configured"`
+		} `json:"providers"`
+	}
+	if err := json.Unmarshal(putRes.Body.Bytes(), &saved); err != nil {
+		t.Fatal(err)
+	}
+	configured := false
+	for _, provider := range saved.Providers {
+		if provider.ID == "openrouter" {
+			configured = provider.Configured
+		}
+	}
+	if !configured {
+		t.Fatalf("openrouter not reported configured: %#v", saved.Providers)
+	}
+}
+
+func TestAgentSettingsRejectsInvalidSettingsBeforeSavingACPKeys(t *testing.T) {
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	req := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
+		"native":{"model_provider":"openrouter","model":"openai/gpt-5.4-mini","reasoning_effort":"medium"},
+		"acp":{"codex":{"enabled":true,"command":"codex-acp","model":"gpt-5.5","reasoning_effort":"medium","auth":{"mode":"broken"}}},
+		"acp_keys":{"codex":"should-not-save"}
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:1234"
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store, Root: root}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "auth mode") {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	if _, err := os.Stat(runtimeenv.Path(root)); !os.IsNotExist(err) {
+		t.Fatalf("runtime env should not be written, err = %v", err)
+	}
 }
 
 func hasNativeProvider(providers []struct {
@@ -193,6 +303,18 @@ func hasNativeProvider(providers []struct {
 }, id, baseURL string) bool {
 	for _, provider := range providers {
 		if provider.ID == id && provider.BaseURL == baseURL {
+			return true
+		}
+	}
+	return false
+}
+
+func hasReasoningEffort(options []struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}, value string) bool {
+	for _, option := range options {
+		if option.Value == value {
 			return true
 		}
 	}
@@ -362,6 +484,9 @@ func TestCORSAllowsDeletePreflight(t *testing.T) {
 	}
 	if allow := res.Header().Get("Access-Control-Allow-Methods"); !strings.Contains(allow, http.MethodDelete) {
 		t.Fatalf("Access-Control-Allow-Methods = %q, missing DELETE", allow)
+	}
+	if allow := res.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(allow, "Authorization") {
+		t.Fatalf("Access-Control-Allow-Headers = %q, missing Authorization", allow)
 	}
 }
 

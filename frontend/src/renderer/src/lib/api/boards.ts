@@ -1,6 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '../query/keys'
-import { apiBaseUrl, del, get, patch, post } from './client'
+import { apiFetch, del, get, patch, post } from './client'
 import type { Board, BoardItem } from './types'
 
 const activeRunStatus = (status?: string) => status === 'starting' || status === 'running'
@@ -85,14 +85,18 @@ export function reportWidgetLayout(
   return post<{ ok: boolean }>(`/v1/widgets/${widgetId}/layout`, layout)
 }
 
-// Version in the URL makes a publish naturally reload the iframe; theme and
-// zoom in the URL paint the first frame right (live changes go over the bridge).
-export function widgetContentUrl(
+// The endpoint serves the raw widget fragment; the board wraps it in the shared
+// artifact document client-side, so theme and zoom are applied by the host.
+export function widgetContentPath(widgetId: string, version: number): string {
+  return `/v1/widgets/${encodeURIComponent(widgetId)}/content?version=${version}`
+}
+
+export async function fetchWidgetContent(
   widgetId: string,
   version: number,
-  theme: string,
-  zoom = 1,
-): string {
-  const zoomParam = zoom !== 1 ? `&zoom=${zoom}` : ''
-  return `${apiBaseUrl()}/v1/widgets/${widgetId}/content?version=${version}&theme=${theme}${zoomParam}`
+  signal?: AbortSignal,
+): Promise<string> {
+  const res = await apiFetch(widgetContentPath(widgetId, version), { signal })
+  if (!res.ok) throw new Error(`Widget content failed with ${res.status}`)
+  return res.text()
 }

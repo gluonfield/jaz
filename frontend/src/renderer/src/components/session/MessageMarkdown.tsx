@@ -1,12 +1,37 @@
 import { useQuery } from '@tanstack/react-query'
 import { FileText, Globe } from 'lucide-react'
-import { memo, useMemo } from 'react'
+import { createContext, memo, useContext, useMemo, type MouseEvent, type ReactNode } from 'react'
 import Markdown from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
+import { parseFileReference, type FileReference } from '../../../../shared/fileReader'
+import { shouldPreviewURLByDefault } from '../../../../shared/preview'
 import { encodeMention, MentionPill } from './mentions'
+
+const PreviewLinkContext = createContext<((url: string) => void) | null>(null)
+const FileReaderLinkContext = createContext<((file: FileReference) => void) | null>(null)
+
+export function PreviewLinkProvider({
+  onOpen,
+  children,
+}: {
+  onOpen: (url: string) => void
+  children: ReactNode
+}) {
+  return <PreviewLinkContext.Provider value={onOpen}>{children}</PreviewLinkContext.Provider>
+}
+
+export function FileReaderLinkProvider({
+  onOpen,
+  children,
+}: {
+  onOpen: (file: FileReference) => void
+  children: ReactNode
+}) {
+  return <FileReaderLinkContext.Provider value={onOpen}>{children}</FileReaderLinkContext.Provider>
+}
 
 // Models often emit \[...\] / \(...\) math delimiters; remark-math only
 // parses dollar-style math. Convert outside of code spans/fences.
@@ -32,19 +57,27 @@ function textFromChildren(children: unknown): string {
   return ''
 }
 
-function isAbsoluteLocalPath(value: string): boolean {
-  return (value.startsWith('/') && !value.startsWith('//')) || value.startsWith('file:///')
-}
-
-function isLocalPathLink(href: unknown, children: unknown): boolean {
-  return (
-    (typeof href === 'string' && isAbsoluteLocalPath(href)) ||
-    isAbsoluteLocalPath(textFromChildren(children).trim())
-  )
+function localFileFromLink(href: unknown, children: unknown): FileReference | null {
+  if (typeof href === 'string') {
+    const fromHref = parseFileReference(decodeMentionHref(href))
+    if (fromHref) return fromHref
+  }
+  return parseFileReference(textFromChildren(children).trim())
 }
 
 function isUrlLink(href: unknown): boolean {
   return typeof href === 'string' && /^https?:\/\//i.test(href)
+}
+
+function shouldPreviewLink(event: MouseEvent<HTMLElement>): boolean {
+  return (
+    event.button === 0 &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.shiftKey &&
+    !event.altKey &&
+    !event.defaultPrevented
+  )
 }
 
 function escapeRegExp(value: string): string {
@@ -71,6 +104,76 @@ function linkifyKnownSkills(text: string, skills: SkillInfo[]): string {
     .join('')
 }
 
+const FILE_REFERENCE_PATTERN =
+  /(?:file:\/\/\/|\/)(?:[^\s<>(){}]+\/)+[^\s<>(){}]+\.[A-Za-z0-9][A-Za-z0-9]*(?::\d+)?/g
+
+type MarkdownNode = {
+  type: string
+  value?: string
+  url?: string
+  title?: string | null
+  children?: MarkdownNode[]
+}
+
+const FILE_REFERENCE_SKIP_NODES = new Set([
+  'code',
+  'definition',
+  'html',
+  'image',
+  'imageReference',
+  'inlineCode',
+  'inlineMath',
+  'link',
+  'linkReference',
+  'math',
+])
+
+function remarkFileReferences() {
+  return (tree: MarkdownNode) => {
+    linkifyFileReferenceNodes(tree)
+  }
+}
+
+function linkifyFileReferenceNodes(node: MarkdownNode): void {
+  if (!node.children || FILE_REFERENCE_SKIP_NODES.has(node.type)) return
+  for (let i = 0; i < node.children.length; i++) {
+    const child = node.children[i]
+    if (child.type === 'text' && typeof child.value === 'string') {
+      const replacement = fileReferenceTextNodes(child.value)
+      if (replacement) {
+        node.children.splice(i, 1, ...replacement)
+        i += replacement.length - 1
+      }
+      continue
+    }
+    linkifyFileReferenceNodes(child)
+  }
+}
+
+function fileReferenceTextNodes(value: string): MarkdownNode[] | null {
+  if (!value.includes('/')) return null
+  const nodes: MarkdownNode[] = []
+  let lastIndex = 0
+  FILE_REFERENCE_PATTERN.lastIndex = 0
+  for (const match of value.matchAll(FILE_REFERENCE_PATTERN)) {
+    const raw = match[0]
+    const ref = parseFileReference(raw)
+    if (!ref) continue
+    const index = match.index ?? 0
+    if (index > lastIndex) nodes.push({ type: 'text', value: value.slice(lastIndex, index) })
+    nodes.push({
+      type: 'link',
+      url: ref.line ? `${ref.path}:${ref.line}` : ref.path,
+      title: null,
+      children: [{ type: 'text', value: raw }],
+    })
+    lastIndex = index + raw.length
+  }
+  if (!nodes.length) return null
+  if (lastIndex < value.length) nodes.push({ type: 'text', value: value.slice(lastIndex) })
+  return nodes
+}
+
 function mentionSigil(label: string): '$' | '@' | null {
   return label.startsWith('$') || label.startsWith('@') ? (label[0] as '$' | '@') : null
 }
@@ -82,6 +185,8 @@ export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: s
   // Cached by the composer; lets assistant echoes of $skill-name render as
   // mention pills. An empty catalog simply skips the pass.
   const skills = useQuery(skillsQuery)
+  const openPreview = useContext(PreviewLinkContext)
+  const openFile = useContext(FileReaderLinkContext)
   const prepared = useMemo(
     () => normalizeMath(linkifyKnownSkills(text, skills.data ?? [])),
     [text, skills.data],
@@ -89,12 +194,10 @@ export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: s
   return (
     <div className="chat-prose">
       <Markdown
-        remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: false }]]}
+        remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: false }], remarkFileReferences]}
         rehypePlugins={[rehypeKatex]}
         components={{
-          // External links open in the system browser (main process denies
-          // window.open and calls shell.openExternal).
-          a: ({ node: _node, children, href, ...props }) => {
+          a: ({ node: _node, children, href, onClick, ...props }) => {
             // Linked mentions ([$skill](path) / [@path](abs)) render as the
             // composer's pills, not as links.
             const label = textFromChildren(children)
@@ -106,10 +209,49 @@ export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: s
                 />
               )
             }
-            const localPath = isLocalPathLink(href, children)
-            const Icon = localPath ? FileText : isUrlLink(href) ? Globe : null
+            const localFile = localFileFromLink(href, children)
+            const urlLink = isUrlLink(href)
+            const Icon = localFile ? FileText : urlLink ? Globe : null
+            if (localFile) {
+              return (
+                <button
+                  type="button"
+                  className="chat-prose-link-button"
+                  onClick={(event) => {
+                    if (openFile && shouldPreviewLink(event)) openFile(localFile)
+                  }}
+                >
+                  <FileText
+                    aria-hidden="true"
+                    className="chat-prose-link-icon"
+                    size={13}
+                    strokeWidth={1.7}
+                  />
+                  {children}
+                </button>
+              )
+            }
+            if (!urlLink) return <>{children}</>
             return (
-              <a {...props} href={href} target="_blank" rel="noreferrer">
+              <a
+                {...props}
+                href={href}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(event) => {
+                  onClick?.(event)
+                  if (
+                    !openPreview ||
+                    typeof href !== 'string' ||
+                    !shouldPreviewURLByDefault(href) ||
+                    !shouldPreviewLink(event)
+                  ) {
+                    return
+                  }
+                  event.preventDefault()
+                  openPreview(href)
+                }}
+              >
                 {Icon ? (
                   <Icon
                     aria-hidden="true"

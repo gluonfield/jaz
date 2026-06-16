@@ -10,15 +10,34 @@ interface Toast {
   tone: 'ok' | 'danger'
 }
 
-const TOAST_AUTO_DISMISS_MS = 30_000
+const TOAST_AUTO_DISMISS_MS = 10_000
 const actionClass =
-  'grid size-8 shrink-0 place-items-center rounded-full text-ink-3 outline-none transition-[background-color,color,transform] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-primary/40'
+  'relative grid size-8 shrink-0 place-items-center rounded-full text-ink-3 outline-none transition-[background-color,color,transform] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-primary/40'
 const toastMotion = {
   initial: { opacity: 0, y: 8, scale: 0.97 },
   animate: { opacity: 1, y: 0, scale: 1 },
   exit: { opacity: 0, y: 4, scale: 0.97 },
   transition: { type: 'spring', stiffness: 420, damping: 30 },
 } as const
+
+function ToastTimer() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" className="pointer-events-none absolute inset-1 -rotate-90 text-primary">
+      <motion.circle
+        cx="8"
+        cy="8"
+        r="6"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.5"
+        initial={{ pathLength: 1, opacity: 0.8 }}
+        animate={{ pathLength: 0, opacity: 0.45 }}
+        transition={{ duration: TOAST_AUTO_DISMISS_MS / 1000, ease: 'linear' }}
+      />
+    </svg>
+  )
+}
 
 const ToastContext = createContext<(message: string, tone?: Toast['tone']) => void>(() => {})
 
@@ -70,7 +89,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           {toasts.map((toast) => (
             <motion.div key={toast.id} role={toast.tone === 'danger' ? 'alert' : 'status'} layout {...toastMotion}>
               {toast.tone === 'danger' ? (
-                <div className="pointer-events-auto max-w-[min(520px,calc(100vw-2rem))] rounded-card bg-surface px-3.5 py-3 text-sm leading-snug text-ink shadow-[0_18px_42px_rgba(18,20,30,0.16)] ring-1 ring-danger/25 dark:shadow-[0_18px_42px_rgba(0,0,0,0.32)]">
+                <div className="pointer-events-auto max-w-[min(520px,calc(100vw-2rem))] rounded-card bg-surface px-3.5 py-3 text-sm leading-snug text-ink shadow-[var(--shadow-raised)] ring-1 ring-danger/25">
                   <div className="flex items-center gap-3">
                     <div className="flex min-w-0 flex-1 items-center gap-2">
                       <span className="size-1.5 shrink-0 rounded-full bg-danger" />
@@ -113,6 +132,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                     onClick={() => dismiss(toast.id)}
                     className={`${actionClass} -my-1 -mr-1`}
                   >
+                    <ToastTimer />
                     <X size={13} />
                   </button>
                 </div>

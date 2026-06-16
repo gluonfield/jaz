@@ -31,11 +31,7 @@ function SessionsPage() {
         </EmptyState>
       ) : sessions.data.length === 0 ? (
         <EmptyState title="No sessions yet">
-          <p>
-            Start one from a terminal with{' '}
-            <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[12px]">jaz chat</code>{' '}
-            and it will appear here.
-          </p>
+          <p>Start one from the home screen and it will appear here.</p>
         </EmptyState>
       ) : (
         <div className="flex flex-col gap-px">

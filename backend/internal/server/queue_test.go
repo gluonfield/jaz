@@ -68,14 +68,14 @@ func TestSessionQueueActionReplacesQueuedMessages(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(got.QueuedMessages, "|") != "one|two" {
+	if queuedTexts(got.QueuedMessages) != "one|two" {
 		t.Fatalf("response queue = %#v", got.QueuedMessages)
 	}
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(loaded.QueuedMessages, "|") != "one|two" {
+	if queuedTexts(loaded.QueuedMessages) != "one|two" {
 		t.Fatalf("stored queue = %#v", loaded.QueuedMessages)
 	}
 }
@@ -89,12 +89,12 @@ func TestSessionQueueActionMutatesStoredQueue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	session.QueuedMessages = []string{"first", "second"}
+	session.QueuedMessages = queuedMessages("first", "second")
 	if err := store.SaveSession(session); err != nil {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"edit","index":1,"expected":"second","text":"changed"}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"edit","index":1,"expected":"second","message":{"text":"changed"}}`))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 
@@ -107,7 +107,7 @@ func TestSessionQueueActionMutatesStoredQueue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(loaded.QueuedMessages, "|") != "first|changed" {
+	if queuedTexts(loaded.QueuedMessages) != "first|changed" {
 		t.Fatalf("queue = %#v", loaded.QueuedMessages)
 	}
 
@@ -124,8 +124,41 @@ func TestSessionQueueActionMutatesStoredQueue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(loaded.QueuedMessages, "|") != "first|changed" {
+	if queuedTexts(loaded.QueuedMessages) != "first|changed" {
 		t.Fatalf("stale mutation changed queue: %#v", loaded.QueuedMessages)
+	}
+}
+
+func TestSessionQueueActionAppendsAttachmentIDs(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "queue-attachment"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &Server{Store: store, Workspace: t.TempDir()}
+	handler := srv.Handler()
+	attachment := uploadTestAttachment(t, handler, session.ID, "image.png", "image-bytes")
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"append","message":{"text":"inspect this","attachment_ids":["`+attachment.ID+`"]}}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if queuedTexts(loaded.QueuedMessages) != "inspect this" {
+		t.Fatalf("queue = %#v", loaded.QueuedMessages)
+	}
+	if got := loaded.QueuedMessages[0].AttachmentIDs; len(got) != 1 || got[0] != attachment.ID {
+		t.Fatalf("queued attachment ids = %#v", got)
 	}
 }
 
@@ -139,13 +172,13 @@ func TestSessionQueueAttentionFollowsUserSendNotQueueEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 	oldAttention := time.Now().UTC().Add(-time.Hour).Truncate(time.Millisecond)
-	session.QueuedMessages = []string{"first"}
+	session.QueuedMessages = queuedMessages("first")
 	storage.MarkSessionAttention(&session, oldAttention)
 	if err := store.SaveSession(session); err != nil {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"edit","index":0,"expected":"first","text":"changed"}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"edit","index":0,"expected":"first","message":{"text":"changed"}}`))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 	(&Server{Store: store}).Handler().ServeHTTP(res, req)
@@ -160,7 +193,7 @@ func TestSessionQueueAttentionFollowsUserSendNotQueueEdits(t *testing.T) {
 		t.Fatalf("edit changed attention: %s -> %s", oldAttention, loaded.LastAttentionAt)
 	}
 
-	req = httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"append","text":"new prompt"}`))
+	req = httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"append","message":{"text":"new prompt"}}`))
 	req.Header.Set("Content-Type", "application/json")
 	res = httptest.NewRecorder()
 	(&Server{Store: store}).Handler().ServeHTTP(res, req)
@@ -234,7 +267,7 @@ func TestSessionQueueActionDoesNotWaitForRunningNativeTurn(t *testing.T) {
 		close(provider.release)
 		t.Fatal(err)
 	}
-	if strings.Join(loaded.QueuedMessages, "|") != "queued while running" {
+	if queuedTexts(loaded.QueuedMessages) != "queued while running" {
 		close(provider.release)
 		t.Fatalf("queue = %#v", loaded.QueuedMessages)
 	}
@@ -268,6 +301,24 @@ func waitForNativeQueueIdle(t *testing.T, store storage.SessionStore, sessionID 
 	t.Fatalf("native queue did not drain: status=%s queued=%#v", session.Status, session.QueuedMessages)
 }
 
+func queuedMessages(texts ...string) []storage.QueuedMessage {
+	out := make([]storage.QueuedMessage, 0, len(texts))
+	for _, text := range texts {
+		out = append(out, storage.NewQueuedMessage(text, nil))
+	}
+	return out
+}
+
+func queuedTexts(messages []storage.QueuedMessage) string {
+	out := make([]string, 0, len(messages))
+	for _, message := range messages {
+		if text := strings.TrimSpace(message.Text); text != "" {
+			out = append(out, text)
+		}
+	}
+	return strings.Join(out, "|")
+}
+
 func TestACPTurnFinishedDrainsQueuedPromptWithoutActiveClient(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -286,7 +337,7 @@ func TestACPTurnFinishedDrainsQueuedPromptWithoutActiveClient(t *testing.T) {
 		t.Fatal(err)
 	}
 	session.Status = storage.StatusRunning
-	session.QueuedMessages = []string{"next prompt"}
+	session.QueuedMessages = queuedMessages("next prompt")
 	if err := store.SaveSession(session); err != nil {
 		t.Fatal(err)
 	}
@@ -332,6 +383,50 @@ func TestACPTurnFinishedDrainsQueuedPromptWithoutActiveClient(t *testing.T) {
 	}
 }
 
+func TestQueuedACPDrainSendsAttachments(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "codex-queue-attachment",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     "codex",
+			SessionID: "acp-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	srv := &Server{Store: store, Workspace: workspace}
+	attachment := uploadTestAttachment(t, srv.Handler(), session.ID, "image.png", "image-bytes")
+	session.QueuedMessages = []storage.QueuedMessage{
+		storage.NewQueuedMessage("inspect this", []string{attachment.ID}),
+	}
+	if err := store.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeACPManager{job: acp.Job{
+		ID:    session.ID,
+		Slug:  session.Slug,
+		State: acp.StateIdle,
+	}}
+	srv.ACP = manager
+
+	srv.drainQueuedPrompt(context.Background(), session.ID)
+
+	sent := waitForACPSend(t, manager, "inspect this")
+	if len(sent.Attachments) != 1 {
+		t.Fatalf("attachments = %#v", sent.Attachments)
+	}
+	if got := sent.Attachments[0]; got.ID != attachment.ID || got.URI != attachment.URI {
+		t.Fatalf("sent attachment = %#v, want %#v", got, attachment)
+	}
+}
+
 func TestQueuedACPDrainClaimsOnlyOnePrompt(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -349,7 +444,7 @@ func TestQueuedACPDrainClaimsOnlyOnePrompt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	session.QueuedMessages = []string{"first", "second"}
+	session.QueuedMessages = queuedMessages("first", "second")
 	if err := store.SaveSession(session); err != nil {
 		t.Fatal(err)
 	}
@@ -372,7 +467,7 @@ func TestQueuedACPDrainClaimsOnlyOnePrompt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(loaded.QueuedMessages, "|") != "second" {
+	if queuedTexts(loaded.QueuedMessages) != "second" {
 		t.Fatalf("queue = %#v, want only second prompt left", loaded.QueuedMessages)
 	}
 }
@@ -395,7 +490,7 @@ func TestSessionQueueSteerClaimsOnePromptForRunningACP(t *testing.T) {
 		t.Fatal(err)
 	}
 	session.Status = storage.StatusRunning
-	session.QueuedMessages = []string{"first", "second", "third"}
+	session.QueuedMessages = queuedMessages("first", "second", "third")
 	if err := store.SaveSession(session); err != nil {
 		t.Fatal(err)
 	}
@@ -426,8 +521,58 @@ func TestSessionQueueSteerClaimsOnePromptForRunningACP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(loaded.QueuedMessages, "|") != "first|third" {
+	if queuedTexts(loaded.QueuedMessages) != "first|third" {
 		t.Fatalf("queue = %#v, want selected prompt removed only", loaded.QueuedMessages)
+	}
+}
+
+func TestSessionQueueSteerRejectsAttachmentsForRunningACP(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "codex-queue-steer-attachment",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     "codex",
+			SessionID: "acp-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	srv := &Server{Store: store, Workspace: workspace}
+	attachment := uploadTestAttachment(t, srv.Handler(), session.ID, "image.png", "image-bytes")
+	session.Status = storage.StatusRunning
+	session.QueuedMessages = []storage.QueuedMessage{
+		storage.NewQueuedMessage("inspect this", []string{attachment.ID}),
+	}
+	if err := store.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+	srv.ACP = &fakeACPManager{job: acp.Job{
+		ID:    session.ID,
+		Slug:  session.Slug,
+		State: acp.StateRunning,
+	}}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"steer","index":0}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "attachments cannot steer") {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.QueuedMessages) != 1 || loaded.QueuedMessages[0].AttachmentIDs[0] != attachment.ID {
+		t.Fatalf("queue changed after rejected steer: %#v", loaded.QueuedMessages)
 	}
 }
 
@@ -449,7 +594,7 @@ func TestSessionQueueSteerUsesServerContextAfterRequestCancel(t *testing.T) {
 		t.Fatal(err)
 	}
 	session.Status = storage.StatusRunning
-	session.QueuedMessages = []string{"steer even after request cancel"}
+	session.QueuedMessages = queuedMessages("steer even after request cancel")
 	if err := store.SaveSession(session); err != nil {
 		t.Fatal(err)
 	}
@@ -496,7 +641,7 @@ func TestSessionQueueSteerStartsIdleACPFromBackend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	session.QueuedMessages = []string{"start this now"}
+	session.QueuedMessages = queuedMessages("start this now")
 	if err := store.SaveSession(session); err != nil {
 		t.Fatal(err)
 	}
@@ -546,7 +691,7 @@ func TestSessionQueueSteerRestoresPromptWhenSendFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	session.Status = storage.StatusRunning
-	session.QueuedMessages = []string{"first", "second", "third"}
+	session.QueuedMessages = queuedMessages("first", "second", "third")
 	if err := store.SaveSession(session); err != nil {
 		t.Fatal(err)
 	}
@@ -574,11 +719,11 @@ func TestSessionQueueSteerRestoresPromptWhenSendFails(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return strings.Join(loaded.QueuedMessages, "|") == "first|second|third" &&
+		return queuedTexts(loaded.QueuedMessages) == "first|second|third" &&
 			loaded.Status == storage.StatusError &&
 			strings.Contains(loaded.Error, "steer failed")
 	})
-	if strings.Join(loaded.QueuedMessages, "|") != "first|second|third" {
+	if queuedTexts(loaded.QueuedMessages) != "first|second|third" {
 		t.Fatalf("queue = %#v, want failed steer restored at original index", loaded.QueuedMessages)
 	}
 	if loaded.Status != storage.StatusError || !strings.Contains(loaded.Error, "steer failed") {
@@ -637,7 +782,7 @@ func TestQueuedNativeDrainRunsPromptWithoutClientStream(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	session.QueuedMessages = []string{"native queued prompt"}
+	session.QueuedMessages = queuedMessages("native queued prompt")
 	if err := store.SaveSession(session); err != nil {
 		t.Fatal(err)
 	}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
+	usagecore "github.com/wins/jaz/backend/internal/usage"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
 
@@ -208,7 +208,10 @@ func TestSessionQueuedMessagesRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	session.QueuedMessages = []string{"one prompt", "second prompt"}
+	session.QueuedMessages = []storage.QueuedMessage{
+		storage.NewQueuedMessage("one prompt", nil),
+		storage.NewQueuedMessage("second prompt", []string{"abc123"}),
+	}
 	if err := store.SaveSession(session); err != nil {
 		t.Fatal(err)
 	}
@@ -217,8 +220,11 @@ func TestSessionQueuedMessagesRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(loaded.QueuedMessages, "|") != "one prompt|second prompt" {
+	if len(loaded.QueuedMessages) != 2 || loaded.QueuedMessages[0].Text != "one prompt" || loaded.QueuedMessages[1].Text != "second prompt" {
 		t.Fatalf("queued messages = %#v", loaded.QueuedMessages)
+	}
+	if got := loaded.QueuedMessages[1].AttachmentIDs; len(got) != 1 || got[0] != "abc123" {
+		t.Fatalf("queued attachment ids = %#v", got)
 	}
 }
 
@@ -363,6 +369,7 @@ func TestAddUsageStoresCachedTokensAndMirrors(t *testing.T) {
 	if err := store.AddUsage(session.ID, storage.Usage{
 		InputTokens:           100,
 		CachedInputTokens:     64,
+		CachedWriteTokens:     6,
 		OutputTokens:          25,
 		ReasoningOutputTokens: 7,
 		ContextWindowTokens:   400000,
@@ -382,9 +389,9 @@ func TestAddUsageStoresCachedTokensAndMirrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Missing totals derive from the disjoint components (100+64+25 = 189).
-	if loaded.Usage.InputTokens != 110 || loaded.Usage.CachedInputTokens != 72 || loaded.Usage.OutputTokens != 30 ||
-		loaded.Usage.ReasoningOutputTokens != 7 || loaded.Usage.TotalTokens != 209 {
+	// Missing totals derive from the disjoint components (100+64+6+25 = 195).
+	if loaded.Usage.InputTokens != 110 || loaded.Usage.CachedInputTokens != 72 || loaded.Usage.CachedWriteTokens != 6 ||
+		loaded.Usage.OutputTokens != 30 || loaded.Usage.ReasoningOutputTokens != 7 || loaded.Usage.TotalTokens != 215 {
 		t.Fatalf("usage = %#v", loaded.Usage)
 	}
 	// Context reflects only the latest turn (10+8+5), never accumulates; the
@@ -403,6 +410,16 @@ func TestAddUsageStoresCachedTokensAndMirrors(t *testing.T) {
 	}
 	if mirrored.Usage != loaded.Usage {
 		t.Fatalf("mirrored usage = %#v, want %#v", mirrored.Usage, loaded.Usage)
+	}
+	daily, err := usagecore.NewService(store).Daily(usagecore.DailyQuery{Days: 1, Location: time.UTC})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantDaily := loaded.Usage
+	wantDaily.ContextTokens = 0
+	wantDaily.ContextWindowTokens = 0
+	if len(daily) != 1 || daily[0].SessionCount != 1 || daily[0].Usage != wantDaily {
+		t.Fatalf("daily usage = %#v, want one bucket with %#v", daily, wantDaily)
 	}
 }
 

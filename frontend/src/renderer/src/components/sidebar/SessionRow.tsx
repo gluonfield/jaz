@@ -23,14 +23,6 @@ export function sessionLabel(session: Session): string {
 }
 
 function StatusDot({ session }: { session: Session }) {
-  if (session.status === 'running') {
-    return (
-      <span
-        title="Running"
-        className="size-1.5 shrink-0 animate-pulse rounded-full bg-running"
-      />
-    )
-  }
   if (session.status === 'error') {
     return (
       <span
@@ -77,6 +69,15 @@ export function SessionRow({
       {shortcut ? (
         <span className="flex min-w-8 shrink-0 justify-end">
           <KeyboardShortcut value={shortcut} />
+        </span>
+      ) : session.status === 'running' ? (
+        <span
+          title="Running"
+          className={`flex min-w-8 shrink-0 items-center justify-end ${
+            shortcutMode ? '' : 'group-hover:hidden'
+          }`}
+        >
+          <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-running" />
         </span>
       ) : (
         <span

@@ -113,10 +113,10 @@ func TestManagerRefreshLocalCanUseLocalServer(t *testing.T) {
 
 	registry := tools.NewRegistry()
 	manager := NewManager(&testStore{servers: []mcpconfig.Server{{
-		ID:        "jazmem",
-		Name:      "jazmem",
+		ID:        "jaztools",
+		Name:      "jaztools",
 		Transport: mcpconfig.TransportStreamableHTTP,
-		URL:       "http://127.0.0.1:1/mcp/jazmem",
+		URL:       "http://127.0.0.1:1/mcp/jaztools",
 		Enabled:   true,
 	}, {
 		ID:        "remote",
@@ -124,18 +124,18 @@ func TestManagerRefreshLocalCanUseLocalServer(t *testing.T) {
 		Transport: mcpconfig.TransportStreamableHTTP,
 		URL:       "http://127.0.0.1:1/mcp/remote",
 		Enabled:   true,
-	}}}, nil, registry, log.New(io.Discard), WithLocalServer("jazmem", server))
+	}}}, nil, registry, log.New(io.Discard), WithLocalServer("jaztools", server))
 	manager.RefreshLocal(context.Background())
 	defer manager.Close()
 
-	status := manager.Status("jazmem")
+	status := manager.Status("jaztools")
 	if status.Status != "connected" || status.ToolCount != 1 {
 		t.Fatalf("status = %#v", status)
 	}
 	if status := manager.Status("remote"); status.Status != "" {
 		t.Fatalf("remote status = %#v, want unset", status)
 	}
-	tool, ok := registry.Get("mcp_jazmem_echo")
+	tool, ok := registry.Get("mcp_jaztools_echo")
 	if !ok {
 		t.Fatalf("local handler tool not registered")
 	}
@@ -145,6 +145,74 @@ func TestManagerRefreshLocalCanUseLocalServer(t *testing.T) {
 	}
 	if !strings.Contains(result.Content, "local ok") {
 		t.Fatalf("result = %s", result.Content)
+	}
+}
+
+func TestManagerRefreshIncludesBuiltinLocalServerOutsideStore(t *testing.T) {
+	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "builtin-mcp", Version: "1.0.0"}, nil)
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
+		Name:        "echo",
+		Description: "echoes a value",
+	}, func(ctx context.Context, req *mcpsdk.CallToolRequest, input echoInput) (*mcpsdk.CallToolResult, map[string]string, error) {
+		return &mcpsdk.CallToolResult{
+			Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: "builtin " + input.Value}},
+		}, map[string]string{"value": input.Value}, nil
+	})
+
+	registry := tools.NewRegistry()
+	manager := NewManager(&testStore{}, nil, registry, log.New(io.Discard), WithBuiltinServerProvider(mcpconfig.Server{
+		ID:      "jaztools",
+		Name:    "jaztools",
+		Enabled: true,
+	}, func() *mcpsdk.Server { return server }))
+	manager.Refresh(context.Background())
+	defer manager.Close()
+
+	status := manager.Status("jaztools")
+	if status.Status != "connected" || status.ToolCount != 1 {
+		t.Fatalf("status = %#v", status)
+	}
+	tool, ok := registry.Get("mcp_jaztools_echo")
+	if !ok {
+		t.Fatalf("builtin tool not registered")
+	}
+	result, err := tool.Execute(context.Background(), map[string]any{"value": "ok"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "builtin ok") {
+		t.Fatalf("result = %s", result.Content)
+	}
+}
+
+func TestLocalServerProviderIsLazy(t *testing.T) {
+	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "local-mcp", Version: "1.0.0"}, nil)
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
+		Name:        "echo",
+		Description: "echoes a value",
+	}, func(ctx context.Context, req *mcpsdk.CallToolRequest, input echoInput) (*mcpsdk.CallToolResult, map[string]string, error) {
+		return &mcpsdk.CallToolResult{}, map[string]string{"value": input.Value}, nil
+	})
+
+	calls := 0
+	registry := tools.NewRegistry()
+	manager := NewManager(&testStore{servers: []mcpconfig.Server{{
+		ID:        "jaztools",
+		Name:      "jaztools",
+		Transport: mcpconfig.TransportStreamableHTTP,
+		URL:       "http://127.0.0.1:1/mcp/jaztools",
+		Enabled:   true,
+	}}}, nil, registry, log.New(io.Discard), WithLocalServerProvider("jaztools", func() *mcpsdk.Server {
+		calls++
+		return server
+	}))
+	if calls != 0 {
+		t.Fatalf("provider called during manager construction")
+	}
+	manager.RefreshLocal(context.Background())
+	defer manager.Close()
+	if calls != 1 {
+		t.Fatalf("provider calls = %d, want 1", calls)
 	}
 }
 
@@ -178,5 +246,19 @@ func TestMappedToolNameIsSafeAndBounded(t *testing.T) {
 		if !(ch == '_' || ch == '-' || ch >= 'A' && ch <= 'Z' || ch >= 'a' && ch <= 'z' || ch >= '0' && ch <= '9') {
 			t.Fatalf("unsafe character %q in %q", ch, name)
 		}
+	}
+}
+
+func TestJazToolsMappedNamesDoNotRepeatJaz(t *testing.T) {
+	used := map[string]string{}
+	server := mcpconfig.Server{ID: "jaztools", Name: "jaztools"}
+	if got := mappedToolName(server, "memory_search", used); got != "mcp_jaztools_memory_search" {
+		t.Fatalf("memory tool name = %q", got)
+	}
+	if got := mappedToolName(server, "loop_create", used); got != "mcp_jaztools_loop_create" {
+		t.Fatalf("loop tool name = %q", got)
+	}
+	if got := mappedToolName(server, "visualize:show_widget", used); got != "mcp_jaztools_visualize_show_widget" {
+		t.Fatalf("visualize tool name = %q", got)
 	}
 }

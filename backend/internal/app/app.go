@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/log"
 	"github.com/gluonfield/jazmem/pkg/jazmem"
@@ -19,6 +20,7 @@ import (
 	"github.com/wins/jaz/backend/internal/provider"
 	mockprovider "github.com/wins/jaz/backend/internal/provider/mock"
 	openaiprovider "github.com/wins/jaz/backend/internal/provider/openai"
+	"github.com/wins/jaz/backend/internal/runtimeenv"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/sessionevents"
@@ -39,6 +41,7 @@ import (
 	exectool "github.com/wins/jaz/backend/internal/tools/exec"
 	plantool "github.com/wins/jaz/backend/internal/tools/plan"
 	viewimagetool "github.com/wins/jaz/backend/internal/tools/viewimage"
+	visualizetool "github.com/wins/jaz/backend/internal/tools/visualize"
 	widgettool "github.com/wins/jaz/backend/internal/tools/widget"
 	"github.com/wins/jaz/backend/internal/voice"
 	mistralvoice "github.com/wins/jaz/backend/internal/voice/mistral"
@@ -89,9 +92,10 @@ type Workspace string
 type Stores struct {
 	fx.Out
 
-	Store        *sqlitestore.Store
-	ACPStore     acp.Store
-	StorageStore storage.Store
+	Store           *sqlitestore.Store
+	ACPStore        acp.Store
+	StorageStore    storage.Store
+	UsageEventStore storage.UsageEventStore
 }
 
 func NewRuntimeLayout(cfg Config) (runtimefiles.Layout, error) {
@@ -118,7 +122,7 @@ func NewStore(layout runtimefiles.Layout, catalog acp.AgentCatalog) (Stores, err
 		_ = store.Close()
 		return Stores{}, err
 	}
-	return Stores{Store: store, ACPStore: store, StorageStore: store}, nil
+	return Stores{Store: store, ACPStore: store, StorageStore: store, UsageEventStore: store}, nil
 }
 
 func NewWorkspace(cfg Config, layout runtimefiles.Layout) (Workspace, error) {
@@ -186,6 +190,8 @@ func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspac
 			ExtraRoots: []string{loops.AutomationsDir(store.RootDir())},
 			PathScope:  applypatch.AbsolutePaths,
 		},
+		&visualizetool.ReadMeTool{},
+		&visualizetool.ShowWidgetTool{},
 		&viewimagetool.Tool{Workspace: string(workspace)},
 		&widgettool.Tool{Publisher: widgetPublisher},
 		&agentspawn.Tool{Manager: manager},
@@ -248,10 +254,62 @@ func StartMemoryScheduler(lc fx.Lifecycle, memory *memoryservice.Service) {
 }
 
 func NewProvider(cfg Config) (provider.Provider, error) {
+	reloadable := &ReloadableProvider{
+		cfg:     cfg,
+		envPath: runtimeenv.Path(runtimeRoot(cfg.Root)),
+	}
+	return reloadable, reloadable.Reload()
+}
+
+type ReloadableProvider struct {
+	mu      sync.RWMutex
+	cfg     Config
+	envPath string
+	current provider.Provider
+}
+
+func (p *ReloadableProvider) Reload() error {
+	next := buildProvider(p.cfg, p.envPath)
+	p.mu.Lock()
+	p.current = next
+	p.mu.Unlock()
+	return nil
+}
+
+func (p *ReloadableProvider) APIKeyConfigured(id string) bool {
+	cfg := providerConfigWithRuntimeEnv(p.cfg.ModelProviders[id], id, p.envPath)
+	return strings.TrimSpace(cfg.APIKey) != ""
+}
+
+func (p *ReloadableProvider) APIKeyEnvPath() string {
+	return p.envPath
+}
+
+func (p *ReloadableProvider) Complete(ctx context.Context, req provider.Request) (provider.Response, error) {
+	current := p.currentProvider()
+	return current.Complete(ctx, req)
+}
+
+func (p *ReloadableProvider) StreamComplete(ctx context.Context, req provider.Request) (<-chan provider.Event, error) {
+	current := p.currentProvider()
+	return current.StreamComplete(ctx, req)
+}
+
+func (p *ReloadableProvider) currentProvider() provider.Provider {
+	p.mu.RLock()
+	current := p.current
+	p.mu.RUnlock()
+	if current == nil {
+		return provider.UnavailableProvider{ID: "native", Reason: "provider has not loaded"}
+	}
+	return current
+}
+
+func buildProvider(cfg Config, envPath string) provider.Provider {
 	clients := map[string]provider.Provider{}
 	for _, meta := range provider.NativeProviders() {
 		id := meta.ID
-		config := cfg.ModelProviders[id]
+		config := providerConfigWithRuntimeEnv(cfg.ModelProviders[id], id, envPath)
 		config.Type = id
 		if strings.TrimSpace(config.BaseURL) == "" {
 			config.BaseURL = meta.BaseURL
@@ -266,7 +324,29 @@ func NewProvider(cfg Config) (provider.Provider, error) {
 	if _, ok := cfg.ModelProviders[provider.ProviderMock]; ok {
 		clients[provider.ProviderMock] = mockprovider.New()
 	}
-	return provider.NewRouter("", clients), nil
+	return provider.NewRouter("", clients)
+}
+
+func providerConfigWithRuntimeEnv(cfg ProviderConfig, id, envPath string) ProviderConfig {
+	if strings.TrimSpace(cfg.APIKey) != "" {
+		return cfg
+	}
+	meta, ok := provider.NativeProviderByID(id)
+	if !ok || strings.TrimSpace(meta.APIKeyEnv) == "" {
+		return cfg
+	}
+	if value, ok := runtimeenv.Lookup(envPath, meta.APIKeyEnv); ok {
+		cfg.APIKey = value
+	}
+	return cfg
+}
+
+func runtimeRoot(root string) string {
+	root = strings.TrimSpace(root)
+	if root != "" {
+		return root
+	}
+	return sqlitestore.DefaultRoot()
 }
 
 func nativeProviderClient(id string, cfg ProviderConfig) (provider.Provider, error) {
@@ -425,6 +505,7 @@ func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, 
 	_ = store.AddUsage(job.ParentID, storage.Usage{
 		InputTokens:           result.Usage.InputTokens,
 		CachedInputTokens:     result.Usage.CachedInputTokens,
+		CachedWriteTokens:     result.Usage.CachedWriteTokens,
 		OutputTokens:          result.Usage.OutputTokens,
 		ReasoningOutputTokens: result.Usage.ReasoningOutputTokens,
 		TotalTokens:           result.Usage.TotalTokens,

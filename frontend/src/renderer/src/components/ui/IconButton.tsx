@@ -33,7 +33,7 @@ export function IconButton({
   return (
     <motion.button
       type="button"
-      whileTap={props.disabled ? undefined : { scale: 0.92 }}
+      whileTap={props.disabled ? undefined : { scale: 0.96 }}
       className={`grid shrink-0 cursor-pointer place-items-center rounded-full transition-colors duration-150 disabled:cursor-default ${sizes[size]} ${variants[variant]} ${className}`}
       {...props}
     >

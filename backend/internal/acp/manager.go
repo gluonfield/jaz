@@ -14,16 +14,18 @@ import (
 	"github.com/charmbracelet/log"
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
+	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
 const (
-	StateStarting  = "starting"
-	StateRunning   = "running"
-	StateIdle      = "idle"
-	StateFailed    = "failed"
-	StateCancelled = "cancelled"
+	StateStarting   = "starting"
+	StateRunning    = "running"
+	StateIdle       = "idle"
+	StateFailed     = "failed"
+	StateCancelled  = "cancelled"
+	StateNotRunning = "not_running"
 )
 
 type Store interface {
@@ -77,6 +79,8 @@ type SpawnRequest struct {
 	Directory string
 	// Worktree runs the session on a disposable git worktree of Directory.
 	Worktree bool
+	// Branch selects the base branch/ref for Worktree. Empty means Directory's HEAD.
+	Branch string
 	// Model overrides the agent's configured model for this session (empty
 	// keeps the agent default).
 	Model string
@@ -155,6 +159,7 @@ type agentConn struct {
 	peer    *jsonrpc.Peer
 	cancel  context.CancelFunc
 	initRaw json.RawMessage
+	stderr  *processStderrTail
 }
 
 func (c *agentConn) close() {
@@ -162,10 +167,17 @@ func (c *agentConn) close() {
 	c.cancel()
 }
 
+func (c *agentConn) withProcessStderr(err error) error {
+	return withProcessStderr(err, c.stderr)
+}
+
 func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd string) (*agentConn, error) {
-	env := m.processEnv(name, cfg)
+	env, err := m.processEnvPrepared(name, cfg)
+	if err != nil {
+		return nil, err
+	}
 	runCtx, cancel := context.WithCancel(context.Background())
-	conn, err := m.openConn(runCtx, name, cfg, env, cwd)
+	conn, stderr, err := m.openConn(runCtx, name, cfg, env, cwd)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -199,31 +211,38 @@ func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd
 	if err != nil {
 		_ = peer.Close()
 		cancel()
-		return nil, fmt.Errorf("initialize acp agent: %w", err)
+		return nil, fmt.Errorf("initialize acp agent: %w", withProcessStderr(err, stderr))
 	}
 	methodID, missingAuth := autoAuthMethod(name, initRaw, env)
 	if methodID != "" {
 		if _, err := peer.Call(ctx, acpschema.AgentMethodAuthenticate, acpschema.AuthenticateRequest{MethodID: methodID}); err != nil {
 			_ = peer.Close()
 			cancel()
-			return nil, fmt.Errorf("authenticate acp agent: %w", err)
+			return nil, fmt.Errorf("authenticate acp agent: %w", withProcessStderr(err, stderr))
 		}
 	} else if len(missingAuth) > 0 {
 		_ = peer.Close()
 		cancel()
 		return nil, fmt.Errorf("authenticate acp agent %q: missing %s", name, strings.Join(missingAuth, " or "))
 	}
-	return &agentConn{conn: conn, peer: peer, cancel: cancel, initRaw: initRaw}, nil
+	return &agentConn{conn: conn, peer: peer, cancel: cancel, initRaw: initRaw, stderr: stderr}, nil
 }
 
-// sessionPromptMeta builds the _meta payload carrying the Jaz system prompt
-// in the form the named agent understands, or nil when no prompt is
-// configured.
-func (m *Manager) sessionPromptMeta(agent string) (map[string]any, error) {
+// sessionMeta builds the session _meta payload for prompt and agent-specific
+// options.
+func (m *Manager) sessionMeta(agent string, cfg AgentConfig, cwd string) (map[string]any, error) {
+	meta, err := m.sessionPromptMeta(agent, cwd)
+	if err != nil {
+		return nil, err
+	}
+	return agentPolicyForAgent(agent).mergeSessionMeta(meta, cfg.ReasoningEffort), nil
+}
+
+func (m *Manager) sessionPromptMeta(agent, cwd string) (map[string]any, error) {
 	if m.cfg.SystemPrompt == nil {
 		return nil, nil
 	}
-	prompt, err := m.cfg.SystemPrompt.ACPPrompt()
+	prompt, err := m.cfg.SystemPrompt.ACPPrompt(cwd)
 	if err != nil {
 		return nil, fmt.Errorf("build acp system prompt: %w", err)
 	}
@@ -234,8 +253,8 @@ func (m *Manager) sessionPromptMeta(agent string) (map[string]any, error) {
 	return systemPromptMeta(agent, prompt), nil
 }
 
-func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent, cwd string) (acpSessionInfo, error) {
-	meta, err := m.sessionPromptMeta(agent)
+func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent string, cfg AgentConfig, cwd string) (acpSessionInfo, error) {
+	meta, err := m.sessionMeta(agent, cfg, cwd)
 	if err != nil {
 		return acpSessionInfo{}, err
 	}
@@ -250,7 +269,7 @@ func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent, cwd s
 	}
 	sessionRaw, err := ac.peer.Call(ctx, acpschema.AgentMethodSessionNew, newSession)
 	if err != nil {
-		return acpSessionInfo{}, fmt.Errorf("create acp session: %w", err)
+		return acpSessionInfo{}, fmt.Errorf("create acp session: %w", ac.withProcessStderr(err))
 	}
 	var acpSession acpschema.NewSessionResponse
 	if err := json.Unmarshal(sessionRaw, &acpSession); err != nil {
@@ -262,21 +281,62 @@ func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent, cwd s
 	return newACPSessionInfo(sessionRaw, acpSession), nil
 }
 
-func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, error) {
+type createdSession struct {
+	Request SpawnRequest
+	Config  AgentConfig
+	Session storage.Session
+}
+
+func (m *Manager) CreateSession(ctx context.Context, req SpawnRequest) (storage.Session, error) {
+	created, err := m.createSession(ctx, req)
+	if err != nil {
+		return storage.Session{}, err
+	}
+	return created.Session, nil
+}
+
+func (m *Manager) createSession(ctx context.Context, req SpawnRequest) (createdSession, error) {
+	req, cfg, effort, err := m.spawnConfig(req)
+	if err != nil {
+		return createdSession{}, err
+	}
+	session, err := m.createStoredSession(req, cfg, effort)
+	if err != nil {
+		return createdSession{}, err
+	}
+	fail := func(err error) (createdSession, error) {
+		session.Status = storage.StatusError
+		session.Error = err.Error()
+		_ = m.store.SaveSession(session)
+		return createdSession{}, err
+	}
+	absCwd, projectPath, err := m.prepareSessionDir(ctx, req, cfg, session.Slug)
+	if err != nil {
+		return fail(err)
+	}
+	session.RuntimeRef.Cwd = absCwd
+	session.RuntimeRef.ProjectPath = projectPath
+	if err := m.store.SaveSession(session); err != nil {
+		return fail(err)
+	}
+	return createdSession{Request: req, Config: cfg, Session: session}, nil
+}
+
+func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, string, error) {
 	req.ACPAgent = CanonicalAgentName(req.ACPAgent)
 	if req.ACPAgent == "" {
 		req.ACPAgent = AgentCodex
 	}
 	cfg, ok, err := m.configuredAgent(req.ACPAgent)
 	if err != nil {
-		return SpawnResult{}, err
+		return SpawnRequest{}, AgentConfig{}, "", err
 	}
 	if !ok {
-		return SpawnResult{}, fmt.Errorf("acp agent %q is not configured", req.ACPAgent)
+		return SpawnRequest{}, AgentConfig{}, "", fmt.Errorf("acp agent %q is not configured", req.ACPAgent)
 	}
-	effort := configuredReasoningEffort(cfg.ReasoningEffort)
+	effort := configuredAgentReasoningEffort(req.ACPAgent, cfg.ReasoningEffort)
 	if req.ReasoningEffort != "" {
-		effort = req.ReasoningEffort
+		effort = configuredAgentReasoningEffort(req.ACPAgent, req.ReasoningEffort)
 	}
 	// Apply the effective model and effort (per-request overrides win) to the
 	// agent config so configuredModeState pushes them to the agent, not just
@@ -285,9 +345,11 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		cfg.Model = model
 	}
 	cfg.ReasoningEffort = effort
-	// The session row is created first: its unique slug names the default
-	// directory and the worktree branch.
-	session, err := m.store.CreateSession(storage.CreateSession{
+	return req, cfg, effort, nil
+}
+
+func (m *Manager) createStoredSession(req SpawnRequest, cfg AgentConfig, effort string) (storage.Session, error) {
+	return m.store.CreateSession(storage.CreateSession{
 		Slug:            req.Slug,
 		Title:           req.Title,
 		ParentID:        req.ParentID,
@@ -302,24 +364,28 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 			Agent: req.ACPAgent,
 		},
 	})
+}
+
+func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, error) {
+	created, err := m.createSession(ctx, req)
 	if err != nil {
 		return SpawnResult{}, err
 	}
+	req = created.Request
+	cfg := created.Config
+	session := created.Session
 	fail := func(err error) (SpawnResult, error) {
 		session.Status = storage.StatusError
 		session.Error = err.Error()
 		_ = m.store.SaveSession(session)
 		return SpawnResult{}, err
 	}
-	absCwd, projectPath, err := m.prepareSessionDir(req, cfg, session.Slug)
-	if err != nil {
-		return fail(err)
-	}
+	absCwd := session.RuntimeRef.Cwd
 	ac, err := m.connect(ctx, req.ACPAgent, cfg, absCwd)
 	if err != nil {
 		return fail(err)
 	}
-	acpSession, err := m.newACPSession(ctx, ac, req.ACPAgent, absCwd)
+	acpSession, err := m.newACPSession(mcpsession.With(ctx, session.ID), ac, req.ACPAgent, cfg, absCwd)
 	if err != nil {
 		ac.close()
 		return fail(err)
@@ -331,7 +397,6 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	}
 	session.RuntimeRef.SessionID = string(acpSession.response.SessionID)
 	session.RuntimeRef.Cwd = absCwd
-	session.RuntimeRef.ProjectPath = projectPath
 	if err := m.store.SaveSession(session); err != nil {
 		ac.close()
 		return fail(err)
@@ -483,11 +548,12 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 	_ = json.Unmarshal(ac.initRaw, &caps)
 	storedID := session.RuntimeRef.SessionID
 	if caps.AgentCapabilities.LoadSession && storedID != "" {
-		meta, err := m.sessionPromptMeta(agentName)
+		meta, err := m.sessionMeta(agentName, cfg, cwd)
 		if err != nil {
 			return "", ModeState{}, err
 		}
-		raw, err := ac.peer.Call(ctx, acpschema.AgentMethodSessionLoad, struct {
+		mcpCtx := mcpsession.With(ctx, session.ID)
+		raw, err := ac.peer.Call(mcpCtx, acpschema.AgentMethodSessionLoad, struct {
 			Meta       map[string]any      `json:"_meta,omitempty"`
 			Cwd        string              `json:"cwd"`
 			MCPServers []json.RawMessage   `json:"mcpServers"`
@@ -495,7 +561,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 		}{
 			Meta:       meta,
 			Cwd:        cwd,
-			MCPServers: m.mcpServersForAgent(ctx, ac.initRaw),
+			MCPServers: m.mcpServersForAgent(mcpCtx, ac.initRaw),
 			SessionID:  acpschema.SessionID(storedID),
 		})
 		if err == nil {
@@ -511,7 +577,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 		}
 		// The agent lost this session — fall through to a fresh one.
 	}
-	acpSession, err := m.newACPSession(ctx, ac, agentName, cwd)
+	acpSession, err := m.newACPSession(mcpsession.With(ctx, session.ID), ac, agentName, cfg, cwd)
 	if err != nil {
 		return "", ModeState{}, err
 	}
@@ -521,6 +587,15 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 
 func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {
 	job, err := m.job(req.Session)
+	if err == nil && m.serveErr(job.ID) != nil {
+		job.mu.RLock()
+		running := job.State == StateRunning || job.State == StateStarting
+		job.mu.RUnlock()
+		if !running {
+			m.teardown(job.ID)
+			job, err = m.resume(ctx, req.Session)
+		}
+	}
 	if err != nil {
 		if job, err = m.resume(ctx, req.Session); err != nil {
 			return Job{}, err
@@ -565,7 +640,7 @@ func (m *Manager) Status(ref string) (Job, error) {
 		ParentID:   session.ParentID,
 		ACPAgent:   CanonicalAgentName(session.RuntimeRef.Agent),
 		ACPSession: session.RuntimeRef.SessionID,
-		State:      "not_running",
+		State:      StateNotRunning,
 		CreatedAt:  session.CreatedAt,
 		UpdatedAt:  session.UpdatedAt,
 	}, nil
@@ -669,6 +744,7 @@ func (m *Manager) cancelStored(ref string) (Job, error) {
 	}
 	state.State = StateCancelled
 	state.StopReason = "cancelled"
+	state.Permissions = nil
 	if saver, ok := m.store.(acpStateSaver); ok {
 		if err := saver.SaveACPState(session.ID, state); err != nil {
 			m.log.Warn("clearing stored acp state failed", "session", session.ID, "error", err)
@@ -712,6 +788,7 @@ func (m *Manager) teardown(id string) {
 	delete(m.connsByID, id)
 	delete(m.peersByID, id)
 	delete(m.cancelByID, id)
+	delete(m.serveErrByID, id)
 	if job != nil {
 		delete(m.jobsBySlug, job.Slug)
 		delete(m.jobsByACP, job.ACPSession)
@@ -837,16 +914,37 @@ func (m *Manager) peer(id string) *jsonrpc.Peer {
 }
 
 func (m *Manager) setServeErr(peer *jsonrpc.Peer, err error) {
+	var id string
+	var job *Job
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	for id, candidate := range m.peersByID {
+	for candidateID, candidate := range m.peersByID {
 		if candidate == peer {
+			id = candidateID
 			m.serveErrByID[id] = err
-			m.log.Error("acp agent connection failed", "session", id, "error", err)
-			if job := m.jobsByID[id]; job != nil {
-				job.setState(StateFailed, "", err.Error())
-			}
-			return
+			job = m.jobsByID[id]
+			break
 		}
 	}
+	m.mu.Unlock()
+	if id == "" {
+		return
+	}
+	m.log.Error("acp agent connection failed", "session", id, "error", err)
+	if job == nil {
+		return
+	}
+	job.mu.RLock()
+	running := job.State == StateRunning || job.State == StateStarting
+	job.mu.RUnlock()
+	if running {
+		return
+	}
+	job.setState(StateFailed, "", err.Error())
+	m.publishACPStatus(job.Snapshot())
+}
+
+func (m *Manager) serveErr(id string) error {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.serveErrByID[id]
 }

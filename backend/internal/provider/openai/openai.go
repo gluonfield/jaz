@@ -148,13 +148,14 @@ func (p *Provider) Complete(ctx context.Context, req provider.Request) (provider
 }
 
 // usageFromOpenAI maps the wire shape verbatim — prompt_tokens still counts
-// cached reads inclusively. splitCachedInput converts to the disjoint
+// cached reads/writes inclusively. splitCachedInput converts to the disjoint
 // convention exactly once, at the response boundary; streaming merges
 // partial snapshots in between, so splitting any earlier double-counts.
 func usageFromOpenAI(usage oa.CompletionUsage) provider.Usage {
 	return provider.Usage{
 		InputTokens:           usage.PromptTokens,
 		CachedInputTokens:     cachedInputTokens(usage),
+		CachedWriteTokens:     cachedWriteTokens(usage),
 		OutputTokens:          usage.CompletionTokens,
 		ReasoningOutputTokens: usage.CompletionTokensDetails.ReasoningTokens,
 		TotalTokens:           usage.TotalTokens,
@@ -162,8 +163,9 @@ func usageFromOpenAI(usage oa.CompletionUsage) provider.Usage {
 }
 
 func splitCachedInput(u provider.Usage) provider.Usage {
-	if u.CachedInputTokens > 0 && u.CachedInputTokens <= u.InputTokens {
-		u.InputTokens -= u.CachedInputTokens
+	cached := u.CachedInputTokens + u.CachedWriteTokens
+	if cached > 0 && cached <= u.InputTokens {
+		u.InputTokens -= cached
 	}
 	return u
 }
@@ -202,6 +204,9 @@ func mergeUsageSnapshot(current, next provider.Usage) provider.Usage {
 	}
 	if next.CachedInputTokens > 0 {
 		current.CachedInputTokens = next.CachedInputTokens
+	}
+	if next.CachedWriteTokens > 0 {
+		current.CachedWriteTokens = next.CachedWriteTokens
 	}
 	if next.OutputTokens > 0 {
 		current.OutputTokens = next.OutputTokens

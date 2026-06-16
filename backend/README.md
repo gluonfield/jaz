@@ -5,9 +5,16 @@ Native Go agent backend with a provider-neutral loop, native model providers, Co
 ## Run
 
 ```sh
-go run ./cmd/jaz serve
-go run ./cmd/jaz chat
+go run ./cmd/jaz
 ```
+
+Run the server binary directly on the server:
+
+```sh
+./jaz --addr :5299 --public-url https://jaz.example.com
+```
+
+`jaz serve` and `jaz server` remain compatibility aliases for `jaz`.
 
 Native Jaz defaults are stored in the database and edited from Settings >
 Agents as the provider, model, and reasoning effort copied into new threads.
@@ -39,11 +46,17 @@ settings record; Settings controls whether each client is enabled, the
 command used to start it, plus the model and reasoning effort copied into new
 threads.
 
-For local development with the custom Codex ACP fork built under this workspace,
-set the Codex command in Settings > Agents to:
+The built-in Codex ACP command uses the Jaz-published adapter:
 
 ```sh
-/Users/wins/Projects/personal/jarvis/codex-acp-zed/target/debug/codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'
+npx -y @jazchat/codex-acp@0.16.1 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'
+```
+
+When developing the Codex ACP adapter itself, override the Codex command in
+Settings > Agents with the locally built binary:
+
+```sh
+/path/to/codex-acp/target/debug/codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'
 ```
 
 When an ACP agent does not support `session/set_model` or

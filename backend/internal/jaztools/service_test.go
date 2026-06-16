@@ -1,0 +1,274 @@
+package jaztools
+
+import (
+	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/gluonfield/jazmem/pkg/jazmem"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/memoryservice"
+	"github.com/wins/jaz/backend/internal/serverconfig"
+	jazsettings "github.com/wins/jaz/backend/internal/settings"
+	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
+)
+
+type fakeScheduler struct{}
+
+func (fakeScheduler) Start()        {}
+func (fakeScheduler) Stop()         {}
+func (fakeScheduler) Running() bool { return true }
+
+type fakeExecutor struct {
+	started chan loops.Run
+}
+
+func (f *fakeExecutor) StartLoopRun(_ context.Context, execution loops.Execution) {
+	f.started <- execution.Run
+}
+
+func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	memory, err := jazmem.Open(jazmem.Config{Root: t.TempDir(), DBPath: filepath.Join(t.TempDir(), "memory.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = memory.Close() })
+	if err := os.MkdirAll(filepath.Join(memory.Root(), "people"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(memory.Root(), "people", "alice.md"), []byte("# Alice\n\nAlice works on Jaz tools.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := memory.Reindex(context.Background(), jazmem.ReindexOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	service := New(memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"), serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"}, store, nil)
+	executor := &fakeExecutor{started: make(chan loops.Run, 1)}
+	service.SetLoops(loops.NewService(store, executor, nil))
+
+	session, closeSession := connectClient(t, service.Server())
+	defer closeSession()
+
+	tools, err := session.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]bool{}
+	for _, tool := range tools.Tools {
+		names[tool.Name] = true
+	}
+	for _, name := range []string{
+		"memory_search", "memory_get",
+		"loop_list", "loop_get", "loop_create", "loop_update", "loop_run", "loop_delete",
+		"visualize:read_me", "visualize:show_widget",
+	} {
+		if !names[name] {
+			t.Fatalf("missing tool %s in %#v", name, names)
+		}
+	}
+
+	pageCall, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "memory_get",
+		Arguments: map[string]any{"slug": "people/alice"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := structured[struct {
+		Found bool   `json:"found"`
+		Slug  string `json:"slug"`
+		Raw   string `json:"raw"`
+	}](t, pageCall)
+	if !page.Found || page.Slug != "people/alice" || page.Raw == "" {
+		t.Fatalf("page = %#v", page)
+	}
+
+	createCall, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "loop_create",
+		Arguments: map[string]any{
+			"name":    "Repo check",
+			"prompt":  "check repo health",
+			"runtime": "native",
+			"schedule": map[string]any{
+				"kind":     loops.ScheduleCron,
+				"expr":     "0 9 * * *",
+				"timezone": "UTC",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := structured[loops.Loop](t, createCall)
+	if created.ID == "" || created.Name != "Repo check" || created.Runtime != loops.RuntimeNative {
+		t.Fatalf("created = %#v", created)
+	}
+
+	listCall, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "loop_list"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	list := structured[loops.MCPListOutput](t, listCall)
+	if len(list.Loops) != 1 || list.Loops[0].ID != created.ID {
+		t.Fatalf("list = %#v", list)
+	}
+
+	paused := loops.StatusPaused
+	updateCall, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "loop_update",
+		Arguments: map[string]any{"id": created.ID, "status": paused},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := structured[loops.Loop](t, updateCall)
+	if updated.Status != loops.StatusPaused {
+		t.Fatalf("updated = %#v", updated)
+	}
+
+	getCall, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "loop_get",
+		Arguments: map[string]any{"id": created.ID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	detail := structured[loops.MCPDetailOutput](t, getCall)
+	if detail.Loop.ID != created.ID {
+		t.Fatalf("detail = %#v", detail)
+	}
+
+	runCall, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "loop_run",
+		Arguments: map[string]any{"id": created.ID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := structured[loops.Run](t, runCall)
+	select {
+	case started := <-executor.started:
+		if started.ID != run.ID {
+			t.Fatalf("started = %s, run = %s", started.ID, run.ID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("manual run did not dispatch")
+	}
+
+	deleteCall, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "loop_delete",
+		Arguments: map[string]any{"id": created.ID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deleted := structured[loops.MCPDeleteOutput](t, deleteCall)
+	if !deleted.OK {
+		t.Fatalf("deleted = %#v", deleted)
+	}
+}
+
+func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if _, err := jazsettings.SaveMemorySettings(store, jazsettings.MemorySettings{Enabled: false}); err != nil {
+		t.Fatal(err)
+	}
+
+	memory, err := jazmem.Open(jazmem.Config{Root: t.TempDir(), DBPath: filepath.Join(t.TempDir(), "memory.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = memory.Close() })
+
+	service := New(memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jazmem"), serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"}, store, nil)
+	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
+
+	session, closeSession := connectClient(t, service.Server())
+	defer closeSession()
+	if hasTool(t, session, "memory_get") {
+		t.Fatal("memory tool advertised while memory is disabled")
+	}
+	if !hasTool(t, session, "loop_list") {
+		t.Fatal("loop tools should remain available")
+	}
+
+	if _, err := jazsettings.SaveMemorySettings(store, jazsettings.MemorySettings{Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	service.Sync()
+	if !hasTool(t, session, "memory_get") {
+		t.Fatal("memory tool not advertised after memory was enabled")
+	}
+
+	if _, err := jazsettings.SaveMemorySettings(store, jazsettings.MemorySettings{Enabled: false}); err != nil {
+		t.Fatal(err)
+	}
+	service.Sync()
+	if hasTool(t, session, "memory_get") {
+		t.Fatal("memory tool still advertised after memory was disabled")
+	}
+}
+
+func connectClient(t *testing.T, server *mcp.Server) (*mcp.ClientSession, func()) {
+	t.Helper()
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1.0.0"}, nil)
+	clientSession, err := client.Connect(context.Background(), clientTransport, nil)
+	if err != nil {
+		_ = serverSession.Close()
+		t.Fatal(err)
+	}
+	return clientSession, func() {
+		_ = clientSession.Close()
+		_ = serverSession.Close()
+	}
+}
+
+func hasTool(t *testing.T, session *mcp.ClientSession, name string) bool {
+	t.Helper()
+	tools, err := session.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range tools.Tools {
+		if tool.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func structured[T any](t *testing.T, res *mcp.CallToolResult) T {
+	t.Helper()
+	if res.IsError {
+		t.Fatalf("tool error: %#v", res.Content)
+	}
+	data, err := json.Marshal(res.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out T
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}

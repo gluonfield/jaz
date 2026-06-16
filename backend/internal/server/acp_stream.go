@@ -20,7 +20,7 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 	}
 
 	var err error
-	session, err = s.beginACPTurn(session, message)
+	session, err = s.beginACPTurn(clientCtx, session, message)
 	if err != nil {
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: err.Error()})
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
@@ -79,7 +79,7 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 	}
 }
 
-func (s *Server) beginACPTurn(session storage.Session, message string) (storage.Session, error) {
+func (s *Server) beginACPTurn(ctx context.Context, session storage.Session, message string) (storage.Session, error) {
 	unlock := s.lockSession(session.ID)
 	defer unlock()
 
@@ -91,6 +91,9 @@ func (s *Server) beginACPTurn(session storage.Session, message string) (storage.
 	if s.sessionRuntimeRunning(session) {
 		return session, fmt.Errorf("session %s is already running", session.Slug)
 	}
+	if err := s.ensureManagedWorktree(ctx, session); err != nil {
+		return session, err
+	}
 	session.Status = storage.StatusRunning
 	session.Error = ""
 	storage.MarkSessionAttention(&session, time.Now().UTC())
@@ -100,6 +103,7 @@ func (s *Server) beginACPTurn(session storage.Session, message string) (storage.
 	if err := s.Store.SaveSession(session); err != nil {
 		return session, err
 	}
+	s.publishSessionChanged(session.ID)
 	return session, nil
 }
 

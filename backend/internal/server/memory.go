@@ -109,6 +109,7 @@ func (s *Server) handleMemoryUpdate(w http.ResponseWriter, r *http.Request) {
 			s.Memory.Scheduler.Stop()
 		}
 	}
+	s.JazTools.Sync()
 	s.refreshMCP()
 	status, err := s.memoryStatus(r)
 	if err != nil {
@@ -172,6 +173,12 @@ func (s *Server) memoryGated(handler func() http.Handler) http.Handler {
 
 func (s *Server) memoryMCPHandler() http.Handler {
 	return s.memoryGated(func() http.Handler { return s.Memory.MCPHandler() })
+}
+
+func (s *Server) jazToolsHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.JazTools.Handler().ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) memoryAPIHandler() http.Handler {

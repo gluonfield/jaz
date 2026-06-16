@@ -12,6 +12,10 @@ import (
 // SSE streams keep flushing per event through the compressor.
 func withGzip(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if headerHasToken(r.Header.Get("Connection"), "upgrade") || strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 			next.ServeHTTP(w, r)
 			return
@@ -22,6 +26,15 @@ func withGzip(next http.Handler) http.Handler {
 		w.Header().Add("Vary", "Accept-Encoding")
 		next.ServeHTTP(&gzipResponseWriter{ResponseWriter: w, gz: gz}, r)
 	})
+}
+
+func headerHasToken(value, token string) bool {
+	for part := range strings.SplitSeq(value, ",") {
+		if strings.EqualFold(strings.TrimSpace(part), token) {
+			return true
+		}
+	}
+	return false
 }
 
 // Forwards Flusher only. No handler hijacks connections today; one that does
