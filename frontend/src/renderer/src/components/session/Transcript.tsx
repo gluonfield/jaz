@@ -17,6 +17,7 @@ import type {
 } from '@/lib/api/types'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
+import { AgentLogo, hasAgentLogo } from '@/components/acp/AgentLogo'
 import { agentLabel } from '@/lib/agentLabel'
 import { relativeTime } from '@/lib/format/time'
 import {
@@ -470,7 +471,15 @@ const LiveEvent = memo(function LiveEvent({
     <div className="flex min-w-0 max-w-[76ch] flex-col gap-2">
       {event.acp && showHeader ? (
         <p className="text-[12px] text-ink-3">
-          <span className="font-mono">{event.acp.agent}</span>
+          {hasAgentLogo(event.acp.agent) ? (
+            <AgentLogo
+              agent={event.acp.agent}
+              size={12}
+              className="inline-block translate-y-[2px] text-ink-2"
+            />
+          ) : (
+            <span className="font-mono">{event.acp.agent}</span>
+          )}
           {event.acp.title ? ` · ${event.acp.title}` : ''} · {relativeTime(event.at)}
         </p>
       ) : null}
