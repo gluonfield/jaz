@@ -3,7 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 import { searchThreads } from '@/lib/api/search'
 import { keys } from '@/lib/query/keys'
-import type { PaletteCommand, PaletteItem } from './commandPaletteTypes'
+import type { PaletteCommand, PaletteThread } from './commandPaletteTypes'
 
 function useDebouncedValue(value: string, delay: number): string {
   const [debounced, setDebounced] = useState(value)
@@ -62,11 +62,15 @@ export function useCommandPaletteItems({
     [navigate, onOpenChange, onOpenSettings],
   )
 
+  // Archived chats stay searchable; the backend ranks them below active ones
+  // and each result carries an `archived` flag for the UI badge. The key must
+  // carry the same flag so it never collides with a non-archived search.
   const threadSearch = useQuery({
-    queryKey: keys.threadSearch(debouncedQuery),
+    queryKey: keys.threadSearch(debouncedQuery, true),
     queryFn: ({ signal }) =>
       searchThreads({
         query: debouncedQuery,
+        includeArchived: true,
         limit: 16,
         signal,
       }),
@@ -74,9 +78,12 @@ export function useCommandPaletteItems({
     staleTime: 15_000,
   })
 
-  const items = useMemo<PaletteItem[]>(() => {
+  // The two sections are kept as their own typed lists (rendering consumes them
+  // directly) plus a flat `items` whose order — commands first, then threads —
+  // is the index space for keyboard navigation.
+  const { commandItems, threadItems, items } = useMemo(() => {
     const commandItems = commands.filter((item) => commandMatches(item, query))
-    const threadItems: PaletteItem[] =
+    const threadItems: PaletteThread[] =
       searchEnabled && threadSearch.data
         ? threadSearch.data.map((result) => ({
             id: `thread-${result.thread_id}-${result.message_seq ?? 0}`,
@@ -84,12 +91,14 @@ export function useCommandPaletteItems({
             result,
           }))
         : []
-    return [...commandItems, ...threadItems]
+    return { commandItems, threadItems, items: [...commandItems, ...threadItems] }
   }, [commands, query, searchEnabled, threadSearch.data])
 
   return {
     debouncedQuery,
     items,
+    commandItems,
+    threadItems,
     searchEnabled,
     threadSearch,
   }

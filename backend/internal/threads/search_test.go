@@ -64,6 +64,61 @@ func TestSearchFindsMessagesAndThreadMetadata(t *testing.T) {
 	}
 }
 
+func TestSearchRanksActiveAboveArchived(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	active, err := store.CreateSession(storage.CreateSession{Slug: "active-deploy", Title: "Deploy pipeline"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendMessageRecords(active.ID, storage.Message{Role: "user", Content: "deploy the service"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The archived thread matches "deploy" far more heavily, so on relevance
+	// alone it would outrank the active one.
+	archived, err := store.CreateSession(storage.CreateSession{Slug: "archived-deploy", Title: "Deploy deploy deploy runbook"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendMessageRecords(archived.ID, storage.Message{Role: "user", Content: "deploy deploy deploy notes"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetArchived(archived.ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	search := NewService(sqlitestore.NewSearchQueries(store))
+
+	// Default search still hides archived threads entirely.
+	results, err := search.Search(context.Background(), SearchQuery{Query: "deploy", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].ThreadID != active.ID {
+		t.Fatalf("default search = %#v, want only active thread", results)
+	}
+
+	// Including archived returns both, but the active thread still ranks first.
+	results, err = search.Search(context.Background(), SearchQuery{Query: "deploy", IncludeArchived: true, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("results = %#v, want active and archived threads", results)
+	}
+	if results[0].ThreadID != active.ID || results[0].Archived {
+		t.Fatalf("results[0] = %#v, want active thread ranked first", results[0])
+	}
+	if results[1].ThreadID != archived.ID || !results[1].Archived {
+		t.Fatalf("results[1] = %#v, want archived thread ranked last", results[1])
+	}
+}
+
 func TestSearchIndexMaintenance(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
