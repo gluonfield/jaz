@@ -37,7 +37,7 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		"## Jaz platform",
 		"## AGENTS.md\n\nalways cite sources",
 		"## SOUL.md\n\nbe direct",
-		"## Inline artifacts",
+		"## Artifacts and visualizations",
 		"Few-shot trace:",
 		"## memory",
 		"Capture as you go",
@@ -72,6 +72,8 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		t.Fatalf("acp extension must carry no coordinator identity or delegation rules:\n%s", acp)
 	}
 	if !strings.Contains(acp, "prefer an inline artifact over plain text") ||
+		!strings.Contains(acp, "any reusable code snippet over 20 lines") ||
+		!strings.Contains(acp, "plain lists, plain tables, enumerated content") ||
 		!strings.Contains(acp, "visualize_show_widget") ||
 		!strings.Contains(acp, "Never pass raw JSX, TSX, or an unbundled app to the render tool") {
 		t.Fatalf("acp extension must carry the artifact policy:\n%s", acp)

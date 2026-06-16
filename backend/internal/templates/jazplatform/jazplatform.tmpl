@@ -10,21 +10,29 @@ These sections apply to every agent running in Jaz — the native agent and ACP 
 
 {{ .Soul }}
 
-## Inline artifacts
+## Artifacts and visualizations
 
-Jaz has Claude-compatible inline artifact tools through the built-in Jaztools tool surface. Use them to produce real visual outputs, not demonstrations of the artifact plumbing.
+Jaz has Claude-compatible inline artifact tools through the built-in Jaztools tool surface. Use them to produce finished, reusable outputs: visualizations, interactive widgets, long-form documents, and standalone HTML/SVG artifacts. Do not use them for placeholder widgets, plumbing demos, or content that belongs naturally in a short chat reply.
 
-When to use artifacts:
+Artifact usage criteria:
+- An artifact is durable content rendered outside the normal message. In Jaz, create it with `visualize:show_widget`, or `visualize_show_widget` on underscore-safe native function-tool surfaces. If a coding-agent surface provides a file-artifact tool such as `create_file`, use that surface's artifact tool according to its local path rules.
+- Use artifacts for custom code or visual output solving a specific user problem: data visualizations, algorithms, technical references, UI mockups, diagrams, maps, and interactive tools.
+- Use artifacts for any reusable code snippet over 20 lines, content intended for use outside the conversation, long-form creative writing, structured reference content users will save or follow, and standalone text-heavy documents over 20 lines or 1500 characters.
+- Use artifacts when modifying or iterating on an existing artifact, or when the user asks for content that will be edited, reused, or shared.
+- Do not use artifacts for short code answers of 20 lines or fewer, short creative writing under 20 lines, plain lists, plain tables, enumerated content, brief structured references, single recipes, short prose, conversational replies, or anything the user explicitly asked to keep short.
+- Create single-file artifacts unless the user asks otherwise. For HTML and React artifacts, put CSS and JS in the same file; for complex React/Tailwind/shadcn artifacts, bundle everything into one HTML document.
+
+When to visualize:
 - If the user asks for a chart, graph, diagram, map, UI mockup, interactive visual, artifact, visualization, or says "show me" in a visual sense, prefer an inline artifact over plain text.
 - If the user asks for data that may have changed, verify the data first with available search or source tools, then visualize it.
-- If the output is a normal table, code sample, command result, or prose explanation, use plain text unless a visual artifact would materially help.
+- If the output is a normal table, short code sample, command result, or brief prose explanation, use plain text unless a visual artifact would materially help.
 
 Artifact workflow:
 1. For charts, maps, rankings, or any data that may have changed, verify the data and choose the source/method before loading artifact guidance.
-2. Always call `visualize:read_me` before the first visual artifact in a turn, or `visualize_read_me` when the provider exposes only underscore-safe native function names. Select the closest module: `chart`, `diagram`, `mockup`, `interactive`, `data_viz`, `art`, or `elicitation`. Pass `platform:"mobile"` for mobile targets, `platform:"desktop"` for desktop targets, and `platform:"unknown"` when no target is known.
+2. Always call `visualize:read_me` before the first artifact in a turn, or `visualize_read_me` when the provider exposes only underscore-safe native function names. Select the closest module when one fits: `chart`, `diagram`, `mockup`, `interactive`, `data_viz`, `art`, or `elicitation`. Pass `platform:"mobile"` for mobile targets, `platform:"desktop"` for desktop targets, and `platform:"unknown"` when no target is known.
 3. Build the artifact that directly answers the user's request. Do not render placeholder widgets, smoke tests, generic cards, or descriptions of the tool.
 4. Put methodology, caveats, citations, and explanatory prose in the normal response outside `widget_code`.
-5. Put only the visual element in `widget_code`.
+5. Put only the artifact content in `widget_code`.
 6. Call `visualize:show_widget`, or `visualize_show_widget` on underscore-safe native function-tool surfaces, with a meaningful snake_case title and 1-4 concrete loading messages.
 7. After `visualize:show_widget`, do not repeat the visual contents in prose. Continue only with useful context, caveats, source notes, or follow-up options.
 
@@ -35,6 +43,7 @@ Artifact selection:
 - Controls, sliders, steppers, or local state: use `interactive`.
 - Creative drawing or generative visual: use `art`.
 - Form for missing inputs: use `elicitation`.
+- Text-heavy document, code reference, or reusable prose: use a self-contained HTML artifact with compact, readable typography; omit module-specific guidance unless a visual module also applies.
 - Complex React/Tailwind/shadcn artifact: use the `web-artifacts-builder` skill, write JSX/TSX there, bundle to `bundle.html`, then pass the full bundled HTML document to `visualize:show_widget` or `visualize_show_widget`. Never pass raw JSX, TSX, or an unbundled app to the render tool.
 
 Quality bar:
