@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Check, LayoutGrid } from 'lucide-react'
 import { type ReactNode, useEffect, useMemo } from 'react'
 import { MentionSuggestions, MentionTextarea, useMentionInput } from '@/components/session/MentionInput'
-import { ModelSelect, ProjectPicker, RuntimeSelect } from '@/components/session/NewThreadControls'
+import { ModelSelect, RuntimeSelect } from '@/components/session/NewThreadControls'
 import { boardsQuery } from '@/lib/api/boards'
 import type { LoopInput } from '@/lib/api/loops'
 import { agentSettingsQuery } from '@/lib/api/settings'
@@ -177,7 +177,11 @@ export function LoopForm({
 }
 
 // The composer-style prompt card: a mention-capable textarea ($skill / @file)
-// with the loop's run setup — runtime, model, project — as its toolbar.
+// with the loop's run setup — runtime and model — as its toolbar. The UI no
+// longer offers a project picker (new loops default to the workspace), but a
+// loop's `directory` is still honored end-to-end — it can be set via the
+// API/MCP and is round-tripped on edit — so the draft deliberately keeps
+// reading and sending it. Don't drop that plumbing.
 function LoopPromptCard({
   draft,
   disabled,
@@ -235,7 +239,7 @@ function LoopPromptCard({
       <div className="relative">
         <MentionSuggestions mention={mention} placement="below" />
         <div
-          className="flex cursor-text flex-col gap-1.5 rounded-[12px] bg-surface p-2.5 ring-1 ring-border transition duration-150 focus-within:ring-primary"
+          className="flex cursor-text flex-col gap-2 rounded-card bg-surface p-2.5 ring-1 ring-border transition duration-150 focus-within:ring-primary"
           onClick={(e) => {
             if ((e.target as HTMLElement).closest('button, textarea, input')) return
             mention.textareaRef.current?.focus()
@@ -291,12 +295,6 @@ function LoopPromptCard({
                 />
               </>
             ) : null}
-            <ProjectPicker
-              value={draft.directory}
-              disabled={disabled}
-              placement="below"
-              onChange={(directory) => set({ directory })}
-            />
           </div>
         </div>
       </div>
@@ -347,10 +345,10 @@ function BoardPicker({
               disabled={disabled}
               aria-pressed={active}
               onClick={() => toggle(board.id)}
-              className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-medium ring-1 transition-colors duration-150 disabled:opacity-50 ${
+              className={`flex h-7 items-center gap-1.5 rounded-full px-3 text-[12px] font-medium ring-1 transition duration-150 active:scale-[0.97] disabled:opacity-50 ${
                 active
-                  ? 'bg-primary-soft text-primary-strong ring-primary/40'
-                  : 'bg-bg text-ink-2 ring-border hover:text-ink'
+                  ? 'bg-surface-2 text-ink ring-border/60 shadow-sm'
+                  : 'text-ink-2 ring-border hover:bg-surface hover:text-ink'
               }`}
             >
               {active ? <Check size={12} /> : <LayoutGrid size={12} />}

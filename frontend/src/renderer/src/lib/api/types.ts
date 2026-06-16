@@ -24,9 +24,18 @@ export interface Usage {
   context_window_tokens?: number
 }
 
+export interface DailyUsageTotals {
+  input_tokens?: number
+  cached_input_tokens?: number
+  cached_write_tokens?: number
+  output_tokens?: number
+  reasoning_output_tokens?: number
+  input_output_tokens?: number
+}
+
 export interface DailyUsage {
   date: string
-  usage: Usage
+  usage: DailyUsageTotals
   session_count: number
 }
 

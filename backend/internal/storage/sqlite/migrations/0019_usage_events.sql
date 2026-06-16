@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS usage_events (
   total_tokens INTEGER NOT NULL DEFAULT 0,
   context_tokens INTEGER NOT NULL DEFAULT 0,
   context_window_tokens INTEGER NOT NULL DEFAULT 0,
+  source TEXT NOT NULL DEFAULT 'turn',
   created_at_ms INTEGER NOT NULL,
   FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE
 );
@@ -35,6 +36,7 @@ INSERT INTO usage_events (
   total_tokens,
   context_tokens,
   context_window_tokens,
+  source,
   created_at_ms
 )
 SELECT
@@ -51,6 +53,7 @@ SELECT
   total_tokens,
   context_tokens,
   context_window_tokens,
+  'session_import',
   updated_at_ms
 FROM threads
 WHERE NOT EXISTS (

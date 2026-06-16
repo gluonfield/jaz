@@ -126,11 +126,43 @@ func TestAddUsageStoresCachedTokens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantDaily := loaded.Usage
-	wantDaily.ContextTokens = 0
-	wantDaily.ContextWindowTokens = 0
+	wantDaily := usagecore.UsageTotals{
+		InputTokens:           loaded.Usage.InputTokens,
+		CachedInputTokens:     loaded.Usage.CachedInputTokens,
+		CachedWriteTokens:     loaded.Usage.CachedWriteTokens,
+		OutputTokens:          loaded.Usage.OutputTokens,
+		ReasoningOutputTokens: loaded.Usage.ReasoningOutputTokens,
+	}
 	if len(daily) != 1 || daily[0].SessionCount != 1 || daily[0].Usage != wantDaily {
 		t.Fatalf("daily usage = %#v, want one bucket with %#v", daily, wantDaily)
+	}
+}
+
+func TestDailyIgnoresImportedSessionUsageFallback(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "imported-usage"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.Usage = storage.Usage{
+		InputTokens:       1000,
+		CachedInputTokens: 2000,
+		OutputTokens:      3000,
+		TotalTokens:       6000,
+	}
+	if err := store.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+
+	daily, err := usagecore.NewService(store).Daily(usagecore.DailyQuery{Days: 1, Location: time.UTC})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(daily) != 1 || daily[0].SessionCount != 0 || daily[0].Usage != (usagecore.UsageTotals{}) {
+		t.Fatalf("daily usage from imported session fallback = %#v", daily)
 	}
 }
 

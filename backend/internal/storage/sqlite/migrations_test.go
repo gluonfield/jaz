@@ -97,6 +97,40 @@ func TestMigrationsAddLegacyThreadColumns(t *testing.T) {
 	}
 }
 
+func TestUsageEventBackfillRowsAreMarkedSessionImport(t *testing.T) {
+	root := t.TempDir()
+	if err := makeLegacyDB(root); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", filepath.Join(root, "jaz.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := ensureLegacyThreadColumns(db); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().UnixMilli()
+	if _, err := db.Exec(`INSERT INTO threads (
+  id, slug, status, runtime, input_tokens, cached_input_tokens, output_tokens, total_tokens, created_at_ms, updated_at_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"thread-usage", "imported-usage", "idle", "acp", 100, 20, 30, 150, now, now); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runMigrations(db); err != nil {
+		t.Fatal(err)
+	}
+
+	var source string
+	if err := db.QueryRow(`SELECT source FROM usage_events WHERE thread_id = ?`, "thread-usage").Scan(&source); err != nil {
+		t.Fatal(err)
+	}
+	if source != "session_import" {
+		t.Fatalf("backfill source = %q, want session_import", source)
+	}
+}
+
 func TestSearchDocTablesDoNotDuplicateIndexedText(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
