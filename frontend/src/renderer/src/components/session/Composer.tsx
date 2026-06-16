@@ -64,7 +64,7 @@ function PlanMenuToggle({
 export function ComposerCard({
   streaming,
   autoFocus,
-  placeholder = 'Message your assistant…',
+  placeholder = 'Ask anything, or hand your assistant a task…',
   disabled = false,
   planAvailable = false,
   queueWhenStreaming = false,
