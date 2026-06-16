@@ -7,6 +7,7 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
 import { parseFileReference, type FileReference } from '../../../../shared/fileReader'
+import { shouldPreviewURLByDefault } from '../../../../shared/preview'
 import { encodeMention, MentionPill } from './mentions'
 
 const PreviewLinkContext = createContext<((url: string) => void) | null>(null)
@@ -228,6 +229,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: s
                     !openPreview ||
                     typeof href !== 'string' ||
                     !urlLink ||
+                    !shouldPreviewURLByDefault(href) ||
                     !shouldPreviewLink(event)
                   ) {
                     return
