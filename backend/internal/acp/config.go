@@ -35,7 +35,7 @@ func CanonicalAgentName(name string) string {
 // Both are consulted on use, not at startup, so prompt and skill edits reach
 // new sessions and turns without a restart.
 type SystemPromptSource interface {
-	ACPPrompt() (string, error)
+	ACPPrompt(cwd string) (string, error)
 	SkillsPrompt() (string, error)
 }
 

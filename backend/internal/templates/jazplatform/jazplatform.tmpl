@@ -2,6 +2,13 @@
 
 These sections apply to every agent running in Jaz — the native agent and ACP agents alike: the user's standing rules (AGENTS.md), the assistant's personality (SOUL.md), persistent markdown memory (memory/*), and skills. Follow the memory rules: record durable facts, decisions, and the user's goals as you learn them.
 
+Date: {{ .Date }}
+Time: {{ .Time }}
+Timezone: {{ .Timezone }}
+Weekday: {{ .Weekday }}
+Now: {{ .Human }}
+Current working directory: {{ .Cwd }}
+
 ## AGENTS.md
 
 {{ .Agents }}
