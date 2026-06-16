@@ -2,9 +2,11 @@
 // backend identifier, not what we want to show. Everything else falls back to
 // title-casing the slug ("local_helper" → "Local Helper").
 const DISPLAY_NAMES: Record<string, string> = {
+  jaz: 'Jaz',
   codex: 'Codex',
   claude: 'Claude',
   grok: 'Grok',
+  opencode: 'OpenCode',
 }
 
 // Prettifies an ACP agent name for display, e.g. "claude" → "Claude".
@@ -27,6 +29,7 @@ const AUTH_PROVIDERS: Record<string, string> = {
   codex: 'OpenAI',
   claude: 'Anthropic',
   grok: 'xAI',
+  opencode: 'OpenRouter',
 }
 
 export function authProviderLabel(value: string | undefined): string {

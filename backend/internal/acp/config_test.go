@@ -1,12 +1,21 @@
 package acp
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	modelprovider "github.com/wins/jaz/backend/internal/provider"
+	"github.com/wins/jaz/backend/internal/runtimeenv"
 )
+
+type testPrompt string
+
+func (p testPrompt) ACPPrompt(string) (string, error) { return string(p), nil }
+func (p testPrompt) SkillsPrompt() (string, error)    { return string(p), nil }
 
 func TestProcessEnvIsMinimalAndCanonical(t *testing.T) {
 	clearHostEnv(t)
@@ -61,6 +70,31 @@ func TestSystemPromptMetaPerAgent(t *testing.T) {
 		if got := systemPromptMeta(tc.agent, "jaz prompt"); !reflect.DeepEqual(got, tc.want) {
 			t.Errorf("systemPromptMeta(%q) = %#v, want %#v", tc.agent, got, tc.want)
 		}
+	}
+}
+
+func TestMergeAgentsPreservesCapabilitiesOnPartialOverride(t *testing.T) {
+	merged := MergeAgents(BuiltinAgents(), map[string]AgentConfig{
+		AgentOpenCode: {
+			Command: "opencode",
+			Model:   "anthropic/claude-sonnet-4.5",
+			Env:     map[string]string{"EXTRA": "yes"},
+		},
+	})
+	got, ok := merged.Agent(AgentOpenCode)
+	if !ok {
+		t.Fatal("opencode missing")
+	}
+	if got.Command != "opencode" || len(got.Args) != 0 {
+		t.Fatalf("command override = %q %#v", got.Command, got.Args)
+	}
+	if got.ProviderMode != AgentProviderModeAgentDefaults ||
+		got.ModelProviderCapability != modelprovider.CapabilityOpenCode ||
+		got.ModelProvider != modelprovider.ProviderOpenRouter {
+		t.Fatalf("capabilities not preserved: %#v", got)
+	}
+	if got.Model != "anthropic/claude-sonnet-4.5" || got.Env["EXTRA"] != "yes" {
+		t.Fatalf("override fields not applied: %#v", got)
 	}
 }
 
@@ -396,12 +430,15 @@ func TestProcessEnvNeverLeaksAPIKeysToCodex(t *testing.T) {
 }
 
 func TestProcessEnvMapsExplicitACPAPIKeysOnlyWhenNeeded(t *testing.T) {
+	clearHostEnv(t)
 	root := t.TempDir()
+	t.Setenv("PATH", "/bin")
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("CODEX_HOME", t.TempDir())
 	t.Setenv("JAZ_ACP_CODEX_API_KEY", "codex-key")
 	t.Setenv("JAZ_ACP_CLAUDE_API_KEY", "claude-key")
 	t.Setenv("JAZ_ACP_GROK_API_KEY", "grok-key")
+	t.Setenv("JAZ_ACP_OPENCODE_API_KEY", "opencode-key")
 
 	manager := NewManager(nil, Config{Root: root}, nil)
 	codexEnv := manager.processEnv("codex", AgentConfig{})
@@ -415,6 +452,219 @@ func TestProcessEnvMapsExplicitACPAPIKeysOnlyWhenNeeded(t *testing.T) {
 	grokEnv := manager.processEnv("grok", AgentConfig{})
 	if grokEnv["XAI_API_KEY"] != "grok-key" || grokEnv["JAZ_ACP_GROK_API_KEY"] != "" {
 		t.Fatalf("grok explicit key not mapped cleanly: %#v", grokEnv)
+	}
+	openCodeEnv := manager.processEnv("opencode", AgentConfig{})
+	if openCodeEnv["OPENROUTER_API_KEY"] != "opencode-key" || openCodeEnv["JAZ_ACP_OPENCODE_API_KEY"] != "" {
+		t.Fatalf("opencode explicit key not mapped cleanly: %#v", openCodeEnv)
+	}
+	if openCodeEnv["OPENCODE_CONFIG_DIR"] == "" {
+		t.Fatalf("opencode config dir missing: %#v", openCodeEnv)
+	}
+}
+
+func TestProcessEnvPassesNativeProviderKeysToOpenCode(t *testing.T) {
+	root := t.TempDir()
+	if err := runtimeenv.Save(runtimeenv.Path(root), map[string]string{
+		"OPENROUTER_API_KEY": "openrouter-key",
+		"OPENAI_API_KEY":     "openai-key",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	env := NewManager(nil, Config{Root: root}, nil).processEnv("opencode", AgentConfig{})
+
+	if env["OPENROUTER_API_KEY"] != "openrouter-key" || env["OPENAI_API_KEY"] != "openai-key" {
+		t.Fatalf("provider keys not passed to opencode: %#v", env)
+	}
+	if env["OPENCODE_CONFIG_DIR"] != filepath.Join(root, "acp", "opencode") {
+		t.Fatalf("OPENCODE_CONFIG_DIR = %q", env["OPENCODE_CONFIG_DIR"])
+	}
+}
+
+func TestProcessEnvWritesOpenCodeInstructions(t *testing.T) {
+	root := t.TempDir()
+	env, err := NewManager(nil, Config{
+		Root:         root,
+		SystemPrompt: testPrompt("jaz instructions"),
+	}, nil).processEnvPrepared("opencode", AgentConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(root, "acp", "opencode", "jaz-instructions.md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "jaz instructions\n" {
+		t.Fatalf("instructions = %q", data)
+	}
+	if !strings.Contains(env["OPENCODE_CONFIG_CONTENT"], path) {
+		t.Fatalf("OPENCODE_CONFIG_CONTENT = %q", env["OPENCODE_CONFIG_CONTENT"])
+	}
+}
+
+func TestProcessEnvDoesNotOverrideDefaultOpenCodeProvider(t *testing.T) {
+	root := t.TempDir()
+	env, err := NewManager(nil, Config{
+		Root: root,
+		Providers: map[string]modelprovider.ModelProviderConfig{
+			"openrouter": {
+				Type:    "openrouter",
+				BaseURL: "https://openrouter.ai/api/v1",
+				APIKey:  "openrouter-key",
+			},
+		},
+		SystemPrompt: testPrompt("jaz instructions"),
+	}, nil).processEnvPrepared("opencode", AgentConfig{
+		Model: "openrouter/openai/gpt-5.4-mini",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var content struct {
+		Provider map[string]any `json:"provider"`
+	}
+	if err := json.Unmarshal([]byte(env["OPENCODE_CONFIG_CONTENT"]), &content); err != nil {
+		t.Fatalf("config content = %q: %v", env["OPENCODE_CONFIG_CONTENT"], err)
+	}
+	if len(content.Provider) != 0 {
+		t.Fatalf("default openrouter provider should not be overridden: %#v", content.Provider)
+	}
+}
+
+func TestProcessEnvWritesOpenCodeProviderConfig(t *testing.T) {
+	root := t.TempDir()
+	env, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared("opencode", AgentConfig{
+		Model: "ollama/llama3.2",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var content struct {
+		Provider map[string]struct {
+			API    string `json:"api"`
+			NPM    string `json:"npm"`
+			Models map[string]struct {
+				ID string `json:"id"`
+			} `json:"models"`
+		} `json:"provider"`
+	}
+	if err := json.Unmarshal([]byte(env["OPENCODE_CONFIG_CONTENT"]), &content); err != nil {
+		t.Fatalf("config content = %q: %v", env["OPENCODE_CONFIG_CONTENT"], err)
+	}
+	ollama := content.Provider["ollama"]
+	if ollama.API != "http://localhost:11434/v1" || ollama.NPM != "@ai-sdk/openai-compatible" {
+		t.Fatalf("ollama provider config = %#v", ollama)
+	}
+	if _, ok := ollama.Models["llama3.2"]; !ok {
+		t.Fatalf("ollama models = %#v", ollama.Models)
+	}
+}
+
+func TestProcessEnvUsesSplitOpenCodeProviderModel(t *testing.T) {
+	root := t.TempDir()
+	env, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared("opencode", AgentConfig{
+		ProviderMode:  AgentProviderModeAgentDefaults,
+		ModelProvider: "ollama",
+		Model:         "llama3.2",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var content struct {
+		Provider map[string]struct {
+			Models map[string]struct {
+				ID string `json:"id"`
+			} `json:"models"`
+		} `json:"provider"`
+	}
+	if err := json.Unmarshal([]byte(env["OPENCODE_CONFIG_CONTENT"]), &content); err != nil {
+		t.Fatalf("config content = %q: %v", env["OPENCODE_CONFIG_CONTENT"], err)
+	}
+	if _, ok := content.Provider["ollama"].Models["llama3.2"]; !ok {
+		t.Fatalf("ollama models = %#v", content.Provider["ollama"].Models)
+	}
+}
+
+func TestProcessEnvWritesCustomOpenCodeProviderConfig(t *testing.T) {
+	root := t.TempDir()
+	env, err := NewManager(nil, Config{
+		Root: root,
+		Providers: map[string]modelprovider.ModelProviderConfig{
+			"internal": {
+				Type:    "openai-compatible",
+				Label:   "Internal",
+				BaseURL: "https://llm.internal/v1",
+				APIKey:  "internal-key",
+			},
+		},
+	}, nil).processEnvPrepared("opencode", AgentConfig{Model: "internal/chat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env["JAZ_PROVIDER_INTERNAL_API_KEY"] != "internal-key" {
+		t.Fatalf("custom provider key not mapped: %#v", env)
+	}
+	var content struct {
+		Provider map[string]struct {
+			API    string   `json:"api"`
+			Env    []string `json:"env"`
+			Models map[string]struct {
+				ID string `json:"id"`
+			} `json:"models"`
+		} `json:"provider"`
+	}
+	if err := json.Unmarshal([]byte(env["OPENCODE_CONFIG_CONTENT"]), &content); err != nil {
+		t.Fatalf("config content = %q: %v", env["OPENCODE_CONFIG_CONTENT"], err)
+	}
+	internal := content.Provider["internal"]
+	if internal.API != "https://llm.internal/v1" || strings.Join(internal.Env, ",") != "JAZ_PROVIDER_INTERNAL_API_KEY" {
+		t.Fatalf("internal provider config = %#v", internal)
+	}
+	if _, ok := internal.Models["chat"]; !ok {
+		t.Fatalf("internal models = %#v", internal.Models)
+	}
+}
+
+func TestProbeAgentAuthMatchesOpenCodeModelProvider(t *testing.T) {
+	clearHostEnv(t)
+	root := t.TempDir()
+
+	status := ProbeAgentAuth(AgentOpenCode, AgentConfig{Model: "openrouter/openai/gpt-5.4-mini"}, root, map[string]string{
+		"OPENAI_API_KEY": "openai-key",
+	})
+	if status.Authenticated {
+		t.Fatalf("openrouter model authenticated with openai key: %#v", status)
+	}
+
+	t.Setenv("JAZ_ACP_OPENCODE_API_KEY", "openrouter-key")
+	status = ProbeAgentAuth(AgentOpenCode, AgentConfig{Model: "openrouter/openai/gpt-5.4-mini"}, root, nil)
+	if !status.Authenticated || status.AuthEvidence != "api_key_env" {
+		t.Fatalf("openrouter model did not authenticate with explicit opencode key: %#v", status)
+	}
+
+	status = ProbeAgentAuth(AgentOpenCode, AgentConfig{Model: "openai/gpt-5.4-mini"}, root, map[string]string{
+		"OPENAI_API_KEY": "openai-key",
+	})
+	if !status.Authenticated || status.AuthEvidence != "openai_api_key_env" {
+		t.Fatalf("openai model did not authenticate with openai key: %#v", status)
+	}
+}
+
+func TestProbeAgentAuthMatchesCustomOpenCodeProvider(t *testing.T) {
+	root := t.TempDir()
+	providers := map[string]modelprovider.ModelProviderConfig{
+		"internal": {
+			Type:    "openai-compatible",
+			BaseURL: "https://llm.internal/v1",
+			APIKey:  "internal-key",
+		},
+	}
+
+	status := ProbeAgentAuthWithProviders(AgentOpenCode, AgentConfig{Model: "internal/chat"}, root, nil, providers)
+	if !status.Authenticated || status.AuthKind != AuthKindAPIKey {
+		t.Fatalf("custom provider did not authenticate with configured key: %#v", status)
 	}
 }
 

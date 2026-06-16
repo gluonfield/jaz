@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
 	"strings"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/agent"
+	"github.com/wins/jaz/backend/internal/jazagent"
 	"github.com/wins/jaz/backend/internal/media"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
@@ -19,62 +19,16 @@ import (
 
 // voiceModeNote steers spoken turns; it is injected per-request and stripped
 // before messages are persisted, so transcripts stay clean.
-const voiceModeNote = "Voice mode: the user spoke this message aloud and your final reply will be read out by text-to-speech. Keep the final response to a few short conversational sentences of plain prose — no markdown, lists, headings, or code blocks. Using tools is fine."
-const nativePlanModeNote = `<collaboration_mode># Plan Mode
-
-You are in Plan Mode until this turn ends. Plan Mode is a collaboration mode for producing an approval-ready implementation plan; it is not execution mode.
-
-## Rules
-
-- You may read/search/inspect and run non-mutating checks that improve the plan.
-- You must not edit files, apply patches, run codegen/formatters that rewrite tracked files, or otherwise execute the plan.
-- If the user asks you to implement while still in Plan Mode, plan the implementation instead of doing it.
-- A final plan must be decision-complete: another engineer or agent should be able to implement it without making design choices.
-
-## Proposing The Plan
-
-When you are ready to present the official plan, call update_plan with the proposed plan. In Plan Mode, update_plan creates the approval surface shown to the user. Do not duplicate the full plan in normal assistant text after calling the tool.
-
-The proposed plan should include a clear title or summary, important API/interface/type changes, concrete implementation steps, tests/scenarios, and explicit assumptions/defaults where needed. Do not ask "should I proceed?" in the final output; the user can approve the plan from the client.
-</collaboration_mode>`
-
-const nativePlanUserInstruction = "Plan mode is enabled for this turn. Use the update_plan tool to present the proposed plan when it is ready for approval."
+const voiceModeNote = jazagent.VoiceModeNote
+const nativePlanModeNote = jazagent.PlanModeNote
+const nativePlanUserInstruction = jazagent.PlanUserInstruction
 
 // stripTransientSystem removes injected system/developer messages — the
 // per-turn system prompt and mode notes — before persisting (the agent echoes the full
 // request message list back, and SaveMessages replaces the stored list
 // wholesale), remapping reasoning indexes onto the stripped list.
 func stripTransientSystem(messages []provider.Message, reasoning map[int]string, injected []string) ([]provider.Message, map[int]string) {
-	if len(injected) == 0 {
-		return messages, reasoning
-	}
-	drop := make(map[int]bool)
-	for i, msg := range messages {
-		if msg.OfSystem == nil && msg.OfDeveloper == nil {
-			continue
-		}
-		if slices.Contains(injected, provider.MessageContent(msg)) {
-			drop[i] = true
-		}
-	}
-	if len(drop) == 0 {
-		return messages, reasoning
-	}
-	out := make([]provider.Message, 0, len(messages)-len(drop))
-	remapped := make(map[int]string, len(reasoning))
-	for i, msg := range messages {
-		if drop[i] {
-			continue
-		}
-		if text, ok := reasoning[i]; ok {
-			remapped[len(out)] = text
-		}
-		out = append(out, msg)
-	}
-	if len(reasoning) == 0 {
-		return out, reasoning
-	}
-	return out, remapped
+	return jazagent.StripTransientSystem(messages, reasoning, injected)
 }
 
 func (s *Server) streamNativeSession(w http.ResponseWriter, flusher http.Flusher, r *http.Request, session storage.Session, message string, attachments []storage.Attachment, voiceMode bool, planRequested bool) {
@@ -154,7 +108,7 @@ func (s *Server) runNativeSessionWithClaim(ctx context.Context, session storage.
 		MediaRefs:       turn.MediaRefs,
 	}) {
 		if len(event.Messages) > 0 {
-			toSave, reasoning := stripTransientSystem(turn.storageSnapshot(event.Messages), event.ReasoningByMessage, turn.Transient)
+			toSave, reasoning := stripTransientSystem(turn.StorageSnapshot(event.Messages), event.ReasoningByMessage, turn.Transient)
 			var err error
 			if store, ok := s.Store.(mediaReasoningMessageStore); ok && (len(reasoning) > 0 || len(event.MediaRefs) > 0) {
 				err = store.SaveMessagesWithReasoningAndMedia(session.ID, toSave, reasoning, event.MediaRefs)
@@ -288,87 +242,23 @@ func (s *Server) agentDefaults() (agentsettings.AgentDefaults, error) {
 	return defaults, nil
 }
 
-type nativeTurnRequest struct {
-	Messages         []provider.Message
-	MediaRefs        map[string][]media.Ref
-	Transient        []string
-	userMessageIndex int
-	displayUser      provider.Message
-}
-
-func (r nativeTurnRequest) storageSnapshot(messages []provider.Message) []provider.Message {
-	if r.userMessageIndex < 0 || r.userMessageIndex >= len(messages) {
-		return messages
-	}
-	out := append([]provider.Message(nil), messages...)
-	out[r.userMessageIndex] = r.displayUser
-	return out
-}
+type nativeTurnRequest = jazagent.TurnRequest
 
 func (s *Server) nativeRequestMessages(session storage.Session, message string, attachments []storage.Attachment, voiceMode bool, planRequested bool) (nativeTurnRequest, error) {
-	messages, err := s.Store.LoadMessages(session.ID)
-	if err != nil {
-		return nativeTurnRequest{}, err
-	}
-	mediaRefs, err := s.nativeMediaRefs(session.ID)
-	if err != nil {
-		return nativeTurnRequest{}, err
-	}
-	// The system prompt is derived fresh for every turn (skills, SOUL.md and
-	// friends are re-read from disk) and never persisted. Older sessions stored
-	// it as their first message; drop that copy so the fresh one replaces it.
-	for len(messages) > 0 && messages[0].OfSystem != nil {
-		messages = messages[1:]
-	}
-	transient := make([]string, 0, 2)
+	var prompts jazagent.PromptSource
 	if s.Prompts != nil {
-		var workspace string
-		if session.RuntimeRef != nil && strings.TrimSpace(session.RuntimeRef.Cwd) != "" {
-			workspace = session.RuntimeRef.Cwd
-		}
-		prompt, err := s.Prompts.SystemPromptForWorkspace(workspace)
-		if err != nil {
-			return nativeTurnRequest{}, fmt.Errorf("build system prompt: %w", err)
-		}
-		if prompt := strings.TrimSpace(prompt); prompt != "" {
-			messages = append([]provider.Message{provider.SystemMessage(prompt)}, messages...)
-			transient = append(transient, prompt)
-		}
+		prompts = s.Prompts
 	}
-	if voiceMode {
-		messages = append(messages, provider.SystemMessage(voiceModeNote))
-		transient = append(transient, voiceModeNote)
-	}
-	if planRequested {
-		messages = append(messages, provider.DeveloperMessage(nativePlanModeNote))
-		transient = append(transient, nativePlanModeNote)
-	}
-	userMessageIndex := len(messages)
-	userPrompt := nativeMessageWithAttachmentLinks(message, attachments)
-	if planRequested {
-		userPrompt = strings.TrimSpace(userPrompt + "\n\n" + nativePlanUserInstruction)
-	}
-	messages = append(messages, provider.UserMessage(userPrompt))
-	if err := storage.AppendUserMessage(s.Store, session.ID, message, attachments); err != nil {
-		return nativeTurnRequest{}, err
-	}
-	return nativeTurnRequest{
-		Messages:         messages,
-		MediaRefs:        mediaRefs,
-		Transient:        transient,
-		userMessageIndex: userMessageIndex,
-		displayUser:      provider.UserMessage(message),
-	}, nil
+	return jazagent.BuildRequest(s.Store, prompts, jazagent.Request{
+		Session:       session,
+		Message:       message,
+		Attachments:   attachments,
+		VoiceMode:     voiceMode,
+		PlanRequested: planRequested,
+		AppendUser:    true,
+	})
 }
 
 func (s *Server) nativeMediaRefs(sessionID string) (map[string][]media.Ref, error) {
-	recordStore, ok := s.Store.(messageRecordStore)
-	if !ok {
-		return nil, nil
-	}
-	records, err := recordStore.LoadMessageRecords(sessionID)
-	if err != nil {
-		return nil, err
-	}
-	return storage.MediaRefsByToolCall(records), nil
+	return jazagent.MediaRefs(s.Store, sessionID)
 }

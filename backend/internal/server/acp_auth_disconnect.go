@@ -43,7 +43,7 @@ func (s *Server) handleDisconnectACPAuth(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	auth := acp.ProbeAgentAuth(agent, cfg, s.runtimeRoot(), nil)
+	auth := acp.ProbeAgentAuthWithProviders(agent, cfg, s.runtimeRoot(), nil, s.ModelProviders)
 
 	if spec, ok := acp.AgentAPIKey(agent); ok && strings.TrimSpace(spec.SourceEnv) != "" {
 		if err := runtimeenv.Remove(s.runtimeKeyEnvPath(), spec.SourceEnv); err != nil {
@@ -59,6 +59,6 @@ func (s *Server) handleDisconnectACPAuth(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	fresh := acp.ProbeAgentAuth(agent, cfg, s.runtimeRoot(), nil)
+	fresh := acp.ProbeAgentAuthWithProviders(agent, cfg, s.runtimeRoot(), nil, s.ModelProviders)
 	writeJSON(w, http.StatusOK, newACPAuthStatusResponse(fresh))
 }

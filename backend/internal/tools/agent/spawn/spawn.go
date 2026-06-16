@@ -14,7 +14,7 @@ type Tool struct {
 }
 
 type input struct {
-	ACPAgent  string `json:"acp_agent,omitempty" jsonschema_description:"Configured ACP agent name, for example codex, claude, or grok."`
+	ACPAgent  string `json:"acp_agent,omitempty" jsonschema_description:"Configured ACP agent name, for example jaz, codex, claude, grok, or opencode. Empty uses jaz."`
 	Slug      string `json:"slug,omitempty" jsonschema_description:"Stable human-readable handle for the spawned session."`
 	Title     string `json:"title,omitempty" jsonschema_description:"Optional display title for the spawned session."`
 	Directory string `json:"directory,omitempty" jsonschema_description:"Working directory for the agent, relative to the jaz workspace; created if missing. Set this when the user names an existing project, repo, or folder. Omit for ad-hoc tasks: a fresh directory named after the session is created."`
@@ -25,7 +25,7 @@ type input struct {
 func (t *Tool) Definition() tools.Definition {
 	return tools.Function(
 		"agent_spawn",
-		"Create an idle ACP-backed agent session, such as codex, claude, or grok. This only creates the session; send tasks with agent_send and choose wait=true or wait=false per task. Pass directory to work inside an existing project; pass worktree=true to isolate repo changes on a session branch. With worktree=true, branch optionally chooses the base branch/ref; omit it to branch from directory's current HEAD.",
+		"Create an idle ACP-backed agent session, such as jaz, codex, claude, grok, or opencode. This only creates the session; send tasks with agent_send and choose wait=true or wait=false per task. Pass directory to work inside an existing project; pass worktree=true to isolate repo changes on a session branch. With worktree=true, branch optionally chooses the base branch/ref; omit it to branch from directory's current HEAD.",
 		true,
 		helpers.GenerateSchema[input](),
 	)

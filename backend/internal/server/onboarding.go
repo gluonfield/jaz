@@ -177,13 +177,17 @@ func (s *Server) probeACPAgents(defaults agentsettings.AgentDefaults) []onboardi
 			continue
 		}
 		adapterInstalled := acpCommandInstalled(cfg)
-		auth := acp.ProbeAgentAuth(name, cfg, s.runtimeRoot(), nil)
+		auth := acp.ProbeAgentAuthWithProviders(name, cfg, s.runtimeRoot(), nil, s.ModelProviders)
 		if strings.TrimSpace(cfg.URL) != "" {
 			auth.Authenticated = true
 			auth.Reason = ""
 		}
 		appName, appInstalled := agentAppInstall(name)
-		readiness := acp.ProbeReadiness(name, cfg, s.runtimeRoot(), nil)
+		readiness := acp.ProbeReadinessWithProviders(name, cfg, s.runtimeRoot(), nil, s.ModelProviders)
+		if cfg.UsesNativeProvider() && !s.modelProviderConfigured(cfg.ModelProvider) {
+			readiness.Available = false
+			readiness.Reason = fmt.Sprintf("native provider %q is not configured", cfg.ModelProvider)
+		}
 		installed := adapterInstalled || auth.LoginCommandAvailable
 		reason := ""
 		if !installed {
@@ -249,6 +253,9 @@ func firstMessage(values ...string) string {
 }
 
 func acpCommandInstalled(cfg acp.AgentConfig) bool {
+	if !cfg.RequiresCommand() {
+		return true
+	}
 	if strings.TrimSpace(cfg.URL) != "" {
 		return true
 	}
@@ -257,6 +264,9 @@ func acpCommandInstalled(cfg acp.AgentConfig) bool {
 }
 
 func commandMissingReason(cfg acp.AgentConfig) string {
+	if !cfg.RequiresCommand() {
+		return ""
+	}
 	command, _ := acpCommand(cfg)
 	if strings.TrimSpace(command) == "" {
 		return "command is not configured"
@@ -293,9 +303,18 @@ func (s *Server) acpProbeConfig(name string, defaults agentsettings.AgentDefault
 	} else {
 		command = agentsettings.CommandLine(cfg.Command, cfg.Args)
 	}
+	defaultModelProvider := strings.TrimSpace(cfg.ModelProvider)
+	cfg.ModelProvider = strings.TrimSpace(defaults.ACP[name].ModelProvider)
 	cfg.Model = strings.TrimSpace(defaults.ACP[name].Model)
 	cfg.ReasoningEffort = strings.TrimSpace(defaults.ACP[name].ReasoningEffort)
 	cfg.Auth = defaults.ACP[name].Auth
+	if cfg.UsesNativeProvider() {
+		cfg.ModelProvider = defaults.Native.ModelProvider
+		cfg.Model = defaults.Native.Model
+		cfg.ReasoningEffort = defaults.Native.ReasoningEffort
+	} else if cfg.UsesModelProvider() {
+		cfg = cfg.NormalizeProviderModel(defaultModelProvider)
+	}
 	return cfg, command, nil
 }
 

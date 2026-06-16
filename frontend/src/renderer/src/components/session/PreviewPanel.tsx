@@ -184,8 +184,8 @@ export function PreviewPanel({
         </div>
         <IconButton
           size="sm"
-          aria-label="Open preview externally"
-          title="Open externally"
+          aria-label="Open in Browser"
+          title="Open in Browser"
           disabled={!url}
           onClick={() => window.open(url, '_blank', 'noopener')}
         >
