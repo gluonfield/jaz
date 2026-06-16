@@ -9,10 +9,11 @@ import (
 // the agent can fix them in the same run. Warnings never block a publish —
 // they ride back on the tool/ext-method result. Widgets share the inline-
 // artifact design system, so these checks cover only the few tile-specific
-// failure modes that design guide doesn't enforce on its own.
+// failure modes that need validation at publish time.
 
 var (
 	fullDocRe      = regexp.MustCompile(`(?i)^\s*(?:<!doctype|<html[\s>]|<head[\s>]|<body[\s>])`)
+	localStyleRe   = regexp.MustCompile(`(?i)(<style[\s>]|style\s*=|<svg[\s>])`)
 	viewportUnitRe = regexp.MustCompile(`(?i)\b\d+(?:\.\d+)?(?:vh|vw|vmin|vmax)\b`)
 	fixedPosRe     = regexp.MustCompile(`(?i)position:\s*fixed`)
 )
@@ -28,6 +29,9 @@ func LintHTML(html string) []string {
 	}
 	if fixedPosRe.MatchString(html) {
 		warnings = append(warnings, "position: fixed collapses the sandboxed frame and pins over scrolled content — use a normal-flow layout, or sticky inside the one internal scroller")
+	}
+	if !localStyleRe.MatchString(html) {
+		warnings = append(warnings, "widget has no local styling — build a polished artifact tile with scoped CSS or inline styles instead of bare markup")
 	}
 	return warnings
 }

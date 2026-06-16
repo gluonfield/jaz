@@ -50,29 +50,6 @@ func TestParityWithClaude(t *testing.T) {
 	}
 }
 
-func TestRenderFullContainsEverySection(t *testing.T) {
-	full := Render(Full())
-	for _, want := range []string{
-		"# Imagine — Visual Creation Suite",
-		"## Modules",
-		"## Core Design System",
-		"## When nothing fits",
-		"## Color palette",
-		"## SVG setup",
-		"## Diagram types",
-		"## UI components",
-		"## Charts (Chart.js)",
-		"## Geographic maps (D3 choropleth)",
-		"## Art and illustration",
-		"## Elicitation — collecting skill arguments",
-		"Selected files appear as 120×120 tiles",
-	} {
-		if !strings.Contains(full, want) {
-			t.Fatalf("full guide missing %q", want)
-		}
-	}
-}
-
 func TestRenderChartFiltersAndStaysClean(t *testing.T) {
 	guide := Render(For([]string{"chart"}))
 

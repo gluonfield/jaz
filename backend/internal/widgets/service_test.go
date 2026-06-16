@@ -454,14 +454,25 @@ func TestMaybeAutoPublishRequiresAssignment(t *testing.T) {
 func TestPromptSectionMentionsFileAndErrors(t *testing.T) {
 	_, _, loop := newTestService(t)
 	section := widgets.PromptSection(loop, &widgets.Widget{CurrentVersion: 3, Title: "Open PRs", LastError: "boom"})
-	// The design system lives in the guide file, not the prompt.
-	for _, want := range []string{widgets.WidgetFilePath(loop), widgets.WidgetGuidePath(loop), "publish_widget", "boom"} {
+	for _, want := range []string{
+		widgets.WidgetFilePath(loop),
+		"visualize:read_me",
+		"visualize_read_me",
+		"jaztools MCP-mapped read_me",
+		"Tile quality floor",
+		"publish_widget",
+		"Do not call `visualize:show_widget`",
+		"boom",
+	} {
 		if !strings.Contains(section, want) {
 			t.Fatalf("prompt section missing %q:\n%s", want, section)
 		}
 	}
 	if strings.Contains(section, "Visual Creation Suite") {
-		t.Fatal("design system leaked back into the prompt; it belongs in the guide file")
+		t.Fatal("design system leaked into the prompt; agents should fetch it with visualize:read_me")
+	}
+	if strings.Contains(section, "AGENTS.md") || strings.Contains(section, "design guide next to it") {
+		t.Fatalf("prompt must not point at a generated guide file:\n%s", section)
 	}
 
 	// A missing widget file is announced up front, not discovered via a failed read…
@@ -479,38 +490,6 @@ func TestPromptSectionMentionsFileAndErrors(t *testing.T) {
 	section = widgets.PromptSection(loop, &widgets.Widget{CurrentVersion: 3, Title: "Open PRs"})
 	if !strings.Contains(section, "iterate on it") || strings.Contains(section, "does not exist yet") {
 		t.Fatalf("prompt must tell the agent to iterate on the existing file:\n%s", section)
-	}
-}
-
-func TestEnsureGuideWritesAndRefreshes(t *testing.T) {
-	_, _, loop := newTestService(t)
-	path, err := widgets.EnsureGuide(loop)
-	if err != nil {
-		t.Fatalf("ensure guide: %v", err)
-	}
-	if path != widgets.WidgetGuidePath(loop) {
-		t.Fatalf("guide path = %q", path)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read guide: %v", err)
-	}
-	// The guide is the inline-artifact design system plus the tile-mode addendum.
-	for _, want := range []string{"Visual Creation Suite", "Board tile mode", "Fill the tile"} {
-		if !strings.Contains(string(data), want) {
-			t.Fatalf("guide missing %q", want)
-		}
-	}
-	// A stale (edited) guide is rewritten to Jaz's version.
-	if err := os.WriteFile(path, []byte("scribbles"), 0o644); err != nil {
-		t.Fatalf("scribble: %v", err)
-	}
-	if _, err := widgets.EnsureGuide(loop); err != nil {
-		t.Fatalf("ensure guide again: %v", err)
-	}
-	data, _ = os.ReadFile(path)
-	if string(data) == "scribbles" {
-		t.Fatal("stale guide was not refreshed")
 	}
 }
 

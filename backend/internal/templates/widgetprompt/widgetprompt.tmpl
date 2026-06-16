@@ -1,7 +1,8 @@
 ## Widget instructions
 
 - This loop owns a widget: a small HTML tile on the user's Jaz board, updated by you on every run.
-- Build it exactly like a Jaz inline artifact — same design system, same tools, same conventions. The widget is an artifact that happens to live in a board tile.
+- Build it as a polished Jaz artifact that happens to publish into a board tile, not as a bare status snippet.
+- Before creating or materially changing the tile, call the artifact guidance tool if it is available: `visualize:read_me`, `visualize_read_me`, or the jaztools MCP-mapped read_me equivalent. Use the closest module (`chart`/`data_viz` for metrics, `mockup` for UI/status surfaces, `diagram` for flows). If no such tool is exposed in this runtime, follow the artifact guidance already in your system prompt and the tile rules below.
 {{- if .FilePath}}
 {{- if .FileExists}}
 - Widget file: {{.FilePath}} — it exists; read it and iterate on it rather than starting over.
@@ -9,13 +10,11 @@
 - Widget file: {{.FilePath}} — it does not exist yet; create it this run (do not try to read it first).
 {{- end}}
 {{- end}}
-{{- if .GuidePath}}
-- Before editing, read the design guide next to it: {{.GuidePath}}. It is the full artifact design system plus a short "board tile mode" section at the end (fill the tile, one internal scroller, read-only, no chrome). Follow it; do not look anywhere else for conventions.
-{{- end}}
-- Your widget workspace is exactly two files: the widget file and its design guide. There are no companion or metadata files to find or maintain — title and size_hint are publish parameters, not files. Other directories under the automations root belong to other loops; never read or mirror their widgets.
-- The file must be a self-contained HTML FRAGMENT (no <!doctype>, <html>, <head>, or <body>), under 1 MB. It lives outside the session workspace; if a file tool refuses the path, write it via the shell (like the memory file).
-- Publishing: if the publish_widget tool (or the _jaz.dev/widget/publish extension method) is in your tool list, call it after writing the file — it validates and returns errors you can fix in the same run. If it is not in your tool list, just write the file and finish: Jaz publishes it automatically when the run ends. Do not search for or test other publish mechanisms.
-- Show ONLY the data the user asked the loop to track — the tile chrome already shows the title and freshness; no meta commentary, captions, or repeated headings. Read-only: no forms or action buttons.
+- Your widget workspace is the widget file. There are no companion, guide, or metadata files to find or maintain — title and size_hint are publish parameters, not files. Other directories under the automations root belong to other loops; never read or mirror their widgets.
+- Write a self-contained HTML fragment (no <!doctype>, <html>, <head>, or <body>), under 1 MB. It lives outside the session workspace; if a file tool refuses the path, write it via the shell (like the memory file).
+- Tile quality floor: fill the available tile with one stable root container; use scoped CSS, clear hierarchy, deliberate spacing, and finished visual styling; avoid fixed positioning, viewport units, clipped overflow, placeholder text, and dead empty regions. Use one internal scroll region only when the data genuinely needs it.
+- Keep it read-only and show only the data the user asked the loop to track. The board chrome already shows the title and freshness; do not add meta commentary, captions, repeated headings, forms, or action buttons.
+- Publishing: after writing the file, call the `publish_widget` tool or the `_jaz.dev/widget/publish` extension method when available — it validates and returns errors you can fix in the same run. Do not call `visualize:show_widget`/`visualize_show_widget` for board widgets; those render chat artifacts, not board tiles. If no publish mechanism is exposed, just write the file and finish: Jaz publishes it automatically when the run ends.
 {{- if .Published}}
 Current widget: version {{.Version}}, title {{printf "%q" .Title}}{{if .SizeHint}}, size {{.SizeHint}}{{end}}.
 {{- if .LastError}}

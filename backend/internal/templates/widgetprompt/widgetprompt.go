@@ -18,7 +18,6 @@ type Data struct {
 	// FileExists is checked at render time so the agent is told whether to
 	// iterate on the file or create it, instead of discovering via a failed read.
 	FileExists bool
-	GuidePath  string
 	// Published is false for a widget that has never shipped a version.
 	Published      bool
 	Version        int
@@ -28,8 +27,10 @@ type Data struct {
 	LayoutFeedback string
 }
 
-func Render(data Data) (string, error) {
+func Render(data Data) string {
 	var out bytes.Buffer
-	err := tmpl.Execute(&out, data)
-	return out.String(), err
+	if err := tmpl.Execute(&out, data); err != nil {
+		panic(err)
+	}
+	return out.String()
 }

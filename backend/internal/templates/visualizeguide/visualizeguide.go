@@ -54,21 +54,6 @@ func For(modules []string) Data {
 	return d
 }
 
-// Full enables every section — the complete reference, used where the whole
-// guide is embedded rather than served per request (e.g. the widget contract).
-func Full() Data {
-	return Data{
-		UIComponents: true,
-		ColorPalette: true,
-		SVGSetup:     true,
-		DiagramTypes: true,
-		Charts:       true,
-		GeoMaps:      true,
-		Art:          true,
-		Elicitation:  true,
-	}
-}
-
 // Render assembles the guide for the requested sections, normalized to a single
 // trailing newline. The template is embedded and parse-checked at init by
 // template.Must, and Data carries only bools, so Execute cannot fail at runtime;
