@@ -457,13 +457,17 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   const handleSend = useCallback((text: string, options: SendMessageOptions = {}) => {
     const controller = new AbortController()
     const files = options.files ?? []
+    const draftAttachments = options.attachments ?? []
     abortRef.current = controller
     pinToBottom()
     setLive({
       user: text,
       at: new Date().toISOString(),
       planRequested: Boolean(options.planRequested),
-      attachments: files.map((file) => ({ name: file.name, size: file.size, uploading: true })),
+      attachments: [
+        ...draftAttachments,
+        ...files.map((file) => ({ name: file.name, size: file.size, uploading: true })),
+      ],
       reasoning: '',
       assistant: '',
       tools: [],
@@ -476,12 +480,15 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
         ? await Promise.all(files.map((file) => uploadSessionAttachment(sessionId, file, controller.signal)))
         : []
       if (attachments.length) {
-        setLive((prev) => (prev ? { ...prev, attachments } : prev))
+        setLive((prev) => (prev ? { ...prev, attachments: [...draftAttachments, ...attachments] } : prev))
       }
       await streamSessionMessage({
         sessionId,
         message: text,
-        attachmentIds: attachments.map((attachment) => attachment.id),
+        attachmentIds: [
+          ...draftAttachments.map((attachment) => attachment.id),
+          ...attachments.map((attachment) => attachment.id),
+        ],
         planRequested: options.planRequested,
         signal: controller.signal,
         onEvent: (event) => {
@@ -883,6 +890,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                     abortRef.current?.abort()
                   }}
                   onVoice={session.runtime !== 'acp' ? () => setVoiceMode(true) : undefined}
+                  onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
                   onSteerQueuedPrompt={queue.onSteerQueuedPrompt}
                   onDeleteQueuedPrompt={queue.onDeleteQueuedPrompt}
                   onEditQueuedPrompt={queue.onEditQueuedPrompt}
