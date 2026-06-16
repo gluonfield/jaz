@@ -15,8 +15,14 @@ func UsageModule() fx.Option {
 }
 
 func NewUsageRoutes(service usagecore.Service) server.Routes {
-	return server.Routes{{
-		Pattern: "GET /v1/usage/daily",
-		Handler: usageapi.NewDailyHandler(service),
-	}}
+	return server.Routes{
+		{
+			Pattern: "GET /v1/usage/daily",
+			Handler: usageapi.NewDailyHandler(service),
+		},
+		{
+			Pattern: "GET /v1/usage/models",
+			Handler: usageapi.NewModelsHandler(service),
+		},
+	}
 }

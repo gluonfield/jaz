@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/gluonfield/jazmem/pkg/jazmem"
+	"github.com/wins/jaz/backend/internal/acp"
 	jazsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -20,6 +21,7 @@ type memoryHorizon struct {
 
 type memoryStatusResponse struct {
 	Enabled          bool                `json:"enabled"`
+	DreamAgent       string              `json:"dream_agent,omitempty"`
 	SchedulerRunning bool                `json:"scheduler_running"`
 	Root             string              `json:"root"`
 	DBPath           string              `json:"db_path"`
@@ -27,6 +29,11 @@ type memoryStatusResponse struct {
 	Horizons         []memoryHorizon     `json:"horizons"`
 	Tasks            []jazmem.TaskStatus `json:"tasks"`
 	MCPURL           string              `json:"mcp_url,omitempty"`
+}
+
+type memorySettingsInput struct {
+	Enabled    *bool   `json:"enabled,omitempty"`
+	DreamAgent *string `json:"dream_agent,omitempty"`
 }
 
 func (s *Server) requireMemory(w http.ResponseWriter) bool {
@@ -50,6 +57,10 @@ func (s *Server) handleMemoryStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) memoryStatus(r *http.Request) (memoryStatusResponse, error) {
+	store, ok := s.Store.(storage.SettingsStorage)
+	if !ok {
+		return memoryStatusResponse{}, fmt.Errorf("settings store is not configured")
+	}
 	doctor, err := s.Memory.Doctor(r.Context())
 	if err != nil {
 		return memoryStatusResponse{}, err
@@ -72,8 +83,13 @@ func (s *Server) memoryStatus(r *http.Request) (memoryStatusResponse, error) {
 		}
 		horizons = append(horizons, memoryHorizon{Name: h.name, Content: content, Chars: len(content), MaxChars: h.maxChars})
 	}
+	settings, err := jazsettings.LoadMemorySettings(store)
+	if err != nil {
+		return memoryStatusResponse{}, err
+	}
 	return memoryStatusResponse{
 		Enabled:          s.Memory.Enabled(),
+		DreamAgent:       settings.DreamAgent,
 		SchedulerRunning: s.Memory.Scheduler != nil && s.Memory.Scheduler.Running(),
 		Root:             s.Memory.Root(),
 		DBPath:           s.Memory.DBPath(),
@@ -93,17 +109,22 @@ func (s *Server) handleMemoryUpdate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("settings store is not configured"))
 		return
 	}
-	var input jazsettings.MemorySettings
+	var input memorySettingsInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	if _, err := jazsettings.SaveMemorySettings(store, input); err != nil {
+	settings, err := s.normalizeMemorySettingsInput(store, input)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if _, err := jazsettings.SaveMemorySettings(store, settings); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 	if s.Memory.Scheduler != nil {
-		if input.Enabled {
+		if settings.Enabled {
 			s.Memory.Scheduler.Start()
 		} else {
 			s.Memory.Scheduler.Stop()
@@ -117,6 +138,32 @@ func (s *Server) handleMemoryUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, status)
+}
+
+func (s *Server) normalizeMemorySettingsInput(store storage.SettingsStorage, input memorySettingsInput) (jazsettings.MemorySettings, error) {
+	settings, err := jazsettings.LoadMemorySettings(store)
+	if err != nil {
+		return jazsettings.MemorySettings{}, err
+	}
+	if input.Enabled != nil {
+		settings.Enabled = *input.Enabled
+	}
+	if input.DreamAgent != nil {
+		settings.DreamAgent = acp.CanonicalAgentName(*input.DreamAgent)
+	}
+	if settings.DreamAgent == "" {
+		return settings, nil
+	}
+	agentSettings, err := s.loadAgentSettings(store)
+	if err != nil {
+		return jazsettings.MemorySettings{}, err
+	}
+	if current, ok := agentSettings.ACP[settings.DreamAgent]; !ok {
+		return jazsettings.MemorySettings{}, fmt.Errorf("unknown dream agent %q", settings.DreamAgent)
+	} else if !current.Enabled {
+		return jazsettings.MemorySettings{}, fmt.Errorf("dream agent %q is not enabled", settings.DreamAgent)
+	}
+	return settings, nil
 }
 
 func (s *Server) handleMemoryHorizon(w http.ResponseWriter, r *http.Request) {
@@ -147,7 +194,19 @@ func (s *Server) handleMemoryReindex(w http.ResponseWriter, r *http.Request) {
 	if !s.requireMemory(w) {
 		return
 	}
-	report, err := s.Memory.Reindex(r.Context(), jazmem.ReindexOptions{})
+	report, err := s.Memory.RunIndexTask(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, report)
+}
+
+func (s *Server) handleMemoryDream(w http.ResponseWriter, r *http.Request) {
+	if !s.requireMemory(w) {
+		return
+	}
+	report, err := s.Memory.RunDreamTask(r.Context(), jazmem.DreamOptions{})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return

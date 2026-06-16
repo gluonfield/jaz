@@ -77,6 +77,7 @@ func runServe(args []string) error {
 		fx.Invoke(
 			app.ConnectACPCompletion,
 			app.CloseMemory,
+			app.ConfigureMemoryDreamRunner,
 			app.StartMemoryScheduler,
 			startServer,
 			app.StartMCPManager,

@@ -2,8 +2,8 @@ import { useQuery } from '@tanstack/react-query'
 import { ChartNoAxesColumn } from 'lucide-react'
 import { type MouseEvent, useMemo, useState } from 'react'
 import { Skeleton } from '@/components/ui/Skeleton'
-import { dailyUsageQuery } from '@/lib/api/sessions'
-import type { DailyUsage } from '@/lib/api/types'
+import { dailyUsageQuery, modelUsageQuery } from '@/lib/api/sessions'
+import type { DailyUsage, ModelUsage } from '@/lib/api/types'
 import { formatTokens } from '@/lib/format/tokens'
 import {
   formatUsageDate,
@@ -30,6 +30,7 @@ const usageGapPx = 3
 
 export function UsageSettings() {
   const usage = useQuery(dailyUsageQuery(365))
+  const models = useQuery(modelUsageQuery(30))
 
   return (
     <section className="py-5">
@@ -45,7 +46,12 @@ export function UsageSettings() {
       ) : usage.isError ? (
         <p className="mt-4 py-2 text-[13px] text-danger">{usage.error.message}</p>
       ) : (
-        <UsagePanel days={usage.data} />
+        <UsagePanel
+          days={usage.data}
+          models={models.data ?? []}
+          modelsError={models.error}
+          modelsPending={models.isPending}
+        />
       )}
     </section>
   )
@@ -60,11 +66,22 @@ function UsageSkeleton() {
         ))}
       </div>
       <Skeleton className="mt-4 h-[130px]" />
+      <Skeleton className="mt-4 h-[150px]" />
     </div>
   )
 }
 
-function UsagePanel({ days }: { days: DailyUsage[] }) {
+function UsagePanel({
+  days,
+  models,
+  modelsError,
+  modelsPending,
+}: {
+  days: DailyUsage[]
+  models: ModelUsage[]
+  modelsError: Error | null
+  modelsPending: boolean
+}) {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
   const chartDays = useMemo(() => visibleUsageDays(days), [days])
   const cells = useMemo(() => usageCells(chartDays), [chartDays])
@@ -183,6 +200,8 @@ function UsagePanel({ days }: { days: DailyUsage[] }) {
         </div>
       </div>
 
+      <ModelBreakdown models={models} error={modelsError} pending={modelsPending} />
+
       {tooltip ? <UsageTooltip state={tooltip} /> : null}
     </div>
   )
@@ -196,6 +215,112 @@ function UsageStat({ label, value, detail }: { label: string; value: string; det
       <div className="mt-0.5 truncate text-[10px] text-ink-3">{detail}</div>
     </div>
   )
+}
+
+function ModelBreakdown({
+  models,
+  error,
+  pending,
+}: {
+  models: ModelUsage[]
+  error: Error | null
+  pending: boolean
+}) {
+  const visible = models.slice(0, 8)
+  const maxTotal = Math.max(1, ...visible.map((model) => inputOutputTokens(model.usage)))
+
+  return (
+    <div className="mt-5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[12px] font-medium text-ink">Last 30 days by model</p>
+          <p className="mt-0.5 truncate text-[11px] text-ink-3">ACP agent usage, ranked by input + output tokens.</p>
+        </div>
+      </div>
+
+      {pending ? (
+        <div className="mt-2 space-y-2">
+          {Array.from({ length: 3 }, (_, index) => (
+            <Skeleton key={index} className="h-11" />
+          ))}
+        </div>
+      ) : error ? (
+        <p className="mt-2 rounded-control bg-danger/5 px-3 py-2 text-[12px] text-danger">
+          Couldn't load model usage: {error.message}
+        </p>
+      ) : visible.length === 0 ? (
+        <p className="mt-2 rounded-control bg-bg/45 px-3 py-2 text-[12px] text-ink-3">
+          No ACP model usage recorded yet.
+        </p>
+      ) : (
+        <div className="mt-2 divide-y divide-border/60">
+          {visible.map((model) => (
+            <ModelUsageRow
+              key={`${model.agent ?? ''}:${model.model_provider ?? ''}:${model.model ?? ''}`}
+              model={model}
+              maxTotal={maxTotal}
+            />
+          ))}
+          {models.length > visible.length ? (
+            <div className="pt-2 text-[11px] text-ink-3">
+              {models.length - visible.length} more model{models.length - visible.length === 1 ? '' : 's'} with usage.
+            </div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ModelUsageRow({ model, maxTotal }: { model: ModelUsage; maxTotal: number }) {
+  const total = inputOutputTokens(model.usage)
+  const cacheRead = model.usage.cached_input_tokens ?? 0
+  const cacheWrite = model.usage.cached_write_tokens ?? 0
+  const width = `${Math.max(3, (total / maxTotal) * 100)}%`
+
+  return (
+    <div className="grid gap-3 py-2.5 md:grid-cols-[minmax(0,1fr)_auto]">
+      <div className="min-w-0">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <span className="truncate text-[13px] font-medium text-ink">{modelName(model)}</span>
+          <span className="shrink-0 text-[11px] text-ink-3">{formatModelMeta(model)}</span>
+        </div>
+        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-bg ring-1 ring-border/60">
+          <div className="h-full rounded-full bg-primary" style={{ width }} />
+        </div>
+        {cacheRead > 0 || cacheWrite > 0 ? (
+          <div className="mt-1 text-[10px] text-ink-3">
+            {cacheRead > 0 ? `Cache read ${formatTokens(cacheRead)}` : null}
+            {cacheRead > 0 && cacheWrite > 0 ? ' · ' : null}
+            {cacheWrite > 0 ? `Cache write ${formatTokens(cacheWrite)}` : null}
+          </div>
+        ) : null}
+      </div>
+      <div className="grid grid-cols-3 gap-3 text-right">
+        <ModelMetric label="Input" value={model.usage.input_tokens ?? 0} />
+        <ModelMetric label="Output" value={model.usage.output_tokens ?? 0} />
+        <ModelMetric label="Total" value={total} />
+      </div>
+    </div>
+  )
+}
+
+function ModelMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="min-w-[56px]">
+      <div className="font-mono text-[12px] leading-none text-ink tabular-nums">{formatTokens(value)}</div>
+      <div className="mt-1 text-[10px] text-ink-3">{label}</div>
+    </div>
+  )
+}
+
+function modelName(model: ModelUsage): string {
+  return model.model?.trim() || 'Unknown model'
+}
+
+function formatModelMeta(model: ModelUsage): string {
+  const parts = [model.agent, model.model_provider].map((part) => part?.trim()).filter(Boolean)
+  return parts.length > 0 ? parts.join(' / ') : 'ACP'
 }
 
 function UsageSquare({

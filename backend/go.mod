@@ -6,7 +6,7 @@ require (
 	github.com/charmbracelet/log v0.4.2
 	github.com/creack/pty v1.1.24
 	github.com/gluonfield/acp-transport v0.0.0-20260615073335-1a98878f30bb
-	github.com/gluonfield/jazmem v0.0.0
+	github.com/gluonfield/jazmem v0.0.0-20260616175715-d42178ae8795
 	github.com/gorilla/websocket v1.5.3
 	github.com/invopop/jsonschema v0.14.0
 	github.com/joho/godotenv v1.5.1
@@ -84,8 +84,6 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
-
-replace github.com/gluonfield/jazmem => ../../jazmem
 
 tool (
 	golang.org/x/tools/cmd/deadcode
