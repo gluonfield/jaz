@@ -11,6 +11,8 @@ import (
 
 var cronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
+const defaultACPAgent = "jaz"
+
 func NormalizeCreate(input CreateLoop, now time.Time) (CreateLoop, time.Time, error) {
 	input.Name = strings.TrimSpace(input.Name)
 	input.Prompt = strings.TrimSpace(input.Prompt)
@@ -24,7 +26,7 @@ func NormalizeCreate(input CreateLoop, now time.Time) (CreateLoop, time.Time, er
 	}
 	input.ACPAgent = strings.TrimSpace(input.ACPAgent)
 	if input.Runtime == RuntimeACP && input.ACPAgent == "" {
-		input.ACPAgent = "codex"
+		input.ACPAgent = defaultACPAgent
 	}
 	effort, err := normalizeReasoningEffort(input.ReasoningEffort)
 	if err != nil {
@@ -82,7 +84,7 @@ func NormalizeUpdate(current Loop, input UpdateLoop, now time.Time) (Loop, bool,
 		next.Directory = strings.TrimSpace(*input.Directory)
 	}
 	if next.Runtime == RuntimeACP && next.ACPAgent == "" {
-		next.ACPAgent = "codex"
+		next.ACPAgent = defaultACPAgent
 	}
 	if next.Runtime != RuntimeACP {
 		next.ACPAgent = ""

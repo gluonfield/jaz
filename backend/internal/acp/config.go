@@ -10,10 +10,15 @@ import (
 )
 
 const (
+	AgentJaz      = "jaz"
 	AgentCodex    = "codex"
 	AgentClaude   = "claude"
 	AgentGrok     = "grok"
 	AgentOpenCode = "opencode"
+
+	AgentProviderModeNone           = ""
+	AgentProviderModeNativeDefaults = "native_defaults"
+	AgentProviderModeAgentDefaults  = "agent_defaults"
 
 	AuthModeAuto        = "auto"
 	AuthModeExistingCLI = "existing_cli"
@@ -73,15 +78,74 @@ type Config struct {
 }
 
 type AgentConfig struct {
-	Command         string
-	Args            []string
-	Model           string
-	ReasoningEffort string
-	URL             string
-	Token           string
-	Auth            AgentAuthConfig
-	Env             map[string]string
-	Cwd             string
+	Command                 string
+	Args                    []string
+	Local                   bool
+	ProviderMode            string
+	ModelProviderCapability string
+	ModelProvider           string
+	Model                   string
+	ReasoningEffort         string
+	URL                     string
+	Token                   string
+	Auth                    AgentAuthConfig
+	Env                     map[string]string
+	Cwd                     string
+}
+
+func (c AgentConfig) RequiresCommand() bool {
+	return !c.Local && strings.TrimSpace(c.URL) == ""
+}
+
+func (c AgentConfig) SupportsAuth() bool {
+	return !c.Local
+}
+
+func (c AgentConfig) UsesNativeProvider() bool {
+	return strings.TrimSpace(c.ProviderMode) == AgentProviderModeNativeDefaults
+}
+
+func (c AgentConfig) UsesModelProvider() bool {
+	return strings.TrimSpace(c.ProviderMode) == AgentProviderModeAgentDefaults
+}
+
+func (c AgentConfig) UsesProvider() bool {
+	return c.UsesNativeProvider() || c.UsesModelProvider()
+}
+
+func (c AgentConfig) ProviderQualifiedModel() string {
+	modelProvider := strings.TrimSpace(c.ModelProvider)
+	model := strings.TrimSpace(c.Model)
+	if !c.UsesModelProvider() || modelProvider == "" || model == "" {
+		return model
+	}
+	if embedded, _ := provider.SplitProviderModel(model); embedded == modelProvider {
+		return model
+	}
+	return modelProvider + "/" + model
+}
+
+func (c AgentConfig) NormalizeProviderModel(defaultProvider string) AgentConfig {
+	if !c.UsesModelProvider() {
+		return c
+	}
+	modelProvider := strings.TrimSpace(c.ModelProvider)
+	model := strings.TrimSpace(c.Model)
+	if embedded, rest := provider.SplitProviderModel(model); embedded != "" {
+		switch {
+		case modelProvider == "":
+			modelProvider = embedded
+			model = rest
+		case embedded == modelProvider:
+			model = rest
+		}
+	}
+	if modelProvider == "" {
+		modelProvider = strings.TrimSpace(defaultProvider)
+	}
+	c.ModelProvider = modelProvider
+	c.Model = model
+	return c
 }
 
 type AgentAuthConfig struct {
@@ -154,10 +218,13 @@ func BuiltinAgents() AgentCatalog {
 			ReasoningEffort: "medium",
 		},
 		AgentOpenCode: {
-			Command:         "npx",
-			Args:            []string{"-y", "opencode-ai@1.17.7", "acp"},
-			Model:           "openrouter/openai/gpt-5.4-mini",
-			ReasoningEffort: "",
+			Command:                 "npx",
+			Args:                    []string{"-y", "opencode-ai@1.17.7", "acp"},
+			ProviderMode:            AgentProviderModeAgentDefaults,
+			ModelProviderCapability: provider.CapabilityOpenCode,
+			ModelProvider:           provider.ProviderOpenRouter,
+			Model:                   "openai/gpt-5.4-mini",
+			ReasoningEffort:         "",
 		},
 	}
 }
@@ -168,7 +235,75 @@ func MergeAgents(base, override map[string]AgentConfig) AgentCatalog {
 		out[CanonicalAgentName(name)] = cfg
 	}
 	for name, cfg := range override {
-		out[CanonicalAgentName(name)] = cfg
+		name = CanonicalAgentName(name)
+		if current, ok := out[name]; ok {
+			out[name] = mergeAgentConfig(current, cfg)
+			continue
+		}
+		out[name] = cfg
+	}
+	return out
+}
+
+func mergeAgentConfig(base, override AgentConfig) AgentConfig {
+	next := base
+	if strings.TrimSpace(override.Command) != "" {
+		next.Command = override.Command
+		next.Args = append([]string(nil), override.Args...)
+	} else if override.Args != nil {
+		next.Args = append([]string(nil), override.Args...)
+	}
+	if override.Local {
+		next.Local = true
+	}
+	if strings.TrimSpace(override.ProviderMode) != "" {
+		next.ProviderMode = override.ProviderMode
+	}
+	if strings.TrimSpace(override.ModelProviderCapability) != "" {
+		next.ModelProviderCapability = override.ModelProviderCapability
+	}
+	if strings.TrimSpace(override.ModelProvider) != "" {
+		next.ModelProvider = override.ModelProvider
+	}
+	if strings.TrimSpace(override.Model) != "" {
+		next.Model = override.Model
+	}
+	if strings.TrimSpace(override.ReasoningEffort) != "" {
+		next.ReasoningEffort = override.ReasoningEffort
+	}
+	if strings.TrimSpace(override.URL) != "" {
+		next.URL = override.URL
+	}
+	if strings.TrimSpace(override.Token) != "" {
+		next.Token = override.Token
+	}
+	next.Auth = mergeAgentAuthConfig(next.Auth, override.Auth)
+	if override.Env != nil {
+		next.Env = mergeStringMap(next.Env, override.Env)
+	}
+	if strings.TrimSpace(override.Cwd) != "" {
+		next.Cwd = override.Cwd
+	}
+	return next
+}
+
+func mergeAgentAuthConfig(base, override AgentAuthConfig) AgentAuthConfig {
+	if strings.TrimSpace(override.Mode) != "" {
+		base.Mode = override.Mode
+	}
+	if strings.TrimSpace(override.Path) != "" {
+		base.Path = override.Path
+	}
+	return base
+}
+
+func mergeStringMap(base, override map[string]string) map[string]string {
+	out := make(map[string]string, len(base)+len(override))
+	for key, value := range base {
+		out[key] = value
+	}
+	for key, value := range override {
+		out[key] = value
 	}
 	return out
 }

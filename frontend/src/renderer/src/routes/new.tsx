@@ -6,8 +6,17 @@ import { Checkbox } from '@/components/ui/Checkbox'
 import { useToast } from '@/components/ui/toast'
 import { createSession, projectsQuery } from '@/lib/api/sessions'
 import { agentSettingsQuery } from '@/lib/api/settings'
-import { enabledACPAgents, configuredNativeProviders, effectiveNativeProvider } from '@/lib/agentRuntimes'
-import { acpAgentModelSuggestions, OPENAI_MODELS, openRouterModelsQuery } from '@/lib/models'
+import {
+  enabledACPAgents,
+  configuredNativeProviders,
+  runtimeModelState,
+} from '@/lib/agentRuntimes'
+import {
+  acpAgentModelSuggestions,
+  modelSuggestionsForProvider,
+  OPENAI_MODELS,
+  openRouterModelsQuery,
+} from '@/lib/models'
 import { setPendingMessage, setPendingVoice } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
 import { acpReasoningEffortOptions, REASONING_EFFORT_OPTIONS } from '@/lib/reasoningEfforts'
@@ -44,7 +53,7 @@ function NewSessionPage() {
   const [creating, setCreating] = useState(false)
   const [composing, setComposing] = useState(false)
   // 'native' or a configured ACP agent name; directory is the session cwd.
-  const [runtime, setRuntime] = useState(() => storedString(NEW_SESSION_AGENT_KEY) || 'native')
+  const [runtime, setRuntime] = useState(() => storedString(NEW_SESSION_AGENT_KEY) || 'jaz')
   const [directory, setDirectory] = useState(
     () => search.project ?? storedString(NEW_SESSION_DIRECTORY_KEY),
   )
@@ -87,7 +96,7 @@ function NewSessionPage() {
     if (!runtimeReady) return
     const valid = runtime === 'native' ? nativeAvailable : agents.includes(runtime)
     if (valid) return
-    const next = nativeAvailable ? 'native' : (agents[0] ?? '')
+    const next = agents.includes('jaz') ? 'jaz' : nativeAvailable ? 'native' : (agents[0] ?? '')
     if (next === runtime) return
     setRuntime(next)
     setProviderOverride(null)
@@ -109,30 +118,20 @@ function NewSessionPage() {
   }, [directory, projects.data])
 
   const isNative = runtime === 'native'
-  const defaultProvider = agentSettings?.native.model_provider ?? ''
-  const provider = isNative ? effectiveNativeProvider(agentSettings, providerOverride) : ''
-  const defaultModel = isNative
-    ? provider === defaultProvider
-      ? (agentSettings?.native.model ?? '')
-      : (nativeProviders.find((p) => p.id === provider)?.default_model ?? '')
-    : (agentSettings?.acp[runtime]?.model ?? '')
+  const runtimeModel = runtimeModelState(agentSettings, runtime, providerOverride)
+  const { usesNativeProvider, usesProvider, providers: runtimeProviders, provider, selectedProvider } = runtimeModel
+  const defaultModel = runtimeModel.defaultModel
   const model = modelOverride ?? defaultModel
-  // The backend applies the native settings effort whatever the provider, and
-  // each ACP agent falls back to its configured effort; mirror that here so the
-  // picker shows the effort a new session will actually run with.
-  const defaultEffort = isNative
-    ? (agentSettings?.native.reasoning_effort ?? '')
-    : (agentSettings?.acp[runtime]?.reasoning_effort ?? '')
-  const reasoningEffort = effortOverride ?? defaultEffort
+  const reasoningEffort = effortOverride ?? runtimeModel.defaultEffort
 
   const openRouterModels = useQuery({
     ...openRouterModelsQuery,
-    enabled: isNative && provider === 'openrouter',
+    enabled: usesProvider && provider === 'openrouter',
   })
-  const modelSuggestions = isNative
-    ? provider === 'openrouter'
-      ? (openRouterModels.data ?? [])
-      : OPENAI_MODELS
+  const modelSuggestions = usesProvider
+    ? usesNativeProvider && provider === 'openai'
+      ? OPENAI_MODELS
+      : modelSuggestionsForProvider(selectedProvider, openRouterModels.data ?? [])
     : acpAgentModelSuggestions(runtime)
 
   const startThread = async (title: string | undefined, prepare: (sessionId: string) => void) => {
@@ -158,6 +157,7 @@ function NewSessionPage() {
               agent: runtime,
               directory,
               worktree,
+              ...(usesProvider && provider ? { model_provider: provider } : {}),
               ...(model ? { model } : {}),
               ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
             },
@@ -210,13 +210,13 @@ function NewSessionPage() {
           disabled={creating}
           onChange={setModelOverride}
           providers={
-            isNative
-              ? nativeProviders.map((p) => ({ value: p.id, label: p.label }))
+            usesProvider
+              ? runtimeProviders.map((p) => ({ value: p.id, label: p.label }))
               : undefined
           }
-          provider={isNative ? provider : undefined}
+          provider={usesProvider ? provider : undefined}
           onProviderChange={
-            isNative
+            usesProvider
               ? (next) => {
                   setProviderOverride(next)
                   setModelOverride(null)
@@ -226,7 +226,7 @@ function NewSessionPage() {
           }
           effort={reasoningEffort}
           effortOptions={
-            isNative ? REASONING_EFFORT_OPTIONS : acpReasoningEffortOptions(agentSettings, runtime)
+            usesNativeProvider ? REASONING_EFFORT_OPTIONS : acpReasoningEffortOptions(agentSettings, runtime)
           }
           // Default clears the override, falling back to the settings effort.
           onEffortChange={(next) => setEffortOverride(next === '' ? null : next)}

@@ -17,6 +17,9 @@ func ProbeReadiness(name string, cfg AgentConfig, root string, env map[string]st
 
 func ProbeReadinessWithProviders(name string, cfg AgentConfig, root string, env map[string]string, providers map[string]provider.ModelProviderConfig) Readiness {
 	name = CanonicalAgentName(name)
+	if cfg.Local {
+		return Readiness{Available: true}
+	}
 	if strings.TrimSpace(cfg.URL) != "" {
 		return Readiness{Available: true}
 	}

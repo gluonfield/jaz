@@ -119,6 +119,7 @@ func (s *Server) createACPSession(w http.ResponseWriter, req createSessionReques
 		Title:           req.Title,
 		Directory:       directory,
 		Worktree:        req.Worktree,
+		ModelProvider:   strings.TrimSpace(req.ModelProvider),
 		Model:           strings.TrimSpace(req.Model),
 		ReasoningEffort: strings.TrimSpace(req.ReasoningEffort),
 	})
