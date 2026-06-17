@@ -3,6 +3,7 @@ package jaztools
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,10 +12,13 @@ import (
 	"github.com/gluonfield/jazmem/pkg/jazmem"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/memoryservice"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	jazsettings "github.com/wins/jaz/backend/internal/settings"
+	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
+	"github.com/wins/jaz/backend/internal/widgets"
 )
 
 type fakeScheduler struct{}
@@ -53,7 +57,14 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	service := New(memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"), serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"}, store, nil)
+	widgetService := widgets.NewService(store, nil)
+	service := New(
+		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"),
+		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
+		store,
+		nil,
+		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
+	)
 	executor := &fakeExecutor{started: make(chan loops.Run, 1)}
 	service.SetLoops(loops.NewService(store, executor, nil))
 
@@ -76,6 +87,20 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		if !names[name] {
 			t.Fatalf("missing tool %s in %#v", name, names)
 		}
+	}
+	if names["publish_widget"] {
+		t.Fatal("publish_widget must not be advertised on ordinary jaztools sessions")
+	}
+
+	readMeCall, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "visualize:read_me",
+		Arguments: map[string]any{"modules": []string{"mockup"}, "platform": "desktop"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if readMeCall.IsError || len(readMeCall.Content) == 0 {
+		t.Fatalf("read_me result = %#v", readMeCall)
 	}
 
 	pageCall, err := session.CallTool(context.Background(), &mcp.CallToolParams{
@@ -179,6 +204,60 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 	}
 }
 
+func TestPublishWidgetToolOnlyAdvertisedForLoopSessions(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	memory, err := jazmem.Open(jazmem.Config{Root: t.TempDir(), DBPath: filepath.Join(t.TempDir(), "memory.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = memory.Close() })
+
+	service := New(
+		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"),
+		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
+		store,
+		nil,
+		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
+	)
+	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
+
+	ordinary, err := store.CreateSession(storage.CreateSession{Slug: "ordinary", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loopRun, err := store.CreateSession(storage.CreateSession{Slug: "loop-run", Runtime: storage.RuntimeACP, SourceType: storage.SourceLoopRun, SourceID: "run-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if service.widgetSession(sessionRequest(ordinary.ID)) {
+		t.Fatal("ordinary session treated as a loop run")
+	}
+	if !service.widgetSession(sessionRequest(loopRun.ID)) {
+		t.Fatal("loop-run session did not enable widget publishing")
+	}
+
+	base, closeBase := connectClient(t, service.Server())
+	defer closeBase()
+	if hasTool(t, base, "publish_widget") {
+		t.Fatal("base server advertised publish_widget")
+	}
+	widget, closeWidget := connectClient(t, service.server(widgetSurface))
+	defer closeWidget()
+	if !hasTool(t, widget, "visualize:read_me") {
+		t.Fatal("widget server did not advertise visualize:read_me")
+	}
+	if hasTool(t, widget, "visualize:show_widget") {
+		t.Fatal("widget server advertised thread artifact renderer")
+	}
+	if !hasTool(t, widget, "publish_widget") {
+		t.Fatal("widget server did not advertise publish_widget")
+	}
+}
+
 func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
@@ -195,7 +274,13 @@ func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = memory.Close() })
 
-	service := New(memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jazmem"), serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"}, store, nil)
+	service := New(
+		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jazmem"),
+		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
+		store,
+		nil,
+		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
+	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 
 	session, closeSession := connectClient(t, service.Server())
@@ -206,6 +291,11 @@ func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 	if !hasTool(t, session, "loop_list") {
 		t.Fatal("loop tools should remain available")
 	}
+	widgetSession, closeWidgetSession := connectClient(t, service.server(widgetSurface))
+	defer closeWidgetSession()
+	if hasTool(t, widgetSession, "memory_get") {
+		t.Fatal("widget memory tool advertised while memory is disabled")
+	}
 
 	if _, err := jazsettings.SaveMemorySettings(store, jazsettings.MemorySettings{Enabled: true}); err != nil {
 		t.Fatal(err)
@@ -214,6 +304,9 @@ func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 	if !hasTool(t, session, "memory_get") {
 		t.Fatal("memory tool not advertised after memory was enabled")
 	}
+	if !hasTool(t, widgetSession, "memory_get") {
+		t.Fatal("widget memory tool not advertised after memory was enabled")
+	}
 
 	if _, err := jazsettings.SaveMemorySettings(store, jazsettings.MemorySettings{Enabled: false}); err != nil {
 		t.Fatal(err)
@@ -221,6 +314,9 @@ func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 	service.Sync()
 	if hasTool(t, session, "memory_get") {
 		t.Fatal("memory tool still advertised after memory was disabled")
+	}
+	if hasTool(t, widgetSession, "memory_get") {
+		t.Fatal("widget memory tool still advertised after memory was disabled")
 	}
 }
 
@@ -255,6 +351,12 @@ func hasTool(t *testing.T, session *mcp.ClientSession, name string) bool {
 		}
 	}
 	return false
+}
+
+func sessionRequest(sessionID string) *http.Request {
+	req, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1/mcp/jaztools", nil)
+	req.Header.Set(mcpsession.HeaderName, sessionID)
+	return req
 }
 
 func structured[T any](t *testing.T, res *mcp.CallToolResult) T {

@@ -35,8 +35,8 @@ function BoardPage() {
   const scaleTimer = useRef<number | null>(null)
   const isBoardWindow = window.jaz?.windowKind === 'board'
   // "Add widget" opens a picker of existing loops first; "New loop" inside it
-  // hands off to the loop modal with this board preselected. Either way the
-  // board stays put and scrolls the fresh tile into view once it appears.
+  // hands off to the loop modal. Either way the board stays put and scrolls
+  // the fresh tile into view once it appears.
   const [modal, setModal] = useState<'add' | 'new-loop' | null>(null)
   const pendingLoopId = useRef<string | null>(null)
   // null = displaying; a string = the draft name being edited inline.
@@ -273,7 +273,6 @@ function BoardPage() {
       <LoopModal
         open={modal === 'new-loop'}
         onClose={() => setModal(null)}
-        initialBoardIds={[boardId]}
         onCreated={(created) => {
           pendingLoopId.current = created.id
         }}

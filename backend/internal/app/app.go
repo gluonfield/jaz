@@ -43,7 +43,6 @@ import (
 	plantool "github.com/wins/jaz/backend/internal/tools/plan"
 	viewimagetool "github.com/wins/jaz/backend/internal/tools/viewimage"
 	visualizetool "github.com/wins/jaz/backend/internal/tools/visualize"
-	widgettool "github.com/wins/jaz/backend/internal/tools/widget"
 	"github.com/wins/jaz/backend/internal/voice"
 	mistralvoice "github.com/wins/jaz/backend/internal/voice/mistral"
 	"github.com/wins/jaz/backend/internal/widgets"
@@ -176,7 +175,7 @@ func NewWidgetSessionPublisher(service *widgets.Service, store *sqlitestore.Stor
 	return &widgets.SessionPublisher{Service: service, Sessions: store, Loops: store}
 }
 
-func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, store *sqlitestore.Store, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher) *tools.Registry {
+func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, store *sqlitestore.Store, events *sessionevents.Bus) *tools.Registry {
 	return tools.NewRegistry(
 		&plantool.Tool{Store: store, Events: events},
 		&exectool.ExecCommandTool{Manager: commandManager, Workspace: string(workspace)},
@@ -189,7 +188,6 @@ func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspac
 		&visualizetool.ReadMeTool{},
 		&visualizetool.ShowWidgetTool{},
 		&viewimagetool.Tool{Workspace: string(workspace)},
-		&widgettool.Tool{Publisher: widgetPublisher},
 		&agentspawn.Tool{Manager: manager},
 		&agentsend.Tool{Manager: manager},
 		&agentstatus.Tool{Manager: manager},

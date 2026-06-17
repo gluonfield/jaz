@@ -150,12 +150,12 @@ func (s *Store) LoadWidgetVersion(widgetID string, version int) (widgets.Version
 	}, nil
 }
 
-func (s *Store) PruneWidgetVersions(widgetID string, maxVersion, keep int) error {
+func (s *Store) PruneOldWidgetVersions(widgetID string, currentVersion, keepOld int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return widgetdb.New(s.db).PruneWidgetVersions(context.Background(), widgetdb.PruneWidgetVersionsParams{
 		WidgetID:       widgetID,
-		MaxKeepVersion: int64(maxVersion - keep),
+		MaxKeepVersion: int64(currentVersion - keepOld - 1),
 	})
 }
 
