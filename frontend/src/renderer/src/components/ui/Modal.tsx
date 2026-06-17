@@ -102,9 +102,9 @@ export function Modal({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={reduce ? { opacity: 0 } : { opacity: 0, y: 6, scale: 0.98 }}
               transition={{ type: 'spring', stiffness: 460, damping: 34 }}
-              className={`flex max-h-[calc(100dvh-2rem)] w-full ${SIZES[size]} flex-col overflow-hidden rounded-card border border-border bg-bg shadow-lg sm:max-h-[calc(100dvh-3rem)]`}
+              className={`flex max-h-[calc(100dvh-2rem)] w-full ${SIZES[size]} flex-col overflow-hidden rounded-card bg-bg shadow-lg ring-1 ring-border/60 sm:max-h-[calc(100dvh-3rem)]`}
             >
-              <header className="flex items-start gap-3 border-b border-border px-5 py-4">
+              <header className="flex items-start gap-3 border-b border-border/60 px-5 py-4">
                 {icon ? (
                   <div className="grid size-9 shrink-0 place-items-center rounded-control bg-surface-2 text-ink-2">
                     {icon}
@@ -130,7 +130,7 @@ export function Modal({
               <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">{children}</div>
 
               {footer ? (
-                <footer className="flex items-center justify-between gap-3 border-t border-border px-5 py-3">
+                <footer className="flex items-center justify-between gap-3 border-t border-border/60 px-5 py-3">
                   {footer}
                 </footer>
               ) : null}
