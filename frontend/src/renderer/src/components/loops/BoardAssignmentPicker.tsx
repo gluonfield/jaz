@@ -30,10 +30,10 @@ export function BoardAssignmentPicker({
               disabled={disabled}
               aria-pressed={active}
               onClick={() => toggle(board.id)}
-              className={`flex h-8 min-w-0 items-center gap-1.5 rounded-full px-3 text-[12px] font-medium ring-1 transition duration-150 active:scale-[0.96] disabled:opacity-50 ${
+              className={`flex h-8 min-w-0 items-center gap-1.5 rounded-full px-3 text-[12px] font-medium transition duration-150 active:scale-[0.96] disabled:opacity-50 ${
                 active
-                  ? 'bg-primary-soft text-primary-strong ring-primary/20 shadow-sm'
-                  : 'text-ink-2 ring-border hover:bg-surface hover:text-ink'
+                  ? 'bg-primary-soft text-primary-strong shadow-sm'
+                  : 'bg-surface text-ink-2 hover:bg-surface-2 hover:text-ink'
               }`}
             >
               {active ? <Check size={12} /> : <LayoutGrid size={12} />}

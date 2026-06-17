@@ -11,7 +11,7 @@ import {
 } from './schedule'
 
 const fieldClass =
-  'rounded-control bg-bg px-2.5 py-1.5 text-[13px] text-ink ring-1 ring-border outline-none transition duration-150 focus:ring-primary'
+  'rounded-control bg-surface px-2.5 py-1.5 text-[13px] text-ink outline-none transition duration-150 focus:ring-1 focus:ring-primary'
 
 function formatRun(d: Date): string {
   return d.toLocaleString(undefined, {
