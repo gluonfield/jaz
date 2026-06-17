@@ -29,6 +29,7 @@ export function useSessionEvents(
         .catch(() => undefined)
     }
     const refetchMessages = () => {
+      queryClient.invalidateQueries({ queryKey: keys.usage })
       if (streamingRef?.current) return
       queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
       // Turn boundaries are when the working tree changes — refresh repo
