@@ -28,9 +28,20 @@ export function createUpdateController(getMainWindow: () => BrowserWindow | null
     getMainWindow()?.webContents.send('jaz:update-status', next)
   }
 
-  function check(): void {
+  function check(manual = false): void {
+    if (!app.isPackaged) {
+      if (manual) setStatus({ state: 'error', message: 'Update checks require a packaged app.' })
+      return
+    }
+    if (status.state === 'checking' || status.state === 'downloading' || status.state === 'downloaded') {
+      return
+    }
+    if (manual) setStatus({ state: 'checking' })
     void autoUpdater.checkForUpdates().catch((err: unknown) => {
       console.error('Jaz update check failed', err)
+      if (manual || status.state === 'checking') {
+        setStatus({ state: 'error', message: err instanceof Error ? err.message : String(err) })
+      }
     })
   }
 
@@ -60,6 +71,10 @@ export function createUpdateController(getMainWindow: () => BrowserWindow | null
   return {
     sendStatusTo(win: BrowserWindow): void {
       if (status.state !== 'idle') win.webContents.send('jaz:update-status', status)
+    },
+
+    checkForUpdates(): void {
+      check(true)
     },
 
     registerIpc(): void {
