@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, ChevronDown, KeyRound, LoaderCircle, LogIn, Terminal } from 'lucide-react'
+import { CheckCircle2, ChevronDown, CircleAlert, KeyRound, LoaderCircle, LogIn, Terminal } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { AuthLoginStatus } from '@/components/acp/AuthLoginStatus'
@@ -16,10 +16,17 @@ import { useToast } from '@/components/ui/toast'
 import { agentLabel, authProviderLabel } from '@/lib/agentLabel'
 import {
   acpUsesModelProvider,
+  modelProviderConnected,
+  modelProviderRequiresKey,
   selectableACPModelProviders,
 } from '@/lib/agentRuntimes'
 import { cloneAgentSettings, disconnectACPAuth, startACPAuthLogin } from '@/lib/api/settings'
-import type { ACPAgentAuthStatus, ACPAuthLogin, AgentSettings as AgentSettingsData } from '@/lib/api/types'
+import type {
+  ACPAgentAuthStatus,
+  ACPAuthLogin,
+  AgentSettings as AgentSettingsData,
+  ModelProviderOption,
+} from '@/lib/api/types'
 import { useACPLoginPolling } from '@/lib/hooks/useACPLoginPolling'
 import { acpAgentModelSuggestions, modelSuggestionsForProvider, openRouterModelsQuery } from '@/lib/models'
 import { keys } from '@/lib/query/keys'
@@ -61,9 +68,8 @@ function hasInvalidACPProvider(settings: AgentSettingsData): boolean {
   })
 }
 
-export function ACPAgentsSettings() {
-  const { settings, draft, setDraft, providerKeys, setProviderKeys, save, dirty, providerKeyDirty } =
-    useAgentSettingsDraft('agent settings')
+export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => void }) {
+  const { settings, draft, setDraft, save, dirty } = useAgentSettingsDraft('agent settings')
   // This screen owns extra mutations (sign-in, disconnect) beyond the shared save.
   const queryClient = useQueryClient()
   const toast = useToast()
@@ -102,7 +108,7 @@ export function ACPAgentsSettings() {
   })
 
   const invalid = draft ? hasEnabledACPWithoutCommand(draft) || hasInvalidACPProvider(draft) : true
-  const canSave = draft != null && !invalid && (dirty || providerKeyDirty) && !save.isPending
+  const canSave = draft != null && !invalid && dirty && !save.isPending
 
   return (
     <SettingsSection
@@ -123,16 +129,13 @@ export function ACPAgentsSettings() {
               key={agent}
               agent={agent}
               settings={draft}
-              providerKeys={providerKeys}
               disabled={save.isPending}
               loginJob={loginJobs[agent]}
               loginPending={login.isPending && login.variables?.agent === agent}
               disconnecting={disconnect.isPending && disconnect.variables === agent}
               onStartLogin={(auth) => login.mutate({ agent, auth })}
               onDisconnect={() => disconnect.mutate(agent)}
-              onProviderKeyChange={(provider, value) =>
-                setProviderKeys({ ...providerKeys, [provider]: value })
-              }
+              onOpenProviders={onOpenProviders}
               onChange={setDraft}
             />
           ))}
@@ -145,26 +148,24 @@ export function ACPAgentsSettings() {
 function ACPAgentRow({
   agent,
   settings,
-  providerKeys,
   disabled,
   loginJob,
   loginPending,
   disconnecting,
   onStartLogin,
   onDisconnect,
-  onProviderKeyChange,
+  onOpenProviders,
   onChange,
 }: {
   agent: string
   settings: AgentSettingsData
-  providerKeys: Record<string, string>
   disabled: boolean
   loginJob?: ACPAuthLogin
   loginPending: boolean
   disconnecting: boolean
   onStartLogin: (auth: ACPAuthDraft) => void
   onDisconnect: () => void
-  onProviderKeyChange: (provider: string, value: string) => void
+  onOpenProviders: () => void
   onChange: (settings: AgentSettingsData) => void
 }) {
   const current = settings.acp[agent] ?? {
@@ -187,8 +188,6 @@ function ACPAgentRow({
   const controlsDisabled = disabled || !current.enabled
   const providerOptions = selectableACPModelProviders(settings, agent)
   const selectedProvider = providerOptions.find((provider) => provider.id === current.model_provider)
-  const selectedProviderEnv = selectedProvider?.api_key_env
-  const selectedProviderConfigured = Boolean(selectedProvider?.configured)
   const openRouterModels = useQuery({
     ...openRouterModelsQuery,
     enabled: usesModelProvider && current.model_provider === 'openrouter',
@@ -224,10 +223,12 @@ function ACPAgentRow({
         </div>
       </SettingsRow>
 
-      {supportsAuth ? (
+      {supportsAuth && !usesModelProvider ? (
         <div className="border-t border-border/70 px-3 py-3">
           {/* Auth is never gated by the Enabled toggle: you must be able to connect
-              an agent you skipped in onboarding. Connecting it turns it on. */}
+              an agent you skipped in onboarding. Connecting it turns it on.
+              Provider-backed agents inherit their key from the linked Model
+              Provider, so they show a read-only connection status instead. */}
           <AgentAuthPanel
             agent={agent}
             disabled={disabled}
@@ -277,40 +278,9 @@ function ACPAgentRow({
               className={rowControlClass}
             />
           </SettingsRow>
-          <SettingsRow
-            title="Provider key"
-            description={
-              selectedProvider?.requires_api_key === false
-                ? 'This provider does not need an API key.'
-                : selectedProviderConfigured
-                  ? `${selectedProviderEnv} is configured — paste a new key to replace it.`
-                  : `Paste an API key; stored on the backend as ${selectedProviderEnv ?? 'the provider env var'}.`
-            }
-          >
-            <Input
-              type="password"
-              value={providerKeys[current.model_provider ?? ''] ?? ''}
-              disabled={
-                disabled ||
-                !(current.model_provider ?? '').trim() ||
-                selectedProvider?.requires_api_key === false
-              }
-              onChange={(event) =>
-                onProviderKeyChange(current.model_provider ?? '', event.target.value)
-              }
-              placeholder={
-                selectedProvider?.requires_api_key === false
-                  ? 'No key required'
-                  : selectedProviderConfigured
-                    ? `${selectedProviderEnv} configured`
-                    : (selectedProviderEnv ?? 'API key')
-              }
-              autoComplete="off"
-              spellCheck={false}
-              className={`${rowControlClass} h-8 rounded-full bg-bg px-3 py-0 font-mono text-[12px]`}
-              aria-label={`${agentLabel(agent)} provider API key`}
-            />
-          </SettingsRow>
+          <div className="border-t border-border/70 px-3 py-3">
+            <ProviderConnectionStrip provider={selectedProvider} onOpenProviders={onOpenProviders} />
+          </div>
         </>
       ) : null}
 
@@ -479,6 +449,53 @@ function AgentAuthPanel({
           </p>
         </div>
       )}
+    </div>
+  )
+}
+
+// Provider-backed agents inherit their key from the linked Model Provider, so the
+// ACP screen never edits a key here — it shows the provider's connection status and
+// sends the user to Model Providers to manage the key.
+function ProviderConnectionStrip({
+  provider,
+  onOpenProviders,
+}: {
+  provider?: ModelProviderOption
+  onOpenProviders: () => void
+}) {
+  const connected = provider ? modelProviderConnected(provider) : false
+  const needsKey = provider ? modelProviderRequiresKey(provider) : false
+  const label = provider?.label ?? 'this provider'
+  return (
+    <div className="flex flex-col gap-2 rounded-control bg-bg px-3 py-2.5">
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex min-w-0 items-center gap-2 text-[13px] text-ink">
+          {connected ? (
+            <CheckCircle2 size={16} className="shrink-0 text-primary" />
+          ) : (
+            <CircleAlert size={16} className="shrink-0 text-accent" />
+          )}
+          <span className="min-w-0 truncate">
+            {!provider
+              ? 'Select a provider above'
+              : connected
+                ? `Connected via ${label}`
+                : `${label} isn’t connected yet`}
+          </span>
+        </span>
+        <Button variant="ghost" size="sm" onClick={onOpenProviders}>
+          Model Providers
+        </Button>
+      </div>
+      <p className="text-[12px] text-ink-3">
+        {!provider
+          ? 'Pick a provider to see its connection status.'
+          : !needsKey
+            ? `${label} needs no API key.`
+            : connected
+              ? 'API key is inherited from the linked provider — manage it in Model Providers.'
+              : 'Add this provider’s API key in Model Providers; this agent inherits it.'}
+      </p>
     </div>
   )
 }
