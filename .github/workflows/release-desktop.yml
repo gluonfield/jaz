@@ -96,6 +96,5 @@ jobs:
           gh release upload "$RELEASE_TAG" \
             dist/*.dmg \
             dist/*.zip \
-            dist/*.blockmap \
             dist/latest-mac.yml \
             --clobber
