@@ -90,7 +90,7 @@ func TestLiveACPProbe(t *testing.T) {
 	} else if agent == AgentGrok {
 		availableModes = grokFallbackModes().AvailableModes
 	}
-	if modeID := executionModeForAgent(agent, availableModes); modeID != "" && (sessionResp.Modes == nil || string(sessionResp.Modes.CurrentModeID) != modeID) {
+	if modeID := preferredBaselineModeID(agent, availableModes); modeID != "" && (sessionResp.Modes == nil || string(sessionResp.Modes.CurrentModeID) != modeID) {
 		setMode := probeCall(t, ctx, conn, "4", acpschema.AgentMethodSessionSetMode, acpschema.SetSessionModeRequest{
 			SessionID: sessionResp.SessionID,
 			ModeID:    acpschema.SessionModeID(modeID),
