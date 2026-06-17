@@ -89,6 +89,8 @@ type Stores struct {
 	Store           *sqlitestore.Store
 	ACPStore        acp.Store
 	StorageStore    storage.Store
+	SessionStore    storage.SessionStore
+	SessionEvents   storage.SessionEventAppender
 	UsageEventStore storage.UsageEventStore
 }
 
@@ -116,7 +118,14 @@ func NewStore(layout runtimefiles.Layout, catalog acp.AgentCatalog) (Stores, err
 		_ = store.Close()
 		return Stores{}, err
 	}
-	return Stores{Store: store, ACPStore: store, StorageStore: store, UsageEventStore: store}, nil
+	return Stores{
+		Store:           store,
+		ACPStore:        store,
+		StorageStore:    store,
+		SessionStore:    store,
+		SessionEvents:   store,
+		UsageEventStore: store,
+	}, nil
 }
 
 func NewWorkspace(cfg Config, layout runtimefiles.Layout) (Workspace, error) {

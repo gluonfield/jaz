@@ -15,7 +15,7 @@ func TestForMapsModulesToSections(t *testing.T) {
 		{[]string{"diagram"}, Data{ColorPalette: true, SVGSetup: true, DiagramTypes: true}},
 		{[]string{"mockup"}, Data{UIComponents: true, ColorPalette: true}},
 		{[]string{"interactive"}, Data{UIComponents: true, ColorPalette: true}},
-		// art and elicitation do NOT contribute the color palette — parity with Claude.
+		// art and elicitation do NOT contribute the color palette.
 		{[]string{"art"}, Data{SVGSetup: true, Art: true}},
 		{[]string{"elicitation"}, Data{Elicitation: true}},
 		{[]string{"CHART", " Diagram "}, Data{UIComponents: true, ColorPalette: true, Charts: true, GeoMaps: true, SVGSetup: true, DiagramTypes: true}},
@@ -29,13 +29,11 @@ func TestForMapsModulesToSections(t *testing.T) {
 	}
 }
 
-// TestParityWithClaude locks in the exact per-module section sets and ordering
-// observed in Claude's visualize:read_me tool output.
-func TestParityWithClaude(t *testing.T) {
+func TestSectionOrdering(t *testing.T) {
 	// art and elicitation must exclude the color palette.
 	for _, module := range []string{"art", "elicitation"} {
 		if strings.Contains(Render(For([]string{module})), "## Color palette") {
-			t.Fatalf("%s guide must not include the color palette (parity with Claude)", module)
+			t.Fatalf("%s guide must not include the color palette", module)
 		}
 	}
 	// diagram includes the color palette but not UI components.
