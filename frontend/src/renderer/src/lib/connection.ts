@@ -8,6 +8,7 @@ import {
   setApiAuthToken,
   setApiBaseUrl,
 } from './api/client'
+import { getDeviceProfile } from './deviceIdentity'
 import { queryClient } from './query/queryClient'
 
 // Gate for the whole app: 'checking' on first probe of the remembered URL,
@@ -185,15 +186,15 @@ function markConnected(url: string) {
 }
 
 async function registerDevice(url: string, rootToken: string): Promise<string | null> {
-  const name = defaultDeviceName()
   try {
+    const profile = await getDeviceProfile()
     const res = await fetch(`${url}/v1/devices/register`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${rootToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ name, kind: 'desktop', app_version: appVersion() }),
+      body: JSON.stringify({ ...profile, kind: 'desktop' }),
       signal: AbortSignal.timeout(5_000),
     })
     const body = await readJSON<{
@@ -214,7 +215,7 @@ async function registerDevice(url: string, rootToken: string): Promise<string | 
         url,
         id: body.pairing.id,
         secret: body.pairing_secret,
-        deviceName: body.pairing.device?.name || name,
+        deviceName: body.pairing.device?.name || profile.name,
         expiresAt: body.pairing.expires_at,
       })
       savePreference(isLoopbackUrl(url) ? { mode: 'local' } : { mode: 'remote', remoteUrl: normalizeBaseUrl(url) })
@@ -227,12 +228,12 @@ async function registerDevice(url: string, rootToken: string): Promise<string | 
 }
 
 async function startPairing(url: string): Promise<string | null> {
-  const name = defaultDeviceName()
   try {
+    const profile = await getDeviceProfile()
     const res = await fetch(`${url}/v1/devices/pairing-requests`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, kind: 'desktop', app_version: appVersion() }),
+      body: JSON.stringify({ ...profile, kind: 'desktop' }),
       signal: AbortSignal.timeout(5_000),
     })
     const body = await readJSON<{
@@ -247,7 +248,7 @@ async function startPairing(url: string): Promise<string | null> {
       url,
       id: body.pairing.id,
       secret: body.pairing_secret,
-      deviceName: body.pairing.device?.name || name,
+      deviceName: body.pairing.device?.name || profile.name,
       expiresAt: body.pairing.expires_at,
     })
     savePreference(isLoopbackUrl(url) ? { mode: 'local' } : { mode: 'remote', remoteUrl: normalizeBaseUrl(url) })
@@ -300,15 +301,6 @@ function schedulePairingPoll() {
     }
     schedulePairingPoll()
   }, 2_000)
-}
-
-function defaultDeviceName(): string {
-  const platform = navigator.platform?.trim()
-  return platform ? `Jaz desktop on ${platform}` : 'Jaz desktop'
-}
-
-function appVersion(): string {
-  return ''
 }
 
 // Kept separate from the active URL so the remote option still prefills

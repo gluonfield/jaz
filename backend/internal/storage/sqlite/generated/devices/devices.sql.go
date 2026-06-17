@@ -13,19 +13,23 @@ const approveDevice = `-- name: ApproveDevice :execrows
 UPDATE devices
 SET
   status = 'approved',
-  approved_at_ms = ?1,
+  token_hash = CASE
+    WHEN CAST(?1 AS TEXT) = '' THEN token_hash
+    ELSE CAST(?1 AS TEXT)
+  END,
+  approved_at_ms = ?2,
   revoked_at_ms = 0
-WHERE id = ?2
-  AND status = 'pending'
+WHERE id = ?3
 `
 
 type ApproveDeviceParams struct {
+	TokenHash    string `json:"token_hash"`
 	ApprovedAtMs int64  `json:"approved_at_ms"`
 	ID           string `json:"id"`
 }
 
 func (q *Queries) ApproveDevice(ctx context.Context, arg ApproveDeviceParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, approveDevice, arg.ApprovedAtMs, arg.ID)
+	result, err := q.db.ExecContext(ctx, approveDevice, arg.TokenHash, arg.ApprovedAtMs, arg.ID)
 	if err != nil {
 		return 0, err
 	}
@@ -73,6 +77,10 @@ INSERT INTO devices (
   name,
   kind,
   status,
+  public_key,
+  platform,
+  device_family,
+  model_identifier,
   token_hash,
   created_at_ms,
   approved_at_ms,
@@ -91,22 +99,30 @@ INSERT INTO devices (
   ?8,
   ?9,
   ?10,
-  ?11
+  ?11,
+  ?12,
+  ?13,
+  ?14,
+  ?15
 )
 `
 
 type CreateDeviceParams struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	Kind         string `json:"kind"`
-	Status       string `json:"status"`
-	TokenHash    string `json:"token_hash"`
-	CreatedAtMs  int64  `json:"created_at_ms"`
-	ApprovedAtMs int64  `json:"approved_at_ms"`
-	LastSeenAtMs int64  `json:"last_seen_at_ms"`
-	LastSeenIp   string `json:"last_seen_ip"`
-	UserAgent    string `json:"user_agent"`
-	AppVersion   string `json:"app_version"`
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	Kind            string `json:"kind"`
+	Status          string `json:"status"`
+	PublicKey       string `json:"public_key"`
+	Platform        string `json:"platform"`
+	DeviceFamily    string `json:"device_family"`
+	ModelIdentifier string `json:"model_identifier"`
+	TokenHash       string `json:"token_hash"`
+	CreatedAtMs     int64  `json:"created_at_ms"`
+	ApprovedAtMs    int64  `json:"approved_at_ms"`
+	LastSeenAtMs    int64  `json:"last_seen_at_ms"`
+	LastSeenIp      string `json:"last_seen_ip"`
+	UserAgent       string `json:"user_agent"`
+	AppVersion      string `json:"app_version"`
 }
 
 func (q *Queries) CreateDevice(ctx context.Context, arg CreateDeviceParams) error {
@@ -115,6 +131,10 @@ func (q *Queries) CreateDevice(ctx context.Context, arg CreateDeviceParams) erro
 		arg.Name,
 		arg.Kind,
 		arg.Status,
+		arg.PublicKey,
+		arg.Platform,
+		arg.DeviceFamily,
+		arg.ModelIdentifier,
 		arg.TokenHash,
 		arg.CreatedAtMs,
 		arg.ApprovedAtMs,
@@ -193,6 +213,10 @@ SELECT
   name,
   kind,
   status,
+  public_key,
+  platform,
+  device_family,
+  model_identifier,
   token_hash,
   created_at_ms,
   approved_at_ms,
@@ -206,14 +230,37 @@ WHERE id = ?1
 LIMIT 1
 `
 
-func (q *Queries) GetDevice(ctx context.Context, id string) (Device, error) {
+type GetDeviceRow struct {
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	Kind            string `json:"kind"`
+	Status          string `json:"status"`
+	PublicKey       string `json:"public_key"`
+	Platform        string `json:"platform"`
+	DeviceFamily    string `json:"device_family"`
+	ModelIdentifier string `json:"model_identifier"`
+	TokenHash       string `json:"token_hash"`
+	CreatedAtMs     int64  `json:"created_at_ms"`
+	ApprovedAtMs    int64  `json:"approved_at_ms"`
+	RevokedAtMs     int64  `json:"revoked_at_ms"`
+	LastSeenAtMs    int64  `json:"last_seen_at_ms"`
+	LastSeenIp      string `json:"last_seen_ip"`
+	UserAgent       string `json:"user_agent"`
+	AppVersion      string `json:"app_version"`
+}
+
+func (q *Queries) GetDevice(ctx context.Context, id string) (GetDeviceRow, error) {
 	row := q.db.QueryRowContext(ctx, getDevice, id)
-	var i Device
+	var i GetDeviceRow
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.Kind,
 		&i.Status,
+		&i.PublicKey,
+		&i.Platform,
+		&i.DeviceFamily,
+		&i.ModelIdentifier,
 		&i.TokenHash,
 		&i.CreatedAtMs,
 		&i.ApprovedAtMs,
@@ -232,6 +279,10 @@ SELECT
   name,
   kind,
   status,
+  public_key,
+  platform,
+  device_family,
+  model_identifier,
   token_hash,
   created_at_ms,
   approved_at_ms,
@@ -245,14 +296,37 @@ WHERE token_hash = ?1
 LIMIT 1
 `
 
-func (q *Queries) GetDeviceByTokenHash(ctx context.Context, tokenHash string) (Device, error) {
+type GetDeviceByTokenHashRow struct {
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	Kind            string `json:"kind"`
+	Status          string `json:"status"`
+	PublicKey       string `json:"public_key"`
+	Platform        string `json:"platform"`
+	DeviceFamily    string `json:"device_family"`
+	ModelIdentifier string `json:"model_identifier"`
+	TokenHash       string `json:"token_hash"`
+	CreatedAtMs     int64  `json:"created_at_ms"`
+	ApprovedAtMs    int64  `json:"approved_at_ms"`
+	RevokedAtMs     int64  `json:"revoked_at_ms"`
+	LastSeenAtMs    int64  `json:"last_seen_at_ms"`
+	LastSeenIp      string `json:"last_seen_ip"`
+	UserAgent       string `json:"user_agent"`
+	AppVersion      string `json:"app_version"`
+}
+
+func (q *Queries) GetDeviceByTokenHash(ctx context.Context, tokenHash string) (GetDeviceByTokenHashRow, error) {
 	row := q.db.QueryRowContext(ctx, getDeviceByTokenHash, tokenHash)
-	var i Device
+	var i GetDeviceByTokenHashRow
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.Kind,
 		&i.Status,
+		&i.PublicKey,
+		&i.Platform,
+		&i.DeviceFamily,
+		&i.ModelIdentifier,
 		&i.TokenHash,
 		&i.CreatedAtMs,
 		&i.ApprovedAtMs,
@@ -279,6 +353,10 @@ SELECT
   d.name AS device_name,
   d.kind AS device_kind,
   d.status AS device_status,
+  d.public_key AS device_public_key,
+  d.platform AS device_platform,
+  d.device_family AS device_family,
+  d.model_identifier AS device_model_identifier,
   d.token_hash AS device_token_hash,
   d.created_at_ms AS device_created_at_ms,
   d.approved_at_ms AS device_approved_at_ms,
@@ -294,26 +372,30 @@ LIMIT 1
 `
 
 type GetPairingRequestRow struct {
-	ID                 string `json:"id"`
-	DeviceID           string `json:"device_id"`
-	SecretHash         string `json:"secret_hash"`
-	Status             string `json:"status"`
-	CreatedAtMs        int64  `json:"created_at_ms"`
-	ExpiresAtMs        int64  `json:"expires_at_ms"`
-	ApprovedAtMs       int64  `json:"approved_at_ms"`
-	RejectedAtMs       int64  `json:"rejected_at_ms"`
-	DeviceDbID         string `json:"device_db_id"`
-	DeviceName         string `json:"device_name"`
-	DeviceKind         string `json:"device_kind"`
-	DeviceStatus       string `json:"device_status"`
-	DeviceTokenHash    string `json:"device_token_hash"`
-	DeviceCreatedAtMs  int64  `json:"device_created_at_ms"`
-	DeviceApprovedAtMs int64  `json:"device_approved_at_ms"`
-	DeviceRevokedAtMs  int64  `json:"device_revoked_at_ms"`
-	DeviceLastSeenAtMs int64  `json:"device_last_seen_at_ms"`
-	DeviceLastSeenIp   string `json:"device_last_seen_ip"`
-	DeviceUserAgent    string `json:"device_user_agent"`
-	DeviceAppVersion   string `json:"device_app_version"`
+	ID                    string `json:"id"`
+	DeviceID              string `json:"device_id"`
+	SecretHash            string `json:"secret_hash"`
+	Status                string `json:"status"`
+	CreatedAtMs           int64  `json:"created_at_ms"`
+	ExpiresAtMs           int64  `json:"expires_at_ms"`
+	ApprovedAtMs          int64  `json:"approved_at_ms"`
+	RejectedAtMs          int64  `json:"rejected_at_ms"`
+	DeviceDbID            string `json:"device_db_id"`
+	DeviceName            string `json:"device_name"`
+	DeviceKind            string `json:"device_kind"`
+	DeviceStatus          string `json:"device_status"`
+	DevicePublicKey       string `json:"device_public_key"`
+	DevicePlatform        string `json:"device_platform"`
+	DeviceFamily          string `json:"device_family"`
+	DeviceModelIdentifier string `json:"device_model_identifier"`
+	DeviceTokenHash       string `json:"device_token_hash"`
+	DeviceCreatedAtMs     int64  `json:"device_created_at_ms"`
+	DeviceApprovedAtMs    int64  `json:"device_approved_at_ms"`
+	DeviceRevokedAtMs     int64  `json:"device_revoked_at_ms"`
+	DeviceLastSeenAtMs    int64  `json:"device_last_seen_at_ms"`
+	DeviceLastSeenIp      string `json:"device_last_seen_ip"`
+	DeviceUserAgent       string `json:"device_user_agent"`
+	DeviceAppVersion      string `json:"device_app_version"`
 }
 
 func (q *Queries) GetPairingRequest(ctx context.Context, id string) (GetPairingRequestRow, error) {
@@ -332,6 +414,10 @@ func (q *Queries) GetPairingRequest(ctx context.Context, id string) (GetPairingR
 		&i.DeviceName,
 		&i.DeviceKind,
 		&i.DeviceStatus,
+		&i.DevicePublicKey,
+		&i.DevicePlatform,
+		&i.DeviceFamily,
+		&i.DeviceModelIdentifier,
 		&i.DeviceTokenHash,
 		&i.DeviceCreatedAtMs,
 		&i.DeviceApprovedAtMs,
@@ -350,6 +436,10 @@ SELECT
   name,
   kind,
   status,
+  public_key,
+  platform,
+  device_family,
+  model_identifier,
   token_hash,
   created_at_ms,
   approved_at_ms,
@@ -369,20 +459,43 @@ ORDER BY
   created_at_ms DESC
 `
 
-func (q *Queries) ListDevices(ctx context.Context) ([]Device, error) {
+type ListDevicesRow struct {
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	Kind            string `json:"kind"`
+	Status          string `json:"status"`
+	PublicKey       string `json:"public_key"`
+	Platform        string `json:"platform"`
+	DeviceFamily    string `json:"device_family"`
+	ModelIdentifier string `json:"model_identifier"`
+	TokenHash       string `json:"token_hash"`
+	CreatedAtMs     int64  `json:"created_at_ms"`
+	ApprovedAtMs    int64  `json:"approved_at_ms"`
+	RevokedAtMs     int64  `json:"revoked_at_ms"`
+	LastSeenAtMs    int64  `json:"last_seen_at_ms"`
+	LastSeenIp      string `json:"last_seen_ip"`
+	UserAgent       string `json:"user_agent"`
+	AppVersion      string `json:"app_version"`
+}
+
+func (q *Queries) ListDevices(ctx context.Context) ([]ListDevicesRow, error) {
 	rows, err := q.db.QueryContext(ctx, listDevices)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Device{}
+	items := []ListDevicesRow{}
 	for rows.Next() {
-		var i Device
+		var i ListDevicesRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
 			&i.Kind,
 			&i.Status,
+			&i.PublicKey,
+			&i.Platform,
+			&i.DeviceFamily,
+			&i.ModelIdentifier,
 			&i.TokenHash,
 			&i.CreatedAtMs,
 			&i.ApprovedAtMs,
@@ -419,6 +532,10 @@ SELECT
   d.name AS device_name,
   d.kind AS device_kind,
   d.status AS device_status,
+  d.public_key AS device_public_key,
+  d.platform AS device_platform,
+  d.device_family AS device_family,
+  d.model_identifier AS device_model_identifier,
   d.token_hash AS device_token_hash,
   d.created_at_ms AS device_created_at_ms,
   d.approved_at_ms AS device_approved_at_ms,
@@ -433,26 +550,30 @@ ORDER BY p.created_at_ms DESC
 `
 
 type ListPairingRequestsRow struct {
-	ID                 string `json:"id"`
-	DeviceID           string `json:"device_id"`
-	SecretHash         string `json:"secret_hash"`
-	Status             string `json:"status"`
-	CreatedAtMs        int64  `json:"created_at_ms"`
-	ExpiresAtMs        int64  `json:"expires_at_ms"`
-	ApprovedAtMs       int64  `json:"approved_at_ms"`
-	RejectedAtMs       int64  `json:"rejected_at_ms"`
-	DeviceDbID         string `json:"device_db_id"`
-	DeviceName         string `json:"device_name"`
-	DeviceKind         string `json:"device_kind"`
-	DeviceStatus       string `json:"device_status"`
-	DeviceTokenHash    string `json:"device_token_hash"`
-	DeviceCreatedAtMs  int64  `json:"device_created_at_ms"`
-	DeviceApprovedAtMs int64  `json:"device_approved_at_ms"`
-	DeviceRevokedAtMs  int64  `json:"device_revoked_at_ms"`
-	DeviceLastSeenAtMs int64  `json:"device_last_seen_at_ms"`
-	DeviceLastSeenIp   string `json:"device_last_seen_ip"`
-	DeviceUserAgent    string `json:"device_user_agent"`
-	DeviceAppVersion   string `json:"device_app_version"`
+	ID                    string `json:"id"`
+	DeviceID              string `json:"device_id"`
+	SecretHash            string `json:"secret_hash"`
+	Status                string `json:"status"`
+	CreatedAtMs           int64  `json:"created_at_ms"`
+	ExpiresAtMs           int64  `json:"expires_at_ms"`
+	ApprovedAtMs          int64  `json:"approved_at_ms"`
+	RejectedAtMs          int64  `json:"rejected_at_ms"`
+	DeviceDbID            string `json:"device_db_id"`
+	DeviceName            string `json:"device_name"`
+	DeviceKind            string `json:"device_kind"`
+	DeviceStatus          string `json:"device_status"`
+	DevicePublicKey       string `json:"device_public_key"`
+	DevicePlatform        string `json:"device_platform"`
+	DeviceFamily          string `json:"device_family"`
+	DeviceModelIdentifier string `json:"device_model_identifier"`
+	DeviceTokenHash       string `json:"device_token_hash"`
+	DeviceCreatedAtMs     int64  `json:"device_created_at_ms"`
+	DeviceApprovedAtMs    int64  `json:"device_approved_at_ms"`
+	DeviceRevokedAtMs     int64  `json:"device_revoked_at_ms"`
+	DeviceLastSeenAtMs    int64  `json:"device_last_seen_at_ms"`
+	DeviceLastSeenIp      string `json:"device_last_seen_ip"`
+	DeviceUserAgent       string `json:"device_user_agent"`
+	DeviceAppVersion      string `json:"device_app_version"`
 }
 
 func (q *Queries) ListPairingRequests(ctx context.Context) ([]ListPairingRequestsRow, error) {
@@ -477,6 +598,10 @@ func (q *Queries) ListPairingRequests(ctx context.Context) ([]ListPairingRequest
 			&i.DeviceName,
 			&i.DeviceKind,
 			&i.DeviceStatus,
+			&i.DevicePublicKey,
+			&i.DevicePlatform,
+			&i.DeviceFamily,
+			&i.DeviceModelIdentifier,
 			&i.DeviceTokenHash,
 			&i.DeviceCreatedAtMs,
 			&i.DeviceApprovedAtMs,
@@ -560,6 +685,81 @@ func (q *Queries) RevokeDevice(ctx context.Context, arg RevokeDeviceParams) (int
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const savePairingDevice = `-- name: SavePairingDevice :exec
+INSERT INTO devices (
+  id,
+  name,
+  kind,
+  status,
+  public_key,
+  platform,
+  device_family,
+  model_identifier,
+  token_hash,
+  created_at_ms,
+  last_seen_ip,
+  user_agent,
+  app_version
+) VALUES (
+  ?1,
+  ?2,
+  ?3,
+  'pending',
+  ?4,
+  ?5,
+  ?6,
+  ?7,
+  ?8,
+  ?9,
+  ?10,
+  ?11,
+  ?12
+)
+ON CONFLICT(id) DO UPDATE SET
+  name = excluded.name,
+  kind = excluded.kind,
+  public_key = excluded.public_key,
+  platform = excluded.platform,
+  device_family = excluded.device_family,
+  model_identifier = excluded.model_identifier,
+  last_seen_ip = excluded.last_seen_ip,
+  user_agent = excluded.user_agent,
+  app_version = excluded.app_version
+`
+
+type SavePairingDeviceParams struct {
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	Kind            string `json:"kind"`
+	PublicKey       string `json:"public_key"`
+	Platform        string `json:"platform"`
+	DeviceFamily    string `json:"device_family"`
+	ModelIdentifier string `json:"model_identifier"`
+	TokenHash       string `json:"token_hash"`
+	CreatedAtMs     int64  `json:"created_at_ms"`
+	LastSeenIp      string `json:"last_seen_ip"`
+	UserAgent       string `json:"user_agent"`
+	AppVersion      string `json:"app_version"`
+}
+
+func (q *Queries) SavePairingDevice(ctx context.Context, arg SavePairingDeviceParams) error {
+	_, err := q.db.ExecContext(ctx, savePairingDevice,
+		arg.ID,
+		arg.Name,
+		arg.Kind,
+		arg.PublicKey,
+		arg.Platform,
+		arg.DeviceFamily,
+		arg.ModelIdentifier,
+		arg.TokenHash,
+		arg.CreatedAtMs,
+		arg.LastSeenIp,
+		arg.UserAgent,
+		arg.AppVersion,
+	)
+	return err
 }
 
 const updateDeviceSeen = `-- name: UpdateDeviceSeen :execrows

@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"strings"
 	"testing"
 
@@ -41,10 +44,10 @@ func TestRunDevicesListAndApprove(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := deviceauth.New(store)
-	if _, err := service.Register(deviceauth.ClientInfo{Name: "Owner", Kind: "desktop"}); err != nil {
+	if _, err := service.Register(testDeviceInfo("Owner", "desktop", 1)); err != nil {
 		t.Fatalf("register owner: %v", err)
 	}
-	pairing, _, err := service.CreatePairing(deviceauth.ClientInfo{Name: "New desktop", Kind: "desktop"})
+	pairing, _, err := service.CreatePairing(testDeviceInfo("New desktop", "desktop", 2))
 	if err != nil {
 		t.Fatalf("create pairing: %v", err)
 	}
@@ -57,7 +60,7 @@ func TestRunDevicesListAndApprove(t *testing.T) {
 		t.Fatalf("list devices: %v", err)
 	}
 	out := listed.String()
-	for _, want := range []string{"DEVICES", "PAIRING REQUESTS", pairing.ID, "New desktop", "pending"} {
+	for _, want := range []string{"DEVICES", "PAIRING REQUESTS", pairing.ID, "New desktop", "pending", "macOS / Mac / MacBookPro18,3"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("list output missing %q:\n%s", want, out)
 		}
@@ -91,5 +94,27 @@ func TestRunDevicesListAndApprove(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("approved device not found: %#v", devices)
+	}
+}
+
+func testDeviceInfo(name, kind string, seed byte) deviceauth.Registration {
+	raw := make([]byte, 32)
+	for i := range raw {
+		raw[i] = seed
+	}
+	sum := sha256.Sum256(raw)
+	return deviceauth.Registration{
+		Identity: deviceauth.DeviceIdentity{
+			DeviceID:  hex.EncodeToString(sum[:]),
+			PublicKey: base64.RawURLEncoding.EncodeToString(raw),
+		},
+		Profile: deviceauth.DeviceProfile{
+			Name:       name,
+			Kind:       kind,
+			Platform:   "macOS",
+			Family:     "Mac",
+			Model:      "MacBookPro18,3",
+			AppVersion: "0.1.0",
+		},
 	}
 }

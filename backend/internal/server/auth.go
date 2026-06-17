@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/deviceauth"
+	"github.com/wins/jaz/backend/internal/httpapi"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 )
 
@@ -21,7 +22,8 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 		}
 		token := requestAuthKey(r)
 		if s.Devices != nil {
-			principal, err := s.Devices.Authenticate(token, deviceauth.ClientInfoFromRequest(r, "Jaz desktop"))
+			info := httpapi.RequestInfoFrom(r)
+			principal, err := s.Devices.Authenticate(token, deviceauth.SeenInfo{IP: info.IP, UserAgent: info.UserAgent})
 			if err == nil {
 				next.ServeHTTP(w, r.WithContext(deviceauth.WithPrincipal(r.Context(), principal)))
 				return

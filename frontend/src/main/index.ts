@@ -17,6 +17,7 @@ import {
 import appIcon from '../assets/jaz-icon-1024.png?asset'
 import { isPreviewURL } from '../shared/preview'
 import { startLocalBackend, stopLocalBackend } from './backend'
+import { getDeviceIdentity, getDeviceMetadata } from './deviceIdentity'
 import { createUpdateController } from './updater'
 
 // Matches --color-bg under :root.dark; used as the window paint color before
@@ -291,6 +292,8 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('jaz:start-local-backend', () => startLocalBackend())
+  ipcMain.handle('jaz:get-device-identity', () => getDeviceIdentity())
+  ipcMain.handle('jaz:get-device-metadata', () => getDeviceMetadata())
   updates.registerIpc()
 
   ipcMain.on('jaz:open-board-window', (_event, boardId) => {

@@ -44,7 +44,7 @@ type Service struct {
 	loopTools       *loops.MCPTools
 	visualizeTools  *visualize.MCPTools
 	widgetPublisher widgets.MCPPublisher
-	sessions        sessionStore
+	sessions        SessionStore
 
 	url string
 
@@ -68,12 +68,12 @@ type serverSlot struct {
 	memoryTools bool
 }
 
-type sessionStore interface {
+type SessionStore interface {
 	visualize.SessionEventAppender
 	LoadSession(string) (storage.Session, error)
 }
 
-func New(memory *memoryservice.Service, urls serverconfig.URLs, store sessionStore, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher) *Service {
+func New(memory *memoryservice.Service, urls serverconfig.URLs, store SessionStore, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher) *Service {
 	return &Service{
 		Memory:          memory,
 		visualizeTools:  visualize.NewMCPTools(store, events),

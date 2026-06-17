@@ -110,16 +110,17 @@ func printDevices(out io.Writer, service *deviceauth.Service) error {
 	}
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "DEVICES")
-	fmt.Fprintln(w, "ID\tSTATUS\tKIND\tNAME\tAPP\tLAST SEEN\tAPPROVED")
+	fmt.Fprintln(w, "ID\tSTATUS\tKIND\tNAME\tDETAILS\tAPP\tLAST SEEN\tAPPROVED")
 	if len(devices) == 0 {
-		fmt.Fprintln(w, "-\t-\t-\t-\t-\t-\t-")
+		fmt.Fprintln(w, "-\t-\t-\t-\t-\t-\t-\t-")
 	} else {
 		for _, device := range devices {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 				device.ID,
 				device.Status,
 				device.Kind,
 				device.Name,
+				deviceDetails(device),
 				emptyDash(device.AppVersion),
 				formatDeviceTime(device.LastSeenAt),
 				formatDeviceTime(device.ApprovedAt),
@@ -128,18 +129,19 @@ func printDevices(out io.Writer, service *deviceauth.Service) error {
 	}
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "PAIRING REQUESTS")
-	fmt.Fprintln(w, "ID\tSTATUS\tDEVICE\tDEVICE STATUS\tKIND\tNAME\tCREATED\tEXPIRES")
+	fmt.Fprintln(w, "ID\tSTATUS\tDEVICE\tDEVICE STATUS\tKIND\tNAME\tDETAILS\tCREATED\tEXPIRES")
 	if len(pairings) == 0 {
-		fmt.Fprintln(w, "-\t-\t-\t-\t-\t-\t-\t-")
+		fmt.Fprintln(w, "-\t-\t-\t-\t-\t-\t-\t-\t-")
 	} else {
 		for _, pairing := range pairings {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 				pairing.ID,
 				pairingStatus(pairing),
 				pairing.DeviceID,
 				pairing.Device.Status,
 				pairing.Device.Kind,
 				pairing.Device.Name,
+				deviceDetails(pairing.Device),
 				formatDeviceTime(pairing.CreatedAt),
 				formatDeviceTime(pairing.ExpiresAt),
 			)
@@ -202,6 +204,28 @@ func emptyDash(s string) string {
 		return "-"
 	}
 	return s
+}
+
+func deviceDetails(device storage.Device) string {
+	return emptyDash(strings.Join(uniqueDeviceParts(device.Platform, device.Family, device.Model), " / "))
+}
+
+func uniqueDeviceParts(parts ...string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		key := strings.ToLower(part)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, part)
+	}
+	return out
 }
 
 func devicesUsage(w io.Writer) {

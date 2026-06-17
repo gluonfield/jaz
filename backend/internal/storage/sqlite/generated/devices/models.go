@@ -3,18 +3,3 @@
 //   sqlc v1.31.1
 
 package devices
-
-type Device struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	Kind         string `json:"kind"`
-	Status       string `json:"status"`
-	TokenHash    string `json:"token_hash"`
-	CreatedAtMs  int64  `json:"created_at_ms"`
-	ApprovedAtMs int64  `json:"approved_at_ms"`
-	RevokedAtMs  int64  `json:"revoked_at_ms"`
-	LastSeenAtMs int64  `json:"last_seen_at_ms"`
-	LastSeenIp   string `json:"last_seen_ip"`
-	UserAgent    string `json:"user_agent"`
-	AppVersion   string `json:"app_version"`
-}

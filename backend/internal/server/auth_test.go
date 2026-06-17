@@ -1,6 +1,9 @@
 package server
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -86,7 +89,7 @@ func TestAuthMiddlewareRequiresDeviceAfterBootstrap(t *testing.T) {
 	}
 	defer store.Close()
 	devices := deviceauth.New(store)
-	registered, err := devices.Register(deviceauth.ClientInfo{Name: "First Mac", Kind: "desktop"})
+	registered, err := devices.Register(testDeviceInfo("First Mac", "desktop", 1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,5 +108,23 @@ func TestAuthMiddlewareRequiresDeviceAfterBootstrap(t *testing.T) {
 	(&Server{AuthKey: "root-key", Devices: devices}).Handler().ServeHTTP(deviceRes, deviceReq)
 	if deviceRes.Code != http.StatusOK {
 		t.Fatalf("device status = %d, body = %s", deviceRes.Code, deviceRes.Body.String())
+	}
+}
+
+func testDeviceInfo(name, kind string, seed byte) deviceauth.Registration {
+	raw := make([]byte, 32)
+	for i := range raw {
+		raw[i] = seed
+	}
+	sum := sha256.Sum256(raw)
+	return deviceauth.Registration{
+		Identity: deviceauth.DeviceIdentity{
+			DeviceID:  hex.EncodeToString(sum[:]),
+			PublicKey: base64.RawURLEncoding.EncodeToString(raw),
+		},
+		Profile: deviceauth.DeviceProfile{
+			Name: name,
+			Kind: kind,
+		},
 	}
 }

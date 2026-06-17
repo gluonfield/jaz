@@ -14,6 +14,7 @@ import (
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/jazagent"
+	"github.com/wins/jaz/backend/internal/jaztools"
 	"github.com/wins/jaz/backend/internal/loops"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
@@ -90,6 +91,7 @@ type Stores struct {
 	ACPStore        acp.Store
 	StorageStore    storage.Store
 	UsageEventStore storage.UsageEventStore
+	JazToolsStore   jaztools.SessionStore
 }
 
 func NewRuntimeLayout(cfg Config) (runtimefiles.Layout, error) {
@@ -116,7 +118,7 @@ func NewStore(layout runtimefiles.Layout, catalog acp.AgentCatalog) (Stores, err
 		_ = store.Close()
 		return Stores{}, err
 	}
-	return Stores{Store: store, ACPStore: store, StorageStore: store, UsageEventStore: store}, nil
+	return Stores{Store: store, ACPStore: store, StorageStore: store, UsageEventStore: store, JazToolsStore: store}, nil
 }
 
 func NewWorkspace(cfg Config, layout runtimefiles.Layout) (Workspace, error) {

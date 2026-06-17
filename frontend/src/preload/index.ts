@@ -15,6 +15,15 @@ contextBridge.exposeInMainWorld('jaz', {
     ipcRenderer.send('jaz:set-native-theme', source),
   startLocalBackend: (): Promise<{ ok: boolean; url?: string; key?: string; error?: string }> =>
     ipcRenderer.invoke('jaz:start-local-backend'),
+  getDeviceIdentity: (): Promise<{ device_id: string; public_key: string }> =>
+    ipcRenderer.invoke('jaz:get-device-identity'),
+  getDeviceMetadata: (): Promise<{
+    name: string
+    platform: string
+    device_family: string
+    model_identifier: string
+    app_version: string
+  }> => ipcRenderer.invoke('jaz:get-device-metadata'),
   getUpdateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke('jaz:get-update-status'),
   installUpdate: (): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('jaz:install-update'),

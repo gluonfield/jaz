@@ -21,6 +21,11 @@ type Handler struct {
 type deviceInput struct {
 	Name       string `json:"name"`
 	Kind       string `json:"kind"`
+	DeviceID   string `json:"device_id"`
+	PublicKey  string `json:"public_key"`
+	Platform   string `json:"platform"`
+	Family     string `json:"device_family"`
+	Model      string `json:"model_identifier"`
 	AppVersion string `json:"app_version"`
 }
 
@@ -39,6 +44,9 @@ type deviceDTO struct {
 	Name       string     `json:"name"`
 	Kind       string     `json:"kind"`
 	Status     string     `json:"status"`
+	Platform   string     `json:"platform,omitempty"`
+	Family     string     `json:"device_family,omitempty"`
+	Model      string     `json:"model_identifier,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`
 	ApprovedAt *time.Time `json:"approved_at,omitempty"`
 	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
@@ -85,7 +93,7 @@ func (h Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.service.Register(info)
 	if err != nil {
-		httpapi.WriteError(w, http.StatusInternalServerError, err)
+		writeDeviceAuthError(w, err)
 		return
 	}
 	status := http.StatusOK
@@ -103,7 +111,7 @@ func (h Handler) CreatePairing(w http.ResponseWriter, r *http.Request) {
 	}
 	pairing, secret, err := h.service.CreatePairing(info)
 	if err != nil {
-		httpapi.WriteError(w, http.StatusInternalServerError, err)
+		writeDeviceAuthError(w, err)
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusAccepted, map[string]any{
@@ -193,28 +201,74 @@ func writePairingAction(w http.ResponseWriter, pairing storage.DevicePairing, er
 	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"pairing": pairingDTOFromStorage(pairing)})
 }
 
-func inputFromRequest(r *http.Request) (deviceauth.ClientInfo, error) {
-	info := deviceauth.ClientInfoFromRequest(r, "Jaz desktop")
+func inputFromRequest(r *http.Request) (deviceauth.Registration, error) {
+	info := httpapi.RequestInfoFrom(r)
+	reg := deviceauth.Registration{
+		Identity: deviceauth.DeviceIdentity{
+			DeviceID:  strings.TrimSpace(r.Header.Get("X-Jaz-Device-ID")),
+			PublicKey: strings.TrimSpace(r.Header.Get("X-Jaz-Device-Public-Key")),
+		},
+		Profile: deviceauth.DeviceProfile{
+			Name:       deviceNameFromHeader(r, "Jaz desktop"),
+			Kind:       strings.TrimSpace(r.Header.Get("X-Jaz-Device-Kind")),
+			Platform:   strings.TrimSpace(r.Header.Get("X-Jaz-Device-Platform")),
+			Family:     strings.TrimSpace(r.Header.Get("X-Jaz-Device-Family")),
+			Model:      strings.TrimSpace(r.Header.Get("X-Jaz-Device-Model")),
+			AppVersion: strings.TrimSpace(r.Header.Get("X-Jaz-App-Version")),
+		},
+		Seen: deviceauth.SeenInfo{IP: info.IP, UserAgent: info.UserAgent},
+	}
 	if r.Body == nil {
-		return info, nil
+		return reg, nil
 	}
 	var input deviceInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		if errors.Is(err, io.EOF) {
-			return info, nil
+			return reg, nil
 		}
-		return deviceauth.ClientInfo{}, err
+		return deviceauth.Registration{}, err
 	}
 	if strings.TrimSpace(input.Name) != "" {
-		info.Name = input.Name
+		reg.Profile.Name = input.Name
 	}
 	if strings.TrimSpace(input.Kind) != "" {
-		info.Kind = input.Kind
+		reg.Profile.Kind = input.Kind
+	}
+	if strings.TrimSpace(input.DeviceID) != "" {
+		reg.Identity.DeviceID = input.DeviceID
+	}
+	if strings.TrimSpace(input.PublicKey) != "" {
+		reg.Identity.PublicKey = input.PublicKey
+	}
+	if strings.TrimSpace(input.Platform) != "" {
+		reg.Profile.Platform = input.Platform
+	}
+	if strings.TrimSpace(input.Family) != "" {
+		reg.Profile.Family = input.Family
+	}
+	if strings.TrimSpace(input.Model) != "" {
+		reg.Profile.Model = input.Model
 	}
 	if strings.TrimSpace(input.AppVersion) != "" {
-		info.AppVersion = input.AppVersion
+		reg.Profile.AppVersion = input.AppVersion
 	}
-	return info, nil
+	return reg, nil
+}
+
+func deviceNameFromHeader(r *http.Request, fallback string) string {
+	name := strings.TrimSpace(r.Header.Get("X-Jaz-Device-Name"))
+	if name == "" {
+		return fallback
+	}
+	return name
+}
+
+func writeDeviceAuthError(w http.ResponseWriter, err error) {
+	if errors.Is(err, deviceauth.ErrInvalidIdentity) {
+		httpapi.WriteError(w, http.StatusBadRequest, err)
+		return
+	}
+	httpapi.WriteError(w, http.StatusInternalServerError, err)
 }
 
 func pairingPath(path string) (string, string, error) {
@@ -279,6 +333,9 @@ func deviceDTOFromStorage(device storage.Device) deviceDTO {
 		Name:       device.Name,
 		Kind:       device.Kind,
 		Status:     device.Status,
+		Platform:   device.Platform,
+		Family:     device.Family,
+		Model:      device.Model,
 		CreatedAt:  device.CreatedAt,
 		ApprovedAt: timePtr(device.ApprovedAt),
 		RevokedAt:  timePtr(device.RevokedAt),

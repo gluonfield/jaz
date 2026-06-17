@@ -6,10 +6,9 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
-	"net"
-	"net/http"
 	"strings"
 	"time"
 
@@ -21,6 +20,7 @@ var (
 	ErrApprovalRequired = errors.New("device approval required")
 	ErrForbidden        = errors.New("device is not allowed")
 	ErrPairingExpired   = errors.New("pairing request expired")
+	ErrInvalidIdentity  = errors.New("device identity is invalid")
 )
 
 const (
@@ -35,6 +35,7 @@ type Store interface {
 	CountApprovedDevices() (int, error)
 	LoadDeviceByTokenHash(string) (storage.Device, error)
 	CreateDevice(storage.CreateDevice) (storage.Device, error)
+	SavePairingDevice(storage.SavePairingDevice) (storage.Device, error)
 	UpdateDeviceSeen(id, ip, userAgent string, at time.Time) error
 	RenameDevice(id, name string) (storage.Device, error)
 	RevokeDevice(id string, at time.Time) (storage.Device, error)
@@ -50,12 +51,29 @@ type Service struct {
 	now   func() time.Time
 }
 
-type ClientInfo struct {
-	Name       string `json:"name"`
-	Kind       string `json:"kind"`
-	AppVersion string `json:"app_version,omitempty"`
-	IP         string `json:"-"`
-	UserAgent  string `json:"-"`
+type SeenInfo struct {
+	IP        string
+	UserAgent string
+}
+
+type DeviceIdentity struct {
+	DeviceID  string
+	PublicKey string
+}
+
+type DeviceProfile struct {
+	Name       string
+	Kind       string
+	Platform   string
+	Family     string
+	Model      string
+	AppVersion string
+}
+
+type Registration struct {
+	Identity DeviceIdentity
+	Profile  DeviceProfile
+	Seen     SeenInfo
 }
 
 type Principal struct {
@@ -94,7 +112,7 @@ func (s *Service) ApprovedDeviceCount() (int, error) {
 	return s.store.CountApprovedDevices()
 }
 
-func (s *Service) Authenticate(token string, info ClientInfo) (Principal, error) {
+func (s *Service) Authenticate(token string, seen SeenInfo) (Principal, error) {
 	token = strings.TrimSpace(token)
 	if token == "" {
 		return Principal{}, ErrUnauthorized
@@ -105,7 +123,8 @@ func (s *Service) Authenticate(token string, info ClientInfo) (Principal, error)
 	}
 	switch device.Status {
 	case storage.DeviceStatusApproved:
-		_ = s.store.UpdateDeviceSeen(device.ID, info.IP, info.UserAgent, s.now())
+		seen = normalizeSeenInfo(seen)
+		_ = s.store.UpdateDeviceSeen(device.ID, seen.IP, seen.UserAgent, s.now())
 		return Principal{Kind: PrincipalDevice, DeviceID: device.ID}, nil
 	case storage.DeviceStatusPending:
 		return Principal{}, ErrApprovalRequired
@@ -114,39 +133,54 @@ func (s *Service) Authenticate(token string, info ClientInfo) (Principal, error)
 	}
 }
 
-func (s *Service) Register(info ClientInfo) (RegisterResult, error) {
+func (s *Service) Register(reg Registration) (RegisterResult, error) {
+	var err error
+	reg, err = normalizeRegistration(reg)
+	if err != nil {
+		return RegisterResult{}, err
+	}
 	count, err := s.store.CountApprovedDevices()
 	if err != nil {
 		return RegisterResult{}, err
 	}
 	if count == 0 {
-		return s.createApprovedDevice(info)
+		return s.createApprovedDevice(reg)
 	}
-	pairing, secret, err := s.CreatePairing(info)
+	pairing, secret, err := s.createPairing(reg)
 	if err != nil {
 		return RegisterResult{}, err
 	}
 	return RegisterResult{Device: pairing.Device, Pairing: &pairing, PairingSecret: secret}, nil
 }
 
-func (s *Service) CreatePairing(info ClientInfo) (storage.DevicePairing, string, error) {
-	info = normalizeClientInfo(info)
+func (s *Service) CreatePairing(reg Registration) (storage.DevicePairing, string, error) {
+	var err error
+	reg, err = normalizeRegistration(reg)
+	if err != nil {
+		return storage.DevicePairing{}, "", err
+	}
+	return s.createPairing(reg)
+}
+
+func (s *Service) createPairing(reg Registration) (storage.DevicePairing, string, error) {
 	secret, err := newToken()
 	if err != nil {
 		return storage.DevicePairing{}, "", err
 	}
 	now := s.now()
-	deviceID := newID("dev")
-	device, err := s.store.CreateDevice(storage.CreateDevice{
-		ID:         deviceID,
-		Name:       info.Name,
-		Kind:       info.Kind,
-		Status:     storage.DeviceStatusPending,
+	device, err := s.store.SavePairingDevice(storage.SavePairingDevice{
+		ID:         reg.Identity.DeviceID,
+		Name:       reg.Profile.Name,
+		Kind:       reg.Profile.Kind,
+		PublicKey:  reg.Identity.PublicKey,
+		Platform:   reg.Profile.Platform,
+		Family:     reg.Profile.Family,
+		Model:      reg.Profile.Model,
 		TokenHash:  TokenHash(secret),
 		CreatedAt:  now,
-		LastSeenIP: info.IP,
-		UserAgent:  info.UserAgent,
-		AppVersion: info.AppVersion,
+		LastSeenIP: reg.Seen.IP,
+		UserAgent:  reg.Seen.UserAgent,
+		AppVersion: reg.Profile.AppVersion,
 	})
 	if err != nil {
 		return storage.DevicePairing{}, "", err
@@ -211,66 +245,99 @@ func (s *Service) List() ([]storage.Device, []storage.DevicePairing, error) {
 	return devices, pairings, nil
 }
 
-func ClientInfoFromRequest(r *http.Request, fallbackName string) ClientInfo {
-	name := strings.TrimSpace(r.Header.Get("X-Jaz-Device-Name"))
-	if name == "" {
-		name = fallbackName
-	}
-	return ClientInfo{
-		Name:       name,
-		Kind:       strings.TrimSpace(r.Header.Get("X-Jaz-Device-Kind")),
-		AppVersion: strings.TrimSpace(r.Header.Get("X-Jaz-App-Version")),
-		IP:         requestIP(r),
-		UserAgent:  strings.TrimSpace(r.UserAgent()),
-	}
-}
-
 func TokenHash(token string) string {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(token)))
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
-func normalizeClientInfo(info ClientInfo) ClientInfo {
-	info.Name = strings.TrimSpace(info.Name)
-	if info.Name == "" {
-		info.Name = "Jaz device"
-	}
-	info.Kind = strings.TrimSpace(info.Kind)
-	switch info.Kind {
-	case storage.DeviceKindDesktop, storage.DeviceKindMobile, storage.DeviceKindBrowser, storage.DeviceKindCLI:
-	default:
-		info.Kind = storage.DeviceKindDesktop
-	}
-	info.AppVersion = strings.TrimSpace(info.AppVersion)
-	info.IP = strings.TrimSpace(info.IP)
-	info.UserAgent = strings.TrimSpace(info.UserAgent)
-	return info
+func normalizeSeenInfo(seen SeenInfo) SeenInfo {
+	seen.IP = strings.TrimSpace(seen.IP)
+	seen.UserAgent = strings.TrimSpace(seen.UserAgent)
+	return seen
 }
 
-func (s *Service) createApprovedDevice(info ClientInfo) (RegisterResult, error) {
-	info = normalizeClientInfo(info)
+func normalizeProfile(profile DeviceProfile) DeviceProfile {
+	profile.Name = strings.TrimSpace(profile.Name)
+	if profile.Name == "" {
+		profile.Name = "Jaz device"
+	}
+	profile.Kind = strings.TrimSpace(profile.Kind)
+	switch profile.Kind {
+	case storage.DeviceKindDesktop, storage.DeviceKindMobile, storage.DeviceKindBrowser, storage.DeviceKindCLI:
+	default:
+		profile.Kind = storage.DeviceKindDesktop
+	}
+	profile.AppVersion = strings.TrimSpace(profile.AppVersion)
+	profile.Platform = strings.TrimSpace(profile.Platform)
+	profile.Family = strings.TrimSpace(profile.Family)
+	profile.Model = strings.TrimSpace(profile.Model)
+	return profile
+}
+
+func normalizeRegistration(reg Registration) (Registration, error) {
+	reg.Profile = normalizeProfile(reg.Profile)
+	reg.Seen = normalizeSeenInfo(reg.Seen)
+	publicKey, deviceID, err := normalizeDeviceIdentity(reg.Identity.PublicKey, reg.Identity.DeviceID)
+	if err != nil {
+		return Registration{}, err
+	}
+	reg.Identity.PublicKey = publicKey
+	reg.Identity.DeviceID = deviceID
+	return reg, nil
+}
+
+func (s *Service) createApprovedDevice(reg Registration) (RegisterResult, error) {
 	token, err := newToken()
 	if err != nil {
 		return RegisterResult{}, err
 	}
 	now := s.now()
 	device, err := s.store.CreateDevice(storage.CreateDevice{
-		ID:         newID("dev"),
-		Name:       info.Name,
-		Kind:       info.Kind,
+		ID:         reg.Identity.DeviceID,
+		Name:       reg.Profile.Name,
+		Kind:       reg.Profile.Kind,
 		Status:     storage.DeviceStatusApproved,
+		PublicKey:  reg.Identity.PublicKey,
+		Platform:   reg.Profile.Platform,
+		Family:     reg.Profile.Family,
+		Model:      reg.Profile.Model,
 		TokenHash:  TokenHash(token),
 		CreatedAt:  now,
 		ApprovedAt: now,
 		LastSeenAt: now,
-		LastSeenIP: info.IP,
-		UserAgent:  info.UserAgent,
-		AppVersion: info.AppVersion,
+		LastSeenIP: reg.Seen.IP,
+		UserAgent:  reg.Seen.UserAgent,
+		AppVersion: reg.Profile.AppVersion,
 	})
 	if err != nil {
 		return RegisterResult{}, err
 	}
 	return RegisterResult{Device: device, Token: token}, nil
+}
+
+func normalizeDeviceIdentity(publicKey, deviceID string) (string, string, error) {
+	raw, err := decodeRawPublicKey(publicKey)
+	if err != nil || len(raw) != 32 {
+		return "", "", ErrInvalidIdentity
+	}
+	sum := sha256.Sum256(raw)
+	expected := hex.EncodeToString(sum[:])
+	deviceID = strings.ToLower(strings.TrimSpace(deviceID))
+	if deviceID != expected {
+		return "", "", ErrInvalidIdentity
+	}
+	return base64.RawURLEncoding.EncodeToString(raw), expected, nil
+}
+
+func decodeRawPublicKey(value string) ([]byte, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, ErrInvalidIdentity
+	}
+	if raw, err := base64.RawURLEncoding.DecodeString(value); err == nil {
+		return raw, nil
+	}
+	return base64.URLEncoding.DecodeString(value)
 }
 
 func newToken() (string, error) {
@@ -287,25 +354,4 @@ func newID(prefix string) string {
 		return fmt.Sprintf("%s_%d", prefix, time.Now().UTC().UnixNano())
 	}
 	return prefix + "_" + base64.RawURLEncoding.EncodeToString(b[:])
-}
-
-func requestIP(r *http.Request) string {
-	for _, header := range []string{"X-Forwarded-For", "X-Real-IP"} {
-		raw := strings.TrimSpace(r.Header.Get(header))
-		if raw == "" {
-			continue
-		}
-		host := strings.TrimSpace(strings.Split(raw, ",")[0])
-		if ip := net.ParseIP(host); ip != nil {
-			return ip.String()
-		}
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	if ip := net.ParseIP(host); ip != nil {
-		return ip.String()
-	}
-	return strings.TrimSpace(host)
 }
