@@ -52,7 +52,7 @@ type LookupResponse = {
   results?: ITunesSearchResult[]
 }
 
-type LegacyTopSongsFeed = {
+type RSSTopSongsFeed = {
   feed?: {
     entry?: Array<{
       id?: {
@@ -147,11 +147,11 @@ async function lookupPreviewTracks(ids: string[], source: string, country = 'US'
     .filter((track): track is PreviewTrack => track !== null)
 }
 
-function idsFromChartFeed(feed: LegacyTopSongsFeed | MarketingToolsFeed): string[] {
+function idsFromChartFeed(feed: RSSTopSongsFeed | MarketingToolsFeed): string[] {
   const marketingIds = (feed as MarketingToolsFeed).feed?.results?.map((result) => result.id ?? '') ?? []
   if (marketingIds.length > 0) return marketingIds
   return (
-    (feed as LegacyTopSongsFeed).feed?.entry?.map(
+    (feed as RSSTopSongsFeed).feed?.entry?.map(
       (entry) => entry.id?.attributes?.['im:id'] ?? '',
     ) ?? []
   )
@@ -170,15 +170,15 @@ async function chartTrackIds(feed: ChartFeed): Promise<string[]> {
   return request
 }
 
-async function fetchChartFeed(feed: ChartFeed): Promise<LegacyTopSongsFeed | MarketingToolsFeed> {
+async function fetchChartFeed(feed: ChartFeed): Promise<RSSTopSongsFeed | MarketingToolsFeed> {
   try {
     const response = await fetch(feed.url)
     if (!response.ok) throw new Error(`${feed.label} failed with ${response.status}`)
-    return (await response.json()) as LegacyTopSongsFeed | MarketingToolsFeed
+    return (await response.json()) as RSSTopSongsFeed | MarketingToolsFeed
   } catch {
     const response = await apiFetch(`/v1/music/chart-feed?url=${encodeURIComponent(feed.url)}`)
     if (!response.ok) throw new Error(`${feed.label} failed with ${response.status}`)
-    return (await response.json()) as LegacyTopSongsFeed | MarketingToolsFeed
+    return (await response.json()) as RSSTopSongsFeed | MarketingToolsFeed
   }
 }
 

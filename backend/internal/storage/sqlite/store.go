@@ -61,10 +61,6 @@ func New(root string) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
-	if err := store.importLegacyJSON(); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
 	if err := store.backfillMissingThreadErrors(); err != nil {
 		_ = db.Close()
 		return nil, err

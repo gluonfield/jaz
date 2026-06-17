@@ -718,9 +718,6 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	switch session.Runtime {
 	case storage.RuntimeACP:
 		s.streamACPSession(w, flusher, r.Context(), session, req.Message, attachments, req.PlanRequested)
-	case "":
-		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: "legacy runtime is no longer supported; start a new ACP session"})
-		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
 	default:
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: fmt.Sprintf("unknown session runtime %q", session.Runtime)})
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})

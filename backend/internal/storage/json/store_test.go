@@ -271,45 +271,6 @@ func TestMessagesUseJSONL(t *testing.T) {
 	}
 }
 
-func TestLoadMessagesFallsBackToLegacyJSON(t *testing.T) {
-	store, err := New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	session, err := store.CreateSession(storage.CreateSession{Slug: "legacy-json"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	data, err := stdjson.Marshal([]provider.Message{provider.UserMessage("legacy")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(store.sessionDir(session.ID), "messages.json"), data, 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	loaded, err := store.LoadMessages(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(loaded) != 1 || provider.MessageContent(loaded[0]) != "legacy" {
-		t.Fatalf("loaded legacy messages = %#v", loaded)
-	}
-
-	if err := store.AppendMessages(session.ID, provider.AssistantMessage("upgraded", nil)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(store.sessionDir(session.ID), "messages.json")); !os.IsNotExist(err) {
-		t.Fatalf("legacy messages.json exists or stat failed: %v", err)
-	}
-	loaded, err = store.LoadMessages(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(loaded) != 2 || provider.MessageContent(loaded[1]) != "upgraded" {
-		t.Fatalf("upgraded messages = %#v", loaded)
-	}
-}
 
 func TestSessionEventsUseJSONL(t *testing.T) {
 	store, err := New(t.TempDir())
