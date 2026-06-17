@@ -22,6 +22,7 @@ import { Select } from '@/components/ui/Select'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import { authProviderLabel, onboardingAgentLabel } from '@/lib/agentLabel'
+import { nativeModelForProvider, providerKeyUrl } from '@/lib/agentRuntimes'
 import { completeOnboarding, onboardingQuery } from '@/lib/api/onboarding'
 import { cloneAgentSettings, compactKeys, startACPAuthLogin } from '@/lib/api/settings'
 import type { ACPAgentAuth, ACPAuthLogin, AgentSettings, OnboardingACPProbe, OnboardingStatus } from '@/lib/api/types'
@@ -39,13 +40,6 @@ const stagger = {
 const rise = {
   hidden: { opacity: 0, y: 12, filter: 'blur(5px)' },
   show: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.42, ease: EASE } },
-}
-
-// Where to grab a key for each native provider — the answer to "where does the
-// key even come from?". Keyed by the backend provider id.
-const PROVIDER_KEY_URLS: Record<string, string> = {
-  openrouter: 'https://openrouter.ai/keys',
-  openai: 'https://platform.openai.com/api-keys',
 }
 
 export function OnboardingGate({ children }: { children: ReactNode }) {
@@ -144,12 +138,12 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
   })
 
   const setProvider = (model_provider: string) => {
-    const next = nativeProviders.find((provider) => provider.id === model_provider)
-    const current = nativeProviders.find((provider) => provider.id === draft.native.model_provider)
-    const model =
-      draft.native.model.trim() === '' || draft.native.model === current?.default_model
-        ? next?.default_model || draft.native.model
-        : draft.native.model
+    const model = nativeModelForProvider(
+      nativeProviders,
+      draft.native.model_provider,
+      model_provider,
+      draft.native.model,
+    )
     setDraft({ ...draft, native: { ...draft.native, model_provider, model } })
   }
 
@@ -422,7 +416,7 @@ function NativeAgentCard({
 }) {
   const provider = providers.find((item) => item.id === selectedProvider)
   const label = provider?.label || 'a model provider'
-  const keyUrl = PROVIDER_KEY_URLS[selectedProvider]
+  const keyUrl = providerKeyUrl(selectedProvider)
   const hasDraft = apiKeyValue.trim().length > 0
   const pillState: AgentState = configured || hasDraft ? 'ready' : 'action'
   const pillLabel = configured ? 'Connected' : hasDraft ? 'Key added' : 'Needs key'
