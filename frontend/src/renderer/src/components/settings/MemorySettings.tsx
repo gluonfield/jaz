@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { MarkdownEditor } from '@/components/agent/MarkdownEditor'
 import { FileTabs } from './FileTabs'
+import { SettingsCard } from './SettingsCard'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Select } from '@/components/ui/Select'
@@ -185,7 +186,7 @@ export function MemorySettings() {
       </header>
 
       <div className={enabled ? 'flex flex-col gap-5' : 'pointer-events-none flex flex-col gap-5 opacity-50'}>
-        <section className="rounded-card border border-border bg-surface">
+        <SettingsCard>
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <div className="flex items-baseline gap-3 text-[13px] text-ink">
               <span className="font-medium">{memory.doctor.page_count} pages</span>
@@ -236,9 +237,9 @@ export function MemorySettings() {
               </li>
             ))}
           </ul>
-        </section>
+        </SettingsCard>
 
-        <section className="rounded-card border border-border bg-surface px-4 py-3">
+        <SettingsCard className="px-4 py-3">
           <div className="flex items-center justify-between gap-4">
             <div className="min-w-0">
               <span className="text-[13px] font-medium text-ink">Dream agent</span>
@@ -260,7 +261,7 @@ export function MemorySettings() {
               className="w-full md:w-[260px]"
             />
           </div>
-        </section>
+        </SettingsCard>
 
         {active ? (
           <section className="flex flex-col">
@@ -285,7 +286,7 @@ export function MemorySettings() {
               />
             </div>
             <p className="pb-2 text-[12px] text-ink-2">{HORIZON_DESCRIPTIONS[active.name]}</p>
-            <div className="h-64 overflow-hidden rounded-card border border-border">
+            <SettingsCard className="h-64 overflow-hidden">
               <MarkdownEditor
                 key={active.name}
                 initialValue={drafts[active.name] ?? active.content}
@@ -296,12 +297,12 @@ export function MemorySettings() {
                   saveHorizon.mutate({ name: active.name, content: drafts[active.name] ?? active.content })
                 }}
               />
-            </div>
+            </SettingsCard>
           </section>
         ) : null}
 
         {memory.mcp_url ? (
-          <section className="rounded-card border border-border bg-surface px-4 py-3">
+          <SettingsCard className="px-4 py-3">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <span className="text-[13px] font-medium text-ink">MCP endpoint</span>
@@ -313,7 +314,7 @@ export function MemorySettings() {
                 {memory.mcp_url}
               </code>
             </div>
-          </section>
+          </SettingsCard>
         ) : null}
       </div>
     </div>

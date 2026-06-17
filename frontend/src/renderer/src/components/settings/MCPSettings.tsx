@@ -6,7 +6,6 @@ import {
   KeyRound,
   Loader2,
   Pencil,
-  Plug,
   Plus,
   Power,
   RefreshCcw,
@@ -16,6 +15,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/Button'
+import { DashedCta } from '@/components/ui/DashedCta'
 import { IconButton } from '@/components/ui/IconButton'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -155,7 +155,11 @@ export function MCPSettings() {
         ) : servers.isError ? (
           <p className="py-2 text-[13px] text-danger">{servers.error.message}</p>
         ) : sortedServers.length === 0 ? (
-          <EmptyServers />
+          <DashedCta
+            title="No MCP servers yet"
+            subtitle="Connect a remote Streamable HTTP MCP server to give Jaz and capable agents access to its tools."
+            onClick={openAdd}
+          />
         ) : (
           <div className="flex flex-col gap-px">
             {sortedServers.map((server) => (
@@ -211,22 +215,6 @@ export function MCPSettings() {
         {draft ? <MCPServerForm draft={draft} onChange={setDraft} /> : null}
       </Modal>
     </section>
-  )
-}
-
-function EmptyServers() {
-  return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-card border border-dashed border-border px-6 py-10 text-center">
-      <div className="grid size-10 place-items-center rounded-full bg-surface-2 text-ink-3">
-        <Plug size={18} />
-      </div>
-      <div>
-        <p className="text-[13px] font-medium text-ink">No MCP servers yet</p>
-        <p className="mt-0.5 text-[12px] text-ink-3">
-          Use “Add server” above to give Jaz access to a remote server's tools.
-        </p>
-      </div>
-    </div>
   )
 }
 

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ChartNoAxesColumn } from 'lucide-react'
 import { type MouseEvent, useMemo, useState } from 'react'
+import { SettingsCard } from '@/components/settings/SettingsCard'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { dailyUsageQuery, modelUsageQuery } from '@/lib/api/sessions'
 import type { DailyUsage, ModelUsage } from '@/lib/api/types'
@@ -59,7 +60,7 @@ export function UsageSettings() {
 
 function UsageSkeleton() {
   return (
-    <div className="mt-4 rounded-card bg-surface p-4">
+    <SettingsCard className="mt-4 p-4">
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
         {Array.from({ length: 4 }, (_, index) => (
           <Skeleton key={index} className="h-12" />
@@ -67,7 +68,7 @@ function UsageSkeleton() {
       </div>
       <Skeleton className="mt-4 h-[130px]" />
       <Skeleton className="mt-4 h-[150px]" />
-    </div>
+    </SettingsCard>
   )
 }
 
@@ -98,7 +99,7 @@ function UsagePanel({
   const reasoning = last30.reasoning_output_tokens ?? 0
 
   return (
-    <div className="mt-4 rounded-card bg-surface p-4 ring-1 ring-border/70">
+    <SettingsCard className="mt-4 p-4">
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-control bg-border/70 md:grid-cols-4">
         <UsageStat label="Last 7 days" value={formatTokens(inputOutputTokens(last7))} detail="input + output" />
         <UsageStat label="Last 30 days" value={formatTokens(inputOutputTokens(last30))} detail="input + output" />
@@ -106,7 +107,7 @@ function UsagePanel({
         <UsageStat label="Output" value={formatTokens(last30.output_tokens ?? 0)} detail="last 30 days" />
       </div>
 
-      <div className="mt-5 min-w-0 rounded-control bg-bg/45 px-3 py-3 ring-1 ring-border/60">
+      <div className="mt-5 min-w-0 rounded-control bg-bg/45 px-3 py-3">
         <div className="mb-2 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2 text-[12px] font-medium text-ink">
             <ChartNoAxesColumn size={14} className="text-ink-3" />
@@ -203,7 +204,7 @@ function UsagePanel({
       <ModelBreakdown models={models} error={modelsError} pending={modelsPending} />
 
       {tooltip ? <UsageTooltip state={tooltip} /> : null}
-    </div>
+    </SettingsCard>
   )
 }
 
@@ -367,7 +368,7 @@ function UsageTooltip({ state }: { state: TooltipState }) {
 
   return (
     <div
-      className="pointer-events-none fixed z-tooltip w-[220px] rounded-control bg-bg px-3 py-2 text-[11px] text-ink shadow-raised ring-1 ring-border"
+      className="pointer-events-none fixed z-tooltip w-[220px] rounded-control bg-bg px-3 py-2 text-[11px] text-ink shadow-raised ring-1 ring-border/70"
       style={{ left, top }}
     >
       <div className="font-medium">{formatUsageDate(state.day.date)}</div>

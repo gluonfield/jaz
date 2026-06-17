@@ -119,7 +119,8 @@ export function PersonalizationSettings() {
         })}
       />
 
-      <div className="min-h-0 flex-1 overflow-hidden rounded-b-card border border-t-0 border-border">
+      {/* Tab-attached editor: bottom-only radius, so it can't use SettingsCard (full rounded-card). */}
+      <div className="min-h-0 flex-1 overflow-hidden rounded-b-card bg-surface">
         <MarkdownEditor
           key={activeFile.name}
           initialValue={value}
