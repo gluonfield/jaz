@@ -15,10 +15,15 @@ import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
 import { agentLabel, authProviderLabel } from '@/lib/agentLabel'
 import {
+  acpAgentEnableable,
+  acpAgentEnabled,
   acpUsesModelProvider,
   modelProviderConnected,
   modelProviderRequiresKey,
+  normalizeACPAgentEnabled,
+  normalizeACPAgentsEnabled,
   selectableACPModelProviders,
+  selectedACPModelProvider,
 } from '@/lib/agentRuntimes'
 import { cloneAgentSettings, disconnectACPAuth, startACPAuthLogin } from '@/lib/api/settings'
 import type {
@@ -37,6 +42,14 @@ const inputClass =
 
 const rowControlClass = 'w-full md:w-[320px]'
 type ACPAuthDraft = AgentSettingsData['acp'][string]['auth']
+const emptyACPAgent: AgentSettingsData['acp'][string] = {
+  enabled: false,
+  command: '',
+  model_provider: '',
+  model: '',
+  reasoning_effort: '',
+  auth: { mode: 'auto', path: '' },
+}
 
 // Returns a clone with one ACP agent turned on — used when a sign-in or API key
 // connects an agent, so it becomes usable without a separate toggle.
@@ -55,7 +68,7 @@ function hasEnabledACPWithoutCommand(settings: AgentSettingsData): boolean {
   return settings.agents.some((agent) => {
     if (!agentRequiresCommand(settings, agent)) return false
     const current = settings.acp[agent]
-    return Boolean(current?.enabled) && (current.command ?? '').trim() === ''
+    return acpAgentEnabled(settings, agent) && (current?.command ?? '').trim() === ''
   })
 }
 
@@ -63,8 +76,8 @@ function hasInvalidACPProvider(settings: AgentSettingsData): boolean {
   return settings.agents.some((agent) => {
     if (!acpUsesModelProvider(settings, agent)) return false
     const current = settings.acp[agent]
-    if (!current?.enabled) return false
-    return (current.model_provider ?? '').trim() === '' || (current.model ?? '').trim() === ''
+    if (!acpAgentEnabled(settings, agent)) return false
+    return (current?.model ?? '').trim() === ''
   })
 }
 
@@ -116,7 +129,7 @@ export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => 
       description="Configure ACP agents, auth, and per-agent defaults."
       canSave={canSave}
       saving={save.isPending}
-      onSave={() => draft && save.mutate(draft)}
+      onSave={() => draft && save.mutate(normalizeACPAgentsEnabled(draft))}
     >
       {settings.isError ? (
         <p className="py-2 text-[13px] text-danger">{settings.error.message}</p>
@@ -168,26 +181,22 @@ function ACPAgentRow({
   onOpenProviders: () => void
   onChange: (settings: AgentSettingsData) => void
 }) {
-  const current = settings.acp[agent] ?? {
-    enabled: false,
-    command: '',
-    model_provider: '',
-    model: '',
-    reasoning_effort: '',
-    auth: { mode: 'auto', path: '' },
-  }
+  const current = settings.acp[agent] ?? emptyACPAgent
   const authStatus = settings.acp_auth?.[agent]
   const options = settings.acp_options?.[agent]
   const requiresCommand = options?.requires_command ?? true
   const supportsAuth = options?.supports_auth ?? true
   const usesModelProvider = acpUsesModelProvider(settings, agent)
-  const [commandOpen, setCommandOpen] = useState(requiresCommand && (current.command ?? '').trim() === '')
-  useEffect(() => {
-    if (requiresCommand && current.enabled && (current.command ?? '').trim() === '') setCommandOpen(true)
-  }, [current.command, current.enabled, requiresCommand])
-  const controlsDisabled = disabled || !current.enabled
   const providerOptions = selectableACPModelProviders(settings, agent)
-  const selectedProvider = providerOptions.find((provider) => provider.id === current.model_provider)
+  const selectedProvider = selectedACPModelProvider(settings, agent)
+  const providerReady = acpAgentEnableable(settings, agent)
+  const checked = acpAgentEnabled(settings, agent)
+  const enableDescription = providerReady
+    ? 'Show this ACP client in agent pickers.'
+    : selectedProvider
+      ? `Connect ${selectedProvider.label} in Model Providers before enabling.`
+      : 'Select a provider before enabling.'
+  const [commandOpen, setCommandOpen] = useState(requiresCommand && (current.command ?? '').trim() === '')
   const openRouterModels = useQuery({
     ...openRouterModelsQuery,
     enabled: usesModelProvider && current.model_provider === 'openrouter',
@@ -195,14 +204,20 @@ function ACPAgentRow({
   const modelSuggestions = usesModelProvider
     ? modelSuggestionsForProvider(selectedProvider, openRouterModels.data ?? [])
     : acpAgentModelSuggestions(agent)
-  const update = (next: Partial<typeof current>) =>
-    onChange({
+  const update = (next: Partial<typeof current>) => {
+    const value = { ...current, ...next }
+    const nextSettings = {
       ...settings,
       acp: {
         ...settings.acp,
-        [agent]: { ...current, ...next },
+        [agent]: value,
       },
-    })
+    }
+    onChange(normalizeACPAgentEnabled(nextSettings, agent))
+  }
+  useEffect(() => {
+    if (requiresCommand && checked && (current.command ?? '').trim() === '') setCommandOpen(true)
+  }, [checked, current.command, requiresCommand])
 
   return (
     <SettingsCard className="overflow-hidden">
@@ -212,11 +227,11 @@ function ACPAgentRow({
         </span>
       </div>
 
-      <SettingsRow title="Enabled" description="Show this ACP client in agent pickers.">
+      <SettingsRow title="Enabled" description={enableDescription}>
         <div className="flex h-8 w-full items-center justify-start md:w-[320px] md:justify-end">
           <Switch
-            checked={current.enabled}
-            disabled={disabled}
+            checked={checked}
+            disabled={disabled || !providerReady}
             onChange={(enabled) => update({ enabled })}
             aria-label={`Enable ${agentLabel(agent)}`}
           />
@@ -264,7 +279,7 @@ function ACPAgentRow({
                 label: provider.label,
                 description: provider.base_url,
               }))}
-              disabled={controlsDisabled}
+              disabled={disabled}
               onChange={(model_provider) => {
                 const nextProvider = providerOptions.find((provider) => provider.id === model_provider)
                 const model =
@@ -289,7 +304,7 @@ function ACPAgentRow({
           value={current.model ?? ''}
           suggestions={modelSuggestions}
           loading={openRouterModels.isLoading}
-          disabled={controlsDisabled}
+          disabled={disabled}
           onChange={(model) => update({ model })}
           aria-label={`${agentLabel(agent)} model`}
           className={rowControlClass}
@@ -300,7 +315,7 @@ function ACPAgentRow({
         <Select
           value={current.reasoning_effort ?? ''}
           options={settingsReasoningOptions(acpReasoningEffortOptions(settings, agent))}
-          disabled={controlsDisabled}
+          disabled={disabled}
           onChange={(reasoning_effort) => update({ reasoning_effort })}
           aria-label={`${agentLabel(agent)} reasoning effort`}
           className={rowControlClass}
@@ -333,7 +348,7 @@ function ACPAgentRow({
               <span className="mb-1 block text-[11px] text-ink-3">Startup command</span>
               <input
                 value={current.command ?? ''}
-                disabled={controlsDisabled}
+                disabled={disabled}
                 onChange={(event) => update({ command: event.target.value })}
                 className={`${inputClass} font-mono`}
               />
