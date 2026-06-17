@@ -88,7 +88,7 @@ func (s *Server) acpKeyUpdates(keys map[string]string) (map[string]string, error
 	return updates, nil
 }
 
-// applyRuntimeKeyUpdates collects native provider + ACP agent key updates from a
+// applyRuntimeKeyUpdates collects model-provider + ACP agent key updates from a
 // request, enforces the host-only guard, and persists them. Returns the HTTP
 // status to use on failure (0 on success) so handlers stay one line. Shared by
 // the settings and onboarding endpoints.
@@ -120,9 +120,16 @@ func (s *Server) saveRuntimeKeyUpdates(updates map[string]string) error {
 	if err := runtimeenv.Save(s.runtimeKeyEnvPath(), updates); err != nil {
 		return err
 	}
+<<<<<<< HEAD
 	// Reload both the native clients and the provider registry so a key set here
 	// reaches native turns and the next opencode spawn without a restart.
 	return s.reloadProviders()
+=======
+	if s.ModelProviderRuntime != nil {
+		return s.ModelProviderRuntime.Reload()
+	}
+	return nil
+>>>>>>> main
 }
 
 func (s *Server) providerKeySetupAllowed(r *http.Request) bool {
@@ -130,10 +137,10 @@ func (s *Server) providerKeySetupAllowed(r *http.Request) bool {
 }
 
 func (s *Server) providerKeyConfigured(id string) bool {
-	if s.NativeProviders != nil {
-		return s.NativeProviders.APIKeyConfigured(id)
+	if s.ModelProviderRuntime != nil {
+		return s.ModelProviderRuntime.APIKeyConfigured(id)
 	}
-	meta, ok := provider.NativeProviderByID(id)
+	meta, ok := provider.RunnableModelProviderByID(id)
 	if !ok || strings.TrimSpace(meta.APIKeyEnv) == "" {
 		return false
 	}
@@ -144,23 +151,23 @@ func (s *Server) providerKeyConfigured(id string) bool {
 	return ok
 }
 
-func (s *Server) validateNativeProviderRunnable(id string) error {
-	if s.NativeProviders == nil {
+func (s *Server) validateModelProviderRunnable(id string) error {
+	if s.ModelProviderRuntime == nil {
 		return nil
 	}
-	meta, ok := provider.NativeProviderByID(id)
+	meta, ok := provider.RunnableModelProviderByID(id)
 	if !ok {
-		return fmt.Errorf("unknown native provider %q", id)
+		return fmt.Errorf("unknown model provider %q", id)
 	}
 	if strings.TrimSpace(meta.APIKeyEnv) == "" || s.providerKeyConfigured(id) {
 		return nil
 	}
-	return fmt.Errorf("native provider %q cannot run without %s; add the key in Settings > Agents", id, meta.APIKeyEnv)
+	return fmt.Errorf("model provider %q cannot run without %s; add the key in Settings > Agents", id, meta.APIKeyEnv)
 }
 
 func (s *Server) runtimeKeyEnvPath() string {
-	if s.NativeProviders != nil {
-		if path := strings.TrimSpace(s.NativeProviders.APIKeyEnvPath()); path != "" {
+	if s.ModelProviderRuntime != nil {
+		if path := strings.TrimSpace(s.ModelProviderRuntime.APIKeyEnvPath()); path != "" {
 			return path
 		}
 	}

@@ -73,9 +73,8 @@ export function RuntimeSelect({
 }
 
 // Picks the model for a new thread: curated suggestions for the chosen
-// agent/provider plus free-text entry for anything else. A provider section sits
-// above the model list when the caller wires one up. The trigger shows the
-// effective effort as a tinted suffix ("GPT-5.4 Mini xhigh").
+// agent/provider plus free-text entry for anything else. A provider section
+// appears for provider-backed ACP agents.
 export function ModelSelect({
   value,
   suggestions,
@@ -99,7 +98,7 @@ export function ModelSelect({
   providers?: { value: string; label: string }[]
   provider?: string
   onProviderChange?: (provider: string) => void
-  // '' inherits the Settings > Agents default for the chosen runtime/provider.
+  // '' inherits the Settings > Agents default for the chosen agent/provider.
   effort?: string
   effortOptions?: ReasoningEffortOption[]
   onEffortChange?: (effort: string) => void

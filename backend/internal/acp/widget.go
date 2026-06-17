@@ -28,9 +28,6 @@ type WidgetPublishResult struct {
 }
 
 func (m *Manager) widgetPublish(raw json.RawMessage) (json.RawMessage, *jsonrpc.Error) {
-	if m.PublishWidget == nil {
-		return nil, jsonrpc.InternalError("widget publishing is not configured", nil)
-	}
 	var req WidgetPublishRequest
 	if err := json.Unmarshal(raw, &req); err != nil {
 		return nil, jsonrpc.InvalidParams("invalid "+ClientMethodWidgetPublish, map[string]any{"error": err.Error()})

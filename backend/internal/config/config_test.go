@@ -12,7 +12,7 @@ import (
 	openrouterprovider "github.com/wins/jaz/backend/internal/provider/openrouter"
 )
 
-func TestApplyProviderBuildsNativeProviderCatalog(t *testing.T) {
+func TestApplyProviderBuildsModelProviderCatalog(t *testing.T) {
 	cfg := Config{
 		OpenRouter: openrouterprovider.Config{APIKey: "openrouter-key"},
 		OpenAI:     openaiprovider.Config{APIKey: "openai-key"},
@@ -38,7 +38,7 @@ func TestApplyProviderBuildsNativeProviderCatalog(t *testing.T) {
 		t.Fatalf("unexpected openai catalog entry %#v", openAI)
 	}
 	if _, ok := cfg.Jaz.ModelProviders["anthropic"]; ok {
-		t.Fatalf("anthropic should not be a native provider: %#v", cfg.Jaz.ModelProviders)
+		t.Fatalf("anthropic should not be a runnable model provider: %#v", cfg.Jaz.ModelProviders)
 	}
 	internal := cfg.Jaz.ModelProviders["internal"]
 	if internal.Type != "openai-compatible" || internal.BaseURL != "https://llm.internal/v1" || !internal.OpenCode {
@@ -103,6 +103,6 @@ openai:
 		t.Fatalf("agent reasoning effort = %q", agent.ReasoningEffort)
 	}
 	if cfg.Jaz.ModelProviders["openrouter"].APIKey != "openrouter-key" || cfg.Jaz.ModelProviders["openai"].APIKey != "openai-key" {
-		t.Fatalf("unexpected native provider catalog %#v", cfg.Jaz.ModelProviders)
+		t.Fatalf("unexpected model provider catalog %#v", cfg.Jaz.ModelProviders)
 	}
 }

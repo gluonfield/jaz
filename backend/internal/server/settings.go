@@ -17,7 +17,6 @@ import (
 )
 
 type agentSettingsResponse struct {
-	Native     agentsettings.NativeAgentDefaults         `json:"native"`
 	Providers  []settingsModelProvider                   `json:"providers"`
 	ACP        map[string]agentsettings.ACPAgentDefaults `json:"acp"`
 	ACPAuth    map[string]acpAuthStatusResponse          `json:"acp_auth"`
@@ -98,7 +97,6 @@ func (s *Server) agentSettingsResponse(defaults agentsettings.AgentDefaults) age
 	agentNames := s.allACPAgentNames()
 	providers := s.modelProvidersWithStatus()
 	return agentSettingsResponse{
-		Native:     defaults.Native,
 		Providers:  providers,
 		ACP:        defaults.ACP,
 		ACPAuth:    s.acpAgentAuthStatuses(defaults),

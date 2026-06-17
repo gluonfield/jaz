@@ -23,7 +23,7 @@ func (s *Store) CreateSession(input storage.CreateSession) (storage.Session, err
 		Title:           input.Title,
 		ParentID:        input.ParentID,
 		Status:          storage.StatusIdle,
-		Runtime:         firstNonEmpty(input.Runtime, storage.RuntimeNative),
+		Runtime:         firstNonEmpty(input.Runtime, storage.RuntimeACP),
 		RuntimeRef:      input.RuntimeRef,
 		ModelProvider:   input.ModelProvider,
 		Model:           input.Model,
@@ -159,7 +159,7 @@ func (s *Store) saveSessionLocked(session storage.Session, touchUpdated bool) er
 		return fmt.Errorf("session id is empty")
 	}
 	if session.Runtime == "" {
-		session.Runtime = storage.RuntimeNative
+		session.Runtime = storage.RuntimeACP
 	}
 	if session.Status == "" {
 		session.Status = storage.StatusIdle
@@ -266,7 +266,7 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 		storage.MarkSessionAttention(&session, storage.SessionAttentionAt(session))
 	}
 	if session.Runtime == "" {
-		session.Runtime = storage.RuntimeNative
+		session.Runtime = storage.RuntimeACP
 	}
 	if session.Status == "" {
 		session.Status = storage.StatusIdle

@@ -61,7 +61,7 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	parent, err := store.CreateSession(storage.CreateSession{Slug: "main", Runtime: storage.RuntimeNative})
+	parent, err := store.CreateSession(storage.CreateSession{Slug: "main", Runtime: storage.RuntimeACP})
 	if err != nil {
 		t.Fatal(err)
 	}

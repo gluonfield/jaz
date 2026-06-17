@@ -21,12 +21,12 @@ import {
 export function createSession(
   input: {
     title?: string
-    runtime?: 'native' | 'acp'
+    runtime?: 'acp'
     agent?: string
     directory?: string
     worktree?: boolean
     // Per-session overrides of the Settings > Agents defaults; model_provider
-    // applies to native sessions and ACP agents with provider-backed models.
+    // applies to ACP agents with provider-backed models.
     model_provider?: string
     model?: string
     reasoning_effort?: string
@@ -274,7 +274,7 @@ export function commitSessionRepo(id: string, message?: string): Promise<RepoInf
 
 // Commits the worktree's outstanding work on its branch and merges that
 // branch into the repo's main checkout. `moved` reports whether the session's
-// cwd followed — true for native sessions, false for ACP agents bound to
+// cwd followed — false for ACP agents bound to
 // their spawn cwd. Conflicting merges are aborted server-side and surface as
 // errors; the main checkout is never left mid-merge.
 export function mergeSessionRepo(

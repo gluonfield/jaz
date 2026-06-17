@@ -113,7 +113,7 @@ func replayImageDetail(detail string) (string, error) {
 	case "high":
 		return "high", nil
 	case "original":
-		return "", fmt.Errorf("image detail %q is not supported by the native chat-completions image path", detail)
+		return "", fmt.Errorf("image detail %q is not supported by the chat-completions image path", detail)
 	default:
 		return "", fmt.Errorf("unknown image detail %q", detail)
 	}

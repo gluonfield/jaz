@@ -1,4 +1,4 @@
-// Package jazagent renders the native coordinator's operating prompt:
+// Package jazagent renders the Jaz ACP agent's operating prompt:
 // identity, environment, and delegation rules — how the jaz agent itself
 // works, analogous to Claude Code's or codex's own system prompt. Everything
 // shared with other agents (AGENTS.md, SOUL.md, memory, skills) lives in

@@ -13,12 +13,11 @@ import {
 import {
   acpAgentModelSuggestions,
   modelSuggestionsForProvider,
-  OPENAI_MODELS,
   openRouterModelsQuery,
 } from '@/lib/models'
 import { setPendingMessage } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
-import { acpReasoningEffortOptions, REASONING_EFFORT_OPTIONS } from '@/lib/reasoningEfforts'
+import { acpReasoningEffortOptions } from '@/lib/reasoningEfforts'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { useTheme } from '@/lib/theme'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -56,7 +55,7 @@ function NewSessionPage() {
   const [directory, setDirectory] = useState(
     () => search.project ?? storedString(NEW_SESSION_DIRECTORY_KEY),
   )
-  // Worktree runs the session on a disposable git worktree (any runtime);
+  // Worktree runs the session on a disposable git worktree (any agent);
   // only offered when the chosen directory is a git repository.
   const [worktree, setWorktree] = useState(false)
   // Per-session overrides of the Settings > Agents defaults; null follows the
@@ -111,7 +110,7 @@ function NewSessionPage() {
   }, [directoryIsGit])
 
   const runtimeModel = runtimeModelState(agentSettings, runtime, providerOverride)
-  const { usesNativeProvider, usesProvider, providers: runtimeProviders, provider, selectedProvider } = runtimeModel
+  const { usesProvider, providers: runtimeProviders, provider, selectedProvider } = runtimeModel
   const defaultModel = runtimeModel.defaultModel
   const model = modelOverride ?? defaultModel
   const reasoningEffort = effortOverride ?? runtimeModel.defaultEffort
@@ -121,9 +120,7 @@ function NewSessionPage() {
     enabled: usesProvider && provider === 'openrouter',
   })
   const modelSuggestions = usesProvider
-    ? usesNativeProvider && provider === 'openai'
-      ? OPENAI_MODELS
-      : modelSuggestionsForProvider(selectedProvider, openRouterModels.data ?? [])
+    ? modelSuggestionsForProvider(selectedProvider, openRouterModels.data ?? [])
     : acpAgentModelSuggestions(runtime)
 
   const startThread = async (title: string | undefined, prepare: (sessionId: string) => void) => {
@@ -204,9 +201,7 @@ function NewSessionPage() {
               : undefined
           }
           effort={reasoningEffort}
-          effortOptions={
-            usesNativeProvider ? REASONING_EFFORT_OPTIONS : acpReasoningEffortOptions(agentSettings, runtime)
-          }
+          effortOptions={acpReasoningEffortOptions(agentSettings, runtime)}
           // Default clears the override, falling back to the settings effort.
           onEffortChange={(next) => setEffortOverride(next === '' ? null : next)}
         />
@@ -255,6 +250,7 @@ function NewSessionPage() {
       fileRoot={directory}
       onDraftActivity={setComposing}
       onSend={handleSend}
+      onVoice={undefined}
     />
   )
 }

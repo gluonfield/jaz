@@ -58,7 +58,7 @@ func TestMigrationsAddLegacyThreadColumns(t *testing.T) {
   title TEXT,
   parent_id TEXT,
   status TEXT NOT NULL DEFAULT 'idle',
-  runtime TEXT NOT NULL DEFAULT 'native',
+  runtime TEXT NOT NULL DEFAULT 'acp',
   acp_agent TEXT,
   acp_session_id TEXT,
   model_provider TEXT,
@@ -70,7 +70,7 @@ func TestMigrationsAddLegacyThreadColumns(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO threads (id, slug, status, runtime, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?)`,
-		"thread-1", "legacy", "idle", "native", now, now); err != nil {
+		"thread-1", "legacy", "idle", "acp", now, now); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {

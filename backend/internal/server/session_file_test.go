@@ -30,7 +30,7 @@ func TestSessionFileRead(t *testing.T) {
 	}
 	session, err := store.CreateSession(storage.CreateSession{
 		Slug:       "file-session",
-		RuntimeRef: &storage.RuntimeRef{Type: storage.RuntimeNative, Cwd: dir},
+		RuntimeRef: &storage.RuntimeRef{Type: storage.RuntimeACP, Cwd: dir},
 	})
 	if err != nil {
 		t.Fatal(err)

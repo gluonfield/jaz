@@ -57,8 +57,7 @@ export function SessionRow({
       {/* branch connector: this thread was spawned by the session above */}
       {child ? <CornerDownRight size={12} className="shrink-0 text-ink-3" /> : null}
       <StatusDot session={session} />
-      {/* native is the default; only agent-backed sessions earn a badge.
-          When the chip leads the row, a negative margin optically aligns
+      {/* When the chip leads the row, a negative margin optically aligns
           its text with the titles. */}
       {session.runtime === 'acp' ? (
         <RuntimeBadge session={session} compact className={child ? '' : '-ml-1.5'} />
