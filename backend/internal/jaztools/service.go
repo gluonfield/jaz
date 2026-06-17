@@ -13,6 +13,7 @@ import (
 	"github.com/wins/jaz/backend/internal/memoryservice"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/visualize"
 	"github.com/wins/jaz/backend/internal/widgets"
 )
@@ -66,7 +67,7 @@ type serverSlot struct {
 	memoryTools bool
 }
 
-func New(memory *memoryservice.Service, urls serverconfig.URLs, sessionEvents visualize.SessionEventAppender, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher) *Service {
+func New(memory *memoryservice.Service, urls serverconfig.URLs, sessionEvents storage.SessionEventAppender, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher) *Service {
 	return &Service{
 		Memory:          memory,
 		visualizeTools:  visualize.NewMCPTools(sessionEvents, events),
