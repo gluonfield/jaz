@@ -110,13 +110,135 @@ function hasInvalidACPProvider(settings: AgentSettingsData): boolean {
   })
 }
 
-export function AgentSettings() {
+export function AgentProvidersSettings() {
   const queryClient = useQueryClient()
   const toast = useToast()
   const settings = useQuery(agentSettingsQuery)
   const [draft, setDraft] = useState<AgentSettingsData | null>(null)
-  // A freshly pasted native provider key, keyed by provider id. Write-only —
-  // the backend never returns the value, so it lives outside the draft.
+  // A freshly pasted provider key, keyed by provider id. Write-only — the
+  // backend never returns the value, so it lives outside the draft.
+  const [providerKeys, setProviderKeys] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    if (settings.data) setDraft(cloneAgentSettings(settings.data))
+  }, [settings.data])
+
+  const save = useMutation({
+    mutationFn: (input: AgentSettingsData) => updateAgentSettings(input, providerKeys),
+    onSuccess: (saved) => {
+      setDraft(cloneAgentSettings(saved))
+      setProviderKeys({})
+      toast('Saved providers')
+    },
+    onError: (error: Error) => toast(`Couldn't save providers: ${error.message}`, 'danger'),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: keys.agentSettings })
+      queryClient.invalidateQueries({ queryKey: keys.acpAgents })
+    },
+  })
+
+  const dirty = useMemo(
+    () => settingsKey(draft) !== settingsKey(settings.data ?? null),
+    [draft, settings.data],
+  )
+  const openRouterModels = useQuery({
+    ...openRouterModelsQuery,
+    enabled: draft?.native.model_provider === 'openrouter',
+  })
+  const providerKeyDirty = Object.values(providerKeys).some((value) => value.trim().length > 0)
+  // Every known model provider — keys are shared, so this one list connects the
+  // native agent and every ACP agent set to provider defaults. Implemented ones
+  // (the native agent can run them) sort first; locals/customs follow.
+  const allProviders = draft?.providers ?? []
+  const nativeProviders = allProviders.filter((provider) => provider.implemented)
+  const invalid = draft
+    ? (draft.native.model_provider ?? '').trim() === '' || draft.native.model.trim() === ''
+    : true
+  const canSave = draft != null && !invalid && (dirty || providerKeyDirty) && !save.isPending
+
+  const selectedProvider = draft?.native.model_provider ?? ''
+  const selectedNativeProvider = nativeProviders.find((provider) => provider.id === selectedProvider)
+  const nativeModelSuggestions = modelSuggestionsForProvider(
+    selectedNativeProvider,
+    openRouterModels.data ?? [],
+  )
+
+  // Switching the native default carries its model: keep a hand-typed model, but
+  // swap a still-default model to the new provider's default so it stays valid.
+  const setNativeProvider = (model_provider: string) => {
+    if (!draft) return
+    const nextProvider = nativeProviders.find((provider) => provider.id === model_provider)
+    const currentProvider = nativeProviders.find(
+      (provider) => provider.id === draft.native.model_provider,
+    )
+    const model =
+      draft.native.model.trim() === '' || draft.native.model === currentProvider?.default_model
+        ? nextProvider?.default_model || draft.native.model
+        : draft.native.model
+    setDraft({ ...draft, native: { ...draft.native, model_provider, model } })
+  }
+
+  return (
+    <section className="py-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium text-ink">Providers</p>
+          <p className="mt-0.5 text-pretty text-[13px] text-ink-2">
+            Configure model providers once. ACP agents can reuse them when they are set to use
+            provider defaults.
+          </p>
+        </div>
+        <Button
+          variant="primary"
+          size="md"
+          disabled={!canSave}
+          onClick={() => draft && save.mutate(draft)}
+        >
+          <Save size={14} />
+          {save.isPending ? 'Saving...' : 'Save changes'}
+        </Button>
+      </div>
+
+      <div className="mt-4">
+        {settings.isError ? (
+          <p className="py-2 text-[13px] text-danger">{settings.error.message}</p>
+        ) : settings.isPending || !draft ? (
+          <SkeletonRows count={3} />
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            {allProviders.map((provider) => (
+              <ProviderRow
+                key={provider.id}
+                provider={provider}
+                keyDraft={providerKeys[provider.id] ?? ''}
+                isNativeDefault={provider.implemented && provider.id === selectedProvider}
+                nativeModel={draft.native.model}
+                nativeReasoning={draft.native.reasoning_effort ?? ''}
+                modelSuggestions={nativeModelSuggestions}
+                modelsLoading={openRouterModels.isLoading}
+                disabled={save.isPending}
+                onKeyChange={(value) => setProviderKeys({ ...providerKeys, [provider.id]: value })}
+                onUseForNative={() => setNativeProvider(provider.id)}
+                onNativeModelChange={(model) =>
+                  setDraft({ ...draft, native: { ...draft.native, model } })
+                }
+                onNativeReasoningChange={(reasoning_effort) =>
+                  setDraft({ ...draft, native: { ...draft.native, reasoning_effort } })
+                }
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+export function ACPAgentsSettings() {
+  const queryClient = useQueryClient()
+  const toast = useToast()
+  const settings = useQuery(agentSettingsQuery)
+  const [draft, setDraft] = useState<AgentSettingsData | null>(null)
   const [providerKeys, setProviderKeys] = useState<Record<string, string>>({})
 
   useEffect(() => {
@@ -174,53 +296,17 @@ export function AgentSettings() {
     () => settingsKey(draft) !== settingsKey(settings.data ?? null),
     [draft, settings.data],
   )
-  const openRouterModels = useQuery({
-    ...openRouterModelsQuery,
-    enabled: draft?.native.model_provider === 'openrouter',
-  })
   const providerKeyDirty = Object.values(providerKeys).some((value) => value.trim().length > 0)
-  // Every known model provider — keys are shared, so this one list connects the
-  // native agent and every ACP agent set to provider defaults. Implemented ones
-  // (the native agent can run them) sort first; locals/customs follow.
-  const allProviders = draft?.providers ?? []
-  const nativeProviders = allProviders.filter((provider) => provider.implemented)
-  const invalid = draft
-    ? (draft.native.model_provider ?? '').trim() === '' ||
-      draft.native.model.trim() === '' ||
-      hasEnabledACPWithoutCommand(draft) ||
-      hasInvalidACPProvider(draft)
-    : true
+  const invalid = draft ? hasEnabledACPWithoutCommand(draft) || hasInvalidACPProvider(draft) : true
   const canSave = draft != null && !invalid && (dirty || providerKeyDirty) && !save.isPending
-
-  const selectedProvider = draft?.native.model_provider ?? ''
-  const selectedNativeProvider = nativeProviders.find((provider) => provider.id === selectedProvider)
-  const nativeModelSuggestions = modelSuggestionsForProvider(
-    selectedNativeProvider,
-    openRouterModels.data ?? [],
-  )
-
-  // Switching the native default carries its model: keep a hand-typed model, but
-  // swap a still-default model to the new provider's default so it stays valid.
-  const setNativeProvider = (model_provider: string) => {
-    if (!draft) return
-    const nextProvider = nativeProviders.find((provider) => provider.id === model_provider)
-    const currentProvider = nativeProviders.find(
-      (provider) => provider.id === draft.native.model_provider,
-    )
-    const model =
-      draft.native.model.trim() === '' || draft.native.model === currentProvider?.default_model
-        ? nextProvider?.default_model || draft.native.model
-        : draft.native.model
-    setDraft({ ...draft, native: { ...draft.native, model_provider, model } })
-  }
 
   return (
     <section className="py-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-medium text-ink">Agents</p>
+          <p className="text-sm font-medium text-ink">Agents (ACP)</p>
           <p className="mt-0.5 text-[13px] text-ink-2">
-            Defaults copied into each new thread.
+            Configure ACP runtimes, auth, and per-agent defaults.
           </p>
         </div>
         <Button
@@ -240,63 +326,25 @@ export function AgentSettings() {
         ) : settings.isPending || !draft ? (
           <SkeletonRows count={3} />
         ) : (
-          <div className="flex flex-col gap-4">
-            <div>
-              <p className="text-[12px] font-medium text-ink-2">Providers</p>
-              <p className="mb-2 mt-0.5 text-pretty text-[12px] text-ink-3">
-                Connect a model provider once — native threads and any ACP agent set to provider
-                defaults reuse the key.
-              </p>
-              <div className="flex flex-col gap-1.5">
-                {allProviders.map((provider) => (
-                  <ProviderRow
-                    key={provider.id}
-                    provider={provider}
-                    keyDraft={providerKeys[provider.id] ?? ''}
-                    isNativeDefault={provider.implemented && provider.id === selectedProvider}
-                    nativeModel={draft.native.model}
-                    nativeReasoning={draft.native.reasoning_effort ?? ''}
-                    modelSuggestions={nativeModelSuggestions}
-                    modelsLoading={openRouterModels.isLoading}
-                    disabled={save.isPending}
-                    onKeyChange={(value) =>
-                      setProviderKeys({ ...providerKeys, [provider.id]: value })
-                    }
-                    onUseForNative={() => setNativeProvider(provider.id)}
-                    onNativeModelChange={(model) =>
-                      setDraft({ ...draft, native: { ...draft.native, model } })
-                    }
-                    onNativeReasoningChange={(reasoning_effort) =>
-                      setDraft({ ...draft, native: { ...draft.native, reasoning_effort } })
-                    }
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <p className="pb-2 text-[12px] font-medium text-ink-2">ACP</p>
-              <div className="flex flex-col gap-3">
-                {draft.agents.map((agent) => (
-                  <ACPAgentRow
-                    key={agent}
-                    agent={agent}
-                    settings={draft}
-                    providerKeys={providerKeys}
-                    disabled={save.isPending}
-                    loginJob={loginJobs[agent]}
-                    loginPending={login.isPending && login.variables?.agent === agent}
-                    disconnecting={disconnect.isPending && disconnect.variables === agent}
-                    onStartLogin={(auth) => login.mutate({ agent, auth })}
-                    onDisconnect={() => disconnect.mutate(agent)}
-                    onProviderKeyChange={(provider, value) =>
-                      setProviderKeys({ ...providerKeys, [provider]: value })
-                    }
-                    onChange={setDraft}
-                  />
-                ))}
-              </div>
-            </div>
+          <div className="flex flex-col gap-3">
+            {draft.agents.map((agent) => (
+              <ACPAgentRow
+                key={agent}
+                agent={agent}
+                settings={draft}
+                providerKeys={providerKeys}
+                disabled={save.isPending}
+                loginJob={loginJobs[agent]}
+                loginPending={login.isPending && login.variables?.agent === agent}
+                disconnecting={disconnect.isPending && disconnect.variables === agent}
+                onStartLogin={(auth) => login.mutate({ agent, auth })}
+                onDisconnect={() => disconnect.mutate(agent)}
+                onProviderKeyChange={(provider, value) =>
+                  setProviderKeys({ ...providerKeys, [provider]: value })
+                }
+                onChange={setDraft}
+              />
+            ))}
           </div>
         )}
       </div>
