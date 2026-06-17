@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/visualize"
 )
 
 const (
@@ -141,6 +142,18 @@ func (s *Service) LoopPromptExtra(loop loops.Loop, _ loops.Run) string {
 		return ""
 	}
 	return PromptSection(loop, &widget)
+}
+
+func (s *Service) LoopArtifactSurface(loop loops.Loop, _ loops.Run) string {
+	if s.WidgetEnabled(loop.ID) {
+		return string(visualize.SurfaceWidget)
+	}
+	return ""
+}
+
+func (s *Service) WidgetEnabled(loopID string) bool {
+	_, boards, found, err := s.StateForLoop(loopID)
+	return err == nil && found && len(boards) > 0
 }
 
 func (s *Service) ReportError(widgetID, message string) error {

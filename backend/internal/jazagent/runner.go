@@ -12,6 +12,9 @@ import (
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/tools"
+	"github.com/wins/jaz/backend/internal/visualize"
+	"github.com/wins/jaz/backend/internal/widgets"
 )
 
 const VoiceModeNote = "Voice mode: the user spoke this message aloud and your final reply will be read out by text-to-speech. Keep the final response to a few short conversational sentences of plain prose — no markdown, lists, headings, or code blocks. Using tools is fine."
@@ -44,6 +47,10 @@ type PromptSource interface {
 	SystemPromptForWorkspace(string) (string, error)
 }
 
+type surfacePromptSource interface {
+	SystemPromptForWorkspaceSurface(string, visualize.Surface) (string, error)
+}
+
 type Runner struct {
 	Agent   *agent.Agent
 	Store   Store
@@ -52,12 +59,13 @@ type Runner struct {
 }
 
 type Request struct {
-	Session       storage.Session
-	Message       string
-	Attachments   []storage.Attachment
-	VoiceMode     bool
-	PlanRequested bool
-	AppendUser    bool
+	Session         storage.Session
+	Message         string
+	Attachments     []storage.Attachment
+	VoiceMode       bool
+	PlanRequested   bool
+	AppendUser      bool
+	ArtifactSurface string
 }
 
 type TurnRequest struct {
@@ -111,6 +119,7 @@ func (r *Runner) run(ctx context.Context, req Request, out chan<- agent.StreamEv
 		ReasoningEffort: req.Session.ReasoningEffort,
 		Messages:        turn.Messages,
 		MediaRefs:       turn.MediaRefs,
+		Tools:           r.toolDefinitions(req.ArtifactSurface),
 	}) {
 		if len(event.Messages) > 0 {
 			if err := SaveSnapshot(r.Store, req.Session.ID, turn, event); err != nil {
@@ -124,6 +133,42 @@ func (r *Runner) run(ctx context.Context, req Request, out chan<- agent.StreamEv
 		}
 		emit(out, event)
 	}
+}
+
+func (r *Runner) toolDefinitions(surface string) []tools.Definition {
+	if r.Agent == nil || r.Agent.Tools == nil {
+		return []tools.Definition{}
+	}
+	return ToolDefinitionsForSurface(r.Agent.Tools, surface)
+}
+
+func ToolDefinitionsForSurface(registry *tools.Registry, surface string) []tools.Definition {
+	if registry == nil {
+		return []tools.Definition{}
+	}
+	return registry.DefinitionsWhere(func(name string) bool {
+		return includeToolForArtifactSurface(name, surface)
+	})
+}
+
+func includeToolForArtifactSurface(name, surface string) bool {
+	switch visualize.NormalizeSurface(surface) {
+	case visualize.SurfaceWidget:
+		return !matchesToolName(name, visualize.ShowWidgetMCPToolName, visualize.ShowWidgetToolName)
+	default:
+		return !matchesToolName(name, widgets.PublishMCPToolName, widgets.PublishToolName)
+	}
+}
+
+func matchesToolName(name, publicName, providerName string) bool {
+	name = strings.ReplaceAll(strings.TrimSpace(name), ":", "_")
+	for _, candidate := range []string{publicName, providerName} {
+		candidate = strings.ReplaceAll(strings.TrimSpace(candidate), ":", "_")
+		if name == candidate || strings.HasSuffix(name, "_"+candidate) {
+			return true
+		}
+	}
+	return false
 }
 
 func BuildRequest(store Store, prompts PromptSource, req Request) (TurnRequest, error) {
@@ -155,7 +200,7 @@ func BuildRequest(store Store, prompts PromptSource, req Request) (TurnRequest, 
 		if req.Session.RuntimeRef != nil && strings.TrimSpace(req.Session.RuntimeRef.Cwd) != "" {
 			workspace = req.Session.RuntimeRef.Cwd
 		}
-		prompt, err := prompts.SystemPromptForWorkspace(workspace)
+		prompt, err := promptForSurface(prompts, workspace, req.ArtifactSurface)
 		if err != nil {
 			return TurnRequest{}, fmt.Errorf("build system prompt: %w", err)
 		}
@@ -190,6 +235,13 @@ func BuildRequest(store Store, prompts PromptSource, req Request) (TurnRequest, 
 		userMessageIndex: userMessageIndex,
 		displayUser:      displayUser,
 	}, nil
+}
+
+func promptForSurface(prompts PromptSource, workspace, surface string) (string, error) {
+	if prompts, ok := prompts.(surfacePromptSource); ok {
+		return prompts.SystemPromptForWorkspaceSurface(workspace, visualize.NormalizeSurface(surface))
+	}
+	return prompts.SystemPromptForWorkspace(workspace)
 }
 
 func SaveSnapshot(store Store, sessionID string, turn TurnRequest, event agent.StreamEvent) error {

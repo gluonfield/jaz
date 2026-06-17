@@ -258,7 +258,7 @@ func TestJazToolsMappedNamesDoNotRepeatJaz(t *testing.T) {
 	if got := mappedToolName(server, "loop_create", used); got != "mcp_jaztools_loop_create" {
 		t.Fatalf("loop tool name = %q", got)
 	}
-	if got := mappedToolName(server, "visualize:show_widget", used); got != "mcp_jaztools_visualize_show_widget" {
-		t.Fatalf("visualize tool name = %q", got)
+	if got := mappedToolName(server, "visualise:show_widget", used); got != "mcp_jaztools_visualise_show_widget" {
+		t.Fatalf("visualise tool name = %q", got)
 	}
 }

@@ -123,10 +123,11 @@ type RunController interface {
 }
 
 type Execution struct {
-	Loop       Loop
-	Run        Run
-	Prompt     string
-	Controller RunController
+	Loop            Loop
+	Run             Run
+	Prompt          string
+	ArtifactSurface string
+	Controller      RunController
 }
 
 type Executor interface {

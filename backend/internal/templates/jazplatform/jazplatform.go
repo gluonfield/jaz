@@ -8,6 +8,7 @@ package jazplatform
 import (
 	"bytes"
 	_ "embed"
+	"strings"
 	"text/template"
 )
 
@@ -29,19 +30,24 @@ type MemoryData struct {
 }
 
 type Data struct {
-	Agents   string
-	Date     string
-	Time     string
-	Timezone string
-	Weekday  string
-	Human    string
-	Cwd      string
-	Soul     string
-	Memory   *MemoryData
-	Skills   string
+	Agents          string
+	Date            string
+	Time            string
+	Timezone        string
+	Weekday         string
+	Human           string
+	Cwd             string
+	Soul            string
+	ArtifactSurface string
+	Memory          *MemoryData
+	Skills          string
 }
 
 func Render(data Data) (string, error) {
+	data.ArtifactSurface = strings.TrimSpace(data.ArtifactSurface)
+	if data.ArtifactSurface != "widget" {
+		data.ArtifactSurface = "chat"
+	}
 	var out bytes.Buffer
 	err := tmpl.Execute(&out, data)
 	return out.String(), err

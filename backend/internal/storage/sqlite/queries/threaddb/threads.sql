@@ -29,7 +29,8 @@ SELECT
   cached_write_tokens,
   project_path,
   last_attention_at_ms,
-  pinned
+  pinned,
+  artifact_surface
 FROM threads;
 
 -- name: GetSession :one
@@ -63,7 +64,8 @@ SELECT
   cached_write_tokens,
   project_path,
   last_attention_at_ms,
-  pinned
+  pinned,
+  artifact_surface
 FROM threads
 WHERE id = sqlc.arg(ref) OR slug = sqlc.arg(ref)
 LIMIT 1;
@@ -91,6 +93,7 @@ INSERT INTO threads (
   acp_agent,
   acp_session_id,
   cwd,
+  artifact_surface,
   project_path,
   error,
   model_provider,
@@ -122,6 +125,7 @@ INSERT INTO threads (
   sqlc.narg(acp_agent),
   sqlc.narg(acp_session_id),
   sqlc.narg(cwd),
+  sqlc.narg(artifact_surface),
   sqlc.narg(project_path),
   sqlc.narg(error),
   sqlc.narg(model_provider),
@@ -154,6 +158,7 @@ ON CONFLICT(id) DO UPDATE SET
   acp_agent = excluded.acp_agent,
   acp_session_id = excluded.acp_session_id,
   cwd = excluded.cwd,
+  artifact_surface = excluded.artifact_surface,
   project_path = excluded.project_path,
   model_provider = excluded.model_provider,
   model = excluded.model,

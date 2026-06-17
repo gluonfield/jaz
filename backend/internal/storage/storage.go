@@ -43,11 +43,12 @@ func SessionStatusForACPState(state string) string {
 }
 
 type RuntimeRef struct {
-	Type        string `json:"type"`
-	Agent       string `json:"agent,omitempty"`
-	SessionID   string `json:"session_id,omitempty"`
-	Cwd         string `json:"cwd,omitempty"`
-	ProjectPath string `json:"project_path,omitempty"`
+	Type            string `json:"type"`
+	Agent           string `json:"agent,omitempty"`
+	SessionID       string `json:"session_id,omitempty"`
+	Cwd             string `json:"cwd,omitempty"`
+	ProjectPath     string `json:"project_path,omitempty"`
+	ArtifactSurface string `json:"artifact_surface,omitempty"`
 }
 
 // Usage follows the ACP convention: input/cached/output are disjoint

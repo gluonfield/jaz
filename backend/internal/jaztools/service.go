@@ -13,7 +13,6 @@ import (
 	"github.com/wins/jaz/backend/internal/memoryservice"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/sessionevents"
-	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/visualize"
 	"github.com/wins/jaz/backend/internal/widgets"
 )
@@ -43,8 +42,7 @@ type Service struct {
 
 	loopTools       *loops.MCPTools
 	visualizeTools  *visualize.MCPTools
-	widgetPublisher widgets.MCPPublisher
-	sessions        storage.SessionStore
+	widgetPublisher *widgets.SessionPublisher
 
 	url string
 
@@ -68,12 +66,11 @@ type serverSlot struct {
 	memoryTools bool
 }
 
-func New(memory *memoryservice.Service, urls serverconfig.URLs, sessions storage.SessionStore, sessionEvents storage.SessionEventAppender, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher) *Service {
+func New(memory *memoryservice.Service, urls serverconfig.URLs, sessionEvents visualize.SessionEventAppender, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher) *Service {
 	return &Service{
 		Memory:          memory,
 		visualizeTools:  visualize.NewMCPTools(sessionEvents, events),
 		widgetPublisher: widgetPublisher,
-		sessions:        sessions,
 		url:             strings.TrimSpace(urls.JazToolsMCP),
 	}
 }
@@ -155,8 +152,7 @@ func (s *Service) widgetSession(r *http.Request) bool {
 	if sessionID == "" {
 		return false
 	}
-	session, err := s.sessions.LoadSession(sessionID)
-	return err == nil && session.SourceType == storage.SourceLoopRun
+	return s.widgetPublisher != nil && s.widgetPublisher.WidgetSurfaceForSession(sessionID)
 }
 
 func (s *Service) syncMemoryTools() {

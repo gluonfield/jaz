@@ -269,7 +269,7 @@ func (a *Agent) normalize(req provider.Request) (provider.Request, error) {
 	}
 	req.Messages = append([]provider.Message(nil), req.Messages...)
 	req.MediaRefs = media.CloneRefMap(req.MediaRefs)
-	if len(req.Tools) == 0 {
+	if req.Tools == nil {
 		req.Tools = a.Tools.Definitions()
 	}
 	return req, nil

@@ -42,7 +42,7 @@ func testMemoryServer(t *testing.T) (*Server, *fakeMemoryScheduler) {
 	svc := memoryservice.New(memory, store, scheduler, "http://127.0.0.1:5299/mcp/jazmem")
 	widgetService := widgets.NewService(store, nil)
 	publisher := &widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store}
-	tools := jaztools.New(svc, serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"}, store, store, sessionevents.New(), publisher)
+	tools := jaztools.New(svc, serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"}, store, sessionevents.New(), publisher)
 	return &Server{Store: store, Memory: svc, JazTools: tools}, scheduler
 }
 

@@ -119,20 +119,24 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 }
 
 func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
-	env, _ := m.buildProcessEnv(name, agent, true)
+	env, _ := m.buildProcessEnv(name, agent, "", true)
 	return env
 }
 
 func (m *Manager) processEnvPrepared(name string, agent AgentConfig) (map[string]string, error) {
-	return m.buildProcessEnv(name, agent, true)
+	return m.processEnvPreparedForSurface(name, agent, "")
+}
+
+func (m *Manager) processEnvPreparedForSurface(name string, agent AgentConfig, artifactSurface string) (map[string]string, error) {
+	return m.buildProcessEnv(name, agent, artifactSurface, true)
 }
 
 func (m *Manager) probeEnv(name string, agent AgentConfig) map[string]string {
-	env, _ := m.buildProcessEnv(name, agent, false)
+	env, _ := m.buildProcessEnv(name, agent, "", false)
 	return env
 }
 
-func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) (map[string]string, error) {
+func (m *Manager) buildProcessEnv(name string, agent AgentConfig, artifactSurface string, prepare bool) (map[string]string, error) {
 	name = CanonicalAgentName(name)
 	env := map[string]string{}
 	var prepareErr error
@@ -259,7 +263,7 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 			if err := os.MkdirAll(env["OPENCODE_CONFIG_DIR"], 0o700); err != nil {
 				prepareErr = firstError(prepareErr, fmt.Errorf("prepare opencode profile %s: %w", env["OPENCODE_CONFIG_DIR"], err))
 			}
-			if err := m.prepareOpenCodeConfig(env, agent); err != nil {
+			if err := m.prepareOpenCodeConfig(env, agent, artifactSurface); err != nil {
 				prepareErr = firstError(prepareErr, err)
 			}
 		}

@@ -44,6 +44,7 @@ import (
 	plantool "github.com/wins/jaz/backend/internal/tools/plan"
 	viewimagetool "github.com/wins/jaz/backend/internal/tools/viewimage"
 	visualizetool "github.com/wins/jaz/backend/internal/tools/visualize"
+	widgettool "github.com/wins/jaz/backend/internal/tools/widget"
 	"github.com/wins/jaz/backend/internal/voice"
 	mistralvoice "github.com/wins/jaz/backend/internal/voice/mistral"
 	"github.com/wins/jaz/backend/internal/widgets"
@@ -194,7 +195,7 @@ func NewWidgetSessionPublisher(service *widgets.Service, store *sqlitestore.Stor
 	return &widgets.SessionPublisher{Service: service, Sessions: store, Loops: store}
 }
 
-func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, store *sqlitestore.Store, events *sessionevents.Bus) *tools.Registry {
+func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, store *sqlitestore.Store, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher) *tools.Registry {
 	return tools.NewRegistry(
 		&plantool.Tool{Store: store, Events: events},
 		&exectool.ExecCommandTool{Manager: commandManager, Workspace: string(workspace)},
@@ -206,6 +207,7 @@ func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspac
 		},
 		&visualizetool.ReadMeTool{},
 		&visualizetool.ShowWidgetTool{},
+		&widgettool.PublishTool{Publisher: widgetPublisher},
 		&viewimagetool.Tool{Workspace: string(workspace)},
 		&agentspawn.Tool{Manager: manager},
 		&agentsend.Tool{Manager: manager},
@@ -512,6 +514,7 @@ func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, 
 		Model:           parent.Model,
 		ReasoningEffort: parent.ReasoningEffort,
 		Messages:        messages,
+		Tools:           jazagent.ToolDefinitionsForSurface(a.Tools, ""),
 	})
 	if err != nil {
 		logger.Error("coordinator follow-up failed", "parent", job.ParentID, "error", err)

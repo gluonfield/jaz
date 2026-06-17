@@ -90,7 +90,8 @@ SELECT
   cached_write_tokens,
   project_path,
   last_attention_at_ms,
-  pinned
+  pinned,
+  artifact_surface
 FROM threads
 WHERE id = ?1 OR slug = ?1
 LIMIT 1
@@ -130,6 +131,7 @@ func (q *Queries) GetSession(ctx context.Context, ref string) (Thread, error) {
 		&i.ProjectPath,
 		&i.LastAttentionAtMs,
 		&i.Pinned,
+		&i.ArtifactSurface,
 	)
 	return i, err
 }
@@ -223,7 +225,8 @@ SELECT
   cached_write_tokens,
   project_path,
   last_attention_at_ms,
-  pinned
+  pinned,
+  artifact_surface
 FROM threads
 `
 
@@ -267,6 +270,7 @@ func (q *Queries) ListSessions(ctx context.Context) ([]Thread, error) {
 			&i.ProjectPath,
 			&i.LastAttentionAtMs,
 			&i.Pinned,
+			&i.ArtifactSurface,
 		); err != nil {
 			return nil, err
 		}
@@ -427,6 +431,7 @@ INSERT INTO threads (
   acp_agent,
   acp_session_id,
   cwd,
+  artifact_surface,
   project_path,
   error,
   model_provider,
@@ -478,7 +483,8 @@ INSERT INTO threads (
   ?27,
   ?28,
   ?29,
-  ?30
+  ?30,
+  ?31
 )
 ON CONFLICT(id) DO UPDATE SET
   slug = excluded.slug,
@@ -490,6 +496,7 @@ ON CONFLICT(id) DO UPDATE SET
   acp_agent = excluded.acp_agent,
   acp_session_id = excluded.acp_session_id,
   cwd = excluded.cwd,
+  artifact_surface = excluded.artifact_surface,
   project_path = excluded.project_path,
   model_provider = excluded.model_provider,
   model = excluded.model,
@@ -522,6 +529,7 @@ type UpsertSessionParams struct {
 	AcpAgent              sql.NullString `json:"acp_agent"`
 	AcpSessionID          sql.NullString `json:"acp_session_id"`
 	Cwd                   sql.NullString `json:"cwd"`
+	ArtifactSurface       sql.NullString `json:"artifact_surface"`
 	ProjectPath           sql.NullString `json:"project_path"`
 	Error                 sql.NullString `json:"error"`
 	ModelProvider         sql.NullString `json:"model_provider"`
@@ -556,6 +564,7 @@ func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) er
 		arg.AcpAgent,
 		arg.AcpSessionID,
 		arg.Cwd,
+		arg.ArtifactSurface,
 		arg.ProjectPath,
 		arg.Error,
 		arg.ModelProvider,
