@@ -210,6 +210,10 @@ export interface DeviceList {
   current_device_id?: string
 }
 
+export interface DeviceConnectionLink {
+  url: string
+}
+
 export interface DeviceRegisterResult {
   device: Device
   token?: string

@@ -23,6 +23,7 @@ export const keys = {
   agentFiles: ['agent', 'files'] as const,
   agentSettings: ['settings', 'agents'] as const,
   devices: ['settings', 'devices'] as const,
+  deviceConnectionLink: ['settings', 'devices', 'connection-link'] as const,
   onboarding: ['onboarding'] as const,
   memory: ['memory'] as const,
   mcpServers: ['mcp', 'servers'] as const,
