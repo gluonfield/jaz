@@ -5,13 +5,17 @@ CREATE TABLE IF NOT EXISTS devices (
   kind TEXT NOT NULL,
   status TEXT NOT NULL,
   token_hash TEXT NOT NULL UNIQUE,
+  public_key TEXT NOT NULL DEFAULT '',
   created_at_ms INTEGER NOT NULL,
   approved_at_ms INTEGER NOT NULL DEFAULT 0,
   revoked_at_ms INTEGER NOT NULL DEFAULT 0,
   last_seen_at_ms INTEGER NOT NULL DEFAULT 0,
   last_seen_ip TEXT NOT NULL DEFAULT '',
   user_agent TEXT NOT NULL DEFAULT '',
-  app_version TEXT NOT NULL DEFAULT ''
+  app_version TEXT NOT NULL DEFAULT '',
+  platform TEXT NOT NULL DEFAULT '',
+  device_family TEXT NOT NULL DEFAULT '',
+  model_identifier TEXT NOT NULL DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS idx_devices_status ON devices(status, last_seen_at_ms);
