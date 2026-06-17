@@ -1,16 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, MonitorSmartphone, Pencil, Trash2, X } from 'lucide-react'
+import { Check, MonitorSmartphone, Trash2, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/Button'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
-import {
-  approvePairing,
-  devicesQuery,
-  rejectPairing,
-  renameDevice,
-  revokeDevice,
-} from '@/lib/api/devices'
+import { approvePairing, devicesQuery, rejectPairing, revokeDevice } from '@/lib/api/devices'
 import type { Device, DevicePairing } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 
@@ -32,12 +26,6 @@ export function DevicesSettings() {
     onError: (error: Error) => toast(`Couldn't reject device: ${error.message}`, 'danger'),
     onSettled: invalidate,
   })
-  const rename = useMutation({
-    mutationFn: ({ id, name }: { id: string; name: string }) => renameDevice(id, name),
-    onSuccess: () => toast('Renamed device'),
-    onError: (error: Error) => toast(`Couldn't rename device: ${error.message}`, 'danger'),
-    onSettled: invalidate,
-  })
   const revoke = useMutation({
     mutationFn: revokeDevice,
     onSuccess: () => toast('Revoked device'),
@@ -49,7 +37,7 @@ export function DevicesSettings() {
   const pending = (data?.pairings ?? []).filter((pairing) => pairing.status === 'pending')
   const approved = (data?.devices ?? []).filter((device) => device.status === 'approved')
   const revoked = (data?.devices ?? []).filter((device) => device.status === 'revoked')
-  const busy = approve.isPending || reject.isPending || rename.isPending || revoke.isPending
+  const busy = approve.isPending || reject.isPending || revoke.isPending
 
   return (
     <section className="py-5">
@@ -89,10 +77,6 @@ export function DevicesSettings() {
                     device={device}
                     current={device.id === data?.current_device_id}
                     busy={busy}
-                    onRename={() => {
-                      const next = window.prompt('Device name', device.name)
-                      if (next?.trim()) rename.mutate({ id: device.id, name: next.trim() })
-                    }}
                     onRevoke={() => revoke.mutate(device.id)}
                   />
                 ))
@@ -155,14 +139,12 @@ function DeviceRow({
   current = false,
   revoked = false,
   busy = false,
-  onRename,
   onRevoke,
 }: {
   device: Device
   current?: boolean
   revoked?: boolean
   busy?: boolean
-  onRename?: () => void
   onRevoke?: () => void
 }) {
   const detail = revoked
@@ -176,10 +158,6 @@ function DeviceRow({
       <DeviceSummary device={device} detail={detail} current={current} />
       {!revoked ? (
         <div className="flex items-center gap-1.5 md:justify-self-end">
-          <Button size="sm" variant="ghost" disabled={busy} onClick={onRename}>
-            <Pencil size={13} />
-            Rename
-          </Button>
           <Button size="sm" variant="danger" disabled={busy || current} onClick={onRevoke}>
             <Trash2 size={13} />
             Revoke

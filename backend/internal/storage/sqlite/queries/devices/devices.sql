@@ -179,11 +179,6 @@ SET
 WHERE id = sqlc.arg(id)
   AND status != 'revoked';
 
--- name: RenameDevice :execrows
-UPDATE devices
-SET name = sqlc.arg(name)
-WHERE id = sqlc.arg(id);
-
 -- name: CreatePairingRequest :exec
 INSERT INTO device_pairing_requests (
   id,
