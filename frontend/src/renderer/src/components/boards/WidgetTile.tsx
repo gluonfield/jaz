@@ -1,5 +1,5 @@
-import { Link } from '@tanstack/react-router'
-import { ExternalLink, Play, X } from 'lucide-react'
+import { useNavigate } from '@tanstack/react-router'
+import { Pencil, Play, X } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import {
   type PointerEvent as ReactPointerEvent,
@@ -35,10 +35,7 @@ function TileStatusDot({ item }: { item: BoardItem }) {
       />
     )
   }
-  if (item.loop_status === 'paused') {
-    return <span title="Paused" className="size-1.5 shrink-0 rounded-full bg-ink-3/50" />
-  }
-  return <span title="Active" className="size-1.5 shrink-0 rounded-full bg-primary" />
+  return null
 }
 
 interface Layer {
@@ -54,11 +51,17 @@ const WIPE_EASE = [0.65, 0, 0.35, 1] as const
 
 // Ghost preview of the widget to come: skeleton blocks breathing while a wave
 // rolls through the bars. The dot goes rainbow while the first run is live.
-function FirstRunPlaceholder({ running }: { running: boolean }) {
+function FirstRunPlaceholder({ running, onClick }: { running: boolean; onClick: () => void }) {
   const reduce = useReducedMotion()
   const bars = [42, 68, 52, 84, 62]
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 overflow-hidden px-4">
+    <button
+      type="button"
+      aria-label="Open loop"
+      title="Open loop"
+      onClick={onClick}
+      className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 overflow-hidden px-4 transition-colors duration-150 hover:bg-surface-2/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+    >
       <div aria-hidden className="w-full max-w-[180px] space-y-2">
         <div className="flex items-end gap-3">
           <div className="h-7 w-12 animate-pulse rounded-md bg-surface-2" />
@@ -88,14 +91,10 @@ function FirstRunPlaceholder({ running }: { running: boolean }) {
         <div className="h-2.5 w-3/4 animate-pulse rounded-full bg-surface-2 [animation-delay:600ms]" />
       </div>
       <p className="flex items-center gap-1.5 text-[11px] text-ink-3">
-        <span
-          className={`size-1.5 shrink-0 rounded-full bg-primary ${
-            running ? 'jaz-shimmer' : 'animate-pulse'
-          }`}
-        />
+        {running ? <span className="jaz-shimmer size-1.5 shrink-0 rounded-full bg-running" /> : null}
         {running ? 'First run in progress…' : 'Waiting for the first run'}
       </p>
-    </div>
+    </button>
   )
 }
 
@@ -116,6 +115,7 @@ export function WidgetTile({
   onResizePointerDown: (e: ReactPointerEvent) => void
   onRemove: () => void
 }) {
+  const navigate = useNavigate()
   const reduce = useReducedMotion()
   // Keyed by version + theme: a new version or theme change builds a fresh
   // document and crossfades; zoom changes are applied live (postMessage) and
@@ -251,6 +251,13 @@ export function WidgetTile({
 
   const paused = item.loop_status === 'paused'
   const updated = hasTime(item.widget_updated_at) ? relativeTime(item.widget_updated_at) : ''
+  const openLoop = () => {
+    if (window.jaz?.windowKind === 'board') {
+      window.jaz.openInMain(`/loops/${item.loop_id}`)
+      return
+    }
+    void navigate({ to: '/loops/$loopId', params: { loopId: item.loop_id } })
+  }
 
   return (
     <div
@@ -279,29 +286,15 @@ export function WidgetTile({
           >
             <Play size={12} />
           </IconButton>
-          {window.jaz?.windowKind === 'board' ? (
-            // Board windows never navigate themselves; the loop opens in the
-            // main app window.
-            <IconButton
-              variant="ghost"
-              size="xs"
-              aria-label="Open loop in Jaz"
-              title="Open loop in Jaz"
-              onClick={() => window.jaz.openInMain(`/loops/${item.loop_id}`)}
-            >
-              <ExternalLink size={12} />
-            </IconButton>
-          ) : (
-            <Link
-              to="/loops/$loopId"
-              params={{ loopId: item.loop_id }}
-              aria-label="Open loop"
-              title="Open loop"
-              className="grid size-6 place-items-center rounded-full text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
-            >
-              <ExternalLink size={12} />
-            </Link>
-          )}
+          <IconButton
+            variant="ghost"
+            size="xs"
+            aria-label={window.jaz?.windowKind === 'board' ? 'Open loop in Jaz' : 'Open loop'}
+            title={window.jaz?.windowKind === 'board' ? 'Open loop in Jaz' : 'Open loop'}
+            onClick={openLoop}
+          >
+            <Pencil size={12} />
+          </IconButton>
           <IconButton
             variant="ghost"
             size="xs"
@@ -389,6 +382,7 @@ export function WidgetTile({
         </div>
       ) : (
         <FirstRunPlaceholder
+          onClick={openLoop}
           running={
             item.loop_last_run_status === 'running' || item.loop_last_run_status === 'starting'
           }
