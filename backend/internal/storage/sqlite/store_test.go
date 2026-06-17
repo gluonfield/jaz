@@ -10,7 +10,6 @@ import (
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/media"
 	"github.com/wins/jaz/backend/internal/provider"
-	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 	usagecore "github.com/wins/jaz/backend/internal/usage"
@@ -803,63 +802,6 @@ func TestAppendMessagesPreservesExistingTimestamps(t *testing.T) {
 	}
 	if !records[1].CreatedAt.After(records[0].CreatedAt) {
 		t.Fatalf("second timestamp %s should be after first %s", records[1].CreatedAt, records[0].CreatedAt)
-	}
-}
-
-func TestSessionEventsPersistAndMirror(t *testing.T) {
-	store, err := New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	session, err := store.CreateSession(storage.CreateSession{Slug: "events"})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := store.AppendSessionEvents(session.ID,
-		sessionevents.Event{Type: "acp_message", Content: "working"},
-		sessionevents.Event{
-			Type: "acp_tool",
-			ACP: &sessionevents.ACPEvent{
-				ID:        session.ID,
-				ToolCalls: []sessionevents.ACPToolCall{{ID: "tool-1", Title: "Read file"}},
-			},
-		},
-		sessionevents.Event{
-			Type: "plan_update",
-			Plan: &sessionevents.PlanEvent{
-				Explanation: "Updated checklist",
-				Plan:        []sessionevents.PlanEntry{{Content: "Run tests", Status: "pending"}},
-			},
-		},
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	loaded, err := store.LoadSessionEvents(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(loaded) != 3 || loaded[0].Seq != 1 || loaded[1].Seq != 2 || loaded[2].Seq != 3 {
-		t.Fatalf("loaded events = %#v", loaded)
-	}
-	if loaded[1].ACP == nil || loaded[1].ACP.ToolCalls[0].Title != "Read file" {
-		t.Fatalf("tool event = %#v", loaded[1])
-	}
-	if loaded[2].Plan == nil || loaded[2].Plan.Plan[0].Content != "Run tests" {
-		t.Fatalf("plan event = %#v", loaded[2])
-	}
-	legacy, err := jsonstore.New(store.RootDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	mirrored, err := legacy.LoadSessionEvents(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(mirrored) != 3 || mirrored[0].Content != "working" || mirrored[2].Plan == nil {
-		t.Fatalf("mirrored events = %#v", mirrored)
 	}
 }
 

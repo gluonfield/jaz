@@ -10,6 +10,21 @@ import (
 	"database/sql"
 )
 
+const deleteSessionEvent = `-- name: DeleteSessionEvent :exec
+DELETE FROM session_events
+WHERE thread_id = ?1 AND seq = ?2
+`
+
+type DeleteSessionEventParams struct {
+	ThreadID string `json:"thread_id"`
+	Seq      int64  `json:"seq"`
+}
+
+func (q *Queries) DeleteSessionEvent(ctx context.Context, arg DeleteSessionEventParams) error {
+	_, err := q.db.ExecContext(ctx, deleteSessionEvent, arg.ThreadID, arg.Seq)
+	return err
+}
+
 const listSessionEvents = `-- name: ListSessionEvents :many
 SELECT
   thread_id,

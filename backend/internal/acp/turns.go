@@ -241,6 +241,7 @@ func (m *Manager) finishTurn(done chan struct{}, job *Job) {
 	m.resolveDanglingToolCalls(job)
 	snapshot := job.Snapshot()
 	if snapshot.State == StateIdle || snapshot.State == StateFailed || snapshot.State == StateCancelled {
+		m.compactSessionEvents(snapshot.ID)
 		m.touchAttention(surfaceSessionIDs(&snapshot)...)
 	}
 	if m.TurnFinished != nil {
@@ -249,6 +250,21 @@ func (m *Manager) finishTurn(done chan struct{}, job *Job) {
 	close(done)
 	if completion.propagates() && parentVisible && !planRequested && m.Done != nil {
 		go m.Done(context.Background(), snapshot)
+	}
+}
+
+func (m *Manager) compactSessionEvents(sessionID string) {
+	compactor, ok := m.store.(storage.SessionEventCompactor)
+	if !ok {
+		return
+	}
+	removed, err := compactor.CompactSessionEvents(sessionID)
+	if err != nil {
+		m.log.Error("compact session events failed", "session", sessionID, "error", err)
+		return
+	}
+	if removed > 0 {
+		m.log.Debug("compacted session events", "session", sessionID, "removed", removed)
 	}
 }
 
