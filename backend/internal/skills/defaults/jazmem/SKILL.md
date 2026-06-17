@@ -18,7 +18,7 @@ agents receive it when Jaz creates or loads their ACP session. Know who writes w
 
 | Surface | Holds | You (agent) | Dream (periodic) |
 |---|---|---|---|
-| `LONG_TERM.md` | identity, goals, standing preferences, key people | **read-only** | sole writer; facts must recur or be directly stated |
+| `LONG_TERM.md` | profile-level identity, major goals, deep standing preferences, key relationships | **read-only** | sole writer; facts must meet the long-term bar |
 | `SHORT_TERM.md` | current focus, active projects, open loops | **update in place, live**, when the present changes | prunes stale entries |
 | `daily/YYYY-MM-DD.md` | raw log of today | **append as you go**, mid-session, not at session end | reads, never writes |
 
@@ -31,6 +31,7 @@ Rules:
   needed or a page appears missing, use jazmem tools or the CLI before
   concluding memory is absent.
 - Never edit LONG_TERM.md; if something belongs there, it will earn its way in via dream. Mention it in daily/ with a citation.
+- LONG_TERM.md is not a changelog, coding-style file, feature-decision log, or list of everyone the user has met. Routine implementation preferences, project-specific corrections, and weak one-off contacts belong in daily/, SHORT_TERM.md, or canonical project/person pages, not LONG_TERM.md.
 
 ## What To Capture
 
@@ -55,6 +56,7 @@ People/company/network notability is intentionally low: if the user discusses an
 - Ground claims in citations; absolute dates only (`2026-06-10`, never "yesterday").
 - Write declarative facts, not instructions: "User prefers concise updates" ✓, "Always be concise" ✗.
 - If a fact will be stale in 7 days, it belongs in daily/, not on a canonical page. No PR numbers, SHAs, "fixed bug X". Reusable procedures belong in skills, not memory.
+- Canonical person/company/project pages are intentionally low-threshold; LONG_TERM.md is high-threshold and should keep only profile-level facts and key relationships.
 - Store data by editing markdown. Never treat SQLite as truth or edit it directly.
 - Record every known name variant in `aliases:` frontmatter — exact title/alias match is the strongest retrieval signal.
 - Keep `## Current` current: displaced facts move to `## History` with date ranges; ended relationships move out of `## Relationships` (that drops the typed edge).

@@ -6,9 +6,11 @@ Use this reference when storing data, creating pages, editing canonical pages, d
 
 `LONG_TERM.md` and `SHORT_TERM.md` live at the memory root and are injected into every jaz turn alongside today's `daily/` page. They are not indexed pages.
 
-- `LONG_TERM.md`: dream-maintained, agents read-only. To surface something for it, record it in daily/ or inbox/ with a citation; dream promotes what recurs or was directly stated.
+- `LONG_TERM.md`: dream-maintained, agents read-only, and reserved for profile-level memory: identity, biography/location/life context, major goals, deep standing preferences, and key relationships. To surface something for it, record it in daily/ or inbox/ with a citation; dream promotes only facts that meet this higher bar.
 - `SHORT_TERM.md`: keep it true about the present. When focus, active projects, or open loops change, replace the affected lines immediately — do not append a history; daily/ is the history.
 - `daily/YYYY-MM-DD.md`: append entries as the day unfolds under `## Notes` / `## Open Loops` (the scheduler creates the skeleton; create it with those sections if missing). Amend a bullet only when it was wrong or superseded the same day.
+
+LONG_TERM.md is not a changelog, coding-style file, feature-decision log, or list of everyone the user has met. Routine implementation preferences, project-specific corrections, and weak one-off contacts belong in daily/, SHORT_TERM.md, or canonical project/person pages.
 
 ## Write Workflow
 
