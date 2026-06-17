@@ -2,6 +2,7 @@ import { CheckCircle2, ChevronDown, ExternalLink } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
 import { ProviderLogo } from '@/components/settings/ProviderLogo'
+import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsSection, useAgentSettingsDraft } from '@/components/settings/agentSettingsShell'
 import { Input } from '@/components/ui/Input'
 import { SkeletonRows } from '@/components/ui/Skeleton'
@@ -71,7 +72,7 @@ function ProviderRow({
   const [expanded, setExpanded] = useState(false)
 
   return (
-    <div className="overflow-hidden rounded-[12px] bg-surface">
+    <SettingsCard className="overflow-hidden">
       <button
         type="button"
         aria-expanded={expanded}
@@ -151,7 +152,7 @@ function ProviderRow({
           </motion.div>
         ) : null}
       </AnimatePresence>
-    </div>
+    </SettingsCard>
   )
 }
 
