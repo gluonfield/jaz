@@ -32,10 +32,10 @@ type openCodeModelConfig struct {
 }
 
 func (m *Manager) loadOpenCodeProviderEnv(env map[string]string, root string) {
-	for _, key := range openCodeProviderEnvNames(m.cfg.Providers) {
+	for _, key := range openCodeProviderEnvNames(m.providers()) {
 		loadRuntimeEnvKey(env, root, key)
 	}
-	for id, cfg := range m.cfg.Providers {
+	for id, cfg := range m.providers() {
 		if strings.TrimSpace(cfg.APIKey) == "" {
 			continue
 		}
@@ -132,7 +132,7 @@ func (m *Manager) openCodeProviderConfig(env map[string]string, model string) (o
 	if providerID == "" {
 		return openCodeProviderConfig{}, false
 	}
-	cfg, configured := m.cfg.Providers[providerID]
+	cfg, configured := m.providers()[providerID]
 	meta, builtIn := modelprovider.OpenCodeProviderByID(providerID)
 	if !shouldWriteOpenCodeProviderConfig(cfg, meta, configured, builtIn) {
 		return openCodeProviderConfig{}, false

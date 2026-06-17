@@ -66,15 +66,19 @@ func systemPromptMeta(agent, prompt string) map[string]any {
 }
 
 type Config struct {
-	Agents       map[string]AgentConfig
-	AgentSource  AgentConfigSource
-	Root         string
-	Workspace    string
-	Env          map[string]string
-	Providers    map[string]provider.ModelProviderConfig
-	SystemPrompt SystemPromptSource
-	MCPStore     mcpconfig.ServerReader
-	MCPTokens    integrationoauth.Store
+	Agents      map[string]AgentConfig
+	AgentSource AgentConfigSource
+	Root        string
+	Workspace   string
+	Env         map[string]string
+	// Providers is a static snapshot used by the read-time auth/readiness probes
+	// (and tests). ProviderSource, when set, is the live merged registry the
+	// manager reads per spawn so runtime provider changes reach new agents.
+	Providers      map[string]provider.ModelProviderConfig
+	ProviderSource provider.Source
+	SystemPrompt   SystemPromptSource
+	MCPStore       mcpconfig.ServerReader
+	MCPTokens      integrationoauth.Store
 }
 
 type AgentConfig struct {

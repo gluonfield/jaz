@@ -177,13 +177,13 @@ func (s *Server) probeACPAgents(defaults agentsettings.AgentDefaults) []onboardi
 			continue
 		}
 		adapterInstalled := acpCommandInstalled(cfg)
-		auth := acp.ProbeAgentAuthWithProviders(name, cfg, s.runtimeRoot(), nil, s.ModelProviders)
+		auth := acp.ProbeAgentAuthWithProviders(name, cfg, s.runtimeRoot(), nil, s.modelProviders())
 		if strings.TrimSpace(cfg.URL) != "" {
 			auth.Authenticated = true
 			auth.Reason = ""
 		}
 		appName, appInstalled := agentAppInstall(name)
-		readiness := acp.ProbeReadinessWithProviders(name, cfg, s.runtimeRoot(), nil, s.ModelProviders)
+		readiness := acp.ProbeReadinessWithProviders(name, cfg, s.runtimeRoot(), nil, s.modelProviders())
 		if cfg.UsesNativeProvider() && !s.modelProviderConfigured(cfg.ModelProvider) {
 			readiness.Available = false
 			readiness.Reason = fmt.Sprintf("native provider %q is not configured", cfg.ModelProvider)
