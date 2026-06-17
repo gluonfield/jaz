@@ -201,6 +201,9 @@ func TestACPLoopRunCreatesHiddenThreadAndFinishesFromCallback(t *testing.T) {
 	if sent.Session == "" {
 		t.Fatalf("missing sent session: %#v", sent)
 	}
+	if sent.Interactive {
+		t.Fatalf("loop run must be autonomous, got interactive send: %#v", sent)
+	}
 	if !strings.Contains(sent.Message, "Memory file: "+loop.MemoryPath) {
 		t.Fatalf("acp loop prompt missing memory path %q:\n%s", loop.MemoryPath, sent.Message)
 	}

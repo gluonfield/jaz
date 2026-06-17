@@ -45,8 +45,8 @@ func TestManagerRestoresClaudeBaselineModeAfterPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.Modes.CurrentModeID != "auto" {
-		t.Fatalf("spawn modes = %#v, want auto baseline", status.Modes)
+	if status.Modes.CurrentModeID != "bypassPermissions" {
+		t.Fatalf("spawn modes = %#v, want bypassPermissions baseline", status.Modes)
 	}
 
 	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "make a plan", Completion: acp.CompletionInline, PlanRequested: true}); err != nil {
@@ -67,8 +67,8 @@ func TestManagerRestoresClaudeBaselineModeAfterPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if job.Modes.CurrentModeID != "auto" {
-		t.Fatalf("mode after plan = %q, want auto", job.Modes.CurrentModeID)
+	if job.Modes.CurrentModeID != "bypassPermissions" {
+		t.Fatalf("mode after plan = %q, want bypassPermissions", job.Modes.CurrentModeID)
 	}
 }
 
@@ -115,8 +115,8 @@ func TestManagerLeavesLoadedPlanModeBeforeOrdinarySend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if job.Modes.CurrentModeID != "auto" {
-		t.Fatalf("modes after ordinary send = %#v, want auto baseline", job.Modes)
+	if job.Modes.CurrentModeID != "bypassPermissions" {
+		t.Fatalf("modes after ordinary send = %#v, want bypassPermissions baseline", job.Modes)
 	}
 	if job.Assistant != "hello from fake agent" || len(job.Plan) != 0 {
 		t.Fatalf("ordinary send stayed in plan mode: assistant=%q plan=%#v", job.Assistant, job.Plan)

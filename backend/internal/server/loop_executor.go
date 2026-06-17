@@ -74,10 +74,9 @@ func (r *LoopRunner) startACPLoopRun(execution loops.Execution) {
 	sendCtx, cancel := serverActionContext()
 	defer cancel()
 	if _, err := r.acp.Send(sendCtx, acp.SendRequest{
-		Session:     spawned.SessionID,
-		Message:     execution.Prompt,
-		Completion:  acp.CompletionAsync,
-		Interactive: true,
+		Session:    spawned.SessionID,
+		Message:    execution.Prompt,
+		Completion: acp.CompletionAsync,
 	}); err != nil {
 		r.finishLoopRun(execution, loops.RunStatusError, err.Error())
 	}
