@@ -2,7 +2,6 @@ package widgets
 
 import (
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -116,9 +115,12 @@ func (s *Service) AssignLoopBoards(loop loops.Loop, boardIDs []string) (Widget, 
 // AddLoopToBoard assigns additively (the onboarding flow adds loops to a
 // fresh board without touching their other assignments).
 func (s *Service) AddLoopToBoard(loop loops.Loop, boardID string) (Widget, error) {
-	_, boards, err := s.StateForLoop(loop.ID)
+	_, boards, found, err := s.StateForLoop(loop.ID)
 	if err != nil {
 		return Widget{}, err
+	}
+	if !found {
+		boards = nil
 	}
 	return s.AssignLoopBoards(loop, append(boards, boardID))
 }
@@ -270,44 +272,6 @@ func (s *Service) purgeOrphansLocked() {
 	}
 	if removed > 0 {
 		s.Log.Info("purged orphan widgets of deleted loops", "count", removed)
-	}
-}
-
-// NormalizeBoardLayouts relocates placements that overlap another tile (drag
-// historically allowed overlap, leaving tiles hidden under each other and
-// pushing new widgets below the fold). The most recently touched tile keeps
-// its spot; buried ones move to the first free cell. Runs once at startup.
-func (s *Service) NormalizeBoardLayouts() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	// Phantom tiles of deleted loops go first; they must not pin real tiles.
-	s.purgeOrphansLocked()
-	boards, err := s.Repo.ListBoards()
-	if err != nil {
-		return
-	}
-	now := s.now()
-	for _, board := range boards {
-		placements, err := s.Repo.ListPlacements(board.ID)
-		if err != nil {
-			continue
-		}
-		sort.Slice(placements, func(i, j int) bool {
-			return placements[i].UpdatedAt.After(placements[j].UpdatedAt)
-		})
-		kept := make([]Placement, 0, len(placements))
-		for _, p := range placements {
-			if overlapsAny(kept, p.X, p.Y, p.W, p.H) {
-				p.X, p.Y = firstFreeSpot(kept, board.GridCols, p.W, p.H)
-				p.UpdatedAt = now
-				if err := s.Repo.SavePlacement(p); err != nil {
-					s.Log.Warn("relocating overlapped tile failed", "board", board.ID, "widget", p.WidgetID, "error", err)
-					continue
-				}
-				s.Log.Info("relocated overlapped tile", "board", board.ID, "widget", p.WidgetID, "x", p.X, "y", p.Y)
-			}
-			kept = append(kept, p)
-		}
 	}
 }
 

@@ -126,7 +126,7 @@ func (s *Server) handleGetLoop(w http.ResponseWriter, _ *http.Request, loopID st
 	}
 	boardIDs := []string{}
 	if s.Widgets != nil {
-		if _, boards, err := s.Widgets.StateForLoop(loopID); err == nil && boards != nil {
+		if _, boards, found, err := s.Widgets.StateForLoop(loopID); err == nil && found {
 			boardIDs = boards
 		}
 	}
