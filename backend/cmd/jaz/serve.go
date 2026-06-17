@@ -175,12 +175,8 @@ func startServer(
 	workspace app.Workspace,
 	stt voice.STT,
 	tts voice.TTS,
-<<<<<<< HEAD
-	nativeProviders provider.Provider,
-	providerSource provider.Source,
-=======
 	modelProviderRuntime provider.Provider,
->>>>>>> main
+	providerSource provider.Source,
 	logger *log.Logger,
 	cfg app.Config,
 	catalog acp.AgentCatalog,
@@ -198,32 +194,27 @@ func startServer(
 		return err
 	}
 	handler := &server.Server{
-		Agent:           a,
-		Store:           store,
-		Routes:          routes,
-		ACP:             manager,
-		MCP:             mcpManager,
-		Locks:           locks,
-		Events:          events,
-		Threads:         threadService,
-		STT:             stt,
-		TTS:             tts,
-<<<<<<< HEAD
-		NativeProviders: nativeProviderControl(nativeProviders),
-		Providers:       providerSource,
-=======
+		Agent:                a,
+		Store:                store,
+		Routes:               routes,
+		ACP:                  manager,
+		MCP:                  mcpManager,
+		Locks:                locks,
+		Events:               events,
+		Threads:              threadService,
+		STT:                  stt,
+		TTS:                  tts,
 		ModelProviderRuntime: reloadableProvider(modelProviderRuntime),
-		ModelProviders:  cfg.ModelProviders,
->>>>>>> main
-		AgentCatalog:    catalog,
-		AuthKey:         authKey,
-		Prompts:         prompts,
-		Root:            store.RootDir(),
-		Workspace:       string(workspace),
-		Log:             logger.WithPrefix("server"),
-		Memory:          memory,
-		JazTools:        jazTools,
-		Terminal:        terminals,
+		Providers:            providerSource,
+		AgentCatalog:         catalog,
+		AuthKey:              authKey,
+		Prompts:              prompts,
+		Root:                 store.RootDir(),
+		Workspace:            string(workspace),
+		Log:                  logger.WithPrefix("server"),
+		Memory:               memory,
+		JazTools:             jazTools,
+		Terminal:             terminals,
 	}
 	lc.Append(fx.Hook{
 		OnStop: func(context.Context) error {

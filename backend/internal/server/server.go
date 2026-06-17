@@ -52,26 +52,6 @@ type MCPRuntime interface {
 }
 
 type Server struct {
-<<<<<<< HEAD
-	Agent           *agent.Agent
-	Store           storage.Store
-	Routes          Routes
-	ACP             ACPManager
-	MCP             MCPRuntime
-	Locks           *sessionlock.Locks
-	Events          *sessionevents.Bus
-	Loops           *loops.Service
-	Threads         *threads.Service
-	Widgets         *widgets.Service
-	STT             voice.STT
-	TTS             voice.TTS
-	NativeProviders provider.ReloadableProvider
-	// Providers is the live registry of effective model providers (catalog +
-	// application.yaml + DB customs). Read it through modelProviders().
-	Providers    provider.Source
-	AgentCatalog acp.AgentCatalog
-	AuthKey      string
-=======
 	Agent                *agent.Agent
 	Store                storage.Store
 	Routes               Routes
@@ -85,10 +65,11 @@ type Server struct {
 	STT                  voice.STT
 	TTS                  voice.TTS
 	ModelProviderRuntime provider.ReloadableProvider
-	ModelProviders       map[string]provider.ModelProviderConfig
-	AgentCatalog         acp.AgentCatalog
-	AuthKey              string
->>>>>>> main
+	// Providers is the live registry of effective model providers (catalog +
+	// application.yaml + DB customs). Read it through modelProviders().
+	Providers    provider.Source
+	AgentCatalog acp.AgentCatalog
+	AuthKey      string
 	// Prompts derives the system prompt fresh per turn from disk, so skill
 	// and prompt-file edits apply without a restart.
 	Prompts *coordinator.Builder

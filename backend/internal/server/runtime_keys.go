@@ -21,7 +21,7 @@ func (s *Server) modelProviders() map[string]provider.ModelProviderConfig {
 }
 
 // reloadProviders rebuilds the live provider registry (so ACP spawns and settings
-// reads see DB changes) and the native provider clients (so native key changes
+// reads see DB changes) and the model-provider runtime clients (so key changes
 // apply). Call after any provider create/update/delete or key change.
 func (s *Server) reloadProviders() error {
 	if s.Providers != nil {
@@ -29,8 +29,8 @@ func (s *Server) reloadProviders() error {
 			return err
 		}
 	}
-	if s.NativeProviders != nil {
-		return s.NativeProviders.Reload()
+	if s.ModelProviderRuntime != nil {
+		return s.ModelProviderRuntime.Reload()
 	}
 	return nil
 }
@@ -120,16 +120,9 @@ func (s *Server) saveRuntimeKeyUpdates(updates map[string]string) error {
 	if err := runtimeenv.Save(s.runtimeKeyEnvPath(), updates); err != nil {
 		return err
 	}
-<<<<<<< HEAD
-	// Reload both the native clients and the provider registry so a key set here
-	// reaches native turns and the next opencode spawn without a restart.
+	// Reload both the model-provider runtime and the registry so a key set here
+	// reaches model-provider turns and the next opencode spawn without a restart.
 	return s.reloadProviders()
-=======
-	if s.ModelProviderRuntime != nil {
-		return s.ModelProviderRuntime.Reload()
-	}
-	return nil
->>>>>>> main
 }
 
 func (s *Server) providerKeySetupAllowed(r *http.Request) bool {

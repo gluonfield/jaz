@@ -1,40 +1,33 @@
-<<<<<<< HEAD
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, ChevronDown, ExternalLink, Pencil, Plus, Trash2 } from 'lucide-react'
-=======
-import { CheckCircle2, ChevronDown, ExternalLink } from 'lucide-react'
->>>>>>> main
 import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
+import type { ReactNode } from 'react'
 import { ProviderLogo } from '@/components/settings/ProviderLogo'
 import { SettingsSection, useAgentSettingsDraft } from '@/components/settings/agentSettingsShell'
+import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-<<<<<<< HEAD
 import { Modal } from '@/components/ui/Modal'
-import { ModelCombobox } from '@/components/ui/ModelCombobox'
 import { Select } from '@/components/ui/Select'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
-import { nativeModelForProvider, providerHidden, providerKeyUrl } from '@/lib/agentRuntimes'
+import { providerHidden, providerKeyUrl } from '@/lib/agentRuntimes'
 import { createProvider, deleteProvider, updateProvider } from '@/lib/api/providers'
 import type { AgentSettings as AgentSettingsData, ProviderInput } from '@/lib/api/types'
 import { isLoopbackUrl, useConnection } from '@/lib/connection'
-import {
-  type ModelSuggestion,
-  modelSuggestionsForProvider,
-  openRouterModelsQuery,
-} from '@/lib/models'
 import { keys } from '@/lib/query/keys'
-import { settingsReasoningOptions } from '@/lib/reasoningEfforts'
-=======
-import { SkeletonRows } from '@/components/ui/Skeleton'
-import { providerKeyUrl } from '@/lib/agentRuntimes'
-import type { AgentSettings as AgentSettingsData } from '@/lib/api/types'
->>>>>>> main
+
+const EASE = [0.22, 1, 0.36, 1] as const
 
 const PROVIDER_API_TYPES = [{ value: 'openai-compatible', label: 'OpenAI-compatible' }]
 
+type ProviderOption = AgentSettingsData['providers'][number]
+type ProviderConnection = 'connected' | 'disconnected' | 'no-key'
 type ProviderDraft = ProviderInput & { id?: string }
+
+function prettyEndpoint(url: string): string {
+  return url.replace(/^https?:\/\//, '')
+}
 
 function emptyProviderDraft(): ProviderDraft {
   return { label: '', base_url: '', api_type: 'openai-compatible', default_model: '', icon: '', api_key: '' }
@@ -52,24 +45,11 @@ function draftFromProvider(provider: ProviderOption): ProviderDraft {
   }
 }
 
-const EASE = [0.22, 1, 0.36, 1] as const
-
-type ProviderOption = AgentSettingsData['providers'][number]
-type ProviderConnection = 'connected' | 'disconnected' | 'no-key'
-
-function prettyEndpoint(url: string): string {
-  return url.replace(/^https?:\/\//, '')
-}
-
 export function AgentProvidersSettings() {
-<<<<<<< HEAD
   const queryClient = useQueryClient()
   const toast = useToast()
   const remote = !isLoopbackUrl(useConnection().url)
-  const { settings, draft, setDraft, providerKeys, setProviderKeys, save, dirty, providerKeyDirty } =
-=======
   const { settings, draft, providerKeys, setProviderKeys, save, providerKeyDirty } =
->>>>>>> main
     useAgentSettingsDraft('providers')
   const [providerDraft, setProviderDraft] = useState<ProviderDraft | null>(null)
 
@@ -109,45 +89,14 @@ export function AgentProvidersSettings() {
     setProviderDraft(null)
   }
 
-<<<<<<< HEAD
-  const openRouterModels = useQuery({
-    ...openRouterModelsQuery,
-    enabled: draft?.native.model_provider === 'openrouter',
-  })
-  // Every surfaced model provider — keys are shared, so this one list connects the
-  // native agent and every ACP agent set to provider defaults. Implemented ones
-  // (the native agent can run them) sort first; locals/customs follow. Providers
-  // without first-class support yet (e.g. Ollama) are hidden.
-  const allProviders = (draft?.providers ?? []).filter((provider) => !providerHidden(provider.id))
-  const nativeProviders = allProviders.filter((provider) => provider.implemented)
-  const invalid = draft
-    ? (draft.native.model_provider ?? '').trim() === '' || draft.native.model.trim() === ''
-    : true
-  const canSave = draft != null && !invalid && (dirty || providerKeyDirty) && !save.isPending
-
-  const selectedProvider = draft?.native.model_provider ?? ''
-  const selectedNativeProvider = nativeProviders.find((provider) => provider.id === selectedProvider)
-  const nativeModelSuggestions = modelSuggestionsForProvider(
-    selectedNativeProvider,
-    openRouterModels.data ?? [],
-  )
-
-  const setNativeProvider = (model_provider: string) => {
-    if (!draft) return
-    const model = nativeModelForProvider(
-      nativeProviders,
-      draft.native.model_provider,
-      model_provider,
-      draft.native.model,
-    )
-    setDraft({ ...draft, native: { ...draft.native, model_provider, model } })
-  }
+  const providers = (draft?.providers ?? []).filter((provider) => !providerHidden(provider.id))
+  const canSave = draft != null && providerKeyDirty && !save.isPending
 
   return (
     <>
       <SettingsSection
         title="Model Providers"
-        description="Configure model providers once. ACP agents can reuse them when they are set to use provider defaults."
+        description="Configure model providers once. Provider-backed ACP agents can reuse them."
         canSave={canSave}
         saving={save.isPending}
         onSave={() => draft && save.mutate(draft)}
@@ -158,58 +107,24 @@ export function AgentProvidersSettings() {
           <SkeletonRows count={3} />
         ) : (
           <div className="flex flex-col gap-1.5">
-            {allProviders.map((provider) => {
-              const isNativeDefault = provider.implemented && provider.id === selectedProvider
-              return (
-                <ProviderRow
-                  key={provider.id}
-                  provider={provider}
-                  keyDraft={providerKeys[provider.id] ?? ''}
-                  isNativeDefault={isNativeDefault}
-                  disabled={save.isPending}
-                  remote={remote}
-                  onKeyChange={(value) => setProviderKeys({ ...providerKeys, [provider.id]: value })}
-                  onEdit={provider.custom ? () => openEdit(provider) : undefined}
-                  onDelete={
-                    provider.custom
-                      ? () => {
-                          if (window.confirm(`Remove ${provider.label}?`)) remove.mutate(provider.id)
-                        }
-                      : undefined
-                  }
-                >
-                  {!provider.implemented ? (
-                    <p className="text-pretty text-[12px] text-ink-3">
-                      Available to ACP agents set to use this provider.
-                    </p>
-                  ) : isNativeDefault ? (
-                    <NativeDefaultEditor
-                      model={draft.native.model}
-                      reasoning={draft.native.reasoning_effort ?? ''}
-                      suggestions={nativeModelSuggestions}
-                      loading={openRouterModels.isLoading}
-                      disabled={save.isPending}
-                      onModelChange={(model) =>
-                        setDraft({ ...draft, native: { ...draft.native, model } })
+            {providers.map((provider) => (
+              <ProviderRow
+                key={provider.id}
+                provider={provider}
+                keyDraft={providerKeys[provider.id] ?? ''}
+                disabled={save.isPending}
+                remote={remote}
+                onKeyChange={(value) => setProviderKeys({ ...providerKeys, [provider.id]: value })}
+                onEdit={provider.custom ? () => openEdit(provider) : undefined}
+                onDelete={
+                  provider.custom
+                    ? () => {
+                        if (window.confirm(`Remove ${provider.label}?`)) remove.mutate(provider.id)
                       }
-                      onReasoningChange={(reasoning_effort) =>
-                        setDraft({ ...draft, native: { ...draft.native, reasoning_effort } })
-                      }
-                    />
-                  ) : (
-                    <Button
-                      variant="secondary"
-                      size="md"
-                      disabled={save.isPending}
-                      onClick={() => setNativeProvider(provider.id)}
-                      className="w-fit ring-1 ring-border ring-inset"
-                    >
-                      Use for native agent
-                    </Button>
-                  )}
-                </ProviderRow>
-              )
-            })}
+                    : undefined
+                }
+              />
+            ))}
             <button
               type="button"
               onClick={openCreate}
@@ -234,64 +149,28 @@ export function AgentProvidersSettings() {
         onSave={() => providerDraft && upsert.mutate(providerDraft)}
       />
     </>
-=======
-  const providers = draft?.providers ?? []
-  const canSave = draft != null && providerKeyDirty && !save.isPending
-
-  return (
-    <SettingsSection
-      title="Providers"
-      description="Configure model providers once. Provider-backed ACP agents can reuse them."
-      canSave={canSave}
-      saving={save.isPending}
-      onSave={() => draft && save.mutate(draft)}
-    >
-      {settings.isError ? (
-        <p className="py-2 text-[13px] text-danger">{settings.error.message}</p>
-      ) : settings.isPending || !draft ? (
-        <SkeletonRows count={3} />
-      ) : (
-        <div className="flex flex-col gap-1.5">
-          {providers.map((provider) => (
-            <ProviderRow
-              key={provider.id}
-              provider={provider}
-              keyDraft={providerKeys[provider.id] ?? ''}
-              disabled={save.isPending}
-              onKeyChange={(value) => setProviderKeys({ ...providerKeys, [provider.id]: value })}
-            />
-          ))}
-        </div>
-      )}
-    </SettingsSection>
->>>>>>> main
   )
 }
 
+// One row in the providers list: a collapsed header with the brand mark, a
+// connection pill and a check, expanding to the key field. Custom providers get
+// an edit/remove footer; built-ins are key-only.
 function ProviderRow({
   provider,
   keyDraft,
   disabled,
   remote,
   onKeyChange,
-<<<<<<< HEAD
   onEdit,
   onDelete,
-  children,
-=======
->>>>>>> main
 }: {
   provider: ProviderOption
   keyDraft: string
   disabled: boolean
   remote: boolean
   onKeyChange: (value: string) => void
-<<<<<<< HEAD
   onEdit?: () => void
   onDelete?: () => void
-  children: ReactNode
-=======
->>>>>>> main
 }) {
   const needsKey = Boolean(provider.api_key_env) && provider.requires_api_key !== false
   const connected = needsKey ? Boolean(provider.configured || keyDraft.trim()) : true
@@ -354,7 +233,7 @@ function ProviderRow({
                     onChange={(event) => onKeyChange(event.target.value)}
                     placeholder={
                       provider.configured
-                        ? 'Configured - paste a new key to replace it'
+                        ? 'Configured — paste a new key to replace it'
                         : 'Paste an API key'
                     }
                     autoComplete="off"
@@ -381,9 +260,6 @@ function ProviderRow({
               ) : (
                 <p className="text-pretty text-[12px] text-ink-3">No API key required.</p>
               )}
-<<<<<<< HEAD
-
-              {children}
 
               {onEdit || onDelete ? (
                 <div className="flex items-center gap-1 border-t border-border/70 pt-3">
@@ -401,8 +277,6 @@ function ProviderRow({
                   ) : null}
                 </div>
               ) : null}
-=======
->>>>>>> main
             </div>
           </motion.div>
         ) : null}
