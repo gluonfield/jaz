@@ -27,13 +27,24 @@ export function selectableACPModelProviders(
   )
 }
 
+// The backend serializes `requires_api_key` with omitempty, so the only values
+// that reach us are `true` (needs a key) or absent (no key needed) — never an
+// explicit `false`. These are the single source of truth for "does this provider
+// need a key" and "is it ready to use"; reuse them everywhere instead of
+// re-deriving the predicate (the variants drift apart on the absent case).
+export function modelProviderRequiresKey(provider: ModelProviderOption): boolean {
+  return provider.requires_api_key === true
+}
+
+export function modelProviderConnected(provider: ModelProviderOption): boolean {
+  return Boolean(provider.configured) || !modelProviderRequiresKey(provider)
+}
+
 export function configuredACPModelProviders(
   settings: AgentSettings | undefined,
   agent: string,
 ): ModelProviderOption[] {
-  return selectableACPModelProviders(settings, agent).filter(
-    (provider) => provider.configured || !provider.requires_api_key,
-  )
+  return selectableACPModelProviders(settings, agent).filter(modelProviderConnected)
 }
 
 export function effectiveACPModelProvider(
