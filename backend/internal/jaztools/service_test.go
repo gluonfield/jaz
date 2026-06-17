@@ -19,6 +19,7 @@ import (
 	jazsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
+	"github.com/wins/jaz/backend/internal/visualize"
 	"github.com/wins/jaz/backend/internal/widgets"
 )
 
@@ -63,7 +64,6 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"),
 		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
 		store,
-		store,
 		sessionevents.New(),
 		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
 	)
@@ -84,18 +84,18 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 	for _, name := range []string{
 		"memory_search", "memory_get",
 		"loop_list", "loop_get", "loop_create", "loop_update", "loop_run", "loop_delete",
-		"visualize:read_me", "visualize:show_widget",
+		"visualise:read_me", "visualise:show_widget",
 	} {
 		if !names[name] {
 			t.Fatalf("missing tool %s in %#v", name, names)
 		}
 	}
-	if names["publish_widget"] {
-		t.Fatal("publish_widget must not be advertised on ordinary jaztools sessions")
+	if names["visualise:publish_widget"] {
+		t.Fatal("visualise:publish_widget must not be advertised on ordinary jaztools sessions")
 	}
 
 	readMeCall, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name:      "visualize:read_me",
+		Name:      "visualise:read_me",
 		Arguments: map[string]any{"modules": []string{"mockup"}, "platform": "desktop"},
 	})
 	if err != nil {
@@ -206,7 +206,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 	}
 }
 
-func TestPublishWidgetToolOnlyAdvertisedForLoopSessions(t *testing.T) {
+func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -218,13 +218,13 @@ func TestPublishWidgetToolOnlyAdvertisedForLoopSessions(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = memory.Close() })
 
+	widgetService := widgets.NewService(store, nil)
 	service := New(
 		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"),
 		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
 		store,
-		store,
 		sessionevents.New(),
-		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
+		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 
@@ -232,32 +232,72 @@ func TestPublishWidgetToolOnlyAdvertisedForLoopSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	loopRun, err := store.CreateSession(storage.CreateSession{Slug: "loop-run", Runtime: storage.RuntimeACP, SourceType: storage.SourceLoopRun, SourceID: "run-1"})
+	now := time.Now().UTC()
+	plainLoop := loops.Loop{ID: store.NewLoopID(), Name: "Plain loop", Prompt: "check", Status: loops.StatusActive, Runtime: loops.RuntimeACP, CreatedAt: now, UpdatedAt: now}
+	plainRun := loops.Run{ID: store.NewRunID(), LoopID: plainLoop.ID, Status: loops.RunStatusRunning, CreatedAt: now}
+	if err := store.SaveLoop(plainLoop); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveRun(plainRun); err != nil {
+		t.Fatal(err)
+	}
+	plainLoopRun, err := store.CreateSession(storage.CreateSession{Slug: "plain-loop-run", Runtime: storage.RuntimeACP, SourceType: storage.SourceLoopRun, SourceID: plainRun.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	widgetLoop := loops.Loop{ID: store.NewLoopID(), Name: "Widget loop", Prompt: "update", Status: loops.StatusActive, Runtime: loops.RuntimeACP, CreatedAt: now, UpdatedAt: now}
+	widgetRun := loops.Run{ID: store.NewRunID(), LoopID: widgetLoop.ID, Status: loops.RunStatusRunning, CreatedAt: now}
+	if err := store.SaveLoop(widgetLoop); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveRun(widgetRun); err != nil {
+		t.Fatal(err)
+	}
+	loopRun, err := store.CreateSession(storage.CreateSession{
+		Slug:       "loop-run",
+		Runtime:    storage.RuntimeACP,
+		SourceType: storage.SourceLoopRun,
+		SourceID:   widgetRun.ID,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:            storage.RuntimeACP,
+			ArtifactSurface: string(visualize.SurfaceWidget),
+		},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if service.widgetSession(sessionRequest(ordinary.ID)) {
 		t.Fatal("ordinary session treated as a loop run")
 	}
+	if service.widgetSession(sessionRequest(plainLoopRun.ID)) {
+		t.Fatal("loop run without board widget enabled widget publishing")
+	}
+	board, err := widgetService.CreateBoard("Desk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := widgetService.AssignLoopBoards(widgetLoop, []string{board.ID}); err != nil {
+		t.Fatal(err)
+	}
 	if !service.widgetSession(sessionRequest(loopRun.ID)) {
-		t.Fatal("loop-run session did not enable widget publishing")
+		t.Fatal("assigned widget loop-run session did not enable widget publishing")
 	}
 
 	base, closeBase := connectClient(t, service.Server())
 	defer closeBase()
-	if hasTool(t, base, "publish_widget") {
-		t.Fatal("base server advertised publish_widget")
+	if hasTool(t, base, "visualise:publish_widget") {
+		t.Fatal("base server advertised visualise:publish_widget")
 	}
 	widget, closeWidget := connectClient(t, service.server(widgetSurface))
 	defer closeWidget()
-	if !hasTool(t, widget, "visualize:read_me") {
-		t.Fatal("widget server did not advertise visualize:read_me")
+	if !hasTool(t, widget, "visualise:read_me") {
+		t.Fatal("widget server did not advertise visualise:read_me")
 	}
-	if hasTool(t, widget, "visualize:show_widget") {
+	if hasTool(t, widget, "visualise:show_widget") {
 		t.Fatal("widget server advertised thread artifact renderer")
 	}
-	if !hasTool(t, widget, "publish_widget") {
-		t.Fatal("widget server did not advertise publish_widget")
+	if !hasTool(t, widget, "visualise:publish_widget") {
+		t.Fatal("widget server did not advertise visualise:publish_widget")
 	}
 }
 
@@ -280,7 +320,6 @@ func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 	service := New(
 		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jazmem"),
 		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
-		store,
 		store,
 		sessionevents.New(),
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},

@@ -42,6 +42,17 @@ type SystemPromptSource interface {
 	SkillsPrompt() (string, error)
 }
 
+type artifactSurfacePromptSource interface {
+	ACPPromptForArtifactSurface(cwd, surface string) (string, error)
+}
+
+func promptForArtifactSurface(source SystemPromptSource, cwd, surface string) (string, error) {
+	if source, ok := source.(artifactSurfacePromptSource); ok {
+		return source.ACPPromptForArtifactSurface(cwd, surface)
+	}
+	return source.ACPPrompt(cwd)
+}
+
 // systemPromptMeta wraps prompt in the session _meta payload understood by
 // the named agent. ACP has no standard system-prompt field, so each adapter
 // defines its own extension key; every form below appends to the agent's own
