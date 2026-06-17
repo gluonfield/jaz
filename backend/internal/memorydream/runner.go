@@ -13,6 +13,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/templates/memorydreamprompt"
 )
 
 const Timeout = 45 * time.Minute
@@ -63,9 +64,13 @@ func (r *Runner) RunDream(ctx context.Context, req jazmem.DreamRequest) (jazmem.
 	if err != nil {
 		return jazmem.DreamReport{}, err
 	}
+	prompt, err := agentPrompt(req, runSlug, reviewSlug)
+	if err != nil {
+		return jazmem.DreamReport{}, err
+	}
 	if _, err := r.Manager.Send(ctx, acp.SendRequest{
 		Session:    spawned.SessionID,
-		Message:    agentPrompt(req, runSlug, reviewSlug),
+		Message:    prompt,
 		Completion: acp.CompletionInline,
 	}); err != nil {
 		return jazmem.DreamReport{}, err
@@ -97,33 +102,14 @@ func (r *Runner) RunDream(ctx context.Context, req jazmem.DreamRequest) (jazmem.
 	}, nil
 }
 
-func agentPrompt(req jazmem.DreamRequest, runSlug, reviewSlug string) string {
-	return strings.TrimSpace(fmt.Sprintf(`# Memory Dream
-
-You are running Jaz's periodic memory consolidation job as a coding agent.
-
-Work directly in this markdown memory root:
-%s
-
-Use at most 100 meaningful tool/edit steps. Read before editing. Do not run jazmem index or other memory maintenance commands; Jaz will reindex after you finish.
-
-Required work:
-- Read LONG_TERM.md, SHORT_TERM.md, today's and recent daily pages, recent inbox/source pages, and relevant canonical people/company/project/concept pages.
-- If SHORT_TERM.md is oversized or stale, move durable material into canonical pages with citations, then rewrite SHORT_TERM.md so it contains only current focus, active projects, and open loops.
-- You may update LONG_TERM.md only when a fact satisfies the long-term horizon policy below. Preserve the required heading.
-- Capture compressed insights, people/company/network facts, decisions, preferences, relationships, who said what, who is working on what, and happiness/blocker/alignment signals.
-- Create canonical pages when the user discussed an entity beyond public-knowledge facts.
-- Every durable fact must have an absolute-date source citation.
-- Leave uncertain candidates in %s.
-- Write a run report to %s summarizing inputs, changed files, promotions, skipped material, and warnings.
-
-Long-term horizon policy:
-%s
-
-Short-term horizon policy:
-%s
-
-Return only a concise final status after edits are complete.`, req.Root, reviewSlug, runSlug, jazmem.LongTermDreamGuidance(), jazmem.ShortTermDreamGuidance()))
+func agentPrompt(req jazmem.DreamRequest, runSlug, reviewSlug string) (string, error) {
+	return memorydreamprompt.Render(memorydreamprompt.Data{
+		Root:            req.Root,
+		RunSlug:         runSlug,
+		ReviewSlug:      reviewSlug,
+		LongTermPolicy:  jazmem.LongTermDreamGuidance(),
+		ShortTermPolicy: jazmem.ShortTermDreamGuidance(),
+	})
 }
 
 func ensureRunPage(root, runSlug string, date time.Time, agent, sessionID, assistant string) []string {

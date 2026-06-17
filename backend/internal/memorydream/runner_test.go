@@ -9,16 +9,19 @@ import (
 )
 
 func TestAgentPromptIncludesLongTermPromotionBar(t *testing.T) {
-	prompt := agentPrompt(jazmem.DreamRequest{
+	prompt, err := agentPrompt(jazmem.DreamRequest{
 		Root: "/tmp/memory",
 		Date: time.Date(2026, 6, 17, 9, 0, 0, 0, time.UTC),
 	}, "dreams/runs/test", "dreams/review/test")
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, want := range []string{
-		"LONG_TERM.md is profile-level memory",
-		"routine coding style preferences",
+		"LONG_TERM.md is profile memory",
+		"routine coding style",
 		"feature decisions",
-		"one-off meeting",
-		"Short-term horizon policy",
+		"weak one-off contacts",
+		"SHORT_TERM.md is the active working set",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("agent prompt missing %q:\n%s", want, prompt)
