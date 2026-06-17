@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -43,4 +44,16 @@ func TestBeginACPTurnClearsStaleError(t *testing.T) {
 		t.Fatalf("loaded status/error = %q/%q, want running with no error", loaded.Status, loaded.Error)
 	}
 	expectSessionChangedEvent(t, sub, session.ID)
+}
+
+func expectSessionChangedEvent(t *testing.T, sub <-chan sessionevents.Event, sessionID string) {
+	t.Helper()
+	select {
+	case event := <-sub:
+		if event.SessionID != sessionID || event.Type != sessionevents.TypeSession {
+			t.Fatalf("session event = %#v, want session event for %s", event, sessionID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for session event")
+	}
 }

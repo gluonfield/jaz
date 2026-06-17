@@ -40,11 +40,11 @@ func (r *Router) provider(id string) (Provider, error) {
 		id = r.Default
 	}
 	if id == "" {
-		return nil, fmt.Errorf("native provider is required")
+		return nil, fmt.Errorf("model provider is required")
 	}
 	provider, ok := r.Provider[id]
 	if !ok || provider == nil {
-		return nil, fmt.Errorf("native provider %q is not available", id)
+		return nil, fmt.Errorf("model provider %q is not available", id)
 	}
 	return provider, nil
 }
@@ -64,7 +64,7 @@ func (p UnavailableProvider) StreamComplete(context.Context, Request) (<-chan Ev
 
 func (p UnavailableProvider) err() error {
 	if strings.TrimSpace(p.Reason) != "" {
-		return fmt.Errorf("native provider %q is not available: %s", p.ID, p.Reason)
+		return fmt.Errorf("model provider %q is not available: %s", p.ID, p.Reason)
 	}
-	return fmt.Errorf("native provider %q is not available", p.ID)
+	return fmt.Errorf("model provider %q is not available", p.ID)
 }

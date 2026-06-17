@@ -51,14 +51,3 @@ func TestWidgetPublishExtMethodUnknownSession(t *testing.T) {
 		t.Fatal("expected error for unknown acp session")
 	}
 }
-
-func TestWidgetPublishExtMethodUnconfigured(t *testing.T) {
-	manager := NewManager(nil, Config{}, nil)
-	_, rpcErr := manager.handleJSONRPC(context.Background(), jsonrpc.Request{
-		Method: ClientMethodWidgetPublish,
-		Params: mustJSON(t, WidgetPublishRequest{SessionID: "acp-session"}),
-	})
-	if rpcErr == nil {
-		t.Fatal("expected error when widget publishing is not configured")
-	}
-}

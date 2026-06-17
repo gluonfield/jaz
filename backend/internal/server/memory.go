@@ -13,10 +13,9 @@ import (
 )
 
 type memoryHorizon struct {
-	Name     string `json:"name"`
-	Content  string `json:"content"`
-	Chars    int    `json:"chars"`
-	MaxChars int    `json:"max_chars"`
+	Name    string `json:"name"`
+	Content string `json:"content"`
+	Chars   int    `json:"chars"`
 }
 
 type memoryStatusResponse struct {
@@ -70,18 +69,12 @@ func (s *Server) memoryStatus(r *http.Request) (memoryStatusResponse, error) {
 		return memoryStatusResponse{}, err
 	}
 	horizons := make([]memoryHorizon, 0, 2)
-	for _, h := range []struct {
-		name     string
-		maxChars int
-	}{
-		{jazmem.LongTermFile, jazmem.LongTermMaxChars},
-		{jazmem.ShortTermFile, jazmem.ShortTermMaxChars},
-	} {
-		content, err := s.Memory.ReadHorizonFile(h.name)
+	for _, name := range []string{jazmem.LongTermFile, jazmem.ShortTermFile} {
+		content, err := s.Memory.ReadHorizonFile(name)
 		if err != nil {
 			return memoryStatusResponse{}, err
 		}
-		horizons = append(horizons, memoryHorizon{Name: h.name, Content: content, Chars: len(content), MaxChars: h.maxChars})
+		horizons = append(horizons, memoryHorizon{Name: name, Content: content, Chars: len(content)})
 	}
 	settings, err := jazsettings.LoadMemorySettings(store)
 	if err != nil {

@@ -40,7 +40,7 @@ func (s *Store) importLegacyJSON() error {
 			session.Status = storage.StatusIdle
 		}
 		if session.Runtime == "" {
-			session.Runtime = storage.RuntimeNative
+			session.Runtime = storage.RuntimeACP
 		}
 		slug, err := s.uniqueSlugLocked(session.Slug, session.ID)
 		if err != nil {

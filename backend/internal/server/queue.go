@@ -231,7 +231,7 @@ func (s *Server) claimQueuedPrompt(sessionID string) (storage.Session, storage.Q
 		return storage.Session{}, storage.QueuedMessage{}, false, err
 	}
 	if session.Runtime == "" {
-		session.Runtime = storage.RuntimeNative
+		session.Runtime = storage.RuntimeACP
 	}
 	if s.sessionRuntimeRunning(session) || session.Status != storage.StatusIdle {
 		return session, storage.QueuedMessage{}, false, nil
@@ -300,7 +300,7 @@ func (s *Server) claimSteeredQueuedPrompt(sessionID string, req queueRequest) (s
 		return steeredQueuedPrompt{}, err
 	}
 	if session.Runtime == "" {
-		session.Runtime = storage.RuntimeNative
+		session.Runtime = storage.RuntimeACP
 	}
 	queue := storage.NormalizeQueuedMessages(session.QueuedMessages)
 	if err := validateQueueIndex(queue, req.Index, req.Expected); err != nil {
@@ -364,9 +364,7 @@ func (s *Server) sessionRuntimeRunning(session storage.Session) bool {
 
 func (s *Server) canStartQueuedPrompt(session storage.Session) bool {
 	switch session.Runtime {
-	case "", storage.RuntimeNative:
-		return s.Agent != nil
-	case storage.RuntimeACP:
+	case "", storage.RuntimeACP:
 		return s.ACP != nil
 	default:
 		return false
@@ -379,15 +377,7 @@ func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session,
 		return err
 	}
 	switch session.Runtime {
-	case "", storage.RuntimeNative:
-		if s.Agent == nil {
-			return fmt.Errorf("agent is not configured")
-		}
-		if s.runClaimedNativeSessionWithAttachments(ctx, session, prompt.Text, attachments, prompt.PlanRequested) == storage.StatusIdle {
-			s.drainQueueSoon(session.ID)
-		}
-		return nil
-	case storage.RuntimeACP:
+	case "", storage.RuntimeACP:
 		if s.ACP == nil {
 			return fmt.Errorf("acp manager is not configured")
 		}

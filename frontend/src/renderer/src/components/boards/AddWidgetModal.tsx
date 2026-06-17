@@ -186,7 +186,7 @@ function LoopPickRow({
   disabled: boolean
   onToggle: () => void
 }) {
-  const agent = loop.runtime === 'acp' ? agentLabel(loop.acp_agent) : 'Native'
+  const agent = agentLabel(loop.acp_agent || 'jaz')
   return (
     <motion.button
       type="button"

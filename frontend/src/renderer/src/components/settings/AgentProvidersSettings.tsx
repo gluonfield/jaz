@@ -1,12 +1,15 @@
+<<<<<<< HEAD
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, ChevronDown, ExternalLink, Pencil, Plus, Trash2 } from 'lucide-react'
+=======
+import { CheckCircle2, ChevronDown, ExternalLink } from 'lucide-react'
+>>>>>>> main
 import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
-import type { ReactNode } from 'react'
 import { ProviderLogo } from '@/components/settings/ProviderLogo'
 import { SettingsSection, useAgentSettingsDraft } from '@/components/settings/agentSettingsShell'
-import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+<<<<<<< HEAD
 import { Modal } from '@/components/ui/Modal'
 import { ModelCombobox } from '@/components/ui/ModelCombobox'
 import { Select } from '@/components/ui/Select'
@@ -23,6 +26,11 @@ import {
 } from '@/lib/models'
 import { keys } from '@/lib/query/keys'
 import { settingsReasoningOptions } from '@/lib/reasoningEfforts'
+=======
+import { SkeletonRows } from '@/components/ui/Skeleton'
+import { providerKeyUrl } from '@/lib/agentRuntimes'
+import type { AgentSettings as AgentSettingsData } from '@/lib/api/types'
+>>>>>>> main
 
 const PROVIDER_API_TYPES = [{ value: 'openai-compatible', label: 'OpenAI-compatible' }]
 
@@ -49,16 +57,19 @@ const EASE = [0.22, 1, 0.36, 1] as const
 type ProviderOption = AgentSettingsData['providers'][number]
 type ProviderConnection = 'connected' | 'disconnected' | 'no-key'
 
-// Drops the scheme so an endpoint reads as a compact host+path chip.
 function prettyEndpoint(url: string): string {
   return url.replace(/^https?:\/\//, '')
 }
 
 export function AgentProvidersSettings() {
+<<<<<<< HEAD
   const queryClient = useQueryClient()
   const toast = useToast()
   const remote = !isLoopbackUrl(useConnection().url)
   const { settings, draft, setDraft, providerKeys, setProviderKeys, save, dirty, providerKeyDirty } =
+=======
+  const { settings, draft, providerKeys, setProviderKeys, save, providerKeyDirty } =
+>>>>>>> main
     useAgentSettingsDraft('providers')
   const [providerDraft, setProviderDraft] = useState<ProviderDraft | null>(null)
 
@@ -98,6 +109,7 @@ export function AgentProvidersSettings() {
     setProviderDraft(null)
   }
 
+<<<<<<< HEAD
   const openRouterModels = useQuery({
     ...openRouterModelsQuery,
     enabled: draft?.native.model_provider === 'openrouter',
@@ -222,45 +234,70 @@ export function AgentProvidersSettings() {
         onSave={() => providerDraft && upsert.mutate(providerDraft)}
       />
     </>
+=======
+  const providers = draft?.providers ?? []
+  const canSave = draft != null && providerKeyDirty && !save.isPending
+
+  return (
+    <SettingsSection
+      title="Providers"
+      description="Configure model providers once. Provider-backed ACP agents can reuse them."
+      canSave={canSave}
+      saving={save.isPending}
+      onSave={() => draft && save.mutate(draft)}
+    >
+      {settings.isError ? (
+        <p className="py-2 text-[13px] text-danger">{settings.error.message}</p>
+      ) : settings.isPending || !draft ? (
+        <SkeletonRows count={3} />
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          {providers.map((provider) => (
+            <ProviderRow
+              key={provider.id}
+              provider={provider}
+              keyDraft={providerKeys[provider.id] ?? ''}
+              disabled={save.isPending}
+              onKeyChange={(value) => setProviderKeys({ ...providerKeys, [provider.id]: value })}
+            />
+          ))}
+        </div>
+      )}
+    </SettingsSection>
+>>>>>>> main
   )
 }
 
-// One row in the providers list: a collapsed header with the brand mark, a
-// connection pill and a check, expanding to the key field plus a body slot. The
-// slot carries the native-default model/reasoning editor (or the "use for native"
-// affordance) so this row stays purely about connecting a provider. Mirrors the
-// onboarding provider card so the connect-a-provider gesture reads the same.
 function ProviderRow({
   provider,
   keyDraft,
-  isNativeDefault,
   disabled,
   remote,
   onKeyChange,
+<<<<<<< HEAD
   onEdit,
   onDelete,
   children,
+=======
+>>>>>>> main
 }: {
   provider: ProviderOption
   keyDraft: string
-  isNativeDefault: boolean
   disabled: boolean
   remote: boolean
   onKeyChange: (value: string) => void
+<<<<<<< HEAD
   onEdit?: () => void
   onDelete?: () => void
   children: ReactNode
+=======
+>>>>>>> main
 }) {
-  // A provider needs a key only if it has an env var to store one into — the
-  // backend omits requires_api_key when false, so a missing api_key_env (Ollama)
-  // is the reliable "no key" signal.
   const needsKey = Boolean(provider.api_key_env) && provider.requires_api_key !== false
   const connected = needsKey ? Boolean(provider.configured || keyDraft.trim()) : true
   const state: ProviderConnection = needsKey ? (connected ? 'connected' : 'disconnected') : 'no-key'
   const keyUrl = providerKeyUrl(provider.id)
-  // The native default opens by default so its model/reasoning are one glance
-  // away; the rest stay collapsed until tapped.
-  const [expanded, setExpanded] = useState(isNativeDefault)
+  const [expanded, setExpanded] = useState(false)
 
   return (
     <div className="overflow-hidden rounded-[12px] bg-surface">
@@ -277,11 +314,6 @@ function ProviderRow({
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate text-[13.5px] font-medium text-ink">{provider.label}</span>
             <ProviderPill state={state} />
-            {isNativeDefault ? (
-              <span className="inline-flex shrink-0 items-center rounded-full px-2 py-[3px] text-[11px] font-medium text-ink-2 ring-1 ring-border ring-inset">
-                Native default
-              </span>
-            ) : null}
           </span>
           {provider.base_url ? (
             <span className="truncate font-mono text-[11px] text-ink-3">
@@ -322,7 +354,7 @@ function ProviderRow({
                     onChange={(event) => onKeyChange(event.target.value)}
                     placeholder={
                       provider.configured
-                        ? 'Configured — paste a new key to replace it'
+                        ? 'Configured - paste a new key to replace it'
                         : 'Paste an API key'
                     }
                     autoComplete="off"
@@ -347,10 +379,9 @@ function ProviderRow({
                   ) : null}
                 </div>
               ) : (
-                <p className="text-pretty text-[12px] text-ink-3">
-                  Runs locally on your machine — no API key required.
-                </p>
+                <p className="text-pretty text-[12px] text-ink-3">No API key required.</p>
               )}
+<<<<<<< HEAD
 
               {children}
 
@@ -370,66 +401,12 @@ function ProviderRow({
                   ) : null}
                 </div>
               ) : null}
+=======
+>>>>>>> main
             </div>
           </motion.div>
         ) : null}
       </AnimatePresence>
-    </div>
-  )
-}
-
-// The native agent's model + reasoning, shown only under the provider currently
-// serving as the native default.
-function NativeDefaultEditor({
-  model,
-  reasoning,
-  suggestions,
-  loading,
-  disabled,
-  onModelChange,
-  onReasoningChange,
-}: {
-  model: string
-  reasoning: string
-  suggestions: ModelSuggestion[]
-  loading: boolean
-  disabled: boolean
-  onModelChange: (value: string) => void
-  onReasoningChange: (value: string) => void
-}) {
-  return (
-    <div className="flex flex-col gap-3 rounded-[10px] bg-bg p-3">
-      <p className="text-[11px] font-medium text-ink-3">Native agent default</p>
-      <NativeDefaultField label="Model">
-        <ModelCombobox
-          value={model}
-          suggestions={suggestions}
-          loading={loading}
-          disabled={disabled}
-          onChange={onModelChange}
-          aria-label="Native model"
-          className="w-full sm:w-[230px]"
-        />
-      </NativeDefaultField>
-      <NativeDefaultField label="Reasoning">
-        <Select
-          value={reasoning}
-          options={settingsReasoningOptions()}
-          disabled={disabled}
-          onChange={onReasoningChange}
-          aria-label="Native reasoning effort"
-          className="w-full sm:w-[230px]"
-        />
-      </NativeDefaultField>
-    </div>
-  )
-}
-
-function NativeDefaultField({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
-      <span className="text-[13px] text-ink-2">{label}</span>
-      {children}
     </div>
   )
 }

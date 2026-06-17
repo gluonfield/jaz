@@ -81,12 +81,12 @@ func applyProvider(cfg *Config) error {
 	}
 	mergeProviderConfig(cfg.Jaz.ModelProviders, provider.ProviderOpenAI, provider.ModelProviderConfig{
 		Type:    provider.ProviderOpenAI,
-		BaseURL: nativeProviderBaseURL(provider.ProviderOpenAI),
+		BaseURL: modelProviderBaseURL(provider.ProviderOpenAI),
 		APIKey:  cfg.OpenAI.APIKey,
 	})
 	mergeProviderConfig(cfg.Jaz.ModelProviders, provider.ProviderOpenRouter, provider.ModelProviderConfig{
 		Type:    provider.ProviderOpenRouter,
-		BaseURL: nativeProviderBaseURL(provider.ProviderOpenRouter),
+		BaseURL: modelProviderBaseURL(provider.ProviderOpenRouter),
 		APIKey:  cfg.OpenRouter.APIKey,
 	})
 	return nil
@@ -106,7 +106,7 @@ func mergeProviderConfig(providers map[string]provider.ModelProviderConfig, id s
 	providers[id] = current
 }
 
-func nativeProviderBaseURL(id string) string {
-	meta, _ := provider.NativeProviderByID(id)
+func modelProviderBaseURL(id string) string {
+	meta, _ := provider.RunnableModelProviderByID(id)
 	return meta.BaseURL
 }

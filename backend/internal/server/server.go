@@ -52,6 +52,7 @@ type MCPRuntime interface {
 }
 
 type Server struct {
+<<<<<<< HEAD
 	Agent           *agent.Agent
 	Store           storage.Store
 	Routes          Routes
@@ -70,6 +71,24 @@ type Server struct {
 	Providers    provider.Source
 	AgentCatalog acp.AgentCatalog
 	AuthKey      string
+=======
+	Agent                *agent.Agent
+	Store                storage.Store
+	Routes               Routes
+	ACP                  ACPManager
+	MCP                  MCPRuntime
+	Locks                *sessionlock.Locks
+	Events               *sessionevents.Bus
+	Loops                *loops.Service
+	Threads              *threads.Service
+	Widgets              *widgets.Service
+	STT                  voice.STT
+	TTS                  voice.TTS
+	ModelProviderRuntime provider.ReloadableProvider
+	ModelProviders       map[string]provider.ModelProviderConfig
+	AgentCatalog         acp.AgentCatalog
+	AuthKey              string
+>>>>>>> main
 	// Prompts derives the system prompt fresh per turn from disk, so skill
 	// and prompt-file edits apply without a restart.
 	Prompts *coordinator.Builder
@@ -87,8 +106,6 @@ type Server struct {
 	Terminal     *terminal.Manager
 	terminalOnce sync.Once
 
-	// in-flight native turns by session id, cancellable via the cancel action
-	turnCancels      sync.Map
 	acpAuthLoginJobs sync.Map
 	worktreePruneMu  sync.Mutex
 }
@@ -654,8 +671,6 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusInternalServerError, err)
 				return
 			}
-		} else if cancel, ok := s.turnCancels.Load(session.ID); ok {
-			cancel.(context.CancelFunc)()
 		} else if session.Status == storage.StatusRunning {
 			// No live turn to stop (server restarted mid-turn) — unstick it.
 			logger.Info("no live turn, forcing status idle")
@@ -720,10 +735,11 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	flusher.Flush()
 
 	switch session.Runtime {
-	case "", storage.RuntimeNative:
-		s.streamNativeSession(w, flusher, r, session, req.Message, attachments, req.Voice, req.PlanRequested)
 	case storage.RuntimeACP:
 		s.streamACPSession(w, flusher, r.Context(), session, req.Message, attachments, req.PlanRequested)
+	case "":
+		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: "legacy runtime is no longer supported; start a new ACP session"})
+		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
 	default:
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: fmt.Sprintf("unknown session runtime %q", session.Runtime)})
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})

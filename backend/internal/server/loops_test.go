@@ -5,17 +5,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
-	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/loops"
-	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
@@ -34,7 +30,7 @@ func TestLoopAPIAndManualRun(t *testing.T) {
 		"name":"Half hourly",
 		"prompt":"check status",
 		"schedule":{"kind":"cron","expr":"*/30 * * * *","timezone":"UTC"},
-		"runtime":"native"
+		"runtime":"acp"
 	}`))
 	create.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
@@ -46,7 +42,7 @@ func TestLoopAPIAndManualRun(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &created); err != nil {
 		t.Fatal(err)
 	}
-	if created.ID == "" || created.Runtime != loops.RuntimeNative {
+	if created.ID == "" || created.Runtime != loops.RuntimeACP {
 		t.Fatalf("created loop = %#v", created)
 	}
 	wantMemory := filepath.Join(store.RootDir(), "automations", "half-hourly", "memory.md")
@@ -176,171 +172,6 @@ func TestLoopAPICarriesReasoningEffortAndDirectory(t *testing.T) {
 	}
 }
 
-func TestNativeLoopRunCreatesFreshThreadWithMetadata(t *testing.T) {
-	store, err := sqlitestore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	recorder := &recordingProvider{assistant: "old transcript text"}
-	workspace := t.TempDir()
-	srv := &Server{
-		Agent:     &agent.Agent{Provider: recorder, MaxTurns: 1},
-		Store:     store,
-		Workspace: workspace,
-	}
-	service := newLoopServiceForTest(store, NewLoopRunner(srv))
-	srv.Loops = service
-	loop, err := service.Create(loops.CreateLoop{
-		Name:      "Fresh check",
-		Prompt:    "check status",
-		Runtime:   loops.RuntimeNative,
-		Directory: "repo",
-		Schedule:  loops.Schedule{Kind: loops.ScheduleCron, Expr: "* * * * *", Timezone: "UTC"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	first, err := service.RunNow(context.Background(), loop.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	waitForLoopRun(t, service, loop.ID, first.ID, loops.RunStatusOK)
-	firstSession := sessionForRun(t, store, first.ID)
-	wantCWD := filepath.Join(workspace, "repo")
-	if firstSession.RuntimeRef == nil ||
-		firstSession.RuntimeRef.Cwd != wantCWD ||
-		firstSession.RuntimeRef.ProjectPath != wantCWD {
-		t.Fatalf("native loop cwd = %#v, want %q", firstSession.RuntimeRef, wantCWD)
-	}
-
-	second, err := service.RunNow(context.Background(), loop.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	waitForLoopRun(t, service, loop.ID, second.ID, loops.RunStatusOK)
-	secondSession := sessionForRun(t, store, second.ID)
-	if firstSession.ID == secondSession.ID {
-		t.Fatal("loop runs reused the same thread")
-	}
-	messages, err := store.LoadMessages(secondSession.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(messages) == 0 {
-		t.Fatal("second loop run has no messages")
-	}
-	content := provider.MessageContent(messages[0])
-	if !strings.Contains(content, "Previous run: id="+first.ID) || !strings.Contains(content, "thread_id="+firstSession.ID) {
-		t.Fatalf("second run prompt missing previous run metadata:\n%s", content)
-	}
-	if !strings.Contains(content, "Memory file: "+loop.MemoryPath) || !strings.Contains(content, "create or update the memory file") {
-		t.Fatalf("second run prompt missing memory instructions:\n%s", content)
-	}
-	if strings.Contains(content, "old transcript text") {
-		t.Fatalf("second run prompt included previous assistant transcript:\n%s", content)
-	}
-
-	project := filepath.Join(t.TempDir(), "project")
-	if err := os.MkdirAll(project, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	absoluteLoop, err := service.Create(loops.CreateLoop{
-		Name:      "Project check",
-		Prompt:    "check project",
-		Runtime:   loops.RuntimeNative,
-		Directory: project,
-		Schedule:  loops.Schedule{Kind: loops.ScheduleCron, Expr: "* * * * *", Timezone: "UTC"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	absoluteRun, err := service.RunNow(context.Background(), absoluteLoop.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	waitForLoopRun(t, service, absoluteLoop.ID, absoluteRun.ID, loops.RunStatusOK)
-	absoluteSession := sessionForRun(t, store, absoluteRun.ID)
-	if absoluteSession.RuntimeRef == nil ||
-		absoluteSession.RuntimeRef.Cwd != project ||
-		absoluteSession.RuntimeRef.ProjectPath != project {
-		t.Fatalf("native project loop runtime ref = %#v, want %q", absoluteSession.RuntimeRef, project)
-	}
-
-	defaultLoop, err := service.Create(loops.CreateLoop{
-		Name:     "Workspace check",
-		Prompt:   "check workspace",
-		Runtime:  loops.RuntimeNative,
-		Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "* * * * *", Timezone: "UTC"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defaultRun, err := service.RunNow(context.Background(), defaultLoop.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	waitForLoopRun(t, service, defaultLoop.ID, defaultRun.ID, loops.RunStatusOK)
-	defaultSession := sessionForRun(t, store, defaultRun.ID)
-	if defaultSession.RuntimeRef == nil ||
-		defaultSession.RuntimeRef.Cwd != workspace ||
-		defaultSession.RuntimeRef.ProjectPath != "" {
-		t.Fatalf("native default loop runtime ref = %#v, want workspace %q", defaultSession.RuntimeRef, workspace)
-	}
-}
-
-func TestNativeLoopRunRecordsNativeStartupFailure(t *testing.T) {
-	store, err := sqlitestore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	srv := &Server{
-		Agent: &agent.Agent{Provider: &recordingProvider{}, MaxTurns: 1},
-		Store: store,
-		NativeProviders: nativeProviderKeys{configured: map[string]bool{
-			"openrouter": true,
-		}},
-		Workspace: t.TempDir(),
-	}
-	service := newLoopServiceForTest(store, NewLoopRunner(srv))
-	srv.Loops = service
-	loop, err := service.Create(loops.CreateLoop{
-		Name:          "Bad provider",
-		Prompt:        "check status",
-		Runtime:       loops.RuntimeNative,
-		ModelProvider: "openai",
-		Schedule:      loops.Schedule{Kind: loops.ScheduleCron, Expr: "* * * * *", Timezone: "UTC"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	run, err := service.RunNow(context.Background(), loop.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	waitForLoopRun(t, service, loop.ID, run.ID, loops.RunStatusError)
-	runs, err := service.Runs(loop.ID, 20)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(runs[0].Error, "OPENAI_API_KEY") {
-		t.Fatalf("run error = %q", runs[0].Error)
-	}
-	sessions, err := store.ListSessions(storage.SessionFilter{SourceType: storage.SourceLoopRun})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(sessions) != 1 {
-		t.Fatalf("sessions = %#v, want one failed native run thread", sessions)
-	}
-	if sessions[0].Status != storage.StatusError || !strings.Contains(sessions[0].Error, "OPENAI_API_KEY") {
-		t.Fatalf("session = %#v, want native startup error", sessions[0])
-	}
-}
-
 func TestACPLoopRunCreatesHiddenThreadAndFinishesFromCallback(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
@@ -400,34 +231,6 @@ func (f *fakeLoopExecutor) StartLoopRun(_ context.Context, execution loops.Execu
 
 func newLoopServiceForTest(store *sqlitestore.Store, executor loops.Executor) *loops.Service {
 	return loops.NewService(store, executor, nil, loops.WithMemoryPaths(loops.NewMemoryPaths(filepath.Join(store.RootDir(), "automations"))))
-}
-
-type recordingProvider struct {
-	mu        sync.Mutex
-	requests  []provider.Request
-	assistant string
-}
-
-func (p *recordingProvider) Complete(context.Context, provider.Request) (provider.Response, error) {
-	return provider.Response{Message: provider.AssistantMessage(p.assistant, nil)}, nil
-}
-
-func (p *recordingProvider) StreamComplete(ctx context.Context, req provider.Request) (<-chan provider.Event, error) {
-	p.mu.Lock()
-	p.requests = append(p.requests, req)
-	p.mu.Unlock()
-	ch := make(chan provider.Event, 2)
-	go func() {
-		defer close(ch)
-		select {
-		case <-ctx.Done():
-			ch <- provider.Event{Type: provider.EventError, Err: ctx.Err()}
-		default:
-			ch <- provider.Event{Type: provider.EventDelta, Delta: p.assistant}
-			ch <- provider.Event{Type: provider.EventDone}
-		}
-	}()
-	return ch, nil
 }
 
 func waitForLoopRun(t *testing.T, service *loops.Service, loopID, runID, status string) {

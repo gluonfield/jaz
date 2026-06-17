@@ -101,8 +101,8 @@ type MCPCreateInput struct {
 	Prompt          string   `json:"prompt" jsonschema:"task the loop should run"`
 	Schedule        Schedule `json:"schedule"`
 	Status          string   `json:"status,omitempty" jsonschema:"active or paused; default active"`
-	Runtime         string   `json:"runtime,omitempty" jsonschema:"acp or native; default acp"`
-	ACPAgent        string   `json:"acp_agent,omitempty" jsonschema:"ACP agent name when runtime is acp; default jaz"`
+	Runtime         string   `json:"runtime,omitempty" jsonschema:"acp; default acp"`
+	ACPAgent        string   `json:"acp_agent,omitempty" jsonschema:"ACP agent name; default jaz"`
 	ModelProvider   string   `json:"model_provider,omitempty"`
 	Model           string   `json:"model,omitempty"`
 	ReasoningEffort string   `json:"reasoning_effort,omitempty" jsonschema:"none, minimal, low, medium, high, xhigh"`
@@ -131,7 +131,7 @@ type MCPUpdateInput struct {
 	Prompt          *string   `json:"prompt,omitempty"`
 	Schedule        *Schedule `json:"schedule,omitempty"`
 	Status          *string   `json:"status,omitempty" jsonschema:"active or paused"`
-	Runtime         *string   `json:"runtime,omitempty" jsonschema:"acp or native"`
+	Runtime         *string   `json:"runtime,omitempty" jsonschema:"acp"`
 	ACPAgent        *string   `json:"acp_agent,omitempty"`
 	ModelProvider   *string   `json:"model_provider,omitempty"`
 	Model           *string   `json:"model,omitempty"`

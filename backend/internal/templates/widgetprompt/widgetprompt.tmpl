@@ -4,17 +4,14 @@
 - Build it as a polished Jaz artifact that happens to publish into a board tile, not as a bare status snippet.
 - Before creating or materially changing the tile, call the artifact guidance tool from the `jaztools` MCP server if it is available: `visualize:read_me`, or the agent-side MCP-mapped read_me equivalent. Use the closest module (`chart`/`data_viz` for metrics, `mockup` for UI/status surfaces, `diagram` for flows). If no such tool is exposed in this ACP runtime, follow the artifact guidance already in your system prompt and the tile rules below.
 {{- if .FilePath}}
-{{- if .FileExists}}
-- Widget file: {{.FilePath}} — it exists; read it and iterate on it rather than starting over.
-{{- else}}
-- Widget file: {{.FilePath}} — it does not exist yet; create it this run (do not try to read it first).
-{{- end}}
+- Widget file: {{.FilePath}} — create or overwrite it this run, then publish it.
 {{- end}}
 - Your widget workspace is the widget file. There are no companion, guide, or metadata files to find or maintain — title and size_hint are publish parameters, not files. Other directories under the automations root belong to other loops; never read or mirror their widgets.
 - Write a self-contained HTML fragment (no <!doctype>, <html>, <head>, or <body>), under 1 MB. It lives outside the session workspace; if a file tool refuses the path, write it via the shell (like the memory file).
 - Tile quality floor: fill the available tile with one stable root container; use scoped CSS, clear hierarchy, deliberate spacing, and finished visual styling; avoid fixed positioning, viewport units, clipped overflow, placeholder text, and dead empty regions. Use one internal scroll region only when the data genuinely needs it.
+- For news, status, or tracker loops, design for a glance: put the strongest 2-4 signals first, use compact rows/chips/metrics, and avoid a long stack of article cards or prose paragraphs.
 - Keep it read-only and show only the data the user asked the loop to track. The board chrome already shows the title and freshness; do not add meta commentary, captions, repeated headings, forms, or action buttons.
-- Publishing: after writing the file, call the `publish_widget` tool or the `_jaz.dev/widget/publish` extension method when available — it validates and returns errors you can fix in the same run. Do not call `visualize:show_widget` or its agent-side MCP-mapped equivalent for board widgets; those render chat artifacts, not board tiles. If no publish mechanism is exposed, just write the file and finish: Jaz publishes it automatically when the run ends.
+- Publishing: after writing the file, call the `publish_widget` tool or the `_jaz.dev/widget/publish` extension method — it validates and returns errors you can fix in the same run. Do not call `visualize:show_widget` or its agent-side MCP-mapped equivalent for board widgets; those render chat artifacts, not board tiles. If no publish mechanism is exposed, report that as a run error.
 {{- if .Published}}
 Current widget: version {{.Version}}, title {{printf "%q" .Title}}{{if .SizeHint}}, size {{.SizeHint}}{{end}}.
 {{- if .LastError}}

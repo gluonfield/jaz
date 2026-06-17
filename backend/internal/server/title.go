@@ -84,7 +84,7 @@ func (s *Server) generateAndSaveSessionTitle(ctx context.Context, session storag
 
 func (s *Server) generateSessionTitle(ctx context.Context, session storage.Session, message string) (string, error) {
 	if s.Agent == nil || s.Agent.Provider == nil {
-		return "", fmt.Errorf("native provider is not configured")
+		return "", fmt.Errorf("model provider is not configured")
 	}
 	ctx, cancel := context.WithTimeout(ctx, titleGenerationTimeout)
 	defer cancel()

@@ -18,7 +18,7 @@ func Prompt(root, workspace, memoryRoot, skillsPrompt string) (string, error) {
 	return prompt(root, workspace, memoryRoot, skillsPrompt, time.Now())
 }
 
-// prompt joins the two layers: the native agent prompt (identity and operating
+// prompt joins the two layers: the Jaz agent prompt (identity and operating
 // rules) and the platform prompt (runtime context, AGENTS.md, SOUL.md, memory,
 // skills) that every agent in Jaz shares.
 func prompt(root, workspace, memoryRoot, skillsPrompt string, now time.Time) (string, error) {
