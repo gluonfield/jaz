@@ -48,10 +48,9 @@ type ToolCallSnapshot struct {
 }
 
 type ModeState struct {
-	CurrentModeID   string         `json:"current_mode_id,omitempty"`
-	ExecutionModeID string         `json:"execution_mode_id,omitempty"`
-	PlanModeID      string         `json:"plan_mode_id,omitempty"`
-	AvailableModes  []ModeSnapshot `json:"available_modes,omitempty"`
+	CurrentModeID  string         `json:"current_mode_id,omitempty"`
+	PlanModeID     string         `json:"plan_mode_id,omitempty"`
+	AvailableModes []ModeSnapshot `json:"available_modes,omitempty"`
 }
 
 type ModeSnapshot struct {
@@ -95,10 +94,9 @@ func clonePlanEntries(in []sessionevents.PlanEntry) []sessionevents.PlanEntry {
 
 func (s ModeState) Clone() ModeState {
 	return ModeState{
-		CurrentModeID:   s.CurrentModeID,
-		ExecutionModeID: s.ExecutionModeID,
-		PlanModeID:      s.PlanModeID,
-		AvailableModes:  append([]ModeSnapshot(nil), s.AvailableModes...),
+		CurrentModeID:  s.CurrentModeID,
+		PlanModeID:     s.PlanModeID,
+		AvailableModes: append([]ModeSnapshot(nil), s.AvailableModes...),
 	}
 }
 

@@ -13,8 +13,8 @@ func TestExecutionModeForAgentUsesAgentPolicy(t *testing.T) {
 		{ID: "acceptEdits", Name: "Accept Edits"},
 		{ID: "plan", Name: "Plan"},
 	}
-	if got := executionModeForAgent(AgentClaude, modes); got != "bypassPermissions" {
-		t.Fatalf("claude execution mode = %q, want bypassPermissions", got)
+	if got := executionModeForAgent(AgentClaude, modes); got != "auto" {
+		t.Fatalf("claude execution mode = %q, want auto", got)
 	}
 	if got := executionModeForAgent("other", modes); got != "" {
 		t.Fatalf("generic execution mode = %q, want empty", got)
@@ -30,8 +30,30 @@ func TestModeStateFromACPDoesNotApplyExecutionPolicy(t *testing.T) {
 			{ID: "plan", Name: "Plan"},
 		},
 	})
-	if state.ExecutionModeID != "" {
-		t.Fatalf("ExecutionModeID = %q, want empty", state.ExecutionModeID)
+	if state.CurrentModeID != "auto" || state.PlanModeID != "plan" {
+		t.Fatalf("state = %#v", state)
+	}
+}
+
+func TestBaselineModeIDAvoidsPlanMode(t *testing.T) {
+	modes := ModeState{
+		CurrentModeID: "plan",
+		PlanModeID:    "plan",
+		AvailableModes: []ModeSnapshot{
+			{ID: "always-approve", Name: "Always Approve"},
+			{ID: "plan", Name: "Plan"},
+		},
+	}
+	if got := baselineModeID(AgentGrok, modes); got != "always-approve" {
+		t.Fatalf("baseline mode = %q, want always-approve", got)
+	}
+	modes.CurrentModeID = "manual"
+	modes.AvailableModes = []ModeSnapshot{
+		{ID: "manual", Name: "Manual"},
+		{ID: "plan", Name: "Plan"},
+	}
+	if got := baselineModeID("other", modes); got != "manual" {
+		t.Fatalf("baseline mode = %q, want manual", got)
 	}
 }
 
@@ -45,8 +67,5 @@ func TestModeStateDetectsPlanWithoutFullAccess(t *testing.T) {
 	})
 	if state.PlanModeID != "plan" {
 		t.Fatalf("PlanModeID = %q", state.PlanModeID)
-	}
-	if state.ExecutionModeID != "" {
-		t.Fatalf("ExecutionModeID = %q, want empty", state.ExecutionModeID)
 	}
 }
