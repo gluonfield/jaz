@@ -99,7 +99,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		Arguments: map[string]any{
 			"name":    "Repo check",
 			"prompt":  "check repo health",
-			"runtime": "native",
+			"runtime":"acp",
 			"schedule": map[string]any{
 				"kind":     loops.ScheduleCron,
 				"expr":     "0 9 * * *",
@@ -111,7 +111,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		t.Fatal(err)
 	}
 	created := structured[loops.Loop](t, createCall)
-	if created.ID == "" || created.Name != "Repo check" || created.Runtime != loops.RuntimeNative {
+	if created.ID == "" || created.Name != "Repo check" || created.Runtime != loops.RuntimeACP {
 		t.Fatalf("created = %#v", created)
 	}
 

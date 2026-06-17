@@ -46,7 +46,7 @@ func TestSessionRepoChangesAndDiff(t *testing.T) {
 	}
 	session, err := store.CreateSession(storage.CreateSession{
 		Slug:       "diff-session",
-		RuntimeRef: &storage.RuntimeRef{Type: storage.RuntimeNative, Cwd: dir},
+		RuntimeRef: &storage.RuntimeRef{Type: storage.RuntimeACP, Cwd: dir},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -128,7 +128,7 @@ func TestArchivePrunesAndRestoresManagedWorktree(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
-	workspace, _, worktree, store, session := managedWorktreeSession(t, "managed-thread", storage.RuntimeNative)
+	workspace, _, worktree, store, session := managedWorktreeSession(t, "managed-thread", storage.RuntimeACP)
 	server := &Server{Store: store, Workspace: workspace}
 	handler := server.Handler()
 

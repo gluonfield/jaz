@@ -9,100 +9,31 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/loops"
-	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
 type LoopRunner struct {
-	native loopNativeHost
-	store  storage.Store
-	acp    ACPManager
-	log    *log.Logger
-	agent  bool
-}
-
-type loopNativeHost interface {
-	nativeSessionDefaults() (storage.CreateSession, error)
-	nativeRuntimeRef(directory string) (*storage.RuntimeRef, error)
-	runClaimedNativeSession(context.Context, storage.Session, string) string
-	logger() *log.Logger
+	store storage.Store
+	acp   ACPManager
+	log   *log.Logger
 }
 
 func NewLoopRunner(server *Server) *LoopRunner {
 	return &LoopRunner{
-		native: server,
-		store:  server.Store,
-		acp:    server.ACP,
-		log:    server.logger().WithPrefix("loops"),
-		agent:  server.Agent != nil,
+		store: server.Store,
+		acp:   server.ACP,
+		log:   server.logger().WithPrefix("loops"),
 	}
 }
 
-func (r *LoopRunner) StartLoopRun(ctx context.Context, execution loops.Execution) {
+func (r *LoopRunner) StartLoopRun(_ context.Context, execution loops.Execution) {
 	loop := execution.Loop
 	switch loop.Runtime {
 	case "", loops.RuntimeACP:
 		r.startACPLoopRun(execution)
-	case loops.RuntimeNative:
-		r.startNativeLoopRun(ctx, execution)
 	default:
 		r.finishLoopRun(execution, loops.RunStatusError, fmt.Sprintf("unknown loop runtime %q", loop.Runtime))
 	}
-}
-
-func (r *LoopRunner) startNativeLoopRun(ctx context.Context, execution loops.Execution) {
-	if r.native == nil || !r.agent {
-		r.finishLoopRun(execution, loops.RunStatusError, "native agent is not configured")
-		return
-	}
-	loop := execution.Loop
-	run := execution.Run
-	input, err := r.native.nativeSessionDefaults()
-	if err != nil {
-		r.finishLoopRun(execution, loops.RunStatusError, err.Error())
-		return
-	}
-	input.Slug = loopRunSlug(loop, run)
-	input.Title = loop.Name
-	input.SourceType = storage.SourceLoopRun
-	input.SourceID = run.ID
-	if loop.ReasoningEffort != "" {
-		input.ReasoningEffort = loop.ReasoningEffort
-	}
-	// Per-loop model overrides mirror session creation: switching providers
-	// invalidates the settings default model, falling back to the provider's.
-	if loop.ModelProvider != "" && loop.ModelProvider != input.ModelProvider {
-		meta, _ := provider.NativeProviderByID(loop.ModelProvider)
-		input.ModelProvider = loop.ModelProvider
-		input.Model = strings.TrimSpace(meta.DefaultModel)
-	}
-	if loop.Model != "" {
-		input.Model = loop.Model
-	}
-	ref, err := r.native.nativeRuntimeRef(loop.Directory)
-	if err != nil {
-		r.finishLoopRun(execution, loops.RunStatusError, err.Error())
-		return
-	}
-	input.RuntimeRef = ref
-	session, err := r.store.CreateSession(input)
-	if err != nil {
-		r.finishLoopRun(execution, loops.RunStatusError, err.Error())
-		return
-	}
-	if err := execution.Controller.MarkRunning(run.ID, session.ID); err != nil {
-		r.logger().Error("mark loop run running failed", "run", run.ID, "error", err)
-	}
-	status := r.native.runClaimedNativeSession(ctx, session, execution.Prompt)
-	if status == storage.StatusIdle {
-		r.finishLoopRun(execution, loops.RunStatusOK, "")
-		return
-	}
-	errText := "native loop run failed"
-	if loaded, err := r.store.LoadSession(session.ID); err == nil && loaded.Error != "" {
-		errText = loaded.Error
-	}
-	r.finishLoopRun(execution, loops.RunStatusError, errText)
 }
 
 func (r *LoopRunner) startACPLoopRun(execution loops.Execution) {
@@ -172,9 +103,6 @@ func loopRunSlug(loop loops.Loop, run loops.Run) string {
 func (r *LoopRunner) logger() *log.Logger {
 	if r.log != nil {
 		return r.log
-	}
-	if r.native != nil {
-		return r.native.logger()
 	}
 	return log.Default()
 }

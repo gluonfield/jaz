@@ -12,7 +12,6 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/onboardingstate"
-	"github.com/wins/jaz/backend/internal/provider"
 	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -23,10 +22,9 @@ const (
 )
 
 type onboardingResponse struct {
-	Completed       bool                       `json:"completed"`
-	ACP             []onboardingACPProbe       `json:"acp"`
-	NativeProviders []onboardingNativeProvider `json:"native_providers"`
-	Settings        agentSettingsResponse      `json:"settings"`
+	Completed bool                  `json:"completed"`
+	ACP       []onboardingACPProbe  `json:"acp"`
+	Settings  agentSettingsResponse `json:"settings"`
 }
 
 type onboardingACPProbe struct {
@@ -40,12 +38,6 @@ type onboardingACPProbe struct {
 	AuthCommand          string `json:"auth_command,omitempty"`
 	AuthCommandAvailable bool   `json:"auth_command_available"`
 	AuthCommandReason    string `json:"auth_command_reason,omitempty"`
-}
-
-type onboardingNativeProvider struct {
-	ID         string `json:"id"`
-	APIKeyEnv  string `json:"api_key_env,omitempty"`
-	Configured bool   `json:"configured"`
 }
 
 type onboardingRequest struct {
@@ -121,10 +113,9 @@ func (s *Server) onboardingStatus(store storage.SettingsStorage) (onboardingResp
 		return onboardingResponse{}, err
 	}
 	return onboardingResponse{
-		Completed:       state.Completed,
-		ACP:             s.probeACPAgents(defaults),
-		NativeProviders: s.nativeProviderStatuses(),
-		Settings:        s.agentSettingsResponse(defaults),
+		Completed: state.Completed,
+		ACP:       s.probeACPAgents(defaults),
+		Settings:  s.agentSettingsResponse(defaults),
 	}, nil
 }
 
@@ -184,10 +175,6 @@ func (s *Server) probeACPAgents(defaults agentsettings.AgentDefaults) []onboardi
 		}
 		appName, appInstalled := agentAppInstall(name)
 		readiness := acp.ProbeReadinessWithProviders(name, cfg, s.runtimeRoot(), nil, s.ModelProviders)
-		if cfg.UsesNativeProvider() && !s.modelProviderConfigured(cfg.ModelProvider) {
-			readiness.Available = false
-			readiness.Reason = fmt.Sprintf("native provider %q is not configured", cfg.ModelProvider)
-		}
 		installed := adapterInstalled || auth.LoginCommandAvailable
 		reason := ""
 		if !installed {
@@ -308,24 +295,8 @@ func (s *Server) acpProbeConfig(name string, defaults agentsettings.AgentDefault
 	cfg.Model = strings.TrimSpace(defaults.ACP[name].Model)
 	cfg.ReasoningEffort = strings.TrimSpace(defaults.ACP[name].ReasoningEffort)
 	cfg.Auth = defaults.ACP[name].Auth
-	if cfg.UsesNativeProvider() {
-		cfg.ModelProvider = defaults.Native.ModelProvider
-		cfg.Model = defaults.Native.Model
-		cfg.ReasoningEffort = defaults.Native.ReasoningEffort
-	} else if cfg.UsesModelProvider() {
+	if cfg.UsesModelProvider() {
 		cfg = cfg.NormalizeProviderModel(defaultModelProvider)
 	}
 	return cfg, command, nil
-}
-
-func (s *Server) nativeProviderStatuses() []onboardingNativeProvider {
-	out := []onboardingNativeProvider{}
-	for _, meta := range provider.NativeProviders() {
-		out = append(out, onboardingNativeProvider{
-			ID:         meta.ID,
-			APIKeyEnv:  meta.APIKeyEnv,
-			Configured: s.providerKeyConfigured(meta.ID),
-		})
-	}
-	return out
 }

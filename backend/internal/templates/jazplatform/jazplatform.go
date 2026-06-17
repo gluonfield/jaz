@@ -1,5 +1,5 @@
 // Package jazplatform renders the jaz extension shared by every agent on the
-// platform — the native coordinator and ACP agents (claude, codex, grok)
+// platform — Jaz and external ACP agents (claude, codex, grok)
 // alike. Every injected surface is named explicitly in jazplatform.tmpl:
 // runtime context, AGENTS.md, SOUL.md, memory horizons, daily pages, and
 // skills.

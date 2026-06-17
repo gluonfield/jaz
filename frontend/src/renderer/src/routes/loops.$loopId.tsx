@@ -91,12 +91,11 @@ function LoopDetail({
     if (confirm(`Delete loop "${loop.name}"? Its run history is kept but it stops running.`)) {
       remove.mutate()
     }
-  }
+	}
 
-  const paused = loop.status === 'paused'
-  const isAcp = loop.runtime === 'acp'
-  const summary = describeSchedule(draftFromLoop(loop.schedule?.expr ?? '', paused))
-  const nextRun = !paused && hasTime(loop.next_run_at) ? shortDate(loop.next_run_at) : ''
+	const paused = loop.status === 'paused'
+	const summary = describeSchedule(draftFromLoop(loop.schedule?.expr ?? '', paused))
+	const nextRun = !paused && hasTime(loop.next_run_at) ? shortDate(loop.next_run_at) : ''
 
   return (
     <div className="mx-auto max-w-[820px] px-10 pb-20 pt-6">
@@ -147,7 +146,7 @@ function LoopDetail({
       </div>
 
       <dl className="mt-5 flex flex-wrap gap-x-10 gap-y-3">
-        <Fact label="Agent" value={isAcp ? agentLabel(loop.acp_agent) : 'Native'} />
+        <Fact label="Agent" value={agentLabel(loop.acp_agent || 'jaz')} />
         {/* Only pinned overrides show; otherwise runs follow Settings > Agents. */}
         {loop.model?.trim() ? <Fact label="Model" value={loop.model} mono /> : null}
         {loop.reasoning_effort?.trim() ? (

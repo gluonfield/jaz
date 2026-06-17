@@ -16,7 +16,7 @@ type input struct {
 	Session string `json:"session" jsonschema_description:"Spawned session id or slug."`
 	Message string `json:"message" jsonschema_description:"Follow-up instruction to send."`
 	Wait    bool   `json:"wait,omitempty" jsonschema_description:"Wait for this turn to finish before returning. Use for short commands; defaults to false."`
-	Plan    bool   `json:"plan,omitempty" jsonschema_description:"Set true when asking the ACP agent to make, propose, review, or revise a plan. Leave false when sending an approved plan for execution. This is the only way to request ACP plan mode from a native Jaz session."`
+	Plan    bool   `json:"plan,omitempty" jsonschema_description:"Set true when asking the ACP agent to make, propose, review, or revise a plan. Leave false when sending an approved plan for execution. This is the only way to request ACP plan mode from a Jaz session."`
 }
 
 func (t *Tool) Definition() tools.Definition {
