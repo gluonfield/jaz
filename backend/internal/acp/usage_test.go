@@ -216,7 +216,6 @@ func TestACPUsagePersistsAtTurnFinish(t *testing.T) {
 			"total_tokens": 135
 		}
 	}`)))
-	manager.persistUsage(job)
 
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
@@ -261,7 +260,6 @@ func TestACPUsagePersistsMonotonicTurnSnapshot(t *testing.T) {
 			"completion_tokens": 25
 		}
 	}`)))
-	manager.persistUsage(job)
 
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
@@ -294,7 +292,6 @@ func TestACPUsagePersistsAtTurnFinishToSQLite(t *testing.T) {
 			"cache": {"read": 160}
 		}
 	}`)))
-	manager.persistUsage(job)
 
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
@@ -329,7 +326,6 @@ func TestACPUsagePersistsContextFromUsageUpdates(t *testing.T) {
 	manager.recordUsage(job, usageFromRaw(json.RawMessage(`{
 		"usage": {"inputTokens": 6090, "outputTokens": 15, "cachedWriteTokens": 17424, "totalTokens": 23529}
 	}`)))
-	manager.persistUsage(job)
 
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
@@ -347,7 +343,6 @@ func TestACPUsagePersistsContextFromUsageUpdates(t *testing.T) {
 	// context snapshot still lands while counters stay put.
 	job.startTurn(CompletionInline, false, false, false)
 	manager.recordUsage(job, usageFromRaw(json.RawMessage(`{"sessionUpdate":"usage_update","used":11102,"size":258400}`)))
-	manager.persistUsage(job)
 
 	loaded, err = store.LoadSession(session.ID)
 	if err != nil {
@@ -358,5 +353,43 @@ func TestACPUsagePersistsContextFromUsageUpdates(t *testing.T) {
 	}
 	if loaded.Usage.InputTokens != 6090 || loaded.Usage.TotalTokens != 23529 {
 		t.Fatalf("counters drifted: %#v", loaded.Usage)
+	}
+}
+
+// recordUsage must persist on arrival, with no separate end-of-turn flush, so
+// the trailing usage_update claude/codex/grok send after the prompt response
+// returns is never dropped. Each recordUsage below is followed immediately by a
+// reload — the data must already be durable.
+func TestACPUsagePersistsOnArrival(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{Slug: "acp-arrival-usage", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(store, Config{}, nil)
+	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
+	job.startTurn(CompletionInline, false, false, false)
+
+	manager.recordUsage(job, usageFromRaw(json.RawMessage(`{"sessionUpdate":"usage_update","used":42000,"size":200000}`)))
+	if loaded, _ := store.LoadSession(session.ID); loaded.Usage.ContextTokens != 42000 || loaded.Usage.ContextWindowTokens != 200000 {
+		t.Fatalf("context not persisted on arrival: %d / %d", loaded.Usage.ContextTokens, loaded.Usage.ContextWindowTokens)
+	}
+
+	manager.recordUsage(job, usageFromRaw(json.RawMessage(`{
+		"usage": {"inputTokens": 1000, "outputTokens": 50, "totalTokens": 1050}
+	}`)))
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Usage.InputTokens != 1000 || loaded.Usage.OutputTokens != 50 || loaded.Usage.TotalTokens != 1050 {
+		t.Fatalf("counters not persisted on arrival: %#v", loaded.Usage)
+	}
+	if loaded.Usage.ContextTokens != 42000 || loaded.Usage.ContextWindowTokens != 200000 {
+		t.Fatalf("context regressed after counter update: %d / %d", loaded.Usage.ContextTokens, loaded.Usage.ContextWindowTokens)
 	}
 }
