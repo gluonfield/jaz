@@ -137,7 +137,7 @@ func autoApprovedPermissionOption(job *Job, req acpschema.RequestPermissionReque
 	if len(codexUserInputQuestions(req)) > 0 {
 		return ""
 	}
-	if optionID := planExitPermissionOptionForAgent(job.ACPAgent, req); optionID != "" {
+	if optionID := planExitPermissionOption(job, req); optionID != "" {
 		return optionID
 	}
 	if CanonicalAgentName(job.ACPAgent) == AgentGrok {
