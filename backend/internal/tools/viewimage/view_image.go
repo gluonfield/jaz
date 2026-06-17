@@ -177,7 +177,7 @@ func imageDetail(detail string) (string, error) {
 	case "high":
 		return "high", nil
 	case "original":
-		return "", errors.New("detail original is not supported by the native chat-completions image path; use high")
+		return "", errors.New("detail original is not supported by the chat-completions image path; use high")
 	default:
 		return "", fmt.Errorf("unknown detail %q; valid values are auto, low, high", detail)
 	}

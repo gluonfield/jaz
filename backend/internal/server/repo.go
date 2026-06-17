@@ -152,9 +152,7 @@ func (s *Server) handleSessionRepoCommit(w http.ResponseWriter, r *http.Request,
 }
 
 // handleSessionRepoMerge commits the worktree's outstanding work on its
-// branch and merges that branch into the repo's main checkout. Native
-// sessions follow the work back — their cwd is read fresh each turn — while
-// ACP agents stay in the worktree, since their spawned process is bound to it.
+// branch and merges that branch into the repo's main checkout.
 func (s *Server) handleSessionRepoMerge(w http.ResponseWriter, r *http.Request, session storage.Session) {
 	cwd, ok := sessionCwd(w, session)
 	if !ok {
@@ -172,30 +170,9 @@ func (s *Server) handleSessionRepoMerge(w http.ResponseWriter, r *http.Request, 
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	moved := false
-	if session.Runtime == "" || session.Runtime == storage.RuntimeNative {
-		unlock := s.lockSession(session.ID)
-		if current, err := s.Store.LoadSession(session.ID); err == nil {
-			session = current
-		}
-		if session.RuntimeRef != nil {
-			ref := *session.RuntimeRef
-			ref.Cwd = root
-			session.RuntimeRef = &ref
-			if err := s.Store.SaveSession(session); err == nil {
-				moved = true
-			}
-		}
-		unlock()
-	}
-	inspectDir := cwd
-	if moved {
-		inspectDir = root
-	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"cwd":   root,
-		"moved": moved,
-		"info":  gitinfo.Inspect(ctx, inspectDir),
+		"cwd":  root,
+		"info": gitinfo.Inspect(ctx, cwd),
 	})
 }
 

@@ -12,7 +12,9 @@ import (
 	"github.com/wins/jaz/backend/internal/loops"
 )
 
-const WidgetFileName = "index.html"
+const (
+	WidgetFileName = "index.html"
+)
 
 type Service struct {
 	Repo Repository
@@ -113,66 +115,32 @@ func (s *Service) Publish(loop loops.Loop, runID string, input PublishInput) (Wi
 	}); err != nil {
 		return Widget{}, nil, err
 	}
-	if err := s.Repo.PruneWidgetVersions(widget.ID, widget.CurrentVersion, KeepVersions); err != nil {
+	if err := s.Repo.PruneOldWidgetVersions(widget.ID, widget.CurrentVersion, MaxOldVersions); err != nil {
 		s.Log.Warn("pruning widget versions failed", "widget", widget.ID, "error", err)
 	}
 	s.applySizeHintLocked(widget, boards, now)
 	return widget, LintHTML(html), nil
 }
 
-// StateForLoop reports the loop's widget and assigned boards; a loop with no
-// assigned boards has widgets disabled.
-func (s *Service) StateForLoop(loopID string) (*Widget, []string, error) {
+// StateForLoop reports the loop's widget and assigned boards.
+func (s *Service) StateForLoop(loopID string) (Widget, []string, bool, error) {
 	widget, found, err := s.Repo.LoadWidgetByLoop(loopID)
 	if err != nil || !found {
-		return nil, nil, err
+		return Widget{}, nil, false, err
 	}
 	boards, err := s.Repo.ListBoardsForWidget(widget.ID)
 	if err != nil {
-		return nil, nil, err
+		return Widget{}, nil, false, err
 	}
-	return &widget, boards, nil
-}
-
-// MaybeAutoPublish publishes at run end when the widget file changed since the
-// last snapshot. It covers ACP agents that cannot call a publish channel.
-func (s *Service) MaybeAutoPublish(loop loops.Loop, runID string) {
-	if _, boards, err := s.StateForLoop(loop.ID); err != nil || len(boards) == 0 {
-		return
-	}
-	path := WidgetFilePath(loop)
-	if path == "" {
-		return
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return
-	}
-	widget, found, err := s.Repo.LoadWidgetByLoop(loop.ID)
-	if err == nil && found && widget.CurrentVersion > 0 {
-		current, err := s.Repo.LoadWidgetVersion(widget.ID, widget.CurrentVersion)
-		if err == nil && current.HTML == string(data) {
-			return
-		}
-	}
-	_, warnings, err := s.Publish(loop, runID, PublishInput{HTML: string(data)})
-	if err != nil {
-		s.Log.Warn("auto-publish at run end failed", "loop", loop.ID, "error", err)
-		return
-	}
-	// The run is over, so warnings can only be logged; the next run's board
-	// telemetry catches what matters visually.
-	for _, warning := range warnings {
-		s.Log.Warn("widget lint", "loop", loop.ID, "warning", warning)
-	}
+	return widget, boards, true, nil
 }
 
 func (s *Service) LoopPromptExtra(loop loops.Loop, _ loops.Run) string {
-	widget, boards, err := s.StateForLoop(loop.ID)
-	if err != nil || widget == nil || len(boards) == 0 {
+	widget, boards, found, err := s.StateForLoop(loop.ID)
+	if err != nil || !found || len(boards) == 0 {
 		return ""
 	}
-	return PromptSection(loop, widget)
+	return PromptSection(loop, &widget)
 }
 
 func (s *Service) ReportError(widgetID, message string) error {

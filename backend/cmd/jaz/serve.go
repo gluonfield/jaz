@@ -174,7 +174,7 @@ func startServer(
 	workspace app.Workspace,
 	stt voice.STT,
 	tts voice.TTS,
-	nativeProviders provider.Provider,
+	modelProviderRuntime provider.Provider,
 	logger *log.Logger,
 	cfg app.Config,
 	catalog acp.AgentCatalog,
@@ -202,7 +202,7 @@ func startServer(
 		Threads:         threadService,
 		STT:             stt,
 		TTS:             tts,
-		NativeProviders: nativeProviderControl(nativeProviders),
+		ModelProviderRuntime: reloadableProvider(modelProviderRuntime),
 		ModelProviders:  cfg.ModelProviders,
 		AgentCatalog:    catalog,
 		AuthKey:         authKey,
@@ -226,18 +226,10 @@ func startServer(
 		loops.WithMemoryPaths(loopMemoryPaths),
 		// Board assignment is the widget enablement: no boards, no section.
 		loops.WithPromptExtra(widgetService.LoopPromptExtra),
-		loops.WithRunFinished(func(loop loops.Loop, run loops.Run) {
-			if run.Status == loops.RunStatusOK {
-				widgetService.MaybeAutoPublish(loop, run.ID)
-			}
-		}),
 	)
 	jazTools.SetLoops(loopService)
 	handler.Loops = loopService
 	handler.Widgets = widgetService
-	// Heal boards from the era when drags could drop tiles onto each other:
-	// buried tiles get moved to free cells so they're visible again.
-	widgetService.NormalizeBoardLayouts()
 	manager.PublishWidget = func(req acp.WidgetPublishRequest) (acp.WidgetPublishResult, error) {
 		widget, warnings, err := widgetPublisher.PublishForSession(req.SessionID, widgets.PublishInput{
 			Title:    req.Title,
@@ -306,7 +298,7 @@ func startServer(
 	return nil
 }
 
-func nativeProviderControl(p provider.Provider) provider.ReloadableProvider {
+func reloadableProvider(p provider.Provider) provider.ReloadableProvider {
 	control, _ := p.(provider.ReloadableProvider)
 	return control
 }

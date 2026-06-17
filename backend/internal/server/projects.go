@@ -126,11 +126,7 @@ func (s *Server) handleReorderProjects(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListFilesystemDirs(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimSpace(r.URL.Query().Get("path"))
-	if path == "" {
-		path = firstNonEmpty(s.Workspace, serverHomeDir(), ".")
-	}
-	abs, err := cleanExistingDir(path)
+	abs, err := s.resolveFilesystemDir(r.URL.Query().Get("path"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -157,35 +153,27 @@ func (s *Server) handleListFilesystemDirs(w http.ResponseWriter, r *http.Request
 	})
 }
 
+func (s *Server) resolveFilesystemDir(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return cleanExistingDir(firstNonEmpty(s.Workspace, serverHomeDir(), "."))
+	}
+	if filepath.IsAbs(path) || strings.TrimSpace(s.Workspace) == "" {
+		return cleanExistingDir(path)
+	}
+	abs, err := pathsafe.Resolve(s.Workspace, path)
+	if err != nil {
+		return "", err
+	}
+	return cleanExistingDir(abs)
+}
+
 func (s *Server) resolveWorkingDir(directory string) (string, error) {
 	directory = strings.TrimSpace(directory)
 	if filepath.IsAbs(directory) {
 		return cleanExistingDir(directory)
 	}
 	return s.resolveWorkspaceDir(directory)
-}
-
-func (s *Server) nativeRuntimeRef(directory string) (*storage.RuntimeRef, error) {
-	directory = strings.TrimSpace(directory)
-	if directory == "" {
-		if strings.TrimSpace(s.Workspace) == "" {
-			return nil, nil
-		}
-		cwd, err := s.resolveWorkspaceDir(".")
-		if err != nil {
-			return nil, err
-		}
-		return &storage.RuntimeRef{Type: storage.RuntimeNative, Cwd: cwd}, nil
-	}
-	cwd, err := s.resolveWorkingDir(directory)
-	if err != nil {
-		return nil, err
-	}
-	return &storage.RuntimeRef{
-		Type:        storage.RuntimeNative,
-		Cwd:         cwd,
-		ProjectPath: projectPathForRequest(directory, cwd),
-	}, nil
 }
 
 func (s *Server) resolveWorkspaceFileRoot(path string) (string, error) {

@@ -462,7 +462,7 @@ func TestProcessEnvMapsExplicitACPAPIKeysOnlyWhenNeeded(t *testing.T) {
 	}
 }
 
-func TestProcessEnvPassesNativeProviderKeysToOpenCode(t *testing.T) {
+func TestProcessEnvPassesModelProviderKeysToOpenCode(t *testing.T) {
 	root := t.TempDir()
 	if err := runtimeenv.Save(runtimeenv.Path(root), map[string]string{
 		"OPENROUTER_API_KEY": "openrouter-key",

@@ -1,10 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircle,
-  Check,
   CheckCircle2,
   ChevronDown,
-  ExternalLink,
   KeyRound,
   LoaderCircle,
   Lock,
@@ -18,7 +16,6 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { RAINBOW_BEAM } from '@/components/ui/rainbow'
 import { Segmented } from '@/components/ui/Segmented'
-import { Select } from '@/components/ui/Select'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import { authProviderLabel, onboardingAgentLabel } from '@/lib/agentLabel'
@@ -39,13 +36,6 @@ const stagger = {
 const rise = {
   hidden: { opacity: 0, y: 12, filter: 'blur(5px)' },
   show: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.42, ease: EASE } },
-}
-
-// Where to grab a key for each native provider — the answer to "where does the
-// key even come from?". Keyed by the backend provider id.
-const PROVIDER_KEY_URLS: Record<string, string> = {
-  openrouter: 'https://openrouter.ai/keys',
-  openai: 'https://platform.openai.com/api-keys',
 }
 
 export function OnboardingGate({ children }: { children: ReactNode }) {
@@ -74,7 +64,6 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
   const connection = useConnection()
   const remote = !isLoopbackUrl(connection.url)
   const [draft, setDraft] = useState(() => draftFromStatus(status))
-  const [keysByProvider, setKeysByProvider] = useState<Record<string, string>>({})
   const [acpKeysByAgent, setACPKeysByAgent] = useState<Record<string, string>>({})
 
   useEffect(() => {
@@ -88,16 +77,6 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
     queryClient.invalidateQueries({ queryKey: keys.acpAgents })
   })
 
-  const providerStatus = useMemo(
-    () => new Map(status.native_providers.map((provider) => [provider.id, provider])),
-    [status.native_providers],
-  )
-  const nativeProviders = draft.providers.filter((provider) => provider.implemented)
-  const selectedProvider = draft.native.model_provider || nativeProviders[0]?.id || ''
-  const selectedProviderStatus = providerStatus.get(selectedProvider)
-  const selectedProviderKey = keysByProvider[selectedProvider]?.trim() ?? ''
-  const nativeReady = Boolean(selectedProviderStatus?.configured || selectedProviderKey)
-
   const readyAgents = useMemo(
     () =>
       new Set(
@@ -107,7 +86,7 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
       ),
     [status.acp, acpKeysByAgent],
   )
-  const canFinish = readyAgents.size > 0 || nativeReady
+  const canFinish = readyAgents.size > 0
 
   const login = useMutation({
     mutationFn: ({ agent, auth }: { agent: string; auth?: ACPAgentAuth }) => startACPAuthLogin(agent, auth),
@@ -131,7 +110,6 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
       }
       return completeOnboarding({
         settings: next,
-        provider_keys: selectedProviderKey ? { [selectedProvider]: selectedProviderKey } : undefined,
         acp_keys: compactKeys(acpKeysByAgent),
         completed: true,
       })
@@ -142,16 +120,6 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
       queryClient.invalidateQueries({ queryKey: keys.acpAgents })
     },
   })
-
-  const setProvider = (model_provider: string) => {
-    const next = nativeProviders.find((provider) => provider.id === model_provider)
-    const current = nativeProviders.find((provider) => provider.id === draft.native.model_provider)
-    const model =
-      draft.native.model.trim() === '' || draft.native.model === current?.default_model
-        ? next?.default_model || draft.native.model
-        : draft.native.model
-    setDraft({ ...draft, native: { ...draft.native, model_provider, model } })
-  }
 
   return (
     <OnboardingShell>
@@ -186,19 +154,6 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
           </div>
         </motion.div>
 
-        <motion.div variants={rise} className="mt-5">
-          <SectionLabel>Native agent</SectionLabel>
-          <NativeAgentCard
-            providers={nativeProviders}
-            selectedProvider={selectedProvider}
-            configured={Boolean(selectedProviderStatus?.configured)}
-            apiKeyValue={keysByProvider[selectedProvider] ?? ''}
-            disabled={save.isPending}
-            onProviderChange={setProvider}
-            onAPIKeyChange={(value) => setKeysByProvider({ ...keysByProvider, [selectedProvider]: value })}
-          />
-        </motion.div>
-
         <motion.div variants={rise} className="mt-4 flex items-center gap-2.5 px-1">
           <Lock size={13} className="shrink-0 text-ink-3" />
           <p className="text-pretty text-[12px] leading-relaxed text-ink-3">
@@ -214,7 +169,7 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
         >
           <p className="min-h-5 text-pretty text-[12px] text-ink-3">
             {!canFinish
-              ? 'Connect one coding agent or a native key to continue.'
+              ? 'Connect one coding agent to continue.'
               : (save.error?.message ?? '')}
           </p>
           <div className="flex items-center gap-1">
@@ -399,117 +354,6 @@ function AgentCard({
           ) : null}
         </AnimatePresence>
       </div>
-    </div>
-  )
-}
-
-function NativeAgentCard({
-  providers,
-  selectedProvider,
-  configured,
-  apiKeyValue,
-  disabled,
-  onProviderChange,
-  onAPIKeyChange,
-}: {
-  providers: AgentSettings['providers']
-  selectedProvider: string
-  configured: boolean
-  apiKeyValue: string
-  disabled: boolean
-  onProviderChange: (value: string) => void
-  onAPIKeyChange: (value: string) => void
-}) {
-  const provider = providers.find((item) => item.id === selectedProvider)
-  const label = provider?.label || 'a model provider'
-  const keyUrl = PROVIDER_KEY_URLS[selectedProvider]
-  const hasDraft = apiKeyValue.trim().length > 0
-  const pillState: AgentState = configured || hasDraft ? 'ready' : 'action'
-  const pillLabel = configured ? 'Connected' : hasDraft ? 'Key added' : 'Needs key'
-  // Like the coding agents, native collapses by default and opens on tap. It
-  // stays expandable in every state (no auto-collapse) because its key is typed
-  // in the body — collapsing on the first keystroke would yank the field away.
-  const [expanded, setExpanded] = useState(false)
-
-  return (
-    <div className="overflow-hidden rounded-[12px] bg-surface">
-      <button
-        type="button"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((open) => !open)}
-        className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors duration-150 hover:bg-surface-2/50"
-      >
-        <span className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="truncate text-[13.5px] font-medium text-ink">jaz native</span>
-          <StatePill state={pillState} label={pillLabel} />
-        </span>
-        {configured ? <CheckCircle2 size={17} className="shrink-0 text-primary" /> : null}
-        <ChevronDown
-          size={15}
-          className={`shrink-0 text-ink-3 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
-        />
-      </button>
-
-      <AnimatePresence initial={false}>
-        {expanded ? (
-          <motion.div
-            key="body"
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2, ease: EASE }}
-            className="overflow-hidden"
-          >
-            <div className="flex flex-col gap-2.5 px-3 pb-3 pt-0.5">
-              <p className="text-pretty text-[12px] text-ink-3">
-                jaz’s own agent connects directly to {label} with an API key you provide.
-              </p>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[13px] text-ink-2">Provider</span>
-                <Select
-                  value={selectedProvider}
-                  options={providers.map((item) => ({ value: item.id, label: item.label }))}
-                  onChange={onProviderChange}
-                  disabled={disabled}
-                  aria-label="Native provider"
-                  className="h-8 min-w-[160px]"
-                />
-              </div>
-
-              {configured ? (
-                <div className="flex items-center gap-1.5 px-0.5 text-[12px] text-ink-2">
-                  <Check size={14} className="shrink-0 text-primary" />
-                  Your {label} key is already set up.
-                </div>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  <Input
-                    type="password"
-                    value={apiKeyValue}
-                    onChange={(event) => onAPIKeyChange(event.target.value)}
-                    disabled={disabled || !selectedProvider}
-                    placeholder={`Paste your ${label} API key`}
-                    autoComplete="off"
-                    spellCheck={false}
-                    className="font-mono text-[12px]"
-                    aria-label={`${label} API key`}
-                  />
-                  {keyUrl ? (
-                    <button
-                      type="button"
-                      onClick={() => window.open(keyUrl, '_blank', 'noopener,noreferrer')}
-                      className="inline-flex w-fit items-center gap-1 text-[12px] text-primary transition-colors duration-150 hover:text-primary-strong"
-                    >
-                      Where do I find my {label} key?
-                      <ExternalLink size={12} />
-                    </button>
-                  ) : null}
-                </div>
-              )}
-            </div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
     </div>
   )
 }

@@ -16,9 +16,8 @@ const (
 	AgentGrok     = "grok"
 	AgentOpenCode = "opencode"
 
-	AgentProviderModeNone           = ""
-	AgentProviderModeNativeDefaults = "native_defaults"
-	AgentProviderModeAgentDefaults  = "agent_defaults"
+	AgentProviderModeNone          = ""
+	AgentProviderModeAgentDefaults = "agent_defaults"
 
 	AuthModeAuto        = "auto"
 	AuthModeExistingCLI = "existing_cli"
@@ -101,16 +100,12 @@ func (c AgentConfig) SupportsAuth() bool {
 	return !c.Local
 }
 
-func (c AgentConfig) UsesNativeProvider() bool {
-	return strings.TrimSpace(c.ProviderMode) == AgentProviderModeNativeDefaults
-}
-
 func (c AgentConfig) UsesModelProvider() bool {
 	return strings.TrimSpace(c.ProviderMode) == AgentProviderModeAgentDefaults
 }
 
 func (c AgentConfig) UsesProvider() bool {
-	return c.UsesNativeProvider() || c.UsesModelProvider()
+	return c.UsesModelProvider()
 }
 
 func (c AgentConfig) ProviderQualifiedModel() string {
