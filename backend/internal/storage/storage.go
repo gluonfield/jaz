@@ -51,9 +51,9 @@ type RuntimeRef struct {
 	ArtifactSurface string `json:"artifact_surface,omitempty"`
 }
 
-// Usage follows the ACP convention: input/cached/output are disjoint
-// components (InputTokens is fresh, uncached input; cache reads and writes
-// are counted separately, never folded into input).
+// Usage follows provider-facing token vocabulary: InputTokens includes cache
+// reads/writes when the runtime reports them that way. Cache fields remain as
+// details, not extra components to add on top of input.
 type Usage struct {
 	InputTokens           int64 `json:"input_tokens,omitempty"`
 	CachedInputTokens     int64 `json:"cached_input_tokens,omitempty"` // cache reads
@@ -86,10 +86,10 @@ const (
 	UsageEventSourceSessionImport = "session_import"
 )
 
-// ComponentTotal is the full processed-token count for a turn: every
-// disjoint component the model touched.
+// ComponentTotal is the full processed-token count for a turn. Cache detail
+// fields are already included in InputTokens.
 func (u Usage) ComponentTotal() int64 {
-	return u.InputTokens + u.CachedInputTokens + u.CachedWriteTokens + u.OutputTokens
+	return u.InputTokens + u.OutputTokens
 }
 
 func (u Usage) IsZero() bool {

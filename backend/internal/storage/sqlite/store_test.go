@@ -423,15 +423,15 @@ func TestAddUsageStoresCachedTokensAndMirrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Missing totals derive from the disjoint components (100+64+6+25 = 195).
+	// Missing totals derive from input + output; cache fields are detail.
 	if loaded.Usage.InputTokens != 110 || loaded.Usage.CachedInputTokens != 72 || loaded.Usage.CachedWriteTokens != 6 ||
-		loaded.Usage.OutputTokens != 30 || loaded.Usage.ReasoningOutputTokens != 7 || loaded.Usage.TotalTokens != 215 {
+		loaded.Usage.OutputTokens != 30 || loaded.Usage.ReasoningOutputTokens != 7 || loaded.Usage.TotalTokens != 145 {
 		t.Fatalf("usage = %#v", loaded.Usage)
 	}
-	// Context reflects only the latest turn (10+8+5), never accumulates; the
+	// Context reflects only the latest turn's input + output, never accumulates; the
 	// window keeps its last reported value when later turns omit it.
-	if loaded.Usage.ContextTokens != 23 || loaded.Usage.ContextWindowTokens != 400000 {
-		t.Fatalf("context = %d / %d, want 23 / 400000", loaded.Usage.ContextTokens, loaded.Usage.ContextWindowTokens)
+	if loaded.Usage.ContextTokens != 15 || loaded.Usage.ContextWindowTokens != 400000 {
+		t.Fatalf("context = %d / %d, want 15 / 400000", loaded.Usage.ContextTokens, loaded.Usage.ContextWindowTokens)
 	}
 
 	mirror, err := jsonstore.New(store.RootDir())
