@@ -155,7 +155,7 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 
 	root := firstNonEmpty(m.cfg.Root, filepath.Join(os.TempDir(), "jaz"))
 	if name == AgentCodex {
-		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.cfg.Providers)
+		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.providers())
 		codexHome := auth.Config.Path
 		if codexHome != "" {
 			env["CODEX_HOME"] = codexHome
@@ -194,7 +194,7 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 			"SSH_AUTH_SOCK",
 			"USER",
 		})
-		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.cfg.Providers)
+		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.providers())
 		if configuredConfigDir != "" {
 			env["CLAUDE_CONFIG_DIR"] = configuredConfigDir
 		} else {
@@ -234,7 +234,7 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 			"SSH_AUTH_SOCK",
 			"USER",
 		})
-		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.cfg.Providers)
+		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.providers())
 		normalizeEnv(env, "XAI_API_KEY", "XAI_APIKEY")
 		delete(env, "XAI_API_KEY")
 		if target, value, ok := auth.APIKeyBinding(); ok {
@@ -251,7 +251,7 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 			"NO_PROXY",
 		})
 		m.loadOpenCodeProviderEnv(env, root)
-		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.cfg.Providers)
+		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.providers())
 		if strings.TrimSpace(env["OPENCODE_CONFIG_DIR"]) == "" {
 			env["OPENCODE_CONFIG_DIR"] = auth.Config.Path
 		}

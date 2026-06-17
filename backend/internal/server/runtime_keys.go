@@ -11,14 +11,39 @@ import (
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 )
 
+// modelProviders returns a snapshot of the current effective provider set
+// (catalog + application.yaml + DB customs).
+func (s *Server) modelProviders() map[string]provider.ModelProviderConfig {
+	if s.Providers == nil {
+		return map[string]provider.ModelProviderConfig{}
+	}
+	return s.Providers.Providers()
+}
+
+// reloadProviders rebuilds the live provider registry (so ACP spawns and settings
+// reads see DB changes) and the model-provider runtime clients (so key changes
+// apply). Call after any provider create/update/delete or key change.
+func (s *Server) reloadProviders() error {
+	if s.Providers != nil {
+		if err := s.Providers.Reload(); err != nil {
+			return err
+		}
+	}
+	if s.ModelProviderRuntime != nil {
+		return s.ModelProviderRuntime.Reload()
+	}
+	return nil
+}
+
 func (s *Server) providerKeyUpdates(keys map[string]string) (map[string]string, error) {
 	if len(keys) == 0 {
 		return map[string]string{}, nil
 	}
+	providers := s.modelProviders()
 	updates := map[string]string{}
 	for id, key := range keys {
 		id = strings.TrimSpace(id)
-		cfg := s.ModelProviders[id]
+		cfg := providers[id]
 		meta, ok := provider.ModelProviderByID(id)
 		if !ok {
 			if !provider.ModelProviderConfigPresent(cfg) {
@@ -95,10 +120,9 @@ func (s *Server) saveRuntimeKeyUpdates(updates map[string]string) error {
 	if err := runtimeenv.Save(s.runtimeKeyEnvPath(), updates); err != nil {
 		return err
 	}
-	if s.ModelProviderRuntime != nil {
-		return s.ModelProviderRuntime.Reload()
-	}
-	return nil
+	// Reload both the model-provider runtime and the registry so a key set here
+	// reaches model-provider turns and the next opencode spawn without a restart.
+	return s.reloadProviders()
 }
 
 func (s *Server) providerKeySetupAllowed(r *http.Request) bool {
