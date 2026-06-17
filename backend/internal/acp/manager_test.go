@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1233,6 +1234,38 @@ func TestCancelStopsRunningTurn(t *testing.T) {
 	}
 }
 
+func TestCancelTreatsNormalStopAfterCancelAsCancelled(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := newFakeAgentManager(t, store, t.TempDir(), map[string]string{
+		"JAZ_FAKE_ACP_CANCEL_END_TURN": "1",
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-cancel-end-turn"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "block until cancelled", Completion: acp.CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Cancel(ctx, spawned.SessionID); err != nil {
+		t.Fatal(err)
+	}
+	job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.State != acp.StateCancelled || job.StopReason != "cancelled" {
+		t.Fatalf("state/stop_reason = %s/%q, want cancelled/cancelled", job.State, job.StopReason)
+	}
+}
+
 func TestInteractiveTextCancelsRunningTurnBeforeManagedSend(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -1297,10 +1330,13 @@ func TestInteractiveTextWaitsForCancelledTurnFinishedBeforeManagedSend(t *testin
 	cancelFinishedEntered := make(chan struct{})
 	releaseCancelFinished := make(chan struct{})
 	released := false
+	var blockCancelFinished sync.Once
 	manager.TurnFinished = func(_ context.Context, job acp.Job) {
 		if job.ID == spawned.SessionID && job.State == acp.StateCancelled {
-			close(cancelFinishedEntered)
-			<-releaseCancelFinished
+			blockCancelFinished.Do(func() {
+				close(cancelFinishedEntered)
+				<-releaseCancelFinished
+			})
 		}
 	}
 	defer func() {

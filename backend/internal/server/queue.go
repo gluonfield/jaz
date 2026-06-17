@@ -282,13 +282,7 @@ func (s *Server) steerQueuedPrompt(sessionID string, req queueRequest) (storage.
 }
 
 func (s *Server) dispatchSteeredQueuedPrompt(claimed steeredQueuedPrompt) {
-	ctx := context.Background()
-	cancel := func() {}
-	if claimed.interrupts || claimed.session.Runtime == storage.RuntimeACP {
-		ctx, cancel = serverActionContext()
-	}
-	defer cancel()
-	if err := s.startSteeredQueuedPrompt(ctx, claimed); err != nil {
+	if err := s.startSteeredQueuedPrompt(claimed); err != nil {
 		s.logger().Error("queued prompt steer failed", "session", claimed.session.ID, "error", err)
 		s.restoreQueuedPrompt(claimed.session.ID, claimed.prompt, claimed.index, err.Error())
 	}
@@ -313,9 +307,6 @@ func (s *Server) claimSteeredQueuedPrompt(sessionID string, req queueRequest) (s
 	running := s.sessionRuntimeRunning(session)
 	if running && session.Runtime != storage.RuntimeACP {
 		return steeredQueuedPrompt{}, queueInputError{"queued prompts can only steer running ACP sessions"}
-	}
-	if running && len(queue[req.Index].AttachmentIDs) > 0 {
-		return steeredQueuedPrompt{}, queueInputError{"queued prompts with attachments cannot steer a running ACP session"}
 	}
 	if !running && !s.canStartQueuedPrompt(session) {
 		return steeredQueuedPrompt{}, queueInputError{"session runtime is not configured"}
@@ -342,17 +333,22 @@ func (s *Server) claimSteeredQueuedPrompt(sessionID string, req queueRequest) (s
 	}, nil
 }
 
-func (s *Server) startSteeredQueuedPrompt(ctx context.Context, claimed steeredQueuedPrompt) error {
+func (s *Server) startSteeredQueuedPrompt(claimed steeredQueuedPrompt) error {
 	if claimed.interrupts {
 		if s.ACP == nil {
 			return fmt.Errorf("acp manager is not configured")
 		}
-		return s.ACP.AnswerInteractive(ctx, acp.InteractiveAnswer{
-			Session:       claimed.session.ID,
-			Text:          claimed.prompt.Text,
-			PlanRequested: claimed.prompt.PlanRequested,
-		})
+		ctx, cancel := serverActionContext()
+		_, err := s.ACP.Cancel(ctx, claimed.session.ID)
+		cancel()
+		if err != nil {
+			return err
+		}
+		s.setSessionStatus(storage.Session{ID: claimed.session.ID}, storage.StatusRunning)
+		s.publishSessionChanged(claimed.session.ID)
 	}
+	ctx, cancel := serverActionContext()
+	defer cancel()
 	return s.startQueuedPrompt(ctx, claimed.session, claimed.prompt)
 }
 

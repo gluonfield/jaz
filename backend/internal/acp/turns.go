@@ -66,8 +66,9 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string, attac
 	}
 	stopReason := resp.StopReason
 	state := StateIdle
-	if stopReason == "cancelled" {
+	if jobCancelRequested(job) || stopReason == "cancelled" {
 		state = StateCancelled
+		stopReason = "cancelled"
 	}
 	job.setState(state, stopReason, "")
 	m.log.Info("acp turn finished", "session", job.ID, "state", state, "stop_reason", stopReason)
@@ -89,6 +90,13 @@ func (m *Manager) turnPromptContext(message string) (string, error) {
 		return "", nil
 	}
 	return "Current skills catalog for this turn. Use it to resolve any $skill references in the user's message.\n\n" + prompt, nil
+}
+
+func jobCancelRequested(job *Job) bool {
+	job.mu.RLock()
+	cancelled := job.cancelRequested
+	job.mu.RUnlock()
+	return cancelled
 }
 
 func promptContentBlocks(context, message string, attachments []storage.Attachment) ([]acpschema.ContentBlock, error) {
