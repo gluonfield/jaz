@@ -66,7 +66,7 @@ export function UpdatePanel() {
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -4, scale: 0.98 }}
           transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
-          className="pointer-events-auto overflow-hidden rounded-[14px] bg-bg p-3 text-sm text-ink shadow-[0_18px_44px_rgba(0,0,0,0.18)] ring-1 ring-border/80 backdrop-blur"
+          className="pointer-events-auto overflow-hidden rounded-card bg-surface p-3 text-sm text-ink shadow-raised backdrop-blur"
         >
           <div className="flex items-start gap-2.5">
             <div className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-primary-soft text-primary">
