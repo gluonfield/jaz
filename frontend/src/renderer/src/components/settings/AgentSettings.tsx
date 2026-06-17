@@ -1,8 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, ChevronDown, KeyRound, LoaderCircle, LogIn, Save, Terminal } from 'lucide-react'
+import {
+  CheckCircle2,
+  ChevronDown,
+  ExternalLink,
+  KeyRound,
+  LoaderCircle,
+  LogIn,
+  Save,
+  Terminal,
+} from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { AuthLoginStatus } from '@/components/acp/AuthLoginStatus'
+import { ProviderLogo } from '@/components/settings/ProviderLogo'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { ModelCombobox } from '@/components/ui/ModelCombobox'
@@ -28,8 +39,8 @@ import { useACPLoginPolling } from '@/lib/hooks/useACPLoginPolling'
 import type { ACPAgentAuthStatus, ACPAuthLogin, AgentSettings as AgentSettingsData } from '@/lib/api/types'
 import {
   acpAgentModelSuggestions,
+  type ModelSuggestion,
   modelSuggestionsForProvider,
-  OPENAI_MODELS,
   openRouterModelsQuery,
 } from '@/lib/models'
 import { keys } from '@/lib/query/keys'
@@ -40,6 +51,22 @@ const inputClass =
 
 const rowControlClass = 'w-full md:w-[320px]'
 type ACPAuthDraft = AgentSettingsData['acp'][string]['auth']
+
+const EASE = [0.22, 1, 0.36, 1] as const
+
+// Where to grab a key for each native provider — the answer to "where does the
+// key even come from?". Keyed by the backend provider id.
+const PROVIDER_KEY_URLS: Record<string, string> = {
+  openrouter: 'https://openrouter.ai/keys',
+  openai: 'https://platform.openai.com/api-keys',
+}
+
+type ProviderConnection = 'connected' | 'disconnected' | 'no-key'
+
+// Drops the scheme so an endpoint reads as a compact host+path chip.
+function prettyEndpoint(url: string): string {
+  return url.replace(/^https?:\/\//, '')
+}
 
 // Here '' means "no effort configured" rather than "inherit the default".
 const settingsReasoningOptions = (options = REASONING_EFFORT_OPTIONS) =>
@@ -151,10 +178,12 @@ export function AgentSettings() {
     ...openRouterModelsQuery,
     enabled: draft?.native.model_provider === 'openrouter',
   })
-  const nativeModelSuggestions =
-    draft?.native.model_provider === 'openrouter' ? (openRouterModels.data ?? []) : OPENAI_MODELS
   const providerKeyDirty = Object.values(providerKeys).some((value) => value.trim().length > 0)
-  const nativeProviders = (draft?.providers ?? []).filter((provider) => provider.implemented)
+  // Every known model provider — keys are shared, so this one list connects the
+  // native agent and every ACP agent set to provider defaults. Implemented ones
+  // (the native agent can run them) sort first; locals/customs follow.
+  const allProviders = draft?.providers ?? []
+  const nativeProviders = allProviders.filter((provider) => provider.implemented)
   const invalid = draft
     ? (draft.native.model_provider ?? '').trim() === '' ||
       draft.native.model.trim() === '' ||
@@ -165,8 +194,25 @@ export function AgentSettings() {
 
   const selectedProvider = draft?.native.model_provider ?? ''
   const selectedNativeProvider = nativeProviders.find((provider) => provider.id === selectedProvider)
-  const selectedProviderEnv = selectedNativeProvider?.api_key_env
-  const selectedProviderConfigured = Boolean(selectedNativeProvider?.configured)
+  const nativeModelSuggestions = modelSuggestionsForProvider(
+    selectedNativeProvider,
+    openRouterModels.data ?? [],
+  )
+
+  // Switching the native default carries its model: keep a hand-typed model, but
+  // swap a still-default model to the new provider's default so it stays valid.
+  const setNativeProvider = (model_provider: string) => {
+    if (!draft) return
+    const nextProvider = nativeProviders.find((provider) => provider.id === model_provider)
+    const currentProvider = nativeProviders.find(
+      (provider) => provider.id === draft.native.model_provider,
+    )
+    const model =
+      draft.native.model.trim() === '' || draft.native.model === currentProvider?.default_model
+        ? nextProvider?.default_model || draft.native.model
+        : draft.native.model
+    setDraft({ ...draft, native: { ...draft.native, model_provider, model } })
+  }
 
   return (
     <section className="py-5">
@@ -196,100 +242,35 @@ export function AgentSettings() {
         ) : (
           <div className="flex flex-col gap-4">
             <div>
-              <p className="pb-2 text-[12px] font-medium text-ink-2">Native</p>
-              <div className="overflow-hidden rounded-card bg-surface">
-                <SettingsRow
-                  title="Provider"
-                  description="API provider used for native threads."
-                >
-                  <Select
-                    value={draft.native.model_provider ?? ''}
-                    options={nativeProviders.map((provider) => ({
-                      value: provider.id,
-                      label: provider.label,
-                      description: provider.base_url,
-                    }))}
+              <p className="text-[12px] font-medium text-ink-2">Providers</p>
+              <p className="mb-2 mt-0.5 text-pretty text-[12px] text-ink-3">
+                Connect a model provider once — native threads and any ACP agent set to provider
+                defaults reuse the key.
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {allProviders.map((provider) => (
+                  <ProviderRow
+                    key={provider.id}
+                    provider={provider}
+                    keyDraft={providerKeys[provider.id] ?? ''}
+                    isNativeDefault={provider.implemented && provider.id === selectedProvider}
+                    nativeModel={draft.native.model}
+                    nativeReasoning={draft.native.reasoning_effort ?? ''}
+                    modelSuggestions={nativeModelSuggestions}
+                    modelsLoading={openRouterModels.isLoading}
                     disabled={save.isPending}
-                    onChange={(model_provider) => {
-                      const nextProvider = nativeProviders.find((provider) => provider.id === model_provider)
-                      const currentProvider = nativeProviders.find(
-                        (provider) => provider.id === draft.native.model_provider,
-                      )
-                      const model =
-                        draft.native.model.trim() === '' ||
-                        draft.native.model === currentProvider?.default_model
-                          ? nextProvider?.default_model || draft.native.model
-                          : draft.native.model
-                      setDraft({
-                        ...draft,
-                        native: {
-                          ...draft.native,
-                          model_provider,
-                          model,
-                        },
-                      })
-                    }}
-                    aria-label="Native provider"
-                    className={rowControlClass}
-                  />
-                </SettingsRow>
-                <SettingsRow
-                  title="Provider key"
-                  description={
-                    selectedProviderConfigured
-                      ? `${selectedProviderEnv} is configured — paste a new key to replace it.`
-                      : `Paste an API key; stored on the backend as ${selectedProviderEnv ?? 'the provider env var'}.`
-                  }
-                >
-                  <Input
-                    type="password"
-                    value={providerKeys[selectedProvider] ?? ''}
-                    disabled={save.isPending || !selectedProvider}
-                    onChange={(event) =>
-                      setProviderKeys({ ...providerKeys, [selectedProvider]: event.target.value })
+                    onKeyChange={(value) =>
+                      setProviderKeys({ ...providerKeys, [provider.id]: value })
                     }
-                    placeholder={
-                      selectedProviderConfigured
-                        ? `${selectedProviderEnv} configured`
-                        : (selectedProviderEnv ?? 'API key')
+                    onUseForNative={() => setNativeProvider(provider.id)}
+                    onNativeModelChange={(model) =>
+                      setDraft({ ...draft, native: { ...draft.native, model } })
                     }
-                    autoComplete="off"
-                    spellCheck={false}
-                    className={`${rowControlClass} h-8 rounded-full bg-bg px-3 py-0 font-mono text-[12px]`}
-                    aria-label="Native provider API key"
-                  />
-                </SettingsRow>
-                <SettingsRow title="Model" description="Default model for native threads.">
-                  <ModelCombobox
-                    value={draft.native.model}
-                    suggestions={nativeModelSuggestions}
-                    loading={openRouterModels.isLoading}
-                    disabled={save.isPending}
-                    onChange={(model) =>
-                      setDraft({
-                        ...draft,
-                        native: { ...draft.native, model },
-                      })
-                    }
-                    aria-label="Native model"
-                    className={rowControlClass}
-                  />
-                </SettingsRow>
-                <SettingsRow
-                  title="Reasoning"
-                  description="Default reasoning effort for native threads."
-                >
-                  <Select
-                    value={draft.native.reasoning_effort ?? ''}
-                    options={settingsReasoningOptions()}
-                    disabled={save.isPending}
-                    onChange={(reasoning_effort) =>
+                    onNativeReasoningChange={(reasoning_effort) =>
                       setDraft({ ...draft, native: { ...draft.native, reasoning_effort } })
                     }
-                    aria-label="Native reasoning effort"
-                    className={rowControlClass}
                   />
-                </SettingsRow>
+                ))}
               </div>
             </div>
 
@@ -320,6 +301,212 @@ export function AgentSettings() {
         )}
       </div>
     </section>
+  )
+}
+
+type ProviderOption = AgentSettingsData['providers'][number]
+
+// One row in the providers list: a collapsed header with the brand mark, a
+// connection pill and a check, expanding to the key field (and, for the native
+// default, its model + reasoning). Mirrors the onboarding provider card so the
+// connect-a-provider gesture reads the same in both places.
+function ProviderRow({
+  provider,
+  keyDraft,
+  isNativeDefault,
+  nativeModel,
+  nativeReasoning,
+  modelSuggestions,
+  modelsLoading,
+  disabled,
+  onKeyChange,
+  onUseForNative,
+  onNativeModelChange,
+  onNativeReasoningChange,
+}: {
+  provider: ProviderOption
+  keyDraft: string
+  isNativeDefault: boolean
+  nativeModel: string
+  nativeReasoning: string
+  modelSuggestions: ModelSuggestion[]
+  modelsLoading: boolean
+  disabled: boolean
+  onKeyChange: (value: string) => void
+  onUseForNative: () => void
+  onNativeModelChange: (value: string) => void
+  onNativeReasoningChange: (value: string) => void
+}) {
+  // A provider needs a key only if it has an env var to store one into — the
+  // backend omits requires_api_key when false, so a missing api_key_env (Ollama)
+  // is the reliable "no key" signal.
+  const needsKey = Boolean(provider.api_key_env) && provider.requires_api_key !== false
+  const connected = needsKey ? Boolean(provider.configured || keyDraft.trim()) : true
+  const state: ProviderConnection = needsKey ? (connected ? 'connected' : 'disconnected') : 'no-key'
+  const keyUrl = PROVIDER_KEY_URLS[provider.id]
+  // The native default opens by default so its model/reasoning are one glance
+  // away; the rest stay collapsed until tapped.
+  const [expanded, setExpanded] = useState(isNativeDefault)
+
+  return (
+    <div className="overflow-hidden rounded-[12px] bg-surface">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((open) => !open)}
+        className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors duration-150 hover:bg-surface-2/50"
+      >
+        <span className="grid size-8 shrink-0 place-items-center rounded-[8px] bg-bg text-ink">
+          <ProviderLogo provider={provider.id} />
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-[13.5px] font-medium text-ink">{provider.label}</span>
+            <ProviderPill state={state} />
+            {isNativeDefault ? (
+              <span className="inline-flex shrink-0 items-center rounded-full px-2 py-[3px] text-[11px] font-medium text-ink-2 ring-1 ring-border ring-inset">
+                Native default
+              </span>
+            ) : null}
+          </span>
+          {provider.base_url ? (
+            <span className="truncate font-mono text-[11px] text-ink-3">
+              {prettyEndpoint(provider.base_url)}
+            </span>
+          ) : null}
+        </span>
+        {state === 'connected' ? <CheckCircle2 size={17} className="shrink-0 text-primary" /> : null}
+        <ChevronDown
+          size={15}
+          className={`shrink-0 text-ink-3 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      <AnimatePresence initial={false}>
+        {expanded ? (
+          <motion.div
+            key="body"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: EASE }}
+            className="overflow-hidden"
+          >
+            <div className="flex flex-col gap-3 px-3 pb-3 pt-0.5">
+              {needsKey ? (
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[12px] font-medium text-ink-2">API key</span>
+                    {provider.api_key_env ? (
+                      <span className="font-mono text-[11px] text-ink-3">{provider.api_key_env}</span>
+                    ) : null}
+                  </div>
+                  <Input
+                    type="password"
+                    value={keyDraft}
+                    disabled={disabled}
+                    onChange={(event) => onKeyChange(event.target.value)}
+                    placeholder={
+                      provider.configured
+                        ? 'Configured — paste a new key to replace it'
+                        : 'Paste an API key'
+                    }
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="font-mono text-[12px]"
+                    aria-label={`${provider.label} API key`}
+                  />
+                  {keyUrl ? (
+                    <button
+                      type="button"
+                      onClick={() => window.open(keyUrl, '_blank', 'noopener,noreferrer')}
+                      className="inline-flex w-fit items-center gap-1 text-[12px] text-primary transition-colors duration-150 hover:text-primary-strong"
+                    >
+                      Where do I find my {provider.label} key?
+                      <ExternalLink size={12} />
+                    </button>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="text-pretty text-[12px] text-ink-3">
+                  Runs locally on your machine — no API key required.
+                </p>
+              )}
+
+              {provider.implemented ? (
+                isNativeDefault ? (
+                  <div className="flex flex-col gap-3 rounded-[10px] bg-bg p-3">
+                    <p className="text-[11px] font-medium text-ink-3">Native agent default</p>
+                    <NativeDefaultField label="Model">
+                      <ModelCombobox
+                        value={nativeModel}
+                        suggestions={modelSuggestions}
+                        loading={modelsLoading}
+                        disabled={disabled}
+                        onChange={onNativeModelChange}
+                        aria-label="Native model"
+                        className="w-full sm:w-[230px]"
+                      />
+                    </NativeDefaultField>
+                    <NativeDefaultField label="Reasoning">
+                      <Select
+                        value={nativeReasoning}
+                        options={settingsReasoningOptions()}
+                        disabled={disabled}
+                        onChange={onNativeReasoningChange}
+                        aria-label="Native reasoning effort"
+                        className="w-full sm:w-[230px]"
+                      />
+                    </NativeDefaultField>
+                  </div>
+                ) : (
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    disabled={disabled}
+                    onClick={onUseForNative}
+                    className="w-fit ring-1 ring-border ring-inset"
+                  >
+                    Use for native agent
+                  </Button>
+                )
+              ) : (
+                <p className="text-pretty text-[12px] text-ink-3">
+                  Available to ACP agents set to use this provider.
+                </p>
+              )}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+function NativeDefaultField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
+      <span className="text-[13px] text-ink-2">{label}</span>
+      {children}
+    </div>
+  )
+}
+
+function ProviderPill({ state }: { state: ProviderConnection }) {
+  const tone =
+    state === 'connected'
+      ? 'bg-primary-soft text-primary-strong'
+      : state === 'no-key'
+        ? 'bg-surface-2 text-ink-3'
+        : 'bg-accent-soft text-accent-strong'
+  const text =
+    state === 'connected' ? 'Connected' : state === 'no-key' ? 'No key needed' : 'Not connected'
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center rounded-full px-2 py-[3px] text-[11px] font-medium ${tone}`}
+    >
+      {text}
+    </span>
   )
 }
 
