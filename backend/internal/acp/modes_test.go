@@ -13,11 +13,22 @@ func TestPreferredBaselineModeIDUsesAgentPolicy(t *testing.T) {
 		{ID: "acceptEdits", Name: "Accept Edits"},
 		{ID: "plan", Name: "Plan"},
 	}
-	if got := preferredBaselineModeID(AgentClaude, modes); got != "auto" {
-		t.Fatalf("claude baseline mode = %q, want auto", got)
+	if got := preferredBaselineModeID(AgentClaude, modes); got != "bypassPermissions" {
+		t.Fatalf("claude baseline mode = %q, want bypassPermissions", got)
 	}
 	if got := preferredBaselineModeID("other", modes); got != "" {
 		t.Fatalf("generic baseline mode = %q, want empty", got)
+	}
+}
+
+func TestPreferredBaselineModeIDFallsBackToClaudeAuto(t *testing.T) {
+	modes := []acpschema.SessionMode{
+		{ID: "auto", Name: "Auto"},
+		{ID: "acceptEdits", Name: "Accept Edits"},
+		{ID: "plan", Name: "Plan"},
+	}
+	if got := preferredBaselineModeID(AgentClaude, modes); got != "auto" {
+		t.Fatalf("claude baseline mode = %q, want auto fallback", got)
 	}
 }
 

@@ -15,72 +15,7 @@ import (
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
-func TestRequestPermissionApprovesWorkspaceLocalTool(t *testing.T) {
-	root := t.TempDir()
-	manager := NewManager(nil, Config{}, nil)
-	manager.jobsByACP["acp-session"] = &Job{ID: "session", ACPSession: "acp-session", Cwd: root}
-
-	raw, rpcErr := manager.handleJSONRPC(context.Background(), jsonrpc.Request{
-		Method: acpschema.ClientMethodSessionRequestPermission,
-		Params: mustJSON(t, acpschema.RequestPermissionRequest{
-			SessionID: "acp-session",
-			Options:   []acpschema.PermissionOption{{OptionID: "allow_once", Name: "Allow once"}},
-			ToolCall: acpschema.ToolCallUpdate{
-				Locations: []acpschema.ToolCallLocation{{Path: filepath.Join(root, "index.html")}},
-			},
-		}),
-	})
-	if rpcErr != nil {
-		t.Fatal(rpcErr)
-	}
-
-	var got map[string]map[string]string
-	if err := json.Unmarshal(raw, &got); err != nil {
-		t.Fatal(err)
-	}
-	if got["outcome"]["outcome"] != "selected" || got["outcome"]["optionId"] != "allow_once" {
-		t.Fatalf("unexpected permission response: %s", raw)
-	}
-}
-
-func TestRequestPermissionCancelsWorkspaceEscape(t *testing.T) {
-	root := t.TempDir()
-	manager := NewManager(nil, Config{}, nil)
-	manager.jobsByACP["acp-session"] = &Job{ID: "session", ACPSession: "acp-session", Cwd: root}
-
-	raw, rpcErr := manager.handleJSONRPC(context.Background(), jsonrpc.Request{
-		Method: acpschema.ClientMethodSessionRequestPermission,
-		Params: mustJSON(t, acpschema.RequestPermissionRequest{
-			SessionID: "acp-session",
-			Options:   []acpschema.PermissionOption{{OptionID: "allow_once", Name: "Allow once"}},
-			ToolCall: acpschema.ToolCallUpdate{
-				Locations: []acpschema.ToolCallLocation{{Path: filepath.Join(root, "..", "outside")}},
-			},
-		}),
-	})
-	if rpcErr != nil {
-		t.Fatal(rpcErr)
-	}
-
-	var got map[string]map[string]string
-	if err := json.Unmarshal(raw, &got); err != nil {
-		t.Fatal(err)
-	}
-	if got["outcome"]["outcome"] != "cancelled" {
-		t.Fatalf("unexpected permission response: %s", raw)
-	}
-}
-
-func TestAppendACPTextPreservesProviderChunks(t *testing.T) {
-	if got := appendACPText("Done.", "Next"); got != "Done.Next" {
-		t.Fatalf("appendACPText inserted formatting: %q", got)
-	}
-	if got := appendACPText("Line one", "\n\nLine two"); got != "Line one\n\nLine two" {
-		t.Fatalf("appendACPText changed provider whitespace: %q", got)
-	}
-}
-
-func TestInteractiveRequestPermissionWaitsForAnswer(t *testing.T) {
+func TestRequestPermissionPublishesAndWaitsForAnswer(t *testing.T) {
 	root := t.TempDir()
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -98,7 +33,7 @@ func TestInteractiveRequestPermissionWaitsForAnswer(t *testing.T) {
 	events := sessionevents.New()
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	manager.jobsByID[session.ID] = &Job{ID: session.ID, ACPSession: "acp-session", Cwd: root, interactive: true}
+	manager.jobsByID[session.ID] = &Job{ID: session.ID, ACPSession: "acp-session", Cwd: root}
 	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -114,10 +49,14 @@ func TestInteractiveRequestPermissionWaitsForAnswer(t *testing.T) {
 				SessionID: "acp-session",
 				Options: []acpschema.PermissionOption{{
 					OptionID: "approve",
-					Name:     "Approve plan",
+					Name:     "Approve tool",
 					Kind:     acpschema.PermissionOptionKindAllowOnce,
 				}},
-				ToolCall: acpschema.ToolCallUpdate{ToolCallID: "plan-approval", Title: "Approve plan"},
+				ToolCall: acpschema.ToolCallUpdate{
+					ToolCallID: "tool-approval",
+					Title:      "Approve tool",
+					Locations:  []acpschema.ToolCallLocation{{Path: filepath.Join(root, "index.html")}},
+				},
 			}),
 		})
 		if rpcErr != nil {
@@ -134,6 +73,9 @@ func TestInteractiveRequestPermissionWaitsForAnswer(t *testing.T) {
 			t.Fatalf("unexpected event %#v", event)
 		}
 		requestID = event.Permission.ID
+		if event.Permission.ToolCallID != "tool-approval" || len(event.Permission.Locations) != 1 {
+			t.Fatalf("permission = %#v", event.Permission)
+		}
 		loaded, err := store.LoadSession(session.ID)
 		if err != nil {
 			t.Fatal(err)
@@ -167,51 +109,27 @@ func TestInteractiveRequestPermissionWaitsForAnswer(t *testing.T) {
 	}
 }
 
-func TestInteractiveGrokRequestPermissionAutoApproves(t *testing.T) {
-	root := t.TempDir()
-	events := sessionevents.New()
+func TestRequestPermissionUnknownSessionErrors(t *testing.T) {
 	manager := NewManager(nil, Config{}, nil)
-	manager.Events = events
-	manager.jobsByID["session"] = &Job{
-		ID:          "session",
-		ACPAgent:    AgentGrok,
-		ACPSession:  "acp-session",
-		Cwd:         root,
-		interactive: true,
-	}
-	manager.jobsByACP["acp-session"] = manager.jobsByID["session"]
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	sub := events.Subscribe(ctx, "session")
-
-	raw, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
+	_, rpcErr := manager.handleJSONRPC(context.Background(), jsonrpc.Request{
 		Method: acpschema.ClientMethodSessionRequestPermission,
 		Params: mustJSON(t, acpschema.RequestPermissionRequest{
-			SessionID: "acp-session",
-			Options: []acpschema.PermissionOption{{
-				OptionID: "approve",
-				Name:     "Approve tool",
-				Kind:     acpschema.PermissionOptionKindAllowOnce,
-			}},
-			ToolCall: acpschema.ToolCallUpdate{ToolCallID: "shell-command", Title: "Run command"},
+			SessionID: "unknown-acp-session",
+			ToolCall:  acpschema.ToolCallUpdate{ToolCallID: "tool", Title: "Tool"},
 		}),
 	})
-	if rpcErr != nil {
-		t.Fatal(rpcErr)
+	if rpcErr == nil {
+		t.Fatal("expected unknown session error")
 	}
+}
 
-	var got map[string]map[string]string
-	if err := json.Unmarshal(raw, &got); err != nil {
-		t.Fatal(err)
+func TestAppendACPTextPreservesProviderChunks(t *testing.T) {
+	if got := appendACPText("Done.", "Next"); got != "Done.Next" {
+		t.Fatalf("appendACPText inserted formatting: %q", got)
 	}
-	if got["outcome"]["outcome"] != "selected" || got["outcome"]["optionId"] != "approve" {
-		t.Fatalf("unexpected permission response: %s", raw)
-	}
-	select {
-	case event := <-sub:
-		t.Fatalf("unexpected permission event %#v", event)
-	default:
+	if got := appendACPText("Line one", "\n\nLine two"); got != "Line one\n\nLine two" {
+		t.Fatalf("appendACPText changed provider whitespace: %q", got)
 	}
 }
 
@@ -230,7 +148,7 @@ func runInteractiveRequestUserInputTest(t *testing.T, metaKey, submitOptionID, r
 	events := sessionevents.New()
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	manager.jobsByID["session"] = &Job{ID: "session", ACPSession: "acp-session", Cwd: root, interactive: true}
+	manager.jobsByID["session"] = &Job{ID: "session", ACPSession: "acp-session", Cwd: root}
 	manager.jobsByACP["acp-session"] = manager.jobsByID["session"]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -628,21 +546,21 @@ func TestSessionInfoUpdatePublishesAndPersistsTitle(t *testing.T) {
 	}
 }
 
-func TestClaudeStylePlanExitPermissionSelectsBaselineMode(t *testing.T) {
+func TestClaudeStylePlanExitPermissionPublishesRequest(t *testing.T) {
 	root := t.TempDir()
 	events := sessionevents.New()
 	manager := NewManager(nil, Config{}, nil)
 	manager.Events = events
 	manager.jobsByID["session"] = &Job{
-		ID:          "session",
-		ACPAgent:    AgentClaude,
-		ACPSession:  "acp-session",
-		Cwd:         root,
-		interactive: true,
+		ID:         "session",
+		ACPAgent:   AgentClaude,
+		ACPSession: "acp-session",
+		Cwd:        root,
 		Modes: ModeState{
 			CurrentModeID: "plan",
 			PlanModeID:    "plan",
 			AvailableModes: []ModeSnapshot{
+				{ID: "bypassPermissions", Name: "Bypass Permissions"},
 				{ID: "auto", Name: "Auto"},
 				{ID: "plan", Name: "Plan"},
 			},
@@ -650,41 +568,70 @@ func TestClaudeStylePlanExitPermissionSelectsBaselineMode(t *testing.T) {
 	}
 	manager.jobsByACP["acp-session"] = manager.jobsByID["session"]
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	sub := events.Subscribe(ctx, "session")
+	result := make(chan json.RawMessage, 1)
+	errs := make(chan *jsonrpc.Error, 1)
 
-	raw, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
-		Method: acpschema.ClientMethodSessionRequestPermission,
-		Params: mustJSON(t, acpschema.RequestPermissionRequest{
-			SessionID: "acp-session",
-			Options: []acpschema.PermissionOption{
-				{OptionID: "default", Name: "Yes, and manually approve edits", Kind: acpschema.PermissionOptionKindAllowOnce},
-				{OptionID: "auto", Name: `Yes, and use "auto" mode`, Kind: acpschema.PermissionOptionKindAllowAlways},
-				{OptionID: "bypassPermissions", Name: "Yes, and bypass permissions", Kind: acpschema.PermissionOptionKindAllowAlways},
-				{OptionID: "plan", Name: "No, keep planning", Kind: acpschema.PermissionOptionKindRejectOnce},
-			},
-			ToolCall: acpschema.ToolCallUpdate{
-				Kind:       ptr(acpschema.ToolKindSwitchMode),
-				ToolCallID: "toolu-plan-exit",
-				Title:      "Ready to code?",
-			},
-		}),
-	})
-	if rpcErr != nil {
-		t.Fatal(rpcErr)
-	}
+	go func() {
+		raw, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
+			Method: acpschema.ClientMethodSessionRequestPermission,
+			Params: mustJSON(t, acpschema.RequestPermissionRequest{
+				SessionID: "acp-session",
+				Options: []acpschema.PermissionOption{
+					{OptionID: "default", Name: "Yes, and manually approve edits", Kind: acpschema.PermissionOptionKindAllowOnce},
+					{OptionID: "auto", Name: `Yes, and use "auto" mode`, Kind: acpschema.PermissionOptionKindAllowAlways},
+					{OptionID: "bypassPermissions", Name: "Yes, and bypass permissions", Kind: acpschema.PermissionOptionKindAllowAlways},
+					{OptionID: "plan", Name: "No, keep planning", Kind: acpschema.PermissionOptionKindRejectOnce},
+				},
+				ToolCall: acpschema.ToolCallUpdate{
+					Kind:       ptr(acpschema.ToolKindSwitchMode),
+					ToolCallID: "toolu-plan-exit",
+					Title:      "Ready to code?",
+				},
+			}),
+		})
+		if rpcErr != nil {
+			errs <- rpcErr
+			return
+		}
+		result <- raw
+	}()
 
-	var got map[string]map[string]string
-	if err := json.Unmarshal(raw, &got); err != nil {
-		t.Fatal(err)
-	}
-	if got["outcome"]["outcome"] != "selected" || got["outcome"]["optionId"] != "auto" {
-		t.Fatalf("unexpected permission response: %s", raw)
-	}
+	var requestID string
 	select {
 	case event := <-sub:
-		t.Fatalf("unexpected permission event %#v", event)
-	default:
+		if event.Type != "permission_request" || event.Permission == nil {
+			t.Fatalf("unexpected event %#v", event)
+		}
+		requestID = event.Permission.ID
+		if event.Permission.ToolCallID != "toolu-plan-exit" || len(event.Permission.Options) != 4 {
+			t.Fatalf("permission = %#v", event.Permission)
+		}
+	case err := <-errs:
+		t.Fatal(err)
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+
+	if err := manager.AnswerInteractive(ctx, InteractiveAnswer{Session: "session", RequestID: requestID, OptionID: "plan"}); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case raw := <-result:
+		var got map[string]map[string]string
+		if err := json.Unmarshal(raw, &got); err != nil {
+			t.Fatal(err)
+		}
+		if got["outcome"]["outcome"] != "selected" || got["outcome"]["optionId"] != "plan" {
+			t.Fatalf("unexpected permission response: %s", raw)
+		}
+	case err := <-errs:
+		t.Fatal(err)
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
 	}
 }
 

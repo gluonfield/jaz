@@ -3,13 +3,12 @@ package acp
 import acpschema "github.com/gluonfield/acp-transport/acp"
 
 const (
-	claudeModeAuto           = "auto"
-	claudePlanExitTitle      = "Ready to code?"
-	claudePlanExitToolCallID = "exit-plan-mode"
+	claudeModeAuto              = "auto"
+	claudeModeBypassPermissions = "bypassPermissions"
 )
 
 var baselineModePriority = map[string][]string{
-	AgentClaude: {claudeModeAuto},
+	AgentClaude: {claudeModeBypassPermissions, claudeModeAuto},
 	AgentGrok:   {"always-approve"},
 }
 
@@ -51,29 +50,6 @@ func firstModeSnapshot(modes []ModeSnapshot, ids []string) string {
 	return ""
 }
 
-func planExitPermissionOption(job *Job, req acpschema.RequestPermissionRequest) string {
-	if job == nil || CanonicalAgentName(job.ACPAgent) != AgentClaude || !isClaudePlanExitPermission(req) {
-		return ""
-	}
-	job.mu.RLock()
-	modes := job.Modes.Clone()
-	job.mu.RUnlock()
-	target := baselineModeID(job.ACPAgent, modes)
-	if target == "" || target == modes.PlanModeID {
-		return ""
-	}
-	return allowedPermissionOption(req.Options, target)
-}
-
-func isClaudePlanExitPermission(req acpschema.RequestPermissionRequest) bool {
-	if string(req.ToolCall.ToolCallID) == claudePlanExitToolCallID {
-		return true
-	}
-	return req.ToolCall.Kind != nil &&
-		*req.ToolCall.Kind == acpschema.ToolKindSwitchMode &&
-		req.ToolCall.Title == claudePlanExitTitle
-}
-
 func firstSessionMode(modes []acpschema.SessionMode, ids []string) string {
 	for _, id := range ids {
 		for _, mode := range modes {
@@ -83,22 +59,4 @@ func firstSessionMode(modes []acpschema.SessionMode, ids []string) string {
 		}
 	}
 	return ""
-}
-
-func allowedPermissionOption(options []acpschema.PermissionOption, id string) string {
-	for _, option := range options {
-		if string(option.OptionID) == id && permissionOptionKindAllows(option.Kind) {
-			return id
-		}
-	}
-	return ""
-}
-
-func permissionOptionKindAllows(kind acpschema.PermissionOptionKind) bool {
-	switch kind {
-	case acpschema.PermissionOptionKindAllowAlways, acpschema.PermissionOptionKindAllowOnce:
-		return true
-	default:
-		return false
-	}
 }

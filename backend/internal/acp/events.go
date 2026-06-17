@@ -66,6 +66,10 @@ func (m *Manager) awaitPermission(ctx context.Context, job *Job, req acpschema.R
 	}
 }
 
+func permissionCancelled() (json.RawMessage, *jsonrpc.Error) {
+	return jsonrpc.EncodeResult(acpschema.RequestPermissionResponseCancelled())
+}
+
 func (m *Manager) AnswerInteractive(ctx context.Context, req InteractiveAnswer) error {
 	if strings.TrimSpace(req.RequestID) == "" {
 		text := strings.TrimSpace(req.Text)

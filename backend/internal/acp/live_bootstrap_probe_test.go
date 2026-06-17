@@ -40,10 +40,13 @@ func TestLiveACPManagerBootstrapProbe(t *testing.T) {
 	}
 
 	cfg := probeAgentConfig(t, agent)
+	env := map[string]string{}
+	applyProbeEnvOverrides(env)
 	manager := NewManager(store, Config{
 		Root:      root,
 		Workspace: workspace,
 		Agents:    map[string]AgentConfig{agent: cfg},
+		Env:       env,
 	}, log.New(io.Discard))
 	defer manager.Close()
 
@@ -65,6 +68,12 @@ func TestLiveACPManagerBootstrapProbe(t *testing.T) {
 	if job.ACPSession == "" {
 		t.Fatal("empty ACP session id after resume")
 	}
-	t.Logf("%s manager bootstrap timings: create_session=%s resume_connect_initialize_auth_session_config=%s total=%s acp_session=%s",
-		agent, createDuration, resumeDuration, time.Since(totalStarted), job.ACPSession)
+	if target := baselineModeID(agent, job.Modes); target != "" && job.Modes.CurrentModeID != target {
+		t.Fatalf("%s current mode = %q, want baseline %q; modes=%#v", agent, job.Modes.CurrentModeID, target, job.Modes)
+	}
+	if required := strings.TrimSpace(os.Getenv("ACP_PROBE_REQUIRE_MODE")); required != "" && job.Modes.CurrentModeID != required {
+		t.Fatalf("%s current mode = %q, want required mode %q; modes=%#v", agent, job.Modes.CurrentModeID, required, job.Modes)
+	}
+	t.Logf("%s manager bootstrap timings: create_session=%s resume_connect_initialize_auth_session_config=%s total=%s acp_session=%s mode=%s modes=%#v",
+		agent, createDuration, resumeDuration, time.Since(totalStarted), job.ACPSession, job.Modes.CurrentModeID, job.Modes.AvailableModes)
 }
