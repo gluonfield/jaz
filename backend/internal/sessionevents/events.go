@@ -124,10 +124,9 @@ type PlanEvent struct {
 }
 
 type ACPModeState struct {
-	CurrentModeID   string    `json:"current_mode_id,omitempty"`
-	ExecutionModeID string    `json:"execution_mode_id,omitempty"`
-	PlanModeID      string    `json:"plan_mode_id,omitempty"`
-	AvailableModes  []ACPMode `json:"available_modes,omitempty"`
+	CurrentModeID  string    `json:"current_mode_id,omitempty"`
+	PlanModeID     string    `json:"plan_mode_id,omitempty"`
+	AvailableModes []ACPMode `json:"available_modes,omitempty"`
 }
 
 type ACPMode struct {
