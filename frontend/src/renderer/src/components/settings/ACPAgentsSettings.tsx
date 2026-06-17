@@ -279,11 +279,7 @@ function ACPAgentRow({
             />
           </SettingsRow>
           <div className="border-t border-border/70 px-3 py-3">
-            <ProviderConnectionStrip
-              provider={selectedProvider}
-              disabled={disabled}
-              onOpenProviders={onOpenProviders}
-            />
+            <ProviderConnectionStrip provider={selectedProvider} onOpenProviders={onOpenProviders} />
           </div>
         </>
       ) : null}
@@ -462,11 +458,9 @@ function AgentAuthPanel({
 // sends the user to Model Providers to manage the key.
 function ProviderConnectionStrip({
   provider,
-  disabled,
   onOpenProviders,
 }: {
   provider?: ModelProviderOption
-  disabled: boolean
   onOpenProviders: () => void
 }) {
   const connected = provider ? modelProviderConnected(provider) : false
@@ -489,7 +483,7 @@ function ProviderConnectionStrip({
                 : `${label} isn’t connected yet`}
           </span>
         </span>
-        <Button variant="ghost" size="sm" disabled={disabled} onClick={onOpenProviders}>
+        <Button variant="ghost" size="sm" onClick={onOpenProviders}>
           Model Providers
         </Button>
       </div>
