@@ -94,7 +94,7 @@ export function SettingsOverlay({ open, onClose }: { open: boolean; onClose: () 
           aria-modal="true"
           aria-label="Settings"
         >
-          <aside className="flex w-[272px] shrink-0 flex-col border-r border-border bg-surface">
+          <aside className="flex w-[272px] shrink-0 flex-col bg-surface">
             <div className="titlebar-drag h-[52px] shrink-0" />
 
             <div className="px-3 pb-2">
