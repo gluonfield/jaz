@@ -105,7 +105,6 @@ CREATE TABLE IF NOT EXISTS loop_runs (
 
 CREATE INDEX IF NOT EXISTS idx_threads_parent_updated ON threads(parent_id, updated_at_ms DESC);
 CREATE INDEX IF NOT EXISTS idx_threads_updated ON threads(updated_at_ms DESC);
-CREATE INDEX IF NOT EXISTS idx_session_events_thread_seq ON session_events(thread_id, seq);
 CREATE INDEX IF NOT EXISTS idx_mcp_servers_updated ON mcp_servers(updated_at_ms DESC);
 CREATE INDEX IF NOT EXISTS idx_loops_next_run ON loops(status, next_run_at_ms);
 CREATE INDEX IF NOT EXISTS idx_loop_runs_loop_created ON loop_runs(loop_id, created_at_ms DESC);

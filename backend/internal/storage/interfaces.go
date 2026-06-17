@@ -52,6 +52,10 @@ type SessionEventAppender interface {
 	AppendSessionEvents(id string, events ...sessionevents.Event) error
 }
 
+type SessionEventCompactor interface {
+	CompactSessionEvents(id string) (int, error)
+}
+
 type SessionEventStore interface {
 	SessionEventReader
 	SessionEventAppender

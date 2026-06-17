@@ -76,6 +76,49 @@ func (s *Store) AppendSessionEvents(id string, events ...sessionevents.Event) er
 	return nil
 }
 
+func (s *Store) CompactSessionEvents(id string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	q := eventdb.New(tx)
+	rows, err := q.ListSessionEvents(context.Background(), id)
+	if err != nil {
+		return 0, err
+	}
+	events := make([]sessionevents.Event, 0, len(rows))
+	for _, row := range rows {
+		event, err := eventFromDB(row)
+		if err != nil {
+			return 0, err
+		}
+		events = append(events, event)
+	}
+	runs := sessionevents.CompactTextChunkRuns(events)
+	if len(runs) == 0 {
+		return 0, nil
+	}
+	removed := 0
+	for _, run := range runs {
+		if err := insertSessionEvent(q, run.Event); err != nil {
+			return 0, err
+		}
+		for _, seq := range run.DeleteSeqs {
+			if err := q.DeleteSessionEvent(context.Background(), eventdb.DeleteSessionEventParams{ThreadID: id, Seq: seq}); err != nil {
+				return 0, err
+			}
+			removed++
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return removed, nil
+}
+
 func (s *Store) loadSessionEventsLocked(id string) ([]sessionevents.Event, error) {
 	rows, err := eventdb.New(s.db).ListSessionEvents(context.Background(), id)
 	if err != nil {

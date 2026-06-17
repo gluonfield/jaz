@@ -71,6 +71,15 @@ func TestRequestPermissionCancelsWorkspaceEscape(t *testing.T) {
 	}
 }
 
+func TestAppendACPTextPreservesProviderChunks(t *testing.T) {
+	if got := appendACPText("Done.", "Next"); got != "Done.Next" {
+		t.Fatalf("appendACPText inserted formatting: %q", got)
+	}
+	if got := appendACPText("Line one", "\n\nLine two"); got != "Line one\n\nLine two" {
+		t.Fatalf("appendACPText changed provider whitespace: %q", got)
+	}
+}
+
 func TestInteractiveRequestPermissionWaitsForAnswer(t *testing.T) {
 	root := t.TempDir()
 	store, err := jsonstore.New(t.TempDir())

@@ -61,6 +61,50 @@ func TestCompactTranscriptMergesAdjacentACPText(t *testing.T) {
 	}
 }
 
+func TestCompactTextChunksOnlyMergesAdjacentACPText(t *testing.T) {
+	pendingTool := compactACPState("thread", "running")
+	pendingTool.ToolCalls = []ACPToolCall{{ID: "tool-1", Title: "Read file", Status: "pending"}}
+	doneTool := compactACPState("thread", "running")
+	doneTool.ToolCalls = []ACPToolCall{{ID: "tool-1", Title: "Read file", Status: "completed"}}
+
+	events := []Event{
+		compactACP(1, "acp_message", "Hel", compactACPState("thread", "running")),
+		compactACP(2, "acp_message", "lo", compactACPState("thread", "running")),
+		compactACP(3, "acp_tool", "", pendingTool),
+		compactACP(4, "acp_tool", "", doneTool),
+		compactACP(5, "acp_message", "Done.", compactACPState("thread", "running")),
+		compactACP(6, "acp_message", "Next", compactACPState("thread", "running")),
+		compactACP(8, "acp_message", "gap", compactACPState("thread", "running")),
+	}
+	got := CompactTextChunks(events)
+
+	if len(got) != 5 {
+		t.Fatalf("len = %d, want 5: %#v", len(got), got)
+	}
+	if got[0].Seq != 2 || got[0].Content != "Hello" {
+		t.Fatalf("first merged text = %#v", got[0])
+	}
+	if got[1].Seq != 3 || got[2].Seq != 4 {
+		t.Fatalf("tool events should be preserved separately: %#v", got[1:3])
+	}
+	if got[3].Seq != 6 || got[3].Content != "Done.Next" {
+		t.Fatalf("second merged text = %#v", got[3])
+	}
+	if got[4].Seq != 8 || got[4].Content != "gap" {
+		t.Fatalf("gap event should not merge: %#v", got[4])
+	}
+	runs := CompactTextChunkRuns(events)
+	if len(runs) != 2 {
+		t.Fatalf("runs = %d, want 2: %#v", len(runs), runs)
+	}
+	if runs[0].Event.Seq != 2 || runs[0].Event.Content != "Hello" || len(runs[0].DeleteSeqs) != 1 || runs[0].DeleteSeqs[0] != 1 {
+		t.Fatalf("first run = %#v", runs[0])
+	}
+	if runs[1].Event.Seq != 6 || runs[1].Event.Content != "Done.Next" || len(runs[1].DeleteSeqs) != 1 || runs[1].DeleteSeqs[0] != 5 {
+		t.Fatalf("second run = %#v", runs[1])
+	}
+}
+
 func TestCompactTranscriptKeepsVisibleBoundaries(t *testing.T) {
 	toolACP := compactACPState("thread", "running")
 	toolACP.ToolCalls = []ACPToolCall{{ID: "tool-1", Title: "Read file", Status: "pending"}}
