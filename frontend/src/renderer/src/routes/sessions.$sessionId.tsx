@@ -558,6 +558,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
         await queryClient.refetchQueries({ queryKey: keys.sessionMessages(sessionId) })
         queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
         queryClient.invalidateQueries({ queryKey: keys.allSessions })
+        queryClient.invalidateQueries({ queryKey: keys.usage })
         // The turn likely touched the working tree; the SSE hook skips this
         // page while it streams (streamingRef), so refresh repo state here.
         queryClient.invalidateQueries({ queryKey: keys.sessionRepo(sessionId) })
@@ -583,6 +584,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     queryClient.invalidateQueries({ queryKey: keys.sessionMessages(targetSessionID) })
     queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
     queryClient.invalidateQueries({ queryKey: keys.allSessions })
+    queryClient.invalidateQueries({ queryKey: keys.usage })
   }, [handleSend, queryClient, sessionId])
 
   const currentSession = detail.data?.session

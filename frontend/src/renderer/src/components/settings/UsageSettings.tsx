@@ -277,7 +277,12 @@ function ModelUsageRow({ model, maxTotal }: { model: ModelUsage; maxTotal: numbe
   const total = inputOutputTokens(model.usage)
   const cacheRead = model.usage.cached_input_tokens ?? 0
   const cacheWrite = model.usage.cached_write_tokens ?? 0
-  const width = `${Math.max(3, (total / maxTotal) * 100)}%`
+  const share = total / maxTotal
+  const width = total > 0 ? `${Math.max(3, share * 100)}%` : '0%'
+  const sharePercent = share * 100
+  const shareLabel = total === 0
+    ? '0% of top model'
+    : `${sharePercent < 1 ? '<1' : Math.round(sharePercent)}% of top model`
 
   return (
     <div className="grid gap-3 py-2.5 md:grid-cols-[minmax(0,1fr)_auto]">
@@ -286,8 +291,16 @@ function ModelUsageRow({ model, maxTotal }: { model: ModelUsage; maxTotal: numbe
           <span className="truncate text-[13px] font-medium text-ink">{modelName(model)}</span>
           <span className="shrink-0 text-[11px] text-ink-3">{formatModelMeta(model)}</span>
         </div>
-        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-bg ring-1 ring-border/60">
-          <div className="h-full rounded-full bg-primary" style={{ width }} />
+        <div
+          className="mt-1.5 flex items-center gap-2"
+          title={`${formatTokens(total)} input + output tokens, ${shareLabel}`}
+        >
+          <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-bg ring-1 ring-border/60">
+            <div className="h-full rounded-full bg-primary" style={{ width }} />
+          </div>
+          <span className="w-[92px] text-right font-mono text-[10px] text-ink-3 tabular-nums">
+            {shareLabel}
+          </span>
         </div>
         {cacheRead > 0 || cacheWrite > 0 ? (
           <div className="mt-1 text-[10px] text-ink-3">
