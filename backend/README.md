@@ -1,6 +1,6 @@
 # Jaz Backend
 
-Native Go agent backend with a provider-neutral loop, native model providers, Codex-style tools, and SSE server.
+Go backend for Jaz ACP sessions, model-provider configuration, Codex-style tools, and SSE server.
 
 ## Run
 
@@ -16,10 +16,9 @@ Run the server binary directly on the server:
 
 `jaz serve` and `jaz server` remain compatibility aliases for `jaz`.
 
-Native Jaz defaults are stored in the database and edited from Settings >
-Agents as the provider, model, and reasoning effort copied into new threads.
-The initial database seed uses OpenRouter with `openai/gpt-5.4-mini` and medium
-reasoning effort.
+Agent defaults are stored in the database and edited from Settings > Agents.
+The built-in Jaz ACP agent defaults to OpenRouter with
+`openai/gpt-5.4-mini`.
 
 Put the OpenRouter key in `.env` or your shell:
 
@@ -37,14 +36,13 @@ Provider secrets can also come from `.env`: `OPENAI_API_KEY`,
 `OPENROUTER_API_KEY`, and `MISTRAL_API_KEY`.
 
 Codex ACP sessions reuse your Codex CLI OAuth login from `~/.codex` by default.
-Set `CODEX_HOME` only when Codex uses a non-default auth directory. Native
-provider credentials only authenticate the coordinator model.
+Set `CODEX_HOME` only when Codex uses a non-default auth directory.
 
-The Settings API exposes hardcoded native provider endpoint metadata for
-OpenRouter and OpenAI. Built-in ACP agent defaults are stored in the same
-settings record; Settings controls whether each client is enabled, the
-command used to start it, plus the model and reasoning effort copied into new
-threads.
+The Settings API exposes model-provider endpoint metadata for OpenRouter and
+OpenAI. Built-in ACP agent defaults are stored in the same settings record;
+Settings controls whether each client is enabled, the command used to start it,
+plus the model and reasoning effort copied into new threads where the agent
+supports those fields.
 
 The built-in Codex ACP command uses the Jaz-published adapter:
 

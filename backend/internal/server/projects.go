@@ -176,29 +176,6 @@ func (s *Server) resolveWorkingDir(directory string) (string, error) {
 	return s.resolveWorkspaceDir(directory)
 }
 
-func (s *Server) nativeRuntimeRef(directory string) (*storage.RuntimeRef, error) {
-	directory = strings.TrimSpace(directory)
-	if directory == "" {
-		if strings.TrimSpace(s.Workspace) == "" {
-			return nil, nil
-		}
-		cwd, err := s.resolveWorkspaceDir(".")
-		if err != nil {
-			return nil, err
-		}
-		return &storage.RuntimeRef{Type: storage.RuntimeNative, Cwd: cwd}, nil
-	}
-	cwd, err := s.resolveWorkingDir(directory)
-	if err != nil {
-		return nil, err
-	}
-	return &storage.RuntimeRef{
-		Type:        storage.RuntimeNative,
-		Cwd:         cwd,
-		ProjectPath: projectPathForRequest(directory, cwd),
-	}, nil
-}
-
 func (s *Server) resolveWorkspaceFileRoot(path string) (string, error) {
 	path = strings.TrimSpace(path)
 	if filepath.IsAbs(path) {

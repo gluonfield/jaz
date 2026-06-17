@@ -152,8 +152,7 @@ func TestNormalizeAgentDefaultsRejectsGrokPathBearingAuth(t *testing.T) {
 func TestMergeAgentDefaultsDropsInvalidGrokAuthProfile(t *testing.T) {
 	seed := testAgentDefaultsSeed()
 	stored := AgentDefaults{
-		Native: seed.Native,
-		ACP:    map[string]ACPAgentDefaults{},
+		ACP: map[string]ACPAgentDefaults{},
 	}
 	for name, agent := range seed.ACP {
 		stored.ACP[name] = agent

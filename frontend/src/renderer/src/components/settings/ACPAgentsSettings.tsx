@@ -15,7 +15,6 @@ import { useToast } from '@/components/ui/toast'
 import { agentLabel, authProviderLabel } from '@/lib/agentLabel'
 import {
   acpUsesModelProvider,
-  acpUsesNativeProvider,
   selectableACPModelProviders,
 } from '@/lib/agentRuntimes'
 import { cloneAgentSettings, disconnectACPAuth, startACPAuthLogin } from '@/lib/api/settings'
@@ -32,7 +31,7 @@ const rowControlClass = 'w-full md:w-[320px]'
 type ACPAuthDraft = AgentSettingsData['acp'][string]['auth']
 
 // Returns a clone with one ACP agent turned on — used when a sign-in or API key
-// connects an agent, so it becomes a usable runtime without a separate toggle.
+// connects an agent, so it becomes usable without a separate toggle.
 function withEnabledAgent(settings: AgentSettingsData, agent: string): AgentSettingsData {
   const next = cloneAgentSettings(settings)
   const current = next.acp[agent]
@@ -107,7 +106,7 @@ export function ACPAgentsSettings() {
   return (
     <SettingsSection
       title="Agents (ACP)"
-      description="Configure ACP runtimes, auth, and per-agent defaults."
+      description="Configure ACP agents, auth, and per-agent defaults."
       canSave={canSave}
       saving={save.isPending}
       onSave={() => draft && save.mutate(draft)}
@@ -179,7 +178,6 @@ function ACPAgentRow({
   const options = settings.acp_options?.[agent]
   const requiresCommand = options?.requires_command ?? true
   const supportsAuth = options?.supports_auth ?? true
-  const usesNativeProvider = acpUsesNativeProvider(settings, agent)
   const usesModelProvider = acpUsesModelProvider(settings, agent)
   const [commandOpen, setCommandOpen] = useState(requiresCommand && (current.command ?? '').trim() === '')
   useEffect(() => {
@@ -214,7 +212,7 @@ function ACPAgentRow({
         </span>
       </div>
 
-      <SettingsRow title="Enabled" description="Show this ACP client as a runtime.">
+      <SettingsRow title="Enabled" description="Show this ACP client in agent pickers.">
         <div className="flex h-8 w-full items-center justify-start md:w-[320px] md:justify-end">
           <Switch
             checked={current.enabled}
@@ -227,8 +225,8 @@ function ACPAgentRow({
 
       {supportsAuth ? (
         <div className="border-t border-border/70 px-3 py-3">
-      {/* Auth is never gated by the Enabled toggle: you must be able to connect
-          an agent you skipped in onboarding. Connecting it turns it on. */}
+          {/* Auth is never gated by the Enabled toggle: you must be able to connect
+              an agent you skipped in onboarding. Connecting it turns it on. */}
           <AgentAuthPanel
             agent={agent}
             disabled={disabled}
@@ -254,92 +252,89 @@ function ACPAgentRow({
         </div>
       ) : null}
 
-      {usesNativeProvider ? null : (
+      {usesModelProvider ? (
         <>
-          {usesModelProvider ? (
-            <>
-              <SettingsRow title="Provider" description="API provider used for this ACP client.">
-                <Select
-                  value={current.model_provider ?? ''}
-                  options={providerOptions.map((provider) => ({
-                    value: provider.id,
-                    label: provider.label,
-                    description: provider.base_url,
-                  }))}
-                  disabled={controlsDisabled}
-                  onChange={(model_provider) => {
-                    const nextProvider = providerOptions.find((provider) => provider.id === model_provider)
-                    const model =
-                      (current.model ?? '').trim() === '' ||
-                      current.model === selectedProvider?.default_model
-                        ? (nextProvider?.default_model ?? '')
-                        : current.model
-                    update({ model_provider, model })
-                  }}
-                  aria-label={`${agentLabel(agent)} provider`}
-                  className={rowControlClass}
-                />
-              </SettingsRow>
-              <SettingsRow
-                title="Provider key"
-                description={
-                  selectedProvider?.requires_api_key === false
-                    ? 'This provider does not need an API key.'
-                    : selectedProviderConfigured
-                      ? `${selectedProviderEnv} is configured — paste a new key to replace it.`
-                      : `Paste an API key; stored on the backend as ${selectedProviderEnv ?? 'the provider env var'}.`
-                }
-              >
-                <Input
-                  type="password"
-                  value={providerKeys[current.model_provider ?? ''] ?? ''}
-                  disabled={
-                    disabled ||
-                    !(current.model_provider ?? '').trim() ||
-                    selectedProvider?.requires_api_key === false
-                  }
-                  onChange={(event) =>
-                    onProviderKeyChange(current.model_provider ?? '', event.target.value)
-                  }
-                  placeholder={
-                    selectedProvider?.requires_api_key === false
-                      ? 'No key required'
-                      : selectedProviderConfigured
-                        ? `${selectedProviderEnv} configured`
-                        : (selectedProviderEnv ?? 'API key')
-                  }
-                  autoComplete="off"
-                  spellCheck={false}
-                  className={`${rowControlClass} h-8 rounded-full bg-bg px-3 py-0 font-mono text-[12px]`}
-                  aria-label={`${agentLabel(agent)} provider API key`}
-                />
-              </SettingsRow>
-            </>
-          ) : null}
-          <SettingsRow title="Model" description="Model copied into new threads for this client.">
-            <ModelCombobox
-              value={current.model ?? ''}
-              suggestions={modelSuggestions}
-              loading={openRouterModels.isLoading}
+          <SettingsRow title="Provider" description="API provider used for this ACP client.">
+            <Select
+              value={current.model_provider ?? ''}
+              options={providerOptions.map((provider) => ({
+                value: provider.id,
+                label: provider.label,
+                description: provider.base_url,
+              }))}
               disabled={controlsDisabled}
-              onChange={(model) => update({ model })}
-              aria-label={`${agentLabel(agent)} model`}
+              onChange={(model_provider) => {
+                const nextProvider = providerOptions.find((provider) => provider.id === model_provider)
+                const model =
+                  (current.model ?? '').trim() === '' ||
+                  current.model === selectedProvider?.default_model
+                    ? (nextProvider?.default_model ?? '')
+                    : current.model
+                update({ model_provider, model })
+              }}
+              aria-label={`${agentLabel(agent)} provider`}
               className={rowControlClass}
             />
           </SettingsRow>
-
-          <SettingsRow title="Reasoning" description="Reasoning effort copied into new threads.">
-            <Select
-              value={current.reasoning_effort ?? ''}
-              options={settingsReasoningOptions(acpReasoningEffortOptions(settings, agent))}
-              disabled={controlsDisabled}
-              onChange={(reasoning_effort) => update({ reasoning_effort })}
-              aria-label={`${agentLabel(agent)} reasoning effort`}
-              className={rowControlClass}
+          <SettingsRow
+            title="Provider key"
+            description={
+              selectedProvider?.requires_api_key === false
+                ? 'This provider does not need an API key.'
+                : selectedProviderConfigured
+                  ? `${selectedProviderEnv} is configured — paste a new key to replace it.`
+                  : `Paste an API key; stored on the backend as ${selectedProviderEnv ?? 'the provider env var'}.`
+            }
+          >
+            <Input
+              type="password"
+              value={providerKeys[current.model_provider ?? ''] ?? ''}
+              disabled={
+                disabled ||
+                !(current.model_provider ?? '').trim() ||
+                selectedProvider?.requires_api_key === false
+              }
+              onChange={(event) =>
+                onProviderKeyChange(current.model_provider ?? '', event.target.value)
+              }
+              placeholder={
+                selectedProvider?.requires_api_key === false
+                  ? 'No key required'
+                  : selectedProviderConfigured
+                    ? `${selectedProviderEnv} configured`
+                    : (selectedProviderEnv ?? 'API key')
+              }
+              autoComplete="off"
+              spellCheck={false}
+              className={`${rowControlClass} h-8 rounded-full bg-bg px-3 py-0 font-mono text-[12px]`}
+              aria-label={`${agentLabel(agent)} provider API key`}
             />
           </SettingsRow>
         </>
-      )}
+      ) : null}
+
+      <SettingsRow title="Model" description="Model copied into new threads for this client.">
+        <ModelCombobox
+          value={current.model ?? ''}
+          suggestions={modelSuggestions}
+          loading={openRouterModels.isLoading}
+          disabled={controlsDisabled}
+          onChange={(model) => update({ model })}
+          aria-label={`${agentLabel(agent)} model`}
+          className={rowControlClass}
+        />
+      </SettingsRow>
+
+      <SettingsRow title="Reasoning" description="Reasoning effort copied into new threads.">
+        <Select
+          value={current.reasoning_effort ?? ''}
+          options={settingsReasoningOptions(acpReasoningEffortOptions(settings, agent))}
+          disabled={controlsDisabled}
+          onChange={(reasoning_effort) => update({ reasoning_effort })}
+          aria-label={`${agentLabel(agent)} reasoning effort`}
+          className={rowControlClass}
+        />
+      </SettingsRow>
 
       {requiresCommand ? (
         <>

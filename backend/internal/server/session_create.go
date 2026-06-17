@@ -7,8 +7,6 @@ import (
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/acp"
-	"github.com/wins/jaz/backend/internal/gitinfo"
-	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -30,72 +28,14 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&req)
 	}
-	if req.Runtime == storage.RuntimeACP && strings.TrimSpace(req.Agent) != "" {
+	switch strings.TrimSpace(req.Runtime) {
+	case "", storage.RuntimeACP:
 		s.createACPSession(w, req)
 		return
-	}
-	input, err := s.nativeSessionDefaults()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
+	default:
+		writeError(w, http.StatusBadRequest, fmt.Errorf("unsupported session runtime %q; use acp", req.Runtime))
 		return
 	}
-	if requested := strings.TrimSpace(req.ModelProvider); requested != "" {
-		id, err := provider.NormalizeNativeProviderID(requested)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, err)
-			return
-		}
-		if id != input.ModelProvider {
-			meta, _ := provider.NativeProviderByID(id)
-			input.Model = strings.TrimSpace(meta.DefaultModel)
-		}
-		input.ModelProvider = id
-	}
-	if model := strings.TrimSpace(req.Model); model != "" {
-		input.Model = model
-	}
-	if effort := strings.TrimSpace(req.ReasoningEffort); effort != "" {
-		input.ReasoningEffort = effort
-	}
-	if err := s.validateNativeProviderRunnable(input.ModelProvider); err != nil {
-		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-	directory := strings.TrimSpace(req.Directory)
-	if req.Worktree && directory == "" {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("worktree requires a directory pointing at a git repository"))
-		return
-	}
-	ref, err := s.nativeRuntimeRef(directory)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-	input.RuntimeRef = ref
-	input.Slug = req.Slug
-	input.Title = req.Title
-	session, err := s.Store.CreateSession(input)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	if req.Worktree {
-		worktree, repo, err := gitinfo.AddWorktree(r.Context(), s.Workspace, session.RuntimeRef.Cwd, session.Slug, "")
-		if err != nil {
-			session.Status = storage.StatusError
-			session.Error = err.Error()
-			_ = s.Store.SaveSession(session)
-			writeError(w, http.StatusBadRequest, err)
-			return
-		}
-		session.RuntimeRef.Cwd = worktree
-		session.RuntimeRef.ProjectPath = repo
-		if err := s.Store.SaveSession(session); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-	}
-	writeJSON(w, http.StatusOK, canonicalSessionResponse(session))
 }
 
 func (s *Server) createACPSession(w http.ResponseWriter, req createSessionRequest) {

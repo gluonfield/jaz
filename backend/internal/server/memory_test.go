@@ -15,6 +15,7 @@ import (
 	"github.com/wins/jaz/backend/internal/memoryservice"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
+	"github.com/wins/jaz/backend/internal/widgets"
 )
 
 type fakeMemoryScheduler struct {
@@ -38,7 +39,9 @@ func testMemoryServer(t *testing.T) (*Server, *fakeMemoryScheduler) {
 	t.Cleanup(func() { _ = memory.Close() })
 	scheduler := &fakeMemoryScheduler{running: true}
 	svc := memoryservice.New(memory, store, scheduler, "http://127.0.0.1:5299/mcp/jazmem")
-	tools := jaztools.New(svc, serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"}, store, nil)
+	widgetService := widgets.NewService(store, nil)
+	publisher := &widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store}
+	tools := jaztools.New(svc, serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"}, store, nil, publisher)
 	return &Server{Store: store, Memory: svc, JazTools: tools}, scheduler
 }
 

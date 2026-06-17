@@ -56,7 +56,7 @@ export interface Session {
   error?: string
   archived?: boolean
   pinned?: boolean
-  runtime: 'native' | 'acp'
+  runtime: 'acp'
   runtime_ref?: RuntimeRef
   model_provider?: string
   model?: string
@@ -73,7 +73,7 @@ export interface ThreadSearchResult {
   thread_slug: string
   thread_title?: string
   thread_status?: 'idle' | 'running' | 'error'
-  thread_runtime?: 'native' | 'acp'
+  thread_runtime?: 'acp'
   parent_id?: string
   archived?: boolean
   message_seq?: number
@@ -231,7 +231,7 @@ export interface Loop {
   prompt: string
   schedule: LoopSchedule
   status: 'active' | 'paused' | 'deleted'
-  runtime: 'native' | 'acp'
+  runtime: 'acp'
   acp_agent?: string
   model_provider?: string
   model?: string
@@ -617,13 +617,7 @@ export interface MCPServerStatus {
   checked_at?: string
 }
 
-export interface NativeAgentDefaults {
-  model_provider?: string
-  model: string
-  reasoning_effort?: string
-}
-
-export interface NativeProviderOption {
+export interface ModelProviderOption {
   id: string
   label: string
   base_url: string
@@ -695,15 +689,14 @@ export interface ReasoningEffortOption {
 export interface ACPAgentOptions {
   reasoning_efforts: ReasoningEffortOption[]
   local?: boolean
-  provider_mode?: 'native_defaults' | 'agent_defaults'
+  provider_mode?: 'agent_defaults'
   model_provider_ids?: string[]
   requires_command?: boolean
   supports_auth?: boolean
 }
 
 export interface AgentSettings {
-  native: NativeAgentDefaults
-  providers: NativeProviderOption[]
+  providers: ModelProviderOption[]
   acp: Record<string, ACPAgentDefaults>
   acp_auth?: Record<string, ACPAgentAuthStatus>
   acp_keys?: Record<string, string>
@@ -723,16 +716,9 @@ export interface OnboardingACPProbe extends ACPAgentAuthStatus {
   auth_command_reason?: string
 }
 
-export interface OnboardingNativeProvider {
-  id: string
-  api_key_env?: string
-  configured: boolean
-}
-
 export interface OnboardingStatus {
   completed: boolean
   acp: OnboardingACPProbe[]
-  native_providers: OnboardingNativeProvider[]
   settings: AgentSettings
 }
 

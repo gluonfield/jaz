@@ -93,7 +93,6 @@ export function useSessionQueue({
   const steerPrompt = useCallback((index: number) => {
     const prompt = queuedPrompts[index]
     if (!prompt || !session) return
-    if (running && session.runtime !== 'acp') return
     const nextQueue = removeQueuedPrompt(queuedPrompts, index)
     void (async () => {
       try {
@@ -111,7 +110,7 @@ export function useSessionQueue({
   return {
     queuedPrompts,
     sessionRunning: running,
-    steerDisabled: running && session?.runtime !== 'acp',
+    steerDisabled: false,
     onSend: send,
     onSteerQueuedPrompt: steerPrompt,
     onDeleteQueuedPrompt: deletePrompt,
