@@ -404,9 +404,8 @@ func (m *Manager) initializeModeState(ctx context.Context, peer *jsonrpc.Peer, a
 	}
 	target := executionModeForAgent(agentName, acpModes.AvailableModes)
 	if target == "" {
-		target = modes.CurrentModeID
+		target = baselineModeID(agentName, modes)
 	}
-	modes.ExecutionModeID = target
 	if target != "" && modes.CurrentModeID != target {
 		if err := m.setSessionMode(ctx, peer, session.SessionID, target); err != nil {
 			return modes, err

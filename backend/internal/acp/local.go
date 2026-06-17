@@ -64,9 +64,8 @@ func (m *Manager) newLocalJob(session storage.Session, agentName, cwd string) *J
 
 func localModeState() ModeState {
 	return ModeState{
-		CurrentModeID:   "default",
-		ExecutionModeID: "default",
-		PlanModeID:      "plan",
+		CurrentModeID: "default",
+		PlanModeID:    "plan",
 		AvailableModes: []ModeSnapshot{
 			{ID: "default", Name: "Default"},
 			{ID: "plan", Name: "Plan"},
