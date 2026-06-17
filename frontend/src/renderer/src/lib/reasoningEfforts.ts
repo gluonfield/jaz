@@ -24,3 +24,11 @@ export function reasoningEffortLabel(
   const effort = value ?? ''
   return options.find((option) => option.value === effort)?.label ?? (effort || 'Default')
 }
+
+// Settings screens treat '' as "no effort configured" (shown as "None") rather
+// than "inherit the default".
+export function settingsReasoningOptions(
+  options: ReasoningEffortOption[] = REASONING_EFFORT_OPTIONS,
+): ReasoningEffortOption[] {
+  return options.map((option) => (option.value === '' ? { ...option, label: 'None' } : option))
+}

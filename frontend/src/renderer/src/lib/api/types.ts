@@ -511,7 +511,6 @@ export interface MemoryHorizon {
   name: string
   content: string
   chars: number
-  max_chars: number
 }
 
 export interface MemoryTask {

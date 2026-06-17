@@ -14,24 +14,21 @@ import {
   shell,
   systemPreferences,
 } from 'electron'
-import { autoUpdater } from 'electron-updater'
 import appIcon from '../assets/jaz-icon-1024.png?asset'
 import { isPreviewURL } from '../shared/preview'
-import type { UpdateStatus } from '../shared/update'
 import { startLocalBackend, stopLocalBackend } from './backend'
+import { createUpdateController } from './updater'
 
 // Matches --color-bg under :root.dark; used as the window paint color before
 // the renderer mounts so a dark launch doesn't flash white behind the content.
 const DARK_BG = '#1d1f24'
 
 const APP_NAME = 'Jaz'
-const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
 
 app.setName(APP_NAME)
 
 let mainWindow: BrowserWindow | null = null
-let updateTimer: NodeJS.Timeout | null = null
-let updateStatus: UpdateStatus = { state: 'idle' }
+const updates = createUpdateController(() => mainWindow)
 const previewURLTargets = new Set<number>()
 
 function lockPreviewWebviewPreferences(webPreferences: WebPreferences): void {
@@ -191,9 +188,7 @@ function createWindow(): void {
     if (mainWindow === win) mainWindow = null
   })
   win.once('ready-to-show', () => win.show())
-  win.webContents.once('did-finish-load', () => {
-    if (updateStatus.state !== 'idle') win.webContents.send('jaz:update-status', updateStatus)
-  })
+  win.webContents.once('did-finish-load', () => updates.sendStatusTo(win))
 
   win.webContents.on('will-attach-webview', (event, webPreferences, params) => {
     if (!isPreviewURL(params.src)) {
@@ -208,54 +203,6 @@ function createWindow(): void {
   } else {
     win.loadFile(join(__dirname, '../renderer/index.html'))
   }
-}
-
-function updateVersion(info: { version?: string }): string | undefined {
-  return typeof info.version === 'string' && info.version !== '' ? info.version : undefined
-}
-
-function currentUpdateVersion(): string | undefined {
-  return 'version' in updateStatus ? updateStatus.version : undefined
-}
-
-function setUpdateStatus(status: UpdateStatus): void {
-  updateStatus = status
-  mainWindow?.webContents.send('jaz:update-status', status)
-}
-
-function checkForUpdates(): void {
-  void autoUpdater.checkForUpdates().catch((err: unknown) => {
-    console.error('Jaz update check failed', err)
-  })
-}
-
-function startAutoUpdater(): void {
-  if (!app.isPackaged || updateTimer) return
-  autoUpdater.autoDownload = true
-  autoUpdater.autoInstallOnAppQuit = true
-  autoUpdater.on('update-available', (info) =>
-    setUpdateStatus({ state: 'available', version: updateVersion(info) }),
-  )
-  autoUpdater.on('download-progress', (info) => {
-    const percent = Number.isFinite(info.percent) ? Math.max(0, Math.min(100, info.percent)) : 0
-    setUpdateStatus({ state: 'downloading', percent, version: currentUpdateVersion() })
-  })
-  autoUpdater.on('update-downloaded', (info) =>
-    setUpdateStatus({ state: 'downloaded', version: updateVersion(info) }),
-  )
-  autoUpdater.on('update-not-available', () => setUpdateStatus({ state: 'idle' }))
-  autoUpdater.on('error', (err) => {
-    console.error('Jaz updater error', err)
-    if (updateStatus.state !== 'idle') {
-      setUpdateStatus({
-        state: 'error',
-        message: err instanceof Error ? err.message : String(err),
-      })
-    }
-  })
-  setTimeout(checkForUpdates, 10_000).unref()
-  updateTimer = setInterval(checkForUpdates, UPDATE_CHECK_INTERVAL_MS)
-  updateTimer.unref()
 }
 
 // Deep link from a board window into the main app (e.g. "Open loop").
@@ -344,12 +291,7 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('jaz:start-local-backend', () => startLocalBackend())
-  ipcMain.handle('jaz:get-update-status', () => updateStatus)
-  ipcMain.handle('jaz:install-update', () => {
-    if (updateStatus.state !== 'downloaded') return { ok: false, error: 'update is not ready' }
-    autoUpdater.quitAndInstall()
-    return { ok: true }
-  })
+  updates.registerIpc()
 
   ipcMain.on('jaz:open-board-window', (_event, boardId) => {
     if (typeof boardId === 'string' && boardId !== '') openBoardWindow(boardId)
@@ -379,7 +321,7 @@ app.whenReady().then(() => {
     void systemPreferences.askForMediaAccess('microphone')
   }
   createWindow()
-  startAutoUpdater()
+  updates.start()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
