@@ -19,7 +19,6 @@ const (
 type ACPAgentDefaults struct {
 	Enabled         bool                `json:"enabled"`
 	Command         string              `json:"command,omitempty"`
-	LegacyArgs      []string            `json:"args,omitempty"`
 	ModelProvider   string              `json:"model_provider,omitempty"`
 	Model           string              `json:"model,omitempty"`
 	ReasoningEffort string              `json:"reasoning_effort,omitempty"`
@@ -220,7 +219,6 @@ func MergeAgentDefaults(stored, seed AgentDefaults, agentNames []string) AgentDe
 }
 
 func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentDefaults {
-	stored = collapseLegacyACPCommand(stored)
 	if strings.TrimSpace(stored.Command) == "" {
 		stored.Command = seed.Command
 	}
@@ -251,7 +249,7 @@ func canonicalizeACPDefaults(in map[string]ACPAgentDefaults) map[string]ACPAgent
 		if canonical == "" || canonical != strings.TrimSpace(name) {
 			continue
 		}
-		out[canonical] = collapseLegacyACPCommand(agent)
+		out[canonical] = agent
 	}
 	for name, agent := range in {
 		canonical := acp.CanonicalAgentName(name)
@@ -259,7 +257,7 @@ func canonicalizeACPDefaults(in map[string]ACPAgentDefaults) map[string]ACPAgent
 			continue
 		}
 		if _, ok := out[canonical]; !ok {
-			out[canonical] = collapseLegacyACPCommand(agent)
+			out[canonical] = agent
 		}
 	}
 	return out
@@ -331,14 +329,6 @@ func (s *ACPConfigSource) EnabledAgentNames() ([]string, error) {
 		names = append(names, name)
 	}
 	return names, nil
-}
-
-func collapseLegacyACPCommand(agent ACPAgentDefaults) ACPAgentDefaults {
-	if len(agent.LegacyArgs) > 0 {
-		agent.Command = CommandLine(agent.Command, agent.LegacyArgs)
-		agent.LegacyArgs = nil
-	}
-	return agent
 }
 
 func sortedAgentNames(names []string) []string {

@@ -2,11 +2,8 @@ package sqlite
 
 import (
 	"database/sql"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -40,144 +37,6 @@ func TestMigrationsAreIdempotent(t *testing.T) {
 	}
 	if !columns["memory_path"] {
 		t.Fatal("migration did not add loops.memory_path")
-	}
-}
-
-func TestMigrationsAddLegacyThreadColumns(t *testing.T) {
-	root := t.TempDir()
-	if err := os.MkdirAll(root, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	db, err := sql.Open("sqlite", filepath.Join(root, "jaz.sqlite"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	now := time.Now().UTC().UnixMilli()
-	if _, err := db.Exec(`CREATE TABLE threads (
-  id TEXT PRIMARY KEY,
-  slug TEXT NOT NULL UNIQUE,
-  title TEXT,
-  parent_id TEXT,
-  status TEXT NOT NULL DEFAULT 'idle',
-  runtime TEXT NOT NULL DEFAULT 'acp',
-  acp_agent TEXT,
-  acp_session_id TEXT,
-  model_provider TEXT,
-  model TEXT,
-  reasoning_effort TEXT,
-  created_at_ms INTEGER NOT NULL,
-  updated_at_ms INTEGER NOT NULL
-)`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`INSERT INTO threads (id, slug, status, runtime, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?)`,
-		"thread-1", "legacy", "idle", "acp", now, now); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	store, err := New(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-
-	columns, err := tableColumns(store.db, "threads")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, column := range []string{"archived", "error", "cwd", "project_path", "queued_messages", "source_type", "source_id", "pinned"} {
-		if !columns[column] {
-			t.Fatalf("legacy migration did not add threads.%s", column)
-		}
-	}
-	if _, err := store.LoadSession("thread-1"); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestUsageEventBackfillRowsAreMarkedSessionImport(t *testing.T) {
-	root := t.TempDir()
-	if err := makeLegacyDB(root); err != nil {
-		t.Fatal(err)
-	}
-	db, err := sql.Open("sqlite", filepath.Join(root, "jaz.sqlite"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if err := ensureLegacyThreadColumns(db); err != nil {
-		t.Fatal(err)
-	}
-	now := time.Now().UTC().UnixMilli()
-	if _, err := db.Exec(`INSERT INTO threads (
-  id, slug, status, runtime, input_tokens, cached_input_tokens, output_tokens, total_tokens, created_at_ms, updated_at_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		"thread-usage", "imported-usage", "idle", "acp", 100, 20, 30, 150, now, now); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := runMigrations(db); err != nil {
-		t.Fatal(err)
-	}
-
-	var source string
-	if err := db.QueryRow(`SELECT source FROM usage_events WHERE thread_id = ?`, "thread-usage").Scan(&source); err != nil {
-		t.Fatal(err)
-	}
-	if source != "session_import" {
-		t.Fatalf("backfill source = %q, want session_import", source)
-	}
-}
-
-// Databases that applied the pre-`source` version of migration 0019 lack the
-// column the usage queries select; ensureUsageEventColumns must add it (and be a
-// no-op on a second run).
-func TestEnsureUsageEventColumnsAddsSource(t *testing.T) {
-	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "jaz.sqlite"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if _, err := db.Exec(`CREATE TABLE usage_events (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  thread_id TEXT NOT NULL,
-  runtime TEXT NOT NULL,
-  agent TEXT NOT NULL DEFAULT '',
-  model_provider TEXT NOT NULL DEFAULT '',
-  model TEXT NOT NULL DEFAULT '',
-  input_tokens INTEGER NOT NULL DEFAULT 0,
-  total_tokens INTEGER NOT NULL DEFAULT 0,
-  created_at_ms INTEGER NOT NULL
-)`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`INSERT INTO usage_events (thread_id, runtime, total_tokens, created_at_ms) VALUES ('t', 'acp', 5, 1)`); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := ensureUsageEventColumns(db); err != nil {
-		t.Fatal(err)
-	}
-	if err := ensureUsageEventColumns(db); err != nil {
-		t.Fatalf("second run should be a no-op: %v", err)
-	}
-
-	columns, err := tableColumns(db, "usage_events")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !columns["source"] {
-		t.Fatal("ensureUsageEventColumns did not add usage_events.source")
-	}
-	var source string
-	if err := db.QueryRow(`SELECT source FROM usage_events WHERE thread_id = 't'`).Scan(&source); err != nil {
-		t.Fatal(err)
-	}
-	if source != "turn" {
-		t.Fatalf("existing row source = %q, want turn", source)
 	}
 }
 

@@ -77,7 +77,3 @@ SET
   enabled = sqlc.arg(enabled),
   updated_at_ms = sqlc.arg(updated_at_ms)
 WHERE id = sqlc.arg(id);
-
--- name: DeleteMCPOAuthToken :exec
-DELETE FROM mcp_oauth_tokens
-WHERE server_id = sqlc.arg(server_id);
