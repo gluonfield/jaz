@@ -1,5 +1,5 @@
 import { del, post, put } from './client'
-import type { NativeProviderOption, ProviderInput } from './types'
+import type { ModelProviderOption, ProviderInput } from './types'
 
 // Trims text fields and drops a blank api_key so an edit that doesn't touch the
 // key leaves it unchanged. The endpoint URL keeps its path (unlike MCP's
@@ -16,12 +16,12 @@ function normalizeProviderInput(input: ProviderInput): ProviderInput {
   }
 }
 
-export function createProvider(input: ProviderInput): Promise<NativeProviderOption> {
-  return post<NativeProviderOption>('/v1/providers', normalizeProviderInput(input))
+export function createProvider(input: ProviderInput): Promise<ModelProviderOption> {
+  return post<ModelProviderOption>('/v1/providers', normalizeProviderInput(input))
 }
 
-export function updateProvider(id: string, input: ProviderInput): Promise<NativeProviderOption> {
-  return put<NativeProviderOption>(`/v1/providers/${encodeURIComponent(id)}`, normalizeProviderInput(input))
+export function updateProvider(id: string, input: ProviderInput): Promise<ModelProviderOption> {
+  return put<ModelProviderOption>(`/v1/providers/${encodeURIComponent(id)}`, normalizeProviderInput(input))
 }
 
 export function deleteProvider(id: string): Promise<{ ok: boolean }> {
