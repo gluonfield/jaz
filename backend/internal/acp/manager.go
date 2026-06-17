@@ -402,7 +402,7 @@ func (m *Manager) initializeModeState(ctx context.Context, peer *jsonrpc.Peer, a
 	if acpModes == nil {
 		return modes, nil
 	}
-	target := executionModeForAgent(agentName, acpModes.AvailableModes)
+	target := preferredBaselineModeID(agentName, acpModes.AvailableModes)
 	if target == "" {
 		target = baselineModeID(agentName, modes)
 	}

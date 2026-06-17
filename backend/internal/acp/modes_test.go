@@ -6,18 +6,18 @@ import (
 	acpschema "github.com/gluonfield/acp-transport/acp"
 )
 
-func TestExecutionModeForAgentUsesAgentPolicy(t *testing.T) {
+func TestPreferredBaselineModeIDUsesAgentPolicy(t *testing.T) {
 	modes := []acpschema.SessionMode{
 		{ID: "auto", Name: "Auto"},
 		{ID: "bypassPermissions", Name: "Bypass Permissions"},
 		{ID: "acceptEdits", Name: "Accept Edits"},
 		{ID: "plan", Name: "Plan"},
 	}
-	if got := executionModeForAgent(AgentClaude, modes); got != "auto" {
-		t.Fatalf("claude execution mode = %q, want auto", got)
+	if got := preferredBaselineModeID(AgentClaude, modes); got != "auto" {
+		t.Fatalf("claude baseline mode = %q, want auto", got)
 	}
-	if got := executionModeForAgent("other", modes); got != "" {
-		t.Fatalf("generic execution mode = %q, want empty", got)
+	if got := preferredBaselineModeID("other", modes); got != "" {
+		t.Fatalf("generic baseline mode = %q, want empty", got)
 	}
 }
 

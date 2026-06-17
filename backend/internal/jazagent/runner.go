@@ -18,7 +18,7 @@ const VoiceModeNote = "Voice mode: the user spoke this message aloud and your fi
 
 const PlanModeNote = `<collaboration_mode># Plan Mode
 
-You are in Plan Mode until this turn ends. Plan Mode is a collaboration mode for producing an approval-ready implementation plan; it is not execution mode.
+You are in Plan Mode until this turn ends. Plan Mode is a collaboration mode for producing an approval-ready implementation plan, separate from tool permissions or autonomy.
 
 ## Rules
 
