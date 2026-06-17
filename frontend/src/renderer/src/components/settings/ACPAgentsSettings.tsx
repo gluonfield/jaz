@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, ChevronDown, KeyRound, LoaderCircle, LogIn, Save, Terminal } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { CheckCircle2, ChevronDown, KeyRound, LoaderCircle, LogIn, Terminal } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { AuthLoginStatus } from '@/components/acp/AuthLoginStatus'
+import { SettingsSection, useAgentSettingsDraft } from '@/components/settings/agentSettingsShell'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { ModelCombobox } from '@/components/ui/ModelCombobox'
@@ -13,25 +14,15 @@ import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
 import { agentLabel, authProviderLabel } from '@/lib/agentLabel'
 import {
-  agentSettingsQuery,
-  cloneAgentSettings,
-  disconnectACPAuth,
-  startACPAuthLogin,
-  updateAgentSettings,
-} from '@/lib/api/settings'
-import {
   acpUsesModelProvider,
   selectableACPModelProviders,
 } from '@/lib/agentRuntimes'
-import { useACPLoginPolling } from '@/lib/hooks/useACPLoginPolling'
+import { cloneAgentSettings, disconnectACPAuth, startACPAuthLogin } from '@/lib/api/settings'
 import type { ACPAgentAuthStatus, ACPAuthLogin, AgentSettings as AgentSettingsData } from '@/lib/api/types'
-import {
-  acpAgentModelSuggestions,
-  modelSuggestionsForProvider,
-  openRouterModelsQuery,
-} from '@/lib/models'
+import { useACPLoginPolling } from '@/lib/hooks/useACPLoginPolling'
+import { acpAgentModelSuggestions, modelSuggestionsForProvider, openRouterModelsQuery } from '@/lib/models'
 import { keys } from '@/lib/query/keys'
-import { acpReasoningEffortOptions, REASONING_EFFORT_OPTIONS } from '@/lib/reasoningEfforts'
+import { acpReasoningEffortOptions, settingsReasoningOptions } from '@/lib/reasoningEfforts'
 
 const inputClass =
   'h-7 w-full rounded-full bg-ink/10 px-3 text-[12px] text-ink outline-none transition duration-150 placeholder:text-ink-3 focus:bg-ink/15 focus:ring-1 focus:ring-ink/25 disabled:opacity-50'
@@ -39,21 +30,17 @@ const inputClass =
 const rowControlClass = 'w-full md:w-[320px]'
 type ACPAuthDraft = AgentSettingsData['acp'][string]['auth']
 
-// Here '' means "no effort configured" rather than "inherit the default".
-const settingsReasoningOptions = (options = REASONING_EFFORT_OPTIONS) =>
-  options.map((option) => (option.value === '' ? { ...option, label: 'None' } : option))
-
-function settingsKey(settings: AgentSettingsData | null): string {
-  return settings ? JSON.stringify(settings) : ''
-}
-
 // Returns a clone with one ACP agent turned on — used when a sign-in or API key
-// connects an agent, so it becomes a usable runtime without a separate toggle.
+// connects an agent, so it becomes usable without a separate toggle.
 function withEnabledAgent(settings: AgentSettingsData, agent: string): AgentSettingsData {
   const next = cloneAgentSettings(settings)
   const current = next.acp[agent]
   if (current) next.acp[agent] = { ...current, enabled: true }
   return next
+}
+
+function agentRequiresCommand(settings: AgentSettingsData, agent: string): boolean {
+  return settings.acp_options?.[agent]?.requires_command ?? true
 }
 
 function hasEnabledACPWithoutCommand(settings: AgentSettingsData): boolean {
@@ -64,49 +51,21 @@ function hasEnabledACPWithoutCommand(settings: AgentSettingsData): boolean {
   })
 }
 
-function agentRequiresCommand(settings: AgentSettingsData, agent: string): boolean {
-  return settings.acp_options?.[agent]?.requires_command ?? true
-}
-
-function agentUsesModelProvider(settings: AgentSettingsData, agent: string): boolean {
-  return acpUsesModelProvider(settings, agent)
-}
-
 function hasInvalidACPProvider(settings: AgentSettingsData): boolean {
   return settings.agents.some((agent) => {
-    if (!agentUsesModelProvider(settings, agent)) return false
+    if (!acpUsesModelProvider(settings, agent)) return false
     const current = settings.acp[agent]
     if (!current?.enabled) return false
     return (current.model_provider ?? '').trim() === '' || (current.model ?? '').trim() === ''
   })
 }
 
-export function AgentSettings() {
+export function ACPAgentsSettings() {
+  const { settings, draft, setDraft, providerKeys, setProviderKeys, save, dirty, providerKeyDirty } =
+    useAgentSettingsDraft('agent settings')
+  // This screen owns extra mutations (sign-in, disconnect) beyond the shared save.
   const queryClient = useQueryClient()
   const toast = useToast()
-  const settings = useQuery(agentSettingsQuery)
-  const [draft, setDraft] = useState<AgentSettingsData | null>(null)
-  // A freshly pasted model-provider key, keyed by provider id. Write-only —
-  // the backend never returns the value, so it lives outside the draft.
-  const [providerKeys, setProviderKeys] = useState<Record<string, string>>({})
-
-  useEffect(() => {
-    if (settings.data) setDraft(cloneAgentSettings(settings.data))
-  }, [settings.data])
-
-  const save = useMutation({
-    mutationFn: (input: AgentSettingsData) => updateAgentSettings(input, providerKeys),
-    onSuccess: (saved) => {
-      setDraft(cloneAgentSettings(saved))
-      setProviderKeys({})
-      toast('Saved agent settings')
-    },
-    onError: (error: Error) => toast(`Couldn't save agent settings: ${error.message}`, 'danger'),
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: keys.agentSettings })
-      queryClient.invalidateQueries({ queryKey: keys.acpAgents })
-    },
-  })
 
   // A finished sign-in connects the agent: turn it on and persist so it works
   // right away (matching onboarding, no extra Enabled toggle). The hook reads
@@ -121,7 +80,7 @@ export function AgentSettings() {
   })
 
   const login = useMutation({
-    mutationFn: ({ agent, auth }: { agent: string; auth?: AgentSettingsData['acp'][string]['auth'] }) =>
+    mutationFn: ({ agent, auth }: { agent: string; auth?: ACPAuthDraft }) =>
       startACPAuthLogin(agent, auth),
     onSuccess: (job) => {
       trackLoginJob(job)
@@ -141,70 +100,44 @@ export function AgentSettings() {
     onError: (error: Error) => toast(`Couldn't disconnect: ${error.message}`, 'danger'),
   })
 
-  const dirty = useMemo(
-    () => settingsKey(draft) !== settingsKey(settings.data ?? null),
-    [draft, settings.data],
-  )
-  const providerKeyDirty = Object.values(providerKeys).some((value) => value.trim().length > 0)
-  const invalid = draft
-    ? hasEnabledACPWithoutCommand(draft) || hasInvalidACPProvider(draft)
-    : true
+  const invalid = draft ? hasEnabledACPWithoutCommand(draft) || hasInvalidACPProvider(draft) : true
   const canSave = draft != null && !invalid && (dirty || providerKeyDirty) && !save.isPending
 
   return (
-    <section className="py-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium text-ink">Agents</p>
-          <p className="mt-0.5 text-[13px] text-ink-2">
-            Defaults copied into each new thread.
-          </p>
+    <SettingsSection
+      title="Agents (ACP)"
+      description="Configure ACP agents, auth, and per-agent defaults."
+      canSave={canSave}
+      saving={save.isPending}
+      onSave={() => draft && save.mutate(draft)}
+    >
+      {settings.isError ? (
+        <p className="py-2 text-[13px] text-danger">{settings.error.message}</p>
+      ) : settings.isPending || !draft ? (
+        <SkeletonRows count={3} />
+      ) : (
+        <div className="flex flex-col gap-3">
+          {draft.agents.map((agent) => (
+            <ACPAgentRow
+              key={agent}
+              agent={agent}
+              settings={draft}
+              providerKeys={providerKeys}
+              disabled={save.isPending}
+              loginJob={loginJobs[agent]}
+              loginPending={login.isPending && login.variables?.agent === agent}
+              disconnecting={disconnect.isPending && disconnect.variables === agent}
+              onStartLogin={(auth) => login.mutate({ agent, auth })}
+              onDisconnect={() => disconnect.mutate(agent)}
+              onProviderKeyChange={(provider, value) =>
+                setProviderKeys({ ...providerKeys, [provider]: value })
+              }
+              onChange={setDraft}
+            />
+          ))}
         </div>
-        <Button
-          variant="primary"
-          size="md"
-          disabled={!canSave}
-          onClick={() => draft && save.mutate(draft)}
-        >
-          <Save size={14} />
-          {save.isPending ? 'Saving...' : 'Save changes'}
-        </Button>
-      </div>
-
-      <div className="mt-4">
-        {settings.isError ? (
-          <p className="py-2 text-[13px] text-danger">{settings.error.message}</p>
-        ) : settings.isPending || !draft ? (
-          <SkeletonRows count={3} />
-        ) : (
-          <div className="flex flex-col gap-4">
-            <div>
-              <p className="pb-2 text-[12px] font-medium text-ink-2">ACP</p>
-              <div className="flex flex-col gap-3">
-                {draft.agents.map((agent) => (
-                  <ACPAgentRow
-                    key={agent}
-                    agent={agent}
-                    settings={draft}
-                    providerKeys={providerKeys}
-                    disabled={save.isPending}
-                    loginJob={loginJobs[agent]}
-                    loginPending={login.isPending && login.variables?.agent === agent}
-                    disconnecting={disconnect.isPending && disconnect.variables === agent}
-                    onStartLogin={(auth) => login.mutate({ agent, auth })}
-                    onDisconnect={() => disconnect.mutate(agent)}
-                    onProviderKeyChange={(provider, value) =>
-                      setProviderKeys({ ...providerKeys, [provider]: value })
-                    }
-                    onChange={setDraft}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </section>
+      )}
+    </SettingsSection>
   )
 }
 
@@ -279,7 +212,7 @@ function ACPAgentRow({
         </span>
       </div>
 
-      <SettingsRow title="Enabled" description="Show this ACP client as a runtime.">
+      <SettingsRow title="Enabled" description="Show this ACP client in agent pickers.">
         <div className="flex h-8 w-full items-center justify-start md:w-[320px] md:justify-end">
           <Switch
             checked={current.enabled}
@@ -292,8 +225,8 @@ function ACPAgentRow({
 
       {supportsAuth ? (
         <div className="border-t border-border/70 px-3 py-3">
-      {/* Auth is never gated by the Enabled toggle: you must be able to connect
-          an agent you skipped in onboarding. Connecting it turns it on. */}
+          {/* Auth is never gated by the Enabled toggle: you must be able to connect
+              an agent you skipped in onboarding. Connecting it turns it on. */}
           <AgentAuthPanel
             agent={agent}
             disabled={disabled}

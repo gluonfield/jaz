@@ -373,6 +373,31 @@ func TestListFilesystemDirsDefaultsToWorkspace(t *testing.T) {
 	}
 }
 
+func TestListFilesystemDirsResolvesRelativePathInsideWorkspace(t *testing.T) {
+	workspace := t.TempDir()
+	repo := filepath.Join(workspace, "repo")
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/v1/filesystem/dirs?path=repo", nil)
+	res := httptest.NewRecorder()
+	(&Server{Workspace: workspace}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var got struct {
+		Path string `json:"path"`
+		Git  bool   `json:"git"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Path != repo || !got.Git {
+		t.Fatalf("dir = %#v, want git repo %q", got, repo)
+	}
+}
+
 func TestACPStreamUsesServerContextAfterRequestCancel(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

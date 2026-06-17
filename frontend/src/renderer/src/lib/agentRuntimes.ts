@@ -1,6 +1,7 @@
 import type { AgentSettings, ModelProviderOption } from './api/types'
 
 export const ACP_PROVIDER_MODE_AGENT = 'agent_defaults'
+const HIDDEN_MODEL_PROVIDERS = new Set(['ollama'])
 
 export function enabledACPAgents(settings?: AgentSettings): string[] {
   return (settings?.agents ?? []).filter(
@@ -14,7 +15,9 @@ export function selectableACPModelProviders(
 ): ModelProviderOption[] {
   if (!acpUsesModelProvider(settings, agent)) return []
   const ids = new Set(settings?.acp_options?.[agent]?.model_provider_ids ?? [])
-  return (settings?.providers ?? []).filter((provider) => ids.has(provider.id))
+  return (settings?.providers ?? []).filter(
+    (provider) => ids.has(provider.id) && !HIDDEN_MODEL_PROVIDERS.has(provider.id),
+  )
 }
 
 export function configuredACPModelProviders(
@@ -52,10 +55,10 @@ export function runtimeModelState(
     : ''
   const selectedProvider = providers.find((p) => p.id === provider)
   const defaultModel = usesModelProvider
-      ? provider === defaultProvider
-        ? (settings?.acp[runtime]?.model ?? '')
-        : (selectedProvider?.default_model ?? '')
-      : (settings?.acp[runtime]?.model ?? '')
+    ? provider === defaultProvider
+      ? (settings?.acp[runtime]?.model ?? '')
+      : (selectedProvider?.default_model ?? '')
+    : (settings?.acp[runtime]?.model ?? '')
   const defaultEffort = settings?.acp[runtime]?.reasoning_effort ?? ''
   return {
     usesModelProvider,
@@ -75,4 +78,14 @@ export function acpUsesModelProvider(settings: AgentSettings | undefined, agent:
 export function acpAgentRunnable(settings: AgentSettings | undefined, agent: string): boolean {
   if (acpUsesModelProvider(settings, agent)) return configuredACPModelProviders(settings, agent).length > 0
   return true
+}
+
+// Where to grab an API key for each backend provider id.
+const PROVIDER_KEY_URLS: Record<string, string> = {
+  openrouter: 'https://openrouter.ai/keys',
+  openai: 'https://platform.openai.com/api-keys',
+}
+
+export function providerKeyUrl(providerId: string): string | undefined {
+  return PROVIDER_KEY_URLS[providerId]
 }

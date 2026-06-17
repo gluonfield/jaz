@@ -171,7 +171,7 @@ export function LoopForm({
 }
 
 // The composer-style prompt card: a mention-capable textarea ($skill / @file)
-// with the loop's run setup — runtime and model — as its toolbar. The UI no
+// with the loop's run setup - agent and model - as its toolbar. The UI no
 // longer offers a project picker (new loops default to the workspace), but a
 // loop's `directory` is still honored end-to-end — it can be set via the
 // API/MCP and is round-tripped on edit — so the draft deliberately keeps
@@ -203,8 +203,7 @@ function LoopPromptCard({
 
   useEffect(() => {
     if (!runtimeReady) return
-    const valid = agents.includes(draft.runtime)
-    if (valid) return
+    if (agents.includes(draft.runtime)) return
     const runtime = agents.includes('jaz') ? 'jaz' : (agents[0] ?? '')
     if (runtime === draft.runtime) return
     set({ runtime, provider: '', model: '', reasoningEffort: '' })
