@@ -11,9 +11,7 @@ export function providerHidden(id: string): boolean {
 }
 
 export function enabledACPAgents(settings?: AgentSettings): string[] {
-  return (settings?.agents ?? []).filter(
-    (agent) => settings?.acp[agent]?.enabled && acpAgentRunnable(settings, agent),
-  )
+  return (settings?.agents ?? []).filter((agent) => acpAgentEnabled(settings, agent))
 }
 
 export function selectableACPModelProviders(
@@ -45,6 +43,43 @@ export function configuredACPModelProviders(
   agent: string,
 ): ModelProviderOption[] {
   return selectableACPModelProviders(settings, agent).filter(modelProviderConnected)
+}
+
+export function selectedACPModelProvider(
+  settings: AgentSettings | undefined,
+  agent: string,
+): ModelProviderOption | undefined {
+  const selected = settings?.acp[agent]?.model_provider ?? ''
+  return selectableACPModelProviders(settings, agent).find((provider) => provider.id === selected)
+}
+
+export function acpAgentEnableable(settings: AgentSettings | undefined, agent: string): boolean {
+  if (!acpUsesModelProvider(settings, agent)) return true
+  const provider = selectedACPModelProvider(settings, agent)
+  return Boolean(provider && modelProviderConnected(provider))
+}
+
+export function acpAgentEnabled(settings: AgentSettings | undefined, agent: string): boolean {
+  return Boolean(settings?.acp[agent]?.enabled) && acpAgentEnableable(settings, agent)
+}
+
+export function normalizeACPAgentEnabled(settings: AgentSettings, agent: string): AgentSettings {
+  const current = settings.acp[agent]
+  if (!current?.enabled || acpAgentEnableable(settings, agent)) return settings
+  return {
+    ...settings,
+    acp: {
+      ...settings.acp,
+      [agent]: { ...current, enabled: false },
+    },
+  }
+}
+
+export function normalizeACPAgentsEnabled(settings: AgentSettings): AgentSettings {
+  return (settings.agents ?? []).reduce(
+    (next, agent) => normalizeACPAgentEnabled(next, agent),
+    settings,
+  )
 }
 
 export function effectiveACPModelProvider(
@@ -94,8 +129,7 @@ export function acpUsesModelProvider(settings: AgentSettings | undefined, agent:
 }
 
 export function acpAgentRunnable(settings: AgentSettings | undefined, agent: string): boolean {
-  if (acpUsesModelProvider(settings, agent)) return configuredACPModelProviders(settings, agent).length > 0
-  return true
+  return acpAgentEnableable(settings, agent)
 }
 
 // Where to grab an API key for each backend provider id.
