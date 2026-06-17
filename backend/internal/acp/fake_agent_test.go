@@ -304,7 +304,10 @@ func fakeModes() map[string]any {
 	if os.Getenv("JAZ_FAKE_ACP_NO_MODES") == "1" {
 		return nil
 	}
-	currentMode := os.Getenv("JAZ_FAKE_ACP_CURRENT_MODE")
+	currentMode := os.Getenv("JAZ_FAKE_ACP_REPORTED_MODE")
+	if currentMode == "" {
+		currentMode = os.Getenv("JAZ_FAKE_ACP_CURRENT_MODE")
+	}
 	if currentMode == "" {
 		currentMode = "auto"
 	}

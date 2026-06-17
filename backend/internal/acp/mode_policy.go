@@ -8,25 +8,25 @@ const (
 	claudePlanExitToolCallID = "exit-plan-mode"
 )
 
-var executionModePriority = map[string][]string{
+var baselineModePriority = map[string][]string{
 	AgentClaude: {claudeModeAuto},
 	AgentGrok:   {"always-approve"},
 }
 
-var defaultExecutionModePriority = []string{"full-access", "yolo", "always-approve"}
+var defaultBaselineModePriority = []string{"full-access", "yolo", "always-approve"}
 
-func executionModeForAgent(agent string, modes []acpschema.SessionMode) string {
-	if ids, ok := executionModePriority[CanonicalAgentName(agent)]; ok {
+func preferredBaselineModeID(agent string, modes []acpschema.SessionMode) string {
+	if ids, ok := baselineModePriority[CanonicalAgentName(agent)]; ok {
 		return firstSessionMode(modes, ids)
 	}
-	return firstSessionMode(modes, defaultExecutionModePriority)
+	return firstSessionMode(modes, defaultBaselineModePriority)
 }
 
 func baselineModeID(agent string, modes ModeState) string {
-	if id := firstModeSnapshot(modes.AvailableModes, executionModePriority[CanonicalAgentName(agent)]); id != "" {
+	if id := firstModeSnapshot(modes.AvailableModes, baselineModePriority[CanonicalAgentName(agent)]); id != "" {
 		return id
 	}
-	if id := firstModeSnapshot(modes.AvailableModes, defaultExecutionModePriority); id != "" {
+	if id := firstModeSnapshot(modes.AvailableModes, defaultBaselineModePriority); id != "" {
 		return id
 	}
 	if modes.CurrentModeID != "" && modes.CurrentModeID != modes.PlanModeID {
