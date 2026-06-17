@@ -110,14 +110,20 @@ Use at most 100 meaningful tool/edit steps. Read before editing. Do not run jazm
 Required work:
 - Read LONG_TERM.md, SHORT_TERM.md, today's and recent daily pages, recent inbox/source pages, and relevant canonical people/company/project/concept pages.
 - If SHORT_TERM.md is oversized or stale, move durable material into canonical pages with citations, then rewrite SHORT_TERM.md so it contains only current focus, active projects, and open loops.
-- You are allowed to update LONG_TERM.md when a fact is durable enough for that horizon. Preserve the required heading.
+- You may update LONG_TERM.md only when a fact satisfies the long-term horizon policy below. Preserve the required heading.
 - Capture compressed insights, people/company/network facts, decisions, preferences, relationships, who said what, who is working on what, and happiness/blocker/alignment signals.
 - Create canonical pages when the user discussed an entity beyond public-knowledge facts.
 - Every durable fact must have an absolute-date source citation.
 - Leave uncertain candidates in %s.
 - Write a run report to %s summarizing inputs, changed files, promotions, skipped material, and warnings.
 
-Return only a concise final status after edits are complete.`, req.Root, reviewSlug, runSlug))
+Long-term horizon policy:
+%s
+
+Short-term horizon policy:
+%s
+
+Return only a concise final status after edits are complete.`, req.Root, reviewSlug, runSlug, jazmem.LongTermDreamGuidance(), jazmem.ShortTermDreamGuidance()))
 }
 
 func ensureRunPage(root, runSlug string, date time.Time, agent, sessionID, assistant string) []string {

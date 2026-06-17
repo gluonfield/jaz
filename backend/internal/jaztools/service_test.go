@@ -63,6 +63,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
 		store,
 		nil,
+		nil,
 		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
 	)
 	executor := &fakeExecutor{started: make(chan loops.Run, 1)}
@@ -124,7 +125,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		Arguments: map[string]any{
 			"name":    "Repo check",
 			"prompt":  "check repo health",
-			"runtime":"acp",
+			"runtime": "acp",
 			"schedule": map[string]any{
 				"kind":     loops.ScheduleCron,
 				"expr":     "0 9 * * *",
@@ -221,6 +222,7 @@ func TestPublishWidgetToolOnlyAdvertisedForLoopSessions(t *testing.T) {
 		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
 		store,
 		nil,
+		nil,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
@@ -278,6 +280,7 @@ func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jazmem"),
 		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
 		store,
+		nil,
 		nil,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
 	)
