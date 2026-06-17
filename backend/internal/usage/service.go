@@ -120,7 +120,7 @@ func (s Service) Models(query DailyQuery) ([]ModelUsage, error) {
 	if err != nil {
 		return nil, err
 	}
-	groups := map[string]*modelUsageGroup{}
+	groups := map[modelUsageKey]*modelUsageGroup{}
 	for _, event := range events {
 		if event.Source != storage.UsageEventSourceTurn || event.Runtime != storage.RuntimeACP {
 			continue
@@ -128,7 +128,11 @@ func (s Service) Models(query DailyQuery) ([]ModelUsage, error) {
 		if event.CreatedAt.Before(start) || !event.CreatedAt.Before(end) {
 			continue
 		}
-		key := modelUsageKey(event)
+		key := modelUsageKey{
+			agent:    event.Agent,
+			provider: event.ModelProvider,
+			model:    event.Model,
+		}
 		group := groups[key]
 		if group == nil {
 			group = &modelUsageGroup{
@@ -229,6 +233,8 @@ type modelUsageGroup struct {
 	sessionIDs map[string]struct{}
 }
 
-func modelUsageKey(event storage.UsageEvent) string {
-	return event.Agent + "\x00" + event.ModelProvider + "\x00" + event.Model
+type modelUsageKey struct {
+	agent    string
+	provider string
+	model    string
 }

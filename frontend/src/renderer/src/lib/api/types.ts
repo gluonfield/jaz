@@ -24,7 +24,7 @@ export interface Usage {
   context_window_tokens?: number
 }
 
-export interface DailyUsageTotals {
+export interface UsageTotals {
   input_tokens?: number
   cached_input_tokens?: number
   cached_write_tokens?: number
@@ -35,7 +35,7 @@ export interface DailyUsageTotals {
 
 export interface DailyUsage {
   date: string
-  usage: DailyUsageTotals
+  usage: UsageTotals
   session_count: number
 }
 
@@ -43,7 +43,7 @@ export interface ModelUsage {
   agent?: string
   model_provider?: string
   model?: string
-  usage: DailyUsageTotals
+  usage: UsageTotals
   session_count: number
 }
 
