@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query'
-import { Check, LayoutGrid } from 'lucide-react'
 import { type ReactNode, useEffect, useMemo } from 'react'
 import { MentionSuggestions, MentionTextarea, useMentionInput } from '@/components/session/MentionInput'
 import { ModelSelect, RuntimeSelect } from '@/components/session/NewThreadControls'
@@ -20,6 +19,7 @@ import {
   openRouterModelsQuery,
 } from '@/lib/models'
 import { acpReasoningEffortOptions, REASONING_EFFORT_OPTIONS } from '@/lib/reasoningEfforts'
+import { BoardAssignmentPicker } from './BoardAssignmentPicker'
 import { SchedulePicker } from './SchedulePicker'
 import {
   type ScheduleDraft,
@@ -323,36 +323,13 @@ function BoardPicker({
     )
   }
 
-  const toggle = (id: string) =>
-    onChange(selected.includes(id) ? selected.filter((b) => b !== id) : [...selected, id])
-
   return (
-    <div>
-      <div className="flex flex-wrap items-center gap-1.5">
-        {boards.data.map((board) => {
-          const active = selected.includes(board.id)
-          return (
-            <button
-              key={board.id}
-              type="button"
-              disabled={disabled}
-              aria-pressed={active}
-              onClick={() => toggle(board.id)}
-              className={`flex h-7 items-center gap-1.5 rounded-full px-3 text-[12px] font-medium ring-1 transition duration-150 active:scale-[0.97] disabled:opacity-50 ${
-                active
-                  ? 'bg-surface-2 text-ink ring-border/60 shadow-sm'
-                  : 'text-ink-2 ring-border hover:bg-surface hover:text-ink'
-              }`}
-            >
-              {active ? <Check size={12} /> : <LayoutGrid size={12} />}
-              {board.name}
-            </button>
-          )
-        })}
-      </div>
-      <span className="mt-1.5 block text-[12px] text-ink-3">
-        On every run the loop refreshes a live widget on the selected boards.
-      </span>
-    </div>
+    <BoardAssignmentPicker
+      boards={boards.data}
+      selected={selected}
+      disabled={disabled}
+      onChange={onChange}
+      hint="On every run the loop refreshes a live widget on the selected boards."
+    />
   )
 }

@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
+import { boardsQuery } from '@/lib/api/boards'
 import { createLoop, runLoopNow, updateLoop } from '@/lib/api/loops'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import type { Loop } from '@/lib/api/types'
@@ -41,8 +42,22 @@ export function LoopModal({
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const settingsQuery = useQuery(agentSettingsQuery)
+  const boards = useQuery({ ...boardsQuery, enabled: open && !isEdit })
   const [draft, setDraft] = useState<LoopDraft | null>(null)
-  const current = draft ?? (loop ? loopDraftFromLoop(loop, boardIds) : emptyLoopDraft(initialBoardIds))
+  const defaultCreateBoardIds =
+    boards.data && boards.data.length > 0 ? boards.data.map((board) => board.id) : (initialBoardIds ?? [])
+  const current = draft ?? (loop ? loopDraftFromLoop(loop, boardIds) : emptyLoopDraft(defaultCreateBoardIds))
+
+  useEffect(() => {
+    if (!open || isEdit || !boards.data?.length) return
+    const initial = initialBoardIds ?? []
+    const all = boards.data.map((board) => board.id)
+    setDraft((currentDraft) => {
+      if (!currentDraft) return currentDraft
+      if (!sameIds(currentDraft.boardIds, initial)) return currentDraft
+      return { ...currentDraft, boardIds: all }
+    })
+  }, [boards.data, initialBoardIds, isEdit, open])
 
   const save = useMutation({
     mutationFn: ({ run: _run }: { run: boolean }) =>
@@ -126,4 +141,10 @@ export function LoopModal({
       />
     </Modal>
   )
+}
+
+function sameIds(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false
+  const ids = new Set(left)
+  return right.every((id) => ids.has(id))
 }

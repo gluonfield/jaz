@@ -61,12 +61,20 @@ func NewMCPTools(store SessionEventAppender, events SessionEventPublisher) *MCPT
 }
 
 func (t *MCPTools) AddTo(server *mcp.Server) {
+	t.AddReadMeTo(server)
+	t.AddShowWidgetTo(server)
+}
+
+func (t *MCPTools) AddReadMeTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        ReadMeMCPToolName,
 		Title:       "Read artifact guidance",
 		Description: "Loads design-system and module guidance before creating a real SVG or HTML inline artifact. Call this silently before the first visual artifact in a turn.",
 		InputSchema: readMeInputSchema(),
 	}, t.ReadMe)
+}
+
+func (t *MCPTools) AddShowWidgetTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        ShowWidgetMCPToolName,
 		Title:       "Show inline artifact",

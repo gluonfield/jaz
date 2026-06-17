@@ -1,7 +1,6 @@
 package widgets
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -22,8 +21,7 @@ func (f *fakeMCPPublisher) PublishForSession(sessionID string, input PublishInpu
 
 func TestMCPPublishUsesSessionHeader(t *testing.T) {
 	publisher := &fakeMCPPublisher{}
-	tools := NewMCPTools(publisher)
-	result, out, err := tools.Publish(context.Background(), &mcp.CallToolRequest{
+	result, out, err := publish(publisher, &mcp.CallToolRequest{
 		Extra: &mcp.RequestExtra{Header: mcpsession.Header("thread-1")},
 	}, MCPPublishInput{Title: "Inbox", SizeHint: "2x2", HTML: "<p>hi</p>"})
 	if err != nil {
@@ -48,7 +46,7 @@ func TestMCPPublishUsesSessionHeader(t *testing.T) {
 }
 
 func TestMCPPublishRequiresSessionHeader(t *testing.T) {
-	_, _, err := NewMCPTools(&fakeMCPPublisher{}).Publish(context.Background(), &mcp.CallToolRequest{}, MCPPublishInput{})
+	_, _, err := publish(&fakeMCPPublisher{}, &mcp.CallToolRequest{}, MCPPublishInput{})
 	if err == nil || !strings.Contains(err.Error(), mcpsession.HeaderName) {
 		t.Fatalf("err = %v", err)
 	}
