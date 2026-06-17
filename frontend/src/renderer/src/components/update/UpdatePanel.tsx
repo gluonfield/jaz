@@ -15,6 +15,11 @@ function updateText(status: Exclude<UpdateStatus, { state: 'idle' }>) {
         title: 'Update available',
         detail: status.version ? `Jaz ${status.version} is downloading.` : 'A new Jaz update is downloading.',
       }
+    case 'checking':
+      return {
+        title: 'Checking for updates',
+        detail: 'Looking for the latest Jaz release.',
+      }
     case 'downloading':
       return {
         title: 'Downloading update',
@@ -70,7 +75,11 @@ export function UpdatePanel() {
         >
           <div className="flex items-start gap-2.5">
             <div className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-primary-soft text-primary">
-              {status.state === 'downloaded' ? <RefreshCw size={16} /> : <Download size={16} />}
+              {status.state === 'checking' || status.state === 'downloaded' ? (
+                <RefreshCw size={16} />
+              ) : (
+                <Download size={16} />
+              )}
             </div>
             <div className="min-w-0 flex-1">
               <div className="font-medium text-ink">{text.title}</div>

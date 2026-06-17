@@ -32,6 +32,64 @@ let mainWindow: BrowserWindow | null = null
 const updates = createUpdateController(() => mainWindow)
 const previewURLTargets = new Set<number>()
 
+function installApplicationMenu(): void {
+  if (process.platform !== 'darwin') return
+  const template: MenuItemConstructorOptions[] = [
+    {
+      label: APP_NAME,
+      submenu: [
+        { role: 'about', label: `About ${APP_NAME}` },
+        {
+          label: 'Check for Updates...',
+          enabled: app.isPackaged,
+          click: () => updates.checkForUpdates(),
+        },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide', label: `Hide ${APP_NAME}` },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit', label: `Quit ${APP_NAME}` },
+      ],
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'pasteAndMatchStyle' },
+        { role: 'delete' },
+        { role: 'selectAll' },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+      ],
+    },
+    {
+      label: 'Window',
+      submenu: [{ role: 'minimize' }, { role: 'zoom' }, { type: 'separator' }, { role: 'front' }],
+    },
+  ]
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
 function lockPreviewWebviewPreferences(webPreferences: WebPreferences): void {
   const prefs = webPreferences as WebPreferences & { preloadURL?: string }
   delete prefs.preload
@@ -283,6 +341,8 @@ function openBoardWindow(boardId: string): void {
 }
 
 app.whenReady().then(() => {
+  installApplicationMenu()
+
   // Renderer mirrors its theme choice here so the native chrome (macOS traffic
   // lights, native scrollbars) and any new window's paint color match.
   ipcMain.on('jaz:set-native-theme', (_event, source) => {
