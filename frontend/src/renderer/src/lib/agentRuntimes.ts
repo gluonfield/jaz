@@ -2,6 +2,7 @@ import type { AgentSettings, NativeProviderOption } from './api/types'
 
 export const ACP_PROVIDER_MODE_NATIVE = 'native_defaults'
 export const ACP_PROVIDER_MODE_AGENT = 'agent_defaults'
+const HIDDEN_MODEL_PROVIDERS = new Set(['ollama'])
 
 export function enabledACPAgents(settings?: AgentSettings): string[] {
   return (settings?.agents ?? []).filter(
@@ -19,7 +20,9 @@ export function selectableACPModelProviders(
 ): NativeProviderOption[] {
   if (!acpUsesModelProvider(settings, agent)) return []
   const ids = new Set(settings?.acp_options?.[agent]?.model_provider_ids ?? [])
-  return (settings?.providers ?? []).filter((provider) => ids.has(provider.id))
+  return (settings?.providers ?? []).filter(
+    (provider) => ids.has(provider.id) && !HIDDEN_MODEL_PROVIDERS.has(provider.id),
+  )
 }
 
 export function configuredACPModelProviders(
@@ -110,4 +113,31 @@ export function acpAgentRunnable(settings: AgentSettings | undefined, agent: str
   if (acpUsesNativeProvider(settings, agent)) return configuredNativeProviders(settings).length > 0
   if (acpUsesModelProvider(settings, agent)) return configuredACPModelProviders(settings, agent).length > 0
   return true
+}
+
+// Where to grab an API key for each native provider — the answer to "where does
+// the key even come from?". Keyed by the backend provider id.
+const PROVIDER_KEY_URLS: Record<string, string> = {
+  openrouter: 'https://openrouter.ai/keys',
+  openai: 'https://platform.openai.com/api-keys',
+}
+
+export function providerKeyUrl(providerId: string): string | undefined {
+  return PROVIDER_KEY_URLS[providerId]
+}
+
+// The model to keep when switching the native provider: preserve a hand-typed
+// model, but carry a still-default model to the new provider's default so it
+// stays valid. Shared by the providers settings screen and onboarding.
+export function nativeModelForProvider(
+  providers: NativeProviderOption[],
+  fromProviderId: string | undefined,
+  toProviderId: string,
+  currentModel: string,
+): string {
+  const to = providers.find((provider) => provider.id === toProviderId)
+  const from = providers.find((provider) => provider.id === fromProviderId)
+  return currentModel.trim() === '' || currentModel === from?.default_model
+    ? to?.default_model || currentModel
+    : currentModel
 }

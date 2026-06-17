@@ -2,6 +2,7 @@ import {
   ArchiveRestore,
   ArrowLeft,
   Bot,
+  Boxes,
   Brain,
   ChartNoAxesColumn,
   Keyboard,
@@ -14,7 +15,8 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AgentSettings } from './AgentSettings'
+import { ACPAgentsSettings } from './ACPAgentsSettings'
+import { AgentProvidersSettings } from './AgentProvidersSettings'
 import { ArchivedThreadsSettings } from './ArchivedThreadsSettings'
 import { DevicesSettings } from './DevicesSettings'
 import { GeneralSettings } from './GeneralSettings'
@@ -32,6 +34,7 @@ type Section =
   | 'devices'
   | 'keyboard'
   | 'mcp'
+  | 'providers'
   | 'agents'
   | 'archived'
 
@@ -45,6 +48,7 @@ const NAV: NavItem[] = [
   { id: 'devices', label: 'Devices', icon: MonitorSmartphone },
   { id: 'keyboard', label: 'Keyboard shortcuts', icon: Keyboard },
   { id: 'mcp', label: 'MCP servers', icon: Plug },
+  { id: 'providers', label: 'Providers', icon: Boxes },
   { id: 'agents', label: 'Agents (ACP)', icon: Bot },
   { id: 'archived', label: 'Archived threads', icon: ArchiveRestore },
 ]
@@ -187,8 +191,10 @@ function SectionContent({ section }: { section: Section }) {
       return <KeyboardShortcutsSettings />
     case 'mcp':
       return <MCPSettings />
+    case 'providers':
+      return <AgentProvidersSettings />
     case 'agents':
-      return <AgentSettings />
+      return <ACPAgentsSettings />
     case 'archived':
       return <ArchivedThreadsSettings />
     case 'personalization':

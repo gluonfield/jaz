@@ -43,7 +43,6 @@ export const OPENCODE_MODELS: ModelSuggestion[] = [
   { value: 'openrouter/openai/gpt-5.5', label: 'GPT-5.5 via OpenRouter', description: 'Most capable', contextLength: 1_050_000 },
   { value: 'openai/gpt-5.4-mini', label: 'GPT-5.4 Mini via OpenAI', description: 'Direct OpenAI provider', contextLength: 400_000 },
   { value: 'openai/gpt-5.5', label: 'GPT-5.5 via OpenAI', description: 'Direct OpenAI provider', contextLength: 1_050_000 },
-  { value: 'ollama/llama3.2', label: 'Llama 3.2 via Ollama', description: 'Local OpenAI-compatible endpoint', contextLength: 128_000 },
 ]
 
 // ACP agents imply their provider; native resolves through its provider setting.
