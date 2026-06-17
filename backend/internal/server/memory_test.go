@@ -38,7 +38,7 @@ func testMemoryServer(t *testing.T) (*Server, *fakeMemoryScheduler) {
 	t.Cleanup(func() { _ = memory.Close() })
 	scheduler := &fakeMemoryScheduler{running: true}
 	svc := memoryservice.New(memory, store, scheduler, "http://127.0.0.1:5299/mcp/jazmem")
-	tools := jaztools.New(svc, serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"}, store, nil)
+	tools := jaztools.New(svc, serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"}, store, nil, nil)
 	return &Server{Store: store, Memory: svc, JazTools: tools}, scheduler
 }
 

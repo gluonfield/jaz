@@ -15,6 +15,7 @@ import (
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	jazsettings "github.com/wins/jaz/backend/internal/settings"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
+	"github.com/wins/jaz/backend/internal/widgets"
 )
 
 type fakeScheduler struct{}
@@ -53,7 +54,14 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	service := New(memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"), serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"}, store, nil)
+	widgetService := widgets.NewService(store, nil)
+	service := New(
+		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"),
+		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
+		store,
+		nil,
+		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
+	)
 	executor := &fakeExecutor{started: make(chan loops.Run, 1)}
 	service.SetLoops(loops.NewService(store, executor, nil))
 
@@ -72,10 +80,22 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		"memory_search", "memory_get",
 		"loop_list", "loop_get", "loop_create", "loop_update", "loop_run", "loop_delete",
 		"visualize:read_me", "visualize:show_widget",
+		"publish_widget",
 	} {
 		if !names[name] {
 			t.Fatalf("missing tool %s in %#v", name, names)
 		}
+	}
+
+	readMeCall, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "visualize:read_me",
+		Arguments: map[string]any{"modules": []string{"mockup"}, "platform": "desktop"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if readMeCall.IsError || len(readMeCall.Content) == 0 {
+		t.Fatalf("read_me result = %#v", readMeCall)
 	}
 
 	pageCall, err := session.CallTool(context.Background(), &mcp.CallToolParams{
@@ -195,7 +215,7 @@ func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = memory.Close() })
 
-	service := New(memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jazmem"), serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"}, store, nil)
+	service := New(memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jazmem"), serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"}, store, nil, nil)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 
 	session, closeSession := connectClient(t, service.Server())

@@ -1,6 +1,7 @@
 package widgets_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -76,6 +77,33 @@ func TestAssignmentEnablesWidget(t *testing.T) {
 	placement, _, _ := store.LoadPlacement(board.ID, widget.ID)
 	if placement.W != 3 || placement.H != 2 {
 		t.Fatalf("placement after hint = %+v", placement)
+	}
+}
+
+func TestPublishKeepsCurrentAndFiveOldVersions(t *testing.T) {
+	service, store, loop := newTestService(t)
+	board := makeBoard(t, service, "Desk")
+	widget, err := service.AssignLoopBoards(loop, []string{board.ID})
+	if err != nil {
+		t.Fatalf("assign: %v", err)
+	}
+
+	for version := 1; version <= 8; version++ {
+		if _, _, err := service.Publish(loop, fmt.Sprintf("run-%d", version), widgets.PublishInput{HTML: fmt.Sprintf("<p>v%d</p>", version)}); err != nil {
+			t.Fatalf("publish v%d: %v", version, err)
+		}
+	}
+	stored, _ := store.LoadWidget(widget.ID)
+	if stored.CurrentVersion != 8 {
+		t.Fatalf("current version = %d", stored.CurrentVersion)
+	}
+	if _, err := store.LoadWidgetVersion(widget.ID, 2); err == nil {
+		t.Fatal("expected versions older than the five-version history to be pruned")
+	}
+	for version := 3; version <= 8; version++ {
+		if _, err := store.LoadWidgetVersion(widget.ID, version); err != nil {
+			t.Fatalf("version %d was pruned: %v", version, err)
+		}
 	}
 }
 
@@ -490,6 +518,50 @@ func TestPromptSectionMentionsFileAndErrors(t *testing.T) {
 	section = widgets.PromptSection(loop, &widgets.Widget{CurrentVersion: 3, Title: "Open PRs"})
 	if !strings.Contains(section, "iterate on it") || strings.Contains(section, "does not exist yet") {
 		t.Fatalf("prompt must tell the agent to iterate on the existing file:\n%s", section)
+	}
+}
+
+func TestLoopPromptExtraRemovesLegacyWidgetGuide(t *testing.T) {
+	service, _, loop := newTestService(t)
+	board := makeBoard(t, service, "Desk")
+	if _, err := service.AssignLoopBoards(loop, []string{board.ID}); err != nil {
+		t.Fatalf("assign: %v", err)
+	}
+	path := filepath.Join(widgets.WidgetDir(loop), "AGENTS.md")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("# Imagine — Visual Creation Suite\nold generated guide"), 0o644); err != nil {
+		t.Fatalf("write guide: %v", err)
+	}
+
+	if section := service.LoopPromptExtra(loop, loops.Run{}); section == "" {
+		t.Fatal("expected widget prompt")
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("legacy guide still exists: %v", err)
+	}
+}
+
+func TestLoopPromptExtraKeepsUserWidgetGuide(t *testing.T) {
+	service, _, loop := newTestService(t)
+	board := makeBoard(t, service, "Desk")
+	if _, err := service.AssignLoopBoards(loop, []string{board.ID}); err != nil {
+		t.Fatalf("assign: %v", err)
+	}
+	path := filepath.Join(widgets.WidgetDir(loop), "AGENTS.md")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("# Local rules\nkeep me"), 0o644); err != nil {
+		t.Fatalf("write guide: %v", err)
+	}
+
+	if section := service.LoopPromptExtra(loop, loops.Run{}); section == "" {
+		t.Fatal("expected widget prompt")
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("user guide was removed: %v", err)
 	}
 }
 
