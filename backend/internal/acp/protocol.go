@@ -52,26 +52,10 @@ func (m *Manager) requestPermission(ctx context.Context, raw json.RawMessage) (j
 		return nil, jsonrpc.InvalidParams("invalid session/request_permission", map[string]any{"error": err.Error()})
 	}
 	job := m.jobByACP(string(req.SessionID))
-	if job == nil || !locationsStayInside(job.Cwd, req.ToolCall.Locations) {
-		return permissionCancelled()
+	if job == nil {
+		return nil, jsonrpc.InvalidParams("unknown acp session", nil)
 	}
-	if optionID := autoApprovedPermissionOption(job, req); optionID != "" {
-		return jsonrpc.EncodeResult(acpschema.RequestPermissionResponseSelected(acpschema.PermissionOptionID(optionID)))
-	}
-	job.mu.RLock()
-	interactive := job.interactive
-	job.mu.RUnlock()
-	if interactive {
-		return m.awaitPermission(ctx, job, req)
-	}
-	if len(req.ToolCall.Locations) == 0 {
-		return permissionCancelled()
-	}
-	optionID := selectPermissionOption(req.Options)
-	if optionID == "" {
-		return permissionCancelled()
-	}
-	return jsonrpc.EncodeResult(acpschema.RequestPermissionResponseSelected(acpschema.PermissionOptionID(optionID)))
+	return m.awaitPermission(ctx, job, req)
 }
 
 func (m *Manager) readTextFile(raw json.RawMessage) (json.RawMessage, *jsonrpc.Error) {
@@ -118,49 +102,6 @@ func (m *Manager) writeTextFile(raw json.RawMessage) (json.RawMessage, *jsonrpc.
 		return nil, jsonrpc.InternalError(err.Error(), nil)
 	}
 	return jsonrpc.EncodeResult(acpschema.WriteTextFileResponse{})
-}
-
-func permissionCancelled() (json.RawMessage, *jsonrpc.Error) {
-	return jsonrpc.EncodeResult(acpschema.RequestPermissionResponseCancelled())
-}
-
-func selectPermissionOption(options []acpschema.PermissionOption) string {
-	for _, option := range options {
-		if permissionOptionAllows(option) {
-			return string(option.OptionID)
-		}
-	}
-	return ""
-}
-
-func autoApprovedPermissionOption(job *Job, req acpschema.RequestPermissionRequest) string {
-	if len(codexUserInputQuestions(req)) > 0 {
-		return ""
-	}
-	if optionID := planExitPermissionOption(job, req); optionID != "" {
-		return optionID
-	}
-	if CanonicalAgentName(job.ACPAgent) == AgentGrok {
-		return selectPermissionOption(req.Options)
-	}
-	return ""
-}
-
-func permissionOptionAllows(option acpschema.PermissionOption) bool {
-	if permissionOptionKindAllows(option.Kind) {
-		return true
-	}
-	text := strings.ToLower(string(option.OptionID) + " " + option.Name)
-	return strings.Contains(text, "allow") || strings.Contains(text, "approve")
-}
-
-func locationsStayInside(root string, locations []acpschema.ToolCallLocation) bool {
-	for _, location := range locations {
-		if _, err := pathsafe.Resolve(root, location.Path); err != nil {
-			return false
-		}
-	}
-	return true
 }
 
 func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
