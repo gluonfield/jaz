@@ -93,10 +93,6 @@ export function AddWidgetModal({
           {/* Every exit is disabled while an assign is in flight; otherwise its
               onSuccess close() would yank away whatever the user opened next. */}
           <div className="flex min-w-0 items-center gap-2">
-            <Button variant="secondary" size="md" disabled={assign.isPending} onClick={createNew}>
-              <Plus size={13} />
-              New loop
-            </Button>
             {assign.isError ? (
               <p role="alert" className="truncate text-[12px] text-danger">
                 {(assign.error as Error).message}
@@ -149,27 +145,52 @@ export function AddWidgetModal({
               className="mb-3"
             />
           ) : null}
-          {visible.length === 0 ? (
-            <p className="px-1 py-6 text-center text-[13px] text-ink-3">
-              No loops match “{query.trim()}”.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-1">
-              {visible.map((loop, index) => (
+          <div className="flex flex-col gap-1">
+            <NewLoopRow onClick={createNew} disabled={assign.isPending} />
+            {visible.length === 0 ? (
+              <p className="px-1 py-6 text-center text-[13px] text-ink-3">
+                No loops match “{query.trim()}”.
+              </p>
+            ) : (
+              visible.map((loop, index) => (
                 <LoopPickRow
                   key={loop.id}
                   loop={loop}
-                  delay={Math.min(index, 10) * 0.025}
+                  delay={Math.min(index + 1, 10) * 0.025}
                   selected={selected.includes(loop.id)}
                   disabled={assign.isPending}
                   onToggle={() => toggle(loop.id)}
                 />
-              ))}
-            </div>
-          )}
+              ))
+            )}
+          </div>
         </div>
       )}
     </Modal>
+  )
+}
+
+function NewLoopRow({ onClick, disabled }: { onClick: () => void; disabled: boolean }) {
+  return (
+    <motion.button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18, ease: 'easeOut' }}
+      className="flex items-center gap-2.5 rounded-control bg-bg px-3 py-2 text-left ring-1 ring-border transition-colors duration-150 hover:bg-surface"
+    >
+      <span className="grid size-4 shrink-0 place-items-center rounded-full bg-primary text-on-primary">
+        <Plus size={10} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[13px] font-medium text-ink">New loop</span>
+        <span className="mt-0.5 block truncate text-[11px] text-ink-3">
+          Run a prompt on a schedule
+        </span>
+      </span>
+    </motion.button>
   )
 }
 
