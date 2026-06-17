@@ -160,11 +160,11 @@ export function SettingsOverlay({ open, onClose }: { open: boolean; onClose: () 
                   transition={{ duration: 0.14, ease: 'easeOut' }}
                 >
                   {current.fullHeight ? (
-                    <SectionContent section={section} />
+                    <SectionContent section={section} onNavigate={setSection} />
                   ) : (
                     <div className="h-full overflow-y-auto">
                       <div className="mx-auto max-w-[760px] px-10 pb-12">
-                        <SectionContent section={section} />
+                        <SectionContent section={section} onNavigate={setSection} />
                       </div>
                     </div>
                   )}
@@ -179,7 +179,13 @@ export function SettingsOverlay({ open, onClose }: { open: boolean; onClose: () 
   )
 }
 
-function SectionContent({ section }: { section: Section }) {
+function SectionContent({
+  section,
+  onNavigate,
+}: {
+  section: Section
+  onNavigate: (section: Section) => void
+}) {
   switch (section) {
     case 'general':
       return <GeneralSettings />
@@ -190,7 +196,7 @@ function SectionContent({ section }: { section: Section }) {
     case 'providers':
       return <AgentProvidersSettings />
     case 'agents':
-      return <ACPAgentsSettings />
+      return <ACPAgentsSettings onOpenProviders={() => onNavigate('providers')} />
     case 'archived':
       return <ArchivedThreadsSettings />
     case 'personalization':
