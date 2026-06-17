@@ -1,0 +1,31 @@
+import { queryOptions } from '@tanstack/react-query'
+import { keys } from '../query/keys'
+import { del, get, patch, post } from './client'
+import type { Device, DeviceList, DevicePairing, PairingPoll } from './types'
+
+export const devicesQuery = queryOptions({
+  queryKey: keys.devices,
+  queryFn: () => get<DeviceList>('/v1/devices'),
+  refetchInterval: 5_000,
+})
+
+export function approvePairing(id: string): Promise<{ pairing: DevicePairing }> {
+  return post<{ pairing: DevicePairing }>(`/v1/devices/pairing-requests/${encodeURIComponent(id)}/approve`)
+}
+
+export function rejectPairing(id: string): Promise<{ pairing: DevicePairing }> {
+  return post<{ pairing: DevicePairing }>(`/v1/devices/pairing-requests/${encodeURIComponent(id)}/reject`)
+}
+
+export function renameDevice(id: string, name: string): Promise<{ device: Device }> {
+  return patch<{ device: Device }>(`/v1/devices/${encodeURIComponent(id)}`, { name })
+}
+
+export function revokeDevice(id: string): Promise<{ device: Device }> {
+  return del<{ device: Device }>(`/v1/devices/${encodeURIComponent(id)}`)
+}
+
+export function pollPairing(id: string, secret: string): Promise<PairingPoll> {
+  const params = new URLSearchParams({ secret })
+  return get<PairingPoll>(`/v1/devices/pairing-requests/${encodeURIComponent(id)}?${params}`)
+}

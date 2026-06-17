@@ -64,3 +64,6 @@ When an ACP agent does not support `session/set_model` or
 and pass the setting through that agent's own args or env.
 
 Runtime files are stored under `~/.jaz` by default. Override with `jaz.root`.
+
+For remote Linux deployment and the connected-device direction, see
+[`../docs/remote-backend.md`](../docs/remote-backend.md).

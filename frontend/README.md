@@ -21,6 +21,9 @@ beats the URL remembered from the last session):
 JAZ_API_URL=http://127.0.0.1:18080 bun run dev
 ```
 
+Remote backend setup and the planned connected-device approval model are in
+[`../docs/remote-backend.md`](../docs/remote-backend.md).
+
 ## Scripts
 
 - `bun run dev` — dev mode with HMR (vite on port 5180)

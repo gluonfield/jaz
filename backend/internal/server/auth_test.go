@@ -5,6 +5,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/wins/jaz/backend/internal/deviceauth"
+	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
 func TestAuthMiddlewareKeepsHealthPublic(t *testing.T) {
@@ -73,5 +76,34 @@ func TestAuthMiddlewareRejectsQueryKeyOnMutations(t *testing.T) {
 	})).ServeHTTP(res, req)
 	if res.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
+func TestAuthMiddlewareRequiresDeviceAfterBootstrap(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	devices := deviceauth.New(store)
+	registered, err := devices.Register(deviceauth.ClientInfo{Name: "First Mac", Kind: "desktop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rootReq := httptest.NewRequest(http.MethodGet, "/v1/auth/check", nil)
+	rootReq.Header.Set("Authorization", "Bearer root-key")
+	rootRes := httptest.NewRecorder()
+	(&Server{AuthKey: "root-key", Devices: devices}).Handler().ServeHTTP(rootRes, rootReq)
+	if rootRes.Code != http.StatusForbidden {
+		t.Fatalf("root status = %d, body = %s", rootRes.Code, rootRes.Body.String())
+	}
+
+	deviceReq := httptest.NewRequest(http.MethodGet, "/v1/auth/check", nil)
+	deviceReq.Header.Set("Authorization", "Bearer "+registered.Token)
+	deviceRes := httptest.NewRecorder()
+	(&Server{AuthKey: "root-key", Devices: devices}).Handler().ServeHTTP(deviceRes, deviceReq)
+	if deviceRes.Code != http.StatusOK {
+		t.Fatalf("device status = %d, body = %s", deviceRes.Code, deviceRes.Body.String())
 	}
 }

@@ -5,7 +5,14 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { PixelField } from '@/components/ui/PixelField'
 import { apiBaseUrl } from '@/lib/api/client'
-import { connectionPreference, connectRemote, rememberedRemoteUrl, startLocal, useConnection } from '@/lib/connection'
+import {
+  cancelPendingApproval,
+  connectionPreference,
+  connectRemote,
+  rememberedRemoteUrl,
+  startLocal,
+  useConnection,
+} from '@/lib/connection'
 import { useTheme } from '@/lib/theme'
 
 const EASE = [0.22, 1, 0.36, 1] as const
@@ -55,7 +62,7 @@ export function ReconnectingBanner({ show }: { show: boolean }) {
 // renders the wordmark, so the chrome stays text-light. First launch is a
 // welcome — two ways to run jaz — not an error.
 export function LaunchScreen() {
-  const { status, error } = useConnection()
+  const { status, error, pairing } = useConnection()
   // PixelField samples the palette at mount; remount it when the theme flips.
   const { resolved } = useTheme()
   const [mode, setMode] = useState<'options' | 'remote'>('options')
@@ -89,7 +96,7 @@ export function LaunchScreen() {
 
   // The launch screen flashes for a sub-second on every boot while the first
   // probe runs; only spin up the GPU field once we know we're staying.
-  const showField = status === 'disconnected'
+  const showField = status === 'disconnected' || status === 'pending_approval'
   // While 'checking' we know what we're waiting on — tailor the copy so a
   // remembered server or a local start reads as intentional, not a hang.
   const checkingCopy =
@@ -116,6 +123,40 @@ export function LaunchScreen() {
             >
               <span className="size-2 animate-pulse rounded-full bg-primary" />
               <p className="text-[13px] text-ink-3">{checkingCopy}</p>
+            </motion.div>
+          ) : status === 'pending_approval' && pairing ? (
+            <motion.div
+              key="pending"
+              variants={stagger}
+              initial="hidden"
+              animate="show"
+              className="flex w-full max-w-[340px] flex-col items-center"
+            >
+              <motion.div variants={rise} className="mb-4 flex size-12 items-center justify-center rounded-full bg-primary-soft">
+                <span className="size-2.5 animate-pulse rounded-full bg-primary" />
+              </motion.div>
+              <motion.h1
+                variants={rise}
+                className="text-balance text-center text-[22px] font-semibold tracking-tight text-ink"
+              >
+                Waiting for approval
+              </motion.h1>
+              <motion.p variants={rise} className="mt-2 text-pretty text-center text-[13px] text-ink-2">
+                Approve this device from Settings on a connected Jaz app.
+              </motion.p>
+              <motion.div
+                variants={rise}
+                className="mt-5 w-full rounded-[16px] bg-surface/90 p-3 text-left shadow-[0_8px_30px_rgba(0,0,0,0.10)] backdrop-blur-[2px]"
+              >
+                <p className="text-[12px] font-medium text-ink">{pairing.deviceName}</p>
+                <p className="mt-1 truncate font-mono text-[11px] text-ink-3">{pairing.url}</p>
+                <p className="mt-2 text-[11px] text-ink-3">Request expires {formatApprovalExpiry(pairing.expiresAt)}.</p>
+              </motion.div>
+              <motion.div variants={rise} className="mt-4">
+                <Button variant="ghost" onClick={cancelPendingApproval}>
+                  Cancel
+                </Button>
+              </motion.div>
             </motion.div>
           ) : (
             <motion.div
@@ -255,4 +296,10 @@ function ChoiceButton({
       {busy && busyLabel ? busyLabel : label}
     </motion.button>
   )
+}
+
+function formatApprovalExpiry(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'soon'
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }

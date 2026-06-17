@@ -13,6 +13,7 @@ func TestServerArgs(t *testing.T) {
 		{name: "server flags", in: []string{"--addr", ":8080"}, args: []string{"--addr", ":8080"}, action: mainRun},
 		{name: "serve alias", in: []string{"serve", "--addr", ":8080"}, args: []string{"--addr", ":8080"}, action: mainRun},
 		{name: "server alias", in: []string{"server"}, action: mainRun},
+		{name: "devices", in: []string{"devices", "--root", "/tmp/jaz"}, args: []string{"--root", "/tmp/jaz"}, action: mainDevices},
 		{name: "help", in: []string{"--help"}, action: mainHelp},
 		{name: "serve help", in: []string{"serve", "--help"}, action: mainHelp},
 		{name: "chat is not a subcommand", in: []string{"chat"}, action: mainInvalid},
@@ -20,7 +21,7 @@ func TestServerArgs(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			args, action := serverArgs(tt.in)
+			args, action := commandArgs(tt.in)
 			if action != tt.action {
 				t.Fatalf("action = %v, want %v", action, tt.action)
 			}

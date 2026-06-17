@@ -2,31 +2,82 @@ package server
 
 import (
 	"crypto/subtle"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"strings"
 
+	"github.com/wins/jaz/backend/internal/deviceauth"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 )
 
 func (s *Server) withAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := strings.TrimSpace(s.AuthKey)
-		if key == "" || r.URL.Path == "/health" || internalMCPRequest(r) {
+		if key == "" || r.URL.Path == "/health" || internalMCPRequest(r) || publicDeviceRequest(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if subtle.ConstantTimeCompare([]byte(requestAuthKey(r)), []byte(key)) != 1 {
-			writeError(w, http.StatusUnauthorized, fmt.Errorf("missing or invalid backend API key"))
+		token := requestAuthKey(r)
+		if s.Devices != nil {
+			principal, err := s.Devices.Authenticate(token, deviceauth.ClientInfoFromRequest(r, "Jaz desktop"))
+			if err == nil {
+				next.ServeHTTP(w, r.WithContext(deviceauth.WithPrincipal(r.Context(), principal)))
+				return
+			}
+			if errors.Is(err, deviceauth.ErrApprovalRequired) {
+				writeAuthError(w, http.StatusForbidden, "device_approval_required", err)
+				return
+			}
+		}
+		if subtle.ConstantTimeCompare([]byte(strings.TrimSpace(token)), []byte(key)) == 1 {
+			if rootKeyAllowed(r) || s.rootKeyHasFullAccess() {
+				principal := deviceauth.Principal{Kind: deviceauth.PrincipalRoot}
+				next.ServeHTTP(w, r.WithContext(deviceauth.WithPrincipal(r.Context(), principal)))
+				return
+			}
+			writeAuthError(w, http.StatusForbidden, "device_approval_required", deviceauth.ErrApprovalRequired)
 			return
 		}
-		next.ServeHTTP(w, r)
+		writeAuthError(w, http.StatusUnauthorized, "unauthorized", fmt.Errorf("missing or invalid backend API key"))
 	})
 }
 
+func (s *Server) rootKeyHasFullAccess() bool {
+	if s.Devices == nil {
+		return true
+	}
+	count, err := s.Devices.ApprovedDeviceCount()
+	return err != nil || count == 0
+}
+
+func rootKeyAllowed(r *http.Request) bool {
+	return r.Method == http.MethodPost && r.URL.Path == "/v1/devices/register"
+}
+
+func publicDeviceRequest(r *http.Request) bool {
+	if r.Method == http.MethodPost && r.URL.Path == "/v1/devices/pairing-requests" {
+		return true
+	}
+	if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/devices/pairing-requests/") {
+		rest := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/devices/pairing-requests/"), "/")
+		return rest != "" && !strings.Contains(rest, "/")
+	}
+	return false
+}
+
+func writeAuthError(w http.ResponseWriter, status int, code string, err error) {
+	writeJSON(w, status, map[string]any{"error": err.Error(), "code": code})
+}
+
 func (s *Server) handleAuthCheck(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	principal, _ := deviceauth.PrincipalFromContext(r.Context())
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":        true,
+		"auth_kind": principal.Kind,
+		"device_id": principal.DeviceID,
+	})
 }
 
 func requestAuthKey(r *http.Request) string {

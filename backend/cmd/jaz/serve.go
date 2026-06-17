@@ -17,6 +17,7 @@ import (
 	"github.com/wins/jaz/backend/internal/app"
 	configloader "github.com/wins/jaz/backend/internal/config"
 	"github.com/wins/jaz/backend/internal/coordinator"
+	"github.com/wins/jaz/backend/internal/deviceauth"
 	"github.com/wins/jaz/backend/internal/jaztools"
 	"github.com/wins/jaz/backend/internal/loops"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
@@ -53,6 +54,7 @@ func runServe(args []string) error {
 			sqlitestore.NewSearchQueries,
 			app.NewWorkspace,
 			app.NewMemory,
+			app.NewDeviceAuth,
 			newMemoryService,
 			jaztools.New,
 			terminal.New,
@@ -185,6 +187,7 @@ func startServer(
 	jazTools *jaztools.Service,
 	terminals *terminal.Manager,
 	threadService *threads.Service,
+	deviceAuth *deviceauth.Service,
 	routes server.Routes,
 ) error {
 	authKey, err := runtimeauth.Ensure(store.RootDir())
@@ -213,6 +216,7 @@ func startServer(
 		Memory:          memory,
 		JazTools:        jazTools,
 		Terminal:        terminals,
+		Devices:         deviceAuth,
 	}
 	lc.Append(fx.Hook{
 		OnStop: func(context.Context) error {
@@ -267,7 +271,12 @@ func startServer(
 	lc.Append(fx.Hook{
 		OnStart: func(context.Context) error {
 			fmt.Printf("jaz server listening on %s\n", serverconfig.DisplayAddr(serverConfig.Addr))
-			fmt.Printf("client: %s\n", serverconfig.ClientURL(serverConfig, authKey))
+			if strings.TrimSpace(serverConfig.PublicURL) == "" {
+				fmt.Printf("client: %s\n", serverconfig.ClientURL(serverConfig, authKey))
+			} else {
+				fmt.Printf("client: %s\n", serverconfig.ClientBaseURL(serverConfig))
+				fmt.Printf("client key: %s\n", runtimeauth.Path(store.RootDir()))
+			}
 			fmt.Printf("root: %s\n", store.RootDir())
 			fmt.Printf("workspace: %s\n", workspace)
 			if err := loopMemoryPaths.EnsureDir(); err != nil {

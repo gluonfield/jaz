@@ -47,20 +47,30 @@ func DisplayAddr(addr string) string {
 }
 
 func ClientURL(config Config, key string) string {
+	base := ClientBaseURL(config)
+	u, err := url.Parse(base)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return base + "?key=" + url.QueryEscape(key)
+	}
+	q := u.Query()
+	q.Set("key", key)
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+func ClientBaseURL(config Config) string {
 	base := strings.TrimSpace(config.PublicURL)
 	if base == "" {
 		base = config.Addr
 	}
 	u, err := url.Parse(DisplayAddr(base))
 	if err != nil || u.Scheme == "" || u.Host == "" {
-		return DisplayAddr(base) + "?key=" + url.QueryEscape(key)
+		return DisplayAddr(base)
 	}
 	u.Path = ""
 	u.RawPath = ""
 	u.Fragment = ""
-	q := u.Query()
-	q.Set("key", key)
-	u.RawQuery = q.Encode()
+	u.RawQuery = ""
 	return u.String()
 }
 
