@@ -1,12 +1,17 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '../query/keys'
 import { del, get, post } from './client'
-import type { Device, DeviceList, DevicePairing, PairingPoll } from './types'
+import type { Device, DeviceConnectionLink, DeviceList, DevicePairing, PairingPoll } from './types'
 
 export const devicesQuery = queryOptions({
   queryKey: keys.devices,
   queryFn: () => get<DeviceList>('/v1/devices'),
   refetchInterval: 5_000,
+})
+
+export const deviceConnectionLinkQuery = queryOptions({
+  queryKey: keys.deviceConnectionLink,
+  queryFn: () => get<DeviceConnectionLink>('/v1/devices/connection-link'),
 })
 
 export function approvePairing(id: string): Promise<{ pairing: DevicePairing }> {
