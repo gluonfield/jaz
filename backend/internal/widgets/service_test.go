@@ -25,7 +25,7 @@ func newTestService(t *testing.T) (*widgets.Service, *sqlitestore.Store, loops.L
 		Prompt:     "track PRs",
 		Schedule:   loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 9 * * *", Timezone: "UTC"},
 		Status:     loops.StatusActive,
-		Runtime:    loops.RuntimeNative,
+		Runtime:    loops.RuntimeACP,
 		MemoryPath: filepath.Join(t.TempDir(), "pr-tracker", "memory.md"),
 		CreatedAt:  time.Now().UTC(),
 		UpdatedAt:  time.Now().UTC(),
@@ -191,7 +191,7 @@ func TestPatchBoardRejectionLeavesBoardUntouched(t *testing.T) {
 	other := loops.Loop{
 		ID: store.NewLoopID(), Name: "Other", Prompt: "p",
 		Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 9 * * *", Timezone: "UTC"},
-		Status:   loops.StatusActive, Runtime: loops.RuntimeNative,
+		Status:   loops.StatusActive, Runtime: loops.RuntimeACP,
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}
 	if err := store.SaveLoop(other); err != nil {
@@ -230,7 +230,7 @@ func TestPatchBoardRejectsOverlap(t *testing.T) {
 	other := loops.Loop{
 		ID: store.NewLoopID(), Name: "Other", Prompt: "p",
 		Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 9 * * *", Timezone: "UTC"},
-		Status:   loops.StatusActive, Runtime: loops.RuntimeNative,
+		Status:   loops.StatusActive, Runtime: loops.RuntimeACP,
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}
 	if err := store.SaveLoop(other); err != nil {
@@ -265,7 +265,7 @@ func TestNormalizeBoardLayoutsUnburiesTiles(t *testing.T) {
 	other := loops.Loop{
 		ID: store.NewLoopID(), Name: "Other", Prompt: "p",
 		Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 9 * * *", Timezone: "UTC"},
-		Status:   loops.StatusActive, Runtime: loops.RuntimeNative,
+		Status:   loops.StatusActive, Runtime: loops.RuntimeACP,
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}
 	if err := store.SaveLoop(other); err != nil {
@@ -325,7 +325,7 @@ func TestPurgeOrphansFreesCells(t *testing.T) {
 	fresh := loops.Loop{
 		ID: store.NewLoopID(), Name: "Fresh", Prompt: "p",
 		Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 9 * * *", Timezone: "UTC"},
-		Status:   loops.StatusActive, Runtime: loops.RuntimeNative,
+		Status:   loops.StatusActive, Runtime: loops.RuntimeACP,
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}
 	if err := store.SaveLoop(fresh); err != nil {

@@ -21,7 +21,6 @@ import {
 } from '@/lib/api/settings'
 import {
   acpUsesModelProvider,
-  acpUsesNativeProvider,
   selectableACPModelProviders,
 } from '@/lib/agentRuntimes'
 import { useACPLoginPolling } from '@/lib/hooks/useACPLoginPolling'
@@ -29,7 +28,6 @@ import type { ACPAgentAuthStatus, ACPAuthLogin, AgentSettings as AgentSettingsDa
 import {
   acpAgentModelSuggestions,
   modelSuggestionsForProvider,
-  OPENAI_MODELS,
   openRouterModelsQuery,
 } from '@/lib/models'
 import { keys } from '@/lib/query/keys'
@@ -88,7 +86,7 @@ export function AgentSettings() {
   const toast = useToast()
   const settings = useQuery(agentSettingsQuery)
   const [draft, setDraft] = useState<AgentSettingsData | null>(null)
-  // A freshly pasted native provider key, keyed by provider id. Write-only —
+  // A freshly pasted model-provider key, keyed by provider id. Write-only —
   // the backend never returns the value, so it lives outside the draft.
   const [providerKeys, setProviderKeys] = useState<Record<string, string>>({})
 
@@ -147,26 +145,11 @@ export function AgentSettings() {
     () => settingsKey(draft) !== settingsKey(settings.data ?? null),
     [draft, settings.data],
   )
-  const openRouterModels = useQuery({
-    ...openRouterModelsQuery,
-    enabled: draft?.native.model_provider === 'openrouter',
-  })
-  const nativeModelSuggestions =
-    draft?.native.model_provider === 'openrouter' ? (openRouterModels.data ?? []) : OPENAI_MODELS
   const providerKeyDirty = Object.values(providerKeys).some((value) => value.trim().length > 0)
-  const nativeProviders = (draft?.providers ?? []).filter((provider) => provider.implemented)
   const invalid = draft
-    ? (draft.native.model_provider ?? '').trim() === '' ||
-      draft.native.model.trim() === '' ||
-      hasEnabledACPWithoutCommand(draft) ||
-      hasInvalidACPProvider(draft)
+    ? hasEnabledACPWithoutCommand(draft) || hasInvalidACPProvider(draft)
     : true
   const canSave = draft != null && !invalid && (dirty || providerKeyDirty) && !save.isPending
-
-  const selectedProvider = draft?.native.model_provider ?? ''
-  const selectedNativeProvider = nativeProviders.find((provider) => provider.id === selectedProvider)
-  const selectedProviderEnv = selectedNativeProvider?.api_key_env
-  const selectedProviderConfigured = Boolean(selectedNativeProvider?.configured)
 
   return (
     <section className="py-5">
@@ -195,104 +178,6 @@ export function AgentSettings() {
           <SkeletonRows count={3} />
         ) : (
           <div className="flex flex-col gap-4">
-            <div>
-              <p className="pb-2 text-[12px] font-medium text-ink-2">Native</p>
-              <div className="overflow-hidden rounded-card bg-surface">
-                <SettingsRow
-                  title="Provider"
-                  description="API provider used for native threads."
-                >
-                  <Select
-                    value={draft.native.model_provider ?? ''}
-                    options={nativeProviders.map((provider) => ({
-                      value: provider.id,
-                      label: provider.label,
-                      description: provider.base_url,
-                    }))}
-                    disabled={save.isPending}
-                    onChange={(model_provider) => {
-                      const nextProvider = nativeProviders.find((provider) => provider.id === model_provider)
-                      const currentProvider = nativeProviders.find(
-                        (provider) => provider.id === draft.native.model_provider,
-                      )
-                      const model =
-                        draft.native.model.trim() === '' ||
-                        draft.native.model === currentProvider?.default_model
-                          ? nextProvider?.default_model || draft.native.model
-                          : draft.native.model
-                      setDraft({
-                        ...draft,
-                        native: {
-                          ...draft.native,
-                          model_provider,
-                          model,
-                        },
-                      })
-                    }}
-                    aria-label="Native provider"
-                    className={rowControlClass}
-                  />
-                </SettingsRow>
-                <SettingsRow
-                  title="Provider key"
-                  description={
-                    selectedProviderConfigured
-                      ? `${selectedProviderEnv} is configured — paste a new key to replace it.`
-                      : `Paste an API key; stored on the backend as ${selectedProviderEnv ?? 'the provider env var'}.`
-                  }
-                >
-                  <Input
-                    type="password"
-                    value={providerKeys[selectedProvider] ?? ''}
-                    disabled={save.isPending || !selectedProvider}
-                    onChange={(event) =>
-                      setProviderKeys({ ...providerKeys, [selectedProvider]: event.target.value })
-                    }
-                    placeholder={
-                      selectedProviderConfigured
-                        ? `${selectedProviderEnv} configured`
-                        : (selectedProviderEnv ?? 'API key')
-                    }
-                    autoComplete="off"
-                    spellCheck={false}
-                    className={`${rowControlClass} h-8 rounded-full bg-bg px-3 py-0 font-mono text-[12px]`}
-                    aria-label="Native provider API key"
-                  />
-                </SettingsRow>
-                <SettingsRow title="Model" description="Default model for native threads.">
-                  <ModelCombobox
-                    value={draft.native.model}
-                    suggestions={nativeModelSuggestions}
-                    loading={openRouterModels.isLoading}
-                    disabled={save.isPending}
-                    onChange={(model) =>
-                      setDraft({
-                        ...draft,
-                        native: { ...draft.native, model },
-                      })
-                    }
-                    aria-label="Native model"
-                    className={rowControlClass}
-                  />
-                </SettingsRow>
-                <SettingsRow
-                  title="Reasoning"
-                  description="Default reasoning effort for native threads."
-                >
-                  <Select
-                    value={draft.native.reasoning_effort ?? ''}
-                    options={settingsReasoningOptions()}
-                    disabled={save.isPending}
-                    onChange={(reasoning_effort) =>
-                      setDraft({ ...draft, native: { ...draft.native, reasoning_effort } })
-                    }
-                    aria-label="Native reasoning effort"
-                    className={rowControlClass}
-                  />
-                </SettingsRow>
-              </div>
-            </div>
-
             <div>
               <p className="pb-2 text-[12px] font-medium text-ink-2">ACP</p>
               <div className="flex flex-col gap-3">
@@ -360,7 +245,6 @@ function ACPAgentRow({
   const options = settings.acp_options?.[agent]
   const requiresCommand = options?.requires_command ?? true
   const supportsAuth = options?.supports_auth ?? true
-  const usesNativeProvider = acpUsesNativeProvider(settings, agent)
   const usesModelProvider = acpUsesModelProvider(settings, agent)
   const [commandOpen, setCommandOpen] = useState(requiresCommand && (current.command ?? '').trim() === '')
   useEffect(() => {
@@ -435,92 +319,89 @@ function ACPAgentRow({
         </div>
       ) : null}
 
-      {usesNativeProvider ? null : (
+      {usesModelProvider ? (
         <>
-          {usesModelProvider ? (
-            <>
-              <SettingsRow title="Provider" description="API provider used for this ACP client.">
-                <Select
-                  value={current.model_provider ?? ''}
-                  options={providerOptions.map((provider) => ({
-                    value: provider.id,
-                    label: provider.label,
-                    description: provider.base_url,
-                  }))}
-                  disabled={controlsDisabled}
-                  onChange={(model_provider) => {
-                    const nextProvider = providerOptions.find((provider) => provider.id === model_provider)
-                    const model =
-                      (current.model ?? '').trim() === '' ||
-                      current.model === selectedProvider?.default_model
-                        ? (nextProvider?.default_model ?? '')
-                        : current.model
-                    update({ model_provider, model })
-                  }}
-                  aria-label={`${agentLabel(agent)} provider`}
-                  className={rowControlClass}
-                />
-              </SettingsRow>
-              <SettingsRow
-                title="Provider key"
-                description={
-                  selectedProvider?.requires_api_key === false
-                    ? 'This provider does not need an API key.'
-                    : selectedProviderConfigured
-                      ? `${selectedProviderEnv} is configured — paste a new key to replace it.`
-                      : `Paste an API key; stored on the backend as ${selectedProviderEnv ?? 'the provider env var'}.`
-                }
-              >
-                <Input
-                  type="password"
-                  value={providerKeys[current.model_provider ?? ''] ?? ''}
-                  disabled={
-                    disabled ||
-                    !(current.model_provider ?? '').trim() ||
-                    selectedProvider?.requires_api_key === false
-                  }
-                  onChange={(event) =>
-                    onProviderKeyChange(current.model_provider ?? '', event.target.value)
-                  }
-                  placeholder={
-                    selectedProvider?.requires_api_key === false
-                      ? 'No key required'
-                      : selectedProviderConfigured
-                        ? `${selectedProviderEnv} configured`
-                        : (selectedProviderEnv ?? 'API key')
-                  }
-                  autoComplete="off"
-                  spellCheck={false}
-                  className={`${rowControlClass} h-8 rounded-full bg-bg px-3 py-0 font-mono text-[12px]`}
-                  aria-label={`${agentLabel(agent)} provider API key`}
-                />
-              </SettingsRow>
-            </>
-          ) : null}
-          <SettingsRow title="Model" description="Model copied into new threads for this client.">
-            <ModelCombobox
-              value={current.model ?? ''}
-              suggestions={modelSuggestions}
-              loading={openRouterModels.isLoading}
+          <SettingsRow title="Provider" description="API provider used for this ACP client.">
+            <Select
+              value={current.model_provider ?? ''}
+              options={providerOptions.map((provider) => ({
+                value: provider.id,
+                label: provider.label,
+                description: provider.base_url,
+              }))}
               disabled={controlsDisabled}
-              onChange={(model) => update({ model })}
-              aria-label={`${agentLabel(agent)} model`}
+              onChange={(model_provider) => {
+                const nextProvider = providerOptions.find((provider) => provider.id === model_provider)
+                const model =
+                  (current.model ?? '').trim() === '' ||
+                  current.model === selectedProvider?.default_model
+                    ? (nextProvider?.default_model ?? '')
+                    : current.model
+                update({ model_provider, model })
+              }}
+              aria-label={`${agentLabel(agent)} provider`}
               className={rowControlClass}
             />
           </SettingsRow>
-
-          <SettingsRow title="Reasoning" description="Reasoning effort copied into new threads.">
-            <Select
-              value={current.reasoning_effort ?? ''}
-              options={settingsReasoningOptions(acpReasoningEffortOptions(settings, agent))}
-              disabled={controlsDisabled}
-              onChange={(reasoning_effort) => update({ reasoning_effort })}
-              aria-label={`${agentLabel(agent)} reasoning effort`}
-              className={rowControlClass}
+          <SettingsRow
+            title="Provider key"
+            description={
+              selectedProvider?.requires_api_key === false
+                ? 'This provider does not need an API key.'
+                : selectedProviderConfigured
+                  ? `${selectedProviderEnv} is configured — paste a new key to replace it.`
+                  : `Paste an API key; stored on the backend as ${selectedProviderEnv ?? 'the provider env var'}.`
+            }
+          >
+            <Input
+              type="password"
+              value={providerKeys[current.model_provider ?? ''] ?? ''}
+              disabled={
+                disabled ||
+                !(current.model_provider ?? '').trim() ||
+                selectedProvider?.requires_api_key === false
+              }
+              onChange={(event) =>
+                onProviderKeyChange(current.model_provider ?? '', event.target.value)
+              }
+              placeholder={
+                selectedProvider?.requires_api_key === false
+                  ? 'No key required'
+                  : selectedProviderConfigured
+                    ? `${selectedProviderEnv} configured`
+                    : (selectedProviderEnv ?? 'API key')
+              }
+              autoComplete="off"
+              spellCheck={false}
+              className={`${rowControlClass} h-8 rounded-full bg-bg px-3 py-0 font-mono text-[12px]`}
+              aria-label={`${agentLabel(agent)} provider API key`}
             />
           </SettingsRow>
         </>
-      )}
+      ) : null}
+
+      <SettingsRow title="Model" description="Model copied into new threads for this client.">
+        <ModelCombobox
+          value={current.model ?? ''}
+          suggestions={modelSuggestions}
+          loading={openRouterModels.isLoading}
+          disabled={controlsDisabled}
+          onChange={(model) => update({ model })}
+          aria-label={`${agentLabel(agent)} model`}
+          className={rowControlClass}
+        />
+      </SettingsRow>
+
+      <SettingsRow title="Reasoning" description="Reasoning effort copied into new threads.">
+        <Select
+          value={current.reasoning_effort ?? ''}
+          options={settingsReasoningOptions(acpReasoningEffortOptions(settings, agent))}
+          disabled={controlsDisabled}
+          onChange={(reasoning_effort) => update({ reasoning_effort })}
+          aria-label={`${agentLabel(agent)} reasoning effort`}
+          className={rowControlClass}
+        />
+      </SettingsRow>
 
       {requiresCommand ? (
         <>

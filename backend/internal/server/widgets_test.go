@@ -34,7 +34,7 @@ func saveTestLoop(t *testing.T, store *sqlitestore.Store, name string) loops.Loo
 		Prompt:    "do the thing",
 		Schedule:  loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 9 * * *", Timezone: "UTC"},
 		Status:    loops.StatusActive,
-		Runtime:   loops.RuntimeNative,
+		Runtime:   loops.RuntimeACP,
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 	}

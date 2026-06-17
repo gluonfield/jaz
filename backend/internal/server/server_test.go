@@ -164,7 +164,7 @@ func TestSessionPinRoutesKeepProjectPath(t *testing.T) {
 	session, err := store.CreateSession(storage.CreateSession{
 		Slug: "pin-me",
 		RuntimeRef: &storage.RuntimeRef{
-			Type:        storage.RuntimeNative,
+			Type:        storage.RuntimeACP,
 			Cwd:         project,
 			ProjectPath: project,
 		},
@@ -510,7 +510,7 @@ func TestSessionMessagesIncludesPersistedACPChildren(t *testing.T) {
 	}
 	parent, err := store.CreateSession(storage.CreateSession{
 		Slug:    "parent",
-		Runtime: storage.RuntimeNative,
+		Runtime: storage.RuntimeACP,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -697,7 +697,7 @@ func TestSessionMessagesHidesDirectACPChildStateFromParent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	parent, err := store.CreateSession(storage.CreateSession{Slug: "parent", Runtime: storage.RuntimeNative})
+	parent, err := store.CreateSession(storage.CreateSession{Slug: "parent", Runtime: storage.RuntimeACP})
 	if err != nil {
 		t.Fatal(err)
 	}

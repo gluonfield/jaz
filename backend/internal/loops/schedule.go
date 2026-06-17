@@ -21,7 +21,7 @@ func NormalizeCreate(input CreateLoop, now time.Time) (CreateLoop, time.Time, er
 	if input.Status != StatusActive && input.Status != StatusPaused {
 		return input, time.Time{}, fmt.Errorf("unsupported loop status %q", input.Status)
 	}
-	if input.Runtime != RuntimeACP && input.Runtime != RuntimeNative {
+	if input.Runtime != RuntimeACP {
 		return input, time.Time{}, fmt.Errorf("unsupported loop runtime %q", input.Runtime)
 	}
 	input.ACPAgent = strings.TrimSpace(input.ACPAgent)
@@ -86,13 +86,10 @@ func NormalizeUpdate(current Loop, input UpdateLoop, now time.Time) (Loop, bool,
 	if next.Runtime == RuntimeACP && next.ACPAgent == "" {
 		next.ACPAgent = defaultACPAgent
 	}
-	if next.Runtime != RuntimeACP {
-		next.ACPAgent = ""
-	}
 	if next.Status != StatusActive && next.Status != StatusPaused {
 		return next, false, fmt.Errorf("unsupported loop status %q", next.Status)
 	}
-	if next.Runtime != RuntimeACP && next.Runtime != RuntimeNative {
+	if next.Runtime != RuntimeACP {
 		return next, false, fmt.Errorf("unsupported loop runtime %q", next.Runtime)
 	}
 	if next.Name == "" {
@@ -205,8 +202,6 @@ func normalizeRuntime(runtime string) string {
 	switch strings.ToLower(strings.TrimSpace(runtime)) {
 	case "", RuntimeACP:
 		return RuntimeACP
-	case RuntimeNative:
-		return RuntimeNative
 	default:
 		return strings.ToLower(strings.TrimSpace(runtime))
 	}

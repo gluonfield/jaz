@@ -15,25 +15,22 @@ import {
 import { keys } from '@/lib/query/keys'
 import { REASONING_EFFORT_OPTIONS } from '@/lib/reasoningEfforts'
 
-// Selects the runtime backing a new thread: Native (the default Jaz session) or
-// one of the configured ACP agents. `value` is 'native' or an agent name.
+// Selects the ACP agent backing a new thread.
 export function RuntimeSelect({
   value,
   agents,
-  nativeAvailable = true,
   disabled,
   placement,
   onChange,
 }: {
   value: string
   agents: string[]
-  nativeAvailable?: boolean
   disabled?: boolean
   placement?: 'above' | 'below'
   onChange: (runtime: string) => void
 }) {
   const [open, setOpen] = useState(false)
-  const label = value === 'native' ? 'Native' : agentLabel(value)
+  const label = agentLabel(value)
   const select = (runtime: string) => {
     onChange(runtime)
     setOpen(false)
@@ -60,11 +57,6 @@ export function RuntimeSelect({
         </Button>
       }
     >
-      {nativeAvailable ? (
-        <MenuRow selected={value === 'native'} onClick={() => select('native')}>
-          Native
-        </MenuRow>
-      ) : null}
       {agents.map((agent) => (
         <MenuRow key={agent} selected={value === agent} onClick={() => select(agent)}>
           {agentLabel(agent)}
@@ -75,10 +67,8 @@ export function RuntimeSelect({
 }
 
 // Picks the model for a new thread: curated suggestions for the chosen
-// runtime/provider plus free-text entry for anything else. For native threads
-// a provider section sits above the model list; a reasoning-effort section
-// sits below it when the caller wires one up. The trigger shows the effective
-// effort as a tinted suffix ("GPT-5.4 Mini xhigh").
+// agent/provider plus free-text entry for anything else. A provider section
+// appears for provider-backed ACP agents.
 export function ModelSelect({
   value,
   suggestions,

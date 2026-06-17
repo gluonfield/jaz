@@ -155,14 +155,14 @@ func TestModelsAggregatesACPUsageByModel(t *testing.T) {
 			CreatedAt: time.Date(2026, 6, 15, 22, 20, 0, 0, time.UTC),
 		},
 		{
-			SessionID: "native",
-			Runtime:   storage.RuntimeNative,
-			Model:     "native-model",
+			SessionID: "imported-large",
+			Runtime:   storage.RuntimeACP,
+			Model:     "ignored-model",
 			Usage: storage.Usage{
 				InputTokens:  1_000_000,
 				OutputTokens: 1_000_000,
 			},
-			Source:    storage.UsageEventSourceTurn,
+			Source:    storage.UsageEventSourceSessionImport,
 			CreatedAt: time.Date(2026, 6, 15, 22, 25, 0, 0, time.UTC),
 		},
 		{

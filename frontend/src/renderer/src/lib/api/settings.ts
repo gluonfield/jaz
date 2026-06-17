@@ -5,11 +5,6 @@ import type { ACPAgentAuth, ACPAgentAuthStatus, ACPAuthLogin, AgentSettings } fr
 
 function normalizeAgentSettings(settings: AgentSettings): AgentSettings {
   return {
-    native: {
-      model_provider: settings.native.model_provider?.trim() || undefined,
-      model: settings.native.model.trim(),
-      reasoning_effort: settings.native.reasoning_effort ?? '',
-    },
     providers: settings.providers ?? [],
     acp_auth: settings.acp_auth ?? {},
     acp_keys: settings.acp_keys ?? {},
@@ -44,7 +39,6 @@ function inputFromSettings(
   const normalized = normalizeAgentSettings(settings)
   const keys = compactKeys(providerKeys)
   return {
-    native: normalized.native,
     providers: normalized.providers,
     acp: normalized.acp,
     acp_keys: normalized.acp_keys,
@@ -54,7 +48,7 @@ function inputFromSettings(
 }
 
 // Trims a secret map and drops blanks; undefined when nothing remains. Used for
-// both native provider keys and ACP agent keys before they hit the backend.
+// both model provider keys and ACP agent keys before they hit the backend.
 export function compactKeys(values?: Record<string, string>): Record<string, string> | undefined {
   if (!values) return undefined
   const out = Object.fromEntries(
@@ -70,7 +64,6 @@ export function compactKeys(values?: Record<string, string>): Record<string, str
 // onboarding and settings screens edit drafts of this shape.
 export function cloneAgentSettings(settings: AgentSettings): AgentSettings {
   return {
-    native: { ...settings.native },
     providers: [...(settings.providers ?? [])],
     acp_auth: { ...(settings.acp_auth ?? {}) },
     acp_keys: { ...(settings.acp_keys ?? {}) },
@@ -99,7 +92,7 @@ export const agentSettingsQuery = queryOptions({
   queryFn: async () => normalizeAgentSettings(await get<AgentSettings>('/v1/settings/agents')),
 })
 
-// providerKeys maps a native provider id (e.g. "openrouter") to a freshly
+// providerKeys maps a model provider id (e.g. "openrouter") to a freshly
 // pasted API key; the backend stores it as that provider's key env var.
 export function updateAgentSettings(
   settings: AgentSettings,

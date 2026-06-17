@@ -56,10 +56,6 @@ func TestOnboardingAPIProbesAgentsAndSavesProviderKey(t *testing.T) {
 			Agent     string `json:"agent"`
 			Available bool   `json:"available"`
 		} `json:"acp"`
-		NativeProviders []struct {
-			ID         string `json:"id"`
-			Configured bool   `json:"configured"`
-		} `json:"native_providers"`
 	}
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
@@ -67,13 +63,9 @@ func TestOnboardingAPIProbesAgentsAndSavesProviderKey(t *testing.T) {
 	if got.Completed || !agentProbeAvailable(got.ACP, "codex") || agentProbeAvailable(got.ACP, "claude") {
 		t.Fatalf("unexpected onboarding status: %#v", got)
 	}
-	if nativeProviderConfigured(got.NativeProviders, "openrouter") {
-		t.Fatalf("openrouter should not start configured: %#v", got.NativeProviders)
-	}
 
 	postBody := `{
 		"settings":{
-			"native":{"model_provider":"openrouter","model":"openai/gpt-5.4-mini","reasoning_effort":"medium"},
 			"acp":{
 				"codex":{"enabled":true,"command":"` + exe + `","model":"gpt-5.5","reasoning_effort":"medium"},
 				"claude":{"enabled":false,"command":"definitely-missing-jaz-agent","model":"default","reasoning_effort":"medium"}
@@ -95,16 +87,18 @@ func TestOnboardingAPIProbesAgentsAndSavesProviderKey(t *testing.T) {
 	assertACPKeySaved(t, root)
 	assertOnboardingStateSaved(t, root)
 	var saved struct {
-		Completed       bool `json:"completed"`
-		NativeProviders []struct {
-			ID         string `json:"id"`
-			Configured bool   `json:"configured"`
-		} `json:"native_providers"`
+		Completed bool `json:"completed"`
+		Settings  struct {
+			Providers []struct {
+				ID         string `json:"id"`
+				Configured bool   `json:"configured"`
+			} `json:"providers"`
+		} `json:"settings"`
 	}
 	if err := json.Unmarshal(postRes.Body.Bytes(), &saved); err != nil {
 		t.Fatal(err)
 	}
-	if !saved.Completed || !nativeProviderConfigured(saved.NativeProviders, "openrouter") {
+	if !saved.Completed || !modelProviderConfigured(saved.Settings.Providers, "openrouter") {
 		t.Fatalf("unexpected saved onboarding status: %#v", saved)
 	}
 }
@@ -307,7 +301,7 @@ func agentProbeAvailable(probes []struct {
 	return false
 }
 
-func nativeProviderConfigured(providers []struct {
+func modelProviderConfigured(providers []struct {
 	ID         string `json:"id"`
 	Configured bool   `json:"configured"`
 }, id string) bool {

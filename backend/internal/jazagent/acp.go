@@ -22,13 +22,14 @@ type ACPRunner struct {
 }
 
 func ACPAgentConfig() acp.AgentConfig {
-	openRouter, _ := provider.NativeProviderByID(provider.ProviderOpenRouter)
+	openRouter, _ := provider.ModelProviderByID(provider.ProviderOpenRouter)
 	return acp.AgentConfig{
-		Local:           true,
-		ProviderMode:    acp.AgentProviderModeNativeDefaults,
-		ModelProvider:   provider.ProviderOpenRouter,
-		Model:           strings.TrimSpace(openRouter.DefaultModel),
-		ReasoningEffort: strings.TrimSpace(openRouter.DefaultReasoningEffort),
+		Local:                   true,
+		ProviderMode:            acp.AgentProviderModeAgentDefaults,
+		ModelProviderCapability: provider.CapabilityJaz,
+		ModelProvider:           provider.ProviderOpenRouter,
+		Model:                   strings.TrimSpace(openRouter.DefaultModel),
+		ReasoningEffort:         strings.TrimSpace(openRouter.DefaultReasoningEffort),
 	}
 }
 

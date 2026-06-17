@@ -174,7 +174,7 @@ func startServer(
 	workspace app.Workspace,
 	stt voice.STT,
 	tts voice.TTS,
-	nativeProviders provider.Provider,
+	modelProviderRuntime provider.Provider,
 	logger *log.Logger,
 	cfg app.Config,
 	catalog acp.AgentCatalog,
@@ -202,7 +202,7 @@ func startServer(
 		Threads:         threadService,
 		STT:             stt,
 		TTS:             tts,
-		NativeProviders: nativeProviderControl(nativeProviders),
+		ModelProviderRuntime: reloadableProvider(modelProviderRuntime),
 		ModelProviders:  cfg.ModelProviders,
 		AgentCatalog:    catalog,
 		AuthKey:         authKey,
@@ -306,7 +306,7 @@ func startServer(
 	return nil
 }
 
-func nativeProviderControl(p provider.Provider) provider.ReloadableProvider {
+func reloadableProvider(p provider.Provider) provider.ReloadableProvider {
 	control, _ := p.(provider.ReloadableProvider)
 	return control
 }

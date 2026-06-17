@@ -17,7 +17,7 @@ func TestSessionTranscriptFiltersToolsAndRoles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, err := store.CreateSession(storage.CreateSession{Slug: "coding", Runtime: storage.RuntimeNative})
+	session, err := store.CreateSession(storage.CreateSession{Slug: "coding", Runtime: storage.RuntimeACP})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,14 +89,14 @@ func TestListSessionsUpdatedSince(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	old, err := store.CreateSession(storage.CreateSession{Slug: "old", Runtime: storage.RuntimeNative})
+	old, err := store.CreateSession(storage.CreateSession{Slug: "old", Runtime: storage.RuntimeACP})
 	if err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(5 * time.Millisecond)
 	cutoff := time.Now().UTC()
 	time.Sleep(5 * time.Millisecond)
-	fresh, err := store.CreateSession(storage.CreateSession{Slug: "fresh", Runtime: storage.RuntimeNative})
+	fresh, err := store.CreateSession(storage.CreateSession{Slug: "fresh", Runtime: storage.RuntimeACP})
 	if err != nil {
 		t.Fatal(err)
 	}
