@@ -105,7 +105,7 @@ export function useSessionQueue({
         toast(`Couldn't steer prompt: ${(error as Error).message}`, 'danger')
       }
     })()
-  }, [mutateQueue, queryClient, queuedPrompts, running, session, sessionId, toast])
+  }, [mutateQueue, queryClient, queuedPrompts, session, sessionId, toast])
 
   return {
     queuedPrompts,

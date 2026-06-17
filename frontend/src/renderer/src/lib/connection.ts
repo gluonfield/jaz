@@ -395,16 +395,36 @@ export async function startLocal(): Promise<string | null> {
     return 'Local backend control is only available in the desktop app'
   }
   const result = await window.jaz.startLocalBackend()
+  const url = normalizeBaseUrl(result.url ?? localBaseUrl())
+  if (await connectStoredToken(url)) {
+    savePreference({ mode: 'local' })
+    return null
+  }
   if (!result.ok) return result.error ?? 'Failed to start the backend'
-  // connect to the URL the main process actually verified, not the env default
-  const url = result.url ?? localBaseUrl()
   if (result.key) {
     const error = await registerDevice(url, result.key)
     if (state.status === 'pending_approval' || error) return error
+    return null
   }
+  const error = await verifyBackend(
+    url,
+    '',
+    `Backend at ${url} requires a key. Paste its client URL or stop that backend and start locally.`,
+  )
+  if (error) return error
   markConnected(url)
   savePreference({ mode: 'local' })
   return null
+}
+
+async function connectStoredToken(url: string): Promise<boolean> {
+  const token = apiAuthToken(url)
+  if (!token) return false
+  if (!(await verifyBackend(url, token))) {
+    markConnected(url)
+    return true
+  }
+  return false
 }
 
 // Run once at app start. The branch hinges on the saved preference so first

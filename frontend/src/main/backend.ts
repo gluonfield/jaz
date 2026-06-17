@@ -8,7 +8,6 @@ import { app } from 'electron'
 // renderer through the IPC result so both sides always agree.
 const LOCAL_BACKEND_URL = 'http://127.0.0.1:5299'
 const LOCAL_HEALTH_URL = `${LOCAL_BACKEND_URL}/health`
-const LOCAL_AUTH_CHECK_URL = `${LOCAL_BACKEND_URL}/v1/auth/check`
 const START_TIMEOUT_MS = 30_000
 
 let child: ChildProcess | null = null
@@ -147,18 +146,6 @@ async function readHealth(): Promise<HealthStatus | null> {
   }
 }
 
-async function checkAuthKey(key: string): Promise<boolean> {
-  try {
-    const res = await fetch(LOCAL_AUTH_CHECK_URL, {
-      headers: { Authorization: `Bearer ${key}` },
-      signal: AbortSignal.timeout(2_000),
-    })
-    return res.ok
-  } catch {
-    return false
-  }
-}
-
 async function localBackendResult(
   health: HealthStatus,
   source: 'adopted' | 'spawned',
@@ -166,23 +153,11 @@ async function localBackendResult(
   const key = readLocalAuthKey()
   if (health.authRequired && !key) {
     if (source === 'adopted') {
-      return {
-        ok: false,
-        error: `A backend is already running at ${LOCAL_BACKEND_URL}, but its key is not available at ${authFilePath()}. Paste its client URL or stop that backend and start locally.`,
-      }
+      return { ok: true, url: LOCAL_BACKEND_URL }
     }
     return {
       ok: false,
       error: `Jaz started the backend, but its auth key was not printed and was not readable at ${authFilePath(startupRoot || defaultRootPath())}.`,
-    }
-  }
-  if (health.authRequired && !(await checkAuthKey(key))) {
-    return {
-      ok: false,
-      error:
-        source === 'adopted'
-          ? `A backend is already running at ${LOCAL_BACKEND_URL}, but the key in ${authFilePath(startupRoot || defaultRootPath())} was rejected. Paste its client URL or stop that backend and start locally.`
-          : 'Jaz started the backend, but the captured auth key was rejected.',
     }
   }
   return { ok: true, url: LOCAL_BACKEND_URL, key: key || undefined }
