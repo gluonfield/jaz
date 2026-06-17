@@ -11,11 +11,13 @@ import (
 
 	"github.com/wins/jaz/backend/internal/deviceauth"
 	"github.com/wins/jaz/backend/internal/httpapi"
+	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
 type Handler struct {
-	service *deviceauth.Service
+	service      *deviceauth.Service
+	serverConfig serverconfig.Config
 }
 
 type deviceInput struct {
@@ -33,6 +35,10 @@ type listResponse struct {
 	Devices         []deviceDTO  `json:"devices"`
 	Pairings        []pairingDTO `json:"pairings"`
 	CurrentDeviceID string       `json:"current_device_id,omitempty"`
+}
+
+type connectionLinkResponse struct {
+	URL string `json:"url"`
 }
 
 type deviceDTO struct {
@@ -63,8 +69,18 @@ type pairingDTO struct {
 	Device     deviceDTO  `json:"device"`
 }
 
-func NewHandler(service *deviceauth.Service) Handler {
-	return Handler{service: service}
+func NewHandler(service *deviceauth.Service, config serverconfig.Config) Handler {
+	return Handler{service: service, serverConfig: config}
+}
+
+func (h Handler) ConnectionLink(w http.ResponseWriter, r *http.Request) {
+	cfg := h.serverConfig
+	if strings.TrimSpace(cfg.PublicURL) == "" {
+		cfg.PublicURL = httpapi.RequestBaseURL(r)
+	}
+	httpapi.WriteJSON(w, http.StatusOK, connectionLinkResponse{
+		URL: serverconfig.ClientBaseURL(cfg),
+	})
 }
 
 func (h Handler) List(w http.ResponseWriter, r *http.Request) {

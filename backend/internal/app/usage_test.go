@@ -51,17 +51,24 @@ func TestNewRoutesMountsDeviceRevokeAsMethodRoute(t *testing.T) {
 		Usage:   usagecore.NewService(fakeUsageStore{}),
 		Devices: deviceauth.New(store),
 	})
-	var found bool
+	var foundRevoke bool
+	var foundConnection bool
 	for _, route := range routes {
 		if route.Pattern == "/v1/devices/" {
 			t.Fatalf("mounted generic device item route")
 		}
 		if route.Pattern == "DELETE /v1/devices/{id}" && route.Handler != nil {
-			found = true
+			foundRevoke = true
+		}
+		if route.Pattern == "GET /v1/devices/connection-link" && route.Handler != nil {
+			foundConnection = true
 		}
 	}
-	if !found {
+	if !foundRevoke {
 		t.Fatalf("missing DELETE device revoke route: %#v", routes)
+	}
+	if !foundConnection {
+		t.Fatalf("missing device connection link route: %#v", routes)
 	}
 }
 

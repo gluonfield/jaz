@@ -1,17 +1,29 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, MonitorSmartphone, Trash2, X } from 'lucide-react'
+import { Check, Copy, LoaderCircle, MonitorSmartphone, Plus, QrCode, Trash2, X } from 'lucide-react'
+import * as QRCode from 'qrcode'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/Button'
+import { Modal } from '@/components/ui/Modal'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
-import { approvePairing, devicesQuery, rejectPairing, revokeDevice } from '@/lib/api/devices'
+import {
+  approvePairing,
+  devicesQuery,
+  deviceConnectionLinkQuery,
+  rejectPairing,
+  revokeDevice,
+} from '@/lib/api/devices'
 import type { Device, DevicePairing } from '@/lib/api/types'
+import { writeClipboard } from '@/lib/clipboard'
 import { keys } from '@/lib/query/keys'
 
 export function DevicesSettings() {
   const queryClient = useQueryClient()
   const toast = useToast()
+  const [addOpen, setAddOpen] = useState(false)
   const devices = useQuery(devicesQuery)
+  const connectionLink = useQuery({ ...deviceConnectionLinkQuery, enabled: addOpen })
   const invalidate = () => queryClient.invalidateQueries({ queryKey: keys.devices })
 
   const approve = useMutation({
@@ -41,9 +53,15 @@ export function DevicesSettings() {
 
   return (
     <section className="py-5">
-      <div>
-        <p className="text-sm font-medium text-ink">Devices</p>
-        <p className="mt-0.5 text-[13px] text-ink-2">Desktop and mobile clients allowed to use this backend.</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium text-ink">Devices</p>
+          <p className="mt-0.5 text-[13px] text-ink-2">Desktop and mobile clients allowed to use this backend.</p>
+        </div>
+        <Button variant="secondary" size="md" onClick={() => setAddOpen(true)}>
+          <Plus size={14} />
+          Add device
+        </Button>
       </div>
 
       <div className="mt-4">
@@ -93,8 +111,132 @@ export function DevicesSettings() {
           </div>
         )}
       </div>
+      <AddDeviceModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        connectionUrl={connectionLink.data?.url}
+        loading={connectionLink.isPending}
+        error={connectionLink.error?.message}
+      />
     </section>
   )
+}
+
+function AddDeviceModal({
+  open,
+  onClose,
+  connectionUrl,
+  loading,
+  error,
+}: {
+  open: boolean
+  onClose: () => void
+  connectionUrl?: string
+  loading: boolean
+  error?: string
+}) {
+  const toast = useToast()
+  const displayURL = connectionUrl?.trim() ?? ''
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Add device"
+      description="Scan the code on another Jaz app, or paste the backend URL there."
+      icon={<QrCode size={17} />}
+      size="lg"
+      footer={
+        <div className="flex w-full justify-end">
+          <Button variant="primary" onClick={onClose}>
+            Done
+          </Button>
+        </div>
+      }
+    >
+      {loading ? (
+        <div className="grid min-h-[260px] place-items-center rounded-card bg-surface">
+          <LoaderCircle size={18} className="animate-spin text-ink-3" />
+        </div>
+      ) : error ? (
+        <p className="rounded-card bg-danger-soft px-3 py-3 text-[13px] text-danger">{error}</p>
+      ) : displayURL ? (
+        <div className="grid gap-4 sm:grid-cols-[190px_minmax(0,1fr)]">
+          <QRCodeImage value={displayURL} />
+          <div className="min-w-0 space-y-3">
+            <ConnectionValue label="Backend URL" value={displayURL} />
+            <Button
+              variant="primary"
+              onClick={() => void copyConnectionURL(displayURL, toast)}
+              className="w-full"
+            >
+              <Copy size={14} />
+              Copy connection link
+            </Button>
+            <p className="text-[12px] leading-relaxed text-ink-3">
+              The new device will appear under Pending approval before it can access this backend.
+            </p>
+          </div>
+        </div>
+      ) : null}
+    </Modal>
+  )
+}
+
+function QRCodeImage({ value }: { value: string }) {
+  const [src, setSrc] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    setSrc('')
+    void QRCode.toDataURL(value, {
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 190,
+      color: { dark: '#111111', light: '#ffffff' },
+    })
+      .then((next) => {
+        if (!cancelled) setSrc(next)
+      })
+      .catch(() => {
+        if (!cancelled) setSrc('')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [value])
+
+  return (
+    <div className="grid size-[190px] shrink-0 place-items-center rounded-card bg-white p-3 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.1)]">
+      {src ? (
+        <img src={src} alt="Device connection QR code" className="size-full" />
+      ) : (
+        <LoaderCircle size={18} className="animate-spin text-ink-3" />
+      )}
+    </div>
+  )
+}
+
+function ConnectionValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="mb-1 text-[12px] font-medium text-ink-2">{label}</p>
+      <p className="select-all break-all rounded-card bg-surface px-3 py-2 font-mono text-[12px] leading-relaxed text-ink">
+        {value}
+      </p>
+    </div>
+  )
+}
+
+async function copyConnectionURL(
+  value: string,
+  toast: (message: string, tone?: 'ok' | 'danger') => void,
+): Promise<void> {
+  if (await writeClipboard(value)) {
+    toast('Copied connection link')
+  } else {
+    toast("Couldn't copy connection link", 'danger')
+  }
 }
 
 function DeviceGroup({ title, children }: { title: string; children: ReactNode }) {
