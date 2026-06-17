@@ -12,7 +12,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Select } from '@/components/ui/Select'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
-import { providerHidden, providerKeyUrl } from '@/lib/agentRuntimes'
+import { modelProviderRequiresKey, providerHidden, providerKeyUrl } from '@/lib/agentRuntimes'
 import { createProvider, deleteProvider, updateProvider } from '@/lib/api/providers'
 import type { AgentSettings as AgentSettingsData, ProviderInput } from '@/lib/api/types'
 import { isLoopbackUrl, useConnection } from '@/lib/connection'
@@ -173,7 +173,7 @@ function ProviderRow({
   onEdit?: () => void
   onDelete?: () => void
 }) {
-  const needsKey = Boolean(provider.api_key_env) && provider.requires_api_key !== false
+  const needsKey = modelProviderRequiresKey(provider)
   const connected = needsKey ? Boolean(provider.configured || keyDraft.trim()) : true
   const state: ProviderConnection = needsKey ? (connected ? 'connected' : 'disconnected') : 'no-key'
   const keyUrl = providerKeyUrl(provider.id)
