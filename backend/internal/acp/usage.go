@@ -13,31 +13,57 @@ type usageStore interface {
 	AddUsage(string, storage.Usage) error
 }
 
+// recordUsage folds an observed snapshot into the turn's running total and
+// immediately persists what it added. job.usage is the cumulative snapshot
+// already written to the store, so the delta to persist is simply what this
+// observation grew it by. Persisting on arrival (rather than once at turn end)
+// is what keeps the trailing usage_update that claude/codex/grok send after the
+// session/prompt response returns: it lands on the serve goroutine after the
+// turn has moved on, so any single end-of-turn flush would race it.
 func (m *Manager) recordUsage(job *Job, usage storage.Usage) {
 	if usage.IsZero() {
 		return
 	}
 	job.mu.Lock()
-	job.usage = mergeUsageSnapshot(job.usage, usage)
+	prev := job.usage
+	job.usage = mergeUsageSnapshot(prev, usage)
+	curr := job.usage
 	job.mu.Unlock()
-}
-
-func (m *Manager) persistUsage(job *Job) {
-	if m == nil || m.store == nil {
+	if curr == prev {
 		return
 	}
 	store, ok := m.store.(usageStore)
 	if !ok {
 		return
 	}
-	job.mu.Lock()
-	usage := job.usage
-	job.usage = storage.Usage{}
-	job.mu.Unlock()
-	if usage.IsZero() {
-		return
+	if err := store.AddUsage(job.ID, usageDelta(prev, curr)); err != nil {
+		m.log.Error("persist acp usage failed", "session", job.ID, "error", err)
 	}
-	_ = store.AddUsage(job.ID, usage)
+}
+
+// usageDelta is the write that advances the store from prev to curr. Counters
+// are differences the store adds; context/window are the latest cumulative
+// snapshot the store replaces. Context carries curr.LiveContextTokens() (never
+// a per-delta value) so a counters-only delta can't clobber the context column
+// with a component-total estimate of the increment.
+func usageDelta(prev, curr storage.Usage) storage.Usage {
+	return storage.Usage{
+		InputTokens:           nonNegative(curr.InputTokens - prev.InputTokens),
+		CachedInputTokens:     nonNegative(curr.CachedInputTokens - prev.CachedInputTokens),
+		CachedWriteTokens:     nonNegative(curr.CachedWriteTokens - prev.CachedWriteTokens),
+		OutputTokens:          nonNegative(curr.OutputTokens - prev.OutputTokens),
+		ReasoningOutputTokens: nonNegative(curr.ReasoningOutputTokens - prev.ReasoningOutputTokens),
+		TotalTokens:           nonNegative(curr.TotalTokens - prev.TotalTokens),
+		ContextTokens:         curr.LiveContextTokens(),
+		ContextWindowTokens:   curr.ContextWindowTokens,
+	}
+}
+
+func nonNegative(v int64) int64 {
+	if v < 0 {
+		return 0
+	}
+	return v
 }
 
 // usageFromRaw parses one adapter message into disjoint usage components.

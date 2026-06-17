@@ -211,7 +211,6 @@ func (m *Manager) runLocalPrompt(ctx context.Context, job *Job, runner LocalAgen
 		job.setState(StateFailed, "", finalError)
 	}
 	m.publishACPStatus(job.Snapshot())
-	m.persistUsage(job)
 	m.finishTurn(done, job)
 }
 
