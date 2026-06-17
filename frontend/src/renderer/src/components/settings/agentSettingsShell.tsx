@@ -47,18 +47,7 @@ export function useAgentSettingsDraft(label: string) {
   )
   const providerKeyDirty = Object.values(providerKeys).some((value) => value.trim().length > 0)
 
-  return {
-    queryClient,
-    toast,
-    settings,
-    draft,
-    setDraft,
-    providerKeys,
-    setProviderKeys,
-    save,
-    dirty,
-    providerKeyDirty,
-  }
+  return { settings, draft, setDraft, providerKeys, setProviderKeys, save, dirty, providerKeyDirty }
 }
 
 // The chrome both agent-settings screens share: heading, Save button, body slot.

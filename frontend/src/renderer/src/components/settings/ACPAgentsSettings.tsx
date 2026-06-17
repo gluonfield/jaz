@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, ChevronDown, KeyRound, LoaderCircle, LogIn, Terminal } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -11,6 +11,7 @@ import { Segmented } from '@/components/ui/Segmented'
 import { Select } from '@/components/ui/Select'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { Switch } from '@/components/ui/Switch'
+import { useToast } from '@/components/ui/toast'
 import { agentLabel, authProviderLabel } from '@/lib/agentLabel'
 import {
   acpUsesModelProvider,
@@ -61,8 +62,11 @@ function hasInvalidACPProvider(settings: AgentSettingsData): boolean {
 }
 
 export function ACPAgentsSettings() {
-  const { queryClient, toast, settings, draft, setDraft, providerKeys, setProviderKeys, save, dirty, providerKeyDirty } =
+  const { settings, draft, setDraft, providerKeys, setProviderKeys, save, dirty, providerKeyDirty } =
     useAgentSettingsDraft('agent settings')
+  // This screen owns extra mutations (sign-in, disconnect) beyond the shared save.
+  const queryClient = useQueryClient()
+  const toast = useToast()
 
   // A finished sign-in connects the agent: turn it on and persist so it works
   // right away (matching onboarding, no extra Enabled toggle). The hook reads
