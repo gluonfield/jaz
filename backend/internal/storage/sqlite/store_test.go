@@ -226,6 +226,41 @@ func TestSessionQueuedMessagesRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSessionLegacyQueuedMessagesDecode(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	session, err := store.CreateSession(storage.CreateSession{Slug: "legacy-queued"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.ExecContext(context.Background(), `UPDATE threads SET queued_messages = ? WHERE id = ?`, `["one prompt",{"text":"two","attachment_ids":["abc123"]}]`, session.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.QueuedMessages) != 2 || loaded.QueuedMessages[0].Text != "one prompt" || loaded.QueuedMessages[1].Text != "two" {
+		t.Fatalf("queued messages = %#v", loaded.QueuedMessages)
+	}
+	if got := loaded.QueuedMessages[1].AttachmentIDs; len(got) != 1 || got[0] != "abc123" {
+		t.Fatalf("queued attachment ids = %#v", got)
+	}
+
+	sessions, err := store.ListSessions(storage.SessionFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 || sessions[0].ID != session.ID {
+		t.Fatalf("sessions = %#v", sessions)
+	}
+}
+
 func TestMCPServersCRUDRoundTrip(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {

@@ -64,9 +64,22 @@ func UnmarshalQueuedMessages(raw string) ([]QueuedMessage, error) {
 	if strings.TrimSpace(raw) == "" {
 		return nil, nil
 	}
-	var messages []QueuedMessage
-	if err := json.Unmarshal([]byte(raw), &messages); err != nil {
+	var entries []json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &entries); err != nil {
 		return nil, fmt.Errorf("queued messages: %w", err)
+	}
+	messages := make([]QueuedMessage, 0, len(entries))
+	for _, entry := range entries {
+		var message QueuedMessage
+		if err := json.Unmarshal(entry, &message); err == nil {
+			messages = append(messages, message)
+			continue
+		}
+		var text string
+		if err := json.Unmarshal(entry, &text); err != nil {
+			return nil, fmt.Errorf("queued messages: %w", err)
+		}
+		messages = append(messages, NewQueuedMessage(text, nil))
 	}
 	return NormalizeQueuedMessages(messages), nil
 }
