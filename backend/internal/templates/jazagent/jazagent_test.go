@@ -10,6 +10,8 @@ func TestRenderRulesOnly(t *testing.T) {
 	for _, want := range []string{
 		"You are Jaz",
 		"Directory guide:",
+		"Treat user phrasing like \"spawn a codex agent\", \"launch claude\", \"delegate this\", or \"ask opencode\" as a request to use the internal ACP agent tools: agent_spawn, agent_send, agent_wait, agent_status, agent_cancel, and agent_list.",
+		"Do not inspect or invoke local agent CLIs unless the user explicitly asks for the local CLI.",
 		"agent_spawn only starts a session; send work with agent_send.",
 		"Use worktree=true for isolated repo changes; add branch when the new worktree should start from a specific branch/ref.",
 		"For reviewing another session's worktree, pass that worktree as directory without worktree=true.",
