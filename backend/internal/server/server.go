@@ -492,10 +492,9 @@ func acpJobState(job acp.Job) storage.ACPState {
 		ToolCalls:   calls,
 		Permissions: job.Permissions,
 		Modes: sessionevents.ACPModeState{
-			CurrentModeID:   job.Modes.CurrentModeID,
-			ExecutionModeID: job.Modes.ExecutionModeID,
-			PlanModeID:      job.Modes.PlanModeID,
-			AvailableModes:  acpModes(job.Modes.AvailableModes),
+			CurrentModeID:  job.Modes.CurrentModeID,
+			PlanModeID:     job.Modes.PlanModeID,
+			AvailableModes: acpModes(job.Modes.AvailableModes),
 		},
 		Error:         job.Error,
 		ParentVisible: job.ParentVisible,

@@ -3,15 +3,13 @@ package acp
 import acpschema "github.com/gluonfield/acp-transport/acp"
 
 const (
-	claudeModeAuto              = "auto"
-	claudeModeAcceptEdits       = "acceptEdits"
-	claudeModeBypassPermissions = "bypassPermissions"
-	claudePlanExitTitle         = "Ready to code?"
-	claudePlanExitToolCallID    = "exit-plan-mode"
+	claudeModeAuto           = "auto"
+	claudePlanExitTitle      = "Ready to code?"
+	claudePlanExitToolCallID = "exit-plan-mode"
 )
 
 var executionModePriority = map[string][]string{
-	AgentClaude: {claudeModeBypassPermissions, claudeModeAuto, claudeModeAcceptEdits},
+	AgentClaude: {claudeModeAuto},
 	AgentGrok:   {"always-approve"},
 }
 
@@ -24,15 +22,47 @@ func executionModeForAgent(agent string, modes []acpschema.SessionMode) string {
 	return firstSessionMode(modes, defaultExecutionModePriority)
 }
 
-func planExitPermissionOptionForAgent(agent string, req acpschema.RequestPermissionRequest) string {
-	if CanonicalAgentName(agent) != AgentClaude || !isClaudePlanExitPermission(req) {
+func baselineModeID(agent string, modes ModeState) string {
+	if id := firstModeSnapshot(modes.AvailableModes, executionModePriority[CanonicalAgentName(agent)]); id != "" {
+		return id
+	}
+	if id := firstModeSnapshot(modes.AvailableModes, defaultExecutionModePriority); id != "" {
+		return id
+	}
+	if modes.CurrentModeID != "" && modes.CurrentModeID != modes.PlanModeID {
+		return modes.CurrentModeID
+	}
+	for _, mode := range modes.AvailableModes {
+		if mode.ID != "" && mode.ID != modes.PlanModeID {
+			return mode.ID
+		}
+	}
+	return ""
+}
+
+func firstModeSnapshot(modes []ModeSnapshot, ids []string) string {
+	for _, id := range ids {
+		for _, mode := range modes {
+			if mode.ID == id {
+				return id
+			}
+		}
+	}
+	return ""
+}
+
+func planExitPermissionOption(job *Job, req acpschema.RequestPermissionRequest) string {
+	if job == nil || CanonicalAgentName(job.ACPAgent) != AgentClaude || !isClaudePlanExitPermission(req) {
 		return ""
 	}
-	return firstAllowedPermissionOption(req.Options, []string{
-		claudeModeBypassPermissions,
-		claudeModeAuto,
-		claudeModeAcceptEdits,
-	})
+	job.mu.RLock()
+	modes := job.Modes.Clone()
+	job.mu.RUnlock()
+	target := baselineModeID(job.ACPAgent, modes)
+	if target == "" || target == modes.PlanModeID {
+		return ""
+	}
+	return allowedPermissionOption(req.Options, target)
 }
 
 func isClaudePlanExitPermission(req acpschema.RequestPermissionRequest) bool {
@@ -55,12 +85,10 @@ func firstSessionMode(modes []acpschema.SessionMode, ids []string) string {
 	return ""
 }
 
-func firstAllowedPermissionOption(options []acpschema.PermissionOption, ids []string) string {
-	for _, id := range ids {
-		for _, option := range options {
-			if string(option.OptionID) == id && permissionOptionKindAllows(option.Kind) {
-				return id
-			}
+func allowedPermissionOption(options []acpschema.PermissionOption, id string) string {
+	for _, option := range options {
+		if string(option.OptionID) == id && permissionOptionKindAllows(option.Kind) {
+			return id
 		}
 	}
 	return ""

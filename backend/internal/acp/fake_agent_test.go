@@ -21,7 +21,10 @@ func TestFakeACPAgentProcess(t *testing.T) {
 		os.Exit(2)
 	}
 	conn := stdio.New(os.Stdin, os.Stdout)
-	currentMode := "auto"
+	currentMode := os.Getenv("JAZ_FAKE_ACP_CURRENT_MODE")
+	if currentMode == "" {
+		currentMode = "auto"
+	}
 	currentModel := ""
 	currentEffort := ""
 	var pendingPrompt *jsonrpc.Message
@@ -301,9 +304,13 @@ func fakeModes() map[string]any {
 	if os.Getenv("JAZ_FAKE_ACP_NO_MODES") == "1" {
 		return nil
 	}
+	currentMode := os.Getenv("JAZ_FAKE_ACP_CURRENT_MODE")
+	if currentMode == "" {
+		currentMode = "auto"
+	}
 	if os.Getenv("JAZ_FAKE_ACP_CLAUDE_MODES") == "1" {
 		return map[string]any{
-			"currentModeId": "auto",
+			"currentModeId": currentMode,
 			"availableModes": []map[string]any{
 				{"id": "auto", "name": "Auto"},
 				{"id": "bypassPermissions", "name": "Bypass Permissions"},
@@ -313,7 +320,7 @@ func fakeModes() map[string]any {
 		}
 	}
 	return map[string]any{
-		"currentModeId": "auto",
+		"currentModeId": currentMode,
 		"availableModes": []map[string]any{
 			{"id": "auto", "name": "Auto"},
 			{"id": "full-access", "name": "Full Access"},

@@ -570,10 +570,9 @@ func acpCompletion(job acp.Job) string {
 
 func acpEvent(job acp.Job) *sessionevents.ACPEvent {
 	modes := sessionevents.ACPModeState{
-		CurrentModeID:   job.Modes.CurrentModeID,
-		ExecutionModeID: job.Modes.ExecutionModeID,
-		PlanModeID:      job.Modes.PlanModeID,
-		AvailableModes:  make([]sessionevents.ACPMode, 0, len(job.Modes.AvailableModes)),
+		CurrentModeID:  job.Modes.CurrentModeID,
+		PlanModeID:     job.Modes.PlanModeID,
+		AvailableModes: make([]sessionevents.ACPMode, 0, len(job.Modes.AvailableModes)),
 	}
 	for _, mode := range job.Modes.AvailableModes {
 		modes.AvailableModes = append(modes.AvailableModes, sessionevents.ACPMode{

@@ -69,18 +69,29 @@ func grokFallbackModes() *acpschema.SessionModeState {
 func (m *Manager) prepareModeForTurn(ctx context.Context, job *Job, planRequested bool) error {
 	job.mu.RLock()
 	modes := job.Modes.Clone()
-	acpSessionID := job.ACPSession
-	jobID := job.ID
 	job.mu.RUnlock()
 
-	target := modes.ExecutionModeID
 	if planRequested {
 		if modes.PlanModeID == "" {
 			return fmt.Errorf("acp session %s does not expose plan mode", job.Slug)
 		}
-		target = modes.PlanModeID
+		return m.setTurnMode(ctx, job, modes.PlanModeID)
 	}
-	if target == "" || target == modes.CurrentModeID {
+	return m.setTurnMode(ctx, job, baselineModeID(job.ACPAgent, modes))
+}
+
+func (m *Manager) setTurnMode(ctx context.Context, job *Job, target string) error {
+	if target == "" {
+		return nil
+	}
+
+	job.mu.RLock()
+	current := job.Modes.CurrentModeID
+	acpSessionID := job.ACPSession
+	jobID := job.ID
+	job.mu.RUnlock()
+
+	if target == current {
 		return nil
 	}
 	peer := m.peer(jobID)
@@ -88,9 +99,6 @@ func (m *Manager) prepareModeForTurn(ctx context.Context, job *Job, planRequeste
 		if m.configuredLocal(job.ACPAgent) {
 			job.mu.Lock()
 			job.Modes.CurrentModeID = target
-			if !planRequested && job.Modes.ExecutionModeID == "" {
-				job.Modes.ExecutionModeID = target
-			}
 			job.mu.Unlock()
 			return nil
 		}
@@ -101,9 +109,6 @@ func (m *Manager) prepareModeForTurn(ctx context.Context, job *Job, planRequeste
 	}
 	job.mu.Lock()
 	job.Modes.CurrentModeID = target
-	if !planRequested && job.Modes.ExecutionModeID == "" {
-		job.Modes.ExecutionModeID = target
-	}
 	job.mu.Unlock()
 	return nil
 }

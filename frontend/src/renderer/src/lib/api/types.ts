@@ -341,7 +341,6 @@ export interface ACPMode {
 
 export interface ACPModeState {
   current_mode_id?: string
-  execution_mode_id?: string
   plan_mode_id?: string
   available_modes?: ACPMode[]
 }
