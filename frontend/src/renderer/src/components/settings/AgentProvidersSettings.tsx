@@ -68,7 +68,7 @@ export function AgentProvidersSettings() {
 
   return (
     <SettingsSection
-      title="Providers"
+      title="Model Providers"
       description="Configure model providers once. ACP agents can reuse them when they are set to use provider defaults."
       canSave={canSave}
       saving={save.isPending}

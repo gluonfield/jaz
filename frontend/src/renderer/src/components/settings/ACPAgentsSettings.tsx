@@ -62,8 +62,9 @@ function hasInvalidACPProvider(settings: AgentSettingsData): boolean {
 }
 
 export function ACPAgentsSettings() {
-  const { settings, draft, setDraft, providerKeys, setProviderKeys, save, dirty, providerKeyDirty } =
-    useAgentSettingsDraft('agent settings')
+  // Model-provider keys are managed in Model Providers; this screen only edits the
+  // ACP draft (auth keys ride along inside it), so no provider-key state here.
+  const { settings, draft, setDraft, save, dirty } = useAgentSettingsDraft('agent settings')
   // This screen owns extra mutations (sign-in, disconnect) beyond the shared save.
   const queryClient = useQueryClient()
   const toast = useToast()
@@ -102,7 +103,7 @@ export function ACPAgentsSettings() {
   })
 
   const invalid = draft ? hasEnabledACPWithoutCommand(draft) || hasInvalidACPProvider(draft) : true
-  const canSave = draft != null && !invalid && (dirty || providerKeyDirty) && !save.isPending
+  const canSave = draft != null && !invalid && dirty && !save.isPending
 
   return (
     <SettingsSection
@@ -123,16 +124,12 @@ export function ACPAgentsSettings() {
               key={agent}
               agent={agent}
               settings={draft}
-              providerKeys={providerKeys}
               disabled={save.isPending}
               loginJob={loginJobs[agent]}
               loginPending={login.isPending && login.variables?.agent === agent}
               disconnecting={disconnect.isPending && disconnect.variables === agent}
               onStartLogin={(auth) => login.mutate({ agent, auth })}
               onDisconnect={() => disconnect.mutate(agent)}
-              onProviderKeyChange={(provider, value) =>
-                setProviderKeys({ ...providerKeys, [provider]: value })
-              }
               onChange={setDraft}
             />
           ))}
@@ -145,26 +142,22 @@ export function ACPAgentsSettings() {
 function ACPAgentRow({
   agent,
   settings,
-  providerKeys,
   disabled,
   loginJob,
   loginPending,
   disconnecting,
   onStartLogin,
   onDisconnect,
-  onProviderKeyChange,
   onChange,
 }: {
   agent: string
   settings: AgentSettingsData
-  providerKeys: Record<string, string>
   disabled: boolean
   loginJob?: ACPAuthLogin
   loginPending: boolean
   disconnecting: boolean
   onStartLogin: (auth: ACPAuthDraft) => void
   onDisconnect: () => void
-  onProviderKeyChange: (provider: string, value: string) => void
   onChange: (settings: AgentSettingsData) => void
 }) {
   const current = settings.acp[agent] ?? {
@@ -188,7 +181,6 @@ function ACPAgentRow({
   const controlsDisabled = disabled || !current.enabled
   const providerOptions = selectableACPModelProviders(settings, agent)
   const selectedProvider = providerOptions.find((provider) => provider.id === current.model_provider)
-  const selectedProviderEnv = selectedProvider?.api_key_env
   const selectedProviderConfigured = Boolean(selectedProvider?.configured)
   const openRouterModels = useQuery({
     ...openRouterModelsQuery,
@@ -257,64 +249,35 @@ function ACPAgentRow({
       {usesNativeProvider ? null : (
         <>
           {usesModelProvider ? (
-            <>
-              <SettingsRow title="Provider" description="API provider used for this ACP client.">
-                <Select
-                  value={current.model_provider ?? ''}
-                  options={providerOptions.map((provider) => ({
-                    value: provider.id,
-                    label: provider.label,
-                    description: provider.base_url,
-                  }))}
-                  disabled={controlsDisabled}
-                  onChange={(model_provider) => {
-                    const nextProvider = providerOptions.find((provider) => provider.id === model_provider)
-                    const model =
-                      (current.model ?? '').trim() === '' ||
-                      current.model === selectedProvider?.default_model
-                        ? (nextProvider?.default_model ?? '')
-                        : current.model
-                    update({ model_provider, model })
-                  }}
-                  aria-label={`${agentLabel(agent)} provider`}
-                  className={rowControlClass}
-                />
-              </SettingsRow>
-              <SettingsRow
-                title="Provider key"
-                description={
-                  selectedProvider?.requires_api_key === false
-                    ? 'This provider does not need an API key.'
-                    : selectedProviderConfigured
-                      ? `${selectedProviderEnv} is configured — paste a new key to replace it.`
-                      : `Paste an API key; stored on the backend as ${selectedProviderEnv ?? 'the provider env var'}.`
-                }
-              >
-                <Input
-                  type="password"
-                  value={providerKeys[current.model_provider ?? ''] ?? ''}
-                  disabled={
-                    disabled ||
-                    !(current.model_provider ?? '').trim() ||
-                    selectedProvider?.requires_api_key === false
-                  }
-                  onChange={(event) =>
-                    onProviderKeyChange(current.model_provider ?? '', event.target.value)
-                  }
-                  placeholder={
-                    selectedProvider?.requires_api_key === false
-                      ? 'No key required'
-                      : selectedProviderConfigured
-                        ? `${selectedProviderEnv} configured`
-                        : (selectedProviderEnv ?? 'API key')
-                  }
-                  autoComplete="off"
-                  spellCheck={false}
-                  className={`${rowControlClass} h-8 rounded-full bg-bg px-3 py-0 font-mono text-[12px]`}
-                  aria-label={`${agentLabel(agent)} provider API key`}
-                />
-              </SettingsRow>
-            </>
+            <SettingsRow
+              title="Provider"
+              description={
+                selectedProvider && !selectedProviderConfigured && selectedProvider.requires_api_key !== false
+                  ? `Not connected — add the ${selectedProvider.label} key under Model Providers.`
+                  : 'Inherits its key from Model Providers.'
+              }
+            >
+              <Select
+                value={current.model_provider ?? ''}
+                options={providerOptions.map((provider) => ({
+                  value: provider.id,
+                  label: provider.label,
+                  description: provider.base_url,
+                }))}
+                disabled={controlsDisabled}
+                onChange={(model_provider) => {
+                  const nextProvider = providerOptions.find((provider) => provider.id === model_provider)
+                  const model =
+                    (current.model ?? '').trim() === '' ||
+                    current.model === selectedProvider?.default_model
+                      ? (nextProvider?.default_model ?? '')
+                      : current.model
+                  update({ model_provider, model })
+                }}
+                aria-label={`${agentLabel(agent)} provider`}
+                className={rowControlClass}
+              />
+            </SettingsRow>
           ) : null}
           <SettingsRow title="Model" description="Model copied into new threads for this client.">
             <ModelCombobox
