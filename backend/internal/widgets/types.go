@@ -89,7 +89,7 @@ type Repository interface {
 	// never point at a version snapshot that failed to write.
 	SaveWidgetWithVersion(widget Widget, version Version) error
 	LoadWidgetVersion(widgetID string, version int) (Version, error)
-	PruneWidgetVersions(widgetID string, maxVersion, keep int) error
+	PruneOldWidgetVersions(widgetID string, currentVersion, keepOld int) error
 	SaveBoard(board Board) error
 	LoadBoard(id string) (Board, error)
 	DefaultBoard() (Board, bool, error)

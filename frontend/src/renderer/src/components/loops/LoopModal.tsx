@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { boardsQuery } from '@/lib/api/boards'
@@ -24,7 +24,6 @@ export function LoopModal({
   onClose,
   loop,
   boardIds,
-  initialBoardIds,
   onCreated,
 }: {
   open: boolean
@@ -32,8 +31,6 @@ export function LoopModal({
   loop?: Loop
   // Current board assignments when editing (from the loop detail response).
   boardIds?: string[]
-  // Preselected boards when creating (e.g. "New widget" from a board).
-  initialBoardIds?: string[]
   // When set, creating stays in place (no navigation) and reports the loop —
   // the board scrolls its new tile into view instead.
   onCreated?: (loop: Loop) => void
@@ -44,22 +41,11 @@ export function LoopModal({
   const settingsQuery = useQuery(agentSettingsQuery)
   const boards = useQuery({ ...boardsQuery, enabled: open && !isEdit })
   const [draft, setDraft] = useState<LoopDraft | null>(null)
-  const defaultCreateBoardIds =
-    boards.data && boards.data.length > 0 ? boards.data.map((board) => board.id) : (initialBoardIds ?? [])
-  const current = draft ?? (loop ? loopDraftFromLoop(loop, boardIds) : emptyLoopDraft(defaultCreateBoardIds))
+  const createBoardIds = boards.data?.map((board) => board.id) ?? []
+  const createBoardsLoading = !isEdit && boards.isPending
+  const current = draft ?? (loop ? loopDraftFromLoop(loop, boardIds) : emptyLoopDraft(createBoardIds))
 
-  useEffect(() => {
-    if (!open || isEdit || !boards.data?.length) return
-    const initial = initialBoardIds ?? []
-    const all = boards.data.map((board) => board.id)
-    setDraft((currentDraft) => {
-      if (!currentDraft) return currentDraft
-      if (!sameIds(currentDraft.boardIds, initial)) return currentDraft
-      return { ...currentDraft, boardIds: all }
-    })
-  }, [boards.data, initialBoardIds, isEdit, open])
-
-  const save = useMutation({
+  const save = useMutation<Loop, Error, { run: boolean }>({
     mutationFn: ({ run: _run }: { run: boolean }) =>
       isEdit
         ? updateLoop(loop.id, loopDraftToInput(current, settingsQuery.data))
@@ -95,7 +81,7 @@ export function LoopModal({
       footer={
         <>
           <p className="text-[12px] text-danger" role="alert">
-            {save.isError ? (save.error as Error).message : ''}
+            {save.isError ? save.error.message : ''}
           </p>
           <div className="flex shrink-0 items-center gap-1">
             <Button variant="ghost" size="md" onClick={close}>
@@ -105,7 +91,7 @@ export function LoopModal({
               <Button
                 variant="primary"
                 size="md"
-                disabled={!canSaveLoop(current) || save.isPending}
+                disabled={!canSaveLoop(current) || save.isPending || createBoardsLoading}
                 onClick={() => save.mutate({ run: false })}
               >
                 {save.isPending ? 'Saving…' : 'Save changes'}
@@ -115,7 +101,7 @@ export function LoopModal({
                 <Button
                   variant="secondary"
                   size="md"
-                  disabled={!canSaveLoop(current) || save.isPending}
+                  disabled={!canSaveLoop(current) || save.isPending || createBoardsLoading}
                   onClick={() => save.mutate({ run: false })}
                 >
                   {save.isPending && !save.variables?.run ? 'Creating…' : 'Create'}
@@ -123,7 +109,7 @@ export function LoopModal({
                 <Button
                   variant="primary"
                   size="md"
-                  disabled={!canSaveLoop(current) || save.isPending}
+                  disabled={!canSaveLoop(current) || save.isPending || createBoardsLoading}
                   onClick={() => save.mutate({ run: true })}
                 >
                   {save.isPending && save.variables?.run ? 'Creating…' : 'Create & Run'}
@@ -136,15 +122,9 @@ export function LoopModal({
     >
       <LoopForm
         draft={current}
-        disabled={save.isPending}
+        disabled={save.isPending || createBoardsLoading}
         onChange={setDraft}
       />
     </Modal>
   )
-}
-
-function sameIds(left: string[], right: string[]): boolean {
-  if (left.length !== right.length) return false
-  const ids = new Set(left)
-  return right.every((id) => ids.has(id))
 }

@@ -115,7 +115,7 @@ func (s *Service) Publish(loop loops.Loop, runID string, input PublishInput) (Wi
 	}); err != nil {
 		return Widget{}, nil, err
 	}
-	if err := s.Repo.PruneWidgetVersions(widget.ID, widget.CurrentVersion, MaxOldVersions+1); err != nil {
+	if err := s.Repo.PruneOldWidgetVersions(widget.ID, widget.CurrentVersion, MaxOldVersions); err != nil {
 		s.Log.Warn("pruning widget versions failed", "widget", widget.ID, "error", err)
 	}
 	s.applySizeHintLocked(widget, boards, now)
