@@ -18,7 +18,6 @@ import { ThreadFindBar } from '@/components/session/ThreadFindBar'
 import { TokenStats } from '@/components/session/TokenStats'
 import { ToolCallCard } from '@/components/session/ToolCallCard'
 import { Transcript } from '@/components/session/Transcript'
-import { VoiceMode } from '@/components/session/VoiceMode'
 import { THREAD_COLUMN_CLASS } from '@/components/session/threadLayout'
 import { isArtifactToolName, isHiddenToolName } from '@/components/session/toolVisibility'
 import { useThreadFind } from '@/components/session/useThreadFind'
@@ -37,7 +36,7 @@ import { streamSessionMessage } from '@/lib/api/stream'
 import type { ACPJobSnapshot, ACPModeState, ChatMessage, SessionEvent, SessionMessages } from '@/lib/api/types'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
-import { takePendingMessage, takePendingVoice } from '@/lib/pendingMessage'
+import { takePendingMessage } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
 import {
   approvalPlanSurfaceFromEvent,
@@ -423,7 +422,6 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
 
   const [live, setLive] = useState<LiveExchange | null>(null)
   const [streaming, setStreaming] = useState(false)
-  const [voiceMode, setVoiceMode] = useState(false)
   const [planDecisionPending, setPlanDecisionPending] = useState(false)
   const [planDecisionError, setPlanDecisionError] = useState('')
   const abortRef = useRef<AbortController | null>(null)
@@ -607,11 +605,6 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     handleSend(pending.text, { planRequested: pending.planRequested, files: pending.files ?? [] })
   }, [detail.isSuccess, handleSend, sessionId])
 
-  // Voice button on /new: open this thread straight in voice mode.
-  useEffect(() => {
-    if (takePendingVoice(sessionId)) setVoiceMode(true)
-  }, [sessionId])
-
   useEffect(() => {
     if (!detail.isSuccess || !search.message) return
     const messageSeq = search.message
@@ -728,10 +721,6 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
       : messages
   const titlebarSlot = document.getElementById('titlebar-slot')
   const titlebarActions = document.getElementById('titlebar-actions')
-
-  if (voiceMode) {
-    return <VoiceMode sessionId={sessionId} onExit={() => setVoiceMode(false)} />
-  }
 
   return (
     <FileReaderLinkProvider onOpen={sidePanel.openFile}>
@@ -889,7 +878,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                     void cancelSession(sessionId).catch(() => {})
                     abortRef.current?.abort()
                   }}
-                  onVoice={session.runtime !== 'acp' ? () => setVoiceMode(true) : undefined}
+                  onVoice={undefined}
                   onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
                   onSteerQueuedPrompt={queue.onSteerQueuedPrompt}
                   onDeleteQueuedPrompt={queue.onDeleteQueuedPrompt}

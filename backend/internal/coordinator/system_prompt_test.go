@@ -7,10 +7,10 @@ import (
 	"testing"
 )
 
-// TestSystemPromptEndToEnd builds the full native prompt with every layer
+// TestSystemPromptEndToEnd builds the full coordinator prompt with every layer
 // populated and pins the construction invariants: layer order, the skills
 // catalog appearing exactly once at the end, and the ACP extension sharing the
-// prompt-file/memory/skills tail of the native prompt.
+// prompt-file/memory/skills tail of the coordinator prompt.
 func TestSystemPromptEndToEnd(t *testing.T) {
 	root := t.TempDir()
 	memoryRoot := t.TempDir()
@@ -84,7 +84,7 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		t.Fatalf("acp extension missing shared prompt-file tail:\n%s", acp)
 	}
 	if !strings.HasSuffix(system, acp[sharedOffset:]) {
-		t.Fatalf("the ACP shared tail must match the native shared tail.\nACP:\n%s\nSYSTEM:\n%s", acp, system)
+		t.Fatalf("the ACP shared tail must match the coordinator shared tail.\nACP:\n%s\nSYSTEM:\n%s", acp, system)
 	}
 	if strings.Contains(acp, "You are Jaz") || strings.Contains(acp, "agent_spawn") {
 		t.Fatalf("acp extension must carry no coordinator identity or delegation rules:\n%s", acp)

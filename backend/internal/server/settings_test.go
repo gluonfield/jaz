@@ -136,10 +136,6 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		t.Fatalf("get status = %d, body = %s", getRes.Code, getRes.Body.String())
 	}
 	var got struct {
-		Native struct {
-			ModelProvider string `json:"model_provider"`
-			Model         string `json:"model"`
-		} `json:"native"`
 		Providers []struct {
 			ID      string `json:"id"`
 			BaseURL string `json:"base_url"`
@@ -167,11 +163,11 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Native.ModelProvider != "openrouter" || got.Native.Model != "openai/gpt-5.4-mini" || strings.Join(got.Agents, ",") != "claude,codex,grok,jaz,opencode" {
+	if strings.Join(got.Agents, ",") != "claude,codex,grok,jaz,opencode" {
 		t.Fatalf("unexpected seeded settings %#v", got)
 	}
-	if !hasNativeProvider(got.Providers, "openai", "https://api.openai.com/v1") ||
-		!hasNativeProvider(got.Providers, "openrouter", "https://openrouter.ai/api/v1") {
+	if !hasModelProvider(got.Providers, "openai", "https://api.openai.com/v1") ||
+		!hasModelProvider(got.Providers, "openrouter", "https://openrouter.ai/api/v1") {
 		t.Fatalf("providers = %#v", got.Providers)
 	}
 	if !got.ACP["codex"].Enabled ||
@@ -186,6 +182,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	}
 	if !got.ACP["jaz"].Enabled ||
 		got.ACP["jaz"].Command != "" ||
+		got.ACP["jaz"].ModelProvider != "openrouter" ||
 		got.ACP["jaz"].Model != "openai/gpt-5.4-mini" {
 		t.Fatalf("unexpected jaz defaults %#v", got.ACP["jaz"])
 	}
@@ -200,7 +197,9 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		t.Fatalf("unexpected acp options %#v", got.ACPOptions)
 	}
 	if !got.ACPOptions["jaz"].Local ||
-		got.ACPOptions["jaz"].ProviderMode != acp.AgentProviderModeNativeDefaults ||
+		got.ACPOptions["jaz"].ProviderMode != acp.AgentProviderModeAgentDefaults ||
+		!hasString(got.ACPOptions["jaz"].ModelProviderIDs, "openrouter") ||
+		!hasString(got.ACPOptions["jaz"].ModelProviderIDs, "openai") ||
 		got.ACPOptions["jaz"].RequiresCommand ||
 		got.ACPOptions["jaz"].SupportsAuth {
 		t.Fatalf("unexpected jaz capabilities %#v", got.ACPOptions["jaz"])
@@ -212,7 +211,6 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	}
 
 	putReq := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
-		"native":{"model_provider":"openrouter","model":"openai/gpt-5.4-mini","reasoning_effort":"medium"},
 		"acp":{
 			"codex":{"enabled":true,"command":"/opt/jaz/codex-acp -c 'sandbox_mode=\"danger-full-access\"'","model":"gpt-5.5","reasoning_effort":"high"},
 			"claude":{"enabled":false,"command":"npx -y @agentclientprotocol/claude-agent-acp@0.43.0","model":"default","reasoning_effort":"medium"}
@@ -256,7 +254,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	}
 }
 
-func TestAgentSettingsSavesNativeProviderKey(t *testing.T) {
+func TestAgentSettingsSavesModelProviderKey(t *testing.T) {
 	root := t.TempDir()
 	store, err := sqlitestore.New(root)
 	if err != nil {
@@ -266,7 +264,6 @@ func TestAgentSettingsSavesNativeProviderKey(t *testing.T) {
 	handler := (&Server{Store: store, Root: root}).Handler()
 
 	putReq := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
-		"native":{"model_provider":"openrouter","model":"openai/gpt-5.4-mini","reasoning_effort":"medium"},
 		"provider_keys":{"openrouter":"sk-or-test"}
 	}`))
 	putReq.Header.Set("Content-Type", "application/json")
@@ -324,7 +321,6 @@ func TestAgentSettingsSavesCustomModelProviderKey(t *testing.T) {
 	}).Handler()
 
 	putReq := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
-		"native":{"model_provider":"openrouter","model":"openai/gpt-5.4-mini","reasoning_effort":"medium"},
 		"provider_keys":{"internal":"internal-key"}
 	}`))
 	putReq.Header.Set("Content-Type", "application/json")
@@ -352,7 +348,6 @@ func TestAgentSettingsRejectsInvalidSettingsBeforeSavingACPKeys(t *testing.T) {
 	}
 	defer store.Close()
 	req := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
-		"native":{"model_provider":"openrouter","model":"openai/gpt-5.4-mini","reasoning_effort":"medium"},
 		"acp":{"codex":{"enabled":true,"command":"codex-acp","model":"gpt-5.5","reasoning_effort":"medium","auth":{"mode":"broken"}}},
 		"acp_keys":{"codex":"should-not-save"}
 	}`))
@@ -370,7 +365,7 @@ func TestAgentSettingsRejectsInvalidSettingsBeforeSavingACPKeys(t *testing.T) {
 	}
 }
 
-func hasNativeProvider(providers []struct {
+func hasModelProvider(providers []struct {
 	ID      string `json:"id"`
 	BaseURL string `json:"base_url"`
 }, id, baseURL string) bool {
@@ -523,7 +518,6 @@ func TestAgentSettingsAPIRoundTripsConfiguredACPAgent(t *testing.T) {
 	}
 
 	putReq := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
-		"native":{"model_provider":"openrouter","model":"openai/gpt-5.4-mini","reasoning_effort":"medium"},
 		"acp":{
 			"codex":{"enabled":false,"command":"codex-acp","model":"gpt-5.5","reasoning_effort":"medium"},
 			"claude":{"enabled":false,"command":"npx -y @agentclientprotocol/claude-agent-acp@0.43.0","model":"default","reasoning_effort":"medium"},
@@ -548,7 +542,6 @@ func TestAgentSettingsRejectUnknownACPAgent(t *testing.T) {
 	}
 	defer store.Close()
 	req := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
-		"native":{"model_provider":"openrouter","model":"openai/gpt-5.4-mini"},
 		"acp":{"missing":{"enabled":true}}
 	}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -561,46 +554,6 @@ func TestAgentSettingsRejectUnknownACPAgent(t *testing.T) {
 	}
 }
 
-func TestAgentSettingsRejectUnknownNativeProvider(t *testing.T) {
-	store, err := sqlitestore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	req := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
-		"native":{"model_provider":"missing","model":"test-model"},
-		"acp":{"codex":{"enabled":false}}
-	}`))
-	req.Header.Set("Content-Type", "application/json")
-	res := httptest.NewRecorder()
-
-	(&Server{Store: store}).Handler().ServeHTTP(res, req)
-
-	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "unknown native provider") {
-		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
-	}
-}
-
-func TestAgentSettingsRejectMockNativeProvider(t *testing.T) {
-	store, err := sqlitestore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	req := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
-		"native":{"model_provider":"mock","model":"test-model"},
-		"acp":{"codex":{"enabled":false}}
-	}`))
-	req.Header.Set("Content-Type", "application/json")
-	res := httptest.NewRecorder()
-
-	(&Server{Store: store}).Handler().ServeHTTP(res, req)
-
-	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "unknown native provider") {
-		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
-	}
-}
-
 func TestAgentSettingsRejectEnabledACPWithoutCommand(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
@@ -608,7 +561,6 @@ func TestAgentSettingsRejectEnabledACPWithoutCommand(t *testing.T) {
 	}
 	defer store.Close()
 	req := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
-		"native":{"model_provider":"openrouter","model":"openai/gpt-5.4-mini"},
 		"acp":{
 			"codex":{"enabled":true,"command":""},
 			"claude":{"enabled":false,"command":""}

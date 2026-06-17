@@ -2,9 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, ChevronRight, Pencil, Play, Trash2 } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
+import { LoopBoardAssignments } from '@/components/loops/LoopBoardAssignments'
 import { LoopModal } from '@/components/loops/LoopModal'
-import { MentionText } from '@/components/session/mentions'
 import { describeSchedule, draftFromLoop } from '@/components/loops/schedule'
+import { MentionText } from '@/components/session/mentions'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { IconButton } from '@/components/ui/IconButton'
@@ -69,34 +70,33 @@ function LoopDetail({
     queryClient.invalidateQueries({ queryKey: keys.loops })
   }
 
-  const run = useMutation({
+  const run = useMutation<LoopRun, Error, void>({
     mutationFn: () => runLoopNow(loop.id),
     onSuccess: () => {
       toast('Loop run started')
       invalidate()
     },
-    onError: (error) => toast(`Couldn't run: ${(error as Error).message}`, 'danger'),
+    onError: (error) => toast(`Couldn't run: ${error.message}`, 'danger'),
   })
 
-  const remove = useMutation({
+  const remove = useMutation<{ ok: boolean }, Error, void>({
     mutationFn: () => deleteLoop(loop.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: keys.loops })
       navigate({ to: '/loops' })
     },
-    onError: (error) => toast(`Couldn't delete: ${(error as Error).message}`, 'danger'),
+    onError: (error) => toast(`Couldn't delete: ${error.message}`, 'danger'),
   })
 
   const onDelete = () => {
     if (confirm(`Delete loop "${loop.name}"? Its run history is kept but it stops running.`)) {
       remove.mutate()
     }
-  }
+	}
 
-  const paused = loop.status === 'paused'
-  const isAcp = loop.runtime === 'acp'
-  const summary = describeSchedule(draftFromLoop(loop.schedule?.expr ?? '', paused))
-  const nextRun = !paused && hasTime(loop.next_run_at) ? shortDate(loop.next_run_at) : ''
+	const paused = loop.status === 'paused'
+	const summary = describeSchedule(draftFromLoop(loop.schedule?.expr ?? '', paused))
+	const nextRun = !paused && hasTime(loop.next_run_at) ? shortDate(loop.next_run_at) : ''
 
   return (
     <div className="mx-auto max-w-[820px] px-10 pb-20 pt-6">
@@ -147,7 +147,7 @@ function LoopDetail({
       </div>
 
       <dl className="mt-5 flex flex-wrap gap-x-10 gap-y-3">
-        <Fact label="Agent" value={isAcp ? agentLabel(loop.acp_agent) : 'Native'} />
+        <Fact label="Agent" value={agentLabel(loop.acp_agent || 'jaz')} />
         {/* Only pinned overrides show; otherwise runs follow Settings > Agents. */}
         {loop.model?.trim() ? <Fact label="Model" value={loop.model} mono /> : null}
         {loop.reasoning_effort?.trim() ? (
@@ -155,6 +155,8 @@ function LoopDetail({
         ) : null}
         <Fact label="Folder" value={loop.directory?.trim() || 'workspace'} mono />
       </dl>
+
+      <LoopBoardAssignments loop={loop} boardIds={boardIds} />
 
       <section className="mt-10">
         <div className="flex items-baseline justify-between border-b border-border pb-2">

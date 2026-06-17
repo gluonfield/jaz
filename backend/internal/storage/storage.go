@@ -8,8 +8,7 @@ import (
 )
 
 const (
-	RuntimeNative = "native"
-	RuntimeACP    = "acp"
+	RuntimeACP = "acp"
 )
 
 const (

@@ -13,9 +13,8 @@ The CLI auto-connects to a running server (jaz at `:5299/jazmem`, or jazmem-serv
 
 ## Memory Horizons
 
-Jaz injects memory as a system-prompt extension when memory is enabled. Native
-Jaz receives a fresh extension with each native request; ACP agents receive it
-when Jaz creates or loads their ACP session. Know who writes what:
+Jaz injects memory as a system-prompt extension when memory is enabled. ACP
+agents receive it when Jaz creates or loads their ACP session. Know who writes what:
 
 | Surface | Holds | You (agent) | Dream (periodic) |
 |---|---|---|---|

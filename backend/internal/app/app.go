@@ -43,7 +43,6 @@ import (
 	plantool "github.com/wins/jaz/backend/internal/tools/plan"
 	viewimagetool "github.com/wins/jaz/backend/internal/tools/viewimage"
 	visualizetool "github.com/wins/jaz/backend/internal/tools/visualize"
-	widgettool "github.com/wins/jaz/backend/internal/tools/widget"
 	"github.com/wins/jaz/backend/internal/voice"
 	mistralvoice "github.com/wins/jaz/backend/internal/voice/mistral"
 	"github.com/wins/jaz/backend/internal/widgets"
@@ -176,7 +175,7 @@ func NewWidgetSessionPublisher(service *widgets.Service, store *sqlitestore.Stor
 	return &widgets.SessionPublisher{Service: service, Sessions: store, Loops: store}
 }
 
-func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, store *sqlitestore.Store, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher) *tools.Registry {
+func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, store *sqlitestore.Store, events *sessionevents.Bus) *tools.Registry {
 	return tools.NewRegistry(
 		&plantool.Tool{Store: store, Events: events},
 		&exectool.ExecCommandTool{Manager: commandManager, Workspace: string(workspace)},
@@ -189,7 +188,6 @@ func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspac
 		&visualizetool.ReadMeTool{},
 		&visualizetool.ShowWidgetTool{},
 		&viewimagetool.Tool{Workspace: string(workspace)},
-		&widgettool.Tool{Publisher: widgetPublisher},
 		&agentspawn.Tool{Manager: manager},
 		&agentsend.Tool{Manager: manager},
 		&agentstatus.Tool{Manager: manager},
@@ -296,21 +294,21 @@ func (p *ReloadableProvider) currentProvider() provider.Provider {
 	current := p.current
 	p.mu.RUnlock()
 	if current == nil {
-		return provider.UnavailableProvider{ID: "native", Reason: "provider has not loaded"}
+		return provider.UnavailableProvider{ID: "model", Reason: "provider has not loaded"}
 	}
 	return current
 }
 
 func buildProvider(cfg Config, envPath string) provider.Provider {
 	clients := map[string]provider.Provider{}
-	for _, meta := range provider.NativeProviders() {
+	for _, meta := range provider.RunnableModelProviders() {
 		id := meta.ID
 		config := providerConfigWithRuntimeEnv(cfg.ModelProviders[id], id, envPath)
 		config.Type = id
 		if strings.TrimSpace(config.BaseURL) == "" {
 			config.BaseURL = meta.BaseURL
 		}
-		client, err := nativeProviderClient(id, config)
+		client, err := modelProviderClient(id, config)
 		if err != nil {
 			clients[id] = provider.UnavailableProvider{ID: id, Reason: err.Error()}
 			continue
@@ -327,7 +325,7 @@ func providerConfigWithRuntimeEnv(cfg provider.ModelProviderConfig, id, envPath 
 	if strings.TrimSpace(cfg.APIKey) != "" {
 		return cfg
 	}
-	meta, ok := provider.NativeProviderByID(id)
+	meta, ok := provider.RunnableModelProviderByID(id)
 	if !ok || strings.TrimSpace(meta.APIKeyEnv) == "" {
 		return cfg
 	}
@@ -345,11 +343,11 @@ func runtimeRoot(root string) string {
 	return sqlitestore.DefaultRoot()
 }
 
-func nativeProviderClient(id string, cfg provider.ModelProviderConfig) (provider.Provider, error) {
+func modelProviderClient(id string, cfg provider.ModelProviderConfig) (provider.Provider, error) {
 	switch id {
 	case provider.ProviderOpenAI, provider.ProviderOpenRouter:
 		if cfg.APIKey == "" {
-			meta, _ := provider.NativeProviderByID(id)
+			meta, _ := provider.RunnableModelProviderByID(id)
 			keyEnv := meta.APIKeyEnv
 			if keyEnv == "" {
 				keyEnv = strings.ToUpper(id) + "_API_KEY"
@@ -358,7 +356,7 @@ func nativeProviderClient(id string, cfg provider.ModelProviderConfig) (provider
 		}
 		baseURL := strings.TrimSpace(cfg.BaseURL)
 		if baseURL == "" {
-			meta, _ := provider.NativeProviderByID(id)
+			meta, _ := provider.RunnableModelProviderByID(id)
 			baseURL = meta.BaseURL
 		}
 		return openaiprovider.New(baseURL, cfg.APIKey, ""), nil
@@ -475,7 +473,7 @@ func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, 
 		return
 	}
 	messages = append(messages, completion)
-	// Same per-turn prompt rules as native turns: derive fresh, never persist
+	// Same per-turn prompt rules as Jaz turns: derive fresh, never persist
 	// (older sessions stored it as their first message; skip that copy).
 	for len(messages) > 0 && messages[0].OfSystem != nil {
 		messages = messages[1:]

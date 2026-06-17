@@ -22,7 +22,7 @@ func TestUploadAttachmentStoresServerFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	session, err := store.CreateSession(storage.CreateSession{Slug: "attachments", Runtime: storage.RuntimeNative})
+	session, err := store.CreateSession(storage.CreateSession{Slug: "attachments", Runtime: storage.RuntimeACP})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,11 +145,11 @@ func TestStreamRejectsAttachmentFromAnotherSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	first, err := store.CreateSession(storage.CreateSession{Slug: "first", Runtime: storage.RuntimeNative})
+	first, err := store.CreateSession(storage.CreateSession{Slug: "first", Runtime: storage.RuntimeACP})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := store.CreateSession(storage.CreateSession{Slug: "second", Runtime: storage.RuntimeNative})
+	second, err := store.CreateSession(storage.CreateSession{Slug: "second", Runtime: storage.RuntimeACP})
 	if err != nil {
 		t.Fatal(err)
 	}

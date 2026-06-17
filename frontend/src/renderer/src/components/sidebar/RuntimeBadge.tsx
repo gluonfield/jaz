@@ -2,9 +2,9 @@ import { AgentLogo, hasAgentLogo } from '@/components/acp/AgentLogo'
 import { agentLabel } from '@/lib/agentLabel'
 import type { Session } from '@/lib/api/types'
 
-// Runtime tag: a pill carrying the *identity* (the ACP agent, prettified, or
-// the native provider) tinted by runtime, with the model as muted mono detail
-// beside it. `compact` (sidebar) drops the model — it still surfaces on hover.
+// Runtime tag: a pill carrying the ACP agent identity, with the model as muted
+// mono detail beside it. `compact` (sidebar) drops the model — it still surfaces
+// on hover.
 export function RuntimeBadge({
   session,
   className = '',
@@ -21,16 +21,13 @@ export function RuntimeBadge({
   const fullModelLabel = session.model
     ? withReasoningEffort(session.model, session.reasoning_effort)
     : ''
-  const isACP = session.runtime === 'acp'
   const agent = session.runtime_ref?.agent
   // Agent names arrive as slugs; prettify so the tag reads like a product name
   // rather than a raw identifier.
-  const name = isACP ? agentLabel(agent) : session.model_provider || 'native'
+  const name = agentLabel(agent)
   const title = fullModelLabel ? `${name} · ${fullModelLabel}` : name
-  const showLogo = isACP && hasAgentLogo(agent ?? '')
-  // Agent-backed sessions get the emphasized brand-soft fill (the same pill
-  // the loops list uses for its active state); native stays a quieter neutral.
-  const pillTone = isACP ? 'bg-primary-soft text-primary-strong' : 'bg-surface-2 text-ink-2'
+  const showLogo = hasAgentLogo(agent ?? '')
+  const pillTone = 'bg-primary-soft text-primary-strong'
 
   return (
     <span title={title} className={`inline-flex min-w-0 items-center gap-1.5 ${className}`}>
