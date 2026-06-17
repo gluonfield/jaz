@@ -181,6 +181,9 @@ export interface Device {
   name: string
   kind: DeviceKind
   status: DeviceStatus
+  platform?: string
+  device_family?: string
+  model_identifier?: string
   created_at: string
   approved_at?: string
   revoked_at?: string

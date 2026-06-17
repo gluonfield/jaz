@@ -9,6 +9,14 @@ declare global {
       windowKind: 'main' | 'board'
       setNativeTheme: (source: 'light' | 'dark' | 'system') => void
       startLocalBackend: () => Promise<{ ok: boolean; url?: string; key?: string; error?: string }>
+      getDeviceIdentity: () => Promise<{ device_id: string; public_key: string }>
+      getDeviceMetadata: () => Promise<{
+        name: string
+        platform: string
+        device_family: string
+        model_identifier: string
+        app_version: string
+      }>
       getUpdateStatus: () => Promise<UpdateStatus>
       installUpdate: () => Promise<{ ok: boolean; error?: string }>
       onUpdateStatus: (handler: (status: UpdateStatus) => void) => () => void

@@ -27,6 +27,10 @@ type Device struct {
 	Name       string    `json:"name"`
 	Kind       string    `json:"kind"`
 	Status     string    `json:"status"`
+	PublicKey  string    `json:"public_key,omitempty"`
+	Platform   string    `json:"platform,omitempty"`
+	Family     string    `json:"device_family,omitempty"`
+	Model      string    `json:"model_identifier,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
 	ApprovedAt time.Time `json:"approved_at,omitempty"`
 	RevokedAt  time.Time `json:"revoked_at,omitempty"`
@@ -41,10 +45,29 @@ type CreateDevice struct {
 	Name       string
 	Kind       string
 	Status     string
+	PublicKey  string
+	Platform   string
+	Family     string
+	Model      string
 	TokenHash  string
 	CreatedAt  time.Time
 	ApprovedAt time.Time
 	LastSeenAt time.Time
+	LastSeenIP string
+	UserAgent  string
+	AppVersion string
+}
+
+type SavePairingDevice struct {
+	ID         string
+	Name       string
+	Kind       string
+	PublicKey  string
+	Platform   string
+	Family     string
+	Model      string
+	TokenHash  string
+	CreatedAt  time.Time
 	LastSeenIP string
 	UserAgent  string
 	AppVersion string

@@ -199,6 +199,7 @@ function DeviceSummary({
   detail: string
   current?: boolean
 }) {
+  const metadata = deviceMetadata(device)
   return (
     <div className="flex min-w-0 items-start gap-3">
       <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-bg text-ink-3 ring-1 ring-border/70">
@@ -213,11 +214,39 @@ function DeviceSummary({
             </span>
           ) : null}
         </div>
+        {metadata ? <p className="mt-0.5 truncate text-[12px] text-ink-2">{metadata}</p> : null}
         <p className="mt-0.5 truncate text-[12px] text-ink-3">{detail}</p>
-        {device.app_version ? <p className="mt-0.5 text-[11px] text-ink-3">Jaz {device.app_version}</p> : null}
+        <p className="mt-0.5 font-mono text-[11px] text-ink-3">{shortDeviceID(device.id)}</p>
       </div>
     </div>
   )
+}
+
+function deviceMetadata(device: Device): string {
+  return uniqueParts([
+    device.platform,
+    device.device_family,
+    device.model_identifier,
+    device.app_version ? `Jaz ${device.app_version}` : '',
+  ]).join(' / ')
+}
+
+function uniqueParts(parts: Array<string | undefined>): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of parts) {
+    const part = raw?.trim()
+    if (!part) continue
+    const key = part.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(part)
+  }
+  return out
+}
+
+function shortDeviceID(id: string): string {
+  return id.length > 16 ? `${id.slice(0, 12)}...${id.slice(-4)}` : id
 }
 
 function formatDate(value?: string): string {

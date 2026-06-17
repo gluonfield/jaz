@@ -15,14 +15,15 @@ type Querier interface {
 	CreateDevice(ctx context.Context, arg CreateDeviceParams) error
 	CreatePairingRequest(ctx context.Context, arg CreatePairingRequestParams) error
 	ExpirePairingRequest(ctx context.Context, arg ExpirePairingRequestParams) (int64, error)
-	GetDevice(ctx context.Context, id string) (Device, error)
-	GetDeviceByTokenHash(ctx context.Context, tokenHash string) (Device, error)
+	GetDevice(ctx context.Context, id string) (GetDeviceRow, error)
+	GetDeviceByTokenHash(ctx context.Context, tokenHash string) (GetDeviceByTokenHashRow, error)
 	GetPairingRequest(ctx context.Context, id string) (GetPairingRequestRow, error)
-	ListDevices(ctx context.Context) ([]Device, error)
+	ListDevices(ctx context.Context) ([]ListDevicesRow, error)
 	ListPairingRequests(ctx context.Context) ([]ListPairingRequestsRow, error)
 	RejectPairingRequest(ctx context.Context, arg RejectPairingRequestParams) (int64, error)
 	RenameDevice(ctx context.Context, arg RenameDeviceParams) (int64, error)
 	RevokeDevice(ctx context.Context, arg RevokeDeviceParams) (int64, error)
+	SavePairingDevice(ctx context.Context, arg SavePairingDeviceParams) error
 	UpdateDeviceSeen(ctx context.Context, arg UpdateDeviceSeenParams) (int64, error)
 }
 

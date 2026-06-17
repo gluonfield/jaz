@@ -4,6 +4,10 @@ SELECT
   name,
   kind,
   status,
+  public_key,
+  platform,
+  device_family,
+  model_identifier,
   token_hash,
   created_at_ms,
   approved_at_ms,
@@ -33,6 +37,10 @@ SELECT
   name,
   kind,
   status,
+  public_key,
+  platform,
+  device_family,
+  model_identifier,
   token_hash,
   created_at_ms,
   approved_at_ms,
@@ -51,6 +59,10 @@ SELECT
   name,
   kind,
   status,
+  public_key,
+  platform,
+  device_family,
+  model_identifier,
   token_hash,
   created_at_ms,
   approved_at_ms,
@@ -69,6 +81,10 @@ INSERT INTO devices (
   name,
   kind,
   status,
+  public_key,
+  platform,
+  device_family,
+  model_identifier,
   token_hash,
   created_at_ms,
   approved_at_ms,
@@ -81,6 +97,10 @@ INSERT INTO devices (
   sqlc.arg(name),
   sqlc.arg(kind),
   sqlc.arg(status),
+  sqlc.arg(public_key),
+  sqlc.arg(platform),
+  sqlc.arg(device_family),
+  sqlc.arg(model_identifier),
   sqlc.arg(token_hash),
   sqlc.arg(created_at_ms),
   sqlc.arg(approved_at_ms),
@@ -89,6 +109,47 @@ INSERT INTO devices (
   sqlc.arg(user_agent),
   sqlc.arg(app_version)
 );
+
+-- name: SavePairingDevice :exec
+INSERT INTO devices (
+  id,
+  name,
+  kind,
+  status,
+  public_key,
+  platform,
+  device_family,
+  model_identifier,
+  token_hash,
+  created_at_ms,
+  last_seen_ip,
+  user_agent,
+  app_version
+) VALUES (
+  sqlc.arg(id),
+  sqlc.arg(name),
+  sqlc.arg(kind),
+  'pending',
+  sqlc.arg(public_key),
+  sqlc.arg(platform),
+  sqlc.arg(device_family),
+  sqlc.arg(model_identifier),
+  sqlc.arg(token_hash),
+  sqlc.arg(created_at_ms),
+  sqlc.arg(last_seen_ip),
+  sqlc.arg(user_agent),
+  sqlc.arg(app_version)
+)
+ON CONFLICT(id) DO UPDATE SET
+  name = excluded.name,
+  kind = excluded.kind,
+  public_key = excluded.public_key,
+  platform = excluded.platform,
+  device_family = excluded.device_family,
+  model_identifier = excluded.model_identifier,
+  last_seen_ip = excluded.last_seen_ip,
+  user_agent = excluded.user_agent,
+  app_version = excluded.app_version;
 
 -- name: UpdateDeviceSeen :execrows
 UPDATE devices
@@ -102,10 +163,13 @@ WHERE id = sqlc.arg(id);
 UPDATE devices
 SET
   status = 'approved',
+  token_hash = CASE
+    WHEN CAST(sqlc.arg(token_hash) AS TEXT) = '' THEN token_hash
+    ELSE CAST(sqlc.arg(token_hash) AS TEXT)
+  END,
   approved_at_ms = sqlc.arg(approved_at_ms),
   revoked_at_ms = 0
-WHERE id = sqlc.arg(id)
-  AND status = 'pending';
+WHERE id = sqlc.arg(id);
 
 -- name: RevokeDevice :execrows
 UPDATE devices
@@ -151,6 +215,10 @@ SELECT
   d.name AS device_name,
   d.kind AS device_kind,
   d.status AS device_status,
+  d.public_key AS device_public_key,
+  d.platform AS device_platform,
+  d.device_family AS device_family,
+  d.model_identifier AS device_model_identifier,
   d.token_hash AS device_token_hash,
   d.created_at_ms AS device_created_at_ms,
   d.approved_at_ms AS device_approved_at_ms,
@@ -178,6 +246,10 @@ SELECT
   d.name AS device_name,
   d.kind AS device_kind,
   d.status AS device_status,
+  d.public_key AS device_public_key,
+  d.platform AS device_platform,
+  d.device_family AS device_family,
+  d.model_identifier AS device_model_identifier,
   d.token_hash AS device_token_hash,
   d.created_at_ms AS device_created_at_ms,
   d.approved_at_ms AS device_approved_at_ms,
@@ -213,4 +285,3 @@ SET
   rejected_at_ms = sqlc.arg(rejected_at_ms)
 WHERE id = sqlc.arg(id)
   AND status = 'pending';
-

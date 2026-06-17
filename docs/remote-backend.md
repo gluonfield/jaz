@@ -125,6 +125,10 @@ device
   name
   kind              desktop | mobile | browser | cli
   status            pending | approved | revoked
+  public_key
+  platform
+  device_family
+  model_identifier
   token_hash
   created_at
   approved_at
@@ -136,6 +140,10 @@ device
 ```
 
 Long-lived client tokens are random bearer tokens, hashed at rest, scoped to one device, and revocable without rotating every other device. The root key is only for bootstrap/recovery, not the token stored by normal clients.
+
+Migration 21 adds stable client identity. The desktop app generates an Ed25519 keypair, stores the private key locally, sends only the raw public key to the backend, and uses `sha256(public_key)` as `device_id`. The bearer token still authorizes normal HTTP requests; the device identity names the installation and leaves room for signed repair/recovery later.
+
+Migration 22 adds display metadata to devices: platform, device family, and model identifier. These fields are not authentication material. They exist so Settings and `jaz devices` can show recognizable pending devices such as `Johny / macOS / Mac / MacBookPro18,3`.
 
 ## Pairing Flow
 
@@ -150,12 +158,12 @@ First owner device:
 Additional devices:
 
 1. New client enters the backend URL or scans a QR code.
-2. Client creates a pairing request with a generated request secret, display name, app kind, app version, and device public metadata.
+2. Client creates a pairing request with its stable `device_id`, public key, generated request secret, display name, app kind, platform, device family, model identifier, and app version.
 3. Backend stores the request as pending and returns a request ID.
 4. Client polls the request with its request secret.
 5. Settings on an approved device shows the pending request with enough context to recognize it.
 6. Owner approves or rejects it.
-7. Approval lets the pending client finish with the token scoped to that one device; rejection leaves the client unauthenticated.
+7. Approval lets the pending client finish with the token scoped to that one device identity; rejection leaves the client unauthenticated.
 
 QR flow:
 
@@ -211,8 +219,8 @@ Feature services should receive that actor explicitly where policy depends on it
 
 Settings includes a Devices section:
 
-- Approved devices: name, kind, current-device marker, last seen, app version, IP, revoke, rename.
-- Pending devices: requested name, kind, approximate time, IP, approve, reject.
+- Approved devices: name, OS/platform details, model, app version, current-device marker, last seen, IP, revoke, rename.
+- Pending devices: requested name, OS/platform details, model, approximate time, IP, approve, reject.
 - Revoked devices: collapsed history or hidden by default.
 - Link device: future QR code plus short pairing code.
 
@@ -236,7 +244,7 @@ APPLICATION_CONFIG=/etc/jaz/application.yaml jaz devices
 APPLICATION_CONFIG=/etc/jaz/application.yaml jaz devices approve <pairing-or-device-id>
 ```
 
-Approval accepts either the pending pairing request ID or the pending device ID shown by `jaz devices`.
+The listing includes display metadata for each approved device and pending request. Approval accepts either the pending pairing request ID or the pending device ID shown by `jaz devices`.
 
 ## Migration
 
