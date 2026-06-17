@@ -5,6 +5,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/visualize"
 )
 
 type SessionSource interface {
@@ -31,6 +32,16 @@ func (p *SessionPublisher) PublishForSession(sessionID string, input PublishInpu
 		return Widget{}, nil, err
 	}
 	return p.Service.Publish(loop, run.ID, input)
+}
+
+func (p *SessionPublisher) WidgetSurfaceForSession(sessionID string) bool {
+	session, err := p.Sessions.LoadSession(sessionID)
+	if err != nil || session.RuntimeRef == nil {
+		return false
+	}
+	return session.SourceType == storage.SourceLoopRun &&
+		session.SourceID != "" &&
+		visualize.NormalizeSurface(session.RuntimeRef.ArtifactSurface) == visualize.SurfaceWidget
 }
 
 func (p *SessionPublisher) resolve(sessionID string) (loops.Loop, loops.Run, error) {

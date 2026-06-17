@@ -13,17 +13,33 @@ import (
 )
 
 const (
-	ReadMeMCPToolName     = "visualize:read_me"
-	ShowWidgetMCPToolName = "visualize:show_widget"
-	ReadMeToolName        = "visualize_read_me"
-	ShowWidgetToolName    = "visualize_show_widget"
+	ReadMeMCPToolName     = "visualise:read_me"
+	ShowWidgetMCPToolName = "visualise:show_widget"
+	ReadMeToolName        = "visualise_read_me"
+	ShowWidgetToolName    = "visualise_show_widget"
 
 	MaxWidgetCodeBytes = 5 << 20
 )
 
+type Surface string
+
+const (
+	SurfaceChat   Surface = "chat"
+	SurfaceWidget Surface = "widget"
+)
+
+func NormalizeSurface(surface string) Surface {
+	switch Surface(strings.TrimSpace(surface)) {
+	case SurfaceWidget:
+		return SurfaceWidget
+	default:
+		return SurfaceChat
+	}
+}
+
 const (
 	RenderedMessage  = "Content rendered and shown to the user. Please do not duplicate the shown content in text because it's already visually represented."
-	RenderedReminder = "[This tool call rendered an interactive widget in the chat. The user can already see the result — do not repeat it in text or with another visualization tool.]"
+	RenderedReminder = "[This tool call rendered an interactive widget in the chat. The user can already see the result — do not repeat it in text or with another visualisation tool.]"
 )
 
 type SessionEventAppender interface {

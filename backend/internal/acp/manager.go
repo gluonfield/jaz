@@ -92,8 +92,9 @@ type SpawnRequest struct {
 	// session (empty keeps the agent default).
 	ReasoningEffort string
 	// SourceType/SourceID tag sessions created by backend automation such as loops.
-	SourceType string
-	SourceID   string
+	SourceType      string
+	SourceID        string
+	ArtifactSurface string
 }
 
 type SendRequest struct {
@@ -187,8 +188,8 @@ func (c *agentConn) withProcessStderr(err error) error {
 	return withProcessStderr(err, c.stderr)
 }
 
-func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd string) (*agentConn, error) {
-	env, err := m.processEnvPrepared(name, cfg)
+func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface string) (*agentConn, error) {
+	env, err := m.processEnvPreparedForSurface(name, cfg, artifactSurface)
 	if err != nil {
 		return nil, err
 	}
@@ -246,19 +247,19 @@ func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd
 
 // sessionMeta builds the session _meta payload for prompt and agent-specific
 // options.
-func (m *Manager) sessionMeta(agent string, cfg AgentConfig, cwd string) (map[string]any, error) {
-	meta, err := m.sessionPromptMeta(agent, cwd)
+func (m *Manager) sessionMeta(agent string, cfg AgentConfig, cwd, artifactSurface string) (map[string]any, error) {
+	meta, err := m.sessionPromptMeta(agent, cwd, artifactSurface)
 	if err != nil {
 		return nil, err
 	}
 	return agentPolicyForAgent(agent).mergeSessionMeta(meta, cfg.ReasoningEffort), nil
 }
 
-func (m *Manager) sessionPromptMeta(agent, cwd string) (map[string]any, error) {
+func (m *Manager) sessionPromptMeta(agent, cwd, artifactSurface string) (map[string]any, error) {
 	if m.cfg.SystemPrompt == nil {
 		return nil, nil
 	}
-	prompt, err := m.cfg.SystemPrompt.ACPPrompt(cwd)
+	prompt, err := promptForArtifactSurface(m.cfg.SystemPrompt, cwd, artifactSurface)
 	if err != nil {
 		return nil, fmt.Errorf("build acp system prompt: %w", err)
 	}
@@ -269,8 +270,8 @@ func (m *Manager) sessionPromptMeta(agent, cwd string) (map[string]any, error) {
 	return systemPromptMeta(agent, prompt), nil
 }
 
-func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent string, cfg AgentConfig, cwd string) (acpSessionInfo, error) {
-	meta, err := m.sessionMeta(agent, cfg, cwd)
+func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent string, cfg AgentConfig, cwd, artifactSurface string) (acpSessionInfo, error) {
+	meta, err := m.sessionMeta(agent, cfg, cwd, artifactSurface)
 	if err != nil {
 		return acpSessionInfo{}, err
 	}
@@ -356,11 +357,11 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	if cfg.Local {
 		return m.spawnLocalSession(session, req.ACPAgent, absCwd)
 	}
-	ac, err := m.connect(ctx, req.ACPAgent, cfg, absCwd)
+	ac, err := m.connect(ctx, req.ACPAgent, cfg, absCwd, session.RuntimeRef.ArtifactSurface)
 	if err != nil {
 		return fail(err)
 	}
-	acpSession, err := m.newACPSession(mcpsession.With(ctx, session.ID), ac, req.ACPAgent, cfg, absCwd)
+	acpSession, err := m.newACPSession(mcpsession.With(ctx, session.ID), ac, req.ACPAgent, cfg, absCwd, session.RuntimeRef.ArtifactSurface)
 	if err != nil {
 		ac.close()
 		return fail(err)
@@ -477,7 +478,11 @@ func (m *Manager) resume(ctx context.Context, ref string) (*Job, error) {
 			return nil, err
 		}
 	}
-	ac, err := m.connect(ctx, agentName, cfg, cwd)
+	artifactSurface := ""
+	if session.RuntimeRef != nil {
+		artifactSurface = session.RuntimeRef.ArtifactSurface
+	}
+	ac, err := m.connect(ctx, agentName, cfg, cwd, artifactSurface)
 	if err != nil {
 		return nil, err
 	}
@@ -529,7 +534,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 	_ = json.Unmarshal(ac.initRaw, &caps)
 	storedID := session.RuntimeRef.SessionID
 	if caps.AgentCapabilities.LoadSession && storedID != "" {
-		meta, err := m.sessionMeta(agentName, cfg, cwd)
+		meta, err := m.sessionMeta(agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface)
 		if err != nil {
 			return "", ModeState{}, err
 		}
@@ -558,7 +563,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 		}
 		// The agent lost this session — fall through to a fresh one.
 	}
-	acpSession, err := m.newACPSession(mcpsession.With(ctx, session.ID), ac, agentName, cfg, cwd)
+	acpSession, err := m.newACPSession(mcpsession.With(ctx, session.ID), ac, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface)
 	if err != nil {
 		return "", ModeState{}, err
 	}

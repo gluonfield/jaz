@@ -63,6 +63,7 @@ func (r *LoopRunner) startACPLoopRun(execution loops.Execution) {
 		ReasoningEffort: loop.ReasoningEffort,
 		SourceType:      storage.SourceLoopRun,
 		SourceID:        run.ID,
+		ArtifactSurface: execution.ArtifactSurface,
 	})
 	if err != nil {
 		r.finishLoopRun(execution, loops.RunStatusError, err.Error())

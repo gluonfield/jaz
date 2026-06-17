@@ -39,4 +39,5 @@ type Thread struct {
 	ProjectPath           sql.NullString `json:"project_path"`
 	LastAttentionAtMs     int64          `json:"last_attention_at_ms"`
 	Pinned                int64          `json:"pinned"`
+	ArtifactSurface       sql.NullString `json:"artifact_surface"`
 }

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/skills"
+	"github.com/wins/jaz/backend/internal/visualize"
 )
 
 type Builder struct {
@@ -23,15 +24,19 @@ func (b *Builder) SystemPrompt() (string, error) {
 }
 
 func (b *Builder) SystemPromptForWorkspace(workspace string) (string, error) {
+	return b.SystemPromptForWorkspaceSurface(workspace, visualize.SurfaceChat)
+}
+
+func (b *Builder) SystemPromptForWorkspaceSurface(workspace string, surface visualize.Surface) (string, error) {
 	if strings.TrimSpace(workspace) == "" {
 		workspace = b.workspace
 	}
-	system, _, err := b.build(workspace)
+	system, _, err := b.build(workspace, surface)
 	return system, err
 }
 
 func (b *Builder) SkillsPrompt() (string, error) {
-	_, skillsPrompt, err := b.build(b.workspace)
+	_, skillsPrompt, err := b.build(b.workspace, visualize.SurfaceChat)
 	return skillsPrompt, err
 }
 
@@ -41,6 +46,10 @@ func (b *Builder) SkillsPrompt() (string, error) {
 // is appended to it: runtime context, the user's standing rules (AGENTS.md),
 // the jazmem memory horizons, and the skills catalog.
 func (b *Builder) ACPPrompt(cwd string) (string, error) {
+	return b.ACPPromptForArtifactSurface(cwd, string(visualize.SurfaceChat))
+}
+
+func (b *Builder) ACPPromptForArtifactSurface(cwd, surface string) (string, error) {
 	catalog, err := skills.Load(b.root)
 	if err != nil {
 		return "", err
@@ -57,10 +66,10 @@ func (b *Builder) ACPPrompt(cwd string) (string, error) {
 	if b.memoryEnabled != nil && !b.memoryEnabled() {
 		memoryRoot = ""
 	}
-	return platformPrompt(b.root, cwd, memoryRoot, catalog.Prompt(), now)
+	return platformPrompt(b.root, cwd, memoryRoot, catalog.Prompt(), visualize.NormalizeSurface(surface), now)
 }
 
-func (b *Builder) build(workspace string) (system, skillsPrompt string, err error) {
+func (b *Builder) build(workspace string, surface visualize.Surface) (system, skillsPrompt string, err error) {
 	catalog, err := skills.Load(b.root)
 	if err != nil {
 		return "", "", err
@@ -70,6 +79,6 @@ func (b *Builder) build(workspace string) (system, skillsPrompt string, err erro
 	if b.memoryEnabled != nil && !b.memoryEnabled() {
 		memoryRoot = ""
 	}
-	system, err = Prompt(b.root, workspace, memoryRoot, skillsPrompt)
+	system, err = prompt(b.root, workspace, memoryRoot, skillsPrompt, surface, time.Now())
 	return system, skillsPrompt, err
 }

@@ -61,8 +61,9 @@ func (m *Manager) createStoredSession(req SpawnRequest, cfg AgentConfig, effort 
 		SourceType:      req.SourceType,
 		SourceID:        req.SourceID,
 		RuntimeRef: &storage.RuntimeRef{
-			Type:  storage.RuntimeACP,
-			Agent: req.ACPAgent,
+			Type:            storage.RuntimeACP,
+			Agent:           req.ACPAgent,
+			ArtifactSurface: strings.TrimSpace(req.ArtifactSurface),
 		},
 	})
 }

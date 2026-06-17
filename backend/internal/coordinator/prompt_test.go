@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/wins/jaz/backend/internal/visualize"
 )
 
 func TestPromptCombinesCoordinatorFiles(t *testing.T) {
@@ -15,7 +17,7 @@ func TestPromptCombinesCoordinatorFiles(t *testing.T) {
 
 	now := time.Date(2026, 6, 2, 9, 8, 7, 0, time.FixedZone("BST", 3600))
 	workspace := filepath.Join(root, "workspaces", "default")
-	prompt, err := prompt(root, workspace, "", "skills", now)
+	prompt, err := prompt(root, workspace, "", "skills", visualize.SurfaceChat, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +79,7 @@ func TestPromptInjectsMemoryHorizons(t *testing.T) {
 	today := now.Local().Format("2006-01-02")
 	write(t, memoryRoot, "daily/"+today+".md", "# Daily\n\n- shipped provenance fields")
 
-	got, err := prompt(root, "", memoryRoot, "", now)
+	got, err := prompt(root, "", memoryRoot, "", visualize.SurfaceChat, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +92,7 @@ func TestPromptInjectsMemoryHorizons(t *testing.T) {
 		"## memory/daily/"+today+".md", "shipped provenance fields",
 	)
 
-	missing, err := prompt(root, "", t.TempDir(), "", now)
+	missing, err := prompt(root, "", t.TempDir(), "", visualize.SurfaceChat, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +106,7 @@ func TestPromptInjectsMemoryHorizons(t *testing.T) {
 		t.Fatalf("memory protocol should inject whenever memory is enabled:\n%s", missing)
 	}
 
-	disabled, err := prompt(root, "", "", "", now)
+	disabled, err := prompt(root, "", "", "", visualize.SurfaceChat, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +131,7 @@ func TestPromptDoesNotTruncateMemorySections(t *testing.T) {
 	daily := "# Daily\n\n" + strings.Repeat("d", 1600) + " daily-tail"
 	write(t, memoryRoot, "daily/"+today+".md", daily)
 
-	got, err := prompt(root, "", memoryRoot, "", now)
+	got, err := prompt(root, "", memoryRoot, "", visualize.SurfaceChat, now)
 	if err != nil {
 		t.Fatal(err)
 	}

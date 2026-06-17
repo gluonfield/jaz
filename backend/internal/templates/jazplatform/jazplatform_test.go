@@ -36,9 +36,9 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"Current working directory: /tmp/jaz/workspaces/default/.worktrees/task",
 		"## AGENTS.md\n\nagents",
 		"## SOUL.md\n\nsoul",
-		"## Artifacts and visualizations",
+		"## Artifacts and visualisation",
 		"Artifact usage criteria:",
-		"Always call `visualize:read_me` before the first artifact",
+		"Always call `visualise:read_me` before the first artifact",
 		"Few-shot trace:",
 		"## memory",
 		"broad context from the user's past behavior",
@@ -53,7 +53,6 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		t.Fatalf("platform prompt must not carry the coordinator identity:\n%s", prompt)
 	}
 	for _, want := range []string{
-		"`create_file`, use that surface's artifact tool according to its local path rules",
 		"any reusable code snippet over 20 lines",
 		"standalone text-heavy documents over 20 lines or 1500 characters",
 		"Do not use artifacts for short code answers of 20 lines or fewer",
@@ -61,18 +60,33 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"Create single-file artifacts unless the user asks otherwise",
 		"verify the data and choose the source/method before loading artifact guidance",
 		"Pass `platform:\"mobile\"` for mobile targets, `platform:\"desktop\"` for desktop targets",
-		"`visualize_read_me` when the provider exposes only underscore-safe function names",
-		"`visualize_show_widget` on underscore-safe function-tool surfaces",
+		"Call `visualise:show_widget` with a meaningful snake_case title",
 		"meaningful snake_case title",
 		"Text-heavy document, code reference, or reusable prose",
 		"Stacking millions into bars",
+		"When to visualise:",
 		"prefer an inline artifact over plain text",
 		"Never pass raw JSX, TSX, or an unbundled app to the render tool",
-		"`visualize:read_me` is the visual styling authority",
+		"`visualise:read_me` is the visual styling authority",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("artifact policy missing %q:\n%s", want, prompt)
 		}
+	}
+	for _, reject := range []string{
+		"`visualize:",
+		"visualize_",
+		"`create_file`",
+		"file-artifact tool",
+		"coding-agent surface provides",
+		"Claude-compatible",
+	} {
+		if strings.Contains(prompt, reject) {
+			t.Fatalf("artifact policy must use direct Jaz visualise:* tools only; found %q:\n%s", reject, prompt)
+		}
+	}
+	if strings.Contains(prompt, "`visualise_show_widget`") || strings.Contains(prompt, "`visualise_read_me`") {
+		t.Fatalf("artifact policy must use the visualise:* tool namespace only:\n%s", prompt)
 	}
 }
 
@@ -97,6 +111,23 @@ func TestRenderMemoryStates(t *testing.T) {
 	assertOrder(t, fresh, "Capture as you go", "## memory/LONG_TERM.md\n\n(empty)", "## memory/SHORT_TERM.md\n\n(empty)")
 	if strings.Contains(fresh, "## memory/daily/") {
 		t.Fatalf("no daily content means no daily sections:\n%s", fresh)
+	}
+}
+
+func TestRenderWidgetSurfaceOmitsChatArtifactPolicy(t *testing.T) {
+	data := testData("agents", "soul")
+	data.ArtifactSurface = "widget"
+	prompt, err := Render(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(prompt, "## Artifacts and visualisation") ||
+		strings.Contains(prompt, "visualise:show_widget") ||
+		strings.Contains(prompt, "visualise:read_me") {
+		t.Fatalf("widget surface must not receive the chat artifact policy:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "## AGENTS.md\n\nagents") || !strings.Contains(prompt, "## SOUL.md\n\nsoul") {
+		t.Fatalf("widget surface must keep the platform prompt:\n%s", prompt)
 	}
 }
 

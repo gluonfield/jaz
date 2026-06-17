@@ -16,10 +16,11 @@ type LocalAgentRunner interface {
 }
 
 type LocalAgentRequest struct {
-	Session       storage.Session
-	Message       string
-	Attachments   []storage.Attachment
-	PlanRequested bool
+	Session         storage.Session
+	Message         string
+	Attachments     []storage.Attachment
+	PlanRequested   bool
+	ArtifactSurface string
 }
 
 func (m *Manager) RegisterLocalAgent(name string, runner LocalAgentRunner) {
@@ -161,11 +162,16 @@ func (m *Manager) runLocalPrompt(ctx context.Context, job *Job, runner LocalAgen
 	finalState := StateFailed
 	finalError := "Agent stream ended without a completion event."
 	failed := false
+	artifactSurface := ""
+	if session.RuntimeRef != nil {
+		artifactSurface = session.RuntimeRef.ArtifactSurface
+	}
 	for event := range runner.Run(runCtx, LocalAgentRequest{
-		Session:       session,
-		Message:       message,
-		Attachments:   attachments,
-		PlanRequested: planRequested,
+		Session:         session,
+		Message:         message,
+		Attachments:     attachments,
+		PlanRequested:   planRequested,
+		ArtifactSurface: artifactSurface,
 	}) {
 		switch event.Type {
 		case agent.StreamDelta:

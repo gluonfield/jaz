@@ -94,7 +94,7 @@ export const ArtifactBlock = memo(function ArtifactBlock({
   if (!input) {
     return (
       <div className="rounded-card border border-border bg-surface px-3 py-2 text-sm text-ink-2">
-        Could not render artifact: invalid visualize:show_widget input.
+        Could not render artifact: invalid visualise:show_widget input.
       </div>
     )
   }

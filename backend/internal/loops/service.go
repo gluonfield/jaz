@@ -20,7 +20,8 @@ type Service struct {
 	MemoryPaths *MemoryPaths
 	// PromptExtra appends capability sections (e.g. widget instructions) to the
 	// metadata prompt of each run.
-	PromptExtra func(Loop, Run) string
+	PromptExtra     func(Loop, Run) string
+	ArtifactSurface func(Loop, Run) string
 	// RunFinished fires after a run reaches a terminal status.
 	RunFinished func(Loop, Run)
 	mu          sync.Mutex
@@ -37,6 +38,12 @@ func WithMemoryPaths(paths *MemoryPaths) Option {
 func WithPromptExtra(extra func(Loop, Run) string) Option {
 	return func(s *Service) {
 		s.PromptExtra = extra
+	}
+}
+
+func WithArtifactSurface(surface func(Loop, Run) string) Option {
+	return func(s *Service) {
+		s.ArtifactSurface = surface
 	}
 }
 
@@ -315,12 +322,17 @@ func (s *Service) start(ctx context.Context, loop Loop, run Run, now time.Time) 
 			extras = append(extras, extra)
 		}
 	}
+	artifactSurface := ""
+	if s.ArtifactSurface != nil {
+		artifactSurface = strings.TrimSpace(s.ArtifactSurface(loop, run))
+	}
 	prompt := RunPrompt(loop, run, now, extras...)
 	go s.Executor.StartLoopRun(context.WithoutCancel(ctx), Execution{
-		Loop:       loop,
-		Run:        run,
-		Prompt:     prompt,
-		Controller: s,
+		Loop:            loop,
+		Run:             run,
+		Prompt:          prompt,
+		ArtifactSurface: artifactSurface,
+		Controller:      s,
 	})
 }
 

@@ -188,7 +188,7 @@ func insertSession(db threaddb.DBTX, session storage.Session) error {
 	if session.LastAttentionAt.IsZero() {
 		storage.MarkSessionAttention(&session, storage.SessionAttentionAt(session))
 	}
-	acpAgent, acpSessionID, cwd, projectPath := runtimeRefColumns(session)
+	acpAgent, acpSessionID, cwd, artifactSurface, projectPath := runtimeRefColumns(session)
 	queuedMessages, err := storage.MarshalQueuedMessages(session.QueuedMessages)
 	if err != nil {
 		return err
@@ -203,6 +203,7 @@ func insertSession(db threaddb.DBTX, session storage.Session) error {
 		AcpAgent:              nullDBString(acpAgent),
 		AcpSessionID:          nullDBString(acpSessionID),
 		Cwd:                   nullDBString(cwd),
+		ArtifactSurface:       nullDBString(artifactSurface),
 		ProjectPath:           nullDBString(projectPath),
 		Error:                 nullDBString(session.Error),
 		ModelProvider:         nullDBString(session.ModelProvider),
@@ -271,13 +272,14 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 	if session.Status == "" {
 		session.Status = storage.StatusIdle
 	}
-	if row.AcpAgent.Valid || row.AcpSessionID.Valid || row.Cwd.Valid || row.ProjectPath.Valid {
+	if row.AcpAgent.Valid || row.AcpSessionID.Valid || row.Cwd.Valid || row.ArtifactSurface.Valid || row.ProjectPath.Valid {
 		session.RuntimeRef = &storage.RuntimeRef{
-			Type:        session.Runtime,
-			Agent:       row.AcpAgent.String,
-			SessionID:   row.AcpSessionID.String,
-			Cwd:         row.Cwd.String,
-			ProjectPath: row.ProjectPath.String,
+			Type:            session.Runtime,
+			Agent:           row.AcpAgent.String,
+			SessionID:       row.AcpSessionID.String,
+			Cwd:             row.Cwd.String,
+			ProjectPath:     row.ProjectPath.String,
+			ArtifactSurface: row.ArtifactSurface.String,
 		}
 	}
 	return session, nil
@@ -341,11 +343,11 @@ func (s *Store) uniqueSlugLocked(value, currentID string) (string, error) {
 	}
 }
 
-func runtimeRefColumns(session storage.Session) (string, string, string, string) {
+func runtimeRefColumns(session storage.Session) (string, string, string, string, string) {
 	if session.RuntimeRef == nil {
-		return "", "", "", ""
+		return "", "", "", "", ""
 	}
-	return session.RuntimeRef.Agent, session.RuntimeRef.SessionID, session.RuntimeRef.Cwd, session.RuntimeRef.ProjectPath
+	return session.RuntimeRef.Agent, session.RuntimeRef.SessionID, session.RuntimeRef.Cwd, session.RuntimeRef.ArtifactSurface, session.RuntimeRef.ProjectPath
 }
 
 func firstNonEmpty(values ...string) string {

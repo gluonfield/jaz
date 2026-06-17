@@ -82,12 +82,12 @@ func loadRuntimeEnvKey(env map[string]string, root, key string) {
 	}
 }
 
-func (m *Manager) prepareOpenCodeConfig(env map[string]string, agent AgentConfig) error {
+func (m *Manager) prepareOpenCodeConfig(env map[string]string, agent AgentConfig, artifactSurface string) error {
 	if strings.TrimSpace(env["OPENCODE_CONFIG_CONTENT"]) != "" {
 		return nil
 	}
 	content := openCodeConfigContent{}
-	if instruction, err := m.prepareOpenCodeInstructionFile(env, agent.Cwd); err != nil {
+	if instruction, err := m.prepareOpenCodeInstructionFile(env, agent.Cwd, artifactSurface); err != nil {
 		return err
 	} else if instruction != "" {
 		content.Instructions = []string{instruction}
@@ -108,11 +108,11 @@ func (m *Manager) prepareOpenCodeConfig(env map[string]string, agent AgentConfig
 	return nil
 }
 
-func (m *Manager) prepareOpenCodeInstructionFile(env map[string]string, cwd string) (string, error) {
+func (m *Manager) prepareOpenCodeInstructionFile(env map[string]string, cwd, artifactSurface string) (string, error) {
 	if m.cfg.SystemPrompt == nil {
 		return "", nil
 	}
-	prompt, err := m.cfg.SystemPrompt.ACPPrompt(cwd)
+	prompt, err := promptForArtifactSurface(m.cfg.SystemPrompt, cwd, artifactSurface)
 	if err != nil {
 		return "", fmt.Errorf("build opencode instructions: %w", err)
 	}
