@@ -442,13 +442,20 @@ func TestSessionQueueSteerClaimsOnePromptForRunningACP(t *testing.T) {
 	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
-	answer := waitForACPAnswer(t, manager, "second")
-	sent := sentACPRequest(manager)
-	if answer.Session != session.ID || answer.Text != "second" {
-		t.Fatalf("unexpected interactive answer %#v", answer)
+	sent := waitForACPSend(t, manager, "second")
+	if sent.Session != session.ID || sent.Completion != acp.CompletionAsync || !sent.Interactive {
+		t.Fatalf("unexpected steer send %#v", sent)
 	}
-	if sent.Message != "" {
-		t.Fatalf("steer should not use queue drain send directly: %#v", sent)
+	manager.mu.Lock()
+	answered := manager.answered
+	cancelCtxErr := manager.cancelCtxErr
+	sendCtxErr := manager.sendCtxErr
+	manager.mu.Unlock()
+	if answered.Text != "" {
+		t.Fatalf("steer should not use text-only interactive answer: %#v", answered)
+	}
+	if cancelCtxErr != nil || sendCtxErr != nil {
+		t.Fatalf("steer used cancelled context: cancel=%v send=%v", cancelCtxErr, sendCtxErr)
 	}
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
@@ -459,7 +466,7 @@ func TestSessionQueueSteerClaimsOnePromptForRunningACP(t *testing.T) {
 	}
 }
 
-func TestSessionQueueSteerRejectsAttachmentsForRunningACP(t *testing.T) {
+func TestSessionQueueSteerSendsAttachmentsForRunningACP(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -486,26 +493,34 @@ func TestSessionQueueSteerRejectsAttachmentsForRunningACP(t *testing.T) {
 	if err := store.SaveSession(session); err != nil {
 		t.Fatal(err)
 	}
-	srv.ACP = &fakeACPManager{job: acp.Job{
+	manager := &fakeACPManager{job: acp.Job{
 		ID:    session.ID,
 		Slug:  session.Slug,
 		State: acp.StateRunning,
 	}}
+	srv.ACP = manager
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"steer","index":0}`))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(res, req)
 
-	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "attachments cannot steer") {
+	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	sent := waitForACPSend(t, manager, "inspect this")
+	if len(sent.Attachments) != 1 {
+		t.Fatalf("attachments = %#v", sent.Attachments)
+	}
+	if got := sent.Attachments[0]; got.ID != attachment.ID || got.URI != attachment.URI {
+		t.Fatalf("sent attachment = %#v, want %#v", got, attachment)
 	}
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded.QueuedMessages) != 1 || loaded.QueuedMessages[0].AttachmentIDs[0] != attachment.ID {
-		t.Fatalf("queue changed after rejected steer: %#v", loaded.QueuedMessages)
+	if len(loaded.QueuedMessages) != 0 || loaded.Status != storage.StatusRunning {
+		t.Fatalf("session after steer queue=%#v status=%q", loaded.QueuedMessages, loaded.Status)
 	}
 }
 
@@ -548,12 +563,13 @@ func TestSessionQueueSteerUsesServerContextAfterRequestCancel(t *testing.T) {
 	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
-	_ = waitForACPAnswer(t, manager, "steer even after request cancel")
+	_ = waitForACPSend(t, manager, "steer even after request cancel")
 	manager.mu.Lock()
-	answerCtxErr := manager.answerCtxErr
+	cancelCtxErr := manager.cancelCtxErr
+	sendCtxErr := manager.sendCtxErr
 	manager.mu.Unlock()
-	if answerCtxErr != nil {
-		t.Fatalf("answer used cancelled request context: %v", answerCtxErr)
+	if cancelCtxErr != nil || sendCtxErr != nil {
+		t.Fatalf("steer used cancelled request context: cancel=%v send=%v", cancelCtxErr, sendCtxErr)
 	}
 }
 
@@ -634,7 +650,7 @@ func TestSessionQueueSteerRestoresPromptWhenSendFails(t *testing.T) {
 			Slug:  session.Slug,
 			State: acp.StateRunning,
 		},
-		answerErr: errors.New("steer failed"),
+		sendErr: errors.New("steer failed"),
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"steer","index":1,"expected":"second"}`))
@@ -662,18 +678,6 @@ func TestSessionQueueSteerRestoresPromptWhenSendFails(t *testing.T) {
 	if loaded.Status != storage.StatusError || !strings.Contains(loaded.Error, "steer failed") {
 		t.Fatalf("status/error = %q/%q", loaded.Status, loaded.Error)
 	}
-}
-
-func waitForACPAnswer(t *testing.T, manager *fakeACPManager, text string) acp.InteractiveAnswer {
-	t.Helper()
-	var answer acp.InteractiveAnswer
-	waitFor(t, time.Second, func() bool {
-		manager.mu.Lock()
-		defer manager.mu.Unlock()
-		answer = manager.answered
-		return answer.Text == text
-	})
-	return answer
 }
 
 func waitForACPSend(t *testing.T, manager *fakeACPManager, text string) acp.SendRequest {

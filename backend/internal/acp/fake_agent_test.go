@@ -37,7 +37,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 		if !msg.IsRequest() {
 			if msg.Method == "session/cancel" {
 				if pendingPrompt != nil {
-					sendResult(conn, pendingPrompt, map[string]any{"stopReason": "cancelled"})
+					sendResult(conn, pendingPrompt, map[string]any{"stopReason": fakeCancelStopReason()})
 					pendingPrompt = nil
 				} else {
 					cancelArrived = true
@@ -245,7 +245,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				})
 				if cancelArrived {
 					cancelArrived = false
-					sendResult(conn, msg, map[string]any{"stopReason": "cancelled"})
+					sendResult(conn, msg, map[string]any{"stopReason": fakeCancelStopReason()})
 					continue
 				}
 				pendingPrompt = msg
@@ -287,6 +287,13 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			_ = conn.Send(context.Background(), resp)
 		}
 	}
+}
+
+func fakeCancelStopReason() string {
+	if os.Getenv("JAZ_FAKE_ACP_CANCEL_END_TURN") == "1" {
+		return "end_turn"
+	}
+	return "cancelled"
 }
 
 func validateFakeCwdPrompt(cwd string, meta map[string]any) error {

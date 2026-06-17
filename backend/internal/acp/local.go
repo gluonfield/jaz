@@ -203,6 +203,10 @@ func (m *Manager) runLocalPrompt(ctx context.Context, job *Job, runner LocalAgen
 		finalState = StateCancelled
 		finalError = ""
 	}
+	if jobCancelRequested(job) {
+		finalState = StateCancelled
+		finalError = ""
+	}
 	if finalState == StateIdle {
 		job.setState(StateIdle, "", "")
 	} else if finalState == StateCancelled {
