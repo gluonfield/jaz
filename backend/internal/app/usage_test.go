@@ -5,10 +5,12 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/deviceauth"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
+	usagecore "github.com/wins/jaz/backend/internal/usage"
 	"go.uber.org/fx"
 )
 
@@ -35,6 +37,31 @@ func TestUsageModuleProvidesRoute(t *testing.T) {
 		routes[1].Pattern != "GET /v1/usage/models" ||
 		routes[1].Handler == nil {
 		t.Fatalf("routes = %#v", routes)
+	}
+}
+
+func TestNewRoutesMountsDeviceRevokeAsMethodRoute(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	routes := NewRoutes(routeDeps{
+		Usage:   usagecore.NewService(fakeUsageStore{}),
+		Devices: deviceauth.New(store),
+	})
+	var found bool
+	for _, route := range routes {
+		if route.Pattern == "/v1/devices/" {
+			t.Fatalf("mounted generic device item route")
+		}
+		if route.Pattern == "DELETE /v1/devices/{id}" && route.Handler != nil {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("missing DELETE device revoke route: %#v", routes)
 	}
 }
 

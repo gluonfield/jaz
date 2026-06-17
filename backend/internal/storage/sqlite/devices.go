@@ -145,22 +145,6 @@ func (s *Store) RevokeDevice(id string, at time.Time) (storage.Device, error) {
 	return s.LoadDevice(id)
 }
 
-func (s *Store) RenameDevice(id, name string) (storage.Device, error) {
-	s.mu.Lock()
-	changed, err := devicequeries.New(s.db).RenameDevice(context.Background(), devicequeries.RenameDeviceParams{
-		ID:   id,
-		Name: name,
-	})
-	s.mu.Unlock()
-	if err != nil {
-		return storage.Device{}, err
-	}
-	if changed == 0 {
-		return storage.Device{}, fmt.Errorf("device not found: %s", id)
-	}
-	return s.LoadDevice(id)
-}
-
 func (s *Store) CreateDevicePairing(input storage.CreateDevicePairing) (storage.DevicePairing, error) {
 	s.mu.Lock()
 	err := devicequeries.New(s.db).CreatePairingRequest(context.Background(), devicequeries.CreatePairingRequestParams{

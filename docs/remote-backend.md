@@ -219,7 +219,7 @@ Feature services should receive that actor explicitly where policy depends on it
 
 Settings includes a Devices section:
 
-- Approved devices: name, OS/platform details, model, app version, current-device marker, last seen, IP, revoke, rename.
+- Approved devices: name from client metadata, OS/platform details, model, app version, current-device marker, last seen, IP, revoke.
 - Pending devices: requested name, OS/platform details, model, approximate time, IP, approve, reject.
 - Revoked devices: collapsed history or hidden by default.
 - Link device: future QR code plus short pairing code.
