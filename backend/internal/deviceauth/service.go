@@ -37,7 +37,6 @@ type Store interface {
 	CreateDevice(storage.CreateDevice) (storage.Device, error)
 	SavePairingDevice(storage.SavePairingDevice) (storage.Device, error)
 	UpdateDeviceSeen(id, ip, userAgent string, at time.Time) error
-	RenameDevice(id, name string) (storage.Device, error)
 	RevokeDevice(id string, at time.Time) (storage.Device, error)
 	CreateDevicePairing(storage.CreateDevicePairing) (storage.DevicePairing, error)
 	LoadDevicePairing(id string) (storage.DevicePairing, string, error)
@@ -219,14 +218,6 @@ func (s *Service) ApprovePairing(id string) (storage.DevicePairing, error) {
 
 func (s *Service) RejectPairing(id string) (storage.DevicePairing, error) {
 	return s.store.RejectDevicePairing(strings.TrimSpace(id), s.now())
-}
-
-func (s *Service) RenameDevice(id, name string) (storage.Device, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return storage.Device{}, fmt.Errorf("device name is required")
-	}
-	return s.store.RenameDevice(strings.TrimSpace(id), name)
 }
 
 func (s *Service) RevokeDevice(id string) (storage.Device, error) {

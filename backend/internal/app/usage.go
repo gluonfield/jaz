@@ -50,7 +50,7 @@ func NewRoutes(deps routeDeps) server.Routes {
 		server.Route{Pattern: "POST /v1/devices/register", Handler: httpHandlerFunc(deviceHandler.Register)},
 		server.Route{Pattern: "POST /v1/devices/pairing-requests", Handler: httpHandlerFunc(deviceHandler.CreatePairing)},
 		server.Route{Pattern: "/v1/devices/pairing-requests/", Handler: httpHandlerFunc(deviceHandler.Pairing)},
-		server.Route{Pattern: "/v1/devices/", Handler: httpHandlerFunc(deviceHandler.Device)},
+		server.Route{Pattern: "DELETE /v1/devices/{id}", Handler: httpHandlerFunc(deviceHandler.Revoke)},
 	)
 }
 

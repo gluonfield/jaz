@@ -29,10 +29,6 @@ type deviceInput struct {
 	AppVersion string `json:"app_version"`
 }
 
-type renameInput struct {
-	Name string `json:"name"`
-}
-
 type listResponse struct {
 	Devices         []deviceDTO  `json:"devices"`
 	Pairings        []pairingDTO `json:"pairings"`
@@ -140,39 +136,22 @@ func (h Handler) Pairing(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h Handler) Device(w http.ResponseWriter, r *http.Request) {
-	id, err := devicePath(r.URL.Path)
-	if err != nil {
-		httpapi.WriteError(w, http.StatusNotFound, err)
+func (h Handler) Revoke(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(r.PathValue("id"))
+	if id == "" {
+		httpapi.WriteError(w, http.StatusNotFound, fmt.Errorf("not found"))
 		return
 	}
-	switch r.Method {
-	case http.MethodPatch:
-		var input renameInput
-		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-			httpapi.WriteError(w, http.StatusBadRequest, err)
-			return
-		}
-		device, err := h.service.RenameDevice(id, input.Name)
-		if err != nil {
-			httpapi.WriteError(w, http.StatusBadRequest, err)
-			return
-		}
-		httpapi.WriteJSON(w, http.StatusOK, map[string]any{"device": deviceDTOFromStorage(device)})
-	case http.MethodDelete:
-		if principal, ok := deviceauth.PrincipalFromContext(r.Context()); ok && principal.DeviceID == id {
-			httpapi.WriteError(w, http.StatusBadRequest, fmt.Errorf("cannot revoke the current device"))
-			return
-		}
-		device, err := h.service.RevokeDevice(id)
-		if err != nil {
-			httpapi.WriteError(w, http.StatusBadRequest, err)
-			return
-		}
-		httpapi.WriteJSON(w, http.StatusOK, map[string]any{"device": deviceDTOFromStorage(device)})
-	default:
-		httpapi.WriteError(w, http.StatusNotFound, fmt.Errorf("not found"))
+	if principal, ok := deviceauth.PrincipalFromContext(r.Context()); ok && principal.DeviceID == id {
+		httpapi.WriteError(w, http.StatusBadRequest, fmt.Errorf("cannot revoke the current device"))
+		return
 	}
+	device, err := h.service.RevokeDevice(id)
+	if err != nil {
+		httpapi.WriteError(w, http.StatusBadRequest, err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"device": deviceDTOFromStorage(device)})
 }
 
 func (h Handler) pollPairing(w http.ResponseWriter, r *http.Request, id string) {
@@ -278,15 +257,6 @@ func pairingPath(path string) (string, string, error) {
 	}
 	id, action, _ := strings.Cut(rest, "/")
 	return strings.TrimSpace(id), strings.TrimSpace(action), nil
-}
-
-func devicePath(path string) (string, error) {
-	rest := strings.Trim(strings.TrimPrefix(path, "/v1/devices/"), "/")
-	if rest == "" || rest == path || strings.HasPrefix(rest, "pairing-requests") {
-		return "", fmt.Errorf("not found")
-	}
-	id, _, _ := strings.Cut(rest, "/")
-	return strings.TrimSpace(id), nil
 }
 
 func registerDTO(result deviceauth.RegisterResult) map[string]any {

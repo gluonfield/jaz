@@ -21,7 +21,6 @@ type Querier interface {
 	ListDevices(ctx context.Context) ([]ListDevicesRow, error)
 	ListPairingRequests(ctx context.Context) ([]ListPairingRequestsRow, error)
 	RejectPairingRequest(ctx context.Context, arg RejectPairingRequestParams) (int64, error)
-	RenameDevice(ctx context.Context, arg RenameDeviceParams) (int64, error)
 	RevokeDevice(ctx context.Context, arg RevokeDeviceParams) (int64, error)
 	SavePairingDevice(ctx context.Context, arg SavePairingDeviceParams) error
 	UpdateDeviceSeen(ctx context.Context, arg UpdateDeviceSeenParams) (int64, error)
