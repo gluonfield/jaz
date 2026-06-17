@@ -1,7 +1,7 @@
 -- +goose Up
 -- One-shot SQL copy of sessionevents.ACPEvent.SlimForStorage for rows written
 -- before the rule existed; that method is the canonical definition.
--- json_valid guards legacy ''/non-JSON values (eventFromDB tolerates them on
+-- json_valid guards ''/non-JSON values (eventFromDB tolerates them on
 -- read, but json_remove would raise "malformed JSON" and abort the migration).
 UPDATE session_events
 SET acp = json_remove(acp, '$.title', '$.modes.available_modes')

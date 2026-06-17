@@ -15,6 +15,7 @@ import (
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/wins/jaz/backend/internal/mcpsession"
+	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -156,6 +157,17 @@ func NewManager(store Store, cfg Config, logger *log.Logger) *Manager {
 		localAgents:       make(map[string]LocalAgentRunner),
 		pendingPermission: make(map[string]*pendingPermission),
 	}
+}
+
+// providers returns the current effective provider set. It reads the live
+// ProviderSource (so a runtime add/edit/delete reaches the next spawn) when one
+// is configured, falling back to the static Providers snapshot used by tests and
+// the read-time auth/readiness probes.
+func (m *Manager) providers() map[string]provider.ModelProviderConfig {
+	if m.cfg.ProviderSource != nil {
+		return m.cfg.ProviderSource.Providers()
+	}
+	return m.cfg.Providers
 }
 
 type agentConn struct {

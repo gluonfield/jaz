@@ -2,81 +2,14 @@ package sqlite
 
 import (
 	"context"
-	"database/sql"
 	stdjson "encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/storage"
-	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
-	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/messagedb"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/threaddb"
 )
-
-func (s *Store) importLegacyJSON() error {
-	legacy := s.mirror
-	if legacy == nil {
-		var err error
-		legacy, err = jsonstore.New(s.root)
-		if err != nil {
-			return err
-		}
-	}
-	sessions, err := legacy.ListSessions(storage.SessionFilter{IncludeChildren: true})
-	if err != nil {
-		return err
-	}
-	threadq := threaddb.New(s.db)
-	for _, session := range sessions {
-		_, err := threadq.GetThreadIDByID(context.Background(), session.ID)
-		if err == nil {
-			continue
-		}
-		if err != sql.ErrNoRows {
-			return err
-		}
-		if session.Status == "" {
-			session.Status = storage.StatusIdle
-		}
-		if session.Runtime == "" {
-			session.Runtime = storage.RuntimeACP
-		}
-		slug, err := s.uniqueSlugLocked(session.Slug, session.ID)
-		if err != nil {
-			return err
-		}
-		session.Slug = slug
-		messages, err := legacy.LoadMessages(session.ID)
-		if err != nil {
-			return err
-		}
-		records, err := recordsFromProviderMessages(messages, session.CreatedAt)
-		if err != nil {
-			return fmt.Errorf("import legacy session %s: %w", session.ID, err)
-		}
-		tx, err := s.db.BeginTx(context.Background(), nil)
-		if err != nil {
-			return err
-		}
-		if err := insertSession(tx, session); err != nil {
-			_ = tx.Rollback()
-			return err
-		}
-		messageq := messagedb.New(tx)
-		for _, record := range records {
-			record.ThreadID = session.ID
-			if err := insertMessage(messageq, record); err != nil {
-				_ = tx.Rollback()
-				return err
-			}
-		}
-		if err := tx.Commit(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
 
 func (s *Store) resetStaleRunningThreads() error {
 	return threaddb.New(s.db).ResetRunningThreads(context.Background(), threaddb.ResetRunningThreadsParams{

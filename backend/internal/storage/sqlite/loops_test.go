@@ -396,9 +396,9 @@ func TestEnsureMemoryPathsBackfillsExistingLoops(t *testing.T) {
 	defer store.Close()
 
 	now := time.Date(2026, 6, 8, 12, 0, 0, 0, time.UTC)
-	legacy := loops.Loop{
+	loop := loops.Loop{
 		ID:        store.NewLoopID(),
-		Name:      "Legacy Loop",
+		Name:      "Daily Standup",
 		Prompt:    "keep going",
 		Schedule:  loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 9 * * *", Timezone: "UTC"},
 		Status:    loops.StatusActive,
@@ -408,7 +408,7 @@ func TestEnsureMemoryPathsBackfillsExistingLoops(t *testing.T) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	if err := store.SaveLoop(legacy); err != nil {
+	if err := store.SaveLoop(loop); err != nil {
 		t.Fatal(err)
 	}
 
@@ -416,11 +416,11 @@ func TestEnsureMemoryPathsBackfillsExistingLoops(t *testing.T) {
 	if err := service.EnsureMemoryPaths(); err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := store.LoadLoop(legacy.ID)
+	loaded, err := store.LoadLoop(loop.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(store.RootDir(), "automations", "legacy-loop", "memory.md")
+	want := filepath.Join(store.RootDir(), "automations", "daily-standup", "memory.md")
 	if loaded.MemoryPath != want {
 		t.Fatalf("backfilled memory path = %q, want %q", loaded.MemoryPath, want)
 	}

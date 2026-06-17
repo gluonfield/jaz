@@ -312,12 +312,12 @@ func TestAgentSettingsSavesCustomModelProviderKey(t *testing.T) {
 	handler := (&Server{
 		Store: store,
 		Root:  root,
-		ModelProviders: map[string]provider.ModelProviderConfig{
+		Providers: provider.StaticSource(map[string]provider.ModelProviderConfig{
 			"internal": {
 				Type:    "openai-compatible",
 				BaseURL: "https://llm.internal/v1",
 			},
-		},
+		}),
 	}).Handler()
 
 	putReq := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
@@ -414,14 +414,14 @@ func TestAgentSettingsAPIIncludesCustomOpenCodeProvider(t *testing.T) {
 	handler := (&Server{
 		Store:        store,
 		AgentCatalog: catalog,
-		ModelProviders: map[string]provider.ModelProviderConfig{
+		Providers: provider.StaticSource(map[string]provider.ModelProviderConfig{
 			"internal": {
 				Type:    "openai-compatible",
 				Label:   "Internal",
 				BaseURL: "https://llm.internal/v1",
 				APIKey:  "internal-key",
 			},
-		},
+		}),
 	}).Handler()
 
 	res := httptest.NewRecorder()

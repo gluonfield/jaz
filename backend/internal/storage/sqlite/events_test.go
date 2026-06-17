@@ -52,11 +52,11 @@ func TestSessionEventsPersistAndMirror(t *testing.T) {
 	if loaded[2].Plan == nil || loaded[2].Plan.Plan[0].Content != "Run tests" {
 		t.Fatalf("plan event = %#v", loaded[2])
 	}
-	legacy, err := jsonstore.New(store.RootDir())
+	mirror, err := jsonstore.New(store.RootDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	mirrored, err := legacy.LoadSessionEvents(session.ID)
+	mirrored, err := mirror.LoadSessionEvents(session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

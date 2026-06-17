@@ -337,26 +337,13 @@ func (s *Store) LoadMessages(id string) ([]provider.Message, error) {
 func (s *Store) loadMessages(id string) ([]provider.Message, error) {
 	path := filepath.Join(s.sessionDir(id), "messages.jsonl")
 	data, err := os.ReadFile(path)
-	if err == nil {
-		return unmarshalMessagesJSONL(data)
-	}
-	if !os.IsNotExist(err) {
-		return nil, err
-	}
-
-	path = filepath.Join(s.sessionDir(id), "messages.json")
-	data, err = os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
 		return nil, err
 	}
-	var messages []provider.Message
-	if err := stdjson.Unmarshal(data, &messages); err != nil {
-		return nil, err
-	}
-	return messages, nil
+	return unmarshalMessagesJSONL(data)
 }
 
 func (s *Store) SaveMessages(id string, messages []provider.Message) error {
@@ -387,9 +374,6 @@ func (s *Store) AppendMessages(id string, messages ...provider.Message) error {
 	if err := appendMessagesJSONL(path, messages); err != nil {
 		return err
 	}
-	if err := removeLegacyMessagesJSON(s.sessionDir(id)); err != nil {
-		return err
-	}
 	s.touchSession(id)
 	return nil
 }
@@ -403,9 +387,6 @@ func (s *Store) saveMessages(id string, messages []provider.Message) error {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(s.sessionDir(id), "messages.jsonl"), lines, 0o644); err != nil {
-		return err
-	}
-	if err := removeLegacyMessagesJSON(s.sessionDir(id)); err != nil {
 		return err
 	}
 	s.touchSession(id)
@@ -451,14 +432,6 @@ func appendMessagesJSONL(path string, messages []provider.Message) error {
 		}
 	}
 	return nil
-}
-
-func removeLegacyMessagesJSON(dir string) error {
-	err := os.Remove(filepath.Join(dir, "messages.json"))
-	if os.IsNotExist(err) {
-		return nil
-	}
-	return err
 }
 
 func (s *Store) touchSession(id string) {
