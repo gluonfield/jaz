@@ -21,10 +21,6 @@ function canonical(provider: string): string {
   return provider.trim().toLowerCase()
 }
 
-export function hasProviderLogo(provider: string): boolean {
-  return canonical(provider) in SIZES
-}
-
 export function ProviderLogo({ provider, className = '', size }: Props) {
   const slug = canonical(provider)
   const base = SIZES[slug] ?? 18
