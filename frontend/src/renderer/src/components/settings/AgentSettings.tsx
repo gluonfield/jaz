@@ -110,13 +110,15 @@ function hasInvalidACPProvider(settings: AgentSettingsData): boolean {
   })
 }
 
-export function AgentProvidersSettings() {
+// Shared shell for the two agent-settings screens: load the settings, hold an
+// editable draft plus write-only provider keys, and expose a save that re-seeds
+// the draft and refreshes dependent queries. `label` only varies the toast copy.
+function useAgentSettingsDraft(label: string) {
   const queryClient = useQueryClient()
   const toast = useToast()
   const settings = useQuery(agentSettingsQuery)
   const [draft, setDraft] = useState<AgentSettingsData | null>(null)
-  // A freshly pasted provider key, keyed by provider id. Write-only — the
-  // backend never returns the value, so it lives outside the draft.
+  // The backend never returns provider key values, so they live outside the draft.
   const [providerKeys, setProviderKeys] = useState<Record<string, string>>({})
 
   useEffect(() => {
@@ -128,9 +130,9 @@ export function AgentProvidersSettings() {
     onSuccess: (saved) => {
       setDraft(cloneAgentSettings(saved))
       setProviderKeys({})
-      toast('Saved providers')
+      toast(`Saved ${label}`)
     },
-    onError: (error: Error) => toast(`Couldn't save providers: ${error.message}`, 'danger'),
+    onError: (error: Error) => toast(`Couldn't save ${label}: ${error.message}`, 'danger'),
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: keys.agentSettings })
       queryClient.invalidateQueries({ queryKey: keys.acpAgents })
@@ -141,11 +143,52 @@ export function AgentProvidersSettings() {
     () => settingsKey(draft) !== settingsKey(settings.data ?? null),
     [draft, settings.data],
   )
+  const providerKeyDirty = Object.values(providerKeys).some((value) => value.trim().length > 0)
+
+  return { queryClient, toast, settings, draft, setDraft, providerKeys, setProviderKeys, save, dirty, providerKeyDirty }
+}
+
+// The chrome both agent-settings screens share: heading, Save button, body slot.
+function SettingsSection({
+  title,
+  description,
+  canSave,
+  saving,
+  onSave,
+  children,
+}: {
+  title: string
+  description: string
+  canSave: boolean
+  saving: boolean
+  onSave: () => void
+  children: ReactNode
+}) {
+  return (
+    <section className="py-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium text-ink">{title}</p>
+          <p className="mt-0.5 text-pretty text-[13px] text-ink-2">{description}</p>
+        </div>
+        <Button variant="primary" size="md" disabled={!canSave} onClick={onSave}>
+          <Save size={14} />
+          {saving ? 'Saving...' : 'Save changes'}
+        </Button>
+      </div>
+      <div className="mt-4">{children}</div>
+    </section>
+  )
+}
+
+export function AgentProvidersSettings() {
+  const { settings, draft, setDraft, providerKeys, setProviderKeys, save, dirty, providerKeyDirty } =
+    useAgentSettingsDraft('providers')
+
   const openRouterModels = useQuery({
     ...openRouterModelsQuery,
     enabled: draft?.native.model_provider === 'openrouter',
   })
-  const providerKeyDirty = Object.values(providerKeys).some((value) => value.trim().length > 0)
   // Every known model provider — keys are shared, so this one list connects the
   // native agent and every ACP agent set to provider defaults. Implemented ones
   // (the native agent can run them) sort first; locals/customs follow.
@@ -179,85 +222,49 @@ export function AgentProvidersSettings() {
   }
 
   return (
-    <section className="py-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium text-ink">Providers</p>
-          <p className="mt-0.5 text-pretty text-[13px] text-ink-2">
-            Configure model providers once. ACP agents can reuse them when they are set to use
-            provider defaults.
-          </p>
+    <SettingsSection
+      title="Providers"
+      description="Configure model providers once. ACP agents can reuse them when they are set to use provider defaults."
+      canSave={canSave}
+      saving={save.isPending}
+      onSave={() => draft && save.mutate(draft)}
+    >
+      {settings.isError ? (
+        <p className="py-2 text-[13px] text-danger">{settings.error.message}</p>
+      ) : settings.isPending || !draft ? (
+        <SkeletonRows count={3} />
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          {allProviders.map((provider) => (
+            <ProviderRow
+              key={provider.id}
+              provider={provider}
+              keyDraft={providerKeys[provider.id] ?? ''}
+              isNativeDefault={provider.implemented && provider.id === selectedProvider}
+              nativeModel={draft.native.model}
+              nativeReasoning={draft.native.reasoning_effort ?? ''}
+              modelSuggestions={nativeModelSuggestions}
+              modelsLoading={openRouterModels.isLoading}
+              disabled={save.isPending}
+              onKeyChange={(value) => setProviderKeys({ ...providerKeys, [provider.id]: value })}
+              onUseForNative={() => setNativeProvider(provider.id)}
+              onNativeModelChange={(model) =>
+                setDraft({ ...draft, native: { ...draft.native, model } })
+              }
+              onNativeReasoningChange={(reasoning_effort) =>
+                setDraft({ ...draft, native: { ...draft.native, reasoning_effort } })
+              }
+            />
+          ))}
         </div>
-        <Button
-          variant="primary"
-          size="md"
-          disabled={!canSave}
-          onClick={() => draft && save.mutate(draft)}
-        >
-          <Save size={14} />
-          {save.isPending ? 'Saving...' : 'Save changes'}
-        </Button>
-      </div>
-
-      <div className="mt-4">
-        {settings.isError ? (
-          <p className="py-2 text-[13px] text-danger">{settings.error.message}</p>
-        ) : settings.isPending || !draft ? (
-          <SkeletonRows count={3} />
-        ) : (
-          <div className="flex flex-col gap-1.5">
-            {allProviders.map((provider) => (
-              <ProviderRow
-                key={provider.id}
-                provider={provider}
-                keyDraft={providerKeys[provider.id] ?? ''}
-                isNativeDefault={provider.implemented && provider.id === selectedProvider}
-                nativeModel={draft.native.model}
-                nativeReasoning={draft.native.reasoning_effort ?? ''}
-                modelSuggestions={nativeModelSuggestions}
-                modelsLoading={openRouterModels.isLoading}
-                disabled={save.isPending}
-                onKeyChange={(value) => setProviderKeys({ ...providerKeys, [provider.id]: value })}
-                onUseForNative={() => setNativeProvider(provider.id)}
-                onNativeModelChange={(model) =>
-                  setDraft({ ...draft, native: { ...draft.native, model } })
-                }
-                onNativeReasoningChange={(reasoning_effort) =>
-                  setDraft({ ...draft, native: { ...draft.native, reasoning_effort } })
-                }
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </section>
+      )}
+    </SettingsSection>
   )
 }
 
 export function ACPAgentsSettings() {
-  const queryClient = useQueryClient()
-  const toast = useToast()
-  const settings = useQuery(agentSettingsQuery)
-  const [draft, setDraft] = useState<AgentSettingsData | null>(null)
-  const [providerKeys, setProviderKeys] = useState<Record<string, string>>({})
-
-  useEffect(() => {
-    if (settings.data) setDraft(cloneAgentSettings(settings.data))
-  }, [settings.data])
-
-  const save = useMutation({
-    mutationFn: (input: AgentSettingsData) => updateAgentSettings(input, providerKeys),
-    onSuccess: (saved) => {
-      setDraft(cloneAgentSettings(saved))
-      setProviderKeys({})
-      toast('Saved agent settings')
-    },
-    onError: (error: Error) => toast(`Couldn't save agent settings: ${error.message}`, 'danger'),
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: keys.agentSettings })
-      queryClient.invalidateQueries({ queryKey: keys.acpAgents })
-    },
-  })
+  const { queryClient, toast, settings, draft, setDraft, providerKeys, setProviderKeys, save, dirty, providerKeyDirty } =
+    useAgentSettingsDraft('agent settings')
 
   // A finished sign-in connects the agent: turn it on and persist so it works
   // right away (matching onboarding, no extra Enabled toggle). The hook reads
@@ -292,63 +299,44 @@ export function ACPAgentsSettings() {
     onError: (error: Error) => toast(`Couldn't disconnect: ${error.message}`, 'danger'),
   })
 
-  const dirty = useMemo(
-    () => settingsKey(draft) !== settingsKey(settings.data ?? null),
-    [draft, settings.data],
-  )
-  const providerKeyDirty = Object.values(providerKeys).some((value) => value.trim().length > 0)
   const invalid = draft ? hasEnabledACPWithoutCommand(draft) || hasInvalidACPProvider(draft) : true
   const canSave = draft != null && !invalid && (dirty || providerKeyDirty) && !save.isPending
 
   return (
-    <section className="py-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium text-ink">Agents (ACP)</p>
-          <p className="mt-0.5 text-[13px] text-ink-2">
-            Configure ACP runtimes, auth, and per-agent defaults.
-          </p>
+    <SettingsSection
+      title="Agents (ACP)"
+      description="Configure ACP runtimes, auth, and per-agent defaults."
+      canSave={canSave}
+      saving={save.isPending}
+      onSave={() => draft && save.mutate(draft)}
+    >
+      {settings.isError ? (
+        <p className="py-2 text-[13px] text-danger">{settings.error.message}</p>
+      ) : settings.isPending || !draft ? (
+        <SkeletonRows count={3} />
+      ) : (
+        <div className="flex flex-col gap-3">
+          {draft.agents.map((agent) => (
+            <ACPAgentRow
+              key={agent}
+              agent={agent}
+              settings={draft}
+              providerKeys={providerKeys}
+              disabled={save.isPending}
+              loginJob={loginJobs[agent]}
+              loginPending={login.isPending && login.variables?.agent === agent}
+              disconnecting={disconnect.isPending && disconnect.variables === agent}
+              onStartLogin={(auth) => login.mutate({ agent, auth })}
+              onDisconnect={() => disconnect.mutate(agent)}
+              onProviderKeyChange={(provider, value) =>
+                setProviderKeys({ ...providerKeys, [provider]: value })
+              }
+              onChange={setDraft}
+            />
+          ))}
         </div>
-        <Button
-          variant="primary"
-          size="md"
-          disabled={!canSave}
-          onClick={() => draft && save.mutate(draft)}
-        >
-          <Save size={14} />
-          {save.isPending ? 'Saving...' : 'Save changes'}
-        </Button>
-      </div>
-
-      <div className="mt-4">
-        {settings.isError ? (
-          <p className="py-2 text-[13px] text-danger">{settings.error.message}</p>
-        ) : settings.isPending || !draft ? (
-          <SkeletonRows count={3} />
-        ) : (
-          <div className="flex flex-col gap-3">
-            {draft.agents.map((agent) => (
-              <ACPAgentRow
-                key={agent}
-                agent={agent}
-                settings={draft}
-                providerKeys={providerKeys}
-                disabled={save.isPending}
-                loginJob={loginJobs[agent]}
-                loginPending={login.isPending && login.variables?.agent === agent}
-                disconnecting={disconnect.isPending && disconnect.variables === agent}
-                onStartLogin={(auth) => login.mutate({ agent, auth })}
-                onDisconnect={() => disconnect.mutate(agent)}
-                onProviderKeyChange={(provider, value) =>
-                  setProviderKeys({ ...providerKeys, [provider]: value })
-                }
-                onChange={setDraft}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </section>
+      )}
+    </SettingsSection>
   )
 }
 
