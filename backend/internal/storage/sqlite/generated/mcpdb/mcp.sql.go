@@ -65,16 +65,6 @@ func (q *Queries) CreateMCPServer(ctx context.Context, arg CreateMCPServerParams
 	return err
 }
 
-const deleteMCPOAuthToken = `-- name: DeleteMCPOAuthToken :exec
-DELETE FROM mcp_oauth_tokens
-WHERE server_id = ?1
-`
-
-func (q *Queries) DeleteMCPOAuthToken(ctx context.Context, serverID string) error {
-	_, err := q.db.ExecContext(ctx, deleteMCPOAuthToken, serverID)
-	return err
-}
-
 const deleteMCPServer = `-- name: DeleteMCPServer :execrows
 DELETE FROM mcp_servers
 WHERE id = ?1
