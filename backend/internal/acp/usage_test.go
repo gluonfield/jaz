@@ -21,8 +21,7 @@ func TestUsageFromRawReadsOpenRouterExtras(t *testing.T) {
 			"completion_tokens_details": {"reasoning_tokens": 4}
 		}
 	}`))
-	// prompt_tokens counts cached reads inclusively; normalized to disjoint.
-	if usage.InputTokens != 32 || usage.CachedInputTokens != 90 || usage.CachedWriteTokens != 6 || usage.OutputTokens != 16 ||
+	if usage.InputTokens != 128 || usage.CachedInputTokens != 90 || usage.CachedWriteTokens != 6 || usage.OutputTokens != 16 ||
 		usage.ReasoningOutputTokens != 4 || usage.TotalTokens != 144 {
 		t.Fatalf("usage = %#v", usage)
 	}
@@ -40,7 +39,7 @@ func TestUsageFromRawReadsGrokPromptMeta(t *testing.T) {
 			"reasoningTokens": 0
 		}
 	}`))
-	if usage.InputTokens != 6452 || usage.CachedInputTokens != 7628 ||
+	if usage.InputTokens != 14080 || usage.CachedInputTokens != 7628 ||
 		usage.OutputTokens != 32 || usage.TotalTokens != 14112 {
 		t.Fatalf("usage = %#v", usage)
 	}
@@ -71,8 +70,6 @@ func TestUsageFromRawIgnoresTelemetryTotalOnly(t *testing.T) {
 }
 
 func TestUsageFromRawReadsClaudeAgentPromptResult(t *testing.T) {
-	// claude-agent-acp@0.44.0 session/prompt result is already disjoint
-	// (inputTokens excludes cache reads/writes); components pass through.
 	usage := usageFromRaw(json.RawMessage(`{
 		"stopReason": "end_turn",
 		"usage": {
@@ -83,7 +80,7 @@ func TestUsageFromRawReadsClaudeAgentPromptResult(t *testing.T) {
 			"totalTokens": 23529
 		}
 	}`))
-	if usage.InputTokens != 6090 || usage.CachedInputTokens != 0 || usage.CachedWriteTokens != 17424 ||
+	if usage.InputTokens != 23514 || usage.CachedInputTokens != 0 || usage.CachedWriteTokens != 17424 ||
 		usage.OutputTokens != 15 || usage.TotalTokens != 23529 {
 		t.Fatalf("usage = %#v", usage)
 	}
@@ -97,7 +94,7 @@ func TestUsageFromRawReadsClaudeAgentPromptResult(t *testing.T) {
 			"totalTokens": 22232
 		}
 	}`))
-	if usage.InputTokens != 10 || usage.CachedInputTokens != 22000 || usage.CachedWriteTokens != 103 ||
+	if usage.InputTokens != 22113 || usage.CachedInputTokens != 22000 || usage.CachedWriteTokens != 103 ||
 		usage.OutputTokens != 119 {
 		t.Fatalf("usage = %#v", usage)
 	}
@@ -114,27 +111,25 @@ func TestUsageFromRawNormalizesOnceAcrossFragments(t *testing.T) {
 			"prompt_tokens_details": {"cached_tokens": 96}
 		}
 	}`))
-	if usage.InputTokens != 32 || usage.CachedInputTokens != 96 || usage.TotalTokens != 144 {
+	if usage.InputTokens != 128 || usage.CachedInputTokens != 96 || usage.TotalTokens != 144 {
 		t.Fatalf("usage = %#v", usage)
 	}
 }
 
-func TestUsageFromRawKeepsDisjointVocabularyWithoutTotals(t *testing.T) {
-	// Anthropic-style keys without a total must not be mistaken for
-	// inclusive counting just because reads fit inside input.
+func TestUsageFromRawNormalizesDisjointVocabularyWithoutTotals(t *testing.T) {
 	usage := usageFromRaw(json.RawMessage(`{
 		"usage": {"inputTokens": 100, "cachedReadTokens": 50, "outputTokens": 15}
 	}`))
-	if usage.InputTokens != 100 || usage.CachedInputTokens != 50 || usage.TotalTokens != 165 {
+	if usage.InputTokens != 150 || usage.CachedInputTokens != 50 || usage.TotalTokens != 165 {
 		t.Fatalf("usage = %#v", usage)
 	}
 }
 
-func TestUsageFromRawKeepsAnthropicCacheReadInputTokensDisjoint(t *testing.T) {
+func TestUsageFromRawNormalizesAnthropicCacheReadInputTokens(t *testing.T) {
 	usage := usageFromRaw(json.RawMessage(`{
 		"usage": {"input_tokens": 100, "cache_read_input_tokens": 50, "output_tokens": 15}
 	}`))
-	if usage.InputTokens != 100 || usage.CachedInputTokens != 50 || usage.OutputTokens != 15 || usage.TotalTokens != 165 {
+	if usage.InputTokens != 150 || usage.CachedInputTokens != 50 || usage.OutputTokens != 15 || usage.TotalTokens != 165 {
 		t.Fatalf("usage = %#v", usage)
 	}
 }
@@ -159,7 +154,7 @@ func TestUsageFromRawReadsCodexUsageUpdateMeta(t *testing.T) {
 	if usage.ContextTokens != 11102 || usage.ContextWindowTokens != 258400 {
 		t.Fatalf("context = %d / %d", usage.ContextTokens, usage.ContextWindowTokens)
 	}
-	if usage.InputTokens != 2226 || usage.CachedInputTokens != 8704 ||
+	if usage.InputTokens != 10930 || usage.CachedInputTokens != 8704 ||
 		usage.OutputTokens != 172 || usage.ReasoningOutputTokens != 64 || usage.TotalTokens != 11102 {
 		t.Fatalf("usage = %#v", usage)
 	}
@@ -184,7 +179,7 @@ func TestUsageFromRawUsesCodexLastTokenUsageNotCumulativeTotal(t *testing.T) {
 			}
 		}
 	}`))
-	if usage.InputTokens != 600 || usage.CachedInputTokens != 400 ||
+	if usage.InputTokens != 1000 || usage.CachedInputTokens != 400 ||
 		usage.OutputTokens != 10 || usage.TotalTokens != 1010 {
 		t.Fatalf("usage = %#v", usage)
 	}
@@ -285,7 +280,7 @@ func TestACPUsageSumsCodexLastTokenUsageUpdates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Usage.InputTokens != 1100 || loaded.Usage.CachedInputTokens != 1900 ||
+	if loaded.Usage.InputTokens != 3000 || loaded.Usage.CachedInputTokens != 1900 ||
 		loaded.Usage.OutputTokens != 30 || loaded.Usage.TotalTokens != 3030 {
 		t.Fatalf("usage = %#v", loaded.Usage)
 	}
@@ -360,7 +355,7 @@ func TestACPUsageSkipsRepeatedCodexLastTokenUsageUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Usage.InputTokens != 600 || loaded.Usage.CachedInputTokens != 400 ||
+	if loaded.Usage.InputTokens != 1000 || loaded.Usage.CachedInputTokens != 400 ||
 		loaded.Usage.OutputTokens != 10 || loaded.Usage.TotalTokens != 1010 {
 		t.Fatalf("usage = %#v", loaded.Usage)
 	}
@@ -401,8 +396,7 @@ func TestUsageFromRawReadsTokenCacheShape(t *testing.T) {
 			"cache": {"read": 160, "write": 20}
 		}
 	}`))
-	// The write count marks this shape as already disjoint; nothing shifts.
-	if usage.InputTokens != 200 || usage.CachedInputTokens != 160 || usage.CachedWriteTokens != 20 ||
+	if usage.InputTokens != 380 || usage.CachedInputTokens != 160 || usage.CachedWriteTokens != 20 ||
 		usage.OutputTokens != 30 || usage.ReasoningOutputTokens != 8 {
 		t.Fatalf("usage = %#v", usage)
 	}
@@ -441,7 +435,7 @@ func TestACPUsagePersistsAtTurnFinish(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Usage.InputTokens != 60 || loaded.Usage.CachedInputTokens != 60 ||
+	if loaded.Usage.InputTokens != 120 || loaded.Usage.CachedInputTokens != 60 ||
 		loaded.Usage.OutputTokens != 15 || loaded.Usage.TotalTokens != 135 {
 		t.Fatalf("usage = %#v", loaded.Usage)
 	}
@@ -517,9 +511,7 @@ func TestACPUsagePersistsAtTurnFinishToSQLite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The tokens shape's explicit cache split is disjoint vocabulary, so
-	// input stays whole and the missing total derives from the components.
-	if loaded.Usage.InputTokens != 200 || loaded.Usage.CachedInputTokens != 160 ||
+	if loaded.Usage.InputTokens != 360 || loaded.Usage.CachedInputTokens != 160 ||
 		loaded.Usage.OutputTokens != 30 || loaded.Usage.ReasoningOutputTokens != 8 ||
 		loaded.Usage.TotalTokens != 390 {
 		t.Fatalf("usage = %#v", loaded.Usage)
@@ -554,7 +546,7 @@ func TestACPUsagePersistsContextFromUsageUpdates(t *testing.T) {
 	if loaded.Usage.ContextTokens != 23529 || loaded.Usage.ContextWindowTokens != 1000000 {
 		t.Fatalf("context = %d / %d, want 23529 / 1000000", loaded.Usage.ContextTokens, loaded.Usage.ContextWindowTokens)
 	}
-	if loaded.Usage.InputTokens != 6090 || loaded.Usage.CachedWriteTokens != 17424 ||
+	if loaded.Usage.InputTokens != 23514 || loaded.Usage.CachedWriteTokens != 17424 ||
 		loaded.Usage.OutputTokens != 15 || loaded.Usage.TotalTokens != 23529 {
 		t.Fatalf("usage = %#v", loaded.Usage)
 	}
@@ -571,7 +563,7 @@ func TestACPUsagePersistsContextFromUsageUpdates(t *testing.T) {
 	if loaded.Usage.ContextTokens != 11102 || loaded.Usage.ContextWindowTokens != 258400 {
 		t.Fatalf("context = %d / %d, want 11102 / 258400", loaded.Usage.ContextTokens, loaded.Usage.ContextWindowTokens)
 	}
-	if loaded.Usage.InputTokens != 6090 || loaded.Usage.TotalTokens != 23529 {
+	if loaded.Usage.InputTokens != 23514 || loaded.Usage.TotalTokens != 23529 {
 		t.Fatalf("counters drifted: %#v", loaded.Usage)
 	}
 }

@@ -9,8 +9,8 @@ export interface RuntimeRef {
   project_path?: string
 }
 
-// Disjoint components: input is fresh, uncached input; cache reads/writes
-// are counted separately, never folded into input.
+// Provider-facing token fields: input includes cache reads/writes when the
+// runtime reports them that way. Cache fields are detail fields.
 export interface Usage {
   input_tokens?: number
   cached_input_tokens?: number // cache reads

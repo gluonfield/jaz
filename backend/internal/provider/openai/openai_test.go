@@ -71,8 +71,7 @@ func TestProviderStreamsTextReasoningAndToolCalls(t *testing.T) {
 	if call == nil || provider.ToolCallName(*call) != "exec_command" || provider.ToolCallArguments(*call) != `{"cmd":"pwd"}` {
 		t.Fatalf("unexpected call %#v", call)
 	}
-	// prompt_tokens (105) counts the 85 cached tokens; stored disjoint.
-	if usage.InputTokens != 20 || usage.CachedInputTokens != 80 || usage.CachedWriteTokens != 5 ||
+	if usage.InputTokens != 105 || usage.CachedInputTokens != 80 || usage.CachedWriteTokens != 5 ||
 		usage.OutputTokens != 20 || usage.TotalTokens != 125 {
 		t.Fatalf("usage = %#v", usage)
 	}
@@ -136,8 +135,7 @@ func TestProviderCompleteMapsCachedUsage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// prompt_tokens (128) counts cached read/write tokens; stored disjoint.
-	if resp.Usage.InputTokens != 32 || resp.Usage.CachedInputTokens != 90 || resp.Usage.CachedWriteTokens != 6 || resp.Usage.OutputTokens != 16 ||
+	if resp.Usage.InputTokens != 128 || resp.Usage.CachedInputTokens != 90 || resp.Usage.CachedWriteTokens != 6 || resp.Usage.OutputTokens != 16 ||
 		resp.Usage.ReasoningOutputTokens != 4 || resp.Usage.TotalTokens != 144 {
 		t.Fatalf("usage = %#v", resp.Usage)
 	}

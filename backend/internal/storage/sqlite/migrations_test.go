@@ -103,6 +103,77 @@ ORDER BY created_at_ms`, 0).Scan(new(int), new(int), new(int), &plan); err != ni
 	}
 }
 
+func TestIncludeCacheInInputMigrationRepairsUsageRows(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	for _, stmt := range []string{
+		`CREATE TABLE threads (
+			id TEXT PRIMARY KEY,
+			input_tokens INTEGER NOT NULL,
+			cached_input_tokens INTEGER NOT NULL,
+			cached_write_tokens INTEGER NOT NULL,
+			output_tokens INTEGER NOT NULL,
+			total_tokens INTEGER NOT NULL
+		)`,
+		`CREATE TABLE usage_events (
+			id INTEGER PRIMARY KEY,
+			thread_id TEXT NOT NULL,
+			input_tokens INTEGER NOT NULL,
+			cached_input_tokens INTEGER NOT NULL,
+			cached_write_tokens INTEGER NOT NULL,
+			output_tokens INTEGER NOT NULL,
+			total_tokens INTEGER NOT NULL
+		)`,
+		`INSERT INTO threads VALUES ('disjoint', 38340, 47872, 0, 290, 86502)`,
+		`INSERT INTO threads VALUES ('inclusive', 86212, 47872, 0, 290, 86502)`,
+		`INSERT INTO threads VALUES ('no_total', 100, 50, 0, 15, 0)`,
+		`INSERT INTO usage_events VALUES (1, 'disjoint', 38102, 4992, 0, 56, 43150)`,
+		`INSERT INTO usage_events VALUES (2, 'disjoint', 238, 42880, 0, 234, 43352)`,
+		`INSERT INTO usage_events VALUES (3, 'inclusive', 43094, 4992, 0, 56, 43150)`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	raw, err := sqliteMigrations.ReadFile("migrations/0026_include_cache_in_input.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	up := strings.SplitN(string(raw), "-- +goose Down", 2)[0]
+	if _, err := db.Exec(up); err != nil {
+		t.Fatal(err)
+	}
+
+	wantThreads := map[string]int64{
+		"disjoint":  86212,
+		"inclusive": 86212,
+		"no_total":  100,
+	}
+	for id, want := range wantThreads {
+		var got int64
+		if err := db.QueryRow(`SELECT input_tokens FROM threads WHERE id = ?`, id).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Fatalf("thread %s input = %d, want %d", id, got, want)
+		}
+	}
+	wantEvents := map[int]int64{1: 43094, 2: 43118, 3: 43094}
+	for id, want := range wantEvents {
+		var got int64
+		if err := db.QueryRow(`SELECT input_tokens FROM usage_events WHERE id = ?`, id).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Fatalf("usage event %d input = %d, want %d", id, got, want)
+		}
+	}
+}
+
 func TestSearchDocTablesDoNotDuplicateIndexedText(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {

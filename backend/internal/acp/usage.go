@@ -140,10 +140,9 @@ func nonNegative(v int64) int64 {
 	return v
 }
 
-// usageFromRaw parses one adapter message into disjoint usage components.
-// Fragments are collected verbatim and normalized exactly once here — a
-// message is internally coherent (one provider vocabulary), while fragments
-// in isolation are not.
+// usageFromRaw parses one adapter message into provider-facing usage fields.
+// Fragments are collected verbatim and normalized exactly once here: input is
+// inclusive, while cache read/write fields stay available as details.
 func usageFromRaw(raw json.RawMessage) storage.Usage {
 	return usageReportFromRaw(raw).Usage()
 }
@@ -207,12 +206,12 @@ func (r *usageReport) Merge(next usageReport) {
 
 func usageSnapshotFromRaw(raw json.RawMessage) storage.Usage {
 	usage, inclusive := usageSnapshotFragment(raw)
-	return dropTotalOnly(normalizeDisjoint(usage, inclusive))
+	return dropTotalOnly(normalizeInclusiveInput(usage, inclusive))
 }
 
 // usageSnapshotFragment recursively collects cumulative snapshot fields
-// without normalizing. The boolean reports OpenAI-style vocabulary, whose
-// input count includes cache reads.
+// without normalizing. The boolean reports vocabulary where input already
+// includes cache detail fields.
 func usageSnapshotFragment(raw json.RawMessage) (storage.Usage, bool) {
 	if len(raw) == 0 {
 		return storage.Usage{}, false
@@ -295,19 +294,18 @@ func usageFromFields(fields map[string]json.RawMessage) (storage.Usage, bool) {
 	return usage, inclusive
 }
 
-// normalizeDisjoint converts inclusive counting (cache reads inside the
-// input count) to the disjoint convention storage.Usage uses, and fills a
-// missing total from the components. A reported total settles the question
-// arithmetically; without one, the key vocabulary decides.
-func normalizeDisjoint(usage storage.Usage, inclusiveVocabulary bool) storage.Usage {
+// normalizeInclusiveInput converts disjoint counting to the Codex/OpenAI style
+// where cache reads/writes are included in input. A reported total settles the
+// question arithmetically; without one, the key vocabulary decides.
+func normalizeInclusiveInput(usage storage.Usage, inclusiveVocabulary bool) storage.Usage {
 	read := usage.CachedInputTokens
 	write := usage.CachedWriteTokens
 	cached := read + write
-	confirmedDisjoint := usage.TotalTokens > 0 && usage.TotalTokens == usage.ComponentTotal()
-	confirmedInclusive := usage.TotalTokens > 0 && usage.TotalTokens == usage.InputTokens+usage.OutputTokens
-	if cached > 0 && cached <= usage.InputTokens && !confirmedDisjoint &&
-		(confirmedInclusive || (usage.TotalTokens == 0 && inclusiveVocabulary)) {
-		usage.InputTokens -= cached
+	confirmedInclusive := usage.TotalTokens > 0 && usage.TotalTokens == usage.ComponentTotal()
+	confirmedDisjoint := usage.TotalTokens > 0 && usage.TotalTokens == usage.InputTokens+cached+usage.OutputTokens
+	if cached > 0 && !confirmedInclusive &&
+		(confirmedDisjoint || (usage.TotalTokens == 0 && !inclusiveVocabulary)) {
+		usage.InputTokens += cached
 	}
 	if usage.TotalTokens == 0 {
 		usage.TotalTokens = usage.ComponentTotal()

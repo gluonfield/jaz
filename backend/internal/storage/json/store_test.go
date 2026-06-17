@@ -113,14 +113,14 @@ func TestAddUsageStoresCachedTokens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Missing totals derive from the disjoint components (100+64+6+25 = 195).
+	// Missing totals derive from input + output; cache fields are detail.
 	if loaded.Usage.InputTokens != 110 || loaded.Usage.CachedInputTokens != 72 || loaded.Usage.CachedWriteTokens != 6 ||
-		loaded.Usage.OutputTokens != 30 || loaded.Usage.ReasoningOutputTokens != 7 || loaded.Usage.TotalTokens != 215 {
+		loaded.Usage.OutputTokens != 30 || loaded.Usage.ReasoningOutputTokens != 7 || loaded.Usage.TotalTokens != 145 {
 		t.Fatalf("usage = %#v", loaded.Usage)
 	}
-	// Context reflects only the latest turn (10+8+5), never accumulates.
-	if loaded.Usage.ContextTokens != 23 {
-		t.Fatalf("context tokens = %d, want 23", loaded.Usage.ContextTokens)
+	// Context reflects only the latest turn's input + output, never accumulates.
+	if loaded.Usage.ContextTokens != 15 {
+		t.Fatalf("context tokens = %d, want 15", loaded.Usage.ContextTokens)
 	}
 	daily, err := usagecore.NewService(store).Daily(usagecore.DailyQuery{Days: 1, Location: time.UTC})
 	if err != nil {
@@ -270,7 +270,6 @@ func TestMessagesUseJSONL(t *testing.T) {
 		t.Fatalf("jsonl lines after append = %d, want 3", len(lines))
 	}
 }
-
 
 func TestSessionEventsUseJSONL(t *testing.T) {
 	store, err := New(t.TempDir())

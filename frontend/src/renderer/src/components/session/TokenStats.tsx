@@ -7,8 +7,7 @@ import { formatTokens } from '@/lib/format/tokens'
 import { useContextWindow } from '@/lib/models'
 
 // Titlebar token meter: an icon that unfolds into the session's cumulative
-// token components plus the live context-window fill. Components follow the
-// ACP convention: input is fresh input, cache reads/writes are disjoint.
+// token fields plus the live context-window fill.
 export function TokenStats({ session }: { session: Session }) {
   const [open, setOpen] = useState(false)
   const contextWindow = useContextWindow(session)
@@ -18,8 +17,9 @@ export function TokenStats({ session }: { session: Session }) {
   const cached = usage?.cached_input_tokens ?? 0
   const cacheWrite = usage?.cached_write_tokens ?? 0
   const reasoning = usage?.reasoning_output_tokens ?? 0
+  const total = usage?.total_tokens ?? 0
   const context = usage?.context_tokens ?? 0
-  if (input + output + cached + cacheWrite + reasoning + context === 0) return null
+  if (input + output + cached + cacheWrite + reasoning + total + context === 0) return null
 
   const pct = contextWindow && context > 0 ? Math.min(100, Math.round((context / contextWindow) * 100)) : null
 
@@ -42,13 +42,14 @@ export function TokenStats({ session }: { session: Session }) {
       <div className="flex min-w-[200px] flex-col gap-1 px-2 py-1.5">
         <StatRow label="Input" value={formatTokens(input)} />
         <StatRow label="Output" value={formatTokens(output)} />
+        {total > 0 ? <StatRow label="Total" value={formatTokens(total)} /> : null}
         <StatRow label="Cache read" value={formatTokens(cached)} />
         {cacheWrite > 0 ? <StatRow label="Cache write" value={formatTokens(cacheWrite)} /> : null}
         {reasoning > 0 ? <StatRow label="Reasoning" value={formatTokens(reasoning)} /> : null}
         {context > 0 ? (
           <>
             <StatRow
-              label="Context"
+              label="Latest context"
               value={
                 contextWindow
                   ? `${formatTokens(context)} / ${formatTokens(contextWindow)}`
