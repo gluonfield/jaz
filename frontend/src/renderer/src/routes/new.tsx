@@ -4,7 +4,7 @@ import { NewSessionHome } from '@/components/home/NewSessionHome'
 import { ModelSelect, ProjectPicker, RuntimeSelect } from '@/components/session/NewThreadControls'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { useToast } from '@/components/ui/toast'
-import { createSession, projectsQuery } from '@/lib/api/sessions'
+import { createSession, listFilesystemDirs, projectsQuery } from '@/lib/api/sessions'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import {
   enabledACPAgents,
@@ -58,7 +58,6 @@ function NewSessionPage() {
   )
   // Worktree runs the session on a disposable git worktree (any runtime);
   // only offered when the chosen directory is a git repository.
-  const [directoryIsGit, setDirectoryIsGit] = useState(false)
   const [worktree, setWorktree] = useState(false)
   // Per-session overrides of the Settings > Agents defaults; null follows the
   // default for the chosen agent and provider.
@@ -71,13 +70,20 @@ function NewSessionPage() {
   const runtimeReady = settingsQuery.isSuccess
   const runtimeAvailable = runtimeReady && agents.length > 0
   const projects = useQuery(projectsQuery)
+  const project = projects.data?.find((item) => item.path === directory)
+  const directoryInfo = useQuery({
+    queryKey: keys.filesystemDirs(directory),
+    queryFn: () => listFilesystemDirs(directory),
+    enabled: directory !== '' && project === undefined,
+    staleTime: 30_000,
+  })
+  const directoryIsGit = project?.git ?? directoryInfo.data?.git ?? false
   // PixelField samples the palette at mount; remount it when the theme flips.
   const { resolved } = useTheme()
 
   useEffect(() => {
     if (search.project === undefined) return
     setDirectory(search.project)
-    setDirectoryIsGit(false)
     setWorktree(false)
   }, [search.project])
 
@@ -101,17 +107,8 @@ function NewSessionPage() {
   }, [agents, runtime, runtimeReady])
 
   useEffect(() => {
-    if (!directory) {
-      setDirectoryIsGit(false)
-      setWorktree(false)
-      return
-    }
-    const project = projects.data?.find((item) => item.path === directory)
-    if (project) {
-      setDirectoryIsGit(project.git)
-      if (!project.git) setWorktree(false)
-    }
-  }, [directory, projects.data])
+    if (!directoryIsGit) setWorktree(false)
+  }, [directoryIsGit])
 
   const runtimeModel = runtimeModelState(agentSettings, runtime, providerOverride)
   const { usesNativeProvider, usesProvider, providers: runtimeProviders, provider, selectedProvider } = runtimeModel
@@ -219,7 +216,6 @@ function NewSessionPage() {
         disabled={creating}
         onChange={(path, git) => {
           setDirectory(path)
-          setDirectoryIsGit(git)
           if (!git) setWorktree(false)
         }}
       />
