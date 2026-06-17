@@ -21,14 +21,3 @@ export function takePendingMessage(sessionId: string): PendingMessage | undefine
   pending.delete(sessionId)
   return message
 }
-
-// Same handoff for the voice button on /new: open the session in voice mode.
-const pendingVoice = new Set<string>()
-
-export function setPendingVoice(sessionId: string): void {
-  pendingVoice.add(sessionId)
-}
-
-export function takePendingVoice(sessionId: string): boolean {
-  return pendingVoice.delete(sessionId)
-}

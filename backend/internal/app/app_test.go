@@ -15,7 +15,7 @@ import (
 	exectool "github.com/wins/jaz/backend/internal/tools/exec"
 )
 
-func TestNewToolRegistryAllowsNativeApplyPatchAbsolutePaths(t *testing.T) {
+func TestNewToolRegistryAllowsApplyPatchAbsolutePaths(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -28,7 +28,6 @@ func TestNewToolRegistryAllowsNativeApplyPatchAbsolutePaths(t *testing.T) {
 		nil,
 		store,
 		sessionevents.New(),
-		nil,
 	)
 	tool, ok := registry.Get("apply_patch")
 	if !ok {
@@ -39,7 +38,7 @@ func TestNewToolRegistryAllowsNativeApplyPatchAbsolutePaths(t *testing.T) {
 		t.Fatalf("apply_patch tool = %T, want *applypatch.Tool", tool)
 	}
 	if patchTool.PathScope != applypatch.AbsolutePaths {
-		t.Fatal("native apply_patch should allow absolute paths")
+		t.Fatal("apply_patch should allow absolute paths")
 	}
 }
 

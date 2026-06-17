@@ -12,6 +12,7 @@ const (
 	ProviderOllama     = "ollama"
 	ProviderMock       = "mock"
 
+	CapabilityJaz      = "jaz"
 	CapabilityOpenCode = "opencode"
 )
 
@@ -36,8 +37,6 @@ type ModelProviderConfig struct {
 	APIKeyEnv string
 	OpenCode  bool
 }
-
-type NativeProvider = ModelProvider
 
 func ModelProviders() []ModelProvider {
 	return []ModelProvider{
@@ -73,8 +72,8 @@ func ModelProviders() []ModelProvider {
 	}
 }
 
-func NativeProviders() []NativeProvider {
-	out := []NativeProvider{}
+func RunnableModelProviders() []ModelProvider {
+	out := []ModelProvider{}
 	for _, provider := range ModelProviders() {
 		if provider.Implemented {
 			out = append(out, provider)
@@ -93,14 +92,14 @@ func ModelProviderByID(id string) (ModelProvider, bool) {
 	return ModelProvider{}, false
 }
 
-func NativeProviderByID(id string) (NativeProvider, bool) {
+func RunnableModelProviderByID(id string) (ModelProvider, bool) {
 	id = strings.ToLower(strings.TrimSpace(id))
-	for _, provider := range NativeProviders() {
+	for _, provider := range RunnableModelProviders() {
 		if provider.ID == id {
 			return provider, true
 		}
 	}
-	return NativeProvider{}, false
+	return ModelProvider{}, false
 }
 
 func OpenCodeProviderByID(id string) (ModelProvider, bool) {
@@ -151,6 +150,8 @@ func ModelProviderConfigPresent(cfg ModelProviderConfig) bool {
 
 func (p ModelProvider) SupportsCapability(capability string) bool {
 	switch strings.TrimSpace(capability) {
+	case CapabilityJaz:
+		return p.Implemented
 	case CapabilityOpenCode:
 		return p.OpenCode
 	default:
@@ -203,19 +204,19 @@ func EnvKeyName(id string) string {
 	return strings.Trim(b.String(), "_")
 }
 
-func NormalizeNativeProviderID(id string) (string, error) {
+func NormalizeRunnableModelProviderID(id string) (string, error) {
 	id = strings.ToLower(strings.TrimSpace(id))
 	if id == "" {
 		return "", nil
 	}
-	if _, ok := NativeProviderByID(id); ok {
+	if _, ok := RunnableModelProviderByID(id); ok {
 		return id, nil
 	}
-	return "", fmt.Errorf("unknown native provider %q; valid providers are %s", id, strings.Join(nativeProviderIDs(), ", "))
+	return "", fmt.Errorf("unknown model provider %q; valid providers are %s", id, strings.Join(runnableModelProviderIDs(), ", "))
 }
 
-func nativeProviderIDs() []string {
-	providers := NativeProviders()
+func runnableModelProviderIDs() []string {
+	providers := RunnableModelProviders()
 	ids := make([]string, 0, len(providers))
 	for _, provider := range providers {
 		ids = append(ids, provider.ID)

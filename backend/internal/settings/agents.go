@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/acp"
-	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -16,12 +15,6 @@ const (
 	AgentSettingsNamespace = "agents"
 	AgentDefaultsKey       = "defaults"
 )
-
-type NativeAgentDefaults struct {
-	ModelProvider   string `json:"model_provider,omitempty"`
-	Model           string `json:"model"`
-	ReasoningEffort string `json:"reasoning_effort,omitempty"`
-}
 
 type ACPAgentDefaults struct {
 	Enabled         bool                `json:"enabled"`
@@ -34,24 +27,12 @@ type ACPAgentDefaults struct {
 }
 
 type AgentDefaults struct {
-	Native NativeAgentDefaults         `json:"native"`
-	ACP    map[string]ACPAgentDefaults `json:"acp"`
+	ACP map[string]ACPAgentDefaults `json:"acp"`
 }
 
 func DefaultAgentDefaults() AgentDefaults {
 	return AgentDefaults{
-		Native: defaultNativeAgentDefaults(),
-		ACP:    map[string]ACPAgentDefaults{},
-	}
-}
-
-func defaultNativeAgentDefaults() NativeAgentDefaults {
-	providerID := provider.ProviderOpenRouter
-	meta, _ := provider.NativeProviderByID(providerID)
-	return NativeAgentDefaults{
-		ModelProvider:   providerID,
-		Model:           strings.TrimSpace(meta.DefaultModel),
-		ReasoningEffort: strings.TrimSpace(meta.DefaultReasoningEffort),
+		ACP: map[string]ACPAgentDefaults{},
 	}
 }
 
@@ -162,14 +143,8 @@ func NormalizeAgentDefaults(input AgentDefaults, catalog acp.AgentCatalog) (Agen
 			allowed[name] = struct{}{}
 		}
 	}
-	native, err := NormalizeNativeDefaults(input.Native)
-	if err != nil {
-		return AgentDefaults{}, err
-	}
-
 	next := AgentDefaults{
-		Native: native,
-		ACP:    map[string]ACPAgentDefaults{},
+		ACP: map[string]ACPAgentDefaults{},
 	}
 	inputACP := canonicalizeACPDefaults(input.ACP)
 	for name := range inputACP {
@@ -223,42 +198,13 @@ func NormalizeAgentDefaults(input AgentDefaults, catalog acp.AgentCatalog) (Agen
 	return next, nil
 }
 
-func NormalizeNativeDefaults(input NativeAgentDefaults) (NativeAgentDefaults, error) {
-	input.ModelProvider = strings.TrimSpace(input.ModelProvider)
-	if input.ModelProvider == "" {
-		return NativeAgentDefaults{}, fmt.Errorf("native provider is required")
-	}
-	modelProvider, err := provider.NormalizeNativeProviderID(input.ModelProvider)
-	if err != nil {
-		return NativeAgentDefaults{}, err
-	}
-	input.ModelProvider = modelProvider
-	input.Model = strings.TrimSpace(input.Model)
-	if input.Model == "" {
-		return NativeAgentDefaults{}, fmt.Errorf("native model is required")
-	}
-	effort, err := provider.NormalizeReasoningEffort(input.ReasoningEffort)
-	if err != nil {
-		return NativeAgentDefaults{}, err
-	}
-	input.ReasoningEffort = effort
-	return input, nil
-}
-
 func MergeAgentDefaults(stored, seed AgentDefaults, agentNames []string) AgentDefaults {
 	if stored.ACP == nil {
 		stored.ACP = map[string]ACPAgentDefaults{}
 	}
 	stored.ACP = canonicalizeACPDefaults(stored.ACP)
-	if strings.TrimSpace(stored.Native.ModelProvider) == "" {
-		stored.Native.ModelProvider = seed.Native.ModelProvider
-	}
-	if strings.TrimSpace(stored.Native.Model) == "" {
-		stored.Native.Model = seed.Native.Model
-	}
 	next := AgentDefaults{
-		Native: stored.Native,
-		ACP:    map[string]ACPAgentDefaults{},
+		ACP: map[string]ACPAgentDefaults{},
 	}
 	for _, name := range sortedAgentNames(agentNames) {
 		name = acp.CanonicalAgentName(name)
@@ -361,11 +307,7 @@ func (s *ACPConfigSource) AgentConfig(name string) (acp.AgentConfig, bool, error
 	cfg.Model = strings.TrimSpace(agent.Model)
 	cfg.ReasoningEffort = strings.TrimSpace(agent.ReasoningEffort)
 	cfg.Auth = agent.Auth
-	if cfg.UsesNativeProvider() {
-		cfg.ModelProvider = defaults.Native.ModelProvider
-		cfg.Model = defaults.Native.Model
-		cfg.ReasoningEffort = defaults.Native.ReasoningEffort
-	} else if cfg.UsesModelProvider() {
+	if cfg.UsesModelProvider() {
 		cfg = cfg.NormalizeProviderModel(defaultModelProvider)
 	}
 	return cfg, true, nil

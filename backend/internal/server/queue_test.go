@@ -7,43 +7,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
-	"github.com/wins/jaz/backend/internal/agent"
-	"github.com/wins/jaz/backend/internal/provider"
-	mockprovider "github.com/wins/jaz/backend/internal/provider/mock"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
-
-type blockingProvider struct {
-	started     chan struct{}
-	startedOnce sync.Once
-	release     chan struct{}
-}
-
-func (p *blockingProvider) Complete(context.Context, provider.Request) (provider.Response, error) {
-	return provider.Response{Message: provider.AssistantMessage("done", nil)}, nil
-}
-
-func (p *blockingProvider) StreamComplete(ctx context.Context, _ provider.Request) (<-chan provider.Event, error) {
-	ch := make(chan provider.Event, 2)
-	go func() {
-		defer close(ch)
-		p.startedOnce.Do(func() { close(p.started) })
-		select {
-		case <-p.release:
-			ch <- provider.Event{Type: provider.EventDelta, Delta: "done"}
-			ch <- provider.Event{Type: provider.EventDone}
-		case <-ctx.Done():
-			ch <- provider.Event{Type: provider.EventError, Err: ctx.Err()}
-		}
-	}()
-	return ch, nil
-}
 
 func TestSessionQueueActionReplacesQueuedMessages(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
@@ -209,40 +179,32 @@ func TestSessionQueueAttentionFollowsUserSendNotQueueEdits(t *testing.T) {
 	}
 }
 
-func TestSessionQueueActionDoesNotWaitForRunningNativeTurn(t *testing.T) {
+func TestSessionQueueActionDoesNotWaitForRunningACPTurn(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, err := store.CreateSession(storage.CreateSession{Slug: "queue-running", Runtime: storage.RuntimeNative})
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "queue-running",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     "codex",
+			SessionID: "acp-session",
+		},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := &blockingProvider{
-		started: make(chan struct{}),
-		release: make(chan struct{}),
+	session.Status = storage.StatusRunning
+	if err := store.SaveSession(session); err != nil {
+		t.Fatal(err)
 	}
-	srv := &Server{
-		Store: store,
-		Agent: &agent.Agent{
-			Provider: provider,
-			MaxTurns: 1,
-		},
-	}
-
-	streamReq := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/messages:stream", strings.NewReader(`{"message":"keep running"}`))
-	streamReq.Header.Set("Content-Type", "application/json")
-	streamRes := httptest.NewRecorder()
-	streamDone := make(chan struct{})
-	go func() {
-		defer close(streamDone)
-		srv.Handler().ServeHTTP(streamRes, streamReq)
-	}()
-	select {
-	case <-provider.started:
-	case <-time.After(time.Second):
-		t.Fatal("native provider did not start")
-	}
+	srv := &Server{Store: store, ACP: &fakeACPManager{job: acp.Job{
+		ID:    session.ID,
+		Slug:  session.Slug,
+		State: acp.StateRunning,
+	}}}
 
 	queueReq := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"messages":["queued while running"]}`))
 	queueReq.Header.Set("Content-Type", "application/json")
@@ -255,50 +217,21 @@ func TestSessionQueueActionDoesNotWaitForRunningNativeTurn(t *testing.T) {
 	select {
 	case <-queueDone:
 	case <-time.After(150 * time.Millisecond):
-		close(provider.release)
-		t.Fatal("queue action waited for the running native turn")
+		t.Fatal("queue action waited for the running ACP turn")
 	}
 	if queueRes.Code != http.StatusOK {
-		close(provider.release)
 		t.Fatalf("queue status = %d, body = %s", queueRes.Code, queueRes.Body.String())
 	}
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
-		close(provider.release)
 		t.Fatal(err)
 	}
 	if queuedTexts(loaded.QueuedMessages) != "queued while running" {
-		close(provider.release)
 		t.Fatalf("queue = %#v", loaded.QueuedMessages)
 	}
-
-	close(provider.release)
-	select {
-	case <-streamDone:
-	case <-time.After(time.Second):
-		t.Fatal("native stream did not finish after release")
+	if loaded.Status != storage.StatusRunning {
+		t.Fatalf("status = %q, want running", loaded.Status)
 	}
-	waitForNativeQueueIdle(t, store, session.ID)
-}
-
-func waitForNativeQueueIdle(t *testing.T, store storage.SessionStore, sessionID string) {
-	t.Helper()
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
-		session, err := store.LoadSession(sessionID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if session.Status == storage.StatusIdle && len(session.QueuedMessages) == 0 {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	session, err := store.LoadSession(sessionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Fatalf("native queue did not drain: status=%s queued=%#v", session.Status, session.QueuedMessages)
 }
 
 func queuedMessages(texts ...string) []storage.QueuedMessage {
@@ -770,50 +703,5 @@ func waitFor(t *testing.T, timeout time.Duration, ready func() bool) {
 	}
 	if !ready() {
 		t.Fatal("condition not met before timeout")
-	}
-}
-
-func TestQueuedNativeDrainRunsPromptWithoutClientStream(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	session, err := store.CreateSession(storage.CreateSession{Slug: "native-queue", Runtime: storage.RuntimeNative})
-	if err != nil {
-		t.Fatal(err)
-	}
-	session.QueuedMessages = queuedMessages("native queued prompt")
-	if err := store.SaveSession(session); err != nil {
-		t.Fatal(err)
-	}
-	srv := &Server{
-		Store: store,
-		Agent: &agent.Agent{
-			Provider: mockprovider.New(),
-			MaxTurns: 4,
-		},
-	}
-
-	srv.drainQueuedPrompt(context.Background(), session.ID)
-
-	loaded, err := store.LoadSession(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loaded.Status != storage.StatusIdle {
-		t.Fatalf("status = %q, want idle", loaded.Status)
-	}
-	if len(loaded.QueuedMessages) != 0 {
-		t.Fatalf("queue was not drained: %#v", loaded.QueuedMessages)
-	}
-	messages, err := store.LoadMessages(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(messages) == 0 || provider.MessageContent(messages[0]) != "native queued prompt" {
-		t.Fatalf("missing queued user prompt: %#v", messages)
-	}
-	if provider.MessageContent(messages[len(messages)-1]) != "Mock provider received the tool result and finished." {
-		t.Fatalf("missing assistant completion: %#v", messages[len(messages)-1])
 	}
 }

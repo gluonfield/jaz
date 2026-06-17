@@ -30,6 +30,11 @@ type LocalBackendResult = {
   error?: string
 }
 
+type TerminateOptions = {
+  timeoutMs?: number
+  forceTimeoutMs?: number
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 const pidFilePath = (): string => join(app.getPath('userData'), 'local-backend.pid')
@@ -206,6 +211,48 @@ function spawnBackend(): ChildProcess {
   })
 }
 
+function signalProcessGroup(proc: ChildProcess, signal: NodeJS.Signals): void {
+  if (!proc?.pid) return
+  try {
+    process.kill(-proc.pid, signal)
+  } catch {
+    try {
+      proc.kill(signal)
+    } catch {
+      // already gone
+    }
+  }
+}
+
+function takeLocalBackend(): ChildProcess | null {
+  const proc = child
+  child = null
+  try {
+    rmSync(pidFilePath())
+  } catch {
+    // nothing spawned this session
+  }
+  return proc?.pid ? proc : null
+}
+
+function waitForExit(proc: ChildProcess, timeoutMs: number): Promise<boolean> {
+  if (proc.exitCode !== null || proc.signalCode !== null) return Promise.resolve(true)
+  return new Promise((resolve) => {
+    let settled = false
+    const done = (exited: boolean): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      proc.off('exit', onExit)
+      resolve(exited)
+    }
+    const onExit = (): void => done(true)
+    const timer = setTimeout(() => done(false), timeoutMs)
+    timer.unref()
+    proc.once('exit', onExit)
+  })
+}
+
 export async function startLocalBackend(): Promise<LocalBackendResult> {
   if (!child) await reapOrphan()
   let health = await readHealth()
@@ -276,23 +323,17 @@ export async function startLocalBackend(): Promise<LocalBackendResult> {
 }
 
 export function stopLocalBackend(): void {
-  const proc = child
-  child = null
-  try {
-    rmSync(pidFilePath())
-  } catch {
-    // nothing spawned this session
-  }
-  if (!proc?.pid) return
-  // Detached spawn puts `go run` and its server child in one group; negative
-  // pid signals the whole group so the grandchild doesn't outlive the app.
-  try {
-    process.kill(-proc.pid, 'SIGTERM')
-  } catch {
-    try {
-      proc.kill('SIGTERM')
-    } catch {
-      // already gone
-    }
-  }
+  const proc = takeLocalBackend()
+  if (proc) signalProcessGroup(proc, 'SIGTERM')
+}
+
+export async function terminateLocalBackend(options: TerminateOptions = {}): Promise<void> {
+  const proc = takeLocalBackend()
+  if (!proc) return
+  signalProcessGroup(proc, 'SIGTERM')
+  const timeoutMs = options.timeoutMs ?? 0
+  if (timeoutMs <= 0 || (await waitForExit(proc, timeoutMs))) return
+  signalProcessGroup(proc, 'SIGKILL')
+  const forceTimeoutMs = options.forceTimeoutMs ?? 0
+  if (forceTimeoutMs > 0) await waitForExit(proc, forceTimeoutMs)
 }

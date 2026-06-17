@@ -1,4 +1,4 @@
-// Package acpcompletion renders the synthetic turn that asks the native
+// Package acpcompletion renders the synthetic turn that asks the Jaz
 // agent to report a finished ACP session's outcome to the user.
 package acpcompletion
 

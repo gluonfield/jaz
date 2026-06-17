@@ -73,7 +73,7 @@ func (s *Store) CreateSession(input storage.CreateSession) (storage.Session, err
 	now := time.Now().UTC()
 	runtime := input.Runtime
 	if runtime == "" {
-		runtime = storage.RuntimeNative
+		runtime = storage.RuntimeACP
 	}
 	session := storage.Session{
 		ID:              s.NewSessionID(),
@@ -155,7 +155,7 @@ func (s *Store) saveSession(session storage.Session) error {
 		return fmt.Errorf("session id is empty")
 	}
 	if session.Runtime == "" {
-		session.Runtime = storage.RuntimeNative
+		session.Runtime = storage.RuntimeACP
 	}
 	if session.Status == "" {
 		session.Status = storage.StatusIdle

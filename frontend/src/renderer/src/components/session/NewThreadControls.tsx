@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, ChevronDown, CornerLeftUp, Folder, FolderPlus, GitBranch, LoaderCircle } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { AgentLogo, hasAgentLogo } from '@/components/acp/AgentLogo'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { MenuRow, Popover } from '@/components/ui/Popover'
@@ -15,25 +16,23 @@ import {
 import { keys } from '@/lib/query/keys'
 import { REASONING_EFFORT_OPTIONS } from '@/lib/reasoningEfforts'
 
-// Selects the runtime backing a new thread: Native (the default Jaz session) or
-// one of the configured ACP agents. `value` is 'native' or an agent name.
+// Selects the ACP agent backing a new thread.
 export function RuntimeSelect({
   value,
   agents,
-  nativeAvailable = true,
   disabled,
   placement,
   onChange,
 }: {
   value: string
   agents: string[]
-  nativeAvailable?: boolean
   disabled?: boolean
   placement?: 'above' | 'below'
   onChange: (runtime: string) => void
 }) {
   const [open, setOpen] = useState(false)
-  const label = value === 'native' ? 'Native' : agentLabel(value)
+  const label = agentLabel(value)
+  const showLogo = hasAgentLogo(value)
   const select = (runtime: string) => {
     onChange(runtime)
     setOpen(false)
@@ -50,24 +49,23 @@ export function RuntimeSelect({
           className="max-w-[12rem]"
           aria-haspopup="listbox"
           aria-expanded={open}
-          aria-label={`Runtime: ${label}`}
-          title={`Runtime: ${label}`}
+          aria-label={`Agent: ${label}`}
+          title={`Agent: ${label}`}
           disabled={disabled}
           onClick={() => setOpen((v) => !v)}
         >
+          {showLogo ? <AgentLogo agent={value} size={14} /> : null}
           <span className="truncate">{label}</span>
           <ChevronDown size={13} className="shrink-0" />
         </Button>
       }
     >
-      {nativeAvailable ? (
-        <MenuRow selected={value === 'native'} onClick={() => select('native')}>
-          Native
-        </MenuRow>
-      ) : null}
       {agents.map((agent) => (
         <MenuRow key={agent} selected={value === agent} onClick={() => select(agent)}>
-          {agentLabel(agent)}
+          <span className="flex min-w-0 items-center gap-2">
+            {hasAgentLogo(agent) ? <AgentLogo agent={agent} size={14} /> : null}
+            <span className="truncate">{agentLabel(agent)}</span>
+          </span>
         </MenuRow>
       ))}
     </Popover>
@@ -75,10 +73,8 @@ export function RuntimeSelect({
 }
 
 // Picks the model for a new thread: curated suggestions for the chosen
-// runtime/provider plus free-text entry for anything else. For native threads
-// a provider section sits above the model list; a reasoning-effort section
-// sits below it when the caller wires one up. The trigger shows the effective
-// effort as a tinted suffix ("GPT-5.4 Mini xhigh").
+// agent/provider plus free-text entry for anything else. A provider section
+// appears for provider-backed ACP agents.
 export function ModelSelect({
   value,
   suggestions,
@@ -102,7 +98,7 @@ export function ModelSelect({
   providers?: { value: string; label: string }[]
   provider?: string
   onProviderChange?: (provider: string) => void
-  // '' inherits the Settings > Agents default for the chosen runtime/provider.
+  // '' inherits the Settings > Agents default for the chosen agent/provider.
   effort?: string
   effortOptions?: ReasoningEffortOption[]
   onEffortChange?: (effort: string) => void

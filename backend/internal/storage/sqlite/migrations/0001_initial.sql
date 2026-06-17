@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS threads (
   parent_id TEXT,
   status TEXT NOT NULL DEFAULT 'idle',
   error TEXT,
-  runtime TEXT NOT NULL DEFAULT 'native',
+  runtime TEXT NOT NULL DEFAULT 'acp',
   acp_agent TEXT,
   acp_session_id TEXT,
   cwd TEXT,

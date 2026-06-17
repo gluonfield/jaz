@@ -45,7 +45,7 @@ func TestSessionTerminalDoesNotStartBeforeWebsocketUpgrade(t *testing.T) {
 	}
 	session, err := store.CreateSession(storage.CreateSession{
 		Slug:       "terminal-upgrade",
-		RuntimeRef: &storage.RuntimeRef{Type: storage.RuntimeNative, Cwd: cwd},
+		RuntimeRef: &storage.RuntimeRef{Type: storage.RuntimeACP, Cwd: cwd},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -74,7 +74,7 @@ func TestSessionTerminalAcceptsQueryKeyWithBackendAuth(t *testing.T) {
 	}
 	session, err := store.CreateSession(storage.CreateSession{
 		Slug:       "terminal-auth",
-		RuntimeRef: &storage.RuntimeRef{Type: storage.RuntimeNative, Cwd: cwd},
+		RuntimeRef: &storage.RuntimeRef{Type: storage.RuntimeACP, Cwd: cwd},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -125,7 +125,7 @@ func TestSessionTerminalStartsInCWDAndReplaysOnReconnect(t *testing.T) {
 	}
 	session, err := store.CreateSession(storage.CreateSession{
 		Slug:       "terminal-cwd",
-		RuntimeRef: &storage.RuntimeRef{Type: storage.RuntimeNative, Cwd: cwd},
+		RuntimeRef: &storage.RuntimeRef{Type: storage.RuntimeACP, Cwd: cwd},
 	})
 	if err != nil {
 		t.Fatal(err)

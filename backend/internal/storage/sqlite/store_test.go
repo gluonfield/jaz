@@ -23,7 +23,7 @@ func TestSessionsHaveStableUniqueSlugsAndRootListing(t *testing.T) {
 	}
 	defer store.Close()
 
-	first, err := store.CreateSession(storage.CreateSession{Slug: "Review ACP Transport", Runtime: storage.RuntimeNative})
+	first, err := store.CreateSession(storage.CreateSession{Slug: "Review ACP Transport", Runtime: storage.RuntimeACP})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestSetPinnedKeepsProjectPathAndPinsChildren(t *testing.T) {
 	parent, err := store.CreateSession(storage.CreateSession{
 		Slug: "parent",
 		RuntimeRef: &storage.RuntimeRef{
-			Type:        storage.RuntimeNative,
+			Type:        storage.RuntimeACP,
 			Cwd:         project,
 			ProjectPath: project,
 		},
@@ -314,11 +314,11 @@ func TestSettingsCRUDRoundTrip(t *testing.T) {
 	}
 	defer store.Close()
 
-	created, err := store.SaveSetting("agents", "defaults", []byte(`{"native":{"model":"test-model"}}`))
+	created, err := store.SaveSetting("agents", "defaults", []byte(`{"acp":{"jaz":{"model":"test-model"}}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if created.Namespace != "agents" || created.Key != "defaults" || string(created.Value) != `{"native":{"model":"test-model"}}` {
+	if created.Namespace != "agents" || created.Key != "defaults" || string(created.Value) != `{"acp":{"jaz":{"model":"test-model"}}}` {
 		t.Fatalf("created = %#v", created)
 	}
 
@@ -338,7 +338,7 @@ func TestSettingsCRUDRoundTrip(t *testing.T) {
 		t.Fatalf("settings = %#v", settings)
 	}
 
-	updated, err := store.SaveSetting("agents", "defaults", []byte(`{"native":{"model":"next-model"}}`))
+	updated, err := store.SaveSetting("agents", "defaults", []byte(`{"acp":{"jaz":{"model":"next-model"}}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -859,7 +859,7 @@ func makeLegacyDB(root string) error {
   title TEXT,
   parent_id TEXT,
   status TEXT NOT NULL DEFAULT 'idle',
-  runtime TEXT NOT NULL DEFAULT 'native',
+  runtime TEXT NOT NULL DEFAULT 'acp',
   acp_agent TEXT,
   acp_session_id TEXT,
   model_provider TEXT,

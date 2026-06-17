@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
+import { boardsQuery } from '@/lib/api/boards'
 import { createLoop, runLoopNow, updateLoop } from '@/lib/api/loops'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import type { Loop } from '@/lib/api/types'
@@ -23,7 +24,6 @@ export function LoopModal({
   onClose,
   loop,
   boardIds,
-  initialBoardIds,
   onCreated,
 }: {
   open: boolean
@@ -31,8 +31,6 @@ export function LoopModal({
   loop?: Loop
   // Current board assignments when editing (from the loop detail response).
   boardIds?: string[]
-  // Preselected boards when creating (e.g. "New widget" from a board).
-  initialBoardIds?: string[]
   // When set, creating stays in place (no navigation) and reports the loop —
   // the board scrolls its new tile into view instead.
   onCreated?: (loop: Loop) => void
@@ -41,10 +39,13 @@ export function LoopModal({
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const settingsQuery = useQuery(agentSettingsQuery)
+  const boards = useQuery({ ...boardsQuery, enabled: open && !isEdit })
   const [draft, setDraft] = useState<LoopDraft | null>(null)
-  const current = draft ?? (loop ? loopDraftFromLoop(loop, boardIds) : emptyLoopDraft(initialBoardIds))
+  const createBoardIds = boards.data?.map((board) => board.id) ?? []
+  const createBoardsLoading = !isEdit && boards.isPending
+  const current = draft ?? (loop ? loopDraftFromLoop(loop, boardIds) : emptyLoopDraft(createBoardIds))
 
-  const save = useMutation({
+  const save = useMutation<Loop, Error, { run: boolean }>({
     mutationFn: ({ run: _run }: { run: boolean }) =>
       isEdit
         ? updateLoop(loop.id, loopDraftToInput(current, settingsQuery.data))
@@ -80,7 +81,7 @@ export function LoopModal({
       footer={
         <>
           <p className="text-[12px] text-danger" role="alert">
-            {save.isError ? (save.error as Error).message : ''}
+            {save.isError ? save.error.message : ''}
           </p>
           <div className="flex shrink-0 items-center gap-1">
             <Button variant="ghost" size="md" onClick={close}>
@@ -90,7 +91,7 @@ export function LoopModal({
               <Button
                 variant="primary"
                 size="md"
-                disabled={!canSaveLoop(current) || save.isPending}
+                disabled={!canSaveLoop(current) || save.isPending || createBoardsLoading}
                 onClick={() => save.mutate({ run: false })}
               >
                 {save.isPending ? 'Saving…' : 'Save changes'}
@@ -100,7 +101,7 @@ export function LoopModal({
                 <Button
                   variant="secondary"
                   size="md"
-                  disabled={!canSaveLoop(current) || save.isPending}
+                  disabled={!canSaveLoop(current) || save.isPending || createBoardsLoading}
                   onClick={() => save.mutate({ run: false })}
                 >
                   {save.isPending && !save.variables?.run ? 'Creating…' : 'Create'}
@@ -108,7 +109,7 @@ export function LoopModal({
                 <Button
                   variant="primary"
                   size="md"
-                  disabled={!canSaveLoop(current) || save.isPending}
+                  disabled={!canSaveLoop(current) || save.isPending || createBoardsLoading}
                   onClick={() => save.mutate({ run: true })}
                 >
                   {save.isPending && save.variables?.run ? 'Creating…' : 'Create & Run'}
@@ -121,7 +122,7 @@ export function LoopModal({
     >
       <LoopForm
         draft={current}
-        disabled={save.isPending}
+        disabled={save.isPending || createBoardsLoading}
         onChange={setDraft}
       />
     </Modal>

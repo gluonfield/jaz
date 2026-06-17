@@ -61,7 +61,7 @@ function LoopsPage() {
 }
 
 function LoopRow({ loop }: { loop: Loop }) {
-  const agent = loop.runtime === 'acp' ? agentLabel(loop.acp_agent) : 'Native'
+  const agent = agentLabel(loop.acp_agent || 'jaz')
   const paused = loop.status === 'paused'
   const nextRun = !paused && hasTime(loop.next_run_at) ? shortDate(loop.next_run_at) : ''
   return (

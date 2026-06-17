@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query'
-import { Check, LayoutGrid } from 'lucide-react'
 import { type ReactNode, useEffect, useMemo } from 'react'
 import { MentionSuggestions, MentionTextarea, useMentionInput } from '@/components/session/MentionInput'
 import { ModelSelect, RuntimeSelect } from '@/components/session/NewThreadControls'
@@ -9,18 +8,16 @@ import { agentSettingsQuery } from '@/lib/api/settings'
 import type { AgentSettings, Loop } from '@/lib/api/types'
 import {
   acpUsesModelProvider,
-  acpUsesNativeProvider,
   enabledACPAgents,
-  configuredNativeProviders,
   runtimeModelState,
 } from '@/lib/agentRuntimes'
 import {
   acpAgentModelSuggestions,
   modelSuggestionsForProvider,
-  OPENAI_MODELS,
   openRouterModelsQuery,
 } from '@/lib/models'
-import { acpReasoningEffortOptions, REASONING_EFFORT_OPTIONS } from '@/lib/reasoningEfforts'
+import { acpReasoningEffortOptions } from '@/lib/reasoningEfforts'
+import { BoardAssignmentPicker } from './BoardAssignmentPicker'
 import { SchedulePicker } from './SchedulePicker'
 import {
   type ScheduleDraft,
@@ -30,8 +27,7 @@ import {
   localTimezone,
 } from './schedule'
 
-// 'native' selects the native runtime; any other value is the ACP agent name —
-// matching the RuntimeSelect contract used by the new-thread composer.
+// ACP agent name, matching the RuntimeSelect contract used by the new-thread composer.
 export interface LoopDraft {
   name: string
   prompt: string
@@ -65,7 +61,7 @@ export function loopDraftFromLoop(loop: Loop, boardIds: string[] = []): LoopDraf
   return {
     name: loop.name ?? '',
     prompt: loop.prompt ?? '',
-    runtime: loop.runtime === 'acp' ? (loop.acp_agent || 'jaz') : 'native',
+    runtime: loop.acp_agent || 'jaz',
     directory: loop.directory ?? '',
     provider: loop.model_provider ?? '',
     model: loop.model ?? '',
@@ -83,18 +79,16 @@ export function canSaveLoop(draft: LoopDraft): boolean {
 }
 
 export function loopDraftToInput(draft: LoopDraft, settings?: AgentSettings): LoopInput {
-  const native = draft.runtime === 'native'
-  const usesNativeProvider = native || acpUsesNativeProvider(settings, draft.runtime)
-  const usesModelProvider = !native && acpUsesModelProvider(settings, draft.runtime)
+  const usesModelProvider = acpUsesModelProvider(settings, draft.runtime)
   return {
     prompt: draft.prompt.trim(),
     name: draft.name.trim() || undefined,
     schedule: { kind: 'cron', expr: cronFromDraft(draft.schedule), timezone: localTimezone() },
     status: draft.schedule.preset === 'manual' ? 'paused' : 'active',
-    runtime: native ? 'native' : 'acp',
-    acp_agent: native ? undefined : draft.runtime,
+    runtime: 'acp',
+    acp_agent: draft.runtime,
     // Overrides are always sent: '' clears one back to following settings.
-    model_provider: usesNativeProvider || usesModelProvider ? draft.provider : '',
+    model_provider: usesModelProvider ? draft.provider : '',
     model: draft.model,
     reasoning_effort: draft.reasoningEffort,
     directory: draft.directory || undefined,
@@ -177,7 +171,7 @@ export function LoopForm({
 }
 
 // The composer-style prompt card: a mention-capable textarea ($skill / @file)
-// with the loop's run setup — runtime and model — as its toolbar. The UI no
+// with the loop's run setup - agent and model - as its toolbar. The UI no
 // longer offers a project picker (new loops default to the workspace), but a
 // loop's `directory` is still honored end-to-end — it can be set via the
 // API/MCP and is round-tripped on edit — so the draft deliberately keeps
@@ -204,22 +198,19 @@ function LoopPromptCard({
   const settingsQuery = useQuery(agentSettingsQuery)
   const agentSettings = settingsQuery.data
   const agents = useMemo(() => enabledACPAgents(agentSettings), [agentSettings])
-  const nativeProviders = useMemo(() => configuredNativeProviders(agentSettings), [agentSettings])
-  const nativeAvailable = nativeProviders.length > 0
   const runtimeReady = settingsQuery.isSuccess
-  const runtimeAvailable = runtimeReady && (nativeAvailable || agents.length > 0)
+  const runtimeAvailable = runtimeReady && agents.length > 0
 
   useEffect(() => {
     if (!runtimeReady) return
-    const valid = draft.runtime === 'native' ? nativeAvailable : agents.includes(draft.runtime)
-    if (valid) return
-    const runtime = agents.includes('jaz') ? 'jaz' : nativeAvailable ? 'native' : (agents[0] ?? '')
+    if (agents.includes(draft.runtime)) return
+    const runtime = agents.includes('jaz') ? 'jaz' : (agents[0] ?? '')
     if (runtime === draft.runtime) return
     set({ runtime, provider: '', model: '', reasoningEffort: '' })
-  }, [agents, draft.runtime, nativeAvailable, runtimeReady, set])
+  }, [agents, draft.runtime, runtimeReady, set])
 
   const runtimeModel = runtimeModelState(agentSettings, draft.runtime, draft.provider)
-  const { usesNativeProvider, usesProvider, providers: runtimeProviders, provider, selectedProvider } = runtimeModel
+  const { usesProvider, providers: runtimeProviders, provider, selectedProvider } = runtimeModel
   const defaultModel = runtimeModel.defaultModel
   const model = draft.model || defaultModel
   const reasoningEffort = draft.reasoningEffort || runtimeModel.defaultEffort
@@ -229,9 +220,7 @@ function LoopPromptCard({
     enabled: usesProvider && provider === 'openrouter',
   })
   const modelSuggestions = usesProvider
-    ? usesNativeProvider && provider === 'openai'
-      ? OPENAI_MODELS
-      : modelSuggestionsForProvider(selectedProvider, openRouterModels.data ?? [])
+    ? modelSuggestionsForProvider(selectedProvider, openRouterModels.data ?? [])
     : acpAgentModelSuggestions(draft.runtime)
 
   return (
@@ -260,7 +249,6 @@ function LoopPromptCard({
                 <RuntimeSelect
                   value={draft.runtime}
                   agents={agents}
-                  nativeAvailable={nativeAvailable}
                   disabled={disabled}
                   placement="below"
                   onChange={(runtime) => set({ runtime, provider: '', model: '', reasoningEffort: '' })}
@@ -284,11 +272,7 @@ function LoopPromptCard({
                       : undefined
                   }
                   effort={reasoningEffort}
-                  effortOptions={
-                    usesNativeProvider
-                      ? REASONING_EFFORT_OPTIONS
-                      : acpReasoningEffortOptions(agentSettings, draft.runtime)
-                  }
+                  effortOptions={acpReasoningEffortOptions(agentSettings, draft.runtime)}
                   // 'Default' clears the override; the selection snaps back to the
                   // resolved settings effort.
                   onEffortChange={(next) => set({ reasoningEffort: next })}
@@ -330,36 +314,13 @@ function BoardPicker({
     )
   }
 
-  const toggle = (id: string) =>
-    onChange(selected.includes(id) ? selected.filter((b) => b !== id) : [...selected, id])
-
   return (
-    <div>
-      <div className="flex flex-wrap items-center gap-1.5">
-        {boards.data.map((board) => {
-          const active = selected.includes(board.id)
-          return (
-            <button
-              key={board.id}
-              type="button"
-              disabled={disabled}
-              aria-pressed={active}
-              onClick={() => toggle(board.id)}
-              className={`flex h-7 items-center gap-1.5 rounded-full px-3 text-[12px] font-medium ring-1 transition duration-150 active:scale-[0.97] disabled:opacity-50 ${
-                active
-                  ? 'bg-surface-2 text-ink ring-border/60 shadow-sm'
-                  : 'text-ink-2 ring-border hover:bg-surface hover:text-ink'
-              }`}
-            >
-              {active ? <Check size={12} /> : <LayoutGrid size={12} />}
-              {board.name}
-            </button>
-          )
-        })}
-      </div>
-      <span className="mt-1.5 block text-[12px] text-ink-3">
-        On every run the loop refreshes a live widget on the selected boards.
-      </span>
-    </div>
+    <BoardAssignmentPicker
+      boards={boards.data}
+      selected={selected}
+      disabled={disabled}
+      onChange={onChange}
+      hint="On every run the loop refreshes a live widget on the selected boards."
+    />
   )
 }

@@ -110,6 +110,7 @@ const widgetBridgeScript = `
     const count = Math.min(nodes.length, 600);
     for (let i = 0; i < count; i++) {
       const el = nodes[i];
+      if (el.classList && el.classList.contains('sr-only')) continue;
       const style = getComputedStyle(el);
       if (el.scrollHeight > el.clientHeight + 2 && (style.overflowY === 'hidden' || style.overflowY === 'clip')) clipped++;
       if (el.childElementCount !== 0) continue;

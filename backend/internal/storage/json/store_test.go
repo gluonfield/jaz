@@ -20,7 +20,7 @@ func TestSessionsHaveStableUniqueSlugsAndRootListing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	first, err := store.CreateSession(storage.CreateSession{Slug: "Review ACP Transport", Runtime: storage.RuntimeNative})
+	first, err := store.CreateSession(storage.CreateSession{Slug: "Review ACP Transport", Runtime: storage.RuntimeACP})
 	if err != nil {
 		t.Fatal(err)
 	}
