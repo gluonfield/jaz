@@ -83,7 +83,7 @@ function hasInvalidACPProvider(settings: AgentSettingsData): boolean {
   })
 }
 
-export function AgentSettings() {
+export function AgentProvidersSettings() {
   const queryClient = useQueryClient()
   const toast = useToast()
   const settings = useQuery(agentSettingsQuery)
@@ -172,9 +172,9 @@ export function AgentSettings() {
     <section className="py-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-medium text-ink">Agents</p>
+          <p className="text-sm font-medium text-ink">Providers</p>
           <p className="mt-0.5 text-[13px] text-ink-2">
-            Defaults copied into each new thread.
+            Configure model providers once. ACP agents can reuse them when they are set to use provider defaults.
           </p>
         </div>
         <Button
@@ -293,29 +293,119 @@ export function AgentSettings() {
               </div>
             </div>
 
-            <div>
-              <p className="pb-2 text-[12px] font-medium text-ink-2">ACP</p>
-              <div className="flex flex-col gap-3">
-                {draft.agents.map((agent) => (
-                  <ACPAgentRow
-                    key={agent}
-                    agent={agent}
-                    settings={draft}
-                    providerKeys={providerKeys}
-                    disabled={save.isPending}
-                    loginJob={loginJobs[agent]}
-                    loginPending={login.isPending && login.variables?.agent === agent}
-                    disconnecting={disconnect.isPending && disconnect.variables === agent}
-                    onStartLogin={(auth) => login.mutate({ agent, auth })}
-                    onDisconnect={() => disconnect.mutate(agent)}
-                    onProviderKeyChange={(provider, value) =>
-                      setProviderKeys({ ...providerKeys, [provider]: value })
-                    }
-                    onChange={setDraft}
-                  />
-                ))}
-              </div>
-            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+export function ACPAgentsSettings() {
+  const queryClient = useQueryClient()
+  const toast = useToast()
+  const settings = useQuery(agentSettingsQuery)
+  const [draft, setDraft] = useState<AgentSettingsData | null>(null)
+  const [providerKeys, setProviderKeys] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    if (settings.data) setDraft(cloneAgentSettings(settings.data))
+  }, [settings.data])
+
+  const save = useMutation({
+    mutationFn: (input: AgentSettingsData) => updateAgentSettings(input, providerKeys),
+    onSuccess: (saved) => {
+      setDraft(cloneAgentSettings(saved))
+      setProviderKeys({})
+      toast('Saved agent settings')
+    },
+    onError: (error: Error) => toast(`Couldn't save agent settings: ${error.message}`, 'danger'),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: keys.agentSettings })
+      queryClient.invalidateQueries({ queryKey: keys.acpAgents })
+    },
+  })
+
+  const { loginJobs, trackLoginJob, forgetLoginJob } = useACPLoginPolling((job) => {
+    if (job.status === 'succeeded' && draft?.acp[job.agent] && !draft.acp[job.agent].enabled) {
+      save.mutate(withEnabledAgent(draft, job.agent))
+    } else {
+      queryClient.invalidateQueries({ queryKey: keys.agentSettings })
+    }
+    queryClient.invalidateQueries({ queryKey: keys.acpAgents })
+  })
+
+  const login = useMutation({
+    mutationFn: ({ agent, auth }: { agent: string; auth?: AgentSettingsData['acp'][string]['auth'] }) =>
+      startACPAuthLogin(agent, auth),
+    onSuccess: (job) => {
+      trackLoginJob(job)
+      toast(`Started ${authProviderLabel(job.agent)} sign-in`)
+    },
+    onError: (error: Error) => toast(`Couldn't start sign-in: ${error.message}`, 'danger'),
+  })
+
+  const disconnect = useMutation({
+    mutationFn: (agent: string) => disconnectACPAuth(agent),
+    onSuccess: (_status, agent) => {
+      forgetLoginJob(agent)
+      toast(`Disconnected ${authProviderLabel(agent)}`)
+      queryClient.invalidateQueries({ queryKey: keys.agentSettings })
+      queryClient.invalidateQueries({ queryKey: keys.acpAgents })
+    },
+    onError: (error: Error) => toast(`Couldn't disconnect: ${error.message}`, 'danger'),
+  })
+
+  const dirty = useMemo(
+    () => settingsKey(draft) !== settingsKey(settings.data ?? null),
+    [draft, settings.data],
+  )
+  const providerKeyDirty = Object.values(providerKeys).some((value) => value.trim().length > 0)
+  const invalid = draft ? hasEnabledACPWithoutCommand(draft) || hasInvalidACPProvider(draft) : true
+  const canSave = draft != null && !invalid && (dirty || providerKeyDirty) && !save.isPending
+
+  return (
+    <section className="py-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium text-ink">Agents (ACP)</p>
+          <p className="mt-0.5 text-[13px] text-ink-2">
+            Configure ACP runtimes, auth, and per-agent defaults.
+          </p>
+        </div>
+        <Button
+          variant="primary"
+          size="md"
+          disabled={!canSave}
+          onClick={() => draft && save.mutate(draft)}
+        >
+          <Save size={14} />
+          {save.isPending ? 'Saving...' : 'Save changes'}
+        </Button>
+      </div>
+
+      <div className="mt-4">
+        {settings.isError ? (
+          <p className="py-2 text-[13px] text-danger">{settings.error.message}</p>
+        ) : settings.isPending || !draft ? (
+          <SkeletonRows count={3} />
+        ) : (
+          <div className="flex flex-col gap-3">
+            {draft.agents.map((agent) => (
+              <ACPAgentRow
+                key={agent}
+                agent={agent}
+                settings={draft}
+                providerKeys={providerKeys}
+                disabled={save.isPending}
+                loginJob={loginJobs[agent]}
+                loginPending={login.isPending && login.variables?.agent === agent}
+                disconnecting={disconnect.isPending && disconnect.variables === agent}
+                onStartLogin={(auth) => login.mutate({ agent, auth })}
+                onDisconnect={() => disconnect.mutate(agent)}
+                onProviderKeyChange={(provider, value) => setProviderKeys({ ...providerKeys, [provider]: value })}
+                onChange={setDraft}
+              />
+            ))}
           </div>
         )}
       </div>
