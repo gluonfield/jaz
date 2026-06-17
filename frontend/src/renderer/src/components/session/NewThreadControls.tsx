@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, ChevronDown, CornerLeftUp, Folder, FolderPlus, GitBranch, LoaderCircle } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { AgentLogo, hasAgentLogo } from '@/components/acp/AgentLogo'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { MenuRow, Popover } from '@/components/ui/Popover'
@@ -31,6 +32,7 @@ export function RuntimeSelect({
 }) {
   const [open, setOpen] = useState(false)
   const label = agentLabel(value)
+  const showLogo = hasAgentLogo(value)
   const select = (runtime: string) => {
     onChange(runtime)
     setOpen(false)
@@ -47,11 +49,12 @@ export function RuntimeSelect({
           className="max-w-[12rem]"
           aria-haspopup="listbox"
           aria-expanded={open}
-          aria-label={`Runtime: ${label}`}
-          title={`Runtime: ${label}`}
+          aria-label={`Agent: ${label}`}
+          title={`Agent: ${label}`}
           disabled={disabled}
           onClick={() => setOpen((v) => !v)}
         >
+          {showLogo ? <AgentLogo agent={value} size={14} /> : null}
           <span className="truncate">{label}</span>
           <ChevronDown size={13} className="shrink-0" />
         </Button>
@@ -59,7 +62,10 @@ export function RuntimeSelect({
     >
       {agents.map((agent) => (
         <MenuRow key={agent} selected={value === agent} onClick={() => select(agent)}>
-          {agentLabel(agent)}
+          <span className="flex min-w-0 items-center gap-2">
+            {hasAgentLogo(agent) ? <AgentLogo agent={agent} size={14} /> : null}
+            <span className="truncate">{agentLabel(agent)}</span>
+          </span>
         </MenuRow>
       ))}
     </Popover>
@@ -92,7 +98,7 @@ export function ModelSelect({
   providers?: { value: string; label: string }[]
   provider?: string
   onProviderChange?: (provider: string) => void
-  // '' inherits the Settings > Agents default for the chosen runtime/provider.
+  // '' inherits the Settings > Agents default for the chosen agent/provider.
   effort?: string
   effortOptions?: ReasoningEffortOption[]
   onEffortChange?: (effort: string) => void

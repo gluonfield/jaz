@@ -4,7 +4,7 @@ import { NewSessionHome } from '@/components/home/NewSessionHome'
 import { ModelSelect, ProjectPicker, RuntimeSelect } from '@/components/session/NewThreadControls'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { useToast } from '@/components/ui/toast'
-import { createSession, projectsQuery } from '@/lib/api/sessions'
+import { createSession, listFilesystemDirs, projectsQuery } from '@/lib/api/sessions'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import {
   enabledACPAgents,
@@ -55,12 +55,11 @@ function NewSessionPage() {
   const [directory, setDirectory] = useState(
     () => search.project ?? storedString(NEW_SESSION_DIRECTORY_KEY),
   )
-  // Worktree runs the session on a disposable git worktree (any runtime);
+  // Worktree runs the session on a disposable git worktree (any agent);
   // only offered when the chosen directory is a git repository.
-  const [directoryIsGit, setDirectoryIsGit] = useState(false)
   const [worktree, setWorktree] = useState(false)
   // Per-session overrides of the Settings > Agents defaults; null follows the
-  // default for the chosen agent/provider.
+  // default for the chosen agent and provider.
   const [providerOverride, setProviderOverride] = useState<string | null>(null)
   const [modelOverride, setModelOverride] = useState<string | null>(null)
   const [effortOverride, setEffortOverride] = useState<string | null>(null)
@@ -70,13 +69,20 @@ function NewSessionPage() {
   const runtimeReady = settingsQuery.isSuccess
   const runtimeAvailable = runtimeReady && agents.length > 0
   const projects = useQuery(projectsQuery)
+  const project = projects.data?.find((item) => item.path === directory)
+  const directoryInfo = useQuery({
+    queryKey: keys.filesystemDirs(directory),
+    queryFn: () => listFilesystemDirs(directory),
+    enabled: directory !== '' && project === undefined,
+    staleTime: 30_000,
+  })
+  const directoryIsGit = project?.git ?? directoryInfo.data?.git ?? false
   // PixelField samples the palette at mount; remount it when the theme flips.
   const { resolved } = useTheme()
 
   useEffect(() => {
     if (search.project === undefined) return
     setDirectory(search.project)
-    setDirectoryIsGit(false)
     setWorktree(false)
   }, [search.project])
 
@@ -90,8 +96,7 @@ function NewSessionPage() {
 
   useEffect(() => {
     if (!runtimeReady) return
-    const valid = agents.includes(runtime)
-    if (valid) return
+    if (agents.includes(runtime)) return
     const next = agents.includes('jaz') ? 'jaz' : (agents[0] ?? '')
     if (next === runtime) return
     setRuntime(next)
@@ -101,17 +106,8 @@ function NewSessionPage() {
   }, [agents, runtime, runtimeReady])
 
   useEffect(() => {
-    if (!directory) {
-      setDirectoryIsGit(false)
-      setWorktree(false)
-      return
-    }
-    const project = projects.data?.find((item) => item.path === directory)
-    if (project) {
-      setDirectoryIsGit(project.git)
-      if (!project.git) setWorktree(false)
-    }
-  }, [directory, projects.data])
+    if (!directoryIsGit) setWorktree(false)
+  }, [directoryIsGit])
 
   const runtimeModel = runtimeModelState(agentSettings, runtime, providerOverride)
   const { usesProvider, providers: runtimeProviders, provider, selectedProvider } = runtimeModel
@@ -134,18 +130,16 @@ function NewSessionPage() {
     }
     setCreating(true)
     try {
-      const session = await createSession(
-        {
-          ...(title ? { title } : {}),
-          runtime: 'acp',
-          agent: runtime,
-          directory,
-          worktree,
-          ...(usesProvider && provider ? { model_provider: provider } : {}),
-          ...(model ? { model } : {}),
-          ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
-        },
-      )
+      const session = await createSession({
+        ...(title ? { title } : {}),
+        runtime: 'acp',
+        agent: runtime,
+        directory,
+        worktree,
+        ...(usesProvider && provider ? { model_provider: provider } : {}),
+        ...(model ? { model } : {}),
+        ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+      })
       prepare(session.id)
       sessionStorage.removeItem(NEW_SESSION_DRAFT_KEY)
       queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
@@ -165,6 +159,7 @@ function NewSessionPage() {
         files: options.files ?? [],
       }),
     )
+
   const composerControls = (
     <>
       {runtimeReady && !runtimeAvailable ? (
@@ -216,7 +211,6 @@ function NewSessionPage() {
         disabled={creating}
         onChange={(path, git) => {
           setDirectory(path)
-          setDirectoryIsGit(git)
           if (!git) setWorktree(false)
         }}
       />

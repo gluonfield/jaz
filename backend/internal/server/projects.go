@@ -126,11 +126,7 @@ func (s *Server) handleReorderProjects(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListFilesystemDirs(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimSpace(r.URL.Query().Get("path"))
-	if path == "" {
-		path = firstNonEmpty(s.Workspace, serverHomeDir(), ".")
-	}
-	abs, err := cleanExistingDir(path)
+	abs, err := s.resolveFilesystemDir(r.URL.Query().Get("path"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -155,6 +151,21 @@ func (s *Server) handleListFilesystemDirs(w http.ResponseWriter, r *http.Request
 		"git":    pathsafe.IsGitRepo(abs),
 		"dirs":   out,
 	})
+}
+
+func (s *Server) resolveFilesystemDir(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return cleanExistingDir(firstNonEmpty(s.Workspace, serverHomeDir(), "."))
+	}
+	if filepath.IsAbs(path) || strings.TrimSpace(s.Workspace) == "" {
+		return cleanExistingDir(path)
+	}
+	abs, err := pathsafe.Resolve(s.Workspace, path)
+	if err != nil {
+		return "", err
+	}
+	return cleanExistingDir(abs)
 }
 
 func (s *Server) resolveWorkingDir(directory string) (string, error) {
