@@ -8,7 +8,6 @@ import { createSession, projectsQuery } from '@/lib/api/sessions'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import {
   enabledACPAgents,
-  configuredNativeProviders,
   runtimeModelState,
 } from '@/lib/agentRuntimes'
 import {
@@ -17,7 +16,7 @@ import {
   OPENAI_MODELS,
   openRouterModelsQuery,
 } from '@/lib/models'
-import { setPendingMessage, setPendingVoice } from '@/lib/pendingMessage'
+import { setPendingMessage } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
 import { acpReasoningEffortOptions, REASONING_EFFORT_OPTIONS } from '@/lib/reasoningEfforts'
 import type { SendMessageOptions } from '@/lib/sendMessage'
@@ -52,7 +51,7 @@ function NewSessionPage() {
   const toast = useToast()
   const [creating, setCreating] = useState(false)
   const [composing, setComposing] = useState(false)
-  // 'native' or a configured ACP agent name; directory is the session cwd.
+  // Configured ACP agent name; directory is the session cwd.
   const [runtime, setRuntime] = useState(() => storedString(NEW_SESSION_AGENT_KEY) || 'jaz')
   const [directory, setDirectory] = useState(
     () => search.project ?? storedString(NEW_SESSION_DIRECTORY_KEY),
@@ -62,17 +61,15 @@ function NewSessionPage() {
   const [directoryIsGit, setDirectoryIsGit] = useState(false)
   const [worktree, setWorktree] = useState(false)
   // Per-session overrides of the Settings > Agents defaults; null follows the
-  // default for the chosen runtime (and, for native, provider).
+  // default for the chosen agent and provider.
   const [providerOverride, setProviderOverride] = useState<string | null>(null)
   const [modelOverride, setModelOverride] = useState<string | null>(null)
   const [effortOverride, setEffortOverride] = useState<string | null>(null)
   const settingsQuery = useQuery(agentSettingsQuery)
   const agentSettings = settingsQuery.data
   const agents = useMemo(() => enabledACPAgents(agentSettings), [agentSettings])
-  const nativeProviders = useMemo(() => configuredNativeProviders(agentSettings), [agentSettings])
-  const nativeAvailable = nativeProviders.length > 0
   const runtimeReady = settingsQuery.isSuccess
-  const runtimeAvailable = runtimeReady && (nativeAvailable || agents.length > 0)
+  const runtimeAvailable = runtimeReady && agents.length > 0
   const projects = useQuery(projectsQuery)
   // PixelField samples the palette at mount; remount it when the theme flips.
   const { resolved } = useTheme()
@@ -94,15 +91,14 @@ function NewSessionPage() {
 
   useEffect(() => {
     if (!runtimeReady) return
-    const valid = runtime === 'native' ? nativeAvailable : agents.includes(runtime)
-    if (valid) return
-    const next = agents.includes('jaz') ? 'jaz' : nativeAvailable ? 'native' : (agents[0] ?? '')
+    if (agents.includes(runtime)) return
+    const next = agents.includes('jaz') ? 'jaz' : (agents[0] ?? '')
     if (next === runtime) return
     setRuntime(next)
     setProviderOverride(null)
     setModelOverride(null)
     setEffortOverride(null)
-  }, [agents, nativeAvailable, runtime, runtimeReady])
+  }, [agents, runtime, runtimeReady])
 
   useEffect(() => {
     if (!directory) {
@@ -117,7 +113,6 @@ function NewSessionPage() {
     }
   }, [directory, projects.data])
 
-  const isNative = runtime === 'native'
   const runtimeModel = runtimeModelState(agentSettings, runtime, providerOverride)
   const { usesNativeProvider, usesProvider, providers: runtimeProviders, provider, selectedProvider } = runtimeModel
   const defaultModel = runtimeModel.defaultModel
@@ -141,27 +136,16 @@ function NewSessionPage() {
     }
     setCreating(true)
     try {
-      const session = await createSession(
-        isNative
-          ? {
-              ...(title ? { title } : {}),
-              ...(directory ? { directory } : {}),
-              ...(worktree ? { worktree } : {}),
-              ...(provider ? { model_provider: provider } : {}),
-              ...(model ? { model } : {}),
-              ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
-            }
-          : {
-              ...(title ? { title } : {}),
-              runtime: 'acp',
-              agent: runtime,
-              directory,
-              worktree,
-              ...(usesProvider && provider ? { model_provider: provider } : {}),
-              ...(model ? { model } : {}),
-              ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
-            },
-      )
+      const session = await createSession({
+        ...(title ? { title } : {}),
+        runtime: 'acp',
+        agent: runtime,
+        directory,
+        worktree,
+        ...(usesProvider && provider ? { model_provider: provider } : {}),
+        ...(model ? { model } : {}),
+        ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+      })
       prepare(session.id)
       sessionStorage.removeItem(NEW_SESSION_DRAFT_KEY)
       queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
@@ -181,7 +165,6 @@ function NewSessionPage() {
         files: options.files ?? [],
       }),
     )
-  const handleVoice = () => startThread(undefined, (id) => setPendingVoice(id))
 
   const composerControls = (
     <>
@@ -192,7 +175,6 @@ function NewSessionPage() {
         <RuntimeSelect
           value={runtime}
           agents={agents}
-          nativeAvailable={nativeAvailable}
           disabled={creating}
           onChange={(next) => {
             setRuntime(next)
@@ -277,7 +259,6 @@ function NewSessionPage() {
       fileRoot={directory}
       onDraftActivity={setComposing}
       onSend={handleSend}
-      onVoice={runtime === 'native' && nativeAvailable ? handleVoice : undefined}
     />
   )
 }
