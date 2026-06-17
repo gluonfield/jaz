@@ -28,6 +28,9 @@ type agentSettingsResponse struct {
 type settingsModelProvider struct {
 	provider.ModelProvider
 	Configured bool `json:"configured"`
+	// Custom marks a user-created (DB-backed) provider, editable/deletable in the
+	// UI. Built-ins and application.yaml providers are not custom.
+	Custom bool `json:"custom,omitempty"`
 }
 
 type agentSettingsRequest struct {
@@ -105,10 +108,12 @@ func (s *Server) agentSettingsResponse(defaults agentsettings.AgentDefaults) age
 }
 
 func (s *Server) modelProvidersWithStatus() []settingsModelProvider {
+	providers := s.modelProviders()
+	custom := s.customProviderIDSet()
 	out := []settingsModelProvider{}
 	seen := map[string]struct{}{}
 	for _, meta := range provider.ModelProviders() {
-		cfg := s.ModelProviders[meta.ID]
+		cfg := providers[meta.ID]
 		meta = provider.ApplyModelProviderConfig(meta, cfg)
 		out = append(out, settingsModelProvider{
 			ModelProvider: meta,
@@ -116,19 +121,20 @@ func (s *Server) modelProvidersWithStatus() []settingsModelProvider {
 		})
 		seen[meta.ID] = struct{}{}
 	}
-	ids := make([]string, 0, len(s.ModelProviders))
-	for id := range s.ModelProviders {
+	ids := make([]string, 0, len(providers))
+	for id := range providers {
 		if _, ok := seen[id]; !ok {
 			ids = append(ids, id)
 		}
 	}
 	sort.Strings(ids)
 	for _, id := range ids {
-		cfg := s.ModelProviders[id]
+		cfg := providers[id]
 		meta := provider.ApplyModelProviderConfig(provider.ModelProvider{ID: id}, cfg)
 		out = append(out, settingsModelProvider{
 			ModelProvider: meta,
 			Configured:    s.modelProviderKeyConfigured(id, cfg, meta),
+			Custom:        custom[id],
 		})
 	}
 	return out
@@ -173,7 +179,7 @@ func (s *Server) acpAgentAuthStatuses(defaults agentsettings.AgentDefaults) map[
 			out[name] = acpAuthStatusResponse{Reason: err.Error()}
 			continue
 		}
-		auth := acp.ProbeAgentAuthWithProviders(name, cfg, s.runtimeRoot(), nil, s.ModelProviders)
+		auth := acp.ProbeAgentAuthWithProviders(name, cfg, s.runtimeRoot(), nil, s.modelProviders())
 		out[name] = newACPAuthStatusResponse(auth)
 	}
 	return out
