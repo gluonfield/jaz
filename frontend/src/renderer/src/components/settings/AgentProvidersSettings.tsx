@@ -79,27 +79,49 @@ export function AgentProvidersSettings() {
         <SkeletonRows count={3} />
       ) : (
         <div className="flex flex-col gap-1.5">
-          {allProviders.map((provider) => (
-            <ProviderRow
-              key={provider.id}
-              provider={provider}
-              keyDraft={providerKeys[provider.id] ?? ''}
-              isNativeDefault={provider.implemented && provider.id === selectedProvider}
-              nativeModel={draft.native.model}
-              nativeReasoning={draft.native.reasoning_effort ?? ''}
-              modelSuggestions={nativeModelSuggestions}
-              modelsLoading={openRouterModels.isLoading}
-              disabled={save.isPending}
-              onKeyChange={(value) => setProviderKeys({ ...providerKeys, [provider.id]: value })}
-              onUseForNative={() => setNativeProvider(provider.id)}
-              onNativeModelChange={(model) =>
-                setDraft({ ...draft, native: { ...draft.native, model } })
-              }
-              onNativeReasoningChange={(reasoning_effort) =>
-                setDraft({ ...draft, native: { ...draft.native, reasoning_effort } })
-              }
-            />
-          ))}
+          {allProviders.map((provider) => {
+            const isNativeDefault = provider.implemented && provider.id === selectedProvider
+            return (
+              <ProviderRow
+                key={provider.id}
+                provider={provider}
+                keyDraft={providerKeys[provider.id] ?? ''}
+                isNativeDefault={isNativeDefault}
+                disabled={save.isPending}
+                onKeyChange={(value) => setProviderKeys({ ...providerKeys, [provider.id]: value })}
+              >
+                {!provider.implemented ? (
+                  <p className="text-pretty text-[12px] text-ink-3">
+                    Available to ACP agents set to use this provider.
+                  </p>
+                ) : isNativeDefault ? (
+                  <NativeDefaultEditor
+                    model={draft.native.model}
+                    reasoning={draft.native.reasoning_effort ?? ''}
+                    suggestions={nativeModelSuggestions}
+                    loading={openRouterModels.isLoading}
+                    disabled={save.isPending}
+                    onModelChange={(model) =>
+                      setDraft({ ...draft, native: { ...draft.native, model } })
+                    }
+                    onReasoningChange={(reasoning_effort) =>
+                      setDraft({ ...draft, native: { ...draft.native, reasoning_effort } })
+                    }
+                  />
+                ) : (
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    disabled={save.isPending}
+                    onClick={() => setNativeProvider(provider.id)}
+                    className="w-fit ring-1 ring-border ring-inset"
+                  >
+                    Use for native agent
+                  </Button>
+                )}
+              </ProviderRow>
+            )
+          })}
         </div>
       )}
     </SettingsSection>
@@ -107,35 +129,24 @@ export function AgentProvidersSettings() {
 }
 
 // One row in the providers list: a collapsed header with the brand mark, a
-// connection pill and a check, expanding to the key field (and, for the native
-// default, its model + reasoning). Mirrors the onboarding provider card so the
-// connect-a-provider gesture reads the same in both places.
+// connection pill and a check, expanding to the key field plus a body slot. The
+// slot carries the native-default model/reasoning editor (or the "use for native"
+// affordance) so this row stays purely about connecting a provider. Mirrors the
+// onboarding provider card so the connect-a-provider gesture reads the same.
 function ProviderRow({
   provider,
   keyDraft,
   isNativeDefault,
-  nativeModel,
-  nativeReasoning,
-  modelSuggestions,
-  modelsLoading,
   disabled,
   onKeyChange,
-  onUseForNative,
-  onNativeModelChange,
-  onNativeReasoningChange,
+  children,
 }: {
   provider: ProviderOption
   keyDraft: string
   isNativeDefault: boolean
-  nativeModel: string
-  nativeReasoning: string
-  modelSuggestions: ModelSuggestion[]
-  modelsLoading: boolean
   disabled: boolean
   onKeyChange: (value: string) => void
-  onUseForNative: () => void
-  onNativeModelChange: (value: string) => void
-  onNativeReasoningChange: (value: string) => void
+  children: ReactNode
 }) {
   // A provider needs a key only if it has an env var to store one into — the
   // backend omits requires_api_key when false, so a missing api_key_env (Ollama)
@@ -233,52 +244,58 @@ function ProviderRow({
                 </p>
               )}
 
-              {provider.implemented ? (
-                isNativeDefault ? (
-                  <div className="flex flex-col gap-3 rounded-[10px] bg-bg p-3">
-                    <p className="text-[11px] font-medium text-ink-3">Native agent default</p>
-                    <NativeDefaultField label="Model">
-                      <ModelCombobox
-                        value={nativeModel}
-                        suggestions={modelSuggestions}
-                        loading={modelsLoading}
-                        disabled={disabled}
-                        onChange={onNativeModelChange}
-                        aria-label="Native model"
-                        className="w-full sm:w-[230px]"
-                      />
-                    </NativeDefaultField>
-                    <NativeDefaultField label="Reasoning">
-                      <Select
-                        value={nativeReasoning}
-                        options={settingsReasoningOptions()}
-                        disabled={disabled}
-                        onChange={onNativeReasoningChange}
-                        aria-label="Native reasoning effort"
-                        className="w-full sm:w-[230px]"
-                      />
-                    </NativeDefaultField>
-                  </div>
-                ) : (
-                  <Button
-                    variant="secondary"
-                    size="md"
-                    disabled={disabled}
-                    onClick={onUseForNative}
-                    className="w-fit ring-1 ring-border ring-inset"
-                  >
-                    Use for native agent
-                  </Button>
-                )
-              ) : (
-                <p className="text-pretty text-[12px] text-ink-3">
-                  Available to ACP agents set to use this provider.
-                </p>
-              )}
+              {children}
             </div>
           </motion.div>
         ) : null}
       </AnimatePresence>
+    </div>
+  )
+}
+
+// The native agent's model + reasoning, shown only under the provider currently
+// serving as the native default.
+function NativeDefaultEditor({
+  model,
+  reasoning,
+  suggestions,
+  loading,
+  disabled,
+  onModelChange,
+  onReasoningChange,
+}: {
+  model: string
+  reasoning: string
+  suggestions: ModelSuggestion[]
+  loading: boolean
+  disabled: boolean
+  onModelChange: (value: string) => void
+  onReasoningChange: (value: string) => void
+}) {
+  return (
+    <div className="flex flex-col gap-3 rounded-[10px] bg-bg p-3">
+      <p className="text-[11px] font-medium text-ink-3">Native agent default</p>
+      <NativeDefaultField label="Model">
+        <ModelCombobox
+          value={model}
+          suggestions={suggestions}
+          loading={loading}
+          disabled={disabled}
+          onChange={onModelChange}
+          aria-label="Native model"
+          className="w-full sm:w-[230px]"
+        />
+      </NativeDefaultField>
+      <NativeDefaultField label="Reasoning">
+        <Select
+          value={reasoning}
+          options={settingsReasoningOptions()}
+          disabled={disabled}
+          onChange={onReasoningChange}
+          aria-label="Native reasoning effort"
+          className="w-full sm:w-[230px]"
+        />
+      </NativeDefaultField>
     </div>
   )
 }
