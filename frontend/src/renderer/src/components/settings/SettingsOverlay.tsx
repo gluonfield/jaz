@@ -48,7 +48,7 @@ const NAV: NavItem[] = [
   { id: 'devices', label: 'Devices', icon: MonitorSmartphone },
   { id: 'keyboard', label: 'Keyboard shortcuts', icon: Keyboard },
   { id: 'mcp', label: 'MCP servers', icon: Plug },
-  { id: 'providers', label: 'Providers', icon: Boxes },
+  { id: 'providers', label: 'Model Providers', icon: Boxes },
   { id: 'agents', label: 'Agents (ACP)', icon: Bot },
   { id: 'archived', label: 'Archived threads', icon: ArchiveRestore },
 ]

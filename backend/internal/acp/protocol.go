@@ -9,8 +9,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
@@ -139,7 +137,7 @@ func autoApprovedPermissionOption(job *Job, req acpschema.RequestPermissionReque
 	if len(codexUserInputQuestions(req)) > 0 {
 		return ""
 	}
-	if optionID := planExitPermissionOptionForAgent(job.ACPAgent, req); optionID != "" {
+	if optionID := planExitPermissionOption(job, req); optionID != "" {
 		return optionID
 	}
 	if CanonicalAgentName(job.ACPAgent) == AgentGrok {
@@ -314,30 +312,7 @@ func appendACPText(existing, chunk string) string {
 	if existing == "" {
 		return chunk
 	}
-	if startsOrEndsWhitespace(existing, chunk) || !looksLikeMessageBoundary(existing, chunk) {
-		return existing + chunk
-	}
-	return existing + "\n\n" + chunk
-}
-
-func startsOrEndsWhitespace(existing, chunk string) bool {
-	last, _ := utf8.DecodeLastRuneInString(existing)
-	first, _ := utf8.DecodeRuneInString(chunk)
-	return unicode.IsSpace(last) || unicode.IsSpace(first)
-}
-
-func looksLikeMessageBoundary(existing, chunk string) bool {
-	last, _ := utf8.DecodeLastRuneInString(existing)
-	first, _ := utf8.DecodeRuneInString(chunk)
-	if !unicode.IsUpper(first) && first != '`' {
-		return false
-	}
-	switch last {
-	case '.', '!', '?', ':', '`', ')':
-		return true
-	default:
-		return false
-	}
+	return existing + chunk
 }
 
 func sortedToolCalls(in map[string]ToolCallSnapshot) []ToolCallSnapshot {

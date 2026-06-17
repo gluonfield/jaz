@@ -124,7 +124,6 @@ function modeStateKnown(modes?: ACPModeState): boolean {
   return Boolean(
     modes?.plan_mode_id ||
       modes?.current_mode_id ||
-      modes?.execution_mode_id ||
       modes?.available_modes?.length,
   )
 }

@@ -107,7 +107,7 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.Modes.PlanModeID != "plan" || status.Modes.ExecutionModeID != "full-access" {
+	if status.Modes.PlanModeID != "plan" || status.Modes.CurrentModeID != "full-access" {
 		t.Fatalf("unexpected modes %#v", status.Modes)
 	}
 	messages, err := store.LoadMessages(spawned.SessionID)
@@ -816,7 +816,7 @@ func TestManagerUsesGrokSetModelAndFallbackModes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.Modes.PlanModeID != "plan" || status.Modes.ExecutionModeID != "always-approve" || status.Modes.CurrentModeID != "always-approve" {
+	if status.Modes.PlanModeID != "plan" || status.Modes.CurrentModeID != "always-approve" {
 		t.Fatalf("unexpected grok modes %#v", status.Modes)
 	}
 	session, err := store.LoadSession(spawned.SessionID)

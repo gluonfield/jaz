@@ -134,9 +134,6 @@ func (s *Store) DeleteMCPServer(id string) error {
 	if _, err := tx.ExecContext(context.Background(), `DELETE FROM integration_oauth_tokens WHERE connection_id = ?`, mcpconfig.OAuthConnectionID(id)); err != nil {
 		return err
 	}
-	if err := q.DeleteMCPOAuthToken(context.Background(), id); err != nil {
-		return err
-	}
 	return tx.Commit()
 }
 

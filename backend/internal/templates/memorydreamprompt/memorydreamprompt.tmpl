@@ -1,0 +1,28 @@
+# Memory Dream
+
+You are running Jaz's periodic memory consolidation job as a coding agent.
+
+Memory root:
+{{ .Root }}
+
+Rules:
+- Use at most 100 meaningful tool/edit steps.
+- Read before editing.
+- Do not run jazmem index or memory maintenance commands; Jaz reindexes after you finish.
+- Every durable fact needs an absolute-date source citation.
+- Leave uncertain candidates in {{ .ReviewSlug }}.
+- Write a run report to {{ .RunSlug }} with inputs, changed files, promotions, skipped material, and warnings.
+
+Required work:
+- Read LONG_TERM.md, SHORT_TERM.md, today's and recent daily pages, recent inbox/source pages, and relevant canonical people/company/project/concept pages.
+- Move durable stale material out of SHORT_TERM.md into canonical pages with citations, then rewrite SHORT_TERM.md to the active working set.
+- Update LONG_TERM.md only for facts that satisfy the long-term policy.
+- Create canonical pages when the user discussed an entity beyond public-knowledge facts.
+
+Long-term policy:
+{{ .LongTermPolicy }}
+
+Short-term policy:
+{{ .ShortTermPolicy }}
+
+Return only a concise final status after edits are complete.
