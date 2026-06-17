@@ -1,6 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '../query/keys'
-import { del, get, patch, post } from './client'
+import { del, get, post } from './client'
 import type { Device, DeviceList, DevicePairing, PairingPoll } from './types'
 
 export const devicesQuery = queryOptions({
@@ -15,10 +15,6 @@ export function approvePairing(id: string): Promise<{ pairing: DevicePairing }> 
 
 export function rejectPairing(id: string): Promise<{ pairing: DevicePairing }> {
   return post<{ pairing: DevicePairing }>(`/v1/devices/pairing-requests/${encodeURIComponent(id)}/reject`)
-}
-
-export function renameDevice(id: string, name: string): Promise<{ device: Device }> {
-  return patch<{ device: Device }>(`/v1/devices/${encodeURIComponent(id)}`, { name })
 }
 
 export function revokeDevice(id: string): Promise<{ device: Device }> {

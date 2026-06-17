@@ -646,25 +646,6 @@ func (q *Queries) RejectPairingRequest(ctx context.Context, arg RejectPairingReq
 	return result.RowsAffected()
 }
 
-const renameDevice = `-- name: RenameDevice :execrows
-UPDATE devices
-SET name = ?1
-WHERE id = ?2
-`
-
-type RenameDeviceParams struct {
-	Name string `json:"name"`
-	ID   string `json:"id"`
-}
-
-func (q *Queries) RenameDevice(ctx context.Context, arg RenameDeviceParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, renameDevice, arg.Name, arg.ID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
 const revokeDevice = `-- name: RevokeDevice :execrows
 UPDATE devices
 SET
