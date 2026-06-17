@@ -333,12 +333,9 @@ function HorizonSaveControls({
 }) {
   const value = draft ?? horizon.content
   const dirty = draft !== undefined && draft !== horizon.content
-  const over = value.length > horizon.max_chars
   return (
     <div className="flex items-center gap-3 pb-1">
-      <span className={`text-[12px] ${over ? 'font-medium text-danger' : 'text-ink-3'}`}>
-        {value.length}/{horizon.max_chars}
-      </span>
+      <span className="text-[12px] text-ink-3">{value.length} chars</span>
       {dirty || pending ? (
         <Button variant="primary" size="sm" onClick={() => onSave(value)} disabled={pending}>
           {pending ? 'Saving…' : 'Save'}

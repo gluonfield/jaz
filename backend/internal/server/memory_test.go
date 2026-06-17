@@ -64,7 +64,7 @@ func TestMemoryStatusAndToggle(t *testing.T) {
 	if status.DreamAgent != "" {
 		t.Fatalf("unexpected default dream agent %q", status.DreamAgent)
 	}
-	if len(status.Horizons) != 2 || status.Horizons[0].Name != jazmem.LongTermFile || status.Horizons[0].MaxChars != jazmem.LongTermMaxChars {
+	if len(status.Horizons) != 2 || status.Horizons[0].Name != jazmem.LongTermFile || status.Horizons[0].Chars == 0 {
 		t.Fatalf("unexpected horizons %#v", status.Horizons)
 	}
 	if len(status.Tasks) != 6 {
