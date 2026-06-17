@@ -2,7 +2,6 @@ package sqlite
 
 import (
 	"context"
-	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
@@ -399,11 +398,11 @@ func TestAddUsageStoresCachedTokensAndMirrors(t *testing.T) {
 		t.Fatalf("context = %d / %d, want 23 / 400000", loaded.Usage.ContextTokens, loaded.Usage.ContextWindowTokens)
 	}
 
-	legacy, err := jsonstore.New(store.RootDir())
+	mirror, err := jsonstore.New(store.RootDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	mirrored, err := legacy.LoadSession(session.ID)
+	mirrored, err := mirror.LoadSession(session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -430,23 +429,6 @@ func TestAddUsageStoresCachedTokensAndMirrors(t *testing.T) {
 	}
 	if len(events) != 2 || events[0].Source != storage.UsageEventSourceTurn || events[1].Source != storage.UsageEventSourceTurn {
 		t.Fatalf("usage event sources = %#v, want turn events", events)
-	}
-}
-
-func TestMigrateAddsUsageColumnsToLegacyThreads(t *testing.T) {
-	root := t.TempDir()
-	if err := makeLegacyDB(root); err != nil {
-		t.Fatal(err)
-	}
-
-	store, err := New(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-
-	if _, err := store.CreateSession(storage.CreateSession{Slug: "usage"}); err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -694,11 +676,11 @@ func TestToolCallAndResultPersistAsOneAssistantRecord(t *testing.T) {
 		t.Fatalf("unexpected replayed tool result %#v", replayed[2])
 	}
 
-	legacy, err := jsonstore.New(store.RootDir())
+	mirror, err := jsonstore.New(store.RootDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	mirrored, err := legacy.LoadMessages(session.ID)
+	mirrored, err := mirror.LoadMessages(session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -803,70 +785,4 @@ func TestAppendMessagesPreservesExistingTimestamps(t *testing.T) {
 	if !records[1].CreatedAt.After(records[0].CreatedAt) {
 		t.Fatalf("second timestamp %s should be after first %s", records[1].CreatedAt, records[0].CreatedAt)
 	}
-}
-
-func TestImportLegacyJSONCopiesMissingSessions(t *testing.T) {
-	root := t.TempDir()
-	legacy, err := jsonstore.New(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	first, err := legacy.CreateSession(storage.CreateSession{Slug: "first"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := legacy.SaveMessages(first.ID, []provider.Message{provider.UserMessage("first")}); err != nil {
-		t.Fatal(err)
-	}
-
-	store, err := New(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	store.Close()
-
-	second, err := legacy.CreateSession(storage.CreateSession{Slug: "second"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := legacy.SaveMessages(second.ID, []provider.Message{provider.UserMessage("second")}); err != nil {
-		t.Fatal(err)
-	}
-
-	store, err = New(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	loaded, err := store.LoadMessages(second.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(loaded) != 1 || provider.MessageContent(loaded[0]) != "second" {
-		t.Fatalf("missing legacy session was not imported: %#v", loaded)
-	}
-}
-
-func makeLegacyDB(root string) error {
-	db, err := sql.Open("sqlite", filepath.Join(root, "jaz.sqlite"))
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-	_, err = db.Exec(`CREATE TABLE threads (
-  id TEXT PRIMARY KEY,
-  slug TEXT NOT NULL UNIQUE,
-  title TEXT,
-  parent_id TEXT,
-  status TEXT NOT NULL DEFAULT 'idle',
-  runtime TEXT NOT NULL DEFAULT 'acp',
-  acp_agent TEXT,
-  acp_session_id TEXT,
-  model_provider TEXT,
-  model TEXT,
-  reasoning_effort TEXT,
-  created_at_ms INTEGER NOT NULL,
-  updated_at_ms INTEGER NOT NULL
-)`)
-	return err
 }

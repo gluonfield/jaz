@@ -3,6 +3,7 @@ import { CheckCircle2, ChevronDown, KeyRound, LoaderCircle, LogIn, Terminal } fr
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { AuthLoginStatus } from '@/components/acp/AuthLoginStatus'
+import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsSection, useAgentSettingsDraft } from '@/components/settings/agentSettingsShell'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -205,7 +206,7 @@ function ACPAgentRow({
     })
 
   return (
-    <div className="overflow-hidden rounded-card bg-surface">
+    <SettingsCard className="overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-3">
         <span className="min-w-0 truncate text-[13px] font-medium text-ink" title={agent}>
           {agentLabel(agent)}
@@ -370,7 +371,7 @@ function ACPAgentRow({
           ) : null}
         </>
       ) : null}
-    </div>
+    </SettingsCard>
   )
 }
 
@@ -414,7 +415,7 @@ function AgentAuthPanel({
     const viaKey = status.auth_kind === 'api_key'
     const noKey = status.auth_kind === 'none'
     return (
-      <div className="flex items-center justify-between gap-3 rounded-[10px] bg-bg px-3 py-2.5">
+      <div className="flex items-center justify-between gap-3 rounded-control bg-bg px-3 py-2.5">
         <span className="flex min-w-0 items-center gap-2 text-[13px] text-ink">
           <CheckCircle2 size={16} className="shrink-0 text-primary" />
           {noKey

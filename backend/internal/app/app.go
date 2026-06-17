@@ -21,6 +21,7 @@ import (
 	"github.com/wins/jaz/backend/internal/provider"
 	mockprovider "github.com/wins/jaz/backend/internal/provider/mock"
 	openaiprovider "github.com/wins/jaz/backend/internal/provider/openai"
+	"github.com/wins/jaz/backend/internal/providerstore"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
@@ -160,12 +161,21 @@ func NewACPAgentConfigSource(store *sqlitestore.Store, catalog acp.AgentCatalog)
 	return agentsettings.NewACPConfigSource(store, catalog)
 }
 
-func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, prompts *coordinator.Builder, catalog acp.AgentCatalog, source acp.AgentConfigSource, mcpServers mcpconfig.ServerReader) acp.Config {
+// NewProviderSource builds the live, thread-safe registry of effective model
+// providers (application.yaml + native keys base, overlaid with DB-backed
+// customs). It's the single instance the server, ACP manager, and runtime read
+// through, so a runtime add/edit/delete propagates without a restart.
+func NewProviderSource(cfg Config, store *sqlitestore.Store) (provider.Source, error) {
+	return provider.NewSource(cfg.ModelProviders, providerstore.Loader{Store: store})
+}
+
+func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, prompts *coordinator.Builder, catalog acp.AgentCatalog, source acp.AgentConfigSource, mcpServers mcpconfig.ServerReader, providerSource provider.Source) acp.Config {
 	cfg.ACP.Agents = catalog
 	cfg.ACP.AgentSource = source
 	cfg.ACP.Root = store.RootDir()
 	cfg.ACP.Workspace = string(workspace)
 	cfg.ACP.Providers = cfg.ModelProviders
+	cfg.ACP.ProviderSource = providerSource
 	cfg.ACP.SystemPrompt = prompts
 	cfg.ACP.MCPStore = mcpServers
 	cfg.ACP.MCPTokens = store

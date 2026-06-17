@@ -2,7 +2,6 @@ package server
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -14,11 +13,6 @@ import (
 	"github.com/wins/jaz/backend/internal/onboardingstate"
 	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
-)
-
-const (
-	legacyOnboardingSettingsNamespace = "onboarding"
-	legacyOnboardingSettingsKey       = "state"
 )
 
 type onboardingResponse struct {
@@ -104,7 +98,7 @@ func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) onboardingStatus(store storage.SettingsStorage) (onboardingResponse, error) {
-	state, err := s.loadOnboardingState(store)
+	state, _, err := onboardingstate.Load(s.onboardingStatePath())
 	if err != nil {
 		return onboardingResponse{}, err
 	}
@@ -117,37 +111,6 @@ func (s *Server) onboardingStatus(store storage.SettingsStorage) (onboardingResp
 		ACP:       s.probeACPAgents(defaults),
 		Settings:  s.agentSettingsResponse(defaults),
 	}, nil
-}
-
-func (s *Server) loadOnboardingState(store storage.SettingsStorage) (onboardingstate.State, error) {
-	path := s.onboardingStatePath()
-	state, found, err := onboardingstate.Load(path)
-	if err != nil || found {
-		return state, err
-	}
-	state, err = loadLegacyOnboardingState(store)
-	if err != nil {
-		return onboardingstate.State{}, err
-	}
-	if state.Completed {
-		return state, onboardingstate.Save(path, state)
-	}
-	return state, nil
-}
-
-func loadLegacyOnboardingState(store storage.SettingsStorage) (onboardingstate.State, error) {
-	setting, err := store.LoadSetting(legacyOnboardingSettingsNamespace, legacyOnboardingSettingsKey)
-	if err != nil {
-		if errors.Is(err, storage.ErrSettingNotFound) {
-			return onboardingstate.State{}, nil
-		}
-		return onboardingstate.State{}, err
-	}
-	var state onboardingstate.State
-	if err := json.Unmarshal(setting.Value, &state); err != nil {
-		return onboardingstate.State{}, err
-	}
-	return state, nil
 }
 
 func (s *Server) onboardingStatePath() string {
@@ -168,13 +131,13 @@ func (s *Server) probeACPAgents(defaults agentsettings.AgentDefaults) []onboardi
 			continue
 		}
 		adapterInstalled := acpCommandInstalled(cfg)
-		auth := acp.ProbeAgentAuthWithProviders(name, cfg, s.runtimeRoot(), nil, s.ModelProviders)
+		auth := acp.ProbeAgentAuthWithProviders(name, cfg, s.runtimeRoot(), nil, s.modelProviders())
 		if strings.TrimSpace(cfg.URL) != "" {
 			auth.Authenticated = true
 			auth.Reason = ""
 		}
 		appName, appInstalled := agentAppInstall(name)
-		readiness := acp.ProbeReadinessWithProviders(name, cfg, s.runtimeRoot(), nil, s.ModelProviders)
+		readiness := acp.ProbeReadinessWithProviders(name, cfg, s.runtimeRoot(), nil, s.modelProviders())
 		installed := adapterInstalled || auth.LoginCommandAvailable
 		reason := ""
 		if !installed {

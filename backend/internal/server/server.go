@@ -65,9 +65,11 @@ type Server struct {
 	STT                  voice.STT
 	TTS                  voice.TTS
 	ModelProviderRuntime provider.ReloadableProvider
-	ModelProviders       map[string]provider.ModelProviderConfig
-	AgentCatalog         acp.AgentCatalog
-	AuthKey              string
+	// Providers is the live registry of effective model providers (catalog +
+	// application.yaml + DB customs). Read it through modelProviders().
+	Providers    provider.Source
+	AgentCatalog acp.AgentCatalog
+	AuthKey      string
 	// Prompts derives the system prompt fresh per turn from disk, so skill
 	// and prompt-file edits apply without a restart.
 	Prompts *coordinator.Builder
@@ -715,9 +717,6 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	switch session.Runtime {
 	case storage.RuntimeACP:
 		s.streamACPSession(w, flusher, r.Context(), session, req.Message, attachments, req.PlanRequested)
-	case "":
-		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: "legacy runtime is no longer supported; start a new ACP session"})
-		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
 	default:
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: fmt.Sprintf("unknown session runtime %q", session.Runtime)})
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})

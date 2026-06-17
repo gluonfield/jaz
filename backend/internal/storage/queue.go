@@ -12,28 +12,6 @@ type QueuedMessage struct {
 	PlanRequested bool     `json:"plan_requested,omitempty"`
 }
 
-func (m *QueuedMessage) UnmarshalJSON(data []byte) error {
-	var text string
-	if err := json.Unmarshal(data, &text); err == nil {
-		m.Text = text
-		m.AttachmentIDs = nil
-		m.PlanRequested = false
-		return nil
-	}
-	var raw struct {
-		Text          string   `json:"text"`
-		AttachmentIDs []string `json:"attachment_ids"`
-		PlanRequested bool     `json:"plan_requested"`
-	}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	m.Text = raw.Text
-	m.AttachmentIDs = raw.AttachmentIDs
-	m.PlanRequested = raw.PlanRequested
-	return nil
-}
-
 func NormalizeQueuedMessages(messages []QueuedMessage) []QueuedMessage {
 	if len(messages) == 0 {
 		return nil

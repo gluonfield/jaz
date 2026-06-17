@@ -25,7 +25,7 @@ func TestSessionQueueActionReplacesQueuedMessages(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"messages":[" one ","","two"]}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"messages":[{"text":" one "},{"text":""},{"text":"two"}]}`))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 
@@ -206,7 +206,7 @@ func TestSessionQueueActionDoesNotWaitForRunningACPTurn(t *testing.T) {
 		State: acp.StateRunning,
 	}}}
 
-	queueReq := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"messages":["queued while running"]}`))
+	queueReq := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"messages":[{"text":"queued while running"}]}`))
 	queueReq.Header.Set("Content-Type", "application/json")
 	queueRes := httptest.NewRecorder()
 	queueDone := make(chan struct{})
