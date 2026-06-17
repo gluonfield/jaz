@@ -48,7 +48,7 @@ func TestBoardsAPIAssignmentFlow(t *testing.T) {
 	srv, store, service := newWidgetTestServer(t)
 	loop := saveTestLoop(t, store, "Inbox")
 
-	// No bootstrap: a fresh install has zero boards until onboarding creates one.
+	// Fresh installs start with a Personal board.
 	res := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/boards", nil))
 	var listed struct {
@@ -57,8 +57,8 @@ func TestBoardsAPIAssignmentFlow(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &listed); err != nil {
 		t.Fatal(err)
 	}
-	if len(listed.Boards) != 0 {
-		t.Fatalf("expected no boards on fresh install, got %#v", listed.Boards)
+	if len(listed.Boards) != 1 || listed.Boards[0].Name != "Personal" || !listed.Boards[0].IsDefault {
+		t.Fatalf("fresh boards = %#v", listed.Boards)
 	}
 
 	create := httptest.NewRequest(http.MethodPost, "/v1/boards", strings.NewReader(`{"name":"Desk"}`))
