@@ -2,7 +2,6 @@ package widgets
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -14,10 +13,6 @@ const PublishMCPToolName = "publish_widget"
 
 type MCPPublisher interface {
 	PublishForSession(sessionID string, input PublishInput) (Widget, []string, error)
-}
-
-type MCPTools struct {
-	Publisher MCPPublisher
 }
 
 type MCPPublishInput struct {
@@ -34,31 +29,27 @@ type MCPPublishOutput struct {
 	Warnings []string `json:"warnings,omitempty"`
 }
 
-func NewMCPTools(publisher MCPPublisher) *MCPTools {
-	return &MCPTools{Publisher: publisher}
-}
-
-func (t *MCPTools) AddTo(server *mcp.Server) {
-	if t == nil || t.Publisher == nil {
-		return
-	}
+func AddMCPTools(server *mcp.Server, publisher MCPPublisher) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        PublishMCPToolName,
 		Title:       "Publish board widget",
 		Description: "Publishes this loop run's Jaz board widget. Write the HTML fragment to widget/index.html first, then call this; alternatively pass the fragment inline via html. Returns validation errors and non-fatal lint warnings so you can fix and retry within the run.",
 		InputSchema: publishInputSchema(),
-	}, t.Publish)
+	}, publishMCP(publisher))
 }
 
-func (t *MCPTools) Publish(_ context.Context, req *mcp.CallToolRequest, input MCPPublishInput) (*mcp.CallToolResult, MCPPublishOutput, error) {
-	if t == nil || t.Publisher == nil {
-		return nil, MCPPublishOutput{}, errors.New("publish_widget is not configured")
+func publishMCP(publisher MCPPublisher) func(context.Context, *mcp.CallToolRequest, MCPPublishInput) (*mcp.CallToolResult, MCPPublishOutput, error) {
+	return func(_ context.Context, req *mcp.CallToolRequest, input MCPPublishInput) (*mcp.CallToolResult, MCPPublishOutput, error) {
+		return publish(publisher, req, input)
 	}
+}
+
+func publish(publisher MCPPublisher, req *mcp.CallToolRequest, input MCPPublishInput) (*mcp.CallToolResult, MCPPublishOutput, error) {
 	sessionID := sessionIDFromRequest(req)
 	if sessionID == "" {
 		return nil, MCPPublishOutput{}, fmt.Errorf("publish_widget requires %s", mcpsession.HeaderName)
 	}
-	widget, warnings, err := t.Publisher.PublishForSession(sessionID, PublishInput{
+	widget, warnings, err := publisher.PublishForSession(sessionID, PublishInput{
 		Title:    input.Title,
 		SizeHint: input.SizeHint,
 		HTML:     input.HTML,
@@ -84,7 +75,7 @@ func (t *MCPTools) Publish(_ context.Context, req *mcp.CallToolRequest, input MC
 }
 
 func sessionIDFromRequest(req *mcp.CallToolRequest) string {
-	if req == nil || req.Extra == nil {
+	if req.Extra == nil {
 		return ""
 	}
 	return strings.TrimSpace(req.Extra.Header.Get(mcpsession.HeaderName))

@@ -226,18 +226,10 @@ func startServer(
 		loops.WithMemoryPaths(loopMemoryPaths),
 		// Board assignment is the widget enablement: no boards, no section.
 		loops.WithPromptExtra(widgetService.LoopPromptExtra),
-		loops.WithRunFinished(func(loop loops.Loop, run loops.Run) {
-			if run.Status == loops.RunStatusOK {
-				widgetService.MaybeAutoPublish(loop, run.ID)
-			}
-		}),
 	)
 	jazTools.SetLoops(loopService)
 	handler.Loops = loopService
 	handler.Widgets = widgetService
-	// Heal boards from the era when drags could drop tiles onto each other:
-	// buried tiles get moved to free cells so they're visible again.
-	widgetService.NormalizeBoardLayouts()
 	manager.PublishWidget = func(req acp.WidgetPublishRequest) (acp.WidgetPublishResult, error) {
 		widget, warnings, err := widgetPublisher.PublishForSession(req.SessionID, widgets.PublishInput{
 			Title:    req.Title,

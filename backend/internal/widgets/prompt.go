@@ -3,7 +3,6 @@ package widgets
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/loops"
@@ -13,11 +12,6 @@ import (
 func PromptSection(loop loops.Loop, widget *Widget) string {
 	data := widgetprompt.Data{
 		FilePath: WidgetFilePath(loop),
-	}
-	if data.FilePath != "" {
-		if info, err := os.Stat(data.FilePath); err == nil && info.Mode().IsRegular() {
-			data.FileExists = true
-		}
 	}
 	if widget != nil {
 		data.Published = true

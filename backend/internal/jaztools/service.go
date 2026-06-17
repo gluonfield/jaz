@@ -13,7 +13,7 @@ import (
 	"github.com/wins/jaz/backend/internal/memoryservice"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/sessionevents"
-	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
+	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/visualize"
 	"github.com/wins/jaz/backend/internal/widgets"
 )
@@ -41,26 +41,45 @@ func ServerConfig(url string) mcpconfig.Server {
 type Service struct {
 	Memory *memoryservice.Service
 
-	loopTools      *loops.MCPTools
-	visualizeTools *visualize.MCPTools
-	widgetTools    *widgets.MCPTools
+	loopTools       *loops.MCPTools
+	visualizeTools  *visualize.MCPTools
+	widgetPublisher widgets.MCPPublisher
+	sessions        sessionStore
 
 	url string
 
 	mu          sync.Mutex
-	memoryTools bool
-	serverOnce  sync.Once
-	server      *mcp.Server
+	thread      serverSlot
+	widget      serverSlot
 	handlerOnce sync.Once
 	handler     http.Handler
 }
 
-func New(memory *memoryservice.Service, urls serverconfig.URLs, store *sqlitestore.Store, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher) *Service {
+type toolSurface int
+
+const (
+	threadSurface toolSurface = iota
+	widgetSurface
+)
+
+type serverSlot struct {
+	once        sync.Once
+	server      *mcp.Server
+	memoryTools bool
+}
+
+type sessionStore interface {
+	visualize.SessionEventAppender
+	LoadSession(string) (storage.Session, error)
+}
+
+func New(memory *memoryservice.Service, urls serverconfig.URLs, store sessionStore, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher) *Service {
 	return &Service{
-		Memory:         memory,
-		visualizeTools: visualize.NewMCPTools(store, events),
-		widgetTools:    widgets.NewMCPTools(widgetPublisher),
-		url:            strings.TrimSpace(urls.JazToolsMCP),
+		Memory:          memory,
+		visualizeTools:  visualize.NewMCPTools(store, events),
+		widgetPublisher: widgetPublisher,
+		sessions:        store,
+		url:             strings.TrimSpace(urls.JazToolsMCP),
 	}
 }
 
@@ -73,21 +92,42 @@ func (s *Service) SetLoops(service loops.MCPService) {
 }
 
 func (s *Service) Server() *mcp.Server {
-	s.serverOnce.Do(func() {
-		server := mcp.NewServer(&mcp.Implementation{
-			Name:    ServerName,
-			Title:   "Jaz Tools",
-			Version: Version,
-		}, nil)
-		s.loopTools.AddTo(server)
-		s.visualizeTools.AddTo(server)
-		s.widgetTools.AddTo(server)
-		s.mu.Lock()
-		s.server = server
-		s.syncMemoryTools()
-		s.mu.Unlock()
+	return s.server(threadSurface)
+}
+
+func (s *Service) server(surface toolSurface) *mcp.Server {
+	slot := s.slot(surface)
+	slot.once.Do(func() {
+		slot.server = s.newServer(surface)
+		s.Sync()
 	})
-	return s.server
+	return slot.server
+}
+
+func (s *Service) slot(surface toolSurface) *serverSlot {
+	switch surface {
+	case widgetSurface:
+		return &s.widget
+	default:
+		return &s.thread
+	}
+}
+
+func (s *Service) newServer(surface toolSurface) *mcp.Server {
+	server := mcp.NewServer(&mcp.Implementation{
+		Name:    ServerName,
+		Title:   "Jaz Tools",
+		Version: Version,
+	}, nil)
+	s.loopTools.AddTo(server)
+	s.visualizeTools.AddReadMeTo(server)
+	switch surface {
+	case widgetSurface:
+		widgets.AddMCPTools(server, s.widgetPublisher)
+	default:
+		s.visualizeTools.AddShowWidgetTo(server)
+	}
+	return server
 }
 
 func (s *Service) Sync() {
@@ -98,8 +138,8 @@ func (s *Service) Sync() {
 
 func (s *Service) Handler() http.Handler {
 	s.handlerOnce.Do(func() {
-		s.handler = mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
-			return s.Server()
+		s.handler = mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+			return s.server(s.surface(r))
 		}, &mcp.StreamableHTTPOptions{
 			JSONResponse:   true,
 			SessionTimeout: 30 * time.Minute,
@@ -108,19 +148,40 @@ func (s *Service) Handler() http.Handler {
 	return s.handler
 }
 
+func (s *Service) surface(r *http.Request) toolSurface {
+	if s.widgetSession(r) {
+		return widgetSurface
+	}
+	return threadSurface
+}
+
+func (s *Service) widgetSession(r *http.Request) bool {
+	sessionID := strings.TrimSpace(r.Header.Get(mcpsession.HeaderName))
+	if sessionID == "" {
+		return false
+	}
+	session, err := s.sessions.LoadSession(sessionID)
+	return err == nil && session.SourceType == storage.SourceLoopRun
+}
+
 func (s *Service) syncMemoryTools() {
-	if s.server == nil {
+	s.syncMemoryToolsFor(&s.thread)
+	s.syncMemoryToolsFor(&s.widget)
+}
+
+func (s *Service) syncMemoryToolsFor(slot *serverSlot) {
+	if slot.server == nil {
 		return
 	}
 	if s.Memory.MCPToolsEnabled() {
-		if !s.memoryTools {
-			s.Memory.AddMCPTools(s.server)
-			s.memoryTools = true
+		if !slot.memoryTools {
+			s.Memory.AddMCPTools(slot.server)
+			slot.memoryTools = true
 		}
 		return
 	}
-	if s.memoryTools {
-		s.Memory.RemoveMCPTools(s.server)
-		s.memoryTools = false
+	if slot.memoryTools {
+		s.Memory.RemoveMCPTools(slot.server)
+		slot.memoryTools = false
 	}
 }

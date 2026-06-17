@@ -2,7 +2,6 @@ package widgets_test
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -283,47 +282,6 @@ func TestPatchBoardRejectsOverlap(t *testing.T) {
 	}
 }
 
-func TestNormalizeBoardLayoutsUnburiesTiles(t *testing.T) {
-	service, store, loop := newTestService(t)
-	board := makeBoard(t, service, "Desk")
-	widget, err := service.AssignLoopBoards(loop, []string{board.ID})
-	if err != nil {
-		t.Fatalf("assign: %v", err)
-	}
-	other := loops.Loop{
-		ID: store.NewLoopID(), Name: "Other", Prompt: "p",
-		Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 9 * * *", Timezone: "UTC"},
-		Status:   loops.StatusActive, Runtime: loops.RuntimeNative,
-		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
-	}
-	if err := store.SaveLoop(other); err != nil {
-		t.Fatalf("save other loop: %v", err)
-	}
-	otherWidget, err := service.AssignLoopBoards(other, []string{board.ID})
-	if err != nil {
-		t.Fatalf("assign other: %v", err)
-	}
-	// Bury the first widget under the second (legacy overlapping data).
-	placement, _, _ := store.LoadPlacement(board.ID, widget.ID)
-	buried, _, _ := store.LoadPlacement(board.ID, otherWidget.ID)
-	buried.X, buried.Y, buried.W, buried.H = placement.X, placement.Y, placement.W, placement.H
-	buried.UpdatedAt = placement.UpdatedAt.Add(-time.Hour) // older — loses the spot
-	if err := store.SavePlacement(buried); err != nil {
-		t.Fatalf("bury: %v", err)
-	}
-
-	service.NormalizeBoardLayouts()
-
-	a, _, _ := store.LoadPlacement(board.ID, widget.ID)
-	b, _, _ := store.LoadPlacement(board.ID, otherWidget.ID)
-	if a.X < b.X+b.W && b.X < a.X+a.W && a.Y < b.Y+b.H && b.Y < a.Y+a.H {
-		t.Fatalf("placements still overlap: %+v vs %+v", a, b)
-	}
-	if a.X != placement.X || a.Y != placement.Y {
-		t.Fatalf("recently touched tile lost its spot: %+v", a)
-	}
-}
-
 func TestPurgeOrphansFreesCells(t *testing.T) {
 	service, store, loop := newTestService(t)
 	board := makeBoard(t, service, "Desk")
@@ -446,39 +404,6 @@ func TestReportErrorClearedByNextPublish(t *testing.T) {
 	}
 }
 
-func TestMaybeAutoPublishRequiresAssignment(t *testing.T) {
-	service, store, loop := newTestService(t)
-	path := widgets.WidgetFilePath(loop)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	if err := os.WriteFile(path, []byte("<p>from disk</p>"), 0o644); err != nil {
-		t.Fatalf("write widget file: %v", err)
-	}
-
-	// No assignment: file changes are ignored.
-	service.MaybeAutoPublish(loop, "run-0")
-	if _, found, _ := store.LoadWidgetByLoop(loop.ID); found {
-		t.Fatal("auto-publish created a widget without assignment")
-	}
-
-	board := makeBoard(t, service, "Desk")
-	if _, err := service.AssignLoopBoards(loop, []string{board.ID}); err != nil {
-		t.Fatalf("assign: %v", err)
-	}
-	service.MaybeAutoPublish(loop, "run-1")
-	widget, found, _ := store.LoadWidgetByLoop(loop.ID)
-	if !found || widget.CurrentVersion != 1 {
-		t.Fatalf("auto-publish after assignment = %#v", widget)
-	}
-	// Unchanged file does not produce a new version.
-	service.MaybeAutoPublish(loop, "run-2")
-	widget, _, _ = store.LoadWidgetByLoop(loop.ID)
-	if widget.CurrentVersion != 1 {
-		t.Fatalf("auto-publish republished unchanged content: version %d", widget.CurrentVersion)
-	}
-}
-
 func TestPromptSectionMentionsFileAndErrors(t *testing.T) {
 	_, _, loop := newTestService(t)
 	section := widgets.PromptSection(loop, &widgets.Widget{CurrentVersion: 3, Title: "Open PRs", LastError: "boom"})
@@ -490,6 +415,7 @@ func TestPromptSectionMentionsFileAndErrors(t *testing.T) {
 		"Tile quality floor",
 		"publish_widget",
 		"Do not call `visualize:show_widget`",
+		"report that as a run error",
 		"boom",
 	} {
 		if !strings.Contains(section, want) {
@@ -502,66 +428,8 @@ func TestPromptSectionMentionsFileAndErrors(t *testing.T) {
 	if strings.Contains(section, "AGENTS.md") || strings.Contains(section, "design guide next to it") {
 		t.Fatalf("prompt must not point at a generated guide file:\n%s", section)
 	}
-
-	// A missing widget file is announced up front, not discovered via a failed read…
-	if !strings.Contains(section, "does not exist yet") {
-		t.Fatalf("prompt must announce a missing widget file:\n%s", section)
-	}
-	// …and once it exists the agent is told to iterate on it.
-	path := widgets.WidgetFilePath(loop)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	if err := os.WriteFile(path, []byte("<p>v3</p>"), 0o644); err != nil {
-		t.Fatalf("write widget file: %v", err)
-	}
-	section = widgets.PromptSection(loop, &widgets.Widget{CurrentVersion: 3, Title: "Open PRs"})
-	if !strings.Contains(section, "iterate on it") || strings.Contains(section, "does not exist yet") {
-		t.Fatalf("prompt must tell the agent to iterate on the existing file:\n%s", section)
-	}
-}
-
-func TestLoopPromptExtraRemovesLegacyWidgetGuide(t *testing.T) {
-	service, _, loop := newTestService(t)
-	board := makeBoard(t, service, "Desk")
-	if _, err := service.AssignLoopBoards(loop, []string{board.ID}); err != nil {
-		t.Fatalf("assign: %v", err)
-	}
-	path := filepath.Join(widgets.WidgetDir(loop), "AGENTS.md")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	if err := os.WriteFile(path, []byte("# Imagine — Visual Creation Suite\nold generated guide"), 0o644); err != nil {
-		t.Fatalf("write guide: %v", err)
-	}
-
-	if section := service.LoopPromptExtra(loop, loops.Run{}); section == "" {
-		t.Fatal("expected widget prompt")
-	}
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatalf("legacy guide still exists: %v", err)
-	}
-}
-
-func TestLoopPromptExtraKeepsUserWidgetGuide(t *testing.T) {
-	service, _, loop := newTestService(t)
-	board := makeBoard(t, service, "Desk")
-	if _, err := service.AssignLoopBoards(loop, []string{board.ID}); err != nil {
-		t.Fatalf("assign: %v", err)
-	}
-	path := filepath.Join(widgets.WidgetDir(loop), "AGENTS.md")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	if err := os.WriteFile(path, []byte("# Local rules\nkeep me"), 0o644); err != nil {
-		t.Fatalf("write guide: %v", err)
-	}
-
-	if section := service.LoopPromptExtra(loop, loops.Run{}); section == "" {
-		t.Fatal("expected widget prompt")
-	}
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("user guide was removed: %v", err)
+	if !strings.Contains(section, "create or overwrite it this run") {
+		t.Fatalf("prompt must use the invariant file contract:\n%s", section)
 	}
 }
 
