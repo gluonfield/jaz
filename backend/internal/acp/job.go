@@ -39,6 +39,9 @@ type Job struct {
 	toolByID          map[string]ToolCallSnapshot
 	savedAssistantLen int
 	usage             storage.Usage
+	lastUsageDelta    storage.Usage
+	lastUsageContext  storage.Usage
+	lastUsageDeltaSet bool
 }
 
 type ToolCallSnapshot struct {
@@ -122,6 +125,9 @@ func (j *Job) startTurn(completion CompletionMode, interactive, planRequested, p
 	j.StopReason = ""
 	j.savedAssistantLen = 0
 	j.usage = storage.Usage{}
+	j.lastUsageDelta = storage.Usage{}
+	j.lastUsageContext = storage.Usage{}
+	j.lastUsageDeltaSet = false
 	j.completion = completion
 	j.interactive = interactive
 	j.planRequested = planRequested
