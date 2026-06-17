@@ -2,6 +2,7 @@ import type { AgentSettings, NativeProviderOption } from './api/types'
 
 export const ACP_PROVIDER_MODE_NATIVE = 'native_defaults'
 export const ACP_PROVIDER_MODE_AGENT = 'agent_defaults'
+const HIDDEN_MODEL_PROVIDERS = new Set(['ollama'])
 
 export function enabledACPAgents(settings?: AgentSettings): string[] {
   return (settings?.agents ?? []).filter(
@@ -19,7 +20,9 @@ export function selectableACPModelProviders(
 ): NativeProviderOption[] {
   if (!acpUsesModelProvider(settings, agent)) return []
   const ids = new Set(settings?.acp_options?.[agent]?.model_provider_ids ?? [])
-  return (settings?.providers ?? []).filter((provider) => ids.has(provider.id))
+  return (settings?.providers ?? []).filter(
+    (provider) => ids.has(provider.id) && !HIDDEN_MODEL_PROVIDERS.has(provider.id),
+  )
 }
 
 export function configuredACPModelProviders(
