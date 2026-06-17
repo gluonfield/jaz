@@ -5,6 +5,7 @@ import {
   Brain,
   ChartNoAxesColumn,
   Keyboard,
+  MonitorSmartphone,
   Plug,
   Search,
   Sparkles,
@@ -15,6 +16,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AgentSettings } from './AgentSettings'
 import { ArchivedThreadsSettings } from './ArchivedThreadsSettings'
+import { DevicesSettings } from './DevicesSettings'
 import { GeneralSettings } from './GeneralSettings'
 import { KeyboardShortcutsSettings } from './KeyboardShortcutsSettings'
 import { MCPSettings } from './MCPSettings'
@@ -22,7 +24,16 @@ import { MemorySettings } from './MemorySettings'
 import { PersonalizationSettings } from './PersonalizationSettings'
 import { UsageSettings } from './UsageSettings'
 
-type Section = 'general' | 'personalization' | 'memory' | 'usage' | 'keyboard' | 'mcp' | 'agents' | 'archived'
+type Section =
+  | 'general'
+  | 'personalization'
+  | 'memory'
+  | 'usage'
+  | 'devices'
+  | 'keyboard'
+  | 'mcp'
+  | 'agents'
+  | 'archived'
 
 type NavItem = { id: Section; label: string; icon: typeof Bot; fullHeight?: boolean }
 
@@ -31,6 +42,7 @@ const NAV: NavItem[] = [
   { id: 'personalization', label: 'Personalization', icon: Sparkles, fullHeight: true },
   { id: 'memory', label: 'Memory', icon: Brain },
   { id: 'usage', label: 'Usage', icon: ChartNoAxesColumn },
+  { id: 'devices', label: 'Devices', icon: MonitorSmartphone },
   { id: 'keyboard', label: 'Keyboard shortcuts', icon: Keyboard },
   { id: 'mcp', label: 'MCP servers', icon: Plug },
   { id: 'agents', label: 'Agents (ACP)', icon: Bot },
@@ -185,5 +197,7 @@ function SectionContent({ section }: { section: Section }) {
       return <MemorySettings />
     case 'usage':
       return <UsageSettings />
+    case 'devices':
+      return <DevicesSettings />
   }
 }

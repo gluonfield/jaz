@@ -172,6 +172,53 @@ export interface HealthResponse {
   }
 }
 
+export type DeviceStatus = 'pending' | 'approved' | 'revoked'
+export type DeviceKind = 'desktop' | 'mobile' | 'browser' | 'cli'
+export type PairingStatus = 'pending' | 'approved' | 'rejected' | 'expired'
+
+export interface Device {
+  id: string
+  name: string
+  kind: DeviceKind
+  status: DeviceStatus
+  created_at: string
+  approved_at?: string
+  revoked_at?: string
+  last_seen_at?: string
+  last_seen_ip?: string
+  user_agent?: string
+  app_version?: string
+}
+
+export interface DevicePairing {
+  id: string
+  device_id: string
+  status: PairingStatus
+  created_at: string
+  expires_at: string
+  approved_at?: string
+  rejected_at?: string
+  device: Device
+}
+
+export interface DeviceList {
+  devices: Device[]
+  pairings: DevicePairing[]
+  current_device_id?: string
+}
+
+export interface DeviceRegisterResult {
+  device: Device
+  token?: string
+  pairing?: DevicePairing
+  pairing_secret?: string
+}
+
+export interface PairingPoll {
+  pairing: DevicePairing
+  token?: string
+}
+
 export interface LoopSchedule {
   kind: string
   expr: string

@@ -15,6 +15,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/coordinator"
+	"github.com/wins/jaz/backend/internal/deviceauth"
 	"github.com/wins/jaz/backend/internal/gitinfo"
 	"github.com/wins/jaz/backend/internal/jaztools"
 	"github.com/wins/jaz/backend/internal/loops"
@@ -83,6 +84,7 @@ type Server struct {
 	JazTools *jaztools.Service
 
 	Terminal     *terminal.Manager
+	Devices      *deviceauth.Service
 	terminalOnce sync.Once
 
 	// in-flight native turns by session id, cancellable via the cancel action
