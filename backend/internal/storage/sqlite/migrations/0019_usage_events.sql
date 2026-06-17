@@ -20,7 +20,6 @@ CREATE TABLE IF NOT EXISTS usage_events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_usage_events_created_at ON usage_events(created_at_ms);
-CREATE INDEX IF NOT EXISTS idx_usage_events_thread_created ON usage_events(thread_id, created_at_ms);
 
 INSERT INTO usage_events (
   thread_id,

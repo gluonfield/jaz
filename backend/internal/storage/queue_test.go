@@ -5,9 +5,9 @@ import (
 	"testing"
 )
 
-func TestQueuedMessageJSONReadsLegacyStrings(t *testing.T) {
+func TestNormalizeQueuedMessagesTrims(t *testing.T) {
 	var messages []QueuedMessage
-	if err := json.Unmarshal([]byte(`[" first ",{"text":"second","attachment_ids":["a"," b "]}]`), &messages); err != nil {
+	if err := json.Unmarshal([]byte(`[{"text":" first "},{"text":"second","attachment_ids":["a"," b "]}]`), &messages); err != nil {
 		t.Fatal(err)
 	}
 	messages = NormalizeQueuedMessages(messages)

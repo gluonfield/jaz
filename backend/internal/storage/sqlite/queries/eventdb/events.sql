@@ -44,3 +44,7 @@ ON CONFLICT(thread_id, seq) DO UPDATE SET
   plan = excluded.plan,
   permission = excluded.permission,
   created_at_ms = excluded.created_at_ms;
+
+-- name: DeleteSessionEvent :exec
+DELETE FROM session_events
+WHERE thread_id = sqlc.arg(thread_id) AND seq = sqlc.arg(seq);

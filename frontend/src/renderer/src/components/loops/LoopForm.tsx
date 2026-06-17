@@ -97,8 +97,10 @@ export function loopDraftToInput(draft: LoopDraft, settings?: AgentSettings): Lo
   }
 }
 
+// Borderless like the composer: the surface fill is the field. A primary ring
+// appears only on focus, never as a resting outline.
 const inputClass =
-  'w-full rounded-control bg-bg px-3 py-2 text-[13px] text-ink ring-1 ring-border outline-none transition duration-150 placeholder:text-ink-3 focus:ring-primary'
+  'w-full rounded-control bg-surface px-3 py-2 text-[13px] text-ink outline-none transition duration-150 placeholder:text-ink-3 focus:ring-1 focus:ring-primary'
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
@@ -228,7 +230,7 @@ function LoopPromptCard({
       <div className="relative">
         <MentionSuggestions mention={mention} placement="below" />
         <div
-          className="flex cursor-text flex-col gap-2 rounded-card bg-surface p-2.5 ring-1 ring-border transition duration-150 focus-within:ring-primary"
+          className="flex cursor-text flex-col gap-2 rounded-card bg-surface p-2.5"
           onClick={(e) => {
             if ((e.target as HTMLElement).closest('button, textarea, input')) return
             mention.textareaRef.current?.focus()

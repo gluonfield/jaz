@@ -71,6 +71,15 @@ func TestRequestPermissionCancelsWorkspaceEscape(t *testing.T) {
 	}
 }
 
+func TestAppendACPTextPreservesProviderChunks(t *testing.T) {
+	if got := appendACPText("Done.", "Next"); got != "Done.Next" {
+		t.Fatalf("appendACPText inserted formatting: %q", got)
+	}
+	if got := appendACPText("Line one", "\n\nLine two"); got != "Line one\n\nLine two" {
+		t.Fatalf("appendACPText changed provider whitespace: %q", got)
+	}
+}
+
 func TestInteractiveRequestPermissionWaitsForAnswer(t *testing.T) {
 	root := t.TempDir()
 	store, err := jsonstore.New(t.TempDir())
@@ -619,7 +628,7 @@ func TestSessionInfoUpdatePublishesAndPersistsTitle(t *testing.T) {
 	}
 }
 
-func TestClaudeStylePlanExitPermissionAutoSelectsExecutionMode(t *testing.T) {
+func TestClaudeStylePlanExitPermissionSelectsBaselineMode(t *testing.T) {
 	root := t.TempDir()
 	events := sessionevents.New()
 	manager := NewManager(nil, Config{}, nil)
@@ -630,6 +639,14 @@ func TestClaudeStylePlanExitPermissionAutoSelectsExecutionMode(t *testing.T) {
 		ACPSession:  "acp-session",
 		Cwd:         root,
 		interactive: true,
+		Modes: ModeState{
+			CurrentModeID: "plan",
+			PlanModeID:    "plan",
+			AvailableModes: []ModeSnapshot{
+				{ID: "auto", Name: "Auto"},
+				{ID: "plan", Name: "Plan"},
+			},
+		},
 	}
 	manager.jobsByACP["acp-session"] = manager.jobsByID["session"]
 
@@ -661,7 +678,7 @@ func TestClaudeStylePlanExitPermissionAutoSelectsExecutionMode(t *testing.T) {
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got["outcome"]["outcome"] != "selected" || got["outcome"]["optionId"] != "bypassPermissions" {
+	if got["outcome"]["outcome"] != "selected" || got["outcome"]["optionId"] != "auto" {
 		t.Fatalf("unexpected permission response: %s", raw)
 	}
 	select {

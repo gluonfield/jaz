@@ -391,7 +391,6 @@ export interface ACPMode {
 
 export interface ACPModeState {
   current_mode_id?: string
-  execution_mode_id?: string
   plan_mode_id?: string
   available_modes?: ACPMode[]
 }
@@ -633,6 +632,23 @@ export interface ModelProviderOption {
   requires_api_key?: boolean
   /** whether this provider's API key is already configured on the backend */
   configured?: boolean
+  /** user-created (DB-backed) provider — editable and deletable in the UI */
+  custom?: boolean
+  /** API flavor, e.g. "openai-compatible" */
+  api_type?: string
+  /** icon slug (brand mark) for the provider; falls back to a generic mark */
+  icon?: string
+}
+
+/** Editable fields for creating or updating a custom model provider. */
+export interface ProviderInput {
+  label: string
+  base_url: string
+  api_type: string
+  default_model?: string
+  icon?: string
+  /** write-only secret; omit on edit to leave an existing key unchanged */
+  api_key?: string
 }
 
 export interface ACPAgentDefaults {

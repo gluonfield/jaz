@@ -103,35 +103,6 @@ func TestOnboardingAPIProbesAgentsAndSavesProviderKey(t *testing.T) {
 	}
 }
 
-func TestOnboardingMigratesLegacySQLStateToFile(t *testing.T) {
-	root := t.TempDir()
-	store, err := sqlitestore.New(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	if _, err := store.SaveSetting(legacyOnboardingSettingsNamespace, legacyOnboardingSettingsKey, []byte(`{"completed":true}`)); err != nil {
-		t.Fatal(err)
-	}
-	handler := (&Server{Store: store, Root: root}).Handler()
-
-	res := httptest.NewRecorder()
-	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/onboarding", nil))
-	if res.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
-	}
-	var got struct {
-		Completed bool `json:"completed"`
-	}
-	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if !got.Completed {
-		t.Fatalf("legacy onboarding state was not loaded: %#v", got)
-	}
-	assertOnboardingStateSaved(t, root)
-}
-
 func TestOnboardingAllowsAuthenticatedRemoteProviderKeySetup(t *testing.T) {
 	root := t.TempDir()
 	store, err := sqlitestore.New(root)
