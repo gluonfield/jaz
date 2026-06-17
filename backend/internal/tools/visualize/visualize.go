@@ -15,7 +15,7 @@ type ShowWidgetTool struct{}
 func (ReadMeTool) Definition() tools.Definition {
 	return tools.Function(
 		visualizesvc.ReadMeToolName,
-		"Loads Claude-compatible inline artifact guidance before creating a real SVG or HTML artifact with the provider-safe visualize_show_widget alias. Call this silently before the first visual artifact in a turn.",
+		"Loads inline artifact guidance before creating a real SVG or HTML artifact. Call this silently before the first visual artifact in a turn.",
 		false,
 		visualizesvc.ReadMeInputSchema(),
 	)
@@ -44,7 +44,7 @@ func moduleNames(value any) []string {
 func (ShowWidgetTool) Definition() tools.Definition {
 	return tools.Function(
 		visualizesvc.ShowWidgetToolName,
-		"Renders a finished inline SVG, HTML fragment, or bundled HTML document in the Jaz transcript. Call visualize_read_me first in the turn; do not use for placeholder or plumbing-demo widgets.",
+		"Renders a finished inline SVG, HTML fragment, or bundled HTML document in the Jaz transcript. Call the artifact guidance tool first in the turn; do not use for placeholder or plumbing-demo widgets.",
 		false,
 		visualizesvc.ShowWidgetInputSchema(),
 	)

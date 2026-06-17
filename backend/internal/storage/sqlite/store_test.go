@@ -114,7 +114,7 @@ func TestListSessionsOrdersByAttentionNotActivity(t *testing.T) {
 	}
 }
 
-func TestSetPinnedKeepsProjectPathAndPinsChildren(t *testing.T) {
+func TestSetPinnedKeepsRuntimeRefAndPinsChildren(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -125,9 +125,10 @@ func TestSetPinnedKeepsProjectPathAndPinsChildren(t *testing.T) {
 	parent, err := store.CreateSession(storage.CreateSession{
 		Slug: "parent",
 		RuntimeRef: &storage.RuntimeRef{
-			Type:        storage.RuntimeACP,
-			Cwd:         project,
-			ProjectPath: project,
+			Type:            storage.RuntimeACP,
+			Cwd:             project,
+			ProjectPath:     project,
+			ArtifactSurface: "widget",
 		},
 	})
 	if err != nil {
@@ -159,8 +160,8 @@ func TestSetPinnedKeepsProjectPathAndPinsChildren(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !pinnedParent.Pinned || pinnedParent.RuntimeRef.ProjectPath != project {
-		t.Fatalf("pinned parent = %#v, want pinned with project %q intact", pinnedParent, project)
+	if !pinnedParent.Pinned || pinnedParent.RuntimeRef.ProjectPath != project || pinnedParent.RuntimeRef.ArtifactSurface != "widget" {
+		t.Fatalf("pinned parent = %#v, want pinned with runtime ref intact", pinnedParent)
 	}
 	if !pinnedChild.Pinned || pinnedChild.RuntimeRef.ProjectPath != childProject {
 		t.Fatalf("pinned child = %#v, want pinned with project %q intact", pinnedChild, childProject)
@@ -177,8 +178,8 @@ func TestSetPinnedKeepsProjectPathAndPinsChildren(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if unpinnedParent.Pinned || unpinnedParent.RuntimeRef.ProjectPath != project {
-		t.Fatalf("unpinned parent = %#v, want project %q unchanged", unpinnedParent, project)
+	if unpinnedParent.Pinned || unpinnedParent.RuntimeRef.ProjectPath != project || unpinnedParent.RuntimeRef.ArtifactSurface != "widget" {
+		t.Fatalf("unpinned parent = %#v, want runtime ref unchanged", unpinnedParent)
 	}
 	if unpinnedChild.Pinned || unpinnedChild.RuntimeRef.ProjectPath != childProject {
 		t.Fatalf("unpinned child = %#v, want project %q unchanged", unpinnedChild, childProject)

@@ -85,3 +85,16 @@ func (r *Registry) Definitions() []Definition {
 	}
 	return defs
 }
+
+func (r *Registry) DefinitionsWhere(include func(string) bool) []Definition {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	defs := make([]Definition, 0, len(r.ordered))
+	for _, tool := range r.ordered {
+		def := tool.Definition()
+		if include == nil || include(DefinitionName(def)) {
+			defs = append(defs, def)
+		}
+	}
+	return defs
+}

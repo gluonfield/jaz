@@ -28,6 +28,7 @@ func TestNewToolRegistryAllowsApplyPatchAbsolutePaths(t *testing.T) {
 		nil,
 		store,
 		sessionevents.New(),
+		nil,
 	)
 	tool, ok := registry.Get("apply_patch")
 	if !ok {

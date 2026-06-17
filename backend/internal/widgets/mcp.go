@@ -9,7 +9,10 @@ import (
 	"github.com/wins/jaz/backend/internal/mcpsession"
 )
 
-const PublishMCPToolName = "publish_widget"
+const (
+	PublishMCPToolName = "visualise:publish_widget"
+	PublishToolName    = "visualise_publish_widget"
+)
 
 type MCPPublisher interface {
 	PublishForSession(sessionID string, input PublishInput) (Widget, []string, error)
@@ -34,7 +37,7 @@ func AddMCPTools(server *mcp.Server, publisher MCPPublisher) {
 		Name:        PublishMCPToolName,
 		Title:       "Publish board widget",
 		Description: "Publishes this loop run's Jaz board widget. Write the HTML fragment to widget/index.html first, then call this; alternatively pass the fragment inline via html. Returns validation errors and non-fatal lint warnings so you can fix and retry within the run.",
-		InputSchema: publishInputSchema(),
+		InputSchema: PublishInputSchema(),
 	}, publishMCP(publisher))
 }
 
@@ -47,7 +50,7 @@ func publishMCP(publisher MCPPublisher) func(context.Context, *mcp.CallToolReque
 func publish(publisher MCPPublisher, req *mcp.CallToolRequest, input MCPPublishInput) (*mcp.CallToolResult, MCPPublishOutput, error) {
 	sessionID := sessionIDFromRequest(req)
 	if sessionID == "" {
-		return nil, MCPPublishOutput{}, fmt.Errorf("publish_widget requires %s", mcpsession.HeaderName)
+		return nil, MCPPublishOutput{}, fmt.Errorf("%s requires %s", PublishMCPToolName, mcpsession.HeaderName)
 	}
 	widget, warnings, err := publisher.PublishForSession(sessionID, PublishInput{
 		Title:    input.Title,
@@ -81,7 +84,7 @@ func sessionIDFromRequest(req *mcp.CallToolRequest) string {
 	return strings.TrimSpace(req.Extra.Header.Get(mcpsession.HeaderName))
 }
 
-func publishInputSchema() map[string]any {
+func PublishInputSchema() map[string]any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{

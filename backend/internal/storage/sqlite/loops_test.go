@@ -166,6 +166,46 @@ func TestStartDueAllDrainsCurrentlyDueLoops(t *testing.T) {
 	}
 }
 
+func TestLoopExecutionCarriesPromptExtraAndArtifactSurface(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	executor := &capturingLoopExecutor{started: make(chan loops.Execution, 1)}
+	service := loops.NewService(store, executor, nil,
+		loops.WithMemoryPaths(loops.NewMemoryPaths(filepath.Join(store.RootDir(), "automations"))),
+		loops.WithPromptExtra(func(loop loops.Loop, run loops.Run) string {
+			return "## Widget instructions\n\n- loop " + loop.ID + " run " + run.ID
+		}),
+		loops.WithArtifactSurface(func(loops.Loop, loops.Run) string {
+			return "widget"
+		}),
+	)
+	loop, err := service.Create(loops.CreateLoop{
+		Name:     "Widget loop",
+		Prompt:   "refresh tile",
+		Runtime:  loops.RuntimeACP,
+		Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 9 * * *", Timezone: "UTC"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	run, err := service.RunNow(context.Background(), loop.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := <-executor.started
+	if started.ArtifactSurface != "widget" {
+		t.Fatalf("artifact surface = %q, want widget", started.ArtifactSurface)
+	}
+	if !strings.Contains(started.Prompt, "## Widget instructions") || !strings.Contains(started.Prompt, "run "+run.ID) {
+		t.Fatalf("prompt missing extra section:\n%s", started.Prompt)
+	}
+}
+
 func TestAdvanceMissedResetsStaleActiveRuns(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {

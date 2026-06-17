@@ -232,6 +232,7 @@ func startServer(
 		loops.WithMemoryPaths(loopMemoryPaths),
 		// Board assignment is the widget enablement: no boards, no section.
 		loops.WithPromptExtra(widgetService.LoopPromptExtra),
+		loops.WithArtifactSurface(widgetService.LoopArtifactSurface),
 	)
 	jazTools.SetLoops(loopService)
 	handler.Loops = loopService
