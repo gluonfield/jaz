@@ -299,7 +299,7 @@ function ModelUsageRow({ model, maxTotal }: { model: ModelUsage; maxTotal: numbe
       <div className="grid grid-cols-3 gap-3 text-right">
         <ModelMetric label="Input" value={model.usage.input_tokens ?? 0} />
         <ModelMetric label="Output" value={model.usage.output_tokens ?? 0} />
-        <ModelMetric label="Total" value={total} />
+        <ModelMetric label="Input + output" value={total} />
       </div>
     </div>
   )
@@ -307,9 +307,9 @@ function ModelUsageRow({ model, maxTotal }: { model: ModelUsage; maxTotal: numbe
 
 function ModelMetric({ label, value }: { label: string; value: number }) {
   return (
-    <div className="min-w-[56px]">
+    <div className="min-w-[72px]">
       <div className="font-mono text-[12px] leading-none text-ink tabular-nums">{formatTokens(value)}</div>
-      <div className="mt-1 text-[10px] text-ink-3">{label}</div>
+      <div className="mt-1 text-[10px] leading-tight text-ink-3">{label}</div>
     </div>
   )
 }
