@@ -11,7 +11,6 @@ import {
   acpUsesModelProvider,
   acpUsesNativeProvider,
   enabledACPAgents,
-  configuredNativeProviders,
   runtimeModelState,
 } from '@/lib/agentRuntimes'
 import {
@@ -30,8 +29,7 @@ import {
   localTimezone,
 } from './schedule'
 
-// 'native' selects the native runtime; any other value is the ACP agent name —
-// matching the RuntimeSelect contract used by the new-thread composer.
+// ACP agent name, matching the RuntimeSelect contract used by the new-thread composer.
 export interface LoopDraft {
   name: string
   prompt: string
@@ -65,7 +63,7 @@ export function loopDraftFromLoop(loop: Loop, boardIds: string[] = []): LoopDraf
   return {
     name: loop.name ?? '',
     prompt: loop.prompt ?? '',
-    runtime: loop.runtime === 'acp' ? (loop.acp_agent || 'jaz') : 'native',
+    runtime: loop.runtime === 'acp' ? (loop.acp_agent || 'jaz') : 'jaz',
     directory: loop.directory ?? '',
     provider: loop.model_provider ?? '',
     model: loop.model ?? '',
@@ -83,16 +81,15 @@ export function canSaveLoop(draft: LoopDraft): boolean {
 }
 
 export function loopDraftToInput(draft: LoopDraft, settings?: AgentSettings): LoopInput {
-  const native = draft.runtime === 'native'
-  const usesNativeProvider = native || acpUsesNativeProvider(settings, draft.runtime)
-  const usesModelProvider = !native && acpUsesModelProvider(settings, draft.runtime)
+  const usesNativeProvider = acpUsesNativeProvider(settings, draft.runtime)
+  const usesModelProvider = acpUsesModelProvider(settings, draft.runtime)
   return {
     prompt: draft.prompt.trim(),
     name: draft.name.trim() || undefined,
     schedule: { kind: 'cron', expr: cronFromDraft(draft.schedule), timezone: localTimezone() },
     status: draft.schedule.preset === 'manual' ? 'paused' : 'active',
-    runtime: native ? 'native' : 'acp',
-    acp_agent: native ? undefined : draft.runtime,
+    runtime: 'acp',
+    acp_agent: draft.runtime,
     // Overrides are always sent: '' clears one back to following settings.
     model_provider: usesNativeProvider || usesModelProvider ? draft.provider : '',
     model: draft.model,
@@ -204,19 +201,16 @@ function LoopPromptCard({
   const settingsQuery = useQuery(agentSettingsQuery)
   const agentSettings = settingsQuery.data
   const agents = useMemo(() => enabledACPAgents(agentSettings), [agentSettings])
-  const nativeProviders = useMemo(() => configuredNativeProviders(agentSettings), [agentSettings])
-  const nativeAvailable = nativeProviders.length > 0
   const runtimeReady = settingsQuery.isSuccess
-  const runtimeAvailable = runtimeReady && (nativeAvailable || agents.length > 0)
+  const runtimeAvailable = runtimeReady && agents.length > 0
 
   useEffect(() => {
     if (!runtimeReady) return
-    const valid = draft.runtime === 'native' ? nativeAvailable : agents.includes(draft.runtime)
-    if (valid) return
-    const runtime = agents.includes('jaz') ? 'jaz' : nativeAvailable ? 'native' : (agents[0] ?? '')
+    if (agents.includes(draft.runtime)) return
+    const runtime = agents.includes('jaz') ? 'jaz' : (agents[0] ?? '')
     if (runtime === draft.runtime) return
     set({ runtime, provider: '', model: '', reasoningEffort: '' })
-  }, [agents, draft.runtime, nativeAvailable, runtimeReady, set])
+  }, [agents, draft.runtime, runtimeReady, set])
 
   const runtimeModel = runtimeModelState(agentSettings, draft.runtime, draft.provider)
   const { usesNativeProvider, usesProvider, providers: runtimeProviders, provider, selectedProvider } = runtimeModel
@@ -260,7 +254,6 @@ function LoopPromptCard({
                 <RuntimeSelect
                   value={draft.runtime}
                   agents={agents}
-                  nativeAvailable={nativeAvailable}
                   disabled={disabled}
                   placement="below"
                   onChange={(runtime) => set({ runtime, provider: '', model: '', reasoningEffort: '' })}
