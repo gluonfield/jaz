@@ -1,4 +1,4 @@
-import type { DailyUsage, DailyUsageTotals } from './api/types'
+import type { DailyUsage, UsageTotals } from './api/types'
 
 export type UsageCell = {
   date: string
@@ -58,8 +58,8 @@ export function usageMonthLabels(cells: UsageCell[]): UsageMonthLabel[] {
   return labels
 }
 
-export function sumUsage(days: DailyUsage[]): DailyUsageTotals {
-  const total = days.reduce<DailyUsageTotals>((total, day) => {
+export function sumUsage(days: DailyUsage[]): UsageTotals {
+  const total = days.reduce<UsageTotals>((total, day) => {
     total.input_tokens = (total.input_tokens ?? 0) + (day.usage.input_tokens ?? 0)
     total.cached_input_tokens = (total.cached_input_tokens ?? 0) + (day.usage.cached_input_tokens ?? 0)
     total.cached_write_tokens = (total.cached_write_tokens ?? 0) + (day.usage.cached_write_tokens ?? 0)
@@ -80,7 +80,7 @@ export function peakDay(days: DailyUsage[]): DailyUsage | null {
   }, null)
 }
 
-export function inputOutputTokens(usage: DailyUsageTotals): number {
+export function inputOutputTokens(usage: UsageTotals): number {
   return usage.input_output_tokens ?? (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0)
 }
 
