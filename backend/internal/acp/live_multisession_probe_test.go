@@ -156,7 +156,7 @@ func probeApplyJazSessionConfig(
 		acpModes = grokFallbackModes()
 	}
 	if acpModes != nil {
-		target := executionModeForAgent(agent, acpModes.AvailableModes)
+		target := preferredBaselineModeID(agent, acpModes.AvailableModes)
 		if target != "" && string(acpModes.CurrentModeID) != target {
 			started := time.Now()
 			_ = probeCall(t, ctx, conn, "7", acpschema.AgentMethodSessionSetMode, acpschema.SetSessionModeRequest{

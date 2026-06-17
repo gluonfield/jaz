@@ -122,3 +122,54 @@ func TestManagerLeavesLoadedPlanModeBeforeOrdinarySend(t *testing.T) {
 		t.Fatalf("ordinary send stayed in plan mode: assistant=%q plan=%#v", job.Assistant, job.Plan)
 	}
 }
+
+func TestManagerForcesBaselineWhenLoadedModeLooksAlreadyRestored(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "loaded-stale-plan-mode",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     "codex",
+			SessionID: "fake-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := acp.NewManager(store, acp.Config{
+		Root:      t.TempDir(),
+		Workspace: t.TempDir(),
+		Agents: map[string]acp.AgentConfig{
+			"codex": {
+				Command: os.Args[0],
+				Args:    []string{"-test.run=TestFakeACPAgentProcess"},
+				Env: map[string]string{
+					"JAZ_FAKE_ACP_AGENT":         "1",
+					"JAZ_FAKE_ACP_LOAD":          "1",
+					"JAZ_FAKE_ACP_CURRENT_MODE":  "plan",
+					"JAZ_FAKE_ACP_REPORTED_MODE": "full-access",
+				},
+			},
+		},
+	}, log.New(io.Discard))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: session.ID, Message: "approved", Completion: acp.CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
+	job, err := manager.Wait(ctx, acp.WaitRequest{Session: session.ID, Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Modes.CurrentModeID != "full-access" {
+		t.Fatalf("modes after ordinary send = %#v, want full-access baseline", job.Modes)
+	}
+	if job.Assistant != "hello from fake agent" || len(job.Plan) != 0 {
+		t.Fatalf("ordinary send stayed in stale plan mode: assistant=%q plan=%#v", job.Assistant, job.Plan)
+	}
+}

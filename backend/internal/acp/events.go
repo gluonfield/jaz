@@ -163,7 +163,7 @@ func (m *Manager) AnswerInteractive(ctx context.Context, req InteractiveAnswer) 
 	}
 	m.permissionMu.Unlock()
 	if optionApprovesPlan(option) {
-		if err := m.restoreExecutionMode(ctx, job); err != nil {
+		if err := m.restoreBaselineMode(ctx, job); err != nil {
 			return err
 		}
 	}

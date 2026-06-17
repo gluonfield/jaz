@@ -75,25 +75,36 @@ func (m *Manager) prepareModeForTurn(ctx context.Context, job *Job, planRequeste
 		if modes.PlanModeID == "" {
 			return fmt.Errorf("acp session %s does not expose plan mode", job.Slug)
 		}
-		return m.setTurnMode(ctx, job, modes.PlanModeID)
+		return m.applyTurnMode(ctx, job, modes.PlanModeID)
 	}
-	return m.setTurnMode(ctx, job, baselineModeID(job.ACPAgent, modes))
+	target := baselineModeID(job.ACPAgent, modes)
+	if modes.PlanModeID != "" {
+		// session/load can report the baseline mode while the provider thread still carries stale Plan settings.
+		return m.applyTurnMode(ctx, job, target)
+	}
+	return m.ensureTurnMode(ctx, job, target)
 }
 
-func (m *Manager) setTurnMode(ctx context.Context, job *Job, target string) error {
+func (m *Manager) ensureTurnMode(ctx context.Context, job *Job, target string) error {
+	job.mu.RLock()
+	current := job.Modes.CurrentModeID
+	job.mu.RUnlock()
+	if target == current {
+		return nil
+	}
+	return m.applyTurnMode(ctx, job, target)
+}
+
+func (m *Manager) applyTurnMode(ctx context.Context, job *Job, target string) error {
 	if target == "" {
 		return nil
 	}
 
 	job.mu.RLock()
-	current := job.Modes.CurrentModeID
 	acpSessionID := job.ACPSession
 	jobID := job.ID
 	job.mu.RUnlock()
 
-	if target == current {
-		return nil
-	}
 	peer := m.peer(jobID)
 	if peer == nil {
 		if m.configuredLocal(job.ACPAgent) {
@@ -113,7 +124,7 @@ func (m *Manager) setTurnMode(ctx context.Context, job *Job, target string) erro
 	return nil
 }
 
-func (m *Manager) restoreExecutionMode(ctx context.Context, job *Job) error {
+func (m *Manager) restoreBaselineMode(ctx context.Context, job *Job) error {
 	return m.prepareModeForTurn(ctx, job, false)
 }
 
