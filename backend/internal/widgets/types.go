@@ -13,7 +13,7 @@ const (
 	DefaultGridCols  = 6
 	DefaultRowHeight = 120
 	MaxHTMLBytes     = 1 << 20
-	KeepVersions     = 20
+	MaxOldVersions   = 5
 )
 
 type Widget struct {

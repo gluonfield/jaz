@@ -12,7 +12,11 @@ import (
 	"github.com/wins/jaz/backend/internal/loops"
 )
 
-const WidgetFileName = "index.html"
+const (
+	WidgetFileName          = "index.html"
+	legacyWidgetGuideName   = "AGENTS.md"
+	legacyWidgetGuideHeader = "# Imagine — Visual Creation Suite"
+)
 
 type Service struct {
 	Repo Repository
@@ -113,7 +117,7 @@ func (s *Service) Publish(loop loops.Loop, runID string, input PublishInput) (Wi
 	}); err != nil {
 		return Widget{}, nil, err
 	}
-	if err := s.Repo.PruneWidgetVersions(widget.ID, widget.CurrentVersion, KeepVersions); err != nil {
+	if err := s.Repo.PruneWidgetVersions(widget.ID, widget.CurrentVersion, MaxOldVersions+1); err != nil {
 		s.Log.Warn("pruning widget versions failed", "widget", widget.ID, "error", err)
 	}
 	s.applySizeHintLocked(widget, boards, now)
@@ -172,7 +176,29 @@ func (s *Service) LoopPromptExtra(loop loops.Loop, _ loops.Run) string {
 	if err != nil || widget == nil || len(boards) == 0 {
 		return ""
 	}
+	if err := cleanupLegacyWidgetGuide(loop); err != nil {
+		s.Log.Warn("cleanup legacy widget guide failed", "loop", loop.ID, "error", err)
+	}
 	return PromptSection(loop, widget)
+}
+
+func cleanupLegacyWidgetGuide(loop loops.Loop) error {
+	dir := WidgetDir(loop)
+	if dir == "" {
+		return nil
+	}
+	path := filepath.Join(dir, legacyWidgetGuideName)
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !strings.HasPrefix(string(data), legacyWidgetGuideHeader) {
+		return nil
+	}
+	return os.Remove(path)
 }
 
 func (s *Service) ReportError(widgetID, message string) error {

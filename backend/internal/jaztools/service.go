@@ -15,6 +15,7 @@ import (
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/visualize"
+	"github.com/wins/jaz/backend/internal/widgets"
 )
 
 const (
@@ -42,6 +43,7 @@ type Service struct {
 
 	loopTools      *loops.MCPTools
 	visualizeTools *visualize.MCPTools
+	widgetTools    *widgets.MCPTools
 
 	url string
 
@@ -53,10 +55,11 @@ type Service struct {
 	handler     http.Handler
 }
 
-func New(memory *memoryservice.Service, urls serverconfig.URLs, store *sqlitestore.Store, events *sessionevents.Bus) *Service {
+func New(memory *memoryservice.Service, urls serverconfig.URLs, store *sqlitestore.Store, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher) *Service {
 	return &Service{
 		Memory:         memory,
 		visualizeTools: visualize.NewMCPTools(store, events),
+		widgetTools:    widgets.NewMCPTools(widgetPublisher),
 		url:            strings.TrimSpace(urls.JazToolsMCP),
 	}
 }
@@ -78,6 +81,7 @@ func (s *Service) Server() *mcp.Server {
 		}, nil)
 		s.loopTools.AddTo(server)
 		s.visualizeTools.AddTo(server)
+		s.widgetTools.AddTo(server)
 		s.mu.Lock()
 		s.server = server
 		s.syncMemoryTools()
