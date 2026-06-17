@@ -2,7 +2,14 @@ import type { AgentSettings, NativeProviderOption } from './api/types'
 
 export const ACP_PROVIDER_MODE_NATIVE = 'native_defaults'
 export const ACP_PROVIDER_MODE_AGENT = 'agent_defaults'
-const HIDDEN_MODEL_PROVIDERS = new Set(['ollama'])
+// Providers without first-class support yet — kept in the catalog for the runtime
+// but hidden from selection and the settings providers list. Remove an id here
+// once the provider is ready to surface in the UI.
+const HIDDEN_PROVIDERS = new Set(['ollama'])
+
+export function providerHidden(id: string): boolean {
+  return HIDDEN_PROVIDERS.has(id)
+}
 
 export function enabledACPAgents(settings?: AgentSettings): string[] {
   return (settings?.agents ?? []).filter(
@@ -21,7 +28,7 @@ export function selectableACPModelProviders(
   if (!acpUsesModelProvider(settings, agent)) return []
   const ids = new Set(settings?.acp_options?.[agent]?.model_provider_ids ?? [])
   return (settings?.providers ?? []).filter(
-    (provider) => ids.has(provider.id) && !HIDDEN_MODEL_PROVIDERS.has(provider.id),
+    (provider) => ids.has(provider.id) && !providerHidden(provider.id),
   )
 }
 

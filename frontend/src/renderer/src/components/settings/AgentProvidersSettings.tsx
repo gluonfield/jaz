@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/Input'
 import { ModelCombobox } from '@/components/ui/ModelCombobox'
 import { Select } from '@/components/ui/Select'
 import { SkeletonRows } from '@/components/ui/Skeleton'
-import { nativeModelForProvider, providerKeyUrl } from '@/lib/agentRuntimes'
+import { nativeModelForProvider, providerHidden, providerKeyUrl } from '@/lib/agentRuntimes'
 import type { AgentSettings as AgentSettingsData } from '@/lib/api/types'
 import {
   type ModelSuggestion,
@@ -37,10 +37,11 @@ export function AgentProvidersSettings() {
     ...openRouterModelsQuery,
     enabled: draft?.native.model_provider === 'openrouter',
   })
-  // Every known model provider — keys are shared, so this one list connects the
+  // Every surfaced model provider — keys are shared, so this one list connects the
   // native agent and every ACP agent set to provider defaults. Implemented ones
-  // (the native agent can run them) sort first; locals/customs follow.
-  const allProviders = draft?.providers ?? []
+  // (the native agent can run them) sort first; locals/customs follow. Providers
+  // without first-class support yet (e.g. Ollama) are hidden.
+  const allProviders = (draft?.providers ?? []).filter((provider) => !providerHidden(provider.id))
   const nativeProviders = allProviders.filter((provider) => provider.implemented)
   const invalid = draft
     ? (draft.native.model_provider ?? '').trim() === '' || draft.native.model.trim() === ''
