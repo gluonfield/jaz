@@ -38,8 +38,40 @@ func runMigrations(db *sql.DB) error {
 	if err := goose.Up(db, "migrations"); err != nil {
 		return fmt.Errorf("run sqlite migrations: %w", err)
 	}
+	if err := ensureUsageEventColumns(db); err != nil {
+		return err
+	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_threads_source ON threads(source_type, source_id)`); err != nil {
 		return fmt.Errorf("create source thread index: %w", err)
+	}
+	return nil
+}
+
+// ensureUsageEventColumns patches usage_events columns added to migration 0019
+// after it shipped. Databases that applied the earlier 0019 lack `source`, which
+// the usage read/insert queries reference, so 500 on every usage request. Adding
+// it conditionally (mirroring ensureLegacyThreadColumns) is idempotent: it adds
+// the column where missing and no-ops where a current 0019 already created it.
+// Runs after goose so the table (created by 0019) exists.
+func ensureUsageEventColumns(db *sql.DB) error {
+	columns, err := tableColumns(db, "usage_events")
+	if err != nil {
+		return err
+	}
+	// No table means goose hasn't created it (or there's no usage feature yet);
+	// a fresh 0019 includes every column, so there is nothing to patch.
+	if len(columns) == 0 {
+		return nil
+	}
+	for _, column := range []columnMigration{
+		{Name: "source", Definition: "source TEXT NOT NULL DEFAULT 'turn'"},
+	} {
+		if columns[column.Name] {
+			continue
+		}
+		if _, err := db.Exec(`ALTER TABLE usage_events ADD COLUMN ` + column.Definition); err != nil {
+			return fmt.Errorf("add usage_events column %s: %w", column.Name, err)
+		}
 	}
 	return nil
 }

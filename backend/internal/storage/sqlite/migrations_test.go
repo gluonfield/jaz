@@ -132,6 +132,55 @@ func TestUsageEventBackfillRowsAreMarkedSessionImport(t *testing.T) {
 	}
 }
 
+// Databases that applied the pre-`source` version of migration 0019 lack the
+// column the usage queries select; ensureUsageEventColumns must add it (and be a
+// no-op on a second run).
+func TestEnsureUsageEventColumnsAddsSource(t *testing.T) {
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "jaz.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE usage_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  thread_id TEXT NOT NULL,
+  runtime TEXT NOT NULL,
+  agent TEXT NOT NULL DEFAULT '',
+  model_provider TEXT NOT NULL DEFAULT '',
+  model TEXT NOT NULL DEFAULT '',
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  total_tokens INTEGER NOT NULL DEFAULT 0,
+  created_at_ms INTEGER NOT NULL
+)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO usage_events (thread_id, runtime, total_tokens, created_at_ms) VALUES ('t', 'acp', 5, 1)`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ensureUsageEventColumns(db); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureUsageEventColumns(db); err != nil {
+		t.Fatalf("second run should be a no-op: %v", err)
+	}
+
+	columns, err := tableColumns(db, "usage_events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !columns["source"] {
+		t.Fatal("ensureUsageEventColumns did not add usage_events.source")
+	}
+	var source string
+	if err := db.QueryRow(`SELECT source FROM usage_events WHERE thread_id = 't'`).Scan(&source); err != nil {
+		t.Fatal(err)
+	}
+	if source != "turn" {
+		t.Fatalf("existing row source = %q, want turn", source)
+	}
+}
+
 func TestSessionEventsUsePrimaryKeyIndexOnly(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
