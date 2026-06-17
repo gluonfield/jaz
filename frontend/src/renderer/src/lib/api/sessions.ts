@@ -85,6 +85,7 @@ export const dailyUsageQuery = (days = 30) => {
       return data.days ?? []
     },
     staleTime: 60_000,
+    refetchOnMount: 'always',
     refetchInterval: 300_000,
   })
 }
@@ -99,6 +100,7 @@ export const modelUsageQuery = (days = 30) => {
       return data.models ?? []
     },
     staleTime: 60_000,
+    refetchOnMount: 'always',
     refetchInterval: 300_000,
   })
 }
