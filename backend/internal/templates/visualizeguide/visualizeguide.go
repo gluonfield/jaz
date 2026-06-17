@@ -18,7 +18,7 @@ var tmpl = template.Must(template.New("visualizeguide").Parse(guideTemplate))
 
 // Data toggles the optional sections of the guide. The module index, core design
 // system, and "when nothing fits" always render; every field here is an optional
-// section gated in the template, in the canonical order Claude's tool emits.
+// section gated in the template, in the canonical order the renderer expects.
 type Data struct {
 	UIComponents bool
 	ColorPalette bool
@@ -31,8 +31,7 @@ type Data struct {
 }
 
 // For maps requested modules to the sections they need — the single place that
-// derives guide structure from requirements. Mirrors Claude's visualize:read_me
-// exactly: the color palette is contributed by the visual modules (diagram,
+// derives guide structure from requirements. The color palette is contributed by the visual modules (diagram,
 // mockup, interactive, chart) but not by art or elicitation. Unknown modules
 // contribute nothing, so an empty or unrecognized list yields just the core.
 func For(modules []string) Data {
