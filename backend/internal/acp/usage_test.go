@@ -3,10 +3,12 @@ package acp
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
+	usagecore "github.com/wins/jaz/backend/internal/usage"
 )
 
 func TestUsageFromRawReadsOpenRouterExtras(t *testing.T) {
@@ -128,6 +130,15 @@ func TestUsageFromRawKeepsDisjointVocabularyWithoutTotals(t *testing.T) {
 	}
 }
 
+func TestUsageFromRawKeepsAnthropicCacheReadInputTokensDisjoint(t *testing.T) {
+	usage := usageFromRaw(json.RawMessage(`{
+		"usage": {"input_tokens": 100, "cache_read_input_tokens": 50, "output_tokens": 15}
+	}`))
+	if usage.InputTokens != 100 || usage.CachedInputTokens != 50 || usage.OutputTokens != 15 || usage.TotalTokens != 165 {
+		t.Fatalf("usage = %#v", usage)
+	}
+}
+
 func TestUsageFromRawReadsCodexUsageUpdateMeta(t *testing.T) {
 	// Patched codex-acp relays the last request's TokenUsage (OpenAI-style
 	// inclusive counting) in usage_update _meta.
@@ -151,6 +162,214 @@ func TestUsageFromRawReadsCodexUsageUpdateMeta(t *testing.T) {
 	if usage.InputTokens != 2226 || usage.CachedInputTokens != 8704 ||
 		usage.OutputTokens != 172 || usage.ReasoningOutputTokens != 64 || usage.TotalTokens != 11102 {
 		t.Fatalf("usage = %#v", usage)
+	}
+}
+
+func TestUsageFromRawUsesCodexLastTokenUsageNotCumulativeTotal(t *testing.T) {
+	usage := usageFromRaw(json.RawMessage(`{
+		"payload": {
+			"info": {
+				"total_token_usage": {
+					"input_tokens": 50000,
+					"cached_input_tokens": 45000,
+					"output_tokens": 2000,
+					"total_tokens": 52000
+				},
+				"last_token_usage": {
+					"input_tokens": 1000,
+					"cached_input_tokens": 400,
+					"output_tokens": 10,
+					"total_tokens": 1010
+				}
+			}
+		}
+	}`))
+	if usage.InputTokens != 600 || usage.CachedInputTokens != 400 ||
+		usage.OutputTokens != 10 || usage.TotalTokens != 1010 {
+		t.Fatalf("usage = %#v", usage)
+	}
+}
+
+func TestUsageFromRawIgnoresCodexCumulativeTotalOnly(t *testing.T) {
+	usage := usageFromRaw(json.RawMessage(`{
+		"_meta": {
+			"totalTokenUsage": {
+				"input_tokens": 50000,
+				"cached_input_tokens": 45000,
+				"output_tokens": 2000,
+				"total_tokens": 52000
+			}
+		}
+	}`))
+	if !usage.IsZero() {
+		t.Fatalf("usage = %#v, want zero", usage)
+	}
+}
+
+func TestACPUsageDoesNotDoubleCountUsageAndLastTokenUsage(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{Slug: "mixed-usage", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(store, Config{}, nil)
+	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
+	job.startTurn(CompletionInline, false, false, false)
+
+	manager.recordRawUsage(job, json.RawMessage(`{
+		"usage": {"inputTokens": 100, "outputTokens": 20, "totalTokens": 120},
+		"_meta": {
+			"lastTokenUsage": {
+				"input_tokens": 100,
+				"output_tokens": 20,
+				"total_tokens": 120
+			}
+		}
+	}`))
+
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Usage.InputTokens != 100 || loaded.Usage.OutputTokens != 20 || loaded.Usage.TotalTokens != 120 {
+		t.Fatalf("usage = %#v", loaded.Usage)
+	}
+}
+
+func TestACPUsageSumsCodexLastTokenUsageUpdates(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{Slug: "codex-last-token-usage", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(store, Config{}, nil)
+	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
+	job.startTurn(CompletionInline, false, false, false)
+
+	manager.recordRawUsage(job, json.RawMessage(`{
+		"sessionUpdate": "usage_update",
+		"used": 1010,
+		"size": 258400,
+		"_meta": {
+			"lastTokenUsage": {
+				"input_tokens": 1000,
+				"cached_input_tokens": 400,
+				"output_tokens": 10,
+				"total_tokens": 1010
+			}
+		}
+	}`))
+	manager.recordRawUsage(job, json.RawMessage(`{
+		"sessionUpdate": "usage_update",
+		"used": 2020,
+		"size": 258400,
+		"_meta": {
+			"lastTokenUsage": {
+				"input_tokens": 2000,
+				"cached_input_tokens": 1500,
+				"output_tokens": 20,
+				"total_tokens": 2020
+			}
+		}
+	}`))
+
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Usage.InputTokens != 1100 || loaded.Usage.CachedInputTokens != 1900 ||
+		loaded.Usage.OutputTokens != 30 || loaded.Usage.TotalTokens != 3030 {
+		t.Fatalf("usage = %#v", loaded.Usage)
+	}
+	if loaded.Usage.ContextTokens != 2020 || loaded.Usage.ContextWindowTokens != 258400 {
+		t.Fatalf("context = %d / %d, want 2020 / 258400", loaded.Usage.ContextTokens, loaded.Usage.ContextWindowTokens)
+	}
+	events, err := store.UsageEventsSince(time.Unix(0, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("events = %d, want 2", len(events))
+	}
+	var total storage.Usage
+	for _, event := range events {
+		total.InputTokens += event.Usage.InputTokens
+		total.CachedInputTokens += event.Usage.CachedInputTokens
+		total.OutputTokens += event.Usage.OutputTokens
+		total.TotalTokens += event.Usage.TotalTokens
+	}
+	if total.InputTokens != loaded.Usage.InputTokens ||
+		total.CachedInputTokens != loaded.Usage.CachedInputTokens ||
+		total.OutputTokens != loaded.Usage.OutputTokens ||
+		total.TotalTokens != loaded.Usage.TotalTokens {
+		t.Fatalf("event usage = %#v, thread usage = %#v", total, loaded.Usage)
+	}
+	daily, err := usagecore.NewService(store).Daily(usagecore.DailyQuery{Days: 1, Location: time.UTC})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantDaily := usagecore.UsageTotals{
+		InputTokens:       loaded.Usage.InputTokens,
+		CachedInputTokens: loaded.Usage.CachedInputTokens,
+		OutputTokens:      loaded.Usage.OutputTokens,
+	}
+	if len(daily) != 1 || daily[0].Usage != wantDaily {
+		t.Fatalf("daily usage = %#v, want %#v", daily, wantDaily)
+	}
+}
+
+func TestACPUsageSkipsRepeatedCodexLastTokenUsageUpdate(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{Slug: "codex-duplicate-token-count", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(store, Config{}, nil)
+	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
+	job.startTurn(CompletionInline, false, false, false)
+
+	raw := json.RawMessage(`{
+		"sessionUpdate": "usage_update",
+		"used": 1010,
+		"size": 258400,
+		"_meta": {
+			"lastTokenUsage": {
+				"input_tokens": 1000,
+				"cached_input_tokens": 400,
+				"output_tokens": 10,
+				"total_tokens": 1010
+			}
+		}
+	}`)
+	manager.recordRawUsage(job, raw)
+	manager.recordRawUsage(job, raw)
+
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Usage.InputTokens != 600 || loaded.Usage.CachedInputTokens != 400 ||
+		loaded.Usage.OutputTokens != 10 || loaded.Usage.TotalTokens != 1010 {
+		t.Fatalf("usage = %#v", loaded.Usage)
+	}
+	events, err := store.UsageEventsSince(time.Unix(0, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("events = %d, want 1", len(events))
 	}
 }
 
@@ -202,26 +421,27 @@ func TestACPUsagePersistsAtTurnFinish(t *testing.T) {
 	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
 	job.startTurn(CompletionInline, false, false, false)
 
-	manager.recordUsage(job, usageFromRaw(json.RawMessage(`{
+	manager.recordRawUsage(job, json.RawMessage(`{
 		"usage": {
 			"prompt_tokens": 100,
 			"completion_tokens": 10,
 			"cache_read_input_tokens": 60
 		}
-	}`)))
-	manager.recordUsage(job, usageFromRaw(json.RawMessage(`{
+	}`))
+	manager.recordRawUsage(job, json.RawMessage(`{
 		"usage": {
 			"prompt_tokens": 120,
 			"completion_tokens": 15,
+			"cache_read_input_tokens": 60,
 			"total_tokens": 135
 		}
-	}`)))
+	}`))
 
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Usage.InputTokens != 120 || loaded.Usage.CachedInputTokens != 60 ||
+	if loaded.Usage.InputTokens != 60 || loaded.Usage.CachedInputTokens != 60 ||
 		loaded.Usage.OutputTokens != 15 || loaded.Usage.TotalTokens != 135 {
 		t.Fatalf("usage = %#v", loaded.Usage)
 	}
@@ -240,26 +460,26 @@ func TestACPUsagePersistsMonotonicTurnSnapshot(t *testing.T) {
 	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
 	job.startTurn(CompletionInline, false, false, false)
 
-	manager.recordUsage(job, usageFromRaw(json.RawMessage(`{
+	manager.recordRawUsage(job, json.RawMessage(`{
 		"usage": {
 			"prompt_tokens": 120,
 			"completion_tokens": 20,
 			"total_tokens": 140
 		}
-	}`)))
-	manager.recordUsage(job, usageFromRaw(json.RawMessage(`{
+	}`))
+	manager.recordRawUsage(job, json.RawMessage(`{
 		"usage": {
 			"prompt_tokens": 100,
 			"completion_tokens": 10,
 			"total_tokens": 110
 		}
-	}`)))
-	manager.recordUsage(job, usageFromRaw(json.RawMessage(`{
+	}`))
+	manager.recordRawUsage(job, json.RawMessage(`{
 		"usage": {
 			"prompt_tokens": 130,
 			"completion_tokens": 25
 		}
-	}`)))
+	}`))
 
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
@@ -284,14 +504,14 @@ func TestACPUsagePersistsAtTurnFinishToSQLite(t *testing.T) {
 	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
 	job.startTurn(CompletionInline, false, false, false)
 
-	manager.recordUsage(job, usageFromRaw(json.RawMessage(`{
+	manager.recordRawUsage(job, json.RawMessage(`{
 		"tokens": {
 			"input": 200,
 			"output": 30,
 			"reasoning": 8,
 			"cache": {"read": 160}
 		}
-	}`)))
+	}`))
 
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
@@ -321,11 +541,11 @@ func TestACPUsagePersistsContextFromUsageUpdates(t *testing.T) {
 	job.startTurn(CompletionInline, false, false, false)
 
 	// Streamed usage_update notifications, then the prompt-result usage.
-	manager.recordUsage(job, usageFromRaw(json.RawMessage(`{"sessionUpdate":"usage_update","used":23516,"size":1000000}`)))
-	manager.recordUsage(job, usageFromRaw(json.RawMessage(`{"sessionUpdate":"usage_update","used":23529,"size":1000000}`)))
-	manager.recordUsage(job, usageFromRaw(json.RawMessage(`{
+	manager.recordRawUsage(job, json.RawMessage(`{"sessionUpdate":"usage_update","used":23516,"size":1000000}`))
+	manager.recordRawUsage(job, json.RawMessage(`{"sessionUpdate":"usage_update","used":23529,"size":1000000}`))
+	manager.recordRawUsage(job, json.RawMessage(`{
 		"usage": {"inputTokens": 6090, "outputTokens": 15, "cachedWriteTokens": 17424, "totalTokens": 23529}
-	}`)))
+	}`))
 
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
@@ -342,7 +562,7 @@ func TestACPUsagePersistsContextFromUsageUpdates(t *testing.T) {
 	// codex-acp style turn: usage_update only, no prompt-result usage. The
 	// context snapshot still lands while counters stay put.
 	job.startTurn(CompletionInline, false, false, false)
-	manager.recordUsage(job, usageFromRaw(json.RawMessage(`{"sessionUpdate":"usage_update","used":11102,"size":258400}`)))
+	manager.recordRawUsage(job, json.RawMessage(`{"sessionUpdate":"usage_update","used":11102,"size":258400}`))
 
 	loaded, err = store.LoadSession(session.ID)
 	if err != nil {
@@ -356,9 +576,9 @@ func TestACPUsagePersistsContextFromUsageUpdates(t *testing.T) {
 	}
 }
 
-// recordUsage must persist on arrival, with no separate end-of-turn flush, so
+// recordRawUsage must persist on arrival, with no separate end-of-turn flush, so
 // the trailing usage_update claude/codex/grok send after the prompt response
-// returns is never dropped. Each recordUsage below is followed immediately by a
+// returns is never dropped. Each recordRawUsage below is followed immediately by a
 // reload — the data must already be durable.
 func TestACPUsagePersistsOnArrival(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
@@ -374,14 +594,14 @@ func TestACPUsagePersistsOnArrival(t *testing.T) {
 	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
 	job.startTurn(CompletionInline, false, false, false)
 
-	manager.recordUsage(job, usageFromRaw(json.RawMessage(`{"sessionUpdate":"usage_update","used":42000,"size":200000}`)))
+	manager.recordRawUsage(job, json.RawMessage(`{"sessionUpdate":"usage_update","used":42000,"size":200000}`))
 	if loaded, _ := store.LoadSession(session.ID); loaded.Usage.ContextTokens != 42000 || loaded.Usage.ContextWindowTokens != 200000 {
 		t.Fatalf("context not persisted on arrival: %d / %d", loaded.Usage.ContextTokens, loaded.Usage.ContextWindowTokens)
 	}
 
-	manager.recordUsage(job, usageFromRaw(json.RawMessage(`{
+	manager.recordRawUsage(job, json.RawMessage(`{
 		"usage": {"inputTokens": 1000, "outputTokens": 50, "totalTokens": 1050}
-	}`)))
+	}`))
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
 		t.Fatal(err)

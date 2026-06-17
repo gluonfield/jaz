@@ -13,32 +13,106 @@ type usageStore interface {
 	AddUsage(string, storage.Usage) error
 }
 
-// recordUsage folds an observed snapshot into the turn's running total and
-// immediately persists what it added. job.usage is the cumulative snapshot
-// already written to the store, so the delta to persist is simply what this
-// observation grew it by. Persisting on arrival (rather than once at turn end)
-// is what keeps the trailing usage_update that claude/codex/grok send after the
-// session/prompt response returns: it lands on the serve goroutine after the
-// turn has moved on, so any single end-of-turn flush would race it.
+type usageReport struct {
+	Snapshot storage.Usage
+	Delta    storage.Usage
+	Context  storage.Usage
+}
+
+func (m *Manager) recordRawUsage(job *Job, raw json.RawMessage) {
+	m.recordUsageReport(job, usageReportFromRaw(raw))
+}
+
 func (m *Manager) recordUsage(job *Job, usage storage.Usage) {
 	if usage.IsZero() {
 		return
 	}
+	m.recordUsageReport(job, usageReport{Snapshot: usage})
+}
+
+// recordUsageReport persists usage on arrival. ACP adapters can report three
+// different shapes: cumulative turn snapshots, per-request deltas, and live
+// context size updates. Keeping those separate avoids both max-merging deltas
+// and replaying cumulative totals as if they were turn-local.
+func (m *Manager) recordUsageReport(job *Job, report usageReport) {
+	if report.IsZero() {
+		return
+	}
+	var write storage.Usage
 	job.mu.Lock()
-	prev := job.usage
-	job.usage = mergeUsageSnapshot(prev, usage)
-	curr := job.usage
+	if !report.Snapshot.IsZero() {
+		prev := job.usage
+		job.usage = mergeUsageSnapshot(prev, report.Snapshot)
+		curr := job.usage
+		if curr != prev {
+			write = addUsageDelta(write, usageDelta(prev, curr))
+		}
+	}
+	if !report.Delta.IsZero() {
+		if !job.isDuplicateUsageDelta(report) {
+			job.usage = addUsageDelta(job.usage, report.Delta)
+			write = addUsageDelta(write, report.Delta)
+		}
+	} else {
+		job.lastUsageDeltaSet = false
+	}
+	if !report.Context.IsZero() {
+		job.usage = mergeUsageContext(job.usage, report.Context)
+		write = mergeUsageContext(write, report.Context)
+	}
 	job.mu.Unlock()
-	if curr == prev {
+	if write.IsZero() {
 		return
 	}
 	store, ok := m.store.(usageStore)
 	if !ok {
 		return
 	}
-	if err := store.AddUsage(job.ID, usageDelta(prev, curr)); err != nil {
+	if err := store.AddUsage(job.ID, write); err != nil {
 		m.log.Error("persist acp usage failed", "session", job.ID, "error", err)
 	}
+}
+
+func (j *Job) isDuplicateUsageDelta(report usageReport) bool {
+	// Codex can repeat the same token_count notification; the ACP bridge only
+	// carries lastTokenUsage, so consecutive identical delta reports are replays.
+	duplicate := j.lastUsageDeltaSet &&
+		j.lastUsageDelta == report.Delta &&
+		j.lastUsageContext == report.Context
+	j.lastUsageDelta = report.Delta
+	j.lastUsageContext = report.Context
+	j.lastUsageDeltaSet = true
+	return duplicate
+}
+
+func addUsageDelta(current, delta storage.Usage) storage.Usage {
+	current.InputTokens += delta.InputTokens
+	current.CachedInputTokens += delta.CachedInputTokens
+	current.CachedWriteTokens += delta.CachedWriteTokens
+	current.OutputTokens += delta.OutputTokens
+	current.ReasoningOutputTokens += delta.ReasoningOutputTokens
+	if delta.TotalTokens > 0 {
+		current.TotalTokens += delta.TotalTokens
+	} else {
+		current.TotalTokens += delta.ComponentTotal()
+	}
+	if delta.ContextTokens > 0 {
+		current.ContextTokens = delta.ContextTokens
+	}
+	if delta.ContextWindowTokens > 0 {
+		current.ContextWindowTokens = delta.ContextWindowTokens
+	}
+	return current
+}
+
+func mergeUsageContext(current, context storage.Usage) storage.Usage {
+	if context.ContextTokens > 0 {
+		current.ContextTokens = context.ContextTokens
+	}
+	if context.ContextWindowTokens > 0 {
+		current.ContextWindowTokens = context.ContextWindowTokens
+	}
+	return current
 }
 
 // usageDelta is the write that advances the store from prev to curr. Counters
@@ -71,15 +145,75 @@ func nonNegative(v int64) int64 {
 // message is internally coherent (one provider vocabulary), while fragments
 // in isolation are not.
 func usageFromRaw(raw json.RawMessage) storage.Usage {
-	usage, inclusive := usageFragment(raw)
+	return usageReportFromRaw(raw).Usage()
+}
+
+func usageReportFromRaw(raw json.RawMessage) usageReport {
+	if len(raw) == 0 {
+		return usageReport{}
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return usageReport{}
+	}
+	if kind, ok := fields["sessionUpdate"]; ok {
+		var name string
+		if json.Unmarshal(kind, &name) == nil && name == "usage_update" {
+			report := usageReport{
+				Context: storage.Usage{
+					ContextTokens:       firstIntField(fields, "used"),
+					ContextWindowTokens: firstIntField(fields, "size"),
+				},
+			}
+			if meta, ok := fields["_meta"]; ok {
+				report.Merge(usageReportFromRaw(meta))
+			}
+			return report
+		}
+	}
+	report := usageReport{Snapshot: usageSnapshotFromRaw(raw)}
+	if !report.Snapshot.Countable() {
+		report.Context = mergeUsageContext(report.Context, report.Snapshot)
+		report.Snapshot = storage.Usage{}
+	}
+	report.Delta = lastTokenUsageDelta(raw)
+	if report.Snapshot.Countable() {
+		report.Delta = storage.Usage{}
+	}
+	return report
+}
+
+func (r usageReport) IsZero() bool {
+	return r.Snapshot.IsZero() && r.Delta.IsZero() && r.Context.IsZero()
+}
+
+func (r usageReport) Usage() storage.Usage {
+	usage := r.Snapshot
+	if !r.Delta.IsZero() {
+		usage = addUsageDelta(usage, r.Delta)
+	}
+	return mergeUsageContext(usage, r.Context)
+}
+
+func (r *usageReport) Merge(next usageReport) {
+	if !next.Snapshot.IsZero() {
+		r.Snapshot = mergeUsageSnapshot(r.Snapshot, next.Snapshot)
+	}
+	if !next.Delta.IsZero() {
+		r.Delta = addUsageDelta(r.Delta, next.Delta)
+	}
+	r.Context = mergeUsageContext(r.Context, next.Context)
+}
+
+func usageSnapshotFromRaw(raw json.RawMessage) storage.Usage {
+	usage, inclusive := usageSnapshotFragment(raw)
 	return dropTotalOnly(normalizeDisjoint(usage, inclusive))
 }
 
-// usageFragment recursively collects token fields without normalizing.
-// The boolean reports whether any matched key belongs to the OpenAI
-// vocabulary (prompt_tokens / cached_tokens families), whose input counts
-// include cache reads.
-func usageFragment(raw json.RawMessage) (storage.Usage, bool) {
+// usageSnapshotFragment recursively collects cumulative snapshot fields
+// without normalizing. The boolean reports OpenAI-style vocabulary, whose
+// input count includes cache reads.
+func usageSnapshotFragment(raw json.RawMessage) (storage.Usage, bool) {
 	if len(raw) == 0 {
 		return storage.Usage{}, false
 	}
@@ -87,43 +221,47 @@ func usageFragment(raw json.RawMessage) (storage.Usage, bool) {
 	if err := json.Unmarshal(raw, &fields); err != nil {
 		return storage.Usage{}, false
 	}
-	// usage_update session updates (claude-agent-acp, codex-acp) carry the
-	// live context fill and window size; "used"/"size" are only safe to read
-	// under that discriminator. codex-acp additionally relays the last
-	// request's token components in _meta.
-	if kind, ok := fields["sessionUpdate"]; ok {
-		var name string
-		if json.Unmarshal(kind, &name) == nil && name == "usage_update" {
-			usage := storage.Usage{
-				ContextTokens:       firstIntField(fields, "used"),
-				ContextWindowTokens: firstIntField(fields, "size"),
-			}
-			if meta, ok := fields["_meta"]; ok {
-				nested, inclusive := usageFragment(meta)
-				return mergeUsageSnapshot(usage, nested), inclusive
-			}
-			return usage, false
-		}
-	}
 	usage, inclusive := usageFromFields(fields)
 	merge := func(nested storage.Usage, nestedInclusive bool) {
 		usage = mergeUsageSnapshot(usage, nested)
 		inclusive = inclusive || nestedInclusive
 	}
 	for _, key := range []string{
-		"usage", "tokenUsage", "token_usage", "lastTokenUsage", "last_token_usage",
+		"usage", "tokenUsage", "token_usage",
 		"prompt_tokens_details", "promptTokensDetails", "input_tokens_details", "inputTokensDetails",
 		"completion_tokens_details", "completionTokensDetails", "output_tokens_details", "outputTokensDetails",
 		"_meta", "meta", "metadata",
 	} {
 		if nested, ok := fields[key]; ok {
-			merge(usageFragment(nested))
+			merge(usageSnapshotFragment(nested))
 		}
 	}
 	if nested, ok := fields["tokens"]; ok {
 		merge(usageFromTokens(nested), false)
 	}
 	return usage, inclusive
+}
+
+func lastTokenUsageDelta(raw json.RawMessage) storage.Usage {
+	if len(raw) == 0 {
+		return storage.Usage{}
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return storage.Usage{}
+	}
+	var out storage.Usage
+	for _, key := range []string{"lastTokenUsage", "last_token_usage"} {
+		if nested, ok := fields[key]; ok {
+			out = addUsageDelta(out, usageSnapshotFromRaw(nested))
+		}
+	}
+	for _, key := range []string{"_meta", "meta", "metadata", "info", "payload"} {
+		if nested, ok := fields[key]; ok {
+			out = addUsageDelta(out, lastTokenUsageDelta(nested))
+		}
+	}
+	return out
 }
 
 func usageFromFields(fields map[string]json.RawMessage) (storage.Usage, bool) {
@@ -135,9 +273,12 @@ func usageFromFields(fields map[string]json.RawMessage) (storage.Usage, bool) {
 	// OpenAI family marks the payload as inclusive.
 	usage.CachedInputTokens = firstIntField(fields, "cached_read_tokens", "cachedReadTokens", "cache_read_tokens", "cacheReadTokens")
 	if usage.CachedInputTokens == 0 {
+		usage.CachedInputTokens = firstIntField(fields, "cache_read_input_tokens", "cacheReadInputTokens")
+	}
+	if usage.CachedInputTokens == 0 {
 		if read := firstIntField(fields,
 			"cached_tokens", "cachedTokens", "cached_input_tokens", "cachedInputTokens",
-			"cache_read_input_tokens", "cacheReadInputTokens"); read > 0 {
+		); read > 0 {
 			usage.CachedInputTokens = read
 			inclusive = true
 		}
