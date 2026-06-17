@@ -168,9 +168,7 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	if job == nil {
 		return
 	}
-	if usage := usageFromRaw(raw); !usage.IsZero() {
-		m.recordUsage(job, usage)
-	}
+	m.recordRawUsage(job, raw)
 	var activity *storage.ActivityEntry
 	var title string
 	var publishACP bool

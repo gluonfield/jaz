@@ -61,9 +61,7 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string, attac
 		m.finishTurn(done, job)
 		return
 	}
-	if usage := usageFromRaw(raw); !usage.IsZero() {
-		m.recordUsage(job, usage)
-	}
+	m.recordRawUsage(job, raw)
 	stopReason := resp.StopReason
 	state := StateIdle
 	if jobCancelRequested(job) || stopReason == "cancelled" {
