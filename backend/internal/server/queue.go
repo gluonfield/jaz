@@ -194,6 +194,9 @@ func (s *Server) HandleACPTurnFinished(_ context.Context, job acp.Job) {
 		s.setSessionStatusWithError(storage.Session{ID: job.ID}, status, job.Error)
 	}
 	s.publishMessagesChanged(job.ID)
+	// The turn's token usage was persisted during the turn; tell open pages to
+	// refetch the session so the usage meter reflects it without a reload.
+	s.publishSessionChanged(job.ID)
 	if shouldDrain {
 		s.drainQueueSoon(job.ID)
 	}
