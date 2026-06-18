@@ -68,10 +68,10 @@ export function MemorySettings() {
     onError: (error: Error) => toast(`Couldn't update memory: ${error.message}`, 'danger'),
   })
 
-  const setDreamAgent = useMutation({
-    mutationFn: (dream_agent: string) => updateMemorySettings({ dream_agent }),
+  const setMemoryAgent = useMutation({
+    mutationFn: (agent: string) => updateMemorySettings({ agent }),
     onSuccess: setStatus,
-    onError: (error: Error) => toast(`Couldn't update dream agent: ${error.message}`, 'danger'),
+    onError: (error: Error) => toast(`Couldn't update memory agent: ${error.message}`, 'danger'),
   })
 
   const reindex = useMutation({
@@ -141,28 +141,28 @@ export function MemorySettings() {
   const horizons = memory.horizons
   const activeName = activeHorizon ?? horizons[0]?.name
   const active = horizons.find((h) => h.name === activeName)
-  const dreamAgents = enabledACPAgents(agentSettings.data)
-  const selectedDreamAgent = memory.dream_agent ?? ''
-  const staleDreamAgent = selectedDreamAgent && !dreamAgents.includes(selectedDreamAgent)
-  const dreamAgentOptions = [
-    { value: '', label: 'Not selected', description: 'Use provider-backed dream when available' },
-    ...(staleDreamAgent
+  const memoryAgents = enabledACPAgents(agentSettings.data).filter((agent) => agent !== 'jaz')
+  const selectedMemoryAgent = memory.agent ?? ''
+  const staleMemoryAgent = selectedMemoryAgent && !memoryAgents.includes(selectedMemoryAgent)
+  const memoryAgentOptions = [
+    { value: '', label: 'Not selected', description: 'Memory search and dream will stay idle' },
+    ...(staleMemoryAgent
       ? [
           {
-            value: selectedDreamAgent,
-            label: `${agentLabel(selectedDreamAgent)} (disabled)`,
+            value: selectedMemoryAgent,
+            label: `${agentLabel(selectedMemoryAgent)} (disabled)`,
             description: 'Enable this ACP agent or choose another one',
           },
         ]
       : []),
-    ...dreamAgents.map((agent) => ({
+    ...memoryAgents.map((agent) => ({
       value: agent,
       label: agentLabel(agent),
-      description: 'Run dream through this ACP agent',
+      description: 'Run memory_search and dream through this ACP agent',
     })),
   ]
-  const dreamAgentValid =
-    !selectedDreamAgent || dreamAgents.includes(selectedDreamAgent) || agentSettings.isPending
+  const memoryAgentValid =
+    !selectedMemoryAgent || memoryAgents.includes(selectedMemoryAgent) || agentSettings.isPending
 
   return (
     <div className="mx-auto flex max-w-[860px] flex-col gap-5 px-10 pb-8 pt-2">
@@ -240,25 +240,25 @@ export function MemorySettings() {
         </SettingsCard>
 
         <SettingsCard className="px-4 py-3">
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex min-w-0 flex-col gap-2">
             <div className="min-w-0">
-              <span className="text-[13px] font-medium text-ink">Dream agent</span>
+              <span className="text-[13px] font-medium text-ink">Memory agent</span>
               <p className="mt-0.5 text-[12px] text-ink-2">
-                Coding agent used for memory consolidation.
+                Coding agent used by memory_search and dream.
               </p>
-              {!dreamAgentValid ? (
+              {!memoryAgentValid ? (
                 <p className="mt-1 text-[12px] text-danger">
-                  {agentLabel(memory.dream_agent)} is no longer enabled.
+                  {agentLabel(selectedMemoryAgent)} is no longer enabled.
                 </p>
               ) : null}
             </div>
             <Select
-              value={selectedDreamAgent}
-              options={dreamAgentOptions}
-              disabled={setDreamAgent.isPending || agentSettings.isPending}
-              onChange={(dreamAgent) => setDreamAgent.mutate(dreamAgent)}
-              aria-label="Dream agent"
-              className="w-full md:w-[260px]"
+              value={selectedMemoryAgent}
+              options={memoryAgentOptions}
+              disabled={setMemoryAgent.isPending || agentSettings.isPending}
+              onChange={(agent) => setMemoryAgent.mutate(agent)}
+              aria-label="Memory agent"
+              className="w-full"
             />
           </div>
         </SettingsCard>

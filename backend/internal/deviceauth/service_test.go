@@ -7,6 +7,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
@@ -77,6 +78,9 @@ func TestApprovedDeviceRepairRotatesTokenOnApproval(t *testing.T) {
 	if pairing.Device.Status != "approved" {
 		t.Fatalf("repair pairing device status = %q, want approved", pairing.Device.Status)
 	}
+	if _, err := service.Authenticate(registered.Token, SeenInfo{}); err != nil {
+		t.Fatalf("pending repair changed old token: %v", err)
+	}
 	if _, err := service.ApprovePairing(pairing.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -85,6 +89,55 @@ func TestApprovedDeviceRepairRotatesTokenOnApproval(t *testing.T) {
 	}
 	if _, err := service.Authenticate(secret, SeenInfo{}); err != nil {
 		t.Fatalf("rotated token auth: %v", err)
+	}
+}
+
+func TestCreatePairingReplacesPendingRequestForDevice(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	service := New(store)
+	info := testClientInfo("Mac", "desktop", 1)
+	if _, err := service.Register(info); err != nil {
+		t.Fatal(err)
+	}
+	first, _, err := service.CreatePairing(info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, secret, err := service.CreatePairing(info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ID == second.ID {
+		t.Fatalf("pairing id reused: %s", first.ID)
+	}
+
+	_, pairings, err := service.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	statuses := map[string]string{}
+	for _, pairing := range pairings {
+		statuses[pairing.ID] = pairing.Status
+	}
+	if statuses[first.ID] != storage.PairingStatusRejected {
+		t.Fatalf("first status = %q, want rejected", statuses[first.ID])
+	}
+	if statuses[second.ID] != storage.PairingStatusPending {
+		t.Fatalf("second status = %q, want pending", statuses[second.ID])
+	}
+	if _, err := service.ApprovePairing(first.ID); err == nil {
+		t.Fatal("approved replaced pairing")
+	}
+	if _, err := service.ApprovePairing(second.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Authenticate(secret, SeenInfo{}); err != nil {
+		t.Fatalf("replacement token auth: %v", err)
 	}
 }
 

@@ -302,6 +302,101 @@ func TestAgentSettingsSavesModelProviderKey(t *testing.T) {
 	}
 }
 
+func TestAgentSettingsRejectsEnabledACPWithoutAuth(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEX_HOME", t.TempDir()+"/codex-home")
+	t.Setenv("JAZ_ACP_CODEX_API_KEY", "")
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	exe := root + "/codex-acp"
+	if err := os.WriteFile(exe, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	handler := (&Server{
+		Store: store,
+		Root:  root,
+		AgentCatalog: acp.AgentCatalog{
+			acp.AgentCodex: {Command: exe, Model: "gpt-5.4-mini"},
+		},
+	}).Handler()
+
+	body := `{"acp":{"codex":{"enabled":true,"command":"` + exe + `","model":"gpt-5.4-mini","auth":{"mode":"jaz_profile","path":"` + root + `/missing-codex"}}}}`
+	res := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:1234"
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "cannot be enabled without authentication") {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+
+	res = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
+		"acp":{"codex":{"enabled":true,"command":"`+exe+`","model":"gpt-5.4-mini","auth":{"mode":"jaz_profile","path":"`+root+`/missing-codex"}}},
+		"acp_keys":{"codex":"codex-key"}
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:1234"
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
+func TestAgentSettingsRejectsEnabledProviderBackedACPWithoutProviderKey(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_APIKEY", "")
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	exe := root + "/opencode-acp"
+	if err := os.WriteFile(exe, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	handler := (&Server{
+		Store: store,
+		Root:  root,
+		AgentCatalog: acp.AgentCatalog{
+			acp.AgentOpenCode: {
+				Command:                 exe,
+				ProviderMode:            acp.AgentProviderModeAgentDefaults,
+				ModelProviderCapability: provider.CapabilityOpenCode,
+				ModelProvider:           provider.ProviderOpenAI,
+				Model:                   "gpt-5.4-mini",
+			},
+		},
+	}).Handler()
+
+	body := `{"acp":{"opencode":{"enabled":true,"command":"` + exe + `","model_provider":"openai","model":"gpt-5.4-mini"}}}`
+	res := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:1234"
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "cannot be enabled without authentication") {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+
+	res = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
+		"acp":{"opencode":{"enabled":true,"command":"`+exe+`","model_provider":"openai","model":"gpt-5.4-mini"}},
+		"provider_keys":{"openai":"openai-key"}
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:1234"
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
 func TestAgentSettingsSavesCustomModelProviderKey(t *testing.T) {
 	root := t.TempDir()
 	store, err := sqlitestore.New(root)

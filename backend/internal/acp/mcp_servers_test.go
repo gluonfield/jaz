@@ -50,7 +50,7 @@ func TestEnabledHTTPMCPServersEmitsRawHTTPPayloads(t *testing.T) {
 			Enabled:   false,
 			Transport: mcpconfig.TransportStreamableHTTP,
 		},
-	}}, nil)
+	}}, nil, MCPServerPolicyAll)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestEnabledHTTPMCPServersAddsStoredOAuthToken(t *testing.T) {
 			Enabled:   true,
 			Transport: mcpconfig.TransportStreamableHTTP,
 		},
-	}}, staticMCPTokens{mcpconfig.OAuthConnectionID("n8n"): {AccessToken: "oauth-token"}})
+	}}, staticMCPTokens{mcpconfig.OAuthConnectionID("n8n"): {AccessToken: "oauth-token"}}, MCPServerPolicyAll)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +147,7 @@ func TestEnabledHTTPMCPServersRefreshesStoredOAuthToken(t *testing.T) {
 			Enabled:   true,
 			Transport: mcpconfig.TransportStreamableHTTP,
 		},
-	}}, tokens)
+	}}, tokens, MCPServerPolicyAll)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestEnabledHTTPMCPServersSkipsOnlyServerWithBrokenOAuth(t *testing.T) {
 			Enabled:   true,
 			Transport: mcpconfig.TransportStreamableHTTP,
 		},
-	}}, tokens)
+	}}, tokens, MCPServerPolicyAll)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,6 +211,103 @@ func TestEnabledHTTPMCPServersSkipsOnlyServerWithBrokenOAuth(t *testing.T) {
 	}
 }
 
+func TestEnabledHTTPMCPServersAppliesPolicyBeforeOAuthRefresh(t *testing.T) {
+	tokenEndpointCalled := false
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tokenEndpointCalled = true
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer tokenServer.Close()
+
+	tokens := staticMCPTokens{mcpconfig.OAuthConnectionID("docs"): {
+		AccessToken:  "old-token",
+		RefreshToken: "old-refresh",
+		Expiry:       time.Now().Add(-time.Hour),
+		ClientID:     "client",
+		TokenURL:     tokenServer.URL,
+		AuthStyle:    int(oauth2.AuthStyleInParams),
+	}}
+	servers, err := enabledHTTPMCPServers(context.Background(), staticMCPServerStore{servers: []mcpconfig.Server{
+		{
+			ID:        "docs",
+			Name:      "Docs",
+			URL:       "https://docs.example.com/mcp",
+			Enabled:   true,
+			Transport: mcpconfig.TransportStreamableHTTP,
+		},
+		{
+			ID:        "jaztools",
+			Name:      "jaztools",
+			URL:       "http://127.0.0.1:5299/mcp/jaztools",
+			Enabled:   true,
+			Transport: mcpconfig.TransportStreamableHTTP,
+		},
+	}}, tokens, MCPServerPolicyMemorySearchWorker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tokenEndpointCalled {
+		t.Fatal("filtered MCP server triggered OAuth refresh")
+	}
+	if len(servers) != 1 {
+		t.Fatalf("servers = %d, want only jaztools", len(servers))
+	}
+	var payload struct {
+		Name string `json:"name"`
+		URL  string `json:"url"`
+	}
+	if err := json.Unmarshal(servers[0], &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Name != "jaztools" {
+		t.Fatalf("payload = %#v", payload)
+	}
+	if payload.URL != "http://127.0.0.1:5299/mcp/jaztools?jaztools_surface=memory_search_worker" {
+		t.Fatalf("url = %q", payload.URL)
+	}
+}
+
+func TestEnabledHTTPMCPServersJaztoolsOnlyPolicyLeavesURLUnchanged(t *testing.T) {
+	servers, err := enabledHTTPMCPServers(context.Background(), staticMCPServerStore{servers: []mcpconfig.Server{{
+		ID:        "jaztools",
+		Name:      "jaztools",
+		URL:       "http://127.0.0.1:5299/mcp/jaztools",
+		Enabled:   true,
+		Transport: mcpconfig.TransportStreamableHTTP,
+	}}}, nil, MCPServerPolicyJaztoolsOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(servers) != 1 {
+		t.Fatalf("servers = %d, want jaztools", len(servers))
+	}
+	var payload struct {
+		URL string `json:"url"`
+	}
+	if err := json.Unmarshal(servers[0], &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.URL != "http://127.0.0.1:5299/mcp/jaztools" {
+		t.Fatalf("url = %q", payload.URL)
+	}
+}
+
+func TestEnabledHTTPMCPServersUnknownPolicyFailsClosed(t *testing.T) {
+	servers, err := enabledHTTPMCPServers(context.Background(), staticMCPServerStore{servers: []mcpconfig.Server{{
+		ID:        "docs",
+		Name:      "Docs",
+		URL:       "https://docs.example.com/mcp",
+		Enabled:   true,
+		Transport: mcpconfig.TransportStreamableHTTP,
+	}}}, nil, "unknown-policy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(servers) != 0 {
+		t.Fatalf("servers = %d, want none for unknown policy", len(servers))
+	}
+}
+
 func TestEnabledHTTPMCPServersKeepsConfiguredAuthorization(t *testing.T) {
 	servers, err := enabledHTTPMCPServers(context.Background(), staticMCPServerStore{servers: []mcpconfig.Server{
 		{
@@ -221,7 +318,7 @@ func TestEnabledHTTPMCPServersKeepsConfiguredAuthorization(t *testing.T) {
 			Transport: mcpconfig.TransportStreamableHTTP,
 			Headers:   []mcpconfig.Header{{Name: "Authorization", Value: "Bearer configured"}},
 		},
-	}}, staticMCPTokens{mcpconfig.OAuthConnectionID("n8n"): {AccessToken: "oauth-token"}})
+	}}, staticMCPTokens{mcpconfig.OAuthConnectionID("n8n"): {AccessToken: "oauth-token"}}, MCPServerPolicyAll)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +345,7 @@ func TestEnabledHTTPMCPServersEmitsEmptyHeadersArray(t *testing.T) {
 			Enabled:   true,
 			Transport: mcpconfig.TransportStreamableHTTP,
 		},
-	}}, nil)
+	}}, nil, MCPServerPolicyAll)
 	if err != nil {
 		t.Fatal(err)
 	}

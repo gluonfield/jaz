@@ -91,7 +91,8 @@ SELECT
   project_path,
   last_attention_at_ms,
   pinned,
-  artifact_surface
+  artifact_surface,
+  mcp_server_policy
 FROM threads
 WHERE id = ?1 OR slug = ?1
 LIMIT 1
@@ -132,6 +133,7 @@ func (q *Queries) GetSession(ctx context.Context, ref string) (Thread, error) {
 		&i.LastAttentionAtMs,
 		&i.Pinned,
 		&i.ArtifactSurface,
+		&i.McpServerPolicy,
 	)
 	return i, err
 }
@@ -226,7 +228,8 @@ SELECT
   project_path,
   last_attention_at_ms,
   pinned,
-  artifact_surface
+  artifact_surface,
+  mcp_server_policy
 FROM threads
 `
 
@@ -271,6 +274,7 @@ func (q *Queries) ListSessions(ctx context.Context) ([]Thread, error) {
 			&i.LastAttentionAtMs,
 			&i.Pinned,
 			&i.ArtifactSurface,
+			&i.McpServerPolicy,
 		); err != nil {
 			return nil, err
 		}
@@ -432,6 +436,7 @@ INSERT INTO threads (
   acp_session_id,
   cwd,
   artifact_surface,
+  mcp_server_policy,
   project_path,
   error,
   model_provider,
@@ -484,7 +489,8 @@ INSERT INTO threads (
   ?28,
   ?29,
   ?30,
-  ?31
+  ?31,
+  ?32
 )
 ON CONFLICT(id) DO UPDATE SET
   slug = excluded.slug,
@@ -497,6 +503,7 @@ ON CONFLICT(id) DO UPDATE SET
   acp_session_id = excluded.acp_session_id,
   cwd = excluded.cwd,
   artifact_surface = excluded.artifact_surface,
+  mcp_server_policy = excluded.mcp_server_policy,
   project_path = excluded.project_path,
   model_provider = excluded.model_provider,
   model = excluded.model,
@@ -530,6 +537,7 @@ type UpsertSessionParams struct {
 	AcpSessionID          sql.NullString `json:"acp_session_id"`
 	Cwd                   sql.NullString `json:"cwd"`
 	ArtifactSurface       sql.NullString `json:"artifact_surface"`
+	McpServerPolicy       sql.NullString `json:"mcp_server_policy"`
 	ProjectPath           sql.NullString `json:"project_path"`
 	Error                 sql.NullString `json:"error"`
 	ModelProvider         sql.NullString `json:"model_provider"`
@@ -565,6 +573,7 @@ func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) er
 		arg.AcpSessionID,
 		arg.Cwd,
 		arg.ArtifactSurface,
+		arg.McpServerPolicy,
 		arg.ProjectPath,
 		arg.Error,
 		arg.ModelProvider,

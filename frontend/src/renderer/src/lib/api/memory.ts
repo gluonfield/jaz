@@ -10,7 +10,7 @@ export const memoryQuery = queryOptions({
 
 export interface MemorySettingsInput {
   enabled?: boolean
-  dream_agent?: string
+  agent?: string
 }
 
 export function updateMemorySettings(input: MemorySettingsInput): Promise<MemoryStatus> {

@@ -40,4 +40,5 @@ type Thread struct {
 	LastAttentionAtMs     int64          `json:"last_attention_at_ms"`
 	Pinned                int64          `json:"pinned"`
 	ArtifactSurface       sql.NullString `json:"artifact_surface"`
+	McpServerPolicy       sql.NullString `json:"mcp_server_policy"`
 }

@@ -18,8 +18,9 @@ const (
 )
 
 const (
-	SourceLoopRun     = "loop_run"
-	SourceMemoryDream = "memory_dream"
+	SourceLoopRun      = "loop_run"
+	SourceMemoryDream  = "memory_dream"
+	SourceMemorySearch = "memory_search"
 )
 
 const (
@@ -49,6 +50,7 @@ type RuntimeRef struct {
 	Cwd             string `json:"cwd,omitempty"`
 	ProjectPath     string `json:"project_path,omitempty"`
 	ArtifactSurface string `json:"artifact_surface,omitempty"`
+	MCPServerPolicy string `json:"mcp_server_policy,omitempty"`
 }
 
 // Usage follows provider-facing token vocabulary: InputTokens includes cache

@@ -147,7 +147,21 @@ func (s *Store) RevokeDevice(id string, at time.Time) (storage.Device, error) {
 
 func (s *Store) CreateDevicePairing(input storage.CreateDevicePairing) (storage.DevicePairing, error) {
 	s.mu.Lock()
-	err := devicequeries.New(s.db).CreatePairingRequest(context.Background(), devicequeries.CreatePairingRequestParams{
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		s.mu.Unlock()
+		return storage.DevicePairing{}, err
+	}
+	q := devicequeries.New(s.db).WithTx(tx)
+	if _, err := q.RejectPendingPairingRequestsForDevice(context.Background(), devicequeries.RejectPendingPairingRequestsForDeviceParams{
+		DeviceID:     input.DeviceID,
+		RejectedAtMs: timeToMs(input.CreatedAt),
+	}); err != nil {
+		_ = tx.Rollback()
+		s.mu.Unlock()
+		return storage.DevicePairing{}, err
+	}
+	err = q.CreatePairingRequest(context.Background(), devicequeries.CreatePairingRequestParams{
 		ID:          input.ID,
 		DeviceID:    input.DeviceID,
 		SecretHash:  input.SecretHash,
@@ -155,10 +169,16 @@ func (s *Store) CreateDevicePairing(input storage.CreateDevicePairing) (storage.
 		CreatedAtMs: timeToMs(input.CreatedAt),
 		ExpiresAtMs: timeToMs(input.ExpiresAt),
 	})
-	s.mu.Unlock()
 	if err != nil {
+		_ = tx.Rollback()
+		s.mu.Unlock()
 		return storage.DevicePairing{}, err
 	}
+	if err := tx.Commit(); err != nil {
+		s.mu.Unlock()
+		return storage.DevicePairing{}, err
+	}
+	s.mu.Unlock()
 	pairing, _, err := s.LoadDevicePairing(input.ID)
 	return pairing, err
 }
@@ -224,6 +244,11 @@ func (s *Store) ApproveDevicePairing(id string, at time.Time) (storage.DevicePai
 		_ = tx.Rollback()
 		s.mu.Unlock()
 		return storage.DevicePairing{}, fmt.Errorf("pairing request not pending: %s", id)
+	}
+	if _, err := q.RejectOtherPendingPairingRequests(context.Background(), devicequeries.RejectOtherPendingPairingRequestsParams{ID: id, DeviceID: pairing.DeviceID, RejectedAtMs: approvedAt}); err != nil {
+		_ = tx.Rollback()
+		s.mu.Unlock()
+		return storage.DevicePairing{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		s.mu.Unlock()

@@ -23,7 +23,7 @@ func TestMCPServersForAgentUsesConfiguredStore(t *testing.T) {
 		}},
 	}}}}}
 	capable := json.RawMessage(`{"agentCapabilities":{"mcpCapabilities":{"http":true}}}`)
-	servers := m.mcpServersForAgent(context.Background(), capable)
+	servers := m.mcpServersForAgent(context.Background(), capable, MCPServerPolicyAll)
 	if len(servers) != 1 {
 		t.Fatalf("expected configured jaz entry, got %v", servers)
 	}
@@ -42,7 +42,7 @@ func TestMCPServersForAgentUsesConfiguredStore(t *testing.T) {
 	if got := headerValue(entry.Headers, mcpsession.HeaderName); got != "" {
 		t.Fatalf("unexpected session header without context: %q", got)
 	}
-	servers = m.mcpServersForAgent(mcpsession.With(context.Background(), "thread-1"), capable)
+	servers = m.mcpServersForAgent(mcpsession.With(context.Background(), "thread-1"), capable, MCPServerPolicyAll)
 	if len(servers) != 1 {
 		t.Fatalf("expected configured jaz entry with session context, got %v", servers)
 	}
@@ -54,8 +54,55 @@ func TestMCPServersForAgentUsesConfiguredStore(t *testing.T) {
 	}
 
 	incapable := json.RawMessage(`{"agentCapabilities":{}}`)
-	if servers := m.mcpServersForAgent(context.Background(), incapable); len(servers) != 0 {
+	if servers := m.mcpServersForAgent(context.Background(), incapable, MCPServerPolicyAll); len(servers) != 0 {
 		t.Fatalf("non-http-capable agent must get nothing, got %v", servers)
+	}
+}
+
+func TestMCPServersForJaztoolsOnlyPolicyOnlyExposesJaztools(t *testing.T) {
+	m := &Manager{
+		cfg: Config{MCPStore: staticMCPServerStore{servers: []mcpconfig.Server{
+			{
+				ID:        "docs",
+				Name:      "Docs",
+				Transport: mcpconfig.TransportStreamableHTTP,
+				URL:       "https://docs.example.com/mcp",
+				Enabled:   true,
+			},
+			{
+				ID:        "jaztools",
+				Name:      "jaztools",
+				Transport: mcpconfig.TransportStreamableHTTP,
+				URL:       "http://127.0.0.1:5299/mcp/jaztools",
+				Enabled:   true,
+				Headers: []mcpconfig.Header{{
+					Name:  mcpsession.HeaderName,
+					Value: mcpsession.HeaderPlaceholder,
+				}},
+			},
+		}}},
+	}
+	capable := json.RawMessage(`{"agentCapabilities":{"mcpCapabilities":{"http":true}}}`)
+	servers := m.mcpServersForAgent(mcpsession.With(context.Background(), "search-session"), capable, MCPServerPolicyMemorySearchWorker)
+	if len(servers) != 1 {
+		t.Fatalf("servers = %d, want only jaztools", len(servers))
+	}
+	var entry struct {
+		Name    string             `json:"name"`
+		URL     string             `json:"url"`
+		Headers []mcpconfig.Header `json:"headers"`
+	}
+	if err := json.Unmarshal(servers[0], &entry); err != nil {
+		t.Fatal(err)
+	}
+	if entry.Name != "jaztools" {
+		t.Fatalf("entry = %#v, want jaztools", entry)
+	}
+	if !strings.Contains(entry.URL, "jaztools_surface=memory_search_worker") {
+		t.Fatalf("entry url = %q, want memory search surface", entry.URL)
+	}
+	if got := headerValue(entry.Headers, mcpsession.HeaderName); got != "search-session" {
+		t.Fatalf("session header = %q, want search-session", got)
 	}
 }
 

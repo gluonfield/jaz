@@ -2,6 +2,7 @@ package memorydream
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -40,9 +41,18 @@ func (r *Runner) RunDream(ctx context.Context, req jazmem.DreamRequest) (jazmem.
 	if err != nil {
 		return jazmem.DreamReport{}, err
 	}
-	agent := acp.CanonicalAgentName(settings.DreamAgent)
+	agent := acp.CanonicalAgentName(settings.Agent)
 	if agent == "" {
 		return jazmem.DreamReport{}, jazmem.ErrDreamRunnerUnavailable
+	}
+	if agent == acp.AgentJaz {
+		return jazmem.DreamReport{}, fmt.Errorf("built-in Jaz cannot be used as the memory agent yet")
+	}
+	agentDefaults, err := agentsettings.LoadAgentDefaults(r.Store)
+	if errors.Is(err, storage.ErrSettingNotFound) {
+		agentDefaults = agentsettings.DefaultAgentDefaults()
+	} else if err != nil {
+		return jazmem.DreamReport{}, err
 	}
 	date := req.Date
 	if date.IsZero() {
@@ -54,12 +64,14 @@ func (r *Runner) RunDream(ctx context.Context, req jazmem.DreamRequest) (jazmem.
 	reviewSlug := "dreams/review/dream-" + suffix
 
 	spawned, err := r.Manager.Spawn(ctx, acp.SpawnRequest{
-		ACPAgent:   agent,
-		Slug:       fmt.Sprintf("memory-dream-%s-%s-%d", agent, suffix, time.Now().UnixNano()),
-		Title:      "Memory Dream " + runLabel(date),
-		Directory:  req.Root,
-		SourceType: storage.SourceMemoryDream,
-		SourceID:   suffix,
+		ACPAgent:        agent,
+		Slug:            fmt.Sprintf("memory-dream-%s-%s-%d", agent, suffix, time.Now().UnixNano()),
+		Title:           "Memory Dream " + runLabel(date),
+		Directory:       req.Root,
+		Model:           agentsettings.MemoryAgentModel(agent, agentDefaults),
+		ReasoningEffort: agentsettings.MemoryAgentReasoningEffort(agent),
+		SourceType:      storage.SourceMemoryDream,
+		SourceID:        suffix,
 	})
 	if err != nil {
 		return jazmem.DreamReport{}, err

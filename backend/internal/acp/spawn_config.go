@@ -64,6 +64,7 @@ func (m *Manager) createStoredSession(req SpawnRequest, cfg AgentConfig, effort 
 			Type:            storage.RuntimeACP,
 			Agent:           req.ACPAgent,
 			ArtifactSurface: strings.TrimSpace(req.ArtifactSurface),
+			MCPServerPolicy: strings.TrimSpace(req.MCPServerPolicy),
 		},
 	})
 }
