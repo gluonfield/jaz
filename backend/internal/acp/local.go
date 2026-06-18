@@ -2,12 +2,14 @@ package acp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/provider"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -244,7 +246,7 @@ func (m *Manager) runLocalPrompt(ctx context.Context, job *Job, runner LocalAgen
 				m.applyLocalToolCall(job, *event.ToolCall)
 			}
 		case agent.StreamToolResult:
-			m.applyLocalToolResult(job, event.ToolName, event.Error)
+			m.applyLocalToolResult(job, event.ToolName, event.Result, event.Error)
 		case agent.StreamDone:
 			if event.Usage != nil {
 				m.recordUsage(job, storage.Usage{
@@ -311,14 +313,22 @@ func (m *Manager) applyLocalThought(job *Job, chunk string) {
 
 func (m *Manager) applyLocalToolCall(job *Job, call provider.ToolCall) {
 	id := provider.ToolCallID(call)
-	title := provider.ToolCallName(call)
+	name := provider.ToolCallName(call)
+	title := name
 	if id == "" {
 		id = fmt.Sprintf("tool-%d", time.Now().UnixNano())
 	}
 	if title == "" {
 		title = id
 	}
-	snapshot, tool := m.updateLocalTool(job, ToolCallSnapshot{ID: id, Title: title, Status: "running"})
+	next := ToolCallSnapshot{
+		ID:       id,
+		Title:    title,
+		Status:   "running",
+		ToolName: name,
+		RawInput: boundedRawInput(json.RawMessage(provider.ToolCallArguments(call))),
+	}
+	snapshot, tool := m.updateLocalTool(job, next)
 	_ = m.store.UpsertActivity(job.ID, storage.ActivityEntry{
 		ID:     tool.ID,
 		Kind:   "tool",
@@ -329,7 +339,7 @@ func (m *Manager) applyLocalToolCall(job *Job, call provider.ToolCall) {
 	m.publishACPTool(snapshot, tool)
 }
 
-func (m *Manager) applyLocalToolResult(job *Job, title, errText string) {
+func (m *Manager) applyLocalToolResult(job *Job, title, result, errText string) {
 	status := "completed"
 	if strings.TrimSpace(errText) != "" {
 		status = "failed"
@@ -350,7 +360,7 @@ func (m *Manager) applyLocalToolResult(job *Job, title, errText string) {
 	if id == "" {
 		return
 	}
-	snapshot, tool := m.updateLocalTool(job, ToolCallSnapshot{ID: id, Status: status})
+	snapshot, tool := m.updateLocalTool(job, ToolCallSnapshot{ID: id, Status: status, Content: localToolContent(result, errText)})
 	_ = m.store.UpsertActivity(job.ID, storage.ActivityEntry{
 		ID:     tool.ID,
 		Kind:   "tool",
@@ -364,19 +374,27 @@ func (m *Manager) applyLocalToolResult(job *Job, title, errText string) {
 func (m *Manager) updateLocalTool(job *Job, next ToolCallSnapshot) (Job, ToolCallSnapshot) {
 	job.mu.Lock()
 	current := job.toolByID[next.ID]
-	current.ID = next.ID
-	if next.Title != "" {
-		current.Title = next.Title
-	}
-	if next.Status != "" {
-		current.Status = next.Status
-	}
+	mergeToolCall(&current, next)
 	job.toolByID[current.ID] = current
 	job.ToolCalls = sortedToolCalls(job.toolByID)
 	job.UpdatedAt = time.Now().UTC()
 	job.mu.Unlock()
 	snapshot := job.Snapshot()
 	return snapshot, current
+}
+
+// localToolContent surfaces a native-agent tool result (or its error) as a
+// single normalized text block so native Jaz tool calls render through the same
+// path as external ACP agents.
+func localToolContent(result, errText string) []sessionevents.ACPToolContent {
+	text := strings.TrimSpace(result)
+	if text == "" {
+		text = strings.TrimSpace(errText)
+	}
+	if text == "" {
+		return nil
+	}
+	return []sessionevents.ACPToolContent{{Type: "text", Text: clampToolText(text)}}
 }
 
 func (m *Manager) setCancelFunc(id string, cancel context.CancelFunc) {

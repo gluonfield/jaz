@@ -700,6 +700,7 @@ func TestProbeReadinessRequiresClaudeExecutable(t *testing.T) {
 	exe := testExecutable(t)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	t.Setenv("CLAUDE_CODE_EXECUTABLE", "")
 	t.Setenv("PATH", filepath.Dir(exe))
 
 	ready := ProbeReadiness(AgentClaude, AgentConfig{Command: exe}, t.TempDir(), nil)
