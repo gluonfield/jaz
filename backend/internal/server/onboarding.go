@@ -16,9 +16,10 @@ import (
 )
 
 type onboardingResponse struct {
-	Completed bool                  `json:"completed"`
-	ACP       []onboardingACPProbe  `json:"acp"`
-	Settings  agentSettingsResponse `json:"settings"`
+	Completed bool                         `json:"completed"`
+	ACP       []onboardingACPProbe         `json:"acp"`
+	Settings  agentSettingsResponse        `json:"settings"`
+	Memory    agentsettings.MemorySettings `json:"memory"`
 }
 
 type onboardingACPProbe struct {
@@ -35,10 +36,11 @@ type onboardingACPProbe struct {
 }
 
 type onboardingRequest struct {
-	Settings     *agentsettings.AgentDefaults `json:"settings,omitempty"`
-	ProviderKeys map[string]string            `json:"provider_keys,omitempty"`
-	ACPKeys      map[string]string            `json:"acp_keys,omitempty"`
-	Completed    bool                         `json:"completed"`
+	Settings     *agentsettings.AgentDefaults  `json:"settings,omitempty"`
+	Memory       *agentsettings.MemorySettings `json:"memory,omitempty"`
+	ProviderKeys map[string]string             `json:"provider_keys,omitempty"`
+	ACPKeys      map[string]string             `json:"acp_keys,omitempty"`
+	Completed    bool                          `json:"completed"`
 }
 
 func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) {
@@ -87,7 +89,7 @@ func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) {
 			}
 			defaults = saved
 		}
-		if input.Completed {
+		if input.Memory != nil || input.Completed {
 			if defaults.ACP == nil {
 				var err error
 				defaults, err = s.loadAgentSettings(store)
@@ -95,15 +97,19 @@ func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) {
 					writeError(w, http.StatusInternalServerError, err)
 					return
 				}
+			}
+			if input.Completed && normalized == nil {
 				if err := s.validateEnabledACPAgentAuth(defaults); err != nil {
 					writeError(w, http.StatusBadRequest, err)
 					return
 				}
 			}
-			if err := ensureDefaultMemoryAgent(store, defaults); err != nil {
-				writeError(w, http.StatusInternalServerError, err)
+			if status, err := saveOnboardingMemorySettings(store, defaults, input.Memory); err != nil {
+				writeError(w, status, err)
 				return
 			}
+		}
+		if input.Completed {
 			if err := onboardingstate.Save(s.onboardingStatePath(), onboardingstate.State{Completed: true}); err != nil {
 				writeError(w, http.StatusInternalServerError, err)
 				return
@@ -120,21 +126,54 @@ func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func ensureDefaultMemoryAgent(store storage.SettingsStorage, defaults agentsettings.AgentDefaults) error {
+func saveOnboardingMemorySettings(store storage.SettingsStorage, defaults agentsettings.AgentDefaults, input *agentsettings.MemorySettings) (int, error) {
+	settings, status, err := onboardingMemorySettings(store, defaults, input)
+	if err != nil {
+		return status, err
+	}
+	if _, err := agentsettings.SaveMemorySettings(store, settings); err != nil {
+		return http.StatusInternalServerError, err
+	}
+	return 0, nil
+}
+
+func onboardingMemorySettings(store storage.SettingsStorage, defaults agentsettings.AgentDefaults, input *agentsettings.MemorySettings) (agentsettings.MemorySettings, int, error) {
+	if input != nil {
+		settings, err := normalizeOnboardingMemorySettings(defaults, *input)
+		if err != nil {
+			return agentsettings.MemorySettings{}, http.StatusBadRequest, err
+		}
+		return settings, 0, nil
+	}
 	settings, err := agentsettings.LoadMemorySettings(store)
 	if err != nil {
-		return err
+		return agentsettings.MemorySettings{}, http.StatusInternalServerError, err
 	}
-	if strings.TrimSpace(settings.Agent) != "" {
-		return nil
+	if strings.TrimSpace(settings.Agent) == "" {
+		settings.Agent = agentsettings.DefaultMemoryAgent(defaults)
 	}
-	agent := agentsettings.DefaultMemoryAgent(defaults)
-	if agent == "" {
-		return nil
+	settings, err = normalizeOnboardingMemorySettings(defaults, settings)
+	if err != nil {
+		return agentsettings.MemorySettings{}, http.StatusBadRequest, err
 	}
-	settings.Agent = agent
-	_, err = agentsettings.SaveMemorySettings(store, settings)
-	return err
+	return settings, 0, nil
+}
+
+func normalizeOnboardingMemorySettings(defaults agentsettings.AgentDefaults, settings agentsettings.MemorySettings) (agentsettings.MemorySettings, error) {
+	settings.Agent = acp.CanonicalAgentName(settings.Agent)
+	if settings.Enabled && strings.TrimSpace(settings.Agent) == "" {
+		return agentsettings.MemorySettings{}, fmt.Errorf("memory agent is required when memory is enabled")
+	}
+	if settings.Agent == "" {
+		return settings, nil
+	}
+	if settings.Agent == acp.AgentJaz {
+		return agentsettings.MemorySettings{}, fmt.Errorf("built-in Jaz cannot be used as the memory agent yet")
+	}
+	if err := validateMemoryAgent(defaults, settings.Agent); err != nil {
+		return agentsettings.MemorySettings{}, err
+	}
+	return settings, nil
 }
 
 func (s *Server) onboardingStatus(store storage.SettingsStorage) (onboardingResponse, error) {
@@ -146,10 +185,15 @@ func (s *Server) onboardingStatus(store storage.SettingsStorage) (onboardingResp
 	if err != nil {
 		return onboardingResponse{}, err
 	}
+	memory, err := agentsettings.LoadMemorySettings(store)
+	if err != nil {
+		return onboardingResponse{}, err
+	}
 	return onboardingResponse{
 		Completed: state.Completed,
 		ACP:       s.probeACPAgents(defaults),
 		Settings:  s.agentSettingsResponse(defaults),
+		Memory:    memory,
 	}, nil
 }
 

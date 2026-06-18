@@ -1,48 +1,39 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  AlertCircle,
-  CheckCircle2,
-  ChevronDown,
-  KeyRound,
-  LoaderCircle,
-  Lock,
-  LogIn,
-} from 'lucide-react'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { AlertCircle } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
-import { AgentLogo } from '@/components/acp/AgentLogo'
-import { AuthLoginStatus } from '@/components/acp/AuthLoginStatus'
-import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
-import { RAINBOW_BEAM } from '@/components/ui/rainbow'
-import { Segmented } from '@/components/ui/Segmented'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
-import { authProviderLabel, onboardingAgentLabel } from '@/lib/agentLabel'
+import { authProviderLabel } from '@/lib/agentLabel'
 import { completeOnboarding, onboardingQuery } from '@/lib/api/onboarding'
 import { cloneAgentSettings, compactKeys, startACPAuthLogin } from '@/lib/api/settings'
-import type { ACPAgentAuth, ACPAuthLogin, AgentSettings, OnboardingACPProbe, OnboardingStatus } from '@/lib/api/types'
+import type { ACPAgentAuth, AgentSettings, OnboardingStatus } from '@/lib/api/types'
 import { isLoopbackUrl, useConnection } from '@/lib/connection'
 import { useACPLoginPolling } from '@/lib/hooks/useACPLoginPolling'
 import { keys } from '@/lib/query/keys'
+import {
+  AgentSetupStep,
+  MemorySetupStep,
+  OnboardingStepper,
+  agentReady,
+  type OnboardingStep,
+  onboardingRise,
+  onboardingStagger,
+} from './OnboardingParts'
 
-const EASE = [0.22, 1, 0.36, 1] as const
-
-const stagger = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.07, delayChildren: 0.08 } },
-}
-
-const rise = {
-  hidden: { opacity: 0, y: 12, filter: 'blur(5px)' },
-  show: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.42, ease: EASE } },
-}
+const MEMORY_AGENT_PRIORITY = ['codex', 'claude', 'opencode', 'grok']
 
 export function OnboardingGate({ children }: { children: ReactNode }) {
   const onboarding = useQuery(onboardingQuery)
 
   if (window.jaz?.windowKind === 'board') return <>{children}</>
-  if (onboarding.isPending) return <OnboardingShell><SkeletonRows count={4} /></OnboardingShell>
+  if (onboarding.isPending) {
+    return (
+      <OnboardingShell>
+        <SkeletonRows count={4} />
+      </OnboardingShell>
+    )
+  }
   if (onboarding.isError) {
     return (
       <OnboardingShell>
@@ -63,30 +54,48 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
   const toast = useToast()
   const connection = useConnection()
   const remote = !isLoopbackUrl(connection.url)
+  const [step, setStep] = useState<OnboardingStep>('agents')
   const [draft, setDraft] = useState(() => draftFromStatus(status))
   const [acpKeysByAgent, setACPKeysByAgent] = useState<Record<string, string>>({})
+  const [memoryEnabled, setMemoryEnabled] = useState(status.memory?.enabled ?? true)
+  const [memoryAgent, setMemoryAgent] = useState(status.memory?.agent ?? '')
+  const onboardingProbes = useMemo(() => status.acp.filter((probe) => probe.agent !== 'jaz'), [status.acp])
 
   useEffect(() => {
     setDraft(draftFromStatus(status))
   }, [status])
 
-  // A finished sign-in changes what's available on the backend — re-probe.
   const { loginJobs, trackLoginJob } = useACPLoginPolling(() => {
     queryClient.invalidateQueries({ queryKey: keys.onboarding })
     queryClient.invalidateQueries({ queryKey: keys.agentSettings })
     queryClient.invalidateQueries({ queryKey: keys.acpAgents })
   })
 
-  const readyAgents = useMemo(
+  const readyAgentNames = useMemo(
     () =>
-      new Set(
-        status.acp
-          .filter((probe) => probe.available || acpKeysByAgent[probe.agent]?.trim())
+      orderedMemoryAgents(
+        onboardingProbes
+          .filter((probe) => agentReady(probe, acpKeysByAgent[probe.agent] ?? ''))
           .map((probe) => probe.agent),
       ),
-    [status.acp, acpKeysByAgent],
+    [onboardingProbes, acpKeysByAgent],
   )
-  const canFinish = readyAgents.size > 0
+  const readyAgents = useMemo(() => new Set(readyAgentNames), [readyAgentNames])
+  const canContinue = readyAgentNames.length > 0
+  const canFinish = !memoryEnabled || memoryAgent.trim() !== ''
+  const title = step === 'agents' ? 'Connect your agents' : 'Set up memory'
+
+  useEffect(() => {
+    setMemoryEnabled(status.memory?.enabled ?? true)
+  }, [status.memory?.enabled])
+
+  useEffect(() => {
+    setMemoryAgent((current) => preferredMemoryAgent(current || status.memory?.agent || '', readyAgentNames))
+  }, [readyAgentNames, status.memory?.agent])
+
+  useEffect(() => {
+    if (!canContinue && step === 'memory') setStep('agents')
+  }, [canContinue, step])
 
   const login = useMutation({
     mutationFn: ({ agent, auth }: { agent: string; auth?: ACPAgentAuth }) => startACPAuthLogin(agent, auth),
@@ -99,17 +108,20 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
 
   const save = useMutation({
     mutationFn: () => {
-      // No enable toggles in onboarding: every agent that ended up with a
-      // credential turns on; the rest stay off. Users refine this in Settings.
       const next = cloneAgentSettings(draft)
       for (const probe of status.acp) {
+        const current = next.acp[probe.agent]
         next.acp[probe.agent] = {
-          ...next.acp[probe.agent],
-          enabled: readyAgents.has(probe.agent),
+          ...current,
+          enabled: probe.agent === 'jaz' ? Boolean(current?.enabled) : readyAgents.has(probe.agent),
         }
       }
       return completeOnboarding({
         settings: next,
+        memory: {
+          enabled: memoryEnabled,
+          agent: memoryAgent.trim() || undefined,
+        },
         acp_keys: compactKeys(acpKeysByAgent),
         completed: true,
       })
@@ -124,257 +136,53 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
   return (
     <OnboardingShell>
       <motion.div
-        variants={stagger}
+        variants={onboardingStagger}
         initial="hidden"
         animate="show"
-        className="min-w-0 w-full max-w-[calc(100vw-40px)] md:max-w-[460px]"
+        className="min-w-0 w-full max-w-[calc(100vw-40px)] md:max-w-[500px]"
       >
-        <motion.div variants={rise} className="mb-5">
+        <motion.div variants={onboardingRise} className="mb-5">
           <BackendChip remote={remote} url={connection.url} />
           <h1 className="mt-3 text-balance text-[20px] font-semibold tracking-tight text-ink">
-            Connect your agents
+            {title}
           </h1>
+          <OnboardingStepper step={step} canOpenMemory={canContinue} onStepChange={setStep} />
         </motion.div>
 
-        <motion.div variants={rise}>
-          <SectionLabel>Coding agents</SectionLabel>
-          <div className="grid gap-1.5">
-            {status.acp.map((probe) => (
-              <AgentCard
-                key={probe.agent}
-                probe={probe}
-                agentHost={remote ? 'your server' : 'this Mac'}
-                apiKeyValue={acpKeysByAgent[probe.agent] ?? ''}
-                loginJob={loginJobs[probe.agent]}
-                loginPending={login.isPending && login.variables?.agent === probe.agent}
-                onStartLogin={() => login.mutate({ agent: probe.agent, auth: draft.acp[probe.agent]?.auth })}
-                onAPIKeyChange={(value) => setACPKeysByAgent({ ...acpKeysByAgent, [probe.agent]: value })}
-              />
-            ))}
-          </div>
-        </motion.div>
-
-        <motion.div variants={rise} className="mt-4 flex items-center gap-2.5 px-1">
-          <Lock size={13} className="shrink-0 text-ink-3" />
-          <p className="text-pretty text-[12px] leading-relaxed text-ink-3">
-            {remote
-              ? 'Your logins and keys are stored on your server and never leave it.'
-              : 'Your logins and keys are stored on this Mac and never leave your machine.'}
-          </p>
-        </motion.div>
-
-        <motion.div
-          variants={rise}
-          className="mt-5 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between"
-        >
-          <p className="min-h-5 text-pretty text-[12px] text-ink-3">
-            {!canFinish
-              ? 'Connect one coding agent to continue.'
-              : (save.error?.message ?? '')}
-          </p>
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="lg" onClick={onRefresh} title="Re-check agent status">
-              Refresh
-            </Button>
-            <Button
-              variant="primary"
-              size="lg"
-              disabled={!canFinish || save.isPending}
-              onClick={() => save.mutate()}
-            >
-              {save.isPending && <LoaderCircle size={14} className="animate-spin" />}
-              Finish setup
-            </Button>
-          </div>
-        </motion.div>
+        <AnimatePresence mode="wait" initial={false}>
+          {step === 'agents' ? (
+            <AgentSetupStep
+              key="agents"
+              probes={onboardingProbes}
+              remote={remote}
+              acpKeysByAgent={acpKeysByAgent}
+              loginJobs={loginJobs}
+              loginPending={login.isPending ? login.variables?.agent : undefined}
+              canContinue={canContinue}
+              onRefresh={onRefresh}
+              onStartLogin={(agent) => login.mutate({ agent, auth: draft.acp[agent]?.auth })}
+              onAPIKeyChange={(agent, value) => setACPKeysByAgent((keys) => ({ ...keys, [agent]: value }))}
+              onContinue={() => setStep('memory')}
+            />
+          ) : (
+            <MemorySetupStep
+              key="memory"
+              enabled={memoryEnabled}
+              agent={memoryAgent}
+              agents={readyAgentNames}
+              saving={save.isPending}
+              error={save.error?.message ?? ''}
+              canFinish={canFinish}
+              onEnabledChange={setMemoryEnabled}
+              onAgentChange={setMemoryAgent}
+              onBack={() => setStep('agents')}
+              onFinish={() => save.mutate()}
+            />
+          )}
+        </AnimatePresence>
       </motion.div>
     </OnboardingShell>
   )
-}
-
-type AgentState = 'ready' | 'action' | 'missing'
-
-function agentState(probe: OnboardingACPProbe, keyDraft: string): AgentState {
-  if (probe.available || keyDraft.trim()) return 'ready'
-  if (!probe.installed) return 'missing'
-  return 'action'
-}
-
-function AgentCard({
-  probe,
-  agentHost,
-  apiKeyValue,
-  loginJob,
-  loginPending,
-  onStartLogin,
-  onAPIKeyChange,
-}: {
-  probe: OnboardingACPProbe
-  agentHost: string
-  apiKeyValue: string
-  loginJob?: ACPAuthLogin
-  loginPending: boolean
-  onStartLogin: () => void
-  onAPIKeyChange: (value: string) => void
-}) {
-  const reducedMotion = useReducedMotion()
-  const apiKeyEnv = probe.api_key?.source_env
-  const apiKeyReady = Boolean(probe.api_key_configured || apiKeyValue.trim())
-  const state = agentState(probe, apiKeyValue)
-  const running = loginPending || loginJob?.status === 'running'
-  const canKey = Boolean(apiKeyEnv)
-  const canLogin = Boolean(probe.auth_command_available)
-  // Everything starts collapsed; a row only opens when the user taps it.
-  const [expanded, setExpanded] = useState(false)
-  const [method, setMethod] = useState<'login' | 'key'>(canKey && (!canLogin || apiKeyReady) ? 'key' : 'login')
-  useEffect(() => {
-    if (canKey && !canLogin && method === 'login') setMethod('key')
-  }, [canKey, canLogin, method])
-  const actionable = state === 'action'
-  const companionAppBlocked = Boolean(probe.app_installed && !probe.available && !probe.auth_command_available)
-  const missingLabel = companionAppBlocked ? `Needs ${onboardingAgentLabel(probe.agent)}` : undefined
-  const missingDetail = companionAppBlocked
-    ? `${probe.app_name || authProviderLabel(probe.agent)} is installed on ${agentHost}, but ${onboardingAgentLabel(probe.agent)} is not available to jaz.`
-    : state === 'missing'
-      ? probe.reason
-      : ''
-
-  return (
-    <div className="relative">
-      {/* live state: a rainbow comet circles the card while a sign-in runs —
-          the same vocabulary the composer uses while jaz is alive */}
-      <AnimatePresence>
-        {running ? (
-          <motion.div
-            aria-hidden
-            className="pointer-events-none absolute -inset-[1.5px]"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1, ...(reducedMotion ? {} : { '--ring-angle': ['0deg', '360deg'] }) }}
-            exit={{ opacity: 0 }}
-            transition={{
-              opacity: { duration: 0.25, ease: 'easeOut' },
-              '--ring-angle': { duration: 2.6, ease: 'linear', repeat: Infinity },
-            }}
-          >
-            <div className="absolute inset-0 rounded-[12px]" style={{ background: RAINBOW_BEAM }} />
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-
-      <div className="relative overflow-hidden rounded-[12px] bg-surface">
-        <button
-          type="button"
-          aria-expanded={expanded}
-          disabled={!actionable}
-          onClick={() => setExpanded((open) => !open)}
-          className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors duration-150 enabled:hover:bg-surface-2/50 disabled:cursor-default"
-        >
-          <span className="grid size-8 shrink-0 place-items-center rounded-[8px] bg-bg text-ink">
-            <AgentLogo agent={probe.agent} />
-          </span>
-          <span className="flex min-w-0 flex-1 items-center gap-2">
-            <span className="truncate text-[13.5px] font-medium text-ink">
-              {onboardingAgentLabel(probe.agent)}
-            </span>
-            <StatePill state={state} label={missingLabel} />
-          </span>
-          {state === 'ready' ? (
-            <CheckCircle2 size={17} className="shrink-0 text-primary" />
-          ) : actionable ? (
-            <ChevronDown
-              size={15}
-              className={`shrink-0 text-ink-3 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
-            />
-          ) : null}
-        </button>
-        {missingDetail ? (
-          <p className="px-3 pb-2 text-pretty text-[12px] leading-relaxed text-ink-3">{missingDetail}</p>
-        ) : null}
-
-        <AnimatePresence initial={false}>
-          {expanded && actionable ? (
-            <motion.div
-              key="body"
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2, ease: EASE }}
-              className="overflow-hidden"
-            >
-              <div className="flex flex-col gap-2.5 px-3 pb-3 pt-0.5">
-                {canKey && canLogin ? (
-                  <Segmented
-                    layoutId={`onboarding-method-${probe.agent}`}
-                    value={method}
-                    onChange={setMethod}
-                    options={[
-                      { value: 'login', label: 'Sign in', icon: <LogIn size={13} /> },
-                      { value: 'key', label: 'API key', icon: <KeyRound size={13} /> },
-                    ]}
-                  />
-                ) : null}
-
-                {(method === 'login' && canLogin) || !canKey ? (
-                  <div className="flex flex-col items-start gap-2.5">
-                    <Button
-                      variant="primary"
-                      size="md"
-                      disabled={!probe.auth_command_available || running}
-                      onClick={onStartLogin}
-                    >
-                      {running ? <LoaderCircle size={14} className="animate-spin" /> : <LogIn size={14} />}
-                      {running ? 'Waiting for sign-in…' : `Sign in with ${authProviderLabel(probe.agent)}`}
-                    </Button>
-                    {!probe.auth_command_available && probe.auth_command_reason ? (
-                      <p className="text-[12px] text-danger">{probe.auth_command_reason}</p>
-                    ) : null}
-                    <div className="w-full">
-                      <AuthLoginStatus job={loginJob} running={running} />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    <Input
-                      type="password"
-                      value={apiKeyValue}
-                      onChange={(event) => onAPIKeyChange(event.target.value)}
-                      placeholder={probe.api_key_configured ? 'Already set up' : 'Paste an API key'}
-                      autoComplete="off"
-                      spellCheck={false}
-                      className="font-mono text-[12px]"
-                      aria-label={`${onboardingAgentLabel(probe.agent)} API key`}
-                    />
-                    <p className="text-[12px] text-ink-3">
-                      jaz passes this key straight to {onboardingAgentLabel(probe.agent)}.
-                    </p>
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
-      </div>
-    </div>
-  )
-}
-
-function StatePill({ state, label }: { state: AgentState; label?: string }) {
-  const tone =
-    state === 'ready'
-      ? 'bg-primary-soft text-primary-strong'
-      : state === 'missing'
-        ? 'bg-surface-2 text-ink-3'
-        : 'bg-accent-soft text-accent-strong'
-  const text = label ?? (state === 'ready' ? 'Connected' : state === 'missing' ? 'Not installed' : 'Needs sign-in')
-  return (
-    <span className={`inline-flex shrink-0 items-center rounded-full px-2 py-[3px] text-[11px] font-medium ${tone}`}>
-      {text}
-    </span>
-  )
-}
-
-function SectionLabel({ children }: { children: ReactNode }) {
-  return <p className="mb-2 px-1 text-[12px] font-medium text-ink-3">{children}</p>
 }
 
 function BackendChip({ remote, url }: { remote: boolean; url: string }) {
@@ -416,6 +224,23 @@ function OnboardingShell({ children }: { children: ReactNode }) {
       </main>
     </div>
   )
+}
+
+function orderedMemoryAgents(agents: string[]): string[] {
+  const unique = Array.from(new Set(agents.filter((agent) => agent && agent !== 'jaz')))
+  const rank = new Map(MEMORY_AGENT_PRIORITY.map((agent, index) => [agent, index]))
+  return unique.sort((left, right) => {
+    const leftRank = rank.get(left) ?? Number.MAX_SAFE_INTEGER
+    const rightRank = rank.get(right) ?? Number.MAX_SAFE_INTEGER
+    if (leftRank !== rightRank) return leftRank - rightRank
+    return left.localeCompare(right)
+  })
+}
+
+function preferredMemoryAgent(current: string, agents: string[]): string {
+  const value = current.trim()
+  if (value && agents.includes(value)) return value
+  return agents[0] ?? ''
 }
 
 function draftFromStatus(status: OnboardingStatus): AgentSettings {

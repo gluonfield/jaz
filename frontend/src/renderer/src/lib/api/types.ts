@@ -739,14 +739,21 @@ export interface OnboardingACPProbe extends ACPAgentAuthStatus {
   auth_command_reason?: string
 }
 
+export interface OnboardingMemorySettings {
+  enabled: boolean
+  agent?: string
+}
+
 export interface OnboardingStatus {
   completed: boolean
   acp: OnboardingACPProbe[]
   settings: AgentSettings
+  memory: OnboardingMemorySettings
 }
 
 export interface OnboardingInput {
   settings?: AgentSettings
+  memory?: OnboardingMemorySettings
   provider_keys?: Record<string, string>
   acp_keys?: Record<string, string>
   completed: boolean

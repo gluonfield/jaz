@@ -28,12 +28,12 @@ func TestSpawnConfigPreservesExplicitMCPPolicy(t *testing.T) {
 	req, _, _, err := manager.spawnConfig(SpawnRequest{
 		ACPAgent:        "fake",
 		ArtifactSurface: "widget",
-		MCPServerPolicy: MCPServerPolicyJaztoolsOnly,
+		MCPServerPolicy: MCPServerPolicyMemorySearchWorker,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if req.MCPServerPolicy != MCPServerPolicyJaztoolsOnly {
+	if req.MCPServerPolicy != MCPServerPolicyMemorySearchWorker {
 		t.Fatalf("mcp server policy = %q", req.MCPServerPolicy)
 	}
 }
