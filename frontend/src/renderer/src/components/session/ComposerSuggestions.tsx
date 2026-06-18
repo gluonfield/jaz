@@ -1,4 +1,4 @@
-import { Briefcase, FileText, Folder, Sparkles } from 'lucide-react'
+import { FileText, Folder, Sparkles } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import { useEffect, useRef } from 'react'
 
@@ -23,8 +23,7 @@ export interface SuggestionSection {
 
 function ItemIcon({ kind }: { kind: SuggestionItem['kind'] }) {
   if (kind === 'skill') return <Sparkles size={13} className="mt-0.5 shrink-0 text-primary" />
-  if (kind === 'project') return <Briefcase size={13} className="mt-0.5 shrink-0 text-primary" />
-  if (kind === 'dir') return <Folder size={13} className="mt-0.5 shrink-0 text-primary" />
+  if (kind === 'project' || kind === 'dir') return <Folder size={13} className="mt-0.5 shrink-0 text-primary" />
   return <FileText size={13} className="mt-0.5 shrink-0 text-ink-3" />
 }
 
