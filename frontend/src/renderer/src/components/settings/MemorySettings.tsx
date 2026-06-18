@@ -165,7 +165,7 @@ export function MemorySettings() {
     !selectedMemoryAgent || memoryAgents.includes(selectedMemoryAgent) || agentSettings.isPending
 
   return (
-    <div className="mx-auto flex max-w-[860px] flex-col gap-5 px-10 pb-8 pt-2">
+    <div className="flex flex-col gap-5 py-5">
       <header className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-lg font-semibold text-ink">Memory</h1>
