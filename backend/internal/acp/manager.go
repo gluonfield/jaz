@@ -196,6 +196,10 @@ func (c *agentConn) withProcessStderr(err error) error {
 }
 
 func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface string) (*agentConn, error) {
+	return m.connectWithHandler(ctx, name, cfg, cwd, artifactSurface, jsonrpc.HandlerFunc(m.handleJSONRPC))
+}
+
+func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface string, handler jsonrpc.Handler) (*agentConn, error) {
 	env, err := m.processEnvPreparedForSurface(name, cfg, artifactSurface)
 	if err != nil {
 		return nil, err
@@ -206,7 +210,7 @@ func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd
 		cancel()
 		return nil, err
 	}
-	peer := jsonrpc.NewPeer(conn, jsonrpc.HandlerFunc(m.handleJSONRPC))
+	peer := jsonrpc.NewPeer(conn, handler)
 	go func() {
 		err := peer.Serve(runCtx)
 		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, io.EOF) {
@@ -277,23 +281,16 @@ func (m *Manager) sessionPromptMeta(agent, cwd, artifactSurface string) (map[str
 	return systemPromptMeta(agent, prompt), nil
 }
 
-func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string) (acpSessionInfo, error) {
-	meta, err := m.sessionMeta(agent, cfg, cwd, artifactSurface)
+type newSessionRequest struct {
+	Meta       map[string]any    `json:"_meta,omitempty"`
+	Cwd        string            `json:"cwd"`
+	MCPServers []json.RawMessage `json:"mcpServers"`
+}
+
+func (m *Manager) newACPProtocolSession(ctx context.Context, ac *agentConn, label string, req newSessionRequest) (acpSessionInfo, error) {
+	sessionRaw, err := ac.peer.Call(ctx, acpschema.AgentMethodSessionNew, req)
 	if err != nil {
-		return acpSessionInfo{}, err
-	}
-	newSession := struct {
-		Meta       map[string]any    `json:"_meta,omitempty"`
-		Cwd        string            `json:"cwd"`
-		MCPServers []json.RawMessage `json:"mcpServers"`
-	}{
-		Meta:       meta,
-		Cwd:        cwd,
-		MCPServers: m.mcpServersForAgent(ctx, ac.initRaw, mcpServerPolicy),
-	}
-	sessionRaw, err := ac.peer.Call(ctx, acpschema.AgentMethodSessionNew, newSession)
-	if err != nil {
-		return acpSessionInfo{}, fmt.Errorf("create acp session: %w", ac.withProcessStderr(err))
+		return acpSessionInfo{}, fmt.Errorf("create acp %s session: %w", label, ac.withProcessStderr(err))
 	}
 	var acpSession acpschema.NewSessionResponse
 	if err := json.Unmarshal(sessionRaw, &acpSession); err != nil {
@@ -303,6 +300,18 @@ func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent string
 		return acpSessionInfo{}, fmt.Errorf("acp session/new returned empty session id")
 	}
 	return newACPSessionInfo(sessionRaw, acpSession), nil
+}
+
+func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string) (acpSessionInfo, error) {
+	meta, err := m.sessionMeta(agent, cfg, cwd, artifactSurface)
+	if err != nil {
+		return acpSessionInfo{}, err
+	}
+	return m.newACPProtocolSession(ctx, ac, "agent", newSessionRequest{
+		Meta:       meta,
+		Cwd:        cwd,
+		MCPServers: m.mcpServersForAgent(ctx, ac.initRaw, mcpServerPolicy),
+	})
 }
 
 type createdSession struct {

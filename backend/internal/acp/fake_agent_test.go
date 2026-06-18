@@ -143,6 +143,8 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			}
 			addFakeModels(result)
 			sendResult(conn, msg, result)
+		case "session/close":
+			sendResult(conn, msg, map[string]any{})
 		case "session/set_mode":
 			var req struct {
 				ModeID string `json:"modeId"`
