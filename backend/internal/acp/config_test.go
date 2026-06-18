@@ -203,6 +203,25 @@ func TestProbeAgentAuthDetectsCodexKeyringProfile(t *testing.T) {
 	}
 }
 
+func TestProbeAgentAuthIgnoresClaudeSettingsOnlyJSONProfile(t *testing.T) {
+	clearHostEnv(t)
+	home := t.TempDir()
+	configDir := filepath.Join(home, "claude-config")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, ".claude.json"), []byte(`{"hasCompletedOnboarding":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("CLAUDE_CONFIG_DIR", configDir)
+
+	status := ProbeAgentAuth(AgentClaude, AgentConfig{}, t.TempDir(), nil)
+	if status.Authenticated {
+		t.Fatalf("status = %#v, want settings-only .claude.json ignored", status)
+	}
+}
+
 func TestProbeAgentAuthDetectsClaudeJSONProfile(t *testing.T) {
 	clearHostEnv(t)
 	home := t.TempDir()
@@ -210,7 +229,7 @@ func TestProbeAgentAuthDetectsClaudeJSONProfile(t *testing.T) {
 	if err := os.MkdirAll(configDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(configDir, ".claude.json"), []byte(`{}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(configDir, ".claude.json"), []byte(`{"oauthAccount":{"accountUuid":"account-id"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
