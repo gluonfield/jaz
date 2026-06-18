@@ -16,6 +16,7 @@ import (
 
 const (
 	jaztoolsSurfaceQueryParam       = "jaztools_surface"
+	jaztoolsWidgetSurfaceName       = "widget"
 	jaztoolsMemorySearchSurfaceName = "memory_search_worker"
 )
 
@@ -88,7 +89,7 @@ func mcpServerAllowed(policy string, server mcpconfig.Server) bool {
 	switch strings.TrimSpace(policy) {
 	case MCPServerPolicyAll:
 		return true
-	case MCPServerPolicyJaztoolsOnly, MCPServerPolicyMemorySearchWorker:
+	case MCPServerPolicyJaztoolsOnly, MCPServerPolicyWidget, MCPServerPolicyMemorySearchWorker:
 		return strings.EqualFold(strings.TrimSpace(server.ID), "jaztools") ||
 			strings.EqualFold(strings.TrimSpace(server.Name), "jaztools")
 	default:
@@ -98,22 +99,28 @@ func mcpServerAllowed(policy string, server mcpconfig.Server) bool {
 
 func mcpServerURL(policy, raw string) string {
 	switch strings.TrimSpace(policy) {
+	case MCPServerPolicyWidget:
+		return jaztoolsSurfaceURL(raw, jaztoolsWidgetSurfaceName)
 	case MCPServerPolicyMemorySearchWorker:
-		raw = strings.TrimSpace(raw)
-		if raw == "" {
-			return ""
-		}
-		u, err := url.Parse(raw)
-		if err != nil {
-			return raw
-		}
-		q := u.Query()
-		q.Set(jaztoolsSurfaceQueryParam, jaztoolsMemorySearchSurfaceName)
-		u.RawQuery = q.Encode()
-		return u.String()
+		return jaztoolsSurfaceURL(raw, jaztoolsMemorySearchSurfaceName)
 	default:
 		return raw
 	}
+}
+
+func jaztoolsSurfaceURL(raw, surface string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	q := u.Query()
+	q.Set(jaztoolsSurfaceQueryParam, surface)
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 func resolvedACPHeaders(ctx context.Context, server mcpconfig.Server, tokens integrationoauth.Store) ([]mcpconfig.Header, error) {

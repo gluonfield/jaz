@@ -26,6 +26,7 @@ const (
 
 const (
 	surfaceQueryParam       = "jaztools_surface"
+	widgetSurfaceName       = "widget"
 	memorySearchSurfaceName = "memory_search_worker"
 )
 
@@ -160,8 +161,11 @@ func (s *Service) Handler() http.Handler {
 }
 
 func (s *Service) surface(r *http.Request) toolSurface {
-	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get(surfaceQueryParam)), memorySearchSurfaceName) {
+	switch strings.ToLower(strings.TrimSpace(r.URL.Query().Get(surfaceQueryParam))) {
+	case memorySearchSurfaceName:
 		return searchWorkerSurface
+	case widgetSurfaceName:
+		return widgetSurface
 	}
 	if s.searchWorkerSession(r) {
 		return searchWorkerSurface

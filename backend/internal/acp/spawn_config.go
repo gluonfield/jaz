@@ -6,12 +6,18 @@ import (
 
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/visualize"
 )
 
 func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, string, error) {
 	req.ACPAgent = CanonicalAgentName(req.ACPAgent)
 	if req.ACPAgent == "" {
 		req.ACPAgent = AgentJaz
+	}
+	req.ArtifactSurface = strings.TrimSpace(req.ArtifactSurface)
+	req.MCPServerPolicy = strings.TrimSpace(req.MCPServerPolicy)
+	if req.MCPServerPolicy == "" && visualize.NormalizeSurface(req.ArtifactSurface) == visualize.SurfaceWidget {
+		req.MCPServerPolicy = MCPServerPolicyWidget
 	}
 	cfg, ok, err := m.configuredAgent(req.ACPAgent)
 	if err != nil {
@@ -63,8 +69,8 @@ func (m *Manager) createStoredSession(req SpawnRequest, cfg AgentConfig, effort 
 		RuntimeRef: &storage.RuntimeRef{
 			Type:            storage.RuntimeACP,
 			Agent:           req.ACPAgent,
-			ArtifactSurface: strings.TrimSpace(req.ArtifactSurface),
-			MCPServerPolicy: strings.TrimSpace(req.MCPServerPolicy),
+			ArtifactSurface: req.ArtifactSurface,
+			MCPServerPolicy: req.MCPServerPolicy,
 		},
 	})
 }
