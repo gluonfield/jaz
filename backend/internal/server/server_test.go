@@ -771,20 +771,23 @@ func TestSessionMessagesHidesDirectACPChildStateFromParent(t *testing.T) {
 }
 
 type fakeACPManager struct {
-	mu           sync.Mutex
-	sent         acp.SendRequest
-	answered     acp.InteractiveAnswer
-	sendCtxErr   error
-	answerCtxErr error
-	cancelCtxErr error
-	sendErr      error
-	answerErr    error
-	job          acp.Job
-	jobs         []acp.Job
-	spawnStore   storage.SessionStore
-	spawned      acp.SpawnRequest
-	created      acp.SpawnRequest
-	spawnErr     error
+	mu            sync.Mutex
+	sent          acp.SendRequest
+	answered      acp.InteractiveAnswer
+	sendCtxErr    error
+	answerCtxErr  error
+	cancelCtxErr  error
+	sendErr       error
+	answerErr     error
+	job           acp.Job
+	jobs          []acp.Job
+	spawnStore    storage.SessionStore
+	spawned       acp.SpawnRequest
+	created       acp.SpawnRequest
+	spawnErr      error
+	utilityPrompt acp.UtilityPromptRequest
+	utilityText   string
+	utilityErr    error
 }
 
 func (f *fakeACPManager) CreateSession(_ context.Context, req acp.SpawnRequest) (storage.Session, error) {
@@ -854,6 +857,13 @@ func (f *fakeACPManager) Spawn(_ context.Context, req acp.SpawnRequest) (acp.Spa
 }
 
 func (f *fakeACPManager) Agents() []string { return nil }
+
+func (f *fakeACPManager) RunUtilityPrompt(_ context.Context, req acp.UtilityPromptRequest) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.utilityPrompt = req
+	return f.utilityText, f.utilityErr
+}
 
 func (f *fakeACPManager) Send(ctx context.Context, req acp.SendRequest) (acp.Job, error) {
 	f.mu.Lock()

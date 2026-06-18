@@ -59,3 +59,10 @@ func (r ACPRunner) Run(ctx context.Context, req acp.LocalAgentRequest) <-chan ag
 		ArtifactSurface: req.ArtifactSurface,
 	})
 }
+
+func (r ACPRunner) RunUtility(ctx context.Context, req acp.LocalUtilityRequest) <-chan agent.StreamEvent {
+	return r.runner.RunUtility(ctx, UtilityRequest{
+		Session: req.Session,
+		Message: req.Message,
+	})
+}

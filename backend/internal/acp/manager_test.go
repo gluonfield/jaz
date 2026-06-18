@@ -34,7 +34,9 @@ func (cwdPrompt) ACPPrompt(cwd string) (string, error) { return "cwd: " + cwd, n
 func (cwdPrompt) SkillsPrompt() (string, error)        { return "", nil }
 
 type localRunner struct {
-	seen chan acp.LocalAgentRequest
+	seen        chan acp.LocalAgentRequest
+	utilitySeen chan acp.LocalUtilityRequest
+	utilityText string
 }
 
 func (r localRunner) Run(ctx context.Context, req acp.LocalAgentRequest) <-chan agent.StreamEvent {
@@ -53,6 +55,29 @@ func (r localRunner) Run(ctx context.Context, req acp.LocalAgentRequest) <-chan 
 		out <- agent.StreamEvent{Type: agent.StreamToolCall, ToolCall: &call}
 		out <- agent.StreamEvent{Type: agent.StreamToolResult, ToolName: "inspect"}
 		out <- agent.StreamEvent{Type: agent.StreamDone, Usage: &provider.Usage{InputTokens: 3, OutputTokens: 5, TotalTokens: 8}}
+	}()
+	return out
+}
+
+func (r localRunner) RunUtility(ctx context.Context, req acp.LocalUtilityRequest) <-chan agent.StreamEvent {
+	out := make(chan agent.StreamEvent, 2)
+	go func() {
+		defer close(out)
+		if r.utilitySeen != nil {
+			r.utilitySeen <- req
+		}
+		select {
+		case <-ctx.Done():
+			out <- agent.StreamEvent{Type: agent.StreamError, Error: ctx.Err().Error()}
+			return
+		default:
+		}
+		text := r.utilityText
+		if text == "" {
+			text = "local utility reply"
+		}
+		out <- agent.StreamEvent{Type: agent.StreamDelta, Delta: text}
+		out <- agent.StreamEvent{Type: agent.StreamDone}
 	}()
 	return out
 }
@@ -318,6 +343,111 @@ func TestManagerRunsLocalJazAgentThroughACPJob(t *testing.T) {
 	}
 	if session.Usage.InputTokens != 3 || session.Usage.OutputTokens != 5 || session.Usage.TotalTokens != 8 {
 		t.Fatalf("usage = %#v", session.Usage)
+	}
+}
+
+func TestManagerRunUtilityPromptUsesACPWithoutPersistingSession(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := acp.NewManager(store, acp.Config{
+		Root:      t.TempDir(),
+		Workspace: t.TempDir(),
+		Agents: map[string]acp.AgentConfig{
+			"fake": {
+				Command: os.Args[0],
+				Args:    []string{"-test.run=TestFakeACPAgentProcess"},
+				Env:     map[string]string{"JAZ_FAKE_ACP_AGENT": "1"},
+			},
+		},
+	}, log.New(io.Discard))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	text, err := manager.RunUtilityPrompt(ctx, acp.UtilityPromptRequest{
+		ACPAgent:  "fake",
+		Directory: ".",
+		Message:   "return a short title",
+		Timeout:   10 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text != "hello from fake agent" {
+		t.Fatalf("text = %q, want fake agent output", text)
+	}
+	if jobs := manager.List(); len(jobs) != 0 {
+		t.Fatalf("jobs = %#v, want no registered job", jobs)
+	}
+	sessions, err := store.ListSessions(storage.SessionFilter{IncludeChildren: true, IncludeSourced: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("sessions = %#v, want no stored thread", sessions)
+	}
+}
+
+func TestManagerRunUtilityPromptUsesLocalRunnerWithoutPersistingSession(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := localRunner{
+		utilitySeen: make(chan acp.LocalUtilityRequest, 1),
+		utilityText: `{"title":"Local Utility Title"}`,
+	}
+	manager := acp.NewManager(store, acp.Config{
+		Root:      t.TempDir(),
+		Workspace: t.TempDir(),
+		Agents: map[string]acp.AgentConfig{
+			acp.AgentJaz: {
+				Local:           true,
+				ModelProvider:   "openrouter",
+				Model:           "openai/gpt-test",
+				ReasoningEffort: "medium",
+			},
+		},
+	}, log.New(io.Discard))
+	manager.RegisterLocalAgent(acp.AgentJaz, runner)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	text, err := manager.RunUtilityPrompt(ctx, acp.UtilityPromptRequest{
+		ACPAgent:  acp.AgentJaz,
+		Directory: ".",
+		Message:   "return a short title",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text != `{"title":"Local Utility Title"}` {
+		t.Fatalf("text = %q, want local utility output", text)
+	}
+	select {
+	case req := <-runner.utilitySeen:
+		if req.Message != "return a short title" ||
+			req.Session.ModelProvider != "openrouter" ||
+			req.Session.Model != "openai/gpt-test" ||
+			req.Session.ReasoningEffort != "medium" ||
+			req.Session.RuntimeRef == nil ||
+			req.Session.RuntimeRef.Agent != acp.AgentJaz ||
+			req.Session.RuntimeRef.Cwd == "" {
+			t.Fatalf("local utility request = %#v", req)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("local utility runner was not called")
+	}
+	if jobs := manager.List(); len(jobs) != 0 {
+		t.Fatalf("jobs = %#v, want no registered job", jobs)
+	}
+	sessions, err := store.ListSessions(storage.SessionFilter{IncludeChildren: true, IncludeSourced: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("sessions = %#v, want no stored thread", sessions)
 	}
 }
 

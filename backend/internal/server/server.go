@@ -40,6 +40,7 @@ type ACPManager interface {
 	Send(context.Context, acp.SendRequest) (acp.Job, error)
 	Status(string) (acp.Job, error)
 	List() []acp.Job
+	RunUtilityPrompt(context.Context, acp.UtilityPromptRequest) (string, error)
 	Agents() []string
 	AnswerInteractive(context.Context, acp.InteractiveAnswer) error
 	Cancel(context.Context, string) (acp.Job, error)
