@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	registryGroup  = "mcp"
+	RegistryGroup  = "mcp"
 	maxToolNameLen = 64
 
 	ProxyServerID   = "jaz_mcp"
@@ -255,7 +255,7 @@ func (m *Manager) refreshServerList(ctx context.Context, seq uint64, servers []m
 	m.sessions = next
 	m.statuses = statuses
 	m.mu.Unlock()
-	m.registry.SetGroup(registryGroup, allTools)
+	m.registry.SetGroup(RegistryGroup, allTools)
 
 	closeSessions(old)
 }
@@ -266,7 +266,7 @@ func (m *Manager) Close() {
 	m.sessions = make(map[string]*serverSession)
 	m.statuses = make(map[string]mcpconfig.ServerStatus)
 	m.mu.Unlock()
-	m.registry.RemoveGroup(registryGroup)
+	m.registry.RemoveGroup(RegistryGroup)
 	closeSessions(sessions)
 }
 
