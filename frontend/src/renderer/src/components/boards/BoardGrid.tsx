@@ -7,10 +7,12 @@ import {
 } from 'react'
 import type { BoardLayoutEntry } from '@/lib/api/boards'
 import type { Board, BoardItem } from '@/lib/api/types'
+import { OpenInMainCue } from './OpenInMainCue'
 import { WidgetTile } from './WidgetTile'
 
 const GAP = 12
 const MAX_ROWS = 64
+const OPEN_CUE_MS = 1600
 
 interface DragState {
   widgetId: string
@@ -49,6 +51,10 @@ export function BoardGrid({
   const dragRef = useRef<DragState | null>(null)
   // Free cell under the pointer; hovering it offers "+ Add widget".
   const [hover, setHover] = useState<{ x: number; y: number } | null>(null)
+  // Single board-level cue: a tile in a popped-out window opened in the main
+  // app, flashed at the click point. One owner here beats per-tile state.
+  const [openCue, setOpenCue] = useState<{ x: number; y: number } | null>(null)
+  const cueTimer = useRef<number | null>(null)
 
   useEffect(() => {
     const el = containerRef.current
@@ -58,6 +64,16 @@ export function BoardGrid({
     setWidth(el.clientWidth)
     return () => observer.disconnect()
   }, [])
+
+  useEffect(() => () => {
+    if (cueTimer.current) window.clearTimeout(cueTimer.current)
+  }, [])
+
+  const showOpenCue = (x: number, y: number) => {
+    setOpenCue({ x, y })
+    if (cueTimer.current) window.clearTimeout(cueTimer.current)
+    cueTimer.current = window.setTimeout(() => setOpenCue(null), OPEN_CUE_MS)
+  }
 
   const cols = board.grid_cols > 0 ? board.grid_cols : 6
   const rowH = board.row_height > 0 ? board.row_height : 120
@@ -194,7 +210,7 @@ export function BoardGrid({
             return (
               <div
                 key={index}
-                className="absolute rounded-card border border-dashed border-border"
+                className="absolute rounded-card border border-dashed border-border/60"
                 style={{ left: cellLeft(gx), top: cellTop(gy), width: cellW, height: rowH }}
               />
             )
@@ -220,7 +236,7 @@ export function BoardGrid({
         <button
           type="button"
           onClick={onNewWidget}
-          className="absolute z-10 flex items-center justify-center gap-1.5 rounded-card border border-dashed border-border text-[12px] text-ink-3 transition-colors duration-150 hover:border-primary/60 hover:text-primary"
+          className="absolute z-10 flex items-center justify-center gap-1.5 rounded-card border border-dashed border-border/70 text-[12px] text-ink-3 transition-colors duration-150 hover:border-primary/60 hover:text-primary"
           style={{
             left: cellLeft(hover.x),
             top: cellTop(hover.y),
@@ -263,10 +279,12 @@ export function BoardGrid({
               onHeaderPointerDown={(e) => startDrag(e, item, 'move')}
               onResizePointerDown={(e) => startDrag(e, item, 'resize')}
               onRemove={() => onRemove(item.widget_id)}
+              onOpenedInMain={showOpenCue}
             />
           </div>
         )
       })}
+      <OpenInMainCue point={openCue} />
     </div>
   )
 }
