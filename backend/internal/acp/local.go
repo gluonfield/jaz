@@ -79,18 +79,32 @@ func (m *Manager) runLocalUtilityPrompt(ctx context.Context, req SpawnRequest, c
 		},
 	}
 	var text strings.Builder
-	for event := range utility.RunUtility(ctx, LocalUtilityRequest{Session: session, Message: message}) {
-		switch event.Type {
-		case agent.StreamDelta:
-			text.WriteString(event.Delta)
-		case agent.StreamError:
-			return "", fmt.Errorf("local utility prompt failed: %s", firstNonEmpty(event.Error, "unknown error"))
+	var streamErr error
+	events := utility.RunUtility(ctx, LocalUtilityRequest{Session: session, Message: message})
+	for {
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case event, ok := <-events:
+			if !ok {
+				if streamErr != nil {
+					return "", streamErr
+				}
+				if out := strings.TrimSpace(text.String()); out != "" {
+					return out, nil
+				}
+				return "", fmt.Errorf("empty utility prompt response")
+			}
+			switch event.Type {
+			case agent.StreamDelta:
+				text.WriteString(event.Delta)
+			case agent.StreamError:
+				if streamErr == nil {
+					streamErr = fmt.Errorf("local utility prompt failed: %s", firstNonEmpty(event.Error, "unknown error"))
+				}
+			}
 		}
 	}
-	if out := strings.TrimSpace(text.String()); out != "" {
-		return out, nil
-	}
-	return "", fmt.Errorf("empty utility prompt response")
 }
 
 func (m *Manager) newLocalJob(session storage.Session, agentName, cwd string) *Job {
