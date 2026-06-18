@@ -6,11 +6,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
-const managedMarker = ".jaz-managed-skill"
+var installMu sync.Mutex
 
-func SyncTo(root, dstRoot string) error {
+func InstallMissingTo(root, dstRoot string) error {
+	installMu.Lock()
+	defer installMu.Unlock()
+
 	catalog, err := Load(root)
 	if err != nil {
 		return err
@@ -23,37 +27,25 @@ func SyncTo(root, dstRoot string) error {
 		return err
 	}
 	for _, skill := range catalog.Skills {
-		if err := syncSkill(filepath.Dir(skill.Path), filepath.Join(dstRoot, filepath.Base(filepath.Dir(skill.Path)))); err != nil {
+		if err := installMissingSkill(filepath.Dir(skill.Path), filepath.Join(dstRoot, filepath.Base(filepath.Dir(skill.Path)))); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func syncSkill(src, dst string) error {
-	if info, err := os.Stat(dst); err == nil {
-		if !info.IsDir() || !exists(filepath.Join(dst, managedMarker)) {
+func installMissingSkill(src, dst string) error {
+	if err := os.Mkdir(dst, 0o755); err != nil {
+		if os.IsExist(err) {
 			return nil
 		}
-		if err := os.RemoveAll(dst); err != nil {
-			return err
-		}
-	} else if !os.IsNotExist(err) {
 		return err
 	}
-
-	tmp, err := os.MkdirTemp(filepath.Dir(dst), ".jaz-skill-")
-	if err != nil {
+	if err := copyDir(src, dst); err != nil {
+		_ = os.RemoveAll(dst)
 		return err
 	}
-	defer os.RemoveAll(tmp)
-	if err := copyDir(src, tmp); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(tmp, managedMarker), []byte("managed by Jaz\n"), 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, dst)
+	return nil
 }
 
 func copyDir(src, dst string) error {
@@ -85,9 +77,4 @@ func copyDir(src, dst string) error {
 		}
 		return os.WriteFile(target, data, info.Mode().Perm())
 	})
-}
-
-func exists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
 }

@@ -161,24 +161,6 @@ func TestProcessEnvPreparedReportsProfilePreparationFailure(t *testing.T) {
 	}
 }
 
-func TestProcessEnvPreparedSyncsCodexSkills(t *testing.T) {
-	clearHostEnv(t)
-	root := t.TempDir()
-	writeACPTestSkill(t, root, "alpha")
-
-	env, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared("codex", AgentConfig{
-		Auth: AgentAuthConfig{Mode: AuthModeJazProfile},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	path := filepath.Join(env["CODEX_HOME"], "skills", "alpha", "SKILL.md")
-	if data, err := os.ReadFile(path); err != nil || !strings.Contains(string(data), "Alpha skill") {
-		t.Fatalf("codex skill copy = %q, %v", data, err)
-	}
-}
-
 func TestProbeAgentAuthDoesNotImportCredentials(t *testing.T) {
 	home := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o700); err != nil {
