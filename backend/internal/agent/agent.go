@@ -73,7 +73,10 @@ func (a *Agent) Complete(ctx context.Context, req provider.Request) (Result, err
 	}
 	messages := append([]provider.Message(nil), req.Messages...)
 	mediaRefs := media.CloneRefMap(req.MediaRefs)
-	toolExposure := newToolExposure(req.Tools, a.DeferTools)
+	toolExposure, err := newToolExposure(req.Tools, messages, a.DeferTools)
+	if err != nil {
+		return Result{Messages: messages, MediaRefs: mediaRefs}, err
+	}
 	var toolExecutions []ToolExecution
 	var usage provider.Usage
 
@@ -137,7 +140,11 @@ func (a *Agent) run(ctx context.Context, req provider.Request, out chan<- Stream
 	}
 	messages := append([]provider.Message(nil), req.Messages...)
 	mediaRefs := media.CloneRefMap(req.MediaRefs)
-	toolExposure := newToolExposure(req.Tools, a.DeferTools)
+	toolExposure, err := newToolExposure(req.Tools, messages, a.DeferTools)
+	if err != nil {
+		a.emit(out, StreamEvent{Type: StreamError, Error: err.Error(), Messages: messages, MediaRefs: mediaRefs})
+		return
+	}
 	var usage provider.Usage
 	reasoningByMessage := map[int]string{}
 
