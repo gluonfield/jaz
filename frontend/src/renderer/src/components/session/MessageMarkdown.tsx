@@ -6,7 +6,7 @@ import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
-import { parseFileReference, type FileReference } from '../../../../shared/fileReader'
+import { findFileReferences, parseFileReference, type FileReference } from '../../../../shared/fileReader'
 import { shouldPreviewURLByDefault } from '../../../../shared/preview'
 import { encodeMention, MentionPill } from './mentions'
 
@@ -104,9 +104,6 @@ function linkifyKnownSkills(text: string, skills: SkillInfo[]): string {
     .join('')
 }
 
-const FILE_REFERENCE_PATTERN =
-  /(?:file:\/\/\/|\/)(?:[^\s<>(){}]+\/)+[^\s<>(){}]+\.[A-Za-z0-9][A-Za-z0-9]*(?::\d+)?/g
-
 type MarkdownNode = {
   type: string
   value?: string
@@ -151,19 +148,15 @@ function linkifyFileReferenceNodes(node: MarkdownNode): void {
 }
 
 function fileReferenceTextNodes(value: string): MarkdownNode[] | null {
-  if (!value.includes('/')) return null
+  const matches = findFileReferences(value)
+  if (!matches.length) return null
   const nodes: MarkdownNode[] = []
   let lastIndex = 0
-  FILE_REFERENCE_PATTERN.lastIndex = 0
-  for (const match of value.matchAll(FILE_REFERENCE_PATTERN)) {
-    const raw = match[0]
-    const ref = parseFileReference(raw)
-    if (!ref) continue
-    const index = match.index ?? 0
+  for (const { raw, index, reference } of matches) {
     if (index > lastIndex) nodes.push({ type: 'text', value: value.slice(lastIndex, index) })
     nodes.push({
       type: 'link',
-      url: ref.line ? `${ref.path}:${ref.line}` : ref.path,
+      url: reference.line ? `${reference.path}:${reference.line}` : reference.path,
       title: null,
       children: [{ type: 'text', value: raw }],
     })

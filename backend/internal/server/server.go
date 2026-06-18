@@ -298,7 +298,7 @@ func (s *Server) writeSessionMessages(w http.ResponseWriter, session storage.Ses
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		messages = records
+		messages = messageRecordsResponse(records)
 	} else {
 		loaded, err := s.Store.LoadMessages(session.ID)
 		if err != nil {
