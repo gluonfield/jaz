@@ -26,6 +26,11 @@ func TestBuilderPicksUpEditsWithoutRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	write(t, skillDir, "SKILL.md", "---\nname: deploy\ndescription: ship it\n---\nsteps")
+	localSkillDir := filepath.Join(root, "workspaces", "default", ".codex", "skills", "test-local")
+	if err := os.MkdirAll(localSkillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(t, localSkillDir, "SKILL.md", "---\nname: test-local\ndescription: local task\n---\nsteps")
 
 	prompt, err = builder.SystemPrompt()
 	if err != nil {
@@ -37,11 +42,14 @@ func TestBuilderPicksUpEditsWithoutRestart(t *testing.T) {
 	if !strings.Contains(prompt, "<name>deploy</name>") {
 		t.Fatalf("new skill not picked up:\n%s", prompt)
 	}
+	if !strings.Contains(prompt, "<name>test-local</name>") {
+		t.Fatalf("local skill not picked up:\n%s", prompt)
+	}
 	skillsPrompt, err := builder.SkillsPrompt()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(skillsPrompt, "<name>deploy</name>") {
+	if !strings.Contains(skillsPrompt, "<name>deploy</name>") || !strings.Contains(skillsPrompt, "<name>test-local</name>") {
 		t.Fatal("skills prompt missing new skill")
 	}
 
@@ -84,6 +92,11 @@ func TestBuilderACPPrompt(t *testing.T) {
 	write(t, skillDir, "SKILL.md", "---\nname: deploy\ndescription: ship it\n---\nsteps")
 
 	cwd := filepath.Join(root, ".worktrees", "agent-task")
+	localSkillDir := filepath.Join(cwd, ".agents", "skills", "local")
+	if err := os.MkdirAll(localSkillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(t, localSkillDir, "SKILL.md", "---\nname: local\ndescription: cwd skill\n---\nsteps")
 	prompt, err := NewBuilder(root, "", memoryRoot, func() bool { return true }).ACPPrompt(cwd)
 	if err != nil {
 		t.Fatal(err)
@@ -102,6 +115,7 @@ func TestBuilderACPPrompt(t *testing.T) {
 		"## memory/LONG_TERM.md",
 		"- Goal: $5m.",
 		"<name>deploy</name>",
+		"<name>local</name>",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("acp prompt missing %q:\n%s", want, prompt)

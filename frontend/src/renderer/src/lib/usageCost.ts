@@ -1,6 +1,6 @@
 import type { ModelUsage, UsageTotals } from './api/types'
 import { type ModelPricing, pricingIdForUsage } from './models'
-import { inputOutputTokens } from './usageDaily'
+import { inputTokens, totalUsageTokens } from './usageDaily'
 
 export function buildPricingIndex(models: { value: string; pricing?: ModelPricing }[]): Map<string, ModelPricing> {
   const index = new Map<string, ModelPricing>()
@@ -11,14 +11,10 @@ export function buildPricingIndex(models: { value: string; pricing?: ModelPricin
 }
 
 function estimateUsageCost(usage: UsageTotals, pricing: ModelPricing): number {
-  const input = usage.input_tokens ?? 0
   const cacheRead = usage.cached_input_tokens ?? 0
   const cacheWrite = usage.cached_write_tokens ?? 0
   const output = usage.output_tokens ?? 0
-  // input_tokens already includes the cached tokens, so only the remainder is
-  // charged at the full input rate; cache read/write get their own rates.
-  const freshInput = Math.max(0, input - cacheRead - cacheWrite)
-  return freshInput * pricing.input + cacheRead * pricing.cacheRead + cacheWrite * pricing.cacheWrite + output * pricing.output
+  return inputTokens(usage) * pricing.input + cacheRead * pricing.cacheRead + cacheWrite * pricing.cacheWrite + output * pricing.output
 }
 
 export interface PricedModel {
@@ -46,7 +42,7 @@ export function priceModels(
     if (cost != null) {
       summary.total += cost
       summary.priced += 1
-    } else if (inputOutputTokens(model.usage) > 0) {
+    } else if (totalUsageTokens(model.usage) > 0) {
       summary.unpriced += 1
     }
   }

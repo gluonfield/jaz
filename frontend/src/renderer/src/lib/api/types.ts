@@ -25,6 +25,8 @@ export interface Usage {
 }
 
 export interface UsageTotals {
+  // Raw API input follows provider-facing Usage semantics; display helpers
+  // subtract cache read/write before showing it as "Input".
   input_tokens?: number
   cached_input_tokens?: number
   cached_write_tokens?: number

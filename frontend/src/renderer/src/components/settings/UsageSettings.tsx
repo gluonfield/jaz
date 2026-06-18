@@ -11,9 +11,10 @@ import { type ModelPricing, openRouterModelsQuery } from '@/lib/models'
 import { buildPricingIndex, formatUsd, priceModels } from '@/lib/usageCost'
 import {
   formatUsageDate,
-  inputOutputTokens,
+  inputTokens,
   peakDay,
   sumUsage,
+  totalUsageTokens,
   USAGE_CHART_DAYS,
   type UsageCell,
   usageCells,
@@ -99,24 +100,24 @@ function UsagePanel({
   const last7 = sumUsage(days.slice(-7))
   const last30 = sumUsage(days.slice(-30))
   const peak = peakDay(chartDays)
-  const activeDays = chartDays.filter((day) => inputOutputTokens(day.usage) > 0).length
-  const maxTotal = Math.max(1, ...chartDays.map((day) => inputOutputTokens(day.usage)))
-  const hasUsage = chartDays.some((day) => inputOutputTokens(day.usage) > 0)
-  const inputTokens = last30.input_tokens ?? 0
+  const activeDays = chartDays.filter((day) => totalUsageTokens(day.usage) > 0).length
+  const maxTotal = Math.max(1, ...chartDays.map((day) => totalUsageTokens(day.usage)))
+  const hasUsage = chartDays.some((day) => totalUsageTokens(day.usage) > 0)
+  const inputAndCacheTokens = last30.input_tokens ?? 0
   const cacheRead = last30.cached_input_tokens ?? 0
   const cacheWrite = last30.cached_write_tokens ?? 0
   const reasoning = last30.reasoning_output_tokens ?? 0
-  const cacheHitLabel = inputTokens > 0 ? `${Math.round((cacheRead / inputTokens) * 100)}%` : '—'
+  const cacheHitLabel = inputAndCacheTokens > 0 ? `${Math.round((cacheRead / inputAndCacheTokens) * 100)}%` : '—'
   const { rows: pricedModels, summary: costSummary } = useMemo(() => priceModels(models, pricing), [models, pricing])
   const costLabel = costSummary.priced > 0 ? formatUsd(costSummary.total) : '—'
 
   return (
     <SettingsCard className="mt-4 p-4">
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-control bg-border/70 md:grid-cols-4">
-        <UsageStat label="Last 7 days" value={formatTokens(inputOutputTokens(last7))} detail="input + output" />
-        <UsageStat label="Last 30 days" value={formatTokens(inputOutputTokens(last30))} detail="input + output" />
+        <UsageStat label="Last 7 days" value={formatTokens(totalUsageTokens(last7))} detail="total tokens" />
+        <UsageStat label="Last 30 days" value={formatTokens(totalUsageTokens(last30))} detail="total tokens" />
         <UsageStat label="Est. cost" value={costLabel} detail="30d · list prices" />
-        <UsageStat label="Cache hit rate" value={cacheHitLabel} detail="of input tokens" />
+        <UsageStat label="Cache hit rate" value={cacheHitLabel} detail="of input + cache" />
       </div>
 
       <div className="mt-5 min-w-0 rounded-control bg-bg/45 px-3 py-3">
@@ -206,7 +207,7 @@ function UsagePanel({
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-ink-3">
           {!hasUsage ? <span>No token usage recorded yet.</span> : null}
           <span>{activeDays} active day{activeDays === 1 ? '' : 's'} in {USAGE_CHART_DAYS} days</span>
-          {peak ? <span>Peak {formatUsageDate(peak.date)}: {formatTokens(inputOutputTokens(peak.usage))}</span> : null}
+          {peak ? <span>Peak {formatUsageDate(peak.date)}: {formatTokens(totalUsageTokens(peak.usage))}</span> : null}
           {cacheRead > 0 ? <span>Cache read {formatTokens(cacheRead)}</span> : null}
           {cacheWrite > 0 ? <span>Cache write {formatTokens(cacheWrite)}</span> : null}
           {reasoning > 0 ? <span>Reasoning {formatTokens(reasoning)}</span> : null}
@@ -245,7 +246,7 @@ function UsageSquare({
   onHover: (state: TooltipState | null) => void
 }) {
   const day = cell.day
-  const dayTotal = day ? inputOutputTokens(day.usage) : 0
+  const dayTotal = day ? totalUsageTokens(day.usage) : 0
   const level = cell.inRange ? usageLevel(dayTotal, maxTotal) : 0
 
   if (!day) {
@@ -285,11 +286,11 @@ function UsageTooltip({ state }: { state: TooltipState }) {
       <div className="font-medium">{formatUsageDate(state.day.date)}</div>
       <div className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
         <span className="text-ink-3">Input</span>
-        <span className="text-right font-mono tabular-nums">{formatTokens(state.day.usage.input_tokens ?? 0)}</span>
+        <span className="text-right font-mono tabular-nums">{formatTokens(inputTokens(state.day.usage))}</span>
         <span className="text-ink-3">Output</span>
         <span className="text-right font-mono tabular-nums">{formatTokens(state.day.usage.output_tokens ?? 0)}</span>
-        <span className="text-ink-3">Input + output</span>
-        <span className="text-right font-mono tabular-nums">{formatTokens(inputOutputTokens(state.day.usage))}</span>
+        <span className="text-ink-3">Total</span>
+        <span className="text-right font-mono tabular-nums">{formatTokens(totalUsageTokens(state.day.usage))}</span>
         {cacheRead > 0 ? (
           <>
             <span className="text-ink-3">Cache read</span>
@@ -331,9 +332,9 @@ function levelColor(level: number): string {
 function usageTooltipText(day: DailyUsage): string {
   return [
     formatUsageDate(day.date),
-    `Input ${formatTokens(day.usage.input_tokens ?? 0)}`,
+    `Input ${formatTokens(inputTokens(day.usage))}`,
     `Output ${formatTokens(day.usage.output_tokens ?? 0)}`,
-    `Input + output ${formatTokens(inputOutputTokens(day.usage))}`,
+    `Total ${formatTokens(totalUsageTokens(day.usage))}`,
     `Cache read ${formatTokens(day.usage.cached_input_tokens ?? 0)}`,
     `Cache write ${formatTokens(day.usage.cached_write_tokens ?? 0)}`,
   ].join('\n')

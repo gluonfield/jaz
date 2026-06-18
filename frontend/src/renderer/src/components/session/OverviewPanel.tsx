@@ -161,7 +161,7 @@ function ManageSection({
   const toast = useToast()
   const info = repo.info
   const showCodeReview = canReviewSession(info)
-  const skills = useQuery({ ...skillsQuery, enabled: showCodeReview })
+  const skills = useQuery({ ...skillsQuery(), enabled: showCodeReview })
   const archive = useMutation({
     mutationFn: () => setSessionArchived(session.id, true),
     onSuccess: () => toast('Archived thread'),
@@ -304,7 +304,7 @@ function GitSection({ repo }: { repo: ReturnType<typeof useRepoActions> }) {
           aria-label={copied ? `Copied branch name ${branchLabel}` : `Copy branch name ${branchLabel}`}
           title={copied ? 'Copied' : 'Copy branch name'}
           onClick={() => void copyBranch()}
-          className="group flex h-7 w-full cursor-pointer items-center gap-2 rounded-full px-2.5 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+          className="group flex h-7 w-full cursor-pointer items-center gap-2 rounded-full px-2.5 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
         >
           <GitBranch size={13} className="shrink-0 text-ink-3" />
           <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{branchLabel}</span>

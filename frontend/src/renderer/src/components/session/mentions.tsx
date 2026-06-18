@@ -88,7 +88,7 @@ export function MentionPill({ mention }: { mention: Mention }) {
 
 function SkillMentionPill({ mention }: { mention: Mention }) {
   const [open, setOpen] = useState(false)
-  const { data: skills } = useQuery(skillsQuery)
+  const { data: skills } = useQuery(skillsQuery())
   const description = skills?.find((s) => s.name === mention.name)?.description
   const triggerRef = useRef<HTMLButtonElement>(null)
   return (
