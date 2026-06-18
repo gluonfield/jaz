@@ -15,6 +15,7 @@ import (
 	"github.com/wins/jaz/backend/internal/memoryservice"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	jazsettings "github.com/wins/jaz/backend/internal/settings"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/widgets"
 )
@@ -97,6 +98,12 @@ func TestMemoryStatusAndToggle(t *testing.T) {
 func TestMemoryAgentSetting(t *testing.T) {
 	srv, _ := testMemoryServer(t)
 	handler := srv.Handler()
+
+	if _, err := jazsettings.SaveAgentDefaults(srv.Store, jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
+		"codex": {Enabled: true, Command: "codex-acp"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
 
 	res := httptest.NewRecorder()
 	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/memory", strings.NewReader(`{"agent":"codex"}`)))

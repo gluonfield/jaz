@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/agent"
+	"github.com/wins/jaz/backend/internal/filepathx"
 	"github.com/wins/jaz/backend/internal/media"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
@@ -303,9 +304,16 @@ func MessageWithAttachmentLinks(message string, attachments []storage.Attachment
 	b.WriteString(message)
 	b.WriteString("\n\nAttachments:\n")
 	for _, attachment := range attachments {
-		fmt.Fprintf(&b, "- %s: %s\n", attachment.Name, attachment.URI)
+		fmt.Fprintf(&b, "- %s: %s\n", attachment.Name, attachmentLink(attachment))
 	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+func attachmentLink(attachment storage.Attachment) string {
+	if strings.TrimSpace(attachment.ServerPath) != "" {
+		return filepathx.FileURI(attachment.ServerPath)
+	}
+	return attachment.URI
 }
 
 type messageRecordStore interface {

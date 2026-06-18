@@ -72,6 +72,7 @@ func (r *Runner) SearchMemory(ctx context.Context, req memoryservice.AgenticSear
 	}
 	prompt, err := memorysearchprompt.Render(memorysearchprompt.Data{Query: query, Deep: req.Deep})
 	if err != nil {
+		r.cancelWorker(spawned.SessionID)
 		return "", err
 	}
 	if _, err := r.Manager.Send(ctx, acp.SendRequest{
@@ -79,16 +80,16 @@ func (r *Runner) SearchMemory(ctx context.Context, req memoryservice.AgenticSear
 		Message:    prompt,
 		Completion: acp.CompletionInline,
 	}); err != nil {
+		r.cancelWorker(spawned.SessionID)
 		return "", err
 	}
 	job, err := r.Manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: Timeout})
 	if err != nil {
+		r.cancelWorker(spawned.SessionID)
 		return "", err
 	}
 	if job.State == acp.StateRunning || job.State == acp.StateStarting {
-		cancelCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		_, _ = r.Manager.Cancel(cancelCtx, spawned.SessionID)
+		r.cancelWorker(spawned.SessionID)
 		return "", fmt.Errorf("memory search timed out after %s", Timeout)
 	}
 	if job.State != acp.StateIdle {
@@ -109,4 +110,10 @@ func (r *Runner) now() time.Time {
 		return r.Now()
 	}
 	return time.Now()
+}
+
+func (r *Runner) cancelWorker(sessionID string) {
+	cancelCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, _ = r.Manager.Cancel(cancelCtx, sessionID)
 }

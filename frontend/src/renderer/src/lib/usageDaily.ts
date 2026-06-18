@@ -68,20 +68,32 @@ export function sumUsage(days: DailyUsage[]): UsageTotals {
       (total.reasoning_output_tokens ?? 0) + (day.usage.reasoning_output_tokens ?? 0)
     return total
   }, {})
-  total.input_output_tokens = inputOutputTokens(total)
+  total.input_output_tokens = totalUsageTokens(total)
   return total
 }
 
 export function peakDay(days: DailyUsage[]): DailyUsage | null {
   return days.reduce<DailyUsage | null>((peak, day) => {
-    if (inputOutputTokens(day.usage) === 0) return peak
-    if (!peak || inputOutputTokens(day.usage) > inputOutputTokens(peak.usage)) return day
+    if (totalUsageTokens(day.usage) === 0) return peak
+    if (!peak || totalUsageTokens(day.usage) > totalUsageTokens(peak.usage)) return day
     return peak
   }, null)
 }
 
-export function inputOutputTokens(usage: UsageTotals): number {
-  return usage.input_output_tokens ?? (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0)
+export function inputTokens(usage: UsageTotals): number {
+  return Math.max(
+    0,
+    (usage.input_tokens ?? 0) - (usage.cached_input_tokens ?? 0) - (usage.cached_write_tokens ?? 0),
+  )
+}
+
+export function totalUsageTokens(usage: UsageTotals): number {
+  return (
+    inputTokens(usage) +
+    (usage.cached_input_tokens ?? 0) +
+    (usage.cached_write_tokens ?? 0) +
+    (usage.output_tokens ?? 0)
+  )
 }
 
 export function usageLevel(total: number, maxTotal: number): number {

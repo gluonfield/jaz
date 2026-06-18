@@ -173,7 +173,20 @@ func (s *Server) handleListWorkspaceFiles(w http.ResponseWriter, r *http.Request
 
 // handleListSkills lists the skill catalog for the composer's $-mention picker.
 func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
-	catalog, err := skills.Load(s.Root)
+	var (
+		catalog skills.Catalog
+		err     error
+	)
+	if r.URL.Query().Has("path") {
+		cwd, resolveErr := s.resolveWorkspaceFileRoot(r.URL.Query().Get("path"))
+		if resolveErr != nil {
+			writeError(w, http.StatusBadRequest, resolveErr)
+			return
+		}
+		catalog, err = skills.LoadForWorkspace(s.Root, cwd)
+	} else {
+		catalog, err = skills.Load(s.Root)
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -298,7 +311,7 @@ func (s *Server) writeSessionMessages(w http.ResponseWriter, session storage.Ses
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		messages = records
+		messages = messageRecordsResponse(records)
 	} else {
 		loaded, err := s.Store.LoadMessages(session.ID)
 		if err != nil {

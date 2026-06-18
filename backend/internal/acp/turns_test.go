@@ -14,9 +14,11 @@ type mutablePromptSource struct {
 	prompt string
 	err    error
 	calls  int
+	cwd    string
 }
 
-func (s *mutablePromptSource) SkillsPrompt() (string, error) {
+func (s *mutablePromptSource) SkillsPromptForWorkspace(cwd string) (string, error) {
+	s.cwd = cwd
 	s.calls++
 	return s.prompt, s.err
 }
@@ -27,7 +29,7 @@ func TestACPTurnPromptContextRefreshesSkillsForMentions(t *testing.T) {
 	source := &mutablePromptSource{prompt: "old skills"}
 	manager := &Manager{cfg: Config{SystemPrompt: source}}
 
-	if context, err := manager.turnPromptContext("plain request"); err != nil || context != "" {
+	if context, err := manager.turnPromptContext("/repo", "plain request"); err != nil || context != "" {
 		t.Fatalf("turnPromptContext without mention = %q, %v", context, err)
 	}
 	if source.calls != 0 {
@@ -35,7 +37,7 @@ func TestACPTurnPromptContextRefreshesSkillsForMentions(t *testing.T) {
 	}
 
 	source.prompt = "latest skills"
-	context, err := manager.turnPromptContext("use $new-skill")
+	context, err := manager.turnPromptContext("/repo", "use $new-skill")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,20 +47,23 @@ func TestACPTurnPromptContextRefreshesSkillsForMentions(t *testing.T) {
 	if source.calls != 1 {
 		t.Fatalf("SkillsPrompt calls = %d, want 1", source.calls)
 	}
+	if source.cwd != "/repo" {
+		t.Fatalf("SkillsPromptForWorkspace cwd = %q", source.cwd)
+	}
 }
 
 func TestACPTurnPromptContextReturnsSkillPromptErrors(t *testing.T) {
 	want := errors.New("boom")
 	manager := &Manager{cfg: Config{SystemPrompt: &mutablePromptSource{err: want}}}
 
-	_, err := manager.turnPromptContext("use $new-skill")
+	_, err := manager.turnPromptContext("/repo", "use $new-skill")
 	if err == nil || !errors.Is(err, want) {
 		t.Fatalf("error = %v, want %v", err, want)
 	}
 }
 
 func TestPromptContentBlocksPrependsContext(t *testing.T) {
-	blocks, err := promptContentBlocks("context", "message", nil)
+	blocks, err := promptContentBlocks("context", "message", nil, localAttachmentResources)
 	if err != nil {
 		t.Fatal(err)
 	}

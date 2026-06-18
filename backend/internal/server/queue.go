@@ -222,7 +222,9 @@ func (s *Server) drainQueuedPrompt(ctx context.Context, sessionID string) {
 	if err := s.startQueuedPrompt(ctx, session, prompt); err != nil {
 		s.logger().Error("queued prompt start failed", "session", session.ID, "error", err)
 		s.restoreQueuedPrompt(session.ID, prompt, 0, err.Error())
+		return
 	}
+	s.publishMessagesChanged(session.ID)
 }
 
 func (s *Server) claimQueuedPrompt(sessionID string) (storage.Session, storage.QueuedMessage, bool, error) {
@@ -314,6 +316,8 @@ func (s *Server) claimSteeredQueuedPrompt(sessionID string, req queueRequest) (s
 
 	prompt := queue[req.Index]
 	session.QueuedMessages = removeQueuedPrompt(queue, req.Index)
+	pending := prompt
+	session.PendingSteer = &pending
 	session.Error = ""
 	storage.MarkSessionAttention(&session, time.Now().UTC())
 	if !running {
@@ -349,7 +353,14 @@ func (s *Server) startSteeredQueuedPrompt(claimed steeredQueuedPrompt) error {
 	}
 	ctx, cancel := serverActionContext()
 	defer cancel()
-	return s.startQueuedPrompt(ctx, claimed.session, claimed.prompt)
+	if err := s.startQueuedPrompt(ctx, claimed.session, claimed.prompt); err != nil {
+		return err
+	}
+	if err := s.clearPendingSteerMessage(claimed.session.ID); err != nil {
+		s.logger().Error("pending steer clear failed", "session", claimed.session.ID, "error", err)
+	}
+	s.publishMessagesChanged(claimed.session.ID)
+	return nil
 }
 
 func (s *Server) sessionRuntimeRunning(session storage.Session) bool {
@@ -413,11 +424,27 @@ func (s *Server) restoreQueuedPrompt(sessionID string, prompt storage.QueuedMess
 	}
 	queue = append(queue[:index], append([]storage.QueuedMessage{prompt}, queue[index:]...)...)
 	session.QueuedMessages = queue
+	session.PendingSteer = nil
 	session.Status = storage.StatusError
 	session.Error = firstNonEmpty(message, session.Error, "Queued prompt failed.")
 	storage.MarkSessionAttention(&session, time.Now().UTC())
 	_ = s.Store.SaveSession(session)
 	s.publishMessagesChanged(sessionID)
+}
+
+func (s *Server) clearPendingSteerMessage(sessionID string) error {
+	unlock := s.lockSession(sessionID)
+	defer unlock()
+
+	session, err := s.Store.LoadSession(sessionID)
+	if err != nil {
+		return err
+	}
+	if session.PendingSteer == nil {
+		return nil
+	}
+	session.PendingSteer = nil
+	return s.Store.SaveSession(session)
 }
 
 func removeQueuedPrompt(prompts []storage.QueuedMessage, index int) []storage.QueuedMessage {

@@ -242,8 +242,8 @@ function BoardPage() {
           </div>
         </EmptyState>
       ) : (
-        // pt-1: tile rings are box-shadows drawn outside the box; with no top
-        // padding the overflow clip shaves the ring off row-0 tiles.
+        // pt-1: a dragged tile's lift shadow is drawn outside the box; with no
+        // top padding the overflow clip shaves it off row-0 tiles.
         <div
           className={`min-h-0 flex-1 overflow-y-auto px-6 pt-1 ${
             isBoardWindow ? 'pb-0' : 'pb-6'

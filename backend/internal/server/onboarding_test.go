@@ -111,6 +111,70 @@ func TestOnboardingAPIProbesAgentsAndSavesProviderKey(t *testing.T) {
 	}
 }
 
+func TestOnboardingSavesExplicitMemorySettings(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	exe := filepath.Join(root, "codex-acp")
+	if err := os.WriteFile(exe, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	handler := (&Server{
+		Store: store,
+		Root:  root,
+		AgentCatalog: acp.AgentCatalog{
+			"codex": {Command: exe, Model: "gpt-5.5"},
+		},
+	}).Handler()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/onboarding", strings.NewReader(`{
+		"settings":{"acp":{"codex":{"enabled":true,"command":"`+exe+`","model":"gpt-5.5"}}},
+		"acp_keys":{"codex":"codex-key"},
+		"memory":{"enabled":false,"agent":"codex"},
+		"completed":true
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:1234"
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	memorySettings, err := agentsettings.LoadMemorySettings(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if memorySettings.Enabled || memorySettings.Agent != acp.AgentCodex {
+		t.Fatalf("memory settings = %#v", memorySettings)
+	}
+}
+
+func TestOnboardingRejectsEnabledMemoryWithoutAgent(t *testing.T) {
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	handler := (&Server{Store: store, Root: root, AgentCatalog: acp.AgentCatalog{}}).Handler()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/onboarding", strings.NewReader(`{
+		"memory":{"enabled":true},
+		"completed":true
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:1234"
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "memory agent is required") {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
 func TestOnboardingAllowsAuthenticatedRemoteProviderKeySetup(t *testing.T) {
 	root := t.TempDir()
 	store, err := sqlitestore.New(root)

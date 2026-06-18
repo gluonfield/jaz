@@ -190,8 +190,8 @@ func validateBlocks(blocks []storage.Block) error {
 			if block.Name == "" {
 				return fmt.Errorf("attachment block %d missing name", i)
 			}
-			if block.URI == "" {
-				return fmt.Errorf("attachment block %d missing uri", i)
+			if block.ServerPath == "" && block.URI == "" {
+				return fmt.Errorf("attachment block %d missing resource", i)
 			}
 		case blockTool:
 			if block.ID == "" {

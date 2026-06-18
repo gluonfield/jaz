@@ -6,7 +6,7 @@ import { useEffect, useRef } from 'react'
 // text placed in the textarea; `expansion` is what that text becomes in the
 // sent message (a skill reference, an absolute path).
 export interface SuggestionItem {
-  kind: 'skill' | 'file' | 'dir'
+  kind: 'skill' | 'project' | 'file' | 'dir'
   label: string
   detail?: string
   /** label indices matched by the fuzzy query, for highlighting */
@@ -15,8 +15,7 @@ export interface SuggestionItem {
   expansion: string
 }
 
-// Sections keep the menu general: today $ shows Skills and @ shows Files;
-// future sources (plugins, …) become additional sections.
+// Sections keep the menu general: $ shows Skills, @ can show path sources.
 export interface SuggestionSection {
   title: string
   items: SuggestionItem[]
@@ -24,7 +23,7 @@ export interface SuggestionSection {
 
 function ItemIcon({ kind }: { kind: SuggestionItem['kind'] }) {
   if (kind === 'skill') return <Sparkles size={13} className="mt-0.5 shrink-0 text-primary" />
-  if (kind === 'dir') return <Folder size={13} className="mt-0.5 shrink-0 text-primary" />
+  if (kind === 'project' || kind === 'dir') return <Folder size={13} className="mt-0.5 shrink-0 text-primary" />
   return <FileText size={13} className="mt-0.5 shrink-0 text-ink-3" />
 }
 

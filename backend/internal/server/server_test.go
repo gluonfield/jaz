@@ -771,20 +771,21 @@ func TestSessionMessagesHidesDirectACPChildStateFromParent(t *testing.T) {
 }
 
 type fakeACPManager struct {
-	mu           sync.Mutex
-	sent         acp.SendRequest
-	answered     acp.InteractiveAnswer
-	sendCtxErr   error
-	answerCtxErr error
-	cancelCtxErr error
-	sendErr      error
-	answerErr    error
-	job          acp.Job
-	jobs         []acp.Job
-	spawnStore   storage.SessionStore
-	spawned      acp.SpawnRequest
-	created      acp.SpawnRequest
-	spawnErr     error
+	mu            sync.Mutex
+	sent          acp.SendRequest
+	answered      acp.InteractiveAnswer
+	sendCtxErr    error
+	answerCtxErr  error
+	cancelCtxErr  error
+	sendErr       error
+	answerErr     error
+	job           acp.Job
+	jobs          []acp.Job
+	spawnStore    storage.SessionStore
+	spawned       acp.SpawnRequest
+	created       acp.SpawnRequest
+	spawnErr      error
+	cancelRelease chan struct{}
 }
 
 func (f *fakeACPManager) CreateSession(_ context.Context, req acp.SpawnRequest) (storage.Session, error) {
@@ -889,7 +890,15 @@ func (f *fakeACPManager) AnswerInteractive(ctx context.Context, answer acp.Inter
 
 func (f *fakeACPManager) Cancel(ctx context.Context, _ string) (acp.Job, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.cancelCtxErr = ctx.Err()
-	return f.job, nil
+	job := f.job
+	release := f.cancelRelease
+	f.mu.Unlock()
+	if release != nil {
+		select {
+		case <-release:
+		case <-ctx.Done():
+		}
+	}
+	return job, nil
 }

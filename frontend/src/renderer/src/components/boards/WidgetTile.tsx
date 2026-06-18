@@ -2,6 +2,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { Pencil, Play, X } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import {
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   useEffect,
   useRef,
@@ -51,7 +52,13 @@ const WIPE_EASE = [0.65, 0, 0.35, 1] as const
 
 // Ghost preview of the widget to come: skeleton blocks breathing while a wave
 // rolls through the bars. The dot goes rainbow while the first run is live.
-function FirstRunPlaceholder({ running, onClick }: { running: boolean; onClick: () => void }) {
+function FirstRunPlaceholder({
+  running,
+  onClick,
+}: {
+  running: boolean
+  onClick: (e: ReactMouseEvent) => void
+}) {
   const reduce = useReducedMotion()
   const bars = [42, 68, 52, 84, 62]
   return (
@@ -60,7 +67,7 @@ function FirstRunPlaceholder({ running, onClick }: { running: boolean; onClick: 
       aria-label="Open loop"
       title="Open loop"
       onClick={onClick}
-      className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 overflow-hidden px-4 transition-colors duration-150 hover:bg-surface-2/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+      className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 overflow-hidden px-4 transition-colors duration-150 hover:bg-surface-2/60"
     >
       <div aria-hidden className="w-full max-w-[180px] space-y-2">
         <div className="flex items-end gap-3">
@@ -106,6 +113,7 @@ export function WidgetTile({
   onHeaderPointerDown,
   onResizePointerDown,
   onRemove,
+  onOpenedInMain,
 }: {
   item: BoardItem
   theme: 'light' | 'dark'
@@ -114,6 +122,9 @@ export function WidgetTile({
   onHeaderPointerDown: (e: ReactPointerEvent) => void
   onResizePointerDown: (e: ReactPointerEvent) => void
   onRemove: () => void
+  // Fired when a board window hands the loop off to the main app, with the
+  // click point so the board can flash a cue there.
+  onOpenedInMain: (x: number, y: number) => void
 }) {
   const navigate = useNavigate()
   const reduce = useReducedMotion()
@@ -251,9 +262,10 @@ export function WidgetTile({
 
   const paused = item.loop_status === 'paused'
   const updated = hasTime(item.widget_updated_at) ? relativeTime(item.widget_updated_at) : ''
-  const openLoop = () => {
+  const openLoop = (e: ReactMouseEvent) => {
     if (window.jaz?.windowKind === 'board') {
       window.jaz.openInMain(`/loops/${item.loop_id}`)
+      onOpenedInMain(e.clientX, e.clientY)
       return
     }
     void navigate({ to: '/loops/$loopId', params: { loopId: item.loop_id } })
@@ -261,8 +273,8 @@ export function WidgetTile({
 
   return (
     <div
-      className={`group relative flex h-full w-full flex-col overflow-hidden rounded-card bg-surface ring-1 transition-shadow duration-150 ${
-        dragging ? 'shadow-lg ring-primary/50' : 'ring-border'
+      className={`group relative flex h-full w-full flex-col overflow-hidden rounded-card bg-surface transition-shadow duration-150 ${
+        dragging ? 'shadow-lg ring-1 ring-primary/50' : ''
       } ${paused ? 'opacity-70' : ''}`}
     >
       <div
