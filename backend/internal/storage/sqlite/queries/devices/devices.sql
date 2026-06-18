@@ -75,41 +75,6 @@ FROM devices
 WHERE token_hash = sqlc.arg(token_hash)
 LIMIT 1;
 
--- name: CreateDevice :exec
-INSERT INTO devices (
-  id,
-  name,
-  kind,
-  status,
-  public_key,
-  platform,
-  device_family,
-  model_identifier,
-  token_hash,
-  created_at_ms,
-  approved_at_ms,
-  last_seen_at_ms,
-  last_seen_ip,
-  user_agent,
-  app_version
-) VALUES (
-  sqlc.arg(id),
-  sqlc.arg(name),
-  sqlc.arg(kind),
-  sqlc.arg(status),
-  sqlc.arg(public_key),
-  sqlc.arg(platform),
-  sqlc.arg(device_family),
-  sqlc.arg(model_identifier),
-  sqlc.arg(token_hash),
-  sqlc.arg(created_at_ms),
-  sqlc.arg(approved_at_ms),
-  sqlc.arg(last_seen_at_ms),
-  sqlc.arg(last_seen_ip),
-  sqlc.arg(user_agent),
-  sqlc.arg(app_version)
-);
-
 -- name: SavePairingDevice :exec
 INSERT INTO devices (
   id,
@@ -147,6 +112,56 @@ ON CONFLICT(id) DO UPDATE SET
   platform = excluded.platform,
   device_family = excluded.device_family,
   model_identifier = excluded.model_identifier,
+  last_seen_ip = excluded.last_seen_ip,
+  user_agent = excluded.user_agent,
+  app_version = excluded.app_version;
+
+-- name: SaveApprovedDevice :exec
+INSERT INTO devices (
+  id,
+  name,
+  kind,
+  status,
+  public_key,
+  platform,
+  device_family,
+  model_identifier,
+  token_hash,
+  created_at_ms,
+  approved_at_ms,
+  last_seen_at_ms,
+  last_seen_ip,
+  user_agent,
+  app_version
+) VALUES (
+  sqlc.arg(id),
+  sqlc.arg(name),
+  sqlc.arg(kind),
+  'approved',
+  sqlc.arg(public_key),
+  sqlc.arg(platform),
+  sqlc.arg(device_family),
+  sqlc.arg(model_identifier),
+  sqlc.arg(token_hash),
+  sqlc.arg(created_at_ms),
+  sqlc.arg(approved_at_ms),
+  sqlc.arg(last_seen_at_ms),
+  sqlc.arg(last_seen_ip),
+  sqlc.arg(user_agent),
+  sqlc.arg(app_version)
+)
+ON CONFLICT(id) DO UPDATE SET
+  name = excluded.name,
+  kind = excluded.kind,
+  status = 'approved',
+  public_key = excluded.public_key,
+  platform = excluded.platform,
+  device_family = excluded.device_family,
+  model_identifier = excluded.model_identifier,
+  token_hash = excluded.token_hash,
+  approved_at_ms = excluded.approved_at_ms,
+  revoked_at_ms = 0,
+  last_seen_at_ms = excluded.last_seen_at_ms,
   last_seen_ip = excluded.last_seen_ip,
   user_agent = excluded.user_agent,
   app_version = excluded.app_version;

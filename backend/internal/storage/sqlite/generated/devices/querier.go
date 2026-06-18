@@ -12,7 +12,6 @@ type Querier interface {
 	ApproveDevice(ctx context.Context, arg ApproveDeviceParams) (int64, error)
 	ApprovePairingRequest(ctx context.Context, arg ApprovePairingRequestParams) (int64, error)
 	CountApprovedDevices(ctx context.Context) (int64, error)
-	CreateDevice(ctx context.Context, arg CreateDeviceParams) error
 	CreatePairingRequest(ctx context.Context, arg CreatePairingRequestParams) error
 	ExpirePairingRequest(ctx context.Context, arg ExpirePairingRequestParams) (int64, error)
 	GetDevice(ctx context.Context, id string) (GetDeviceRow, error)
@@ -24,6 +23,7 @@ type Querier interface {
 	RejectPairingRequest(ctx context.Context, arg RejectPairingRequestParams) (int64, error)
 	RejectPendingPairingRequestsForDevice(ctx context.Context, arg RejectPendingPairingRequestsForDeviceParams) (int64, error)
 	RevokeDevice(ctx context.Context, arg RevokeDeviceParams) (int64, error)
+	SaveApprovedDevice(ctx context.Context, arg SaveApprovedDeviceParams) error
 	SavePairingDevice(ctx context.Context, arg SavePairingDeviceParams) error
 	UpdateDeviceSeen(ctx context.Context, arg UpdateDeviceSeenParams) (int64, error)
 }

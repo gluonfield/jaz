@@ -103,7 +103,7 @@ func (h Handler) Register(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteError(w, http.StatusBadRequest, err)
 		return
 	}
-	result, err := h.service.Register(info)
+	result, err := h.register(r, info)
 	if err != nil {
 		writeDeviceAuthError(w, err)
 		return
@@ -113,6 +113,14 @@ func (h Handler) Register(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusAccepted
 	}
 	httpapi.WriteJSON(w, status, registerDTO(result))
+}
+
+func (h Handler) register(r *http.Request, info deviceauth.Registration) (deviceauth.RegisterResult, error) {
+	principal, _ := deviceauth.PrincipalFromContext(r.Context())
+	if principal.Kind == deviceauth.PrincipalRoot {
+		return h.service.RegisterApproved(info)
+	}
+	return h.service.Register(info)
 }
 
 func (h Handler) CreatePairing(w http.ResponseWriter, r *http.Request) {

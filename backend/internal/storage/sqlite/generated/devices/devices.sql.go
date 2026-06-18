@@ -71,81 +71,6 @@ func (q *Queries) CountApprovedDevices(ctx context.Context) (int64, error) {
 	return count, err
 }
 
-const createDevice = `-- name: CreateDevice :exec
-INSERT INTO devices (
-  id,
-  name,
-  kind,
-  status,
-  public_key,
-  platform,
-  device_family,
-  model_identifier,
-  token_hash,
-  created_at_ms,
-  approved_at_ms,
-  last_seen_at_ms,
-  last_seen_ip,
-  user_agent,
-  app_version
-) VALUES (
-  ?1,
-  ?2,
-  ?3,
-  ?4,
-  ?5,
-  ?6,
-  ?7,
-  ?8,
-  ?9,
-  ?10,
-  ?11,
-  ?12,
-  ?13,
-  ?14,
-  ?15
-)
-`
-
-type CreateDeviceParams struct {
-	ID              string `json:"id"`
-	Name            string `json:"name"`
-	Kind            string `json:"kind"`
-	Status          string `json:"status"`
-	PublicKey       string `json:"public_key"`
-	Platform        string `json:"platform"`
-	DeviceFamily    string `json:"device_family"`
-	ModelIdentifier string `json:"model_identifier"`
-	TokenHash       string `json:"token_hash"`
-	CreatedAtMs     int64  `json:"created_at_ms"`
-	ApprovedAtMs    int64  `json:"approved_at_ms"`
-	LastSeenAtMs    int64  `json:"last_seen_at_ms"`
-	LastSeenIp      string `json:"last_seen_ip"`
-	UserAgent       string `json:"user_agent"`
-	AppVersion      string `json:"app_version"`
-}
-
-func (q *Queries) CreateDevice(ctx context.Context, arg CreateDeviceParams) error {
-	_, err := q.db.ExecContext(ctx, createDevice,
-		arg.ID,
-		arg.Name,
-		arg.Kind,
-		arg.Status,
-		arg.PublicKey,
-		arg.Platform,
-		arg.DeviceFamily,
-		arg.ModelIdentifier,
-		arg.TokenHash,
-		arg.CreatedAtMs,
-		arg.ApprovedAtMs,
-		arg.LastSeenAtMs,
-		arg.LastSeenIp,
-		arg.UserAgent,
-		arg.AppVersion,
-	)
-	return err
-}
-
 const createPairingRequest = `-- name: CreatePairingRequest :exec
 INSERT INTO device_pairing_requests (
   id,
@@ -712,6 +637,94 @@ func (q *Queries) RevokeDevice(ctx context.Context, arg RevokeDeviceParams) (int
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const saveApprovedDevice = `-- name: SaveApprovedDevice :exec
+INSERT INTO devices (
+  id,
+  name,
+  kind,
+  status,
+  public_key,
+  platform,
+  device_family,
+  model_identifier,
+  token_hash,
+  created_at_ms,
+  approved_at_ms,
+  last_seen_at_ms,
+  last_seen_ip,
+  user_agent,
+  app_version
+) VALUES (
+  ?1,
+  ?2,
+  ?3,
+  'approved',
+  ?4,
+  ?5,
+  ?6,
+  ?7,
+  ?8,
+  ?9,
+  ?10,
+  ?11,
+  ?12,
+  ?13,
+  ?14
+)
+ON CONFLICT(id) DO UPDATE SET
+  name = excluded.name,
+  kind = excluded.kind,
+  status = 'approved',
+  public_key = excluded.public_key,
+  platform = excluded.platform,
+  device_family = excluded.device_family,
+  model_identifier = excluded.model_identifier,
+  token_hash = excluded.token_hash,
+  approved_at_ms = excluded.approved_at_ms,
+  revoked_at_ms = 0,
+  last_seen_at_ms = excluded.last_seen_at_ms,
+  last_seen_ip = excluded.last_seen_ip,
+  user_agent = excluded.user_agent,
+  app_version = excluded.app_version
+`
+
+type SaveApprovedDeviceParams struct {
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	Kind            string `json:"kind"`
+	PublicKey       string `json:"public_key"`
+	Platform        string `json:"platform"`
+	DeviceFamily    string `json:"device_family"`
+	ModelIdentifier string `json:"model_identifier"`
+	TokenHash       string `json:"token_hash"`
+	CreatedAtMs     int64  `json:"created_at_ms"`
+	ApprovedAtMs    int64  `json:"approved_at_ms"`
+	LastSeenAtMs    int64  `json:"last_seen_at_ms"`
+	LastSeenIp      string `json:"last_seen_ip"`
+	UserAgent       string `json:"user_agent"`
+	AppVersion      string `json:"app_version"`
+}
+
+func (q *Queries) SaveApprovedDevice(ctx context.Context, arg SaveApprovedDeviceParams) error {
+	_, err := q.db.ExecContext(ctx, saveApprovedDevice,
+		arg.ID,
+		arg.Name,
+		arg.Kind,
+		arg.PublicKey,
+		arg.Platform,
+		arg.DeviceFamily,
+		arg.ModelIdentifier,
+		arg.TokenHash,
+		arg.CreatedAtMs,
+		arg.ApprovedAtMs,
+		arg.LastSeenAtMs,
+		arg.LastSeenIp,
+		arg.UserAgent,
+		arg.AppVersion,
+	)
+	return err
 }
 
 const savePairingDevice = `-- name: SavePairingDevice :exec
