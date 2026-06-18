@@ -4,11 +4,13 @@ import { useEffect, useMemo, useState } from 'react'
 import type { UpdateStatus } from '../../../../shared/update'
 import { Button } from '@/components/ui/Button'
 
+type VisibleUpdateStatus = Exclude<UpdateStatus, { state: 'idle' }>
+
 function updateKey(status: UpdateStatus): string {
   return `${status.state}:${'version' in status ? status.version ?? '' : ''}`
 }
 
-function updateText(status: Exclude<UpdateStatus, { state: 'idle' }>) {
+function updateText(status: VisibleUpdateStatus) {
   switch (status.state) {
     case 'available':
       return {
@@ -38,6 +40,77 @@ function updateText(status: Exclude<UpdateStatus, { state: 'idle' }>) {
   }
 }
 
+function UpdateNotice({
+  status,
+  onDismiss,
+}: {
+  status: VisibleUpdateStatus
+  onDismiss: () => void
+}) {
+  const text = updateText(status)
+  const percent = status.state === 'downloading' ? Math.round(status.percent) : 0
+  const iconTone =
+    status.state === 'error' ? 'bg-danger-soft text-danger' : 'bg-primary-soft text-primary'
+
+  return (
+    <motion.section
+      role={status.state === 'error' ? 'alert' : 'status'}
+      aria-live="polite"
+      layout
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 3 }}
+      transition={{ type: 'spring', duration: 0.24, bounce: 0 }}
+      className="overflow-hidden rounded-card bg-bg/70 p-2.5 text-[13px] text-ink ring-1 ring-border/70"
+    >
+      <div className="flex items-start gap-2">
+        <div className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-full ${iconTone}`}>
+          {status.state === 'error' ? (
+            <X size={14} />
+          ) : status.state === 'checking' || status.state === 'downloaded' ? (
+            <RefreshCw size={14} />
+          ) : (
+            <Download size={14} />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-medium text-ink">{text.title}</div>
+          <div className="mt-0.5 line-clamp-2 text-[12px] leading-4 text-ink-2">{text.detail}</div>
+        </div>
+        <button
+          type="button"
+          aria-label="Dismiss update"
+          title="Dismiss"
+          onClick={onDismiss}
+          className="-mt-1 -mr-1 grid size-7 shrink-0 cursor-pointer place-items-center rounded-full text-ink-3 transition-[background-color,color,transform] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+        >
+          <X size={14} />
+        </button>
+      </div>
+
+      {status.state === 'downloading' ? (
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2">
+          <div
+            className="h-full origin-left rounded-full bg-primary transition-transform duration-300"
+            style={{ transform: `scaleX(${Math.max(0, Math.min(100, percent)) / 100})` }}
+          />
+        </div>
+      ) : null}
+
+      {status.state === 'downloaded' ? (
+        <div className="mt-2 flex justify-end gap-1">
+          <Button size="sm" variant="ghost" onClick={onDismiss}>
+            Later
+          </Button>
+          <Button size="sm" variant="primary" onClick={() => void window.jaz.installUpdate()}>
+            Restart Jaz
+          </Button>
+        </div>
+      ) : null}
+    </motion.section>
+  )
+}
+
 export function UpdatePanel() {
   const [status, setStatus] = useState<UpdateStatus>({ state: 'idle' })
   const [dismissedKey, setDismissedKey] = useState<string | null>(null)
@@ -55,71 +128,11 @@ export function UpdatePanel() {
     }
   }, [])
 
-  if (status.state === 'idle' || dismissedKey === key) return null
-
-  const text = updateText(status)
-  const percent = status.state === 'downloading' ? Math.round(status.percent) : 0
-
   return (
-    <div className="pointer-events-none fixed top-16 right-4 z-toast w-[min(360px,calc(100vw-2rem))]">
-      <AnimatePresence>
-        <motion.section
-          key={key}
-          role={status.state === 'error' ? 'alert' : 'status'}
-          aria-live="polite"
-          initial={{ opacity: 0, y: -6, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: -4, scale: 0.98 }}
-          transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
-          className="pointer-events-auto overflow-hidden rounded-card bg-surface p-3 text-sm text-ink shadow-raised backdrop-blur"
-        >
-          <div className="flex items-start gap-2.5">
-            <div className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-primary-soft text-primary">
-              {status.state === 'checking' || status.state === 'downloaded' ? (
-                <RefreshCw size={16} />
-              ) : (
-                <Download size={16} />
-              )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="font-medium text-ink">{text.title}</div>
-              <div className="mt-0.5 line-clamp-2 text-[12px] leading-5 text-ink-2">{text.detail}</div>
-            </div>
-            <button
-              type="button"
-              aria-label="Dismiss update"
-              title="Dismiss"
-              onClick={() => setDismissedKey(key)}
-              className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-full text-ink-3 transition-colors duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96]"
-            >
-              <X size={15} />
-            </button>
-          </div>
-
-          {status.state === 'downloading' ? (
-            <div className="mt-3">
-              <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
-                <div
-                  className="h-full origin-left rounded-full bg-primary transition-transform duration-300"
-                  style={{ transform: `scaleX(${Math.max(0, Math.min(100, percent)) / 100})` }}
-                />
-              </div>
-              <div className="mt-1.5 text-right text-[11px] tabular-nums text-ink-3">{percent}%</div>
-            </div>
-          ) : null}
-
-          {status.state === 'downloaded' ? (
-            <div className="mt-3 flex justify-end gap-1.5">
-              <Button size="sm" variant="ghost" onClick={() => setDismissedKey(key)}>
-                Later
-              </Button>
-              <Button size="sm" variant="primary" onClick={() => void window.jaz.installUpdate()}>
-                Restart
-              </Button>
-            </div>
-          ) : null}
-        </motion.section>
-      </AnimatePresence>
-    </div>
+    <AnimatePresence initial={false}>
+      {status.state !== 'idle' && dismissedKey !== key ? (
+        <UpdateNotice key={key} status={status} onDismiss={() => setDismissedKey(key)} />
+      ) : null}
+    </AnimatePresence>
   )
 }
