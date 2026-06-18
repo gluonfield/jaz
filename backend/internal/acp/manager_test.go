@@ -26,12 +26,16 @@ import (
 type staticPrompt string
 
 func (s staticPrompt) ACPPrompt(string) (string, error) { return string(s), nil }
-func (s staticPrompt) SkillsPrompt() (string, error)    { return string(s), nil }
+func (s staticPrompt) SkillsPromptForWorkspace(string) (string, error) {
+	return string(s), nil
+}
 
 type cwdPrompt struct{}
 
 func (cwdPrompt) ACPPrompt(cwd string) (string, error) { return "cwd: " + cwd, nil }
-func (cwdPrompt) SkillsPrompt() (string, error)        { return "", nil }
+func (cwdPrompt) SkillsPromptForWorkspace(string) (string, error) {
+	return "", nil
+}
 
 type localRunner struct {
 	seen        chan acp.LocalAgentRequest

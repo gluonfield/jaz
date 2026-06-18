@@ -32,7 +32,7 @@ export const keys = {
   projects: ['projects'] as const,
   filesystemDirs: (path: string) => ['filesystem', 'dirs', path] as const,
   workspaceFiles: (root: string) => ['workspace', 'files', root] as const,
-  skills: ['skills'] as const,
+  skills: (root?: string) => ['skills', root ?? null] as const,
   loops: ['loops'] as const,
   loopDetail: (id: string) => ['loops', id] as const,
   boards: ['boards'] as const,

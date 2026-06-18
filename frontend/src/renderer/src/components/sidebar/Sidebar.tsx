@@ -230,7 +230,7 @@ function ProjectGroup({
           <button
             type="button"
             onPointerDown={(event) => dragControls.start(event)}
-            className="-ml-3 grid size-5 shrink-0 cursor-grab touch-none place-items-center rounded-full text-ink-3 opacity-0 transition-colors duration-150 hover:bg-surface-2 hover:text-ink active:cursor-grabbing focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none group-hover/project:opacity-100"
+            className="-ml-3 grid size-5 shrink-0 cursor-grab touch-none place-items-center rounded-full text-ink-3 opacity-0 transition-colors duration-150 hover:bg-surface-2 hover:text-ink active:cursor-grabbing focus-visible:opacity-100 group-hover/project:opacity-100"
             aria-label={`Reorder ${group.label}`}
             title="Drag to reorder"
           >
@@ -243,7 +243,7 @@ function ProjectGroup({
         <Link
           to="/new"
           search={{ project: group.key }}
-          className="-mt-1 grid size-6 place-items-center rounded-full text-ink-3 opacity-0 transition-colors duration-150 hover:bg-surface-2 hover:text-ink focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none group-hover/project:opacity-100"
+          className="-mt-1 grid size-6 place-items-center rounded-full text-ink-3 opacity-0 transition-colors duration-150 hover:bg-surface-2 hover:text-ink focus-visible:opacity-100 group-hover/project:opacity-100"
           aria-label={`New thread in ${group.label}`}
           title={`New thread in ${group.label}`}
         >
