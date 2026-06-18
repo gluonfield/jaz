@@ -14,7 +14,7 @@ import { keys } from '@/lib/query/keys'
 import {
   AgentSetupStep,
   MemorySetupStep,
-  OnboardingStepper,
+  OnboardingProgress,
   agentReady,
   type OnboardingStep,
   onboardingRise,
@@ -141,12 +141,17 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
         animate="show"
         className="min-w-0 w-full max-w-[calc(100vw-40px)] md:max-w-[500px]"
       >
-        <motion.div variants={onboardingRise} className="mb-5">
-          <BackendChip remote={remote} url={connection.url} />
+        <motion.div
+          variants={onboardingRise}
+          className="mb-5"
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <BackendChip remote={remote} url={connection.url} />
+            <OnboardingProgress step={step} agentsComplete={canContinue} />
+          </div>
           <h1 className="mt-3 text-balance text-[20px] font-semibold tracking-tight text-ink">
             {title}
           </h1>
-          <OnboardingStepper step={step} canOpenMemory={canContinue} onStepChange={setStep} />
         </motion.div>
 
         <AnimatePresence mode="wait" initial={false}>
