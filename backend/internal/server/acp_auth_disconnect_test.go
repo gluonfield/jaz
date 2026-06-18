@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
+	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
@@ -58,12 +60,14 @@ func TestDisconnectACPAuthRemovesJazOwnedCredentialAndKey(t *testing.T) {
 		t.Fatalf("api key not removed from runtime env")
 	}
 
-	var got acpAuthStatusResponse
+	var got struct {
+		ACPAuth map[string]acpAuthStatusResponse `json:"acp_auth"`
+	}
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Authenticated {
-		t.Fatalf("still authenticated after disconnect: %#v", got)
+	if got.ACPAuth[acp.AgentClaude].Authenticated {
+		t.Fatalf("still authenticated after disconnect: %#v", got.ACPAuth)
 	}
 }
 
@@ -104,5 +108,73 @@ func TestDisconnectACPAuthKeepsGlobalConfig(t *testing.T) {
 	}
 	if _, err := os.Stat(globalCred); err != nil {
 		t.Fatalf("global ~/.claude config was deleted: %v", err)
+	}
+}
+
+func TestDisconnectACPAuthStopsAutoFallbackToGlobalClaudeConfig(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	for _, key := range []string{
+		"CLAUDE_CONFIG_DIR", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN",
+		"ANTHROPIC_API_KEY", "ANTHROPIC_APIKEY", "JAZ_ACP_CLAUDE_API_KEY",
+	} {
+		t.Setenv(key, "")
+	}
+	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "setup-token")
+
+	globalDir := filepath.Join(home, ".claude")
+	if err := os.MkdirAll(globalDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	globalCred := filepath.Join(globalDir, ".claude.json")
+	if err := os.WriteFile(globalCred, []byte(`{"config":"keep me"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, err := agentsettings.SaveAgentDefaults(store, agentsettings.AgentDefaults{
+		ACP: map[string]agentsettings.ACPAgentDefaults{
+			acp.AgentClaude: {
+				Enabled:         true,
+				Command:         "npx -y @agentclientprotocol/claude-agent-acp@0.44.0",
+				Model:           "default",
+				ReasoningEffort: "medium",
+				Auth:            acp.AgentAuthConfig{Mode: acp.AuthModeAuto},
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/acp/agents/claude/auth/disconnect", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
+	res := httptest.NewRecorder()
+	(&Server{Store: store, Root: root}).Handler().ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+
+	var got struct {
+		ACP     map[string]agentsettings.ACPAgentDefaults `json:"acp"`
+		ACPAuth map[string]acpAuthStatusResponse          `json:"acp_auth"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	claudeAuth := got.ACPAuth[acp.AgentClaude]
+	if claudeAuth.Authenticated || claudeAuth.AuthMode != acp.AuthModeJazProfile {
+		t.Fatalf("disconnect status = %#v, want unauthenticated Jaz profile", claudeAuth)
+	}
+	if _, err := os.Stat(globalCred); err != nil {
+		t.Fatalf("global ~/.claude config was deleted: %v", err)
+	}
+	claude := got.ACP[acp.AgentClaude]
+	if claude.Enabled || claude.Auth.Mode != acp.AuthModeJazProfile {
+		t.Fatalf("stored claude settings = %#v, want disabled Jaz profile", claude)
 	}
 }

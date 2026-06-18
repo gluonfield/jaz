@@ -17,11 +17,10 @@ interface ArtifactMessage {
 }
 
 const MIN_HEIGHT = 180
-const MAX_HEIGHT = 900
 
 function clampHeight(height: number): number {
   if (!Number.isFinite(height)) return MIN_HEIGHT
-  return Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, Math.ceil(height)))
+  return Math.max(MIN_HEIGHT, Math.ceil(height))
 }
 
 function toolError(result?: string): string {

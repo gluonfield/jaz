@@ -15,9 +15,12 @@ type Tool struct {
 type input struct{}
 
 func (t *Tool) Definition() tools.Definition {
-	return tools.Function("agent_list", "List active spawned ACP agent sessions globally.", true, helpers.GenerateSchema[input]())
+	return tools.Function("agent_list", "List configured ACP agent names and active spawned ACP agent sessions globally.", true, helpers.GenerateSchema[input]())
 }
 
 func (t *Tool) Execute(ctx context.Context, inputs map[string]any) (tools.Result, error) {
-	return tools.JSONResult(map[string]any{"sessions": t.Manager.List()})
+	return tools.JSONResult(map[string]any{
+		"agents":   t.Manager.Agents(),
+		"sessions": t.Manager.List(),
+	})
 }

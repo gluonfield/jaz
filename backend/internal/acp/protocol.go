@@ -122,6 +122,20 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	if err != nil {
 		return
 	}
+	recordTool := func(src ToolCallSnapshot) {
+		call := job.toolByID[src.ID]
+		mergeToolCall(&call, src)
+		job.toolByID[src.ID] = call
+		job.ToolCalls = sortedToolCalls(job.toolByID)
+		toolEvent = &call
+		activity = &storage.ActivityEntry{
+			ID:     call.ID,
+			Kind:   "tool",
+			Text:   firstNonEmpty(call.Title, call.ID),
+			Status: call.Status,
+			At:     now,
+		}
+	}
 	job.mu.Lock()
 	switch event := update.(type) {
 	case acpschema.AgentMessageChunkUpdate:
@@ -134,43 +148,9 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 		thoughtChunk = contentText(event.Content)
 		job.Thought = appendACPText(job.Thought, thoughtChunk)
 	case acpschema.ToolCallSessionUpdate:
-		call := job.toolByID[string(event.ToolCallID)]
-		call.ID = string(event.ToolCallID)
-		if event.Title != "" {
-			call.Title = event.Title
-		}
-		if event.Status != nil {
-			call.Status = string(*event.Status)
-		}
-		job.toolByID[string(event.ToolCallID)] = call
-		job.ToolCalls = sortedToolCalls(job.toolByID)
-		toolEvent = &call
-		activity = &storage.ActivityEntry{
-			ID:     call.ID,
-			Kind:   "tool",
-			Text:   firstNonEmpty(call.Title, call.ID),
-			Status: call.Status,
-			At:     now,
-		}
+		recordTool(toolUpdateSnapshot(event.ToolCallID, event.Title, event.Status, event.Kind, event.Content, event.RawInput, event.Meta))
 	case acpschema.ToolCallUpdateSessionUpdate:
-		call := job.toolByID[string(event.ToolCallID)]
-		call.ID = string(event.ToolCallID)
-		if event.Title != "" {
-			call.Title = event.Title
-		}
-		if event.Status != nil {
-			call.Status = string(*event.Status)
-		}
-		job.toolByID[string(event.ToolCallID)] = call
-		job.ToolCalls = sortedToolCalls(job.toolByID)
-		toolEvent = &call
-		activity = &storage.ActivityEntry{
-			ID:     call.ID,
-			Kind:   "tool",
-			Text:   firstNonEmpty(call.Title, call.ID),
-			Status: call.Status,
-			At:     now,
-		}
+		recordTool(toolUpdateSnapshot(event.ToolCallID, event.Title, event.Status, event.Kind, event.Content, event.RawInput, event.Meta))
 	case acpschema.PlanSessionUpdate:
 		plan := make([]sessionevents.PlanEntry, 0, len(event.Entries))
 		for _, entry := range event.Entries {

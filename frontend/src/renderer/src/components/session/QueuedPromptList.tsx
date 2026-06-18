@@ -4,85 +4,63 @@ import { useEffect, useRef, useState } from 'react'
 import type { QueuedMessage } from '@/lib/api/types'
 import { MentionText } from './mentions'
 
-// The queue is keyed by index server-side. For animation we
-// need stable per-item identity, so we keep a parallel id keyed list and reconcile it
-// against the incoming prompts (see the sync effect below).
-type KeyedPrompt = QueuedMessage & { id: number }
-
 export function QueuedPromptList({
   prompts,
   steerDisabled,
   onSteer,
   onDelete,
   onEdit,
-  onMove,
+  onReorder,
 }: {
   prompts: QueuedMessage[]
   steerDisabled?: boolean
-  onSteer: (index: number) => void
-  onDelete: (index: number) => void
-  onEdit: (index: number, text: string) => void
-  onMove: (from: number, to: number) => void
+  onSteer: (id: string) => void
+  onDelete: (id: string) => void
+  onEdit: (id: string, text: string) => void
+  onReorder: (ids: string[]) => void
 }) {
-  const [editingIndex, setEditingIndex] = useState<number | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
-  const [draggingId, setDraggingId] = useState<number | null>(null)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
 
-  const idCounter = useRef(0)
-  const [items, setItems] = useState<KeyedPrompt[]>(() =>
-    prompts.map((prompt) => ({ ...prompt, id: idCounter.current++ })),
-  )
+  const [items, setItems] = useState<QueuedMessage[]>(prompts)
   const syncedSig = useRef(queueSignature(prompts))
   const itemsRef = useRef(items)
   itemsRef.current = items
-  const dragFrom = useRef<number | null>(null)
 
-  // Keep the keyed list in sync with incoming prompts, reusing ids by greedy
-  // signature match so append/delete/move preserve identity and animations.
-  // During a drag, `items` mutates but `prompts` does not, so the unchanged
-  // signature keeps the optimistic order from being reverted.
   useEffect(() => {
     const sig = queueSignature(prompts)
     if (sig === syncedSig.current) return
     syncedSig.current = sig
-    setItems((prev) => {
-      const pool = [...prev]
-      return prompts.map((prompt) => {
-        const match = pool.findIndex((p) => queuePromptSignature(p) === queuePromptSignature(prompt))
-        if (match !== -1) return pool.splice(match, 1)[0]
-        return { ...prompt, id: idCounter.current++ }
-      })
-    })
+    setItems(prompts)
   }, [prompts])
 
   useEffect(() => {
-    if (editingIndex !== null && editingIndex >= items.length) {
-      setEditingIndex(null)
+    if (editingId !== null && !items.some((item) => item.id === editingId)) {
+      setEditingId(null)
       setDraft('')
     }
-  }, [editingIndex, items.length])
+  }, [editingId, items])
 
-  const startEdit = (index: number) => {
-    setEditingIndex(index)
-    setDraft(items[index]?.text ?? '')
+  const startEdit = (item: QueuedMessage) => {
+    setEditingId(item.id)
+    setDraft(item.text)
   }
   const finishEdit = () => {
-    if (editingIndex === null) return
+    if (editingId === null) return
     const trimmed = draft.trim()
-    if (trimmed) onEdit(editingIndex, trimmed)
-    setEditingIndex(null)
+    if (trimmed) onEdit(editingId, trimmed)
+    setEditingId(null)
     setDraft('')
   }
   const cancelEdit = () => {
-    setEditingIndex(null)
+    setEditingId(null)
     setDraft('')
   }
 
   if (items.length === 0) return null
 
-  // Dragging is disabled while any row is being edited: a reorder shifts the index-based
-  // editing target out from under the open input.
-  const dragDisabled = editingIndex !== null
+  const dragDisabled = editingId !== null
 
   return (
     <motion.div
@@ -95,30 +73,26 @@ export function QueuedPromptList({
     >
       <Reorder.Group axis="y" as="div" values={items} onReorder={setItems} className="flex flex-col py-1">
         <AnimatePresence initial={false} mode="popLayout">
-          {items.map((item, index) => (
+          {items.map((item) => (
             <QueuedRow
               key={item.id}
               item={item}
-              editing={editingIndex === index}
+              editing={editingId === item.id}
               dragDisabled={dragDisabled}
               dragging={draggingId === item.id}
               draft={draft}
               steerDisabled={steerDisabled}
               onDragStart={() => {
-                dragFrom.current = index
                 setDraggingId(item.id)
               }}
               onDragEnd={() => {
-                const from = dragFrom.current
-                dragFrom.current = null
                 setDraggingId(null)
-                if (from === null) return
-                const to = itemsRef.current.findIndex((p) => p.id === item.id)
-                if (to !== -1 && to !== from) onMove(from, to)
+                const ids = itemsRef.current.map((prompt) => prompt.id)
+                if (queueOrderSignature(prompts) !== ids.join('|')) onReorder(ids)
               }}
-              onSteer={() => onSteer(index)}
-              onDelete={() => onDelete(index)}
-              onStartEdit={() => startEdit(index)}
+              onSteer={() => onSteer(item.id)}
+              onDelete={() => onDelete(item.id)}
+              onStartEdit={() => startEdit(item)}
               onDraftChange={setDraft}
               onSubmitEdit={finishEdit}
               onCancelEdit={cancelEdit}
@@ -146,7 +120,7 @@ function QueuedRow({
   onSubmitEdit,
   onCancelEdit,
 }: {
-  item: KeyedPrompt
+  item: QueuedMessage
   editing: boolean
   dragDisabled: boolean
   dragging: boolean
@@ -221,6 +195,11 @@ function QueuedRow({
               {item.attachment_ids.length}
             </span>
           ) : null}
+          {item.plan_requested ? (
+            <span className="inline-flex shrink-0 rounded-full bg-primary-soft px-1.5 py-0.5 text-[11px] font-medium text-primary">
+              Plan
+            </span>
+          ) : null}
         </div>
       )}
       <div className="flex items-center gap-1">
@@ -287,10 +266,12 @@ function QueuedRow({
   )
 }
 
-function queueSignature(prompts: QueuedMessage[]): string {
-  return JSON.stringify(prompts.map(queuePromptSignature))
+function queueOrderSignature(prompts: QueuedMessage[]): string {
+  return prompts.map((prompt) => prompt.id).join('|')
 }
 
-function queuePromptSignature(prompt: QueuedMessage): string {
-  return JSON.stringify([prompt.text, prompt.attachment_ids ?? []])
+function queueSignature(prompts: QueuedMessage[]): string {
+  return JSON.stringify(
+    prompts.map((prompt) => [prompt.id, prompt.text, prompt.attachment_ids ?? [], prompt.plan_requested ?? false]),
+  )
 }

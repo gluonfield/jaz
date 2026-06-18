@@ -37,6 +37,8 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		"Current working directory:",
 		"## AGENTS.md\n\nalways cite sources",
 		"## SOUL.md\n\nbe direct",
+		"## Agent delegation",
+		"Do not use an agent-local multi-agent tool",
 		"## Artifacts and visualisation",
 		"Few-shot trace:",
 		"## memory",
@@ -86,8 +88,13 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 	if !strings.HasSuffix(system, acp[sharedOffset:]) {
 		t.Fatalf("the ACP shared tail must match the coordinator shared tail.\nACP:\n%s\nSYSTEM:\n%s", acp, system)
 	}
-	if strings.Contains(acp, "You are Jaz") || strings.Contains(acp, "agent_spawn") {
-		t.Fatalf("acp extension must carry no coordinator identity or delegation rules:\n%s", acp)
+	if strings.Contains(acp, "You are Jaz") {
+		t.Fatalf("acp extension must carry no coordinator identity:\n%s", acp)
+	}
+	for _, want := range []string{"## Agent delegation", "`agent_spawn`", "Do not use an agent-local multi-agent tool"} {
+		if !strings.Contains(acp, want) {
+			t.Fatalf("acp extension missing delegation guidance %q:\n%s", want, acp)
+		}
 	}
 	if !strings.Contains(acp, "prefer an inline artifact over plain text") ||
 		!strings.Contains(acp, "any reusable code snippet over 20 lines") ||
@@ -112,9 +119,11 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.Contains(widgetACP, "## Artifacts and visualisation") ||
+		strings.Contains(widgetACP, "## Agent delegation") ||
+		strings.Contains(widgetACP, "agent_spawn") ||
 		strings.Contains(widgetACP, "visualise_show_widget") ||
 		strings.Contains(widgetACP, "visualise_read_me") {
-		t.Fatalf("widget ACP extension must not carry the chat artifact policy:\n%s", widgetACP)
+		t.Fatalf("widget ACP extension must not carry chat-only tool policy:\n%s", widgetACP)
 	}
 	for _, want := range []string{"## AGENTS.md\n\nalways cite sources", "## memory/LONG_TERM.md", "<name>deploy</name>"} {
 		if !strings.Contains(widgetACP, want) {

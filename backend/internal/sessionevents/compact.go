@@ -6,9 +6,8 @@ import (
 )
 
 type transcriptItem struct {
-	event   Event
-	index   int
-	lastSeq int64
+	event Event
+	index int
 }
 
 type TextChunkCompaction struct {
@@ -20,32 +19,20 @@ func CompactTranscript(events []Event) []Event {
 	if len(events) == 0 {
 		return nil
 	}
-	deduped := dedupeBySeq(events)
-	items := make([]transcriptItem, 0, len(deduped))
+	mergedText := compactACPTextRuns(dedupeBySeq(events), false)
+	items := make([]transcriptItem, 0, len(mergedText))
 	byKey := map[string]int{}
-	for sourceIndex, event := range deduped {
-		if len(items) > 0 {
-			last := &items[len(items)-1]
-			if merged, ok := mergeACPTextEvent(last.event, last.lastSeq, event); ok {
-				last.event = merged
-				if event.Seq != 0 {
-					last.lastSeq = event.Seq
-				}
-				continue
-			}
-		}
+	for _, item := range mergedText {
+		event := item.event
 		key := transcriptCoalesceKey(event)
 		if key != "" {
 			if idx, ok := byKey[key]; ok {
 				items[idx].event = event
-				if event.Seq != 0 {
-					items[idx].lastSeq = event.Seq
-				}
 				continue
 			}
 			byKey[key] = len(items)
 		}
-		items = append(items, transcriptItem{event: event, index: sourceIndex, lastSeq: event.Seq})
+		items = append(items, transcriptItem{event: event, index: item.index})
 	}
 	sort.SliceStable(items, func(i, j int) bool {
 		return transcriptItemLess(items[i], items[j])
@@ -71,30 +58,7 @@ func compactTextChunks(events []Event) ([]Event, []TextChunkCompaction) {
 	if len(events) == 0 {
 		return nil, nil
 	}
-	deduped := dedupeBySeq(events)
-	type textChunkItem struct {
-		event      Event
-		deleteSeqs []int64
-	}
-	items := make([]textChunkItem, 0, len(deduped))
-	lastSeq := int64(0)
-	for _, event := range deduped {
-		if len(items) > 0 {
-			last := &items[len(items)-1]
-			if merged, ok := mergeACPTextEvent(last.event, lastSeq, event); ok {
-				if last.event.Seq != 0 && event.Seq != 0 {
-					last.deleteSeqs = append(last.deleteSeqs, last.event.Seq)
-				}
-				last.event = merged
-				if event.Seq != 0 {
-					lastSeq = event.Seq
-				}
-				continue
-			}
-		}
-		items = append(items, textChunkItem{event: event})
-		lastSeq = event.Seq
-	}
+	items := compactACPTextRuns(dedupeBySeq(events), true)
 	out := make([]Event, 0, len(items))
 	runs := make([]TextChunkCompaction, 0)
 	for _, item := range items {
@@ -103,7 +67,47 @@ func compactTextChunks(events []Event) ([]Event, []TextChunkCompaction) {
 			runs = append(runs, TextChunkCompaction{Event: item.event, DeleteSeqs: item.deleteSeqs})
 		}
 	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return transcriptItemLess(
+			transcriptItem{event: out[i], index: i},
+			transcriptItem{event: out[j], index: j},
+		)
+	})
+	sort.SliceStable(runs, func(i, j int) bool {
+		return transcriptItemLess(
+			transcriptItem{event: runs[i].Event, index: i},
+			transcriptItem{event: runs[j].Event, index: j},
+		)
+	})
 	return out, runs
+}
+
+type compactedTextItem struct {
+	event      Event
+	index      int
+	lastSeq    int64
+	deleteSeqs []int64
+}
+
+func compactACPTextRuns(events []Event, trackDeletes bool) []compactedTextItem {
+	items := make([]compactedTextItem, 0, len(events))
+	for sourceIndex, event := range events {
+		if len(items) > 0 {
+			last := &items[len(items)-1]
+			if merged, ok := mergeACPTextEvent(last.event, last.lastSeq, event); ok {
+				if trackDeletes && last.event.Seq != 0 && event.Seq != 0 {
+					last.deleteSeqs = append(last.deleteSeqs, last.event.Seq)
+				}
+				last.event = merged
+				if event.Seq != 0 {
+					last.lastSeq = event.Seq
+				}
+				continue
+			}
+		}
+		items = append(items, compactedTextItem{event: event, index: sourceIndex, lastSeq: event.Seq})
+	}
+	return items
 }
 
 func dedupeBySeq(events []Event) []Event {

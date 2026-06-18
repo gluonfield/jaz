@@ -7,6 +7,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
+	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -45,6 +46,16 @@ func (s *Server) handleDisconnectACPAuth(w http.ResponseWriter, r *http.Request)
 	}
 	auth := acp.ProbeAgentAuthWithProviders(agent, cfg, s.runtimeRoot(), nil, s.modelProviders())
 
+	if current, ok := defaults.ACP[agent]; ok {
+		current.Enabled = false
+		current.Auth = acp.DisconnectedAuthConfig(agent, current.Auth)
+		defaults.ACP[agent] = current
+		if defaults, err = agentsettings.SaveAgentDefaults(store, defaults); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+	}
+
 	if spec, ok := acp.AgentAPIKey(agent); ok && strings.TrimSpace(spec.SourceEnv) != "" {
 		if err := runtimeenv.Remove(s.runtimeKeyEnvPath(), spec.SourceEnv); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
@@ -59,6 +70,5 @@ func (s *Server) handleDisconnectACPAuth(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	fresh := acp.ProbeAgentAuthWithProviders(agent, cfg, s.runtimeRoot(), nil, s.modelProviders())
-	writeJSON(w, http.StatusOK, newACPAuthStatusResponse(fresh))
+	writeJSON(w, http.StatusOK, s.agentSettingsResponse(defaults))
 }

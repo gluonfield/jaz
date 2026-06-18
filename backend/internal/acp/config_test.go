@@ -161,24 +161,6 @@ func TestProcessEnvPreparedReportsProfilePreparationFailure(t *testing.T) {
 	}
 }
 
-func TestProcessEnvPreparedSyncsCodexSkills(t *testing.T) {
-	clearHostEnv(t)
-	root := t.TempDir()
-	writeACPTestSkill(t, root, "alpha")
-
-	env, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared("codex", AgentConfig{
-		Auth: AgentAuthConfig{Mode: AuthModeJazProfile},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	path := filepath.Join(env["CODEX_HOME"], "skills", "alpha", "SKILL.md")
-	if data, err := os.ReadFile(path); err != nil || !strings.Contains(string(data), "Alpha skill") {
-		t.Fatalf("codex skill copy = %q, %v", data, err)
-	}
-}
-
 func TestProbeAgentAuthDoesNotImportCredentials(t *testing.T) {
 	home := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o700); err != nil {
@@ -243,7 +225,7 @@ func TestProbeAgentAuthDetectsClaudeJSONProfile(t *testing.T) {
 	}
 }
 
-func TestProcessEnvUsesJazConfigForClaudeCode(t *testing.T) {
+func TestProcessEnvUsesJazConfigForClaudeCodeWithoutHostAuthTokens(t *testing.T) {
 	clearHostEnv(t)
 	home := t.TempDir()
 	configDir := filepath.Join(home, "claude-config")
@@ -258,7 +240,13 @@ func TestProcessEnvUsesJazConfigForClaudeCode(t *testing.T) {
 	t.Setenv("USER", "wins")
 
 	root := t.TempDir()
-	env := NewManager(nil, Config{Root: root}, nil).processEnv("claude", AgentConfig{
+	env := NewManager(nil, Config{
+		Root: root,
+		Env: map[string]string{
+			"ANTHROPIC_AUTH_TOKEN": "configured-auth-token",
+			"CLAUDE_CONFIG_DIR":    filepath.Join(home, "configured-claude"),
+		},
+	}, nil).processEnv("claude", AgentConfig{
 		Auth: AgentAuthConfig{Mode: AuthModeJazProfile},
 	})
 
@@ -271,14 +259,14 @@ func TestProcessEnvUsesJazConfigForClaudeCode(t *testing.T) {
 	if _, ok := env["ANTHROPIC_APIKEY"]; ok {
 		t.Fatal("ANTHROPIC_APIKEY alias leaked into subprocess env")
 	}
-	if env["ANTHROPIC_AUTH_TOKEN"] != "host-auth-token" {
-		t.Fatalf("ANTHROPIC_AUTH_TOKEN was not preserved")
+	if env["ANTHROPIC_AUTH_TOKEN"] != "" {
+		t.Fatalf("ANTHROPIC_AUTH_TOKEN leaked into Jaz-profile claude subprocess env")
 	}
 	if env["CLAUDE_CODE_EXECUTABLE"] != "/usr/local/bin/claude" {
 		t.Fatalf("CLAUDE_CODE_EXECUTABLE = %q", env["CLAUDE_CODE_EXECUTABLE"])
 	}
-	if env["CLAUDE_CODE_OAUTH_TOKEN"] != "setup-token" {
-		t.Fatalf("CLAUDE_CODE_OAUTH_TOKEN was not preserved")
+	if env["CLAUDE_CODE_OAUTH_TOKEN"] != "" {
+		t.Fatalf("CLAUDE_CODE_OAUTH_TOKEN leaked into Jaz-profile claude subprocess env")
 	}
 	if env["CLAUDE_CODE_USE_VERTEX"] != "0" {
 		t.Fatalf("CLAUDE_CODE_USE_VERTEX = %q", env["CLAUDE_CODE_USE_VERTEX"])
@@ -291,13 +279,11 @@ func TestProcessEnvUsesJazConfigForClaudeCode(t *testing.T) {
 		t.Fatalf("USER = %q, want wins", env["USER"])
 	}
 	assertEnv(t, env, map[string]string{
-		"PATH":                    "/bin",
-		"ANTHROPIC_AUTH_TOKEN":    "host-auth-token",
-		"CLAUDE_CODE_EXECUTABLE":  "/usr/local/bin/claude",
-		"CLAUDE_CODE_OAUTH_TOKEN": "setup-token",
-		"CLAUDE_CODE_USE_VERTEX":  "0",
-		"CLAUDE_CONFIG_DIR":       wantConfigDir,
-		"USER":                    "wins",
+		"PATH":                   "/bin",
+		"CLAUDE_CODE_EXECUTABLE": "/usr/local/bin/claude",
+		"CLAUDE_CODE_USE_VERTEX": "0",
+		"CLAUDE_CONFIG_DIR":      wantConfigDir,
+		"USER":                   "wins",
 	})
 }
 
@@ -714,6 +700,7 @@ func TestProbeReadinessRequiresClaudeExecutable(t *testing.T) {
 	exe := testExecutable(t)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	t.Setenv("CLAUDE_CODE_EXECUTABLE", "")
 	t.Setenv("PATH", filepath.Dir(exe))
 
 	ready := ProbeReadiness(AgentClaude, AgentConfig{Command: exe}, t.TempDir(), nil)

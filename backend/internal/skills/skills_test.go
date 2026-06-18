@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -153,7 +154,7 @@ func TestLoadIncludesDefaultSkills(t *testing.T) {
 	}
 }
 
-func TestSyncToCopiesAndRefreshesManagedSkills(t *testing.T) {
+func TestInstallMissingToCopiesMissingSkillsAndLeavesExistingDirs(t *testing.T) {
 	root := t.TempDir()
 	dst := t.TempDir()
 	writeSkill(t, root, "alpha", "alpha", "Alpha tasks")
@@ -164,13 +165,10 @@ func TestSyncToCopiesAndRefreshesManagedSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := SyncTo(root, dst); err != nil {
+	if err := InstallMissingTo(root, dst); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := os.Stat(filepath.Join(dst, "alpha", managedMarker)); err != nil {
-		t.Fatalf("managed marker missing: %v", err)
-	}
 	if data, err := os.ReadFile(filepath.Join(dst, "alpha", "references", "guide.md")); err != nil || string(data) != "guide" {
 		t.Fatalf("copied reference = %q, %v", data, err)
 	}
@@ -179,19 +177,19 @@ func TestSyncToCopiesAndRefreshesManagedSkills(t *testing.T) {
 	}
 
 	writeFile(t, filepath.Join(root, "skills", "alpha", "SKILL.md"), "---\nname: alpha\ndescription: Updated\n---\nnew body")
-	if err := SyncTo(root, dst); err != nil {
+	if err := InstallMissingTo(root, dst); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(filepath.Join(dst, "alpha", "SKILL.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "Updated") {
-		t.Fatalf("managed copy was not refreshed:\n%s", data)
+	if strings.Contains(string(data), "Updated") {
+		t.Fatalf("existing skill was overwritten:\n%s", data)
 	}
 }
 
-func TestSyncToSkipsUserOwnedSkillConflictsAndLeavesOrphans(t *testing.T) {
+func TestInstallMissingToSkipsExistingSkillConflictsAndLeavesOrphans(t *testing.T) {
 	root := t.TempDir()
 	dst := t.TempDir()
 	writeSkill(t, root, "alpha", "alpha", "Alpha tasks")
@@ -199,17 +197,17 @@ func TestSyncToSkipsUserOwnedSkillConflictsAndLeavesOrphans(t *testing.T) {
 	writeFile(t, filepath.Join(dst, "alpha", "SKILL.md"), "user-owned")
 	writeFile(t, filepath.Join(dst, "orphan", "SKILL.md"), "user-owned orphan")
 
-	if err := SyncTo(root, dst); err != nil {
+	if err := InstallMissingTo(root, dst); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dst, "stale", managedMarker)); err != nil {
-		t.Fatalf("managed stale skill missing before source removal: %v", err)
+	if _, err := os.Stat(filepath.Join(dst, "stale", "SKILL.md")); err != nil {
+		t.Fatalf("stale skill missing before source removal: %v", err)
 	}
 
 	if err := os.RemoveAll(filepath.Join(root, "skills", "stale")); err != nil {
 		t.Fatal(err)
 	}
-	if err := SyncTo(root, dst); err != nil {
+	if err := InstallMissingTo(root, dst); err != nil {
 		t.Fatal(err)
 	}
 
@@ -223,8 +221,38 @@ func TestSyncToSkipsUserOwnedSkillConflictsAndLeavesOrphans(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dst, "orphan", "SKILL.md")); err != nil {
 		t.Fatalf("user-owned orphan should stay: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dst, "stale", managedMarker)); err != nil {
-		t.Fatalf("additive sync should leave old managed skills in place: %v", err)
+	if _, err := os.Stat(filepath.Join(dst, "stale", "SKILL.md")); err != nil {
+		t.Fatalf("additive sync should leave old skills in place: %v", err)
+	}
+}
+
+func TestInstallMissingToToleratesConcurrentMissingSkillCopies(t *testing.T) {
+	root := t.TempDir()
+	dst := t.TempDir()
+	writeSkill(t, root, "alpha", "alpha", "Alpha tasks")
+
+	errs := make(chan error, 32)
+	var wg sync.WaitGroup
+	for range 32 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs <- InstallMissingTo(root, dst)
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	data, err := os.ReadFile(filepath.Join(dst, "alpha", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "Alpha tasks") {
+		t.Fatalf("skill was not copied:\n%s", data)
 	}
 }
 

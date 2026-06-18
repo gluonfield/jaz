@@ -28,6 +28,7 @@ import {
 } from '@/lib/taskSurface'
 import { ArtifactBlock } from './ArtifactBlock'
 import { AssistantMarkdown } from './AssistantMarkdown'
+import { ToolCallDetail, toolCallCategory } from './ToolCallContent'
 import { MentionText } from './mentions'
 import { MessageMarkdown } from './MessageMarkdown'
 import { ThinkingBlock } from './ThinkingBlock'
@@ -165,19 +166,13 @@ interface ToolGroup {
   calls: ACPToolCall[]
 }
 
-function toolGroupKey(call: ACPToolCall): string {
-  const title = call.title ?? call.id
-  if (/^edit\s/i.test(title)) return 'edit'
-  if (/^read\s/i.test(title)) return 'read'
-  if (/^search\s/i.test(title)) return 'search'
-  if (/^view image\s/i.test(title)) return 'image'
-  if (/^(command\s+-v|npx\s|npm\s|bun\s|go\s|git\s|python3?\s|tidy\s|wc\s|rg\s)/i.test(title)) return 'command'
-  return 'tool'
-}
-
 function toolGroupBaseLabel(key: string, count: number): string {
   const plural = count === 1 ? '' : 's'
   switch (key) {
+    case 'web_search':
+      return count === 1 ? 'Searched the web' : `Searched the web ${count}×`
+    case 'web_fetch':
+      return `Visited ${count} page${plural}`
     case 'edit':
       return `Edited ${count} file${plural}`
     case 'read':
@@ -194,10 +189,10 @@ function toolGroupBaseLabel(key: string, count: number): string {
 }
 
 function groupToolCalls(calls: ACPToolCall[]): ToolGroup[] {
-  const order = ['edit', 'read', 'search', 'image', 'command', 'tool']
+  const order = ['web_search', 'web_fetch', 'edit', 'read', 'search', 'image', 'command', 'tool']
   const byKey = new Map<string, ACPToolCall[]>()
   for (const call of calls) {
-    const key = toolGroupKey(call)
+    const key = toolCallCategory(call)
     byKey.set(key, [...(byKey.get(key) ?? []), call])
   }
   return order.flatMap((key) => {
@@ -212,6 +207,8 @@ function groupToolCalls(calls: ACPToolCall[]): ToolGroup[] {
 // One codex-style phrase for a run of tool calls: "Explored 2 files, ran 1 command".
 function toolRunLabel(calls: ACPToolCall[]): string {
   const phrases: Record<string, (n: number) => string> = {
+    web_search: (n) => (n === 1 ? 'searched the web' : `searched the web ${n}×`),
+    web_fetch: (n) => `visited ${n} page${n === 1 ? '' : 's'}`,
     edit: (n) => `edited ${n} file${n === 1 ? '' : 's'}`,
     read: (n) => `explored ${n} file${n === 1 ? '' : 's'}`,
     search: (n) => `searched ${n} time${n === 1 ? '' : 's'}`,
@@ -219,11 +216,11 @@ function toolRunLabel(calls: ACPToolCall[]): string {
     command: (n) => `ran ${n} command${n === 1 ? '' : 's'}`,
     tool: (n) => `used ${n} tool${n === 1 ? '' : 's'}`,
   }
-  const order = ['read', 'search', 'command', 'edit', 'image', 'tool']
+  const order = ['web_search', 'web_fetch', 'read', 'search', 'command', 'edit', 'image', 'tool']
   const counts = new Map<string, number>()
   let failed = 0
   for (const call of calls) {
-    const key = toolGroupKey(call)
+    const key = toolCallCategory(call)
     counts.set(key, (counts.get(key) ?? 0) + 1)
     if (normalized(call.status) === 'failed') failed += 1
   }
@@ -272,17 +269,9 @@ const ToolDisclosure = memo(function ToolDisclosure({
         ) : null}
       </button>
       {open ? (
-        <div className="ml-4 flex max-w-full flex-col gap-1">
+        <div className="ml-4 flex w-full max-w-full flex-col gap-1">
           {calls.map((call) => (
-            <span
-              key={call.id}
-              className="max-w-full rounded border border-border bg-bg px-1.5 py-px font-mono text-[11px] whitespace-pre-wrap text-ink-2"
-            >
-              {call.title || call.id}
-              {call.status ? (
-                <span className="text-ink-3"> · {call.status}</span>
-              ) : null}
-            </span>
+            <ToolCallDetail key={call.id} call={call} />
           ))}
         </div>
       ) : null}

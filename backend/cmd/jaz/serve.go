@@ -236,6 +236,7 @@ func startServer(
 		loops.WithArtifactSurface(widgetService.LoopArtifactSurface),
 	)
 	jazTools.SetLoops(loopService)
+	jazTools.SetAgents(manager)
 	handler.Loops = loopService
 	handler.Widgets = widgetService
 	manager.PublishWidget = func(req acp.WidgetPublishRequest) (acp.WidgetPublishResult, error) {
