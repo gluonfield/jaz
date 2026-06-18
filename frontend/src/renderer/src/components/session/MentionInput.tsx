@@ -16,6 +16,7 @@ import { ComposerSuggestions, type SuggestionItem, type SuggestionSection } from
 import {
   expandTokens,
   findActiveTrigger,
+  pruneTokens,
   segmentValue,
   tokenEndingAt,
   type InlineToken,
@@ -389,7 +390,10 @@ export function useMentionInput({
     mirrorRef,
     maxHeight,
     /** the current value in wire form (encoded mentions) */
-    value: () => expandTokens(text, tokens),
+    value: () => {
+      const current = textareaRef.current?.value ?? text
+      return expandTokens(current, pruneTokens(tokens, current))
+    },
     reset,
     onFocus: () => setFocused(true),
     onBlur: () => setFocused(false),
