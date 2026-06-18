@@ -1,0 +1,89 @@
+package acp
+
+import (
+	"context"
+	"net/http"
+	"testing"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/wins/jaz/backend/internal/mcpsession"
+)
+
+type fakeMCPService struct {
+	spawned SpawnRequest
+}
+
+func (s *fakeMCPService) Spawn(_ context.Context, req SpawnRequest) (SpawnResult, error) {
+	s.spawned = req
+	return SpawnResult{Status: "ok", SessionID: "child", Slug: req.Slug, ACPAgent: req.ACPAgent, State: StateIdle}, nil
+}
+
+func (s *fakeMCPService) Send(context.Context, SendRequest) (Job, error) {
+	return Job{}, nil
+}
+
+func (s *fakeMCPService) Status(string) (Job, error) {
+	return Job{}, nil
+}
+
+func (s *fakeMCPService) Wait(context.Context, WaitRequest) (Job, error) {
+	return Job{}, nil
+}
+
+func (s *fakeMCPService) Cancel(context.Context, string) (Job, error) {
+	return Job{}, nil
+}
+
+func (s *fakeMCPService) List() []Job {
+	return nil
+}
+
+func (s *fakeMCPService) Agents() []string {
+	return []string{AgentCodex, AgentJaz}
+}
+
+func TestMCPSpawnAcceptsAgentNameAliasAndModelOverrides(t *testing.T) {
+	service := &fakeMCPService{}
+	tools := NewMCPTools(service)
+	header := http.Header{}
+	header.Set(mcpsession.HeaderName, "parent-session")
+	req := &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: header}}
+
+	_, result, err := tools.Spawn(context.Background(), req, MCPSpawnInput{
+		AgentName:       AgentCodex,
+		Slug:            "review",
+		ModelProvider:   "openai",
+		Model:           "gpt-5.5",
+		ReasoningEffort: "high",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ACPAgent != AgentCodex || service.spawned.ACPAgent != AgentCodex {
+		t.Fatalf("agent alias was not forwarded: result=%#v request=%#v", result, service.spawned)
+	}
+	if service.spawned.ModelProvider != "openai" || service.spawned.Model != "gpt-5.5" || service.spawned.ReasoningEffort != "high" {
+		t.Fatalf("model overrides were not forwarded: %#v", service.spawned)
+	}
+	if service.spawned.ParentID != "parent-session" {
+		t.Fatalf("parent session was not forwarded: %#v", service.spawned)
+	}
+}
+
+func TestSpawnInputSchemaAdvertisesAgentEnums(t *testing.T) {
+	schema := spawnInputSchema([]string{AgentCodex, AgentJaz})
+	properties, _ := schema["properties"].(map[string]any)
+	for _, name := range []string{"acp_agent", "agent_name"} {
+		property, _ := properties[name].(map[string]any)
+		enum, _ := property["enum"].([]string)
+		if len(enum) != 2 || enum[0] != AgentCodex || enum[1] != AgentJaz {
+			t.Fatalf("%s enum = %#v", name, property["enum"])
+		}
+	}
+}
+
+func TestResolveAgentSelectorRejectsConflictingAliases(t *testing.T) {
+	if _, err := ResolveAgentSelector(AgentCodex, AgentClaude); err == nil {
+		t.Fatal("expected conflicting agent aliases to fail")
+	}
+}

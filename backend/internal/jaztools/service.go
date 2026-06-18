@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/loops"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/mcpsession"
@@ -48,6 +49,7 @@ type Service struct {
 	Memory *memoryservice.Service
 
 	loopTools       *loops.MCPTools
+	agentTools      *acp.MCPTools
 	visualizeTools  *visualize.MCPTools
 	widgetPublisher *widgets.SessionPublisher
 	sessions        sessionSource
@@ -98,6 +100,13 @@ func (s *Service) SetLoops(service loops.MCPService) {
 	s.loopTools = loops.NewMCPTools(service)
 }
 
+func (s *Service) SetAgents(service acp.MCPService) {
+	s.agentTools = acp.NewMCPTools(service)
+	if s.thread.server != nil {
+		s.agentTools.AddTo(s.thread.server)
+	}
+}
+
 func (s *Service) Server() *mcp.Server {
 	return s.server(threadSurface)
 }
@@ -132,6 +141,9 @@ func (s *Service) newServer(surface toolSurface) *mcp.Server {
 		return server
 	}
 	s.loopTools.AddTo(server)
+	if surface == threadSurface && s.agentTools != nil {
+		s.agentTools.AddTo(server)
+	}
 	s.visualizeTools.AddReadMeTo(server)
 	switch surface {
 	case widgetSurface:
