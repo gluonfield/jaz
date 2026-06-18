@@ -59,6 +59,20 @@ func (mockTool) Execute(ctx context.Context, inputs map[string]any) (tools.Resul
 	return tools.Result{Content: `{"status":"completed","value":"` + inputs["value"].(string) + `"}`}, nil
 }
 
+type namedTool struct {
+	name        string
+	description string
+	parameters  map[string]any
+}
+
+func (t namedTool) Definition() tools.Definition {
+	return tools.Function(t.name, t.description, false, t.parameters)
+}
+
+func (t namedTool) Execute(ctx context.Context, inputs map[string]any) (tools.Result, error) {
+	return tools.Result{Content: `{"status":"completed","tool":"` + t.name + `"}`}, nil
+}
+
 func TestAgentToolLoop(t *testing.T) {
 	a := &Agent{
 		Provider: &fakeProvider{},
@@ -104,6 +118,191 @@ func TestAgentCompleteReturnsFinalResult(t *testing.T) {
 	if len(result.Messages) != 4 {
 		t.Fatalf("expected user, assistant-call, tool, assistant messages; got %d", len(result.Messages))
 	}
+}
+
+type toolSearchProvider struct {
+	requests []provider.Request
+}
+
+func (p *toolSearchProvider) Complete(ctx context.Context, req provider.Request) (provider.Response, error) {
+	p.requests = append(p.requests, req)
+	switch len(p.requests) {
+	case 1:
+		return provider.Response{Message: provider.AssistantMessage("", []provider.ToolCall{
+			provider.FunctionToolCall("search_1", toolSearchToolName, `{"query":"calendar event","limit":1}`),
+		})}, nil
+	case 2:
+		return provider.Response{Message: provider.AssistantMessage("", []provider.ToolCall{
+			provider.FunctionToolCall("mcp_1", "mcp_calendar_create_event", `{"title":"Lunch"}`),
+		})}, nil
+	default:
+		return provider.Response{Message: provider.AssistantMessage("done", nil)}, nil
+	}
+}
+
+func (p *toolSearchProvider) StreamComplete(ctx context.Context, req provider.Request) (<-chan provider.Event, error) {
+	panic("not used")
+}
+
+func TestAgentDefersMCPToolsBehindToolSearch(t *testing.T) {
+	fp := &toolSearchProvider{}
+	a := &Agent{
+		Provider: fp,
+		Tools: tools.NewRegistry(
+			mockTool{},
+			namedTool{
+				name:        "mcp_calendar_create_event",
+				description: "Create calendar events.",
+				parameters: tools.ObjectSchema(map[string]any{
+					"title": tools.StringSchema("Event title."),
+				}, []string{"title"}),
+			},
+		),
+		DeferTools: func(name string) bool { return strings.HasPrefix(name, "mcp_") },
+	}
+
+	result, err := a.Complete(context.Background(), provider.Request{
+		Messages: []provider.Message{provider.UserMessage("create calendar event")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Content != "done" {
+		t.Fatalf("content = %q, want done", result.Content)
+	}
+	if len(fp.requests) != 3 {
+		t.Fatalf("provider calls = %d, want 3", len(fp.requests))
+	}
+
+	firstTools := requestToolNames(fp.requests[0])
+	if !contains(firstTools, toolSearchToolName) {
+		t.Fatalf("first request tools = %v, want %s", firstTools, toolSearchToolName)
+	}
+	if contains(firstTools, "mcp_calendar_create_event") {
+		t.Fatalf("first request leaked deferred MCP tool: %v", firstTools)
+	}
+	if !contains(firstTools, "mock") {
+		t.Fatalf("first request lost direct tool: %v", firstTools)
+	}
+
+	var searchOutput struct {
+		Status    string           `json:"status"`
+		Execution string           `json:"execution"`
+		Tools     []map[string]any `json:"tools"`
+	}
+	if err := json.Unmarshal([]byte(result.ToolExecutions[0].Result), &searchOutput); err != nil {
+		t.Fatal(err)
+	}
+	if searchOutput.Status != "completed" || searchOutput.Execution != "client" || len(searchOutput.Tools) != 1 {
+		t.Fatalf("unexpected tool_search output: %#v", searchOutput)
+	}
+	if searchOutput.Tools[0]["name"] != "mcp_calendar_create_event" || searchOutput.Tools[0]["defer_loading"] != true {
+		t.Fatalf("unexpected returned tool spec: %#v", searchOutput.Tools[0])
+	}
+
+	secondTools := requestToolNames(fp.requests[1])
+	if !contains(secondTools, "mcp_calendar_create_event") {
+		t.Fatalf("second request tools = %v, want searched MCP tool", secondTools)
+	}
+	if len(result.ToolExecutions) != 2 || provider.ToolCallName(result.ToolExecutions[1].Call) != "mcp_calendar_create_event" {
+		t.Fatalf("unexpected tool executions: %#v", result.ToolExecutions)
+	}
+}
+
+type sameBatchSearchProvider struct {
+	requests []provider.Request
+}
+
+func (p *sameBatchSearchProvider) Complete(ctx context.Context, req provider.Request) (provider.Response, error) {
+	p.requests = append(p.requests, req)
+	if len(p.requests) == 1 {
+		return provider.Response{Message: provider.AssistantMessage("", []provider.ToolCall{
+			provider.FunctionToolCall("search_1", toolSearchToolName, `{"query":"calendar event","limit":1}`),
+			provider.FunctionToolCall("mcp_1", "mcp_calendar_create_event", `{"title":"Lunch"}`),
+		})}, nil
+	}
+	return provider.Response{Message: provider.AssistantMessage("done", nil)}, nil
+}
+
+func (p *sameBatchSearchProvider) StreamComplete(ctx context.Context, req provider.Request) (<-chan provider.Event, error) {
+	panic("not used")
+}
+
+func TestToolSearchExposesMatchesOnNextModelCallOnly(t *testing.T) {
+	fp := &sameBatchSearchProvider{}
+	a := &Agent{
+		Provider: fp,
+		Tools: tools.NewRegistry(namedTool{
+			name:        "mcp_calendar_create_event",
+			description: "Create calendar events.",
+			parameters:  tools.ObjectSchema(map[string]any{"title": tools.StringSchema("Event title.")}, []string{"title"}),
+		}),
+		DeferTools: func(name string) bool { return strings.HasPrefix(name, "mcp_") },
+	}
+
+	result, err := a.Complete(context.Background(), provider.Request{
+		Messages: []provider.Message{provider.UserMessage("create calendar event")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.ToolExecutions) != 2 {
+		t.Fatalf("tool executions = %d, want search and rejected mcp call", len(result.ToolExecutions))
+	}
+	if !strings.Contains(result.ToolExecutions[1].Result, "use tool_search first") {
+		t.Fatalf("same-batch deferred tool was not rejected: %s", result.ToolExecutions[1].Result)
+	}
+	secondTools := requestToolNames(fp.requests[1])
+	if !contains(secondTools, "mcp_calendar_create_event") {
+		t.Fatalf("next request tools = %v, want searched MCP tool", secondTools)
+	}
+}
+
+func TestToolSearchMatchesSchemaTerms(t *testing.T) {
+	exposure := newToolExposure([]tools.Definition{
+		namedTool{
+			name:        "mcp_calendar_create_event",
+			description: "Create events.",
+			parameters: tools.ObjectSchema(map[string]any{
+				"title": tools.StringSchema("Event title."),
+			}, []string{"title"}),
+		}.Definition(),
+		namedTool{
+			name:        "mcp_invoice_lookup",
+			description: "Fetch records.",
+			parameters: tools.ObjectSchema(map[string]any{
+				"ledger_id": tools.StringSchema("Reconcile ledger entries."),
+			}, []string{"ledger_id"}),
+		}.Definition(),
+	}, func(name string) bool { return strings.HasPrefix(name, "mcp_") })
+
+	result := exposure.executeSearch(provider.FunctionToolCall("search_1", toolSearchToolName, `{"query":"reconcile ledger","limit":1}`))
+	var output struct {
+		Tools []map[string]any `json:"tools"`
+	}
+	if err := json.Unmarshal([]byte(result.Content), &output); err != nil {
+		t.Fatal(err)
+	}
+	if len(output.Tools) != 1 || output.Tools[0]["name"] != "mcp_invoice_lookup" {
+		t.Fatalf("schema search returned %#v", output.Tools)
+	}
+}
+
+func requestToolNames(req provider.Request) []string {
+	names := make([]string, 0, len(req.Tools))
+	for _, def := range req.Tools {
+		names = append(names, tools.DefinitionName(def))
+	}
+	return names
+}
+
+func contains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestAddUsageAccumulatesCacheWrites(t *testing.T) {
