@@ -144,9 +144,25 @@ type PlanEntry struct {
 type ACPPlanEntry = PlanEntry
 
 type ACPToolCall struct {
-	ID     string `json:"id"`
-	Title  string `json:"title,omitempty"`
-	Status string `json:"status,omitempty"`
+	ID       string           `json:"id"`
+	Title    string           `json:"title,omitempty"`
+	Status   string           `json:"status,omitempty"`
+	Kind     string           `json:"kind,omitempty"`
+	ToolName string           `json:"tool_name,omitempty"`
+	Content  []ACPToolContent `json:"content,omitempty"`
+	RawInput json.RawMessage  `json:"raw_input,omitempty"`
+}
+
+// ACPToolContent is a normalized tool-call result block, distilled from the ACP
+// ToolCallContent union so every agent (claude/codex/opencode/native) renders
+// through one shape. Type is "text", "link", or "diff".
+type ACPToolContent struct {
+	Type    string `json:"type"`
+	Text    string `json:"text,omitempty"`
+	URI     string `json:"uri,omitempty"`
+	Title   string `json:"title,omitempty"`
+	Path    string `json:"path,omitempty"`
+	NewText string `json:"new_text,omitempty"`
 }
 
 type ACPPermission struct {

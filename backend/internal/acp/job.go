@@ -1,6 +1,7 @@
 package acp
 
 import (
+	"encoding/json"
 	"sync"
 	"time"
 
@@ -45,9 +46,13 @@ type Job struct {
 }
 
 type ToolCallSnapshot struct {
-	ID     string `json:"id"`
-	Title  string `json:"title,omitempty"`
-	Status string `json:"status,omitempty"`
+	ID       string                         `json:"id"`
+	Title    string                         `json:"title,omitempty"`
+	Status   string                         `json:"status,omitempty"`
+	Kind     string                         `json:"kind,omitempty"`
+	ToolName string                         `json:"tool_name,omitempty"`
+	Content  []sessionevents.ACPToolContent `json:"content,omitempty"`
+	RawInput json.RawMessage                `json:"raw_input,omitempty"`
 }
 
 type ModeState struct {

@@ -387,10 +387,23 @@ export interface SessionMessages {
   acp_children?: ACPJobSnapshot[]
 }
 
+export interface ACPToolContent {
+  type: 'text' | 'link' | 'diff'
+  text?: string
+  uri?: string
+  title?: string
+  path?: string
+  new_text?: string
+}
+
 export interface ACPToolCall {
   id: string
   title?: string
   status?: string
+  kind?: string
+  tool_name?: string
+  content?: ACPToolContent[]
+  raw_input?: unknown
 }
 
 export interface ACPMode {
