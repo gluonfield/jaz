@@ -1,4 +1,4 @@
-import { Check, LayoutGrid } from 'lucide-react'
+import { Check } from 'lucide-react'
 import type { Board } from '@/lib/api/types'
 
 export function BoardAssignmentPicker({
@@ -36,7 +36,7 @@ export function BoardAssignmentPicker({
                   : 'bg-surface text-ink-2 hover:bg-surface-2 hover:text-ink'
               }`}
             >
-              {active ? <Check size={12} /> : <LayoutGrid size={12} />}
+              {active ? <Check size={12} /> : null}
               <span className="truncate">{board.name}</span>
             </button>
           )
