@@ -237,32 +237,6 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"sessions": canonicalSessionResponses(sessions)})
 }
 
-func canonicalSessionResponses(sessions []storage.Session) []storage.Session {
-	out := make([]storage.Session, 0, len(sessions))
-	for _, session := range sessions {
-		out = append(out, canonicalSessionResponse(session))
-	}
-	return out
-}
-
-func canonicalSessionResponse(session storage.Session) storage.Session {
-	if session.Runtime != storage.RuntimeACP || session.RuntimeRef == nil {
-		return session
-	}
-	ref := *session.RuntimeRef
-	canonical := acp.CanonicalAgentName(ref.Agent)
-	if canonical == "" {
-		session.RuntimeRef = &ref
-		return session
-	}
-	if session.ModelProvider != "" && acp.CanonicalAgentName(session.ModelProvider) == canonical {
-		session.ModelProvider = canonical
-	}
-	ref.Agent = canonical
-	session.RuntimeRef = &ref
-	return session
-}
-
 func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
 	sessionRef, action, hasAction := strings.Cut(rest, "/")

@@ -87,10 +87,13 @@ export interface ThreadSearchResult {
 }
 
 export interface QueuedMessage {
+  id: string
   text: string
   attachment_ids?: string[]
   plan_requested?: boolean
 }
+
+export type QueuedMessageInput = Omit<QueuedMessage, 'id'> & { id?: string }
 
 // Git/forge state of a session's working directory (GET /v1/sessions/:id/repo).
 // git=false means "no cwd or not a git repo".

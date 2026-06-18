@@ -114,15 +114,15 @@ func TestCompactSessionEventsMergesStoredTextChunks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if removed != 3 {
-		t.Fatalf("removed = %d, want 3", removed)
+	if removed != 2 {
+		t.Fatalf("removed = %d, want 2", removed)
 	}
 	loaded, err := store.LoadSessionEvents(session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded) != 6 {
-		t.Fatalf("events = %d, want 6: %#v", len(loaded), loaded)
+	if len(loaded) != 7 {
+		t.Fatalf("events = %d, want 7: %#v", len(loaded), loaded)
 	}
 	if loaded[0].Seq != 2 || loaded[0].Content != "Hello" {
 		t.Fatalf("merged message = %#v", loaded[0])
@@ -133,11 +133,14 @@ func TestCompactSessionEventsMergesStoredTextChunks(t *testing.T) {
 	if loaded[3].Seq != 6 || loaded[3].ACP == nil || loaded[3].ACP.Thought != "Reason" {
 		t.Fatalf("merged thought = %#v", loaded[3])
 	}
-	if loaded[4].Seq != 8 || loaded[4].Type != "acp" {
-		t.Fatalf("hidden status should remain at seq 8: %#v", loaded[4])
+	if loaded[4].Seq != 7 || loaded[4].Content != "Done." {
+		t.Fatalf("message before hidden status = %#v", loaded[4])
 	}
-	if loaded[5].Seq != 9 || loaded[5].Content != "Done.Next" || loaded[5].ACP.State != "idle" {
-		t.Fatalf("final merged message = %#v", loaded[5])
+	if loaded[5].Seq != 8 || loaded[5].Type != "acp" {
+		t.Fatalf("hidden status should remain at seq 8: %#v", loaded[5])
+	}
+	if loaded[6].Seq != 9 || loaded[6].Content != "Next" || loaded[6].ACP.State != "idle" {
+		t.Fatalf("message after hidden status = %#v", loaded[6])
 	}
 
 	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{Type: "acp_message", Content: "again", ACP: acpState("running")}); err != nil {

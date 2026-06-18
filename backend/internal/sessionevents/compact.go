@@ -91,10 +91,9 @@ type compactedTextItem struct {
 
 func compactACPTextRuns(events []Event, trackDeletes bool) []compactedTextItem {
 	items := make([]compactedTextItem, 0, len(events))
-	lastTextItem := -1
 	for sourceIndex, event := range events {
-		if lastTextItem >= 0 {
-			last := &items[lastTextItem]
+		if len(items) > 0 {
+			last := &items[len(items)-1]
 			if merged, ok := mergeACPTextEvent(last.event, last.lastSeq, event); ok {
 				if trackDeletes && last.event.Seq != 0 && event.Seq != 0 {
 					last.deleteSeqs = append(last.deleteSeqs, last.event.Seq)
@@ -106,17 +105,7 @@ func compactACPTextRuns(events []Event, trackDeletes bool) []compactedTextItem {
 				continue
 			}
 		}
-		itemIndex := len(items)
 		items = append(items, compactedTextItem{event: event, index: sourceIndex, lastSeq: event.Seq})
-		if isACPTextEvent(event) {
-			lastTextItem = itemIndex
-		} else if lastTextItem >= 0 && transparentACPTextBoundary(items[lastTextItem].event, event) {
-			if event.Seq != 0 {
-				items[lastTextItem].lastSeq = event.Seq
-			}
-		} else {
-			lastTextItem = -1
-		}
 	}
 	return items
 }
@@ -191,25 +180,6 @@ func canMergeACPTextEvent(prev Event, prevLastSeq int64, event Event) bool {
 		return false
 	}
 	return prevLastSeq == 0 || event.Seq == 0 || event.Seq == prevLastSeq+1
-}
-
-func isACPTextEvent(event Event) bool {
-	return event.ACP != nil && (event.Type == "acp_message" || event.Type == "acp_thought")
-}
-
-func transparentACPTextBoundary(text Event, event Event) bool {
-	if text.ACP == nil || event.ACP == nil || text.ACP.ID != event.ACP.ID {
-		return false
-	}
-	if event.Type != "acp" || event.SessionID != event.ACP.ID {
-		return false
-	}
-	return event.Content == "" &&
-		event.ACP.Thought == "" &&
-		event.ACP.Error == "" &&
-		len(event.ACP.ToolCalls) == 0 &&
-		event.ACP.Plan == nil &&
-		len(event.ACP.Permissions) == 0
 }
 
 func transcriptCoalesceKey(event Event) string {

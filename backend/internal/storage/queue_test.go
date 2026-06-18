@@ -30,6 +30,31 @@ func TestUnmarshalQueuedMessagesAcceptsLegacyStrings(t *testing.T) {
 	if got := messages[1].AttachmentIDs; len(got) != 2 || got[0] != "a" || got[1] != "b" {
 		t.Fatalf("attachment ids = %#v", got)
 	}
+	if messages[0].ID != "legacy-0" || messages[1].ID != "legacy-1" {
+		t.Fatalf("legacy ids = %#v", messages)
+	}
+}
+
+func TestCanonicalSessionQueueAssignsStableLegacyIDs(t *testing.T) {
+	session := Session{
+		QueuedMessages: []QueuedMessage{
+			{Text: "first"},
+			{ID: "same", Text: "second"},
+			{ID: "same", Text: "third"},
+		},
+		PendingSteer: &QueuedMessage{Text: "pending"},
+	}
+
+	got := CanonicalSessionQueue(session)
+	if len(got.QueuedMessages) != 3 {
+		t.Fatalf("queued messages = %#v", got.QueuedMessages)
+	}
+	if got.QueuedMessages[0].ID != "legacy-0" || got.QueuedMessages[1].ID != "same" || got.QueuedMessages[2].ID != "legacy-2" {
+		t.Fatalf("queued ids = %#v", got.QueuedMessages)
+	}
+	if got.PendingSteer == nil || got.PendingSteer.ID != "legacy-0" || got.PendingSteer.Text != "pending" {
+		t.Fatalf("pending steer = %#v", got.PendingSteer)
+	}
 }
 
 func TestUnmarshalQueuedMessagesRejectsInvalidEntries(t *testing.T) {
