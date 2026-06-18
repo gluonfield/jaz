@@ -193,6 +193,10 @@ func insertSession(db threaddb.DBTX, session storage.Session) error {
 	if err != nil {
 		return err
 	}
+	pendingSteerMessage, err := storage.MarshalQueuedMessage(session.PendingSteer)
+	if err != nil {
+		return err
+	}
 	return threaddb.New(db).UpsertSession(context.Background(), threaddb.UpsertSessionParams{
 		ID:                    session.ID,
 		Slug:                  session.Slug,
@@ -226,11 +230,16 @@ func insertSession(db threaddb.DBTX, session storage.Session) error {
 		CreatedAtMs:           timeToMs(session.CreatedAt),
 		UpdatedAtMs:           timeToMs(session.UpdatedAt),
 		LastAttentionAtMs:     timeToMs(session.LastAttentionAt),
+		PendingSteerMessage:   pendingSteerMessage,
 	})
 }
 
 func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 	queuedMessages, err := storage.UnmarshalQueuedMessages(row.QueuedMessages)
+	if err != nil {
+		return storage.Session{}, err
+	}
+	pendingSteerMessage, err := storage.UnmarshalQueuedMessage(row.PendingSteerMessage)
 	if err != nil {
 		return storage.Session{}, err
 	}
@@ -256,6 +265,7 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 			ContextWindowTokens:   row.ContextWindowTokens,
 		},
 		QueuedMessages:  queuedMessages,
+		PendingSteer:    pendingSteerMessage,
 		SourceType:      row.SourceType.String,
 		SourceID:        row.SourceID.String,
 		Archived:        row.Archived != 0,
