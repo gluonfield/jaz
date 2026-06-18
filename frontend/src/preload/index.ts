@@ -1,4 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import {
+  BROWSER_NAVIGATION_CHANNEL,
+  type BrowserNavigationDirection,
+} from '../shared/browserNavigation'
 import type { UpdateStatus } from '../shared/update'
 
 const apiBaseUrl = process.env['JAZ_API_URL'] ?? 'http://localhost:5299'
@@ -74,5 +78,12 @@ contextBridge.exposeInMainWorld('jaz', {
         ipcRenderer.send('jaz:set-preview-url-target-active', false)
       }
     }
+  },
+  onBrowserNavigation: (handler: (direction: BrowserNavigationDirection) => void): (() => void) => {
+    const listener = (_event: unknown, direction: unknown): void => {
+      if (direction === 'back' || direction === 'forward') handler(direction)
+    }
+    ipcRenderer.on(BROWSER_NAVIGATION_CHANNEL, listener)
+    return () => ipcRenderer.removeListener(BROWSER_NAVIGATION_CHANNEL, listener)
   },
 })
