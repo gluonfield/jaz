@@ -1,14 +1,16 @@
 import { BrowserWindow, type Input, type WebContents, webContents } from 'electron'
+import {
+  BROWSER_NAVIGATION_CHANNEL,
+  type BrowserNavigationDirection,
+} from '../shared/browserNavigation'
 
-type NavigationDirection = 'back' | 'forward'
-
-function appCommandDirection(command: string): NavigationDirection | null {
+function appCommandDirection(command: string): BrowserNavigationDirection | null {
   if (command === 'browser-backward') return 'back'
   if (command === 'browser-forward') return 'forward'
   return null
 }
 
-function inputDirection(input: Input): NavigationDirection | null {
+function inputDirection(input: Input): BrowserNavigationDirection | null {
   if (input.type !== 'keyDown') return null
   if (input.key === 'BrowserBack') return 'back'
   if (input.key === 'BrowserForward') return 'forward'
@@ -18,12 +20,15 @@ function inputDirection(input: Input): NavigationDirection | null {
   return null
 }
 
-function navigable(contents: WebContents): boolean {
-  return contents.getType() === 'webview' || BrowserWindow.fromWebContents(contents) !== null
+function sendToRenderer(contents: WebContents, direction: BrowserNavigationDirection): boolean {
+  const win = BrowserWindow.fromWebContents(contents)
+  if (!win || win.isDestroyed()) return false
+  win.webContents.send(BROWSER_NAVIGATION_CHANNEL, direction)
+  return true
 }
 
-function navigate(contents: WebContents, direction: NavigationDirection): boolean {
-  if (contents.isDestroyed() || !navigable(contents)) return false
+function navigateWebview(contents: WebContents, direction: BrowserNavigationDirection): boolean {
+  if (contents.isDestroyed() || contents.getType() !== 'webview') return false
   const history = contents.navigationHistory
   if (direction === 'back') {
     if (!history.canGoBack()) return false
@@ -42,16 +47,24 @@ function focusedContentsForWindow(win: BrowserWindow): WebContents {
   return BrowserWindow.fromWebContents(host) === win ? focused : win.webContents
 }
 
+function navigateOrSend(contents: WebContents, direction: BrowserNavigationDirection): boolean {
+  if (contents.getType() === 'webview') return navigateWebview(contents, direction)
+  return sendToRenderer(contents, direction)
+}
+
 export function attachBrowserNavigationShortcuts(contents: WebContents): void {
+  if (contents.getType() !== 'webview') return
   contents.on('before-input-event', (event, input) => {
     const direction = inputDirection(input)
-    if (direction && navigate(contents, direction)) event.preventDefault()
+    if (direction && navigateWebview(contents, direction)) event.preventDefault()
   })
 }
 
 export function attachBrowserNavigationCommands(win: BrowserWindow): void {
   win.on('app-command', (event, command) => {
     const direction = appCommandDirection(command)
-    if (direction && navigate(focusedContentsForWindow(win), direction)) event.preventDefault()
+    if (direction && navigateOrSend(focusedContentsForWindow(win), direction)) {
+      event.preventDefault()
+    }
   })
 }
