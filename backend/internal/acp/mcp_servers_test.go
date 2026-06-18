@@ -31,6 +31,12 @@ func TestEnabledHTTPMCPServersEmitsConfiguredHTTPPayloads(t *testing.T) {
 			Enabled:   false,
 			Transport: mcpconfig.TransportStreamableHTTP,
 		},
+		{
+			Name:      "Stdio",
+			URL:       "stdio://not-http",
+			Enabled:   true,
+			Transport: "stdio",
+		},
 	}}, MCPServerPolicyAll)
 	if err != nil {
 		t.Fatal(err)
