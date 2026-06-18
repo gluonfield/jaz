@@ -336,7 +336,7 @@ export type MessageBlock =
       type: 'attachment'
       id: string
       name: string
-      uri: string
+      uri?: string
       mime_type?: string
       size?: number
       server_path?: string

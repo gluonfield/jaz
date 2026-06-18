@@ -78,7 +78,6 @@ func (s *Server) handleUploadAttachment(w http.ResponseWriter, r *http.Request, 
 		Name:       name,
 		MimeType:   attachmentMimeType(header.Header.Get("Content-Type"), name),
 		Size:       n,
-		URI:        fileURI(abs),
 		ServerPath: abs,
 	}
 	if err := writeAttachmentMetadata(dir, attachment); err != nil {
@@ -86,5 +85,5 @@ func (s *Server) handleUploadAttachment(w http.ResponseWriter, r *http.Request, 
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, attachment)
+	writeJSON(w, http.StatusOK, attachmentResponseFromStorage(attachment))
 }

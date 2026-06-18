@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wins/jaz/backend/internal/filepathx"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
@@ -66,6 +67,11 @@ func TestSessionFileRead(t *testing.T) {
 	absolute := get("/v1/sessions/"+session.ID+"/file?path="+url.QueryEscape(file), http.StatusOK)
 	if absolute.Path != file || absolute.Content != relative.Content {
 		t.Fatalf("absolute read = %#v", absolute)
+	}
+
+	fileURL := get("/v1/sessions/"+session.ID+"/file?path="+url.QueryEscape(filepathx.FileURI(file)), http.StatusOK)
+	if fileURL.Path != file || fileURL.Content != relative.Content {
+		t.Fatalf("file URL read = %#v", fileURL)
 	}
 
 	tempFile := filepath.Join(t.TempDir(), "agent-output.txt")
