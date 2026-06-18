@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
+import { ChevronLeft } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -16,9 +17,12 @@ import {
   loopDraftFromLoop,
   loopDraftToInput,
 } from './LoopForm'
+import { LoopTemplateGallery } from './LoopTemplateGallery'
+import { draftFromTemplate, type LoopTemplate } from './loopTemplates'
 
 // One modal for both create (no `loop`) and edit (`loop` provided). Edit never
-// happens inline on the detail page — it always opens here.
+// happens inline on the detail page — it always opens here. Creating opens on a
+// template gallery first; picking one (or "from scratch") reveals the form.
 export function LoopModal({
   open,
   onClose,
@@ -43,13 +47,22 @@ export function LoopModal({
   const [draft, setDraft] = useState<LoopDraft | null>(null)
   const createBoardIds = boards.data?.map((board) => board.id) ?? []
   const createBoardsLoading = !isEdit && boards.isPending
-  const current = draft ?? (loop ? loopDraftFromLoop(loop, boardIds) : emptyLoopDraft(createBoardIds))
+  // Create starts on the gallery: the form only appears once a draft exists.
+  const editDraft = loop ? loopDraftFromLoop(loop, boardIds) : null
+  const current = draft ?? editDraft
+  const onForm = isEdit || draft !== null
+
+  const startFromTemplate = (template: LoopTemplate) =>
+    setDraft(draftFromTemplate(template, createBoardIds))
+  const startBlank = () => setDraft(emptyLoopDraft(createBoardIds))
 
   const save = useMutation<Loop, Error, { run: boolean }>({
-    mutationFn: ({ run: _run }: { run: boolean }) =>
-      isEdit
+    mutationFn: ({ run: _run }: { run: boolean }) => {
+      if (!current) throw new Error('No loop to save')
+      return isEdit
         ? updateLoop(loop.id, loopDraftToInput(current, settingsQuery.data))
-        : createLoop(loopDraftToInput(current, settingsQuery.data)),
+        : createLoop(loopDraftToInput(current, settingsQuery.data))
+    },
     onSuccess: (saved, { run }) => {
       if (!isEdit && run) void runLoopNow(saved.id).catch(() => {})
       queryClient.invalidateQueries({ queryKey: keys.loops })
@@ -71,13 +84,18 @@ export function LoopModal({
     onClose()
   }
 
+  const canSubmit = !!current && canSaveLoop(current) && !save.isPending && !createBoardsLoading
+  const description = onForm
+    ? 'A prompt that runs on a schedule, each run in its own thread.'
+    : 'Start from a template, or from scratch.'
+
   return (
     <Modal
       open={open}
       onClose={close}
       size="md"
       title={isEdit ? 'Edit loop' : 'New loop'}
-      description="A prompt that runs on a schedule, each run in its own thread."
+      description={description}
       footer={
         <>
           <p className="text-[12px] text-danger" role="alert">
@@ -87,11 +105,11 @@ export function LoopModal({
             <Button variant="ghost" size="md" onClick={close}>
               Cancel
             </Button>
-            {isEdit ? (
+            {!onForm ? null : isEdit ? (
               <Button
                 variant="primary"
                 size="md"
-                disabled={!canSaveLoop(current) || save.isPending || createBoardsLoading}
+                disabled={!canSubmit}
                 onClick={() => save.mutate({ run: false })}
               >
                 {save.isPending ? 'Saving…' : 'Save changes'}
@@ -101,7 +119,7 @@ export function LoopModal({
                 <Button
                   variant="secondary"
                   size="md"
-                  disabled={!canSaveLoop(current) || save.isPending || createBoardsLoading}
+                  disabled={!canSubmit}
                   onClick={() => save.mutate({ run: false })}
                 >
                   {save.isPending && !save.variables?.run ? 'Creating…' : 'Create'}
@@ -109,7 +127,7 @@ export function LoopModal({
                 <Button
                   variant="primary"
                   size="md"
-                  disabled={!canSaveLoop(current) || save.isPending || createBoardsLoading}
+                  disabled={!canSubmit}
                   onClick={() => save.mutate({ run: true })}
                 >
                   {save.isPending && save.variables?.run ? 'Creating…' : 'Create & Run'}
@@ -120,11 +138,27 @@ export function LoopModal({
         </>
       }
     >
-      <LoopForm
-        draft={current}
-        disabled={save.isPending || createBoardsLoading}
-        onChange={setDraft}
-      />
+      {onForm && current ? (
+        <div className="space-y-4">
+          {!isEdit ? (
+            <button
+              type="button"
+              onClick={() => setDraft(null)}
+              className="-ml-1 flex items-center gap-1 rounded-control px-1 py-0.5 text-[12px] font-medium text-ink-3 transition-colors hover:text-ink-2"
+            >
+              <ChevronLeft size={14} />
+              Templates
+            </button>
+          ) : null}
+          <LoopForm
+            draft={current}
+            disabled={save.isPending || createBoardsLoading}
+            onChange={setDraft}
+          />
+        </div>
+      ) : (
+        <LoopTemplateGallery onPick={startFromTemplate} onBlank={startBlank} />
+      )}
     </Modal>
   )
 }
