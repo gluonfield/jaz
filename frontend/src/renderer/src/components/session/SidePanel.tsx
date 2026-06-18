@@ -1,4 +1,5 @@
 import type { Session } from '@/lib/api/types'
+import type { SendMessageOptions } from '@/lib/sendMessage'
 import type { TaskSurface } from '@/lib/taskSurface'
 import type { FileReference } from '../../../../shared/fileReader'
 import { CODE_DIFF_PANEL_WIDTH, CodeDiffPanel } from './CodeDiffPanel'
@@ -27,6 +28,7 @@ export function SidePanel({
   fileRef,
   onPreviewUrlChange,
   onOpenFile,
+  onSend,
   onClose,
 }: {
   session: Session
@@ -38,6 +40,7 @@ export function SidePanel({
   fileRef: FileReference | null
   onPreviewUrlChange: (url: string) => void
   onOpenFile: (file: FileReference) => void
+  onSend: (text: string, options?: SendMessageOptions) => void
   onClose: () => void
 }) {
   switch (view) {
@@ -58,6 +61,13 @@ export function SidePanel({
         />
       )
     default:
-      return <OverviewPanel session={session} progress={progress} working={working} />
+      return (
+        <OverviewPanel
+          session={session}
+          progress={progress}
+          working={working}
+          onSend={onSend}
+        />
+      )
   }
 }
