@@ -67,7 +67,7 @@ function FirstRunPlaceholder({
       aria-label="Open loop"
       title="Open loop"
       onClick={onClick}
-      className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 overflow-hidden px-4 transition-colors duration-150 hover:bg-surface-2/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+      className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 overflow-hidden px-4 transition-colors duration-150 hover:bg-surface-2/60"
     >
       <div aria-hidden className="w-full max-w-[180px] space-y-2">
         <div className="flex items-end gap-3">

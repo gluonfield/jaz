@@ -82,7 +82,7 @@ function UpdateNotice({
           aria-label="Dismiss update"
           title="Dismiss"
           onClick={onDismiss}
-          className="-mt-1 -mr-1 grid size-7 shrink-0 cursor-pointer place-items-center rounded-full text-ink-3 transition-[background-color,color,transform] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+          className="-mt-1 -mr-1 grid size-7 shrink-0 cursor-pointer place-items-center rounded-full text-ink-3 transition-[background-color,color,transform] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96]"
         >
           <X size={14} />
         </button>

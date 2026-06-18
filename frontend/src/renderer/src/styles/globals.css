@@ -471,9 +471,12 @@ h3 {
   -webkit-app-region: no-drag;
 }
 
+/* One focus indicator for the whole app: a soft ring flush to the element's
+ * shape (offset 0 so it follows the border-radius instead of floating off as a
+ * detached pill). Interactive elements should NOT redeclare their own ring. */
 :focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
+  outline: 2px solid color-mix(in oklab, var(--color-primary) 50%, transparent);
+  outline-offset: 0;
 }
 
 /* Text fields never carry the focus ring themselves — their container does
