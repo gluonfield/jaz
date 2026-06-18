@@ -19,7 +19,7 @@ export function BoardIllustration() {
   return (
     <div
       aria-hidden
-      className="rounded-card bg-bg p-3 ring-1 ring-border"
+      className="rounded-card bg-bg p-3 ring-1 ring-border/60"
       style={{
         backgroundImage: 'radial-gradient(var(--color-border) 1px, transparent 1px)',
         backgroundSize: '16px 16px',
@@ -39,7 +39,7 @@ export function BoardIllustration() {
           <InboxTile />
         </motion.div>
         <motion.div {...tileIn(0.4)} className="h-[96px]">
-          <div className="flex h-full items-center justify-center gap-1.5 rounded-card border border-dashed border-border text-[11px] text-ink-3">
+          <div className="flex h-full items-center justify-center gap-1.5 rounded-card border border-dashed border-border/70 text-[11px] text-ink-3">
             <Plus size={12} />
             New widget
           </div>
@@ -61,7 +61,7 @@ function TileFrame({
   children: ReactNode
 }) {
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-card bg-surface ring-1 ring-border">
+    <div className="flex h-full flex-col overflow-hidden rounded-card bg-surface">
       <div className="flex h-7 shrink-0 items-center gap-1.5 px-2.5">
         {dot ?? <span className="size-1.5 shrink-0 rounded-full bg-primary" />}
         <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-ink">{title}</span>
