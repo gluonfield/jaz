@@ -263,6 +263,7 @@ func (s *Server) claimQueuedPrompt(sessionID string) (storage.Session, storage.Q
 	if err := s.Store.SaveSession(session); err != nil {
 		return storage.Session{}, storage.QueuedMessage{}, false, err
 	}
+	s.maybeGenerateSessionTitle(session, prompt.Text)
 	return session, prompt, true, nil
 }
 
@@ -328,6 +329,9 @@ func (s *Server) claimSteeredQueuedPrompt(sessionID string, req queueRequest) (s
 	}
 	if err := s.Store.SaveSession(session); err != nil {
 		return steeredQueuedPrompt{}, err
+	}
+	if !running {
+		s.maybeGenerateSessionTitle(session, prompt.Text)
 	}
 	return steeredQueuedPrompt{
 		session:    session,

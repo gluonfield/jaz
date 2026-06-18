@@ -69,6 +69,11 @@ type Request struct {
 	ArtifactSurface string
 }
 
+type UtilityRequest struct {
+	Session storage.Session
+	Message string
+}
+
 type TurnRequest struct {
 	Messages         []provider.Message
 	MediaRefs        map[string][]media.Ref
@@ -91,6 +96,15 @@ func (r *Runner) Run(ctx context.Context, req Request) <-chan agent.StreamEvent 
 	go func() {
 		defer close(out)
 		r.run(ctx, req, out)
+	}()
+	return out
+}
+
+func (r *Runner) RunUtility(ctx context.Context, req UtilityRequest) <-chan agent.StreamEvent {
+	out := make(chan agent.StreamEvent)
+	go func() {
+		defer close(out)
+		r.runUtility(ctx, req, out)
 	}()
 	return out
 }
@@ -132,6 +146,27 @@ func (r *Runner) run(ctx context.Context, req Request, out chan<- agent.StreamEv
 				return
 			}
 		}
+		emit(out, event)
+	}
+}
+
+func (r *Runner) runUtility(ctx context.Context, req UtilityRequest, out chan<- agent.StreamEvent) {
+	if r.Agent == nil {
+		emit(out, agent.StreamEvent{Type: agent.StreamError, Error: "agent is not configured"})
+		emit(out, agent.StreamEvent{Type: agent.StreamDone})
+		return
+	}
+	runCtx := sessioncontext.WithSessionID(ctx, req.Session.ID)
+	if req.Session.RuntimeRef != nil && strings.TrimSpace(req.Session.RuntimeRef.Cwd) != "" {
+		runCtx = sessioncontext.WithCWD(runCtx, req.Session.RuntimeRef.Cwd)
+	}
+	for event := range r.Agent.Run(runCtx, provider.Request{
+		Provider:        req.Session.ModelProvider,
+		Model:           req.Session.Model,
+		ReasoningEffort: req.Session.ReasoningEffort,
+		Messages:        []provider.Message{provider.UserMessage(req.Message)},
+		Tools:           []tools.Definition{},
+	}) {
 		emit(out, event)
 	}
 }

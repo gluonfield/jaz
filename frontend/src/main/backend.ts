@@ -2,7 +2,7 @@ import { execFileSync, type ChildProcess, spawn } from 'node:child_process'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { app } from 'electron'
+import { app, powerSaveBlocker } from 'electron'
 
 // Single source of truth for where the spawned backend lives; returned to the
 // renderer through the IPC result so both sides always agree.
@@ -16,6 +16,7 @@ let stderrTail = ''
 let stdoutBuffer = ''
 let startupKey = ''
 let startupRoot = ''
+let powerSaveBlockerID: number | null = null
 
 type HealthStatus = {
   ok: boolean
@@ -111,6 +112,28 @@ function readLocalAuthKey(): string {
   if (startupKey) return startupKey
   if (startupRoot) return readAuthKey(authFilePath(startupRoot))
   return readAuthKey(authFilePath())
+}
+
+function startPowerSaveBlocker(): void {
+  if (powerSaveBlockerID !== null && powerSaveBlocker.isStarted(powerSaveBlockerID)) return
+  powerSaveBlockerID = powerSaveBlocker.start('prevent-app-suspension')
+}
+
+function stopPowerSaveBlocker(): void {
+  if (powerSaveBlockerID === null) return
+  if (powerSaveBlocker.isStarted(powerSaveBlockerID)) {
+    powerSaveBlocker.stop(powerSaveBlockerID)
+  }
+  powerSaveBlockerID = null
+}
+
+async function localBackendStartResult(
+  health: HealthStatus,
+  source: 'adopted' | 'spawned',
+): Promise<LocalBackendResult> {
+  const result = await localBackendResult(health, source)
+  if (result.ok && source === 'spawned') startPowerSaveBlocker()
+  return result
 }
 
 function captureStartupLine(line: string): void {
@@ -231,7 +254,7 @@ function waitForExit(proc: ChildProcess, timeoutMs: number): Promise<boolean> {
 export async function startLocalBackend(): Promise<LocalBackendResult> {
   if (!child) await reapOrphan()
   let health = await readHealth()
-  if (health?.ok) return localBackendResult(health, child ? 'spawned' : 'adopted')
+  if (health?.ok) return localBackendStartResult(health, child ? 'spawned' : 'adopted')
 
   if (!child) {
     exitError = null
@@ -255,6 +278,7 @@ export async function startLocalBackend(): Promise<LocalBackendResult> {
     })
     proc.on('error', (err) => {
       exitError = err.message
+      stopPowerSaveBlocker()
       if (child === proc) child = null
     })
     proc.on('exit', (code, signal) => {
@@ -269,6 +293,7 @@ export async function startLocalBackend(): Promise<LocalBackendResult> {
       } catch {
         // already gone
       }
+      stopPowerSaveBlocker()
       if (child === proc) child = null
     })
     if (proc.pid) {
@@ -286,7 +311,7 @@ export async function startLocalBackend(): Promise<LocalBackendResult> {
   while (Date.now() < deadline) {
     health = await readHealth()
     if (health?.ok) {
-      const result = await localBackendResult(health, 'spawned')
+      const result = await localBackendStartResult(health, 'spawned')
       if (result.ok) return result
       authError = result.error ?? null
     }
@@ -298,11 +323,13 @@ export async function startLocalBackend(): Promise<LocalBackendResult> {
 }
 
 export function stopLocalBackend(): void {
+  stopPowerSaveBlocker()
   const proc = takeLocalBackend()
   if (proc) signalProcessGroup(proc, 'SIGTERM')
 }
 
 export async function terminateLocalBackend(options: TerminateOptions = {}): Promise<void> {
+  stopPowerSaveBlocker()
   const proc = takeLocalBackend()
   if (!proc) return
   signalProcessGroup(proc, 'SIGTERM')

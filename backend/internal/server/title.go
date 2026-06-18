@@ -7,28 +7,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
 const titleGenerationTimeout = 5 * time.Second
-
-var sessionTitleOutput = &provider.StructuredOutput{
-	Name:        "session_title",
-	Description: "A concise display title for a chat thread.",
-	Strict:      true,
-	Schema: map[string]any{
-		"type":                 "object",
-		"additionalProperties": false,
-		"properties": map[string]any{
-			"title": map[string]any{
-				"type":        "string",
-				"description": "A concise 2-6 word title without markdown or surrounding quotes.",
-			},
-		},
-		"required": []string{"title"},
-	},
-}
 
 type sessionTitleResponse struct {
 	Title string `json:"title"`
@@ -56,6 +40,22 @@ func hasConversationMessages(messages []provider.Message) bool {
 	return false
 }
 
+func (s *Server) maybeGenerateSessionTitle(session storage.Session, message string) {
+	existing, err := s.Store.LoadMessages(session.ID)
+	if err != nil {
+		s.logger().Debug("loading messages before title generation failed", "session", session.ID, "error", err)
+		return
+	}
+	if !shouldGenerateTitleFromMessage(session.Title, message, existing) {
+		return
+	}
+	go func() {
+		ctx, cancel := serverActionContext()
+		defer cancel()
+		s.generateAndSaveSessionTitle(ctx, session, message)
+	}()
+}
+
 func (s *Server) generateAndSaveSessionTitle(ctx context.Context, session storage.Session, message string) storage.Session {
 	title, err := s.generateSessionTitle(ctx, session, message)
 	if err != nil {
@@ -78,42 +78,70 @@ func (s *Server) generateAndSaveSessionTitle(ctx context.Context, session storag
 		s.logger().Debug("saving generated session title failed", "session", session.ID, "error", err)
 		return session
 	}
-	s.publishMessagesChanged(current.ID)
+	s.publishSessionChanged(current.ID)
 	return current
 }
 
 func (s *Server) generateSessionTitle(ctx context.Context, session storage.Session, message string) (string, error) {
-	if s.Agent == nil || s.Agent.Provider == nil {
-		return "", fmt.Errorf("model provider is not configured")
-	}
 	ctx, cancel := context.WithTimeout(ctx, titleGenerationTimeout)
 	defer cancel()
 
-	resp, err := s.Agent.Provider.Complete(ctx, provider.Request{
-		Provider:         session.ModelProvider,
-		Model:            session.Model,
-		Messages:         titlePrompt(message),
-		StructuredOutput: sessionTitleOutput,
+	text, err := s.ACP.RunUtilityPrompt(ctx, acp.UtilityPromptRequest{
+		ACPAgent:        sessionACPAgent(session),
+		Directory:       sessionDirectory(session),
+		Message:         titlePrompt(message),
+		ModelProvider:   session.ModelProvider,
+		Model:           session.Model,
+		ReasoningEffort: session.ReasoningEffort,
 	})
 	if err != nil {
 		return "", err
 	}
-	var parsed sessionTitleResponse
-	if err := json.Unmarshal([]byte(provider.MessageContent(resp.Message)), &parsed); err != nil {
-		return "", err
-	}
-	title := cleanGeneratedTitle(parsed.Title)
+	title := cleanGeneratedTitle(parseGeneratedTitle(text))
 	if title == "" {
 		return "", fmt.Errorf("empty generated title")
 	}
 	return title, nil
 }
 
-func titlePrompt(message string) []provider.Message {
-	return []provider.Message{
-		provider.SystemMessage("Write concise thread titles for a coding assistant. Use 2-6 words. Preserve important proper nouns. Do not use markdown, surrounding quotes, or trailing punctuation."),
-		provider.UserMessage("First user message:\n\n" + strings.TrimSpace(message)),
+func sessionACPAgent(session storage.Session) string {
+	if session.RuntimeRef != nil {
+		if agent := acp.CanonicalAgentName(session.RuntimeRef.Agent); agent != "" {
+			return agent
+		}
 	}
+	return acp.CanonicalAgentName(session.ModelProvider)
+}
+
+func sessionDirectory(session storage.Session) string {
+	if session.RuntimeRef == nil {
+		return "."
+	}
+	return firstNonEmpty(session.RuntimeRef.Cwd, session.RuntimeRef.ProjectPath, ".")
+}
+
+func titlePrompt(message string) string {
+	return "Write a concise 2-6 word display title for this coding-assistant thread. Preserve important proper nouns. Return exactly JSON in this shape and no other text: {\"title\":\"...\"}\n\nFirst user message:\n\n" + strings.TrimSpace(message)
+}
+
+func parseGeneratedTitle(text string) string {
+	text = strings.TrimSpace(text)
+	if strings.HasPrefix(text, "```") {
+		text = strings.TrimPrefix(text, "```json")
+		text = strings.TrimPrefix(text, "```")
+		text = strings.TrimSuffix(text, "```")
+		text = strings.TrimSpace(text)
+	}
+	var parsed sessionTitleResponse
+	if err := json.Unmarshal([]byte(text), &parsed); err == nil {
+		return parsed.Title
+	}
+	if before, after, ok := strings.Cut(text, "```"); ok {
+		if strings.TrimSpace(before) == "" {
+			return parseGeneratedTitle(after)
+		}
+	}
+	return strings.TrimPrefix(text, "Title:")
 }
 
 func cleanGeneratedTitle(title string) string {

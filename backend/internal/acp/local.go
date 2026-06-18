@@ -15,12 +15,21 @@ type LocalAgentRunner interface {
 	Run(context.Context, LocalAgentRequest) <-chan agent.StreamEvent
 }
 
+type LocalUtilityRunner interface {
+	RunUtility(context.Context, LocalUtilityRequest) <-chan agent.StreamEvent
+}
+
 type LocalAgentRequest struct {
 	Session         storage.Session
 	Message         string
 	Attachments     []storage.Attachment
 	PlanRequested   bool
 	ArtifactSurface string
+}
+
+type LocalUtilityRequest struct {
+	Session storage.Session
+	Message string
 }
 
 func (m *Manager) RegisterLocalAgent(name string, runner LocalAgentRunner) {
@@ -44,6 +53,58 @@ func (m *Manager) localAgent(name string) LocalAgentRunner {
 func (m *Manager) configuredLocal(name string) bool {
 	cfg, ok, err := m.configuredAgent(name)
 	return err == nil && ok && cfg.Local
+}
+
+func (m *Manager) runLocalUtilityPrompt(ctx context.Context, req SpawnRequest, cfg AgentConfig, cwd, message string) (string, error) {
+	runner := m.localAgent(req.ACPAgent)
+	if runner == nil {
+		return "", fmt.Errorf("local acp agent %q is not registered", req.ACPAgent)
+	}
+	utility, ok := runner.(LocalUtilityRunner)
+	if !ok {
+		return "", fmt.Errorf("local acp agent %q does not support utility prompts", req.ACPAgent)
+	}
+	session := storage.Session{
+		ID:              "utility",
+		Slug:            "utility",
+		Runtime:         storage.RuntimeACP,
+		ModelProvider:   strings.TrimSpace(cfg.ModelProvider),
+		Model:           strings.TrimSpace(cfg.Model),
+		ReasoningEffort: strings.TrimSpace(cfg.ReasoningEffort),
+		RuntimeRef: &storage.RuntimeRef{
+			Type:        storage.RuntimeACP,
+			Agent:       req.ACPAgent,
+			Cwd:         cwd,
+			ProjectPath: cwd,
+		},
+	}
+	var text strings.Builder
+	var streamErr error
+	events := utility.RunUtility(ctx, LocalUtilityRequest{Session: session, Message: message})
+	for {
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case event, ok := <-events:
+			if !ok {
+				if streamErr != nil {
+					return "", streamErr
+				}
+				if out := strings.TrimSpace(text.String()); out != "" {
+					return out, nil
+				}
+				return "", fmt.Errorf("empty utility prompt response")
+			}
+			switch event.Type {
+			case agent.StreamDelta:
+				text.WriteString(event.Delta)
+			case agent.StreamError:
+				if streamErr == nil {
+					streamErr = fmt.Errorf("local utility prompt failed: %s", firstNonEmpty(event.Error, "unknown error"))
+				}
+			}
+		}
+	}
 }
 
 func (m *Manager) newLocalJob(session storage.Session, agentName, cwd string) *Job {
