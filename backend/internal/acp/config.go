@@ -207,13 +207,13 @@ func BuiltinAgents() AgentCatalog {
 				"-c", `features.tool_search_always_defer_mcp_tools=true`,
 			},
 			Model:           "gpt-5.5",
-			ReasoningEffort: "medium",
+			ReasoningEffort: "xhigh",
 		},
 		AgentClaude: {
 			Command:         "npx",
 			Args:            []string{"-y", "@agentclientprotocol/claude-agent-acp@0.44.0"},
 			Model:           "default",
-			ReasoningEffort: "medium",
+			ReasoningEffort: "xhigh",
 		},
 		AgentGrok: {
 			Command: "grok",
