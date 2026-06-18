@@ -10,15 +10,18 @@ func TextBlock(text string) Block {
 }
 
 func AttachmentBlock(attachment Attachment) Block {
-	return Block{
+	block := Block{
 		Type:       BlockTypeAttachment,
 		ID:         attachment.ID,
 		Name:       attachment.Name,
-		URI:        attachment.URI,
 		MimeType:   attachment.MimeType,
 		Size:       attachment.Size,
 		ServerPath: attachment.ServerPath,
 	}
+	if block.ServerPath == "" {
+		block.URI = attachment.URI
+	}
+	return block
 }
 
 func UserMessageRecord(message string, attachments []Attachment) Message {
@@ -118,6 +121,9 @@ func DurableBlock(block Block) bool {
 func durableBlockKey(block Block) string {
 	if block.ID != "" {
 		return block.Type + ":" + block.ID
+	}
+	if block.ServerPath != "" {
+		return block.Type + ":" + block.Name + ":" + block.ServerPath
 	}
 	return block.Type + ":" + block.Name + ":" + block.URI
 }

@@ -355,7 +355,7 @@ func TestQueuedACPDrainSendsAttachments(t *testing.T) {
 	if len(sent.Attachments) != 1 {
 		t.Fatalf("attachments = %#v", sent.Attachments)
 	}
-	if got := sent.Attachments[0]; got.ID != attachment.ID || got.URI != attachment.URI {
+	if got := sent.Attachments[0]; got.ID != attachment.ID || got.URI != "" || got.ServerPath != attachment.ServerPath {
 		t.Fatalf("sent attachment = %#v, want %#v", got, attachment)
 	}
 }
@@ -579,7 +579,7 @@ func TestSessionQueueSteerSendsAttachmentsForRunningACP(t *testing.T) {
 	if len(sent.Attachments) != 1 {
 		t.Fatalf("attachments = %#v", sent.Attachments)
 	}
-	if got := sent.Attachments[0]; got.ID != attachment.ID || got.URI != attachment.URI {
+	if got := sent.Attachments[0]; got.ID != attachment.ID || got.URI != "" || got.ServerPath != attachment.ServerPath {
 		t.Fatalf("sent attachment = %#v, want %#v", got, attachment)
 	}
 	loaded, err := store.LoadSession(session.ID)

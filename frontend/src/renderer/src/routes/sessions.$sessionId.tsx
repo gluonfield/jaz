@@ -7,6 +7,7 @@ import { createPortal } from 'react-dom'
 import { BottomDock } from '@/components/session/BottomDock'
 import { Composer, PlanDecisionCard } from '@/components/session/Composer'
 import { FileReaderLinkProvider, MessageMarkdown, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
+import { MentionText } from '@/components/session/mentions'
 import { SessionErrorNotice } from '@/components/session/SessionErrorNotice'
 import { SessionLivenessIndicator } from '@/components/session/SessionLivenessIndicator'
 import { PendingSteerBubble } from '@/components/session/PendingSteerBubble'
@@ -801,7 +802,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                               transition={{ type: 'spring', stiffness: 380, damping: 30 }}
                             >
                               <div className="min-w-0 max-w-[84%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap [overflow-wrap:break-word] select-text">
-                                {live.user}
+                                <MentionText text={live.user} />
                                 <LiveAttachmentList attachments={live.attachments} />
                               </div>
                             </motion.div>
@@ -920,6 +921,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
               fileRef={sidePanel.fileRef}
               onPreviewUrlChange={sidePanel.setPreviewUrl}
               onOpenFile={sidePanel.openFile}
+              onSend={queue.onSend}
               onClose={sidePanel.toggle}
             />
           </motion.div>
