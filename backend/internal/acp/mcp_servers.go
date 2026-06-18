@@ -3,15 +3,12 @@ package acp
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/url"
 	"strings"
-	"time"
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/mcpsession"
-	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
 
 const (
@@ -30,7 +27,7 @@ func (m *Manager) mcpServersForAgent(ctx context.Context, initRaw json.RawMessag
 	if init.AgentCapabilities.MCPCapabilities == nil || !init.AgentCapabilities.MCPCapabilities.HTTP {
 		return []json.RawMessage{}
 	}
-	servers, err := enabledHTTPMCPServers(ctx, m.cfg.MCPStore, m.cfg.MCPTokens, policy)
+	servers, err := enabledHTTPMCPServers(ctx, m.cfg.MCPStore, policy)
 	if err != nil {
 		m.log.Warn("load mcp servers for acp failed", "error", err)
 		servers = nil
@@ -41,7 +38,7 @@ func (m *Manager) mcpServersForAgent(ctx context.Context, initRaw json.RawMessag
 	return servers
 }
 
-func enabledHTTPMCPServers(ctx context.Context, store mcpconfig.ServerReader, tokens integrationoauth.Store, policy string) ([]json.RawMessage, error) {
+func enabledHTTPMCPServers(ctx context.Context, store mcpconfig.ServerReader, policy string) ([]json.RawMessage, error) {
 	if store == nil {
 		return nil, nil
 	}
@@ -57,10 +54,7 @@ func enabledHTTPMCPServers(ctx context.Context, store mcpconfig.ServerReader, to
 		if !mcpServerAllowed(policy, server) {
 			continue
 		}
-		headers, err := resolvedACPHeaders(ctx, server, tokens)
-		if err != nil {
-			continue
-		}
+		headers := resolvedACPHeaders(ctx, server)
 		if headers == nil {
 			// codex-acp's schema requires an array; null fails session/new.
 			headers = []mcpconfig.Header{}
@@ -123,39 +117,22 @@ func jaztoolsSurfaceURL(raw, surface string) string {
 	return u.String()
 }
 
-func resolvedACPHeaders(ctx context.Context, server mcpconfig.Server, tokens integrationoauth.Store) ([]mcpconfig.Header, error) {
-	headers, err := mcpconfig.ResolvedHeaders(server, false)
-	if err != nil {
-		return nil, err
-	}
-	headers = resolveSessionHeaders(ctx, headers)
-	if hasHeader(headers, "Authorization") || tokens == nil || strings.TrimSpace(server.ID) == "" {
-		return headers, nil
-	}
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	token, err := (integrationoauth.Refresher{
-		Store: tokens,
-	}).FreshToken(ctx, mcpconfig.OAuthConnectionID(server.ID))
-	if err != nil {
-		if errors.Is(err, integrationoauth.ErrTokenNotFound) {
-			return headers, nil
-		}
-		return nil, err
-	}
-	tokenType := strings.TrimSpace(token.TokenType)
-	if tokenType == "" {
-		tokenType = "Bearer"
-	}
-	return append(headers, mcpconfig.Header{Name: "Authorization", Value: tokenType + " " + strings.TrimSpace(token.AccessToken)}), nil
+func resolvedACPHeaders(ctx context.Context, server mcpconfig.Server) []mcpconfig.Header {
+	return resolveSessionHeaders(ctx, server.Headers)
 }
 
 func resolveSessionHeaders(ctx context.Context, headers []mcpconfig.Header) []mcpconfig.Header {
 	sessionID := mcpsession.ID(ctx)
 	out := make([]mcpconfig.Header, 0, len(headers))
 	for _, header := range headers {
+		header.Name = strings.TrimSpace(header.Name)
+		if !strings.EqualFold(header.Name, mcpsession.HeaderName) {
+			continue
+		}
 		if header.Value != mcpsession.HeaderPlaceholder {
-			out = append(out, header)
+			if strings.TrimSpace(header.Value) != "" {
+				out = append(out, header)
+			}
 			continue
 		}
 		if sessionID != "" {
@@ -164,13 +141,4 @@ func resolveSessionHeaders(ctx context.Context, headers []mcpconfig.Header) []mc
 		}
 	}
 	return out
-}
-
-func hasHeader(headers []mcpconfig.Header, name string) bool {
-	for _, header := range headers {
-		if strings.EqualFold(header.Name, name) {
-			return true
-		}
-	}
-	return false
 }

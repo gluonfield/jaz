@@ -11,12 +11,12 @@ import (
 
 func TestDefinitions(t *testing.T) {
 	readDef := ReadMeTool{}.Definition()
-	if got := tools.DefinitionName(readDef); got != visualizesvc.ReadMeToolName {
-		t.Fatalf("read tool name = %q, want %q", got, visualizesvc.ReadMeToolName)
+	if got := tools.DefinitionName(readDef); got != visualizesvc.ReadMeMCPToolName {
+		t.Fatalf("read tool name = %q, want %q", got, visualizesvc.ReadMeMCPToolName)
 	}
 	showDef := ShowWidgetTool{}.Definition()
-	if got := tools.DefinitionName(showDef); got != visualizesvc.ShowWidgetToolName {
-		t.Fatalf("show tool name = %q, want %q", got, visualizesvc.ShowWidgetToolName)
+	if got := tools.DefinitionName(showDef); got != visualizesvc.ShowWidgetMCPToolName {
+		t.Fatalf("show tool name = %q, want %q", got, visualizesvc.ShowWidgetMCPToolName)
 	}
 }
 

@@ -179,7 +179,6 @@ func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, pro
 	cfg.ACP.ProviderSource = providerSource
 	cfg.ACP.SystemPrompt = prompts
 	cfg.ACP.MCPStore = mcpServers
-	cfg.ACP.MCPTokens = store
 	return cfg.ACP
 }
 

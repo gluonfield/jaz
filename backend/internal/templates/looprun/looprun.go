@@ -21,9 +21,6 @@ type Data struct {
 	ScheduledFor string
 	Now          string
 	MemoryPath   string
-	// MemoryExists is checked at render time so the agent is told whether to
-	// read the memory file or skip straight to a fresh start.
-	MemoryExists bool
 	PreviousRun  string
 	Extras       []string
 	Prompt       string

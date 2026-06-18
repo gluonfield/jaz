@@ -1,27 +1,18 @@
-You are running a scheduled Jaz loop. Everything before the "Your task" section is run context and operating rules; the task itself comes last.
+Scheduled Jaz loop run.
 
-Run context:
-- Loop: {{ .LoopName }} (id {{ .LoopID }})
-- Run ID: {{ .RunID }}
-- Scheduled for: {{ .ScheduledFor }}
-- Current time: {{ .Now }}
+Context:
+- Loop: {{ .LoopName }} ({{ .LoopID }})
+- Run: {{ .RunID }} scheduled {{ .ScheduledFor }}; now {{ .Now }}
 {{- if .MemoryPath }}
-- Memory file: {{ .MemoryPath }}
+- Memory: {{ .MemoryPath }}
 {{- end }}
-- Previous run: {{ .PreviousRun }}
+- Previous: {{ .PreviousRun }}
 
 Rules:
-- Do not assume access to prior run transcripts unless you explicitly inspect their thread IDs through available tools; prior transcripts are not injected automatically.
+- Prior transcripts are not injected; inspect thread IDs explicitly when needed.
 {{- if .MemoryPath }}
-{{- if .MemoryExists }}
-- Read the memory file before starting the task.
-{{- else }}
-- The memory file does not exist yet (this is a fresh start) — do not try to read it.
-{{- end }}
-- This loop's files live in the memory file's directory. Sibling directories under the automations root belong to other loops — never read, copy, or take conventions from them.
-- Before finishing, create parent directories as needed and create or update the memory file with concise Markdown containing only durable context useful for future runs.
-- Do not store secrets, credentials, or full transcripts in the memory file.
-- If filesystem or sandbox permissions prevent reading or writing the memory file, continue the run and report the memory update failure.
+- If the memory file exists, read it before starting. Keep loop files in that directory; ignore sibling automation dirs.
+- Before finishing, create parent dirs as needed and update memory with concise durable Markdown. Omit secrets/full transcripts; report write failures.
 {{- end }}
 {{ range .Extras }}
 {{ . }}

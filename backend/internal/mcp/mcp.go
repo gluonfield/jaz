@@ -22,7 +22,20 @@ import (
 const (
 	registryGroup  = "mcp"
 	maxToolNameLen = 64
+
+	ProxyServerID   = "jaz_mcp"
+	ProxyServerName = "jaz_mcp"
 )
+
+func ProxyServerConfig(url string) mcpconfig.Server {
+	return mcpconfig.Server{
+		ID:        ProxyServerID,
+		Name:      ProxyServerName,
+		Transport: mcpconfig.TransportStreamableHTTP,
+		URL:       strings.TrimSpace(url),
+		Enabled:   true,
+	}
+}
 
 type Manager struct {
 	store    mcpconfig.ServerReader
@@ -36,6 +49,8 @@ type Manager struct {
 	sessions map[string]*serverSession
 	statuses map[string]mcpconfig.ServerStatus
 	refresh  uint64
+
+	proxyMu sync.Mutex
 }
 
 type Option func(*Manager)
@@ -85,6 +100,7 @@ type remoteTool struct {
 	inputSchema map[string]any
 	definition  tools.Definition
 	session     *mcpsdk.ClientSession
+	local       bool
 }
 
 type refreshResult struct {
@@ -244,6 +260,85 @@ func (m *Manager) Close() {
 	m.mu.Unlock()
 	m.registry.RemoveGroup(registryGroup)
 	closeSessions(sessions)
+}
+
+func (m *Manager) Handler() http.Handler {
+	return mcpsdk.NewStreamableHTTPHandler(func(req *http.Request) *mcpsdk.Server {
+		m.ensureProxyReady(req.Context())
+		return m.proxyServer()
+	}, &mcpsdk.StreamableHTTPOptions{JSONResponse: true})
+}
+
+func (m *Manager) ensureProxyReady(ctx context.Context) {
+	if !m.proxyRefreshNeeded() {
+		return
+	}
+	m.proxyMu.Lock()
+	defer m.proxyMu.Unlock()
+	if !m.proxyRefreshNeeded() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	m.Refresh(ctx)
+}
+
+func (m *Manager) proxyRefreshNeeded() bool {
+	if len(m.proxyTools()) > 0 {
+		return false
+	}
+	servers := m.remoteServers()
+	if len(servers) == 0 {
+		return false
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, server := range servers {
+		if _, ok := m.statuses[server.ID]; !ok {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Manager) remoteServers() []mcpconfig.Server {
+	return m.servers(context.Background(), func(server mcpconfig.Server) bool {
+		return server.Enabled && !m.hasLocalServer(server.ID)
+	})
+}
+
+func (m *Manager) proxyServer() *mcpsdk.Server {
+	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: ProxyServerName, Version: "0.1.0"}, nil)
+	for _, tool := range m.proxyTools() {
+		name := tools.DefinitionName(tool.definition)
+		if name == "" {
+			continue
+		}
+		tool := tool
+		server.AddTool(&mcpsdk.Tool{
+			Name:        name,
+			Description: tool.description,
+			InputSchema: tool.inputSchema,
+		}, func(ctx context.Context, req *mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+			return tool.callRaw(ctx, req)
+		})
+	}
+	return server
+}
+
+func (m *Manager) proxyTools() []remoteTool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var out []remoteTool
+	for _, session := range m.sessions {
+		for _, tool := range session.tools {
+			if tool.local {
+				continue
+			}
+			out = append(out, tool)
+		}
+	}
+	return out
 }
 
 func closeSessions(sessions map[string]*serverSession) {
@@ -410,6 +505,7 @@ func (m *Manager) connectLocal(ctx context.Context, server mcpconfig.Server, loc
 			serverName:  server.Name,
 			remoteName:  tool.Name,
 			session:     session,
+			local:       true,
 			description: toolDescription(server, tool),
 			inputSchema: inputSchema(tool.InputSchema),
 		}
@@ -472,6 +568,17 @@ func (t remoteTool) Execute(ctx context.Context, inputs map[string]any) (tools.R
 		"tool":               t.remoteName,
 		"content":            content,
 		"structured_content": res.StructuredContent,
+	})
+}
+
+func (t remoteTool) callRaw(ctx context.Context, req *mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+	var arguments any
+	if req != nil && req.Params != nil && len(req.Params.Arguments) > 0 {
+		arguments = json.RawMessage(req.Params.Arguments)
+	}
+	return t.session.CallTool(ctx, &mcpsdk.CallToolParams{
+		Name:      t.remoteName,
+		Arguments: arguments,
 	})
 }
 

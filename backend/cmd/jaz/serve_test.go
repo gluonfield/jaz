@@ -28,14 +28,14 @@ func TestFinishLoopFromACPRejectsUnpublishedWidgetRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stored.Status != loops.RunStatusError || !strings.Contains(stored.Error, "visualise:publish_widget") {
+	if stored.Status != loops.RunStatusError || !strings.Contains(stored.Error, "visualise_publish_widget") {
 		t.Fatalf("run = %+v", stored)
 	}
 	widget, _, _, err := widgetService.StateForLoop(loop.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(widget.LastError, "visualise:publish_widget") {
+	if !strings.Contains(widget.LastError, "visualise_publish_widget") {
 		t.Fatalf("widget last error = %q", widget.LastError)
 	}
 }

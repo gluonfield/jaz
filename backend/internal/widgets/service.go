@@ -193,7 +193,7 @@ func (s *Service) EnsureRunPublished(loop loops.Loop, run loops.Run) error {
 		return err
 	}
 	if _, _, err := s.Publish(loop, run.ID, PublishInput{}); err != nil {
-		err = fmt.Errorf("widget was not published by this run; call visualise:publish_widget after writing widget/index.html; automatic publish failed: %w", err)
+		err = fmt.Errorf("widget was not published by this run; call visualise_publish_widget after writing widget/index.html; automatic publish failed: %w", err)
 		s.reportPublishError(state.Widget.ID, err)
 		return err
 	}
@@ -207,7 +207,7 @@ func widgetFileUpdatedForRun(loop loops.Loop, run loops.Run) error {
 	path := WidgetFilePath(loop)
 	info, err := os.Stat(path)
 	if err != nil {
-		return fmt.Errorf("widget was not published by this run; call visualise:publish_widget after writing widget/index.html; stat widget file %s: %w", path, err)
+		return fmt.Errorf("widget was not published by this run; call visualise_publish_widget after writing widget/index.html; stat widget file %s: %w", path, err)
 	}
 	if info.ModTime().Before(run.StartedAt) {
 		return fmt.Errorf("widget was not published by this run; widget/index.html was not updated during this run")
