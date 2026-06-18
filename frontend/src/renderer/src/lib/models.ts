@@ -1,12 +1,29 @@
 import { queryOptions, useQuery } from '@tanstack/react-query'
-import type { ModelProviderOption, Session } from './api/types'
+import type { ModelProviderOption, ModelUsage, Session } from './api/types'
 import { keys } from './query/keys'
+
+// USD per token, parsed from OpenRouter's string pricing fields.
+export interface ModelPricing {
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+}
+
+interface OpenRouterPricing {
+  prompt?: string
+  completion?: string
+  input_cache_read?: string
+  input_cache_write?: string
+}
 
 export interface ModelSuggestion {
   value: string
   label: string
   description?: string
   contextLength?: number
+  pricing?: ModelPricing
+  openRouterId?: string
 }
 
 // Curated per-provider suggestions; free-text model ids are always allowed.
@@ -17,24 +34,24 @@ export const OPENAI_MODELS: ModelSuggestion[] = [
 ]
 
 export const CODEX_ACP_MODELS: ModelSuggestion[] = [
-  { value: 'gpt-5.5', label: 'GPT-5.5', description: 'Most capable', contextLength: 1_050_000 },
+  { value: 'gpt-5.5', label: 'GPT-5.5', description: 'Most capable', contextLength: 1_050_000, openRouterId: 'openai/gpt-5.5' },
   { value: 'gpt-5.3-codex-spark', label: 'GPT-5.3 Codex Spark', description: 'Account-gated research preview', contextLength: 400_000 },
-  { value: 'gpt-5.4', label: 'GPT-5.4', description: 'Strong coding model', contextLength: 400_000 },
-  { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini', description: 'Fast and inexpensive', contextLength: 400_000 },
+  { value: 'gpt-5.4', label: 'GPT-5.4', description: 'Strong coding model', contextLength: 400_000, openRouterId: 'openai/gpt-5.4' },
+  { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini', description: 'Fast and inexpensive', contextLength: 400_000, openRouterId: 'openai/gpt-5.4-mini' },
 ]
 
 // Model config values advertised by @agentclientprotocol/claude-agent-acp@0.44.0;
 // the backend rejects ids the adapter doesn't advertise.
 export const ANTHROPIC_MODELS: ModelSuggestion[] = [
-  { value: 'default', label: 'Default (Opus 4.8)', description: 'Opus 4.8 with 1M context · Recommended', contextLength: 1_000_000 },
-  { value: 'claude-fable-5[1m]', label: 'Fable 5', description: 'Most capable for the hardest tasks', contextLength: 1_000_000 },
-  { value: 'sonnet', label: 'Sonnet 4.6', description: 'Efficient for routine tasks', contextLength: 200_000 },
-  { value: 'sonnet[1m]', label: 'Sonnet 4.6 (1M context)', description: 'Draws from usage credits', contextLength: 1_000_000 },
-  { value: 'haiku', label: 'Haiku 4.5', description: 'Fastest for quick answers', contextLength: 200_000 },
+  { value: 'default', label: 'Default (Opus 4.8)', description: 'Opus 4.8 with 1M context · Recommended', contextLength: 1_000_000, openRouterId: 'anthropic/claude-opus-4.8' },
+  { value: 'claude-fable-5[1m]', label: 'Fable 5', description: 'Most capable for the hardest tasks', contextLength: 1_000_000, openRouterId: 'anthropic/claude-fable-5' },
+  { value: 'sonnet', label: 'Sonnet 4.6', description: 'Efficient for routine tasks', contextLength: 200_000, openRouterId: 'anthropic/claude-sonnet-4.6' },
+  { value: 'sonnet[1m]', label: 'Sonnet 4.6 (1M context)', description: 'Draws from usage credits', contextLength: 1_000_000, openRouterId: 'anthropic/claude-sonnet-4.6' },
+  { value: 'haiku', label: 'Haiku 4.5', description: 'Fastest for quick answers', contextLength: 200_000, openRouterId: 'anthropic/claude-haiku-4.5' },
 ]
 
 export const GROK_MODELS: ModelSuggestion[] = [
-  { value: 'grok-build', label: 'Grok Build', description: 'Best for advanced coding tasks', contextLength: 512_000 },
+  { value: 'grok-build', label: 'Grok Build', description: 'Best for advanced coding tasks', contextLength: 512_000, openRouterId: 'x-ai/grok-build-0.1' },
   { value: 'grok-composer-2.5-fast', label: 'Composer 2.5', description: "Cursor's coding model", contextLength: 200_000 },
 ]
 
@@ -57,6 +74,34 @@ export function acpAgentModelSuggestions(agent: string): ModelSuggestion[] {
   return ACP_AGENT_MODELS[agent] ?? []
 }
 
+export function pricingIdForUsage(model: ModelUsage): string | null {
+  const raw = model.model?.trim() ?? ''
+  const catalog = model.agent ? acpAgentModelSuggestions(model.agent) : []
+  const entry = raw ? catalog.find((m) => m.value === raw) : catalog[0]
+  if (entry?.openRouterId) return entry.openRouterId
+  if (!raw) return null
+  const direct = raw.replace(/^openrouter\//, '')
+  return direct.includes('/') ? direct : null
+}
+
+function parseOpenRouterPricing(raw: OpenRouterPricing | undefined): ModelPricing | undefined {
+  if (!raw) return undefined
+  const input = perToken(raw.prompt)
+  const output = perToken(raw.completion)
+  if (input === 0 && output === 0) return undefined
+  return {
+    input,
+    output,
+    cacheRead: perToken(raw.input_cache_read) || input,
+    cacheWrite: perToken(raw.input_cache_write) || input,
+  }
+}
+
+function perToken(value: string | undefined): number {
+  const parsed = Number.parseFloat(value ?? '')
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+}
+
 export function modelSuggestionsForProvider(
   provider: ModelProviderOption | undefined,
   openRouterModels: ModelSuggestion[] = [],
@@ -76,7 +121,7 @@ export const openRouterModelsQuery = queryOptions({
     const res = await fetch('https://openrouter.ai/api/v1/models?output_modalities=text,image')
     if (!res.ok) throw new Error(`OpenRouter models request failed: ${res.status}`)
     const body = (await res.json()) as {
-      data?: { id: string; name?: string; context_length?: number }[]
+      data?: { id: string; name?: string; context_length?: number; pricing?: OpenRouterPricing }[]
     }
     return (body.data ?? [])
       .filter((model) => model.id)
@@ -87,6 +132,7 @@ export const openRouterModelsQuery = queryOptions({
         label: (model.name || model.id).replace(/^[^:]+: /, ''),
         description: model.id,
         contextLength: model.context_length || undefined,
+        pricing: parseOpenRouterPricing(model.pricing),
       }))
   },
   staleTime: 60 * 60 * 1000,

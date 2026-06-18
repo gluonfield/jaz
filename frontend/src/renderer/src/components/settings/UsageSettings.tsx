@@ -1,11 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
 import { ChartNoAxesColumn } from 'lucide-react'
 import { type MouseEvent, useMemo, useState } from 'react'
+import { ModelBreakdown } from '@/components/settings/UsageModelBreakdown'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { dailyUsageQuery, modelUsageQuery } from '@/lib/api/sessions'
 import type { DailyUsage, ModelUsage } from '@/lib/api/types'
 import { formatTokens } from '@/lib/format/tokens'
+import { type ModelPricing, openRouterModelsQuery } from '@/lib/models'
+import { buildPricingIndex, formatUsd, priceModels } from '@/lib/usageCost'
 import {
   formatUsageDate,
   inputOutputTokens,
@@ -32,6 +35,8 @@ const usageGapPx = 3
 export function UsageSettings() {
   const usage = useQuery(dailyUsageQuery(365))
   const models = useQuery(modelUsageQuery(30))
+  const openRouter = useQuery(openRouterModelsQuery)
+  const pricing = useMemo(() => buildPricingIndex(openRouter.data ?? []), [openRouter.data])
 
   return (
     <section className="py-5">
@@ -52,6 +57,7 @@ export function UsageSettings() {
           models={models.data ?? []}
           modelsError={models.error}
           modelsPending={models.isPending}
+          pricing={pricing}
         />
       )}
     </section>
@@ -77,11 +83,13 @@ function UsagePanel({
   models,
   modelsError,
   modelsPending,
+  pricing,
 }: {
   days: DailyUsage[]
   models: ModelUsage[]
   modelsError: Error | null
   modelsPending: boolean
+  pricing: Map<string, ModelPricing>
 }) {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
   const chartDays = useMemo(() => visibleUsageDays(days), [days])
@@ -94,17 +102,21 @@ function UsagePanel({
   const activeDays = chartDays.filter((day) => inputOutputTokens(day.usage) > 0).length
   const maxTotal = Math.max(1, ...chartDays.map((day) => inputOutputTokens(day.usage)))
   const hasUsage = chartDays.some((day) => inputOutputTokens(day.usage) > 0)
+  const inputTokens = last30.input_tokens ?? 0
   const cacheRead = last30.cached_input_tokens ?? 0
   const cacheWrite = last30.cached_write_tokens ?? 0
   const reasoning = last30.reasoning_output_tokens ?? 0
+  const cacheHitLabel = inputTokens > 0 ? `${Math.round((cacheRead / inputTokens) * 100)}%` : '—'
+  const { rows: pricedModels, summary: costSummary } = useMemo(() => priceModels(models, pricing), [models, pricing])
+  const costLabel = costSummary.priced > 0 ? formatUsd(costSummary.total) : '—'
 
   return (
     <SettingsCard className="mt-4 p-4">
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-control bg-border/70 md:grid-cols-4">
         <UsageStat label="Last 7 days" value={formatTokens(inputOutputTokens(last7))} detail="input + output" />
         <UsageStat label="Last 30 days" value={formatTokens(inputOutputTokens(last30))} detail="input + output" />
-        <UsageStat label="Input" value={formatTokens(last30.input_tokens ?? 0)} detail="last 30 days" />
-        <UsageStat label="Output" value={formatTokens(last30.output_tokens ?? 0)} detail="last 30 days" />
+        <UsageStat label="Est. cost" value={costLabel} detail="30d · list prices" />
+        <UsageStat label="Cache hit rate" value={cacheHitLabel} detail="of input tokens" />
       </div>
 
       <div className="mt-5 min-w-0 rounded-control bg-bg/45 px-3 py-3">
@@ -201,7 +213,12 @@ function UsagePanel({
         </div>
       </div>
 
-      <ModelBreakdown models={models} error={modelsError} pending={modelsPending} />
+      <ModelBreakdown
+        rows={pricedModels}
+        error={modelsError}
+        pending={modelsPending}
+        unpriced={costSummary.unpriced}
+      />
 
       {tooltip ? <UsageTooltip state={tooltip} /> : null}
     </SettingsCard>
@@ -216,125 +233,6 @@ function UsageStat({ label, value, detail }: { label: string; value: string; det
       <div className="mt-0.5 truncate text-[10px] text-ink-3">{detail}</div>
     </div>
   )
-}
-
-function ModelBreakdown({
-  models,
-  error,
-  pending,
-}: {
-  models: ModelUsage[]
-  error: Error | null
-  pending: boolean
-}) {
-  const visible = models.slice(0, 8)
-  const maxTotal = Math.max(1, ...visible.map((model) => inputOutputTokens(model.usage)))
-
-  return (
-    <div className="mt-5">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[12px] font-medium text-ink">Last 30 days by model</p>
-          <p className="mt-0.5 truncate text-[11px] text-ink-3">ACP agent usage, ranked by input + output tokens.</p>
-        </div>
-      </div>
-
-      {pending ? (
-        <div className="mt-2 space-y-2">
-          {Array.from({ length: 3 }, (_, index) => (
-            <Skeleton key={index} className="h-11" />
-          ))}
-        </div>
-      ) : error ? (
-        <p className="mt-2 rounded-control bg-danger/5 px-3 py-2 text-[12px] text-danger">
-          Couldn't load model usage: {error.message}
-        </p>
-      ) : visible.length === 0 ? (
-        <p className="mt-2 rounded-control bg-bg/45 px-3 py-2 text-[12px] text-ink-3">
-          No ACP model usage recorded yet.
-        </p>
-      ) : (
-        <div className="mt-2 divide-y divide-border/60">
-          {visible.map((model) => (
-            <ModelUsageRow
-              key={`${model.agent ?? ''}:${model.model_provider ?? ''}:${model.model ?? ''}`}
-              model={model}
-              maxTotal={maxTotal}
-            />
-          ))}
-          {models.length > visible.length ? (
-            <div className="pt-2 text-[11px] text-ink-3">
-              {models.length - visible.length} more model{models.length - visible.length === 1 ? '' : 's'} with usage.
-            </div>
-          ) : null}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function ModelUsageRow({ model, maxTotal }: { model: ModelUsage; maxTotal: number }) {
-  const total = inputOutputTokens(model.usage)
-  const cacheRead = model.usage.cached_input_tokens ?? 0
-  const cacheWrite = model.usage.cached_write_tokens ?? 0
-  const share = total / maxTotal
-  const width = total > 0 ? `${Math.max(3, share * 100)}%` : '0%'
-  const sharePercent = share * 100
-  const shareLabel = total === 0
-    ? '0% of top model'
-    : `${sharePercent < 1 ? '<1' : Math.round(sharePercent)}% of top model`
-
-  return (
-    <div className="grid gap-3 py-2.5 md:grid-cols-[minmax(0,1fr)_auto]">
-      <div className="min-w-0">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <span className="truncate text-[13px] font-medium text-ink">{modelName(model)}</span>
-          <span className="shrink-0 text-[11px] text-ink-3">{formatModelMeta(model)}</span>
-        </div>
-        <div
-          className="mt-1.5 flex items-center gap-2"
-          title={`${formatTokens(total)} input + output tokens, ${shareLabel}`}
-        >
-          <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-bg ring-1 ring-border/60">
-            <div className="h-full rounded-full bg-primary" style={{ width }} />
-          </div>
-          <span className="w-[92px] text-right font-mono text-[10px] text-ink-3 tabular-nums">
-            {shareLabel}
-          </span>
-        </div>
-        {cacheRead > 0 || cacheWrite > 0 ? (
-          <div className="mt-1 text-[10px] text-ink-3">
-            {cacheRead > 0 ? `Cache read ${formatTokens(cacheRead)}` : null}
-            {cacheRead > 0 && cacheWrite > 0 ? ' · ' : null}
-            {cacheWrite > 0 ? `Cache write ${formatTokens(cacheWrite)}` : null}
-          </div>
-        ) : null}
-      </div>
-      <div className="grid grid-cols-3 gap-3 text-right">
-        <ModelMetric label="Input" value={model.usage.input_tokens ?? 0} />
-        <ModelMetric label="Output" value={model.usage.output_tokens ?? 0} />
-        <ModelMetric label="Input + output" value={total} />
-      </div>
-    </div>
-  )
-}
-
-function ModelMetric({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="min-w-[72px]">
-      <div className="font-mono text-[12px] leading-none text-ink tabular-nums">{formatTokens(value)}</div>
-      <div className="mt-1 text-[10px] leading-tight text-ink-3">{label}</div>
-    </div>
-  )
-}
-
-function modelName(model: ModelUsage): string {
-  return model.model?.trim() || 'Unknown model'
-}
-
-function formatModelMeta(model: ModelUsage): string {
-  const parts = [model.agent, model.model_provider].map((part) => part?.trim()).filter(Boolean)
-  return parts.length > 0 ? parts.join(' / ') : 'ACP'
 }
 
 function UsageSquare({

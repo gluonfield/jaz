@@ -126,6 +126,7 @@ type Session struct {
 	ReasoningEffort string          `json:"reasoning_effort,omitempty"`
 	Usage           Usage           `json:"usage,omitempty"`
 	QueuedMessages  []QueuedMessage `json:"queued_messages,omitempty"`
+	PendingSteer    *QueuedMessage  `json:"pending_steer_message,omitempty"`
 	SourceType      string          `json:"source_type,omitempty"`
 	SourceID        string          `json:"source_id,omitempty"`
 	Archived        bool            `json:"archived,omitempty"`

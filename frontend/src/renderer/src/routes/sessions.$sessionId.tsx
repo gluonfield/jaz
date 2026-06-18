@@ -10,6 +10,7 @@ import { FileReaderLinkProvider, MessageMarkdown, PreviewLinkProvider } from '@/
 import { MentionText } from '@/components/session/mentions'
 import { SessionErrorNotice } from '@/components/session/SessionErrorNotice'
 import { SessionLivenessIndicator } from '@/components/session/SessionLivenessIndicator'
+import { PendingSteerBubble } from '@/components/session/PendingSteerBubble'
 import { SidePanel } from '@/components/session/SidePanel'
 import { SidePanelControl, useSidePanelState } from '@/components/session/SidePanelState'
 import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
@@ -687,6 +688,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   const isACP = session.runtime === 'acp'
   // Covers turns started elsewhere (parent-triggered, or refresh mid-turn).
   const sessionRunning = queue.sessionRunning
+  const pendingSteer = session.pending_steer_message
   const empty = messages.length === 0 && transcriptEvents.length === 0 && !live && !sessionError && !sessionRunning
   // ACP turns stream through events; the live exchange only contributes the
   // not-yet-refetched user bubble, injected so mid-turn events sort after it.
@@ -775,12 +777,15 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                       onArtifactPrompt={queue.onSend}
                       tail={
                         isACP ? (
-                          <SessionLivenessIndicator
-                            agent={session.runtime_ref?.agent}
-                            running={sessionRunning}
-                            updatedAt={session.updated_at}
-                            lastActivityAt={latestEventTimeISO(lastSessionEventAt, live?.at)}
-                          />
+                          <>
+                            {pendingSteer ? <PendingSteerBubble prompt={pendingSteer} /> : null}
+                            <SessionLivenessIndicator
+                              agent={session.runtime_ref?.agent}
+                              running={sessionRunning}
+                              updatedAt={session.updated_at}
+                              lastActivityAt={latestEventTimeISO(lastSessionEventAt, live?.at)}
+                            />
+                          </>
                         ) : live ? (
                           <div className="flex flex-col gap-5">
                             <motion.div

@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import { workspaceFilesQuery } from '@/lib/api/sessions'
+import { projectsQuery, workspaceFilesQuery } from '@/lib/api/sessions'
 import { skillsQuery } from '@/lib/api/skills'
 import { ComposerSuggestions, type SuggestionItem, type SuggestionSection } from './ComposerSuggestions'
 import {
@@ -26,6 +26,7 @@ import { useComposerDraft, type ComposerDraftStorage } from './useComposerDraft'
 
 // Result cap for the $/@ popups, mirroring Codex's file-search page size.
 const MAX_SUGGESTIONS = 20
+const MAX_PROJECT_SUGGESTIONS = 3
 
 // Shared by the textarea and its token-highlight mirror — any drift in these
 // box/text metrics would misalign the caret with the painted glyphs.
@@ -49,6 +50,12 @@ function fromWire(wire: string): { text: string; tokens: Map<string, InlineToken
   return { text, tokens }
 }
 
+function betterMatch<T extends { score: number }>(a: T | null, b: T | null): T | null {
+  if (!a) return b
+  if (!b) return a
+  return b.score > a.score ? b : a
+}
+
 export type MentionInput = ReturnType<typeof useMentionInput>
 
 // The editing model behind a mention-capable textarea: inline $skill / @path
@@ -65,8 +72,8 @@ export function useMentionInput({
   onValueChange,
   onTextChange,
 }: {
-  /** server-side directory the @-mention picker indexes (a project path, a
-      session cwd, or '' for the workspace root). undefined disables @ */
+  /** server-side directory the @-mention file picker indexes (a project path,
+      session cwd, or '' for the workspace root). undefined disables files */
   fileRoot?: string
   disabled?: boolean
   /** auto-grow cap for the textarea, in px */
@@ -125,6 +132,7 @@ export function useMentionInput({
     ...workspaceFilesQuery(fileRoot ?? ''),
     enabled: fileRoot !== undefined && focused,
   })
+  const projects = useQuery({ ...projectsQuery, enabled: focused })
   const skillMentionStart = focused && menuTrigger?.trigger === '$' ? menuTrigger.start : null
 
   const { refetch: refetchSkills } = skills
@@ -159,34 +167,60 @@ export function useMentionInput({
         }))
       return items.length > 0 ? [{ title: 'Skills', items }] : []
     }
+    const projectItems =
+      query === ''
+        ? []
+        : (projects.data ?? [])
+            .flatMap((project) => {
+              const nameMatch = fuzzyMatch(query, project.name)
+              const pathMatch = fuzzyMatch(query, project.path)
+              const match = betterMatch(nameMatch, pathMatch)
+              return match ? [{ project, match, highlightName: match === nameMatch }] : []
+            })
+            .sort(
+              (a, b) =>
+                b.match.score - a.match.score ||
+                a.project.name.localeCompare(b.project.name) ||
+                a.project.path.localeCompare(b.project.path),
+            )
+            .slice(0, MAX_PROJECT_SUGGESTIONS)
+            .map(({ project, match, highlightName }) => ({
+              kind: 'project' as const,
+              label: project.name,
+              detail: project.path,
+              indices: highlightName ? match.indices : undefined,
+              insert: `@${project.path}`,
+              expansion: encodeMention('@', project.path, project.path),
+            }))
     const index = fileIndex.data
-    if (!index || index.root === '') return []
-    // Fuzzy score over full relative paths (Codex's pattern): a query naming
-    // a directory scores the directory and its children identically, so the
-    // tie-breaks — directory first, then shallow before deep — surface the
-    // folder followed by the files inside it.
-    const items = index.entries
-      .flatMap((entry) => {
-        const match = fuzzyMatch(query, entry.path)
-        return match ? [{ entry, match }] : []
-      })
-      .sort(
-        (a, b) =>
-          b.match.score - a.match.score ||
-          Number(b.entry.dir) - Number(a.entry.dir) ||
-          a.entry.path.length - b.entry.path.length ||
-          a.entry.path.localeCompare(b.entry.path),
-      )
-      .slice(0, MAX_SUGGESTIONS)
-      .map(({ entry, match }) => ({
-        kind: entry.dir ? ('dir' as const) : ('file' as const),
-        label: entry.path,
-        indices: match.indices,
-        insert: `@${entry.path}`,
-        expansion: encodeMention('@', entry.path, `${index.root}/${entry.path}`),
-      }))
-    return items.length > 0 ? [{ title: 'Files', items }] : []
-  }, [menuTrigger, skills.data, fileIndex.data])
+    const fileItems =
+      index && index.root !== ''
+        ? index.entries
+            .flatMap((entry) => {
+              const match = fuzzyMatch(query, entry.path)
+              return match ? [{ entry, match }] : []
+            })
+            .sort(
+              (a, b) =>
+                b.match.score - a.match.score ||
+                Number(b.entry.dir) - Number(a.entry.dir) ||
+                a.entry.path.length - b.entry.path.length ||
+                a.entry.path.localeCompare(b.entry.path),
+            )
+            .slice(0, Math.max(0, MAX_SUGGESTIONS - projectItems.length))
+            .map(({ entry, match }) => ({
+              kind: entry.dir ? ('dir' as const) : ('file' as const),
+              label: entry.path,
+              indices: match.indices,
+              insert: `@${entry.path}`,
+              expansion: encodeMention('@', entry.path, `${index.root}/${entry.path}`),
+            }))
+        : []
+    const sections: SuggestionSection[] = []
+    if (projectItems.length > 0) sections.push({ title: 'Projects', items: projectItems })
+    if (fileItems.length > 0) sections.push({ title: 'Files', items: fileItems })
+    return sections
+  }, [menuTrigger, skills.data, projects.data, fileIndex.data])
 
   const flatItems = useMemo(() => sections.flatMap((section) => section.items), [sections])
   const menuOpen = menuTrigger !== null && flatItems.length > 0 && focused
