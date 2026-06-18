@@ -54,6 +54,39 @@ func TestLoadMissingRootIsEmptyCatalog(t *testing.T) {
 	}
 }
 
+func TestLoadForWorkspaceMergesLocalSkillDirs(t *testing.T) {
+	root := t.TempDir()
+	workspace := t.TempDir()
+	writeSkill(t, root, "alpha", "alpha", "Global alpha")
+	writeSkill(t, root, "global", "global", "Global only")
+	writeWorkspaceSkill(t, workspace, ".claude", "local", "local", "Claude local")
+	writeWorkspaceSkill(t, workspace, ".codex", "alpha", "alpha", "Codex override")
+	writeWorkspaceSkill(t, workspace, ".agents", "agent", "agent", "Agent local")
+	writeWorkspaceSkill(t, workspace, ".jaz", "local", "local", "Jaz override")
+
+	catalog, err := LoadForWorkspace(root, workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]Skill{}
+	for _, skill := range catalog.Skills {
+		got[skill.Name] = skill
+	}
+	for name, description := range map[string]string{
+		"alpha":  "Codex override",
+		"global": "Global only",
+		"local":  "Jaz override",
+		"agent":  "Agent local",
+	} {
+		if got[name].Description != description {
+			t.Fatalf("%s = %#v, want %q; catalog = %#v", name, got[name], description, catalog.Skills)
+		}
+	}
+	if !strings.HasPrefix(got["local"].Path, filepath.Join(workspace, ".jaz", "skills")) {
+		t.Fatalf("local skill path = %q", got["local"].Path)
+	}
+}
+
 func TestInstallDefaultsRefreshesDefaultSkills(t *testing.T) {
 	root := t.TempDir()
 	if err := InstallDefaults(root); err != nil {
@@ -198,6 +231,11 @@ func TestSyncToSkipsUserOwnedSkillConflictsAndLeavesOrphans(t *testing.T) {
 func writeSkill(t *testing.T, root, dir, name, description string) {
 	t.Helper()
 	writeFile(t, filepath.Join(root, "skills", dir, "SKILL.md"), "---\nname: "+name+"\ndescription: "+description+"\n---\nbody")
+}
+
+func writeWorkspaceSkill(t *testing.T, workspace, owner, dir, name, description string) {
+	t.Helper()
+	writeFile(t, filepath.Join(workspace, owner, "skills", dir, "SKILL.md"), "---\nname: "+name+"\ndescription: "+description+"\n---\nbody")
 }
 
 func writeFile(t *testing.T, path, content string) {
