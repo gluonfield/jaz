@@ -74,13 +74,36 @@ func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) {
 			writeError(w, status, err)
 			return
 		}
+		var defaults agentsettings.AgentDefaults
 		if normalized != nil {
-			if _, err := agentsettings.SaveAgentDefaults(store, *normalized); err != nil {
+			if err := s.validateEnabledACPAgentAuth(*normalized); err != nil {
+				writeError(w, http.StatusBadRequest, err)
+				return
+			}
+			saved, err := agentsettings.SaveAgentDefaults(store, *normalized)
+			if err != nil {
 				writeError(w, http.StatusInternalServerError, err)
 				return
 			}
+			defaults = saved
 		}
 		if input.Completed {
+			if defaults.ACP == nil {
+				var err error
+				defaults, err = s.loadAgentSettings(store)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, err)
+					return
+				}
+				if err := s.validateEnabledACPAgentAuth(defaults); err != nil {
+					writeError(w, http.StatusBadRequest, err)
+					return
+				}
+			}
+			if err := ensureDefaultMemoryAgent(store, defaults); err != nil {
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
 			if err := onboardingstate.Save(s.onboardingStatePath(), onboardingstate.State{Completed: true}); err != nil {
 				writeError(w, http.StatusInternalServerError, err)
 				return
@@ -95,6 +118,23 @@ func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("method not allowed"))
 	}
+}
+
+func ensureDefaultMemoryAgent(store storage.SettingsStorage, defaults agentsettings.AgentDefaults) error {
+	settings, err := agentsettings.LoadMemorySettings(store)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(settings.Agent) != "" {
+		return nil
+	}
+	agent := agentsettings.DefaultMemoryAgent(defaults)
+	if agent == "" {
+		return nil
+	}
+	settings.Agent = agent
+	_, err = agentsettings.SaveMemorySettings(store, settings)
+	return err
 }
 
 func (s *Server) onboardingStatus(store storage.SettingsStorage) (onboardingResponse, error) {

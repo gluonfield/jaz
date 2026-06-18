@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"strings"
 	"time"
 
@@ -13,7 +14,12 @@ import (
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
 
-func (m *Manager) mcpServersForAgent(ctx context.Context, initRaw json.RawMessage) []json.RawMessage {
+const (
+	jaztoolsSurfaceQueryParam       = "jaztools_surface"
+	jaztoolsMemorySearchSurfaceName = "memory_search_worker"
+)
+
+func (m *Manager) mcpServersForAgent(ctx context.Context, initRaw json.RawMessage, policy string) []json.RawMessage {
 	var init struct {
 		AgentCapabilities acpschema.AgentCapabilities `json:"agentCapabilities"`
 	}
@@ -23,7 +29,7 @@ func (m *Manager) mcpServersForAgent(ctx context.Context, initRaw json.RawMessag
 	if init.AgentCapabilities.MCPCapabilities == nil || !init.AgentCapabilities.MCPCapabilities.HTTP {
 		return []json.RawMessage{}
 	}
-	servers, err := enabledHTTPMCPServers(ctx, m.cfg.MCPStore, m.cfg.MCPTokens)
+	servers, err := enabledHTTPMCPServers(ctx, m.cfg.MCPStore, m.cfg.MCPTokens, policy)
 	if err != nil {
 		m.log.Warn("load mcp servers for acp failed", "error", err)
 		servers = nil
@@ -34,7 +40,7 @@ func (m *Manager) mcpServersForAgent(ctx context.Context, initRaw json.RawMessag
 	return servers
 }
 
-func enabledHTTPMCPServers(ctx context.Context, store mcpconfig.ServerReader, tokens integrationoauth.Store) ([]json.RawMessage, error) {
+func enabledHTTPMCPServers(ctx context.Context, store mcpconfig.ServerReader, tokens integrationoauth.Store, policy string) ([]json.RawMessage, error) {
 	if store == nil {
 		return nil, nil
 	}
@@ -45,6 +51,9 @@ func enabledHTTPMCPServers(ctx context.Context, store mcpconfig.ServerReader, to
 	var out []json.RawMessage
 	for _, server := range servers {
 		if !server.Enabled {
+			continue
+		}
+		if !mcpServerAllowed(policy, server) {
 			continue
 		}
 		headers, err := resolvedACPHeaders(ctx, server, tokens)
@@ -63,7 +72,7 @@ func enabledHTTPMCPServers(ctx context.Context, store mcpconfig.ServerReader, to
 		}{
 			Type:    "http",
 			Name:    server.Name,
-			URL:     server.URL,
+			URL:     mcpServerURL(policy, server.URL),
 			Headers: headers,
 		}
 		data, err := json.Marshal(payload)
@@ -73,6 +82,38 @@ func enabledHTTPMCPServers(ctx context.Context, store mcpconfig.ServerReader, to
 		out = append(out, json.RawMessage(data))
 	}
 	return out, nil
+}
+
+func mcpServerAllowed(policy string, server mcpconfig.Server) bool {
+	switch strings.TrimSpace(policy) {
+	case MCPServerPolicyAll:
+		return true
+	case MCPServerPolicyJaztoolsOnly, MCPServerPolicyMemorySearchWorker:
+		return strings.EqualFold(strings.TrimSpace(server.ID), "jaztools") ||
+			strings.EqualFold(strings.TrimSpace(server.Name), "jaztools")
+	default:
+		return false
+	}
+}
+
+func mcpServerURL(policy, raw string) string {
+	switch strings.TrimSpace(policy) {
+	case MCPServerPolicyMemorySearchWorker:
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			return ""
+		}
+		u, err := url.Parse(raw)
+		if err != nil {
+			return raw
+		}
+		q := u.Query()
+		q.Set(jaztoolsSurfaceQueryParam, jaztoolsMemorySearchSurfaceName)
+		u.RawQuery = q.Encode()
+		return u.String()
+	default:
+		return raw
+	}
 }
 
 func resolvedACPHeaders(ctx context.Context, server mcpconfig.Server, tokens integrationoauth.Store) ([]mcpconfig.Header, error) {

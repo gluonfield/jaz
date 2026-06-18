@@ -24,6 +24,11 @@ const (
 	Version    = "0.1.0"
 )
 
+const (
+	surfaceQueryParam       = "jaztools_surface"
+	memorySearchSurfaceName = "memory_search_worker"
+)
+
 func ServerConfig(url string) mcpconfig.Server {
 	return mcpconfig.Server{
 		ID:        ServerID,
@@ -44,12 +49,14 @@ type Service struct {
 	loopTools       *loops.MCPTools
 	visualizeTools  *visualize.MCPTools
 	widgetPublisher *widgets.SessionPublisher
+	sessions        sessionSource
 
 	url string
 
 	mu          sync.Mutex
 	thread      serverSlot
 	widget      serverSlot
+	search      serverSlot
 	handlerOnce sync.Once
 	handler     http.Handler
 }
@@ -59,6 +66,7 @@ type toolSurface int
 const (
 	threadSurface toolSurface = iota
 	widgetSurface
+	searchWorkerSurface
 )
 
 type serverSlot struct {
@@ -67,11 +75,16 @@ type serverSlot struct {
 	memoryTools bool
 }
 
-func New(memory *memoryservice.Service, urls serverconfig.URLs, sessionEvents storage.SessionEventAppender, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher) *Service {
+type sessionSource interface {
+	LoadSession(id string) (storage.Session, error)
+}
+
+func New(memory *memoryservice.Service, urls serverconfig.URLs, sessionEvents storage.SessionEventAppender, events *sessionevents.Bus, sessions storage.SessionStore, widgetPublisher *widgets.SessionPublisher) *Service {
 	return &Service{
 		Memory:          memory,
 		visualizeTools:  visualize.NewMCPTools(sessionEvents, events),
 		widgetPublisher: widgetPublisher,
+		sessions:        sessions,
 		url:             strings.TrimSpace(urls.JazToolsMCP),
 	}
 }
@@ -99,6 +112,8 @@ func (s *Service) server(surface toolSurface) *mcp.Server {
 
 func (s *Service) slot(surface toolSurface) *serverSlot {
 	switch surface {
+	case searchWorkerSurface:
+		return &s.search
 	case widgetSurface:
 		return &s.widget
 	default:
@@ -112,6 +127,9 @@ func (s *Service) newServer(surface toolSurface) *mcp.Server {
 		Title:   "Jaz Tools",
 		Version: Version,
 	}, nil)
+	if surface == searchWorkerSurface {
+		return server
+	}
 	s.loopTools.AddTo(server)
 	s.visualizeTools.AddReadMeTo(server)
 	switch surface {
@@ -142,38 +160,77 @@ func (s *Service) Handler() http.Handler {
 }
 
 func (s *Service) surface(r *http.Request) toolSurface {
+	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get(surfaceQueryParam)), memorySearchSurfaceName) {
+		return searchWorkerSurface
+	}
+	if s.searchWorkerSession(r) {
+		return searchWorkerSurface
+	}
 	if s.widgetSession(r) {
 		return widgetSurface
 	}
 	return threadSurface
 }
 
+func (s *Service) searchWorkerSession(r *http.Request) bool {
+	session, ok := s.sessionFromRequest(r)
+	return ok && session.SourceType == storage.SourceMemorySearch
+}
+
 func (s *Service) widgetSession(r *http.Request) bool {
+	session, ok := s.sessionFromRequest(r)
+	return ok &&
+		s.widgetPublisher != nil &&
+		s.widgetPublisher.WidgetSurfaceForSession(session.ID)
+}
+
+func (s *Service) sessionFromRequest(r *http.Request) (storage.Session, bool) {
 	sessionID := strings.TrimSpace(r.Header.Get(mcpsession.HeaderName))
-	if sessionID == "" {
-		return false
+	if sessionID == "" || s.sessions == nil {
+		return storage.Session{}, false
 	}
-	return s.widgetPublisher != nil && s.widgetPublisher.WidgetSurfaceForSession(sessionID)
+	session, err := s.sessions.LoadSession(sessionID)
+	if err != nil {
+		return storage.Session{}, false
+	}
+	return session, true
 }
 
 func (s *Service) syncMemoryTools() {
-	s.syncMemoryToolsFor(&s.thread)
-	s.syncMemoryToolsFor(&s.widget)
+	s.syncMemoryToolsFor(&s.thread, threadSurface)
+	s.syncMemoryToolsFor(&s.widget, widgetSurface)
+	s.syncMemoryToolsFor(&s.search, searchWorkerSurface)
 }
 
-func (s *Service) syncMemoryToolsFor(slot *serverSlot) {
+func (s *Service) syncMemoryToolsFor(slot *serverSlot, surface toolSurface) {
 	if slot.server == nil {
 		return
 	}
 	if s.Memory.MCPToolsEnabled() {
 		if !slot.memoryTools {
-			s.Memory.AddMCPTools(slot.server)
+			s.addMemoryTools(slot.server, surface)
 			slot.memoryTools = true
 		}
 		return
 	}
 	if slot.memoryTools {
-		s.Memory.RemoveMCPTools(slot.server)
+		s.removeMemoryTools(slot.server, surface)
 		slot.memoryTools = false
 	}
+}
+
+func (s *Service) addMemoryTools(server *mcp.Server, surface toolSurface) {
+	if surface == searchWorkerSurface {
+		s.Memory.AddWorkerMCPTools(server)
+		return
+	}
+	s.Memory.AddMCPTools(server)
+}
+
+func (s *Service) removeMemoryTools(server *mcp.Server, surface toolSurface) {
+	if surface == searchWorkerSurface {
+		s.Memory.RemoveWorkerMCPTools(server)
+		return
+	}
+	s.Memory.RemoveMCPTools(server)
 }

@@ -624,6 +624,30 @@ func (q *Queries) ListPairingRequests(ctx context.Context) ([]ListPairingRequest
 	return items, nil
 }
 
+const rejectOtherPendingPairingRequests = `-- name: RejectOtherPendingPairingRequests :execrows
+UPDATE device_pairing_requests
+SET
+  status = 'rejected',
+  rejected_at_ms = ?1
+WHERE device_id = ?2
+  AND id != ?3
+  AND status = 'pending'
+`
+
+type RejectOtherPendingPairingRequestsParams struct {
+	RejectedAtMs int64  `json:"rejected_at_ms"`
+	DeviceID     string `json:"device_id"`
+	ID           string `json:"id"`
+}
+
+func (q *Queries) RejectOtherPendingPairingRequests(ctx context.Context, arg RejectOtherPendingPairingRequestsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, rejectOtherPendingPairingRequests, arg.RejectedAtMs, arg.DeviceID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const rejectPairingRequest = `-- name: RejectPairingRequest :execrows
 UPDATE device_pairing_requests
 SET
@@ -640,6 +664,28 @@ type RejectPairingRequestParams struct {
 
 func (q *Queries) RejectPairingRequest(ctx context.Context, arg RejectPairingRequestParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, rejectPairingRequest, arg.RejectedAtMs, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const rejectPendingPairingRequestsForDevice = `-- name: RejectPendingPairingRequestsForDevice :execrows
+UPDATE device_pairing_requests
+SET
+  status = 'rejected',
+  rejected_at_ms = ?1
+WHERE device_id = ?2
+  AND status = 'pending'
+`
+
+type RejectPendingPairingRequestsForDeviceParams struct {
+	RejectedAtMs int64  `json:"rejected_at_ms"`
+	DeviceID     string `json:"device_id"`
+}
+
+func (q *Queries) RejectPendingPairingRequestsForDevice(ctx context.Context, arg RejectPendingPairingRequestsForDeviceParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, rejectPendingPairingRequestsForDevice, arg.RejectedAtMs, arg.DeviceID)
 	if err != nil {
 		return 0, err
 	}

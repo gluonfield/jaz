@@ -42,7 +42,7 @@ func testMemoryServer(t *testing.T) (*Server, *fakeMemoryScheduler) {
 	svc := memoryservice.New(memory, store, scheduler, "http://127.0.0.1:5299/mcp/jazmem")
 	widgetService := widgets.NewService(store, nil)
 	publisher := &widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store}
-	tools := jaztools.New(svc, serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"}, store, sessionevents.New(), publisher)
+	tools := jaztools.New(svc, serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"}, store, sessionevents.New(), store, publisher)
 	return &Server{Store: store, Memory: svc, JazTools: tools}, scheduler
 }
 
@@ -62,8 +62,8 @@ func TestMemoryStatusAndToggle(t *testing.T) {
 	if !status.Enabled || !status.SchedulerRunning || status.MCPURL == "" {
 		t.Fatalf("unexpected default status %#v", status)
 	}
-	if status.DreamAgent != "" {
-		t.Fatalf("unexpected default dream agent %q", status.DreamAgent)
+	if status.Agent != "" {
+		t.Fatalf("unexpected default memory agent %q", status.Agent)
 	}
 	if len(status.Horizons) != 2 || status.Horizons[0].Name != jazmem.LongTermFile || status.Horizons[0].Chars == 0 {
 		t.Fatalf("unexpected horizons %#v", status.Horizons)
@@ -94,39 +94,45 @@ func TestMemoryStatusAndToggle(t *testing.T) {
 	}
 }
 
-func TestMemoryDreamAgentSetting(t *testing.T) {
+func TestMemoryAgentSetting(t *testing.T) {
 	srv, _ := testMemoryServer(t)
 	handler := srv.Handler()
 
 	res := httptest.NewRecorder()
-	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/memory", strings.NewReader(`{"dream_agent":"codex"}`)))
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/memory", strings.NewReader(`{"agent":"codex"}`)))
 	if res.Code != http.StatusOK {
-		t.Fatalf("set dream agent = %d, body = %s", res.Code, res.Body.String())
+		t.Fatalf("set memory agent = %d, body = %s", res.Code, res.Body.String())
 	}
 	var status memoryStatusResponse
 	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
 		t.Fatal(err)
 	}
-	if status.DreamAgent != "codex" || !status.Enabled {
-		t.Fatalf("unexpected dream agent status %#v", status)
+	if status.Agent != "codex" || !status.Enabled {
+		t.Fatalf("unexpected memory agent status %#v", status)
 	}
 
 	res = httptest.NewRecorder()
 	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/memory", strings.NewReader(`{"enabled":false}`)))
 	if res.Code != http.StatusOK {
-		t.Fatalf("toggle with dream agent = %d, body = %s", res.Code, res.Body.String())
+		t.Fatalf("toggle with memory agent = %d, body = %s", res.Code, res.Body.String())
 	}
 	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
 		t.Fatal(err)
 	}
-	if status.DreamAgent != "codex" || status.Enabled {
-		t.Fatalf("toggle should preserve dream agent and disable memory, got %#v", status)
+	if status.Agent != "codex" || status.Enabled {
+		t.Fatalf("toggle should preserve memory agent and disable memory, got %#v", status)
 	}
 
 	res = httptest.NewRecorder()
-	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/memory", strings.NewReader(`{"dream_agent":"missing"}`)))
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/memory", strings.NewReader(`{"agent":"missing"}`)))
 	if res.Code != http.StatusBadRequest {
-		t.Fatalf("unknown dream agent should 400, got %d body = %s", res.Code, res.Body.String())
+		t.Fatalf("unknown memory agent should 400, got %d body = %s", res.Code, res.Body.String())
+	}
+
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/memory", strings.NewReader(`{"agent":"jaz"}`)))
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("built-in Jaz memory agent should 400, got %d body = %s", res.Code, res.Body.String())
 	}
 }
 

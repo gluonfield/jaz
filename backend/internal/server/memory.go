@@ -20,7 +20,7 @@ type memoryHorizon struct {
 
 type memoryStatusResponse struct {
 	Enabled          bool                `json:"enabled"`
-	DreamAgent       string              `json:"dream_agent,omitempty"`
+	Agent            string              `json:"agent,omitempty"`
 	SchedulerRunning bool                `json:"scheduler_running"`
 	Root             string              `json:"root"`
 	DBPath           string              `json:"db_path"`
@@ -31,8 +31,8 @@ type memoryStatusResponse struct {
 }
 
 type memorySettingsInput struct {
-	Enabled    *bool   `json:"enabled,omitempty"`
-	DreamAgent *string `json:"dream_agent,omitempty"`
+	Enabled *bool   `json:"enabled,omitempty"`
+	Agent   *string `json:"agent,omitempty"`
 }
 
 func (s *Server) requireMemory(w http.ResponseWriter) bool {
@@ -82,7 +82,7 @@ func (s *Server) memoryStatus(r *http.Request) (memoryStatusResponse, error) {
 	}
 	return memoryStatusResponse{
 		Enabled:          s.Memory.Enabled(),
-		DreamAgent:       settings.DreamAgent,
+		Agent:            settings.Agent,
 		SchedulerRunning: s.Memory.Scheduler != nil && s.Memory.Scheduler.Running(),
 		Root:             s.Memory.Root(),
 		DBPath:           s.Memory.DBPath(),
@@ -141,22 +141,35 @@ func (s *Server) normalizeMemorySettingsInput(store storage.SettingsStorage, inp
 	if input.Enabled != nil {
 		settings.Enabled = *input.Enabled
 	}
-	if input.DreamAgent != nil {
-		settings.DreamAgent = acp.CanonicalAgentName(*input.DreamAgent)
+	if input.Agent != nil {
+		settings.Agent = acp.CanonicalAgentName(*input.Agent)
 	}
-	if settings.DreamAgent == "" {
+	if settings.Agent == "" {
 		return settings, nil
 	}
 	agentSettings, err := s.loadAgentSettings(store)
 	if err != nil {
 		return jazsettings.MemorySettings{}, err
 	}
-	if current, ok := agentSettings.ACP[settings.DreamAgent]; !ok {
-		return jazsettings.MemorySettings{}, fmt.Errorf("unknown dream agent %q", settings.DreamAgent)
-	} else if !current.Enabled {
-		return jazsettings.MemorySettings{}, fmt.Errorf("dream agent %q is not enabled", settings.DreamAgent)
+	if settings.Agent == acp.AgentJaz {
+		return jazsettings.MemorySettings{}, fmt.Errorf("built-in Jaz cannot be used as the memory agent yet")
+	}
+	if err := validateMemoryAgent(agentSettings, settings.Agent); err != nil {
+		return jazsettings.MemorySettings{}, err
 	}
 	return settings, nil
+}
+
+func validateMemoryAgent(agentSettings jazsettings.AgentDefaults, agent string) error {
+	if agent == "" {
+		return nil
+	}
+	if current, ok := agentSettings.ACP[agent]; !ok {
+		return fmt.Errorf("unknown memory agent %q", agent)
+	} else if !current.Enabled {
+		return fmt.Errorf("memory agent %q is not enabled", agent)
+	}
+	return nil
 }
 
 func (s *Server) handleMemoryHorizon(w http.ResponseWriter, r *http.Request) {

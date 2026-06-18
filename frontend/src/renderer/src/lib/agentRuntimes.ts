@@ -5,6 +5,7 @@ export const ACP_PROVIDER_MODE_AGENT = 'agent_defaults'
 // but hidden from selection and the settings providers list. Remove an id here
 // once the provider is ready to surface in the UI.
 const HIDDEN_PROVIDERS = new Set(['ollama'])
+const AUTH_REQUIRED_AGENTS = new Set(['codex', 'claude', 'grok', 'opencode'])
 
 export function providerHidden(id: string): boolean {
   return HIDDEN_PROVIDERS.has(id)
@@ -54,9 +55,17 @@ export function selectedACPModelProvider(
 }
 
 export function acpAgentEnableable(settings: AgentSettings | undefined, agent: string): boolean {
+  if (!acpAgentAuthReady(settings, agent)) return false
   if (!acpUsesModelProvider(settings, agent)) return true
   const provider = selectedACPModelProvider(settings, agent)
   return Boolean(provider && modelProviderConnected(provider))
+}
+
+function acpAgentAuthReady(settings: AgentSettings | undefined, agent: string): boolean {
+  const options = settings?.acp_options?.[agent]
+  if (options?.local || !AUTH_REQUIRED_AGENTS.has(agent)) return true
+  if (settings?.acp_auth?.[agent]?.authenticated) return true
+  return Boolean(settings?.acp_keys?.[agent]?.trim())
 }
 
 export function acpAgentEnabled(settings: AgentSettings | undefined, agent: string): boolean {

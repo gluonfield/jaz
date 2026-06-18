@@ -223,9 +223,11 @@ MCP client config:
 }
 ```
 
-Tools:
+Jaztools MCP tools for Jaz agents:
 
-- `memory_search`: input `{ "query": "...", "deep": true }` (`deep` optional); output `AgenticResponse`; requires the configured provider's key, such as `OPENROUTER_API_KEY` or `OPENAI_API_KEY`.
-- `memory_get`: input `{ "slug": "people/alice" }`; primary text content is raw markdown. Structured output is `{ "found": true, "slug": "...", "path": "...", "title": "...", "raw": "..." }` or `{ "found": false, "error": "not found: people/alice", "suggestions": [...] }`.
+- `memory_search`: input `{ "query": "...", "deep": true }` (`deep` optional); output is the delegated search worker's final text, usually containing an answer, references, checked pages, search notes, and meaningful gaps. It uses the configured Jaz memory-search ACP agent rather than direct jazmem provider keys.
+- `memory_get_page`: input `{ "path": "people/alice" }`; primary text content is raw markdown. Structured output is metadata such as `{ "found": true, "path": "...", "type": "...", "aliases": [...], "modified_at": "...", "links": [...], "backlinks": [...] }` or `{ "found": false, "error": "not found: people/alice", "suggestions": [...] }`.
+
+Standalone `jazmem-server` tools may differ from Jaztools and can require the provider-key-backed agentic mode described above.
 
 MCP is read-only. There is no MCP write/capture/index/dream tool. To store data, edit markdown directly. Indexing, dreaming, and link hygiene are CLI/server/scheduler operations.

@@ -67,6 +67,10 @@ func (s *Server) handleAgentSettings(w http.ResponseWriter, r *http.Request) {
 			writeError(w, status, err)
 			return
 		}
+		if err := s.validateEnabledACPAgentAuth(normalized); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
 		saved, err := agentsettings.SaveAgentDefaults(store, normalized)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
@@ -204,6 +208,41 @@ func compatibleModelProviderIDs(capability string, providers []settingsModelProv
 		}
 	}
 	return ids
+}
+
+func (s *Server) validateEnabledACPAgentAuth(defaults agentsettings.AgentDefaults) error {
+	for _, name := range s.allACPAgentNames() {
+		name = acp.CanonicalAgentName(name)
+		current, ok := defaults.ACP[name]
+		if !ok || !current.Enabled {
+			continue
+		}
+		cfg, _, err := s.acpProbeConfig(name, defaults)
+		if err != nil {
+			return err
+		}
+		if !enabledACPAgentRequiresAuth(name, cfg) {
+			continue
+		}
+		auth := acp.ProbeAgentAuthWithProviders(name, cfg, s.runtimeRoot(), nil, s.modelProviders())
+		if !auth.Authenticated {
+			reason := firstMessage(auth.Reason, "connect the agent or add an API key")
+			return fmt.Errorf("acp agent %q cannot be enabled without authentication: %s", name, reason)
+		}
+	}
+	return nil
+}
+
+func enabledACPAgentRequiresAuth(name string, cfg acp.AgentConfig) bool {
+	if cfg.Local || strings.TrimSpace(cfg.URL) != "" {
+		return false
+	}
+	switch acp.CanonicalAgentName(name) {
+	case acp.AgentCodex, acp.AgentClaude, acp.AgentGrok, acp.AgentOpenCode:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Server) agentSettingsSeed() agentsettings.AgentDefaults {

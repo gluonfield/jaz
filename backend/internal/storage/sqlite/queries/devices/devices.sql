@@ -196,6 +196,23 @@ INSERT INTO device_pairing_requests (
   sqlc.arg(expires_at_ms)
 );
 
+-- name: RejectPendingPairingRequestsForDevice :execrows
+UPDATE device_pairing_requests
+SET
+  status = 'rejected',
+  rejected_at_ms = sqlc.arg(rejected_at_ms)
+WHERE device_id = sqlc.arg(device_id)
+  AND status = 'pending';
+
+-- name: RejectOtherPendingPairingRequests :execrows
+UPDATE device_pairing_requests
+SET
+  status = 'rejected',
+  rejected_at_ms = sqlc.arg(rejected_at_ms)
+WHERE device_id = sqlc.arg(device_id)
+  AND id != sqlc.arg(id)
+  AND status = 'pending';
+
 -- name: GetPairingRequest :one
 SELECT
   p.id,

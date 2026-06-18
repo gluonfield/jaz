@@ -82,6 +82,7 @@ func runServe(args []string) error {
 			app.ConnectACPCompletion,
 			app.CloseMemory,
 			app.ConfigureMemoryDreamRunner,
+			app.ConfigureMemorySearchRunner,
 			app.StartMemoryScheduler,
 			startServer,
 			app.StartMCPManager,

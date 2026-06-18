@@ -65,6 +65,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
 		store,
 		sessionevents.New(),
+		store,
 		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
 	)
 	executor := &fakeExecutor{started: make(chan loops.Run, 1)}
@@ -82,7 +83,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		names[tool.Name] = true
 	}
 	for _, name := range []string{
-		"memory_search", "memory_get",
+		"memory_search", "memory_get_page",
 		"loop_list", "loop_get", "loop_create", "loop_update", "loop_run", "loop_delete",
 		"visualise:read_me", "visualise:show_widget",
 	} {
@@ -106,19 +107,21 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 	}
 
 	pageCall, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name:      "memory_get",
-		Arguments: map[string]any{"slug": "people/alice"},
+		Name:      "memory_get_page",
+		Arguments: map[string]any{"path": "people/alice"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	page := structured[struct {
 		Found bool   `json:"found"`
-		Slug  string `json:"slug"`
-		Raw   string `json:"raw"`
+		Path  string `json:"path"`
 	}](t, pageCall)
-	if !page.Found || page.Slug != "people/alice" || page.Raw == "" {
+	if !page.Found || page.Path != "people/alice" {
 		t.Fatalf("page = %#v", page)
+	}
+	if got := textContent(t, pageCall); got != "# Alice\n\nAlice works on Jaz tools.\n" {
+		t.Fatalf("page text = %q", got)
 	}
 
 	createCall, err := session.CallTool(context.Background(), &mcp.CallToolParams{
@@ -224,6 +227,7 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
 		store,
 		sessionevents.New(),
+		store,
 		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
@@ -301,6 +305,59 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 	}
 }
 
+func TestSearchWorkerSurfaceOnlyAdvertisesRawMemoryTools(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	memory, err := jazmem.Open(jazmem.Config{Root: t.TempDir(), DBPath: filepath.Join(t.TempDir(), "memory.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = memory.Close() })
+
+	widgetService := widgets.NewService(store, nil)
+	service := New(
+		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"),
+		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
+		store,
+		sessionevents.New(),
+		store,
+		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
+	)
+	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
+
+	searchSession, err := store.CreateSession(storage.CreateSession{
+		Slug:       "memory-search",
+		Runtime:    storage.RuntimeACP,
+		SourceType: storage.SourceMemorySearch,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if service.surface(sessionRequest(searchSession.ID)) != searchWorkerSurface {
+		t.Fatal("memory-search session did not route to search worker surface")
+	}
+	queryReq, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1/mcp/jaztools?jaztools_surface=memory_search_worker", nil)
+	if service.surface(queryReq) != searchWorkerSurface {
+		t.Fatal("memory-search surface query did not route to search worker surface")
+	}
+
+	worker, closeWorker := connectClient(t, service.server(searchWorkerSurface))
+	defer closeWorker()
+	for _, name := range []string{"jazmem_search_raw", "jazmem_get_page"} {
+		if !hasTool(t, worker, name) {
+			t.Fatalf("worker server missing %s", name)
+		}
+	}
+	for _, name := range []string{"memory_search", "memory_get_page", "loop_list", "visualise:read_me", "visualise:show_widget", "visualise:publish_widget"} {
+		if hasTool(t, worker, name) {
+			t.Fatalf("worker server advertised %s", name)
+		}
+	}
+}
+
 func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
@@ -322,13 +379,14 @@ func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
 		store,
 		sessionevents.New(),
+		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 
 	session, closeSession := connectClient(t, service.Server())
 	defer closeSession()
-	if hasTool(t, session, "memory_get") {
+	if hasTool(t, session, "memory_get_page") {
 		t.Fatal("memory tool advertised while memory is disabled")
 	}
 	if !hasTool(t, session, "loop_list") {
@@ -336,7 +394,7 @@ func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 	}
 	widgetSession, closeWidgetSession := connectClient(t, service.server(widgetSurface))
 	defer closeWidgetSession()
-	if hasTool(t, widgetSession, "memory_get") {
+	if hasTool(t, widgetSession, "memory_get_page") {
 		t.Fatal("widget memory tool advertised while memory is disabled")
 	}
 
@@ -344,10 +402,10 @@ func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 		t.Fatal(err)
 	}
 	service.Sync()
-	if !hasTool(t, session, "memory_get") {
+	if !hasTool(t, session, "memory_get_page") {
 		t.Fatal("memory tool not advertised after memory was enabled")
 	}
-	if !hasTool(t, widgetSession, "memory_get") {
+	if !hasTool(t, widgetSession, "memory_get_page") {
 		t.Fatal("widget memory tool not advertised after memory was enabled")
 	}
 
@@ -355,10 +413,10 @@ func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 		t.Fatal(err)
 	}
 	service.Sync()
-	if hasTool(t, session, "memory_get") {
+	if hasTool(t, session, "memory_get_page") {
 		t.Fatal("memory tool still advertised after memory was disabled")
 	}
-	if hasTool(t, widgetSession, "memory_get") {
+	if hasTool(t, widgetSession, "memory_get_page") {
 		t.Fatal("widget memory tool still advertised after memory was disabled")
 	}
 }
@@ -414,6 +472,21 @@ func structured[T any](t *testing.T, res *mcp.CallToolResult) T {
 	var out T
 	if err := json.Unmarshal(data, &out); err != nil {
 		t.Fatal(err)
+	}
+	return out
+}
+
+func textContent(t *testing.T, res *mcp.CallToolResult) string {
+	t.Helper()
+	if res.IsError {
+		t.Fatalf("tool error: %#v", res.Content)
+	}
+	var out string
+	for _, content := range res.Content {
+		text, ok := content.(*mcp.TextContent)
+		if ok {
+			out += text.Text
+		}
 	}
 	return out
 }

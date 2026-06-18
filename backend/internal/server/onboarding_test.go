@@ -12,6 +12,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/onboardingstate"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
+	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
@@ -86,6 +87,13 @@ func TestOnboardingAPIProbesAgentsAndSavesProviderKey(t *testing.T) {
 	assertRuntimeKeySaved(t, root)
 	assertACPKeySaved(t, root)
 	assertOnboardingStateSaved(t, root)
+	memorySettings, err := agentsettings.LoadMemorySettings(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if memorySettings.Agent != acp.AgentCodex {
+		t.Fatalf("memory agent = %q", memorySettings.Agent)
+	}
 	var saved struct {
 		Completed bool `json:"completed"`
 		Settings  struct {

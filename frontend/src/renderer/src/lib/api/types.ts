@@ -539,7 +539,7 @@ export interface MemoryDoctor {
 
 export interface MemoryStatus {
   enabled: boolean
-  dream_agent?: string
+  agent?: string
   scheduler_running: boolean
   root: string
   db_path: string

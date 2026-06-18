@@ -29,6 +29,12 @@ const (
 	StateNotRunning = "not_running"
 )
 
+const (
+	MCPServerPolicyAll                = ""
+	MCPServerPolicyJaztoolsOnly       = "jaztools_only"
+	MCPServerPolicyMemorySearchWorker = "memory_search_worker"
+)
+
 type Store interface {
 	CreateSession(storage.CreateSession) (storage.Session, error)
 	LoadSession(string) (storage.Session, error)
@@ -95,6 +101,7 @@ type SpawnRequest struct {
 	SourceType      string
 	SourceID        string
 	ArtifactSurface string
+	MCPServerPolicy string
 }
 
 type SendRequest struct {
@@ -270,7 +277,7 @@ func (m *Manager) sessionPromptMeta(agent, cwd, artifactSurface string) (map[str
 	return systemPromptMeta(agent, prompt), nil
 }
 
-func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent string, cfg AgentConfig, cwd, artifactSurface string) (acpSessionInfo, error) {
+func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string) (acpSessionInfo, error) {
 	meta, err := m.sessionMeta(agent, cfg, cwd, artifactSurface)
 	if err != nil {
 		return acpSessionInfo{}, err
@@ -282,7 +289,7 @@ func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent string
 	}{
 		Meta:       meta,
 		Cwd:        cwd,
-		MCPServers: m.mcpServersForAgent(ctx, ac.initRaw),
+		MCPServers: m.mcpServersForAgent(ctx, ac.initRaw, mcpServerPolicy),
 	}
 	sessionRaw, err := ac.peer.Call(ctx, acpschema.AgentMethodSessionNew, newSession)
 	if err != nil {
@@ -361,7 +368,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	if err != nil {
 		return fail(err)
 	}
-	acpSession, err := m.newACPSession(mcpsession.With(ctx, session.ID), ac, req.ACPAgent, cfg, absCwd, session.RuntimeRef.ArtifactSurface)
+	acpSession, err := m.newACPSession(mcpsession.With(ctx, session.ID), ac, req.ACPAgent, cfg, absCwd, session.RuntimeRef.ArtifactSurface, session.RuntimeRef.MCPServerPolicy)
 	if err != nil {
 		ac.close()
 		return fail(err)
@@ -547,7 +554,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 		}{
 			Meta:       meta,
 			Cwd:        cwd,
-			MCPServers: m.mcpServersForAgent(mcpCtx, ac.initRaw),
+			MCPServers: m.mcpServersForAgent(mcpCtx, ac.initRaw, session.RuntimeRef.MCPServerPolicy),
 			SessionID:  acpschema.SessionID(storedID),
 		})
 		if err == nil {
@@ -563,7 +570,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 		}
 		// The agent lost this session — fall through to a fresh one.
 	}
-	acpSession, err := m.newACPSession(mcpsession.With(ctx, session.ID), ac, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface)
+	acpSession, err := m.newACPSession(mcpsession.With(ctx, session.ID), ac, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, session.RuntimeRef.MCPServerPolicy)
 	if err != nil {
 		return "", ModeState{}, err
 	}

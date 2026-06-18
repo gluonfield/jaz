@@ -191,11 +191,14 @@ function ACPAgentRow({
   const selectedProvider = selectedACPModelProvider(settings, agent)
   const providerReady = acpAgentEnableable(settings, agent)
   const checked = acpAgentEnabled(settings, agent)
+  const authReady = Boolean(authStatus?.authenticated || settings.acp_keys?.[agent]?.trim())
   const enableDescription = providerReady
     ? 'Show this ACP client in agent pickers.'
-    : selectedProvider
+    : usesModelProvider && selectedProvider
       ? `Connect ${selectedProvider.label} in Model Providers before enabling.`
-      : 'Select a provider before enabling.'
+      : supportsAuth && !authReady
+        ? `Connect ${authProviderLabel(agent)} or add an API key before enabling.`
+        : 'Select a provider before enabling.'
   const [commandOpen, setCommandOpen] = useState(requiresCommand && (current.command ?? '').trim() === '')
   const openRouterModels = useQuery({
     ...openRouterModelsQuery,
