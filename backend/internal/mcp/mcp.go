@@ -56,6 +56,9 @@ type Manager struct {
 	refresh  uint64
 
 	proxyMu sync.Mutex
+
+	handlerOnce sync.Once
+	handler     http.Handler
 }
 
 type Option func(*Manager)
@@ -268,10 +271,16 @@ func (m *Manager) Close() {
 }
 
 func (m *Manager) Handler() http.Handler {
-	return mcpsdk.NewStreamableHTTPHandler(func(req *http.Request) *mcpsdk.Server {
-		m.ensureProxyReady(req.Context())
-		return m.proxyServer()
-	}, &mcpsdk.StreamableHTTPOptions{JSONResponse: true})
+	m.handlerOnce.Do(func() {
+		m.handler = mcpsdk.NewStreamableHTTPHandler(func(req *http.Request) *mcpsdk.Server {
+			m.ensureProxyReady(req.Context())
+			return m.proxyServer()
+		}, &mcpsdk.StreamableHTTPOptions{
+			JSONResponse:   true,
+			SessionTimeout: 30 * time.Minute,
+		})
+	})
+	return m.handler
 }
 
 func (m *Manager) ensureProxyReady(ctx context.Context) {

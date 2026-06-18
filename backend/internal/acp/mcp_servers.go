@@ -51,6 +51,9 @@ func enabledHTTPMCPServers(ctx context.Context, store mcpconfig.ServerReader, po
 		if !server.Enabled {
 			continue
 		}
+		if server.Transport != mcpconfig.TransportStreamableHTTP {
+			continue
+		}
 		if !mcpServerAllowed(policy, server) {
 			continue
 		}

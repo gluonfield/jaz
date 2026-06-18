@@ -182,6 +182,15 @@ func TestManagerProxyHandlerExposesSafeRemoteTools(t *testing.T) {
 	}
 }
 
+func TestManagerProxyHandlerIsStable(t *testing.T) {
+	manager := NewManager(&testStore{}, nil, tools.NewRegistry(), log.New(io.Discard))
+	defer manager.Close()
+
+	if manager.Handler() != manager.Handler() {
+		t.Fatal("proxy handler must be stable so streamable MCP sessions survive across requests")
+	}
+}
+
 func TestManagerRefreshLocalCanUseLocalServer(t *testing.T) {
 	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "local-mcp", Version: "1.0.0"}, nil)
 	mcpsdk.AddTool(server, &mcpsdk.Tool{
