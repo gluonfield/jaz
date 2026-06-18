@@ -80,8 +80,8 @@ export function ModelBreakdown({
             Total = Input + Cache read + Cache write + Output.
           </p>
           <p className="mt-1 text-[11px] text-ink-3">
-            Cost is estimated at official per-token list prices (OpenRouter). Coding agents on monthly
-            subscriptions bill differently — the real cost is usually lower.
+            Cost is an OpenRouter list-price equivalent for subscription-backed coding-agent usage,
+            not the actual subscription bill.
             {unpriced > 0
               ? ` ${unpriced} model${unpriced === 1 ? '' : 's'} without list pricing show no cost.`
               : ''}
