@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,7 +16,7 @@ import (
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
-func TestSessionQueueActionReplacesQueuedMessages(t *testing.T) {
+func TestSessionQueueActionAppendsQueuedMessage(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -25,7 +26,7 @@ func TestSessionQueueActionReplacesQueuedMessages(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"messages":[{"text":" one "},{"text":""},{"text":"two"}]}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"append","message":{"text":" one "}}`))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 
@@ -38,15 +39,21 @@ func TestSessionQueueActionReplacesQueuedMessages(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if queuedTexts(got.QueuedMessages) != "one|two" {
+	if queuedTexts(got.QueuedMessages) != "one" {
 		t.Fatalf("response queue = %#v", got.QueuedMessages)
+	}
+	if got.QueuedMessages[0].ID == "" {
+		t.Fatalf("response queue missing id: %#v", got.QueuedMessages)
 	}
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if queuedTexts(loaded.QueuedMessages) != "one|two" {
+	if queuedTexts(loaded.QueuedMessages) != "one" {
 		t.Fatalf("stored queue = %#v", loaded.QueuedMessages)
+	}
+	if loaded.QueuedMessages[0].ID == "" {
+		t.Fatalf("stored queue missing id: %#v", loaded.QueuedMessages)
 	}
 }
 
@@ -64,7 +71,8 @@ func TestSessionQueueActionMutatesStoredQueue(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"edit","index":1,"expected":"second","message":{"text":"changed"}}`))
+	secondID := queuedMessageID(t, store, session.ID, "second")
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"edit","id":"`+secondID+`","message":{"text":"changed"}}`))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 
@@ -81,14 +89,14 @@ func TestSessionQueueActionMutatesStoredQueue(t *testing.T) {
 		t.Fatalf("queue = %#v", loaded.QueuedMessages)
 	}
 
-	req = httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"delete","index":1,"expected":"second"}`))
+	req = httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"delete","id":"missing"}`))
 	req.Header.Set("Content-Type", "application/json")
 	res = httptest.NewRecorder()
 
 	(&Server{Store: store}).Handler().ServeHTTP(res, req)
 
 	if res.Code == http.StatusOK {
-		t.Fatal("expected stale expected text to be rejected")
+		t.Fatal("expected stale queued prompt id to be rejected")
 	}
 	loaded, err = store.LoadSession(session.ID)
 	if err != nil {
@@ -96,6 +104,49 @@ func TestSessionQueueActionMutatesStoredQueue(t *testing.T) {
 	}
 	if queuedTexts(loaded.QueuedMessages) != "first|changed" {
 		t.Fatalf("stale mutation changed queue: %#v", loaded.QueuedMessages)
+	}
+}
+
+func TestSessionQueueActionReordersQueuedMessagesByID(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "queue-reorder"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.QueuedMessages = queuedMessages("first", "second", "third")
+	if err := store.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+
+	firstID := queuedMessageID(t, store, session.ID, "first")
+	secondID := queuedMessageID(t, store, session.ID, "second")
+	thirdID := queuedMessageID(t, store, session.ID, "third")
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"reorder","ids":["`+thirdID+`","`+firstID+`","`+secondID+`"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if queuedTexts(loaded.QueuedMessages) != "third|first|second" {
+		t.Fatalf("queue = %#v", loaded.QueuedMessages)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"reorder","ids":["`+thirdID+`","`+thirdID+`","`+firstID+`"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	res = httptest.NewRecorder()
+	(&Server{Store: store}).Handler().ServeHTTP(res, req)
+	if res.Code == http.StatusOK {
+		t.Fatal("expected duplicate queued prompt ids to be rejected")
 	}
 }
 
@@ -148,7 +199,8 @@ func TestSessionQueueAttentionFollowsUserSendNotQueueEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"edit","index":0,"expected":"first","message":{"text":"changed"}}`))
+	firstID := queuedMessageID(t, store, session.ID, "first")
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"edit","id":"`+firstID+`","message":{"text":"changed"}}`))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 	(&Server{Store: store}).Handler().ServeHTTP(res, req)
@@ -206,7 +258,7 @@ func TestSessionQueueActionDoesNotWaitForRunningACPTurn(t *testing.T) {
 		State: acp.StateRunning,
 	}}}
 
-	queueReq := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"messages":[{"text":"queued while running"}]}`))
+	queueReq := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"append","message":{"text":"queued while running"}}`))
 	queueReq.Header.Set("Content-Type", "application/json")
 	queueRes := httptest.NewRecorder()
 	queueDone := make(chan struct{})
@@ -236,10 +288,30 @@ func TestSessionQueueActionDoesNotWaitForRunningACPTurn(t *testing.T) {
 
 func queuedMessages(texts ...string) []storage.QueuedMessage {
 	out := make([]storage.QueuedMessage, 0, len(texts))
-	for _, text := range texts {
-		out = append(out, storage.NewQueuedMessage(text, nil))
+	for i, text := range texts {
+		message := storage.NewQueuedMessage(text, nil)
+		message.ID = fmt.Sprintf("queue-test-%d", i)
+		out = append(out, message)
 	}
 	return out
+}
+
+func queuedMessageID(t *testing.T, store storage.SessionStore, sessionID string, text string) string {
+	t.Helper()
+	session, err := store.LoadSession(sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range session.QueuedMessages {
+		if message.Text == text {
+			if message.ID == "" {
+				t.Fatalf("queued message %q has no id: %#v", text, session.QueuedMessages)
+			}
+			return message.ID
+		}
+	}
+	t.Fatalf("queued message %q not found in %#v", text, session.QueuedMessages)
+	return ""
 }
 
 func queuedTexts(messages []storage.QueuedMessage) string {
@@ -271,6 +343,7 @@ func TestACPTurnFinishedDrainsQueuedPromptWithoutActiveClient(t *testing.T) {
 	}
 	session.Status = storage.StatusRunning
 	session.QueuedMessages = queuedMessages("next prompt")
+	session.QueuedMessages[0].PlanRequested = true
 	if err := store.SaveSession(session); err != nil {
 		t.Fatal(err)
 	}
@@ -303,6 +376,9 @@ func TestACPTurnFinishedDrainsQueuedPromptWithoutActiveClient(t *testing.T) {
 	}
 	if sent.Completion != acp.CompletionAsync || !sent.Interactive {
 		t.Fatalf("queued send should be async interactive: %#v", sent)
+	}
+	if !sent.PlanRequested {
+		t.Fatalf("queued send did not preserve plan mode: %#v", sent)
 	}
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
@@ -433,7 +509,8 @@ func TestSessionQueueSteerClaimsOnePromptForRunningACP(t *testing.T) {
 		State: acp.StateRunning,
 	}}
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"steer","index":1,"expected":"second"}`))
+	secondID := queuedMessageID(t, store, session.ID, "second")
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"steer","id":"`+secondID+`"}`))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 
@@ -500,7 +577,8 @@ func TestSessionQueueSteerShowsPendingBeforeRunningACPStops(t *testing.T) {
 		cancelRelease: make(chan struct{}),
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"steer","index":0,"expected":"first"}`))
+	firstID := queuedMessageID(t, store, session.ID, "first")
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"steer","id":"`+firstID+`"}`))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 
@@ -554,9 +632,9 @@ func TestSessionQueueSteerSendsAttachmentsForRunningACP(t *testing.T) {
 	srv := &Server{Store: store, Workspace: workspace}
 	attachment := uploadTestAttachment(t, srv.Handler(), session.ID, "image.png", "image-bytes")
 	session.Status = storage.StatusRunning
-	session.QueuedMessages = []storage.QueuedMessage{
-		storage.NewQueuedMessage("inspect this", []string{attachment.ID}),
-	}
+	message := storage.NewQueuedMessage("inspect this", []string{attachment.ID})
+	message.ID = "queue-test-0"
+	session.QueuedMessages = []storage.QueuedMessage{message}
 	if err := store.SaveSession(session); err != nil {
 		t.Fatal(err)
 	}
@@ -567,7 +645,7 @@ func TestSessionQueueSteerSendsAttachmentsForRunningACP(t *testing.T) {
 	}}
 	srv.ACP = manager
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"steer","index":0}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"steer","id":"queue-test-0"}`))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(res, req)
@@ -621,7 +699,8 @@ func TestSessionQueueSteerUsesServerContextAfterRequestCancel(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"steer","index":0}`)).WithContext(ctx)
+	promptID := queuedMessageID(t, store, session.ID, "steer even after request cancel")
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"steer","id":"`+promptID+`"}`)).WithContext(ctx)
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 
@@ -667,7 +746,8 @@ func TestSessionQueueSteerStartsIdleACPFromBackend(t *testing.T) {
 		State: acp.StateIdle,
 	}}
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"steer","index":0}`))
+	promptID := queuedMessageID(t, store, session.ID, "start this now")
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"steer","id":"`+promptID+`"}`))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 
@@ -720,7 +800,8 @@ func TestSessionQueueSteerRestoresPromptWhenSendFails(t *testing.T) {
 		sendErr: errors.New("steer failed"),
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"steer","index":1,"expected":"second"}`))
+	secondID := queuedMessageID(t, store, session.ID, "second")
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"steer","id":"`+secondID+`"}`))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 

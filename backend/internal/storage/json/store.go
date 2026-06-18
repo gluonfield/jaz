@@ -151,6 +151,7 @@ func (s *Store) SaveSession(session storage.Session) error {
 }
 
 func (s *Store) saveSession(session storage.Session) error {
+	session = storage.CanonicalSessionQueue(session)
 	if session.ID == "" {
 		return fmt.Errorf("session id is empty")
 	}
@@ -583,7 +584,7 @@ func (s *Store) loadSessionByID(id string) (storage.Session, error) {
 	if session.Status == "" {
 		session.Status = storage.StatusIdle
 	}
-	return session, nil
+	return storage.CanonicalSessionQueue(session), nil
 }
 
 var slugUnsafe = regexp.MustCompile(`[^a-z0-9]+`)

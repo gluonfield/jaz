@@ -890,7 +890,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                   onSteerQueuedPrompt={queue.onSteerQueuedPrompt}
                   onDeleteQueuedPrompt={queue.onDeleteQueuedPrompt}
                   onEditQueuedPrompt={queue.onEditQueuedPrompt}
-                  onMoveQueuedPrompt={queue.onMoveQueuedPrompt}
+                  onReorderQueuedPrompts={queue.onReorderQueuedPrompts}
                 />
               )}
             </BottomDock>

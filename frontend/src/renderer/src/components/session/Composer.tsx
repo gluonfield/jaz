@@ -429,7 +429,7 @@ export function Composer({
   onSteerQueuedPrompt,
   onDeleteQueuedPrompt,
   onEditQueuedPrompt,
-  onMoveQueuedPrompt,
+  onReorderQueuedPrompts,
 }: {
   streaming: boolean
   disabled?: boolean
@@ -445,10 +445,10 @@ export function Composer({
   onStop: () => void
   onVoice?: () => void
   onUploadAttachment?: (file: File) => Promise<Attachment>
-  onSteerQueuedPrompt?: (index: number) => void
-  onDeleteQueuedPrompt?: (index: number) => void
-  onEditQueuedPrompt?: (index: number, text: string) => void
-  onMoveQueuedPrompt?: (from: number, to: number) => void
+  onSteerQueuedPrompt?: (id: string) => void
+  onDeleteQueuedPrompt?: (id: string) => void
+  onEditQueuedPrompt?: (id: string, text: string) => void
+  onReorderQueuedPrompts?: (ids: string[]) => void
 }) {
   return (
     <>
@@ -457,14 +457,14 @@ export function Composer({
         onSteerQueuedPrompt &&
         onDeleteQueuedPrompt &&
         onEditQueuedPrompt &&
-        onMoveQueuedPrompt ? (
+        onReorderQueuedPrompts ? (
           <QueuedPromptList
             prompts={queuedPrompts}
             steerDisabled={steerDisabled}
             onSteer={onSteerQueuedPrompt}
             onDelete={onDeleteQueuedPrompt}
             onEdit={onEditQueuedPrompt}
-            onMove={onMoveQueuedPrompt}
+            onReorder={onReorderQueuedPrompts}
           />
         ) : null}
       </AnimatePresence>

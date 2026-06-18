@@ -1,8 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useToast } from '@/components/ui/toast'
 import { mutateSessionQueue, type QueueMutation, uploadSessionAttachment } from '@/lib/api/sessions'
-import type { QueuedMessage, Session, SessionMessages } from '@/lib/api/types'
+import type { QueuedMessage, QueuedMessageInput, Session, SessionMessages } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 
@@ -21,26 +21,32 @@ export function useSessionQueue({
 }) {
   const queryClient = useQueryClient()
   const toast = useToast()
+  const mutationChain = useRef<Promise<unknown>>(Promise.resolve())
   const queuedPrompts = normalizeQueuedPrompts(session?.queued_messages ?? [])
   const running = isSessionRunning({ session, acpState, streaming })
 
-  const mutateQueue = useCallback(async (mutation: QueueMutation, optimisticPrompts: QueuedMessage[]) => {
-    const next = normalizeQueuedPrompts(optimisticPrompts)
-    queryClient.setQueryData<SessionMessages>(keys.sessionMessages(sessionId), (prev) =>
-      prev ? { ...prev, session: { ...prev.session, queued_messages: next } } : prev,
-    )
-    try {
-      const updated = await mutateSessionQueue(sessionId, mutation)
-      queryClient.setQueryData<SessionMessages>(keys.sessionMessages(sessionId), (prev) =>
-        prev ? { ...prev, session: { ...prev.session, ...updated } } : prev,
-      )
-      queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
-      queryClient.invalidateQueries({ queryKey: keys.allSessions })
-      return updated.queued_messages ?? []
-    } catch (error) {
-      queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
-      throw error
+  useEffect(() => {
+    mutationChain.current = Promise.resolve()
+  }, [sessionId])
+
+  const mutateQueue = useCallback((mutation: QueueMutation) => {
+    const run = async () => {
+      try {
+        const updated = await mutateSessionQueue(sessionId, mutation)
+        queryClient.setQueryData<SessionMessages>(keys.sessionMessages(sessionId), (prev) =>
+          prev ? { ...prev, session: { ...prev.session, ...updated } } : prev,
+        )
+        queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
+        queryClient.invalidateQueries({ queryKey: keys.allSessions })
+        return updated.queued_messages ?? []
+      } catch (error) {
+        queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
+        throw error
+      }
     }
+    const next = mutationChain.current.then(run, run)
+    mutationChain.current = next.catch(() => undefined)
+    return next
   }, [queryClient, sessionId])
 
   const showQueueError = useCallback((error: unknown) => {
@@ -59,44 +65,30 @@ export function useSessionQueue({
         ]
         const prompt = normalizeQueuedPrompt({ text, attachment_ids: attachmentIDs, plan_requested: options.planRequested })
         if (!prompt) return
-        await mutateQueue(
-          { op: 'append', message: prompt },
-          [...queuedPrompts, prompt],
-        )
+        await mutateQueue({ op: 'append', message: prompt })
       })().catch(showQueueError)
       return
     }
     onSend(text, options)
-  }, [mutateQueue, onSend, queuedPrompts, running, sessionId, showQueueError])
+  }, [mutateQueue, onSend, running, sessionId, showQueueError])
 
-  const deletePrompt = useCallback((index: number) => {
-    void mutateQueue(
-      { op: 'delete', index, expected: queuedPrompts[index]?.text },
-      removeQueuedPrompt(queuedPrompts, index),
-    ).catch(showQueueError)
-  }, [mutateQueue, queuedPrompts, showQueueError])
+  const deletePrompt = useCallback((id: string) => {
+    void mutateQueue({ op: 'delete', id }).catch(showQueueError)
+  }, [mutateQueue, showQueueError])
 
-  const editPrompt = useCallback((index: number, text: string) => {
-    void mutateQueue(
-      { op: 'edit', index, message: { text }, expected: queuedPrompts[index]?.text },
-      queuedPrompts.map((prompt, i) => (i === index ? { ...prompt, text } : prompt)),
-    ).catch(showQueueError)
-  }, [mutateQueue, queuedPrompts, showQueueError])
+  const editPrompt = useCallback((id: string, text: string) => {
+    void mutateQueue({ op: 'edit', id, message: { text } }).catch(showQueueError)
+  }, [mutateQueue, showQueueError])
 
-  const movePrompt = useCallback((from: number, to: number) => {
-    void mutateQueue(
-      { op: 'move', from, to, expected: queuedPrompts[from]?.text },
-      moveQueuedPrompt(queuedPrompts, from, to),
-    ).catch(showQueueError)
-  }, [mutateQueue, queuedPrompts, showQueueError])
+  const reorderPrompts = useCallback((ids: string[]) => {
+    void mutateQueue({ op: 'reorder', ids }).catch(showQueueError)
+  }, [mutateQueue, showQueueError])
 
-  const steerPrompt = useCallback((index: number) => {
-    const prompt = queuedPrompts[index]
-    if (!prompt || !session) return
-    const nextQueue = removeQueuedPrompt(queuedPrompts, index)
+  const steerPrompt = useCallback((id: string) => {
+    if (!session) return
     void (async () => {
       try {
-        await mutateQueue({ op: 'steer', index, expected: prompt.text }, nextQueue)
+        await mutateQueue({ op: 'steer', id })
         queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
         queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
         queryClient.invalidateQueries({ queryKey: keys.allSessions })
@@ -105,7 +97,7 @@ export function useSessionQueue({
         toast(`Couldn't steer prompt: ${(error as Error).message}`, 'danger')
       }
     })()
-  }, [mutateQueue, queryClient, queuedPrompts, session, sessionId, toast])
+  }, [mutateQueue, queryClient, session, sessionId, toast])
 
   return {
     queuedPrompts,
@@ -115,7 +107,7 @@ export function useSessionQueue({
     onSteerQueuedPrompt: steerPrompt,
     onDeleteQueuedPrompt: deletePrompt,
     onEditQueuedPrompt: editPrompt,
-    onMoveQueuedPrompt: movePrompt,
+    onReorderQueuedPrompts: reorderPrompts,
   }
 }
 
@@ -136,33 +128,21 @@ function isSessionRunning({
 }
 
 function normalizeQueuedPrompts(prompts: QueuedMessage[]): QueuedMessage[] {
-  return prompts.flatMap((prompt) => {
+  return prompts.flatMap((prompt, index) => {
     const normalized = normalizeQueuedPrompt(prompt)
-    return normalized ? [normalized] : []
+    if (!normalized) return []
+    return [{ ...normalized, id: normalized.id?.trim() || `legacy-${index}` }]
   })
 }
 
-function normalizeQueuedPrompt(prompt: QueuedMessage): QueuedMessage | null {
+function normalizeQueuedPrompt(prompt: QueuedMessageInput): QueuedMessageInput | null {
   const text = prompt.text.trim()
   if (!text) return null
   const attachmentIds = (prompt.attachment_ids ?? []).map((id) => id.trim()).filter(Boolean)
   return {
+    ...(prompt.id?.trim() ? { id: prompt.id.trim() } : {}),
     text,
     ...(attachmentIds.length ? { attachment_ids: attachmentIds } : {}),
     ...(prompt.plan_requested ? { plan_requested: true } : {}),
   }
-}
-
-function removeQueuedPrompt(prompts: QueuedMessage[], index: number): QueuedMessage[] {
-  return prompts.filter((_, i) => i !== index)
-}
-
-function moveQueuedPrompt(prompts: QueuedMessage[], from: number, to: number): QueuedMessage[] {
-  if (from === to || from < 0 || from >= prompts.length || to < 0 || to >= prompts.length) {
-    return prompts
-  }
-  const next = [...prompts]
-  const [item] = next.splice(from, 1)
-  next.splice(to, 0, item)
-  return next
 }

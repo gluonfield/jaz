@@ -7,6 +7,7 @@ import (
 )
 
 type QueuedMessage struct {
+	ID            string   `json:"id,omitempty"`
 	Text          string   `json:"text"`
 	AttachmentIDs []string `json:"attachment_ids,omitempty"`
 	PlanRequested bool     `json:"plan_requested,omitempty"`
@@ -27,7 +28,47 @@ func NormalizeQueuedMessages(messages []QueuedMessage) []QueuedMessage {
 	return out
 }
 
+func CanonicalQueuedMessages(messages []QueuedMessage) []QueuedMessage {
+	messages = NormalizeQueuedMessages(messages)
+	if len(messages) == 0 {
+		return nil
+	}
+	out := append([]QueuedMessage(nil), messages...)
+	seen := make(map[string]bool, len(out))
+	for i := range out {
+		id := strings.TrimSpace(out[i].ID)
+		if id == "" || seen[id] {
+			id = legacyQueuedMessageID(i, seen)
+		}
+		out[i].ID = id
+		seen[id] = true
+	}
+	return out
+}
+
+func CanonicalSessionQueue(session Session) Session {
+	session.QueuedMessages = CanonicalQueuedMessages(session.QueuedMessages)
+	if session.PendingSteer != nil {
+		pending := CanonicalQueuedMessages([]QueuedMessage{*session.PendingSteer})
+		if len(pending) > 0 {
+			session.PendingSteer = &pending[0]
+		} else {
+			session.PendingSteer = nil
+		}
+	}
+	return session
+}
+
+func legacyQueuedMessageID(index int, seen map[string]bool) string {
+	id := fmt.Sprintf("legacy-%d", index)
+	for n := 2; seen[id]; n++ {
+		id = fmt.Sprintf("legacy-%d-%d", index, n)
+	}
+	return id
+}
+
 func NormalizeQueuedMessage(message QueuedMessage) (QueuedMessage, bool) {
+	message.ID = strings.TrimSpace(message.ID)
 	message.Text = strings.TrimSpace(message.Text)
 	message.AttachmentIDs = normalizeQueuedAttachmentIDs(message.AttachmentIDs)
 	return message, message.Text != ""
@@ -101,7 +142,7 @@ func UnmarshalQueuedMessages(raw string) ([]QueuedMessage, error) {
 		}
 		messages = append(messages, NewQueuedMessage(text, nil))
 	}
-	return NormalizeQueuedMessages(messages), nil
+	return CanonicalQueuedMessages(messages), nil
 }
 
 func UnmarshalQueuedMessage(raw string) (*QueuedMessage, error) {
@@ -115,7 +156,8 @@ func UnmarshalQueuedMessage(raw string) (*QueuedMessage, error) {
 		if !ok {
 			return nil, nil
 		}
-		return &normalized, nil
+		canonical := CanonicalQueuedMessages([]QueuedMessage{normalized})
+		return &canonical[0], nil
 	}
 	var text string
 	if err := json.Unmarshal([]byte(raw), &text); err != nil {
@@ -125,5 +167,6 @@ func UnmarshalQueuedMessage(raw string) (*QueuedMessage, error) {
 	if !ok {
 		return nil, nil
 	}
-	return &normalized, nil
+	canonical := CanonicalQueuedMessages([]QueuedMessage{normalized})
+	return &canonical[0], nil
 }

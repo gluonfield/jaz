@@ -7,7 +7,7 @@ import {
   type DailyUsage,
   type HealthResponse,
   type ModelUsage,
-  type QueuedMessage,
+  type QueuedMessageInput,
   type RepoChanges,
   type RepoFileChange,
   type RepoFilePatch,
@@ -307,12 +307,11 @@ export function cancelSession(id: string): Promise<{ ok: boolean }> {
 }
 
 export type QueueMutation =
-  | { op: 'append'; message: QueuedMessage }
-  | { op: 'delete'; index: number; expected?: string }
-  | { op: 'edit'; index: number; message: { text: string }; expected?: string }
-  | { op: 'move'; from: number; to: number; expected?: string }
-  | { op: 'steer'; index: number; expected?: string }
-  | { op: 'replace'; messages: QueuedMessage[] }
+  | { op: 'append'; message: QueuedMessageInput }
+  | { op: 'delete'; id: string }
+  | { op: 'edit'; id: string; message: { text: string } }
+  | { op: 'reorder'; ids: string[] }
+  | { op: 'steer'; id: string }
 
 export function mutateSessionQueue(id: string, mutation: QueueMutation): Promise<Session> {
   return post<Session>(`/v1/sessions/${id}/queue`, mutation)
