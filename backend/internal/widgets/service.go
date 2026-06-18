@@ -37,6 +37,12 @@ type PublishInput struct {
 	HTML     string
 }
 
+type RunPublishState struct {
+	Widget    Widget
+	Enabled   bool
+	Published bool
+}
+
 // WidgetDir returns the loop's widget codebase directory, derived from the
 // memory path so the widget lives next to memory.md.
 func WidgetDir(loop loops.Loop) string {
@@ -154,6 +160,65 @@ func (s *Service) LoopArtifactSurface(loop loops.Loop, _ loops.Run) string {
 func (s *Service) WidgetEnabled(loopID string) bool {
 	_, boards, found, err := s.StateForLoop(loopID)
 	return err == nil && found && len(boards) > 0
+}
+
+func (s *Service) RunPublishState(loopID, runID string) (RunPublishState, error) {
+	widget, found, err := s.Repo.LoadWidgetByLoop(loopID)
+	if err != nil || !found {
+		return RunPublishState{}, err
+	}
+	boards, err := s.Repo.ListBoardsForWidget(widget.ID)
+	if err != nil {
+		return RunPublishState{}, err
+	}
+	state := RunPublishState{Widget: widget, Enabled: len(boards) > 0}
+	if !state.Enabled || widget.CurrentVersion <= 0 {
+		return state, nil
+	}
+	version, err := s.Repo.LoadWidgetVersion(widget.ID, widget.CurrentVersion)
+	if err != nil {
+		return RunPublishState{}, err
+	}
+	state.Published = strings.TrimSpace(version.ProducedByRunID) == strings.TrimSpace(runID)
+	return state, nil
+}
+
+func (s *Service) EnsureRunPublished(loop loops.Loop, run loops.Run) error {
+	state, err := s.RunPublishState(loop.ID, run.ID)
+	if err != nil || !state.Enabled || state.Published {
+		return err
+	}
+	if err := widgetFileUpdatedForRun(loop, run); err != nil {
+		s.reportPublishError(state.Widget.ID, err)
+		return err
+	}
+	if _, _, err := s.Publish(loop, run.ID, PublishInput{}); err != nil {
+		err = fmt.Errorf("widget was not published by this run; call visualise:publish_widget after writing widget/index.html; automatic publish failed: %w", err)
+		s.reportPublishError(state.Widget.ID, err)
+		return err
+	}
+	return nil
+}
+
+func widgetFileUpdatedForRun(loop loops.Loop, run loops.Run) error {
+	if run.StartedAt.IsZero() {
+		return nil
+	}
+	path := WidgetFilePath(loop)
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("widget was not published by this run; call visualise:publish_widget after writing widget/index.html; stat widget file %s: %w", path, err)
+	}
+	if info.ModTime().Before(run.StartedAt) {
+		return fmt.Errorf("widget was not published by this run; widget/index.html was not updated during this run")
+	}
+	return nil
+}
+
+func (s *Service) reportPublishError(widgetID string, err error) {
+	if widgetID != "" && err != nil {
+		_ = s.ReportError(widgetID, err.Error())
+	}
 }
 
 func (s *Service) ReportError(widgetID, message string) error {

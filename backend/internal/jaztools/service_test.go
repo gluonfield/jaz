@@ -286,6 +286,10 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 	if !service.widgetSession(sessionRequest(loopRun.ID)) {
 		t.Fatal("assigned widget loop-run session did not enable widget publishing")
 	}
+	widgetQueryReq, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1/mcp/jaztools?jaztools_surface=widget", nil)
+	if service.surface(widgetQueryReq) != widgetSurface {
+		t.Fatal("widget surface query did not route to widget surface")
+	}
 
 	base, closeBase := connectClient(t, service.Server())
 	defer closeBase()

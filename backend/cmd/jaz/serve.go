@@ -256,7 +256,7 @@ func startServer(
 		}, nil
 	}
 	manager.TurnFinished = func(ctx context.Context, job acp.Job) {
-		finishLoopFromACP(loopService, logger, job)
+		finishLoopFromACP(loopService, widgetPublisher, logger, job)
 		handler.HandleACPTurnFinished(ctx, job)
 	}
 	srv := &http.Server{
@@ -316,22 +316,36 @@ func reloadableProvider(p provider.Provider) provider.ReloadableProvider {
 	return control
 }
 
-func finishLoopFromACP(service *loops.Service, logger *log.Logger, job acp.Job) {
+func finishLoopFromACP(service *loops.Service, widgetPublisher *widgets.SessionPublisher, logger *log.Logger, job acp.Job) {
 	if service == nil || job.ID == "" {
 		return
 	}
 	status := loops.RunStatusOK
+	errText := job.Error
 	switch job.State {
 	case acp.StateFailed:
 		status = loops.RunStatusError
 	case acp.StateCancelled:
 		status = loops.RunStatusCancelled
 	}
-	if _, ok, err := service.FinishThread(job.ID, status, job.Error); err != nil {
+	if status == loops.RunStatusOK {
+		if err := ensureWidgetRunPublished(widgetPublisher, job.ID); err != nil {
+			status = loops.RunStatusError
+			errText = err.Error()
+		}
+	}
+	if _, ok, err := service.FinishThread(job.ID, status, errText); err != nil {
 		logger.WithPrefix("loops").Error("finishing loop run from acp state failed", "session", job.ID, "error", err)
 	} else if ok {
 		logger.WithPrefix("loops").Info("loop run finished", "session", job.ID, "state", job.State)
 	}
+}
+
+func ensureWidgetRunPublished(widgetPublisher *widgets.SessionPublisher, threadID string) error {
+	if widgetPublisher == nil {
+		return nil
+	}
+	return widgetPublisher.EnsurePublishedForSession(threadID)
 }
 
 func stopHTTPServer(ctx context.Context, srv *http.Server) error {

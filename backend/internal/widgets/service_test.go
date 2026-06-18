@@ -2,6 +2,7 @@ package widgets_test
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -103,6 +104,75 @@ func TestPublishKeepsCurrentAndFiveOldVersions(t *testing.T) {
 		if _, err := store.LoadWidgetVersion(widget.ID, version); err != nil {
 			t.Fatalf("version %d was pruned: %v", version, err)
 		}
+	}
+}
+
+func TestRunPublishStateRequiresCurrentVersionFromRun(t *testing.T) {
+	service, _, loop := newTestService(t)
+	state, err := service.RunPublishState(loop.ID, "run-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Enabled || state.Published {
+		t.Fatalf("unassigned state = %+v", state)
+	}
+	board := makeBoard(t, service, "Desk")
+	if _, err := service.AssignLoopBoards(loop, []string{board.ID}); err != nil {
+		t.Fatalf("assign: %v", err)
+	}
+	state, err = service.RunPublishState(loop.ID, "run-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !state.Enabled || state.Published {
+		t.Fatalf("unpublished state = %+v", state)
+	}
+	if _, _, err := service.Publish(loop, "run-0", widgets.PublishInput{HTML: "<p>old</p>"}); err != nil {
+		t.Fatalf("publish old: %v", err)
+	}
+	state, err = service.RunPublishState(loop.ID, "run-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !state.Enabled || state.Published {
+		t.Fatalf("stale state = %+v", state)
+	}
+	if _, _, err := service.Publish(loop, "run-1", widgets.PublishInput{HTML: "<p>new</p>"}); err != nil {
+		t.Fatalf("publish current: %v", err)
+	}
+	state, err = service.RunPublishState(loop.ID, "run-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !state.Enabled || !state.Published {
+		t.Fatalf("current state = %+v", state)
+	}
+}
+
+func TestEnsureRunPublishedRejectsStaleWidgetFile(t *testing.T) {
+	service, _, loop := newTestService(t)
+	board := makeBoard(t, service, "Desk")
+	if _, err := service.AssignLoopBoards(loop, []string{board.ID}); err != nil {
+		t.Fatalf("assign: %v", err)
+	}
+	path := widgets.WidgetFilePath(loop)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("<p>old</p>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run := loops.Run{ID: "run-1", LoopID: loop.ID, StartedAt: time.Now().Add(time.Hour)}
+	err := service.EnsureRunPublished(loop, run)
+	if err == nil || !strings.Contains(err.Error(), "not updated during this run") {
+		t.Fatalf("expected stale-file error, got %v", err)
+	}
+	state, stateErr := service.RunPublishState(loop.ID, run.ID)
+	if stateErr != nil {
+		t.Fatal(stateErr)
+	}
+	if state.Published || state.Widget.LastError == "" {
+		t.Fatalf("state = %+v", state)
 	}
 }
 
