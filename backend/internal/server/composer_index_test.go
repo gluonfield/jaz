@@ -85,6 +85,7 @@ func TestListWorkspaceFiles(t *testing.T) {
 
 func TestListSkills(t *testing.T) {
 	root := t.TempDir()
+	workspace := t.TempDir()
 	skillDir := filepath.Join(root, "skills", "alpha")
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -96,7 +97,7 @@ func TestListSkills(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/skills", nil)
 	res := httptest.NewRecorder()
-	(&Server{Root: root}).Handler().ServeHTTP(res, req)
+	(&Server{Root: root, Workspace: workspace}).Handler().ServeHTTP(res, req)
 
 	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
@@ -117,5 +118,37 @@ func TestListSkills(t *testing.T) {
 	}
 	if !filepath.IsAbs(body.Skills[0].Path) {
 		t.Fatalf("skill path = %q, want absolute", body.Skills[0].Path)
+	}
+
+	localDir := filepath.Join(workspace, "repo", ".codex", "skills", "beta")
+	if err := os.MkdirAll(localDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(localDir, "SKILL.md"), []byte("---\nname: beta\ndescription: Local skill\n---\nBody.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/v1/skills?path=repo", nil)
+	res = httptest.NewRecorder()
+	(&Server{Root: root, Workspace: workspace}).Handler().ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("local status = %d, body = %s", res.Code, res.Body.String())
+	}
+	body.Skills = nil
+	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, skill := range body.Skills {
+		got[skill.Name] = skill.Description
+	}
+	if got["alpha"] != "First skill" || got["beta"] != "Local skill" {
+		t.Fatalf("skills = %+v", body.Skills)
+	}
+
+	escape := httptest.NewRequest(http.MethodGet, "/v1/skills?path=../outside", nil)
+	res = httptest.NewRecorder()
+	(&Server{Root: root, Workspace: workspace}).Handler().ServeHTTP(res, escape)
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("escape status = %d, want 400", res.Code)
 	}
 }

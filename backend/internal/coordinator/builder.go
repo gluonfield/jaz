@@ -40,6 +40,11 @@ func (b *Builder) SkillsPrompt() (string, error) {
 	return skillsPrompt, err
 }
 
+func (b *Builder) SkillsPromptForWorkspace(workspace string) (string, error) {
+	_, skillsPrompt, err := b.build(workspace, visualize.SurfaceChat)
+	return skillsPrompt, err
+}
+
 // ACPPrompt builds the prompt extension delivered to ACP agent sessions
 // (codex, claude, grok). Unlike the coordinator prompt it carries no Jaz
 // identity or delegation rules — agents keep their own system prompt and this
@@ -50,16 +55,16 @@ func (b *Builder) ACPPrompt(cwd string) (string, error) {
 }
 
 func (b *Builder) ACPPromptForArtifactSurface(cwd, surface string) (string, error) {
-	catalog, err := skills.Load(b.root)
-	if err != nil {
-		return "", err
-	}
 	cwd = strings.TrimSpace(cwd)
 	if cwd == "" {
 		cwd = strings.TrimSpace(b.workspace)
 	}
 	if cwd == "" {
 		cwd = "~/.jaz/workspaces/default"
+	}
+	catalog, err := skills.LoadForWorkspace(b.root, cwd)
+	if err != nil {
+		return "", err
 	}
 	now := time.Now()
 	memoryRoot := b.memoryRoot
@@ -70,7 +75,10 @@ func (b *Builder) ACPPromptForArtifactSurface(cwd, surface string) (string, erro
 }
 
 func (b *Builder) build(workspace string, surface visualize.Surface) (system, skillsPrompt string, err error) {
-	catalog, err := skills.Load(b.root)
+	if strings.TrimSpace(workspace) == "" {
+		workspace = b.workspace
+	}
+	catalog, err := skills.LoadForWorkspace(b.root, workspace)
 	if err != nil {
 		return "", "", err
 	}

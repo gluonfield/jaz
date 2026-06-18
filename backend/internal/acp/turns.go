@@ -33,7 +33,7 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string, attac
 		m.finishTurn(done, job)
 		return
 	}
-	context, err := m.turnPromptContext(message)
+	context, err := m.turnPromptContext(job.Cwd, message)
 	if err != nil {
 		m.failTurn(job, err)
 		m.finishTurn(done, job)
@@ -85,11 +85,11 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string, attac
 	m.finishTurn(done, job)
 }
 
-func (m *Manager) turnPromptContext(message string) (string, error) {
+func (m *Manager) turnPromptContext(cwd, message string) (string, error) {
 	if !strings.Contains(message, "$") || m.cfg.SystemPrompt == nil {
 		return "", nil
 	}
-	prompt, err := m.cfg.SystemPrompt.SkillsPrompt()
+	prompt, err := m.cfg.SystemPrompt.SkillsPromptForWorkspace(cwd)
 	if err != nil {
 		return "", fmt.Errorf("build acp skills prompt: %w", err)
 	}
