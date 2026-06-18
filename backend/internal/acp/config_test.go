@@ -243,7 +243,7 @@ func TestProbeAgentAuthDetectsClaudeJSONProfile(t *testing.T) {
 	}
 }
 
-func TestProcessEnvUsesJazConfigForClaudeCode(t *testing.T) {
+func TestProcessEnvUsesJazConfigForClaudeCodeWithoutHostAuthTokens(t *testing.T) {
 	clearHostEnv(t)
 	home := t.TempDir()
 	configDir := filepath.Join(home, "claude-config")
@@ -258,7 +258,13 @@ func TestProcessEnvUsesJazConfigForClaudeCode(t *testing.T) {
 	t.Setenv("USER", "wins")
 
 	root := t.TempDir()
-	env := NewManager(nil, Config{Root: root}, nil).processEnv("claude", AgentConfig{
+	env := NewManager(nil, Config{
+		Root: root,
+		Env: map[string]string{
+			"ANTHROPIC_AUTH_TOKEN": "configured-auth-token",
+			"CLAUDE_CONFIG_DIR":    filepath.Join(home, "configured-claude"),
+		},
+	}, nil).processEnv("claude", AgentConfig{
 		Auth: AgentAuthConfig{Mode: AuthModeJazProfile},
 	})
 
@@ -271,14 +277,14 @@ func TestProcessEnvUsesJazConfigForClaudeCode(t *testing.T) {
 	if _, ok := env["ANTHROPIC_APIKEY"]; ok {
 		t.Fatal("ANTHROPIC_APIKEY alias leaked into subprocess env")
 	}
-	if env["ANTHROPIC_AUTH_TOKEN"] != "host-auth-token" {
-		t.Fatalf("ANTHROPIC_AUTH_TOKEN was not preserved")
+	if env["ANTHROPIC_AUTH_TOKEN"] != "" {
+		t.Fatalf("ANTHROPIC_AUTH_TOKEN leaked into Jaz-profile claude subprocess env")
 	}
 	if env["CLAUDE_CODE_EXECUTABLE"] != "/usr/local/bin/claude" {
 		t.Fatalf("CLAUDE_CODE_EXECUTABLE = %q", env["CLAUDE_CODE_EXECUTABLE"])
 	}
-	if env["CLAUDE_CODE_OAUTH_TOKEN"] != "setup-token" {
-		t.Fatalf("CLAUDE_CODE_OAUTH_TOKEN was not preserved")
+	if env["CLAUDE_CODE_OAUTH_TOKEN"] != "" {
+		t.Fatalf("CLAUDE_CODE_OAUTH_TOKEN leaked into Jaz-profile claude subprocess env")
 	}
 	if env["CLAUDE_CODE_USE_VERTEX"] != "0" {
 		t.Fatalf("CLAUDE_CODE_USE_VERTEX = %q", env["CLAUDE_CODE_USE_VERTEX"])
@@ -291,13 +297,11 @@ func TestProcessEnvUsesJazConfigForClaudeCode(t *testing.T) {
 		t.Fatalf("USER = %q, want wins", env["USER"])
 	}
 	assertEnv(t, env, map[string]string{
-		"PATH":                    "/bin",
-		"ANTHROPIC_AUTH_TOKEN":    "host-auth-token",
-		"CLAUDE_CODE_EXECUTABLE":  "/usr/local/bin/claude",
-		"CLAUDE_CODE_OAUTH_TOKEN": "setup-token",
-		"CLAUDE_CODE_USE_VERTEX":  "0",
-		"CLAUDE_CONFIG_DIR":       wantConfigDir,
-		"USER":                    "wins",
+		"PATH":                   "/bin",
+		"CLAUDE_CODE_EXECUTABLE": "/usr/local/bin/claude",
+		"CLAUDE_CODE_USE_VERTEX": "0",
+		"CLAUDE_CONFIG_DIR":      wantConfigDir,
+		"USER":                   "wins",
 	})
 }
 
