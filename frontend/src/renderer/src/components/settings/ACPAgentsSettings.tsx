@@ -111,9 +111,13 @@ export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => 
 
   const disconnect = useMutation({
     mutationFn: (agent: string) => disconnectACPAuth(agent),
-    onSuccess: (_status, agent) => {
+    onSuccess: (settings, agent) => {
       forgetLoginJob(agent)
+      setDraft(cloneAgentSettings(settings))
+      queryClient.setQueryData<AgentSettingsData>(keys.agentSettings, settings)
       toast(`Disconnected ${authProviderLabel(agent)}`)
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: keys.agentSettings })
       queryClient.invalidateQueries({ queryKey: keys.acpAgents })
     },

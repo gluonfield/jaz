@@ -3,6 +3,7 @@
 - Use Go 1.26.
 - Keep code and JSON minimal. Each line of code should fight for its existence; every field and line must earn its place.
 - When there's an opportunity for dramatic simplification or restructuring, bring it up. Favor "code judo" moves that delete layers, unify shapes, collapse special cases, or make the design inevitable over incremental patches.
+- Bug fixes should first look for deletion or correction of the underlying contract. A solution that only adds branches, flags, helpers, or UI glue is suspicious; prefer removing stale paths, collapsing duplicated state, or moving behavior to the owning layer before adding code.
 - Do not write code comments unless they explain something the code itself cannot describe.
 - Keep concrete implementations focused and interfaces small.
 - Put behavior in the layer that owns the concept. Shared transcript/message shapes belong in storage or a dedicated shared package, not copied through server, ACP, and UI paths.

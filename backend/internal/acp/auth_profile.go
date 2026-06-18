@@ -67,6 +67,19 @@ func NormalizeAgentAuthConfig(name string, auth AgentAuthConfig) (AgentAuthConfi
 	}, nil
 }
 
+func DisconnectedAuthConfig(name string, current AgentAuthConfig) AgentAuthConfig {
+	switch CanonicalAgentName(name) {
+	case AgentCodex, AgentClaude, AgentOpenCode:
+		return AgentAuthConfig{Mode: AuthModeJazProfile}
+	default:
+		auth, err := NormalizeAgentAuthConfig(name, current)
+		if err != nil {
+			return AgentAuthConfig{Mode: AuthModeAuto}
+		}
+		return auth
+	}
+}
+
 func resolveAgentAuth(name string, cfg AgentConfig, root string, env map[string]string) resolvedAgentAuth {
 	return resolveAgentAuthWithProviders(name, cfg, root, env, nil)
 }
@@ -159,9 +172,11 @@ func resolveClaudeAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env m
 		StoragePath: claudeAuthPath(path),
 		Source:      source,
 	}
+	accountAuthConfigured := source == AuthModeExistingCLI &&
+		(claudeAccountAuthAvailable(cfg.Env) || claudeAccountAuthAvailable(env))
 	apiKeyConfigured := status.resolveAPIKey(AgentClaude, root, env)
 	switch {
-	case claudeAccountAuthAvailable(cfg.Env) || claudeAccountAuthAvailable(env):
+	case accountAuthConfigured:
 		status.markAuthenticated("env", AuthKindOAuth)
 	case claudeAuthFileAvailable(path):
 		status.markAuthenticated("claude_json", AuthKindOAuth)
