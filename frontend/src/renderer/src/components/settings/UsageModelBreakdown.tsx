@@ -3,7 +3,7 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import type { ModelUsage } from '@/lib/api/types'
 import { formatTokens } from '@/lib/format/tokens'
 import { formatUsd, type PricedModel } from '@/lib/usageCost'
-import { inputOutputTokens } from '@/lib/usageDaily'
+import { inputTokens, totalUsageTokens } from '@/lib/usageDaily'
 
 const MODEL_TABLE_COLUMNS = 'minmax(0,1fr) repeat(6, 60px)'
 
@@ -25,7 +25,7 @@ export function ModelBreakdown({
     <div className="mt-5">
       <div className="min-w-0">
         <p className="text-[12px] font-medium text-ink">Last 30 days by model</p>
-        <p className="mt-0.5 truncate text-[11px] text-ink-3">ACP agent usage, ranked by input + output tokens.</p>
+        <p className="mt-0.5 truncate text-[11px] text-ink-3">ACP agent usage, ranked by total tokens.</p>
       </div>
 
       {pending ? (
@@ -77,7 +77,7 @@ export function ModelBreakdown({
           ) : null}
 
           <p className="mt-2 text-[11px] text-ink-3">
-            Cache read and cache write are already part of Input, not added on top. Total = Input + Output.
+            Total = Input + Cache read + Cache write + Output.
           </p>
           <p className="mt-1 text-[11px] text-ink-3">
             Cost is estimated at official per-token list prices (OpenRouter). Coding agents on monthly
@@ -104,11 +104,11 @@ function ModelUsageRow({ model, cost }: { model: ModelUsage; cost: number | null
         <span className="truncate text-[13px] font-medium text-ink">{modelName(model)}</span>
         <span className="shrink-0 text-[11px] text-ink-3">{formatModelMeta(model)}</span>
       </div>
-      <Cell text={tokenText(model.usage.input_tokens ?? 0)} />
+      <Cell text={tokenText(inputTokens(model.usage))} />
       <Cell text={tokenText(model.usage.cached_input_tokens ?? 0)} tone="muted" />
       <Cell text={tokenText(model.usage.cached_write_tokens ?? 0)} tone="muted" />
       <Cell text={tokenText(model.usage.output_tokens ?? 0)} />
-      <Cell text={tokenText(inputOutputTokens(model.usage))} tone="strong" />
+      <Cell text={tokenText(totalUsageTokens(model.usage))} tone="strong" />
       <Cell text={cost == null ? null : formatUsd(cost)} tone="strong" />
     </div>
   )
@@ -154,7 +154,7 @@ function buildPieSlices(models: ModelUsage[]): PieSlice[] {
     .map((model) => ({
       label: modelName(model),
       meta: formatModelMeta(model),
-      total: inputOutputTokens(model.usage),
+      total: totalUsageTokens(model.usage),
     }))
     .filter((entry) => entry.total > 0)
     .sort((a, b) => b.total - a.total)
@@ -184,7 +184,7 @@ function ModelUsagePie({ models }: { models: ModelUsage[] }) {
     <div className="mt-5 rounded-control bg-bg/45 px-3 py-3">
       <p className="text-[12px] font-medium text-ink">Token share by model</p>
       <p className="mt-0.5 text-[11px] text-ink-3">
-        Each model's input + output tokens as a share of the last 30 days.
+        Each model's total tokens as a share of the last 30 days.
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-4">
         <PieDonut slices={slices} grand={grand} />

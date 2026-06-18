@@ -5,6 +5,7 @@ import { Popover } from '@/components/ui/Popover'
 import type { Session } from '@/lib/api/types'
 import { formatTokens } from '@/lib/format/tokens'
 import { useContextWindow } from '@/lib/models'
+import { inputTokens, totalUsageTokens } from '@/lib/usageDaily'
 
 // Titlebar token meter: an icon that unfolds into the session's cumulative
 // token fields plus the live context-window fill.
@@ -12,12 +13,12 @@ export function TokenStats({ session }: { session: Session }) {
   const [open, setOpen] = useState(false)
   const contextWindow = useContextWindow(session)
   const usage = session.usage
-  const input = usage?.input_tokens ?? 0
+  const input = usage ? inputTokens(usage) : 0
   const output = usage?.output_tokens ?? 0
   const cached = usage?.cached_input_tokens ?? 0
   const cacheWrite = usage?.cached_write_tokens ?? 0
   const reasoning = usage?.reasoning_output_tokens ?? 0
-  const total = usage?.total_tokens ?? 0
+  const total = usage ? totalUsageTokens(usage) : 0
   const context = usage?.context_tokens ?? 0
   if (input + output + cached + cacheWrite + reasoning + total + context === 0) return null
 
