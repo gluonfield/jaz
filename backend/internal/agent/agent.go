@@ -47,6 +47,7 @@ type Agent struct {
 	Model           string
 	ReasoningEffort string
 	Tools           *tools.Registry
+	DeferTools      func(name string) bool
 	MaxTurns        int
 }
 
@@ -72,6 +73,10 @@ func (a *Agent) Complete(ctx context.Context, req provider.Request) (Result, err
 	}
 	messages := append([]provider.Message(nil), req.Messages...)
 	mediaRefs := media.CloneRefMap(req.MediaRefs)
+	toolExposure, err := newToolExposure(req.Tools, messages, a.DeferTools)
+	if err != nil {
+		return Result{Messages: messages, MediaRefs: mediaRefs}, err
+	}
 	var toolExecutions []ToolExecution
 	var usage provider.Usage
 
@@ -85,7 +90,7 @@ func (a *Agent) Complete(ctx context.Context, req provider.Request) (Result, err
 			Model:           req.Model,
 			ReasoningEffort: req.ReasoningEffort,
 			Messages:        requestMessages,
-			Tools:           req.Tools,
+			Tools:           toolExposure.definitions(),
 		})
 		if err != nil {
 			return Result{Messages: messages, ToolExecutions: toolExecutions, MediaRefs: mediaRefs}, err
@@ -105,7 +110,7 @@ func (a *Agent) Complete(ctx context.Context, req provider.Request) (Result, err
 			}, nil
 		}
 		for _, call := range calls {
-			result := a.executeTool(ctx, call)
+			result := a.executeTool(ctx, call, toolExposure)
 			callID := provider.ToolCallID(call)
 			if len(result.MediaRefs) > 0 {
 				mediaRefs = withMediaRefs(mediaRefs, callID, result.MediaRefs)
@@ -113,6 +118,7 @@ func (a *Agent) Complete(ctx context.Context, req provider.Request) (Result, err
 			messages = append(messages, provider.ToolMessage(result.Content, callID))
 			toolExecutions = append(toolExecutions, ToolExecution{Call: call, Result: result.Content, MediaRefs: media.CloneRefs(result.MediaRefs)})
 		}
+		toolExposure.commitSearchResults()
 	}
 	return Result{Messages: messages, ToolExecutions: toolExecutions, MediaRefs: mediaRefs}, fmt.Errorf("stopped after %d tool turns", a.MaxTurns)
 }
@@ -134,6 +140,11 @@ func (a *Agent) run(ctx context.Context, req provider.Request, out chan<- Stream
 	}
 	messages := append([]provider.Message(nil), req.Messages...)
 	mediaRefs := media.CloneRefMap(req.MediaRefs)
+	toolExposure, err := newToolExposure(req.Tools, messages, a.DeferTools)
+	if err != nil {
+		a.emit(out, StreamEvent{Type: StreamError, Error: err.Error(), Messages: messages, MediaRefs: mediaRefs})
+		return
+	}
 	var usage provider.Usage
 	reasoningByMessage := map[int]string{}
 
@@ -148,7 +159,7 @@ func (a *Agent) run(ctx context.Context, req provider.Request, out chan<- Stream
 			Model:           req.Model,
 			ReasoningEffort: req.ReasoningEffort,
 			Messages:        requestMessages,
-			Tools:           req.Tools,
+			Tools:           toolExposure.definitions(),
 		})
 		if err != nil {
 			a.emit(out, StreamEvent{Type: StreamError, Error: err.Error(), Messages: messages, MediaRefs: mediaRefs})
@@ -195,7 +206,7 @@ func (a *Agent) run(ctx context.Context, req provider.Request, out chan<- Stream
 		// Snapshot pre-execution so the round is stamped when the model produced it.
 		a.emit(out, snapshotEvent(messages, reasoningByMessage, mediaRefs))
 		for _, call := range calls {
-			result := a.executeTool(ctx, call)
+			result := a.executeTool(ctx, call, toolExposure)
 			callID := provider.ToolCallID(call)
 			if len(result.MediaRefs) > 0 {
 				mediaRefs = withMediaRefs(mediaRefs, callID, result.MediaRefs)
@@ -212,6 +223,7 @@ func (a *Agent) run(ctx context.Context, req provider.Request, out chan<- Stream
 			}
 			a.emit(out, event)
 		}
+		toolExposure.commitSearchResults()
 		a.emit(out, snapshotEvent(messages, reasoningByMessage, mediaRefs))
 	}
 
@@ -320,17 +332,21 @@ func mediaMessageForRefs(refs []media.Ref) (provider.Message, error) {
 	return provider.UserMessageParts(parts...), nil
 }
 
-func (a *Agent) executeTool(ctx context.Context, call provider.ToolCall) tools.Result {
+func (a *Agent) executeTool(ctx context.Context, call provider.ToolCall, toolExposure *toolExposure) tools.Result {
 	name := provider.ToolCallName(call)
+	if toolExposure != nil && name == toolSearchToolName {
+		return toolExposure.executeSearch(call)
+	}
+	if toolExposure != nil && toolExposure.isDeferred(name) && !toolExposure.isExposed(name) {
+		return tools.Result{Content: marshalToolError(fmt.Sprintf("tool %q is deferred; use %s first", name, toolSearchToolName))}
+	}
 	tool, ok := a.Tools.Get(name)
 	if !ok {
 		return tools.Result{Content: marshalToolError(fmt.Sprintf("unknown tool %q", name))}
 	}
-	inputs := map[string]any{}
-	if args := provider.ToolCallArguments(call); strings.TrimSpace(args) != "" {
-		if err := json.Unmarshal([]byte(args), &inputs); err != nil {
-			return tools.Result{Content: marshalToolError("invalid tool arguments: " + err.Error())}
-		}
+	inputs, err := toolCallInputs(call)
+	if err != nil {
+		return tools.Result{Content: marshalToolError(err.Error())}
 	}
 	result, err := tool.Execute(ctx, inputs)
 	if err != nil {
@@ -340,6 +356,16 @@ func (a *Agent) executeTool(ctx context.Context, call provider.ToolCall) tools.R
 		result.Content = "{}"
 	}
 	return result
+}
+
+func toolCallInputs(call provider.ToolCall) (map[string]any, error) {
+	inputs := map[string]any{}
+	if args := provider.ToolCallArguments(call); strings.TrimSpace(args) != "" {
+		if err := json.Unmarshal([]byte(args), &inputs); err != nil {
+			return nil, fmt.Errorf("invalid tool arguments: %w", err)
+		}
+	}
+	return inputs, nil
 }
 
 func marshalToolError(msg string) string {

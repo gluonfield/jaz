@@ -1,19 +1,32 @@
 package app
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
+	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/provider"
 	openaiprovider "github.com/wins/jaz/backend/internal/provider/openai"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
+	"github.com/wins/jaz/backend/internal/tools"
 	applypatch "github.com/wins/jaz/backend/internal/tools/applypatch"
 	exectool "github.com/wins/jaz/backend/internal/tools/exec"
 )
+
+type appTestTool string
+
+func (t appTestTool) Definition() tools.Definition {
+	return tools.Function(string(t), "test tool", false, tools.ObjectSchema(nil, nil))
+}
+
+func (t appTestTool) Execute(ctx context.Context, inputs map[string]any) (tools.Result, error) {
+	return tools.Result{Content: "{}"}, nil
+}
 
 func TestNewToolRegistryAllowsApplyPatchAbsolutePaths(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
@@ -40,6 +53,19 @@ func TestNewToolRegistryAllowsApplyPatchAbsolutePaths(t *testing.T) {
 	}
 	if patchTool.PathScope != applypatch.AbsolutePaths {
 		t.Fatal("apply_patch should allow absolute paths")
+	}
+}
+
+func TestNewAgentDefersMCPToolsByRegistryGroup(t *testing.T) {
+	registry := tools.NewRegistry(appTestTool("mcp_named_direct"))
+	registry.SetGroup(mcpruntime.RegistryGroup, []tools.Tool{appTestTool("remote")})
+
+	a := NewAgent(Config{}, nil, registry)
+	if a.DeferTools("mcp_named_direct") {
+		t.Fatal("direct tool with mcp_ prefix should not be deferred")
+	}
+	if !a.DeferTools("remote") {
+		t.Fatal("tool in MCP registry group should be deferred")
 	}
 }
 

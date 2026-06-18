@@ -48,6 +48,17 @@ func (r *Registry) RemoveGroup(group string) {
 	r.removeGroupLocked(group)
 }
 
+func (r *Registry) InGroup(group, name string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, member := range r.groups[group] {
+		if member == name {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *Registry) removeGroupLocked(group string) {
 	names := r.groups[group]
 	if len(names) == 0 {

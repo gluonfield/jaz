@@ -206,6 +206,7 @@ func BuiltinAgents() AgentCatalog {
 				"-y", "@jazchat/codex-acp@0.16.1",
 				"-c", `sandbox_mode="danger-full-access"`,
 				"-c", `approval_policy="never"`,
+				"-c", `features.tool_search_always_defer_mcp_tools=true`,
 			},
 			Model:           "gpt-5.5",
 			ReasoningEffort: "medium",
