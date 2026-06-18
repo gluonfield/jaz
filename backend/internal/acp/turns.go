@@ -11,6 +11,7 @@ import (
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
+	"github.com/wins/jaz/backend/internal/filepathx"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -38,7 +39,16 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string, attac
 		m.finishTurn(done, job)
 		return
 	}
-	prompt, err := promptContentBlocks(context, message, attachments)
+	resolver := localAttachmentResources
+	if len(attachments) > 0 {
+		resolver, err = m.attachmentResourceResolver(job)
+		if err != nil {
+			m.failTurn(job, err)
+			m.finishTurn(done, job)
+			return
+		}
+	}
+	prompt, err := promptContentBlocks(context, message, attachments, resolver)
 	if err != nil {
 		m.failTurn(job, err)
 		m.finishTurn(done, job)
@@ -97,7 +107,41 @@ func jobCancelRequested(job *Job) bool {
 	return cancelled
 }
 
-func promptContentBlocks(context, message string, attachments []storage.Attachment) ([]acpschema.ContentBlock, error) {
+func (m *Manager) attachmentResourceResolver(job *Job) (attachmentResourceResolver, error) {
+	cfg, ok, err := m.configuredAgent(job.ACPAgent)
+	if err != nil {
+		return attachmentResourceResolver{}, err
+	}
+	if !ok {
+		return attachmentResourceResolver{}, fmt.Errorf("acp agent %q is not configured", job.ACPAgent)
+	}
+	return attachmentResourceResolver{localFiles: strings.TrimSpace(cfg.URL) == ""}, nil
+}
+
+type attachmentResourceResolver struct {
+	localFiles bool
+}
+
+var localAttachmentResources = attachmentResourceResolver{localFiles: true}
+
+func (r attachmentResourceResolver) URI(attachment storage.Attachment) (string, error) {
+	serverPath := strings.TrimSpace(attachment.ServerPath)
+	if serverPath != "" {
+		if r.localFiles {
+			return filepathx.FileURI(serverPath), nil
+		}
+		if uri := strings.TrimSpace(attachment.URI); uri != "" && !strings.HasPrefix(strings.ToLower(uri), "file:") {
+			return uri, nil
+		}
+		return "", fmt.Errorf("attachment %q is server-local; remote ACP attachment resources are not supported yet", attachment.Name)
+	}
+	if uri := strings.TrimSpace(attachment.URI); uri != "" {
+		return uri, nil
+	}
+	return "", fmt.Errorf("attachment %q has no resource URI", attachment.Name)
+}
+
+func promptContentBlocks(context, message string, attachments []storage.Attachment, resolver attachmentResourceResolver) ([]acpschema.ContentBlock, error) {
 	out := make([]acpschema.ContentBlock, 0, 2+len(attachments))
 	if strings.TrimSpace(context) != "" {
 		var err error
@@ -112,11 +156,15 @@ func promptContentBlocks(context, message string, attachments []storage.Attachme
 		return nil, err
 	}
 	for _, attachment := range attachments {
+		uri, err := resolver.URI(attachment)
+		if err != nil {
+			return nil, err
+		}
 		block := acpschema.ResourceLinkContentBlock{
 			Kind: acpschema.ContentBlockResourceLink,
 			ResourceLink: acpschema.ResourceLink{
 				Name:     attachment.Name,
-				URI:      attachment.URI,
+				URI:      uri,
 				MimeType: attachment.MimeType,
 				Size:     attachment.Size,
 			},

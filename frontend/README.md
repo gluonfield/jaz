@@ -33,7 +33,7 @@ Remote backend setup and the planned connected-device approval model are in
 
 ## Release
 
-GitHub Actions builds signed macOS desktop artifacts when a GitHub Release is published in `gluonfield/jaz`. The desktop job attaches the DMG, ZIP, and `latest-mac.yml` to that release. Add these repository secrets:
+GitHub Actions builds signed macOS desktop artifacts and standalone Linux backend binaries when a GitHub Release is published in `gluonfield/jaz`. The release workflow attaches the DMG, ZIP, `latest-mac.yml`, and backend tarballs to that release. Add these repository secrets:
 
 - `APPLE_CERTIFICATE_P12_BASE64`
 - `APPLE_CERTIFICATE_PASSWORD`

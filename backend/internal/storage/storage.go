@@ -171,7 +171,7 @@ type Attachment struct {
 	Name       string `json:"name"`
 	MimeType   string `json:"mime_type,omitempty"`
 	Size       int64  `json:"size,omitempty"`
-	URI        string `json:"uri"`
+	URI        string `json:"uri,omitempty"`
 	ServerPath string `json:"server_path,omitempty"`
 }
 
