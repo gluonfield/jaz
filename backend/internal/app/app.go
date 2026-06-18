@@ -443,9 +443,10 @@ func newTTS(cfg VoiceConfig) (voice.TTS, error) {
 
 func NewAgent(cfg Config, modelProvider provider.Provider, registry *tools.Registry) *agent.Agent {
 	return &agent.Agent{
-		Provider: modelProvider,
-		Tools:    registry,
-		MaxTurns: agent.DefaultMaxTurns,
+		Provider:   modelProvider,
+		Tools:      registry,
+		DeferTools: func(name string) bool { return registry.InGroup(mcpruntime.RegistryGroup, name) },
+		MaxTurns:   agent.DefaultMaxTurns,
 	}
 }
 
