@@ -439,7 +439,7 @@ func trimmedAnswers(values []string) []string {
 
 func (m *Manager) appendUserAnswerMessage(job *Job, text string, parentVisible bool) {
 	text = strings.TrimSpace(text)
-	if text == "" || m.store == nil {
+	if text == "" {
 		return
 	}
 	sessionIDs := []string{job.ID}
@@ -499,9 +499,6 @@ func (m *Manager) touchJobAttention(job *Job) {
 }
 
 func (m *Manager) touchAttention(sessionIDs ...string) {
-	if m.store == nil {
-		return
-	}
 	seen := map[string]bool{}
 	for _, sessionID := range sessionIDs {
 		if sessionID == "" || seen[sessionID] {
@@ -603,12 +600,12 @@ func (m *Manager) recordAndPublish(event sessionevents.Event) {
 	stored := event
 	stored.ACP = event.ACP.SlimForStorage()
 	events := []sessionevents.Event{stored}
-	if m != nil && m.store != nil && event.SessionID != "" {
+	if event.SessionID != "" {
 		_ = m.store.AppendSessionEvents(event.SessionID, events...)
 	}
 	// Publish with the stored Seq so clients can dedupe against history.
 	event.Seq = events[0].Seq
-	if m != nil && m.Events != nil {
+	if m.Events != nil {
 		m.Events.Publish(event)
 	}
 }
@@ -622,9 +619,6 @@ type acpStateLoader interface {
 }
 
 func (m *Manager) saveACPState(job Job) {
-	if m == nil || m.store == nil {
-		return
-	}
 	store, ok := m.store.(acpStateSaver)
 	if !ok {
 		return

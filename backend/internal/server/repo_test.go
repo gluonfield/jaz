@@ -183,7 +183,11 @@ func TestBeginACPTurnRestoresMissingManagedWorktree(t *testing.T) {
 	if err := gitinfo.RemoveManagedWorktree(ctx, worktree, "jaz/resume-thread", "snapshot"); err != nil {
 		t.Fatalf("RemoveManagedWorktree: %v", err)
 	}
-	server := &Server{Store: store, Workspace: workspace}
+	server := &Server{
+		Store:     store,
+		Workspace: workspace,
+		ACP:       &fakeACPManager{utilityText: `{"title":"Resume Thread"}`},
+	}
 	if _, err := server.beginACPTurn(ctx, session, "continue"); err != nil {
 		t.Fatalf("beginACPTurn: %v", err)
 	}
