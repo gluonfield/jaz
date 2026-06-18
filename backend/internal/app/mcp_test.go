@@ -44,6 +44,9 @@ func TestACPMCPServerReaderUsesProxyForUserServersAndDirectJazTools(t *testing.T
 		proxy.URL != "http://127.0.0.1:5299/mcp/proxy" || !proxy.Enabled {
 		t.Fatalf("proxy server = %#v", proxy)
 	}
+	if len(proxy.Headers) != 1 || proxy.Headers[0].Name != mcpsession.HeaderName || proxy.Headers[0].Value != mcpsession.HeaderPlaceholder {
+		t.Fatalf("proxy headers = %#v", proxy.Headers)
+	}
 	jaz := servers[1]
 	if jaz.ID != jaztools.ServerID || jaz.Name != jaztools.ServerName ||
 		jaz.Transport != mcpconfig.TransportStreamableHTTP ||

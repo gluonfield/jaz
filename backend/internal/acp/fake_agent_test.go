@@ -459,17 +459,19 @@ func validateFakeProxyAndJaztools(rawServers []json.RawMessage) error {
 	if !ok || proxy.Type != "http" || proxy.URL != "http://127.0.0.1:5299/mcp/proxy" {
 		return fmt.Errorf("unexpected mcp proxy %#v", proxy)
 	}
-	if len(proxy.Headers) != 0 {
-		return fmt.Errorf("proxy must not expose user mcp credentials to acp, got %#v", proxy.Headers)
+	if len(proxy.Headers) != 1 ||
+		!strings.EqualFold(proxy.Headers[0].Name, mcpsession.HeaderName) ||
+		strings.TrimSpace(proxy.Headers[0].Value) == "" {
+		return fmt.Errorf("proxy must expose only a resolved session header, got %#v", proxy.Headers)
 	}
 	jaz, ok := servers["jaztools"]
 	if !ok || jaz.Type != "http" || jaz.URL != "http://127.0.0.1:5299/mcp/jaztools" {
 		return fmt.Errorf("unexpected jaztools server %#v", jaz)
 	}
-	for _, header := range jaz.Headers {
-		if strings.EqualFold(header.Name, mcpsession.HeaderName) && strings.TrimSpace(header.Value) != "" {
-			return nil
-		}
+	if len(jaz.Headers) != 1 ||
+		!strings.EqualFold(jaz.Headers[0].Name, mcpsession.HeaderName) ||
+		strings.TrimSpace(jaz.Headers[0].Value) == "" {
+		return fmt.Errorf("jaztools must expose only a resolved session header, got %#v", jaz.Headers)
 	}
-	return fmt.Errorf("jaztools missing session header %#v", jaz.Headers)
+	return nil
 }
