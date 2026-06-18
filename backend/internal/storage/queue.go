@@ -18,14 +18,19 @@ func NormalizeQueuedMessages(messages []QueuedMessage) []QueuedMessage {
 	}
 	out := make([]QueuedMessage, 0, len(messages))
 	for _, message := range messages {
-		message.Text = strings.TrimSpace(message.Text)
-		message.AttachmentIDs = normalizeQueuedAttachmentIDs(message.AttachmentIDs)
-		if message.Text == "" {
+		normalized, ok := NormalizeQueuedMessage(message)
+		if !ok {
 			continue
 		}
-		out = append(out, message)
+		out = append(out, normalized)
 	}
 	return out
+}
+
+func NormalizeQueuedMessage(message QueuedMessage) (QueuedMessage, bool) {
+	message.Text = strings.TrimSpace(message.Text)
+	message.AttachmentIDs = normalizeQueuedAttachmentIDs(message.AttachmentIDs)
+	return message, message.Text != ""
 }
 
 func NewQueuedMessage(text string, attachmentIDs []string) QueuedMessage {
@@ -60,6 +65,21 @@ func MarshalQueuedMessages(messages []QueuedMessage) (string, error) {
 	return string(data), nil
 }
 
+func MarshalQueuedMessage(message *QueuedMessage) (string, error) {
+	if message == nil {
+		return "", nil
+	}
+	normalized, ok := NormalizeQueuedMessage(*message)
+	if !ok {
+		return "", nil
+	}
+	data, err := json.Marshal(normalized)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
 func UnmarshalQueuedMessages(raw string) ([]QueuedMessage, error) {
 	if strings.TrimSpace(raw) == "" {
 		return nil, nil
@@ -82,4 +102,28 @@ func UnmarshalQueuedMessages(raw string) ([]QueuedMessage, error) {
 		messages = append(messages, NewQueuedMessage(text, nil))
 	}
 	return NormalizeQueuedMessages(messages), nil
+}
+
+func UnmarshalQueuedMessage(raw string) (*QueuedMessage, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "null" {
+		return nil, nil
+	}
+	var message QueuedMessage
+	if err := json.Unmarshal([]byte(raw), &message); err == nil {
+		normalized, ok := NormalizeQueuedMessage(message)
+		if !ok {
+			return nil, nil
+		}
+		return &normalized, nil
+	}
+	var text string
+	if err := json.Unmarshal([]byte(raw), &text); err != nil {
+		return nil, fmt.Errorf("queued message: %w", err)
+	}
+	normalized, ok := NormalizeQueuedMessage(NewQueuedMessage(text, nil))
+	if !ok {
+		return nil, nil
+	}
+	return &normalized, nil
 }

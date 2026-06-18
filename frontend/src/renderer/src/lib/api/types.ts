@@ -63,6 +63,7 @@ export interface Session {
   reasoning_effort?: string
   usage?: Usage
   queued_messages?: QueuedMessage[]
+  pending_steer_message?: QueuedMessage
   created_at: string
   updated_at: string
   last_attention_at: string

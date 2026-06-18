@@ -41,4 +41,5 @@ type Thread struct {
 	Pinned                int64          `json:"pinned"`
 	ArtifactSurface       sql.NullString `json:"artifact_surface"`
 	McpServerPolicy       sql.NullString `json:"mcp_server_policy"`
+	PendingSteerMessage   string         `json:"pending_steer_message"`
 }
