@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 
+	"github.com/kljensen/snowball/english"
+	unidecode "github.com/mozillazg/go-unidecode"
+	"github.com/rivo/uniseg"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/tools"
 )
@@ -17,7 +20,7 @@ const (
 	toolSearchDefaultLimit = 8
 )
 
-var toolSearchTokenPattern = regexp.MustCompile(`[A-Za-z0-9]+`)
+var toolSearchStopwords = newToolSearchStopwords()
 
 type toolExposure struct {
 	direct       []tools.Definition
@@ -31,12 +34,27 @@ type toolExposure struct {
 type searchableTool struct {
 	name       string
 	definition tools.Definition
-	output     map[string]any
+	output     loadableToolSpec
 	termCounts map[string]int
 	termTotal  int
 }
 
-func newToolExposure(definitions []tools.Definition, deferTool func(string) bool) *toolExposure {
+type loadableToolSpec struct {
+	Type         string         `json:"type"`
+	Name         string         `json:"name"`
+	Description  string         `json:"description,omitempty"`
+	Strict       bool           `json:"strict"`
+	DeferLoading bool           `json:"defer_loading"`
+	Parameters   map[string]any `json:"parameters,omitempty"`
+}
+
+type toolSearchOutput struct {
+	Status    string             `json:"status"`
+	Execution string             `json:"execution"`
+	Tools     []loadableToolSpec `json:"tools"`
+}
+
+func newToolExposure(definitions []tools.Definition, messages []provider.Message, deferTool func(string) bool) (*toolExposure, error) {
 	exposure := &toolExposure{
 		deferredBy: map[string]searchableTool{},
 		exposed:    map[string]bool{},
@@ -53,11 +71,12 @@ func newToolExposure(definitions []tools.Definition, deferTool func(string) bool
 		}
 		if deferTool != nil && deferTool(name) {
 			entry, err := newSearchableTool(def)
-			if err == nil {
-				exposure.deferred = append(exposure.deferred, entry)
-				exposure.deferredBy[name] = entry
-				exposure.averageTerms += float64(entry.termTotal)
+			if err != nil {
+				return nil, err
 			}
+			exposure.deferred = append(exposure.deferred, entry)
+			exposure.deferredBy[name] = entry
+			exposure.averageTerms += float64(entry.termTotal)
 			continue
 		}
 		exposure.direct = append(exposure.direct, def)
@@ -66,7 +85,8 @@ func newToolExposure(definitions []tools.Definition, deferTool func(string) bool
 		exposure.averageTerms /= float64(len(exposure.deferred))
 		exposure.direct = append(exposure.direct, toolSearchDefinition())
 	}
-	return exposure
+	exposure.restoreSearchResults(messages)
+	return exposure, nil
 }
 
 func (e *toolExposure) definitions() []tools.Definition {
@@ -102,20 +122,44 @@ func (e *toolExposure) executeSearch(call provider.ToolCall) tools.Result {
 		return tools.Result{Content: marshalToolError("limit must be greater than zero")}
 	}
 	results := e.search(query, limit)
-	outputs := make([]map[string]any, 0, len(results))
+	outputs := make([]loadableToolSpec, 0, len(results))
 	for _, result := range results {
 		e.pending[result.name] = true
 		outputs = append(outputs, result.output)
 	}
-	content, err := json.Marshal(map[string]any{
-		"status":    "completed",
-		"execution": "client",
-		"tools":     outputs,
-	})
+	content, err := json.Marshal(toolSearchOutput{Status: "completed", Execution: "client", Tools: outputs})
 	if err != nil {
 		return tools.Result{Content: marshalToolError(err.Error())}
 	}
 	return tools.Result{Content: string(content)}
+}
+
+func (e *toolExposure) restoreSearchResults(messages []provider.Message) {
+	toolCalls := map[string]string{}
+	for _, msg := range messages {
+		switch provider.MessageRole(msg) {
+		case "assistant":
+			for _, call := range provider.MessageToolCalls(msg) {
+				toolCalls[provider.ToolCallID(call)] = provider.ToolCallName(call)
+			}
+		case "tool":
+			if toolCalls[provider.MessageToolCallID(msg)] == toolSearchToolName {
+				e.exposeSearchOutput(provider.MessageContent(msg))
+			}
+		}
+	}
+}
+
+func (e *toolExposure) exposeSearchOutput(content string) {
+	var output toolSearchOutput
+	if err := json.Unmarshal([]byte(content), &output); err != nil || output.Status != "completed" {
+		return
+	}
+	for _, tool := range output.Tools {
+		if e.isDeferred(tool.Name) {
+			e.exposed[tool.Name] = true
+		}
+	}
 }
 
 func (e *toolExposure) commitSearchResults() {
@@ -126,12 +170,12 @@ func (e *toolExposure) commitSearchResults() {
 }
 
 func (e *toolExposure) search(query string, limit int) []searchableTool {
-	queryTerms := uniqueTerms(tokenizeToolSearch(query))
+	queryTerms := tokenizeToolSearch(query)
 	if len(queryTerms) == 0 || len(e.deferred) == 0 {
 		return nil
 	}
 	documentFrequency := map[string]int{}
-	for _, term := range queryTerms {
+	for _, term := range uniqueTerms(queryTerms) {
 		for _, entry := range e.deferred {
 			if entry.termCounts[term] > 0 {
 				documentFrequency[term]++
@@ -189,14 +233,21 @@ func (e *toolExposure) bm25Score(entry searchableTool, queryTerms []string, docu
 }
 
 func newSearchableTool(def tools.Definition) (searchableTool, error) {
-	output, err := loadableToolSpec(def)
-	if err != nil {
-		return searchableTool{}, err
+	fn := def.GetFunction()
+	if fn == nil || strings.TrimSpace(fn.Name) == "" {
+		return searchableTool{}, fmt.Errorf("deferred tool %q is not a named function tool", tools.DefinitionName(def))
 	}
-	name, _ := output["name"].(string)
-	description, _ := output["description"].(string)
-	parts := []string{name, strings.ReplaceAll(name, "_", " "), description}
-	appendSchemaSearchText(output["parameters"], &parts)
+	output := loadableToolSpec{
+		Type:         "function",
+		Name:         fn.Name,
+		Description:  fn.Description.Or(""),
+		Strict:       fn.Strict.Or(false),
+		DeferLoading: true,
+		Parameters:   map[string]any(fn.Parameters),
+	}
+	name := output.Name
+	parts := []string{name, strings.ReplaceAll(name, "_", " "), output.Description}
+	appendSchemaSearchText(output.Parameters, &parts)
 	tokens := tokenizeToolSearch(strings.Join(parts, " "))
 	return searchableTool{
 		name:       name,
@@ -221,32 +272,6 @@ Some of the tools may not have been provided to you upfront, and you should use 
 	}, []string{"query"}))
 }
 
-func loadableToolSpec(def tools.Definition) (map[string]any, error) {
-	encoded, err := json.Marshal(def)
-	if err != nil {
-		return nil, err
-	}
-	var raw map[string]any
-	if err := json.Unmarshal(encoded, &raw); err != nil {
-		return nil, err
-	}
-	fn, ok := raw["function"].(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("tool %q is not a function tool", tools.DefinitionName(def))
-	}
-	out := map[string]any{
-		"type":          "function",
-		"name":          fn["name"],
-		"defer_loading": true,
-	}
-	for _, key := range []string{"description", "strict", "parameters"} {
-		if value, ok := fn[key]; ok {
-			out[key] = value
-		}
-	}
-	return out, nil
-}
-
 func appendSchemaSearchText(value any, parts *[]string) {
 	switch schema := value.(type) {
 	case map[string]any:
@@ -269,14 +294,32 @@ func appendSchemaSearchText(value any, parts *[]string) {
 }
 
 func tokenizeToolSearch(text string) []string {
-	matches := toolSearchTokenPattern.FindAllString(strings.ToLower(text), -1)
-	tokens := make([]string, 0, len(matches))
-	for _, match := range matches {
-		if match != "" {
-			tokens = append(tokens, match)
+	text = strings.ToLower(unidecode.Unidecode(text))
+	tokens := []string{}
+	for state := -1; text != ""; {
+		word, rest, newState := uniseg.FirstWordInString(text, state)
+		state = newState
+		if rest == text {
+			break
+		}
+		text = rest
+		if !toolSearchWordToken(word) || toolSearchStopwords[word] {
+			continue
+		}
+		if stem := english.Stem(word, false); stem != "" {
+			tokens = append(tokens, stem)
 		}
 	}
 	return tokens
+}
+
+func toolSearchWordToken(token string) bool {
+	for _, r := range token {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return true
+		}
+	}
+	return false
 }
 
 func termCounts(tokens []string) map[string]int {
@@ -298,4 +341,13 @@ func uniqueTerms(tokens []string) []string {
 		out = append(out, token)
 	}
 	return out
+}
+
+func newToolSearchStopwords() map[string]bool {
+	words := strings.Fields(`i me my myself we our ours ourselves you you're you've you'll you'd your yours yourself yourselves he him his himself she she's her hers herself it it's its itself they them their theirs themselves what which who whom this that that'll these those am is are was were be been being have has had having do does did doing a an the and but if or because as until while of at by for with about against between into through during before after above below to from up down in out on off over under again further then once here there when where why how all any both each few more most other some such no nor not only own same so than too very s t can will just don don't should should've now d ll m o re ve y ain aren aren't couldn couldn't didn didn't doesn doesn't hadn hadn't hasn hasn't haven haven't isn isn't ma mightn mightn't mustn mustn't needn needn't shan shan't shouldn shouldn't wasn wasn't weren weren't won won't wouldn wouldn't`)
+	stopwords := make(map[string]bool, len(words))
+	for _, word := range words {
+		stopwords[word] = true
+	}
+	return stopwords
 }

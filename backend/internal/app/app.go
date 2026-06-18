@@ -446,7 +446,7 @@ func NewAgent(cfg Config, modelProvider provider.Provider, registry *tools.Regis
 	return &agent.Agent{
 		Provider:   modelProvider,
 		Tools:      registry,
-		DeferTools: func(name string) bool { return strings.HasPrefix(name, "mcp_") },
+		DeferTools: func(name string) bool { return registry.InGroup(mcpruntime.RegistryGroup, name) },
 		MaxTurns:   agent.DefaultMaxTurns,
 	}
 }

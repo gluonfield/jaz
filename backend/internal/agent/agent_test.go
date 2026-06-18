@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -259,7 +260,7 @@ func TestToolSearchExposesMatchesOnNextModelCallOnly(t *testing.T) {
 }
 
 func TestToolSearchMatchesSchemaTerms(t *testing.T) {
-	exposure := newToolExposure([]tools.Definition{
+	exposure, err := newToolExposure([]tools.Definition{
 		namedTool{
 			name:        "mcp_calendar_create_event",
 			description: "Create events.",
@@ -274,7 +275,10 @@ func TestToolSearchMatchesSchemaTerms(t *testing.T) {
 				"ledger_id": tools.StringSchema("Reconcile ledger entries."),
 			}, []string{"ledger_id"}),
 		}.Definition(),
-	}, func(name string) bool { return strings.HasPrefix(name, "mcp_") })
+	}, nil, func(name string) bool { return strings.HasPrefix(name, "mcp_") })
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	result := exposure.executeSearch(provider.FunctionToolCall("search_1", toolSearchToolName, `{"query":"reconcile ledger","limit":1}`))
 	var output struct {
@@ -286,6 +290,96 @@ func TestToolSearchMatchesSchemaTerms(t *testing.T) {
 	if len(output.Tools) != 1 || output.Tools[0]["name"] != "mcp_invoice_lookup" {
 		t.Fatalf("schema search returned %#v", output.Tools)
 	}
+}
+
+func TestToolSearchTokenizesLikeCodexEnglishBM25(t *testing.T) {
+	if got := tokenizeToolSearch("i me my myself we our ours ourselves you you're you've you'll you'd"); len(got) != 0 {
+		t.Fatalf("stopword tokens = %v, want none", got)
+	}
+	if got := tokenizeToolSearch("space,station 42 1337 3.14"); !reflect.DeepEqual(got, []string{"space", "station", "42", "1337", "3.14"}) {
+		t.Fatalf("punctuation/number tokens = %v", got)
+	}
+	if got := tokenizeToolSearch("connection connections connective connected connecting connect"); !reflect.DeepEqual(got, []string{"connect", "connect", "connect", "connect", "connect", "connect"}) {
+		t.Fatalf("stemmed tokens = %v", got)
+	}
+}
+
+func TestToolSearchStemsEnglishTerms(t *testing.T) {
+	exposure, err := newToolExposure([]tools.Definition{
+		namedTool{
+			name:        "mcp_invoice_lookup",
+			description: "Fetch records.",
+			parameters: tools.ObjectSchema(map[string]any{
+				"connection_id": tools.StringSchema("Payment connection identifier."),
+			}, []string{"connection_id"}),
+		}.Definition(),
+	}, nil, func(name string) bool { return strings.HasPrefix(name, "mcp_") })
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result := exposure.executeSearch(provider.FunctionToolCall("search_1", toolSearchToolName, `{"query":"connected payment","limit":1}`))
+	var output struct {
+		Tools []map[string]any `json:"tools"`
+	}
+	if err := json.Unmarshal([]byte(result.Content), &output); err != nil {
+		t.Fatal(err)
+	}
+	if len(output.Tools) != 1 || output.Tools[0]["name"] != "mcp_invoice_lookup" {
+		t.Fatalf("stemmed search returned %#v", output.Tools)
+	}
+}
+
+func TestToolSearchRestoresExposedToolsFromHistory(t *testing.T) {
+	fp := &resumedToolSearchProvider{}
+	a := &Agent{
+		Provider: fp,
+		Tools: tools.NewRegistry(namedTool{
+			name:        "mcp_calendar_create_event",
+			description: "Create calendar events.",
+			parameters:  tools.ObjectSchema(map[string]any{"title": tools.StringSchema("Event title.")}, []string{"title"}),
+		}),
+		DeferTools: func(name string) bool { return strings.HasPrefix(name, "mcp_") },
+	}
+
+	_, err := a.Complete(context.Background(), provider.Request{
+		Messages: []provider.Message{
+			provider.UserMessage("find the calendar tool"),
+			provider.AssistantMessage("", []provider.ToolCall{
+				provider.FunctionToolCall("search_1", toolSearchToolName, `{"query":"calendar event","limit":1}`),
+			}),
+			provider.ToolMessage(`{"status":"completed","execution":"client","tools":[{"type":"function","name":"mcp_calendar_create_event","strict":false,"defer_loading":true}]}`, "search_1"),
+			provider.UserMessage("use the calendar tool"),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstTools := requestToolNames(fp.requests[0])
+	if !contains(firstTools, "mcp_calendar_create_event") {
+		t.Fatalf("restored request tools = %v, want prior searched MCP tool", firstTools)
+	}
+	if contains(firstTools, "mcp_unrelated_tool") {
+		t.Fatalf("restored unrelated tool: %v", firstTools)
+	}
+}
+
+type resumedToolSearchProvider struct {
+	requests []provider.Request
+}
+
+func (p *resumedToolSearchProvider) Complete(ctx context.Context, req provider.Request) (provider.Response, error) {
+	p.requests = append(p.requests, req)
+	if len(p.requests) == 1 {
+		return provider.Response{Message: provider.AssistantMessage("", []provider.ToolCall{
+			provider.FunctionToolCall("mcp_1", "mcp_calendar_create_event", `{"title":"Lunch"}`),
+		})}, nil
+	}
+	return provider.Response{Message: provider.AssistantMessage("done", nil)}, nil
+}
+
+func (p *resumedToolSearchProvider) StreamComplete(ctx context.Context, req provider.Request) (<-chan provider.Event, error) {
+	panic("not used")
 }
 
 func requestToolNames(req provider.Request) []string {
