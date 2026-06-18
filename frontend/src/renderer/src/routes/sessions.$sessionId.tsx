@@ -9,6 +9,7 @@ import { Composer, PlanDecisionCard } from '@/components/session/Composer'
 import { FileReaderLinkProvider, MessageMarkdown, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
 import { SessionErrorNotice } from '@/components/session/SessionErrorNotice'
 import { SessionLivenessIndicator } from '@/components/session/SessionLivenessIndicator'
+import { PendingSteerBubble } from '@/components/session/PendingSteerBubble'
 import { SidePanel } from '@/components/session/SidePanel'
 import { SidePanelControl, useSidePanelState } from '@/components/session/SidePanelState'
 import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
@@ -33,7 +34,7 @@ import {
   uploadSessionAttachment,
 } from '@/lib/api/sessions'
 import { streamSessionMessage } from '@/lib/api/stream'
-import type { ACPJobSnapshot, ACPModeState, ChatMessage, SessionEvent, SessionMessages } from '@/lib/api/types'
+import type { ACPJobSnapshot, ACPModeState, ChatMessage, QueuedMessage, SessionEvent, SessionMessages } from '@/lib/api/types'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
 import { takePendingMessage } from '@/lib/pendingMessage'
@@ -159,6 +160,13 @@ function LiveAttachmentList({ attachments }: { attachments: LiveAttachment[] }) 
       ))}
     </div>
   )
+}
+
+function visiblePendingSteer(prompt: QueuedMessage | undefined, messages: ChatMessage[]): QueuedMessage | undefined {
+  const text = prompt?.text.trim()
+  if (!prompt || !text) return undefined
+  const lastUserMessage = messages.findLast((message) => message.role === 'user')
+  return lastUserMessage?.content.trim() === text ? undefined : prompt
 }
 
 function ScrollToBottomButton({ visible, onClick }: { visible: boolean; onClick: () => void }) {
@@ -686,6 +694,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   const isACP = session.runtime === 'acp'
   // Covers turns started elsewhere (parent-triggered, or refresh mid-turn).
   const sessionRunning = queue.sessionRunning
+  const pendingSteer = visiblePendingSteer(session.pending_steer_message, messages)
   const empty = messages.length === 0 && transcriptEvents.length === 0 && !live && !sessionError && !sessionRunning
   // ACP turns stream through events; the live exchange only contributes the
   // not-yet-refetched user bubble, injected so mid-turn events sort after it.
@@ -774,12 +783,15 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                       onArtifactPrompt={queue.onSend}
                       tail={
                         isACP ? (
-                          <SessionLivenessIndicator
-                            agent={session.runtime_ref?.agent}
-                            running={sessionRunning}
-                            updatedAt={session.updated_at}
-                            lastActivityAt={latestEventTimeISO(lastSessionEventAt, live?.at)}
-                          />
+                          <>
+                            {pendingSteer ? <PendingSteerBubble prompt={pendingSteer} /> : null}
+                            <SessionLivenessIndicator
+                              agent={session.runtime_ref?.agent}
+                              running={sessionRunning}
+                              updatedAt={session.updated_at}
+                              lastActivityAt={latestEventTimeISO(lastSessionEventAt, live?.at)}
+                            />
+                          </>
                         ) : live ? (
                           <div className="flex flex-col gap-5">
                             <motion.div

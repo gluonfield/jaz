@@ -92,7 +92,8 @@ SELECT
   last_attention_at_ms,
   pinned,
   artifact_surface,
-  mcp_server_policy
+  mcp_server_policy,
+  pending_steer_message
 FROM threads
 WHERE id = ?1 OR slug = ?1
 LIMIT 1
@@ -134,6 +135,7 @@ func (q *Queries) GetSession(ctx context.Context, ref string) (Thread, error) {
 		&i.Pinned,
 		&i.ArtifactSurface,
 		&i.McpServerPolicy,
+		&i.PendingSteerMessage,
 	)
 	return i, err
 }
@@ -229,7 +231,8 @@ SELECT
   last_attention_at_ms,
   pinned,
   artifact_surface,
-  mcp_server_policy
+  mcp_server_policy,
+  pending_steer_message
 FROM threads
 `
 
@@ -275,6 +278,7 @@ func (q *Queries) ListSessions(ctx context.Context) ([]Thread, error) {
 			&i.Pinned,
 			&i.ArtifactSurface,
 			&i.McpServerPolicy,
+			&i.PendingSteerMessage,
 		); err != nil {
 			return nil, err
 		}
@@ -294,6 +298,7 @@ UPDATE threads
 SET
   status = ?1,
   error = ?2,
+  pending_steer_message = '',
   updated_at_ms = ?3
 WHERE status = ?4
 `
@@ -457,7 +462,8 @@ INSERT INTO threads (
   created_at_ms,
   updated_at_ms,
   last_attention_at_ms,
-  pinned
+  pinned,
+  pending_steer_message
 ) VALUES (
   ?1,
   ?2,
@@ -490,7 +496,8 @@ INSERT INTO threads (
   ?29,
   ?30,
   ?31,
-  ?32
+  ?32,
+  ?33
 )
 ON CONFLICT(id) DO UPDATE SET
   slug = excluded.slug,
@@ -523,7 +530,8 @@ ON CONFLICT(id) DO UPDATE SET
   created_at_ms = excluded.created_at_ms,
   updated_at_ms = excluded.updated_at_ms,
   last_attention_at_ms = excluded.last_attention_at_ms,
-  pinned = excluded.pinned
+  pinned = excluded.pinned,
+  pending_steer_message = excluded.pending_steer_message
 `
 
 type UpsertSessionParams struct {
@@ -559,6 +567,7 @@ type UpsertSessionParams struct {
 	UpdatedAtMs           int64          `json:"updated_at_ms"`
 	LastAttentionAtMs     int64          `json:"last_attention_at_ms"`
 	Pinned                int64          `json:"pinned"`
+	PendingSteerMessage   string         `json:"pending_steer_message"`
 }
 
 func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) error {
@@ -595,6 +604,7 @@ func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) er
 		arg.UpdatedAtMs,
 		arg.LastAttentionAtMs,
 		arg.Pinned,
+		arg.PendingSteerMessage,
 	)
 	return err
 }
