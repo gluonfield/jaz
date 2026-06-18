@@ -12,6 +12,22 @@ func testAgentDefaultsSeed() AgentDefaults {
 	return AgentDefaultsFromCatalog(acp.BuiltinAgents())
 }
 
+func TestAgentDefaultsFromCatalogKeepsAuthManagedAgentsDisabled(t *testing.T) {
+	seed := AgentDefaultsFromCatalog(acp.BuiltinAgents())
+	for _, agent := range []string{acp.AgentCodex, acp.AgentClaude, acp.AgentGrok, acp.AgentOpenCode} {
+		if seed.ACP[agent].Enabled {
+			t.Fatalf("%s seeded enabled without auth: %#v", agent, seed.ACP[agent])
+		}
+	}
+	custom := AgentDefaultsFromCatalog(acp.AgentCatalog{
+		"local_helper":  {Command: "/opt/jaz/local-helper"},
+		"remote_helper": {URL: "http://127.0.0.1:7777/acp"},
+	})
+	if !custom.ACP["local_helper"].Enabled || !custom.ACP["remote_helper"].Enabled {
+		t.Fatalf("custom agents should seed enabled: %#v", custom.ACP)
+	}
+}
+
 func TestParseCommandLinePreservesQuotedArgs(t *testing.T) {
 	command, args, err := ParseCommandLine(`/opt/jaz/codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'`)
 	if err != nil {

@@ -96,14 +96,14 @@ func TestEnabledHTTPMCPServersAppliesPolicyBeforeResolvingHeaders(t *testing.T) 
 	}
 }
 
-func TestEnabledHTTPMCPServersJaztoolsOnlyPolicyLeavesURLUnchanged(t *testing.T) {
+func TestEnabledHTTPMCPServersAllPolicyLeavesURLUnchanged(t *testing.T) {
 	servers, err := enabledHTTPMCPServers(context.Background(), staticMCPServerStore{servers: []mcpconfig.Server{{
 		ID:        "jaztools",
 		Name:      "jaztools",
 		URL:       "http://127.0.0.1:5299/mcp/jaztools",
 		Enabled:   true,
 		Transport: mcpconfig.TransportStreamableHTTP,
-	}}}, MCPServerPolicyJaztoolsOnly)
+	}}}, MCPServerPolicyAll)
 	if err != nil {
 		t.Fatal(err)
 	}

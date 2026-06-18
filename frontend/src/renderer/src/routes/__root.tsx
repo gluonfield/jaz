@@ -6,13 +6,14 @@ import {
 } from '@tanstack/react-router'
 import { PanelLeft } from 'lucide-react'
 import { motion } from 'motion/react'
-import { type PointerEvent as ReactPointerEvent, useEffect, useState } from 'react'
+import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useState } from 'react'
 import { CommandPalette } from '@/components/search/CommandPalette'
 import { SettingsOverlay } from '@/components/settings/SettingsOverlay'
 import { Sidebar } from '@/components/sidebar/Sidebar'
 import { ToastProvider } from '@/components/ui/toast'
 import { modalDialogOpen } from '@/lib/dom/modal'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
+import type { BrowserNavigationDirection } from '../../../shared/browserNavigation'
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -23,17 +24,31 @@ export const Route = createRootRoute({
 // branch never changes within a window's lifetime.
 function RootComponent() {
   if (window.jaz?.windowKind === 'board') {
-    // No extra padding: the board page is h-full, so any would overflow into
-    // a permanent sliver of scrollbar.
-    return (
-      <ToastProvider>
-        <main className="h-full overflow-hidden bg-bg">
-          <Outlet />
-        </main>
-      </ToastProvider>
-    )
+    return <BoardRoot />
   }
   return <RootLayout />
+}
+
+function BoardRoot() {
+  const handleBrowserNavigation = useCallback((direction: BrowserNavigationDirection) => {
+    if (direction === 'back') window.history.back()
+    else window.history.forward()
+  }, [])
+
+  useEffect(
+    () => window.jaz?.onBrowserNavigation?.(handleBrowserNavigation),
+    [handleBrowserNavigation],
+  )
+
+  // No extra padding: the board page is h-full, so any would overflow into
+  // a permanent sliver of scrollbar.
+  return (
+    <ToastProvider>
+      <main className="h-full overflow-hidden bg-bg">
+        <Outlet />
+      </main>
+    </ToastProvider>
+  )
 }
 
 const SIDEBAR_DEFAULT_WIDTH = 264
@@ -77,6 +92,23 @@ function RootLayout() {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth))
   }, [sidebarWidth])
 
+  const handleBrowserNavigation = useCallback(
+    (direction: BrowserNavigationDirection) => {
+      if (settingsOpen) {
+        if (direction === 'back') setSettingsOpen(false)
+        return
+      }
+      if (commandOpen) {
+        if (direction === 'back') setCommandOpen(false)
+        return
+      }
+      if (modalDialogOpen()) return
+      if (direction === 'back') window.history.back()
+      else window.history.forward()
+    },
+    [commandOpen, settingsOpen],
+  )
+
   const startResize = (e: ReactPointerEvent) => {
     e.preventDefault()
     const startX = e.clientX
@@ -99,11 +131,23 @@ function RootLayout() {
     window.addEventListener('pointerup', onUp)
   }
 
+  useEffect(
+    () => window.jaz?.onBrowserNavigation?.(handleBrowserNavigation),
+    [handleBrowserNavigation],
+  )
+
   // Cmd+S toggles the sidebar — unless something closer (the agent-file
   // editor's save keymap) already claimed the event. Cmd+N starts a thread.
-  // Cmd+K toggles the command palette.
+  // Cmd+K toggles the command palette. Cmd+[ / Cmd+] follow browser history.
   useWindowEvent('keydown', (e) => {
-    if (!(e.metaKey || e.ctrlKey) || e.defaultPrevented) return
+    if (e.defaultPrevented) return
+    const navigation = browserNavigationDirection(e)
+    if (navigation) {
+      e.preventDefault()
+      handleBrowserNavigation(navigation)
+      return
+    }
+    if (!(e.metaKey || e.ctrlKey)) return
     const key = e.key.toLowerCase()
     if (!e.shiftKey && e.key.toLowerCase() === 's') {
       e.preventDefault()
@@ -182,4 +226,13 @@ function RootLayout() {
       />
     </ToastProvider>
   )
+}
+
+function browserNavigationDirection(event: KeyboardEvent): BrowserNavigationDirection | null {
+  if (event.key === 'BrowserBack') return 'back'
+  if (event.key === 'BrowserForward') return 'forward'
+  if (!event.metaKey || event.shiftKey || event.ctrlKey || event.altKey) return null
+  if (event.key === '[' || event.code === 'BracketLeft') return 'back'
+  if (event.key === ']' || event.code === 'BracketRight') return 'forward'
+  return null
 }

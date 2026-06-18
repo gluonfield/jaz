@@ -31,7 +31,6 @@ const (
 
 const (
 	MCPServerPolicyAll                = ""
-	MCPServerPolicyJaztoolsOnly       = "jaztools_only"
 	MCPServerPolicyWidget             = "widget"
 	MCPServerPolicyMemorySearchWorker = "memory_search_worker"
 )

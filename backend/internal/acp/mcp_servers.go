@@ -83,7 +83,7 @@ func mcpServerAllowed(policy string, server mcpconfig.Server) bool {
 	switch strings.TrimSpace(policy) {
 	case MCPServerPolicyAll:
 		return true
-	case MCPServerPolicyJaztoolsOnly, MCPServerPolicyWidget, MCPServerPolicyMemorySearchWorker:
+	case MCPServerPolicyWidget, MCPServerPolicyMemorySearchWorker:
 		return strings.EqualFold(strings.TrimSpace(server.ID), "jaztools") ||
 			strings.EqualFold(strings.TrimSpace(server.Name), "jaztools")
 	default:

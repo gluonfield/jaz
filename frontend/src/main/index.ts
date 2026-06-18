@@ -17,6 +17,7 @@ import {
 import appIcon from '../assets/jaz-icon-1024.png?asset'
 import { isPreviewURL } from '../shared/preview'
 import { startLocalBackend, stopLocalBackend } from './backend'
+import { attachBrowserNavigationCommands, attachBrowserNavigationShortcuts } from './browserNavigation'
 import { getDeviceIdentity, getDeviceMetadata } from './deviceIdentity'
 import { createUpdateController } from './updater'
 
@@ -212,6 +213,7 @@ function openPreviewURL(url: string, contents: WebContents): void {
 // Covers every window — main, preview webviews, and per-board windows.
 app.on('web-contents-created', (_event, contents) => {
   contents.once('destroyed', () => previewURLTargets.delete(contents.id))
+  attachBrowserNavigationShortcuts(contents)
   attachContextMenu(contents)
   attachExternalOpenHandler(contents)
   attachPreviewNavigationGuard(contents)
@@ -243,6 +245,7 @@ function createWindow(): void {
   })
 
   mainWindow = win
+  attachBrowserNavigationCommands(win)
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null
   })
@@ -326,6 +329,7 @@ function openBoardWindow(boardId: string): void {
     },
   })
   boardWindows.set(boardId, win)
+  attachBrowserNavigationCommands(win)
   win.once('ready-to-show', () => win.show())
   win.on('close', () => saveBoardBounds(boardId, win.getBounds()))
   win.on('closed', () => boardWindows.delete(boardId))

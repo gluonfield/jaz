@@ -42,7 +42,7 @@ func AgentDefaultsFromCatalog(catalog acp.AgentCatalog) AgentDefaults {
 		agent, _ := catalog.Agent(name)
 		command := CommandLine(agent.Command, agent.Args)
 		seed.ACP[name] = ACPAgentDefaults{
-			Enabled:         agent.Local || strings.TrimSpace(command) != "" || strings.TrimSpace(agent.URL) != "",
+			Enabled:         defaultACPAgentEnabled(name, agent, command),
 			Command:         command,
 			ModelProvider:   strings.TrimSpace(agent.ModelProvider),
 			Model:           strings.TrimSpace(agent.Model),
@@ -51,6 +51,16 @@ func AgentDefaultsFromCatalog(catalog acp.AgentCatalog) AgentDefaults {
 		}
 	}
 	return seed
+}
+
+func defaultACPAgentEnabled(name string, agent acp.AgentConfig, command string) bool {
+	if agent.Local || strings.TrimSpace(agent.URL) != "" {
+		return true
+	}
+	if _, ok := acp.AgentAPIKey(name); ok {
+		return false
+	}
+	return strings.TrimSpace(command) != ""
 }
 
 func LoadAgentDefaults(store storage.SettingsStorage) (AgentDefaults, error) {
