@@ -40,24 +40,6 @@ type Device struct {
 	AppVersion string    `json:"app_version,omitempty"`
 }
 
-type CreateDevice struct {
-	ID         string
-	Name       string
-	Kind       string
-	Status     string
-	PublicKey  string
-	Platform   string
-	Family     string
-	Model      string
-	TokenHash  string
-	CreatedAt  time.Time
-	ApprovedAt time.Time
-	LastSeenAt time.Time
-	LastSeenIP string
-	UserAgent  string
-	AppVersion string
-}
-
 type SavePairingDevice struct {
 	ID         string
 	Name       string
@@ -68,6 +50,23 @@ type SavePairingDevice struct {
 	Model      string
 	TokenHash  string
 	CreatedAt  time.Time
+	LastSeenIP string
+	UserAgent  string
+	AppVersion string
+}
+
+type SaveApprovedDevice struct {
+	ID         string
+	Name       string
+	Kind       string
+	PublicKey  string
+	Platform   string
+	Family     string
+	Model      string
+	TokenHash  string
+	CreatedAt  time.Time
+	ApprovedAt time.Time
+	LastSeenAt time.Time
 	LastSeenIP string
 	UserAgent  string
 	AppVersion string

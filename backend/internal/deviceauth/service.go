@@ -34,8 +34,8 @@ type Store interface {
 	ListDevices() ([]storage.Device, error)
 	CountApprovedDevices() (int, error)
 	LoadDeviceByTokenHash(string) (storage.Device, error)
-	CreateDevice(storage.CreateDevice) (storage.Device, error)
 	SavePairingDevice(storage.SavePairingDevice) (storage.Device, error)
+	SaveApprovedDevice(storage.SaveApprovedDevice) (storage.Device, error)
 	UpdateDeviceSeen(id, ip, userAgent string, at time.Time) error
 	RevokeDevice(id string, at time.Time) (storage.Device, error)
 	CreateDevicePairing(storage.CreateDevicePairing) (storage.DevicePairing, error)
@@ -143,13 +143,22 @@ func (s *Service) Register(reg Registration) (RegisterResult, error) {
 		return RegisterResult{}, err
 	}
 	if count == 0 {
-		return s.createApprovedDevice(reg)
+		return s.saveApprovedDevice(reg)
 	}
 	pairing, secret, err := s.createPairing(reg)
 	if err != nil {
 		return RegisterResult{}, err
 	}
 	return RegisterResult{Device: pairing.Device, Pairing: &pairing, PairingSecret: secret}, nil
+}
+
+func (s *Service) RegisterApproved(reg Registration) (RegisterResult, error) {
+	var err error
+	reg, err = normalizeRegistration(reg)
+	if err != nil {
+		return RegisterResult{}, err
+	}
+	return s.saveApprovedDevice(reg)
 }
 
 func (s *Service) CreatePairing(reg Registration) (storage.DevicePairing, string, error) {
@@ -277,17 +286,16 @@ func normalizeRegistration(reg Registration) (Registration, error) {
 	return reg, nil
 }
 
-func (s *Service) createApprovedDevice(reg Registration) (RegisterResult, error) {
+func (s *Service) saveApprovedDevice(reg Registration) (RegisterResult, error) {
 	token, err := newToken()
 	if err != nil {
 		return RegisterResult{}, err
 	}
 	now := s.now()
-	device, err := s.store.CreateDevice(storage.CreateDevice{
+	device, err := s.store.SaveApprovedDevice(storage.SaveApprovedDevice{
 		ID:         reg.Identity.DeviceID,
 		Name:       reg.Profile.Name,
 		Kind:       reg.Profile.Kind,
-		Status:     storage.DeviceStatusApproved,
 		PublicKey:  reg.Identity.PublicKey,
 		Platform:   reg.Profile.Platform,
 		Family:     reg.Profile.Family,

@@ -51,32 +51,6 @@ func (s *Store) LoadDevice(id string) (storage.Device, error) {
 	return deviceFromGetRow(row), nil
 }
 
-func (s *Store) CreateDevice(input storage.CreateDevice) (storage.Device, error) {
-	s.mu.Lock()
-	err := devicequeries.New(s.db).CreateDevice(context.Background(), devicequeries.CreateDeviceParams{
-		ID:              input.ID,
-		Name:            input.Name,
-		Kind:            input.Kind,
-		Status:          input.Status,
-		PublicKey:       input.PublicKey,
-		Platform:        input.Platform,
-		DeviceFamily:    input.Family,
-		ModelIdentifier: input.Model,
-		TokenHash:       input.TokenHash,
-		CreatedAtMs:     timeToMs(input.CreatedAt),
-		ApprovedAtMs:    optionalTimeToMs(input.ApprovedAt),
-		LastSeenAtMs:    optionalTimeToMs(input.LastSeenAt),
-		LastSeenIp:      input.LastSeenIP,
-		UserAgent:       input.UserAgent,
-		AppVersion:      input.AppVersion,
-	})
-	s.mu.Unlock()
-	if err != nil {
-		return storage.Device{}, err
-	}
-	return s.LoadDevice(input.ID)
-}
-
 func (s *Store) SavePairingDevice(input storage.SavePairingDevice) (storage.Device, error) {
 	s.mu.Lock()
 	err := devicequeries.New(s.db).SavePairingDevice(context.Background(), devicequeries.SavePairingDeviceParams{
@@ -97,6 +71,50 @@ func (s *Store) SavePairingDevice(input storage.SavePairingDevice) (storage.Devi
 	if err != nil {
 		return storage.Device{}, err
 	}
+	return s.LoadDevice(input.ID)
+}
+
+func (s *Store) SaveApprovedDevice(input storage.SaveApprovedDevice) (storage.Device, error) {
+	s.mu.Lock()
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		s.mu.Unlock()
+		return storage.Device{}, err
+	}
+	q := devicequeries.New(s.db).WithTx(tx)
+	if err := q.SaveApprovedDevice(context.Background(), devicequeries.SaveApprovedDeviceParams{
+		ID:              input.ID,
+		Name:            input.Name,
+		Kind:            input.Kind,
+		PublicKey:       input.PublicKey,
+		Platform:        input.Platform,
+		DeviceFamily:    input.Family,
+		ModelIdentifier: input.Model,
+		TokenHash:       input.TokenHash,
+		CreatedAtMs:     timeToMs(input.CreatedAt),
+		ApprovedAtMs:    timeToMs(input.ApprovedAt),
+		LastSeenAtMs:    timeToMs(input.LastSeenAt),
+		LastSeenIp:      input.LastSeenIP,
+		UserAgent:       input.UserAgent,
+		AppVersion:      input.AppVersion,
+	}); err != nil {
+		_ = tx.Rollback()
+		s.mu.Unlock()
+		return storage.Device{}, err
+	}
+	if _, err := q.RejectPendingPairingRequestsForDevice(context.Background(), devicequeries.RejectPendingPairingRequestsForDeviceParams{
+		DeviceID:     input.ID,
+		RejectedAtMs: timeToMs(input.ApprovedAt),
+	}); err != nil {
+		_ = tx.Rollback()
+		s.mu.Unlock()
+		return storage.Device{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		s.mu.Unlock()
+		return storage.Device{}, err
+	}
+	s.mu.Unlock()
 	return s.LoadDevice(input.ID)
 }
 
@@ -473,11 +491,4 @@ func deviceError(err error) error {
 		return fmt.Errorf("device not found")
 	}
 	return err
-}
-
-func optionalTimeToMs(t time.Time) int64 {
-	if t.IsZero() {
-		return 0
-	}
-	return t.UnixMilli()
 }

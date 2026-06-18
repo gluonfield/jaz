@@ -92,6 +92,53 @@ func TestApprovedDeviceRepairRotatesTokenOnApproval(t *testing.T) {
 	}
 }
 
+func TestRegisterApprovedApprovesDeviceAfterBootstrap(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	service := New(store)
+	if _, err := service.Register(testClientInfo("Owner", "desktop", 1)); err != nil {
+		t.Fatal(err)
+	}
+	info := testClientInfo("New Mac", "desktop", 2)
+	pending, _, err := service.CreatePairing(info)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	approved, err := service.RegisterApproved(info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if approved.Token == "" || approved.Pairing != nil || approved.Device.Status != storage.DeviceStatusApproved {
+		t.Fatalf("approved registration = %#v", approved)
+	}
+	if _, err := service.Authenticate(approved.Token, SeenInfo{}); err != nil {
+		t.Fatalf("approved token auth: %v", err)
+	}
+
+	_, pairings, err := service.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, pairing := range pairings {
+		if pairing.ID != pending.ID {
+			continue
+		}
+		found = true
+		if pairing.Status != storage.PairingStatusRejected {
+			t.Fatalf("pending pairing status = %q, want rejected", pairing.Status)
+		}
+	}
+	if !found {
+		t.Fatalf("pending pairing %s not found", pending.ID)
+	}
+}
+
 func TestCreatePairingReplacesPendingRequestForDevice(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
