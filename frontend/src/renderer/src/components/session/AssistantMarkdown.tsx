@@ -39,7 +39,7 @@ function AssistantCopyButton({ text }: { text: string }) {
       aria-label={copied ? 'Copied message as Markdown' : 'Copy message as Markdown'}
       title={copied ? 'Copied' : 'Copy message as Markdown'}
       onClick={() => void copyMessage()}
-      className="group mt-0.5 inline-flex h-7 w-fit cursor-pointer items-center gap-1.5 rounded-full px-2 text-[12px] font-medium text-ink-3 transition-[background-color,color,transform] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+      className="group mt-0.5 inline-flex h-7 w-fit cursor-pointer items-center gap-1.5 rounded-full px-2 text-[12px] font-medium text-ink-3 transition-[background-color,color,transform] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96]"
     >
       <span className="grid size-3.5 shrink-0 place-items-center">
         <AnimatePresence initial={false} mode="popLayout">
