@@ -1,3 +1,9 @@
+import { useQuery } from '@tanstack/react-query'
+import { Sparkles } from 'lucide-react'
+import { useState } from 'react'
+import { Modal } from '@/components/ui/Modal'
+import { skillsQuery } from '@/lib/api/skills'
+
 // Inline mentions persist in message text as markdown-style links whose label
 // starts with a sigil: `[$skill-name](/abs/path/SKILL.md)` or
 // `[@rel/path](/abs/path)` — the same codec Codex uses for its history. The
@@ -67,16 +73,45 @@ function parseMentionAt(
   return { sigil, name, target, end: targetEnd + 1 }
 }
 
-// MentionPill is the rendered token: blue, compact, with the target on hover.
+const PILL_CLASS = 'rounded-[4px] bg-primary-soft px-1 py-px text-primary-strong'
+
 export function MentionPill({ mention }: { mention: Mention }) {
+  if (mention.sigil === '$') return <SkillMentionPill mention={mention} />
   return (
-    <span
-      title={mention.target}
-      className="rounded-[4px] bg-primary-soft px-1 py-px text-primary-strong"
-    >
+    <span title={mention.target} className={PILL_CLASS}>
       {mention.sigil}
       {mention.name}
     </span>
+  )
+}
+
+function SkillMentionPill({ mention }: { mention: Mention }) {
+  const [open, setOpen] = useState(false)
+  const { data: skills } = useQuery(skillsQuery)
+  const description = skills?.find((s) => s.name === mention.name)?.description
+  return (
+    <>
+      <button
+        type="button"
+        title={mention.target}
+        onClick={() => setOpen(true)}
+        className={`${PILL_CLASS} cursor-pointer transition-colors hover:bg-primary/20`}
+      >
+        {mention.sigil}
+        {mention.name}
+      </button>
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title={mention.name}
+        icon={<Sparkles size={16} />}
+        size="sm"
+      >
+        <p className={`text-[13px] leading-relaxed ${description ? 'text-ink-2' : 'text-ink-3'}`}>
+          {description || 'No description available for this skill.'}
+        </p>
+      </Modal>
+    </>
   )
 }
 
