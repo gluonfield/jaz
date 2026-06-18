@@ -127,7 +127,7 @@ export function useMentionInput({
   // free.
   const trigger = useMemo(() => findActiveTrigger(text, caret), [text, caret])
   const menuTrigger = trigger && trigger.start !== dismissedAt && !disabled ? trigger : null
-  const skills = useQuery({ ...skillsQuery, enabled: focused })
+  const skills = useQuery({ ...skillsQuery(fileRoot), enabled: focused })
   const fileIndex = useQuery({
     ...workspaceFilesQuery(fileRoot ?? ''),
     enabled: fileRoot !== undefined && focused,

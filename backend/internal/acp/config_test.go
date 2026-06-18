@@ -15,7 +15,9 @@ import (
 type testPrompt string
 
 func (p testPrompt) ACPPrompt(string) (string, error) { return string(p), nil }
-func (p testPrompt) SkillsPrompt() (string, error)    { return string(p), nil }
+func (p testPrompt) SkillsPromptForWorkspace(string) (string, error) {
+	return string(p), nil
+}
 
 func TestProcessEnvIsMinimalAndCanonical(t *testing.T) {
 	clearHostEnv(t)

@@ -177,7 +177,7 @@ function mentionSigil(label: string): '$' | '@' | null {
 export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: string }) {
   // Cached by the composer; lets assistant echoes of $skill-name render as
   // mention pills. An empty catalog simply skips the pass.
-  const skills = useQuery(skillsQuery)
+  const skills = useQuery(skillsQuery())
   const openPreview = useContext(PreviewLinkContext)
   const openFile = useContext(FileReaderLinkContext)
   const prepared = useMemo(

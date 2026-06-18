@@ -161,7 +161,7 @@ function ManageSection({
   const toast = useToast()
   const info = repo.info
   const showCodeReview = canReviewSession(info)
-  const skills = useQuery({ ...skillsQuery, enabled: showCodeReview })
+  const skills = useQuery({ ...skillsQuery(), enabled: showCodeReview })
   const archive = useMutation({
     mutationFn: () => setSessionArchived(session.id, true),
     onSuccess: () => toast('Archived thread'),
