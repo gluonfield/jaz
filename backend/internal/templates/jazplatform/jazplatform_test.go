@@ -36,6 +36,8 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"Current working directory: /tmp/jaz/workspaces/default/.worktrees/task",
 		"## AGENTS.md\n\nagents",
 		"## SOUL.md\n\nsoul",
+		"## Agent delegation",
+		"Do not use an agent-local multi-agent tool",
 		"## Artifacts and visualisation",
 		"Artifact usage criteria:",
 		"Always call `visualise_read_me` before the first artifact",
@@ -53,6 +55,8 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		t.Fatalf("platform prompt must not carry the coordinator identity:\n%s", prompt)
 	}
 	for _, want := range []string{
+		"When Jaztools exposes `agent_spawn`",
+		"Choose the agent with `acp_agent` or `agent_name`",
 		"any reusable code snippet over 20 lines",
 		"standalone text-heavy documents over 20 lines or 1500 characters",
 		"Do not use artifacts for short code answers of 20 lines or fewer",
@@ -124,9 +128,11 @@ func TestRenderWidgetSurfaceOmitsChatArtifactPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.Contains(prompt, "## Artifacts and visualisation") ||
+		strings.Contains(prompt, "## Agent delegation") ||
+		strings.Contains(prompt, "agent_spawn") ||
 		strings.Contains(prompt, "visualise_show_widget") ||
 		strings.Contains(prompt, "visualise_read_me") {
-		t.Fatalf("widget surface must not receive the chat artifact policy:\n%s", prompt)
+		t.Fatalf("widget surface must not receive chat-only tool policy:\n%s", prompt)
 	}
 	if !strings.Contains(prompt, "## AGENTS.md\n\nagents") || !strings.Contains(prompt, "## SOUL.md\n\nsoul") {
 		t.Fatalf("widget surface must keep the platform prompt:\n%s", prompt)

@@ -4,7 +4,7 @@
 // call per data change.
 import type { ACPPermission, ACPToolCall, ChatMessage, SessionEvent } from '@/lib/api/types'
 import { taskSurfaceFromEvent, taskSurfaceKey } from '@/lib/taskSurface'
-import { combineSequentialACPText } from '@/lib/sessionEvents'
+import { mergeACPTextEvents } from '@/lib/sessionEvents'
 import { hasPermissionSurface, normalized } from './TranscriptUtils'
 
 export type TimelineItem =
@@ -61,6 +61,28 @@ function hasVisibleACPSurface(event: SessionEvent): boolean {
       hasTaskSurface ||
       hasWorkingStatusSurface(event),
   )
+}
+
+function combineVisibleACPText(items: TimelineItem[]): TimelineItem[] {
+  const out: TimelineItem[] = []
+  for (const item of items) {
+    const prev = out.at(-1)
+    const merged =
+      prev?.kind === 'event' && item.kind === 'event'
+        ? mergeACPTextEvents(prev.event, item.event)
+        : undefined
+    if (merged && prev?.kind === 'event' && item.kind === 'event') {
+      out[out.length - 1] = {
+        ...prev,
+        event: merged,
+        eventIndex: item.eventIndex,
+        at: item.at,
+      }
+      continue
+    }
+    out.push(item)
+  }
+  return out
 }
 
 function itemTime(value: string | undefined): number {
@@ -192,12 +214,11 @@ export function buildTimeline(
   sessionId: string | undefined,
   groupTurns: boolean,
 ) {
-  const combinedEvents = combineSequentialACPText(events)
   const permissionResolutions = new Map<string, ACPPermission>()
   const latestPermissionRequest = new Map<string, number>()
   const latestTaskSurfaceEvent = new Map<string, number>()
   const latestToolEvent = new Map<string, number>()
-  combinedEvents.forEach((event, index) => {
+  events.forEach((event, index) => {
     if (event.type === 'permission_request' && event.permission) {
       latestPermissionRequest.set(event.permission.id, index)
     }
@@ -212,7 +233,7 @@ export function buildTimeline(
       latestToolEvent.set(acp.id, index)
     }
   })
-  const renderedEvents = combinedEvents
+  const renderedEvents = events
     .map((event, index) => ({ event, index }))
     .filter(({ event, index }) => {
       if (event.type === 'permission_response' || event.type === 'assistant') return false
@@ -248,7 +269,7 @@ export function buildTimeline(
     })
 
   const pendingPermissionIds = new Set<string>()
-  for (const event of combinedEvents) {
+  for (const event of events) {
     if (event.type === 'permission_request' && event.permission?.id) {
       pendingPermissionIds.add(event.permission.id)
     }
@@ -258,7 +279,7 @@ export function buildTimeline(
   }
 
   const visibleMessages = messages.filter((message) => message.role === 'user' || message.role === 'assistant')
-  const merged = groupToolRuns(mergeTimeline(visibleMessages, renderedEvents))
+  const merged = groupToolRuns(combineVisibleACPText(mergeTimeline(visibleMessages, renderedEvents)))
   // Live state isn't history: pending questions and working status anchor at
   // the bottom; an answered question returns to its chronological spot.
   const isPendingCard = (item: TimelineItem) =>

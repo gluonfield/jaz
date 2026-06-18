@@ -11,6 +11,7 @@ import (
 
 	"github.com/gluonfield/jazmem/pkg/jazmem"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/memoryservice"
@@ -35,6 +36,39 @@ type fakeExecutor struct {
 
 func (f *fakeExecutor) StartLoopRun(_ context.Context, execution loops.Execution) {
 	f.started <- execution.Run
+}
+
+type fakeACPService struct {
+	spawned chan acp.SpawnRequest
+}
+
+func (s fakeACPService) Spawn(_ context.Context, req acp.SpawnRequest) (acp.SpawnResult, error) {
+	s.spawned <- req
+	return acp.SpawnResult{Status: "ok", SessionID: "child", Slug: req.Slug, ACPAgent: req.ACPAgent, State: acp.StateIdle}, nil
+}
+
+func (s fakeACPService) Send(context.Context, acp.SendRequest) (acp.Job, error) {
+	return acp.Job{}, nil
+}
+
+func (s fakeACPService) Status(string) (acp.Job, error) {
+	return acp.Job{}, nil
+}
+
+func (s fakeACPService) Wait(context.Context, acp.WaitRequest) (acp.Job, error) {
+	return acp.Job{}, nil
+}
+
+func (s fakeACPService) Cancel(context.Context, string) (acp.Job, error) {
+	return acp.Job{}, nil
+}
+
+func (s fakeACPService) List() []acp.Job {
+	return nil
+}
+
+func (s fakeACPService) Agents() []string {
+	return []string{acp.AgentCodex, acp.AgentJaz}
 }
 
 func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
@@ -70,6 +104,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 	)
 	executor := &fakeExecutor{started: make(chan loops.Run, 1)}
 	service.SetLoops(loops.NewService(store, executor, nil))
+	service.SetAgents(fakeACPService{spawned: make(chan acp.SpawnRequest, 1)})
 
 	session, closeSession := connectClient(t, service.Server())
 	defer closeSession()
@@ -85,6 +120,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 	for _, name := range []string{
 		"memory_search", "memory_get_page",
 		"loop_list", "loop_get", "loop_create", "loop_update", "loop_run", "loop_delete",
+		"agent_spawn", "agent_send", "agent_status", "agent_wait", "agent_cancel", "agent_list",
 		"visualise_read_me", "visualise_show_widget",
 	} {
 		if !names[name] {
@@ -231,6 +267,7 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
+	service.SetAgents(fakeACPService{spawned: make(chan acp.SpawnRequest, 1)})
 
 	ordinary, err := store.CreateSession(storage.CreateSession{Slug: "ordinary", Runtime: storage.RuntimeACP})
 	if err != nil {
@@ -296,6 +333,9 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 	if hasTool(t, base, "visualise_publish_widget") {
 		t.Fatal("base server advertised visualise_publish_widget")
 	}
+	if !hasTool(t, base, "agent_spawn") {
+		t.Fatal("base server did not advertise agent_spawn")
+	}
 	widget, closeWidget := connectClient(t, service.server(widgetSurface))
 	defer closeWidget()
 	if !hasTool(t, widget, "visualise_read_me") {
@@ -304,8 +344,75 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 	if hasTool(t, widget, "visualise_show_widget") {
 		t.Fatal("widget server advertised thread artifact renderer")
 	}
+	if hasTool(t, widget, "agent_spawn") {
+		t.Fatal("widget server advertised agent_spawn")
+	}
 	if !hasTool(t, widget, "visualise_publish_widget") {
 		t.Fatal("widget server did not advertise visualise_publish_widget")
+	}
+}
+
+func TestAgentSpawnToolSchemaAndAlias(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	memory, err := jazmem.Open(jazmem.Config{Root: t.TempDir(), DBPath: filepath.Join(t.TempDir(), "memory.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = memory.Close() })
+
+	service := New(
+		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"),
+		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
+		store,
+		sessionevents.New(),
+		store,
+		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
+	)
+	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
+	agentService := fakeACPService{spawned: make(chan acp.SpawnRequest, 1)}
+	service.SetAgents(agentService)
+
+	session, closeSession := connectClient(t, service.Server())
+	defer closeSession()
+	tool := findTool(t, session, "agent_spawn")
+	if tool == nil {
+		t.Fatal("agent_spawn not advertised")
+	}
+	schema, _ := tool.InputSchema.(map[string]any)
+	properties, _ := schema["properties"].(map[string]any)
+	for _, name := range []string{"acp_agent", "agent_name", "model_provider", "model", "reasoning_effort"} {
+		if _, ok := properties[name]; !ok {
+			t.Fatalf("agent_spawn schema missing %s: %#v", name, properties)
+		}
+	}
+
+	call, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "agent_spawn",
+		Arguments: map[string]any{
+			"agent_name":       acp.AgentCodex,
+			"slug":             "child",
+			"model_provider":   "openai",
+			"model":            "gpt-5.5",
+			"reasoning_effort": "high",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if call.IsError {
+		t.Fatalf("agent_spawn returned error: %#v", call)
+	}
+	select {
+	case req := <-agentService.spawned:
+		if req.ACPAgent != acp.AgentCodex || req.ModelProvider != "openai" || req.Model != "gpt-5.5" || req.ReasoningEffort != "high" {
+			t.Fatalf("spawn request = %#v", req)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("agent_spawn did not reach ACP service")
 	}
 }
 
@@ -355,7 +462,7 @@ func TestSearchWorkerSurfaceOnlyAdvertisesRawMemoryTools(t *testing.T) {
 			t.Fatalf("worker server missing %s", name)
 		}
 	}
-	for _, name := range []string{"memory_search", "memory_get_page", "loop_list", "visualise_read_me", "visualise_show_widget", "visualise_publish_widget"} {
+	for _, name := range []string{"memory_search", "memory_get_page", "loop_list", "agent_spawn", "visualise_read_me", "visualise_show_widget", "visualise_publish_widget"} {
 		if hasTool(t, worker, name) {
 			t.Fatalf("worker server advertised %s", name)
 		}
@@ -446,16 +553,21 @@ func connectClient(t *testing.T, server *mcp.Server) (*mcp.ClientSession, func()
 
 func hasTool(t *testing.T, session *mcp.ClientSession, name string) bool {
 	t.Helper()
+	return findTool(t, session, name) != nil
+}
+
+func findTool(t *testing.T, session *mcp.ClientSession, name string) *mcp.Tool {
+	t.Helper()
 	tools, err := session.ListTools(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, tool := range tools.Tools {
 		if tool.Name == name {
-			return true
+			return tool
 		}
 	}
-	return false
+	return nil
 }
 
 func sessionRequest(sessionID string) *http.Request {

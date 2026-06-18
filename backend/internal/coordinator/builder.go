@@ -47,9 +47,9 @@ func (b *Builder) SkillsPromptForWorkspace(workspace string) (string, error) {
 
 // ACPPrompt builds the prompt extension delivered to ACP agent sessions
 // (codex, claude, grok). Unlike the coordinator prompt it carries no Jaz
-// identity or delegation rules — agents keep their own system prompt and this
-// is appended to it: runtime context, the user's standing rules (AGENTS.md),
-// the jazmem memory horizons, and the skills catalog.
+// identity — agents keep their own system prompt and this is appended to it:
+// runtime context, Jaztools policy, the user's standing rules (AGENTS.md), the
+// jazmem memory horizons, and the skills catalog.
 func (b *Builder) ACPPrompt(cwd string) (string, error) {
 	return b.ACPPromptForArtifactSurface(cwd, string(visualize.SurfaceChat))
 }

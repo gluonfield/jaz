@@ -185,6 +185,7 @@ func (s *Store) saveSessionLocked(session storage.Session, touchUpdated bool) er
 }
 
 func insertSession(db threaddb.DBTX, session storage.Session) error {
+	session = storage.CanonicalSessionQueue(session)
 	if session.LastAttentionAt.IsZero() {
 		storage.MarkSessionAttention(&session, storage.SessionAttentionAt(session))
 	}

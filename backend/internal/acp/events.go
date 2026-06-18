@@ -561,12 +561,20 @@ func (m *Manager) publishACPThought(job Job, content string) {
 
 func (m *Manager) publishACPTool(job Job, call ToolCallSnapshot) {
 	m.publishACPTranscriptEvent(job, "acp_tool", "", func(event *sessionevents.ACPEvent) {
-		event.ToolCalls = []sessionevents.ACPToolCall{{
-			ID:     call.ID,
-			Title:  call.Title,
-			Status: call.Status,
-		}}
+		event.ToolCalls = []sessionevents.ACPToolCall{toolCallEvent(call)}
 	})
+}
+
+func toolCallEvent(call ToolCallSnapshot) sessionevents.ACPToolCall {
+	return sessionevents.ACPToolCall{
+		ID:       call.ID,
+		Title:    call.Title,
+		Status:   call.Status,
+		Kind:     call.Kind,
+		ToolName: call.ToolName,
+		Content:  call.Content,
+		RawInput: call.RawInput,
+	}
 }
 
 func (m *Manager) publishACPTranscriptEvent(job Job, eventType, content string, customize func(*sessionevents.ACPEvent)) {
@@ -629,11 +637,7 @@ func (m *Manager) saveACPState(job Job) {
 func acpStorageState(job Job) storage.ACPState {
 	calls := make([]sessionevents.ACPToolCall, 0, len(job.ToolCalls))
 	for _, call := range job.ToolCalls {
-		calls = append(calls, sessionevents.ACPToolCall{
-			ID:     call.ID,
-			Title:  call.Title,
-			Status: call.Status,
-		})
+		calls = append(calls, toolCallEvent(call))
 	}
 	return storage.ACPState{
 		ID:            job.ID,
@@ -660,7 +664,7 @@ func acpStorageState(job Job) storage.ACPState {
 func acpEvent(job Job) *sessionevents.ACPEvent {
 	calls := make([]sessionevents.ACPToolCall, 0, len(job.ToolCalls))
 	for _, call := range job.ToolCalls {
-		calls = append(calls, sessionevents.ACPToolCall{ID: call.ID, Title: call.Title, Status: call.Status})
+		calls = append(calls, toolCallEvent(call))
 	}
 	return &sessionevents.ACPEvent{
 		ID:          job.ID,

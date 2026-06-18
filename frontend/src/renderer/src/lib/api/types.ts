@@ -87,10 +87,13 @@ export interface ThreadSearchResult {
 }
 
 export interface QueuedMessage {
+  id: string
   text: string
   attachment_ids?: string[]
   plan_requested?: boolean
 }
+
+export type QueuedMessageInput = Omit<QueuedMessage, 'id'> & { id?: string }
 
 // Git/forge state of a session's working directory (GET /v1/sessions/:id/repo).
 // git=false means "no cwd or not a git repo".
@@ -384,10 +387,23 @@ export interface SessionMessages {
   acp_children?: ACPJobSnapshot[]
 }
 
+export interface ACPToolContent {
+  type: 'text' | 'link' | 'diff'
+  text?: string
+  uri?: string
+  title?: string
+  path?: string
+  new_text?: string
+}
+
 export interface ACPToolCall {
   id: string
   title?: string
   status?: string
+  kind?: string
+  tool_name?: string
+  content?: ACPToolContent[]
+  raw_input?: unknown
 }
 
 export interface ACPMode {
