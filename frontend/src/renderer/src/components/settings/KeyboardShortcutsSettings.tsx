@@ -23,6 +23,16 @@ const SHORTCUTS: Shortcut[] = [
     keys: ['Shift', '⌘', 'S'],
   },
   {
+    command: 'Go back',
+    description: 'Close Settings, then move back in app or preview browser history.',
+    keys: ['⌘', '['],
+  },
+  {
+    command: 'Go forward',
+    description: 'Move forward in the active app or preview browser history.',
+    keys: ['⌘', ']'],
+  },
+  {
     command: 'Open sidebar thread',
     description: 'Jump to the numbered visible thread while holding Command.',
     keys: ['⌘', '1-9'],

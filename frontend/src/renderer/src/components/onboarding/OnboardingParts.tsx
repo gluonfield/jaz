@@ -1,7 +1,7 @@
 import {
   ArrowLeft,
   ArrowRight,
-  Brain,
+  Check,
   CheckCircle2,
   ChevronDown,
   KeyRound,
@@ -19,7 +19,7 @@ import { RAINBOW_BEAM } from '@/components/ui/rainbow'
 import { Segmented } from '@/components/ui/Segmented'
 import { Select } from '@/components/ui/Select'
 import { Switch } from '@/components/ui/Switch'
-import { agentLabel, authProviderLabel, onboardingAgentLabel } from '@/lib/agentLabel'
+import { authProviderLabel, onboardingAgentLabel } from '@/lib/agentLabel'
 import type { ACPAuthLogin, OnboardingACPProbe } from '@/lib/api/types'
 
 export const onboardingEase = [0.22, 1, 0.36, 1] as const
@@ -135,7 +135,6 @@ export function MemorySetupStep({
   const options = agents.map((value) => ({
     value,
     label: onboardingAgentLabel(value),
-    description: 'Runs memory_search and memory dream',
   }))
   return (
     <motion.div
@@ -145,31 +144,24 @@ export function MemorySetupStep({
       exit={{ opacity: 0, y: -6, filter: 'blur(3px)', transition: { duration: 0.16, ease: onboardingEase } }}
     >
       <div className="rounded-[12px] bg-surface p-3 shadow-sm">
-        <div className="flex items-start gap-3">
-          <span className="grid size-9 shrink-0 place-items-center rounded-[9px] bg-bg text-primary">
-            <Brain size={17} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-[13.5px] font-medium text-ink">Memory</p>
-                <p className="mt-0.5 text-pretty text-[12px] leading-relaxed text-ink-2">
-                  Markdown files stay as the source of truth. When memory is on, new agents receive long-term,
-                  short-term, and today&apos;s notes, and this agent handles memory_search plus dream maintenance.
-                </p>
-              </div>
-              <Switch checked={enabled} onChange={onEnabledChange} aria-label="Enable memory" />
-            </div>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[13.5px] font-medium text-ink">Memory</p>
+            <p className="mt-0.5 text-pretty text-[12px] leading-relaxed text-ink-2">
+              Memory lets Jaz remember your preferences, decisions, and project context, so agents
+              understand you across projects instead of starting cold.
+            </p>
           </div>
+          <Switch checked={enabled} onChange={onEnabledChange} aria-label="Enable memory" />
         </div>
         <div className={enabled ? 'mt-4' : 'pointer-events-none mt-4 opacity-50'}>
-          <SectionLabel>Memory agent</SectionLabel>
+          <SectionLabel>Select an agent</SectionLabel>
           <Select
             value={agent}
             options={options}
             disabled={!enabled || options.length === 0}
             onChange={onAgentChange}
-            aria-label="Memory agent"
+            aria-label="Select memory agent"
             className="h-10 w-full justify-between rounded-[9px] bg-bg px-3 text-[13px]"
           />
         </div>
@@ -180,8 +172,8 @@ export function MemorySetupStep({
           {error ||
             (enabled
               ? agent
-                ? `${agentLabel(agent)} will run memory search and dream.`
-                : 'Choose a memory agent to continue.'
+                ? `Using ${onboardingAgentLabel(agent)} for memory.`
+                : 'Select an agent to continue.'
               : 'Memory will stay off.')}
         </p>
         <div className="flex items-center gap-1">
@@ -199,29 +191,59 @@ export function MemorySetupStep({
   )
 }
 
-export function OnboardingStepper({
+export function OnboardingProgress({
   step,
-  canOpenMemory,
-  onStepChange,
+  agentsComplete,
 }: {
   step: OnboardingStep
-  canOpenMemory: boolean
-  onStepChange: (step: OnboardingStep) => void
+  agentsComplete: boolean
 }) {
+  const items = [
+    { value: 'agents', label: 'Agents', complete: agentsComplete },
+    { value: 'memory', label: 'Memory', complete: false },
+  ] as const
   return (
-    <div className="mt-4 grid grid-cols-2 gap-1 rounded-full bg-surface p-1">
-      <StepButton active={step === 'agents'} complete={canOpenMemory} onClick={() => onStepChange('agents')}>
-        Agents
-      </StepButton>
-      <StepButton
-        active={step === 'memory'}
-        complete={false}
-        disabled={!canOpenMemory}
-        onClick={() => onStepChange('memory')}
-      >
-        Memory
-      </StepButton>
-    </div>
+    <ol
+      aria-label="Setup progress"
+      className="flex shrink-0 items-center text-[12px]"
+    >
+      {items.map((item, index) => {
+        const active = step === item.value
+        const complete = item.complete
+        return (
+          <li
+            key={item.value}
+            aria-current={active ? 'step' : undefined}
+            className="flex items-center"
+          >
+            <span
+              className={`grid size-[18px] place-items-center rounded-full ring-1 ${
+                complete
+                  ? 'bg-primary-soft text-primary-strong ring-primary/20'
+                  : active
+                    ? 'bg-primary text-on-primary ring-primary'
+                    : 'bg-bg text-ink-3 ring-border'
+              }`}
+            >
+              {complete ? <Check size={11} /> : <span className="size-1.5 rounded-full bg-current" />}
+            </span>
+            <span
+              className={`ml-1.5 font-medium ${
+                active ? 'text-ink' : complete ? 'text-ink-2' : 'text-ink-3'
+              }`}
+            >
+              {item.label}
+            </span>
+            {index === 0 ? (
+              <span
+                aria-hidden
+                className={`mx-2 h-px w-8 ${complete ? 'bg-primary/45' : 'bg-border'}`}
+              />
+            ) : null}
+          </li>
+        )
+      })}
+    </ol>
   )
 }
 
@@ -229,34 +251,6 @@ type AgentState = 'ready' | 'action' | 'missing'
 
 export function agentReady(probe: OnboardingACPProbe, keyDraft: string): boolean {
   return Boolean(probe.available || probe.api_key_configured || keyDraft.trim())
-}
-
-function StepButton({
-  active,
-  complete,
-  disabled,
-  onClick,
-  children,
-}: {
-  active: boolean
-  complete: boolean
-  disabled?: boolean
-  onClick: () => void
-  children: ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className={`flex h-10 items-center justify-center gap-1.5 rounded-full px-3 text-[12px] font-medium transition-colors duration-150 disabled:cursor-default disabled:opacity-45 ${
-        active ? 'bg-bg text-ink shadow-sm' : 'text-ink-3 enabled:hover:bg-bg/60 enabled:hover:text-ink-2'
-      }`}
-    >
-      {complete ? <CheckCircle2 size={13} className="text-primary" /> : null}
-      {children}
-    </button>
-  )
 }
 
 function agentState(probe: OnboardingACPProbe, keyDraft: string): AgentState {

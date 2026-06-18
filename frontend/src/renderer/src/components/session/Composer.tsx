@@ -97,8 +97,8 @@ export function ComposerCard({
   clearOnSend?: boolean
   /** leading toolbar content (e.g. the new-thread runtime/project controls) */
   leftSlot?: ReactNode
-  /** server-side directory the @-mention picker indexes (a project path, a
-      session cwd, or '' for the workspace root). undefined disables @ */
+  /** server-side directory the @-mention file picker indexes (a project path,
+      session cwd, or '' for the workspace root). undefined disables files */
   fileRoot?: string
   onSend: (text: string, options?: SendMessageOptions) => void
   onStop?: () => void
@@ -439,7 +439,7 @@ export function Composer({
   queuedPrompts?: QueuedMessage[]
   steerDisabled?: boolean
   draftStorageKey?: string
-  /** directory the @-mention picker indexes; undefined disables @ */
+  /** directory the @-mention file picker indexes; undefined disables files */
   fileRoot?: string
   onSend: (text: string, options?: SendMessageOptions) => void
   onStop: () => void
