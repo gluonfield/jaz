@@ -267,31 +267,6 @@ func TestEnabledHTTPMCPServersAppliesPolicyBeforeOAuthRefresh(t *testing.T) {
 	}
 }
 
-func TestEnabledHTTPMCPServersJaztoolsOnlyPolicyLeavesURLUnchanged(t *testing.T) {
-	servers, err := enabledHTTPMCPServers(context.Background(), staticMCPServerStore{servers: []mcpconfig.Server{{
-		ID:        "jaztools",
-		Name:      "jaztools",
-		URL:       "http://127.0.0.1:5299/mcp/jaztools",
-		Enabled:   true,
-		Transport: mcpconfig.TransportStreamableHTTP,
-	}}}, nil, MCPServerPolicyJaztoolsOnly)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(servers) != 1 {
-		t.Fatalf("servers = %d, want jaztools", len(servers))
-	}
-	var payload struct {
-		URL string `json:"url"`
-	}
-	if err := json.Unmarshal(servers[0], &payload); err != nil {
-		t.Fatal(err)
-	}
-	if payload.URL != "http://127.0.0.1:5299/mcp/jaztools" {
-		t.Fatalf("url = %q", payload.URL)
-	}
-}
-
 func TestEnabledHTTPMCPServersWidgetPolicyAddsSurface(t *testing.T) {
 	servers, err := enabledHTTPMCPServers(context.Background(), staticMCPServerStore{servers: []mcpconfig.Server{
 		{

@@ -2,6 +2,7 @@ package memorysearch
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -15,11 +16,13 @@ import (
 )
 
 type fakeManager struct {
-	spawn  acp.SpawnRequest
-	send   acp.SendRequest
-	wait   acp.WaitRequest
-	cancel string
-	job    acp.Job
+	spawn   acp.SpawnRequest
+	send    acp.SendRequest
+	wait    acp.WaitRequest
+	cancel  string
+	job     acp.Job
+	sendErr error
+	waitErr error
 }
 
 func (f *fakeManager) Spawn(_ context.Context, req acp.SpawnRequest) (acp.SpawnResult, error) {
@@ -29,11 +32,17 @@ func (f *fakeManager) Spawn(_ context.Context, req acp.SpawnRequest) (acp.SpawnR
 
 func (f *fakeManager) Send(_ context.Context, req acp.SendRequest) (acp.Job, error) {
 	f.send = req
+	if f.sendErr != nil {
+		return acp.Job{}, f.sendErr
+	}
 	return acp.Job{State: acp.StateRunning}, nil
 }
 
 func (f *fakeManager) Wait(_ context.Context, req acp.WaitRequest) (acp.Job, error) {
 	f.wait = req
+	if f.waitErr != nil {
+		return acp.Job{}, f.waitErr
+	}
 	return f.job, nil
 }
 
@@ -167,6 +176,46 @@ func TestSearchMemoryCancelsTimedOutWorker(t *testing.T) {
 
 	_, err := runner.SearchMemory(context.Background(), memoryservice.AgenticSearchRequest{Query: "slow search"})
 	if err == nil || !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("err = %v", err)
+	}
+	if manager.cancel != "search-session" {
+		t.Fatalf("cancelled = %q", manager.cancel)
+	}
+}
+
+func TestSearchMemoryCancelsWorkerWhenWaitFails(t *testing.T) {
+	store := newStore(t)
+	if _, err := jazsettings.SaveMemorySettings(store, jazsettings.MemorySettings{
+		Enabled: true,
+		Agent:   acp.AgentCodex,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeManager{waitErr: context.Canceled}
+	runner := New(store, manager)
+
+	_, err := runner.SearchMemory(context.Background(), memoryservice.AgenticSearchRequest{Query: "cancelled search"})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v", err)
+	}
+	if manager.cancel != "search-session" {
+		t.Fatalf("cancelled = %q", manager.cancel)
+	}
+}
+
+func TestSearchMemoryCancelsWorkerWhenSendFails(t *testing.T) {
+	store := newStore(t)
+	if _, err := jazsettings.SaveMemorySettings(store, jazsettings.MemorySettings{
+		Enabled: true,
+		Agent:   acp.AgentCodex,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeManager{sendErr: errors.New("send failed")}
+	runner := New(store, manager)
+
+	_, err := runner.SearchMemory(context.Background(), memoryservice.AgenticSearchRequest{Query: "send failure"})
+	if err == nil || !strings.Contains(err.Error(), "send failed") {
 		t.Fatalf("err = %v", err)
 	}
 	if manager.cancel != "search-session" {

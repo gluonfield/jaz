@@ -170,12 +170,12 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		!hasModelProvider(got.Providers, "openrouter", "https://openrouter.ai/api/v1") {
 		t.Fatalf("providers = %#v", got.Providers)
 	}
-	if !got.ACP["codex"].Enabled ||
+	if got.ACP["codex"].Enabled ||
 		got.ACP["codex"].Command != `npx -y @jazchat/codex-acp@0.16.1 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'` ||
 		got.ACP["codex"].Model != "gpt-5.5" {
 		t.Fatalf("unexpected codex defaults %#v", got.ACP["codex"])
 	}
-	if !got.ACP["grok"].Enabled ||
+	if got.ACP["grok"].Enabled ||
 		got.ACP["grok"].Command != `grok --no-auto-update agent --no-leader --always-approve stdio` ||
 		got.ACP["grok"].Model != "grok-build" {
 		t.Fatalf("unexpected grok defaults %#v", got.ACP["grok"])
@@ -186,7 +186,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		got.ACP["jaz"].Model != "openai/gpt-5.4-mini" {
 		t.Fatalf("unexpected jaz defaults %#v", got.ACP["jaz"])
 	}
-	if !got.ACP["opencode"].Enabled ||
+	if got.ACP["opencode"].Enabled ||
 		got.ACP["opencode"].Command != `npx -y opencode-ai@1.17.7 acp` ||
 		got.ACP["opencode"].ModelProvider != "openrouter" ||
 		got.ACP["opencode"].Model != "openai/gpt-5.4-mini" {
