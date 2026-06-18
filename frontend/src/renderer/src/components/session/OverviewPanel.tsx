@@ -7,6 +7,7 @@ import {
   ChevronDown,
   Copy,
   ExternalLink,
+  FileSearch,
   GitBranch,
   GitMerge,
   GitPullRequest,
@@ -14,16 +15,19 @@ import {
   type LucideIcon,
   LoaderCircle,
 } from 'lucide-react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useToast } from '@/components/ui/toast'
 import { setSessionArchived } from '@/lib/api/sessions'
-import type { Session } from '@/lib/api/types'
+import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
+import type { RepoInfo, Session } from '@/lib/api/types'
 import { writeClipboard } from '@/lib/clipboard'
+import type { SendMessageOptions } from '@/lib/sendMessage'
 import { taskStepState, type TaskSurface } from '@/lib/taskSurface'
 import { keys } from '@/lib/query/keys'
 import { SidePanelShell } from './SidePanelShell'
+import { encodeMention } from './mentions'
 import { TaskStepIcon } from './Transcript'
 import { useRepoActions } from './useRepoActions'
 
@@ -33,10 +37,12 @@ export function OverviewPanel({
   session,
   progress,
   working,
+  onSend,
 }: {
   session: Session
   progress?: TaskSurface
   working: boolean
+  onSend: (text: string, options?: SendMessageOptions) => void
 }) {
   const repo = useRepoActions(session)
   const showGit = Boolean(repo.cwd && (repo.info?.git || repo.info?.worktree_missing))
@@ -44,7 +50,7 @@ export function OverviewPanel({
     <SidePanelShell width={OVERVIEW_PANEL_WIDTH} variant="hug" className="gap-6 px-4 py-4">
       {progress ? <ProgressSection progress={progress} working={working} /> : null}
       {showGit ? <GitSection repo={repo} /> : null}
-      <ManageSection session={session} />
+      <ManageSection session={session} repo={repo} onSend={onSend} />
     </SidePanelShell>
   )
 }
@@ -142,9 +148,20 @@ function ProgressSection({ progress, working }: { progress: TaskSurface; working
   )
 }
 
-function ManageSection({ session }: { session: Session }) {
+function ManageSection({
+  session,
+  repo,
+  onSend,
+}: {
+  session: Session
+  repo: ReturnType<typeof useRepoActions>
+  onSend: (text: string, options?: SendMessageOptions) => void
+}) {
   const queryClient = useQueryClient()
   const toast = useToast()
+  const info = repo.info
+  const showCodeReview = canReviewSession(info)
+  const skills = useQuery({ ...skillsQuery(), enabled: showCodeReview })
   const archive = useMutation({
     mutationFn: () => setSessionArchived(session.id, true),
     onSuccess: () => toast('Archived thread'),
@@ -156,12 +173,36 @@ function ManageSection({ session }: { session: Session }) {
       queryClient.invalidateQueries({ queryKey: keys.archivedSessions })
     },
   })
+  const sendCodeReview = async () => {
+    let catalog = skills.data ?? []
+    let skill = catalog.find((candidate) => candidate.name === CODE_REVIEW_SKILL)
+    if (!skill) {
+      catalog = (await skills.refetch()).data ?? catalog
+      skill = catalog.find((candidate) => candidate.name === CODE_REVIEW_SKILL)
+    }
+    if (!skill) {
+      toast(`Couldn't find skill: ${CODE_REVIEW_SKILL}`, 'danger')
+      return
+    }
+    onSend(codeReviewPrompt(skill))
+  }
 
   return (
     <section className="flex flex-col gap-0.5">
       <div className="mb-1.5">
         <SectionHeader>Manage</SectionHeader>
       </div>
+      {showCodeReview ? (
+        <ActionRow
+          icon={skills.isFetching ? LoaderCircle : FileSearch}
+          spin={skills.isFetching}
+          disabled={repo.busy !== null || skills.isFetching}
+          hint="Review this session's code changes"
+          onClick={() => void sendCodeReview()}
+        >
+          Code Review
+        </ActionRow>
+      ) : null}
       <ActionRow
         icon={archive.isPending ? LoaderCircle : Archive}
         spin={archive.isPending}
@@ -173,6 +214,25 @@ function ManageSection({ session }: { session: Session }) {
       </ActionRow>
     </section>
   )
+}
+
+function canHandoffToMain(info: RepoInfo | undefined): boolean {
+  return Boolean(info?.is_worktree && info.main_branch && (info.dirty || !info.no_commits))
+}
+
+function canReviewSession(info: RepoInfo | undefined): boolean {
+  if (!info?.git || info.worktree_missing) return false
+  return Boolean(info.dirty || info.needs_push || canHandoffToMain(info) || branchHasCommits(info))
+}
+
+function branchHasCommits(info: RepoInfo): boolean {
+  return Boolean(info.branch && info.default_branch && info.branch !== info.default_branch && info.no_commits === false)
+}
+
+const CODE_REVIEW_SKILL = 'thermo-nuclear-code-quality-review'
+
+function codeReviewPrompt(skill: SkillInfo): string {
+  return encodeMention('$', skill.name, skill.path)
 }
 
 function GitSection({ repo }: { repo: ReturnType<typeof useRepoActions> }) {
@@ -244,7 +304,7 @@ function GitSection({ repo }: { repo: ReturnType<typeof useRepoActions> }) {
           aria-label={copied ? `Copied branch name ${branchLabel}` : `Copy branch name ${branchLabel}`}
           title={copied ? 'Copied' : 'Copy branch name'}
           onClick={() => void copyBranch()}
-          className="group flex h-7 w-full cursor-pointer items-center gap-2 rounded-full px-2.5 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+          className="group flex h-7 w-full cursor-pointer items-center gap-2 rounded-full px-2.5 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
         >
           <GitBranch size={13} className="shrink-0 text-ink-3" />
           <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{branchLabel}</span>
@@ -304,7 +364,7 @@ function GitSection({ repo }: { repo: ReturnType<typeof useRepoActions> }) {
             {busy === 'update' ? 'Updating…' : `Update from ${info.main_branch}`}
           </ActionRow>
         ) : null}
-        {info.is_worktree && info.main_branch && (info.dirty || !info.no_commits) ? (
+        {canHandoffToMain(info) ? (
           <ActionRow
             icon={busy === 'merge' ? LoaderCircle : GitMerge}
             spin={busy === 'merge'}

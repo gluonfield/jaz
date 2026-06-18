@@ -355,7 +355,7 @@ func TestQueuedACPDrainSendsAttachments(t *testing.T) {
 	if len(sent.Attachments) != 1 {
 		t.Fatalf("attachments = %#v", sent.Attachments)
 	}
-	if got := sent.Attachments[0]; got.ID != attachment.ID || got.URI != attachment.URI {
+	if got := sent.Attachments[0]; got.ID != attachment.ID || got.URI != "" || got.ServerPath != attachment.ServerPath {
 		t.Fatalf("sent attachment = %#v, want %#v", got, attachment)
 	}
 }
@@ -464,6 +464,73 @@ func TestSessionQueueSteerClaimsOnePromptForRunningACP(t *testing.T) {
 	if queuedTexts(loaded.QueuedMessages) != "first|third" {
 		t.Fatalf("queue = %#v, want selected prompt removed only", loaded.QueuedMessages)
 	}
+	if loaded.PendingSteer != nil {
+		t.Fatalf("pending steer = %#v, want cleared after send", loaded.PendingSteer)
+	}
+}
+
+func TestSessionQueueSteerShowsPendingBeforeRunningACPStops(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "codex-queue-steer-pending",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     "codex",
+			SessionID: "acp-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.Status = storage.StatusRunning
+	session.QueuedMessages = queuedMessages("first", "second")
+	if err := store.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeACPManager{
+		job: acp.Job{
+			ID:    session.ID,
+			Slug:  session.Slug,
+			State: acp.StateRunning,
+		},
+		cancelRelease: make(chan struct{}),
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"steer","index":0,"expected":"first"}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store, ACP: manager}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.PendingSteer == nil || loaded.PendingSteer.Text != "first" {
+		t.Fatalf("pending steer = %#v, want first prompt visible", loaded.PendingSteer)
+	}
+	if queuedTexts(loaded.QueuedMessages) != "second" {
+		t.Fatalf("queue = %#v, want selected prompt removed", loaded.QueuedMessages)
+	}
+	if sent := sentACPRequest(manager); sent.Message != "" {
+		t.Fatalf("sent before cancel completed: %#v", sent)
+	}
+	close(manager.cancelRelease)
+	_ = waitForACPSend(t, manager, "first")
+	waitFor(t, time.Second, func() bool {
+		loaded, err = store.LoadSession(session.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return loaded.PendingSteer == nil
+	})
 }
 
 func TestSessionQueueSteerSendsAttachmentsForRunningACP(t *testing.T) {
@@ -512,7 +579,7 @@ func TestSessionQueueSteerSendsAttachmentsForRunningACP(t *testing.T) {
 	if len(sent.Attachments) != 1 {
 		t.Fatalf("attachments = %#v", sent.Attachments)
 	}
-	if got := sent.Attachments[0]; got.ID != attachment.ID || got.URI != attachment.URI {
+	if got := sent.Attachments[0]; got.ID != attachment.ID || got.URI != "" || got.ServerPath != attachment.ServerPath {
 		t.Fatalf("sent attachment = %#v, want %#v", got, attachment)
 	}
 	loaded, err := store.LoadSession(session.ID)
@@ -674,6 +741,9 @@ func TestSessionQueueSteerRestoresPromptWhenSendFails(t *testing.T) {
 	})
 	if queuedTexts(loaded.QueuedMessages) != "first|second|third" {
 		t.Fatalf("queue = %#v, want failed steer restored at original index", loaded.QueuedMessages)
+	}
+	if loaded.PendingSteer != nil {
+		t.Fatalf("pending steer = %#v, want cleared after failed steer", loaded.PendingSteer)
 	}
 	if loaded.Status != storage.StatusError || !strings.Contains(loaded.Error, "steer failed") {
 		t.Fatalf("status/error = %q/%q", loaded.Status, loaded.Error)

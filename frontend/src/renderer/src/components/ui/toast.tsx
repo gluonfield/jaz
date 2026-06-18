@@ -12,7 +12,7 @@ interface Toast {
 
 const TOAST_AUTO_DISMISS_MS = 10_000
 const actionClass =
-  'relative grid size-8 shrink-0 place-items-center rounded-full text-ink-3 outline-none transition-[background-color,color,transform] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-primary/40'
+  'relative grid size-8 shrink-0 place-items-center rounded-full text-ink-3 transition-[background-color,color,transform] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96]'
 const toastMotion = {
   initial: { opacity: 0, y: 8, scale: 0.97 },
   animate: { opacity: 1, y: 0, scale: 1 },

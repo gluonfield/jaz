@@ -63,7 +63,7 @@ func (m *Manager) RunUtilityPrompt(ctx context.Context, req UtilityPromptRequest
 	collector.setSession(string(acpSession.response.SessionID))
 	defer m.closeUtilitySession(ac, acpSession.response.SessionID)
 
-	prompt, err := promptContentBlocks("", req.Message, nil)
+	prompt, err := promptContentBlocks("", req.Message, nil, attachmentResourceResolver{})
 	if err != nil {
 		return "", err
 	}

@@ -31,6 +31,8 @@ const (
 	userSkillsDir     = "skills"
 )
 
+var workspaceSkillDirs = []string{".claude", ".codex", ".agents", ".jaz"}
+
 func UserRoot(root string) string {
 	return filepath.Join(root, userSkillsDir)
 }
@@ -57,6 +59,25 @@ func Load(root string) (Catalog, error) {
 		return Catalog{}, err
 	}
 	return Catalog{Root: userRoot, Skills: out}, nil
+}
+
+func LoadForWorkspace(root, workspace string) (Catalog, error) {
+	catalog, err := Load(root)
+	if err != nil {
+		return Catalog{}, err
+	}
+	workspace = strings.TrimSpace(workspace)
+	if workspace == "" {
+		return catalog, nil
+	}
+	for _, dir := range workspaceSkillDirs {
+		local, err := loadDir(filepath.Join(workspace, dir, userSkillsDir))
+		if err != nil {
+			return Catalog{}, err
+		}
+		catalog.Skills = mergeSkills(catalog.Skills, local)
+	}
+	return catalog, nil
 }
 
 func loadDir(skillsRoot string) ([]Skill, error) {
@@ -103,6 +124,27 @@ func loadDir(skillsRoot string) ([]Skill, error) {
 		out = append(out, skill)
 	}
 	return out, nil
+}
+
+func mergeSkills(base, overlay []Skill) []Skill {
+	if len(overlay) == 0 {
+		return base
+	}
+	out := append([]Skill(nil), base...)
+	seen := make(map[string]int, len(out)+len(overlay))
+	for i, skill := range out {
+		seen[strings.ToLower(skill.Name)] = i
+	}
+	for _, skill := range overlay {
+		key := strings.ToLower(skill.Name)
+		if i, ok := seen[key]; ok {
+			out[i] = skill
+			continue
+		}
+		seen[key] = len(out)
+		out = append(out, skill)
+	}
+	return out
 }
 
 func (c Catalog) Prompt() string {

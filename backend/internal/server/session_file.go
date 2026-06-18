@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/wins/jaz/backend/internal/filepathx"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -104,17 +104,5 @@ func relativeToCwd(cwd, abs string) string {
 }
 
 func filePathFromRequest(raw string) (string, error) {
-	raw = strings.TrimSpace(raw)
-	if strings.HasPrefix(strings.ToLower(raw), "file://") {
-		parsed, err := url.Parse(raw)
-		if err != nil {
-			return "", err
-		}
-		raw = parsed.Path
-	}
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return "", fmt.Errorf("path is required")
-	}
-	return raw, nil
+	return filepathx.FromUserInput(raw)
 }

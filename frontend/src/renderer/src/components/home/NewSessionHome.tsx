@@ -22,7 +22,7 @@ export function NewSessionHome({
   disabled?: boolean
   leftSlot: ReactNode
   draftStorageKey?: string
-  /** directory the composer's @-mention picker indexes ('' = workspace root) */
+  /** directory the composer's @-mention file picker indexes ('' = workspace root) */
   fileRoot?: string
   onDraftActivity: (active: boolean) => void
   onSend: (text: string, options?: SendMessageOptions) => void

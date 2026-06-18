@@ -25,6 +25,8 @@ export interface Usage {
 }
 
 export interface UsageTotals {
+  // Raw API input follows provider-facing Usage semantics; display helpers
+  // subtract cache read/write before showing it as "Input".
   input_tokens?: number
   cached_input_tokens?: number
   cached_write_tokens?: number
@@ -63,6 +65,7 @@ export interface Session {
   reasoning_effort?: string
   usage?: Usage
   queued_messages?: QueuedMessage[]
+  pending_steer_message?: QueuedMessage
   created_at: string
   updated_at: string
   last_attention_at: string
@@ -335,7 +338,7 @@ export type MessageBlock =
       type: 'attachment'
       id: string
       name: string
-      uri: string
+      uri?: string
       mime_type?: string
       size?: number
       server_path?: string

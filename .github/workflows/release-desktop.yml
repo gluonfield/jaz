@@ -1,4 +1,4 @@
-name: Release Desktop
+name: Release
 
 on:
   release:
@@ -9,6 +9,64 @@ permissions:
   contents: write
 
 jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - uses: actions/checkout@v4
+        with:
+          repository: gluonfield/jazmem
+          path: _deps/jazmem
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: backend/go.sum
+
+      - name: Point backend at jazmem checkout
+        working-directory: backend
+        run: go mod edit -replace=github.com/gluonfield/jazmem="$GITHUB_WORKSPACE/_deps/jazmem"
+
+      - name: Check tag version
+        run: |
+          tag_version="${{ github.event.release.tag_name }}"
+          tag_version="${tag_version#v}"
+          package_version="$(node -p "require('./frontend/package.json').version")"
+          if [ "$tag_version" != "$package_version" ]; then
+            echo "Tag v$tag_version does not match frontend/package.json version $package_version"
+            exit 1
+          fi
+
+      - name: Test backend
+        working-directory: backend
+        run: go test ./...
+
+      - name: Build Linux backend artifacts
+        working-directory: backend
+        run: |
+          mkdir -p ../dist/backend
+          for arch in amd64 arm64; do
+            name="jaz-backend-linux-${arch}"
+            out="../dist/backend/${name}"
+            mkdir -p "$out"
+            GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o "$out/jaz" ./cmd/jaz
+            tar -C "$out" -czf "../dist/backend/${name}.tar.gz" jaz
+            sha256sum "../dist/backend/${name}.tar.gz" > "../dist/backend/${name}.tar.gz.sha256"
+          done
+
+      - name: Attach backend release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          gh release upload "$RELEASE_TAG" \
+            dist/backend/*.tar.gz \
+            dist/backend/*.sha256 \
+            --clobber
+
   macos:
     runs-on: macos-latest
     steps:

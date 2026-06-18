@@ -1,5 +1,6 @@
 export {}
 
+import type { BrowserNavigationDirection } from '../shared/browserNavigation'
 import type { UpdateStatus } from '../shared/update'
 
 declare global {
@@ -25,6 +26,7 @@ declare global {
       onOpenSideBrowserURL: (handler: (url: string) => void) => () => void
       onOpenRoute: (handler: (path: string) => void) => () => void
       onOpenPreviewURL: (handler: (url: string) => void) => () => void
+      onBrowserNavigation: (handler: (direction: BrowserNavigationDirection) => void) => () => void
     }
   }
 }

@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/filepathx"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
@@ -46,6 +47,13 @@ func TestUploadAttachmentStoresServerFile(t *testing.T) {
 	}
 	if string(data) != "hello attachment" {
 		t.Fatalf("stored attachment = %q", data)
+	}
+	metadata, err := readAttachmentMetadata(filepath.Join(workspace, ".jaz-attachments", session.ID), attachment.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.URI != "" || metadata.ServerPath == "" {
+		t.Fatalf("stored metadata should keep server path without derived uri, got %#v", metadata)
 	}
 }
 
@@ -84,7 +92,7 @@ func TestACPStreamResolvesAttachmentIDs(t *testing.T) {
 		t.Fatalf("attachments = %#v", manager.sent.Attachments)
 	}
 	got := manager.sent.Attachments[0]
-	if got.ID != attachment.ID || got.Name != "note.txt" || got.URI != attachment.URI || got.ServerPath != attachment.ServerPath {
+	if got.ID != attachment.ID || got.Name != "note.txt" || got.URI != "" || got.ServerPath != attachment.ServerPath {
 		t.Fatalf("send attachment = %#v, want %#v", got, attachment)
 	}
 }
@@ -117,7 +125,7 @@ func TestStreamDoesNotTrustAttachmentMetadataServerPath(t *testing.T) {
 	}
 	poisoned := attachment
 	poisoned.ServerPath = outside
-	poisoned.URI = fileURI(outside)
+	poisoned.URI = filepathx.FileURI(outside)
 	if err := writeAttachmentMetadata(filepath.Join(workspace, ".jaz-attachments", session.ID), poisoned); err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +142,7 @@ func TestStreamDoesNotTrustAttachmentMetadataServerPath(t *testing.T) {
 		t.Fatalf("attachments = %#v", manager.sent.Attachments)
 	}
 	got := manager.sent.Attachments[0]
-	if got.ServerPath != attachment.ServerPath || got.URI != attachment.URI {
+	if got.ServerPath != attachment.ServerPath || got.URI != "" {
 		t.Fatalf("resolved attachment = %#v, want original server path %q", got, attachment.ServerPath)
 	}
 }

@@ -403,6 +403,8 @@ func TestCommitAllAndMergeIntoMain(t *testing.T) {
 	if err := exec.Command("git", "init", "-q", "-b", "main", main).Run(); err != nil {
 		t.Fatal(err)
 	}
+	git(main, "config", "user.email", "t@t")
+	git(main, "config", "user.name", "t")
 	if err := os.WriteFile(filepath.Join(main, "index.html"), []byte("hello\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -514,6 +516,8 @@ func TestMergeFromMain(t *testing.T) {
 	if err := exec.Command("git", "init", "-q", "-b", "main", main).Run(); err != nil {
 		t.Fatal(err)
 	}
+	git(main, "config", "user.email", "t@t")
+	git(main, "config", "user.name", "t")
 	if err := os.WriteFile(filepath.Join(main, "index.html"), []byte("hello\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
