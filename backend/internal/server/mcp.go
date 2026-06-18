@@ -15,6 +15,10 @@ type mcpStore interface {
 	mcpconfig.Store
 }
 
+type mcpProxyRuntime interface {
+	Handler() http.Handler
+}
+
 type mcpServerInput struct {
 	Name              string                `json:"name"`
 	URL               string                `json:"url"`
@@ -220,6 +224,17 @@ func (s *Server) refreshMCP() {
 		defer cancel()
 		s.MCP.Refresh(ctx)
 	}()
+}
+
+func (s *Server) mcpProxyHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		runtime, ok := s.MCP.(mcpProxyRuntime)
+		if !ok || runtime == nil {
+			writeError(w, http.StatusServiceUnavailable, fmt.Errorf("mcp runtime is not configured"))
+			return
+		}
+		runtime.Handler().ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) mcpServerView(server mcpconfig.Server) mcpServerView {

@@ -9,6 +9,8 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/jaztools"
+	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
@@ -22,7 +24,6 @@ func (s staticMCPStore) ListMCPServers() ([]mcpconfig.Server, error) {
 }
 
 func TestManagerPassesEnabledHTTPMCPServersToCapableACPAgent(t *testing.T) {
-	t.Setenv("JAZ_FAKE_MCP_SECRET", "secret")
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -31,22 +32,8 @@ func TestManagerPassesEnabledHTTPMCPServersToCapableACPAgent(t *testing.T) {
 		Root:      t.TempDir(),
 		Workspace: t.TempDir(),
 		MCPStore: staticMCPStore{servers: []mcpconfig.Server{
-			{
-				ID:         "remote-docs",
-				Name:       "Remote Docs",
-				Transport:  mcpconfig.TransportStreamableHTTP,
-				URL:        "https://mcp.example.com/mcp",
-				Enabled:    true,
-				Headers:    []mcpconfig.Header{{Name: "X-Literal", Value: "literal"}},
-				EnvHeaders: []mcpconfig.EnvHeader{{Name: "X-Secret", EnvVar: "JAZ_FAKE_MCP_SECRET"}},
-			},
-			{
-				ID:        "disabled",
-				Name:      "Disabled",
-				Transport: mcpconfig.TransportStreamableHTTP,
-				URL:       "https://disabled.example.com/mcp",
-				Enabled:   false,
-			},
+			mcpruntime.ProxyServerConfig("http://127.0.0.1:5299/mcp/proxy"),
+			jaztools.ServerConfig("http://127.0.0.1:5299/mcp/jaztools"),
 		}},
 		Agents: map[string]acp.AgentConfig{
 			"fake": {

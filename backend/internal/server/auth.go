@@ -114,7 +114,7 @@ func bearerToken(header string) string {
 
 func internalMCPRequest(r *http.Request) bool {
 	switch r.URL.Path {
-	case serverconfig.JazToolsMCPPath, serverconfig.JazToolsMCPCompatPath, serverconfig.JazmemMCPPath:
+	case serverconfig.JazToolsMCPPath, serverconfig.JazToolsMCPCompatPath, serverconfig.JazmemMCPPath, serverconfig.MCPProxyPath:
 		return loopbackRequest(r)
 	default:
 		return false

@@ -100,6 +100,88 @@ func TestManagerRefreshMapsAndExecutesRemoteTools(t *testing.T) {
 	}
 }
 
+func TestManagerProxyHandlerExposesSafeRemoteTools(t *testing.T) {
+	remote := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "remote-mcp", Version: "1.0.0"}, nil)
+	mcpsdk.AddTool(remote, &mcpsdk.Tool{
+		Name:        "repo/search:v1",
+		Description: "searches repos",
+	}, func(ctx context.Context, req *mcpsdk.CallToolRequest, input echoInput) (*mcpsdk.CallToolResult, map[string]string, error) {
+		return &mcpsdk.CallToolResult{
+			Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: "proxied " + input.Value}},
+		}, map[string]string{"value": input.Value}, nil
+	})
+	local := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "local-mcp", Version: "1.0.0"}, nil)
+	mcpsdk.AddTool(local, &mcpsdk.Tool{
+		Name: "local_tool",
+	}, func(ctx context.Context, req *mcpsdk.CallToolRequest, input echoInput) (*mcpsdk.CallToolResult, map[string]string, error) {
+		return &mcpsdk.CallToolResult{}, map[string]string{"value": input.Value}, nil
+	})
+
+	remoteHTTP := httptest.NewServer(mcpsdk.NewStreamableHTTPHandler(func(req *http.Request) *mcpsdk.Server {
+		return remote
+	}, &mcpsdk.StreamableHTTPOptions{JSONResponse: true}))
+	defer remoteHTTP.Close()
+
+	registry := tools.NewRegistry()
+	manager := NewManager(&testStore{servers: []mcpconfig.Server{{
+		ID:        "remote",
+		Name:      "Remote Docs",
+		Transport: mcpconfig.TransportStreamableHTTP,
+		URL:       remoteHTTP.URL,
+		Enabled:   true,
+	}}}, nil, registry, log.New(io.Discard), WithBuiltinServerProvider(mcpconfig.Server{
+		ID:      "local",
+		Name:    "local",
+		Enabled: true,
+	}, func() *mcpsdk.Server { return local }))
+	defer manager.Close()
+
+	proxyHTTP := httptest.NewServer(manager.Handler())
+	defer proxyHTTP.Close()
+	client := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "test", Version: "1.0.0"}, nil)
+	session, err := client.Connect(context.Background(), &mcpsdk.StreamableClientTransport{
+		Endpoint:             proxyHTTP.URL,
+		MaxRetries:           -1,
+		DisableStandaloneSSE: true,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	list, err := session.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Tools) != 1 {
+		t.Fatalf("proxy tools = %d, want only remote user tools", len(list.Tools))
+	}
+	name := list.Tools[0].Name
+	if !strings.Contains(name, "mcp_Remote_Docs_repo_search_v1") {
+		t.Fatalf("tool name = %q", name)
+	}
+	for _, ch := range name {
+		if !(ch == '_' || ch == '-' || ch >= 'A' && ch <= 'Z' || ch >= 'a' && ch <= 'z' || ch >= '0' && ch <= '9') {
+			t.Fatalf("unsafe character %q in %q", ch, name)
+		}
+	}
+
+	result, err := session.CallTool(context.Background(), &mcpsdk.CallToolParams{
+		Name:      name,
+		Arguments: map[string]any{"value": "ok"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Content) != 1 {
+		t.Fatalf("content = %#v", result.Content)
+	}
+	text, ok := result.Content[0].(*mcpsdk.TextContent)
+	if !ok || text.Text != "proxied ok" {
+		t.Fatalf("content = %#v", result.Content)
+	}
+}
+
 func TestManagerRefreshLocalCanUseLocalServer(t *testing.T) {
 	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "local-mcp", Version: "1.0.0"}, nil)
 	mcpsdk.AddTool(server, &mcpsdk.Tool{
@@ -258,7 +340,7 @@ func TestJazToolsMappedNamesDoNotRepeatJaz(t *testing.T) {
 	if got := mappedToolName(server, "loop_create", used); got != "mcp_jaztools_loop_create" {
 		t.Fatalf("loop tool name = %q", got)
 	}
-	if got := mappedToolName(server, "visualise:show_widget", used); got != "mcp_jaztools_visualise_show_widget" {
+	if got := mappedToolName(server, "visualise_show_widget", used); got != "mcp_jaztools_visualise_show_widget" {
 		t.Fatalf("visualise tool name = %q", got)
 	}
 }

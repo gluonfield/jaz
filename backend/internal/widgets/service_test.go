@@ -479,10 +479,10 @@ func TestPromptSectionMentionsFileAndErrors(t *testing.T) {
 	section := widgets.PromptSection(loop, &widgets.Widget{CurrentVersion: 3, Title: "Open PRs", LastError: "boom"})
 	for _, want := range []string{
 		widgets.WidgetFilePath(loop),
-		"visualise:read_me",
+		"visualise_read_me",
 		"jaztools",
 		"Tile quality floor",
-		"visualise:publish_widget",
+		"visualise_publish_widget",
 		"boom",
 	} {
 		if !strings.Contains(section, want) {
@@ -490,12 +490,12 @@ func TestPromptSectionMentionsFileAndErrors(t *testing.T) {
 		}
 	}
 	if strings.Contains(section, "Visual Creation Suite") {
-		t.Fatal("design system leaked into the prompt; agents should fetch it with visualise:read_me")
+		t.Fatal("design system leaked into the prompt; agents should fetch it with visualise_read_me")
 	}
 	for _, reject := range []string{
 		"visualize",
-		"visualise_read_me",
-		"visualise:show_widget",
+		"visualise:",
+		"visualise_show_widget",
 		"`publish_widget`",
 		"if it is available",
 		"If no such tool",
@@ -504,7 +504,7 @@ func TestPromptSectionMentionsFileAndErrors(t *testing.T) {
 		"fallback",
 	} {
 		if strings.Contains(section, reject) {
-			t.Fatalf("prompt must expose one required visualise:* widget tool contract; found %q:\n%s", reject, section)
+			t.Fatalf("prompt must expose only the identifier-safe widget visualise contract; found %q:\n%s", reject, section)
 		}
 	}
 	if strings.Contains(section, "AGENTS.md") || strings.Contains(section, "design guide next to it") {

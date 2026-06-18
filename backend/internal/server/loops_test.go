@@ -160,7 +160,7 @@ func TestLoopAPICarriesReasoningEffortAndDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitForACPSendContaining(t, manager, "You are running a scheduled Jaz loop.")
+	waitForACPSendContaining(t, manager, "Scheduled Jaz loop run.")
 	manager.mu.Lock()
 	spawned := manager.spawned
 	manager.mu.Unlock()
@@ -197,14 +197,14 @@ func TestACPLoopRunCreatesHiddenThreadAndFinishesFromCallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sent := waitForACPSendContaining(t, manager, "You are running a scheduled Jaz loop.")
+	sent := waitForACPSendContaining(t, manager, "Scheduled Jaz loop run.")
 	if sent.Session == "" {
 		t.Fatalf("missing sent session: %#v", sent)
 	}
 	if sent.Interactive {
 		t.Fatalf("loop run must be autonomous, got interactive send: %#v", sent)
 	}
-	if !strings.Contains(sent.Message, "Memory file: "+loop.MemoryPath) {
+	if !strings.Contains(sent.Message, "Memory: "+loop.MemoryPath) {
 		t.Fatalf("acp loop prompt missing memory path %q:\n%s", loop.MemoryPath, sent.Message)
 	}
 	manager.mu.Lock()

@@ -85,18 +85,18 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 	for _, name := range []string{
 		"memory_search", "memory_get_page",
 		"loop_list", "loop_get", "loop_create", "loop_update", "loop_run", "loop_delete",
-		"visualise:read_me", "visualise:show_widget",
+		"visualise_read_me", "visualise_show_widget",
 	} {
 		if !names[name] {
 			t.Fatalf("missing tool %s in %#v", name, names)
 		}
 	}
-	if names["visualise:publish_widget"] {
-		t.Fatal("visualise:publish_widget must not be advertised on ordinary jaztools sessions")
+	if names["visualise_publish_widget"] {
+		t.Fatal("visualise_publish_widget must not be advertised on ordinary jaztools sessions")
 	}
 
 	readMeCall, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name:      "visualise:read_me",
+		Name:      "visualise_read_me",
 		Arguments: map[string]any{"modules": []string{"mockup"}, "platform": "desktop"},
 	})
 	if err != nil {
@@ -293,19 +293,19 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 
 	base, closeBase := connectClient(t, service.Server())
 	defer closeBase()
-	if hasTool(t, base, "visualise:publish_widget") {
-		t.Fatal("base server advertised visualise:publish_widget")
+	if hasTool(t, base, "visualise_publish_widget") {
+		t.Fatal("base server advertised visualise_publish_widget")
 	}
 	widget, closeWidget := connectClient(t, service.server(widgetSurface))
 	defer closeWidget()
-	if !hasTool(t, widget, "visualise:read_me") {
-		t.Fatal("widget server did not advertise visualise:read_me")
+	if !hasTool(t, widget, "visualise_read_me") {
+		t.Fatal("widget server did not advertise visualise_read_me")
 	}
-	if hasTool(t, widget, "visualise:show_widget") {
+	if hasTool(t, widget, "visualise_show_widget") {
 		t.Fatal("widget server advertised thread artifact renderer")
 	}
-	if !hasTool(t, widget, "visualise:publish_widget") {
-		t.Fatal("widget server did not advertise visualise:publish_widget")
+	if !hasTool(t, widget, "visualise_publish_widget") {
+		t.Fatal("widget server did not advertise visualise_publish_widget")
 	}
 }
 
@@ -355,7 +355,7 @@ func TestSearchWorkerSurfaceOnlyAdvertisesRawMemoryTools(t *testing.T) {
 			t.Fatalf("worker server missing %s", name)
 		}
 	}
-	for _, name := range []string{"memory_search", "memory_get_page", "loop_list", "visualise:read_me", "visualise:show_widget", "visualise:publish_widget"} {
+	for _, name := range []string{"memory_search", "memory_get_page", "loop_list", "visualise_read_me", "visualise_show_widget", "visualise_publish_widget"} {
 		if hasTool(t, worker, name) {
 			t.Fatalf("worker server advertised %s", name)
 		}

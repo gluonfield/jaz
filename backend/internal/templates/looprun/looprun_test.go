@@ -13,22 +13,21 @@ func TestRenderOrdersContextExtrasThenTask(t *testing.T) {
 		ScheduledFor: "2026-06-11T23:30:00Z",
 		Now:          "2026-06-11T23:30:02Z",
 		MemoryPath:   "/tmp/automations/memory-consolidation/memory.md",
-		MemoryExists: true,
 		PreviousRun:  `id=run-8 status=error error="dial tcp: timeout"`,
-		Extras:       []string{"## Widget instructions\n\n- update the tile"},
+		Extras:       []string{"## Widget\n\n- update the tile"},
 		Prompt:       "Review yesterday's sessions.",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	parts := []string{
-		"You are running a scheduled Jaz loop.",
-		"Loop: memory-consolidation (id loop-1)",
-		"Run ID: run-9",
-		"Memory file: /tmp/automations/memory-consolidation/memory.md",
-		`Previous run: id=run-8 status=error error="dial tcp: timeout"`,
-		"Read the memory file before starting the task.",
-		"## Widget instructions",
+		"Scheduled Jaz loop run.",
+		"Loop: memory-consolidation (loop-1)",
+		"Run: run-9 scheduled 2026-06-11T23:30:00Z; now 2026-06-11T23:30:02Z",
+		"Memory: /tmp/automations/memory-consolidation/memory.md",
+		`Previous: id=run-8 status=error error="dial tcp: timeout"`,
+		"If the memory file exists, read it before starting.",
+		"## Widget",
 		"## Your task",
 		"Review yesterday's sessions.",
 	}
@@ -42,7 +41,7 @@ func TestRenderOrdersContextExtrasThenTask(t *testing.T) {
 	}
 }
 
-func TestRenderFreshMemorySaysDoNotRead(t *testing.T) {
+func TestRenderMemoryUsesSingleInvariant(t *testing.T) {
 	prompt, err := Render(Data{
 		LoopName: "n", LoopID: "l", RunID: "r", ScheduledFor: "s", Now: "n",
 		MemoryPath:  "/tmp/automations/n/memory.md",
@@ -51,11 +50,19 @@ func TestRenderFreshMemorySaysDoNotRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(prompt, "does not exist yet") || !strings.Contains(prompt, "do not try to read it") {
-		t.Fatalf("fresh memory must be announced instead of discovered via a failed read:\n%s", prompt)
+	for _, want := range []string{
+		"Memory: /tmp/automations/n/memory.md",
+		"If the memory file exists, read it before starting.",
+		"update memory with concise durable Markdown",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("memory prompt missing %q:\n%s", want, prompt)
+		}
 	}
-	if strings.Contains(prompt, "Read the memory file before starting") {
-		t.Fatalf("fresh memory must not instruct a read:\n%s", prompt)
+	for _, reject := range []string{"(read before starting)", "(new; do not read)"} {
+		if strings.Contains(prompt, reject) {
+			t.Fatalf("memory prompt must not branch on file existence; found %q:\n%s", reject, prompt)
+		}
 	}
 }
 
@@ -64,7 +71,7 @@ func TestRenderWithoutMemoryPathOmitsMemoryRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(prompt, "Memory file:") || strings.Contains(prompt, "read the memory file") {
+	if strings.Contains(prompt, "Memory:") || strings.Contains(prompt, "memory file directory") {
 		t.Fatalf("memory rules must be omitted without a memory path:\n%s", prompt)
 	}
 	if !strings.HasSuffix(strings.TrimSpace(prompt), "task") {

@@ -10,6 +10,7 @@ import (
 
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/gluonfield/acp-transport/stdio"
+	"github.com/wins/jaz/backend/internal/mcpsession"
 )
 
 func TestFakeACPAgentProcess(t *testing.T) {
@@ -423,10 +424,14 @@ func validateFakeMCPServers(rawServers []json.RawMessage) error {
 		}
 		return nil
 	}
-	if len(rawServers) != 1 {
-		return fmt.Errorf("mcp server count = %d, want 1", len(rawServers))
+	if len(rawServers) != 2 {
+		return fmt.Errorf("mcp server count = %d, want 2", len(rawServers))
 	}
-	var server struct {
+	return validateFakeProxyAndJaztools(rawServers)
+}
+
+func validateFakeProxyAndJaztools(rawServers []json.RawMessage) error {
+	servers := map[string]struct {
 		Type    string `json:"type"`
 		Name    string `json:"name"`
 		URL     string `json:"url"`
@@ -434,22 +439,37 @@ func validateFakeMCPServers(rawServers []json.RawMessage) error {
 			Name  string `json:"name"`
 			Value string `json:"value"`
 		} `json:"headers"`
+	}{}
+	for _, raw := range rawServers {
+		var server struct {
+			Type    string `json:"type"`
+			Name    string `json:"name"`
+			URL     string `json:"url"`
+			Headers []struct {
+				Name  string `json:"name"`
+				Value string `json:"value"`
+			} `json:"headers"`
+		}
+		if err := json.Unmarshal(raw, &server); err != nil {
+			return err
+		}
+		servers[server.Name] = server
 	}
-	if err := json.Unmarshal(rawServers[0], &server); err != nil {
-		return err
+	proxy, ok := servers["jaz_mcp"]
+	if !ok || proxy.Type != "http" || proxy.URL != "http://127.0.0.1:5299/mcp/proxy" {
+		return fmt.Errorf("unexpected mcp proxy %#v", proxy)
 	}
-	if server.Type != "http" || server.Name != "Remote Docs" || server.URL != "https://mcp.example.com/mcp" {
-		return fmt.Errorf("unexpected mcp server %#v", server)
+	if len(proxy.Headers) != 0 {
+		return fmt.Errorf("proxy must not expose user mcp credentials to acp, got %#v", proxy.Headers)
 	}
-	if server.Headers == nil {
-		return fmt.Errorf("mcp headers must be an array")
+	jaz, ok := servers["jaztools"]
+	if !ok || jaz.Type != "http" || jaz.URL != "http://127.0.0.1:5299/mcp/jaztools" {
+		return fmt.Errorf("unexpected jaztools server %#v", jaz)
 	}
-	headers := map[string]string{}
-	for _, header := range server.Headers {
-		headers[header.Name] = header.Value
+	for _, header := range jaz.Headers {
+		if strings.EqualFold(header.Name, mcpsession.HeaderName) && strings.TrimSpace(header.Value) != "" {
+			return nil
+		}
 	}
-	if headers["X-Literal"] != "literal" || headers["X-Secret"] != "secret" {
-		return fmt.Errorf("unexpected mcp headers %#v", headers)
-	}
-	return nil
+	return fmt.Errorf("jaztools missing session header %#v", jaz.Headers)
 }

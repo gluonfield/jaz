@@ -10,8 +10,7 @@ import (
 )
 
 const (
-	PublishMCPToolName = "visualise:publish_widget"
-	PublishToolName    = "visualise_publish_widget"
+	PublishMCPToolName = "visualise_publish_widget"
 )
 
 type MCPPublisher interface {

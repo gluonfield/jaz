@@ -38,7 +38,7 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"## SOUL.md\n\nsoul",
 		"## Artifacts and visualisation",
 		"Artifact usage criteria:",
-		"Always call `visualise:read_me` before the first artifact",
+		"Always call `visualise_read_me` before the first artifact",
 		"Few-shot trace:",
 		"## memory",
 		"broad context from the user's past behavior",
@@ -60,14 +60,14 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"Create single-file artifacts unless the user asks otherwise",
 		"verify the data and choose the source/method before loading artifact guidance",
 		"Pass `platform:\"mobile\"` for mobile targets, `platform:\"desktop\"` for desktop targets",
-		"Call `visualise:show_widget` with a meaningful snake_case title",
+		"Call `visualise_show_widget` with a meaningful snake_case title",
 		"meaningful snake_case title",
 		"Text-heavy document, code reference, or reusable prose",
 		"Stacking millions into bars",
 		"When to visualise:",
 		"prefer an inline artifact over plain text",
 		"Never pass raw JSX, TSX, or an unbundled app to the render tool",
-		"`visualise:read_me` is the visual styling authority",
+		"`visualise_read_me` is the visual styling authority",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("artifact policy missing %q:\n%s", want, prompt)
@@ -82,11 +82,13 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"Claude-compatible",
 	} {
 		if strings.Contains(prompt, reject) {
-			t.Fatalf("artifact policy must use direct Jaz visualise:* tools only; found %q:\n%s", reject, prompt)
+			t.Fatalf("artifact policy must use direct Jaz visualise tools only; found %q:\n%s", reject, prompt)
 		}
 	}
-	if strings.Contains(prompt, "`visualise_show_widget`") || strings.Contains(prompt, "`visualise_read_me`") {
-		t.Fatalf("artifact policy must use the visualise:* tool namespace only:\n%s", prompt)
+	for _, reject := range []string{"visualise:show_widget", "visualise:read_me"} {
+		if strings.Contains(prompt, reject) {
+			t.Fatalf("artifact policy must use identifier-safe tool names; found %q:\n%s", reject, prompt)
+		}
 	}
 }
 
@@ -122,8 +124,8 @@ func TestRenderWidgetSurfaceOmitsChatArtifactPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.Contains(prompt, "## Artifacts and visualisation") ||
-		strings.Contains(prompt, "visualise:show_widget") ||
-		strings.Contains(prompt, "visualise:read_me") {
+		strings.Contains(prompt, "visualise_show_widget") ||
+		strings.Contains(prompt, "visualise_read_me") {
 		t.Fatalf("widget surface must not receive the chat artifact policy:\n%s", prompt)
 	}
 	if !strings.Contains(prompt, "## AGENTS.md\n\nagents") || !strings.Contains(prompt, "## SOUL.md\n\nsoul") {

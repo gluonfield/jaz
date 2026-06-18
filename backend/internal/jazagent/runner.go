@@ -154,21 +154,16 @@ func ToolDefinitionsForSurface(registry *tools.Registry, surface string) []tools
 func includeToolForArtifactSurface(name, surface string) bool {
 	switch visualize.NormalizeSurface(surface) {
 	case visualize.SurfaceWidget:
-		return !matchesToolName(name, visualize.ShowWidgetMCPToolName, visualize.ShowWidgetToolName)
+		return !matchesToolName(name, visualize.ShowWidgetMCPToolName)
 	default:
-		return !matchesToolName(name, widgets.PublishMCPToolName, widgets.PublishToolName)
+		return !matchesToolName(name, widgets.PublishMCPToolName)
 	}
 }
 
-func matchesToolName(name, publicName, providerName string) bool {
-	name = strings.ReplaceAll(strings.TrimSpace(name), ":", "_")
-	for _, candidate := range []string{publicName, providerName} {
-		candidate = strings.ReplaceAll(strings.TrimSpace(candidate), ":", "_")
-		if name == candidate || strings.HasSuffix(name, "_"+candidate) {
-			return true
-		}
-	}
-	return false
+func matchesToolName(name, candidate string) bool {
+	name = strings.TrimSpace(name)
+	candidate = strings.TrimSpace(candidate)
+	return name == candidate || strings.HasSuffix(name, "_"+candidate)
 }
 
 func BuildRequest(store Store, prompts PromptSource, req Request) (TurnRequest, error) {

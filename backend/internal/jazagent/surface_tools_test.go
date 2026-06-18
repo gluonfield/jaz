@@ -13,14 +13,14 @@ func TestIncludeToolForArtifactSurface(t *testing.T) {
 		surface string
 		want    bool
 	}{
-		{visualize.ReadMeToolName, "", true},
-		{visualize.ShowWidgetToolName, "", true},
-		{widgets.PublishToolName, "", false},
+		{visualize.ReadMeMCPToolName, "", true},
+		{visualize.ShowWidgetMCPToolName, "", true},
+		{widgets.PublishMCPToolName, "", false},
 		{"mcp_jaztools_visualise_show_widget", "", true},
 		{"mcp_jaztools_visualise_publish_widget", "", false},
-		{visualize.ReadMeToolName, string(visualize.SurfaceWidget), true},
-		{visualize.ShowWidgetToolName, string(visualize.SurfaceWidget), false},
-		{widgets.PublishToolName, string(visualize.SurfaceWidget), true},
+		{visualize.ReadMeMCPToolName, string(visualize.SurfaceWidget), true},
+		{visualize.ShowWidgetMCPToolName, string(visualize.SurfaceWidget), false},
+		{widgets.PublishMCPToolName, string(visualize.SurfaceWidget), true},
 		{"mcp_jaztools_visualise_show_widget", string(visualize.SurfaceWidget), false},
 		{"mcp_jaztools_visualise_publish_widget", string(visualize.SurfaceWidget), true},
 	}

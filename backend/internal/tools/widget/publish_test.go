@@ -23,8 +23,8 @@ func (p *fakePublisher) PublishForSession(sessionID string, input widgets.Publis
 func TestPublishToolPublishesForSession(t *testing.T) {
 	publisher := &fakePublisher{}
 	tool := PublishTool{Publisher: publisher}
-	if got := tools.DefinitionName(tool.Definition()); got != widgets.PublishToolName {
-		t.Fatalf("tool name = %q, want %q", got, widgets.PublishToolName)
+	if got := tools.DefinitionName(tool.Definition()); got != widgets.PublishMCPToolName {
+		t.Fatalf("tool name = %q, want %q", got, widgets.PublishMCPToolName)
 	}
 	result, err := tool.Execute(sessioncontext.WithSessionID(context.Background(), "session-1"), map[string]any{
 		"title":     "Inbox",

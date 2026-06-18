@@ -16,7 +16,7 @@ type PublishTool struct {
 
 func (t PublishTool) Definition() tools.Definition {
 	return tools.Function(
-		widgets.PublishToolName,
+		widgets.PublishMCPToolName,
 		"Publishes this loop run's Jaz board widget. Write the HTML fragment to widget/index.html first, then call this; alternatively pass the fragment inline via html.",
 		false,
 		widgets.PublishInputSchema(),
@@ -29,7 +29,7 @@ func (t PublishTool) Execute(ctx context.Context, inputs map[string]any) (tools.
 	}
 	sessionID := strings.TrimSpace(sessioncontext.SessionID(ctx))
 	if sessionID == "" {
-		return tools.Result{}, fmt.Errorf("%s requires a session", widgets.PublishToolName)
+		return tools.Result{}, fmt.Errorf("%s requires a session", widgets.PublishMCPToolName)
 	}
 	widget, warnings, err := t.Publisher.PublishForSession(sessionID, widgets.PublishInput{
 		Title:    tools.StringInput(inputs, "title"),

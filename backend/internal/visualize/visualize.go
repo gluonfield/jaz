@@ -13,10 +13,8 @@ import (
 )
 
 const (
-	ReadMeMCPToolName     = "visualise:read_me"
-	ShowWidgetMCPToolName = "visualise:show_widget"
-	ReadMeToolName        = "visualise_read_me"
-	ShowWidgetToolName    = "visualise_show_widget"
+	ReadMeMCPToolName     = "visualise_read_me"
+	ShowWidgetMCPToolName = "visualise_show_widget"
 
 	MaxWidgetCodeBytes = 5 << 20
 )

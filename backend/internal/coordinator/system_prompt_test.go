@@ -92,17 +92,19 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 	if !strings.Contains(acp, "prefer an inline artifact over plain text") ||
 		!strings.Contains(acp, "any reusable code snippet over 20 lines") ||
 		!strings.Contains(acp, "plain lists, plain tables, enumerated content") ||
-		!strings.Contains(acp, "visualise:show_widget") ||
+		!strings.Contains(acp, "visualise_show_widget") ||
 		!strings.Contains(acp, "Never pass raw JSX, TSX, or an unbundled app to the render tool") {
 		t.Fatalf("acp extension must carry the artifact policy:\n%s", acp)
 	}
 	for _, reject := range []string{"`visualize:", "visualize_", "`create_file`", "file-artifact tool", "coding-agent surface provides", "Claude-compatible"} {
 		if strings.Contains(acp, reject) {
-			t.Fatalf("artifact policy must use direct Jaz visualise:* tools only; found %q:\n%s", reject, acp)
+			t.Fatalf("artifact policy must use direct Jaz visualise tools only; found %q:\n%s", reject, acp)
 		}
 	}
-	if strings.Contains(acp, "`visualise_show_widget`") || strings.Contains(acp, "`visualise_read_me`") {
-		t.Fatalf("artifact policy must use the visualise:* tool namespace only:\n%s", acp)
+	for _, reject := range []string{"visualise:show_widget", "visualise:read_me"} {
+		if strings.Contains(acp, reject) {
+			t.Fatalf("artifact policy must use identifier-safe tool names; found %q:\n%s", reject, acp)
+		}
 	}
 
 	widgetACP, err := builder.ACPPromptForArtifactSurface(acpCwd, "widget")
@@ -110,8 +112,8 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.Contains(widgetACP, "## Artifacts and visualisation") ||
-		strings.Contains(widgetACP, "visualise:show_widget") ||
-		strings.Contains(widgetACP, "visualise:read_me") {
+		strings.Contains(widgetACP, "visualise_show_widget") ||
+		strings.Contains(widgetACP, "visualise_read_me") {
 		t.Fatalf("widget ACP extension must not carry the chat artifact policy:\n%s", widgetACP)
 	}
 	for _, want := range []string{"## AGENTS.md\n\nalways cite sources", "## memory/LONG_TERM.md", "<name>deploy</name>"} {
