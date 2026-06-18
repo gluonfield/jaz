@@ -7,6 +7,7 @@ import { BoardModal } from '@/components/boards/BoardModal'
 import { LoopModal } from '@/components/loops/LoopModal'
 import { IconButton } from '@/components/ui/IconButton'
 import { KeyboardShortcut } from '@/components/ui/KeyboardShortcut'
+import { UpdatePanel } from '@/components/update/UpdatePanel'
 import { boardsQuery, deleteBoard } from '@/lib/api/boards'
 import { loopsQuery } from '@/lib/api/loops'
 import { projectsQuery, reorderProjects, sidebarSessionsQuery, type Project, type SessionListItem } from '@/lib/api/sessions'
@@ -574,7 +575,8 @@ export function Sidebar({
         <BoardsSection />
       </nav>
 
-      <div className="shrink-0 border-t border-border p-3">
+      <div className="flex shrink-0 flex-col gap-1.5 border-t border-border p-3">
+        <UpdatePanel />
         <button
           type="button"
           onClick={onOpenSettings}
