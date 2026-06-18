@@ -33,7 +33,12 @@ func TestBeginACPTurnClearsStaleError(t *testing.T) {
 	defer cancel()
 	sub := events.Subscribe(ctx, session.ID)
 
-	if _, err := (&Server{Store: store, Events: events}).beginACPTurn(context.Background(), session, "continue"); err != nil {
+	server := &Server{
+		Store:  store,
+		Events: events,
+		ACP:    &fakeACPManager{utilityText: `{"title":"Continue Thread"}`},
+	}
+	if _, err := server.beginACPTurn(context.Background(), session, "continue"); err != nil {
 		t.Fatal(err)
 	}
 	loaded, err := store.LoadSession(session.ID)

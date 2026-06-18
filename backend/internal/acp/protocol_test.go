@@ -548,11 +548,19 @@ func TestSessionInfoUpdatePublishesAndPersistsTitle(t *testing.T) {
 
 func TestClaudeStylePlanExitPermissionPublishesRequest(t *testing.T) {
 	root := t.TempDir()
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "claude-plan-exit", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
 	events := sessionevents.New()
-	manager := NewManager(nil, Config{}, nil)
+	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	manager.jobsByID["session"] = &Job{
-		ID:         "session",
+	manager.jobsByID[session.ID] = &Job{
+		ID:         session.ID,
 		ACPAgent:   AgentClaude,
 		ACPSession: "acp-session",
 		Cwd:        root,
@@ -566,11 +574,11 @@ func TestClaudeStylePlanExitPermissionPublishesRequest(t *testing.T) {
 			},
 		},
 	}
-	manager.jobsByACP["acp-session"] = manager.jobsByID["session"]
+	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	sub := events.Subscribe(ctx, "session")
+	sub := events.Subscribe(ctx, session.ID)
 	result := make(chan json.RawMessage, 1)
 	errs := make(chan *jsonrpc.Error, 1)
 
@@ -615,7 +623,7 @@ func TestClaudeStylePlanExitPermissionPublishesRequest(t *testing.T) {
 		t.Fatal(ctx.Err())
 	}
 
-	if err := manager.AnswerInteractive(ctx, InteractiveAnswer{Session: "session", RequestID: requestID, OptionID: "plan"}); err != nil {
+	if err := manager.AnswerInteractive(ctx, InteractiveAnswer{Session: session.ID, RequestID: requestID, OptionID: "plan"}); err != nil {
 		t.Fatal(err)
 	}
 
