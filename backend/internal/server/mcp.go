@@ -9,6 +9,8 @@ import (
 	"time"
 
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/mcpsession"
+	"github.com/wins/jaz/backend/internal/storage"
 )
 
 type mcpStore interface {
@@ -17,6 +19,10 @@ type mcpStore interface {
 
 type mcpProxyRuntime interface {
 	Handler() http.Handler
+}
+
+type mcpProxySessionStore interface {
+	LoadSession(string) (storage.Session, error)
 }
 
 type mcpServerInput struct {
@@ -228,6 +234,17 @@ func (s *Server) refreshMCP() {
 
 func (s *Server) mcpProxyHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sessionID := strings.TrimSpace(r.Header.Get(mcpsession.HeaderName))
+		if sessionID == "" {
+			writeError(w, http.StatusUnauthorized, fmt.Errorf("missing %s", mcpsession.HeaderName))
+			return
+		}
+		if store, ok := s.Store.(mcpProxySessionStore); ok {
+			if _, err := store.LoadSession(sessionID); err != nil {
+				writeError(w, http.StatusUnauthorized, fmt.Errorf("invalid %s", mcpsession.HeaderName))
+				return
+			}
+		}
 		runtime, ok := s.MCP.(mcpProxyRuntime)
 		if !ok || runtime == nil {
 			writeError(w, http.StatusServiceUnavailable, fmt.Errorf("mcp runtime is not configured"))

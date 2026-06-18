@@ -15,6 +15,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/tools"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
@@ -34,6 +35,10 @@ func ProxyServerConfig(url string) mcpconfig.Server {
 		Transport: mcpconfig.TransportStreamableHTTP,
 		URL:       strings.TrimSpace(url),
 		Enabled:   true,
+		Headers: []mcpconfig.Header{{
+			Name:  mcpsession.HeaderName,
+			Value: mcpsession.HeaderPlaceholder,
+		}},
 	}
 }
 
