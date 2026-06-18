@@ -87,33 +87,14 @@ export function coalesceSessionEvents(events: SessionEvent[]): SessionEvent[] {
     .map((item) => item.event)
 }
 
-export function combineSequentialACPText(events: SessionEvent[]): SessionEvent[] {
-  const out: SessionEvent[] = []
-  let lastSourceSeq = 0
-  for (const event of events) {
-    const prev = out.at(-1)
-    const contiguous = !prev?.seq || !event.seq || event.seq === lastSourceSeq + 1
-    lastSourceSeq = event.seq ?? 0
-    if (contiguous) {
-      const merged = mergeACPText(prev, event)
-      if (merged) {
-        out[out.length - 1] = merged
-        continue
-      }
-    }
-    out.push(event)
-  }
-  return out
-}
-
 function mergeAdjacentACPText(prev: SessionEvent | undefined, event: SessionEvent): SessionEvent | undefined {
   if (!prev?.seq || !event.seq || event.seq === prev.seq + 1) {
-    return mergeACPText(prev, event)
+    return mergeACPTextEvents(prev, event)
   }
   return undefined
 }
 
-function mergeACPText(prev: SessionEvent | undefined, event: SessionEvent): SessionEvent | undefined {
+export function mergeACPTextEvents(prev: SessionEvent | undefined, event: SessionEvent): SessionEvent | undefined {
   if (!prev || !canMergeACPText(prev, event)) return undefined
   const acp = prev.acp
     ? {
