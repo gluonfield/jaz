@@ -183,7 +183,7 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, artifactSurfac
 	}
 	if name == AgentClaude {
 		configuredConfigDir := strings.TrimSpace(env["CLAUDE_CONFIG_DIR"])
-		preserveHostEnv(env, []string{
+		claudeHostEnv := []string{
 			"ANTHROPIC_AUTH_TOKEN",
 			"ANTHROPIC_BASE_URL",
 			"CLAUDE_CODE_EXECUTABLE",
@@ -197,9 +197,14 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, artifactSurfac
 			"SHELL",
 			"SSH_AUTH_SOCK",
 			"USER",
-		})
+		}
+		preserveHostEnv(env, claudeHostEnv)
 		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.providers())
-		if configuredConfigDir != "" {
+		if auth.Config.Mode == AuthModeJazProfile {
+			delete(env, "ANTHROPIC_AUTH_TOKEN")
+			delete(env, "CLAUDE_CODE_OAUTH_TOKEN")
+		}
+		if configuredConfigDir != "" && auth.Config.Mode != AuthModeJazProfile {
 			env["CLAUDE_CONFIG_DIR"] = configuredConfigDir
 		} else {
 			env["CLAUDE_CONFIG_DIR"] = auth.Config.Path

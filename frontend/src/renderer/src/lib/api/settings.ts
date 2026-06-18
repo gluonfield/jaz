@@ -1,7 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '../query/keys'
 import { get, post, put } from './client'
-import type { ACPAgentAuth, ACPAgentAuthStatus, ACPAuthLogin, AgentSettings } from './types'
+import type { ACPAgentAuth, ACPAuthLogin, AgentSettings } from './types'
 
 function normalizeAgentSettings(settings: AgentSettings): AgentSettings {
   return {
@@ -112,7 +112,9 @@ export function getACPAuthLogin(id: string): Promise<ACPAuthLogin> {
 }
 
 // Removes an agent's Jaz-managed credential (API key env + Jaz-profile OAuth);
-// never touches the user's global CLI config. Returns the fresh auth status.
-export function disconnectACPAuth(agent: string): Promise<ACPAgentAuthStatus> {
-  return post<ACPAgentAuthStatus>(`/v1/acp/agents/${encodeURIComponent(agent)}/auth/disconnect`)
+// never touches the user's global CLI config. Returns the canonical settings snapshot.
+export function disconnectACPAuth(agent: string): Promise<AgentSettings> {
+  return post<AgentSettings>(`/v1/acp/agents/${encodeURIComponent(agent)}/auth/disconnect`).then(
+    normalizeAgentSettings,
+  )
 }
