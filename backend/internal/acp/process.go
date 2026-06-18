@@ -169,9 +169,7 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, artifactSurfac
 				}
 			}
 			if prepare {
-				if err := skills.SyncTo(root, filepath.Join(codexHome, "skills")); err != nil {
-					prepareErr = firstError(prepareErr, fmt.Errorf("sync codex skills: %w", err))
-				}
+				m.installAgentSkills(name, root, filepath.Join(codexHome, "skills"))
 			}
 		}
 		for _, key := range []string{"OPENAI_API_KEY", "OPENAI_APIKEY", "OPENROUTER_API_KEY", "OPENROUTER_APIKEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"} {
@@ -215,9 +213,7 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, artifactSurfac
 			}
 		}
 		if prepare && env["CLAUDE_CONFIG_DIR"] != "" {
-			if err := skills.SyncTo(root, filepath.Join(env["CLAUDE_CONFIG_DIR"], "skills")); err != nil {
-				prepareErr = firstError(prepareErr, fmt.Errorf("sync claude skills: %w", err))
-			}
+			m.installAgentSkills(name, root, filepath.Join(env["CLAUDE_CONFIG_DIR"], "skills"))
 		}
 		if env["CLAUDE_CODE_EXECUTABLE"] == "" {
 			if cli, err := ResolveExecutable("claude"); err == nil {
@@ -282,6 +278,12 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, artifactSurfac
 		}
 	}
 	return env, prepareErr
+}
+
+func (m *Manager) installAgentSkills(agent, root, dst string) {
+	if err := skills.InstallMissingTo(root, dst); err != nil {
+		m.log.Warn("install acp skills failed", "agent", agent, "path", dst, "error", err)
+	}
 }
 
 func processCommand(name string, cfg AgentConfig) (string, []string) {
