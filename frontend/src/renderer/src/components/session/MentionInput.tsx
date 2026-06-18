@@ -26,7 +26,7 @@ import { useComposerDraft, type ComposerDraftStorage } from './useComposerDraft'
 
 // Result cap for the $/@ popups, mirroring Codex's file-search page size.
 const MAX_SUGGESTIONS = 20
-const MAX_PROJECT_SUGGESTIONS = 5
+const MAX_PROJECT_SUGGESTIONS = 3
 
 // Shared by the textarea and its token-highlight mirror — any drift in these
 // box/text metrics would misalign the caret with the painted glyphs.
@@ -167,28 +167,31 @@ export function useMentionInput({
         }))
       return items.length > 0 ? [{ title: 'Skills', items }] : []
     }
-    const projectItems = (projects.data ?? [])
-      .flatMap((project) => {
-        const nameMatch = fuzzyMatch(query, project.name)
-        const pathMatch = fuzzyMatch(query, project.path)
-        const match = betterMatch(nameMatch, pathMatch)
-        return match ? [{ project, match, highlightName: match === nameMatch }] : []
-      })
-      .sort(
-        (a, b) =>
-          b.match.score - a.match.score ||
-          a.project.name.localeCompare(b.project.name) ||
-          a.project.path.localeCompare(b.project.path),
-      )
-      .slice(0, MAX_PROJECT_SUGGESTIONS)
-      .map(({ project, match, highlightName }) => ({
-        kind: 'project' as const,
-        label: project.name,
-        detail: project.path,
-        indices: highlightName ? match.indices : undefined,
-        insert: `@${project.path}`,
-        expansion: encodeMention('@', project.path, project.path),
-      }))
+    const projectItems =
+      query === ''
+        ? []
+        : (projects.data ?? [])
+            .flatMap((project) => {
+              const nameMatch = fuzzyMatch(query, project.name)
+              const pathMatch = fuzzyMatch(query, project.path)
+              const match = betterMatch(nameMatch, pathMatch)
+              return match ? [{ project, match, highlightName: match === nameMatch }] : []
+            })
+            .sort(
+              (a, b) =>
+                b.match.score - a.match.score ||
+                a.project.name.localeCompare(b.project.name) ||
+                a.project.path.localeCompare(b.project.path),
+            )
+            .slice(0, MAX_PROJECT_SUGGESTIONS)
+            .map(({ project, match, highlightName }) => ({
+              kind: 'project' as const,
+              label: project.name,
+              detail: project.path,
+              indices: highlightName ? match.indices : undefined,
+              insert: `@${project.path}`,
+              expansion: encodeMention('@', project.path, project.path),
+            }))
     const index = fileIndex.data
     const fileItems =
       index && index.root !== ''
