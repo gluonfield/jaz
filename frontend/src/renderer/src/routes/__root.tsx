@@ -11,7 +11,6 @@ import { CommandPalette } from '@/components/search/CommandPalette'
 import { SettingsOverlay } from '@/components/settings/SettingsOverlay'
 import { Sidebar } from '@/components/sidebar/Sidebar'
 import { ToastProvider } from '@/components/ui/toast'
-import { UpdatePanel } from '@/components/update/UpdatePanel'
 import { modalDialogOpen } from '@/lib/dom/modal'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 
@@ -181,7 +180,6 @@ function RootLayout() {
         onOpenChange={setCommandOpen}
         onOpenSettings={() => setSettingsOpen(true)}
       />
-      <UpdatePanel />
     </ToastProvider>
   )
 }
