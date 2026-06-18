@@ -58,7 +58,7 @@ func TestACPTurnPromptContextReturnsSkillPromptErrors(t *testing.T) {
 }
 
 func TestPromptContentBlocksPrependsContext(t *testing.T) {
-	blocks, err := promptContentBlocks("context", "message", nil)
+	blocks, err := promptContentBlocks("context", "message", nil, localAttachmentResources)
 	if err != nil {
 		t.Fatal(err)
 	}

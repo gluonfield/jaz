@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"mime"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -156,10 +155,6 @@ func attachmentMimeType(uploaded, name string) string {
 	return "application/octet-stream"
 }
 
-func fileURI(path string) string {
-	return (&url.URL{Scheme: "file", Path: filepath.ToSlash(path)}).String()
-}
-
 func writeAttachmentMetadata(dir string, attachment storage.Attachment) error {
 	data, err := json.MarshalIndent(attachment, "", "  ")
 	if err != nil {
@@ -204,7 +199,7 @@ func trustedAttachmentPath(sessionDir string, attachment *storage.Attachment) (s
 	}
 	attachment.Name = name
 	attachment.ServerPath = path
-	attachment.URI = fileURI(path)
+	attachment.URI = ""
 	return path, nil
 }
 
