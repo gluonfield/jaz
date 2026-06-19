@@ -161,15 +161,30 @@ export function LoopModal({
           animate={{ opacity: 1, x: 0 }}
           exit={reduce ? { opacity: 0 } : { opacity: 0, x: -6 }}
           transition={{ duration: 0.16, ease: [0.2, 0, 0, 1] }}
-          className="mt-5 space-y-3"
+          className="mt-5"
         >
-          <p className="text-pretty text-[13px] text-ink-2">{STEPS[step].description}</p>
           {step === 0 ? (
-            <PromptStep draft={current} disabled={save.isPending} autoFocus set={set} />
+            <PromptStep
+              draft={current}
+              disabled={save.isPending}
+              autoFocus
+              description={STEPS[0].description}
+              set={set}
+            />
           ) : step === 1 ? (
-            <ScheduleStep draft={current} disabled={save.isPending} set={set} />
+            <ScheduleStep
+              draft={current}
+              disabled={save.isPending}
+              description={STEPS[1].description}
+              set={set}
+            />
           ) : (
-            <BoardsStep draft={current} disabled={save.isPending} set={set} />
+            <BoardsStep
+              draft={current}
+              disabled={save.isPending}
+              description={STEPS[2].description}
+              set={set}
+            />
           )}
         </motion.div>
       </AnimatePresence>
