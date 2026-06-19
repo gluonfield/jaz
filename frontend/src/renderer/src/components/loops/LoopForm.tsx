@@ -34,17 +34,30 @@ function Field({ label, children }: { label: ReactNode; children: ReactNode }) {
   )
 }
 
-// Step 1 — the instruction: a mention-capable prompt, inline examples to seed
-// it, and an optional name.
+// The explanatory line above each step's input, with an optional right-aligned
+// action (the Prompt step hangs its Examples button here).
+function StepHeader({ description, action }: { description: string; action?: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <p className="text-pretty text-[13px] text-ink-2">{description}</p>
+      {action}
+    </div>
+  )
+}
+
+// Step 1 — the instruction: a mention-capable prompt, examples to seed it, and
+// an optional name.
 export function PromptStep({
   draft,
   disabled,
   autoFocus,
+  description,
   set,
 }: {
   draft: LoopDraft
   disabled?: boolean
   autoFocus?: boolean
+  description: string
   set: SetDraft
 }) {
   // The prompt seeds its text at mount, so applying an example must remount the
@@ -53,17 +66,21 @@ export function PromptStep({
   const [examplesOpen, setExamplesOpen] = useState(false)
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
+      <StepHeader
+        description={description}
+        action={
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => setExamplesOpen(true)}
+            className="shrink-0 text-[12px] font-medium text-primary transition-colors hover:text-primary-strong disabled:opacity-50"
+          >
+            Examples
+          </button>
+        }
+      />
       <LoopPromptCard key={seed} draft={draft} disabled={disabled} autoFocus={autoFocus} set={set} />
-
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setExamplesOpen(true)}
-        className="text-[12px] font-medium text-ink-2 transition-colors hover:text-ink disabled:opacity-50"
-      >
-        Examples
-      </button>
       <LoopExamplesPicker
         open={examplesOpen}
         onClose={() => setExamplesOpen(false)}
@@ -92,18 +109,23 @@ export function PromptStep({
 export function ScheduleStep({
   draft,
   disabled,
+  description,
   set,
 }: {
   draft: LoopDraft
   disabled?: boolean
+  description: string
   set: SetDraft
 }) {
   return (
-    <SchedulePicker
-      value={draft.schedule}
-      disabled={disabled}
-      onChange={(schedule) => set({ schedule })}
-    />
+    <div className="space-y-4">
+      <StepHeader description={description} />
+      <SchedulePicker
+        value={draft.schedule}
+        disabled={disabled}
+        onChange={(schedule) => set({ schedule })}
+      />
+    </div>
   )
 }
 
@@ -111,33 +133,38 @@ export function ScheduleStep({
 export function BoardsStep({
   draft,
   disabled,
+  description,
   set,
 }: {
   draft: LoopDraft
   disabled?: boolean
+  description: string
   set: SetDraft
 }) {
   const boards = useQuery(boardsQuery)
 
-  if (boards.isPending) {
-    return <span className="text-[12px] text-ink-3">Loading boards…</span>
-  }
-  if (boards.isError || (boards.data ?? []).length === 0) {
-    return (
+  const body =
+    boards.isPending ? (
+      <span className="text-[12px] text-ink-3">Loading boards…</span>
+    ) : boards.isError || (boards.data ?? []).length === 0 ? (
       <p className="text-[12px] text-ink-3">
         No boards yet — create one with the + next to Boards in the sidebar to give this loop a
         live widget.
       </p>
+    ) : (
+      <BoardAssignmentPicker
+        boards={boards.data}
+        selected={draft.boardIds}
+        disabled={disabled}
+        onChange={(boardIds) => set({ boardIds })}
+      />
     )
-  }
 
   return (
-    <BoardAssignmentPicker
-      boards={boards.data}
-      selected={draft.boardIds}
-      disabled={disabled}
-      onChange={(boardIds) => set({ boardIds })}
-    />
+    <div className="space-y-4">
+      <StepHeader description={description} />
+      {body}
+    </div>
   )
 }
 
