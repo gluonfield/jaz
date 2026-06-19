@@ -42,6 +42,9 @@ func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, stri
 		cfg.ModelProvider = providerID
 	}
 	cfg = cfg.NormalizeProviderModel(cfg.ModelProvider)
+	if strings.EqualFold(strings.TrimSpace(req.ReasoningEffort), "none") && agentPolicyForAgent(req.ACPAgent).effortEncodedInModel(cfg.Model) {
+		cfg.Model = strings.TrimSpace(cfg.Model[:strings.LastIndex(cfg.Model, "/")])
+	}
 	cfg.ReasoningEffort = effort
 	return req, cfg, effort, nil
 }
