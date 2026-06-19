@@ -27,10 +27,10 @@ export const LOOP_TEMPLATES: LoopTemplate[] = [
   {
     id: 'morning-briefing',
     title: 'Morning AI briefing',
-    description: 'A skimmable overnight digest, published to a board widget.',
+    description: 'A skimmable overnight digest of AI developments.',
     name: 'morning-ai-briefing',
     prompt:
-      'Put together a short morning briefing: the most important overnight developments in AI research and the frontier labs. Group by theme, link sources, and keep it skimmable. Publish it as a widget so I can read it on my board.',
+      'Put together a short morning briefing: the most important overnight developments in AI research and the frontier labs. Group by theme, link sources, and keep it skimmable.',
     schedule: { preset: 'daily', time: '07:00' },
   },
   {
