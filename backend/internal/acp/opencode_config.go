@@ -28,7 +28,16 @@ type openCodeProviderConfig struct {
 }
 
 type openCodeModelConfig struct {
-	ID string `json:"id,omitempty"`
+	ID       string                                `json:"id,omitempty"`
+	Variants map[string]openCodeModelVariantConfig `json:"variants,omitempty"`
+}
+
+type openCodeModelVariantConfig struct {
+	Reasoning *openCodeReasoningConfig `json:"reasoning,omitempty"`
+}
+
+type openCodeReasoningConfig struct {
+	Effort string `json:"effort,omitempty"`
 }
 
 func (m *Manager) loadOpenCodeProviderEnv(env map[string]string, root string) {
@@ -97,6 +106,7 @@ func (m *Manager) prepareOpenCodeConfig(env map[string]string, agent AgentConfig
 		providerID := modelprovider.OpenCodeProviderIDFromModel(model)
 		content.Provider = map[string]openCodeProviderConfig{providerID: providerConfig}
 	}
+	addOpenCodeReasoningVariant(&content, model, agent.ReasoningEffort)
 	if len(content.Instructions) == 0 && len(content.Provider) == 0 {
 		return nil
 	}
@@ -157,6 +167,30 @@ func (m *Manager) openCodeProviderConfig(env map[string]string, model string) (o
 		result.Models = map[string]openCodeModelConfig{modelID: {}}
 	}
 	return result, true
+}
+
+func addOpenCodeReasoningVariant(content *openCodeConfigContent, model, effort string) {
+	providerID, modelID := modelprovider.SplitProviderModel(model)
+	effort, err := NormalizeAgentReasoningEffort(AgentOpenCode, effort)
+	if err != nil || providerID != modelprovider.ProviderOpenRouter || modelID == "" || effort == "" {
+		return
+	}
+	if content.Provider == nil {
+		content.Provider = map[string]openCodeProviderConfig{}
+	}
+	provider := content.Provider[providerID]
+	if provider.Models == nil {
+		provider.Models = map[string]openCodeModelConfig{}
+	}
+	modelConfig := provider.Models[modelID]
+	if modelConfig.Variants == nil {
+		modelConfig.Variants = map[string]openCodeModelVariantConfig{}
+	}
+	modelConfig.Variants[effort] = openCodeModelVariantConfig{
+		Reasoning: &openCodeReasoningConfig{Effort: effort},
+	}
+	provider.Models[modelID] = modelConfig
+	content.Provider[providerID] = provider
 }
 
 func shouldWriteOpenCodeProviderConfig(cfg modelprovider.ModelProviderConfig, meta modelprovider.ModelProvider, configured, builtIn bool) bool {
