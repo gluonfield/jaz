@@ -25,6 +25,15 @@ export const LOOP_TEMPLATES: LoopTemplate[] = [
     schedule: { preset: 'weekdays', time: '09:00' },
   },
   {
+    id: 'linear-priorities',
+    title: 'Top Linear issues to tackle',
+    description: 'Surface the most important issues assigned to me.',
+    name: 'top-linear-issues',
+    prompt:
+      'Go through my assigned Linear issues and surface the few that matter most right now — weigh priority, due dates, and what’s blocking other work. For each, give a one-line status and the next action.',
+    schedule: { preset: 'weekdays', time: '09:00' },
+  },
+  {
     id: 'morning-briefing',
     title: 'Morning AI briefing',
     description: 'A skimmable overnight digest of AI developments.',
@@ -41,15 +50,6 @@ export const LOOP_TEMPLATES: LoopTemplate[] = [
     prompt:
       'Check this project’s dependencies for security advisories and notable version updates published since yesterday. List only what needs action, each with the affected package, severity, and a one-line recommendation.',
     schedule: { preset: 'daily', time: '08:00' },
-  },
-  {
-    id: 'uptime-check',
-    title: 'Site & API uptime check',
-    description: 'Confirm a site or API is up and responding quickly.',
-    name: 'site-api-uptime-check',
-    prompt:
-      'Check that my site is up and responding quickly (replace this with the URL to watch). If it is down or slow, summarise the symptoms and likely cause; otherwise just confirm it is healthy.',
-    schedule: { preset: 'hourly' },
   },
   {
     id: 'memory-housekeeping',
