@@ -44,31 +44,49 @@ func TestParseSessionConfigOptions(t *testing.T) {
 	if len(state.effortOptions) != 5 || state.effortOptions[4] != "max" {
 		t.Fatalf("effort options = %#v", state.effortOptions)
 	}
+	if state.effortConfigID != "effort" {
+		t.Fatalf("effort config id = %q", state.effortConfigID)
+	}
 
 	withoutEffort := parseSessionConfigOptions(json.RawMessage(`{"configOptions":[{"id":"model","options":[{"value":"spark"}]}]}`))
 	if !withoutEffort.configOptionsPresent || withoutEffort.effortConfigPresent {
 		t.Fatalf("expected config options without effort, got %#v", withoutEffort)
 	}
+
+	byCategory := parseSessionConfigOptions(json.RawMessage(`{"configOptions":[
+		{"id":"active_model","category":"model","options":[{"value":"spark"}]},
+		{"id":"thinking","category":"thought_level","options":[{"value":"high"}]}
+	]}`))
+	if byCategory.effortConfigID != "thinking" || len(byCategory.effortOptions) != 1 || byCategory.effortOptions[0] != "high" {
+		t.Fatalf("category effort config = %#v", byCategory)
+	}
+	if len(byCategory.modelOptions) != 1 || byCategory.modelOptions[0] != "spark" {
+		t.Fatalf("category model options = %#v", byCategory.modelOptions)
+	}
+
+	mixed := parseSessionConfigOptions(json.RawMessage(`{"configOptions":[
+		{"id":"thinking","category":"thought_level","options":[{"value":"xhigh"}]},
+		{"id":"effort","options":[{"value":"high"}]}
+	]}`))
+	if mixed.effortConfigID != "thinking" || len(mixed.effortOptions) != 1 || mixed.effortOptions[0] != "xhigh" {
+		t.Fatalf("mixed effort config = %#v", mixed)
+	}
 }
 
-func TestClampReasoningEffort(t *testing.T) {
-	sonnet := []string{"default", "low", "medium", "high", "max"}
+func TestConfigOptionValueAvailable(t *testing.T) {
 	cases := []struct {
-		effort     string
-		advertised []string
-		want       string
+		options []string
+		value   string
+		want    bool
 	}{
-		{"xhigh", sonnet, "high"},                          // nearest weaker level
-		{"high", sonnet, "high"},                           // advertised as-is
-		{"xhigh", nil, "xhigh"},                            // unknown advertisement: untouched
-		{"", sonnet, ""},                                   // nothing configured
-		{"low", []string{"medium"}, "medium"},              // nothing weaker: nearest stronger
-		{"medium", []string{"default"}, ""},                // no compatible ladder level
-		{"xhigh", []string{"Default", " XHIGH "}, "xhigh"}, // case/space insensitive
+		{[]string{"default", "low", "high"}, "high", true},
+		{[]string{"Default", " XHIGH "}, "xhigh", true},
+		{[]string{"default", "high"}, "xhigh", false},
+		{nil, "high", false},
 	}
 	for _, tc := range cases {
-		if got := clampReasoningEffort(tc.effort, tc.advertised); got != tc.want {
-			t.Fatalf("clampReasoningEffort(%q, %v) = %q, want %q", tc.effort, tc.advertised, got, tc.want)
+		if got := configOptionValueAvailable(tc.options, tc.value); got != tc.want {
+			t.Fatalf("configOptionValueAvailable(%v, %q) = %v, want %v", tc.options, tc.value, got, tc.want)
 		}
 	}
 }
