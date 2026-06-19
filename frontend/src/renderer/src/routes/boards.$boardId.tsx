@@ -158,7 +158,7 @@ function BoardPage() {
   // Board windows stay chrome-light; embedded boards carry their name and the
   // explicit window escape hatch in the app page header.
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col bg-surface">
       <div
         className={`flex shrink-0 items-center gap-3 px-6 pb-1 ${
           isBoardWindow ? 'justify-end pt-2' : 'justify-between pt-2'
