@@ -1,5 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
-import { GripVertical, Pencil, Play, X } from 'lucide-react'
+import { GripVertical, Pause, Pencil, Play, X } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import {
   type MouseEvent as ReactMouseEvent,
@@ -34,6 +34,13 @@ function TileStatusDot({ item }: { item: BoardItem }) {
         title={`Widget error: ${item.last_error}`}
         className="size-1.5 shrink-0 rounded-full bg-danger"
       />
+    )
+  }
+  if (item.loop_status === 'paused') {
+    return (
+      <span title="Paused" className="flex shrink-0 text-ink-3">
+        <Pause size={11} className="fill-current" />
+      </span>
     )
   }
   return null
@@ -260,7 +267,6 @@ export function WidgetTile({
     }
   }, [scale])
 
-  const paused = item.loop_status === 'paused'
   const updated = hasTime(item.widget_updated_at) ? relativeTime(item.widget_updated_at) : ''
   const openLoop = (e: ReactMouseEvent) => {
     if (window.jaz?.windowKind === 'board') {
@@ -275,7 +281,7 @@ export function WidgetTile({
     <div
       className={`group relative flex h-full w-full flex-col overflow-hidden rounded-card bg-surface transition-shadow duration-150 ${
         dragging ? 'shadow-lg ring-1 ring-primary/50' : ''
-      } ${paused ? 'opacity-70' : ''}`}
+      }`}
     >
       <div
         onPointerDown={onHeaderPointerDown}
