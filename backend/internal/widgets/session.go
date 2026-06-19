@@ -34,12 +34,12 @@ func (p *SessionPublisher) PublishForSession(sessionID string, input PublishInpu
 	return p.Service.Publish(loop, run.ID, input)
 }
 
-func (p *SessionPublisher) EnsurePublishedForSession(sessionID string) error {
+func (p *SessionPublisher) RequirePublishedForSession(sessionID string) error {
 	loop, run, err := p.resolve(sessionID)
 	if err != nil {
 		return err
 	}
-	return p.Service.EnsureRunPublished(loop, run)
+	return p.Service.RequireRunPublished(loop, run)
 }
 
 func (p *SessionPublisher) WidgetSurfaceForSession(sessionID string) bool {

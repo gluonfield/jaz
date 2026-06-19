@@ -330,7 +330,7 @@ func finishLoopFromACP(service *loops.Service, widgetPublisher *widgets.SessionP
 		status = loops.RunStatusCancelled
 	}
 	if status == loops.RunStatusOK {
-		if err := ensureWidgetRunPublished(widgetPublisher, job.ID); err != nil {
+		if err := requireWidgetRunPublished(widgetPublisher, job.ID); err != nil {
 			status = loops.RunStatusError
 			errText = err.Error()
 		}
@@ -342,11 +342,11 @@ func finishLoopFromACP(service *loops.Service, widgetPublisher *widgets.SessionP
 	}
 }
 
-func ensureWidgetRunPublished(widgetPublisher *widgets.SessionPublisher, threadID string) error {
+func requireWidgetRunPublished(widgetPublisher *widgets.SessionPublisher, threadID string) error {
 	if widgetPublisher == nil {
 		return nil
 	}
-	return widgetPublisher.EnsurePublishedForSession(threadID)
+	return widgetPublisher.RequirePublishedForSession(threadID)
 }
 
 func stopHTTPServer(ctx context.Context, srv *http.Server) error {

@@ -88,6 +88,11 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				_ = conn.Send(context.Background(), resp)
 				continue
 			}
+			if err := validateFakeRulesPrompt(req.Meta); err != nil {
+				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams(err.Error(), nil))
+				_ = conn.Send(context.Background(), resp)
+				continue
+			}
 			if err := validateFakeMCPServers(req.MCPServers); err != nil {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams(err.Error(), nil))
 				_ = conn.Send(context.Background(), resp)
@@ -122,6 +127,11 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			}
 			if want := os.Getenv("JAZ_FAKE_ACP_SYSTEM_PROMPT"); want != "" && req.Meta["systemPrompt"] != want {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("missing system prompt", nil))
+				_ = conn.Send(context.Background(), resp)
+				continue
+			}
+			if err := validateFakeRulesPrompt(req.Meta); err != nil {
+				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams(err.Error(), nil))
 				_ = conn.Send(context.Background(), resp)
 				continue
 			}
@@ -321,6 +331,18 @@ func validateFakeCwdPrompt(cwd string, meta map[string]any) error {
 	prompt, _ := meta["systemPrompt"].(string)
 	if cwd == "" || !strings.Contains(prompt, cwd) {
 		return fmt.Errorf("system prompt missing cwd %q", cwd)
+	}
+	return nil
+}
+
+func validateFakeRulesPrompt(meta map[string]any) error {
+	want := os.Getenv("JAZ_FAKE_ACP_RULES_CONTAINS")
+	if want == "" {
+		return nil
+	}
+	rules, _ := meta["rules"].(string)
+	if !strings.Contains(rules, want) {
+		return fmt.Errorf("missing grok rules prompt")
 	}
 	return nil
 }

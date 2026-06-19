@@ -40,8 +40,8 @@ func TestFinishLoopFromACPRejectsUnpublishedWidgetRun(t *testing.T) {
 	}
 }
 
-func TestFinishLoopFromACPAutoPublishesWidgetFile(t *testing.T) {
-	loopService, widgetService, widgetPublisher, store, loop, run := newWidgetLoopFinishTest(t, "thread-auto-publish")
+func TestFinishLoopFromACPRejectsWidgetFileWithoutPublishTool(t *testing.T) {
+	loopService, widgetService, widgetPublisher, store, loop, run := newWidgetLoopFinishTest(t, "thread-file-without-publish")
 	path := widgets.WidgetFilePath(loop)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
@@ -59,14 +59,14 @@ func TestFinishLoopFromACPAutoPublishesWidgetFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stored.Status != loops.RunStatusOK || stored.Error != "" {
+	if stored.Status != loops.RunStatusError || !strings.Contains(stored.Error, "visualise_publish_widget") {
 		t.Fatalf("run = %+v", stored)
 	}
 	state, err := widgetService.RunPublishState(loop.ID, run.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !state.Published || state.Widget.CurrentVersion != 1 {
+	if state.Published || state.Widget.CurrentVersion != 0 {
 		t.Fatalf("publish state = %+v", state)
 	}
 }

@@ -430,9 +430,6 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 
 func (m *Manager) initializeModeState(ctx context.Context, peer *jsonrpc.Peer, agentName string, session acpschema.NewSessionResponse) (ModeState, error) {
 	acpModes := session.Modes
-	if acpModes == nil && CanonicalAgentName(agentName) == AgentGrok {
-		acpModes = grokFallbackModes()
-	}
 	modes := modeStateFromACP(acpModes)
 	if acpModes == nil {
 		return modes, nil
@@ -504,11 +501,15 @@ func (m *Manager) resume(ctx context.Context, ref string) (*Job, error) {
 	if session.RuntimeRef != nil {
 		artifactSurface = session.RuntimeRef.ArtifactSurface
 	}
-	ac, err := m.connect(ctx, agentName, cfg, cwd, artifactSurface, nil)
+	systemPromptExtensions, err := m.resumeSystemPromptExtensions(session)
 	if err != nil {
 		return nil, err
 	}
-	acpSessionID, modes, err := m.restoreACPSession(ctx, ac, agentName, session, cfg, cwd)
+	ac, err := m.connect(ctx, agentName, cfg, cwd, artifactSurface, systemPromptExtensions)
+	if err != nil {
+		return nil, err
+	}
+	acpSessionID, modes, err := m.restoreACPSession(ctx, ac, agentName, session, cfg, cwd, systemPromptExtensions)
 	if err != nil {
 		ac.close()
 		return nil, err
@@ -546,9 +547,20 @@ func (m *Manager) resume(ctx context.Context, ref string) (*Job, error) {
 	return job, nil
 }
 
+func (m *Manager) resumeSystemPromptExtensions(session storage.Session) (promptmodule.Modules, error) {
+	if m.cfg.ResumePrompt == nil {
+		return nil, nil
+	}
+	extensions, err := m.cfg.ResumePrompt(session)
+	if err != nil {
+		return nil, err
+	}
+	return promptmodule.New(extensions...), nil
+}
+
 // The job is registered only after session/load returns, so the agent's
 // history replay notifications are dropped, not re-recorded as events.
-func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentName string, session storage.Session, cfg AgentConfig, cwd string) (string, ModeState, error) {
+func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentName string, session storage.Session, cfg AgentConfig, cwd string, systemPromptExtensions promptmodule.Modules) (string, ModeState, error) {
 	agentName = CanonicalAgentName(agentName)
 	var caps struct {
 		AgentCapabilities acpschema.AgentCapabilities `json:"agentCapabilities"`
@@ -556,7 +568,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 	_ = json.Unmarshal(ac.initRaw, &caps)
 	storedID := session.RuntimeRef.SessionID
 	if caps.AgentCapabilities.LoadSession && storedID != "" {
-		meta, err := m.sessionMeta(agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, nil)
+		meta, err := m.sessionMeta(agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, systemPromptExtensions)
 		if err != nil {
 			return "", ModeState{}, err
 		}
@@ -585,7 +597,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 		}
 		// The agent lost this session — fall through to a fresh one.
 	}
-	acpSession, err := m.newACPSession(mcpsession.With(ctx, session.ID), ac, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, session.RuntimeRef.MCPServerPolicy, nil)
+	acpSession, err := m.newACPSession(mcpsession.With(ctx, session.ID), ac, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, session.RuntimeRef.MCPServerPolicy, systemPromptExtensions)
 	if err != nil {
 		return "", ModeState{}, err
 	}

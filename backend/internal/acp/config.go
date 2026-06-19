@@ -7,6 +7,7 @@ import (
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/provider"
+	"github.com/wins/jaz/backend/internal/storage"
 )
 
 const (
@@ -42,6 +43,8 @@ type SystemPromptSource interface {
 	ACPPrompt(cwd string) (string, error)
 	SkillsPromptForWorkspace(cwd string) (string, error)
 }
+
+type SessionPromptExtensionResolver func(storage.Session) (promptmodule.Modules, error)
 
 type artifactSurfacePromptSource interface {
 	ACPPromptForArtifactSurface(cwd, surface string) (string, error)
@@ -93,6 +96,7 @@ type Config struct {
 	ProviderSource provider.Source
 	SystemPrompt   SystemPromptSource
 	MCPStore       mcpconfig.ServerReader
+	ResumePrompt   SessionPromptExtensionResolver
 }
 
 type AgentConfig struct {
