@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { AnimatePresence } from 'motion/react'
 import {
   type ChangeEvent,
+  type CSSProperties,
   type KeyboardEvent,
   type SyntheticEvent,
   useCallback,
@@ -11,6 +12,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { projectsQuery, workspaceFilesQuery } from '@/lib/api/sessions'
 import { skillsQuery } from '@/lib/api/skills'
 import { ComposerSuggestions, type SuggestionItem, type SuggestionSection } from './ComposerSuggestions'
@@ -409,8 +411,12 @@ export function useMentionInput({
   }
 }
 
-// The floating $/@ menu for a mention field. Renders into the nearest
-// positioned ancestor — callers wrap their field in a `relative` container.
+// The floating $/@ menu for a mention field. Portaled and fixed-positioned to
+// the textarea so an overflow/scroll ancestor (e.g. a modal body) can't clip
+// it. `placement` is the preferred side; it flips when that side lacks room. A
+// hidden in-place marker keeps a host modal from stealing Escape: the modal's
+// guard looks for `data-escape-surface` inside its own panel, which the portaled
+// menu is no longer part of.
 export function MentionSuggestions({
   mention,
   placement,
@@ -418,25 +424,68 @@ export function MentionSuggestions({
   mention: MentionInput
   placement: 'above' | 'below'
 }) {
+  const open = mention.menuOpen
+  const [rect, setRect] = useState<DOMRect | null>(null)
+
+  useLayoutEffect(() => {
+    if (!open) return
+    const measure = () => {
+      const el = mention.textareaRef.current
+      if (el) setRect(el.getBoundingClientRect())
+    }
+    measure()
+    window.addEventListener('scroll', measure, true)
+    window.addEventListener('resize', measure)
+    return () => {
+      window.removeEventListener('scroll', measure, true)
+      window.removeEventListener('resize', measure)
+    }
+    // Remeasure as the field grows so the menu tracks the textarea edge.
+  }, [open, mention.text, mention.textareaRef])
+
+  const above = rect ? prefersAbove(placement, rect) : placement === 'above'
+  const style: CSSProperties | undefined = rect
+    ? {
+        position: 'fixed',
+        left: rect.left,
+        width: rect.width,
+        zIndex: 'var(--z-modal)',
+        ...(above
+          ? { bottom: window.innerHeight - rect.top + MENU_GAP }
+          : { top: rect.bottom + MENU_GAP }),
+      }
+    : undefined
+
   return (
-    <AnimatePresence>
-      {mention.menuOpen ? (
-        <div
-          key="suggestions"
-          className={`absolute inset-x-0 z-30 ${
-            placement === 'above' ? 'bottom-full mb-2' : 'top-full mt-2'
-          }`}
-        >
-          <ComposerSuggestions
-            sections={mention.sections}
-            activeIndex={mention.activeIndex}
-            onHover={mention.setActiveIndex}
-            onSelect={mention.selectItem}
-          />
-        </div>
-      ) : null}
-    </AnimatePresence>
+    <>
+      {open ? <span data-escape-surface="" className="hidden" /> : null}
+      {createPortal(
+        <AnimatePresence>
+          {open && rect ? (
+            <div key="suggestions" style={style}>
+              <ComposerSuggestions
+                sections={mention.sections}
+                activeIndex={mention.activeIndex}
+                onHover={mention.setActiveIndex}
+                onSelect={mention.selectItem}
+              />
+            </div>
+          ) : null}
+        </AnimatePresence>,
+        document.body,
+      )}
+    </>
   )
+}
+
+const MENU_GAP = 8
+
+// Honor the requested side unless it's too cramped and the other side is roomier.
+function prefersAbove(placement: 'above' | 'below', rect: DOMRect): boolean {
+  const spaceAbove = rect.top
+  const spaceBelow = window.innerHeight - rect.bottom
+  if (placement === 'above') return spaceAbove >= 220 || spaceAbove >= spaceBelow
+  return spaceBelow < 220 && spaceAbove > spaceBelow
 }
 
 // The painted pair behind every mention-capable field: a mirror painting the

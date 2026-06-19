@@ -22,16 +22,25 @@ export const LOOP_TEMPLATES: LoopTemplate[] = [
     name: 'daily-git-commit-review',
     prompt:
       "Review the commits pushed to this repository in the last 24 hours. Summarise what changed, then flag anything that needs my attention — missing tests, security issues, accidental secrets, or sloppy error handling. Keep it to the few things that actually matter.",
-    schedule: { preset: 'weekdays', time: '09:00' },
+    schedule: { preset: 'daily', time: '10:00' },
+  },
+  {
+    id: 'linear-priorities',
+    title: 'Top Linear issues to tackle',
+    description: 'Surface the most important issues assigned to me.',
+    name: 'top-linear-issues',
+    prompt:
+      'Go through my assigned Linear issues and surface the few that matter most right now — weigh priority, due dates, and what’s blocking other work. For each, give a one-line status and the next action.',
+    schedule: { preset: 'daily', time: '10:00' },
   },
   {
     id: 'morning-briefing',
     title: 'Morning AI briefing',
-    description: 'A skimmable overnight digest, published to a board widget.',
+    description: 'A skimmable overnight digest of AI developments.',
     name: 'morning-ai-briefing',
     prompt:
-      'Put together a short morning briefing: the most important overnight developments in AI research and the frontier labs. Group by theme, link sources, and keep it skimmable. Publish it as a widget so I can read it on my board.',
-    schedule: { preset: 'daily', time: '07:00' },
+      'Put together a short morning briefing: the most important overnight developments in AI research and the frontier labs. Group by theme, link sources, and keep it skimmable.',
+    schedule: { preset: 'daily', time: '10:00' },
   },
   {
     id: 'dependency-watch',
@@ -40,16 +49,7 @@ export const LOOP_TEMPLATES: LoopTemplate[] = [
     name: 'dependency-security-watch',
     prompt:
       'Check this project’s dependencies for security advisories and notable version updates published since yesterday. List only what needs action, each with the affected package, severity, and a one-line recommendation.',
-    schedule: { preset: 'daily', time: '08:00' },
-  },
-  {
-    id: 'uptime-check',
-    title: 'Site & API uptime check',
-    description: 'Confirm a site or API is up and responding quickly.',
-    name: 'site-api-uptime-check',
-    prompt:
-      'Check that my site is up and responding quickly (replace this with the URL to watch). If it is down or slow, summarise the symptoms and likely cause; otherwise just confirm it is healthy.',
-    schedule: { preset: 'hourly' },
+    schedule: { preset: 'daily', time: '10:00' },
   },
   {
     id: 'memory-housekeeping',
@@ -58,7 +58,7 @@ export const LOOP_TEMPLATES: LoopTemplate[] = [
     name: 'long-term-memory-housekeeping',
     prompt:
       'Review my recent notes and conversations and update my long-term memory: capture durable facts, decisions, and open loops, and prune anything that has gone stale. Tell me what you changed.',
-    schedule: { preset: 'daily', time: '22:00' },
+    schedule: { preset: 'daily', time: '10:00' },
   },
   {
     id: 'weekly-review',
@@ -67,7 +67,7 @@ export const LOOP_TEMPLATES: LoopTemplate[] = [
     name: 'weekly-progress-review',
     prompt:
       'Summarise what I shipped and learned this week, what is still open, and the three things most worth doing next week. Keep it honest and concrete.',
-    schedule: { preset: 'weekly', time: '16:00', weekday: 5 },
+    schedule: { preset: 'daily', time: '10:00' },
   },
 ]
 
