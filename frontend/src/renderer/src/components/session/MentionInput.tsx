@@ -6,6 +6,7 @@ import {
   type SyntheticEvent,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -255,8 +256,10 @@ export function useMentionInput({
   )
 
   // Size to the current value — a prefilled prompt, a restored draft, or a
-  // draft swapped in by navigation; rows={1} would collapse them all.
-  useEffect(() => {
+  // draft swapped in by navigation; rows={1} would collapse them all. Runs
+  // before paint so a remounted field (e.g. an applied example) appears at its
+  // full height in one frame instead of flashing the min height first.
+  useLayoutEffect(() => {
     autoGrow()
   }, [text, autoGrow])
 
