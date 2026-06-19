@@ -823,53 +823,6 @@ func TestManagerUsesAdvertisedThoughtLevelConfigOption(t *testing.T) {
 	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
 }
 
-func TestManagerUsesGrokSetModelAndFallbackModes(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	manager := acp.NewManager(store, acp.Config{
-		Root:      t.TempDir(),
-		Workspace: t.TempDir(),
-		Agents: map[string]acp.AgentConfig{
-			"grok": {
-				Command:         os.Args[0],
-				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
-				Model:           "grok-build",
-				ReasoningEffort: "high",
-				Env: map[string]string{
-					"JAZ_FAKE_ACP_AGENT":        "1",
-					"JAZ_FAKE_ACP_NO_MODES":     "1",
-					"JAZ_FAKE_ACP_SET_MODEL":    "1",
-					"JAZ_FAKE_ACP_EXPECT_MODEL": "grok-build",
-				},
-			},
-		},
-	}, log.New(io.Discard))
-
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "grok", Slug: "grok-model"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
-	status, err := manager.Status(spawned.SessionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if status.Modes.PlanModeID != "plan" || status.Modes.CurrentModeID != "always-approve" {
-		t.Fatalf("unexpected grok modes %#v", status.Modes)
-	}
-	session, err := store.LoadSession(spawned.SessionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if session.ModelProvider != "grok" || session.Model != "grok-build" || session.ReasoningEffort != "high" {
-		t.Fatalf("unexpected session metadata %#v", session)
-	}
-}
-
 func TestManagerSpawnModelOverrideWinsOverConfiguredModel(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

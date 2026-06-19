@@ -2,7 +2,6 @@ package widgets_test
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -149,23 +148,16 @@ func TestRunPublishStateRequiresCurrentVersionFromRun(t *testing.T) {
 	}
 }
 
-func TestEnsureRunPublishedRejectsStaleWidgetFile(t *testing.T) {
+func TestRequireRunPublishedRejectsMissingPublishToolCall(t *testing.T) {
 	service, _, loop := newTestService(t)
 	board := makeBoard(t, service, "Desk")
 	if _, err := service.AssignLoopBoards(loop, []string{board.ID}); err != nil {
 		t.Fatalf("assign: %v", err)
 	}
-	path := widgets.WidgetFilePath(loop)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte("<p>old</p>"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	run := loops.Run{ID: "run-1", LoopID: loop.ID, StartedAt: time.Now().Add(time.Hour)}
-	err := service.EnsureRunPublished(loop, run)
-	if err == nil || !strings.Contains(err.Error(), "not updated during this run") {
-		t.Fatalf("expected stale-file error, got %v", err)
+	run := loops.Run{ID: "run-1", LoopID: loop.ID, StartedAt: time.Now()}
+	err := service.RequireRunPublished(loop, run)
+	if err == nil || !strings.Contains(err.Error(), "visualise_publish_widget") {
+		t.Fatalf("expected missing-publish error, got %v", err)
 	}
 	state, stateErr := service.RunPublishState(loop.ID, run.ID)
 	if stateErr != nil {

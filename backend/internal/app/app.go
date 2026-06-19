@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/charmbracelet/log"
 	"github.com/gluonfield/jazmem/pkg/jazmem"
@@ -18,6 +19,7 @@ import (
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/memoryservice"
+	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/provider"
 	mockprovider "github.com/wins/jaz/backend/internal/provider/mock"
 	openaiprovider "github.com/wins/jaz/backend/internal/provider/openai"
@@ -170,7 +172,7 @@ func NewProviderSource(cfg Config, store *sqlitestore.Store) (provider.Source, e
 	return provider.NewSource(cfg.ModelProviders, providerstore.Loader{Store: store})
 }
 
-func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, prompts *coordinator.Builder, catalog acp.AgentCatalog, source acp.AgentConfigSource, mcpServers mcpconfig.ServerReader, providerSource provider.Source) acp.Config {
+func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, prompts *coordinator.Builder, catalog acp.AgentCatalog, source acp.AgentConfigSource, mcpServers mcpconfig.ServerReader, providerSource provider.Source, widgetService *widgets.Service) acp.Config {
 	cfg.ACP.Agents = catalog
 	cfg.ACP.AgentSource = source
 	cfg.ACP.Root = store.RootDir()
@@ -179,6 +181,16 @@ func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, pro
 	cfg.ACP.ProviderSource = providerSource
 	cfg.ACP.SystemPrompt = prompts
 	cfg.ACP.MCPStore = mcpServers
+	promptBuilder := loops.RuntimePromptBuilder{Repo: store}
+	if widgetService != nil {
+		promptBuilder.PromptExtra = widgetService.LoopPromptExtra
+	}
+	cfg.ACP.ResumePrompt = func(session storage.Session) (promptmodule.Modules, error) {
+		if session.SourceType != storage.SourceLoopRun || session.SourceID == "" {
+			return nil, nil
+		}
+		return promptBuilder.ForRun(session.SourceID, time.Now().UTC())
+	}
 	return cfg.ACP
 }
 
