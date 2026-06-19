@@ -509,6 +509,13 @@ func (m *Manager) touchAttention(sessionIDs ...string) {
 	}
 }
 
+func (m *Manager) publishSessionChanged(sessionID string) {
+	if m.Events == nil || sessionID == "" {
+		return
+	}
+	m.Events.Publish(sessionevents.Event{SessionID: sessionID, Type: sessionevents.TypeSession})
+}
+
 func (m *Manager) publishACP(job Job) {
 	m.saveACPState(job)
 	acp := acpEvent(job)
