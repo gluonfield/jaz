@@ -1,5 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
-import { Pencil, Play, X } from 'lucide-react'
+import { GripVertical, Pencil, Play, X } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import {
   type MouseEvent as ReactMouseEvent,
@@ -279,8 +279,13 @@ export function WidgetTile({
     >
       <div
         onPointerDown={onHeaderPointerDown}
-        className="flex h-8 shrink-0 cursor-grab select-none items-center gap-1.5 px-2.5 active:cursor-grabbing"
+        className="flex h-8 shrink-0 cursor-grab select-none items-center gap-1.5 px-2.5 transition-colors duration-150 hover:bg-surface-2/60 active:cursor-grabbing"
       >
+        <GripVertical
+          size={13}
+          aria-hidden
+          className="-ml-1 shrink-0 text-ink-3 transition-colors duration-150 group-hover:text-ink-2"
+        />
         <TileStatusDot item={item} />
         <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-ink" title={item.loop_name}>
           {item.title}
