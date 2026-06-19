@@ -4,8 +4,8 @@ import { type MouseEvent, useMemo, useState } from 'react'
 import { ModelBreakdown } from '@/components/settings/UsageModelBreakdown'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { Skeleton } from '@/components/ui/Skeleton'
-import { dailyUsageQuery, modelUsageQuery } from '@/lib/api/sessions'
-import type { DailyUsage, ModelUsage } from '@/lib/api/types'
+import { dailyUsageQuery } from '@/lib/api/sessions'
+import type { DailyUsage } from '@/lib/api/types'
 import { formatTokens } from '@/lib/format/tokens'
 import { type ModelPricing, openRouterModelsQuery } from '@/lib/models'
 import { buildPricingIndex, formatUsd, priceModels } from '@/lib/usageCost'
@@ -13,6 +13,7 @@ import {
   formatUsageDate,
   inputTokens,
   peakDay,
+  sumModelUsage,
   sumUsage,
   totalUsageTokens,
   USAGE_CHART_DAYS,
@@ -35,7 +36,6 @@ const usageGapPx = 3
 
 export function UsageSettings() {
   const usage = useQuery(dailyUsageQuery(365))
-  const models = useQuery(modelUsageQuery(30))
   const openRouter = useQuery(openRouterModelsQuery)
   const pricing = useMemo(() => buildPricingIndex(openRouter.data ?? []), [openRouter.data])
 
@@ -55,9 +55,6 @@ export function UsageSettings() {
       ) : (
         <UsagePanel
           days={usage.data}
-          models={models.data ?? []}
-          modelsError={models.error}
-          modelsPending={models.isPending}
           pricing={pricing}
         />
       )}
@@ -81,15 +78,9 @@ function UsageSkeleton() {
 
 function UsagePanel({
   days,
-  models,
-  modelsError,
-  modelsPending,
   pricing,
 }: {
   days: DailyUsage[]
-  models: ModelUsage[]
-  modelsError: Error | null
-  modelsPending: boolean
   pricing: Map<string, ModelPricing>
 }) {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
@@ -97,8 +88,10 @@ function UsagePanel({
   const cells = useMemo(() => usageCells(chartDays), [chartDays])
   const monthLabels = useMemo(() => usageMonthLabels(cells), [cells])
   const weekCount = useMemo(() => usageWeekCount(cells), [cells])
+  const last30Days = useMemo(() => days.slice(-30), [days])
   const last7 = sumUsage(days.slice(-7))
-  const last30 = sumUsage(days.slice(-30))
+  const last30 = sumUsage(last30Days)
+  const models = useMemo(() => sumModelUsage(last30Days), [last30Days])
   const peak = peakDay(chartDays)
   const activeDays = chartDays.filter((day) => totalUsageTokens(day.usage) > 0).length
   const maxTotal = Math.max(1, ...chartDays.map((day) => totalUsageTokens(day.usage)))
@@ -110,6 +103,13 @@ function UsagePanel({
   const cacheHitLabel = inputAndCacheTokens > 0 ? `${Math.round((cacheRead / inputAndCacheTokens) * 100)}%` : '—'
   const { rows: pricedModels, summary: costSummary } = useMemo(() => priceModels(models, pricing), [models, pricing])
   const costLabel = costSummary.priced > 0 ? formatUsd(costSummary.total) : '—'
+  const dailyCostLabels = useMemo(() => {
+    const labels = new Map<string, string>()
+    for (const day of chartDays) {
+      labels.set(day.date, dailyCostLabel(day, pricing))
+    }
+    return labels
+  }, [chartDays, pricing])
 
   return (
     <SettingsCard className="mt-4 p-4">
@@ -197,6 +197,7 @@ function UsagePanel({
                   key={cell.date}
                   cell={cell}
                   maxTotal={maxTotal}
+                  costLabel={cell.day ? dailyCostLabels.get(cell.day.date) ?? '—' : '—'}
                   onHover={setTooltip}
                 />
               ))}
@@ -216,12 +217,10 @@ function UsagePanel({
 
       <ModelBreakdown
         rows={pricedModels}
-        error={modelsError}
-        pending={modelsPending}
         unpriced={costSummary.unpriced}
       />
 
-      {tooltip ? <UsageTooltip state={tooltip} /> : null}
+      {tooltip ? <UsageTooltip state={tooltip} costLabel={dailyCostLabels.get(tooltip.day.date) ?? '—'} /> : null}
     </SettingsCard>
   )
 }
@@ -239,10 +238,12 @@ function UsageStat({ label, value, detail }: { label: string; value: string; det
 function UsageSquare({
   cell,
   maxTotal,
+  costLabel,
   onHover,
 }: {
   cell: UsageCell
   maxTotal: number
+  costLabel: string
   onHover: (state: TooltipState | null) => void
 }) {
   const day = cell.day
@@ -261,7 +262,7 @@ function UsageSquare({
   return (
     <button
       type="button"
-      aria-label={usageTooltipText(activeDay).replace(/\n/g, ', ')}
+      aria-label={usageTooltipText(activeDay, costLabel).replace(/\n/g, ', ')}
       onMouseEnter={show}
       onMouseMove={show}
       onMouseLeave={() => onHover(null)}
@@ -271,9 +272,9 @@ function UsageSquare({
   )
 }
 
-function UsageTooltip({ state }: { state: TooltipState }) {
+function UsageTooltip({ state, costLabel }: { state: TooltipState; costLabel: string }) {
   const left = Math.max(8, Math.min(window.innerWidth - 238, state.x + 14))
-  const top = Math.max(8, state.y - 96)
+  const top = Math.max(8, state.y - 112)
   const cacheRead = state.day.usage.cached_input_tokens ?? 0
   const cacheWrite = state.day.usage.cached_write_tokens ?? 0
   const reasoning = state.day.usage.reasoning_output_tokens ?? 0
@@ -291,6 +292,8 @@ function UsageTooltip({ state }: { state: TooltipState }) {
         <span className="text-right font-mono tabular-nums">{formatTokens(state.day.usage.output_tokens ?? 0)}</span>
         <span className="text-ink-3">Total</span>
         <span className="text-right font-mono tabular-nums">{formatTokens(totalUsageTokens(state.day.usage))}</span>
+        <span className="text-ink-3">Est. cost</span>
+        <span className="text-right font-mono tabular-nums">{costLabel}</span>
         {cacheRead > 0 ? (
           <>
             <span className="text-ink-3">Cache read</span>
@@ -329,12 +332,20 @@ function levelColor(level: number): string {
   }
 }
 
-function usageTooltipText(day: DailyUsage): string {
+function dailyCostLabel(day: DailyUsage, pricing: Map<string, ModelPricing>): string {
+  const models = day.models ?? []
+  if (models.length === 0) return '—'
+  const { summary } = priceModels(models, pricing)
+  return summary.priced > 0 ? formatUsd(summary.total) : '—'
+}
+
+function usageTooltipText(day: DailyUsage, costLabel: string): string {
   return [
     formatUsageDate(day.date),
     `Input ${formatTokens(inputTokens(day.usage))}`,
     `Output ${formatTokens(day.usage.output_tokens ?? 0)}`,
     `Total ${formatTokens(totalUsageTokens(day.usage))}`,
+    `Est. cost ${costLabel}`,
     `Cache read ${formatTokens(day.usage.cached_input_tokens ?? 0)}`,
     `Cache write ${formatTokens(day.usage.cached_write_tokens ?? 0)}`,
   ].join('\n')
