@@ -36,9 +36,6 @@ function TileStatusDot({ item }: { item: BoardItem }) {
       />
     )
   }
-  if (item.loop_status === 'paused') {
-    return <span title="Paused" className="size-1.5 shrink-0 rounded-full bg-ink-3/50" />
-  }
   return null
 }
 
