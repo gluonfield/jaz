@@ -98,6 +98,10 @@ export function Modal({
               aria-label={title}
               tabIndex={-1}
               onClick={(event) => event.stopPropagation()}
+              // `layout` tweens the panel's height/position when its content
+              // changes (e.g. stepping through a multi-step body) instead of
+              // snapping. Disabled under reduced-motion.
+              layout={reduce ? false : 'size'}
               initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={reduce ? { opacity: 0 } : { opacity: 0, y: 6, scale: 0.98 }}
