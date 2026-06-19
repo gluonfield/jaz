@@ -1,5 +1,5 @@
 import { queryOptions, useQuery } from '@tanstack/react-query'
-import type { ModelProviderOption, ModelUsage, Session } from './api/types'
+import type { ModelProviderOption, Session } from './api/types'
 import { keys } from './query/keys'
 
 // USD per token, parsed from OpenRouter's string pricing fields.
@@ -74,7 +74,7 @@ export function acpAgentModelSuggestions(agent: string): ModelSuggestion[] {
   return ACP_AGENT_MODELS[agent] ?? []
 }
 
-export function pricingIdForUsage(model: ModelUsage): string | null {
+export function pricingIdForUsage(model: { agent?: string; model?: string }): string | null {
   const raw = model.model?.trim() ?? ''
   const catalog = model.agent ? acpAgentModelSuggestions(model.agent) : []
   const entry = raw ? catalog.find((m) => m.value === raw) : catalog[0]

@@ -52,7 +52,11 @@ func TestDailyAggregatesUsageByLocalDay(t *testing.T) {
 			CreatedAt: time.Date(2026, 6, 14, 22, 45, 0, 0, time.UTC),
 		},
 		{
-			SessionID: "session-1",
+			SessionID:     "session-1",
+			Runtime:       storage.RuntimeACP,
+			Agent:         "codex",
+			ModelProvider: "openai",
+			Model:         "gpt-5.4",
 			Usage: storage.Usage{
 				CachedInputTokens: 3,
 				CachedWriteTokens: 4,
@@ -97,6 +101,15 @@ func TestDailyAggregatesUsageByLocalDay(t *testing.T) {
 		daily[0].Usage.OutputTokens != 7 ||
 		daily[0].Usage.InputOutputTokens() != 17 {
 		t.Fatalf("first bucket usage = %#v", daily[0].Usage)
+	}
+	if len(daily[0].Models) != 1 {
+		t.Fatalf("first bucket models = %#v", daily[0].Models)
+	}
+	model := daily[0].Models[0]
+	if model.Agent != "codex" || model.ModelProvider != "openai" || model.Model != "gpt-5.4" ||
+		model.Usage.CachedInputTokens != 3 || model.Usage.CachedWriteTokens != 4 ||
+		model.Usage.OutputTokens != 5 || model.SessionCount != 1 {
+		t.Fatalf("first bucket model = %#v", model)
 	}
 	if daily[1].Date != "2026-06-16" || daily[1].SessionCount != 1 {
 		t.Fatalf("second bucket = %#v", daily[1])
