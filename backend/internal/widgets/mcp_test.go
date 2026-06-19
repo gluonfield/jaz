@@ -40,8 +40,11 @@ func TestMCPPublishUsesSessionHeader(t *testing.T) {
 		t.Fatalf("content = %d", len(result.Content))
 	}
 	text, ok := result.Content[0].(*mcp.TextContent)
-	if !ok || !strings.Contains(text.Text, "Published widget") || !strings.Contains(text.Text, "Lint warnings") {
+	if !ok || !strings.Contains(text.Text, "Published widget") || !strings.Contains(text.Text, "Host-rendering warnings") {
 		t.Fatalf("content = %#v", result.Content[0])
+	}
+	if strings.Contains(text.Text, "Lint warnings") {
+		t.Fatalf("publish output should not frame advisory host feedback as lint: %q", text.Text)
 	}
 }
 

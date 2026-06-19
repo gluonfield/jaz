@@ -3,6 +3,8 @@ package loops
 import (
 	"context"
 	"time"
+
+	"github.com/wins/jaz/backend/internal/promptmodule"
 )
 
 const (
@@ -123,11 +125,12 @@ type RunController interface {
 }
 
 type Execution struct {
-	Loop            Loop
-	Run             Run
-	Prompt          string
-	ArtifactSurface string
-	Controller      RunController
+	Loop                   Loop
+	Run                    Run
+	Prompt                 string
+	SystemPromptExtensions promptmodule.Modules
+	ArtifactSurface        string
+	Controller             RunController
 }
 
 type Executor interface {

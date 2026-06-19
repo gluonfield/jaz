@@ -121,30 +121,37 @@ func probeApplyJazSessionConfig(
 	policy := agentPolicyForAgent(agent)
 	var modelDuration time.Duration
 	model := configuredSessionModel(cfg.Model)
+	options := sessionConfigOptionsState{}
 	if model != "" {
 		started := time.Now()
 		if policy.usesModelConfigOption() {
-			_ = probeCall(t, ctx, conn, "5", acpschema.AgentMethodSessionSetConfigOption, acpschema.SetSessionConfigOptionRequest{
+			raw := probeCall(t, ctx, conn, "5", acpschema.AgentMethodSessionSetConfigOption, acpschema.SetSessionConfigOptionRequest{
 				SessionID: sessionID,
 				ConfigID:  acpschema.SessionConfigID(policy.modelConfigID),
 				Value:     acpschema.SessionConfigValueID(model),
 			})
+			options = parseSessionConfigOptions(raw.Result)
 		} else {
-			_ = probeCall(t, ctx, conn, "5", agentMethodSessionSetModel, setSessionModelRequest{
+			raw := probeCall(t, ctx, conn, "5", agentMethodSessionSetModel, setSessionModelRequest{
 				SessionID: sessionID,
 				ModelID:   model,
 			})
+			options = parseSessionConfigOptions(raw.Result)
 		}
 		modelDuration = time.Since(started)
 	}
 
 	var effortDuration time.Duration
 	effort := policy.sessionConfigEffort(cfg.ReasoningEffort)
-	if effort != "" && policy.usesReasoningEffortConfigOption() && !policy.effortEncodedInModel(cfg.Model) {
+	if effort != "" && (policy.usesReasoningEffortConfigOption() || options.effortConfigID != "") && !policy.effortEncodedInModel(cfg.Model) {
 		started := time.Now()
+		configID := policy.reasoningEffortConfigID()
+		if options.effortConfigID != "" {
+			configID = options.effortConfigID
+		}
 		_ = probeCall(t, ctx, conn, "6", acpschema.AgentMethodSessionSetConfigOption, acpschema.SetSessionConfigOptionRequest{
 			SessionID: sessionID,
-			ConfigID:  acpschema.SessionConfigID(policy.reasoningEffortConfigID()),
+			ConfigID:  acpschema.SessionConfigID(configID),
 			Value:     acpschema.SessionConfigValueID(effort),
 		})
 		effortDuration = time.Since(started)

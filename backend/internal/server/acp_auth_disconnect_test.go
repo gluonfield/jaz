@@ -38,7 +38,7 @@ func TestDisconnectACPAuthRemovesJazOwnedCredentialAndKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	credPath := filepath.Join(claudeDir, ".claude.json")
-	if err := os.WriteFile(credPath, []byte(`{"ok":true}`), 0o600); err != nil {
+	if err := os.WriteFile(credPath, []byte(`{"oauthAccount":{"accountUuid":"account-id"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := runtimeenv.Save(runtimeenv.Path(root), map[string]string{"JAZ_ACP_CLAUDE_API_KEY": "sk-test"}); err != nil {

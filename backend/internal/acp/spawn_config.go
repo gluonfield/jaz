@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/visualize"
@@ -16,6 +17,7 @@ func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, stri
 	}
 	req.ArtifactSurface = strings.TrimSpace(req.ArtifactSurface)
 	req.MCPServerPolicy = strings.TrimSpace(req.MCPServerPolicy)
+	req.SystemPromptExtensions = promptmodule.New(req.SystemPromptExtensions...)
 	if req.MCPServerPolicy == "" && visualize.NormalizeSurface(req.ArtifactSurface) == visualize.SurfaceWidget {
 		req.MCPServerPolicy = MCPServerPolicyWidget
 	}
@@ -42,6 +44,9 @@ func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, stri
 		cfg.ModelProvider = providerID
 	}
 	cfg = cfg.NormalizeProviderModel(cfg.ModelProvider)
+	if strings.EqualFold(strings.TrimSpace(req.ReasoningEffort), "none") && agentPolicyForAgent(req.ACPAgent).effortEncodedInModel(cfg.Model) {
+		cfg.Model = strings.TrimSpace(cfg.Model[:strings.LastIndex(cfg.Model, "/")])
+	}
 	cfg.ReasoningEffort = effort
 	return req, cfg, effort, nil
 }
