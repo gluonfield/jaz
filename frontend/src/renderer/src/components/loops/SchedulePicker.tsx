@@ -90,7 +90,7 @@ export function SchedulePicker({
         />
       )}
 
-      <div className="rounded-card bg-surface px-3.5 py-2.5">
+      <div className="px-0.5">
         <div className="flex items-center gap-1.5 text-[12px] font-medium text-ink-2">
           <CalendarClock size={13} className="text-ink-3" />
           {describeSchedule(value)}
