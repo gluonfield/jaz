@@ -1,10 +1,12 @@
 package acp
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -603,5 +605,39 @@ func TestACPUsagePersistsOnArrival(t *testing.T) {
 	}
 	if loaded.Usage.ContextTokens != 42000 || loaded.Usage.ContextWindowTokens != 200000 {
 		t.Fatalf("context regressed after counter update: %d / %d", loaded.Usage.ContextTokens, loaded.Usage.ContextWindowTokens)
+	}
+}
+
+func TestACPUsagePublishesSessionChanged(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{Slug: "acp-usage-event", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := sessionevents.New()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sub := events.Subscribe(ctx, session.ID)
+
+	manager := NewManager(store, Config{}, nil)
+	manager.Events = events
+	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
+	job.startTurn(CompletionInline, false, false, false)
+
+	manager.recordRawUsage(job, json.RawMessage(`{
+		"usage": {"inputTokens": 1000, "outputTokens": 50, "totalTokens": 1050}
+	}`))
+
+	select {
+	case event := <-sub:
+		if event.Type != sessionevents.TypeSession || event.SessionID != session.ID {
+			t.Fatalf("event = %#v", event)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("usage did not publish session change")
 	}
 }

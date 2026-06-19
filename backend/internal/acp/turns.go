@@ -33,13 +33,8 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string, attac
 		m.finishTurn(done, job)
 		return
 	}
-	context, err := m.turnPromptContext(job.Cwd, message)
-	if err != nil {
-		m.failTurn(job, err)
-		m.finishTurn(done, job)
-		return
-	}
 	resolver := localAttachmentResources
+	var err error
 	if len(attachments) > 0 {
 		resolver, err = m.attachmentResourceResolver(job)
 		if err != nil {
@@ -48,7 +43,7 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string, attac
 			return
 		}
 	}
-	prompt, err := promptContentBlocks(context, message, attachments, resolver)
+	prompt, err := promptContentBlocks(message, attachments, resolver)
 	if err != nil {
 		m.failTurn(job, err)
 		m.finishTurn(done, job)
@@ -83,21 +78,6 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string, attac
 	m.publishACPStatus(job.Snapshot())
 	m.appendAssistantMessage(job)
 	m.finishTurn(done, job)
-}
-
-func (m *Manager) turnPromptContext(cwd, message string) (string, error) {
-	if !strings.Contains(message, "$") || m.cfg.SystemPrompt == nil {
-		return "", nil
-	}
-	prompt, err := m.cfg.SystemPrompt.SkillsPromptForWorkspace(cwd)
-	if err != nil {
-		return "", fmt.Errorf("build acp skills prompt: %w", err)
-	}
-	prompt = strings.TrimSpace(prompt)
-	if prompt == "" {
-		return "", nil
-	}
-	return "Current skills catalog for this turn. Use it to resolve any $skill references in the user's message.\n\n" + prompt, nil
 }
 
 func jobCancelRequested(job *Job) bool {
@@ -141,15 +121,8 @@ func (r attachmentResourceResolver) URI(attachment storage.Attachment) (string, 
 	return "", fmt.Errorf("attachment %q has no resource URI", attachment.Name)
 }
 
-func promptContentBlocks(context, message string, attachments []storage.Attachment, resolver attachmentResourceResolver) ([]acpschema.ContentBlock, error) {
-	out := make([]acpschema.ContentBlock, 0, 2+len(attachments))
-	if strings.TrimSpace(context) != "" {
-		var err error
-		out, err = appendTextBlock(out, context)
-		if err != nil {
-			return nil, err
-		}
-	}
+func promptContentBlocks(message string, attachments []storage.Attachment, resolver attachmentResourceResolver) ([]acpschema.ContentBlock, error) {
+	out := make([]acpschema.ContentBlock, 0, 1+len(attachments))
 	var err error
 	out, err = appendTextBlock(out, message)
 	if err != nil {
