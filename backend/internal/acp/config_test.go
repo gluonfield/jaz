@@ -15,16 +15,10 @@ import (
 type testPrompt string
 
 func (p testPrompt) ACPPrompt(string) (string, error) { return string(p), nil }
-func (p testPrompt) SkillsPromptForWorkspace(string) (string, error) {
-	return string(p), nil
-}
 
 type cwdPrompt struct{}
 
 func (cwdPrompt) ACPPrompt(cwd string) (string, error) { return "cwd=" + cwd, nil }
-func (cwdPrompt) SkillsPromptForWorkspace(string) (string, error) {
-	return "", nil
-}
 
 func TestProcessEnvIsMinimalAndCanonical(t *testing.T) {
 	clearHostEnv(t)

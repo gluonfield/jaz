@@ -70,7 +70,9 @@ func (m *Manager) recordUsageReport(job *Job, report usageReport) {
 	}
 	if err := store.AddUsage(job.ID, write); err != nil {
 		m.log.Error("persist acp usage failed", "session", job.ID, "error", err)
+		return
 	}
+	m.publishSessionChanged(job.ID)
 }
 
 func (j *Job) isDuplicateUsageDelta(report usageReport) bool {

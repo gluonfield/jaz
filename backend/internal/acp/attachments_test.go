@@ -11,7 +11,7 @@ import (
 )
 
 func TestPromptContentBlocksUsesResourceLinks(t *testing.T) {
-	blocks, err := promptContentBlocks("", "read this", []storage.Attachment{{
+	blocks, err := promptContentBlocks("read this", []storage.Attachment{{
 		Name:     "note.txt",
 		URI:      "file:///tmp/note.txt",
 		MimeType: "text/plain",
@@ -48,7 +48,7 @@ func TestPromptContentBlocksUsesResourceLinks(t *testing.T) {
 
 func TestPromptContentBlocksDerivesResourceURIFromServerPath(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "note.txt")
-	blocks, err := promptContentBlocks("", "read this", []storage.Attachment{{
+	blocks, err := promptContentBlocks("read this", []storage.Attachment{{
 		Name:       "note.txt",
 		URI:        "file:///stale.txt",
 		ServerPath: path,
@@ -71,7 +71,7 @@ func TestPromptContentBlocksDerivesResourceURIFromServerPath(t *testing.T) {
 
 func TestPromptContentBlocksRejectsServerLocalAttachmentForRemoteACP(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "note.txt")
-	_, err := promptContentBlocks("", "read this", []storage.Attachment{{
+	_, err := promptContentBlocks("read this", []storage.Attachment{{
 		Name:       "note.txt",
 		ServerPath: path,
 	}}, attachmentResourceResolver{})
