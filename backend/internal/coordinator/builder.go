@@ -40,11 +40,6 @@ func (b *Builder) SkillsPrompt() (string, error) {
 	return skillsPrompt, err
 }
 
-func (b *Builder) SkillsPromptForWorkspace(workspace string) (string, error) {
-	_, skillsPrompt, err := b.build(workspace, visualize.SurfaceChat)
-	return skillsPrompt, err
-}
-
 // ACPPrompt builds the prompt extension delivered to ACP agent sessions
 // (codex, claude, grok). Unlike the coordinator prompt it carries no Jaz
 // identity — agents keep their own system prompt and this is appended to it:
