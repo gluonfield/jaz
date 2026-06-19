@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { ArrowLeft, LayoutTemplate } from 'lucide-react'
-import { useState } from 'react'
+import { ChevronRight } from 'lucide-react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { Fragment, useState } from 'react'
+import { BoardsStep, PromptStep, ScheduleStep } from '@/components/loops/LoopForm'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { boardsQuery } from '@/lib/api/boards'
@@ -11,18 +13,24 @@ import type { Loop } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 import {
   type LoopDraft,
-  LoopForm,
   canSaveLoop,
   emptyLoopDraft,
   loopDraftFromLoop,
   loopDraftToInput,
-} from './LoopForm'
-import { LoopTemplateGallery } from './LoopTemplateGallery'
-import { draftFromTemplate, type LoopTemplate } from './loopTemplates'
+  stepValid,
+} from './loopDraft'
 
-// One modal for both create (no `loop`) and edit (`loop` provided). Edit never
-// happens inline on the detail page — it always opens here. Creating shows the
-// form directly; "Examples" swaps in a template gallery that fills the form.
+// Step presentation in order; indices line up with stepValid in loopDraft.
+const STEPS = [
+  { label: 'Prompt', description: 'What should this loop do on each run?' },
+  { label: 'Schedule', description: 'How often should it run?' },
+  { label: 'Boards', description: 'Show its latest run as a live widget on your boards.' },
+]
+const LAST_STEP = STEPS.length - 1
+
+// One modal for both create (no `loop`) and edit (`loop` provided), walked as a
+// Prompt → Schedule → Boards stepper. Edit never happens inline on the detail
+// page — it always opens here.
 export function LoopModal({
   open,
   onClose,
@@ -45,16 +53,11 @@ export function LoopModal({
   const settingsQuery = useQuery(agentSettingsQuery)
   const boards = useQuery({ ...boardsQuery, enabled: open && !isEdit })
   const [draft, setDraft] = useState<LoopDraft | null>(null)
-  // Create only: when true the body shows the examples gallery instead of the form.
-  const [browsing, setBrowsing] = useState(false)
+  const [step, setStep] = useState(0)
   const createBoardIds = boards.data?.map((board) => board.id) ?? []
   const createBoardsLoading = !isEdit && boards.isPending
   const current = draft ?? (loop ? loopDraftFromLoop(loop, boardIds) : emptyLoopDraft(createBoardIds))
-
-  const pickTemplate = (template: LoopTemplate) => {
-    setDraft(draftFromTemplate(template, createBoardIds))
-    setBrowsing(false)
-  }
+  const set = (patch: Partial<LoopDraft>) => setDraft({ ...current, ...patch })
 
   const save = useMutation<Loop, Error, { run: boolean }>({
     mutationFn: ({ run: _run }: { run: boolean }) =>
@@ -78,39 +81,47 @@ export function LoopModal({
 
   const close = () => {
     setDraft(null)
-    setBrowsing(false)
+    setStep(0)
     save.reset()
     onClose()
   }
 
+  const onLastStep = step === LAST_STEP
   const canSubmit = canSaveLoop(current) && !save.isPending && !createBoardsLoading
-  const description = browsing
-    ? 'Pick an example to fill the form.'
-    : 'A prompt that runs on a schedule, each run in its own thread.'
+  const reduce = useReducedMotion()
 
   return (
     <Modal
       open={open}
       onClose={close}
       size="md"
-      title={browsing ? 'Examples' : isEdit ? 'Edit loop' : 'New loop'}
-      description={description}
+      title={isEdit ? 'Edit loop' : 'New loop'}
+      headerAccessory={<StepNav step={step} onJump={setStep} />}
       footer={
         <>
           <p className="text-[12px] text-danger" role="alert">
             {save.isError ? save.error.message : ''}
           </p>
           <div className="flex shrink-0 items-center gap-1">
-            {browsing ? (
-              <Button variant="ghost" size="md" onClick={() => setBrowsing(false)}>
-                <ArrowLeft size={14} />
+            {step > 0 ? (
+              <Button variant="ghost" size="md" onClick={() => setStep(step - 1)}>
                 Back
               </Button>
-            ) : null}
-            <Button variant="ghost" size="md" onClick={close}>
-              Cancel
-            </Button>
-            {browsing ? null : isEdit ? (
+            ) : (
+              <Button variant="ghost" size="md" onClick={close}>
+                Cancel
+              </Button>
+            )}
+            {!onLastStep ? (
+              <Button
+                variant="primary"
+                size="md"
+                disabled={!stepValid(current, step)}
+                onClick={() => setStep(step + 1)}
+              >
+                Next
+              </Button>
+            ) : isEdit ? (
               <Button
                 variant="primary"
                 size="md"
@@ -143,29 +154,67 @@ export function LoopModal({
         </>
       }
     >
-      {/* Gallery and form are swapped, not co-mounted: the prompt seeds its
-          value from the draft at mount, so a template fill only shows once the
-          form remounts. Don't switch this to a hidden/always-mounted toggle. */}
-      {browsing ? (
-        <LoopTemplateGallery onPick={pickTemplate} />
-      ) : (
-        <div className="space-y-4">
-          {!isEdit ? (
-            <div className="flex justify-end">
-              <Button variant="secondary" size="sm" onClick={() => setBrowsing(true)}>
-                <LayoutTemplate size={14} />
-                Examples
-              </Button>
-            </div>
-          ) : null}
-          <LoopForm
-            draft={current}
-            disabled={save.isPending || createBoardsLoading}
-            autoFocusPrompt={!isEdit}
-            onChange={setDraft}
-          />
-        </div>
-      )}
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={step}
+          initial={reduce ? false : { opacity: 0, x: 6 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={reduce ? { opacity: 0 } : { opacity: 0, x: -6 }}
+          transition={{ duration: 0.16, ease: [0.2, 0, 0, 1] }}
+        >
+          {step === 0 ? (
+            <PromptStep
+              draft={current}
+              disabled={save.isPending}
+              autoFocus
+              description={STEPS[0].description}
+              set={set}
+            />
+          ) : step === 1 ? (
+            <ScheduleStep
+              draft={current}
+              disabled={save.isPending}
+              description={STEPS[1].description}
+              set={set}
+            />
+          ) : (
+            <BoardsStep
+              draft={current}
+              disabled={save.isPending}
+              description={STEPS[2].description}
+              set={set}
+            />
+          )}
+        </motion.div>
+      </AnimatePresence>
     </Modal>
+  )
+}
+
+// Minimal progress trail. Completed steps are clickable to go back; later steps
+// are reached with Next so their entry requirements stay enforced.
+function StepNav({ step, onJump }: { step: number; onJump: (step: number) => void }) {
+  return (
+    <div className="flex items-center gap-1 text-[11px]">
+      {STEPS.map(({ label }, i) => (
+        <Fragment key={label}>
+          {i > 0 ? <ChevronRight size={11} className="text-ink-3/60" /> : null}
+          <button
+            type="button"
+            disabled={i > step}
+            onClick={() => onJump(i)}
+            className={
+              i === step
+                ? 'font-medium text-ink'
+                : i < step
+                  ? 'text-ink-3 transition-colors hover:text-ink'
+                  : 'text-ink-3'
+            }
+          >
+            {label}
+          </button>
+        </Fragment>
+      ))}
+    </div>
   )
 }

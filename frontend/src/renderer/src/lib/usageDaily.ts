@@ -12,6 +12,13 @@ export type UsageMonthLabel = {
   week: number
 }
 
+export type UsageModelTotals = {
+  agent?: string
+  model_provider?: string
+  model?: string
+  usage: UsageTotals
+}
+
 export const USAGE_CHART_DAYS = 182
 
 export function visibleUsageDays(days: DailyUsage[], limit = USAGE_CHART_DAYS): DailyUsage[] {
@@ -59,17 +66,34 @@ export function usageMonthLabels(cells: UsageCell[]): UsageMonthLabel[] {
 }
 
 export function sumUsage(days: DailyUsage[]): UsageTotals {
-  const total = days.reduce<UsageTotals>((total, day) => {
-    total.input_tokens = (total.input_tokens ?? 0) + (day.usage.input_tokens ?? 0)
-    total.cached_input_tokens = (total.cached_input_tokens ?? 0) + (day.usage.cached_input_tokens ?? 0)
-    total.cached_write_tokens = (total.cached_write_tokens ?? 0) + (day.usage.cached_write_tokens ?? 0)
-    total.output_tokens = (total.output_tokens ?? 0) + (day.usage.output_tokens ?? 0)
-    total.reasoning_output_tokens =
-      (total.reasoning_output_tokens ?? 0) + (day.usage.reasoning_output_tokens ?? 0)
-    return total
-  }, {})
+  const total = days.reduce<UsageTotals>((total, day) => addUsageTotals(total, day.usage), {})
   total.input_output_tokens = totalUsageTokens(total)
   return total
+}
+
+export function sumModelUsage(days: DailyUsage[]): UsageModelTotals[] {
+  const groups = new Map<string, UsageModelTotals>()
+  for (const day of days) {
+    for (const model of day.models ?? []) {
+      const key = modelUsageKey(model)
+      let group = groups.get(key)
+      if (!group) {
+        group = {
+          agent: model.agent,
+          model_provider: model.model_provider,
+          model: model.model,
+          usage: {},
+        }
+        groups.set(key, group)
+      }
+      addUsageTotals(group.usage, model.usage)
+    }
+  }
+  const out = [...groups.values()]
+  for (const model of out) {
+    model.usage.input_output_tokens = totalUsageTokens(model.usage)
+  }
+  return out.sort(compareModelUsage)
 }
 
 export function peakDay(days: DailyUsage[]): DailyUsage | null {
@@ -111,6 +135,27 @@ export function formatUsageDate(date: string): string {
     day: 'numeric',
     year: 'numeric',
   })
+}
+
+function addUsageTotals(total: UsageTotals, usage: UsageTotals): UsageTotals {
+  total.input_tokens = (total.input_tokens ?? 0) + (usage.input_tokens ?? 0)
+  total.cached_input_tokens = (total.cached_input_tokens ?? 0) + (usage.cached_input_tokens ?? 0)
+  total.cached_write_tokens = (total.cached_write_tokens ?? 0) + (usage.cached_write_tokens ?? 0)
+  total.output_tokens = (total.output_tokens ?? 0) + (usage.output_tokens ?? 0)
+  total.reasoning_output_tokens =
+    (total.reasoning_output_tokens ?? 0) + (usage.reasoning_output_tokens ?? 0)
+  return total
+}
+
+function modelUsageKey(model: UsageModelTotals): string {
+  return [model.agent ?? '', model.model_provider ?? '', model.model ?? ''].join('\u0000')
+}
+
+function compareModelUsage(left: UsageModelTotals, right: UsageModelTotals): number {
+  const leftTokens = totalUsageTokens(left.usage)
+  const rightTokens = totalUsageTokens(right.usage)
+  if (leftTokens !== rightTokens) return rightTokens - leftTokens
+  return modelUsageKey(left).localeCompare(modelUsageKey(right))
 }
 
 function parseLocalDate(date: string): Date {

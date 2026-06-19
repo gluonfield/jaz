@@ -586,6 +586,59 @@ func TestProcessEnvDoesNotOverrideDefaultOpenCodeProvider(t *testing.T) {
 	}
 }
 
+func TestProcessEnvAddsOpenCodeOpenRouterReasoningVariant(t *testing.T) {
+	root := t.TempDir()
+	env, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared("opencode", AgentConfig{
+		ProviderMode:    AgentProviderModeAgentDefaults,
+		ModelProvider:   "openrouter",
+		Model:           "z-ai/glm-5.2",
+		ReasoningEffort: "xhigh",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var content struct {
+		Provider map[string]struct {
+			API    string `json:"api"`
+			NPM    string `json:"npm"`
+			Models map[string]struct {
+				Variants map[string]struct {
+					Reasoning struct {
+						Effort string `json:"effort"`
+					} `json:"reasoning"`
+				} `json:"variants"`
+			} `json:"models"`
+		} `json:"provider"`
+	}
+	if err := json.Unmarshal([]byte(env["OPENCODE_CONFIG_CONTENT"]), &content); err != nil {
+		t.Fatalf("config content = %q: %v", env["OPENCODE_CONFIG_CONTENT"], err)
+	}
+	openRouter := content.Provider["openrouter"]
+	if openRouter.API != "" || openRouter.NPM != "" {
+		t.Fatalf("openrouter provider should stay built-in: %#v", openRouter)
+	}
+	variant, ok := openRouter.Models["z-ai/glm-5.2"].Variants["xhigh"]
+	if !ok || variant.Reasoning.Effort != "xhigh" {
+		t.Fatalf("reasoning variant = %#v", openRouter.Models)
+	}
+}
+
+func TestProcessEnvDoesNotAddOpenCodeReasoningVariantForInvalidEffort(t *testing.T) {
+	root := t.TempDir()
+	env, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared("opencode", AgentConfig{
+		ProviderMode:    AgentProviderModeAgentDefaults,
+		ModelProvider:   "openrouter",
+		Model:           "z-ai/glm-5.2",
+		ReasoningEffort: "max",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if content := env["OPENCODE_CONFIG_CONTENT"]; content != "" {
+		t.Fatalf("invalid effort should not create opencode config content: %q", content)
+	}
+}
+
 func TestProcessEnvWritesOpenCodeProviderConfig(t *testing.T) {
 	root := t.TempDir()
 	env, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared("opencode", AgentConfig{
