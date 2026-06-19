@@ -3,6 +3,7 @@ import {
   createRootRoute,
   useNavigate,
   useRouter,
+  useRouterState,
 } from '@tanstack/react-router'
 import { PanelLeft } from 'lucide-react'
 import { motion } from 'motion/react'
@@ -83,6 +84,13 @@ function RootLayout() {
   const [resizing, setResizing] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
+
+  // A specific board paints itself on bg-surface so its tiles blend; the app
+  // titlebar inherits main's background, so match main to surface there too —
+  // otherwise the titlebar strip reads as a bg-bg seam above the board.
+  const onBoard = useRouterState({
+    select: (s) => /^\/boards\/.+/.test(s.location.pathname),
+  })
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_PREF_KEY, sidebarOpen ? 'open' : 'closed')
@@ -183,7 +191,7 @@ function RootLayout() {
           />
         </motion.div>
 
-        <main className="flex min-w-0 flex-1 flex-col bg-bg">
+        <main className={`flex min-w-0 flex-1 flex-col ${onBoard ? 'bg-surface' : 'bg-bg'}`}>
           {/* When collapsed, the content owns the window's top-left, so its
               header indents past the traffic lights and the pinned toggle. */}
           <div
