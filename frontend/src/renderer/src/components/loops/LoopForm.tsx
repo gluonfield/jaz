@@ -147,7 +147,6 @@ export function BoardsStep({
       selected={draft.boardIds}
       disabled={disabled}
       onChange={(boardIds) => set({ boardIds })}
-      hint="On every run the loop refreshes a live widget on the selected boards."
     />
   )
 }
