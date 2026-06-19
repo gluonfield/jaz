@@ -36,6 +36,9 @@ function TileStatusDot({ item }: { item: BoardItem }) {
       />
     )
   }
+  if (item.loop_status === 'paused') {
+    return <span title="Paused" className="size-1.5 shrink-0 rounded-full bg-ink-3/50" />
+  }
   return null
 }
 
@@ -260,7 +263,6 @@ export function WidgetTile({
     }
   }, [scale])
 
-  const paused = item.loop_status === 'paused'
   const updated = hasTime(item.widget_updated_at) ? relativeTime(item.widget_updated_at) : ''
   const openLoop = (e: ReactMouseEvent) => {
     if (window.jaz?.windowKind === 'board') {
@@ -275,7 +277,7 @@ export function WidgetTile({
     <div
       className={`group relative flex h-full w-full flex-col overflow-hidden rounded-card bg-surface transition-shadow duration-150 ${
         dragging ? 'shadow-lg ring-1 ring-primary/50' : ''
-      } ${paused ? 'opacity-70' : ''}`}
+      }`}
     >
       <div
         onPointerDown={onHeaderPointerDown}
