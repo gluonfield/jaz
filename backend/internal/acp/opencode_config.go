@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/wins/jaz/backend/internal/promptmodule"
 	modelprovider "github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 )
@@ -91,7 +92,7 @@ func loadRuntimeEnvKey(env map[string]string, root, key string) {
 	}
 }
 
-func (m *Manager) prepareOpenCodeConfig(env map[string]string, agent AgentConfig, cwd, artifactSurface string, systemPromptExtensions []string) error {
+func (m *Manager) prepareOpenCodeConfig(env map[string]string, agent AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) error {
 	if strings.TrimSpace(env["OPENCODE_CONFIG_CONTENT"]) != "" {
 		return nil
 	}
@@ -118,7 +119,7 @@ func (m *Manager) prepareOpenCodeConfig(env map[string]string, agent AgentConfig
 	return nil
 }
 
-func (m *Manager) prepareOpenCodeInstructionFile(env map[string]string, cwd, artifactSurface string, systemPromptExtensions []string) (string, error) {
+func (m *Manager) prepareOpenCodeInstructionFile(env map[string]string, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (string, error) {
 	var prompt string
 	if m.cfg.SystemPrompt != nil {
 		base, err := promptForArtifactSurface(m.cfg.SystemPrompt, cwd, artifactSurface)
@@ -127,8 +128,7 @@ func (m *Manager) prepareOpenCodeInstructionFile(env map[string]string, cwd, art
 		}
 		prompt = base
 	}
-	prompt = joinPromptExtensions(append([]string{prompt}, systemPromptExtensions...)...)
-	prompt = strings.TrimSpace(prompt)
+	prompt = promptWithModules(prompt, systemPromptExtensions)
 	if prompt == "" {
 		return "", nil
 	}

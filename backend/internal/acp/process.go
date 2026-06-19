@@ -17,6 +17,7 @@ import (
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/gluonfield/acp-transport/stdio"
 	"github.com/gluonfield/acp-transport/streamhttp"
+	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/skills"
 )
 
@@ -127,7 +128,7 @@ func (m *Manager) processEnvPrepared(name string, agent AgentConfig) (map[string
 	return m.processEnvPreparedForSurface(name, agent, "", "", nil)
 }
 
-func (m *Manager) processEnvPreparedForSurface(name string, agent AgentConfig, cwd, artifactSurface string, systemPromptExtensions []string) (map[string]string, error) {
+func (m *Manager) processEnvPreparedForSurface(name string, agent AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (map[string]string, error) {
 	return m.buildProcessEnv(name, agent, cwd, artifactSurface, systemPromptExtensions, true)
 }
 
@@ -136,7 +137,7 @@ func (m *Manager) probeEnv(name string, agent AgentConfig) map[string]string {
 	return env
 }
 
-func (m *Manager) buildProcessEnv(name string, agent AgentConfig, cwd, artifactSurface string, systemPromptExtensions []string, prepare bool) (map[string]string, error) {
+func (m *Manager) buildProcessEnv(name string, agent AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules, prepare bool) (map[string]string, error) {
 	name = CanonicalAgentName(name)
 	cwd = strings.TrimSpace(cwd)
 	if cwd == "" {

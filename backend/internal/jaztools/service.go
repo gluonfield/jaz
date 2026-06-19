@@ -76,6 +76,7 @@ type serverSlot struct {
 	once        sync.Once
 	server      *mcp.Server
 	memoryTools bool
+	agentTools  bool
 }
 
 type sessionSource interface {
@@ -101,10 +102,10 @@ func (s *Service) SetLoops(service loops.MCPService) {
 }
 
 func (s *Service) SetAgents(service acp.MCPService) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.agentTools = acp.NewMCPTools(service)
-	if s.thread.server != nil {
-		s.agentTools.AddTo(s.thread.server)
-	}
+	s.syncAgentTools()
 }
 
 func (s *Service) Server() *mcp.Server {
@@ -114,8 +115,12 @@ func (s *Service) Server() *mcp.Server {
 func (s *Service) server(surface toolSurface) *mcp.Server {
 	slot := s.slot(surface)
 	slot.once.Do(func() {
-		slot.server = s.newServer(surface)
-		s.Sync()
+		server := s.newServer(surface)
+		s.mu.Lock()
+		slot.server = server
+		s.syncAgentToolsFor(slot, surface)
+		s.syncMemoryToolsFor(slot, surface)
+		s.mu.Unlock()
 	})
 	return slot.server
 }
@@ -141,9 +146,6 @@ func (s *Service) newServer(surface toolSurface) *mcp.Server {
 		return server
 	}
 	s.loopTools.AddTo(server)
-	if s.agentTools != nil {
-		s.agentTools.AddTo(server)
-	}
 	s.visualizeTools.AddReadMeTo(server)
 	switch surface {
 	case widgetSurface:
@@ -157,6 +159,7 @@ func (s *Service) newServer(surface toolSurface) *mcp.Server {
 func (s *Service) Sync() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.syncAgentTools()
 	s.syncMemoryTools()
 }
 
@@ -216,6 +219,19 @@ func (s *Service) syncMemoryTools() {
 	s.syncMemoryToolsFor(&s.thread, threadSurface)
 	s.syncMemoryToolsFor(&s.widget, widgetSurface)
 	s.syncMemoryToolsFor(&s.search, searchWorkerSurface)
+}
+
+func (s *Service) syncAgentTools() {
+	s.syncAgentToolsFor(&s.thread, threadSurface)
+	s.syncAgentToolsFor(&s.widget, widgetSurface)
+}
+
+func (s *Service) syncAgentToolsFor(slot *serverSlot, surface toolSurface) {
+	if surface == searchWorkerSurface || slot.server == nil || slot.agentTools || s.agentTools == nil {
+		return
+	}
+	s.agentTools.AddTo(slot.server)
+	slot.agentTools = true
 }
 
 func (s *Service) syncMemoryToolsFor(slot *serverSlot, surface toolSurface) {

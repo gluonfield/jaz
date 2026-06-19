@@ -10,6 +10,7 @@ import (
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/filepathx"
 	"github.com/wins/jaz/backend/internal/media"
+	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -67,7 +68,7 @@ type Request struct {
 	PlanRequested          bool
 	AppendUser             bool
 	ArtifactSurface        string
-	SystemPromptExtensions []string
+	SystemPromptExtensions promptmodule.Modules
 }
 
 type UtilityRequest struct {
@@ -239,7 +240,7 @@ func BuildRequest(store Store, prompts PromptSource, req Request) (TurnRequest, 
 		}
 		prompt = base
 	}
-	prompt = joinSystemPrompt(append([]string{prompt}, req.SystemPromptExtensions...)...)
+	prompt = promptmodule.New(prompt).Append(req.SystemPromptExtensions...).Text()
 	if prompt := strings.TrimSpace(prompt); prompt != "" {
 		messages = append([]provider.Message{provider.SystemMessage(prompt)}, messages...)
 		transient = append(transient, prompt)
@@ -277,16 +278,6 @@ func promptForSurface(prompts PromptSource, workspace, surface string) (string, 
 		return prompts.SystemPromptForWorkspaceSurface(workspace, visualize.NormalizeSurface(surface))
 	}
 	return prompts.SystemPromptForWorkspace(workspace)
-}
-
-func joinSystemPrompt(parts ...string) string {
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		if part := strings.TrimSpace(part); part != "" {
-			out = append(out, part)
-		}
-	}
-	return strings.Join(out, "\n\n")
 }
 
 func SaveSnapshot(store Store, sessionID string, turn TurnRequest, event agent.StreamEvent) error {

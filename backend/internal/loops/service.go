@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
+	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/templates/looprun"
 )
 
@@ -326,9 +327,9 @@ func (s *Service) start(ctx context.Context, loop Loop, run Run, now time.Time) 
 		artifactSurface = strings.TrimSpace(s.ArtifactSurface(loop, run))
 	}
 	loopPrompt := RunSystemPrompt(loop, run, now, extras...)
-	var systemPromptExtensions []string
+	var systemPromptExtensions promptmodule.Modules
 	if loopPrompt != "" {
-		systemPromptExtensions = []string{loopPrompt}
+		systemPromptExtensions = promptmodule.New(loopPrompt)
 	}
 	go s.Executor.StartLoopRun(context.WithoutCancel(ctx), Execution{
 		Loop:                   loop,
@@ -530,7 +531,7 @@ func RunSystemPrompt(loop Loop, run Run, now time.Time, extras ...string) string
 		}
 		previous = b.String()
 	}
-	prompt, err := looprun.Render(looprun.Data{
+	return looprun.Render(looprun.Data{
 		LoopName:     loop.Name,
 		LoopID:       loop.ID,
 		RunID:        run.ID,
@@ -540,10 +541,6 @@ func RunSystemPrompt(loop Loop, run Run, now time.Time, extras ...string) string
 		PreviousRun:  previous,
 		Extras:       extras,
 	})
-	if err != nil {
-		return ""
-	}
-	return prompt
 }
 
 func StartScheduler(ctx context.Context, service *Service, tick time.Duration) error {
