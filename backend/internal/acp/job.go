@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -43,7 +44,7 @@ type Job struct {
 	lastUsageDelta         storage.Usage
 	lastUsageContext       storage.Usage
 	lastUsageDeltaSet      bool
-	systemPromptExtensions []string
+	systemPromptExtensions promptmodule.Modules
 }
 
 type ToolCallSnapshot struct {

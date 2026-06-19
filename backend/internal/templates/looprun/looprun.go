@@ -23,8 +23,10 @@ type Data struct {
 	Extras       []string
 }
 
-func Render(data Data) (string, error) {
+func Render(data Data) string {
 	var out bytes.Buffer
-	err := tmpl.Execute(&out, data)
-	return out.String(), err
+	if err := tmpl.Execute(&out, data); err != nil {
+		panic(err)
+	}
+	return out.String()
 }

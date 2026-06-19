@@ -6,7 +6,7 @@ import (
 )
 
 func TestRenderOrdersContextThenExtras(t *testing.T) {
-	prompt, err := Render(Data{
+	prompt := Render(Data{
 		LoopName:     "memory-consolidation",
 		LoopID:       "loop-1",
 		RunID:        "run-9",
@@ -16,9 +16,6 @@ func TestRenderOrdersContextThenExtras(t *testing.T) {
 		PreviousRun:  `id=run-8 status=error error="dial tcp: timeout"`,
 		Extras:       []string{"## Widget\n\n- update the tile"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	parts := []string{
 		"Scheduled Jaz loop run.",
 		"Loop: memory-consolidation (loop-1)",
@@ -39,14 +36,11 @@ func TestRenderOrdersContextThenExtras(t *testing.T) {
 }
 
 func TestRenderMemoryUsesSingleInvariant(t *testing.T) {
-	prompt, err := Render(Data{
+	prompt := Render(Data{
 		LoopName: "n", LoopID: "l", RunID: "r", ScheduledFor: "s", Now: "n",
 		MemoryPath:  "/tmp/automations/n/memory.md",
 		PreviousRun: "none",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	for _, want := range []string{
 		"Memory: /tmp/automations/n/memory.md",
 		"If the memory file exists, read it before starting.",
@@ -64,10 +58,7 @@ func TestRenderMemoryUsesSingleInvariant(t *testing.T) {
 }
 
 func TestRenderWithoutMemoryPathOmitsMemoryRules(t *testing.T) {
-	prompt, err := Render(Data{LoopName: "n", LoopID: "l", RunID: "r", ScheduledFor: "s", Now: "n", PreviousRun: "none"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	prompt := Render(Data{LoopName: "n", LoopID: "l", RunID: "r", ScheduledFor: "s", Now: "n", PreviousRun: "none"})
 	if strings.Contains(prompt, "Memory:") || strings.Contains(prompt, "memory file directory") {
 		t.Fatalf("memory rules must be omitted without a memory path:\n%s", prompt)
 	}

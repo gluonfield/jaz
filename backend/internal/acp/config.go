@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/provider"
 )
 
@@ -53,14 +54,8 @@ func promptForArtifactSurface(source SystemPromptSource, cwd, surface string) (s
 	return source.ACPPrompt(cwd)
 }
 
-func joinPromptExtensions(parts ...string) string {
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		if part := strings.TrimSpace(part); part != "" {
-			out = append(out, part)
-		}
-	}
-	return strings.Join(out, "\n\n")
+func promptWithModules(base string, modules promptmodule.Modules) string {
+	return promptmodule.New(base).Append(modules...).Text()
 }
 
 // systemPromptMeta wraps prompt in the session _meta payload understood by

@@ -15,6 +15,7 @@ import (
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/wins/jaz/backend/internal/mcpsession"
+	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -104,7 +105,7 @@ type SpawnRequest struct {
 	MCPServerPolicy string
 	// SystemPromptExtensions are runtime-only prompt modules appended at
 	// session creation. They are not persisted in thread storage.
-	SystemPromptExtensions []string
+	SystemPromptExtensions promptmodule.Modules
 }
 
 type SendRequest struct {
@@ -198,11 +199,11 @@ func (c *agentConn) withProcessStderr(err error) error {
 	return withProcessStderr(err, c.stderr)
 }
 
-func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface string, systemPromptExtensions []string) (*agentConn, error) {
+func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (*agentConn, error) {
 	return m.connectWithHandler(ctx, name, cfg, cwd, artifactSurface, systemPromptExtensions, jsonrpc.HandlerFunc(m.handleJSONRPC))
 }
 
-func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface string, systemPromptExtensions []string, handler jsonrpc.Handler) (*agentConn, error) {
+func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules, handler jsonrpc.Handler) (*agentConn, error) {
 	env, err := m.processEnvPreparedForSurface(name, cfg, cwd, artifactSurface, systemPromptExtensions)
 	if err != nil {
 		return nil, err
@@ -261,7 +262,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 
 // sessionMeta builds the session _meta payload for prompt and agent-specific
 // options.
-func (m *Manager) sessionMeta(agent string, cfg AgentConfig, cwd, artifactSurface string, systemPromptExtensions []string) (map[string]any, error) {
+func (m *Manager) sessionMeta(agent string, cfg AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
 	meta, err := m.sessionPromptMeta(agent, cwd, artifactSurface, systemPromptExtensions)
 	if err != nil {
 		return nil, err
@@ -269,7 +270,7 @@ func (m *Manager) sessionMeta(agent string, cfg AgentConfig, cwd, artifactSurfac
 	return agentPolicyForAgent(agent).mergeSessionMeta(meta, cfg.ReasoningEffort), nil
 }
 
-func (m *Manager) sessionPromptMeta(agent, cwd, artifactSurface string, systemPromptExtensions []string) (map[string]any, error) {
+func (m *Manager) sessionPromptMeta(agent, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
 	var prompt string
 	if m.cfg.SystemPrompt != nil {
 		base, err := promptForArtifactSurface(m.cfg.SystemPrompt, cwd, artifactSurface)
@@ -278,7 +279,7 @@ func (m *Manager) sessionPromptMeta(agent, cwd, artifactSurface string, systemPr
 		}
 		prompt = base
 	}
-	prompt = joinPromptExtensions(append([]string{prompt}, systemPromptExtensions...)...)
+	prompt = promptWithModules(prompt, systemPromptExtensions)
 	prompt = strings.TrimSpace(prompt)
 	if prompt == "" {
 		return nil, nil
@@ -307,7 +308,7 @@ func (m *Manager) newACPProtocolSession(ctx context.Context, ac *agentConn, labe
 	return newACPSessionInfo(sessionRaw, acpSession), nil
 }
 
-func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions []string) (acpSessionInfo, error) {
+func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (acpSessionInfo, error) {
 	meta, err := m.sessionMeta(agent, cfg, cwd, artifactSurface, systemPromptExtensions)
 	if err != nil {
 		return acpSessionInfo{}, err
