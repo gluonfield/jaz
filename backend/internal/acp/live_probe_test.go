@@ -87,8 +87,6 @@ func TestLiveACPProbe(t *testing.T) {
 	availableModes := []acpschema.SessionMode(nil)
 	if sessionResp.Modes != nil {
 		availableModes = sessionResp.Modes.AvailableModes
-	} else if agent == AgentGrok {
-		availableModes = grokFallbackModes().AvailableModes
 	}
 	if modeID := preferredBaselineModeID(agent, availableModes); modeID != "" && (sessionResp.Modes == nil || string(sessionResp.Modes.CurrentModeID) != modeID) {
 		setMode := probeCall(t, ctx, conn, "4", acpschema.AgentMethodSessionSetMode, acpschema.SetSessionModeRequest{
@@ -224,7 +222,10 @@ func probeAgentConfig(t *testing.T, agent string) AgentConfig {
 
 func probeOpenConn(t *testing.T, ctx context.Context, agent string, cfg AgentConfig, env map[string]string, cwd string) (jsonrpc.MessageConn, func()) {
 	t.Helper()
-	command, args := processCommand(agent, cfg)
+	command, args, err := processCommand(agent, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Env = envList(env)
 	cmd.Dir = cwd
@@ -243,7 +244,7 @@ func probeOpenConn(t *testing.T, ctx context.Context, agent string, cfg AgentCon
 	}
 	conn := stdio.New(stdout, stdin)
 	return conn, func() {
-		_ = conn.Close()
+		_ = stdin.Close()
 		if cmd.Process != nil {
 			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 			_ = cmd.Process.Kill()

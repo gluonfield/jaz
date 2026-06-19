@@ -88,7 +88,10 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	if cfg.Command == "" {
 		return nil, nil, fmt.Errorf("acp agent %q has no command", name)
 	}
-	command, args := processCommand(name, cfg)
+	command, args, err := processCommand(name, cfg)
+	if err != nil {
+		return nil, nil, err
+	}
 	if resolved, err := ResolveExecutable(command); err == nil {
 		command = resolved
 	}
@@ -291,35 +294,65 @@ func (m *Manager) installAgentSkills(agent, root, dst string) {
 	}
 }
 
-func processCommand(name string, cfg AgentConfig) (string, []string) {
+func processCommand(name string, cfg AgentConfig) (string, []string, error) {
 	args := append([]string(nil), cfg.Args...)
-	if CanonicalAgentName(name) == AgentGrok && isGrokCommand(cfg.Command) {
-		args = withGrokAlwaysApproveArg(args)
-		args = withGrokReasoningEffortArg(args, configuredReasoningEffort(cfg.ReasoningEffort))
+	grokCfg, handled, err := resolveGrokStartupConfig(name, cfg)
+	if err != nil {
+		return "", nil, err
 	}
-	return cfg.Command, args
+	if handled && isGrokCommand(cfg.Command) {
+		args = withGrokAlwaysApproveArg(args)
+		args = withGrokModelArg(args, grokCfg.model)
+		args = withGrokReasoningEffortArg(args, grokCfg.effort)
+	}
+	return cfg.Command, args, nil
 }
 
 func isGrokCommand(command string) bool {
 	return filepath.Base(strings.TrimSpace(command)) == "grok"
 }
 
+type grokStartupConfig struct {
+	model  string
+	effort string
+}
+
+func resolveGrokStartupConfig(agentName string, cfg AgentConfig) (grokStartupConfig, bool, error) {
+	if CanonicalAgentName(agentName) != AgentGrok {
+		return grokStartupConfig{}, false, nil
+	}
+	model := configuredSessionModel(cfg.ProviderQualifiedModel())
+	effort := agentPolicyForAgent(agentName).sessionConfigEffort(cfg.ReasoningEffort)
+	if model == "" && effort == "" {
+		return grokStartupConfig{}, true, nil
+	}
+	if cfg.URL != "" {
+		return grokStartupConfig{}, false, fmt.Errorf("configured acp agent %q model or reasoning effort cannot be applied to URL-backed Grok; clear the override or run Grok as a local command", agentName)
+	}
+	if !isGrokCommand(cfg.Command) {
+		return grokStartupConfig{}, false, fmt.Errorf("configured acp agent %q model or reasoning effort requires the local grok command; clear the override or put it directly in the agent args", agentName)
+	}
+	if model != "" && hasFlag(cfg.Args, "--model", "-m") {
+		return grokStartupConfig{}, false, fmt.Errorf("configured acp agent %q model is ambiguous: remove --model from args or clear the model override", agentName)
+	}
+	if effort != "" && hasFlag(cfg.Args, "--reasoning-effort", "--effort") {
+		return grokStartupConfig{}, false, fmt.Errorf("configured acp agent %q reasoning effort is ambiguous: remove --reasoning-effort from args or clear the reasoning effort override", agentName)
+	}
+	return grokStartupConfig{model: model, effort: effort}, true, nil
+}
+
 func withGrokReasoningEffortArg(args []string, effort string) []string {
 	if strings.TrimSpace(effort) == "" || hasFlag(args, "--reasoning-effort", "--effort") {
 		return args
 	}
-	insertAt := len(args)
-	for i, arg := range args {
-		if arg == "stdio" {
-			insertAt = i
-			break
-		}
+	return insertBeforeArg(args, "stdio", "--reasoning-effort", effort)
+}
+
+func withGrokModelArg(args []string, model string) []string {
+	if strings.TrimSpace(model) == "" || hasFlag(args, "--model", "-m") {
+		return args
 	}
-	next := make([]string, 0, len(args)+2)
-	next = append(next, args[:insertAt]...)
-	next = append(next, "--reasoning-effort", effort)
-	next = append(next, args[insertAt:]...)
-	return next
+	return insertBeforeArg(args, "stdio", "--model", model)
 }
 
 func withGrokAlwaysApproveArg(args []string) []string {

@@ -20,10 +20,16 @@ func ProbeReadinessWithProviders(name string, cfg AgentConfig, root string, env 
 	if cfg.Local {
 		return Readiness{Available: true}
 	}
+	if _, _, err := resolveGrokStartupConfig(name, cfg); err != nil {
+		return Readiness{Reason: err.Error()}
+	}
 	if strings.TrimSpace(cfg.URL) != "" {
 		return Readiness{Available: true}
 	}
-	command, _ := processCommand(name, cfg)
+	command, _, err := processCommand(name, cfg)
+	if err != nil {
+		return Readiness{Reason: err.Error()}
+	}
 	if strings.TrimSpace(command) == "" {
 		return Readiness{Reason: "command is not configured"}
 	}

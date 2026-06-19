@@ -27,11 +27,11 @@ type ReasoningEffortOption struct {
 
 type AgentOptions struct {
 	ReasoningEfforts []ReasoningEffortOption `json:"reasoning_efforts"`
-	Local            bool                    `json:"local,omitempty"`
+	Local            bool                    `json:"local"`
 	ProviderMode     string                  `json:"provider_mode,omitempty"`
 	ModelProviderIDs []string                `json:"model_provider_ids,omitempty"`
-	RequiresCommand  bool                    `json:"requires_command,omitempty"`
-	SupportsAuth     bool                    `json:"supports_auth,omitempty"`
+	RequiresCommand  bool                    `json:"requires_command"`
+	SupportsAuth     bool                    `json:"supports_auth"`
 }
 
 type setSessionModelRequest struct {
@@ -291,6 +291,11 @@ func (m *Manager) configuredModeState(
 	policy := agentPolicyForAgent(agentName)
 	effort := policy.sessionConfigEffort(cfg.ReasoningEffort)
 	model := cfg.ProviderQualifiedModel()
+	if _, handled, err := resolveGrokStartupConfig(agentName, cfg); err != nil {
+		return ModeState{}, err
+	} else if handled {
+		return m.initializeModeState(ctx, peer, agentName, session.response)
+	}
 	modelRaw, err := m.setConfiguredSessionModel(ctx, peer, agentName, session.response.SessionID, model, session.modelState)
 	if err != nil {
 		return ModeState{}, err

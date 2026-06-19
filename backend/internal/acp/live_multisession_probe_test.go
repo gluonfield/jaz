@@ -159,9 +159,6 @@ func probeApplyJazSessionConfig(
 
 	var modeDuration time.Duration
 	acpModes := modes
-	if acpModes == nil && CanonicalAgentName(agent) == AgentGrok {
-		acpModes = grokFallbackModes()
-	}
 	if acpModes != nil {
 		target := preferredBaselineModeID(agent, acpModes.AvailableModes)
 		if target != "" && string(acpModes.CurrentModeID) != target {
