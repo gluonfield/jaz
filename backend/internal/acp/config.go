@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/provider"
 )
 
@@ -51,6 +52,10 @@ func promptForArtifactSurface(source SystemPromptSource, cwd, surface string) (s
 		return source.ACPPromptForArtifactSurface(cwd, surface)
 	}
 	return source.ACPPrompt(cwd)
+}
+
+func promptWithModules(base string, modules promptmodule.Modules) string {
+	return promptmodule.New(base).Append(modules...).Text()
 }
 
 // systemPromptMeta wraps prompt in the session _meta payload understood by
@@ -207,13 +212,13 @@ func BuiltinAgents() AgentCatalog {
 				"-c", `features.tool_search_always_defer_mcp_tools=true`,
 			},
 			Model:           "gpt-5.5",
-			ReasoningEffort: "medium",
+			ReasoningEffort: "xhigh",
 		},
 		AgentClaude: {
 			Command:         "npx",
 			Args:            []string{"-y", "@agentclientprotocol/claude-agent-acp@0.44.0"},
 			Model:           "default",
-			ReasoningEffort: "medium",
+			ReasoningEffort: "xhigh",
 		},
 		AgentGrok: {
 			Command: "grok",

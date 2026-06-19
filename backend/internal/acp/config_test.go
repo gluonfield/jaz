@@ -19,6 +19,13 @@ func (p testPrompt) SkillsPromptForWorkspace(string) (string, error) {
 	return string(p), nil
 }
 
+type cwdPrompt struct{}
+
+func (cwdPrompt) ACPPrompt(cwd string) (string, error) { return "cwd=" + cwd, nil }
+func (cwdPrompt) SkillsPromptForWorkspace(string) (string, error) {
+	return "", nil
+}
+
 func TestProcessEnvIsMinimalAndCanonical(t *testing.T) {
 	clearHostEnv(t)
 	t.Setenv("PATH", "/bin")
@@ -72,6 +79,28 @@ func TestSystemPromptMetaPerAgent(t *testing.T) {
 		if got := systemPromptMeta(tc.agent, "jaz prompt"); !reflect.DeepEqual(got, tc.want) {
 			t.Errorf("systemPromptMeta(%q) = %#v, want %#v", tc.agent, got, tc.want)
 		}
+	}
+}
+
+func TestSessionPromptMetaAppendsPerSessionExtension(t *testing.T) {
+	manager := &Manager{cfg: Config{SystemPrompt: testPrompt("base prompt")}}
+	got, err := manager.sessionPromptMeta(AgentCodex, "", "", []string{"run context"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["systemPrompt"] != "base prompt\n\nrun context" {
+		t.Fatalf("system prompt = %#v", got)
+	}
+}
+
+func TestSessionPromptMetaAllowsExtensionWithoutBasePrompt(t *testing.T) {
+	manager := &Manager{}
+	got, err := manager.sessionPromptMeta(AgentCodex, "", "", []string{"run context"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["systemPrompt"] != "run context" {
+		t.Fatalf("system prompt = %#v", got)
 	}
 }
 
@@ -203,6 +232,25 @@ func TestProbeAgentAuthDetectsCodexKeyringProfile(t *testing.T) {
 	}
 }
 
+func TestProbeAgentAuthIgnoresClaudeSettingsOnlyJSONProfile(t *testing.T) {
+	clearHostEnv(t)
+	home := t.TempDir()
+	configDir := filepath.Join(home, "claude-config")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, ".claude.json"), []byte(`{"hasCompletedOnboarding":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("CLAUDE_CONFIG_DIR", configDir)
+
+	status := ProbeAgentAuth(AgentClaude, AgentConfig{}, t.TempDir(), nil)
+	if status.Authenticated {
+		t.Fatalf("status = %#v, want settings-only .claude.json ignored", status)
+	}
+}
+
 func TestProbeAgentAuthDetectsClaudeJSONProfile(t *testing.T) {
 	clearHostEnv(t)
 	home := t.TempDir()
@@ -210,7 +258,7 @@ func TestProbeAgentAuthDetectsClaudeJSONProfile(t *testing.T) {
 	if err := os.MkdirAll(configDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(configDir, ".claude.json"), []byte(`{}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(configDir, ".claude.json"), []byte(`{"oauthAccount":{"accountUuid":"account-id"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
@@ -492,6 +540,55 @@ func TestProcessEnvWritesOpenCodeInstructions(t *testing.T) {
 	}
 }
 
+func TestProcessEnvWritesOpenCodeInstructionsWithSessionExtension(t *testing.T) {
+	root := t.TempDir()
+	manager := NewManager(nil, Config{
+		Root:         root,
+		SystemPrompt: testPrompt("jaz instructions"),
+	}, nil)
+	env, err := manager.processEnvPreparedForSurface("opencode", AgentConfig{}, "", "", []string{"run context"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(root, "acp", "opencode", "jaz-instructions.md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "jaz instructions\n\nrun context\n" {
+		t.Fatalf("instructions = %q", data)
+	}
+	if !strings.Contains(env["OPENCODE_CONFIG_CONTENT"], path) {
+		t.Fatalf("OPENCODE_CONFIG_CONTENT = %q", env["OPENCODE_CONFIG_CONTENT"])
+	}
+}
+
+func TestProcessEnvWritesOpenCodeInstructionsWithResolvedCwd(t *testing.T) {
+	root := t.TempDir()
+	sessionCwd := filepath.Join(root, "workspaces", "default", ".worktrees", "loop-run")
+	agentCwd := filepath.Join(root, "wrong")
+	env, err := NewManager(nil, Config{
+		Root:         root,
+		SystemPrompt: cwdPrompt{},
+	}, nil).processEnvPreparedForSurface("opencode", AgentConfig{Cwd: agentCwd}, sessionCwd, "widget", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(root, "acp", "opencode", "jaz-instructions.md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "cwd="+sessionCwd+"\n" {
+		t.Fatalf("instructions = %q", data)
+	}
+	if !strings.Contains(env["OPENCODE_CONFIG_CONTENT"], path) {
+		t.Fatalf("OPENCODE_CONFIG_CONTENT = %q", env["OPENCODE_CONFIG_CONTENT"])
+	}
+}
+
 func TestProcessEnvDoesNotOverrideDefaultOpenCodeProvider(t *testing.T) {
 	root := t.TempDir()
 	env, err := NewManager(nil, Config{
@@ -518,6 +615,59 @@ func TestProcessEnvDoesNotOverrideDefaultOpenCodeProvider(t *testing.T) {
 	}
 	if len(content.Provider) != 0 {
 		t.Fatalf("default openrouter provider should not be overridden: %#v", content.Provider)
+	}
+}
+
+func TestProcessEnvAddsOpenCodeOpenRouterReasoningVariant(t *testing.T) {
+	root := t.TempDir()
+	env, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared("opencode", AgentConfig{
+		ProviderMode:    AgentProviderModeAgentDefaults,
+		ModelProvider:   "openrouter",
+		Model:           "z-ai/glm-5.2",
+		ReasoningEffort: "xhigh",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var content struct {
+		Provider map[string]struct {
+			API    string `json:"api"`
+			NPM    string `json:"npm"`
+			Models map[string]struct {
+				Variants map[string]struct {
+					Reasoning struct {
+						Effort string `json:"effort"`
+					} `json:"reasoning"`
+				} `json:"variants"`
+			} `json:"models"`
+		} `json:"provider"`
+	}
+	if err := json.Unmarshal([]byte(env["OPENCODE_CONFIG_CONTENT"]), &content); err != nil {
+		t.Fatalf("config content = %q: %v", env["OPENCODE_CONFIG_CONTENT"], err)
+	}
+	openRouter := content.Provider["openrouter"]
+	if openRouter.API != "" || openRouter.NPM != "" {
+		t.Fatalf("openrouter provider should stay built-in: %#v", openRouter)
+	}
+	variant, ok := openRouter.Models["z-ai/glm-5.2"].Variants["xhigh"]
+	if !ok || variant.Reasoning.Effort != "xhigh" {
+		t.Fatalf("reasoning variant = %#v", openRouter.Models)
+	}
+}
+
+func TestProcessEnvDoesNotAddOpenCodeReasoningVariantForInvalidEffort(t *testing.T) {
+	root := t.TempDir()
+	env, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared("opencode", AgentConfig{
+		ProviderMode:    AgentProviderModeAgentDefaults,
+		ModelProvider:   "openrouter",
+		Model:           "z-ai/glm-5.2",
+		ReasoningEffort: "max",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if content := env["OPENCODE_CONFIG_CONTENT"]; content != "" {
+		t.Fatalf("invalid effort should not create opencode config content: %q", content)
 	}
 }
 

@@ -100,7 +100,7 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		!strings.Contains(acp, "any reusable code snippet over 20 lines") ||
 		!strings.Contains(acp, "plain lists, plain tables, enumerated content") ||
 		!strings.Contains(acp, "visualise_show_widget") ||
-		!strings.Contains(acp, "Never pass raw JSX, TSX, or an unbundled app to the render tool") {
+		!strings.Contains(acp, "Never pass raw JSX, TSX, or an unbundled app to the output tool") {
 		t.Fatalf("acp extension must carry the artifact policy:\n%s", acp)
 	}
 	for _, reject := range []string{"`visualize:", "visualize_", "`create_file`", "file-artifact tool", "coding-agent surface provides", "Claude-compatible"} {
@@ -118,16 +118,23 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(widgetACP, "## Artifacts and visualisation") ||
-		strings.Contains(widgetACP, "## Agent delegation") ||
-		strings.Contains(widgetACP, "agent_spawn") ||
-		strings.Contains(widgetACP, "visualise_show_widget") ||
-		strings.Contains(widgetACP, "visualise_read_me") {
-		t.Fatalf("widget ACP extension must not carry chat-only tool policy:\n%s", widgetACP)
-	}
-	for _, want := range []string{"## AGENTS.md\n\nalways cite sources", "## memory/LONG_TERM.md", "<name>deploy</name>"} {
+	for _, want := range []string{
+		"## AGENTS.md\n\nalways cite sources",
+		"## Agent delegation",
+		"agent_spawn",
+		"## Artifacts and visualisation",
+		"visualise_read_me",
+		"Finish with the output contract for the current surface",
+		"## memory/LONG_TERM.md",
+		"<name>deploy</name>",
+	} {
 		if !strings.Contains(widgetACP, want) {
 			t.Fatalf("widget ACP extension missing shared section %q:\n%s", want, widgetACP)
+		}
+	}
+	for _, reject := range []string{"visualise_show_widget", "visualise_publish_widget", "## Board Widget Runtime"} {
+		if strings.Contains(widgetACP, reject) {
+			t.Fatalf("widget ACP base extension must leave output details to the loop widget extension; found %q:\n%s", reject, widgetACP)
 		}
 	}
 

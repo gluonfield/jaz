@@ -1,6 +1,7 @@
 package acp
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -431,11 +432,32 @@ func codexKeyringConfigured(home string) bool {
 }
 
 func claudeAuthFileAvailable(configDir string) bool {
-	return fileExists(claudeAuthPath(configDir)) || fileExists(filepath.Join(configDir, ".credentials.json"))
+	return claudeOAuthAccountAvailable(claudeAuthPath(configDir)) ||
+		fileExists(filepath.Join(configDir, ".credentials.json"))
 }
 
 func claudeAuthPath(configDir string) string {
 	return filepath.Join(configDir, ".claude.json")
+}
+
+func claudeOAuthAccountAvailable(path string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	var value claudeConfigJSON
+	if err := json.Unmarshal(data, &value); err != nil {
+		return false
+	}
+	return strings.TrimSpace(value.OAuthAccount.AccountUUID) != ""
+}
+
+type claudeConfigJSON struct {
+	OAuthAccount claudeOAuthAccountJSON `json:"oauthAccount"`
+}
+
+type claudeOAuthAccountJSON struct {
+	AccountUUID string `json:"accountUuid"`
 }
 
 func claudeAccountAuthAvailable(env map[string]string) bool {

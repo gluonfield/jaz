@@ -70,7 +70,7 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"Stacking millions into bars",
 		"When to visualise:",
 		"prefer an inline artifact over plain text",
-		"Never pass raw JSX, TSX, or an unbundled app to the render tool",
+		"Never pass raw JSX, TSX, or an unbundled app to the output tool",
 		"`visualise_read_me` is the visual styling authority",
 	} {
 		if !strings.Contains(prompt, want) {
@@ -120,22 +120,35 @@ func TestRenderMemoryStates(t *testing.T) {
 	}
 }
 
-func TestRenderWidgetSurfaceOmitsChatArtifactPolicy(t *testing.T) {
+func TestRenderWidgetSurfaceKeepsSharedVisualPolicy(t *testing.T) {
 	data := testData("agents", "soul")
 	data.ArtifactSurface = "widget"
 	prompt, err := Render(data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(prompt, "## Artifacts and visualisation") ||
-		strings.Contains(prompt, "## Agent delegation") ||
-		strings.Contains(prompt, "agent_spawn") ||
-		strings.Contains(prompt, "visualise_show_widget") ||
-		strings.Contains(prompt, "visualise_read_me") {
-		t.Fatalf("widget surface must not receive chat-only tool policy:\n%s", prompt)
+	for _, want := range []string{
+		"## AGENTS.md\n\nagents",
+		"## SOUL.md\n\nsoul",
+		"## Agent delegation",
+		"agent_spawn",
+		"## Artifacts and visualisation",
+		"Always call `visualise_read_me` before the first artifact",
+		"Finish with the output contract for the current surface",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("widget surface missing %q:\n%s", want, prompt)
+		}
 	}
-	if !strings.Contains(prompt, "## AGENTS.md\n\nagents") || !strings.Contains(prompt, "## SOUL.md\n\nsoul") {
-		t.Fatalf("widget surface must keep the platform prompt:\n%s", prompt)
+	for _, reject := range []string{
+		"visualise_show_widget",
+		"visualise_publish_widget",
+		"## Board Widget Runtime",
+		"Few-shot trace:",
+	} {
+		if strings.Contains(prompt, reject) {
+			t.Fatalf("widget surface base prompt must leave output details to the loop extension; found %q:\n%s", reject, prompt)
+		}
 	}
 }
 

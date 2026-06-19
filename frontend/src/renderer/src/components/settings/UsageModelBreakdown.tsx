@@ -1,21 +1,15 @@
 import { useMemo } from 'react'
-import { Skeleton } from '@/components/ui/Skeleton'
-import type { ModelUsage } from '@/lib/api/types'
 import { formatTokens } from '@/lib/format/tokens'
 import { formatUsd, type PricedModel } from '@/lib/usageCost'
-import { inputTokens, totalUsageTokens } from '@/lib/usageDaily'
+import { inputTokens, totalUsageTokens, type UsageModelTotals } from '@/lib/usageDaily'
 
 const MODEL_TABLE_COLUMNS = 'minmax(0,1fr) repeat(6, 60px)'
 
 export function ModelBreakdown({
   rows,
-  error,
-  pending,
   unpriced,
 }: {
   rows: PricedModel[]
-  error: Error | null
-  pending: boolean
   unpriced: number
 }) {
   const visible = rows.slice(0, 8)
@@ -28,17 +22,7 @@ export function ModelBreakdown({
         <p className="mt-0.5 truncate text-[11px] text-ink-3">ACP agent usage, ranked by total tokens.</p>
       </div>
 
-      {pending ? (
-        <div className="mt-2 space-y-2">
-          {Array.from({ length: 3 }, (_, index) => (
-            <Skeleton key={index} className="h-10" />
-          ))}
-        </div>
-      ) : error ? (
-        <p className="mt-2 rounded-control bg-danger/5 px-3 py-2 text-[12px] text-danger">
-          Couldn't load model usage: {error.message}
-        </p>
-      ) : visible.length === 0 ? (
+      {visible.length === 0 ? (
         <p className="mt-2 rounded-control bg-bg/45 px-3 py-2 text-[12px] text-ink-3">
           No ACP model usage recorded yet.
         </p>
@@ -94,7 +78,7 @@ export function ModelBreakdown({
   )
 }
 
-function ModelUsageRow({ model, cost }: { model: ModelUsage; cost: number | null }) {
+function ModelUsageRow({ model, cost }: { model: UsageModelTotals; cost: number | null }) {
   return (
     <div
       className="grid items-center gap-x-3 px-1 py-2"
@@ -127,11 +111,11 @@ function tokenText(value: number): string | null {
   return value > 0 ? formatTokens(value) : null
 }
 
-function modelName(model: ModelUsage): string {
+function modelName(model: UsageModelTotals): string {
   return model.model?.trim() || 'Unknown model'
 }
 
-function formatModelMeta(model: ModelUsage): string {
+function formatModelMeta(model: UsageModelTotals): string {
   const parts = [model.agent, model.model_provider].map((part) => part?.trim()).filter(Boolean)
   return parts.length > 0 ? parts.join(' / ') : 'ACP'
 }
@@ -149,7 +133,7 @@ const PIE_SLICE_COLORS = [
 const PIE_OTHER_COLOR = 'var(--color-ink-3)'
 const PIE_MAX_SLICES = 6
 
-function buildPieSlices(models: ModelUsage[]): PieSlice[] {
+function buildPieSlices(models: UsageModelTotals[]): PieSlice[] {
   const ranked = models
     .map((model) => ({
       label: modelName(model),
@@ -175,7 +159,7 @@ function buildPieSlices(models: ModelUsage[]): PieSlice[] {
   return head
 }
 
-function ModelUsagePie({ models }: { models: ModelUsage[] }) {
+function ModelUsagePie({ models }: { models: UsageModelTotals[] }) {
   const slices = useMemo(() => buildPieSlices(models), [models])
   const grand = slices.reduce((sum, slice) => sum + slice.total, 0)
   if (slices.length === 0 || grand === 0) return null

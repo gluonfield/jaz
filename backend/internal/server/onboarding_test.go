@@ -247,6 +247,62 @@ func TestOnboardingUsesACPReadiness(t *testing.T) {
 	}
 }
 
+func TestOnboardingIgnoresClaudeSettingsOnlyConfig(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	for _, key := range []string{
+		"CLAUDE_CONFIG_DIR", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN",
+		"ANTHROPIC_API_KEY", "ANTHROPIC_APIKEY", "JAZ_ACP_CLAUDE_API_KEY",
+	} {
+		t.Setenv(key, "")
+	}
+	globalDir := filepath.Join(home, ".claude")
+	if err := os.MkdirAll(globalDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(globalDir, ".claude.json"), []byte(`{"hasCompletedOnboarding":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	exe := filepath.Join(root, "claude-acp")
+	if err := os.WriteFile(exe, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLAUDE_CODE_EXECUTABLE", exe)
+	handler := (&Server{
+		Store: store,
+		Root:  root,
+		AgentCatalog: acp.AgentCatalog{
+			"claude": {Command: exe, Model: "default"},
+		},
+	}).Handler()
+
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/onboarding", nil))
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var got struct {
+		ACP []struct {
+			Agent         string `json:"agent"`
+			Authenticated bool   `json:"authenticated"`
+			Available     bool   `json:"available"`
+			Reason        string `json:"reason"`
+		} `json:"acp"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.ACP) != 1 || got.ACP[0].Agent != "claude" || got.ACP[0].Authenticated || got.ACP[0].Available || !strings.Contains(got.ACP[0].Reason, "Claude login") {
+		t.Fatalf("unexpected claude probe: %#v", got.ACP)
+	}
+}
+
 func TestAppBundleInstalledIn(t *testing.T) {
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, "Claude.app"), 0o755); err != nil {

@@ -21,9 +21,10 @@ type dailyResponse struct {
 }
 
 type dailyUsageDTO struct {
-	Date         string         `json:"date"`
-	Usage        usageTotalsDTO `json:"usage"`
-	SessionCount int            `json:"session_count"`
+	Date         string          `json:"date"`
+	Usage        usageTotalsDTO  `json:"usage"`
+	Models       []modelUsageDTO `json:"models,omitempty"`
+	SessionCount int             `json:"session_count"`
 }
 
 type usageTotalsDTO struct {
@@ -64,6 +65,7 @@ func dailyDTOs(days []usagecore.DailyBucket) []dailyUsageDTO {
 		out[i] = dailyUsageDTO{
 			Date:         day.Date,
 			Usage:        usageDTO(day.Usage),
+			Models:       modelDTOs(day.Models),
 			SessionCount: day.SessionCount,
 		}
 	}

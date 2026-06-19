@@ -35,7 +35,7 @@ func AddMCPTools(server *mcp.Server, publisher MCPPublisher) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        PublishMCPToolName,
 		Title:       "Publish board widget",
-		Description: "Publishes this loop run's Jaz board widget. Write the HTML fragment to widget/index.html first, then call this; alternatively pass the fragment inline via html. Returns validation errors and non-fatal lint warnings so you can fix and retry within the run.",
+		Description: "Publishes this loop run's Jaz board widget. Write the HTML fragment to widget/index.html first, then call this; alternatively pass the fragment inline via html. Invalid fragments fail; host-rendering warnings are advisory.",
 		InputSchema: PublishInputSchema(),
 	}, publishMCP(publisher))
 }
@@ -71,7 +71,7 @@ func publish(publisher MCPPublisher, req *mcp.CallToolRequest, input MCPPublishI
 		content = fmt.Sprintf("Published widget %q version %d (size %s).", widget.Title, widget.CurrentVersion, widget.SizeHint)
 	}
 	if len(warnings) > 0 {
-		content += "\n\nLint warnings (published anyway — fix them and republish in this run):\n- " + strings.Join(warnings, "\n- ")
+		content += "\n\nHost-rendering warnings (published anyway):\n- " + strings.Join(warnings, "\n- ")
 	}
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: content}}}, out, nil
 }
