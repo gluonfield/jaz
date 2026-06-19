@@ -57,6 +57,9 @@ func TestBeginACPTurnGeneratesTitleFromFirstMessage(t *testing.T) {
 	if manager.utilityPrompt.ACPAgent != acp.AgentCodex {
 		t.Fatalf("utility prompt request = %#v", manager.utilityPrompt)
 	}
+	if manager.utilityPrompt.ReasoningEffort != "none" {
+		t.Fatalf("utility prompt reasoning effort = %q, want none", manager.utilityPrompt.ReasoningEffort)
+	}
 }
 
 func TestMessageStreamGeneratesTitleVisibleToUI(t *testing.T) {

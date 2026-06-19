@@ -32,6 +32,7 @@ type DailyQuery struct {
 type DailyBucket struct {
 	Date         string
 	Usage        UsageTotals
+	Models       []ModelUsage
 	SessionCount int
 }
 
@@ -73,6 +74,7 @@ func (s Service) Daily(query DailyQuery) ([]DailyBucket, error) {
 	}
 	out, index, start := dailyBucketsAt(days, loc, s.currentTime())
 	sessionIDs := make([]map[string]struct{}, len(out))
+	modelGroups := make([]map[modelUsageKey]*modelUsageGroup, len(out))
 	for i := range sessionIDs {
 		sessionIDs[i] = map[string]struct{}{}
 	}
@@ -92,12 +94,19 @@ func (s Service) Daily(query DailyQuery) ([]DailyBucket, error) {
 			continue
 		}
 		AddDaily(&out[i].Usage, event.Usage)
+		if event.Runtime == storage.RuntimeACP {
+			if modelGroups[i] == nil {
+				modelGroups[i] = map[modelUsageKey]*modelUsageGroup{}
+			}
+			addModelUsage(modelGroups[i], event)
+		}
 		if event.Usage.Countable() {
 			sessionIDs[i][event.SessionID] = struct{}{}
 		}
 	}
 	for i := range out {
 		out[i].SessionCount = len(sessionIDs[i])
+		out[i].Models = modelUsageFromGroups(modelGroups[i])
 	}
 	return out, nil
 }
@@ -128,28 +137,36 @@ func (s Service) Models(query DailyQuery) ([]ModelUsage, error) {
 		if event.CreatedAt.Before(start) || !event.CreatedAt.Before(end) {
 			continue
 		}
-		key := modelUsageKey{
-			agent:    event.Agent,
-			provider: event.ModelProvider,
-			model:    event.Model,
-		}
-		group := groups[key]
-		if group == nil {
-			group = &modelUsageGroup{
-				ModelUsage: ModelUsage{
-					Agent:         event.Agent,
-					ModelProvider: event.ModelProvider,
-					Model:         event.Model,
-				},
-				sessionIDs: map[string]struct{}{},
-			}
-			groups[key] = group
-		}
-		AddDaily(&group.Usage, event.Usage)
-		if event.Usage.Countable() {
-			group.sessionIDs[event.SessionID] = struct{}{}
-		}
+		addModelUsage(groups, event)
 	}
+	return modelUsageFromGroups(groups), nil
+}
+
+func addModelUsage(groups map[modelUsageKey]*modelUsageGroup, event storage.UsageEvent) {
+	key := modelUsageKey{
+		agent:    event.Agent,
+		provider: event.ModelProvider,
+		model:    event.Model,
+	}
+	group := groups[key]
+	if group == nil {
+		group = &modelUsageGroup{
+			ModelUsage: ModelUsage{
+				Agent:         event.Agent,
+				ModelProvider: event.ModelProvider,
+				Model:         event.Model,
+			},
+			sessionIDs: map[string]struct{}{},
+		}
+		groups[key] = group
+	}
+	AddDaily(&group.Usage, event.Usage)
+	if event.Usage.Countable() {
+		group.sessionIDs[event.SessionID] = struct{}{}
+	}
+}
+
+func modelUsageFromGroups(groups map[modelUsageKey]*modelUsageGroup) []ModelUsage {
 	out := make([]ModelUsage, 0, len(groups))
 	for _, group := range groups {
 		group.SessionCount = len(group.sessionIDs)
@@ -169,7 +186,7 @@ func (s Service) Models(query DailyQuery) ([]ModelUsage, error) {
 		}
 		return out[i].Model < out[j].Model
 	})
-	return out, nil
+	return out
 }
 
 func ValidateDays(days int) (int, error) {

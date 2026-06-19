@@ -2,6 +2,7 @@
 
 - Use Go 1.26.
 - Keep code and JSON minimal. Each line of code should fight for its existence; every field and line must earn its place.
+- Trim strings at real input boundaries only: user input, config files, env vars, HTTP payloads, CLI args, and persisted loose text. Do not sprinkle `strings.TrimSpace` over internal constants, typed IDs, enum values, or values that have already crossed a validation boundary.
 - When there's an opportunity for dramatic simplification or restructuring, bring it up. Favor "code judo" moves that delete layers, unify shapes, collapse special cases, or make the design inevitable over incremental patches.
 - Bug fixes should first look for deletion or correction of the underlying contract. A solution that only adds branches, flags, helpers, or UI glue is suspicious; prefer removing stale paths, collapsing duplicated state, or moving behavior to the owning layer before adding code.
 - Do not write code comments unless they explain something the code itself cannot describe.
@@ -20,7 +21,7 @@
 - Do not add defensive nil checks for required constructor-injected dependencies. If a required Fx service is missing, fail fast instead of silently degrading; model truly optional dependencies explicitly.
 - Codex ACP uses the user's Codex OAuth credentials. Never pass coordinator provider keys to Codex subprocesses.
 - Target deployments run the Jaz server on a VM and clients on user computers; never assume client-local file paths are visible to the server or agents.
-- Every test you add must be useful: it must protect real behavior or clarify a tricky contract, never exist only to raise coverage.
+- Every test you add must be useful: it must run in the relevant verification path and either protect real behavior or clarify a tricky contract. A test that is skipped, does not run, or provides no useful signal must not exist just to raise coverage.
 - Reference repos (`openclaw`, `hermes`) are learning material, not authority.
 
 ## Backend Architecture
