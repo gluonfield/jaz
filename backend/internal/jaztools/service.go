@@ -141,7 +141,7 @@ func (s *Service) newServer(surface toolSurface) *mcp.Server {
 		return server
 	}
 	s.loopTools.AddTo(server)
-	if surface == threadSurface && s.agentTools != nil {
+	if s.agentTools != nil {
 		s.agentTools.AddTo(server)
 	}
 	s.visualizeTools.AddReadMeTo(server)

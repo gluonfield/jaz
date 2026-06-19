@@ -344,8 +344,8 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 	if hasTool(t, widget, "visualise_show_widget") {
 		t.Fatal("widget server advertised thread artifact renderer")
 	}
-	if hasTool(t, widget, "agent_spawn") {
-		t.Fatal("widget server advertised agent_spawn")
+	if !hasTool(t, widget, "agent_spawn") {
+		t.Fatal("widget server did not advertise agent_spawn")
 	}
 	if !hasTool(t, widget, "visualise_publish_widget") {
 		t.Fatal("widget server did not advertise visualise_publish_widget")
