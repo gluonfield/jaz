@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query'
-import { ChevronDown } from 'lucide-react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { MentionSuggestions, MentionTextarea, useMentionInput } from '@/components/session/MentionInput'
 import { ModelSelect, RuntimeSelect } from '@/components/session/NewThreadControls'
@@ -13,7 +12,7 @@ import {
 } from '@/lib/models'
 import { acpReasoningEffortOptions } from '@/lib/reasoningEfforts'
 import { BoardAssignmentPicker } from './BoardAssignmentPicker'
-import { LoopExamples } from './LoopExamples'
+import { LoopExamplesPicker } from './LoopExamplesPicker'
 import type { LoopDraft } from './loopDraft'
 import { templatePatch } from './loopTemplates'
 import { SchedulePicker } from './SchedulePicker'
@@ -51,37 +50,29 @@ export function PromptStep({
   // The prompt seeds its text at mount, so applying an example must remount the
   // card — bumping `seed` does exactly that.
   const [seed, setSeed] = useState(0)
-  const [showExamples, setShowExamples] = useState(false)
+  const [examplesOpen, setExamplesOpen] = useState(false)
 
   return (
     <div className="space-y-4">
       <LoopPromptCard key={seed} draft={draft} disabled={disabled} autoFocus={autoFocus} set={set} />
 
-      <div>
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => setShowExamples((v) => !v)}
-          className="flex items-center gap-1 text-[12px] font-medium text-ink-2 transition-colors hover:text-ink disabled:opacity-50"
-        >
-          <ChevronDown
-            size={13}
-            className={`transition-transform duration-150 ${showExamples ? 'rotate-180' : ''}`}
-          />
-          Examples
-        </button>
-        {showExamples ? (
-          <div className="mt-2">
-            <LoopExamples
-              onPick={(template) => {
-                set(templatePatch(template))
-                setSeed((s) => s + 1)
-                setShowExamples(false)
-              }}
-            />
-          </div>
-        ) : null}
-      </div>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setExamplesOpen(true)}
+        className="text-[12px] font-medium text-ink-2 transition-colors hover:text-ink disabled:opacity-50"
+      >
+        Examples
+      </button>
+      <LoopExamplesPicker
+        open={examplesOpen}
+        onClose={() => setExamplesOpen(false)}
+        onPick={(template) => {
+          set(templatePatch(template))
+          setSeed((s) => s + 1)
+          setExamplesOpen(false)
+        }}
+      />
 
       <Field label={<>Name <span className="font-normal text-ink-3">optional</span></>}>
         <input
