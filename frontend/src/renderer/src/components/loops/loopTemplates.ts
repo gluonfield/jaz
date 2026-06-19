@@ -43,6 +43,15 @@ export const LOOP_TEMPLATES: LoopTemplate[] = [
     schedule: { preset: 'daily', time: '10:00' },
   },
   {
+    id: 'world-clocks',
+    title: 'World clocks',
+    description: 'SF, London, NY, and Dubai as old-school circular clocks.',
+    name: 'world-clocks',
+    prompt:
+      'Show world clocks for SF, London, NY, and Dubai in the style of old-school circular clocks.',
+    schedule: { preset: 'daily', time: '10:00' },
+  },
+  {
     id: 'dependency-watch',
     title: 'Dependency security advisory watch',
     description: 'New advisories and notable updates for this project.',

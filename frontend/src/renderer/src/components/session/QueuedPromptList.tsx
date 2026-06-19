@@ -64,7 +64,7 @@ export function QueuedPromptList({
 
   return (
     <motion.div
-      layout
+      layout="position"
       className="mb-2 overflow-hidden rounded-[12px] border border-border bg-surface shadow-sm"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
