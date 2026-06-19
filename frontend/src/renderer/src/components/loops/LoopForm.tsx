@@ -223,7 +223,7 @@ function LoopPromptCard({
   return (
     <div>
       <div className="relative">
-        <MentionSuggestions mention={mention} placement="below" />
+        <MentionSuggestions mention={mention} placement="above" />
         <div
           className="flex cursor-text flex-col gap-2 rounded-card bg-surface p-2.5"
           onClick={(e) => {
