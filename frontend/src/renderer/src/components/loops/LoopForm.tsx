@@ -126,10 +126,14 @@ function FieldGroup({ label, children }: { label: string; children: ReactNode })
 export function LoopForm({
   draft,
   disabled,
+  autoFocusPrompt,
   onChange,
 }: {
   draft: LoopDraft
   disabled?: boolean
+  // Focus the prompt on mount — used when the create flow reveals the form
+  // after a template pick (edit relies on the modal's open-focus instead).
+  autoFocusPrompt?: boolean
   onChange: (next: LoopDraft) => void
 }) {
   const set = (patch: Partial<LoopDraft>) => onChange({ ...draft, ...patch })
@@ -139,6 +143,7 @@ export function LoopForm({
       <LoopPromptCard
         draft={draft}
         disabled={disabled}
+        autoFocus={autoFocusPrompt}
         set={set}
       />
 
@@ -181,10 +186,12 @@ export function LoopForm({
 function LoopPromptCard({
   draft,
   disabled,
+  autoFocus,
   set,
 }: {
   draft: LoopDraft
   disabled?: boolean
+  autoFocus?: boolean
   set: (patch: Partial<LoopDraft>) => void
 }) {
   const mention = useMentionInput({
@@ -240,6 +247,7 @@ function LoopPromptCard({
             mention={mention}
             placeholder="Review yesterday's commits and flag anything concerning…"
             disabled={disabled}
+            autoFocus={autoFocus}
             minHeightClass="min-h-[54px]"
           />
           <div className="flex flex-wrap items-center gap-1.5">
