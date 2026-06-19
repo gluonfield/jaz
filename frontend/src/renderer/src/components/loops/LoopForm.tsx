@@ -169,11 +169,8 @@ export function BoardsStep({
 }
 
 // The composer-style prompt card: a mention-capable textarea ($skill / @file)
-// with the loop's run setup - agent and model - as its toolbar. The UI no
-// longer offers a project picker (new loops default to the workspace), but a
-// loop's `directory` is still honored end-to-end — it can be set via the
-// API/MCP and is round-tripped on edit — so the draft deliberately keeps
-// reading and sending it. Don't drop that plumbing.
+// with the run setup (agent, model) as its toolbar. The draft keeps `directory`
+// — it scopes @-file mentions — even though there's no project picker; keep it.
 function LoopPromptCard({
   draft,
   disabled,
