@@ -27,11 +27,11 @@ type ReasoningEffortOption struct {
 
 type AgentOptions struct {
 	ReasoningEfforts []ReasoningEffortOption `json:"reasoning_efforts"`
-	Local            bool                    `json:"local,omitempty"`
+	Local            bool                    `json:"local"`
 	ProviderMode     string                  `json:"provider_mode,omitempty"`
 	ModelProviderIDs []string                `json:"model_provider_ids,omitempty"`
-	RequiresCommand  bool                    `json:"requires_command,omitempty"`
-	SupportsAuth     bool                    `json:"supports_auth,omitempty"`
+	RequiresCommand  bool                    `json:"requires_command"`
+	SupportsAuth     bool                    `json:"supports_auth"`
 }
 
 type setSessionModelRequest struct {

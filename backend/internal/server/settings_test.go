@@ -204,6 +204,20 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		got.ACPOptions["jaz"].SupportsAuth {
 		t.Fatalf("unexpected jaz capabilities %#v", got.ACPOptions["jaz"])
 	}
+	// The desktop client treats a missing capability flag as "requires a command",
+	// so a false flag must be emitted explicitly, never dropped by omitempty. A
+	// struct unmarshal can't tell absent from false, so assert the raw keys exist.
+	var rawOptions struct {
+		ACPOptions map[string]map[string]json.RawMessage `json:"acp_options"`
+	}
+	if err := json.Unmarshal(getRes.Body.Bytes(), &rawOptions); err != nil {
+		t.Fatal(err)
+	}
+	for _, flag := range []string{"local", "requires_command", "supports_auth"} {
+		if _, ok := rawOptions.ACPOptions["jaz"][flag]; !ok {
+			t.Fatalf("acp_options.jaz must emit %q, body = %s", flag, getRes.Body.String())
+		}
+	}
 	if got.ACPOptions["opencode"].ProviderMode != acp.AgentProviderModeAgentDefaults ||
 		!hasString(got.ACPOptions["opencode"].ModelProviderIDs, "openrouter") ||
 		!hasString(got.ACPOptions["opencode"].ModelProviderIDs, "openai") {
