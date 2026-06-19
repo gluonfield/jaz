@@ -32,7 +32,9 @@ function normalizeAgentSettings(settings: AgentSettings): AgentSettings {
   }
 }
 
-function inputFromSettings(
+// The exact shape a save writes back: editable fields only, normalized. Also the
+// canonical basis for change detection — settings unchanged here means a no-op save.
+export function inputFromSettings(
   settings: AgentSettings,
   providerKeys?: Record<string, string>,
 ): AgentSettings & { provider_keys?: Record<string, string> } {
