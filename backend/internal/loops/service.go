@@ -27,6 +27,33 @@ type Service struct {
 	mu          sync.Mutex
 }
 
+type RuntimePromptBuilder struct {
+	Repo        Repository
+	PromptExtra func(Loop, Run) string
+}
+
+func (b RuntimePromptBuilder) For(loop Loop, run Run, now time.Time) promptmodule.Modules {
+	var extras []string
+	if b.PromptExtra != nil {
+		if extra := strings.TrimSpace(b.PromptExtra(loop, run)); extra != "" {
+			extras = append(extras, extra)
+		}
+	}
+	return SystemPromptExtensions(loop, run, now, extras...)
+}
+
+func (b RuntimePromptBuilder) ForRun(runID string, now time.Time) (promptmodule.Modules, error) {
+	run, err := b.Repo.LoadRun(runID)
+	if err != nil {
+		return nil, err
+	}
+	loop, err := b.Repo.LoadLoop(run.LoopID)
+	if err != nil {
+		return nil, err
+	}
+	return b.For(loop, run, now), nil
+}
+
 type Option func(*Service)
 
 func WithMemoryPaths(paths *MemoryPaths) Option {
@@ -62,6 +89,10 @@ func NewService(repo Repository, executor Executor, logger *log.Logger, opts ...
 		opt(service)
 	}
 	return service
+}
+
+func (s *Service) RuntimePromptBuilder() RuntimePromptBuilder {
+	return RuntimePromptBuilder{Repo: s.Repo, PromptExtra: s.PromptExtra}
 }
 
 func (s *Service) Create(input CreateLoop) (Loop, error) {
@@ -316,20 +347,10 @@ func (s *Service) start(ctx context.Context, loop Loop, run Run, now time.Time) 
 		_ = s.Finish(run.ID, RunStatusError, "loop executor is not configured")
 		return
 	}
-	var extras []string
-	if s.PromptExtra != nil {
-		if extra := strings.TrimSpace(s.PromptExtra(loop, run)); extra != "" {
-			extras = append(extras, extra)
-		}
-	}
+	systemPromptExtensions := s.systemPromptExtensions(loop, run, now)
 	artifactSurface := ""
 	if s.ArtifactSurface != nil {
 		artifactSurface = strings.TrimSpace(s.ArtifactSurface(loop, run))
-	}
-	loopPrompt := RunSystemPrompt(loop, run, now, extras...)
-	var systemPromptExtensions promptmodule.Modules
-	if loopPrompt != "" {
-		systemPromptExtensions = promptmodule.New(loopPrompt)
 	}
 	go s.Executor.StartLoopRun(context.WithoutCancel(ctx), Execution{
 		Loop:                   loop,
@@ -339,6 +360,14 @@ func (s *Service) start(ctx context.Context, loop Loop, run Run, now time.Time) 
 		ArtifactSurface:        artifactSurface,
 		Controller:             s,
 	})
+}
+
+func (s *Service) systemPromptExtensions(loop Loop, run Run, now time.Time) promptmodule.Modules {
+	return s.RuntimePromptBuilder().For(loop, run, now)
+}
+
+func SystemPromptExtensions(loop Loop, run Run, now time.Time, extras ...string) promptmodule.Modules {
+	return promptmodule.New(RunSystemPrompt(loop, run, now, extras...))
 }
 
 func (s *Service) now() time.Time {

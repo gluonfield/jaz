@@ -731,11 +731,11 @@ export interface ReasoningEffortOption {
 
 export interface ACPAgentOptions {
   reasoning_efforts: ReasoningEffortOption[]
-  local?: boolean
+  local: boolean
   provider_mode?: 'agent_defaults'
   model_provider_ids?: string[]
-  requires_command?: boolean
-  supports_auth?: boolean
+  requires_command: boolean
+  supports_auth: boolean
 }
 
 export interface AgentSettings {

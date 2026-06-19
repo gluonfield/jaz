@@ -98,6 +98,26 @@ func TestSessionPromptMetaAllowsExtensionWithoutBasePrompt(t *testing.T) {
 	}
 }
 
+func TestSessionPromptMetaSendsGrokExtensionsAsRules(t *testing.T) {
+	manager := &Manager{cfg: Config{SystemPrompt: testPrompt("jaz platform prompt")}}
+	got, err := manager.sessionPromptMeta(AgentGrok, "", "widget", []string{"Scheduled Jaz loop run.\n\n## Board Widget Runtime\n\nPublish with visualise_publish_widget."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := got["systemPrompt"]; ok {
+		t.Fatalf("grok must not receive systemPrompt meta: %#v", got)
+	}
+	rules, ok := got["rules"].(string)
+	if !ok {
+		t.Fatalf("grok rules missing: %#v", got)
+	}
+	for _, want := range []string{"jaz platform prompt", "Scheduled Jaz loop run.", "## Board Widget Runtime", "visualise_publish_widget"} {
+		if !strings.Contains(rules, want) {
+			t.Fatalf("grok rules missing %q:\n%s", want, rules)
+		}
+	}
+}
+
 func TestMergeAgentsPreservesCapabilitiesOnPartialOverride(t *testing.T) {
 	merged := MergeAgents(BuiltinAgents(), map[string]AgentConfig{
 		AgentOpenCode: {
@@ -888,6 +908,13 @@ func TestProbeReadinessRequiresGrokAuth(t *testing.T) {
 	}
 }
 
+func TestProbeReadinessRejectsURLBackedGrokModelOverride(t *testing.T) {
+	ready := ProbeReadiness(AgentGrok, AgentConfig{URL: "http://127.0.0.1:9999", Model: "grok-build"}, t.TempDir(), nil)
+	if ready.Available || !strings.Contains(ready.Reason, "URL-backed Grok") {
+		t.Fatalf("ready = %#v", ready)
+	}
+}
+
 func TestAutoAuthMethodSelectsConfiguredEnvVarForGenericAgent(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	method, missing := autoAuthMethod("fake", codexInitializeAuthMethods(), map[string]string{"OPENAI_API_KEY": "key"})
@@ -975,14 +1002,42 @@ func TestAutoAuthMethodReportsMissingGrokAuth(t *testing.T) {
 }
 
 func TestProcessCommandAddsGrokReasoningEffortArg(t *testing.T) {
-	_, args := processCommand("grok", AgentConfig{
+	_, args, err := processCommand("grok", AgentConfig{
 		Command:         "grok",
 		Args:            []string{"--no-auto-update", "agent", "--no-leader", "stdio"},
 		ReasoningEffort: "high",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	want := "--no-auto-update agent --no-leader --always-approve --reasoning-effort high stdio"
 	if strings.Join(args, " ") != want {
 		t.Fatalf("args = %q, want %q", strings.Join(args, " "), want)
+	}
+}
+
+func TestProcessCommandAddsGrokModelArg(t *testing.T) {
+	_, args, err := processCommand("grok", AgentConfig{
+		Command: "grok",
+		Args:    []string{"agent", "stdio"},
+		Model:   "grok-build",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(args, " ") != "agent --always-approve --model grok-build stdio" {
+		t.Fatalf("args = %#v", args)
+	}
+}
+
+func TestProcessCommandRejectsAmbiguousGrokModelArg(t *testing.T) {
+	_, _, err := processCommand("grok", AgentConfig{
+		Command: "grok",
+		Args:    []string{"agent", "--model=custom", "stdio"},
+		Model:   "grok-build",
+	})
+	if err == nil || !strings.Contains(err.Error(), "model is ambiguous") {
+		t.Fatalf("error = %v", err)
 	}
 }
 
@@ -1004,10 +1059,13 @@ func TestProcessCommandDoesNotDuplicateGrokAlwaysApproveArg(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, args := processCommand("grok", AgentConfig{
+			_, args, err := processCommand("grok", AgentConfig{
 				Command: "grok",
 				Args:    tc.args,
 			})
+			if err != nil {
+				t.Fatal(err)
+			}
 			if strings.Join(args, " ") != tc.want {
 				t.Fatalf("args = %q, want %q", strings.Join(args, " "), tc.want)
 			}
@@ -1015,23 +1073,25 @@ func TestProcessCommandDoesNotDuplicateGrokAlwaysApproveArg(t *testing.T) {
 	}
 }
 
-func TestProcessCommandDoesNotDuplicateGrokReasoningEffortArg(t *testing.T) {
-	_, args := processCommand("grok", AgentConfig{
+func TestProcessCommandRejectsAmbiguousGrokReasoningEffortArg(t *testing.T) {
+	_, _, err := processCommand("grok", AgentConfig{
 		Command:         "grok",
 		Args:            []string{"agent", "--reasoning-effort=low", "stdio"},
 		ReasoningEffort: "high",
 	})
-	if strings.Join(args, " ") != "agent --reasoning-effort=low --always-approve stdio" {
-		t.Fatalf("args = %#v", args)
+	if err == nil || !strings.Contains(err.Error(), "reasoning effort is ambiguous") {
+		t.Fatalf("error = %v", err)
 	}
 }
 
 func TestProcessCommandLeavesNonGrokCommandAlone(t *testing.T) {
-	_, args := processCommand("grok", AgentConfig{
-		Command:         os.Args[0],
-		Args:            []string{"-test.run=TestFakeACPAgentProcess"},
-		ReasoningEffort: "high",
+	_, args, err := processCommand("grok", AgentConfig{
+		Command: os.Args[0],
+		Args:    []string{"-test.run=TestFakeACPAgentProcess"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if strings.Join(args, " ") != "-test.run=TestFakeACPAgentProcess" {
 		t.Fatalf("args = %#v", args)
 	}

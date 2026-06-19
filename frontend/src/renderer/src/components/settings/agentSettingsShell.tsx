@@ -4,12 +4,17 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/toast'
-import { agentSettingsQuery, cloneAgentSettings, updateAgentSettings } from '@/lib/api/settings'
+import {
+  agentSettingsQuery,
+  cloneAgentSettings,
+  inputFromSettings,
+  updateAgentSettings,
+} from '@/lib/api/settings'
 import type { AgentSettings as AgentSettingsData } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 
 function settingsKey(settings: AgentSettingsData | null): string {
-  return settings ? JSON.stringify(settings) : ''
+  return settings ? JSON.stringify(inputFromSettings(settings)) : ''
 }
 
 // Shared shell for the two agent-settings screens: load the settings, hold an
