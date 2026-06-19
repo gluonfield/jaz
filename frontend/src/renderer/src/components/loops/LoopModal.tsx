@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronRight } from 'lucide-react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Fragment, useState } from 'react'
 import { BoardsStep, PromptStep, ScheduleStep } from '@/components/loops/LoopForm'
 import { Button } from '@/components/ui/Button'
@@ -87,6 +88,7 @@ export function LoopModal({
 
   const onLastStep = step === LAST_STEP
   const canSubmit = canSaveLoop(current) && !save.isPending && !createBoardsLoading
+  const reduce = useReducedMotion()
 
   return (
     <Modal
@@ -94,7 +96,6 @@ export function LoopModal({
       onClose={close}
       size="md"
       title={isEdit ? 'Edit loop' : 'New loop'}
-      description={STEPS[step].description}
       footer={
         <>
           <p className="text-[12px] text-danger" role="alert">
@@ -153,15 +154,25 @@ export function LoopModal({
       }
     >
       <StepNav step={step} onJump={setStep} />
-      <div className="mt-5">
-        {step === 0 ? (
-          <PromptStep draft={current} disabled={save.isPending} autoFocus set={set} />
-        ) : step === 1 ? (
-          <ScheduleStep draft={current} disabled={save.isPending} set={set} />
-        ) : (
-          <BoardsStep draft={current} disabled={save.isPending} set={set} />
-        )}
-      </div>
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={step}
+          initial={reduce ? false : { opacity: 0, x: 6 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={reduce ? { opacity: 0 } : { opacity: 0, x: -6 }}
+          transition={{ duration: 0.16, ease: [0.2, 0, 0, 1] }}
+          className="mt-5 space-y-3"
+        >
+          <p className="text-pretty text-[13px] text-ink-2">{STEPS[step].description}</p>
+          {step === 0 ? (
+            <PromptStep draft={current} disabled={save.isPending} autoFocus set={set} />
+          ) : step === 1 ? (
+            <ScheduleStep draft={current} disabled={save.isPending} set={set} />
+          ) : (
+            <BoardsStep draft={current} disabled={save.isPending} set={set} />
+          )}
+        </motion.div>
+      </AnimatePresence>
     </Modal>
   )
 }
