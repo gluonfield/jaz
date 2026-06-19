@@ -75,6 +75,28 @@ func TestSystemPromptMetaPerAgent(t *testing.T) {
 	}
 }
 
+func TestSessionPromptMetaAppendsPerSessionExtension(t *testing.T) {
+	manager := &Manager{cfg: Config{SystemPrompt: testPrompt("base prompt")}}
+	got, err := manager.sessionPromptMeta(AgentCodex, "", "", []string{"run context"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["systemPrompt"] != "base prompt\n\nrun context" {
+		t.Fatalf("system prompt = %#v", got)
+	}
+}
+
+func TestSessionPromptMetaAllowsExtensionWithoutBasePrompt(t *testing.T) {
+	manager := &Manager{}
+	got, err := manager.sessionPromptMeta(AgentCodex, "", "", []string{"run context"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["systemPrompt"] != "run context" {
+		t.Fatalf("system prompt = %#v", got)
+	}
+}
+
 func TestMergeAgentsPreservesCapabilitiesOnPartialOverride(t *testing.T) {
 	merged := MergeAgents(BuiltinAgents(), map[string]AgentConfig{
 		AgentOpenCode: {
@@ -504,6 +526,30 @@ func TestProcessEnvWritesOpenCodeInstructions(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(data) != "jaz instructions\n" {
+		t.Fatalf("instructions = %q", data)
+	}
+	if !strings.Contains(env["OPENCODE_CONFIG_CONTENT"], path) {
+		t.Fatalf("OPENCODE_CONFIG_CONTENT = %q", env["OPENCODE_CONFIG_CONTENT"])
+	}
+}
+
+func TestProcessEnvWritesOpenCodeInstructionsWithSessionExtension(t *testing.T) {
+	root := t.TempDir()
+	manager := NewManager(nil, Config{
+		Root:         root,
+		SystemPrompt: testPrompt("jaz instructions"),
+	}, nil)
+	env, err := manager.processEnvPreparedForSurface("opencode", AgentConfig{}, "", []string{"run context"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(root, "acp", "opencode", "jaz-instructions.md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "jaz instructions\n\nrun context\n" {
 		t.Fatalf("instructions = %q", data)
 	}
 	if !strings.Contains(env["OPENCODE_CONFIG_CONTENT"], path) {

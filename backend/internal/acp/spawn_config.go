@@ -16,6 +16,7 @@ func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, stri
 	}
 	req.ArtifactSurface = strings.TrimSpace(req.ArtifactSurface)
 	req.MCPServerPolicy = strings.TrimSpace(req.MCPServerPolicy)
+	req.SystemPromptExtensions = cleanPromptExtensions(req.SystemPromptExtensions)
 	if req.MCPServerPolicy == "" && visualize.NormalizeSurface(req.ArtifactSurface) == visualize.SurfaceWidget {
 		req.MCPServerPolicy = MCPServerPolicyWidget
 	}
@@ -73,4 +74,14 @@ func (m *Manager) createStoredSession(req SpawnRequest, cfg AgentConfig, effort 
 			MCPServerPolicy: req.MCPServerPolicy,
 		},
 	})
+}
+
+func cleanPromptExtensions(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if value := strings.TrimSpace(value); value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
 }

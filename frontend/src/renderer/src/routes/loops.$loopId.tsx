@@ -1,22 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ArrowLeft, ChevronRight, Pencil, Play, Trash2 } from 'lucide-react'
-import { type ReactNode, useState } from 'react'
+import { ArrowLeft, ChevronRight, MoreHorizontal, Pencil, Play, Trash2 } from 'lucide-react'
+import { useState } from 'react'
 import { LoopBoardAssignments } from '@/components/loops/LoopBoardAssignments'
 import { LoopModal } from '@/components/loops/LoopModal'
 import { describeSchedule, draftFromLoop } from '@/components/loops/schedule'
 import { MentionText } from '@/components/session/mentions'
-import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { IconButton } from '@/components/ui/IconButton'
+import { MenuRow, Popover } from '@/components/ui/Popover'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
-import { agentLabel } from '@/lib/agentLabel'
 import { deleteLoop, loopDetailQuery, runLoopNow } from '@/lib/api/loops'
 import type { Loop, LoopRun } from '@/lib/api/types'
 import { fullTime, hasTime, relativeTime, shortDate } from '@/lib/format/time'
 import { keys } from '@/lib/query/keys'
-import { reasoningEffortLabel } from '@/lib/reasoningEfforts'
 
 export const Route = createFileRoute('/loops/$loopId')({
   component: LoopDetailPage,
@@ -64,6 +62,7 @@ function LoopDetail({
   const queryClient = useQueryClient()
   const toast = useToast()
   const [editing, setEditing] = useState(false)
+  const [actionsOpen, setActionsOpen] = useState(false)
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: keys.loopDetail(loop.id) })
@@ -89,14 +88,15 @@ function LoopDetail({
   })
 
   const onDelete = () => {
+    setActionsOpen(false)
     if (confirm(`Delete loop "${loop.name}"? Its run history is kept but it stops running.`)) {
       remove.mutate()
     }
-	}
+  }
 
-	const paused = loop.status === 'paused'
-	const summary = describeSchedule(draftFromLoop(loop.schedule?.expr ?? '', paused))
-	const nextRun = !paused && hasTime(loop.next_run_at) ? shortDate(loop.next_run_at) : ''
+  const paused = loop.status === 'paused'
+  const summary = describeSchedule(draftFromLoop(loop.schedule?.expr ?? '', paused))
+  const nextRun = !paused && hasTime(loop.next_run_at) ? shortDate(loop.next_run_at) : ''
 
   return (
     <div className="mx-auto max-w-[820px] px-10 pb-20 pt-6">
@@ -122,39 +122,57 @@ function LoopDetail({
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          <Action onClick={() => run.mutate()} disabled={run.isPending}>
-            <Play size={13} />
-            {run.isPending ? 'Starting…' : 'Run now'}
-          </Action>
-          <Action onClick={() => setEditing(true)}>
-            <Pencil size={13} />
-            Edit
-          </Action>
           <IconButton
-            variant="danger"
+            variant="primary"
             size="md"
-            aria-label="Delete loop"
-            title="Delete loop"
-            onClick={onDelete}
+            aria-label={run.isPending ? 'Starting loop' : 'Run loop now'}
+            title={run.isPending ? 'Starting loop' : 'Run loop now'}
+            disabled={run.isPending}
+            onClick={() => run.mutate()}
           >
-            <Trash2 size={15} />
+            <Play size={14} />
           </IconButton>
+          <Popover
+            open={actionsOpen}
+            onClose={() => setActionsOpen(false)}
+            placement="below"
+            align="end"
+            trigger={
+              <IconButton
+                variant="ghost"
+                size="md"
+                aria-label="Loop actions"
+                title="Loop actions"
+                onClick={() => setActionsOpen((open) => !open)}
+              >
+                <MoreHorizontal size={15} />
+              </IconButton>
+            }
+          >
+            <MenuRow
+              onClick={() => {
+                setActionsOpen(false)
+                setEditing(true)
+              }}
+            >
+              <span className="flex items-center gap-2">
+                <Pencil size={13} />
+                Edit
+              </span>
+            </MenuRow>
+            <MenuRow disabled={remove.isPending} onClick={onDelete}>
+              <span className="flex items-center gap-2 text-danger">
+                <Trash2 size={13} />
+                Delete
+              </span>
+            </MenuRow>
+          </Popover>
         </div>
       </header>
 
       <div className="mt-5 whitespace-pre-wrap rounded-card bg-surface px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink-2">
         <MentionText text={loop.prompt} />
       </div>
-
-      <dl className="mt-5 flex flex-wrap gap-x-10 gap-y-3">
-        <Fact label="Agent" value={agentLabel(loop.acp_agent || 'jaz')} />
-        {/* Only pinned overrides show; otherwise runs follow Settings > Agents. */}
-        {loop.model?.trim() ? <Fact label="Model" value={loop.model} mono /> : null}
-        {loop.reasoning_effort?.trim() ? (
-          <Fact label="Reasoning effort" value={reasoningEffortLabel(loop.reasoning_effort)} />
-        ) : null}
-        <Fact label="Folder" value={loop.directory?.trim() || 'workspace'} mono />
-      </dl>
 
       <LoopBoardAssignments loop={loop} boardIds={boardIds} />
 
@@ -177,31 +195,6 @@ function LoopDetail({
       </section>
 
       <LoopModal open={editing} onClose={() => setEditing(false)} loop={loop} boardIds={boardIds} />
-    </div>
-  )
-}
-
-function Action({
-  onClick,
-  disabled,
-  children,
-}: {
-  onClick: () => void
-  disabled?: boolean
-  children: ReactNode
-}) {
-  return (
-    <Button variant="secondary" size="md" disabled={disabled} onClick={onClick}>
-      {children}
-    </Button>
-  )
-}
-
-function Fact({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div>
-      <dt className="text-[11px] font-medium text-ink-3">{label}</dt>
-      <dd className={`mt-0.5 text-[13px] text-ink ${mono ? 'font-mono' : ''}`}>{value}</dd>
     </div>
   )
 }

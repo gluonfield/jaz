@@ -53,6 +53,16 @@ func promptForArtifactSurface(source SystemPromptSource, cwd, surface string) (s
 	return source.ACPPrompt(cwd)
 }
 
+func joinPromptExtensions(parts ...string) string {
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part := strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return strings.Join(out, "\n\n")
+}
+
 // systemPromptMeta wraps prompt in the session _meta payload understood by
 // the named agent. ACP has no standard system-prompt field, so each adapter
 // defines its own extension key; every form below appends to the agent's own

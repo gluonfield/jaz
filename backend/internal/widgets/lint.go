@@ -16,8 +16,6 @@ var (
 	localStyleRe   = regexp.MustCompile(`(?i)(<style[\s>]|style\s*=|<svg[\s>])`)
 	viewportUnitRe = regexp.MustCompile(`(?i)\b\d+(?:\.\d+)?(?:vh|vw|vmin|vmax)\b`)
 	fixedPosRe     = regexp.MustCompile(`(?i)position:\s*fixed`)
-	cardClassRe    = regexp.MustCompile(`(?i)class\s*=\s*["'][^"']*\bcard\b`)
-	paragraphRe    = regexp.MustCompile(`(?i)<p(?:\s|>)`)
 )
 
 // LintHTML reports non-fatal quality problems in a widget fragment.
@@ -34,9 +32,6 @@ func LintHTML(html string) []string {
 	}
 	if !localStyleRe.MatchString(html) {
 		warnings = append(warnings, "widget has no local styling — build a polished artifact tile with scoped CSS or inline styles instead of bare markup")
-	}
-	if len(paragraphRe.FindAllString(html, -1)) > 6 || len(cardClassRe.FindAllString(html, -1)) > 8 {
-		warnings = append(warnings, "widget reads like a long feed rather than a board tile — summarize the top signals first, use compact rows/chips/metrics, and keep detailed history behind one short scroll region")
 	}
 	return warnings
 }

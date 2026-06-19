@@ -423,13 +423,18 @@ func TestPublishLintsAndClearsLayout(t *testing.T) {
 		t.Fatalf("expected lint warnings for viewport units + fixed position, got %v", warnings)
 	}
 
-	// Board telemetry lands on the widget and the prompt surfaces it…
+	// Board telemetry lands on the widget and the prompt surfaces hard
+	// rendering failures, but the first version does not yet have a proven
+	// useful tile size, so empty space is not treated as a correction signal.
 	if err := service.ReportLayout(widget.ID, `{"dead_space_pct":40,"overflow_px":0,"clipped":1,"img_errors":2}`); err != nil {
 		t.Fatalf("report layout: %v", err)
 	}
 	stored, _ := store.LoadWidget(widget.ID)
 	section := widgets.PromptSection(loop, &stored)
-	for _, want := range []string{"40% of the tile is empty", "clip their content", "2 image(s) failed to load"} {
+	if strings.Contains(section, "40% of the tile is empty") {
+		t.Fatalf("first widget version must not optimize for empty space:\n%s", section)
+	}
+	for _, want := range []string{"clip their content", "2 image(s) failed to load"} {
 		if !strings.Contains(section, want) {
 			t.Fatalf("prompt missing telemetry %q:\n%s", want, section)
 		}
@@ -445,6 +450,14 @@ func TestPublishLintsAndClearsLayout(t *testing.T) {
 	}
 	if section := widgets.PromptSection(loop, &stored); strings.Contains(section, "telemetry") {
 		t.Fatalf("healthy widget still carries telemetry text:\n%s", section)
+	}
+
+	if err := service.ReportLayout(widget.ID, `{"dead_space_pct":40,"overflow_px":0,"clipped":0,"img_errors":0}`); err != nil {
+		t.Fatalf("report layout after second publish: %v", err)
+	}
+	stored, _ = store.LoadWidget(widget.ID)
+	if section := widgets.PromptSection(loop, &stored); !strings.Contains(section, "40% of the tile is empty") {
+		t.Fatalf("established widget versions should surface empty-space telemetry:\n%s", section)
 	}
 }
 
@@ -479,9 +492,6 @@ func TestPromptSectionMentionsFileAndErrors(t *testing.T) {
 	section := widgets.PromptSection(loop, &widgets.Widget{CurrentVersion: 3, Title: "Open PRs", LastError: "boom"})
 	for _, want := range []string{
 		widgets.WidgetFilePath(loop),
-		"visualise_read_me",
-		"jaztools",
-		"Tile quality floor",
 		"visualise_publish_widget",
 		"boom",
 	} {
@@ -502,6 +512,8 @@ func TestPromptSectionMentionsFileAndErrors(t *testing.T) {
 		"extension method",
 		"If no publish mechanism",
 		"fallback",
+		"Tile quality floor",
+		"compact rows",
 	} {
 		if strings.Contains(section, reject) {
 			t.Fatalf("prompt must expose only the identifier-safe widget visualise contract; found %q:\n%s", reject, section)

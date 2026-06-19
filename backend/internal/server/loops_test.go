@@ -160,7 +160,7 @@ func TestLoopAPICarriesReasoningEffortAndDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitForACPSendContaining(t, manager, "Scheduled Jaz loop run.")
+	waitForACPSendContaining(t, manager, "audit the repo")
 	manager.mu.Lock()
 	spawned := manager.spawned
 	manager.mu.Unlock()
@@ -169,6 +169,9 @@ func TestLoopAPICarriesReasoningEffortAndDirectory(t *testing.T) {
 	}
 	if spawned.SourceID != run.ID {
 		t.Fatalf("spawn source id = %q, run id = %q", spawned.SourceID, run.ID)
+	}
+	if !strings.Contains(strings.Join(spawned.SystemPromptExtensions, "\n"), "Scheduled Jaz loop run.") {
+		t.Fatalf("spawn system prompt extensions missing loop context:\n%v", spawned.SystemPromptExtensions)
 	}
 }
 
@@ -197,15 +200,15 @@ func TestACPLoopRunCreatesHiddenThreadAndFinishesFromCallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sent := waitForACPSendContaining(t, manager, "Scheduled Jaz loop run.")
+	sent := waitForACPSendContaining(t, manager, "check status")
 	if sent.Session == "" {
 		t.Fatalf("missing sent session: %#v", sent)
 	}
 	if sent.Interactive {
 		t.Fatalf("loop run must be autonomous, got interactive send: %#v", sent)
 	}
-	if !strings.Contains(sent.Message, "Memory: "+loop.MemoryPath) {
-		t.Fatalf("acp loop prompt missing memory path %q:\n%s", loop.MemoryPath, sent.Message)
+	if sent.Message != "check status" {
+		t.Fatalf("sent message = %q, want loop task only", sent.Message)
 	}
 	manager.mu.Lock()
 	spawned := manager.spawned
@@ -213,9 +216,15 @@ func TestACPLoopRunCreatesHiddenThreadAndFinishesFromCallback(t *testing.T) {
 	if spawned.SourceType != storage.SourceLoopRun || spawned.SourceID != run.ID {
 		t.Fatalf("spawn source = %#v", spawned)
 	}
+	if !strings.Contains(strings.Join(spawned.SystemPromptExtensions, "\n"), "Memory: "+loop.MemoryPath) {
+		t.Fatalf("system prompt extensions missing memory path %q:\n%v", loop.MemoryPath, spawned.SystemPromptExtensions)
+	}
 	session := sessionForRun(t, store, run.ID)
 	if session.ID != sent.Session {
 		t.Fatalf("run session = %s, sent session = %s", session.ID, sent.Session)
+	}
+	if session.RuntimeRef == nil {
+		t.Fatalf("session runtime ref missing: %#v", session)
 	}
 
 	if _, ok, err := service.FinishThread(sent.Session, loops.RunStatusOK, ""); err != nil || !ok {

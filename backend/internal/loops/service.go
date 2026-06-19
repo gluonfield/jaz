@@ -325,13 +325,18 @@ func (s *Service) start(ctx context.Context, loop Loop, run Run, now time.Time) 
 	if s.ArtifactSurface != nil {
 		artifactSurface = strings.TrimSpace(s.ArtifactSurface(loop, run))
 	}
-	prompt := RunPrompt(loop, run, now, extras...)
+	loopPrompt := RunSystemPrompt(loop, run, now, extras...)
+	var systemPromptExtensions []string
+	if loopPrompt != "" {
+		systemPromptExtensions = []string{loopPrompt}
+	}
 	go s.Executor.StartLoopRun(context.WithoutCancel(ctx), Execution{
-		Loop:            loop,
-		Run:             run,
-		Prompt:          prompt,
-		ArtifactSurface: artifactSurface,
-		Controller:      s,
+		Loop:                   loop,
+		Run:                    run,
+		Prompt:                 loop.Prompt,
+		SystemPromptExtensions: systemPromptExtensions,
+		ArtifactSurface:        artifactSurface,
+		Controller:             s,
 	})
 }
 
@@ -509,10 +514,7 @@ func (s *Service) loopUpdateForRunLocked(run Run, now time.Time) (*Loop, error) 
 	return &loop, nil
 }
 
-// RunPrompt renders the full prompt for a run via the looprun template:
-// context and rules first, capability extras (widget instructions, …) next,
-// and the user's task last so it carries the emphasis.
-func RunPrompt(loop Loop, run Run, now time.Time, extras ...string) string {
+func RunSystemPrompt(loop Loop, run Run, now time.Time, extras ...string) string {
 	previous := "none"
 	if loop.LastRunID != "" {
 		var b strings.Builder
@@ -537,12 +539,9 @@ func RunPrompt(loop Loop, run Run, now time.Time, extras ...string) string {
 		MemoryPath:   loop.MemoryPath,
 		PreviousRun:  previous,
 		Extras:       extras,
-		Prompt:       loop.Prompt,
 	})
 	if err != nil {
-		// The template is embedded and parse-checked at init; execution
-		// cannot realistically fail, but the run must never lose its task.
-		return loop.Prompt
+		return ""
 	}
 	return prompt
 }

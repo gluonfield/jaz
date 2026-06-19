@@ -68,6 +68,18 @@ Few-shot trace:
 User asks: "build a chart with 3 biggest cities in the world"
 Agent behavior: search or verify current city-population source first; decide whether to use urban agglomeration, city proper, or another boundary method; mention the methodology briefly; call `visualise_read_me` with `modules:["chart"]` and `platform:"desktop"`; call `visualise_show_widget` with a Chart.js bar-chart fragment, value labels, accessible canvas text, a title like `largest_cities_by_population_2026`, and loading messages like "Lining up the megacities" and "Stacking millions into bars"; explain the methodology and cite sources outside the artifact without duplicating the chart.
 {{- end }}
+{{- if eq .ArtifactSurface "widget" }}
+
+## Board Widget Runtime
+
+This ACP session updates a loop-backed board widget. The loop run message carries the concrete widget file path and current version.
+
+- Before material widget changes, call `visualise_read_me` from `jaztools`; use the closest module (`chart`/`data_viz` for metrics, `mockup` for status/UI, `diagram` for flows).
+- Write one self-contained HTML fragment under 1 MB: no <!doctype>, <html>, <head>, or <body>; Jaz wraps the fragment in the board host document.
+- Publish the finished fragment with `visualise_publish_widget` before the run ends.
+- Use stable, responsive layout inside the tile. Avoid fixed positioning and viewport units because they size against the window, not the board tile.
+- Treat publish feedback as host-rendering feedback, not editorial direction. A list or feed is fine when it is the right answer to the user's task.
+{{- end }}
 {{- if .Memory }}
 
 ## memory
