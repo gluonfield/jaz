@@ -8,6 +8,7 @@ import (
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
+	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 	"github.com/wins/jaz/backend/internal/tools"
 )
 
@@ -38,6 +39,46 @@ func (utilityTool) Definition() tools.Definition {
 
 func (utilityTool) Execute(context.Context, map[string]any) (tools.Result, error) {
 	return tools.Result{Content: "{}"}, nil
+}
+
+type staticPrompt string
+
+func (p staticPrompt) SystemPromptForWorkspace(string) (string, error) { return string(p), nil }
+
+func TestBuildRequestAddsSystemPromptExtensionWithoutChangingUserMessage(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug: "loop-run",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	turn, err := BuildRequest(store, staticPrompt("base prompt"), Request{
+		Session:                session,
+		Message:                "news In AI",
+		AppendUser:             true,
+		SystemPromptExtensions: []string{"run context"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := provider.MessageContent(turn.Messages[0]); got != "base prompt\n\nrun context" {
+		t.Fatalf("system prompt = %q", got)
+	}
+	if got := provider.MessageContent(turn.Messages[len(turn.Messages)-1]); got != "news In AI" {
+		t.Fatalf("user prompt = %q", got)
+	}
+	stored, err := store.LoadMessages(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 1 || provider.MessageContent(stored[0]) != "news In AI" {
+		t.Fatalf("stored messages = %#v", stored)
+	}
 }
 
 func TestRunUtilityDoesNotUseTranscriptStoreOrTools(t *testing.T) {

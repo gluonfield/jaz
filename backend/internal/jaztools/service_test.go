@@ -344,11 +344,45 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 	if hasTool(t, widget, "visualise_show_widget") {
 		t.Fatal("widget server advertised thread artifact renderer")
 	}
-	if hasTool(t, widget, "agent_spawn") {
-		t.Fatal("widget server advertised agent_spawn")
+	if !hasTool(t, widget, "agent_spawn") {
+		t.Fatal("widget server did not advertise agent_spawn")
 	}
 	if !hasTool(t, widget, "visualise_publish_widget") {
 		t.Fatal("widget server did not advertise visualise_publish_widget")
+	}
+}
+
+func TestWidgetSurfaceGetsAgentToolsAfterServerCreated(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	memory, err := jazmem.Open(jazmem.Config{Root: t.TempDir(), DBPath: filepath.Join(t.TempDir(), "memory.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = memory.Close() })
+
+	service := New(
+		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"),
+		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
+		store,
+		sessionevents.New(),
+		store,
+		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
+	)
+	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
+
+	widget, closeWidget := connectClient(t, service.server(widgetSurface))
+	defer closeWidget()
+	if hasTool(t, widget, "agent_spawn") {
+		t.Fatal("widget server advertised agent_spawn before agents were configured")
+	}
+
+	service.SetAgents(fakeACPService{spawned: make(chan acp.SpawnRequest, 1)})
+	if !hasTool(t, widget, "agent_spawn") {
+		t.Fatal("widget server did not advertise agent_spawn after agents were configured")
 	}
 }
 

@@ -786,6 +786,43 @@ func TestManagerUsesCodexModelAndEffortConfigOptions(t *testing.T) {
 	}
 }
 
+func TestManagerUsesAdvertisedThoughtLevelConfigOption(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := acp.NewManager(store, acp.Config{
+		Root:      t.TempDir(),
+		Workspace: t.TempDir(),
+		Agents: map[string]acp.AgentConfig{
+			"codex": {
+				Command:         os.Args[0],
+				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
+				Model:           "fake-large",
+				ReasoningEffort: "high",
+				Env: map[string]string{
+					"JAZ_FAKE_ACP_AGENT":                       "1",
+					"JAZ_FAKE_ACP_MODELS":                      "fake-large",
+					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG":         "fake-large",
+					"JAZ_FAKE_ACP_SET_CONFIG":                  "1",
+					"JAZ_FAKE_ACP_MODEL_CONFIG_EFFORT_ID":      "thinking_budget",
+					"JAZ_FAKE_ACP_MODEL_CONFIG_EFFORT_OPTIONS": "high",
+					"JAZ_FAKE_ACP_EXPECT_CONFIG_ID":            "thinking_budget",
+					"JAZ_FAKE_ACP_EXPECT_EFFORT":               "high",
+				},
+			},
+		},
+	}, log.New(io.Discard))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "codex", Slug: "codex-thought-level"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+}
+
 func TestManagerUsesGrokSetModelAndFallbackModes(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -958,6 +995,50 @@ func TestManagerRejectsConfiguredCodexEffortWhenModelOmitsEffortConfig(t *testin
 	}
 	if session.Status != storage.StatusError || !strings.Contains(session.Error, "did not advertise a reasoning effort config option") {
 		t.Fatalf("missing effort config failure was not stored: %#v", session)
+	}
+}
+
+func TestManagerRejectsUnadvertisedReasoningEffort(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := acp.NewManager(store, acp.Config{
+		Root:      t.TempDir(),
+		Workspace: t.TempDir(),
+		Agents: map[string]acp.AgentConfig{
+			"codex": {
+				Command:         os.Args[0],
+				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
+				Model:           "fake-large",
+				ReasoningEffort: "xhigh",
+				Env: map[string]string{
+					"JAZ_FAKE_ACP_AGENT":                       "1",
+					"JAZ_FAKE_ACP_MODELS":                      "fake-large",
+					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG":         "fake-large",
+					"JAZ_FAKE_ACP_SET_CONFIG":                  "1",
+					"JAZ_FAKE_ACP_MODEL_CONFIG_EFFORT_ID":      "thinking_budget",
+					"JAZ_FAKE_ACP_MODEL_CONFIG_EFFORT_OPTIONS": "high",
+				},
+			},
+		},
+	}, log.New(io.Discard))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	_, err = manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "codex", Slug: "codex-unadvertised-effort"})
+	if err == nil {
+		t.Fatal("expected spawn to fail")
+	}
+	if !strings.Contains(err.Error(), `reasoning effort "xhigh"`) || !strings.Contains(err.Error(), "did not advertise that reasoning effort") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	session, loadErr := store.LoadSession("codex-unadvertised-effort")
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if session.Status != storage.StatusError || !strings.Contains(session.Error, "did not advertise that reasoning effort") {
+		t.Fatalf("unadvertised effort failure was not stored: %#v", session)
 	}
 }
 

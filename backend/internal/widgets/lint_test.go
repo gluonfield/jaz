@@ -19,8 +19,6 @@ func TestLintHTMLFlagsAntipatterns(t *testing.T) {
 		{"viewport width", `<div style="width: 50vw">x</div>`, "viewport units"},
 		{"fixed position", `<div style="position: fixed">x</div>`, "position: fixed"},
 		{"bare markup", `<section><p>42</p></section>`, "no local styling"},
-		{"too many paragraphs", `<div style="height:100%"><p>1</p><p>2</p><p>3</p><p>4</p><p>5</p><p>6</p><p>7</p></div>`, "long feed"},
-		{"too many cards", `<div style="height:100%"><div class="rumor-card"></div><div class="rumor-card"></div><div class="rumor-card"></div><div class="rumor-card"></div><div class="rumor-card"></div><div class="rumor-card"></div><div class="rumor-card"></div><div class="rumor-card"></div><div class="rumor-card"></div></div>`, "long feed"},
 	}
 	for _, tc := range cases {
 		warnings := widgets.LintHTML(tc.html)
@@ -32,6 +30,15 @@ func TestLintHTMLFlagsAntipatterns(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("%s: expected warning containing %q, got %v", tc.name, tc.want, warnings)
+		}
+	}
+}
+
+func TestLintHTMLAllowsFeedLikeWidgets(t *testing.T) {
+	html := `<div style="height:100%;overflow:auto"><p>1</p><p>2</p><p>3</p><p>4</p><p>5</p><p>6</p><p>7</p><p>8</p></div>`
+	for _, warning := range widgets.LintHTML(html) {
+		if strings.Contains(warning, "feed") || strings.Contains(warning, "compact rows") {
+			t.Fatalf("feed-like content must not be editorially linted: %v", warning)
 		}
 	}
 }

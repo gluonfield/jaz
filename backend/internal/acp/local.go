@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/agent"
+	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -22,11 +23,12 @@ type LocalUtilityRunner interface {
 }
 
 type LocalAgentRequest struct {
-	Session         storage.Session
-	Message         string
-	Attachments     []storage.Attachment
-	PlanRequested   bool
-	ArtifactSurface string
+	Session                storage.Session
+	Message                string
+	Attachments            []storage.Attachment
+	PlanRequested          bool
+	ArtifactSurface        string
+	SystemPromptExtensions promptmodule.Modules
 }
 
 type LocalUtilityRequest struct {
@@ -137,7 +139,7 @@ func localModeState() ModeState {
 	}
 }
 
-func (m *Manager) spawnLocalSession(session storage.Session, agentName, cwd string) (SpawnResult, error) {
+func (m *Manager) spawnLocalSession(session storage.Session, agentName, cwd string, systemPromptExtensions promptmodule.Modules) (SpawnResult, error) {
 	session.RuntimeRef.SessionID = session.ID
 	if err := m.store.SaveSession(session); err != nil {
 		session.Status = storage.StatusError
@@ -146,6 +148,7 @@ func (m *Manager) spawnLocalSession(session storage.Session, agentName, cwd stri
 		return SpawnResult{}, err
 	}
 	job := m.newLocalJob(session, agentName, cwd)
+	job.systemPromptExtensions = systemPromptExtensions.Strings()
 	m.addJob(job, nil, nil, nil)
 	m.saveACPState(job.Snapshot())
 	m.log.Info("spawned local agent session", "agent", job.ACPAgent, "session", job.ID)
@@ -229,12 +232,16 @@ func (m *Manager) runLocalPrompt(ctx context.Context, job *Job, runner LocalAgen
 	if session.RuntimeRef != nil {
 		artifactSurface = session.RuntimeRef.ArtifactSurface
 	}
+	job.mu.RLock()
+	systemPromptExtensions := job.systemPromptExtensions.Strings()
+	job.mu.RUnlock()
 	for event := range runner.Run(runCtx, LocalAgentRequest{
-		Session:         session,
-		Message:         message,
-		Attachments:     attachments,
-		PlanRequested:   planRequested,
-		ArtifactSurface: artifactSurface,
+		Session:                session,
+		Message:                message,
+		Attachments:            attachments,
+		PlanRequested:          planRequested,
+		ArtifactSurface:        artifactSurface,
+		SystemPromptExtensions: systemPromptExtensions,
 	}) {
 		switch event.Type {
 		case agent.StreamDelta:

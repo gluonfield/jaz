@@ -50,7 +50,7 @@ func (m *Manager) RunUtilityPrompt(ctx context.Context, req UtilityPromptRequest
 		return m.runLocalUtilityPrompt(callCtx, spawnReq, cfg, cwd, req.Message)
 	}
 	collector := &utilityPromptCollector{}
-	ac, err := m.connectWithHandler(callCtx, spawnReq.ACPAgent, cfg, cwd, "", jsonrpc.HandlerFunc(collector.handleJSONRPC))
+	ac, err := m.connectWithHandler(callCtx, spawnReq.ACPAgent, cfg, cwd, "", nil, jsonrpc.HandlerFunc(collector.handleJSONRPC))
 	if err != nil {
 		return "", err
 	}

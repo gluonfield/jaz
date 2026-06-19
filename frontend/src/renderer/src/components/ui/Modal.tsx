@@ -18,6 +18,7 @@ export function Modal({
   title,
   description,
   icon,
+  headerAccessory,
   footer,
   children,
   size = 'md',
@@ -27,6 +28,9 @@ export function Modal({
   title: string
   description?: ReactNode
   icon?: ReactNode
+  // Sits on the title row, right-aligned before the close button — e.g. a
+  // step trail next to the heading.
+  headerAccessory?: ReactNode
   footer?: ReactNode
   children: ReactNode
   size?: keyof typeof SIZES
@@ -98,6 +102,10 @@ export function Modal({
               aria-label={title}
               tabIndex={-1}
               onClick={(event) => event.stopPropagation()}
+              // `layout` tweens the panel's height/position when its content
+              // changes (e.g. stepping through a multi-step body) instead of
+              // snapping. Disabled under reduced-motion.
+              layout={reduce ? false : 'size'}
               initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={reduce ? { opacity: 0 } : { opacity: 0, y: 6, scale: 0.98 }}
@@ -116,6 +124,9 @@ export function Modal({
                     <p className="mt-0.5 text-[13px] text-ink-2">{description}</p>
                   ) : null}
                 </div>
+                {headerAccessory ? (
+                  <div className="shrink-0 self-center">{headerAccessory}</div>
+                ) : null}
                 <IconButton
                   variant="ghost"
                   size="sm"

@@ -54,16 +54,17 @@ func (r *LoopRunner) startACPLoopRun(execution loops.Execution) {
 		directory = "."
 	}
 	spawned, err := r.acp.Spawn(startCtx, acp.SpawnRequest{
-		ACPAgent:        agent,
-		Slug:            loopRunSlug(loop, run),
-		Title:           loop.Name,
-		Directory:       directory,
-		ModelProvider:   loop.ModelProvider,
-		Model:           loop.Model,
-		ReasoningEffort: loop.ReasoningEffort,
-		SourceType:      storage.SourceLoopRun,
-		SourceID:        run.ID,
-		ArtifactSurface: execution.ArtifactSurface,
+		ACPAgent:               agent,
+		Slug:                   loopRunSlug(loop, run),
+		Title:                  loop.Name,
+		Directory:              directory,
+		ModelProvider:          loop.ModelProvider,
+		Model:                  loop.Model,
+		ReasoningEffort:        loop.ReasoningEffort,
+		SourceType:             storage.SourceLoopRun,
+		SourceID:               run.ID,
+		ArtifactSurface:        execution.ArtifactSurface,
+		SystemPromptExtensions: execution.SystemPromptExtensions,
 	})
 	if err != nil {
 		r.finishLoopRun(execution, loops.RunStatusError, err.Error())

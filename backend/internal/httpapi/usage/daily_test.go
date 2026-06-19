@@ -16,7 +16,13 @@ func TestDailyHandler(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, err := store.CreateSession(storage.CreateSession{Slug: "usage"})
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:          "usage",
+		Runtime:       storage.RuntimeACP,
+		RuntimeRef:    &storage.RuntimeRef{Agent: "codex"},
+		ModelProvider: "openai",
+		Model:         "gpt-5.4",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,8 +44,15 @@ func TestDailyHandler(t *testing.T) {
 	}
 	var got struct {
 		Days []struct {
-			Usage        map[string]int64 `json:"usage"`
-			SessionCount int              `json:"session_count"`
+			Usage  map[string]int64 `json:"usage"`
+			Models []struct {
+				Agent         string           `json:"agent"`
+				ModelProvider string           `json:"model_provider"`
+				Model         string           `json:"model"`
+				Usage         map[string]int64 `json:"usage"`
+				SessionCount  int              `json:"session_count"`
+			} `json:"models"`
+			SessionCount int `json:"session_count"`
 		} `json:"days"`
 	}
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
@@ -54,6 +67,15 @@ func TestDailyHandler(t *testing.T) {
 	}
 	if _, ok := got.Days[0].Usage["total_tokens"]; ok {
 		t.Fatalf("daily response must not overload total_tokens: %#v", got.Days[0].Usage)
+	}
+	if len(got.Days[0].Models) != 1 {
+		t.Fatalf("daily models = %#v", got.Days[0].Models)
+	}
+	model := got.Days[0].Models[0]
+	if model.Agent != "codex" || model.ModelProvider != "openai" || model.Model != "gpt-5.4" ||
+		model.Usage["input_tokens"] != 12 || model.Usage["cached_input_tokens"] != 30 ||
+		model.Usage["output_tokens"] != 4 || model.SessionCount != 1 {
+		t.Fatalf("daily model = %#v", model)
 	}
 }
 

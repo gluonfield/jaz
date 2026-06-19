@@ -201,7 +201,9 @@ type sessionConfigOptionsState struct {
 	configOptionsPresent bool
 	modelOptions         []string
 	effortConfigPresent  bool
+	effortConfigID       string
 	effortOptions        []string
+	effortPriority       int
 }
 
 // setConfiguredSessionModel applies the configured model and returns the
@@ -246,7 +248,7 @@ func (m *Manager) setConfiguredSessionModel(ctx context.Context, peer *jsonrpc.P
 	return nil, fmt.Errorf("set acp agent %q model %q: %w", agentName, model, err)
 }
 
-func (m *Manager) setConfiguredReasoningEffort(ctx context.Context, peer *jsonrpc.Peer, agentName string, sessionID acpschema.SessionID, effort string) error {
+func (m *Manager) setConfiguredReasoningEffort(ctx context.Context, peer *jsonrpc.Peer, agentName string, sessionID acpschema.SessionID, effort, configID string) error {
 	effort, err := NormalizeAgentReasoningEffort(agentName, effort)
 	if err != nil {
 		return err
@@ -255,10 +257,15 @@ func (m *Manager) setConfiguredReasoningEffort(ctx context.Context, peer *jsonrp
 		return nil
 	}
 	policy := agentPolicyForAgent(agentName)
-	if !policy.usesReasoningEffortConfigOption() {
+	if strings.TrimSpace(configID) == "" {
+		if !policy.usesReasoningEffortConfigOption() {
+			return nil
+		}
+		configID = policy.reasoningEffortConfigID()
+	}
+	if strings.TrimSpace(configID) == "" {
 		return nil
 	}
-	configID := policy.reasoningEffortConfigID()
 	_, err = peer.Call(ctx, acpschema.AgentMethodSessionSetConfigOption, acpschema.SetSessionConfigOptionRequest{
 		SessionID: sessionID,
 		ConfigID:  acpschema.SessionConfigID(configID),
@@ -324,7 +331,7 @@ func (m *Manager) applyConfiguredReasoningEffort(
 	if effort == "" {
 		return nil
 	}
-	if !agentPolicyForAgent(agentName).usesReasoningEffortConfigOption() {
+	if !agentPolicyForAgent(agentName).usesReasoningEffortConfigOption() && options.effortConfigID == "" {
 		return nil
 	}
 	if requireAdvertisedEffort && !options.effortConfigPresent {
@@ -335,60 +342,16 @@ func (m *Manager) applyConfiguredReasoningEffort(
 			configuredSessionModel(model),
 		)
 	}
-	if clamped := clampReasoningEffort(effort, options.effortOptions); clamped != effort {
-		if clamped == "" {
-			return fmt.Errorf(
-				"set acp agent %q reasoning effort %q for model %q: no compatible advertised reasoning effort is available",
-				agentName,
-				effort,
-				configuredSessionModel(model),
-			)
-		}
-		m.log.Info("clamped acp reasoning effort to the active model",
-			"agent", agentName, "model", model, "requested", effort, "using", clamped)
-		effort = clamped
+	if options.effortConfigPresent && !configOptionValueAvailable(options.effortOptions, effort) {
+		return fmt.Errorf(
+			"set acp agent %q reasoning effort %q for model %q: the active model did not advertise that reasoning effort; advertised values: %s",
+			agentName,
+			effort,
+			configuredSessionModel(model),
+			configOptionValuesForError(options.effortOptions),
+		)
 	}
-	return m.setConfiguredReasoningEffort(ctx, peer, agentName, sessionID, effort)
-}
-
-var effortLadder = []string{"minimal", "low", "medium", "high", "xhigh"}
-
-// clampReasoningEffort fits the configured effort to the agent's advertised
-// levels: the nearest weaker level wins, then the nearest stronger. Empty
-// result means there is no compatible advertised effort; an unknown
-// advertisement leaves the effort untouched so the agent can accept or reject it.
-func clampReasoningEffort(effort string, advertised []string) string {
-	if effort == "" || len(advertised) == 0 {
-		return effort
-	}
-	available := make(map[string]struct{}, len(advertised))
-	for _, value := range advertised {
-		available[strings.ToLower(strings.TrimSpace(value))] = struct{}{}
-	}
-	if _, ok := available[effort]; ok {
-		return effort
-	}
-	index := -1
-	for i, level := range effortLadder {
-		if level == effort {
-			index = i
-			break
-		}
-	}
-	if index < 0 {
-		return effort
-	}
-	for i := index - 1; i >= 0; i-- {
-		if _, ok := available[effortLadder[i]]; ok {
-			return effortLadder[i]
-		}
-	}
-	for i := index + 1; i < len(effortLadder); i++ {
-		if _, ok := available[effortLadder[i]]; ok {
-			return effortLadder[i]
-		}
-	}
-	return ""
+	return m.setConfiguredReasoningEffort(ctx, peer, agentName, sessionID, effort, options.effortConfigID)
 }
 
 // parseEffortOptions extracts the advertised reasoning effort values from a
@@ -408,22 +371,59 @@ func parseSessionConfigOptions(raw json.RawMessage) sessionConfigOptionsState {
 	}
 	state := sessionConfigOptionsState{configOptionsPresent: true}
 	var options []struct {
-		ID      string          `json:"id"`
-		Options json.RawMessage `json:"options"`
+		ID       string          `json:"id"`
+		Category string          `json:"category"`
+		Options  json.RawMessage `json:"options"`
 	}
 	if json.Unmarshal(rawOptions, &options) != nil {
 		return state
 	}
 	for _, option := range options {
-		switch option.ID {
-		case sessionConfigModel:
+		category := strings.TrimSpace(option.Category)
+		switch {
+		case category == string(acpschema.SessionConfigOptionCategoryModel) || option.ID == sessionConfigModel:
 			state.modelOptions = parseConfigOptionValues(option.Options)
-		case claudeSessionConfigEffort, sessionConfigReasoningEffort:
+		case category == string(acpschema.SessionConfigOptionCategoryThoughtLevel) || option.ID == claudeSessionConfigEffort || option.ID == sessionConfigReasoningEffort:
+			priority := 1
+			if category == string(acpschema.SessionConfigOptionCategoryThoughtLevel) {
+				priority = 2
+			}
 			state.effortConfigPresent = true
-			state.effortOptions = parseConfigOptionValues(option.Options)
+			if priority > state.effortPriority {
+				state.effortConfigID = option.ID
+				state.effortOptions = parseConfigOptionValues(option.Options)
+				state.effortPriority = priority
+			}
 		}
 	}
 	return state
+}
+
+func configOptionValueAvailable(options []string, value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	for _, option := range options {
+		if strings.ToLower(strings.TrimSpace(option)) == value {
+			return true
+		}
+	}
+	return false
+}
+
+func configOptionValuesForError(options []string) string {
+	if len(options) == 0 {
+		return "none"
+	}
+	values := make([]string, 0, len(options))
+	for _, option := range options {
+		if option = strings.TrimSpace(option); option != "" {
+			values = append(values, option)
+		}
+	}
+	if len(values) == 0 {
+		return "none"
+	}
+	sort.Strings(values)
+	return strings.Join(values, ", ")
 }
 
 func parseSessionModelState(raw json.RawMessage) sessionModelState {

@@ -19,7 +19,7 @@ func PromptSection(loop loops.Loop, widget *Widget) string {
 		data.Title = widget.Title
 		data.SizeHint = widget.SizeHint
 		data.LastError = widget.LastError
-		data.LayoutFeedback = layoutFeedback(widget.LastLayout)
+		data.LayoutFeedback = layoutFeedback(widget.LastLayout, widget.CurrentVersion)
 	}
 	return widgetprompt.Render(data)
 }
@@ -34,7 +34,7 @@ type layoutReport struct {
 
 // layoutFeedback turns stored telemetry into actionable prompt text; empty
 // when the layout is healthy so healthy widgets cost no tokens.
-func layoutFeedback(payload string) string {
+func layoutFeedback(payload string, version int) string {
 	if strings.TrimSpace(payload) == "" {
 		return ""
 	}
@@ -43,7 +43,7 @@ func layoutFeedback(payload string) string {
 		return ""
 	}
 	var parts []string
-	if r.DeadSpacePct >= 20 {
+	if version > 1 && r.DeadSpacePct >= 20 {
 		parts = append(parts, fmt.Sprintf("~%d%% of the tile is empty at the bottom — let the main content area grow to fill the height or publish a smaller size_hint", r.DeadSpacePct))
 	}
 	if r.OverflowPx > 8 {

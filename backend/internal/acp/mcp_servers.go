@@ -70,7 +70,7 @@ func enabledHTTPMCPServers(ctx context.Context, store mcpconfig.ServerReader, po
 		}{
 			Type:    "http",
 			Name:    server.Name,
-			URL:     mcpServerURL(policy, server.URL),
+			URL:     mcpServerURL(policy, server),
 			Headers: headers,
 		}
 		data, err := json.Marshal(payload)
@@ -84,17 +84,20 @@ func enabledHTTPMCPServers(ctx context.Context, store mcpconfig.ServerReader, po
 
 func mcpServerAllowed(policy string, server mcpconfig.Server) bool {
 	switch strings.TrimSpace(policy) {
-	case MCPServerPolicyAll:
+	case MCPServerPolicyAll, MCPServerPolicyWidget:
 		return true
-	case MCPServerPolicyWidget, MCPServerPolicyMemorySearchWorker:
-		return strings.EqualFold(strings.TrimSpace(server.ID), "jaztools") ||
-			strings.EqualFold(strings.TrimSpace(server.Name), "jaztools")
+	case MCPServerPolicyMemorySearchWorker:
+		return isJaztoolsServer(server)
 	default:
 		return false
 	}
 }
 
-func mcpServerURL(policy, raw string) string {
+func mcpServerURL(policy string, server mcpconfig.Server) string {
+	raw := server.URL
+	if !isJaztoolsServer(server) {
+		return raw
+	}
 	switch strings.TrimSpace(policy) {
 	case MCPServerPolicyWidget:
 		return jaztoolsSurfaceURL(raw, jaztoolsWidgetSurfaceName)
@@ -103,6 +106,11 @@ func mcpServerURL(policy, raw string) string {
 	default:
 		return raw
 	}
+}
+
+func isJaztoolsServer(server mcpconfig.Server) bool {
+	return strings.EqualFold(strings.TrimSpace(server.ID), "jaztools") ||
+		strings.EqualFold(strings.TrimSpace(server.Name), "jaztools")
 }
 
 func jaztoolsSurfaceURL(raw, surface string) string {
