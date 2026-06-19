@@ -38,6 +38,7 @@ export interface UsageTotals {
 export interface DailyUsage {
   date: string
   usage: UsageTotals
+  models?: ModelUsage[]
   session_count: number
 }
 
