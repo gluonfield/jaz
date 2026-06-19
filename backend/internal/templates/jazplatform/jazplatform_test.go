@@ -55,6 +55,8 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		t.Fatalf("platform prompt must not carry the coordinator identity:\n%s", prompt)
 	}
 	for _, want := range []string{
+		"these govern behavior on the Jaz platform",
+		"Launching background work is not delivery",
 		"When Jaztools exposes `agent_spawn`",
 		"Choose the agent with `acp_agent` or `agent_name`",
 		"any reusable code snippet over 20 lines",
@@ -62,7 +64,7 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"Do not use artifacts for short code answers of 20 lines or fewer",
 		"plain lists, plain tables, enumerated content",
 		"Create single-file artifacts unless the user asks otherwise",
-		"verify the data and choose the source/method before loading artifact guidance",
+		"do not gate the artifact on research completing",
 		"Pass `platform:\"mobile\"` for mobile targets, `platform:\"desktop\"` for desktop targets",
 		"Call `visualise_show_widget` with a meaningful snake_case title",
 		"meaningful snake_case title",
@@ -135,6 +137,7 @@ func TestRenderWidgetSurfaceKeepsSharedVisualPolicy(t *testing.T) {
 		"## Artifacts and visualisation",
 		"Always call `visualise_read_me` before the first artifact",
 		"Finish with the output contract for the current surface",
+		"Launching background work is not delivery",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("widget surface missing %q:\n%s", want, prompt)
