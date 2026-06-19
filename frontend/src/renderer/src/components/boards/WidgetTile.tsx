@@ -1,5 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
-import { GripVertical, Pause, Pencil, Play, X } from 'lucide-react'
+import { GripVertical, Pencil, Play, X } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import {
   type MouseEvent as ReactMouseEvent,
@@ -37,11 +37,7 @@ function TileStatusDot({ item }: { item: BoardItem }) {
     )
   }
   if (item.loop_status === 'paused') {
-    return (
-      <span title="Paused" className="flex shrink-0 text-ink-3">
-        <Pause size={11} className="fill-current" />
-      </span>
-    )
+    return <span title="Paused" className="size-1.5 shrink-0 rounded-full bg-ink-3/50" />
   }
   return null
 }
