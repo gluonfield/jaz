@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { ChevronLeft } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -102,6 +102,12 @@ export function LoopModal({
             {save.isError ? save.error.message : ''}
           </p>
           <div className="flex shrink-0 items-center gap-1">
+            {onForm && !isEdit ? (
+              <Button variant="ghost" size="md" onClick={() => setDraft(null)}>
+                <ArrowLeft size={14} />
+                Back
+              </Button>
+            ) : null}
             <Button variant="ghost" size="md" onClick={close}>
               Cancel
             </Button>
@@ -139,23 +145,12 @@ export function LoopModal({
       }
     >
       {onForm && current ? (
-        <div className="space-y-4">
-          {!isEdit ? (
-            <button
-              type="button"
-              onClick={() => setDraft(null)}
-              className="-ml-1 flex items-center gap-1 rounded-control px-1 py-0.5 text-[12px] font-medium text-ink-3 transition-colors hover:text-ink-2"
-            >
-              <ChevronLeft size={14} />
-              Templates
-            </button>
-          ) : null}
-          <LoopForm
-            draft={current}
-            disabled={save.isPending || createBoardsLoading}
-            onChange={setDraft}
-          />
-        </div>
+        <LoopForm
+          draft={current}
+          disabled={save.isPending || createBoardsLoading}
+          autoFocusPrompt={!isEdit}
+          onChange={setDraft}
+        />
       ) : (
         <LoopTemplateGallery onPick={startFromTemplate} onBlank={startBlank} />
       )}
