@@ -6,7 +6,6 @@ import {
   type Attachment,
   type DailyUsage,
   type HealthResponse,
-  type ModelUsage,
   type QueuedMessageInput,
   type RepoChanges,
   type RepoFileChange,
@@ -83,21 +82,6 @@ export const dailyUsageQuery = (days = 30) => {
       const params = usageParams(days, timezone)
       const data = await get<{ days: DailyUsage[] | null }>(`/v1/usage/daily?${params}`)
       return data.days ?? []
-    },
-    staleTime: 60_000,
-    refetchOnMount: 'always',
-    refetchInterval: 300_000,
-  })
-}
-
-export const modelUsageQuery = (days = 30) => {
-  const timezone = usageTimezone()
-  return queryOptions({
-    queryKey: keys.usageModels(days, timezone),
-    queryFn: async (): Promise<ModelUsage[]> => {
-      const params = usageParams(days, timezone)
-      const data = await get<{ models: ModelUsage[] | null }>(`/v1/usage/models?${params}`)
-      return data.models ?? []
     },
     staleTime: 60_000,
     refetchOnMount: 'always',
