@@ -2,88 +2,31 @@ package acp
 
 import (
 	"encoding/json"
-	"errors"
-	"strings"
 	"testing"
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
 )
 
-type mutablePromptSource struct {
-	prompt string
-	err    error
-	calls  int
-	cwd    string
-}
-
-func (s *mutablePromptSource) SkillsPromptForWorkspace(cwd string) (string, error) {
-	s.cwd = cwd
-	s.calls++
-	return s.prompt, s.err
-}
-
-func (s *mutablePromptSource) ACPPrompt(string) (string, error) { return s.prompt, s.err }
-
-func TestACPTurnPromptContextRefreshesSkillsForMentions(t *testing.T) {
-	source := &mutablePromptSource{prompt: "old skills"}
-	manager := &Manager{cfg: Config{SystemPrompt: source}}
-
-	if context, err := manager.turnPromptContext("/repo", "plain request"); err != nil || context != "" {
-		t.Fatalf("turnPromptContext without mention = %q, %v", context, err)
-	}
-	if source.calls != 0 {
-		t.Fatalf("SkillsPrompt called without $ mention")
-	}
-
-	source.prompt = "latest skills"
-	context, err := manager.turnPromptContext("/repo", "use $new-skill")
+func TestPromptContentBlocksKeepsSkillReferencesInUserMessage(t *testing.T) {
+	message := "use [$thermo-nuclear-code-quality-review](/Users/wins/.jaz/skills/thermo-nuclear-code-quality-review/SKILL.md)"
+	blocks, err := promptContentBlocks(message, nil, localAttachmentResources)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(context, "latest skills") || !strings.Contains(context, "$skill references") {
-		t.Fatalf("context did not include refreshed skills prompt:\n%s", context)
+	if len(blocks) != 1 {
+		t.Fatalf("blocks = %d, want user message only", len(blocks))
 	}
-	if source.calls != 1 {
-		t.Fatalf("SkillsPrompt calls = %d, want 1", source.calls)
-	}
-	if source.cwd != "/repo" {
-		t.Fatalf("SkillsPromptForWorkspace cwd = %q", source.cwd)
-	}
-}
-
-func TestACPTurnPromptContextReturnsSkillPromptErrors(t *testing.T) {
-	want := errors.New("boom")
-	manager := &Manager{cfg: Config{SystemPrompt: &mutablePromptSource{err: want}}}
-
-	_, err := manager.turnPromptContext("/repo", "use $new-skill")
-	if err == nil || !errors.Is(err, want) {
-		t.Fatalf("error = %v, want %v", err, want)
-	}
-}
-
-func TestPromptContentBlocksPrependsContext(t *testing.T) {
-	blocks, err := promptContentBlocks("context", "message", nil, localAttachmentResources)
+	decoded, err := acpschema.DecodeContentBlock(blocks[0])
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(blocks) != 2 {
-		t.Fatalf("blocks = %d, want context + message", len(blocks))
+	text, ok := decoded.(acpschema.TextContentBlock)
+	if !ok {
+		t.Fatalf("block = %T, want text", decoded)
 	}
-	var got []string
-	for _, block := range blocks {
-		decoded, err := acpschema.DecodeContentBlock(block)
-		if err != nil {
-			t.Fatal(err)
-		}
-		text, ok := decoded.(acpschema.TextContentBlock)
-		if !ok {
-			t.Fatalf("block = %T, want text", decoded)
-		}
-		got = append(got, text.Text)
-	}
-	if got[0] != "context" || got[1] != "message" {
-		t.Fatalf("text blocks = %#v", got)
+	if text.Text != message {
+		t.Fatalf("text = %q, want %q", text.Text, message)
 	}
 }
 
