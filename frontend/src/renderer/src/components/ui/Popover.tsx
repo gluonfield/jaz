@@ -1,9 +1,15 @@
 import { Check } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { type ReactNode, useEffect, useRef } from 'react'
+import { type CSSProperties, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+
+const GAP = 6
 
 // A floating menu anchored to its trigger, dismissed on outside-click/Escape.
-// Trigger and menu share one wrapper so clicking the trigger doesn't self-close.
+// The panel is portaled and fixed-positioned to the trigger so it can't be
+// clipped by a scroll/overflow ancestor (e.g. a modal body); the anchor carries
+// `data-escape-surface` while open so a host modal lets Escape close the menu
+// first instead of closing itself.
 export function Popover({
   open,
   onClose,
@@ -21,47 +27,81 @@ export function Popover({
   // the window's right side.
   align?: 'start' | 'end'
 }) {
-  const ref = useRef<HTMLDivElement>(null)
+  const anchorRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
   const reducedMotion = useReducedMotion()
+  const [rect, setRect] = useState<DOMRect | null>(null)
+
+  useLayoutEffect(() => {
+    if (open && anchorRef.current) setRect(anchorRef.current.getBoundingClientRect())
+  }, [open])
 
   useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+      const t = e.target as Node
+      if (anchorRef.current?.contains(t) || menuRef.current?.contains(t)) return
+      onClose()
     }
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key !== 'Escape') return
+      e.stopPropagation()
+      onClose()
+    }
+    // Fixed to the trigger: close rather than chase it when an outer surface
+    // scrolls or the window resizes. Scrolling inside the menu stays open.
+    const onScroll = (e: Event) => {
+      if (menuRef.current?.contains(e.target as Node)) return
+      onClose()
     }
     document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey)
+    window.addEventListener('scroll', onScroll, true)
+    window.addEventListener('resize', onClose)
     return () => {
       document.removeEventListener('mousedown', onDown)
       document.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', onScroll, true)
+      window.removeEventListener('resize', onClose)
     }
   }, [open, onClose])
 
   const slide = reducedMotion ? 0 : placement === 'above' ? 6 : -6
+  const style: CSSProperties = rect
+    ? {
+        position: 'fixed',
+        zIndex: 'var(--z-modal)',
+        ...(placement === 'below'
+          ? { top: rect.bottom + GAP }
+          : { bottom: window.innerHeight - rect.top + GAP }),
+        ...(align === 'end' ? { right: window.innerWidth - rect.right } : { left: rect.left }),
+      }
+    : {}
+
   return (
-    <div ref={ref} className="relative">
+    <div ref={anchorRef} className="relative" data-escape-surface={open ? '' : undefined}>
       {trigger}
-      <AnimatePresence>
-        {open ? (
-          <motion.div
-            data-escape-surface=""
-            initial={{ opacity: 0, y: slide }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: slide }}
-            transition={{ duration: 0.15, ease: 'easeOut' }}
-            // no-drag keeps the panel clickable when it overlaps the titlebar
-            // drag region (harmless everywhere else).
-            className={`absolute z-20 min-w-[176px] rounded-[14px] bg-surface p-1.5 shadow-xl ring-1 ring-border [-webkit-app-region:no-drag] ${
-              align === 'end' ? 'right-0' : 'left-0'
-            } ${placement === 'above' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'}`}
-          >
-            {children}
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+      {createPortal(
+        <AnimatePresence>
+          {open && rect ? (
+            <motion.div
+              ref={menuRef}
+              data-escape-surface=""
+              initial={{ opacity: 0, y: slide }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: slide }}
+              transition={{ duration: 0.15, ease: 'easeOut' }}
+              style={style}
+              // no-drag keeps the panel clickable when it overlaps the titlebar
+              // drag region (harmless everywhere else).
+              className="min-w-[176px] rounded-[14px] bg-surface p-1.5 shadow-xl ring-1 ring-border [-webkit-app-region:no-drag]"
+            >
+              {children}
+            </motion.div>
+          ) : null}
+        </AnimatePresence>,
+        document.body,
+      )}
     </div>
   )
 }

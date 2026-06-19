@@ -209,6 +209,21 @@ func TestFakeACPAgentProcess(t *testing.T) {
 						{"id": "mode", "type": "select", "options": []map[string]any{{"value": "auto"}}},
 						{"id": "model", "type": "select", "options": []map[string]any{{"value": req.Value}}},
 					}
+				} else if effortConfigID := strings.TrimSpace(os.Getenv("JAZ_FAKE_ACP_MODEL_CONFIG_EFFORT_ID")); effortConfigID != "" {
+					effortOptions := []map[string]any{}
+					rawEffortOptions := strings.TrimSpace(os.Getenv("JAZ_FAKE_ACP_MODEL_CONFIG_EFFORT_OPTIONS"))
+					if rawEffortOptions == "" {
+						rawEffortOptions = os.Getenv("JAZ_FAKE_ACP_EXPECT_EFFORT")
+					}
+					for _, value := range strings.Split(rawEffortOptions, ",") {
+						if value = strings.TrimSpace(value); value != "" {
+							effortOptions = append(effortOptions, map[string]any{"value": value})
+						}
+					}
+					result["configOptions"] = []map[string]any{
+						{"id": "model", "category": "model", "type": "select", "options": []map[string]any{{"value": req.Value}}},
+						{"id": effortConfigID, "category": "thought_level", "type": "select", "options": effortOptions},
+					}
 				}
 				sendResult(conn, msg, result)
 				continue

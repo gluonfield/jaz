@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-func TestRenderOrdersContextExtrasThenTask(t *testing.T) {
-	prompt, err := Render(Data{
+func TestRenderOrdersContextThenExtras(t *testing.T) {
+	prompt := Render(Data{
 		LoopName:     "memory-consolidation",
 		LoopID:       "loop-1",
 		RunID:        "run-9",
@@ -15,11 +15,7 @@ func TestRenderOrdersContextExtrasThenTask(t *testing.T) {
 		MemoryPath:   "/tmp/automations/memory-consolidation/memory.md",
 		PreviousRun:  `id=run-8 status=error error="dial tcp: timeout"`,
 		Extras:       []string{"## Widget\n\n- update the tile"},
-		Prompt:       "Review yesterday's sessions.",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	parts := []string{
 		"Scheduled Jaz loop run.",
 		"Loop: memory-consolidation (loop-1)",
@@ -28,8 +24,6 @@ func TestRenderOrdersContextExtrasThenTask(t *testing.T) {
 		`Previous: id=run-8 status=error error="dial tcp: timeout"`,
 		"If the memory file exists, read it before starting.",
 		"## Widget",
-		"## Your task",
-		"Review yesterday's sessions.",
 	}
 	offset := 0
 	for _, part := range parts {
@@ -42,14 +36,11 @@ func TestRenderOrdersContextExtrasThenTask(t *testing.T) {
 }
 
 func TestRenderMemoryUsesSingleInvariant(t *testing.T) {
-	prompt, err := Render(Data{
+	prompt := Render(Data{
 		LoopName: "n", LoopID: "l", RunID: "r", ScheduledFor: "s", Now: "n",
 		MemoryPath:  "/tmp/automations/n/memory.md",
-		PreviousRun: "none", Prompt: "task",
+		PreviousRun: "none",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	for _, want := range []string{
 		"Memory: /tmp/automations/n/memory.md",
 		"If the memory file exists, read it before starting.",
@@ -67,14 +58,11 @@ func TestRenderMemoryUsesSingleInvariant(t *testing.T) {
 }
 
 func TestRenderWithoutMemoryPathOmitsMemoryRules(t *testing.T) {
-	prompt, err := Render(Data{LoopName: "n", LoopID: "l", RunID: "r", ScheduledFor: "s", Now: "n", PreviousRun: "none", Prompt: "task"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	prompt := Render(Data{LoopName: "n", LoopID: "l", RunID: "r", ScheduledFor: "s", Now: "n", PreviousRun: "none"})
 	if strings.Contains(prompt, "Memory:") || strings.Contains(prompt, "memory file directory") {
 		t.Fatalf("memory rules must be omitted without a memory path:\n%s", prompt)
 	}
-	if !strings.HasSuffix(strings.TrimSpace(prompt), "task") {
-		t.Fatalf("the task must come last:\n%s", prompt)
+	if strings.Contains(prompt, "## Your task") {
+		t.Fatalf("system prompt extension must not include a task section:\n%s", prompt)
 	}
 }

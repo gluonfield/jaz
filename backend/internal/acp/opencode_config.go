@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/wins/jaz/backend/internal/promptmodule"
 	modelprovider "github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 )
@@ -28,7 +29,16 @@ type openCodeProviderConfig struct {
 }
 
 type openCodeModelConfig struct {
-	ID string `json:"id,omitempty"`
+	ID       string                                `json:"id,omitempty"`
+	Variants map[string]openCodeModelVariantConfig `json:"variants,omitempty"`
+}
+
+type openCodeModelVariantConfig struct {
+	Reasoning *openCodeReasoningConfig `json:"reasoning,omitempty"`
+}
+
+type openCodeReasoningConfig struct {
+	Effort string `json:"effort,omitempty"`
 }
 
 func (m *Manager) loadOpenCodeProviderEnv(env map[string]string, root string) {
@@ -82,12 +92,12 @@ func loadRuntimeEnvKey(env map[string]string, root, key string) {
 	}
 }
 
-func (m *Manager) prepareOpenCodeConfig(env map[string]string, agent AgentConfig, artifactSurface string) error {
+func (m *Manager) prepareOpenCodeConfig(env map[string]string, agent AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) error {
 	if strings.TrimSpace(env["OPENCODE_CONFIG_CONTENT"]) != "" {
 		return nil
 	}
 	content := openCodeConfigContent{}
-	if instruction, err := m.prepareOpenCodeInstructionFile(env, agent.Cwd, artifactSurface); err != nil {
+	if instruction, err := m.prepareOpenCodeInstructionFile(env, cwd, artifactSurface, systemPromptExtensions); err != nil {
 		return err
 	} else if instruction != "" {
 		content.Instructions = []string{instruction}
@@ -97,6 +107,7 @@ func (m *Manager) prepareOpenCodeConfig(env map[string]string, agent AgentConfig
 		providerID := modelprovider.OpenCodeProviderIDFromModel(model)
 		content.Provider = map[string]openCodeProviderConfig{providerID: providerConfig}
 	}
+	addOpenCodeReasoningVariant(&content, model, agent.ReasoningEffort)
 	if len(content.Instructions) == 0 && len(content.Provider) == 0 {
 		return nil
 	}
@@ -108,15 +119,16 @@ func (m *Manager) prepareOpenCodeConfig(env map[string]string, agent AgentConfig
 	return nil
 }
 
-func (m *Manager) prepareOpenCodeInstructionFile(env map[string]string, cwd, artifactSurface string) (string, error) {
-	if m.cfg.SystemPrompt == nil {
-		return "", nil
+func (m *Manager) prepareOpenCodeInstructionFile(env map[string]string, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (string, error) {
+	var prompt string
+	if m.cfg.SystemPrompt != nil {
+		base, err := promptForArtifactSurface(m.cfg.SystemPrompt, cwd, artifactSurface)
+		if err != nil {
+			return "", fmt.Errorf("build opencode instructions: %w", err)
+		}
+		prompt = base
 	}
-	prompt, err := promptForArtifactSurface(m.cfg.SystemPrompt, cwd, artifactSurface)
-	if err != nil {
-		return "", fmt.Errorf("build opencode instructions: %w", err)
-	}
-	prompt = strings.TrimSpace(prompt)
+	prompt = promptWithModules(prompt, systemPromptExtensions)
 	if prompt == "" {
 		return "", nil
 	}
@@ -157,6 +169,30 @@ func (m *Manager) openCodeProviderConfig(env map[string]string, model string) (o
 		result.Models = map[string]openCodeModelConfig{modelID: {}}
 	}
 	return result, true
+}
+
+func addOpenCodeReasoningVariant(content *openCodeConfigContent, model, effort string) {
+	providerID, modelID := modelprovider.SplitProviderModel(model)
+	effort, err := NormalizeAgentReasoningEffort(AgentOpenCode, effort)
+	if err != nil || providerID != modelprovider.ProviderOpenRouter || modelID == "" || effort == "" {
+		return
+	}
+	if content.Provider == nil {
+		content.Provider = map[string]openCodeProviderConfig{}
+	}
+	provider := content.Provider[providerID]
+	if provider.Models == nil {
+		provider.Models = map[string]openCodeModelConfig{}
+	}
+	modelConfig := provider.Models[modelID]
+	if modelConfig.Variants == nil {
+		modelConfig.Variants = map[string]openCodeModelVariantConfig{}
+	}
+	modelConfig.Variants[effort] = openCodeModelVariantConfig{
+		Reasoning: &openCodeReasoningConfig{Effort: effort},
+	}
+	provider.Models[modelID] = modelConfig
+	content.Provider[providerID] = provider
 }
 
 func shouldWriteOpenCodeProviderConfig(cfg modelprovider.ModelProviderConfig, meta modelprovider.ModelProvider, configured, builtIn bool) bool {

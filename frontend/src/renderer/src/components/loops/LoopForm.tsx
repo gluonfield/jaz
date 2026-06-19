@@ -1,16 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
-import { type ReactNode, useEffect, useMemo } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { MentionSuggestions, MentionTextarea, useMentionInput } from '@/components/session/MentionInput'
 import { ModelSelect, RuntimeSelect } from '@/components/session/NewThreadControls'
 import { boardsQuery } from '@/lib/api/boards'
-import type { LoopInput } from '@/lib/api/loops'
 import { agentSettingsQuery } from '@/lib/api/settings'
-import type { AgentSettings, Loop } from '@/lib/api/types'
-import {
-  acpUsesModelProvider,
-  enabledACPAgents,
-  runtimeModelState,
-} from '@/lib/agentRuntimes'
+import { enabledACPAgents, runtimeModelState } from '@/lib/agentRuntimes'
 import {
   acpAgentModelSuggestions,
   modelSuggestionsForProvider,
@@ -18,131 +12,86 @@ import {
 } from '@/lib/models'
 import { acpReasoningEffortOptions } from '@/lib/reasoningEfforts'
 import { BoardAssignmentPicker } from './BoardAssignmentPicker'
+import { LoopExamplesPicker } from './LoopExamplesPicker'
+import type { LoopDraft } from './loopDraft'
+import { templatePatch } from './loopTemplates'
 import { SchedulePicker } from './SchedulePicker'
-import {
-  type ScheduleDraft,
-  cronFromDraft,
-  defaultScheduleDraft,
-  draftFromLoop,
-  localTimezone,
-} from './schedule'
 
-// ACP agent name, matching the RuntimeSelect contract used by the new-thread composer.
-export interface LoopDraft {
-  name: string
-  prompt: string
-  runtime: string
-  directory: string
-  // Overrides of the Settings > Agents defaults; '' follows settings at run
-  // time, while the picker always displays the resolved effective value.
-  provider: string
-  model: string
-  reasoningEffort: string
-  schedule: ScheduleDraft
-  // Boards the loop's widget lives on; assignment is the widget enablement.
-  boardIds: string[]
-}
-
-export function emptyLoopDraft(boardIds: string[] = []): LoopDraft {
-  return {
-    name: '',
-    prompt: '',
-    runtime: 'jaz',
-    directory: '',
-    provider: '',
-    model: '',
-    reasoningEffort: '',
-    schedule: defaultScheduleDraft(),
-    boardIds,
-  }
-}
-
-export function loopDraftFromLoop(loop: Loop, boardIds: string[] = []): LoopDraft {
-  return {
-    name: loop.name ?? '',
-    prompt: loop.prompt ?? '',
-    runtime: loop.acp_agent || 'jaz',
-    directory: loop.directory ?? '',
-    provider: loop.model_provider ?? '',
-    model: loop.model ?? '',
-    reasoningEffort: loop.reasoning_effort ?? '',
-    schedule: draftFromLoop(loop.schedule?.expr ?? '', loop.status === 'paused'),
-    boardIds,
-  }
-}
-
-export function canSaveLoop(draft: LoopDraft): boolean {
-  if (draft.prompt.trim() === '') return false
-  if (draft.runtime.trim() === '') return false
-  if (draft.schedule.preset === 'custom' && draft.schedule.expr.trim() === '') return false
-  return true
-}
-
-export function loopDraftToInput(draft: LoopDraft, settings?: AgentSettings): LoopInput {
-  const usesModelProvider = acpUsesModelProvider(settings, draft.runtime)
-  return {
-    prompt: draft.prompt.trim(),
-    name: draft.name.trim() || undefined,
-    schedule: { kind: 'cron', expr: cronFromDraft(draft.schedule), timezone: localTimezone() },
-    status: draft.schedule.preset === 'manual' ? 'paused' : 'active',
-    runtime: 'acp',
-    acp_agent: draft.runtime,
-    // Overrides are always sent: '' clears one back to following settings.
-    model_provider: usesModelProvider ? draft.provider : '',
-    model: draft.model,
-    reasoning_effort: draft.reasoningEffort,
-    directory: draft.directory || undefined,
-    // Always sent: an empty list unassigns the widget from every board.
-    board_ids: draft.boardIds,
-  }
-}
+// A patch updater shared by every step: merges a partial draft into the whole.
+type SetDraft = (patch: Partial<LoopDraft>) => void
 
 // Borderless like the composer: the surface fill is the field. A primary ring
 // appears only on focus, never as a resting outline.
 const inputClass =
   'w-full rounded-control bg-surface px-3 py-2 text-[13px] text-ink outline-none transition duration-150 placeholder:text-ink-3 focus:ring-1 focus:ring-primary'
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+function Field({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (
     <label className="block">
       <span className="mb-1.5 block text-[12px] font-medium text-ink-2">{label}</span>
       {children}
-      {hint ? <span className="mt-1 block text-[12px] text-ink-3">{hint}</span> : null}
     </label>
   )
 }
 
-// Like Field but a plain block — used for groups of controls (the schedule
-// picker, the board pills) where a <label> would forward hover/click to one child.
-function FieldGroup({ label, children }: { label: string; children: ReactNode }) {
+// The explanatory line above each step's input, with an optional right-aligned
+// action (the Prompt step hangs its Examples button here).
+function StepHeader({ description, action }: { description: string; action?: ReactNode }) {
   return (
-    <div>
-      <span className="mb-1.5 block text-[12px] font-medium text-ink-2">{label}</span>
-      {children}
+    <div className="flex items-center justify-between gap-3">
+      <p className="text-pretty text-[13px] text-ink-2">{description}</p>
+      {action}
     </div>
   )
 }
 
-export function LoopForm({
+// Step 1 — the instruction: a mention-capable prompt, examples to seed it, and
+// an optional name.
+export function PromptStep({
   draft,
   disabled,
-  onChange,
+  autoFocus,
+  description,
+  set,
 }: {
   draft: LoopDraft
   disabled?: boolean
-  onChange: (next: LoopDraft) => void
+  autoFocus?: boolean
+  description: string
+  set: SetDraft
 }) {
-  const set = (patch: Partial<LoopDraft>) => onChange({ ...draft, ...patch })
+  // The prompt seeds its text at mount, so applying an example must remount the
+  // card — bumping `seed` does exactly that.
+  const [seed, setSeed] = useState(0)
+  const [examplesOpen, setExamplesOpen] = useState(false)
 
   return (
-    <div className="space-y-5">
-      <LoopPromptCard
-        draft={draft}
-        disabled={disabled}
-        set={set}
+    <div className="space-y-3">
+      <StepHeader
+        description={description}
+        action={
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => setExamplesOpen(true)}
+            className="shrink-0 text-[12px] font-medium text-primary transition-colors hover:text-primary-strong disabled:opacity-50"
+          >
+            Examples
+          </button>
+        }
+      />
+      <LoopPromptCard key={seed} draft={draft} disabled={disabled} autoFocus={autoFocus} set={set} />
+      <LoopExamplesPicker
+        open={examplesOpen}
+        onClose={() => setExamplesOpen(false)}
+        onPick={(template) => {
+          set(templatePatch(template))
+          setSeed((s) => s + 1)
+          setExamplesOpen(false)
+        }}
       />
 
-      <Field label="Name" hint="Optional — defaults to the start of the prompt.">
+      <Field label={<>Name <span className="font-normal text-ink-3">optional</span></>}>
         <input
           type="text"
           disabled={disabled}
@@ -152,40 +101,86 @@ export function LoopForm({
           className={inputClass}
         />
       </Field>
+    </div>
+  )
+}
 
-      <FieldGroup label="Schedule">
-        <SchedulePicker
-          value={draft.schedule}
-          disabled={disabled}
-          onChange={(schedule) => set({ schedule })}
-        />
-      </FieldGroup>
+// Step 2 — when it runs.
+export function ScheduleStep({
+  draft,
+  disabled,
+  description,
+  set,
+}: {
+  draft: LoopDraft
+  disabled?: boolean
+  description: string
+  set: SetDraft
+}) {
+  return (
+    <div className="space-y-4">
+      <StepHeader description={description} />
+      <SchedulePicker
+        value={draft.schedule}
+        disabled={disabled}
+        onChange={(schedule) => set({ schedule })}
+      />
+    </div>
+  )
+}
 
-      <FieldGroup label="Boards">
-        <BoardPicker
-          selected={draft.boardIds}
-          disabled={disabled}
-          onChange={(boardIds) => set({ boardIds })}
-        />
-      </FieldGroup>
+// Step 3 — which boards carry the loop's live widget.
+export function BoardsStep({
+  draft,
+  disabled,
+  description,
+  set,
+}: {
+  draft: LoopDraft
+  disabled?: boolean
+  description: string
+  set: SetDraft
+}) {
+  const boards = useQuery(boardsQuery)
+
+  const body =
+    boards.isPending ? (
+      <span className="text-[12px] text-ink-3">Loading boards…</span>
+    ) : boards.isError || (boards.data ?? []).length === 0 ? (
+      <p className="text-[12px] text-ink-3">
+        No boards yet — create one with the + next to Boards in the sidebar to give this loop a
+        live widget.
+      </p>
+    ) : (
+      <BoardAssignmentPicker
+        boards={boards.data}
+        selected={draft.boardIds}
+        disabled={disabled}
+        onChange={(boardIds) => set({ boardIds })}
+      />
+    )
+
+  return (
+    <div className="space-y-4">
+      <StepHeader description={description} />
+      {body}
     </div>
   )
 }
 
 // The composer-style prompt card: a mention-capable textarea ($skill / @file)
-// with the loop's run setup - agent and model - as its toolbar. The UI no
-// longer offers a project picker (new loops default to the workspace), but a
-// loop's `directory` is still honored end-to-end — it can be set via the
-// API/MCP and is round-tripped on edit — so the draft deliberately keeps
-// reading and sending it. Don't drop that plumbing.
+// with the run setup (agent, model) as its toolbar. The draft keeps `directory`
+// — it scopes @-file mentions — even though there's no project picker; keep it.
 function LoopPromptCard({
   draft,
   disabled,
+  autoFocus,
   set,
 }: {
   draft: LoopDraft
   disabled?: boolean
-  set: (patch: Partial<LoopDraft>) => void
+  autoFocus?: boolean
+  set: SetDraft
 }) {
   const mention = useMentionInput({
     fileRoot: draft.directory,
@@ -240,6 +235,7 @@ function LoopPromptCard({
             mention={mention}
             placeholder="Review yesterday's commits and flag anything concerning…"
             disabled={disabled}
+            autoFocus={autoFocus}
             minHeightClass="min-h-[54px]"
           />
           <div className="flex flex-wrap items-center gap-1.5">
@@ -288,41 +284,5 @@ function LoopPromptCard({
         Type $ to tag a skill, @ to tag a file.
       </span>
     </div>
-  )
-}
-
-// Assigning the loop to boards is what turns its widget on: each run then
-// refreshes a live tile on every selected board.
-function BoardPicker({
-  selected,
-  disabled,
-  onChange,
-}: {
-  selected: string[]
-  disabled?: boolean
-  onChange: (boardIds: string[]) => void
-}) {
-  const boards = useQuery(boardsQuery)
-
-  if (boards.isPending) {
-    return <span className="text-[12px] text-ink-3">Loading boards…</span>
-  }
-  if (boards.isError || (boards.data ?? []).length === 0) {
-    return (
-      <p className="text-[12px] text-ink-3">
-        No boards yet — create one with the + next to Boards in the sidebar to give this loop a
-        live widget.
-      </p>
-    )
-  }
-
-  return (
-    <BoardAssignmentPicker
-      boards={boards.data}
-      selected={selected}
-      disabled={disabled}
-      onChange={onChange}
-      hint="On every run the loop refreshes a live widget on the selected boards."
-    />
   )
 }

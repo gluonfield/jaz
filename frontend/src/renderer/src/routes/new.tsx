@@ -123,7 +123,7 @@ function NewSessionPage() {
     ? modelSuggestionsForProvider(selectedProvider, openRouterModels.data ?? [])
     : acpAgentModelSuggestions(runtime)
 
-  const startThread = async (title: string | undefined, prepare: (sessionId: string) => void) => {
+  const startThread = async (prepare: (sessionId: string) => void) => {
     if (!runtimeAvailable) {
       toast('Connect an agent in Settings before starting a session.', 'danger')
       return
@@ -131,7 +131,6 @@ function NewSessionPage() {
     setCreating(true)
     try {
       const session = await createSession({
-        ...(title ? { title } : {}),
         runtime: 'acp',
         agent: runtime,
         directory,
@@ -152,7 +151,7 @@ function NewSessionPage() {
   }
 
   const handleSend = (text: string, options: SendMessageOptions = {}) =>
-    startThread(text.trim(), (id) =>
+    startThread((id) =>
       setPendingMessage(id, {
         text,
         planRequested: Boolean(options.planRequested),

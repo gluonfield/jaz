@@ -17,6 +17,7 @@ import (
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/gluonfield/acp-transport/stdio"
 	"github.com/gluonfield/acp-transport/streamhttp"
+	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/skills"
 )
 
@@ -119,25 +120,29 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 }
 
 func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
-	env, _ := m.buildProcessEnv(name, agent, "", true)
+	env, _ := m.buildProcessEnv(name, agent, "", "", nil, true)
 	return env
 }
 
 func (m *Manager) processEnvPrepared(name string, agent AgentConfig) (map[string]string, error) {
-	return m.processEnvPreparedForSurface(name, agent, "")
+	return m.processEnvPreparedForSurface(name, agent, "", "", nil)
 }
 
-func (m *Manager) processEnvPreparedForSurface(name string, agent AgentConfig, artifactSurface string) (map[string]string, error) {
-	return m.buildProcessEnv(name, agent, artifactSurface, true)
+func (m *Manager) processEnvPreparedForSurface(name string, agent AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (map[string]string, error) {
+	return m.buildProcessEnv(name, agent, cwd, artifactSurface, systemPromptExtensions, true)
 }
 
 func (m *Manager) probeEnv(name string, agent AgentConfig) map[string]string {
-	env, _ := m.buildProcessEnv(name, agent, "", false)
+	env, _ := m.buildProcessEnv(name, agent, "", "", nil, false)
 	return env
 }
 
-func (m *Manager) buildProcessEnv(name string, agent AgentConfig, artifactSurface string, prepare bool) (map[string]string, error) {
+func (m *Manager) buildProcessEnv(name string, agent AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules, prepare bool) (map[string]string, error) {
 	name = CanonicalAgentName(name)
+	cwd = strings.TrimSpace(cwd)
+	if cwd == "" {
+		cwd = strings.TrimSpace(agent.Cwd)
+	}
 	env := map[string]string{}
 	var prepareErr error
 	for _, key := range []string{"PATH"} {
@@ -264,7 +269,7 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, artifactSurfac
 			if err := os.MkdirAll(env["OPENCODE_CONFIG_DIR"], 0o700); err != nil {
 				prepareErr = firstError(prepareErr, fmt.Errorf("prepare opencode profile %s: %w", env["OPENCODE_CONFIG_DIR"], err))
 			}
-			if err := m.prepareOpenCodeConfig(env, agent, artifactSurface); err != nil {
+			if err := m.prepareOpenCodeConfig(env, agent, cwd, artifactSurface, systemPromptExtensions); err != nil {
 				prepareErr = firstError(prepareErr, err)
 			}
 		}

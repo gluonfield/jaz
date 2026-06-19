@@ -127,7 +127,7 @@ func TestEnabledHTTPMCPServersAllPolicyLeavesURLUnchanged(t *testing.T) {
 	}
 }
 
-func TestEnabledHTTPMCPServersWidgetPolicyAddsSurface(t *testing.T) {
+func TestEnabledHTTPMCPServersWidgetPolicyKeepsConnectionsAndAddsJaztoolsSurface(t *testing.T) {
 	servers, err := enabledHTTPMCPServers(context.Background(), staticMCPServerStore{servers: []mcpconfig.Server{
 		{
 			ID:        "docs",
@@ -147,14 +147,20 @@ func TestEnabledHTTPMCPServersWidgetPolicyAddsSurface(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(servers) != 1 {
-		t.Fatalf("servers = %d, want only jaztools", len(servers))
-	}
 	var payload struct {
 		Name string `json:"name"`
 		URL  string `json:"url"`
 	}
+	if len(servers) != 2 {
+		t.Fatalf("servers = %d, want docs and jaztools", len(servers))
+	}
 	if err := json.Unmarshal(servers[0], &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Name != "Docs" || payload.URL != "https://docs.example.com/mcp" {
+		t.Fatalf("docs payload = %#v", payload)
+	}
+	if err := json.Unmarshal(servers[1], &payload); err != nil {
 		t.Fatal(err)
 	}
 	if payload.Name != "jaztools" {

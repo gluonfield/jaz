@@ -1,6 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { ChevronRight } from 'lucide-react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { Fragment, useState } from 'react'
+import { BoardsStep, PromptStep, ScheduleStep } from '@/components/loops/LoopForm'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { boardsQuery } from '@/lib/api/boards'
@@ -10,15 +13,24 @@ import type { Loop } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 import {
   type LoopDraft,
-  LoopForm,
   canSaveLoop,
   emptyLoopDraft,
   loopDraftFromLoop,
   loopDraftToInput,
-} from './LoopForm'
+  stepValid,
+} from './loopDraft'
 
-// One modal for both create (no `loop`) and edit (`loop` provided). Edit never
-// happens inline on the detail page — it always opens here.
+// Step presentation in order; indices line up with stepValid in loopDraft.
+const STEPS = [
+  { label: 'Prompt', description: 'What should this loop do on each run?' },
+  { label: 'Schedule', description: 'How often should it run?' },
+  { label: 'Boards', description: 'Show its latest run as a live widget on your boards.' },
+]
+const LAST_STEP = STEPS.length - 1
+
+// One modal for both create (no `loop`) and edit (`loop` provided), walked as a
+// Prompt → Schedule → Boards stepper. Edit never happens inline on the detail
+// page — it always opens here.
 export function LoopModal({
   open,
   onClose,
@@ -41,9 +53,11 @@ export function LoopModal({
   const settingsQuery = useQuery(agentSettingsQuery)
   const boards = useQuery({ ...boardsQuery, enabled: open && !isEdit })
   const [draft, setDraft] = useState<LoopDraft | null>(null)
+  const [step, setStep] = useState(0)
   const createBoardIds = boards.data?.map((board) => board.id) ?? []
   const createBoardsLoading = !isEdit && boards.isPending
   const current = draft ?? (loop ? loopDraftFromLoop(loop, boardIds) : emptyLoopDraft(createBoardIds))
+  const set = (patch: Partial<LoopDraft>) => setDraft({ ...current, ...patch })
 
   const save = useMutation<Loop, Error, { run: boolean }>({
     mutationFn: ({ run: _run }: { run: boolean }) =>
@@ -67,9 +81,14 @@ export function LoopModal({
 
   const close = () => {
     setDraft(null)
+    setStep(0)
     save.reset()
     onClose()
   }
+
+  const onLastStep = step === LAST_STEP
+  const canSubmit = canSaveLoop(current) && !save.isPending && !createBoardsLoading
+  const reduce = useReducedMotion()
 
   return (
     <Modal
@@ -77,21 +96,36 @@ export function LoopModal({
       onClose={close}
       size="md"
       title={isEdit ? 'Edit loop' : 'New loop'}
-      description="A prompt that runs on a schedule, each run in its own thread."
+      headerAccessory={<StepNav step={step} onJump={setStep} />}
       footer={
         <>
           <p className="text-[12px] text-danger" role="alert">
             {save.isError ? save.error.message : ''}
           </p>
           <div className="flex shrink-0 items-center gap-1">
-            <Button variant="ghost" size="md" onClick={close}>
-              Cancel
-            </Button>
-            {isEdit ? (
+            {step > 0 ? (
+              <Button variant="ghost" size="md" onClick={() => setStep(step - 1)}>
+                Back
+              </Button>
+            ) : (
+              <Button variant="ghost" size="md" onClick={close}>
+                Cancel
+              </Button>
+            )}
+            {!onLastStep ? (
               <Button
                 variant="primary"
                 size="md"
-                disabled={!canSaveLoop(current) || save.isPending || createBoardsLoading}
+                disabled={!stepValid(current, step)}
+                onClick={() => setStep(step + 1)}
+              >
+                Next
+              </Button>
+            ) : isEdit ? (
+              <Button
+                variant="primary"
+                size="md"
+                disabled={!canSubmit}
                 onClick={() => save.mutate({ run: false })}
               >
                 {save.isPending ? 'Saving…' : 'Save changes'}
@@ -101,7 +135,7 @@ export function LoopModal({
                 <Button
                   variant="secondary"
                   size="md"
-                  disabled={!canSaveLoop(current) || save.isPending || createBoardsLoading}
+                  disabled={!canSubmit}
                   onClick={() => save.mutate({ run: false })}
                 >
                   {save.isPending && !save.variables?.run ? 'Creating…' : 'Create'}
@@ -109,7 +143,7 @@ export function LoopModal({
                 <Button
                   variant="primary"
                   size="md"
-                  disabled={!canSaveLoop(current) || save.isPending || createBoardsLoading}
+                  disabled={!canSubmit}
                   onClick={() => save.mutate({ run: true })}
                 >
                   {save.isPending && save.variables?.run ? 'Creating…' : 'Create & Run'}
@@ -120,11 +154,67 @@ export function LoopModal({
         </>
       }
     >
-      <LoopForm
-        draft={current}
-        disabled={save.isPending || createBoardsLoading}
-        onChange={setDraft}
-      />
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={step}
+          initial={reduce ? false : { opacity: 0, x: 6 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={reduce ? { opacity: 0 } : { opacity: 0, x: -6 }}
+          transition={{ duration: 0.16, ease: [0.2, 0, 0, 1] }}
+        >
+          {step === 0 ? (
+            <PromptStep
+              draft={current}
+              disabled={save.isPending}
+              autoFocus
+              description={STEPS[0].description}
+              set={set}
+            />
+          ) : step === 1 ? (
+            <ScheduleStep
+              draft={current}
+              disabled={save.isPending}
+              description={STEPS[1].description}
+              set={set}
+            />
+          ) : (
+            <BoardsStep
+              draft={current}
+              disabled={save.isPending}
+              description={STEPS[2].description}
+              set={set}
+            />
+          )}
+        </motion.div>
+      </AnimatePresence>
     </Modal>
+  )
+}
+
+// Minimal progress trail. Completed steps are clickable to go back; later steps
+// are reached with Next so their entry requirements stay enforced.
+function StepNav({ step, onJump }: { step: number; onJump: (step: number) => void }) {
+  return (
+    <div className="flex items-center gap-1 text-[11px]">
+      {STEPS.map(({ label }, i) => (
+        <Fragment key={label}>
+          {i > 0 ? <ChevronRight size={11} className="text-ink-3/60" /> : null}
+          <button
+            type="button"
+            disabled={i > step}
+            onClick={() => onJump(i)}
+            className={
+              i === step
+                ? 'font-medium text-ink'
+                : i < step
+                  ? 'text-ink-3 transition-colors hover:text-ink'
+                  : 'text-ink-3'
+            }
+          >
+            {label}
+          </button>
+        </Fragment>
+      ))}
+    </div>
   )
 }

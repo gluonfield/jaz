@@ -201,8 +201,15 @@ func TestLoopExecutionCarriesPromptExtraAndArtifactSurface(t *testing.T) {
 	if started.ArtifactSurface != "widget" {
 		t.Fatalf("artifact surface = %q, want widget", started.ArtifactSurface)
 	}
-	if !strings.Contains(started.Prompt, "## Widget instructions") || !strings.Contains(started.Prompt, "run "+run.ID) {
-		t.Fatalf("prompt missing extra section:\n%s", started.Prompt)
+	if started.Prompt != "refresh tile" {
+		t.Fatalf("prompt = %q, want loop task", started.Prompt)
+	}
+	if strings.Contains(started.Prompt, "## Widget instructions") {
+		t.Fatalf("prompt should not contain system prompt extra:\n%s", started.Prompt)
+	}
+	systemPrompt := strings.Join(started.SystemPromptExtensions, "\n")
+	if !strings.Contains(systemPrompt, "## Widget instructions") || !strings.Contains(systemPrompt, "run "+run.ID) {
+		t.Fatalf("system prompt extensions missing widget section:\n%v", started.SystemPromptExtensions)
 	}
 }
 

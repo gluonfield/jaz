@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
+	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/templates/looprun"
 )
 
@@ -325,13 +326,18 @@ func (s *Service) start(ctx context.Context, loop Loop, run Run, now time.Time) 
 	if s.ArtifactSurface != nil {
 		artifactSurface = strings.TrimSpace(s.ArtifactSurface(loop, run))
 	}
-	prompt := RunPrompt(loop, run, now, extras...)
+	loopPrompt := RunSystemPrompt(loop, run, now, extras...)
+	var systemPromptExtensions promptmodule.Modules
+	if loopPrompt != "" {
+		systemPromptExtensions = promptmodule.New(loopPrompt)
+	}
 	go s.Executor.StartLoopRun(context.WithoutCancel(ctx), Execution{
-		Loop:            loop,
-		Run:             run,
-		Prompt:          prompt,
-		ArtifactSurface: artifactSurface,
-		Controller:      s,
+		Loop:                   loop,
+		Run:                    run,
+		Prompt:                 loop.Prompt,
+		SystemPromptExtensions: systemPromptExtensions,
+		ArtifactSurface:        artifactSurface,
+		Controller:             s,
 	})
 }
 
@@ -509,10 +515,7 @@ func (s *Service) loopUpdateForRunLocked(run Run, now time.Time) (*Loop, error) 
 	return &loop, nil
 }
 
-// RunPrompt renders the full prompt for a run via the looprun template:
-// context and rules first, capability extras (widget instructions, …) next,
-// and the user's task last so it carries the emphasis.
-func RunPrompt(loop Loop, run Run, now time.Time, extras ...string) string {
+func RunSystemPrompt(loop Loop, run Run, now time.Time, extras ...string) string {
 	previous := "none"
 	if loop.LastRunID != "" {
 		var b strings.Builder
@@ -528,7 +531,7 @@ func RunPrompt(loop Loop, run Run, now time.Time, extras ...string) string {
 		}
 		previous = b.String()
 	}
-	prompt, err := looprun.Render(looprun.Data{
+	return looprun.Render(looprun.Data{
 		LoopName:     loop.Name,
 		LoopID:       loop.ID,
 		RunID:        run.ID,
@@ -537,14 +540,7 @@ func RunPrompt(loop Loop, run Run, now time.Time, extras ...string) string {
 		MemoryPath:   loop.MemoryPath,
 		PreviousRun:  previous,
 		Extras:       extras,
-		Prompt:       loop.Prompt,
 	})
-	if err != nil {
-		// The template is embedded and parse-checked at init; execution
-		// cannot realistically fail, but the run must never lose its task.
-		return loop.Prompt
-	}
-	return prompt
 }
 
 func StartScheduler(ctx context.Context, service *Service, tick time.Duration) error {

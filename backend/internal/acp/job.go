@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -30,19 +31,20 @@ type Job struct {
 	CreatedAt     time.Time                     `json:"created_at"`
 	UpdatedAt     time.Time                     `json:"updated_at"`
 
-	mu                sync.RWMutex
-	turnMu            sync.Mutex
-	done              chan struct{}
-	completion        CompletionMode
-	interactive       bool
-	planRequested     bool
-	cancelRequested   bool
-	toolByID          map[string]ToolCallSnapshot
-	savedAssistantLen int
-	usage             storage.Usage
-	lastUsageDelta    storage.Usage
-	lastUsageContext  storage.Usage
-	lastUsageDeltaSet bool
+	mu                     sync.RWMutex
+	turnMu                 sync.Mutex
+	done                   chan struct{}
+	completion             CompletionMode
+	interactive            bool
+	planRequested          bool
+	cancelRequested        bool
+	toolByID               map[string]ToolCallSnapshot
+	savedAssistantLen      int
+	usage                  storage.Usage
+	lastUsageDelta         storage.Usage
+	lastUsageContext       storage.Usage
+	lastUsageDeltaSet      bool
+	systemPromptExtensions promptmodule.Modules
 }
 
 type ToolCallSnapshot struct {

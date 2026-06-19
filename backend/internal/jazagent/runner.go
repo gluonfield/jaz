@@ -10,6 +10,7 @@ import (
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/filepathx"
 	"github.com/wins/jaz/backend/internal/media"
+	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -60,13 +61,14 @@ type Runner struct {
 }
 
 type Request struct {
-	Session         storage.Session
-	Message         string
-	Attachments     []storage.Attachment
-	VoiceMode       bool
-	PlanRequested   bool
-	AppendUser      bool
-	ArtifactSurface string
+	Session                storage.Session
+	Message                string
+	Attachments            []storage.Attachment
+	VoiceMode              bool
+	PlanRequested          bool
+	AppendUser             bool
+	ArtifactSurface        string
+	SystemPromptExtensions promptmodule.Modules
 }
 
 type UtilityRequest struct {
@@ -226,19 +228,22 @@ func BuildRequest(store Store, prompts PromptSource, req Request) (TurnRequest, 
 		}
 	}
 	transient := make([]string, 0, 2)
+	var prompt string
 	if prompts != nil {
 		workspace := ""
 		if req.Session.RuntimeRef != nil && strings.TrimSpace(req.Session.RuntimeRef.Cwd) != "" {
 			workspace = req.Session.RuntimeRef.Cwd
 		}
-		prompt, err := promptForSurface(prompts, workspace, req.ArtifactSurface)
+		base, err := promptForSurface(prompts, workspace, req.ArtifactSurface)
 		if err != nil {
 			return TurnRequest{}, fmt.Errorf("build system prompt: %w", err)
 		}
-		if prompt := strings.TrimSpace(prompt); prompt != "" {
-			messages = append([]provider.Message{provider.SystemMessage(prompt)}, messages...)
-			transient = append(transient, prompt)
-		}
+		prompt = base
+	}
+	prompt = promptmodule.New(prompt).Append(req.SystemPromptExtensions...).Text()
+	if prompt := strings.TrimSpace(prompt); prompt != "" {
+		messages = append([]provider.Message{provider.SystemMessage(prompt)}, messages...)
+		transient = append(transient, prompt)
 	}
 	if req.VoiceMode {
 		messages = append(messages, provider.SystemMessage(VoiceModeNote))
