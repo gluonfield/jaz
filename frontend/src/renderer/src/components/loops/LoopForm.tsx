@@ -26,12 +26,11 @@ type SetDraft = (patch: Partial<LoopDraft>) => void
 const inputClass =
   'w-full rounded-control bg-surface px-3 py-2 text-[13px] text-ink outline-none transition duration-150 placeholder:text-ink-3 focus:ring-1 focus:ring-primary'
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+function Field({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (
     <label className="block">
       <span className="mb-1.5 block text-[12px] font-medium text-ink-2">{label}</span>
       {children}
-      {hint ? <span className="mt-1 block text-[12px] text-ink-3">{hint}</span> : null}
     </label>
   )
 }
@@ -84,7 +83,7 @@ export function PromptStep({
         ) : null}
       </div>
 
-      <Field label="Name" hint="Optional — defaults to the start of the prompt.">
+      <Field label={<>Name <span className="font-normal text-ink-3">optional</span></>}>
         <input
           type="text"
           disabled={disabled}
