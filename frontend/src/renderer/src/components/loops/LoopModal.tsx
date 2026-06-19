@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, LayoutTemplate } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -21,8 +21,8 @@ import { LoopTemplateGallery } from './LoopTemplateGallery'
 import { draftFromTemplate, type LoopTemplate } from './loopTemplates'
 
 // One modal for both create (no `loop`) and edit (`loop` provided). Edit never
-// happens inline on the detail page — it always opens here. Creating opens on a
-// template gallery first; picking one (or "from scratch") reveals the form.
+// happens inline on the detail page — it always opens here. Creating shows the
+// form directly; "Examples" swaps in a template gallery that fills the form.
 export function LoopModal({
   open,
   onClose,
@@ -45,24 +45,22 @@ export function LoopModal({
   const settingsQuery = useQuery(agentSettingsQuery)
   const boards = useQuery({ ...boardsQuery, enabled: open && !isEdit })
   const [draft, setDraft] = useState<LoopDraft | null>(null)
+  // Create only: when true the body shows the examples gallery instead of the form.
+  const [browsing, setBrowsing] = useState(false)
   const createBoardIds = boards.data?.map((board) => board.id) ?? []
   const createBoardsLoading = !isEdit && boards.isPending
-  // Create starts on the gallery: the form only appears once a draft exists.
-  const editDraft = loop ? loopDraftFromLoop(loop, boardIds) : null
-  const current = draft ?? editDraft
-  const onForm = isEdit || draft !== null
+  const current = draft ?? (loop ? loopDraftFromLoop(loop, boardIds) : emptyLoopDraft(createBoardIds))
 
-  const startFromTemplate = (template: LoopTemplate) =>
+  const pickTemplate = (template: LoopTemplate) => {
     setDraft(draftFromTemplate(template, createBoardIds))
-  const startBlank = () => setDraft(emptyLoopDraft(createBoardIds))
+    setBrowsing(false)
+  }
 
   const save = useMutation<Loop, Error, { run: boolean }>({
-    mutationFn: ({ run: _run }: { run: boolean }) => {
-      if (!current) throw new Error('No loop to save')
-      return isEdit
+    mutationFn: ({ run: _run }: { run: boolean }) =>
+      isEdit
         ? updateLoop(loop.id, loopDraftToInput(current, settingsQuery.data))
-        : createLoop(loopDraftToInput(current, settingsQuery.data))
-    },
+        : createLoop(loopDraftToInput(current, settingsQuery.data)),
     onSuccess: (saved, { run }) => {
       if (!isEdit && run) void runLoopNow(saved.id).catch(() => {})
       queryClient.invalidateQueries({ queryKey: keys.loops })
@@ -80,21 +78,22 @@ export function LoopModal({
 
   const close = () => {
     setDraft(null)
+    setBrowsing(false)
     save.reset()
     onClose()
   }
 
-  const canSubmit = !!current && canSaveLoop(current) && !save.isPending && !createBoardsLoading
-  const description = onForm
-    ? 'A prompt that runs on a schedule, each run in its own thread.'
-    : 'Start from a template, or from scratch.'
+  const canSubmit = canSaveLoop(current) && !save.isPending && !createBoardsLoading
+  const description = browsing
+    ? 'Pick an example to fill the form.'
+    : 'A prompt that runs on a schedule, each run in its own thread.'
 
   return (
     <Modal
       open={open}
       onClose={close}
       size="md"
-      title={isEdit ? 'Edit loop' : 'New loop'}
+      title={browsing ? 'Examples' : isEdit ? 'Edit loop' : 'New loop'}
       description={description}
       footer={
         <>
@@ -102,8 +101,8 @@ export function LoopModal({
             {save.isError ? save.error.message : ''}
           </p>
           <div className="flex shrink-0 items-center gap-1">
-            {onForm && !isEdit ? (
-              <Button variant="ghost" size="md" onClick={() => setDraft(null)}>
+            {browsing ? (
+              <Button variant="ghost" size="md" onClick={() => setBrowsing(false)}>
                 <ArrowLeft size={14} />
                 Back
               </Button>
@@ -111,7 +110,7 @@ export function LoopModal({
             <Button variant="ghost" size="md" onClick={close}>
               Cancel
             </Button>
-            {!onForm ? null : isEdit ? (
+            {browsing ? null : isEdit ? (
               <Button
                 variant="primary"
                 size="md"
@@ -144,15 +143,28 @@ export function LoopModal({
         </>
       }
     >
-      {onForm && current ? (
-        <LoopForm
-          draft={current}
-          disabled={save.isPending || createBoardsLoading}
-          autoFocusPrompt={!isEdit}
-          onChange={setDraft}
-        />
+      {/* Gallery and form are swapped, not co-mounted: the prompt seeds its
+          value from the draft at mount, so a template fill only shows once the
+          form remounts. Don't switch this to a hidden/always-mounted toggle. */}
+      {browsing ? (
+        <LoopTemplateGallery onPick={pickTemplate} />
       ) : (
-        <LoopTemplateGallery onPick={startFromTemplate} onBlank={startBlank} />
+        <div className="space-y-4">
+          {!isEdit ? (
+            <div className="flex justify-end">
+              <Button variant="secondary" size="sm" onClick={() => setBrowsing(true)}>
+                <LayoutTemplate size={14} />
+                Examples
+              </Button>
+            </div>
+          ) : null}
+          <LoopForm
+            draft={current}
+            disabled={save.isPending || createBoardsLoading}
+            autoFocusPrompt={!isEdit}
+            onChange={setDraft}
+          />
+        </div>
       )}
     </Modal>
   )
