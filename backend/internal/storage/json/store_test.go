@@ -52,6 +52,27 @@ func TestSessionsHaveStableUniqueSlugsAndRootListing(t *testing.T) {
 	}
 }
 
+func TestDefaultSlugIgnoresACPAgent(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	session, err := store.CreateSession(storage.CreateSession{
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:  storage.RuntimeACP,
+			Agent: "claude",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(session.Slug, "chat-") {
+		t.Fatalf("slug = %q, want neutral chat fallback", session.Slug)
+	}
+}
+
 func TestSessionQueuedMessagesRoundTrip(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
