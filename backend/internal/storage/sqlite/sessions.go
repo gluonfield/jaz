@@ -322,9 +322,6 @@ func defaultSlug(session storage.Session) string {
 	if session.Title != "" {
 		return session.Title
 	}
-	if session.Runtime == storage.RuntimeACP && session.RuntimeRef != nil && session.RuntimeRef.Agent != "" {
-		return session.RuntimeRef.Agent
-	}
 	return "chat-" + time.Now().UTC().Format("2006-01-02-150405")
 }
 
