@@ -30,13 +30,21 @@ export function BoardAssignmentPicker({
               disabled={disabled}
               aria-pressed={active}
               onClick={() => toggle(board.id)}
-              className={`flex h-8 min-w-0 items-center gap-1.5 rounded-full px-3 text-[12px] font-medium transition duration-150 active:scale-[0.96] disabled:opacity-50 ${
+              className={`flex h-8 min-w-0 items-center rounded-full px-3 text-[12px] font-medium transition-[background-color,color,box-shadow,scale] duration-150 active:scale-[0.96] disabled:opacity-50 ${
                 active
                   ? 'bg-primary-soft text-primary-strong shadow-sm'
                   : 'bg-surface text-ink-2 hover:bg-surface-2 hover:text-ink'
               }`}
             >
-              {active ? <Check size={12} /> : null}
+              {/* The check reveals by animating its column width 0fr → 1fr, so
+                  selecting a board grows the pill smoothly instead of jumping. */}
+              <span
+                className={`grid overflow-hidden transition-[grid-template-columns,opacity,margin-right] duration-150 ease-out ${
+                  active ? 'mr-1.5 grid-cols-[1fr] opacity-100' : 'grid-cols-[0fr] opacity-0'
+                }`}
+              >
+                <Check size={12} className="min-w-0" />
+              </span>
               <span className="truncate">{board.name}</span>
             </button>
           )
