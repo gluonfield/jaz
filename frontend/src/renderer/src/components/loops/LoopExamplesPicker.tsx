@@ -46,13 +46,12 @@ export function LoopExamplesPicker({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={reduce ? { opacity: 0 } : { opacity: 0, y: 6, scale: 0.98 }}
             transition={{ type: 'spring', stiffness: 460, damping: 34 }}
-            className="flex max-h-[70dvh] w-full max-w-sm flex-col overflow-hidden rounded-card bg-bg shadow-raised ring-1 ring-border"
+            className="flex max-h-[70dvh] w-full max-w-xs flex-col overflow-hidden rounded-card bg-bg p-1.5 shadow-raised ring-1 ring-border"
           >
-            <header className="px-4 pb-2 pt-3.5">
-              <h2 className="text-sm font-semibold text-ink">Examples</h2>
-              <p className="mt-0.5 text-[12px] text-ink-2">Pick one to fill the prompt.</p>
-            </header>
-            <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+            <div className="px-2 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-wide text-ink-3">
+              Examples
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
               <LoopExamples onPick={onPick} />
             </div>
           </motion.div>
