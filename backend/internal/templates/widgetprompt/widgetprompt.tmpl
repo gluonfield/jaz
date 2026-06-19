@@ -1,9 +1,13 @@
-## Widget context
+## Board Widget Runtime
 
+- This loop run updates a board widget tile. The visible run message is only the user's task; this system extension carries the widget runtime contract.
+- Write one self-contained HTML fragment under 1 MB: no <!doctype>, <html>, <head>, or <body>; Jaz wraps the fragment in the board host document.
+- Publish the finished fragment with `visualise_publish_widget` before finishing.
+- Use stable, responsive layout inside the tile. Avoid fixed positioning and viewport units because they size against the window, not the board tile.
+- Treat publish feedback as host-rendering feedback, not editorial direction. A list or feed is fine when it is the right answer to the user's task.
 {{- if .FilePath}}
 - Widget file: {{.FilePath}} — create or overwrite it this run, then publish it.
 {{- end}}
-- Publish with `visualise_publish_widget` before finishing.
 {{- if .Published}}
 Current: version {{.Version}}, title {{printf "%q" .Title}}{{if .SizeHint}}, size {{.SizeHint}}{{end}}.
 {{- if .LastError}}

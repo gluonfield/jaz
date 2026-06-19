@@ -91,12 +91,12 @@ func loadRuntimeEnvKey(env map[string]string, root, key string) {
 	}
 }
 
-func (m *Manager) prepareOpenCodeConfig(env map[string]string, agent AgentConfig, artifactSurface string, systemPromptExtensions []string) error {
+func (m *Manager) prepareOpenCodeConfig(env map[string]string, agent AgentConfig, cwd, artifactSurface string, systemPromptExtensions []string) error {
 	if strings.TrimSpace(env["OPENCODE_CONFIG_CONTENT"]) != "" {
 		return nil
 	}
 	content := openCodeConfigContent{}
-	if instruction, err := m.prepareOpenCodeInstructionFile(env, agent.Cwd, artifactSurface, systemPromptExtensions); err != nil {
+	if instruction, err := m.prepareOpenCodeInstructionFile(env, cwd, artifactSurface, systemPromptExtensions); err != nil {
 		return err
 	} else if instruction != "" {
 		content.Instructions = []string{instruction}

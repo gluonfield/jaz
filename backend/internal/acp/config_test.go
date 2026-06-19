@@ -19,6 +19,13 @@ func (p testPrompt) SkillsPromptForWorkspace(string) (string, error) {
 	return string(p), nil
 }
 
+type cwdPrompt struct{}
+
+func (cwdPrompt) ACPPrompt(cwd string) (string, error) { return "cwd=" + cwd, nil }
+func (cwdPrompt) SkillsPromptForWorkspace(string) (string, error) {
+	return "", nil
+}
+
 func TestProcessEnvIsMinimalAndCanonical(t *testing.T) {
 	clearHostEnv(t)
 	t.Setenv("PATH", "/bin")
@@ -539,7 +546,7 @@ func TestProcessEnvWritesOpenCodeInstructionsWithSessionExtension(t *testing.T) 
 		Root:         root,
 		SystemPrompt: testPrompt("jaz instructions"),
 	}, nil)
-	env, err := manager.processEnvPreparedForSurface("opencode", AgentConfig{}, "", []string{"run context"})
+	env, err := manager.processEnvPreparedForSurface("opencode", AgentConfig{}, "", "", []string{"run context"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -550,6 +557,31 @@ func TestProcessEnvWritesOpenCodeInstructionsWithSessionExtension(t *testing.T) 
 		t.Fatal(err)
 	}
 	if string(data) != "jaz instructions\n\nrun context\n" {
+		t.Fatalf("instructions = %q", data)
+	}
+	if !strings.Contains(env["OPENCODE_CONFIG_CONTENT"], path) {
+		t.Fatalf("OPENCODE_CONFIG_CONTENT = %q", env["OPENCODE_CONFIG_CONTENT"])
+	}
+}
+
+func TestProcessEnvWritesOpenCodeInstructionsWithResolvedCwd(t *testing.T) {
+	root := t.TempDir()
+	sessionCwd := filepath.Join(root, "workspaces", "default", ".worktrees", "loop-run")
+	agentCwd := filepath.Join(root, "wrong")
+	env, err := NewManager(nil, Config{
+		Root:         root,
+		SystemPrompt: cwdPrompt{},
+	}, nil).processEnvPreparedForSurface("opencode", AgentConfig{Cwd: agentCwd}, sessionCwd, "widget", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(root, "acp", "opencode", "jaz-instructions.md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "cwd="+sessionCwd+"\n" {
 		t.Fatalf("instructions = %q", data)
 	}
 	if !strings.Contains(env["OPENCODE_CONFIG_CONTENT"], path) {

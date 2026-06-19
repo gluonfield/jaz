@@ -203,7 +203,7 @@ func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd
 }
 
 func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface string, systemPromptExtensions []string, handler jsonrpc.Handler) (*agentConn, error) {
-	env, err := m.processEnvPreparedForSurface(name, cfg, artifactSurface, systemPromptExtensions)
+	env, err := m.processEnvPreparedForSurface(name, cfg, cwd, artifactSurface, systemPromptExtensions)
 	if err != nil {
 		return nil, err
 	}

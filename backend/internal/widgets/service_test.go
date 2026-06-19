@@ -491,8 +491,10 @@ func TestPromptSectionMentionsFileAndErrors(t *testing.T) {
 	_, _, loop := newTestService(t)
 	section := widgets.PromptSection(loop, &widgets.Widget{CurrentVersion: 3, Title: "Open PRs", LastError: "boom"})
 	for _, want := range []string{
+		"## Board Widget Runtime",
 		widgets.WidgetFilePath(loop),
 		"visualise_publish_widget",
+		"A list or feed is fine",
 		"boom",
 	} {
 		if !strings.Contains(section, want) {
