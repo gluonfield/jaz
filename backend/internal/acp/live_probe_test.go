@@ -127,6 +127,7 @@ func probeApplyConfiguredSessionOptions(t *testing.T, ctx context.Context, conn 
 	policy := agentPolicyForAgent(agent)
 	rawModel := strings.TrimSpace(os.Getenv("ACP_PROBE_MODEL"))
 	effort := strings.TrimSpace(os.Getenv("ACP_PROBE_REASONING_EFFORT"))
+	options := sessionConfigOptionsState{}
 	if rawModel != "" {
 		model := configuredSessionModel(rawModel)
 		if policy.usesModelConfigOption() {
@@ -136,16 +137,21 @@ func probeApplyConfiguredSessionOptions(t *testing.T, ctx context.Context, conn 
 				Value:     acpschema.SessionConfigValueID(model),
 			})
 			t.Logf("session/set_config_option(model=%s) result: %s", model, setModel.Result)
+			options = parseSessionConfigOptions(setModel.Result)
 		} else {
 			setModel := probeCall(t, ctx, conn, "10", agentMethodSessionSetModel, setSessionModelRequest{
 				SessionID: sessionID,
 				ModelID:   model,
 			})
 			t.Logf("session/set_model(%s) result: %s", model, setModel.Result)
+			options = parseSessionConfigOptions(setModel.Result)
 		}
 	}
-	if effort != "" && policy.usesReasoningEffortConfigOption() && !policy.effortEncodedInModel(rawModel) {
+	if effort != "" && (policy.usesReasoningEffortConfigOption() || options.effortConfigID != "") && !policy.effortEncodedInModel(rawModel) {
 		configID := policy.reasoningEffortConfigID()
+		if options.effortConfigID != "" {
+			configID = options.effortConfigID
+		}
 		setEffort := probeCall(t, ctx, conn, "11", acpschema.AgentMethodSessionSetConfigOption, acpschema.SetSessionConfigOptionRequest{
 			SessionID: sessionID,
 			ConfigID:  acpschema.SessionConfigID(configID),
@@ -206,6 +212,12 @@ func probeAgentConfig(t *testing.T, agent string) AgentConfig {
 			cfg.Command = command
 			cfg.Args = strings.Fields(strings.TrimSpace(os.Getenv("ACP_PROBE_GROK_ARGS")))
 		}
+	}
+	if model := strings.TrimSpace(os.Getenv("ACP_PROBE_MODEL")); model != "" {
+		cfg.Model = model
+	}
+	if effort := strings.TrimSpace(os.Getenv("ACP_PROBE_REASONING_EFFORT")); effort != "" {
+		cfg.ReasoningEffort = effort
 	}
 	return cfg
 }
