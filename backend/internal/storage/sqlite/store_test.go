@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,6 +52,28 @@ func TestSessionsHaveStableUniqueSlugsAndRootListing(t *testing.T) {
 	}
 	if resolved.ID != second.ID {
 		t.Fatalf("resolved %s, want %s", resolved.ID, second.ID)
+	}
+}
+
+func TestDefaultSlugIgnoresACPAgent(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	session, err := store.CreateSession(storage.CreateSession{
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:  storage.RuntimeACP,
+			Agent: "claude",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(session.Slug, "chat-") {
+		t.Fatalf("slug = %q, want neutral chat fallback", session.Slug)
 	}
 }
 
