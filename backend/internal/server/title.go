@@ -5,14 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
 )
-
-const titleGenerationTimeout = 5 * time.Second
 
 type sessionTitleResponse struct {
 	Title string `json:"title"`
@@ -83,16 +80,13 @@ func (s *Server) generateAndSaveSessionTitle(ctx context.Context, session storag
 }
 
 func (s *Server) generateSessionTitle(ctx context.Context, session storage.Session, message string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, titleGenerationTimeout)
-	defer cancel()
-
 	text, err := s.ACP.RunUtilityPrompt(ctx, acp.UtilityPromptRequest{
 		ACPAgent:        sessionACPAgent(session),
 		Directory:       sessionDirectory(session),
 		Message:         titlePrompt(message),
 		ModelProvider:   session.ModelProvider,
 		Model:           session.Model,
-		ReasoningEffort: session.ReasoningEffort,
+		ReasoningEffort: "none",
 	})
 	if err != nil {
 		return "", err
