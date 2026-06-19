@@ -96,6 +96,7 @@ export function LoopModal({
       onClose={close}
       size="md"
       title={isEdit ? 'Edit loop' : 'New loop'}
+      headerAccessory={<StepNav step={step} onJump={setStep} />}
       footer={
         <>
           <p className="text-[12px] text-danger" role="alert">
@@ -153,7 +154,6 @@ export function LoopModal({
         </>
       }
     >
-      <StepNav step={step} onJump={setStep} />
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={step}
@@ -161,7 +161,6 @@ export function LoopModal({
           animate={{ opacity: 1, x: 0 }}
           exit={reduce ? { opacity: 0 } : { opacity: 0, x: -6 }}
           transition={{ duration: 0.16, ease: [0.2, 0, 0, 1] }}
-          className="mt-5"
         >
           {step === 0 ? (
             <PromptStep
@@ -196,10 +195,10 @@ export function LoopModal({
 // are reached with Next so their entry requirements stay enforced.
 function StepNav({ step, onJump }: { step: number; onJump: (step: number) => void }) {
   return (
-    <div className="flex items-center gap-1.5 text-[12px]">
+    <div className="flex items-center gap-1 text-[11px]">
       {STEPS.map(({ label }, i) => (
         <Fragment key={label}>
-          {i > 0 ? <ChevronRight size={12} className="text-ink-3/60" /> : null}
+          {i > 0 ? <ChevronRight size={11} className="text-ink-3/60" /> : null}
           <button
             type="button"
             disabled={i > step}
