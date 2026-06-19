@@ -52,11 +52,12 @@ func RegisterACP(manager *acp.Manager, deps ACPDependencies) {
 
 func (r ACPRunner) Run(ctx context.Context, req acp.LocalAgentRequest) <-chan agent.StreamEvent {
 	return r.runner.Run(ctx, Request{
-		Session:         req.Session,
-		Message:         req.Message,
-		Attachments:     req.Attachments,
-		PlanRequested:   req.PlanRequested,
-		ArtifactSurface: req.ArtifactSurface,
+		Session:                req.Session,
+		Message:                req.Message,
+		Attachments:            req.Attachments,
+		PlanRequested:          req.PlanRequested,
+		ArtifactSurface:        req.ArtifactSurface,
+		SystemPromptExtensions: req.SystemPromptExtensions,
 	})
 }
 

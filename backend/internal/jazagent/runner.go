@@ -60,13 +60,14 @@ type Runner struct {
 }
 
 type Request struct {
-	Session         storage.Session
-	Message         string
-	Attachments     []storage.Attachment
-	VoiceMode       bool
-	PlanRequested   bool
-	AppendUser      bool
-	ArtifactSurface string
+	Session                storage.Session
+	Message                string
+	Attachments            []storage.Attachment
+	VoiceMode              bool
+	PlanRequested          bool
+	AppendUser             bool
+	ArtifactSurface        string
+	SystemPromptExtensions []string
 }
 
 type UtilityRequest struct {
@@ -226,19 +227,22 @@ func BuildRequest(store Store, prompts PromptSource, req Request) (TurnRequest, 
 		}
 	}
 	transient := make([]string, 0, 2)
+	var prompt string
 	if prompts != nil {
 		workspace := ""
 		if req.Session.RuntimeRef != nil && strings.TrimSpace(req.Session.RuntimeRef.Cwd) != "" {
 			workspace = req.Session.RuntimeRef.Cwd
 		}
-		prompt, err := promptForSurface(prompts, workspace, req.ArtifactSurface)
+		base, err := promptForSurface(prompts, workspace, req.ArtifactSurface)
 		if err != nil {
 			return TurnRequest{}, fmt.Errorf("build system prompt: %w", err)
 		}
-		if prompt := strings.TrimSpace(prompt); prompt != "" {
-			messages = append([]provider.Message{provider.SystemMessage(prompt)}, messages...)
-			transient = append(transient, prompt)
-		}
+		prompt = base
+	}
+	prompt = joinSystemPrompt(append([]string{prompt}, req.SystemPromptExtensions...)...)
+	if prompt := strings.TrimSpace(prompt); prompt != "" {
+		messages = append([]provider.Message{provider.SystemMessage(prompt)}, messages...)
+		transient = append(transient, prompt)
 	}
 	if req.VoiceMode {
 		messages = append(messages, provider.SystemMessage(VoiceModeNote))
@@ -273,6 +277,16 @@ func promptForSurface(prompts PromptSource, workspace, surface string) (string, 
 		return prompts.SystemPromptForWorkspaceSurface(workspace, visualize.NormalizeSurface(surface))
 	}
 	return prompts.SystemPromptForWorkspace(workspace)
+}
+
+func joinSystemPrompt(parts ...string) string {
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part := strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return strings.Join(out, "\n\n")
 }
 
 func SaveSnapshot(store Store, sessionID string, turn TurnRequest, event agent.StreamEvent) error {

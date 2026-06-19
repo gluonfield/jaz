@@ -1,20 +1,16 @@
-## Widget
+## Widget context
 
-- Before material changes, call `visualise_read_me` from `jaztools`; use the closest module (`chart`/`data_viz` for metrics, `mockup` for status/UI, `diagram` for flows).
 {{- if .FilePath}}
 - Widget file: {{.FilePath}} — create or overwrite it this run, then publish it.
 {{- end}}
-- Write one self-contained HTML fragment under 1 MB: no <!doctype>, <html>, <head>, or <body>; use shell if file tools refuse the path.
-- Tile quality floor: one stable root, scoped CSS, clear hierarchy, deliberate spacing, finished styling; no fixed positioning, viewport units, clipped overflow, placeholder text, dead space, forms, or action buttons.
-- For news/status/tracker tiles, surface the strongest 2-4 signals first with compact rows, chips, or metrics. Use one internal scroll region only when genuinely needed.
-- Publish with `visualise_publish_widget` and fix validation errors in the same run.
+- Publish with `visualise_publish_widget` before finishing.
 {{- if .Published}}
 Current: version {{.Version}}, title {{printf "%q" .Title}}{{if .SizeHint}}, size {{.SizeHint}}{{end}}.
 {{- if .LastError}}
 Runtime error reported by the board since the last publish (fix it this run): {{.LastError}}
 {{- end}}
 {{- if .LayoutFeedback}}
-Board layout telemetry for the current version (fix this run): {{.LayoutFeedback}}.
+Board rendering feedback for the current version: {{.LayoutFeedback}}.
 {{- end}}
 {{- else}}
 Current: never published. Create the first version this run.

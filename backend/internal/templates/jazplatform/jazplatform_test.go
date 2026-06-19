@@ -130,12 +130,13 @@ func TestRenderWidgetSurfaceOmitsChatArtifactPolicy(t *testing.T) {
 	if strings.Contains(prompt, "## Artifacts and visualisation") ||
 		strings.Contains(prompt, "## Agent delegation") ||
 		strings.Contains(prompt, "agent_spawn") ||
-		strings.Contains(prompt, "visualise_show_widget") ||
-		strings.Contains(prompt, "visualise_read_me") {
+		strings.Contains(prompt, "visualise_show_widget") {
 		t.Fatalf("widget surface must not receive chat-only tool policy:\n%s", prompt)
 	}
-	if !strings.Contains(prompt, "## AGENTS.md\n\nagents") || !strings.Contains(prompt, "## SOUL.md\n\nsoul") {
-		t.Fatalf("widget surface must keep the platform prompt:\n%s", prompt)
+	for _, want := range []string{"## AGENTS.md\n\nagents", "## SOUL.md\n\nsoul", "## Board Widget Runtime", "visualise_publish_widget", "A list or feed is fine"} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("widget surface missing %q:\n%s", want, prompt)
+		}
 	}
 }
 

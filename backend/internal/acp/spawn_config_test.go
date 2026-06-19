@@ -7,8 +7,9 @@ func TestSpawnConfigDefaultsWidgetSurfaceToWidgetMCPPolicy(t *testing.T) {
 		"fake": AgentConfig{Command: "fake"},
 	}}
 	req, _, _, err := manager.spawnConfig(SpawnRequest{
-		ACPAgent:        "fake",
-		ArtifactSurface: " widget ",
+		ACPAgent:               "fake",
+		ArtifactSurface:        " widget ",
+		SystemPromptExtensions: []string{" run context ", ""},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -18,6 +19,9 @@ func TestSpawnConfigDefaultsWidgetSurfaceToWidgetMCPPolicy(t *testing.T) {
 	}
 	if req.MCPServerPolicy != MCPServerPolicyWidget {
 		t.Fatalf("mcp server policy = %q, want %q", req.MCPServerPolicy, MCPServerPolicyWidget)
+	}
+	if len(req.SystemPromptExtensions) != 1 || req.SystemPromptExtensions[0] != "run context" {
+		t.Fatalf("system prompt extensions = %#v", req.SystemPromptExtensions)
 	}
 }
 

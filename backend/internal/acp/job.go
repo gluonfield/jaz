@@ -30,19 +30,20 @@ type Job struct {
 	CreatedAt     time.Time                     `json:"created_at"`
 	UpdatedAt     time.Time                     `json:"updated_at"`
 
-	mu                sync.RWMutex
-	turnMu            sync.Mutex
-	done              chan struct{}
-	completion        CompletionMode
-	interactive       bool
-	planRequested     bool
-	cancelRequested   bool
-	toolByID          map[string]ToolCallSnapshot
-	savedAssistantLen int
-	usage             storage.Usage
-	lastUsageDelta    storage.Usage
-	lastUsageContext  storage.Usage
-	lastUsageDeltaSet bool
+	mu                     sync.RWMutex
+	turnMu                 sync.Mutex
+	done                   chan struct{}
+	completion             CompletionMode
+	interactive            bool
+	planRequested          bool
+	cancelRequested        bool
+	toolByID               map[string]ToolCallSnapshot
+	savedAssistantLen      int
+	usage                  storage.Usage
+	lastUsageDelta         storage.Usage
+	lastUsageContext       storage.Usage
+	lastUsageDeltaSet      bool
+	systemPromptExtensions []string
 }
 
 type ToolCallSnapshot struct {

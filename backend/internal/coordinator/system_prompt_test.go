@@ -121,11 +121,10 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 	if strings.Contains(widgetACP, "## Artifacts and visualisation") ||
 		strings.Contains(widgetACP, "## Agent delegation") ||
 		strings.Contains(widgetACP, "agent_spawn") ||
-		strings.Contains(widgetACP, "visualise_show_widget") ||
-		strings.Contains(widgetACP, "visualise_read_me") {
+		strings.Contains(widgetACP, "visualise_show_widget") {
 		t.Fatalf("widget ACP extension must not carry chat-only tool policy:\n%s", widgetACP)
 	}
-	for _, want := range []string{"## AGENTS.md\n\nalways cite sources", "## memory/LONG_TERM.md", "<name>deploy</name>"} {
+	for _, want := range []string{"## AGENTS.md\n\nalways cite sources", "## Board Widget Runtime", "visualise_publish_widget", "A list or feed is fine", "## memory/LONG_TERM.md", "<name>deploy</name>"} {
 		if !strings.Contains(widgetACP, want) {
 			t.Fatalf("widget ACP extension missing shared section %q:\n%s", want, widgetACP)
 		}

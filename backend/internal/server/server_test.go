@@ -813,9 +813,11 @@ func (f *fakeACPManager) CreateSession(_ context.Context, req acp.SpawnRequest) 
 		SourceType:      req.SourceType,
 		SourceID:        req.SourceID,
 		RuntimeRef: &storage.RuntimeRef{
-			Type:  storage.RuntimeACP,
-			Agent: req.ACPAgent,
-			Cwd:   req.Directory,
+			Type:            storage.RuntimeACP,
+			Agent:           req.ACPAgent,
+			Cwd:             req.Directory,
+			ArtifactSurface: req.ArtifactSurface,
+			MCPServerPolicy: req.MCPServerPolicy,
 		},
 	})
 }
@@ -839,9 +841,11 @@ func (f *fakeACPManager) Spawn(_ context.Context, req acp.SpawnRequest) (acp.Spa
 		SourceType: req.SourceType,
 		SourceID:   req.SourceID,
 		RuntimeRef: &storage.RuntimeRef{
-			Type:      storage.RuntimeACP,
-			Agent:     req.ACPAgent,
-			SessionID: "fake-acp-session",
+			Type:            storage.RuntimeACP,
+			Agent:           req.ACPAgent,
+			SessionID:       "fake-acp-session",
+			ArtifactSurface: req.ArtifactSurface,
+			MCPServerPolicy: req.MCPServerPolicy,
 		},
 	})
 	if err != nil {
