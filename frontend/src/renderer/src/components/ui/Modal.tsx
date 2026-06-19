@@ -18,6 +18,7 @@ export function Modal({
   title,
   description,
   icon,
+  headerAccessory,
   footer,
   children,
   size = 'md',
@@ -27,6 +28,9 @@ export function Modal({
   title: string
   description?: ReactNode
   icon?: ReactNode
+  // Sits on the title row, right-aligned before the close button — e.g. a
+  // step trail next to the heading.
+  headerAccessory?: ReactNode
   footer?: ReactNode
   children: ReactNode
   size?: keyof typeof SIZES
@@ -120,6 +124,9 @@ export function Modal({
                     <p className="mt-0.5 text-[13px] text-ink-2">{description}</p>
                   ) : null}
                 </div>
+                {headerAccessory ? (
+                  <div className="shrink-0 self-center">{headerAccessory}</div>
+                ) : null}
                 <IconButton
                   variant="ghost"
                   size="sm"
