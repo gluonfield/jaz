@@ -57,10 +57,20 @@ type Config struct {
 	Root           string
 	Workspace      string
 	ModelProviders map[string]provider.ModelProviderConfig
+	Skills         SkillsConfig
 	Voice          VoiceConfig
 	ACP            acp.Config
 	Memory         MemoryConfig
 }
+
+type SkillsConfig struct {
+	DisableSync bool
+}
+
+const (
+	defaultSkillsManifestURL    = "https://github.com/gluonfield/jaz-skills/releases/download/jaz-v0.0.28/manifest.json"
+	defaultSkillsManifestSHA256 = "7acc2b360b5955721ae38edda1b75f5eb4409676a45dfad603e7325c3eab7497"
+)
 
 type VoiceConfig struct {
 	TTS     SpeechConfig
@@ -105,9 +115,6 @@ func NewRuntimeLayout(cfg Config) (runtimefiles.Layout, error) {
 	}
 	layout, err := runtimefiles.Ensure(root)
 	if err != nil {
-		return runtimefiles.Layout{}, err
-	}
-	if err := skills.InstallDefaults(layout.Root); err != nil {
 		return runtimefiles.Layout{}, err
 	}
 	return layout, nil
@@ -251,6 +258,35 @@ func StartMCPManager(lc fx.Lifecycle, manager *mcpruntime.Manager, logger *log.L
 				cancel()
 			}
 			manager.Close()
+			return nil
+		},
+	})
+}
+
+func StartSkillSync(lc fx.Lifecycle, cfg Config, layout runtimefiles.Layout, logger *log.Logger) {
+	if cfg.Skills.DisableSync {
+		return
+	}
+	var cancel context.CancelFunc
+	lc.Append(fx.Hook{
+		OnStart: func(context.Context) error {
+			ctx, stop := context.WithCancel(context.Background())
+			cancel = stop
+			go func() {
+				syncCfg := skills.RemoteSyncConfig{
+					ManifestURL:    defaultSkillsManifestURL,
+					ManifestSHA256: defaultSkillsManifestSHA256,
+				}
+				if err := skills.SyncRemote(ctx, layout.Root, syncCfg); err != nil && ctx.Err() == nil {
+					logger.WithPrefix("skills").Warn("skill sync failed", "url", defaultSkillsManifestURL, "error", err)
+				}
+			}()
+			return nil
+		},
+		OnStop: func(context.Context) error {
+			if cancel != nil {
+				cancel()
+			}
 			return nil
 		},
 	})

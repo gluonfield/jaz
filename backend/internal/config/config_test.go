@@ -87,6 +87,7 @@ openai:
 	t.Setenv("APPLICATION_CONFIG", path)
 	t.Setenv("OPENROUTER_API_KEY", "openrouter-key")
 	t.Setenv("OPENAI_API_KEY", "openai-key")
+	t.Setenv("JAZ_SKILLS_DISABLE_SYNC", "true")
 
 	cfg, err := Load()
 	if err != nil {
@@ -104,5 +105,8 @@ openai:
 	}
 	if cfg.Jaz.ModelProviders["openrouter"].APIKey != "openrouter-key" || cfg.Jaz.ModelProviders["openai"].APIKey != "openai-key" {
 		t.Fatalf("unexpected model provider catalog %#v", cfg.Jaz.ModelProviders)
+	}
+	if !cfg.Jaz.Skills.DisableSync {
+		t.Fatalf("skills config = %#v", cfg.Jaz.Skills)
 	}
 }

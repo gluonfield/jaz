@@ -82,14 +82,20 @@ func TestNewRuntimeLayoutEnsuresDirsAndSkills(t *testing.T) {
 			t.Fatalf("runtime dir %s missing: %v", dir, err)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(layout.UserSkills, "jazmem", "SKILL.md")); err != nil {
-		t.Fatalf("default skill missing: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(layout.UserSkills, "web-artifacts-builder", "scripts", "bundle-artifact.sh")); err != nil {
-		t.Fatalf("web artifacts builder skill missing: %v", err)
+	if entries, err := os.ReadDir(layout.UserSkills); err != nil || len(entries) != 0 {
+		t.Fatalf("runtime layout should not install codebase skills: entries=%d err=%v", len(entries), err)
 	}
 	if _, err := os.Stat(filepath.Join(layout.Root, "system", "skills")); !os.IsNotExist(err) {
 		t.Fatalf("system skills dir should not exist, err = %v", err)
+	}
+}
+
+func TestDefaultSkillsManifestPin(t *testing.T) {
+	if defaultSkillsManifestURL != "https://github.com/gluonfield/jaz-skills/releases/download/jaz-v0.0.28/manifest.json" {
+		t.Fatalf("manifest url = %q", defaultSkillsManifestURL)
+	}
+	if defaultSkillsManifestSHA256 != "7acc2b360b5955721ae38edda1b75f5eb4409676a45dfad603e7325c3eab7497" {
+		t.Fatalf("manifest sha = %q", defaultSkillsManifestSHA256)
 	}
 }
 
