@@ -24,7 +24,13 @@ memory, and git control. Client/server split, always-on, open source end to end.
 ## Examples
 
 Familiar chat UI
+
 <img width="3358" height="2334" alt="image" src="https://github.com/user-attachments/assets/ab52e8f6-ff3b-450f-895b-027f2faa6481" />
+
+Interactive visualisations
+
+<img width="1280" height="864" alt="ScreenRecording2026-06-20at12 56 26PM-ezgif com-video-to-gif-converter (1)" src="https://github.com/user-attachments/assets/16ef73b3-5525-45f3-86d1-7c16c07cc412" />
+
 
 
 ## Get Started
