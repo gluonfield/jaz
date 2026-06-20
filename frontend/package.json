@@ -1,7 +1,7 @@
 {
   "name": "jaz-desktop",
   "productName": "Jaz",
-  "version": "0.0.28",
+  "version": "0.0.29",
   "private": true,
   "description": "Jaz desktop control plane",
   "author": "Augustinas Malinauskas",
