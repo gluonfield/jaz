@@ -21,6 +21,10 @@ memory, and git control. Client/server split, always-on, open source end to end.
   </g>
 </svg>](https://jaz.chat/download)
 
+## Examples
+
+Familiar chat UI
+<img width="3358" height="2334" alt="image" src="https://github.com/user-attachments/assets/ab52e8f6-ff3b-450f-895b-027f2faa6481" />
 
 
 ## Get Started
