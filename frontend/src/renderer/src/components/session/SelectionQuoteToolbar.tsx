@@ -5,7 +5,6 @@ import { createPortal } from 'react-dom'
 
 interface Pending {
   text: string
-  sourceSeq?: number
   top: number
   left: number
 }
@@ -19,7 +18,7 @@ export function SelectionQuoteToolbar({
   onAdd,
 }: {
   scrollRef: RefObject<HTMLElement | null>
-  onAdd: (quote: { text: string; sourceSeq?: number }) => void
+  onAdd: (text: string) => void
 }) {
   const [pending, setPending] = useState<Pending | null>(null)
   const barRef = useRef<HTMLDivElement>(null)
@@ -40,20 +39,12 @@ export function SelectionQuoteToolbar({
       range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
         ? (range.commonAncestorContainer as Element)
         : range.commonAncestorContainer.parentElement
-    const prose = container?.closest('.chat-prose')
-    if (!prose) {
+    if (!container?.closest('.chat-prose')) {
       setPending(null)
       return
     }
-    const seqEl = prose.closest('[data-message-seq]')
-    const sourceSeq = seqEl ? Number(seqEl.getAttribute('data-message-seq')) : undefined
     const rect = range.getBoundingClientRect()
-    setPending({
-      text,
-      ...(sourceSeq !== undefined && Number.isFinite(sourceSeq) ? { sourceSeq } : {}),
-      top: rect.top,
-      left: rect.left + rect.width / 2,
-    })
+    setPending({ text, top: rect.top, left: rect.left + rect.width / 2 })
   }, [])
 
   useEffect(() => {
@@ -95,7 +86,7 @@ export function SelectionQuoteToolbar({
 
   const add = () => {
     if (!pending) return
-    onAdd({ text: pending.text, ...(pending.sourceSeq !== undefined ? { sourceSeq: pending.sourceSeq } : {}) })
+    onAdd(pending.text)
     window.getSelection()?.removeAllRanges()
     setPending(null)
   }

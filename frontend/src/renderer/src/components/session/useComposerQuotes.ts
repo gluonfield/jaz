@@ -16,11 +16,7 @@ function storedQuote(value: unknown): ComposerQuote | null {
   const id = typeof raw.id === 'string' ? raw.id : ''
   const text = typeof raw.text === 'string' ? raw.text : ''
   if (!id || !text) return null
-  return {
-    id,
-    text,
-    ...(typeof raw.sourceSeq === 'number' && Number.isFinite(raw.sourceSeq) ? { sourceSeq: raw.sourceSeq } : {}),
-  }
+  return { id, text }
 }
 
 function readQuotes(key: string | undefined, storage: ComposerDraftStorage): ComposerQuote[] {
@@ -76,15 +72,10 @@ export function useComposerQuotes({
     writeQuotes(storageKey, storage, next)
   }, [storage, storageKey])
 
-  const addQuote = useCallback((quote: { text: string; sourceSeq?: number }) => {
-    const text = quote.text.trim()
-    if (disabled || !text) return
-    const item: ComposerQuote = {
-      id: crypto.randomUUID(),
-      text,
-      ...(quote.sourceSeq !== undefined ? { sourceSeq: quote.sourceSeq } : {}),
-    }
-    commitQuotes([...quotesRef.current, item])
+  const addQuote = useCallback((text: string) => {
+    const trimmed = text.trim()
+    if (disabled || !trimmed) return
+    commitQuotes([...quotesRef.current, { id: crypto.randomUUID(), text: trimmed }])
   }, [commitQuotes, disabled])
 
   const removeQuote = useCallback((id: string) => {

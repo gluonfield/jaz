@@ -49,7 +49,7 @@ import {
   progressSurfaceFromEvent,
   taskSurfaceBelongsToSession,
 } from '@/lib/taskSurface'
-import type { ComposerQuote, SendMessageOptions } from '@/lib/sendMessage'
+import type { SendMessageOptions } from '@/lib/sendMessage'
 import { coalesceSessionEvents } from '@/lib/sessionEvents'
 import { activePermissionIDs, isPermissionAwaitingResponse, resolveInactivePermissions } from '@/lib/sessionPermissions'
 import { latestEventTimeISO } from '@/lib/sessionLiveness'
@@ -79,7 +79,7 @@ interface LiveExchange {
   user: string
   at: string
   planRequested: boolean
-  quotes: ComposerQuote[]
+  quotes: string[]
   attachments: LiveAttachment[]
   reasoning: string
   assistant: string
@@ -461,7 +461,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     const controller = new AbortController()
     const files = options.files ?? []
     const draftAttachments = options.attachments ?? []
-    const draftQuotes = options.quotes ?? []
+    const draftQuotes = (options.quotes ?? []).map((quote) => quote.text)
     abortRef.current = controller
     pinToBottom()
     setLive({
@@ -490,7 +490,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
       await streamSessionMessage({
         sessionId,
         message: text,
-        quotes: draftQuotes.map((quote) => quote.text),
+        quotes: draftQuotes,
         attachmentIds: [
           ...draftAttachments.map((attachment) => attachment.id),
           ...attachments.map((attachment) => attachment.id),
@@ -806,7 +806,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                               transition={{ type: 'spring', stiffness: 380, damping: 30 }}
                             >
                               <div className="min-w-0 max-w-[84%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap [overflow-wrap:break-word] select-text">
-                                <MessageQuotes quotes={live.quotes.map((quote) => quote.text)} />
+                                <MessageQuotes quotes={live.quotes} />
                                 <MentionText text={live.user} />
                                 <LiveAttachmentList attachments={live.attachments} />
                               </div>
