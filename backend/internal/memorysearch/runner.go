@@ -14,7 +14,10 @@ import (
 	"github.com/wins/jaz/backend/internal/templates/memorysearchprompt"
 )
 
-const Timeout = 90 * time.Second
+const (
+	Timeout         = 90 * time.Second
+	workerDirectory = ".jaz-runtime/memory-search"
+)
 
 type Manager interface {
 	Spawn(context.Context, acp.SpawnRequest) (acp.SpawnResult, error)
@@ -61,6 +64,7 @@ func (r *Runner) SearchMemory(ctx context.Context, req memoryservice.AgenticSear
 		ACPAgent:        agent,
 		Slug:            fmt.Sprintf("memory-search-%s-%d", agent, stamp),
 		Title:           "Memory Search",
+		Directory:       workerDirectory,
 		Model:           jazsettings.MemoryAgentModel(agent, agentDefaults),
 		ReasoningEffort: jazsettings.MemoryAgentReasoningEffort(agent),
 		SourceType:      storage.SourceMemorySearch,
