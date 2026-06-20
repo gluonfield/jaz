@@ -45,10 +45,9 @@ func (r *LoopRunner) startACPLoopRun(execution loops.Execution) {
 	run := execution.Run
 	startCtx, cancel := serverActionContext()
 	defer cancel()
+	// An empty agent stays empty: the ACP manager resolves the canonical
+	// default at spawn time, the same default sessions get.
 	agent := strings.TrimSpace(loop.ACPAgent)
-	if agent == "" {
-		agent = acp.AgentJaz
-	}
 	directory := strings.TrimSpace(loop.Directory)
 	if directory == "" {
 		directory = "."

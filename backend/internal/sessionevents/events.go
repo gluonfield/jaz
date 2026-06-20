@@ -8,20 +8,22 @@ import (
 )
 
 const (
-	TypeArtifact = "artifact"
-	TypeSession  = "session"
+	TypeArtifact    = "artifact"
+	TypeSession     = "session"
+	TypeLoopCreated = "loop_created"
 )
 
 type Event struct {
-	Seq        int64          `json:"seq,omitempty"`
-	SessionID  string         `json:"session_id"`
-	Type       string         `json:"type"`
-	Content    string         `json:"content,omitempty"`
-	ACP        *ACPEvent      `json:"acp,omitempty"`
-	Plan       *PlanEvent     `json:"plan,omitempty"`
-	Permission *ACPPermission `json:"permission,omitempty"`
-	Artifact   *ArtifactEvent `json:"artifact,omitempty"`
-	At         time.Time      `json:"at"`
+	Seq         int64             `json:"seq,omitempty"`
+	SessionID   string            `json:"session_id"`
+	Type        string            `json:"type"`
+	Content     string            `json:"content,omitempty"`
+	ACP         *ACPEvent         `json:"acp,omitempty"`
+	Plan        *PlanEvent        `json:"plan,omitempty"`
+	Permission  *ACPPermission    `json:"permission,omitempty"`
+	Artifact    *ArtifactEvent    `json:"artifact,omitempty"`
+	LoopCreated *LoopCreatedEvent `json:"loop_created,omitempty"`
+	At          time.Time         `json:"at"`
 }
 
 type ArtifactEvent struct {
@@ -31,33 +33,77 @@ type ArtifactEvent struct {
 	ArtifactType    string   `json:"artifact_type,omitempty"`
 }
 
+// LoopCreatedEvent renders a card in the thread when a loop is created, linking
+// to the loop and to any boards its widget was pinned to. Like ArtifactEvent it
+// has no dedicated storage column: it round-trips through the content column.
+type LoopCreatedEvent struct {
+	LoopID    string         `json:"loop_id"`
+	LoopName  string         `json:"loop_name"`
+	Schedule  string         `json:"schedule,omitempty"`
+	Timezone  string         `json:"timezone,omitempty"`
+	NextRunAt time.Time      `json:"next_run_at,omitzero"`
+	Agent     string         `json:"agent,omitempty"`
+	Status    string         `json:"status,omitempty"`
+	Boards    []LoopBoardRef `json:"boards,omitempty"`
+}
+
+type LoopBoardRef struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
 func (e *Event) NormalizePayload() {
-	if e == nil || e.Type != TypeArtifact {
+	if e == nil {
 		return
 	}
-	if e.Artifact != nil {
-		e.Content = ""
-		return
-	}
-	if e.Content == "" {
-		return
-	}
-	var artifact ArtifactEvent
-	if err := json.Unmarshal([]byte(e.Content), &artifact); err == nil && artifact.Title != "" && artifact.WidgetCode != "" {
-		e.Artifact = &artifact
-		e.Content = ""
+	switch e.Type {
+	case TypeArtifact:
+		if e.Artifact != nil {
+			e.Content = ""
+			return
+		}
+		if e.Content == "" {
+			return
+		}
+		var artifact ArtifactEvent
+		if err := json.Unmarshal([]byte(e.Content), &artifact); err == nil && artifact.Title != "" && artifact.WidgetCode != "" {
+			e.Artifact = &artifact
+			e.Content = ""
+		}
+	case TypeLoopCreated:
+		if e.LoopCreated != nil {
+			e.Content = ""
+			return
+		}
+		if e.Content == "" {
+			return
+		}
+		var loop LoopCreatedEvent
+		if err := json.Unmarshal([]byte(e.Content), &loop); err == nil && loop.LoopID != "" {
+			e.LoopCreated = &loop
+			e.Content = ""
+		}
 	}
 }
 
 func (e Event) StorageContent() string {
-	if e.Type != TypeArtifact || e.Artifact == nil {
-		return e.Content
+	switch e.Type {
+	case TypeArtifact:
+		if e.Artifact == nil {
+			return e.Content
+		}
+		if data, err := json.Marshal(e.Artifact); err == nil {
+			return string(data)
+		}
+	case TypeLoopCreated:
+		if e.LoopCreated == nil {
+			return e.Content
+		}
+		if data, err := json.Marshal(e.LoopCreated); err == nil {
+			return string(data)
+		}
 	}
-	data, err := json.Marshal(e.Artifact)
-	if err != nil {
-		return e.Content
-	}
-	return string(data)
+	return e.Content
 }
 
 type ACPEvent struct {

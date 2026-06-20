@@ -101,6 +101,24 @@ type UpdateLoop struct {
 	RescheduleAt    time.Time
 }
 
+// BoardSummary identifies a Jaz board a loop's widget can be assigned to.
+type BoardSummary struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	IsDefault bool   `json:"is_default"`
+}
+
+// BoardService assigns a loop's widget to Jaz boards. Assignment is the widget
+// enablement: a loop with no board has no widget. The widgets service
+// implements it; loops only needs these loop-facing operations, which keeps
+// widget types from leaking across the package boundary.
+type BoardService interface {
+	ListBoards() ([]BoardSummary, error)
+	ValidateBoardIDs(boardIDs []string) error
+	AssignLoopBoards(loop Loop, boardIDs []string) error
+	BoardsForLoop(loopID string) ([]string, error)
+}
+
 type Repository interface {
 	NewLoopID() string
 	NewRunID() string

@@ -97,8 +97,8 @@ func (s *Service) URL() string {
 	return s.url
 }
 
-func (s *Service) SetLoops(service loops.MCPService) {
-	s.loopTools = loops.NewMCPTools(service)
+func (s *Service) SetLoops(service loops.MCPService, opts ...loops.MCPOption) {
+	s.loopTools = loops.NewMCPTools(service, opts...)
 }
 
 func (s *Service) SetAgents(service acp.MCPService) {

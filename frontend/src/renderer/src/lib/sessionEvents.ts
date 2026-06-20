@@ -15,6 +15,9 @@ export function sessionEventCoalesceKey(event: SessionEvent): string {
   if ((event.type === 'permission_request' || event.type === 'permission_response') && event.permission?.id) {
     return `${event.type}:${event.permission.id}`
   }
+  if (event.type === 'loop_created' && event.loop_created?.loop_id) {
+    return `loop_created:${event.loop_created.loop_id}`
+  }
   return ''
 }
 

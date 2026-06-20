@@ -11,8 +11,6 @@ import (
 
 var cronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-const defaultACPAgent = "jaz"
-
 func NormalizeCreate(input CreateLoop, now time.Time) (CreateLoop, time.Time, error) {
 	input.Name = strings.TrimSpace(input.Name)
 	input.Prompt = strings.TrimSpace(input.Prompt)
@@ -24,10 +22,9 @@ func NormalizeCreate(input CreateLoop, now time.Time) (CreateLoop, time.Time, er
 	if input.Runtime != RuntimeACP {
 		return input, time.Time{}, fmt.Errorf("unsupported loop runtime %q", input.Runtime)
 	}
+	// An empty agent is left empty on purpose: the ACP manager resolves the
+	// canonical default at spawn time, so loops never pin a specific agent.
 	input.ACPAgent = strings.TrimSpace(input.ACPAgent)
-	if input.Runtime == RuntimeACP && input.ACPAgent == "" {
-		input.ACPAgent = defaultACPAgent
-	}
 	effort, err := normalizeReasoningEffort(input.ReasoningEffort)
 	if err != nil {
 		return input, time.Time{}, err
@@ -82,9 +79,6 @@ func NormalizeUpdate(current Loop, input UpdateLoop, now time.Time) (Loop, bool,
 	}
 	if input.Directory != nil {
 		next.Directory = strings.TrimSpace(*input.Directory)
-	}
-	if next.Runtime == RuntimeACP && next.ACPAgent == "" {
-		next.ACPAgent = defaultACPAgent
 	}
 	if next.Status != StatusActive && next.Status != StatusPaused {
 		return next, false, fmt.Errorf("unsupported loop status %q", next.Status)

@@ -32,15 +32,8 @@ func (s *Server) handleCreateLoop(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	// Bad board ids must fail BEFORE the loop is persisted — a rejected
-	// create must not leave a loop behind.
-	if len(req.BoardIDs) > 0 && s.Widgets != nil {
-		if err := s.Widgets.ValidateBoardIDs(req.BoardIDs); err != nil {
-			writeError(w, http.StatusBadRequest, err)
-			return
-		}
-	}
-	loop, err := s.Loops.Create(loops.CreateLoop{
+	// No threadID: the REST surface has no thread, so it never emits a card.
+	loop, err := s.loopCoordinator().Create(loops.CreateLoop{
 		Name:            req.Name,
 		Prompt:          req.Prompt,
 		Schedule:        req.Schedule,
@@ -51,18 +44,23 @@ func (s *Server) handleCreateLoop(w http.ResponseWriter, r *http.Request) {
 		Model:           req.Model,
 		ReasoningEffort: req.ReasoningEffort,
 		Directory:       req.Directory,
-	})
+	}, req.BoardIDs, "")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	if len(req.BoardIDs) > 0 && s.Widgets != nil {
-		if _, err := s.Widgets.AssignLoopBoards(loop, req.BoardIDs); err != nil {
-			writeError(w, http.StatusBadRequest, err)
-			return
-		}
-	}
 	writeJSON(w, http.StatusOK, loop)
+}
+
+// loopCoordinator builds the shared create/update use case for the REST surface.
+// Boards come from the widget service; there is no card sink because REST
+// requests carry no thread to announce into.
+func (s *Server) loopCoordinator() loops.Coordinator {
+	coordinator := loops.Coordinator{Loops: s.Loops}
+	if s.Widgets != nil {
+		coordinator.Boards = s.Widgets.LoopBoards()
+	}
+	return coordinator
 }
 
 func (s *Server) handleLoopAction(w http.ResponseWriter, r *http.Request) {
@@ -139,15 +137,7 @@ func (s *Server) handlePatchLoop(w http.ResponseWriter, r *http.Request, loopID 
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	// Bad board ids must fail BEFORE the loop is updated — a rejected patch
-	// must not leave half its changes applied.
-	if req.BoardIDs != nil && s.Widgets != nil {
-		if err := s.Widgets.ValidateBoardIDs(*req.BoardIDs); err != nil {
-			writeError(w, http.StatusBadRequest, err)
-			return
-		}
-	}
-	loop, err := s.Loops.Update(loopID, loops.UpdateLoop{
+	loop, err := s.loopCoordinator().Update(loopID, loops.UpdateLoop{
 		Name:            req.Name,
 		Prompt:          req.Prompt,
 		Schedule:        req.Schedule,
@@ -158,16 +148,10 @@ func (s *Server) handlePatchLoop(w http.ResponseWriter, r *http.Request, loopID 
 		Model:           req.Model,
 		ReasoningEffort: req.ReasoningEffort,
 		Directory:       req.Directory,
-	})
+	}, req.BoardIDs)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
-	}
-	if req.BoardIDs != nil && s.Widgets != nil {
-		if _, err := s.Widgets.AssignLoopBoards(loop, *req.BoardIDs); err != nil {
-			writeError(w, http.StatusBadRequest, err)
-			return
-		}
 	}
 	writeJSON(w, http.StatusOK, loop)
 }
