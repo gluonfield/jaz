@@ -72,16 +72,12 @@ func NormalizeQueuedMessage(message QueuedMessage) (QueuedMessage, bool) {
 	message.ID = strings.TrimSpace(message.ID)
 	message.Text = strings.TrimSpace(message.Text)
 	message.Quotes = normalizeNonEmpty(message.Quotes)
-	message.AttachmentIDs = normalizeQueuedAttachmentIDs(message.AttachmentIDs)
+	message.AttachmentIDs = normalizeNonEmpty(message.AttachmentIDs)
 	return message, message.Text != ""
 }
 
 func NewQueuedMessage(text string, attachmentIDs []string) QueuedMessage {
-	return QueuedMessage{Text: strings.TrimSpace(text), AttachmentIDs: normalizeQueuedAttachmentIDs(attachmentIDs)}
-}
-
-func normalizeQueuedAttachmentIDs(ids []string) []string {
-	return normalizeNonEmpty(ids)
+	return QueuedMessage{Text: strings.TrimSpace(text), AttachmentIDs: normalizeNonEmpty(attachmentIDs)}
 }
 
 func normalizeNonEmpty(values []string) []string {
