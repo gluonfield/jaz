@@ -114,6 +114,7 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	var title string
 	var publishACP bool
 	var messageChunk string
+	var bufferMessage bool
 	var thoughtChunk string
 	var toolEvent *ToolCallSnapshot
 	var attention bool
@@ -141,6 +142,7 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	case acpschema.AgentMessageChunkUpdate:
 		messageChunk = contentText(event.Content)
 		job.Assistant = appendACPText(job.Assistant, messageChunk)
+		bufferMessage = job.planRequested
 		if messageChunk != "" {
 			job.savedAssistantLen = len(job.Assistant)
 		}
@@ -199,7 +201,7 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 			_ = m.store.SaveSession(session)
 		}
 	}
-	if messageChunk != "" {
+	if messageChunk != "" && !bufferMessage {
 		m.publishACPMessage(job.Snapshot(), messageChunk)
 	}
 	if thoughtChunk != "" {

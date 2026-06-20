@@ -300,8 +300,12 @@ func (m *Manager) applyLocalMessage(job *Job, chunk string) {
 	}
 	job.mu.Lock()
 	job.Assistant = appendACPText(job.Assistant, chunk)
+	bufferMessage := job.planRequested
 	job.UpdatedAt = time.Now().UTC()
 	job.mu.Unlock()
+	if bufferMessage {
+		return
+	}
 	snapshot := job.Snapshot()
 	m.publishACPMessage(snapshot, chunk)
 }
