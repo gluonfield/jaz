@@ -1,73 +1,63 @@
+[![License](https://img.shields.io/badge/License-Apache_2.0-D22128?logo=apache&logoColor=white)](LICENSE)
+![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)
+![Bun](https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white)
+![Electron](https://img.shields.io/badge/Electron-2B2E3A?logo=electron&logoColor=9FEAF9)
+![Claude](https://img.shields.io/badge/Claude-D97757?logo=claude&logoColor=white)
+![Codex](https://img.shields.io/badge/Codex-000000?logo=openai&logoColor=white)
+
 # Jaz
 
-A personal AI assistant platform you run yourself — an always-on backend that drives
-coding agents, scheduled loops, durable memory, and live boards, with a desktop app
-as its control surface.
+**all your coding agents, living on the board.**
 
-> Like a Jarvis you own: the backend holds your sessions, memory, tools, and
-> credentials; clients are just windows into it.
+A personal AI on machines you own — any agent, loops that run overnight, boards,
+memory, and git control. Client/server split, always-on, open source end to end.
 
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+## Get Started
 
-## What it is
+Grab the latest desktop build from [**Releases**](https://github.com/gluonfield/jaz/releases/latest),
+or [run it from source](#development).
 
-Jaz pairs an always-on Go backend with a calm desktop control plane. The backend runs
-agent sessions over the [Agent Client Protocol](https://agentclientprotocol.com) (ACP),
-recurring loops, durable memory, and MCP tool surfaces. The desktop app lets you watch
-live activity, read transcripts, publish boards and widgets, and shape the assistant's
-behavior. Run everything on your laptop, or put the backend on a server and connect
-clients from anywhere.
+Jaz ships with three coding agents, and you pick one per thread:
 
-## Architecture
+| Agent | How it connects |
+|---|---|
+| **Codex** | Sign in with your **ChatGPT Pro plan** to use its discounted tokens, or an OpenAI API key |
+| **Claude** | Sign in with your **Claude Pro/Max plan** to use its discounted tokens, or an Anthropic API key |
+| **OpenCode** | Connects to OpenAI, OpenRouter, or Anthropic by API token |
 
-Server–client. The backend owns everything; clients are control surfaces.
-
-```
-  Desktop (Electron) ┐
-  Mobile             ├── HTTP (REST + SSE) ──▶  ┌──────────────────────┐
-  CLI                ┘                          │     Backend (Go)     │
-                                                │                      │
-                                ACP ◀───────────┤  agents              │  owns: sessions,
-                Claude · Codex · Grok ·         │  ├─ Claude · Codex   │  memory, tools,
-                OpenCode · Jaz (native)         │  ├─ Grok · OpenCode  │  credentials,
-                                                │  └─ Jaz (native)     │  workspaces,
-                                MCP ◀───────────┤  tools               │  device policy
-                  memory · visualise · …        │  └─ memory, …        │
-                                                └──────────────────────┘
-```
-
-- **Backend** (`backend/`, Go 1.26) — the always-on core. Owns sessions, memory, tools,
-  credentials, workspaces, agent configuration, and connected-device policy. Speaks
-  REST + Server-Sent Events. Drives coding agents over **ACP** and exposes/consumes
-  tools over **MCP**. Runs on a laptop or a Linux server — see
-  [`docs/remote-backend.md`](docs/remote-backend.md).
-- **Desktop client** (`frontend/`, Electron + React) — the control surface. Streams live
-  agent activity, reads transcripts, edits the assistant's identity files
-  (`AGENTS.md`, `SOUL.md`), and manages devices and settings. Connects to a local or
-  remote backend and stores a per-device token.
-- **Agents** — pluggable ACP coding agents (Claude Code, Codex, Grok, OpenCode) plus the
-  built-in Jaz agent (OpenRouter / OpenAI).
-- **Connected devices** — WhatsApp-style trust: a new desktop, mobile, or CLI client
-  requests access and must be approved by an already-trusted device. Per-device bearer
-  tokens; Ed25519 device identity.
-- **Matrix sidecar** (`matrix/`) — optional server-side Matrix stack for chat/social
-  integrations, managed by the server host.
+You can also connect **OpenRouter**, **OpenAI**, or **Anthropic** directly and pay per token.
 
 ## Features
 
-- **Sessions** — live, streamed agent transcripts.
-- **Loops** — scheduled, recurring agent runs.
-- **Boards & widgets** — visual artifacts agents publish for you.
-- **Memory** — durable markdown memory that persists across sessions.
-- **Identity files** — `AGENTS.md` / `SOUL.md` define how the assistant behaves.
+- **Pick the agent per thread** — Codex, Claude, or OpenCode.
+- **Loops** — scheduled prompts that run overnight.
+- **Boards** — multi-window dashboards of live artifacts.
+- **Memory** — survives the thread.
+- **Ship from the thread** — built-in git control.
+- **MCP servers & skills**, token-usage tracking, and an always-on mode for 24/7 work.
 
-## Quick start
+## Architecture
+
+Client/server split — the backend owns everything, clients are control surfaces.
+
+- **Backend** (`backend/`, Go) — the always-on core. Runs agent sessions, loops,
+  memory, and tools; owns your credentials and workspaces. REST + SSE; drives agents
+  over [ACP](https://agentclientprotocol.com) and tools over MCP.
+- **Desktop** (`frontend/`, Electron + React) — the control surface. Runs the backend
+  locally, or connects to a remote one over HTTP with a per-device token.
+
+Running the backend on a server: see [`docs/remote-backend.md`](docs/remote-backend.md).
+
+## Development
+
+Requirements: **Go 1.26**, **Bun 1.3.5**.
 
 Backend:
 
 ```sh
 cd backend
-OPENROUTER_API_KEY=... go run ./cmd/jaz       # listens on :5299
+OPENROUTER_API_KEY=... go run ./cmd/jaz   # serves on :5299
+go test ./...
 ```
 
 Desktop app:
@@ -75,13 +65,12 @@ Desktop app:
 ```sh
 cd frontend
 bun install
-bun run dev                                   # JAZ_API_URL=https://… to use a remote backend
+bun run dev                               # JAZ_API_URL=https://host to target a remote backend
+bun run lint && bun run typecheck
+bun run build                             # package the desktop app
 ```
 
-Server deployment: [`docs/remote-backend.md`](docs/remote-backend.md) ·
 Cutting a release: [`docs/RELEASE.md`](docs/RELEASE.md).
-
-Requirements: Go 1.26, Bun 1.3.5, macOS or Linux.
 
 ## Screenshots
 
@@ -89,12 +78,8 @@ Requirements: Go 1.26, Bun 1.3.5, macOS or Linux.
 
 ## Author
 
-**Augustinas Malinauskas**
-
-- GitHub: [@gluonfield](https://github.com/gluonfield)
-- X: [@amgauge](https://x.com/amgauge)
-- Web: [amguage.com](https://amguage.com)
+**Augustinas Malinauskas** — [@amgauge](https://x.com/amgauge) · [amguage.com](https://amguage.com)
 
 ## License
 
-[Apache License 2.0](LICENSE).
+[Apache 2.0](LICENSE).
