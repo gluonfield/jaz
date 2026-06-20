@@ -9,6 +9,7 @@ import (
 type QueuedMessage struct {
 	ID            string   `json:"id,omitempty"`
 	Text          string   `json:"text"`
+	Quotes        []string `json:"quotes,omitempty"`
 	AttachmentIDs []string `json:"attachment_ids,omitempty"`
 	PlanRequested bool     `json:"plan_requested,omitempty"`
 }
@@ -70,6 +71,7 @@ func legacyQueuedMessageID(index int, seen map[string]bool) string {
 func NormalizeQueuedMessage(message QueuedMessage) (QueuedMessage, bool) {
 	message.ID = strings.TrimSpace(message.ID)
 	message.Text = strings.TrimSpace(message.Text)
+	message.Quotes = normalizeNonEmpty(message.Quotes)
 	message.AttachmentIDs = normalizeQueuedAttachmentIDs(message.AttachmentIDs)
 	return message, message.Text != ""
 }
@@ -79,13 +81,17 @@ func NewQueuedMessage(text string, attachmentIDs []string) QueuedMessage {
 }
 
 func normalizeQueuedAttachmentIDs(ids []string) []string {
-	if len(ids) == 0 {
+	return normalizeNonEmpty(ids)
+}
+
+func normalizeNonEmpty(values []string) []string {
+	if len(values) == 0 {
 		return nil
 	}
-	out := make([]string, 0, len(ids))
-	for _, id := range ids {
-		if id = strings.TrimSpace(id); id != "" {
-			out = append(out, id)
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			out = append(out, value)
 		}
 	}
 	if len(out) == 0 {
