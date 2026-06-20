@@ -77,7 +77,7 @@ export function approvalPlanSurfaceFromEvent(event: SessionEvent): TaskSurface |
     explanation: event.plan.explanation || event.content,
     entries: event.plan.plan ?? [],
     awaitingApproval,
-    approvalSessionId: awaitingApproval ? event.session_id : undefined,
+    approvalSessionId: awaitingApproval ? (event.acp?.id ?? event.session_id) : undefined,
     strikeCompleted: false,
   }
 }

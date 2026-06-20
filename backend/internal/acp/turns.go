@@ -266,6 +266,9 @@ func (m *Manager) finishTurn(done chan struct{}, job *Job) {
 	m.resolveDanglingToolCalls(job)
 	snapshot := job.Snapshot()
 	if snapshot.State == StateIdle || snapshot.State == StateFailed || snapshot.State == StateCancelled {
+		if planRequested && snapshot.State == StateIdle {
+			m.publishPlanTurnResult(snapshot)
+		}
 		m.compactSessionEvents(snapshot.ID)
 		m.touchAttention(surfaceSessionIDs(&snapshot)...)
 	}
