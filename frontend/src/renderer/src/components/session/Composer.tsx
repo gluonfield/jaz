@@ -1,4 +1,4 @@
-import { ArrowUp, AudioLines, FileText, ListChecks, LoaderCircle, MessageSquareQuote, Paperclip, Plus, Square, X } from 'lucide-react'
+import { ArrowUp, AudioLines, FileText, ListChecks, LoaderCircle, Paperclip, Plus, Square, X } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { FileDropOverlay, useWindowFileDrop } from '@/components/ui/FileDrop'
@@ -9,6 +9,7 @@ import { MenuRow, Popover } from '@/components/ui/Popover'
 import { RAINBOW_BEAM } from '@/components/ui/rainbow'
 import { MentionSuggestions, MentionTextarea, useMentionInput } from './MentionInput'
 import { QueuedPromptList } from './QueuedPromptList'
+import { QuoteChip } from './QuoteChip'
 import { useComposerAttachments } from './useComposerAttachments'
 import type { ComposerDraftStorage } from './useComposerDraft'
 
@@ -258,27 +259,12 @@ export function ComposerCard({
         {quotes.length > 0 ? (
           <div className="flex flex-wrap gap-1 px-1.5 pt-0.5">
             {quotes.map((quote, index) => (
-              <div
+              <QuoteChip
                 key={quote.id}
-                className="group relative flex max-w-full items-center gap-1.5 rounded-full bg-bg px-2.5 py-1 text-xs text-ink-2"
-              >
-                <MessageSquareQuote size={13} className="shrink-0 text-primary" />
-                <span className="text-ink-3">Selection {index + 1}</span>
-                <span className="max-w-[200px] truncate text-ink">{quote.text}</span>
-                {onRemoveQuote ? (
-                  <button
-                    type="button"
-                    className="ml-0.5 rounded-full p-0.5 text-ink-3 transition-colors hover:bg-surface hover:text-ink"
-                    aria-label={`Remove selection ${index + 1}`}
-                    onClick={() => onRemoveQuote(quote.id)}
-                  >
-                    <X size={12} />
-                  </button>
-                ) : null}
-                <div className="pointer-events-none absolute bottom-full left-0 z-20 mb-1.5 hidden max-h-[200px] w-max max-w-[360px] overflow-hidden rounded-card bg-ink px-3 py-2 text-xs whitespace-pre-wrap text-bg shadow-[0_8px_30px_rgba(0,0,0,0.22)] group-hover:block">
-                  {quote.text}
-                </div>
-              </div>
+                index={index}
+                text={quote.text}
+                onRemove={onRemoveQuote ? () => onRemoveQuote(quote.id) : undefined}
+              />
             ))}
           </div>
         ) : null}
