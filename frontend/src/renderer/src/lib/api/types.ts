@@ -90,6 +90,7 @@ export interface ThreadSearchResult {
 export interface QueuedMessage {
   id: string
   text: string
+  quotes?: string[]
   attachment_ids?: string[]
   plan_requested?: boolean
 }

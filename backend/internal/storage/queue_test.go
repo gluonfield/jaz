@@ -19,6 +19,23 @@ func TestNormalizeQueuedMessagesTrims(t *testing.T) {
 	}
 }
 
+func TestQueuedMessageQuotesRoundTripAndTrim(t *testing.T) {
+	raw, err := MarshalQueuedMessages([]QueuedMessage{{Text: "ask", Quotes: []string{" keep ", "  "}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages, err := UnmarshalQueuedMessages(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 {
+		t.Fatalf("messages = %#v", messages)
+	}
+	if got := messages[0].Quotes; len(got) != 1 || got[0] != "keep" {
+		t.Fatalf("quotes = %#v", got)
+	}
+}
+
 func TestUnmarshalQueuedMessagesAcceptsLegacyStrings(t *testing.T) {
 	messages, err := UnmarshalQueuedMessages(`[" first ",{"text":"second","attachment_ids":["a"," b "]},""]`)
 	if err != nil {

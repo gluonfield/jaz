@@ -123,8 +123,8 @@ func (r attachmentResourceResolver) URI(attachment storage.Attachment) (string, 
 
 // messageWithSelections prepends text the user quoted from earlier responses as
 // a labeled block so the agent can tell each selection apart from the
-// instruction. The frontend mirrors this format when folding selections into
-// queued prompts (frontend/src/renderer/src/lib/selections.ts) — keep them in sync.
+// instruction. This is the single place selections are rendered into a prompt;
+// immediate and queued sends both route their quotes through here.
 func messageWithSelections(message string, quotes []string) string {
 	selections := make([]string, 0, len(quotes))
 	for _, quote := range quotes {
