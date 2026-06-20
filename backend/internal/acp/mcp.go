@@ -101,7 +101,7 @@ func (t *MCPTools) Spawn(ctx context.Context, req *mcp.CallToolRequest, input MC
 		return nil, SpawnResult{}, err
 	}
 	result, err := t.Service.Spawn(ctx, SpawnRequest{
-		ParentID:        sessionIDFromRequest(req),
+		ParentID:        mcpsession.SessionID(req),
 		ACPAgent:        agent,
 		Slug:            input.Slug,
 		Title:           input.Title,
@@ -113,13 +113,6 @@ func (t *MCPTools) Spawn(ctx context.Context, req *mcp.CallToolRequest, input MC
 		ReasoningEffort: input.ReasoningEffort,
 	})
 	return nil, result, err
-}
-
-func sessionIDFromRequest(req *mcp.CallToolRequest) string {
-	if req == nil || req.Extra == nil {
-		return ""
-	}
-	return strings.TrimSpace(req.Extra.Header.Get(mcpsession.HeaderName))
 }
 
 type MCPSendInput struct {

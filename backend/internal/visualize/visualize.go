@@ -107,7 +107,7 @@ func (t *MCPTools) ShowWidget(_ context.Context, req *mcp.CallToolRequest, input
 	if err != nil {
 		return nil, nil, err
 	}
-	if sessionID := sessionIDFromRequest(req); sessionID != "" && t.Store != nil {
+	if sessionID := mcpsession.SessionID(req); sessionID != "" && t.Store != nil {
 		event := sessionevents.Event{
 			SessionID: sessionID,
 			Type:      sessionevents.TypeArtifact,
@@ -198,13 +198,6 @@ func normalizeLoadingMessages(messages []string) ([]string, error) {
 		return nil, errors.New("loading_messages must contain at least one non-empty string")
 	}
 	return out, nil
-}
-
-func sessionIDFromRequest(req *mcp.CallToolRequest) string {
-	if req == nil || req.Extra == nil {
-		return ""
-	}
-	return strings.TrimSpace(req.Extra.Header.Get(mcpsession.HeaderName))
 }
 
 func readMeInputSchema() map[string]any {

@@ -47,7 +47,7 @@ func publishMCP(publisher MCPPublisher) func(context.Context, *mcp.CallToolReque
 }
 
 func publish(publisher MCPPublisher, req *mcp.CallToolRequest, input MCPPublishInput) (*mcp.CallToolResult, MCPPublishOutput, error) {
-	sessionID := sessionIDFromRequest(req)
+	sessionID := mcpsession.SessionID(req)
 	if sessionID == "" {
 		return nil, MCPPublishOutput{}, fmt.Errorf("%s requires %s", PublishMCPToolName, mcpsession.HeaderName)
 	}
@@ -74,13 +74,6 @@ func publish(publisher MCPPublisher, req *mcp.CallToolRequest, input MCPPublishI
 		content += "\n\nHost-rendering warnings (published anyway):\n- " + strings.Join(warnings, "\n- ")
 	}
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: content}}}, out, nil
-}
-
-func sessionIDFromRequest(req *mcp.CallToolRequest) string {
-	if req.Extra == nil {
-		return ""
-	}
-	return strings.TrimSpace(req.Extra.Header.Get(mcpsession.HeaderName))
 }
 
 func PublishInputSchema() map[string]any {

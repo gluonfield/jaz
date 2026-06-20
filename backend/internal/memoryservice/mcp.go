@@ -85,7 +85,7 @@ func (t memoryTools) Search(ctx context.Context, req *mcp.CallToolRequest, input
 	answer, err := t.service.searcher.SearchMemory(ctx, AgenticSearchRequest{
 		Query:    query,
 		Deep:     input.Deep,
-		ParentID: sessionIDFromRequest(req),
+		ParentID: mcpsession.SessionID(req),
 	})
 	if err != nil {
 		return nil, nil, err
@@ -134,11 +134,4 @@ func textResult(texts ...string) (*mcp.CallToolResult, any, error) {
 		}
 	}
 	return &mcp.CallToolResult{Content: content}, nil, nil
-}
-
-func sessionIDFromRequest(req *mcp.CallToolRequest) string {
-	if req == nil || req.Extra == nil {
-		return ""
-	}
-	return strings.TrimSpace(req.Extra.Header.Get(mcpsession.HeaderName))
 }

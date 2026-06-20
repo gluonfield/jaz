@@ -440,6 +440,22 @@ export interface ArtifactEvent {
   artifact_type?: 'svg' | 'html'
 }
 
+export interface LoopBoardRef {
+  id: string
+  name: string
+}
+
+export interface LoopCreatedEvent {
+  loop_id: string
+  loop_name: string
+  schedule?: string
+  timezone?: string
+  next_run_at?: string
+  agent?: string
+  status?: string
+  boards?: LoopBoardRef[]
+}
+
 export interface ACPEvent {
   id: string
   slug: string
@@ -524,6 +540,7 @@ export interface SessionEvent {
   plan?: PlanEvent
   permission?: ACPPermission
   artifact?: ArtifactEvent
+  loop_created?: LoopCreatedEvent
   at: string
 }
 

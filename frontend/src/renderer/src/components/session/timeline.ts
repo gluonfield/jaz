@@ -250,6 +250,7 @@ export function buildTimeline(
       const acp = event.acp
       const taskSurface = taskSurfaceFromEvent(event)
       if (event.type === 'artifact') return Boolean(event.artifact)
+      if (event.type === 'loop_created') return Boolean(event.loop_created)
       if (!acp) {
         if (taskSurface) return true
         return Boolean(event.content || event.permission)
@@ -322,6 +323,9 @@ export function stableEventKey(event: SessionEvent, eventIndex = 0): string {
   }
   if ((event.type === 'permission_request' || event.type === 'permission_response') && event.permission?.id) {
     return `${event.type}:${event.permission.id}`
+  }
+  if (event.type === 'loop_created' && event.loop_created?.loop_id) {
+    return `loop_created:${event.loop_created.loop_id}`
   }
   return `${event.session_id}:${event.seq ?? 'live'}`
 }

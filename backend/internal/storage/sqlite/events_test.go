@@ -65,6 +65,54 @@ func TestSessionEventsPersistAndMirror(t *testing.T) {
 	}
 }
 
+func TestLoopCreatedEventRoundTripsThroughContentColumn(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{Slug: "loop-card"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{
+		Type: sessionevents.TypeLoopCreated,
+		LoopCreated: &sessionevents.LoopCreatedEvent{
+			LoopID:   "loop-1",
+			LoopName: "Hourly politics briefing",
+			Schedule: "13 * * * *",
+			Timezone: "Europe/London",
+			Agent:    "codex",
+			Status:   "active",
+			Boards:   []sessionevents.LoopBoardRef{{ID: "board-1", Name: "News"}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded) != 1 {
+		t.Fatalf("loaded events = %#v", loaded)
+	}
+	lc := loaded[0].LoopCreated
+	if lc == nil {
+		t.Fatalf("loop_created payload was dropped: %#v", loaded[0])
+	}
+	if lc.LoopID != "loop-1" || lc.Schedule != "13 * * * *" || lc.Agent != "codex" {
+		t.Fatalf("loop payload = %#v", lc)
+	}
+	if len(lc.Boards) != 1 || lc.Boards[0].ID != "board-1" || lc.Boards[0].Name != "News" {
+		t.Fatalf("boards = %#v", lc.Boards)
+	}
+	if loaded[0].Content != "" {
+		t.Fatalf("content should be collapsed into the typed payload, got %q", loaded[0].Content)
+	}
+}
+
 func TestCompactSessionEventsMergesStoredTextChunks(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {

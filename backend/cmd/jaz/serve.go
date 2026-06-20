@@ -236,7 +236,11 @@ func startServer(
 		loops.WithPromptExtra(widgetService.LoopPromptExtra),
 		loops.WithArtifactSurface(widgetService.LoopArtifactSurface),
 	)
-	jazTools.SetLoops(loopService)
+	jazTools.SetLoops(loopService,
+		loops.WithBoards(widgetService.LoopBoards()),
+		loops.WithAgentNames(manager.Agents),
+		loops.WithEvents(store, events),
+	)
 	jazTools.SetAgents(manager)
 	handler.Loops = loopService
 	handler.Widgets = widgetService

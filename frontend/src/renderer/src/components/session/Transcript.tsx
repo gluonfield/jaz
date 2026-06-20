@@ -27,6 +27,7 @@ import {
   type TaskSurface,
 } from '@/lib/taskSurface'
 import { ArtifactBlock } from './ArtifactBlock'
+import { LoopCreatedCard } from './LoopCreatedCard'
 import { AssistantMarkdown } from './AssistantMarkdown'
 import { ToolCallDetail, toolCallCategory } from './ToolCallContent'
 import { MentionText } from './mentions'
@@ -456,6 +457,7 @@ const LiveEvent = memo(function LiveEvent({
     event.type === 'acp' && hasWorkingStatusSurface(event) && !eventTaskSurface && !ownSession
   const parentChild = isParentChildACPEvent(event)
   const artifact = event.type === 'artifact' ? event.artifact : undefined
+  const loopCreated = event.type === 'loop_created' ? event.loop_created : undefined
   return (
     <div className="flex min-w-0 max-w-[76ch] flex-col gap-2">
       {event.acp && showHeader ? (
@@ -476,6 +478,7 @@ const LiveEvent = memo(function LiveEvent({
       {artifact ? (
         <ArtifactBlock artifact={artifact} onSendPrompt={onArtifactPrompt} />
       ) : null}
+      {loopCreated ? <LoopCreatedCard loop={loopCreated} /> : null}
       {event.content && !artifact ? <AssistantMarkdown text={event.content} /> : null}
       {showWorkingStatus ? (
         <Link
