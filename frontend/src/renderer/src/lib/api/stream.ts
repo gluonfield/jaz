@@ -18,6 +18,7 @@ export interface AgentStreamEvent {
 export async function streamSessionMessage({
   sessionId,
   message,
+  quotes = [],
   attachmentIds = [],
   planRequested = false,
   voice = false,
@@ -26,6 +27,7 @@ export async function streamSessionMessage({
 }: {
   sessionId: string
   message: string
+  quotes?: string[]
   attachmentIds?: string[]
   planRequested?: boolean
   voice?: boolean
@@ -35,7 +37,7 @@ export async function streamSessionMessage({
   const res = await apiFetch(`/v1/sessions/${sessionId}/messages:stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, attachment_ids: attachmentIds, plan_requested: planRequested, voice }),
+    body: JSON.stringify({ message, quotes, attachment_ids: attachmentIds, plan_requested: planRequested, voice }),
     signal,
   })
   if (!res.ok || !res.body) {

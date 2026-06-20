@@ -30,6 +30,24 @@ func TestPromptContentBlocksKeepsSkillReferencesInUserMessage(t *testing.T) {
 	}
 }
 
+func TestMessageWithSelectionsLabelsQuotesAboveMessage(t *testing.T) {
+	got := messageWithSelections("explain this", []string{"first quote", "  ", "second quote"})
+	want := "<selected_text>\n" +
+		"<selection n=\"1\">\nfirst quote\n</selection>\n" +
+		"<selection n=\"2\">\nsecond quote\n</selection>\n" +
+		"</selected_text>\n\n" +
+		"explain this"
+	if got != want {
+		t.Fatalf("messageWithSelections() = %q, want %q", got, want)
+	}
+}
+
+func TestMessageWithSelectionsNoQuotesIsUnchanged(t *testing.T) {
+	if got := messageWithSelections("plain message", nil); got != "plain message" {
+		t.Fatalf("messageWithSelections() = %q, want %q", got, "plain message")
+	}
+}
+
 func TestACPTurnErrorMessageExtractsNestedProviderError(t *testing.T) {
 	err := &jsonrpc.Error{
 		Code:    -32603,

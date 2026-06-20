@@ -1,10 +1,10 @@
-import { ArrowUp, AudioLines, FileText, ListChecks, LoaderCircle, Paperclip, Plus, Square, X } from 'lucide-react'
+import { ArrowUp, AudioLines, FileText, ListChecks, LoaderCircle, MessageSquareQuote, Paperclip, Plus, Square, X } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { FileDropOverlay, useWindowFileDrop } from '@/components/ui/FileDrop'
 import { IconButton } from '@/components/ui/IconButton'
 import type { Attachment, QueuedMessage } from '@/lib/api/types'
-import type { SendMessageOptions } from '@/lib/sendMessage'
+import type { ComposerQuote, SendMessageOptions } from '@/lib/sendMessage'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { RAINBOW_BEAM } from '@/components/ui/rainbow'
 import { MentionSuggestions, MentionTextarea, useMentionInput } from './MentionInput'
@@ -77,10 +77,13 @@ export function ComposerCard({
   clearOnSend = true,
   leftSlot,
   fileRoot,
+  quotes = [],
   onSend,
   onStop,
   onVoice,
   onUploadAttachment,
+  onRemoveQuote,
+  onClearQuotes,
   onTextChange,
 }: {
   streaming: boolean
@@ -100,10 +103,14 @@ export function ComposerCard({
   /** server-side directory the @-mention file picker indexes (a project path,
       session cwd, or '' for the workspace root). undefined disables files */
   fileRoot?: string
+  /** text the user quoted from earlier responses, shown as removable chips */
+  quotes?: ComposerQuote[]
   onSend: (text: string, options?: SendMessageOptions) => void
   onStop?: () => void
   onVoice?: () => void
   onUploadAttachment?: (file: File) => Promise<Attachment>
+  onRemoveQuote?: (id: string) => void
+  onClearQuotes?: () => void
   onTextChange?: (text: string) => void
 }) {
   const [focused, setFocused] = useState(false)
@@ -178,10 +185,12 @@ export function ComposerCard({
       planRequested: planAvailable && planRequested,
       files: attachmentDraft.files,
       attachments: attachmentDraft.uploaded,
+      ...(quotes.length > 0 ? { quotes } : {}),
     })
     if (clearOnSend) {
       mention.reset()
       attachmentDraft.clearAttachments()
+      onClearQuotes?.()
       setPlanRequested(false)
     }
   }
@@ -246,6 +255,33 @@ export function ComposerCard({
             e.currentTarget.value = ''
           }}
         />
+        {quotes.length > 0 ? (
+          <div className="flex flex-wrap gap-1 px-1.5 pt-0.5">
+            {quotes.map((quote, index) => (
+              <div
+                key={quote.id}
+                className="group relative flex max-w-full items-center gap-1.5 rounded-full bg-bg px-2.5 py-1 text-xs text-ink-2"
+              >
+                <MessageSquareQuote size={13} className="shrink-0 text-primary" />
+                <span className="text-ink-3">Selection {index + 1}</span>
+                <span className="max-w-[200px] truncate text-ink">{quote.text}</span>
+                {onRemoveQuote ? (
+                  <button
+                    type="button"
+                    className="ml-0.5 rounded-full p-0.5 text-ink-3 transition-colors hover:bg-surface hover:text-ink"
+                    aria-label={`Remove selection ${index + 1}`}
+                    onClick={() => onRemoveQuote(quote.id)}
+                  >
+                    <X size={12} />
+                  </button>
+                ) : null}
+                <div className="pointer-events-none absolute bottom-full left-0 z-20 mb-1.5 hidden max-h-[200px] w-max max-w-[360px] overflow-hidden rounded-card bg-ink px-3 py-2 text-xs whitespace-pre-wrap text-bg shadow-[0_8px_30px_rgba(0,0,0,0.22)] group-hover:block">
+                  {quote.text}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
         {attachmentDraft.attachments.length > 0 ? (
           <div className="flex flex-wrap gap-1 px-1.5 pt-0.5">
             {attachmentDraft.attachments.map((attachment) => (
@@ -422,10 +458,13 @@ export function Composer({
   steerDisabled,
   draftStorageKey,
   fileRoot,
+  quotes,
   onSend,
   onStop,
   onVoice,
   onUploadAttachment,
+  onRemoveQuote,
+  onClearQuotes,
   onSteerQueuedPrompt,
   onDeleteQueuedPrompt,
   onEditQueuedPrompt,
@@ -441,10 +480,13 @@ export function Composer({
   draftStorageKey?: string
   /** directory the @-mention file picker indexes; undefined disables files */
   fileRoot?: string
+  quotes?: ComposerQuote[]
   onSend: (text: string, options?: SendMessageOptions) => void
   onStop: () => void
   onVoice?: () => void
   onUploadAttachment?: (file: File) => Promise<Attachment>
+  onRemoveQuote?: (id: string) => void
+  onClearQuotes?: () => void
   onSteerQueuedPrompt?: (id: string) => void
   onDeleteQueuedPrompt?: (id: string) => void
   onEditQueuedPrompt?: (id: string, text: string) => void
@@ -478,10 +520,13 @@ export function Composer({
         draftStorageKey={draftStorageKey}
         draftStorage="local"
         fileRoot={fileRoot}
+        quotes={quotes}
         onSend={onSend}
         onStop={onStop}
         onVoice={onVoice}
         onUploadAttachment={onUploadAttachment}
+        onRemoveQuote={onRemoveQuote}
+        onClearQuotes={onClearQuotes}
       />
     </>
   )

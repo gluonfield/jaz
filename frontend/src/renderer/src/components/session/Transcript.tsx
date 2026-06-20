@@ -43,6 +43,7 @@ import {
   stableEventKey,
   type TimelineItem,
 } from './timeline'
+import { MessageQuotes } from './MessageQuotes'
 import { ToolCallCard } from './ToolCallCard'
 import { isArtifactToolName, isHiddenToolName } from './toolVisibility'
 
@@ -60,6 +61,15 @@ function messageText(message: ChatMessage): string {
     .filter(Boolean)
     .join('\n\n')
   return text || message.content
+}
+
+function messageQuotes(message: ChatMessage): string[] {
+  return (
+    message.blocks
+      ?.filter((block) => block.type === 'quote')
+      .map((block) => (block.text ?? '').trim())
+      .filter(Boolean) ?? []
+  )
 }
 
 function messageReasoning(message: ChatMessage): string {
@@ -114,6 +124,7 @@ const Bubble = memo(function Bubble({
       return (
         <div className="flex justify-end">
           <div className="min-w-0 max-w-[84%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap [overflow-wrap:break-word] select-text">
+            <MessageQuotes quotes={messageQuotes(message)} />
             <MentionText text={messageText(message)} />
             <MessageAttachments message={message} />
           </div>
