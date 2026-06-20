@@ -338,6 +338,7 @@ export interface ToolCallJSON {
 export type MessageBlock =
   | { type: 'text'; text?: string }
   | { type: 'reasoning'; text?: string }
+  | { type: 'quote'; text?: string }
   | {
       type: 'attachment'
       id: string
