@@ -97,6 +97,9 @@ func TestSearchMemorySpawnsRestrictedSearchSession(t *testing.T) {
 	if manager.spawn.Slug != "memory-search-codex-"+stamp {
 		t.Fatalf("slug = %q", manager.spawn.Slug)
 	}
+	if manager.spawn.Directory != workerDirectory {
+		t.Fatalf("directory = %q, want %q", manager.spawn.Directory, workerDirectory)
+	}
 	if manager.send.Session != "search-session" || manager.send.Completion != acp.CompletionInline {
 		t.Fatalf("send = %#v", manager.send)
 	}
