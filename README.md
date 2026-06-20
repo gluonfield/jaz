@@ -4,6 +4,7 @@
 ![Electron](https://img.shields.io/badge/Electron-2B2E3A?logo=electron&logoColor=9FEAF9)
 ![Claude](https://img.shields.io/badge/Claude-D97757?logo=claude&logoColor=white)
 ![Codex](https://img.shields.io/badge/Codex-000000?logo=openai&logoColor=white)
+[![X](https://img.shields.io/badge/@amgauge-000000?logo=x&logoColor=white)](https://x.com/amgauge)
 
 # Jaz
 
