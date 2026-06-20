@@ -31,7 +31,7 @@ Interactive visualisations
 
 <img width="1280" height="864" alt="ScreenRecording2026-06-20at12 56 26PM-ezgif com-video-to-gif-converter (1)" src="https://github.com/user-attachments/assets/16ef73b3-5525-45f3-86d1-7c16c07cc412" />
 
-Board with live widgets
+Board with live artifacts
 
 <img width="4410" height="2924" alt="image" src="https://github.com/user-attachments/assets/29974b5b-26b2-4f30-aaea-cc4afed6c176" />
 
