@@ -84,6 +84,7 @@ func runServe(args []string) error {
 			app.ConfigureMemoryDreamRunner,
 			app.ConfigureMemorySearchRunner,
 			app.StartMemoryScheduler,
+			app.StartSkillSync,
 			startServer,
 			app.StartMCPManager,
 		),

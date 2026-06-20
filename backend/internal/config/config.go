@@ -65,6 +65,7 @@ func Init() error {
 	}
 	_ = viper.BindEnv("openai.apikey", "OPENAI_API_KEY")
 	_ = viper.BindEnv("openrouter.apikey", "OPENROUTER_API_KEY")
+	_ = viper.BindEnv("jaz.skills.disablesync", "JAZ_SKILLS_DISABLE_SYNC")
 	if err := viper.ReadInConfig(); err != nil {
 		var notFound viper.ConfigFileNotFoundError
 		if !explicitConfig && errors.As(err, &notFound) {

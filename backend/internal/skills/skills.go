@@ -1,8 +1,6 @@
 package skills
 
 import (
-	"embed"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -23,30 +21,12 @@ type Catalog struct {
 	Skills []Skill
 }
 
-//go:embed defaults
-var defaultSkillFS embed.FS
-
-const (
-	defaultSkillsRoot = "defaults"
-	userSkillsDir     = "skills"
-)
+const userSkillsDir = "skills"
 
 var workspaceSkillDirs = []string{".claude", ".codex", ".agents", ".jaz"}
 
 func UserRoot(root string) string {
 	return filepath.Join(root, userSkillsDir)
-}
-
-func InstallDefaults(root string) error {
-	root = strings.TrimSpace(root)
-	if root == "" {
-		return fmt.Errorf("runtime root is empty")
-	}
-	userRoot := UserRoot(root)
-	if err := os.MkdirAll(userRoot, 0o755); err != nil {
-		return err
-	}
-	return copyDefaults(userRoot)
 }
 
 func Load(root string) (Catalog, error) {
@@ -217,31 +197,4 @@ func trimScalar(value string) string {
 	value = strings.TrimSpace(value)
 	value = strings.Trim(value, `"'`)
 	return strings.TrimSpace(value)
-}
-
-func copyDefaults(dstRoot string) error {
-	return fs.WalkDir(defaultSkillFS, defaultSkillsRoot, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(defaultSkillsRoot, path)
-		if err != nil {
-			return err
-		}
-		if rel == "." {
-			return nil
-		}
-		dst := filepath.Join(dstRoot, filepath.FromSlash(rel))
-		if d.IsDir() {
-			return os.MkdirAll(dst, 0o755)
-		}
-		data, err := defaultSkillFS.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-			return err
-		}
-		return os.WriteFile(dst, data, 0o644)
-	})
 }
