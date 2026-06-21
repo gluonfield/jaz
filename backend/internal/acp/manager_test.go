@@ -319,6 +319,59 @@ func TestManagerRunsLocalJazAgentThroughACPJob(t *testing.T) {
 	}
 }
 
+func TestManagerSideChatDoesNotTouchRunningTurn(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := newFakeAgentManager(t, store, t.TempDir(), nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-side"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "block until cancelled", Completion: acp.CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.SendSideChat(ctx, acp.SideChatRequest{
+		Session: spawned.SessionID,
+		ID:      "side-1",
+		Message: "quick check",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	job, err := manager.Status(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.State != acp.StateRunning || job.Assistant != "" {
+		t.Fatalf("main turn changed: state=%s assistant=%q", job.State, job.Assistant)
+	}
+	messages, err := store.LoadMessages(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 || provider.MessageContent(messages[0]) != "block until cancelled" {
+		t.Fatalf("side chat leaked into messages %#v", messages)
+	}
+	events, err := store.LoadSessionEvents(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasSideChatEvent(events, "side-1", "user", "quick check") ||
+		!hasSideChatEvent(events, "side-1", "assistant", "hello from side chat") {
+		t.Fatalf("missing side chat events %#v", events)
+	}
+	if hasACPMessage(events, "hello from side chat") {
+		t.Fatalf("side chat leaked into main acp transcript %#v", events)
+	}
+}
+
 func TestManagerPassesResolvedCwdToACPPrompt(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -1056,6 +1109,19 @@ func hasACPTool(events []sessionevents.Event, title string) bool {
 func hasACPStatus(events []sessionevents.Event, id string) bool {
 	for _, event := range events {
 		if event.Type == "acp" && event.ACP != nil && event.ACP.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func hasSideChatEvent(events []sessionevents.Event, id, role, content string) bool {
+	for _, event := range events {
+		if event.Type == sessionevents.TypeSideChatMessage &&
+			event.SideChat != nil &&
+			event.SideChat.ID == id &&
+			event.SideChat.Role == role &&
+			event.SideChat.Content == content {
 			return true
 		}
 	}

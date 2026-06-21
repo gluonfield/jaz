@@ -30,6 +30,7 @@ import { useToast } from '@/components/ui/toast'
 import {
   answerSessionInteractiveResponse,
   cancelSession,
+  sendSessionSideChat,
   sessionMessagesQuery,
   sessionRepoQuery,
   uploadSessionAttachment,
@@ -330,7 +331,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
   const transcriptEvents = coalesceSessionEvents(
     [...persistedEvents, ...snapshotEvents, ...liveEvents].flatMap((event) => {
       // 'assistant' events are refresh signals; the message store has the content.
-      if (event.type === 'assistant') return []
+      if (event.type === 'assistant' || event.type === 'side_chat_message') return []
       // Old rows round-tripped a typed-nil ACP into an empty struct.
       if (event.acp && !event.acp.id) event = { ...event, acp: undefined }
       const sanitized = sanitizeParentChildACPEvent(event, session.id)
@@ -374,6 +375,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
   })
   return {
     transcriptEvents: settledTranscriptEvents,
+    sideChatEvents: [...persistedEvents, ...liveEvents].filter((event) => event.type === 'side_chat_message'),
     displayEvents,
     planAvailable,
     planActive,
@@ -434,7 +436,8 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   const sidePanel = useSidePanelState(Boolean(repoInfo.data?.git))
   useEffect(() => window.jaz?.onOpenSideBrowserURL?.(sidePanel.openPreview), [sidePanel.openPreview])
 
-  const itemCount = (detail.data?.messages.length ?? 0) + events.data.length
+  const itemCount =
+    (detail.data?.messages.length ?? 0) + events.data.filter((event) => event.type !== 'side_chat_message').length
   const liveSize = live
     ? live.user.length +
       live.reasoning.length +
@@ -589,6 +592,11 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     queryClient.invalidateQueries({ queryKey: keys.usage })
   }, [handleSend, queryClient, sessionId])
 
+  const handleSideChatSend = useCallback(async (sideChatID: string, message: string) => {
+    await sendSessionSideChat(sessionId, { id: sideChatID, message })
+    await queryClient.refetchQueries({ queryKey: keys.sessionMessages(sessionId) })
+  }, [queryClient, sessionId])
+
   const currentSession = detail.data?.session
   const queue = useSessionQueue({
     sessionId,
@@ -674,6 +682,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     planDecisionSessionID,
     planDecisionIsCurrent,
     panelProgress,
+    sideChatEvents,
   } = derived
   const showPlanDecision = Boolean(
     latestPlanDecisionSurface?.awaitingApproval &&
@@ -686,6 +695,8 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   const sessionError = session.status === 'error' ? session.error?.trim() || 'Unknown error.' : ''
   const sessionErrorContext = [session.model_provider, session.model].filter(Boolean).join(' · ')
   const isACP = session.runtime === 'acp'
+  const sideChatAgent = session.runtime_ref?.agent?.toLowerCase() ?? ''
+  const sideChatAvailable = isACP && sideChatAgent.includes('codex')
   // Covers turns started elsewhere (parent-triggered, or refresh mid-turn).
   const sessionRunning = queue.sessionRunning
   const pendingSteer = session.pending_steer_message
@@ -744,6 +755,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                 <SidePanelControl
                   open={sidePanel.open}
                   view={sidePanel.view}
+                  sideChatAvailable={sideChatAvailable}
                   fileAvailable={Boolean(sidePanel.fileRef)}
                   onToggle={sidePanel.toggle}
                   onSelectView={sidePanel.selectView}
@@ -912,9 +924,12 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
               view={sidePanel.view}
               previewUrl={sidePanel.previewUrl}
               fileRef={sidePanel.fileRef}
+              sideChatAvailable={sideChatAvailable}
+              sideChatEvents={sideChatEvents}
               onPreviewUrlChange={sidePanel.setPreviewUrl}
               onOpenFile={sidePanel.openFile}
               onSend={queue.onSend}
+              onSendSideChat={handleSideChatSend}
               onClose={sidePanel.toggle}
             />
           </motion.div>

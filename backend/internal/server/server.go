@@ -37,6 +37,7 @@ type ACPManager interface {
 	CreateSession(context.Context, acp.SpawnRequest) (storage.Session, error)
 	Spawn(context.Context, acp.SpawnRequest) (acp.SpawnResult, error)
 	Send(context.Context, acp.SendRequest) (acp.Job, error)
+	SendSideChat(context.Context, acp.SideChatRequest) error
 	Status(string) (acp.Job, error)
 	List() []acp.Job
 	RunUtilityPrompt(context.Context, acp.UtilityPromptRequest) (string, error)
@@ -357,7 +358,7 @@ func (s *Server) streamSessionEvents(w http.ResponseWriter, r *http.Request, ses
 func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
 	sessionRef, action, ok := strings.Cut(rest, "/")
-	if !ok || (action != "messages:stream" && action != "attachments" && action != "archive" && action != "unarchive" && action != "pin" && action != "unpin" && action != "interactive-response" && action != "permission" && action != "cancel" && action != "queue" && action != "repo/push" && action != "repo/commit" && action != "repo/merge" && action != "repo/merge-from-main" && action != "repo/restore-worktree") {
+	if !ok || (action != "messages:stream" && action != "attachments" && action != "archive" && action != "unarchive" && action != "pin" && action != "unpin" && action != "interactive-response" && action != "permission" && action != "cancel" && action != "side-chat" && action != "queue" && action != "repo/push" && action != "repo/commit" && action != "repo/merge" && action != "repo/merge-from-main" && action != "repo/restore-worktree") {
 		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
 		return
 	}
@@ -476,6 +477,33 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 			Answers:       req.Answers,
 			PlanRequested: req.PlanRequested,
 			ParentVisible: req.ParentVisible,
+		}); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		return
+	}
+	if action == "side-chat" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
+			return
+		}
+		if session.Runtime != storage.RuntimeACP || session.RuntimeRef == nil || !strings.Contains(strings.ToLower(session.RuntimeRef.Agent), "codex") || s.ACP == nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("side chat requires a codex acp session"))
+			return
+		}
+		var req sideChatRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		ctx, cancel := serverSideChatContext()
+		defer cancel()
+		if err := s.ACP.SendSideChat(ctx, acp.SideChatRequest{
+			Session: session.ID,
+			ID:      req.ID,
+			Message: req.Message,
 		}); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
@@ -636,6 +664,11 @@ type streamRequest struct {
 	AttachmentIDs []string `json:"attachment_ids,omitempty"`
 	PlanRequested bool     `json:"plan_requested,omitempty"`
 	Voice         bool     `json:"voice,omitempty"`
+}
+
+type sideChatRequest struct {
+	ID      string `json:"id"`
+	Message string `json:"message"`
 }
 
 type interactiveResponseRequest struct {

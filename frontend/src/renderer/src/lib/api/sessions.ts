@@ -38,6 +38,10 @@ export function getSession(id: string): Promise<Session> {
   return get<Session>(`/v1/sessions/${id}`)
 }
 
+export function sendSessionSideChat(id: string, input: { id: string; message: string }): Promise<{ ok: boolean }> {
+  return post<{ ok: boolean }>(`/v1/sessions/${id}/side-chat`, input)
+}
+
 export async function uploadSessionAttachment(sessionId: string, file: File, signal?: AbortSignal): Promise<Attachment> {
   const form = new FormData()
   form.append('file', file)
