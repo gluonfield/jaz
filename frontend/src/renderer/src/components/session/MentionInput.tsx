@@ -28,7 +28,7 @@ import {
   type InlineToken,
 } from './composerTokens'
 import { fuzzyMatch } from './fuzzy'
-import { decodeMentions, encodeMention } from './mentions'
+import { decodeMentions, encodeMention, mentionLabelText } from './mentionCodec'
 import { useComposerDraft, type ComposerDraftStorage } from './useComposerDraft'
 
 // Result cap for the $/@ popups, mirroring Codex's file-search page size.
@@ -66,6 +66,10 @@ function betterMatch<T extends { score: number }>(a: T | null, b: T | null): T |
 
 function threadTitle(result: ThreadSearchResult): string {
   return result.thread_title || result.thread_slug || result.thread_id
+}
+
+function threadMentionDisplay(result: ThreadSearchResult): string {
+  return `@${mentionLabelText(threadTitle(result)) || result.thread_slug || result.thread_id}`
 }
 
 export type MentionInput = ReturnType<typeof useMentionInput>
@@ -221,12 +225,13 @@ export function useMentionInput({
       threadSearchEnabled && threadSearch.data
         ? threadSearch.data.map((result) => {
             const slug = result.thread_slug || result.thread_id
+            const insert = threadMentionDisplay(result)
             return {
               kind: 'thread' as const,
               label: threadTitle(result),
               detail: slug,
-              insert: `@thread/${slug}`,
-              expansion: encodeMention('@', `thread/${slug}`, result.thread_id),
+              insert,
+              expansion: encodeMention('@', insert.slice(1), result.thread_id),
             }
           })
         : []

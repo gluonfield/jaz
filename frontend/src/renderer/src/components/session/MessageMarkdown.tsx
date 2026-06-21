@@ -17,7 +17,8 @@ import remarkMath from 'remark-math'
 import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
 import { findFileReferences, parseFileReference, type FileReference } from '../../../../shared/fileReader'
 import { shouldPreviewURLByDefault } from '../../../../shared/preview'
-import { encodeMention, MentionPill } from './mentions'
+import { encodeMention } from './mentionCodec'
+import { MentionPill } from './mentions'
 
 const PreviewLinkContext = createContext<((url: string) => void) | null>(null)
 const FileReaderLinkContext = createContext<((file: FileReference) => void) | null>(null)
