@@ -638,7 +638,9 @@ func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {
 	if m.configuredLocal(job.ACPAgent) && local == nil {
 		return Job{}, fmt.Errorf("local acp agent %q is not registered", job.ACPAgent)
 	}
-	_ = storage.AppendUserMessage(m.store, job.ID, req.Message, req.Quotes, req.Attachments)
+	if err := storage.AppendUserMessage(m.store, job.ID, req.Message, req.Quotes, req.Attachments); err != nil {
+		m.log.Error("append user message failed", "session", job.ID, "error", err)
+	}
 	// The quoted selections are display-only in storage; the agent sees them
 	// folded into the prompt text so it can reference them inline.
 	promptMessage := messageWithSelections(req.Message, req.Quotes)
