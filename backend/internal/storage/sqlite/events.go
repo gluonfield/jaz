@@ -24,6 +24,31 @@ func (s *Store) LoadSessionEvents(id string) ([]sessionevents.Event, error) {
 	return s.mirror.LoadSessionEvents(id)
 }
 
+func (s *Store) LoadSessionEventsAfter(id string, afterSeq int64) ([]sessionevents.Event, error) {
+	if afterSeq <= 0 {
+		return s.LoadSessionEvents(id)
+	}
+	s.mu.Lock()
+	events, err := s.loadSessionEventsAfterLocked(id, afterSeq)
+	fallbackToMirror := false
+	if err == nil && len(events) == 0 && s.mirror != nil {
+		count, countErr := eventdb.New(s.db).CountSessionEvents(context.Background(), id)
+		if countErr != nil {
+			err = countErr
+		} else {
+			fallbackToMirror = count == 0
+		}
+	}
+	s.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	if fallbackToMirror {
+		return s.mirror.LoadSessionEventsAfter(id, afterSeq)
+	}
+	return events, nil
+}
+
 func (s *Store) AppendSessionEvents(id string, events ...sessionevents.Event) error {
 	if len(events) == 0 {
 		return nil
@@ -135,6 +160,25 @@ func (s *Store) loadSessionEventsLocked(id string) ([]sessionevents.Event, error
 	return events, nil
 }
 
+func (s *Store) loadSessionEventsAfterLocked(id string, afterSeq int64) ([]sessionevents.Event, error) {
+	rows, err := eventdb.New(s.db).ListSessionEventsAfter(context.Background(), eventdb.ListSessionEventsAfterParams{
+		ThreadID: id,
+		AfterSeq: afterSeq,
+	})
+	if err != nil {
+		return nil, err
+	}
+	events := make([]sessionevents.Event, 0, len(rows))
+	for _, row := range rows {
+		event, err := eventAfterFromDB(row)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, event)
+	}
+	return events, nil
+}
+
 func insertSessionEvent(q *eventdb.Queries, event sessionevents.Event) error {
 	rawACP, err := marshalOptionalJSON(event.ACP)
 	if err != nil {
@@ -161,30 +205,38 @@ func insertSessionEvent(q *eventdb.Queries, event sessionevents.Event) error {
 }
 
 func eventFromDB(row eventdb.ListSessionEventsRow) (sessionevents.Event, error) {
+	return eventFromDBFields(row.ThreadID, row.Seq, row.Type, row.Content, row.Acp, row.Plan, row.Permission, row.CreatedAtMs)
+}
+
+func eventAfterFromDB(row eventdb.ListSessionEventsAfterRow) (sessionevents.Event, error) {
+	return eventFromDBFields(row.ThreadID, row.Seq, row.Type, row.Content, row.Acp, row.Plan, row.Permission, row.CreatedAtMs)
+}
+
+func eventFromDBFields(threadID string, seq int64, typ string, content string, acpRaw sql.NullString, planRaw sql.NullString, permissionRaw sql.NullString, createdAtMs int64) (sessionevents.Event, error) {
 	event := sessionevents.Event{
-		SessionID: row.ThreadID,
-		Seq:       row.Seq,
-		Type:      row.Type,
-		Content:   row.Content,
-		At:        msToTime(row.CreatedAtMs),
+		SessionID: threadID,
+		Seq:       seq,
+		Type:      typ,
+		Content:   content,
+		At:        msToTime(createdAtMs),
 	}
-	if row.Acp.Valid && row.Acp.String != "" && row.Acp.String != "null" {
+	if acpRaw.Valid && acpRaw.String != "" && acpRaw.String != "null" {
 		var acp sessionevents.ACPEvent
-		if err := stdjson.Unmarshal([]byte(row.Acp.String), &acp); err != nil {
+		if err := stdjson.Unmarshal([]byte(acpRaw.String), &acp); err != nil {
 			return sessionevents.Event{}, err
 		}
 		event.ACP = &acp
 	}
-	if row.Plan.Valid && row.Plan.String != "" && row.Plan.String != "null" {
+	if planRaw.Valid && planRaw.String != "" && planRaw.String != "null" {
 		var plan sessionevents.PlanEvent
-		if err := stdjson.Unmarshal([]byte(row.Plan.String), &plan); err != nil {
+		if err := stdjson.Unmarshal([]byte(planRaw.String), &plan); err != nil {
 			return sessionevents.Event{}, err
 		}
 		event.Plan = &plan
 	}
-	if row.Permission.Valid && row.Permission.String != "" && row.Permission.String != "null" {
+	if permissionRaw.Valid && permissionRaw.String != "" && permissionRaw.String != "null" {
 		var permission sessionevents.ACPPermission
-		if err := stdjson.Unmarshal([]byte(row.Permission.String), &permission); err != nil {
+		if err := stdjson.Unmarshal([]byte(permissionRaw.String), &permission); err != nil {
 			return sessionevents.Event{}, err
 		}
 		event.Permission = &permission

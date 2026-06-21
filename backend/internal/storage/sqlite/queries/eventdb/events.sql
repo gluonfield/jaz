@@ -12,8 +12,28 @@ FROM session_events
 WHERE thread_id = sqlc.arg(thread_id)
 ORDER BY seq;
 
+-- name: ListSessionEventsAfter :many
+SELECT
+  thread_id,
+  seq,
+  type,
+  content,
+  acp,
+  plan,
+  permission,
+  created_at_ms
+FROM session_events
+WHERE thread_id = sqlc.arg(thread_id)
+  AND seq > sqlc.arg(after_seq)
+ORDER BY seq;
+
 -- name: NextSessionEventSeq :one
 SELECT COALESCE(MAX(seq), 0) + 1 AS seq
+FROM session_events
+WHERE thread_id = sqlc.arg(thread_id);
+
+-- name: CountSessionEvents :one
+SELECT COUNT(*)
 FROM session_events
 WHERE thread_id = sqlc.arg(thread_id);
 
