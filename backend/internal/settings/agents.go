@@ -20,6 +20,7 @@ const (
 var legacyCodexACPPackages = []string{
 	"@jazchat/codex-acp@0.16.1",
 	"@jazchat/codex-acp@0.16.2",
+	"@jazchat/codex-acp@0.16.3",
 }
 
 type ACPAgentDefaults struct {
