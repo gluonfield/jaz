@@ -18,6 +18,7 @@ import { projectsQuery, workspaceFilesQuery } from '@/lib/api/sessions'
 import { skillsQuery } from '@/lib/api/skills'
 import type { ThreadSearchResult } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
+import { threadSearchTitle } from '@/lib/threadDisplay'
 import { ComposerSuggestions, type SuggestionItem, type SuggestionSection } from './ComposerSuggestions'
 import {
   expandTokens,
@@ -64,12 +65,8 @@ function betterMatch<T extends { score: number }>(a: T | null, b: T | null): T |
   return b.score > a.score ? b : a
 }
 
-function threadTitle(result: ThreadSearchResult): string {
-  return result.thread_title || result.thread_slug || result.thread_id
-}
-
 function threadMentionDisplay(result: ThreadSearchResult): string {
-  return `@${mentionLabelText(threadTitle(result)) || result.thread_slug || result.thread_id}`
+  return `@${mentionLabelText(threadSearchTitle(result))}`
 }
 
 export type MentionInput = ReturnType<typeof useMentionInput>
@@ -224,12 +221,10 @@ export function useMentionInput({
     const threadItems =
       threadSearchEnabled && threadSearch.data
         ? threadSearch.data.map((result) => {
-            const slug = result.thread_slug || result.thread_id
             const insert = threadMentionDisplay(result)
             return {
               kind: 'thread' as const,
-              label: threadTitle(result),
-              detail: slug,
+              label: threadSearchTitle(result),
               agent: result.thread_agent,
               insert,
               expansion: encodeMention('@', insert.slice(1), result.thread_id),
