@@ -13,12 +13,23 @@ import { mergeSessionEvent } from '@/lib/sessionEvents'
 // costs one render per flush, not one per event.
 export function useSessionEvents(
   sessionId: string,
+  snapshotEvents: SessionEvent[] | undefined,
   streamingRef?: RefObject<boolean>,
   onEvent?: (event: SessionEvent) => void,
 ): void {
   const queryClient = useQueryClient()
+  const afterSeq = snapshotEvents === undefined ? undefined : maxSessionEventSeq(snapshotEvents)
 
   useEffect(() => {
+    if (!afterSeq) return
+    queryClient.setQueryData<SessionEvent[]>(keys.sessionEvents(sessionId), (prev = []) => {
+      const next = prev.filter((event) => !event.seq || event.seq > afterSeq)
+      return next.length === prev.length ? prev : next
+    })
+  }, [sessionId, afterSeq, queryClient])
+
+  useEffect(() => {
+    if (afterSeq === undefined) return
     const refreshSession = () => {
       void getSession(sessionId)
         .then((session) => {
@@ -52,7 +63,7 @@ export function useSessionEvents(
       queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
       queryClient.invalidateQueries({ queryKey: keys.allSessions })
     }
-    const stop = openSessionEvents(sessionId, (event: SessionEvent) => {
+    const stop = openSessionEvents(sessionId, afterSeq, (event: SessionEvent) => {
       onEvent?.(event)
       // 'assistant' events are refresh signals, not transcript items.
       if (event.type === 'assistant') {
@@ -77,5 +88,13 @@ export function useSessionEvents(
       if (pending.length) flush()
       if (listsTimer !== null) clearTimeout(listsTimer)
     }
-  }, [sessionId, queryClient, streamingRef, onEvent])
+  }, [sessionId, afterSeq, queryClient, streamingRef, onEvent])
+}
+
+function maxSessionEventSeq(events: SessionEvent[]): number {
+  let max = 0
+  for (const event of events) {
+    if ((event.seq ?? 0) > max) max = event.seq ?? 0
+  }
+  return max
 }

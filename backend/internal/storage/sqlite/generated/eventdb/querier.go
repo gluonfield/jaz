@@ -9,8 +9,10 @@ import (
 )
 
 type Querier interface {
+	CountSessionEvents(ctx context.Context, threadID string) (int64, error)
 	DeleteSessionEvent(ctx context.Context, arg DeleteSessionEventParams) error
 	ListSessionEvents(ctx context.Context, threadID string) ([]ListSessionEventsRow, error)
+	ListSessionEventsAfter(ctx context.Context, arg ListSessionEventsAfterParams) ([]ListSessionEventsAfterRow, error)
 	NextSessionEventSeq(ctx context.Context, threadID string) (int64, error)
 	UpsertSessionEvent(ctx context.Context, arg UpsertSessionEventParams) error
 }
