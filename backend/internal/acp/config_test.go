@@ -90,7 +90,7 @@ func TestCodexBuiltinAgentUsesPackagedWindowsAdapter(t *testing.T) {
 
 func TestCodexBuiltinAgentUsesNpxOffWindows(t *testing.T) {
 	cfg := codexBuiltinAgent("linux")
-	if cfg.Command != "npx" || !strings.Contains(strings.Join(cfg.Args, " "), "@jazchat/codex-acp@0.16.1") {
+	if cfg.Command != "npx" || !strings.Contains(strings.Join(cfg.Args, " "), "@jazchat/codex-acp@0.16.2") {
 		t.Fatalf("linux codex default = %q %#v, want npx package", cfg.Command, cfg.Args)
 	}
 }
