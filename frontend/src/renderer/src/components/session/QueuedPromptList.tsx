@@ -1,4 +1,4 @@
-import { Check, CornerDownRight, GripVertical, Paperclip, Pencil, Trash2, X } from 'lucide-react'
+import { Check, CornerDownRight, GripVertical, MessageSquareQuote, Paperclip, Pencil, Trash2, X } from 'lucide-react'
 import { AnimatePresence, motion, Reorder, useDragControls } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import type { QueuedMessage } from '@/lib/api/types'
@@ -189,6 +189,12 @@ function QueuedRow({
           <p className="truncate text-[13px] text-ink-2 select-text">
             <MentionText text={item.text} />
           </p>
+          {item.quotes?.length ? (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-bg px-1.5 py-0.5 text-[11px] tabular-nums text-ink-3">
+              <MessageSquareQuote size={11} aria-hidden />
+              {item.quotes.length}
+            </span>
+          ) : null}
           {item.attachment_ids?.length ? (
             <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-bg px-1.5 py-0.5 text-[11px] tabular-nums text-ink-3">
               <Paperclip size={11} aria-hidden />
@@ -272,6 +278,6 @@ function queueOrderSignature(prompts: QueuedMessage[]): string {
 
 function queueSignature(prompts: QueuedMessage[]): string {
   return JSON.stringify(
-    prompts.map((prompt) => [prompt.id, prompt.text, prompt.attachment_ids ?? [], prompt.plan_requested ?? false]),
+    prompts.map((prompt) => [prompt.id, prompt.text, prompt.quotes ?? [], prompt.attachment_ids ?? [], prompt.plan_requested ?? false]),
   )
 }
