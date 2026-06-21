@@ -44,6 +44,7 @@ Add these repository variables:
 - `APPLE_TEAM_ID`
 - `APPLE_API_KEY_ID`
 - `APPLE_API_ISSUER`
+- `POSTHOG_PROJECT_TOKEN` (optional; enables privacy-preserving desktop telemetry)
 
 The release tag must match `frontend/package.json`, for example `v0.0.2`.
 
