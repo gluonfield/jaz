@@ -253,7 +253,7 @@ func codexACPCommand(goos string) (string, []string) {
 	if goos == "windows" {
 		return "codex-acp.exe", args
 	}
-	return "npx", append([]string{"-y", "@jazchat/codex-acp@0.16.2"}, args...)
+	return "npx", append([]string{"-y", "@jazchat/codex-acp@0.16.1"}, args...)
 }
 
 func MergeAgents(base, override map[string]AgentConfig) AgentCatalog {
