@@ -63,7 +63,7 @@ export function LoopModal({
     mutationFn: ({ run: _run }: { run: boolean }) =>
       isEdit
         ? updateLoop(loop.id, loopDraftToInput(current, settingsQuery.data))
-        : createLoop(loopDraftToInput(current, settingsQuery.data)),
+        : createLoop(loopDraftToInput(current, settingsQuery.data), { runAfterCreate: _run }),
     onSuccess: (saved, { run }) => {
       if (!isEdit && run) void runLoopNow(saved.id).catch(() => {})
       queryClient.invalidateQueries({ queryKey: keys.loops })

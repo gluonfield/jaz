@@ -28,6 +28,7 @@ const (
 	BlockTypeReasoning  = "reasoning"
 	BlockTypeTool       = "tool"
 	BlockTypeAttachment = "attachment"
+	BlockTypeQuote      = "quote"
 )
 
 func SessionStatusForACPState(state string) string {
