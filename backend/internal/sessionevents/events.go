@@ -253,12 +253,14 @@ type Bus struct {
 	subs map[string]map[chan Event]struct{}
 }
 
+const subscriberBuffer = 64
+
 func New() *Bus {
 	return &Bus{subs: map[string]map[chan Event]struct{}{}}
 }
 
 func (b *Bus) Subscribe(ctx context.Context, sessionID string) <-chan Event {
-	ch := make(chan Event, 16)
+	ch := make(chan Event, subscriberBuffer)
 	b.mu.Lock()
 	if b.subs[sessionID] == nil {
 		b.subs[sessionID] = map[chan Event]struct{}{}
@@ -268,12 +270,16 @@ func (b *Bus) Subscribe(ctx context.Context, sessionID string) <-chan Event {
 	go func() {
 		<-ctx.Done()
 		b.mu.Lock()
-		delete(b.subs[sessionID], ch)
-		if len(b.subs[sessionID]) == 0 {
-			delete(b.subs, sessionID)
+		if subs := b.subs[sessionID]; subs != nil {
+			if _, ok := subs[ch]; ok {
+				delete(subs, ch)
+				close(ch)
+			}
+			if len(subs) == 0 {
+				delete(b.subs, sessionID)
+			}
 		}
 		b.mu.Unlock()
-		close(ch)
 	}()
 	return ch
 }
@@ -283,15 +289,17 @@ func (b *Bus) Publish(event Event) {
 		event.At = time.Now().UTC()
 	}
 	b.mu.Lock()
-	subs := make([]chan Event, 0, len(b.subs[event.SessionID]))
-	for ch := range b.subs[event.SessionID] {
-		subs = append(subs, ch)
-	}
-	b.mu.Unlock()
-	for _, ch := range subs {
+	subs := b.subs[event.SessionID]
+	for ch := range subs {
 		select {
 		case ch <- event:
 		default:
+			delete(subs, ch)
+			close(ch)
 		}
 	}
+	if len(subs) == 0 {
+		delete(b.subs, event.SessionID)
+	}
+	b.mu.Unlock()
 }

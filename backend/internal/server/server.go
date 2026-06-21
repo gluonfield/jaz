@@ -332,28 +332,6 @@ func (s *Server) writeSessionMessages(w http.ResponseWriter, session storage.Ses
 	writeJSON(w, http.StatusOK, resp)
 }
 
-func (s *Server) streamSessionEvents(w http.ResponseWriter, r *http.Request, sessionID string) {
-	if s.Events == nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("session events are not configured"))
-		return
-	}
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("streaming unsupported"))
-		return
-	}
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.WriteHeader(http.StatusOK)
-	// Flush the headers immediately so EventSource clients see the stream
-	// open before the first event arrives.
-	flusher.Flush()
-	for event := range s.Events.Subscribe(r.Context(), sessionID) {
-		writeSessionEventSSE(w, flusher, event)
-	}
-}
-
 func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
 	sessionRef, action, ok := strings.Cut(rest, "/")
@@ -612,16 +590,6 @@ func (s *Server) lockSession(id string) func() {
 }
 
 func writeSSE(w http.ResponseWriter, flusher http.Flusher, event agent.StreamEvent) {
-	data, err := json.Marshal(event)
-	if err != nil {
-		return
-	}
-	_, _ = fmt.Fprintf(w, "event: %s\n", event.Type)
-	_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
-	flusher.Flush()
-}
-
-func writeSessionEventSSE(w http.ResponseWriter, flusher http.Flusher, event sessionevents.Event) {
 	data, err := json.Marshal(event)
 	if err != nil {
 		return
