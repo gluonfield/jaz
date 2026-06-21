@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import type { ACPPermission, SessionEvent } from '@/lib/api/types'
 import { AgentLogo, hasAgentLogo } from '@/components/acp/AgentLogo'
+import { isParentChildACPEvent } from '@/lib/sessionEvents'
 import { relativeTime } from '@/lib/format/time'
 import { taskSurfaceFromEvent } from '@/lib/taskSurface'
 import { ArtifactBlock } from './ArtifactBlock'
@@ -11,11 +12,9 @@ import { TaskChecklist } from './TaskChecklist'
 import { ThinkingBlock } from './ThinkingBlock'
 import { ToolSummary } from './ToolDisclosure'
 import { PermissionCard } from './TranscriptPermissions'
-import { hasWorkingStatusSurface, isParentChildACPEvent } from './timeline'
 
 export const LiveEvent = memo(function LiveEvent({
   event,
-  sessionId,
   showHeader,
   working = false,
   permissionResolution,
@@ -24,7 +23,6 @@ export const LiveEvent = memo(function LiveEvent({
   onArtifactPrompt,
 }: {
   event: SessionEvent
-  sessionId?: string
   showHeader: boolean
   working?: boolean
   permissionResolution?: ACPPermission
@@ -34,15 +32,15 @@ export const LiveEvent = memo(function LiveEvent({
 }) {
   const eventTaskSurface = taskSurfaceFromEvent(event)
   const taskSurface = showTaskSurface ? eventTaskSurface : undefined
-  const ownSession = Boolean(event.acp && event.acp.id === sessionId)
-  const showWorkingStatus =
-    event.type === 'acp' && hasWorkingStatusSurface(event) && !eventTaskSurface && !ownSession
   const parentChild = isParentChildACPEvent(event)
+  // A spawned child's status row renders as the agent card through its whole
+  // lifecycle; a plan/task surface takes over that row when present.
+  const showSpawnedAgent = event.type === 'acp' && parentChild && !eventTaskSurface
   const artifact = event.type === 'artifact' ? event.artifact : undefined
   const loopCreated = event.type === 'loop_created' ? event.loop_created : undefined
   return (
     <div className="flex min-w-0 max-w-[76ch] flex-col gap-2">
-      {event.acp && showHeader && !showWorkingStatus ? (
+      {event.acp && showHeader && !showSpawnedAgent ? (
         <p className="text-[12px] text-ink-3">
           {hasAgentLogo(event.acp.agent) ? (
             <AgentLogo
@@ -62,7 +60,7 @@ export const LiveEvent = memo(function LiveEvent({
       ) : null}
       {loopCreated ? <LoopCreatedCard loop={loopCreated} /> : null}
       {event.content && !artifact ? <AssistantMarkdown text={event.content} /> : null}
-      {showWorkingStatus ? <SpawnedAgentCard event={event} /> : null}
+      {showSpawnedAgent ? <SpawnedAgentCard event={event} /> : null}
       {!parentChild ? <ToolSummary calls={event.acp?.tool_calls} active={working} /> : null}
       {event.permission ? (
         <PermissionCard event={event} resolution={permissionResolution} />

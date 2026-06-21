@@ -1,10 +1,28 @@
 import type { SessionEvent } from '@/lib/api/types'
 import { taskSurfaceKey } from '@/lib/taskSurface'
 
-export function sessionEventCoalesceKey(event: SessionEvent): string {
-  const taskKey = taskSurfaceKey(event)
-  if (taskKey) return taskKey
+// A child agent's run as seen from its parent's transcript. The parent only
+// receives the child's status (content/thought/tools are stripped server-side),
+// so this is the signal the spawned-agent card renders from.
+export function isParentChildACPEvent(event: SessionEvent): boolean {
+  return Boolean(
+    event.acp?.parent_id &&
+      event.acp.parent_id === event.session_id &&
+      event.acp.id !== event.session_id,
+  )
+}
+
+// Stable identity for the events that update in place rather than appending:
+// a child/agent status row, a running tool call, a permission prompt, a loop
+// card. Returns null for events that have no such identity (plain text deltas,
+// unknown types). Shared by the live-merge key and the React render key so the
+// two can never disagree on what counts as "the same row".
+export function inPlaceEventKey(event: SessionEvent): string | null {
   if (event.type === 'acp' && event.acp?.id) {
+    // The parent's view of a child is a single status row that moves through
+    // running → idle/failed/cancelled; collapse every state onto one key so a
+    // failure (which carries an error) updates the card instead of forking it.
+    if (isParentChildACPEvent(event)) return `acp_status:${event.acp.id}`
     if (event.acp.tool_calls?.length) return `acp_tools:${event.acp.id}`
     if (event.acp.error) return `acp_error:${event.acp.id}`
     return `acp_status:${event.acp.id}`
@@ -18,7 +36,11 @@ export function sessionEventCoalesceKey(event: SessionEvent): string {
   if (event.type === 'loop_created' && event.loop_created?.loop_id) {
     return `loop_created:${event.loop_created.loop_id}`
   }
-  return ''
+  return null
+}
+
+export function sessionEventCoalesceKey(event: SessionEvent): string {
+  return taskSurfaceKey(event) || inPlaceEventKey(event) || ''
 }
 
 export function mergeSessionEvent(prev: SessionEvent[], event: SessionEvent): SessionEvent[] {
