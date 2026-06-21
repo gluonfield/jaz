@@ -46,6 +46,7 @@ type ActivityUpserter interface {
 
 type SessionEventReader interface {
 	LoadSessionEvents(id string) ([]sessionevents.Event, error)
+	LoadSessionEventsAfter(id string, afterSeq int64) ([]sessionevents.Event, error)
 }
 
 type SessionEventAppender interface {

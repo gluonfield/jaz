@@ -78,6 +78,7 @@ export interface ThreadSearchResult {
   thread_title?: string
   thread_status?: 'idle' | 'running' | 'error'
   thread_runtime?: 'acp'
+  thread_agent?: string
   parent_id?: string
   archived?: boolean
   message_seq?: number
@@ -90,6 +91,7 @@ export interface ThreadSearchResult {
 export interface QueuedMessage {
   id: string
   text: string
+  quotes?: string[]
   attachment_ids?: string[]
   plan_requested?: boolean
 }
@@ -338,6 +340,7 @@ export interface ToolCallJSON {
 export type MessageBlock =
   | { type: 'text'; text?: string }
   | { type: 'reasoning'; text?: string }
+  | { type: 'quote'; text?: string }
   | {
       type: 'attachment'
       id: string

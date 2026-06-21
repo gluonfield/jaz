@@ -121,6 +121,33 @@ func (r attachmentResourceResolver) URI(attachment storage.Attachment) (string, 
 	return "", fmt.Errorf("attachment %q has no resource URI", attachment.Name)
 }
 
+// messageWithSelections prepends text the user quoted from earlier responses as
+// a labeled block so the agent can tell each selection apart from the
+// instruction. This is the single place selections are rendered into a prompt;
+// immediate and queued sends both route their quotes through here.
+func messageWithSelections(message string, quotes []string) string {
+	selections := make([]string, 0, len(quotes))
+	for _, quote := range quotes {
+		if trimmed := strings.TrimSpace(quote); trimmed != "" {
+			selections = append(selections, trimmed)
+		}
+	}
+	if len(selections) == 0 {
+		return message
+	}
+	var b strings.Builder
+	b.WriteString("<selected_text>\n")
+	for i, selection := range selections {
+		fmt.Fprintf(&b, "<selection n=\"%d\">\n%s\n</selection>\n", i+1, selection)
+	}
+	b.WriteString("</selected_text>")
+	if strings.TrimSpace(message) != "" {
+		b.WriteString("\n\n")
+		b.WriteString(message)
+	}
+	return b.String()
+}
+
 func promptContentBlocks(message string, attachments []storage.Attachment, resolver attachmentResourceResolver) ([]acpschema.ContentBlock, error) {
 	out := make([]acpschema.ContentBlock, 0, 1+len(attachments))
 	var err error

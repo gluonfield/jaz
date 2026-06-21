@@ -26,6 +26,7 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	prompt = normalizeNewlines(prompt)
 	assertOrder(t, prompt,
 		"## Jaz platform",
 		"Date: June 16, 2026",
@@ -103,6 +104,7 @@ func TestRenderMemoryStates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	disabled = normalizeNewlines(disabled)
 	if strings.Contains(disabled, "## memory") || strings.Contains(disabled, "Capture as you go") {
 		t.Fatalf("nil memory must omit the memory block:\n%s", disabled)
 	}
@@ -116,6 +118,7 @@ func TestRenderMemoryStates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	fresh = normalizeNewlines(fresh)
 	assertOrder(t, fresh, "Capture as you go", "## memory/LONG_TERM.md\n\n(empty)", "## memory/SHORT_TERM.md\n\n(empty)")
 	if strings.Contains(fresh, "## memory/daily/") {
 		t.Fatalf("no daily content means no daily sections:\n%s", fresh)
@@ -129,6 +132,7 @@ func TestRenderWidgetSurfaceKeepsSharedVisualPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	prompt = normalizeNewlines(prompt)
 	for _, want := range []string{
 		"## AGENTS.md\n\nagents",
 		"## SOUL.md\n\nsoul",
@@ -170,6 +174,7 @@ func testData(agents, soul string) Data {
 
 func assertOrder(t *testing.T, value string, parts ...string) {
 	t.Helper()
+	value = normalizeNewlines(value)
 	offset := 0
 	for _, part := range parts {
 		i := strings.Index(value[offset:], part)
@@ -178,4 +183,8 @@ func assertOrder(t *testing.T, value string, parts ...string) {
 		}
 		offset += i + len(part)
 	}
+}
+
+func normalizeNewlines(value string) string {
+	return strings.ReplaceAll(value, "\r\n", "\n")
 }

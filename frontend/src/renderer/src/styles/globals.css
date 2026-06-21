@@ -149,10 +149,9 @@
   scrollbar-width: thin;
 }
 
-/* Rendered markdown inside chat messages: compact, token-based typography. */
-.chat-prose {
+/* Rendered markdown: compact, token-based typography for chat and file previews. */
+:where(.chat-prose, .file-prose) {
   min-width: 0;
-  max-width: 76ch;
   font-size: 0.875rem;
   line-height: 1.6;
   color: var(--color-ink);
@@ -160,54 +159,61 @@
   word-break: normal;
   user-select: text;
 }
-.chat-prose > :first-child {
+.chat-prose {
+  max-width: 76ch;
+}
+.file-prose {
+  max-width: 88ch;
+  padding: 1rem 1.25rem 2rem;
+}
+:where(.chat-prose, .file-prose) > :first-child {
   margin-top: 0;
 }
-.chat-prose > :last-child {
+:where(.chat-prose, .file-prose) > :last-child {
   margin-bottom: 0;
 }
-.chat-prose p {
+:where(.chat-prose, .file-prose) p {
   margin: 0.5em 0;
 }
-.chat-prose h1,
-.chat-prose h2,
-.chat-prose h3,
-.chat-prose h4 {
+:where(.chat-prose, .file-prose) h1,
+:where(.chat-prose, .file-prose) h2,
+:where(.chat-prose, .file-prose) h3,
+:where(.chat-prose, .file-prose) h4 {
   margin: 1em 0 0.4em;
   font-weight: 600;
 }
-.chat-prose h1 {
+:where(.chat-prose, .file-prose) h1 {
   font-size: 1.125rem;
 }
-.chat-prose h2 {
+:where(.chat-prose, .file-prose) h2 {
   font-size: 1rem;
 }
-.chat-prose h3,
-.chat-prose h4 {
+:where(.chat-prose, .file-prose) h3,
+:where(.chat-prose, .file-prose) h4 {
   font-size: 0.9375rem;
 }
-.chat-prose ul,
-.chat-prose ol {
+:where(.chat-prose, .file-prose) ul,
+:where(.chat-prose, .file-prose) ol {
   margin: 0.5em 0;
   padding-left: 1.4em;
 }
-.chat-prose ul {
+:where(.chat-prose, .file-prose) ul {
   list-style: disc;
 }
-.chat-prose ol {
+:where(.chat-prose, .file-prose) ol {
   list-style: decimal;
 }
-.chat-prose li {
+:where(.chat-prose, .file-prose) li {
   margin: 0.2em 0;
 }
-.chat-prose code {
+:where(.chat-prose, .file-prose) code {
   background: var(--color-surface-2);
   border-radius: 4px;
   padding: 0.1em 0.35em;
   font-family: var(--font-mono);
   font-size: 0.8125em;
 }
-.chat-prose pre {
+:where(.chat-prose, .file-prose) pre {
   margin: 0.6em 0;
   overflow-x: auto;
   border: 1px solid var(--color-border);
@@ -215,12 +221,12 @@
   background: var(--color-surface);
   padding: 0.6rem 0.75rem;
 }
-.chat-prose pre code {
+:where(.chat-prose, .file-prose) pre code {
   background: none;
   padding: 0;
   font-size: 0.8125rem;
 }
-.chat-prose a,
+:where(.chat-prose, .file-prose) a,
 .chat-prose-link-button {
   color: var(--color-primary);
   text-decoration-line: underline;
@@ -240,8 +246,8 @@
   font: inherit;
   cursor: pointer;
 }
-.chat-prose a:hover,
-.chat-prose a:focus-visible,
+:where(.chat-prose, .file-prose) a:hover,
+:where(.chat-prose, .file-prose) a:focus-visible,
 .chat-prose-link-button:hover,
 .chat-prose-link-button:focus-visible {
   color: var(--color-primary-strong);
@@ -256,36 +262,36 @@
   vertical-align: -0.1em;
   pointer-events: none;
 }
-.chat-prose blockquote {
+:where(.chat-prose, .file-prose) blockquote {
   margin: 0.6em 0;
   border-radius: var(--radius-control);
   background: var(--color-surface);
   padding: 0.5em 0.75em;
   color: var(--color-ink-2);
 }
-.chat-prose table {
+:where(.chat-prose, .file-prose) table {
   margin: 0.6em 0;
   border-collapse: collapse;
   font-size: 0.8125rem;
 }
-.chat-prose th,
-.chat-prose td {
+:where(.chat-prose, .file-prose) th,
+:where(.chat-prose, .file-prose) td {
   border: 1px solid var(--color-border);
   padding: 0.3em 0.6em;
 }
-.chat-prose th {
+:where(.chat-prose, .file-prose) th {
   background: var(--color-surface);
   font-weight: 600;
 }
-.chat-prose hr {
+:where(.chat-prose, .file-prose) hr {
   margin: 1em 0;
   border: 0;
   border-top: 1px solid var(--color-border);
 }
-.chat-prose .katex {
+:where(.chat-prose, .file-prose) .katex {
   font-size: 1.05em;
 }
-.chat-prose .katex-display {
+:where(.chat-prose, .file-prose) .katex-display {
   margin: 0.6em 0;
   overflow-x: auto;
   overflow-y: hidden;

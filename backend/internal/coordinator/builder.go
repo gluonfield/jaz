@@ -55,7 +55,7 @@ func (b *Builder) ACPPromptForArtifactSurface(cwd, surface string) (string, erro
 		cwd = strings.TrimSpace(b.workspace)
 	}
 	if cwd == "" {
-		cwd = "~/.jaz/workspaces/default"
+		cwd = defaultWorkspace(b.root)
 	}
 	catalog, err := skills.LoadForWorkspace(b.root, cwd)
 	if err != nil {

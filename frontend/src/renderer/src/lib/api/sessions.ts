@@ -1,4 +1,5 @@
 import { queryOptions } from '@tanstack/react-query'
+import { telemetry } from '@/lib/telemetry'
 import { keys } from '../query/keys'
 import { apiFetch, ApiError, get, post, put } from './client'
 import {
@@ -17,7 +18,7 @@ import {
   type SessionMessages,
 } from './types'
 
-export function createSession(
+export async function createSession(
   input: {
     title?: string
     runtime?: 'acp'
@@ -31,12 +32,27 @@ export function createSession(
     reasoning_effort?: string
   } = {},
 ): Promise<Session> {
-  return post<Session>('/v1/sessions', input)
+  const session = await post<Session>('/v1/sessions', input)
+  telemetry.threadCreated({
+    worktree: Boolean(input.worktree),
+    hasDirectory: Boolean(input.directory),
+    hasModelOverride: Boolean(input.model),
+    hasProviderOverride: Boolean(input.model_provider),
+    hasReasoningEffort: Boolean(input.reasoning_effort),
+  })
+  return session
 }
 
 export function getSession(id: string): Promise<Session> {
   return get<Session>(`/v1/sessions/${id}`)
 }
+
+export const sessionQuery = (id: string) =>
+  queryOptions({
+    queryKey: keys.session(id),
+    queryFn: () => getSession(id),
+    staleTime: 30_000,
+  })
 
 export function sendSessionSideChat(id: string, input: { id: string; message: string }): Promise<{ ok: boolean }> {
   return post<{ ok: boolean }>(`/v1/sessions/${id}/side-chat`, input)
@@ -301,8 +317,16 @@ export type QueueMutation =
   | { op: 'reorder'; ids: string[] }
   | { op: 'steer'; id: string }
 
-export function mutateSessionQueue(id: string, mutation: QueueMutation): Promise<Session> {
-  return post<Session>(`/v1/sessions/${id}/queue`, mutation)
+export async function mutateSessionQueue(id: string, mutation: QueueMutation): Promise<Session> {
+  const session = await post<Session>(`/v1/sessions/${id}/queue`, mutation)
+  if (mutation.op === 'append') {
+    telemetry.messageSent({
+      queued: true,
+      planRequested: Boolean(mutation.message.plan_requested),
+      attachmentCount: mutation.message.attachment_ids?.length ?? 0,
+    })
+  }
+  return session
 }
 
 export function answerSessionInteractiveResponse(

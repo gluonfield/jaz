@@ -63,7 +63,12 @@ export function useSessionQueue({
           ...(options.attachments ?? []).map((attachment) => attachment.id),
           ...uploaded.map((attachment) => attachment.id),
         ]
-        const prompt = normalizeQueuedPrompt({ text, attachment_ids: attachmentIDs, plan_requested: options.planRequested })
+        const prompt = normalizeQueuedPrompt({
+          text,
+          quotes: (options.quotes ?? []).map((quote) => quote.text),
+          attachment_ids: attachmentIDs,
+          plan_requested: options.planRequested,
+        })
         if (!prompt) return
         await mutateQueue({ op: 'append', message: prompt })
       })().catch(showQueueError)
@@ -138,10 +143,12 @@ function normalizeQueuedPrompts(prompts: QueuedMessage[]): QueuedMessage[] {
 function normalizeQueuedPrompt(prompt: QueuedMessageInput): QueuedMessageInput | null {
   const text = prompt.text.trim()
   if (!text) return null
+  const quotes = (prompt.quotes ?? []).map((quote) => quote.trim()).filter(Boolean)
   const attachmentIds = (prompt.attachment_ids ?? []).map((id) => id.trim()).filter(Boolean)
   return {
     ...(prompt.id?.trim() ? { id: prompt.id.trim() } : {}),
     text,
+    ...(quotes.length ? { quotes } : {}),
     ...(attachmentIds.length ? { attachment_ids: attachmentIds } : {}),
     ...(prompt.plan_requested ? { plan_requested: true } : {}),
   }

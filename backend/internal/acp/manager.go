@@ -111,6 +111,7 @@ type SpawnRequest struct {
 type SendRequest struct {
 	Session       string
 	Message       string
+	Quotes        []string
 	Attachments   []storage.Attachment
 	Completion    CompletionMode
 	Interactive   bool
@@ -637,15 +638,20 @@ func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {
 	if m.configuredLocal(job.ACPAgent) && local == nil {
 		return Job{}, fmt.Errorf("local acp agent %q is not registered", job.ACPAgent)
 	}
-	_ = storage.AppendUserMessage(m.store, job.ID, req.Message, req.Attachments)
+	if err := storage.AppendUserMessage(m.store, job.ID, req.Message, req.Quotes, req.Attachments); err != nil {
+		m.log.Error("append user message failed", "session", job.ID, "error", err)
+	}
+	// The quoted selections are display-only in storage; the agent sees them
+	// folded into the prompt text so it can reference them inline.
+	promptMessage := messageWithSelections(req.Message, req.Quotes)
 	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested)
 	job.startTurn(req.Completion, req.Interactive, req.PlanRequested, req.ParentVisible)
 	m.touchJobAttention(job)
 	m.publishACP(job.Snapshot())
 	if local != nil {
-		go m.runLocalPrompt(context.Background(), job, local, req.Message, req.Attachments)
+		go m.runLocalPrompt(context.Background(), job, local, promptMessage, req.Attachments)
 	} else {
-		go m.runPrompt(context.Background(), job, req.Message, req.Attachments)
+		go m.runPrompt(context.Background(), job, promptMessage, req.Attachments)
 	}
 	return job.Snapshot(), nil
 }
@@ -928,6 +934,9 @@ func (m *Manager) job(ref string) (*Job, error) {
 		return job, nil
 	}
 	if job := m.jobsBySlug[ref]; job != nil {
+		return job, nil
+	}
+	if job := m.jobsByACP[ref]; job != nil {
 		return job, nil
 	}
 	return nil, fmt.Errorf("active acp session not found: %s", ref)

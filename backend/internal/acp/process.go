@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +16,7 @@ import (
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/gluonfield/acp-transport/stdio"
 	"github.com/gluonfield/acp-transport/streamhttp"
+	"github.com/wins/jaz/backend/internal/processenv"
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/skills"
 )
@@ -96,7 +96,7 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 		command = resolved
 	}
 	cmd := exec.CommandContext(ctx, command, args...)
-	cmd.Env = envList(env)
+	cmd.Env = processenv.List(env)
 	if cwd != "" {
 		cmd.Dir = cwd
 	}
@@ -146,13 +146,8 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, cwd, artifactS
 	if cwd == "" {
 		cwd = strings.TrimSpace(agent.Cwd)
 	}
-	env := map[string]string{}
+	env := processenv.Base()
 	var prepareErr error
-	for _, key := range []string{"PATH"} {
-		if value := os.Getenv(key); value != "" {
-			env[key] = value
-		}
-	}
 	for key, value := range m.cfg.Env {
 		env[key] = value
 	}
@@ -204,7 +199,7 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, cwd, artifactS
 			"SSH_AUTH_SOCK",
 			"USER",
 		}
-		preserveHostEnv(env, claudeHostEnv)
+		processenv.PreserveHost(env, claudeHostEnv...)
 		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.providers())
 		if auth.Config.Mode == AuthModeJazProfile {
 			delete(env, "ANTHROPIC_AUTH_TOKEN")
@@ -235,7 +230,7 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, cwd, artifactS
 		}
 	}
 	if name == AgentGrok {
-		preserveHostEnv(env, []string{
+		processenv.PreserveHost(env,
 			"HTTP_PROXY",
 			"HTTPS_PROXY",
 			"LANG",
@@ -246,7 +241,7 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, cwd, artifactS
 			"SHELL",
 			"SSH_AUTH_SOCK",
 			"USER",
-		})
+		)
 		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.providers())
 		normalizeEnv(env, "XAI_API_KEY", "XAI_APIKEY")
 		delete(env, "XAI_API_KEY")
@@ -255,14 +250,14 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, cwd, artifactS
 		}
 	}
 	if name == AgentOpenCode {
-		preserveHostEnv(env, []string{
+		processenv.PreserveHost(env,
 			"HTTP_PROXY",
 			"HTTPS_PROXY",
 			"LANG",
 			"LC_ALL",
 			"LC_CTYPE",
 			"NO_PROXY",
-		})
+		)
 		m.loadOpenCodeProviderEnv(env, root)
 		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.providers())
 		if strings.TrimSpace(env["OPENCODE_CONFIG_DIR"]) == "" {
@@ -395,17 +390,6 @@ func firstError(current, next error) error {
 	return next
 }
 
-func preserveHostEnv(env map[string]string, keys []string) {
-	for _, key := range keys {
-		if env[key] != "" {
-			continue
-		}
-		if value := os.Getenv(key); value != "" {
-			env[key] = value
-		}
-	}
-}
-
 func normalizeEnv(env map[string]string, canonical, alias string) {
 	if env[canonical] == "" {
 		env[canonical] = env[alias]
@@ -414,21 +398,6 @@ func normalizeEnv(env map[string]string, canonical, alias string) {
 	if env[canonical] == "" {
 		delete(env, canonical)
 	}
-}
-
-func envList(env map[string]string) []string {
-	keys := make([]string, 0, len(env))
-	for key, value := range env {
-		if value != "" {
-			keys = append(keys, key)
-		}
-	}
-	sort.Strings(keys)
-	out := make([]string, 0, len(keys))
-	for _, key := range keys {
-		out = append(out, key+"="+env[key])
-	}
-	return out
 }
 
 func autoAuthMethod(agent string, raw json.RawMessage, env map[string]string) (string, []string) {

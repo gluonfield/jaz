@@ -27,13 +27,16 @@ Remote backend setup and the planned connected-device approval model are in
 ## Scripts
 
 - `bun run dev` — dev mode with HMR (vite on port 5180)
-- `bun run build` — distributable: compiles the Go backend, bundles, and packages a signed `Jaz.app` + dmg into `dist/` via electron-builder (alias of `build:app`; notarizes when Apple credentials are in the env)
+- `bun run build` — distributable: compiles the Go backend, bundles, and packages the desktop app into `dist/` via electron-builder (alias of `build:app`; macOS notarizes when Apple credentials are in the env)
 - `bun run build:bundle` — just the electron-vite production bundle into `out/`
 - `bun run typecheck` — renderer + main/preload TypeScript
 
 ## Release
 
-GitHub Actions builds signed macOS desktop artifacts and standalone Linux backend binaries when a GitHub Release is published in `gluonfield/jaz`. The release workflow attaches the DMG, ZIP, `latest-mac.yml`, and backend tarballs to that release. Add these repository secrets:
+GitHub Actions builds signed macOS desktop artifacts, Windows desktop artifacts,
+and standalone Linux backend binaries when a GitHub Release is published in
+`gluonfield/jaz`. The release workflow attaches the desktop installers/update
+metadata and backend tarballs to that release. Add these repository secrets:
 
 - `APPLE_CERTIFICATE_P12_BASE64`
 - `APPLE_CERTIFICATE_PASSWORD`
@@ -44,6 +47,7 @@ Add these repository variables:
 - `APPLE_TEAM_ID`
 - `APPLE_API_KEY_ID`
 - `APPLE_API_ISSUER`
+- `POSTHOG_PROJECT_TOKEN` (optional; enables privacy-preserving desktop telemetry)
 
 The release tag must match `frontend/package.json`, for example `v0.0.2`.
 

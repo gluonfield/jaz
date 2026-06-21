@@ -16,7 +16,3 @@ export type PaletteThread = {
 }
 
 export type PaletteItem = PaletteCommand | PaletteThread
-
-export function threadTitle(result: ThreadSearchResult): string {
-  return result.thread_title || result.thread_slug || result.thread_id
-}
