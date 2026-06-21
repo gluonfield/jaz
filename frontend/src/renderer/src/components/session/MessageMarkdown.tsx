@@ -15,7 +15,7 @@ import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
-import { findFileReferences, parseFileReference, type FileReference } from '../../../../shared/fileReader'
+import { findFileReferences, parseFileReference, shouldPreviewFileReference, type FileReference } from '../../../../shared/fileReader'
 import { shouldPreviewURLByDefault } from '../../../../shared/preview'
 import { encodeMention } from './mentionCodec'
 import { MentionPill } from './mentions'
@@ -221,7 +221,7 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, onCli
   const openFile = useContext(FileReaderLinkContext)
   const localFile = localFileFromLink(href, children)
   const urlLink = isUrlLink(href)
-  const Icon = localFile ? FileText : urlLink ? Globe : null
+  const Icon = markdownLinkIcon(localFile, urlLink)
   if (localFile) {
     return (
       <button
@@ -273,6 +273,11 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, onCli
       {children}
     </a>
   )
+}
+
+function markdownLinkIcon(localFile: FileReference | null, urlLink: boolean) {
+  if (localFile) return shouldPreviewFileReference(localFile) ? Globe : FileText
+  return urlLink ? Globe : null
 }
 
 export const RenderedMarkdown = memo(function RenderedMarkdown({
