@@ -173,9 +173,9 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		!hasModelProvider(got.Providers, "openrouter", "https://openrouter.ai/api/v1") {
 		t.Fatalf("providers = %#v", got.Providers)
 	}
-	wantCodexCommand := `npx -y @jazchat/codex-acp@0.16.2 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true`
+	wantCodexCommand := `npx -y @jazchat/codex-acp@0.16.3 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true`
 	if runtime.GOOS == "windows" {
-		wantCodexCommand = `npx.cmd -y @jazchat/codex-acp@0.16.2 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true`
+		wantCodexCommand = `npx.cmd -y @jazchat/codex-acp@0.16.3 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true`
 	}
 	if got.ACP["codex"].Enabled ||
 		got.ACP["codex"].Command != wantCodexCommand ||

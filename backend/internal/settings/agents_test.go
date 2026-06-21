@@ -98,7 +98,7 @@ func TestEnsureAgentDefaultsRefreshesLegacyCodexBuiltinCommand(t *testing.T) {
 		stored.ACP[name] = agent
 	}
 	codex := stored.ACP["codex"]
-	codex.Command = strings.Replace(codex.Command, "@jazchat/codex-acp@0.16.2", legacyCodexACPPackage, 1)
+	codex.Command = strings.Replace(codex.Command, "@jazchat/codex-acp@0.16.3", legacyCodexACPPackages[0], 1)
 	stored.ACP["codex"] = codex
 	if _, err := SaveAgentDefaults(store, stored); err != nil {
 		t.Fatal(err)
@@ -119,12 +119,31 @@ func TestEnsureAgentDefaultsRefreshesLegacyCodexBuiltinCommand(t *testing.T) {
 func TestMergeAgentDefaultsRefreshesLegacyCodexWindowsCommand(t *testing.T) {
 	seed := AgentDefaults{ACP: map[string]ACPAgentDefaults{
 		"codex": {
-			Command: `npx.cmd -y @jazchat/codex-acp@0.16.2 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true`,
+			Command: `npx.cmd -y @jazchat/codex-acp@0.16.3 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true`,
 		},
 	}}
 	stored := AgentDefaults{ACP: map[string]ACPAgentDefaults{
 		"codex": {
 			Command: `npx -y @jazchat/codex-acp@0.16.1 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true`,
+		},
+	}}
+
+	merged := MergeAgentDefaults(stored, seed, []string{"codex"})
+
+	if merged.ACP["codex"].Command != seed.ACP["codex"].Command {
+		t.Fatalf("codex command = %q, want %q", merged.ACP["codex"].Command, seed.ACP["codex"].Command)
+	}
+}
+
+func TestMergeAgentDefaultsRefreshesWindowsARMUnsupportedCodexCommand(t *testing.T) {
+	seed := AgentDefaults{ACP: map[string]ACPAgentDefaults{
+		"codex": {
+			Command: `npx.cmd -y @jazchat/codex-acp@0.16.3 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true`,
+		},
+	}}
+	stored := AgentDefaults{ACP: map[string]ACPAgentDefaults{
+		"codex": {
+			Command: `npx.cmd -y @jazchat/codex-acp@0.16.2 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true`,
 		},
 	}}
 

@@ -15,9 +15,12 @@ import (
 const (
 	AgentSettingsNamespace = "agents"
 	AgentDefaultsKey       = "defaults"
-
-	legacyCodexACPPackage = "@jazchat/codex-acp@0.16.1"
 )
+
+var legacyCodexACPPackages = []string{
+	"@jazchat/codex-acp@0.16.1",
+	"@jazchat/codex-acp@0.16.2",
+}
 
 type ACPAgentDefaults struct {
 	Enabled         bool                `json:"enabled"`
@@ -274,8 +277,13 @@ func shouldRefreshBuiltInCommand(name, storedCommand, seedCommand string) bool {
 		return false
 	}
 	wantArgs := append([]string(nil), seedArgs...)
-	wantArgs[1] = legacyCodexACPPackage
-	return stringSlicesEqual(storedArgs, wantArgs)
+	for _, legacyPackage := range legacyCodexACPPackages {
+		wantArgs[1] = legacyPackage
+		if stringSlicesEqual(storedArgs, wantArgs) {
+			return true
+		}
+	}
+	return false
 }
 
 func isNpxExecutable(executable string) bool {
