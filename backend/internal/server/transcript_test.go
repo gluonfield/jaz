@@ -17,6 +17,7 @@ func TestSessionTranscriptFiltersToolsAndRoles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer store.Close()
 	session, err := store.CreateSession(storage.CreateSession{Slug: "coding", Runtime: storage.RuntimeACP})
 	if err != nil {
 		t.Fatal(err)
@@ -89,6 +90,7 @@ func TestListSessionsUpdatedSince(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer store.Close()
 	old, err := store.CreateSession(storage.CreateSession{Slug: "old", Runtime: storage.RuntimeACP})
 	if err != nil {
 		t.Fatal(err)
