@@ -28,7 +28,7 @@ jobs:
 
       - name: Point backend at jazmem checkout
         working-directory: backend
-        run: go mod edit -replace=github.com/gluonfield/jazmem=../_deps/jazmem
+        run: go mod edit "-replace=github.com/gluonfield/jazmem=../_deps/jazmem"
 
       - name: Check tag version
         run: |
@@ -90,7 +90,7 @@ jobs:
 
       - name: Point backend at jazmem checkout
         working-directory: backend
-        run: go mod edit -replace=github.com/gluonfield/jazmem=../_deps/jazmem
+        run: go mod edit "-replace=github.com/gluonfield/jazmem=../_deps/jazmem"
 
       - name: Check tag version
         run: |
@@ -205,8 +205,7 @@ jobs:
 
       - name: Point backend at jazmem checkout
         working-directory: backend
-        shell: bash
-        run: go mod edit -replace=github.com/gluonfield/jazmem=../_deps/jazmem
+        run: go mod edit "-replace=github.com/gluonfield/jazmem=../_deps/jazmem"
 
       - name: Check tag version
         shell: pwsh
