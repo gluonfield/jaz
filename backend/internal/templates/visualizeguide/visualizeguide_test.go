@@ -23,7 +23,7 @@ func TestForMapsModulesToSections(t *testing.T) {
 		{nil, Data{}},
 	}
 	for _, tc := range cases {
-		if got := For(tc.modules); got != tc.want {
+		if got := For(tc.modules, ""); got != tc.want {
 			t.Fatalf("For(%v) = %+v, want %+v", tc.modules, got, tc.want)
 		}
 	}
@@ -32,24 +32,24 @@ func TestForMapsModulesToSections(t *testing.T) {
 func TestSectionOrdering(t *testing.T) {
 	// art and elicitation must exclude the color palette.
 	for _, module := range []string{"art", "elicitation"} {
-		if strings.Contains(Render(For([]string{module})), "## Color palette") {
+		if strings.Contains(Render(For([]string{module}, "")), "## Color palette") {
 			t.Fatalf("%s guide must not include the color palette", module)
 		}
 	}
 	// diagram includes the color palette but not UI components.
-	diagram := Render(For([]string{"diagram"}))
+	diagram := Render(For([]string{"diagram"}, ""))
 	if !strings.Contains(diagram, "## Color palette") || strings.Contains(diagram, "## UI components") {
 		t.Fatal("diagram guide must include Color palette and exclude UI components")
 	}
 	// In chart/mockup output, UI components precedes Color palette.
-	chart := Render(For([]string{"chart"}))
+	chart := Render(For([]string{"chart"}, ""))
 	if i, j := strings.Index(chart, "## UI components"), strings.Index(chart, "## Color palette"); i < 0 || j < 0 || i > j {
 		t.Fatalf("UI components (%d) must precede Color palette (%d) in chart output", i, j)
 	}
 }
 
 func TestRenderChartFiltersAndStaysClean(t *testing.T) {
-	guide := Render(For([]string{"chart"}))
+	guide := Render(For([]string{"chart"}, ""))
 
 	for _, want := range []string{"## Core Design System", "## Color palette", "## UI components", "## Charts (Chart.js)", "## Geographic maps (D3 choropleth)"} {
 		if !strings.Contains(guide, want) {
@@ -68,7 +68,7 @@ func TestRenderChartFiltersAndStaysClean(t *testing.T) {
 }
 
 func TestRenderEmptyIsCoreOnly(t *testing.T) {
-	core := Render(For(nil))
+	core := Render(For(nil, ""))
 	for _, want := range []string{"## Modules", "## Core Design System", "## When nothing fits"} {
 		if !strings.Contains(core, want) {
 			t.Fatalf("core guide must include always-on section %q", want)

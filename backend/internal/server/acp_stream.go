@@ -26,7 +26,7 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
 		return
 	}
-	startCtx, cancelStart := serverActionContext()
+	startCtx, cancelStart := serverActionContextFrom(clientCtx)
 	job, err := s.ACP.Send(startCtx, acp.SendRequest{
 		Session:       session.ID,
 		Message:       message,

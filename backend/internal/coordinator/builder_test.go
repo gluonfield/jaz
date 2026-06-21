@@ -1,10 +1,14 @@
 package coordinator
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/wins/jaz/backend/internal/sessioncontext"
+	"github.com/wins/jaz/backend/internal/visualize"
 )
 
 func TestBuilderPicksUpEditsWithoutRestart(t *testing.T) {
@@ -126,6 +130,13 @@ func TestBuilderACPPrompt(t *testing.T) {
 	}
 	if strings.Contains(prompt, "You are Jaz") {
 		t.Fatalf("acp prompt must not contain the coordinator identity:\n%s", prompt)
+	}
+	mobilePrompt, err := NewBuilder(root, "", memoryRoot, func() bool { return true }).ACPPromptForContext(sessioncontext.WithClientPlatform(context.Background(), "mobile"), cwd, string(visualize.SurfaceChat))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(mobilePrompt, "Device: Mobile") {
+		t.Fatalf("mobile acp prompt missing device line:\n%s", mobilePrompt)
 	}
 
 	disabled, err := NewBuilder(root, "", memoryRoot, func() bool { return false }).ACPPrompt(cwd)

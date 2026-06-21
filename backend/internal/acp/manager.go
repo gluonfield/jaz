@@ -205,7 +205,7 @@ func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd
 }
 
 func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules, handler jsonrpc.Handler) (*agentConn, error) {
-	env, err := m.processEnvPreparedForSurface(name, cfg, cwd, artifactSurface, systemPromptExtensions)
+	env, err := m.processEnvPreparedForSurface(ctx, name, cfg, cwd, artifactSurface, systemPromptExtensions)
 	if err != nil {
 		return nil, err
 	}
@@ -263,18 +263,18 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 
 // sessionMeta builds the session _meta payload for prompt and agent-specific
 // options.
-func (m *Manager) sessionMeta(agent string, cfg AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
-	meta, err := m.sessionPromptMeta(agent, cwd, artifactSurface, systemPromptExtensions)
+func (m *Manager) sessionMeta(ctx context.Context, agent string, cfg AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
+	meta, err := m.sessionPromptMeta(ctx, agent, cwd, artifactSurface, systemPromptExtensions)
 	if err != nil {
 		return nil, err
 	}
 	return agentPolicyForAgent(agent).mergeSessionMeta(meta, cfg.ReasoningEffort), nil
 }
 
-func (m *Manager) sessionPromptMeta(agent, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
+func (m *Manager) sessionPromptMeta(ctx context.Context, agent, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
 	var prompt string
 	if m.cfg.SystemPrompt != nil {
-		base, err := promptForArtifactSurface(m.cfg.SystemPrompt, cwd, artifactSurface)
+		base, err := m.cfg.SystemPrompt.ACPPromptForContext(ctx, cwd, artifactSurface)
 		if err != nil {
 			return nil, fmt.Errorf("build acp system prompt: %w", err)
 		}
@@ -310,7 +310,7 @@ func (m *Manager) newACPProtocolSession(ctx context.Context, ac *agentConn, labe
 }
 
 func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (acpSessionInfo, error) {
-	meta, err := m.sessionMeta(agent, cfg, cwd, artifactSurface, systemPromptExtensions)
+	meta, err := m.sessionMeta(ctx, agent, cfg, cwd, artifactSurface, systemPromptExtensions)
 	if err != nil {
 		return acpSessionInfo{}, err
 	}
@@ -569,7 +569,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 	_ = json.Unmarshal(ac.initRaw, &caps)
 	storedID := session.RuntimeRef.SessionID
 	if caps.AgentCapabilities.LoadSession && storedID != "" {
-		meta, err := m.sessionMeta(agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, systemPromptExtensions)
+		meta, err := m.sessionMeta(ctx, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, systemPromptExtensions)
 		if err != nil {
 			return "", ModeState{}, err
 		}
@@ -604,56 +604,6 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 	}
 	modes, err := m.configuredModeState(ctx, ac.peer, agentName, acpSession, cfg)
 	return string(acpSession.response.SessionID), modes, err
-}
-
-func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {
-	job, err := m.job(req.Session)
-	if err == nil && m.serveErr(job.ID) != nil {
-		job.mu.RLock()
-		running := job.State == StateRunning || job.State == StateStarting
-		job.mu.RUnlock()
-		if !running {
-			m.teardown(job.ID)
-			job, err = m.resume(ctx, req.Session)
-		}
-	}
-	if err != nil {
-		if job, err = m.resume(ctx, req.Session); err != nil {
-			return Job{}, err
-		}
-	}
-	if strings.TrimSpace(req.Message) == "" {
-		return Job{}, fmt.Errorf("message is required")
-	}
-	job.mu.RLock()
-	state := job.State
-	job.mu.RUnlock()
-	if state == StateRunning || state == StateStarting {
-		return Job{}, fmt.Errorf("session %s is already running", job.Slug)
-	}
-	if err := m.prepareModeForTurn(ctx, job, req.PlanRequested); err != nil {
-		return Job{}, err
-	}
-	local := m.localAgent(job.ACPAgent)
-	if m.configuredLocal(job.ACPAgent) && local == nil {
-		return Job{}, fmt.Errorf("local acp agent %q is not registered", job.ACPAgent)
-	}
-	if err := storage.AppendUserMessage(m.store, job.ID, req.Message, req.Quotes, req.Attachments); err != nil {
-		m.log.Error("append user message failed", "session", job.ID, "error", err)
-	}
-	// The quoted selections are display-only in storage; the agent sees them
-	// folded into the prompt text so it can reference them inline.
-	promptMessage := messageWithSelections(req.Message, req.Quotes)
-	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested)
-	job.startTurn(req.Completion, req.Interactive, req.PlanRequested, req.ParentVisible)
-	m.touchJobAttention(job)
-	m.publishACP(job.Snapshot())
-	if local != nil {
-		go m.runLocalPrompt(context.Background(), job, local, promptMessage, req.Attachments)
-	} else {
-		go m.runPrompt(context.Background(), job, promptMessage, req.Attachments)
-	}
-	return job.Snapshot(), nil
 }
 
 func (m *Manager) Status(ref string) (Job, error) {

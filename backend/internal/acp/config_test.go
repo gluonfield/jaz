@@ -1,6 +1,7 @@
 package acp
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -11,16 +12,27 @@ import (
 
 	modelprovider "github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
+	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/testexec"
 )
 
 type testPrompt string
 
-func (p testPrompt) ACPPrompt(string) (string, error) { return string(p), nil }
+func (p testPrompt) ACPPromptForContext(_ context.Context, _, _ string) (string, error) {
+	return string(p), nil
+}
 
 type cwdPrompt struct{}
 
-func (cwdPrompt) ACPPrompt(cwd string) (string, error) { return "cwd=" + cwd, nil }
+func (cwdPrompt) ACPPromptForContext(_ context.Context, cwd, _ string) (string, error) {
+	return "cwd=" + cwd, nil
+}
+
+type platformPrompt struct{}
+
+func (platformPrompt) ACPPromptForContext(ctx context.Context, _, _ string) (string, error) {
+	return "platform=" + sessioncontext.ClientPlatform(ctx), nil
+}
 
 func TestProcessEnvIsMinimalAndCanonical(t *testing.T) {
 	clearHostEnv(t)
@@ -80,7 +92,7 @@ func TestSystemPromptMetaPerAgent(t *testing.T) {
 
 func TestSessionPromptMetaAppendsPerSessionExtension(t *testing.T) {
 	manager := &Manager{cfg: Config{SystemPrompt: testPrompt("base prompt")}}
-	got, err := manager.sessionPromptMeta(AgentCodex, "", "", []string{"run context"})
+	got, err := manager.sessionPromptMeta(context.Background(), AgentCodex, "", "", []string{"run context"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,9 +101,20 @@ func TestSessionPromptMetaAppendsPerSessionExtension(t *testing.T) {
 	}
 }
 
+func TestSessionPromptMetaUsesClientPlatformContext(t *testing.T) {
+	manager := &Manager{cfg: Config{SystemPrompt: platformPrompt{}}}
+	got, err := manager.sessionPromptMeta(sessioncontext.WithClientPlatform(context.Background(), "mobile"), AgentCodex, "", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["systemPrompt"] != "platform=mobile" {
+		t.Fatalf("system prompt = %#v", got)
+	}
+}
+
 func TestSessionPromptMetaAllowsExtensionWithoutBasePrompt(t *testing.T) {
 	manager := &Manager{}
-	got, err := manager.sessionPromptMeta(AgentCodex, "", "", []string{"run context"})
+	got, err := manager.sessionPromptMeta(context.Background(), AgentCodex, "", "", []string{"run context"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +125,7 @@ func TestSessionPromptMetaAllowsExtensionWithoutBasePrompt(t *testing.T) {
 
 func TestSessionPromptMetaSendsGrokExtensionsAsRules(t *testing.T) {
 	manager := &Manager{cfg: Config{SystemPrompt: testPrompt("jaz platform prompt")}}
-	got, err := manager.sessionPromptMeta(AgentGrok, "", "widget", []string{"Scheduled Jaz loop run.\n\n## Board Widget Runtime\n\nPublish with visualise_publish_widget."})
+	got, err := manager.sessionPromptMeta(context.Background(), AgentGrok, "", "widget", []string{"Scheduled Jaz loop run.\n\n## Board Widget Runtime\n\nPublish with visualise_publish_widget."})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -565,7 +588,7 @@ func TestProcessEnvWritesOpenCodeInstructionsWithSessionExtension(t *testing.T) 
 		Root:         root,
 		SystemPrompt: testPrompt("jaz instructions"),
 	}, nil)
-	env, err := manager.processEnvPreparedForSurface("opencode", AgentConfig{}, "", "", []string{"run context"})
+	env, err := manager.processEnvPreparedForSurface(context.Background(), "opencode", AgentConfig{}, "", "", []string{"run context"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -590,7 +613,7 @@ func TestProcessEnvWritesOpenCodeInstructionsWithResolvedCwd(t *testing.T) {
 	env, err := NewManager(nil, Config{
 		Root:         root,
 		SystemPrompt: cwdPrompt{},
-	}, nil).processEnvPreparedForSurface("opencode", AgentConfig{Cwd: agentCwd}, sessionCwd, "widget", nil)
+	}, nil).processEnvPreparedForSurface(context.Background(), "opencode", AgentConfig{Cwd: agentCwd}, sessionCwd, "widget", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

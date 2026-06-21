@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
@@ -426,6 +427,7 @@ func TestACPStreamUsesServerContextAfterRequestCancel(t *testing.T) {
 	cancel()
 	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/messages:stream", strings.NewReader(`{"message":"hi"}`)).WithContext(ctx)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Jaz-Client-Platform", "mobile")
 	res := httptest.NewRecorder()
 
 	(&Server{Store: store, ACP: manager}).Handler().ServeHTTP(res, req)
@@ -435,9 +437,13 @@ func TestACPStreamUsesServerContextAfterRequestCancel(t *testing.T) {
 	}
 	manager.mu.Lock()
 	sendCtxErr := manager.sendCtxErr
+	sendPlatform := manager.sendPlatform
 	manager.mu.Unlock()
 	if sendCtxErr != nil {
 		t.Fatalf("acp send used cancelled request context: %v", sendCtxErr)
+	}
+	if sendPlatform != "mobile" {
+		t.Fatalf("acp send platform = %q, want mobile", sendPlatform)
 	}
 }
 
@@ -775,6 +781,7 @@ type fakeACPManager struct {
 	sent          acp.SendRequest
 	answered      acp.InteractiveAnswer
 	sendCtxErr    error
+	sendPlatform  string
 	answerCtxErr  error
 	cancelCtxErr  error
 	sendErr       error
@@ -875,6 +882,7 @@ func (f *fakeACPManager) Send(ctx context.Context, req acp.SendRequest) (acp.Job
 	defer f.mu.Unlock()
 	f.sent = req
 	f.sendCtxErr = ctx.Err()
+	f.sendPlatform = sessioncontext.ClientPlatform(ctx)
 	return f.job, f.sendErr
 }
 

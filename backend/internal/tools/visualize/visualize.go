@@ -22,7 +22,7 @@ func (ReadMeTool) Definition() tools.Definition {
 }
 
 func (ReadMeTool) Execute(_ context.Context, inputs map[string]any) (tools.Result, error) {
-	return tools.Result{Content: visualizesvc.BuildReadMeGuide(moduleNames(inputs["modules"]))}, nil
+	return tools.Result{Content: visualizesvc.BuildReadMeGuide(moduleNames(inputs["modules"]), tools.StringInput(inputs, "platform"))}, nil
 }
 
 // moduleNames leniently coerces the optional "modules" argument into a slice;

@@ -16,6 +16,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/provider"
+	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -25,20 +26,28 @@ import (
 // staticPrompt is a fixed acp.SystemPromptSource for tests.
 type staticPrompt string
 
-func (s staticPrompt) ACPPrompt(string) (string, error) { return string(s), nil }
+func (s staticPrompt) ACPPromptForContext(_ context.Context, _, _ string) (string, error) {
+	return string(s), nil
+}
 
 type cwdPrompt struct{}
 
-func (cwdPrompt) ACPPrompt(cwd string) (string, error) { return "cwd: " + cwd, nil }
+func (cwdPrompt) ACPPromptForContext(_ context.Context, cwd, _ string) (string, error) {
+	return "cwd: " + cwd, nil
+}
 
 type localRunner struct {
-	seen chan acp.LocalAgentRequest
+	seen     chan acp.LocalAgentRequest
+	platform chan string
 }
 
 func (r localRunner) Run(ctx context.Context, req acp.LocalAgentRequest) <-chan agent.StreamEvent {
 	out := make(chan agent.StreamEvent, 4)
 	go func() {
 		defer close(out)
+		if r.platform != nil {
+			r.platform <- sessioncontext.ClientPlatform(ctx)
+		}
 		r.seen <- req
 		select {
 		case <-ctx.Done():
@@ -250,7 +259,10 @@ func TestManagerRunsLocalJazAgentThroughACPJob(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner := localRunner{seen: make(chan acp.LocalAgentRequest, 1)}
+	runner := localRunner{
+		seen:     make(chan acp.LocalAgentRequest, 1),
+		platform: make(chan string, 1),
+	}
 	manager := acp.NewManager(store, acp.Config{
 		Root:      t.TempDir(),
 		Workspace: t.TempDir(),
@@ -286,13 +298,17 @@ func TestManagerRunsLocalJazAgentThroughACPJob(t *testing.T) {
 		t.Fatalf("local session metadata = %#v", session)
 	}
 
-	if _, err := manager.Send(ctx, acp.SendRequest{
+	mobileCtx := sessioncontext.WithClientPlatform(ctx, "mobile")
+	if _, err := manager.Send(mobileCtx, acp.SendRequest{
 		Session:       spawned.SessionID,
 		Message:       "make a plan",
 		PlanRequested: true,
 		Completion:    acp.CompletionInline,
 	}); err != nil {
 		t.Fatal(err)
+	}
+	if platform := <-runner.platform; platform != "mobile" {
+		t.Fatalf("local runner platform = %q, want mobile", platform)
 	}
 	req := <-runner.seen
 	if req.Session.ID != spawned.SessionID || req.Message != "make a plan" || !req.PlanRequested {

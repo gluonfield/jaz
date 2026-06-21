@@ -28,13 +28,14 @@ type Data struct {
 	GeoMaps      bool
 	Art          bool
 	Elicitation  bool
+	Mobile       bool
 }
 
 // For maps requested modules to the sections they need — the single place that
 // derives guide structure from requirements. The color palette is contributed by the visual modules (diagram,
 // mockup, interactive, chart) but not by art or elicitation. Unknown modules
 // contribute nothing, so an empty or unrecognized list yields just the core.
-func For(modules []string) Data {
+func For(modules []string, platform string) Data {
 	var d Data
 	for _, module := range modules {
 		switch strings.ToLower(strings.TrimSpace(module)) {
@@ -50,13 +51,15 @@ func For(modules []string) Data {
 			d.Elicitation = true
 		}
 	}
+	if platform == "mobile" {
+		d.Mobile = true
+	}
 	return d
 }
 
 // Render assembles the guide for the requested sections, normalized to a single
 // trailing newline. The template is embedded and parse-checked at init by
-// template.Must, and Data carries only bools, so Execute cannot fail at runtime;
-// a panic here means a programmer edit broke the template.
+// template.Must, so a panic here means a programmer edit broke the template.
 func Render(data Data) string {
 	var out bytes.Buffer
 	if err := tmpl.Execute(&out, data); err != nil {
