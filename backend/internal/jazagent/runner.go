@@ -260,7 +260,7 @@ func BuildRequest(store Store, prompts PromptSource, req Request) (TurnRequest, 
 	}
 	messages = append(messages, provider.UserMessage(userPrompt))
 	if req.AppendUser {
-		if err := storage.AppendUserMessage(store, req.Session.ID, req.Message, req.Attachments); err != nil {
+		if err := storage.AppendUserMessage(store, req.Session.ID, req.Message, nil, req.Attachments); err != nil {
 			return TurnRequest{}, err
 		}
 	}
