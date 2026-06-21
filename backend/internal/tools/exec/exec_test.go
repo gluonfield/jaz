@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -14,8 +15,12 @@ import (
 func TestExecCommandCompletes(t *testing.T) {
 	manager := NewCommandManager()
 	tool := &ExecCommandTool{Manager: manager, Workspace: t.TempDir()}
+	cmd := "printf hello"
+	if runtime.GOOS == "windows" {
+		cmd = "echo hello"
+	}
 	result, err := tool.Execute(context.Background(), map[string]any{
-		"cmd":           "printf hello",
+		"cmd":           cmd,
 		"yield_time_ms": float64(1000),
 	})
 	if err != nil {
@@ -25,7 +30,7 @@ func TestExecCommandCompletes(t *testing.T) {
 	if err := json.Unmarshal([]byte(result.Content), &payload); err != nil {
 		t.Fatal(err)
 	}
-	if payload["status"] != "completed" || payload["output"] != "hello" {
+	if payload["status"] != "completed" || strings.TrimSpace(payload["output"].(string)) != "hello" {
 		t.Fatalf("unexpected payload %#v", payload)
 	}
 }
@@ -38,8 +43,12 @@ func TestExecCommandDefaultsToSessionCWD(t *testing.T) {
 		t.Fatal(err)
 	}
 	tool := &ExecCommandTool{Manager: manager, Workspace: workspace}
+	cmd := "pwd"
+	if runtime.GOOS == "windows" {
+		cmd = "cd"
+	}
 	result, err := tool.Execute(sessioncontext.WithCWD(context.Background(), cwd), map[string]any{
-		"cmd":           "pwd",
+		"cmd":           cmd,
 		"yield_time_ms": float64(1000),
 	})
 	if err != nil {
@@ -66,8 +75,12 @@ func TestExecCommandUsesSessionCWDOutsideWorkspace(t *testing.T) {
 	manager := NewCommandManager()
 	cwd := t.TempDir()
 	tool := &ExecCommandTool{Manager: manager, Workspace: t.TempDir()}
+	cmd := "pwd"
+	if runtime.GOOS == "windows" {
+		cmd = "cd"
+	}
 	result, err := tool.Execute(sessioncontext.WithCWD(context.Background(), cwd), map[string]any{
-		"cmd":           "pwd",
+		"cmd":           cmd,
 		"yield_time_ms": float64(1000),
 	})
 	if err != nil {
@@ -93,10 +106,15 @@ func TestExecCommandUsesSessionCWDOutsideWorkspace(t *testing.T) {
 func TestExecCommandWriteStdin(t *testing.T) {
 	manager := NewCommandManager()
 	execTool := &ExecCommandTool{Manager: manager, Workspace: t.TempDir()}
-	result, err := execTool.Execute(context.Background(), map[string]any{
-		"cmd":           "read line; printf \"got:%s\" \"$line\"",
+	inputs := map[string]any{
+		"cmd":           `read line; printf "got:%s" "$line"`,
 		"yield_time_ms": float64(250),
-	})
+	}
+	if runtime.GOOS == "windows" {
+		inputs["shell"] = "powershell.exe"
+		inputs["cmd"] = `$line = [Console]::In.ReadLine(); Write-Output "got:$line"`
+	}
+	result, err := execTool.Execute(context.Background(), inputs)
 	if err != nil {
 		t.Fatal(err)
 	}

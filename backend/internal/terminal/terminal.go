@@ -7,12 +7,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sync"
 
 	"github.com/creack/pty"
+	"github.com/wins/jaz/backend/internal/shellcmd"
 )
 
 const defaultReplayBytes = 128 * 1024
+
+var ErrUnsupported = errors.New("terminal sessions are not supported on Windows yet")
 
 type Size struct {
 	Cols uint16
@@ -205,11 +209,10 @@ func (s *Session) Terminate() {
 }
 
 func (s *Session) start(size Size) error {
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "/bin/sh"
+	if runtime.GOOS == "windows" {
+		return ErrUnsupported
 	}
-	cmd := exec.Command(shell)
+	cmd := exec.Command(shellcmd.DefaultShell())
 	cmd.Dir = s.cwd
 	cmd.Env = terminalEnv(os.Environ())
 	win := &pty.Winsize{Cols: firstNonZero(size.Cols, 80), Rows: firstNonZero(size.Rows, 24)}

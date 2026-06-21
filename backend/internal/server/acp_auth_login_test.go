@@ -12,14 +12,18 @@ import (
 	"time"
 
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
+	"github.com/wins/jaz/backend/internal/testexec"
 )
 
 func TestACPAuthLoginRunsCodexWithoutHome(t *testing.T) {
 	home := t.TempDir()
 	bin := t.TempDir()
-	writeExecutable(t, filepath.Join(bin, "codex"), `#!/bin/sh
+	testexec.Write(t, filepath.Join(bin, "codex"), `#!/bin/sh
 printf 'home=%s\n' "$HOME"
 printf 'codex_home=%s\n' "$CODEX_HOME"
+`, `@echo off
+echo home=%HOME%
+echo codex_home=%CODEX_HOME%
 `)
 	t.Setenv("HOME", home)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -61,12 +65,18 @@ printf 'codex_home=%s\n' "$CODEX_HOME"
 func TestACPAuthLoginCreatesCodexProfileDir(t *testing.T) {
 	home := t.TempDir()
 	bin := t.TempDir()
-	writeExecutable(t, filepath.Join(bin, "codex"), `#!/bin/sh
+	testexec.Write(t, filepath.Join(bin, "codex"), `#!/bin/sh
 if [ ! -d "$CODEX_HOME" ]; then
   echo "CODEX_HOME points to \"$CODEX_HOME\", but that path does not exist" >&2
   exit 1
 fi
 printf ok
+`, `@echo off
+if not exist "%CODEX_HOME%\" (
+  echo CODEX_HOME points to "%CODEX_HOME%", but that path does not exist 1>&2
+  exit /b 1
+)
+echo ok
 `)
 	t.Setenv("HOME", home)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -103,8 +113,10 @@ printf ok
 func TestACPAuthLoginRunsGrokWithExistingHome(t *testing.T) {
 	home := t.TempDir()
 	bin := t.TempDir()
-	writeExecutable(t, filepath.Join(bin, "grok"), `#!/bin/sh
+	testexec.Write(t, filepath.Join(bin, "grok"), `#!/bin/sh
 printf 'home=%s\n' "$HOME"
+`, `@echo off
+echo home=%HOME%
 `)
 	t.Setenv("HOME", home)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -140,8 +152,10 @@ printf 'home=%s\n' "$HOME"
 
 func TestACPAuthLoginAllowsEmptyBody(t *testing.T) {
 	bin := t.TempDir()
-	writeExecutable(t, filepath.Join(bin, "grok"), `#!/bin/sh
+	testexec.Write(t, filepath.Join(bin, "grok"), `#!/bin/sh
 printf ok
+`, `@echo off
+echo ok
 `)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
@@ -209,11 +223,4 @@ func waitForACPAuthLogin(t *testing.T, handler http.Handler, id string) acpAuthL
 	}
 	t.Fatalf("login %s did not finish: %#v", id, got)
 	return got
-}
-
-func writeExecutable(t *testing.T, path, body string) {
-	t.Helper()
-	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
-		t.Fatal(err)
-	}
 }
