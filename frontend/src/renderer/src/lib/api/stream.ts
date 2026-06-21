@@ -1,5 +1,6 @@
 import { apiFetch } from './client'
 import type { ToolCallJSON } from './types'
+import { telemetry } from '@/lib/telemetry'
 
 // agent.StreamEvent on the wire (backend/internal/agent/agent.go).
 export interface AgentStreamEvent {
@@ -48,6 +49,13 @@ export async function streamSessionMessage({
     }
     throw new Error(detail)
   }
+
+  telemetry.messageSent({
+    queued: false,
+    voice,
+    planRequested,
+    attachmentCount: attachmentIds.length,
+  })
 
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
