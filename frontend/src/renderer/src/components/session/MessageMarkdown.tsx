@@ -1,7 +1,16 @@
 import { useQuery } from '@tanstack/react-query'
 import { FileText, Globe } from 'lucide-react'
-import { createContext, memo, useContext, useMemo, type MouseEvent, type ReactNode } from 'react'
-import Markdown from 'react-markdown'
+import {
+  createContext,
+  memo,
+  useContext,
+  useMemo,
+  type ComponentProps,
+  type ComponentType,
+  type MouseEvent,
+  type ReactNode,
+} from 'react'
+import Markdown, { type Components, type ExtraProps } from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -171,108 +180,117 @@ function mentionSigil(label: string): '$' | '@' | null {
   return label.startsWith('$') || label.startsWith('@') ? (label[0] as '$' | '@') : null
 }
 
-export const RenderedMarkdown = memo(function RenderedMarkdown({
+type AnchorComponent = ComponentType<ComponentProps<'a'> & ExtraProps>
+
+function BaseMarkdown({
   text,
-  className = 'chat-prose',
-  linkSkills = false,
+  className,
+  Link,
 }: {
   text: string
-  className?: string
-  linkSkills?: boolean
+  className: string
+  Link: AnchorComponent
 }) {
-  const skills = useQuery({ ...skillsQuery(), enabled: linkSkills })
-  const openPreview = useContext(PreviewLinkContext)
-  const openFile = useContext(FileReaderLinkContext)
-  const prepared = useMemo(
-    () => normalizeMath(linkSkills ? linkifyKnownSkills(text, skills.data ?? []) : text),
-    [linkSkills, text, skills.data],
-  )
+  const prepared = useMemo(() => normalizeMath(text), [text])
+  const components = useMemo<Components>(() => ({ a: Link }), [Link])
   return (
     <div className={className}>
       <Markdown
         remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: false }], remarkFileReferences]}
         rehypePlugins={[rehypeKatex]}
-        components={{
-          a: ({ node: _node, children, href, onClick, ...props }) => {
-            // Linked mentions ([$skill](path) / [@path](abs)) render as the
-            // composer's pills, not as links.
-            const label = textFromChildren(children)
-            const sigil = mentionSigil(label)
-            if (sigil && typeof href === 'string' && href !== '') {
-              return (
-                <MentionPill
-                  mention={{ sigil, name: label.slice(1), target: decodeMentionHref(href) }}
-                />
-              )
-            }
-            const localFile = localFileFromLink(href, children)
-            const urlLink = isUrlLink(href)
-            const Icon = localFile ? FileText : urlLink ? Globe : null
-            if (localFile) {
-              return (
-                <button
-                  type="button"
-                  className="chat-prose-link-button"
-                  onClick={(event) => {
-                    if (openFile && shouldPreviewLink(event)) openFile(localFile)
-                  }}
-                >
-                  <FileText
-                    aria-hidden="true"
-                    className="chat-prose-link-icon"
-                    size={13}
-                    strokeWidth={1.7}
-                  />
-                  {children}
-                </button>
-              )
-            }
-            if (!urlLink) return <>{children}</>
-            return (
-              <a
-                {...props}
-                href={href}
-                target="_blank"
-                rel="noreferrer"
-                onClick={(event) => {
-                  onClick?.(event)
-                  if (
-                    !openPreview ||
-                    typeof href !== 'string' ||
-                    !shouldPreviewURLByDefault(href) ||
-                    !shouldPreviewLink(event)
-                  ) {
-                    return
-                  }
-                  event.preventDefault()
-                  openPreview(href)
-                }}
-              >
-                {Icon ? (
-                  <Icon
-                    aria-hidden="true"
-                    className="chat-prose-link-icon"
-                    size={13}
-                    strokeWidth={1.7}
-                  />
-                ) : null}
-                {children}
-              </a>
-            )
-          },
-        }}
+        components={components}
       >
         {prepared}
       </Markdown>
     </div>
   )
+}
+
+const MessageMarkdownLink: AnchorComponent = ({ children, href, ...props }) => {
+  const label = textFromChildren(children)
+  const sigil = mentionSigil(label)
+  if (sigil && typeof href === 'string' && href !== '') {
+    return <MentionPill mention={{ sigil, name: label.slice(1), target: decodeMentionHref(href) }} />
+  }
+  return <PlainMarkdownLink {...props} href={href}>{children}</PlainMarkdownLink>
+}
+
+const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, onClick, ...props }) => {
+  const openPreview = useContext(PreviewLinkContext)
+  const openFile = useContext(FileReaderLinkContext)
+  const localFile = localFileFromLink(href, children)
+  const urlLink = isUrlLink(href)
+  const Icon = localFile ? FileText : urlLink ? Globe : null
+  if (localFile) {
+    return (
+      <button
+        type="button"
+        className="chat-prose-link-button"
+        onClick={(event) => {
+          if (openFile && shouldPreviewLink(event)) openFile(localFile)
+        }}
+      >
+        <FileText
+          aria-hidden="true"
+          className="chat-prose-link-icon"
+          size={13}
+          strokeWidth={1.7}
+        />
+        {children}
+      </button>
+    )
+  }
+  if (!urlLink) return <>{children}</>
+  return (
+    <a
+      {...props}
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      onClick={(event) => {
+        onClick?.(event)
+        if (
+          !openPreview ||
+          typeof href !== 'string' ||
+          !shouldPreviewURLByDefault(href) ||
+          !shouldPreviewLink(event)
+        ) {
+          return
+        }
+        event.preventDefault()
+        openPreview(href)
+      }}
+    >
+      {Icon ? (
+        <Icon
+          aria-hidden="true"
+          className="chat-prose-link-icon"
+          size={13}
+          strokeWidth={1.7}
+        />
+      ) : null}
+      {children}
+    </a>
+  )
+}
+
+export const RenderedMarkdown = memo(function RenderedMarkdown({
+  text,
+  className = 'chat-prose',
+}: {
+  text: string
+  className?: string
+}) {
+  return <BaseMarkdown text={text} className={className} Link={PlainMarkdownLink} />
 })
 
 // Shared renderer for assistant prose: GitHub-flavored markdown + LaTeX via KaTeX.
 // Memoized: the remark/rehype pipeline is the priciest per-item work in a
 // transcript, so it must only run when the text actually changes.
 export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: string }) {
-  return <RenderedMarkdown text={text} linkSkills />
+  const skills = useQuery(skillsQuery())
+  const prepared = useMemo(() => linkifyKnownSkills(text, skills.data ?? []), [text, skills.data])
+  return <BaseMarkdown text={prepared} className="chat-prose" Link={MessageMarkdownLink} />
 })
 
 // The markdown pipeline percent-encodes hrefs; show the filesystem path.
