@@ -5,12 +5,13 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { AgentAvatar } from '@/components/acp/AgentAvatar'
-import { agentLabel } from '@/lib/agentLabel'
 import { sessionQuery } from '@/lib/api/sessions'
 import { skillsQuery } from '@/lib/api/skills'
 import { decodeMentions, type Mention } from './mentionCodec'
 
 const PILL_CLASS = 'rounded-[4px] bg-primary-soft px-1 py-px text-primary-strong'
+const THREAD_PILL_CLASS =
+  'inline-flex max-w-full cursor-pointer items-center gap-1 rounded-[5px] bg-primary-soft px-1.5 py-px align-baseline text-primary-strong transition-colors hover:bg-primary/20'
 const SESSION_ID_RE = /^\d{8}T\d{6}-[a-f0-9]{8}$/i
 
 export function MentionPill({ mention }: { mention: Mention }) {
@@ -20,7 +21,6 @@ export function MentionPill({ mention }: { mention: Mention }) {
   }
   return (
     <span title={mention.target} className={PILL_CLASS}>
-      {mention.sigil}
       {mention.name}
     </span>
   )
@@ -65,8 +65,8 @@ function ThreadMentionPill({ mention }: { mention: Mention }) {
   const navigate = useNavigate()
   const triggerRef = useRef<HTMLButtonElement>(null)
   const session = useQuery(sessionQuery(mention.target))
-  const title = session.data?.title || mention.name
-  const slug = session.data?.slug
+  const fallbackTitle = mention.name.startsWith('thread/') ? 'Thread' : mention.name
+  const title = session.data?.title || fallbackTitle
   const agent = session.data?.runtime_ref?.agent
   return (
     <>
@@ -75,33 +75,26 @@ function ThreadMentionPill({ mention }: { mention: Mention }) {
         type="button"
         title={mention.target}
         onClick={() => setOpen((v) => !v)}
-        className={`${PILL_CLASS} inline-flex cursor-pointer items-center gap-1 transition-colors hover:bg-primary/20`}
+        className={THREAD_PILL_CLASS}
       >
         <AgentAvatar agent={agent} size={13} className="text-primary-strong" />
-        {mention.sigil}
-        {title}
+        <span className="min-w-0 truncate">{title}</span>
       </button>
       <MentionPopover open={open} onClose={() => setOpen(false)} anchorRef={triggerRef}>
-        <div className="flex items-start gap-1.5">
-          <AgentAvatar agent={agent} size={15} className="mt-0.5" />
+        <div className="flex items-start gap-2">
+          <AgentAvatar agent={agent} size={16} className="mt-0.5" />
           <span className="min-w-0 break-words text-[13px] font-medium text-ink">{title}</span>
         </div>
-        <div className="mt-1.5 space-y-1 text-[12px] leading-relaxed text-ink-2">
-          <p className="truncate">{slug || mention.target}</p>
-          {agent || session.data?.status ? (
-            <p className="truncate">
-              {[agent ? agentLabel(agent) : '', session.data?.status].filter(Boolean).join(' / ')}
-            </p>
-          ) : null}
-          {session.isError ? <p>Thread details unavailable.</p> : null}
-        </div>
+        {session.isError ? (
+          <p className="mt-2 text-[12px] leading-relaxed text-ink-2">Thread details unavailable.</p>
+        ) : null}
         <button
           type="button"
           onClick={() => {
             setOpen(false)
             navigate({ to: '/sessions/$sessionId', params: { sessionId: mention.target } })
           }}
-          className="mt-3 flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+          className="mt-3 flex h-8 w-full items-center gap-2 rounded-[7px] bg-surface-2 px-2.5 text-left text-[13px] font-medium text-ink transition-[background-color,color,transform] duration-150 hover:bg-surface-3 active:scale-[0.96]"
         >
           <span className="min-w-0 flex-1 truncate">Open thread</span>
           <ArrowRight size={13} className="shrink-0 text-primary" />
