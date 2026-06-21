@@ -116,6 +116,61 @@ echo ok
 	assertCodexLoginUsesFileCredentials(t, root)
 }
 
+func TestACPAuthLoginUsesJazProfileEvenWithExistingCodexAuth(t *testing.T) {
+	home := t.TempDir()
+	existing := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(existing, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(existing, "auth.json"), []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	testexec.Write(t, filepath.Join(bin, "codex"), `#!/bin/sh
+printf 'codex_home=%s\n' "$CODEX_HOME"
+printf '{}' > "$CODEX_HOME/auth.json"
+`, `@echo off
+echo codex_home=%CODEX_HOME%
+echo {} > "%CODEX_HOME%\auth.json"
+`)
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	handler := (&Server{Store: store, Root: root}).Handler()
+
+	body, err := json.Marshal(map[string]any{"auth": map[string]string{"mode": "existing_cli", "path": existing}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/acp/agents/codex/auth/login", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("start status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var started acpAuthLoginResponse
+	if err := json.Unmarshal(res.Body.Bytes(), &started); err != nil {
+		t.Fatal(err)
+	}
+
+	done := waitForACPAuthLogin(t, handler, started.ID)
+	if done.Status != "succeeded" {
+		t.Fatalf("login status = %#v", done)
+	}
+	want := filepath.Join(root, "acp", "codex-home")
+	if !strings.Contains(done.Output, "codex_home="+want) || strings.Contains(done.Output, "codex_home="+existing) {
+		t.Fatalf("codex login output = %q, want Jaz profile %s", done.Output, want)
+	}
+	assertCodexLoginUsesFileCredentials(t, root)
+}
+
 func TestACPAuthLoginFailsWhenCredentialNotSaved(t *testing.T) {
 	home := t.TempDir()
 	bin := t.TempDir()
