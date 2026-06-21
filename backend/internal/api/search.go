@@ -21,6 +21,7 @@ type ThreadSearchResult struct {
 	ThreadTitle     string `json:"thread_title"`
 	ThreadStatus    string `json:"thread_status"`
 	ThreadRuntime   string `json:"thread_runtime"`
+	ThreadAgent     string `json:"thread_agent,omitempty"`
 	ParentID        string `json:"parent_id,omitempty"`
 	Archived        bool   `json:"archived"`
 	MessageSeq      int64  `json:"message_seq,omitempty"`
@@ -70,6 +71,7 @@ func threadSearchResults(results []threads.SearchResult) []ThreadSearchResult {
 			ThreadTitle:     result.ThreadTitle,
 			ThreadStatus:    result.ThreadStatus,
 			ThreadRuntime:   result.ThreadRuntime,
+			ThreadAgent:     result.ThreadAgent,
 			ParentID:        result.ParentID,
 			Archived:        result.Archived,
 			MessageSeq:      result.MessageSeq,
