@@ -28,7 +28,7 @@ import { taskStepState, type TaskSurface } from '@/lib/taskSurface'
 import { keys } from '@/lib/query/keys'
 import { SidePanelShell } from './SidePanelShell'
 import { encodeMention } from './mentions'
-import { TaskStepIcon } from './Transcript'
+import { TaskStepIcon } from './TaskChecklist'
 import { useRepoActions } from './useRepoActions'
 
 export const OVERVIEW_PANEL_WIDTH = 300

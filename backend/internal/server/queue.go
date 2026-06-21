@@ -402,6 +402,7 @@ func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session,
 		if _, err := s.ACP.Send(ctx, acp.SendRequest{
 			Session:       session.ID,
 			Message:       prompt.Text,
+			Quotes:        prompt.Quotes,
 			Attachments:   attachments,
 			Completion:    acp.CompletionAsync,
 			Interactive:   true,

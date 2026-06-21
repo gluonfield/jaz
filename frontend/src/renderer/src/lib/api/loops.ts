@@ -1,4 +1,5 @@
 import { queryOptions } from '@tanstack/react-query'
+import { telemetry } from '@/lib/telemetry'
 import { keys } from '../query/keys'
 import { del, get, patch, post } from './client'
 import type { Loop, LoopRun } from './types'
@@ -56,8 +57,19 @@ export const loopDetailQuery = (id: string) =>
       activeRunStatus(query.state.data?.runs[0]?.status) ? 2_000 : false,
   })
 
-export function createLoop(input: LoopInput): Promise<Loop> {
-  return post<Loop>('/v1/loops', input)
+export async function createLoop(input: LoopInput, options: { runAfterCreate?: boolean } = {}): Promise<Loop> {
+  const loop = await post<Loop>('/v1/loops', input)
+  telemetry.loopCreated({
+    runAfterCreate: Boolean(options.runAfterCreate),
+    scheduleKind: input.schedule.kind,
+    status: input.status ?? 'active',
+    hasDirectory: Boolean(input.directory),
+    boardCount: input.board_ids?.length ?? 0,
+    hasModelOverride: Boolean(input.model),
+    hasProviderOverride: Boolean(input.model_provider),
+    hasReasoningEffort: Boolean(input.reasoning_effort),
+  })
+  return loop
 }
 
 export function updateLoop(id: string, input: Partial<LoopInput>): Promise<Loop> {
@@ -68,6 +80,8 @@ export function deleteLoop(id: string): Promise<{ ok: boolean }> {
   return del<{ ok: boolean }>(`/v1/loops/${id}`)
 }
 
-export function runLoopNow(id: string): Promise<LoopRun> {
-  return post<LoopRun>(`/v1/loops/${id}/run`)
+export async function runLoopNow(id: string): Promise<LoopRun> {
+  const run = await post<LoopRun>(`/v1/loops/${id}/run`)
+  telemetry.loopRunStarted()
+  return run
 }

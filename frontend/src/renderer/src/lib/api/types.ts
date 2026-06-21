@@ -90,6 +90,7 @@ export interface ThreadSearchResult {
 export interface QueuedMessage {
   id: string
   text: string
+  quotes?: string[]
   attachment_ids?: string[]
   plan_requested?: boolean
 }
@@ -338,6 +339,7 @@ export interface ToolCallJSON {
 export type MessageBlock =
   | { type: 'text'; text?: string }
   | { type: 'reasoning'; text?: string }
+  | { type: 'quote'; text?: string }
   | {
       type: 'attachment'
       id: string
