@@ -1,6 +1,7 @@
 package acp
 
 import (
+	"runtime"
 	"sort"
 	"strings"
 
@@ -202,17 +203,7 @@ func (c AgentCatalog) EnabledAgentNames() ([]string, error) {
 
 func BuiltinAgents() AgentCatalog {
 	return AgentCatalog{
-		AgentCodex: {
-			Command: "npx",
-			Args: []string{
-				"-y", "@jazchat/codex-acp@0.16.1",
-				"-c", `sandbox_mode="danger-full-access"`,
-				"-c", `approval_policy="never"`,
-				"-c", `features.tool_search_always_defer_mcp_tools=true`,
-			},
-			Model:           "gpt-5.5",
-			ReasoningEffort: "xhigh",
-		},
+		AgentCodex: codexBuiltinAgent(runtime.GOOS),
 		AgentClaude: {
 			Command:         "npx",
 			Args:            []string{"-y", "@agentclientprotocol/claude-agent-acp@0.44.0"},
@@ -241,6 +232,28 @@ func BuiltinAgents() AgentCatalog {
 			ReasoningEffort:         "",
 		},
 	}
+}
+
+func codexBuiltinAgent(goos string) AgentConfig {
+	command, args := codexACPCommand(goos)
+	return AgentConfig{
+		Command:         command,
+		Args:            args,
+		Model:           "gpt-5.5",
+		ReasoningEffort: "xhigh",
+	}
+}
+
+func codexACPCommand(goos string) (string, []string) {
+	args := []string{
+		"-c", `sandbox_mode="danger-full-access"`,
+		"-c", `approval_policy="never"`,
+		"-c", `features.tool_search_always_defer_mcp_tools=true`,
+	}
+	if goos == "windows" {
+		return "codex-acp.exe", args
+	}
+	return "npx", append([]string{"-y", "@jazchat/codex-acp@0.16.1"}, args...)
 }
 
 func MergeAgents(base, override map[string]AgentConfig) AgentCatalog {
