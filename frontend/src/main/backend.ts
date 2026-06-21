@@ -1,7 +1,7 @@
 import { execFileSync, type ChildProcess, spawn } from 'node:child_process'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { delimiter, join, resolve } from 'node:path'
 import { app, powerSaveBlocker } from 'electron'
 
 // Single source of truth for where the spawned backend lives; returned to the
@@ -42,26 +42,28 @@ const defaultRootPath = (): string => join(homedir(), '.jaz')
 const authFilePath = (root = defaultRootPath()): string => join(root, 'auth.json')
 const backendBinaryName = (): string => (process.platform === 'win32' ? 'jaz.exe' : 'jaz')
 
-function localBackendEnv(): NodeJS.ProcessEnv {
+function localBackendEnv(extraPath?: string): NodeJS.ProcessEnv {
   const env = { ...process.env }
-  if (process.platform !== 'darwin') return env
-  const shell = env['SHELL']?.trim() || '/bin/zsh'
-  try {
-    const out = execFileSync(shell, ['-l', '-i', '-c', 'printf "\\n__JAZ_PATH__%s\\n" "$PATH"'], {
-      encoding: 'utf8',
-      timeout: 3_000,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-    let line = ''
-    for (const entry of out.split(/\r?\n/).reverse()) {
-      if (!entry.startsWith('__JAZ_PATH__')) continue
-      line = entry.slice('__JAZ_PATH__'.length).trim()
-      break
+  if (process.platform === 'darwin') {
+    const shell = env['SHELL']?.trim() || '/bin/zsh'
+    try {
+      const out = execFileSync(shell, ['-l', '-i', '-c', 'printf "\\n__JAZ_PATH__%s\\n" "$PATH"'], {
+        encoding: 'utf8',
+        timeout: 3_000,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      })
+      let line = ''
+      for (const entry of out.split(/\r?\n/).reverse()) {
+        if (!entry.startsWith('__JAZ_PATH__')) continue
+        line = entry.slice('__JAZ_PATH__'.length).trim()
+        break
+      }
+      if (line) env['PATH'] = line
+    } catch {
+      // Keep LaunchServices env.
     }
-    if (line) env['PATH'] = line
-  } catch {
-    // Keep LaunchServices env.
   }
+  if (extraPath) env['PATH'] = [extraPath, env['PATH'] ?? env['Path'] ?? ''].filter(Boolean).join(delimiter)
   return env
 }
 
@@ -187,13 +189,14 @@ function spawnBackend(): ChildProcess {
   if (app.isPackaged) {
     // Run from the runtime root so application.yaml and .env can live next to
     // the server's data.
-    const bin = join(process.resourcesPath, 'bin', backendBinaryName())
+    const binDir = join(process.resourcesPath, 'bin')
+    const bin = join(binDir, backendBinaryName())
     const cwd = join(homedir(), '.jaz')
     mkdirSync(cwd, { recursive: true })
     return spawn(bin, [], {
       cwd,
       detached: true,
-      env: localBackendEnv(),
+      env: localBackendEnv(binDir),
       stdio: ['ignore', 'pipe', 'pipe'],
     })
   }

@@ -224,6 +224,15 @@ jobs:
         working-directory: backend
         run: go test -run '^$' ./...
 
+      - name: Download Codex ACP adapter
+        shell: pwsh
+        run: |
+          $version = "0.16.2"
+          $archive = "codex-acp-$version-x86_64-pc-windows-msvc.tar.gz"
+          gh release download "v$version" --repo gluonfield/codex-acp --pattern $archive --dir $env:RUNNER_TEMP --clobber
+          New-Item -ItemType Directory -Force frontend\resources\bin | Out-Null
+          tar -xzf (Join-Path $env:RUNNER_TEMP $archive) -C frontend\resources\bin codex-acp.exe
+
       - name: Build
         working-directory: frontend
         run: |
