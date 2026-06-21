@@ -9,6 +9,10 @@ func TextBlock(text string) Block {
 	return Block{Type: BlockTypeText, Text: text}
 }
 
+func QuoteBlock(text string) Block {
+	return Block{Type: BlockTypeQuote, Text: text}
+}
+
 func AttachmentBlock(attachment Attachment) Block {
 	block := Block{
 		Type:       BlockTypeAttachment,
@@ -24,8 +28,12 @@ func AttachmentBlock(attachment Attachment) Block {
 	return block
 }
 
-func UserMessageRecord(message string, attachments []Attachment) Message {
-	blocks := []Block{TextBlock(message)}
+func UserMessageRecord(message string, quotes []string, attachments []Attachment) Message {
+	blocks := make([]Block, 0, len(quotes)+1+len(attachments))
+	for _, quote := range quotes {
+		blocks = append(blocks, QuoteBlock(quote))
+	}
+	blocks = append(blocks, TextBlock(message))
 	for _, attachment := range attachments {
 		blocks = append(blocks, AttachmentBlock(attachment))
 	}
@@ -36,10 +44,10 @@ func UserMessageRecord(message string, attachments []Attachment) Message {
 	}
 }
 
-func AppendUserMessage(store MessageAppender, sessionID, message string, attachments []Attachment) error {
-	if len(attachments) > 0 {
+func AppendUserMessage(store MessageAppender, sessionID, message string, quotes []string, attachments []Attachment) error {
+	if len(attachments) > 0 || len(quotes) > 0 {
 		if appender, ok := store.(MessageRecordAppender); ok {
-			return appender.AppendMessageRecords(sessionID, UserMessageRecord(message, attachments))
+			return appender.AppendMessageRecords(sessionID, UserMessageRecord(message, quotes, attachments))
 		}
 	}
 	return store.AppendMessages(sessionID, provider.UserMessage(message))

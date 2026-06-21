@@ -2,6 +2,15 @@ declare module '*.css'
 declare module '@fontsource-variable/inter'
 declare module '@fontsource-variable/jetbrains-mono'
 
+interface ImportMetaEnv {
+  readonly VITE_POSTHOG_TOKEN?: string
+  readonly VITE_POSTHOG_HOST?: string
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv
+}
+
 declare namespace JSX {
   interface IntrinsicElements {
     webview: React.DetailedHTMLProps<

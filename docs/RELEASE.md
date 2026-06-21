@@ -23,3 +23,7 @@ The workflow uploads `*.dmg`, `*.zip`, `latest-mac.yml`,
 `jaz-backend-linux-amd64.tar.gz`, `jaz-backend-linux-arm64.tar.gz`, and matching
 `.sha256` files to the release. Re-runs overwrite assets (`--clobber`), so to
 redo a release just publish the tag again.
+
+Desktop telemetry is enabled only when the release build receives the
+`POSTHOG_PROJECT_TOKEN` repository variable. The token is a public PostHog
+project token; leave it unset for telemetry-free builds.
