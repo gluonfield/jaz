@@ -187,7 +187,6 @@ export const Transcript = memo(function Transcript({
           <LiveEvent
             key={`event-${stableEventKey(item.event, item.eventIndex)}`}
             event={item.event}
-            sessionId={sessionId}
             showHeader={item.showHeader}
             working={working}
             showTaskSurface={
