@@ -40,12 +40,29 @@ type SessionDisplayBlock =
   | { kind: 'project'; key: string; group: SessionProjectGroup; items: SessionListItem[] }
   | { kind: 'ungrouped'; key: 'ungrouped'; items: SessionListItem[]; total: number }
 
+function explicitSessionProjectPath(item: SessionListItem): string {
+  return item.session.runtime_ref?.project_path?.trim() || ''
+}
+
 function sessionProjectPath(item: SessionListItem): string {
-  return (
-    item.session.runtime_ref?.project_path?.trim() ||
-    item.session.runtime_ref?.cwd?.trim() ||
-    ''
-  )
+  return explicitSessionProjectPath(item) || item.session.runtime_ref?.cwd?.trim() || ''
+}
+
+function sidebarProjectPath(
+  item: SessionListItem,
+  byID: Map<string, SessionListItem>,
+  childProjectByParentID: Map<string, string>,
+): string {
+  const parent = item.child && item.session.parent_id ? byID.get(item.session.parent_id) : undefined
+  if (parent) {
+    return (
+      explicitSessionProjectPath(parent) ||
+      explicitSessionProjectPath(item) ||
+      sessionProjectPath(parent) ||
+      sessionProjectPath(item)
+    )
+  }
+  return explicitSessionProjectPath(item) || childProjectByParentID.get(item.session.id) || sessionProjectPath(item)
 }
 
 function withLocalChildState(items: SessionListItem[]): SessionListItem[] {
@@ -58,11 +75,20 @@ function withLocalChildState(items: SessionListItem[]): SessionListItem[] {
 
 function sessionsBySavedProject(items: SessionListItem[], projects: Project[]): SessionSections {
   const projectByPath = new Map(projects.map((project) => [project.path, project]))
+  const byID = new Map(items.map((item) => [item.session.id, item]))
+  const childProjectByParentID = new Map<string, string>()
+  for (const item of items) {
+    const parentID = item.session.parent_id
+    const path = explicitSessionProjectPath(item) || sessionProjectPath(item)
+    if (item.child && parentID && path && !childProjectByParentID.has(parentID)) {
+      childProjectByParentID.set(parentID, path)
+    }
+  }
   const groups = new Map<string, SessionProjectGroup>()
   const ungrouped: SessionListItem[] = []
 
   for (const item of items) {
-    const project = projectByPath.get(sessionProjectPath(item))
+    const project = projectByPath.get(sidebarProjectPath(item, byID, childProjectByParentID))
     if (!project) {
       ungrouped.push(item)
       continue
@@ -98,6 +124,15 @@ function visibleProjectItems(group: SessionProjectGroup, expanded: boolean): Ses
   return expanded ? group.items : group.items.slice(0, PROJECT_SESSION_LIMIT)
 }
 
+function sessionListItemTime(item: SessionListItem): number {
+  const ms = Date.parse(item.session.last_attention_at || item.session.updated_at)
+  return Number.isNaN(ms) ? 0 : ms
+}
+
+function sessionListItemsTime(items: SessionListItem[]): number {
+  return Math.max(0, ...items.map(sessionListItemTime))
+}
+
 function sessionDisplayBlocks(
   pinnedItems: SessionListItem[],
   groups: SessionProjectGroup[],
@@ -106,22 +141,25 @@ function sessionDisplayBlocks(
 ): SessionDisplayBlock[] {
   const blocks: SessionDisplayBlock[] = []
   if (pinnedItems.length) blocks.push({ kind: 'pinned', key: 'pinned', label: 'Pinned', items: pinnedItems })
-  for (const group of groups) {
-    blocks.push({
-      kind: 'project',
-      key: group.key,
-      group,
-      items: visibleProjectItems(group, expandedProjects.has(group.key)),
-    })
-  }
+  const projectBlocks: SessionDisplayBlock[] = groups.map((group) => ({
+    kind: 'project',
+    key: group.key,
+    group,
+    items: visibleProjectItems(group, expandedProjects.has(group.key)),
+  }))
   if (ungrouped.length) {
-    blocks.push({
+    const ungroupedBlock: SessionDisplayBlock = {
       kind: 'ungrouped',
       key: 'ungrouped',
       items: ungrouped.slice(0, DEFAULT_SESSION_LIMIT),
       total: ungrouped.length,
-    })
+    }
+    const time = sessionListItemsTime(ungrouped)
+    const index = projectBlocks.findIndex((block) => time > sessionListItemsTime(block.items))
+    if (index === -1) projectBlocks.push(ungroupedBlock)
+    else projectBlocks.splice(index, 0, ungroupedBlock)
   }
+  blocks.push(...projectBlocks)
   return blocks
 }
 
@@ -264,6 +302,38 @@ function ProjectGroup({
   )
 }
 
+function UngroupedSessionsBlock({
+  block,
+  shortcutByID,
+  shortcutMode,
+}: {
+  block: Extract<SessionDisplayBlock, { kind: 'ungrouped' }>
+  shortcutByID: Map<string, number>
+  shortcutMode: boolean
+}) {
+  return (
+    <Reorder.Item
+      as="div"
+      value={block.key}
+      layout="position"
+      transition={ROW_SPRING}
+      dragListener={false}
+    >
+      <SessionRows items={block.items} shortcutByID={shortcutByID} shortcutMode={shortcutMode} />
+      {block.total > DEFAULT_SESSION_LIMIT ? (
+        <Link
+          to="/sessions"
+          className="mt-1 block rounded-full px-2.5 py-1 text-[13px] text-primary transition-colors duration-150 hover:bg-surface-2"
+          activeOptions={{ exact: true }}
+          activeProps={{ className: 'bg-primary-soft!' }}
+        >
+          Show all threads
+        </Link>
+      ) : null}
+    </Reorder.Item>
+  )
+}
+
 function SessionsSection({ open }: { open: boolean }) {
   const queryClient = useQueryClient()
   const sessions = useQuery(sidebarSessionsQuery)
@@ -299,12 +369,7 @@ function SessionsSection({ open }: { open: boolean }) {
   const pinnedBlock = blocks.find((block): block is Extract<SessionDisplayBlock, { kind: 'pinned' }> =>
     block.kind === 'pinned',
   )
-  const projectBlocks = blocks.filter((block): block is Extract<SessionDisplayBlock, { kind: 'project' }> =>
-    block.kind === 'project',
-  )
-  const ungroupedBlock = blocks.find((block): block is Extract<SessionDisplayBlock, { kind: 'ungrouped' }> =>
-    block.kind === 'ungrouped',
-  )
+  const sessionBlocks = blocks.filter((block) => block.kind !== 'pinned')
 
   const expandProject = (key: string) =>
     setExpandedProjects((current) => {
@@ -347,41 +412,35 @@ function SessionsSection({ open }: { open: boolean }) {
               <SessionRows items={pinnedBlock.items} shortcutByID={shortcutByID} shortcutMode={shortcutMode} />
             </div>
           ) : null}
-          {projectBlocks.length > 0 ? (
+          {sessionBlocks.length > 0 ? (
             <Reorder.Group
               as="div"
               axis="y"
-              values={projectBlocks.map((block) => block.key)}
+              values={sessionBlocks.map((block) => block.key)}
               onReorder={setDragOrder}
               className="flex flex-col gap-3"
             >
-              {projectBlocks.map((block) => (
-                <ProjectGroup
-                  key={block.key}
-                  group={block.group}
-                  items={block.items}
-                  onExpand={() => expandProject(block.key)}
-                  onReorderEnd={commitReorder}
-                  shortcutByID={shortcutByID}
-                  shortcutMode={shortcutMode}
-                />
-              ))}
+              {sessionBlocks.map((block) =>
+                block.kind === 'project' ? (
+                  <ProjectGroup
+                    key={block.key}
+                    group={block.group}
+                    items={block.items}
+                    onExpand={() => expandProject(block.key)}
+                    onReorderEnd={commitReorder}
+                    shortcutByID={shortcutByID}
+                    shortcutMode={shortcutMode}
+                  />
+                ) : (
+                  <UngroupedSessionsBlock
+                    key={block.key}
+                    block={block}
+                    shortcutByID={shortcutByID}
+                    shortcutMode={shortcutMode}
+                  />
+                ),
+              )}
             </Reorder.Group>
-          ) : null}
-          {ungroupedBlock ? (
-            <div>
-              <SessionRows items={ungroupedBlock.items} shortcutByID={shortcutByID} shortcutMode={shortcutMode} />
-              {ungroupedBlock.total > DEFAULT_SESSION_LIMIT ? (
-                <Link
-                  to="/sessions"
-                  className="mt-1 block rounded-full px-2.5 py-1 text-[13px] text-primary transition-colors duration-150 hover:bg-surface-2"
-                  activeOptions={{ exact: true }}
-                  activeProps={{ className: 'bg-primary-soft!' }}
-                >
-                  Show all threads
-                </Link>
-              ) : null}
-            </div>
           ) : null}
         </div>
       )}
