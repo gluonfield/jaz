@@ -5,11 +5,13 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
 	modelprovider "github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
+	"github.com/wins/jaz/backend/internal/testexec"
 )
 
 type testPrompt string
@@ -369,6 +371,9 @@ func TestProcessEnvPreparedSyncsClaudeSkills(t *testing.T) {
 }
 
 func TestProcessEnvFindsClaudeCodeFromLoginShell(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("login shell executable lookup is POSIX-only")
+	}
 	clearHostEnv(t)
 	claude := testExecutable(t)
 	shell := filepath.Join(t.TempDir(), "shell")
@@ -1127,11 +1132,7 @@ func grokInitializeAuthMethods() []byte {
 
 func testExecutable(t *testing.T) string {
 	t.Helper()
-	exe := filepath.Join(t.TempDir(), "agent")
-	if err := os.WriteFile(exe, []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return exe
+	return testexec.Write(t, filepath.Join(t.TempDir(), "agent"), "", "")
 }
 
 func writeACPTestSkill(t *testing.T, root, name string) {
