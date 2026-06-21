@@ -476,6 +476,7 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	contexts := storage.NormalizeMessageContexts(append(storage.SelectionContexts(req.Quotes), req.Contexts...))
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -490,7 +491,7 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 
 	switch session.Runtime {
 	case storage.RuntimeACP:
-		s.streamACPSession(w, flusher, r.Context(), session, req.Message, req.Quotes, attachments, req.PlanRequested)
+		s.streamACPSession(w, flusher, r.Context(), session, req.Message, contexts, attachments, req.PlanRequested)
 	default:
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: fmt.Sprintf("unknown session runtime %q", session.Runtime)})
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
@@ -600,11 +601,12 @@ func writeSSE(w http.ResponseWriter, flusher http.Flusher, event agent.StreamEve
 }
 
 type streamRequest struct {
-	Message       string   `json:"message"`
-	Quotes        []string `json:"quotes,omitempty"`
-	AttachmentIDs []string `json:"attachment_ids,omitempty"`
-	PlanRequested bool     `json:"plan_requested,omitempty"`
-	Voice         bool     `json:"voice,omitempty"`
+	Message       string                   `json:"message"`
+	Contexts      []storage.MessageContext `json:"contexts,omitempty"`
+	Quotes        []string                 `json:"quotes,omitempty"`
+	AttachmentIDs []string                 `json:"attachment_ids,omitempty"`
+	PlanRequested bool                     `json:"plan_requested,omitempty"`
+	Voice         bool                     `json:"voice,omitempty"`
 }
 
 type interactiveResponseRequest struct {
