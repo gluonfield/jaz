@@ -196,7 +196,7 @@ type ACPToolCall struct {
 	Kind     string           `json:"kind,omitempty"`
 	ToolName string           `json:"tool_name,omitempty"`
 	Content  []ACPToolContent `json:"content,omitempty"`
-	RawInput json.RawMessage  `json:"raw_input,omitempty"`
+	RawInput map[string]any   `json:"raw_input,omitempty"`
 }
 
 // ACPToolContent is a normalized tool-call result block, distilled from the ACP
