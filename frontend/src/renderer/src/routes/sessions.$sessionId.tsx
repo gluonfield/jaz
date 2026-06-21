@@ -39,7 +39,7 @@ import {
   uploadSessionAttachment,
 } from '@/lib/api/sessions'
 import { streamSessionMessage } from '@/lib/api/stream'
-import type { ACPJobSnapshot, ACPModeState, ChatMessage, SessionEvent, SessionMessages } from '@/lib/api/types'
+import type { ACPJobSnapshot, ACPModeState, ChatMessage, Session, SessionEvent, SessionMessages } from '@/lib/api/types'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
 import { takePendingMessage } from '@/lib/pendingMessage'
@@ -72,6 +72,10 @@ function SessionRoute() {
   const { sessionId } = Route.useParams()
   const search = Route.useSearch()
   return <SessionPage key={sessionId} sessionId={sessionId} search={search} />
+}
+
+function isCodexACPSession(session: Session | undefined): boolean {
+  return session?.runtime === 'acp' && session.runtime_ref?.agent?.trim().toLowerCase() === 'codex'
 }
 
 // One in-flight user → assistant exchange, rendered after the transcript
@@ -379,9 +383,12 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
       return stripProgressSignal(withoutError)
     }),
   )
+  const sideChatEvents = coalesceSessionEvents(
+    [...persistedEvents, ...liveEvents].filter((event) => event.type === 'side_chat_message'),
+  )
   return {
     transcriptEvents: settledTranscriptEvents,
-    sideChatEvents: [...persistedEvents, ...liveEvents].filter((event) => event.type === 'side_chat_message'),
+    sideChatEvents,
     displayEvents,
     planAvailable,
     planActive,
@@ -437,9 +444,11 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   const sentPendingRef = useRef<string | null>(null)
   // The panel only auto-opens on a git repo, so the picker needs to know up
   // front — query it from the session's cwd (shares cache with the panel).
-  const sessionCwd = detail.data?.session.runtime_ref?.cwd
+  const detailSession = detail.data?.session
+  const sessionCwd = detailSession?.runtime_ref?.cwd
+  const sideChatAvailable = isCodexACPSession(detailSession)
   const repoInfo = useQuery({ ...sessionRepoQuery(sessionId), enabled: Boolean(sessionCwd) })
-  const sidePanel = useSidePanelState(Boolean(repoInfo.data?.git))
+  const sidePanel = useSidePanelState(Boolean(repoInfo.data?.git), sideChatAvailable)
   useEffect(() => window.jaz?.onOpenSideBrowserURL?.(sidePanel.openPreview), [sidePanel.openPreview])
 
   const itemCount =
@@ -693,8 +702,6 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   const sessionError = session.status === 'error' ? session.error?.trim() || 'Unknown error.' : ''
   const sessionErrorContext = [session.model_provider, session.model].filter(Boolean).join(' · ')
   const isACP = session.runtime === 'acp'
-  const sideChatAgent = session.runtime_ref?.agent?.toLowerCase() ?? ''
-  const sideChatAvailable = isACP && sideChatAgent.includes('codex')
   // Covers turns started elsewhere (parent-triggered, or refresh mid-turn).
   const sessionRunning = queue.sessionRunning
   const pendingSteer = session.pending_steer_message

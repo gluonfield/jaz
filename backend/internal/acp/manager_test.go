@@ -329,11 +329,11 @@ func TestManagerSideChatDoesNotTouchRunningTurn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manager := newFakeAgentManager(t, store, t.TempDir(), nil)
+	manager := newFakeCodexManager(t, store, t.TempDir(), nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-side"})
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: acp.AgentCodex, Slug: "codex-side"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1142,6 +1142,14 @@ func newFakeAgentManagerWithModel(t *testing.T, store *jsonstore.Store, root str
 }
 
 func newFakeAgentManagerWithOptions(t *testing.T, store *jsonstore.Store, root string, extraEnv map[string]string, model, effort string) *acp.Manager {
+	return newFakeNamedAgentManagerWithOptions(t, store, root, "fake", extraEnv, model, effort)
+}
+
+func newFakeCodexManager(t *testing.T, store *jsonstore.Store, root string, extraEnv map[string]string) *acp.Manager {
+	return newFakeNamedAgentManagerWithOptions(t, store, root, acp.AgentCodex, extraEnv, "", "")
+}
+
+func newFakeNamedAgentManagerWithOptions(t *testing.T, store *jsonstore.Store, root, agent string, extraEnv map[string]string, model, effort string) *acp.Manager {
 	env := map[string]string{"JAZ_FAKE_ACP_AGENT": "1"}
 	for key, value := range extraEnv {
 		env[key] = value
@@ -1150,7 +1158,7 @@ func newFakeAgentManagerWithOptions(t *testing.T, store *jsonstore.Store, root s
 		Root:      root,
 		Workspace: t.TempDir(),
 		Agents: map[string]acp.AgentConfig{
-			"fake": {
+			agent: {
 				Command:         os.Args[0],
 				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
 				Model:           model,

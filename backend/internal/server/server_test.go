@@ -489,11 +489,11 @@ func TestACPSideChatRejectsNonCodexSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	session, err := store.CreateSession(storage.CreateSession{
-		Slug:    "claude-side-chat",
+		Slug:    "codex-wrapper-side-chat",
 		Runtime: storage.RuntimeACP,
 		RuntimeRef: &storage.RuntimeRef{
 			Type:      storage.RuntimeACP,
-			Agent:     "claude",
+			Agent:     "codex-wrapper",
 			SessionID: "acp-session",
 		},
 	})

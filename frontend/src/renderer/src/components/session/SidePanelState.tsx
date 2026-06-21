@@ -14,14 +14,15 @@ function storedPanelPref(): PanelPref {
   return value === 'open' || value === 'closed' ? value : 'auto'
 }
 
-export function useSidePanelState(gitAvailable: boolean) {
+export function useSidePanelState(gitAvailable: boolean, sideChatAvailable = false) {
   const [panelPref, setPanelPref] = useState<PanelPref>(storedPanelPref)
   const [view, setView] = useState<SidePanelView>('overview')
   const [previewUrl, setPreviewUrl] = useState('')
   const [fileRef, setFileRef] = useState<FileReference | null>(null)
   const [hasPanelSpace, setHasPanelSpace] = useState(false)
   const observerRef = useRef<ResizeObserver | null>(null)
-  const width = SIDE_PANEL_WIDTHS[view]
+  const activeView = view === 'side-chat' && !sideChatAvailable ? 'overview' : view
+  const width = SIDE_PANEL_WIDTHS[activeView]
   // Auto-open only earns its keep on a git repo — Overview/Diff have little to
   // show otherwise. Explicit 'open' (a user pick) still opens anywhere.
   const autoOpen = hasPanelSpace && gitAvailable
@@ -84,7 +85,7 @@ export function useSidePanelState(gitAvailable: boolean) {
     selectView,
     setPreviewUrl,
     toggle,
-    view,
+    view: activeView,
     width,
     openFile,
     openPreview,
