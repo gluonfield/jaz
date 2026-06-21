@@ -385,7 +385,11 @@ func TestSideChatSessionUpdatePublishesSideChatEventOnly(t *testing.T) {
 		if event.Type != sessionevents.TypeSideChatMessage || event.SideChat == nil {
 			t.Fatalf("unexpected event %#v", event)
 		}
-		if event.Content != "side answer" || event.SideChat.ID != "side-1" || event.SideChat.ThreadID != "thread-1" || event.SideChat.Role != "assistant" {
+		if event.Content != "" ||
+			event.SideChat.Content != "side answer" ||
+			event.SideChat.ID != "side-1" ||
+			event.SideChat.ThreadID != "thread-1" ||
+			event.SideChat.Role != "assistant" {
 			t.Fatalf("side chat event = %#v", event)
 		}
 	case <-ctx.Done():

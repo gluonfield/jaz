@@ -467,7 +467,7 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
 			return
 		}
-		if session.Runtime != storage.RuntimeACP || session.RuntimeRef == nil || !strings.Contains(strings.ToLower(session.RuntimeRef.Agent), "codex") || s.ACP == nil {
+		if session.Runtime != storage.RuntimeACP || session.RuntimeRef == nil || acp.CanonicalAgentName(session.RuntimeRef.Agent) != acp.AgentCodex || s.ACP == nil {
 			writeError(w, http.StatusBadRequest, fmt.Errorf("side chat requires a codex acp session"))
 			return
 		}

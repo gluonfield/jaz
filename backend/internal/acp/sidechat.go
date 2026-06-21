@@ -53,6 +53,9 @@ func (m *Manager) SendSideChat(ctx context.Context, req SideChatRequest) error {
 			return err
 		}
 	}
+	if CanonicalAgentName(job.ACPAgent) != AgentCodex {
+		return fmt.Errorf("side chat requires a codex acp session")
+	}
 	peer := m.peer(job.ID)
 	if peer == nil {
 		return fmt.Errorf("acp peer is not active")
@@ -130,7 +133,6 @@ func (m *Manager) publishSideChatMessage(job Job, scope sideChatScope, role, con
 	m.recordAndPublish(sessionevents.Event{
 		SessionID: job.ID,
 		Type:      sessionevents.TypeSideChatMessage,
-		Content:   content,
 		SideChat: &sessionevents.SideChatEvent{
 			ID:              scope.ID,
 			Command:         firstNonEmpty(scope.Command, sideChatCommand),
