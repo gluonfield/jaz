@@ -21,9 +21,11 @@ func TestACPAuthLoginRunsCodexWithoutHome(t *testing.T) {
 	testexec.Write(t, filepath.Join(bin, "codex"), `#!/bin/sh
 printf 'home=%s\n' "$HOME"
 printf 'codex_home=%s\n' "$CODEX_HOME"
+printf '{}' > "$CODEX_HOME/auth.json"
 `, `@echo off
 echo home=%HOME%
 echo codex_home=%CODEX_HOME%
+echo {} > "%CODEX_HOME%\auth.json"
 `)
 	t.Setenv("HOME", home)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -58,6 +60,7 @@ echo codex_home=%CODEX_HOME%
 	if !strings.Contains(done.Output, "codex_home="+filepath.Join(root, "acp", "codex-home")) {
 		t.Fatalf("codex login output = %q", done.Output)
 	}
+	assertCodexLoginUsesFileCredentials(t, root)
 }
 
 // Real codex aborts ("CODEX_HOME points to … but that path does not exist")
@@ -70,12 +73,14 @@ if [ ! -d "$CODEX_HOME" ]; then
   echo "CODEX_HOME points to \"$CODEX_HOME\", but that path does not exist" >&2
   exit 1
 fi
+printf '{}' > "$CODEX_HOME/auth.json"
 printf ok
 `, `@echo off
 if not exist "%CODEX_HOME%\" (
   echo CODEX_HOME points to "%CODEX_HOME%", but that path does not exist 1>&2
   exit /b 1
 )
+echo {} > "%CODEX_HOME%\auth.json"
 echo ok
 `)
 	t.Setenv("HOME", home)
@@ -108,6 +113,45 @@ echo ok
 	if _, err := os.Stat(filepath.Join(root, "acp", "codex-home")); err != nil {
 		t.Fatalf("codex profile dir not created: %v", err)
 	}
+	assertCodexLoginUsesFileCredentials(t, root)
+}
+
+func TestACPAuthLoginFailsWhenCredentialNotSaved(t *testing.T) {
+	home := t.TempDir()
+	bin := t.TempDir()
+	testexec.Write(t, filepath.Join(bin, "codex"), `#!/bin/sh
+printf ok
+`, `@echo off
+echo ok
+`)
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	handler := (&Server{Store: store, Root: root}).Handler()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/acp/agents/codex/auth/login", strings.NewReader(`{"auth":{"mode":"jaz_profile"}}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("start status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var started acpAuthLoginResponse
+	if err := json.Unmarshal(res.Body.Bytes(), &started); err != nil {
+		t.Fatal(err)
+	}
+
+	done := waitForACPAuthLogin(t, handler, started.ID)
+	if done.Status != "failed" || !strings.Contains(done.Error, filepath.Join(root, "acp", "codex-home", "auth.json")) {
+		t.Fatalf("login status = %#v, want failed missing saved credential", done)
+	}
+	assertCodexLoginUsesFileCredentials(t, root)
 }
 
 func TestACPAuthLoginRunsGrokWithExistingHome(t *testing.T) {
@@ -115,8 +159,12 @@ func TestACPAuthLoginRunsGrokWithExistingHome(t *testing.T) {
 	bin := t.TempDir()
 	testexec.Write(t, filepath.Join(bin, "grok"), `#!/bin/sh
 printf 'home=%s\n' "$HOME"
+mkdir -p "$HOME/.grok"
+printf '{}' > "$HOME/.grok/auth.json"
 `, `@echo off
 echo home=%HOME%
+mkdir "%HOME%\.grok"
+echo {} > "%HOME%\.grok\auth.json"
 `)
 	t.Setenv("HOME", home)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -151,12 +199,18 @@ echo home=%HOME%
 }
 
 func TestACPAuthLoginAllowsEmptyBody(t *testing.T) {
+	home := t.TempDir()
 	bin := t.TempDir()
 	testexec.Write(t, filepath.Join(bin, "grok"), `#!/bin/sh
+mkdir -p "$HOME/.grok"
+printf '{}' > "$HOME/.grok/auth.json"
 printf ok
 `, `@echo off
+mkdir "%HOME%\.grok"
+echo {} > "%HOME%\.grok\auth.json"
 echo ok
 `)
+	t.Setenv("HOME", home)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	root := t.TempDir()
@@ -172,6 +226,17 @@ echo ok
 	handler.ServeHTTP(res, req)
 	if res.Code != http.StatusOK {
 		t.Fatalf("start status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
+func assertCodexLoginUsesFileCredentials(t *testing.T, root string) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(root, "acp", "codex-home", "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `cli_auth_credentials_store = "file"`) {
+		t.Fatalf("codex config = %q, want file credential store", string(data))
 	}
 }
 

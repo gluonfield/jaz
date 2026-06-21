@@ -21,6 +21,7 @@ import { Select } from '@/components/ui/Select'
 import { Switch } from '@/components/ui/Switch'
 import { authProviderLabel, onboardingAgentLabel } from '@/lib/agentLabel'
 import type { ACPAuthLogin, OnboardingACPProbe } from '@/lib/api/types'
+import { localDeviceLabel } from '@/lib/deviceLabel'
 
 export const onboardingEase = [0.22, 1, 0.36, 1] as const
 
@@ -59,6 +60,7 @@ export function AgentSetupStep({
   onAPIKeyChange: (agent: string, value: string) => void
   onContinue: () => void
 }) {
+  const deviceLabel = localDeviceLabel()
   return (
     <motion.div
       variants={onboardingRise}
@@ -72,7 +74,7 @@ export function AgentSetupStep({
           <AgentCard
             key={probe.agent}
             probe={probe}
-            agentHost={remote ? 'your server' : 'this Mac'}
+            agentHost={remote ? 'your server' : deviceLabel}
             apiKeyValue={acpKeysByAgent[probe.agent] ?? ''}
             loginJob={loginJobs[probe.agent]}
             loginPending={loginPending === probe.agent}
@@ -87,7 +89,7 @@ export function AgentSetupStep({
         <p className="text-pretty text-[12px] leading-relaxed text-ink-3">
           {remote
             ? 'Your logins and keys are stored on your server and never leave it.'
-            : 'Your logins and keys are stored on this Mac and never leave your machine.'}
+            : `Your logins and keys are stored on ${deviceLabel} and never leave your machine.`}
         </p>
       </div>
 
