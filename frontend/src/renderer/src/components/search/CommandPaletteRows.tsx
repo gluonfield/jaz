@@ -1,6 +1,7 @@
 import { Archive } from 'lucide-react'
 import { motion, type Transition } from 'motion/react'
 import type { ReactNode } from 'react'
+import { AgentAvatar } from '@/components/acp/AgentAvatar'
 import { KeyboardShortcut } from '@/components/ui/KeyboardShortcut'
 import type { ThreadSearchResult } from '@/lib/api/types'
 import { relativeTime } from '@/lib/format/time'
@@ -140,6 +141,7 @@ export function ThreadRow({
     <PaletteRow {...row} className="min-h-[52px] items-start py-2">
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-1.5">
+          <AgentAvatar agent={result.thread_agent} size={16} />
           {result.archived ? (
             <span
               title="Archived"
