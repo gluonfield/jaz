@@ -936,6 +936,9 @@ func (m *Manager) job(ref string) (*Job, error) {
 	if job := m.jobsBySlug[ref]; job != nil {
 		return job, nil
 	}
+	if job := m.jobsByACP[ref]; job != nil {
+		return job, nil
+	}
 	return nil, fmt.Errorf("active acp session not found: %s", ref)
 }
 
