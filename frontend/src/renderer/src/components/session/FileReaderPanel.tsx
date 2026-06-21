@@ -105,23 +105,12 @@ export function FileReaderPanel({
         ) : file.data.binary ? (
           <p className="px-3 py-4 text-[12px] text-ink-3">Binary file — no text preview.</p>
         ) : (
-          <>
-            <div className="flex h-9 items-center gap-2 border-b border-border bg-surface px-3">
-              <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-ink-2">
-                {file.data.relative_path || file.data.path}
-              </span>
-              <span className="shrink-0 font-mono text-[11px] text-ink-3 tabular-nums">
-                {formatBytes(file.data.size)}
-                {file.data.truncated ? ' · truncated' : ''}
-              </span>
-            </div>
-            <FilePreview
-              path={file.data.relative_path || file.data.path}
-              content={file.data.content ?? ''}
-              highlightLine={fileRef?.line}
-              onOpenFile={onOpenFile}
-            />
-          </>
+          <FilePreview
+            path={file.data.relative_path || file.data.path}
+            content={file.data.content ?? ''}
+            highlightLine={fileRef?.line}
+            onOpenFile={onOpenFile}
+          />
         )}
       </div>
     </SidePanelShell>
@@ -191,12 +180,6 @@ function FileTextView({
 
 function FileMarkdownView({ content }: { content: string }) {
   return <RenderedMarkdown text={content} className="file-prose" />
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
 function isMarkdownPath(path: string): boolean {
