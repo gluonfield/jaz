@@ -12,6 +12,7 @@ import { TaskChecklist } from './TaskChecklist'
 import { ThinkingBlock } from './ThinkingBlock'
 import { ToolSummary } from './ToolDisclosure'
 import { PermissionCard } from './TranscriptPermissions'
+import { isSpawnedAgentEvent } from './timeline'
 
 export const LiveEvent = memo(function LiveEvent({
   event,
@@ -34,8 +35,8 @@ export const LiveEvent = memo(function LiveEvent({
   const taskSurface = showTaskSurface ? eventTaskSurface : undefined
   const parentChild = isParentChildACPEvent(event)
   // A spawned child's status row renders as the agent card through its whole
-  // lifecycle; a plan/task surface takes over that row when present.
-  const showSpawnedAgent = event.type === 'acp' && parentChild && !eventTaskSurface
+  // lifecycle (running → completed/failed/cancelled).
+  const showSpawnedAgent = isSpawnedAgentEvent(event)
   const artifact = event.type === 'artifact' ? event.artifact : undefined
   const loopCreated = event.type === 'loop_created' ? event.loop_created : undefined
   return (
