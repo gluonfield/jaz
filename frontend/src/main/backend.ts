@@ -40,6 +40,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const pidFilePath = (): string => join(app.getPath('userData'), 'local-backend.pid')
 const defaultRootPath = (): string => join(homedir(), '.jaz')
 const authFilePath = (root = defaultRootPath()): string => join(root, 'auth.json')
+const backendBinaryName = (): string => (process.platform === 'win32' ? 'jaz.exe' : 'jaz')
 
 function localBackendEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env }
@@ -82,21 +83,17 @@ async function reapOrphan(): Promise<void> {
   }
   const pid = Number(rawPid.trim())
   if (!Number.isInteger(pid) || pid <= 1) return
-  try {
-    process.kill(-pid, 'SIGTERM')
-  } catch {
-    return // already gone
-  }
+  if (!backendPIDAlive(pid)) return
+  signalBackendPID(pid, 'SIGTERM')
   // wait for the group to release the port before we spawn a fresh one
   const deadline = Date.now() + 3_000
   while (Date.now() < deadline) {
-    try {
-      process.kill(-pid, 0)
-    } catch {
+    if (!backendPIDAlive(pid)) {
       return
     }
     await sleep(150)
   }
+  if (process.platform === 'win32') killWindowsTree(pid, true)
 }
 
 function readAuthKey(path: string): string {
@@ -188,9 +185,9 @@ async function localBackendResult(
 
 function spawnBackend(): ChildProcess {
   if (app.isPackaged) {
-    // The Go binary ships as an extraResource; run it from ~/.jaz so the
-    // server picks up application.yaml / .env dropped next to its data root.
-    const bin = join(process.resourcesPath, 'bin', 'jaz')
+    // Run from the runtime root so application.yaml and .env can live next to
+    // the server's data.
+    const bin = join(process.resourcesPath, 'bin', backendBinaryName())
     const cwd = join(homedir(), '.jaz')
     mkdirSync(cwd, { recursive: true })
     return spawn(bin, [], {
@@ -209,16 +206,59 @@ function spawnBackend(): ChildProcess {
   })
 }
 
-function signalProcessGroup(proc: ChildProcess, signal: NodeJS.Signals): void {
-  if (!proc?.pid) return
+function signalBackendPID(pid: number, signal: NodeJS.Signals): void {
+  if (process.platform === 'win32') {
+    killWindowsTree(pid, signal === 'SIGKILL')
+    return
+  }
+  signalPOSIXProcessGroup(pid, signal)
+}
+
+function signalPOSIXProcessGroup(pid: number, signal: NodeJS.Signals): boolean {
   try {
-    process.kill(-proc.pid, signal)
+    process.kill(-pid, signal)
+    return true
   } catch {
+    return false
+  }
+}
+
+function backendPIDAlive(pid: number): boolean {
+  try {
+    process.kill(process.platform === 'win32' ? pid : -pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function killWindowsTree(pid: number, force: boolean): void {
+  const args = ['/pid', String(pid), '/t']
+  if (force) args.push('/f')
+  const killer = spawn('taskkill', args, {
+    stdio: 'ignore',
+    windowsHide: true,
+  })
+  killer.on('error', () => {
     try {
-      proc.kill(signal)
+      process.kill(pid, force ? 'SIGKILL' : 'SIGTERM')
     } catch {
       // already gone
     }
+  })
+}
+
+function signalBackendProcess(proc: ChildProcess, signal: NodeJS.Signals): void {
+  if (!proc?.pid) return
+  if (process.platform === 'win32') {
+    killWindowsTree(proc.pid, signal === 'SIGKILL')
+    return
+  }
+  if (signalPOSIXProcessGroup(proc.pid, signal)) return
+  try {
+    proc.kill(signal)
+  } catch {
+    // already gone
   }
 }
 
@@ -325,17 +365,17 @@ export async function startLocalBackend(): Promise<LocalBackendResult> {
 export function stopLocalBackend(): void {
   stopPowerSaveBlocker()
   const proc = takeLocalBackend()
-  if (proc) signalProcessGroup(proc, 'SIGTERM')
+  if (proc) signalBackendProcess(proc, 'SIGTERM')
 }
 
 export async function terminateLocalBackend(options: TerminateOptions = {}): Promise<void> {
   stopPowerSaveBlocker()
   const proc = takeLocalBackend()
   if (!proc) return
-  signalProcessGroup(proc, 'SIGTERM')
+  signalBackendProcess(proc, 'SIGTERM')
   const timeoutMs = options.timeoutMs ?? 0
   if (timeoutMs <= 0 || (await waitForExit(proc, timeoutMs))) return
-  signalProcessGroup(proc, 'SIGKILL')
+  signalBackendProcess(proc, 'SIGKILL')
   const forceTimeoutMs = options.forceTimeoutMs ?? 0
   if (forceTimeoutMs > 0) await waitForExit(proc, forceTimeoutMs)
 }

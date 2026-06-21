@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -17,6 +18,7 @@ import (
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
+	"github.com/wins/jaz/backend/internal/testexec"
 )
 
 func testACPAgentCatalog(extra map[string]acp.AgentConfig) acp.AgentCatalog {
@@ -326,10 +328,7 @@ func TestAgentSettingsRejectsEnabledACPWithoutAuth(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	exe := root + "/codex-acp"
-	if err := os.WriteFile(exe, []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	exe := testexec.Write(t, filepath.Join(root, "codex-acp"), "", "")
 	handler := (&Server{
 		Store: store,
 		Root:  root,
@@ -338,9 +337,21 @@ func TestAgentSettingsRejectsEnabledACPWithoutAuth(t *testing.T) {
 		},
 	}).Handler()
 
-	body := `{"acp":{"codex":{"enabled":true,"command":"` + exe + `","model":"gpt-5.4-mini","auth":{"mode":"jaz_profile","path":"` + root + `/missing-codex"}}}}`
+	missingProfile := filepath.Join(root, "missing-codex")
 	res := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", jsonReader(t, map[string]any{
+		"acp": map[string]any{
+			"codex": map[string]any{
+				"enabled": true,
+				"command": exe,
+				"model":   "gpt-5.4-mini",
+				"auth": map[string]any{
+					"mode": "jaz_profile",
+					"path": missingProfile,
+				},
+			},
+		},
+	}))
 	req.Header.Set("Content-Type", "application/json")
 	req.RemoteAddr = "127.0.0.1:1234"
 	handler.ServeHTTP(res, req)
@@ -349,10 +360,20 @@ func TestAgentSettingsRejectsEnabledACPWithoutAuth(t *testing.T) {
 	}
 
 	res = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
-		"acp":{"codex":{"enabled":true,"command":"`+exe+`","model":"gpt-5.4-mini","auth":{"mode":"jaz_profile","path":"`+root+`/missing-codex"}}},
-		"acp_keys":{"codex":"codex-key"}
-	}`))
+	req = httptest.NewRequest(http.MethodPut, "/v1/settings/agents", jsonReader(t, map[string]any{
+		"acp": map[string]any{
+			"codex": map[string]any{
+				"enabled": true,
+				"command": exe,
+				"model":   "gpt-5.4-mini",
+				"auth": map[string]any{
+					"mode": "jaz_profile",
+					"path": missingProfile,
+				},
+			},
+		},
+		"acp_keys": map[string]any{"codex": "codex-key"},
+	}))
 	req.Header.Set("Content-Type", "application/json")
 	req.RemoteAddr = "127.0.0.1:1234"
 	handler.ServeHTTP(res, req)
@@ -370,10 +391,7 @@ func TestAgentSettingsRejectsEnabledProviderBackedACPWithoutProviderKey(t *testi
 		t.Fatal(err)
 	}
 	defer store.Close()
-	exe := root + "/opencode-acp"
-	if err := os.WriteFile(exe, []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	exe := testexec.Write(t, filepath.Join(root, "opencode-acp"), "", "")
 	handler := (&Server{
 		Store: store,
 		Root:  root,
@@ -388,9 +406,17 @@ func TestAgentSettingsRejectsEnabledProviderBackedACPWithoutProviderKey(t *testi
 		},
 	}).Handler()
 
-	body := `{"acp":{"opencode":{"enabled":true,"command":"` + exe + `","model_provider":"openai","model":"gpt-5.4-mini"}}}`
 	res := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", jsonReader(t, map[string]any{
+		"acp": map[string]any{
+			"opencode": map[string]any{
+				"enabled":        true,
+				"command":        exe,
+				"model_provider": "openai",
+				"model":          "gpt-5.4-mini",
+			},
+		},
+	}))
 	req.Header.Set("Content-Type", "application/json")
 	req.RemoteAddr = "127.0.0.1:1234"
 	handler.ServeHTTP(res, req)
@@ -399,10 +425,17 @@ func TestAgentSettingsRejectsEnabledProviderBackedACPWithoutProviderKey(t *testi
 	}
 
 	res = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
-		"acp":{"opencode":{"enabled":true,"command":"`+exe+`","model_provider":"openai","model":"gpt-5.4-mini"}},
-		"provider_keys":{"openai":"openai-key"}
-	}`))
+	req = httptest.NewRequest(http.MethodPut, "/v1/settings/agents", jsonReader(t, map[string]any{
+		"acp": map[string]any{
+			"opencode": map[string]any{
+				"enabled":        true,
+				"command":        exe,
+				"model_provider": "openai",
+				"model":          "gpt-5.4-mini",
+			},
+		},
+		"provider_keys": map[string]any{"openai": "openai-key"},
+	}))
 	req.Header.Set("Content-Type", "application/json")
 	req.RemoteAddr = "127.0.0.1:1234"
 	handler.ServeHTTP(res, req)
@@ -505,6 +538,15 @@ func hasString(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func jsonReader(t *testing.T, value any) *strings.Reader {
+	t.Helper()
+	body, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.NewReader(string(body))
 }
 
 func TestAgentSettingsAPIIncludesCustomOpenCodeProvider(t *testing.T) {

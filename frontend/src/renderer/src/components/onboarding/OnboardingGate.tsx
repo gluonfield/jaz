@@ -9,6 +9,7 @@ import { completeOnboarding, onboardingQuery } from '@/lib/api/onboarding'
 import { cloneAgentSettings, compactKeys, startACPAuthLogin } from '@/lib/api/settings'
 import type { ACPAgentAuth, AgentSettings, OnboardingStatus } from '@/lib/api/types'
 import { isLoopbackUrl, useConnection } from '@/lib/connection'
+import { localDeviceLabel } from '@/lib/deviceLabel'
 import { useACPLoginPolling } from '@/lib/hooks/useACPLoginPolling'
 import { keys } from '@/lib/query/keys'
 import {
@@ -191,6 +192,7 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
 }
 
 function BackendChip({ remote, url }: { remote: boolean; url: string }) {
+  const deviceLabel = localDeviceLabel()
   const host = (() => {
     try {
       return new URL(url).host
@@ -200,7 +202,7 @@ function BackendChip({ remote, url }: { remote: boolean; url: string }) {
   })()
   return (
     <span className="inline-flex items-center gap-2 rounded-full bg-surface px-2.5 py-1 text-[12px] text-ink-2">
-      <span className="text-ink">{remote ? 'Connected to server' : 'Running on this Mac'}</span>
+      <span className="text-ink">{remote ? 'Connected to server' : `Running on ${deviceLabel}`}</span>
       <span className="font-mono text-[11px] text-ink-3">{host}</span>
     </span>
   )

@@ -16,6 +16,7 @@ const (
 	blockReasoning  = storage.BlockTypeReasoning
 	blockTool       = storage.BlockTypeTool
 	blockAttachment = storage.BlockTypeAttachment
+	blockQuote      = storage.BlockTypeQuote
 )
 
 func recordsFromProviderMessages(messages []provider.Message, start time.Time) ([]storage.Message, error) {
@@ -182,7 +183,7 @@ func unmarshalBlocks(raw string) ([]storage.Block, error) {
 func validateBlocks(blocks []storage.Block) error {
 	for i, block := range blocks {
 		switch block.Type {
-		case blockText, blockReasoning:
+		case blockText, blockReasoning, blockQuote:
 		case blockAttachment:
 			if block.ID == "" {
 				return fmt.Errorf("attachment block %d missing id", i)

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
+	"github.com/wins/jaz/backend/internal/testexec"
 )
 
 func TestOnboardingAPIProbesAgentsAndSavesProviderKey(t *testing.T) {
@@ -25,10 +27,7 @@ func TestOnboardingAPIProbesAgentsAndSavesProviderKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	exe := filepath.Join(root, "codex-acp")
-	if err := os.WriteFile(exe, []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	exe := testexec.Write(t, filepath.Join(root, "codex-acp"), "", "")
 	codexHome := filepath.Join(root, "codex-home")
 	if err := os.MkdirAll(codexHome, 0o700); err != nil {
 		t.Fatal(err)
@@ -65,19 +64,28 @@ func TestOnboardingAPIProbesAgentsAndSavesProviderKey(t *testing.T) {
 		t.Fatalf("unexpected onboarding status: %#v", got)
 	}
 
-	postBody := `{
-		"settings":{
-			"acp":{
-				"codex":{"enabled":true,"command":"` + exe + `","model":"gpt-5.5","reasoning_effort":"medium"},
-				"claude":{"enabled":false,"command":"definitely-missing-jaz-agent","model":"default","reasoning_effort":"medium"}
-			}
-		},
-		"provider_keys":{"openrouter":"runtime-key"},
-		"acp_keys":{"codex":"codex-key"},
-		"completed":true
-	}`
 	postRes := httptest.NewRecorder()
-	postReq := httptest.NewRequest(http.MethodPost, "/v1/onboarding", strings.NewReader(postBody))
+	postReq := httptest.NewRequest(http.MethodPost, "/v1/onboarding", jsonReader(t, map[string]any{
+		"settings": map[string]any{
+			"acp": map[string]any{
+				"codex": map[string]any{
+					"enabled":          true,
+					"command":          exe,
+					"model":            "gpt-5.5",
+					"reasoning_effort": "medium",
+				},
+				"claude": map[string]any{
+					"enabled":          false,
+					"command":          "definitely-missing-jaz-agent",
+					"model":            "default",
+					"reasoning_effort": "medium",
+				},
+			},
+		},
+		"provider_keys": map[string]any{"openrouter": "runtime-key"},
+		"acp_keys":      map[string]any{"codex": "codex-key"},
+		"completed":     true,
+	}))
 	postReq.Header.Set("Content-Type", "application/json")
 	postReq.RemoteAddr = "127.0.0.1:1234"
 	handler.ServeHTTP(postRes, postReq)
@@ -119,10 +127,7 @@ func TestOnboardingSavesExplicitMemorySettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	exe := filepath.Join(root, "codex-acp")
-	if err := os.WriteFile(exe, []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	exe := testexec.Write(t, filepath.Join(root, "codex-acp"), "", "")
 	handler := (&Server{
 		Store: store,
 		Root:  root,
@@ -131,12 +136,23 @@ func TestOnboardingSavesExplicitMemorySettings(t *testing.T) {
 		},
 	}).Handler()
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/onboarding", strings.NewReader(`{
-		"settings":{"acp":{"codex":{"enabled":true,"command":"`+exe+`","model":"gpt-5.5"}}},
-		"acp_keys":{"codex":"codex-key"},
-		"memory":{"enabled":false,"agent":"codex"},
-		"completed":true
-	}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/onboarding", jsonReader(t, map[string]any{
+		"settings": map[string]any{
+			"acp": map[string]any{
+				"codex": map[string]any{
+					"enabled": true,
+					"command": exe,
+					"model":   "gpt-5.5",
+				},
+			},
+		},
+		"acp_keys": map[string]any{"codex": "codex-key"},
+		"memory": map[string]any{
+			"enabled": false,
+			"agent":   "codex",
+		},
+		"completed": true,
+	}))
 	req.Header.Set("Content-Type", "application/json")
 	req.RemoteAddr = "127.0.0.1:1234"
 	res := httptest.NewRecorder()
@@ -202,10 +218,7 @@ func TestOnboardingAllowsAuthenticatedRemoteProviderKeySetup(t *testing.T) {
 func TestOnboardingUsesACPReadiness(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("PATH", root)
-	shell := filepath.Join(root, "shell")
-	if err := os.WriteFile(shell, []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	shell := testexec.Write(t, filepath.Join(root, "shell"), "", "")
 	t.Setenv("SHELL", shell)
 	t.Setenv("CLAUDE_CODE_EXECUTABLE", "")
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "token")
@@ -214,10 +227,7 @@ func TestOnboardingUsesACPReadiness(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	exe := filepath.Join(root, "claude-acp")
-	if err := os.WriteFile(exe, []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	exe := testexec.Write(t, filepath.Join(root, "claude-acp"), "", "")
 	handler := (&Server{
 		Store: store,
 		Root:  root,
@@ -269,10 +279,7 @@ func TestOnboardingIgnoresClaudeSettingsOnlyConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	exe := filepath.Join(root, "claude-acp")
-	if err := os.WriteFile(exe, []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	exe := testexec.Write(t, filepath.Join(root, "claude-acp"), "", "")
 	t.Setenv("CLAUDE_CODE_EXECUTABLE", exe)
 	handler := (&Server{
 		Store: store,
@@ -354,7 +361,7 @@ func assertOnboardingStateSaved(t *testing.T, root string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("onboarding state permissions = %v", info.Mode().Perm())
 	}
 }
@@ -372,7 +379,7 @@ func assertRuntimeKeySaved(t *testing.T, root string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("env permissions = %v", info.Mode().Perm())
 	}
 }

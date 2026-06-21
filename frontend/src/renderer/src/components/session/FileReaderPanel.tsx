@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { FileText, LoaderCircle, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { HighlightedCodeLine, useSyntaxHighlightedLines } from '@/components/session/HighlightedCode'
+import { FileReaderLinkProvider, RenderedMarkdown } from '@/components/session/MessageMarkdown'
 import { ApiError } from '@/lib/api/client'
 import { healthQuery, sessionFileQuery } from '@/lib/api/sessions'
 import type { HealthResponse, Session } from '@/lib/api/types'
@@ -58,7 +59,7 @@ export function FileReaderPanel({
         <input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          placeholder="/Users/wins/project/src/file.ts"
+          placeholder="Path to a file"
           spellCheck={false}
           className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-ink outline-none placeholder:text-ink-3"
         />
@@ -114,16 +115,38 @@ export function FileReaderPanel({
                 {file.data.truncated ? ' · truncated' : ''}
               </span>
             </div>
-            <FileTextView
+            <FilePreview
               path={file.data.relative_path || file.data.path}
               content={file.data.content ?? ''}
               highlightLine={fileRef?.line}
+              onOpenFile={onOpenFile}
             />
           </>
         )}
       </div>
     </SidePanelShell>
   )
+}
+
+function FilePreview({
+  path,
+  content,
+  highlightLine,
+  onOpenFile,
+}: {
+  path: string
+  content: string
+  highlightLine?: number
+  onOpenFile: (file: FileReference) => void
+}) {
+  if (isMarkdownPath(path) && highlightLine === undefined) {
+    return (
+      <FileReaderLinkProvider onOpen={onOpenFile}>
+        <FileMarkdownView content={content} />
+      </FileReaderLinkProvider>
+    )
+  }
+  return <FileTextView path={path} content={content} highlightLine={highlightLine} />
 }
 
 function unsupportedFileReader(error: unknown, health?: HealthResponse): boolean {
@@ -166,10 +189,19 @@ function FileTextView({
   )
 }
 
+function FileMarkdownView({ content }: { content: string }) {
+  return <RenderedMarkdown text={content} className="file-prose" />
+}
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+function isMarkdownPath(path: string): boolean {
+  const lower = path.toLowerCase()
+  return lower.endsWith('.md') || lower.endsWith('.markdown')
 }
 
 function parseDraftReference(value: string): FileReference | null {

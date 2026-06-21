@@ -46,6 +46,13 @@ func TestSessionEventsPersistAndMirror(t *testing.T) {
 	if len(loaded) != 3 || loaded[0].Seq != 1 || loaded[1].Seq != 2 || loaded[2].Seq != 3 {
 		t.Fatalf("loaded events = %#v", loaded)
 	}
+	after, err := store.LoadSessionEventsAfter(session.ID, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 2 || after[0].Seq != 2 || after[1].Seq != 3 {
+		t.Fatalf("events after seq 1 = %#v", after)
+	}
 	if loaded[1].ACP == nil || loaded[1].ACP.ToolCalls[0].Title != "Read file" {
 		t.Fatalf("tool event = %#v", loaded[1])
 	}
@@ -62,6 +69,37 @@ func TestSessionEventsPersistAndMirror(t *testing.T) {
 	}
 	if len(mirrored) != 3 || mirrored[0].Content != "working" || mirrored[2].Plan == nil {
 		t.Fatalf("mirrored events = %#v", mirrored)
+	}
+}
+
+func TestSessionEventsLoadAfterSeqFallsBackToMirror(t *testing.T) {
+	root := t.TempDir()
+	mirror, err := jsonstore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := mirror.CreateSession(storage.CreateSession{Slug: "mirror-events"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mirror.AppendSessionEvents(session.ID,
+		sessionevents.Event{Type: "acp_message", Content: "one"},
+		sessionevents.Event{Type: "acp_message", Content: "two"},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	events, err := store.LoadSessionEventsAfter(session.ID, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Seq != 2 || events[0].Content != "two" {
+		t.Fatalf("mirrored events after seq 1 = %#v", events)
 	}
 }
 

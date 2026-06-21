@@ -1,29 +1,32 @@
 import { FileText, Folder, Sparkles } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import { useEffect, useRef } from 'react'
+import { AgentAvatar } from '@/components/acp/AgentAvatar'
 
 // One row in the composer's $/@ autocomplete. `insert` is the literal token
 // text placed in the textarea; `expansion` is what that text becomes in the
-// sent message (a skill reference, an absolute path).
+// sent message (a skill reference, a thread id, an absolute path).
 export interface SuggestionItem {
-  kind: 'skill' | 'project' | 'file' | 'dir'
+  kind: 'skill' | 'project' | 'thread' | 'file' | 'dir'
   label: string
   detail?: string
   /** label indices matched by the fuzzy query, for highlighting */
   indices?: number[]
+  agent?: string
   insert: string
   expansion: string
 }
 
-// Sections keep the menu general: $ shows Skills, @ can show path sources.
+// Sections keep the menu general: $ shows Skills, @ can show thread/path sources.
 export interface SuggestionSection {
   title: string
   items: SuggestionItem[]
 }
 
-function ItemIcon({ kind }: { kind: SuggestionItem['kind'] }) {
-  if (kind === 'skill') return <Sparkles size={13} className="mt-0.5 shrink-0 text-primary" />
-  if (kind === 'project' || kind === 'dir') return <Folder size={13} className="mt-0.5 shrink-0 text-primary" />
+function ItemIcon({ item }: { item: SuggestionItem }) {
+  if (item.kind === 'skill') return <Sparkles size={13} className="mt-0.5 shrink-0 text-primary" />
+  if (item.kind === 'thread') return <AgentAvatar agent={item.agent} size={15} className="mt-0.5" />
+  if (item.kind === 'project' || item.kind === 'dir') return <Folder size={13} className="mt-0.5 shrink-0 text-primary" />
   return <FileText size={13} className="mt-0.5 shrink-0 text-ink-3" />
 }
 
@@ -114,7 +117,7 @@ export function ComposerSuggestions({
                   active ? 'bg-surface-2 text-ink' : 'text-ink-2'
                 }`}
               >
-                <ItemIcon kind={item.kind} />
+                <ItemIcon item={item} />
                 <span className="flex min-w-0 flex-1 items-baseline gap-2">
                   {/* the name never collapses in favor of its description —
                       flex may shrink overflow-hidden items to zero */}
