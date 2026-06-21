@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -92,9 +93,7 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	if err != nil {
 		return nil, nil, err
 	}
-	if resolved, err := ResolveExecutable(command); err == nil {
-		command = resolved
-	}
+	command, args = launchCommand(command, args)
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Env = processenv.List(env)
 	if cwd != "" {
@@ -120,6 +119,31 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 		_ = conn.Close()
 	}()
 	return conn, stderr, nil
+}
+
+func launchCommand(command string, args []string) (string, []string) {
+	resolved, err := ResolveExecutable(command)
+	if err != nil {
+		return command, args
+	}
+	return resolvedLaunchCommand(runtime.GOOS, command, resolved, args)
+}
+
+func resolvedLaunchCommand(goos, configured, resolved string, args []string) (string, []string) {
+	if goos != "windows" || !isWindowsCommandScript(resolved) {
+		return resolved, args
+	}
+	script := resolved
+	if !filepath.IsAbs(configured) && !strings.ContainsAny(configured, `/\`) {
+		script = configured
+	}
+	wrapped := append([]string{"/d", "/s", "/c", "call", script}, args...)
+	return "cmd.exe", wrapped
+}
+
+func isWindowsCommandScript(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".cmd" || ext == ".bat"
 }
 
 func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
