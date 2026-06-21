@@ -1,6 +1,7 @@
 package acp
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -92,12 +93,12 @@ func loadRuntimeEnvKey(env map[string]string, root, key string) {
 	}
 }
 
-func (m *Manager) prepareOpenCodeConfig(env map[string]string, agent AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) error {
+func (m *Manager) prepareOpenCodeConfig(ctx context.Context, env map[string]string, agent AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) error {
 	if strings.TrimSpace(env["OPENCODE_CONFIG_CONTENT"]) != "" {
 		return nil
 	}
 	content := openCodeConfigContent{}
-	if instruction, err := m.prepareOpenCodeInstructionFile(env, cwd, artifactSurface, systemPromptExtensions); err != nil {
+	if instruction, err := m.prepareOpenCodeInstructionFile(ctx, env, cwd, artifactSurface, systemPromptExtensions); err != nil {
 		return err
 	} else if instruction != "" {
 		content.Instructions = []string{instruction}
@@ -119,10 +120,10 @@ func (m *Manager) prepareOpenCodeConfig(env map[string]string, agent AgentConfig
 	return nil
 }
 
-func (m *Manager) prepareOpenCodeInstructionFile(env map[string]string, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (string, error) {
+func (m *Manager) prepareOpenCodeInstructionFile(ctx context.Context, env map[string]string, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (string, error) {
 	var prompt string
 	if m.cfg.SystemPrompt != nil {
-		base, err := promptForArtifactSurface(m.cfg.SystemPrompt, cwd, artifactSurface)
+		base, err := m.cfg.SystemPrompt.ACPPromptForContext(ctx, cwd, artifactSurface)
 		if err != nil {
 			return "", fmt.Errorf("build opencode instructions: %w", err)
 		}
