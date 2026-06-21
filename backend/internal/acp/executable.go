@@ -27,29 +27,10 @@ func ResolveExecutable(executable string) (string, error) {
 		}
 		return executable, nil
 	}
-	if path, ok := siblingExecutable(executable); ok {
-		return path, nil
-	}
 	if path, err := exec.LookPath(executable); err == nil {
 		return path, nil
 	}
 	return loginShellExecutable(executable)
-}
-
-func siblingExecutable(executable string) (string, bool) {
-	if runtime.GOOS != "windows" || strings.ContainsAny(executable, `/\`+"\x00") {
-		return "", false
-	}
-	current, err := os.Executable()
-	if err != nil {
-		return "", false
-	}
-	path := filepath.Join(filepath.Dir(current), executable)
-	info, err := os.Stat(path)
-	if err != nil || info.IsDir() {
-		return "", false
-	}
-	return path, true
 }
 
 func loginShellExecutable(executable string) (string, error) {

@@ -194,12 +194,6 @@ jobs:
           repository: gluonfield/jazmem
           path: _deps/jazmem
 
-      - uses: actions/checkout@v4
-        with:
-          repository: gluonfield/codex-acp
-          ref: v0.16.1
-          path: _deps/codex-acp
-
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26'
@@ -208,8 +202,6 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.5
-
-      - uses: dtolnay/rust-toolchain@stable
 
       - name: Point backend at jazmem checkout
         working-directory: backend
@@ -231,14 +223,6 @@ jobs:
       - name: Compile backend tests
         working-directory: backend
         run: go test -run '^$' ./...
-
-      - name: Build Codex ACP adapter
-        working-directory: _deps/codex-acp
-        shell: pwsh
-        run: |
-          cargo build --release
-          New-Item -ItemType Directory -Force ..\..\frontend\resources\bin | Out-Null
-          Copy-Item target\release\codex-acp.exe ..\..\frontend\resources\bin\codex-acp.exe -Force
 
       - name: Build
         working-directory: frontend
