@@ -28,6 +28,7 @@ func memoryData(memoryRoot string, now time.Time) (*jazplatform.MemoryData, erro
 		return nil, err
 	}
 	data := &jazplatform.MemoryData{
+		Root:      strings.TrimSpace(memoryRoot),
 		LongTerm:  orEmpty(longTerm),
 		ShortTerm: orEmpty(shortTerm),
 	}

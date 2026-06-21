@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/sessioncontext"
+	"github.com/wins/jaz/backend/internal/shellcmd"
 	"github.com/wins/jaz/backend/internal/tools"
 )
 
@@ -125,10 +126,7 @@ func (t *ExecCommandTool) Execute(ctx context.Context, inputs map[string]any) (t
 
 	shell := tools.StringInput(inputs, "shell")
 	if shell == "" {
-		shell = os.Getenv("SHELL")
-	}
-	if shell == "" {
-		shell = "/bin/sh"
+		shell = shellcmd.DefaultShell()
 	}
 	login := tools.BoolInput(inputs, "login", true)
 
@@ -196,11 +194,8 @@ type commandRequest struct {
 }
 
 func (m *CommandManager) exec(ctx context.Context, req commandRequest) (map[string]any, error) {
-	args := []string{"-c", req.Command}
-	if req.Login {
-		args = []string{"-lc", req.Command}
-	}
-	cmd := osexec.Command(req.Shell, args...)
+	shell, args := shellcmd.Command(req.Shell, req.Command, req.Login)
+	cmd := osexec.Command(shell, args...)
 	cmd.Dir = req.Workdir
 	cmd.Env = os.Environ()
 

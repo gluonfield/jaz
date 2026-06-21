@@ -6,10 +6,15 @@ import (
 )
 
 func TestRenderRulesOnly(t *testing.T) {
-	prompt := Render()
+	prompt, err := Render("C:\\Users\\augustinas\\.jaz", "C:\\Users\\augustinas\\.jaz\\workspaces\\default")
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, want := range []string{
 		"You are Jaz",
 		"Directory guide:",
+		"C:\\Users\\augustinas\\.jaz: runtime state",
+		"C:\\Users\\augustinas\\.jaz\\workspaces\\default: default tool cwd.",
 		"Treat user phrasing like \"spawn a codex agent\", \"launch claude\", \"delegate this\", or \"ask opencode\" as a request to use the internal ACP agent tools: agent_spawn, agent_send, agent_wait, agent_status, agent_cancel, and agent_list.",
 		"Do not inspect or invoke local agent CLIs unless the user explicitly asks for the local CLI.",
 		"agent_spawn only starts a session; send work with agent_send.",

@@ -76,7 +76,7 @@ Agent behavior: build the chart this turn from well-known city figures, picking 
 
 ## memory
 
-Jaz has persistent markdown memory (jazmem) at ~/.jaz/memory. The memory/* sections below are broad context from the user's past behavior, preferences, goals, and decisions. They are not the current task or task-specific evidence; apply standing preferences when relevant, but do not let incidental details bias unrelated work.
+Jaz has persistent markdown memory (jazmem) at {{ .Memory.Root }}. The memory/* sections below are broad context from the user's past behavior, preferences, goals, and decisions. They are not the current task or task-specific evidence; apply standing preferences when relevant, but do not let incidental details bias unrelated work.
 
 - Use memory to understand durable context, but let the current user request, repository instructions, and explicit source data lead the task.
 - Search memory before answering about people, projects, companies, relationships, preferences, decisions, prior work, or network context: start from the user's question, use the jazmem MCP tools (`memory_search` for a cited answer, `memory_get_page` to read a page) or the jazmem CLI, and escalate per the jazmem skill before concluding memory is missing.

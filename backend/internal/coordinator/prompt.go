@@ -24,14 +24,25 @@ func Prompt(root, workspace, memoryRoot, skillsPrompt string) (string, error) {
 // skills) that every agent in Jaz shares.
 func prompt(root, workspace, memoryRoot, skillsPrompt string, surface visualize.Surface, now time.Time) (string, error) {
 	if strings.TrimSpace(workspace) == "" {
-		workspace = "~/.jaz/workspaces/default"
+		workspace = defaultWorkspace(root)
 	}
-	agentPrompt := jazagent.Render()
+	agentPrompt, err := jazagent.Render(root, workspace)
+	if err != nil {
+		return "", err
+	}
 	platform, err := platformPrompt(root, workspace, memoryRoot, skillsPrompt, surface, now)
 	if err != nil {
 		return "", err
 	}
 	return strings.TrimRight(agentPrompt, "\n") + "\n\n" + platform, nil
+}
+
+func defaultWorkspace(root string) string {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return "~/.jaz/workspaces/default"
+	}
+	return filepath.Join(root, "workspaces", "default")
 }
 
 // platformPrompt renders the jaz extension shared by all agents: runtime
