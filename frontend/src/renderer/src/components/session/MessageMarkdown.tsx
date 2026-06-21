@@ -171,21 +171,24 @@ function mentionSigil(label: string): '$' | '@' | null {
   return label.startsWith('$') || label.startsWith('@') ? (label[0] as '$' | '@') : null
 }
 
-// Shared renderer for assistant prose: GitHub-flavored markdown + LaTeX via KaTeX.
-// Memoized: the remark/rehype pipeline is the priciest per-item work in a
-// transcript, so it must only run when the text actually changes.
-export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: string }) {
-  // Cached by the composer; lets assistant echoes of $skill-name render as
-  // mention pills. An empty catalog simply skips the pass.
-  const skills = useQuery(skillsQuery())
+export const RenderedMarkdown = memo(function RenderedMarkdown({
+  text,
+  className = 'chat-prose',
+  linkSkills = false,
+}: {
+  text: string
+  className?: string
+  linkSkills?: boolean
+}) {
+  const skills = useQuery({ ...skillsQuery(), enabled: linkSkills })
   const openPreview = useContext(PreviewLinkContext)
   const openFile = useContext(FileReaderLinkContext)
   const prepared = useMemo(
-    () => normalizeMath(linkifyKnownSkills(text, skills.data ?? [])),
-    [text, skills.data],
+    () => normalizeMath(linkSkills ? linkifyKnownSkills(text, skills.data ?? []) : text),
+    [linkSkills, text, skills.data],
   )
   return (
-    <div className="chat-prose">
+    <div className={className}>
       <Markdown
         remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: false }], remarkFileReferences]}
         rehypePlugins={[rehypeKatex]}
@@ -263,6 +266,13 @@ export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: s
       </Markdown>
     </div>
   )
+})
+
+// Shared renderer for assistant prose: GitHub-flavored markdown + LaTeX via KaTeX.
+// Memoized: the remark/rehype pipeline is the priciest per-item work in a
+// transcript, so it must only run when the text actually changes.
+export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: string }) {
+  return <RenderedMarkdown text={text} linkSkills />
 })
 
 // The markdown pipeline percent-encodes hrefs; show the filesystem path.
