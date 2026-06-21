@@ -115,22 +115,38 @@ export function FileReaderPanel({
                 {file.data.truncated ? ' · truncated' : ''}
               </span>
             </div>
-            {isMarkdownPath(file.data.relative_path || file.data.path) ? (
-              <FileReaderLinkProvider onOpen={onOpenFile}>
-                <FileMarkdownView content={file.data.content ?? ''} />
-              </FileReaderLinkProvider>
-            ) : (
-              <FileTextView
-                path={file.data.relative_path || file.data.path}
-                content={file.data.content ?? ''}
-                highlightLine={fileRef?.line}
-              />
-            )}
+            <FilePreview
+              path={file.data.relative_path || file.data.path}
+              content={file.data.content ?? ''}
+              highlightLine={fileRef?.line}
+              onOpenFile={onOpenFile}
+            />
           </>
         )}
       </div>
     </SidePanelShell>
   )
+}
+
+function FilePreview({
+  path,
+  content,
+  highlightLine,
+  onOpenFile,
+}: {
+  path: string
+  content: string
+  highlightLine?: number
+  onOpenFile: (file: FileReference) => void
+}) {
+  if (isMarkdownPath(path) && highlightLine === undefined) {
+    return (
+      <FileReaderLinkProvider onOpen={onOpenFile}>
+        <FileMarkdownView content={content} />
+      </FileReaderLinkProvider>
+    )
+  }
+  return <FileTextView path={path} content={content} highlightLine={highlightLine} />
 }
 
 function unsupportedFileReader(error: unknown, health?: HealthResponse): boolean {
