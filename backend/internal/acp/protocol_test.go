@@ -334,6 +334,75 @@ func TestPlanSessionUpdatePublishesAndPersistsProgress(t *testing.T) {
 	}
 }
 
+func TestSideChatSessionUpdatePublishesSideChatEventOnly(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "codex-side", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := sessionevents.New()
+	manager := NewManager(store, Config{}, nil)
+	manager.Events = events
+	manager.jobsByID[session.ID] = &Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex, ACPSession: "acp-session"}
+	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	sub := events.Subscribe(ctx, session.ID)
+
+	raw, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
+		Method: acpschema.ClientMethodSessionUpdate,
+		Params: mustJSON(t, map[string]any{
+			"sessionId": "acp-session",
+			"update": map[string]any{
+				"sessionUpdate": "agent_message_chunk",
+				"_meta": map[string]any{
+					"codex": map[string]any{
+						"sideChat": map[string]any{
+							"id":              "side-1",
+							"command":         "side",
+							"parentSessionId": session.ID,
+							"threadId":        "thread-1",
+						},
+					},
+				},
+				"content": map[string]any{"type": "text", "text": "side answer"},
+			},
+		}),
+	})
+	if rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	if string(raw) != "{}" {
+		t.Fatalf("response = %s", raw)
+	}
+
+	select {
+	case event := <-sub:
+		if event.Type != sessionevents.TypeSideChatMessage || event.SideChat == nil {
+			t.Fatalf("unexpected event %#v", event)
+		}
+		if event.Content != "side answer" || event.SideChat.ID != "side-1" || event.SideChat.ThreadID != "thread-1" || event.SideChat.Role != "assistant" {
+			t.Fatalf("side chat event = %#v", event)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	if got := manager.jobsByID[session.ID].Assistant; got != "" {
+		t.Fatalf("main assistant was mutated: %q", got)
+	}
+	stored, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 1 || stored[0].SideChat == nil || stored[0].SideChat.Content != "side answer" {
+		t.Fatalf("stored events = %#v", stored)
+	}
+}
+
 func TestPlanSessionUpdateIgnoresMarkdownDocumentEntry(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
