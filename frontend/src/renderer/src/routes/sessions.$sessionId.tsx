@@ -423,7 +423,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     notifySessionEventError(event)
   }, [notifySessionEventError])
   useEffect(() => setLastSessionEventAt(undefined), [sessionId])
-  useSessionEvents(sessionId, streamingRef, handleSessionEvent)
+  useSessionEvents(sessionId, detail.data?.events, streamingRef, handleSessionEvent)
 
   const [live, setLive] = useState<LiveExchange | null>(null)
   const [streaming, setStreaming] = useState(false)
@@ -641,21 +641,6 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     () => (data ? deriveSessionView(data, events.data) : undefined),
     [data, events.data],
   )
-  const maxPersistedEventSeq = useMemo(() => {
-    let max = 0
-    for (const event of data?.events ?? []) {
-      if ((event.seq ?? 0) > max) max = event.seq ?? 0
-    }
-    return max
-  }, [data?.events])
-  useEffect(() => {
-    if (!maxPersistedEventSeq) return
-    queryClient.setQueryData<SessionEvent[]>(keys.sessionEvents(sessionId), (prev = []) => {
-      const next = prev.filter((event) => !event.seq || event.seq > maxPersistedEventSeq)
-      return next.length === prev.length ? prev : next
-    })
-  }, [maxPersistedEventSeq, queryClient, sessionId])
-
   if (detail.isPending) {
     return (
       <div className="mx-auto max-w-[720px] px-10">

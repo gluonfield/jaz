@@ -10,6 +10,19 @@ import (
 	"database/sql"
 )
 
+const countSessionEvents = `-- name: CountSessionEvents :one
+SELECT COUNT(*)
+FROM session_events
+WHERE thread_id = ?1
+`
+
+func (q *Queries) CountSessionEvents(ctx context.Context, threadID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countSessionEvents, threadID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteSessionEvent = `-- name: DeleteSessionEvent :exec
 DELETE FROM session_events
 WHERE thread_id = ?1 AND seq = ?2
@@ -60,6 +73,70 @@ func (q *Queries) ListSessionEvents(ctx context.Context, threadID string) ([]Lis
 	items := []ListSessionEventsRow{}
 	for rows.Next() {
 		var i ListSessionEventsRow
+		if err := rows.Scan(
+			&i.ThreadID,
+			&i.Seq,
+			&i.Type,
+			&i.Content,
+			&i.Acp,
+			&i.Plan,
+			&i.Permission,
+			&i.CreatedAtMs,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSessionEventsAfter = `-- name: ListSessionEventsAfter :many
+SELECT
+  thread_id,
+  seq,
+  type,
+  content,
+  acp,
+  plan,
+  permission,
+  created_at_ms
+FROM session_events
+WHERE thread_id = ?1
+  AND seq > ?2
+ORDER BY seq
+`
+
+type ListSessionEventsAfterParams struct {
+	ThreadID string `json:"thread_id"`
+	AfterSeq int64  `json:"after_seq"`
+}
+
+type ListSessionEventsAfterRow struct {
+	ThreadID    string         `json:"thread_id"`
+	Seq         int64          `json:"seq"`
+	Type        string         `json:"type"`
+	Content     string         `json:"content"`
+	Acp         sql.NullString `json:"acp"`
+	Plan        sql.NullString `json:"plan"`
+	Permission  sql.NullString `json:"permission"`
+	CreatedAtMs int64          `json:"created_at_ms"`
+}
+
+func (q *Queries) ListSessionEventsAfter(ctx context.Context, arg ListSessionEventsAfterParams) ([]ListSessionEventsAfterRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSessionEventsAfter, arg.ThreadID, arg.AfterSeq)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSessionEventsAfterRow{}
+	for rows.Next() {
+		var i ListSessionEventsAfterRow
 		if err := rows.Scan(
 			&i.ThreadID,
 			&i.Seq,
