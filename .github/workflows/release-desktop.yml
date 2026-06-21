@@ -133,6 +133,19 @@ jobs:
           mkdir -p "$RUNNER_TEMP/apple"
           echo "$APPLE_API_KEY_P8_BASE64" | base64 --decode > "$RUNNER_TEMP/apple/AuthKey_${APPLE_API_KEY_ID}.p8"
 
+      - name: Build macOS backend artifacts
+        working-directory: backend
+        run: |
+          mkdir -p ../dist/backend
+          for arch in amd64 arm64; do
+            name="jaz-backend-darwin-${arch}"
+            out="../dist/backend/${name}"
+            mkdir -p "$out"
+            GOOS=darwin GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o "$out/jaz" ./cmd/jaz
+            tar -C "$out" -czf "../dist/backend/${name}.tar.gz" jaz
+            shasum -a 256 "../dist/backend/${name}.tar.gz" > "../dist/backend/${name}.tar.gz.sha256"
+          done
+
       - name: Build
         working-directory: frontend
         env:
@@ -144,6 +157,16 @@ jobs:
           bun run build:backend
           bun run build:bundle
           ./node_modules/.bin/electron-builder --mac --arm64 --publish never
+
+      - name: Attach backend release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          gh release upload "$RELEASE_TAG" \
+            dist/backend/*.tar.gz \
+            dist/backend/*.sha256 \
+            --clobber
 
       - name: Attach release assets
         working-directory: frontend
