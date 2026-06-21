@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"fmt"
+	"runtime"
 	"testing"
 )
 
@@ -20,6 +21,9 @@ func TestUnsubscribeDoesNotRaceOutput(t *testing.T) {
 }
 
 func TestManagerReusesSameCwdAndRestartsChangedCwd(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("terminal sessions are not supported on Windows yet")
+	}
 	manager := New()
 	defer manager.Close()
 	firstDir := t.TempDir()

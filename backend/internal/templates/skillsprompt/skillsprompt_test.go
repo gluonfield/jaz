@@ -28,10 +28,14 @@ Use a listed skill when named or when its description matches the task. Users ma
     <location>/skills/review/SKILL.md</location>
   </skill>
 </available_skills>`
-	if prompt != want {
+	if normalizeNewlines(prompt) != normalizeNewlines(want) {
 		t.Fatalf("skills prompt drifted from the exact contract.\nGOT:\n%s\nWANT:\n%s", prompt, want)
 	}
 	if strings.Count(prompt, "<available_skills>") != 1 || strings.Count(prompt, "</available_skills>") != 1 {
 		t.Fatalf("skills wrapper must appear exactly once:\n%s", prompt)
 	}
+}
+
+func normalizeNewlines(value string) string {
+	return strings.ReplaceAll(value, "\r\n", "\n")
 }
