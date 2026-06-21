@@ -158,7 +158,7 @@ jobs:
         run: |
           bun run build:backend
           bun run build:bundle
-          ./node_modules/.bin/electron-builder --mac --arm64 --publish never
+          bunx electron-builder --mac --arm64 --publish never
 
       - name: Attach backend release assets
         env:
@@ -229,7 +229,7 @@ jobs:
         run: |
           bun run build:backend
           bun run build:bundle
-          ./node_modules/.bin/electron-builder.cmd --win --x64 --publish never
+          bunx electron-builder --win --x64 --publish never
 
       - name: Attach release assets
         working-directory: frontend
