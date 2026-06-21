@@ -1,516 +1,22 @@
-import { Link } from '@tanstack/react-router'
-import {
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Circle,
-  FileText,
-  LoaderCircle,
-} from 'lucide-react'
-import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type {
-  ACPPermission,
-  ACPToolCall,
-  ChatMessage,
-  MessageBlock,
-  SessionEvent,
-} from '@/lib/api/types'
+import { ChevronDown, ChevronRight } from 'lucide-react'
+import { memo, useEffect, useMemo, useState, type ReactNode } from 'react'
+import type { ChatMessage, SessionEvent } from '@/lib/api/types'
 import { Button } from '@/components/ui/Button'
-import { IconButton } from '@/components/ui/IconButton'
-import { AgentLogo, hasAgentLogo } from '@/components/acp/AgentLogo'
-import { agentLabel } from '@/lib/agentLabel'
-import { relativeTime } from '@/lib/format/time'
-import {
-  taskStepState,
-  taskSurfaceFromEvent,
-  type TaskStepState,
-  type TaskSurface,
-} from '@/lib/taskSurface'
-import { ArtifactBlock } from './ArtifactBlock'
-import { LoopCreatedCard } from './LoopCreatedCard'
-import { AssistantMarkdown } from './AssistantMarkdown'
-import { ToolCallDetail, toolCallCategory } from './ToolCallContent'
-import { MentionText } from './mentions'
-import { MessageMarkdown } from './MessageMarkdown'
-import { ThinkingBlock } from './ThinkingBlock'
-import { PermissionCard } from './TranscriptPermissions'
-import { normalized } from './TranscriptUtils'
+import { taskSurfaceFromEvent } from '@/lib/taskSurface'
 import {
   buildTimeline,
-  hasWorkingStatusSurface,
   isCollapsibleWork,
-  isParentChildACPEvent,
   stableEventKey,
   type TimelineItem,
 } from './timeline'
-import { MessageQuotes } from './MessageQuotes'
-import { ToolCallCard } from './ToolCallCard'
-import { isArtifactToolName, isHiddenToolName } from './toolVisibility'
+import { Bubble } from './Bubble'
+import { LiveEvent } from './LiveEvent'
+import { ToolDisclosure, toolRunLabel } from './ToolDisclosure'
 
 const INITIAL_VISIBLE_TURNS = 14
 const VISIBLE_TURN_BATCH = 24
 const INITIAL_VISIBLE_ITEMS = 90
 const VISIBLE_ITEM_BATCH = 120
-
-function messageText(message: ChatMessage): string {
-  // Each text block is a separate utterance; join as paragraphs so block
-  // boundaries don't fuse sentences together ("…intact.Updated…").
-  const text = message.blocks
-    ?.filter((block) => block.type === 'text')
-    .map((block) => (block.text ?? '').trim())
-    .filter(Boolean)
-    .join('\n\n')
-  return text || message.content
-}
-
-function messageQuotes(message: ChatMessage): string[] {
-  return (
-    message.blocks
-      ?.filter((block) => block.type === 'quote')
-      .map((block) => (block.text ?? '').trim())
-      .filter(Boolean) ?? []
-  )
-}
-
-function messageReasoning(message: ChatMessage): string {
-  const text = message.blocks
-    ?.filter((block) => block.type === 'reasoning')
-    .map((block) => (block.text ?? '').trim())
-    .filter(Boolean)
-    .join('\n\n')
-  return text || message.reasoning || ''
-}
-
-function isVisibleToolBlock(block: MessageBlock): block is Extract<MessageBlock, { type: 'tool' }> {
-  return block.type === 'tool' && !isHiddenToolName(block.name)
-}
-
-function formatAttachmentSize(size?: number): string {
-  if (!size) return ''
-  if (size < 1024) return `${size} B`
-  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function MessageAttachments({ message }: { message: ChatMessage }) {
-  const attachments = message.blocks?.filter((block) => block.type === 'attachment') ?? []
-  if (!attachments.length) return null
-  return (
-    <div className="mt-2 flex flex-wrap gap-1">
-      {attachments.map((attachment) => (
-        <span
-          key={attachment.id}
-          className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-bg px-2.5 py-1 text-xs text-ink-2"
-          title={attachment.server_path ?? attachment.uri}
-        >
-          <FileText size={13} className="shrink-0 text-primary" />
-          <span className="max-w-[220px] truncate text-ink">{attachment.name}</span>
-          <span className="shrink-0 text-ink-3">{formatAttachmentSize(attachment.size)}</span>
-        </span>
-      ))}
-    </div>
-  )
-}
-
-const Bubble = memo(function Bubble({
-  message,
-  onArtifactPrompt,
-}: {
-  message: ChatMessage
-  onArtifactPrompt?: (text: string) => void
-}) {
-  switch (message.role) {
-    case 'user':
-      return (
-        <div className="flex justify-end">
-          <div className="min-w-0 max-w-[84%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap [overflow-wrap:break-word] select-text">
-            <MessageQuotes quotes={messageQuotes(message)} />
-            <MentionText text={messageText(message)} />
-            <MessageAttachments message={message} />
-          </div>
-        </div>
-      )
-    case 'assistant': {
-      const text = messageText(message)
-      const reasoning = messageReasoning(message)
-      return (
-        <div className="flex min-w-0 max-w-[76ch] flex-col gap-2">
-          <ThinkingBlock text={reasoning} />
-          {text ? <AssistantMarkdown text={text} /> : null}
-          {message.blocks
-            ?.filter(isVisibleToolBlock)
-            .map((block) =>
-              isArtifactToolName(block.name) ? (
-                <ArtifactBlock
-                  key={block.id}
-                  args={block.input_json}
-                  result={block.result}
-                  pending={block.result === undefined || block.result === ''}
-                  onSendPrompt={onArtifactPrompt}
-                />
-              ) : (
-                <ToolCallCard
-                  key={block.id}
-                  name={block.name}
-                  args={block.input_json}
-                  result={block.result}
-                  pending={block.result === undefined || block.result === ''}
-                />
-              ),
-            )}
-        </div>
-      )
-    }
-    // system/developer prompts are plumbing, not conversation — never shown
-    default:
-      return null
-  }
-})
-
-function childLabel(event: SessionEvent): string {
-  const acp = event.acp
-  return acp?.title || acp?.slug || 'child task'
-}
-
-interface ToolGroup {
-  key: string
-  label: string
-  calls: ACPToolCall[]
-}
-
-function toolGroupBaseLabel(key: string, count: number): string {
-  const plural = count === 1 ? '' : 's'
-  switch (key) {
-    case 'web_search':
-      return count === 1 ? 'Searched the web' : `Searched the web ${count}×`
-    case 'web_fetch':
-      return `Visited ${count} page${plural}`
-    case 'edit':
-      return `Edited ${count} file${plural}`
-    case 'read':
-      return `Read ${count} file${plural}`
-    case 'search':
-      return `Searched ${count} time${plural}`
-    case 'image':
-      return `Viewed ${count} image${plural}`
-    case 'command':
-      return `Ran ${count} command${plural}`
-    default:
-      return `Used ${count} tool${plural}`
-  }
-}
-
-function groupToolCalls(calls: ACPToolCall[]): ToolGroup[] {
-  const order = ['web_search', 'web_fetch', 'edit', 'read', 'search', 'image', 'command', 'tool']
-  const byKey = new Map<string, ACPToolCall[]>()
-  for (const call of calls) {
-    const key = toolCallCategory(call)
-    byKey.set(key, [...(byKey.get(key) ?? []), call])
-  }
-  return order.flatMap((key) => {
-    const groupCalls = byKey.get(key) ?? []
-    if (!groupCalls.length) return []
-    const failed = groupCalls.filter((call) => normalized(call.status) === 'failed').length
-    const suffix = failed ? `, ${failed} failed` : ''
-    return [{ key, label: `${toolGroupBaseLabel(key, groupCalls.length)}${suffix}`, calls: groupCalls }]
-  })
-}
-
-// One codex-style phrase for a run of tool calls: "Explored 2 files, ran 1 command".
-function toolRunLabel(calls: ACPToolCall[]): string {
-  const phrases: Record<string, (n: number) => string> = {
-    web_search: (n) => (n === 1 ? 'searched the web' : `searched the web ${n}×`),
-    web_fetch: (n) => `visited ${n} page${n === 1 ? '' : 's'}`,
-    edit: (n) => `edited ${n} file${n === 1 ? '' : 's'}`,
-    read: (n) => `explored ${n} file${n === 1 ? '' : 's'}`,
-    search: (n) => `searched ${n} time${n === 1 ? '' : 's'}`,
-    image: (n) => `viewed ${n} image${n === 1 ? '' : 's'}`,
-    command: (n) => `ran ${n} command${n === 1 ? '' : 's'}`,
-    tool: (n) => `used ${n} tool${n === 1 ? '' : 's'}`,
-  }
-  const order = ['web_search', 'web_fetch', 'read', 'search', 'command', 'edit', 'image', 'tool']
-  const counts = new Map<string, number>()
-  let failed = 0
-  for (const call of calls) {
-    const key = toolCallCategory(call)
-    counts.set(key, (counts.get(key) ?? 0) + 1)
-    if (normalized(call.status) === 'failed') failed += 1
-  }
-  const parts = order.flatMap((key) => {
-    const count = counts.get(key)
-    return count ? [phrases[key](count)] : []
-  })
-  let label = parts.join(', ')
-  label = label.slice(0, 1).toUpperCase() + label.slice(1)
-  return failed ? `${label}, ${failed} failed` : label
-}
-
-const ToolDisclosure = memo(function ToolDisclosure({
-  label,
-  calls,
-  active = false,
-}: {
-  label: string
-  calls: ACPToolCall[]
-  active?: boolean
-}) {
-  const [open, setOpen] = useState(false)
-  // Old sessions can hold stale non-terminal statuses; only spin while the
-  // session is actually working.
-  const running =
-    active &&
-    calls.some((call) =>
-      ['pending', 'in_progress', 'in-progress', 'running'].includes(normalized(call.status)),
-    )
-  return (
-    <div className="flex flex-col items-start gap-1">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        className="inline-flex min-h-7 items-center gap-1.5 rounded-full px-1 text-left font-mono text-[12px] text-ink-3 transition-colors hover:text-ink"
-      >
-        <ChevronRight
-          size={12}
-          className={`shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}
-          aria-hidden
-        />
-        {label}
-        {running ? (
-          <LoaderCircle className="size-3 animate-spin text-running" aria-hidden />
-        ) : null}
-      </button>
-      {open ? (
-        <div className="ml-4 flex w-full max-w-full flex-col gap-1">
-          {calls.map((call) => (
-            <ToolCallDetail key={call.id} call={call} />
-          ))}
-        </div>
-      ) : null}
-    </div>
-  )
-})
-
-function ToolSummary({ calls, active = false }: { calls?: ACPToolCall[]; active?: boolean }) {
-  if (!calls?.length) return null
-  return (
-    <div className="flex flex-col items-start gap-1.5">
-      {groupToolCalls(calls).map((group) => (
-        <ToolDisclosure key={group.key} label={group.label} calls={group.calls} active={active} />
-      ))}
-    </div>
-  )
-}
-
-export function TaskStepIcon({ state, active }: { state: TaskStepState; active: boolean }) {
-  switch (state) {
-    case 'active':
-      return (
-        <LoaderCircle
-          size={14}
-          className={`text-running ${active ? 'animate-spin' : ''}`}
-          aria-hidden
-        />
-      )
-    default:
-      return <Circle size={14} className="text-ink-3" aria-hidden />
-  }
-}
-
-const TaskChecklist = memo(function TaskChecklist({
-  surface,
-  active = false,
-  onApprovePlan,
-}: {
-  surface: TaskSurface
-  active?: boolean
-  onApprovePlan?: () => void
-}) {
-  const [expanded, setExpanded] = useState(false)
-  const [overflowing, setOverflowing] = useState(false)
-  const contentRef = useRef<HTMLDivElement>(null)
-  const { title, explanation, entries, strikeCompleted } = surface
-
-  useEffect(() => {
-    const el = contentRef.current
-    if (!el) return
-
-    const measure = () => {
-      setOverflowing(el.scrollHeight > el.clientHeight + 2)
-    }
-    measure()
-
-    const observer = new ResizeObserver(measure)
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [entries, expanded, explanation])
-
-  const showExpandControl = expanded || overflowing
-  const taskEntries = entries ?? []
-  const explanationText = explanation?.trim() ?? ''
-  const stepStates = taskEntries.map(taskStepState)
-  const showSteps = stepStates.some(Boolean)
-  const completedCount = stepStates.filter((state) => state === 'completed').length
-
-  return (
-    <div className="rounded-card border border-border bg-surface px-3 py-2.5">
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="text-[11px] font-medium tracking-wide text-ink-2 uppercase">
-          {title}
-          {showSteps ? (
-            <span className="ml-2 font-mono normal-case tracking-normal">
-              {completedCount}/{taskEntries.length}
-            </span>
-          ) : null}
-        </p>
-        {surface.awaitingApproval && onApprovePlan ? (
-          <Button variant="primary" size="sm" onClick={onApprovePlan}>
-            <Check size={13} />
-            Approve plan
-          </Button>
-        ) : null}
-      </div>
-      <div
-        ref={contentRef}
-        className={`relative ${expanded ? '' : 'max-h-[340px] overflow-hidden'}`}
-      >
-        {explanationText ? (
-          <div className="mb-2 text-sm text-ink">
-            <MessageMarkdown text={explanationText} />
-          </div>
-        ) : null}
-        {taskEntries.length ? (
-          <ul className="flex flex-col gap-2.5">
-            {taskEntries.map((entry, index) => {
-              const state = stepStates[index]
-              const done = state === 'completed'
-              return (
-                <li
-                  key={`${entry.content}-${index}`}
-                  className="flex min-w-0 items-start gap-2 text-sm text-ink-2"
-                >
-                  {showSteps ? (
-                    <span className="mt-[3px] shrink-0" title={state}>
-                      <TaskStepIcon state={state ?? 'pending'} active={active} />
-                    </span>
-                  ) : null}
-                  <div
-                    className={`min-w-0 flex-1 ${done ? `opacity-50 ${strikeCompleted ? 'line-through' : ''}` : ''}`}
-                  >
-                    {surface.kind === 'progress' ? (
-                      entry.content
-                    ) : (
-                      <MessageMarkdown text={entry.content} />
-                    )}
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        ) : explanationText ? null : (
-          <p className="text-sm italic text-ink-3">(no steps provided)</p>
-        )}
-        {!expanded && overflowing ? (
-          <div
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-b from-transparent via-surface/85 to-surface"
-            aria-hidden
-          />
-        ) : null}
-      </div>
-      {/* Centered chevron-in-a-circle is the only expand affordance; it lifts
-          onto the fade when collapsed and flips to point up when open. */}
-      {showExpandControl ? (
-        <div className={`relative z-10 flex justify-center ${expanded ? 'mt-1.5' : '-mt-3.5'}`}>
-          <IconButton
-            variant="ghost"
-            size="md"
-            aria-expanded={expanded}
-            aria-label={expanded ? `Collapse ${title}` : `Expand ${title}`}
-            title={expanded ? `Collapse ${title}` : `Expand ${title}`}
-            className="border border-border bg-surface shadow-sm"
-            onClick={() => setExpanded((value) => !value)}
-          >
-            <ChevronDown
-              size={15}
-              className={`transition-transform duration-200 ease-out ${expanded ? 'rotate-180' : ''}`}
-              aria-hidden
-            />
-          </IconButton>
-        </div>
-      ) : null}
-    </div>
-  )
-})
-
-const LiveEvent = memo(function LiveEvent({
-  event,
-  sessionId,
-  showHeader,
-  working = false,
-  permissionResolution,
-  showTaskSurface,
-  onApprovePlan,
-  onArtifactPrompt,
-}: {
-  event: SessionEvent
-  sessionId?: string
-  showHeader: boolean
-  working?: boolean
-  permissionResolution?: ACPPermission
-  showTaskSurface?: boolean
-  onApprovePlan?: () => void
-  onArtifactPrompt?: (text: string) => void
-}) {
-  const eventTaskSurface = taskSurfaceFromEvent(event)
-  const taskSurface = showTaskSurface ? eventTaskSurface : undefined
-  const ownSession = Boolean(event.acp && event.acp.id === sessionId)
-  const showWorkingStatus =
-    event.type === 'acp' && hasWorkingStatusSurface(event) && !eventTaskSurface && !ownSession
-  const parentChild = isParentChildACPEvent(event)
-  const artifact = event.type === 'artifact' ? event.artifact : undefined
-  const loopCreated = event.type === 'loop_created' ? event.loop_created : undefined
-  return (
-    <div className="flex min-w-0 max-w-[76ch] flex-col gap-2">
-      {event.acp && showHeader ? (
-        <p className="text-[12px] text-ink-3">
-          {hasAgentLogo(event.acp.agent) ? (
-            <AgentLogo
-              agent={event.acp.agent}
-              size={12}
-              className="inline-block translate-y-[2px] text-ink-2"
-            />
-          ) : (
-            <span className="font-mono">{event.acp.agent}</span>
-          )}
-          {event.acp.title ? ` · ${event.acp.title}` : ''} · {relativeTime(event.at)}
-        </p>
-      ) : null}
-      {event.acp?.thought ? <ThinkingBlock text={event.acp.thought} /> : null}
-      {artifact ? (
-        <ArtifactBlock artifact={artifact} onSendPrompt={onArtifactPrompt} />
-      ) : null}
-      {loopCreated ? <LoopCreatedCard loop={loopCreated} /> : null}
-      {event.content && !artifact ? <AssistantMarkdown text={event.content} /> : null}
-      {showWorkingStatus ? (
-        <Link
-          to="/sessions/$sessionId"
-          params={{ sessionId: event.acp?.id ?? event.session_id }}
-          className="inline-flex w-fit items-center gap-2 rounded-card border border-border bg-surface px-3 py-2 text-sm text-ink-2 transition-colors hover:border-primary hover:text-primary"
-        >
-          <LoaderCircle className="size-4 animate-spin text-running" aria-hidden />
-          <span>{agentLabel(event.acp?.agent)} is working on {childLabel(event)}</span>
-        </Link>
-      ) : null}
-      {!parentChild ? <ToolSummary calls={event.acp?.tool_calls} active={working} /> : null}
-      {event.permission ? (
-        <PermissionCard event={event} resolution={permissionResolution} />
-      ) : null}
-      {taskSurface ? (
-        <TaskChecklist surface={taskSurface} active={working} onApprovePlan={onApprovePlan} />
-      ) : null}
-    </div>
-  )
-})
 
 function formatDuration(ms: number): string {
   const totalSeconds = Math.max(1, Math.round(ms / 1000))
@@ -586,6 +92,12 @@ function EarlierHistoryButton({
       </Button>
     </div>
   )
+}
+
+// Result cards (e.g. a created loop) read as a turn's outcome, so they anchor to
+// the end of the turn rather than splitting its work at the tool-call moment.
+function isResultCard(item: TimelineItem): boolean {
+  return item.kind === 'event' && item.event.type === 'loop_created'
 }
 
 export const Transcript = memo(function Transcript({
@@ -725,7 +237,12 @@ export const Transcript = memo(function Transcript({
       {visibleTurns.map((turn, visibleTurnIndex) => {
         const turnIndex = historyStart + visibleTurnIndex
         const active = working && turnIndex === turns.length - 1
-        const lastContentIndex = turn.items.findLastIndex(
+        // Pull result cards out of the chronological flow so the work before and
+        // after the tool call folds into a single "Worked for", and append them
+        // as the turn's outcome below.
+        const resultCards = turn.items.filter(isResultCard)
+        const flow = turn.items.filter((item) => !isResultCard(item))
+        const lastContentIndex = flow.findLastIndex(
           (item) => item.kind === 'event' && Boolean(item.event.content?.trim()),
         )
         const sections: ReactNode[] = []
@@ -748,7 +265,7 @@ export const Transcript = memo(function Transcript({
             />,
           )
         }
-        turn.items.forEach((item, index) => {
+        flow.forEach((item, index) => {
           const collapsible =
             !active &&
             index < lastContentIndex &&
@@ -761,6 +278,7 @@ export const Transcript = memo(function Transcript({
           sections.push(renderItem(item))
         })
         flushWork()
+        resultCards.forEach((item) => sections.push(renderItem(item)))
         return (
           <div key={`turn-${turnIndex}`} className="flex flex-col gap-5">
             {sections}
