@@ -30,10 +30,17 @@ const APP_NAME = 'Jaz'
 
 app.setName(APP_NAME)
 installMainDiagnostics()
+configureChromiumRuntime()
 
 let mainWindow: BrowserWindow | null = null
 const updates = createUpdateController(() => mainWindow)
 const previewURLTargets = new Set<number>()
+
+function configureChromiumRuntime(): void {
+  if (process.platform !== 'win32') return
+  app.disableHardwareAcceleration()
+  app.commandLine.appendSwitch('disable-gpu')
+}
 
 function installApplicationMenu(): void {
   if (process.platform !== 'darwin') return
