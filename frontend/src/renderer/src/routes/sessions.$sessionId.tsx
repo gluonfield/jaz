@@ -371,11 +371,13 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
   // Progress lives in the side panel, never in the thread; only a proposed
   // plan that needs the user's approval stays inline. Errors are
   // notified as toasts, not rendered as rows.
-  const displayEvents = settledTranscriptEvents.map((event) => {
-    const withoutError = stripACPError(event)
-    if (!hasProgressSignal(withoutError)) return withoutError
-    return stripProgressSignal(withoutError)
-  })
+  const displayEvents = coalesceSessionEvents(
+    settledTranscriptEvents.map((event) => {
+      const withoutError = stripACPError(event)
+      if (!hasProgressSignal(withoutError)) return withoutError
+      return stripProgressSignal(withoutError)
+    }),
+  )
   return {
     transcriptEvents: settledTranscriptEvents,
     displayEvents,
