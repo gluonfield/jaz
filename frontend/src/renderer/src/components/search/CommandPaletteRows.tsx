@@ -5,8 +5,8 @@ import { AgentAvatar } from '@/components/acp/AgentAvatar'
 import { KeyboardShortcut } from '@/components/ui/KeyboardShortcut'
 import type { ThreadSearchResult } from '@/lib/api/types'
 import { relativeTime } from '@/lib/format/time'
+import { threadSearchTitle } from '@/lib/threadDisplay'
 import type { PaletteCommand } from './commandPaletteTypes'
-import { threadTitle } from './commandPaletteTypes'
 
 // Rows animate on enter only: a short fade with a hair of upward travel. No
 // blur, no layout animation, no stagger, no exit — those are what made the list
@@ -137,8 +137,9 @@ export function ThreadRow({
 }: {
   result: ThreadSearchResult
 } & Omit<PaletteRowProps, 'className' | 'children'>) {
+  const snippet = result.snippet || ''
   return (
-    <PaletteRow {...row} className="min-h-[52px] items-start py-2">
+    <PaletteRow {...row} className="min-h-[44px] items-center py-2">
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-1.5">
           <AgentAvatar agent={result.thread_agent} size={16} />
@@ -153,14 +154,16 @@ export function ThreadRow({
           <span
             className={`truncate text-[13px] font-medium ${result.archived ? 'text-ink-2' : 'text-ink'}`}
           >
-            {threadTitle(result)}
+            {threadSearchTitle(result)}
           </span>
         </span>
-        <span className="mt-0.5 line-clamp-1 text-[12px] leading-5 text-ink-2">
-          <HighlightedSnippet text={result.snippet || result.thread_slug} />
-        </span>
+        {snippet ? (
+          <span className="mt-0.5 line-clamp-1 text-[12px] leading-5 text-ink-2">
+            <HighlightedSnippet text={snippet} />
+          </span>
+        ) : null}
       </span>
-      <span className="mt-1 shrink-0 text-[11px] tabular-nums text-ink-3">
+      <span className="shrink-0 text-[11px] tabular-nums text-ink-3">
         {relativeTime(result.last_attention_at || result.updated_at)}
       </span>
     </PaletteRow>
