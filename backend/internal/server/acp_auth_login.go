@@ -12,12 +12,12 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/processenv"
 )
 
 const acpAuthLoginTimeout = 16 * time.Minute
@@ -175,12 +175,8 @@ func newACPAuthLoginID() (string, error) {
 }
 
 func acpAuthLoginEnv(invocation acp.AgentLoginInvocation) []string {
-	env := map[string]string{}
-	for _, key := range []string{"PATH", "LANG", "LC_ALL", "LC_CTYPE", "LOGNAME", "SHELL", "SSH_AUTH_SOCK", "USER"} {
-		if value := os.Getenv(key); strings.TrimSpace(value) != "" {
-			env[key] = value
-		}
-	}
+	env := processenv.Base()
+	processenv.PreserveHost(env, "LANG", "LC_ALL", "LC_CTYPE", "LOGNAME", "SHELL", "SSH_AUTH_SOCK", "USER")
 	if invocation.InheritHome {
 		if home := os.Getenv("HOME"); strings.TrimSpace(home) != "" {
 			env["HOME"] = home
@@ -191,16 +187,7 @@ func acpAuthLoginEnv(invocation acp.AgentLoginInvocation) []string {
 			env[key] = value
 		}
 	}
-	keys := make([]string, 0, len(env))
-	for key := range env {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	out := make([]string, 0, len(keys))
-	for _, key := range keys {
-		out = append(out, key+"="+env[key])
-	}
-	return out
+	return processenv.List(env)
 }
 
 func (j *acpAuthLoginJob) finish(runErr, ctxErr error) {

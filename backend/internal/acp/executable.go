@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -21,7 +22,7 @@ func ResolveExecutable(executable string) (string, error) {
 		if info.IsDir() {
 			return "", fmt.Errorf("%s is a directory", executable)
 		}
-		if info.Mode()&0o111 == 0 {
+		if runtime.GOOS != "windows" && info.Mode()&0o111 == 0 {
 			return "", fmt.Errorf("%s is not executable", executable)
 		}
 		return executable, nil
@@ -33,6 +34,9 @@ func ResolveExecutable(executable string) (string, error) {
 }
 
 func loginShellExecutable(executable string) (string, error) {
+	if runtime.GOOS == "windows" {
+		return "", exec.ErrNotFound
+	}
 	if strings.ContainsAny(executable, `/\`+"\x00") {
 		return "", exec.ErrNotFound
 	}
