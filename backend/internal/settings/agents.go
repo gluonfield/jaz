@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -14,6 +15,8 @@ import (
 const (
 	AgentSettingsNamespace = "agents"
 	AgentDefaultsKey       = "defaults"
+
+	legacyCodexACPPackage = "@jazchat/codex-acp@0.16.1"
 )
 
 type ACPAgentDefaults struct {
@@ -229,6 +232,9 @@ func MergeAgentDefaults(stored, seed AgentDefaults, agentNames []string) AgentDe
 }
 
 func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentDefaults {
+	if shouldRefreshBuiltInCommand(name, stored.Command, seed.Command) {
+		stored.Command = seed.Command
+	}
 	if strings.TrimSpace(stored.Command) == "" {
 		stored.Command = seed.Command
 	}
@@ -250,6 +256,43 @@ func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentD
 		}
 	}
 	return stored
+}
+
+func shouldRefreshBuiltInCommand(name, storedCommand, seedCommand string) bool {
+	if name != acp.AgentCodex {
+		return false
+	}
+	storedExecutable, storedArgs, err := ParseCommandLine(storedCommand)
+	if err != nil {
+		return false
+	}
+	seedExecutable, seedArgs, err := ParseCommandLine(seedCommand)
+	if err != nil || len(storedArgs) != len(seedArgs) || len(seedArgs) < 2 {
+		return false
+	}
+	if !isNpxExecutable(storedExecutable) || !isNpxExecutable(seedExecutable) {
+		return false
+	}
+	wantArgs := append([]string(nil), seedArgs...)
+	wantArgs[1] = legacyCodexACPPackage
+	return stringSlicesEqual(storedArgs, wantArgs)
+}
+
+func isNpxExecutable(executable string) bool {
+	base := strings.ToLower(filepath.Base(executable))
+	return base == "npx" || base == "npx.cmd"
+}
+
+func stringSlicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func canonicalizeACPDefaults(in map[string]ACPAgentDefaults) map[string]ACPAgentDefaults {
