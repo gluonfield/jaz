@@ -1,6 +1,7 @@
 package acp
 
 import (
+	"runtime"
 	"sort"
 	"strings"
 
@@ -23,6 +24,8 @@ const (
 	AuthModeAuto        = "auto"
 	AuthModeExistingCLI = "existing_cli"
 	AuthModeJazProfile  = "jaz_profile"
+
+	codexACPPackage = "@jazchat/codex-acp@0.16.3"
 )
 
 func CanonicalAgentName(name string) string {
@@ -202,17 +205,7 @@ func (c AgentCatalog) EnabledAgentNames() ([]string, error) {
 
 func BuiltinAgents() AgentCatalog {
 	return AgentCatalog{
-		AgentCodex: {
-			Command: "npx",
-			Args: []string{
-				"-y", "@jazchat/codex-acp@0.16.1",
-				"-c", `sandbox_mode="danger-full-access"`,
-				"-c", `approval_policy="never"`,
-				"-c", `features.tool_search_always_defer_mcp_tools=true`,
-			},
-			Model:           "gpt-5.5",
-			ReasoningEffort: "xhigh",
-		},
+		AgentCodex: codexBuiltinAgent(runtime.GOOS),
 		AgentClaude: {
 			Command:         "npx",
 			Args:            []string{"-y", "@agentclientprotocol/claude-agent-acp@0.44.0"},
@@ -240,6 +233,24 @@ func BuiltinAgents() AgentCatalog {
 			Model:                   "openai/gpt-5.4-mini",
 			ReasoningEffort:         "",
 		},
+	}
+}
+
+func codexBuiltinAgent(goos string) AgentConfig {
+	command := "npx"
+	if goos == "windows" {
+		command = "npx.cmd"
+	}
+	return AgentConfig{
+		Command: command,
+		Args: []string{
+			"-y", codexACPPackage,
+			"-c", `sandbox_mode="danger-full-access"`,
+			"-c", `approval_policy="never"`,
+			"-c", `features.tool_search_always_defer_mcp_tools=true`,
+		},
+		Model:           "gpt-5.5",
+		ReasoningEffort: "xhigh",
 	}
 }
 
