@@ -16,6 +16,7 @@ SELECT
   coalesce(t.title, '') AS title,
   t.status,
   t.runtime,
+  coalesce(t.acp_agent, '') AS agent,
   coalesce(t.parent_id, '') AS parent_id,
   t.archived,
   d.seq,
@@ -43,6 +44,7 @@ type SearchThreadMessagesRow struct {
 	Title             string  `json:"title"`
 	Status            string  `json:"status"`
 	Runtime           string  `json:"runtime"`
+	Agent             string  `json:"agent"`
 	ParentID          string  `json:"parent_id"`
 	Archived          int64   `json:"archived"`
 	Seq               int64   `json:"seq"`
@@ -67,6 +69,7 @@ func (q *Queries) SearchThreadMessages(ctx context.Context, arg SearchThreadMess
 			&i.Title,
 			&i.Status,
 			&i.Runtime,
+			&i.Agent,
 			&i.ParentID,
 			&i.Archived,
 			&i.Seq,
@@ -95,6 +98,7 @@ SELECT
   coalesce(t.title, '') AS title,
   t.status,
   t.runtime,
+  coalesce(t.acp_agent, '') AS agent,
   coalesce(t.parent_id, '') AS parent_id,
   t.archived,
   snippet(thread_search_fts, 0, char(31), char(30), '...', 12) AS title_snippet,
@@ -122,6 +126,7 @@ type SearchThreadMetadataRow struct {
 	Title             string  `json:"title"`
 	Status            string  `json:"status"`
 	Runtime           string  `json:"runtime"`
+	Agent             string  `json:"agent"`
 	ParentID          string  `json:"parent_id"`
 	Archived          int64   `json:"archived"`
 	TitleSnippet      string  `json:"title_snippet"`
@@ -146,6 +151,7 @@ func (q *Queries) SearchThreadMetadata(ctx context.Context, arg SearchThreadMeta
 			&i.Title,
 			&i.Status,
 			&i.Runtime,
+			&i.Agent,
 			&i.ParentID,
 			&i.Archived,
 			&i.TitleSnippet,

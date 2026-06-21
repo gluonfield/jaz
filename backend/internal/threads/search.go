@@ -28,6 +28,7 @@ type SearchResult struct {
 	ThreadTitle     string
 	ThreadStatus    string
 	ThreadRuntime   string
+	ThreadAgent     string
 	ParentID        string
 	Archived        bool
 	MessageSeq      int64
@@ -123,6 +124,7 @@ func addMessageRow(byThread map[string]*searchAccumulator, row search.SearchThre
 		ThreadTitle:     row.Title,
 		ThreadStatus:    row.Status,
 		ThreadRuntime:   row.Runtime,
+		ThreadAgent:     row.Agent,
 		ParentID:        row.ParentID,
 		Archived:        row.Archived != 0,
 		MessageSeq:      row.Seq,
@@ -139,6 +141,7 @@ func addMetadataRow(byThread map[string]*searchAccumulator, row search.SearchThr
 		ThreadTitle:     row.Title,
 		ThreadStatus:    row.Status,
 		ThreadRuntime:   row.Runtime,
+		ThreadAgent:     row.Agent,
 		ParentID:        row.ParentID,
 		Archived:        row.Archived != 0,
 		Snippet:         firstNonEmpty(row.TitleSnippet, row.SlugSnippet),
