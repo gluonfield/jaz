@@ -1,5 +1,5 @@
-import type { Session } from '@/lib/api/types'
-import type { SendMessageOptions } from '@/lib/sendMessage'
+import type { Attachment, Session } from '@/lib/api/types'
+import type { BrowserAnnotation, SendMessageOptions } from '@/lib/sendMessage'
 import type { TaskSurface } from '@/lib/taskSurface'
 import type { FileReference } from '../../../../shared/fileReader'
 import { CODE_DIFF_PANEL_WIDTH, CodeDiffPanel } from './CodeDiffPanel'
@@ -28,6 +28,8 @@ export function SidePanel({
   fileRef,
   onPreviewUrlChange,
   onOpenFile,
+  onAddBrowserAnnotation,
+  onUploadAttachment,
   onSend,
   onClose,
 }: {
@@ -40,6 +42,8 @@ export function SidePanel({
   fileRef: FileReference | null
   onPreviewUrlChange: (url: string) => void
   onOpenFile: (file: FileReference) => void
+  onAddBrowserAnnotation?: (annotation: BrowserAnnotation, screenshot?: Attachment) => void
+  onUploadAttachment?: (file: File) => Promise<Attachment>
   onSend: (text: string, options?: SendMessageOptions) => void
   onClose: () => void
 }) {
@@ -47,7 +51,15 @@ export function SidePanel({
     case 'diff':
       return <CodeDiffPanel session={session} visible={visible} onClose={onClose} />
     case 'preview':
-      return <PreviewPanel url={previewUrl} onUrlChange={onPreviewUrlChange} onClose={onClose} />
+      return (
+        <PreviewPanel
+          url={previewUrl}
+          onUrlChange={onPreviewUrlChange}
+          onAddBrowserAnnotation={onAddBrowserAnnotation}
+          onUploadAttachment={onUploadAttachment}
+          onClose={onClose}
+        />
+      )
     case 'terminal':
       return <TerminalPanel session={session} visible={visible} onClose={onClose} />
     case 'file':

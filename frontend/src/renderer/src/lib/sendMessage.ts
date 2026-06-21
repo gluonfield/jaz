@@ -1,13 +1,11 @@
 import type { Attachment } from './api/types'
-
-export interface ComposerQuote {
-  id: string
-  text: string
-}
+import type { ComposerContext } from './messageContext'
+export type { BrowserAnnotation, ComposerContext, MessageContextInput } from './messageContext'
+export { contextAttachmentIDs, contextInputs, contextLabel, contextPreviewText } from './messageContext'
 
 export interface SendMessageOptions {
   planRequested?: boolean
   files?: File[]
   attachments?: Attachment[]
-  quotes?: ComposerQuote[]
+  contexts?: ComposerContext[]
 }

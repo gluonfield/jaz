@@ -12,11 +12,12 @@ import (
 )
 
 const (
-	blockText       = storage.BlockTypeText
-	blockReasoning  = storage.BlockTypeReasoning
-	blockTool       = storage.BlockTypeTool
-	blockAttachment = storage.BlockTypeAttachment
-	blockQuote      = storage.BlockTypeQuote
+	blockText              = storage.BlockTypeText
+	blockReasoning         = storage.BlockTypeReasoning
+	blockTool              = storage.BlockTypeTool
+	blockAttachment        = storage.BlockTypeAttachment
+	blockQuote             = storage.BlockTypeQuote
+	blockBrowserAnnotation = storage.BlockTypeBrowserAnnotation
 )
 
 func recordsFromProviderMessages(messages []provider.Message, start time.Time) ([]storage.Message, error) {
@@ -184,6 +185,13 @@ func validateBlocks(blocks []storage.Block) error {
 	for i, block := range blocks {
 		switch block.Type {
 		case blockText, blockReasoning, blockQuote:
+		case blockBrowserAnnotation:
+			if strings.TrimSpace(block.InputJSON) == "" {
+				return fmt.Errorf("browser annotation block %d missing input_json", i)
+			}
+			if storage.BrowserAnnotationFromBlock(block) == nil {
+				return fmt.Errorf("browser annotation block %d has invalid input_json", i)
+			}
 		case blockAttachment:
 			if block.ID == "" {
 				return fmt.Errorf("attachment block %d missing id", i)

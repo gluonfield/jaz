@@ -24,11 +24,12 @@ const (
 )
 
 const (
-	BlockTypeText       = "text"
-	BlockTypeReasoning  = "reasoning"
-	BlockTypeTool       = "tool"
-	BlockTypeAttachment = "attachment"
-	BlockTypeQuote      = "quote"
+	BlockTypeText              = "text"
+	BlockTypeReasoning         = "reasoning"
+	BlockTypeTool              = "tool"
+	BlockTypeAttachment        = "attachment"
+	BlockTypeQuote             = "quote"
+	BlockTypeBrowserAnnotation = "browser_annotation"
 )
 
 func SessionStatusForACPState(state string) string {
