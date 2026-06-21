@@ -166,7 +166,11 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
               loginPending={login.isPending ? login.variables?.agent : undefined}
               canContinue={canContinue}
               onRefresh={onRefresh}
-              onStartLogin={(agent) => login.mutate({ agent, auth: draft.acp[agent]?.auth })}
+              onStartLogin={(agent) => {
+                const auth = onboardingLoginAuth(draft.acp[agent]?.auth)
+                setDraft((current) => withAgentAuth(current, agent, auth))
+                login.mutate({ agent, auth })
+              }}
               onAPIKeyChange={(agent, value) => setACPKeysByAgent((keys) => ({ ...keys, [agent]: value }))}
               onContinue={() => setStep('memory')}
             />
@@ -269,4 +273,15 @@ function onboardingAuth(current?: ACPAgentAuth, recommended?: ACPAgentAuth): ACP
     mode: recommended?.mode || current?.mode || 'auto',
     path: recommended?.path ?? current?.path ?? '',
   }
+}
+
+function onboardingLoginAuth(current?: ACPAgentAuth): ACPAgentAuth {
+  if (current?.mode === 'jaz_profile') return current
+  return { mode: 'jaz_profile' }
+}
+
+function withAgentAuth(settings: AgentSettings, agent: string, auth: ACPAgentAuth): AgentSettings {
+  const next = cloneAgentSettings(settings)
+  next.acp[agent] = { ...next.acp[agent], auth }
+  return next
 }
