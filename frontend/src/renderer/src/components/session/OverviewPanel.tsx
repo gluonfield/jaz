@@ -27,7 +27,7 @@ import type { SendMessageOptions } from '@/lib/sendMessage'
 import { taskStepState, type TaskSurface } from '@/lib/taskSurface'
 import { keys } from '@/lib/query/keys'
 import { SidePanelShell } from './SidePanelShell'
-import { encodeMention } from './mentions'
+import { encodeMention } from './mentionCodec'
 import { TaskStepIcon } from './TaskChecklist'
 import { useRepoActions } from './useRepoActions'
 

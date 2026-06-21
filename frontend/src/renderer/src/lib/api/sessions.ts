@@ -47,6 +47,13 @@ export function getSession(id: string): Promise<Session> {
   return get<Session>(`/v1/sessions/${id}`)
 }
 
+export const sessionQuery = (id: string) =>
+  queryOptions({
+    queryKey: keys.session(id),
+    queryFn: () => getSession(id),
+    staleTime: 30_000,
+  })
+
 export async function uploadSessionAttachment(sessionId: string, file: File, signal?: AbortSignal): Promise<Attachment> {
   const form = new FormData()
   form.append('file', file)
