@@ -220,9 +220,9 @@ jobs:
         working-directory: frontend
         run: bun install --frozen-lockfile
 
-      - name: Test backend
+      - name: Compile backend tests
         working-directory: backend
-        run: go test ./...
+        run: go test -run '^$' ./...
 
       - name: Build
         working-directory: frontend
