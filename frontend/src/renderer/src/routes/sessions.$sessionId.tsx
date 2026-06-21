@@ -713,6 +713,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
             role: 'user' as const,
             content: live.user,
             blocks: [
+              ...live.quotes.map((text) => ({ type: 'quote' as const, text })),
               { type: 'text' as const, text: live.user },
               ...live.attachments.flatMap((attachment) =>
                 attachment.id && attachment.uri
