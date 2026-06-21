@@ -94,10 +94,10 @@ function ThreadMentionPill({ mention }: { mention: Mention }) {
             setOpen(false)
             navigate({ to: '/sessions/$sessionId', params: { sessionId: mention.target } })
           }}
-          className="mt-3 flex h-8 w-full items-center gap-2 rounded-[7px] bg-surface-2 px-2.5 text-left text-[13px] font-medium text-ink transition-[background-color,color,transform] duration-150 hover:bg-surface-3 active:scale-[0.96]"
+          className="mt-2 -ml-1 inline-flex min-h-8 items-center gap-1 rounded-[6px] px-1 text-[12px] font-medium text-primary transition-[color,transform] duration-150 hover:text-primary-strong active:scale-[0.96]"
         >
-          <span className="min-w-0 flex-1 truncate">Open thread</span>
-          <ArrowRight size={13} className="shrink-0 text-primary" />
+          <span>Open thread</span>
+          <ArrowRight size={12} className="shrink-0" />
         </button>
       </MentionPopover>
     </>
