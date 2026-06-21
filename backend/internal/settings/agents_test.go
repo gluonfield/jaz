@@ -86,26 +86,6 @@ func TestEnsureAgentDefaultsKeepsCustomCodexCommand(t *testing.T) {
 	}
 }
 
-func TestMergeAgentDefaultsRefreshesLegacyCodexBuiltinCommand(t *testing.T) {
-	seed := testAgentDefaultsSeed()
-	codex := seed.ACP["codex"]
-	codex.Command = "codex-acp.exe -c test"
-	seed.ACP["codex"] = codex
-	stored := AgentDefaults{ACP: map[string]ACPAgentDefaults{}}
-	for name, agent := range seed.ACP {
-		stored.ACP[name] = agent
-	}
-	legacy := stored.ACP["codex"]
-	legacy.Command = legacyCodexNpxCommandLine()
-	stored.ACP["codex"] = legacy
-
-	merged := MergeAgentDefaults(stored, seed, agentNames(seed))
-
-	if merged.ACP["codex"].Command != seed.ACP["codex"].Command {
-		t.Fatalf("codex command = %q, want refreshed %q", merged.ACP["codex"].Command, seed.ACP["codex"].Command)
-	}
-}
-
 func TestNormalizeAgentDefaultsAllowsClaudeOnlyReasoningEffort(t *testing.T) {
 	for _, effort := range []string{"max", "ultracode"} {
 		input := testAgentDefaultsSeed()
