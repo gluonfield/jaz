@@ -17,12 +17,21 @@ export interface Turn {
   items: TimelineItem[]
 }
 
-export function hasWorkingStatusSurface(event: SessionEvent): boolean {
+function hasWorkingStatusSurface(event: SessionEvent): boolean {
   return Boolean(event.acp && normalized(event.acp.state) === 'running')
 }
 
-// A status event whose only surface is the "working on …" link.
-function isWorkingLinkOnly(event: SessionEvent): boolean {
+// An event that renders as the spawned-agent card: a child's status row inside
+// its parent's transcript, in any run state. A plan/task surface takes over the
+// row instead, so those are excluded.
+export function isSpawnedAgentEvent(event: SessionEvent): boolean {
+  return event.type === 'acp' && isParentChildACPEvent(event) && !taskSurfaceFromEvent(event)
+}
+
+// A running status whose only surface is the live "working" indicator — no
+// content, thought, tools, error, or plan yet. It anchors to the bottom while
+// live rather than sitting in the chronological flow.
+function isWorkingStatusOnly(event: SessionEvent): boolean {
   return (
     event.type === 'acp' &&
     hasWorkingStatusSurface(event) &&
@@ -246,9 +255,9 @@ export function buildTimeline(
         return Boolean(event.content || event.permission)
       }
       if (!hasVisibleACPSurface(event)) return false
-      // This page's own running state has no link to render — drop the event
+      // This page's own running state has nothing to render — drop the event
       // instead of leaving an empty row.
-      if (isWorkingLinkOnly(event) && acp.id === sessionId) return false
+      if (isWorkingStatusOnly(event) && acp.id === sessionId) return false
       if (taskSurface) {
         const isLatestTaskSurface = latestTaskSurfaceEvent.get(acp.id) === index
         if (!isLatestTaskSurface && !event.content && !acp.tool_calls?.length) return false
@@ -277,13 +286,13 @@ export function buildTimeline(
     item.kind === 'event' &&
     item.event.type === 'permission_request' &&
     pendingPermissionIds.has(item.event.permission?.id ?? '')
-  const isWorkingLink = (item: TimelineItem) =>
-    item.kind === 'event' && isWorkingLinkOnly(item.event)
+  const isWorkingStatusItem = (item: TimelineItem) =>
+    item.kind === 'event' && isWorkingStatusOnly(item.event)
   const pendingCards = merged.filter(isPendingCard)
-  const workingLinks = merged.filter(isWorkingLink)
-  const chronological = merged.filter((item) => !isPendingCard(item) && !isWorkingLink(item))
-  // "Working on …" next to a question that's waiting for the user is noise.
-  const anchored = [...(pendingCards.length ? [] : workingLinks), ...pendingCards]
+  const workingStatusItems = merged.filter(isWorkingStatusItem)
+  const chronological = merged.filter((item) => !isPendingCard(item) && !isWorkingStatusItem(item))
+  // A live "working" indicator next to a question awaiting the user is noise.
+  const anchored = [...(pendingCards.length ? [] : workingStatusItems), ...pendingCards]
   markEventHeaders([...chronological, ...anchored], sessionId)
   return {
     chronological,
