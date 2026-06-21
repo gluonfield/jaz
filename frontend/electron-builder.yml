@@ -23,6 +23,7 @@ mac:
   extendInfo:
     NSMicrophoneUsageDescription: Jaz uses the microphone for voice input.
 win:
+  icon: src/assets/jaz.ico
   target:
     - target: nsis
       arch:
