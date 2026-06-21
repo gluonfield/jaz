@@ -230,6 +230,7 @@ export function useMentionInput({
               kind: 'thread' as const,
               label: threadTitle(result),
               detail: slug,
+              agent: result.thread_agent,
               insert,
               expansion: encodeMention('@', insert.slice(1), result.thread_id),
             }

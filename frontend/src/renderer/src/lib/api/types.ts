@@ -78,6 +78,7 @@ export interface ThreadSearchResult {
   thread_title?: string
   thread_status?: 'idle' | 'running' | 'error'
   thread_runtime?: 'acp'
+  thread_agent?: string
   parent_id?: string
   archived?: boolean
   message_seq?: number

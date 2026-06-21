@@ -17,7 +17,11 @@ func TestThreadSearchHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	session, err := store.CreateSession(storage.CreateSession{Slug: "search-route", Title: "Search route"})
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:       "search-route",
+		Title:      "Search route",
+		RuntimeRef: &storage.RuntimeRef{Type: storage.RuntimeACP, Agent: "codex"},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,6 +41,9 @@ func TestThreadSearchHandler(t *testing.T) {
 	}
 	if len(got.Results) != 1 || got.Results[0].ThreadID != session.ID {
 		t.Fatalf("results = %#v, want session %s", got.Results, session.ID)
+	}
+	if got.Results[0].ThreadAgent != "codex" {
+		t.Fatalf("thread agent = %q, want codex", got.Results[0].ThreadAgent)
 	}
 
 	res = httptest.NewRecorder()
