@@ -171,7 +171,12 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 		t.Fatalf("unexpected activity %#v", activity)
 	}
 
-	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.Slug, Message: "again", Completion: acp.CompletionAsync, ParentVisible: true}); err != nil {
+	if _, err := manager.Send(ctx, acp.SendRequest{
+		Session:       session.RuntimeRef.SessionID,
+		Message:       "again",
+		Completion:    acp.CompletionAsync,
+		ParentVisible: true,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	job, err = manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
