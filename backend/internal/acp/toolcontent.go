@@ -68,13 +68,17 @@ func kindString(kind *acpschema.ToolKind) string {
 	return string(*kind)
 }
 
-// boundedRawInput keeps a tool input only when it is small, valid JSON — the
-// query/url inputs we want are tiny, while file-content inputs are dropped.
-func boundedRawInput(raw json.RawMessage) json.RawMessage {
-	if len(raw) == 0 || len(raw) > maxToolRawInputBytes || !json.Valid(raw) {
+// boundedRawInput keeps small object inputs such as query/url/file path fields
+// while dropping file-content-sized or non-object payloads.
+func boundedRawInput(raw json.RawMessage) map[string]any {
+	if len(raw) == 0 || len(raw) > maxToolRawInputBytes {
 		return nil
 	}
-	return append(json.RawMessage(nil), raw...)
+	var out map[string]any
+	if json.Unmarshal(raw, &out) != nil || len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // metaToolName recovers the underlying tool name from the ACP _meta bag. Claude
