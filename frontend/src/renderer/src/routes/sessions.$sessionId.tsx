@@ -6,6 +6,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BottomDock } from '@/components/session/BottomDock'
 import { Composer, PlanDecisionCard } from '@/components/session/Composer'
+import { MessageQuotes } from '@/components/session/MessageQuotes'
+import { SelectionQuoteToolbar } from '@/components/session/SelectionQuoteToolbar'
+import { useComposerQuotes } from '@/components/session/useComposerQuotes'
 import { FileReaderLinkProvider, MessageMarkdown, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
 import { MentionText } from '@/components/session/mentions'
 import { SessionErrorNotice } from '@/components/session/SessionErrorNotice'
@@ -76,6 +79,7 @@ interface LiveExchange {
   user: string
   at: string
   planRequested: boolean
+  quotes: string[]
   attachments: LiveAttachment[]
   reasoning: string
   assistant: string
@@ -457,12 +461,14 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     const controller = new AbortController()
     const files = options.files ?? []
     const draftAttachments = options.attachments ?? []
+    const draftQuotes = (options.quotes ?? []).map((quote) => quote.text)
     abortRef.current = controller
     pinToBottom()
     setLive({
       user: text,
       at: new Date().toISOString(),
       planRequested: Boolean(options.planRequested),
+      quotes: draftQuotes,
       attachments: [
         ...draftAttachments,
         ...files.map((file) => ({ name: file.name, size: file.size, uploading: true })),
@@ -484,6 +490,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
       await streamSessionMessage({
         sessionId,
         message: text,
+        quotes: draftQuotes,
         attachmentIds: [
           ...draftAttachments.map((attachment) => attachment.id),
           ...attachments.map((attachment) => attachment.id),
@@ -597,6 +604,10 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     streaming,
     onSend: handleSend,
   })
+  const composerQuotes = useComposerQuotes({
+    storageKey: `${SESSION_DRAFT_KEY_PREFIX}${sessionId}`,
+    storage: 'local',
+  })
 
   // First message handed over from the New-session page. Wait for the session
   // detail query so StrictMode's initial effect cleanup cannot abort the send.
@@ -702,6 +713,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
             role: 'user' as const,
             content: live.user,
             blocks: [
+              ...live.quotes.map((text) => ({ type: 'quote' as const, text })),
               { type: 'text' as const, text: live.user },
               ...live.attachments.flatMap((attachment) =>
                 attachment.id && attachment.uri
@@ -795,6 +807,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                               transition={{ type: 'spring', stiffness: 380, damping: 30 }}
                             >
                               <div className="min-w-0 max-w-[84%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap [overflow-wrap:break-word] select-text">
+                                <MessageQuotes quotes={live.quotes} />
                                 <MentionText text={live.user} />
                                 <LiveAttachmentList attachments={live.attachments} />
                               </div>
@@ -837,6 +850,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
               </div>
             </div>
             <ThreadFindBar find={threadFind} />
+            <SelectionQuoteToolbar scrollRef={scrollRef} onAdd={composerQuotes.addQuote} />
 
             {showPlanDecision && planDecisionError ? (
               <p className="absolute inset-x-0 bottom-32 mx-auto max-w-[640px] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
@@ -879,6 +893,9 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                   steerDisabled={queue.steerDisabled}
                   draftStorageKey={`${SESSION_DRAFT_KEY_PREFIX}${session.id}`}
                   fileRoot={session.runtime_ref?.cwd}
+                  quotes={composerQuotes.quotes}
+                  onRemoveQuote={composerQuotes.removeQuote}
+                  onClearQuotes={composerQuotes.clearQuotes}
                   onSend={queue.onSend}
                   onStop={() => {
                     // the turn runs detached server-side; stop it there first
