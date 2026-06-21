@@ -66,3 +66,12 @@ export function isAbsoluteFilePath(value: string): boolean {
     /^[/\\]{2}[^/\\]+[/\\][^/\\]+/.test(value)
   )
 }
+
+export function isHTMLFilePath(value: string): boolean {
+  const lower = value.toLowerCase()
+  return lower.endsWith('.html') || lower.endsWith('.htm')
+}
+
+export function shouldPreviewFileReference(file: FileReference): boolean {
+  return file.line === undefined && isHTMLFilePath(file.path)
+}

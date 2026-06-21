@@ -8,6 +8,7 @@ import { BottomDock } from '@/components/session/BottomDock'
 import { Composer, PlanDecisionCard } from '@/components/session/Composer'
 import { MessageQuotes } from '@/components/session/MessageQuotes'
 import { SelectionQuoteToolbar } from '@/components/session/SelectionQuoteToolbar'
+import { useFileReferencePreview } from '@/components/session/useFileReferencePreview'
 import { useComposerQuotes } from '@/components/session/useComposerQuotes'
 import { FileReaderLinkProvider, MessageMarkdown, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
 import { MentionText } from '@/components/session/mentions'
@@ -438,7 +439,17 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   const sessionCwd = detail.data?.session.runtime_ref?.cwd
   const repoInfo = useQuery({ ...sessionRepoQuery(sessionId), enabled: Boolean(sessionCwd) })
   const sidePanel = useSidePanelState(Boolean(repoInfo.data?.git))
-  useEffect(() => window.jaz?.onOpenSideBrowserURL?.(sidePanel.openPreview), [sidePanel.openPreview])
+  const { openFile, openPreview } = sidePanel
+  useEffect(() => window.jaz?.onOpenSideBrowserURL?.(openPreview), [openPreview])
+  const notifyFilePreviewError = useCallback((message: string) => {
+    toast(`Couldn't preview HTML: ${message}`, 'danger')
+  }, [toast])
+  const openFileReference = useFileReferencePreview({
+    sessionId,
+    onOpenFile: openFile,
+    onOpenPreview: openPreview,
+    onPreviewError: notifyFilePreviewError,
+  })
 
   const itemCount = (detail.data?.messages.length ?? 0) + events.data.length
   const liveSize = live
@@ -726,7 +737,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   const titlebarActions = document.getElementById('titlebar-actions')
 
   return (
-    <FileReaderLinkProvider onOpen={sidePanel.openFile}>
+    <FileReaderLinkProvider onOpen={openFileReference}>
       <PreviewLinkProvider onOpen={sidePanel.openPreview}>
         <div ref={sidePanel.measureRef} className="flex h-full">
           {titlebarSlot
@@ -917,7 +928,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
               previewUrl={sidePanel.previewUrl}
               fileRef={sidePanel.fileRef}
               onPreviewUrlChange={sidePanel.setPreviewUrl}
-              onOpenFile={sidePanel.openFile}
+              onOpenFile={openFileReference}
               onSend={queue.onSend}
               onClose={sidePanel.toggle}
             />
