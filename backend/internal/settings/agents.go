@@ -231,6 +231,8 @@ func MergeAgentDefaults(stored, seed AgentDefaults, agentNames []string) AgentDe
 func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentDefaults {
 	if strings.TrimSpace(stored.Command) == "" {
 		stored.Command = seed.Command
+	} else if staleBuiltinACPCommand(name, stored.Command, seed.Command) {
+		stored.Command = seed.Command
 	}
 	if auth, err := acp.NormalizeAgentAuthConfig(name, stored.Auth); err == nil {
 		stored.Auth = auth
@@ -250,6 +252,25 @@ func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentD
 		}
 	}
 	return stored
+}
+
+func staleBuiltinACPCommand(name, stored, seed string) bool {
+	if strings.TrimSpace(seed) == "" || strings.TrimSpace(stored) == strings.TrimSpace(seed) {
+		return false
+	}
+	if name != acp.AgentCodex {
+		return false
+	}
+	return strings.TrimSpace(stored) == legacyCodexNpxCommandLine()
+}
+
+func legacyCodexNpxCommandLine() string {
+	return CommandLine("npx", []string{
+		"-y", "@jazchat/codex-acp@0.16.1",
+		"-c", `sandbox_mode="danger-full-access"`,
+		"-c", `approval_policy="never"`,
+		"-c", `features.tool_search_always_defer_mcp_tools=true`,
+	})
 }
 
 func canonicalizeACPDefaults(in map[string]ACPAgentDefaults) map[string]ACPAgentDefaults {

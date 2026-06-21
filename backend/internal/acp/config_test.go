@@ -78,6 +78,23 @@ func TestSystemPromptMetaPerAgent(t *testing.T) {
 	}
 }
 
+func TestCodexBuiltinAgentUsesPackagedWindowsAdapter(t *testing.T) {
+	cfg := codexBuiltinAgent("windows")
+	if cfg.Command != "codex-acp.exe" {
+		t.Fatalf("command = %q, want packaged Windows adapter", cfg.Command)
+	}
+	if strings.Contains(strings.Join(cfg.Args, " "), "@jazchat/codex-acp") {
+		t.Fatalf("windows codex args should not require npx: %#v", cfg.Args)
+	}
+}
+
+func TestCodexBuiltinAgentUsesNpxOffWindows(t *testing.T) {
+	cfg := codexBuiltinAgent("linux")
+	if cfg.Command != "npx" || !strings.Contains(strings.Join(cfg.Args, " "), "@jazchat/codex-acp@0.16.1") {
+		t.Fatalf("linux codex default = %q %#v, want npx package", cfg.Command, cfg.Args)
+	}
+}
+
 func TestSessionPromptMetaAppendsPerSessionExtension(t *testing.T) {
 	manager := &Manager{cfg: Config{SystemPrompt: testPrompt("base prompt")}}
 	got, err := manager.sessionPromptMeta(AgentCodex, "", "", []string{"run context"})
