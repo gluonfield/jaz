@@ -145,7 +145,7 @@ function ScrollToBottomButton({ visible, onClick }: { visible: boolean; onClick:
 
 function acpSnapshotEvents(job: ACPJobSnapshot, pageSessionID: string): SessionEvent[] {
   if (job.parent_id === pageSessionID && job.parent_visible === false) return []
-  const at = job.updated_at
+  const at = job.last_event_at || job.updated_at
   const events: SessionEvent[] = []
   if (
     job.assistant ||
@@ -178,6 +178,8 @@ function acpSnapshotEvents(job: ACPJobSnapshot, pageSessionID: string): SessionE
         plan: job.plan,
         tool_calls: job.tool_calls,
         permissions: job.permissions,
+        last_event_at: job.last_event_at,
+        last_tool_at: job.last_tool_at,
       },
     })
   }
@@ -247,6 +249,8 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
     acp_tool_calls: acpToolCalls,
     acp_permissions: acpPermissions,
     acp_error: acpError,
+    acp_last_event_at: acpLastEventAt,
+    acp_last_tool_at: acpLastToolAt,
     acp_children: acpChildren,
     events: persistedEvents = [],
   } = data
@@ -279,6 +283,8 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
             plan: acpPlan,
             tool_calls: eventsCoverOwnACP ? undefined : acpToolCalls,
             permissions: acpPermissions,
+            last_event_at: acpLastEventAt,
+            last_tool_at: acpLastToolAt,
             updated_at: session.updated_at,
           },
           session.id,

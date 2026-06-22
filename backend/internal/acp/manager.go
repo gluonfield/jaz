@@ -523,6 +523,8 @@ func (m *Manager) resume(ctx context.Context, ref string) (*Job, error) {
 	}
 	job := newIdleJob(session, agentName, acpSessionID, cwd, modes)
 	job.ParentVisible = state.ParentVisible
+	job.LastEventAt = firstNonZeroTime(state.LastEventAt, state.UpdatedAt)
+	job.LastToolAt = state.LastToolAt
 	job.promptQueueing = promptQueueingSupported(ac.initRaw)
 	m.addJob(job, ac.conn, ac.peer, ac.cancel)
 	m.saveACPState(job.Snapshot())
@@ -599,6 +601,11 @@ func (m *Manager) Status(ref string) (Job, error) {
 	}
 	if session.Runtime != storage.RuntimeACP || session.RuntimeRef == nil {
 		return Job{}, fmt.Errorf("session %s is not acp-backed", ref)
+	}
+	if loader, ok := m.store.(acpStateLoader); ok {
+		if state, err := loader.LoadACPState(session.ID); err == nil {
+			return jobFromInactiveState(session, state), nil
+		}
 	}
 	return jobFromSession(session, session.RuntimeRef.Agent, session.RuntimeRef.SessionID, "", StateNotRunning), nil
 }
@@ -703,6 +710,9 @@ func (m *Manager) cancelStored(ref string) (Job, error) {
 	state.State = StateCancelled
 	state.StopReason = "cancelled"
 	state.Permissions = nil
+	now := time.Now().UTC()
+	state.UpdatedAt = now
+	state.LastEventAt = now
 	if saver, ok := m.store.(acpStateSaver); ok {
 		if err := saver.SaveACPState(session.ID, state); err != nil {
 			m.log.Warn("clearing stored acp state failed", "session", session.ID, "error", err)
@@ -723,6 +733,7 @@ func (m *Manager) cancelStored(ref string) (Job, error) {
 			ReasoningEffort: state.ReasoningEffort,
 			State:           StateCancelled,
 			StopReason:      "cancelled",
+			LastEventAt:     now,
 		},
 	})
 	return Job{
@@ -738,7 +749,9 @@ func (m *Manager) cancelStored(ref string) (Job, error) {
 		State:           StateCancelled,
 		StopReason:      "cancelled",
 		CreatedAt:       session.CreatedAt,
-		UpdatedAt:       time.Now().UTC(),
+		UpdatedAt:       now,
+		LastEventAt:     now,
+		LastToolAt:      state.LastToolAt,
 	}, nil
 }
 

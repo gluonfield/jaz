@@ -691,10 +691,6 @@ func acpEvent(job acp.Job) *sessionevents.ACPEvent {
 	for _, entry := range job.Plan {
 		plan = append(plan, sessionevents.ACPPlanEntry{Content: entry.Content, Status: entry.Status, Priority: entry.Priority})
 	}
-	calls := make([]sessionevents.ACPToolCall, 0, len(job.ToolCalls))
-	for _, call := range job.ToolCalls {
-		calls = append(calls, sessionevents.ACPToolCall{ID: call.ID, Title: call.Title, Status: call.Status})
-	}
 	permissions := make([]sessionevents.ACPPermission, 0, len(job.Permissions))
 	for _, permission := range job.Permissions {
 		permission.Options = append([]sessionevents.ACPPermissionOption(nil), permission.Options...)
@@ -723,8 +719,10 @@ func acpEvent(job acp.Job) *sessionevents.ACPEvent {
 		Error:       job.Error,
 		Modes:       modes,
 		Plan:        plan,
-		ToolCalls:   calls,
+		ToolCalls:   acp.CloneToolCalls(job.ToolCalls),
 		Permissions: permissions,
+		LastEventAt: job.LastEventAt,
+		LastToolAt:  job.LastToolAt,
 	}
 }
 

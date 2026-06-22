@@ -144,6 +144,8 @@ func applyACPStateResponse(resp map[string]any, state storage.ACPState) {
 	resp["acp_tool_calls"] = state.ToolCalls
 	resp["acp_permissions"] = state.Permissions
 	resp["acp_error"] = state.Error
+	resp["acp_last_event_at"] = state.LastEventAt
+	resp["acp_last_tool_at"] = state.LastToolAt
 }
 
 func canonicalACPStateResponse(state storage.ACPState) storage.ACPState {
@@ -170,14 +172,6 @@ func acpJobState(job acp.Job) storage.ACPState {
 			Priority: entry.Priority,
 		})
 	}
-	calls := make([]sessionevents.ACPToolCall, 0, len(job.ToolCalls))
-	for _, call := range job.ToolCalls {
-		calls = append(calls, sessionevents.ACPToolCall{
-			ID:     call.ID,
-			Title:  call.Title,
-			Status: call.Status,
-		})
-	}
 	return storage.ACPState{
 		ID:              job.ID,
 		Slug:            job.Slug,
@@ -194,7 +188,7 @@ func acpJobState(job acp.Job) storage.ACPState {
 		Assistant:       job.Assistant,
 		Thought:         job.Thought,
 		Plan:            plan,
-		ToolCalls:       calls,
+		ToolCalls:       acp.CloneToolCalls(job.ToolCalls),
 		Permissions:     job.Permissions,
 		Modes: sessionevents.ACPModeState{
 			CurrentModeID:  job.Modes.CurrentModeID,
@@ -205,6 +199,8 @@ func acpJobState(job acp.Job) storage.ACPState {
 		ParentVisible: job.ParentVisible,
 		CreatedAt:     job.CreatedAt,
 		UpdatedAt:     job.UpdatedAt,
+		LastEventAt:   job.LastEventAt,
+		LastToolAt:    job.LastToolAt,
 	}
 }
 
