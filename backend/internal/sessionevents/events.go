@@ -8,24 +8,26 @@ import (
 )
 
 const (
-	TypeArtifact        = "artifact"
-	TypeSession         = "session"
-	TypeLoopCreated     = "loop_created"
-	TypeSideChatMessage = "side_chat_message"
+	TypeArtifact         = "artifact"
+	TypeSession          = "session"
+	TypeLoopCreated      = "loop_created"
+	TypeSideChatMessage  = "side_chat_message"
+	TypeProviderSubagent = "provider_subagent"
 )
 
 type Event struct {
-	Seq         int64             `json:"seq,omitempty"`
-	SessionID   string            `json:"session_id"`
-	Type        string            `json:"type"`
-	Content     string            `json:"content,omitempty"`
-	ACP         *ACPEvent         `json:"acp,omitempty"`
-	Plan        *PlanEvent        `json:"plan,omitempty"`
-	Permission  *ACPPermission    `json:"permission,omitempty"`
-	Artifact    *ArtifactEvent    `json:"artifact,omitempty"`
-	LoopCreated *LoopCreatedEvent `json:"loop_created,omitempty"`
-	SideChat    *SideChatEvent    `json:"side_chat,omitempty"`
-	At          time.Time         `json:"at"`
+	Seq              int64                  `json:"seq,omitempty"`
+	SessionID        string                 `json:"session_id"`
+	Type             string                 `json:"type"`
+	Content          string                 `json:"content,omitempty"`
+	ACP              *ACPEvent              `json:"acp,omitempty"`
+	Plan             *PlanEvent             `json:"plan,omitempty"`
+	Permission       *ACPPermission         `json:"permission,omitempty"`
+	Artifact         *ArtifactEvent         `json:"artifact,omitempty"`
+	LoopCreated      *LoopCreatedEvent      `json:"loop_created,omitempty"`
+	SideChat         *SideChatEvent         `json:"side_chat,omitempty"`
+	ProviderSubagent *ProviderSubagentEvent `json:"provider_subagent,omitempty"`
+	At               time.Time              `json:"at"`
 }
 
 type SideChatEvent struct {
@@ -36,6 +38,22 @@ type SideChatEvent struct {
 	Role            string `json:"role"`
 	Content         string `json:"content"`
 	Status          string `json:"status,omitempty"`
+}
+
+type ProviderSubagentEvent struct {
+	Provider        string `json:"provider,omitempty"`
+	ID              string `json:"id"`
+	ThreadID        string `json:"thread_id,omitempty"`
+	ParentID        string `json:"parent_id,omitempty"`
+	Name            string `json:"name,omitempty"`
+	Role            string `json:"role,omitempty"`
+	Status          string `json:"status,omitempty"`
+	Summary         string `json:"summary,omitempty"`
+	Prompt          string `json:"prompt,omitempty"`
+	Model           string `json:"model,omitempty"`
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
+	StartedAtMs     int64  `json:"started_at_ms,omitempty"`
+	CompletedAtMs   int64  `json:"completed_at_ms,omitempty"`
 }
 
 type ArtifactEvent struct {
@@ -95,6 +113,19 @@ func (e *Event) NormalizePayload() {
 			e.LoopCreated = &loop
 			e.Content = ""
 		}
+	case TypeProviderSubagent:
+		if e.ProviderSubagent != nil {
+			e.Content = ""
+			return
+		}
+		if e.Content == "" {
+			return
+		}
+		var subagent ProviderSubagentEvent
+		if err := json.Unmarshal([]byte(e.Content), &subagent); err == nil && subagent.ID != "" {
+			e.ProviderSubagent = &subagent
+			e.Content = ""
+		}
 	}
 }
 
@@ -112,6 +143,13 @@ func (e Event) StorageContent() string {
 			return e.Content
 		}
 		if data, err := json.Marshal(e.LoopCreated); err == nil {
+			return string(data)
+		}
+	case TypeProviderSubagent:
+		if e.ProviderSubagent == nil {
+			return e.Content
+		}
+		if data, err := json.Marshal(e.ProviderSubagent); err == nil {
 			return string(data)
 		}
 	}

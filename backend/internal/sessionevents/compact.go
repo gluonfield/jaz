@@ -27,7 +27,7 @@ func CompactTranscript(events []Event) []Event {
 		key := transcriptCoalesceKey(event)
 		if key != "" {
 			if idx, ok := byKey[key]; ok {
-				items[idx].event = event
+				items[idx].event = mergeCoalescedEvent(items[idx].event, event)
 				continue
 			}
 			byKey[key] = len(items)
@@ -42,6 +42,55 @@ func CompactTranscript(events []Event) []Event {
 		out = append(out, item.event)
 	}
 	return out
+}
+
+func mergeCoalescedEvent(prev, next Event) Event {
+	if prev.Type == TypeProviderSubagent && next.Type == TypeProviderSubagent && prev.ProviderSubagent != nil && next.ProviderSubagent != nil {
+		subagent := mergeProviderSubagentEvent(*prev.ProviderSubagent, *next.ProviderSubagent)
+		next.ProviderSubagent = &subagent
+		next.Content = ""
+	}
+	return next
+}
+
+func mergeProviderSubagentEvent(prev, next ProviderSubagentEvent) ProviderSubagentEvent {
+	if next.Provider == "" {
+		next.Provider = prev.Provider
+	}
+	if next.ThreadID == "" {
+		next.ThreadID = prev.ThreadID
+	}
+	if next.ParentID == "" {
+		next.ParentID = prev.ParentID
+	}
+	if next.Name == "" {
+		next.Name = prev.Name
+	}
+	if next.Role == "" {
+		next.Role = prev.Role
+	}
+	if next.Status == "" {
+		next.Status = prev.Status
+	}
+	if next.Summary == "" {
+		next.Summary = prev.Summary
+	}
+	if next.Prompt == "" {
+		next.Prompt = prev.Prompt
+	}
+	if next.Model == "" {
+		next.Model = prev.Model
+	}
+	if next.ReasoningEffort == "" {
+		next.ReasoningEffort = prev.ReasoningEffort
+	}
+	if next.StartedAtMs == 0 {
+		next.StartedAtMs = prev.StartedAtMs
+	}
+	if next.CompletedAtMs == 0 {
+		next.CompletedAtMs = prev.CompletedAtMs
+	}
+	return next
 }
 
 func CompactTextChunks(events []Event) []Event {
@@ -203,6 +252,9 @@ func transcriptCoalesceKey(event Event) string {
 	}
 	if event.Type == "acp_tool" && event.ACP != nil && event.ACP.ID != "" && len(event.ACP.ToolCalls) > 0 && event.ACP.ToolCalls[0].ID != "" {
 		return "acp_tool:" + event.ACP.ID + ":" + event.ACP.ToolCalls[0].ID
+	}
+	if event.Type == TypeProviderSubagent && event.ProviderSubagent != nil && event.ProviderSubagent.ID != "" {
+		return "provider_subagent:" + event.ProviderSubagent.Provider + ":" + event.ProviderSubagent.ID
 	}
 	if (event.Type == "permission_request" || event.Type == "permission_response") && event.Permission != nil && event.Permission.ID != "" {
 		return event.Type + ":" + event.Permission.ID

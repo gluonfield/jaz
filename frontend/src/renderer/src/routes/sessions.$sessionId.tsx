@@ -46,6 +46,7 @@ import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
 import { takePendingMessage } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
+import { providerSubagentsFromEvents } from '@/lib/providerSubagents'
 import {
   approvalPlanSurfaceFromEvent,
   hasProgressSignal,
@@ -53,7 +54,7 @@ import {
   taskSurfaceBelongsToSession,
 } from '@/lib/taskSurface'
 import type { SendMessageOptions } from '@/lib/sendMessage'
-import { coalesceSessionEvents } from '@/lib/sessionEvents'
+import { coalesceSessionEvents, sessionEventPlacement } from '@/lib/sessionEvents'
 import { activePermissionIDs, isPermissionAwaitingResponse, resolveInactivePermissions } from '@/lib/sessionPermissions'
 import { latestEventTimeISO } from '@/lib/sessionLiveness'
 
@@ -298,7 +299,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
   const transcriptEvents = coalesceSessionEvents(
     [...persistedEvents, ...snapshotEvents, ...liveEvents].flatMap((event) => {
       // 'assistant' events are refresh signals; the message store has the content.
-      if (event.type === 'assistant' || event.type === 'side_chat_message') return []
+      if (event.type === 'assistant' || sessionEventPlacement(event) === 'side_chat') return []
       // Old rows round-tripped a typed-nil ACP into an empty struct.
       if (event.acp && !event.acp.id) event = { ...event, acp: undefined }
       const sanitized = sanitizeParentChildACPEvent(event, session.id)
@@ -336,14 +337,15 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
   // plan that needs the user's approval stays inline. Errors are
   // notified as toasts, not rendered as rows.
   const displayEvents = coalesceSessionEvents(
-    settledTranscriptEvents.map((event) => {
+    settledTranscriptEvents.flatMap((event) => {
+      if (sessionEventPlacement(event) !== 'transcript') return []
       const withoutError = stripACPError(event)
-      if (!hasProgressSignal(withoutError)) return withoutError
-      return stripProgressSignal(withoutError)
+      if (!hasProgressSignal(withoutError)) return [withoutError]
+      return [stripProgressSignal(withoutError)]
     }),
   )
   const sideChatEvents = coalesceSessionEvents(
-    liveEvents.filter((event) => event.type === 'side_chat_message'),
+    liveEvents.filter((event) => sessionEventPlacement(event) === 'side_chat'),
   )
   return {
     transcriptEvents: settledTranscriptEvents,
@@ -356,6 +358,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
     planDecisionSessionID: latestPlanDecisionSurface?.approvalSessionId,
     planDecisionIsCurrent: !Number.isNaN(planDecisionAt) && planDecisionAt >= latestUserAt,
     panelProgress: panelProgressEvent ? progressSurfaceFromEvent(panelProgressEvent) : undefined,
+    providerSubagents: providerSubagentsFromEvents(settledTranscriptEvents),
   }
 }
 
@@ -398,13 +401,18 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   const [planDecisionPending, setPlanDecisionPending] = useState(false)
   const [planDecisionError, setPlanDecisionError] = useState('')
   const sentPendingRef = useRef<string | null>(null)
-  // The panel only auto-opens on a git repo, so the picker needs to know up
-  // front — query it from the session's cwd (shares cache with the panel).
+  // Overview auto-opens only when it has real content, so check repo state
+  // up front here; provider subagents are already in the event stream.
   const detailSession = detail.data?.session
   const sessionCwd = detailSession?.runtime_ref?.cwd
   const sideChatAvailable = isCodexACPSession(detailSession)
   const repoInfo = useQuery({ ...sessionRepoQuery(sessionId), enabled: Boolean(sessionCwd) })
-  const sidePanel = useSidePanelState(Boolean(repoInfo.data?.git), sideChatAvailable)
+  const overviewAvailable = Boolean(
+    repoInfo.data?.git ||
+      detail.data?.events?.some((event) => sessionEventPlacement(event) === 'overview') ||
+      events.data.some((event) => sessionEventPlacement(event) === 'overview'),
+  )
+  const sidePanel = useSidePanelState(overviewAvailable, sideChatAvailable)
   const { openFile, openPreview } = sidePanel
   useEffect(() => window.jaz?.onOpenSideBrowserURL?.(openPreview), [openPreview])
   const notifyFilePreviewError = useCallback((message: string) => {
@@ -418,7 +426,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   })
 
   const itemCount =
-    (detail.data?.messages.length ?? 0) + events.data.filter((event) => event.type !== 'side_chat_message').length
+    (detail.data?.messages.length ?? 0) + events.data.filter((event) => sessionEventPlacement(event) !== 'side_chat').length
   const { live, streaming, send: sendLiveMessage, abort: abortLiveMessage } = useLiveSessionSend({
     sessionId,
     streamingRef,
@@ -537,6 +545,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     planDecisionSessionID,
     planDecisionIsCurrent,
     panelProgress,
+    providerSubagents,
     sideChatEvents,
   } = derived
   const showPlanDecision = Boolean(
@@ -754,6 +763,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
             <SidePanel
               session={session}
               progress={panelProgress}
+              subagents={providerSubagents}
               working={sessionRunning}
               visible={sidePanel.open}
               view={sidePanel.view}

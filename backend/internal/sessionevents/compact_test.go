@@ -242,6 +242,36 @@ func TestCompactTranscriptCoalescesACPProgressClear(t *testing.T) {
 	}
 }
 
+func TestCompactTranscriptCoalescesProviderSubagent(t *testing.T) {
+	got := CompactTranscript([]Event{
+		{
+			Seq:              1,
+			SessionID:        "thread",
+			Type:             TypeProviderSubagent,
+			ProviderSubagent: &ProviderSubagentEvent{Provider: "codex", ID: "worker-1", Name: "worker", Prompt: "inspect", Status: "running"},
+			At:               compactAt(1),
+		},
+		{
+			Seq:              2,
+			SessionID:        "thread",
+			Type:             TypeProviderSubagent,
+			ProviderSubagent: &ProviderSubagentEvent{Provider: "codex", ID: "worker-1", Status: "completed"},
+			At:               compactAt(2),
+		},
+	})
+
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1: %#v", len(got), got)
+	}
+	if got[0].Seq != 2 ||
+		got[0].ProviderSubagent == nil ||
+		got[0].ProviderSubagent.Status != "completed" ||
+		got[0].ProviderSubagent.Name != "worker" ||
+		got[0].ProviderSubagent.Prompt != "inspect" {
+		t.Fatalf("subagent event = %#v", got[0])
+	}
+}
+
 func TestACPEventMarshalPreservesExplicitEmptyPlan(t *testing.T) {
 	withoutPlan, err := json.Marshal(ACPEvent{ID: "thread", Agent: "codex"})
 	if err != nil {

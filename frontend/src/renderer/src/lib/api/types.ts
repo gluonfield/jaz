@@ -487,6 +487,22 @@ export interface SideChatEvent {
   status?: string
 }
 
+export interface ProviderSubagentEvent {
+  provider?: string
+  id: string
+  thread_id?: string
+  parent_id?: string
+  name?: string
+  role?: string
+  status?: string
+  summary?: string
+  prompt?: string
+  model?: string
+  reasoning_effort?: string
+  started_at_ms?: number
+  completed_at_ms?: number
+}
+
 export interface ACPEvent {
   id: string
   slug: string
@@ -583,6 +599,7 @@ export interface SessionEvent {
   artifact?: ArtifactEvent
   loop_created?: LoopCreatedEvent
   side_chat?: SideChatEvent
+  provider_subagent?: ProviderSubagentEvent
   at: string
 }
 

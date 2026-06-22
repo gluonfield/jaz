@@ -6,6 +6,7 @@ import { taskSurfaceFromEvent } from '@/lib/taskSurface'
 import {
   buildTimeline,
   isCollapsibleWork,
+  isSpawnedAgentEvent,
   stableEventKey,
   type TimelineItem,
 } from './timeline'
@@ -94,10 +95,13 @@ function EarlierHistoryButton({
   )
 }
 
-// Result cards (e.g. a created loop) read as a turn's outcome, so they anchor to
-// the end of the turn rather than splitting its work at the tool-call moment.
+// Result cards (a created loop, a spawned agent's run) read as a turn's outcome,
+// so they anchor to the end of the turn rather than folding into its work.
 function isResultCard(item: TimelineItem): boolean {
-  return item.kind === 'event' && item.event.type === 'loop_created'
+  return (
+    item.kind === 'event' &&
+    (item.event.type === 'loop_created' || isSpawnedAgentEvent(item.event))
+  )
 }
 
 export const Transcript = memo(function Transcript({

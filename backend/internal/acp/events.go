@@ -581,6 +581,23 @@ func (m *Manager) publishACPTool(job Job, call sessionevents.ACPToolCall) {
 	})
 }
 
+func (m *Manager) publishProviderSubagent(job Job, subagent sessionevents.ProviderSubagentEvent) {
+	if subagent.ID == "" {
+		return
+	}
+	if subagent.Provider == "" {
+		subagent.Provider = CanonicalAgentName(job.ACPAgent)
+	}
+	for _, sessionID := range surfaceSessionIDs(&job) {
+		m.recordAndPublish(sessionevents.Event{
+			SessionID:        sessionID,
+			Type:             sessionevents.TypeProviderSubagent,
+			ProviderSubagent: &subagent,
+			At:               time.Now().UTC(),
+		})
+	}
+}
+
 func (m *Manager) publishACPTranscriptEvent(job Job, eventType, content string, customize func(*sessionevents.ACPEvent)) {
 	m.saveACPState(job)
 	acp := acpEvent(job)
