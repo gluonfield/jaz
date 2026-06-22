@@ -340,6 +340,66 @@ func TestManagerRunsLocalJazAgentThroughACPJob(t *testing.T) {
 	}
 }
 
+func TestManagerSideChatDoesNotTouchRunningTurn(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := newFakeCodexManager(t, store, t.TempDir(), nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: acp.AgentCodex, Slug: "codex-side"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "block until cancelled", Completion: acp.CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
+	manager.Events = sessionevents.New()
+	live := manager.Events.Subscribe(ctx, spawned.SessionID)
+	if err := manager.SendSideChat(ctx, acp.SideChatRequest{
+		Session: spawned.SessionID,
+		ID:      "side-1",
+		Message: "quick check",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sideEvents := collectSideChatEvents(t, live, 2)
+
+	job, err := manager.Status(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.State != acp.StateRunning || job.Assistant != "" {
+		t.Fatalf("main turn changed: state=%s assistant=%q", job.State, job.Assistant)
+	}
+	messages, err := store.LoadMessages(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 || provider.MessageContent(messages[0]) != "block until cancelled" {
+		t.Fatalf("side chat leaked into messages %#v", messages)
+	}
+	if !hasSideChatEvent(sideEvents, "side-1", "user", "quick check") ||
+		!hasSideChatEvent(sideEvents, "side-1", "assistant", "hello from side chat") {
+		t.Fatalf("missing side chat events %#v", sideEvents)
+	}
+	storedEvents, err := store.LoadSessionEvents(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasSideChatEvent(storedEvents, "side-1", "user", "quick check") ||
+		hasSideChatEvent(storedEvents, "side-1", "assistant", "hello from side chat") {
+		t.Fatalf("side chat leaked into stored events %#v", storedEvents)
+	}
+	if hasACPMessage(storedEvents, "hello from side chat") {
+		t.Fatalf("side chat leaked into main acp transcript %#v", storedEvents)
+	}
+}
+
 func TestManagerPassesResolvedCwdToACPPrompt(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -1083,6 +1143,36 @@ func hasACPStatus(events []sessionevents.Event, id string) bool {
 	return false
 }
 
+func collectSideChatEvents(t *testing.T, ch <-chan sessionevents.Event, want int) []sessionevents.Event {
+	t.Helper()
+	deadline := time.After(time.Second)
+	var events []sessionevents.Event
+	for len(events) < want {
+		select {
+		case event := <-ch:
+			if event.Type == sessionevents.TypeSideChatMessage {
+				events = append(events, event)
+			}
+		case <-deadline:
+			t.Fatalf("side chat events = %#v, want %d", events, want)
+		}
+	}
+	return events
+}
+
+func hasSideChatEvent(events []sessionevents.Event, id, role, content string) bool {
+	for _, event := range events {
+		if event.Type == sessionevents.TypeSideChatMessage &&
+			event.SideChat != nil &&
+			event.SideChat.ID == id &&
+			event.SideChat.Role == role &&
+			event.SideChat.Content == content {
+			return true
+		}
+	}
+	return false
+}
+
 func newFakeAgentManager(t *testing.T, store *jsonstore.Store, root string, extraEnv map[string]string) *acp.Manager {
 	return newFakeAgentManagerWithModel(t, store, root, extraEnv, "")
 }
@@ -1092,6 +1182,14 @@ func newFakeAgentManagerWithModel(t *testing.T, store *jsonstore.Store, root str
 }
 
 func newFakeAgentManagerWithOptions(t *testing.T, store *jsonstore.Store, root string, extraEnv map[string]string, model, effort string) *acp.Manager {
+	return newFakeNamedAgentManagerWithOptions(t, store, root, "fake", extraEnv, model, effort)
+}
+
+func newFakeCodexManager(t *testing.T, store *jsonstore.Store, root string, extraEnv map[string]string) *acp.Manager {
+	return newFakeNamedAgentManagerWithOptions(t, store, root, acp.AgentCodex, extraEnv, "", "")
+}
+
+func newFakeNamedAgentManagerWithOptions(t *testing.T, store *jsonstore.Store, root, agent string, extraEnv map[string]string, model, effort string) *acp.Manager {
 	env := map[string]string{"JAZ_FAKE_ACP_AGENT": "1"}
 	for key, value := range extraEnv {
 		env[key] = value
@@ -1100,7 +1198,7 @@ func newFakeAgentManagerWithOptions(t *testing.T, store *jsonstore.Store, root s
 		Root:      root,
 		Workspace: t.TempDir(),
 		Agents: map[string]acp.AgentConfig{
-			"fake": {
+			agent: {
 				Command:         os.Args[0],
 				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
 				Model:           model,

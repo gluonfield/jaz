@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/sessioncontext"
+	"github.com/wins/jaz/backend/internal/tools"
 )
 
 func TestExecCommandCompletes(t *testing.T) {
@@ -54,10 +55,7 @@ func TestExecCommandDefaultsToSessionCWD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var payload map[string]any
-	if err := json.Unmarshal([]byte(result.Content), &payload); err != nil {
-		t.Fatal(err)
-	}
+	payload := awaitCommandPayload(t, manager, result)
 	got, err := filepath.EvalSymlinks(strings.TrimSpace(payload["output"].(string)))
 	if err != nil {
 		t.Fatal(err)
@@ -86,10 +84,7 @@ func TestExecCommandUsesSessionCWDOutsideWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var payload map[string]any
-	if err := json.Unmarshal([]byte(result.Content), &payload); err != nil {
-		t.Fatal(err)
-	}
+	payload := awaitCommandPayload(t, manager, result)
 	got, err := filepath.EvalSymlinks(strings.TrimSpace(payload["output"].(string)))
 	if err != nil {
 		t.Fatal(err)
@@ -142,4 +137,30 @@ func TestExecCommandWriteStdin(t *testing.T) {
 	if second["status"] != "completed" || !strings.Contains(second["output"].(string), "got:jaz") {
 		t.Fatalf("unexpected payload %#v", second)
 	}
+}
+
+func awaitCommandPayload(t *testing.T, manager *CommandManager, result tools.Result) map[string]any {
+	t.Helper()
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(result.Content), &payload); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		if payload["status"] != "running" {
+			return payload
+		}
+		writeTool := &WriteStdinTool{Manager: manager}
+		next, err := writeTool.Execute(context.Background(), map[string]any{
+			"session_id":    payload["session_id"],
+			"yield_time_ms": float64(5000),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal([]byte(next.Content), &payload); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Fatalf("command did not complete: %#v", payload)
+	return nil
 }

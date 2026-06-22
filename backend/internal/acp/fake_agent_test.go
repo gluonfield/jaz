@@ -247,6 +247,10 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			currentEffort = req.Value
 			sendResult(conn, msg, map[string]any{})
 		case "session/prompt":
+			var promptReq struct {
+				Meta map[string]any `json:"_meta"`
+			}
+			_ = json.Unmarshal(msg.Params, &promptReq)
 			if want := os.Getenv("JAZ_FAKE_ACP_EXPECT_MODEL"); want != "" && currentModel != want {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("configured model was not set", nil))
 				_ = conn.Send(context.Background(), resp)
@@ -259,6 +263,18 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			if want := os.Getenv("JAZ_FAKE_ACP_EXPECT_EFFORT"); want != "" && currentEffort != want {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("configured reasoning effort was not set", nil))
 				_ = conn.Send(context.Background(), resp)
+				continue
+			}
+			if _, ok := fakeSideChatMeta(promptReq.Meta); ok {
+				notify(conn, "session/update", map[string]any{
+					"sessionId": "fake-session",
+					"update": map[string]any{
+						"sessionUpdate": "agent_message_chunk",
+						"_meta":         promptReq.Meta,
+						"content":       map[string]any{"type": "text", "text": "hello from side chat"},
+					},
+				})
+				sendResult(conn, msg, map[string]any{"stopReason": "end_turn"})
 				continue
 			}
 			if strings.Contains(string(msg.Params), "block until cancelled") {
@@ -454,6 +470,19 @@ func fakeUltracodeMeta(meta map[string]any) bool {
 	}
 	value, ok := settings["ultracode"].(bool)
 	return ok && value
+}
+
+func fakeSideChatMeta(meta map[string]any) (map[string]any, bool) {
+	codex, ok := meta["codex"].(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	sideChat, ok := codex["sideChat"].(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	_, ok = sideChat["id"].(string)
+	return sideChat, ok
 }
 
 func validateFakeMCPServers(rawServers []json.RawMessage) error {

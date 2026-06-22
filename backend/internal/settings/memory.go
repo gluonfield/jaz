@@ -88,10 +88,14 @@ func MemoryAgentModel(agent string, defaults AgentDefaults) string {
 	case acp.AgentGrok:
 		return "grok-composer-2.5-fast"
 	case acp.AgentOpenCode:
-		if strings.TrimSpace(defaults.ACP[acp.AgentOpenCode].ModelProvider) == provider.ProviderOpenAI {
+		switch strings.TrimSpace(defaults.ACP[acp.AgentOpenCode].ModelProvider) {
+		case provider.ProviderOpenAI:
 			return "gpt-5.4-mini"
+		case "", provider.ProviderOpenRouter:
+			return "openai/gpt-5.4-mini"
+		default:
+			return ""
 		}
-		return "openai/gpt-5.4-mini"
 	default:
 		return ""
 	}
@@ -100,7 +104,7 @@ func MemoryAgentModel(agent string, defaults AgentDefaults) string {
 func MemoryAgentReasoningEffort(agent string) string {
 	switch acp.CanonicalAgentName(agent) {
 	case acp.AgentCodex, acp.AgentGrok:
-		return "minimal"
+		return "low"
 	default:
 		return ""
 	}

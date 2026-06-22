@@ -231,6 +231,54 @@ jobs:
           bun run build:bundle
           bunx electron-builder --win --x64 --publish never
 
+      - name: Smoke packaged app
+        working-directory: frontend
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path "dist/win-unpacked/Jaz.exe").Path
+          $log = Join-Path $env:APPDATA "Jaz\logs\main.log"
+          Remove-Item $log -Force -ErrorAction SilentlyContinue
+          $proc = Start-Process -FilePath $exe -PassThru
+          try {
+            $ready = $false
+            $deadline = (Get-Date).AddSeconds(20)
+            while ((Get-Date) -lt $deadline) {
+              Start-Sleep -Milliseconds 500
+              $proc.Refresh()
+              if ($proc.HasExited) {
+                if (Test-Path $log) {
+                  Get-Content $log -Tail 80
+                }
+                throw "Jaz exited during smoke launch with code $($proc.ExitCode)"
+              }
+              $logText = ""
+              if (Test-Path $log) {
+                $logText = Get-Content $log -Raw
+              }
+              if ($logText -match "failed to load|preload failed|renderer exited|renderer console 3|uncaught exception") {
+                Get-Content $log -Tail 80
+                throw "Jaz logged a startup failure during smoke launch"
+              }
+              $loaded = $logText -match "main window loaded"
+              $shown = $logText -match "main window shown"
+              $hasWindow = $proc.MainWindowHandle -ne 0
+              if ($loaded -and $shown -and $hasWindow) {
+                $ready = $true
+                break
+              }
+            }
+            if (!$ready) {
+              if (Test-Path $log) {
+                Get-Content $log -Tail 80
+              }
+              throw "Jaz did not show a main window during smoke launch"
+            }
+          } finally {
+            if (!$proc.HasExited) {
+              Stop-Process -Id $proc.Id -Force
+            }
+          }
+
       - name: Attach release assets
         working-directory: frontend
         env:

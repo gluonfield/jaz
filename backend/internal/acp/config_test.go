@@ -69,6 +69,56 @@ func TestProcessEnvIsMinimalAndCanonical(t *testing.T) {
 	})
 }
 
+func TestCodexBuiltinAgentUsesNpxCmdOnWindows(t *testing.T) {
+	cfg := codexBuiltinAgent("windows")
+	if cfg.Command != "npx.cmd" {
+		t.Fatalf("command = %q", cfg.Command)
+	}
+	if len(cfg.Args) < 2 || cfg.Args[1] != codexACPPackage {
+		t.Fatalf("args = %#v", cfg.Args)
+	}
+}
+
+func TestCodexBuiltinAgentUsesNpxElsewhere(t *testing.T) {
+	cfg := codexBuiltinAgent("darwin")
+	if cfg.Command != "npx" {
+		t.Fatalf("command = %q", cfg.Command)
+	}
+}
+
+func TestLaunchCommandWrapsWindowsCommandScripts(t *testing.T) {
+	command, args := resolvedLaunchCommand("windows", "npx.cmd", `C:\Program Files\nodejs\npx.cmd`, []string{"--version"})
+	if command != "cmd.exe" {
+		t.Fatalf("command = %q", command)
+	}
+	want := []string{"/d", "/s", "/c", "call", "npx.cmd", "--version"}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("args = %#v, want %#v", args, want)
+	}
+}
+
+func TestLaunchCommandWrapsAbsoluteWindowsCommandScripts(t *testing.T) {
+	resolved := `C:\Program Files\nodejs\npx.cmd`
+	command, args := resolvedLaunchCommand("windows", resolved, resolved, []string{"--version"})
+	if command != "cmd.exe" {
+		t.Fatalf("command = %q", command)
+	}
+	want := []string{"/d", "/s", "/c", "call", resolved, "--version"}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("args = %#v, want %#v", args, want)
+	}
+}
+
+func TestLaunchCommandLeavesNativeExecutablesAlone(t *testing.T) {
+	command, args := resolvedLaunchCommand("windows", "node", `C:\Program Files\nodejs\node.exe`, []string{"--version"})
+	if command != `C:\Program Files\nodejs\node.exe` {
+		t.Fatalf("command = %q", command)
+	}
+	if !reflect.DeepEqual(args, []string{"--version"}) {
+		t.Fatalf("args = %#v", args)
+	}
+}
+
 // Each adapter reads its own _meta extension key; every form below appends to
 // the agent's prompt rather than replacing it (a bare string would replace the
 // preset on claude, and grok ignores systemPrompt entirely).

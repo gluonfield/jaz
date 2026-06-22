@@ -37,6 +37,7 @@ type ACPManager interface {
 	CreateSession(context.Context, acp.SpawnRequest) (storage.Session, error)
 	Spawn(context.Context, acp.SpawnRequest) (acp.SpawnResult, error)
 	Send(context.Context, acp.SendRequest) (acp.Job, error)
+	SendSideChat(context.Context, acp.SideChatRequest) error
 	Status(string) (acp.Job, error)
 	List() []acp.Job
 	RunUtilityPrompt(context.Context, acp.UtilityPromptRequest) (string, error)
@@ -461,7 +462,6 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 		return
 	}
-
 	var req streamRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, err)

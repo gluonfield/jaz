@@ -137,6 +137,9 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 			At:     now,
 		}
 	}
+	if m.applySideChatUpdate(job, update) {
+		return
+	}
 	job.mu.Lock()
 	switch event := update.(type) {
 	case acpschema.AgentMessageChunkUpdate:

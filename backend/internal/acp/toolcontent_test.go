@@ -83,6 +83,9 @@ func TestBoundedRawInput(t *testing.T) {
 	if boundedRawInput(json.RawMessage(`{not json`)) != nil {
 		t.Fatalf("invalid rawInput should be dropped")
 	}
+	if boundedRawInput(json.RawMessage(`["not","an","object"]`)) != nil {
+		t.Fatalf("non-object rawInput should be dropped")
+	}
 	if boundedRawInput(json.RawMessage(`{"url":"https://x.com"}`)) == nil {
 		t.Fatalf("small valid rawInput should be kept")
 	}
