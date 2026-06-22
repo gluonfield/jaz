@@ -47,7 +47,7 @@ supports those fields.
 The built-in Codex ACP command uses the Jaz-published adapter:
 
 ```sh
-npx -y @jazchat/codex-acp@0.16.3 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true
+npx -y @jazchat/codex-acp@0.16.4 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true
 ```
 
 When developing the Codex ACP adapter itself, override the Codex command in
