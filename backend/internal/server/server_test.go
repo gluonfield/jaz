@@ -441,6 +441,83 @@ func TestACPStreamUsesServerContextAfterRequestCancel(t *testing.T) {
 	}
 }
 
+func TestACPSideChatRoutesToManager(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "codex-side-chat",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     "codex",
+			SessionID: "acp-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeACPManager{job: acp.Job{ID: session.ID, Slug: session.Slug, State: acp.StateRunning}}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/side-chat", strings.NewReader(`{"id":"side-1","message":"quick check"}`)).WithContext(ctx)
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store, ACP: manager}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	manager.mu.Lock()
+	sideChat := manager.sideChat
+	sideCtxErr := manager.sideCtxErr
+	manager.mu.Unlock()
+	if sideCtxErr != nil {
+		t.Fatalf("side chat used cancelled request context: %v", sideCtxErr)
+	}
+	if sideChat.Session != session.ID || sideChat.ID != "side-1" || sideChat.Message != "quick check" {
+		t.Fatalf("side chat request = %#v", sideChat)
+	}
+}
+
+func TestACPSideChatRejectsNonCodexSession(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "codex-wrapper-side-chat",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     "codex-wrapper",
+			SessionID: "acp-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeACPManager{job: acp.Job{ID: session.ID, Slug: session.Slug, State: acp.StateRunning}}
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/side-chat", strings.NewReader(`{"id":"side-1","message":"quick check"}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store, ACP: manager}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	manager.mu.Lock()
+	sideChat := manager.sideChat
+	manager.mu.Unlock()
+	if sideChat.Session != "" {
+		t.Fatalf("side chat manager was called: %#v", sideChat)
+	}
+}
+
 func TestACPInteractiveResponseUsesServerContextAfterRequestCancel(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -773,11 +850,14 @@ func TestSessionMessagesHidesDirectACPChildStateFromParent(t *testing.T) {
 type fakeACPManager struct {
 	mu            sync.Mutex
 	sent          acp.SendRequest
+	sideChat      acp.SideChatRequest
 	answered      acp.InteractiveAnswer
 	sendCtxErr    error
+	sideCtxErr    error
 	answerCtxErr  error
 	cancelCtxErr  error
 	sendErr       error
+	sideErr       error
 	answerErr     error
 	job           acp.Job
 	jobs          []acp.Job
@@ -876,6 +956,14 @@ func (f *fakeACPManager) Send(ctx context.Context, req acp.SendRequest) (acp.Job
 	f.sent = req
 	f.sendCtxErr = ctx.Err()
 	return f.job, f.sendErr
+}
+
+func (f *fakeACPManager) SendSideChat(ctx context.Context, req acp.SideChatRequest) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sideChat = req
+	f.sideCtxErr = ctx.Err()
+	return f.sideErr
 }
 
 func (f *fakeACPManager) Status(string) (acp.Job, error) {

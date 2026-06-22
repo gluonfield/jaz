@@ -33,12 +33,13 @@ import { useToast } from '@/components/ui/toast'
 import {
   answerSessionInteractiveResponse,
   cancelSession,
+  sendSessionSideChat,
   sessionMessagesQuery,
   sessionRepoQuery,
   uploadSessionAttachment,
 } from '@/lib/api/sessions'
 import { streamSessionMessage } from '@/lib/api/stream'
-import type { ACPJobSnapshot, ACPModeState, ChatMessage, SessionEvent, SessionMessages } from '@/lib/api/types'
+import type { ACPJobSnapshot, ACPModeState, ChatMessage, Session, SessionEvent, SessionMessages } from '@/lib/api/types'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
 import { takePendingMessage } from '@/lib/pendingMessage'
@@ -71,6 +72,10 @@ function SessionRoute() {
   const { sessionId } = Route.useParams()
   const search = Route.useSearch()
   return <SessionPage key={sessionId} sessionId={sessionId} search={search} />
+}
+
+function isCodexACPSession(session: Session | undefined): boolean {
+  return session?.runtime === 'acp' && session.runtime_ref?.agent?.trim().toLowerCase() === 'codex'
 }
 
 // One in-flight user → assistant exchange, rendered after the transcript
@@ -334,7 +339,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
   const transcriptEvents = coalesceSessionEvents(
     [...persistedEvents, ...snapshotEvents, ...liveEvents].flatMap((event) => {
       // 'assistant' events are refresh signals; the message store has the content.
-      if (event.type === 'assistant') return []
+      if (event.type === 'assistant' || event.type === 'side_chat_message') return []
       // Old rows round-tripped a typed-nil ACP into an empty struct.
       if (event.acp && !event.acp.id) event = { ...event, acp: undefined }
       const sanitized = sanitizeParentChildACPEvent(event, session.id)
@@ -378,8 +383,12 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
       return stripProgressSignal(withoutError)
     }),
   )
+  const sideChatEvents = coalesceSessionEvents(
+    liveEvents.filter((event) => event.type === 'side_chat_message'),
+  )
   return {
     transcriptEvents: settledTranscriptEvents,
+    sideChatEvents,
     displayEvents,
     planAvailable,
     planActive,
@@ -435,12 +444,15 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   const sentPendingRef = useRef<string | null>(null)
   // The panel only auto-opens on a git repo, so the picker needs to know up
   // front — query it from the session's cwd (shares cache with the panel).
-  const sessionCwd = detail.data?.session.runtime_ref?.cwd
+  const detailSession = detail.data?.session
+  const sessionCwd = detailSession?.runtime_ref?.cwd
+  const sideChatAvailable = isCodexACPSession(detailSession)
   const repoInfo = useQuery({ ...sessionRepoQuery(sessionId), enabled: Boolean(sessionCwd) })
-  const sidePanel = useSidePanelState(Boolean(repoInfo.data?.git))
+  const sidePanel = useSidePanelState(Boolean(repoInfo.data?.git), sideChatAvailable)
   useEffect(() => window.jaz?.onOpenSideBrowserURL?.(sidePanel.openPreview), [sidePanel.openPreview])
 
-  const itemCount = (detail.data?.messages.length ?? 0) + events.data.length
+  const itemCount =
+    (detail.data?.messages.length ?? 0) + events.data.filter((event) => event.type !== 'side_chat_message').length
   const liveSize = live
     ? live.user.length +
       live.reasoning.length +
@@ -598,6 +610,11 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     queryClient.invalidateQueries({ queryKey: keys.usage })
   }, [handleSend, queryClient, sessionId])
 
+  const handleSideChatSend = useCallback(async (sideChatID: string, message: string) => {
+    await sendSessionSideChat(sessionId, { id: sideChatID, message })
+    await queryClient.refetchQueries({ queryKey: keys.sessionMessages(sessionId) })
+  }, [queryClient, sessionId])
+
   const currentSession = detail.data?.session
   const queue = useSessionQueue({
     sessionId,
@@ -672,6 +689,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     planDecisionSessionID,
     planDecisionIsCurrent,
     panelProgress,
+    sideChatEvents,
   } = derived
   const showPlanDecision = Boolean(
     latestPlanDecisionSurface?.awaitingApproval &&
@@ -743,6 +761,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                 <SidePanelControl
                   open={sidePanel.open}
                   view={sidePanel.view}
+                  sideChatAvailable={sideChatAvailable}
                   fileAvailable={Boolean(sidePanel.fileRef)}
                   onToggle={sidePanel.toggle}
                   onSelectView={sidePanel.selectView}
@@ -916,9 +935,12 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
               view={sidePanel.view}
               previewUrl={sidePanel.previewUrl}
               fileRef={sidePanel.fileRef}
+              sideChatAvailable={sideChatAvailable}
+              sideChatEvents={sideChatEvents}
               onPreviewUrlChange={sidePanel.setPreviewUrl}
               onOpenFile={sidePanel.openFile}
               onSend={queue.onSend}
+              onSendSideChat={handleSideChatSend}
               onClose={sidePanel.toggle}
             />
           </motion.div>
