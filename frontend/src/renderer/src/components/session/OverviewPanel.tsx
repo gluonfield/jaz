@@ -133,7 +133,7 @@ function SubagentRow({ subagent }: { subagent: ProviderSubagentView }) {
         ) : null}
       </button>
       {expanded && prompt ? (
-        <p className="ml-[25px] max-h-28 overflow-y-auto whitespace-pre-wrap rounded-md bg-surface-2 px-2 py-1.5 text-[11px] leading-snug text-ink-3">
+        <p className="ml-[25px] max-h-28 overflow-y-auto whitespace-pre-wrap px-1 pb-1 text-[11px] leading-snug text-ink-3">
           {prompt}
         </p>
       ) : null}
