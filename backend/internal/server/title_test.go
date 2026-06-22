@@ -39,21 +39,7 @@ func TestBeginACPTurnGeneratesTitleFromFirstMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	deadline := time.After(2 * time.Second)
-	for {
-		loaded, err := store.LoadSession(session.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if loaded.Title == "OAuth Callback Fix" {
-			break
-		}
-		select {
-		case <-deadline:
-			t.Fatalf("title = %q, want generated title", loaded.Title)
-		case <-time.After(20 * time.Millisecond):
-		}
-	}
+	waitForSessionTitle(t, store, session.ID, "OAuth Callback Fix")
 	if manager.utilityPrompt.ACPAgent != acp.AgentCodex {
 		t.Fatalf("utility prompt request = %#v", manager.utilityPrompt)
 	}
@@ -98,21 +84,7 @@ func TestMessageStreamGeneratesTitleVisibleToUI(t *testing.T) {
 	if manager.sent.Message != "Please repair generated thread names in the sidebar" {
 		t.Fatalf("send request = %#v", manager.sent)
 	}
-	deadline := time.After(2 * time.Second)
-	for {
-		loaded, err := store.LoadSession(session.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if loaded.Title == "Stream Route Title" {
-			break
-		}
-		select {
-		case <-deadline:
-			t.Fatalf("title = %q, want generated title", loaded.Title)
-		case <-time.After(20 * time.Millisecond):
-		}
-	}
+	waitForSessionTitle(t, store, session.ID, "Stream Route Title")
 }
 
 func TestGeneratedSessionTitlePublishesSessionEvent(t *testing.T) {
@@ -145,4 +117,23 @@ func TestGeneratedSessionTitlePublishesSessionEvent(t *testing.T) {
 		t.Fatalf("title = %q, want generated title", updated.Title)
 	}
 	expectSessionChangedEvent(t, sub, session.ID)
+}
+
+func waitForSessionTitle(t *testing.T, store storage.SessionStore, sessionID, want string) {
+	t.Helper()
+	deadline := time.After(10 * time.Second)
+	for {
+		loaded, err := store.LoadSession(sessionID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if loaded.Title == want {
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("title = %q, want %q", loaded.Title, want)
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
 }

@@ -13,6 +13,7 @@ import {
   startLocal,
   useConnection,
 } from '@/lib/connection'
+import { localDeviceLabel } from '@/lib/deviceLabel'
 import { useTheme } from '@/lib/theme'
 
 const EASE = [0.22, 1, 0.36, 1] as const
@@ -32,12 +33,6 @@ const swap = {
   animate: { opacity: 1, y: 0 },
   exit: { opacity: 0, y: -8 },
   transition: { duration: 0.2, ease: 'easeOut' as const },
-}
-
-function localDeviceLabel(): string {
-  if (/Mac/i.test(navigator.platform)) return 'this Mac'
-  if (/Win/i.test(navigator.platform)) return 'this PC'
-  return 'this computer'
 }
 
 // Floats over the live app while the health poll retries a lost backend; the

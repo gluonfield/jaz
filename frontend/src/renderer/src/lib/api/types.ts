@@ -459,6 +459,16 @@ export interface LoopCreatedEvent {
   boards?: LoopBoardRef[]
 }
 
+export interface SideChatEvent {
+  id: string
+  command?: string
+  parent_session_id?: string
+  thread_id?: string
+  role: 'user' | 'assistant' | 'thought' | 'tool' | 'error' | string
+  content: string
+  status?: string
+}
+
 export interface ACPEvent {
   id: string
   slug: string
@@ -544,6 +554,7 @@ export interface SessionEvent {
   permission?: ACPPermission
   artifact?: ArtifactEvent
   loop_created?: LoopCreatedEvent
+  side_chat?: SideChatEvent
   at: string
 }
 
