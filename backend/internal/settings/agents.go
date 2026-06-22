@@ -271,20 +271,37 @@ func shouldRefreshBuiltInCommand(name, storedCommand, seedCommand string) bool {
 		return false
 	}
 	seedExecutable, seedArgs, err := ParseCommandLine(seedCommand)
-	if err != nil || len(storedArgs) != len(seedArgs) || len(seedArgs) < 2 {
+	if err != nil || len(seedArgs) < 2 {
 		return false
 	}
 	if !isNpxExecutable(storedExecutable) || !isNpxExecutable(seedExecutable) {
 		return false
 	}
-	wantArgs := append([]string(nil), seedArgs...)
 	for _, legacyPackage := range legacyCodexACPPackages {
-		wantArgs[1] = legacyPackage
-		if stringSlicesEqual(storedArgs, wantArgs) {
+		if stringSlicesEqual(storedArgs, codexBuiltinArgsWithPackage(seedArgs, legacyPackage)) {
+			return true
+		}
+		if stringSlicesEqual(storedArgs, legacyCodexBuiltinArgs(seedArgs, legacyPackage)) {
 			return true
 		}
 	}
 	return false
+}
+
+func codexBuiltinArgsWithPackage(seedArgs []string, pkg string) []string {
+	args := append([]string(nil), seedArgs...)
+	args[1] = pkg
+	return args
+}
+
+func legacyCodexBuiltinArgs(seedArgs []string, pkg string) []string {
+	args := codexBuiltinArgsWithPackage(seedArgs, pkg)
+	if len(args) >= 8 &&
+		args[6] == "-c" &&
+		args[7] == `features.tool_search_always_defer_mcp_tools=true` {
+		return args[:6]
+	}
+	return args
 }
 
 func isNpxExecutable(executable string) bool {

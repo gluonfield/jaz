@@ -138,6 +138,23 @@ func TestMergeAgentDefaultsRefreshesLegacyCodexWindowsCommand(t *testing.T) {
 	}
 }
 
+func TestMergeAgentDefaultsRefreshesLegacyCodexCommandBeforeToolSearchFlag(t *testing.T) {
+	seed := testAgentDefaultsSeed()
+	stored := AgentDefaults{ACP: map[string]ACPAgentDefaults{
+		"codex": {
+			Command:         `npx -y @jazchat/codex-acp@0.16.1 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"'`,
+			Model:           "gpt-5.5",
+			ReasoningEffort: "xhigh",
+		},
+	}}
+
+	merged := MergeAgentDefaults(stored, seed, []string{"codex"})
+
+	if merged.ACP["codex"].Command != seed.ACP["codex"].Command {
+		t.Fatalf("codex command = %q, want %q", merged.ACP["codex"].Command, seed.ACP["codex"].Command)
+	}
+}
+
 func TestNormalizeAgentDefaultsAllowsClaudeOnlyReasoningEffort(t *testing.T) {
 	for _, effort := range []string{"max", "ultracode"} {
 		input := testAgentDefaultsSeed()
