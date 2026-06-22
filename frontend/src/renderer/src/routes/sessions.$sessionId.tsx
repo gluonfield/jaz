@@ -1,11 +1,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { ArrowDown, FileText } from 'lucide-react'
+import { ArrowDown } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BottomDock } from '@/components/session/BottomDock'
 import { Composer, PlanDecisionCard } from '@/components/session/Composer'
+import { LiveAttachmentList } from '@/components/session/LiveAttachmentList'
 import { MessageContexts } from '@/components/session/MessageContexts'
 import { SelectionContextToolbar } from '@/components/session/SelectionContextToolbar'
 import { useFileReferencePreview } from '@/components/session/useFileReferencePreview'
@@ -25,9 +26,10 @@ import { TokenStats } from '@/components/session/TokenStats'
 import { ToolCallCard } from '@/components/session/ToolCallCard'
 import { Transcript } from '@/components/session/Transcript'
 import { THREAD_COLUMN_CLASS } from '@/components/session/threadLayout'
-import { isArtifactToolName, isHiddenToolName } from '@/components/session/toolVisibility'
+import { isArtifactToolName } from '@/components/session/toolVisibility'
 import { useThreadFind } from '@/components/session/useThreadFind'
 import { useThreadAutoScroll } from '@/components/session/useThreadAutoScroll'
+import { liveExchangeSize, liveUserMessage, useLiveSessionSend } from '@/components/session/useLiveSessionSend'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Skeleton, SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
@@ -39,7 +41,6 @@ import {
   sessionRepoQuery,
   uploadSessionAttachment,
 } from '@/lib/api/sessions'
-import { streamSessionMessage } from '@/lib/api/stream'
 import type { ACPJobSnapshot, ACPModeState, ChatMessage, Session, SessionEvent, SessionMessages } from '@/lib/api/types'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
@@ -51,8 +52,7 @@ import {
   progressSurfaceFromEvent,
   taskSurfaceBelongsToSession,
 } from '@/lib/taskSurface'
-import type { ComposerContext, SendMessageOptions } from '@/lib/sendMessage'
-import { contextAttachmentIDs, contextInputs } from '@/lib/messageContext'
+import type { SendMessageOptions } from '@/lib/sendMessage'
 import { coalesceSessionEvents } from '@/lib/sessionEvents'
 import { activePermissionIDs, isPermissionAwaitingResponse, resolveInactivePermissions } from '@/lib/sessionPermissions'
 import { latestEventTimeISO } from '@/lib/sessionLiveness'
@@ -80,30 +80,6 @@ function isCodexACPSession(session: Session | undefined): boolean {
   return session?.runtime === 'acp' && session.runtime_ref?.agent?.trim().toLowerCase() === 'codex'
 }
 
-// One in-flight user → assistant exchange, rendered after the transcript
-// while it streams; replaced by the refetched server history on completion.
-interface LiveExchange {
-  user: string
-  at: string
-  planRequested: boolean
-  contexts: ComposerContext[]
-  attachments: LiveAttachment[]
-  reasoning: string
-  assistant: string
-  tools: { key: string; name: string; args?: string; result?: string }[]
-  error?: string
-}
-
-interface LiveAttachment {
-  id?: string
-  name: string
-  uri?: string
-  mime_type?: string
-  size?: number
-  server_path?: string
-  uploading?: boolean
-}
-
 function stripACPError(event: SessionEvent): SessionEvent {
   if (!event.acp?.error) return event
   return { ...event, acp: { ...event.acp, error: undefined } }
@@ -120,17 +96,6 @@ function stripProgressSignal(event: SessionEvent): SessionEvent {
 
 function sessionEventErrorMessage(event: SessionEvent): string {
   return event.acp?.error?.trim() ?? ''
-}
-
-function finishLiveAttachments(attachments: LiveAttachment[]): LiveAttachment[] {
-  return attachments.map((attachment) => ({ ...attachment, uploading: false }))
-}
-
-function formatAttachmentSize(size?: number): string {
-  if (!size) return ''
-  if (size < 1024) return `${size} B`
-  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function modeStateKnown(modes?: ACPModeState): boolean {
@@ -152,26 +117,6 @@ function latestACPModeState(sessionId: string, events: SessionEvent[]): ACPModeS
     latest = event.acp.modes
   }
   return latest
-}
-
-function LiveAttachmentList({ attachments }: { attachments: LiveAttachment[] }) {
-  if (!attachments.length) return null
-  return (
-    <div className="mt-2 flex flex-wrap gap-1">
-      {attachments.map((attachment, index) => (
-        <span
-          key={attachment.id ?? `${attachment.name}-${index}`}
-          className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-bg px-2.5 py-1 text-xs text-ink-2"
-        >
-          <FileText size={13} className="shrink-0 text-primary" />
-          <span className="max-w-[220px] truncate text-ink">{attachment.name}</span>
-          <span className="shrink-0 text-ink-3">
-            {attachment.uploading ? 'Uploading' : formatAttachmentSize(attachment.size)}
-          </span>
-        </span>
-      ))}
-    </div>
-  )
 }
 
 function ScrollToBottomButton({ visible, onClick }: { visible: boolean; onClick: () => void }) {
@@ -438,11 +383,8 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   useEffect(() => setLastSessionEventAt(undefined), [sessionId])
   useSessionEvents(sessionId, detail.data?.events, streamingRef, handleSessionEvent)
 
-  const [live, setLive] = useState<LiveExchange | null>(null)
-  const [streaming, setStreaming] = useState(false)
   const [planDecisionPending, setPlanDecisionPending] = useState(false)
   const [planDecisionError, setPlanDecisionError] = useState('')
-  const abortRef = useRef<AbortController | null>(null)
   const sentPendingRef = useRef<string | null>(null)
   // The panel only auto-opens on a git repo, so the picker needs to know up
   // front — query it from the session's cwd (shares cache with the panel).
@@ -465,15 +407,12 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
 
   const itemCount =
     (detail.data?.messages.length ?? 0) + events.data.filter((event) => event.type !== 'side_chat_message').length
-  const liveSize = live
-    ? live.user.length +
-      live.contexts.length +
-      live.reasoning.length +
-      live.assistant.length +
-      live.tools.length +
-      live.attachments.length +
-      (live.error?.length ?? 0)
-    : 0
+  const { live, streaming, send: sendLiveMessage, abort: abortLiveMessage } = useLiveSessionSend({
+    sessionId,
+    streamingRef,
+    onCriticalError: notifyCriticalError,
+  })
+  const liveSize = liveExchangeSize(live)
   const [bottomDockHeight, setBottomDockHeight] = useState(0)
   const transcriptBottomPadding = Math.max(bottomDockHeight + TRANSCRIPT_DOCK_GAP_PX, 160)
   const { scrollRef, showScrollToBottom, onScroll: onThreadScroll, scrollToBottom, pinToBottom } =
@@ -481,142 +420,10 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   const threadFind = useThreadFind(sessionId, scrollRef)
   const [highlightedMessageSeq, setHighlightedMessageSeq] = useState<number>()
 
-  // Abandon an in-flight stream when leaving the session.
-  useEffect(() => () => abortRef.current?.abort(), [sessionId])
-
   const handleSend = useCallback((text: string, options: SendMessageOptions = {}) => {
-    const controller = new AbortController()
-    const files = options.files ?? []
-    const draftAttachments = options.attachments ?? []
-    const draftContexts = options.contexts ?? []
-    const contextAttachments: LiveAttachment[] = draftContexts.flatMap((context) =>
-      context.type === 'browser_annotation' && context.screenshotAttachment?.id
-        ? [{
-            id: context.screenshotAttachment.id,
-            name: context.screenshotAttachment.name ?? 'annotation screenshot',
-            uri: context.screenshotAttachment.uri,
-            mime_type: context.screenshotAttachment.mime_type,
-            size: context.screenshotAttachment.size,
-            server_path: context.screenshotAttachment.server_path,
-          }]
-        : [],
-    )
-    abortRef.current = controller
     pinToBottom()
-    setLive({
-      user: text,
-      at: new Date().toISOString(),
-      planRequested: Boolean(options.planRequested),
-      contexts: draftContexts,
-      attachments: [
-        ...draftAttachments,
-        ...contextAttachments,
-        ...files.map((file) => ({ name: file.name, size: file.size, uploading: true })),
-      ],
-      reasoning: '',
-      assistant: '',
-      tools: [],
-    })
-    setStreaming(true)
-    streamingRef.current = true
-
-    ;(async () => {
-      const attachments = files.length
-        ? await Promise.all(files.map((file) => uploadSessionAttachment(sessionId, file, controller.signal)))
-        : []
-      if (attachments.length) {
-        setLive((prev) =>
-          prev ? { ...prev, attachments: [...draftAttachments, ...contextAttachments, ...attachments] } : prev,
-        )
-      }
-      await streamSessionMessage({
-        sessionId,
-        message: text,
-        contexts: contextInputs(draftContexts),
-        attachmentIds: [
-          ...draftAttachments.map((attachment) => attachment.id),
-          ...contextAttachmentIDs(draftContexts),
-          ...attachments.map((attachment) => attachment.id),
-        ],
-        planRequested: options.planRequested,
-        signal: controller.signal,
-        onEvent: (event) => {
-          if (event.type === 'error') {
-            notifyCriticalError(event.error || 'Something went wrong.')
-          }
-          setLive((prev) => {
-            if (!prev) return prev
-            switch (event.type) {
-              case 'delta':
-                return { ...prev, assistant: prev.assistant + (event.delta ?? '') }
-              case 'reasoning':
-                return { ...prev, reasoning: prev.reasoning + (event.reasoning ?? '') }
-              case 'tool_call': {
-                const name = event.tool_call?.function?.name ?? event.tool_name ?? 'tool'
-                if (isHiddenToolName(name)) return prev
-                return {
-                  ...prev,
-                  tools: [
-                    ...prev.tools,
-                    {
-                      key: event.tool_call?.id ?? `${name}-${prev.tools.length}`,
-                      name,
-                      args: event.tool_call?.function?.arguments,
-                    },
-                  ],
-                }
-              }
-              case 'tool_result': {
-                if (isHiddenToolName(event.tool_name)) return prev
-                const idx = prev.tools.findLastIndex((t) => t.result === undefined)
-                const tools =
-                  idx === -1
-                    ? [
-                        ...prev.tools,
-                        {
-                          key: `result-${prev.tools.length}`,
-                          name: event.tool_name ?? 'tool',
-                          result: event.result,
-                        },
-                      ]
-                    : prev.tools.map((t, i) => (i === idx ? { ...t, result: event.result } : t))
-                return { ...prev, tools }
-              }
-              case 'error':
-                return {
-                  ...prev,
-                  attachments: finishLiveAttachments(prev.attachments),
-                  error: event.error || 'Something went wrong.',
-                }
-              default:
-                return prev
-            }
-          })
-        },
-      })
-    })()
-      .catch((err: Error) => {
-        if (controller.signal.aborted) return
-        notifyCriticalError(err.message || 'Something went wrong.')
-        setLive((prev) =>
-          prev ? { ...prev, attachments: finishLiveAttachments(prev.attachments), error: err.message } : prev,
-        )
-      })
-      .finally(async () => {
-        setStreaming(false)
-        streamingRef.current = false
-        abortRef.current = null
-        // The server persisted the exchange; swap the live view for history.
-        await queryClient.refetchQueries({ queryKey: keys.sessionMessages(sessionId) })
-        queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
-        queryClient.invalidateQueries({ queryKey: keys.allSessions })
-        queryClient.invalidateQueries({ queryKey: keys.usage })
-        // The turn likely touched the working tree; the SSE hook skips this
-        // page while it streams (streamingRef), so refresh repo state here.
-        queryClient.invalidateQueries({ queryKey: keys.sessionRepo(sessionId) })
-        setLive((prev) => (prev?.error ? { ...prev, error: undefined } : null))
-      })
-  }, [notifyCriticalError, pinToBottom, queryClient, sessionId])
+    sendLiveMessage(text, options)
+  }, [pinToBottom, sendLiveMessage])
 
   const sendACPFallback = useCallback(async (
     targetSessionID: string,
@@ -742,38 +549,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     isACP && live && lastUserMessage?.content.trim() !== live.user.trim()
       ? [
           ...messages,
-          {
-            seq: (messages.at(-1)?.seq ?? 0) + 1_000_000,
-            role: 'user' as const,
-            content: live.user,
-            blocks: [
-              ...contextInputs(live.contexts).map((context) =>
-                context.type === 'selection'
-                  ? { type: 'quote' as const, text: context.text }
-                  : {
-                      type: 'browser_annotation' as const,
-                      input_json: JSON.stringify(context.browser_annotation ?? {}),
-                    },
-              ),
-              { type: 'text' as const, text: live.user },
-              ...live.attachments.flatMap((attachment) =>
-                attachment.id && attachment.uri
-                  ? [
-                      {
-                        type: 'attachment' as const,
-                        id: attachment.id,
-                        name: attachment.name,
-                        uri: attachment.uri,
-                        mime_type: attachment.mime_type,
-                        size: attachment.size,
-                        server_path: attachment.server_path,
-                      },
-                    ]
-                  : [],
-              ),
-            ],
-            created_at: live.at,
-          },
+          liveUserMessage(live, (messages.at(-1)?.seq ?? 0) + 1_000_000),
         ]
       : messages
   const titlebarSlot = document.getElementById('titlebar-slot')
@@ -942,7 +718,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                   onStop={() => {
                     // the turn runs detached server-side; stop it there first
                     void cancelSession(sessionId).catch(() => {})
-                    abortRef.current?.abort()
+                    abortLiveMessage()
                   }}
                   onVoice={undefined}
                   onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
