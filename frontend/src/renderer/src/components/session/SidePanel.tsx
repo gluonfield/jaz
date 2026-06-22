@@ -1,5 +1,6 @@
 import type { Attachment, Session, SessionEvent } from '@/lib/api/types'
 import type { BrowserAnnotation } from '@/lib/messageContext'
+import type { ProviderSubagentView } from '@/lib/providerSubagents'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import type { TaskSurface } from '@/lib/taskSurface'
 import type { FileReference } from '../../../../shared/fileReader'
@@ -24,6 +25,7 @@ export const SIDE_PANEL_WIDTHS: Record<SidePanelView, number> = {
 export function SidePanel({
   session,
   progress,
+  subagents,
   working,
   visible,
   view,
@@ -41,6 +43,7 @@ export function SidePanel({
 }: {
   session: Session
   progress?: TaskSurface
+  subagents: ProviderSubagentView[]
   working: boolean
   visible: boolean
   view: SidePanelView
@@ -66,7 +69,7 @@ export function SidePanel({
           onClose={onClose}
         />
       ) : (
-        <OverviewPanel session={session} progress={progress} working={working} onSend={onSend} />
+        <OverviewPanel session={session} progress={progress} subagents={subagents} working={working} onSend={onSend} />
       )
     case 'diff':
       return <CodeDiffPanel session={session} visible={visible} onClose={onClose} />
@@ -97,6 +100,7 @@ export function SidePanel({
         <OverviewPanel
           session={session}
           progress={progress}
+          subagents={subagents}
           working={working}
           onSend={onSend}
         />

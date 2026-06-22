@@ -1,4 +1,5 @@
 import type { SessionEvent } from '@/lib/api/types'
+import { mergeProviderSubagentEvent } from '@/lib/providerSubagents'
 import { taskSurfaceKey } from '@/lib/taskSurface'
 
 // A child agent's run as seen from its parent's transcript. The parent only
@@ -10,6 +11,19 @@ export function isParentChildACPEvent(event: SessionEvent): boolean {
       event.acp.parent_id === event.session_id &&
       event.acp.id !== event.session_id,
   )
+}
+
+export type SessionEventPlacement = 'transcript' | 'overview' | 'side_chat'
+
+export function sessionEventPlacement(event: SessionEvent): SessionEventPlacement {
+  switch (event.type) {
+    case 'provider_subagent':
+      return 'overview'
+    case 'side_chat_message':
+      return 'side_chat'
+    default:
+      return 'transcript'
+  }
 }
 
 // Stable identity for the events that update in place rather than appending:
@@ -29,6 +43,9 @@ export function inPlaceEventKey(event: SessionEvent): string | null {
   }
   if (event.type === 'acp_tool' && event.acp?.id && event.acp.tool_calls?.[0]?.id) {
     return `acp_tool:${event.acp.id}:${event.acp.tool_calls[0].id}`
+  }
+  if (event.type === 'provider_subagent' && event.provider_subagent?.id) {
+    return `provider_subagent:${event.provider_subagent.provider ?? ''}:${event.provider_subagent.id}`
   }
   if ((event.type === 'permission_request' || event.type === 'permission_response') && event.permission?.id) {
     return `${event.type}:${event.permission.id}`
@@ -63,7 +80,7 @@ export function mergeSessionEvent(prev: SessionEvent[], event: SessionEvent): Se
   const index = prev.findIndex((item) => sessionEventCoalesceKey(item) === key)
   if (index === -1) return [...prev, event]
   const next = [...prev]
-  next[index] = event
+  next[index] = mergeCoalescedSessionEvent(next[index], event)
   return next
 }
 
@@ -93,7 +110,7 @@ export function coalesceSessionEvents(events: SessionEvent[]): SessionEvent[] {
       if (key) byKey.set(key, indexed.length)
       indexed.push({ event, index: sourceIndex })
     } else {
-      indexed[slot] = { event, index: indexed[slot].index }
+      indexed[slot] = { event: mergeCoalescedSessionEvent(indexed[slot].event, event), index: indexed[slot].index }
     }
   })
   return indexed
@@ -110,6 +127,16 @@ export function coalesceSessionEvents(events: SessionEvent[]): SessionEvent[] {
       return timeA - timeB || seqA - seqB || a.index - b.index
     })
     .map((item) => item.event)
+}
+
+function mergeCoalescedSessionEvent(prev: SessionEvent, next: SessionEvent): SessionEvent {
+  if (prev.type === 'provider_subagent' && next.type === 'provider_subagent' && next.provider_subagent) {
+    return {
+      ...next,
+      provider_subagent: mergeProviderSubagentEvent(prev.provider_subagent, next.provider_subagent),
+    }
+  }
+  return next
 }
 
 function mergeAdjacentACPText(prev: SessionEvent | undefined, event: SessionEvent): SessionEvent | undefined {

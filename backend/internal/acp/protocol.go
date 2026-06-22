@@ -145,6 +145,12 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	if m.applySideChatUpdate(job, update) {
 		return
 	}
+	if subagentUpdate := providerSubagentFromUpdate(job.ACPAgent, update); subagentUpdate.subagent != nil {
+		m.publishProviderSubagent(job.Snapshot(), *subagentUpdate.subagent)
+		if subagentUpdate.consume {
+			return
+		}
+	}
 	job.mu.Lock()
 	switch event := update.(type) {
 	case acpschema.AgentMessageChunkUpdate:
