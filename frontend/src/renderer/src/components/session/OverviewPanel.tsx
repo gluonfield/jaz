@@ -95,7 +95,7 @@ function SubagentRow({ subagent }: { subagent: ProviderSubagentView }) {
   const [expanded, setExpanded] = useState(false)
   const status = SUBAGENT_STATUS[subagentStatus(subagent.status)]
   const title = subagentTitle(subagent)
-  const detail = firstText(subagentSummary(subagent.summary), subagent.thread_id, subagent.id)
+  const detail = subagentSummary(subagent.summary)
   const prompt = subagent.prompt?.trim() ?? ''
   return (
     <li className="min-w-0 rounded-md">
@@ -152,11 +152,22 @@ function subagentStatus(status: string | undefined): SubagentStatus {
 }
 
 function subagentTitle(subagent: ProviderSubagentView): string {
-  return firstText(subagent.name, subagent.role, subagent.thread_id, subagent.id) || 'Subagent'
+  return firstText(subagent.name, subagent.role) || 'Subagent'
 }
 
 function subagentSummary(summary: string | undefined): string | undefined {
-  return summary?.trim().toLowerCase() === 'spawned' ? undefined : summary
+  const text = summary?.trim()
+  if (!text) return undefined
+  switch (text.toLowerCase()) {
+    case 'spawned':
+    case 'working':
+    case 'waiting':
+    case 'wait finished':
+    case 'responded':
+      return undefined
+    default:
+      return text
+  }
 }
 
 function firstText(...values: Array<string | undefined>): string {
