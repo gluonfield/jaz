@@ -9,6 +9,15 @@ import (
 
 func messageWithContext(message string, contexts []storage.MessageContext) string {
 	contexts = storage.NormalizeMessageContexts(contexts)
+	return messageWithNormalizedContext(message, contexts)
+}
+
+func promptMessageAndContexts(message string, contexts []storage.MessageContext) (string, []storage.MessageContext) {
+	contexts = storage.NormalizeMessageContexts(contexts)
+	return messageWithNormalizedContext(message, contexts), contexts
+}
+
+func messageWithNormalizedContext(message string, contexts []storage.MessageContext) string {
 	if len(contexts) == 0 {
 		return message
 	}
