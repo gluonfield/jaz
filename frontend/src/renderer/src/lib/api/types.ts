@@ -1,5 +1,6 @@
 // Mirrors of the Go backend's JSON shapes (backend/internal/storage,
 // sessionevents, server). Field names must match exactly.
+import type { MessageContextInput } from '@/lib/messageContext'
 
 export interface RuntimeRef {
   type: string
@@ -91,6 +92,7 @@ export interface ThreadSearchResult {
 export interface QueuedMessage {
   id: string
   text: string
+  contexts?: MessageContextInput[]
   quotes?: string[]
   attachment_ids?: string[]
   plan_requested?: boolean
@@ -341,6 +343,7 @@ export type MessageBlock =
   | { type: 'text'; text?: string }
   | { type: 'reasoning'; text?: string }
   | { type: 'quote'; text?: string }
+  | { type: 'browser_annotation'; input_json?: string }
   | {
       type: 'attachment'
       id: string
