@@ -1,13 +1,11 @@
-import { ArrowUp, LoaderCircle, MessageSquarePlus, X } from 'lucide-react'
+import { ArrowUp, LoaderCircle, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { IconButton } from '@/components/ui/IconButton'
-import type { Session, SessionEvent } from '@/lib/api/types'
+import type { SessionEvent } from '@/lib/api/types'
 import { MessageMarkdown } from './MessageMarkdown'
 import { SidePanelShell } from './SidePanelShell'
 
 export const SIDE_CHAT_PANEL_WIDTH = 520
-
-const SIDE_CHAT_ID_KEY_PREFIX = 'jaz.sideChat.'
 
 type SideChatMessage = {
   key: string
@@ -18,51 +16,35 @@ type SideChatMessage = {
 }
 
 export function SideChatPanel({
-  session,
   events,
   visible,
   onSend,
   onClose,
 }: {
-  session: Session
   events: SessionEvent[]
   visible: boolean
   onSend: (sideChatID: string, message: string) => Promise<void>
   onClose: () => void
 }) {
-  const storageKey = `${SIDE_CHAT_ID_KEY_PREFIX}${session.id}`
-  const [sideChatID, setSideChatID] = useState(() => initialSideChatID(storageKey, events))
+  const [sideChatID, setSideChatID] = useState(newSideChatID)
   const [draft, setDraft] = useState('')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const storageKeyRef = useRef(storageKey)
   const messages = useMemo(() => sideChatMessages(events, sideChatID), [events, sideChatID])
   const latestMessageContent = messages.at(-1)?.content
-
-  useEffect(() => {
-    if (storageKeyRef.current === storageKey) return
-    storageKeyRef.current = storageKey
-    setSideChatID(initialSideChatID(storageKey, events))
-    setDraft('')
-    setError('')
-  }, [storageKey, events])
-
-  useEffect(() => {
-    localStorage.setItem(storageKey, sideChatID)
-  }, [storageKey, sideChatID])
 
   useEffect(() => {
     if (!visible) return
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
   }, [visible, messages.length, latestMessageContent])
 
-  const startNew = () => {
+  const close = () => {
+    onClose()
     setSideChatID(newSideChatID())
     setDraft('')
     setError('')
-    requestAnimationFrame(() => inputRef.current?.focus())
   }
 
   const submit = () => {
@@ -85,10 +67,7 @@ export function SideChatPanel({
         <div className="min-w-0 text-sm font-medium text-ink">Side chat</div>
         <div className="flex items-center gap-1">
           {pending ? <LoaderCircle size={15} className="animate-spin text-ink-3" aria-hidden /> : null}
-          <IconButton size="sm" aria-label="New side chat" title="New side chat" onClick={startNew}>
-            <MessageSquarePlus size={15} />
-          </IconButton>
-          <IconButton size="sm" aria-label="Hide side panel" title="Hide side panel" onClick={onClose}>
+          <IconButton size="sm" aria-label="Close side chat" title="Close side chat" onClick={close}>
             <X size={15} />
           </IconButton>
         </div>
@@ -167,18 +146,6 @@ function SideChatBubble({ message }: { message: SideChatMessage }) {
       <MessageMarkdown text={message.content} />
     </div>
   )
-}
-
-function initialSideChatID(storageKey: string, events: SessionEvent[]): string {
-  return localStorage.getItem(storageKey) || latestSideChatID(events) || newSideChatID()
-}
-
-function latestSideChatID(events: SessionEvent[]): string {
-  for (let i = events.length - 1; i >= 0; i--) {
-    const id = events[i].side_chat?.id
-    if (id) return id
-  }
-  return ''
 }
 
 function newSideChatID(): string {

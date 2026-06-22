@@ -342,6 +342,8 @@ func TestManagerSideChatDoesNotTouchRunningTurn(t *testing.T) {
 	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "block until cancelled", Completion: acp.CompletionInline}); err != nil {
 		t.Fatal(err)
 	}
+	manager.Events = sessionevents.New()
+	live := manager.Events.Subscribe(ctx, spawned.SessionID)
 	if err := manager.SendSideChat(ctx, acp.SideChatRequest{
 		Session: spawned.SessionID,
 		ID:      "side-1",
@@ -349,6 +351,7 @@ func TestManagerSideChatDoesNotTouchRunningTurn(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	sideEvents := collectSideChatEvents(t, live, 2)
 
 	job, err := manager.Status(spawned.SessionID)
 	if err != nil {
@@ -364,16 +367,20 @@ func TestManagerSideChatDoesNotTouchRunningTurn(t *testing.T) {
 	if len(messages) != 1 || provider.MessageContent(messages[0]) != "block until cancelled" {
 		t.Fatalf("side chat leaked into messages %#v", messages)
 	}
-	events, err := store.LoadSessionEvents(spawned.SessionID)
+	if !hasSideChatEvent(sideEvents, "side-1", "user", "quick check") ||
+		!hasSideChatEvent(sideEvents, "side-1", "assistant", "hello from side chat") {
+		t.Fatalf("missing side chat events %#v", sideEvents)
+	}
+	storedEvents, err := store.LoadSessionEvents(spawned.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !hasSideChatEvent(events, "side-1", "user", "quick check") ||
-		!hasSideChatEvent(events, "side-1", "assistant", "hello from side chat") {
-		t.Fatalf("missing side chat events %#v", events)
+	if hasSideChatEvent(storedEvents, "side-1", "user", "quick check") ||
+		hasSideChatEvent(storedEvents, "side-1", "assistant", "hello from side chat") {
+		t.Fatalf("side chat leaked into stored events %#v", storedEvents)
 	}
-	if hasACPMessage(events, "hello from side chat") {
-		t.Fatalf("side chat leaked into main acp transcript %#v", events)
+	if hasACPMessage(storedEvents, "hello from side chat") {
+		t.Fatalf("side chat leaked into main acp transcript %#v", storedEvents)
 	}
 }
 
@@ -1118,6 +1125,23 @@ func hasACPStatus(events []sessionevents.Event, id string) bool {
 		}
 	}
 	return false
+}
+
+func collectSideChatEvents(t *testing.T, ch <-chan sessionevents.Event, want int) []sessionevents.Event {
+	t.Helper()
+	deadline := time.After(time.Second)
+	var events []sessionevents.Event
+	for len(events) < want {
+		select {
+		case event := <-ch:
+			if event.Type == sessionevents.TypeSideChatMessage {
+				events = append(events, event)
+			}
+		case <-deadline:
+			t.Fatalf("side chat events = %#v, want %d", events, want)
+		}
+	}
+	return events
 }
 
 func hasSideChatEvent(events []sessionevents.Event, id, role, content string) bool {

@@ -36,35 +36,6 @@ func TestArtifactStorageContentDoesNotIncludeDebugSize(t *testing.T) {
 	}
 }
 
-func TestNormalizeSideChatPayloadClearsStorageContent(t *testing.T) {
-	event := Event{
-		Type:    TypeSideChatMessage,
-		Content: `{"id":"side-1","role":"assistant","content":"answer"}`,
-	}
-	event.NormalizePayload()
-	if event.SideChat == nil || event.SideChat.ID != "side-1" || event.SideChat.Content != "answer" {
-		t.Fatalf("side chat = %#v", event.SideChat)
-	}
-	if event.Content != "" {
-		t.Fatalf("content leaked storage payload: %q", event.Content)
-	}
-}
-
-func TestSideChatStorageContentUsesTypedPayload(t *testing.T) {
-	event := Event{
-		Type: TypeSideChatMessage,
-		SideChat: &SideChatEvent{
-			ID:      "side-1",
-			Role:    "assistant",
-			Content: "answer",
-		},
-	}
-	content := event.StorageContent()
-	if !strings.Contains(content, `"id":"side-1"`) || !strings.Contains(content, `"content":"answer"`) {
-		t.Fatalf("side chat storage content = %s", content)
-	}
-}
-
 func TestBusPublishesToEverySessionSubscriber(t *testing.T) {
 	bus := New()
 	ctx, cancel := context.WithCancel(context.Background())

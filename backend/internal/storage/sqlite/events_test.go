@@ -151,51 +151,6 @@ func TestLoopCreatedEventRoundTripsThroughContentColumn(t *testing.T) {
 	}
 }
 
-func TestSideChatEventRoundTripsThroughContentColumn(t *testing.T) {
-	store, err := New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	session, err := store.CreateSession(storage.CreateSession{Slug: "side-chat"})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{
-		Type: sessionevents.TypeSideChatMessage,
-		SideChat: &sessionevents.SideChatEvent{
-			ID:              "side-1",
-			Command:         "side",
-			ParentSessionID: session.ID,
-			ThreadID:        "thread-1",
-			Role:            "assistant",
-			Content:         "answer",
-			Status:          "running",
-		},
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	loaded, err := store.LoadSessionEvents(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(loaded) != 1 {
-		t.Fatalf("loaded events = %#v", loaded)
-	}
-	side := loaded[0].SideChat
-	if side == nil {
-		t.Fatalf("side chat payload was dropped: %#v", loaded[0])
-	}
-	if side.ID != "side-1" || side.ThreadID != "thread-1" || side.Content != "answer" || side.Status != "running" {
-		t.Fatalf("side chat payload = %#v", side)
-	}
-	if loaded[0].Content != "" {
-		t.Fatalf("content should be collapsed into the typed payload, got %q", loaded[0].Content)
-	}
-}
-
 func TestCompactSessionEventsMergesStoredTextChunks(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
