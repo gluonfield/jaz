@@ -1,4 +1,5 @@
 import type { SessionEvent } from '@/lib/api/types'
+import { mergeProviderSubagentEvent } from '@/lib/providerSubagents'
 import { taskSurfaceKey } from '@/lib/taskSurface'
 
 // A child agent's run as seen from its parent's transcript. The parent only
@@ -79,7 +80,7 @@ export function mergeSessionEvent(prev: SessionEvent[], event: SessionEvent): Se
   const index = prev.findIndex((item) => sessionEventCoalesceKey(item) === key)
   if (index === -1) return [...prev, event]
   const next = [...prev]
-  next[index] = event
+  next[index] = mergeCoalescedSessionEvent(next[index], event)
   return next
 }
 
@@ -109,7 +110,7 @@ export function coalesceSessionEvents(events: SessionEvent[]): SessionEvent[] {
       if (key) byKey.set(key, indexed.length)
       indexed.push({ event, index: sourceIndex })
     } else {
-      indexed[slot] = { event, index: indexed[slot].index }
+      indexed[slot] = { event: mergeCoalescedSessionEvent(indexed[slot].event, event), index: indexed[slot].index }
     }
   })
   return indexed
@@ -126,6 +127,16 @@ export function coalesceSessionEvents(events: SessionEvent[]): SessionEvent[] {
       return timeA - timeB || seqA - seqB || a.index - b.index
     })
     .map((item) => item.event)
+}
+
+function mergeCoalescedSessionEvent(prev: SessionEvent, next: SessionEvent): SessionEvent {
+  if (prev.type === 'provider_subagent' && next.type === 'provider_subagent' && next.provider_subagent) {
+    return {
+      ...next,
+      provider_subagent: mergeProviderSubagentEvent(prev.provider_subagent, next.provider_subagent),
+    }
+  }
+  return next
 }
 
 function mergeAdjacentACPText(prev: SessionEvent | undefined, event: SessionEvent): SessionEvent | undefined {
