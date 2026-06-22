@@ -400,19 +400,21 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		ac.close()
 		return fail(err)
 	}
+	now := time.Now().UTC()
 	job := &Job{
-		ID:         session.ID,
-		Slug:       session.Slug,
-		Title:      session.Title,
-		ParentID:   session.ParentID,
-		ACPAgent:   req.ACPAgent,
-		ACPSession: string(acpSession.response.SessionID),
-		Cwd:        absCwd,
-		State:      StateIdle,
-		Modes:      modes,
-		CreatedAt:  session.CreatedAt,
-		UpdatedAt:  time.Now().UTC(),
-		toolByID:   make(map[string]ToolCallSnapshot),
+		ID:          session.ID,
+		Slug:        session.Slug,
+		Title:       session.Title,
+		ParentID:    session.ParentID,
+		ACPAgent:    req.ACPAgent,
+		ACPSession:  string(acpSession.response.SessionID),
+		Cwd:         absCwd,
+		State:       StateIdle,
+		Modes:       modes,
+		CreatedAt:   session.CreatedAt,
+		UpdatedAt:   now,
+		LastEventAt: now,
+		toolByID:    make(map[string]sessionevents.ACPToolCall),
 	}
 	m.addJob(job, ac.conn, ac.peer, ac.cancel)
 	m.saveACPState(job.Snapshot())
@@ -526,6 +528,7 @@ func (m *Manager) resume(ctx context.Context, ref string) (*Job, error) {
 	if sessionChanged {
 		_ = m.store.SaveSession(session)
 	}
+	now := time.Now().UTC()
 	job := &Job{
 		ID:            session.ID,
 		Slug:          session.Slug,
@@ -538,8 +541,10 @@ func (m *Manager) resume(ctx context.Context, ref string) (*Job, error) {
 		Modes:         modes,
 		ParentVisible: state.ParentVisible,
 		CreatedAt:     session.CreatedAt,
-		UpdatedAt:     time.Now().UTC(),
-		toolByID:      make(map[string]ToolCallSnapshot),
+		UpdatedAt:     now,
+		LastEventAt:   firstNonZeroTime(state.LastEventAt, state.UpdatedAt),
+		LastToolAt:    state.LastToolAt,
+		toolByID:      make(map[string]sessionevents.ACPToolCall),
 	}
 	m.addJob(job, ac.conn, ac.peer, ac.cancel)
 	m.saveACPState(job.Snapshot())
@@ -616,6 +621,11 @@ func (m *Manager) Status(ref string) (Job, error) {
 	}
 	if session.Runtime != storage.RuntimeACP || session.RuntimeRef == nil {
 		return Job{}, fmt.Errorf("session %s is not acp-backed", ref)
+	}
+	if loader, ok := m.store.(acpStateLoader); ok {
+		if state, err := loader.LoadACPState(session.ID); err == nil {
+			return jobFromInactiveState(session, state), nil
+		}
 	}
 	return Job{
 		ID:         session.ID,
@@ -731,6 +741,9 @@ func (m *Manager) cancelStored(ref string) (Job, error) {
 	state.State = StateCancelled
 	state.StopReason = "cancelled"
 	state.Permissions = nil
+	now := time.Now().UTC()
+	state.UpdatedAt = now
+	state.LastEventAt = now
 	if saver, ok := m.store.(acpStateSaver); ok {
 		if err := saver.SaveACPState(session.ID, state); err != nil {
 			m.log.Warn("clearing stored acp state failed", "session", session.ID, "error", err)
@@ -740,27 +753,30 @@ func (m *Manager) cancelStored(ref string) (Job, error) {
 		SessionID: session.ID,
 		Type:      "acp",
 		ACP: &sessionevents.ACPEvent{
-			ID:         session.ID,
-			Slug:       state.Slug,
-			Title:      state.Title,
-			ParentID:   state.ParentID,
-			Agent:      state.ACPAgent,
-			SessionID:  state.ACPSession,
-			State:      StateCancelled,
-			StopReason: "cancelled",
+			ID:          session.ID,
+			Slug:        state.Slug,
+			Title:       state.Title,
+			ParentID:    state.ParentID,
+			Agent:       state.ACPAgent,
+			SessionID:   state.ACPSession,
+			State:       StateCancelled,
+			StopReason:  "cancelled",
+			LastEventAt: now,
 		},
 	})
 	return Job{
-		ID:         session.ID,
-		Slug:       session.Slug,
-		Title:      session.Title,
-		ParentID:   session.ParentID,
-		ACPAgent:   state.ACPAgent,
-		ACPSession: state.ACPSession,
-		State:      StateCancelled,
-		StopReason: "cancelled",
-		CreatedAt:  session.CreatedAt,
-		UpdatedAt:  time.Now().UTC(),
+		ID:          session.ID,
+		Slug:        session.Slug,
+		Title:       session.Title,
+		ParentID:    session.ParentID,
+		ACPAgent:    state.ACPAgent,
+		ACPSession:  state.ACPSession,
+		State:       StateCancelled,
+		StopReason:  "cancelled",
+		CreatedAt:   session.CreatedAt,
+		UpdatedAt:   now,
+		LastEventAt: now,
+		LastToolAt:  state.LastToolAt,
 	}, nil
 }
 

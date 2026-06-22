@@ -216,6 +216,8 @@ type ACPState struct {
 	ParentVisible bool                          `json:"parent_visible,omitempty"`
 	CreatedAt     time.Time                     `json:"created_at"`
 	UpdatedAt     time.Time                     `json:"updated_at"`
+	LastEventAt   time.Time                     `json:"last_event_at,omitzero"`
+	LastToolAt    time.Time                     `json:"last_tool_at,omitzero"`
 }
 
 type CreateSession struct {
