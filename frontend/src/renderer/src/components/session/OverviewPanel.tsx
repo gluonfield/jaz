@@ -92,28 +92,50 @@ function SubagentsSection({ subagents }: { subagents: ProviderSubagentView[] }) 
 }
 
 function SubagentRow({ subagent }: { subagent: ProviderSubagentView }) {
+  const [expanded, setExpanded] = useState(false)
   const status = SUBAGENT_STATUS[subagentStatus(subagent.status)]
   const title = subagentTitle(subagent)
-  const detail = firstText(subagentSummary(subagent.summary), subagent.prompt, subagent.thread_id, subagent.id)
+  const detail = firstText(subagentSummary(subagent.summary), subagent.thread_id, subagent.id)
+  const prompt = subagent.prompt?.trim() ?? ''
   return (
-    <li className="flex min-w-0 items-start gap-2 rounded-md px-1 py-1.5">
-      <AgentAvatar agent={subagent.provider} size={17} className="mt-0.5" />
-      <span className="min-w-0 flex-1">
-        <span className="flex min-w-0 items-center gap-1.5 text-[12px] leading-4 text-ink-3">
-          <span className={`inline-flex shrink-0 items-center gap-1 ${status.className}`}>
-            <status.Icon size={12} className={status.spin ? 'animate-spin' : ''} aria-hidden />
-            {status.label}
+    <li className="min-w-0 rounded-md">
+      <button
+        type="button"
+        disabled={!prompt}
+        title={prompt ? (expanded ? 'Hide prompt' : 'Show prompt') : undefined}
+        onClick={() => setExpanded((open) => !open)}
+        className="flex min-h-10 w-full min-w-0 items-start gap-2 rounded-md px-1 py-1.5 text-left transition-colors duration-150 enabled:cursor-pointer enabled:hover:bg-surface-2 disabled:cursor-default"
+      >
+        <AgentAvatar agent={subagent.provider} size={17} className="mt-0.5" />
+        <span className="min-w-0 flex-1">
+          <span className="flex min-w-0 items-center gap-1.5 text-[12px] leading-4 text-ink-3">
+            <span className={`inline-flex shrink-0 items-center gap-1 ${status.className}`}>
+              <status.Icon size={12} className={status.spin ? 'animate-spin' : ''} aria-hidden />
+              {status.label}
+            </span>
           </span>
-        </span>
-        <span className="mt-0.5 block truncate text-[13px] font-medium text-ink" title={title}>
-          {title}
-        </span>
-        {detail && detail !== title ? (
-          <span className="mt-0.5 block line-clamp-2 text-[12px] leading-snug text-ink-3" title={detail}>
-            {detail}
+          <span className="mt-0.5 block truncate text-[13px] font-medium text-ink" title={title}>
+            {title}
           </span>
+          {detail && detail !== title ? (
+            <span className="mt-0.5 block truncate text-[12px] leading-snug text-ink-3" title={detail}>
+              {detail}
+            </span>
+          ) : null}
+        </span>
+        {prompt ? (
+          <ChevronDown
+            size={13}
+            className={`mt-0.5 shrink-0 text-ink-3 transition-transform duration-150 ${expanded ? 'rotate-180' : ''}`}
+            aria-hidden
+          />
         ) : null}
-      </span>
+      </button>
+      {expanded && prompt ? (
+        <p className="ml-[25px] max-h-28 overflow-y-auto whitespace-pre-wrap rounded-md bg-surface-2 px-2 py-1.5 text-[11px] leading-snug text-ink-3">
+          {prompt}
+        </p>
+      ) : null}
     </li>
   )
 }
@@ -129,7 +151,7 @@ function subagentStatus(status: string | undefined): SubagentStatus {
 }
 
 function subagentTitle(subagent: ProviderSubagentView): string {
-  return firstText(subagent.name, subagent.role, subagent.prompt, subagent.thread_id, subagent.id) || 'Subagent'
+  return firstText(subagent.name, subagent.role, subagent.thread_id, subagent.id) || 'Subagent'
 }
 
 function subagentSummary(summary: string | undefined): string | undefined {
