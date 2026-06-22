@@ -110,12 +110,3 @@ func writeContextText(b *strings.Builder, value string) {
 	}
 	b.WriteString("```\n")
 }
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value != "" {
-			return value
-		}
-	}
-	return ""
-}
