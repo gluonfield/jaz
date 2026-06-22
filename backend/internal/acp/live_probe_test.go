@@ -184,6 +184,14 @@ func applyProbeEnvOverrides(env map[string]string) {
 	}
 }
 
+func envList(env map[string]string) []string {
+	out := make([]string, 0, len(env))
+	for key, value := range env {
+		out = append(out, key+"="+value)
+	}
+	return out
+}
+
 func probeAgentConfig(t *testing.T, agent string) AgentConfig {
 	t.Helper()
 	agent = CanonicalAgentName(agent)
