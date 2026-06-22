@@ -131,7 +131,6 @@ func (t *MCPTools) Send(ctx context.Context, _ *mcp.CallToolRequest, input MCPSe
 		Session:       input.Session,
 		Message:       input.Message,
 		Completion:    completion,
-		Interactive:   input.Plan,
 		PlanRequested: input.Plan,
 		ParentVisible: true,
 	})

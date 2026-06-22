@@ -34,11 +34,8 @@ type Job struct {
 
 	mu                     sync.RWMutex
 	turnMu                 sync.Mutex
-	done                   chan struct{}
-	completion             CompletionMode
-	interactive            bool
-	planRequested          bool
-	cancelRequested        bool
+	promptQueueing         bool
+	turn                   *activeTurn
 	toolByID               map[string]sessionevents.ACPToolCall
 	savedAssistantLen      int
 	usage                  storage.Usage
@@ -46,6 +43,14 @@ type Job struct {
 	lastUsageContext       storage.Usage
 	lastUsageDeltaSet      bool
 	systemPromptExtensions promptmodule.Modules
+}
+
+type activeTurn struct {
+	done            chan struct{}
+	completion      CompletionMode
+	planRequested   bool
+	cancelRequested bool
+	promptCalls     int
 }
 
 type ModeState struct {
@@ -114,7 +119,7 @@ func (j *Job) setState(state, stopReason, errMsg string) {
 	j.LastEventAt = now
 }
 
-func (j *Job) startTurn(completion CompletionMode, interactive, planRequested, parentVisible bool) chan struct{} {
+func (j *Job) startTurn(completion CompletionMode, planRequested, parentVisible bool) chan struct{} {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	j.State = StateRunning
@@ -130,18 +135,66 @@ func (j *Job) startTurn(completion CompletionMode, interactive, planRequested, p
 	j.lastUsageDelta = storage.Usage{}
 	j.lastUsageContext = storage.Usage{}
 	j.lastUsageDeltaSet = false
-	j.completion = completion
-	j.interactive = interactive
-	j.planRequested = planRequested
-	j.cancelRequested = false
+	j.turn = &activeTurn{
+		done:          make(chan struct{}),
+		completion:    completion,
+		planRequested: planRequested,
+		promptCalls:   1,
+	}
 	j.ParentVisible = parentVisible
 	j.toolByID = make(map[string]sessionevents.ACPToolCall)
-	j.done = make(chan struct{})
 	now := time.Now().UTC()
 	j.UpdatedAt = now
 	j.LastEventAt = now
 	j.LastToolAt = time.Time{}
-	return j.done
+	return j.turn.done
+}
+
+func (j *Job) turnDone() chan struct{} {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	if j.turn == nil {
+		return nil
+	}
+	return j.turn.done
+}
+
+func (j *Job) turnDoneAndPlan() (chan struct{}, bool) {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	if j.turn == nil {
+		return nil, false
+	}
+	return j.turn.done, j.turn.planRequested
+}
+
+func (j *Job) requestCancel() (bool, chan struct{}) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.turn != nil {
+		j.turn.cancelRequested = true
+	}
+	running := j.State == StateRunning || j.State == StateStarting
+	if j.turn == nil {
+		return running, nil
+	}
+	return running, j.turn.done
+}
+
+func (j *Job) addPromptCall(parentVisible bool) (chan struct{}, bool) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if !j.promptQueueing || j.turn == nil {
+		return nil, false
+	}
+	if j.State != StateRunning && j.State != StateStarting {
+		return nil, false
+	}
+	if parentVisible {
+		j.ParentVisible = true
+	}
+	j.turn.promptCalls++
+	return j.turn.done, true
 }
 
 func CloneToolCalls(in []sessionevents.ACPToolCall) []sessionevents.ACPToolCall {
