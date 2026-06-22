@@ -98,7 +98,7 @@ func TestEnsureAgentDefaultsRefreshesLegacyCodexBuiltinCommand(t *testing.T) {
 		stored.ACP[name] = agent
 	}
 	codex := stored.ACP["codex"]
-	codex.Command = strings.Replace(codex.Command, "@jazchat/codex-acp@0.16.4", legacyCodexACPPackages[0], 1)
+	codex.Command = strings.Replace(codex.Command, "@jazchat/codex-acp@0.16.6", legacyCodexACPPackages[0], 1)
 	stored.ACP["codex"] = codex
 	if _, err := SaveAgentDefaults(store, stored); err != nil {
 		t.Fatal(err)
@@ -119,12 +119,12 @@ func TestEnsureAgentDefaultsRefreshesLegacyCodexBuiltinCommand(t *testing.T) {
 func TestMergeAgentDefaultsRefreshesLegacyCodexWindowsCommand(t *testing.T) {
 	seed := AgentDefaults{ACP: map[string]ACPAgentDefaults{
 		"codex": {
-			Command: `npx.cmd -y @jazchat/codex-acp@0.16.4 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true`,
+			Command: `npx.cmd -y @jazchat/codex-acp@0.16.6 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true`,
 		},
 	}}
 	for _, legacyPackage := range legacyCodexACPPackages {
 		t.Run(legacyPackage, func(t *testing.T) {
-			storedCommand := strings.Replace(seed.ACP["codex"].Command, "@jazchat/codex-acp@0.16.4", legacyPackage, 1)
+			storedCommand := strings.Replace(seed.ACP["codex"].Command, "@jazchat/codex-acp@0.16.6", legacyPackage, 1)
 			stored := AgentDefaults{ACP: map[string]ACPAgentDefaults{
 				"codex": {Command: storedCommand},
 			}}
