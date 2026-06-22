@@ -86,6 +86,58 @@ func TestEnsureAgentDefaultsKeepsCustomCodexCommand(t *testing.T) {
 	}
 }
 
+func TestEnsureAgentDefaultsRefreshesLegacyCodexBuiltinCommand(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := testAgentDefaultsSeed()
+	stored := seed
+	stored.ACP = map[string]ACPAgentDefaults{}
+	for name, agent := range seed.ACP {
+		stored.ACP[name] = agent
+	}
+	codex := stored.ACP["codex"]
+	codex.Command = strings.Replace(codex.Command, "@jazchat/codex-acp@0.16.4", legacyCodexACPPackages[0], 1)
+	stored.ACP["codex"] = codex
+	if _, err := SaveAgentDefaults(store, stored); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := EnsureAgentDefaults(store, seed); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadAgentDefaults(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.ACP["codex"].Command != seed.ACP["codex"].Command {
+		t.Fatalf("codex command = %q, want %q", loaded.ACP["codex"].Command, seed.ACP["codex"].Command)
+	}
+}
+
+func TestMergeAgentDefaultsRefreshesLegacyCodexWindowsCommand(t *testing.T) {
+	seed := AgentDefaults{ACP: map[string]ACPAgentDefaults{
+		"codex": {
+			Command: `npx.cmd -y @jazchat/codex-acp@0.16.4 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true`,
+		},
+	}}
+	for _, legacyPackage := range legacyCodexACPPackages {
+		t.Run(legacyPackage, func(t *testing.T) {
+			storedCommand := strings.Replace(seed.ACP["codex"].Command, "@jazchat/codex-acp@0.16.4", legacyPackage, 1)
+			stored := AgentDefaults{ACP: map[string]ACPAgentDefaults{
+				"codex": {Command: storedCommand},
+			}}
+
+			merged := MergeAgentDefaults(stored, seed, []string{"codex"})
+
+			if merged.ACP["codex"].Command != seed.ACP["codex"].Command {
+				t.Fatalf("codex command = %q, want %q", merged.ACP["codex"].Command, seed.ACP["codex"].Command)
+			}
+		})
+	}
+}
+
 func TestNormalizeAgentDefaultsAllowsClaudeOnlyReasoningEffort(t *testing.T) {
 	for _, effort := range []string{"max", "ultracode"} {
 		input := testAgentDefaultsSeed()

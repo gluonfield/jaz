@@ -13,6 +13,7 @@ import {
   startLocal,
   useConnection,
 } from '@/lib/connection'
+import { localDeviceLabel } from '@/lib/deviceLabel'
 import { useTheme } from '@/lib/theme'
 
 const EASE = [0.22, 1, 0.36, 1] as const
@@ -68,6 +69,7 @@ export function LaunchScreen() {
   const [mode, setMode] = useState<'options' | 'remote'>('options')
   const [busy, setBusy] = useState<'local' | 'remote' | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const deviceLabel = localDeviceLabel()
   // last remote wins; otherwise the active URL (the local default until a
   // remote was ever used) seeds the field as an editable starting point
   const [url, setUrl] = useState(() => rememberedRemoteUrl() || apiBaseUrl())
@@ -103,7 +105,7 @@ export function LaunchScreen() {
     connectionPreference()?.mode === 'remote'
       ? 'Connecting to your server…'
       : connectionPreference()?.mode === 'local'
-        ? 'Starting jaz on this Mac…'
+        ? `Starting jaz on ${deviceLabel}…`
         : 'Connecting to backend…'
 
   return (
@@ -189,7 +191,7 @@ export function LaunchScreen() {
                     <motion.div key="opts" {...swap} className="flex flex-col gap-2">
                       <ChoiceButton
                         primary
-                        label="Run on this Mac"
+                        label={`Run on ${deviceLabel}`}
                         busyLabel="Starting backend…"
                         busy={busy === 'local'}
                         disabled={busy !== null}

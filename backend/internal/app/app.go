@@ -518,7 +518,7 @@ func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, 
 	if job.ParentID == "" {
 		return
 	}
-	logger.Info("acp child finished, running follow-up", "child", job.ID, "parent", job.ParentID, "state", job.State)
+	logger.Info("acp child finished, handling parent completion", "child", job.ID, "parent", job.ParentID, "state", job.State)
 	unlock := locks.Lock(job.ParentID)
 	defer unlock()
 
@@ -526,6 +526,17 @@ func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, 
 	if err != nil {
 		logger.Error("loading parent session failed", "parent", job.ParentID, "error", err)
 		setStoredSessionError(store, job.ParentID, err.Error())
+		return
+	}
+	if usesExternalACPAgent(parent) {
+		content := acpParentCompletionMessage(job)
+		if err := store.AppendMessages(job.ParentID, provider.AssistantMessage(content, nil)); err != nil {
+			logger.Error("appending acp parent completion failed", "parent", job.ParentID, "error", err)
+			setStoredSessionError(store, job.ParentID, err.Error())
+			return
+		}
+		events.Publish(sessionevents.Event{SessionID: job.ParentID, Type: "assistant", Content: content, ACP: acpEvent(job)})
+		setStoredSessionStatus(store, job.ParentID, storage.StatusIdle)
 		return
 	}
 	messages, err := store.LoadMessages(job.ParentID)
@@ -627,6 +638,40 @@ func acpCompletion(job acp.Job) string {
 		return fmt.Sprintf("ACP session %s (%s) completed with state %s. Report the outcome to the user now.", job.Slug, job.ACPAgent, job.State)
 	}
 	return prompt
+}
+
+func usesExternalACPAgent(session storage.Session) bool {
+	if session.RuntimeRef == nil {
+		return false
+	}
+	agentName := acp.CanonicalAgentName(session.RuntimeRef.Agent)
+	return agentName != "" && agentName != acp.AgentJaz
+}
+
+func acpParentCompletionMessage(job acp.Job) string {
+	label := firstNonEmpty(job.Slug, job.Title, job.ID)
+	state := firstNonEmpty(job.State, "finished")
+	agentName := acp.CanonicalAgentName(job.ACPAgent)
+	var out strings.Builder
+	out.WriteString("Child session ")
+	out.WriteString(label)
+	if agentName != "" {
+		out.WriteString(" (")
+		out.WriteString(agentName)
+		out.WriteString(")")
+	}
+	out.WriteString(" finished with state ")
+	out.WriteString(state)
+	out.WriteString(".")
+	if job.Error != "" {
+		out.WriteString("\n\nError: ")
+		out.WriteString(job.Error)
+	}
+	if job.Assistant != "" {
+		out.WriteString("\n\n")
+		out.WriteString(job.Assistant)
+	}
+	return out.String()
 }
 
 func acpEvent(job acp.Job) *sessionevents.ACPEvent {
