@@ -400,6 +400,85 @@ func TestManagerSideChatDoesNotTouchRunningTurn(t *testing.T) {
 	}
 }
 
+func TestManagerSteerUsesPromptQueueingWithoutCancel(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := newFakeAgentManager(t, store, t.TempDir(), map[string]string{
+		"JAZ_FAKE_ACP_PROMPT_QUEUEING": "1",
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-follow"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "block until cancelled", Completion: acp.CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Steer(ctx, acp.SteerRequest{Session: spawned.SessionID, Message: "say hello"}); err != nil {
+		t.Fatal(err)
+	}
+	job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.State != acp.StateIdle || job.StopReason == "cancelled" || job.Assistant != "hello from fake agent" {
+		t.Fatalf("steered job state=%s stop=%q assistant=%q error=%q", job.State, job.StopReason, job.Assistant, job.Error)
+	}
+	messages, err := store.LoadMessages(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 2 ||
+		provider.MessageContent(messages[0]) != "block until cancelled" ||
+		provider.MessageContent(messages[1]) != "say hello" {
+		t.Fatalf("messages = %#v", messages)
+	}
+}
+
+func TestManagerSteerIncludesMessageContext(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := newFakeAgentManager(t, store, t.TempDir(), map[string]string{
+		"JAZ_FAKE_ACP_PROMPT_QUEUEING":        "1",
+		"JAZ_FAKE_ACP_EXPECT_PROMPT_TRIGGER":  "apply context",
+		"JAZ_FAKE_ACP_EXPECT_PROMPT_CONTAINS": "selected context",
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-follow-context"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "block until cancelled", Completion: acp.CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Steer(ctx, acp.SteerRequest{
+		Session:  spawned.SessionID,
+		Message:  "apply context",
+		Contexts: storage.SelectionContexts([]string{"selected context"}),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.State != acp.StateIdle {
+		t.Fatalf("state=%s error=%q", job.State, job.Error)
+	}
+}
+
 func TestManagerPassesResolvedCwdToACPPrompt(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

@@ -3,6 +3,7 @@ package acp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -88,7 +89,6 @@ func (m *Manager) AnswerInteractive(ctx context.Context, req InteractiveAnswer) 
 			Session:       req.Session,
 			Message:       text,
 			Completion:    CompletionAsync,
-			Interactive:   true,
 			PlanRequested: req.PlanRequested,
 			ParentVisible: req.ParentVisible,
 		})
@@ -199,17 +199,24 @@ func (m *Manager) steerText(ctx context.Context, job *Job, text string, req Inte
 		job.ParentVisible = true
 		job.mu.Unlock()
 	}
+	_, err := m.Steer(ctx, SteerRequest{
+		Session:       job.ID,
+		Message:       text,
+		ParentVisible: req.ParentVisible,
+	})
+	if err == nil || !errors.Is(err, ErrPromptQueueingUnsupported) {
+		return err
+	}
 	if _, err := m.Cancel(ctx, job.ID); err != nil {
 		return err
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	_, err := m.Send(ctx, SendRequest{
+	_, err = m.Send(ctx, SendRequest{
 		Session:       job.ID,
 		Message:       text,
 		Completion:    CompletionAsync,
-		Interactive:   true,
 		PlanRequested: req.PlanRequested,
 		ParentVisible: req.ParentVisible,
 	})
@@ -221,9 +228,7 @@ func (m *Manager) sendTextAfterTurn(sessionID, text string, parentVisible bool) 
 	if job == nil {
 		return
 	}
-	job.mu.RLock()
-	done := job.done
-	job.mu.RUnlock()
+	done := job.turnDone()
 	if done != nil {
 		<-done
 	}
@@ -231,7 +236,6 @@ func (m *Manager) sendTextAfterTurn(sessionID, text string, parentVisible bool) 
 		Session:       sessionID,
 		Message:       text,
 		Completion:    CompletionAsync,
-		Interactive:   true,
 		ParentVisible: parentVisible,
 	})
 }
