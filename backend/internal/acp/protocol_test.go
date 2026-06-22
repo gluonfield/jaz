@@ -407,6 +407,76 @@ func TestSideChatSessionUpdatePublishesLiveSideChatEventOnly(t *testing.T) {
 	}
 }
 
+func TestToolCallUpdateCapturesLivenessState(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "codex-tools", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := sessionevents.New()
+	manager := NewManager(store, Config{}, nil)
+	manager.Events = events
+	manager.jobsByID[session.ID] = &Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex, ACPSession: "acp-session", toolByID: map[string]sessionevents.ACPToolCall{}}
+	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	sub := events.Subscribe(ctx, session.ID)
+
+	raw, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
+		Method: acpschema.ClientMethodSessionUpdate,
+		Params: mustJSON(t, map[string]any{
+			"sessionId": "acp-session",
+			"update": map[string]any{
+				"sessionUpdate": "tool_call",
+				"toolCallId":    "exec-1",
+				"title":         "go test ./...",
+				"status":        "in_progress",
+				"rawInput":      map[string]any{"cmd": "go test ./..."},
+				"_meta": map[string]any{
+					"terminal_info": map[string]any{"terminal_id": "exec-1", "cwd": "/repo"},
+				},
+			},
+		}),
+	})
+	if rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	if string(raw) != "{}" {
+		t.Fatalf("response = %s", raw)
+	}
+
+	select {
+	case event := <-sub:
+		if event.Type != "acp_tool" || event.ACP == nil || len(event.ACP.ToolCalls) != 1 {
+			t.Fatalf("unexpected event %#v", event)
+		}
+		call := event.ACP.ToolCalls[0]
+		if call.Runtime.TerminalID != "exec-1" || call.Runtime.TerminalCwd != "/repo" {
+			t.Fatalf("runtime = %#v", call.Runtime)
+		}
+		if call.StartedAt.IsZero() || call.UpdatedAt.IsZero() || event.ACP.LastToolAt.IsZero() {
+			t.Fatalf("timestamps missing: call=%#v acp=%#v", call, event.ACP)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+
+	state, err := store.LoadACPState(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.LastEventAt.IsZero() || state.LastToolAt.IsZero() {
+		t.Fatalf("state timestamps missing: %#v", state)
+	}
+	if len(state.ToolCalls) != 1 || state.ToolCalls[0].Runtime.TerminalID != "exec-1" {
+		t.Fatalf("persisted tool call = %#v", state.ToolCalls)
+	}
+}
+
 func TestPlanSessionUpdateIgnoresMarkdownDocumentEntry(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
