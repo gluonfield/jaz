@@ -33,7 +33,6 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 		Contexts:      contexts,
 		Attachments:   attachments,
 		Completion:    acp.CompletionInline,
-		Interactive:   true,
 		PlanRequested: planRequested,
 	})
 	cancelStart()

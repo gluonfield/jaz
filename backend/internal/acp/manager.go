@@ -114,8 +114,15 @@ type SendRequest struct {
 	Contexts      []storage.MessageContext
 	Attachments   []storage.Attachment
 	Completion    CompletionMode
-	Interactive   bool
 	PlanRequested bool
+	ParentVisible bool
+}
+
+type SteerRequest struct {
+	Session       string
+	Message       string
+	Contexts      []storage.MessageContext
+	Attachments   []storage.Attachment
 	ParentVisible bool
 }
 
@@ -401,18 +408,19 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		return fail(err)
 	}
 	job := &Job{
-		ID:         session.ID,
-		Slug:       session.Slug,
-		Title:      session.Title,
-		ParentID:   session.ParentID,
-		ACPAgent:   req.ACPAgent,
-		ACPSession: string(acpSession.response.SessionID),
-		Cwd:        absCwd,
-		State:      StateIdle,
-		Modes:      modes,
-		CreatedAt:  session.CreatedAt,
-		UpdatedAt:  time.Now().UTC(),
-		toolByID:   make(map[string]ToolCallSnapshot),
+		ID:             session.ID,
+		Slug:           session.Slug,
+		Title:          session.Title,
+		ParentID:       session.ParentID,
+		ACPAgent:       req.ACPAgent,
+		ACPSession:     string(acpSession.response.SessionID),
+		Cwd:            absCwd,
+		State:          StateIdle,
+		Modes:          modes,
+		CreatedAt:      session.CreatedAt,
+		UpdatedAt:      time.Now().UTC(),
+		promptQueueing: promptQueueingSupported(ac.initRaw),
+		toolByID:       make(map[string]ToolCallSnapshot),
 	}
 	m.addJob(job, ac.conn, ac.peer, ac.cancel)
 	m.saveACPState(job.Snapshot())
@@ -527,19 +535,20 @@ func (m *Manager) resume(ctx context.Context, ref string) (*Job, error) {
 		_ = m.store.SaveSession(session)
 	}
 	job := &Job{
-		ID:            session.ID,
-		Slug:          session.Slug,
-		Title:         session.Title,
-		ParentID:      session.ParentID,
-		ACPAgent:      agentName,
-		ACPSession:    acpSessionID,
-		Cwd:           cwd,
-		State:         StateIdle,
-		Modes:         modes,
-		ParentVisible: state.ParentVisible,
-		CreatedAt:     session.CreatedAt,
-		UpdatedAt:     time.Now().UTC(),
-		toolByID:      make(map[string]ToolCallSnapshot),
+		ID:             session.ID,
+		Slug:           session.Slug,
+		Title:          session.Title,
+		ParentID:       session.ParentID,
+		ACPAgent:       agentName,
+		ACPSession:     acpSessionID,
+		Cwd:            cwd,
+		State:          StateIdle,
+		Modes:          modes,
+		ParentVisible:  state.ParentVisible,
+		CreatedAt:      session.CreatedAt,
+		UpdatedAt:      time.Now().UTC(),
+		promptQueueing: promptQueueingSupported(ac.initRaw),
+		toolByID:       make(map[string]ToolCallSnapshot),
 	}
 	m.addJob(job, ac.conn, ac.peer, ac.cancel)
 	m.saveACPState(job.Snapshot())
@@ -639,8 +648,8 @@ func (m *Manager) Wait(ctx context.Context, req WaitRequest) (Job, error) {
 	if err != nil {
 		return Job{}, err
 	}
+	done := job.turnDone()
 	job.mu.RLock()
-	done := job.done
 	state := job.State
 	job.mu.RUnlock()
 	if state != StateRunning && state != StateStarting {
@@ -671,11 +680,7 @@ func (m *Manager) Cancel(ctx context.Context, ref string) (Job, error) {
 	if err != nil {
 		return m.cancelStored(ref)
 	}
-	job.mu.Lock()
-	job.cancelRequested = true
-	running := job.State == StateRunning || job.State == StateStarting
-	done := job.done
-	job.mu.Unlock()
+	running, done := job.requestCancel()
 	m.log.Info("acp cancel requested", "session", job.ID, "agent", job.ACPAgent, "running", running)
 	if peer := m.peer(job.ID); peer != nil {
 		if err := peer.Notify(ctx, acpschema.AgentMethodSessionCancel, acpschema.CancelNotification{

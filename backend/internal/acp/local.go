@@ -207,12 +207,9 @@ func (m *Manager) runLocalPrompt(ctx context.Context, job *Job, runner LocalAgen
 	job.turnMu.Lock()
 	defer job.turnMu.Unlock()
 
-	job.mu.RLock()
-	done := job.done
-	planRequested := job.planRequested
-	job.mu.RUnlock()
+	done, planRequested := job.turnDoneAndPlan()
 	if done == nil {
-		done = job.startTurn(CompletionInline, false, false, false)
+		done = job.startTurn(CompletionInline, false, false)
 	}
 	session, err := m.store.LoadSession(job.ID)
 	if err != nil {
@@ -300,7 +297,7 @@ func (m *Manager) applyLocalMessage(job *Job, chunk string) {
 	}
 	job.mu.Lock()
 	job.Assistant = appendACPText(job.Assistant, chunk)
-	bufferMessage := job.planRequested
+	bufferMessage := job.turn != nil && job.turn.planRequested
 	job.UpdatedAt = time.Now().UTC()
 	job.mu.Unlock()
 	if bufferMessage {

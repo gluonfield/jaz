@@ -204,9 +204,6 @@ func TestACPLoopRunCreatesHiddenThreadAndFinishesFromCallback(t *testing.T) {
 	if sent.Session == "" {
 		t.Fatalf("missing sent session: %#v", sent)
 	}
-	if sent.Interactive {
-		t.Fatalf("loop run must be autonomous, got interactive send: %#v", sent)
-	}
 	if sent.Message != "check status" {
 		t.Fatalf("sent message = %q, want loop task only", sent.Message)
 	}

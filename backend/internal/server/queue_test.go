@@ -374,8 +374,8 @@ func TestACPTurnFinishedDrainsQueuedPromptWithoutActiveClient(t *testing.T) {
 	if sent.Session != session.ID || sent.Message != "next prompt" {
 		t.Fatalf("unexpected queued send %#v", sent)
 	}
-	if sent.Completion != acp.CompletionAsync || !sent.Interactive {
-		t.Fatalf("queued send should be async interactive: %#v", sent)
+	if sent.Completion != acp.CompletionAsync {
+		t.Fatalf("queued send should be async: %#v", sent)
 	}
 	if !sent.PlanRequested {
 		t.Fatalf("queued send did not preserve plan mode: %#v", sent)
@@ -520,7 +520,7 @@ func TestSessionQueueSteerClaimsOnePromptForRunningACP(t *testing.T) {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
 	sent := waitForACPSend(t, manager, "second")
-	if sent.Session != session.ID || sent.Completion != acp.CompletionAsync || !sent.Interactive {
+	if sent.Session != session.ID || sent.Completion != acp.CompletionAsync {
 		t.Fatalf("unexpected steer send %#v", sent)
 	}
 	manager.mu.Lock()
@@ -543,6 +543,79 @@ func TestSessionQueueSteerClaimsOnePromptForRunningACP(t *testing.T) {
 	}
 	if loaded.PendingSteer != nil {
 		t.Fatalf("pending steer = %#v, want cleared after send", loaded.PendingSteer)
+	}
+}
+
+func TestSessionQueueSteerUsesPromptQueueingWhenSupported(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "claude-queue-steer",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     "claude",
+			SessionID: "acp-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.Status = storage.StatusRunning
+	session.QueuedMessages = queuedMessages("follow this")
+	if err := store.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeACPManager{
+		job: acp.Job{
+			ID:    session.ID,
+			Slug:  session.Slug,
+			State: acp.StateRunning,
+		},
+		steerSupported: true,
+	}
+
+	promptID := queuedMessageID(t, store, session.ID, "follow this")
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"steer","id":"`+promptID+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store, ACP: manager}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	steered := waitForACPSteer(t, manager, "follow this")
+	if steered.Session != session.ID {
+		t.Fatalf("unexpected steer %#v", steered)
+	}
+	manager.mu.Lock()
+	sent := manager.sent
+	cancelled := manager.cancelled
+	steerCtxErr := manager.steerCtxErr
+	manager.mu.Unlock()
+	if sent.Message != "" {
+		t.Fatalf("prompt queueing steer should not fall back to send: %#v", sent)
+	}
+	if cancelled {
+		t.Fatal("prompt queueing steer called cancel")
+	}
+	if steerCtxErr != nil {
+		t.Fatalf("steer used cancelled context: %v", steerCtxErr)
+	}
+	var loaded storage.Session
+	waitFor(t, time.Second, func() bool {
+		var err error
+		loaded, err = store.LoadSession(session.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(loaded.QueuedMessages) == 0 && loaded.PendingSteer == nil
+	})
+	if len(loaded.QueuedMessages) != 0 || loaded.PendingSteer != nil {
+		t.Fatalf("session queue=%#v pending=%#v", loaded.QueuedMessages, loaded.PendingSteer)
 	}
 }
 
@@ -757,7 +830,7 @@ func TestSessionQueueSteerStartsIdleACPFromBackend(t *testing.T) {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
 	sent := waitForACPSend(t, manager, "start this now")
-	if sent.Session != session.ID || sent.Completion != acp.CompletionAsync || !sent.Interactive {
+	if sent.Session != session.ID || sent.Completion != acp.CompletionAsync {
 		t.Fatalf("unexpected steer send %#v", sent)
 	}
 	loaded, err := store.LoadSession(session.ID)
@@ -839,6 +912,18 @@ func waitForACPSend(t *testing.T, manager *fakeACPManager, text string) acp.Send
 		return sent.Message == text
 	})
 	return sent
+}
+
+func waitForACPSteer(t *testing.T, manager *fakeACPManager, text string) acp.SteerRequest {
+	t.Helper()
+	var steered acp.SteerRequest
+	waitFor(t, time.Second, func() bool {
+		manager.mu.Lock()
+		steered = manager.steered
+		manager.mu.Unlock()
+		return steered.Message == text
+	})
+	return steered
 }
 
 func sentACPRequest(manager *fakeACPManager) acp.SendRequest {
