@@ -1,5 +1,6 @@
 // Mirrors of the Go backend's JSON shapes (backend/internal/storage,
 // sessionevents, server). Field names must match exactly.
+import type { MessageContextInput } from '@/lib/messageContext'
 
 export interface RuntimeRef {
   type: string
@@ -91,6 +92,7 @@ export interface ThreadSearchResult {
 export interface QueuedMessage {
   id: string
   text: string
+  contexts?: MessageContextInput[]
   quotes?: string[]
   attachment_ids?: string[]
   plan_requested?: boolean
@@ -341,6 +343,7 @@ export type MessageBlock =
   | { type: 'text'; text?: string }
   | { type: 'reasoning'; text?: string }
   | { type: 'quote'; text?: string }
+  | { type: 'browser_annotation'; input_json?: string }
   | {
       type: 'attachment'
       id: string
@@ -459,6 +462,16 @@ export interface LoopCreatedEvent {
   boards?: LoopBoardRef[]
 }
 
+export interface SideChatEvent {
+  id: string
+  command?: string
+  parent_session_id?: string
+  thread_id?: string
+  role: 'user' | 'assistant' | 'thought' | 'tool' | 'error' | string
+  content: string
+  status?: string
+}
+
 export interface ACPEvent {
   id: string
   slug: string
@@ -544,6 +557,7 @@ export interface SessionEvent {
   permission?: ACPPermission
   artifact?: ArtifactEvent
   loop_created?: LoopCreatedEvent
+  side_chat?: SideChatEvent
   at: string
 }
 

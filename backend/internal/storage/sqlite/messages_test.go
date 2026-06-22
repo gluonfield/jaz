@@ -8,19 +8,19 @@ import (
 
 // Quote blocks must survive the codec; a missing case in validateBlocks once
 // made AppendUserMessage fail silently, dropping the whole user message.
-func TestAppendUserMessageWithQuotesPersists(t *testing.T) {
+func TestAppendUserMessageWithSelectionContextPersists(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	session, err := store.CreateSession(storage.CreateSession{Slug: "quotes"})
+	session, err := store.CreateSession(storage.CreateSession{Slug: "selection-context"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if err := storage.AppendUserMessage(store, session.ID, "what is this", []string{"selected text"}, nil); err != nil {
-		t.Fatalf("append user message with quotes: %v", err)
+	if err := storage.AppendUserMessage(store, session.ID, "what is this", storage.SelectionContexts([]string{"selected text"}), nil); err != nil {
+		t.Fatalf("append user message with selection context: %v", err)
 	}
 
 	records, err := store.LoadMessageRecords(session.ID)

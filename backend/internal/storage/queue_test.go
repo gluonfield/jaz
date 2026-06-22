@@ -19,7 +19,7 @@ func TestNormalizeQueuedMessagesTrims(t *testing.T) {
 	}
 }
 
-func TestQueuedMessageQuotesRoundTripAndTrim(t *testing.T) {
+func TestQueuedMessageContextsRoundTripAndTrim(t *testing.T) {
 	raw, err := MarshalQueuedMessages([]QueuedMessage{{Text: "ask", Quotes: []string{" keep ", "  "}}})
 	if err != nil {
 		t.Fatal(err)
@@ -31,8 +31,38 @@ func TestQueuedMessageQuotesRoundTripAndTrim(t *testing.T) {
 	if len(messages) != 1 {
 		t.Fatalf("messages = %#v", messages)
 	}
-	if got := messages[0].Quotes; len(got) != 1 || got[0] != "keep" {
-		t.Fatalf("quotes = %#v", got)
+	if got := messages[0].Contexts; len(got) != 1 || got[0].Type != ContextTypeSelection || got[0].Text != "keep" {
+		t.Fatalf("contexts = %#v", got)
+	}
+}
+
+func TestQueuedMessageBrowserAnnotationsRoundTripAndTrim(t *testing.T) {
+	raw, err := MarshalQueuedMessages([]QueuedMessage{{
+		Text: "ask",
+		Contexts: []MessageContext{{
+			Type: ContextTypeBrowserAnnotation,
+			BrowserAnnotation: &BrowserAnnotation{
+				URL:              " http://127.0.0.1:3000 ",
+				Target:           " headline ",
+				Selector:         " main > h1 ",
+				RequestedChanges: " tighter ",
+				Comment:          " please ",
+			},
+		}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages, err := UnmarshalQueuedMessages(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 || len(messages[0].Contexts) != 1 {
+		t.Fatalf("messages = %#v", messages)
+	}
+	got := messages[0].Contexts[0].BrowserAnnotation
+	if got == nil || got.URL != "http://127.0.0.1:3000" || got.Selector != "main > h1" || got.Comment != "please" {
+		t.Fatalf("annotation = %#v", got)
 	}
 }
 

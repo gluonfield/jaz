@@ -75,7 +75,7 @@ func boundedRawInput(raw json.RawMessage) map[string]any {
 		return nil
 	}
 	var out map[string]any
-	if json.Unmarshal(raw, &out) != nil || len(out) == 0 {
+	if err := json.Unmarshal(raw, &out); err != nil || len(out) == 0 {
 		return nil
 	}
 	return out

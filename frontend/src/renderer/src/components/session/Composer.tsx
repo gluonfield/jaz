@@ -4,12 +4,12 @@ import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { FileDropOverlay, useWindowFileDrop } from '@/components/ui/FileDrop'
 import { IconButton } from '@/components/ui/IconButton'
 import type { Attachment, QueuedMessage } from '@/lib/api/types'
-import type { ComposerQuote, SendMessageOptions } from '@/lib/sendMessage'
+import type { ComposerContext, SendMessageOptions } from '@/lib/sendMessage'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { RAINBOW_BEAM } from '@/components/ui/rainbow'
 import { MentionSuggestions, MentionTextarea, useMentionInput } from './MentionInput'
 import { QueuedPromptList } from './QueuedPromptList'
-import { QuoteChip } from './QuoteChip'
+import { ContextChip } from './ContextChip'
 import { useComposerAttachments } from './useComposerAttachments'
 import type { ComposerDraftStorage } from './useComposerDraft'
 
@@ -71,13 +71,13 @@ export function ComposerCard({
   clearOnSend = true,
   leftSlot,
   fileRoot,
-  quotes = [],
+  contexts = [],
   onSend,
   onStop,
   onVoice,
   onUploadAttachment,
-  onRemoveQuote,
-  onClearQuotes,
+  onRemoveContext,
+  onClearContexts,
   onTextChange,
 }: {
   streaming: boolean
@@ -97,14 +97,14 @@ export function ComposerCard({
   /** server-side directory the @-mention file picker indexes (a project path,
       session cwd, or '' for the workspace root). undefined disables files */
   fileRoot?: string
-  /** text the user quoted from earlier responses, shown as removable chips */
-  quotes?: ComposerQuote[]
+  /** text selections and browser annotations attached to the next message */
+  contexts?: ComposerContext[]
   onSend: (text: string, options?: SendMessageOptions) => void
   onStop?: () => void
   onVoice?: () => void
   onUploadAttachment?: (file: File) => Promise<Attachment>
-  onRemoveQuote?: (id: string) => void
-  onClearQuotes?: () => void
+  onRemoveContext?: (id: string) => void
+  onClearContexts?: () => void
   onTextChange?: (text: string) => void
 }) {
   const [focused, setFocused] = useState(false)
@@ -179,12 +179,12 @@ export function ComposerCard({
       planRequested: planAvailable && planRequested,
       files: attachmentDraft.files,
       attachments: attachmentDraft.uploaded,
-      ...(quotes.length > 0 ? { quotes } : {}),
+      ...(contexts.length > 0 ? { contexts } : {}),
     })
     if (clearOnSend) {
       mention.reset()
       attachmentDraft.clearAttachments()
-      onClearQuotes?.()
+      onClearContexts?.()
       setPlanRequested(false)
     }
   }
@@ -249,14 +249,14 @@ export function ComposerCard({
             e.currentTarget.value = ''
           }}
         />
-        {quotes.length > 0 ? (
+        {contexts.length > 0 ? (
           <div className="flex flex-wrap gap-1 px-1.5 pt-0.5">
-            {quotes.map((quote, index) => (
-              <QuoteChip
-                key={quote.id}
+            {contexts.map((context, index) => (
+              <ContextChip
+                key={context.id}
                 index={index}
-                text={quote.text}
-                onRemove={onRemoveQuote ? () => onRemoveQuote(quote.id) : undefined}
+                context={context}
+                onRemove={onRemoveContext ? () => onRemoveContext(context.id) : undefined}
               />
             ))}
           </div>
@@ -439,13 +439,13 @@ export function Composer({
   steerDisabled,
   draftStorageKey,
   fileRoot,
-  quotes,
+  contexts,
   onSend,
   onStop,
   onVoice,
   onUploadAttachment,
-  onRemoveQuote,
-  onClearQuotes,
+  onRemoveContext,
+  onClearContexts,
   onSteerQueuedPrompt,
   onDeleteQueuedPrompt,
   onEditQueuedPrompt,
@@ -461,13 +461,13 @@ export function Composer({
   draftStorageKey?: string
   /** directory the @-mention file picker indexes; undefined disables files */
   fileRoot?: string
-  quotes?: ComposerQuote[]
+  contexts?: ComposerContext[]
   onSend: (text: string, options?: SendMessageOptions) => void
   onStop: () => void
   onVoice?: () => void
   onUploadAttachment?: (file: File) => Promise<Attachment>
-  onRemoveQuote?: (id: string) => void
-  onClearQuotes?: () => void
+  onRemoveContext?: (id: string) => void
+  onClearContexts?: () => void
   onSteerQueuedPrompt?: (id: string) => void
   onDeleteQueuedPrompt?: (id: string) => void
   onEditQueuedPrompt?: (id: string, text: string) => void
@@ -501,13 +501,13 @@ export function Composer({
         draftStorageKey={draftStorageKey}
         draftStorage="local"
         fileRoot={fileRoot}
-        quotes={quotes}
+        contexts={contexts}
         onSend={onSend}
         onStop={onStop}
         onVoice={onVoice}
         onUploadAttachment={onUploadAttachment}
-        onRemoveQuote={onRemoveQuote}
-        onClearQuotes={onClearQuotes}
+        onRemoveContext={onRemoveContext}
+        onClearContexts={onClearContexts}
       />
     </>
   )
