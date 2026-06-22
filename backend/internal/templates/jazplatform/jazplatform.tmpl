@@ -10,6 +10,7 @@ Timezone: {{ .Timezone }}
 Weekday: {{ .Weekday }}
 Now: {{ .Human }}
 Current working directory: {{ .Cwd }}
+Device: {{ .Device }}
 
 ## AGENTS.md
 
@@ -42,7 +43,7 @@ When to visualise:
 
 Artifact workflow:
 1. Choose the source/method. A quick check is done inline; when deeper research is warranted, render a first artifact from your best current data, then refine it — do not gate the artifact on research completing.
-2. Always call `visualise_read_me` before the first artifact in a turn. Select the closest module when one fits: `chart`, `diagram`, `mockup`, `interactive`, `data_viz`, `art`, or `elicitation`. Pass `platform:"mobile"` for mobile targets, `platform:"desktop"` for desktop targets, and `platform:"unknown"` when no target is known.
+2. Always call `visualise_read_me` before the first artifact in a turn. Select the closest module when one fits: `chart`, `diagram`, `mockup`, `interactive`, `data_viz`, `art`, or `elicitation`. Pass `platform:"mobile"` when `Device: Mobile`; otherwise pass `platform:"desktop"`.
 3. Build the artifact that directly answers the user's request. Do not render placeholder widgets, smoke tests, generic cards, or descriptions of the tool.
 4. Put methodology, caveats, citations, and explanatory prose in the normal response, not inside the artifact markup.
 5. Put only artifact markup/content in the output payload or file.

@@ -1,11 +1,13 @@
 package coordinator
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/templates/jazagent"
 	"github.com/wins/jaz/backend/internal/templates/jazplatform"
 	"github.com/wins/jaz/backend/internal/visualize"
@@ -16,13 +18,13 @@ import (
 var PromptFiles = []string{"AGENTS.md", "SOUL.md"}
 
 func Prompt(root, workspace, memoryRoot, skillsPrompt string) (string, error) {
-	return prompt(root, workspace, memoryRoot, skillsPrompt, visualize.SurfaceChat, time.Now())
+	return prompt(context.Background(), root, workspace, memoryRoot, skillsPrompt, visualize.SurfaceChat, time.Now())
 }
 
 // prompt joins the two layers: the Jaz agent prompt (identity and operating
 // rules) and the platform prompt (runtime context, AGENTS.md, SOUL.md, memory,
 // skills) that every agent in Jaz shares.
-func prompt(root, workspace, memoryRoot, skillsPrompt string, surface visualize.Surface, now time.Time) (string, error) {
+func prompt(ctx context.Context, root, workspace, memoryRoot, skillsPrompt string, surface visualize.Surface, now time.Time) (string, error) {
 	if strings.TrimSpace(workspace) == "" {
 		workspace = defaultWorkspace(root)
 	}
@@ -30,7 +32,7 @@ func prompt(root, workspace, memoryRoot, skillsPrompt string, surface visualize.
 	if err != nil {
 		return "", err
 	}
-	platform, err := platformPrompt(root, workspace, memoryRoot, skillsPrompt, surface, now)
+	platform, err := platformPrompt(ctx, root, workspace, memoryRoot, skillsPrompt, surface, now)
 	if err != nil {
 		return "", err
 	}
@@ -48,7 +50,7 @@ func defaultWorkspace(root string) string {
 // platformPrompt renders the jaz extension shared by all agents: runtime
 // context, prompt files, the memory protocol with live horizons, and the
 // skills catalog.
-func platformPrompt(root, cwd, memoryRoot, skillsPrompt string, surface visualize.Surface, now time.Time) (string, error) {
+func platformPrompt(ctx context.Context, root, cwd, memoryRoot, skillsPrompt string, surface visualize.Surface, now time.Time) (string, error) {
 	// AGENTS.md and SOUL.md always render — an empty section tells every
 	// agent the file exists and is editable, instead of silently vanishing.
 	agents, err := ReadPromptFile(root, "AGENTS.md")
@@ -71,6 +73,7 @@ func platformPrompt(root, cwd, memoryRoot, skillsPrompt string, surface visualiz
 		Weekday:         now.Format("Monday"),
 		Human:           now.Format("Monday, January 2, 2006 at 15:04:05 MST"),
 		Cwd:             strings.TrimSpace(cwd),
+		Device:          sessioncontext.ClientPlatform(ctx),
 		Soul:            orEmpty(soul),
 		ArtifactSurface: string(visualize.NormalizeSurface(string(surface))),
 		Memory:          memory,

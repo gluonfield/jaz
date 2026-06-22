@@ -1,6 +1,7 @@
 package coordinator
 
 import (
+	"context"
 	"strings"
 	"time"
 
@@ -28,15 +29,19 @@ func (b *Builder) SystemPromptForWorkspace(workspace string) (string, error) {
 }
 
 func (b *Builder) SystemPromptForWorkspaceSurface(workspace string, surface visualize.Surface) (string, error) {
+	return b.SystemPromptForContext(context.Background(), workspace, surface)
+}
+
+func (b *Builder) SystemPromptForContext(ctx context.Context, workspace string, surface visualize.Surface) (string, error) {
 	if strings.TrimSpace(workspace) == "" {
 		workspace = b.workspace
 	}
-	system, _, err := b.build(workspace, surface)
+	system, _, err := b.build(ctx, workspace, surface)
 	return system, err
 }
 
 func (b *Builder) SkillsPrompt() (string, error) {
-	_, skillsPrompt, err := b.build(b.workspace, visualize.SurfaceChat)
+	_, skillsPrompt, err := b.build(context.Background(), b.workspace, visualize.SurfaceChat)
 	return skillsPrompt, err
 }
 
@@ -50,6 +55,10 @@ func (b *Builder) ACPPrompt(cwd string) (string, error) {
 }
 
 func (b *Builder) ACPPromptForArtifactSurface(cwd, surface string) (string, error) {
+	return b.ACPPromptForContext(context.Background(), cwd, surface)
+}
+
+func (b *Builder) ACPPromptForContext(ctx context.Context, cwd, surface string) (string, error) {
 	cwd = strings.TrimSpace(cwd)
 	if cwd == "" {
 		cwd = strings.TrimSpace(b.workspace)
@@ -66,10 +75,10 @@ func (b *Builder) ACPPromptForArtifactSurface(cwd, surface string) (string, erro
 	if b.memoryEnabled != nil && !b.memoryEnabled() {
 		memoryRoot = ""
 	}
-	return platformPrompt(b.root, cwd, memoryRoot, catalog.Prompt(), visualize.NormalizeSurface(surface), now)
+	return platformPrompt(ctx, b.root, cwd, memoryRoot, catalog.Prompt(), visualize.NormalizeSurface(surface), now)
 }
 
-func (b *Builder) build(workspace string, surface visualize.Surface) (system, skillsPrompt string, err error) {
+func (b *Builder) build(ctx context.Context, workspace string, surface visualize.Surface) (system, skillsPrompt string, err error) {
 	if strings.TrimSpace(workspace) == "" {
 		workspace = b.workspace
 	}
@@ -82,6 +91,6 @@ func (b *Builder) build(workspace string, surface visualize.Surface) (system, sk
 	if b.memoryEnabled != nil && !b.memoryEnabled() {
 		memoryRoot = ""
 	}
-	system, err = prompt(b.root, workspace, memoryRoot, skillsPrompt, surface, time.Now())
+	system, err = prompt(ctx, b.root, workspace, memoryRoot, skillsPrompt, surface, time.Now())
 	return system, skillsPrompt, err
 }

@@ -46,11 +46,7 @@ type Store interface {
 }
 
 type PromptSource interface {
-	SystemPromptForWorkspace(string) (string, error)
-}
-
-type surfacePromptSource interface {
-	SystemPromptForWorkspaceSurface(string, visualize.Surface) (string, error)
+	SystemPromptForContext(context.Context, string, visualize.Surface) (string, error)
 }
 
 type Runner struct {
@@ -117,7 +113,7 @@ func (r *Runner) run(ctx context.Context, req Request, out chan<- agent.StreamEv
 		emit(out, agent.StreamEvent{Type: agent.StreamDone})
 		return
 	}
-	turn, err := BuildRequest(r.Store, r.Prompts, req)
+	turn, err := BuildRequest(ctx, r.Store, r.Prompts, req)
 	if err != nil {
 		emit(out, agent.StreamEvent{Type: agent.StreamError, Error: err.Error()})
 		emit(out, agent.StreamEvent{Type: agent.StreamDone})
@@ -204,7 +200,7 @@ func matchesToolName(name, candidate string) bool {
 	return name == candidate || strings.HasSuffix(name, "_"+candidate)
 }
 
-func BuildRequest(store Store, prompts PromptSource, req Request) (TurnRequest, error) {
+func BuildRequest(ctx context.Context, store Store, prompts PromptSource, req Request) (TurnRequest, error) {
 	if store == nil {
 		return TurnRequest{}, fmt.Errorf("message store is not configured")
 	}
@@ -234,7 +230,7 @@ func BuildRequest(store Store, prompts PromptSource, req Request) (TurnRequest, 
 		if req.Session.RuntimeRef != nil && strings.TrimSpace(req.Session.RuntimeRef.Cwd) != "" {
 			workspace = req.Session.RuntimeRef.Cwd
 		}
-		base, err := promptForSurface(prompts, workspace, req.ArtifactSurface)
+		base, err := prompts.SystemPromptForContext(ctx, workspace, visualize.NormalizeSurface(req.ArtifactSurface))
 		if err != nil {
 			return TurnRequest{}, fmt.Errorf("build system prompt: %w", err)
 		}
@@ -271,13 +267,6 @@ func BuildRequest(store Store, prompts PromptSource, req Request) (TurnRequest, 
 		userMessageIndex: userMessageIndex,
 		displayUser:      displayUser,
 	}, nil
-}
-
-func promptForSurface(prompts PromptSource, workspace, surface string) (string, error) {
-	if prompts, ok := prompts.(surfacePromptSource); ok {
-		return prompts.SystemPromptForWorkspaceSurface(workspace, visualize.NormalizeSurface(surface))
-	}
-	return prompts.SystemPromptForWorkspace(workspace)
 }
 
 func SaveSnapshot(store Store, sessionID string, turn TurnRequest, event agent.StreamEvent) error {
