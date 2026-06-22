@@ -108,13 +108,7 @@ function SubagentRow({ subagent }: { subagent: ProviderSubagentView }) {
       >
         <AgentAvatar agent={subagent.provider} size={17} className="mt-0.5" />
         <span className="min-w-0 flex-1">
-          <span className="flex min-w-0 items-center gap-1.5 text-[12px] leading-4 text-ink-3">
-            <span className={`inline-flex shrink-0 items-center gap-1 ${status.className}`}>
-              <status.Icon size={12} className={status.spin ? 'animate-spin' : ''} aria-hidden />
-              {status.label}
-            </span>
-          </span>
-          <span className="mt-0.5 block truncate text-[13px] font-medium text-ink" title={title}>
+          <span className="block truncate text-[13px] font-medium leading-5 text-ink" title={title}>
             {title}
           </span>
           {detail && detail !== title ? (
@@ -122,6 +116,13 @@ function SubagentRow({ subagent }: { subagent: ProviderSubagentView }) {
               {detail}
             </span>
           ) : null}
+        </span>
+        <span
+          className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center ${status.className}`}
+          title={status.label}
+          aria-label={status.label}
+        >
+          <status.Icon size={13} className={status.spin ? 'animate-spin' : ''} aria-hidden />
         </span>
         {prompt ? (
           <ChevronDown
