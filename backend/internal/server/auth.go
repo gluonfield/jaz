@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/subtle"
 	"errors"
 	"fmt"
@@ -11,13 +12,14 @@ import (
 	"github.com/wins/jaz/backend/internal/deviceauth"
 	"github.com/wins/jaz/backend/internal/httpapi"
 	"github.com/wins/jaz/backend/internal/serverconfig"
+	"github.com/wins/jaz/backend/internal/sessioncontext"
 )
 
 func (s *Server) withAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := strings.TrimSpace(s.AuthKey)
 		if key == "" || r.URL.Path == "/health" || internalMCPRequest(r) || publicDeviceRequest(r) {
-			next.ServeHTTP(w, r)
+			next.ServeHTTP(w, r.WithContext(contextWithClientInfo(r, deviceauth.Principal{})))
 			return
 		}
 		token := requestAuthKey(r)
@@ -25,7 +27,7 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 			info := httpapi.RequestInfoFrom(r)
 			principal, err := s.Devices.Authenticate(token, deviceauth.SeenInfo{IP: info.IP, UserAgent: info.UserAgent})
 			if err == nil {
-				next.ServeHTTP(w, r.WithContext(deviceauth.WithPrincipal(r.Context(), principal)))
+				next.ServeHTTP(w, r.WithContext(contextWithClientInfo(r, principal)))
 				return
 			}
 			if errors.Is(err, deviceauth.ErrApprovalRequired) {
@@ -36,7 +38,7 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 		if subtle.ConstantTimeCompare([]byte(strings.TrimSpace(token)), []byte(key)) == 1 {
 			if rootKeyAllowed(r) || s.rootKeyHasFullAccess() {
 				principal := deviceauth.Principal{Kind: deviceauth.PrincipalRoot}
-				next.ServeHTTP(w, r.WithContext(deviceauth.WithPrincipal(r.Context(), principal)))
+				next.ServeHTTP(w, r.WithContext(contextWithClientInfo(r, principal)))
 				return
 			}
 			writeAuthError(w, http.StatusForbidden, "device_approval_required", deviceauth.ErrApprovalRequired)
@@ -44,6 +46,25 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 		}
 		writeAuthError(w, http.StatusUnauthorized, "unauthorized", fmt.Errorf("missing or invalid backend API key"))
 	})
+}
+
+const clientPlatformHeader = "X-Jaz-Client-Platform"
+
+func contextWithClientInfo(r *http.Request, principal deviceauth.Principal) context.Context {
+	ctx := r.Context()
+	if principal.Kind != "" {
+		ctx = deviceauth.WithPrincipal(ctx, principal)
+	}
+	return sessioncontext.WithClientPlatform(ctx, requestClientPlatform(r))
+}
+
+func requestClientPlatform(r *http.Request) string {
+	if platform := strings.TrimSpace(r.Header.Get(clientPlatformHeader)); platform != "" {
+		if platform == "mobile" {
+			return "mobile"
+		}
+	}
+	return "desktop"
 }
 
 func (s *Server) rootKeyHasFullAccess() bool {

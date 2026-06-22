@@ -50,7 +50,7 @@ type SessionEventPublisher interface {
 
 type ReadMeInput struct {
 	Modules  []string `json:"modules,omitempty" jsonschema:"diagram, mockup, interactive, data_viz, art, chart, elicitation"`
-	Platform string   `json:"platform,omitempty" jsonschema:"mobile, desktop, unknown"`
+	Platform string   `json:"platform,omitempty"`
 }
 
 type ShowWidgetInput struct {
@@ -98,7 +98,7 @@ func (t *MCPTools) AddShowWidgetTo(server *mcp.Server) {
 }
 
 func (t *MCPTools) ReadMe(_ context.Context, _ *mcp.CallToolRequest, input ReadMeInput) (*mcp.CallToolResult, any, error) {
-	return textResult(BuildReadMeGuide(input.Modules))
+	return textResult(BuildReadMeGuide(input.Modules, input.Platform))
 }
 
 // The rendered artifact reaches the UI via the event bus below, not the return.
@@ -141,8 +141,8 @@ func textResult(texts ...string) (*mcp.CallToolResult, any, error) {
 // The full guide overflows the agent's tool-result cap, so callers pass only the
 // modules in play (e.g. "chart") and get the design-system core plus those
 // sections. Structure lives in the visualizeguide template package.
-func BuildReadMeGuide(modules []string) string {
-	return visualizeguide.Render(visualizeguide.For(modules))
+func BuildReadMeGuide(modules []string, platform string) string {
+	return visualizeguide.Render(visualizeguide.For(modules, platform))
 }
 
 func BuildArtifact(input ShowWidgetInput) (ShowWidgetOutput, *sessionevents.ArtifactEvent, error) {
@@ -218,8 +218,7 @@ func ReadMeInputSchema() map[string]any {
 			},
 			"platform": map[string]any{
 				"type":        "string",
-				"enum":        []string{"mobile", "desktop", "unknown"},
-				"description": "The client platform the widget will render on. Pass 'mobile' when your system prompt indicates a mobile client (narrow ~380px viewport) so SVG viewBox and layout guidance are sized accordingly; otherwise pass 'desktop'. Defaults to 'unknown' (desktop sizing).",
+				"description": "The client platform the widget will render on.",
 			},
 		},
 	}

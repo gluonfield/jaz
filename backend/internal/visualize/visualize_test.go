@@ -93,7 +93,7 @@ func TestReadMeFiltersToRequestedModules(t *testing.T) {
 }
 
 func TestBuildReadMeGuideByModule(t *testing.T) {
-	diagram := BuildReadMeGuide([]string{"diagram"})
+	diagram := BuildReadMeGuide([]string{"diagram"}, "")
 	if !strings.Contains(diagram, "## SVG setup") || !strings.Contains(diagram, "## Diagram types") {
 		t.Fatal("diagram guide must include SVG setup and Diagram types")
 	}
@@ -101,7 +101,7 @@ func TestBuildReadMeGuideByModule(t *testing.T) {
 		t.Fatal("diagram guide must exclude chart sections")
 	}
 
-	core := BuildReadMeGuide(nil)
+	core := BuildReadMeGuide(nil, "")
 	if !strings.Contains(core, "## Modules") || !strings.Contains(core, "## Core Design System") {
 		t.Fatal("empty-modules guide must keep the index and design-system core")
 	}
@@ -111,29 +111,43 @@ func TestBuildReadMeGuideByModule(t *testing.T) {
 		}
 	}
 
-	multi := BuildReadMeGuide([]string{"chart", "diagram"})
+	multi := BuildReadMeGuide([]string{"chart", "diagram"}, "")
 	if !strings.Contains(multi, "## Charts (Chart.js)") || !strings.Contains(multi, "## Diagram types") {
 		t.Fatal("multi-module guide must union the requested modules' sections")
 	}
 }
 
-func TestReadMePlatformSchemaMatchesClaudeEnum(t *testing.T) {
-	properties := readMeInputSchema()["properties"].(map[string]any)
-	platform := properties["platform"].(map[string]any)
-	enum, ok := platform["enum"].([]string)
-	if !ok {
-		t.Fatalf("platform schema missing enum: %#v", platform)
+func TestReadMeGuideUsesMobileLayoutGuidance(t *testing.T) {
+	desktop := BuildReadMeGuide([]string{"chart"}, "desktop")
+	mobile := BuildReadMeGuide([]string{"chart"}, "mobile")
+	if !strings.Contains(desktop, "The widget container is 680px wide.") {
+		t.Fatalf("desktop guide missing 680px width:\n%s", desktop)
 	}
-	want := []string{"mobile", "desktop", "unknown"}
-	if len(enum) != len(want) {
-		t.Fatalf("platform enum = %#v, want %#v", enum, want)
+	if strings.Contains(desktop, "Mobile column cap") {
+		t.Fatalf("desktop guide must not include mobile column cap:\n%s", desktop)
 	}
-	for i := range want {
-		if enum[i] != want[i] {
-			t.Fatalf("platform enum = %#v, want %#v", enum, want)
+	for _, want := range []string{
+		"The widget container is 380px wide.",
+		"Mobile column cap",
+		"never lay out more than TWO columns",
+		"do not write `repeat(3, …)` or `repeat(4, …)`",
+	} {
+		if !strings.Contains(mobile, want) {
+			t.Fatalf("mobile guide missing %q:\n%s", want, mobile)
 		}
 	}
+}
+
+func TestReadMePlatformSchemaIsPlainString(t *testing.T) {
+	properties := readMeInputSchema()["properties"].(map[string]any)
+	platform := properties["platform"].(map[string]any)
+	if platform["type"] != "string" {
+		t.Fatalf("platform schema = %#v, want string", platform)
+	}
+	if _, ok := platform["enum"]; ok {
+		t.Fatalf("platform schema must stay a plain string, got enum: %#v", platform)
+	}
 	if _, ok := platform["default"]; ok {
-		t.Fatalf("platform schema must describe, not encode, the default: %#v", platform)
+		t.Fatalf("platform schema must not encode a default: %#v", platform)
 	}
 }
