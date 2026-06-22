@@ -293,7 +293,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
   const transcriptEvents = coalesceSessionEvents(
     [...persistedEvents, ...snapshotEvents, ...liveEvents].flatMap((event) => {
       // 'assistant' events are refresh signals; the message store has the content.
-      if (event.type === 'assistant' || event.type === 'side_chat_message') return []
+      if (event.type === 'assistant' || sessionEventPlacement(event) === 'side_chat') return []
       // Old rows round-tripped a typed-nil ACP into an empty struct.
       if (event.acp && !event.acp.id) event = { ...event, acp: undefined }
       const sanitized = sanitizeParentChildACPEvent(event, session.id)
@@ -420,7 +420,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   })
 
   const itemCount =
-    (detail.data?.messages.length ?? 0) + events.data.filter((event) => event.type !== 'side_chat_message').length
+    (detail.data?.messages.length ?? 0) + events.data.filter((event) => sessionEventPlacement(event) !== 'side_chat').length
   const { live, streaming, send: sendLiveMessage, abort: abortLiveMessage } = useLiveSessionSend({
     sessionId,
     streamingRef,
