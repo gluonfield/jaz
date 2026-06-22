@@ -103,10 +103,32 @@ func writeContextField(b *strings.Builder, name, value string) {
 }
 
 func writeContextText(b *strings.Builder, value string) {
-	b.WriteString("```\n")
+	fence := contextTextFence(value)
+	b.WriteString(fence)
+	b.WriteString("\n")
 	b.WriteString(value)
 	if !strings.HasSuffix(value, "\n") {
 		b.WriteString("\n")
 	}
-	b.WriteString("```\n")
+	b.WriteString(fence)
+	b.WriteString("\n")
+}
+
+func contextTextFence(value string) string {
+	longest := 0
+	current := 0
+	for _, r := range value {
+		if r != '`' {
+			current = 0
+			continue
+		}
+		current++
+		if current > longest {
+			longest = current
+		}
+	}
+	if longest < 3 {
+		return "```"
+	}
+	return strings.Repeat("`", longest+1)
 }
