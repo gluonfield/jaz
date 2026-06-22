@@ -104,10 +104,10 @@ function SubagentRow({ subagent }: { subagent: ProviderSubagentView }) {
         disabled={!prompt}
         title={prompt ? (expanded ? 'Hide prompt' : 'Show prompt') : undefined}
         onClick={() => setExpanded((open) => !open)}
-        className="flex min-h-10 w-full min-w-0 items-start gap-2 rounded-md px-1 py-1.5 text-left transition-colors duration-150 enabled:cursor-pointer enabled:hover:bg-surface-2 disabled:cursor-default"
+        className="flex min-h-10 w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left transition-colors duration-150 enabled:cursor-pointer enabled:hover:bg-surface-2 disabled:cursor-default"
       >
-        <AgentAvatar agent={subagent.provider} size={17} className="mt-0.5" />
-        <span className="min-w-0 flex-1">
+        <AgentAvatar agent={subagent.provider} size={17} />
+        <span className="flex min-w-0 flex-1 flex-col justify-center">
           <span className="block truncate text-[13px] font-medium leading-5 text-ink" title={title}>
             {title}
           </span>
@@ -118,7 +118,7 @@ function SubagentRow({ subagent }: { subagent: ProviderSubagentView }) {
           ) : null}
         </span>
         <span
-          className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center ${status.className}`}
+          className={`inline-flex h-5 w-5 shrink-0 items-center justify-center ${status.className}`}
           title={status.label}
           aria-label={status.label}
         >
@@ -127,7 +127,7 @@ function SubagentRow({ subagent }: { subagent: ProviderSubagentView }) {
         {prompt ? (
           <ChevronDown
             size={13}
-            className={`mt-0.5 shrink-0 text-ink-3 transition-transform duration-150 ${expanded ? 'rotate-180' : ''}`}
+            className={`shrink-0 text-ink-3 transition-transform duration-150 ${expanded ? 'rotate-180' : ''}`}
             aria-hidden
           />
         ) : null}
