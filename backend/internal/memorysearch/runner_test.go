@@ -162,6 +162,12 @@ func TestSearchMemorySpawnsCompatibleWorkerModelAndEffort(t *testing.T) {
 		{name: "opencode-openai", agent: acp.AgentOpenCode, defaults: jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
 			acp.AgentOpenCode: {ModelProvider: provider.ProviderOpenAI},
 		}}, model: "gpt-5.4-mini"},
+		{name: "opencode-ollama", agent: acp.AgentOpenCode, defaults: jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
+			acp.AgentOpenCode: {ModelProvider: provider.ProviderOllama},
+		}}},
+		{name: "opencode-custom-provider", agent: acp.AgentOpenCode, defaults: jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
+			acp.AgentOpenCode: {ModelProvider: "internal"},
+		}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

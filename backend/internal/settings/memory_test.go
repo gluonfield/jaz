@@ -76,6 +76,16 @@ func TestMemoryAgentDefaultsCompatibleWithSupportedModels(t *testing.T) {
 			defaults: AgentDefaults{ACP: map[string]ACPAgentDefaults{acp.AgentOpenCode: {ModelProvider: provider.ProviderOpenAI}}},
 			model:    "gpt-5.4-mini",
 		},
+		{
+			name:     "opencode-ollama",
+			agent:    acp.AgentOpenCode,
+			defaults: AgentDefaults{ACP: map[string]ACPAgentDefaults{acp.AgentOpenCode: {ModelProvider: provider.ProviderOllama}}},
+		},
+		{
+			name:     "opencode-custom-provider",
+			agent:    acp.AgentOpenCode,
+			defaults: AgentDefaults{ACP: map[string]ACPAgentDefaults{acp.AgentOpenCode: {ModelProvider: "internal"}}},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
