@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"encoding/json"
+
 	"github.com/wins/jaz/backend/internal/media"
 	"github.com/wins/jaz/backend/internal/provider"
 )
@@ -11,6 +13,11 @@ func TextBlock(text string) Block {
 
 func QuoteBlock(text string) Block {
 	return Block{Type: BlockTypeQuote, Text: text}
+}
+
+func BrowserAnnotationBlock(annotation BrowserAnnotation) Block {
+	data, _ := json.Marshal(annotation)
+	return Block{Type: BlockTypeBrowserAnnotation, InputJSON: string(data)}
 }
 
 func AttachmentBlock(attachment Attachment) Block {
@@ -28,10 +35,18 @@ func AttachmentBlock(attachment Attachment) Block {
 	return block
 }
 
-func UserMessageRecord(message string, quotes []string, attachments []Attachment) Message {
-	blocks := make([]Block, 0, len(quotes)+1+len(attachments))
-	for _, quote := range quotes {
-		blocks = append(blocks, QuoteBlock(quote))
+func UserMessageRecord(message string, contexts []MessageContext, attachments []Attachment) Message {
+	contexts = NormalizeMessageContexts(contexts)
+	blocks := make([]Block, 0, len(contexts)+1+len(attachments))
+	for _, context := range contexts {
+		switch context.Type {
+		case ContextTypeSelection:
+			blocks = append(blocks, QuoteBlock(context.Text))
+		case ContextTypeBrowserAnnotation:
+			if context.BrowserAnnotation != nil {
+				blocks = append(blocks, BrowserAnnotationBlock(*context.BrowserAnnotation))
+			}
+		}
 	}
 	blocks = append(blocks, TextBlock(message))
 	for _, attachment := range attachments {
@@ -44,10 +59,10 @@ func UserMessageRecord(message string, quotes []string, attachments []Attachment
 	}
 }
 
-func AppendUserMessage(store MessageAppender, sessionID, message string, quotes []string, attachments []Attachment) error {
-	if len(attachments) > 0 || len(quotes) > 0 {
+func AppendUserMessage(store MessageAppender, sessionID, message string, contexts []MessageContext, attachments []Attachment) error {
+	if len(attachments) > 0 || len(contexts) > 0 {
 		if appender, ok := store.(MessageRecordAppender); ok {
-			return appender.AppendMessageRecords(sessionID, UserMessageRecord(message, quotes, attachments))
+			return appender.AppendMessageRecords(sessionID, UserMessageRecord(message, contexts, attachments))
 		}
 	}
 	return store.AppendMessages(sessionID, provider.UserMessage(message))

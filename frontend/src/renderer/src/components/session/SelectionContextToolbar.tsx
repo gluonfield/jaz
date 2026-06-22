@@ -13,7 +13,7 @@ interface Pending {
 // message (`.chat-prose`) surfaces a floating "Add to chat" action over it. The
 // selection is captured on pointer/key release so clicking the action doesn't
 // race the browser clearing the range.
-export function SelectionQuoteToolbar({
+export function SelectionContextToolbar({
   scrollRef,
   onAdd,
 }: {

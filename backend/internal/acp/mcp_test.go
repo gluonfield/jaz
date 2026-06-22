@@ -22,7 +22,7 @@ func (s *fakeMCPService) Spawn(_ context.Context, req SpawnRequest) (SpawnResult
 }
 
 func (s *fakeMCPService) Send(context.Context, SendRequest) (Job, error) {
-	return Job{}, nil
+	return s.job, nil
 }
 
 func (s *fakeMCPService) Status(string) (Job, error) {
@@ -104,13 +104,16 @@ func TestMCPAgentJobOutputValidatesToolCallRawInputObject(t *testing.T) {
 			Status:   "completed",
 			Kind:     "read",
 			ToolName: "Read",
-			RawInput: map[string]any{"file_path": "/tmp/plan.html"},
+			RawInput: map[string]any{
+				"file_path": "/tmp/plan.html",
+				"nested":    map[string]any{"limit": 1},
+			},
 		}},
 	}
 	service := &fakeMCPService{job: job, list: []Job{job}}
 	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1.0.0"}, nil)
 	NewMCPTools(service).AddTo(server)
-	session, closeSession := connectTestClient(t, server)
+	session, closeSession := connectMCPClient(t, server)
 	defer closeSession()
 
 	for _, name := range []string{MCPToolAgentStatus, MCPToolAgentWait, MCPToolAgentCancel} {
@@ -121,9 +124,12 @@ func TestMCPAgentJobOutputValidatesToolCallRawInputObject(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		output := structuredOutput[Job](t, call)
+		output := structuredContent[Job](t, call)
 		if got := output.ToolCalls[0].RawInput["file_path"]; got != "/tmp/plan.html" {
 			t.Fatalf("%s raw_input file_path = %#v", name, got)
+		}
+		if nested, ok := output.ToolCalls[0].RawInput["nested"].(map[string]any); !ok || nested["limit"] != float64(1) {
+			t.Fatalf("%s raw_input nested = %#v", name, output.ToolCalls[0].RawInput["nested"])
 		}
 	}
 
@@ -131,13 +137,13 @@ func TestMCPAgentJobOutputValidatesToolCallRawInputObject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	list := structuredOutput[MCPListOutput](t, listCall)
+	list := structuredContent[MCPListOutput](t, listCall)
 	if got := list.Sessions[0].ToolCalls[0].RawInput["file_path"]; got != "/tmp/plan.html" {
 		t.Fatalf("list raw_input file_path = %#v", got)
 	}
 }
 
-func connectTestClient(t *testing.T, server *mcp.Server) (*mcp.ClientSession, func()) {
+func connectMCPClient(t *testing.T, server *mcp.Server) (*mcp.ClientSession, func()) {
 	t.Helper()
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
@@ -156,7 +162,7 @@ func connectTestClient(t *testing.T, server *mcp.Server) (*mcp.ClientSession, fu
 	}
 }
 
-func structuredOutput[T any](t *testing.T, res *mcp.CallToolResult) T {
+func structuredContent[T any](t *testing.T, res *mcp.CallToolResult) T {
 	t.Helper()
 	if res.IsError {
 		t.Fatalf("tool error: %#v", res.Content)

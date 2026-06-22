@@ -580,19 +580,8 @@ func toolCallEvent(call ToolCallSnapshot) sessionevents.ACPToolCall {
 		Kind:     call.Kind,
 		ToolName: call.ToolName,
 		Content:  call.Content,
-		RawInput: rawInputEvent(call.RawInput),
+		RawInput: call.RawInput,
 	}
-}
-
-func rawInputEvent(input map[string]any) json.RawMessage {
-	if len(input) == 0 {
-		return nil
-	}
-	data, err := json.Marshal(input)
-	if err != nil {
-		return nil
-	}
-	return json.RawMessage(data)
 }
 
 func (m *Manager) publishACPTranscriptEvent(job Job, eventType, content string, customize func(*sessionevents.ACPEvent)) {

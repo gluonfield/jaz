@@ -5,6 +5,7 @@ import { mutateSessionQueue, type QueueMutation, uploadSessionAttachment } from 
 import type { QueuedMessage, QueuedMessageInput, Session, SessionMessages } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 import type { SendMessageOptions } from '@/lib/sendMessage'
+import { contextAttachmentIDs, contextInputs, normalizeBrowserAnnotation } from '@/lib/messageContext'
 
 export function useSessionQueue({
   sessionId,
@@ -61,11 +62,12 @@ export function useSessionQueue({
           : []
         const attachmentIDs = [
           ...(options.attachments ?? []).map((attachment) => attachment.id),
+          ...contextAttachmentIDs(options.contexts),
           ...uploaded.map((attachment) => attachment.id),
         ]
         const prompt = normalizeQueuedPrompt({
           text,
-          quotes: (options.quotes ?? []).map((quote) => quote.text),
+          contexts: contextInputs(options.contexts),
           attachment_ids: attachmentIDs,
           plan_requested: options.planRequested,
         })
@@ -143,13 +145,28 @@ function normalizeQueuedPrompts(prompts: QueuedMessage[]): QueuedMessage[] {
 function normalizeQueuedPrompt(prompt: QueuedMessageInput): QueuedMessageInput | null {
   const text = prompt.text.trim()
   if (!text) return null
-  const quotes = (prompt.quotes ?? []).map((quote) => quote.trim()).filter(Boolean)
+  const contexts = normalizeContexts(prompt.contexts)
+  const legacyQuotes = (prompt.quotes ?? []).map((quote) => quote.trim()).filter(Boolean)
   const attachmentIds = (prompt.attachment_ids ?? []).map((id) => id.trim()).filter(Boolean)
   return {
     ...(prompt.id?.trim() ? { id: prompt.id.trim() } : {}),
     text,
-    ...(quotes.length ? { quotes } : {}),
+    ...(contexts.length || legacyQuotes.length
+      ? { contexts: [...legacyQuotes.map((text) => ({ type: 'selection' as const, text })), ...contexts] }
+      : {}),
     ...(attachmentIds.length ? { attachment_ids: attachmentIds } : {}),
     ...(prompt.plan_requested ? { plan_requested: true } : {}),
   }
+}
+
+function normalizeContexts(contexts: QueuedMessageInput['contexts'] = []): NonNullable<QueuedMessageInput['contexts']> {
+  return contexts.flatMap<NonNullable<QueuedMessageInput['contexts']>[number]>((context) => {
+    if (context.type === 'selection') {
+      const text = context.text?.trim()
+      return text ? [{ type: 'selection' as const, text }] : []
+    }
+    if (context.type !== 'browser_annotation' || !context.browser_annotation) return []
+    const annotation = normalizeBrowserAnnotation(context.browser_annotation)
+    return annotation ? [{ type: 'browser_annotation' as const, browser_annotation: annotation }] : []
+  })
 }
