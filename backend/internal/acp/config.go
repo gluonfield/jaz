@@ -238,6 +238,7 @@ func codexBuiltinAgent(goos string) AgentConfig {
 			"-c", `sandbox_mode="danger-full-access"`,
 			"-c", `approval_policy="never"`,
 			"-c", `features.tool_search_always_defer_mcp_tools=true`,
+			"-c", `suppress_unstable_features_warning=true`,
 		},
 		Model:           "gpt-5.5",
 		ReasoningEffort: "xhigh",

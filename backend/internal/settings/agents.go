@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -272,11 +273,16 @@ func shouldRefreshBuiltInCommand(name, storedCommand, seedCommand string) bool {
 	if !isNpxExecutable(storedExecutable) || !isNpxExecutable(seedExecutable) {
 		return false
 	}
-	if !storedCodexPackageIsOlder(storedArgs, seedArgs) {
-		return false
+	if storedCodexPackageIsOlder(storedArgs, seedArgs) {
+		return commandArgsMatchExceptPackageWithOptionalTrailingConfigs(
+			storedArgs,
+			seedArgs,
+			`features.tool_search_always_defer_mcp_tools=true`,
+			`suppress_unstable_features_warning=true`,
+		)
 	}
-	return commandArgsMatchExceptPackage(storedArgs, seedArgs) ||
-		commandArgsMatchExceptPackage(storedArgs, seedArgsWithoutTrailingToolSearchFlag(seedArgs))
+	return storedCodexPackageIsSame(storedArgs, seedArgs) &&
+		slices.Equal(storedArgs, seedArgsWithoutTrailingConfigs(seedArgs, `suppress_unstable_features_warning=true`))
 }
 
 func storedCodexPackageIsOlder(storedArgs, seedArgs []string) bool {
@@ -292,6 +298,18 @@ func storedCodexPackageIsOlder(storedArgs, seedArgs []string) bool {
 		return false
 	}
 	return semverLess(storedVersion, seedVersion)
+}
+
+func storedCodexPackageIsSame(storedArgs, seedArgs []string) bool {
+	if len(storedArgs) < 2 || len(seedArgs) < 2 {
+		return false
+	}
+	storedName, storedVersion, ok := packageNameVersion(storedArgs[1])
+	if !ok {
+		return false
+	}
+	seedName, seedVersion, ok := packageNameVersion(seedArgs[1])
+	return ok && storedName == seedName && storedVersion == seedVersion
 }
 
 func packageNameVersion(pkg string) (string, string, bool) {
@@ -324,13 +342,27 @@ func commandArgsMatchExceptPackage(storedArgs, seedArgs []string) bool {
 	return true
 }
 
-func seedArgsWithoutTrailingToolSearchFlag(seedArgs []string) []string {
-	if len(seedArgs) >= 2 &&
-		seedArgs[len(seedArgs)-2] == "-c" &&
-		seedArgs[len(seedArgs)-1] == `features.tool_search_always_defer_mcp_tools=true` {
-		return seedArgs[:len(seedArgs)-2]
+func commandArgsMatchExceptPackageWithOptionalTrailingConfigs(storedArgs, seedArgs []string, configs ...string) bool {
+	for {
+		if commandArgsMatchExceptPackage(storedArgs, seedArgs) {
+			return true
+		}
+		next := seedArgsWithoutTrailingConfigs(seedArgs, configs...)
+		if len(next) == len(seedArgs) {
+			return false
+		}
+		seedArgs = next
 	}
-	return nil
+}
+
+func seedArgsWithoutTrailingConfigs(seedArgs []string, configs ...string) []string {
+	if len(seedArgs) < 2 || seedArgs[len(seedArgs)-2] != "-c" {
+		return seedArgs
+	}
+	if !slices.Contains(configs, seedArgs[len(seedArgs)-1]) {
+		return seedArgs
+	}
+	return seedArgs[:len(seedArgs)-2]
 }
 
 func isNpxExecutable(executable string) bool {
