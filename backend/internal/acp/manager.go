@@ -111,7 +111,7 @@ type SpawnRequest struct {
 type SendRequest struct {
 	Session       string
 	Message       string
-	Quotes        []string
+	Contexts      []storage.MessageContext
 	Attachments   []storage.Attachment
 	Completion    CompletionMode
 	Interactive   bool

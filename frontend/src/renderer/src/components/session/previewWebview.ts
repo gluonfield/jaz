@@ -6,6 +6,8 @@ export type PreviewWebviewElement = HTMLElement & {
   goBack: () => void
   goForward: () => void
   reload: () => void
+  executeJavaScript: <T = unknown>(code: string, userGesture?: boolean) => Promise<T>
+  capturePage: () => Promise<{ toDataURL: () => string }>
 }
 
 export type PreviewNavigationEvent = Event & {

@@ -68,6 +68,8 @@ func kindString(kind *acpschema.ToolKind) string {
 	return string(*kind)
 }
 
+// boundedRawInput keeps small object inputs such as query/url/file path fields
+// while dropping file-content-sized or non-object payloads.
 func boundedRawInput(raw json.RawMessage) map[string]any {
 	if len(raw) == 0 || len(raw) > maxToolRawInputBytes {
 		return nil

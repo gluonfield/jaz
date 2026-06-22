@@ -7,11 +7,12 @@ import (
 )
 
 type QueuedMessage struct {
-	ID            string   `json:"id,omitempty"`
-	Text          string   `json:"text"`
-	Quotes        []string `json:"quotes,omitempty"`
-	AttachmentIDs []string `json:"attachment_ids,omitempty"`
-	PlanRequested bool     `json:"plan_requested,omitempty"`
+	ID            string           `json:"id,omitempty"`
+	Text          string           `json:"text"`
+	Contexts      []MessageContext `json:"contexts,omitempty"`
+	Quotes        []string         `json:"quotes,omitempty"`
+	AttachmentIDs []string         `json:"attachment_ids,omitempty"`
+	PlanRequested bool             `json:"plan_requested,omitempty"`
 }
 
 func NormalizeQueuedMessages(messages []QueuedMessage) []QueuedMessage {
@@ -71,7 +72,8 @@ func legacyQueuedMessageID(index int, seen map[string]bool) string {
 func NormalizeQueuedMessage(message QueuedMessage) (QueuedMessage, bool) {
 	message.ID = strings.TrimSpace(message.ID)
 	message.Text = strings.TrimSpace(message.Text)
-	message.Quotes = normalizeNonEmpty(message.Quotes)
+	message.Contexts = NormalizeMessageContexts(append(SelectionContexts(message.Quotes), message.Contexts...))
+	message.Quotes = nil
 	message.AttachmentIDs = normalizeNonEmpty(message.AttachmentIDs)
 	return message, message.Text != ""
 }
