@@ -82,3 +82,92 @@ func TestRecordAndPublishSlimsStoredCopy(t *testing.T) {
 		t.Fatal("no live event published")
 	}
 }
+
+func TestInactiveStatusClearsStoredPermissions(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "inactive",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Agent:     AgentCodex,
+			SessionID: "acp-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lastTool := time.Now().UTC().Add(-time.Minute)
+	if err := store.SaveACPState(session.ID, storage.ACPState{
+		ID:         session.ID,
+		ACPAgent:   AgentCodex,
+		ACPSession: "acp-session",
+		State:      StateRunning,
+		Permissions: []sessionevents.ACPPermission{{
+			ID: "approval-1",
+		}},
+		ToolCalls: []sessionevents.ACPToolCall{{
+			ID:     "tool-1",
+			Title:  "go test ./...",
+			Status: "in_progress",
+		}},
+		LastEventAt: lastTool,
+		LastToolAt:  lastTool,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	manager := NewManager(store, Config{}, nil)
+	status, err := manager.Status(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != StateNotRunning {
+		t.Fatalf("state = %q, want %q", status.State, StateNotRunning)
+	}
+	if len(status.Permissions) != 0 {
+		t.Fatalf("inactive status kept stale permissions: %#v", status.Permissions)
+	}
+	if len(status.ToolCalls) != 1 || status.LastToolAt.IsZero() {
+		t.Fatalf("inactive diagnostics lost tool state: %#v", status)
+	}
+}
+
+func TestResolveDanglingToolCallsDoesNotRefreshLastToolAt(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "cancelled", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lastTool := time.Now().UTC().Add(-5 * time.Minute)
+	job := &Job{
+		ID:         session.ID,
+		Slug:       session.Slug,
+		ACPAgent:   AgentCodex,
+		ACPSession: "acp-session",
+		State:      StateCancelled,
+		LastToolAt: lastTool,
+		toolByID: map[string]sessionevents.ACPToolCall{
+			"tool-1": {ID: "tool-1", Title: "go test ./...", Status: "in_progress"},
+		},
+	}
+	manager := NewManager(store, Config{}, nil)
+	manager.Events = sessionevents.New()
+
+	manager.resolveDanglingToolCalls(job)
+
+	if !job.LastToolAt.Equal(lastTool) {
+		t.Fatalf("LastToolAt = %s, want unchanged %s", job.LastToolAt, lastTool)
+	}
+	if got := job.toolByID["tool-1"].Status; got != "cancelled" {
+		t.Fatalf("tool status = %q, want cancelled", got)
+	}
+	if job.LastEventAt.IsZero() {
+		t.Fatal("LastEventAt was not updated for cleanup event")
+	}
+}

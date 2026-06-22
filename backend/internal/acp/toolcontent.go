@@ -2,6 +2,7 @@ package acp
 
 import (
 	"encoding/json"
+	"time"
 	"unicode/utf8"
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
@@ -18,7 +19,7 @@ const (
 // native local-agent updates) are sparse — only changed fields are present — so
 // an empty field never clears what an earlier update already established. This is
 // the single merge rule shared by the external-ACP and native paths.
-func mergeToolCall(dst *ToolCallSnapshot, src ToolCallSnapshot) {
+func mergeToolCall(dst *sessionevents.ACPToolCall, src sessionevents.ACPToolCall) {
 	if src.ID != "" {
 		dst.ID = src.ID
 	}
@@ -40,20 +41,28 @@ func mergeToolCall(dst *ToolCallSnapshot, src ToolCallSnapshot) {
 	if len(src.RawInput) > 0 {
 		dst.RawInput = src.RawInput
 	}
+	mergeACPToolRuntime(&dst.Runtime, src.Runtime)
+	if !src.StartedAt.IsZero() && dst.StartedAt.IsZero() {
+		dst.StartedAt = src.StartedAt
+	}
+	if !src.UpdatedAt.IsZero() {
+		dst.UpdatedAt = src.UpdatedAt
+	}
 }
 
 // toolUpdateSnapshot decodes one ACP tool-call update (a ToolCall or a
 // ToolCallUpdate — same fields) into a partial snapshot. Both session-update
 // variants share this so the protocol handler keeps a single code path; merge it
 // onto the running call with mergeToolCall.
-func toolUpdateSnapshot(id acpschema.ToolCallID, title string, status *acpschema.ToolCallStatus, kind *acpschema.ToolKind, content []acpschema.ToolCallContent, rawInput json.RawMessage, meta map[string]any) ToolCallSnapshot {
-	src := ToolCallSnapshot{
+func toolUpdateSnapshot(id acpschema.ToolCallID, title string, status *acpschema.ToolCallStatus, kind *acpschema.ToolKind, content []acpschema.ToolCallContent, rawInput json.RawMessage, meta map[string]any, at time.Time) sessionevents.ACPToolCall {
+	src := sessionevents.ACPToolCall{
 		ID:       string(id),
 		Title:    title,
 		Kind:     kindString(kind),
 		ToolName: metaToolName(meta),
 		Content:  normalizeToolContent(content),
 		RawInput: boundedRawInput(rawInput),
+		Runtime:  acpToolRuntime(meta, at),
 	}
 	if status != nil {
 		src.Status = string(*status)
