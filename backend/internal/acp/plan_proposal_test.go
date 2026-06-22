@@ -39,7 +39,7 @@ func TestPlanRequestedTextPublishesProposedPlan(t *testing.T) {
 		ACPAgent:      AgentCodex,
 		ACPSession:    "acp-session",
 		Cwd:           t.TempDir(),
-		toolByID:      map[string]ToolCallSnapshot{},
+		toolByID:      map[string]sessionevents.ACPToolCall{},
 	}
 	manager.jobsByID[session.ID] = job
 	manager.jobsByACP["acp-session"] = job
@@ -119,7 +119,7 @@ func TestPlanRequestedPlainTextPublishesACPMessage(t *testing.T) {
 		ACPAgent:   AgentCodex,
 		ACPSession: "acp-session",
 		Cwd:        t.TempDir(),
-		toolByID:   map[string]ToolCallSnapshot{},
+		toolByID:   map[string]sessionevents.ACPToolCall{},
 	}
 	manager.jobsByID[session.ID] = job
 	manager.jobsByACP["acp-session"] = job
@@ -173,7 +173,7 @@ func TestPlanRequestedProgressPublishesProposedPlan(t *testing.T) {
 		ACPAgent:   AgentCodex,
 		ACPSession: "acp-session",
 		Cwd:        t.TempDir(),
-		toolByID:   map[string]ToolCallSnapshot{},
+		toolByID:   map[string]sessionevents.ACPToolCall{},
 	}
 	manager.jobsByID[session.ID] = job
 	manager.jobsByACP["acp-session"] = job
@@ -238,7 +238,7 @@ func TestLocalPlanRequestedPlainTextPublishesACPMessage(t *testing.T) {
 		ACPAgent:   AgentJaz,
 		ACPSession: session.ID,
 		Cwd:        t.TempDir(),
-		toolByID:   map[string]ToolCallSnapshot{},
+		toolByID:   map[string]sessionevents.ACPToolCall{},
 	}
 	manager.jobsByID[session.ID] = job
 	done := job.startTurn(CompletionInline, true, false)
