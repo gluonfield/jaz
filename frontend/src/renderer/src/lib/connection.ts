@@ -280,6 +280,7 @@ function schedulePairingPoll() {
     try {
       const params = new URLSearchParams({ secret: pairing.secret })
       const res = await fetch(`${pairing.url}/v1/devices/pairing-requests/${encodeURIComponent(pairing.id)}?${params}`, {
+        headers: { [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM },
         signal: AbortSignal.timeout(5_000),
       })
       const body = await readJSON<{
