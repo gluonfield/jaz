@@ -21,6 +21,7 @@ require (
 	github.com/spf13/viper v1.21.0
 	go.uber.org/fx v1.24.0
 	golang.org/x/image v0.39.0
+	golang.org/x/mod v0.36.0
 	golang.org/x/oauth2 v0.35.0
 	modernc.org/sqlite v1.52.0
 )
@@ -73,7 +74,6 @@ require (
 	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/exp/typeparams v0.0.0-20231108232855-2478ac86f678 // indirect
-	golang.org/x/mod v0.36.0 // indirect
 	golang.org/x/net v0.54.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect

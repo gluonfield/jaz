@@ -10,20 +10,13 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/storage"
+	"golang.org/x/mod/semver"
 )
 
 const (
 	AgentSettingsNamespace = "agents"
 	AgentDefaultsKey       = "defaults"
 )
-
-var legacyCodexACPPackages = []string{
-	"@jazchat/codex-acp@0.16.1",
-	"@jazchat/codex-acp@0.16.2",
-	"@jazchat/codex-acp@0.16.3",
-	"@jazchat/codex-acp@0.16.4",
-	"@jazchat/codex-acp@0.16.5",
-}
 
 type ACPAgentDefaults struct {
 	Enabled         bool                `json:"enabled"`
@@ -279,48 +272,70 @@ func shouldRefreshBuiltInCommand(name, storedCommand, seedCommand string) bool {
 	if !isNpxExecutable(storedExecutable) || !isNpxExecutable(seedExecutable) {
 		return false
 	}
-	for _, legacyPackage := range legacyCodexACPPackages {
-		if stringSlicesEqual(storedArgs, codexBuiltinArgsWithPackage(seedArgs, legacyPackage)) {
-			return true
-		}
-		if stringSlicesEqual(storedArgs, legacyCodexBuiltinArgs(seedArgs, legacyPackage)) {
-			return true
-		}
+	if !storedCodexPackageIsOlder(storedArgs, seedArgs) {
+		return false
 	}
-	return false
+	return commandArgsMatchExceptPackage(storedArgs, seedArgs) ||
+		commandArgsMatchExceptPackage(storedArgs, seedArgsWithoutTrailingToolSearchFlag(seedArgs))
 }
 
-func codexBuiltinArgsWithPackage(seedArgs []string, pkg string) []string {
-	args := append([]string(nil), seedArgs...)
-	args[1] = pkg
-	return args
+func storedCodexPackageIsOlder(storedArgs, seedArgs []string) bool {
+	if len(storedArgs) < 2 || len(seedArgs) < 2 {
+		return false
+	}
+	storedName, storedVersion, ok := packageNameVersion(storedArgs[1])
+	if !ok {
+		return false
+	}
+	seedName, seedVersion, ok := packageNameVersion(seedArgs[1])
+	if !ok || storedName != seedName {
+		return false
+	}
+	return semverLess(storedVersion, seedVersion)
 }
 
-func legacyCodexBuiltinArgs(seedArgs []string, pkg string) []string {
-	args := codexBuiltinArgsWithPackage(seedArgs, pkg)
-	if len(args) >= 8 &&
-		args[6] == "-c" &&
-		args[7] == `features.tool_search_always_defer_mcp_tools=true` {
-		return args[:6]
+func packageNameVersion(pkg string) (string, string, bool) {
+	pkg = strings.TrimSpace(pkg)
+	at := strings.LastIndex(pkg, "@")
+	if at <= strings.LastIndex(pkg, "/") || at == len(pkg)-1 {
+		return "", "", false
 	}
-	return args
+	return pkg[:at], pkg[at+1:], true
+}
+
+func semverLess(a, b string) bool {
+	a = "v" + strings.TrimPrefix(strings.TrimSpace(a), "v")
+	b = "v" + strings.TrimPrefix(strings.TrimSpace(b), "v")
+	return semver.IsValid(a) && semver.IsValid(b) && semver.Compare(a, b) < 0
+}
+
+func commandArgsMatchExceptPackage(storedArgs, seedArgs []string) bool {
+	if len(storedArgs) != len(seedArgs) || len(seedArgs) < 2 {
+		return false
+	}
+	for i := range seedArgs {
+		if i == 1 {
+			continue
+		}
+		if storedArgs[i] != seedArgs[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func seedArgsWithoutTrailingToolSearchFlag(seedArgs []string) []string {
+	if len(seedArgs) >= 2 &&
+		seedArgs[len(seedArgs)-2] == "-c" &&
+		seedArgs[len(seedArgs)-1] == `features.tool_search_always_defer_mcp_tools=true` {
+		return seedArgs[:len(seedArgs)-2]
+	}
+	return nil
 }
 
 func isNpxExecutable(executable string) bool {
 	base := strings.ToLower(filepath.Base(executable))
 	return base == "npx" || base == "npx.cmd"
-}
-
-func stringSlicesEqual(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 func canonicalizeACPDefaults(in map[string]ACPAgentDefaults) map[string]ACPAgentDefaults {
