@@ -150,7 +150,7 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	case acpschema.AgentMessageChunkUpdate:
 		messageChunk = contentText(event.Content)
 		job.Assistant = appendACPText(job.Assistant, messageChunk)
-		bufferMessage = job.planRequested
+		bufferMessage = job.turn != nil && job.turn.planRequested
 		if messageChunk != "" {
 			job.savedAssistantLen = len(job.Assistant)
 		}

@@ -37,6 +37,7 @@ type ACPManager interface {
 	CreateSession(context.Context, acp.SpawnRequest) (storage.Session, error)
 	Spawn(context.Context, acp.SpawnRequest) (acp.SpawnResult, error)
 	Send(context.Context, acp.SendRequest) (acp.Job, error)
+	Steer(context.Context, acp.SteerRequest) (acp.Job, error)
 	SendSideChat(context.Context, acp.SideChatRequest) error
 	Status(string) (acp.Job, error)
 	List() []acp.Job
