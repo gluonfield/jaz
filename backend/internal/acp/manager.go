@@ -700,9 +700,9 @@ func (m *Manager) cancelStored(ref string) (Job, error) {
 	state.Slug = firstNonEmpty(state.Slug, session.Slug)
 	state.Title = firstNonEmpty(state.Title, session.Title)
 	state.ParentID = firstNonEmpty(state.ParentID, session.ParentID)
-	state.ModelProvider = firstNonEmpty(state.ModelProvider, session.ModelProvider)
-	state.Model = firstNonEmpty(state.Model, session.Model)
-	state.ReasoningEffort = firstNonEmpty(state.ReasoningEffort, session.ReasoningEffort)
+	state.ModelProvider = firstNonEmpty(session.ModelProvider, state.ModelProvider)
+	state.Model = firstNonEmpty(session.Model, state.Model)
+	state.ReasoningEffort = firstNonEmpty(session.ReasoningEffort, state.ReasoningEffort)
 	if session.RuntimeRef != nil {
 		state.ACPAgent = firstNonEmpty(state.ACPAgent, session.RuntimeRef.Agent)
 		state.ACPSession = firstNonEmpty(state.ACPSession, session.RuntimeRef.SessionID)
@@ -718,25 +718,7 @@ func (m *Manager) cancelStored(ref string) (Job, error) {
 			m.log.Warn("clearing stored acp state failed", "session", session.ID, "error", err)
 		}
 	}
-	m.recordAndPublish(sessionevents.Event{
-		SessionID: session.ID,
-		Type:      "acp",
-		ACP: &sessionevents.ACPEvent{
-			ID:              session.ID,
-			Slug:            state.Slug,
-			Title:           state.Title,
-			ParentID:        state.ParentID,
-			Agent:           state.ACPAgent,
-			SessionID:       state.ACPSession,
-			ModelProvider:   state.ModelProvider,
-			Model:           state.Model,
-			ReasoningEffort: state.ReasoningEffort,
-			State:           StateCancelled,
-			StopReason:      "cancelled",
-			LastEventAt:     now,
-		},
-	})
-	return Job{
+	cancelled := Job{
 		ID:              session.ID,
 		Slug:            session.Slug,
 		Title:           session.Title,
@@ -752,7 +734,13 @@ func (m *Manager) cancelStored(ref string) (Job, error) {
 		UpdatedAt:       now,
 		LastEventAt:     now,
 		LastToolAt:      state.LastToolAt,
-	}, nil
+	}
+	m.recordAndPublish(sessionevents.Event{
+		SessionID: session.ID,
+		Type:      "acp",
+		ACP:       EventFromJob(cancelled),
+	})
+	return cancelled, nil
 }
 
 func (m *Manager) teardown(id string) {

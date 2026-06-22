@@ -754,8 +754,11 @@ func TestSessionMessagesIncludesPersistedSessionEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	session, err := store.CreateSession(storage.CreateSession{
-		Slug:    "codex",
-		Runtime: storage.RuntimeACP,
+		Slug:            "codex",
+		Runtime:         storage.RuntimeACP,
+		ModelProvider:   "codex",
+		Model:           "gpt-5.5",
+		ReasoningEffort: "xhigh",
 		RuntimeRef: &storage.RuntimeRef{
 			Type:      storage.RuntimeACP,
 			Agent:     "codex",
@@ -788,13 +791,18 @@ func TestSessionMessagesIncludesPersistedSessionEvents(t *testing.T) {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
 	var got struct {
-		Events []sessionevents.Event `json:"events"`
+		Events  []sessionevents.Event   `json:"events"`
+		ACPMeta map[string]acpMetaEntry `json:"acp_meta"`
 	}
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
 	if len(got.Events) != 1 || got.Events[0].Type != "acp_message" || got.Events[0].Content != "I inspected the workspace." {
 		t.Fatalf("events = %#v", got.Events)
+	}
+	meta := got.ACPMeta[session.ID]
+	if meta.ModelProvider != "codex" || meta.Model != "gpt-5.5" || meta.ReasoningEffort != "xhigh" {
+		t.Fatalf("acp meta = %#v", got.ACPMeta)
 	}
 }
 

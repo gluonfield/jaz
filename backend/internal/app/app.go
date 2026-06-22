@@ -535,7 +535,7 @@ func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, 
 			setStoredSessionError(store, job.ParentID, err.Error())
 			return
 		}
-		events.Publish(sessionevents.Event{SessionID: job.ParentID, Type: "assistant", Content: content, ACP: acpEvent(job)})
+		events.Publish(sessionevents.Event{SessionID: job.ParentID, Type: "assistant", Content: content, ACP: acp.EventFromJob(job)})
 		setStoredSessionStatus(store, job.ParentID, storage.StatusIdle)
 		return
 	}
@@ -580,7 +580,7 @@ func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, 
 		content := fmt.Sprintf("ACP session %s finished, but coordinator follow-up failed: %v", job.Slug, err)
 		_ = store.AppendMessages(job.ParentID, provider.AssistantMessage(content, nil))
 		setStoredSessionError(store, job.ParentID, err.Error())
-		events.Publish(sessionevents.Event{SessionID: job.ParentID, Type: "assistant", Content: content, ACP: acpEvent(job)})
+		events.Publish(sessionevents.Event{SessionID: job.ParentID, Type: "assistant", Content: content, ACP: acp.EventFromJob(job)})
 		return
 	}
 	if len(result.Messages) > len(messages) {
@@ -595,7 +595,7 @@ func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, 
 		TotalTokens:           result.Usage.TotalTokens,
 	})
 	if content := provider.MessageContent(result.Message); content != "" {
-		events.Publish(sessionevents.Event{SessionID: job.ParentID, Type: "assistant", Content: content, ACP: acpEvent(job)})
+		events.Publish(sessionevents.Event{SessionID: job.ParentID, Type: "assistant", Content: content, ACP: acp.EventFromJob(job)})
 	}
 	setStoredSessionStatus(store, job.ParentID, storage.StatusIdle)
 }
@@ -672,58 +672,6 @@ func acpParentCompletionMessage(job acp.Job) string {
 		out.WriteString(job.Assistant)
 	}
 	return out.String()
-}
-
-func acpEvent(job acp.Job) *sessionevents.ACPEvent {
-	modes := sessionevents.ACPModeState{
-		CurrentModeID:  job.Modes.CurrentModeID,
-		PlanModeID:     job.Modes.PlanModeID,
-		AvailableModes: make([]sessionevents.ACPMode, 0, len(job.Modes.AvailableModes)),
-	}
-	for _, mode := range job.Modes.AvailableModes {
-		modes.AvailableModes = append(modes.AvailableModes, sessionevents.ACPMode{
-			ID:          mode.ID,
-			Name:        mode.Name,
-			Description: mode.Description,
-		})
-	}
-	plan := make([]sessionevents.ACPPlanEntry, 0, len(job.Plan))
-	for _, entry := range job.Plan {
-		plan = append(plan, sessionevents.ACPPlanEntry{Content: entry.Content, Status: entry.Status, Priority: entry.Priority})
-	}
-	permissions := make([]sessionevents.ACPPermission, 0, len(job.Permissions))
-	for _, permission := range job.Permissions {
-		permission.Options = append([]sessionevents.ACPPermissionOption(nil), permission.Options...)
-		permission.Locations = append([]sessionevents.ACPPermissionLocation(nil), permission.Locations...)
-		if len(permission.Questions) > 0 {
-			questions := make([]sessionevents.ACPQuestion, 0, len(permission.Questions))
-			for _, question := range permission.Questions {
-				question.Options = append([]sessionevents.ACPQuestionOption(nil), question.Options...)
-				questions = append(questions, question)
-			}
-			permission.Questions = questions
-		}
-		permissions = append(permissions, permission)
-	}
-	return &sessionevents.ACPEvent{
-		ID:          job.ID,
-		Slug:        job.Slug,
-		Title:       job.Title,
-		ParentID:    job.ParentID,
-		Agent:       job.ACPAgent,
-		SessionID:   job.ACPSession,
-		State:       job.State,
-		StopReason:  job.StopReason,
-		Assistant:   job.Assistant,
-		Thought:     job.Thought,
-		Error:       job.Error,
-		Modes:       modes,
-		Plan:        plan,
-		ToolCalls:   acp.CloneToolCalls(job.ToolCalls),
-		Permissions: permissions,
-		LastEventAt: job.LastEventAt,
-		LastToolAt:  job.LastToolAt,
-	}
 }
 
 func firstNonEmpty(values ...string) string {

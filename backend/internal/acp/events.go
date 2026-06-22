@@ -527,7 +527,7 @@ func (m *Manager) publishSessionChanged(sessionID string) {
 
 func (m *Manager) publishACP(job Job) {
 	m.saveACPState(job)
-	acp := acpEvent(job)
+	acp := EventFromJob(job)
 	for _, sessionID := range childSessionIDs(&job) {
 		m.recordAndPublish(sessionevents.Event{
 			SessionID: sessionID,
@@ -549,7 +549,7 @@ func (m *Manager) publishACP(job Job) {
 
 func (m *Manager) publishACPStatus(job Job) {
 	m.saveACPState(job)
-	acp := acpEvent(job)
+	acp := EventFromJob(job)
 	acp.Assistant = ""
 	acp.Thought = ""
 	acp.Plan = nil
@@ -600,7 +600,7 @@ func (m *Manager) publishProviderSubagent(job Job, subagent sessionevents.Provid
 
 func (m *Manager) publishACPTranscriptEvent(job Job, eventType, content string, customize func(*sessionevents.ACPEvent)) {
 	m.saveACPState(job)
-	acp := acpEvent(job)
+	acp := EventFromJob(job)
 	acp.Assistant = ""
 	acp.Thought = ""
 	acp.Plan = nil
@@ -683,7 +683,7 @@ func acpStorageState(job Job) storage.ACPState {
 	}
 }
 
-func acpEvent(job Job) *sessionevents.ACPEvent {
+func EventFromJob(job Job) *sessionevents.ACPEvent {
 	return &sessionevents.ACPEvent{
 		ID:              job.ID,
 		Slug:            job.Slug,

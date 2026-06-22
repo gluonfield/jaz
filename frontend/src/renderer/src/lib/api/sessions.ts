@@ -442,9 +442,9 @@ export const allSessionsQuery = queryOptions({
   },
 })
 
-// Stored events carry only the acp session id and slug; titles arrive once
-// per response in acp_meta. Fold them back onto events here so the rest of
-// the app keeps the single contract: labels live on event.acp.
+// Stored events carry only the acp session id and slug; session-constant
+// labels arrive once per response in acp_meta. Fold them back onto events here
+// so the rest of the app keeps the single contract: labels live on event.acp.
 function hydrateEventLabels(data: SessionMessages): SessionEvent[] {
   return (data.events ?? []).map((event) => {
     const named = event.acp ? data.acp_meta?.[event.acp.id] : undefined
@@ -455,6 +455,9 @@ function hydrateEventLabels(data: SessionMessages): SessionEvent[] {
         ...event.acp!,
         title: event.acp!.title || named.title,
         slug: event.acp!.slug || named.slug || '',
+        model_provider: event.acp!.model_provider || named.model_provider,
+        model: event.acp!.model || named.model,
+        reasoning_effort: event.acp!.reasoning_effort || named.reasoning_effort,
       },
     }
   })

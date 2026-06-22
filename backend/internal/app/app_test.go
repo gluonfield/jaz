@@ -123,12 +123,15 @@ func TestCompleteACPMaterializesExternalParentResult(t *testing.T) {
 		Tools:    tools.NewRegistry(),
 		MaxTurns: 1,
 	}, store, sessionlock.New(), events, coordinator.NewBuilder(t.TempDir(), t.TempDir(), "", nil), log.New(io.Discard), acp.Job{
-		ID:        "child-id",
-		Slug:      "seed-deck",
-		ACPAgent:  acp.AgentCodex,
-		State:     acp.StateIdle,
-		Assistant: "Deck rebuilt at deck/physicslab-deck.html.",
-		ParentID:  parent.ID,
+		ID:              "child-id",
+		Slug:            "seed-deck",
+		ACPAgent:        acp.AgentCodex,
+		ModelProvider:   acp.AgentCodex,
+		Model:           "gpt-5.5",
+		ReasoningEffort: "xhigh",
+		State:           acp.StateIdle,
+		Assistant:       "Deck rebuilt at deck/physicslab-deck.html.",
+		ParentID:        parent.ID,
 	})
 
 	if fakeProvider.called {
@@ -161,6 +164,9 @@ func TestCompleteACPMaterializesExternalParentResult(t *testing.T) {
 	case event := <-eventCh:
 		if event.Type != "assistant" || event.Content != content {
 			t.Fatalf("event = %#v, want assistant completion", event)
+		}
+		if event.ACP == nil || event.ACP.ModelProvider != acp.AgentCodex || event.ACP.Model != "gpt-5.5" || event.ACP.ReasoningEffort != "xhigh" {
+			t.Fatalf("event acp metadata = %#v", event.ACP)
 		}
 	default:
 		t.Fatal("missing parent completion event")
