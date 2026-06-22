@@ -140,9 +140,11 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	if m.applySideChatUpdate(job, update) {
 		return
 	}
-	if subagent := providerSubagentFromUpdate(job.ACPAgent, update); subagent != nil {
-		m.publishProviderSubagent(job.Snapshot(), *subagent)
-		return
+	if subagentUpdate := providerSubagentFromUpdate(job.ACPAgent, update); subagentUpdate.subagent != nil {
+		m.publishProviderSubagent(job.Snapshot(), *subagentUpdate.subagent)
+		if subagentUpdate.consume {
+			return
+		}
 	}
 	job.mu.Lock()
 	switch event := update.(type) {

@@ -54,7 +54,7 @@ import {
   taskSurfaceBelongsToSession,
 } from '@/lib/taskSurface'
 import type { SendMessageOptions } from '@/lib/sendMessage'
-import { coalesceSessionEvents } from '@/lib/sessionEvents'
+import { coalesceSessionEvents, sessionEventPlacement } from '@/lib/sessionEvents'
 import { activePermissionIDs, isPermissionAwaitingResponse, resolveInactivePermissions } from '@/lib/sessionPermissions'
 import { latestEventTimeISO } from '@/lib/sessionLiveness'
 
@@ -326,14 +326,14 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
   // notified as toasts, not rendered as rows.
   const displayEvents = coalesceSessionEvents(
     settledTranscriptEvents.flatMap((event) => {
-      if (event.type === 'provider_subagent') return []
+      if (sessionEventPlacement(event) !== 'transcript') return []
       const withoutError = stripACPError(event)
       if (!hasProgressSignal(withoutError)) return [withoutError]
       return [stripProgressSignal(withoutError)]
     }),
   )
   const sideChatEvents = coalesceSessionEvents(
-    liveEvents.filter((event) => event.type === 'side_chat_message'),
+    liveEvents.filter((event) => sessionEventPlacement(event) === 'side_chat'),
   )
   return {
     transcriptEvents: settledTranscriptEvents,
@@ -397,8 +397,8 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   const repoInfo = useQuery({ ...sessionRepoQuery(sessionId), enabled: Boolean(sessionCwd) })
   const overviewAvailable = Boolean(
     repoInfo.data?.git ||
-      detail.data?.events?.some((event) => event.type === 'provider_subagent') ||
-      events.data.some((event) => event.type === 'provider_subagent'),
+      detail.data?.events?.some((event) => sessionEventPlacement(event) === 'overview') ||
+      events.data.some((event) => sessionEventPlacement(event) === 'overview'),
   )
   const sidePanel = useSidePanelState(overviewAvailable, sideChatAvailable)
   const { openFile, openPreview } = sidePanel
