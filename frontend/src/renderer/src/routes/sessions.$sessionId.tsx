@@ -46,6 +46,7 @@ import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
 import { takePendingMessage } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
+import { providerSubagentsFromEvents } from '@/lib/providerSubagents'
 import {
   approvalPlanSurfaceFromEvent,
   hasProgressSignal,
@@ -324,10 +325,11 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
   // plan that needs the user's approval stays inline. Errors are
   // notified as toasts, not rendered as rows.
   const displayEvents = coalesceSessionEvents(
-    settledTranscriptEvents.map((event) => {
+    settledTranscriptEvents.flatMap((event) => {
+      if (event.type === 'provider_subagent') return []
       const withoutError = stripACPError(event)
-      if (!hasProgressSignal(withoutError)) return withoutError
-      return stripProgressSignal(withoutError)
+      if (!hasProgressSignal(withoutError)) return [withoutError]
+      return [stripProgressSignal(withoutError)]
     }),
   )
   const sideChatEvents = coalesceSessionEvents(
@@ -344,6 +346,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
     planDecisionSessionID: latestPlanDecisionSurface?.approvalSessionId,
     planDecisionIsCurrent: !Number.isNaN(planDecisionAt) && planDecisionAt >= latestUserAt,
     panelProgress: panelProgressEvent ? progressSurfaceFromEvent(panelProgressEvent) : undefined,
+    providerSubagents: providerSubagentsFromEvents(settledTranscriptEvents),
   }
 }
 
@@ -386,13 +389,18 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   const [planDecisionPending, setPlanDecisionPending] = useState(false)
   const [planDecisionError, setPlanDecisionError] = useState('')
   const sentPendingRef = useRef<string | null>(null)
-  // The panel only auto-opens on a git repo, so the picker needs to know up
-  // front — query it from the session's cwd (shares cache with the panel).
+  // Overview auto-opens only when it has real content, so check repo state
+  // up front here; provider subagents are already in the event stream.
   const detailSession = detail.data?.session
   const sessionCwd = detailSession?.runtime_ref?.cwd
   const sideChatAvailable = isCodexACPSession(detailSession)
   const repoInfo = useQuery({ ...sessionRepoQuery(sessionId), enabled: Boolean(sessionCwd) })
-  const sidePanel = useSidePanelState(Boolean(repoInfo.data?.git), sideChatAvailable)
+  const overviewAvailable = Boolean(
+    repoInfo.data?.git ||
+      detail.data?.events?.some((event) => event.type === 'provider_subagent') ||
+      events.data.some((event) => event.type === 'provider_subagent'),
+  )
+  const sidePanel = useSidePanelState(overviewAvailable, sideChatAvailable)
   const { openFile, openPreview } = sidePanel
   useEffect(() => window.jaz?.onOpenSideBrowserURL?.(openPreview), [openPreview])
   const notifyFilePreviewError = useCallback((message: string) => {
@@ -525,6 +533,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     planDecisionSessionID,
     planDecisionIsCurrent,
     panelProgress,
+    providerSubagents,
     sideChatEvents,
   } = derived
   const showPlanDecision = Boolean(
@@ -742,6 +751,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
             <SidePanel
               session={session}
               progress={panelProgress}
+              subagents={providerSubagents}
               working={sessionRunning}
               visible={sidePanel.open}
               view={sidePanel.view}

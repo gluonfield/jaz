@@ -204,6 +204,9 @@ func transcriptCoalesceKey(event Event) string {
 	if event.Type == "acp_tool" && event.ACP != nil && event.ACP.ID != "" && len(event.ACP.ToolCalls) > 0 && event.ACP.ToolCalls[0].ID != "" {
 		return "acp_tool:" + event.ACP.ID + ":" + event.ACP.ToolCalls[0].ID
 	}
+	if event.Type == TypeProviderSubagent && event.ProviderSubagent != nil && event.ProviderSubagent.ID != "" {
+		return "provider_subagent:" + event.ProviderSubagent.Provider + ":" + event.ProviderSubagent.ID
+	}
 	if (event.Type == "permission_request" || event.Type == "permission_response") && event.Permission != nil && event.Permission.ID != "" {
 		return event.Type + ":" + event.Permission.ID
 	}

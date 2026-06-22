@@ -14,7 +14,7 @@ function storedPanelPref(): PanelPref {
   return value === 'open' || value === 'closed' ? value : 'auto'
 }
 
-export function useSidePanelState(gitAvailable: boolean, sideChatAvailable = false) {
+export function useSidePanelState(overviewAvailable: boolean, sideChatAvailable = false) {
   const [panelPref, setPanelPref] = useState<PanelPref>(storedPanelPref)
   const [view, setView] = useState<SidePanelView>('overview')
   const [previewUrl, setPreviewUrl] = useState('')
@@ -23,9 +23,9 @@ export function useSidePanelState(gitAvailable: boolean, sideChatAvailable = fal
   const observerRef = useRef<ResizeObserver | null>(null)
   const activeView = view === 'side-chat' && !sideChatAvailable ? 'overview' : view
   const width = SIDE_PANEL_WIDTHS[activeView]
-  // Auto-open only earns its keep on a git repo — Overview/Diff have little to
-  // show otherwise. Explicit 'open' (a user pick) still opens anywhere.
-  const autoOpen = hasPanelSpace && gitAvailable
+  // Auto-open only earns its keep when Overview has content. Explicit 'open'
+  // still opens anywhere.
+  const autoOpen = hasPanelSpace && overviewAvailable
   const open = panelPref === 'auto' ? autoOpen : panelPref === 'open'
 
   const measureRef = useCallback((el: HTMLDivElement | null) => {

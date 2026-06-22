@@ -3,8 +3,11 @@ import {
   ArchiveRestore,
   ArrowDownToLine,
   ArrowUpFromLine,
+  Ban,
   Check,
+  CheckCircle2,
   ChevronDown,
+  CircleAlert,
   Copy,
   ExternalLink,
   FileSearch,
@@ -23,9 +26,12 @@ import { setSessionArchived } from '@/lib/api/sessions'
 import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
 import type { RepoInfo, Session } from '@/lib/api/types'
 import { writeClipboard } from '@/lib/clipboard'
+import type { ProviderSubagentView } from '@/lib/providerSubagents'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { taskStepState, type TaskSurface } from '@/lib/taskSurface'
 import { keys } from '@/lib/query/keys'
+import { agentLabel } from '@/lib/agentLabel'
+import { AgentAvatar } from '@/components/acp/AgentAvatar'
 import { SidePanelShell } from './SidePanelShell'
 import { encodeMention } from './mentionCodec'
 import { TaskStepIcon } from './TaskChecklist'
@@ -36,11 +42,13 @@ export const OVERVIEW_PANEL_WIDTH = 300
 export function OverviewPanel({
   session,
   progress,
+  subagents,
   working,
   onSend,
 }: {
   session: Session
   progress?: TaskSurface
+  subagents: ProviderSubagentView[]
   working: boolean
   onSend: (text: string, options?: SendMessageOptions) => void
 }) {
@@ -48,6 +56,7 @@ export function OverviewPanel({
   const showGit = Boolean(repo.cwd && (repo.info?.git || repo.info?.worktree_missing))
   return (
     <SidePanelShell width={OVERVIEW_PANEL_WIDTH} variant="hug" className="gap-6 px-4 py-4">
+      {subagents.length ? <SubagentsSection subagents={subagents} /> : null}
       {progress ? <ProgressSection progress={progress} working={working} /> : null}
       {showGit ? <GitSection repo={repo} /> : null}
       <ManageSection session={session} repo={repo} onSend={onSend} />
@@ -55,8 +64,79 @@ export function OverviewPanel({
   )
 }
 
+type SubagentStatus = 'working' | 'completed' | 'failed' | 'cancelled'
+
+const SUBAGENT_STATUS: Record<SubagentStatus, { label: string; className: string; Icon: LucideIcon; spin?: boolean }> = {
+  working: { label: 'working', className: 'text-running', Icon: LoaderCircle, spin: true },
+  completed: { label: 'completed', className: 'text-primary', Icon: CheckCircle2 },
+  failed: { label: 'failed', className: 'text-danger', Icon: CircleAlert },
+  cancelled: { label: 'cancelled', className: 'text-ink-3', Icon: Ban },
+}
+
 function SectionHeader({ children }: { children: ReactNode }) {
   return <p className="text-[11px] font-medium tracking-wide text-ink-3 uppercase">{children}</p>
+}
+
+function SubagentsSection({ subagents }: { subagents: ProviderSubagentView[] }) {
+  return (
+    <section>
+      <div className="mb-2">
+        <SectionHeader>Subagents</SectionHeader>
+      </div>
+      <ul className="flex flex-col gap-1.5">
+        {subagents.map((subagent) => (
+          <SubagentRow key={subagent.key} subagent={subagent} />
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+function SubagentRow({ subagent }: { subagent: ProviderSubagentView }) {
+  const status = SUBAGENT_STATUS[subagentStatus(subagent.status)]
+  const title = subagentTitle(subagent)
+  const detail = firstText(subagent.summary, subagent.prompt, subagent.thread_id, subagent.id)
+  return (
+    <li className="flex min-w-0 items-start gap-2 rounded-md px-1 py-1.5">
+      <AgentAvatar agent={subagent.provider} size={17} className="mt-0.5" />
+      <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 items-center gap-1.5 text-[12px] leading-4 text-ink-3">
+          <span className="min-w-0 truncate">{agentLabel(subagent.provider)}</span>
+          <span className="text-ink-3/50" aria-hidden>·</span>
+          <span className={`inline-flex shrink-0 items-center gap-1 ${status.className}`}>
+            <status.Icon size={12} className={status.spin ? 'animate-spin' : ''} aria-hidden />
+            {status.label}
+          </span>
+        </span>
+        <span className="mt-0.5 block truncate text-[13px] font-medium text-ink" title={title}>
+          {title}
+        </span>
+        {detail && detail !== title ? (
+          <span className="mt-0.5 block line-clamp-2 text-[12px] leading-snug text-ink-3" title={detail}>
+            {detail}
+          </span>
+        ) : null}
+      </span>
+    </li>
+  )
+}
+
+function subagentStatus(status: string | undefined): SubagentStatus {
+  const normalized = status?.toLowerCase()
+  if (normalized === 'completed' || normalized === 'shutdown' || normalized === 'closed') return 'completed'
+  if (normalized === 'failed' || normalized === 'errored' || normalized === 'error' || normalized === 'not_found') {
+    return 'failed'
+  }
+  if (normalized === 'cancelled' || normalized === 'canceled' || normalized === 'interrupted') return 'cancelled'
+  return 'working'
+}
+
+function subagentTitle(subagent: ProviderSubagentView): string {
+  return firstText(subagent.name, subagent.role, subagent.prompt, subagent.thread_id, subagent.id) || 'Subagent'
+}
+
+function firstText(...values: Array<string | undefined>): string {
+  return values.find((value) => value?.trim())?.trim() ?? ''
 }
 
 function ActionRow({
