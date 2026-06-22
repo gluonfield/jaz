@@ -572,6 +572,23 @@ func (m *Manager) publishACPTool(job Job, call ToolCallSnapshot) {
 	})
 }
 
+func (m *Manager) publishProviderSubagent(job Job, subagent sessionevents.ProviderSubagentEvent) {
+	if subagent.ID == "" {
+		return
+	}
+	if subagent.Provider == "" {
+		subagent.Provider = CanonicalAgentName(job.ACPAgent)
+	}
+	for _, sessionID := range surfaceSessionIDs(&job) {
+		m.recordAndPublish(sessionevents.Event{
+			SessionID:        sessionID,
+			Type:             sessionevents.TypeProviderSubagent,
+			ProviderSubagent: &subagent,
+			At:               time.Now().UTC(),
+		})
+	}
+}
+
 func toolCallEvent(call ToolCallSnapshot) sessionevents.ACPToolCall {
 	return sessionevents.ACPToolCall{
 		ID:       call.ID,

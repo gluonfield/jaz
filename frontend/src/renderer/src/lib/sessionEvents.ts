@@ -30,6 +30,9 @@ export function inPlaceEventKey(event: SessionEvent): string | null {
   if (event.type === 'acp_tool' && event.acp?.id && event.acp.tool_calls?.[0]?.id) {
     return `acp_tool:${event.acp.id}:${event.acp.tool_calls[0].id}`
   }
+  if (event.type === 'provider_subagent' && event.provider_subagent?.id) {
+    return `provider_subagent:${event.provider_subagent.provider ?? ''}:${event.provider_subagent.id}`
+  }
   if ((event.type === 'permission_request' || event.type === 'permission_response') && event.permission?.id) {
     return `${event.type}:${event.permission.id}`
   }
