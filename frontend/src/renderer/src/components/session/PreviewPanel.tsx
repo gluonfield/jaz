@@ -4,8 +4,9 @@ import {
   ExternalLink,
   Globe,
   LoaderCircle,
+  MessageSquare,
   RotateCw,
-  SlidersHorizontal,
+  SquareStop,
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -165,6 +166,12 @@ export function PreviewPanel({
     }
   }
 
+  const stopAnnotation = async () => {
+    const webview = webviewRef.current
+    if (!webview || !annotating) return
+    await clearBrowserAnnotationCapture(webview)
+  }
+
   return (
     <SidePanelShell width={PREVIEW_PANEL_WIDTH}>
       <form
@@ -222,12 +229,13 @@ export function PreviewPanel({
         </IconButton>
         <IconButton
           size="sm"
-          aria-label="Annotate preview"
-          title="Annotate"
-          disabled={!url || !webviewReady || annotating || !onAddBrowserAnnotation}
-          onClick={() => void annotate()}
+          aria-label={annotating ? 'Stop annotation' : 'Annotate preview'}
+          title={annotating ? 'Stop annotation' : 'Annotate'}
+          disabled={!url || !webviewReady || !onAddBrowserAnnotation}
+          onClick={() => (annotating ? void stopAnnotation() : void annotate())}
+          className={annotating ? 'text-danger hover:bg-danger-soft hover:text-danger' : ''}
         >
-          {annotating ? <LoaderCircle size={14} className="animate-spin" /> : <SlidersHorizontal size={14} />}
+          {annotating ? <SquareStop size={14} /> : <MessageSquare size={14} />}
         </IconButton>
         <button
           type="button"

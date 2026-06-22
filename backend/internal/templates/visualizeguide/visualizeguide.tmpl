@@ -91,7 +91,7 @@ Pick the closest use case below and adapt. When nothing fits cleanly:
 ## UI components
 
 ### Layout width
-The widget container is 680px wide. Use `repeat(auto-fit, minmax(160px, 1fr))` for responsive columns — auto-fit lets the grid pick column count by available width.
+{{if .Mobile}}The widget container is 380px wide. **Mobile column cap.** The widget container is ~380px wide — never lay out more than TWO columns of cards, stats, controls, or option grids. Three-up at this width is unreadable: card content wraps to 3-4 lines and tap targets fall below 44px. Use `repeat(auto-fit, minmax(160px, 1fr))` (which naturally tops out at 2 here) or `repeat(2, minmax(0, 1fr))` explicitly. If you have 3+ items, stack them in 2-col rows or go single-column; do not write `repeat(3, …)` or `repeat(4, …)`.{{else}}The widget container is 680px wide. Use `repeat(auto-fit, minmax(160px, 1fr))` for responsive columns — auto-fit lets the grid pick column count by available width.{{end}}
 
 ### Aesthetic
 Flat, clean, white surfaces. Minimal 0.5px borders. Generous whitespace. No gradients, no shadows (except functional focus rings). Everything should feel built into the host app, not embedded from somewhere else.

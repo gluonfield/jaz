@@ -9,6 +9,7 @@ import (
 type sessionIDKey struct{}
 type cwdKey struct{}
 type collaborationModeKey struct{}
+type clientPlatformKey struct{}
 
 const (
 	CollaborationModeDefault = "default"
@@ -54,4 +55,16 @@ func CollaborationMode(ctx context.Context) string {
 		return CollaborationModeDefault
 	}
 	return mode
+}
+
+func WithClientPlatform(ctx context.Context, platform string) context.Context {
+	return context.WithValue(ctx, clientPlatformKey{}, platform)
+}
+
+func ClientPlatform(ctx context.Context) string {
+	platform, _ := ctx.Value(clientPlatformKey{}).(string)
+	if platform == "" {
+		return "desktop"
+	}
+	return platform
 }

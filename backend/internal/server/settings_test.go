@@ -757,6 +757,9 @@ func TestCORSAllowsDeletePreflight(t *testing.T) {
 	if allow := res.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(allow, "Authorization") {
 		t.Fatalf("Access-Control-Allow-Headers = %q, missing Authorization", allow)
 	}
+	if allow := res.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(allow, "X-Jaz-Client-Platform") {
+		t.Fatalf("Access-Control-Allow-Headers = %q, missing client platform header", allow)
+	}
 }
 
 type blockingMCPRuntime struct {

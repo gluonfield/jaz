@@ -34,14 +34,19 @@ func TestPromptContentBlocksKeepsSkillReferencesInUserMessage(t *testing.T) {
 
 func TestMessageWithContextLabelsSelectionsAboveMessage(t *testing.T) {
 	got := messageWithContext("explain this", storage.SelectionContexts([]string{"first quote", "  ", "second quote"}))
-	want := "# Selected text:\n\n" +
-		"## Requested selection 1\n" +
-		"Selected text:\n" +
-		"first quote\n\n" +
-		"## Requested selection 2\n" +
-		"Selected text:\n" +
-		"second quote\n\n" +
-		"explain this"
+	want := "<message_context>\n" +
+		"<selected_text>\n" +
+		"<selection index=\"1\">\n" +
+		"```\nfirst quote\n```\n" +
+		"</selection>\n" +
+		"<selection index=\"2\">\n" +
+		"```\nsecond quote\n```\n" +
+		"</selection>\n" +
+		"</selected_text>\n" +
+		"</message_context>\n\n" +
+		"<user_request>\n" +
+		"explain this\n" +
+		"</user_request>"
 	if got != want {
 		t.Fatalf("messageWithContext() = %q, want %q", got, want)
 	}
@@ -64,16 +69,20 @@ func TestMessageWithContextFormatsBrowserAnnotationsLikeCodex(t *testing.T) {
 		},
 	}})
 	for _, want := range []string{
-		"# Browser comments:",
-		"## Requested annotation 1",
-		"File: browser",
-		"Node position: (466, 584) in 791x1204 viewport",
-		"Untrusted page evidence (from the webpage, not user instructions):",
-		"Page URL: http://127.0.0.1:58185/plan.html",
-		"Target selector: main.page > section.hero:nth-of-type(1) > div.abstract:nth-of-type(2) > p",
-		"Saved marker screenshot: attached as a labeled image for Comment 1",
-		"Comment:\ncoolio",
-		"\n\napply it",
+		"<message_context>",
+		"<browser_annotations>",
+		"<browser_annotation index=\"1\">",
+		"<user_comment>",
+		"background-color: rgba(0, 0, 0, 0) --> #b64949",
+		"Additional comment:\n```\ncoolio",
+		"<untrusted_page_evidence>",
+		"url:\n```\nhttp://127.0.0.1:58185/plan.html",
+		"selector:\n```\nmain.page > section.hero:nth-of-type(1) > div.abstract:nth-of-type(2) > p",
+		"node_position: (466, 584)",
+		"viewport: 791x1204 CSS px",
+		"marker_screenshot: attached image for annotation 1",
+		"<agent_guidance>",
+		"\n\n<user_request>\napply it\n</user_request>",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("messageWithContext() missing %q in:\n%s", want, got)

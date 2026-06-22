@@ -148,24 +148,24 @@ func isWindowsCommandScript(path string) bool {
 }
 
 func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
-	env, _ := m.buildProcessEnv(name, agent, "", "", nil, true)
+	env, _ := m.buildProcessEnv(context.Background(), name, agent, "", "", nil, true)
 	return env
 }
 
 func (m *Manager) processEnvPrepared(name string, agent AgentConfig) (map[string]string, error) {
-	return m.processEnvPreparedForSurface(name, agent, "", "", nil)
+	return m.processEnvPreparedForSurface(context.Background(), name, agent, "", "", nil)
 }
 
-func (m *Manager) processEnvPreparedForSurface(name string, agent AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (map[string]string, error) {
-	return m.buildProcessEnv(name, agent, cwd, artifactSurface, systemPromptExtensions, true)
+func (m *Manager) processEnvPreparedForSurface(ctx context.Context, name string, agent AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (map[string]string, error) {
+	return m.buildProcessEnv(ctx, name, agent, cwd, artifactSurface, systemPromptExtensions, true)
 }
 
 func (m *Manager) probeEnv(name string, agent AgentConfig) map[string]string {
-	env, _ := m.buildProcessEnv(name, agent, "", "", nil, false)
+	env, _ := m.buildProcessEnv(context.Background(), name, agent, "", "", nil, false)
 	return env
 }
 
-func (m *Manager) buildProcessEnv(name string, agent AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules, prepare bool) (map[string]string, error) {
+func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules, prepare bool) (map[string]string, error) {
 	name = CanonicalAgentName(name)
 	cwd = strings.TrimSpace(cwd)
 	if cwd == "" {
@@ -292,7 +292,7 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, cwd, artifactS
 			if err := os.MkdirAll(env["OPENCODE_CONFIG_DIR"], 0o700); err != nil {
 				prepareErr = firstError(prepareErr, fmt.Errorf("prepare opencode profile %s: %w", env["OPENCODE_CONFIG_DIR"], err))
 			}
-			if err := m.prepareOpenCodeConfig(env, agent, cwd, artifactSurface, systemPromptExtensions); err != nil {
+			if err := m.prepareOpenCodeConfig(ctx, env, agent, cwd, artifactSurface, systemPromptExtensions); err != nil {
 				prepareErr = firstError(prepareErr, err)
 			}
 		}
