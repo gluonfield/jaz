@@ -8,9 +8,10 @@ import (
 )
 
 const (
-	TypeArtifact    = "artifact"
-	TypeSession     = "session"
-	TypeLoopCreated = "loop_created"
+	TypeArtifact        = "artifact"
+	TypeSession         = "session"
+	TypeLoopCreated     = "loop_created"
+	TypeSideChatMessage = "side_chat_message"
 )
 
 type Event struct {
@@ -23,7 +24,18 @@ type Event struct {
 	Permission  *ACPPermission    `json:"permission,omitempty"`
 	Artifact    *ArtifactEvent    `json:"artifact,omitempty"`
 	LoopCreated *LoopCreatedEvent `json:"loop_created,omitempty"`
+	SideChat    *SideChatEvent    `json:"side_chat,omitempty"`
 	At          time.Time         `json:"at"`
+}
+
+type SideChatEvent struct {
+	ID              string `json:"id"`
+	Command         string `json:"command,omitempty"`
+	ParentSessionID string `json:"parent_session_id,omitempty"`
+	ThreadID        string `json:"thread_id,omitempty"`
+	Role            string `json:"role"`
+	Content         string `json:"content"`
+	Status          string `json:"status,omitempty"`
 }
 
 type ArtifactEvent struct {

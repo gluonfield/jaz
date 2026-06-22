@@ -68,7 +68,7 @@ func (s *Server) handleStartACPAuthLogin(w http.ResponseWriter, r *http.Request)
 			}
 		}
 	}
-	auth, err := acp.NormalizeAgentAuthConfig(agent, input.Auth)
+	auth, err := acp.LoginAuthConfig(agent, input.Auth)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return

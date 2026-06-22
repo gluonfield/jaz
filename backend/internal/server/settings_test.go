@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -172,8 +173,12 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		!hasModelProvider(got.Providers, "openrouter", "https://openrouter.ai/api/v1") {
 		t.Fatalf("providers = %#v", got.Providers)
 	}
+	wantCodexCommand := `npx -y @jazchat/codex-acp@0.16.4 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true`
+	if runtime.GOOS == "windows" {
+		wantCodexCommand = `npx.cmd -y @jazchat/codex-acp@0.16.4 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true`
+	}
 	if got.ACP["codex"].Enabled ||
-		got.ACP["codex"].Command != `npx -y @jazchat/codex-acp@0.16.1 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true` ||
+		got.ACP["codex"].Command != wantCodexCommand ||
 		got.ACP["codex"].Model != "gpt-5.5" {
 		t.Fatalf("unexpected codex defaults %#v", got.ACP["codex"])
 	}

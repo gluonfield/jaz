@@ -54,6 +54,10 @@ export const sessionQuery = (id: string) =>
     staleTime: 30_000,
   })
 
+export function sendSessionSideChat(id: string, input: { id: string; message: string }): Promise<{ ok: boolean }> {
+  return post<{ ok: boolean }>(`/v1/sessions/${id}/side-chat`, input)
+}
+
 export async function uploadSessionAttachment(sessionId: string, file: File, signal?: AbortSignal): Promise<Attachment> {
   const form = new FormData()
   form.append('file', file)
