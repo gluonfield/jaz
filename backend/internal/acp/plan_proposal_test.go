@@ -43,7 +43,7 @@ func TestPlanRequestedTextPublishesProposedPlan(t *testing.T) {
 	}
 	manager.jobsByID[session.ID] = job
 	manager.jobsByACP["acp-session"] = job
-	done := job.startTurn(CompletionInline, false, true, true)
+	done := job.startTurn(CompletionInline, true, true)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -123,7 +123,7 @@ func TestPlanRequestedPlainTextPublishesACPMessage(t *testing.T) {
 	}
 	manager.jobsByID[session.ID] = job
 	manager.jobsByACP["acp-session"] = job
-	done := job.startTurn(CompletionInline, false, true, false)
+	done := job.startTurn(CompletionInline, true, false)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -177,7 +177,7 @@ func TestPlanRequestedProgressPublishesProposedPlan(t *testing.T) {
 	}
 	manager.jobsByID[session.ID] = job
 	manager.jobsByACP["acp-session"] = job
-	done := job.startTurn(CompletionInline, false, true, false)
+	done := job.startTurn(CompletionInline, true, false)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -241,7 +241,7 @@ func TestLocalPlanRequestedPlainTextPublishesACPMessage(t *testing.T) {
 		toolByID:   map[string]ToolCallSnapshot{},
 	}
 	manager.jobsByID[session.ID] = job
-	done := job.startTurn(CompletionInline, false, true, false)
+	done := job.startTurn(CompletionInline, true, false)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

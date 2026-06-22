@@ -66,6 +66,11 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			if os.Getenv("JAZ_FAKE_ACP_MCP_HTTP") == "1" {
 				capabilities["mcpCapabilities"] = map[string]any{"http": true}
 			}
+			if os.Getenv("JAZ_FAKE_ACP_PROMPT_QUEUEING") == "1" {
+				capabilities["_meta"] = map[string]any{
+					"claudeCode": map[string]any{"promptQueueing": true},
+				}
+			}
 			sendResult(conn, msg, map[string]any{
 				"protocolVersion":   1,
 				"agentInfo":         map[string]any{"name": "fake-agent", "version": "test"},
@@ -251,6 +256,10 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				Meta map[string]any `json:"_meta"`
 			}
 			_ = json.Unmarshal(msg.Params, &promptReq)
+			if pendingPrompt != nil && os.Getenv("JAZ_FAKE_ACP_PROMPT_QUEUEING") == "1" {
+				sendResult(conn, pendingPrompt, map[string]any{"stopReason": "end_turn"})
+				pendingPrompt = nil
+			}
 			if want := os.Getenv("JAZ_FAKE_ACP_EXPECT_MODEL"); want != "" && currentModel != want {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("configured model was not set", nil))
 				_ = conn.Send(context.Background(), resp)
@@ -259,6 +268,11 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			if strings.Contains(string(msg.Params), "break transport") {
 				_, _ = fmt.Fprintln(os.Stdout, "not-json")
 				os.Exit(0)
+			}
+			if err := validateFakePromptContains(msg.Params); err != nil {
+				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams(err.Error(), nil))
+				_ = conn.Send(context.Background(), resp)
+				continue
 			}
 			if want := os.Getenv("JAZ_FAKE_ACP_EXPECT_EFFORT"); want != "" && currentEffort != want {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("configured reasoning effort was not set", nil))
@@ -338,6 +352,22 @@ func fakeCancelStopReason() string {
 		return "end_turn"
 	}
 	return "cancelled"
+}
+
+func validateFakePromptContains(params json.RawMessage) error {
+	want := os.Getenv("JAZ_FAKE_ACP_EXPECT_PROMPT_CONTAINS")
+	if want == "" {
+		return nil
+	}
+	raw := string(params)
+	trigger := os.Getenv("JAZ_FAKE_ACP_EXPECT_PROMPT_TRIGGER")
+	if trigger != "" && !strings.Contains(raw, trigger) {
+		return nil
+	}
+	if !strings.Contains(raw, want) {
+		return fmt.Errorf("prompt missing %q", want)
+	}
+	return nil
 }
 
 func validateFakeCwdPrompt(cwd string, meta map[string]any) error {
