@@ -334,7 +334,7 @@ func TestPlanSessionUpdatePublishesAndPersistsProgress(t *testing.T) {
 	}
 }
 
-func TestSideChatSessionUpdatePublishesSideChatEventOnly(t *testing.T) {
+func TestSideChatSessionUpdatePublishesLiveSideChatEventOnly(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -402,7 +402,7 @@ func TestSideChatSessionUpdatePublishesSideChatEventOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(stored) != 1 || stored[0].SideChat == nil || stored[0].SideChat.Content != "side answer" {
+	if len(stored) != 0 {
 		t.Fatalf("stored events = %#v", stored)
 	}
 }

@@ -384,7 +384,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
     }),
   )
   const sideChatEvents = coalesceSessionEvents(
-    [...persistedEvents, ...liveEvents].filter((event) => event.type === 'side_chat_message'),
+    liveEvents.filter((event) => event.type === 'side_chat_message'),
   )
   return {
     transcriptEvents: settledTranscriptEvents,

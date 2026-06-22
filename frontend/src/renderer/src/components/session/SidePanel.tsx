@@ -55,7 +55,6 @@ export function SidePanel({
     case 'side-chat':
       return sideChatAvailable ? (
         <SideChatPanel
-          session={session}
           events={sideChatEvents}
           visible={visible}
           onSend={onSendSideChat}
