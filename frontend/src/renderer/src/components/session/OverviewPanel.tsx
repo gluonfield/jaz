@@ -30,7 +30,6 @@ import type { ProviderSubagentView } from '@/lib/providerSubagents'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { taskStepState, type TaskSurface } from '@/lib/taskSurface'
 import { keys } from '@/lib/query/keys'
-import { agentLabel } from '@/lib/agentLabel'
 import { AgentAvatar } from '@/components/acp/AgentAvatar'
 import { SidePanelShell } from './SidePanelShell'
 import { encodeMention } from './mentionCodec'
@@ -95,14 +94,12 @@ function SubagentsSection({ subagents }: { subagents: ProviderSubagentView[] }) 
 function SubagentRow({ subagent }: { subagent: ProviderSubagentView }) {
   const status = SUBAGENT_STATUS[subagentStatus(subagent.status)]
   const title = subagentTitle(subagent)
-  const detail = firstText(subagent.summary, subagent.prompt, subagent.thread_id, subagent.id)
+  const detail = firstText(subagentSummary(subagent.summary), subagent.prompt, subagent.thread_id, subagent.id)
   return (
     <li className="flex min-w-0 items-start gap-2 rounded-md px-1 py-1.5">
       <AgentAvatar agent={subagent.provider} size={17} className="mt-0.5" />
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-1.5 text-[12px] leading-4 text-ink-3">
-          <span className="min-w-0 truncate">{agentLabel(subagent.provider)}</span>
-          <span className="text-ink-3/50" aria-hidden>·</span>
           <span className={`inline-flex shrink-0 items-center gap-1 ${status.className}`}>
             <status.Icon size={12} className={status.spin ? 'animate-spin' : ''} aria-hidden />
             {status.label}
@@ -133,6 +130,10 @@ function subagentStatus(status: string | undefined): SubagentStatus {
 
 function subagentTitle(subagent: ProviderSubagentView): string {
   return firstText(subagent.name, subagent.role, subagent.prompt, subagent.thread_id, subagent.id) || 'Subagent'
+}
+
+function subagentSummary(summary: string | undefined): string | undefined {
+  return summary?.trim().toLowerCase() === 'spawned' ? undefined : summary
 }
 
 function firstText(...values: Array<string | undefined>): string {
