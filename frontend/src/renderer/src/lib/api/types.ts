@@ -391,6 +391,8 @@ export interface SessionMessages {
   acp_tool_calls?: ACPToolCall[]
   acp_permissions?: ACPPermission[]
   acp_error?: string
+  acp_last_event_at?: string
+  acp_last_tool_at?: string
   acp_children?: ACPJobSnapshot[]
 }
 
@@ -411,6 +413,19 @@ export interface ACPToolCall {
   tool_name?: string
   content?: ACPToolContent[]
   raw_input?: unknown
+  runtime?: ACPToolRuntime
+  started_at?: string
+  updated_at?: string
+}
+
+export interface ACPToolRuntime {
+  terminal_id?: string
+  terminal_cwd?: string
+  parent_tool_use_id?: string
+  elapsed_time_seconds?: number
+  terminal_output_at?: string
+  terminal_exit_code?: number
+  terminal_exit_signal?: string
 }
 
 export interface ACPMode {
@@ -504,6 +519,8 @@ export interface ACPEvent {
   plan?: ACPPlanEntry[]
   tool_calls?: ACPToolCall[]
   permissions?: ACPPermission[]
+  last_event_at?: string
+  last_tool_at?: string
 }
 
 export interface ACPJobSnapshot {
@@ -523,6 +540,8 @@ export interface ACPJobSnapshot {
   tool_calls?: ACPToolCall[]
   permissions?: ACPPermission[]
   parent_visible?: boolean
+  last_event_at?: string
+  last_tool_at?: string
   updated_at: string
 }
 

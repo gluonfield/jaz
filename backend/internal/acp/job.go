@@ -22,19 +22,21 @@ type Job struct {
 	Assistant     string                        `json:"assistant,omitempty"`
 	Thought       string                        `json:"thought,omitempty"`
 	Plan          []sessionevents.PlanEntry     `json:"plan,omitempty"`
-	ToolCalls     []ToolCallSnapshot            `json:"tool_calls,omitempty"`
+	ToolCalls     []sessionevents.ACPToolCall   `json:"tool_calls,omitempty"`
 	Permissions   []sessionevents.ACPPermission `json:"permissions,omitempty"`
 	Modes         ModeState                     `json:"modes,omitempty"`
 	Error         string                        `json:"error,omitempty"`
 	ParentVisible bool                          `json:"parent_visible,omitempty"`
 	CreatedAt     time.Time                     `json:"created_at"`
 	UpdatedAt     time.Time                     `json:"updated_at"`
+	LastEventAt   time.Time                     `json:"last_event_at,omitzero"`
+	LastToolAt    time.Time                     `json:"last_tool_at,omitzero"`
 
 	mu                     sync.RWMutex
 	turnMu                 sync.Mutex
 	promptQueueing         bool
 	turn                   *activeTurn
-	toolByID               map[string]ToolCallSnapshot
+	toolByID               map[string]sessionevents.ACPToolCall
 	savedAssistantLen      int
 	usage                  storage.Usage
 	lastUsageDelta         storage.Usage
@@ -49,16 +51,6 @@ type activeTurn struct {
 	planRequested   bool
 	cancelRequested bool
 	promptCalls     int
-}
-
-type ToolCallSnapshot struct {
-	ID       string                         `json:"id"`
-	Title    string                         `json:"title,omitempty"`
-	Status   string                         `json:"status,omitempty"`
-	Kind     string                         `json:"kind,omitempty"`
-	ToolName string                         `json:"tool_name,omitempty"`
-	Content  []sessionevents.ACPToolContent `json:"content,omitempty"`
-	RawInput map[string]any                 `json:"raw_input,omitempty"`
 }
 
 type ModeState struct {
@@ -89,13 +81,15 @@ func (j *Job) Snapshot() Job {
 		Assistant:     j.Assistant,
 		Thought:       j.Thought,
 		Plan:          clonePlanEntries(j.Plan),
-		ToolCalls:     append([]ToolCallSnapshot(nil), j.ToolCalls...),
+		ToolCalls:     CloneToolCalls(j.ToolCalls),
 		Permissions:   clonePermissions(j.Permissions),
 		Modes:         j.Modes.Clone(),
 		Error:         j.Error,
 		ParentVisible: j.ParentVisible,
 		CreatedAt:     j.CreatedAt,
 		UpdatedAt:     j.UpdatedAt,
+		LastEventAt:   j.LastEventAt,
+		LastToolAt:    j.LastToolAt,
 	}
 }
 
@@ -117,10 +111,12 @@ func (s ModeState) Clone() ModeState {
 func (j *Job) setState(state, stopReason, errMsg string) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	now := time.Now().UTC()
 	j.State = state
 	j.StopReason = stopReason
 	j.Error = errMsg
-	j.UpdatedAt = time.Now().UTC()
+	j.UpdatedAt = now
+	j.LastEventAt = now
 }
 
 func (j *Job) startTurn(completion CompletionMode, planRequested, parentVisible bool) chan struct{} {
@@ -146,8 +142,11 @@ func (j *Job) startTurn(completion CompletionMode, planRequested, parentVisible 
 		promptCalls:   1,
 	}
 	j.ParentVisible = parentVisible
-	j.toolByID = make(map[string]ToolCallSnapshot)
-	j.UpdatedAt = time.Now().UTC()
+	j.toolByID = make(map[string]sessionevents.ACPToolCall)
+	now := time.Now().UTC()
+	j.UpdatedAt = now
+	j.LastEventAt = now
+	j.LastToolAt = time.Time{}
 	return j.turn.done
 }
 
@@ -196,6 +195,43 @@ func (j *Job) addPromptCall(parentVisible bool) (chan struct{}, bool) {
 	}
 	j.turn.promptCalls++
 	return j.turn.done, true
+}
+
+func CloneToolCalls(in []sessionevents.ACPToolCall) []sessionevents.ACPToolCall {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]sessionevents.ACPToolCall, 0, len(in))
+	for _, call := range in {
+		call.Content = append([]sessionevents.ACPToolContent(nil), call.Content...)
+		call.RawInput = cloneMap(call.RawInput)
+		call.Runtime = cloneToolRuntime(call.Runtime)
+		out = append(out, call)
+	}
+	return out
+}
+
+func cloneMap(in map[string]any) map[string]any {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
+}
+
+func cloneToolRuntime(in sessionevents.ACPToolRuntime) sessionevents.ACPToolRuntime {
+	if in.TerminalExitCode != nil {
+		code := *in.TerminalExitCode
+		in.TerminalExitCode = &code
+	}
+	if in.TerminalExitSignal != nil {
+		signal := *in.TerminalExitSignal
+		in.TerminalExitSignal = &signal
+	}
+	return in
 }
 
 func clonePermissions(in []sessionevents.ACPPermission) []sessionevents.ACPPermission {

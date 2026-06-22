@@ -172,6 +172,8 @@ type ACPEvent struct {
 	Plan        []PlanEntry     `json:"plan,omitempty"`
 	ToolCalls   []ACPToolCall   `json:"tool_calls,omitempty"`
 	Permissions []ACPPermission `json:"permissions,omitempty"`
+	LastEventAt time.Time       `json:"last_event_at,omitzero"`
+	LastToolAt  time.Time       `json:"last_tool_at,omitzero"`
 }
 
 func (e ACPEvent) MarshalJSON() ([]byte, error) {
@@ -240,13 +242,16 @@ type PlanEntry struct {
 type ACPPlanEntry = PlanEntry
 
 type ACPToolCall struct {
-	ID       string           `json:"id"`
-	Title    string           `json:"title,omitempty"`
-	Status   string           `json:"status,omitempty"`
-	Kind     string           `json:"kind,omitempty"`
-	ToolName string           `json:"tool_name,omitempty"`
-	Content  []ACPToolContent `json:"content,omitempty"`
-	RawInput map[string]any   `json:"raw_input,omitempty"`
+	ID        string           `json:"id"`
+	Title     string           `json:"title,omitempty"`
+	Status    string           `json:"status,omitempty"`
+	Kind      string           `json:"kind,omitempty"`
+	ToolName  string           `json:"tool_name,omitempty"`
+	Content   []ACPToolContent `json:"content,omitempty"`
+	RawInput  map[string]any   `json:"raw_input,omitempty"`
+	Runtime   ACPToolRuntime   `json:"runtime,omitzero"`
+	StartedAt time.Time        `json:"started_at,omitzero"`
+	UpdatedAt time.Time        `json:"updated_at,omitzero"`
 }
 
 // ACPToolContent is a normalized tool-call result block, distilled from the ACP
@@ -259,6 +264,26 @@ type ACPToolContent struct {
 	Title   string `json:"title,omitempty"`
 	Path    string `json:"path,omitempty"`
 	NewText string `json:"new_text,omitempty"`
+}
+
+type ACPToolRuntime struct {
+	TerminalID         string    `json:"terminal_id,omitempty"`
+	TerminalCwd        string    `json:"terminal_cwd,omitempty"`
+	ParentToolUseID    string    `json:"parent_tool_use_id,omitempty"`
+	ElapsedTimeSeconds float64   `json:"elapsed_time_seconds,omitempty"`
+	TerminalOutputAt   time.Time `json:"terminal_output_at,omitzero"`
+	TerminalExitCode   *int      `json:"terminal_exit_code,omitempty"`
+	TerminalExitSignal *string   `json:"terminal_exit_signal,omitempty"`
+}
+
+func (r ACPToolRuntime) IsZero() bool {
+	return r.TerminalID == "" &&
+		r.TerminalCwd == "" &&
+		r.ParentToolUseID == "" &&
+		r.ElapsedTimeSeconds == 0 &&
+		r.TerminalOutputAt.IsZero() &&
+		r.TerminalExitCode == nil &&
+		r.TerminalExitSignal == nil
 }
 
 type ACPPermission struct {
