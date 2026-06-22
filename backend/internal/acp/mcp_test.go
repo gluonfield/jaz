@@ -8,6 +8,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/mcpsession"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 )
 
 type fakeMCPService struct {
@@ -101,7 +102,7 @@ func TestMCPAgentJobOutputValidatesToolCallRawInputObject(t *testing.T) {
 		Model:           "claude-opus-4-8",
 		ReasoningEffort: "xhigh",
 		State:           StateIdle,
-		ToolCalls: []ToolCallSnapshot{{
+		ToolCalls: []sessionevents.ACPToolCall{{
 			ID:       "tool-1",
 			Title:    "Read plan.html",
 			Status:   "completed",
