@@ -25,7 +25,7 @@ const (
 	AuthModeExistingCLI = "existing_cli"
 	AuthModeJazProfile  = "jaz_profile"
 
-	codexACPPackage = "@jazchat/codex-acp@0.16.3"
+	codexACPPackage = "@jazchat/codex-acp@0.16.4"
 )
 
 func CanonicalAgentName(name string) string {

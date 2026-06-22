@@ -95,6 +95,7 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	}
 	command, args = launchCommand(command, args)
 	cmd := exec.CommandContext(ctx, command, args...)
+	hideProcessWindow(cmd)
 	cmd.Env = processenv.List(env)
 	if cwd != "" {
 		cmd.Dir = cwd
