@@ -27,7 +27,7 @@ func (m *Manager) publishProposedPlan(job Job) bool {
 	if explanation == "" && len(plan) == 0 {
 		return false
 	}
-	acp := acpEvent(job)
+	acp := EventFromJob(job)
 	acp.Assistant = ""
 	acp.Thought = ""
 	acp.Plan = nil

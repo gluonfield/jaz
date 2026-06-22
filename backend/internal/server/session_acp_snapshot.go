@@ -9,14 +9,15 @@ import (
 )
 
 type acpMetaEntry struct {
-	Title string `json:"title,omitempty"`
-	Slug  string `json:"slug,omitempty"`
+	Title           string `json:"title,omitempty"`
+	Slug            string `json:"slug,omitempty"`
+	ModelProvider   string `json:"model_provider,omitempty"`
+	Model           string `json:"model,omitempty"`
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 }
 
-// Stored events carry only the acp session id and slug; the titles the UI
-// labels them with live here, once per response instead of per row. The page
-// session and child snapshots are already in hand, so only ids outside that
-// set hit the store.
+// Stored events carry only the acp session id and slug; session-constant
+// labels live here once per response instead of per row.
 func (s *Server) acpMeta(events []sessionevents.Event, session storage.Session, children []storage.ACPState) map[string]acpMetaEntry {
 	ids := map[string]bool{}
 	for _, event := range events {
@@ -31,18 +32,38 @@ func (s *Server) acpMeta(events []sessionevents.Event, session storage.Session, 
 	meta := make(map[string]acpMetaEntry, len(ids))
 	for id := range ids {
 		if id == session.ID {
-			meta[id] = acpMetaEntry{Title: session.Title, Slug: session.Slug}
+			meta[id] = acpMetaFromSession(session)
 			continue
 		}
 		if child, ok := childByID[id]; ok {
-			meta[id] = acpMetaEntry{Title: child.Title, Slug: child.Slug}
+			meta[id] = acpMetaFromState(child)
 			continue
 		}
 		if ref, err := s.Store.LoadSession(id); err == nil {
-			meta[id] = acpMetaEntry{Title: ref.Title, Slug: ref.Slug}
+			meta[id] = acpMetaFromSession(ref)
 		}
 	}
 	return meta
+}
+
+func acpMetaFromSession(session storage.Session) acpMetaEntry {
+	return acpMetaEntry{
+		Title:           session.Title,
+		Slug:            session.Slug,
+		ModelProvider:   session.ModelProvider,
+		Model:           session.Model,
+		ReasoningEffort: session.ReasoningEffort,
+	}
+}
+
+func acpMetaFromState(state storage.ACPState) acpMetaEntry {
+	return acpMetaEntry{
+		Title:           state.Title,
+		Slug:            state.Slug,
+		ModelProvider:   state.ModelProvider,
+		Model:           state.Model,
+		ReasoningEffort: state.ReasoningEffort,
+	}
 }
 
 func (s *Server) acpSnapshot(session storage.Session) (storage.ACPState, bool) {
@@ -51,15 +72,15 @@ func (s *Server) acpSnapshot(session storage.Session) (storage.ACPState, bool) {
 	}
 	if s.ACP != nil {
 		if job, err := s.ACP.Status(session.ID); err == nil && job.State != acp.StateNotRunning {
-			return canonicalACPStateResponse(acpJobState(job)), true
+			return canonicalACPStateResponse(acpStateWithSessionLabels(session, acpJobState(job))), true
 		}
 	}
 	if state, err := s.Store.LoadACPState(session.ID); err == nil {
-		return canonicalACPStateResponse(inactiveACPStateResponse(state)), true
+		return canonicalACPStateResponse(inactiveACPStateResponse(acpStateWithSessionFallbackRuntime(session, state))), true
 	}
 	if s.ACP != nil {
 		if job, err := s.ACP.Status(session.ID); err == nil {
-			return canonicalACPStateResponse(inactiveACPStateResponse(acpJobState(job))), true
+			return canonicalACPStateResponse(inactiveACPStateResponse(acpStateWithSessionFallbackRuntime(session, acpJobState(job)))), true
 		}
 	}
 	if session.Runtime == storage.RuntimeACP {
@@ -68,26 +89,41 @@ func (s *Server) acpSnapshot(session storage.Session) (storage.ACPState, bool) {
 	return storage.ACPState{}, false
 }
 
+func acpStateWithSessionLabels(session storage.Session, state storage.ACPState) storage.ACPState {
+	state.ID = firstNonEmpty(state.ID, session.ID)
+	state.Slug = firstNonEmpty(session.Slug, state.Slug)
+	state.Title = firstNonEmpty(session.Title, state.Title)
+	state.ParentID = firstNonEmpty(session.ParentID, state.ParentID)
+	state.ModelProvider = firstNonEmpty(session.ModelProvider, state.ModelProvider)
+	state.Model = firstNonEmpty(session.Model, state.Model)
+	state.ReasoningEffort = firstNonEmpty(session.ReasoningEffort, state.ReasoningEffort)
+	if state.CreatedAt.IsZero() {
+		state.CreatedAt = session.CreatedAt
+	}
+	if state.UpdatedAt.IsZero() {
+		state.UpdatedAt = session.UpdatedAt
+	}
+	return state
+}
+
+func acpStateWithSessionFallbackRuntime(session storage.Session, state storage.ACPState) storage.ACPState {
+	state = acpStateWithSessionLabels(session, state)
+	if session.RuntimeRef != nil {
+		state.ACPAgent = firstNonEmpty(state.ACPAgent, session.RuntimeRef.Agent)
+		state.ACPSession = firstNonEmpty(state.ACPSession, session.RuntimeRef.SessionID)
+		state.Cwd = firstNonEmpty(state.Cwd, session.RuntimeRef.Cwd)
+	}
+	return state
+}
+
 func (s *Server) failedACPSnapshot(session storage.Session) storage.ACPState {
 	state, err := s.Store.LoadACPState(session.ID)
 	if err != nil {
 		state = acpStateFromSession(session)
 	} else {
-		state = inactiveACPStateResponse(state)
-		state.ID = firstNonEmpty(state.ID, session.ID)
-		state.Slug = firstNonEmpty(session.Slug, state.Slug)
-		state.Title = firstNonEmpty(session.Title, state.Title)
-		state.ParentID = firstNonEmpty(session.ParentID, state.ParentID)
+		state = inactiveACPStateResponse(acpStateWithSessionFallbackRuntime(session, state))
 		state.CreatedAt = session.CreatedAt
 		state.UpdatedAt = session.UpdatedAt
-		if session.RuntimeRef != nil {
-			state.ACPAgent = firstNonEmpty(session.RuntimeRef.Agent, state.ACPAgent)
-			state.ACPSession = firstNonEmpty(session.RuntimeRef.SessionID, state.ACPSession)
-			state.Cwd = firstNonEmpty(session.RuntimeRef.Cwd, state.Cwd)
-		}
-		state.ModelProvider = firstNonEmpty(session.ModelProvider, state.ModelProvider)
-		state.Model = firstNonEmpty(session.Model, state.Model)
-		state.ReasoningEffort = firstNonEmpty(session.ReasoningEffort, state.ReasoningEffort)
 	}
 	state.State = acp.StateFailed
 	state.Error = session.Error
