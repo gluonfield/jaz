@@ -6,9 +6,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BottomDock } from '@/components/session/BottomDock'
 import { Composer, PlanDecisionCard } from '@/components/session/Composer'
-import { MessageQuotes } from '@/components/session/MessageQuotes'
-import { SelectionQuoteToolbar } from '@/components/session/SelectionQuoteToolbar'
-import { useComposerQuotes } from '@/components/session/useComposerQuotes'
+import { MessageContexts } from '@/components/session/MessageContexts'
+import { SelectionContextToolbar } from '@/components/session/SelectionContextToolbar'
+import { useFileReferencePreview } from '@/components/session/useFileReferencePreview'
+import { useComposerContexts } from '@/components/session/useComposerContexts'
 import { FileReaderLinkProvider, MessageMarkdown, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
 import { MentionText } from '@/components/session/mentions'
 import { SessionErrorNotice } from '@/components/session/SessionErrorNotice'
@@ -50,7 +51,8 @@ import {
   progressSurfaceFromEvent,
   taskSurfaceBelongsToSession,
 } from '@/lib/taskSurface'
-import type { SendMessageOptions } from '@/lib/sendMessage'
+import type { ComposerContext, SendMessageOptions } from '@/lib/sendMessage'
+import { contextAttachmentIDs, contextInputs } from '@/lib/messageContext'
 import { coalesceSessionEvents } from '@/lib/sessionEvents'
 import { activePermissionIDs, isPermissionAwaitingResponse, resolveInactivePermissions } from '@/lib/sessionPermissions'
 import { latestEventTimeISO } from '@/lib/sessionLiveness'
@@ -84,7 +86,7 @@ interface LiveExchange {
   user: string
   at: string
   planRequested: boolean
-  quotes: string[]
+  contexts: ComposerContext[]
   attachments: LiveAttachment[]
   reasoning: string
   assistant: string
@@ -449,12 +451,23 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   const sideChatAvailable = isCodexACPSession(detailSession)
   const repoInfo = useQuery({ ...sessionRepoQuery(sessionId), enabled: Boolean(sessionCwd) })
   const sidePanel = useSidePanelState(Boolean(repoInfo.data?.git), sideChatAvailable)
-  useEffect(() => window.jaz?.onOpenSideBrowserURL?.(sidePanel.openPreview), [sidePanel.openPreview])
+  const { openFile, openPreview } = sidePanel
+  useEffect(() => window.jaz?.onOpenSideBrowserURL?.(openPreview), [openPreview])
+  const notifyFilePreviewError = useCallback((message: string) => {
+    toast(`Couldn't preview HTML: ${message}`, 'danger')
+  }, [toast])
+  const openFileReference = useFileReferencePreview({
+    sessionId,
+    onOpenFile: openFile,
+    onOpenPreview: openPreview,
+    onPreviewError: notifyFilePreviewError,
+  })
 
   const itemCount =
     (detail.data?.messages.length ?? 0) + events.data.filter((event) => event.type !== 'side_chat_message').length
   const liveSize = live
     ? live.user.length +
+      live.contexts.length +
       live.reasoning.length +
       live.assistant.length +
       live.tools.length +
@@ -475,16 +488,29 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     const controller = new AbortController()
     const files = options.files ?? []
     const draftAttachments = options.attachments ?? []
-    const draftQuotes = (options.quotes ?? []).map((quote) => quote.text)
+    const draftContexts = options.contexts ?? []
+    const contextAttachments: LiveAttachment[] = draftContexts.flatMap((context) =>
+      context.type === 'browser_annotation' && context.screenshotAttachment?.id
+        ? [{
+            id: context.screenshotAttachment.id,
+            name: context.screenshotAttachment.name ?? 'annotation screenshot',
+            uri: context.screenshotAttachment.uri,
+            mime_type: context.screenshotAttachment.mime_type,
+            size: context.screenshotAttachment.size,
+            server_path: context.screenshotAttachment.server_path,
+          }]
+        : [],
+    )
     abortRef.current = controller
     pinToBottom()
     setLive({
       user: text,
       at: new Date().toISOString(),
       planRequested: Boolean(options.planRequested),
-      quotes: draftQuotes,
+      contexts: draftContexts,
       attachments: [
         ...draftAttachments,
+        ...contextAttachments,
         ...files.map((file) => ({ name: file.name, size: file.size, uploading: true })),
       ],
       reasoning: '',
@@ -499,14 +525,17 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
         ? await Promise.all(files.map((file) => uploadSessionAttachment(sessionId, file, controller.signal)))
         : []
       if (attachments.length) {
-        setLive((prev) => (prev ? { ...prev, attachments: [...draftAttachments, ...attachments] } : prev))
+        setLive((prev) =>
+          prev ? { ...prev, attachments: [...draftAttachments, ...contextAttachments, ...attachments] } : prev,
+        )
       }
       await streamSessionMessage({
         sessionId,
         message: text,
-        quotes: draftQuotes,
+        contexts: contextInputs(draftContexts),
         attachmentIds: [
           ...draftAttachments.map((attachment) => attachment.id),
+          ...contextAttachmentIDs(draftContexts),
           ...attachments.map((attachment) => attachment.id),
         ],
         planRequested: options.planRequested,
@@ -623,7 +652,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     streaming,
     onSend: handleSend,
   })
-  const composerQuotes = useComposerQuotes({
+  const composerContexts = useComposerContexts({
     storageKey: `${SESSION_DRAFT_KEY_PREFIX}${sessionId}`,
     storage: 'local',
   })
@@ -718,7 +747,14 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
             role: 'user' as const,
             content: live.user,
             blocks: [
-              ...live.quotes.map((text) => ({ type: 'quote' as const, text })),
+              ...contextInputs(live.contexts).map((context) =>
+                context.type === 'selection'
+                  ? { type: 'quote' as const, text: context.text }
+                  : {
+                      type: 'browser_annotation' as const,
+                      input_json: JSON.stringify(context.browser_annotation ?? {}),
+                    },
+              ),
               { type: 'text' as const, text: live.user },
               ...live.attachments.flatMap((attachment) =>
                 attachment.id && attachment.uri
@@ -744,7 +780,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   const titlebarActions = document.getElementById('titlebar-actions')
 
   return (
-    <FileReaderLinkProvider onOpen={sidePanel.openFile}>
+    <FileReaderLinkProvider onOpen={openFileReference}>
       <PreviewLinkProvider onOpen={sidePanel.openPreview}>
         <div ref={sidePanel.measureRef} className="flex h-full">
           {titlebarSlot
@@ -813,7 +849,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                               transition={{ type: 'spring', stiffness: 380, damping: 30 }}
                             >
                               <div className="min-w-0 max-w-[84%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap [overflow-wrap:break-word] select-text">
-                                <MessageQuotes quotes={live.quotes} />
+                                <MessageContexts contexts={live.contexts} />
                                 <MentionText text={live.user} />
                                 <LiveAttachmentList attachments={live.attachments} />
                               </div>
@@ -856,7 +892,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
               </div>
             </div>
             <ThreadFindBar find={threadFind} />
-            <SelectionQuoteToolbar scrollRef={scrollRef} onAdd={composerQuotes.addQuote} />
+            <SelectionContextToolbar scrollRef={scrollRef} onAdd={composerContexts.addSelection} />
 
             {showPlanDecision && planDecisionError ? (
               <p className="absolute inset-x-0 bottom-32 mx-auto max-w-[640px] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
@@ -899,9 +935,9 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                   steerDisabled={queue.steerDisabled}
                   draftStorageKey={`${SESSION_DRAFT_KEY_PREFIX}${session.id}`}
                   fileRoot={session.runtime_ref?.cwd}
-                  quotes={composerQuotes.quotes}
-                  onRemoveQuote={composerQuotes.removeQuote}
-                  onClearQuotes={composerQuotes.clearQuotes}
+                  contexts={composerContexts.contexts}
+                  onRemoveContext={composerContexts.removeContext}
+                  onClearContexts={composerContexts.clearContexts}
                   onSend={queue.onSend}
                   onStop={() => {
                     // the turn runs detached server-side; stop it there first
@@ -938,7 +974,9 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
               sideChatAvailable={sideChatAvailable}
               sideChatEvents={sideChatEvents}
               onPreviewUrlChange={sidePanel.setPreviewUrl}
-              onOpenFile={sidePanel.openFile}
+              onOpenFile={openFileReference}
+              onAddBrowserAnnotation={composerContexts.addBrowserAnnotation}
+              onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
               onSend={queue.onSend}
               onSendSideChat={handleSideChatSend}
               onClose={sidePanel.toggle}

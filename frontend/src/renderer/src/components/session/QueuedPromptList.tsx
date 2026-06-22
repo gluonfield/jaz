@@ -189,10 +189,10 @@ function QueuedRow({
           <p className="truncate text-[13px] text-ink-2 select-text">
             <MentionText text={item.text} />
           </p>
-          {item.quotes?.length ? (
+          {(item.contexts?.length ?? item.quotes?.length ?? 0) > 0 ? (
             <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-bg px-1.5 py-0.5 text-[11px] tabular-nums text-ink-3">
               <MessageSquareQuote size={11} aria-hidden />
-              {item.quotes.length}
+              {item.contexts?.length ?? item.quotes?.length}
             </span>
           ) : null}
           {item.attachment_ids?.length ? (
@@ -278,6 +278,6 @@ function queueOrderSignature(prompts: QueuedMessage[]): string {
 
 function queueSignature(prompts: QueuedMessage[]): string {
   return JSON.stringify(
-    prompts.map((prompt) => [prompt.id, prompt.text, prompt.quotes ?? [], prompt.attachment_ids ?? [], prompt.plan_requested ?? false]),
+    prompts.map((prompt) => [prompt.id, prompt.text, prompt.contexts ?? prompt.quotes ?? [], prompt.attachment_ids ?? [], prompt.plan_requested ?? false]),
   )
 }

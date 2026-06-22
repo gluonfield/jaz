@@ -260,10 +260,13 @@ export const sessionRepoFileDiffQuery = (id: string, file: RepoFileChange, base?
 export const sessionFileQuery = (id: string, path: string) =>
   queryOptions({
     queryKey: keys.sessionFile(id, path),
-    queryFn: () =>
-      get<SessionFileRead>(`/v1/sessions/${id}/file?path=${encodeURIComponent(path)}`),
+    queryFn: () => readSessionFile(id, path),
     staleTime: 15_000,
   })
+
+export function readSessionFile(id: string, path: string): Promise<SessionFileRead> {
+  return get<SessionFileRead>(`/v1/sessions/${id}/file?path=${encodeURIComponent(path)}`)
+}
 
 // Publishes the session's current branch to its remote (git push -u) and
 // returns the refreshed repo state; Create PR calls this first when the

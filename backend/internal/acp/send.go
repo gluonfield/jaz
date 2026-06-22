@@ -40,12 +40,11 @@ func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {
 	if err := m.prepareModeForTurn(ctx, job, req.PlanRequested); err != nil {
 		return Job{}, err
 	}
-	if err := storage.AppendUserMessage(m.store, job.ID, req.Message, req.Quotes, req.Attachments); err != nil {
+	contexts := storage.NormalizeMessageContexts(req.Contexts)
+	if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments); err != nil {
 		m.log.Error("append user message failed", "session", job.ID, "error", err)
 	}
-	// The quoted selections are display-only in storage; the agent sees them
-	// folded into the prompt text so it can reference them inline.
-	promptMessage := messageWithSelections(req.Message, req.Quotes)
+	promptMessage := messageWithContext(req.Message, contexts)
 	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested)
 	job.startTurn(req.Completion, req.Interactive, req.PlanRequested, req.ParentVisible)
 	m.touchJobAttention(job)
