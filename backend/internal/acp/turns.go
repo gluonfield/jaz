@@ -20,11 +20,9 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string, attac
 	job.turnMu.Lock()
 	defer job.turnMu.Unlock()
 
-	job.mu.RLock()
-	done := job.done
-	job.mu.RUnlock()
+	done := job.turnDone()
 	if done == nil {
-		done = job.startTurn(CompletionInline, false, false, false)
+		done = job.startTurn(CompletionInline, false, false)
 	}
 
 	peer := m.peer(job.ID)
@@ -45,44 +43,123 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string, attac
 	}
 	prompt, err := promptContentBlocks(message, attachments, resolver)
 	if err != nil {
-		m.failTurn(job, err)
-		m.finishTurn(done, job)
+		m.failPromptCall(done, job, err)
 		return
 	}
-	raw, err := peer.Call(ctx, acpschema.AgentMethodSessionPrompt, map[string]any{
-		"sessionId": job.ACPSession,
-		"prompt":    prompt,
+	m.runPromptCall(ctx, job, done, acpschema.PromptRequest{
+		SessionID: acpschema.SessionID(job.ACPSession),
+		Prompt:    prompt,
 	})
+}
+
+func (m *Manager) runPromptCall(ctx context.Context, job *Job, done chan struct{}, req acpschema.PromptRequest) {
+	peer := m.peer(job.ID)
+	if peer == nil {
+		m.failPromptCall(done, job, fmt.Errorf("acp peer is not active"))
+		return
+	}
+	raw, err := peer.Call(ctx, acpschema.AgentMethodSessionPrompt, req)
 	if err != nil {
-		m.failTurn(job, err)
-		m.finishTurn(done, job)
+		m.failPromptCall(done, job, err)
 		return
 	}
 	var resp struct {
 		StopReason string `json:"stopReason"`
 	}
 	if err := json.Unmarshal(raw, &resp); err != nil {
-		m.failTurn(job, err)
-		m.finishTurn(done, job)
+		m.failPromptCall(done, job, err)
 		return
 	}
 	m.recordRawUsage(job, raw)
-	stopReason := resp.StopReason
+	m.completePromptCall(done, job, resp.StopReason)
+}
+
+func (m *Manager) completePromptCall(done chan struct{}, job *Job, stopReason string) {
 	state := StateIdle
 	if jobCancelRequested(job) || stopReason == "cancelled" {
 		state = StateCancelled
 		stopReason = "cancelled"
 	}
-	job.setState(state, stopReason, "")
+	job.mu.Lock()
+	turn := job.turn
+	if turn == nil || turn.done != done {
+		job.mu.Unlock()
+		return
+	}
+	if turn.promptCalls > 0 {
+		turn.promptCalls--
+	}
+	remaining := turn.promptCalls
+	if state == StateIdle && remaining > 0 {
+		job.UpdatedAt = time.Now().UTC()
+		job.mu.Unlock()
+		m.log.Info("acp prompt handed off", "session", job.ID, "remaining_prompt_calls", remaining)
+		return
+	}
+	turn.promptCalls = 0
+	job.State = state
+	job.StopReason = stopReason
+	job.Error = ""
+	job.UpdatedAt = time.Now().UTC()
+	job.mu.Unlock()
 	m.log.Info("acp turn finished", "session", job.ID, "state", state, "stop_reason", stopReason)
 	m.publishACPStatus(job.Snapshot())
 	m.appendAssistantMessage(job)
 	m.finishTurn(done, job)
 }
 
+func (m *Manager) failPromptCall(done chan struct{}, job *Job, err error) {
+	job.mu.Lock()
+	turn := job.turn
+	if turn == nil || turn.done != done {
+		job.mu.Unlock()
+		return
+	}
+	if turn.promptCalls > 0 {
+		turn.promptCalls--
+	}
+	turn.promptCalls = 0
+	job.mu.Unlock()
+	m.failTurn(job, err)
+	m.finishTurn(done, job)
+}
+
+func (m *Manager) finishTurn(done chan struct{}, job *Job) {
+	job.mu.Lock()
+	turn := job.turn
+	if turn == nil || turn.done != done {
+		job.mu.Unlock()
+		return
+	}
+	job.turn = nil
+	completion := turn.completion
+	planRequested := turn.planRequested
+	parentVisible := job.ParentVisible
+	job.mu.Unlock()
+	m.cancelPendingPermissions(job.ID)
+	m.resolveDanglingToolCalls(job)
+	snapshot := job.Snapshot()
+	if snapshot.State == StateIdle || snapshot.State == StateFailed || snapshot.State == StateCancelled {
+		if planRequested && snapshot.State == StateIdle {
+			m.publishPlanTurnResult(snapshot)
+		}
+		m.compactSessionEvents(snapshot.ID)
+		m.touchAttention(surfaceSessionIDs(&snapshot)...)
+	}
+	if m.TurnFinished != nil {
+		m.TurnFinished(context.Background(), snapshot)
+	}
+	if done != nil {
+		close(done)
+	}
+	if completion.propagates() && parentVisible && !planRequested && m.Done != nil {
+		go m.Done(context.Background(), snapshot)
+	}
+}
+
 func jobCancelRequested(job *Job) bool {
 	job.mu.RLock()
-	cancelled := job.cancelRequested
+	cancelled := job.turn != nil && job.turn.cancelRequested
 	job.mu.RUnlock()
 	return cancelled
 }
@@ -173,10 +250,7 @@ func marshalContentBlock(block any) (acpschema.ContentBlock, error) {
 // A turn that died after a cancel request ends as cancelled, not failed; both
 // outcomes are published so the UI and stored status reflect them.
 func (m *Manager) failTurn(job *Job, err error) {
-	job.mu.RLock()
-	cancelled := job.cancelRequested
-	job.mu.RUnlock()
-	if cancelled {
+	if jobCancelRequested(job) {
 		job.setState(StateCancelled, "cancelled", "")
 		m.log.Info("acp turn cancelled", "session", job.ID)
 	} else {
@@ -253,34 +327,6 @@ func jsonErrorMessage(raw json.RawMessage) string {
 	return strings.TrimSpace(payload.Message)
 }
 
-func (m *Manager) finishTurn(done chan struct{}, job *Job) {
-	job.mu.Lock()
-	completion := job.completion
-	planRequested := job.planRequested
-	parentVisible := job.ParentVisible
-	job.completion = CompletionInline
-	job.interactive = false
-	job.planRequested = false
-	job.mu.Unlock()
-	m.cancelPendingPermissions(job.ID)
-	m.resolveDanglingToolCalls(job)
-	snapshot := job.Snapshot()
-	if snapshot.State == StateIdle || snapshot.State == StateFailed || snapshot.State == StateCancelled {
-		if planRequested && snapshot.State == StateIdle {
-			m.publishPlanTurnResult(snapshot)
-		}
-		m.compactSessionEvents(snapshot.ID)
-		m.touchAttention(surfaceSessionIDs(&snapshot)...)
-	}
-	if m.TurnFinished != nil {
-		m.TurnFinished(context.Background(), snapshot)
-	}
-	close(done)
-	if completion.propagates() && parentVisible && !planRequested && m.Done != nil {
-		go m.Done(context.Background(), snapshot)
-	}
-}
-
 func (m *Manager) compactSessionEvents(sessionID string) {
 	compactor, ok := m.store.(storage.SessionEventCompactor)
 	if !ok {
@@ -349,7 +395,7 @@ func terminalToolStatus(status string) bool {
 
 func (m *Manager) appendAssistantMessage(job *Job) {
 	job.mu.Lock()
-	if job.planRequested {
+	if job.turn != nil && job.turn.planRequested {
 		job.mu.Unlock()
 		return
 	}
