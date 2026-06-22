@@ -118,6 +118,9 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	if status.Modes.PlanModeID != "plan" || status.Modes.CurrentModeID != "full-access" {
 		t.Fatalf("unexpected modes %#v", status.Modes)
 	}
+	if status.ModelProvider != "fake" || status.Model != "fake-large" || status.ReasoningEffort != "high" {
+		t.Fatalf("unexpected status model metadata %#v", status)
+	}
 	messages, err := store.LoadMessages(spawned.SessionID)
 	if err != nil {
 		t.Fatal(err)
@@ -152,6 +155,13 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	}
 	if session.ModelProvider != "fake" || session.Model != "fake-large" || session.ReasoningEffort != "high" {
 		t.Fatalf("unexpected session model metadata %#v", session)
+	}
+	state, err := store.LoadACPState(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.ModelProvider != "fake" || state.Model != "fake-large" || state.ReasoningEffort != "high" {
+		t.Fatalf("unexpected acp state model metadata %#v", state)
 	}
 	messages, err = store.LoadMessages(spawned.SessionID)
 	if err != nil {

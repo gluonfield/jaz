@@ -36,6 +36,32 @@ func TestArtifactStorageContentDoesNotIncludeDebugSize(t *testing.T) {
 	}
 }
 
+func TestACPEventSlimForStorageDropsRepeatedMetadata(t *testing.T) {
+	event := &ACPEvent{
+		ID:              "child",
+		Slug:            "review-thread",
+		Title:           "Review thread",
+		Agent:           "claude",
+		SessionID:       "claude-session",
+		ModelProvider:   "claude",
+		Model:           "claude-opus-4-8",
+		ReasoningEffort: "xhigh",
+		State:           "running",
+		Modes: ACPModeState{
+			AvailableModes: []ACPMode{{ID: "default", Name: "Default"}},
+		},
+	}
+
+	slim := event.SlimForStorage()
+
+	if slim.Title != "" || slim.ModelProvider != "" || slim.Model != "" || slim.ReasoningEffort != "" {
+		t.Fatalf("slim metadata = %#v", slim)
+	}
+	if slim.Slug != event.Slug || slim.Agent != event.Agent || slim.SessionID != event.SessionID {
+		t.Fatalf("slim identity = %#v", slim)
+	}
+}
+
 func TestBusPublishesToEverySessionSubscriber(t *testing.T) {
 	bus := New()
 	ctx, cancel := context.WithCancel(context.Background())

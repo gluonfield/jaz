@@ -93,11 +93,14 @@ func TestResolveAgentSelectorRejectsConflictingAliases(t *testing.T) {
 
 func TestMCPAgentJobOutputValidatesToolCallRawInputObject(t *testing.T) {
 	job := Job{
-		ID:         "child",
-		Slug:       "physicslab-plan-claude-review",
-		ACPAgent:   AgentClaude,
-		ACPSession: "claude-session",
-		State:      StateIdle,
+		ID:              "child",
+		Slug:            "physicslab-plan-claude-review",
+		ACPAgent:        AgentClaude,
+		ACPSession:      "claude-session",
+		ModelProvider:   AgentClaude,
+		Model:           "claude-opus-4-8",
+		ReasoningEffort: "xhigh",
+		State:           StateIdle,
 		ToolCalls: []ToolCallSnapshot{{
 			ID:       "tool-1",
 			Title:    "Read plan.html",
@@ -131,6 +134,9 @@ func TestMCPAgentJobOutputValidatesToolCallRawInputObject(t *testing.T) {
 		if nested, ok := output.ToolCalls[0].RawInput["nested"].(map[string]any); !ok || nested["limit"] != float64(1) {
 			t.Fatalf("%s raw_input nested = %#v", name, output.ToolCalls[0].RawInput["nested"])
 		}
+		if output.ModelProvider != AgentClaude || output.Model != "claude-opus-4-8" || output.ReasoningEffort != "xhigh" {
+			t.Fatalf("%s model metadata = %#v", name, output)
+		}
 	}
 
 	listCall, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: MCPToolAgentList})
@@ -140,6 +146,9 @@ func TestMCPAgentJobOutputValidatesToolCallRawInputObject(t *testing.T) {
 	list := structuredContent[MCPListOutput](t, listCall)
 	if got := list.Sessions[0].ToolCalls[0].RawInput["file_path"]; got != "/tmp/plan.html" {
 		t.Fatalf("list raw_input file_path = %#v", got)
+	}
+	if list.Sessions[0].ModelProvider != AgentClaude || list.Sessions[0].ReasoningEffort != "xhigh" {
+		t.Fatalf("list model metadata = %#v", list.Sessions[0])
 	}
 }
 

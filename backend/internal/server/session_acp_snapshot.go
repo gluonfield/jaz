@@ -85,6 +85,9 @@ func (s *Server) failedACPSnapshot(session storage.Session) storage.ACPState {
 			state.ACPSession = firstNonEmpty(session.RuntimeRef.SessionID, state.ACPSession)
 			state.Cwd = firstNonEmpty(session.RuntimeRef.Cwd, state.Cwd)
 		}
+		state.ModelProvider = firstNonEmpty(session.ModelProvider, state.ModelProvider)
+		state.Model = firstNonEmpty(session.Model, state.Model)
+		state.ReasoningEffort = firstNonEmpty(session.ReasoningEffort, state.ReasoningEffort)
 	}
 	state.State = acp.StateFailed
 	state.Error = session.Error
@@ -176,20 +179,23 @@ func acpJobState(job acp.Job) storage.ACPState {
 		})
 	}
 	return storage.ACPState{
-		ID:          job.ID,
-		Slug:        job.Slug,
-		Title:       job.Title,
-		ParentID:    job.ParentID,
-		ACPAgent:    acp.CanonicalAgentName(job.ACPAgent),
-		ACPSession:  job.ACPSession,
-		Cwd:         job.Cwd,
-		State:       job.State,
-		StopReason:  job.StopReason,
-		Assistant:   job.Assistant,
-		Thought:     job.Thought,
-		Plan:        plan,
-		ToolCalls:   calls,
-		Permissions: job.Permissions,
+		ID:              job.ID,
+		Slug:            job.Slug,
+		Title:           job.Title,
+		ParentID:        job.ParentID,
+		ACPAgent:        acp.CanonicalAgentName(job.ACPAgent),
+		ACPSession:      job.ACPSession,
+		Cwd:             job.Cwd,
+		ModelProvider:   job.ModelProvider,
+		Model:           job.Model,
+		ReasoningEffort: job.ReasoningEffort,
+		State:           job.State,
+		StopReason:      job.StopReason,
+		Assistant:       job.Assistant,
+		Thought:         job.Thought,
+		Plan:            plan,
+		ToolCalls:       calls,
+		Permissions:     job.Permissions,
 		Modes: sessionevents.ACPModeState{
 			CurrentModeID:  job.Modes.CurrentModeID,
 			PlanModeID:     job.Modes.PlanModeID,
@@ -217,13 +223,16 @@ func acpModes(in []acp.ModeSnapshot) []sessionevents.ACPMode {
 func acpStateFromSession(session storage.Session) storage.ACPState {
 	session = canonicalSessionResponse(session)
 	state := storage.ACPState{
-		ID:        session.ID,
-		Slug:      session.Slug,
-		Title:     session.Title,
-		ParentID:  session.ParentID,
-		State:     acp.StateNotRunning,
-		CreatedAt: session.CreatedAt,
-		UpdatedAt: session.UpdatedAt,
+		ID:              session.ID,
+		Slug:            session.Slug,
+		Title:           session.Title,
+		ParentID:        session.ParentID,
+		ModelProvider:   session.ModelProvider,
+		Model:           session.Model,
+		ReasoningEffort: session.ReasoningEffort,
+		State:           acp.StateNotRunning,
+		CreatedAt:       session.CreatedAt,
+		UpdatedAt:       session.UpdatedAt,
 	}
 	if session.RuntimeRef != nil {
 		state.ACPAgent = session.RuntimeRef.Agent
