@@ -12,6 +12,19 @@ export function isParentChildACPEvent(event: SessionEvent): boolean {
   )
 }
 
+export type SessionEventPlacement = 'transcript' | 'overview' | 'side_chat'
+
+export function sessionEventPlacement(event: SessionEvent): SessionEventPlacement {
+  switch (event.type) {
+    case 'provider_subagent':
+      return 'overview'
+    case 'side_chat_message':
+      return 'side_chat'
+    default:
+      return 'transcript'
+  }
+}
+
 // Stable identity for the events that update in place rather than appending:
 // a child/agent status row, a running tool call, a permission prompt, a loop
 // card. Returns null for events that have no such identity (plain text deltas,

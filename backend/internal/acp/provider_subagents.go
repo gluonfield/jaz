@@ -18,30 +18,43 @@ type providerSubagentHint struct {
 	status  string
 }
 
-func providerSubagentFromUpdate(agent string, update acpschema.DecodedSessionUpdate) *sessionevents.ProviderSubagentEvent {
+type providerSubagentUpdate struct {
+	subagent *sessionevents.ProviderSubagentEvent
+	consume  bool
+}
+
+func providerSubagentFromUpdate(agent string, update acpschema.DecodedSessionUpdate) providerSubagentUpdate {
 	switch event := update.(type) {
 	case acpschema.SessionInfoSessionUpdate:
-		return providerSubagentFromMeta(agent, event.Meta, providerSubagentHint{})
+		return providerSubagentUpdate{subagent: providerSubagentFromJazMeta(agent, event.Meta, providerSubagentHint{}), consume: true}
 	case acpschema.ToolCallSessionUpdate:
-		return providerSubagentFromMeta(agent, event.Meta, providerSubagentHint{
+		hint := providerSubagentHint{
 			summary: firstNonEmpty(event.Title, string(event.ToolCallID)),
 			status:  "running",
-		})
+		}
+		if subagent := providerSubagentFromJazMeta(agent, event.Meta, hint); subagent != nil {
+			return providerSubagentUpdate{subagent: subagent}
+		}
+		return providerSubagentUpdate{subagent: claudeProviderSubagentFromMeta(agent, event.Meta, hint), consume: true}
 	case acpschema.ToolCallUpdateSessionUpdate:
-		return providerSubagentFromMeta(agent, event.Meta, providerSubagentHint{
+		hint := providerSubagentHint{
 			summary: firstNonEmpty(event.Title, string(event.ToolCallID)),
 			status:  "running",
-		})
+		}
+		if subagent := providerSubagentFromJazMeta(agent, event.Meta, hint); subagent != nil {
+			return providerSubagentUpdate{subagent: subagent}
+		}
+		return providerSubagentUpdate{subagent: claudeProviderSubagentFromMeta(agent, event.Meta, hint), consume: true}
 	case acpschema.AgentMessageChunkUpdate:
-		return providerSubagentFromMeta(agent, event.Meta, providerSubagentHint{summary: "Subagent message", status: "running"})
+		return providerSubagentUpdate{subagent: providerSubagentFromJazMeta(agent, event.Meta, providerSubagentHint{summary: "Subagent message", status: "running"})}
 	case acpschema.AgentThoughtChunkUpdate:
-		return providerSubagentFromMeta(agent, event.Meta, providerSubagentHint{summary: "Subagent thinking", status: "running"})
+		return providerSubagentUpdate{subagent: providerSubagentFromJazMeta(agent, event.Meta, providerSubagentHint{summary: "Subagent thinking", status: "running"})}
 	default:
-		return nil
+		return providerSubagentUpdate{}
 	}
 }
 
-func providerSubagentFromMeta(agent string, meta map[string]any, hint providerSubagentHint) *sessionevents.ProviderSubagentEvent {
+func providerSubagentFromJazMeta(agent string, meta map[string]any, hint providerSubagentHint) *sessionevents.ProviderSubagentEvent {
 	if meta == nil {
 		return nil
 	}
@@ -56,6 +69,10 @@ func providerSubagentFromMeta(agent string, meta map[string]any, hint providerSu
 			}
 		}
 	}
+	return nil
+}
+
+func claudeProviderSubagentFromMeta(agent string, meta map[string]any, hint providerSubagentHint) *sessionevents.ProviderSubagentEvent {
 	if CanonicalAgentName(agent) != AgentClaude {
 		return nil
 	}
