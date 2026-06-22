@@ -1,6 +1,8 @@
 const BACKEND_URL_KEY = 'jaz.backendUrl'
 const AUTH_KEY_PREFIX = 'jaz.backendAuth.'
 const DEFAULT_LOCAL_URL = 'http://localhost:5299'
+export const CLIENT_PLATFORM_HEADER = 'X-Jaz-Client-Platform'
+export const CLIENT_PLATFORM = 'desktop'
 
 // The local default bridged by the preload script; fall back for
 // plain-browser debugging.
@@ -85,11 +87,11 @@ export function setApiAuthToken(url: string, token?: string | null): void {
   else localStorage.removeItem(key)
 }
 
-function withAuth(init: RequestInit = {}, url = apiBaseUrl()): RequestInit {
+function withAPIHeaders(init: RequestInit = {}, url = apiBaseUrl()): RequestInit {
   const token = apiAuthToken(url)
-  if (!token) return init
   const headers = new Headers(init.headers)
-  if (!headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`)
+  if (!headers.has(CLIENT_PLATFORM_HEADER)) headers.set(CLIENT_PLATFORM_HEADER, CLIENT_PLATFORM)
+  if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`)
   return { ...init, headers }
 }
 
@@ -107,7 +109,7 @@ function appendAuthQuery(rawUrl: string, url = apiBaseUrl()): string {
 
 export function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   assertBackendRelativePath(path, 'apiFetch')
-  return fetch(apiUrl(path), withAuth(init))
+  return fetch(apiUrl(path), withAPIHeaders(init))
 }
 
 export function apiEventSourceUrl(path: string): string {

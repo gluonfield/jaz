@@ -1,6 +1,7 @@
 package acp
 
 import (
+	"context"
 	"runtime"
 	"sort"
 	"strings"
@@ -39,21 +40,10 @@ func CanonicalAgentName(name string) string {
 // SystemPromptSource supplies the full ACP session extension (AGENTS.md,
 // memory, skills) injected at session creation.
 type SystemPromptSource interface {
-	ACPPrompt(cwd string) (string, error)
+	ACPPromptForContext(ctx context.Context, cwd, surface string) (string, error)
 }
 
 type SessionPromptExtensionResolver func(storage.Session) (promptmodule.Modules, error)
-
-type artifactSurfacePromptSource interface {
-	ACPPromptForArtifactSurface(cwd, surface string) (string, error)
-}
-
-func promptForArtifactSurface(source SystemPromptSource, cwd, surface string) (string, error) {
-	if source, ok := source.(artifactSurfacePromptSource); ok {
-		return source.ACPPromptForArtifactSurface(cwd, surface)
-	}
-	return source.ACPPrompt(cwd)
-}
 
 func promptWithModules(base string, modules promptmodule.Modules) string {
 	return promptmodule.New(base).Append(modules...).Text()
