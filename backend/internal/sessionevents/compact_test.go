@@ -248,7 +248,7 @@ func TestCompactTranscriptCoalescesProviderSubagent(t *testing.T) {
 			Seq:              1,
 			SessionID:        "thread",
 			Type:             TypeProviderSubagent,
-			ProviderSubagent: &ProviderSubagentEvent{Provider: "codex", ID: "worker-1", Status: "running"},
+			ProviderSubagent: &ProviderSubagentEvent{Provider: "codex", ID: "worker-1", Name: "worker", Prompt: "inspect", Status: "running"},
 			At:               compactAt(1),
 		},
 		{
@@ -263,7 +263,11 @@ func TestCompactTranscriptCoalescesProviderSubagent(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("len = %d, want 1: %#v", len(got), got)
 	}
-	if got[0].Seq != 2 || got[0].ProviderSubagent == nil || got[0].ProviderSubagent.Status != "completed" {
+	if got[0].Seq != 2 ||
+		got[0].ProviderSubagent == nil ||
+		got[0].ProviderSubagent.Status != "completed" ||
+		got[0].ProviderSubagent.Name != "worker" ||
+		got[0].ProviderSubagent.Prompt != "inspect" {
 		t.Fatalf("subagent event = %#v", got[0])
 	}
 }

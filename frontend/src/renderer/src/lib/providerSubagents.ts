@@ -14,7 +14,7 @@ export function providerSubagentsFromEvents(events: SessionEvent[]): ProviderSub
     const prev = byKey.get(key)
     byKey.set(key, {
       ...(prev ?? {}),
-      ...filledSubagent(prev, subagent),
+      ...mergeProviderSubagentEvent(prev, subagent),
       key,
       updated_at: event.at,
     })
@@ -26,7 +26,10 @@ export function providerSubagentsFromEvents(events: SessionEvent[]): ProviderSub
   })
 }
 
-function filledSubagent(prev: ProviderSubagentView | undefined, next: ProviderSubagentEvent): ProviderSubagentEvent {
+export function mergeProviderSubagentEvent(
+  prev: ProviderSubagentEvent | undefined,
+  next: ProviderSubagentEvent,
+): ProviderSubagentEvent {
   return {
     ...next,
     provider: next.provider || prev?.provider,
@@ -39,8 +42,8 @@ function filledSubagent(prev: ProviderSubagentView | undefined, next: ProviderSu
     prompt: next.prompt || prev?.prompt,
     model: next.model || prev?.model,
     reasoning_effort: next.reasoning_effort || prev?.reasoning_effort,
-    started_at_ms: next.started_at_ms || prev?.started_at_ms,
-    completed_at_ms: next.completed_at_ms || prev?.completed_at_ms,
+    started_at_ms: next.started_at_ms ?? prev?.started_at_ms,
+    completed_at_ms: next.completed_at_ms ?? prev?.completed_at_ms,
   }
 }
 
