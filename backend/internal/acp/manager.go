@@ -407,21 +407,8 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		ac.close()
 		return fail(err)
 	}
-	job := &Job{
-		ID:             session.ID,
-		Slug:           session.Slug,
-		Title:          session.Title,
-		ParentID:       session.ParentID,
-		ACPAgent:       req.ACPAgent,
-		ACPSession:     string(acpSession.response.SessionID),
-		Cwd:            absCwd,
-		State:          StateIdle,
-		Modes:          modes,
-		CreatedAt:      session.CreatedAt,
-		UpdatedAt:      time.Now().UTC(),
-		promptQueueing: promptQueueingSupported(ac.initRaw),
-		toolByID:       make(map[string]ToolCallSnapshot),
-	}
+	job := newIdleJob(session, req.ACPAgent, string(acpSession.response.SessionID), absCwd, modes)
+	job.promptQueueing = promptQueueingSupported(ac.initRaw)
 	m.addJob(job, ac.conn, ac.peer, ac.cancel)
 	m.saveACPState(job.Snapshot())
 	m.log.Info("spawned agent session", "agent", job.ACPAgent, "session", job.ID, "acp_session", job.ACPSession)
@@ -534,22 +521,9 @@ func (m *Manager) resume(ctx context.Context, ref string) (*Job, error) {
 	if sessionChanged {
 		_ = m.store.SaveSession(session)
 	}
-	job := &Job{
-		ID:             session.ID,
-		Slug:           session.Slug,
-		Title:          session.Title,
-		ParentID:       session.ParentID,
-		ACPAgent:       agentName,
-		ACPSession:     acpSessionID,
-		Cwd:            cwd,
-		State:          StateIdle,
-		Modes:          modes,
-		ParentVisible:  state.ParentVisible,
-		CreatedAt:      session.CreatedAt,
-		UpdatedAt:      time.Now().UTC(),
-		promptQueueing: promptQueueingSupported(ac.initRaw),
-		toolByID:       make(map[string]ToolCallSnapshot),
-	}
+	job := newIdleJob(session, agentName, acpSessionID, cwd, modes)
+	job.ParentVisible = state.ParentVisible
+	job.promptQueueing = promptQueueingSupported(ac.initRaw)
 	m.addJob(job, ac.conn, ac.peer, ac.cancel)
 	m.saveACPState(job.Snapshot())
 	m.log.Info("resumed agent session", "agent", job.ACPAgent, "session", job.ID,
@@ -626,17 +600,7 @@ func (m *Manager) Status(ref string) (Job, error) {
 	if session.Runtime != storage.RuntimeACP || session.RuntimeRef == nil {
 		return Job{}, fmt.Errorf("session %s is not acp-backed", ref)
 	}
-	return Job{
-		ID:         session.ID,
-		Slug:       session.Slug,
-		Title:      session.Title,
-		ParentID:   session.ParentID,
-		ACPAgent:   CanonicalAgentName(session.RuntimeRef.Agent),
-		ACPSession: session.RuntimeRef.SessionID,
-		State:      StateNotRunning,
-		CreatedAt:  session.CreatedAt,
-		UpdatedAt:  session.UpdatedAt,
-	}, nil
+	return jobFromSession(session, session.RuntimeRef.Agent, session.RuntimeRef.SessionID, "", StateNotRunning), nil
 }
 
 func (m *Manager) configuredAgent(name string) (AgentConfig, bool, error) {
@@ -729,6 +693,9 @@ func (m *Manager) cancelStored(ref string) (Job, error) {
 	state.Slug = firstNonEmpty(state.Slug, session.Slug)
 	state.Title = firstNonEmpty(state.Title, session.Title)
 	state.ParentID = firstNonEmpty(state.ParentID, session.ParentID)
+	state.ModelProvider = firstNonEmpty(state.ModelProvider, session.ModelProvider)
+	state.Model = firstNonEmpty(state.Model, session.Model)
+	state.ReasoningEffort = firstNonEmpty(state.ReasoningEffort, session.ReasoningEffort)
 	if session.RuntimeRef != nil {
 		state.ACPAgent = firstNonEmpty(state.ACPAgent, session.RuntimeRef.Agent)
 		state.ACPSession = firstNonEmpty(state.ACPSession, session.RuntimeRef.SessionID)
@@ -745,27 +712,33 @@ func (m *Manager) cancelStored(ref string) (Job, error) {
 		SessionID: session.ID,
 		Type:      "acp",
 		ACP: &sessionevents.ACPEvent{
-			ID:         session.ID,
-			Slug:       state.Slug,
-			Title:      state.Title,
-			ParentID:   state.ParentID,
-			Agent:      state.ACPAgent,
-			SessionID:  state.ACPSession,
-			State:      StateCancelled,
-			StopReason: "cancelled",
+			ID:              session.ID,
+			Slug:            state.Slug,
+			Title:           state.Title,
+			ParentID:        state.ParentID,
+			Agent:           state.ACPAgent,
+			SessionID:       state.ACPSession,
+			ModelProvider:   state.ModelProvider,
+			Model:           state.Model,
+			ReasoningEffort: state.ReasoningEffort,
+			State:           StateCancelled,
+			StopReason:      "cancelled",
 		},
 	})
 	return Job{
-		ID:         session.ID,
-		Slug:       session.Slug,
-		Title:      session.Title,
-		ParentID:   session.ParentID,
-		ACPAgent:   state.ACPAgent,
-		ACPSession: state.ACPSession,
-		State:      StateCancelled,
-		StopReason: "cancelled",
-		CreatedAt:  session.CreatedAt,
-		UpdatedAt:  time.Now().UTC(),
+		ID:              session.ID,
+		Slug:            session.Slug,
+		Title:           session.Title,
+		ParentID:        session.ParentID,
+		ACPAgent:        state.ACPAgent,
+		ACPSession:      state.ACPSession,
+		ModelProvider:   state.ModelProvider,
+		Model:           state.Model,
+		ReasoningEffort: state.ReasoningEffort,
+		State:           StateCancelled,
+		StopReason:      "cancelled",
+		CreatedAt:       session.CreatedAt,
+		UpdatedAt:       time.Now().UTC(),
 	}, nil
 }
 

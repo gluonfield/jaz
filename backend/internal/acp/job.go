@@ -10,25 +10,28 @@ import (
 )
 
 type Job struct {
-	ID            string                        `json:"id"`
-	Slug          string                        `json:"slug"`
-	Title         string                        `json:"title,omitempty"`
-	ParentID      string                        `json:"parent_id,omitempty"`
-	ACPAgent      string                        `json:"acp_agent"`
-	ACPSession    string                        `json:"acp_session"`
-	Cwd           string                        `json:"cwd,omitempty"`
-	State         string                        `json:"state"`
-	StopReason    string                        `json:"stop_reason,omitempty"`
-	Assistant     string                        `json:"assistant,omitempty"`
-	Thought       string                        `json:"thought,omitempty"`
-	Plan          []sessionevents.PlanEntry     `json:"plan,omitempty"`
-	ToolCalls     []ToolCallSnapshot            `json:"tool_calls,omitempty"`
-	Permissions   []sessionevents.ACPPermission `json:"permissions,omitempty"`
-	Modes         ModeState                     `json:"modes,omitempty"`
-	Error         string                        `json:"error,omitempty"`
-	ParentVisible bool                          `json:"parent_visible,omitempty"`
-	CreatedAt     time.Time                     `json:"created_at"`
-	UpdatedAt     time.Time                     `json:"updated_at"`
+	ID              string                        `json:"id"`
+	Slug            string                        `json:"slug"`
+	Title           string                        `json:"title,omitempty"`
+	ParentID        string                        `json:"parent_id,omitempty"`
+	ACPAgent        string                        `json:"acp_agent"`
+	ACPSession      string                        `json:"acp_session"`
+	Cwd             string                        `json:"cwd,omitempty"`
+	ModelProvider   string                        `json:"model_provider,omitempty"`
+	Model           string                        `json:"model,omitempty"`
+	ReasoningEffort string                        `json:"reasoning_effort,omitempty"`
+	State           string                        `json:"state"`
+	StopReason      string                        `json:"stop_reason,omitempty"`
+	Assistant       string                        `json:"assistant,omitempty"`
+	Thought         string                        `json:"thought,omitempty"`
+	Plan            []sessionevents.PlanEntry     `json:"plan,omitempty"`
+	ToolCalls       []ToolCallSnapshot            `json:"tool_calls,omitempty"`
+	Permissions     []sessionevents.ACPPermission `json:"permissions,omitempty"`
+	Modes           ModeState                     `json:"modes,omitempty"`
+	Error           string                        `json:"error,omitempty"`
+	ParentVisible   bool                          `json:"parent_visible,omitempty"`
+	CreatedAt       time.Time                     `json:"created_at"`
+	UpdatedAt       time.Time                     `json:"updated_at"`
 
 	mu                     sync.RWMutex
 	turnMu                 sync.Mutex
@@ -73,29 +76,58 @@ type ModeSnapshot struct {
 	Description string `json:"description,omitempty"`
 }
 
+func jobFromSession(session storage.Session, agentName, acpSessionID, cwd, state string) Job {
+	return Job{
+		ID:              session.ID,
+		Slug:            session.Slug,
+		Title:           session.Title,
+		ParentID:        session.ParentID,
+		ACPAgent:        CanonicalAgentName(agentName),
+		ACPSession:      acpSessionID,
+		Cwd:             cwd,
+		ModelProvider:   session.ModelProvider,
+		Model:           session.Model,
+		ReasoningEffort: session.ReasoningEffort,
+		State:           state,
+		CreatedAt:       session.CreatedAt,
+		UpdatedAt:       session.UpdatedAt,
+	}
+}
+
+func newIdleJob(session storage.Session, agentName, acpSessionID, cwd string, modes ModeState) *Job {
+	job := jobFromSession(session, agentName, acpSessionID, cwd, StateIdle)
+	job.Modes = modes
+	job.UpdatedAt = time.Now().UTC()
+	job.toolByID = make(map[string]ToolCallSnapshot)
+	return &job
+}
+
 func (j *Job) Snapshot() Job {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
 	return Job{
-		ID:            j.ID,
-		Slug:          j.Slug,
-		Title:         j.Title,
-		ParentID:      j.ParentID,
-		ACPAgent:      j.ACPAgent,
-		ACPSession:    j.ACPSession,
-		Cwd:           j.Cwd,
-		State:         j.State,
-		StopReason:    j.StopReason,
-		Assistant:     j.Assistant,
-		Thought:       j.Thought,
-		Plan:          clonePlanEntries(j.Plan),
-		ToolCalls:     append([]ToolCallSnapshot(nil), j.ToolCalls...),
-		Permissions:   clonePermissions(j.Permissions),
-		Modes:         j.Modes.Clone(),
-		Error:         j.Error,
-		ParentVisible: j.ParentVisible,
-		CreatedAt:     j.CreatedAt,
-		UpdatedAt:     j.UpdatedAt,
+		ID:              j.ID,
+		Slug:            j.Slug,
+		Title:           j.Title,
+		ParentID:        j.ParentID,
+		ACPAgent:        j.ACPAgent,
+		ACPSession:      j.ACPSession,
+		Cwd:             j.Cwd,
+		ModelProvider:   j.ModelProvider,
+		Model:           j.Model,
+		ReasoningEffort: j.ReasoningEffort,
+		State:           j.State,
+		StopReason:      j.StopReason,
+		Assistant:       j.Assistant,
+		Thought:         j.Thought,
+		Plan:            clonePlanEntries(j.Plan),
+		ToolCalls:       append([]ToolCallSnapshot(nil), j.ToolCalls...),
+		Permissions:     clonePermissions(j.Permissions),
+		Modes:           j.Modes.Clone(),
+		Error:           j.Error,
+		ParentVisible:   j.ParentVisible,
+		CreatedAt:       j.CreatedAt,
+		UpdatedAt:       j.UpdatedAt,
 	}
 }
 

@@ -112,20 +112,7 @@ func (m *Manager) runLocalUtilityPrompt(ctx context.Context, req SpawnRequest, c
 }
 
 func (m *Manager) newLocalJob(session storage.Session, agentName, cwd string) *Job {
-	return &Job{
-		ID:         session.ID,
-		Slug:       session.Slug,
-		Title:      session.Title,
-		ParentID:   session.ParentID,
-		ACPAgent:   CanonicalAgentName(agentName),
-		ACPSession: session.ID,
-		Cwd:        cwd,
-		State:      StateIdle,
-		Modes:      localModeState(),
-		CreatedAt:  session.CreatedAt,
-		UpdatedAt:  time.Now().UTC(),
-		toolByID:   make(map[string]ToolCallSnapshot),
-	}
+	return newIdleJob(session, agentName, session.ID, cwd, localModeState())
 }
 
 func localModeState() ModeState {

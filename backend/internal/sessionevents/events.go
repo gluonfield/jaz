@@ -119,21 +119,24 @@ func (e Event) StorageContent() string {
 }
 
 type ACPEvent struct {
-	ID          string          `json:"id"`
-	Slug        string          `json:"slug"`
-	Title       string          `json:"title,omitempty"`
-	ParentID    string          `json:"parent_id,omitempty"`
-	Agent       string          `json:"agent"`
-	SessionID   string          `json:"session_id"`
-	State       string          `json:"state"`
-	StopReason  string          `json:"stop_reason,omitempty"`
-	Assistant   string          `json:"assistant,omitempty"`
-	Thought     string          `json:"thought,omitempty"`
-	Error       string          `json:"error,omitempty"`
-	Modes       ACPModeState    `json:"modes,omitzero"`
-	Plan        []PlanEntry     `json:"plan,omitempty"`
-	ToolCalls   []ACPToolCall   `json:"tool_calls,omitempty"`
-	Permissions []ACPPermission `json:"permissions,omitempty"`
+	ID              string          `json:"id"`
+	Slug            string          `json:"slug"`
+	Title           string          `json:"title,omitempty"`
+	ParentID        string          `json:"parent_id,omitempty"`
+	Agent           string          `json:"agent"`
+	SessionID       string          `json:"session_id"`
+	ModelProvider   string          `json:"model_provider,omitempty"`
+	Model           string          `json:"model,omitempty"`
+	ReasoningEffort string          `json:"reasoning_effort,omitempty"`
+	State           string          `json:"state"`
+	StopReason      string          `json:"stop_reason,omitempty"`
+	Assistant       string          `json:"assistant,omitempty"`
+	Thought         string          `json:"thought,omitempty"`
+	Error           string          `json:"error,omitempty"`
+	Modes           ACPModeState    `json:"modes,omitzero"`
+	Plan            []PlanEntry     `json:"plan,omitempty"`
+	ToolCalls       []ACPToolCall   `json:"tool_calls,omitempty"`
+	Permissions     []ACPPermission `json:"permissions,omitempty"`
 }
 
 func (e ACPEvent) MarshalJSON() ([]byte, error) {
@@ -156,18 +159,20 @@ func (e ACPEvent) MarshalJSON() ([]byte, error) {
 }
 
 // SlimForStorage returns a copy without session-constant fields: repeating
-// the title and mode catalog on every stored row dominated transcript
-// payloads (~70-90% of bytes on tool-heavy threads); /messages serves them
-// once per response via acp_meta instead. The slug stays embedded as a
-// durable label fallback, and task-bearing events keep the current/plan mode
-// ids that approval state reads. Migration 0014 applies the same rule to
-// historical rows.
+// titles, model metadata, and the mode catalog on every stored row dominated
+// transcript payloads (~70-90% of bytes on tool-heavy threads). The slug stays
+// embedded as a durable label fallback, and task-bearing events keep the
+// current/plan mode ids that approval state reads. Migration 0014 applies the
+// same rule to historical rows.
 func (e *ACPEvent) SlimForStorage() *ACPEvent {
 	if e == nil {
 		return nil
 	}
 	slim := *e
 	slim.Title = ""
+	slim.ModelProvider = ""
+	slim.Model = ""
+	slim.ReasoningEffort = ""
 	slim.Modes.AvailableModes = nil
 	if len(slim.Plan) == 0 {
 		slim.Modes = ACPModeState{}

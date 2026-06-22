@@ -479,6 +479,9 @@ export interface ACPEvent {
   parent_id?: string
   agent: string
   session_id: string
+  model_provider?: string
+  model?: string
+  reasoning_effort?: string
   state: string
   stop_reason?: string
   assistant?: string
@@ -497,6 +500,9 @@ export interface ACPJobSnapshot {
   parent_id?: string
   acp_agent: string
   acp_session: string
+  model_provider?: string
+  model?: string
+  reasoning_effort?: string
   state: string
   stop_reason?: string
   assistant?: string
