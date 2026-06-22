@@ -459,24 +459,29 @@ func (m *Manager) appendUserAnswerMessage(job *Job, text string, parentVisible b
 func (m *Manager) setJobPermission(job *Job, permission sessionevents.ACPPermission) {
 	job.mu.Lock()
 	defer job.mu.Unlock()
+	now := time.Now().UTC()
 	for i, candidate := range job.Permissions {
 		if candidate.ID == permission.ID {
 			job.Permissions[i] = permission
-			job.UpdatedAt = time.Now().UTC()
+			job.UpdatedAt = now
+			job.LastEventAt = now
 			return
 		}
 	}
 	job.Permissions = append(job.Permissions, permission)
-	job.UpdatedAt = time.Now().UTC()
+	job.UpdatedAt = now
+	job.LastEventAt = now
 }
 
 func (m *Manager) removeJobPermission(job *Job, requestID string) {
 	job.mu.Lock()
 	defer job.mu.Unlock()
+	now := time.Now().UTC()
 	for i, permission := range job.Permissions {
 		if permission.ID == requestID {
 			job.Permissions = append(job.Permissions[:i], job.Permissions[i+1:]...)
-			job.UpdatedAt = time.Now().UTC()
+			job.UpdatedAt = now
+			job.LastEventAt = now
 			return
 		}
 	}
@@ -570,9 +575,9 @@ func (m *Manager) publishACPThought(job Job, content string) {
 	})
 }
 
-func (m *Manager) publishACPTool(job Job, call ToolCallSnapshot) {
+func (m *Manager) publishACPTool(job Job, call sessionevents.ACPToolCall) {
 	m.publishACPTranscriptEvent(job, "acp_tool", "", func(event *sessionevents.ACPEvent) {
-		event.ToolCalls = []sessionevents.ACPToolCall{toolCallEvent(call)}
+		event.ToolCalls = CloneToolCalls([]sessionevents.ACPToolCall{call})
 	})
 }
 
@@ -590,18 +595,6 @@ func (m *Manager) publishProviderSubagent(job Job, subagent sessionevents.Provid
 			ProviderSubagent: &subagent,
 			At:               time.Now().UTC(),
 		})
-	}
-}
-
-func toolCallEvent(call ToolCallSnapshot) sessionevents.ACPToolCall {
-	return sessionevents.ACPToolCall{
-		ID:       call.ID,
-		Title:    call.Title,
-		Status:   call.Status,
-		Kind:     call.Kind,
-		ToolName: call.ToolName,
-		Content:  call.Content,
-		RawInput: call.RawInput,
 	}
 }
 
@@ -663,10 +656,6 @@ func (m *Manager) saveACPState(job Job) {
 }
 
 func acpStorageState(job Job) storage.ACPState {
-	calls := make([]sessionevents.ACPToolCall, 0, len(job.ToolCalls))
-	for _, call := range job.ToolCalls {
-		calls = append(calls, toolCallEvent(call))
-	}
 	return storage.ACPState{
 		ID:            job.ID,
 		Slug:          job.Slug,
@@ -680,20 +669,18 @@ func acpStorageState(job Job) storage.ACPState {
 		Assistant:     job.Assistant,
 		Thought:       job.Thought,
 		Plan:          clonePlanEntries(job.Plan),
-		ToolCalls:     calls,
+		ToolCalls:     CloneToolCalls(job.ToolCalls),
 		Modes:         acpModeEvent(job.Modes),
 		Error:         job.Error,
 		ParentVisible: job.ParentVisible,
 		CreatedAt:     job.CreatedAt,
 		UpdatedAt:     job.UpdatedAt,
+		LastEventAt:   job.LastEventAt,
+		LastToolAt:    job.LastToolAt,
 	}
 }
 
 func acpEvent(job Job) *sessionevents.ACPEvent {
-	calls := make([]sessionevents.ACPToolCall, 0, len(job.ToolCalls))
-	for _, call := range job.ToolCalls {
-		calls = append(calls, toolCallEvent(call))
-	}
 	return &sessionevents.ACPEvent{
 		ID:          job.ID,
 		Slug:        job.Slug,
@@ -708,8 +695,10 @@ func acpEvent(job Job) *sessionevents.ACPEvent {
 		Error:       job.Error,
 		Modes:       acpModeEvent(job.Modes),
 		Plan:        clonePlanEntries(job.Plan),
-		ToolCalls:   calls,
+		ToolCalls:   CloneToolCalls(job.ToolCalls),
 		Permissions: clonePermissions(job.Permissions),
+		LastEventAt: job.LastEventAt,
+		LastToolAt:  job.LastToolAt,
 	}
 }
 

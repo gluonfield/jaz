@@ -13,6 +13,7 @@ import (
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/wins/jaz/backend/internal/filepathx"
 	"github.com/wins/jaz/backend/internal/provider"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -355,12 +356,14 @@ func (m *Manager) resolveDanglingToolCalls(job *Job) {
 	if state == StateFailed {
 		status = "failed"
 	}
-	var updated []ToolCallSnapshot
+	now := time.Now().UTC()
+	var updated []sessionevents.ACPToolCall
 	for id, call := range job.toolByID {
 		if terminalToolStatus(call.Status) {
 			continue
 		}
 		call.Status = status
+		call.UpdatedAt = now
 		job.toolByID[id] = call
 		updated = append(updated, call)
 	}
@@ -369,7 +372,8 @@ func (m *Manager) resolveDanglingToolCalls(job *Job) {
 		return
 	}
 	job.ToolCalls = sortedToolCalls(job.toolByID)
-	job.UpdatedAt = time.Now().UTC()
+	job.UpdatedAt = now
+	job.LastEventAt = now
 	sessionID := job.ID
 	job.mu.Unlock()
 	m.log.Info("resolved dangling tool calls", "session", sessionID, "count", len(updated), "status", status)
