@@ -217,10 +217,10 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 		}
 	}
 	if messageChunk != "" && !bufferMessage {
-		m.publishACPMessage(job.Snapshot(), messageChunk)
+		m.queueACPMessage(job, messageChunk)
 	}
 	if thoughtChunk != "" {
-		m.publishACPThought(job.Snapshot(), thoughtChunk)
+		m.queueACPThought(job, thoughtChunk)
 	}
 	if toolEvent != nil {
 		m.publishACPTool(job.Snapshot(), *toolEvent)

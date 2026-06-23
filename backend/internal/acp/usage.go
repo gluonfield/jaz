@@ -19,11 +19,11 @@ type usageReport struct {
 	Context  storage.Usage
 }
 
-func (m *Manager) recordRawUsage(job *Job, raw json.RawMessage) {
+func (m *Manager) recordRawUsage(job *jobState, raw json.RawMessage) {
 	m.recordUsageReport(job, usageReportFromRaw(raw))
 }
 
-func (m *Manager) recordUsage(job *Job, usage storage.Usage) {
+func (m *Manager) recordUsage(job *jobState, usage storage.Usage) {
 	if usage.IsZero() {
 		return
 	}
@@ -34,7 +34,7 @@ func (m *Manager) recordUsage(job *Job, usage storage.Usage) {
 // different shapes: cumulative turn snapshots, per-request deltas, and live
 // context size updates. Keeping those separate avoids both max-merging deltas
 // and replaying cumulative totals as if they were turn-local.
-func (m *Manager) recordUsageReport(job *Job, report usageReport) {
+func (m *Manager) recordUsageReport(job *jobState, report usageReport) {
 	if report.IsZero() {
 		return
 	}
@@ -75,7 +75,7 @@ func (m *Manager) recordUsageReport(job *Job, report usageReport) {
 	m.publishSessionChanged(job.ID)
 }
 
-func (j *Job) isDuplicateUsageDelta(report usageReport) bool {
+func (j *jobState) isDuplicateUsageDelta(report usageReport) bool {
 	// Codex can repeat the same token_count notification; the ACP bridge only
 	// carries lastTokenUsage, so consecutive identical delta reports are replays.
 	duplicate := j.lastUsageDeltaSet &&
