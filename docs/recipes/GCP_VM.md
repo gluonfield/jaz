@@ -44,9 +44,23 @@ For this GCP VM, use:
 gcloud compute ssh "$NAME" --zone "$ZONE"
 ```
 
+If that fails with `Permission denied (publickey)`, an old SHA-1 RSA key is
+likely being offered, which Ubuntu 24.04's sshd rejects. Add a fresh ed25519
+key to the instance metadata and connect with it directly:
+
+```sh
+ssh-keygen -t ed25519 -f /tmp/jaz_ed25519 -N "" -C "$USER" -q
+gcloud compute instances add-metadata "$NAME" --zone "$ZONE" \
+  --metadata ssh-keys="$USER:$(cat /tmp/jaz_ed25519.pub)"
+ssh -i /tmp/jaz_ed25519 -o StrictHostKeyChecking=no "$USER@$IP"
+```
+
 Inside the VM, run the remote-backend server setup with the recipe release,
 `JAZ_ADDR=:5299`, and `JAZ_PUBLIC_URL=http://<reserved-ip>:5299`. That generic
 setup owns Node/npm, release install, systemd, restart, and boot startup.
+Install the agent CLIs you want to sign into (`npm install -g @openai/codex
+@anthropic-ai/claude-code`); without them the onboarding agent cards show
+"Not installed" and offer no sign-in.
 
 ## Verify
 

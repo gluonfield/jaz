@@ -47,6 +47,10 @@ type acpAuthLoginJob struct {
 	Error      string
 	StartedAt  time.Time
 	FinishedAt time.Time
+	// Open while the login process runs, so the user can hand back a code the
+	// browser printed (the remote/headless flow, where the CLI can't capture an
+	// OAuth redirect on the user's machine).
+	stdin io.WriteCloser
 }
 
 func (s *Server) handleStartACPAuthLogin(w http.ResponseWriter, r *http.Request) {
@@ -110,6 +114,46 @@ func (s *Server) handleGetACPAuthLogin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, job.response())
 }
 
+func (s *Server) handleACPAuthLoginInput(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("method not allowed"))
+		return
+	}
+	id := strings.TrimSpace(r.PathValue("id"))
+	if id == "" {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("login id is required"))
+		return
+	}
+	value, ok := s.acpAuthLoginJobs.Load(id)
+	if !ok {
+		writeError(w, http.StatusNotFound, fmt.Errorf("auth login not found"))
+		return
+	}
+	job, ok := value.(*acpAuthLoginJob)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("auth login state is corrupt"))
+		return
+	}
+	var input struct {
+		Input string `json:"input"`
+	}
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil && !errors.Is(err, io.EOF) {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+	}
+	if strings.TrimSpace(input.Input) == "" {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("a code is required"))
+		return
+	}
+	if err := job.writeInput(input.Input); err != nil {
+		writeError(w, http.StatusConflict, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, job.response())
+}
+
 func (s *Server) runACPAuthLogin(ctx context.Context, agent string, auth acp.AgentAuthConfig, invocation acp.AgentLoginInvocation) (*acpAuthLoginJob, error) {
 	id, err := newACPAuthLoginID()
 	if err != nil {
@@ -133,6 +177,14 @@ func (s *Server) runACPAuthLogin(ctx context.Context, agent string, auth acp.Age
 	writer := acpAuthLoginWriter{job: job}
 	cmd.Stdout = writer
 	cmd.Stderr = writer
+	// Keep stdin open so a code the user pastes back can reach a CLI that's
+	// blocked waiting for it; loopback flows simply never read it.
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	job.stdin = stdin
 	if err := cmd.Start(); err != nil {
 		cancel()
 		return nil, err
@@ -141,6 +193,10 @@ func (s *Server) runACPAuthLogin(ctx context.Context, agent string, auth acp.Age
 	go func() {
 		defer cancel()
 		err := cmd.Wait()
+		// The process is done reading; stop accepting input before the (slower)
+		// verify so a late paste rejects cleanly instead of writing to a pipe
+		// Wait already closed.
+		job.closeStdin()
 		if err == nil {
 			err = s.verifyACPAuthLogin(agent, auth)
 		}
@@ -198,6 +254,31 @@ func (j *acpAuthLoginJob) finish(runErr, ctxErr error) {
 	default:
 		j.Status = "succeeded"
 	}
+}
+
+// closeStdin stops the job from accepting input once its process has exited.
+func (j *acpAuthLoginJob) closeStdin() {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.stdin != nil {
+		_ = j.stdin.Close()
+		j.stdin = nil
+	}
+}
+
+// writeInput hands a line (a code the browser printed) to the login process's
+// stdin so a CLI blocked waiting for it can finish.
+func (j *acpAuthLoginJob) writeInput(input string) error {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.Status != "running" || j.stdin == nil {
+		return fmt.Errorf("sign-in is not waiting for a code")
+	}
+	line := strings.TrimRight(input, "\r\n") + "\n"
+	if _, err := io.WriteString(j.stdin, line); err != nil {
+		return fmt.Errorf("could not send the code to %s sign-in: %w", j.Agent, err)
+	}
+	return nil
 }
 
 func (j *acpAuthLoginJob) response() acpAuthLoginResponse {
