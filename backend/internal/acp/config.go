@@ -26,7 +26,8 @@ const (
 	AuthModeExistingCLI = "existing_cli"
 	AuthModeJazProfile  = "jaz_profile"
 
-	CodexACPVersion = "0.16.7"
+	CodexACPVersion  = "0.16.7"
+	ClaudeACPVersion = "0.50.0"
 )
 
 func CanonicalAgentName(name string) string {
@@ -210,8 +211,7 @@ func BuiltinAgents() AgentCatalog {
 	return AgentCatalog{
 		AgentCodex: codexBuiltinAgent(runtime.GOOS),
 		AgentClaude: {
-			Command:         "npx",
-			Args:            []string{"-y", "@agentclientprotocol/claude-agent-acp@0.44.0"},
+			ManagedAdapter:  "claude",
 			Model:           "default",
 			ReasoningEffort: "xhigh",
 		},

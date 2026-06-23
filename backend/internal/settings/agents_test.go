@@ -214,6 +214,64 @@ func TestMergeAgentDefaultsKeepsFutureCodexPackage(t *testing.T) {
 	}
 }
 
+func TestMergeAgentDefaultsRefreshesLegacyClaudeBuiltinCommand(t *testing.T) {
+	seed := testAgentDefaultsSeed()
+	stored := AgentDefaults{ACP: map[string]ACPAgentDefaults{
+		"claude": {Command: legacyClaudeCommand("@agentclientprotocol/claude-agent-acp@0.44.0")},
+	}}
+
+	merged := MergeAgentDefaults(stored, seed, []string{"claude"})
+
+	if merged.ACP["claude"].Command != "" {
+		t.Fatalf("claude command = %q, want managed default", merged.ACP["claude"].Command)
+	}
+}
+
+func TestMergeAgentDefaultsKeepsFutureClaudePackage(t *testing.T) {
+	seed := testAgentDefaultsSeed()
+	storedCommand := legacyClaudeCommand("@agentclientprotocol/claude-agent-acp@0.51.0")
+	stored := AgentDefaults{ACP: map[string]ACPAgentDefaults{
+		"claude": {Command: storedCommand},
+	}}
+
+	merged := MergeAgentDefaults(stored, seed, []string{"claude"})
+
+	if merged.ACP["claude"].Command != storedCommand {
+		t.Fatalf("claude command = %q, want custom future package %q", merged.ACP["claude"].Command, storedCommand)
+	}
+}
+
+func TestACPConfigSourceUsesMergedClaudeBuiltinCommand(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := testAgentDefaultsSeed()
+	stored := seed
+	stored.ACP = map[string]ACPAgentDefaults{}
+	for name, agent := range seed.ACP {
+		stored.ACP[name] = agent
+	}
+	claude := stored.ACP["claude"]
+	claude.Enabled = true
+	claude.Command = legacyClaudeCommand("@agentclientprotocol/claude-agent-acp@0.44.0")
+	stored.ACP["claude"] = claude
+	if _, err := SaveAgentDefaults(store, stored); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, ok, err := NewACPConfigSource(store, acp.BuiltinAgents()).AgentConfig("claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("claude config disabled")
+	}
+	if cfg.Command != "" || cfg.ManagedAdapter != "claude" {
+		t.Fatalf("claude config = %#v, want managed adapter", cfg)
+	}
+}
+
 func TestMergeAgentDefaultsRefreshesLegacyCodexCommandBeforeToolSearchFlag(t *testing.T) {
 	seed := testAgentDefaultsSeed()
 	stored := AgentDefaults{ACP: map[string]ACPAgentDefaults{
@@ -237,6 +295,10 @@ func legacyCodexCommand(pkg string) string {
 
 func legacyCodexWindowsCommand(pkg string) string {
 	return `npx.cmd -y ` + pkg + ` -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true -c suppress_unstable_features_warning=true`
+}
+
+func legacyClaudeCommand(pkg string) string {
+	return `npx -y ` + pkg
 }
 
 func TestNormalizeAgentDefaultsAllowsClaudeOnlyReasoningEffort(t *testing.T) {

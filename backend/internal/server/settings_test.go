@@ -719,7 +719,7 @@ func TestAgentSettingsRejectEnabledACPWithoutCommand(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
 		"acp":{
 			"codex":{"enabled":false,"command":""},
-			"claude":{"enabled":true,"command":""}
+			"grok":{"enabled":true,"command":""}
 		}
 	}`))
 	req.Header.Set("Content-Type", "application/json")
