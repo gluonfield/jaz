@@ -17,7 +17,7 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-func (m *Manager) runPrompt(ctx context.Context, job *Job, message string, attachments []storage.Attachment) {
+func (m *Manager) runPrompt(ctx context.Context, job *jobState, message string, attachments []storage.Attachment) {
 	job.turnMu.Lock()
 	defer job.turnMu.Unlock()
 
@@ -53,7 +53,7 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string, attac
 	})
 }
 
-func (m *Manager) runPromptCall(ctx context.Context, job *Job, done chan struct{}, req acpschema.PromptRequest) {
+func (m *Manager) runPromptCall(ctx context.Context, job *jobState, done chan struct{}, req acpschema.PromptRequest) {
 	peer := m.peer(job.ID)
 	if peer == nil {
 		m.failPromptCall(done, job, fmt.Errorf("acp peer is not active"))
@@ -75,7 +75,7 @@ func (m *Manager) runPromptCall(ctx context.Context, job *Job, done chan struct{
 	m.completePromptCall(done, job, resp.StopReason)
 }
 
-func (m *Manager) completePromptCall(done chan struct{}, job *Job, stopReason string) {
+func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReason string) {
 	state := StateIdle
 	if jobCancelRequested(job) || stopReason == "cancelled" {
 		state = StateCancelled
@@ -109,7 +109,7 @@ func (m *Manager) completePromptCall(done chan struct{}, job *Job, stopReason st
 	m.finishTurn(done, job)
 }
 
-func (m *Manager) failPromptCall(done chan struct{}, job *Job, err error) {
+func (m *Manager) failPromptCall(done chan struct{}, job *jobState, err error) {
 	job.mu.Lock()
 	turn := job.turn
 	if turn == nil || turn.done != done {
@@ -125,7 +125,7 @@ func (m *Manager) failPromptCall(done chan struct{}, job *Job, err error) {
 	m.finishTurn(done, job)
 }
 
-func (m *Manager) finishTurn(done chan struct{}, job *Job) {
+func (m *Manager) finishTurn(done chan struct{}, job *jobState) {
 	job.mu.Lock()
 	turn := job.turn
 	if turn == nil || turn.done != done {
@@ -158,14 +158,14 @@ func (m *Manager) finishTurn(done chan struct{}, job *Job) {
 	}
 }
 
-func jobCancelRequested(job *Job) bool {
+func jobCancelRequested(job *jobState) bool {
 	job.mu.RLock()
 	cancelled := job.turn != nil && job.turn.cancelRequested
 	job.mu.RUnlock()
 	return cancelled
 }
 
-func (m *Manager) attachmentResourceResolver(job *Job) (attachmentResourceResolver, error) {
+func (m *Manager) attachmentResourceResolver(job *jobState) (attachmentResourceResolver, error) {
 	cfg, ok, err := m.configuredAgent(job.ACPAgent)
 	if err != nil {
 		return attachmentResourceResolver{}, err
@@ -250,7 +250,7 @@ func marshalContentBlock(block any) (acpschema.ContentBlock, error) {
 
 // A turn that died after a cancel request ends as cancelled, not failed; both
 // outcomes are published so the UI and stored status reflect them.
-func (m *Manager) failTurn(job *Job, err error) {
+func (m *Manager) failTurn(job *jobState, err error) {
 	if jobCancelRequested(job) {
 		job.setState(StateCancelled, "cancelled", "")
 		m.log.Info("acp turn cancelled", "session", job.ID)
@@ -345,7 +345,7 @@ func (m *Manager) compactSessionEvents(sessionID string) {
 
 // A cancelled or failed turn leaves the agent's in-flight tool calls without
 // terminal updates; resolve them so they don't render as running forever.
-func (m *Manager) resolveDanglingToolCalls(job *Job) {
+func (m *Manager) resolveDanglingToolCalls(job *jobState) {
 	job.mu.Lock()
 	state := job.State
 	if state != StateCancelled && state != StateFailed {
@@ -397,7 +397,7 @@ func terminalToolStatus(status string) bool {
 	return false
 }
 
-func (m *Manager) appendAssistantMessage(job *Job) {
+func (m *Manager) appendAssistantMessage(job *jobState) {
 	job.mu.Lock()
 	if job.turn != nil && job.turn.planRequested {
 		job.mu.Unlock()

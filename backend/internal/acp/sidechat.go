@@ -80,7 +80,7 @@ func (m *Manager) SendSideChat(ctx context.Context, req SideChatRequest) error {
 	return nil
 }
 
-func (m *Manager) applySideChatUpdate(job *Job, update acpschema.DecodedSessionUpdate) bool {
+func (m *Manager) applySideChatUpdate(job *jobState, update acpschema.DecodedSessionUpdate) bool {
 	switch event := update.(type) {
 	case acpschema.AgentMessageChunkUpdate:
 		scope, ok := sideChatScopeFromMeta(event.Meta, job.ID)
