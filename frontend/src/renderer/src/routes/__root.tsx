@@ -229,7 +229,11 @@ function RootLayout() {
           <PanelLeft size={16} />
         </button>
       </div>
-      <SettingsOverlay open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsOverlay
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onOpenConnect={() => setConnectOpen(true)}
+      />
       <ConnectOverlay open={connectOpen} onClose={() => setConnectOpen(false)} />
       <CommandPalette
         open={commandOpen}
