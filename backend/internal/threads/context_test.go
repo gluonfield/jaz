@@ -100,6 +100,80 @@ func TestContextQueryMatchesToolOutputWithoutReturningIt(t *testing.T) {
 	}
 }
 
+func TestContextQueryLimitKeepsMatchedMessage(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	session, err := store.CreateSession(storage.CreateSession{Slug: "tight-query"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendMessageRecords(session.ID,
+		storage.Message{Role: "user", Content: "before"},
+		storage.Message{Role: "assistant", Content: "needle"},
+		storage.Message{Role: "user", Content: "after"},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := NewService(sqlitestore.NewSearchQueries(store), store).Context(context.Background(), ContextRequest{
+		Session: session.ID,
+		Query:   "needle",
+		Context: 1,
+		Limit:   1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Messages) != 1 || got.Messages[0].Text != "needle" || !got.Messages[0].Matched {
+		t.Fatalf("query messages = %#v, want only matched message", got.Messages)
+	}
+	if got.MatchCount != 1 || !got.Truncated {
+		t.Fatalf("query metadata = %#v, want one match with truncated context", got)
+	}
+}
+
+func TestContextQueryPrioritizesMatchesBeforeNeighbors(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	session, err := store.CreateSession(storage.CreateSession{Slug: "multi-hit-query"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendMessageRecords(session.ID,
+		storage.Message{Role: "user", Content: "before"},
+		storage.Message{Role: "assistant", Content: "needle one"},
+		storage.Message{Role: "user", Content: "between"},
+		storage.Message{Role: "assistant", Content: "needle two"},
+		storage.Message{Role: "user", Content: "after"},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := NewService(sqlitestore.NewSearchQueries(store), store).Context(context.Background(), ContextRequest{
+		Session: session.ID,
+		Query:   "needle",
+		Context: 1,
+		Limit:   2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Messages) != 2 || got.Messages[0].Text != "needle one" || got.Messages[1].Text != "needle two" {
+		t.Fatalf("query messages = %#v, want both hits before neighbors", got.Messages)
+	}
+	if !got.Messages[0].Matched || !got.Messages[1].Matched || got.MatchCount != 2 || !got.Truncated {
+		t.Fatalf("query metadata = %#v, want both messages matched with truncated context", got)
+	}
+}
+
 func TestContextPaginationAndTextClamp(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
