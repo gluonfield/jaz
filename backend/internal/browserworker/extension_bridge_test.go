@@ -32,6 +32,8 @@ func TestExtensionBridgeRoutesCallToConnectedExtension(t *testing.T) {
 		"type":         "hello",
 		"protocol":     ExtensionProtocol,
 		"extension_id": "ext-1",
+		"bridge_url":   "ws://127.0.0.1:5299/v1/browser/extension?key=secret",
+		"user_agent":   "Chrome",
 		"capabilities": map[string]any{"actions": []string{"snapshot"}},
 	}); err != nil {
 		t.Fatal(err)
@@ -70,7 +72,7 @@ func TestExtensionBridgeRoutesCallToConnectedExtension(t *testing.T) {
 		t.Fatalf("out = %#v", out)
 	}
 	status := bridge.Status()
-	if !status.Connected || status.ExtensionID != "ext-1" || status.Protocol != ExtensionProtocol {
+	if !status.Connected || status.ExtensionID != "ext-1" || status.Protocol != ExtensionProtocol || status.BridgeURL != "ws://127.0.0.1:5299/v1/browser/extension" || status.UserAgent != "Chrome" {
 		t.Fatalf("status = %#v", status)
 	}
 }
@@ -98,13 +100,13 @@ func TestExtensionBridgeRejectsNonGet(t *testing.T) {
 }
 
 func TestActionOutputMapsExtensionWireFields(t *testing.T) {
-	raw := `{"status":"ok","text":"x","image_base64":"img","image_mime_type":"image/png","pdf_base64":"pdf","pdf_base64_length":3}`
+	raw := `{"status":"ok","text":"x","image_base64":"img","image_mime_type":"image/png","pdf_base64":"pdf","pdf_base64_length":3,"data":{"url":"https://example.com"}}`
 	var wire extensionWireOutput
 	if err := json.Unmarshal([]byte(raw), &wire); err != nil {
 		t.Fatal(err)
 	}
 	out := actionOutput(wire)
-	if out.ImageBase64 != "img" || out.ImageMIMEType != "image/png" || out.PDFBase64 != "pdf" || out.PDFBase64Length != 3 {
+	if out.ImageBase64 != "img" || out.ImageMIMEType != "image/png" || out.PDFBase64 != "pdf" || out.PDFBase64Length != 3 || !strings.Contains(string(out.Data), "example.com") {
 		t.Fatalf("out = %#v", out)
 	}
 }

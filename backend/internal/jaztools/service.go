@@ -131,6 +131,7 @@ func (s *Service) SetBrowser(service *browsertask.Service, backend browserworker
 	s.browserBackend = backend
 	if s.browser.server != nil && s.browser.browserTools {
 		browserworker.RemoveMCPTools(s.browser.server)
+		browserworker.RemoveHighLevelMCPTools(s.browser.server)
 		s.browser.browserTools = false
 	}
 	s.syncBrowserTools()
@@ -368,6 +369,7 @@ func (s *Service) addBrowserTools(server *mcp.Server, surface toolSurface) {
 	switch {
 	case surface.browserWorkerTools():
 		browserworker.AddMCPTools(server, s.browserBackend)
+		browserworker.AddHighLevelMCPTools(server, s.browserBackend)
 	case surface.browserTaskToolsAllowed():
 		s.Browser.AddMCPTools(server)
 	}
@@ -377,6 +379,7 @@ func (s *Service) removeBrowserTools(server *mcp.Server, surface toolSurface) {
 	switch {
 	case surface.browserWorkerTools():
 		browserworker.RemoveMCPTools(server)
+		browserworker.RemoveHighLevelMCPTools(server)
 	case surface.browserTaskToolsAllowed():
 		s.Browser.RemoveMCPTools(server)
 	}

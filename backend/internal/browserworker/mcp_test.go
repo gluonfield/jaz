@@ -2,6 +2,7 @@ package browserworker
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -14,9 +15,39 @@ type recordingBackend struct {
 	out   ActionOutput
 }
 
+type scriptedBackend struct {
+	calls []ActionInput
+}
+
 func (b *recordingBackend) Call(_ context.Context, input ActionInput) (ActionOutput, error) {
 	b.input = input
 	return b.out, nil
+}
+
+func (b *scriptedBackend) Call(_ context.Context, input ActionInput) (ActionOutput, error) {
+	b.calls = append(b.calls, input)
+	switch input.Action {
+	case "state":
+		data, _ := json.Marshal(PageState{
+			URL:        "https://example.com",
+			Title:      "Example",
+			ReadyState: "complete",
+			Text:       "Sign in to continue",
+			Elements: []StateElement{{
+				Ref:  "e1",
+				Tag:  "button",
+				Role: "button",
+				Name: "Sign in",
+			}},
+		})
+		return ActionOutput{Status: "ok", Data: data}, nil
+	case "click":
+		return ActionOutput{Status: "ok", Text: "Clicked."}, nil
+	case "screenshot":
+		return ActionOutput{Status: "ok", ImageBase64: "cG5n", ImageMIMEType: "image/png"}, nil
+	default:
+		return ActionOutput{Status: "ok", Text: input.Action}, nil
+	}
 }
 
 func TestUnavailableBackendReportsMissingBridge(t *testing.T) {
@@ -91,5 +122,38 @@ func TestContentResultEmbedsPDFResource(t *testing.T) {
 	}
 	if resource.Resource.URI != "jaz://browser/output.pdf" || resource.Resource.MIMEType != "application/pdf" || string(resource.Resource.Blob) != "%PDF" {
 		t.Fatalf("resource = %#v", resource.Resource)
+	}
+}
+
+func TestHighLevelDoUsesStateRefs(t *testing.T) {
+	backend := &scriptedBackend{}
+	_, out, err := (highLevelTools{backend: backend}).Do(context.Background(), &mcp.CallToolRequest{
+		Extra: &mcp.RequestExtra{Header: mcpsession.Header("browser-session-1")},
+	}, HighLevelInput{Task: "click sign in"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.Text, "Clicked.") || !strings.Contains(out.Text, "ref=e1") {
+		t.Fatalf("out = %#v", out)
+	}
+	if len(backend.calls) < 2 || backend.calls[0].Action != "state" || backend.calls[1].Action != "click" || backend.calls[1].Selector != "ref=e1" {
+		t.Fatalf("calls = %#v", backend.calls)
+	}
+}
+
+func TestHighLevelGetAttachesVisualOnlyWhenRequested(t *testing.T) {
+	backend := &scriptedBackend{}
+	result, out, err := (highLevelTools{backend: backend}).Get(context.Background(), &mcp.CallToolRequest{}, HighLevelInput{Visual: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.Text, "Targets:") || out.ImageBase64 != "cG5n" {
+		t.Fatalf("out = %#v", out)
+	}
+	if len(result.Content) != 2 {
+		t.Fatalf("content = %#v", result.Content)
+	}
+	if len(backend.calls) != 2 || backend.calls[0].Action != "state" || backend.calls[1].Action != "screenshot" {
+		t.Fatalf("calls = %#v", backend.calls)
 	}
 }

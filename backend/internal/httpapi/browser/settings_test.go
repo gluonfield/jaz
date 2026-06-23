@@ -8,9 +8,18 @@ import (
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/browserworker"
 	jazsettings "github.com/wins/jaz/backend/internal/settings"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
+
+type extensionStatusStub struct {
+	status browserworker.ExtensionStatus
+}
+
+func (s extensionStatusStub) Status() browserworker.ExtensionStatus {
+	return s.status
+}
 
 func TestSettingsEndpoint(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
@@ -26,7 +35,13 @@ func TestSettingsEndpoint(t *testing.T) {
 	changed := false
 	handler := NewSettingsHandler(store, acp.AgentCatalog{
 		acp.AgentCodex: {Command: "codex-acp"},
-	}, func() { changed = true })
+	}, extensionStatusStub{status: browserworker.ExtensionStatus{
+		Connected:   true,
+		ExtensionID: "ext-1",
+		Protocol:    browserworker.ExtensionProtocol,
+		BridgeURL:   "ws://127.0.0.1:5299/v1/browser/extension",
+		Actions:     []string{"status", "snapshot"},
+	}}, func() { changed = true })
 
 	res := httptest.NewRecorder()
 	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/browser", nil))
@@ -39,6 +54,9 @@ func TestSettingsEndpoint(t *testing.T) {
 	}
 	if !status.Enabled || status.Agent != "" {
 		t.Fatalf("default browser status = %#v", status)
+	}
+	if !status.Extension.Connected || status.Extension.ExtensionID != "ext-1" || len(status.Extension.Actions) != 2 {
+		t.Fatalf("extension status = %#v", status.Extension)
 	}
 
 	res = httptest.NewRecorder()
