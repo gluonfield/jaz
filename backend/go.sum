@@ -32,8 +32,8 @@ github.com/frankban/quicktest v1.14.6 h1:7Xjx+VpznH+oBnejlPUj8oUpdxnVs4f8XU8WnHk
 github.com/frankban/quicktest v1.14.6/go.mod h1:4ptaffx2x8+WTWXmUCuVU6aPUX1/Mz7zb5vbUoiM6w0=
 github.com/fsnotify/fsnotify v1.9.0 h1:2Ml+OJNzbYCTzsxtv8vKSFD9PbJjmhYF14k/jKC7S9k=
 github.com/fsnotify/fsnotify v1.9.0/go.mod h1:8jBTzvmWwFyi3Pb8djgCCO5IBqzKJ/Jwo8TRcHyHii0=
-github.com/gluonfield/acp-transport v0.0.0-20260623142302-4a74880c5793 h1:9PjHpKjp6VzpfFHXjyT0WJ1v7Md6EDYOUycMJtU+4Mo=
-github.com/gluonfield/acp-transport v0.0.0-20260623142302-4a74880c5793/go.mod h1:jaQ1JT5TMUkf2UuoOWj7R+11TdDPchowCORiMzNiSnM=
+github.com/gluonfield/acp-transport v0.0.0-20260623144540-b07094226847 h1:Eunv7w0siFKuMS44tF4ZUq7614FTKCEGAfnfR723UmU=
+github.com/gluonfield/acp-transport v0.0.0-20260623144540-b07094226847/go.mod h1:jaQ1JT5TMUkf2UuoOWj7R+11TdDPchowCORiMzNiSnM=
 github.com/gluonfield/jazmem v0.0.0-20260617205718-6749b41cec95 h1:oxdeyWz+S0B9FhSxBOw892xmEimAJXX1bbXVoIbTgU0=
 github.com/gluonfield/jazmem v0.0.0-20260617205718-6749b41cec95/go.mod h1:9o3WbIIiINzVYjO/rvubl73Yc2j70RUVtZDtJiJF9f0=
 github.com/go-logfmt/logfmt v0.6.1 h1:4hvbpePJKnIzH1B+8OR/JPbTx37NktoI9LE2QZBBkvE=
