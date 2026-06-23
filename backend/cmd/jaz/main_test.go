@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"bytes"
+	"testing"
+)
 
 func TestServerArgs(t *testing.T) {
 	tests := []struct {
@@ -14,6 +17,9 @@ func TestServerArgs(t *testing.T) {
 		{name: "serve alias", in: []string{"serve", "--addr", ":8080"}, args: []string{"--addr", ":8080"}, action: mainRun},
 		{name: "server alias", in: []string{"server"}, action: mainRun},
 		{name: "devices", in: []string{"devices", "--root", "/tmp/jaz"}, args: []string{"--root", "/tmp/jaz"}, action: mainDevices},
+		{name: "update", in: []string{"update", "--latest"}, args: []string{"--latest"}, action: mainUpdate},
+		{name: "version flag", in: []string{"--version"}, action: mainVersion},
+		{name: "version command", in: []string{"version"}, action: mainVersion},
 		{name: "help", in: []string{"--help"}, action: mainHelp},
 		{name: "serve help", in: []string{"serve", "--help"}, action: mainHelp},
 		{name: "chat is not a subcommand", in: []string{"chat"}, action: mainInvalid},
@@ -42,4 +48,17 @@ func sameArgs(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+func TestPrintVersionDefaults(t *testing.T) {
+	oldVersion := version
+	defer func() {
+		version = oldVersion
+	}()
+	version = ""
+	var out bytes.Buffer
+	printVersion(&out)
+	if got, want := out.String(), "jaz dev\n"; got != want {
+		t.Fatalf("version output = %q, want %q", got, want)
+	}
 }

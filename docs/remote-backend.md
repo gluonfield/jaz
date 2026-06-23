@@ -4,22 +4,34 @@ Jaz can run with the backend on a server and desktop or mobile clients on user d
 
 ## Server Setup
 
-Build the backend on a Go 1.26 machine:
-
-```sh
-cd backend
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o jaz ./cmd/jaz
-```
-
-Install it on the server:
+Install a release backend on a Linux server:
 
 ```sh
 ssh root@SERVER
-useradd --system --home-dir /var/lib/jaz --create-home --shell /usr/sbin/nologin jaz
+RELEASE=v0.0.46
+
+apt-get update
+apt-get install -y ca-certificates curl tar nodejs npm
+
+useradd --system --home-dir /var/lib/jaz --create-home --shell /usr/sbin/nologin jaz || true
 install -d -o root -g root -m 755 /opt/jaz/bin /etc/jaz
 install -d -o jaz -g jaz -m 755 /var/lib/jaz /var/lib/jaz/workspaces/default
-install -o root -g root -m 755 ./jaz /opt/jaz/bin/jaz
+
+tmp=$(mktemp -d)
+cd "$tmp"
+asset=jaz-backend-linux-amd64.tar.gz
+base=https://github.com/gluonfield/jaz/releases/download/$RELEASE
+curl -fsSLO "$base/$asset"
+curl -fsSLO "$base/$asset.sha256"
+test "$(awk '{print $1}' "$asset.sha256")" = "$(sha256sum "$asset" | awk '{print $1}')"
+tar -xzf "$asset"
+install -o root -g root -m 755 jaz /opt/jaz/bin/jaz
 ```
+
+Node/npm are required when the backend runs default ACP agents because the
+built-in Codex, Claude, and OpenCode adapters launch through `npx`. Install each
+agent CLI you enable on the server too, for example `npm install -g @openai/codex`
+for Codex login.
 
 Write `/etc/jaz/application.yaml`:
 
@@ -37,6 +49,8 @@ Write `/etc/jaz/jaz.env`:
 APPLICATION_CONFIG=/etc/jaz/application.yaml
 JAZ_LOG=info
 HOME=/var/lib/jaz
+JAZ_ADDR=:5299
+JAZ_PUBLIC_URL=https://jaz.example.com
 ```
 
 Add `/etc/systemd/system/jaz.service`:
@@ -52,7 +66,7 @@ User=jaz
 Group=jaz
 WorkingDirectory=/var/lib/jaz
 EnvironmentFile=/etc/jaz/jaz.env
-ExecStart=/opt/jaz/bin/jaz --addr :5299 --public-url https://jaz.example.com
+ExecStart=/opt/jaz/bin/jaz --addr ${JAZ_ADDR} --public-url ${JAZ_PUBLIC_URL}
 Restart=on-failure
 RestartSec=2
 KillSignal=SIGINT
@@ -72,6 +86,38 @@ Start it:
 systemctl daemon-reload
 systemctl enable --now jaz
 systemctl status jaz --no-pager
+systemctl show jaz -p Restart -p UnitFileState --no-pager
+```
+
+`enable --now` starts Jaz immediately and on future boots. `Restart=on-failure`
+restarts the backend after crashes, non-zero exits, and unexpected signals
+without fighting an intentional `systemctl stop jaz`.
+
+Check the installed backend version:
+
+```sh
+/opt/jaz/bin/jaz --version
+```
+
+Update a release-installed backend binary:
+
+```sh
+sudo /opt/jaz/bin/jaz update --latest
+sudo systemctl restart jaz
+```
+
+Use `jaz update --version v0.0.46` to install a specific release. The update
+command downloads the matching Linux/macOS backend archive from GitHub, verifies
+its `.sha256`, and replaces only the current executable.
+
+For a source build, compile on a Go 1.26 machine, copy the binary to the server,
+and install it to `/opt/jaz/bin/jaz` before restarting the service:
+
+```sh
+cd backend
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o jaz ./cmd/jaz
+scp jaz root@SERVER:/tmp/jaz
+ssh root@SERVER 'install -o root -g root -m 755 /tmp/jaz /opt/jaz/bin/jaz && systemctl restart jaz'
 ```
 
 If the backend should be reachable directly, open the port:
