@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/mcpsession"
@@ -38,15 +37,13 @@ const (
 
 type HighLevelExecutor struct {
 	backend Backend
-	mu      sync.Mutex
-	states  map[string]PageState
 }
 
 func NewHighLevelExecutor(backend Backend) *HighLevelExecutor {
 	if backend == nil {
 		backend = UnavailableBackend{}
 	}
-	return &HighLevelExecutor{backend: backend, states: map[string]PageState{}}
+	return &HighLevelExecutor{backend: backend}
 }
 
 func AddHighLevelMCPTools(server *mcp.Server, backend Backend) {
@@ -101,8 +98,8 @@ func (t highLevelTools) run(ctx context.Context, req *mcp.CallToolRequest, kind 
 
 func (e *HighLevelExecutor) Run(ctx context.Context, session string, kind highLevelKind, input HighLevelInput) (ActionOutput, error) {
 	input.Action = strings.ToLower(strings.TrimSpace(input.Action))
-	if input.URL != "" && !(kind == highLevelDo && input.Action == "navigate") {
-		if _, err := e.backend.Call(ctx, ActionInput{Action: "navigate", URL: input.URL, Session: session}); err != nil {
+	if input.URL != "" && !(kind == highLevelDo && input.Action == ActionNavigate) {
+		if _, err := e.backend.Call(ctx, ActionInput{Action: ActionNavigate, URL: input.URL, Session: session}); err != nil {
 			return ActionOutput{}, err
 		}
 	}
@@ -133,7 +130,7 @@ func (e *HighLevelExecutor) checkState(ctx context.Context, session string, inpu
 		text = quotedText(input.Task)
 	}
 	if selector != "" {
-		_, err := e.backend.Call(ctx, ActionInput{Action: "wait", Selector: selector, Amount: shortWait(input.Amount), Session: session})
+		_, err := e.backend.Call(ctx, ActionInput{Action: ActionWait, Selector: selector, Amount: shortWait(input.Amount), Session: session})
 		if err != nil {
 			ok = false
 			checks = append(checks, "selector missing: "+selector)
@@ -169,8 +166,8 @@ func (e *HighLevelExecutor) doAction(ctx context.Context, session string, input 
 	if action == "" {
 		return e.getState(ctx, session, input)
 	}
-	if action == "navigate" {
-		out, err := e.backend.Call(ctx, ActionInput{Action: "navigate", URL: input.URL, Session: session})
+	if action == ActionNavigate {
+		out, err := e.backend.Call(ctx, ActionInput{Action: ActionNavigate, URL: input.URL, Session: session})
 		if err != nil {
 			return ActionOutput{}, err
 		}
@@ -204,7 +201,7 @@ func (e *HighLevelExecutor) doAction(ctx context.Context, session string, input 
 }
 
 func (e *HighLevelExecutor) attachStateAfterAction(ctx context.Context, session string, input HighLevelInput, actionOut ActionOutput) (ActionOutput, error) {
-	_, _ = e.backend.Call(ctx, ActionInput{Action: "wait", Amount: shortWait(input.Amount), Session: session})
+	_, _ = e.backend.Call(ctx, ActionInput{Action: ActionWait, Amount: shortWait(input.Amount), Session: session})
 	stateOut, _, _, err := e.state(ctx, session)
 	if err == nil && strings.TrimSpace(stateOut.Text) != "" {
 		actionOut.Text = strings.TrimSpace(actionOut.Text + "\n\n" + stateOut.Text)
@@ -214,7 +211,7 @@ func (e *HighLevelExecutor) attachStateAfterAction(ctx context.Context, session 
 }
 
 func (e *HighLevelExecutor) state(ctx context.Context, session string) (ActionOutput, PageState, bool, error) {
-	out, err := e.backend.Call(ctx, ActionInput{Action: "state", Session: session})
+	out, err := e.backend.Call(ctx, ActionInput{Action: ActionState, Session: session})
 	if err != nil {
 		return ActionOutput{}, PageState{}, false, err
 	}
@@ -222,46 +219,15 @@ func (e *HighLevelExecutor) state(ctx context.Context, session string) (ActionOu
 	if !ok {
 		return out, PageState{}, false, nil
 	}
-	out.Text = e.stateTextWithDiff(session, state)
+	out.Text = formatPageState(state)
 	return out, state, true, nil
-}
-
-func (e *HighLevelExecutor) stateTextWithDiff(session string, state PageState) string {
-	text := formatPageState(state)
-	e.mu.Lock()
-	previous, ok := e.states[session]
-	e.states[session] = state
-	e.mu.Unlock()
-	if ok {
-		if diff := pageStateDiff(previous, state); diff != "" {
-			text = diff + "\n\n" + text
-		}
-	}
-	return text
-}
-
-func pageStateDiff(previous, current PageState) string {
-	var parts []string
-	if previous.URL != "" && current.URL != "" && previous.URL != current.URL {
-		parts = append(parts, "URL changed")
-	}
-	if previous.Title != "" && current.Title != "" && previous.Title != current.Title {
-		parts = append(parts, "title changed")
-	}
-	if len(previous.Elements) != 0 && len(current.Elements) != 0 && len(previous.Elements) != len(current.Elements) {
-		parts = append(parts, fmt.Sprintf("targets %d -> %d", len(previous.Elements), len(current.Elements)))
-	}
-	if len(parts) == 0 {
-		return ""
-	}
-	return "State diff: " + strings.Join(parts, ", ")
 }
 
 func (e *HighLevelExecutor) attachVisual(ctx context.Context, session string, input HighLevelInput, out ActionOutput) (ActionOutput, error) {
 	if !wantsVisual(input) {
 		return out, nil
 	}
-	shot, err := e.backend.Call(ctx, ActionInput{Action: "screenshot", Session: session})
+	shot, err := e.backend.Call(ctx, ActionInput{Action: ActionScreenshot, Session: session})
 	if err != nil {
 		out.Text = strings.TrimSpace(out.Text + "\n\nScreenshot unavailable: " + err.Error())
 		return out, nil
@@ -283,19 +249,19 @@ func inferHighLevelAction(input HighLevelInput) string {
 	task := normalizedText(input.Task)
 	switch {
 	case input.URL != "" && task == "":
-		return "navigate"
+		return ActionNavigate
 	case strings.Contains(task, "wait"):
-		return "wait"
+		return ActionWait
 	case strings.Contains(task, "scroll"):
-		return "scroll"
+		return ActionScroll
 	case input.Key != "" || strings.Contains(task, "press"):
-		return "press"
+		return ActionPress
 	case input.Text != "" && strings.Contains(task, "select"):
-		return "select"
+		return ActionSelect
 	case input.Text != "" && (strings.Contains(task, "fill") || strings.Contains(task, "type") || strings.Contains(task, "enter") || strings.Contains(task, "write") || strings.Contains(task, "search")):
-		return "fill"
+		return ActionFill
 	case input.Selector != "" || task != "":
-		return "click"
+		return ActionClick
 	default:
 		return ""
 	}
@@ -303,7 +269,7 @@ func inferHighLevelAction(input HighLevelInput) string {
 
 func actionNeedsTarget(action string) bool {
 	switch action {
-	case "click", "hover", "type", "fill", "select":
+	case ActionClick, ActionHover, ActionType, ActionFill, ActionSelect:
 		return true
 	default:
 		return false

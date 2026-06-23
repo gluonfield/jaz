@@ -1,0 +1,25 @@
+{
+  "protocol": "jaz.browser.extension.v1",
+  "bridge_path": "/v1/browser/extension",
+  "actions": [
+    "status",
+    "tabs",
+    "navigate",
+    "snapshot",
+    "state",
+    "screenshot",
+    "click",
+    "hover",
+    "type",
+    "fill",
+    "select",
+    "press",
+    "scroll",
+    "wait"
+  ],
+  "page_state": {
+    "fields": ["url", "title", "ready_state", "text", "elements"],
+    "element_fields": ["ref", "tag", "role", "name", "text", "href", "selector"],
+    "frame_ref_prefix": "f<frame_id>:"
+  }
+}
