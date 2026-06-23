@@ -28,7 +28,7 @@ func TestThreadSearchHandler(t *testing.T) {
 	if err := store.AppendMessageRecords(session.ID, storage.Message{Role: "user", Content: "Find the command palette thread."}); err != nil {
 		t.Fatal(err)
 	}
-	handler := NewThreadSearchHandler(threads.NewService(sqlitestore.NewSearchQueries(store)))
+	handler := NewThreadSearchHandler(threads.NewService(sqlitestore.NewSearchQueries(store), store))
 
 	res := httptest.NewRecorder()
 	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/search/threads?q=palette", nil))
