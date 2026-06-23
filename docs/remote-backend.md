@@ -19,7 +19,9 @@ install -d -o jaz -g jaz -m 755 /var/lib/jaz /var/lib/jaz/workspaces/default
 
 tmp=$(mktemp -d)
 cd "$tmp"
-asset=jaz-backend-linux-amd64.tar.gz
+arch=$(dpkg --print-architecture)
+case "$arch" in amd64|arm64) ;; *) echo "unsupported architecture: $arch"; exit 1;; esac
+asset="jaz-backend-linux-${arch}.tar.gz"
 base=https://github.com/gluonfield/jaz/releases/download/$RELEASE
 curl -fsSLO "$base/$asset"
 curl -fsSLO "$base/$asset.sha256"

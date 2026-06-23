@@ -8,12 +8,15 @@ const frontendDir = resolve(scriptDir, '..')
 const backendDir = resolve(frontendDir, '..', 'backend')
 const binaryName = process.platform === 'win32' ? 'jaz.exe' : 'jaz'
 const output = resolve(frontendDir, 'resources', 'bin', binaryName)
-const packageVersion = JSON.parse(readFileSync(resolve(frontendDir, 'package.json'), 'utf8')).version
+const packageJSON: { version?: unknown } = JSON.parse(readFileSync(resolve(frontendDir, 'package.json'), 'utf8'))
+if (typeof packageJSON.version !== 'string' || !packageJSON.version) {
+  throw new Error('frontend/package.json version is required')
+}
+const backendVersion = packageJSON.version.startsWith('v') ? packageJSON.version : `v${packageJSON.version}`
 
 mkdirSync(dirname(output), { recursive: true })
 
-const args = ['build', '-o', output]
-if (packageVersion) args.push('-ldflags', `-s -w -X main.version=v${packageVersion}`)
+const args = ['build', '-o', output, '-ldflags', `-s -w -X main.version=${backendVersion}`]
 args.push('./cmd/jaz')
 
 const result = spawnSync('go', args, {
