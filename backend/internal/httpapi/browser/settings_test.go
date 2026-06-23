@@ -60,7 +60,7 @@ func TestSettingsEndpoint(t *testing.T) {
 	}
 
 	res = httptest.NewRecorder()
-	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/browser", strings.NewReader(`{"enabled":true,"agent":"codex"}`)))
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/browser", strings.NewReader(`{"agent":"codex"}`)))
 	if res.Code != http.StatusOK {
 		t.Fatalf("set browser agent = %d, body = %s", res.Code, res.Body.String())
 	}
