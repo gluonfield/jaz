@@ -10,17 +10,16 @@ import {
   MonitorSmartphone,
   Plug,
   Search,
-  Server,
   Sparkles,
   SlidersHorizontal,
 } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { BackendSwitcher } from '@/components/connection/BackendSwitcher'
 import { ACPAgentsSettings } from './ACPAgentsSettings'
 import { AgentProvidersSettings } from './AgentProvidersSettings'
 import { ArchivedThreadsSettings } from './ArchivedThreadsSettings'
-import { BackendsSettings } from './BackendsSettings'
 import { BrowserSettings } from './BrowserSettings'
 import { DevicesSettings } from './DevicesSettings'
 import { GeneralSettings } from './GeneralSettings'
@@ -36,7 +35,6 @@ type Section =
   | 'memory'
   | 'browser'
   | 'usage'
-  | 'backends'
   | 'devices'
   | 'keyboard'
   | 'mcp'
@@ -52,7 +50,6 @@ const NAV: NavItem[] = [
   { id: 'memory', label: 'Memory', icon: Brain },
   { id: 'browser', label: 'Browser', icon: Globe },
   { id: 'usage', label: 'Usage', icon: ChartNoAxesColumn },
-  { id: 'backends', label: 'Backends', icon: Server },
   { id: 'devices', label: 'Devices', icon: MonitorSmartphone },
   { id: 'keyboard', label: 'Keyboard shortcuts', icon: Keyboard },
   { id: 'mcp', label: 'MCP servers', icon: Plug },
@@ -61,21 +58,31 @@ const NAV: NavItem[] = [
   { id: 'archived', label: 'Archived threads', icon: ArchiveRestore },
 ]
 
-export function SettingsOverlay({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function SettingsOverlay({
+  open,
+  onClose,
+  onOpenConnect,
+}: {
+  open: boolean
+  onClose: () => void
+  onOpenConnect: () => void
+}) {
   const reduce = useReducedMotion()
   const [section, setSection] = useState<Section>('general')
   const [query, setQuery] = useState('')
 
-  // Esc closes; restore focus to whatever was focused before opening.
+  // Esc closes; restore focus to whatever was focused before opening. An open
+  // transient surface inside (the backend switcher popover) owns Escape first,
+  // so it dismisses itself before Escape closes the whole panel.
   useEffect(() => {
     if (!open) return
     setQuery('')
     const previouslyFocused = document.activeElement as HTMLElement | null
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.stopPropagation()
-        onClose()
-      }
+      if (event.key !== 'Escape') return
+      if (document.querySelector('[data-escape-surface]')) return
+      event.stopPropagation()
+      onClose()
     }
     document.addEventListener('keydown', onKey, true)
     return () => {
@@ -114,6 +121,16 @@ export function SettingsOverlay({ open, onClose }: { open: boolean; onClose: () 
                 <ArrowLeft size={15} className="text-ink-3" />
                 <span className="flex-1">Back to jaz</span>
               </button>
+            </div>
+
+            {/* The backend these settings apply to — switch above everything. */}
+            <div className="px-3 pb-3">
+              <BackendSwitcher
+                onConnectServer={() => {
+                  onClose()
+                  onOpenConnect()
+                }}
+              />
             </div>
 
             <div className="px-3 pb-3">
@@ -219,8 +236,6 @@ function SectionContent({
       return <BrowserSettings />
     case 'usage':
       return <UsageSettings />
-    case 'backends':
-      return <BackendsSettings />
     case 'devices':
       return <DevicesSettings />
   }
