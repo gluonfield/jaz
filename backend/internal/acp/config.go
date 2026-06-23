@@ -102,6 +102,11 @@ type AgentConfig struct {
 	Auth                    AgentAuthConfig
 	Env                     map[string]string
 	Cwd                     string
+	// AdapterBinDir is the resolved managed-adapter bundle directory. OAuth login
+	// resolution searches it before PATH, so a Node-free backend signs in with the
+	// same bundled CLI the adapter runs with instead of needing it installed
+	// globally. Runtime-only; never persisted to settings.
+	AdapterBinDir string
 }
 
 func (c AgentConfig) RequiresCommand() bool {

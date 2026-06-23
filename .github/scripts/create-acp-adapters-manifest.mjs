@@ -11,6 +11,7 @@ const manifest = {
 };
 
 for (const [name, adapter] of Object.entries(spec.adapters)) {
+  assertConsistent(name, adapter);
   const releaseAssets = releaseAssetMap(adapter.repo, adapter.tag);
   manifest.adapters[name] = { version: adapter.version, assets: {} };
   for (const [platform, wanted] of Object.entries(adapter.assets)) {
@@ -30,6 +31,21 @@ for (const [name, adapter] of Object.entries(spec.adapters)) {
 
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, `${JSON.stringify(manifest, null, 2)}\n`);
+
+// Guards the single source of truth against partial edits: the tag must match
+// the version and every asset filename must embed that version. This is what
+// catches "bumped tag/version but forgot an asset name" before release.
+function assertConsistent(name, adapter) {
+  const { tag, version } = adapter;
+  if (tag !== version && tag !== `v${version}`) {
+    throw new Error(`${name}: tag "${tag}" does not match version "${version}"`);
+  }
+  for (const [platform, wanted] of Object.entries(adapter.assets)) {
+    if (!wanted.name.includes(version)) {
+      throw new Error(`${name} ${platform}: asset "${wanted.name}" does not embed version "${version}"`);
+    }
+  }
+}
 
 function releaseAssetMap(repo, tag) {
   const raw = execFileSync("gh", ["release", "view", tag, "--repo", repo, "--json", "assets"], {

@@ -33,6 +33,24 @@ func ResolveExecutable(executable string) (string, error) {
 	return loginShellExecutable(executable)
 }
 
+// resolveLoginExecutable finds an agent's login CLI, preferring the managed
+// adapter's bundle directory so a Node-free backend signs in with the bundled
+// binary (e.g. claude ships its CLI in the adapter bundle) instead of requiring
+// it on PATH. Falls back to PATH resolution when the bundle has no such binary
+// (e.g. the codex adapter bundles codex-acp but not the codex login CLI). The
+// bundle candidates are absolute, so ResolveExecutable does the stat/exec-bit
+// check for us.
+func resolveLoginExecutable(binDir, executable string) (string, error) {
+	if dir := strings.TrimSpace(binDir); dir != "" {
+		for _, name := range []string{executable, executable + ".exe"} {
+			if resolved, err := ResolveExecutable(filepath.Join(dir, name)); err == nil {
+				return resolved, nil
+			}
+		}
+	}
+	return ResolveExecutable(executable)
+}
+
 func loginShellExecutable(executable string) (string, error) {
 	if runtime.GOOS == "windows" {
 		return "", exec.ErrNotFound
