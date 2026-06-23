@@ -259,17 +259,20 @@ func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentD
 }
 
 func refreshBuiltInCommand(name, storedCommand, seedCommand string) (string, bool) {
-	if name != acp.AgentCodex {
-		return "", false
-	}
 	storedExecutable, storedArgs, err := ParseCommandLine(storedCommand)
 	if err != nil {
 		return "", false
 	}
 	if strings.TrimSpace(seedCommand) == "" {
-		if managedCodexCommand(storedExecutable, storedArgs) {
+		if name == acp.AgentCodex && managedCodexCommand(storedExecutable, storedArgs) {
 			return "", true
 		}
+		if name == acp.AgentClaude && managedClaudeCommand(storedExecutable, storedArgs) {
+			return "", true
+		}
+		return "", false
+	}
+	if name != acp.AgentCodex {
 		return "", false
 	}
 	seedExecutable, seedArgs, err := ParseCommandLine(seedCommand)
@@ -324,6 +327,14 @@ func managedCodexCommand(executable string, args []string) bool {
 		}
 	}
 	return true
+}
+
+func managedClaudeCommand(executable string, args []string) bool {
+	if !isNpxExecutable(executable) || len(args) != 2 || args[0] != "-y" {
+		return false
+	}
+	name, version, ok := packageNameVersion(args[1])
+	return ok && name == "@agentclientprotocol/claude-agent-acp" && !semverLess(acp.ClaudeACPVersion, version)
 }
 
 func storedCodexPackageIsOlder(storedArgs, seedArgs []string) bool {
