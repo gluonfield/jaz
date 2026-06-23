@@ -40,6 +40,10 @@ export function SideChatPanel({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
   }, [visible, messages.length, latestMessageContent])
 
+  useEffect(() => {
+    if (messages.length > 0) setError('')
+  }, [messages.length])
+
   const close = () => {
     onClose()
     setSideChatID(newSideChatID())
@@ -88,7 +92,10 @@ export function SideChatPanel({
             rows={2}
             placeholder="Ask in side chat"
             disabled={pending}
-            onChange={(event) => setDraft(event.currentTarget.value)}
+            onChange={(event) => {
+              setDraft(event.currentTarget.value)
+              if (error) setError('')
+            }}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault()

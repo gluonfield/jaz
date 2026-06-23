@@ -97,6 +97,7 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 		return nil, nil, err
 	}
 	command, args = launchCommand(command, args)
+	addCommandDirToPath(env, command)
 	cmd := exec.CommandContext(ctx, command, args...)
 	prepareProcessCommand(cmd)
 	process := newProcessSupervisor(cmd)
@@ -158,6 +159,30 @@ func resolvedLaunchCommand(goos, configured, resolved string, args []string) (st
 func isWindowsCommandScript(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
 	return ext == ".cmd" || ext == ".bat"
+}
+
+func addCommandDirToPath(env map[string]string, command string) {
+	if env == nil || runtime.GOOS == "windows" || !filepath.IsAbs(command) {
+		return
+	}
+	dir := filepath.Dir(command)
+	if dir == "." || dir == string(filepath.Separator) || pathHasDir(env["PATH"], dir) {
+		return
+	}
+	if env["PATH"] == "" {
+		env["PATH"] = dir
+		return
+	}
+	env["PATH"] = dir + string(os.PathListSeparator) + env["PATH"]
+}
+
+func pathHasDir(pathList, dir string) bool {
+	for _, part := range filepath.SplitList(pathList) {
+		if part == dir {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
