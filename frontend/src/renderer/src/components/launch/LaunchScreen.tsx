@@ -4,8 +4,7 @@ import { useState } from 'react'
 import { RemoteServerForm } from '@/components/connection/RemoteServerForm'
 import { Button } from '@/components/ui/Button'
 import { PixelField } from '@/components/ui/PixelField'
-import { normalizeBaseUrl } from '@/lib/api/client'
-import { forgetBackend, knownBackends, type KnownBackend } from '@/lib/backends'
+import { forgetBackend, useKnownBackends } from '@/lib/backends'
 import {
   cancelPendingApproval,
   connectionPreference,
@@ -13,7 +12,7 @@ import {
   startLocal,
   useConnection,
 } from '@/lib/connection'
-import { describeBackend } from '@/lib/connectionDisplay'
+import { describeBackend, sameBackend } from '@/lib/connectionDisplay'
 import { localDeviceLabel } from '@/lib/deviceLabel'
 import { useTheme } from '@/lib/theme'
 
@@ -79,7 +78,7 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
   // others and drives the per-row spinner.
   const [busy, setBusy] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [backends, setBackends] = useState<KnownBackend[]>(() => knownBackends())
+  const backends = useKnownBackends()
   const deviceLabel = localDeviceLabel()
   const current = describeBackend(currentUrl)
   const [url, setUrl] = useState('')
@@ -102,12 +101,7 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
 
   const onStartLocal = () => run('local', startLocal)
   const connectTo = (target: string) => run(target, () => connectRemote(target))
-  const onForget = (target: string) => {
-    forgetBackend(target)
-    setBackends(knownBackends())
-  }
-
-  const isCurrent = (target: string) => manual && normalizeBaseUrl(currentUrl) === normalizeBaseUrl(target)
+  const isCurrent = (target: string) => manual && sameBackend(currentUrl, target)
 
   // The boot gate flashes for a sub-second while the first probe runs, so it
   // only spins up the GPU field once disconnected; the manual overlay always
@@ -233,7 +227,7 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
                           connected={isCurrent(backend.url)}
                           disabled={busy !== null}
                           onConnect={() => connectTo(backend.url)}
-                          onForget={() => onForget(backend.url)}
+                          onForget={() => forgetBackend(backend.url)}
                         />
                       ))}
                       <ChoiceButton

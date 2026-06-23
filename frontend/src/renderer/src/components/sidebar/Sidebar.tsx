@@ -639,7 +639,7 @@ export function Sidebar({
 
       <div className="flex shrink-0 flex-col gap-1.5 border-t border-border p-3">
         <UpdatePanel />
-        <ConnectionFooterButton onClick={onOpenConnect} />
+        <ConnectionFooterButton onOpenConnect={onOpenConnect} />
         <button
           type="button"
           onClick={onOpenSettings}
