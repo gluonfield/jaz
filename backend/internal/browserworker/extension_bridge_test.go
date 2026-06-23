@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -34,10 +35,11 @@ func TestExtensionBridgeRoutesCallToConnectedExtension(t *testing.T) {
 		"extension_id": "ext-1",
 		"bridge_url":   "ws://127.0.0.1:5299/v1/browser/extension?key=secret",
 		"user_agent":   "Chrome",
-		"capabilities": map[string]any{"actions": []string{"snapshot"}},
+		"capabilities": map[string]any{"actions": SupportedExtensionActions()},
 	}); err != nil {
 		t.Fatal(err)
 	}
+	waitForConnected(t, bridge)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -77,6 +79,62 @@ func TestExtensionBridgeRoutesCallToConnectedExtension(t *testing.T) {
 	}
 }
 
+func TestExtensionBridgeRequiresValidatedHello(t *testing.T) {
+	fallback := &fallbackBackend{}
+	bridge := NewExtensionBridge(fallback)
+	bridge.Timeout = 10 * time.Millisecond
+	server := httptest.NewServer(bridge)
+	t.Cleanup(server.Close)
+	ws, _, err := websocket.DefaultDialer.Dial(wsURL(server.URL), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ws.Close() })
+	out, err := bridge.Call(context.Background(), ActionInput{Action: "status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fallback.called || out.Text != "fallback" {
+		t.Fatalf("fallback=%v out=%#v", fallback.called, out)
+	}
+	if bridge.Status().Connected {
+		t.Fatalf("unvalidated extension is connected: %#v", bridge.Status())
+	}
+}
+
+func TestExtensionBridgeRejectsMismatchedHello(t *testing.T) {
+	fallback := &fallbackBackend{}
+	bridge := NewExtensionBridge(fallback)
+	server := httptest.NewServer(bridge)
+	t.Cleanup(server.Close)
+	ws, _, err := websocket.DefaultDialer.Dial(wsURL(server.URL), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ws.Close() })
+	if err := ws.WriteJSON(map[string]any{
+		"type":         "hello",
+		"protocol":     "jaz.browser.extension.v0",
+		"extension_id": "old-ext",
+		"capabilities": map[string]any{"actions": SupportedExtensionActions()},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ws.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ws.ReadMessage(); err == nil {
+		t.Fatal("mismatched extension hello kept the websocket open")
+	}
+	out, err := bridge.Call(context.Background(), ActionInput{Action: "status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fallback.called || out.Text != "fallback" {
+		t.Fatalf("fallback=%v out=%#v", fallback.called, out)
+	}
+}
+
 func TestExtensionBridgeFallsBackWhenDisconnected(t *testing.T) {
 	fallback := &fallbackBackend{}
 	bridge := NewExtensionBridge(fallback)
@@ -113,4 +171,16 @@ func TestActionOutputMapsExtensionWireFields(t *testing.T) {
 
 func wsURL(httpURL string) string {
 	return "ws" + strings.TrimPrefix(httpURL, "http") + "/v1/browser/extension"
+}
+
+func waitForConnected(t *testing.T, bridge *ExtensionBridge) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if bridge.Status().Connected {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("extension bridge did not accept hello")
 }

@@ -116,9 +116,15 @@ func (b *ExtensionBridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		pending: map[string]chan extensionResult{},
 		done:    make(chan struct{}),
 	}
-	b.setClient(client)
 	client.readLoop(func() {
 		b.clearClient(client)
+	}, func(hello extensionHello) error {
+		if err := validateHello(hello); err != nil {
+			return err
+		}
+		client.setHello(hello)
+		b.setClient(client)
+		return nil
 	})
 }
 
@@ -227,7 +233,7 @@ func (c *extensionClient) call(ctx context.Context, id string, input ActionInput
 	}
 }
 
-func (c *extensionClient) readLoop(onDone func()) {
+func (c *extensionClient) readLoop(onDone func(), onHello func(extensionHello) error) {
 	defer onDone()
 	defer c.close()
 	for {
@@ -235,11 +241,11 @@ func (c *extensionClient) readLoop(onDone func()) {
 		if err != nil {
 			return
 		}
-		c.handleMessage(data)
+		c.handleMessage(data, onHello)
 	}
 }
 
-func (c *extensionClient) handleMessage(data []byte) {
+func (c *extensionClient) handleMessage(data []byte, onHello func(extensionHello) error) {
 	var probe struct {
 		Type string `json:"type"`
 		ID   string `json:"id"`
@@ -251,7 +257,9 @@ func (c *extensionClient) handleMessage(data []byte) {
 	case "hello":
 		var hello extensionHello
 		if json.Unmarshal(data, &hello) == nil {
-			c.setHello(hello)
+			if err := onHello(hello); err != nil {
+				c.close()
+			}
 		}
 	case "result":
 		var result extensionResult
@@ -295,6 +303,28 @@ func (c *extensionClient) resolve(result extensionResult) {
 	if ch != nil {
 		ch <- result
 	}
+}
+
+func validateHello(hello extensionHello) error {
+	if strings.TrimSpace(hello.Protocol) != ExtensionProtocol {
+		return fmt.Errorf("unsupported browser extension protocol %q", strings.TrimSpace(hello.Protocol))
+	}
+	if !sameActions(hello.Capabilities.Actions, SupportedExtensionActions()) {
+		return errors.New("browser extension capabilities do not match backend contract")
+	}
+	return nil
+}
+
+func sameActions(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *extensionClient) setHello(hello extensionHello) {
