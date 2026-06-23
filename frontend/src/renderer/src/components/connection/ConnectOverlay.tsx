@@ -11,6 +11,7 @@ export function ConnectOverlay({ open, onClose }: { open: boolean; onClose: () =
   useEffect(() => {
     if (!open) return
     const root = document.getElementById('root')
+    const previouslyFocused = document.activeElement as HTMLElement | null
     root?.setAttribute('inert', '')
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -22,6 +23,7 @@ export function ConnectOverlay({ open, onClose }: { open: boolean; onClose: () =
     return () => {
       root?.removeAttribute('inert')
       document.removeEventListener('keydown', onKey, true)
+      previouslyFocused?.focus?.()
     }
   }, [open, onClose])
 
