@@ -1,10 +1,8 @@
-import { MonitorSmartphone, Server } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { RAINBOW_BEAM } from '@/components/ui/rainbow'
 import { useBackendChange } from '@/lib/connection'
-import { type BackendDescription, backendName, describeBackend } from '@/lib/connectionDisplay'
+import { backendName } from '@/lib/connectionDisplay'
 
 const HOLD_MS = 1000
 
@@ -14,22 +12,21 @@ const HOLD_MS = 1000
 // a fresh backend's onboarding. Only a real switch fires it; the first connect
 // and reconnecting to the same backend stay quiet.
 export function BackendTransition() {
-  const [target, setTarget] = useState<BackendDescription | null>(null)
+  const [name, setName] = useState<string | null>(null)
 
   useBackendChange((url) => {
-    setTarget({ ...describeBackend(url), title: backendName(url) })
-    const timer = window.setTimeout(() => setTarget(null), HOLD_MS)
+    setName(backendName(url))
+    const timer = window.setTimeout(() => setName(null), HOLD_MS)
     return () => window.clearTimeout(timer)
   })
 
   return createPortal(
-    <AnimatePresence>{target ? <TransitionScene backend={target} /> : null}</AnimatePresence>,
+    <AnimatePresence>{name ? <TransitionScene name={name} /> : null}</AnimatePresence>,
     document.body,
   )
 }
 
-function TransitionScene({ backend }: { backend: BackendDescription }) {
-  const Icon = backend.local ? MonitorSmartphone : Server
+function TransitionScene({ name }: { name: string }) {
   return (
     <motion.div
       className="fixed inset-0 z-[110] grid place-items-center overflow-hidden bg-bg"
@@ -52,48 +49,32 @@ function TransitionScene({ backend }: { backend: BackendDescription }) {
         <motion.span
           key={delay}
           aria-hidden
-          className="pointer-events-none absolute left-1/2 top-1/2 size-32 -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-primary/30"
+          className="pointer-events-none absolute left-1/2 top-1/2 size-40 -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-primary/30"
           initial={{ scale: 0.5, opacity: 0 }}
-          animate={{ scale: 3.4, opacity: [0, 0.5, 0] }}
+          animate={{ scale: 3, opacity: [0, 0.5, 0] }}
           transition={{ duration: 0.9, delay, ease: 'easeOut' }}
         />
       ))}
 
-      <div className="relative flex flex-col items-center gap-4">
-        <motion.div
-          className="relative grid size-[84px] place-items-center"
-          initial={{ scale: 0.4, opacity: 0, filter: 'blur(6px)' }}
-          animate={{ scale: 1, opacity: 1, filter: 'blur(0px)' }}
-          exit={{ scale: 1.12, opacity: 0 }}
-          transition={{ type: 'spring', stiffness: 300, damping: 18 }}
-        >
-          {/* the same rainbow comet the composer wears, orbiting the machine */}
-          <motion.div
-            aria-hidden
-            className="pointer-events-none absolute -inset-[3px] rounded-full"
-            style={{ background: RAINBOW_BEAM }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1, '--ring-angle': ['0deg', '360deg'] }}
-            transition={{
-              opacity: { duration: 0.3, ease: 'easeOut' },
-              '--ring-angle': { duration: 1.4, ease: 'linear', repeat: Infinity },
-            }}
-          />
-          <div className="absolute inset-0 rounded-full bg-surface shadow-raised" />
-          <Icon size={32} className="relative text-ink" />
-        </motion.div>
-
-        <motion.div
-          className="flex flex-col items-center gap-1 text-center"
-          initial={{ opacity: 0, y: 12 }}
+      <div className="relative flex flex-col items-center gap-1.5 text-center">
+        <motion.p
+          className="text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-3"
+          initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0 }}
-          transition={{ delay: 0.14, duration: 0.32, ease: 'easeOut' }}
+          transition={{ duration: 0.3, ease: 'easeOut' }}
         >
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-3">Switched to</p>
-          <p className="text-balance text-[22px] font-semibold tracking-tight text-ink">{backend.title}</p>
-          <p className="max-w-[80vw] truncate font-mono text-[11px] text-ink-3">{backend.url}</p>
-        </motion.div>
+          Switched to
+        </motion.p>
+        <motion.p
+          className="max-w-[80vw] text-balance px-4 text-[30px] font-semibold tracking-tight text-ink"
+          initial={{ opacity: 0, scale: 0.72, filter: 'blur(8px)' }}
+          animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+          exit={{ opacity: 0, scale: 1.06 }}
+          transition={{ type: 'spring', stiffness: 280, damping: 18 }}
+        >
+          {name}
+        </motion.p>
       </div>
     </motion.div>
   )
