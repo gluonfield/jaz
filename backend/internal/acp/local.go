@@ -111,7 +111,7 @@ func (m *Manager) runLocalUtilityPrompt(ctx context.Context, req SpawnRequest, c
 	}
 }
 
-func (m *Manager) newLocalJob(session storage.Session, agentName, cwd string) *Job {
+func (m *Manager) newLocalJob(session storage.Session, agentName, cwd string) *jobState {
 	return newIdleJob(session, agentName, session.ID, cwd, localModeState())
 }
 
@@ -150,7 +150,7 @@ func (m *Manager) spawnLocalSession(session storage.Session, agentName, cwd stri
 	}, nil
 }
 
-func (m *Manager) resumeLocalSession(session storage.Session, agentName string, cfg AgentConfig) (*Job, error) {
+func (m *Manager) resumeLocalSession(session storage.Session, agentName string, cfg AgentConfig) (*jobState, error) {
 	var state storage.ACPState
 	if loader, ok := m.store.(acpStateLoader); ok {
 		state, _ = loader.LoadACPState(session.ID)
@@ -190,7 +190,7 @@ func (m *Manager) resumeLocalSession(session storage.Session, agentName string, 
 	return job, nil
 }
 
-func (m *Manager) runLocalPrompt(ctx context.Context, job *Job, runner LocalAgentRunner, message string, attachments []storage.Attachment) {
+func (m *Manager) runLocalPrompt(ctx context.Context, job *jobState, runner LocalAgentRunner, message string, attachments []storage.Attachment) {
 	job.turnMu.Lock()
 	defer job.turnMu.Unlock()
 
@@ -278,7 +278,7 @@ func (m *Manager) runLocalPrompt(ctx context.Context, job *Job, runner LocalAgen
 	m.finishTurn(done, job)
 }
 
-func (m *Manager) applyLocalMessage(job *Job, chunk string) {
+func (m *Manager) applyLocalMessage(job *jobState, chunk string) {
 	if chunk == "" {
 		return
 	}
@@ -292,11 +292,10 @@ func (m *Manager) applyLocalMessage(job *Job, chunk string) {
 	if bufferMessage {
 		return
 	}
-	snapshot := job.Snapshot()
-	m.publishACPMessage(snapshot, chunk)
+	m.queueACPMessage(job, chunk)
 }
 
-func (m *Manager) applyLocalThought(job *Job, chunk string) {
+func (m *Manager) applyLocalThought(job *jobState, chunk string) {
 	if chunk == "" {
 		return
 	}
@@ -306,11 +305,10 @@ func (m *Manager) applyLocalThought(job *Job, chunk string) {
 	job.UpdatedAt = now
 	job.LastEventAt = now
 	job.mu.Unlock()
-	snapshot := job.Snapshot()
-	m.publishACPThought(snapshot, chunk)
+	m.queueACPThought(job, chunk)
 }
 
-func (m *Manager) applyLocalToolCall(job *Job, call provider.ToolCall) {
+func (m *Manager) applyLocalToolCall(job *jobState, call provider.ToolCall) {
 	id := provider.ToolCallID(call)
 	name := provider.ToolCallName(call)
 	title := name
@@ -338,7 +336,7 @@ func (m *Manager) applyLocalToolCall(job *Job, call provider.ToolCall) {
 	m.publishACPTool(snapshot, tool)
 }
 
-func (m *Manager) applyLocalToolResult(job *Job, title, result, errText string) {
+func (m *Manager) applyLocalToolResult(job *jobState, title, result, errText string) {
 	status := "completed"
 	if strings.TrimSpace(errText) != "" {
 		status = "failed"
@@ -370,7 +368,7 @@ func (m *Manager) applyLocalToolResult(job *Job, title, result, errText string) 
 	m.publishACPTool(snapshot, tool)
 }
 
-func (m *Manager) updateLocalTool(job *Job, next sessionevents.ACPToolCall) (Job, sessionevents.ACPToolCall) {
+func (m *Manager) updateLocalTool(job *jobState, next sessionevents.ACPToolCall) (Job, sessionevents.ACPToolCall) {
 	job.mu.Lock()
 	now := time.Now().UTC()
 	current := job.toolByID[next.ID]

@@ -60,9 +60,9 @@ type Manager struct {
 	PublishWidget func(WidgetPublishRequest) (WidgetPublishResult, error)
 
 	mu           sync.RWMutex
-	jobsByID     map[string]*Job
-	jobsBySlug   map[string]*Job
-	jobsByACP    map[string]*Job
+	jobsByID     map[string]*jobState
+	jobsBySlug   map[string]*jobState
+	jobsByACP    map[string]*jobState
 	connsByID    map[string]jsonrpc.MessageConn
 	peersByID    map[string]*jsonrpc.Peer
 	cancelByID   map[string]context.CancelFunc
@@ -72,6 +72,8 @@ type Manager struct {
 	permissionSeq     uint64
 	pendingPermission map[string]*pendingPermission
 	permissionMu      sync.Mutex
+
+	transcriptBuffers acpTranscriptBuffers
 
 	// serializes resumes so concurrent sends can't start two agent processes
 	resumeMu sync.Mutex
@@ -167,9 +169,9 @@ func NewManager(store Store, cfg Config, logger *log.Logger) *Manager {
 		agents:            agents,
 		store:             store,
 		log:               logger.WithPrefix("acp"),
-		jobsByID:          make(map[string]*Job),
-		jobsBySlug:        make(map[string]*Job),
-		jobsByACP:         make(map[string]*Job),
+		jobsByID:          make(map[string]*jobState),
+		jobsBySlug:        make(map[string]*jobState),
+		jobsByACP:         make(map[string]*jobState),
 		connsByID:         make(map[string]jsonrpc.MessageConn),
 		peersByID:         make(map[string]*jsonrpc.Peer),
 		cancelByID:        make(map[string]context.CancelFunc),
@@ -445,7 +447,7 @@ func (m *Manager) initializeModeState(ctx context.Context, peer *jsonrpc.Peer, a
 
 // Restarts the agent for a stored session (server restart): session/load when
 // supported, otherwise a fresh agent session in the same workspace.
-func (m *Manager) resume(ctx context.Context, ref string) (*Job, error) {
+func (m *Manager) resume(ctx context.Context, ref string) (*jobState, error) {
 	m.resumeMu.Lock()
 	defer m.resumeMu.Unlock()
 	if job, err := m.job(ref); err == nil {
@@ -735,7 +737,7 @@ func (m *Manager) cancelStored(ref string) (Job, error) {
 		LastEventAt:     now,
 		LastToolAt:      state.LastToolAt,
 	}
-	m.recordAndPublish(sessionevents.Event{
+	m.publishOrderedACPEvents(cancelled, sessionevents.Event{
 		SessionID: session.ID,
 		Type:      "acp",
 		ACP:       EventFromJob(cancelled),
@@ -744,6 +746,10 @@ func (m *Manager) cancelStored(ref string) (Job, error) {
 }
 
 func (m *Manager) teardown(id string) {
+	if job := m.jobByID(id); job != nil {
+		m.withACPTranscriptBarrier(job.Snapshot(), nil)
+	}
+	m.transcriptBuffers.delete(id)
 	m.mu.Lock()
 	job := m.jobsByID[id]
 	conn := m.connsByID[id]
@@ -772,7 +778,7 @@ func (m *Manager) teardown(id string) {
 
 func (m *Manager) List() []Job {
 	m.mu.RLock()
-	jobs := make([]*Job, 0, len(m.jobsByID))
+	jobs := make([]*jobState, 0, len(m.jobsByID))
 	for _, job := range m.jobsByID {
 		jobs = append(jobs, job)
 	}
@@ -804,7 +810,7 @@ func (m *Manager) Close() {
 	cancels := make([]context.CancelFunc, 0, len(m.cancelByID))
 	peers := make([]*jsonrpc.Peer, 0, len(m.peersByID))
 	conns := make([]jsonrpc.MessageConn, 0, len(m.connsByID))
-	jobs := make([]*Job, 0, len(m.jobsByID))
+	jobs := make([]*jobState, 0, len(m.jobsByID))
 	for _, cancel := range m.cancelByID {
 		if cancel != nil {
 			cancels = append(cancels, cancel)
@@ -835,10 +841,12 @@ func (m *Manager) Close() {
 	}
 	for _, job := range jobs {
 		job.setState(StateCancelled, "server_shutdown", "")
+		m.withACPTranscriptBarrier(job.Snapshot(), nil)
+		m.transcriptBuffers.delete(job.ID)
 	}
 }
 
-func (m *Manager) addJob(job *Job, conn jsonrpc.MessageConn, peer *jsonrpc.Peer, cancel context.CancelFunc) {
+func (m *Manager) addJob(job *jobState, conn jsonrpc.MessageConn, peer *jsonrpc.Peer, cancel context.CancelFunc) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.jobsByID[job.ID] = job
@@ -855,7 +863,7 @@ func (m *Manager) addJob(job *Job, conn jsonrpc.MessageConn, peer *jsonrpc.Peer,
 	}
 }
 
-func (m *Manager) job(ref string) (*Job, error) {
+func (m *Manager) job(ref string) (*jobState, error) {
 	ref = strings.TrimSpace(ref)
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -871,13 +879,13 @@ func (m *Manager) job(ref string) (*Job, error) {
 	return nil, fmt.Errorf("active acp session not found: %s", ref)
 }
 
-func (m *Manager) jobByACP(acpSessionID string) *Job {
+func (m *Manager) jobByACP(acpSessionID string) *jobState {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.jobsByACP[acpSessionID]
 }
 
-func (m *Manager) jobByID(id string) *Job {
+func (m *Manager) jobByID(id string) *jobState {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.jobsByID[id]
@@ -891,7 +899,7 @@ func (m *Manager) peer(id string) *jsonrpc.Peer {
 
 func (m *Manager) setServeErr(peer *jsonrpc.Peer, err error) {
 	var id string
-	var job *Job
+	var job *jobState
 	m.mu.Lock()
 	for candidateID, candidate := range m.peersByID {
 		if candidate == peer {
