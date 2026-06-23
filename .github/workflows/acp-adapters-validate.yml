@@ -1,0 +1,26 @@
+name: Validate ACP adapters
+
+on:
+  pull_request:
+    paths:
+      - .github/acp-adapter-assets.json
+      - .github/scripts/create-acp-adapters-manifest.mjs
+      - .github/scripts/bump-acp-adapters.mjs
+      - .github/workflows/acp-adapters-validate.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Generate manifest from the pinned spec
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/scripts/create-acp-adapters-manifest.mjs /tmp/acp-adapters.json

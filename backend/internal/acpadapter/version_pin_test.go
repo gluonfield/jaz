@@ -1,0 +1,85 @@
+package acpadapter
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+
+	"github.com/wins/jaz/backend/internal/acp"
+)
+
+type adapterAssetSpec struct {
+	Adapters map[string]struct {
+		Repo    string `json:"repo"`
+		Tag     string `json:"tag"`
+		Version string `json:"version"`
+		Assets  map[string]struct {
+			Name   string `json:"name"`
+			Binary string `json:"binary"`
+		} `json:"assets"`
+	} `json:"adapters"`
+}
+
+// .github/acp-adapter-assets.json is the single source of truth for managed
+// adapter versions: the backend carries no adapter version in code. These tests
+// keep it that way — they fail if a built-in agent references a managed adapter
+// that isn't pinned, or if a pin is internally inconsistent (the failure mode
+// that shipped codex 0.16.7 while 0.16.8 was the fix).
+
+func TestBuiltinManagedAdaptersArePinned(t *testing.T) {
+	spec := loadAdapterAssetSpec(t)
+	for name, cfg := range acp.BuiltinAgents() {
+		adapter := strings.TrimSpace(cfg.ManagedAdapter)
+		if adapter == "" {
+			continue
+		}
+		entry, ok := spec.Adapters[adapter]
+		if !ok {
+			t.Fatalf("agent %q uses managed adapter %q with no entry in acp-adapter-assets.json", name, adapter)
+		}
+		if entry.Tag == "" || entry.Version == "" || len(entry.Assets) == 0 {
+			t.Fatalf("managed adapter %q is missing tag/version/assets in acp-adapter-assets.json", adapter)
+		}
+	}
+}
+
+func TestAdapterAssetSpecIsInternallyConsistent(t *testing.T) {
+	spec := loadAdapterAssetSpec(t)
+	for name, entry := range spec.Adapters {
+		if entry.Tag != entry.Version && entry.Tag != "v"+entry.Version {
+			t.Errorf("adapter %q: tag %q does not match version %q", name, entry.Tag, entry.Version)
+		}
+		for platform, asset := range entry.Assets {
+			if !strings.Contains(asset.Name, entry.Version) {
+				t.Errorf("adapter %q %s: asset %q does not embed version %q", name, platform, asset.Name, entry.Version)
+			}
+			if strings.TrimSpace(asset.Binary) == "" {
+				t.Errorf("adapter %q %s: missing binary name", name, platform)
+			}
+		}
+	}
+}
+
+func loadAdapterAssetSpec(t *testing.T) adapterAssetSpec {
+	t.Helper()
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("cannot locate test source file")
+	}
+	path := filepath.Join(filepath.Dir(file), "..", "..", "..", ".github", "acp-adapter-assets.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read adapter asset spec: %v", err)
+	}
+	var spec adapterAssetSpec
+	if err := json.Unmarshal(raw, &spec); err != nil {
+		t.Fatalf("parse adapter asset spec: %v", err)
+	}
+	if len(spec.Adapters) == 0 {
+		t.Fatal("adapter asset spec has no adapters")
+	}
+	return spec
+}
