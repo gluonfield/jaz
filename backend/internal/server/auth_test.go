@@ -60,6 +60,17 @@ func TestAuthMiddlewareAcceptsQueryKeyForSessionEvents(t *testing.T) {
 	}
 }
 
+func TestAuthMiddlewareAcceptsQueryKeyForBrowserExtension(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/v1/browser/extension?key=secret", nil)
+	res := httptest.NewRecorder()
+	(&Server{AuthKey: "secret"}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})).ServeHTTP(res, req)
+	if res.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
 func TestAuthMiddlewareRejectsQueryKeyForWidgetContent(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v1/widgets/widget-id/content?key=secret", nil)
 	res := httptest.NewRecorder()

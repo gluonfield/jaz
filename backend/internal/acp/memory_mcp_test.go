@@ -104,6 +104,20 @@ func TestMCPServersForJaztoolsOnlyPolicyOnlyExposesJaztools(t *testing.T) {
 	if got := headerValue(entry.Headers, mcpsession.HeaderName); got != "search-session" {
 		t.Fatalf("session header = %q, want search-session", got)
 	}
+
+	servers = m.mcpServersForAgent(mcpsession.With(context.Background(), "browser-session"), capable, MCPServerPolicyBrowserWorker)
+	if len(servers) != 1 {
+		t.Fatalf("browser servers = %d, want only jaztools", len(servers))
+	}
+	if err := json.Unmarshal(servers[0], &entry); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(entry.URL, "jaztools_surface=browser_worker") {
+		t.Fatalf("entry url = %q, want browser worker surface", entry.URL)
+	}
+	if got := headerValue(entry.Headers, mcpsession.HeaderName); got != "browser-session" {
+		t.Fatalf("session header = %q, want browser-session", got)
+	}
 }
 
 func headerValue(headers []mcpconfig.Header, name string) string {

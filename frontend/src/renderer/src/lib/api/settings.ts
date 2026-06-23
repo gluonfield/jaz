@@ -1,7 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '../query/keys'
 import { get, post, put } from './client'
-import type { ACPAgentAuth, ACPAuthLogin, AgentSettings } from './types'
+import type { ACPAgentAuth, ACPAuthLogin, AgentSettings, BrowserStatus } from './types'
 
 function normalizeAgentSettings(settings: AgentSettings): AgentSettings {
   return {
@@ -94,6 +94,12 @@ export const agentSettingsQuery = queryOptions({
   queryFn: async () => normalizeAgentSettings(await get<AgentSettings>('/v1/settings/agents')),
 })
 
+export const browserSettingsQuery = queryOptions({
+  queryKey: keys.browserSettings,
+  queryFn: () => get<BrowserStatus>('/v1/browser'),
+  refetchInterval: 2000,
+})
+
 // providerKeys maps a model provider id (e.g. "openrouter") to a freshly
 // pasted API key; the backend stores it as that provider's key env var.
 export function updateAgentSettings(
@@ -103,6 +109,13 @@ export function updateAgentSettings(
   return put<AgentSettings>('/v1/settings/agents', inputFromSettings(settings, providerKeys)).then(
     normalizeAgentSettings,
   )
+}
+
+export function updateBrowserSettings(input: {
+  enabled?: boolean
+  agent?: string
+}): Promise<BrowserStatus> {
+  return put<BrowserStatus>('/v1/browser', input)
 }
 
 export function startACPAuthLogin(agent: string, auth?: ACPAgentAuth): Promise<ACPAuthLogin> {

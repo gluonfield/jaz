@@ -2,7 +2,6 @@ package server
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -83,18 +82,7 @@ func (s *Server) handleAgentSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) loadAgentSettings(store storage.SettingsStorage) (agentsettings.AgentDefaults, error) {
-	seed := s.agentSettingsSeed()
-	defaults, err := agentsettings.LoadAgentDefaults(store)
-	if err != nil {
-		if !errors.Is(err, storage.ErrSettingNotFound) {
-			return agentsettings.AgentDefaults{}, err
-		}
-		if _, err := agentsettings.SaveAgentDefaults(store, seed); err != nil {
-			return agentsettings.AgentDefaults{}, err
-		}
-		defaults = seed
-	}
-	return agentsettings.MergeAgentDefaults(defaults, seed, s.allACPAgentNames()), nil
+	return agentsettings.LoadEffectiveAgentDefaults(store, s.acpAgentCatalog())
 }
 
 func (s *Server) agentSettingsResponse(defaults agentsettings.AgentDefaults) agentSettingsResponse {

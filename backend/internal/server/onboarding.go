@@ -150,7 +150,7 @@ func onboardingMemorySettings(store storage.SettingsStorage, defaults agentsetti
 		return agentsettings.MemorySettings{}, http.StatusInternalServerError, err
 	}
 	if strings.TrimSpace(settings.Agent) == "" {
-		settings.Agent = agentsettings.DefaultMemoryAgent(defaults)
+		settings.Agent = agentsettings.DefaultWorkerAgent(defaults)
 	}
 	settings, err = normalizeOnboardingMemorySettings(defaults, settings)
 	if err != nil {
