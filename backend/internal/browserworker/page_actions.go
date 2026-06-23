@@ -59,6 +59,19 @@ func (p *browserPage) snapshot(ctx context.Context) (ActionOutput, error) {
 	return ActionOutput{Status: "ok", Text: b.String()}, nil
 }
 
+func (p *browserPage) semanticState(ctx context.Context) (ActionOutput, error) {
+	var data json.RawMessage
+	if err := p.eval(ctx, semanticStateScript(), &data); err != nil {
+		return ActionOutput{}, err
+	}
+	state, ok := decodePageState(data)
+	text := strings.TrimSpace(string(data))
+	if ok {
+		text = formatPageState(state)
+	}
+	return ActionOutput{Status: "ok", Text: text, Data: data}, nil
+}
+
 func (p *browserPage) screenshot(ctx context.Context) (ActionOutput, error) {
 	var out struct {
 		Data string `json:"data"`
@@ -211,6 +224,51 @@ func (p *browserPage) pdf(ctx context.Context) (ActionOutput, error) {
 	}, nil
 }
 
+func (p *browserPage) wait(ctx context.Context, selector, text string, timeoutMS int) (ActionOutput, error) {
+	timeout := waitTimeout(timeoutMS)
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	selector = strings.TrimSpace(selector)
+	text = strings.TrimSpace(text)
+	if selector == "" && text == "" {
+		if err := p.waitReady(waitCtx); err != nil {
+			return ActionOutput{}, fmt.Errorf("timed out waiting for page readiness after %s", timeout)
+		}
+		return ActionOutput{Status: "ok", Text: "Page is ready."}, nil
+	}
+	ticker := time.NewTicker(150 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		ok, label := p.waitProbe(waitCtx, selector, text)
+		if ok {
+			return ActionOutput{Status: "ok", Text: "Wait condition satisfied: " + label + "."}, nil
+		}
+		select {
+		case <-waitCtx.Done():
+			return ActionOutput{}, fmt.Errorf("timed out waiting for %s after %s", waitLabel(selector, text), timeout)
+		case <-ticker.C:
+		}
+	}
+}
+
+func (p *browserPage) waitProbe(ctx context.Context, selector, text string) (bool, string) {
+	label := waitLabel(selector, text)
+	if selector != "" {
+		point, err := p.resolvePoint(ctx, selector)
+		if err != nil {
+			return false, label
+		}
+		label = point.Label
+	}
+	if text != "" {
+		var found bool
+		if err := p.eval(ctx, textPresentScript(text), &found); err != nil || !found {
+			return false, label
+		}
+	}
+	return true, label
+}
+
 func (p *browserPage) waitReady(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
@@ -292,6 +350,28 @@ func (p *browserPage) mouse(ctx context.Context, eventType string, x, y float64,
 		}
 	}
 	return p.conn.call(ctx, "Input.dispatchMouseEvent", params, nil)
+}
+
+func waitTimeout(ms int) time.Duration {
+	if ms <= 0 {
+		return 10 * time.Second
+	}
+	timeout := time.Duration(ms) * time.Millisecond
+	if timeout > time.Minute {
+		return time.Minute
+	}
+	return timeout
+}
+
+func waitLabel(selector, text string) string {
+	var parts []string
+	if selector != "" {
+		parts = append(parts, "selector "+selector)
+	}
+	if text != "" {
+		parts = append(parts, "text "+text)
+	}
+	return strings.Join(parts, " and ")
 }
 
 type pointResult struct {

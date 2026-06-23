@@ -67,6 +67,8 @@ func (b *LocalBackend) Call(ctx context.Context, input ActionInput) (ActionOutpu
 		return page.navigate(ctx, input.URL)
 	case "snapshot":
 		return page.snapshot(ctx)
+	case "state":
+		return page.semanticState(ctx)
 	case "screenshot":
 		return page.screenshot(ctx)
 	case "click":
@@ -83,6 +85,8 @@ func (b *LocalBackend) Call(ctx context.Context, input ActionInput) (ActionOutpu
 		return page.press(ctx, input.Key)
 	case "scroll":
 		return page.scroll(ctx, input.Selector, input.Text, input.Amount)
+	case "wait":
+		return page.wait(ctx, input.Selector, input.Text, input.Amount)
 	case "pdf":
 		return page.pdf(ctx)
 	default:

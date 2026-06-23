@@ -660,7 +660,12 @@ func TestBrowserToolsAndWorkerSurface(t *testing.T) {
 	if !hasTool(t, worker, "browser") {
 		t.Fatal("worker server missing browser")
 	}
-	for _, name := range []string{"browser_do", "browser_get", "browser_check", "memory_search", "agent_spawn", "visualise_read_me"} {
+	for _, name := range []string{"browser_do", "browser_get", "browser_check"} {
+		if !hasTool(t, worker, name) {
+			t.Fatalf("worker server missing %s", name)
+		}
+	}
+	for _, name := range []string{"memory_search", "agent_spawn", "visualise_read_me"} {
 		if hasTool(t, worker, name) {
 			t.Fatalf("worker server advertised %s", name)
 		}

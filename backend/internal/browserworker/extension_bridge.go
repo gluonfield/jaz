@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -32,6 +33,8 @@ type ExtensionStatus struct {
 	Connected     bool     `json:"connected"`
 	ExtensionID   string   `json:"extension_id,omitempty"`
 	Protocol      string   `json:"protocol,omitempty"`
+	BridgeURL     string   `json:"bridge_url,omitempty"`
+	UserAgent     string   `json:"user_agent,omitempty"`
 	Actions       []string `json:"actions,omitempty"`
 	LastConnected string   `json:"last_connected_at,omitempty"`
 }
@@ -51,6 +54,8 @@ type extensionHello struct {
 	Type         string `json:"type"`
 	Protocol     string `json:"protocol"`
 	ExtensionID  string `json:"extension_id"`
+	BridgeURL    string `json:"bridge_url"`
+	UserAgent    string `json:"user_agent"`
 	Capabilities struct {
 		Actions []string `json:"actions"`
 	} `json:"capabilities"`
@@ -77,12 +82,13 @@ type extensionResult struct {
 }
 
 type extensionWireOutput struct {
-	Status          string `json:"status"`
-	Text            string `json:"text,omitempty"`
-	ImageBase64     string `json:"image_base64,omitempty"`
-	ImageMIMEType   string `json:"image_mime_type,omitempty"`
-	PDFBase64       string `json:"pdf_base64,omitempty"`
-	PDFBase64Length int    `json:"pdf_base64_length,omitempty"`
+	Status          string          `json:"status"`
+	Text            string          `json:"text,omitempty"`
+	ImageBase64     string          `json:"image_base64,omitempty"`
+	ImageMIMEType   string          `json:"image_mime_type,omitempty"`
+	PDFBase64       string          `json:"pdf_base64,omitempty"`
+	PDFBase64Length int             `json:"pdf_base64_length,omitempty"`
+	Data            json.RawMessage `json:"data,omitempty"`
 }
 
 var extensionUpgrader = websocket.Upgrader{
@@ -298,9 +304,26 @@ func (c *extensionClient) setHello(hello extensionHello) {
 		Connected:     true,
 		ExtensionID:   strings.TrimSpace(hello.ExtensionID),
 		Protocol:      strings.TrimSpace(hello.Protocol),
+		BridgeURL:     safeBridgeURL(hello.BridgeURL),
+		UserAgent:     strings.TrimSpace(hello.UserAgent),
 		Actions:       append([]string(nil), hello.Capabilities.Actions...),
 		LastConnected: time.Now().UTC().Format(time.RFC3339),
 	}
+}
+
+func safeBridgeURL(raw string) string {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return ""
+	}
+	u, err := url.Parse(value)
+	if err != nil {
+		return value
+	}
+	q := u.Query()
+	q.Del("key")
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 func (c *extensionClient) statusSnapshot() ExtensionStatus {
@@ -320,5 +343,6 @@ func actionOutput(out extensionWireOutput) ActionOutput {
 		ImageMIMEType:   out.ImageMIMEType,
 		PDFBase64:       out.PDFBase64,
 		PDFBase64Length: out.PDFBase64Length,
+		Data:            append(json.RawMessage(nil), out.Data...),
 	}
 }

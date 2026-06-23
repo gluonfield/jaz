@@ -29,8 +29,8 @@ func NewBrowserWorkerBackend(layout runtimefiles.Layout) *browserworker.Extensio
 	return browserworker.NewExtensionBridge(browserworker.NewLocalBackend(filepath.Join(layout.Root, "browser")))
 }
 
-func NewBrowserSettingsHandler(store *sqlitestore.Store, catalog acp.AgentCatalog, jaz *jaztools.Service, mcp *mcpruntime.Manager) *BrowserSettingsHandler {
-	return &BrowserSettingsHandler{Handler: browserapi.NewSettingsHandler(store, catalog, func() {
+func NewBrowserSettingsHandler(store *sqlitestore.Store, catalog acp.AgentCatalog, jaz *jaztools.Service, mcp *mcpruntime.Manager, backend *browserworker.ExtensionBridge) *BrowserSettingsHandler {
+	return &BrowserSettingsHandler{Handler: browserapi.NewSettingsHandler(store, catalog, backend, func() {
 		jaz.Sync()
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

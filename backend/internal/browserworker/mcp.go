@@ -3,6 +3,7 @@ package browserworker
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"strings"
 
@@ -19,22 +20,23 @@ type Backend interface {
 type UnavailableBackend struct{}
 
 type ActionInput struct {
-	Action   string `json:"action" jsonschema:"navigate, snapshot, screenshot, click, type, fill, press, hover, scroll, select, tabs, pdf, status"`
+	Action   string `json:"action" jsonschema:"navigate, snapshot, state, screenshot, click, type, fill, press, hover, scroll, select, wait, tabs, pdf, status"`
 	URL      string `json:"url,omitempty" jsonschema:"target URL for navigate"`
 	Selector string `json:"selector,omitempty" jsonschema:"stable selector or accessibility locator when an action targets an element"`
-	Text     string `json:"text,omitempty" jsonschema:"text for type/fill/select actions"`
+	Text     string `json:"text,omitempty" jsonschema:"text for type/fill/select/wait actions"`
 	Key      string `json:"key,omitempty" jsonschema:"keyboard key for press actions"`
-	Amount   int    `json:"amount,omitempty" jsonschema:"scroll amount in CSS pixels; negative scrolls up"`
+	Amount   int    `json:"amount,omitempty" jsonschema:"scroll amount in CSS pixels; wait timeout in milliseconds"`
 	Session  string `json:"-"`
 }
 
 type ActionOutput struct {
-	Status          string `json:"status"`
-	Text            string `json:"text,omitempty"`
-	ImageBase64     string `json:"-"`
-	ImageMIMEType   string `json:"-"`
-	PDFBase64       string `json:"-"`
-	PDFBase64Length int    `json:"pdf_base64_length,omitempty"`
+	Status          string          `json:"status"`
+	Text            string          `json:"text,omitempty"`
+	ImageBase64     string          `json:"-"`
+	ImageMIMEType   string          `json:"-"`
+	PDFBase64       string          `json:"-"`
+	PDFBase64Length int             `json:"pdf_base64_length,omitempty"`
+	Data            json.RawMessage `json:"-"`
 }
 
 func AddMCPTools(server *mcp.Server, backend Backend) {
@@ -105,7 +107,7 @@ func contentResult(out ActionOutput) *mcp.CallToolResult {
 }
 
 func actionSchema() map[string]any {
-	actions := []string{"navigate", "snapshot", "screenshot", "click", "type", "fill", "press", "hover", "scroll", "select", "tabs", "pdf", "status"}
+	actions := []string{"navigate", "snapshot", "state", "screenshot", "click", "type", "fill", "press", "hover", "scroll", "select", "wait", "tabs", "pdf", "status"}
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
@@ -126,7 +128,7 @@ func actionSchema() map[string]any {
 			},
 			"text": map[string]any{
 				"type":        "string",
-				"description": "Text for type, fill, or select actions.",
+				"description": "Text for type, fill, select, or wait actions.",
 			},
 			"key": map[string]any{
 				"type":        "string",
@@ -134,7 +136,7 @@ func actionSchema() map[string]any {
 			},
 			"amount": map[string]any{
 				"type":        "integer",
-				"description": "Scroll amount in CSS pixels; negative scrolls up.",
+				"description": "Scroll amount in CSS pixels, or wait timeout in milliseconds.",
 			},
 		},
 	}

@@ -7,20 +7,27 @@ import (
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/browserworker"
 	"github.com/wins/jaz/backend/internal/httpapi"
 	jazsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
 type SettingsHandler struct {
-	Store    storage.SettingsStorage
-	Catalog  acp.AgentCatalog
-	OnChange func()
+	Store     storage.SettingsStorage
+	Catalog   acp.AgentCatalog
+	Extension ExtensionStatusProvider
+	OnChange  func()
+}
+
+type ExtensionStatusProvider interface {
+	Status() browserworker.ExtensionStatus
 }
 
 type StatusResponse struct {
-	Enabled bool   `json:"enabled"`
-	Agent   string `json:"agent,omitempty"`
+	Enabled   bool                          `json:"enabled"`
+	Agent     string                        `json:"agent,omitempty"`
+	Extension browserworker.ExtensionStatus `json:"extension"`
 }
 
 type settingsInput struct {
@@ -28,8 +35,8 @@ type settingsInput struct {
 	Agent   *string `json:"agent,omitempty"`
 }
 
-func NewSettingsHandler(store storage.SettingsStorage, catalog acp.AgentCatalog, onChange func()) SettingsHandler {
-	return SettingsHandler{Store: store, Catalog: catalog, OnChange: onChange}
+func NewSettingsHandler(store storage.SettingsStorage, catalog acp.AgentCatalog, extension ExtensionStatusProvider, onChange func()) SettingsHandler {
+	return SettingsHandler{Store: store, Catalog: catalog, Extension: extension, OnChange: onChange}
 }
 
 func (h SettingsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -83,7 +90,14 @@ func (h SettingsHandler) browserStatus() (StatusResponse, error) {
 	if err != nil {
 		return StatusResponse{}, err
 	}
-	return StatusResponse{Enabled: settings.Enabled, Agent: settings.Agent}, nil
+	return StatusResponse{Enabled: settings.Enabled, Agent: settings.Agent, Extension: h.extensionStatus()}, nil
+}
+
+func (h SettingsHandler) extensionStatus() browserworker.ExtensionStatus {
+	if h.Extension == nil {
+		return browserworker.ExtensionStatus{}
+	}
+	return h.Extension.Status()
 }
 
 func (h SettingsHandler) normalize(input settingsInput) (jazsettings.BrowserSettings, error) {
