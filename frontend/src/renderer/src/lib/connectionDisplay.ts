@@ -1,4 +1,5 @@
 import { normalizeBaseUrl } from './api/client'
+import { knownBackendLabel } from './backends'
 import { isLoopbackUrl, type ConnectionStatus } from './connection'
 import { localDeviceLabel } from './deviceLabel'
 
@@ -20,6 +21,15 @@ export function localBackendLabel(): string {
 // we're on?" check, so every switch list compares identity the same way.
 export function sameBackend(a: string, b: string): boolean {
   return normalizeBaseUrl(a) === normalizeBaseUrl(b)
+}
+
+// The name to show for a backend: "This Mac" for local, the user-given name for
+// a known remote, else its host. Prefer this over describeBackend().title
+// wherever the current backend is named, so a renamed server reads as its name
+// (not its IP) — e.g. the sidebar indicator and the switch animation.
+export function backendName(url: string): string {
+  const backend = describeBackend(url)
+  return backend.local ? backend.title : knownBackendLabel(url) || backend.title
 }
 
 // Names whichever backend a URL points at so the sidebar and the switcher can
