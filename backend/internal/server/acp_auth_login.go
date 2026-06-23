@@ -59,7 +59,8 @@ func (s *Server) handleStartACPAuthLogin(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	agent := acp.CanonicalAgentName(r.PathValue("agent"))
-	if _, ok := s.acpAgentCatalog().Agent(agent); !ok {
+	cfg, ok := s.acpAgentCatalog().Agent(agent)
+	if !ok {
 		writeError(w, http.StatusNotFound, fmt.Errorf("unknown acp agent %q", agent))
 		return
 	}
@@ -78,7 +79,7 @@ func (s *Server) handleStartACPAuthLogin(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	auth = acp.ProbeAgentAuth(agent, acp.AgentConfig{Auth: auth}, s.runtimeRoot(), nil).RecommendedAuth
-	invocation := acp.AgentLoginInvocationFor(agent, s.runtimeRoot(), auth)
+	invocation := acp.AgentLoginInvocationFor(agent, s.runtimeRoot(), auth, s.adapterBundleDir(cfg.ManagedAdapter))
 	if !invocation.Available {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("%s", invocation.Reason))
 		return
