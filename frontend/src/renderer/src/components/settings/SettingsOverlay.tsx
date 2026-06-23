@@ -10,6 +10,7 @@ import {
   MonitorSmartphone,
   Plug,
   Search,
+  Server,
   Sparkles,
   SlidersHorizontal,
 } from 'lucide-react'
@@ -20,6 +21,7 @@ import { ACPAgentsSettings } from './ACPAgentsSettings'
 import { AgentProvidersSettings } from './AgentProvidersSettings'
 import { ArchivedThreadsSettings } from './ArchivedThreadsSettings'
 import { BrowserSettings } from './BrowserSettings'
+import { ConnectionsSettings } from './ConnectionsSettings'
 import { DevicesSettings } from './DevicesSettings'
 import { GeneralSettings } from './GeneralSettings'
 import { KeyboardShortcutsSettings } from './KeyboardShortcutsSettings'
@@ -34,6 +36,7 @@ type Section =
   | 'memory'
   | 'browser'
   | 'usage'
+  | 'connections'
   | 'devices'
   | 'keyboard'
   | 'mcp'
@@ -49,6 +52,7 @@ const NAV: NavItem[] = [
   { id: 'memory', label: 'Memory', icon: Brain },
   { id: 'browser', label: 'Browser', icon: Globe },
   { id: 'usage', label: 'Usage', icon: ChartNoAxesColumn },
+  { id: 'connections', label: 'Connections', icon: Server },
   { id: 'devices', label: 'Devices', icon: MonitorSmartphone },
   { id: 'keyboard', label: 'Keyboard shortcuts', icon: Keyboard },
   { id: 'mcp', label: 'MCP servers', icon: Plug },
@@ -215,6 +219,8 @@ function SectionContent({
       return <BrowserSettings />
     case 'usage':
       return <UsageSettings />
+    case 'connections':
+      return <ConnectionsSettings />
     case 'devices':
       return <DevicesSettings />
   }

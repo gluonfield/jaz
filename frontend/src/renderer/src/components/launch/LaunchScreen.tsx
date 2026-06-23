@@ -1,18 +1,19 @@
-import { LoaderCircle } from 'lucide-react'
+import { LoaderCircle, Server, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { type FormEvent, useState } from 'react'
+import { useState } from 'react'
+import { RemoteServerForm } from '@/components/connection/RemoteServerForm'
 import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
 import { PixelField } from '@/components/ui/PixelField'
-import { apiBaseUrl } from '@/lib/api/client'
+import { useKnownBackends } from '@/lib/backends'
 import {
   cancelPendingApproval,
   connectionPreference,
   connectRemote,
-  rememberedRemoteUrl,
+  forgetBackend,
   startLocal,
   useConnection,
 } from '@/lib/connection'
+import { describeBackend, sameBackend } from '@/lib/connectionDisplay'
 import { localDeviceLabel } from '@/lib/deviceLabel'
 import { useTheme } from '@/lib/theme'
 
@@ -58,47 +59,55 @@ export function ReconnectingBanner({ show }: { show: boolean }) {
   )
 }
 
-// Full-window gate shown whenever no backend is reachable: first launch,
-// failed startup probe, or a lost connection mid-session. The particle field
-// renders the wordmark, so the chrome stays text-light. First launch is a
-// welcome — two ways to run jaz — not an error.
-export function LaunchScreen() {
-  const { status, error, pairing } = useConnection()
+// Boot gate renders with no props; the manual overlay must hand in a way to
+// dismiss itself. Pairing the two stops a manual screen from rendering with no
+// close button and no close-on-success — a trap with no way out.
+type LaunchScreenProps = { manual?: false; onClose?: never } | { manual: true; onClose: () => void }
+
+// Full-window connect screen. As the boot gate it shows whenever no backend is
+// reachable (first launch, failed startup probe, lost connection). In `manual`
+// mode it is presented over the live app so a connected user can switch
+// machines through the exact same flow they onboarded with; on success it
+// dismisses itself via `onClose`. The particle field renders the wordmark, so
+// the chrome stays text-light.
+export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}) {
+  const { status, error, pairing, url: currentUrl } = useConnection()
   // PixelField samples the palette at mount; remount it when the theme flips.
   const { resolved } = useTheme()
   const [mode, setMode] = useState<'options' | 'remote'>('options')
-  const [busy, setBusy] = useState<'local' | 'remote' | null>(null)
+  // The target currently connecting: 'local', or a backend URL. Disables the
+  // others and drives the per-row spinner.
+  const [busy, setBusy] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const backends = useKnownBackends()
   const deviceLabel = localDeviceLabel()
-  // last remote wins; otherwise the active URL (the local default until a
-  // remote was ever used) seeds the field as an editable starting point
-  const [url, setUrl] = useState(() => rememberedRemoteUrl() || apiBaseUrl())
+  const current = describeBackend(currentUrl)
+  const [url, setUrl] = useState('')
 
-  const onStartLocal = async () => {
-    setBusy('local')
+  // On success the connection store flips backends: as the boot gate that
+  // unmounts this screen; in manual mode we stay mounted over the live app, so
+  // dismiss ourselves. A connect that needs device approval drops to the boot
+  // gate either way, which then unmounts the manual overlay.
+  const run = async (target: string, action: () => Promise<string | null>) => {
+    setBusy(target)
     setActionError(null)
-    const err = await startLocal()
-    // on success the connection store flips to connected and this unmounts
+    const err = await action()
     if (err) {
       setActionError(err)
       setBusy(null)
+      return
     }
+    onClose?.()
   }
 
-  const onConnect = async (e: FormEvent) => {
-    e.preventDefault()
-    setBusy('remote')
-    setActionError(null)
-    const err = await connectRemote(url)
-    if (err) {
-      setActionError(err)
-      setBusy(null)
-    }
-  }
+  const onStartLocal = () => run('local', startLocal)
+  const connectTo = (target: string) => run(target, () => connectRemote(target))
+  const isCurrent = (target: string) => manual && sameBackend(currentUrl, target)
 
-  // The launch screen flashes for a sub-second on every boot while the first
-  // probe runs; only spin up the GPU field once we know we're staying.
-  const showField = status === 'disconnected' || status === 'pending_approval'
+  // The boot gate flashes for a sub-second while the first probe runs, so it
+  // only spins up the GPU field once disconnected; the manual overlay always
+  // wants the full takeover.
+  const showField = manual || status === 'disconnected' || status === 'pending_approval'
   // While 'checking' we know what we're waiting on — tailor the copy so a
   // remembered server or a local start reads as intentional, not a hang.
   const checkingCopy =
@@ -111,7 +120,19 @@ export function LaunchScreen() {
   return (
     <div className="relative flex h-full flex-col bg-bg">
       {showField && <PixelField key={resolved} calm={mode === 'remote' || busy !== null} />}
-      <div className="titlebar-drag relative h-[52px] shrink-0" />
+      <div className="titlebar-drag relative h-[52px] shrink-0">
+        {manual && onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            title="Close"
+            className="absolute right-3 top-3 z-30 grid size-7 cursor-pointer place-items-center rounded-full text-ink-2 transition-colors duration-150 [-webkit-app-region:no-drag] hover:bg-surface-2 hover:text-ink"
+          >
+            <X size={16} />
+          </button>
+        ) : null}
+      </div>
       {/* offset the titlebar so the content is optically centered */}
       <div className="relative flex flex-1 flex-col items-center justify-center px-6 pb-[52px]">
         <AnimatePresence mode="wait">
@@ -172,31 +193,44 @@ export function LaunchScreen() {
                 variants={rise}
                 className="text-balance text-center text-[22px] font-semibold tracking-tight text-ink"
               >
-                {error ? 'Reconnect to jaz' : 'Welcome to jaz'}
+                {manual ? 'Connect to a machine' : error ? 'Reconnect to jaz' : 'Welcome to jaz'}
               </motion.h1>
 
-              {error && (
-                <motion.p
-                  variants={rise}
-                  className="mt-2 text-pretty text-center text-[13px] text-ink-2"
-                >
-                  The backend jaz was using is unreachable. Start one here or point jaz at another
-                  server.
+              {manual ? (
+                <motion.p variants={rise} className="mt-2 text-pretty text-center text-[13px] text-ink-2">
+                  Currently on <span className="text-ink">{current.title}</span>. Run jaz on this computer or
+                  point it at another server.
                 </motion.p>
-              )}
+              ) : error ? (
+                <motion.p variants={rise} className="mt-2 text-pretty text-center text-[13px] text-ink-2">
+                  The backend jaz was using is unreachable. Start one here or point jaz at another server.
+                </motion.p>
+              ) : null}
 
               <motion.div variants={rise} className="mt-6 w-full">
                 <AnimatePresence mode="wait" initial={false}>
                   {mode === 'options' ? (
                     <motion.div key="opts" {...swap} className="flex flex-col gap-2">
                       <ChoiceButton
-                        primary
+                        primary={!(manual && current.local)}
                         label={`Run on ${deviceLabel}`}
                         busyLabel="Starting backend…"
                         busy={busy === 'local'}
+                        connected={manual && current.local}
                         disabled={busy !== null}
                         onClick={onStartLocal}
                       />
+                      {backends.map((backend) => (
+                        <BackendChoice
+                          key={backend.url}
+                          label={backend.label}
+                          busy={busy === backend.url}
+                          connected={isCurrent(backend.url)}
+                          disabled={busy !== null}
+                          onConnect={() => connectTo(backend.url)}
+                          onForget={() => forgetBackend(backend.url)}
+                        />
+                      ))}
                       <ChoiceButton
                         label="Connect to a server"
                         disabled={busy !== null}
@@ -204,41 +238,22 @@ export function LaunchScreen() {
                       />
                     </motion.div>
                   ) : (
-                    <motion.form
+                    <motion.div
                       key="remote"
                       {...swap}
-                      onSubmit={onConnect}
-                      className="flex w-full flex-col gap-2.5 rounded-[16px] bg-surface/90 p-3 shadow-[0_8px_30px_rgba(0,0,0,0.10)] backdrop-blur-[2px]"
+                      className="rounded-[16px] bg-surface/90 p-3 shadow-[0_8px_30px_rgba(0,0,0,0.10)] backdrop-blur-[2px]"
                     >
-                      <div className="px-0.5">
-                        <p className="text-[13px] font-medium text-ink">Connect to a server</p>
-                        <p className="mt-0.5 text-[12px] text-ink-3">Paste the client URL your server printed.</p>
-                      </div>
-                      <Input
-                        autoFocus
+                      <RemoteServerForm
                         value={url}
-                        onChange={(e) => setUrl(e.target.value)}
-                        placeholder="http://192.168.1.10:5299?key=…"
-                        spellCheck={false}
-                        className="rounded-full font-mono text-[12px]"
+                        onChange={setUrl}
+                        onSubmit={() => connectTo(url)}
+                        onBack={() => {
+                          setMode('options')
+                          setActionError(null)
+                        }}
+                        busy={busy !== null}
                       />
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          disabled={busy !== null}
-                          onClick={() => {
-                            setMode('options')
-                            setActionError(null)
-                          }}
-                        >
-                          Back
-                        </Button>
-                        <Button variant="primary" type="submit" disabled={busy !== null || !url.trim()}>
-                          {busy === 'remote' && <LoaderCircle size={14} className="animate-spin" />}
-                          {busy === 'remote' ? 'Connecting…' : 'Connect'}
-                        </Button>
-                      </div>
-                    </motion.form>
+                    </motion.div>
                   )}
                 </AnimatePresence>
               </motion.div>
@@ -263,15 +278,16 @@ export function LaunchScreen() {
   )
 }
 
-// Full-width rounded pill: the welcome's two ways to run jaz. No icons — the
-// label carries it. Primary = the cobalt recommended path (run locally),
-// secondary = a quiet surface pill (connect to a server). Soft drop shadow
-// floats it over the particle field; scales on press.
+// Full-width rounded pill: run locally / add a server. Primary = the cobalt
+// recommended path (run locally), secondary = a quiet surface pill. `connected`
+// marks it as the current backend with a settled dot instead of a CTA. Soft
+// drop shadow floats it over the particle field; scales on press.
 function ChoiceButton({
   label,
   busyLabel,
   busy = false,
   primary = false,
+  connected = false,
   disabled,
   onClick,
 }: {
@@ -279,6 +295,7 @@ function ChoiceButton({
   busyLabel?: string
   busy?: boolean
   primary?: boolean
+  connected?: boolean
   disabled?: boolean
   onClick: () => void
 }) {
@@ -294,9 +311,68 @@ function ChoiceButton({
           : 'bg-surface/90 text-ink shadow-[0_6px_20px_rgba(0,0,0,0.08)] backdrop-blur-[2px] enabled:hover:bg-surface'
       }`}
     >
-      {busy ? <LoaderCircle size={15} className="animate-spin" /> : null}
+      {busy ? (
+        <LoaderCircle size={15} className="animate-spin" />
+      ) : connected ? (
+        <span className="size-1.5 shrink-0 rounded-full bg-ok" />
+      ) : null}
       {busy && busyLabel ? busyLabel : label}
+      {connected ? <span className="text-[12px] text-ink-3">Connected</span> : null}
     </motion.button>
+  )
+}
+
+// A saved remote backend: tap the pill to switch to it; the × (hover) forgets
+// it. The one we're on shows a settled dot and can't be forgotten.
+function BackendChoice({
+  label,
+  busy,
+  connected,
+  disabled,
+  onConnect,
+  onForget,
+}: {
+  label: string
+  busy: boolean
+  connected: boolean
+  disabled: boolean
+  onConnect: () => void
+  onForget: () => void
+}) {
+  return (
+    <div className="group/backend relative">
+      <motion.button
+        type="button"
+        disabled={disabled}
+        onClick={onConnect}
+        whileTap={disabled ? undefined : { scale: 0.97 }}
+        className={`flex h-11 w-full cursor-pointer items-center gap-2 rounded-full bg-surface/90 pl-4 text-[14px] font-medium text-ink shadow-[0_6px_20px_rgba(0,0,0,0.08)] backdrop-blur-[2px] transition-colors duration-150 enabled:hover:bg-surface disabled:cursor-default disabled:opacity-60 ${
+          connected ? 'pr-4' : 'pr-10'
+        }`}
+      >
+        {busy ? (
+          <LoaderCircle size={15} className="shrink-0 animate-spin" />
+        ) : connected ? (
+          <span className="size-1.5 shrink-0 rounded-full bg-ok" />
+        ) : (
+          <Server size={15} className="shrink-0 text-ink-2" />
+        )}
+        <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+        {connected ? <span className="shrink-0 text-[12px] text-ink-3">Connected</span> : null}
+      </motion.button>
+      {!connected ? (
+        <button
+          type="button"
+          aria-label={`Forget ${label}`}
+          title="Forget this server"
+          disabled={disabled}
+          onClick={onForget}
+          className="absolute right-2 top-1/2 grid size-7 -translate-y-1/2 cursor-pointer place-items-center rounded-full text-ink-3 opacity-0 transition-colors duration-150 hover:bg-surface-2 hover:text-ink focus-visible:opacity-100 group-hover/backend:opacity-100 disabled:cursor-default"
+        >
+          <X size={14} />
+        </button>
+      ) : null}
+    </div>
   )
 }
 
