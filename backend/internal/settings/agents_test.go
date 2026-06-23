@@ -98,7 +98,7 @@ func TestEnsureAgentDefaultsRefreshesLegacyCodexBuiltinCommand(t *testing.T) {
 		stored.ACP[name] = agent
 	}
 	codex := stored.ACP["codex"]
-	codex.Command = strings.Replace(codex.Command, "@jazchat/codex-acp@0.16.6", "@jazchat/codex-acp@0.16.1", 1)
+	codex.Command = strings.Replace(codex.Command, "@jazchat/codex-acp@0.16.7", "@jazchat/codex-acp@0.16.1", 1)
 	stored.ACP["codex"] = codex
 	if _, err := SaveAgentDefaults(store, stored); err != nil {
 		t.Fatal(err)
@@ -116,33 +116,26 @@ func TestEnsureAgentDefaultsRefreshesLegacyCodexBuiltinCommand(t *testing.T) {
 	}
 }
 
-func TestMergeAgentDefaultsRefreshesLegacyCodexWindowsCommand(t *testing.T) {
+func TestMergeAgentDefaultsRefreshesPreviousCodexWindowsCommand(t *testing.T) {
 	seed := AgentDefaults{ACP: map[string]ACPAgentDefaults{
 		"codex": {
-			Command: `npx.cmd -y @jazchat/codex-acp@0.16.6 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true -c suppress_unstable_features_warning=true`,
+			Command: `npx.cmd -y @jazchat/codex-acp@0.16.7 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true -c suppress_unstable_features_warning=true`,
 		},
 	}}
-	for _, legacyPackage := range []string{
-		"@jazchat/codex-acp@0.16.1",
-		"@jazchat/codex-acp@0.16.4",
-		"@jazchat/codex-acp@0.16.5",
+	previousPackage := "@jazchat/codex-acp@0.16.6"
+	for _, storedCommand := range []string{
+		strings.Replace(seed.ACP["codex"].Command, "@jazchat/codex-acp@0.16.7", previousPackage, 1),
+		strings.Replace(strings.Replace(seed.ACP["codex"].Command, "@jazchat/codex-acp@0.16.7", previousPackage, 1), " -c suppress_unstable_features_warning=true", "", 1),
 	} {
-		t.Run(legacyPackage, func(t *testing.T) {
-			for _, storedCommand := range []string{
-				strings.Replace(seed.ACP["codex"].Command, "@jazchat/codex-acp@0.16.6", legacyPackage, 1),
-				strings.Replace(strings.Replace(seed.ACP["codex"].Command, "@jazchat/codex-acp@0.16.6", legacyPackage, 1), " -c suppress_unstable_features_warning=true", "", 1),
-			} {
-				stored := AgentDefaults{ACP: map[string]ACPAgentDefaults{
-					"codex": {Command: storedCommand},
-				}}
+		stored := AgentDefaults{ACP: map[string]ACPAgentDefaults{
+			"codex": {Command: storedCommand},
+		}}
 
-				merged := MergeAgentDefaults(stored, seed, []string{"codex"})
+		merged := MergeAgentDefaults(stored, seed, []string{"codex"})
 
-				if merged.ACP["codex"].Command != seed.ACP["codex"].Command {
-					t.Fatalf("codex command = %q, want %q", merged.ACP["codex"].Command, seed.ACP["codex"].Command)
-				}
-			}
-		})
+		if merged.ACP["codex"].Command != seed.ACP["codex"].Command {
+			t.Fatalf("codex command = %q, want %q", merged.ACP["codex"].Command, seed.ACP["codex"].Command)
+		}
 	}
 }
 
@@ -162,7 +155,7 @@ func TestMergeAgentDefaultsRefreshesCurrentCodexCommandMissingWarningSuppress(t 
 
 func TestMergeAgentDefaultsKeepsFutureCodexPackage(t *testing.T) {
 	seed := testAgentDefaultsSeed()
-	storedCommand := strings.Replace(seed.ACP["codex"].Command, "@jazchat/codex-acp@0.16.6", "@jazchat/codex-acp@0.16.7", 1)
+	storedCommand := strings.Replace(seed.ACP["codex"].Command, "@jazchat/codex-acp@0.16.7", "@jazchat/codex-acp@0.16.8", 1)
 	stored := AgentDefaults{ACP: map[string]ACPAgentDefaults{
 		"codex": {Command: storedCommand},
 	}}
