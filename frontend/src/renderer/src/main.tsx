@@ -14,10 +14,16 @@ import { installFileDropGuard } from './components/ui/FileDrop'
 import { useConnection } from './lib/connection'
 import { queryClient } from './lib/query/queryClient'
 import { routeTree } from './routeTree.gen'
+import { telemetry } from './lib/telemetry'
 
 // Without this, a file dropped outside a drop zone navigates the window to
 // its file:// URL, replacing the app shell.
 installFileDropGuard()
+
+// One open event per launch from the main window — board/widget popouts are
+// secondary surfaces and would inflate the count. PostHog derives new vs.
+// returning users from the per-install distinct id.
+if ((window.jaz?.windowKind ?? 'main') === 'main') telemetry.appOpened()
 
 const router = createRouter({
   routeTree,

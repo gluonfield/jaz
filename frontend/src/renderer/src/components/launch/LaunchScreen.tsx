@@ -4,11 +4,12 @@ import { useState } from 'react'
 import { RemoteServerForm } from '@/components/connection/RemoteServerForm'
 import { Button } from '@/components/ui/Button'
 import { PixelField } from '@/components/ui/PixelField'
-import { forgetBackend, useKnownBackends } from '@/lib/backends'
+import { useKnownBackends } from '@/lib/backends'
 import {
   cancelPendingApproval,
   connectionPreference,
   connectRemote,
+  forgetBackend,
   startLocal,
   useConnection,
 } from '@/lib/connection'
