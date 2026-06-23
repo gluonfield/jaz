@@ -77,7 +77,6 @@ type ContextMessage struct {
 	CreatedAt time.Time     `json:"created_at"`
 	Matched   bool          `json:"matched,omitempty"`
 	Truncated bool          `json:"truncated,omitempty"`
-	search    string
 }
 
 type ContextTool struct {
@@ -92,6 +91,11 @@ type contextOptions struct {
 	includeTools string
 	maxToolChars int
 	maxTextChars int
+}
+
+type contextRecord struct {
+	message    ContextMessage
+	searchText string
 }
 
 func (s *Service) Context(ctx context.Context, req ContextRequest) (ContextResponse, error) {
@@ -223,8 +227,8 @@ func contextSession(session storage.Session, count int) ContextSession {
 	}
 }
 
-func visibleContextRecords(records []storage.Message, opts contextOptions) []ContextMessage {
-	out := make([]ContextMessage, 0, len(records))
+func visibleContextRecords(records []storage.Message, opts contextOptions) []contextRecord {
+	out := make([]contextRecord, 0, len(records))
 	for _, record := range records {
 		if record.Role != "user" && record.Role != "assistant" {
 			continue
@@ -236,16 +240,15 @@ func visibleContextRecords(records []storage.Message, opts contextOptions) []Con
 		}
 		message.Text, message.Truncated = clampText(transcriptText(record), opts.maxTextChars)
 		message.Tools = contextTools(record.Blocks, opts)
-		message.search = recordSearchText(record)
 		if message.Text == "" && len(message.Tools) == 0 {
 			continue
 		}
-		out = append(out, message)
+		out = append(out, contextRecord{message: message, searchText: recordSearchText(record)})
 	}
 	return out
 }
 
-func contextPageResponse(response ContextResponse, visible []ContextMessage, req ContextRequest, opts contextOptions) ContextResponse {
+func contextPageResponse(response ContextResponse, visible []contextRecord, req ContextRequest, opts contextOptions) ContextResponse {
 	start, end := tailWindow(len(visible), opts.limit)
 	switch {
 	case req.BeforeSeq > 0:
@@ -260,7 +263,7 @@ func contextPageResponse(response ContextResponse, visible []ContextMessage, req
 		response.Mode = "around"
 		start, end = aroundWindow(visible, req.AroundSeq, opts.limit)
 	}
-	response.Messages = append([]ContextMessage(nil), visible[start:end]...)
+	response.Messages = contextMessages(visible[start:end])
 	response.HasMoreBefore = start > 0
 	response.HasMoreAfter = end < len(visible)
 	if response.HasMoreBefore && len(response.Messages) > 0 {
@@ -272,7 +275,7 @@ func contextPageResponse(response ContextResponse, visible []ContextMessage, req
 	return response
 }
 
-func contextQueryResponse(response ContextResponse, visible []ContextMessage, query string, opts contextOptions) ContextResponse {
+func contextQueryResponse(response ContextResponse, visible []contextRecord, query string, opts contextOptions) ContextResponse {
 	response.Mode = "query"
 	response.Query = query
 	tokens := searchTokens(query)
@@ -282,34 +285,54 @@ func contextQueryResponse(response ContextResponse, visible []ContextMessage, qu
 	}
 	selected := map[int]bool{}
 	matched := map[int]bool{}
-	for index, message := range visible {
-		if !matchesAllTokens(contextSearchText(message), tokens) {
+	var hits []int
+	addSelected := func(index int) {
+		if index < 0 || index >= len(visible) || selected[index] {
+			return
+		}
+		if len(selected) >= opts.limit {
+			response.Truncated = true
+			return
+		}
+		selected[index] = true
+	}
+	for index, record := range visible {
+		if !matchesAllTokens(record.searchText, tokens) {
 			continue
 		}
 		response.MatchCount++
 		matched[index] = true
-		if len(selected) >= opts.limit {
-			response.Truncated = true
+		hits = append(hits, index)
+	}
+	for _, index := range hits {
+		addSelected(index)
+	}
+	for _, index := range hits {
+		if !selected[index] {
 			continue
 		}
-		for i := max(0, index-opts.radius); i <= min(len(visible)-1, index+opts.radius); i++ {
-			selected[i] = true
-		}
-		if len(selected) >= opts.limit {
-			response.Truncated = true
+		for distance := 1; distance <= opts.radius; distance++ {
+			addSelected(index - distance)
+			addSelected(index + distance)
 		}
 	}
-	for i, message := range visible {
+	for i, record := range visible {
 		if !selected[i] {
 			continue
 		}
+		message := record.message
 		message.Matched = matched[i]
 		response.Messages = append(response.Messages, message)
-		if len(response.Messages) == opts.limit {
-			break
-		}
 	}
 	return response
+}
+
+func contextMessages(records []contextRecord) []ContextMessage {
+	messages := make([]ContextMessage, 0, len(records))
+	for _, record := range records {
+		messages = append(messages, record.message)
+	}
+	return messages
 }
 
 func tailWindow(count, limit int) (int, int) {
@@ -317,7 +340,7 @@ func tailWindow(count, limit int) (int, int) {
 	return start, count
 }
 
-func aroundWindow(messages []ContextMessage, seq int64, limit int) (int, int) {
+func aroundWindow(messages []contextRecord, seq int64, limit int) (int, int) {
 	center := firstIndexAtOrAfter(messages, seq)
 	if center == len(messages) {
 		center = max(0, len(messages)-1)
@@ -328,38 +351,22 @@ func aroundWindow(messages []ContextMessage, seq int64, limit int) (int, int) {
 	return start, end
 }
 
-func firstIndexAtOrAfter(messages []ContextMessage, seq int64) int {
+func firstIndexAtOrAfter(messages []contextRecord, seq int64) int {
 	for i, message := range messages {
-		if message.Seq >= seq {
+		if message.message.Seq >= seq {
 			return i
 		}
 	}
 	return len(messages)
 }
 
-func firstIndexAfter(messages []ContextMessage, seq int64) int {
+func firstIndexAfter(messages []contextRecord, seq int64) int {
 	for i, message := range messages {
-		if message.Seq > seq {
+		if message.message.Seq > seq {
 			return i
 		}
 	}
 	return len(messages)
-}
-
-func transcriptText(record storage.Message) string {
-	if text := strings.TrimSpace(record.Content); text != "" {
-		return text
-	}
-	var parts []string
-	for _, block := range record.Blocks {
-		if block.Type != storage.BlockTypeText {
-			continue
-		}
-		if text := strings.TrimSpace(block.Text); text != "" {
-			parts = append(parts, text)
-		}
-	}
-	return strings.Join(parts, "\n\n")
 }
 
 func contextTools(blocks []storage.Block, opts contextOptions) []ContextTool {
@@ -378,46 +385,6 @@ func contextTools(blocks []storage.Block, opts contextOptions) []ContextTool {
 		out = append(out, tool)
 	}
 	return out
-}
-
-func compressedToolDetail(block storage.Block) string {
-	detail := strings.TrimSpace(block.InputJSON)
-	if result := strings.TrimSpace(block.Result); result != "" {
-		if detail != "" {
-			detail += " -> "
-		}
-		detail += result
-	}
-	return strings.Join(strings.Fields(detail), " ")
-}
-
-func ToolCounts(records []storage.Message) map[string]int {
-	counts := map[string]int{}
-	for _, record := range records {
-		for _, block := range record.Blocks {
-			if block.Type != storage.BlockTypeTool {
-				continue
-			}
-			name := block.Name
-			if name == "" {
-				name = "unknown"
-			}
-			counts[name]++
-		}
-	}
-	return counts
-}
-
-func contextSearchText(message ContextMessage) string {
-	if message.search != "" {
-		return message.search
-	}
-	var parts []string
-	parts = append(parts, message.Text)
-	for _, tool := range message.Tools {
-		parts = append(parts, tool.Name, tool.Detail)
-	}
-	return strings.ToLower(strings.Join(parts, "\n"))
 }
 
 func recordSearchText(record storage.Message) string {
