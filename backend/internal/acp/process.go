@@ -22,7 +22,10 @@ import (
 	"github.com/wins/jaz/backend/internal/skills"
 )
 
-const processStderrTailLimit = 2000
+const (
+	processStderrTailLimit = 2000
+	acpProcessStdioDrain   = 2 * time.Second
+)
 
 type processStderrTail struct {
 	mu   sync.Mutex
@@ -95,7 +98,10 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	}
 	command, args = launchCommand(command, args)
 	cmd := exec.CommandContext(ctx, command, args...)
-	hideProcessWindow(cmd)
+	prepareProcessCommand(cmd)
+	process := newProcessSupervisor(cmd)
+	cmd.Cancel = process.terminate
+	cmd.WaitDelay = acpProcessStdioDrain
 	cmd.Env = processenv.List(env)
 	if cwd != "" {
 		cmd.Dir = cwd
@@ -113,9 +119,16 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	if err := cmd.Start(); err != nil {
 		return nil, nil, fmt.Errorf("start acp agent %q (%s): %w", name, strings.Join(append([]string{command}, args...), " "), err)
 	}
+	if err := process.started(); err != nil {
+		_ = process.terminate()
+		_ = cmd.Wait()
+		stderr.close()
+		return nil, stderr, fmt.Errorf("prepare acp agent %q process: %w", name, err)
+	}
 	conn := stdio.New(stdout, stdin)
 	go func() {
 		_ = cmd.Wait()
+		_ = process.terminate()
 		stderr.close()
 		_ = conn.Close()
 	}()
