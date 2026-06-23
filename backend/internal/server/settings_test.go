@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -173,14 +172,13 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		!hasModelProvider(got.Providers, "openrouter", "https://openrouter.ai/api/v1") {
 		t.Fatalf("providers = %#v", got.Providers)
 	}
-	wantCodexCommand := `npx -y @jazchat/codex-acp@0.16.7 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true -c suppress_unstable_features_warning=true`
-	if runtime.GOOS == "windows" {
-		wantCodexCommand = `npx.cmd -y @jazchat/codex-acp@0.16.7 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true -c suppress_unstable_features_warning=true`
-	}
 	if got.ACP["codex"].Enabled ||
-		got.ACP["codex"].Command != wantCodexCommand ||
+		got.ACP["codex"].Command != "" ||
 		got.ACP["codex"].Model != "gpt-5.5" {
 		t.Fatalf("unexpected codex defaults %#v", got.ACP["codex"])
+	}
+	if got.ACPOptions["codex"].RequiresCommand {
+		t.Fatalf("unexpected codex capabilities %#v", got.ACPOptions["codex"])
 	}
 	if got.ACP["grok"].Enabled ||
 		got.ACP["grok"].Command != `grok --no-auto-update agent --no-leader --always-approve stdio` ||
@@ -220,9 +218,11 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	if err := json.Unmarshal(getRes.Body.Bytes(), &rawOptions); err != nil {
 		t.Fatal(err)
 	}
-	for _, flag := range []string{"local", "requires_command", "supports_auth"} {
-		if _, ok := rawOptions.ACPOptions["jaz"][flag]; !ok {
-			t.Fatalf("acp_options.jaz must emit %q, body = %s", flag, getRes.Body.String())
+	for _, agent := range []string{"codex", "jaz"} {
+		for _, flag := range []string{"local", "requires_command", "supports_auth"} {
+			if _, ok := rawOptions.ACPOptions[agent][flag]; !ok {
+				t.Fatalf("acp_options.%s must emit %q, body = %s", agent, flag, getRes.Body.String())
+			}
 		}
 	}
 	if got.ACPOptions["opencode"].ProviderMode != acp.AgentProviderModeAgentDefaults ||
@@ -718,8 +718,8 @@ func TestAgentSettingsRejectEnabledACPWithoutCommand(t *testing.T) {
 	defer store.Close()
 	req := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
 		"acp":{
-			"codex":{"enabled":true,"command":""},
-			"claude":{"enabled":false,"command":""}
+			"codex":{"enabled":false,"command":""},
+			"claude":{"enabled":true,"command":""}
 		}
 	}`))
 	req.Header.Set("Content-Type", "application/json")

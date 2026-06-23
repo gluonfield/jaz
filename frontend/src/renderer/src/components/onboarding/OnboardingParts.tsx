@@ -249,16 +249,24 @@ export function OnboardingProgress({
   )
 }
 
-type AgentState = 'ready' | 'action' | 'missing'
+type AgentState = 'ready' | 'action' | 'missing' | 'downloading' | 'failed'
 
 export function agentReady(probe: OnboardingACPProbe, keyDraft: string): boolean {
-  return Boolean(probe.available || probe.api_key_configured || keyDraft.trim())
+  return adapterReady(probe) && Boolean(probe.available || probe.api_key_configured || keyDraft.trim())
 }
 
 function agentState(probe: OnboardingACPProbe, keyDraft: string): AgentState {
+  const authReady = Boolean(probe.authenticated || probe.api_key_configured || keyDraft.trim())
+  if (authReady && probe.managed_adapter?.state === 'downloading') return 'downloading'
+  if (authReady && probe.managed_adapter?.state === 'failed') return 'failed'
+  if (authReady && probe.managed_adapter?.state === 'missing') return 'downloading'
   if (agentReady(probe, keyDraft)) return 'ready'
   if (!probe.installed) return 'missing'
   return 'action'
+}
+
+function adapterReady(probe: OnboardingACPProbe): boolean {
+  return !probe.managed_adapter || probe.managed_adapter.state === 'ready'
 }
 
 function AgentCard({
@@ -293,11 +301,16 @@ function AgentCard({
   const actionable = state === 'action'
   const companionAppBlocked = Boolean(probe.app_installed && !probe.available && !probe.auth_command_available)
   const missingLabel = companionAppBlocked ? `Needs ${onboardingAgentLabel(probe.agent)}` : undefined
-  const missingDetail = companionAppBlocked
-    ? `${probe.app_name || authProviderLabel(probe.agent)} is installed on ${agentHost}, but ${onboardingAgentLabel(probe.agent)} is not available to jaz.`
-    : state === 'missing'
-      ? probe.reason
-      : ''
+  let missingDetail = ''
+  if (companionAppBlocked) {
+    missingDetail = `${probe.app_name || authProviderLabel(probe.agent)} is installed on ${agentHost}, but ${onboardingAgentLabel(probe.agent)} is not available to jaz.`
+  } else if (state === 'downloading') {
+    missingDetail = probe.managed_adapter?.message || 'Downloading the managed adapter.'
+  } else if (state === 'failed') {
+    missingDetail = probe.managed_adapter?.message || 'Managed adapter download failed.'
+  } else if (state === 'missing') {
+    missingDetail = probe.reason ?? ''
+  }
 
   return (
     <div className="relative">
@@ -420,10 +433,20 @@ function StatePill({ state, label }: { state: AgentState; label?: string }) {
   const tone =
     state === 'ready'
       ? 'bg-primary-soft text-primary-strong'
-      : state === 'missing'
+      : state === 'missing' || state === 'failed'
         ? 'bg-surface-2 text-ink-3'
         : 'bg-accent-soft text-accent-strong'
-  const text = label ?? (state === 'ready' ? 'Connected' : state === 'missing' ? 'Not installed' : 'Needs sign-in')
+  const text =
+    label ??
+    (state === 'ready'
+      ? 'Connected'
+      : state === 'missing'
+        ? 'Not installed'
+        : state === 'downloading'
+          ? 'Downloading'
+          : state === 'failed'
+            ? 'Download failed'
+            : 'Needs sign-in')
   return (
     <span className={`inline-flex shrink-0 items-center rounded-full px-2 py-[3px] text-[11px] font-medium ${tone}`}>
       {text}

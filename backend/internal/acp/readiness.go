@@ -26,6 +26,13 @@ func ProbeReadinessWithProviders(name string, cfg AgentConfig, root string, env 
 	if strings.TrimSpace(cfg.URL) != "" {
 		return Readiness{Available: true}
 	}
+	if strings.TrimSpace(cfg.ManagedAdapter) != "" {
+		auth := ProbeAgentAuthWithProviders(name, cfg, root, env, providers)
+		if !auth.Authenticated {
+			return Readiness{Reason: auth.Reason}
+		}
+		return Readiness{Available: true}
+	}
 	command, _, err := processCommand(name, cfg)
 	if err != nil {
 		return Readiness{Reason: err.Error()}

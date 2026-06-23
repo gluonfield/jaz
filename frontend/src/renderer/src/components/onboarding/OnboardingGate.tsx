@@ -61,6 +61,9 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
   const [memoryEnabled, setMemoryEnabled] = useState(status.memory?.enabled ?? true)
   const [memoryAgent, setMemoryAgent] = useState(status.memory?.agent ?? '')
   const onboardingProbes = useMemo(() => status.acp.filter((probe) => probe.agent !== 'jaz'), [status.acp])
+  const adapterPreparing = onboardingProbes.some(
+    (probe) => probe.managed_adapter?.state === 'missing' || probe.managed_adapter?.state === 'downloading',
+  )
 
   useEffect(() => {
     setDraft(draftFromStatus(status))
@@ -97,6 +100,12 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
   useEffect(() => {
     if (!canContinue && step === 'memory') setStep('agents')
   }, [canContinue, step])
+
+  useEffect(() => {
+    if (!adapterPreparing) return
+    const timer = window.setInterval(onRefresh, 1500)
+    return () => window.clearInterval(timer)
+  }, [adapterPreparing, onRefresh])
 
   const login = useMutation({
     mutationFn: ({ agent, auth }: { agent: string; auth?: ACPAgentAuth }) => startACPAuthLogin(agent, auth),

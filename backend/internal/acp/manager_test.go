@@ -264,6 +264,48 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	}
 }
 
+type fakeAdapterResolver struct {
+	launch acp.AdapterLaunch
+}
+
+func (r fakeAdapterResolver) ResolveAdapter(context.Context, string) (acp.AdapterLaunch, error) {
+	return r.launch, nil
+}
+
+func TestManagerSpawnsManagedAdapterAgent(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := acp.NewManager(store, acp.Config{
+		Root:      t.TempDir(),
+		Workspace: t.TempDir(),
+		Adapters: fakeAdapterResolver{launch: acp.AdapterLaunch{
+			Command: os.Args[0],
+			Args:    []string{"-test.run=TestFakeACPAgentProcess"},
+		}},
+		Agents: map[string]acp.AgentConfig{
+			"fake": {
+				ManagedAdapter: "fake",
+				Env: map[string]string{
+					"JAZ_FAKE_ACP_AGENT": "1",
+				},
+			},
+		},
+	}, log.New(io.Discard))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "managed-fake"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	if spawned.State != acp.StateIdle {
+		t.Fatalf("spawn state = %s, want %s", spawned.State, acp.StateIdle)
+	}
+}
+
 func TestManagerRunsLocalJazAgentThroughACPJob(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

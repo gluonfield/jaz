@@ -26,7 +26,7 @@ const (
 	AuthModeExistingCLI = "existing_cli"
 	AuthModeJazProfile  = "jaz_profile"
 
-	codexACPPackage = "@jazchat/codex-acp@0.16.7"
+	CodexACPVersion = "0.16.7"
 )
 
 func CanonicalAgentName(name string) string {
@@ -74,6 +74,7 @@ func systemPromptMeta(agent, prompt string) map[string]any {
 type Config struct {
 	Agents      map[string]AgentConfig
 	AgentSource AgentConfigSource
+	Adapters    AdapterResolver
 	Root        string
 	Workspace   string
 	Env         map[string]string
@@ -90,6 +91,8 @@ type Config struct {
 type AgentConfig struct {
 	Command                 string
 	Args                    []string
+	ManagedAdapter          string
+	ManagedAdapterArgs      []string
 	Local                   bool
 	ProviderMode            string
 	ModelProviderCapability string
@@ -104,7 +107,7 @@ type AgentConfig struct {
 }
 
 func (c AgentConfig) RequiresCommand() bool {
-	return !c.Local && strings.TrimSpace(c.URL) == ""
+	return !c.Local && strings.TrimSpace(c.URL) == "" && strings.TrimSpace(c.ManagedAdapter) == ""
 }
 
 func (c AgentConfig) SupportsAuth() bool {
@@ -157,6 +160,16 @@ func (c AgentConfig) NormalizeProviderModel(defaultProvider string) AgentConfig 
 type AgentAuthConfig struct {
 	Mode string `json:"mode,omitempty"`
 	Path string `json:"path,omitempty"`
+}
+
+type AdapterLaunch struct {
+	Command string
+	Args    []string
+	Env     map[string]string
+}
+
+type AdapterResolver interface {
+	ResolveAdapter(ctx context.Context, name string) (AdapterLaunch, error)
 }
 
 type AgentCatalog map[string]AgentConfig
@@ -226,15 +239,10 @@ func BuiltinAgents() AgentCatalog {
 	}
 }
 
-func codexBuiltinAgent(goos string) AgentConfig {
-	command := "npx"
-	if goos == "windows" {
-		command = "npx.cmd"
-	}
+func codexBuiltinAgent(_ string) AgentConfig {
 	return AgentConfig{
-		Command: command,
-		Args: []string{
-			"-y", codexACPPackage,
+		ManagedAdapter: "codex",
+		ManagedAdapterArgs: []string{
 			"-c", `sandbox_mode="danger-full-access"`,
 			"-c", `approval_policy="never"`,
 			"-c", `features.tool_search_always_defer_mcp_tools=true`,

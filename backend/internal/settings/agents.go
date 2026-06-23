@@ -266,6 +266,12 @@ func refreshBuiltInCommand(name, storedCommand, seedCommand string) (string, boo
 	if err != nil {
 		return "", false
 	}
+	if strings.TrimSpace(seedCommand) == "" {
+		if managedCodexCommand(storedExecutable, storedArgs) {
+			return "", true
+		}
+		return "", false
+	}
 	seedExecutable, seedArgs, err := ParseCommandLine(seedCommand)
 	if err != nil || len(seedArgs) < 2 {
 		return "", false
@@ -290,6 +296,34 @@ func refreshBuiltInCommand(name, storedCommand, seedCommand string) (string, boo
 		return seedCommand, true
 	}
 	return "", false
+}
+
+func managedCodexCommand(executable string, args []string) bool {
+	if !isNpxExecutable(executable) || len(args) < 2 || args[0] != "-y" {
+		return false
+	}
+	name, version, ok := packageNameVersion(args[1])
+	if !ok || name != "@jazchat/codex-acp" {
+		return false
+	}
+	if semverLess(acp.CodexACPVersion, version) {
+		return false
+	}
+	allowed := map[string]struct{}{
+		`sandbox_mode="danger-full-access"`:                {},
+		`approval_policy="never"`:                          {},
+		`features.tool_search_always_defer_mcp_tools=true`: {},
+		`suppress_unstable_features_warning=true`:          {},
+	}
+	for i := 2; i < len(args); i += 2 {
+		if i+1 >= len(args) || args[i] != "-c" {
+			return false
+		}
+		if _, ok := allowed[args[i+1]]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func storedCodexPackageIsOlder(storedArgs, seedArgs []string) bool {
