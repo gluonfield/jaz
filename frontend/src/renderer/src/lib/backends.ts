@@ -1,9 +1,12 @@
+import { useSyncExternalStore } from 'react'
 import { normalizeBaseUrl, setApiAuthToken } from './api/client'
 
-// The backends this device has connected to, so the connect screen can offer
-// them as switch targets. Auth tokens already live per-URL under
-// `jaz.backendAuth.<url>`, so a remembered backend reconnects with no re-pair.
-// "This machine" (loopback) is implicit and never stored here.
+// The backends this device has connected to, offered as switch targets by the
+// connect screen, the sidebar switcher, and Settings. Auth keys already live
+// per-URL under `jaz.backendAuth.<url>` and the launch preference under
+// `jaz.connection`, so this registry just adds the human-facing name and
+// ordering and lives in the same store — one place owns this UI's connection
+// memory. "This machine" (loopback) is implicit and never stored here.
 const BACKENDS_KEY = 'jaz.backends'
 
 export type KnownBackend = { url: string; label: string; lastConnectedAt: string }
@@ -17,17 +20,35 @@ function read(): KnownBackend[] {
   }
 }
 
-function write(list: KnownBackend[]): void {
+// Most-recently-connected first.
+function sorted(list: KnownBackend[]): KnownBackend[] {
+  return [...list].sort((a, b) => b.lastConnectedAt.localeCompare(a.lastConnectedAt))
+}
+
+// In-memory mirror so every surface re-renders together on connect/rename/forget
+// and useSyncExternalStore gets a stable snapshot between changes.
+let cache = sorted(read())
+const listeners = new Set<() => void>()
+
+function commit(list: KnownBackend[]): void {
   try {
     localStorage.setItem(BACKENDS_KEY, JSON.stringify(list))
   } catch {
     // a convenience list; never fail a connect over storage
   }
+  cache = sorted(list)
+  for (const fn of listeners) fn()
 }
 
-// Most-recently-connected first.
-export function knownBackends(): KnownBackend[] {
-  return read().sort((a, b) => b.lastConnectedAt.localeCompare(a.lastConnectedAt))
+function subscribe(fn: () => void): () => void {
+  listeners.add(fn)
+  return () => {
+    listeners.delete(fn)
+  }
+}
+
+export function useKnownBackends(): KnownBackend[] {
+  return useSyncExternalStore(subscribe, () => cache)
 }
 
 // Record a successful connection, keyed by normalized origin so reconnecting
@@ -37,14 +58,22 @@ export function rememberBackend(url: string, now: string): void {
   if (!target) return
   const list = read()
   const previous = list.find((b) => normalizeBaseUrl(b.url) === target)
-  const rest = list.filter((b) => normalizeBaseUrl(b.url) !== target)
-  write([{ url: target, label: previous?.label || hostLabel(target), lastConnectedAt: now }, ...rest])
+  commit([
+    { url: target, label: previous?.label || hostLabel(target), lastConnectedAt: now },
+    ...list.filter((b) => normalizeBaseUrl(b.url) !== target),
+  ])
 }
 
-// Drop a backend from the switcher and forget its key.
+export function renameBackend(url: string, label: string): void {
+  const target = normalizeBaseUrl(url)
+  const name = label.trim()
+  if (!target || !name) return
+  commit(read().map((b) => (normalizeBaseUrl(b.url) === target ? { ...b, label: name } : b)))
+}
+
 export function forgetBackend(url: string): void {
   const target = normalizeBaseUrl(url)
-  write(read().filter((b) => normalizeBaseUrl(b.url) !== target))
+  commit(read().filter((b) => normalizeBaseUrl(b.url) !== target))
   setApiAuthToken(target, null)
 }
 

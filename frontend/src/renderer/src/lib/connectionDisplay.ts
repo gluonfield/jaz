@@ -1,3 +1,4 @@
+import { normalizeBaseUrl } from './api/client'
 import { isLoopbackUrl, type ConnectionStatus } from './connection'
 import { localDeviceLabel } from './deviceLabel'
 
@@ -7,6 +8,18 @@ export type BackendDescription = {
   // "This Mac" or the server's host — what to show at a glance.
   title: string
   url: string
+}
+
+// The local machine's name in switch lists ("This Mac"), capitalized for
+// standalone use unlike the lowercase "Run on this Mac" CTA.
+export function localBackendLabel(): string {
+  return capitalize(localDeviceLabel())
+}
+
+// Whether two URLs point at the same backend — the canonical "is this the one
+// we're on?" check, so every switch list compares identity the same way.
+export function sameBackend(a: string, b: string): boolean {
+  return normalizeBaseUrl(a) === normalizeBaseUrl(b)
 }
 
 // Names whichever backend a URL points at so the sidebar and the switcher can
