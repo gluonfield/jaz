@@ -18,7 +18,7 @@ import (
 func (s *Server) withAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := strings.TrimSpace(s.AuthKey)
-		if key == "" || r.URL.Path == "/health" || internalMCPRequest(r) || publicDeviceRequest(r) {
+		if key == "" || r.URL.Path == "/health" || internalMCPRequest(r) || publicDeviceRequest(r) || localBrowserExtensionRequest(r) {
 			next.ServeHTTP(w, r.WithContext(contextWithClientInfo(r, deviceauth.Principal{})))
 			return
 		}
@@ -80,6 +80,13 @@ func rootKeyAllowed(r *http.Request) bool {
 		return true
 	}
 	return r.Method == http.MethodGet && r.URL.Path == "/v1/browser/extension"
+}
+
+func localBrowserExtensionRequest(r *http.Request) bool {
+	return r.Method == http.MethodGet &&
+		r.URL.Path == "/v1/browser/extension" &&
+		loopbackRequest(r) &&
+		strings.HasPrefix(strings.TrimSpace(r.Header.Get("Origin")), "chrome-extension://")
 }
 
 func publicDeviceRequest(r *http.Request) bool {
