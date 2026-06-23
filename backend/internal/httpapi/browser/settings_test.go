@@ -70,8 +70,20 @@ func TestSettingsEndpoint(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
 		t.Fatal(err)
 	}
-	if status.Agent != acp.AgentCodex || !status.Enabled {
+	if status.Agent != acp.AgentCodex || status.Enabled {
 		t.Fatalf("browser status = %#v", status)
+	}
+
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/browser", strings.NewReader(`{"enabled":true}`)))
+	if res.Code != http.StatusOK {
+		t.Fatalf("enable browser = %d, body = %s", res.Code, res.Body.String())
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if status.Agent != acp.AgentCodex || !status.Enabled {
+		t.Fatalf("enable should preserve browser agent, got %#v", status)
 	}
 
 	res = httptest.NewRecorder()

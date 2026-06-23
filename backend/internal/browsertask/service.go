@@ -108,7 +108,7 @@ func (s *Service) RemoveMCPTools(server *mcp.Server) {
 }
 
 func (s *Service) MCPToolsEnabled() bool {
-	return jazsettings.BrowserEnabled(s.Store) && s.extensionConnected()
+	return jazsettings.BrowserEnabled(s.Store)
 }
 
 func (s *Service) Run(ctx context.Context, req Request) (Result, error) {
