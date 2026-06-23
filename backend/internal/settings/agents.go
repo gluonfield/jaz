@@ -232,8 +232,8 @@ func MergeAgentDefaults(stored, seed AgentDefaults, agentNames []string) AgentDe
 }
 
 func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentDefaults {
-	if shouldRefreshBuiltInCommand(name, stored.Command, seed.Command) {
-		stored.Command = seed.Command
+	if command, ok := refreshBuiltInCommand(name, stored.Command, seed.Command); ok {
+		stored.Command = command
 	}
 	if strings.TrimSpace(stored.Command) == "" {
 		stored.Command = seed.Command
@@ -258,31 +258,38 @@ func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentD
 	return stored
 }
 
-func shouldRefreshBuiltInCommand(name, storedCommand, seedCommand string) bool {
+func refreshBuiltInCommand(name, storedCommand, seedCommand string) (string, bool) {
 	if name != acp.AgentCodex {
-		return false
+		return "", false
 	}
 	storedExecutable, storedArgs, err := ParseCommandLine(storedCommand)
 	if err != nil {
-		return false
+		return "", false
 	}
 	seedExecutable, seedArgs, err := ParseCommandLine(seedCommand)
 	if err != nil || len(seedArgs) < 2 {
-		return false
+		return "", false
 	}
 	if !isNpxExecutable(storedExecutable) || !isNpxExecutable(seedExecutable) {
-		return false
+		return "", false
 	}
 	if storedCodexPackageIsOlder(storedArgs, seedArgs) {
-		return commandArgsMatchExceptPackageWithOptionalTrailingConfigs(
+		if commandArgsMatchExceptPackageWithOptionalTrailingConfigs(
 			storedArgs,
 			seedArgs,
 			`features.tool_search_always_defer_mcp_tools=true`,
 			`suppress_unstable_features_warning=true`,
-		)
+		) {
+			return seedCommand, true
+		}
+		storedArgs[1] = seedArgs[1]
+		return CommandLine(storedExecutable, storedArgs), true
 	}
-	return storedCodexPackageIsSame(storedArgs, seedArgs) &&
-		slices.Equal(storedArgs, seedArgsWithoutTrailingConfigs(seedArgs, `suppress_unstable_features_warning=true`))
+	if storedCodexPackageIsSame(storedArgs, seedArgs) &&
+		slices.Equal(storedArgs, seedArgsWithoutTrailingConfigs(seedArgs, `suppress_unstable_features_warning=true`)) {
+		return seedCommand, true
+	}
+	return "", false
 }
 
 func storedCodexPackageIsOlder(storedArgs, seedArgs []string) bool {
@@ -400,13 +407,22 @@ func NewACPConfigSource(store storage.SettingsStorage, catalog acp.AgentCatalog)
 	return &ACPConfigSource{store: store, catalog: catalog}
 }
 
+func (s *ACPConfigSource) effectiveDefaults() (AgentDefaults, error) {
+	stored, err := LoadAgentDefaults(s.store)
+	if err != nil {
+		return AgentDefaults{}, err
+	}
+	seed := AgentDefaultsFromCatalog(s.catalog)
+	return MergeAgentDefaults(stored, seed, s.catalog.Names()), nil
+}
+
 func (s *ACPConfigSource) AgentConfig(name string) (acp.AgentConfig, bool, error) {
 	name = acp.CanonicalAgentName(name)
 	cfg, ok := s.catalog.Agent(name)
 	if !ok {
 		return acp.AgentConfig{}, false, nil
 	}
-	defaults, err := LoadAgentDefaults(s.store)
+	defaults, err := s.effectiveDefaults()
 	if err != nil {
 		return acp.AgentConfig{}, false, err
 	}
@@ -440,7 +456,7 @@ func (s *ACPConfigSource) AgentConfig(name string) (acp.AgentConfig, bool, error
 }
 
 func (s *ACPConfigSource) EnabledAgentNames() ([]string, error) {
-	defaults, err := LoadAgentDefaults(s.store)
+	defaults, err := s.effectiveDefaults()
 	if err != nil {
 		return nil, err
 	}

@@ -278,10 +278,12 @@ function ManageSection({
   const showCodeReview = canReviewSession(info)
   const skills = useQuery({ ...skillsQuery(), enabled: showCodeReview })
   const archive = useMutation({
-    mutationFn: () => setSessionArchived(session.id, true),
-    onSuccess: () => toast('Archived thread'),
-    onError: (error: Error) => toast(`Couldn't archive: ${error.message}`, 'danger'),
+    mutationFn: (archived: boolean) => setSessionArchived(session.id, archived),
+    onSuccess: (_, archived) => toast(archived ? 'Archived thread' : 'Restored thread'),
+    onError: (error: Error, archived) =>
+      toast(`Couldn't ${archived ? 'archive' : 'restore'}: ${error.message}`, 'danger'),
     onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: keys.session(session.id) })
       queryClient.invalidateQueries({ queryKey: keys.sessionMessages(session.id) })
       queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
       queryClient.invalidateQueries({ queryKey: keys.allSessions })
@@ -319,13 +321,13 @@ function ManageSection({
         </ActionRow>
       ) : null}
       <ActionRow
-        icon={archive.isPending ? LoaderCircle : Archive}
+        icon={archive.isPending ? LoaderCircle : session.archived ? ArchiveRestore : Archive}
         spin={archive.isPending}
-        disabled={session.archived || archive.isPending}
-        hint={session.archived ? 'Thread is archived' : 'Archives this thread and its children'}
-        onClick={() => archive.mutate()}
+        disabled={archive.isPending}
+        hint={session.archived ? 'Restores this thread and its children' : 'Archives this thread and its children'}
+        onClick={() => archive.mutate(!session.archived)}
       >
-        {session.archived ? 'Archived' : 'Archive thread'}
+        {session.archived ? 'Unarchive thread' : 'Archive thread'}
       </ActionRow>
     </section>
   )
