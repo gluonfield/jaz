@@ -117,6 +117,9 @@ func queryAuthAllowed(r *http.Request) bool {
 	if r.Method != http.MethodGet {
 		return false
 	}
+	if r.URL.Path == "/v1/browser/extension" {
+		return true
+	}
 	sessionPath := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
 	if sessionPath == r.URL.Path {
 		return false

@@ -3,6 +3,7 @@ package app
 import (
 	"net/http"
 
+	"github.com/wins/jaz/backend/internal/browserworker"
 	"github.com/wins/jaz/backend/internal/deviceauth"
 	deviceapi "github.com/wins/jaz/backend/internal/httpapi/devices"
 	usageapi "github.com/wins/jaz/backend/internal/httpapi/usage"
@@ -27,9 +28,11 @@ func NewDeviceAuth(store *sqlitestore.Store) *deviceauth.Service {
 type routeDeps struct {
 	fx.In
 
-	Usage   usagecore.Service
-	Devices *deviceauth.Service `optional:"true"`
-	Config  serverconfig.Config `optional:"true"`
+	Usage           usagecore.Service
+	Devices         *deviceauth.Service            `optional:"true"`
+	Config          serverconfig.Config            `optional:"true"`
+	Browser         *browserworker.ExtensionBridge `optional:"true"`
+	BrowserSettings *BrowserSettingsHandler        `optional:"true"`
 }
 
 func NewRoutes(deps routeDeps) server.Routes {
@@ -44,10 +47,10 @@ func NewRoutes(deps routeDeps) server.Routes {
 		},
 	}
 	if deps.Devices == nil {
-		return routes
+		return appendBrowserRoutes(routes, deps.BrowserSettings, deps.Browser)
 	}
 	deviceHandler := deviceapi.NewHandler(deps.Devices, deps.Config)
-	return append(routes,
+	routes = append(routes,
 		server.Route{Pattern: "GET /v1/devices/connection-link", Handler: httpHandlerFunc(deviceHandler.ConnectionLink)},
 		server.Route{Pattern: "GET /v1/devices", Handler: httpHandlerFunc(deviceHandler.List)},
 		server.Route{Pattern: "POST /v1/devices/register", Handler: httpHandlerFunc(deviceHandler.Register)},
@@ -55,6 +58,20 @@ func NewRoutes(deps routeDeps) server.Routes {
 		server.Route{Pattern: "/v1/devices/pairing-requests/", Handler: httpHandlerFunc(deviceHandler.Pairing)},
 		server.Route{Pattern: "DELETE /v1/devices/{id}", Handler: httpHandlerFunc(deviceHandler.Revoke)},
 	)
+	return appendBrowserRoutes(routes, deps.BrowserSettings, deps.Browser)
+}
+
+func appendBrowserRoutes(routes server.Routes, settings *BrowserSettingsHandler, extension *browserworker.ExtensionBridge) server.Routes {
+	if settings != nil {
+		routes = append(routes,
+			server.Route{Pattern: "GET /v1/browser", Handler: settings},
+			server.Route{Pattern: "PUT /v1/browser", Handler: settings},
+		)
+	}
+	if extension != nil {
+		routes = append(routes, server.Route{Pattern: "GET /v1/browser/extension", Handler: extension})
+	}
+	return routes
 }
 
 type httpHandlerFunc func(http.ResponseWriter, *http.Request)

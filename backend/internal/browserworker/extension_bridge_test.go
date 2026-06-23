@@ -1,0 +1,114 @@
+package browserworker
+
+import (
+	"context"
+	"encoding/json"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/gorilla/websocket"
+)
+
+type fallbackBackend struct {
+	called bool
+}
+
+func (b *fallbackBackend) Call(context.Context, ActionInput) (ActionOutput, error) {
+	b.called = true
+	return ActionOutput{Status: "ok", Text: "fallback"}, nil
+}
+
+func TestExtensionBridgeRoutesCallToConnectedExtension(t *testing.T) {
+	bridge := NewExtensionBridge(nil)
+	server := httptest.NewServer(bridge)
+	t.Cleanup(server.Close)
+	ws, _, err := websocket.DefaultDialer.Dial(wsURL(server.URL), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ws.Close() })
+	if err := ws.WriteJSON(map[string]any{
+		"type":         "hello",
+		"protocol":     ExtensionProtocol,
+		"extension_id": "ext-1",
+		"capabilities": map[string]any{"actions": []string{"snapshot"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		var req extensionCall
+		if err := ws.ReadJSON(&req); err != nil {
+			t.Errorf("read call: %v", err)
+			return
+		}
+		if req.Type != "call" || req.Action != "snapshot" || req.Session != "browser-worker-1" {
+			t.Errorf("request = %#v", req)
+		}
+		if err := ws.WriteJSON(extensionResult{
+			ID:   req.ID,
+			Type: "result",
+			OK:   true,
+			Output: extensionWireOutput{
+				Status:        "ok",
+				Text:          "snapshot text",
+				ImageBase64:   "aW1hZ2U=",
+				ImageMIMEType: "image/png",
+			},
+		}); err != nil {
+			t.Errorf("write result: %v", err)
+		}
+	}()
+	out, err := bridge.Call(context.Background(), ActionInput{Action: "snapshot", Session: "browser-worker-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-done
+	if out.Text != "snapshot text" || out.ImageBase64 != "aW1hZ2U=" || out.ImageMIMEType != "image/png" {
+		t.Fatalf("out = %#v", out)
+	}
+	status := bridge.Status()
+	if !status.Connected || status.ExtensionID != "ext-1" || status.Protocol != ExtensionProtocol {
+		t.Fatalf("status = %#v", status)
+	}
+}
+
+func TestExtensionBridgeFallsBackWhenDisconnected(t *testing.T) {
+	fallback := &fallbackBackend{}
+	bridge := NewExtensionBridge(fallback)
+	out, err := bridge.Call(context.Background(), ActionInput{Action: "status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fallback.called || out.Text != "fallback" {
+		t.Fatalf("fallback=%v out=%#v", fallback.called, out)
+	}
+}
+
+func TestExtensionBridgeRejectsNonGet(t *testing.T) {
+	bridge := NewExtensionBridge(nil)
+	req := httptest.NewRequest("POST", "/v1/browser/extension", strings.NewReader("{}"))
+	res := httptest.NewRecorder()
+	bridge.ServeHTTP(res, req)
+	if res.Code != 404 {
+		t.Fatalf("status = %d", res.Code)
+	}
+}
+
+func TestActionOutputMapsExtensionWireFields(t *testing.T) {
+	raw := `{"status":"ok","text":"x","image_base64":"img","image_mime_type":"image/png","pdf_base64":"pdf","pdf_base64_length":3}`
+	var wire extensionWireOutput
+	if err := json.Unmarshal([]byte(raw), &wire); err != nil {
+		t.Fatal(err)
+	}
+	out := actionOutput(wire)
+	if out.ImageBase64 != "img" || out.ImageMIMEType != "image/png" || out.PDFBase64 != "pdf" || out.PDFBase64Length != 3 {
+		t.Fatalf("out = %#v", out)
+	}
+}
+
+func wsURL(httpURL string) string {
+	return "ws" + strings.TrimPrefix(httpURL, "http") + "/v1/browser/extension"
+}

@@ -8,6 +8,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/browsertask"
+	"github.com/wins/jaz/backend/internal/browserworker"
 	"github.com/wins/jaz/backend/internal/loops"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/mcpsession"
@@ -26,9 +28,10 @@ const (
 )
 
 const (
-	surfaceQueryParam       = "jaztools_surface"
-	widgetSurfaceName       = "widget"
-	memorySearchSurfaceName = "memory_search_worker"
+	surfaceQueryParam        = "jaztools_surface"
+	widgetSurfaceName        = "widget"
+	memorySearchSurfaceName  = "memory_search_worker"
+	browserWorkerSurfaceName = "browser_worker"
 )
 
 func ServerConfig(url string) mcpconfig.Server {
@@ -46,7 +49,9 @@ func ServerConfig(url string) mcpconfig.Server {
 }
 
 type Service struct {
-	Memory *memoryservice.Service
+	Memory         *memoryservice.Service
+	Browser        *browsertask.Service
+	browserBackend browserworker.Backend
 
 	loopTools       *loops.MCPTools
 	agentTools      *acp.MCPTools
@@ -60,6 +65,7 @@ type Service struct {
 	thread      serverSlot
 	widget      serverSlot
 	search      serverSlot
+	browser     serverSlot
 	handlerOnce sync.Once
 	handler     http.Handler
 }
@@ -70,13 +76,20 @@ const (
 	threadSurface toolSurface = iota
 	widgetSurface
 	searchWorkerSurface
+	browserWorkerSurface
 )
 
+type surfaceSlot struct {
+	surface toolSurface
+	slot    *serverSlot
+}
+
 type serverSlot struct {
-	once        sync.Once
-	server      *mcp.Server
-	memoryTools bool
-	agentTools  bool
+	once         sync.Once
+	server       *mcp.Server
+	memoryTools  bool
+	agentTools   bool
+	browserTools bool
 }
 
 type sessionSource interface {
@@ -108,6 +121,18 @@ func (s *Service) SetAgents(service acp.MCPService) {
 	s.syncAgentTools()
 }
 
+func (s *Service) SetBrowser(service *browsertask.Service, backend browserworker.Backend) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Browser = service
+	s.browserBackend = backend
+	if s.browser.server != nil && s.browser.browserTools {
+		browserworker.RemoveMCPTools(s.browser.server)
+		s.browser.browserTools = false
+	}
+	s.syncBrowserTools()
+}
+
 func (s *Service) Server() *mcp.Server {
 	return s.server(threadSurface)
 }
@@ -120,13 +145,25 @@ func (s *Service) server(surface toolSurface) *mcp.Server {
 		slot.server = server
 		s.syncAgentToolsFor(slot, surface)
 		s.syncMemoryToolsFor(slot, surface)
+		s.syncBrowserToolsFor(slot, surface)
 		s.mu.Unlock()
 	})
 	return slot.server
 }
 
+func (s *Service) slots() []surfaceSlot {
+	return []surfaceSlot{
+		{surface: threadSurface, slot: &s.thread},
+		{surface: widgetSurface, slot: &s.widget},
+		{surface: searchWorkerSurface, slot: &s.search},
+		{surface: browserWorkerSurface, slot: &s.browser},
+	}
+}
+
 func (s *Service) slot(surface toolSurface) *serverSlot {
 	switch surface {
+	case browserWorkerSurface:
+		return &s.browser
 	case searchWorkerSurface:
 		return &s.search
 	case widgetSurface:
@@ -142,7 +179,7 @@ func (s *Service) newServer(surface toolSurface) *mcp.Server {
 		Title:   "Jaz Tools",
 		Version: Version,
 	}, nil)
-	if surface == searchWorkerSurface {
+	if surface.workerOnly() {
 		return server
 	}
 	s.loopTools.AddTo(server)
@@ -161,6 +198,7 @@ func (s *Service) Sync() {
 	defer s.mu.Unlock()
 	s.syncAgentTools()
 	s.syncMemoryTools()
+	s.syncBrowserTools()
 }
 
 func (s *Service) Handler() http.Handler {
@@ -177,6 +215,8 @@ func (s *Service) Handler() http.Handler {
 
 func (s *Service) surface(r *http.Request) toolSurface {
 	switch strings.ToLower(strings.TrimSpace(r.URL.Query().Get(surfaceQueryParam))) {
+	case browserWorkerSurfaceName:
+		return browserWorkerSurface
 	case memorySearchSurfaceName:
 		return searchWorkerSurface
 	case widgetSurfaceName:
@@ -184,6 +224,9 @@ func (s *Service) surface(r *http.Request) toolSurface {
 	}
 	if s.searchWorkerSession(r) {
 		return searchWorkerSurface
+	}
+	if s.browserWorkerSession(r) {
+		return browserWorkerSurface
 	}
 	if s.widgetSession(r) {
 		return widgetSurface
@@ -194,6 +237,11 @@ func (s *Service) surface(r *http.Request) toolSurface {
 func (s *Service) searchWorkerSession(r *http.Request) bool {
 	session, ok := s.sessionFromRequest(r)
 	return ok && session.SourceType == storage.SourceMemorySearch
+}
+
+func (s *Service) browserWorkerSession(r *http.Request) bool {
+	session, ok := s.sessionFromRequest(r)
+	return ok && session.SourceType == storage.SourceBrowserTask
 }
 
 func (s *Service) widgetSession(r *http.Request) bool {
@@ -216,18 +264,25 @@ func (s *Service) sessionFromRequest(r *http.Request) (storage.Session, bool) {
 }
 
 func (s *Service) syncMemoryTools() {
-	s.syncMemoryToolsFor(&s.thread, threadSurface)
-	s.syncMemoryToolsFor(&s.widget, widgetSurface)
-	s.syncMemoryToolsFor(&s.search, searchWorkerSurface)
+	for _, current := range s.slots() {
+		s.syncMemoryToolsFor(current.slot, current.surface)
+	}
 }
 
 func (s *Service) syncAgentTools() {
-	s.syncAgentToolsFor(&s.thread, threadSurface)
-	s.syncAgentToolsFor(&s.widget, widgetSurface)
+	for _, current := range s.slots() {
+		s.syncAgentToolsFor(current.slot, current.surface)
+	}
+}
+
+func (s *Service) syncBrowserTools() {
+	for _, current := range s.slots() {
+		s.syncBrowserToolsFor(current.slot, current.surface)
+	}
 }
 
 func (s *Service) syncAgentToolsFor(slot *serverSlot, surface toolSurface) {
-	if surface == searchWorkerSurface || slot.server == nil || slot.agentTools || s.agentTools == nil {
+	if !surface.agentToolsAllowed() || slot.server == nil || slot.agentTools || s.agentTools == nil {
 		return
 	}
 	s.agentTools.AddTo(slot.server)
@@ -235,7 +290,7 @@ func (s *Service) syncAgentToolsFor(slot *serverSlot, surface toolSurface) {
 }
 
 func (s *Service) syncMemoryToolsFor(slot *serverSlot, surface toolSurface) {
-	if slot.server == nil {
+	if !surface.memoryToolsAllowed() || slot.server == nil {
 		return
 	}
 	if s.Memory.MCPToolsEnabled() {
@@ -248,6 +303,23 @@ func (s *Service) syncMemoryToolsFor(slot *serverSlot, surface toolSurface) {
 	if slot.memoryTools {
 		s.removeMemoryTools(slot.server, surface)
 		slot.memoryTools = false
+	}
+}
+
+func (s *Service) syncBrowserToolsFor(slot *serverSlot, surface toolSurface) {
+	if !surface.browserToolsAllowed() || slot.server == nil || s.Browser == nil {
+		return
+	}
+	if s.Browser.MCPToolsEnabled() {
+		if !slot.browserTools {
+			s.addBrowserTools(slot.server, surface)
+			slot.browserTools = true
+		}
+		return
+	}
+	if slot.browserTools {
+		s.removeBrowserTools(slot.server, surface)
+		slot.browserTools = false
 	}
 }
 
@@ -265,4 +337,46 @@ func (s *Service) removeMemoryTools(server *mcp.Server, surface toolSurface) {
 		return
 	}
 	s.Memory.RemoveMCPTools(server)
+}
+
+func (s *Service) addBrowserTools(server *mcp.Server, surface toolSurface) {
+	switch {
+	case surface.browserWorkerTools():
+		browserworker.AddMCPTools(server, s.browserBackend)
+	case surface.browserTaskToolsAllowed():
+		s.Browser.AddMCPTools(server)
+	}
+}
+
+func (s *Service) removeBrowserTools(server *mcp.Server, surface toolSurface) {
+	switch {
+	case surface.browserWorkerTools():
+		browserworker.RemoveMCPTools(server)
+	case surface.browserTaskToolsAllowed():
+		s.Browser.RemoveMCPTools(server)
+	}
+}
+
+func (surface toolSurface) workerOnly() bool {
+	return surface == searchWorkerSurface || surface == browserWorkerSurface
+}
+
+func (surface toolSurface) agentToolsAllowed() bool {
+	return surface == threadSurface || surface == widgetSurface
+}
+
+func (surface toolSurface) memoryToolsAllowed() bool {
+	return surface != browserWorkerSurface
+}
+
+func (surface toolSurface) browserWorkerTools() bool {
+	return surface == browserWorkerSurface
+}
+
+func (surface toolSurface) browserToolsAllowed() bool {
+	return surface.browserWorkerTools() || surface.browserTaskToolsAllowed()
+}
+
+func (surface toolSurface) browserTaskToolsAllowed() bool {
+	return surface == threadSurface || surface == widgetSurface
 }

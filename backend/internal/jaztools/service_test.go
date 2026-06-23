@@ -12,6 +12,8 @@ import (
 	"github.com/gluonfield/jazmem/pkg/jazmem"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/browsertask"
+	"github.com/wins/jaz/backend/internal/browserworker"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/memoryservice"
@@ -42,6 +44,8 @@ type fakeACPService struct {
 	spawned chan acp.SpawnRequest
 }
 
+type fakeBrowserBackend struct{}
+
 func (s fakeACPService) Spawn(_ context.Context, req acp.SpawnRequest) (acp.SpawnResult, error) {
 	s.spawned <- req
 	return acp.SpawnResult{Status: "ok", SessionID: "child", Slug: req.Slug, ACPAgent: req.ACPAgent, State: acp.StateIdle}, nil
@@ -69,6 +73,10 @@ func (s fakeACPService) List() []acp.Job {
 
 func (s fakeACPService) Agents() []string {
 	return []string{acp.AgentCodex, acp.AgentJaz}
+}
+
+func (fakeBrowserBackend) Call(context.Context, browserworker.ActionInput) (browserworker.ActionOutput, error) {
+	return browserworker.ActionOutput{Status: "ok", Text: "fake browser"}, nil
 }
 
 func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
@@ -563,6 +571,73 @@ func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 	}
 	if hasTool(t, widgetSession, "memory_get_page") {
 		t.Fatal("widget memory tool still advertised after memory was disabled")
+	}
+}
+
+func TestBrowserToolsAndWorkerSurface(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if _, err := jazsettings.SaveBrowserSettings(store, jazsettings.BrowserSettings{Enabled: true, Agent: acp.AgentCodex}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := jazsettings.SaveAgentDefaults(store, jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
+		acp.AgentCodex: {Enabled: true},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	memory, err := jazmem.Open(jazmem.Config{Root: t.TempDir(), DBPath: filepath.Join(t.TempDir(), "memory.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = memory.Close() })
+
+	service := New(
+		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"),
+		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
+		store,
+		sessionevents.New(),
+		store,
+		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
+	)
+	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
+	service.SetBrowser(browsertask.New(store, fakeACPService{spawned: make(chan acp.SpawnRequest, 1)}, acp.BuiltinAgents()), fakeBrowserBackend{})
+
+	session, closeSession := connectClient(t, service.Server())
+	defer closeSession()
+	for _, name := range []string{"browser_do", "browser_get", "browser_check"} {
+		if !hasTool(t, session, name) {
+			t.Fatalf("ordinary server missing %s", name)
+		}
+	}
+
+	browserSession, err := store.CreateSession(storage.CreateSession{
+		Slug:       "browser-linkedin",
+		Runtime:    storage.RuntimeACP,
+		SourceType: storage.SourceBrowserTask,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if service.surface(sessionRequest(browserSession.ID)) != browserWorkerSurface {
+		t.Fatal("browser task session did not route to browser worker surface")
+	}
+	queryReq, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1/mcp/jaztools?jaztools_surface=browser_worker", nil)
+	if service.surface(queryReq) != browserWorkerSurface {
+		t.Fatal("browser worker surface query did not route")
+	}
+
+	worker, closeWorker := connectClient(t, service.server(browserWorkerSurface))
+	defer closeWorker()
+	if !hasTool(t, worker, "browser") {
+		t.Fatal("worker server missing browser")
+	}
+	for _, name := range []string{"browser_do", "browser_get", "browser_check", "memory_search", "agent_spawn", "visualise_read_me"} {
+		if hasTool(t, worker, name) {
+			t.Fatalf("worker server advertised %s", name)
+		}
 	}
 }
 
