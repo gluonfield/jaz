@@ -126,6 +126,13 @@ export function getACPAuthLogin(id: string): Promise<ACPAuthLogin> {
   return get<ACPAuthLogin>(`/v1/acp/auth-logins/${encodeURIComponent(id)}`)
 }
 
+// Hands a code the browser printed back to a login process that's blocked
+// waiting for it — the remote/headless flow, where the CLI can't capture an
+// OAuth redirect on the user's machine.
+export function submitACPAuthLoginInput(id: string, input: string): Promise<ACPAuthLogin> {
+  return post<ACPAuthLogin>(`/v1/acp/auth-logins/${encodeURIComponent(id)}/input`, { input })
+}
+
 // Removes an agent's Jaz-managed credential (API key env + Jaz-profile OAuth);
 // never touches the user's global CLI config. Returns the canonical settings snapshot.
 export function disconnectACPAuth(agent: string): Promise<AgentSettings> {

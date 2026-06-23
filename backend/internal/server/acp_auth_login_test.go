@@ -116,6 +116,72 @@ echo ok
 	assertCodexLoginUsesFileCredentials(t, root)
 }
 
+// A headless/remote login can't capture an OAuth redirect, so the CLI blocks
+// reading a code from stdin; the relay endpoint must hand it back.
+func TestACPAuthLoginRelaysPastedCode(t *testing.T) {
+	home := t.TempDir()
+	bin := t.TempDir()
+	testexec.Write(t, filepath.Join(bin, "codex"), `#!/bin/sh
+echo "visit https://auth.example/login"
+read code
+echo "received=$code"
+printf '{}' > "$CODEX_HOME/auth.json"
+`, `@echo off
+echo visit https://auth.example/login
+set /p code=
+echo received=%code%
+echo {} > "%CODEX_HOME%\auth.json"
+`)
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	handler := (&Server{Store: store, Root: root}).Handler()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/acp/agents/codex/auth/login", strings.NewReader(`{"auth":{"mode":"jaz_profile"}}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("start status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var started acpAuthLoginResponse
+	if err := json.Unmarshal(res.Body.Bytes(), &started); err != nil {
+		t.Fatal(err)
+	}
+
+	// The mock blocks on `read`; the pipe buffers the code until it gets there.
+	in := httptest.NewRequest(http.MethodPost, "/v1/acp/auth-logins/"+started.ID+"/input", strings.NewReader(`{"input":"PASTE-CODE-9"}`))
+	in.Header.Set("Content-Type", "application/json")
+	inRes := httptest.NewRecorder()
+	handler.ServeHTTP(inRes, in)
+	if inRes.Code != http.StatusOK {
+		t.Fatalf("input status = %d, body = %s", inRes.Code, inRes.Body.String())
+	}
+
+	done := waitForACPAuthLogin(t, handler, started.ID)
+	if done.Status != "succeeded" {
+		t.Fatalf("login status = %#v", done)
+	}
+	if !strings.Contains(done.Output, "received=PASTE-CODE-9") {
+		t.Fatalf("login did not receive pasted code: %q", done.Output)
+	}
+
+	// Once the process has exited, the relay rejects further input.
+	late := httptest.NewRequest(http.MethodPost, "/v1/acp/auth-logins/"+started.ID+"/input", strings.NewReader(`{"input":"x"}`))
+	late.Header.Set("Content-Type", "application/json")
+	lateRes := httptest.NewRecorder()
+	handler.ServeHTTP(lateRes, late)
+	if lateRes.Code != http.StatusConflict {
+		t.Fatalf("late input status = %d, want 409 (body %s)", lateRes.Code, lateRes.Body.String())
+	}
+}
+
 func TestACPAuthLoginUsesJazProfileEvenWithExistingCodexAuth(t *testing.T) {
 	home := t.TempDir()
 	existing := filepath.Join(home, ".codex")
