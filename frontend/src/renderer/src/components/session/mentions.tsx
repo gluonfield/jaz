@@ -1,86 +1,26 @@
 import { useQuery } from '@tanstack/react-query'
-import { Sparkles } from 'lucide-react'
+import { useNavigate } from '@tanstack/react-router'
+import { ArrowRight, Sparkles } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
+import { AgentAvatar } from '@/components/acp/AgentAvatar'
+import { sessionQuery } from '@/lib/api/sessions'
 import { skillsQuery } from '@/lib/api/skills'
-
-// Inline mentions persist in message text as markdown-style links whose label
-// starts with a sigil: `[$skill-name](/abs/path/SKILL.md)` or
-// `[@rel/path](/abs/path)` — the same codec Codex uses for its history. The
-// text stays self-describing for the agent (name + full target inline) while
-// the UI decodes it back into styled tokens.
-
-export interface Mention {
-  sigil: '$' | '@'
-  /** visible token text without the sigil */
-  name: string
-  /** canonical target: absolute path, SKILL.md location, … */
-  target: string
-}
-
-export type MentionSegment = { text: string; mention?: Mention }
-
-// encodeMention renders a mention back to its wire form. Targets containing
-// spaces are wrapped in <> so the link also parses as valid CommonMark when
-// assistant prose echoes it.
-export function encodeMention(sigil: '$' | '@', name: string, target: string): string {
-  const destination = /\s/.test(target) ? `<${target}>` : target
-  return `[${sigil}${name}](${destination})`
-}
-
-// decodeMentions splits text into plain runs and mention tokens with a single
-// linear scan. Only links whose label starts with a sigil are treated as
-// mentions; everything else (including ordinary markdown links) passes
-// through untouched.
-export function decodeMentions(text: string): MentionSegment[] {
-  const segments: MentionSegment[] = []
-  let plainStart = 0
-  let i = 0
-  while (i < text.length) {
-    const mention = parseMentionAt(text, i)
-    if (mention) {
-      if (i > plainStart) segments.push({ text: text.slice(plainStart, i) })
-      segments.push({
-        text: `${mention.sigil}${mention.name}`,
-        mention: { sigil: mention.sigil, name: mention.name, target: mention.target },
-      })
-      i = mention.end
-      plainStart = i
-    } else {
-      i++
-    }
-  }
-  if (plainStart < text.length) segments.push({ text: text.slice(plainStart) })
-  return segments
-}
-
-function parseMentionAt(
-  text: string,
-  start: number,
-): { sigil: '$' | '@'; name: string; target: string; end: number } | null {
-  if (text[start] !== '[') return null
-  const sigil = text[start + 1]
-  if (sigil !== '$' && sigil !== '@') return null
-  const labelEnd = text.indexOf('](', start + 2)
-  if (labelEnd === -1) return null
-  const name = text.slice(start + 2, labelEnd)
-  if (name === '' || name.includes('\n') || name.includes('[')) return null
-  const targetEnd = text.indexOf(')', labelEnd + 2)
-  if (targetEnd === -1) return null
-  let target = text.slice(labelEnd + 2, targetEnd)
-  if (target.startsWith('<') && target.endsWith('>')) target = target.slice(1, -1)
-  if (target === '' || target.includes('\n')) return null
-  return { sigil, name, target, end: targetEnd + 1 }
-}
+import { decodeMentions, type Mention } from './mentionCodec'
 
 const PILL_CLASS = 'rounded-[4px] bg-primary-soft px-1 py-px text-primary-strong'
+const THREAD_PILL_CLASS =
+  'inline-flex max-w-full cursor-pointer items-center gap-1 rounded-[5px] bg-primary-soft px-1.5 py-px align-baseline text-primary-strong transition-colors hover:bg-primary/20'
+const SESSION_ID_RE = /^\d{8}T\d{6}-[a-f0-9]{8}$/i
 
 export function MentionPill({ mention }: { mention: Mention }) {
   if (mention.sigil === '$') return <SkillMentionPill mention={mention} />
+  if (mention.sigil === '@' && SESSION_ID_RE.test(mention.target)) {
+    return <ThreadMentionPill mention={mention} />
+  }
   return (
     <span title={mention.target} className={PILL_CLASS}>
-      {mention.sigil}
       {mention.name}
     </span>
   )
@@ -103,13 +43,63 @@ function SkillMentionPill({ mention }: { mention: Mention }) {
         {mention.sigil}
         {mention.name}
       </button>
-      <SkillPopover
+      <MentionPopover
         open={open}
         onClose={() => setOpen(false)}
         anchorRef={triggerRef}
-        name={mention.name}
-        description={description}
-      />
+      >
+        <div className="flex items-start gap-1.5">
+          <Sparkles size={13} className="mt-0.5 shrink-0 text-primary" />
+          <span className="min-w-0 break-words text-[13px] font-medium text-ink">{mention.name}</span>
+        </div>
+        <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-2">
+          {description || 'No description available for this skill.'}
+        </p>
+      </MentionPopover>
+    </>
+  )
+}
+
+function ThreadMentionPill({ mention }: { mention: Mention }) {
+  const [open, setOpen] = useState(false)
+  const navigate = useNavigate()
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const session = useQuery(sessionQuery(mention.target))
+  const fallbackTitle = mention.name.startsWith('thread/') ? 'Thread' : mention.name
+  const title = session.data?.title || fallbackTitle
+  const agent = session.data?.runtime_ref?.agent
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        title={mention.target}
+        onClick={() => setOpen((v) => !v)}
+        className={THREAD_PILL_CLASS}
+      >
+        <AgentAvatar agent={agent} size={13} className="text-primary-strong" />
+        <span className="min-w-0 truncate">{title}</span>
+      </button>
+      <MentionPopover open={open} onClose={() => setOpen(false)} anchorRef={triggerRef}>
+        <div className="flex items-start gap-2">
+          <AgentAvatar agent={agent} size={16} className="mt-0.5" />
+          <span className="min-w-0 break-words text-[13px] font-medium text-ink">{title}</span>
+        </div>
+        {session.isError ? (
+          <p className="mt-2 text-[12px] leading-relaxed text-ink-2">Thread details unavailable.</p>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(false)
+            navigate({ to: '/sessions/$sessionId', params: { sessionId: mention.target } })
+          }}
+          className="mt-2 -ml-1 inline-flex min-h-8 items-center gap-1 rounded-[6px] px-1 text-[12px] font-medium text-primary transition-[color,transform] duration-150 hover:text-primary-strong active:scale-[0.96]"
+        >
+          <span>Open thread</span>
+          <ArrowRight size={12} className="shrink-0" />
+        </button>
+      </MentionPopover>
     </>
   )
 }
@@ -120,18 +110,16 @@ const ANCHOR_GAP = 8
 
 type PopoverPos = { left: number; top?: number; bottom?: number; below: boolean }
 
-function SkillPopover({
+function MentionPopover({
   open,
   onClose,
   anchorRef,
-  name,
-  description,
+  children,
 }: {
   open: boolean
   onClose: () => void
   anchorRef: RefObject<HTMLButtonElement | null>
-  name: string
-  description?: string
+  children: ReactNode
 }) {
   const reduce = useReducedMotion()
   const panelRef = useRef<HTMLDivElement>(null)
@@ -194,13 +182,7 @@ function SkillPopover({
           style={{ left: pos.left, top: pos.top, bottom: pos.bottom, width: POPOVER_WIDTH }}
           className="fixed z-tooltip rounded-card bg-surface p-3.5 shadow-raised ring-1 ring-border/70"
         >
-          <div className="flex items-start gap-1.5">
-            <Sparkles size={13} className="mt-0.5 shrink-0 text-primary" />
-            <span className="min-w-0 break-words text-[13px] font-medium text-ink">{name}</span>
-          </div>
-          <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-2">
-            {description || 'No description available for this skill.'}
-          </p>
+          {children}
         </motion.div>
       ) : null}
     </AnimatePresence>,

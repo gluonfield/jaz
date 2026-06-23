@@ -13,18 +13,17 @@ import (
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/wins/jaz/backend/internal/filepathx"
 	"github.com/wins/jaz/backend/internal/provider"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-func (m *Manager) runPrompt(ctx context.Context, job *Job, message string, attachments []storage.Attachment) {
+func (m *Manager) runPrompt(ctx context.Context, job *jobState, message string, attachments []storage.Attachment) {
 	job.turnMu.Lock()
 	defer job.turnMu.Unlock()
 
-	job.mu.RLock()
-	done := job.done
-	job.mu.RUnlock()
+	done := job.turnDone()
 	if done == nil {
-		done = job.startTurn(CompletionInline, false, false, false)
+		done = job.startTurn(CompletionInline, false, false)
 	}
 
 	peer := m.peer(job.ID)
@@ -45,49 +44,128 @@ func (m *Manager) runPrompt(ctx context.Context, job *Job, message string, attac
 	}
 	prompt, err := promptContentBlocks(message, attachments, resolver)
 	if err != nil {
-		m.failTurn(job, err)
-		m.finishTurn(done, job)
+		m.failPromptCall(done, job, err)
 		return
 	}
-	raw, err := peer.Call(ctx, acpschema.AgentMethodSessionPrompt, map[string]any{
-		"sessionId": job.ACPSession,
-		"prompt":    prompt,
+	m.runPromptCall(ctx, job, done, acpschema.PromptRequest{
+		SessionID: acpschema.SessionID(job.ACPSession),
+		Prompt:    prompt,
 	})
+}
+
+func (m *Manager) runPromptCall(ctx context.Context, job *jobState, done chan struct{}, req acpschema.PromptRequest) {
+	peer := m.peer(job.ID)
+	if peer == nil {
+		m.failPromptCall(done, job, fmt.Errorf("acp peer is not active"))
+		return
+	}
+	raw, err := peer.Call(ctx, acpschema.AgentMethodSessionPrompt, req)
 	if err != nil {
-		m.failTurn(job, err)
-		m.finishTurn(done, job)
+		m.failPromptCall(done, job, err)
 		return
 	}
 	var resp struct {
 		StopReason string `json:"stopReason"`
 	}
 	if err := json.Unmarshal(raw, &resp); err != nil {
-		m.failTurn(job, err)
-		m.finishTurn(done, job)
+		m.failPromptCall(done, job, err)
 		return
 	}
 	m.recordRawUsage(job, raw)
-	stopReason := resp.StopReason
+	m.completePromptCall(done, job, resp.StopReason)
+}
+
+func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReason string) {
 	state := StateIdle
 	if jobCancelRequested(job) || stopReason == "cancelled" {
 		state = StateCancelled
 		stopReason = "cancelled"
 	}
-	job.setState(state, stopReason, "")
+	job.mu.Lock()
+	turn := job.turn
+	if turn == nil || turn.done != done {
+		job.mu.Unlock()
+		return
+	}
+	if turn.promptCalls > 0 {
+		turn.promptCalls--
+	}
+	remaining := turn.promptCalls
+	if state == StateIdle && remaining > 0 {
+		job.UpdatedAt = time.Now().UTC()
+		job.mu.Unlock()
+		m.log.Info("acp prompt handed off", "session", job.ID, "remaining_prompt_calls", remaining)
+		return
+	}
+	turn.promptCalls = 0
+	job.State = state
+	job.StopReason = stopReason
+	job.Error = ""
+	job.UpdatedAt = time.Now().UTC()
+	job.mu.Unlock()
 	m.log.Info("acp turn finished", "session", job.ID, "state", state, "stop_reason", stopReason)
 	m.publishACPStatus(job.Snapshot())
 	m.appendAssistantMessage(job)
 	m.finishTurn(done, job)
 }
 
-func jobCancelRequested(job *Job) bool {
+func (m *Manager) failPromptCall(done chan struct{}, job *jobState, err error) {
+	job.mu.Lock()
+	turn := job.turn
+	if turn == nil || turn.done != done {
+		job.mu.Unlock()
+		return
+	}
+	if turn.promptCalls > 0 {
+		turn.promptCalls--
+	}
+	turn.promptCalls = 0
+	job.mu.Unlock()
+	m.failTurn(job, err)
+	m.finishTurn(done, job)
+}
+
+func (m *Manager) finishTurn(done chan struct{}, job *jobState) {
+	job.mu.Lock()
+	turn := job.turn
+	if turn == nil || turn.done != done {
+		job.mu.Unlock()
+		return
+	}
+	job.turn = nil
+	completion := turn.completion
+	planRequested := turn.planRequested
+	parentVisible := job.ParentVisible
+	job.mu.Unlock()
+	m.cancelPendingPermissions(job.ID)
+	m.resolveDanglingToolCalls(job)
+	snapshot := job.Snapshot()
+	if snapshot.State == StateIdle || snapshot.State == StateFailed || snapshot.State == StateCancelled {
+		if planRequested && snapshot.State == StateIdle {
+			m.publishPlanTurnResult(snapshot)
+		}
+		m.compactSessionEvents(snapshot.ID)
+		m.touchAttention(surfaceSessionIDs(&snapshot)...)
+	}
+	if m.TurnFinished != nil {
+		m.TurnFinished(context.Background(), snapshot)
+	}
+	if done != nil {
+		close(done)
+	}
+	if completion.propagates() && parentVisible && !planRequested && m.Done != nil {
+		go m.Done(context.Background(), snapshot)
+	}
+}
+
+func jobCancelRequested(job *jobState) bool {
 	job.mu.RLock()
-	cancelled := job.cancelRequested
+	cancelled := job.turn != nil && job.turn.cancelRequested
 	job.mu.RUnlock()
 	return cancelled
 }
 
-func (m *Manager) attachmentResourceResolver(job *Job) (attachmentResourceResolver, error) {
+func (m *Manager) attachmentResourceResolver(job *jobState) (attachmentResourceResolver, error) {
 	cfg, ok, err := m.configuredAgent(job.ACPAgent)
 	if err != nil {
 		return attachmentResourceResolver{}, err
@@ -119,33 +197,6 @@ func (r attachmentResourceResolver) URI(attachment storage.Attachment) (string, 
 		return uri, nil
 	}
 	return "", fmt.Errorf("attachment %q has no resource URI", attachment.Name)
-}
-
-// messageWithSelections prepends text the user quoted from earlier responses as
-// a labeled block so the agent can tell each selection apart from the
-// instruction. This is the single place selections are rendered into a prompt;
-// immediate and queued sends both route their quotes through here.
-func messageWithSelections(message string, quotes []string) string {
-	selections := make([]string, 0, len(quotes))
-	for _, quote := range quotes {
-		if trimmed := strings.TrimSpace(quote); trimmed != "" {
-			selections = append(selections, trimmed)
-		}
-	}
-	if len(selections) == 0 {
-		return message
-	}
-	var b strings.Builder
-	b.WriteString("<selected_text>\n")
-	for i, selection := range selections {
-		fmt.Fprintf(&b, "<selection n=\"%d\">\n%s\n</selection>\n", i+1, selection)
-	}
-	b.WriteString("</selected_text>")
-	if strings.TrimSpace(message) != "" {
-		b.WriteString("\n\n")
-		b.WriteString(message)
-	}
-	return b.String()
 }
 
 func promptContentBlocks(message string, attachments []storage.Attachment, resolver attachmentResourceResolver) ([]acpschema.ContentBlock, error) {
@@ -199,11 +250,8 @@ func marshalContentBlock(block any) (acpschema.ContentBlock, error) {
 
 // A turn that died after a cancel request ends as cancelled, not failed; both
 // outcomes are published so the UI and stored status reflect them.
-func (m *Manager) failTurn(job *Job, err error) {
-	job.mu.RLock()
-	cancelled := job.cancelRequested
-	job.mu.RUnlock()
-	if cancelled {
+func (m *Manager) failTurn(job *jobState, err error) {
+	if jobCancelRequested(job) {
 		job.setState(StateCancelled, "cancelled", "")
 		m.log.Info("acp turn cancelled", "session", job.ID)
 	} else {
@@ -280,34 +328,6 @@ func jsonErrorMessage(raw json.RawMessage) string {
 	return strings.TrimSpace(payload.Message)
 }
 
-func (m *Manager) finishTurn(done chan struct{}, job *Job) {
-	job.mu.Lock()
-	completion := job.completion
-	planRequested := job.planRequested
-	parentVisible := job.ParentVisible
-	job.completion = CompletionInline
-	job.interactive = false
-	job.planRequested = false
-	job.mu.Unlock()
-	m.cancelPendingPermissions(job.ID)
-	m.resolveDanglingToolCalls(job)
-	snapshot := job.Snapshot()
-	if snapshot.State == StateIdle || snapshot.State == StateFailed || snapshot.State == StateCancelled {
-		if planRequested && snapshot.State == StateIdle {
-			m.publishPlanTurnResult(snapshot)
-		}
-		m.compactSessionEvents(snapshot.ID)
-		m.touchAttention(surfaceSessionIDs(&snapshot)...)
-	}
-	if m.TurnFinished != nil {
-		m.TurnFinished(context.Background(), snapshot)
-	}
-	close(done)
-	if completion.propagates() && parentVisible && !planRequested && m.Done != nil {
-		go m.Done(context.Background(), snapshot)
-	}
-}
-
 func (m *Manager) compactSessionEvents(sessionID string) {
 	compactor, ok := m.store.(storage.SessionEventCompactor)
 	if !ok {
@@ -325,7 +345,7 @@ func (m *Manager) compactSessionEvents(sessionID string) {
 
 // A cancelled or failed turn leaves the agent's in-flight tool calls without
 // terminal updates; resolve them so they don't render as running forever.
-func (m *Manager) resolveDanglingToolCalls(job *Job) {
+func (m *Manager) resolveDanglingToolCalls(job *jobState) {
 	job.mu.Lock()
 	state := job.State
 	if state != StateCancelled && state != StateFailed {
@@ -336,12 +356,14 @@ func (m *Manager) resolveDanglingToolCalls(job *Job) {
 	if state == StateFailed {
 		status = "failed"
 	}
-	var updated []ToolCallSnapshot
+	now := time.Now().UTC()
+	var updated []sessionevents.ACPToolCall
 	for id, call := range job.toolByID {
 		if terminalToolStatus(call.Status) {
 			continue
 		}
 		call.Status = status
+		call.UpdatedAt = now
 		job.toolByID[id] = call
 		updated = append(updated, call)
 	}
@@ -350,7 +372,8 @@ func (m *Manager) resolveDanglingToolCalls(job *Job) {
 		return
 	}
 	job.ToolCalls = sortedToolCalls(job.toolByID)
-	job.UpdatedAt = time.Now().UTC()
+	job.UpdatedAt = now
+	job.LastEventAt = now
 	sessionID := job.ID
 	job.mu.Unlock()
 	m.log.Info("resolved dangling tool calls", "session", sessionID, "count", len(updated), "status", status)
@@ -374,9 +397,9 @@ func terminalToolStatus(status string) bool {
 	return false
 }
 
-func (m *Manager) appendAssistantMessage(job *Job) {
+func (m *Manager) appendAssistantMessage(job *jobState) {
 	job.mu.Lock()
-	if job.planRequested {
+	if job.turn != nil && job.turn.planRequested {
 		job.mu.Unlock()
 		return
 	}

@@ -59,7 +59,7 @@ export function FileReaderPanel({
         <input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          placeholder="/Users/wins/project/src/file.ts"
+          placeholder="Path to a file"
           spellCheck={false}
           className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-ink outline-none placeholder:text-ink-3"
         />

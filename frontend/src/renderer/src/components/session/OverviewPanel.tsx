@@ -3,8 +3,11 @@ import {
   ArchiveRestore,
   ArrowDownToLine,
   ArrowUpFromLine,
+  Ban,
   Check,
+  CheckCircle2,
   ChevronDown,
+  CircleAlert,
   Copy,
   ExternalLink,
   FileSearch,
@@ -23,11 +26,13 @@ import { setSessionArchived } from '@/lib/api/sessions'
 import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
 import type { RepoInfo, Session } from '@/lib/api/types'
 import { writeClipboard } from '@/lib/clipboard'
+import type { ProviderSubagentView } from '@/lib/providerSubagents'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { taskStepState, type TaskSurface } from '@/lib/taskSurface'
 import { keys } from '@/lib/query/keys'
+import { AgentAvatar } from '@/components/acp/AgentAvatar'
 import { SidePanelShell } from './SidePanelShell'
-import { encodeMention } from './mentions'
+import { encodeMention } from './mentionCodec'
 import { TaskStepIcon } from './TaskChecklist'
 import { useRepoActions } from './useRepoActions'
 
@@ -36,11 +41,13 @@ export const OVERVIEW_PANEL_WIDTH = 300
 export function OverviewPanel({
   session,
   progress,
+  subagents,
   working,
   onSend,
 }: {
   session: Session
   progress?: TaskSurface
+  subagents: ProviderSubagentView[]
   working: boolean
   onSend: (text: string, options?: SendMessageOptions) => void
 }) {
@@ -48,6 +55,7 @@ export function OverviewPanel({
   const showGit = Boolean(repo.cwd && (repo.info?.git || repo.info?.worktree_missing))
   return (
     <SidePanelShell width={OVERVIEW_PANEL_WIDTH} variant="hug" className="gap-6 px-4 py-4">
+      {subagents.length ? <SubagentsSection subagents={subagents} /> : null}
       {progress ? <ProgressSection progress={progress} working={working} /> : null}
       {showGit ? <GitSection repo={repo} /> : null}
       <ManageSection session={session} repo={repo} onSend={onSend} />
@@ -55,8 +63,115 @@ export function OverviewPanel({
   )
 }
 
+type SubagentStatus = 'working' | 'completed' | 'failed' | 'cancelled'
+
+const SUBAGENT_STATUS: Record<SubagentStatus, { label: string; className: string; Icon: LucideIcon; spin?: boolean }> = {
+  working: { label: 'working', className: 'text-running', Icon: LoaderCircle, spin: true },
+  completed: { label: 'completed', className: 'text-primary', Icon: CheckCircle2 },
+  failed: { label: 'failed', className: 'text-danger', Icon: CircleAlert },
+  cancelled: { label: 'cancelled', className: 'text-ink-3', Icon: Ban },
+}
+
 function SectionHeader({ children }: { children: ReactNode }) {
   return <p className="text-[11px] font-medium tracking-wide text-ink-3 uppercase">{children}</p>
+}
+
+function SubagentsSection({ subagents }: { subagents: ProviderSubagentView[] }) {
+  return (
+    <section>
+      <div className="mb-2">
+        <SectionHeader>Subagents</SectionHeader>
+      </div>
+      <ul className="flex flex-col gap-1.5">
+        {subagents.map((subagent) => (
+          <SubagentRow key={subagent.key} subagent={subagent} />
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+function SubagentRow({ subagent }: { subagent: ProviderSubagentView }) {
+  const [expanded, setExpanded] = useState(false)
+  const status = SUBAGENT_STATUS[subagentStatus(subagent.status)]
+  const title = subagentTitle(subagent)
+  const detail = subagentSummary(subagent.summary)
+  const prompt = subagent.prompt?.trim() ?? ''
+  return (
+    <li className="min-w-0 rounded-md">
+      <button
+        type="button"
+        disabled={!prompt}
+        title={prompt ? (expanded ? 'Hide prompt' : 'Show prompt') : undefined}
+        onClick={() => setExpanded((open) => !open)}
+        className="flex min-h-10 w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left transition-colors duration-150 enabled:cursor-pointer enabled:hover:bg-surface-2 disabled:cursor-default"
+      >
+        <AgentAvatar agent={subagent.provider} size={17} />
+        <span className="flex min-w-0 flex-1 flex-col justify-center">
+          <span className="block truncate text-[13px] font-medium leading-5 text-ink" title={title}>
+            {title}
+          </span>
+          {detail && detail !== title ? (
+            <span className="mt-0.5 block truncate text-[12px] leading-snug text-ink-3" title={detail}>
+              {detail}
+            </span>
+          ) : null}
+        </span>
+        <span
+          className={`inline-flex h-5 w-5 shrink-0 items-center justify-center ${status.className}`}
+          title={status.label}
+          aria-label={status.label}
+        >
+          <status.Icon size={13} className={status.spin ? 'animate-spin' : ''} aria-hidden />
+        </span>
+        {prompt ? (
+          <ChevronDown
+            size={13}
+            className={`shrink-0 text-ink-3 transition-transform duration-150 ${expanded ? 'rotate-180' : ''}`}
+            aria-hidden
+          />
+        ) : null}
+      </button>
+      {expanded && prompt ? (
+        <p className="ml-[25px] max-h-28 overflow-y-auto whitespace-pre-wrap px-1 pb-1 text-[11px] leading-snug text-ink-3">
+          {prompt}
+        </p>
+      ) : null}
+    </li>
+  )
+}
+
+function subagentStatus(status: string | undefined): SubagentStatus {
+  const normalized = status?.toLowerCase()
+  if (normalized === 'completed' || normalized === 'shutdown' || normalized === 'closed') return 'completed'
+  if (normalized === 'failed' || normalized === 'errored' || normalized === 'error' || normalized === 'not_found') {
+    return 'failed'
+  }
+  if (normalized === 'cancelled' || normalized === 'canceled' || normalized === 'interrupted') return 'cancelled'
+  return 'working'
+}
+
+function subagentTitle(subagent: ProviderSubagentView): string {
+  return firstText(subagent.name, subagent.role) || 'Subagent'
+}
+
+function subagentSummary(summary: string | undefined): string | undefined {
+  const text = summary?.trim()
+  if (!text) return undefined
+  switch (text.toLowerCase()) {
+    case 'spawned':
+    case 'working':
+    case 'waiting':
+    case 'wait finished':
+    case 'responded':
+      return undefined
+    default:
+      return text
+  }
+}
+
+function firstText(...values: Array<string | undefined>): string {
+  return values.find((value) => value?.trim())?.trim() ?? ''
 }
 
 function ActionRow({

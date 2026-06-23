@@ -9,7 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -17,11 +17,15 @@ import (
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/gluonfield/acp-transport/stdio"
 	"github.com/gluonfield/acp-transport/streamhttp"
+	"github.com/wins/jaz/backend/internal/processenv"
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/skills"
 )
 
-const processStderrTailLimit = 2000
+const (
+	processStderrTailLimit = 2000
+	acpProcessStdioDrain   = 2 * time.Second
+)
 
 type processStderrTail struct {
 	mu   sync.Mutex
@@ -92,11 +96,14 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	if err != nil {
 		return nil, nil, err
 	}
-	if resolved, err := ResolveExecutable(command); err == nil {
-		command = resolved
-	}
+	command, args = launchCommand(command, args)
+	addCommandDirToPath(env, command)
 	cmd := exec.CommandContext(ctx, command, args...)
-	cmd.Env = envList(env)
+	prepareProcessCommand(cmd)
+	process := newProcessSupervisor(cmd)
+	cmd.Cancel = process.terminate
+	cmd.WaitDelay = acpProcessStdioDrain
+	cmd.Env = processenv.List(env)
 	if cwd != "" {
 		cmd.Dir = cwd
 	}
@@ -113,46 +120,97 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	if err := cmd.Start(); err != nil {
 		return nil, nil, fmt.Errorf("start acp agent %q (%s): %w", name, strings.Join(append([]string{command}, args...), " "), err)
 	}
+	if err := process.started(); err != nil {
+		_ = process.terminate()
+		_ = cmd.Wait()
+		stderr.close()
+		return nil, stderr, fmt.Errorf("prepare acp agent %q process: %w", name, err)
+	}
 	conn := stdio.New(stdout, stdin)
 	go func() {
 		_ = cmd.Wait()
+		_ = process.terminate()
 		stderr.close()
 		_ = conn.Close()
 	}()
 	return conn, stderr, nil
 }
 
+func launchCommand(command string, args []string) (string, []string) {
+	resolved, err := ResolveExecutable(command)
+	if err != nil {
+		return command, args
+	}
+	return resolvedLaunchCommand(runtime.GOOS, command, resolved, args)
+}
+
+func resolvedLaunchCommand(goos, configured, resolved string, args []string) (string, []string) {
+	if goos != "windows" || !isWindowsCommandScript(resolved) {
+		return resolved, args
+	}
+	script := resolved
+	if !filepath.IsAbs(configured) && !strings.ContainsAny(configured, `/\`) {
+		script = configured
+	}
+	wrapped := append([]string{"/d", "/s", "/c", "call", script}, args...)
+	return "cmd.exe", wrapped
+}
+
+func isWindowsCommandScript(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".cmd" || ext == ".bat"
+}
+
+func addCommandDirToPath(env map[string]string, command string) {
+	if env == nil || runtime.GOOS == "windows" || !filepath.IsAbs(command) {
+		return
+	}
+	dir := filepath.Dir(command)
+	if dir == "." || dir == string(filepath.Separator) || pathHasDir(env["PATH"], dir) {
+		return
+	}
+	if env["PATH"] == "" {
+		env["PATH"] = dir
+		return
+	}
+	env["PATH"] = dir + string(os.PathListSeparator) + env["PATH"]
+}
+
+func pathHasDir(pathList, dir string) bool {
+	for _, part := range filepath.SplitList(pathList) {
+		if part == dir {
+			return true
+		}
+	}
+	return false
+}
+
 func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
-	env, _ := m.buildProcessEnv(name, agent, "", "", nil, true)
+	env, _ := m.buildProcessEnv(context.Background(), name, agent, "", "", nil, true)
 	return env
 }
 
 func (m *Manager) processEnvPrepared(name string, agent AgentConfig) (map[string]string, error) {
-	return m.processEnvPreparedForSurface(name, agent, "", "", nil)
+	return m.processEnvPreparedForSurface(context.Background(), name, agent, "", "", nil)
 }
 
-func (m *Manager) processEnvPreparedForSurface(name string, agent AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (map[string]string, error) {
-	return m.buildProcessEnv(name, agent, cwd, artifactSurface, systemPromptExtensions, true)
+func (m *Manager) processEnvPreparedForSurface(ctx context.Context, name string, agent AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (map[string]string, error) {
+	return m.buildProcessEnv(ctx, name, agent, cwd, artifactSurface, systemPromptExtensions, true)
 }
 
 func (m *Manager) probeEnv(name string, agent AgentConfig) map[string]string {
-	env, _ := m.buildProcessEnv(name, agent, "", "", nil, false)
+	env, _ := m.buildProcessEnv(context.Background(), name, agent, "", "", nil, false)
 	return env
 }
 
-func (m *Manager) buildProcessEnv(name string, agent AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules, prepare bool) (map[string]string, error) {
+func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules, prepare bool) (map[string]string, error) {
 	name = CanonicalAgentName(name)
 	cwd = strings.TrimSpace(cwd)
 	if cwd == "" {
 		cwd = strings.TrimSpace(agent.Cwd)
 	}
-	env := map[string]string{}
+	env := processenv.Base()
 	var prepareErr error
-	for _, key := range []string{"PATH"} {
-		if value := os.Getenv(key); value != "" {
-			env[key] = value
-		}
-	}
 	for key, value := range m.cfg.Env {
 		env[key] = value
 	}
@@ -204,7 +262,7 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, cwd, artifactS
 			"SSH_AUTH_SOCK",
 			"USER",
 		}
-		preserveHostEnv(env, claudeHostEnv)
+		processenv.PreserveHost(env, claudeHostEnv...)
 		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.providers())
 		if auth.Config.Mode == AuthModeJazProfile {
 			delete(env, "ANTHROPIC_AUTH_TOKEN")
@@ -235,7 +293,7 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, cwd, artifactS
 		}
 	}
 	if name == AgentGrok {
-		preserveHostEnv(env, []string{
+		processenv.PreserveHost(env,
 			"HTTP_PROXY",
 			"HTTPS_PROXY",
 			"LANG",
@@ -246,7 +304,7 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, cwd, artifactS
 			"SHELL",
 			"SSH_AUTH_SOCK",
 			"USER",
-		})
+		)
 		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.providers())
 		normalizeEnv(env, "XAI_API_KEY", "XAI_APIKEY")
 		delete(env, "XAI_API_KEY")
@@ -255,14 +313,14 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, cwd, artifactS
 		}
 	}
 	if name == AgentOpenCode {
-		preserveHostEnv(env, []string{
+		processenv.PreserveHost(env,
 			"HTTP_PROXY",
 			"HTTPS_PROXY",
 			"LANG",
 			"LC_ALL",
 			"LC_CTYPE",
 			"NO_PROXY",
-		})
+		)
 		m.loadOpenCodeProviderEnv(env, root)
 		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.providers())
 		if strings.TrimSpace(env["OPENCODE_CONFIG_DIR"]) == "" {
@@ -272,7 +330,7 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, cwd, artifactS
 			if err := os.MkdirAll(env["OPENCODE_CONFIG_DIR"], 0o700); err != nil {
 				prepareErr = firstError(prepareErr, fmt.Errorf("prepare opencode profile %s: %w", env["OPENCODE_CONFIG_DIR"], err))
 			}
-			if err := m.prepareOpenCodeConfig(env, agent, cwd, artifactSurface, systemPromptExtensions); err != nil {
+			if err := m.prepareOpenCodeConfig(ctx, env, agent, cwd, artifactSurface, systemPromptExtensions); err != nil {
 				prepareErr = firstError(prepareErr, err)
 			}
 		}
@@ -395,17 +453,6 @@ func firstError(current, next error) error {
 	return next
 }
 
-func preserveHostEnv(env map[string]string, keys []string) {
-	for _, key := range keys {
-		if env[key] != "" {
-			continue
-		}
-		if value := os.Getenv(key); value != "" {
-			env[key] = value
-		}
-	}
-}
-
 func normalizeEnv(env map[string]string, canonical, alias string) {
 	if env[canonical] == "" {
 		env[canonical] = env[alias]
@@ -414,21 +461,6 @@ func normalizeEnv(env map[string]string, canonical, alias string) {
 	if env[canonical] == "" {
 		delete(env, canonical)
 	}
-}
-
-func envList(env map[string]string) []string {
-	keys := make([]string, 0, len(env))
-	for key, value := range env {
-		if value != "" {
-			keys = append(keys, key)
-		}
-	}
-	sort.Strings(keys)
-	out := make([]string, 0, len(keys))
-	for _, key := range keys {
-		out = append(out, key+"="+env[key])
-	}
-	return out
 }
 
 func autoAuthMethod(agent string, raw json.RawMessage, env map[string]string) (string, []string) {

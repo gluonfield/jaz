@@ -1,14 +1,16 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { ArrowDown, FileText } from 'lucide-react'
+import { ArrowDown } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BottomDock } from '@/components/session/BottomDock'
 import { Composer, PlanDecisionCard } from '@/components/session/Composer'
-import { MessageQuotes } from '@/components/session/MessageQuotes'
-import { SelectionQuoteToolbar } from '@/components/session/SelectionQuoteToolbar'
-import { useComposerQuotes } from '@/components/session/useComposerQuotes'
+import { LiveAttachmentList } from '@/components/session/LiveAttachmentList'
+import { MessageContexts } from '@/components/session/MessageContexts'
+import { SelectionContextToolbar } from '@/components/session/SelectionContextToolbar'
+import { useFileReferencePreview } from '@/components/session/useFileReferencePreview'
+import { useComposerContexts } from '@/components/session/useComposerContexts'
 import { FileReaderLinkProvider, MessageMarkdown, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
 import { MentionText } from '@/components/session/mentions'
 import { SessionErrorNotice } from '@/components/session/SessionErrorNotice'
@@ -24,25 +26,27 @@ import { TokenStats } from '@/components/session/TokenStats'
 import { ToolCallCard } from '@/components/session/ToolCallCard'
 import { Transcript } from '@/components/session/Transcript'
 import { THREAD_COLUMN_CLASS } from '@/components/session/threadLayout'
-import { isArtifactToolName, isHiddenToolName } from '@/components/session/toolVisibility'
+import { isArtifactToolName } from '@/components/session/toolVisibility'
 import { useThreadFind } from '@/components/session/useThreadFind'
 import { useThreadAutoScroll } from '@/components/session/useThreadAutoScroll'
+import { liveExchangeSize, liveUserMessage, useLiveSessionSend } from '@/components/session/useLiveSessionSend'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Skeleton, SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import {
   answerSessionInteractiveResponse,
   cancelSession,
+  sendSessionSideChat,
   sessionMessagesQuery,
   sessionRepoQuery,
   uploadSessionAttachment,
 } from '@/lib/api/sessions'
-import { streamSessionMessage } from '@/lib/api/stream'
-import type { ACPJobSnapshot, ACPModeState, ChatMessage, SessionEvent, SessionMessages } from '@/lib/api/types'
+import type { ACPJobSnapshot, ACPModeState, ChatMessage, Session, SessionEvent, SessionMessages } from '@/lib/api/types'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
 import { takePendingMessage } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
+import { providerSubagentsFromEvents } from '@/lib/providerSubagents'
 import {
   approvalPlanSurfaceFromEvent,
   hasProgressSignal,
@@ -50,7 +54,7 @@ import {
   taskSurfaceBelongsToSession,
 } from '@/lib/taskSurface'
 import type { SendMessageOptions } from '@/lib/sendMessage'
-import { coalesceSessionEvents } from '@/lib/sessionEvents'
+import { coalesceSessionEvents, sessionEventPlacement } from '@/lib/sessionEvents'
 import { activePermissionIDs, isPermissionAwaitingResponse, resolveInactivePermissions } from '@/lib/sessionPermissions'
 import { latestEventTimeISO } from '@/lib/sessionLiveness'
 
@@ -73,28 +77,8 @@ function SessionRoute() {
   return <SessionPage key={sessionId} sessionId={sessionId} search={search} />
 }
 
-// One in-flight user → assistant exchange, rendered after the transcript
-// while it streams; replaced by the refetched server history on completion.
-interface LiveExchange {
-  user: string
-  at: string
-  planRequested: boolean
-  quotes: string[]
-  attachments: LiveAttachment[]
-  reasoning: string
-  assistant: string
-  tools: { key: string; name: string; args?: string; result?: string }[]
-  error?: string
-}
-
-interface LiveAttachment {
-  id?: string
-  name: string
-  uri?: string
-  mime_type?: string
-  size?: number
-  server_path?: string
-  uploading?: boolean
+function isCodexACPSession(session: Session | undefined): boolean {
+  return session?.runtime === 'acp' && session.runtime_ref?.agent?.trim().toLowerCase() === 'codex'
 }
 
 function stripACPError(event: SessionEvent): SessionEvent {
@@ -113,17 +97,6 @@ function stripProgressSignal(event: SessionEvent): SessionEvent {
 
 function sessionEventErrorMessage(event: SessionEvent): string {
   return event.acp?.error?.trim() ?? ''
-}
-
-function finishLiveAttachments(attachments: LiveAttachment[]): LiveAttachment[] {
-  return attachments.map((attachment) => ({ ...attachment, uploading: false }))
-}
-
-function formatAttachmentSize(size?: number): string {
-  if (!size) return ''
-  if (size < 1024) return `${size} B`
-  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function modeStateKnown(modes?: ACPModeState): boolean {
@@ -145,26 +118,6 @@ function latestACPModeState(sessionId: string, events: SessionEvent[]): ACPModeS
     latest = event.acp.modes
   }
   return latest
-}
-
-function LiveAttachmentList({ attachments }: { attachments: LiveAttachment[] }) {
-  if (!attachments.length) return null
-  return (
-    <div className="mt-2 flex flex-wrap gap-1">
-      {attachments.map((attachment, index) => (
-        <span
-          key={attachment.id ?? `${attachment.name}-${index}`}
-          className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-bg px-2.5 py-1 text-xs text-ink-2"
-        >
-          <FileText size={13} className="shrink-0 text-primary" />
-          <span className="max-w-[220px] truncate text-ink">{attachment.name}</span>
-          <span className="shrink-0 text-ink-3">
-            {attachment.uploading ? 'Uploading' : formatAttachmentSize(attachment.size)}
-          </span>
-        </span>
-      ))}
-    </div>
-  )
 }
 
 function ScrollToBottomButton({ visible, onClick }: { visible: boolean; onClick: () => void }) {
@@ -193,7 +146,7 @@ function ScrollToBottomButton({ visible, onClick }: { visible: boolean; onClick:
 
 function acpSnapshotEvents(job: ACPJobSnapshot, pageSessionID: string): SessionEvent[] {
   if (job.parent_id === pageSessionID && job.parent_visible === false) return []
-  const at = job.updated_at
+  const at = job.last_event_at || job.updated_at
   const events: SessionEvent[] = []
   if (
     job.assistant ||
@@ -214,6 +167,9 @@ function acpSnapshotEvents(job: ACPJobSnapshot, pageSessionID: string): SessionE
         parent_id: job.parent_id,
         agent: job.acp_agent,
         session_id: job.acp_session,
+        model_provider: job.model_provider,
+        model: job.model,
+        reasoning_effort: job.reasoning_effort,
         state: job.state,
         stop_reason: job.stop_reason,
         assistant: job.assistant,
@@ -223,6 +179,8 @@ function acpSnapshotEvents(job: ACPJobSnapshot, pageSessionID: string): SessionE
         plan: job.plan,
         tool_calls: job.tool_calls,
         permissions: job.permissions,
+        last_event_at: job.last_event_at,
+        last_tool_at: job.last_tool_at,
       },
     })
   }
@@ -292,6 +250,8 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
     acp_tool_calls: acpToolCalls,
     acp_permissions: acpPermissions,
     acp_error: acpError,
+    acp_last_event_at: acpLastEventAt,
+    acp_last_tool_at: acpLastToolAt,
     acp_children: acpChildren,
     events: persistedEvents = [],
   } = data
@@ -313,6 +273,9 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
             parent_id: session.parent_id,
             acp_agent: session.runtime_ref?.agent ?? 'acp',
             acp_session: session.runtime_ref?.session_id ?? '',
+            model_provider: session.model_provider,
+            model: session.model,
+            reasoning_effort: session.reasoning_effort,
             state: acpState ?? session.status,
             assistant: eventsCoverOwnACP ? undefined : acpAssistant,
             thought: eventsCoverOwnACP ? undefined : acpThought,
@@ -321,6 +284,8 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
             plan: acpPlan,
             tool_calls: eventsCoverOwnACP ? undefined : acpToolCalls,
             permissions: acpPermissions,
+            last_event_at: acpLastEventAt,
+            last_tool_at: acpLastToolAt,
             updated_at: session.updated_at,
           },
           session.id,
@@ -334,7 +299,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
   const transcriptEvents = coalesceSessionEvents(
     [...persistedEvents, ...snapshotEvents, ...liveEvents].flatMap((event) => {
       // 'assistant' events are refresh signals; the message store has the content.
-      if (event.type === 'assistant') return []
+      if (event.type === 'assistant' || sessionEventPlacement(event) === 'side_chat') return []
       // Old rows round-tripped a typed-nil ACP into an empty struct.
       if (event.acp && !event.acp.id) event = { ...event, acp: undefined }
       const sanitized = sanitizeParentChildACPEvent(event, session.id)
@@ -371,13 +336,20 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
   // Progress lives in the side panel, never in the thread; only a proposed
   // plan that needs the user's approval stays inline. Errors are
   // notified as toasts, not rendered as rows.
-  const displayEvents = settledTranscriptEvents.map((event) => {
-    const withoutError = stripACPError(event)
-    if (!hasProgressSignal(withoutError)) return withoutError
-    return stripProgressSignal(withoutError)
-  })
+  const displayEvents = coalesceSessionEvents(
+    settledTranscriptEvents.flatMap((event) => {
+      if (sessionEventPlacement(event) !== 'transcript') return []
+      const withoutError = stripACPError(event)
+      if (!hasProgressSignal(withoutError)) return [withoutError]
+      return [stripProgressSignal(withoutError)]
+    }),
+  )
+  const sideChatEvents = coalesceSessionEvents(
+    liveEvents.filter((event) => sessionEventPlacement(event) === 'side_chat'),
+  )
   return {
     transcriptEvents: settledTranscriptEvents,
+    sideChatEvents,
     displayEvents,
     planAvailable,
     planActive,
@@ -386,6 +358,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
     planDecisionSessionID: latestPlanDecisionSurface?.approvalSessionId,
     planDecisionIsCurrent: !Number.isNaN(planDecisionAt) && planDecisionAt >= latestUserAt,
     panelProgress: panelProgressEvent ? progressSurfaceFromEvent(panelProgressEvent) : undefined,
+    providerSubagents: providerSubagentsFromEvents(settledTranscriptEvents),
   }
 }
 
@@ -423,30 +396,43 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     notifySessionEventError(event)
   }, [notifySessionEventError])
   useEffect(() => setLastSessionEventAt(undefined), [sessionId])
-  useSessionEvents(sessionId, streamingRef, handleSessionEvent)
+  useSessionEvents(sessionId, detail.data?.events, streamingRef, handleSessionEvent)
 
-  const [live, setLive] = useState<LiveExchange | null>(null)
-  const [streaming, setStreaming] = useState(false)
   const [planDecisionPending, setPlanDecisionPending] = useState(false)
   const [planDecisionError, setPlanDecisionError] = useState('')
-  const abortRef = useRef<AbortController | null>(null)
   const sentPendingRef = useRef<string | null>(null)
-  // The panel only auto-opens on a git repo, so the picker needs to know up
-  // front — query it from the session's cwd (shares cache with the panel).
-  const sessionCwd = detail.data?.session.runtime_ref?.cwd
+  // Overview auto-opens only when it has real content, so check repo state
+  // up front here; provider subagents are already in the event stream.
+  const detailSession = detail.data?.session
+  const sessionCwd = detailSession?.runtime_ref?.cwd
+  const sideChatAvailable = isCodexACPSession(detailSession)
   const repoInfo = useQuery({ ...sessionRepoQuery(sessionId), enabled: Boolean(sessionCwd) })
-  const sidePanel = useSidePanelState(Boolean(repoInfo.data?.git))
-  useEffect(() => window.jaz?.onOpenSideBrowserURL?.(sidePanel.openPreview), [sidePanel.openPreview])
+  const overviewAvailable = Boolean(
+    repoInfo.data?.git ||
+      detail.data?.events?.some((event) => sessionEventPlacement(event) === 'overview') ||
+      events.data.some((event) => sessionEventPlacement(event) === 'overview'),
+  )
+  const sidePanel = useSidePanelState(overviewAvailable, sideChatAvailable)
+  const { openFile, openPreview } = sidePanel
+  useEffect(() => window.jaz?.onOpenSideBrowserURL?.(openPreview), [openPreview])
+  const notifyFilePreviewError = useCallback((message: string) => {
+    toast(`Couldn't preview HTML: ${message}`, 'danger')
+  }, [toast])
+  const openFileReference = useFileReferencePreview({
+    sessionId,
+    onOpenFile: openFile,
+    onOpenPreview: openPreview,
+    onPreviewError: notifyFilePreviewError,
+  })
 
-  const itemCount = (detail.data?.messages.length ?? 0) + events.data.length
-  const liveSize = live
-    ? live.user.length +
-      live.reasoning.length +
-      live.assistant.length +
-      live.tools.length +
-      live.attachments.length +
-      (live.error?.length ?? 0)
-    : 0
+  const itemCount =
+    (detail.data?.messages.length ?? 0) + events.data.filter((event) => sessionEventPlacement(event) !== 'side_chat').length
+  const { live, streaming, send: sendLiveMessage, abort: abortLiveMessage } = useLiveSessionSend({
+    sessionId,
+    streamingRef,
+    onCriticalError: notifyCriticalError,
+  })
+  const liveSize = liveExchangeSize(live)
   const [bottomDockHeight, setBottomDockHeight] = useState(0)
   const transcriptBottomPadding = Math.max(bottomDockHeight + TRANSCRIPT_DOCK_GAP_PX, 160)
   const { scrollRef, showScrollToBottom, onScroll: onThreadScroll, scrollToBottom, pinToBottom } =
@@ -454,126 +440,10 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   const threadFind = useThreadFind(sessionId, scrollRef)
   const [highlightedMessageSeq, setHighlightedMessageSeq] = useState<number>()
 
-  // Abandon an in-flight stream when leaving the session.
-  useEffect(() => () => abortRef.current?.abort(), [sessionId])
-
   const handleSend = useCallback((text: string, options: SendMessageOptions = {}) => {
-    const controller = new AbortController()
-    const files = options.files ?? []
-    const draftAttachments = options.attachments ?? []
-    const draftQuotes = (options.quotes ?? []).map((quote) => quote.text)
-    abortRef.current = controller
     pinToBottom()
-    setLive({
-      user: text,
-      at: new Date().toISOString(),
-      planRequested: Boolean(options.planRequested),
-      quotes: draftQuotes,
-      attachments: [
-        ...draftAttachments,
-        ...files.map((file) => ({ name: file.name, size: file.size, uploading: true })),
-      ],
-      reasoning: '',
-      assistant: '',
-      tools: [],
-    })
-    setStreaming(true)
-    streamingRef.current = true
-
-    ;(async () => {
-      const attachments = files.length
-        ? await Promise.all(files.map((file) => uploadSessionAttachment(sessionId, file, controller.signal)))
-        : []
-      if (attachments.length) {
-        setLive((prev) => (prev ? { ...prev, attachments: [...draftAttachments, ...attachments] } : prev))
-      }
-      await streamSessionMessage({
-        sessionId,
-        message: text,
-        quotes: draftQuotes,
-        attachmentIds: [
-          ...draftAttachments.map((attachment) => attachment.id),
-          ...attachments.map((attachment) => attachment.id),
-        ],
-        planRequested: options.planRequested,
-        signal: controller.signal,
-        onEvent: (event) => {
-          if (event.type === 'error') {
-            notifyCriticalError(event.error || 'Something went wrong.')
-          }
-          setLive((prev) => {
-            if (!prev) return prev
-            switch (event.type) {
-              case 'delta':
-                return { ...prev, assistant: prev.assistant + (event.delta ?? '') }
-              case 'reasoning':
-                return { ...prev, reasoning: prev.reasoning + (event.reasoning ?? '') }
-              case 'tool_call': {
-                const name = event.tool_call?.function?.name ?? event.tool_name ?? 'tool'
-                if (isHiddenToolName(name)) return prev
-                return {
-                  ...prev,
-                  tools: [
-                    ...prev.tools,
-                    {
-                      key: event.tool_call?.id ?? `${name}-${prev.tools.length}`,
-                      name,
-                      args: event.tool_call?.function?.arguments,
-                    },
-                  ],
-                }
-              }
-              case 'tool_result': {
-                if (isHiddenToolName(event.tool_name)) return prev
-                const idx = prev.tools.findLastIndex((t) => t.result === undefined)
-                const tools =
-                  idx === -1
-                    ? [
-                        ...prev.tools,
-                        {
-                          key: `result-${prev.tools.length}`,
-                          name: event.tool_name ?? 'tool',
-                          result: event.result,
-                        },
-                      ]
-                    : prev.tools.map((t, i) => (i === idx ? { ...t, result: event.result } : t))
-                return { ...prev, tools }
-              }
-              case 'error':
-                return {
-                  ...prev,
-                  attachments: finishLiveAttachments(prev.attachments),
-                  error: event.error || 'Something went wrong.',
-                }
-              default:
-                return prev
-            }
-          })
-        },
-      })
-    })()
-      .catch((err: Error) => {
-        if (controller.signal.aborted) return
-        notifyCriticalError(err.message || 'Something went wrong.')
-        setLive((prev) =>
-          prev ? { ...prev, attachments: finishLiveAttachments(prev.attachments), error: err.message } : prev,
-        )
-      })
-      .finally(async () => {
-        setStreaming(false)
-        streamingRef.current = false
-        abortRef.current = null
-        // The server persisted the exchange; swap the live view for history.
-        await queryClient.refetchQueries({ queryKey: keys.sessionMessages(sessionId) })
-        queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
-        queryClient.invalidateQueries({ queryKey: keys.allSessions })
-        queryClient.invalidateQueries({ queryKey: keys.usage })
-        // The turn likely touched the working tree; the SSE hook skips this
-        // page while it streams (streamingRef), so refresh repo state here.
-        queryClient.invalidateQueries({ queryKey: keys.sessionRepo(sessionId) })
-        setLive((prev) => (prev?.error ? { ...prev, error: undefined } : null))
-      })
-  }, [notifyCriticalError, pinToBottom, queryClient, sessionId])
+    sendLiveMessage(text, options)
+  }, [pinToBottom, sendLiveMessage])
 
   const sendACPFallback = useCallback(async (
     targetSessionID: string,
@@ -596,6 +466,11 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     queryClient.invalidateQueries({ queryKey: keys.usage })
   }, [handleSend, queryClient, sessionId])
 
+  const handleSideChatSend = useCallback(async (sideChatID: string, message: string) => {
+    await sendSessionSideChat(sessionId, { id: sideChatID, message })
+    await queryClient.refetchQueries({ queryKey: keys.sessionMessages(sessionId) })
+  }, [queryClient, sessionId])
+
   const currentSession = detail.data?.session
   const queue = useSessionQueue({
     sessionId,
@@ -604,7 +479,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     streaming,
     onSend: handleSend,
   })
-  const composerQuotes = useComposerQuotes({
+  const composerContexts = useComposerContexts({
     storageKey: `${SESSION_DRAFT_KEY_PREFIX}${sessionId}`,
     storage: 'local',
   })
@@ -641,21 +516,6 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     () => (data ? deriveSessionView(data, events.data) : undefined),
     [data, events.data],
   )
-  const maxPersistedEventSeq = useMemo(() => {
-    let max = 0
-    for (const event of data?.events ?? []) {
-      if ((event.seq ?? 0) > max) max = event.seq ?? 0
-    }
-    return max
-  }, [data?.events])
-  useEffect(() => {
-    if (!maxPersistedEventSeq) return
-    queryClient.setQueryData<SessionEvent[]>(keys.sessionEvents(sessionId), (prev = []) => {
-      const next = prev.filter((event) => !event.seq || event.seq > maxPersistedEventSeq)
-      return next.length === prev.length ? prev : next
-    })
-  }, [maxPersistedEventSeq, queryClient, sessionId])
-
   if (detail.isPending) {
     return (
       <div className="mx-auto max-w-[720px] px-10">
@@ -685,6 +545,8 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     planDecisionSessionID,
     planDecisionIsCurrent,
     panelProgress,
+    providerSubagents,
+    sideChatEvents,
   } = derived
   const showPlanDecision = Boolean(
     latestPlanDecisionSurface?.awaitingApproval &&
@@ -708,38 +570,14 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     isACP && live && lastUserMessage?.content.trim() !== live.user.trim()
       ? [
           ...messages,
-          {
-            seq: (messages.at(-1)?.seq ?? 0) + 1_000_000,
-            role: 'user' as const,
-            content: live.user,
-            blocks: [
-              ...live.quotes.map((text) => ({ type: 'quote' as const, text })),
-              { type: 'text' as const, text: live.user },
-              ...live.attachments.flatMap((attachment) =>
-                attachment.id && attachment.uri
-                  ? [
-                      {
-                        type: 'attachment' as const,
-                        id: attachment.id,
-                        name: attachment.name,
-                        uri: attachment.uri,
-                        mime_type: attachment.mime_type,
-                        size: attachment.size,
-                        server_path: attachment.server_path,
-                      },
-                    ]
-                  : [],
-              ),
-            ],
-            created_at: live.at,
-          },
+          liveUserMessage(live, (messages.at(-1)?.seq ?? 0) + 1_000_000),
         ]
       : messages
   const titlebarSlot = document.getElementById('titlebar-slot')
   const titlebarActions = document.getElementById('titlebar-actions')
 
   return (
-    <FileReaderLinkProvider onOpen={sidePanel.openFile}>
+    <FileReaderLinkProvider onOpen={openFileReference}>
       <PreviewLinkProvider onOpen={sidePanel.openPreview}>
         <div ref={sidePanel.measureRef} className="flex h-full">
           {titlebarSlot
@@ -756,6 +594,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                 <SidePanelControl
                   open={sidePanel.open}
                   view={sidePanel.view}
+                  sideChatAvailable={sideChatAvailable}
                   fileAvailable={Boolean(sidePanel.fileRef)}
                   onToggle={sidePanel.toggle}
                   onSelectView={sidePanel.selectView}
@@ -807,7 +646,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                               transition={{ type: 'spring', stiffness: 380, damping: 30 }}
                             >
                               <div className="min-w-0 max-w-[84%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap [overflow-wrap:break-word] select-text">
-                                <MessageQuotes quotes={live.quotes} />
+                                <MessageContexts contexts={live.contexts} />
                                 <MentionText text={live.user} />
                                 <LiveAttachmentList attachments={live.attachments} />
                               </div>
@@ -850,7 +689,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
               </div>
             </div>
             <ThreadFindBar find={threadFind} />
-            <SelectionQuoteToolbar scrollRef={scrollRef} onAdd={composerQuotes.addQuote} />
+            <SelectionContextToolbar scrollRef={scrollRef} onAdd={composerContexts.addSelection} />
 
             {showPlanDecision && planDecisionError ? (
               <p className="absolute inset-x-0 bottom-32 mx-auto max-w-[640px] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
@@ -893,14 +732,14 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                   steerDisabled={queue.steerDisabled}
                   draftStorageKey={`${SESSION_DRAFT_KEY_PREFIX}${session.id}`}
                   fileRoot={session.runtime_ref?.cwd}
-                  quotes={composerQuotes.quotes}
-                  onRemoveQuote={composerQuotes.removeQuote}
-                  onClearQuotes={composerQuotes.clearQuotes}
+                  contexts={composerContexts.contexts}
+                  onRemoveContext={composerContexts.removeContext}
+                  onClearContexts={composerContexts.clearContexts}
                   onSend={queue.onSend}
                   onStop={() => {
                     // the turn runs detached server-side; stop it there first
                     void cancelSession(sessionId).catch(() => {})
-                    abortRef.current?.abort()
+                    abortLiveMessage()
                   }}
                   onVoice={undefined}
                   onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
@@ -924,14 +763,20 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
             <SidePanel
               session={session}
               progress={panelProgress}
+              subagents={providerSubagents}
               working={sessionRunning}
               visible={sidePanel.open}
               view={sidePanel.view}
               previewUrl={sidePanel.previewUrl}
               fileRef={sidePanel.fileRef}
+              sideChatAvailable={sideChatAvailable}
+              sideChatEvents={sideChatEvents}
               onPreviewUrlChange={sidePanel.setPreviewUrl}
-              onOpenFile={sidePanel.openFile}
+              onOpenFile={openFileReference}
+              onAddBrowserAnnotation={composerContexts.addBrowserAnnotation}
+              onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
               onSend={queue.onSend}
+              onSendSideChat={handleSideChatSend}
               onClose={sidePanel.toggle}
             />
           </motion.div>

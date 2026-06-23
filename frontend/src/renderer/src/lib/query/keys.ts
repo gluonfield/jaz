@@ -2,6 +2,7 @@ export const keys = {
   health: ['health'] as const,
   sidebarSessions: ['sessions', 'sidebar'] as const,
   allSessions: ['sessions', 'all'] as const,
+  session: (id: string) => ['sessions', id] as const,
   usage: ['usage'] as const,
   usageDaily: (days: number, timezone: string) => ['usage', 'daily', days, timezone] as const,
   archivedSessions: ['sessions', 'archived'] as const,

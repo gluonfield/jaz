@@ -49,12 +49,12 @@ func (t *MCPTools) AddTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        MCPToolAgentSend,
 		Title:       "Send ACP agent task",
-		Description: "Send a follow-up instruction to an idle spawned Jaz ACP agent session.",
+		Description: "Send a follow-up instruction to an idle Jaz ACP thread by thread id, thread slug, or active ACP session id. Selected @thread mentions expose a usable thread id.",
 	}, t.Send)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        MCPToolAgentStatus,
 		Title:       "Get ACP agent status",
-		Description: "Get status and recent progress for a spawned Jaz ACP agent session.",
+		Description: "Get status and recent progress for a Jaz ACP thread by thread id, thread slug, or active ACP session id.",
 	}, t.Status)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        MCPToolAgentWait,
@@ -116,7 +116,7 @@ func (t *MCPTools) Spawn(ctx context.Context, req *mcp.CallToolRequest, input MC
 }
 
 type MCPSendInput struct {
-	Session string `json:"session" jsonschema:"spawned session id or slug"`
+	Session string `json:"session" jsonschema:"Jaz thread id, thread slug, or active ACP session id"`
 	Message string `json:"message" jsonschema:"follow-up instruction to send"`
 	Wait    bool   `json:"wait,omitempty" jsonschema:"wait for this turn to finish before returning; defaults to false"`
 	Plan    bool   `json:"plan,omitempty" jsonschema:"request ACP plan mode for planning, review, or questions"`
@@ -131,7 +131,6 @@ func (t *MCPTools) Send(ctx context.Context, _ *mcp.CallToolRequest, input MCPSe
 		Session:       input.Session,
 		Message:       input.Message,
 		Completion:    completion,
-		Interactive:   input.Plan,
 		PlanRequested: input.Plan,
 		ParentVisible: true,
 	})
@@ -143,7 +142,7 @@ func (t *MCPTools) Send(ctx context.Context, _ *mcp.CallToolRequest, input MCPSe
 }
 
 type MCPSessionInput struct {
-	Session string `json:"session" jsonschema:"spawned session id or slug"`
+	Session string `json:"session" jsonschema:"Jaz thread id, thread slug, or active ACP session id"`
 }
 
 func (t *MCPTools) Status(_ context.Context, _ *mcp.CallToolRequest, input MCPSessionInput) (*mcp.CallToolResult, Job, error) {
@@ -152,7 +151,7 @@ func (t *MCPTools) Status(_ context.Context, _ *mcp.CallToolRequest, input MCPSe
 }
 
 type MCPWaitInput struct {
-	Session        string `json:"session" jsonschema:"spawned session id or slug"`
+	Session        string `json:"session" jsonschema:"active Jaz thread id, thread slug, or ACP session id"`
 	TimeoutSeconds int    `json:"timeout_seconds,omitempty" jsonschema:"maximum seconds to wait; defaults to 30"`
 }
 

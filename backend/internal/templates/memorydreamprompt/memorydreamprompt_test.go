@@ -16,6 +16,7 @@ func TestRenderKeepsPolicyAndSlugBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	got = strings.ReplaceAll(got, "\r\n", "\n")
 	for _, want := range []string{
 		"Memory root:\n/tmp/memory",
 		"Long-term policy:\nprofile-level memory only",

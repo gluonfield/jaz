@@ -341,4 +341,12 @@ func TestSessionEventsUseJSONL(t *testing.T) {
 	if loaded[0].At.IsZero() || loaded[1].At.IsZero() || loaded[2].At.IsZero() {
 		t.Fatalf("events should be timestamped: %#v", loaded)
 	}
+
+	loaded, err = store.LoadSessionEventsAfter(session.ID, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded) != 2 || loaded[0].Seq != 2 || loaded[1].Seq != 3 {
+		t.Fatalf("events after seq 1 = %#v", loaded)
+	}
 }

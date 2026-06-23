@@ -10,6 +10,7 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 	"github.com/wins/jaz/backend/internal/tools"
+	"github.com/wins/jaz/backend/internal/visualize"
 )
 
 type utilityProvider struct {
@@ -43,7 +44,9 @@ func (utilityTool) Execute(context.Context, map[string]any) (tools.Result, error
 
 type staticPrompt string
 
-func (p staticPrompt) SystemPromptForWorkspace(string) (string, error) { return string(p), nil }
+func (p staticPrompt) SystemPromptForContext(context.Context, string, visualize.Surface) (string, error) {
+	return string(p), nil
+}
 
 func TestBuildRequestAddsSystemPromptExtensionWithoutChangingUserMessage(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
@@ -57,7 +60,7 @@ func TestBuildRequestAddsSystemPromptExtensionWithoutChangingUserMessage(t *test
 		t.Fatal(err)
 	}
 
-	turn, err := BuildRequest(store, staticPrompt("base prompt"), Request{
+	turn, err := BuildRequest(context.Background(), store, staticPrompt("base prompt"), Request{
 		Session:                session,
 		Message:                "news In AI",
 		AppendUser:             true,

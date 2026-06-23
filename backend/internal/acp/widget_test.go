@@ -10,7 +10,7 @@ import (
 
 func TestWidgetPublishExtMethod(t *testing.T) {
 	manager := NewManager(nil, Config{}, nil)
-	manager.jobsByACP["acp-session"] = &Job{ID: "session-1", ACPSession: "acp-session"}
+	manager.jobsByACP["acp-session"] = &jobState{Job: Job{ID: "session-1", ACPSession: "acp-session"}}
 	var got WidgetPublishRequest
 	manager.PublishWidget = func(req WidgetPublishRequest) (WidgetPublishResult, error) {
 		got = req

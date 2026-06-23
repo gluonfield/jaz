@@ -118,10 +118,12 @@ func (s *Store) LoadSession(ref string) (storage.Session, error) {
 	if ref == "" {
 		return storage.Session{}, fmt.Errorf("session id or slug is required")
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if session, err := s.loadSessionByID(ref); err == nil {
 		return session, nil
 	}
-	sessions, err := s.ListSessions(storage.SessionFilter{IncludeChildren: true})
+	sessions, err := s.listSessionsLocked(storage.SessionFilter{IncludeChildren: true})
 	if err != nil {
 		return storage.Session{}, err
 	}

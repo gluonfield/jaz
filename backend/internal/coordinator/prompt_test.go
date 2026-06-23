@@ -1,6 +1,7 @@
 package coordinator
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,11 +18,11 @@ func TestPromptCombinesCoordinatorFiles(t *testing.T) {
 
 	now := time.Date(2026, 6, 2, 9, 8, 7, 0, time.FixedZone("BST", 3600))
 	workspace := filepath.Join(root, "workspaces", "default")
-	prompt, err := prompt(root, workspace, "", "skills", visualize.SurfaceChat, now)
+	prompt, err := prompt(context.Background(), root, workspace, "", "skills", visualize.SurfaceChat, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertOrder(t, prompt, "~/.jaz: runtime state", "~/.jaz/workspaces/default: default tool cwd", "## Jaz platform", "Date: June 2, 2026", "Time: 09:08:07 BST", "Timezone: BST (UTC+01:00)", "Weekday: Tuesday", "Current working directory: "+workspace, "## AGENTS.md\n\nagents", "## SOUL.md\n\nsoul", "skills")
+	assertOrder(t, prompt, root+": runtime state", workspace+": default tool cwd", "## Jaz platform", "Date: June 2, 2026", "Time: 09:08:07 BST", "Timezone: BST (UTC+01:00)", "Weekday: Tuesday", "Current working directory: "+workspace, "Device: Desktop", "## AGENTS.md\n\nagents", "## SOUL.md\n\nsoul", "skills")
 }
 
 func TestPromptOmitsMissingFiles(t *testing.T) {
@@ -79,7 +80,7 @@ func TestPromptInjectsMemoryHorizons(t *testing.T) {
 	today := now.Local().Format("2006-01-02")
 	write(t, memoryRoot, "daily/"+today+".md", "# Daily\n\n- shipped provenance fields")
 
-	got, err := prompt(root, "", memoryRoot, "", visualize.SurfaceChat, now)
+	got, err := prompt(context.Background(), root, "", memoryRoot, "", visualize.SurfaceChat, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +93,7 @@ func TestPromptInjectsMemoryHorizons(t *testing.T) {
 		"## memory/daily/"+today+".md", "shipped provenance fields",
 	)
 
-	missing, err := prompt(root, "", t.TempDir(), "", visualize.SurfaceChat, now)
+	missing, err := prompt(context.Background(), root, "", t.TempDir(), "", visualize.SurfaceChat, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +107,7 @@ func TestPromptInjectsMemoryHorizons(t *testing.T) {
 		t.Fatalf("memory protocol should inject whenever memory is enabled:\n%s", missing)
 	}
 
-	disabled, err := prompt(root, "", "", "", visualize.SurfaceChat, now)
+	disabled, err := prompt(context.Background(), root, "", "", "", visualize.SurfaceChat, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +132,7 @@ func TestPromptDoesNotTruncateMemorySections(t *testing.T) {
 	daily := "# Daily\n\n" + strings.Repeat("d", 1600) + " daily-tail"
 	write(t, memoryRoot, "daily/"+today+".md", daily)
 
-	got, err := prompt(root, "", memoryRoot, "", visualize.SurfaceChat, now)
+	got, err := prompt(context.Background(), root, "", memoryRoot, "", visualize.SurfaceChat, now)
 	if err != nil {
 		t.Fatal(err)
 	}

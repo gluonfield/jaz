@@ -16,6 +16,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/provider"
+	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -25,20 +26,28 @@ import (
 // staticPrompt is a fixed acp.SystemPromptSource for tests.
 type staticPrompt string
 
-func (s staticPrompt) ACPPrompt(string) (string, error) { return string(s), nil }
+func (s staticPrompt) ACPPromptForContext(_ context.Context, _, _ string) (string, error) {
+	return string(s), nil
+}
 
 type cwdPrompt struct{}
 
-func (cwdPrompt) ACPPrompt(cwd string) (string, error) { return "cwd: " + cwd, nil }
+func (cwdPrompt) ACPPromptForContext(_ context.Context, cwd, _ string) (string, error) {
+	return "cwd: " + cwd, nil
+}
 
 type localRunner struct {
-	seen chan acp.LocalAgentRequest
+	seen     chan acp.LocalAgentRequest
+	platform chan string
 }
 
 func (r localRunner) Run(ctx context.Context, req acp.LocalAgentRequest) <-chan agent.StreamEvent {
 	out := make(chan agent.StreamEvent, 4)
 	go func() {
 		defer close(out)
+		if r.platform != nil {
+			r.platform <- sessioncontext.ClientPlatform(ctx)
+		}
 		r.seen <- req
 		select {
 		case <-ctx.Done():
@@ -109,6 +118,9 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	if status.Modes.PlanModeID != "plan" || status.Modes.CurrentModeID != "full-access" {
 		t.Fatalf("unexpected modes %#v", status.Modes)
 	}
+	if status.ModelProvider != "fake" || status.Model != "fake-large" || status.ReasoningEffort != "high" {
+		t.Fatalf("unexpected status model metadata %#v", status)
+	}
 	messages, err := store.LoadMessages(spawned.SessionID)
 	if err != nil {
 		t.Fatal(err)
@@ -144,6 +156,13 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	if session.ModelProvider != "fake" || session.Model != "fake-large" || session.ReasoningEffort != "high" {
 		t.Fatalf("unexpected session model metadata %#v", session)
 	}
+	state, err := store.LoadACPState(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.ModelProvider != "fake" || state.Model != "fake-large" || state.ReasoningEffort != "high" {
+		t.Fatalf("unexpected acp state model metadata %#v", state)
+	}
 	messages, err = store.LoadMessages(spawned.SessionID)
 	if err != nil {
 		t.Fatal(err)
@@ -171,7 +190,12 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 		t.Fatalf("unexpected activity %#v", activity)
 	}
 
-	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.Slug, Message: "again", Completion: acp.CompletionAsync, ParentVisible: true}); err != nil {
+	if _, err := manager.Send(ctx, acp.SendRequest{
+		Session:       session.RuntimeRef.SessionID,
+		Message:       "again",
+		Completion:    acp.CompletionAsync,
+		ParentVisible: true,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	job, err = manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
@@ -245,7 +269,10 @@ func TestManagerRunsLocalJazAgentThroughACPJob(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner := localRunner{seen: make(chan acp.LocalAgentRequest, 1)}
+	runner := localRunner{
+		seen:     make(chan acp.LocalAgentRequest, 1),
+		platform: make(chan string, 1),
+	}
 	manager := acp.NewManager(store, acp.Config{
 		Root:      t.TempDir(),
 		Workspace: t.TempDir(),
@@ -281,13 +308,17 @@ func TestManagerRunsLocalJazAgentThroughACPJob(t *testing.T) {
 		t.Fatalf("local session metadata = %#v", session)
 	}
 
-	if _, err := manager.Send(ctx, acp.SendRequest{
+	mobileCtx := sessioncontext.WithClientPlatform(ctx, "mobile")
+	if _, err := manager.Send(mobileCtx, acp.SendRequest{
 		Session:       spawned.SessionID,
 		Message:       "make a plan",
 		PlanRequested: true,
 		Completion:    acp.CompletionInline,
 	}); err != nil {
 		t.Fatal(err)
+	}
+	if platform := <-runner.platform; platform != "mobile" {
+		t.Fatalf("local runner platform = %q, want mobile", platform)
 	}
 	req := <-runner.seen
 	if req.Session.ID != spawned.SessionID || req.Message != "make a plan" || !req.PlanRequested {
@@ -316,6 +347,145 @@ func TestManagerRunsLocalJazAgentThroughACPJob(t *testing.T) {
 	}
 	if session.Usage.InputTokens != 3 || session.Usage.OutputTokens != 5 || session.Usage.TotalTokens != 8 {
 		t.Fatalf("usage = %#v", session.Usage)
+	}
+}
+
+func TestManagerSideChatDoesNotTouchRunningTurn(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := newFakeCodexManager(t, store, t.TempDir(), nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: acp.AgentCodex, Slug: "codex-side"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "block until cancelled", Completion: acp.CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
+	manager.Events = sessionevents.New()
+	live := manager.Events.Subscribe(ctx, spawned.SessionID)
+	if err := manager.SendSideChat(ctx, acp.SideChatRequest{
+		Session: spawned.SessionID,
+		ID:      "side-1",
+		Message: "quick check",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sideEvents := collectSideChatEvents(t, live, 2)
+
+	job, err := manager.Status(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.State != acp.StateRunning || job.Assistant != "" {
+		t.Fatalf("main turn changed: state=%s assistant=%q", job.State, job.Assistant)
+	}
+	messages, err := store.LoadMessages(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 || provider.MessageContent(messages[0]) != "block until cancelled" {
+		t.Fatalf("side chat leaked into messages %#v", messages)
+	}
+	if !hasSideChatEvent(sideEvents, "side-1", "user", "quick check") ||
+		!hasSideChatEvent(sideEvents, "side-1", "assistant", "hello from side chat") {
+		t.Fatalf("missing side chat events %#v", sideEvents)
+	}
+	storedEvents, err := store.LoadSessionEvents(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasSideChatEvent(storedEvents, "side-1", "user", "quick check") ||
+		hasSideChatEvent(storedEvents, "side-1", "assistant", "hello from side chat") {
+		t.Fatalf("side chat leaked into stored events %#v", storedEvents)
+	}
+	if hasACPMessage(storedEvents, "hello from side chat") {
+		t.Fatalf("side chat leaked into main acp transcript %#v", storedEvents)
+	}
+}
+
+func TestManagerSteerUsesPromptQueueingWithoutCancel(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := newFakeAgentManager(t, store, t.TempDir(), map[string]string{
+		"JAZ_FAKE_ACP_PROMPT_QUEUEING": "1",
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-follow"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "block until cancelled", Completion: acp.CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Steer(ctx, acp.SteerRequest{Session: spawned.SessionID, Message: "say hello"}); err != nil {
+		t.Fatal(err)
+	}
+	job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.State != acp.StateIdle || job.StopReason == "cancelled" || job.Assistant != "hello from fake agent" {
+		t.Fatalf("steered job state=%s stop=%q assistant=%q error=%q", job.State, job.StopReason, job.Assistant, job.Error)
+	}
+	messages, err := store.LoadMessages(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 2 ||
+		provider.MessageContent(messages[0]) != "block until cancelled" ||
+		provider.MessageContent(messages[1]) != "say hello" {
+		t.Fatalf("messages = %#v", messages)
+	}
+}
+
+func TestManagerSteerIncludesMessageContext(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := newFakeAgentManager(t, store, t.TempDir(), map[string]string{
+		"JAZ_FAKE_ACP_PROMPT_QUEUEING":        "1",
+		"JAZ_FAKE_ACP_EXPECT_PROMPT_TRIGGER":  "apply context",
+		"JAZ_FAKE_ACP_EXPECT_PROMPT_CONTAINS": "selected context",
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-follow-context"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "block until cancelled", Completion: acp.CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Steer(ctx, acp.SteerRequest{
+		Session:  spawned.SessionID,
+		Message:  "apply context",
+		Contexts: storage.SelectionContexts([]string{"selected context"}),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.State != acp.StateIdle {
+		t.Fatalf("state=%s error=%q", job.State, job.Error)
 	}
 }
 
@@ -1062,6 +1232,36 @@ func hasACPStatus(events []sessionevents.Event, id string) bool {
 	return false
 }
 
+func collectSideChatEvents(t *testing.T, ch <-chan sessionevents.Event, want int) []sessionevents.Event {
+	t.Helper()
+	deadline := time.After(time.Second)
+	var events []sessionevents.Event
+	for len(events) < want {
+		select {
+		case event := <-ch:
+			if event.Type == sessionevents.TypeSideChatMessage {
+				events = append(events, event)
+			}
+		case <-deadline:
+			t.Fatalf("side chat events = %#v, want %d", events, want)
+		}
+	}
+	return events
+}
+
+func hasSideChatEvent(events []sessionevents.Event, id, role, content string) bool {
+	for _, event := range events {
+		if event.Type == sessionevents.TypeSideChatMessage &&
+			event.SideChat != nil &&
+			event.SideChat.ID == id &&
+			event.SideChat.Role == role &&
+			event.SideChat.Content == content {
+			return true
+		}
+	}
+	return false
+}
+
 func newFakeAgentManager(t *testing.T, store *jsonstore.Store, root string, extraEnv map[string]string) *acp.Manager {
 	return newFakeAgentManagerWithModel(t, store, root, extraEnv, "")
 }
@@ -1071,6 +1271,14 @@ func newFakeAgentManagerWithModel(t *testing.T, store *jsonstore.Store, root str
 }
 
 func newFakeAgentManagerWithOptions(t *testing.T, store *jsonstore.Store, root string, extraEnv map[string]string, model, effort string) *acp.Manager {
+	return newFakeNamedAgentManagerWithOptions(t, store, root, "fake", extraEnv, model, effort)
+}
+
+func newFakeCodexManager(t *testing.T, store *jsonstore.Store, root string, extraEnv map[string]string) *acp.Manager {
+	return newFakeNamedAgentManagerWithOptions(t, store, root, acp.AgentCodex, extraEnv, "", "")
+}
+
+func newFakeNamedAgentManagerWithOptions(t *testing.T, store *jsonstore.Store, root, agent string, extraEnv map[string]string, model, effort string) *acp.Manager {
 	env := map[string]string{"JAZ_FAKE_ACP_AGENT": "1"}
 	for key, value := range extraEnv {
 		env[key] = value
@@ -1079,7 +1287,7 @@ func newFakeAgentManagerWithOptions(t *testing.T, store *jsonstore.Store, root s
 		Root:      root,
 		Workspace: t.TempDir(),
 		Agents: map[string]acp.AgentConfig{
-			"fake": {
+			agent: {
 				Command:         os.Args[0],
 				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
 				Model:           model,

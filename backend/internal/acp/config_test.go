@@ -1,24 +1,38 @@
 package acp
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
 	modelprovider "github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
+	"github.com/wins/jaz/backend/internal/sessioncontext"
+	"github.com/wins/jaz/backend/internal/testexec"
 )
 
 type testPrompt string
 
-func (p testPrompt) ACPPrompt(string) (string, error) { return string(p), nil }
+func (p testPrompt) ACPPromptForContext(_ context.Context, _, _ string) (string, error) {
+	return string(p), nil
+}
 
 type cwdPrompt struct{}
 
-func (cwdPrompt) ACPPrompt(cwd string) (string, error) { return "cwd=" + cwd, nil }
+func (cwdPrompt) ACPPromptForContext(_ context.Context, cwd, _ string) (string, error) {
+	return "cwd=" + cwd, nil
+}
+
+type platformPrompt struct{}
+
+func (platformPrompt) ACPPromptForContext(ctx context.Context, _, _ string) (string, error) {
+	return "platform=" + sessioncontext.ClientPlatform(ctx), nil
+}
 
 func TestProcessEnvIsMinimalAndCanonical(t *testing.T) {
 	clearHostEnv(t)
@@ -55,6 +69,70 @@ func TestProcessEnvIsMinimalAndCanonical(t *testing.T) {
 	})
 }
 
+func TestCodexBuiltinAgentUsesNpxCmdOnWindows(t *testing.T) {
+	cfg := codexBuiltinAgent("windows")
+	if cfg.Command != "npx.cmd" {
+		t.Fatalf("command = %q", cfg.Command)
+	}
+	if len(cfg.Args) < 2 || cfg.Args[1] != codexACPPackage {
+		t.Fatalf("args = %#v", cfg.Args)
+	}
+}
+
+func TestCodexBuiltinAgentUsesNpxElsewhere(t *testing.T) {
+	cfg := codexBuiltinAgent("darwin")
+	if cfg.Command != "npx" {
+		t.Fatalf("command = %q", cfg.Command)
+	}
+}
+
+func TestLaunchCommandWrapsWindowsCommandScripts(t *testing.T) {
+	command, args := resolvedLaunchCommand("windows", "npx.cmd", `C:\Program Files\nodejs\npx.cmd`, []string{"--version"})
+	if command != "cmd.exe" {
+		t.Fatalf("command = %q", command)
+	}
+	want := []string{"/d", "/s", "/c", "call", "npx.cmd", "--version"}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("args = %#v, want %#v", args, want)
+	}
+}
+
+func TestLaunchCommandWrapsAbsoluteWindowsCommandScripts(t *testing.T) {
+	resolved := `C:\Program Files\nodejs\npx.cmd`
+	command, args := resolvedLaunchCommand("windows", resolved, resolved, []string{"--version"})
+	if command != "cmd.exe" {
+		t.Fatalf("command = %q", command)
+	}
+	want := []string{"/d", "/s", "/c", "call", resolved, "--version"}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("args = %#v, want %#v", args, want)
+	}
+}
+
+func TestLaunchCommandLeavesNativeExecutablesAlone(t *testing.T) {
+	command, args := resolvedLaunchCommand("windows", "node", `C:\Program Files\nodejs\node.exe`, []string{"--version"})
+	if command != `C:\Program Files\nodejs\node.exe` {
+		t.Fatalf("command = %q", command)
+	}
+	if !reflect.DeepEqual(args, []string{"--version"}) {
+		t.Fatalf("args = %#v", args)
+	}
+}
+
+func TestAddCommandDirToPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("PATH handling is platform-specific")
+	}
+	env := map[string]string{"PATH": "/usr/bin:/bin"}
+
+	addCommandDirToPath(env, "/opt/homebrew/bin/npx")
+	addCommandDirToPath(env, "/opt/homebrew/bin/npm")
+
+	if env["PATH"] != "/opt/homebrew/bin:/usr/bin:/bin" {
+		t.Fatalf("PATH = %q", env["PATH"])
+	}
+}
+
 // Each adapter reads its own _meta extension key; every form below appends to
 // the agent's prompt rather than replacing it (a bare string would replace the
 // preset on claude, and grok ignores systemPrompt entirely).
@@ -78,7 +156,7 @@ func TestSystemPromptMetaPerAgent(t *testing.T) {
 
 func TestSessionPromptMetaAppendsPerSessionExtension(t *testing.T) {
 	manager := &Manager{cfg: Config{SystemPrompt: testPrompt("base prompt")}}
-	got, err := manager.sessionPromptMeta(AgentCodex, "", "", []string{"run context"})
+	got, err := manager.sessionPromptMeta(context.Background(), AgentCodex, "", "", []string{"run context"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,9 +165,20 @@ func TestSessionPromptMetaAppendsPerSessionExtension(t *testing.T) {
 	}
 }
 
+func TestSessionPromptMetaUsesClientPlatformContext(t *testing.T) {
+	manager := &Manager{cfg: Config{SystemPrompt: platformPrompt{}}}
+	got, err := manager.sessionPromptMeta(sessioncontext.WithClientPlatform(context.Background(), "mobile"), AgentCodex, "", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["systemPrompt"] != "platform=mobile" {
+		t.Fatalf("system prompt = %#v", got)
+	}
+}
+
 func TestSessionPromptMetaAllowsExtensionWithoutBasePrompt(t *testing.T) {
 	manager := &Manager{}
-	got, err := manager.sessionPromptMeta(AgentCodex, "", "", []string{"run context"})
+	got, err := manager.sessionPromptMeta(context.Background(), AgentCodex, "", "", []string{"run context"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +189,7 @@ func TestSessionPromptMetaAllowsExtensionWithoutBasePrompt(t *testing.T) {
 
 func TestSessionPromptMetaSendsGrokExtensionsAsRules(t *testing.T) {
 	manager := &Manager{cfg: Config{SystemPrompt: testPrompt("jaz platform prompt")}}
-	got, err := manager.sessionPromptMeta(AgentGrok, "", "widget", []string{"Scheduled Jaz loop run.\n\n## Board Widget Runtime\n\nPublish with visualise_publish_widget."})
+	got, err := manager.sessionPromptMeta(context.Background(), AgentGrok, "", "widget", []string{"Scheduled Jaz loop run.\n\n## Board Widget Runtime\n\nPublish with visualise_publish_widget."})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,6 +458,9 @@ func TestProcessEnvPreparedSyncsClaudeSkills(t *testing.T) {
 }
 
 func TestProcessEnvFindsClaudeCodeFromLoginShell(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("login shell executable lookup is POSIX-only")
+	}
 	clearHostEnv(t)
 	claude := testExecutable(t)
 	shell := filepath.Join(t.TempDir(), "shell")
@@ -560,7 +652,7 @@ func TestProcessEnvWritesOpenCodeInstructionsWithSessionExtension(t *testing.T) 
 		Root:         root,
 		SystemPrompt: testPrompt("jaz instructions"),
 	}, nil)
-	env, err := manager.processEnvPreparedForSurface("opencode", AgentConfig{}, "", "", []string{"run context"})
+	env, err := manager.processEnvPreparedForSurface(context.Background(), "opencode", AgentConfig{}, "", "", []string{"run context"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -585,7 +677,7 @@ func TestProcessEnvWritesOpenCodeInstructionsWithResolvedCwd(t *testing.T) {
 	env, err := NewManager(nil, Config{
 		Root:         root,
 		SystemPrompt: cwdPrompt{},
-	}, nil).processEnvPreparedForSurface("opencode", AgentConfig{Cwd: agentCwd}, sessionCwd, "widget", nil)
+	}, nil).processEnvPreparedForSurface(context.Background(), "opencode", AgentConfig{Cwd: agentCwd}, sessionCwd, "widget", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1127,11 +1219,7 @@ func grokInitializeAuthMethods() []byte {
 
 func testExecutable(t *testing.T) string {
 	t.Helper()
-	exe := filepath.Join(t.TempDir(), "agent")
-	if err := os.WriteFile(exe, []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return exe
+	return testexec.Write(t, filepath.Join(t.TempDir(), "agent"), "", "")
 }
 
 func writeACPTestSkill(t *testing.T, root, name string) {

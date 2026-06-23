@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -427,13 +428,16 @@ func TestCommitAllAndMergeIntoMain(t *testing.T) {
 	}
 	link := filepath.Join(t.TempDir(), "repo-link")
 	if err := os.Symlink(main, link); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := MergeIntoMain(ctx, link, "x"); err == nil {
-		t.Error("MergeIntoMain from a symlinked main checkout succeeded, want error")
-	}
-	if info := Inspect(ctx, link); info.IsWorktree {
-		t.Error("Inspect through a symlink flags the main checkout as a worktree")
+		if runtime.GOOS != "windows" {
+			t.Fatal(err)
+		}
+	} else {
+		if _, err := MergeIntoMain(ctx, link, "x"); err == nil {
+			t.Error("MergeIntoMain from a symlinked main checkout succeeded, want error")
+		}
+		if info := Inspect(ctx, link); info.IsWorktree {
+			t.Error("Inspect through a symlink flags the main checkout as a worktree")
+		}
 	}
 
 	// Agent work left dirty (an edit and an untracked file): MergeIntoMain

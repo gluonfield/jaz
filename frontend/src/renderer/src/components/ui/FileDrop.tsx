@@ -2,6 +2,7 @@ import { Paperclip } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { dataTransferHasFiles } from './fileTransfer'
 
 // Window-level file dropping, in one place: the app-shell guard that keeps a
 // stray drop from navigating the window to its file:// URL, the page-level
@@ -10,15 +11,12 @@ import { createPortal } from 'react-dom'
 // drop zone re-allows in bubble ('copy'). Text drags pass through untouched
 // so dragging a selection into an input stays native.
 
-const dragHasFiles = (event: DragEvent) =>
-  Array.from(event.dataTransfer?.types ?? []).includes('Files')
-
 /** Install once at startup, before any drop zone mounts. */
 export function installFileDropGuard() {
   window.addEventListener(
     'dragover',
     (event) => {
-      if (!dragHasFiles(event)) return
+      if (!dataTransferHasFiles(event.dataTransfer)) return
       event.preventDefault()
       if (event.dataTransfer) event.dataTransfer.dropEffect = 'none'
     },
@@ -27,7 +25,7 @@ export function installFileDropGuard() {
   window.addEventListener(
     'drop',
     (event) => {
-      if (dragHasFiles(event)) event.preventDefault()
+      if (dataTransferHasFiles(event.dataTransfer)) event.preventDefault()
     },
     true,
   )
@@ -63,25 +61,25 @@ export function useWindowFileDrop({
       watchdog = window.setTimeout(clear, 1000)
     }
     const onDragEnter = (event: DragEvent) => {
-      if (!dragHasFiles(event)) return
+      if (!dataTransferHasFiles(event.dataTransfer)) return
       event.preventDefault()
       depth += 1
       setDragging(true)
       armWatchdog()
     }
     const onDragOver = (event: DragEvent) => {
-      if (!dragHasFiles(event)) return
+      if (!dataTransferHasFiles(event.dataTransfer)) return
       event.preventDefault()
       if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
       armWatchdog()
     }
     const onDragLeave = (event: DragEvent) => {
-      if (!dragHasFiles(event)) return
+      if (!dataTransferHasFiles(event.dataTransfer)) return
       depth = Math.max(0, depth - 1)
       if (depth === 0) clear()
     }
     const onWindowDrop = (event: DragEvent) => {
-      if (!dragHasFiles(event)) return
+      if (!dataTransferHasFiles(event.dataTransfer)) return
       event.preventDefault()
       const dropped = Array.from(event.dataTransfer?.files ?? [])
       clear()

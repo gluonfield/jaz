@@ -453,7 +453,7 @@ function DirectoryBrowser({
               autoFocus
               value={pathInput}
               spellCheck={false}
-              placeholder="/path/to/project"
+              placeholder="Path to project"
               onChange={(e) => setPathInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {

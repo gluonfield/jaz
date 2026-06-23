@@ -47,6 +47,17 @@ export function getSession(id: string): Promise<Session> {
   return get<Session>(`/v1/sessions/${id}`)
 }
 
+export const sessionQuery = (id: string) =>
+  queryOptions({
+    queryKey: keys.session(id),
+    queryFn: () => getSession(id),
+    staleTime: 30_000,
+  })
+
+export function sendSessionSideChat(id: string, input: { id: string; message: string }): Promise<{ ok: boolean }> {
+  return post<{ ok: boolean }>(`/v1/sessions/${id}/side-chat`, input)
+}
+
 export async function uploadSessionAttachment(sessionId: string, file: File, signal?: AbortSignal): Promise<Attachment> {
   const form = new FormData()
   form.append('file', file)
@@ -249,10 +260,13 @@ export const sessionRepoFileDiffQuery = (id: string, file: RepoFileChange, base?
 export const sessionFileQuery = (id: string, path: string) =>
   queryOptions({
     queryKey: keys.sessionFile(id, path),
-    queryFn: () =>
-      get<SessionFileRead>(`/v1/sessions/${id}/file?path=${encodeURIComponent(path)}`),
+    queryFn: () => readSessionFile(id, path),
     staleTime: 15_000,
   })
+
+export function readSessionFile(id: string, path: string): Promise<SessionFileRead> {
+  return get<SessionFileRead>(`/v1/sessions/${id}/file?path=${encodeURIComponent(path)}`)
+}
 
 // Publishes the session's current branch to its remote (git push -u) and
 // returns the refreshed repo state; Create PR calls this first when the
@@ -428,9 +442,9 @@ export const allSessionsQuery = queryOptions({
   },
 })
 
-// Stored events carry only the acp session id and slug; titles arrive once
-// per response in acp_meta. Fold them back onto events here so the rest of
-// the app keeps the single contract: labels live on event.acp.
+// Stored events carry only the acp session id and slug; session-constant
+// labels arrive once per response in acp_meta. Fold them back onto events here
+// so the rest of the app keeps the single contract: labels live on event.acp.
 function hydrateEventLabels(data: SessionMessages): SessionEvent[] {
   return (data.events ?? []).map((event) => {
     const named = event.acp ? data.acp_meta?.[event.acp.id] : undefined
@@ -441,6 +455,9 @@ function hydrateEventLabels(data: SessionMessages): SessionEvent[] {
         ...event.acp!,
         title: event.acp!.title || named.title,
         slug: event.acp!.slug || named.slug || '',
+        model_provider: event.acp!.model_provider || named.model_provider,
+        model: event.acp!.model || named.model,
+        reasoning_effort: event.acp!.reasoning_effort || named.reasoning_effort,
       },
     }
   })

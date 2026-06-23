@@ -60,6 +60,19 @@ function withEnabledAgent(settings: AgentSettingsData, agent: string): AgentSett
   return next
 }
 
+function withLoginAuth(settings: AgentSettingsData, agent: string): AgentSettingsData {
+  if (agent === 'grok') return settings
+  const next = cloneAgentSettings(settings)
+  const current = next.acp[agent]
+  if (current) next.acp[agent] = { ...current, auth: { mode: 'jaz_profile', path: '' } }
+  return next
+}
+
+function loginAuth(agent: string, current: ACPAuthDraft): ACPAuthDraft {
+  if (agent === 'grok' || current?.mode === 'jaz_profile') return current
+  return { mode: 'jaz_profile', path: '' }
+}
+
 function agentRequiresCommand(settings: AgentSettingsData, agent: string): boolean {
   return settings.acp_options?.[agent]?.requires_command ?? true
 }
@@ -91,8 +104,9 @@ export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => 
   // right away (matching onboarding, no extra Enabled toggle). The hook reads
   // this through a ref, so `draft`/`save` are always current here.
   const { loginJobs, trackLoginJob, forgetLoginJob } = useACPLoginPolling((job) => {
-    if (job.status === 'succeeded' && draft?.acp[job.agent] && !draft.acp[job.agent].enabled) {
-      save.mutate(withEnabledAgent(draft, job.agent))
+    if (job.status === 'succeeded' && draft?.acp[job.agent]) {
+      const next = withEnabledAgent(withLoginAuth(draft, job.agent), job.agent)
+      save.mutate(next)
     } else {
       queryClient.invalidateQueries({ queryKey: keys.agentSettings })
     }
@@ -150,7 +164,9 @@ export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => 
               loginJob={loginJobs[agent]}
               loginPending={login.isPending && login.variables?.agent === agent}
               disconnecting={disconnect.isPending && disconnect.variables === agent}
-              onStartLogin={(auth) => login.mutate({ agent, auth })}
+              onStartLogin={(auth) =>
+                login.mutate({ agent, auth: loginAuth(agent, auth) })
+              }
               onDisconnect={() => disconnect.mutate(agent)}
               onOpenProviders={onOpenProviders}
               onChange={setDraft}

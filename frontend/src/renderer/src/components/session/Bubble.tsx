@@ -1,10 +1,12 @@
 import { FileText } from 'lucide-react'
 import { memo } from 'react'
 import type { ChatMessage, MessageBlock } from '@/lib/api/types'
+import { browserAnnotationFromJSON } from '@/lib/messageContext'
+import type { ComposerContext } from '@/lib/messageContext'
 import { ArtifactBlock } from './ArtifactBlock'
 import { AssistantMarkdown } from './AssistantMarkdown'
 import { MentionText } from './mentions'
-import { MessageQuotes } from './MessageQuotes'
+import { MessageContexts } from './MessageContexts'
 import { ThinkingBlock } from './ThinkingBlock'
 import { ToolCallCard } from './ToolCallCard'
 import { isArtifactToolName, isHiddenToolName } from './toolVisibility'
@@ -20,12 +22,25 @@ function messageText(message: ChatMessage): string {
   return text || message.content
 }
 
-function messageQuotes(message: ChatMessage): string[] {
+function messageContexts(message: ChatMessage): ComposerContext[] {
   return (
-    message.blocks
-      ?.filter((block) => block.type === 'quote')
-      .map((block) => (block.text ?? '').trim())
-      .filter(Boolean) ?? []
+    message.blocks?.flatMap<ComposerContext>((block, index) => {
+      if (block.type === 'quote') {
+        const text = (block.text ?? '').trim()
+        return text ? [{ id: `${message.seq}-selection-${index}`, type: 'selection' as const, text }] : []
+      }
+      if (block.type === 'browser_annotation') {
+        const annotation = browserAnnotationFromJSON(block.input_json)
+        return annotation
+          ? [{
+              id: `${message.seq}-annotation-${index}`,
+              type: 'browser_annotation' as const,
+              browser_annotation: annotation,
+            }]
+          : []
+      }
+      return []
+    }) ?? []
   )
 }
 
@@ -81,7 +96,7 @@ export const Bubble = memo(function Bubble({
       return (
         <div className="flex justify-end">
           <div className="min-w-0 max-w-[84%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap [overflow-wrap:break-word] select-text">
-            <MessageQuotes quotes={messageQuotes(message)} />
+            <MessageContexts contexts={messageContexts(message)} />
             <MentionText text={messageText(message)} />
             <MessageAttachments message={message} />
           </div>

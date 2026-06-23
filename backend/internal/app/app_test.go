@@ -2,16 +2,24 @@ package app
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/charmbracelet/log"
+	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/agent"
+	"github.com/wins/jaz/backend/internal/coordinator"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/provider"
 	openaiprovider "github.com/wins/jaz/backend/internal/provider/openai"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/sessionlock"
+	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/tools"
 	applypatch "github.com/wins/jaz/backend/internal/tools/applypatch"
@@ -26,6 +34,21 @@ func (t appTestTool) Definition() tools.Definition {
 
 func (t appTestTool) Execute(ctx context.Context, inputs map[string]any) (tools.Result, error) {
 	return tools.Result{Content: "{}"}, nil
+}
+
+type completeACPTestProvider struct {
+	called bool
+}
+
+func (p *completeACPTestProvider) Complete(context.Context, provider.Request) (provider.Response, error) {
+	p.called = true
+	return provider.Response{Message: provider.AssistantMessage("native follow-up", nil)}, nil
+}
+
+func (p *completeACPTestProvider) StreamComplete(context.Context, provider.Request) (<-chan provider.Event, error) {
+	ch := make(chan provider.Event)
+	close(ch)
+	return ch, nil
 }
 
 func TestNewToolRegistryAllowsApplyPatchAbsolutePaths(t *testing.T) {
@@ -66,6 +89,87 @@ func TestNewAgentDefersMCPToolsByRegistryGroup(t *testing.T) {
 	}
 	if !a.DeferTools("remote") {
 		t.Fatal("tool in MCP registry group should be deferred")
+	}
+}
+
+func TestCompleteACPMaterializesExternalParentResult(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	parent, err := store.CreateSession(storage.CreateSession{
+		Slug:          "parent",
+		Runtime:       storage.RuntimeACP,
+		ModelProvider: acp.AgentClaude,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:  storage.RuntimeACP,
+			Agent: acp.AgentClaude,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	events := sessionevents.New()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eventCh := events.Subscribe(ctx, parent.ID)
+	fakeProvider := &completeACPTestProvider{}
+
+	completeACP(ctx, &agent.Agent{
+		Provider: fakeProvider,
+		Tools:    tools.NewRegistry(),
+		MaxTurns: 1,
+	}, store, sessionlock.New(), events, coordinator.NewBuilder(t.TempDir(), t.TempDir(), "", nil), log.New(io.Discard), acp.Job{
+		ID:              "child-id",
+		Slug:            "seed-deck",
+		ACPAgent:        acp.AgentCodex,
+		ModelProvider:   acp.AgentCodex,
+		Model:           "gpt-5.5",
+		ReasoningEffort: "xhigh",
+		State:           acp.StateIdle,
+		Assistant:       "Deck rebuilt at deck/physicslab-deck.html.",
+		ParentID:        parent.ID,
+	})
+
+	if fakeProvider.called {
+		t.Fatal("external ACP parent completion should not call native provider")
+	}
+	loaded, err := store.LoadSession(parent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Status != storage.StatusIdle || loaded.Error != "" {
+		t.Fatalf("parent status = %s error=%q, want idle without error", loaded.Status, loaded.Error)
+	}
+	messages, err := store.LoadMessages(parent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 {
+		t.Fatalf("message count = %d, want 1", len(messages))
+	}
+	content := provider.MessageContent(messages[0])
+	for _, want := range []string{
+		"Child session seed-deck (codex) finished with state idle.",
+		"Deck rebuilt at deck/physicslab-deck.html.",
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("completion message %q missing %q", content, want)
+		}
+	}
+	select {
+	case event := <-eventCh:
+		if event.Type != "assistant" || event.Content != content {
+			t.Fatalf("event = %#v, want assistant completion", event)
+		}
+		if event.ACP == nil || event.ACP.ModelProvider != acp.AgentCodex || event.ACP.Model != "gpt-5.5" || event.ACP.ReasoningEffort != "xhigh" {
+			t.Fatalf("event acp metadata = %#v", event.ACP)
+		}
+	default:
+		t.Fatal("missing parent completion event")
 	}
 }
 

@@ -3,6 +3,7 @@ package acp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -32,7 +33,7 @@ type InteractiveAnswerValue struct {
 	Answers []string `json:"answers"`
 }
 
-func (m *Manager) awaitPermission(ctx context.Context, job *Job, req acpschema.RequestPermissionRequest) (json.RawMessage, *jsonrpc.Error) {
+func (m *Manager) awaitPermission(ctx context.Context, job *jobState, req acpschema.RequestPermissionRequest) (json.RawMessage, *jsonrpc.Error) {
 	permission := permissionEvent(req)
 	permission.ID = fmt.Sprintf("perm-%d", atomicAddPermission(&m.permissionSeq))
 	permission.SessionID = string(req.SessionID)
@@ -88,7 +89,6 @@ func (m *Manager) AnswerInteractive(ctx context.Context, req InteractiveAnswer) 
 			Session:       req.Session,
 			Message:       text,
 			Completion:    CompletionAsync,
-			Interactive:   true,
 			PlanRequested: req.PlanRequested,
 			ParentVisible: req.ParentVisible,
 		})
@@ -193,11 +193,19 @@ func (m *Manager) AnswerInteractive(ctx context.Context, req InteractiveAnswer) 
 	return nil
 }
 
-func (m *Manager) steerText(ctx context.Context, job *Job, text string, req InteractiveAnswer) error {
+func (m *Manager) steerText(ctx context.Context, job *jobState, text string, req InteractiveAnswer) error {
 	if req.ParentVisible {
 		job.mu.Lock()
 		job.ParentVisible = true
 		job.mu.Unlock()
+	}
+	_, err := m.Steer(ctx, SteerRequest{
+		Session:       job.ID,
+		Message:       text,
+		ParentVisible: req.ParentVisible,
+	})
+	if err == nil || !errors.Is(err, ErrPromptQueueingUnsupported) {
+		return err
 	}
 	if _, err := m.Cancel(ctx, job.ID); err != nil {
 		return err
@@ -205,11 +213,10 @@ func (m *Manager) steerText(ctx context.Context, job *Job, text string, req Inte
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	_, err := m.Send(ctx, SendRequest{
+	_, err = m.Send(ctx, SendRequest{
 		Session:       job.ID,
 		Message:       text,
 		Completion:    CompletionAsync,
-		Interactive:   true,
 		PlanRequested: req.PlanRequested,
 		ParentVisible: req.ParentVisible,
 	})
@@ -221,9 +228,7 @@ func (m *Manager) sendTextAfterTurn(sessionID, text string, parentVisible bool) 
 	if job == nil {
 		return
 	}
-	job.mu.RLock()
-	done := job.done
-	job.mu.RUnlock()
+	done := job.turnDone()
 	if done != nil {
 		<-done
 	}
@@ -231,7 +236,6 @@ func (m *Manager) sendTextAfterTurn(sessionID, text string, parentVisible bool) 
 		Session:       sessionID,
 		Message:       text,
 		Completion:    CompletionAsync,
-		Interactive:   true,
 		ParentVisible: parentVisible,
 	})
 }
@@ -437,7 +441,7 @@ func trimmedAnswers(values []string) []string {
 	return out
 }
 
-func (m *Manager) appendUserAnswerMessage(job *Job, text string, parentVisible bool) {
+func (m *Manager) appendUserAnswerMessage(job *jobState, text string, parentVisible bool) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return
@@ -452,48 +456,55 @@ func (m *Manager) appendUserAnswerMessage(job *Job, text string, parentVisible b
 	m.touchAttention(sessionIDs...)
 }
 
-func (m *Manager) setJobPermission(job *Job, permission sessionevents.ACPPermission) {
+func (m *Manager) setJobPermission(job *jobState, permission sessionevents.ACPPermission) {
 	job.mu.Lock()
 	defer job.mu.Unlock()
+	now := time.Now().UTC()
 	for i, candidate := range job.Permissions {
 		if candidate.ID == permission.ID {
 			job.Permissions[i] = permission
-			job.UpdatedAt = time.Now().UTC()
+			job.UpdatedAt = now
+			job.LastEventAt = now
 			return
 		}
 	}
 	job.Permissions = append(job.Permissions, permission)
-	job.UpdatedAt = time.Now().UTC()
+	job.UpdatedAt = now
+	job.LastEventAt = now
 }
 
-func (m *Manager) removeJobPermission(job *Job, requestID string) {
+func (m *Manager) removeJobPermission(job *jobState, requestID string) {
 	job.mu.Lock()
 	defer job.mu.Unlock()
+	now := time.Now().UTC()
 	for i, permission := range job.Permissions {
 		if permission.ID == requestID {
 			job.Permissions = append(job.Permissions[:i], job.Permissions[i+1:]...)
-			job.UpdatedAt = time.Now().UTC()
+			job.UpdatedAt = now
+			job.LastEventAt = now
 			return
 		}
 	}
 }
 
-func (m *Manager) publishPermission(job *Job, permission sessionevents.ACPPermission, eventType string) {
-	m.saveACPState(job.Snapshot())
+func (m *Manager) publishPermission(job *jobState, permission sessionevents.ACPPermission, eventType string) {
+	snapshot := job.Snapshot()
 	if eventType == "permission_request" {
 		m.touchJobAttention(job)
 	}
-	for _, sessionID := range surfaceSessionIDs(job) {
-		m.recordAndPublish(sessionevents.Event{
+	events := make([]sessionevents.Event, 0, len(surfaceSessionIDs(&snapshot)))
+	for _, sessionID := range surfaceSessionIDs(&snapshot) {
+		events = append(events, sessionevents.Event{
 			SessionID:  sessionID,
 			Type:       eventType,
 			Permission: &permission,
 			At:         time.Now().UTC(),
 		})
 	}
+	m.publishACPStateAndEvents(snapshot, events...)
 }
 
-func (m *Manager) touchJobAttention(job *Job) {
+func (m *Manager) touchJobAttention(job *jobState) {
 	snapshot := job.Snapshot()
 	m.touchAttention(surfaceSessionIDs(&snapshot)...)
 }
@@ -517,10 +528,10 @@ func (m *Manager) publishSessionChanged(sessionID string) {
 }
 
 func (m *Manager) publishACP(job Job) {
-	m.saveACPState(job)
-	acp := acpEvent(job)
+	acp := EventFromJob(job)
+	events := make([]sessionevents.Event, 0, 2)
 	for _, sessionID := range childSessionIDs(&job) {
-		m.recordAndPublish(sessionevents.Event{
+		events = append(events, sessionevents.Event{
 			SessionID: sessionID,
 			Type:      "acp",
 			ACP:       acp,
@@ -529,31 +540,33 @@ func (m *Manager) publishACP(job Job) {
 	}
 	parentACP := parentSurfaceACP(acp)
 	for _, sessionID := range parentSessionIDs(&job) {
-		m.recordAndPublish(sessionevents.Event{
+		events = append(events, sessionevents.Event{
 			SessionID: sessionID,
 			Type:      "acp",
 			ACP:       parentACP,
 			At:        time.Now().UTC(),
 		})
 	}
+	m.publishACPStateAndEvents(job, events...)
 }
 
 func (m *Manager) publishACPStatus(job Job) {
-	m.saveACPState(job)
-	acp := acpEvent(job)
+	acp := EventFromJob(job)
 	acp.Assistant = ""
 	acp.Thought = ""
 	acp.Plan = nil
 	acp.ToolCalls = nil
 	acp.Permissions = nil
+	events := make([]sessionevents.Event, 0, len(surfaceSessionIDs(&job)))
 	for _, sessionID := range surfaceSessionIDs(&job) {
-		m.recordAndPublish(sessionevents.Event{
+		events = append(events, sessionevents.Event{
 			SessionID: sessionID,
 			Type:      "acp",
 			ACP:       acp,
 			At:        time.Now().UTC(),
 		})
 	}
+	m.publishACPStateAndEvents(job, events...)
 }
 
 func (m *Manager) publishACPMessage(job Job, content string) {
@@ -566,37 +579,39 @@ func (m *Manager) publishACPThought(job Job, content string) {
 	})
 }
 
-func (m *Manager) publishACPTool(job Job, call ToolCallSnapshot) {
+func (m *Manager) publishACPTool(job Job, call sessionevents.ACPToolCall) {
 	m.publishACPTranscriptEvent(job, "acp_tool", "", func(event *sessionevents.ACPEvent) {
-		event.ToolCalls = []sessionevents.ACPToolCall{toolCallEvent(call)}
+		event.ToolCalls = CloneToolCalls([]sessionevents.ACPToolCall{call})
 	})
 }
 
-func toolCallEvent(call ToolCallSnapshot) sessionevents.ACPToolCall {
-	return sessionevents.ACPToolCall{
-		ID:       call.ID,
-		Title:    call.Title,
-		Status:   call.Status,
-		Kind:     call.Kind,
-		ToolName: call.ToolName,
-		Content:  call.Content,
-		RawInput: call.RawInput,
+func (m *Manager) publishProviderSubagent(job Job, subagent sessionevents.ProviderSubagentEvent) {
+	if subagent.ID == "" {
+		return
 	}
+	if subagent.Provider == "" {
+		subagent.Provider = CanonicalAgentName(job.ACPAgent)
+	}
+	events := make([]sessionevents.Event, 0, len(surfaceSessionIDs(&job)))
+	for _, sessionID := range surfaceSessionIDs(&job) {
+		events = append(events, sessionevents.Event{
+			SessionID:        sessionID,
+			Type:             sessionevents.TypeProviderSubagent,
+			ProviderSubagent: &subagent,
+			At:               time.Now().UTC(),
+		})
+	}
+	m.publishOrderedACPEvents(job, events...)
 }
 
 func (m *Manager) publishACPTranscriptEvent(job Job, eventType, content string, customize func(*sessionevents.ACPEvent)) {
-	m.saveACPState(job)
-	acp := acpEvent(job)
-	acp.Assistant = ""
-	acp.Thought = ""
-	acp.Plan = nil
-	acp.ToolCalls = nil
-	acp.Permissions = nil
+	acp := acpTranscriptEnvelope(job)
 	if customize != nil {
 		customize(acp)
 	}
+	events := make([]sessionevents.Event, 0, len(childSessionIDs(&job)))
 	for _, sessionID := range childSessionIDs(&job) {
-		m.recordAndPublish(sessionevents.Event{
+		events = append(events, sessionevents.Event{
 			SessionID: sessionID,
 			Type:      eventType,
 			Content:   content,
@@ -604,24 +619,61 @@ func (m *Manager) publishACPTranscriptEvent(job Job, eventType, content string, 
 			At:        time.Now().UTC(),
 		})
 	}
+	m.publishACPStateAndEvents(job, events...)
 }
 
-func (m *Manager) recordAndPublish(event sessionevents.Event) {
-	if event.At.IsZero() {
-		event.At = time.Now().UTC()
+func (m *Manager) publishACPStateAndEvents(job Job, events ...sessionevents.Event) {
+	m.withACPTranscriptBarrier(job, func() {
+		m.saveACPState(job)
+		m.recordAndPublishEventListDirect(events)
+	})
+}
+
+func (m *Manager) publishOrderedACPEvents(job Job, events ...sessionevents.Event) {
+	m.withACPTranscriptBarrier(job, func() {
+		m.recordAndPublishEventListDirect(events)
+	})
+}
+
+func (m *Manager) recordAndPublishDirect(event sessionevents.Event) {
+	m.recordAndPublishEventListDirect([]sessionevents.Event{event})
+}
+
+func (m *Manager) recordAndPublishEventListDirect(events []sessionevents.Event) {
+	for len(events) > 0 {
+		sessionID := events[0].SessionID
+		n := 1
+		for n < len(events) && events[n].SessionID == sessionID {
+			n++
+		}
+		m.recordAndPublishEventsDirect(sessionID, events[:n])
+		events = events[n:]
 	}
-	// Store slim; publish full so subscribers can label sessions they
-	// haven't fetched yet.
-	stored := event
-	stored.ACP = event.ACP.SlimForStorage()
-	events := []sessionevents.Event{stored}
-	if event.SessionID != "" {
-		_ = m.store.AppendSessionEvents(event.SessionID, events...)
+}
+
+func (m *Manager) recordAndPublishEventsDirect(sessionID string, events []sessionevents.Event) {
+	if len(events) == 0 {
+		return
 	}
-	// Publish with the stored Seq so clients can dedupe against history.
-	event.Seq = events[0].Seq
-	if m.Events != nil {
-		m.Events.Publish(event)
+	now := time.Now().UTC()
+	storedEvents := make([]sessionevents.Event, len(events))
+	for i := range events {
+		if events[i].At.IsZero() {
+			events[i].At = now
+		}
+		stored := events[i]
+		stored.ACP = events[i].ACP.SlimForStorage()
+		storedEvents[i] = stored
+	}
+	if sessionID != "" {
+		_ = m.store.AppendSessionEvents(sessionID, storedEvents...)
+	}
+	if m.Events == nil {
+		return
+	}
+	for i := range events {
+		events[i].Seq = storedEvents[i].Seq
+		m.Events.Publish(events[i])
 	}
 }
 
@@ -642,53 +694,75 @@ func (m *Manager) saveACPState(job Job) {
 }
 
 func acpStorageState(job Job) storage.ACPState {
-	calls := make([]sessionevents.ACPToolCall, 0, len(job.ToolCalls))
-	for _, call := range job.ToolCalls {
-		calls = append(calls, toolCallEvent(call))
-	}
 	return storage.ACPState{
-		ID:            job.ID,
-		Slug:          job.Slug,
-		Title:         job.Title,
-		ParentID:      job.ParentID,
-		ACPAgent:      job.ACPAgent,
-		ACPSession:    job.ACPSession,
-		Cwd:           job.Cwd,
-		State:         job.State,
-		StopReason:    job.StopReason,
-		Assistant:     job.Assistant,
-		Thought:       job.Thought,
-		Plan:          clonePlanEntries(job.Plan),
-		ToolCalls:     calls,
-		Modes:         acpModeEvent(job.Modes),
-		Error:         job.Error,
-		ParentVisible: job.ParentVisible,
-		CreatedAt:     job.CreatedAt,
-		UpdatedAt:     job.UpdatedAt,
+		ID:              job.ID,
+		Slug:            job.Slug,
+		Title:           job.Title,
+		ParentID:        job.ParentID,
+		ACPAgent:        job.ACPAgent,
+		ACPSession:      job.ACPSession,
+		Cwd:             job.Cwd,
+		ModelProvider:   job.ModelProvider,
+		Model:           job.Model,
+		ReasoningEffort: job.ReasoningEffort,
+		State:           job.State,
+		StopReason:      job.StopReason,
+		Assistant:       job.Assistant,
+		Thought:         job.Thought,
+		Plan:            clonePlanEntries(job.Plan),
+		ToolCalls:       CloneToolCalls(job.ToolCalls),
+		Modes:           acpModeEvent(job.Modes),
+		Error:           job.Error,
+		ParentVisible:   job.ParentVisible,
+		CreatedAt:       job.CreatedAt,
+		UpdatedAt:       job.UpdatedAt,
+		LastEventAt:     job.LastEventAt,
+		LastToolAt:      job.LastToolAt,
 	}
 }
 
-func acpEvent(job Job) *sessionevents.ACPEvent {
-	calls := make([]sessionevents.ACPToolCall, 0, len(job.ToolCalls))
-	for _, call := range job.ToolCalls {
-		calls = append(calls, toolCallEvent(call))
-	}
+func EventFromJob(job Job) *sessionevents.ACPEvent {
 	return &sessionevents.ACPEvent{
-		ID:          job.ID,
-		Slug:        job.Slug,
-		Title:       job.Title,
-		ParentID:    job.ParentID,
-		Agent:       job.ACPAgent,
-		SessionID:   job.ACPSession,
-		State:       job.State,
-		StopReason:  job.StopReason,
-		Assistant:   job.Assistant,
-		Thought:     job.Thought,
-		Error:       job.Error,
-		Modes:       acpModeEvent(job.Modes),
-		Plan:        clonePlanEntries(job.Plan),
-		ToolCalls:   calls,
-		Permissions: clonePermissions(job.Permissions),
+		ID:              job.ID,
+		Slug:            job.Slug,
+		Title:           job.Title,
+		ParentID:        job.ParentID,
+		Agent:           job.ACPAgent,
+		SessionID:       job.ACPSession,
+		ModelProvider:   job.ModelProvider,
+		Model:           job.Model,
+		ReasoningEffort: job.ReasoningEffort,
+		State:           job.State,
+		StopReason:      job.StopReason,
+		Assistant:       job.Assistant,
+		Thought:         job.Thought,
+		Error:           job.Error,
+		Modes:           acpModeEvent(job.Modes),
+		Plan:            clonePlanEntries(job.Plan),
+		ToolCalls:       CloneToolCalls(job.ToolCalls),
+		Permissions:     clonePermissions(job.Permissions),
+		LastEventAt:     job.LastEventAt,
+		LastToolAt:      job.LastToolAt,
+	}
+}
+
+func acpTranscriptEnvelope(job Job) *sessionevents.ACPEvent {
+	return &sessionevents.ACPEvent{
+		ID:              job.ID,
+		Slug:            job.Slug,
+		Title:           job.Title,
+		ParentID:        job.ParentID,
+		Agent:           job.ACPAgent,
+		SessionID:       job.ACPSession,
+		ModelProvider:   job.ModelProvider,
+		Model:           job.Model,
+		ReasoningEffort: job.ReasoningEffort,
+		State:           job.State,
+		StopReason:      job.StopReason,
+		Error:           job.Error,
+		Modes:           acpModeEvent(job.Modes),
+		LastEventAt:     job.LastEventAt,
+		LastToolAt:      job.LastToolAt,
 	}
 }
 

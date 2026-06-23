@@ -4,11 +4,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/storage"
+	"golang.org/x/mod/semver"
 )
 
 const (
@@ -229,6 +232,9 @@ func MergeAgentDefaults(stored, seed AgentDefaults, agentNames []string) AgentDe
 }
 
 func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentDefaults {
+	if command, ok := refreshBuiltInCommand(name, stored.Command, seed.Command); ok {
+		stored.Command = command
+	}
 	if strings.TrimSpace(stored.Command) == "" {
 		stored.Command = seed.Command
 	}
@@ -250,6 +256,125 @@ func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentD
 		}
 	}
 	return stored
+}
+
+func refreshBuiltInCommand(name, storedCommand, seedCommand string) (string, bool) {
+	if name != acp.AgentCodex {
+		return "", false
+	}
+	storedExecutable, storedArgs, err := ParseCommandLine(storedCommand)
+	if err != nil {
+		return "", false
+	}
+	seedExecutable, seedArgs, err := ParseCommandLine(seedCommand)
+	if err != nil || len(seedArgs) < 2 {
+		return "", false
+	}
+	if !isNpxExecutable(storedExecutable) || !isNpxExecutable(seedExecutable) {
+		return "", false
+	}
+	if storedCodexPackageIsOlder(storedArgs, seedArgs) {
+		if commandArgsMatchExceptPackageWithOptionalTrailingConfigs(
+			storedArgs,
+			seedArgs,
+			`features.tool_search_always_defer_mcp_tools=true`,
+			`suppress_unstable_features_warning=true`,
+		) {
+			return seedCommand, true
+		}
+		storedArgs[1] = seedArgs[1]
+		return CommandLine(storedExecutable, storedArgs), true
+	}
+	if storedCodexPackageIsSame(storedArgs, seedArgs) &&
+		slices.Equal(storedArgs, seedArgsWithoutTrailingConfigs(seedArgs, `suppress_unstable_features_warning=true`)) {
+		return seedCommand, true
+	}
+	return "", false
+}
+
+func storedCodexPackageIsOlder(storedArgs, seedArgs []string) bool {
+	if len(storedArgs) < 2 || len(seedArgs) < 2 {
+		return false
+	}
+	storedName, storedVersion, ok := packageNameVersion(storedArgs[1])
+	if !ok {
+		return false
+	}
+	seedName, seedVersion, ok := packageNameVersion(seedArgs[1])
+	if !ok || storedName != seedName {
+		return false
+	}
+	return semverLess(storedVersion, seedVersion)
+}
+
+func storedCodexPackageIsSame(storedArgs, seedArgs []string) bool {
+	if len(storedArgs) < 2 || len(seedArgs) < 2 {
+		return false
+	}
+	storedName, storedVersion, ok := packageNameVersion(storedArgs[1])
+	if !ok {
+		return false
+	}
+	seedName, seedVersion, ok := packageNameVersion(seedArgs[1])
+	return ok && storedName == seedName && storedVersion == seedVersion
+}
+
+func packageNameVersion(pkg string) (string, string, bool) {
+	pkg = strings.TrimSpace(pkg)
+	at := strings.LastIndex(pkg, "@")
+	if at <= strings.LastIndex(pkg, "/") || at == len(pkg)-1 {
+		return "", "", false
+	}
+	return pkg[:at], pkg[at+1:], true
+}
+
+func semverLess(a, b string) bool {
+	a = "v" + strings.TrimPrefix(strings.TrimSpace(a), "v")
+	b = "v" + strings.TrimPrefix(strings.TrimSpace(b), "v")
+	return semver.IsValid(a) && semver.IsValid(b) && semver.Compare(a, b) < 0
+}
+
+func commandArgsMatchExceptPackage(storedArgs, seedArgs []string) bool {
+	if len(storedArgs) != len(seedArgs) || len(seedArgs) < 2 {
+		return false
+	}
+	for i := range seedArgs {
+		if i == 1 {
+			continue
+		}
+		if storedArgs[i] != seedArgs[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func commandArgsMatchExceptPackageWithOptionalTrailingConfigs(storedArgs, seedArgs []string, configs ...string) bool {
+	for {
+		if commandArgsMatchExceptPackage(storedArgs, seedArgs) {
+			return true
+		}
+		next := seedArgsWithoutTrailingConfigs(seedArgs, configs...)
+		if len(next) == len(seedArgs) {
+			return false
+		}
+		seedArgs = next
+	}
+}
+
+func seedArgsWithoutTrailingConfigs(seedArgs []string, configs ...string) []string {
+	if len(seedArgs) < 2 || seedArgs[len(seedArgs)-2] != "-c" {
+		return seedArgs
+	}
+	if !slices.Contains(configs, seedArgs[len(seedArgs)-1]) {
+		return seedArgs
+	}
+	return seedArgs[:len(seedArgs)-2]
+}
+
+func isNpxExecutable(executable string) bool {
+	base := strings.ToLower(filepath.Base(executable))
+	return base == "npx" || base == "npx.cmd"
 }
 
 func canonicalizeACPDefaults(in map[string]ACPAgentDefaults) map[string]ACPAgentDefaults {
@@ -282,13 +407,22 @@ func NewACPConfigSource(store storage.SettingsStorage, catalog acp.AgentCatalog)
 	return &ACPConfigSource{store: store, catalog: catalog}
 }
 
+func (s *ACPConfigSource) effectiveDefaults() (AgentDefaults, error) {
+	stored, err := LoadAgentDefaults(s.store)
+	if err != nil {
+		return AgentDefaults{}, err
+	}
+	seed := AgentDefaultsFromCatalog(s.catalog)
+	return MergeAgentDefaults(stored, seed, s.catalog.Names()), nil
+}
+
 func (s *ACPConfigSource) AgentConfig(name string) (acp.AgentConfig, bool, error) {
 	name = acp.CanonicalAgentName(name)
 	cfg, ok := s.catalog.Agent(name)
 	if !ok {
 		return acp.AgentConfig{}, false, nil
 	}
-	defaults, err := LoadAgentDefaults(s.store)
+	defaults, err := s.effectiveDefaults()
 	if err != nil {
 		return acp.AgentConfig{}, false, err
 	}
@@ -322,7 +456,7 @@ func (s *ACPConfigSource) AgentConfig(name string) (acp.AgentConfig, bool, error
 }
 
 func (s *ACPConfigSource) EnabledAgentNames() ([]string, error) {
-	defaults, err := LoadAgentDefaults(s.store)
+	defaults, err := s.effectiveDefaults()
 	if err != nil {
 		return nil, err
 	}
