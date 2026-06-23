@@ -33,7 +33,15 @@ install -o root -g root -m 755 jaz /opt/jaz/bin/jaz
 Node/npm are required when the backend runs default ACP agents because the
 built-in Codex, Claude, and OpenCode adapters launch through `npx`. Install each
 agent CLI you enable on the server too, for example `npm install -g @openai/codex`
-for Codex login.
+for Codex login. Without the CLI on the server's `PATH` the onboarding agent
+cards show "Not installed" and offer no sign-in.
+
+Agent OAuth on a remote backend can't use the local-loopback capture a desktop
+login relies on: the CLI runs on the server, so the browser's redirect never
+reaches it. The CLI falls back to printing an authentication code for you to
+paste back. The onboarding sign-in card surfaces a field for that code and
+relays it to the login process over `POST /v1/acp/auth-logins/{id}/input`; or
+sign in with an API key instead, which needs no browser round-trip.
 
 Write `/etc/jaz/application.yaml`:
 

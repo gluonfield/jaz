@@ -35,6 +35,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/acp/agents/{agent}/auth/login", s.handleStartACPAuthLogin)
 	mux.HandleFunc("POST /v1/acp/agents/{agent}/auth/disconnect", s.handleDisconnectACPAuth)
 	mux.HandleFunc("GET /v1/acp/auth-logins/", s.handleGetACPAuthLogin)
+	mux.HandleFunc("POST /v1/acp/auth-logins/{id}/input", s.handleACPAuthLoginInput)
 	mux.Handle("GET /v1/search/threads", api.NewThreadSearchHandler(s.Threads))
 	mux.HandleFunc("GET /v1/projects", s.handleListProjects)
 	mux.HandleFunc("POST /v1/projects", s.handleCreateProject)

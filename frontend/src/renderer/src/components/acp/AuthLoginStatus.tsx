@@ -1,7 +1,9 @@
 import { AlertCircle, CheckCircle2, Copy, ExternalLink, LoaderCircle } from 'lucide-react'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/toast'
+import { submitACPAuthLoginInput } from '@/lib/api/settings'
 import type { ACPAuthLogin } from '@/lib/api/types'
 import { writeClipboard } from '@/lib/clipboard'
 
@@ -15,6 +17,27 @@ export function AuthLoginStatus({
   const toast = useToast()
   const opened = useRef('')
   const details = useMemo(() => authDetails(job), [job])
+  const [code, setCode] = useState('')
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState('')
+
+  // The remote/headless flow: the browser prints a code the CLI couldn't
+  // capture, so the user hands it back here and the backend relays it to the
+  // login process's stdin. The poll then reflects the result.
+  const onSubmitCode = async () => {
+    const value = code.trim()
+    if (!job || !value) return
+    setSending(true)
+    setSendError('')
+    try {
+      await submitACPAuthLoginInput(job.id, value)
+      setCode('')
+    } catch (error) {
+      setSendError(error instanceof Error ? error.message : 'Could not send the code')
+    } finally {
+      setSending(false)
+    }
+  }
 
   useEffect(() => {
     if (job?.agent !== 'codex' || job.status !== 'running' || !details.url) return
@@ -89,6 +112,33 @@ export function AuthLoginStatus({
             </Button>
           ) : null}
         </div>
+      ) : null}
+
+      {job && showAuthDetails ? (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault()
+            void onSubmitCode()
+          }}
+          className="grid gap-1.5"
+        >
+          <p className="text-ink-3">Did the browser show a code to paste back? Enter it here to finish.</p>
+          <div className="flex items-center gap-1.5">
+            <Input
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+              placeholder="Paste the code from the browser"
+              spellCheck={false}
+              autoComplete="off"
+              className="h-8 font-mono text-[12px]"
+            />
+            <Button size="sm" variant="primary" type="submit" disabled={sending || !code.trim()}>
+              {sending ? <LoaderCircle size={13} className="animate-spin" /> : null}
+              Submit
+            </Button>
+          </div>
+          {sendError ? <p className="text-danger">{sendError}</p> : null}
+        </form>
       ) : null}
     </div>
   )
