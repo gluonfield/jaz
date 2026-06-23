@@ -9,7 +9,7 @@ import { connectRemote, forgetBackend, startLocal, useConnection, type Connectio
 import { connectionStatusDisplay, describeBackend, localBackendLabel, sameBackend } from '@/lib/connectionDisplay'
 import { relativeTime } from '@/lib/format/time'
 
-export function ConnectionsSettings() {
+export function BackendsSettings() {
   const { status, url } = useConnection()
   const remotes = useKnownBackends()
   const [busy, setBusy] = useState<string | null>(null)
@@ -40,8 +40,8 @@ export function ConnectionsSettings() {
     <section className="py-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-medium text-ink">Connections</p>
-          <p className="mt-0.5 text-[13px] text-ink-2">Backends this app can run on. Switch any time; the names are yours.</p>
+          <p className="text-sm font-medium text-ink">Backends</p>
+          <p className="mt-0.5 text-[13px] text-ink-2">Machines Jaz can run on — this computer or any server you connect. Switch any time; the names are yours.</p>
         </div>
         {!adding ? (
           <Button variant="secondary" size="md" onClick={() => { setAdding(true); setError(null) }}>
