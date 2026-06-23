@@ -405,6 +405,11 @@ function AgentCard({
                   </div>
                 ) : (
                   <div className="flex flex-col gap-2">
+                    {!canLogin && probe.auth_command_reason ? (
+                      <p className="text-[12px] text-ink-3">
+                        Sign-in unavailable: {probe.auth_command_reason}. Use an API key instead.
+                      </p>
+                    ) : null}
                     <Input
                       type="password"
                       value={apiKeyValue}

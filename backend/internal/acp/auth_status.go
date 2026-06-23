@@ -51,7 +51,7 @@ func ProbeAgentAuthWithProviders(name string, cfg AgentConfig, root string, env 
 	}
 	probeEnv := NewManager(nil, Config{Root: root, Env: env, Providers: providers}, nil).probeEnv(name, cfg)
 	resolved := resolveAgentAuthWithProviders(name, cfg, root, probeEnv, providers)
-	status := agentLoginCommand(name, root, resolved.Config)
+	status := agentLoginCommand(name, root, resolved.Config, cfg.AdapterBinDir)
 	status.RefreshOwner = RefreshOwnerAgentCLI
 	status.StoragePath = resolved.StoragePath
 	status.Authenticated = resolved.Authenticated
@@ -70,8 +70,8 @@ func ProbeAgentAuthWithProviders(name string, cfg AgentConfig, root string, env 
 	return status
 }
 
-func agentLoginCommand(name, root string, auth AgentAuthConfig) AgentAuthStatus {
-	invocation := AgentLoginInvocationFor(name, root, auth)
+func agentLoginCommand(name, root string, auth AgentAuthConfig, binDir string) AgentAuthStatus {
+	invocation := AgentLoginInvocationFor(name, root, auth, binDir)
 	return AgentAuthStatus{
 		LoginCommand:          invocation.Display,
 		LoginCommandAvailable: invocation.Available,
@@ -79,24 +79,27 @@ func agentLoginCommand(name, root string, auth AgentAuthConfig) AgentAuthStatus 
 	}
 }
 
-func AgentLoginInvocationFor(name, root string, auth AgentAuthConfig) AgentLoginInvocation {
+// AgentLoginInvocationFor builds the OAuth login command for an agent. binDir is
+// the agent's managed-adapter bundle directory (empty when none); the login CLI
+// is resolved there before PATH so a Node-free backend uses the bundled binary.
+func AgentLoginInvocationFor(name, root string, auth AgentAuthConfig, binDir string) AgentLoginInvocation {
 	layout := runtimefiles.New(root)
 	switch CanonicalAgentName(name) {
 	case AgentCodex:
 		home := firstNonEmpty(auth.Path, layout.ACPCodexHome)
-		return loginInvocation(map[string]string{"CODEX_HOME": home}, false, "codex", "login", "--device-auth")
+		return loginInvocation(map[string]string{"CODEX_HOME": home}, false, binDir, "codex", "login", "--device-auth")
 	case AgentClaude:
 		configDir := firstNonEmpty(auth.Path, layout.ACPClaudeConfig)
-		return loginInvocation(map[string]string{"CLAUDE_CONFIG_DIR": configDir}, false, "claude", "auth", "login", "--claudeai")
+		return loginInvocation(map[string]string{"CLAUDE_CONFIG_DIR": configDir}, false, binDir, "claude", "auth", "login", "--claudeai")
 	case AgentGrok:
-		return loginInvocation(nil, true, "grok", "login", "--device-auth")
+		return loginInvocation(nil, true, binDir, "grok", "login", "--device-auth")
 	default:
 		return AgentLoginInvocation{}
 	}
 }
 
-func loginInvocation(env map[string]string, inheritHome bool, executable string, args ...string) AgentLoginInvocation {
-	resolved, err := ResolveExecutable(executable)
+func loginInvocation(env map[string]string, inheritHome bool, binDir, executable string, args ...string) AgentLoginInvocation {
+	resolved, err := resolveLoginExecutable(binDir, executable)
 	if err != nil {
 		resolved = executable
 	}
