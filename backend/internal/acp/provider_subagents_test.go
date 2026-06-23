@@ -24,7 +24,7 @@ func TestProviderSubagentSessionInfoUpdatePublishesAndStores(t *testing.T) {
 	events := sessionevents.New()
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	manager.jobsByID[session.ID] = &Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex, ACPSession: "acp-session"}
+	manager.jobsByID[session.ID] = &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex, ACPSession: "acp-session"}}
 	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -95,7 +95,7 @@ func TestProviderSubagentMetadataDoesNotConsumeMessageChunk(t *testing.T) {
 	events := sessionevents.New()
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	manager.jobsByID[session.ID] = &Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex, ACPSession: "acp-session"}
+	manager.jobsByID[session.ID] = &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex, ACPSession: "acp-session"}}
 	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -162,7 +162,7 @@ func TestClaudeParentToolUseIDPublishesProviderSubagentOnly(t *testing.T) {
 	events := sessionevents.New()
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	manager.jobsByID[session.ID] = &Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentClaude, ACPSession: "acp-session"}
+	manager.jobsByID[session.ID] = &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentClaude, ACPSession: "acp-session"}}
 	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

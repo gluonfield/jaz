@@ -1,8 +1,9 @@
 import { ArrowUp, AudioLines, FileText, ListChecks, LoaderCircle, Paperclip, Plus, Square, X } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { type ClipboardEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import { FileDropOverlay, useWindowFileDrop } from '@/components/ui/FileDrop'
 import { IconButton } from '@/components/ui/IconButton'
+import { clipboardFiles } from '@/components/ui/fileTransfer'
 import type { Attachment, QueuedMessage } from '@/lib/api/types'
 import type { ComposerContext, SendMessageOptions } from '@/lib/sendMessage'
 import { MenuRow, Popover } from '@/components/ui/Popover'
@@ -144,6 +145,13 @@ export function ComposerCard({
   // to this composer (the page's only one).
   const draggingFiles = useWindowFileDrop({ disabled, onDrop: attachmentDraft.addFiles })
 
+  const onPasteCapture = (event: ClipboardEvent<HTMLDivElement>) => {
+    const files = clipboardFiles(event.clipboardData)
+    if (files.length === 0) return
+    event.preventDefault()
+    attachmentDraft.addFiles(files)
+  }
+
   const togglePlanRequested = () => {
     if (planToggleDisabled) return
     setPlanRequested((value) => !value)
@@ -192,6 +200,7 @@ export function ComposerCard({
   return (
     <div
       className="relative"
+      onPasteCapture={onPasteCapture}
       onFocusCapture={() => setFocused(true)}
       onBlurCapture={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(false)

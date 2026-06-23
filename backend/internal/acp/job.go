@@ -34,6 +34,10 @@ type Job struct {
 	UpdatedAt       time.Time                     `json:"updated_at"`
 	LastEventAt     time.Time                     `json:"last_event_at,omitzero"`
 	LastToolAt      time.Time                     `json:"last_tool_at,omitzero"`
+}
+
+type jobState struct {
+	Job
 
 	mu                     sync.RWMutex
 	turnMu                 sync.Mutex
@@ -86,17 +90,17 @@ func jobFromSession(session storage.Session, agentName, acpSessionID, cwd, state
 	}
 }
 
-func newIdleJob(session storage.Session, agentName, acpSessionID, cwd string, modes ModeState) *Job {
-	job := jobFromSession(session, agentName, acpSessionID, cwd, StateIdle)
+func newIdleJob(session storage.Session, agentName, acpSessionID, cwd string, modes ModeState) *jobState {
+	job := &jobState{Job: jobFromSession(session, agentName, acpSessionID, cwd, StateIdle)}
 	now := time.Now().UTC()
 	job.Modes = modes
 	job.UpdatedAt = now
 	job.LastEventAt = now
 	job.toolByID = make(map[string]sessionevents.ACPToolCall)
-	return &job
+	return job
 }
 
-func (j *Job) Snapshot() Job {
+func (j *jobState) Snapshot() Job {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
 	return Job{
@@ -142,7 +146,7 @@ func (s ModeState) Clone() ModeState {
 	}
 }
 
-func (j *Job) setState(state, stopReason, errMsg string) {
+func (j *jobState) setState(state, stopReason, errMsg string) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	now := time.Now().UTC()
@@ -153,7 +157,7 @@ func (j *Job) setState(state, stopReason, errMsg string) {
 	j.LastEventAt = now
 }
 
-func (j *Job) startTurn(completion CompletionMode, planRequested, parentVisible bool) chan struct{} {
+func (j *jobState) startTurn(completion CompletionMode, planRequested, parentVisible bool) chan struct{} {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	j.State = StateRunning
@@ -184,7 +188,7 @@ func (j *Job) startTurn(completion CompletionMode, planRequested, parentVisible 
 	return j.turn.done
 }
 
-func (j *Job) turnDone() chan struct{} {
+func (j *jobState) turnDone() chan struct{} {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
 	if j.turn == nil {
@@ -193,7 +197,7 @@ func (j *Job) turnDone() chan struct{} {
 	return j.turn.done
 }
 
-func (j *Job) turnDoneAndPlan() (chan struct{}, bool) {
+func (j *jobState) turnDoneAndPlan() (chan struct{}, bool) {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
 	if j.turn == nil {
@@ -202,7 +206,7 @@ func (j *Job) turnDoneAndPlan() (chan struct{}, bool) {
 	return j.turn.done, j.turn.planRequested
 }
 
-func (j *Job) requestCancel() (bool, chan struct{}) {
+func (j *jobState) requestCancel() (bool, chan struct{}) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	if j.turn != nil {
@@ -215,7 +219,7 @@ func (j *Job) requestCancel() (bool, chan struct{}) {
 	return running, j.turn.done
 }
 
-func (j *Job) addPromptCall(parentVisible bool) (chan struct{}, bool) {
+func (j *jobState) addPromptCall(parentVisible bool) (chan struct{}, bool) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	if !j.promptQueueing || j.turn == nil {
