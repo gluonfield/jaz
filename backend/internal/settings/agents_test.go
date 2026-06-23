@@ -156,7 +156,7 @@ func TestMergeAgentDefaultsRefreshesCurrentCodexCommandMissingWarningSuppress(t 
 func TestMergeAgentDefaultsRefreshesCodexPackageAndKeepsCustomConfigs(t *testing.T) {
 	seed := testAgentDefaultsSeed()
 	storedCommand := strings.Replace(seed.ACP["codex"].Command, "@jazchat/codex-acp@0.16.7", "@jazchat/codex-acp@0.16.6", 1)
-	storedCommand = strings.Replace(storedCommand, " -c features.tool_search_always_defer_mcp_tools=true", ` -c 'service_tier="fast"' -c features.tool_search_always_defer_mcp_tools=true`, 1)
+	storedCommand = strings.Replace(storedCommand, " -c features.tool_search_always_defer_mcp_tools=true", ` -c 'cli_auth_credentials_store="file"' -c features.tool_search_always_defer_mcp_tools=true`, 1)
 	stored := AgentDefaults{ACP: map[string]ACPAgentDefaults{
 		"codex": {Command: storedCommand},
 	}}
@@ -167,7 +167,7 @@ func TestMergeAgentDefaultsRefreshesCodexPackageAndKeepsCustomConfigs(t *testing
 	if !strings.Contains(command, "@jazchat/codex-acp@0.16.7") || strings.Contains(command, "@jazchat/codex-acp@0.16.6") {
 		t.Fatalf("codex command package not refreshed: %q", command)
 	}
-	if !strings.Contains(command, `service_tier="fast"`) {
+	if !strings.Contains(command, `cli_auth_credentials_store="file"`) {
 		t.Fatalf("codex command lost custom config: %q", command)
 	}
 }
@@ -186,7 +186,7 @@ func TestACPConfigSourceUsesMergedCodexBuiltinCommand(t *testing.T) {
 	codex := stored.ACP["codex"]
 	codex.Enabled = true
 	codex.Command = strings.Replace(codex.Command, "@jazchat/codex-acp@0.16.7", "@jazchat/codex-acp@0.16.6", 1)
-	codex.Command = strings.Replace(codex.Command, " -c features.tool_search_always_defer_mcp_tools=true", ` -c 'service_tier="fast"' -c features.tool_search_always_defer_mcp_tools=true`, 1)
+	codex.Command = strings.Replace(codex.Command, " -c features.tool_search_always_defer_mcp_tools=true", ` -c 'cli_auth_credentials_store="file"' -c features.tool_search_always_defer_mcp_tools=true`, 1)
 	stored.ACP["codex"] = codex
 	if _, err := SaveAgentDefaults(store, stored); err != nil {
 		t.Fatal(err)
@@ -202,7 +202,7 @@ func TestACPConfigSourceUsesMergedCodexBuiltinCommand(t *testing.T) {
 	if len(cfg.Args) < 2 || cfg.Args[1] != "@jazchat/codex-acp@0.16.7" {
 		t.Fatalf("codex args = %#v", cfg.Args)
 	}
-	if !strings.Contains(strings.Join(cfg.Args, "\n"), `service_tier="fast"`) {
+	if !strings.Contains(strings.Join(cfg.Args, "\n"), `cli_auth_credentials_store="file"`) {
 		t.Fatalf("codex args lost custom config: %#v", cfg.Args)
 	}
 }
