@@ -10,7 +10,7 @@ import (
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
-func TestBrowserSettingsDefaultEnabled(t *testing.T) {
+func TestBrowserSettingsDefaultDisabled(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -21,7 +21,7 @@ func TestBrowserSettingsDefaultEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !settings.Enabled {
+	if settings.Enabled {
 		t.Fatalf("default browser settings = %#v", settings)
 	}
 }
