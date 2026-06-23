@@ -71,7 +71,9 @@ export function renameBackend(url: string, label: string): void {
   commit(read().map((b) => (normalizeBaseUrl(b.url) === target ? { ...b, label: name } : b)))
 }
 
-export function forgetBackend(url: string): void {
+// Registry-level removal. Prefer connection.forgetBackend, which also clears a
+// matching launch preference so a restart doesn't keep aiming at it.
+export function removeKnownBackend(url: string): void {
   const target = normalizeBaseUrl(url)
   commit(read().filter((b) => normalizeBaseUrl(b.url) !== target))
   setApiAuthToken(target, null)
