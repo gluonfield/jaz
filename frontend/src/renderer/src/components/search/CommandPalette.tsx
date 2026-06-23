@@ -23,10 +23,12 @@ export function CommandPalette({
   open,
   onOpenChange,
   onOpenSettings,
+  onOpenConnect,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   onOpenSettings: () => void
+  onOpenConnect: () => void
 }) {
   const navigate = useNavigate()
   const reduceMotion = useReducedMotion()
@@ -40,6 +42,7 @@ export function CommandPalette({
       query,
       onOpenChange,
       onOpenSettings,
+      onOpenConnect,
     })
 
   const close = useCallback(() => onOpenChange(false), [onOpenChange])

@@ -25,11 +25,13 @@ export function useCommandPaletteItems({
   query,
   onOpenChange,
   onOpenSettings,
+  onOpenConnect,
 }: {
   open: boolean
   query: string
   onOpenChange: (open: boolean) => void
   onOpenSettings: () => void
+  onOpenConnect: () => void
 }) {
   const navigate = useNavigate()
   const debouncedQuery = useDebouncedValue(query.trim(), 140)
@@ -49,6 +51,16 @@ export function useCommandPaletteItems({
         },
       },
       {
+        id: 'connect-machine',
+        kind: 'command',
+        title: 'Connect to a machine',
+        detail: 'Switch which backend Jaz runs on',
+        run: () => {
+          onOpenChange(false)
+          onOpenConnect()
+        },
+      },
+      {
         id: 'settings',
         kind: 'command',
         title: 'Settings',
@@ -59,7 +71,7 @@ export function useCommandPaletteItems({
         },
       },
     ],
-    [navigate, onOpenChange, onOpenSettings],
+    [navigate, onOpenChange, onOpenSettings, onOpenConnect],
   )
 
   // Archived chats stay searchable; the backend ranks them below active ones
