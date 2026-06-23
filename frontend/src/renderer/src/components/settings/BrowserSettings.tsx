@@ -11,6 +11,7 @@ import { agentLabel } from '@/lib/agentLabel'
 import { browserSettingsQuery, agentSettingsQuery, updateBrowserSettings } from '@/lib/api/settings'
 import type { BrowserStatus } from '@/lib/api/types'
 import { enabledACPAgents } from '@/lib/agentRuntimes'
+import { apiAuthenticatedWebSocketUrl, apiBaseUrl } from '@/lib/api/client'
 import { keys } from '@/lib/query/keys'
 
 function formatTime(value?: string): string {
@@ -23,6 +24,22 @@ function formatTime(value?: string): string {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function extensionEndpoint(): string {
+  const base = apiBaseUrl()
+  try {
+    const url = new URL(base)
+    const port = url.port || (url.protocol === 'https:' ? '443' : '80')
+    const defaultLocal =
+      url.protocol === 'http:' &&
+      (url.hostname === 'localhost' || url.hostname === '127.0.0.1') &&
+      port === '5299'
+    if (defaultLocal) return ''
+  } catch {
+    return apiAuthenticatedWebSocketUrl('/v1/browser/extension')
+  }
+  return apiAuthenticatedWebSocketUrl('/v1/browser/extension')
 }
 
 export function BrowserSettings() {
@@ -87,6 +104,7 @@ export function BrowserSettings() {
   ]
   const agentValid = !selectedAgent || agents.includes(selectedAgent) || agentSettings.isPending
   const connected = Boolean(extension.connected)
+  const endpoint = extensionEndpoint()
 
   return (
     <section className="py-5">
@@ -161,10 +179,12 @@ export function BrowserSettings() {
         </div>
 
         <dl className="grid grid-cols-1 gap-x-4 gap-y-3 px-4 py-3 text-[12px] md:grid-cols-[140px_minmax(0,1fr)]">
-          <dt className="text-ink-3">Bridge URL</dt>
-          <dd className="min-w-0 break-all font-mono text-ink">
-            {extension.bridge_url || 'Not reported'}
-          </dd>
+          {endpoint ? (
+            <>
+              <dt className="text-ink-3">Endpoint</dt>
+              <dd className="min-w-0 break-all font-mono text-ink">{endpoint}</dd>
+            </>
+          ) : null}
           <dt className="text-ink-3">Extension ID</dt>
           <dd className="min-w-0 break-all font-mono text-ink">
             {extension.extension_id || 'Not connected'}
