@@ -128,7 +128,7 @@ function FilePreview({
   highlightLine?: number
   onOpenFile: (file: FileReference) => void
 }) {
-  if (isMarkdownPath(path) && highlightLine === undefined) {
+  if (isMarkdownPath(path)) {
     return (
       <FileReaderLinkProvider onOpen={onOpenFile}>
         <FileMarkdownView content={content} />
