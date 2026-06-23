@@ -79,6 +79,14 @@ export function removeKnownBackend(url: string): void {
   setApiAuthToken(target, null)
 }
 
+// The user-given name for a backend, if it's a known remote. Reads the cache
+// directly so it works in a one-shot callback (the switch animation) as well as
+// in a render that subscribes via useKnownBackends.
+export function knownBackendLabel(url: string): string | undefined {
+  const target = normalizeBaseUrl(url)
+  return cache.find((b) => normalizeBaseUrl(b.url) === target)?.label
+}
+
 function hostLabel(url: string): string {
   try {
     return new URL(url).host
