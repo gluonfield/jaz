@@ -1,6 +1,7 @@
 # Jaz Chrome Extension
 
-The signed-in Chrome bridge lives in a separate repository:
+The signed-in Chrome bridge lives in a separate TypeScript MV3 side-panel
+extension repository:
 
 https://github.com/gluonfield/jaz-chrome-extension
 
