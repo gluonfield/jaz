@@ -4,6 +4,7 @@
   "actions": [
     "status",
     "tabs",
+    "adopt_active_tab",
     "navigate",
     "snapshot",
     "state",

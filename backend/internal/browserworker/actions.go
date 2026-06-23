@@ -3,6 +3,7 @@ package browserworker
 const (
 	ActionStatus     = "status"
 	ActionTabs       = "tabs"
+	ActionAdoptTab   = "adopt_active_tab"
 	ActionNavigate   = "navigate"
 	ActionSnapshot   = "snapshot"
 	ActionState      = "state"
@@ -22,6 +23,7 @@ const (
 var supportedExtensionActions = []string{
 	ActionStatus,
 	ActionTabs,
+	ActionAdoptTab,
 	ActionNavigate,
 	ActionSnapshot,
 	ActionState,

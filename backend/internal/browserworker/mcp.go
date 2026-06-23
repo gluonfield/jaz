@@ -25,7 +25,7 @@ type Backend interface {
 type UnavailableBackend struct{}
 
 type ActionInput struct {
-	Action   string `json:"action" jsonschema:"navigate, snapshot, state, extract, screenshot, click, type, fill, press, hover, scroll, select, wait, tabs, pdf, status"`
+	Action   string `json:"action" jsonschema:"adopt_active_tab, navigate, snapshot, state, extract, screenshot, click, type, fill, press, hover, scroll, select, wait, tabs, pdf, status"`
 	URL      string `json:"url,omitempty" jsonschema:"target URL for navigate"`
 	Selector string `json:"selector,omitempty" jsonschema:"stable selector or accessibility locator when an action targets an element"`
 	Text     string `json:"text,omitempty" jsonschema:"text for type/fill/select/wait actions"`

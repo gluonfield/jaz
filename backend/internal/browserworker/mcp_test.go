@@ -27,6 +27,8 @@ func (b *recordingBackend) Call(_ context.Context, input ActionInput) (ActionOut
 func (b *scriptedBackend) Call(_ context.Context, input ActionInput) (ActionOutput, error) {
 	b.calls = append(b.calls, input)
 	switch input.Action {
+	case ActionAdoptTab:
+		return ActionOutput{Status: "ok", Text: "adopted"}, nil
 	case "state":
 		data, _ := json.Marshal(PageState{
 			URL:        "https://example.com",
@@ -70,6 +72,19 @@ func (b *scriptedBackend) Call(_ context.Context, input ActionInput) (ActionOutp
 		return ActionOutput{Status: "ok", ImageBase64: "cG5n", ImageMIMEType: "image/png"}, nil
 	default:
 		return ActionOutput{Status: "ok", Text: input.Action}, nil
+	}
+}
+
+func TestToolExposesAdoptActiveTabAction(t *testing.T) {
+	backend := &scriptedBackend{}
+	_, out, err := (tool{backend: backend}).Call(context.Background(), &mcp.CallToolRequest{
+		Extra: &mcp.RequestExtra{Header: mcpsession.Header("browser-session-1")},
+	}, ActionInput{Action: ActionAdoptTab})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Text != "adopted" || len(backend.calls) != 1 || backend.calls[0].Action != ActionAdoptTab {
+		t.Fatalf("out=%#v calls=%#v", out, backend.calls)
 	}
 }
 

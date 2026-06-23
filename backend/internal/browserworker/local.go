@@ -63,6 +63,12 @@ func (b *LocalBackend) Call(ctx context.Context, input ActionInput) (ActionOutpu
 		return ActionOutput{}, err
 	}
 	switch action {
+	case ActionAdoptTab:
+		info, err := page.info(ctx)
+		if err != nil {
+			return ActionOutput{}, err
+		}
+		return ActionOutput{Status: "ok", Text: "Managed browser session already owns its tab.\n" + info}, nil
 	case ActionNavigate:
 		return page.navigate(ctx, input.URL)
 	case ActionSnapshot:
