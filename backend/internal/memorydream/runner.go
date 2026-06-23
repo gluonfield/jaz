@@ -68,8 +68,8 @@ func (r *Runner) RunDream(ctx context.Context, req jazmem.DreamRequest) (jazmem.
 		Slug:            fmt.Sprintf("memory-dream-%s-%s-%d", agent, suffix, time.Now().UnixNano()),
 		Title:           "Memory Dream " + runLabel(date),
 		Directory:       req.Root,
-		Model:           agentsettings.MemoryAgentModel(agent, agentDefaults),
-		ReasoningEffort: agentsettings.MemoryAgentReasoningEffort(agent),
+		Model:           agentsettings.WorkerAgentModel(agent, agentDefaults),
+		ReasoningEffort: agentsettings.WorkerAgentReasoningEffort(agent),
 		SourceType:      storage.SourceMemoryDream,
 		SourceID:        suffix,
 	})

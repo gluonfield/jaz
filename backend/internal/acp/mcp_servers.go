@@ -12,9 +12,10 @@ import (
 )
 
 const (
-	jaztoolsSurfaceQueryParam       = "jaztools_surface"
-	jaztoolsWidgetSurfaceName       = "widget"
-	jaztoolsMemorySearchSurfaceName = "memory_search_worker"
+	jaztoolsSurfaceQueryParam        = "jaztools_surface"
+	jaztoolsWidgetSurfaceName        = "widget"
+	jaztoolsMemorySearchSurfaceName  = "memory_search_worker"
+	jaztoolsBrowserWorkerSurfaceName = "browser_worker"
 )
 
 func (m *Manager) mcpServersForAgent(ctx context.Context, initRaw json.RawMessage, policy string) []json.RawMessage {
@@ -86,7 +87,7 @@ func mcpServerAllowed(policy string, server mcpconfig.Server) bool {
 	switch strings.TrimSpace(policy) {
 	case MCPServerPolicyAll, MCPServerPolicyWidget:
 		return true
-	case MCPServerPolicyMemorySearchWorker:
+	case MCPServerPolicyMemorySearchWorker, MCPServerPolicyBrowserWorker:
 		return isJaztoolsServer(server)
 	default:
 		return false
@@ -103,6 +104,8 @@ func mcpServerURL(policy string, server mcpconfig.Server) string {
 		return jaztoolsSurfaceURL(raw, jaztoolsWidgetSurfaceName)
 	case MCPServerPolicyMemorySearchWorker:
 		return jaztoolsSurfaceURL(raw, jaztoolsMemorySearchSurfaceName)
+	case MCPServerPolicyBrowserWorker:
+		return jaztoolsSurfaceURL(raw, jaztoolsBrowserWorkerSurfaceName)
 	default:
 		return raw
 	}

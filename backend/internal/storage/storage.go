@@ -21,6 +21,7 @@ const (
 	SourceLoopRun      = "loop_run"
 	SourceMemoryDream  = "memory_dream"
 	SourceMemorySearch = "memory_search"
+	SourceBrowserTask  = "browser_task"
 )
 
 const (
