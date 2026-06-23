@@ -214,7 +214,7 @@ func TestACPUsageDoesNotDoubleCountUsageAndLastTokenUsage(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := NewManager(store, Config{}, nil)
-	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}}
 	job.startTurn(CompletionInline, false, false)
 
 	manager.recordRawUsage(job, json.RawMessage(`{
@@ -248,7 +248,7 @@ func TestACPUsageSumsCodexLastTokenUsageUpdates(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := NewManager(store, Config{}, nil)
-	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}}
 	job.startTurn(CompletionInline, false, false)
 
 	manager.recordRawUsage(job, json.RawMessage(`{
@@ -334,7 +334,7 @@ func TestACPUsageSkipsRepeatedCodexLastTokenUsageUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := NewManager(store, Config{}, nil)
-	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}}
 	job.startTurn(CompletionInline, false, false)
 
 	raw := json.RawMessage(`{
@@ -414,7 +414,7 @@ func TestACPUsagePersistsAtTurnFinish(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := NewManager(store, Config{}, nil)
-	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}}
 	job.startTurn(CompletionInline, false, false)
 
 	manager.recordRawUsage(job, json.RawMessage(`{
@@ -453,7 +453,7 @@ func TestACPUsagePersistsMonotonicTurnSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := NewManager(store, Config{}, nil)
-	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}}
 	job.startTurn(CompletionInline, false, false)
 
 	manager.recordRawUsage(job, json.RawMessage(`{
@@ -497,7 +497,7 @@ func TestACPUsagePersistsAtTurnFinishToSQLite(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := NewManager(store, Config{}, nil)
-	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}}
 	job.startTurn(CompletionInline, false, false)
 
 	manager.recordRawUsage(job, json.RawMessage(`{
@@ -531,7 +531,7 @@ func TestACPUsagePersistsContextFromUsageUpdates(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := NewManager(store, Config{}, nil)
-	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}}
 	job.startTurn(CompletionInline, false, false)
 
 	// Streamed usage_update notifications, then the prompt-result usage.
@@ -585,7 +585,7 @@ func TestACPUsagePersistsOnArrival(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := NewManager(store, Config{}, nil)
-	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}}
 	job.startTurn(CompletionInline, false, false)
 
 	manager.recordRawUsage(job, json.RawMessage(`{"sessionUpdate":"usage_update","used":42000,"size":200000}`))
@@ -625,7 +625,7 @@ func TestACPUsagePublishesSessionChanged(t *testing.T) {
 
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}}
 	job.startTurn(CompletionInline, false, false)
 
 	manager.recordRawUsage(job, json.RawMessage(`{

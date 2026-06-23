@@ -32,14 +32,16 @@ func TestPlanRequestedTextPublishesProposedPlan(t *testing.T) {
 	events := sessionevents.New()
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	job := &Job{
-		ID:            session.ID,
-		ParentID:      parent.ID,
-		ParentVisible: true,
-		ACPAgent:      AgentCodex,
-		ACPSession:    "acp-session",
-		Cwd:           t.TempDir(),
-		toolByID:      map[string]sessionevents.ACPToolCall{},
+	job := &jobState{
+		Job: Job{
+			ID:            session.ID,
+			ParentID:      parent.ID,
+			ParentVisible: true,
+			ACPAgent:      AgentCodex,
+			ACPSession:    "acp-session",
+			Cwd:           t.TempDir(),
+		},
+		toolByID: map[string]sessionevents.ACPToolCall{},
 	}
 	manager.jobsByID[session.ID] = job
 	manager.jobsByACP["acp-session"] = job
@@ -114,12 +116,14 @@ func TestPlanRequestedPlainTextPublishesACPMessage(t *testing.T) {
 	events := sessionevents.New()
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	job := &Job{
-		ID:         session.ID,
-		ACPAgent:   AgentCodex,
-		ACPSession: "acp-session",
-		Cwd:        t.TempDir(),
-		toolByID:   map[string]sessionevents.ACPToolCall{},
+	job := &jobState{
+		Job: Job{
+			ID:         session.ID,
+			ACPAgent:   AgentCodex,
+			ACPSession: "acp-session",
+			Cwd:        t.TempDir(),
+		},
+		toolByID: map[string]sessionevents.ACPToolCall{},
 	}
 	manager.jobsByID[session.ID] = job
 	manager.jobsByACP["acp-session"] = job
@@ -168,12 +172,14 @@ func TestPlanRequestedProgressPublishesProposedPlan(t *testing.T) {
 	events := sessionevents.New()
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	job := &Job{
-		ID:         session.ID,
-		ACPAgent:   AgentCodex,
-		ACPSession: "acp-session",
-		Cwd:        t.TempDir(),
-		toolByID:   map[string]sessionevents.ACPToolCall{},
+	job := &jobState{
+		Job: Job{
+			ID:         session.ID,
+			ACPAgent:   AgentCodex,
+			ACPSession: "acp-session",
+			Cwd:        t.TempDir(),
+		},
+		toolByID: map[string]sessionevents.ACPToolCall{},
 	}
 	manager.jobsByID[session.ID] = job
 	manager.jobsByACP["acp-session"] = job
@@ -233,12 +239,14 @@ func TestLocalPlanRequestedPlainTextPublishesACPMessage(t *testing.T) {
 	events := sessionevents.New()
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	job := &Job{
-		ID:         session.ID,
-		ACPAgent:   AgentJaz,
-		ACPSession: session.ID,
-		Cwd:        t.TempDir(),
-		toolByID:   map[string]sessionevents.ACPToolCall{},
+	job := &jobState{
+		Job: Job{
+			ID:         session.ID,
+			ACPAgent:   AgentJaz,
+			ACPSession: session.ID,
+			Cwd:        t.TempDir(),
+		},
+		toolByID: map[string]sessionevents.ACPToolCall{},
 	}
 	manager.jobsByID[session.ID] = job
 	done := job.startTurn(CompletionInline, true, false)

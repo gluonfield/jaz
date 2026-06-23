@@ -20,10 +20,12 @@ gh run watch "$(gh run list --workflow=release-desktop.yml -L1 --json databaseId
 ```
 
 The workflow uploads macOS `*.dmg`, macOS/Windows `*.zip`, Windows `*.exe`,
-`latest-mac.yml`, `latest.yml`, `jaz-backend-linux-amd64.tar.gz`,
-`jaz-backend-linux-arm64.tar.gz`, and matching `.sha256` files to the release.
-Re-runs overwrite assets (`--clobber`), so to redo a release just publish the
-tag again.
+`latest-mac.yml`, `latest.yml`, Linux/macOS `jaz-backend-<os>-<arch>.tar.gz`
+backend assets, and matching `.sha256` files to the release. Re-runs overwrite
+assets (`--clobber`), so to redo a release just publish the tag again.
+
+Standalone backend release assets are built with version metadata. After
+installing one, `/opt/jaz/bin/jaz --version` should print the release tag.
 
 Desktop telemetry is enabled only when the release build receives the
 `POSTHOG_PROJECT_TOKEN` repository variable. The token is a public PostHog
