@@ -174,6 +174,16 @@ func TestBrowserTaskRejectsDisabledSettings(t *testing.T) {
 	}
 }
 
+func TestBrowserTaskToolsEnabledDoesNotDependOnExtensionConnection(t *testing.T) {
+	store := newStore(t)
+	saveBrowserDefaults(t, store, acp.AgentCodex)
+	service := New(store, &fakeManager{}, acp.BuiltinAgents(), fakeExtension{})
+
+	if !service.MCPToolsEnabled() {
+		t.Fatal("browser task tools should be advertised when settings are enabled")
+	}
+}
+
 func TestBrowserTaskRejectsDisconnectedExtension(t *testing.T) {
 	store := newStore(t)
 	saveBrowserDefaults(t, store, acp.AgentCodex)
