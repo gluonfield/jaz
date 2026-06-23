@@ -76,7 +76,10 @@ func (s *Server) rootKeyHasFullAccess() bool {
 }
 
 func rootKeyAllowed(r *http.Request) bool {
-	return r.Method == http.MethodPost && r.URL.Path == "/v1/devices/register"
+	if r.Method == http.MethodPost && r.URL.Path == "/v1/devices/register" {
+		return true
+	}
+	return r.Method == http.MethodGet && r.URL.Path == "/v1/browser/extension"
 }
 
 func publicDeviceRequest(r *http.Request) bool {
