@@ -17,6 +17,11 @@ type browserContract struct {
 		Fields        []string `json:"fields"`
 		ElementFields []string `json:"element_fields"`
 	} `json:"page_state"`
+	PageExtraction struct {
+		Fields         []string `json:"fields"`
+		CoverageFields []string `json:"coverage_fields"`
+		ItemFields     []string `json:"item_fields"`
+	} `json:"page_extraction"`
 }
 
 func TestBrowserExtensionContract(t *testing.T) {
@@ -32,6 +37,15 @@ func TestBrowserExtensionContract(t *testing.T) {
 	}
 	if !reflect.DeepEqual(contract.PageState.ElementFields, jsonFields(StateElement{})) {
 		t.Fatalf("element fields = %#v, want %#v", contract.PageState.ElementFields, jsonFields(StateElement{}))
+	}
+	if !reflect.DeepEqual(contract.PageExtraction.Fields, jsonFields(PageExtraction{})) {
+		t.Fatalf("extraction fields = %#v, want %#v", contract.PageExtraction.Fields, jsonFields(PageExtraction{}))
+	}
+	if !reflect.DeepEqual(contract.PageExtraction.CoverageFields, jsonFields(ExtractCoverage{})) {
+		t.Fatalf("coverage fields = %#v, want %#v", contract.PageExtraction.CoverageFields, jsonFields(ExtractCoverage{}))
+	}
+	if !reflect.DeepEqual(contract.PageExtraction.ItemFields, jsonFields(ExtractedItem{})) {
+		t.Fatalf("item fields = %#v, want %#v", contract.PageExtraction.ItemFields, jsonFields(ExtractedItem{}))
 	}
 }
 

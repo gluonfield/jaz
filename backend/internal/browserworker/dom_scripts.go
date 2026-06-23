@@ -99,7 +99,7 @@ func textPresentScript(text string) string {
 func semanticStateScript() string {
 	return elementResolverJS() + `
 	(function(){
-	  const limit = 120;
+	  const limit = 60;
 	  const elements = jazAll("a[href],button,input,textarea,select,label,summary,[role],[aria-label],[title],[placeholder],[contenteditable=true]")
 	    .filter(jazVisible)
 	    .slice(0, limit);
@@ -121,8 +121,109 @@ func semanticStateScript() string {
 	    url: location.href,
 	    title: document.title || "",
 	    ready_state: document.readyState,
-	    text: jazShort(jazPageText(), 5000),
+	    text: jazShort(jazPageText(), 3000),
 	    elements: targets
+	  };
+	})()
+	`
+}
+
+func extractPageScript() string {
+	return elementResolverJS() + `
+	(function(){
+	  const itemLimit = 32;
+	  const navLimit = 16;
+	  globalThis.__jazRefMap = new Map();
+	  const seen = new Set();
+	  function cleanText(el, limit){
+	    return jazShort(el && (el.innerText || el.textContent || el.value || ""), limit);
+	  }
+	  function primaryLink(el){
+	    if (!el) return null;
+	    if (el.matches && el.matches("a[href],button,[role=button],[role=link]")) return el;
+	    return jazDeepQuerySelector("a[href],button,[role=button],[role=link]", el);
+	  }
+	  function titleFor(el, link){
+	    const title = jazDeepQuerySelector("h1,h2,h3,[role=heading],strong,b", el);
+	    return jazShort((title && cleanText(title, 220)) || jazName(link) || jazName(el), 220);
+	  }
+	  function candidateSelector(){
+	    return [
+	      "main article",
+	      "main li",
+	      "main [role=listitem]",
+	      "main tr",
+	      "article",
+	      "[role=listitem]",
+	      "[data-view-name*=search]",
+	      "[class*=result]",
+	      "[class*=card]",
+	      "li",
+	      "tr"
+	    ].join(",");
+	  }
+	  function duplicate(el){
+	    for (const existing of seen) {
+	      if (existing === el || existing.contains(el)) return true;
+	    }
+	    return false;
+	  }
+	  const candidates = [];
+	  for (const el of jazAll(candidateSelector())) {
+	    if (!jazVisible(el) || duplicate(el)) continue;
+	    const text = cleanText(el, 900);
+	    if (text.length < 16) continue;
+	    const link = primaryLink(el);
+	    if (!link && text.length < 40) continue;
+	    seen.add(el);
+	    const refTarget = link || el;
+	    const ref = "e" + (candidates.length + 1);
+	    globalThis.__jazRefMap.set(ref, refTarget);
+	    candidates.push({
+	      ref,
+	      role: el.getAttribute("role") || jazImplicitRole(el),
+	      title: titleFor(el, link),
+	      text: text,
+	      href: link && link.href ? link.href : ""
+	    });
+	    if (candidates.length >= itemLimit) break;
+	  }
+	  const nav = [];
+	  const navNeedle = /(next|more|show more|see more|load more|view more|older|newer|\d+\s*\/\s*\d+)/i;
+	  for (const el of jazAll("a[href],button,[role=button],[role=link],summary")) {
+	    if (!jazVisible(el)) continue;
+	    const name = jazName(el);
+	    if (!navNeedle.test(name)) continue;
+	    const ref = "e" + (candidates.length + nav.length + 1);
+	    globalThis.__jazRefMap.set(ref, el);
+	    nav.push({
+	      ref,
+	      tag: el.tagName.toLowerCase(),
+	      role: el.getAttribute("role") || jazImplicitRole(el),
+	      name,
+	      text: cleanText(el, 180),
+	      href: el.href || "",
+	      selector: jazSelector(el)
+	    });
+	    if (nav.length >= navLimit) break;
+	  }
+	  const doc = document.documentElement || document.body;
+	  const height = Math.max(doc.scrollHeight || 0, document.body ? document.body.scrollHeight || 0 : 0, innerHeight || 0);
+	  const maxScroll = Math.max(1, height - (innerHeight || 0));
+	  const scrollYValue = Math.max(0, Math.round(scrollY || pageYOffset || 0));
+	  return {
+	    url: location.href,
+	    title: document.title || "",
+	    ready_state: document.readyState,
+	    coverage: {
+	      scroll_y: scrollYValue,
+	      viewport_height: Math.round(innerHeight || 0),
+	      document_height: Math.round(height),
+	      scroll_percent: Math.max(0, Math.min(100, Math.round((scrollYValue / maxScroll) * 100))),
+	      at_bottom: scrollYValue + (innerHeight || 0) >= height - 8
+	    },
+	    items: candidates,
+	    navigation: nav
 	  };
 	})()
 	`

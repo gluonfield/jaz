@@ -6,6 +6,7 @@ const (
 	ActionNavigate   = "navigate"
 	ActionSnapshot   = "snapshot"
 	ActionState      = "state"
+	ActionExtract    = "extract"
 	ActionScreenshot = "screenshot"
 	ActionClick      = "click"
 	ActionHover      = "hover"
@@ -24,6 +25,7 @@ var supportedExtensionActions = []string{
 	ActionNavigate,
 	ActionSnapshot,
 	ActionState,
+	ActionExtract,
 	ActionScreenshot,
 	ActionClick,
 	ActionHover,

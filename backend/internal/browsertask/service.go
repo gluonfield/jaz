@@ -14,6 +14,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/browserworker"
 	"github.com/wins/jaz/backend/internal/mcpsession"
+	"github.com/wins/jaz/backend/internal/promptmodule"
 	jazsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -27,6 +28,14 @@ const (
 	workerDir      = ".jaz-runtime/browser"
 	sourceIDPrefix = "parent:"
 )
+
+const workerSystemPrompt = `You are Jaz's browser worker. Use the browser tools to complete the parent task, then return a compact final answer.
+
+Keep page dumps, screenshots, DOM, accessibility trees, and step logs out of the final answer. Prefer browser_get, browser_do, and browser_check; browser_get can extract visible result cards, coverage, and next-page refs. Reuse returned ref= targets before inspecting again. Use the low-level browser tool only for missing high-level actions, PDF, or screenshot escape hatches.
+
+For search tasks, use the site's real filters/facets when they exist, paginate or state the exact stop condition, and report coverage honestly. Rank results by the user's stated objective, not by the first visible page. If coverage is incomplete, say exactly what was checked and what remains; never turn a visible subset into a complete count.
+
+Do not store secrets, cookies, tokens, or private page content in notes.`
 
 type Manager interface {
 	Spawn(context.Context, acp.SpawnRequest) (acp.SpawnResult, error)
@@ -196,7 +205,9 @@ func (s *Service) ensureWorker(ctx context.Context, parentID, sessionKey, slug, 
 		ReasoningEffort: jazsettings.WorkerAgentReasoningEffort(agent),
 		SourceType:      storage.SourceBrowserTask,
 		SourceID:        sourceID(parentID, sessionKey),
-		MCPServerPolicy: acp.MCPServerPolicyBrowserWorker,
+		SystemPromptExtensions: promptmodule.New(
+			WorkerSystemPrompt(),
+		),
 	})
 	if err != nil {
 		return "", err
@@ -258,22 +269,16 @@ func (t mcpTools) run(ctx context.Context, call *mcp.CallToolRequest, kind TaskK
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: out.Answer}}}, out, nil
 }
 
+func WorkerSystemPrompt() string {
+	return workerSystemPrompt
+}
+
 func renderPrompt(req Request, sessionKey string) string {
 	var b strings.Builder
 	kind := strings.TrimSpace(string(req.Kind))
 	if kind == "" {
 		kind = string(KindDo)
 	}
-	b.WriteString("You are Jaz's delegated browser worker. Complete this browser task and return only the compact final answer for the parent agent.\n\n")
-	b.WriteString("Rules:\n")
-	b.WriteString("- Keep raw browser snapshots, DOM, accessibility trees, screenshots, and step logs inside this child session.\n")
-	b.WriteString("- Use browser_get, browser_do, and browser_check first; they return compact page state with stable ref= targets and deterministic waits.\n")
-	b.WriteString("- Reuse returned ref= targets for follow-up actions instead of repeatedly inspecting full snapshots.\n")
-	b.WriteString("- Use the low-level browser tool only when the high-level tools cannot express the action, or for PDF/raw screenshot escape hatches.\n")
-	b.WriteString("- Set visual=true or request screenshots only when image understanding matters.\n")
-	b.WriteString("- Reuse the current browser/page state for this persistent session key.\n")
-	b.WriteString("- If no browser backend/tool is available, say that directly and name the missing bridge.\n")
-	b.WriteString("- Do not store secrets, cookies, tokens, or private page content in notes.\n\n")
 	b.WriteString("Session key: ")
 	b.WriteString(sessionKey)
 	b.WriteString("\nTask kind: ")
@@ -291,6 +296,7 @@ func renderPrompt(req Request, sessionKey string) string {
 	}
 	b.WriteString("\n\nTask:\n")
 	b.WriteString(strings.TrimSpace(req.Task))
+	b.WriteString("\n\nReturn only the compact final answer for the parent agent.")
 	return b.String()
 }
 

@@ -210,15 +210,16 @@ func (c *agentConn) withProcessStderr(err error) error {
 	return withProcessStderr(err, c.stderr)
 }
 
-func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (*agentConn, error) {
-	return m.connectWithHandler(ctx, name, cfg, cwd, artifactSurface, systemPromptExtensions, jsonrpc.HandlerFunc(m.handleJSONRPC))
+func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (*agentConn, error) {
+	return m.connectWithHandler(ctx, name, cfg, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions, jsonrpc.HandlerFunc(m.handleJSONRPC))
 }
 
-func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules, handler jsonrpc.Handler) (*agentConn, error) {
-	env, err := m.processEnvPreparedForSurface(ctx, name, cfg, cwd, artifactSurface, systemPromptExtensions)
+func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules, handler jsonrpc.Handler) (*agentConn, error) {
+	env, err := m.processEnvPreparedForSurfacePolicy(ctx, name, cfg, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)
 	if err != nil {
 		return nil, err
 	}
+	cfg = configForMCPServerPolicy(name, cfg, mcpServerPolicy)
 	runCtx, cancel := context.WithCancel(context.Background())
 	conn, stderr, err := m.openConn(runCtx, name, cfg, env, cwd)
 	if err != nil {
@@ -273,25 +274,19 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 
 // sessionMeta builds the session _meta payload for prompt and agent-specific
 // options.
-func (m *Manager) sessionMeta(ctx context.Context, agent string, cfg AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
-	meta, err := m.sessionPromptMeta(ctx, agent, cwd, artifactSurface, systemPromptExtensions)
+func (m *Manager) sessionMeta(ctx context.Context, agent string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
+	meta, err := m.sessionPromptMeta(ctx, agent, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)
 	if err != nil {
 		return nil, err
 	}
 	return agentPolicyForAgent(agent).mergeSessionMeta(meta, cfg.ReasoningEffort), nil
 }
 
-func (m *Manager) sessionPromptMeta(ctx context.Context, agent, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
-	var prompt string
-	if m.cfg.SystemPrompt != nil {
-		base, err := m.cfg.SystemPrompt.ACPPromptForContext(ctx, cwd, artifactSurface)
-		if err != nil {
-			return nil, fmt.Errorf("build acp system prompt: %w", err)
-		}
-		prompt = base
+func (m *Manager) sessionPromptMeta(ctx context.Context, agent, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
+	prompt, err := m.systemPrompt(ctx, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)
+	if err != nil {
+		return nil, err
 	}
-	prompt = promptWithModules(prompt, systemPromptExtensions)
-	prompt = strings.TrimSpace(prompt)
 	if prompt == "" {
 		return nil, nil
 	}
@@ -320,7 +315,7 @@ func (m *Manager) newACPProtocolSession(ctx context.Context, ac *agentConn, labe
 }
 
 func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (acpSessionInfo, error) {
-	meta, err := m.sessionMeta(ctx, agent, cfg, cwd, artifactSurface, systemPromptExtensions)
+	meta, err := m.sessionMeta(ctx, agent, cfg, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)
 	if err != nil {
 		return acpSessionInfo{}, err
 	}
@@ -390,7 +385,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	if cfg.Local {
 		return m.spawnLocalSession(session, req.ACPAgent, absCwd, req.SystemPromptExtensions)
 	}
-	ac, err := m.connect(ctx, req.ACPAgent, cfg, absCwd, session.RuntimeRef.ArtifactSurface, req.SystemPromptExtensions)
+	ac, err := m.connect(ctx, req.ACPAgent, cfg, absCwd, session.RuntimeRef.ArtifactSurface, session.RuntimeRef.MCPServerPolicy, req.SystemPromptExtensions)
 	if err != nil {
 		return fail(err)
 	}
@@ -461,6 +456,7 @@ func (m *Manager) resume(ctx context.Context, ref string) (*jobState, error) {
 	if session.Runtime != storage.RuntimeACP || session.RuntimeRef == nil || session.RuntimeRef.Agent == "" {
 		return nil, fmt.Errorf("session %s is not acp-backed", ref)
 	}
+	mcpServerPolicy := effectiveMCPServerPolicy(session)
 	agentName := CanonicalAgentName(session.RuntimeRef.Agent)
 	sessionChanged := false
 	if agentName != session.RuntimeRef.Agent {
@@ -468,6 +464,10 @@ func (m *Manager) resume(ctx context.Context, ref string) (*jobState, error) {
 			session.ModelProvider = agentName
 		}
 		session.RuntimeRef.Agent = agentName
+		sessionChanged = true
+	}
+	if mcpServerPolicy != "" && session.RuntimeRef.MCPServerPolicy == "" {
+		session.RuntimeRef.MCPServerPolicy = mcpServerPolicy
 		sessionChanged = true
 	}
 	cfg, ok, err := m.configuredAgent(agentName)
@@ -484,6 +484,11 @@ func (m *Manager) resume(ctx context.Context, ref string) (*jobState, error) {
 	}
 	cfg.ReasoningEffort = strings.TrimSpace(session.ReasoningEffort)
 	if cfg.Local {
+		if sessionChanged {
+			if err := m.store.SaveSession(session); err != nil {
+				return nil, err
+			}
+		}
 		return m.resumeLocalSession(session, agentName, cfg)
 	}
 	var state storage.ACPState
@@ -504,11 +509,11 @@ func (m *Manager) resume(ctx context.Context, ref string) (*jobState, error) {
 	if err != nil {
 		return nil, err
 	}
-	ac, err := m.connect(ctx, agentName, cfg, cwd, artifactSurface, systemPromptExtensions)
+	ac, err := m.connect(ctx, agentName, cfg, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)
 	if err != nil {
 		return nil, err
 	}
-	acpSessionID, modes, err := m.restoreACPSession(ctx, ac, agentName, session, cfg, cwd, systemPromptExtensions)
+	acpSessionID, modes, err := m.restoreACPSession(ctx, ac, agentName, session, cfg, cwd, mcpServerPolicy, systemPromptExtensions)
 	if err != nil {
 		ac.close()
 		return nil, err
@@ -549,7 +554,7 @@ func (m *Manager) resumeSystemPromptExtensions(session storage.Session) (promptm
 
 // The job is registered only after session/load returns, so the agent's
 // history replay notifications are dropped, not re-recorded as events.
-func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentName string, session storage.Session, cfg AgentConfig, cwd string, systemPromptExtensions promptmodule.Modules) (string, ModeState, error) {
+func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentName string, session storage.Session, cfg AgentConfig, cwd, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (string, ModeState, error) {
 	agentName = CanonicalAgentName(agentName)
 	var caps struct {
 		AgentCapabilities acpschema.AgentCapabilities `json:"agentCapabilities"`
@@ -557,7 +562,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 	_ = json.Unmarshal(ac.initRaw, &caps)
 	storedID := session.RuntimeRef.SessionID
 	if caps.AgentCapabilities.LoadSession && storedID != "" {
-		meta, err := m.sessionMeta(ctx, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, systemPromptExtensions)
+		meta, err := m.sessionMeta(ctx, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, mcpServerPolicy, systemPromptExtensions)
 		if err != nil {
 			return "", ModeState{}, err
 		}
@@ -570,7 +575,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 		}{
 			Meta:       meta,
 			Cwd:        cwd,
-			MCPServers: m.mcpServersForAgent(mcpCtx, ac.initRaw, session.RuntimeRef.MCPServerPolicy),
+			MCPServers: m.mcpServersForAgent(mcpCtx, ac.initRaw, mcpServerPolicy),
 			SessionID:  acpschema.SessionID(storedID),
 		})
 		if err == nil {
@@ -586,7 +591,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 		}
 		// The agent lost this session — fall through to a fresh one.
 	}
-	acpSession, err := m.newACPSession(mcpsession.With(ctx, session.ID), ac, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, session.RuntimeRef.MCPServerPolicy, systemPromptExtensions)
+	acpSession, err := m.newACPSession(mcpsession.With(ctx, session.ID), ac, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, mcpServerPolicy, systemPromptExtensions)
 	if err != nil {
 		return "", ModeState{}, err
 	}

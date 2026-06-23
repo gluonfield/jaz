@@ -7,6 +7,7 @@
     "navigate",
     "snapshot",
     "state",
+    "extract",
     "screenshot",
     "click",
     "hover",
@@ -21,5 +22,10 @@
     "fields": ["url", "title", "ready_state", "text", "elements"],
     "element_fields": ["ref", "tag", "role", "name", "text", "href", "selector"],
     "frame_ref_prefix": "f<frame_id>:"
+  },
+  "page_extraction": {
+    "fields": ["url", "title", "ready_state", "coverage", "items", "navigation"],
+    "coverage_fields": ["scroll_y", "viewport_height", "document_height", "scroll_percent", "at_bottom"],
+    "item_fields": ["ref", "role", "title", "text", "href"]
   }
 }

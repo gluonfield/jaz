@@ -72,6 +72,19 @@ func (p *browserPage) semanticState(ctx context.Context) (ActionOutput, error) {
 	return ActionOutput{Status: "ok", Text: text, Data: data}, nil
 }
 
+func (p *browserPage) extract(ctx context.Context) (ActionOutput, error) {
+	var data json.RawMessage
+	if err := p.eval(ctx, extractPageScript(), &data); err != nil {
+		return ActionOutput{}, err
+	}
+	extraction, ok := decodePageExtraction(data)
+	text := strings.TrimSpace(string(data))
+	if ok {
+		text = formatPageExtraction(extraction)
+	}
+	return ActionOutput{Status: "ok", Text: text, Data: data}, nil
+}
+
 func (p *browserPage) screenshot(ctx context.Context) (ActionOutput, error) {
 	var out struct {
 		Data string `json:"data"`

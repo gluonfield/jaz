@@ -92,8 +92,9 @@ func TestSearchMemorySpawnsRestrictedSearchSession(t *testing.T) {
 	if manager.spawn.SourceType != storage.SourceMemorySearch || manager.spawn.SourceID != stamp {
 		t.Fatalf("source = %q/%q", manager.spawn.SourceType, manager.spawn.SourceID)
 	}
-	if manager.spawn.MCPServerPolicy != acp.MCPServerPolicyMemorySearchWorker {
-		t.Fatalf("mcp server policy = %q", manager.spawn.MCPServerPolicy)
+	workerPrompt := manager.spawn.SystemPromptExtensions.Text()
+	if !strings.Contains(workerPrompt, "memory-search worker") || strings.Contains(workerPrompt, "LONG_TERM") {
+		t.Fatalf("worker prompt = %q", workerPrompt)
 	}
 	if manager.spawn.Slug != "memory-search-codex-"+stamp {
 		t.Fatalf("slug = %q", manager.spawn.Slug)

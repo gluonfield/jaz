@@ -18,6 +18,9 @@ func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, stri
 	req.ArtifactSurface = strings.TrimSpace(req.ArtifactSurface)
 	req.MCPServerPolicy = strings.TrimSpace(req.MCPServerPolicy)
 	req.SystemPromptExtensions = promptmodule.New(req.SystemPromptExtensions...)
+	if req.MCPServerPolicy == "" {
+		req.MCPServerPolicy = mcpServerPolicyForSourceType(req.SourceType)
+	}
 	if req.MCPServerPolicy == "" && visualize.NormalizeSurface(req.ArtifactSurface) == visualize.SurfaceWidget {
 		req.MCPServerPolicy = MCPServerPolicyWidget
 	}
