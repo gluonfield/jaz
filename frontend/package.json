@@ -55,6 +55,7 @@
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.0",
     "@tanstack/router-plugin": "^1.168.18",
+    "@types/hast": "^3.0.4",
     "@types/node": "^25.9.2",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.2.17",
