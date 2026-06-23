@@ -70,7 +70,7 @@ func TestSettingsEndpoint(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
 		t.Fatal(err)
 	}
-	if status.Agent != acp.AgentCodex || status.Enabled {
+	if status.Agent != acp.AgentCodex || !status.Enabled {
 		t.Fatalf("browser status = %#v", status)
 	}
 
