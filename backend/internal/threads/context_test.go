@@ -59,6 +59,13 @@ func TestContextTailRedactsReasoningAndSummarizesTools(t *testing.T) {
 	}
 }
 
+func TestContextRejectsCompressedToolDetails(t *testing.T) {
+	_, err := contextOptionsFromRequest(ContextRequest{IncludeTools: "compressed"})
+	if err == nil || !strings.Contains(err.Error(), "include_tools must be none or summary") {
+		t.Fatalf("err = %v, want compressed tool detail rejection", err)
+	}
+}
+
 func TestContextQueryMatchesToolOutputWithoutReturningIt(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
@@ -228,7 +235,6 @@ func joinedContextText(messages []ContextMessage) string {
 		b.WriteString(message.Text)
 		for _, tool := range message.Tools {
 			b.WriteString(tool.Name)
-			b.WriteString(tool.Detail)
 		}
 	}
 	return b.String()
