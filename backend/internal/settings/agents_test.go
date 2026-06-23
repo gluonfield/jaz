@@ -55,7 +55,7 @@ func TestParseCommandLineRejectsUnterminatedQuote(t *testing.T) {
 	}
 }
 
-func TestEnsureAgentDefaultsKeepsCustomCodexCommand(t *testing.T) {
+func TestEnsureAgentDefaultsDropsManagedAgentCommand(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -81,8 +81,8 @@ func TestEnsureAgentDefaultsKeepsCustomCodexCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.ACP["codex"].Command != "/custom/codex-acp" {
-		t.Fatalf("codex command was overwritten: %q", loaded.ACP["codex"].Command)
+	if loaded.ACP["codex"].Command != "" {
+		t.Fatalf("codex command = %q, want managed default", loaded.ACP["codex"].Command)
 	}
 }
 
@@ -116,53 +116,17 @@ func TestEnsureAgentDefaultsRefreshesLegacyCodexBuiltinCommand(t *testing.T) {
 	}
 }
 
-func TestMergeAgentDefaultsRefreshesPreviousCodexWindowsCommand(t *testing.T) {
-	seed := AgentDefaults{ACP: map[string]ACPAgentDefaults{
-		"codex": {},
-	}}
-	previousPackage := "@jazchat/codex-acp@0.16.6"
-	for _, storedCommand := range []string{
-		strings.Replace(legacyCodexWindowsCommand("@jazchat/codex-acp@0.16.7"), "@jazchat/codex-acp@0.16.7", previousPackage, 1),
-		strings.Replace(strings.Replace(legacyCodexWindowsCommand("@jazchat/codex-acp@0.16.7"), "@jazchat/codex-acp@0.16.7", previousPackage, 1), " -c suppress_unstable_features_warning=true", "", 1),
-	} {
-		stored := AgentDefaults{ACP: map[string]ACPAgentDefaults{
-			"codex": {Command: storedCommand},
-		}}
-
-		merged := MergeAgentDefaults(stored, seed, []string{"codex"})
-
-		if merged.ACP["codex"].Command != "" {
-			t.Fatalf("codex command = %q, want managed default", merged.ACP["codex"].Command)
-		}
-	}
-}
-
-func TestMergeAgentDefaultsRefreshesCurrentCodexCommandMissingWarningSuppress(t *testing.T) {
+func TestMergeAgentDefaultsDropsManagedAgentCommand(t *testing.T) {
 	seed := testAgentDefaultsSeed()
-	storedCommand := strings.Replace(legacyCodexCommand("@jazchat/codex-acp@0.16.7"), " -c suppress_unstable_features_warning=true", "", 1)
 	stored := AgentDefaults{ACP: map[string]ACPAgentDefaults{
-		"codex": {Command: storedCommand},
+		"codex":  {Command: `/custom/codex-acp --stdio`},
+		"claude": {Command: legacyClaudeCommand("@agentclientprotocol/claude-agent-acp@0.51.0")},
 	}}
 
-	merged := MergeAgentDefaults(stored, seed, []string{"codex"})
+	merged := MergeAgentDefaults(stored, seed, []string{"codex", "claude"})
 
-	if merged.ACP["codex"].Command != "" {
-		t.Fatalf("codex command = %q, want managed default", merged.ACP["codex"].Command)
-	}
-}
-
-func TestMergeAgentDefaultsKeepsCodexNpxCommandWithCustomConfigs(t *testing.T) {
-	seed := testAgentDefaultsSeed()
-	storedCommand := strings.Replace(legacyCodexCommand("@jazchat/codex-acp@0.16.6"), " -c features.tool_search_always_defer_mcp_tools=true", ` -c 'cli_auth_credentials_store="file"' -c features.tool_search_always_defer_mcp_tools=true`, 1)
-	stored := AgentDefaults{ACP: map[string]ACPAgentDefaults{
-		"codex": {Command: storedCommand},
-	}}
-
-	merged := MergeAgentDefaults(stored, seed, []string{"codex"})
-
-	command := merged.ACP["codex"].Command
-	if command != storedCommand {
-		t.Fatalf("codex command = %q, want preserved custom command %q", command, storedCommand)
+	if merged.ACP["codex"].Command != "" || merged.ACP["claude"].Command != "" {
+		t.Fatalf("managed commands = codex %q claude %q, want empty", merged.ACP["codex"].Command, merged.ACP["claude"].Command)
 	}
 }
 
@@ -200,20 +164,6 @@ func TestACPConfigSourceUsesMergedCodexBuiltinCommand(t *testing.T) {
 	}
 }
 
-func TestMergeAgentDefaultsKeepsFutureCodexPackage(t *testing.T) {
-	seed := testAgentDefaultsSeed()
-	storedCommand := legacyCodexCommand("@jazchat/codex-acp@0.16.8")
-	stored := AgentDefaults{ACP: map[string]ACPAgentDefaults{
-		"codex": {Command: storedCommand},
-	}}
-
-	merged := MergeAgentDefaults(stored, seed, []string{"codex"})
-
-	if merged.ACP["codex"].Command != storedCommand {
-		t.Fatalf("codex command = %q, want custom future package %q", merged.ACP["codex"].Command, storedCommand)
-	}
-}
-
 func TestMergeAgentDefaultsRefreshesLegacyClaudeBuiltinCommand(t *testing.T) {
 	seed := testAgentDefaultsSeed()
 	stored := AgentDefaults{ACP: map[string]ACPAgentDefaults{
@@ -224,20 +174,6 @@ func TestMergeAgentDefaultsRefreshesLegacyClaudeBuiltinCommand(t *testing.T) {
 
 	if merged.ACP["claude"].Command != "" {
 		t.Fatalf("claude command = %q, want managed default", merged.ACP["claude"].Command)
-	}
-}
-
-func TestMergeAgentDefaultsKeepsFutureClaudePackage(t *testing.T) {
-	seed := testAgentDefaultsSeed()
-	storedCommand := legacyClaudeCommand("@agentclientprotocol/claude-agent-acp@0.51.0")
-	stored := AgentDefaults{ACP: map[string]ACPAgentDefaults{
-		"claude": {Command: storedCommand},
-	}}
-
-	merged := MergeAgentDefaults(stored, seed, []string{"claude"})
-
-	if merged.ACP["claude"].Command != storedCommand {
-		t.Fatalf("claude command = %q, want custom future package %q", merged.ACP["claude"].Command, storedCommand)
 	}
 }
 
@@ -291,10 +227,6 @@ func TestMergeAgentDefaultsRefreshesLegacyCodexCommandBeforeToolSearchFlag(t *te
 
 func legacyCodexCommand(pkg string) string {
 	return `npx -y ` + pkg + ` -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true -c suppress_unstable_features_warning=true`
-}
-
-func legacyCodexWindowsCommand(pkg string) string {
-	return `npx.cmd -y ` + pkg + ` -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true -c suppress_unstable_features_warning=true`
 }
 
 func legacyClaudeCommand(pkg string) string {

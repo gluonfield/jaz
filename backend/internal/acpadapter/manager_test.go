@@ -116,9 +116,30 @@ func TestStatusReportsMissingBeforeManifestDownload(t *testing.T) {
 	if err != nil {
 		t.Skip(err)
 	}
-	status := New(t.TempDir()).Status("codex")
+	status := New(t.TempDir(), "dev").Status("codex")
 	if status.State != StateMissing || status.Platform != platform {
 		t.Fatalf("status = %#v", status)
+	}
+}
+
+func TestManifestURLForVersion(t *testing.T) {
+	tests := []struct {
+		version string
+		want    string
+		cache   string
+	}{
+		{version: "", want: releasesURL + "/latest/download/acp-adapters.json", cache: "latest"},
+		{version: "dev", want: releasesURL + "/latest/download/acp-adapters.json", cache: "latest"},
+		{version: "0.0.51", want: releasesURL + "/download/v0.0.51/acp-adapters.json", cache: "v0.0.51"},
+		{version: "v0.0.51", want: releasesURL + "/download/v0.0.51/acp-adapters.json", cache: "v0.0.51"},
+	}
+	for _, tt := range tests {
+		if got := manifestURLForVersion(tt.version); got != tt.want {
+			t.Fatalf("manifestURLForVersion(%q) = %q, want %q", tt.version, got, tt.want)
+		}
+		if got := manifestCacheNameForVersion(tt.version); got != tt.cache {
+			t.Fatalf("manifestCacheNameForVersion(%q) = %q, want %q", tt.version, got, tt.cache)
+		}
 	}
 }
 

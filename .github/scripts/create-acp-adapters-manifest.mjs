@@ -1,58 +1,29 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 const out = process.argv[2] || "dist/acp-adapters.json";
-
-const codexVersion = "0.16.7";
-const claudeVersion = "0.50.0-jaz.1";
-
-const adapters = {
-  codex: {
-    repo: "gluonfield/codex-acp",
-    tag: `v${codexVersion}`,
-    version: codexVersion,
-    assets: [
-      ["darwin-arm64", `codex-acp-${codexVersion}-aarch64-apple-darwin.tar.gz`, "codex-acp"],
-      ["darwin-x64", `codex-acp-${codexVersion}-x86_64-apple-darwin.tar.gz`, "codex-acp"],
-      ["linux-arm64", `codex-acp-${codexVersion}-aarch64-unknown-linux-gnu.tar.gz`, "codex-acp"],
-      ["linux-x64", `codex-acp-${codexVersion}-x86_64-unknown-linux-gnu.tar.gz`, "codex-acp"],
-      ["win32-arm64", `codex-acp-${codexVersion}-aarch64-pc-windows-msvc.tar.gz`, "codex-acp.exe"],
-      ["win32-x64", `codex-acp-${codexVersion}-x86_64-pc-windows-msvc.tar.gz`, "codex-acp.exe"],
-    ],
-  },
-  claude: {
-    repo: "gluonfield/claude-agent-acp",
-    tag: `v${claudeVersion}`,
-    version: claudeVersion,
-    assets: [
-      ["darwin-arm64", `claude-agent-acp-${claudeVersion}-darwin-arm64.tar.gz`, "claude-agent-acp", "claude"],
-      ["darwin-x64", `claude-agent-acp-${claudeVersion}-darwin-x64.tar.gz`, "claude-agent-acp", "claude"],
-      ["linux-arm64", `claude-agent-acp-${claudeVersion}-linux-arm64.tar.gz`, "claude-agent-acp", "claude"],
-      ["linux-x64", `claude-agent-acp-${claudeVersion}-linux-x64.tar.gz`, "claude-agent-acp", "claude"],
-      ["win32-x64", `claude-agent-acp-${claudeVersion}-win32-x64.tar.gz`, "claude-agent-acp.exe", "claude.exe"],
-    ],
-  },
-};
+const specPath = process.argv[3] || ".github/acp-adapter-assets.json";
+const spec = JSON.parse(readFileSync(specPath, "utf8"));
 
 const manifest = {
   adapters: {},
 };
 
-for (const [name, spec] of Object.entries(adapters)) {
-  const assets = releaseAssetMap(spec.repo, spec.tag);
-  manifest.adapters[name] = { version: spec.version, assets: {} };
-  for (const [platform, filename, binary, envBinary] of spec.assets) {
-    const asset = assets.get(filename);
+for (const [name, adapter] of Object.entries(spec.adapters)) {
+  const releaseAssets = releaseAssetMap(adapter.repo, adapter.tag);
+  manifest.adapters[name] = { version: adapter.version, assets: {} };
+  for (const [platform, wanted] of Object.entries(adapter.assets)) {
+    const asset = releaseAssets.get(wanted.name);
     if (!asset) {
-      throw new Error(`${spec.repo}@${spec.tag} is missing ${filename}`);
+      throw new Error(`${adapter.repo}@${adapter.tag} is missing ${wanted.name}`);
     }
     const sha256 = digestSHA256(asset);
     manifest.adapters[name].assets[platform] = {
       url: asset.url,
       sha256,
-      binary,
-      ...(envBinary ? { env: { CLAUDE_CODE_EXECUTABLE: envBinary } } : {}),
+      binary: wanted.binary,
+      ...(wanted.env ? { env: wanted.env } : {}),
     };
   }
 }

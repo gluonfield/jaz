@@ -4,14 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/storage"
-	"golang.org/x/mod/semver"
 )
 
 const (
@@ -176,15 +173,18 @@ func NormalizeAgentDefaults(input AgentDefaults, catalog acp.AgentCatalog) (Agen
 		if err != nil {
 			return AgentDefaults{}, err
 		}
-		command := strings.TrimSpace(current.Command)
-		if current.Enabled && base.RequiresCommand() && command == "" {
-			return AgentDefaults{}, fmt.Errorf("acp agent %q command is required when enabled", name)
-		}
-		if current.Enabled && command != "" {
-			if executable, _, err := ParseCommandLine(command); err != nil {
-				return AgentDefaults{}, fmt.Errorf("acp agent %q command: %w", name, err)
-			} else if executable == "" {
+		command := ""
+		if base.RequiresCommand() {
+			command = strings.TrimSpace(current.Command)
+			if current.Enabled && command == "" {
 				return AgentDefaults{}, fmt.Errorf("acp agent %q command is required when enabled", name)
+			}
+			if current.Enabled && command != "" {
+				if executable, _, err := ParseCommandLine(command); err != nil {
+					return AgentDefaults{}, fmt.Errorf("acp agent %q command: %w", name, err)
+				} else if executable == "" {
+					return AgentDefaults{}, fmt.Errorf("acp agent %q command is required when enabled", name)
+				}
 			}
 		}
 		modelProvider := strings.TrimSpace(current.ModelProvider)
@@ -232,10 +232,9 @@ func MergeAgentDefaults(stored, seed AgentDefaults, agentNames []string) AgentDe
 }
 
 func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentDefaults {
-	if command, ok := refreshBuiltInCommand(name, stored.Command, seed.Command); ok {
-		stored.Command = command
-	}
-	if strings.TrimSpace(stored.Command) == "" {
+	if strings.TrimSpace(seed.Command) == "" {
+		stored.Command = ""
+	} else if strings.TrimSpace(stored.Command) == "" {
 		stored.Command = seed.Command
 	}
 	if auth, err := acp.NormalizeAgentAuthConfig(name, stored.Auth); err == nil {
@@ -256,170 +255,6 @@ func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentD
 		}
 	}
 	return stored
-}
-
-func refreshBuiltInCommand(name, storedCommand, seedCommand string) (string, bool) {
-	storedExecutable, storedArgs, err := ParseCommandLine(storedCommand)
-	if err != nil {
-		return "", false
-	}
-	if strings.TrimSpace(seedCommand) == "" {
-		if name == acp.AgentCodex && managedCodexCommand(storedExecutable, storedArgs) {
-			return "", true
-		}
-		if name == acp.AgentClaude && managedClaudeCommand(storedExecutable, storedArgs) {
-			return "", true
-		}
-		return "", false
-	}
-	if name != acp.AgentCodex {
-		return "", false
-	}
-	seedExecutable, seedArgs, err := ParseCommandLine(seedCommand)
-	if err != nil || len(seedArgs) < 2 {
-		return "", false
-	}
-	if !isNpxExecutable(storedExecutable) || !isNpxExecutable(seedExecutable) {
-		return "", false
-	}
-	if storedCodexPackageIsOlder(storedArgs, seedArgs) {
-		if commandArgsMatchExceptPackageWithOptionalTrailingConfigs(
-			storedArgs,
-			seedArgs,
-			`features.tool_search_always_defer_mcp_tools=true`,
-			`suppress_unstable_features_warning=true`,
-		) {
-			return seedCommand, true
-		}
-		storedArgs[1] = seedArgs[1]
-		return CommandLine(storedExecutable, storedArgs), true
-	}
-	if storedCodexPackageIsSame(storedArgs, seedArgs) &&
-		slices.Equal(storedArgs, seedArgsWithoutTrailingConfigs(seedArgs, `suppress_unstable_features_warning=true`)) {
-		return seedCommand, true
-	}
-	return "", false
-}
-
-func managedCodexCommand(executable string, args []string) bool {
-	if !isNpxExecutable(executable) || len(args) < 2 || args[0] != "-y" {
-		return false
-	}
-	name, version, ok := packageNameVersion(args[1])
-	if !ok || name != "@jazchat/codex-acp" {
-		return false
-	}
-	if semverLess(acp.CodexACPVersion, version) {
-		return false
-	}
-	allowed := map[string]struct{}{
-		`sandbox_mode="danger-full-access"`:                {},
-		`approval_policy="never"`:                          {},
-		`features.tool_search_always_defer_mcp_tools=true`: {},
-		`suppress_unstable_features_warning=true`:          {},
-	}
-	for i := 2; i < len(args); i += 2 {
-		if i+1 >= len(args) || args[i] != "-c" {
-			return false
-		}
-		if _, ok := allowed[args[i+1]]; !ok {
-			return false
-		}
-	}
-	return true
-}
-
-func managedClaudeCommand(executable string, args []string) bool {
-	if !isNpxExecutable(executable) || len(args) != 2 || args[0] != "-y" {
-		return false
-	}
-	name, version, ok := packageNameVersion(args[1])
-	return ok && name == "@agentclientprotocol/claude-agent-acp" && !semverLess(acp.ClaudeACPVersion, version)
-}
-
-func storedCodexPackageIsOlder(storedArgs, seedArgs []string) bool {
-	if len(storedArgs) < 2 || len(seedArgs) < 2 {
-		return false
-	}
-	storedName, storedVersion, ok := packageNameVersion(storedArgs[1])
-	if !ok {
-		return false
-	}
-	seedName, seedVersion, ok := packageNameVersion(seedArgs[1])
-	if !ok || storedName != seedName {
-		return false
-	}
-	return semverLess(storedVersion, seedVersion)
-}
-
-func storedCodexPackageIsSame(storedArgs, seedArgs []string) bool {
-	if len(storedArgs) < 2 || len(seedArgs) < 2 {
-		return false
-	}
-	storedName, storedVersion, ok := packageNameVersion(storedArgs[1])
-	if !ok {
-		return false
-	}
-	seedName, seedVersion, ok := packageNameVersion(seedArgs[1])
-	return ok && storedName == seedName && storedVersion == seedVersion
-}
-
-func packageNameVersion(pkg string) (string, string, bool) {
-	pkg = strings.TrimSpace(pkg)
-	at := strings.LastIndex(pkg, "@")
-	if at <= strings.LastIndex(pkg, "/") || at == len(pkg)-1 {
-		return "", "", false
-	}
-	return pkg[:at], pkg[at+1:], true
-}
-
-func semverLess(a, b string) bool {
-	a = "v" + strings.TrimPrefix(strings.TrimSpace(a), "v")
-	b = "v" + strings.TrimPrefix(strings.TrimSpace(b), "v")
-	return semver.IsValid(a) && semver.IsValid(b) && semver.Compare(a, b) < 0
-}
-
-func commandArgsMatchExceptPackage(storedArgs, seedArgs []string) bool {
-	if len(storedArgs) != len(seedArgs) || len(seedArgs) < 2 {
-		return false
-	}
-	for i := range seedArgs {
-		if i == 1 {
-			continue
-		}
-		if storedArgs[i] != seedArgs[i] {
-			return false
-		}
-	}
-	return true
-}
-
-func commandArgsMatchExceptPackageWithOptionalTrailingConfigs(storedArgs, seedArgs []string, configs ...string) bool {
-	for {
-		if commandArgsMatchExceptPackage(storedArgs, seedArgs) {
-			return true
-		}
-		next := seedArgsWithoutTrailingConfigs(seedArgs, configs...)
-		if len(next) == len(seedArgs) {
-			return false
-		}
-		seedArgs = next
-	}
-}
-
-func seedArgsWithoutTrailingConfigs(seedArgs []string, configs ...string) []string {
-	if len(seedArgs) < 2 || seedArgs[len(seedArgs)-2] != "-c" {
-		return seedArgs
-	}
-	if !slices.Contains(configs, seedArgs[len(seedArgs)-1]) {
-		return seedArgs
-	}
-	return seedArgs[:len(seedArgs)-2]
-}
-
-func isNpxExecutable(executable string) bool {
-	base := strings.ToLower(filepath.Base(executable))
-	return base == "npx" || base == "npx.cmd"
 }
 
 func canonicalizeACPDefaults(in map[string]ACPAgentDefaults) map[string]ACPAgentDefaults {
@@ -475,11 +310,11 @@ func (s *ACPConfigSource) AgentConfig(name string) (acp.AgentConfig, bool, error
 	if !ok || !agent.Enabled {
 		return acp.AgentConfig{}, false, nil
 	}
-	command := strings.TrimSpace(agent.Command)
-	if command == "" && cfg.RequiresCommand() {
-		return acp.AgentConfig{}, false, fmt.Errorf("acp agent %q command is required when enabled", name)
-	}
-	if command != "" {
+	if cfg.RequiresCommand() {
+		command := strings.TrimSpace(agent.Command)
+		if command == "" {
+			return acp.AgentConfig{}, false, fmt.Errorf("acp agent %q command is required when enabled", name)
+		}
 		executable, args, err := ParseCommandLine(command)
 		if err != nil {
 			return acp.AgentConfig{}, false, fmt.Errorf("acp agent %q command: %w", name, err)

@@ -65,6 +65,10 @@ type Config struct {
 	Memory         MemoryConfig
 }
 
+type Release struct {
+	Version string
+}
+
 type SkillsConfig struct {
 	DisableSync bool
 }
@@ -173,8 +177,8 @@ func NewACPAgentConfigSource(store *sqlitestore.Store, catalog acp.AgentCatalog)
 	return agentsettings.NewACPConfigSource(store, catalog)
 }
 
-func NewACPAdapterManager(layout runtimefiles.Layout) *acpadapter.Manager {
-	return acpadapter.New(layout.Root)
+func NewACPAdapterManager(layout runtimefiles.Layout, release Release) *acpadapter.Manager {
+	return acpadapter.New(layout.Root, release.Version)
 }
 
 func StartACPAdapterDownloads(lc fx.Lifecycle, catalog acp.AgentCatalog, adapters *acpadapter.Manager, logger *log.Logger) {

@@ -174,7 +174,7 @@ func TestDisconnectACPAuthStopsAutoFallbackToGlobalClaudeConfig(t *testing.T) {
 		t.Fatalf("global ~/.claude config was deleted: %v", err)
 	}
 	claude := got.ACP[acp.AgentClaude]
-	if claude.Enabled || claude.Auth.Mode != acp.AuthModeJazProfile {
+	if claude.Enabled || claude.Command != "" || claude.Auth.Mode != acp.AuthModeJazProfile {
 		t.Fatalf("stored claude settings = %#v, want disabled Jaz profile", claude)
 	}
 }

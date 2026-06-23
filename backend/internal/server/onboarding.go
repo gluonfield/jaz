@@ -363,16 +363,19 @@ func acpExecutableAvailable(command string) bool {
 
 func (s *Server) acpProbeConfig(name string, defaults agentsettings.AgentDefaults) (acp.AgentConfig, string, error) {
 	cfg, _ := s.acpAgentCatalog().Agent(name)
-	command := strings.TrimSpace(defaults.ACP[name].Command)
-	if command != "" {
-		executable, args, err := agentsettings.ParseCommandLine(command)
-		if err != nil {
-			return acp.AgentConfig{}, command, err
+	command := ""
+	if cfg.RequiresCommand() {
+		command = strings.TrimSpace(defaults.ACP[name].Command)
+		if command != "" {
+			executable, args, err := agentsettings.ParseCommandLine(command)
+			if err != nil {
+				return acp.AgentConfig{}, command, err
+			}
+			cfg.Command = executable
+			cfg.Args = args
+		} else {
+			command = agentsettings.CommandLine(cfg.Command, cfg.Args)
 		}
-		cfg.Command = executable
-		cfg.Args = args
-	} else {
-		command = agentsettings.CommandLine(cfg.Command, cfg.Args)
 	}
 	defaultModelProvider := strings.TrimSpace(cfg.ModelProvider)
 	cfg.ModelProvider = strings.TrimSpace(defaults.ACP[name].ModelProvider)

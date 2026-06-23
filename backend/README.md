@@ -40,18 +40,18 @@ Set `CODEX_HOME` only when Codex uses a non-default auth directory.
 
 The Settings API exposes model-provider endpoint metadata for OpenRouter and
 OpenAI. Built-in ACP agent defaults are stored in the same settings record;
-Settings controls whether each client is enabled, the command used to start it,
-plus the model and reasoning effort copied into new threads where the agent
-supports those fields.
+Settings controls whether each client is enabled, plus the model and reasoning
+effort copied into new threads where the agent supports those fields. Built-in
+managed agents such as Codex and Claude do not persist editable launch commands.
 
-The built-in Codex ACP command uses the Jaz-published adapter:
+On startup, the backend prepares managed ACP adapters from the current Jaz
+GitHub release manifest. Release builds fetch `acp-adapters.json` from their
+own release tag; local development falls back to the latest release manifest.
+The downloaded archives are checksum-verified and installed under `~/.jaz/acp`.
+Codex and Claude then launch through those managed binaries.
 
-```sh
-npx -y @jazchat/codex-acp@0.16.7 -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true -c suppress_unstable_features_warning=true
-```
-
-When developing the Codex ACP adapter itself, override the Codex command in
-Settings > Agents with the locally built binary:
+When developing an unmanaged ACP adapter, add a custom command-based agent in
+config and point it at the locally built binary:
 
 ```sh
 /path/to/codex-acp/target/debug/codex-acp -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' -c features.tool_search_always_defer_mcp_tools=true -c suppress_unstable_features_warning=true
