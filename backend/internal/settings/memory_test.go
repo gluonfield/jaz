@@ -8,35 +8,35 @@ import (
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
-func TestDefaultMemoryAgentPriority(t *testing.T) {
+func TestDefaultWorkerAgentPriority(t *testing.T) {
 	defaults := AgentDefaults{ACP: map[string]ACPAgentDefaults{
 		acp.AgentClaude:   {Enabled: true},
 		acp.AgentOpenCode: {Enabled: true},
 	}}
-	if got := DefaultMemoryAgent(defaults); got != acp.AgentClaude {
+	if got := DefaultWorkerAgent(defaults); got != acp.AgentClaude {
 		t.Fatalf("agent = %q", got)
 	}
 
 	defaults.ACP[acp.AgentCodex] = ACPAgentDefaults{Enabled: true}
-	if got := DefaultMemoryAgent(defaults); got != acp.AgentCodex {
+	if got := DefaultWorkerAgent(defaults); got != acp.AgentCodex {
 		t.Fatalf("agent = %q", got)
 	}
 }
 
-func TestMemoryAgentReasoningEffortUsesAdvertisedLowTier(t *testing.T) {
+func TestWorkerAgentReasoningEffortUsesAdvertisedLowTier(t *testing.T) {
 	for _, agent := range []string{acp.AgentCodex, acp.AgentGrok} {
-		if got := MemoryAgentReasoningEffort(agent); got != "low" {
+		if got := WorkerAgentReasoningEffort(agent); got != "low" {
 			t.Fatalf("%s effort = %q, want low", agent, got)
 		}
 	}
 	for _, agent := range []string{acp.AgentClaude, acp.AgentOpenCode} {
-		if got := MemoryAgentReasoningEffort(agent); got != "" {
+		if got := WorkerAgentReasoningEffort(agent); got != "" {
 			t.Fatalf("%s effort = %q, want default", agent, got)
 		}
 	}
 }
 
-func TestMemoryAgentDefaultsCompatibleWithSupportedModels(t *testing.T) {
+func TestWorkerAgentDefaultsCompatibleWithSupportedModels(t *testing.T) {
 	cases := []struct {
 		name     string
 		agent    string
@@ -92,10 +92,10 @@ func TestMemoryAgentDefaultsCompatibleWithSupportedModels(t *testing.T) {
 			if tc.defaults.ACP == nil {
 				tc.defaults = DefaultAgentDefaults()
 			}
-			if got := MemoryAgentModel(tc.agent, tc.defaults); got != tc.model {
+			if got := WorkerAgentModel(tc.agent, tc.defaults); got != tc.model {
 				t.Fatalf("model = %q, want %q", got, tc.model)
 			}
-			effort := MemoryAgentReasoningEffort(tc.agent)
+			effort := WorkerAgentReasoningEffort(tc.agent)
 			if effort != tc.effort {
 				t.Fatalf("effort = %q, want %q", effort, tc.effort)
 			}

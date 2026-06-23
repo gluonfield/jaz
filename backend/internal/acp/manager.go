@@ -34,6 +34,7 @@ const (
 	MCPServerPolicyAll                = ""
 	MCPServerPolicyWidget             = "widget"
 	MCPServerPolicyMemorySearchWorker = "memory_search_worker"
+	MCPServerPolicyBrowserWorker      = "browser_worker"
 )
 
 type Store interface {
