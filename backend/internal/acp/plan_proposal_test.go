@@ -32,18 +32,20 @@ func TestPlanRequestedTextPublishesProposedPlan(t *testing.T) {
 	events := sessionevents.New()
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	job := &Job{
-		ID:            session.ID,
-		ParentID:      parent.ID,
-		ParentVisible: true,
-		ACPAgent:      AgentCodex,
-		ACPSession:    "acp-session",
-		Cwd:           t.TempDir(),
-		toolByID:      map[string]ToolCallSnapshot{},
+	job := &jobState{
+		Job: Job{
+			ID:            session.ID,
+			ParentID:      parent.ID,
+			ParentVisible: true,
+			ACPAgent:      AgentCodex,
+			ACPSession:    "acp-session",
+			Cwd:           t.TempDir(),
+		},
+		toolByID: map[string]sessionevents.ACPToolCall{},
 	}
 	manager.jobsByID[session.ID] = job
 	manager.jobsByACP["acp-session"] = job
-	done := job.startTurn(CompletionInline, false, true, true)
+	done := job.startTurn(CompletionInline, true, true)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -114,16 +116,18 @@ func TestPlanRequestedPlainTextPublishesACPMessage(t *testing.T) {
 	events := sessionevents.New()
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	job := &Job{
-		ID:         session.ID,
-		ACPAgent:   AgentCodex,
-		ACPSession: "acp-session",
-		Cwd:        t.TempDir(),
-		toolByID:   map[string]ToolCallSnapshot{},
+	job := &jobState{
+		Job: Job{
+			ID:         session.ID,
+			ACPAgent:   AgentCodex,
+			ACPSession: "acp-session",
+			Cwd:        t.TempDir(),
+		},
+		toolByID: map[string]sessionevents.ACPToolCall{},
 	}
 	manager.jobsByID[session.ID] = job
 	manager.jobsByACP["acp-session"] = job
-	done := job.startTurn(CompletionInline, false, true, false)
+	done := job.startTurn(CompletionInline, true, false)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -168,16 +172,18 @@ func TestPlanRequestedProgressPublishesProposedPlan(t *testing.T) {
 	events := sessionevents.New()
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	job := &Job{
-		ID:         session.ID,
-		ACPAgent:   AgentCodex,
-		ACPSession: "acp-session",
-		Cwd:        t.TempDir(),
-		toolByID:   map[string]ToolCallSnapshot{},
+	job := &jobState{
+		Job: Job{
+			ID:         session.ID,
+			ACPAgent:   AgentCodex,
+			ACPSession: "acp-session",
+			Cwd:        t.TempDir(),
+		},
+		toolByID: map[string]sessionevents.ACPToolCall{},
 	}
 	manager.jobsByID[session.ID] = job
 	manager.jobsByACP["acp-session"] = job
-	done := job.startTurn(CompletionInline, false, true, false)
+	done := job.startTurn(CompletionInline, true, false)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -233,15 +239,17 @@ func TestLocalPlanRequestedPlainTextPublishesACPMessage(t *testing.T) {
 	events := sessionevents.New()
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	job := &Job{
-		ID:         session.ID,
-		ACPAgent:   AgentJaz,
-		ACPSession: session.ID,
-		Cwd:        t.TempDir(),
-		toolByID:   map[string]ToolCallSnapshot{},
+	job := &jobState{
+		Job: Job{
+			ID:         session.ID,
+			ACPAgent:   AgentJaz,
+			ACPSession: session.ID,
+			Cwd:        t.TempDir(),
+		},
+		toolByID: map[string]sessionevents.ACPToolCall{},
 	}
 	manager.jobsByID[session.ID] = job
-	done := job.startTurn(CompletionInline, false, true, false)
+	done := job.startTurn(CompletionInline, true, false)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

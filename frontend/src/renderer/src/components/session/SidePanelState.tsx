@@ -14,17 +14,18 @@ function storedPanelPref(): PanelPref {
   return value === 'open' || value === 'closed' ? value : 'auto'
 }
 
-export function useSidePanelState(gitAvailable: boolean) {
+export function useSidePanelState(overviewAvailable: boolean, sideChatAvailable = false) {
   const [panelPref, setPanelPref] = useState<PanelPref>(storedPanelPref)
   const [view, setView] = useState<SidePanelView>('overview')
   const [previewUrl, setPreviewUrl] = useState('')
   const [fileRef, setFileRef] = useState<FileReference | null>(null)
   const [hasPanelSpace, setHasPanelSpace] = useState(false)
   const observerRef = useRef<ResizeObserver | null>(null)
-  const width = SIDE_PANEL_WIDTHS[view]
-  // Auto-open only earns its keep on a git repo — Overview/Diff have little to
-  // show otherwise. Explicit 'open' (a user pick) still opens anywhere.
-  const autoOpen = hasPanelSpace && gitAvailable
+  const activeView = view === 'side-chat' && !sideChatAvailable ? 'overview' : view
+  const width = SIDE_PANEL_WIDTHS[activeView]
+  // Auto-open only earns its keep when Overview has content. Explicit 'open'
+  // still opens anywhere.
+  const autoOpen = hasPanelSpace && overviewAvailable
   const open = panelPref === 'auto' ? autoOpen : panelPref === 'open'
 
   const measureRef = useCallback((el: HTMLDivElement | null) => {
@@ -84,7 +85,7 @@ export function useSidePanelState(gitAvailable: boolean) {
     selectView,
     setPreviewUrl,
     toggle,
-    view,
+    view: activeView,
     width,
     openFile,
     openPreview,
@@ -97,28 +98,32 @@ const SIDE_PANEL_VIEW_LABEL: Record<SidePanelView, string> = {
   preview: 'Preview',
   terminal: 'Terminal',
   file: 'File Reader',
+  'side-chat': 'Side chat',
 }
 
 // Overview sits last so it lands on the right edge of the row. It's the default
 // view, so when the panel is closed the collapsed pill is Overview pinned to
 // the right — the others fan in to its left and it never moves on hover.
-const BASE_VIEW_OPTIONS: SidePanelView[] = ['diff', 'preview', 'terminal', 'overview']
+const BASE_VIEW_OPTIONS: SidePanelView[] = ['side-chat', 'diff', 'preview', 'terminal', 'overview']
 
 export function SidePanelControl({
   open,
   view,
+  sideChatAvailable,
   fileAvailable,
   onToggle,
   onSelectView,
 }: {
   open: boolean
   view: SidePanelView
+  sideChatAvailable: boolean
   fileAvailable: boolean
   onToggle: () => void
   onSelectView: (view: SidePanelView) => void
 }) {
-  const options = fileAvailable || view === 'file' ? [...BASE_VIEW_OPTIONS, 'file' as const] : BASE_VIEW_OPTIONS
-  const currentView = view === 'file' && !fileAvailable ? 'overview' : view
+  const baseOptions = sideChatAvailable ? BASE_VIEW_OPTIONS : BASE_VIEW_OPTIONS.filter((option) => option !== 'side-chat')
+  const options = fileAvailable || view === 'file' ? [...baseOptions, 'file' as const] : baseOptions
+  const currentView = (view === 'file' && !fileAvailable) || (view === 'side-chat' && !sideChatAvailable) ? 'overview' : view
   const controlRef = useRef<HTMLDivElement>(null)
   const closeTimer = useRef<number | null>(null)
   const [hovered, setHovered] = useState(false)

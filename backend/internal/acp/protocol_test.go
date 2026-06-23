@@ -33,7 +33,7 @@ func TestRequestPermissionPublishesAndWaitsForAnswer(t *testing.T) {
 	events := sessionevents.New()
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	manager.jobsByID[session.ID] = &Job{ID: session.ID, ACPSession: "acp-session", Cwd: root}
+	manager.jobsByID[session.ID] = &jobState{Job: Job{ID: session.ID, ACPSession: "acp-session", Cwd: root}}
 	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -148,7 +148,7 @@ func runInteractiveRequestUserInputTest(t *testing.T, metaKey, submitOptionID, r
 	events := sessionevents.New()
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	manager.jobsByID["session"] = &Job{ID: "session", ACPSession: "acp-session", Cwd: root}
+	manager.jobsByID["session"] = &jobState{Job: Job{ID: "session", ACPSession: "acp-session", Cwd: root}}
 	manager.jobsByACP["acp-session"] = manager.jobsByID["session"]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -267,7 +267,7 @@ func TestPlanSessionUpdatePublishesAndPersistsProgress(t *testing.T) {
 	events := sessionevents.New()
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	manager.jobsByID[session.ID] = &Job{ID: session.ID, ACPSession: "acp-session", Slug: session.Slug}
+	manager.jobsByID[session.ID] = &jobState{Job: Job{ID: session.ID, ACPSession: "acp-session", Slug: session.Slug}}
 	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -334,6 +334,152 @@ func TestPlanSessionUpdatePublishesAndPersistsProgress(t *testing.T) {
 	}
 }
 
+func TestSideChatSessionUpdatePublishesLiveSideChatEventOnly(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "codex-side", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := sessionevents.New()
+	manager := NewManager(store, Config{}, nil)
+	manager.Events = events
+	manager.jobsByID[session.ID] = &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex, ACPSession: "acp-session"}}
+	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	sub := events.Subscribe(ctx, session.ID)
+
+	raw, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
+		Method: acpschema.ClientMethodSessionUpdate,
+		Params: mustJSON(t, map[string]any{
+			"sessionId": "acp-session",
+			"update": map[string]any{
+				"sessionUpdate": "agent_message_chunk",
+				"_meta": map[string]any{
+					"codex": map[string]any{
+						"sideChat": map[string]any{
+							"id":              "side-1",
+							"command":         "side",
+							"parentSessionId": session.ID,
+							"threadId":        "thread-1",
+						},
+					},
+				},
+				"content": map[string]any{"type": "text", "text": "side answer"},
+			},
+		}),
+	})
+	if rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	if string(raw) != "{}" {
+		t.Fatalf("response = %s", raw)
+	}
+
+	select {
+	case event := <-sub:
+		if event.Type != sessionevents.TypeSideChatMessage || event.SideChat == nil {
+			t.Fatalf("unexpected event %#v", event)
+		}
+		if event.Content != "" ||
+			event.SideChat.Content != "side answer" ||
+			event.SideChat.ID != "side-1" ||
+			event.SideChat.ThreadID != "thread-1" ||
+			event.SideChat.Role != "assistant" {
+			t.Fatalf("side chat event = %#v", event)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	if got := manager.jobsByID[session.ID].Assistant; got != "" {
+		t.Fatalf("main assistant was mutated: %q", got)
+	}
+	stored, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 0 {
+		t.Fatalf("stored events = %#v", stored)
+	}
+}
+
+func TestToolCallUpdateCapturesLivenessState(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "codex-tools", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := sessionevents.New()
+	manager := NewManager(store, Config{}, nil)
+	manager.Events = events
+	manager.jobsByID[session.ID] = &jobState{
+		Job: Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex, ACPSession: "acp-session"},
+		toolByID: map[string]sessionevents.ACPToolCall{},
+	}
+	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	sub := events.Subscribe(ctx, session.ID)
+
+	raw, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
+		Method: acpschema.ClientMethodSessionUpdate,
+		Params: mustJSON(t, map[string]any{
+			"sessionId": "acp-session",
+			"update": map[string]any{
+				"sessionUpdate": "tool_call",
+				"toolCallId":    "exec-1",
+				"title":         "go test ./...",
+				"status":        "in_progress",
+				"rawInput":      map[string]any{"cmd": "go test ./..."},
+				"_meta": map[string]any{
+					"terminal_info": map[string]any{"terminal_id": "exec-1", "cwd": "/repo"},
+				},
+			},
+		}),
+	})
+	if rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	if string(raw) != "{}" {
+		t.Fatalf("response = %s", raw)
+	}
+
+	select {
+	case event := <-sub:
+		if event.Type != "acp_tool" || event.ACP == nil || len(event.ACP.ToolCalls) != 1 {
+			t.Fatalf("unexpected event %#v", event)
+		}
+		call := event.ACP.ToolCalls[0]
+		if call.Runtime.TerminalID != "exec-1" || call.Runtime.TerminalCwd != "/repo" {
+			t.Fatalf("runtime = %#v", call.Runtime)
+		}
+		if call.StartedAt.IsZero() || call.UpdatedAt.IsZero() || event.ACP.LastToolAt.IsZero() {
+			t.Fatalf("timestamps missing: call=%#v acp=%#v", call, event.ACP)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+
+	state, err := store.LoadACPState(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.LastEventAt.IsZero() || state.LastToolAt.IsZero() {
+		t.Fatalf("state timestamps missing: %#v", state)
+	}
+	if len(state.ToolCalls) != 1 || state.ToolCalls[0].Runtime.TerminalID != "exec-1" {
+		t.Fatalf("persisted tool call = %#v", state.ToolCalls)
+	}
+}
+
 func TestPlanSessionUpdateIgnoresMarkdownDocumentEntry(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -351,7 +497,7 @@ func TestPlanSessionUpdateIgnoresMarkdownDocumentEntry(t *testing.T) {
 	events := sessionevents.New()
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	manager.jobsByID[session.ID] = &Job{ID: session.ID, ACPSession: "acp-session", Slug: session.Slug}
+	manager.jobsByID[session.ID] = &jobState{Job: Job{ID: session.ID, ACPSession: "acp-session", Slug: session.Slug}}
 	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -414,7 +560,7 @@ func TestPlanSessionUpdateInvalidReplacementClearsProgress(t *testing.T) {
 	events := sessionevents.New()
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	manager.jobsByID[session.ID] = &Job{ID: session.ID, ACPSession: "acp-session", Slug: session.Slug}
+	manager.jobsByID[session.ID] = &jobState{Job: Job{ID: session.ID, ACPSession: "acp-session", Slug: session.Slug}}
 	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -498,13 +644,15 @@ func TestSessionInfoUpdatePublishesAndPersistsTitle(t *testing.T) {
 	events := sessionevents.New()
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	manager.jobsByID[session.ID] = &Job{
-		ID:         session.ID,
-		Slug:       session.Slug,
-		Title:      session.Title,
-		ACPAgent:   AgentCodex,
-		ACPSession: "acp-session",
-		State:      StateRunning,
+	manager.jobsByID[session.ID] = &jobState{
+		Job: Job{
+			ID:         session.ID,
+			Slug:       session.Slug,
+			Title:      session.Title,
+			ACPAgent:   AgentCodex,
+			ACPSession: "acp-session",
+			State:      StateRunning,
+		},
 	}
 	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
 
@@ -559,18 +707,20 @@ func TestClaudeStylePlanExitPermissionPublishesRequest(t *testing.T) {
 	events := sessionevents.New()
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	manager.jobsByID[session.ID] = &Job{
-		ID:         session.ID,
-		ACPAgent:   AgentClaude,
-		ACPSession: "acp-session",
-		Cwd:        root,
-		Modes: ModeState{
-			CurrentModeID: "plan",
-			PlanModeID:    "plan",
-			AvailableModes: []ModeSnapshot{
-				{ID: "bypassPermissions", Name: "Bypass Permissions"},
-				{ID: "auto", Name: "Auto"},
-				{ID: "plan", Name: "Plan"},
+	manager.jobsByID[session.ID] = &jobState{
+		Job: Job{
+			ID:         session.ID,
+			ACPAgent:   AgentClaude,
+			ACPSession: "acp-session",
+			Cwd:        root,
+			Modes: ModeState{
+				CurrentModeID: "plan",
+				PlanModeID:    "plan",
+				AvailableModes: []ModeSnapshot{
+					{ID: "bypassPermissions", Name: "Bypass Permissions"},
+					{ID: "auto", Name: "Auto"},
+					{ID: "plan", Name: "Plan"},
+				},
 			},
 		},
 	}

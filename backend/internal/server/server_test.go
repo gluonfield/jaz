@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/acp"
@@ -426,6 +425,7 @@ func TestACPStreamUsesServerContextAfterRequestCancel(t *testing.T) {
 	cancel()
 	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/messages:stream", strings.NewReader(`{"message":"hi"}`)).WithContext(ctx)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Jaz-Client-Platform", "mobile")
 	res := httptest.NewRecorder()
 
 	(&Server{Store: store, ACP: manager}).Handler().ServeHTTP(res, req)
@@ -435,9 +435,90 @@ func TestACPStreamUsesServerContextAfterRequestCancel(t *testing.T) {
 	}
 	manager.mu.Lock()
 	sendCtxErr := manager.sendCtxErr
+	sendPlatform := manager.sendPlatform
 	manager.mu.Unlock()
 	if sendCtxErr != nil {
 		t.Fatalf("acp send used cancelled request context: %v", sendCtxErr)
+	}
+	if sendPlatform != "mobile" {
+		t.Fatalf("acp send platform = %q, want mobile", sendPlatform)
+	}
+}
+
+func TestACPSideChatRoutesToManager(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "codex-side-chat",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     "codex",
+			SessionID: "acp-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeACPManager{job: acp.Job{ID: session.ID, Slug: session.Slug, State: acp.StateRunning}}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/side-chat", strings.NewReader(`{"id":"side-1","message":"quick check"}`)).WithContext(ctx)
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store, ACP: manager}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	manager.mu.Lock()
+	sideChat := manager.sideChat
+	sideCtxErr := manager.sideCtxErr
+	manager.mu.Unlock()
+	if sideCtxErr != nil {
+		t.Fatalf("side chat used cancelled request context: %v", sideCtxErr)
+	}
+	if sideChat.Session != session.ID || sideChat.ID != "side-1" || sideChat.Message != "quick check" {
+		t.Fatalf("side chat request = %#v", sideChat)
+	}
+}
+
+func TestACPSideChatRejectsNonCodexSession(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "codex-wrapper-side-chat",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     "codex-wrapper",
+			SessionID: "acp-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeACPManager{job: acp.Job{ID: session.ID, Slug: session.Slug, State: acp.StateRunning}}
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/side-chat", strings.NewReader(`{"id":"side-1","message":"quick check"}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store, ACP: manager}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	manager.mu.Lock()
+	sideChat := manager.sideChat
+	manager.mu.Unlock()
+	if sideChat.Session != "" {
+		t.Fatalf("side chat manager was called: %#v", sideChat)
 	}
 }
 
@@ -673,8 +754,11 @@ func TestSessionMessagesIncludesPersistedSessionEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	session, err := store.CreateSession(storage.CreateSession{
-		Slug:    "codex",
-		Runtime: storage.RuntimeACP,
+		Slug:            "codex",
+		Runtime:         storage.RuntimeACP,
+		ModelProvider:   "codex",
+		Model:           "gpt-5.5",
+		ReasoningEffort: "xhigh",
 		RuntimeRef: &storage.RuntimeRef{
 			Type:      storage.RuntimeACP,
 			Agent:     "codex",
@@ -707,13 +791,18 @@ func TestSessionMessagesIncludesPersistedSessionEvents(t *testing.T) {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
 	var got struct {
-		Events []sessionevents.Event `json:"events"`
+		Events  []sessionevents.Event   `json:"events"`
+		ACPMeta map[string]acpMetaEntry `json:"acp_meta"`
 	}
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
 	if len(got.Events) != 1 || got.Events[0].Type != "acp_message" || got.Events[0].Content != "I inspected the workspace." {
 		t.Fatalf("events = %#v", got.Events)
+	}
+	meta := got.ACPMeta[session.ID]
+	if meta.ModelProvider != "codex" || meta.Model != "gpt-5.5" || meta.ReasoningEffort != "xhigh" {
+		t.Fatalf("acp meta = %#v", got.ACPMeta)
 	}
 }
 
@@ -768,151 +857,4 @@ func TestSessionMessagesHidesDirectACPChildStateFromParent(t *testing.T) {
 	if len(got.ACPChildren) != 0 {
 		t.Fatalf("children = %#v", got.ACPChildren)
 	}
-}
-
-type fakeACPManager struct {
-	mu            sync.Mutex
-	sent          acp.SendRequest
-	answered      acp.InteractiveAnswer
-	sendCtxErr    error
-	answerCtxErr  error
-	cancelCtxErr  error
-	sendErr       error
-	answerErr     error
-	job           acp.Job
-	jobs          []acp.Job
-	spawnStore    storage.SessionStore
-	spawned       acp.SpawnRequest
-	created       acp.SpawnRequest
-	spawnErr      error
-	utilityPrompt acp.UtilityPromptRequest
-	utilityText   string
-	utilityErr    error
-	cancelRelease chan struct{}
-}
-
-func (f *fakeACPManager) CreateSession(_ context.Context, req acp.SpawnRequest) (storage.Session, error) {
-	f.mu.Lock()
-	f.created = req
-	spawnStore := f.spawnStore
-	spawnErr := f.spawnErr
-	f.mu.Unlock()
-	if spawnErr != nil {
-		return storage.Session{}, spawnErr
-	}
-	if spawnStore == nil {
-		return storage.Session{}, nil
-	}
-	return spawnStore.CreateSession(storage.CreateSession{
-		Slug:            req.Slug,
-		Title:           req.Title,
-		Runtime:         storage.RuntimeACP,
-		ModelProvider:   req.ACPAgent,
-		Model:           req.Model,
-		ReasoningEffort: req.ReasoningEffort,
-		SourceType:      req.SourceType,
-		SourceID:        req.SourceID,
-		RuntimeRef: &storage.RuntimeRef{
-			Type:            storage.RuntimeACP,
-			Agent:           req.ACPAgent,
-			Cwd:             req.Directory,
-			ArtifactSurface: req.ArtifactSurface,
-			MCPServerPolicy: req.MCPServerPolicy,
-		},
-	})
-}
-
-func (f *fakeACPManager) Spawn(_ context.Context, req acp.SpawnRequest) (acp.SpawnResult, error) {
-	f.mu.Lock()
-	f.spawned = req
-	spawnStore := f.spawnStore
-	spawnErr := f.spawnErr
-	f.mu.Unlock()
-	if spawnErr != nil {
-		return acp.SpawnResult{}, spawnErr
-	}
-	if spawnStore == nil {
-		return acp.SpawnResult{}, nil
-	}
-	session, err := spawnStore.CreateSession(storage.CreateSession{
-		Slug:       req.Slug,
-		Title:      req.Title,
-		Runtime:    storage.RuntimeACP,
-		SourceType: req.SourceType,
-		SourceID:   req.SourceID,
-		RuntimeRef: &storage.RuntimeRef{
-			Type:            storage.RuntimeACP,
-			Agent:           req.ACPAgent,
-			SessionID:       "fake-acp-session",
-			ArtifactSurface: req.ArtifactSurface,
-			MCPServerPolicy: req.MCPServerPolicy,
-		},
-	})
-	if err != nil {
-		return acp.SpawnResult{}, err
-	}
-	return acp.SpawnResult{
-		Status:    "created",
-		SessionID: session.ID,
-		Slug:      session.Slug,
-		ACPAgent:  req.ACPAgent,
-		State:     acp.StateIdle,
-		Session:   session,
-	}, nil
-}
-
-func (f *fakeACPManager) Agents() []string { return nil }
-
-func (f *fakeACPManager) RunUtilityPrompt(_ context.Context, req acp.UtilityPromptRequest) (string, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.utilityPrompt = req
-	return f.utilityText, f.utilityErr
-}
-
-func (f *fakeACPManager) Send(ctx context.Context, req acp.SendRequest) (acp.Job, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.sent = req
-	f.sendCtxErr = ctx.Err()
-	return f.job, f.sendErr
-}
-
-func (f *fakeACPManager) Status(string) (acp.Job, error) {
-	return f.job, nil
-}
-
-func (f *fakeACPManager) List() []acp.Job {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.jobs != nil {
-		return append([]acp.Job(nil), f.jobs...)
-	}
-	if f.job.ID == "" && f.job.Slug == "" {
-		return nil
-	}
-	return []acp.Job{f.job}
-}
-
-func (f *fakeACPManager) AnswerInteractive(ctx context.Context, answer acp.InteractiveAnswer) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.answered = answer
-	f.answerCtxErr = ctx.Err()
-	return f.answerErr
-}
-
-func (f *fakeACPManager) Cancel(ctx context.Context, _ string) (acp.Job, error) {
-	f.mu.Lock()
-	f.cancelCtxErr = ctx.Err()
-	job := f.job
-	release := f.cancelRelease
-	f.mu.Unlock()
-	if release != nil {
-		select {
-		case <-release:
-		case <-ctx.Done():
-		}
-	}
-	return job, nil
 }

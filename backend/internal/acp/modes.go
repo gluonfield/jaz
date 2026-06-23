@@ -43,7 +43,7 @@ func planModeID(modes []acpschema.SessionMode) string {
 	return ""
 }
 
-func (m *Manager) prepareModeForTurn(ctx context.Context, job *Job, planRequested bool) error {
+func (m *Manager) prepareModeForTurn(ctx context.Context, job *jobState, planRequested bool) error {
 	job.mu.RLock()
 	modes := job.Modes.Clone()
 	job.mu.RUnlock()
@@ -62,7 +62,7 @@ func (m *Manager) prepareModeForTurn(ctx context.Context, job *Job, planRequeste
 	return m.ensureTurnMode(ctx, job, target)
 }
 
-func (m *Manager) ensureTurnMode(ctx context.Context, job *Job, target string) error {
+func (m *Manager) ensureTurnMode(ctx context.Context, job *jobState, target string) error {
 	job.mu.RLock()
 	current := job.Modes.CurrentModeID
 	job.mu.RUnlock()
@@ -72,7 +72,7 @@ func (m *Manager) ensureTurnMode(ctx context.Context, job *Job, target string) e
 	return m.applyTurnMode(ctx, job, target)
 }
 
-func (m *Manager) applyTurnMode(ctx context.Context, job *Job, target string) error {
+func (m *Manager) applyTurnMode(ctx context.Context, job *jobState, target string) error {
 	if target == "" {
 		return nil
 	}
@@ -101,7 +101,7 @@ func (m *Manager) applyTurnMode(ctx context.Context, job *Job, target string) er
 	return nil
 }
 
-func (m *Manager) restoreBaselineMode(ctx context.Context, job *Job) error {
+func (m *Manager) restoreBaselineMode(ctx context.Context, job *jobState) error {
 	return m.prepareModeForTurn(ctx, job, false)
 }
 

@@ -17,6 +17,25 @@ func (s *Store) LoadSessionEvents(id string) ([]sessionevents.Event, error) {
 	return s.loadSessionEvents(id)
 }
 
+func (s *Store) LoadSessionEventsAfter(id string, afterSeq int64) ([]sessionevents.Event, error) {
+	if afterSeq <= 0 {
+		return s.LoadSessionEvents(id)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	events, err := s.loadSessionEvents(id)
+	if err != nil {
+		return nil, err
+	}
+	filtered := events[:0]
+	for _, event := range events {
+		if event.Seq > afterSeq {
+			filtered = append(filtered, event)
+		}
+	}
+	return filtered, nil
+}
+
 func (s *Store) loadSessionEvents(id string) ([]sessionevents.Event, error) {
 	path := filepath.Join(s.sessionDir(id), "events.jsonl")
 	data, err := os.ReadFile(path)

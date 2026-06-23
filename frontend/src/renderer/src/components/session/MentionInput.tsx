@@ -13,8 +13,12 @@ import {
   useState,
 } from 'react'
 import { createPortal } from 'react-dom'
+import { searchThreads } from '@/lib/api/search'
 import { projectsQuery, workspaceFilesQuery } from '@/lib/api/sessions'
 import { skillsQuery } from '@/lib/api/skills'
+import type { ThreadSearchResult } from '@/lib/api/types'
+import { keys } from '@/lib/query/keys'
+import { threadSearchTitle } from '@/lib/threadDisplay'
 import { ComposerSuggestions, type SuggestionItem, type SuggestionSection } from './ComposerSuggestions'
 import {
   expandTokens,
@@ -25,12 +29,13 @@ import {
   type InlineToken,
 } from './composerTokens'
 import { fuzzyMatch } from './fuzzy'
-import { decodeMentions, encodeMention } from './mentions'
+import { decodeMentions, encodeMention, mentionLabelText } from './mentionCodec'
 import { useComposerDraft, type ComposerDraftStorage } from './useComposerDraft'
 
 // Result cap for the $/@ popups, mirroring Codex's file-search page size.
 const MAX_SUGGESTIONS = 20
 const MAX_PROJECT_SUGGESTIONS = 3
+const MAX_THREAD_SUGGESTIONS = 4
 
 // Shared by the textarea and its token-highlight mirror — any drift in these
 // box/text metrics would misalign the caret with the painted glyphs.
@@ -58,6 +63,10 @@ function betterMatch<T extends { score: number }>(a: T | null, b: T | null): T |
   if (!a) return b
   if (!b) return a
   return b.score > a.score ? b : a
+}
+
+function threadMentionDisplay(result: ThreadSearchResult): string {
+  return `@${mentionLabelText(threadSearchTitle(result))}`
 }
 
 export type MentionInput = ReturnType<typeof useMentionInput>
@@ -137,6 +146,19 @@ export function useMentionInput({
     enabled: fileRoot !== undefined && focused,
   })
   const projects = useQuery({ ...projectsQuery, enabled: focused })
+  const threadQuery = menuTrigger?.trigger === '@' ? menuTrigger.query : ''
+  const threadSearchEnabled = focused && threadQuery.length >= 2
+  const threadSearch = useQuery({
+    queryKey: keys.threadSearch(threadQuery),
+    queryFn: ({ signal }) =>
+      searchThreads({
+        query: threadQuery,
+        limit: MAX_THREAD_SUGGESTIONS,
+        signal,
+      }),
+    enabled: threadSearchEnabled,
+    staleTime: 15_000,
+  })
   const skillMentionStart = focused && menuTrigger?.trigger === '$' ? menuTrigger.start : null
 
   const { refetch: refetchSkills } = skills
@@ -196,6 +218,19 @@ export function useMentionInput({
               insert: `@${project.path}`,
               expansion: encodeMention('@', project.path, project.path),
             }))
+    const threadItems =
+      threadSearchEnabled && threadSearch.data
+        ? threadSearch.data.map((result) => {
+            const insert = threadMentionDisplay(result)
+            return {
+              kind: 'thread' as const,
+              label: threadSearchTitle(result),
+              agent: result.thread_agent,
+              insert,
+              expansion: encodeMention('@', insert.slice(1), result.thread_id),
+            }
+          })
+        : []
     const index = fileIndex.data
     const fileItems =
       index && index.root !== ''
@@ -211,7 +246,7 @@ export function useMentionInput({
                 a.entry.path.length - b.entry.path.length ||
                 a.entry.path.localeCompare(b.entry.path),
             )
-            .slice(0, Math.max(0, MAX_SUGGESTIONS - projectItems.length))
+            .slice(0, Math.max(0, MAX_SUGGESTIONS - projectItems.length - threadItems.length))
             .map(({ entry, match }) => ({
               kind: entry.dir ? ('dir' as const) : ('file' as const),
               label: entry.path,
@@ -222,9 +257,10 @@ export function useMentionInput({
         : []
     const sections: SuggestionSection[] = []
     if (projectItems.length > 0) sections.push({ title: 'Projects', items: projectItems })
+    if (threadItems.length > 0) sections.push({ title: 'Threads', items: threadItems })
     if (fileItems.length > 0) sections.push({ title: 'Files', items: fileItems })
     return sections
-  }, [menuTrigger, skills.data, projects.data, fileIndex.data])
+  }, [menuTrigger, skills.data, projects.data, threadSearch.data, threadSearchEnabled, fileIndex.data])
 
   const flatItems = useMemo(() => sections.flatMap((section) => section.items), [sections])
   const menuOpen = menuTrigger !== null && flatItems.length > 0 && focused

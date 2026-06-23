@@ -36,7 +36,6 @@ func (t *Tool) Execute(ctx context.Context, inputs map[string]any) (tools.Result
 		Session:       req.Session,
 		Message:       req.Message,
 		Completion:    completion,
-		Interactive:   req.Plan,
 		PlanRequested: req.Plan,
 		ParentVisible: true,
 	})

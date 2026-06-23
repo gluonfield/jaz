@@ -27,15 +27,16 @@ func (m *Manager) publishProposedPlan(job Job) bool {
 	if explanation == "" && len(plan) == 0 {
 		return false
 	}
-	acp := acpEvent(job)
+	acp := EventFromJob(job)
 	acp.Assistant = ""
 	acp.Thought = ""
 	acp.Plan = nil
 	acp.ToolCalls = nil
 	acp.Permissions = nil
 
+	events := make([]sessionevents.Event, 0, len(surfaceSessionIDs(&job)))
 	for _, sessionID := range surfaceSessionIDs(&job) {
-		m.recordAndPublish(sessionevents.Event{
+		events = append(events, sessionevents.Event{
 			SessionID: sessionID,
 			Type:      "proposed_plan",
 			ACP:       acp,
@@ -47,6 +48,7 @@ func (m *Manager) publishProposedPlan(job Job) bool {
 			At: time.Now().UTC(),
 		})
 	}
+	m.publishOrderedACPEvents(job, events...)
 	return true
 }
 

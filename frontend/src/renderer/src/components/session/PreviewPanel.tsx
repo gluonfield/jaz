@@ -4,12 +4,21 @@ import {
   ExternalLink,
   Globe,
   LoaderCircle,
+  MessageSquare,
   RotateCw,
+  SquareStop,
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { IconButton } from '@/components/ui/IconButton'
+import type { Attachment } from '@/lib/api/types'
+import type { BrowserAnnotation } from '@/lib/messageContext'
 import { normalizePreviewURL } from '../../../../shared/preview'
+import {
+  captureBrowserAnnotation,
+  clearBrowserAnnotationCapture,
+  isBrowserAnnotationCancelled,
+} from './browserAnnotationCapture'
 import { SidePanelShell } from './SidePanelShell'
 import type { PreviewNavigationEvent, PreviewWebviewElement } from './previewWebview'
 
@@ -18,10 +27,14 @@ export const PREVIEW_PANEL_WIDTH = 640
 export function PreviewPanel({
   url,
   onUrlChange,
+  onAddBrowserAnnotation,
+  onUploadAttachment,
   onClose,
 }: {
   url: string
   onUrlChange: (url: string) => void
+  onAddBrowserAnnotation?: (annotation: BrowserAnnotation, screenshot?: Attachment) => void
+  onUploadAttachment?: (file: File) => Promise<Attachment>
   onClose: () => void
 }) {
   const webviewRef = useRef<PreviewWebviewElement | null>(null)
@@ -33,6 +46,7 @@ export function PreviewPanel({
   const [loading, setLoading] = useState(false)
   const [canGoBack, setCanGoBack] = useState(false)
   const [canGoForward, setCanGoForward] = useState(false)
+  const [annotating, setAnnotating] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -136,6 +150,28 @@ export function PreviewPanel({
     }
   }
 
+  const annotate = async () => {
+    const webview = webviewRef.current
+    if (!webview || !webviewReady || annotating || !onAddBrowserAnnotation) return
+    setAnnotating(true)
+    setError('')
+    try {
+      const capture = await captureBrowserAnnotation(webview, onUploadAttachment)
+      if (capture) onAddBrowserAnnotation(capture.annotation, capture.screenshot)
+    } catch (err) {
+      if (!isBrowserAnnotationCancelled(err)) setError(webviewErrorMessage(err))
+    } finally {
+      setAnnotating(false)
+      await clearBrowserAnnotationCapture(webview)
+    }
+  }
+
+  const stopAnnotation = async () => {
+    const webview = webviewRef.current
+    if (!webview || !annotating) return
+    await clearBrowserAnnotationCapture(webview)
+  }
+
   return (
     <SidePanelShell width={PREVIEW_PANEL_WIDTH}>
       <form
@@ -190,6 +226,16 @@ export function PreviewPanel({
           onClick={() => window.open(url, '_blank', 'noopener')}
         >
           <ExternalLink size={14} />
+        </IconButton>
+        <IconButton
+          size="sm"
+          aria-label={annotating ? 'Stop annotation' : 'Annotate preview'}
+          title={annotating ? 'Stop annotation' : 'Annotate'}
+          disabled={!url || !webviewReady || !onAddBrowserAnnotation}
+          onClick={() => (annotating ? void stopAnnotation() : void annotate())}
+          className={annotating ? 'text-danger hover:bg-danger-soft hover:text-danger' : ''}
+        >
+          {annotating ? <SquareStop size={14} /> : <MessageSquare size={14} />}
         </IconButton>
         <button
           type="button"

@@ -23,6 +23,7 @@ var tmpl = template.Must(template.New("jazplatform").Parse(promptTemplate))
 // so older dailies are not injected. Nil MemoryData means memory is disabled
 // and the whole memory block, protocol included, is omitted.
 type MemoryData struct {
+	Root      string
 	LongTerm  string
 	ShortTerm string
 	TodayName string
@@ -37,6 +38,7 @@ type Data struct {
 	Weekday         string
 	Human           string
 	Cwd             string
+	Device          string
 	Soul            string
 	ArtifactSurface string
 	Memory          *MemoryData
@@ -44,6 +46,7 @@ type Data struct {
 }
 
 func Render(data Data) (string, error) {
+	data.Device = deviceLabel(data.Device)
 	data.ArtifactSurface = strings.TrimSpace(data.ArtifactSurface)
 	if data.ArtifactSurface != "widget" {
 		data.ArtifactSurface = "chat"
@@ -51,4 +54,11 @@ func Render(data Data) (string, error) {
 	var out bytes.Buffer
 	err := tmpl.Execute(&out, data)
 	return out.String(), err
+}
+
+func deviceLabel(device string) string {
+	if device == "mobile" {
+		return "Mobile"
+	}
+	return "Desktop"
 }

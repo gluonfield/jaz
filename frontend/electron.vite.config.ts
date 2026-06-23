@@ -24,7 +24,7 @@ export default defineConfig({
       tailwindcss(),
     ],
     server: {
-      port: 5180,
+      port: Number(process.env.ELECTRON_RENDERER_PORT ?? 5180),
       strictPort: true,
     },
   },

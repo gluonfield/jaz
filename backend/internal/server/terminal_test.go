@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -103,6 +104,13 @@ func TestSessionTerminalAcceptsQueryKeyWithBackendAuth(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
+	if runtime.GOOS == "windows" {
+		assertTerminalUnsupported(t, conn)
+		if terminals.Active(session.ID) {
+			t.Fatal("terminal active after unsupported open")
+		}
+		return
+	}
 	var ready terminal.Message
 	readMessage(t, conn, &ready)
 	if ready.Type != "ready" || ready.Cwd != cwd {
@@ -137,6 +145,10 @@ func TestSessionTerminalStartsInCWDAndReplaysOnReconnect(t *testing.T) {
 
 	conn := dialTerminal(t, server.URL, session.ID)
 	defer conn.Close()
+	if runtime.GOOS == "windows" {
+		assertTerminalUnsupported(t, conn)
+		return
+	}
 	var ready terminal.Message
 	readMessage(t, conn, &ready)
 	if ready.Type != "ready" || ready.Cwd != cwd {
@@ -154,6 +166,15 @@ func TestSessionTerminalStartsInCWDAndReplaysOnReconnect(t *testing.T) {
 	replay := readUntilOutput(t, conn, "JAZPWD:"+shellCwd)
 	if !strings.Contains(replay, "JAZPWD:"+shellCwd) {
 		t.Fatalf("replay = %q", replay)
+	}
+}
+
+func assertTerminalUnsupported(t *testing.T, conn *websocket.Conn) {
+	t.Helper()
+	var msg terminal.Message
+	readMessage(t, conn, &msg)
+	if msg.Type != "error" || !strings.Contains(msg.Err, "not supported on Windows") {
+		t.Fatalf("terminal message = %#v, want Windows unsupported error", msg)
 	}
 }
 

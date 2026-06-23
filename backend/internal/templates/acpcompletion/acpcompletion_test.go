@@ -10,6 +10,7 @@ func TestRenderFullAndMinimal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	full = strings.ReplaceAll(full, "\r\n", "\n")
 	for _, want := range []string{
 		"ACP session codex-plan (codex) completed with state idle.",
 		"Error: boom",

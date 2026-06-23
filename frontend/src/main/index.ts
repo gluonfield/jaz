@@ -18,6 +18,7 @@ import appIcon from '../assets/jaz-icon-1024.png?asset'
 import { isPreviewURL } from '../shared/preview'
 import { startLocalBackend, stopLocalBackend } from './backend'
 import { attachBrowserNavigationCommands, attachBrowserNavigationShortcuts } from './browserNavigation'
+import { attachWindowLifecycle, installMainDiagnostics } from './diagnostics'
 import { getDeviceIdentity, getDeviceMetadata } from './deviceIdentity'
 import { createUpdateController } from './updater'
 
@@ -28,6 +29,7 @@ const DARK_BG = '#1d1f24'
 const APP_NAME = 'Jaz'
 
 app.setName(APP_NAME)
+installMainDiagnostics()
 
 let mainWindow: BrowserWindow | null = null
 const updates = createUpdateController(() => mainWindow)
@@ -245,12 +247,11 @@ function createWindow(): void {
   })
 
   mainWindow = win
+  attachWindowLifecycle(win, { label: 'main', onDidFinishLoad: () => updates.sendStatusTo(win) })
   attachBrowserNavigationCommands(win)
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null
   })
-  win.once('ready-to-show', () => win.show())
-  win.webContents.once('did-finish-load', () => updates.sendStatusTo(win))
 
   win.webContents.on('will-attach-webview', (event, webPreferences, params) => {
     if (!isPreviewURL(params.src)) {
@@ -329,8 +330,8 @@ function openBoardWindow(boardId: string): void {
     },
   })
   boardWindows.set(boardId, win)
+  attachWindowLifecycle(win, { label: `board ${boardId}` })
   attachBrowserNavigationCommands(win)
-  win.once('ready-to-show', () => win.show())
   win.on('close', () => saveBoardBounds(boardId, win.getBounds()))
   win.on('closed', () => boardWindows.delete(boardId))
   win.webContents.setWindowOpenHandler(({ url }) => {

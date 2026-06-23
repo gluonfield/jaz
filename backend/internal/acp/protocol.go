@@ -116,18 +116,23 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	var messageChunk string
 	var bufferMessage bool
 	var thoughtChunk string
-	var toolEvent *ToolCallSnapshot
+	var toolEvent *sessionevents.ACPToolCall
 	var attention bool
 	now := time.Now().UTC()
 	update, err := acpschema.DecodeSessionUpdate(raw)
 	if err != nil {
 		return
 	}
-	recordTool := func(src ToolCallSnapshot) {
+	recordTool := func(src sessionevents.ACPToolCall) {
 		call := job.toolByID[src.ID]
+		if call.StartedAt.IsZero() {
+			call.StartedAt = now
+		}
+		src.UpdatedAt = now
 		mergeToolCall(&call, src)
 		job.toolByID[src.ID] = call
 		job.ToolCalls = sortedToolCalls(job.toolByID)
+		job.LastToolAt = now
 		toolEvent = &call
 		activity = &storage.ActivityEntry{
 			ID:     call.ID,
@@ -137,12 +142,21 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 			At:     now,
 		}
 	}
+	if m.applySideChatUpdate(job, update) {
+		return
+	}
+	if subagentUpdate := providerSubagentFromUpdate(job.ACPAgent, update); subagentUpdate.subagent != nil {
+		m.publishProviderSubagent(job.Snapshot(), *subagentUpdate.subagent)
+		if subagentUpdate.consume {
+			return
+		}
+	}
 	job.mu.Lock()
 	switch event := update.(type) {
 	case acpschema.AgentMessageChunkUpdate:
 		messageChunk = contentText(event.Content)
 		job.Assistant = appendACPText(job.Assistant, messageChunk)
-		bufferMessage = job.planRequested
+		bufferMessage = job.turn != nil && job.turn.planRequested
 		if messageChunk != "" {
 			job.savedAssistantLen = len(job.Assistant)
 		}
@@ -150,9 +164,9 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 		thoughtChunk = contentText(event.Content)
 		job.Thought = appendACPText(job.Thought, thoughtChunk)
 	case acpschema.ToolCallSessionUpdate:
-		recordTool(toolUpdateSnapshot(event.ToolCallID, event.Title, event.Status, event.Kind, event.Content, event.RawInput, event.Meta))
+		recordTool(toolUpdateSnapshot(event.ToolCallID, event.Title, event.Status, event.Kind, event.Content, event.RawInput, event.Meta, now))
 	case acpschema.ToolCallUpdateSessionUpdate:
-		recordTool(toolUpdateSnapshot(event.ToolCallID, event.Title, event.Status, event.Kind, event.Content, event.RawInput, event.Meta))
+		recordTool(toolUpdateSnapshot(event.ToolCallID, event.Title, event.Status, event.Kind, event.Content, event.RawInput, event.Meta, now))
 	case acpschema.PlanSessionUpdate:
 		plan := make([]sessionevents.PlanEntry, 0, len(event.Entries))
 		for _, entry := range event.Entries {
@@ -186,6 +200,7 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 		}
 	}
 	job.UpdatedAt = now
+	job.LastEventAt = now
 	sessionID := job.ID
 	job.mu.Unlock()
 
@@ -202,10 +217,10 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 		}
 	}
 	if messageChunk != "" && !bufferMessage {
-		m.publishACPMessage(job.Snapshot(), messageChunk)
+		m.queueACPMessage(job, messageChunk)
 	}
 	if thoughtChunk != "" {
-		m.publishACPThought(job.Snapshot(), thoughtChunk)
+		m.queueACPThought(job, thoughtChunk)
 	}
 	if toolEvent != nil {
 		m.publishACPTool(job.Snapshot(), *toolEvent)
@@ -236,8 +251,8 @@ func appendACPText(existing, chunk string) string {
 	return existing + chunk
 }
 
-func sortedToolCalls(in map[string]ToolCallSnapshot) []ToolCallSnapshot {
-	out := make([]ToolCallSnapshot, 0, len(in))
+func sortedToolCalls(in map[string]sessionevents.ACPToolCall) []sessionevents.ACPToolCall {
+	out := make([]sessionevents.ACPToolCall, 0, len(in))
 	for _, call := range in {
 		out = append(out, call)
 	}

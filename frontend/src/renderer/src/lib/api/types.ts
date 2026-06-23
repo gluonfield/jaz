@@ -1,5 +1,6 @@
 // Mirrors of the Go backend's JSON shapes (backend/internal/storage,
 // sessionevents, server). Field names must match exactly.
+import type { MessageContextInput } from '@/lib/messageContext'
 
 export interface RuntimeRef {
   type: string
@@ -78,6 +79,7 @@ export interface ThreadSearchResult {
   thread_title?: string
   thread_status?: 'idle' | 'running' | 'error'
   thread_runtime?: 'acp'
+  thread_agent?: string
   parent_id?: string
   archived?: boolean
   message_seq?: number
@@ -90,6 +92,7 @@ export interface ThreadSearchResult {
 export interface QueuedMessage {
   id: string
   text: string
+  contexts?: MessageContextInput[]
   quotes?: string[]
   attachment_ids?: string[]
   plan_requested?: boolean
@@ -340,6 +343,7 @@ export type MessageBlock =
   | { type: 'text'; text?: string }
   | { type: 'reasoning'; text?: string }
   | { type: 'quote'; text?: string }
+  | { type: 'browser_annotation'; input_json?: string }
   | {
       type: 'attachment'
       id: string
@@ -371,7 +375,16 @@ export interface ChatMessage {
 
 // Stored events carry only the acp session id; labels resolve through this
 // once-per-response map (old rows may still embed title/slug as a fallback).
-export type ACPMeta = Record<string, { title?: string; slug?: string }>
+export type ACPMeta = Record<
+  string,
+  {
+    title?: string
+    slug?: string
+    model_provider?: string
+    model?: string
+    reasoning_effort?: string
+  }
+>
 
 export interface SessionMessages {
   session: Session
@@ -387,6 +400,8 @@ export interface SessionMessages {
   acp_tool_calls?: ACPToolCall[]
   acp_permissions?: ACPPermission[]
   acp_error?: string
+  acp_last_event_at?: string
+  acp_last_tool_at?: string
   acp_children?: ACPJobSnapshot[]
 }
 
@@ -407,6 +422,19 @@ export interface ACPToolCall {
   tool_name?: string
   content?: ACPToolContent[]
   raw_input?: unknown
+  runtime?: ACPToolRuntime
+  started_at?: string
+  updated_at?: string
+}
+
+export interface ACPToolRuntime {
+  terminal_id?: string
+  terminal_cwd?: string
+  parent_tool_use_id?: string
+  elapsed_time_seconds?: number
+  terminal_output_at?: string
+  terminal_exit_code?: number
+  terminal_exit_signal?: string
 }
 
 export interface ACPMode {
@@ -458,6 +486,32 @@ export interface LoopCreatedEvent {
   boards?: LoopBoardRef[]
 }
 
+export interface SideChatEvent {
+  id: string
+  command?: string
+  parent_session_id?: string
+  thread_id?: string
+  role: 'user' | 'assistant' | 'thought' | 'tool' | 'error' | string
+  content: string
+  status?: string
+}
+
+export interface ProviderSubagentEvent {
+  provider?: string
+  id: string
+  thread_id?: string
+  parent_id?: string
+  name?: string
+  role?: string
+  status?: string
+  summary?: string
+  prompt?: string
+  model?: string
+  reasoning_effort?: string
+  started_at_ms?: number
+  completed_at_ms?: number
+}
+
 export interface ACPEvent {
   id: string
   slug: string
@@ -465,6 +519,9 @@ export interface ACPEvent {
   parent_id?: string
   agent: string
   session_id: string
+  model_provider?: string
+  model?: string
+  reasoning_effort?: string
   state: string
   stop_reason?: string
   assistant?: string
@@ -474,6 +531,8 @@ export interface ACPEvent {
   plan?: ACPPlanEntry[]
   tool_calls?: ACPToolCall[]
   permissions?: ACPPermission[]
+  last_event_at?: string
+  last_tool_at?: string
 }
 
 export interface ACPJobSnapshot {
@@ -483,6 +542,9 @@ export interface ACPJobSnapshot {
   parent_id?: string
   acp_agent: string
   acp_session: string
+  model_provider?: string
+  model?: string
+  reasoning_effort?: string
   state: string
   stop_reason?: string
   assistant?: string
@@ -493,6 +555,8 @@ export interface ACPJobSnapshot {
   tool_calls?: ACPToolCall[]
   permissions?: ACPPermission[]
   parent_visible?: boolean
+  last_event_at?: string
+  last_tool_at?: string
   updated_at: string
 }
 
@@ -543,6 +607,8 @@ export interface SessionEvent {
   permission?: ACPPermission
   artifact?: ArtifactEvent
   loop_created?: LoopCreatedEvent
+  side_chat?: SideChatEvent
+  provider_subagent?: ProviderSubagentEvent
   at: string
 }
 

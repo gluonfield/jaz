@@ -12,12 +12,12 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/processenv"
 )
 
 const acpAuthLoginTimeout = 16 * time.Minute
@@ -68,7 +68,7 @@ func (s *Server) handleStartACPAuthLogin(w http.ResponseWriter, r *http.Request)
 			}
 		}
 	}
-	auth, err := acp.NormalizeAgentAuthConfig(agent, input.Auth)
+	auth, err := acp.LoginAuthConfig(agent, input.Auth)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -79,7 +79,7 @@ func (s *Server) handleStartACPAuthLogin(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, fmt.Errorf("%s", invocation.Reason))
 		return
 	}
-	job, err := s.runACPAuthLogin(r.Context(), agent, invocation)
+	job, err := s.runACPAuthLogin(r.Context(), agent, auth, invocation)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -110,7 +110,7 @@ func (s *Server) handleGetACPAuthLogin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, job.response())
 }
 
-func (s *Server) runACPAuthLogin(ctx context.Context, agent string, invocation acp.AgentLoginInvocation) (*acpAuthLoginJob, error) {
+func (s *Server) runACPAuthLogin(ctx context.Context, agent string, auth acp.AgentAuthConfig, invocation acp.AgentLoginInvocation) (*acpAuthLoginJob, error) {
 	id, err := newACPAuthLoginID()
 	if err != nil {
 		return nil, err
@@ -121,11 +121,7 @@ func (s *Server) runACPAuthLogin(ctx context.Context, agent string, invocation a
 		Status:    "running",
 		StartedAt: time.Now().UTC(),
 	}
-	// Login writes credentials into the agent's profile dir (CODEX_HOME /
-	// CLAUDE_CONFIG_DIR). The CLI won't create it — codex aborts with "CODEX_HOME
-	// points to … but that path does not exist" — so make it first. These are
-	// the explicit Jaz-owned profile paths, the only dirs Jaz creates for agents.
-	if err := ensureLoginProfileDirs(invocation.Env); err != nil {
+	if err := acp.PrepareAgentLoginInvocation(agent, auth, invocation); err != nil {
 		return nil, err
 	}
 	cmdCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), acpAuthLoginTimeout)
@@ -145,25 +141,23 @@ func (s *Server) runACPAuthLogin(ctx context.Context, agent string, invocation a
 	go func() {
 		defer cancel()
 		err := cmd.Wait()
+		if err == nil {
+			err = s.verifyACPAuthLogin(agent, auth)
+		}
 		job.finish(err, cmdCtx.Err())
 	}()
 	return job, nil
 }
 
-// ensureLoginProfileDirs creates the profile directories a login invocation
-// points its CLI at. The invocation env only carries explicit profile paths
-// (CODEX_HOME, CLAUDE_CONFIG_DIR); Grok carries none and uses the real home.
-func ensureLoginProfileDirs(env map[string]string) error {
-	for key, dir := range env {
-		dir = strings.TrimSpace(dir)
-		if dir == "" {
-			continue
-		}
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return fmt.Errorf("prepare %s profile %s: %w", key, dir, err)
-		}
+func (s *Server) verifyACPAuthLogin(agent string, auth acp.AgentAuthConfig) error {
+	status := acp.ProbeAgentAuthWithProviders(agent, acp.AgentConfig{Auth: auth}, s.runtimeRoot(), nil, s.modelProviders())
+	if status.Authenticated {
+		return nil
 	}
-	return nil
+	if strings.TrimSpace(status.Reason) != "" {
+		return fmt.Errorf("%s", status.Reason)
+	}
+	return fmt.Errorf("sign-in finished but %s credentials were not saved", agent)
 }
 
 func newACPAuthLoginID() (string, error) {
@@ -175,12 +169,8 @@ func newACPAuthLoginID() (string, error) {
 }
 
 func acpAuthLoginEnv(invocation acp.AgentLoginInvocation) []string {
-	env := map[string]string{}
-	for _, key := range []string{"PATH", "LANG", "LC_ALL", "LC_CTYPE", "LOGNAME", "SHELL", "SSH_AUTH_SOCK", "USER"} {
-		if value := os.Getenv(key); strings.TrimSpace(value) != "" {
-			env[key] = value
-		}
-	}
+	env := processenv.Base()
+	processenv.PreserveHost(env, "LANG", "LC_ALL", "LC_CTYPE", "LOGNAME", "SHELL", "SSH_AUTH_SOCK", "USER")
 	if invocation.InheritHome {
 		if home := os.Getenv("HOME"); strings.TrimSpace(home) != "" {
 			env["HOME"] = home
@@ -191,16 +181,7 @@ func acpAuthLoginEnv(invocation acp.AgentLoginInvocation) []string {
 			env[key] = value
 		}
 	}
-	keys := make([]string, 0, len(env))
-	for key := range env {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	out := make([]string, 0, len(keys))
-	for _, key := range keys {
-		out = append(out, key+"="+env[key])
-	}
-	return out
+	return processenv.List(env)
 }
 
 func (j *acpAuthLoginJob) finish(runErr, ctxErr error) {

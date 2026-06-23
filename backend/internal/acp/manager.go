@@ -60,9 +60,9 @@ type Manager struct {
 	PublishWidget func(WidgetPublishRequest) (WidgetPublishResult, error)
 
 	mu           sync.RWMutex
-	jobsByID     map[string]*Job
-	jobsBySlug   map[string]*Job
-	jobsByACP    map[string]*Job
+	jobsByID     map[string]*jobState
+	jobsBySlug   map[string]*jobState
+	jobsByACP    map[string]*jobState
 	connsByID    map[string]jsonrpc.MessageConn
 	peersByID    map[string]*jsonrpc.Peer
 	cancelByID   map[string]context.CancelFunc
@@ -72,6 +72,8 @@ type Manager struct {
 	permissionSeq     uint64
 	pendingPermission map[string]*pendingPermission
 	permissionMu      sync.Mutex
+
+	transcriptBuffers acpTranscriptBuffers
 
 	// serializes resumes so concurrent sends can't start two agent processes
 	resumeMu sync.Mutex
@@ -111,11 +113,18 @@ type SpawnRequest struct {
 type SendRequest struct {
 	Session       string
 	Message       string
-	Quotes        []string
+	Contexts      []storage.MessageContext
 	Attachments   []storage.Attachment
 	Completion    CompletionMode
-	Interactive   bool
 	PlanRequested bool
+	ParentVisible bool
+}
+
+type SteerRequest struct {
+	Session       string
+	Message       string
+	Contexts      []storage.MessageContext
+	Attachments   []storage.Attachment
 	ParentVisible bool
 }
 
@@ -160,9 +169,9 @@ func NewManager(store Store, cfg Config, logger *log.Logger) *Manager {
 		agents:            agents,
 		store:             store,
 		log:               logger.WithPrefix("acp"),
-		jobsByID:          make(map[string]*Job),
-		jobsBySlug:        make(map[string]*Job),
-		jobsByACP:         make(map[string]*Job),
+		jobsByID:          make(map[string]*jobState),
+		jobsBySlug:        make(map[string]*jobState),
+		jobsByACP:         make(map[string]*jobState),
 		connsByID:         make(map[string]jsonrpc.MessageConn),
 		peersByID:         make(map[string]*jsonrpc.Peer),
 		cancelByID:        make(map[string]context.CancelFunc),
@@ -205,7 +214,7 @@ func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd
 }
 
 func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules, handler jsonrpc.Handler) (*agentConn, error) {
-	env, err := m.processEnvPreparedForSurface(name, cfg, cwd, artifactSurface, systemPromptExtensions)
+	env, err := m.processEnvPreparedForSurface(ctx, name, cfg, cwd, artifactSurface, systemPromptExtensions)
 	if err != nil {
 		return nil, err
 	}
@@ -263,18 +272,18 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 
 // sessionMeta builds the session _meta payload for prompt and agent-specific
 // options.
-func (m *Manager) sessionMeta(agent string, cfg AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
-	meta, err := m.sessionPromptMeta(agent, cwd, artifactSurface, systemPromptExtensions)
+func (m *Manager) sessionMeta(ctx context.Context, agent string, cfg AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
+	meta, err := m.sessionPromptMeta(ctx, agent, cwd, artifactSurface, systemPromptExtensions)
 	if err != nil {
 		return nil, err
 	}
 	return agentPolicyForAgent(agent).mergeSessionMeta(meta, cfg.ReasoningEffort), nil
 }
 
-func (m *Manager) sessionPromptMeta(agent, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
+func (m *Manager) sessionPromptMeta(ctx context.Context, agent, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
 	var prompt string
 	if m.cfg.SystemPrompt != nil {
-		base, err := promptForArtifactSurface(m.cfg.SystemPrompt, cwd, artifactSurface)
+		base, err := m.cfg.SystemPrompt.ACPPromptForContext(ctx, cwd, artifactSurface)
 		if err != nil {
 			return nil, fmt.Errorf("build acp system prompt: %w", err)
 		}
@@ -310,7 +319,7 @@ func (m *Manager) newACPProtocolSession(ctx context.Context, ac *agentConn, labe
 }
 
 func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (acpSessionInfo, error) {
-	meta, err := m.sessionMeta(agent, cfg, cwd, artifactSurface, systemPromptExtensions)
+	meta, err := m.sessionMeta(ctx, agent, cfg, cwd, artifactSurface, systemPromptExtensions)
 	if err != nil {
 		return acpSessionInfo{}, err
 	}
@@ -400,20 +409,8 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		ac.close()
 		return fail(err)
 	}
-	job := &Job{
-		ID:         session.ID,
-		Slug:       session.Slug,
-		Title:      session.Title,
-		ParentID:   session.ParentID,
-		ACPAgent:   req.ACPAgent,
-		ACPSession: string(acpSession.response.SessionID),
-		Cwd:        absCwd,
-		State:      StateIdle,
-		Modes:      modes,
-		CreatedAt:  session.CreatedAt,
-		UpdatedAt:  time.Now().UTC(),
-		toolByID:   make(map[string]ToolCallSnapshot),
-	}
+	job := newIdleJob(session, req.ACPAgent, string(acpSession.response.SessionID), absCwd, modes)
+	job.promptQueueing = promptQueueingSupported(ac.initRaw)
 	m.addJob(job, ac.conn, ac.peer, ac.cancel)
 	m.saveACPState(job.Snapshot())
 	m.log.Info("spawned agent session", "agent", job.ACPAgent, "session", job.ID, "acp_session", job.ACPSession)
@@ -450,7 +447,7 @@ func (m *Manager) initializeModeState(ctx context.Context, peer *jsonrpc.Peer, a
 
 // Restarts the agent for a stored session (server restart): session/load when
 // supported, otherwise a fresh agent session in the same workspace.
-func (m *Manager) resume(ctx context.Context, ref string) (*Job, error) {
+func (m *Manager) resume(ctx context.Context, ref string) (*jobState, error) {
 	m.resumeMu.Lock()
 	defer m.resumeMu.Unlock()
 	if job, err := m.job(ref); err == nil {
@@ -526,21 +523,11 @@ func (m *Manager) resume(ctx context.Context, ref string) (*Job, error) {
 	if sessionChanged {
 		_ = m.store.SaveSession(session)
 	}
-	job := &Job{
-		ID:            session.ID,
-		Slug:          session.Slug,
-		Title:         session.Title,
-		ParentID:      session.ParentID,
-		ACPAgent:      agentName,
-		ACPSession:    acpSessionID,
-		Cwd:           cwd,
-		State:         StateIdle,
-		Modes:         modes,
-		ParentVisible: state.ParentVisible,
-		CreatedAt:     session.CreatedAt,
-		UpdatedAt:     time.Now().UTC(),
-		toolByID:      make(map[string]ToolCallSnapshot),
-	}
+	job := newIdleJob(session, agentName, acpSessionID, cwd, modes)
+	job.ParentVisible = state.ParentVisible
+	job.LastEventAt = firstNonZeroTime(state.LastEventAt, state.UpdatedAt)
+	job.LastToolAt = state.LastToolAt
+	job.promptQueueing = promptQueueingSupported(ac.initRaw)
 	m.addJob(job, ac.conn, ac.peer, ac.cancel)
 	m.saveACPState(job.Snapshot())
 	m.log.Info("resumed agent session", "agent", job.ACPAgent, "session", job.ID,
@@ -569,7 +556,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 	_ = json.Unmarshal(ac.initRaw, &caps)
 	storedID := session.RuntimeRef.SessionID
 	if caps.AgentCapabilities.LoadSession && storedID != "" {
-		meta, err := m.sessionMeta(agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, systemPromptExtensions)
+		meta, err := m.sessionMeta(ctx, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, systemPromptExtensions)
 		if err != nil {
 			return "", ModeState{}, err
 		}
@@ -606,54 +593,6 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 	return string(acpSession.response.SessionID), modes, err
 }
 
-func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {
-	job, err := m.job(req.Session)
-	if err == nil && m.serveErr(job.ID) != nil {
-		job.mu.RLock()
-		running := job.State == StateRunning || job.State == StateStarting
-		job.mu.RUnlock()
-		if !running {
-			m.teardown(job.ID)
-			job, err = m.resume(ctx, req.Session)
-		}
-	}
-	if err != nil {
-		if job, err = m.resume(ctx, req.Session); err != nil {
-			return Job{}, err
-		}
-	}
-	if strings.TrimSpace(req.Message) == "" {
-		return Job{}, fmt.Errorf("message is required")
-	}
-	job.mu.RLock()
-	state := job.State
-	job.mu.RUnlock()
-	if state == StateRunning || state == StateStarting {
-		return Job{}, fmt.Errorf("session %s is already running", job.Slug)
-	}
-	if err := m.prepareModeForTurn(ctx, job, req.PlanRequested); err != nil {
-		return Job{}, err
-	}
-	local := m.localAgent(job.ACPAgent)
-	if m.configuredLocal(job.ACPAgent) && local == nil {
-		return Job{}, fmt.Errorf("local acp agent %q is not registered", job.ACPAgent)
-	}
-	_ = storage.AppendUserMessage(m.store, job.ID, req.Message, req.Quotes, req.Attachments)
-	// The quoted selections are display-only in storage; the agent sees them
-	// folded into the prompt text so it can reference them inline.
-	promptMessage := messageWithSelections(req.Message, req.Quotes)
-	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested)
-	job.startTurn(req.Completion, req.Interactive, req.PlanRequested, req.ParentVisible)
-	m.touchJobAttention(job)
-	m.publishACP(job.Snapshot())
-	if local != nil {
-		go m.runLocalPrompt(context.Background(), job, local, promptMessage, req.Attachments)
-	} else {
-		go m.runPrompt(context.Background(), job, promptMessage, req.Attachments)
-	}
-	return job.Snapshot(), nil
-}
-
 func (m *Manager) Status(ref string) (Job, error) {
 	if job, err := m.job(ref); err == nil {
 		return job.Snapshot(), nil
@@ -665,17 +604,12 @@ func (m *Manager) Status(ref string) (Job, error) {
 	if session.Runtime != storage.RuntimeACP || session.RuntimeRef == nil {
 		return Job{}, fmt.Errorf("session %s is not acp-backed", ref)
 	}
-	return Job{
-		ID:         session.ID,
-		Slug:       session.Slug,
-		Title:      session.Title,
-		ParentID:   session.ParentID,
-		ACPAgent:   CanonicalAgentName(session.RuntimeRef.Agent),
-		ACPSession: session.RuntimeRef.SessionID,
-		State:      StateNotRunning,
-		CreatedAt:  session.CreatedAt,
-		UpdatedAt:  session.UpdatedAt,
-	}, nil
+	if loader, ok := m.store.(acpStateLoader); ok {
+		if state, err := loader.LoadACPState(session.ID); err == nil {
+			return jobFromInactiveState(session, state), nil
+		}
+	}
+	return jobFromSession(session, session.RuntimeRef.Agent, session.RuntimeRef.SessionID, "", StateNotRunning), nil
 }
 
 func (m *Manager) configuredAgent(name string) (AgentConfig, bool, error) {
@@ -687,8 +621,8 @@ func (m *Manager) Wait(ctx context.Context, req WaitRequest) (Job, error) {
 	if err != nil {
 		return Job{}, err
 	}
+	done := job.turnDone()
 	job.mu.RLock()
-	done := job.done
 	state := job.State
 	job.mu.RUnlock()
 	if state != StateRunning && state != StateStarting {
@@ -719,11 +653,7 @@ func (m *Manager) Cancel(ctx context.Context, ref string) (Job, error) {
 	if err != nil {
 		return m.cancelStored(ref)
 	}
-	job.mu.Lock()
-	job.cancelRequested = true
-	running := job.State == StateRunning || job.State == StateStarting
-	done := job.done
-	job.mu.Unlock()
+	running, done := job.requestCancel()
 	m.log.Info("acp cancel requested", "session", job.ID, "agent", job.ACPAgent, "running", running)
 	if peer := m.peer(job.ID); peer != nil {
 		if err := peer.Notify(ctx, acpschema.AgentMethodSessionCancel, acpschema.CancelNotification{
@@ -772,6 +702,9 @@ func (m *Manager) cancelStored(ref string) (Job, error) {
 	state.Slug = firstNonEmpty(state.Slug, session.Slug)
 	state.Title = firstNonEmpty(state.Title, session.Title)
 	state.ParentID = firstNonEmpty(state.ParentID, session.ParentID)
+	state.ModelProvider = firstNonEmpty(session.ModelProvider, state.ModelProvider)
+	state.Model = firstNonEmpty(session.Model, state.Model)
+	state.ReasoningEffort = firstNonEmpty(session.ReasoningEffort, state.ReasoningEffort)
 	if session.RuntimeRef != nil {
 		state.ACPAgent = firstNonEmpty(state.ACPAgent, session.RuntimeRef.Agent)
 		state.ACPSession = firstNonEmpty(state.ACPSession, session.RuntimeRef.SessionID)
@@ -779,40 +712,44 @@ func (m *Manager) cancelStored(ref string) (Job, error) {
 	state.State = StateCancelled
 	state.StopReason = "cancelled"
 	state.Permissions = nil
+	now := time.Now().UTC()
+	state.UpdatedAt = now
+	state.LastEventAt = now
 	if saver, ok := m.store.(acpStateSaver); ok {
 		if err := saver.SaveACPState(session.ID, state); err != nil {
 			m.log.Warn("clearing stored acp state failed", "session", session.ID, "error", err)
 		}
 	}
-	m.recordAndPublish(sessionevents.Event{
+	cancelled := Job{
+		ID:              session.ID,
+		Slug:            session.Slug,
+		Title:           session.Title,
+		ParentID:        session.ParentID,
+		ACPAgent:        state.ACPAgent,
+		ACPSession:      state.ACPSession,
+		ModelProvider:   state.ModelProvider,
+		Model:           state.Model,
+		ReasoningEffort: state.ReasoningEffort,
+		State:           StateCancelled,
+		StopReason:      "cancelled",
+		CreatedAt:       session.CreatedAt,
+		UpdatedAt:       now,
+		LastEventAt:     now,
+		LastToolAt:      state.LastToolAt,
+	}
+	m.publishOrderedACPEvents(cancelled, sessionevents.Event{
 		SessionID: session.ID,
 		Type:      "acp",
-		ACP: &sessionevents.ACPEvent{
-			ID:         session.ID,
-			Slug:       state.Slug,
-			Title:      state.Title,
-			ParentID:   state.ParentID,
-			Agent:      state.ACPAgent,
-			SessionID:  state.ACPSession,
-			State:      StateCancelled,
-			StopReason: "cancelled",
-		},
+		ACP:       EventFromJob(cancelled),
 	})
-	return Job{
-		ID:         session.ID,
-		Slug:       session.Slug,
-		Title:      session.Title,
-		ParentID:   session.ParentID,
-		ACPAgent:   state.ACPAgent,
-		ACPSession: state.ACPSession,
-		State:      StateCancelled,
-		StopReason: "cancelled",
-		CreatedAt:  session.CreatedAt,
-		UpdatedAt:  time.Now().UTC(),
-	}, nil
+	return cancelled, nil
 }
 
 func (m *Manager) teardown(id string) {
+	if job := m.jobByID(id); job != nil {
+		m.withACPTranscriptBarrier(job.Snapshot(), nil)
+	}
+	m.transcriptBuffers.delete(id)
 	m.mu.Lock()
 	job := m.jobsByID[id]
 	conn := m.connsByID[id]
@@ -841,7 +778,7 @@ func (m *Manager) teardown(id string) {
 
 func (m *Manager) List() []Job {
 	m.mu.RLock()
-	jobs := make([]*Job, 0, len(m.jobsByID))
+	jobs := make([]*jobState, 0, len(m.jobsByID))
 	for _, job := range m.jobsByID {
 		jobs = append(jobs, job)
 	}
@@ -873,7 +810,7 @@ func (m *Manager) Close() {
 	cancels := make([]context.CancelFunc, 0, len(m.cancelByID))
 	peers := make([]*jsonrpc.Peer, 0, len(m.peersByID))
 	conns := make([]jsonrpc.MessageConn, 0, len(m.connsByID))
-	jobs := make([]*Job, 0, len(m.jobsByID))
+	jobs := make([]*jobState, 0, len(m.jobsByID))
 	for _, cancel := range m.cancelByID {
 		if cancel != nil {
 			cancels = append(cancels, cancel)
@@ -904,10 +841,12 @@ func (m *Manager) Close() {
 	}
 	for _, job := range jobs {
 		job.setState(StateCancelled, "server_shutdown", "")
+		m.withACPTranscriptBarrier(job.Snapshot(), nil)
+		m.transcriptBuffers.delete(job.ID)
 	}
 }
 
-func (m *Manager) addJob(job *Job, conn jsonrpc.MessageConn, peer *jsonrpc.Peer, cancel context.CancelFunc) {
+func (m *Manager) addJob(job *jobState, conn jsonrpc.MessageConn, peer *jsonrpc.Peer, cancel context.CancelFunc) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.jobsByID[job.ID] = job
@@ -924,7 +863,7 @@ func (m *Manager) addJob(job *Job, conn jsonrpc.MessageConn, peer *jsonrpc.Peer,
 	}
 }
 
-func (m *Manager) job(ref string) (*Job, error) {
+func (m *Manager) job(ref string) (*jobState, error) {
 	ref = strings.TrimSpace(ref)
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -934,16 +873,19 @@ func (m *Manager) job(ref string) (*Job, error) {
 	if job := m.jobsBySlug[ref]; job != nil {
 		return job, nil
 	}
+	if job := m.jobsByACP[ref]; job != nil {
+		return job, nil
+	}
 	return nil, fmt.Errorf("active acp session not found: %s", ref)
 }
 
-func (m *Manager) jobByACP(acpSessionID string) *Job {
+func (m *Manager) jobByACP(acpSessionID string) *jobState {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.jobsByACP[acpSessionID]
 }
 
-func (m *Manager) jobByID(id string) *Job {
+func (m *Manager) jobByID(id string) *jobState {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.jobsByID[id]
@@ -957,7 +899,7 @@ func (m *Manager) peer(id string) *jsonrpc.Peer {
 
 func (m *Manager) setServeErr(peer *jsonrpc.Peer, err error) {
 	var id string
-	var job *Job
+	var job *jobState
 	m.mu.Lock()
 	for candidateID, candidate := range m.peersByID {
 		if candidate == peer {

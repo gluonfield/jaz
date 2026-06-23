@@ -10,6 +10,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/memoryservice"
+	"github.com/wins/jaz/backend/internal/provider"
 	jazsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -85,7 +86,7 @@ func TestSearchMemorySpawnsRestrictedSearchSession(t *testing.T) {
 	if manager.spawn.ACPAgent != acp.AgentCodex {
 		t.Fatalf("agent = %q", manager.spawn.ACPAgent)
 	}
-	if manager.spawn.Model != "gpt-5.4-mini" || manager.spawn.ReasoningEffort != "minimal" {
+	if manager.spawn.Model != "gpt-5.4-mini" || manager.spawn.ReasoningEffort != "low" {
 		t.Fatalf("model/effort = %q/%q", manager.spawn.Model, manager.spawn.ReasoningEffort)
 	}
 	if manager.spawn.SourceType != storage.SourceMemorySearch || manager.spawn.SourceID != stamp {
@@ -141,6 +142,64 @@ func TestSearchMemoryUsesUnifiedMemoryAgent(t *testing.T) {
 	}
 	if manager.spawn.Model != "sonnet" {
 		t.Fatalf("model = %q", manager.spawn.Model)
+	}
+}
+
+func TestSearchMemorySpawnsCompatibleWorkerModelAndEffort(t *testing.T) {
+	cases := []struct {
+		name     string
+		agent    string
+		defaults jazsettings.AgentDefaults
+		model    string
+		effort   string
+	}{
+		{name: "codex", agent: acp.AgentCodex, model: "gpt-5.4-mini", effort: "low"},
+		{name: "claude", agent: acp.AgentClaude, model: "sonnet"},
+		{name: "grok", agent: acp.AgentGrok, model: "grok-composer-2.5-fast", effort: "low"},
+		{name: "opencode-openrouter-style", agent: acp.AgentOpenCode, defaults: jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
+			acp.AgentOpenCode: {ModelProvider: provider.ProviderOpenRouter},
+		}}, model: "openai/gpt-5.4-mini"},
+		{name: "opencode-openai", agent: acp.AgentOpenCode, defaults: jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
+			acp.AgentOpenCode: {ModelProvider: provider.ProviderOpenAI},
+		}}, model: "gpt-5.4-mini"},
+		{name: "opencode-ollama", agent: acp.AgentOpenCode, defaults: jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
+			acp.AgentOpenCode: {ModelProvider: provider.ProviderOllama},
+		}}},
+		{name: "opencode-custom-provider", agent: acp.AgentOpenCode, defaults: jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
+			acp.AgentOpenCode: {ModelProvider: "internal"},
+		}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newStore(t)
+			if tc.defaults.ACP != nil {
+				if _, err := jazsettings.SaveAgentDefaults(store, tc.defaults); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := jazsettings.SaveMemorySettings(store, jazsettings.MemorySettings{
+				Enabled: true,
+				Agent:   tc.agent,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			manager := &fakeManager{job: acp.Job{State: acp.StateIdle, Assistant: `{"answer":"ok"}`}}
+			runner := New(store, manager)
+
+			if _, err := runner.SearchMemory(context.Background(), memoryservice.AgenticSearchRequest{Query: "compatibility"}); err != nil {
+				t.Fatal(err)
+			}
+			if manager.spawn.ACPAgent != tc.agent || manager.spawn.Model != tc.model || manager.spawn.ReasoningEffort != tc.effort {
+				t.Fatalf("spawn = agent %q model %q effort %q, want %q/%q/%q",
+					manager.spawn.ACPAgent,
+					manager.spawn.Model,
+					manager.spawn.ReasoningEffort,
+					tc.agent,
+					tc.model,
+					tc.effort,
+				)
+			}
+		})
 	}
 }
 

@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 )
 
 func rawContent(t *testing.T, items ...string) []acpschema.ToolCallContent {
@@ -53,13 +55,15 @@ func TestNormalizeToolContentLinkAndDiff(t *testing.T) {
 func TestToolUpdateMergeSemantics(t *testing.T) {
 	kind := acpschema.ToolKindFetch
 	completed := acpschema.ToolCallStatusCompleted
-	call := ToolCallSnapshot{ID: "t1", Title: "\"query\"", Status: "completed"}
+	call := sessionevents.ACPToolCall{ID: "t1", Title: "\"query\"", Status: "completed"}
+	now := time.Now().UTC()
 
 	// First update carries everything.
 	mergeToolCall(&call, toolUpdateSnapshot("t1", "\"query\"", &completed, &kind,
 		rawContent(t, `{"type":"content","content":{"type":"text","text":"Result (https://x.com)"}}`),
 		json.RawMessage(`{"query":"q"}`),
 		map[string]any{"claudeCode": map[string]any{"toolName": "WebSearch"}},
+		now,
 	))
 	if call.Kind != "fetch" || call.ToolName != "WebSearch" {
 		t.Fatalf("kind/toolName not captured: %+v", call)
@@ -69,9 +73,40 @@ func TestToolUpdateMergeSemantics(t *testing.T) {
 	}
 
 	// A sparse follow-up (id only) must NOT clear the captured content/kind.
-	mergeToolCall(&call, toolUpdateSnapshot("t1", "", nil, nil, nil, nil, nil))
+	mergeToolCall(&call, toolUpdateSnapshot("t1", "", nil, nil, nil, nil, nil, now))
 	if call.Kind != "fetch" || call.ToolName != "WebSearch" || len(call.Content) != 1 {
 		t.Fatalf("sparse update wrongly cleared fields: %+v", call)
+	}
+}
+
+func TestToolUpdateCapturesRuntimeMetadata(t *testing.T) {
+	now := time.Now().UTC()
+	status := acpschema.ToolCallStatusInProgress
+	call := toolUpdateSnapshot("bash-1", "Run tests", &status, nil, nil, nil, map[string]any{
+		"terminal_info": map[string]any{"terminal_id": "term-1", "cwd": "/repo"},
+		"claudeCode": map[string]any{
+			"toolName":        "Bash",
+			"parentToolUseId": "task-1",
+			"toolResponse":    map[string]any{"elapsedTimeSeconds": 12.5},
+		},
+	}, now)
+	if call.ToolName != "Bash" || call.Runtime.TerminalID != "term-1" || call.Runtime.TerminalCwd != "/repo" {
+		t.Fatalf("runtime metadata not captured: %+v", call)
+	}
+	if call.Runtime.ParentToolUseID != "task-1" || call.Runtime.ElapsedTimeSeconds != 12.5 {
+		t.Fatalf("claude metadata not captured: %+v", call.Runtime)
+	}
+
+	exit := toolUpdateSnapshot("bash-1", "", nil, nil, nil, nil, map[string]any{
+		"terminal_output": map[string]any{"terminal_id": "term-1", "data": "ok"},
+		"terminal_exit":   map[string]any{"terminal_id": "term-1", "exit_code": 0},
+	}, now)
+	mergeToolCall(&call, exit)
+	if call.Runtime.TerminalOutputAt.IsZero() {
+		t.Fatalf("terminal output timestamp not captured: %+v", call.Runtime)
+	}
+	if call.Runtime.TerminalExitCode == nil || *call.Runtime.TerminalExitCode != 0 {
+		t.Fatalf("terminal exit not captured: %+v", call.Runtime)
 	}
 }
 
@@ -82,6 +117,9 @@ func TestBoundedRawInput(t *testing.T) {
 	}
 	if boundedRawInput(json.RawMessage(`{not json`)) != nil {
 		t.Fatalf("invalid rawInput should be dropped")
+	}
+	if boundedRawInput(json.RawMessage(`["not","an","object"]`)) != nil {
+		t.Fatalf("non-object rawInput should be dropped")
 	}
 	if boundedRawInput(json.RawMessage(`{"url":"https://x.com"}`)) == nil {
 		t.Fatalf("small valid rawInput should be kept")

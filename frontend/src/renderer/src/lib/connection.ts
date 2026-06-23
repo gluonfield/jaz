@@ -2,6 +2,8 @@ import { useSyncExternalStore } from 'react'
 import {
   apiAuthToken,
   apiBaseUrl,
+  CLIENT_PLATFORM,
+  CLIENT_PLATFORM_HEADER,
   localBaseUrl,
   normalizeBaseUrl,
   parseBackendConnectUrl,
@@ -102,6 +104,7 @@ async function checkAuthAccess(url: string, token: string): Promise<AuthAccess> 
   try {
     const headers = new Headers()
     headers.set('Authorization', `Bearer ${token}`)
+    headers.set(CLIENT_PLATFORM_HEADER, CLIENT_PLATFORM)
     const res = await fetch(`${url}/v1/auth/check`, {
       headers,
       signal: AbortSignal.timeout(3_000),
@@ -193,6 +196,7 @@ async function registerDevice(url: string, rootToken: string): Promise<string | 
       headers: {
         Authorization: `Bearer ${rootToken}`,
         'Content-Type': 'application/json',
+        [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM,
       },
       body: JSON.stringify({ ...profile, kind: 'desktop' }),
       signal: AbortSignal.timeout(5_000),
@@ -232,7 +236,7 @@ async function startPairing(url: string): Promise<string | null> {
     const profile = await getDeviceProfile()
     const res = await fetch(`${url}/v1/devices/pairing-requests`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM },
       body: JSON.stringify({ ...profile, kind: 'desktop' }),
       signal: AbortSignal.timeout(5_000),
     })
@@ -276,6 +280,7 @@ function schedulePairingPoll() {
     try {
       const params = new URLSearchParams({ secret: pairing.secret })
       const res = await fetch(`${pairing.url}/v1/devices/pairing-requests/${encodeURIComponent(pairing.id)}?${params}`, {
+        headers: { [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM },
         signal: AbortSignal.timeout(5_000),
       })
       const body = await readJSON<{

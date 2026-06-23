@@ -281,7 +281,7 @@ function LoopPromptCard({
         </div>
       </div>
       <span className="mt-1.5 block text-[12px] text-ink-3">
-        Type $ to tag a skill, @ to tag a file.
+        Type $ to tag a skill, @ to tag a file or thread.
       </span>
     </div>
   )

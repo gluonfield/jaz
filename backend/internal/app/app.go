@@ -518,7 +518,7 @@ func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, 
 	if job.ParentID == "" {
 		return
 	}
-	logger.Info("acp child finished, running follow-up", "child", job.ID, "parent", job.ParentID, "state", job.State)
+	logger.Info("acp child finished, handling parent completion", "child", job.ID, "parent", job.ParentID, "state", job.State)
 	unlock := locks.Lock(job.ParentID)
 	defer unlock()
 
@@ -526,6 +526,17 @@ func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, 
 	if err != nil {
 		logger.Error("loading parent session failed", "parent", job.ParentID, "error", err)
 		setStoredSessionError(store, job.ParentID, err.Error())
+		return
+	}
+	if usesExternalACPAgent(parent) {
+		content := acpParentCompletionMessage(job)
+		if err := store.AppendMessages(job.ParentID, provider.AssistantMessage(content, nil)); err != nil {
+			logger.Error("appending acp parent completion failed", "parent", job.ParentID, "error", err)
+			setStoredSessionError(store, job.ParentID, err.Error())
+			return
+		}
+		events.Publish(sessionevents.Event{SessionID: job.ParentID, Type: "assistant", Content: content, ACP: acp.EventFromJob(job)})
+		setStoredSessionStatus(store, job.ParentID, storage.StatusIdle)
 		return
 	}
 	messages, err := store.LoadMessages(job.ParentID)
@@ -569,7 +580,7 @@ func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, 
 		content := fmt.Sprintf("ACP session %s finished, but coordinator follow-up failed: %v", job.Slug, err)
 		_ = store.AppendMessages(job.ParentID, provider.AssistantMessage(content, nil))
 		setStoredSessionError(store, job.ParentID, err.Error())
-		events.Publish(sessionevents.Event{SessionID: job.ParentID, Type: "assistant", Content: content, ACP: acpEvent(job)})
+		events.Publish(sessionevents.Event{SessionID: job.ParentID, Type: "assistant", Content: content, ACP: acp.EventFromJob(job)})
 		return
 	}
 	if len(result.Messages) > len(messages) {
@@ -584,7 +595,7 @@ func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, 
 		TotalTokens:           result.Usage.TotalTokens,
 	})
 	if content := provider.MessageContent(result.Message); content != "" {
-		events.Publish(sessionevents.Event{SessionID: job.ParentID, Type: "assistant", Content: content, ACP: acpEvent(job)})
+		events.Publish(sessionevents.Event{SessionID: job.ParentID, Type: "assistant", Content: content, ACP: acp.EventFromJob(job)})
 	}
 	setStoredSessionStatus(store, job.ParentID, storage.StatusIdle)
 }
@@ -629,58 +640,38 @@ func acpCompletion(job acp.Job) string {
 	return prompt
 }
 
-func acpEvent(job acp.Job) *sessionevents.ACPEvent {
-	modes := sessionevents.ACPModeState{
-		CurrentModeID:  job.Modes.CurrentModeID,
-		PlanModeID:     job.Modes.PlanModeID,
-		AvailableModes: make([]sessionevents.ACPMode, 0, len(job.Modes.AvailableModes)),
+func usesExternalACPAgent(session storage.Session) bool {
+	if session.RuntimeRef == nil {
+		return false
 	}
-	for _, mode := range job.Modes.AvailableModes {
-		modes.AvailableModes = append(modes.AvailableModes, sessionevents.ACPMode{
-			ID:          mode.ID,
-			Name:        mode.Name,
-			Description: mode.Description,
-		})
+	agentName := acp.CanonicalAgentName(session.RuntimeRef.Agent)
+	return agentName != "" && agentName != acp.AgentJaz
+}
+
+func acpParentCompletionMessage(job acp.Job) string {
+	label := firstNonEmpty(job.Slug, job.Title, job.ID)
+	state := firstNonEmpty(job.State, "finished")
+	agentName := acp.CanonicalAgentName(job.ACPAgent)
+	var out strings.Builder
+	out.WriteString("Child session ")
+	out.WriteString(label)
+	if agentName != "" {
+		out.WriteString(" (")
+		out.WriteString(agentName)
+		out.WriteString(")")
 	}
-	plan := make([]sessionevents.ACPPlanEntry, 0, len(job.Plan))
-	for _, entry := range job.Plan {
-		plan = append(plan, sessionevents.ACPPlanEntry{Content: entry.Content, Status: entry.Status, Priority: entry.Priority})
+	out.WriteString(" finished with state ")
+	out.WriteString(state)
+	out.WriteString(".")
+	if job.Error != "" {
+		out.WriteString("\n\nError: ")
+		out.WriteString(job.Error)
 	}
-	calls := make([]sessionevents.ACPToolCall, 0, len(job.ToolCalls))
-	for _, call := range job.ToolCalls {
-		calls = append(calls, sessionevents.ACPToolCall{ID: call.ID, Title: call.Title, Status: call.Status})
+	if job.Assistant != "" {
+		out.WriteString("\n\n")
+		out.WriteString(job.Assistant)
 	}
-	permissions := make([]sessionevents.ACPPermission, 0, len(job.Permissions))
-	for _, permission := range job.Permissions {
-		permission.Options = append([]sessionevents.ACPPermissionOption(nil), permission.Options...)
-		permission.Locations = append([]sessionevents.ACPPermissionLocation(nil), permission.Locations...)
-		if len(permission.Questions) > 0 {
-			questions := make([]sessionevents.ACPQuestion, 0, len(permission.Questions))
-			for _, question := range permission.Questions {
-				question.Options = append([]sessionevents.ACPQuestionOption(nil), question.Options...)
-				questions = append(questions, question)
-			}
-			permission.Questions = questions
-		}
-		permissions = append(permissions, permission)
-	}
-	return &sessionevents.ACPEvent{
-		ID:          job.ID,
-		Slug:        job.Slug,
-		Title:       job.Title,
-		ParentID:    job.ParentID,
-		Agent:       job.ACPAgent,
-		SessionID:   job.ACPSession,
-		State:       job.State,
-		StopReason:  job.StopReason,
-		Assistant:   job.Assistant,
-		Thought:     job.Thought,
-		Error:       job.Error,
-		Modes:       modes,
-		Plan:        plan,
-		ToolCalls:   calls,
-		Permissions: permissions,
-	}
+	return out.String()
 }
 
 func firstNonEmpty(values ...string) string {

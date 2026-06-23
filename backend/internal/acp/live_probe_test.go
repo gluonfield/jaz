@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -184,6 +183,14 @@ func applyProbeEnvOverrides(env map[string]string) {
 	}
 }
 
+func envList(env map[string]string) []string {
+	out := make([]string, 0, len(env))
+	for key, value := range env {
+		out = append(out, key+"="+value)
+	}
+	return out
+}
+
 func probeAgentConfig(t *testing.T, agent string) AgentConfig {
 	t.Helper()
 	agent = CanonicalAgentName(agent)
@@ -226,10 +233,14 @@ func probeOpenConn(t *testing.T, ctx context.Context, agent string, cfg AgentCon
 	if err != nil {
 		t.Fatal(err)
 	}
+	command, args = launchCommand(command, args)
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Env = envList(env)
 	cmd.Dir = cwd
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	prepareProcessCommand(cmd)
+	process := newProcessSupervisor(cmd)
+	cmd.Cancel = process.terminate
+	cmd.WaitDelay = acpProcessStdioDrain
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -242,13 +253,15 @@ func probeOpenConn(t *testing.T, ctx context.Context, agent string, cfg AgentCon
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
+	if err := process.started(); err != nil {
+		_ = process.terminate()
+		_ = cmd.Wait()
+		t.Fatal(err)
+	}
 	conn := stdio.New(stdout, stdin)
 	return conn, func() {
 		_ = stdin.Close()
-		if cmd.Process != nil {
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-			_ = cmd.Process.Kill()
-		}
+		_ = process.terminate()
 		_ = cmd.Wait()
 	}
 }

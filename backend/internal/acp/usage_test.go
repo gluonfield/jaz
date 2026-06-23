@@ -214,8 +214,8 @@ func TestACPUsageDoesNotDoubleCountUsageAndLastTokenUsage(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := NewManager(store, Config{}, nil)
-	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
-	job.startTurn(CompletionInline, false, false, false)
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}}
+	job.startTurn(CompletionInline, false, false)
 
 	manager.recordRawUsage(job, json.RawMessage(`{
 		"usage": {"inputTokens": 100, "outputTokens": 20, "totalTokens": 120},
@@ -248,8 +248,8 @@ func TestACPUsageSumsCodexLastTokenUsageUpdates(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := NewManager(store, Config{}, nil)
-	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
-	job.startTurn(CompletionInline, false, false, false)
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}}
+	job.startTurn(CompletionInline, false, false)
 
 	manager.recordRawUsage(job, json.RawMessage(`{
 		"sessionUpdate": "usage_update",
@@ -334,8 +334,8 @@ func TestACPUsageSkipsRepeatedCodexLastTokenUsageUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := NewManager(store, Config{}, nil)
-	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
-	job.startTurn(CompletionInline, false, false, false)
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}}
+	job.startTurn(CompletionInline, false, false)
 
 	raw := json.RawMessage(`{
 		"sessionUpdate": "usage_update",
@@ -414,8 +414,8 @@ func TestACPUsagePersistsAtTurnFinish(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := NewManager(store, Config{}, nil)
-	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
-	job.startTurn(CompletionInline, false, false, false)
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}}
+	job.startTurn(CompletionInline, false, false)
 
 	manager.recordRawUsage(job, json.RawMessage(`{
 		"usage": {
@@ -453,8 +453,8 @@ func TestACPUsagePersistsMonotonicTurnSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := NewManager(store, Config{}, nil)
-	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
-	job.startTurn(CompletionInline, false, false, false)
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}}
+	job.startTurn(CompletionInline, false, false)
 
 	manager.recordRawUsage(job, json.RawMessage(`{
 		"usage": {
@@ -497,8 +497,8 @@ func TestACPUsagePersistsAtTurnFinishToSQLite(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := NewManager(store, Config{}, nil)
-	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
-	job.startTurn(CompletionInline, false, false, false)
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}}
+	job.startTurn(CompletionInline, false, false)
 
 	manager.recordRawUsage(job, json.RawMessage(`{
 		"tokens": {
@@ -531,8 +531,8 @@ func TestACPUsagePersistsContextFromUsageUpdates(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := NewManager(store, Config{}, nil)
-	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
-	job.startTurn(CompletionInline, false, false, false)
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}}
+	job.startTurn(CompletionInline, false, false)
 
 	// Streamed usage_update notifications, then the prompt-result usage.
 	manager.recordRawUsage(job, json.RawMessage(`{"sessionUpdate":"usage_update","used":23516,"size":1000000}`))
@@ -555,7 +555,7 @@ func TestACPUsagePersistsContextFromUsageUpdates(t *testing.T) {
 
 	// codex-acp style turn: usage_update only, no prompt-result usage. The
 	// context snapshot still lands while counters stay put.
-	job.startTurn(CompletionInline, false, false, false)
+	job.startTurn(CompletionInline, false, false)
 	manager.recordRawUsage(job, json.RawMessage(`{"sessionUpdate":"usage_update","used":11102,"size":258400}`))
 
 	loaded, err = store.LoadSession(session.ID)
@@ -585,8 +585,8 @@ func TestACPUsagePersistsOnArrival(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := NewManager(store, Config{}, nil)
-	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
-	job.startTurn(CompletionInline, false, false, false)
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}}
+	job.startTurn(CompletionInline, false, false)
 
 	manager.recordRawUsage(job, json.RawMessage(`{"sessionUpdate":"usage_update","used":42000,"size":200000}`))
 	if loaded, _ := store.LoadSession(session.ID); loaded.Usage.ContextTokens != 42000 || loaded.Usage.ContextWindowTokens != 200000 {
@@ -625,8 +625,8 @@ func TestACPUsagePublishesSessionChanged(t *testing.T) {
 
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	job := &Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}
-	job.startTurn(CompletionInline, false, false, false)
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}}
+	job.startTurn(CompletionInline, false, false)
 
 	manager.recordRawUsage(job, json.RawMessage(`{
 		"usage": {"inputTokens": 1000, "outputTokens": 50, "totalTokens": 1050}

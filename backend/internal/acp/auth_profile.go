@@ -81,6 +81,22 @@ func DisconnectedAuthConfig(name string, current AgentAuthConfig) AgentAuthConfi
 	}
 }
 
+func LoginAuthConfig(name string, requested AgentAuthConfig) (AgentAuthConfig, error) {
+	auth, err := NormalizeAgentAuthConfig(name, requested)
+	if err != nil {
+		return AgentAuthConfig{}, err
+	}
+	switch CanonicalAgentName(name) {
+	case AgentCodex, AgentClaude, AgentOpenCode:
+		if auth.Mode == AuthModeJazProfile {
+			return auth, nil
+		}
+		return AgentAuthConfig{Mode: AuthModeJazProfile}, nil
+	default:
+		return auth, nil
+	}
+}
+
 func resolveAgentAuth(name string, cfg AgentConfig, root string, env map[string]string) resolvedAgentAuth {
 	return resolveAgentAuthWithProviders(name, cfg, root, env, nil)
 }

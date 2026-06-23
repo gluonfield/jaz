@@ -97,10 +97,6 @@ bun run build                             # package the desktop app
 
 Cutting a release: [`docs/RELEASE.md`](docs/RELEASE.md).
 
-## Screenshots
-
-<!-- Screenshots coming soon. -->
-
 ## Author
 
 **Augustinas Malinauskas** — [@amgauge](https://x.com/amgauge) · [amguage.com](https://amguage.com)

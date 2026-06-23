@@ -348,7 +348,20 @@ func (s *Server) startSteeredQueuedPrompt(claimed steeredQueuedPrompt) error {
 			return fmt.Errorf("acp manager is not configured")
 		}
 		ctx, cancel := serverActionContext()
-		_, err := s.ACP.Cancel(ctx, claimed.session.ID)
+		err := s.steerRunningQueuedPrompt(ctx, claimed.session, claimed.prompt)
+		cancel()
+		if err == nil {
+			if err := s.clearPendingSteerMessage(claimed.session.ID); err != nil {
+				s.logger().Error("pending steer clear failed", "session", claimed.session.ID, "error", err)
+			}
+			s.publishMessagesChanged(claimed.session.ID)
+			return nil
+		}
+		if !errors.Is(err, acp.ErrPromptQueueingUnsupported) {
+			return err
+		}
+		ctx, cancel = serverActionContext()
+		_, err = s.ACP.Cancel(ctx, claimed.session.ID)
 		cancel()
 		if err != nil {
 			return err
@@ -366,6 +379,29 @@ func (s *Server) startSteeredQueuedPrompt(claimed steeredQueuedPrompt) error {
 	}
 	s.publishMessagesChanged(claimed.session.ID)
 	return nil
+}
+
+func (s *Server) steerRunningQueuedPrompt(ctx context.Context, session storage.Session, prompt storage.QueuedMessage) error {
+	attachments, err := s.resolveAttachments(session.ID, prompt.AttachmentIDs)
+	if err != nil {
+		return err
+	}
+	if err := s.ensureManagedWorktree(ctx, session); err != nil {
+		return err
+	}
+	_, err = s.ACP.Steer(ctx, acp.SteerRequest{
+		Session:     session.ID,
+		Message:     prompt.Text,
+		Contexts:    prompt.Contexts,
+		Attachments: attachments,
+	})
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, acp.ErrPromptQueueingUnsupported) {
+		return err
+	}
+	return acpSendError(session, err)
 }
 
 func (s *Server) sessionRuntimeRunning(session storage.Session) bool {
@@ -402,10 +438,9 @@ func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session,
 		if _, err := s.ACP.Send(ctx, acp.SendRequest{
 			Session:       session.ID,
 			Message:       prompt.Text,
-			Quotes:        prompt.Quotes,
+			Contexts:      prompt.Contexts,
 			Attachments:   attachments,
 			Completion:    acp.CompletionAsync,
-			Interactive:   true,
 			PlanRequested: prompt.PlanRequested,
 		}); err != nil {
 			return acpSendError(session, err)

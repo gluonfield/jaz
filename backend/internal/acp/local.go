@@ -111,21 +111,8 @@ func (m *Manager) runLocalUtilityPrompt(ctx context.Context, req SpawnRequest, c
 	}
 }
 
-func (m *Manager) newLocalJob(session storage.Session, agentName, cwd string) *Job {
-	return &Job{
-		ID:         session.ID,
-		Slug:       session.Slug,
-		Title:      session.Title,
-		ParentID:   session.ParentID,
-		ACPAgent:   CanonicalAgentName(agentName),
-		ACPSession: session.ID,
-		Cwd:        cwd,
-		State:      StateIdle,
-		Modes:      localModeState(),
-		CreatedAt:  session.CreatedAt,
-		UpdatedAt:  time.Now().UTC(),
-		toolByID:   make(map[string]ToolCallSnapshot),
-	}
+func (m *Manager) newLocalJob(session storage.Session, agentName, cwd string) *jobState {
+	return newIdleJob(session, agentName, session.ID, cwd, localModeState())
 }
 
 func localModeState() ModeState {
@@ -163,7 +150,7 @@ func (m *Manager) spawnLocalSession(session storage.Session, agentName, cwd stri
 	}, nil
 }
 
-func (m *Manager) resumeLocalSession(session storage.Session, agentName string, cfg AgentConfig) (*Job, error) {
+func (m *Manager) resumeLocalSession(session storage.Session, agentName string, cfg AgentConfig) (*jobState, error) {
 	var state storage.ACPState
 	if loader, ok := m.store.(acpStateLoader); ok {
 		state, _ = loader.LoadACPState(session.ID)
@@ -203,16 +190,13 @@ func (m *Manager) resumeLocalSession(session storage.Session, agentName string, 
 	return job, nil
 }
 
-func (m *Manager) runLocalPrompt(ctx context.Context, job *Job, runner LocalAgentRunner, message string, attachments []storage.Attachment) {
+func (m *Manager) runLocalPrompt(ctx context.Context, job *jobState, runner LocalAgentRunner, message string, attachments []storage.Attachment) {
 	job.turnMu.Lock()
 	defer job.turnMu.Unlock()
 
-	job.mu.RLock()
-	done := job.done
-	planRequested := job.planRequested
-	job.mu.RUnlock()
+	done, planRequested := job.turnDoneAndPlan()
 	if done == nil {
-		done = job.startTurn(CompletionInline, false, false, false)
+		done = job.startTurn(CompletionInline, false, false)
 	}
 	session, err := m.store.LoadSession(job.ID)
 	if err != nil {
@@ -294,35 +278,37 @@ func (m *Manager) runLocalPrompt(ctx context.Context, job *Job, runner LocalAgen
 	m.finishTurn(done, job)
 }
 
-func (m *Manager) applyLocalMessage(job *Job, chunk string) {
+func (m *Manager) applyLocalMessage(job *jobState, chunk string) {
 	if chunk == "" {
 		return
 	}
 	job.mu.Lock()
+	now := time.Now().UTC()
 	job.Assistant = appendACPText(job.Assistant, chunk)
-	bufferMessage := job.planRequested
-	job.UpdatedAt = time.Now().UTC()
+	bufferMessage := job.turn != nil && job.turn.planRequested
+	job.UpdatedAt = now
+	job.LastEventAt = now
 	job.mu.Unlock()
 	if bufferMessage {
 		return
 	}
-	snapshot := job.Snapshot()
-	m.publishACPMessage(snapshot, chunk)
+	m.queueACPMessage(job, chunk)
 }
 
-func (m *Manager) applyLocalThought(job *Job, chunk string) {
+func (m *Manager) applyLocalThought(job *jobState, chunk string) {
 	if chunk == "" {
 		return
 	}
 	job.mu.Lock()
+	now := time.Now().UTC()
 	job.Thought = appendACPText(job.Thought, chunk)
-	job.UpdatedAt = time.Now().UTC()
+	job.UpdatedAt = now
+	job.LastEventAt = now
 	job.mu.Unlock()
-	snapshot := job.Snapshot()
-	m.publishACPThought(snapshot, chunk)
+	m.queueACPThought(job, chunk)
 }
 
-func (m *Manager) applyLocalToolCall(job *Job, call provider.ToolCall) {
+func (m *Manager) applyLocalToolCall(job *jobState, call provider.ToolCall) {
 	id := provider.ToolCallID(call)
 	name := provider.ToolCallName(call)
 	title := name
@@ -332,7 +318,7 @@ func (m *Manager) applyLocalToolCall(job *Job, call provider.ToolCall) {
 	if title == "" {
 		title = id
 	}
-	next := ToolCallSnapshot{
+	next := sessionevents.ACPToolCall{
 		ID:       id,
 		Title:    title,
 		Status:   "running",
@@ -350,7 +336,7 @@ func (m *Manager) applyLocalToolCall(job *Job, call provider.ToolCall) {
 	m.publishACPTool(snapshot, tool)
 }
 
-func (m *Manager) applyLocalToolResult(job *Job, title, result, errText string) {
+func (m *Manager) applyLocalToolResult(job *jobState, title, result, errText string) {
 	status := "completed"
 	if strings.TrimSpace(errText) != "" {
 		status = "failed"
@@ -371,7 +357,7 @@ func (m *Manager) applyLocalToolResult(job *Job, title, result, errText string) 
 	if id == "" {
 		return
 	}
-	snapshot, tool := m.updateLocalTool(job, ToolCallSnapshot{ID: id, Status: status, Content: localToolContent(result, errText)})
+	snapshot, tool := m.updateLocalTool(job, sessionevents.ACPToolCall{ID: id, Status: status, Content: localToolContent(result, errText)})
 	_ = m.store.UpsertActivity(job.ID, storage.ActivityEntry{
 		ID:     tool.ID,
 		Kind:   "tool",
@@ -382,13 +368,20 @@ func (m *Manager) applyLocalToolResult(job *Job, title, result, errText string) 
 	m.publishACPTool(snapshot, tool)
 }
 
-func (m *Manager) updateLocalTool(job *Job, next ToolCallSnapshot) (Job, ToolCallSnapshot) {
+func (m *Manager) updateLocalTool(job *jobState, next sessionevents.ACPToolCall) (Job, sessionevents.ACPToolCall) {
 	job.mu.Lock()
+	now := time.Now().UTC()
 	current := job.toolByID[next.ID]
+	if current.StartedAt.IsZero() {
+		current.StartedAt = now
+	}
+	next.UpdatedAt = now
 	mergeToolCall(&current, next)
 	job.toolByID[current.ID] = current
 	job.ToolCalls = sortedToolCalls(job.toolByID)
-	job.UpdatedAt = time.Now().UTC()
+	job.UpdatedAt = now
+	job.LastEventAt = now
+	job.LastToolAt = now
 	job.mu.Unlock()
 	snapshot := job.Snapshot()
 	return snapshot, current

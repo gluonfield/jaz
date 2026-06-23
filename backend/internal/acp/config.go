@@ -1,6 +1,8 @@
 package acp
 
 import (
+	"context"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -23,6 +25,8 @@ const (
 	AuthModeAuto        = "auto"
 	AuthModeExistingCLI = "existing_cli"
 	AuthModeJazProfile  = "jaz_profile"
+
+	codexACPPackage = "@jazchat/codex-acp@0.16.7"
 )
 
 func CanonicalAgentName(name string) string {
@@ -36,21 +40,10 @@ func CanonicalAgentName(name string) string {
 // SystemPromptSource supplies the full ACP session extension (AGENTS.md,
 // memory, skills) injected at session creation.
 type SystemPromptSource interface {
-	ACPPrompt(cwd string) (string, error)
+	ACPPromptForContext(ctx context.Context, cwd, surface string) (string, error)
 }
 
 type SessionPromptExtensionResolver func(storage.Session) (promptmodule.Modules, error)
-
-type artifactSurfacePromptSource interface {
-	ACPPromptForArtifactSurface(cwd, surface string) (string, error)
-}
-
-func promptForArtifactSurface(source SystemPromptSource, cwd, surface string) (string, error) {
-	if source, ok := source.(artifactSurfacePromptSource); ok {
-		return source.ACPPromptForArtifactSurface(cwd, surface)
-	}
-	return source.ACPPrompt(cwd)
-}
 
 func promptWithModules(base string, modules promptmodule.Modules) string {
 	return promptmodule.New(base).Append(modules...).Text()
@@ -202,17 +195,7 @@ func (c AgentCatalog) EnabledAgentNames() ([]string, error) {
 
 func BuiltinAgents() AgentCatalog {
 	return AgentCatalog{
-		AgentCodex: {
-			Command: "npx",
-			Args: []string{
-				"-y", "@jazchat/codex-acp@0.16.1",
-				"-c", `sandbox_mode="danger-full-access"`,
-				"-c", `approval_policy="never"`,
-				"-c", `features.tool_search_always_defer_mcp_tools=true`,
-			},
-			Model:           "gpt-5.5",
-			ReasoningEffort: "xhigh",
-		},
+		AgentCodex: codexBuiltinAgent(runtime.GOOS),
 		AgentClaude: {
 			Command:         "npx",
 			Args:            []string{"-y", "@agentclientprotocol/claude-agent-acp@0.44.0"},
@@ -240,6 +223,25 @@ func BuiltinAgents() AgentCatalog {
 			Model:                   "openai/gpt-5.4-mini",
 			ReasoningEffort:         "",
 		},
+	}
+}
+
+func codexBuiltinAgent(goos string) AgentConfig {
+	command := "npx"
+	if goos == "windows" {
+		command = "npx.cmd"
+	}
+	return AgentConfig{
+		Command: command,
+		Args: []string{
+			"-y", codexACPPackage,
+			"-c", `sandbox_mode="danger-full-access"`,
+			"-c", `approval_policy="never"`,
+			"-c", `features.tool_search_always_defer_mcp_tools=true`,
+			"-c", `suppress_unstable_features_warning=true`,
+		},
+		Model:           "gpt-5.5",
+		ReasoningEffort: "xhigh",
 	}
 }
 

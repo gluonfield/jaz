@@ -3,6 +3,7 @@ package runtimefiles
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -31,7 +32,7 @@ func TestEnsureCreatesRuntimeLayout(t *testing.T) {
 		if err != nil {
 			t.Fatalf("private runtime dir %s missing: %v", dir, err)
 		}
-		if info.Mode().Perm() != 0o700 {
+		if runtime.GOOS != "windows" && info.Mode().Perm() != 0o700 {
 			t.Fatalf("private runtime dir %s mode = %o, want 700", dir, info.Mode().Perm())
 		}
 	}

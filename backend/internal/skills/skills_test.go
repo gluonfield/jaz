@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -255,8 +256,12 @@ func TestInstallMissingToCopiesMissingSkillsAndLeavesExistingDirs(t *testing.T) 
 	if data, err := os.ReadFile(filepath.Join(dst, "alpha", "references", "guide.md")); err != nil || string(data) != "guide" {
 		t.Fatalf("copied reference = %q, %v", data, err)
 	}
-	if info, err := os.Stat(filepath.Join(dst, "alpha", "scripts", "run.sh")); err != nil || info.Mode().Perm() != 0o755 {
-		t.Fatalf("copied script mode = %v, %v", info.Mode().Perm(), err)
+	info, err := os.Stat(filepath.Join(dst, "alpha", "scripts", "run.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o755 {
+		t.Fatalf("copied script mode = %v", info.Mode().Perm())
 	}
 
 	writeFile(t, filepath.Join(root, "skills", "alpha", "SKILL.md"), "---\nname: alpha\ndescription: Updated\n---\nnew body")

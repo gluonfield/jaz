@@ -1,24 +1,18 @@
 import { ArrowUp, AudioLines, FileText, ListChecks, LoaderCircle, Paperclip, Plus, Square, X } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { type ClipboardEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import { FileDropOverlay, useWindowFileDrop } from '@/components/ui/FileDrop'
 import { IconButton } from '@/components/ui/IconButton'
+import { clipboardFiles } from '@/components/ui/fileTransfer'
 import type { Attachment, QueuedMessage } from '@/lib/api/types'
-import type { ComposerQuote, SendMessageOptions } from '@/lib/sendMessage'
+import type { ComposerContext, SendMessageOptions } from '@/lib/sendMessage'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { RAINBOW_BEAM } from '@/components/ui/rainbow'
 import { MentionSuggestions, MentionTextarea, useMentionInput } from './MentionInput'
 import { QueuedPromptList } from './QueuedPromptList'
-import { QuoteChip } from './QuoteChip'
+import { ContextChip } from './ContextChip'
 import { useComposerAttachments } from './useComposerAttachments'
 import type { ComposerDraftStorage } from './useComposerDraft'
-
-function formatFileSize(size?: number): string {
-  if (size === undefined) return ''
-  if (size < 1024) return `${size} B`
-  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`
-}
 
 function PlanMenuToggle({
   checked,
@@ -78,13 +72,13 @@ export function ComposerCard({
   clearOnSend = true,
   leftSlot,
   fileRoot,
-  quotes = [],
+  contexts = [],
   onSend,
   onStop,
   onVoice,
   onUploadAttachment,
-  onRemoveQuote,
-  onClearQuotes,
+  onRemoveContext,
+  onClearContexts,
   onTextChange,
 }: {
   streaming: boolean
@@ -104,14 +98,14 @@ export function ComposerCard({
   /** server-side directory the @-mention file picker indexes (a project path,
       session cwd, or '' for the workspace root). undefined disables files */
   fileRoot?: string
-  /** text the user quoted from earlier responses, shown as removable chips */
-  quotes?: ComposerQuote[]
+  /** text selections and browser annotations attached to the next message */
+  contexts?: ComposerContext[]
   onSend: (text: string, options?: SendMessageOptions) => void
   onStop?: () => void
   onVoice?: () => void
   onUploadAttachment?: (file: File) => Promise<Attachment>
-  onRemoveQuote?: (id: string) => void
-  onClearQuotes?: () => void
+  onRemoveContext?: (id: string) => void
+  onClearContexts?: () => void
   onTextChange?: (text: string) => void
 }) {
   const [focused, setFocused] = useState(false)
@@ -151,6 +145,13 @@ export function ComposerCard({
   // to this composer (the page's only one).
   const draggingFiles = useWindowFileDrop({ disabled, onDrop: attachmentDraft.addFiles })
 
+  const onPasteCapture = (event: ClipboardEvent<HTMLDivElement>) => {
+    const files = clipboardFiles(event.clipboardData)
+    if (files.length === 0) return
+    event.preventDefault()
+    attachmentDraft.addFiles(files)
+  }
+
   const togglePlanRequested = () => {
     if (planToggleDisabled) return
     setPlanRequested((value) => !value)
@@ -186,12 +187,12 @@ export function ComposerCard({
       planRequested: planAvailable && planRequested,
       files: attachmentDraft.files,
       attachments: attachmentDraft.uploaded,
-      ...(quotes.length > 0 ? { quotes } : {}),
+      ...(contexts.length > 0 ? { contexts } : {}),
     })
     if (clearOnSend) {
       mention.reset()
       attachmentDraft.clearAttachments()
-      onClearQuotes?.()
+      onClearContexts?.()
       setPlanRequested(false)
     }
   }
@@ -199,6 +200,7 @@ export function ComposerCard({
   return (
     <div
       className="relative"
+      onPasteCapture={onPasteCapture}
       onFocusCapture={() => setFocused(true)}
       onBlurCapture={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(false)
@@ -256,14 +258,14 @@ export function ComposerCard({
             e.currentTarget.value = ''
           }}
         />
-        {quotes.length > 0 ? (
+        {contexts.length > 0 ? (
           <div className="flex flex-wrap gap-1 px-1.5 pt-0.5">
-            {quotes.map((quote, index) => (
-              <QuoteChip
-                key={quote.id}
+            {contexts.map((context, index) => (
+              <ContextChip
+                key={context.id}
                 index={index}
-                text={quote.text}
-                onRemove={onRemoveQuote ? () => onRemoveQuote(quote.id) : undefined}
+                context={context}
+                onRemove={onRemoveContext ? () => onRemoveContext(context.id) : undefined}
               />
             ))}
           </div>
@@ -273,20 +275,22 @@ export function ComposerCard({
             {attachmentDraft.attachments.map((attachment) => (
               <div
                 key={attachment.localId}
-                title={attachment.error}
-                className="flex max-w-full items-center gap-1.5 rounded-full bg-bg px-2.5 py-1 text-xs text-ink-2"
+                title={attachment.error ?? attachment.name}
+                className="flex max-w-full items-center gap-1.5 rounded-full bg-bg py-1.5 pr-1.5 pl-3 text-xs text-ink-2 transition-colors hover:bg-surface-2"
               >
-                <FileText
-                  size={13}
-                  className={`shrink-0 ${attachment.error ? 'text-danger' : 'text-primary'}`}
-                />
-                <span className="max-w-[220px] truncate text-ink">{attachment.name}</span>
-                <span className="shrink-0 text-ink-3">
-                  {attachment.uploading ? 'Uploading' : attachment.error ? 'Failed' : formatFileSize(attachment.size)}
-                </span>
+                {attachment.uploading ? (
+                  <LoaderCircle size={13} className="shrink-0 animate-spin text-ink-3" />
+                ) : (
+                  <FileText
+                    size={13}
+                    className={`shrink-0 ${attachment.error ? 'text-danger' : 'text-ink-3'}`}
+                  />
+                )}
+                <span className="max-w-[200px] truncate text-ink">{attachment.name}</span>
+                {attachment.error ? <span className="shrink-0 text-danger">Failed</span> : null}
                 <button
                   type="button"
-                  className="ml-0.5 rounded-full p-0.5 text-ink-3 transition-colors hover:bg-surface hover:text-ink"
+                  className="grid size-4 shrink-0 place-items-center rounded-full text-ink-3 transition-colors hover:bg-ink/10 hover:text-ink"
                   aria-label={`Remove ${attachment.name}`}
                   onClick={() => attachmentDraft.removeAttachment(attachment.localId)}
                 >
@@ -444,13 +448,13 @@ export function Composer({
   steerDisabled,
   draftStorageKey,
   fileRoot,
-  quotes,
+  contexts,
   onSend,
   onStop,
   onVoice,
   onUploadAttachment,
-  onRemoveQuote,
-  onClearQuotes,
+  onRemoveContext,
+  onClearContexts,
   onSteerQueuedPrompt,
   onDeleteQueuedPrompt,
   onEditQueuedPrompt,
@@ -466,13 +470,13 @@ export function Composer({
   draftStorageKey?: string
   /** directory the @-mention file picker indexes; undefined disables files */
   fileRoot?: string
-  quotes?: ComposerQuote[]
+  contexts?: ComposerContext[]
   onSend: (text: string, options?: SendMessageOptions) => void
   onStop: () => void
   onVoice?: () => void
   onUploadAttachment?: (file: File) => Promise<Attachment>
-  onRemoveQuote?: (id: string) => void
-  onClearQuotes?: () => void
+  onRemoveContext?: (id: string) => void
+  onClearContexts?: () => void
   onSteerQueuedPrompt?: (id: string) => void
   onDeleteQueuedPrompt?: (id: string) => void
   onEditQueuedPrompt?: (id: string, text: string) => void
@@ -506,13 +510,13 @@ export function Composer({
         draftStorageKey={draftStorageKey}
         draftStorage="local"
         fileRoot={fileRoot}
-        quotes={quotes}
+        contexts={contexts}
         onSend={onSend}
         onStop={onStop}
         onVoice={onVoice}
         onUploadAttachment={onUploadAttachment}
-        onRemoveQuote={onRemoveQuote}
-        onClearQuotes={onClearQuotes}
+        onRemoveContext={onRemoveContext}
+        onClearContexts={onClearContexts}
       />
     </>
   )

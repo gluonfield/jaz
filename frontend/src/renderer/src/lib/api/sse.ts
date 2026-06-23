@@ -1,31 +1,13 @@
 import { apiEventSourceUrl } from './client'
 import type { SessionEvent } from './types'
 
-// Event types the backend names in its SSE frames (event: <type>).
-// EventSource routes named events to addEventListener(type), NOT onmessage,
-// so every type we care about must be registered explicitly. onmessage stays
-// as a catch-all for unnamed frames.
-const KNOWN_EVENT_TYPES = [
-  'assistant',
-  'session',
-  'user',
-  'tool',
-  'tool_result',
-  'async',
-  'error',
-  'acp',
-  'acp_message',
-  'acp_thought',
-  'acp_tool',
-  'permission_request',
-  'permission_response',
-]
-
 export function openSessionEvents(
   sessionId: string,
+  afterSeq: number,
   onEvent: (event: SessionEvent) => void,
 ): () => void {
-  const es = new EventSource(apiEventSourceUrl(`/v1/sessions/${sessionId}/events`))
+  const suffix = afterSeq > 0 ? `?after_seq=${afterSeq}` : ''
+  const es = new EventSource(apiEventSourceUrl(`/v1/sessions/${sessionId}/events${suffix}`))
 
   const handle = (ev: MessageEvent) => {
     try {
@@ -36,9 +18,6 @@ export function openSessionEvents(
   }
 
   es.onmessage = handle
-  for (const type of KNOWN_EVENT_TYPES) {
-    es.addEventListener(type, handle)
-  }
 
   return () => es.close()
 }

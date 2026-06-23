@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/sessioncontext"
+	"github.com/wins/jaz/backend/internal/shellcmd"
 	"github.com/wins/jaz/backend/internal/tools"
 )
 
@@ -125,10 +126,7 @@ func (t *ExecCommandTool) Execute(ctx context.Context, inputs map[string]any) (t
 
 	shell := tools.StringInput(inputs, "shell")
 	if shell == "" {
-		shell = os.Getenv("SHELL")
-	}
-	if shell == "" {
-		shell = "/bin/sh"
+		shell = shellcmd.DefaultShell()
 	}
 	login := tools.BoolInput(inputs, "login", true)
 
@@ -196,22 +194,11 @@ type commandRequest struct {
 }
 
 func (m *CommandManager) exec(ctx context.Context, req commandRequest) (map[string]any, error) {
-	args := []string{"-c", req.Command}
-	if req.Login {
-		args = []string{"-lc", req.Command}
-	}
-	cmd := osexec.Command(req.Shell, args...)
+	shell, args := shellcmd.Command(req.Shell, req.Command, req.Login)
+	cmd := osexec.Command(shell, args...)
 	cmd.Dir = req.Workdir
 	cmd.Env = os.Environ()
 
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, err
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return nil, err
-	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -224,12 +211,12 @@ func (m *CommandManager) exec(ctx context.Context, req commandRequest) (map[stri
 		started: time.Now(),
 		done:    make(chan error),
 	}
+	cmd.Stdout = session
+	cmd.Stderr = session
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
 
-	go func() { _, _ = io.Copy(session, stdout) }()
-	go func() { _, _ = io.Copy(session, stderr) }()
 	go func() { session.markDone(cmd.Wait()) }()
 
 	select {
