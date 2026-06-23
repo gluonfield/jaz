@@ -286,9 +286,7 @@ func (s *Server) managedAdapterStatus(cfg acp.AgentConfig) *onboardingACPAdapter
 	}
 }
 
-// adapterBundleDir returns the directory holding a managed adapter's binaries,
-// where its bundled login CLI lives. Empty when the agent has no managed adapter
-// or it isn't installed yet, in which case login falls back to PATH resolution.
+// adapterBundleDir is the dir holding a managed adapter's binaries, or "".
 func (s *Server) adapterBundleDir(adapter string) string {
 	adapter = strings.TrimSpace(adapter)
 	if adapter == "" || s.ACPAdapters == nil {
@@ -299,15 +297,6 @@ func (s *Server) adapterBundleDir(adapter string) string {
 		return ""
 	}
 	return filepath.Dir(path)
-}
-
-// adapterLoginDir resolves the bundle directory for an agent's login CLI.
-func (s *Server) adapterLoginDir(agent string) string {
-	cfg, ok := s.acpAgentCatalog().Agent(agent)
-	if !ok {
-		return ""
-	}
-	return s.adapterBundleDir(cfg.ManagedAdapter)
 }
 
 func agentAppInstall(name string) (string, bool) {
