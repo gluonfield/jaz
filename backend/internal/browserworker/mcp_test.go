@@ -127,7 +127,7 @@ func TestContentResultEmbedsPDFResource(t *testing.T) {
 
 func TestHighLevelDoUsesStateRefs(t *testing.T) {
 	backend := &scriptedBackend{}
-	_, out, err := (highLevelTools{backend: backend}).Do(context.Background(), &mcp.CallToolRequest{
+	_, out, err := (highLevelTools{executor: NewHighLevelExecutor(backend)}).Do(context.Background(), &mcp.CallToolRequest{
 		Extra: &mcp.RequestExtra{Header: mcpsession.Header("browser-session-1")},
 	}, HighLevelInput{Task: "click sign in"})
 	if err != nil {
@@ -143,7 +143,7 @@ func TestHighLevelDoUsesStateRefs(t *testing.T) {
 
 func TestHighLevelGetAttachesVisualOnlyWhenRequested(t *testing.T) {
 	backend := &scriptedBackend{}
-	result, out, err := (highLevelTools{backend: backend}).Get(context.Background(), &mcp.CallToolRequest{}, HighLevelInput{Visual: true})
+	result, out, err := (highLevelTools{executor: NewHighLevelExecutor(backend)}).Get(context.Background(), &mcp.CallToolRequest{}, HighLevelInput{Visual: true})
 	if err != nil {
 		t.Fatal(err)
 	}

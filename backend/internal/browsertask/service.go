@@ -114,9 +114,6 @@ func (s *Service) Run(ctx context.Context, req Request) (Result, error) {
 	if parentID == "" {
 		return Result{}, errors.New("browser task requires a parent session")
 	}
-	if !jazsettings.BrowserEnabled(s.Store) {
-		return Result{}, errors.New("browser tools are disabled in settings")
-	}
 	defaults, err := loadAgentDefaults(s.Store, s.Catalog)
 	if err != nil {
 		return Result{}, err
@@ -124,6 +121,9 @@ func (s *Service) Run(ctx context.Context, req Request) (Result, error) {
 	settings, err := jazsettings.LoadBrowserSettings(s.Store)
 	if err != nil {
 		return Result{}, err
+	}
+	if !settings.Enabled {
+		return Result{}, errors.New("browser tools are disabled in settings")
 	}
 	agent := jazsettings.BrowserAgent(settings, defaults)
 	if agent == "" {
