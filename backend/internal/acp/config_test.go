@@ -156,7 +156,7 @@ func TestSystemPromptMetaPerAgent(t *testing.T) {
 
 func TestSessionPromptMetaAppendsPerSessionExtension(t *testing.T) {
 	manager := &Manager{cfg: Config{SystemPrompt: testPrompt("base prompt")}}
-	got, err := manager.sessionPromptMeta(context.Background(), AgentCodex, "", "", []string{"run context"})
+	got, err := manager.sessionPromptMeta(context.Background(), AgentCodex, "", "", "", []string{"run context"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestSessionPromptMetaAppendsPerSessionExtension(t *testing.T) {
 
 func TestSessionPromptMetaUsesClientPlatformContext(t *testing.T) {
 	manager := &Manager{cfg: Config{SystemPrompt: platformPrompt{}}}
-	got, err := manager.sessionPromptMeta(sessioncontext.WithClientPlatform(context.Background(), "mobile"), AgentCodex, "", "", nil)
+	got, err := manager.sessionPromptMeta(sessioncontext.WithClientPlatform(context.Background(), "mobile"), AgentCodex, "", "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestSessionPromptMetaUsesClientPlatformContext(t *testing.T) {
 
 func TestSessionPromptMetaAllowsExtensionWithoutBasePrompt(t *testing.T) {
 	manager := &Manager{}
-	got, err := manager.sessionPromptMeta(context.Background(), AgentCodex, "", "", []string{"run context"})
+	got, err := manager.sessionPromptMeta(context.Background(), AgentCodex, "", "", "", []string{"run context"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +189,7 @@ func TestSessionPromptMetaAllowsExtensionWithoutBasePrompt(t *testing.T) {
 
 func TestSessionPromptMetaSendsGrokExtensionsAsRules(t *testing.T) {
 	manager := &Manager{cfg: Config{SystemPrompt: testPrompt("jaz platform prompt")}}
-	got, err := manager.sessionPromptMeta(context.Background(), AgentGrok, "", "widget", []string{"Scheduled Jaz loop run.\n\n## Board Widget Runtime\n\nPublish with visualise_publish_widget."})
+	got, err := manager.sessionPromptMeta(context.Background(), AgentGrok, "", "widget", "", []string{"Scheduled Jaz loop run.\n\n## Board Widget Runtime\n\nPublish with visualise_publish_widget."})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,6 +204,17 @@ func TestSessionPromptMetaSendsGrokExtensionsAsRules(t *testing.T) {
 		if !strings.Contains(rules, want) {
 			t.Fatalf("grok rules missing %q:\n%s", want, rules)
 		}
+	}
+}
+
+func TestSessionPromptMetaSkipsBasePromptForRestrictedWorker(t *testing.T) {
+	manager := &Manager{cfg: Config{SystemPrompt: testPrompt("jaz platform prompt")}}
+	got, err := manager.sessionPromptMeta(context.Background(), AgentCodex, "", "", MCPServerPolicyBrowserWorker, []string{"browser worker prompt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["systemPrompt"] != "browser worker prompt" {
+		t.Fatalf("system prompt = %#v", got)
 	}
 }
 
@@ -663,6 +674,30 @@ func TestProcessEnvWritesOpenCodeInstructionsWithSessionExtension(t *testing.T) 
 		t.Fatal(err)
 	}
 	if string(data) != "jaz instructions\n\nrun context\n" {
+		t.Fatalf("instructions = %q", data)
+	}
+	if !strings.Contains(env["OPENCODE_CONFIG_CONTENT"], path) {
+		t.Fatalf("OPENCODE_CONFIG_CONTENT = %q", env["OPENCODE_CONFIG_CONTENT"])
+	}
+}
+
+func TestProcessEnvWritesOpenCodeRestrictedWorkerInstructionsWithoutBasePrompt(t *testing.T) {
+	root := t.TempDir()
+	manager := NewManager(nil, Config{
+		Root:         root,
+		SystemPrompt: testPrompt("jaz platform prompt"),
+	}, nil)
+	env, err := manager.processEnvPreparedForSurfacePolicy(context.Background(), "opencode", AgentConfig{}, "", "", MCPServerPolicyBrowserWorker, []string{"browser worker prompt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(root, "acp", "opencode", "jaz-instructions.md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "browser worker prompt\n" {
 		t.Fatalf("instructions = %q", data)
 	}
 	if !strings.Contains(env["OPENCODE_CONFIG_CONTENT"], path) {

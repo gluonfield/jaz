@@ -69,6 +69,8 @@ func (b *LocalBackend) Call(ctx context.Context, input ActionInput) (ActionOutpu
 		return page.snapshot(ctx)
 	case ActionState:
 		return page.semanticState(ctx)
+	case ActionExtract:
+		return page.extract(ctx)
 	case ActionScreenshot:
 		return page.screenshot(ctx)
 	case ActionClick:

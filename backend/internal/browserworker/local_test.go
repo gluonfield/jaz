@@ -52,6 +52,10 @@ func TestElementScriptsReturnActionCompletion(t *testing.T) {
 	if strings.Index(script, "function jazFindElement") > strings.Index(script, "(function(q)") {
 		t.Fatalf("resolver helpers must be defined before action IIFE: %s", script)
 	}
+	extract := extractPageScript()
+	if !strings.Contains(extract, "items: candidates") || !strings.Contains(extract, "navigation: nav") || !strings.Contains(extract, "coverage:") {
+		t.Fatalf("extract script missing structured fields: %s", extract)
+	}
 }
 
 func TestChromeArgsUseHeadlessOnLinuxWithoutDisplay(t *testing.T) {

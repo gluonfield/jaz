@@ -56,7 +56,7 @@ func AddHighLevelMCPTools(server *mcp.Server, backend Backend) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        ToolGet,
 		Title:       "Get browser state",
-		Description: "Return compact page state with stable ref= targets. Set visual=true only when screenshot evidence is needed.",
+		Description: "Return compact page state, or extract visible result cards with coverage and next-page refs for list/search tasks. Set visual=true only when screenshot evidence is needed.",
 	}, tools.Get)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        ToolCheck,
@@ -93,6 +93,7 @@ func (t highLevelTools) run(ctx context.Context, req *mcp.CallToolRequest, kind 
 	if err != nil {
 		return nil, ActionOutput{}, err
 	}
+	out = boundActionOutput(out)
 	return contentResult(out), out, nil
 }
 
@@ -114,9 +115,24 @@ func (e *HighLevelExecutor) Run(ctx context.Context, session string, kind highLe
 }
 
 func (e *HighLevelExecutor) getState(ctx context.Context, session string, input HighLevelInput) (ActionOutput, error) {
+	if wantsExtraction(input) {
+		return e.extract(ctx, session, input)
+	}
 	out, _, _, err := e.state(ctx, session)
 	if err != nil {
 		return ActionOutput{}, err
+	}
+	return e.attachVisual(ctx, session, input, out)
+}
+
+func (e *HighLevelExecutor) extract(ctx context.Context, session string, input HighLevelInput) (ActionOutput, error) {
+	out, err := e.backend.Call(ctx, ActionInput{Action: ActionExtract, Text: input.Task, Session: session})
+	if err != nil {
+		return ActionOutput{}, err
+	}
+	extraction, ok := decodePageExtraction(out.Data)
+	if ok {
+		out.Text = formatPageExtraction(extraction)
 	}
 	return e.attachVisual(ctx, session, input, out)
 }
@@ -243,6 +259,16 @@ func wantsVisual(input HighLevelInput) bool {
 	}
 	task := normalizedText(input.Task)
 	return strings.Contains(task, "screenshot") || strings.Contains(task, "image") || strings.Contains(task, "visual")
+}
+
+func wantsExtraction(input HighLevelInput) bool {
+	for _, token := range significantTokens(input.Task) {
+		switch token {
+		case "collect", "extract", "list", "rank", "ranking", "result", "results", "profile", "profiles", "people", "company", "companies", "job", "jobs", "candidate", "candidates", "card", "cards", "row", "rows", "table", "count":
+			return true
+		}
+	}
+	return false
 }
 
 func inferHighLevelAction(input HighLevelInput) string {

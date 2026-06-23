@@ -9,6 +9,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/memoryservice"
+	"github.com/wins/jaz/backend/internal/promptmodule"
 	jazsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/templates/memorysearchprompt"
@@ -18,6 +19,8 @@ const (
 	Timeout         = 90 * time.Second
 	workerDirectory = ".jaz-runtime/memory-search"
 )
+
+const workerSystemPrompt = `You are Jaz's memory-search worker. Use only the memory tools needed for the query, keep search notes compact, and return the requested answer without raw page dumps.`
 
 type Manager interface {
 	Spawn(context.Context, acp.SpawnRequest) (acp.SpawnResult, error)
@@ -69,7 +72,9 @@ func (r *Runner) SearchMemory(ctx context.Context, req memoryservice.AgenticSear
 		ReasoningEffort: jazsettings.WorkerAgentReasoningEffort(agent),
 		SourceType:      storage.SourceMemorySearch,
 		SourceID:        fmt.Sprintf("%d", stamp),
-		MCPServerPolicy: acp.MCPServerPolicyMemorySearchWorker,
+		SystemPromptExtensions: promptmodule.New(
+			WorkerSystemPrompt(),
+		),
 	})
 	if err != nil {
 		return "", err
@@ -107,6 +112,10 @@ func (r *Runner) SearchMemory(ctx context.Context, req memoryservice.AgenticSear
 		return "", fmt.Errorf("memory search returned an empty answer")
 	}
 	return answer, nil
+}
+
+func WorkerSystemPrompt() string {
+	return workerSystemPrompt
 }
 
 func (r *Runner) now() time.Time {

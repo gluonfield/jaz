@@ -41,6 +41,29 @@ func (b *scriptedBackend) Call(_ context.Context, input ActionInput) (ActionOutp
 			}},
 		})
 		return ActionOutput{Status: "ok", Data: data}, nil
+	case "extract":
+		data, _ := json.Marshal(PageExtraction{
+			URL:   "https://example.com/search",
+			Title: "Search",
+			Coverage: ExtractCoverage{
+				ViewportHeight: 800,
+				DocumentHeight: 2400,
+				ScrollPercent:  0,
+			},
+			Items: []ExtractedItem{{
+				Ref:   "f2:e1",
+				Title: "Ada Lovelace",
+				Text:  "Mathematician and computing pioneer",
+				Href:  "https://example.com/ada",
+			}},
+			Navigation: []StateElement{{
+				Ref:  "f2:e2",
+				Tag:  "button",
+				Role: "button",
+				Name: "Next",
+			}},
+		})
+		return ActionOutput{Status: "ok", Text: "Frame 2\n1. ref=e1 raw extension text", Data: data}, nil
 	case "click":
 		return ActionOutput{Status: "ok", Text: "Clicked."}, nil
 	case "screenshot":
@@ -125,6 +148,17 @@ func TestContentResultEmbedsPDFResource(t *testing.T) {
 	}
 }
 
+func TestContentResultTruncatesHugeText(t *testing.T) {
+	result := contentResult(ActionOutput{Text: strings.Repeat("x", browserToolTextLimit+100)})
+	text, ok := result.Content[0].(*mcp.TextContent)
+	if !ok {
+		t.Fatalf("content = %#v", result.Content)
+	}
+	if len(text.Text) > browserToolTextLimit+80 || !strings.Contains(text.Text, "[truncated: browser output exceeded") {
+		t.Fatalf("text length=%d suffix=%q", len(text.Text), text.Text[len(text.Text)-60:])
+	}
+}
+
 func TestHighLevelDoUsesStateRefs(t *testing.T) {
 	backend := &scriptedBackend{}
 	_, out, err := (highLevelTools{executor: NewHighLevelExecutor(backend)}).Do(context.Background(), &mcp.CallToolRequest{
@@ -154,6 +188,34 @@ func TestHighLevelGetAttachesVisualOnlyWhenRequested(t *testing.T) {
 		t.Fatalf("content = %#v", result.Content)
 	}
 	if len(backend.calls) != 2 || backend.calls[0].Action != "state" || backend.calls[1].Action != "screenshot" {
+		t.Fatalf("calls = %#v", backend.calls)
+	}
+}
+
+func TestHighLevelGetExtractsResultTasks(t *testing.T) {
+	backend := &scriptedBackend{}
+	_, out, err := (highLevelTools{executor: NewHighLevelExecutor(backend)}).Get(context.Background(), &mcp.CallToolRequest{}, HighLevelInput{Task: "list and rank visible search results"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.Text, "Coverage: visible_items=1") || !strings.Contains(out.Text, "ref=f2:e1") || !strings.Contains(out.Text, "Ada Lovelace") || !strings.Contains(out.Text, "Navigation targets") {
+		t.Fatalf("out = %#v", out)
+	}
+	if strings.Contains(out.Text, "raw extension text") {
+		t.Fatalf("output should be formatted from structured extraction data: %q", out.Text)
+	}
+	if len(backend.calls) != 1 || backend.calls[0].Action != "extract" {
+		t.Fatalf("calls = %#v", backend.calls)
+	}
+}
+
+func TestHighLevelGetDoesNotExtractSubstringMatches(t *testing.T) {
+	backend := &scriptedBackend{}
+	_, _, err := (highLevelTools{executor: NewHighLevelExecutor(backend)}).Get(context.Background(), &mcp.CallToolRequest{}, HighLevelInput{Task: "show account status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(backend.calls) != 1 || backend.calls[0].Action != "state" {
 		t.Fatalf("calls = %#v", backend.calls)
 	}
 }

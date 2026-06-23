@@ -1,6 +1,10 @@
 package acp
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/wins/jaz/backend/internal/storage"
+)
 
 func TestSpawnConfigDefaultsWidgetSurfaceToWidgetMCPPolicy(t *testing.T) {
 	manager := &Manager{agents: AgentCatalog{
@@ -39,6 +43,33 @@ func TestSpawnConfigPreservesExplicitMCPPolicy(t *testing.T) {
 	}
 	if req.MCPServerPolicy != MCPServerPolicyMemorySearchWorker {
 		t.Fatalf("mcp server policy = %q", req.MCPServerPolicy)
+	}
+}
+
+func TestSpawnConfigDefaultsWorkerSourceToRestrictedMCPPolicy(t *testing.T) {
+	manager := &Manager{agents: AgentCatalog{
+		"fake": AgentConfig{Command: "fake"},
+	}}
+	cases := []struct {
+		source string
+		want   string
+	}{
+		{storage.SourceMemorySearch, MCPServerPolicyMemorySearchWorker},
+		{storage.SourceBrowserTask, MCPServerPolicyBrowserWorker},
+	}
+	for _, tc := range cases {
+		t.Run(tc.source, func(t *testing.T) {
+			req, _, _, err := manager.spawnConfig(SpawnRequest{
+				ACPAgent:   "fake",
+				SourceType: tc.source,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if req.MCPServerPolicy != tc.want {
+				t.Fatalf("mcp server policy = %q, want %q", req.MCPServerPolicy, tc.want)
+			}
+		})
 	}
 }
 

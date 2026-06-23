@@ -5,13 +5,18 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 )
 
-const ToolName = "browser"
+const (
+	ToolName             = "browser"
+	browserToolTextLimit = 12000
+)
 
 type Backend interface {
 	Call(context.Context, ActionInput) (ActionOutput, error)
@@ -20,7 +25,7 @@ type Backend interface {
 type UnavailableBackend struct{}
 
 type ActionInput struct {
-	Action   string `json:"action" jsonschema:"navigate, snapshot, state, screenshot, click, type, fill, press, hover, scroll, select, wait, tabs, pdf, status"`
+	Action   string `json:"action" jsonschema:"navigate, snapshot, state, extract, screenshot, click, type, fill, press, hover, scroll, select, wait, tabs, pdf, status"`
 	URL      string `json:"url,omitempty" jsonschema:"target URL for navigate"`
 	Selector string `json:"selector,omitempty" jsonschema:"stable selector or accessibility locator when an action targets an element"`
 	Text     string `json:"text,omitempty" jsonschema:"text for type/fill/select/wait actions"`
@@ -72,6 +77,7 @@ func (t tool) Call(ctx context.Context, req *mcp.CallToolRequest, input ActionIn
 	if err != nil {
 		return nil, ActionOutput{}, err
 	}
+	out = boundActionOutput(out)
 	return contentResult(out), out, nil
 }
 
@@ -81,6 +87,7 @@ func (UnavailableBackend) Call(context.Context, ActionInput) (ActionOutput, erro
 
 func contentResult(out ActionOutput) *mcp.CallToolResult {
 	var content []mcp.Content
+	out = boundActionOutput(out)
 	if text := strings.TrimSpace(out.Text); text != "" {
 		content = append(content, &mcp.TextContent{Text: text})
 	}
@@ -104,6 +111,23 @@ func contentResult(out ActionOutput) *mcp.CallToolResult {
 		return nil
 	}
 	return &mcp.CallToolResult{Content: content}
+}
+
+func boundActionOutput(out ActionOutput) ActionOutput {
+	out.Text = limitBrowserText(out.Text, browserToolTextLimit)
+	return out
+}
+
+func limitBrowserText(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if limit <= 0 || len(value) <= limit {
+		return value
+	}
+	text := value[:limit]
+	for !utf8.ValidString(text) && len(text) > 0 {
+		text = text[:len(text)-1]
+	}
+	return strings.TrimSpace(text) + fmt.Sprintf("\n[truncated: browser output exceeded %d bytes]", limit)
 }
 
 func actionSchema() map[string]any {

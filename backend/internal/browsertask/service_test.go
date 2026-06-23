@@ -96,8 +96,11 @@ func TestBrowserTaskSpawnsRestrictedWorker(t *testing.T) {
 	if manager.spawn.SourceType != storage.SourceBrowserTask || manager.spawn.SourceID != sourceID("parent-session", "red-rooster") {
 		t.Fatalf("source = %q/%q", manager.spawn.SourceType, manager.spawn.SourceID)
 	}
-	if manager.spawn.MCPServerPolicy != acp.MCPServerPolicyBrowserWorker {
-		t.Fatalf("mcp policy = %q", manager.spawn.MCPServerPolicy)
+	workerPrompt := manager.spawn.SystemPromptExtensions.Text()
+	for _, want := range []string{"browser worker", "real filters/facets", "paginate"} {
+		if !strings.Contains(workerPrompt, want) {
+			t.Fatalf("worker prompt missing %q:\n%s", want, workerPrompt)
+		}
 	}
 	if manager.spawn.Directory != workerDir {
 		t.Fatalf("directory = %q", manager.spawn.Directory)
@@ -109,12 +112,11 @@ func TestBrowserTaskSpawnsRestrictedWorker(t *testing.T) {
 		t.Fatalf("send = %#v", manager.send)
 	}
 	for _, want := range []string{
-		"delegated browser worker",
-		"raw browser snapshots",
 		"Task kind: get",
 		"Starting URL: https://www.linkedin.com/company/jaz",
 		".jaz-runtime/browser/website-notes/www-linkedin-com.md",
 		"Find the company page.",
+		"compact final answer",
 	} {
 		if !strings.Contains(manager.send.Message, want) {
 			t.Fatalf("prompt missing %q:\n%s", want, manager.send.Message)

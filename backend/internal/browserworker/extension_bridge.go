@@ -366,7 +366,7 @@ func (c *extensionClient) statusSnapshot() ExtensionStatus {
 }
 
 func actionOutput(out extensionWireOutput) ActionOutput {
-	return ActionOutput{
+	return boundActionOutput(ActionOutput{
 		Status:          out.Status,
 		Text:            out.Text,
 		ImageBase64:     out.ImageBase64,
@@ -374,5 +374,5 @@ func actionOutput(out extensionWireOutput) ActionOutput {
 		PDFBase64:       out.PDFBase64,
 		PDFBase64Length: out.PDFBase64Length,
 		Data:            append(json.RawMessage(nil), out.Data...),
-	}
+	})
 }

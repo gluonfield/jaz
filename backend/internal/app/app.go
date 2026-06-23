@@ -14,11 +14,13 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/acpadapter"
 	"github.com/wins/jaz/backend/internal/agent"
+	"github.com/wins/jaz/backend/internal/browsertask"
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/jazagent"
 	"github.com/wins/jaz/backend/internal/loops"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/memorysearch"
 	"github.com/wins/jaz/backend/internal/memoryservice"
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/provider"
@@ -249,10 +251,19 @@ func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, pro
 		promptBuilder.PromptExtra = widgetService.LoopPromptExtra
 	}
 	cfg.ACP.ResumePrompt = func(session storage.Session) (promptmodule.Modules, error) {
-		if session.SourceType != storage.SourceLoopRun || session.SourceID == "" {
+		switch session.SourceType {
+		case storage.SourceBrowserTask:
+			return promptmodule.New(browsertask.WorkerSystemPrompt()), nil
+		case storage.SourceMemorySearch:
+			return promptmodule.New(memorysearch.WorkerSystemPrompt()), nil
+		case storage.SourceLoopRun:
+			if session.SourceID == "" {
+				return nil, nil
+			}
+			return promptBuilder.ForRun(session.SourceID, time.Now().UTC())
+		default:
 			return nil, nil
 		}
-		return promptBuilder.ForRun(session.SourceID, time.Now().UTC())
 	}
 	return cfg.ACP
 }

@@ -93,12 +93,12 @@ func loadRuntimeEnvKey(env map[string]string, root, key string) {
 	}
 }
 
-func (m *Manager) prepareOpenCodeConfig(ctx context.Context, env map[string]string, agent AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) error {
+func (m *Manager) prepareOpenCodeConfig(ctx context.Context, env map[string]string, agent AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) error {
 	if strings.TrimSpace(env["OPENCODE_CONFIG_CONTENT"]) != "" {
 		return nil
 	}
 	content := openCodeConfigContent{}
-	if instruction, err := m.prepareOpenCodeInstructionFile(ctx, env, cwd, artifactSurface, systemPromptExtensions); err != nil {
+	if instruction, err := m.prepareOpenCodeInstructionFile(ctx, env, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions); err != nil {
 		return err
 	} else if instruction != "" {
 		content.Instructions = []string{instruction}
@@ -120,16 +120,11 @@ func (m *Manager) prepareOpenCodeConfig(ctx context.Context, env map[string]stri
 	return nil
 }
 
-func (m *Manager) prepareOpenCodeInstructionFile(ctx context.Context, env map[string]string, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (string, error) {
-	var prompt string
-	if m.cfg.SystemPrompt != nil {
-		base, err := m.cfg.SystemPrompt.ACPPromptForContext(ctx, cwd, artifactSurface)
-		if err != nil {
-			return "", fmt.Errorf("build opencode instructions: %w", err)
-		}
-		prompt = base
+func (m *Manager) prepareOpenCodeInstructionFile(ctx context.Context, env map[string]string, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (string, error) {
+	prompt, err := m.systemPrompt(ctx, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)
+	if err != nil {
+		return "", fmt.Errorf("build opencode instructions: %w", err)
 	}
-	prompt = promptWithModules(prompt, systemPromptExtensions)
 	if prompt == "" {
 		return "", nil
 	}
