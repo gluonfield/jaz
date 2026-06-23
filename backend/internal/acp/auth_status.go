@@ -79,9 +79,8 @@ func agentLoginCommand(name, root string, auth AgentAuthConfig, binDir string) A
 	}
 }
 
-// AgentLoginInvocationFor builds the OAuth login command for an agent. binDir is
-// the agent's managed-adapter bundle directory (empty when none); the login CLI
-// is resolved there before PATH so a Node-free backend uses the bundled binary.
+// AgentLoginInvocationFor builds an agent's login command; binDir is its adapter
+// bundle dir, searched before PATH.
 func AgentLoginInvocationFor(name, root string, auth AgentAuthConfig, binDir string) AgentLoginInvocation {
 	layout := runtimefiles.New(root)
 	switch CanonicalAgentName(name) {
