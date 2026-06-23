@@ -17,6 +17,7 @@ import remarkMath from 'remark-math'
 import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
 import { findFileReferences, parseFileReference, shouldPreviewFileReference, type FileReference } from '../../../../shared/fileReader'
 import { shouldPreviewURLByDefault } from '../../../../shared/preview'
+import { CodeBlock } from './CodeBlock'
 import { encodeMention } from './mentionCodec'
 import { MentionPill } from './mentions'
 
@@ -193,7 +194,7 @@ function BaseMarkdown({
   Link: AnchorComponent
 }) {
   const prepared = useMemo(() => normalizeMath(text), [text])
-  const components = useMemo<Components>(() => ({ a: Link }), [Link])
+  const components = useMemo<Components>(() => ({ a: Link, pre: CodeBlock }), [Link])
   return (
     <div className={className}>
       <Markdown

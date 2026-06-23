@@ -17,6 +17,7 @@ import (
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/threads"
 	"github.com/wins/jaz/backend/internal/visualize"
 	"github.com/wins/jaz/backend/internal/widgets"
 )
@@ -55,6 +56,7 @@ type Service struct {
 
 	loopTools       *loops.MCPTools
 	agentTools      *acp.MCPTools
+	threadTools     *threads.Service
 	visualizeTools  *visualize.MCPTools
 	widgetPublisher *widgets.SessionPublisher
 	sessions        sessionSource
@@ -90,6 +92,7 @@ type serverSlot struct {
 	memoryTools  bool
 	agentTools   bool
 	browserTools bool
+	threadTools  bool
 }
 
 type sessionSource interface {
@@ -133,6 +136,13 @@ func (s *Service) SetBrowser(service *browsertask.Service, backend browserworker
 	s.syncBrowserTools()
 }
 
+func (s *Service) SetThreads(service *threads.Service) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.threadTools = service
+	s.syncThreadTools()
+}
+
 func (s *Service) Server() *mcp.Server {
 	return s.server(threadSurface)
 }
@@ -144,6 +154,7 @@ func (s *Service) server(surface toolSurface) *mcp.Server {
 		s.mu.Lock()
 		slot.server = server
 		s.syncAgentToolsFor(slot, surface)
+		s.syncThreadToolsFor(slot, surface)
 		s.syncMemoryToolsFor(slot, surface)
 		s.syncBrowserToolsFor(slot, surface)
 		s.mu.Unlock()
@@ -196,6 +207,7 @@ func (s *Service) newServer(surface toolSurface) *mcp.Server {
 func (s *Service) Sync() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.syncThreadTools()
 	s.syncAgentTools()
 	s.syncMemoryTools()
 	s.syncBrowserTools()
@@ -281,12 +293,25 @@ func (s *Service) syncBrowserTools() {
 	}
 }
 
+func (s *Service) syncThreadTools() {
+	s.syncThreadToolsFor(&s.thread, threadSurface)
+	s.syncThreadToolsFor(&s.widget, widgetSurface)
+}
+
 func (s *Service) syncAgentToolsFor(slot *serverSlot, surface toolSurface) {
 	if !surface.agentToolsAllowed() || slot.server == nil || slot.agentTools || s.agentTools == nil {
 		return
 	}
 	s.agentTools.AddTo(slot.server)
 	slot.agentTools = true
+}
+
+func (s *Service) syncThreadToolsFor(slot *serverSlot, surface toolSurface) {
+	if !surface.threadToolsAllowed() || slot.server == nil || slot.threadTools || s.threadTools == nil {
+		return
+	}
+	s.threadTools.AddMCPTools(slot.server)
+	slot.threadTools = true
 }
 
 func (s *Service) syncMemoryToolsFor(slot *serverSlot, surface toolSurface) {
@@ -362,6 +387,10 @@ func (surface toolSurface) workerOnly() bool {
 }
 
 func (surface toolSurface) agentToolsAllowed() bool {
+	return surface == threadSurface || surface == widgetSurface
+}
+
+func (surface toolSurface) threadToolsAllowed() bool {
 	return surface == threadSurface || surface == widgetSurface
 }
 

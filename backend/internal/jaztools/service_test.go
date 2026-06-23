@@ -22,6 +22,7 @@ import (
 	jazsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
+	"github.com/wins/jaz/backend/internal/threads"
 	"github.com/wins/jaz/backend/internal/visualize"
 	"github.com/wins/jaz/backend/internal/widgets"
 )
@@ -112,7 +113,19 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 	)
 	executor := &fakeExecutor{started: make(chan loops.Run, 1)}
 	service.SetLoops(loops.NewService(store, executor, nil))
+	service.SetThreads(threads.NewService(sqlitestore.NewSearchQueries(store), store))
 	service.SetAgents(fakeACPService{spawned: make(chan acp.SpawnRequest, 1)})
+
+	target, err := store.CreateSession(storage.CreateSession{Slug: "review-target", Title: "Review target"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendMessageRecords(target.ID,
+		storage.Message{Role: "user", Content: "Please review the checkout bug."},
+		storage.Message{Role: "assistant", Content: "Patched checkout and verified tests."},
+	); err != nil {
+		t.Fatal(err)
+	}
 
 	session, closeSession := connectClient(t, service.Server())
 	defer closeSession()
@@ -127,6 +140,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 	}
 	for _, name := range []string{
 		"memory_search", "memory_get_page",
+		"thread_context",
 		"loop_list", "loop_get", "loop_create", "loop_update", "loop_run", "loop_delete",
 		"agent_spawn", "agent_send", "agent_status", "agent_wait", "agent_cancel", "agent_list",
 		"visualise_read_me", "visualise_show_widget",
@@ -137,6 +151,18 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 	}
 	if names["visualise_publish_widget"] {
 		t.Fatal("visualise_publish_widget must not be advertised on ordinary jaztools sessions")
+	}
+
+	threadCall, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "thread_context",
+		Arguments: map[string]any{"session": target.ID, "limit": 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	threadContext := structured[threads.ContextResponse](t, threadCall)
+	if threadContext.Session.ID != target.ID || len(threadContext.Messages) != 1 || threadContext.Messages[0].Text != "Patched checkout and verified tests." {
+		t.Fatalf("thread context = %#v", threadContext)
 	}
 
 	readMeCall, err := session.CallTool(context.Background(), &mcp.CallToolParams{
@@ -504,7 +530,7 @@ func TestSearchWorkerSurfaceOnlyAdvertisesRawMemoryTools(t *testing.T) {
 			t.Fatalf("worker server missing %s", name)
 		}
 	}
-	for _, name := range []string{"memory_search", "memory_get_page", "loop_list", "agent_spawn", "visualise_read_me", "visualise_show_widget", "visualise_publish_widget"} {
+	for _, name := range []string{"memory_search", "memory_get_page", "thread_context", "loop_list", "agent_spawn", "visualise_read_me", "visualise_show_widget", "visualise_publish_widget"} {
 		if hasTool(t, worker, name) {
 			t.Fatalf("worker server advertised %s", name)
 		}

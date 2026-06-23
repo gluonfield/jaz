@@ -34,6 +34,7 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/templates/acpcompletion"
+	"github.com/wins/jaz/backend/internal/threads"
 	"github.com/wins/jaz/backend/internal/tools"
 	agentcancel "github.com/wins/jaz/backend/internal/tools/agent/cancel"
 	agentlist "github.com/wins/jaz/backend/internal/tools/agent/list"
@@ -211,6 +212,10 @@ func NewWidgetService(store *sqlitestore.Store, logger *log.Logger) *widgets.Ser
 
 func NewWidgetSessionPublisher(service *widgets.Service, store *sqlitestore.Store) *widgets.SessionPublisher {
 	return &widgets.SessionPublisher{Service: service, Sessions: store, Loops: store}
+}
+
+func NewThreadService(store *sqlitestore.Store) *threads.Service {
+	return threads.NewService(sqlitestore.NewSearchQueries(store), store)
 }
 
 func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, store *sqlitestore.Store, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher) *tools.Registry {

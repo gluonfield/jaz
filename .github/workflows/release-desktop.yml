@@ -52,7 +52,7 @@ jobs:
             name="jaz-backend-linux-${arch}"
             out="../dist/backend/${name}"
             mkdir -p "$out"
-            GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o "$out/jaz" ./cmd/jaz
+            GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${{ github.event.release.tag_name }}" -o "$out/jaz" ./cmd/jaz
             tar -C "$out" -czf "../dist/backend/${name}.tar.gz" jaz
             sha256sum "../dist/backend/${name}.tar.gz" > "../dist/backend/${name}.tar.gz.sha256"
           done
@@ -141,7 +141,7 @@ jobs:
             name="jaz-backend-darwin-${arch}"
             out="../dist/backend/${name}"
             mkdir -p "$out"
-            GOOS=darwin GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o "$out/jaz" ./cmd/jaz
+            GOOS=darwin GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${{ github.event.release.tag_name }}" -o "$out/jaz" ./cmd/jaz
             tar -C "$out" -czf "../dist/backend/${name}.tar.gz" jaz
             shasum -a 256 "../dist/backend/${name}.tar.gz" > "../dist/backend/${name}.tar.gz.sha256"
           done
