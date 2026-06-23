@@ -9,6 +9,7 @@ import {
   MonitorSmartphone,
   Plug,
   Search,
+  Server,
   Sparkles,
   SlidersHorizontal,
 } from 'lucide-react'
@@ -18,6 +19,7 @@ import { createPortal } from 'react-dom'
 import { ACPAgentsSettings } from './ACPAgentsSettings'
 import { AgentProvidersSettings } from './AgentProvidersSettings'
 import { ArchivedThreadsSettings } from './ArchivedThreadsSettings'
+import { ConnectionsSettings } from './ConnectionsSettings'
 import { DevicesSettings } from './DevicesSettings'
 import { GeneralSettings } from './GeneralSettings'
 import { KeyboardShortcutsSettings } from './KeyboardShortcutsSettings'
@@ -31,6 +33,7 @@ type Section =
   | 'personalization'
   | 'memory'
   | 'usage'
+  | 'connections'
   | 'devices'
   | 'keyboard'
   | 'mcp'
@@ -45,6 +48,7 @@ const NAV: NavItem[] = [
   { id: 'personalization', label: 'Personalization', icon: Sparkles, fullHeight: true },
   { id: 'memory', label: 'Memory', icon: Brain },
   { id: 'usage', label: 'Usage', icon: ChartNoAxesColumn },
+  { id: 'connections', label: 'Connections', icon: Server },
   { id: 'devices', label: 'Devices', icon: MonitorSmartphone },
   { id: 'keyboard', label: 'Keyboard shortcuts', icon: Keyboard },
   { id: 'mcp', label: 'MCP servers', icon: Plug },
@@ -209,6 +213,8 @@ function SectionContent({
       return <MemorySettings />
     case 'usage':
       return <UsageSettings />
+    case 'connections':
+      return <ConnectionsSettings />
     case 'devices':
       return <DevicesSettings />
   }
