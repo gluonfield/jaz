@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/browserworker"
 	jazsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -22,6 +23,14 @@ type fakeManager struct {
 	wait      acp.WaitRequest
 	cancel    string
 	job       acp.Job
+}
+
+type fakeExtension struct {
+	connected bool
+}
+
+func (f fakeExtension) Status() browserworker.ExtensionStatus {
+	return browserworker.ExtensionStatus{Connected: f.connected}
 }
 
 func (f *fakeManager) Status(ref string) (acp.Job, error) {
@@ -59,7 +68,7 @@ func TestBrowserTaskSpawnsRestrictedWorker(t *testing.T) {
 		statusErr: errors.New("not found"),
 		job:       acp.Job{ID: "browser-session", Slug: "browser-red-rooster", State: acp.StateIdle, Assistant: "Done."},
 	}
-	service := New(store, manager, acp.BuiltinAgents())
+	service := New(store, manager, acp.BuiltinAgents(), fakeExtension{connected: true})
 
 	out, err := service.Run(context.Background(), Request{
 		Kind:       KindGet,
@@ -123,7 +132,7 @@ func TestBrowserTaskReusesIdleKeyedWorker(t *testing.T) {
 		statusJob: acp.Job{ID: "existing-session", Slug: workerSlug("parent-session", defaultKey), State: acp.StateIdle},
 		job:       acp.Job{ID: "existing-session", Slug: "browser-default", State: acp.StateIdle, Assistant: "Still signed in."},
 	}
-	service := New(store, manager, acp.BuiltinAgents())
+	service := New(store, manager, acp.BuiltinAgents(), fakeExtension{connected: true})
 
 	if _, err := service.Run(context.Background(), Request{Kind: KindCheck, Task: "Am I logged in?", ParentID: "parent-session"}); err != nil {
 		t.Fatal(err)
@@ -140,7 +149,7 @@ func TestBrowserTaskReturnsBusyForRunningKeyedWorker(t *testing.T) {
 	store := newStore(t)
 	saveBrowserDefaults(t, store, acp.AgentCodex)
 	manager := &fakeManager{statusJob: acp.Job{ID: "existing-session", State: acp.StateRunning}}
-	service := New(store, manager, acp.BuiltinAgents())
+	service := New(store, manager, acp.BuiltinAgents(), fakeExtension{connected: true})
 
 	_, err := service.Run(context.Background(), Request{Kind: KindDo, Task: "Open LinkedIn", SessionKey: "linkedin", ParentID: "parent-session"})
 	if err == nil || !strings.Contains(err.Error(), "busy") {
@@ -157,11 +166,36 @@ func TestBrowserTaskRejectsDisabledSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := &fakeManager{}
-	service := New(store, manager, acp.BuiltinAgents())
+	service := New(store, manager, acp.BuiltinAgents(), fakeExtension{connected: true})
 
 	_, err := service.Run(context.Background(), Request{Kind: KindDo, Task: "Open a page", ParentID: "parent-session"})
 	if err == nil || !strings.Contains(err.Error(), "disabled") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestBrowserTaskToolsEnabledDoesNotDependOnExtensionConnection(t *testing.T) {
+	store := newStore(t)
+	saveBrowserDefaults(t, store, acp.AgentCodex)
+	service := New(store, &fakeManager{}, acp.BuiltinAgents(), fakeExtension{})
+
+	if !service.MCPToolsEnabled() {
+		t.Fatal("browser task tools should be advertised when settings are enabled")
+	}
+}
+
+func TestBrowserTaskRejectsDisconnectedExtension(t *testing.T) {
+	store := newStore(t)
+	saveBrowserDefaults(t, store, acp.AgentCodex)
+	manager := &fakeManager{}
+	service := New(store, manager, acp.BuiltinAgents(), fakeExtension{})
+
+	_, err := service.Run(context.Background(), Request{Kind: KindDo, Task: "Open a page", ParentID: "parent-session"})
+	if err == nil || !strings.Contains(err.Error(), "Chrome extension") {
+		t.Fatalf("err = %v", err)
+	}
+	if manager.send.Session != "" {
+		t.Fatalf("sent unexpectedly: %#v", manager.send)
 	}
 }
 
@@ -172,7 +206,7 @@ func TestBrowserTaskTimeoutUsesOverride(t *testing.T) {
 		statusErr: errors.New("not found"),
 		job:       acp.Job{ID: "browser-session", State: acp.StateRunning},
 	}
-	service := New(store, manager, acp.BuiltinAgents())
+	service := New(store, manager, acp.BuiltinAgents(), fakeExtension{connected: true})
 	service.Timeout = time.Second
 
 	_, err := service.Run(context.Background(), Request{Kind: KindDo, Task: "Slow task", ParentID: "parent-session"})

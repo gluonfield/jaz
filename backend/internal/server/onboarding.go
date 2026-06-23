@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/acpadapter"
 	"github.com/wins/jaz/backend/internal/onboardingstate"
 	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -24,15 +25,24 @@ type onboardingResponse struct {
 
 type onboardingACPProbe struct {
 	acpAuthStatusResponse
-	Agent                string `json:"agent"`
-	Command              string `json:"command,omitempty"`
-	Installed            bool   `json:"installed"`
-	AppInstalled         bool   `json:"app_installed,omitempty"`
-	AppName              string `json:"app_name,omitempty"`
-	Available            bool   `json:"available"`
-	AuthCommand          string `json:"auth_command,omitempty"`
-	AuthCommandAvailable bool   `json:"auth_command_available"`
-	AuthCommandReason    string `json:"auth_command_reason,omitempty"`
+	Agent                string                      `json:"agent"`
+	Command              string                      `json:"command,omitempty"`
+	Installed            bool                        `json:"installed"`
+	AppInstalled         bool                        `json:"app_installed,omitempty"`
+	AppName              string                      `json:"app_name,omitempty"`
+	Available            bool                        `json:"available"`
+	AuthCommand          string                      `json:"auth_command,omitempty"`
+	AuthCommandAvailable bool                        `json:"auth_command_available"`
+	AuthCommandReason    string                      `json:"auth_command_reason,omitempty"`
+	ManagedAdapter       *onboardingACPAdapterStatus `json:"managed_adapter,omitempty"`
+}
+
+type onboardingACPAdapterStatus struct {
+	Adapter  string `json:"adapter"`
+	Version  string `json:"version,omitempty"`
+	Platform string `json:"platform,omitempty"`
+	State    string `json:"state"`
+	Message  string `json:"message,omitempty"`
 }
 
 type onboardingRequest struct {
@@ -222,12 +232,16 @@ func (s *Server) probeACPAgents(defaults agentsettings.AgentDefaults) []onboardi
 		}
 		appName, appInstalled := agentAppInstall(name)
 		readiness := acp.ProbeReadinessWithProviders(name, cfg, s.runtimeRoot(), nil, s.modelProviders())
+		adapter := s.managedAdapterStatus(cfg)
+		adapterReady := adapter == nil || adapter.State == acpadapter.StateReady
 		installed := adapterInstalled || auth.LoginCommandAvailable
 		reason := ""
 		if !installed {
 			reason = firstMessage(commandMissingReason(cfg), auth.LoginCommandReason)
 		} else if !adapterInstalled {
 			reason = commandMissingReason(cfg)
+		} else if !adapterReady {
+			reason = adapter.Message
 		} else if !readiness.Available {
 			reason = firstMessage(readiness.Reason, auth.LoginCommandReason, auth.Reason)
 		}
@@ -240,13 +254,36 @@ func (s *Server) probeACPAgents(defaults agentsettings.AgentDefaults) []onboardi
 			Installed:             installed,
 			AppInstalled:          appInstalled,
 			AppName:               appName,
-			Available:             readiness.Available,
+			Available:             readiness.Available && adapterReady,
 			AuthCommand:           auth.LoginCommand,
 			AuthCommandAvailable:  auth.LoginCommandAvailable,
 			AuthCommandReason:     auth.LoginCommandReason,
+			ManagedAdapter:        adapter,
 		})
 	}
 	return out
+}
+
+func (s *Server) managedAdapterStatus(cfg acp.AgentConfig) *onboardingACPAdapterStatus {
+	adapter := strings.TrimSpace(cfg.ManagedAdapter)
+	if adapter == "" {
+		return nil
+	}
+	status := acpadapter.Status{
+		Adapter: adapter,
+		State:   acpadapter.StateMissing,
+		Message: "managed adapter downloader is not available",
+	}
+	if s.ACPAdapters != nil {
+		status = s.ACPAdapters.Status(adapter)
+	}
+	return &onboardingACPAdapterStatus{
+		Adapter:  status.Adapter,
+		Version:  status.Version,
+		Platform: status.Platform,
+		State:    status.State,
+		Message:  status.Message,
+	}
 }
 
 func agentAppInstall(name string) (string, bool) {
@@ -326,16 +363,19 @@ func acpExecutableAvailable(command string) bool {
 
 func (s *Server) acpProbeConfig(name string, defaults agentsettings.AgentDefaults) (acp.AgentConfig, string, error) {
 	cfg, _ := s.acpAgentCatalog().Agent(name)
-	command := strings.TrimSpace(defaults.ACP[name].Command)
-	if command != "" {
-		executable, args, err := agentsettings.ParseCommandLine(command)
-		if err != nil {
-			return acp.AgentConfig{}, command, err
+	command := ""
+	if cfg.RequiresCommand() {
+		command = strings.TrimSpace(defaults.ACP[name].Command)
+		if command != "" {
+			executable, args, err := agentsettings.ParseCommandLine(command)
+			if err != nil {
+				return acp.AgentConfig{}, command, err
+			}
+			cfg.Command = executable
+			cfg.Args = args
+		} else {
+			command = agentsettings.CommandLine(cfg.Command, cfg.Args)
 		}
-		cfg.Command = executable
-		cfg.Args = args
-	} else {
-		command = agentsettings.CommandLine(cfg.Command, cfg.Args)
 	}
 	defaultModelProvider := strings.TrimSpace(cfg.ModelProvider)
 	cfg.ModelProvider = strings.TrimSpace(defaults.ACP[name].ModelProvider)

@@ -80,6 +80,10 @@ func (fakeBrowserBackend) Call(context.Context, browserworker.ActionInput) (brow
 	return browserworker.ActionOutput{Status: "ok", Text: "fake browser"}, nil
 }
 
+func (fakeBrowserBackend) Status() browserworker.ExtensionStatus {
+	return browserworker.ExtensionStatus{Connected: true}
+}
+
 func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
@@ -629,7 +633,7 @@ func TestBrowserToolsAndWorkerSurface(t *testing.T) {
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
-	service.SetBrowser(browsertask.New(store, fakeACPService{spawned: make(chan acp.SpawnRequest, 1)}, acp.BuiltinAgents()), fakeBrowserBackend{})
+	service.SetBrowser(browsertask.New(store, fakeACPService{spawned: make(chan acp.SpawnRequest, 1)}, acp.BuiltinAgents(), fakeBrowserBackend{}), fakeBrowserBackend{})
 
 	session, closeSession := connectClient(t, service.Server())
 	defer closeSession()

@@ -12,6 +12,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/browserworker"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	jazsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -35,11 +36,16 @@ type Manager interface {
 	Status(string) (acp.Job, error)
 }
 
+type ExtensionStatusProvider interface {
+	Status() browserworker.ExtensionStatus
+}
+
 type Service struct {
-	Store   storage.SettingsStorage
-	Manager Manager
-	Catalog acp.AgentCatalog
-	Timeout time.Duration
+	Store     storage.SettingsStorage
+	Manager   Manager
+	Catalog   acp.AgentCatalog
+	Extension ExtensionStatusProvider
+	Timeout   time.Duration
 }
 
 type TaskKind string
@@ -72,8 +78,8 @@ type Input struct {
 	SessionKey string `json:"session_key,omitempty" jsonschema:"friendly browser session key such as linkedin, red-rooster, or default"`
 }
 
-func New(store storage.SettingsStorage, manager Manager, catalog acp.AgentCatalog) *Service {
-	return &Service{Store: store, Manager: manager, Catalog: catalog}
+func New(store storage.SettingsStorage, manager Manager, catalog acp.AgentCatalog, extension ExtensionStatusProvider) *Service {
+	return &Service{Store: store, Manager: manager, Catalog: catalog, Extension: extension}
 }
 
 func (s *Service) AddMCPTools(server *mcp.Server) {
@@ -124,6 +130,9 @@ func (s *Service) Run(ctx context.Context, req Request) (Result, error) {
 	}
 	if !settings.Enabled {
 		return Result{}, errors.New("browser tools are disabled in settings")
+	}
+	if !s.extensionConnected() {
+		return Result{}, errors.New("connect the Chrome extension before using browser tools")
 	}
 	agent := jazsettings.BrowserAgent(settings, defaults)
 	if agent == "" {
@@ -213,6 +222,10 @@ func (s *Service) cancelWorker(sessionID string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_, _ = s.Manager.Cancel(ctx, sessionID)
+}
+
+func (s *Service) extensionConnected() bool {
+	return s.Extension != nil && s.Extension.Status().Connected
 }
 
 type mcpTools struct {
