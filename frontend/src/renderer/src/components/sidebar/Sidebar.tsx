@@ -4,6 +4,7 @@ import { GripVertical, Plus, Settings, SquarePen, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion, Reorder, type Transition, useDragControls } from 'motion/react'
 import { type PointerEvent as ReactPointerEvent, useEffect, useMemo, useState } from 'react'
 import { BoardModal } from '@/components/boards/BoardModal'
+import { ConnectionFooterButton } from '@/components/connection/ConnectionFooterButton'
 import { LoopModal } from '@/components/loops/LoopModal'
 import { IconButton } from '@/components/ui/IconButton'
 import { KeyboardShortcut } from '@/components/ui/KeyboardShortcut'
@@ -600,6 +601,7 @@ export function Sidebar({
   onResizeStart,
   onResizeReset,
   onOpenSettings,
+  onOpenConnect,
 }: {
   open: boolean
   width: number
@@ -607,6 +609,7 @@ export function Sidebar({
   onResizeStart: (e: ReactPointerEvent) => void
   onResizeReset: () => void
   onOpenSettings: () => void
+  onOpenConnect: () => void
 }) {
   return (
     <aside
@@ -636,6 +639,7 @@ export function Sidebar({
 
       <div className="flex shrink-0 flex-col gap-1.5 border-t border-border p-3">
         <UpdatePanel />
+        <ConnectionFooterButton onOpenConnect={onOpenConnect} />
         <button
           type="button"
           onClick={onOpenSettings}

@@ -8,6 +8,7 @@ import {
 import { PanelLeft } from 'lucide-react'
 import { motion } from 'motion/react'
 import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useState } from 'react'
+import { ConnectOverlay } from '@/components/connection/ConnectOverlay'
 import { CommandPalette } from '@/components/search/CommandPalette'
 import { SettingsOverlay } from '@/components/settings/SettingsOverlay'
 import { Sidebar } from '@/components/sidebar/Sidebar'
@@ -83,6 +84,7 @@ function RootLayout() {
   })
   const [resizing, setResizing] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [connectOpen, setConnectOpen] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
 
   // A specific board paints itself on bg-surface so its tiles blend; the app
@@ -188,6 +190,7 @@ function RootLayout() {
             onResizeStart={startResize}
             onResizeReset={() => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH)}
             onOpenSettings={() => setSettingsOpen(true)}
+            onOpenConnect={() => setConnectOpen(true)}
           />
         </motion.div>
 
@@ -227,10 +230,12 @@ function RootLayout() {
         </button>
       </div>
       <SettingsOverlay open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <ConnectOverlay open={connectOpen} onClose={() => setConnectOpen(false)} />
       <CommandPalette
         open={commandOpen}
         onOpenChange={setCommandOpen}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenConnect={() => setConnectOpen(true)}
       />
     </ToastProvider>
   )
