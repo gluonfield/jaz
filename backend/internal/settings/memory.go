@@ -5,8 +5,6 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/wins/jaz/backend/internal/acp"
-	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -68,46 +66,6 @@ func firstMemoryAgent(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func DefaultMemoryAgent(defaults AgentDefaults) string {
-	for _, agent := range []string{acp.AgentCodex, acp.AgentClaude, acp.AgentOpenCode} {
-		if current, ok := defaults.ACP[agent]; ok && current.Enabled {
-			return agent
-		}
-	}
-	return ""
-}
-
-func MemoryAgentModel(agent string, defaults AgentDefaults) string {
-	switch acp.CanonicalAgentName(agent) {
-	case acp.AgentCodex:
-		return "gpt-5.4-mini"
-	case acp.AgentClaude:
-		return "sonnet"
-	case acp.AgentGrok:
-		return "grok-composer-2.5-fast"
-	case acp.AgentOpenCode:
-		switch strings.TrimSpace(defaults.ACP[acp.AgentOpenCode].ModelProvider) {
-		case provider.ProviderOpenAI:
-			return "gpt-5.4-mini"
-		case "", provider.ProviderOpenRouter:
-			return "openai/gpt-5.4-mini"
-		default:
-			return ""
-		}
-	default:
-		return ""
-	}
-}
-
-func MemoryAgentReasoningEffort(agent string) string {
-	switch acp.CanonicalAgentName(agent) {
-	case acp.AgentCodex, acp.AgentGrok:
-		return "low"
-	default:
-		return ""
-	}
 }
 
 // MemoryEnabled is the live gate used per turn, spawn, and request; storage

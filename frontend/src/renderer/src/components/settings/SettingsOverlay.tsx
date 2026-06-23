@@ -5,6 +5,7 @@ import {
   Boxes,
   Brain,
   ChartNoAxesColumn,
+  Globe,
   Keyboard,
   MonitorSmartphone,
   Plug,
@@ -19,6 +20,7 @@ import { createPortal } from 'react-dom'
 import { ACPAgentsSettings } from './ACPAgentsSettings'
 import { AgentProvidersSettings } from './AgentProvidersSettings'
 import { ArchivedThreadsSettings } from './ArchivedThreadsSettings'
+import { BrowserSettings } from './BrowserSettings'
 import { ConnectionsSettings } from './ConnectionsSettings'
 import { DevicesSettings } from './DevicesSettings'
 import { GeneralSettings } from './GeneralSettings'
@@ -32,6 +34,7 @@ type Section =
   | 'general'
   | 'personalization'
   | 'memory'
+  | 'browser'
   | 'usage'
   | 'connections'
   | 'devices'
@@ -47,6 +50,7 @@ const NAV: NavItem[] = [
   { id: 'general', label: 'General', icon: SlidersHorizontal },
   { id: 'personalization', label: 'Personalization', icon: Sparkles, fullHeight: true },
   { id: 'memory', label: 'Memory', icon: Brain },
+  { id: 'browser', label: 'Browser', icon: Globe },
   { id: 'usage', label: 'Usage', icon: ChartNoAxesColumn },
   { id: 'connections', label: 'Connections', icon: Server },
   { id: 'devices', label: 'Devices', icon: MonitorSmartphone },
@@ -211,6 +215,8 @@ function SectionContent({
       return <PersonalizationSettings />
     case 'memory':
       return <MemorySettings />
+    case 'browser':
+      return <BrowserSettings />
     case 'usage':
       return <UsageSettings />
     case 'connections':

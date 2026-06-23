@@ -832,6 +832,22 @@ export interface AgentSettings {
   agents: string[]
 }
 
+export interface BrowserExtensionStatus {
+  connected: boolean
+  extension_id?: string
+  protocol?: string
+  bridge_url?: string
+  user_agent?: string
+  actions?: string[]
+  last_connected_at?: string
+}
+
+export interface BrowserStatus {
+  enabled: boolean
+  agent?: string
+  extension: BrowserExtensionStatus
+}
+
 export interface OnboardingACPProbe extends ACPAgentAuthStatus {
   agent: string
   command?: string

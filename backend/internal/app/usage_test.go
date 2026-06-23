@@ -1,10 +1,12 @@
 package app
 
 import (
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/browserworker"
 	"github.com/wins/jaz/backend/internal/deviceauth"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/server"
@@ -69,6 +71,35 @@ func TestNewRoutesMountsDeviceRevokeAsMethodRoute(t *testing.T) {
 	}
 	if !foundConnection {
 		t.Fatalf("missing device connection link route: %#v", routes)
+	}
+}
+
+func TestNewRoutesIncludesBrowserExtensionRoute(t *testing.T) {
+	routes := NewRoutes(routeDeps{
+		Usage:   usagecore.NewService(fakeUsageStore{}),
+		Browser: browserworker.NewExtensionBridge(nil),
+	})
+	for _, route := range routes {
+		if route.Pattern == "GET /v1/browser/extension" && route.Handler != nil {
+			return
+		}
+	}
+	t.Fatalf("missing browser extension route: %#v", routes)
+}
+
+func TestNewRoutesIncludesBrowserSettingsRoutes(t *testing.T) {
+	routes := NewRoutes(routeDeps{
+		Usage:           usagecore.NewService(fakeUsageStore{}),
+		BrowserSettings: &BrowserSettingsHandler{Handler: http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})},
+	})
+	found := map[string]bool{}
+	for _, route := range routes {
+		if (route.Pattern == "GET /v1/browser" || route.Pattern == "PUT /v1/browser") && route.Handler != nil {
+			found[route.Pattern] = true
+		}
+	}
+	if !found["GET /v1/browser"] || !found["PUT /v1/browser"] {
+		t.Fatalf("missing browser settings routes: %#v", routes)
 	}
 }
 
