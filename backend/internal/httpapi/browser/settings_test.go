@@ -52,7 +52,7 @@ func TestSettingsEndpoint(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
 		t.Fatal(err)
 	}
-	if !status.Enabled || status.Agent != "" {
+	if status.Enabled || status.Agent != "" {
 		t.Fatalf("default browser status = %#v", status)
 	}
 	if !status.Extension.Connected || status.Extension.ExtensionID != "ext-1" || len(status.Extension.Actions) != 2 {
@@ -60,7 +60,7 @@ func TestSettingsEndpoint(t *testing.T) {
 	}
 
 	res = httptest.NewRecorder()
-	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/browser", strings.NewReader(`{"agent":"codex"}`)))
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/browser", strings.NewReader(`{"enabled":true,"agent":"codex"}`)))
 	if res.Code != http.StatusOK {
 		t.Fatalf("set browser agent = %d, body = %s", res.Code, res.Body.String())
 	}
