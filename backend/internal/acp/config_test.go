@@ -119,6 +119,20 @@ func TestLaunchCommandLeavesNativeExecutablesAlone(t *testing.T) {
 	}
 }
 
+func TestAddCommandDirToPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("PATH handling is platform-specific")
+	}
+	env := map[string]string{"PATH": "/usr/bin:/bin"}
+
+	addCommandDirToPath(env, "/opt/homebrew/bin/npx")
+	addCommandDirToPath(env, "/opt/homebrew/bin/npm")
+
+	if env["PATH"] != "/opt/homebrew/bin:/usr/bin:/bin" {
+		t.Fatalf("PATH = %q", env["PATH"])
+	}
+}
+
 // Each adapter reads its own _meta extension key; every form below appends to
 // the agent's prompt rather than replacing it (a bare string would replace the
 // preset on claude, and grok ignores systemPrompt entirely).
