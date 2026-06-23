@@ -4,7 +4,7 @@ import { MenuRow, Popover } from '@/components/ui/Popover'
 import { useToast } from '@/components/ui/toast'
 import { useKnownBackends } from '@/lib/backends'
 import { connectRemote, startLocal, useConnection } from '@/lib/connection'
-import { connectionStatusDisplay, describeBackend, localBackendLabel, sameBackend } from '@/lib/connectionDisplay'
+import { backendName, connectionStatusDisplay, describeBackend, localBackendLabel, sameBackend } from '@/lib/connectionDisplay'
 
 // The sidebar's connection control: shows which backend Jaz is on with a health
 // dot. With no saved remotes there's nothing to switch between, so it just opens
@@ -17,10 +17,11 @@ export function ConnectionFooterButton({ onOpenConnect }: { onOpenConnect: () =>
   const [open, setOpen] = useState(false)
 
   const backend = describeBackend(url)
+  const name = backendName(url)
   const { dot } = connectionStatusDisplay(status)
 
   if (remotes.length === 0) {
-    return <Trigger backend={backend} dot={dot} onClick={onOpenConnect} />
+    return <Trigger backend={backend} name={name} dot={dot} onClick={onOpenConnect} />
   }
 
   const switchTo = async (action: () => Promise<string | null>) => {
@@ -35,7 +36,7 @@ export function ConnectionFooterButton({ onOpenConnect }: { onOpenConnect: () =>
       onClose={() => setOpen(false)}
       placement="above"
       align="start"
-      trigger={<Trigger backend={backend} dot={dot} switcher onClick={() => setOpen((value) => !value)} />}
+      trigger={<Trigger backend={backend} name={name} dot={dot} switcher onClick={() => setOpen((value) => !value)} />}
     >
       <p className="px-2.5 pb-1 pt-1 text-[11px] font-medium text-ink-3">Run jaz on</p>
       <MenuRow selected={backend.local} onClick={() => switchTo(startLocal)}>
@@ -64,11 +65,13 @@ export function ConnectionFooterButton({ onOpenConnect }: { onOpenConnect: () =>
 
 function Trigger({
   backend,
+  name,
   dot,
   switcher = false,
   onClick,
 }: {
   backend: { local: boolean; title: string; url: string }
+  name: string
   dot: string
   switcher?: boolean
   onClick: () => void
@@ -82,7 +85,7 @@ function Trigger({
       className="group flex w-full items-center gap-2 rounded-full px-2.5 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2"
     >
       <Icon size={15} className="shrink-0 text-ink-2" />
-      <span className="min-w-0 flex-1 truncate text-left">{backend.title}</span>
+      <span className="min-w-0 flex-1 truncate text-left">{name}</span>
       <span className={`size-1.5 shrink-0 rounded-full ${dot}`} />
       {switcher ? <ChevronsUpDown size={13} className="shrink-0 text-ink-3" /> : null}
     </button>

@@ -6,12 +6,13 @@ import './styles/globals.css'
 
 import { QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createHashHistory, createRouter } from '@tanstack/react-router'
-import { StrictMode, useEffect, useRef } from 'react'
+import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { BackendTransition } from './components/connection/BackendTransition'
 import { LaunchScreen, ReconnectingBanner } from './components/launch/LaunchScreen'
 import { OnboardingGate } from './components/onboarding/OnboardingGate'
 import { installFileDropGuard } from './components/ui/FileDrop'
-import { useConnection } from './lib/connection'
+import { useBackendChange, useConnection } from './lib/connection'
 import { queryClient } from './lib/query/queryClient'
 import { routeTree } from './routeTree.gen'
 import { telemetry } from './lib/telemetry'
@@ -43,29 +44,30 @@ declare module '@tanstack/react-router' {
 // losses ('reconnecting', banner over live UI) so drafts and streams survive
 // a blip. Only a sustained outage hands the window to the launch screen.
 function App() {
-  const { status, url } = useConnection()
+  const { status } = useConnection()
   // Reset to home whenever the backend changes — done here, above the router and
   // the onboarding gate, so it also covers landing after a fresh backend's
   // onboarding finishes (the router mounts onto this location). The persisted
   // route otherwise points at the previous backend's data — a thread/board/loop
-  // id the new backend doesn't have — which 404s. Only a real switch fires it;
-  // reconnecting to the same backend keeps your place.
-  const lastUrl = useRef(url)
-  useEffect(() => {
-    if (lastUrl.current === url) return
-    lastUrl.current = url
-    router.history.push('/')
-  }, [url])
-  if (status === 'connected' || status === 'reconnecting') {
-    const app = <RouterProvider router={router} />
-    return (
-      <>
-        {window.jaz?.windowKind === 'board' ? app : <OnboardingGate>{app}</OnboardingGate>}
-        <ReconnectingBanner show={status === 'reconnecting'} />
-      </>
-    )
-  }
-  return <LaunchScreen />
+  // id the new backend doesn't have — which 404s.
+  useBackendChange(() => router.history.push('/'))
+
+  const connected = status === 'connected' || status === 'reconnecting'
+  const app = <RouterProvider router={router} />
+  return (
+    <>
+      {/* plays over everything whenever the backend changes */}
+      <BackendTransition />
+      {connected ? (
+        <>
+          {window.jaz?.windowKind === 'board' ? app : <OnboardingGate>{app}</OnboardingGate>}
+          <ReconnectingBanner show={status === 'reconnecting'} />
+        </>
+      ) : (
+        <LaunchScreen />
+      )}
+    </>
+  )
 }
 
 createRoot(document.getElementById('root')!).render(
