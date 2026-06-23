@@ -21,8 +21,8 @@ type BrowserSettingsHandler struct {
 	http.Handler
 }
 
-func NewBrowserTaskService(store *sqlitestore.Store, manager *acp.Manager, catalog acp.AgentCatalog) *browsertask.Service {
-	return browsertask.New(store, manager, catalog)
+func NewBrowserTaskService(store *sqlitestore.Store, manager *acp.Manager, catalog acp.AgentCatalog, backend *browserworker.ExtensionBridge) *browsertask.Service {
+	return browsertask.New(store, manager, catalog, backend)
 }
 
 func NewBrowserWorkerBackend(layout runtimefiles.Layout) *browserworker.ExtensionBridge {
