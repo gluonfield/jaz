@@ -1,8 +1,8 @@
-import { LoaderCircle } from 'lucide-react'
+import { LoaderCircle, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { type FormEvent, useState } from 'react'
+import { useState } from 'react'
+import { RemoteServerForm } from '@/components/connection/RemoteServerForm'
 import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
 import { PixelField } from '@/components/ui/PixelField'
 import { apiBaseUrl } from '@/lib/api/client'
 import {
@@ -13,6 +13,7 @@ import {
   startLocal,
   useConnection,
 } from '@/lib/connection'
+import { describeBackend } from '@/lib/connectionDisplay'
 import { localDeviceLabel } from '@/lib/deviceLabel'
 import { useTheme } from '@/lib/theme'
 
@@ -58,47 +59,62 @@ export function ReconnectingBanner({ show }: { show: boolean }) {
   )
 }
 
-// Full-window gate shown whenever no backend is reachable: first launch,
-// failed startup probe, or a lost connection mid-session. The particle field
-// renders the wordmark, so the chrome stays text-light. First launch is a
-// welcome — two ways to run jaz — not an error.
-export function LaunchScreen() {
-  const { status, error, pairing } = useConnection()
+// Boot gate renders with no props; the manual overlay must hand in a way to
+// dismiss itself. Pairing the two stops a manual screen from rendering with no
+// close button and no close-on-success — a trap with no way out.
+type LaunchScreenProps = { manual?: false; onClose?: never } | { manual: true; onClose: () => void }
+
+// Full-window connect screen. As the boot gate it shows whenever no backend is
+// reachable (first launch, failed startup probe, lost connection). In `manual`
+// mode it is presented over the live app so a connected user can switch
+// machines through the exact same flow they onboarded with; on success it
+// dismisses itself via `onClose`. The particle field renders the wordmark, so
+// the chrome stays text-light.
+export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}) {
+  const { status, error, pairing, url: currentUrl } = useConnection()
   // PixelField samples the palette at mount; remount it when the theme flips.
   const { resolved } = useTheme()
   const [mode, setMode] = useState<'options' | 'remote'>('options')
   const [busy, setBusy] = useState<'local' | 'remote' | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const deviceLabel = localDeviceLabel()
+  const current = describeBackend(currentUrl)
   // last remote wins; otherwise the active URL (the local default until a
   // remote was ever used) seeds the field as an editable starting point
   const [url, setUrl] = useState(() => rememberedRemoteUrl() || apiBaseUrl())
 
+  // On success the connection store flips backends: as the boot gate that
+  // unmounts this screen; in manual mode we stay mounted over the live app, so
+  // dismiss ourselves. A connect that needs device approval drops to the boot
+  // gate either way, which then unmounts the manual overlay.
   const onStartLocal = async () => {
     setBusy('local')
     setActionError(null)
     const err = await startLocal()
-    // on success the connection store flips to connected and this unmounts
     if (err) {
       setActionError(err)
       setBusy(null)
+      return
     }
+    onClose?.()
   }
 
-  const onConnect = async (e: FormEvent) => {
-    e.preventDefault()
+  const onConnect = async () => {
     setBusy('remote')
     setActionError(null)
     const err = await connectRemote(url)
     if (err) {
       setActionError(err)
       setBusy(null)
+      return
     }
+    onClose?.()
   }
 
-  // The launch screen flashes for a sub-second on every boot while the first
-  // probe runs; only spin up the GPU field once we know we're staying.
-  const showField = status === 'disconnected' || status === 'pending_approval'
+  // The boot gate flashes for a sub-second while the first probe runs, so it
+  // only spins up the GPU field once disconnected; the manual overlay always
+  // wants the full takeover.
+  const showField = manual || status === 'disconnected' || status === 'pending_approval'
   // While 'checking' we know what we're waiting on — tailor the copy so a
   // remembered server or a local start reads as intentional, not a hang.
   const checkingCopy =
@@ -111,7 +127,19 @@ export function LaunchScreen() {
   return (
     <div className="relative flex h-full flex-col bg-bg">
       {showField && <PixelField key={resolved} calm={mode === 'remote' || busy !== null} />}
-      <div className="titlebar-drag relative h-[52px] shrink-0" />
+      <div className="titlebar-drag relative h-[52px] shrink-0">
+        {manual && onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            title="Close"
+            className="absolute right-3 top-3 z-30 grid size-7 cursor-pointer place-items-center rounded-full text-ink-2 transition-colors duration-150 [-webkit-app-region:no-drag] hover:bg-surface-2 hover:text-ink"
+          >
+            <X size={16} />
+          </button>
+        ) : null}
+      </div>
       {/* offset the titlebar so the content is optically centered */}
       <div className="relative flex flex-1 flex-col items-center justify-center px-6 pb-[52px]">
         <AnimatePresence mode="wait">
@@ -172,18 +200,19 @@ export function LaunchScreen() {
                 variants={rise}
                 className="text-balance text-center text-[22px] font-semibold tracking-tight text-ink"
               >
-                {error ? 'Reconnect to jaz' : 'Welcome to jaz'}
+                {manual ? 'Connect to a machine' : error ? 'Reconnect to jaz' : 'Welcome to jaz'}
               </motion.h1>
 
-              {error && (
-                <motion.p
-                  variants={rise}
-                  className="mt-2 text-pretty text-center text-[13px] text-ink-2"
-                >
-                  The backend jaz was using is unreachable. Start one here or point jaz at another
-                  server.
+              {manual ? (
+                <motion.p variants={rise} className="mt-2 text-pretty text-center text-[13px] text-ink-2">
+                  Currently on <span className="text-ink">{current.title}</span>. Run jaz on this computer or
+                  point it at another server.
                 </motion.p>
-              )}
+              ) : error ? (
+                <motion.p variants={rise} className="mt-2 text-pretty text-center text-[13px] text-ink-2">
+                  The backend jaz was using is unreachable. Start one here or point jaz at another server.
+                </motion.p>
+              ) : null}
 
               <motion.div variants={rise} className="mt-6 w-full">
                 <AnimatePresence mode="wait" initial={false}>
@@ -204,41 +233,22 @@ export function LaunchScreen() {
                       />
                     </motion.div>
                   ) : (
-                    <motion.form
+                    <motion.div
                       key="remote"
                       {...swap}
-                      onSubmit={onConnect}
-                      className="flex w-full flex-col gap-2.5 rounded-[16px] bg-surface/90 p-3 shadow-[0_8px_30px_rgba(0,0,0,0.10)] backdrop-blur-[2px]"
+                      className="rounded-[16px] bg-surface/90 p-3 shadow-[0_8px_30px_rgba(0,0,0,0.10)] backdrop-blur-[2px]"
                     >
-                      <div className="px-0.5">
-                        <p className="text-[13px] font-medium text-ink">Connect to a server</p>
-                        <p className="mt-0.5 text-[12px] text-ink-3">Paste the client URL your server printed.</p>
-                      </div>
-                      <Input
-                        autoFocus
+                      <RemoteServerForm
                         value={url}
-                        onChange={(e) => setUrl(e.target.value)}
-                        placeholder="http://192.168.1.10:5299?key=…"
-                        spellCheck={false}
-                        className="rounded-full font-mono text-[12px]"
+                        onChange={setUrl}
+                        onSubmit={onConnect}
+                        onBack={() => {
+                          setMode('options')
+                          setActionError(null)
+                        }}
+                        busy={busy === 'remote'}
                       />
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          disabled={busy !== null}
-                          onClick={() => {
-                            setMode('options')
-                            setActionError(null)
-                          }}
-                        >
-                          Back
-                        </Button>
-                        <Button variant="primary" type="submit" disabled={busy !== null || !url.trim()}>
-                          {busy === 'remote' && <LoaderCircle size={14} className="animate-spin" />}
-                          {busy === 'remote' ? 'Connecting…' : 'Connect'}
-                        </Button>
-                      </div>
-                    </motion.form>
+                    </motion.div>
                   )}
                 </AnimatePresence>
               </motion.div>
