@@ -10,6 +10,7 @@ import {
   setApiAuthToken,
   setApiBaseUrl,
 } from './api/client'
+import { rememberBackend } from './backends'
 import { getDeviceProfile } from './deviceIdentity'
 import { queryClient } from './query/queryClient'
 
@@ -143,6 +144,11 @@ let pollGen = 0
 let pairingGen = 0
 let failures = 0
 let lostAt = 0
+// What we were connected to before opening a device approval, so abandoning it
+// returns there. Only set when the approval was started from a live connection
+// (a mid-session machine switch); null on first-run/reconnect.
+type ConnectionSnapshot = { url: string; preference: ConnectionPreference | null }
+let preflightSnapshot: ConnectionSnapshot | null = null
 
 // Polls in every state: while connected it watches for loss; while
 // reconnecting/disconnected it keeps probing so the app recovers by itself
@@ -178,14 +184,31 @@ function schedulePoll() {
 function markConnected(url: string) {
   if (pairingTimer) clearTimeout(pairingTimer)
   pairingGen += 1
+  preflightSnapshot = null
   const previous = state.url
   setApiBaseUrl(url)
   failures = 0
+  // Every successful connection is a switch target next time; local is implicit.
+  if (!isLoopbackUrl(url)) rememberBackend(url, new Date().toISOString())
   // Everything cached belongs to whichever backend answered before; drop it
   // so the app refetches against the one we just connected to.
   if (normalizeBaseUrl(previous) !== normalizeBaseUrl(url)) queryClient.clear()
   setState({ status: 'connected', url: normalizeBaseUrl(url), pairing: null, error: null })
   schedulePoll()
+}
+
+// Re-probe a backend whose identity we already trust — a saved remote at
+// startup, or the one we were on before a cancelled approval — and either
+// reconnect or surface why it's now unreachable.
+async function reconnectKnown(url: string): Promise<void> {
+  setState({ status: 'checking', url, pairing: null, error: null })
+  const error = await verifyBackend(url)
+  if (error) {
+    setState({ status: 'disconnected', url, pairing: null, error })
+    schedulePoll()
+    return
+  }
+  markConnected(url)
 }
 
 async function registerDevice(url: string, rootToken: string): Promise<string | null> {
@@ -209,7 +232,6 @@ async function registerDevice(url: string, rootToken: string): Promise<string | 
     }>(res)
     if (res.ok && body?.token) {
       setApiAuthToken(url, body.token)
-      localStorage.setItem(REMOTE_URL_KEY, normalizeBaseUrl(url))
       markConnected(url)
       savePreference(isLoopbackUrl(url) ? { mode: 'local' } : { mode: 'remote', remoteUrl: normalizeBaseUrl(url) })
       return null
@@ -264,8 +286,11 @@ async function startPairing(url: string): Promise<string | null> {
 
 function markPendingApproval(pairing: PendingPairing) {
   if (pollTimer) clearTimeout(pollTimer)
+  // Snapshot a healthy connection before we re-point at the pending backend,
+  // so cancel/expire/reject can return to it.
+  preflightSnapshot =
+    state.status === 'connected' ? { url: state.url, preference: connectionPreference() } : null
   setApiBaseUrl(pairing.url)
-  localStorage.setItem(REMOTE_URL_KEY, normalizeBaseUrl(pairing.url))
   setState({ status: 'pending_approval', url: normalizeBaseUrl(pairing.url), pairing, error: null })
   schedulePairingPoll()
 }
@@ -294,11 +319,11 @@ function schedulePairingPoll() {
         return
       }
       if (res.status === 410 || body?.pairing?.status === 'expired') {
-        setState({ status: 'disconnected', pairing: null, error: 'Device approval request expired' })
+        abandonPairing('Device approval request expired')
         return
       }
       if (body?.pairing?.status === 'rejected') {
-        setState({ status: 'disconnected', pairing: null, error: 'Device approval was rejected' })
+        abandonPairing('Device approval was rejected')
         return
       }
     } catch {
@@ -306,14 +331,6 @@ function schedulePairingPoll() {
     }
     schedulePairingPoll()
   }, 2_000)
-}
-
-// Kept separate from the active URL so the remote option still prefills
-// after the user switches back to a local backend.
-const REMOTE_URL_KEY = 'jaz.remoteBackendUrl'
-
-export function rememberedRemoteUrl(): string {
-  return localStorage.getItem(REMOTE_URL_KEY) ?? ''
 }
 
 // How the app should reach a backend on launch. 'local' = start (or adopt) a
@@ -351,9 +368,29 @@ export function clearConnectionPreference(): void {
 }
 
 export function cancelPendingApproval(): void {
+  abandonPairing(null)
+}
+
+// Single exit for a pending approval that won't complete. If it was opened over
+// a working connection, return there; otherwise fall back to the launch screen
+// with the reason, if any.
+function abandonPairing(error: string | null): void {
   if (pairingTimer) clearTimeout(pairingTimer)
   pairingGen += 1
-  setState({ status: 'disconnected', pairing: null, error: null })
+  const snapshot = preflightSnapshot
+  preflightSnapshot = null
+  if (snapshot) {
+    void restoreConnection(snapshot)
+    return
+  }
+  setState({ status: 'disconnected', pairing: null, error })
+}
+
+async function restoreConnection(snapshot: ConnectionSnapshot): Promise<void> {
+  // Restore the launch preference first so a failed re-probe degrades exactly
+  // like any other loss of that backend.
+  if (snapshot.preference) savePreference(snapshot.preference)
+  await reconnectKnown(snapshot.url)
 }
 
 // A loopback host is "this machine" — treat localhost and 127.0.0.1 alike since
@@ -389,7 +426,6 @@ export async function connectRemote(url: string): Promise<string | null> {
       return access.error ?? 'Backend auth check failed'
     }
   }
-  localStorage.setItem(REMOTE_URL_KEY, target)
   markConnected(target)
   savePreference({ mode: 'remote', remoteUrl: target })
   return null
@@ -438,17 +474,10 @@ async function connectStoredToken(url: string): Promise<boolean> {
 async function init() {
   const pref = connectionPreference()
 
+  // A remote server was expected here, so reconnectKnown surfacing the failure
+  // (rather than a silent welcome) is right.
   if (pref?.mode === 'remote') {
-    const url = normalizeBaseUrl(pref.remoteUrl || state.url)
-    setState({ status: 'checking', url, error: null })
-    const error = await verifyBackend(url)
-    if (!error) {
-      markConnected(url)
-      return
-    }
-    // A remote server was expected here, so naming the failure is right.
-    setState({ status: 'disconnected', url, error })
-    schedulePoll()
+    await reconnectKnown(normalizeBaseUrl(pref.remoteUrl || state.url))
     return
   }
 
