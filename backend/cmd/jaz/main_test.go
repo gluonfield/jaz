@@ -50,12 +50,7 @@ func sameArgs(a, b []string) bool {
 	return true
 }
 
-func TestPrintVersionDefaults(t *testing.T) {
-	oldVersion := version
-	defer func() {
-		version = oldVersion
-	}()
-	version = ""
+func TestPrintVersion(t *testing.T) {
 	var out bytes.Buffer
 	printVersion(&out)
 	if got, want := out.String(), "jaz dev\n"; got != want {
