@@ -89,6 +89,20 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 		conn, err := streamhttp.Dial(cfg.URL, opts...)
 		return conn, nil, err
 	}
+	if strings.TrimSpace(cfg.ManagedAdapter) != "" {
+		if m.cfg.Adapters == nil {
+			return nil, nil, fmt.Errorf("acp agent %q managed adapter %q is not available", name, cfg.ManagedAdapter)
+		}
+		launch, err := m.cfg.Adapters.ResolveAdapter(ctx, cfg.ManagedAdapter)
+		if err != nil {
+			return nil, nil, err
+		}
+		cfg.Command = launch.Command
+		cfg.Args = append(append([]string(nil), launch.Args...), cfg.ManagedAdapterArgs...)
+		for key, value := range launch.Env {
+			env[key] = value
+		}
+	}
 	if cfg.Command == "" {
 		return nil, nil, fmt.Errorf("acp agent %q has no command", name)
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/gluonfield/jazmem/pkg/jazmem"
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/acpadapter"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/jazagent"
@@ -172,6 +173,55 @@ func NewACPAgentConfigSource(store *sqlitestore.Store, catalog acp.AgentCatalog)
 	return agentsettings.NewACPConfigSource(store, catalog)
 }
 
+func NewACPAdapterManager(layout runtimefiles.Layout) *acpadapter.Manager {
+	return acpadapter.New(layout.Root)
+}
+
+func StartACPAdapterDownloads(lc fx.Lifecycle, catalog acp.AgentCatalog, adapters *acpadapter.Manager, logger *log.Logger) {
+	if adapters == nil {
+		return
+	}
+	var cancel context.CancelFunc
+	lc.Append(fx.Hook{
+		OnStart: func(context.Context) error {
+			ctx, stop := context.WithCancel(context.Background())
+			cancel = stop
+			for _, adapter := range managedAdapterNames(catalog) {
+				go func(adapter string) {
+					if err := adapters.Prepare(ctx, adapter); err != nil && ctx.Err() == nil {
+						logger.WithPrefix("acp-adapter").Warn("managed adapter download failed", "adapter", adapter, "error", err)
+					}
+				}(adapter)
+			}
+			return nil
+		},
+		OnStop: func(context.Context) error {
+			if cancel != nil {
+				cancel()
+			}
+			return nil
+		},
+	})
+}
+
+func managedAdapterNames(catalog acp.AgentCatalog) []string {
+	seen := map[string]struct{}{}
+	out := []string{}
+	for _, name := range catalog.Names() {
+		cfg, _ := catalog.Agent(name)
+		adapter := strings.TrimSpace(cfg.ManagedAdapter)
+		if adapter == "" {
+			continue
+		}
+		if _, ok := seen[adapter]; ok {
+			continue
+		}
+		seen[adapter] = struct{}{}
+		out = append(out, adapter)
+	}
+	return out
+}
+
 // NewProviderSource builds the live, thread-safe registry of effective model
 // providers (application.yaml + native keys base, overlaid with DB-backed
 // customs). It's the single instance the server, ACP manager, and runtime read
@@ -180,9 +230,10 @@ func NewProviderSource(cfg Config, store *sqlitestore.Store) (provider.Source, e
 	return provider.NewSource(cfg.ModelProviders, providerstore.Loader{Store: store})
 }
 
-func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, prompts *coordinator.Builder, catalog acp.AgentCatalog, source acp.AgentConfigSource, mcpServers mcpconfig.ServerReader, providerSource provider.Source, widgetService *widgets.Service) acp.Config {
+func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, prompts *coordinator.Builder, catalog acp.AgentCatalog, source acp.AgentConfigSource, adapters *acpadapter.Manager, mcpServers mcpconfig.ServerReader, providerSource provider.Source, widgetService *widgets.Service) acp.Config {
 	cfg.ACP.Agents = catalog
 	cfg.ACP.AgentSource = source
+	cfg.ACP.Adapters = adapters
 	cfg.ACP.Root = store.RootDir()
 	cfg.ACP.Workspace = string(workspace)
 	cfg.ACP.Providers = cfg.ModelProviders

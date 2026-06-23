@@ -842,6 +842,15 @@ export interface OnboardingACPProbe extends ACPAgentAuthStatus {
   auth_command?: string
   auth_command_available: boolean
   auth_command_reason?: string
+  managed_adapter?: OnboardingACPAdapterStatus
+}
+
+export interface OnboardingACPAdapterStatus {
+  adapter: string
+  version?: string
+  platform?: string
+  state: 'missing' | 'downloading' | 'ready' | 'failed' | 'unsupported'
+  message?: string
 }
 
 export interface OnboardingMemorySettings {
