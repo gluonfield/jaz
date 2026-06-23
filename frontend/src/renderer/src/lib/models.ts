@@ -40,7 +40,7 @@ export const CODEX_ACP_MODELS: ModelSuggestion[] = [
   { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini', description: 'Fast and inexpensive', contextLength: 400_000, openRouterId: 'openai/gpt-5.4-mini' },
 ]
 
-// Model config values advertised by @agentclientprotocol/claude-agent-acp@0.44.0;
+// Model config values advertised by claude-agent-acp;
 // the backend rejects ids the adapter doesn't advertise.
 export const ANTHROPIC_MODELS: ModelSuggestion[] = [
   { value: 'default', label: 'Default (Opus 4.8)', description: 'Opus 4.8 with 1M context · Recommended', contextLength: 1_000_000, openRouterId: 'anthropic/claude-opus-4.8' },

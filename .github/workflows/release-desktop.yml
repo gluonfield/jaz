@@ -67,6 +67,24 @@ jobs:
             dist/backend/*.sha256 \
             --clobber
 
+  acp-adapters:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Generate ACP adapter manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/scripts/create-acp-adapters-manifest.mjs dist/acp-adapters.json
+
+      - name: Attach ACP adapter manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$RELEASE_TAG" dist/acp-adapters.json --clobber
+
   macos:
     runs-on: macos-latest
     steps:

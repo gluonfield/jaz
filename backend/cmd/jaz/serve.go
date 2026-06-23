@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/gluonfield/jazmem/pkg/jazmem"
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/acpadapter"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/app"
 	configloader "github.com/wins/jaz/backend/internal/config"
@@ -42,7 +43,10 @@ func runServe(args []string) error {
 	fxApp := fx.New(
 		fx.StopTimeout(15*time.Second),
 		fx.WithLogger(func() fxevent.Logger { return fxevent.NopLogger }),
-		fx.Supply(serveArgs{Args: args}),
+		fx.Supply(
+			serveArgs{Args: args},
+			app.Release{Version: version},
+		),
 		fx.Provide(
 			newLogger,
 			loadConfig,
@@ -61,6 +65,7 @@ func runServe(args []string) error {
 			exectool.NewCommandManager,
 			app.NewPromptBuilder,
 			app.NewACPAgentConfigSource,
+			app.NewACPAdapterManager,
 			app.NewACPConfig,
 			acp.NewManager,
 			sessionlock.New,
@@ -89,6 +94,7 @@ func runServe(args []string) error {
 			app.CloseBrowserWorkerBackend,
 			app.StartMemoryScheduler,
 			app.StartSkillSync,
+			app.StartACPAdapterDownloads,
 			startServer,
 			app.StartMCPManager,
 		),
@@ -176,6 +182,7 @@ func startServer(
 	a *agent.Agent,
 	store *sqlitestore.Store,
 	manager *acp.Manager,
+	adapters *acpadapter.Manager,
 	locks *sessionlock.Locks,
 	events *sessionevents.Bus,
 	prompts *coordinator.Builder,
@@ -207,6 +214,7 @@ func startServer(
 		Store:                store,
 		Routes:               routes,
 		ACP:                  manager,
+		ACPAdapters:          adapters,
 		MCP:                  mcpManager,
 		Locks:                locks,
 		Events:               events,

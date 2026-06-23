@@ -20,7 +20,7 @@ type BrowserSettings struct {
 }
 
 func DefaultBrowserSettings() BrowserSettings {
-	return BrowserSettings{Enabled: true}
+	return BrowserSettings{}
 }
 
 func LoadBrowserSettings(store storage.SettingsStorage) (BrowserSettings, error) {

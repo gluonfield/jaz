@@ -122,6 +122,76 @@ func TestAuthMiddlewareRequiresDeviceAfterBootstrap(t *testing.T) {
 	}
 }
 
+func TestAuthMiddlewareAcceptsBrowserExtensionQueryKeyAfterBootstrap(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	devices := deviceauth.New(store)
+	if _, err := devices.Register(testDeviceInfo("First Mac", "desktop", 1)); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/browser/extension?key=root-key", nil)
+	res := httptest.NewRecorder()
+	(&Server{AuthKey: "root-key", Devices: devices}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})).ServeHTTP(res, req)
+	if res.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
+func TestAuthMiddlewareAcceptsLocalBrowserExtensionWithoutKeyAfterBootstrap(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	devices := deviceauth.New(store)
+	if _, err := devices.Register(testDeviceInfo("First Mac", "desktop", 1)); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/browser/extension", nil)
+	req.RemoteAddr = "127.0.0.1:53124"
+	req.Header.Set("Origin", "chrome-extension://abcdefghijklmnop")
+	res := httptest.NewRecorder()
+	(&Server{AuthKey: "root-key", Devices: devices}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})).ServeHTTP(res, req)
+	if res.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
+func TestAuthMiddlewareRejectsWebsiteOriginBrowserExtensionWithoutKey(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/v1/browser/extension", nil)
+	req.RemoteAddr = "127.0.0.1:53124"
+	req.Header.Set("Origin", "https://example.com")
+	res := httptest.NewRecorder()
+	(&Server{AuthKey: "root-key"}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})).ServeHTTP(res, req)
+	if res.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
+func TestAuthMiddlewareRejectsRemoteBrowserExtensionWithoutKey(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/v1/browser/extension", nil)
+	req.RemoteAddr = "203.0.113.10:53124"
+	req.Header.Set("Origin", "chrome-extension://abcdefghijklmnop")
+	res := httptest.NewRecorder()
+	(&Server{AuthKey: "root-key"}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})).ServeHTTP(res, req)
+	if res.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
 func testDeviceInfo(name, kind string, seed byte) deviceauth.Registration {
 	raw := make([]byte, 32)
 	for i := range raw {

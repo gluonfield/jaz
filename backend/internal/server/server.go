@@ -12,6 +12,7 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/acpadapter"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/deviceauth"
@@ -54,11 +55,16 @@ type MCPRuntime interface {
 	Authorize(context.Context, mcpconfig.Server) mcpconfig.ServerStatus
 }
 
+type ACPAdapterStatusReader interface {
+	Status(name string) acpadapter.Status
+}
+
 type Server struct {
 	Agent                *agent.Agent
 	Store                storage.Store
 	Routes               Routes
 	ACP                  ACPManager
+	ACPAdapters          ACPAdapterStatusReader
 	MCP                  MCPRuntime
 	Locks                *sessionlock.Locks
 	Events               *sessionevents.Bus

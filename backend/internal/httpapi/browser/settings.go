@@ -90,7 +90,8 @@ func (h SettingsHandler) browserStatus() (StatusResponse, error) {
 	if err != nil {
 		return StatusResponse{}, err
 	}
-	return StatusResponse{Enabled: settings.Enabled, Agent: settings.Agent, Extension: h.extensionStatus()}, nil
+	extension := h.extensionStatus()
+	return StatusResponse{Enabled: effectiveEnabled(settings, extension), Agent: settings.Agent, Extension: extension}, nil
 }
 
 func (h SettingsHandler) extensionStatus() browserworker.ExtensionStatus {
@@ -105,8 +106,15 @@ func (h SettingsHandler) normalize(input settingsInput) (jazsettings.BrowserSett
 	if err != nil {
 		return jazsettings.BrowserSettings{}, err
 	}
+	extension := h.extensionStatus()
 	if input.Enabled != nil {
+		if *input.Enabled && !extension.Connected {
+			return jazsettings.BrowserSettings{}, fmt.Errorf("connect the Chrome extension before enabling browser tools")
+		}
 		settings.Enabled = *input.Enabled
+	}
+	if !extension.Connected {
+		settings.Enabled = false
 	}
 	if input.Agent != nil {
 		settings.Agent = acp.CanonicalAgentName(*input.Agent)
@@ -125,6 +133,10 @@ func (h SettingsHandler) normalize(input settingsInput) (jazsettings.BrowserSett
 		return jazsettings.BrowserSettings{}, err
 	}
 	return settings, nil
+}
+
+func effectiveEnabled(settings jazsettings.BrowserSettings, extension browserworker.ExtensionStatus) bool {
+	return settings.Enabled && extension.Connected
 }
 
 func (h SettingsHandler) catalog() acp.AgentCatalog {

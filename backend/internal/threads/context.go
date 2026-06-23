@@ -12,17 +12,14 @@ import (
 )
 
 const (
-	defaultContextLimit    = 16
-	maxContextLimit        = 60
-	defaultSearchContext   = 0
-	maxSearchContext       = 4
-	defaultMaxTextChars    = 2000
-	maxTextChars           = 8000
-	defaultMaxToolChars    = 300
-	maxContextToolChars    = 1000
-	IncludeToolsNone       = "none"
-	IncludeToolsSummary    = "summary"
-	IncludeToolsCompressed = "compressed"
+	defaultContextLimit  = 16
+	maxContextLimit      = 60
+	defaultSearchContext = 0
+	maxSearchContext     = 4
+	defaultMaxTextChars  = 2000
+	maxTextChars         = 8000
+	IncludeToolsNone     = "none"
+	IncludeToolsSummary  = "summary"
 )
 
 type ContextStore interface {
@@ -38,8 +35,7 @@ type ContextRequest struct {
 	BeforeSeq    int64  `json:"before_seq,omitempty" jsonschema:"return the page before this message sequence"`
 	AfterSeq     int64  `json:"after_seq,omitempty" jsonschema:"return the page after this message sequence"`
 	AroundSeq    int64  `json:"around_seq,omitempty" jsonschema:"return a page centered near this message sequence"`
-	IncludeTools string `json:"include_tools,omitempty" jsonschema:"none, summary, or compressed; defaults to summary"`
-	MaxToolChars int    `json:"max_tool_chars,omitempty" jsonschema:"per-tool detail limit when include_tools is compressed; max 1000"`
+	IncludeTools string `json:"include_tools,omitempty" jsonschema:"none or summary; defaults to summary"`
 	MaxTextChars int    `json:"max_text_chars,omitempty" jsonschema:"per-message text limit; max 8000; defaults to 2000"`
 }
 
@@ -80,16 +76,13 @@ type ContextMessage struct {
 }
 
 type ContextTool struct {
-	Name      string `json:"name,omitempty"`
-	Detail    string `json:"detail,omitempty"`
-	Truncated bool   `json:"truncated,omitempty"`
+	Name string `json:"name,omitempty"`
 }
 
 type contextOptions struct {
 	limit        int
 	radius       int
 	includeTools string
-	maxToolChars int
 	maxTextChars int
 }
 
@@ -164,10 +157,6 @@ func contextOptionsFromRequest(req ContextRequest) (contextOptions, error) {
 	if err != nil {
 		return contextOptions{}, err
 	}
-	maxTool, err := positiveLimit(req.MaxToolChars, defaultMaxToolChars, maxContextToolChars, "max_tool_chars")
-	if err != nil {
-		return contextOptions{}, err
-	}
 	radius := req.Context
 	if radius == 0 {
 		radius = defaultSearchContext
@@ -180,15 +169,14 @@ func contextOptionsFromRequest(req ContextRequest) (contextOptions, error) {
 		includeTools = IncludeToolsSummary
 	}
 	switch includeTools {
-	case IncludeToolsNone, IncludeToolsSummary, IncludeToolsCompressed:
+	case IncludeToolsNone, IncludeToolsSummary:
 	default:
-		return contextOptions{}, errors.New("include_tools must be none, summary, or compressed")
+		return contextOptions{}, errors.New("include_tools must be none or summary")
 	}
 	return contextOptions{
 		limit:        limit,
 		radius:       radius,
 		includeTools: includeTools,
-		maxToolChars: maxTool,
 		maxTextChars: maxText,
 	}, nil
 }
@@ -378,11 +366,7 @@ func contextTools(blocks []storage.Block, opts contextOptions) []ContextTool {
 		if block.Type != storage.BlockTypeTool {
 			continue
 		}
-		tool := ContextTool{Name: block.Name}
-		if opts.includeTools == IncludeToolsCompressed {
-			tool.Detail, tool.Truncated = clampText(compressedToolDetail(block), opts.maxToolChars)
-		}
-		out = append(out, tool)
+		out = append(out, ContextTool{Name: block.Name})
 	}
 	return out
 }

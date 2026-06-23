@@ -69,20 +69,20 @@ func TestProcessEnvIsMinimalAndCanonical(t *testing.T) {
 	})
 }
 
-func TestCodexBuiltinAgentUsesNpxCmdOnWindows(t *testing.T) {
+func TestCodexBuiltinAgentUsesManagedAdapterOnWindows(t *testing.T) {
 	cfg := codexBuiltinAgent("windows")
-	if cfg.Command != "npx.cmd" {
-		t.Fatalf("command = %q", cfg.Command)
+	if cfg.Command != "" || cfg.ManagedAdapter != "codex" {
+		t.Fatalf("cfg = %#v, want managed adapter", cfg)
 	}
-	if len(cfg.Args) < 2 || cfg.Args[1] != codexACPPackage {
-		t.Fatalf("args = %#v", cfg.Args)
+	if len(cfg.ManagedAdapterArgs) == 0 {
+		t.Fatalf("managed args = %#v", cfg.ManagedAdapterArgs)
 	}
 }
 
-func TestCodexBuiltinAgentUsesNpxElsewhere(t *testing.T) {
+func TestCodexBuiltinAgentUsesManagedAdapterElsewhere(t *testing.T) {
 	cfg := codexBuiltinAgent("darwin")
-	if cfg.Command != "npx" {
-		t.Fatalf("command = %q", cfg.Command)
+	if cfg.Command != "" || cfg.ManagedAdapter != "codex" {
+		t.Fatalf("cfg = %#v, want managed adapter", cfg)
 	}
 }
 

@@ -11,12 +11,21 @@ import (
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/acpadapter"
 	"github.com/wins/jaz/backend/internal/onboardingstate"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/testexec"
 )
+
+type fakeACPAdapterStatusReader struct {
+	status acpadapter.Status
+}
+
+func (r fakeACPAdapterStatusReader) Status(string) acpadapter.Status {
+	return r.status
+}
 
 func TestOnboardingAPIProbesAgentsAndSavesProviderKey(t *testing.T) {
 	t.Setenv("OPENROUTER_API_KEY", "")
@@ -254,6 +263,121 @@ func TestOnboardingUsesACPReadiness(t *testing.T) {
 	}
 	if len(got.ACP) != 1 || got.ACP[0].Agent != "claude" || !got.ACP[0].Authenticated || got.ACP[0].Available || !strings.Contains(got.ACP[0].Reason, "Claude Code executable") {
 		t.Fatalf("unexpected claude probe: %#v", got.ACP)
+	}
+}
+
+func TestOnboardingTreatsAuthenticatedManagedCodexAsAvailable(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("PATH", root)
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("JAZ_ACP_CODEX_API_KEY", "")
+	codexHome := filepath.Join(root, "codex-home")
+	if err := os.MkdirAll(codexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(codexHome, "auth.json"), []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEX_HOME", codexHome)
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, err := agentsettings.SaveAgentDefaults(store, agentsettings.AgentDefaults{ACP: map[string]agentsettings.ACPAgentDefaults{
+		"codex": {Command: "/stale/codex-acp --stdio", Model: "gpt-5.5"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	handler := (&Server{
+		Store:       store,
+		Root:        root,
+		ACPAdapters: fakeACPAdapterStatusReader{status: acpadapter.Status{Adapter: "codex", Version: "test-version", State: acpadapter.StateReady}},
+		AgentCatalog: acp.AgentCatalog{
+			"codex": {ManagedAdapter: "codex", Model: "gpt-5.5"},
+		},
+	}).Handler()
+
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/onboarding", nil))
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var got struct {
+		ACP []struct {
+			Agent         string `json:"agent"`
+			Command       string `json:"command"`
+			Installed     bool   `json:"installed"`
+			Authenticated bool   `json:"authenticated"`
+			Available     bool   `json:"available"`
+			Reason        string `json:"reason"`
+		} `json:"acp"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.ACP) != 1 || got.ACP[0].Agent != "codex" ||
+		got.ACP[0].Command != "" ||
+		!got.ACP[0].Installed ||
+		!got.ACP[0].Authenticated ||
+		!got.ACP[0].Available ||
+		got.ACP[0].Reason != "" {
+		t.Fatalf("unexpected codex probe: %#v", got.ACP)
+	}
+}
+
+func TestOnboardingWaitsForManagedCodexDownload(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("PATH", root)
+	codexHome := filepath.Join(root, "codex-home")
+	if err := os.MkdirAll(codexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(codexHome, "auth.json"), []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEX_HOME", codexHome)
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	handler := (&Server{
+		Store:       store,
+		Root:        root,
+		ACPAdapters: fakeACPAdapterStatusReader{status: acpadapter.Status{Adapter: "codex", Version: "test-version", State: acpadapter.StateDownloading, Message: "Downloading Codex adapter"}},
+		AgentCatalog: acp.AgentCatalog{
+			"codex": {ManagedAdapter: "codex", Model: "gpt-5.5"},
+		},
+	}).Handler()
+
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/onboarding", nil))
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var got struct {
+		ACP []struct {
+			Agent          string `json:"agent"`
+			Authenticated  bool   `json:"authenticated"`
+			Available      bool   `json:"available"`
+			Reason         string `json:"reason"`
+			ManagedAdapter struct {
+				State string `json:"state"`
+			} `json:"managed_adapter"`
+		} `json:"acp"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.ACP) != 1 || got.ACP[0].Agent != "codex" ||
+		!got.ACP[0].Authenticated ||
+		got.ACP[0].Available ||
+		got.ACP[0].ManagedAdapter.State != acpadapter.StateDownloading ||
+		!strings.Contains(got.ACP[0].Reason, "Downloading Codex adapter") {
+		t.Fatalf("unexpected codex probe: %#v", got.ACP)
 	}
 }
 

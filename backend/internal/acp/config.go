@@ -25,8 +25,6 @@ const (
 	AuthModeAuto        = "auto"
 	AuthModeExistingCLI = "existing_cli"
 	AuthModeJazProfile  = "jaz_profile"
-
-	codexACPPackage = "@jazchat/codex-acp@0.16.7"
 )
 
 func CanonicalAgentName(name string) string {
@@ -74,6 +72,7 @@ func systemPromptMeta(agent, prompt string) map[string]any {
 type Config struct {
 	Agents      map[string]AgentConfig
 	AgentSource AgentConfigSource
+	Adapters    AdapterResolver
 	Root        string
 	Workspace   string
 	Env         map[string]string
@@ -90,6 +89,8 @@ type Config struct {
 type AgentConfig struct {
 	Command                 string
 	Args                    []string
+	ManagedAdapter          string
+	ManagedAdapterArgs      []string
 	Local                   bool
 	ProviderMode            string
 	ModelProviderCapability string
@@ -104,7 +105,7 @@ type AgentConfig struct {
 }
 
 func (c AgentConfig) RequiresCommand() bool {
-	return !c.Local && strings.TrimSpace(c.URL) == ""
+	return !c.Local && strings.TrimSpace(c.URL) == "" && strings.TrimSpace(c.ManagedAdapter) == ""
 }
 
 func (c AgentConfig) SupportsAuth() bool {
@@ -159,6 +160,16 @@ type AgentAuthConfig struct {
 	Path string `json:"path,omitempty"`
 }
 
+type AdapterLaunch struct {
+	Command string
+	Args    []string
+	Env     map[string]string
+}
+
+type AdapterResolver interface {
+	ResolveAdapter(ctx context.Context, name string) (AdapterLaunch, error)
+}
+
 type AgentCatalog map[string]AgentConfig
 
 type AgentConfigSource interface {
@@ -197,8 +208,7 @@ func BuiltinAgents() AgentCatalog {
 	return AgentCatalog{
 		AgentCodex: codexBuiltinAgent(runtime.GOOS),
 		AgentClaude: {
-			Command:         "npx",
-			Args:            []string{"-y", "@agentclientprotocol/claude-agent-acp@0.44.0"},
+			ManagedAdapter:  "claude",
 			Model:           "default",
 			ReasoningEffort: "xhigh",
 		},
@@ -226,15 +236,10 @@ func BuiltinAgents() AgentCatalog {
 	}
 }
 
-func codexBuiltinAgent(goos string) AgentConfig {
-	command := "npx"
-	if goos == "windows" {
-		command = "npx.cmd"
-	}
+func codexBuiltinAgent(_ string) AgentConfig {
 	return AgentConfig{
-		Command: command,
-		Args: []string{
-			"-y", codexACPPackage,
+		ManagedAdapter: "codex",
+		ManagedAdapterArgs: []string{
 			"-c", `sandbox_mode="danger-full-access"`,
 			"-c", `approval_policy="never"`,
 			"-c", `features.tool_search_always_defer_mcp_tools=true`,
@@ -248,7 +253,7 @@ func codexBuiltinAgent(goos string) AgentConfig {
 func MergeAgents(base, override map[string]AgentConfig) AgentCatalog {
 	out := AgentCatalog{}
 	for name, cfg := range base {
-		out[CanonicalAgentName(name)] = cfg
+		out[CanonicalAgentName(name)] = canonicalAgentConfig(cfg)
 	}
 	for name, cfg := range override {
 		name = CanonicalAgentName(name)
@@ -256,21 +261,46 @@ func MergeAgents(base, override map[string]AgentConfig) AgentCatalog {
 			out[name] = mergeAgentConfig(current, cfg)
 			continue
 		}
-		out[name] = cfg
+		out[name] = canonicalAgentConfig(cfg)
 	}
 	return out
 }
 
+func canonicalAgentConfig(cfg AgentConfig) AgentConfig {
+	url := strings.TrimSpace(cfg.URL)
+	adapter := strings.TrimSpace(cfg.ManagedAdapter)
+	command := strings.TrimSpace(cfg.Command)
+	switch {
+	case cfg.Local:
+		cfg.useLocalLaunch()
+	case url != "":
+		cfg.useURLLaunch(url, strings.TrimSpace(cfg.Token))
+	case adapter != "":
+		cfg.useManagedAdapterLaunch(adapter, cfg.ManagedAdapterArgs)
+	case command != "":
+		cfg.useCommandLaunch(command, cfg.Args)
+	}
+	return cfg
+}
+
 func mergeAgentConfig(base, override AgentConfig) AgentConfig {
 	next := base
-	if strings.TrimSpace(override.Command) != "" {
-		next.Command = override.Command
+	url := strings.TrimSpace(override.URL)
+	adapter := strings.TrimSpace(override.ManagedAdapter)
+	command := strings.TrimSpace(override.Command)
+	switch {
+	case override.Local:
+		next.useLocalLaunch()
+	case url != "":
+		next.useURLLaunch(url, "")
+	case adapter != "":
+		next.useManagedAdapterLaunch(adapter, override.ManagedAdapterArgs)
+	case command != "":
+		next.useCommandLaunch(command, override.Args)
+	case override.ManagedAdapterArgs != nil && strings.TrimSpace(next.ManagedAdapter) != "":
+		next.ManagedAdapterArgs = append([]string(nil), override.ManagedAdapterArgs...)
+	case override.Args != nil && next.RequiresCommand():
 		next.Args = append([]string(nil), override.Args...)
-	} else if override.Args != nil {
-		next.Args = append([]string(nil), override.Args...)
-	}
-	if override.Local {
-		next.Local = true
 	}
 	if strings.TrimSpace(override.ProviderMode) != "" {
 		next.ProviderMode = override.ProviderMode
@@ -287,11 +317,8 @@ func mergeAgentConfig(base, override AgentConfig) AgentConfig {
 	if strings.TrimSpace(override.ReasoningEffort) != "" {
 		next.ReasoningEffort = override.ReasoningEffort
 	}
-	if strings.TrimSpace(override.URL) != "" {
-		next.URL = override.URL
-	}
-	if strings.TrimSpace(override.Token) != "" {
-		next.Token = override.Token
+	if token := strings.TrimSpace(override.Token); token != "" && strings.TrimSpace(next.URL) != "" {
+		next.Token = token
 	}
 	next.Auth = mergeAgentAuthConfig(next.Auth, override.Auth)
 	if override.Env != nil {
@@ -301,6 +328,46 @@ func mergeAgentConfig(base, override AgentConfig) AgentConfig {
 		next.Cwd = override.Cwd
 	}
 	return next
+}
+
+func (c *AgentConfig) useCommandLaunch(command string, args []string) {
+	c.Command = command
+	c.Args = append([]string(nil), args...)
+	c.ManagedAdapter = ""
+	c.ManagedAdapterArgs = nil
+	c.Local = false
+	c.URL = ""
+	c.Token = ""
+}
+
+func (c *AgentConfig) useManagedAdapterLaunch(adapter string, args []string) {
+	c.Command = ""
+	c.Args = nil
+	c.ManagedAdapter = adapter
+	c.ManagedAdapterArgs = append([]string(nil), args...)
+	c.Local = false
+	c.URL = ""
+	c.Token = ""
+}
+
+func (c *AgentConfig) useURLLaunch(url, token string) {
+	c.Command = ""
+	c.Args = nil
+	c.ManagedAdapter = ""
+	c.ManagedAdapterArgs = nil
+	c.Local = false
+	c.URL = url
+	c.Token = token
+}
+
+func (c *AgentConfig) useLocalLaunch() {
+	c.Command = ""
+	c.Args = nil
+	c.ManagedAdapter = ""
+	c.ManagedAdapterArgs = nil
+	c.Local = true
+	c.URL = ""
+	c.Token = ""
 }
 
 func mergeAgentAuthConfig(base, override AgentAuthConfig) AgentAuthConfig {
