@@ -53,9 +53,9 @@ func (b *LocalBackend) Call(ctx context.Context, input ActionInput) (ActionOutpu
 	action := strings.ToLower(strings.TrimSpace(input.Action))
 	input.Action = action
 	switch action {
-	case "status":
+	case ActionStatus:
 		return b.status(ctx, input)
-	case "tabs":
+	case ActionTabs:
 		return b.tabs(ctx)
 	}
 	page, err := b.page(ctx, input.Session)
@@ -63,31 +63,31 @@ func (b *LocalBackend) Call(ctx context.Context, input ActionInput) (ActionOutpu
 		return ActionOutput{}, err
 	}
 	switch action {
-	case "navigate":
+	case ActionNavigate:
 		return page.navigate(ctx, input.URL)
-	case "snapshot":
+	case ActionSnapshot:
 		return page.snapshot(ctx)
-	case "state":
+	case ActionState:
 		return page.semanticState(ctx)
-	case "screenshot":
+	case ActionScreenshot:
 		return page.screenshot(ctx)
-	case "click":
+	case ActionClick:
 		return page.click(ctx, input.Selector)
-	case "hover":
+	case ActionHover:
 		return page.hover(ctx, input.Selector)
-	case "type":
+	case ActionType:
 		return page.typeText(ctx, input.Selector, input.Text)
-	case "fill":
+	case ActionFill:
 		return page.fill(ctx, input.Selector, input.Text)
-	case "select":
+	case ActionSelect:
 		return page.selectOption(ctx, input.Selector, input.Text)
-	case "press":
+	case ActionPress:
 		return page.press(ctx, input.Key)
-	case "scroll":
+	case ActionScroll:
 		return page.scroll(ctx, input.Selector, input.Text, input.Amount)
-	case "wait":
+	case ActionWait:
 		return page.wait(ctx, input.Selector, input.Text, input.Amount)
-	case "pdf":
+	case ActionPDF:
 		return page.pdf(ctx)
 	default:
 		return ActionOutput{}, fmt.Errorf("unsupported browser action %q", input.Action)

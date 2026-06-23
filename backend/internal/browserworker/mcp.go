@@ -107,7 +107,7 @@ func contentResult(out ActionOutput) *mcp.CallToolResult {
 }
 
 func actionSchema() map[string]any {
-	actions := []string{"navigate", "snapshot", "state", "screenshot", "click", "type", "fill", "press", "hover", "scroll", "select", "wait", "tabs", "pdf", "status"}
+	actions := append(SupportedExtensionActions(), ActionPDF)
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
