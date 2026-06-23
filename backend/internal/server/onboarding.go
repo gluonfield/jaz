@@ -286,6 +286,19 @@ func (s *Server) managedAdapterStatus(cfg acp.AgentConfig) *onboardingACPAdapter
 	}
 }
 
+// adapterBundleDir is the dir holding a managed adapter's binaries, or "".
+func (s *Server) adapterBundleDir(adapter string) string {
+	adapter = strings.TrimSpace(adapter)
+	if adapter == "" || s.ACPAdapters == nil {
+		return ""
+	}
+	path := strings.TrimSpace(s.ACPAdapters.Status(adapter).Path)
+	if path == "" {
+		return ""
+	}
+	return filepath.Dir(path)
+}
+
 func agentAppInstall(name string) (string, bool) {
 	if name == acp.AgentClaude && appBundleInstalled("Claude.app") {
 		return "Claude app", true
@@ -385,5 +398,6 @@ func (s *Server) acpProbeConfig(name string, defaults agentsettings.AgentDefault
 	if cfg.UsesModelProvider() {
 		cfg = cfg.NormalizeProviderModel(defaultModelProvider)
 	}
+	cfg.AdapterBinDir = s.adapterBundleDir(cfg.ManagedAdapter)
 	return cfg, command, nil
 }
