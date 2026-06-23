@@ -36,13 +36,21 @@ const (
 	highLevelCheck highLevelKind = "check"
 )
 
-var pageStateCache sync.Map
+type HighLevelExecutor struct {
+	backend Backend
+	mu      sync.Mutex
+	states  map[string]PageState
+}
 
-func AddHighLevelMCPTools(server *mcp.Server, backend Backend) {
+func NewHighLevelExecutor(backend Backend) *HighLevelExecutor {
 	if backend == nil {
 		backend = UnavailableBackend{}
 	}
-	tools := highLevelTools{backend: backend}
+	return &HighLevelExecutor{backend: backend, states: map[string]PageState{}}
+}
+
+func AddHighLevelMCPTools(server *mcp.Server, backend Backend) {
+	tools := highLevelTools{executor: NewHighLevelExecutor(backend)}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        ToolDo,
 		Title:       "Do browser action",
@@ -67,7 +75,7 @@ func RemoveHighLevelMCPTools(server *mcp.Server) {
 }
 
 type highLevelTools struct {
-	backend Backend
+	executor *HighLevelExecutor
 }
 
 func (t highLevelTools) Do(ctx context.Context, req *mcp.CallToolRequest, input HighLevelInput) (*mcp.CallToolResult, ActionOutput, error) {
@@ -84,39 +92,39 @@ func (t highLevelTools) Check(ctx context.Context, req *mcp.CallToolRequest, inp
 
 func (t highLevelTools) run(ctx context.Context, req *mcp.CallToolRequest, kind highLevelKind, input HighLevelInput) (*mcp.CallToolResult, ActionOutput, error) {
 	session := mcpsession.SessionID(req)
-	out, err := runHighLevel(ctx, t.backend, session, kind, input)
+	out, err := t.executor.Run(ctx, session, kind, input)
 	if err != nil {
 		return nil, ActionOutput{}, err
 	}
 	return contentResult(out), out, nil
 }
 
-func runHighLevel(ctx context.Context, backend Backend, session string, kind highLevelKind, input HighLevelInput) (ActionOutput, error) {
+func (e *HighLevelExecutor) Run(ctx context.Context, session string, kind highLevelKind, input HighLevelInput) (ActionOutput, error) {
 	input.Action = strings.ToLower(strings.TrimSpace(input.Action))
 	if input.URL != "" && !(kind == highLevelDo && input.Action == "navigate") {
-		if _, err := backend.Call(ctx, ActionInput{Action: "navigate", URL: input.URL, Session: session}); err != nil {
+		if _, err := e.backend.Call(ctx, ActionInput{Action: "navigate", URL: input.URL, Session: session}); err != nil {
 			return ActionOutput{}, err
 		}
 	}
 	switch kind {
 	case highLevelGet:
-		return getHighLevelState(ctx, backend, session, input)
+		return e.getState(ctx, session, input)
 	case highLevelCheck:
-		return checkHighLevelState(ctx, backend, session, input)
+		return e.checkState(ctx, session, input)
 	default:
-		return doHighLevelAction(ctx, backend, session, input)
+		return e.doAction(ctx, session, input)
 	}
 }
 
-func getHighLevelState(ctx context.Context, backend Backend, session string, input HighLevelInput) (ActionOutput, error) {
-	out, _, _, err := stateForSession(ctx, backend, session)
+func (e *HighLevelExecutor) getState(ctx context.Context, session string, input HighLevelInput) (ActionOutput, error) {
+	out, _, _, err := e.state(ctx, session)
 	if err != nil {
 		return ActionOutput{}, err
 	}
-	return attachVisual(ctx, backend, session, input, out)
+	return e.attachVisual(ctx, session, input, out)
 }
 
-func checkHighLevelState(ctx context.Context, backend Backend, session string, input HighLevelInput) (ActionOutput, error) {
+func (e *HighLevelExecutor) checkState(ctx context.Context, session string, input HighLevelInput) (ActionOutput, error) {
 	var checks []string
 	var ok = true
 	selector := strings.TrimSpace(input.Selector)
@@ -125,7 +133,7 @@ func checkHighLevelState(ctx context.Context, backend Backend, session string, i
 		text = quotedText(input.Task)
 	}
 	if selector != "" {
-		_, err := backend.Call(ctx, ActionInput{Action: "wait", Selector: selector, Amount: shortWait(input.Amount), Session: session})
+		_, err := e.backend.Call(ctx, ActionInput{Action: "wait", Selector: selector, Amount: shortWait(input.Amount), Session: session})
 		if err != nil {
 			ok = false
 			checks = append(checks, "selector missing: "+selector)
@@ -133,7 +141,7 @@ func checkHighLevelState(ctx context.Context, backend Backend, session string, i
 			checks = append(checks, "selector present: "+selector)
 		}
 	}
-	stateOut, state, hasState, err := stateForSession(ctx, backend, session)
+	stateOut, state, hasState, err := e.state(ctx, session)
 	if err != nil {
 		return ActionOutput{}, err
 	}
@@ -150,27 +158,27 @@ func checkHighLevelState(ctx context.Context, backend Backend, session string, i
 		checks = append(checks, "no exact selector or quoted text was supplied; use the compact state below as evidence")
 	}
 	stateOut.Text = fmt.Sprintf("Check: %t\n%s\n\n%s", ok, strings.Join(checks, "\n"), stateOut.Text)
-	return attachVisual(ctx, backend, session, input, stateOut)
+	return e.attachVisual(ctx, session, input, stateOut)
 }
 
-func doHighLevelAction(ctx context.Context, backend Backend, session string, input HighLevelInput) (ActionOutput, error) {
+func (e *HighLevelExecutor) doAction(ctx context.Context, session string, input HighLevelInput) (ActionOutput, error) {
 	action := input.Action
 	if action == "" {
 		action = inferHighLevelAction(input)
 	}
 	if action == "" {
-		return getHighLevelState(ctx, backend, session, input)
+		return e.getState(ctx, session, input)
 	}
 	if action == "navigate" {
-		out, err := backend.Call(ctx, ActionInput{Action: "navigate", URL: input.URL, Session: session})
+		out, err := e.backend.Call(ctx, ActionInput{Action: "navigate", URL: input.URL, Session: session})
 		if err != nil {
 			return ActionOutput{}, err
 		}
-		return attachStateAfterAction(ctx, backend, session, input, out)
+		return e.attachStateAfterAction(ctx, session, input, out)
 	}
 	selector := strings.TrimSpace(input.Selector)
 	if selector == "" && actionNeedsTarget(action) {
-		_, state, hasState, err := stateForSession(ctx, backend, session)
+		_, state, hasState, err := e.state(ctx, session)
 		if err != nil {
 			return ActionOutput{}, err
 		}
@@ -181,7 +189,7 @@ func doHighLevelAction(ctx context.Context, backend Backend, session string, inp
 			return ActionOutput{}, errors.New("could not identify a browser target; call browser_get or pass selector/ref")
 		}
 	}
-	out, err := backend.Call(ctx, ActionInput{
+	out, err := e.backend.Call(ctx, ActionInput{
 		Action:   action,
 		Selector: selector,
 		Text:     input.Text,
@@ -192,21 +200,21 @@ func doHighLevelAction(ctx context.Context, backend Backend, session string, inp
 	if err != nil {
 		return ActionOutput{}, err
 	}
-	return attachStateAfterAction(ctx, backend, session, input, out)
+	return e.attachStateAfterAction(ctx, session, input, out)
 }
 
-func attachStateAfterAction(ctx context.Context, backend Backend, session string, input HighLevelInput, actionOut ActionOutput) (ActionOutput, error) {
-	_, _ = backend.Call(ctx, ActionInput{Action: "wait", Amount: shortWait(input.Amount), Session: session})
-	stateOut, _, _, err := stateForSession(ctx, backend, session)
+func (e *HighLevelExecutor) attachStateAfterAction(ctx context.Context, session string, input HighLevelInput, actionOut ActionOutput) (ActionOutput, error) {
+	_, _ = e.backend.Call(ctx, ActionInput{Action: "wait", Amount: shortWait(input.Amount), Session: session})
+	stateOut, _, _, err := e.state(ctx, session)
 	if err == nil && strings.TrimSpace(stateOut.Text) != "" {
 		actionOut.Text = strings.TrimSpace(actionOut.Text + "\n\n" + stateOut.Text)
 		actionOut.Data = stateOut.Data
 	}
-	return attachVisual(ctx, backend, session, input, actionOut)
+	return e.attachVisual(ctx, session, input, actionOut)
 }
 
-func stateForSession(ctx context.Context, backend Backend, session string) (ActionOutput, PageState, bool, error) {
-	out, err := backend.Call(ctx, ActionInput{Action: "state", Session: session})
+func (e *HighLevelExecutor) state(ctx context.Context, session string) (ActionOutput, PageState, bool, error) {
+	out, err := e.backend.Call(ctx, ActionInput{Action: "state", Session: session})
 	if err != nil {
 		return ActionOutput{}, PageState{}, false, err
 	}
@@ -214,18 +222,21 @@ func stateForSession(ctx context.Context, backend Backend, session string) (Acti
 	if !ok {
 		return out, PageState{}, false, nil
 	}
-	out.Text = stateTextWithDiff(session, state)
+	out.Text = e.stateTextWithDiff(session, state)
 	return out, state, true, nil
 }
 
-func stateTextWithDiff(session string, state PageState) string {
+func (e *HighLevelExecutor) stateTextWithDiff(session string, state PageState) string {
 	text := formatPageState(state)
-	if previous, ok := pageStateCache.Load(session); ok {
-		if diff := pageStateDiff(previous.(PageState), state); diff != "" {
+	e.mu.Lock()
+	previous, ok := e.states[session]
+	e.states[session] = state
+	e.mu.Unlock()
+	if ok {
+		if diff := pageStateDiff(previous, state); diff != "" {
 			text = diff + "\n\n" + text
 		}
 	}
-	pageStateCache.Store(session, state)
 	return text
 }
 
@@ -246,11 +257,11 @@ func pageStateDiff(previous, current PageState) string {
 	return "State diff: " + strings.Join(parts, ", ")
 }
 
-func attachVisual(ctx context.Context, backend Backend, session string, input HighLevelInput, out ActionOutput) (ActionOutput, error) {
+func (e *HighLevelExecutor) attachVisual(ctx context.Context, session string, input HighLevelInput, out ActionOutput) (ActionOutput, error) {
 	if !wantsVisual(input) {
 		return out, nil
 	}
-	shot, err := backend.Call(ctx, ActionInput{Action: "screenshot", Session: session})
+	shot, err := e.backend.Call(ctx, ActionInput{Action: "screenshot", Session: session})
 	if err != nil {
 		out.Text = strings.TrimSpace(out.Text + "\n\nScreenshot unavailable: " + err.Error())
 		return out, nil

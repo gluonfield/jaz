@@ -54,7 +54,7 @@ func SaveBrowserSettings(store storage.SettingsStorage, settings BrowserSettings
 func BrowserEnabled(store storage.SettingsStorage) bool {
 	settings, err := LoadBrowserSettings(store)
 	if err != nil {
-		return true
+		return false
 	}
 	return settings.Enabled
 }
