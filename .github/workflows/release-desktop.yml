@@ -171,7 +171,7 @@ jobs:
           APPLE_API_KEY: ${{ runner.temp }}/apple/AuthKey_${{ vars.APPLE_API_KEY_ID }}.p8
           APPLE_API_KEY_ID: ${{ vars.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ vars.APPLE_API_ISSUER }}
-          VITE_POSTHOG_TOKEN: ${{ vars.POSTHOG_PROJECT_TOKEN }}
+          VITE_POSTHOG_TOKEN: ${{ secrets.POSTHOG_PROJECT_TOKEN }}
           VITE_POSTHOG_HOST: https://us.i.posthog.com
         run: |
           bun run build:backend
@@ -244,6 +244,9 @@ jobs:
 
       - name: Build
         working-directory: frontend
+        env:
+          VITE_POSTHOG_TOKEN: ${{ secrets.POSTHOG_PROJECT_TOKEN }}
+          VITE_POSTHOG_HOST: https://us.i.posthog.com
         run: |
           bun run build:backend
           bun run build:bundle

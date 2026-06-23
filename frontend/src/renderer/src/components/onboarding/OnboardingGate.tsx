@@ -8,7 +8,7 @@ import { authProviderLabel } from '@/lib/agentLabel'
 import { completeOnboarding, onboardingQuery } from '@/lib/api/onboarding'
 import { cloneAgentSettings, compactKeys, startACPAuthLogin } from '@/lib/api/settings'
 import type { ACPAgentAuth, AgentSettings, OnboardingStatus } from '@/lib/api/types'
-import { isLoopbackUrl, useConnection } from '@/lib/connection'
+import { disconnectBackend, isLoopbackUrl, persistLaunchPreference, useConnection } from '@/lib/connection'
 import { localDeviceLabel } from '@/lib/deviceLabel'
 import { useACPLoginPolling } from '@/lib/hooks/useACPLoginPolling'
 import { keys } from '@/lib/query/keys'
@@ -26,18 +26,26 @@ const MEMORY_AGENT_PRIORITY = ['codex', 'claude', 'opencode', 'grok']
 
 export function OnboardingGate({ children }: { children: ReactNode }) {
   const onboarding = useQuery(onboardingQuery)
+  const { url } = useConnection()
+  const completed = onboarding.data?.completed === true
+
+  // Commit this backend as the launch default only once its onboarding is done,
+  // so an unfinished remote never becomes the boot target and re-traps a restart.
+  useEffect(() => {
+    if (completed) persistLaunchPreference(url)
+  }, [completed, url])
 
   if (window.jaz?.windowKind === 'board') return <>{children}</>
   if (onboarding.isPending) {
     return (
-      <OnboardingShell>
+      <OnboardingShell onDisconnect={disconnectBackend}>
         <SkeletonRows count={4} />
       </OnboardingShell>
     )
   }
   if (onboarding.isError) {
     return (
-      <OnboardingShell>
+      <OnboardingShell onDisconnect={disconnectBackend}>
         <StatusBlock
           icon={<AlertCircle size={16} />}
           title="Couldn't load onboarding"
@@ -46,11 +54,25 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       </OnboardingShell>
     )
   }
-  if (onboarding.data.completed) return <>{children}</>
-  return <OnboardingScreen status={onboarding.data} onRefresh={() => void onboarding.refetch()} />
+  if (completed) return <>{children}</>
+  return (
+    <OnboardingScreen
+      status={onboarding.data}
+      onRefresh={() => void onboarding.refetch()}
+      onDisconnect={disconnectBackend}
+    />
+  )
 }
 
-function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onRefresh: () => void }) {
+function OnboardingScreen({
+  status,
+  onRefresh,
+  onDisconnect,
+}: {
+  status: OnboardingStatus
+  onRefresh: () => void
+  onDisconnect: () => void
+}) {
   const queryClient = useQueryClient()
   const toast = useToast()
   const connection = useConnection()
@@ -144,7 +166,7 @@ function OnboardingScreen({ status, onRefresh }: { status: OnboardingStatus; onR
   })
 
   return (
-    <OnboardingShell>
+    <OnboardingShell onDisconnect={onDisconnect}>
       <motion.div
         variants={onboardingStagger}
         initial="hidden"
@@ -233,10 +255,23 @@ function StatusBlock({ icon, title, text }: { icon: ReactNode; title: string; te
   )
 }
 
-function OnboardingShell({ children }: { children: ReactNode }) {
+function OnboardingShell({ children, onDisconnect }: { children: ReactNode; onDisconnect?: () => void }) {
   return (
     <div className="flex h-full flex-col bg-bg">
-      <div className="titlebar-drag h-[52px] shrink-0" />
+      {/* Always an escape back to the connect chooser, so onboarding a backend
+          you can't finish never traps the app. Right-aligned to clear the macOS
+          traffic lights. */}
+      <div className="titlebar-drag flex h-[52px] shrink-0 items-center justify-end px-3">
+        {onDisconnect ? (
+          <button
+            type="button"
+            onClick={onDisconnect}
+            className="rounded-full px-2.5 py-1.5 text-[12px] font-medium text-ink-2 transition-colors duration-150 [-webkit-app-region:no-drag] hover:bg-surface-2 hover:text-ink"
+          >
+            Use a different backend
+          </button>
+        ) : null}
+      </div>
       <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-5 pb-[52px]">
         <div className="flex min-h-full w-full items-start justify-center py-6 md:py-10">
           {children}

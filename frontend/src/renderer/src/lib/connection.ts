@@ -10,7 +10,7 @@ import {
   setApiAuthToken,
   setApiBaseUrl,
 } from './api/client'
-import { rememberBackend } from './backends'
+import { rememberBackend, removeKnownBackend } from './backends'
 import { getDeviceProfile } from './deviceIdentity'
 import { queryClient } from './query/queryClient'
 
@@ -149,6 +149,11 @@ let lostAt = 0
 // (a mid-session machine switch); null on first-run/reconnect.
 type ConnectionSnapshot = { url: string; preference: ConnectionPreference | null }
 let preflightSnapshot: ConnectionSnapshot | null = null
+// The backend the React Query cache currently holds data for. Tracked apart
+// from state.url because markPendingApproval parks the pending URL in state.url
+// before approval, which would otherwise hide a real backend switch from the
+// cache-clear check in markConnected.
+let cacheOwnerUrl = ''
 
 // Polls in every state: while connected it watches for loss; while
 // reconnecting/disconnected it keeps probing so the app recovers by itself
@@ -185,15 +190,16 @@ function markConnected(url: string) {
   if (pairingTimer) clearTimeout(pairingTimer)
   pairingGen += 1
   preflightSnapshot = null
-  const previous = state.url
+  const normalized = normalizeBaseUrl(url)
   setApiBaseUrl(url)
   failures = 0
   // Every successful connection is a switch target next time; local is implicit.
   if (!isLoopbackUrl(url)) rememberBackend(url, new Date().toISOString())
-  // Everything cached belongs to whichever backend answered before; drop it
-  // so the app refetches against the one we just connected to.
-  if (normalizeBaseUrl(previous) !== normalizeBaseUrl(url)) queryClient.clear()
-  setState({ status: 'connected', url: normalizeBaseUrl(url), pairing: null, error: null })
+  // The cache belongs to the backend we were last connected to; drop it when we
+  // actually connect somewhere new so the app refetches against the right one.
+  if (cacheOwnerUrl !== normalized) queryClient.clear()
+  cacheOwnerUrl = normalized
+  setState({ status: 'connected', url: normalized, pairing: null, error: null })
   schedulePoll()
 }
 
@@ -233,7 +239,7 @@ async function registerDevice(url: string, rootToken: string): Promise<string | 
     if (res.ok && body?.token) {
       setApiAuthToken(url, body.token)
       markConnected(url)
-      savePreference(isLoopbackUrl(url) ? { mode: 'local' } : { mode: 'remote', remoteUrl: normalizeBaseUrl(url) })
+      rememberLocalLaunch(url)
       return null
     }
     if (res.status === 202 && body?.pairing && body.pairing_secret) {
@@ -244,7 +250,7 @@ async function registerDevice(url: string, rootToken: string): Promise<string | 
         deviceName: body.pairing.device?.name || profile.name,
         expiresAt: body.pairing.expires_at,
       })
-      savePreference(isLoopbackUrl(url) ? { mode: 'local' } : { mode: 'remote', remoteUrl: normalizeBaseUrl(url) })
+      rememberLocalLaunch(url)
       return null
     }
     return body?.error || `Device registration failed with ${res.status}`
@@ -277,7 +283,7 @@ async function startPairing(url: string): Promise<string | null> {
       deviceName: body.pairing.device?.name || profile.name,
       expiresAt: body.pairing.expires_at,
     })
-    savePreference(isLoopbackUrl(url) ? { mode: 'local' } : { mode: 'remote', remoteUrl: normalizeBaseUrl(url) })
+    rememberLocalLaunch(url)
     return null
   } catch {
     return 'Could not create a device approval request'
@@ -348,7 +354,10 @@ export function connectionPreference(): ConnectionPreference | null {
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<ConnectionPreference>
     if (parsed.mode === 'local') return { mode: 'local' }
-    if (parsed.mode === 'remote') return { mode: 'remote', remoteUrl: parsed.remoteUrl }
+    // A remote preference is only usable with its URL; a malformed one falls
+    // through to null so init takes the first-launch (local) path instead of
+    // reconnecting to whatever stale base URL it would otherwise borrow.
+    if (parsed.mode === 'remote' && parsed.remoteUrl) return { mode: 'remote', remoteUrl: parsed.remoteUrl }
     return null
   } catch {
     return null
@@ -365,6 +374,45 @@ function savePreference(pref: ConnectionPreference): void {
 
 export function clearConnectionPreference(): void {
   localStorage.removeItem(PREFERENCE_KEY)
+}
+
+// Persist the launch default eagerly only for a local backend, which is always
+// usable. A remote is deferred until its onboarding is confirmed complete (see
+// persistLaunchPreference), so bailing out of an unfinished remote never leaves
+// a restart auto-connecting straight back into a setup it can't finish.
+function rememberLocalLaunch(url: string): void {
+  if (isLoopbackUrl(url)) savePreference({ mode: 'local' })
+}
+
+// Commit a backend as the one to reach on launch. Called once onboarding for it
+// is confirmed complete, so only a usable backend becomes the boot default —
+// including remotes, which rememberLocalLaunch deliberately skips.
+export function persistLaunchPreference(url: string): void {
+  savePreference(isLoopbackUrl(url) ? { mode: 'local' } : { mode: 'remote', remoteUrl: normalizeBaseUrl(url) })
+}
+
+// Forget a saved backend everywhere: drop it from the registry and its key, and
+// clear the launch preference if it pointed here, so a restart never keeps
+// aiming at a backend the user just removed.
+export function forgetBackend(url: string): void {
+  removeKnownBackend(url)
+  const pref = connectionPreference()
+  if (pref?.mode === 'remote' && pref.remoteUrl && normalizeBaseUrl(pref.remoteUrl) === normalizeBaseUrl(url)) {
+    clearConnectionPreference()
+  }
+}
+
+// Leave the current backend for the connect chooser without auto-reconnecting.
+// The escape from a backend whose onboarding you can't or won't finish: it stops
+// the health poll so it can't flip back to connected, and leaves the launch
+// preference pointing at the previously set-up backend (or nothing).
+export function disconnectBackend(): void {
+  if (pollTimer) clearTimeout(pollTimer)
+  if (pairingTimer) clearTimeout(pairingTimer)
+  pollGen += 1
+  pairingGen += 1
+  preflightSnapshot = null
+  setState({ status: 'disconnected', pairing: null, error: null })
 }
 
 export function cancelPendingApproval(): void {
@@ -427,7 +475,8 @@ export async function connectRemote(url: string): Promise<string | null> {
     }
   }
   markConnected(target)
-  savePreference({ mode: 'remote', remoteUrl: target })
+  // A remote becomes the launch default only once its onboarding completes, so
+  // a restart never auto-reconnects into a setup the user bailed on.
   return null
 }
 
@@ -481,8 +530,13 @@ async function init() {
     return
   }
 
+  // Both remaining paths target the local backend. Aim the store — and the
+  // recovery poll they fall back to — at local, never the stale persisted base
+  // URL, which could be a remote the user connected to but bailed on.
+  const localUrl = normalizeBaseUrl(localBaseUrl())
+
   if (pref?.mode === 'local') {
-    setState({ status: 'checking', error: null })
+    setState({ status: 'checking', url: localUrl, error: null })
     // startLocal() flips the store to connected on success; only a genuine
     // failure (or a non-desktop runtime) falls through to the choice screen.
     const error = await startLocal()
@@ -493,17 +547,16 @@ async function init() {
     return
   }
 
-  // First launch, no saved preference. Adopt a backend if one already answers,
-  // but otherwise present the welcome choice with NO error — there is no
-  // expectation to disappoint yet.
-  const url = state.url
-  const error = await verifyBackend(url)
+  // First launch, no saved preference. Adopt local if it already answers,
+  // otherwise present the welcome choice with NO error — nothing to disappoint
+  // yet.
+  const error = await verifyBackend(localUrl)
   if (!error) {
     savePreference({ mode: 'local' })
-    markConnected(url)
+    markConnected(localUrl)
     return
   }
-  setState({ status: 'disconnected', error: null })
+  setState({ status: 'disconnected', url: localUrl, error: null })
   schedulePoll()
 }
 

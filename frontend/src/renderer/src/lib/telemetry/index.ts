@@ -4,6 +4,7 @@ const TELEMETRY_EVENT = 'jaz:telemetry'
 const DEFAULT_HOST = 'https://us.i.posthog.com'
 
 type TelemetryEvent =
+  | 'app_opened'
   | 'message_sent'
   | 'thread_created'
   | 'loop_created'
@@ -62,6 +63,7 @@ export function setTelemetryEnabled(enabled: boolean) {
 }
 
 export const telemetry = {
+  appOpened,
   loopCreated,
   loopRunStarted,
   messageSent,
@@ -69,6 +71,10 @@ export const telemetry = {
   enabled: telemetryEnabled,
   setEnabled: setTelemetryEnabled,
   subscribe,
+}
+
+function appOpened() {
+  capture('app_opened')
 }
 
 function messageSent(input: MessageSent) {
@@ -120,7 +126,6 @@ function capture(event: TelemetryEvent, properties: TelemetryProperties = {}) {
     distinct_id: distinctID,
     properties: compactProperties({
       ...properties,
-      $process_person_profile: false,
       app: 'jaz',
       surface: window.jaz?.windowKind || 'main',
       telemetry_version: 1,
