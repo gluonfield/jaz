@@ -114,7 +114,7 @@ export function AuthLoginStatus({
         </div>
       ) : null}
 
-      {job && job.status === 'running' ? (
+      {job && showAuthDetails ? (
         <form
           onSubmit={(event) => {
             event.preventDefault()
