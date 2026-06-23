@@ -51,7 +51,6 @@ func runServe(args []string) error {
 			app.NewACPAgentCatalog,
 			app.NewRuntimeLayout,
 			app.NewStore,
-			sqlitestore.NewSearchQueries,
 			app.NewWorkspace,
 			app.NewMemory,
 			app.NewDeviceAuth,
@@ -66,7 +65,7 @@ func runServe(args []string) error {
 			acp.NewManager,
 			sessionlock.New,
 			sessionevents.New,
-			threads.NewService,
+			app.NewThreadService,
 			app.NewWidgetService,
 			app.NewWidgetSessionPublisher,
 			app.NewToolRegistry,
@@ -241,6 +240,7 @@ func startServer(
 		loops.WithAgentNames(manager.Agents),
 		loops.WithEvents(store, events),
 	)
+	jazTools.SetThreads(threadService)
 	jazTools.SetAgents(manager)
 	handler.Loops = loopService
 	handler.Widgets = widgetService

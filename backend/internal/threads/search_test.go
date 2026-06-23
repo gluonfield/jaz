@@ -40,7 +40,7 @@ func TestSearchFindsMessagesAndThreadMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	search := NewService(sqlitestore.NewSearchQueries(store))
+	search := NewService(sqlitestore.NewSearchQueries(store), store)
 	results, err := search.Search(context.Background(), SearchQuery{Query: "migra", Limit: 10})
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +92,7 @@ func TestSearchRanksActiveAboveArchived(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	search := NewService(sqlitestore.NewSearchQueries(store))
+	search := NewService(sqlitestore.NewSearchQueries(store), store)
 
 	// Default search still hides archived threads entirely.
 	results, err := search.Search(context.Background(), SearchQuery{Query: "deploy", Limit: 10})
@@ -137,7 +137,7 @@ func TestSearchIndexMaintenance(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	search := NewService(sqlitestore.NewSearchQueries(store))
+	search := NewService(sqlitestore.NewSearchQueries(store), store)
 	results, err := search.Search(context.Background(), SearchQuery{Query: "quartz"})
 	if err != nil {
 		t.Fatal(err)
@@ -175,7 +175,7 @@ func TestSearchHonorsCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err = NewService(sqlitestore.NewSearchQueries(store)).Search(ctx, SearchQuery{Query: "cancelled"})
+	_, err = NewService(sqlitestore.NewSearchQueries(store), store).Search(ctx, SearchQuery{Query: "cancelled"})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("error = %v, want context canceled", err)
 	}

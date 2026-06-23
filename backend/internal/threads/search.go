@@ -39,11 +39,12 @@ type SearchResult struct {
 }
 
 type Service struct {
-	store search.Querier
+	store   search.Querier
+	context ContextStore
 }
 
-func NewService(store search.Querier) *Service {
-	return &Service{store: store}
+func NewService(store search.Querier, context ContextStore) *Service {
+	return &Service{store: store, context: context}
 }
 
 type searchAccumulator struct {

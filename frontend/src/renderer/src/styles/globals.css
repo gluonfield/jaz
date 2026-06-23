@@ -213,13 +213,11 @@
   font-family: var(--font-mono);
   font-size: 0.8125em;
 }
+/* Fenced code blocks render through the CodeBlock component, which owns the
+   container chrome (header, copy button, padding). Keep the <pre> itself bare. */
 :where(.chat-prose, .file-prose) pre {
-  margin: 0.6em 0;
+  margin: 0;
   overflow-x: auto;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-card);
-  background: var(--color-surface);
-  padding: 0.6rem 0.75rem;
 }
 :where(.chat-prose, .file-prose) pre code {
   background: none;

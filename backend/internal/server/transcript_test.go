@@ -10,6 +10,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
+	"github.com/wins/jaz/backend/internal/threads"
 )
 
 func TestSessionTranscriptFiltersToolsAndRoles(t *testing.T) {
@@ -42,8 +43,8 @@ func TestSessionTranscriptFiltersToolsAndRoles(t *testing.T) {
 		t.Fatalf("transcript status = %d, body = %s", res.Code, res.Body.String())
 	}
 	var got struct {
-		Messages   []TranscriptMessage `json:"messages"`
-		ToolCounts map[string]int      `json:"tool_counts"`
+		Messages   []threads.TranscriptMessage `json:"messages"`
+		ToolCounts map[string]int              `json:"tool_counts"`
 	}
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)

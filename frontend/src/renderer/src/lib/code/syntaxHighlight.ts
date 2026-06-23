@@ -55,47 +55,49 @@ const DARK_THEME: CodeTheme = 'github-dark'
 const MAX_HIGHLIGHT_LINES = 2500
 const MAX_HIGHLIGHT_CHARS = 120 * 1024
 
+const LANGS = {
+  astro: () => import('@shikijs/langs/astro'),
+  bash: () => import('@shikijs/langs/bash'),
+  c: () => import('@shikijs/langs/c'),
+  cpp: () => import('@shikijs/langs/cpp'),
+  csharp: () => import('@shikijs/langs/csharp'),
+  css: () => import('@shikijs/langs/css'),
+  dockerfile: () => import('@shikijs/langs/dockerfile'),
+  go: () => import('@shikijs/langs/go'),
+  graphql: () => import('@shikijs/langs/graphql'),
+  html: () => import('@shikijs/langs/html'),
+  java: () => import('@shikijs/langs/java'),
+  js: () => import('@shikijs/langs/js'),
+  json: () => import('@shikijs/langs/json'),
+  jsonc: () => import('@shikijs/langs/jsonc'),
+  jsx: () => import('@shikijs/langs/jsx'),
+  kotlin: () => import('@shikijs/langs/kotlin'),
+  less: () => import('@shikijs/langs/less'),
+  lua: () => import('@shikijs/langs/lua'),
+  makefile: () => import('@shikijs/langs/makefile'),
+  md: () => import('@shikijs/langs/md'),
+  mdx: () => import('@shikijs/langs/mdx'),
+  php: () => import('@shikijs/langs/php'),
+  proto: () => import('@shikijs/langs/proto'),
+  python: () => import('@shikijs/langs/python'),
+  ruby: () => import('@shikijs/langs/ruby'),
+  rust: () => import('@shikijs/langs/rust'),
+  scss: () => import('@shikijs/langs/scss'),
+  sql: () => import('@shikijs/langs/sql'),
+  svelte: () => import('@shikijs/langs/svelte'),
+  swift: () => import('@shikijs/langs/swift'),
+  toml: () => import('@shikijs/langs/toml'),
+  ts: () => import('@shikijs/langs/ts'),
+  tsx: () => import('@shikijs/langs/tsx'),
+  vue: () => import('@shikijs/langs/vue'),
+  xml: () => import('@shikijs/langs/xml'),
+  yaml: () => import('@shikijs/langs/yaml'),
+  zig: () => import('@shikijs/langs/zig'),
+  zsh: () => import('@shikijs/langs/zsh'),
+} satisfies Record<CodeLanguage, unknown>
+
 const createHighlighter = createBundledHighlighter<CodeLanguage, CodeTheme>({
-  langs: {
-    astro: () => import('@shikijs/langs/astro'),
-    bash: () => import('@shikijs/langs/bash'),
-    c: () => import('@shikijs/langs/c'),
-    cpp: () => import('@shikijs/langs/cpp'),
-    csharp: () => import('@shikijs/langs/csharp'),
-    css: () => import('@shikijs/langs/css'),
-    dockerfile: () => import('@shikijs/langs/dockerfile'),
-    go: () => import('@shikijs/langs/go'),
-    graphql: () => import('@shikijs/langs/graphql'),
-    html: () => import('@shikijs/langs/html'),
-    java: () => import('@shikijs/langs/java'),
-    js: () => import('@shikijs/langs/js'),
-    json: () => import('@shikijs/langs/json'),
-    jsonc: () => import('@shikijs/langs/jsonc'),
-    jsx: () => import('@shikijs/langs/jsx'),
-    kotlin: () => import('@shikijs/langs/kotlin'),
-    less: () => import('@shikijs/langs/less'),
-    lua: () => import('@shikijs/langs/lua'),
-    makefile: () => import('@shikijs/langs/makefile'),
-    md: () => import('@shikijs/langs/md'),
-    mdx: () => import('@shikijs/langs/mdx'),
-    php: () => import('@shikijs/langs/php'),
-    proto: () => import('@shikijs/langs/proto'),
-    python: () => import('@shikijs/langs/python'),
-    ruby: () => import('@shikijs/langs/ruby'),
-    rust: () => import('@shikijs/langs/rust'),
-    scss: () => import('@shikijs/langs/scss'),
-    sql: () => import('@shikijs/langs/sql'),
-    svelte: () => import('@shikijs/langs/svelte'),
-    swift: () => import('@shikijs/langs/swift'),
-    toml: () => import('@shikijs/langs/toml'),
-    ts: () => import('@shikijs/langs/ts'),
-    tsx: () => import('@shikijs/langs/tsx'),
-    vue: () => import('@shikijs/langs/vue'),
-    xml: () => import('@shikijs/langs/xml'),
-    yaml: () => import('@shikijs/langs/yaml'),
-    zig: () => import('@shikijs/langs/zig'),
-    zsh: () => import('@shikijs/langs/zsh'),
-  },
+  langs: LANGS,
   themes: {
     'github-dark': () => import('@shikijs/themes/github-dark'),
     'github-light': () => import('@shikijs/themes/github-light'),
@@ -160,6 +162,24 @@ const FILENAMES: Record<string, CodeLanguage> = {
   makefile: 'makefile',
 }
 
+const SUPPORTED_LANGUAGES = new Set(Object.keys(LANGS) as CodeLanguage[])
+
+// Markdown fence labels (```javascript) use full names that are neither Shiki
+// language ids nor file extensions; map those onto a supported language. Plain
+// extension-style labels (sh, yml, py…) already resolve via EXTENSIONS below.
+const LANGUAGE_ALIASES: Record<string, CodeLanguage> = {
+  javascript: 'js',
+  node: 'js',
+  typescript: 'ts',
+  shell: 'bash',
+  console: 'bash',
+  golang: 'go',
+  markdown: 'md',
+  'c++': 'cpp',
+  'c#': 'csharp',
+  'objective-c': 'c',
+}
+
 export function syntaxTheme(resolvedTheme: 'light' | 'dark'): CodeTheme {
   return resolvedTheme === 'dark' ? DARK_THEME : LIGHT_THEME
 }
@@ -171,18 +191,43 @@ export function languageForPath(path: string): CodeLanguage | null {
   return extension ? (EXTENSIONS[extension] ?? null) : null
 }
 
+function languageForHint(hint: string): CodeLanguage | null {
+  const key = hint.trim().toLowerCase()
+  if (!key) return null
+  if (LANGUAGE_ALIASES[key]) return LANGUAGE_ALIASES[key]
+  if (SUPPORTED_LANGUAGES.has(key as CodeLanguage)) return key as CodeLanguage
+  return EXTENSIONS[key] ?? null
+}
+
 export async function highlightLines(
   path: string,
   lines: string[],
   theme: CodeTheme,
 ): Promise<SyntaxLine[] | null> {
   const lang = languageForPath(path)
-  if (!lang) return null
-  if (!withinHighlightBudget(lines)) return null
+  if (!lang || !withinHighlightBudget(lines)) return null
+  return highlightWithLanguage(lang, lines.join('\n'), theme)
+}
+
+export async function highlightCode(
+  hint: string,
+  code: string,
+  theme: CodeTheme,
+): Promise<SyntaxLine[] | null> {
+  const lang = languageForHint(hint)
+  if (!lang || !withinHighlightBudget(code.split('\n'))) return null
+  return highlightWithLanguage(lang, code, theme)
+}
+
+async function highlightWithLanguage(
+  lang: CodeLanguage,
+  code: string,
+  theme: CodeTheme,
+): Promise<SyntaxLine[]> {
   highlighter ??= createHighlighter({ themes: [LIGHT_THEME, DARK_THEME], langs: [] })
   const shiki = await highlighter
   await shiki.loadLanguage(lang)
-  const result = shiki.codeToTokens(lines.join('\n'), { lang, theme })
+  const result = shiki.codeToTokens(code, { lang, theme })
   return result.tokens.map((line) =>
     line.map((token) => ({
       content: token.content,
