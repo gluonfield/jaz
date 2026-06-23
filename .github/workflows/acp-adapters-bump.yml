@@ -1,0 +1,54 @@
+name: Bump ACP adapters
+
+on:
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Compute bumps
+        id: bump
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          summary="$(node .github/scripts/bump-acp-adapters.mjs)"
+          echo "$summary"
+          echo "changed=$(echo "$summary" | jq -r .changed)" >> "$GITHUB_OUTPUT"
+          echo "bumps=$(echo "$summary" | jq -rc '.bumps | join(", ")')" >> "$GITHUB_OUTPUT"
+
+      - name: Validate bumped spec resolves
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/scripts/create-acp-adapters-manifest.mjs /tmp/acp-adapters.json
+
+      - name: Open or update PR
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          branch=chore/bump-acp-adapters
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add .github/acp-adapter-assets.json
+          git commit -m "chore: bump ACP adapters (${{ steps.bump.outputs.bumps }})"
+          git push -f origin "$branch"
+          if [ -z "$(gh pr list --head "$branch" --state open --json number -q '.[].number')" ]; then
+            gh pr create --head "$branch" --base "${{ github.event.repository.default_branch }}" \
+              --title "chore: bump ACP adapters (${{ steps.bump.outputs.bumps }})" \
+              --body "Automated bump of the managed ACP adapter pins to the latest upstream releases. Validated against the live release assets. Merge then cut a Jaz release to ship the new manifest."
+          fi

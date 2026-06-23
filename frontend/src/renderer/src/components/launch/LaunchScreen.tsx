@@ -1,4 +1,4 @@
-import { LoaderCircle, Server, X } from 'lucide-react'
+import { LoaderCircle, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
 import { RemoteServerForm } from '@/components/connection/RemoteServerForm'
@@ -346,18 +346,14 @@ function BackendChoice({
         disabled={disabled}
         onClick={onConnect}
         whileTap={disabled ? undefined : { scale: 0.97 }}
-        className={`flex h-11 w-full cursor-pointer items-center gap-2 rounded-full bg-surface/90 pl-4 text-[14px] font-medium text-ink shadow-[0_6px_20px_rgba(0,0,0,0.08)] backdrop-blur-[2px] transition-colors duration-150 enabled:hover:bg-surface disabled:cursor-default disabled:opacity-60 ${
-          connected ? 'pr-4' : 'pr-10'
-        }`}
+        className="flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-surface/90 px-4 text-[14px] font-medium text-ink shadow-[0_6px_20px_rgba(0,0,0,0.08)] backdrop-blur-[2px] transition-colors duration-150 enabled:hover:bg-surface disabled:cursor-default disabled:opacity-60"
       >
         {busy ? (
           <LoaderCircle size={15} className="shrink-0 animate-spin" />
         ) : connected ? (
           <span className="size-1.5 shrink-0 rounded-full bg-ok" />
-        ) : (
-          <Server size={15} className="shrink-0 text-ink-2" />
-        )}
-        <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+        ) : null}
+        <span className="min-w-0 truncate">{label}</span>
         {connected ? <span className="shrink-0 text-[12px] text-ink-3">Connected</span> : null}
       </motion.button>
       {!connected ? (

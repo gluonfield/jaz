@@ -2,6 +2,7 @@ import { FileText, Folder, Sparkles } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import { useEffect, useRef } from 'react'
 import { AgentAvatar } from '@/components/acp/AgentAvatar'
+import { fullTime, hasTime, relativeTime } from '@/lib/format/time'
 
 // One row in the composer's $/@ autocomplete. `insert` is the literal token
 // text placed in the textarea; `expansion` is what that text becomes in the
@@ -13,6 +14,7 @@ export interface SuggestionItem {
   /** label indices matched by the fuzzy query, for highlighting */
   indices?: number[]
   agent?: string
+  updatedAt?: string
   insert: string
   expansion: string
 }
@@ -99,6 +101,8 @@ export function ComposerSuggestions({
             index++
             const itemIndex = index
             const active = itemIndex === activeIndex
+            const updatedAt = item.kind === 'thread' && hasTime(item.updatedAt) ? item.updatedAt : ''
+            const updatedLabel = updatedAt ? relativeTime(updatedAt) : ''
             return (
               <button
                 key={`${item.kind}-${item.insert}`}
@@ -134,6 +138,14 @@ export function ComposerSuggestions({
                     </span>
                   ) : null}
                 </span>
+                {updatedLabel ? (
+                  <span
+                    title={`Updated ${fullTime(updatedAt)}`}
+                    className="ml-auto shrink-0 text-[11px] tabular-nums text-ink-3"
+                  >
+                    {updatedLabel}
+                  </span>
+                ) : null}
               </button>
             )
           })}

@@ -1,4 +1,4 @@
-import { ChevronsUpDown, MonitorSmartphone, Plus, Server } from 'lucide-react'
+import { ChevronsUpDown, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { useToast } from '@/components/ui/toast'
@@ -76,7 +76,6 @@ function Trigger({
   switcher?: boolean
   onClick: () => void
 }) {
-  const Icon = backend.local ? MonitorSmartphone : Server
   return (
     <button
       type="button"
@@ -84,7 +83,6 @@ function Trigger({
       title={backend.url}
       className="group flex w-full items-center gap-2 rounded-full px-2.5 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2"
     >
-      <Icon size={15} className="shrink-0 text-ink-2" />
       <span className="min-w-0 flex-1 truncate text-left">{name}</span>
       <span className={`size-1.5 shrink-0 rounded-full ${dot}`} />
       {switcher ? <ChevronsUpDown size={13} className="shrink-0 text-ink-3" /> : null}
