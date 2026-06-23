@@ -250,9 +250,12 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(loaded.Value), `"enabled":false`) ||
-		!strings.Contains(string(loaded.Value), `/opt/jaz/codex-acp`) ||
 		!strings.Contains(string(loaded.Value), `"reasoning_effort":"high"`) {
 		t.Fatalf("stored settings = %s", loaded.Value)
+	}
+	if strings.Contains(string(loaded.Value), `/opt/jaz/codex-acp`) ||
+		strings.Contains(string(loaded.Value), `@agentclientprotocol/claude-agent-acp`) {
+		t.Fatalf("managed agent command leaked into settings = %s", loaded.Value)
 	}
 	env, err := os.ReadFile(runtimeenv.Path(store.RootDir()))
 	if err != nil {

@@ -285,10 +285,15 @@ func TestOnboardingTreatsAuthenticatedManagedCodexAsAvailable(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
+	if _, err := agentsettings.SaveAgentDefaults(store, agentsettings.AgentDefaults{ACP: map[string]agentsettings.ACPAgentDefaults{
+		"codex": {Command: "/stale/codex-acp --stdio", Model: "gpt-5.5"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
 	handler := (&Server{
 		Store:       store,
 		Root:        root,
-		ACPAdapters: fakeACPAdapterStatusReader{status: acpadapter.Status{Adapter: "codex", Version: acp.CodexACPVersion, State: acpadapter.StateReady}},
+		ACPAdapters: fakeACPAdapterStatusReader{status: acpadapter.Status{Adapter: "codex", Version: "test-version", State: acpadapter.StateReady}},
 		AgentCatalog: acp.AgentCatalog{
 			"codex": {ManagedAdapter: "codex", Model: "gpt-5.5"},
 		},
@@ -342,7 +347,7 @@ func TestOnboardingWaitsForManagedCodexDownload(t *testing.T) {
 	handler := (&Server{
 		Store:       store,
 		Root:        root,
-		ACPAdapters: fakeACPAdapterStatusReader{status: acpadapter.Status{Adapter: "codex", Version: acp.CodexACPVersion, State: acpadapter.StateDownloading, Message: "Downloading Codex adapter"}},
+		ACPAdapters: fakeACPAdapterStatusReader{status: acpadapter.Status{Adapter: "codex", Version: "test-version", State: acpadapter.StateDownloading, Message: "Downloading Codex adapter"}},
 		AgentCatalog: acp.AgentCatalog{
 			"codex": {ManagedAdapter: "codex", Model: "gpt-5.5"},
 		},

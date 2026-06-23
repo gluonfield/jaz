@@ -43,7 +43,10 @@ func runServe(args []string) error {
 	fxApp := fx.New(
 		fx.StopTimeout(15*time.Second),
 		fx.WithLogger(func() fxevent.Logger { return fxevent.NopLogger }),
-		fx.Supply(serveArgs{Args: args}),
+		fx.Supply(
+			serveArgs{Args: args},
+			app.Release{Version: version},
+		),
 		fx.Provide(
 			newLogger,
 			loadConfig,
