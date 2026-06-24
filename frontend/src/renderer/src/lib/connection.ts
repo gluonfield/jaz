@@ -79,20 +79,20 @@ export function useConnection(): ConnectionState {
   return useSyncExternalStore(subscribe, () => state)
 }
 
-// Runs `onChange` whenever the active backend changes — a real switch, not the
-// first connect or a reconnect to the same backend. The callback may return a
-// cleanup (run before the next switch) and is read through a ref so it always
-// sees the latest closure without re-arming on every render.
-export function useBackendChange(onChange: (url: string) => void | (() => void)): void {
-  const { url } = useConnection()
-  const last = useRef(url)
+// Runs `onChange` when the connected backend changes — a real switch, not the
+// first connect or a reconnect to the same backend. Fires as the connection
+// settles (when markConnected clears the cache), so callers mask that reload.
+export function useBackendChange(onChange: (url: string) => void): void {
+  const { url, status } = useConnection()
+  const lastConnected = useRef<string | null>(null)
   const handler = useRef(onChange)
   handler.current = onChange
   useEffect(() => {
-    if (last.current === url) return
-    last.current = url
-    return handler.current(url)
-  }, [url])
+    if (status !== 'connected' || lastConnected.current === url) return
+    const isSwitch = lastConnected.current !== null
+    lastConnected.current = url
+    if (isSwitch) handler.current(url)
+  }, [url, status])
 }
 
 async function readHealth(url: string): Promise<HealthStatus | null> {
