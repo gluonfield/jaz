@@ -35,6 +35,14 @@ func TestSessionEventsPersistAndMirror(t *testing.T) {
 				Plan:        []sessionevents.PlanEntry{{Content: "Run tests", Status: "pending"}},
 			},
 		},
+		sessionevents.Event{
+			Type: sessionevents.TypeSideChatMessage,
+			SideChat: &sessionevents.SideChatEvent{
+				ID:      "side-1",
+				Role:    "assistant",
+				Content: "side answer",
+			},
+		},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -43,14 +51,14 @@ func TestSessionEventsPersistAndMirror(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded) != 3 || loaded[0].Seq != 1 || loaded[1].Seq != 2 || loaded[2].Seq != 3 {
+	if len(loaded) != 4 || loaded[0].Seq != 1 || loaded[1].Seq != 2 || loaded[2].Seq != 3 || loaded[3].Seq != 4 {
 		t.Fatalf("loaded events = %#v", loaded)
 	}
 	after, err := store.LoadSessionEventsAfter(session.ID, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(after) != 2 || after[0].Seq != 2 || after[1].Seq != 3 {
+	if len(after) != 3 || after[0].Seq != 2 || after[1].Seq != 3 || after[2].Seq != 4 {
 		t.Fatalf("events after seq 1 = %#v", after)
 	}
 	if loaded[1].ACP == nil || loaded[1].ACP.ToolCalls[0].Title != "Read file" {
@@ -58,6 +66,9 @@ func TestSessionEventsPersistAndMirror(t *testing.T) {
 	}
 	if loaded[2].Plan == nil || loaded[2].Plan.Plan[0].Content != "Run tests" {
 		t.Fatalf("plan event = %#v", loaded[2])
+	}
+	if loaded[3].SideChat == nil || loaded[3].SideChat.Content != "side answer" {
+		t.Fatalf("side chat event = %#v", loaded[3])
 	}
 	mirror, err := jsonstore.New(store.RootDir())
 	if err != nil {
@@ -67,7 +78,7 @@ func TestSessionEventsPersistAndMirror(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(mirrored) != 3 || mirrored[0].Content != "working" || mirrored[2].Plan == nil {
+	if len(mirrored) != 4 || mirrored[0].Content != "working" || mirrored[2].Plan == nil || mirrored[3].SideChat == nil {
 		t.Fatalf("mirrored events = %#v", mirrored)
 	}
 }

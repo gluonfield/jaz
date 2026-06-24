@@ -451,9 +451,9 @@ func TestManagerSideChatDoesNotTouchRunningTurn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if hasSideChatEvent(storedEvents, "side-1", "user", "quick check") ||
-		hasSideChatEvent(storedEvents, "side-1", "assistant", "hello from side chat") {
-		t.Fatalf("side chat leaked into stored events %#v", storedEvents)
+	if !hasSideChatEvent(storedEvents, "side-1", "user", "quick check") ||
+		!hasSideChatEvent(storedEvents, "side-1", "assistant", "hello from side chat") {
+		t.Fatalf("side chat did not persist in session events %#v", storedEvents)
 	}
 	if hasACPMessage(storedEvents, "hello from side chat") {
 		t.Fatalf("side chat leaked into main acp transcript %#v", storedEvents)
