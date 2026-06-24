@@ -8,6 +8,7 @@ import {
   Globe,
   Keyboard,
   MonitorSmartphone,
+  Palette,
   Plug,
   Search,
   Sparkles,
@@ -19,6 +20,7 @@ import { createPortal } from 'react-dom'
 import { BackendSwitcher } from '@/components/connection/BackendSwitcher'
 import { ACPAgentsSettings } from './ACPAgentsSettings'
 import { AgentProvidersSettings } from './AgentProvidersSettings'
+import { AppearanceSettings } from './AppearanceSettings'
 import { ArchivedThreadsSettings } from './ArchivedThreadsSettings'
 import { BrowserSettings } from './BrowserSettings'
 import { DevicesSettings } from './DevicesSettings'
@@ -31,6 +33,7 @@ import { UsageSettings } from './UsageSettings'
 
 type Section =
   | 'general'
+  | 'appearance'
   | 'personalization'
   | 'memory'
   | 'browser'
@@ -46,6 +49,7 @@ type NavItem = { id: Section; label: string; icon: typeof Bot; fullHeight?: bool
 
 const NAV: NavItem[] = [
   { id: 'general', label: 'General', icon: SlidersHorizontal },
+  { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'personalization', label: 'Personalization', icon: Sparkles, fullHeight: true },
   { id: 'memory', label: 'Memory', icon: Brain },
   { id: 'browser', label: 'Browser', icon: Globe },
@@ -218,6 +222,8 @@ function SectionContent({
   switch (section) {
     case 'general':
       return <GeneralSettings />
+    case 'appearance':
+      return <AppearanceSettings />
     case 'keyboard':
       return <KeyboardShortcutsSettings />
     case 'mcp':

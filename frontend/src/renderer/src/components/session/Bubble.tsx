@@ -125,7 +125,7 @@ export function AssistantBubble({
   onArtifactPrompt?: (text: string) => void
 }) {
   return (
-    <div className="flex min-w-0 max-w-[76ch] flex-col gap-2">
+    <div className="flex min-w-0 max-w-[var(--prose-max)] flex-col gap-2">
       <ThinkingBlock text={reasoning} />
       {text ? <AssistantMarkdown text={text} /> : null}
       {tools.map((block) =>

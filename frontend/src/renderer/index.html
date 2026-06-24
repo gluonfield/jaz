@@ -27,6 +27,24 @@
               ? 'oklch(0.208 0.007 262)'
               : 'oklch(0.963 0.007 262)'
         } catch (e) {}
+        // Apply appearance prefs before first paint so zoom and custom fonts
+        // don't reflow after mount. CSS owns fallback stacks and layout widths.
+        try {
+          var el2 = document.documentElement
+          if (localStorage.getItem('jaz.appearance.effects') === 'false')
+            el2.classList.add('jaz-no-effects')
+          var scale = localStorage.getItem('jaz.appearance.fontScale')
+          if (scale === '0.9' || scale === '1.1' || scale === '1.25') el2.style.zoom = scale
+          function fontVar(name) {
+            return '"' + String(name).replace(/["\\]/g, '').trim() + '"'
+          }
+          var uiFont = localStorage.getItem('jaz.appearance.uiFont')
+          if (uiFont && uiFont.trim()) el2.style.setProperty('--jaz-ui-font', fontVar(uiFont))
+          var monoFont = localStorage.getItem('jaz.appearance.monoFont')
+          if (monoFont && monoFont.trim()) el2.style.setProperty('--jaz-mono-font', fontVar(monoFont))
+          if (localStorage.getItem('jaz.appearance.wideLayout') === 'true')
+            el2.classList.add('jaz-wide-layout')
+        } catch (e) {}
       })()
     </script>
   </head>
