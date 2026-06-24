@@ -25,7 +25,7 @@ type terminalClientMessage struct {
 var terminalUpgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		origin := r.Header.Get("Origin")
-		return origin == "" || origin == "null" || strings.HasPrefix(origin, "file://") || allowedRequestOrigin(r)
+		return origin == "" || origin == "null" || strings.HasPrefix(origin, "file://") || allowedOrigin(origin)
 	},
 }
 

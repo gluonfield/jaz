@@ -1,7 +1,7 @@
 import type { BrowserNavigationDirection } from '../../../shared/browserNavigation'
 import type { UpdateStatus } from '../../../shared/update'
 
-const DEFAULT_LOCAL_URL = 'http://localhost:5299'
+export const DEFAULT_API_BASE_URL = 'http://localhost:5299'
 
 export type ClientRuntimeKind = 'electron' | 'web'
 export type ClientPlatform = 'desktop' | 'browser'
@@ -41,7 +41,7 @@ export interface ClientRuntime {
 function webDefaultApiBaseUrl(): string {
   const configured = import.meta.env.VITE_JAZ_API_URL?.trim()
   if (configured) return configured
-  return DEFAULT_LOCAL_URL
+  return DEFAULT_API_BASE_URL
 }
 
 function createRuntime(): ClientRuntime {

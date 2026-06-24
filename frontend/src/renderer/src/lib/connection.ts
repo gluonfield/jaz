@@ -408,15 +408,15 @@ export function forgetBackend(url: string): void {
 }
 
 // Leave the current backend for the connect chooser without auto-reconnecting.
-// The escape from a backend whose onboarding you can't or won't finish: it stops
-// the health poll so it can't flip back to connected, and leaves the launch
-// preference pointing at the previously set-up backend (or nothing).
+// Explicit disconnect wins over the persisted refresh target; saved backend
+// tokens stay available for later manual reconnects.
 export function disconnectBackend(): void {
   if (pollTimer) clearTimeout(pollTimer)
   if (pairingTimer) clearTimeout(pairingTimer)
   pollGen += 1
   pairingGen += 1
   preflightSnapshot = null
+  clearConnectionPreference()
   setState({ status: 'disconnected', pairing: null, error: null })
 }
 
