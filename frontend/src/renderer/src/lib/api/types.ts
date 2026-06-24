@@ -847,8 +847,11 @@ export interface BrowserExtensionStatus {
 export interface BrowserStatus {
   enabled: boolean
   agent?: string
+  mode: BrowserMode
   extension: BrowserExtensionStatus
 }
+
+export type BrowserMode = 'extension' | 'managed'
 
 export interface OnboardingACPProbe extends ACPAgentAuthStatus {
   agent: string

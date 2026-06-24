@@ -77,7 +77,7 @@ func TestNewRoutesMountsDeviceRevokeAsMethodRoute(t *testing.T) {
 func TestNewRoutesIncludesBrowserExtensionRoute(t *testing.T) {
 	routes := NewRoutes(routeDeps{
 		Usage:   usagecore.NewService(fakeUsageStore{}),
-		Browser: browserworker.NewExtensionBridge(nil),
+		Browser: browserworker.NewExtensionBridge(nil, nil),
 	})
 	for _, route := range routes {
 		if route.Pattern == "GET /v1/browser/extension" && route.Handler != nil {

@@ -1,15 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { RefreshCcw } from 'lucide-react'
+import { Monitor, Puzzle, RefreshCcw } from 'lucide-react'
 import { SettingsCard } from './SettingsCard'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { Segmented } from '@/components/ui/Segmented'
 import { Select } from '@/components/ui/Select'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
 import { agentLabel } from '@/lib/agentLabel'
 import { browserSettingsQuery, agentSettingsQuery, updateBrowserSettings } from '@/lib/api/settings'
-import type { BrowserStatus } from '@/lib/api/types'
+import type { BrowserMode, BrowserStatus } from '@/lib/api/types'
 import { enabledACPAgents } from '@/lib/agentRuntimes'
 import { apiAuthenticatedWebSocketUrl, apiBaseUrl } from '@/lib/api/client'
 import { keys } from '@/lib/query/keys'
@@ -62,6 +63,12 @@ export function BrowserSettings() {
     onError: (error: Error) => toast(`Couldn't update browser agent: ${error.message}`, 'danger'),
   })
 
+  const setMode = useMutation({
+    mutationFn: (mode: BrowserMode) => updateBrowserSettings({ mode }),
+    onSuccess: setStatus,
+    onError: (error: Error) => toast(`Couldn't update browser mode: ${error.message}`, 'danger'),
+  })
+
   if (status.isPending) {
     return (
       <section className="py-5">
@@ -82,24 +89,23 @@ export function BrowserSettings() {
 
   const browser = status.data
   const extension = browser.extension ?? { connected: false }
+  const mode: BrowserMode = browser.mode ?? 'extension'
   const agents = enabledACPAgents(agentSettings.data).filter((agent) => agent !== 'jaz')
   const selectedAgent = browser.agent ?? ''
   const staleAgent = selectedAgent && !agents.includes(selectedAgent)
   const agentOptions = [
-    { value: '', label: 'Not selected', description: 'Browser tools will stay unavailable' },
+    { value: '', label: 'Not selected' },
     ...(staleAgent
       ? [
           {
             value: selectedAgent,
             label: `${agentLabel(selectedAgent)} (disabled)`,
-            description: 'Enable this ACP agent or choose another one',
           },
         ]
       : []),
     ...agents.map((agent) => ({
       value: agent,
       label: agentLabel(agent),
-      description: 'Runs delegated browser tasks',
     })),
   ]
   const agentValid = !selectedAgent || agents.includes(selectedAgent) || agentSettings.isPending
@@ -112,7 +118,7 @@ export function BrowserSettings() {
         <div>
           <h1 className="text-lg font-semibold text-ink">Browser</h1>
           <p className="mt-0.5 max-w-[58ch] text-[13px] text-ink-2">
-            Delegated browser workers use the selected coding agent and prefer the connected Chrome extension.
+            Delegated browser workers use the selected coding agent and the browser backend you choose.
           </p>
         </div>
         <div className="flex h-8 shrink-0 items-center gap-2">
@@ -125,6 +131,32 @@ export function BrowserSettings() {
           />
         </div>
       </header>
+
+      <SettingsCard className="mt-4 px-4 py-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+          <div className="min-w-0">
+            <p className="text-[13px] font-medium text-ink">Browser backend</p>
+            <p className="mt-0.5 text-[12px] text-ink-2">
+              {mode === 'extension'
+                ? 'Use the signed-in Chrome tab bridge for real browser sessions.'
+                : 'Use an isolated background Chromium profile managed by Jaz.'}
+            </p>
+            {mode === 'extension' && !connected ? (
+              <p className="mt-1 text-[12px] text-danger">Connect the extension before using this mode.</p>
+            ) : null}
+          </div>
+          <Segmented
+            value={mode}
+            layoutId="browser-backend-mode"
+            disabled={setMode.isPending}
+            onChange={(next) => setMode.mutate(next)}
+            options={[
+              { value: 'extension', label: 'Extension', icon: <Puzzle size={14} /> },
+              { value: 'managed', label: 'Background Chromium', icon: <Monitor size={14} /> },
+            ]}
+          />
+        </div>
+      </SettingsCard>
 
       <SettingsCard className="mt-4 px-4 py-3">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_260px] md:items-center">

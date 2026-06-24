@@ -27,12 +27,14 @@ type ExtensionStatusProvider interface {
 type StatusResponse struct {
 	Enabled   bool                          `json:"enabled"`
 	Agent     string                        `json:"agent,omitempty"`
+	Mode      string                        `json:"mode"`
 	Extension browserworker.ExtensionStatus `json:"extension"`
 }
 
 type settingsInput struct {
 	Enabled *bool   `json:"enabled,omitempty"`
 	Agent   *string `json:"agent,omitempty"`
+	Mode    *string `json:"mode,omitempty"`
 }
 
 func NewSettingsHandler(store storage.SettingsStorage, catalog acp.AgentCatalog, extension ExtensionStatusProvider, onChange func()) SettingsHandler {
@@ -91,7 +93,7 @@ func (h SettingsHandler) browserStatus() (StatusResponse, error) {
 		return StatusResponse{}, err
 	}
 	extension := h.extensionStatus()
-	return StatusResponse{Enabled: effectiveEnabled(settings, extension), Agent: settings.Agent, Extension: extension}, nil
+	return StatusResponse{Enabled: settings.Enabled, Agent: settings.Agent, Mode: jazsettings.BrowserMode(settings), Extension: extension}, nil
 }
 
 func (h SettingsHandler) extensionStatus() browserworker.ExtensionStatus {
@@ -106,19 +108,20 @@ func (h SettingsHandler) normalize(input settingsInput) (jazsettings.BrowserSett
 	if err != nil {
 		return jazsettings.BrowserSettings{}, err
 	}
-	extension := h.extensionStatus()
 	if input.Enabled != nil {
-		if *input.Enabled && !extension.Connected {
-			return jazsettings.BrowserSettings{}, fmt.Errorf("connect the Chrome extension before enabling browser tools")
-		}
 		settings.Enabled = *input.Enabled
-	}
-	if !extension.Connected {
-		settings.Enabled = false
 	}
 	if input.Agent != nil {
 		settings.Agent = acp.CanonicalAgentName(*input.Agent)
 	}
+	if input.Mode != nil {
+		mode := jazsettings.NormalizeBrowserMode(*input.Mode)
+		if mode == "" {
+			return jazsettings.BrowserSettings{}, fmt.Errorf("unknown browser mode %q", strings.TrimSpace(*input.Mode))
+		}
+		settings.Mode = mode
+	}
+	settings.Mode = jazsettings.BrowserMode(settings)
 	if strings.TrimSpace(settings.Agent) == "" {
 		return settings, nil
 	}
@@ -133,10 +136,6 @@ func (h SettingsHandler) normalize(input settingsInput) (jazsettings.BrowserSett
 		return jazsettings.BrowserSettings{}, err
 	}
 	return settings, nil
-}
-
-func effectiveEnabled(settings jazsettings.BrowserSettings, extension browserworker.ExtensionStatus) bool {
-	return settings.Enabled && extension.Connected
 }
 
 func (h SettingsHandler) catalog() acp.AgentCatalog {

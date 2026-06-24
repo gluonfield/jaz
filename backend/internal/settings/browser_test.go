@@ -21,7 +21,7 @@ func TestBrowserSettingsDefaultDisabled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if settings.Enabled {
+	if settings.Enabled || settings.Mode != BrowserModeExtension {
 		t.Fatalf("default browser settings = %#v", settings)
 	}
 }
@@ -41,6 +41,24 @@ func TestBrowserAgentDefaultsToEnabledWorkerAgent(t *testing.T) {
 	}
 	if got := BrowserAgent(BrowserSettings{Enabled: true, Agent: acp.AgentCodex}, defaults); got != acp.AgentCodex {
 		t.Fatalf("explicit agent = %q", got)
+	}
+}
+
+func TestBrowserSettingsNormalizesPersistedMode(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if _, err := SaveBrowserSettings(store, BrowserSettings{Enabled: true, Mode: BrowserModeManaged}); err != nil {
+		t.Fatal(err)
+	}
+	settings, err := LoadBrowserSettings(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.Mode != BrowserModeManaged || BrowserUsesExtension(settings) {
+		t.Fatalf("settings = %#v", settings)
 	}
 }
 

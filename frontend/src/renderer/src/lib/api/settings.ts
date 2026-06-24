@@ -1,7 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '../query/keys'
 import { get, post, put } from './client'
-import type { ACPAgentAuth, ACPAuthLogin, AgentSettings, BrowserStatus } from './types'
+import type { ACPAgentAuth, ACPAuthLogin, AgentSettings, BrowserMode, BrowserStatus } from './types'
 
 function normalizeAgentSettings(settings: AgentSettings): AgentSettings {
   return {
@@ -114,6 +114,7 @@ export function updateAgentSettings(
 export function updateBrowserSettings(input: {
   enabled?: boolean
   agent?: string
+  mode?: BrowserMode
 }): Promise<BrowserStatus> {
   return put<BrowserStatus>('/v1/browser', input)
 }

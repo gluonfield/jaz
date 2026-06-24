@@ -12,15 +12,18 @@ import (
 const (
 	BrowserSettingsNamespace = "browser"
 	BrowserSettingsKey       = "settings"
+	BrowserModeExtension     = "extension"
+	BrowserModeManaged       = "managed"
 )
 
 type BrowserSettings struct {
 	Enabled bool   `json:"enabled"`
 	Agent   string `json:"agent,omitempty"`
+	Mode    string `json:"mode,omitempty"`
 }
 
 func DefaultBrowserSettings() BrowserSettings {
-	return BrowserSettings{}
+	return BrowserSettings{Mode: BrowserModeExtension}
 }
 
 func LoadBrowserSettings(store storage.SettingsStorage) (BrowserSettings, error) {
@@ -36,12 +39,18 @@ func LoadBrowserSettings(store storage.SettingsStorage) (BrowserSettings, error)
 		return BrowserSettings{}, err
 	}
 	settings.Agent = strings.TrimSpace(settings.Agent)
+	settings.Mode = BrowserMode(settings)
 	return settings, nil
 }
 
 func SaveBrowserSettings(store storage.SettingsStorage, settings BrowserSettings) (BrowserSettings, error) {
 	settings.Agent = strings.TrimSpace(settings.Agent)
-	data, err := json.Marshal(settings)
+	settings.Mode = BrowserMode(settings)
+	encoded := settings
+	if encoded.Mode == BrowserModeExtension {
+		encoded.Mode = ""
+	}
+	data, err := json.Marshal(encoded)
 	if err != nil {
 		return BrowserSettings{}, err
 	}
@@ -64,4 +73,26 @@ func BrowserAgent(settings BrowserSettings, defaults AgentDefaults) string {
 		return agent
 	}
 	return DefaultWorkerAgent(defaults)
+}
+
+func BrowserMode(settings BrowserSettings) string {
+	if mode := NormalizeBrowserMode(settings.Mode); mode != "" {
+		return mode
+	}
+	return BrowserModeExtension
+}
+
+func NormalizeBrowserMode(mode string) string {
+	switch strings.TrimSpace(mode) {
+	case "", BrowserModeExtension:
+		return BrowserModeExtension
+	case BrowserModeManaged:
+		return BrowserModeManaged
+	default:
+		return ""
+	}
+}
+
+func BrowserUsesExtension(settings BrowserSettings) bool {
+	return BrowserMode(settings) == BrowserModeExtension
 }

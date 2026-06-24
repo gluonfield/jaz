@@ -1,6 +1,9 @@
 const BACKEND_URL_KEY = 'jaz.backendUrl'
 const AUTH_KEY_PREFIX = 'jaz.backendAuth.'
 const DEFAULT_LOCAL_URL = 'http://localhost:5299'
+// The port the local backend always runs on; a loopback host on this port is
+// "this machine", any other loopback port is a tunnel to a remote backend.
+export const DEFAULT_LOCAL_PORT = new URL(DEFAULT_LOCAL_URL).port
 export const CLIENT_PLATFORM_HEADER = 'X-Jaz-Client-Platform'
 export const CLIENT_PLATFORM = 'desktop'
 
