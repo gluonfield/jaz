@@ -16,6 +16,9 @@ import { useBackendChange, useConnection } from './lib/connection'
 import { queryClient } from './lib/query/queryClient'
 import { routeTree } from './routeTree.gen'
 import { telemetry } from './lib/telemetry'
+// Side-effect import: applies saved appearance prefs (effects, zoom, fonts) to
+// the document root at startup, keeping it aligned with the pre-paint script.
+import './lib/appearance'
 
 // Without this, a file dropped outside a drop zone navigates the window to
 // its file:// URL, replacing the app shell.

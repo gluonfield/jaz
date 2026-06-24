@@ -5,6 +5,7 @@ import { EqBars } from '@/components/home/MusicBubbles'
 import { RAINBOW_BEAM } from '@/components/ui/rainbow'
 import { IconButton } from '@/components/ui/IconButton'
 import type { PixelFieldShapeFrame } from '@/components/ui/PixelField.types'
+import { useEffectsEnabled } from '@/lib/appearance'
 
 const VIDEO_ID = 'rcd_SQZDlnk'
 const CARD_WIDTH = 440
@@ -25,7 +26,9 @@ export function RocketVideo({
   onHoverChange?: (hovered: boolean) => void
   onOpenChange?: (open: boolean) => void
 }) {
-  const reducedMotion = useReducedMotion()
+  const osReducedMotion = useReducedMotion()
+  const effectsEnabled = useEffectsEnabled()
+  const reducedMotion = osReducedMotion || !effectsEnabled
   const [open, setOpen] = useState(false)
   const [meta, setMeta] = useState<VideoMeta | null>(cachedMeta)
   const containerRef = useRef<HTMLDivElement>(null)
