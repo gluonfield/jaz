@@ -102,6 +102,9 @@ func TestBrowserTaskSpawnsRestrictedWorker(t *testing.T) {
 			t.Fatalf("worker prompt missing %q:\n%s", want, workerPrompt)
 		}
 	}
+	if !strings.Contains(workerPrompt, "Do not use adopt_active_tab unless") {
+		t.Fatalf("worker prompt does not restrict active-tab adoption:\n%s", workerPrompt)
+	}
 	if manager.spawn.Directory != workerDir {
 		t.Fatalf("directory = %q", manager.spawn.Directory)
 	}
