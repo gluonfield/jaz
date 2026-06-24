@@ -331,7 +331,7 @@ export function useMentionInput({
     placeCaret(pos)
   }
 
-  const reset = () => {
+  const reset = useCallback(() => {
     clearDraft()
     setCaret(0)
     setDismissedAt(null)
@@ -340,7 +340,7 @@ export function useMentionInput({
       el.style.height = 'auto'
       el.focus()
     }
-  }
+  }, [clearDraft])
 
   const onChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     const next = e.target.value

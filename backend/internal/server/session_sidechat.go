@@ -10,8 +10,8 @@ import (
 )
 
 type sideChatRequest struct {
-	ID      string `json:"id"`
-	Message string `json:"message"`
+	ID string `json:"id"`
+	messageRequest
 }
 
 func (s *Server) handleSessionSideChat(w http.ResponseWriter, r *http.Request) {
@@ -34,12 +34,20 @@ func (s *Server) handleSessionSideChat(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	attachments, err := s.resolveAttachments(session.ID, req.AttachmentIDs)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	contexts := storage.NormalizeMessageContexts(append(storage.SelectionContexts(req.Quotes), req.Contexts...))
 	ctx, cancel := serverSideChatContext()
 	defer cancel()
 	if err := s.ACP.SendSideChat(ctx, acp.SideChatRequest{
-		Session: session.ID,
-		ID:      req.ID,
-		Message: req.Message,
+		Session:     session.ID,
+		ID:          req.ID,
+		Message:     req.Message,
+		Contexts:    contexts,
+		Attachments: attachments,
 	}); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return

@@ -31,6 +31,7 @@ import { useThreadFind } from '@/components/session/useThreadFind'
 import { useThreadAutoScroll } from '@/components/session/useThreadAutoScroll'
 import { liveExchangeSize, liveUserMessage, useLiveSessionSend } from '@/components/session/useLiveSessionSend'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { FileDropScope } from '@/components/ui/FileDrop'
 import { Skeleton, SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import {
@@ -53,7 +54,7 @@ import {
   progressSurfaceFromEvent,
   taskSurfaceBelongsToSession,
 } from '@/lib/taskSurface'
-import type { SendMessageOptions } from '@/lib/sendMessage'
+import { preparedSendMessage, type SendMessageOptions } from '@/lib/sendMessage'
 import { coalesceSessionEvents, sessionEventPlacement } from '@/lib/sessionEvents'
 import { activePermissionIDs, isPermissionAwaitingResponse, resolveInactivePermissions } from '@/lib/sessionPermissions'
 import { latestEventTimeISO } from '@/lib/sessionLiveness'
@@ -466,8 +467,21 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     queryClient.invalidateQueries({ queryKey: keys.usage })
   }, [handleSend, queryClient, sessionId])
 
-  const handleSideChatSend = useCallback(async (sideChatID: string, message: string) => {
-    await sendSessionSideChat(sessionId, { id: sideChatID, message })
+  const handleSideChatSend = useCallback(async (
+    sideChatID: string,
+    message: string,
+    options: SendMessageOptions = {},
+  ) => {
+    const uploaded = options.files?.length
+      ? await Promise.all(options.files.map((file) => uploadSessionAttachment(sessionId, file)))
+      : []
+    const prepared = preparedSendMessage(options, uploaded)
+    await sendSessionSideChat(sessionId, {
+      id: sideChatID,
+      message,
+      contexts: prepared.contexts,
+      attachment_ids: prepared.attachmentIds,
+    })
     await queryClient.refetchQueries({ queryKey: keys.sessionMessages(sessionId) })
   }, [queryClient, sessionId])
 
@@ -579,7 +593,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   return (
     <FileReaderLinkProvider onOpen={openFileReference}>
       <PreviewLinkProvider onOpen={sidePanel.openPreview}>
-        <div ref={sidePanel.measureRef} className="flex h-full">
+        <FileDropScope ref={sidePanel.measureRef} className="flex h-full">
           {titlebarSlot
             ? createPortal(
                 <>
@@ -780,7 +794,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
               onClose={sidePanel.toggle}
             />
           </motion.div>
-        </div>
+        </FileDropScope>
       </PreviewLinkProvider>
     </FileReaderLinkProvider>
   )

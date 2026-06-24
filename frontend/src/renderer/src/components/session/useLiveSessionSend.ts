@@ -3,9 +3,9 @@ import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 
 import { uploadSessionAttachment } from '@/lib/api/sessions'
 import { streamSessionMessage, type AgentStreamEvent } from '@/lib/api/stream'
 import type { ChatMessage, MessageBlock } from '@/lib/api/types'
-import { contextAttachmentIDs, contextInputs } from '@/lib/messageContext'
+import { contextInputs } from '@/lib/messageContext'
 import { keys } from '@/lib/query/keys'
-import type { ComposerContext, SendMessageOptions } from '@/lib/sendMessage'
+import { preparedSendMessage, type ComposerContext, type SendMessageOptions } from '@/lib/sendMessage'
 import { isHiddenToolName } from './toolVisibility'
 
 export interface LiveExchange {
@@ -86,15 +86,12 @@ export function useLiveSessionSend({
           prev ? { ...prev, attachments: [...draftAttachments, ...contextAttachments, ...attachments] } : prev,
         )
       }
+      const prepared = preparedSendMessage(options, attachments)
       await streamSessionMessage({
         sessionId,
         message: text,
-        contexts: contextInputs(draftContexts),
-        attachmentIds: [
-          ...draftAttachments.map((attachment) => attachment.id),
-          ...contextAttachmentIDs(draftContexts),
-          ...attachments.map((attachment) => attachment.id),
-        ],
+        contexts: prepared.contexts,
+        attachmentIds: prepared.attachmentIds,
         planRequested: options.planRequested,
         signal: controller.signal,
         onEvent: (event) => {

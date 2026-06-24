@@ -11,6 +11,16 @@ import { ThinkingBlock } from './ThinkingBlock'
 import { ToolCallCard } from './ToolCallCard'
 import { isArtifactToolName, isHiddenToolName } from './toolVisibility'
 
+type ToolBlock = Extract<MessageBlock, { type: 'tool' }>
+export interface BubbleAttachment {
+  id: string
+  name: string
+  uri?: string
+  mime_type?: string
+  size?: number
+  server_path?: string
+}
+
 function messageText(message: ChatMessage): string {
   // Each text block is a separate utterance; join as paragraphs so block
   // boundaries don't fuse sentences together ("…intact.Updated…").
@@ -64,8 +74,7 @@ function formatAttachmentSize(size?: number): string {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function MessageAttachments({ message }: { message: ChatMessage }) {
-  const attachments = message.blocks?.filter((block) => block.type === 'attachment') ?? []
+function MessageAttachments({ attachments }: { attachments: BubbleAttachment[] }) {
   if (!attachments.length) return null
   return (
     <div className="mt-2 flex flex-wrap gap-1">
@@ -84,6 +93,64 @@ function MessageAttachments({ message }: { message: ChatMessage }) {
   )
 }
 
+export function UserBubble({
+  text,
+  contexts = [],
+  attachments = [],
+}: {
+  text: string
+  contexts?: ComposerContext[]
+  attachments?: BubbleAttachment[]
+}) {
+  return (
+    <div className="flex justify-end">
+      <div className="min-w-0 max-w-[84%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap [overflow-wrap:break-word] select-text">
+        <MessageContexts contexts={contexts} />
+        <MentionText text={text} />
+        <MessageAttachments attachments={attachments} />
+      </div>
+    </div>
+  )
+}
+
+export function AssistantBubble({
+  text,
+  reasoning = '',
+  tools = [],
+  onArtifactPrompt,
+}: {
+  text: string
+  reasoning?: string
+  tools?: ToolBlock[]
+  onArtifactPrompt?: (text: string) => void
+}) {
+  return (
+    <div className="flex min-w-0 max-w-[76ch] flex-col gap-2">
+      <ThinkingBlock text={reasoning} />
+      {text ? <AssistantMarkdown text={text} /> : null}
+      {tools.map((block) =>
+        isArtifactToolName(block.name) ? (
+          <ArtifactBlock
+            key={block.id}
+            args={block.input_json}
+            result={block.result}
+            pending={block.result === undefined || block.result === ''}
+            onSendPrompt={onArtifactPrompt}
+          />
+        ) : (
+          <ToolCallCard
+            key={block.id}
+            name={block.name}
+            args={block.input_json}
+            result={block.result}
+            pending={block.result === undefined || block.result === ''}
+          />
+        ),
+      )}
+    </div>
+  )
+}
+
 export const Bubble = memo(function Bubble({
   message,
   onArtifactPrompt,
@@ -94,43 +161,20 @@ export const Bubble = memo(function Bubble({
   switch (message.role) {
     case 'user':
       return (
-        <div className="flex justify-end">
-          <div className="min-w-0 max-w-[84%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap [overflow-wrap:break-word] select-text">
-            <MessageContexts contexts={messageContexts(message)} />
-            <MentionText text={messageText(message)} />
-            <MessageAttachments message={message} />
-          </div>
-        </div>
+        <UserBubble
+          text={messageText(message)}
+          contexts={messageContexts(message)}
+          attachments={message.blocks?.filter((block) => block.type === 'attachment') ?? []}
+        />
       )
     case 'assistant': {
-      const text = messageText(message)
-      const reasoning = messageReasoning(message)
       return (
-        <div className="flex min-w-0 max-w-[76ch] flex-col gap-2">
-          <ThinkingBlock text={reasoning} />
-          {text ? <AssistantMarkdown text={text} /> : null}
-          {message.blocks
-            ?.filter(isVisibleToolBlock)
-            .map((block) =>
-              isArtifactToolName(block.name) ? (
-                <ArtifactBlock
-                  key={block.id}
-                  args={block.input_json}
-                  result={block.result}
-                  pending={block.result === undefined || block.result === ''}
-                  onSendPrompt={onArtifactPrompt}
-                />
-              ) : (
-                <ToolCallCard
-                  key={block.id}
-                  name={block.name}
-                  args={block.input_json}
-                  result={block.result}
-                  pending={block.result === undefined || block.result === ''}
-                />
-              ),
-            )}
-        </div>
+        <AssistantBubble
+          text={messageText(message)}
+          reasoning={messageReasoning(message)}
+          tools={message.blocks?.filter(isVisibleToolBlock) ?? []}
+          onArtifactPrompt={onArtifactPrompt}
+        />
       )
     }
     // system/developer prompts are plumbing, not conversation — never shown
