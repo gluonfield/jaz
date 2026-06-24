@@ -4,6 +4,7 @@ import {
   apiBaseUrl,
   CLIENT_PLATFORM,
   CLIENT_PLATFORM_HEADER,
+  consumeStartupConnectUrl,
   DEFAULT_LOCAL_PORT,
   localBaseUrl,
   normalizeBaseUrl,
@@ -12,6 +13,7 @@ import {
   setApiBaseUrl,
 } from './api/client'
 import { rememberBackend, removeKnownBackend } from './backends'
+import { clientRuntime } from './clientRuntime'
 import { getDeviceProfile } from './deviceIdentity'
 import { queryClient } from './query/queryClient'
 
@@ -244,7 +246,7 @@ async function registerDevice(url: string, rootToken: string): Promise<string | 
         'Content-Type': 'application/json',
         [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM,
       },
-      body: JSON.stringify({ ...profile, kind: 'desktop' }),
+      body: JSON.stringify({ ...profile, kind: clientRuntime.deviceKind }),
       signal: AbortSignal.timeout(5_000),
     })
     const body = await readJSON<{
@@ -282,7 +284,7 @@ async function startPairing(url: string): Promise<string | null> {
     const res = await fetch(`${url}/v1/devices/pairing-requests`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM },
-      body: JSON.stringify({ ...profile, kind: 'desktop' }),
+      body: JSON.stringify({ ...profile, kind: clientRuntime.deviceKind }),
       signal: AbortSignal.timeout(5_000),
     })
     const body = await readJSON<{
@@ -503,10 +505,10 @@ export async function connectRemote(url: string): Promise<string | null> {
 }
 
 export async function startLocal(): Promise<string | null> {
-  if (!window.jaz?.startLocalBackend) {
+  if (!clientRuntime.startLocalBackend) {
     return 'Local backend control is only available in the desktop app'
   }
-  const result = await window.jaz.startLocalBackend()
+  const result = await clientRuntime.startLocalBackend()
   const url = normalizeBaseUrl(result.url ?? localBaseUrl())
   if (await connectStoredToken(url)) {
     savePreference({ mode: 'local' })
@@ -543,6 +545,18 @@ async function connectStoredToken(url: string): Promise<boolean> {
 // launch never shows a connection error: only an *expected* backend (a saved
 // remote, or a local start the user already opted into) can surface one.
 async function init() {
+  const startupURL = consumeStartupConnectUrl()
+  if (startupURL) {
+    const target = normalizeBaseUrl(parseBackendConnectUrl(startupURL).url)
+    setState({ status: 'checking', url: target || state.url, pairing: null, error: null })
+    const error = await connectRemote(startupURL)
+    if (error) {
+      setState({ status: 'disconnected', url: target || state.url, pairing: null, error })
+      schedulePoll()
+    }
+    return
+  }
+
   const pref = connectionPreference()
 
   // A remote server was expected here, so reconnectKnown surfacing the failure

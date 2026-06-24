@@ -1,5 +1,6 @@
 import { motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { clientRuntime } from '@/lib/clientRuntime'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import { parseFileReference, type FileReference } from '../../../../shared/fileReader'
 import { SIDE_PANEL_WIDTHS, type SidePanelView } from './SidePanel'
@@ -59,7 +60,7 @@ export function useSidePanelState(overviewAvailable: boolean, sideChatAvailable 
     setPanelPref('open')
   }, [])
 
-  useEffect(() => window.jaz?.onOpenPreviewURL?.(openPreview), [openPreview])
+  useEffect(() => clientRuntime.onOpenPreviewURL?.(openPreview), [openPreview])
 
   const openFile = useCallback((file: string | FileReference) => {
     const ref = typeof file === 'string' ? parseFileReference(file) : file

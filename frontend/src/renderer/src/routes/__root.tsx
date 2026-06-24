@@ -13,6 +13,7 @@ import { CommandPalette } from '@/components/search/CommandPalette'
 import { SettingsOverlay } from '@/components/settings/SettingsOverlay'
 import { Sidebar } from '@/components/sidebar/Sidebar'
 import { ToastProvider } from '@/components/ui/toast'
+import { clientRuntime } from '@/lib/clientRuntime'
 import { modalDialogOpen } from '@/lib/dom/modal'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import type { BrowserNavigationDirection } from '../../../shared/browserNavigation'
@@ -25,7 +26,7 @@ export const Route = createRootRoute({
 // (they use the native OS titlebar). windowKind is fixed per window, so the
 // branch never changes within a window's lifetime.
 function RootComponent() {
-  if (window.jaz?.windowKind === 'board') {
+  if (clientRuntime.windowKind === 'board') {
     return <BoardRoot />
   }
   return <RootLayout />
@@ -38,7 +39,7 @@ function BoardRoot() {
   }, [])
 
   useEffect(
-    () => window.jaz?.onBrowserNavigation?.(handleBrowserNavigation),
+    () => clientRuntime.onBrowserNavigation?.(handleBrowserNavigation),
     [handleBrowserNavigation],
   )
 
@@ -73,7 +74,7 @@ function RootLayout() {
 
   // Deep links from board windows ("Open loop in Jaz") land here.
   useEffect(() => {
-    return window.jaz?.onOpenRoute?.((path) => router.history.push(path))
+    return clientRuntime.onOpenRoute?.((path) => router.history.push(path))
   }, [router])
   const [sidebarOpen, setSidebarOpen] = useState(
     () => localStorage.getItem(SIDEBAR_PREF_KEY) !== 'closed',
@@ -142,7 +143,7 @@ function RootLayout() {
   }
 
   useEffect(
-    () => window.jaz?.onBrowserNavigation?.(handleBrowserNavigation),
+    () => clientRuntime.onBrowserNavigation?.(handleBrowserNavigation),
     [handleBrowserNavigation],
   )
 

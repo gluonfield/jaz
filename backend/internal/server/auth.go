@@ -11,6 +11,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/deviceauth"
 	"github.com/wins/jaz/backend/internal/httpapi"
+	"github.com/wins/jaz/backend/internal/httpapi/webapp"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
 )
@@ -18,7 +19,7 @@ import (
 func (s *Server) withAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := strings.TrimSpace(s.AuthKey)
-		if key == "" || r.URL.Path == "/health" || internalMCPRequest(r) || publicDeviceRequest(r) || localBrowserExtensionRequest(r) {
+		if key == "" || r.URL.Path == "/health" || s.publicWebRequest(r) || internalMCPRequest(r) || publicDeviceRequest(r) || localBrowserExtensionRequest(r) {
 			next.ServeHTTP(w, r.WithContext(contextWithClientInfo(r, deviceauth.Principal{})))
 			return
 		}
@@ -60,11 +61,16 @@ func contextWithClientInfo(r *http.Request, principal deviceauth.Principal) cont
 
 func requestClientPlatform(r *http.Request) string {
 	if platform := strings.TrimSpace(r.Header.Get(clientPlatformHeader)); platform != "" {
-		if platform == "mobile" {
-			return "mobile"
+		switch platform {
+		case "browser", "cli", "desktop", "mobile":
+			return platform
 		}
 	}
 	return "desktop"
+}
+
+func (s *Server) publicWebRequest(r *http.Request) bool {
+	return s.WebApp != nil && webapp.PublicRequest(r)
 }
 
 func (s *Server) rootKeyHasFullAccess() bool {

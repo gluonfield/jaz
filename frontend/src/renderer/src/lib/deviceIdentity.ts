@@ -1,3 +1,5 @@
+import { clientRuntime } from './clientRuntime'
+
 export type DeviceIdentity = {
   device_id: string
   public_key: string
@@ -16,7 +18,7 @@ export type DeviceProfile = DeviceIdentity & DeviceMetadata
 const DEVICE_IDENTITY_KEY = 'jaz.deviceIdentity'
 
 export async function getDeviceIdentity(): Promise<DeviceIdentity> {
-  if (window.jaz?.getDeviceIdentity) return window.jaz.getDeviceIdentity()
+  if (clientRuntime.getDeviceIdentity) return clientRuntime.getDeviceIdentity()
   return getBrowserDeviceIdentity()
 }
 
@@ -26,7 +28,7 @@ export async function getDeviceProfile(): Promise<DeviceProfile> {
 }
 
 async function getDeviceMetadata(): Promise<DeviceMetadata> {
-  if (window.jaz?.getDeviceMetadata) return window.jaz.getDeviceMetadata()
+  if (clientRuntime.getDeviceMetadata) return clientRuntime.getDeviceMetadata()
   const platform = navigator.platform?.trim() || 'Browser'
   return {
     name: defaultBrowserDeviceName(platform),

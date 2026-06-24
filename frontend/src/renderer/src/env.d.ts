@@ -3,6 +3,7 @@ declare module '@fontsource-variable/inter'
 declare module '@fontsource-variable/jetbrains-mono'
 
 interface ImportMetaEnv {
+  readonly VITE_JAZ_API_URL?: string
   readonly VITE_POSTHOG_TOKEN?: string
   readonly VITE_POSTHOG_HOST?: string
 }

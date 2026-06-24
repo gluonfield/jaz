@@ -765,6 +765,22 @@ func TestCORSAllowsDeletePreflight(t *testing.T) {
 	}
 }
 
+func TestCORSAllowsSameHostWebClient(t *testing.T) {
+	handler := (&Server{}).Handler()
+	req := httptest.NewRequest(http.MethodOptions, "https://jaz.example.com/v1/sessions", nil)
+	req.Header.Set("Origin", "https://jaz.example.com")
+	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+
+	if res.Code != http.StatusNoContent {
+		t.Fatalf("preflight status = %d", res.Code)
+	}
+	if allow := res.Header().Get("Access-Control-Allow-Origin"); allow != "https://jaz.example.com" {
+		t.Fatalf("Access-Control-Allow-Origin = %q", allow)
+	}
+}
+
 type blockingMCPRuntime struct {
 	started chan struct{}
 	release chan struct{}

@@ -95,6 +95,7 @@ type Server struct {
 
 	Terminal     *terminal.Manager
 	Devices      *deviceauth.Service
+	WebApp       http.Handler
 	terminalOnce sync.Once
 
 	acpAuthLoginJobs sync.Map

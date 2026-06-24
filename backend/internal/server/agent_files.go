@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -71,18 +72,25 @@ func (s *Server) handleWriteAgentFile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, agentFile{Name: name, Content: req.Content, Exists: true})
 }
 
-// withCORS allows the desktop renderer (a loopback vite dev server or the
-// packaged file:// origin, which sends "null") to call the API from another
-// origin.
+// withCORS allows the desktop renderer and same-host web client to call the API.
 func allowedOrigin(origin string) bool {
 	return origin == "null" ||
 		strings.HasPrefix(origin, "http://localhost:") ||
 		strings.HasPrefix(origin, "http://127.0.0.1:")
 }
 
+func allowedRequestOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if allowedOrigin(origin) {
+		return true
+	}
+	u, err := url.Parse(origin)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && strings.EqualFold(u.Host, r.Host)
+}
+
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if origin := r.Header.Get("Origin"); allowedOrigin(origin) {
+		if origin := r.Header.Get("Origin"); allowedRequestOrigin(r) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
