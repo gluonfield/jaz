@@ -201,6 +201,26 @@ func TestBrowserTaskRejectsDisconnectedExtension(t *testing.T) {
 	}
 }
 
+func TestBrowserTaskAllowsManagedModeWithoutExtension(t *testing.T) {
+	store := newStore(t)
+	saveBrowserDefaults(t, store, acp.AgentCodex)
+	if _, err := jazsettings.SaveBrowserSettings(store, jazsettings.BrowserSettings{Enabled: true, Agent: acp.AgentCodex, Mode: jazsettings.BrowserModeManaged}); err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeManager{
+		statusErr: errors.New("not found"),
+		job:       acp.Job{ID: "browser-session", State: acp.StateIdle, Assistant: "Done."},
+	}
+	service := New(store, manager, acp.BuiltinAgents(), fakeExtension{})
+
+	if _, err := service.Run(context.Background(), Request{Kind: KindDo, Task: "Open a page", ParentID: "parent-session"}); err != nil {
+		t.Fatal(err)
+	}
+	if manager.send.Session != "browser-session" {
+		t.Fatalf("send = %#v", manager.send)
+	}
+}
+
 func TestBrowserTaskTimeoutUsesOverride(t *testing.T) {
 	store := newStore(t)
 	saveBrowserDefaults(t, store, acp.AgentCodex)

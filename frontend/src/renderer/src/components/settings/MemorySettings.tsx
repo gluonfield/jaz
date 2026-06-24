@@ -145,20 +145,18 @@ export function MemorySettings() {
   const selectedMemoryAgent = memory.agent ?? ''
   const staleMemoryAgent = selectedMemoryAgent && !memoryAgents.includes(selectedMemoryAgent)
   const memoryAgentOptions = [
-    { value: '', label: 'Not selected', description: 'Memory search and dream will stay idle' },
+    { value: '', label: 'Not selected' },
     ...(staleMemoryAgent
       ? [
           {
             value: selectedMemoryAgent,
             label: `${agentLabel(selectedMemoryAgent)} (disabled)`,
-            description: 'Enable this ACP agent or choose another one',
           },
         ]
       : []),
     ...memoryAgents.map((agent) => ({
       value: agent,
       label: agentLabel(agent),
-      description: 'Run memory_search and dream through this ACP agent',
     })),
   ]
   const memoryAgentValid =
@@ -240,7 +238,7 @@ export function MemorySettings() {
         </SettingsCard>
 
         <SettingsCard className="px-4 py-3">
-          <div className="flex min-w-0 flex-col gap-2">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_260px] md:items-center">
             <div className="min-w-0">
               <span className="text-[13px] font-medium text-ink">Memory agent</span>
               <p className="mt-0.5 text-[12px] text-ink-2">
@@ -258,7 +256,6 @@ export function MemorySettings() {
               disabled={setMemoryAgent.isPending || agentSettings.isPending}
               onChange={(agent) => setMemoryAgent.mutate(agent)}
               aria-label="Memory agent"
-              className="w-full"
             />
           </div>
         </SettingsCard>
