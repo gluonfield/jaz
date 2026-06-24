@@ -41,9 +41,6 @@ export interface ClientRuntime {
 function webDefaultApiBaseUrl(): string {
   const configured = import.meta.env.VITE_JAZ_API_URL?.trim()
   if (configured) return configured
-  if (window.location.protocol === 'http:' || window.location.protocol === 'https:') {
-    return window.location.origin
-  }
   return DEFAULT_LOCAL_URL
 }
 

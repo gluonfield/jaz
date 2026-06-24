@@ -15,7 +15,6 @@ const (
 type Config struct {
 	Addr      string
 	PublicURL string
-	WebDir    string
 }
 
 type URLs struct {

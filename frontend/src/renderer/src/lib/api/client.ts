@@ -44,19 +44,33 @@ export function parseBackendConnectUrl(input: string): { url: string; key: strin
 
 export function consumeStartupConnectUrl(): string {
   if (clientRuntime.kind !== 'web') return ''
-  const key = new URLSearchParams(window.location.search).get('key')?.trim()
-  if (!key) return ''
-  const raw = window.location.href
+  const params = new URLSearchParams(window.location.search)
+  const target = params.get('server')?.trim() || params.get('url')?.trim() || ''
+  const key = params.get('key')?.trim() ?? ''
+  if (!target || !key) return ''
+  const raw = connectUrlWithKey(target, key)
   const next = new URL(window.location.href)
+  next.searchParams.delete('server')
+  next.searchParams.delete('url')
   next.searchParams.delete('key')
   window.history.replaceState(window.history.state, '', next)
   return raw
 }
 
-// A remembered remote URL wins over the local default so the next launch
-// reconnects to wherever the user pointed the app last — unless JAZ_API_URL
-// was set explicitly (≠ default), which is a developer override that beats
-// the remembered URL.
+function connectUrlWithKey(target: string, key: string): string {
+  const raw = target.trim()
+  try {
+    const parsed = new URL(/^https?:\/\//i.test(raw) ? raw : `http://${raw}`)
+    parsed.searchParams.set('key', key)
+    return parsed.toString()
+  } catch {
+    return `${raw}${raw.includes('?') ? '&' : '?'}key=${encodeURIComponent(key)}`
+  }
+}
+
+// A remembered remote URL wins over the local default so refresh reconnects to
+// the user's server. An explicit runtime default still wins for desktop preload
+// and VITE_JAZ_API_URL-pinned development builds.
 let baseUrl = ((): string => {
   const local = localBaseUrl()
   if (local !== DEFAULT_LOCAL_URL) return normalizeBaseUrl(local)

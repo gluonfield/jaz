@@ -765,10 +765,10 @@ func TestCORSAllowsDeletePreflight(t *testing.T) {
 	}
 }
 
-func TestCORSAllowsSameHostWebClient(t *testing.T) {
+func TestCORSAllowsStaticWebClient(t *testing.T) {
 	handler := (&Server{}).Handler()
-	req := httptest.NewRequest(http.MethodOptions, "https://jaz.example.com/v1/sessions", nil)
-	req.Header.Set("Origin", "https://jaz.example.com")
+	req := httptest.NewRequest(http.MethodOptions, "https://server.example.com/v1/sessions", nil)
+	req.Header.Set("Origin", "https://web.jaz.chat")
 	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
 	res := httptest.NewRecorder()
 	handler.ServeHTTP(res, req)
@@ -776,7 +776,7 @@ func TestCORSAllowsSameHostWebClient(t *testing.T) {
 	if res.Code != http.StatusNoContent {
 		t.Fatalf("preflight status = %d", res.Code)
 	}
-	if allow := res.Header().Get("Access-Control-Allow-Origin"); allow != "https://jaz.example.com" {
+	if allow := res.Header().Get("Access-Control-Allow-Origin"); allow != "https://web.jaz.chat" {
 		t.Fatalf("Access-Control-Allow-Origin = %q", allow)
 	}
 }

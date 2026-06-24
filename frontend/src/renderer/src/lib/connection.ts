@@ -212,8 +212,12 @@ function markConnected(url: string) {
   const normalized = normalizeBaseUrl(url)
   setApiBaseUrl(url)
   failures = 0
-  // Every successful connection is a switch target next time; local is implicit.
-  if (!isLocalBackendUrl(url)) rememberBackend(url, new Date().toISOString())
+  if (isLocalBackendUrl(normalized)) {
+    savePreference({ mode: 'local' })
+  } else {
+    savePreference({ mode: 'remote', remoteUrl: normalized })
+    rememberBackend(normalized, new Date().toISOString())
+  }
   // The cache belongs to the backend we were last connected to; drop it when we
   // actually connect somewhere new so the app refetches against the right one.
   if (cacheOwnerUrl !== normalized) queryClient.clear()
@@ -258,7 +262,6 @@ async function registerDevice(url: string, rootToken: string): Promise<string | 
     if (res.ok && body?.token) {
       setApiAuthToken(url, body.token)
       markConnected(url)
-      rememberLocalLaunch(url)
       return null
     }
     if (res.status === 202 && body?.pairing && body.pairing_secret) {
@@ -269,7 +272,6 @@ async function registerDevice(url: string, rootToken: string): Promise<string | 
         deviceName: body.pairing.device?.name || profile.name,
         expiresAt: body.pairing.expires_at,
       })
-      rememberLocalLaunch(url)
       return null
     }
     return body?.error || `Device registration failed with ${res.status}`
@@ -302,7 +304,6 @@ async function startPairing(url: string): Promise<string | null> {
       deviceName: body.pairing.device?.name || profile.name,
       expiresAt: body.pairing.expires_at,
     })
-    rememberLocalLaunch(url)
     return null
   } catch {
     return 'Could not create a device approval request'
@@ -393,21 +394,6 @@ function savePreference(pref: ConnectionPreference): void {
 
 export function clearConnectionPreference(): void {
   localStorage.removeItem(PREFERENCE_KEY)
-}
-
-// Persist the launch default eagerly only for a local backend, which is always
-// usable. A remote is deferred until its onboarding is confirmed complete (see
-// persistLaunchPreference), so bailing out of an unfinished remote never leaves
-// a restart auto-connecting straight back into a setup it can't finish.
-function rememberLocalLaunch(url: string): void {
-  if (isLocalBackendUrl(url)) savePreference({ mode: 'local' })
-}
-
-// Commit a backend as the one to reach on launch. Called once onboarding for it
-// is confirmed complete, so only a usable backend becomes the boot default —
-// including remotes, which rememberLocalLaunch deliberately skips.
-export function persistLaunchPreference(url: string): void {
-  savePreference(isLocalBackendUrl(url) ? { mode: 'local' } : { mode: 'remote', remoteUrl: normalizeBaseUrl(url) })
 }
 
 // Forget a saved backend everywhere: drop it from the registry and its key, and

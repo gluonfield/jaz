@@ -72,20 +72,17 @@ func (s *Server) handleWriteAgentFile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, agentFile{Name: name, Content: req.Content, Exists: true})
 }
 
-// withCORS allows the desktop renderer and same-host web client to call the API.
+// withCORS allows desktop renderers and static web clients to call the API.
 func allowedOrigin(origin string) bool {
-	return origin == "null" ||
-		strings.HasPrefix(origin, "http://localhost:") ||
-		strings.HasPrefix(origin, "http://127.0.0.1:")
-}
-
-func allowedRequestOrigin(r *http.Request) bool {
-	origin := r.Header.Get("Origin")
-	if allowedOrigin(origin) {
+	if origin == "null" || strings.HasPrefix(origin, "chrome-extension://") {
 		return true
 	}
 	u, err := url.Parse(origin)
-	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && strings.EqualFold(u.Host, r.Host)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+}
+
+func allowedRequestOrigin(r *http.Request) bool {
+	return allowedOrigin(r.Header.Get("Origin"))
 }
 
 func withCORS(next http.Handler) http.Handler {
