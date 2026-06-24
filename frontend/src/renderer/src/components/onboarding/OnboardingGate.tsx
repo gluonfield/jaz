@@ -8,7 +8,7 @@ import { authProviderLabel } from '@/lib/agentLabel'
 import { completeOnboarding, onboardingQuery } from '@/lib/api/onboarding'
 import { cloneAgentSettings, compactKeys, startACPAuthLogin } from '@/lib/api/settings'
 import type { ACPAgentAuth, AgentSettings, OnboardingStatus } from '@/lib/api/types'
-import { disconnectBackend, isLoopbackUrl, persistLaunchPreference, useConnection } from '@/lib/connection'
+import { disconnectBackend, isLocalBackendUrl, persistLaunchPreference, useConnection } from '@/lib/connection'
 import { localDeviceLabel } from '@/lib/deviceLabel'
 import { useACPLoginPolling } from '@/lib/hooks/useACPLoginPolling'
 import { keys } from '@/lib/query/keys'
@@ -76,7 +76,7 @@ function OnboardingScreen({
   const queryClient = useQueryClient()
   const toast = useToast()
   const connection = useConnection()
-  const remote = !isLoopbackUrl(connection.url)
+  const remote = !isLocalBackendUrl(connection.url)
   const [step, setStep] = useState<OnboardingStep>('agents')
   const [draft, setDraft] = useState(() => draftFromStatus(status))
   const [acpKeysByAgent, setACPKeysByAgent] = useState<Record<string, string>>({})
