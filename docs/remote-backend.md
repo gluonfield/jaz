@@ -184,7 +184,7 @@ After a successful connection, the browser stores the backend URL and device tok
 
 A production browser origin may call a private or loopback backend, for example `http://localhost:5299`, as long as the browser allows the request. Jaz answers normal CORS preflights and Chrome Private Network Access preflights with `Access-Control-Allow-Private-Network: true`.
 
-### Self-host the app and backend behind one origin
+### Self-host the app and backend behind one origin (optional)
 
 You only need this to reach the backend from a **browser** client. The Electron desktop app connects straight to a remote backend over plain HTTP, so it needs none of this — TLS and a reverse proxy matter only because a browser blocks an HTTPS page from calling a plain-HTTP backend (mixed content).
 
