@@ -485,8 +485,6 @@ export async function connectRemote(url: string): Promise<string | null> {
     }
   }
   markConnected(target)
-  // A remote becomes the launch default only once its onboarding completes, so
-  // a restart never auto-reconnects into a setup the user bailed on.
   return null
 }
 
@@ -497,7 +495,6 @@ export async function startLocal(): Promise<string | null> {
   const result = await clientRuntime.startLocalBackend()
   const url = normalizeBaseUrl(result.url ?? localBaseUrl())
   if (await connectStoredToken(url)) {
-    savePreference({ mode: 'local' })
     return null
   }
   if (!result.ok) return result.error ?? 'Failed to start the backend'
@@ -513,7 +510,6 @@ export async function startLocal(): Promise<string | null> {
   )
   if (error) return error
   markConnected(url)
-  savePreference({ mode: 'local' })
   return null
 }
 
@@ -574,7 +570,6 @@ async function init() {
   // yet.
   const error = await verifyBackend(localUrl)
   if (!error) {
-    savePreference({ mode: 'local' })
     markConnected(localUrl)
     return
   }
