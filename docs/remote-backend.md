@@ -186,6 +186,8 @@ A production browser origin may call a private or loopback backend, for example 
 
 ### Self-host the app and backend behind one origin
 
+You only need this to reach the backend from a **browser** client. The Electron desktop app connects straight to a remote backend over plain HTTP, so it needs none of this — TLS and a reverse proxy matter only because a browser blocks an HTTPS page from calling a plain-HTTP backend (mixed content).
+
 To expose a single surface and keep the backend private, serve the web build and proxy the API from one origin. The browser only ever talks to that origin, so there is no mixed content and no CORS, and the backend never leaves loopback. Requests still originate in the browser; the proxy is pure routing, not a server that makes calls for it.
 
 Build the web app to target whatever origin it is served from:
