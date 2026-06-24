@@ -12,6 +12,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { IconButton } from '@/components/ui/IconButton'
 import type { Attachment } from '@/lib/api/types'
+import { clientRuntime } from '@/lib/clientRuntime'
 import type { BrowserAnnotation } from '@/lib/messageContext'
 import { normalizePreviewURL } from '../../../../shared/preview'
 import {
@@ -40,9 +41,11 @@ export function PreviewPanel({
   const webviewRef = useRef<PreviewWebviewElement | null>(null)
   const readyRef = useRef(false)
   const urlRef = useRef(url)
+  const canUseWebview = clientRuntime.capabilities.previewWebview
   const [webview, setWebview] = useState<PreviewWebviewElement | null>(null)
   const [draft, setDraft] = useState(url)
   const [webviewReady, setWebviewReady] = useState(false)
+  const [iframeKey, setIframeKey] = useState(0)
   const [loading, setLoading] = useState(false)
   const [canGoBack, setCanGoBack] = useState(false)
   const [canGoForward, setCanGoForward] = useState(false)
@@ -53,7 +56,13 @@ export function PreviewPanel({
     urlRef.current = url
     setDraft(url)
     setError('')
-  }, [url])
+    if (!canUseWebview) {
+      setLoading(Boolean(url))
+      setWebviewReady(Boolean(url))
+      setCanGoBack(false)
+      setCanGoForward(false)
+    }
+  }, [canUseWebview, url])
 
   const bindWebview = useCallback((element: Element | null) => {
     const next = element as PreviewWebviewElement | null
@@ -172,6 +181,17 @@ export function PreviewPanel({
     await clearBrowserAnnotationCapture(webview)
   }
 
+  const reload = () => {
+    if (canUseWebview) {
+      runWhenReady((view) => view.reload())
+      return
+    }
+    setLoading(Boolean(url))
+    setIframeKey((key) => key + 1)
+  }
+
+  const canAnnotate = canUseWebview && !!onAddBrowserAnnotation
+
   return (
     <SidePanelShell width={PREVIEW_PANEL_WIDTH}>
       <form
@@ -203,8 +223,8 @@ export function PreviewPanel({
           size="sm"
           aria-label="Reload preview"
           title="Reload"
-          disabled={!url || !webviewReady}
-          onClick={() => runWhenReady((view) => view.reload())}
+          disabled={!url || (canUseWebview && !webviewReady)}
+          onClick={reload}
         >
           {loading ? <LoaderCircle size={14} className="animate-spin" /> : <RotateCw size={14} />}
         </IconButton>
@@ -231,7 +251,7 @@ export function PreviewPanel({
           size="sm"
           aria-label={annotating ? 'Stop annotation' : 'Annotate preview'}
           title={annotating ? 'Stop annotation' : 'Annotate'}
-          disabled={!url || !webviewReady || !onAddBrowserAnnotation}
+          disabled={!url || !webviewReady || !canAnnotate}
           onClick={() => (annotating ? void stopAnnotation() : void annotate())}
           className={annotating ? 'text-danger hover:bg-danger-soft hover:text-danger' : ''}
         >
@@ -250,13 +270,26 @@ export function PreviewPanel({
         <p className="shrink-0 border-b border-border px-3 py-2 text-[12px] text-danger">{error}</p>
       ) : null}
       <div className="min-h-0 flex-1 bg-bg">
-        {url ? (
+        {url && canUseWebview ? (
           <webview
             ref={bindWebview}
             src={url}
             partition="persist:jaz-preview"
             allowpopups
             className="h-full w-full bg-bg"
+          />
+        ) : url ? (
+          <iframe
+            key={iframeKey}
+            src={url}
+            title="Preview"
+            sandbox="allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"
+            referrerPolicy="no-referrer"
+            onLoad={() => {
+              setLoading(false)
+              setWebviewReady(true)
+            }}
+            className="h-full w-full border-0 bg-bg"
           />
         ) : (
           <div className="flex h-full items-center justify-center px-8 text-center text-[13px] text-ink-3">

@@ -445,6 +445,18 @@ func TestACPStreamUsesServerContextAfterRequestCancel(t *testing.T) {
 	}
 }
 
+func TestRequestClientPlatformAcceptsKnownPlatforms(t *testing.T) {
+	for _, platform := range []string{"browser", "cli", "desktop", "mobile"} {
+		t.Run(platform, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/v1/sessions", nil)
+			req.Header.Set("X-Jaz-Client-Platform", platform)
+			if got := requestClientPlatform(req); got != platform {
+				t.Fatalf("platform = %q, want %q", got, platform)
+			}
+		})
+	}
+}
+
 func TestACPSideChatRoutesToManager(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

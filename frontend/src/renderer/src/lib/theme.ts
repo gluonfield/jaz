@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { clientRuntime } from './clientRuntime'
 
 // 'system' follows the OS appearance; 'light'/'dark' pin it. Persisted across
 // launches and mirrored into the inline anti-FOUC script in index.html.
@@ -35,7 +36,7 @@ function apply(p: ThemePref) {
       ? DARK_BG
       : LIGHT_BG
   // keep the native window chrome (macOS traffic lights, scrollbars) in step
-  window.jaz?.setNativeTheme?.(p)
+  clientRuntime.setNativeTheme?.(p)
 }
 
 function notify() {

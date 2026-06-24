@@ -765,6 +765,26 @@ func TestCORSAllowsDeletePreflight(t *testing.T) {
 	}
 }
 
+func TestCORSAllowsStaticWebClient(t *testing.T) {
+	handler := (&Server{}).Handler()
+	req := httptest.NewRequest(http.MethodOptions, "https://server.example.com/v1/sessions", nil)
+	req.Header.Set("Origin", "https://web.jaz.chat")
+	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
+	req.Header.Set("Access-Control-Request-Private-Network", "true")
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+
+	if res.Code != http.StatusNoContent {
+		t.Fatalf("preflight status = %d", res.Code)
+	}
+	if allow := res.Header().Get("Access-Control-Allow-Origin"); allow != "https://web.jaz.chat" {
+		t.Fatalf("Access-Control-Allow-Origin = %q", allow)
+	}
+	if allow := res.Header().Get("Access-Control-Allow-Private-Network"); allow != "true" {
+		t.Fatalf("Access-Control-Allow-Private-Network = %q", allow)
+	}
+}
+
 type blockingMCPRuntime struct {
 	started chan struct{}
 	release chan struct{}

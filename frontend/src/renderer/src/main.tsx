@@ -13,6 +13,7 @@ import { LaunchScreen, ReconnectingBanner } from './components/launch/LaunchScre
 import { OnboardingGate } from './components/onboarding/OnboardingGate'
 import { installFileDropGuard } from './components/ui/FileDrop'
 import { useBackendChange, useConnection } from './lib/connection'
+import { clientRuntime } from './lib/clientRuntime'
 import { queryClient } from './lib/query/queryClient'
 import { routeTree } from './routeTree.gen'
 import { telemetry } from './lib/telemetry'
@@ -27,7 +28,7 @@ installFileDropGuard()
 // One open event per launch from the main window — board/widget popouts are
 // secondary surfaces and would inflate the count. PostHog derives new vs.
 // returning users from the per-install distinct id.
-if ((window.jaz?.windowKind ?? 'main') === 'main') telemetry.appOpened()
+if (clientRuntime.windowKind === 'main') telemetry.appOpened()
 
 const router = createRouter({
   routeTree,
@@ -63,7 +64,7 @@ function App() {
       <BackendTransition />
       {connected ? (
         <>
-          {window.jaz?.windowKind === 'board' ? app : <OnboardingGate>{app}</OnboardingGate>}
+          {clientRuntime.windowKind === 'board' ? app : <OnboardingGate>{app}</OnboardingGate>}
           <ReconnectingBanner show={status === 'reconnecting'} />
         </>
       ) : (
