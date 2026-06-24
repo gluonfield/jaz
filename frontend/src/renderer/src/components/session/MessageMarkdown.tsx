@@ -15,7 +15,7 @@ import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
-import { findFileReferences, parseFileReference, shouldPreviewFileReference, type FileReference } from '../../../../shared/fileReader'
+import { findFileReferences, parseFileReference, type FileReference } from '../../../../shared/fileReader'
 import { shouldPreviewURLByDefault } from '../../../../shared/preview'
 import { CodeBlock } from './CodeBlock'
 import { encodeMention } from './mentionCodec'
@@ -221,8 +221,6 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, onCli
   const openPreview = useContext(PreviewLinkContext)
   const openFile = useContext(FileReaderLinkContext)
   const localFile = localFileFromLink(href, children)
-  const urlLink = isUrlLink(href)
-  const Icon = markdownLinkIcon(localFile, urlLink)
   if (localFile) {
     return (
       <button
@@ -242,6 +240,7 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, onCli
       </button>
     )
   }
+  const urlLink = isUrlLink(href)
   if (!urlLink) return <>{children}</>
   return (
     <a
@@ -263,22 +262,15 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, onCli
         openPreview(href)
       }}
     >
-      {Icon ? (
-        <Icon
-          aria-hidden="true"
-          className="chat-prose-link-icon"
-          size={13}
-          strokeWidth={1.7}
-        />
-      ) : null}
+      <Globe
+        aria-hidden="true"
+        className="chat-prose-link-icon"
+        size={13}
+        strokeWidth={1.7}
+      />
       {children}
     </a>
   )
-}
-
-function markdownLinkIcon(localFile: FileReference | null, urlLink: boolean) {
-  if (localFile) return shouldPreviewFileReference(localFile) ? Globe : FileText
-  return urlLink ? Globe : null
 }
 
 export const RenderedMarkdown = memo(function RenderedMarkdown({

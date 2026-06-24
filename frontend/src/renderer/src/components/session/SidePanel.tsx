@@ -2,6 +2,7 @@ import type { Attachment, Session, SessionEvent } from '@/lib/api/types'
 import type { BrowserAnnotation } from '@/lib/messageContext'
 import type { ProviderSubagentView } from '@/lib/providerSubagents'
 import type { SendMessageHandler, SendMessageOptions } from '@/lib/sendMessage'
+import type { SpawnedThreadView } from '@/lib/spawnedThreads'
 import type { TaskSurface } from '@/lib/taskSurface'
 import type { FileReference } from '../../../../shared/fileReader'
 import { CODE_DIFF_PANEL_WIDTH, CodeDiffPanel } from './CodeDiffPanel'
@@ -26,6 +27,7 @@ export function SidePanel({
   session,
   progress,
   subagents,
+  spawnedThreads,
   working,
   visible,
   view,
@@ -44,6 +46,7 @@ export function SidePanel({
   session: Session
   progress?: TaskSurface
   subagents: ProviderSubagentView[]
+  spawnedThreads: SpawnedThreadView[]
   working: boolean
   visible: boolean
   view: SidePanelView
@@ -71,7 +74,14 @@ export function SidePanel({
           onClose={onClose}
         />
       ) : (
-        <OverviewPanel session={session} progress={progress} subagents={subagents} working={working} onSend={onSend} />
+        <OverviewPanel
+          session={session}
+          progress={progress}
+          subagents={subagents}
+          spawnedThreads={spawnedThreads}
+          working={working}
+          onSend={onSend}
+        />
       )
     case 'diff':
       return <CodeDiffPanel session={session} visible={visible} onClose={onClose} />
@@ -103,6 +113,7 @@ export function SidePanel({
           session={session}
           progress={progress}
           subagents={subagents}
+          spawnedThreads={spawnedThreads}
           working={working}
           onSend={onSend}
         />
