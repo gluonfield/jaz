@@ -215,6 +215,38 @@ sudo systemctl restart caddy   # Caddy provisions a Let's Encrypt cert automatic
 
 Then set `JAZ_PUBLIC_URL=https://jaz.example.com` in `/etc/jaz/jaz.env` and restart `jaz` so the printed client URL matches. The connect key is unchanged. If the desktop app is already the first approved device, a browser client connecting afterward arrives as a pending device — approve it from an approved device's Settings → Devices (see Pairing Flow below).
 
+### Self-host the app and backend behind one origin
+
+To expose a single surface and keep the backend private, serve the web build and proxy the API from one origin. The browser only ever talks to that origin, so there is no mixed content and no CORS, and the backend never leaves loopback. Requests still originate in the browser; the proxy is pure routing, not a server that makes calls for it.
+
+Build the web app to target whatever origin it is served from:
+
+```sh
+VITE_JAZ_API_URL=origin bun run build:web   # emits frontend/dist-web
+```
+
+`origin` makes the app use `window.location.origin` as its backend, so one build works at any domain. (Set `VITE_JAZ_API_URL` to an explicit URL to pin a backend instead, or leave it unset to default to a local backend.)
+
+Bind the backend to loopback so it is reachable only through the proxy — set `JAZ_ADDR=127.0.0.1:5299` and `JAZ_PUBLIC_URL=https://jaz.example.com` in `/etc/jaz/jaz.env`, restart `jaz`, and leave `:5299` out of the firewall (open only the proxy's `:443`/`:80`).
+
+Serve the static build and proxy the API with Caddy:
+
+```caddy
+jaz.example.com {
+    @api path /v1/* /health
+    handle @api {
+        reverse_proxy 127.0.0.1:5299
+    }
+    handle {
+        root * /var/www/jaz-web
+        try_files {path} /index.html
+        file_server
+    }
+}
+```
+
+Caddy upgrades the websocket/SSE streams automatically. Open `https://jaz.example.com?key=...` (the key from `/var/lib/jaz/client-url.txt`); the app connects to its own origin, which the proxy forwards to the private backend.
+
 Remote `--public-url` server logs print the public base URL and the auth file path, not the root key:
 
 ```text
