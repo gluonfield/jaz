@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useBackendChange } from '@/lib/connection'
 import { backendName } from '@/lib/connectionDisplay'
@@ -14,11 +14,12 @@ const HOLD_MS = 1000
 export function BackendTransition() {
   const [name, setName] = useState<string | null>(null)
 
-  useBackendChange((url) => {
-    setName(backendName(url))
+  useBackendChange((url) => setName(backendName(url)))
+  useEffect(() => {
+    if (!name) return
     const timer = window.setTimeout(() => setName(null), HOLD_MS)
     return () => window.clearTimeout(timer)
-  })
+  }, [name])
 
   return createPortal(
     <AnimatePresence>{name ? <TransitionScene name={name} /> : null}</AnimatePresence>,
