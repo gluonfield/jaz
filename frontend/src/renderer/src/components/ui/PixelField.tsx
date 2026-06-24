@@ -1,5 +1,6 @@
 import { useReducedMotion } from 'motion/react'
 import { useEffect, useRef } from 'react'
+import { useEffectsEnabled } from '@/lib/appearance'
 import type {
   PixelFieldActiveShapeState,
   PixelFieldLifecycle,
@@ -429,7 +430,11 @@ export function PixelField({
   const calmRef = useRef(calm)
   const onShapeFrameRef = useRef(onShapeFrame)
   const lifecycleRef = useRef(lifecycle)
-  const reducedMotion = useReducedMotion()
+  // Effects off (Settings → Appearance) calms the particle field the same way
+  // the OS reduced-motion preference does. Both hooks run unconditionally.
+  const osReducedMotion = useReducedMotion()
+  const effectsEnabled = useEffectsEnabled()
+  const reducedMotion = osReducedMotion || !effectsEnabled
   const playlistKey = (shapes?.length ? shapes : DEFAULT_PLAYLIST).join(',')
 
   useEffect(() => {

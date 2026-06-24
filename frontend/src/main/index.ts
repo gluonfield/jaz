@@ -374,11 +374,18 @@ app.whenReady().then(() => {
     else previewURLTargets.delete(event.sender.id)
   })
 
-  // Voice mode records from the mic; allow media (macOS still shows its own
-  // TCC prompt) and deny everything else.
+  // Voice mode records from the mic; the font settings enumerate installed
+  // fonts via queryLocalFonts(). Allow those (macOS still shows its own TCC
+  // prompt for the mic) and deny everything else.
+  const ALLOWED_PERMISSIONS = new Set(['media', 'local-fonts'])
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
-    callback(permission === 'media')
+    callback(ALLOWED_PERMISSIONS.has(permission))
   })
+  // queryLocalFonts() also consults the synchronous permission check; grant the
+  // same set so it doesn't fall back to a denied default.
+  session.defaultSession.setPermissionCheckHandler((_wc, permission) =>
+    ALLOWED_PERMISSIONS.has(permission),
+  )
   if (process.platform === 'darwin') {
     app.dock?.setIcon(appIcon)
     app.setAboutPanelOptions({

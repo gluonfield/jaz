@@ -7,6 +7,7 @@ import { speakStream, transcribeAudio } from '@/lib/api/voice'
 import { Mic as Microphone } from '@/lib/audio/mic'
 import { StreamingPlayer } from '@/lib/audio/player'
 import { keys } from '@/lib/query/keys'
+import { useEffectsEnabled } from '@/lib/appearance'
 import { VoiceVisualizer } from './VoiceVisualizer'
 
 type Phase = 'connecting' | 'listening' | 'thinking' | 'speaking' | 'paused' | 'error'
@@ -36,7 +37,9 @@ const BARGE_GUARD_MS = 500
 
 export function VoiceMode({ sessionId, onExit }: { sessionId: string; onExit: () => void }) {
   const queryClient = useQueryClient()
-  const reducedMotion = useReducedMotion()
+  const osReducedMotion = useReducedMotion()
+  const effectsEnabled = useEffectsEnabled()
+  const reducedMotion = osReducedMotion || !effectsEnabled
   const [phase, setPhase] = useState<Phase>('connecting')
   const [turns, setTurns] = useState<Turn[]>([])
   const [live, setLive] = useState('') // streaming assistant reply, pre-commit

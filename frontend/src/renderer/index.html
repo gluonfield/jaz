@@ -27,6 +27,31 @@
               ? 'oklch(0.208 0.007 262)'
               : 'oklch(0.963 0.007 262)'
         } catch (e) {}
+        // Apply appearance prefs before first paint so zoom and custom fonts
+        // don't reflow after mount. Mirrors lib/appearance.ts — keep in sync.
+        try {
+          var el2 = document.documentElement
+          if (localStorage.getItem('jaz.appearance.effects') === 'false')
+            el2.classList.add('jaz-no-effects')
+          var scale = parseFloat(localStorage.getItem('jaz.appearance.fontScale') || '1')
+          if (scale && scale !== 1) el2.style.zoom = String(scale)
+          var uiFont = localStorage.getItem('jaz.appearance.uiFont')
+          if (uiFont)
+            el2.style.setProperty(
+              '--font-sans',
+              '"' + uiFont + '", "Inter Variable", ui-sans-serif, system-ui, sans-serif',
+            )
+          var monoFont = localStorage.getItem('jaz.appearance.monoFont')
+          if (monoFont)
+            el2.style.setProperty(
+              '--font-mono',
+              '"' + monoFont + '", "JetBrains Mono Variable", ui-monospace, "SF Mono", monospace',
+            )
+          if (localStorage.getItem('jaz.appearance.wideLayout') === 'true') {
+            el2.style.setProperty('--thread-max', '1040px')
+            el2.style.setProperty('--prose-max', '1040px')
+          }
+        } catch (e) {}
       })()
     </script>
   </head>

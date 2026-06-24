@@ -55,12 +55,22 @@ export function useHighlightedCode(language: string, code: string) {
   return highlighted
 }
 
-export function HighlightedCodeLine({ text, tokens }: { text: string; tokens?: HighlightedCodeTokens | null }) {
+export function HighlightedCodeLine({
+  text,
+  tokens,
+  // Diffs keep one even weight/slope — colour still distinguishes tokens, but
+  // italic/bold runs don't fight the +/- rows. Callers opt in.
+  flatten = false,
+}: {
+  text: string
+  tokens?: HighlightedCodeTokens | null
+  flatten?: boolean
+}) {
   if (!tokens?.length) return <>{text || ' '}</>
   return (
     <>
       {tokens.map((token, index) => (
-        <span key={index} style={tokenStyle(token)}>
+        <span key={index} style={tokenStyle(token, flatten)}>
           {token.content}
         </span>
       ))}
@@ -68,12 +78,12 @@ export function HighlightedCodeLine({ text, tokens }: { text: string; tokens?: H
   )
 }
 
-function tokenStyle(token: SyntaxToken): CSSProperties {
+function tokenStyle(token: SyntaxToken, flatten = false): CSSProperties {
   const fontStyle = token.fontStyle ?? 0
   return {
     color: token.color,
-    fontStyle: fontStyle & 1 ? 'italic' : undefined,
-    fontWeight: fontStyle & 2 ? 600 : undefined,
-    textDecorationLine: fontStyle & 4 ? 'underline' : undefined,
+    fontStyle: !flatten && fontStyle & 1 ? 'italic' : undefined,
+    fontWeight: !flatten && fontStyle & 2 ? 600 : undefined,
+    textDecorationLine: !flatten && fontStyle & 4 ? 'underline' : undefined,
   }
 }

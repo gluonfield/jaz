@@ -54,6 +54,11 @@
 :root {
   color-scheme: light;
 
+  /* Content widths. The Appearance "wide layout" setting overrides these on the
+   * document root (lib/appearance.ts); leaving them here keeps the stock size. */
+  --thread-max: 720px;
+  --prose-max: 76ch;
+
   --z-dropdown: 10;
   --z-modal: 60;
   --z-file-drop: 70;
@@ -64,6 +69,16 @@
   --shadow-raised:
     0 1px 2px rgba(18, 20, 30, 0.05),
     0 12px 30px -8px rgba(18, 20, 30, 0.12);
+
+  /* Inline edit diffs: solid, saturated fills (not opacity tints over the body
+   * wash, which read grey). Brighter and higher-chroma than the calm --color-ok
+   * / --color-danger status tokens on purpose — a diff should pop. */
+  --diff-add-bg: oklch(0.915 0.088 145);
+  --diff-add-gutter: oklch(0.87 0.108 145);
+  --diff-add-fg: oklch(0.48 0.14 145);
+  --diff-del-bg: oklch(0.922 0.05 25);
+  --diff-del-gutter: oklch(0.882 0.072 25);
+  --diff-del-fg: oklch(0.55 0.17 25);
 }
 
 @utility z-dropdown {
@@ -122,6 +137,15 @@
 
   --shadow-raised: 0 18px 46px rgba(0, 0, 0, 0.18);
 
+  /* Diff fills lifted for dark: clearly green/red against the charcoal ground,
+   * with bright foreground digits/markers. */
+  --diff-add-bg: oklch(0.4 0.072 145);
+  --diff-add-gutter: oklch(0.46 0.088 145);
+  --diff-add-fg: oklch(0.84 0.14 145);
+  --diff-del-bg: oklch(0.38 0.08 25);
+  --diff-del-gutter: oklch(0.44 0.097 25);
+  --diff-del-fg: oklch(0.8 0.15 25);
+
   --color-rainbow-1: oklch(0.68 0.19 25);
   --color-rainbow-2: oklch(0.8 0.14 90);
   --color-rainbow-3: oklch(0.7 0.15 145);
@@ -160,7 +184,7 @@
   user-select: text;
 }
 .chat-prose {
-  max-width: 76ch;
+  max-width: var(--prose-max);
 }
 .file-prose {
   max-width: 88ch;
@@ -350,6 +374,24 @@
     animation: none;
     background-color: var(--color-primary);
   }
+}
+
+/* Effects off (Settings → Appearance): calm the decorative motion to the same
+ * resting state as prefers-reduced-motion. JS-driven effects (composer comet,
+ * particle field) read the flag separately via useEffectsEnabled. */
+:root.jaz-no-effects .jaz-gradient {
+  animation: none;
+}
+:root.jaz-no-effects .jaz-shimmer {
+  animation: none;
+  background-color: var(--color-primary);
+}
+:root.jaz-no-effects .music-eq-bar {
+  animation: none;
+  background-color: var(--color-primary);
+}
+:root.jaz-no-effects .music-float {
+  animation: none;
 }
 
 /* Music bubbles (welcome screen): bars dance while a preview plays and ride

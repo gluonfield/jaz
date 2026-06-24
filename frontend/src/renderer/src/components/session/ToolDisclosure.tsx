@@ -1,6 +1,8 @@
 import { ChevronRight, LoaderCircle } from 'lucide-react'
 import { memo, useState } from 'react'
 import type { ACPToolCall } from '@/lib/api/types'
+import { useInlineDiffs } from '@/lib/appearance'
+import { EditDiffBlock, hasInlineDiff } from './EditDiffBlock'
 import { ToolCallDetail, toolCallCategory } from './ToolCallContent'
 import { normalized } from './TranscriptUtils'
 
@@ -77,7 +79,9 @@ export function toolRunLabel(calls: ACPToolCall[]): string {
   return failed ? `${label}, ${failed} failed` : label
 }
 
-export const ToolDisclosure = memo(function ToolDisclosure({
+// The collapsible run summary: a chevron + codex-style phrase that expands to
+// each call's detail. This is the stock rendering for every tool run.
+const ToolRunDisclosure = memo(function ToolRunDisclosure({
   label,
   calls,
   active = false,
@@ -118,6 +122,36 @@ export const ToolDisclosure = memo(function ToolDisclosure({
             <ToolCallDetail key={call.id} call={call} />
           ))}
         </div>
+      ) : null}
+    </div>
+  )
+})
+
+export const ToolDisclosure = memo(function ToolDisclosure({
+  label,
+  calls,
+  active = false,
+}: {
+  label: string
+  calls: ACPToolCall[]
+  active?: boolean
+}) {
+  // With inline diffs on, edits render as expanded red/green panels in the flow;
+  // the rest of the run keeps the collapsed chevron. Off (the default), every
+  // call stays under one disclosure exactly as before.
+  const inlineDiffs = useInlineDiffs()
+  const editCalls = inlineDiffs ? calls.filter(hasInlineDiff) : []
+  if (editCalls.length === 0) {
+    return <ToolRunDisclosure label={label} calls={calls} active={active} />
+  }
+  const restCalls = calls.filter((call) => !editCalls.includes(call))
+  return (
+    <div className="flex w-full flex-col items-start gap-2">
+      {editCalls.map((call) => (
+        <EditDiffBlock key={call.id} call={call} />
+      ))}
+      {restCalls.length ? (
+        <ToolRunDisclosure label={toolRunLabel(restCalls)} calls={restCalls} active={active} />
       ) : null}
     </div>
   )
