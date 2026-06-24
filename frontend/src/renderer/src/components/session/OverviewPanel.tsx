@@ -93,16 +93,32 @@ function SectionHeader({ children }: { children: ReactNode }) {
 }
 
 function ThreadsSection({ threads }: { threads: SpawnedThreadView[] }) {
+  const [open, setOpen] = useState(true)
   return (
     <section>
-      <div className="mb-2">
-        <SectionHeader>Threads</SectionHeader>
-      </div>
-      <ul className="flex flex-col gap-1.5">
-        {threads.map((thread) => (
-          <ThreadRow key={thread.key} thread={thread} />
-        ))}
-      </ul>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="flex min-h-8 w-full cursor-pointer items-center justify-between gap-2 rounded-md px-1 text-left transition-[background-color,color,transform] duration-150 hover:bg-surface-2 active:scale-[0.96]"
+      >
+        <SectionHeader>
+          Threads
+          <span className="ml-2 font-mono normal-case tracking-normal">{threads.length}</span>
+        </SectionHeader>
+        <ChevronDown
+          size={13}
+          className={`shrink-0 text-ink-3 transition-transform duration-200 ease-out ${open ? '' : '-rotate-90'}`}
+          aria-hidden
+        />
+      </button>
+      {open ? (
+        <ul className="mt-2 flex flex-col gap-1.5">
+          {threads.map((thread) => (
+            <ThreadRow key={thread.key} thread={thread} />
+          ))}
+        </ul>
+      ) : null}
     </section>
   )
 }
