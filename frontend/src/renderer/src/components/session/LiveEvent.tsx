@@ -35,7 +35,7 @@ export const LiveEvent = memo(function LiveEvent({
   const artifact = event.type === 'artifact' ? event.artifact : undefined
   const loopCreated = event.type === 'loop_created' ? event.loop_created : undefined
   return (
-    <div className="flex min-w-0 max-w-[76ch] flex-col gap-2">
+    <div className="flex min-w-0 max-w-[var(--prose-max)] flex-col gap-2">
       {event.acp && showHeader ? (
         <p className="text-[12px] text-ink-3">
           {hasAgentLogo(event.acp.agent) ? (

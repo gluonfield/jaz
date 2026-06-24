@@ -1,5 +1,5 @@
-import { useReducedMotion } from 'motion/react'
 import { useEffect, useRef } from 'react'
+import { useReducedEffectsMotion } from '@/lib/effectsMotion'
 import type {
   PixelFieldActiveShapeState,
   PixelFieldLifecycle,
@@ -429,7 +429,7 @@ export function PixelField({
   const calmRef = useRef(calm)
   const onShapeFrameRef = useRef(onShapeFrame)
   const lifecycleRef = useRef(lifecycle)
-  const reducedMotion = useReducedMotion()
+  const reducedMotion = useReducedEffectsMotion()
   const playlistKey = (shapes?.length ? shapes : DEFAULT_PLAYLIST).join(',')
 
   useEffect(() => {

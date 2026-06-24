@@ -37,8 +37,8 @@
 
   --color-border: oklch(0.853 0.01 262);
 
-  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', monospace;
+  --font-sans: var(--jaz-ui-font, 'Inter Variable'), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--jaz-mono-font, 'JetBrains Mono Variable'), ui-monospace, 'SF Mono', monospace;
 
   --radius-control: 10px;
   --radius-card: 12px;
@@ -54,6 +54,9 @@
 :root {
   color-scheme: light;
 
+  --thread-max: 720px;
+  --prose-max: 76ch;
+
   --z-dropdown: 10;
   --z-modal: 60;
   --z-file-drop: 70;
@@ -64,6 +67,7 @@
   --shadow-raised:
     0 1px 2px rgba(18, 20, 30, 0.05),
     0 12px 30px -8px rgba(18, 20, 30, 0.12);
+
 }
 
 @utility z-dropdown {
@@ -160,12 +164,18 @@
   user-select: text;
 }
 .chat-prose {
-  max-width: 76ch;
+  max-width: var(--prose-max);
 }
 .file-prose {
   max-width: 88ch;
   padding: 1rem 1.25rem 2rem;
 }
+
+:root.jaz-wide-layout {
+  --thread-max: 1040px;
+  --prose-max: 1040px;
+}
+
 :where(.chat-prose, .file-prose) > :first-child {
   margin-top: 0;
 }
@@ -350,6 +360,24 @@
     animation: none;
     background-color: var(--color-primary);
   }
+}
+
+/* Effects off (Settings → Appearance): calm the decorative motion to the same
+ * resting state as prefers-reduced-motion. JS-driven effects (composer comet,
+ * particle field) read the flag separately via useEffectsEnabled. */
+:root.jaz-no-effects .jaz-gradient {
+  animation: none;
+}
+:root.jaz-no-effects .jaz-shimmer {
+  animation: none;
+  background-color: var(--color-primary);
+}
+:root.jaz-no-effects .music-eq-bar {
+  animation: none;
+  background-color: var(--color-primary);
+}
+:root.jaz-no-effects .music-float {
+  animation: none;
 }
 
 /* Music bubbles (welcome screen): bars dance while a preview plays and ride

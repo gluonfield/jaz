@@ -1,9 +1,10 @@
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertCircle, Play, Square } from 'lucide-react'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { AnimatePresence, motion } from 'motion/react'
 import { MUSIC_BUBBLE_CATEGORIES } from '@/components/home/musicBubbleConfig'
 import { RAINBOW_BEAM } from '@/components/ui/rainbow'
 import { IconButton } from '@/components/ui/IconButton'
+import { useReducedEffectsMotion } from '@/lib/effectsMotion'
 import type { PixelFieldShapeFrame } from '@/components/ui/PixelField.types'
 import { type PreviewPlayerState, usePreviewPlayer } from '@/lib/music/usePreviewPlayer'
 
@@ -220,7 +221,7 @@ export function MusicBubbles({
   frame: PixelFieldShapeFrame | null
   onPlaybackActiveChange?: (active: boolean) => void
 }) {
-  const reducedMotion = useReducedMotion()
+  const reducedMotion = useReducedEffectsMotion()
   const { state, play, stop } = usePreviewPlayer()
   const playbackActive = state.status === 'loading' || state.status === 'playing'
   const containerRef = useRef<HTMLDivElement>(null)
