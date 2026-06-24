@@ -42,6 +42,10 @@ func configForMCPServerPolicy(agent string, cfg AgentConfig, policy string) Agen
 	}
 	cfg.Args = withoutCodexConfig(cfg.Args, "features.tool_search_always_defer_mcp_tools")
 	cfg.ManagedAdapterArgs = withoutCodexConfig(cfg.ManagedAdapterArgs, "features.tool_search_always_defer_mcp_tools")
+	for _, key := range []string{"features.browser_use", "features.browser_use_external", "features.in_app_browser"} {
+		cfg.Args = withCodexConfig(cfg.Args, key, "false")
+		cfg.ManagedAdapterArgs = withCodexConfig(cfg.ManagedAdapterArgs, key, "false")
+	}
 	return cfg
 }
 
@@ -68,6 +72,11 @@ func codexConfigArgKey(arg string) string {
 	arg = strings.TrimSpace(arg)
 	key, _, _ := strings.Cut(arg, "=")
 	return strings.TrimSpace(key)
+}
+
+func withCodexConfig(args []string, key, value string) []string {
+	args = withoutCodexConfig(args, key)
+	return append(args, "-c", key+"="+value)
 }
 
 func (m *Manager) systemPrompt(ctx context.Context, cwd, artifactSurface, mcpServerPolicy string, modules promptmodule.Modules) (string, error) {
