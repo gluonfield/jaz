@@ -457,29 +457,6 @@ func TestRequestClientPlatformAcceptsKnownPlatforms(t *testing.T) {
 	}
 }
 
-func TestWebAppShellDoesNotBypassAPIAuth(t *testing.T) {
-	handler := (&Server{
-		AuthKey: "secret",
-		WebApp: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			_, _ = w.Write([]byte("web"))
-		}),
-	}).Handler()
-
-	webReq := httptest.NewRequest(http.MethodGet, "/sessions/abc", nil)
-	webRes := httptest.NewRecorder()
-	handler.ServeHTTP(webRes, webReq)
-	if webRes.Code != http.StatusOK || webRes.Body.String() != "web" {
-		t.Fatalf("web status = %d, body = %q", webRes.Code, webRes.Body.String())
-	}
-
-	apiReq := httptest.NewRequest(http.MethodGet, "/v1/auth/check", nil)
-	apiRes := httptest.NewRecorder()
-	handler.ServeHTTP(apiRes, apiReq)
-	if apiRes.Code != http.StatusUnauthorized {
-		t.Fatalf("api status = %d, body = %s", apiRes.Code, apiRes.Body.String())
-	}
-}
-
 func TestACPSideChatRoutesToManager(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

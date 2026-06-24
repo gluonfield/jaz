@@ -19,7 +19,6 @@ import (
 	configloader "github.com/wins/jaz/backend/internal/config"
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/deviceauth"
-	"github.com/wins/jaz/backend/internal/httpapi/webapp"
 	"github.com/wins/jaz/backend/internal/jaztools"
 	"github.com/wins/jaz/backend/internal/loops"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
@@ -147,13 +146,10 @@ func parseServeConfig(args serveArgs) (serverconfig.Config, error) {
 	fs := flag.NewFlagSet("jaz", flag.ContinueOnError)
 	addr := fs.String("addr", ":5299", "HTTP listen address")
 	publicURL := fs.String("public-url", "", "URL shown to Jaz clients")
-	webDir := fs.String("web-dir", os.Getenv("JAZ_WEB_DIR"), "directory containing the Jaz web client")
 	if err := fs.Parse(args.Args); err != nil {
 		return serverconfig.Config{}, err
 	}
-	cfg := serverconfig.New(*addr, *publicURL)
-	cfg.WebDir = strings.TrimSpace(*webDir)
-	return cfg, nil
+	return serverconfig.New(*addr, *publicURL), nil
 }
 
 func newMemoryService(cfg app.Config, memory *jazmem.Memory, store *sqlitestore.Store, logger *log.Logger, urls serverconfig.URLs) *memoryservice.Service {
@@ -237,7 +233,6 @@ func startServer(
 		JazTools:             jazTools,
 		Terminal:             terminals,
 		Devices:              deviceAuth,
-		WebApp:               webapp.New(serverConfig.WebDir),
 	}
 	lc.Append(fx.Hook{
 		OnStop: func(context.Context) error {
