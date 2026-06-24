@@ -198,6 +198,12 @@ VITE_JAZ_API_URL=origin bun run build:web   # emits frontend/dist-web
 
 `origin` makes the app use `window.location.origin` as its backend, so one build works at any domain. (Set `VITE_JAZ_API_URL` to an explicit URL to pin a backend instead, or leave it unset to default to a local backend.)
 
+Copy the build output to the server where Caddy serves it from — the `root` in the Caddyfile below:
+
+```sh
+rsync -a frontend/dist-web/ <user>@<server>:/var/www/jaz-web/
+```
+
 Bind the backend to loopback so it is reachable only through the proxy — set `JAZ_ADDR=127.0.0.1:5299` and `JAZ_PUBLIC_URL=https://jaz.example.com` in `/etc/jaz/jaz.env`, restart `jaz`, and leave `:5299` out of the firewall (open only the proxy's `:443`/`:80`).
 
 Serve the static build and proxy the API with Caddy:
