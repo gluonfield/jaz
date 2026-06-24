@@ -5,7 +5,7 @@ import type { UpdateStatus } from '../shared/update'
 
 declare global {
   interface Window {
-    jaz: {
+    jaz?: {
       apiBaseUrl: string
       windowKind: 'main' | 'board'
       setNativeTheme: (source: 'light' | 'dark' | 'system') => void

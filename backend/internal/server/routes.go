@@ -66,6 +66,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle(serverconfig.JazmemMCPPath, s.memoryMCPHandler())
 	mux.Handle(serverconfig.MCPProxyPath, s.mcpProxyHandler())
 	mux.Handle("/jazmem/", http.StripPrefix("/jazmem", s.memoryAPIHandler()))
+	if s.WebApp != nil {
+		mux.Handle("/", s.WebApp)
+	}
 	return withCORS(withGzip(s.withAuth(mux)))
 }
 

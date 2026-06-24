@@ -9,6 +9,7 @@ import { completeOnboarding, onboardingQuery } from '@/lib/api/onboarding'
 import { cloneAgentSettings, compactKeys, startACPAuthLogin } from '@/lib/api/settings'
 import type { ACPAgentAuth, AgentSettings, OnboardingStatus } from '@/lib/api/types'
 import { disconnectBackend, isLocalBackendUrl, persistLaunchPreference, useConnection } from '@/lib/connection'
+import { clientRuntime } from '@/lib/clientRuntime'
 import { localDeviceLabel } from '@/lib/deviceLabel'
 import { useACPLoginPolling } from '@/lib/hooks/useACPLoginPolling'
 import { keys } from '@/lib/query/keys'
@@ -35,7 +36,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     if (completed) persistLaunchPreference(url)
   }, [completed, url])
 
-  if (window.jaz?.windowKind === 'board') return <>{children}</>
+  if (clientRuntime.windowKind === 'board') return <>{children}</>
   if (onboarding.isPending) {
     return (
       <OnboardingShell onDisconnect={disconnectBackend}>

@@ -5,6 +5,7 @@ import { RemoteServerForm } from '@/components/connection/RemoteServerForm'
 import { Button } from '@/components/ui/Button'
 import { PixelField } from '@/components/ui/PixelField'
 import { useKnownBackends } from '@/lib/backends'
+import { clientRuntime } from '@/lib/clientRuntime'
 import {
   cancelPendingApproval,
   connectionPreference,
@@ -83,6 +84,7 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
   const deviceLabel = localDeviceLabel()
   const current = describeBackend(currentUrl)
   const [url, setUrl] = useState('')
+  const canStartLocal = clientRuntime.capabilities.localBackend
 
   // On success the connection store flips backends: as the boot gate that
   // unmounts this screen; in manual mode we stay mounted over the live app, so
@@ -114,7 +116,9 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
     connectionPreference()?.mode === 'remote'
       ? 'Connecting to your server…'
       : connectionPreference()?.mode === 'local'
-        ? `Starting jaz on ${deviceLabel}…`
+        ? canStartLocal
+          ? `Starting jaz on ${deviceLabel}…`
+          : 'Connecting to server…'
         : 'Connecting to backend…'
 
   return (
@@ -198,12 +202,14 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
 
               {manual ? (
                 <motion.p variants={rise} className="mt-2 text-pretty text-center text-[13px] text-ink-2">
-                  Currently on <span className="text-ink">{current.title}</span>. Run jaz on this computer or
-                  point it at another server.
+                  Currently on <span className="text-ink">{current.title}</span>.{' '}
+                  {canStartLocal ? 'Run jaz on this computer or point it at another server.' : 'Point jaz at another server.'}
                 </motion.p>
               ) : error ? (
                 <motion.p variants={rise} className="mt-2 text-pretty text-center text-[13px] text-ink-2">
-                  The backend jaz was using is unreachable. Start one here or point jaz at another server.
+                  {canStartLocal
+                    ? 'The backend jaz was using is unreachable. Start one here or point jaz at another server.'
+                    : 'The backend jaz was using is unreachable. Point jaz at another server.'}
                 </motion.p>
               ) : null}
 
@@ -211,15 +217,17 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
                 <AnimatePresence mode="wait" initial={false}>
                   {mode === 'options' ? (
                     <motion.div key="opts" {...swap} className="flex flex-col gap-2">
-                      <ChoiceButton
-                        primary={!(manual && current.local)}
-                        label={`Run on ${deviceLabel}`}
-                        busyLabel="Starting backend…"
-                        busy={busy === 'local'}
-                        connected={manual && current.local}
-                        disabled={busy !== null}
-                        onClick={onStartLocal}
-                      />
+                      {canStartLocal ? (
+                        <ChoiceButton
+                          primary={!(manual && current.local)}
+                          label={`Run on ${deviceLabel}`}
+                          busyLabel="Starting backend…"
+                          busy={busy === 'local'}
+                          connected={manual && current.local}
+                          disabled={busy !== null}
+                          onClick={onStartLocal}
+                        />
+                      ) : null}
                       {backends.map((backend) => (
                         <BackendChoice
                           key={backend.url}

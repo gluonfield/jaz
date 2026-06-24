@@ -3,6 +3,7 @@ import { Download, RefreshCw, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { UpdateStatus } from '../../../../shared/update'
 import { Button } from '@/components/ui/Button'
+import { clientRuntime } from '@/lib/clientRuntime'
 
 type VisibleUpdateStatus = Exclude<UpdateStatus, { state: 'idle' }>
 
@@ -102,7 +103,7 @@ function UpdateNotice({
           <Button size="sm" variant="ghost" onClick={onDismiss}>
             Later
           </Button>
-          <Button size="sm" variant="primary" onClick={() => void window.jaz.installUpdate()}>
+          <Button size="sm" variant="primary" onClick={() => void clientRuntime.installUpdate?.()}>
             Restart Jaz
           </Button>
         </div>
@@ -117,16 +118,19 @@ export function UpdatePanel() {
   const key = useMemo(() => updateKey(status), [status])
 
   useEffect(() => {
+    if (!clientRuntime.getUpdateStatus || !clientRuntime.onUpdateStatus) return
     let mounted = true
-    void window.jaz.getUpdateStatus().then((next) => {
+    void clientRuntime.getUpdateStatus().then((next) => {
       if (mounted) setStatus(next)
     })
-    const dispose = window.jaz.onUpdateStatus((next) => setStatus(next))
+    const dispose = clientRuntime.onUpdateStatus((next) => setStatus(next))
     return () => {
       mounted = false
       dispose()
     }
   }, [])
+
+  if (!clientRuntime.capabilities.updates) return null
 
   return (
     <AnimatePresence initial={false}>

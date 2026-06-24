@@ -12,7 +12,10 @@
     "build:bundle": "electron-vite build",
     "build:backend": "bun scripts/build-backend.ts",
     "build:app": "bun run build:backend && bun run build:bundle && electron-builder",
+    "build:web": "vite build --config vite.web.config.ts",
     "preview": "electron-vite preview",
+    "preview:web": "vite preview --config vite.web.config.ts",
+    "dev:web": "vite --config vite.web.config.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json"
   },

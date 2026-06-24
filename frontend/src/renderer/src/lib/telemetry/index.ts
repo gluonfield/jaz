@@ -1,3 +1,5 @@
+import { clientRuntime } from '../clientRuntime'
+
 const TELEMETRY_ENABLED_KEY = 'jaz.telemetry.enabled'
 const TELEMETRY_ID_KEY = 'jaz.telemetry.id'
 const TELEMETRY_EVENT = 'jaz:telemetry'
@@ -127,7 +129,7 @@ function capture(event: TelemetryEvent, properties: TelemetryProperties = {}) {
     properties: compactProperties({
       ...properties,
       app: 'jaz',
-      surface: window.jaz?.windowKind || 'main',
+      surface: clientRuntime.windowKind,
       telemetry_version: 1,
     }),
     timestamp: new Date().toISOString(),

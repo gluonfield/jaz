@@ -1,3 +1,5 @@
+import { clientRuntime } from '@/lib/clientRuntime'
+
 const BACKEND_URL_KEY = 'jaz.backendUrl'
 const AUTH_KEY_PREFIX = 'jaz.backendAuth.'
 const DEFAULT_LOCAL_URL = 'http://localhost:5299'
@@ -5,12 +7,12 @@ const DEFAULT_LOCAL_URL = 'http://localhost:5299'
 // "this machine", any other loopback port is a tunnel to a remote backend.
 export const DEFAULT_LOCAL_PORT = new URL(DEFAULT_LOCAL_URL).port
 export const CLIENT_PLATFORM_HEADER = 'X-Jaz-Client-Platform'
-export const CLIENT_PLATFORM = 'desktop'
+export const CLIENT_PLATFORM = clientRuntime.platform
 
 // The local default bridged by the preload script; fall back for
 // plain-browser debugging.
 export function localBaseUrl(): string {
-  return window.jaz?.apiBaseUrl ?? DEFAULT_LOCAL_URL
+  return clientRuntime.defaultApiBaseUrl()
 }
 
 export function normalizeBaseUrl(url: string): string {
@@ -38,6 +40,17 @@ export function parseBackendConnectUrl(input: string): { url: string; key: strin
   } catch {
     return { url: normalizeBaseUrl(input), key: '' }
   }
+}
+
+export function consumeStartupConnectUrl(): string {
+  if (clientRuntime.kind !== 'web') return ''
+  const key = new URLSearchParams(window.location.search).get('key')?.trim()
+  if (!key) return ''
+  const raw = window.location.href
+  const next = new URL(window.location.href)
+  next.searchParams.delete('key')
+  window.history.replaceState(window.history.state, '', next)
+  return raw
 }
 
 // A remembered remote URL wins over the local default so the next launch
