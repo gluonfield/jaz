@@ -236,6 +236,7 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 		env[key] = value
 	}
 	delete(env, "HOME")
+	preserveRuntimeHome(env)
 	normalizeEnv(env, "OPENAI_API_KEY", "OPENAI_APIKEY")
 	normalizeEnv(env, "ANTHROPIC_API_KEY", "ANTHROPIC_APIKEY")
 	normalizeEnv(env, "OPENROUTER_API_KEY", "OPENROUTER_APIKEY")
@@ -362,6 +363,15 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 		}
 	}
 	return env, prepareErr
+}
+
+func preserveRuntimeHome(env map[string]string) {
+	processenv.PreserveHost(env, "HOME")
+	if env["HOME"] == "" {
+		if home := defaultHomePath(""); home != "" {
+			env["HOME"] = home
+		}
+	}
 }
 
 func (m *Manager) installAgentSkills(agent, root, dst string) {

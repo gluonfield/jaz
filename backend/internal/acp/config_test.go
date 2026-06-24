@@ -255,7 +255,7 @@ func TestResolveCwdRejectsWorkspaceEscape(t *testing.T) {
 	}
 }
 
-func TestProcessEnvSetsCodexHomeFromSystemLogin(t *testing.T) {
+func TestProcessEnvSetsCodexHomeAndHomeFromSystemLogin(t *testing.T) {
 	clearHostEnv(t)
 	home := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o700); err != nil {
@@ -275,11 +275,12 @@ func TestProcessEnvSetsCodexHomeFromSystemLogin(t *testing.T) {
 	if env["CODEX_HOME"] != want {
 		t.Fatalf("CODEX_HOME = %q", env["CODEX_HOME"])
 	}
-	if _, ok := env["HOME"]; ok {
-		t.Fatal("codex subprocess HOME should not be set")
+	if env["HOME"] != home {
+		t.Fatalf("HOME = %q, want %q", env["HOME"], home)
 	}
 	assertEnv(t, env, map[string]string{
 		"PATH":       "/bin",
+		"HOME":       home,
 		"CODEX_HOME": want,
 	})
 	if fileExists(filepath.Join(root, "acp", "codex-home", "auth.json")) {
@@ -412,8 +413,8 @@ func TestProcessEnvUsesJazConfigForClaudeCodeWithoutHostAuthTokens(t *testing.T)
 		Auth: AgentAuthConfig{Mode: AuthModeJazProfile},
 	})
 
-	if _, ok := env["HOME"]; ok {
-		t.Fatalf("claude subprocess HOME should not be set: %#v", env)
+	if env["HOME"] != home {
+		t.Fatalf("HOME = %q, want %q", env["HOME"], home)
 	}
 	if env["ANTHROPIC_API_KEY"] != "" {
 		t.Fatalf("ANTHROPIC_API_KEY leaked into claude subprocess env")
@@ -441,6 +442,7 @@ func TestProcessEnvUsesJazConfigForClaudeCodeWithoutHostAuthTokens(t *testing.T)
 		t.Fatalf("USER = %q, want wins", env["USER"])
 	}
 	assertEnv(t, env, map[string]string{
+		"HOME":                   home,
 		"PATH":                   "/bin",
 		"CLAUDE_CODE_EXECUTABLE": "/usr/local/bin/claude",
 		"CLAUDE_CODE_USE_VERTEX": "0",
@@ -489,31 +491,33 @@ func TestProcessEnvFindsClaudeCodeFromLoginShell(t *testing.T) {
 	}
 }
 
-func TestProcessEnvIgnoresConfiguredClaudeHome(t *testing.T) {
+func TestProcessEnvUsesHostHomeForClaude(t *testing.T) {
 	clearHostEnv(t)
-	home := t.TempDir()
+	configuredHome := t.TempDir()
+	hostHome := t.TempDir()
 	t.Setenv("PATH", "/bin")
-	t.Setenv("HOME", t.TempDir())
+	t.Setenv("HOME", hostHome)
 
 	root := t.TempDir()
 	env := NewManager(nil, Config{Root: root}, nil).processEnv("claude", AgentConfig{
-		Env: map[string]string{"HOME": home},
+		Env: map[string]string{"HOME": configuredHome},
 	})
 
-	if _, ok := env["HOME"]; ok {
-		t.Fatalf("claude subprocess HOME should not be set: %#v", env)
+	if env["HOME"] != hostHome {
+		t.Fatalf("HOME = %q, want host HOME %q", env["HOME"], hostHome)
 	}
 	wantConfigDir := filepath.Join(root, "acp", "claude")
 	if env["CLAUDE_CONFIG_DIR"] != wantConfigDir {
 		t.Fatalf("CLAUDE_CONFIG_DIR = %q, want %q", env["CLAUDE_CONFIG_DIR"], wantConfigDir)
 	}
 	assertEnv(t, env, map[string]string{
+		"HOME":              hostHome,
 		"PATH":              "/bin",
 		"CLAUDE_CONFIG_DIR": wantConfigDir,
 	})
 }
 
-func TestProcessEnvDoesNotSetHomeForGrok(t *testing.T) {
+func TestProcessEnvUsesHostHomeForGrok(t *testing.T) {
 	clearHostEnv(t)
 	home := t.TempDir()
 	t.Setenv("PATH", "/bin")
@@ -524,8 +528,8 @@ func TestProcessEnvDoesNotSetHomeForGrok(t *testing.T) {
 	root := t.TempDir()
 	env := NewManager(nil, Config{Root: root}, nil).processEnv("grok", AgentConfig{})
 
-	if _, ok := env["HOME"]; ok {
-		t.Fatalf("grok subprocess HOME should not be set: %#v", env)
+	if env["HOME"] != home {
+		t.Fatalf("HOME = %q, want %q", env["HOME"], home)
 	}
 	if env["XAI_API_KEY"] != "" {
 		t.Fatalf("XAI_API_KEY leaked into grok subprocess env")
@@ -540,6 +544,7 @@ func TestProcessEnvDoesNotSetHomeForGrok(t *testing.T) {
 		t.Fatalf("grok fake home should not be created, err = %v", err)
 	}
 	assertEnv(t, env, map[string]string{
+		"HOME": home,
 		"PATH": "/bin",
 		"USER": "wins",
 	})
@@ -578,6 +583,7 @@ func TestProcessEnvNeverLeaksAPIKeysToCodex(t *testing.T) {
 	}
 	assertEnv(t, env, map[string]string{
 		"PATH":       "/bin",
+		"HOME":       home,
 		"CODEX_HOME": filepath.Join(home, ".codex"),
 	})
 }
