@@ -1,17 +1,25 @@
-import { ArrowUp, LoaderCircle, X } from 'lucide-react'
+import { LoaderCircle, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { FileDropScope } from '@/components/ui/FileDrop'
 import { IconButton } from '@/components/ui/IconButton'
-import type { SessionEvent } from '@/lib/api/types'
-import { MessageMarkdown } from './MessageMarkdown'
+import type { Attachment, SessionEvent } from '@/lib/api/types'
+import type { ComposerContext, MessageContextInput, SendMessageOptions } from '@/lib/sendMessage'
+import { AssistantBubble, type BubbleAttachment, UserBubble } from './Bubble'
+import { ComposerCard } from './Composer'
+import { SessionErrorNotice } from './SessionErrorNotice'
 import { SidePanelShell } from './SidePanelShell'
+import { ThinkingBlock } from './ThinkingBlock'
+import { ToolStatusLine } from './ToolDisclosure'
 
 export const SIDE_CHAT_PANEL_WIDTH = 520
 
-type SideChatMessage = {
+type SideChatItem = {
   key: string
   role: string
   content: string
   status?: string
+  contexts?: ComposerContext[]
+  attachments?: BubbleAttachment[]
   at: string
 }
 
@@ -19,140 +27,109 @@ export function SideChatPanel({
   events,
   visible,
   onSend,
+  onUploadAttachment,
   onClose,
+  fileRoot,
 }: {
   events: SessionEvent[]
   visible: boolean
-  onSend: (sideChatID: string, message: string) => Promise<void>
+  onSend: (sideChatID: string, message: string, options?: SendMessageOptions) => Promise<void>
+  onUploadAttachment?: (file: File) => Promise<Attachment>
   onClose: () => void
+  fileRoot?: string
 }) {
   const [sideChatID, setSideChatID] = useState(newSideChatID)
-  const [draft, setDraft] = useState('')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLTextAreaElement>(null)
-  const messages = useMemo(() => sideChatMessages(events, sideChatID), [events, sideChatID])
-  const latestMessageContent = messages.at(-1)?.content
+  const items = useMemo(() => sideChatItems(events, sideChatID), [events, sideChatID])
+  const latestItemContent = items.at(-1)?.content
 
   useEffect(() => {
     if (!visible) return
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
-  }, [visible, messages.length, latestMessageContent])
+  }, [visible, items.length, latestItemContent])
 
   useEffect(() => {
-    if (messages.length > 0) setError('')
-  }, [messages.length])
+    if (items.length > 0) setError('')
+  }, [items.length])
 
   const close = () => {
     onClose()
     setSideChatID(newSideChatID())
-    setDraft('')
     setError('')
   }
 
-  const submit = () => {
-    const message = draft.trim()
-    if (!message || pending) return
-    setDraft('')
+  const submit = async (message: string, options?: SendMessageOptions) => {
+    if (pending) return
     setError('')
     setPending(true)
-    onSend(sideChatID, message)
-      .catch((err: Error) => {
-        setError(err.message || 'Side chat failed.')
-        setDraft(message)
-      })
-      .finally(() => setPending(false))
+    try {
+      await onSend(sideChatID, message, options)
+    } catch (err) {
+      setError((err as Error).message || 'Side chat failed.')
+      throw err
+    } finally {
+      setPending(false)
+    }
   }
 
   return (
-    <SidePanelShell width={SIDE_CHAT_PANEL_WIDTH}>
-      <div className="flex h-11 shrink-0 items-center justify-between border-b border-border px-3">
-        <div className="min-w-0 text-sm font-medium text-ink">Side chat</div>
-        <div className="flex items-center gap-1">
-          {pending ? <LoaderCircle size={15} className="animate-spin text-ink-3" aria-hidden /> : null}
-          <IconButton size="sm" aria-label="Close side chat" title="Close side chat" onClick={close}>
-            <X size={15} />
-          </IconButton>
+    <FileDropScope className="h-full">
+      <SidePanelShell width={SIDE_CHAT_PANEL_WIDTH}>
+        <div className="flex h-11 shrink-0 items-center justify-between border-b border-border px-3">
+          <div className="min-w-0 text-sm font-medium text-ink">Side chat</div>
+          <div className="flex items-center gap-1">
+            {pending ? <LoaderCircle size={15} className="animate-spin text-ink-3" aria-hidden /> : null}
+            <IconButton size="sm" aria-label="Close side chat" title="Close side chat" onClick={close}>
+              <X size={15} />
+            </IconButton>
+          </div>
         </div>
-      </div>
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-        <div className="flex min-h-full flex-col justify-end gap-3">
-          {messages.map((message) => (
-            <SideChatBubble key={message.key} message={message} />
-          ))}
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto bg-bg px-4 py-4">
+          <div className="flex min-h-full flex-col justify-end gap-5">
+            {items.map((item) => (
+              <SideChatRow key={item.key} item={item} active={pending} />
+            ))}
+          </div>
         </div>
-      </div>
-      {error ? <div className="px-3 pb-2 text-[12px] text-danger">{error}</div> : null}
-      <div className="shrink-0 border-t border-border p-2">
-        <div className="flex items-end gap-2 rounded-[12px] bg-bg p-2">
-          <textarea
-            ref={inputRef}
-            value={draft}
-            rows={2}
-            placeholder="Ask in side chat"
+        {error ? <div className="px-3 pb-2 text-[12px] text-danger">{error}</div> : null}
+        <div className="shrink-0 border-t border-border bg-bg p-2">
+          <ComposerCard
+            streaming={pending}
             disabled={pending}
-            onChange={(event) => {
-              setDraft(event.currentTarget.value)
+            placeholder="Ask in side chat"
+            draftStorageKey={`side-chat:${sideChatID}`}
+            fileRoot={fileRoot}
+            onSend={submit}
+            onUploadAttachment={onUploadAttachment}
+            onTextChange={() => {
               if (error) setError('')
             }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault()
-                submit()
-              }
-            }}
-            className="max-h-32 min-h-10 flex-1 resize-none bg-transparent px-1 py-1 text-sm leading-5 text-ink outline-none placeholder:text-ink-3 disabled:opacity-60"
           />
-          <IconButton
-            variant="primary"
-            size="md"
-            aria-label="Send side chat"
-            title="Send side chat"
-            disabled={pending || draft.trim() === ''}
-            onClick={submit}
-          >
-            <ArrowUp size={16} />
-          </IconButton>
         </div>
-      </div>
-    </SidePanelShell>
+      </SidePanelShell>
+    </FileDropScope>
   )
 }
 
-function SideChatBubble({ message }: { message: SideChatMessage }) {
-  if (message.role === 'user') {
-    return (
-      <div className="flex justify-end">
-        <div className="min-w-0 max-w-[88%] rounded-card bg-bg px-3 py-2 text-sm whitespace-pre-wrap [overflow-wrap:break-word] text-ink select-text">
-          {message.content}
-        </div>
-      </div>
-    )
+function SideChatRow({ item, active }: { item: SideChatItem; active: boolean }) {
+  if (item.role === 'user') {
+    return <UserBubble text={item.content} contexts={item.contexts} attachments={item.attachments} />
   }
-  if (message.role === 'error') {
-    return (
-      <div className="rounded-card border border-danger/20 bg-danger-soft px-3 py-2 text-sm text-danger">
-        {message.content}
-      </div>
-    )
+  if (item.role === 'assistant') {
+    return <AssistantBubble text={item.content} />
   }
-  if (message.role === 'thought') {
-    return <div className="text-[12px] leading-5 whitespace-pre-wrap text-ink-3">{message.content}</div>
+  if (item.role === 'error') {
+    return <SessionErrorNotice message={item.content} />
   }
-  if (message.role === 'tool') {
-    return (
-      <div className="inline-flex max-w-full self-start rounded-full bg-bg px-2.5 py-1 text-[12px] text-ink-3">
-        <span className="truncate">{message.content}</span>
-        {message.status ? <span className="ml-1.5 shrink-0">- {message.status}</span> : null}
-      </div>
-    )
+  if (item.role === 'thought') {
+    return <ThinkingBlock text={item.content} pending={active && item.status === 'running'} />
   }
-  return (
-    <div className="min-w-0 max-w-full text-sm text-ink">
-      <MessageMarkdown text={message.content} />
-    </div>
-  )
+  if (item.role === 'tool') {
+    return <ToolStatusLine label={item.content} status={item.status} active={active && item.status === 'running'} />
+  }
+  return <AssistantBubble text={item.content} />
 }
 
 function newSideChatID(): string {
@@ -160,11 +137,11 @@ function newSideChatID(): string {
   return `side_${raw.replaceAll('-', '')}`
 }
 
-function sideChatMessages(events: SessionEvent[], sideChatID: string): SideChatMessage[] {
+function sideChatItems(events: SessionEvent[], sideChatID: string): SideChatItem[] {
   const sorted = [...events]
     .filter((event) => event.type === 'side_chat_message' && event.side_chat?.id === sideChatID)
     .sort(compareEvents)
-  const out: SideChatMessage[] = []
+  const out: SideChatItem[] = []
   sorted.forEach((event, index) => {
     const side = event.side_chat
     if (!side) return
@@ -182,10 +159,27 @@ function sideChatMessages(events: SessionEvent[], sideChatID: string): SideChatM
       role,
       content,
       status: side.status,
+      contexts: sideChatContexts(side.contexts, event.seq ?? index),
+      attachments: side.attachments,
       at: event.at,
     })
   })
   return out
+}
+
+function sideChatContexts(contexts: MessageContextInput[] = [], eventIndex: number): ComposerContext[] {
+  return contexts.flatMap<ComposerContext>((context, index) => {
+    if (context.type === 'selection') {
+      return context.text ? [{ id: `${eventIndex}-selection-${index}`, type: 'selection', text: context.text }] : []
+    }
+    return context.browser_annotation
+      ? [{
+          id: `${eventIndex}-annotation-${index}`,
+          type: 'browser_annotation',
+          browser_annotation: context.browser_annotation,
+        }]
+      : []
+  })
 }
 
 function compareEvents(a: SessionEvent, b: SessionEvent): number {

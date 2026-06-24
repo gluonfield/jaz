@@ -50,6 +50,10 @@ function groupToolCalls(calls: ACPToolCall[]): ToolGroup[] {
   })
 }
 
+function isRunningToolStatus(status?: string): boolean {
+  return ['pending', 'in_progress', 'in-progress', 'running'].includes(normalized(status))
+}
+
 // One codex-style phrase for a run of tool calls: "Explored 2 files, ran 1 command".
 export function toolRunLabel(calls: ACPToolCall[]): string {
   const phrases: Record<string, (n: number) => string> = {
@@ -93,11 +97,7 @@ const ToolRunDisclosure = memo(function ToolRunDisclosure({
   const [open, setOpen] = useState(false)
   // Old sessions can hold stale non-terminal statuses; only spin while the
   // session is actually working.
-  const running =
-    active &&
-    calls.some((call) =>
-      ['pending', 'in_progress', 'in-progress', 'running'].includes(normalized(call.status)),
-    )
+  const running = active && calls.some((call) => isRunningToolStatus(call.status))
   return (
     <div className="flex flex-col items-start gap-1">
       <button
@@ -126,6 +126,26 @@ const ToolRunDisclosure = memo(function ToolRunDisclosure({
     </div>
   )
 })
+
+export function ToolStatusLine({
+  label,
+  status,
+  active = false,
+}: {
+  label: string
+  status?: string
+  active?: boolean
+}) {
+  const running = active && isRunningToolStatus(status)
+  return (
+    <div className="inline-flex min-h-7 max-w-full items-center gap-1.5 self-start rounded-full px-1 font-mono text-[12px] text-ink-3">
+      <ChevronRight size={12} className="shrink-0 opacity-30" aria-hidden />
+      <span className="min-w-0 truncate">{label}</span>
+      {status && !running ? <span className="shrink-0">· {status}</span> : null}
+      {running ? <LoaderCircle className="size-3 shrink-0 animate-spin text-running" aria-hidden /> : null}
+    </div>
+  )
+}
 
 export const ToolDisclosure = memo(function ToolDisclosure({
   label,

@@ -611,13 +611,17 @@ func writeSSE(w http.ResponseWriter, flusher http.Flusher, event agent.StreamEve
 	flusher.Flush()
 }
 
-type streamRequest struct {
+type messageRequest struct {
 	Message       string                   `json:"message"`
 	Contexts      []storage.MessageContext `json:"contexts,omitempty"`
 	Quotes        []string                 `json:"quotes,omitempty"`
 	AttachmentIDs []string                 `json:"attachment_ids,omitempty"`
-	PlanRequested bool                     `json:"plan_requested,omitempty"`
-	Voice         bool                     `json:"voice,omitempty"`
+}
+
+type streamRequest struct {
+	messageRequest
+	PlanRequested bool `json:"plan_requested,omitempty"`
+	Voice         bool `json:"voice,omitempty"`
 }
 
 type interactiveResponseRequest struct {

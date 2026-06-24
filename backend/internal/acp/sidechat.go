@@ -8,6 +8,7 @@ import (
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/storage"
 )
 
 const (
@@ -17,9 +18,11 @@ const (
 )
 
 type SideChatRequest struct {
-	Session string
-	ID      string
-	Message string
+	Session     string
+	ID          string
+	Message     string
+	Contexts    []storage.MessageContext
+	Attachments []storage.Attachment
 }
 
 type sideChatScope struct {
@@ -60,12 +63,20 @@ func (m *Manager) SendSideChat(ctx context.Context, req SideChatRequest) error {
 	if peer == nil {
 		return fmt.Errorf("acp peer is not active")
 	}
-	prompt, err := promptContentBlocks(message, nil, attachmentResourceResolver{})
+	resolver := localAttachmentResources
+	if len(req.Attachments) > 0 {
+		resolver, err = m.attachmentResourceResolver(job)
+		if err != nil {
+			return err
+		}
+	}
+	promptMessage, contexts := promptMessageAndContexts(req.Message, req.Contexts)
+	prompt, err := promptContentBlocks(promptMessage, req.Attachments, resolver)
 	if err != nil {
 		return err
 	}
 	scope := sideChatScope{ID: sideChatID, Command: sideChatCommand, ParentSessionID: job.ID}
-	m.publishSideChatMessage(job.Snapshot(), scope, "user", message, "")
+	m.publishSideChatUserMessage(job.Snapshot(), scope, message, contexts, req.Attachments)
 
 	raw, err := peer.Call(ctx, acpschema.AgentMethodSessionPrompt, acpschema.PromptRequest{
 		SessionID: acpschema.SessionID(job.ACPSession),
@@ -124,6 +135,14 @@ func (m *Manager) applySideChatUpdate(job *jobState, update acpschema.DecodedSes
 }
 
 func (m *Manager) publishSideChatMessage(job Job, scope sideChatScope, role, content, status string) {
+	m.publishSideChatEvent(job, scope, role, content, status, nil, nil)
+}
+
+func (m *Manager) publishSideChatUserMessage(job Job, scope sideChatScope, content string, contexts []storage.MessageContext, attachments []storage.Attachment) {
+	m.publishSideChatEvent(job, scope, "user", content, "", storage.NormalizeMessageContexts(contexts), attachments)
+}
+
+func (m *Manager) publishSideChatEvent(job Job, scope sideChatScope, role, content, status string, contexts []storage.MessageContext, attachments []storage.Attachment) {
 	if strings.TrimSpace(scope.ID) == "" {
 		return
 	}
@@ -144,6 +163,8 @@ func (m *Manager) publishSideChatMessage(job Job, scope sideChatScope, role, con
 			Role:            role,
 			Content:         content,
 			Status:          status,
+			Contexts:        contexts,
+			Attachments:     attachments,
 		},
 		At: time.Now().UTC(),
 	})

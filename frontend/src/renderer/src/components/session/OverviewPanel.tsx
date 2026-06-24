@@ -29,7 +29,7 @@ import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
 import type { RepoInfo, Session } from '@/lib/api/types'
 import { writeClipboard } from '@/lib/clipboard'
 import type { ProviderSubagentView } from '@/lib/providerSubagents'
-import type { SendMessageOptions } from '@/lib/sendMessage'
+import type { SendMessageHandler } from '@/lib/sendMessage'
 import type { SpawnedThreadView } from '@/lib/spawnedThreads'
 import { taskStepState, type TaskSurface } from '@/lib/taskSurface'
 import { keys } from '@/lib/query/keys'
@@ -55,7 +55,7 @@ export function OverviewPanel({
   subagents: ProviderSubagentView[]
   spawnedThreads: SpawnedThreadView[]
   working: boolean
-  onSend: (text: string, options?: SendMessageOptions) => void
+  onSend: SendMessageHandler
 }) {
   const repo = useRepoActions(session)
   const showGit = Boolean(repo.cwd && (repo.info?.git || repo.info?.worktree_missing))
@@ -411,7 +411,7 @@ function ManageSection({
 }: {
   session: Session
   repo: ReturnType<typeof useRepoActions>
-  onSend: (text: string, options?: SendMessageOptions) => void
+  onSend: SendMessageHandler
 }) {
   const queryClient = useQueryClient()
   const toast = useToast()
@@ -442,7 +442,11 @@ function ManageSection({
       toast(`Couldn't find skill: ${CODE_REVIEW_SKILL}`, 'danger')
       return
     }
-    onSend(codeReviewPrompt(skill))
+    try {
+      await onSend(codeReviewPrompt(skill))
+    } catch {
+      return
+    }
   }
 
   return (
