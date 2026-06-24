@@ -37,8 +37,8 @@
 
   --color-border: oklch(0.853 0.01 262);
 
-  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', monospace;
+  --font-sans: var(--jaz-ui-font, 'Inter Variable'), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--jaz-mono-font, 'JetBrains Mono Variable'), ui-monospace, 'SF Mono', monospace;
 
   --radius-control: 10px;
   --radius-card: 12px;
@@ -54,8 +54,6 @@
 :root {
   color-scheme: light;
 
-  /* Content widths. The Appearance "wide layout" setting overrides these on the
-   * document root (lib/appearance.ts); leaving them here keeps the stock size. */
   --thread-max: 720px;
   --prose-max: 76ch;
 
@@ -70,15 +68,6 @@
     0 1px 2px rgba(18, 20, 30, 0.05),
     0 12px 30px -8px rgba(18, 20, 30, 0.12);
 
-  /* Inline edit diffs: solid, saturated fills (not opacity tints over the body
-   * wash, which read grey). Brighter and higher-chroma than the calm --color-ok
-   * / --color-danger status tokens on purpose — a diff should pop. */
-  --diff-add-bg: oklch(0.915 0.088 145);
-  --diff-add-gutter: oklch(0.87 0.108 145);
-  --diff-add-fg: oklch(0.48 0.14 145);
-  --diff-del-bg: oklch(0.922 0.05 25);
-  --diff-del-gutter: oklch(0.882 0.072 25);
-  --diff-del-fg: oklch(0.55 0.17 25);
 }
 
 @utility z-dropdown {
@@ -137,15 +126,6 @@
 
   --shadow-raised: 0 18px 46px rgba(0, 0, 0, 0.18);
 
-  /* Diff fills lifted for dark: clearly green/red against the charcoal ground,
-   * with bright foreground digits/markers. */
-  --diff-add-bg: oklch(0.4 0.072 145);
-  --diff-add-gutter: oklch(0.46 0.088 145);
-  --diff-add-fg: oklch(0.84 0.14 145);
-  --diff-del-bg: oklch(0.38 0.08 25);
-  --diff-del-gutter: oklch(0.44 0.097 25);
-  --diff-del-fg: oklch(0.8 0.15 25);
-
   --color-rainbow-1: oklch(0.68 0.19 25);
   --color-rainbow-2: oklch(0.8 0.14 90);
   --color-rainbow-3: oklch(0.7 0.15 145);
@@ -190,6 +170,12 @@
   max-width: 88ch;
   padding: 1rem 1.25rem 2rem;
 }
+
+:root.jaz-wide-layout {
+  --thread-max: 1040px;
+  --prose-max: 1040px;
+}
+
 :where(.chat-prose, .file-prose) > :first-child {
   margin-top: 0;
 }

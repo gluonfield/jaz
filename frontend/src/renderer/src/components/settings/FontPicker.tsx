@@ -57,16 +57,19 @@ export function FontPicker({
             aria-label={ariaLabel}
             spellCheck={false}
             autoComplete="off"
+            onPointerDown={load}
             onFocus={() => {
               load()
               setOpen(true)
             }}
             onChange={(event) => {
+              load()
               onChange(event.target.value)
               setOpen(true)
             }}
             onKeyDown={(event) => {
               if (event.key === 'Escape') setOpen(false)
+              else load()
             }}
             className="h-8 w-[210px] max-w-full rounded-[10px] bg-bg px-2.5 text-[13px] text-ink ring-1 ring-border outline-none transition duration-150 placeholder:text-ink-3 focus:ring-2 focus:ring-primary"
           />
