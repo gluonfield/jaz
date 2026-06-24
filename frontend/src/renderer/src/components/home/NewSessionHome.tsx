@@ -3,7 +3,7 @@ import { motion } from 'motion/react'
 import { HomePixelField } from '@/components/home/HomePixelField'
 import { ComposerCard } from '@/components/session/Composer'
 import { FileDropScope } from '@/components/ui/FileDrop'
-import type { SendMessageOptions } from '@/lib/sendMessage'
+import type { SendMessageHandler } from '@/lib/sendMessage'
 
 export function NewSessionHome({
   themeKey,
@@ -26,7 +26,7 @@ export function NewSessionHome({
   /** directory the composer's @-mention file picker indexes ('' = workspace root) */
   fileRoot?: string
   onDraftActivity: (active: boolean) => void
-  onSend: (text: string, options?: SendMessageOptions) => void
+  onSend: SendMessageHandler
   onVoice?: () => void
 }) {
   const handleTextChange = useCallback(
@@ -62,10 +62,10 @@ export function NewSessionHome({
             planAvailable
             disabled={creating || disabled}
             leftSlot={leftSlot}
-          draftStorageKey={draftStorageKey}
-          clearOnSend={false}
-          fileRoot={fileRoot}
-          onSend={onSend}
+            draftStorageKey={draftStorageKey}
+            clearOnSend={false}
+            fileRoot={fileRoot}
+            onSend={onSend}
             onVoice={onVoice}
             onTextChange={handleTextChange}
           />

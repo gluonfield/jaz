@@ -27,7 +27,7 @@ import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
 import type { RepoInfo, Session } from '@/lib/api/types'
 import { writeClipboard } from '@/lib/clipboard'
 import type { ProviderSubagentView } from '@/lib/providerSubagents'
-import type { SendMessageOptions } from '@/lib/sendMessage'
+import type { SendMessageHandler } from '@/lib/sendMessage'
 import { taskStepState, type TaskSurface } from '@/lib/taskSurface'
 import { keys } from '@/lib/query/keys'
 import { AgentAvatar } from '@/components/acp/AgentAvatar'
@@ -49,7 +49,7 @@ export function OverviewPanel({
   progress?: TaskSurface
   subagents: ProviderSubagentView[]
   working: boolean
-  onSend: (text: string, options?: SendMessageOptions) => void
+  onSend: SendMessageHandler
 }) {
   const repo = useRepoActions(session)
   const showGit = Boolean(repo.cwd && (repo.info?.git || repo.info?.worktree_missing))
@@ -270,7 +270,7 @@ function ManageSection({
 }: {
   session: Session
   repo: ReturnType<typeof useRepoActions>
-  onSend: (text: string, options?: SendMessageOptions) => void
+  onSend: SendMessageHandler
 }) {
   const queryClient = useQueryClient()
   const toast = useToast()
