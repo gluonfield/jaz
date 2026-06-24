@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { AnimatePresence, motion } from 'motion/react'
 import { EqBars } from '@/components/home/MusicBubbles'
 import { RAINBOW_BEAM } from '@/components/ui/rainbow'
 import { IconButton } from '@/components/ui/IconButton'
 import type { PixelFieldShapeFrame } from '@/components/ui/PixelField.types'
+import { useReducedEffectsMotion } from '@/lib/effectsMotion'
 
 const VIDEO_ID = 'rcd_SQZDlnk'
 const CARD_WIDTH = 440
@@ -25,7 +26,7 @@ export function RocketVideo({
   onHoverChange?: (hovered: boolean) => void
   onOpenChange?: (open: boolean) => void
 }) {
-  const reducedMotion = useReducedMotion()
+  const reducedMotion = useReducedEffectsMotion()
   const [open, setOpen] = useState(false)
   const [meta, setMeta] = useState<VideoMeta | null>(cachedMeta)
   const containerRef = useRef<HTMLDivElement>(null)

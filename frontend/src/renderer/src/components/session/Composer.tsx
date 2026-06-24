@@ -8,6 +8,7 @@ import type { Attachment, QueuedMessage } from '@/lib/api/types'
 import type { ComposerContext, SendMessageOptions } from '@/lib/sendMessage'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { RAINBOW_BEAM } from '@/components/ui/rainbow'
+import { useEffectsEnabled } from '@/lib/appearance'
 import { MentionSuggestions, MentionTextarea, useMentionInput } from './MentionInput'
 import { QueuedPromptList } from './QueuedPromptList'
 import { ContextChip } from './ContextChip'
@@ -113,6 +114,9 @@ export function ComposerCard({
   const [planRequested, setPlanRequested] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const reducedMotion = useReducedMotion()
+  // With effects off, drop the rainbow focus comet for a calm static border that
+  // never animates (see the card className below).
+  const effectsEnabled = useEffectsEnabled()
   const planToggleDisabled = disabled || !planAvailable
   const showPlanChip = planAvailable && (planRequested || planModeActive)
   const mention = useMentionInput({
@@ -209,7 +213,7 @@ export function ComposerCard({
       <FileDropOverlay visible={draggingFiles} />
       <MentionSuggestions mention={mention} placement="above" />
       <AnimatePresence>
-        {focused ? (
+        {focused && effectsEnabled ? (
           <motion.div
             key="ring"
             aria-hidden
@@ -241,6 +245,12 @@ export function ComposerCard({
       <div
         className={`relative flex cursor-text flex-col gap-1.5 rounded-[12px] p-2.5 transition-shadow ${
           translucent ? 'bg-surface/85 backdrop-blur-[2px]' : 'bg-surface'
+        } ${
+          !effectsEnabled
+            ? focused
+              ? 'ring-2 ring-primary'
+              : 'ring-1 ring-border'
+            : ''
         } ${draggingFiles ? 'shadow-[0_0_0_1px_var(--color-primary),0_10px_35px_rgba(0,0,0,0.16)]' : ''}`}
         onClick={(e) => {
           if ((e.target as HTMLElement).closest('button, textarea, input')) return

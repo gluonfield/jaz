@@ -507,7 +507,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   )
   if (detail.isPending) {
     return (
-      <div className="mx-auto max-w-[720px] px-10">
+      <div className="mx-auto max-w-[var(--thread-max)] px-10">
         <Skeleton className="mb-6 h-7 w-64" />
         <SkeletonRows count={5} />
       </div>

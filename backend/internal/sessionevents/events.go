@@ -268,6 +268,7 @@ type ACPToolContent struct {
 	URI     string `json:"uri,omitempty"`
 	Title   string `json:"title,omitempty"`
 	Path    string `json:"path,omitempty"`
+	OldText string `json:"old_text,omitempty"`
 	NewText string `json:"new_text,omitempty"`
 }
 
