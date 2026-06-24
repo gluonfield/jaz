@@ -4,8 +4,8 @@ import { useToast } from '@/components/ui/toast'
 import { mutateSessionQueue, type QueueMutation, uploadSessionAttachment } from '@/lib/api/sessions'
 import type { QueuedMessage, QueuedMessageInput, Session, SessionMessages } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
-import type { SendMessageOptions } from '@/lib/sendMessage'
-import { contextAttachmentIDs, contextInputs, normalizeBrowserAnnotation } from '@/lib/messageContext'
+import { preparedSendMessage, type SendMessageHandler, type SendMessageOptions } from '@/lib/sendMessage'
+import { normalizeBrowserAnnotation } from '@/lib/messageContext'
 
 export function useSessionQueue({
   sessionId,
@@ -18,7 +18,7 @@ export function useSessionQueue({
   session?: Session
   acpState?: string
   streaming: boolean
-  onSend: (text: string, options?: SendMessageOptions) => void
+  onSend: SendMessageHandler
 }) {
   const queryClient = useQueryClient()
   const toast = useToast()
@@ -56,27 +56,25 @@ export function useSessionQueue({
 
   const send = useCallback((text: string, options: SendMessageOptions = {}) => {
     if (running) {
-      void (async () => {
+      return (async () => {
         const uploaded = options.files?.length
           ? await Promise.all(options.files.map((file) => uploadSessionAttachment(sessionId, file)))
           : []
-        const attachmentIDs = [
-          ...(options.attachments ?? []).map((attachment) => attachment.id),
-          ...contextAttachmentIDs(options.contexts),
-          ...uploaded.map((attachment) => attachment.id),
-        ]
+        const prepared = preparedSendMessage(options, uploaded)
         const prompt = normalizeQueuedPrompt({
           text,
-          contexts: contextInputs(options.contexts),
-          attachment_ids: attachmentIDs,
+          contexts: prepared.contexts,
+          attachment_ids: prepared.attachmentIds,
           plan_requested: options.planRequested,
         })
         if (!prompt) return
         await mutateQueue({ op: 'append', message: prompt })
-      })().catch(showQueueError)
-      return
+      })().catch((error) => {
+        showQueueError(error)
+        throw error
+      })
     }
-    onSend(text, options)
+    return onSend(text, options)
   }, [mutateQueue, onSend, running, sessionId, showQueueError])
 
   const deletePrompt = useCallback((id: string) => {

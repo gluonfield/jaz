@@ -397,7 +397,10 @@ func TestManagerSideChatDoesNotTouchRunningTurn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manager := newFakeCodexManager(t, store, t.TempDir(), nil)
+	manager := newFakeCodexManager(t, store, t.TempDir(), map[string]string{
+		"JAZ_FAKE_ACP_EXPECT_PROMPT_TRIGGER":  "quick check",
+		"JAZ_FAKE_ACP_EXPECT_PROMPT_CONTAINS": "selected text",
+	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -413,9 +416,10 @@ func TestManagerSideChatDoesNotTouchRunningTurn(t *testing.T) {
 	manager.Events = sessionevents.New()
 	live := manager.Events.Subscribe(ctx, spawned.SessionID)
 	if err := manager.SendSideChat(ctx, acp.SideChatRequest{
-		Session: spawned.SessionID,
-		ID:      "side-1",
-		Message: "quick check",
+		Session:  spawned.SessionID,
+		ID:       "side-1",
+		Message:  "quick check",
+		Contexts: storage.SelectionContexts([]string{"selected text"}),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -438,6 +442,10 @@ func TestManagerSideChatDoesNotTouchRunningTurn(t *testing.T) {
 	if !hasSideChatEvent(sideEvents, "side-1", "user", "quick check") ||
 		!hasSideChatEvent(sideEvents, "side-1", "assistant", "hello from side chat") {
 		t.Fatalf("missing side chat events %#v", sideEvents)
+	}
+	userEvent := sideChatEvent(sideEvents, "side-1", "user", "quick check")
+	if userEvent == nil || len(userEvent.Contexts) != 1 || userEvent.Contexts[0].Text != "selected text" {
+		t.Fatalf("side chat user event contexts = %#v", userEvent)
 	}
 	storedEvents, err := store.LoadSessionEvents(spawned.SessionID)
 	if err != nil {
@@ -1292,16 +1300,20 @@ func collectSideChatEvents(t *testing.T, ch <-chan sessionevents.Event, want int
 }
 
 func hasSideChatEvent(events []sessionevents.Event, id, role, content string) bool {
+	return sideChatEvent(events, id, role, content) != nil
+}
+
+func sideChatEvent(events []sessionevents.Event, id, role, content string) *sessionevents.SideChatEvent {
 	for _, event := range events {
 		if event.Type == sessionevents.TypeSideChatMessage &&
 			event.SideChat != nil &&
 			event.SideChat.ID == id &&
 			event.SideChat.Role == role &&
 			event.SideChat.Content == content {
-			return true
+			return event.SideChat
 		}
 	}
-	return false
+	return nil
 }
 
 func newFakeAgentManager(t *testing.T, store *jsonstore.Store, root string, extraEnv map[string]string) *acp.Manager {

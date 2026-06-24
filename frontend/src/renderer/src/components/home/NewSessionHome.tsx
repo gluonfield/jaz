@@ -2,7 +2,8 @@ import { type ReactNode, useCallback } from 'react'
 import { motion } from 'motion/react'
 import { HomePixelField } from '@/components/home/HomePixelField'
 import { ComposerCard } from '@/components/session/Composer'
-import type { SendMessageOptions } from '@/lib/sendMessage'
+import { FileDropScope } from '@/components/ui/FileDrop'
+import type { SendMessageHandler } from '@/lib/sendMessage'
 
 export function NewSessionHome({
   themeKey,
@@ -25,7 +26,7 @@ export function NewSessionHome({
   /** directory the composer's @-mention file picker indexes ('' = workspace root) */
   fileRoot?: string
   onDraftActivity: (active: boolean) => void
-  onSend: (text: string, options?: SendMessageOptions) => void
+  onSend: SendMessageHandler
   onVoice?: () => void
 }) {
   const handleTextChange = useCallback(
@@ -34,7 +35,7 @@ export function NewSessionHome({
   )
 
   return (
-    <div className="relative flex h-full flex-col items-center justify-center overflow-hidden px-10 pb-16">
+    <FileDropScope className="relative flex h-full flex-col items-center justify-center overflow-hidden px-10 pb-16">
       <HomePixelField themeKey={themeKey} calm={calm} />
       <motion.div
         className="relative z-[2] w-full max-w-[640px]"
@@ -70,6 +71,6 @@ export function NewSessionHome({
           />
         </motion.div>
       </motion.div>
-    </div>
+    </FileDropScope>
   )
 }

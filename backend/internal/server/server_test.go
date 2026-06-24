@@ -498,14 +498,18 @@ func TestACPSideChatRoutesToManager(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := &fakeACPManager{job: acp.Job{ID: session.ID, Slug: session.Slug, State: acp.StateRunning}}
+	workspace := t.TempDir()
+	handler := (&Server{Store: store, ACP: manager, Workspace: workspace}).Handler()
+	attachment := uploadTestAttachment(t, handler, session.ID, "note.txt", "hello")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/side-chat", strings.NewReader(`{"id":"side-1","message":"quick check"}`)).WithContext(ctx)
+	body := `{"id":"side-1","message":"quick check","contexts":[{"type":"selection","text":"selected text"}],"attachment_ids":["` + attachment.ID + `"]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/side-chat", strings.NewReader(body)).WithContext(ctx)
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 
-	(&Server{Store: store, ACP: manager}).Handler().ServeHTTP(res, req)
+	handler.ServeHTTP(res, req)
 
 	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
@@ -519,6 +523,12 @@ func TestACPSideChatRoutesToManager(t *testing.T) {
 	}
 	if sideChat.Session != session.ID || sideChat.ID != "side-1" || sideChat.Message != "quick check" {
 		t.Fatalf("side chat request = %#v", sideChat)
+	}
+	if len(sideChat.Contexts) != 1 || sideChat.Contexts[0].Text != "selected text" {
+		t.Fatalf("side chat contexts = %#v", sideChat.Contexts)
+	}
+	if len(sideChat.Attachments) != 1 || sideChat.Attachments[0].ID != attachment.ID || sideChat.Attachments[0].ServerPath != attachment.ServerPath {
+		t.Fatalf("side chat attachments = %#v, want %#v", sideChat.Attachments, attachment)
 	}
 }
 
