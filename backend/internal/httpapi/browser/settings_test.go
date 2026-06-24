@@ -52,7 +52,7 @@ func TestSettingsEndpoint(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
 		t.Fatal(err)
 	}
-	if status.Enabled || status.Agent != "" {
+	if status.Enabled || status.Agent != "" || status.Mode != jazsettings.BrowserModeExtension {
 		t.Fatalf("default browser status = %#v", status)
 	}
 	if !status.Extension.Connected || status.Extension.ExtensionID != "ext-1" || len(status.Extension.Actions) != 2 {
@@ -70,7 +70,7 @@ func TestSettingsEndpoint(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
 		t.Fatal(err)
 	}
-	if status.Agent != acp.AgentCodex || !status.Enabled {
+	if status.Agent != acp.AgentCodex || !status.Enabled || status.Mode != jazsettings.BrowserModeExtension {
 		t.Fatalf("browser status = %#v", status)
 	}
 
@@ -102,5 +102,40 @@ func TestSettingsEndpoint(t *testing.T) {
 	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/browser", strings.NewReader(`{"agent":"jaz"}`)))
 	if res.Code != http.StatusBadRequest {
 		t.Fatalf("built-in Jaz browser agent should 400, got %d body = %s", res.Code, res.Body.String())
+	}
+}
+
+func TestSettingsEndpointAllowsManagedModeWithoutExtension(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if _, err := jazsettings.SaveAgentDefaults(store, jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
+		acp.AgentCodex: {Enabled: true, Command: "codex-acp"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewSettingsHandler(store, acp.AgentCatalog{
+		acp.AgentCodex: {Command: "codex-acp"},
+	}, extensionStatusStub{}, nil)
+
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/browser", strings.NewReader(`{"enabled":true,"agent":"codex","mode":"managed"}`)))
+	if res.Code != http.StatusOK {
+		t.Fatalf("set managed browser = %d, body = %s", res.Code, res.Body.String())
+	}
+	var status StatusResponse
+	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if !status.Enabled || status.Agent != acp.AgentCodex || status.Mode != jazsettings.BrowserModeManaged {
+		t.Fatalf("browser status = %#v", status)
+	}
+
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/browser", strings.NewReader(`{"mode":"extension"}`)))
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("extension mode without extension should 400, got %d body = %s", res.Code, res.Body.String())
 	}
 }

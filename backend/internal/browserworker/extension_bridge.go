@@ -24,9 +24,10 @@ type ExtensionBridge struct {
 	Fallback Backend
 	Timeout  time.Duration
 
-	seq    atomic.Uint64
-	mu     sync.Mutex
-	client *extensionClient
+	seq          atomic.Uint64
+	useExtension atomic.Bool
+	mu           sync.Mutex
+	client       *extensionClient
 }
 
 type ExtensionStatus struct {
@@ -99,7 +100,9 @@ var extensionUpgrader = websocket.Upgrader{
 }
 
 func NewExtensionBridge(fallback Backend) *ExtensionBridge {
-	return &ExtensionBridge{Fallback: fallback}
+	bridge := &ExtensionBridge{Fallback: fallback}
+	bridge.SetUseExtension(true)
+	return bridge
 }
 
 func (b *ExtensionBridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -129,13 +132,20 @@ func (b *ExtensionBridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (b *ExtensionBridge) Call(ctx context.Context, input ActionInput) (ActionOutput, error) {
+	if !b.useExtension.Load() {
+		if b.Fallback != nil {
+			return b.Fallback.Call(ctx, input)
+		}
+		return ActionOutput{}, errors.New("background Chromium backend is not configured")
+	}
 	if client := b.currentClient(); client != nil {
 		return client.call(ctx, b.nextID(), input, b.timeout())
 	}
-	if b.Fallback != nil {
-		return b.Fallback.Call(ctx, input)
-	}
 	return ActionOutput{}, errors.New("browser extension bridge is not connected")
+}
+
+func (b *ExtensionBridge) SetUseExtension(use bool) {
+	b.useExtension.Store(use)
 }
 
 func (b *ExtensionBridge) Status() ExtensionStatus {
