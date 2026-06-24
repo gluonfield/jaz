@@ -108,7 +108,6 @@ func (h SettingsHandler) normalize(input settingsInput) (jazsettings.BrowserSett
 	if err != nil {
 		return jazsettings.BrowserSettings{}, err
 	}
-	extension := h.extensionStatus()
 	if input.Enabled != nil {
 		settings.Enabled = *input.Enabled
 	}
@@ -123,9 +122,6 @@ func (h SettingsHandler) normalize(input settingsInput) (jazsettings.BrowserSett
 		settings.Mode = mode
 	}
 	settings.Mode = jazsettings.BrowserMode(settings)
-	if settings.Enabled && jazsettings.BrowserUsesExtension(settings) && !extension.Connected && ((input.Enabled != nil && *input.Enabled) || input.Mode != nil) {
-		return jazsettings.BrowserSettings{}, fmt.Errorf("connect the Chrome extension before enabling extension browser mode")
-	}
 	if strings.TrimSpace(settings.Agent) == "" {
 		return settings, nil
 	}

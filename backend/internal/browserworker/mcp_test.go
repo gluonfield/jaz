@@ -16,7 +16,8 @@ type recordingBackend struct {
 }
 
 type scriptedBackend struct {
-	calls []ActionInput
+	calls       []ActionInput
+	unsupported map[string]bool
 }
 
 func (b *recordingBackend) Call(_ context.Context, input ActionInput) (ActionOutput, error) {
@@ -26,6 +27,9 @@ func (b *recordingBackend) Call(_ context.Context, input ActionInput) (ActionOut
 
 func (b *scriptedBackend) Call(_ context.Context, input ActionInput) (ActionOutput, error) {
 	b.calls = append(b.calls, input)
+	if b.unsupported[input.Action] {
+		return ActionOutput{}, UnsupportedActionError{Action: input.Action}
+	}
 	switch input.Action {
 	case ActionAdoptTab:
 		return ActionOutput{Status: "ok", Text: "adopted"}, nil
@@ -220,6 +224,20 @@ func TestHighLevelGetExtractsResultTasks(t *testing.T) {
 		t.Fatalf("output should be formatted from structured extraction data: %q", out.Text)
 	}
 	if len(backend.calls) != 1 || backend.calls[0].Action != "extract" {
+		t.Fatalf("calls = %#v", backend.calls)
+	}
+}
+
+func TestHighLevelGetFallsBackWhenExtractUnsupported(t *testing.T) {
+	backend := &scriptedBackend{unsupported: map[string]bool{ActionExtract: true}}
+	_, out, err := (highLevelTools{executor: NewHighLevelExecutor(backend)}).Get(context.Background(), &mcp.CallToolRequest{}, HighLevelInput{Task: "list and rank visible search results"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.Text, "Targets:") || !strings.Contains(out.Text, "ref=e1") {
+		t.Fatalf("out = %#v", out)
+	}
+	if len(backend.calls) != 2 || backend.calls[0].Action != ActionExtract || backend.calls[1].Action != ActionState {
 		t.Fatalf("calls = %#v", backend.calls)
 	}
 }

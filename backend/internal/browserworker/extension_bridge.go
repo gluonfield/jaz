@@ -137,6 +137,9 @@ func (b *ExtensionBridge) Call(ctx context.Context, input ActionInput) (ActionOu
 		return ActionOutput{}, errors.New("background Chromium backend is not configured")
 	}
 	if client := b.currentClient(); client != nil {
+		if !client.supports(input.Action) {
+			return ActionOutput{}, UnsupportedActionError{Action: input.Action, Hint: "reload the updated Jaz Browser Bridge"}
+		}
 		return client.call(ctx, b.nextID(), input, b.timeout())
 	}
 	return ActionOutput{}, errors.New("browser extension bridge is not connected")
@@ -249,32 +252,36 @@ func (c *extensionClient) readLoop(onDone func(), onHello func(extensionHello) e
 		if err != nil {
 			return
 		}
-		c.handleMessage(data, onHello)
+		if err := c.handleMessage(data, onHello); err != nil {
+			c.closeWithReason(err.Error())
+			return
+		}
 	}
 }
 
-func (c *extensionClient) handleMessage(data []byte, onHello func(extensionHello) error) {
+func (c *extensionClient) handleMessage(data []byte, onHello func(extensionHello) error) error {
 	var probe struct {
 		Type string `json:"type"`
 		ID   string `json:"id"`
 	}
 	if json.Unmarshal(data, &probe) != nil {
-		return
+		return errors.New("browser extension sent invalid JSON")
 	}
 	switch probe.Type {
 	case "hello":
 		var hello extensionHello
-		if json.Unmarshal(data, &hello) == nil {
-			if err := onHello(hello); err != nil {
-				c.close()
-			}
+		if err := json.Unmarshal(data, &hello); err != nil {
+			return err
 		}
+		return onHello(hello)
 	case "result":
 		var result extensionResult
-		if json.Unmarshal(data, &result) == nil {
-			c.resolve(result)
+		if err := json.Unmarshal(data, &result); err != nil {
+			return err
 		}
+		c.resolve(result)
 	}
+	return nil
 }
 
 func (c *extensionClient) write(value any) error {
@@ -290,6 +297,21 @@ func (c *extensionClient) close() {
 		close(c.done)
 		_ = c.conn.Close()
 	}
+}
+
+func (c *extensionClient) closeWithReason(reason string) {
+	c.writeMu.Lock()
+	_ = c.conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, closeReason(reason)), time.Now().Add(time.Second))
+	c.writeMu.Unlock()
+	c.close()
+}
+
+func closeReason(reason string) string {
+	reason = strings.TrimSpace(reason)
+	if len(reason) > 120 {
+		return strings.TrimSpace(reason[:120])
+	}
+	return reason
 }
 
 func (c *extensionClient) addPending(id string, ch chan extensionResult) {
@@ -317,22 +339,24 @@ func validateHello(hello extensionHello) error {
 	if strings.TrimSpace(hello.Protocol) != ExtensionProtocol {
 		return fmt.Errorf("unsupported browser extension protocol %q", strings.TrimSpace(hello.Protocol))
 	}
-	if !sameActions(hello.Capabilities.Actions, SupportedExtensionActions()) {
-		return errors.New("browser extension capabilities do not match backend contract")
+	if missing := missingActions(hello.Capabilities.Actions, requiredExtensionActions()); len(missing) > 0 {
+		return fmt.Errorf("browser extension missing required capabilities: %s", strings.Join(missing, ", "))
 	}
 	return nil
 }
 
-func sameActions(got, want []string) bool {
-	if len(got) != len(want) {
-		return false
+func missingActions(got, want []string) []string {
+	seen := make(map[string]bool, len(got))
+	for _, action := range got {
+		seen[action] = true
 	}
-	for i := range got {
-		if got[i] != want[i] {
-			return false
+	var missing []string
+	for _, action := range want {
+		if !seen[action] {
+			missing = append(missing, action)
 		}
 	}
-	return true
+	return missing
 }
 
 func (c *extensionClient) setHello(hello extensionHello) {
@@ -371,6 +395,21 @@ func (c *extensionClient) statusSnapshot() ExtensionStatus {
 	out.Connected = true
 	out.Actions = append([]string(nil), c.status.Actions...)
 	return out
+}
+
+func (c *extensionClient) supports(action string) bool {
+	action = strings.TrimSpace(action)
+	if action == "" {
+		return true
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, candidate := range c.status.Actions {
+		if candidate == action {
+			return true
+		}
+	}
+	return false
 }
 
 func actionOutput(out extensionWireOutput) ActionOutput {
