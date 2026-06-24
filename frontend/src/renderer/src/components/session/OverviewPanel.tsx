@@ -92,19 +92,31 @@ function SectionHeader({ children }: { children: ReactNode }) {
   return <p className="text-[11px] font-medium tracking-wide text-ink-3 uppercase">{children}</p>
 }
 
-function ThreadsSection({ threads }: { threads: SpawnedThreadView[] }) {
-  const [open, setOpen] = useState(true)
+function OverviewDisclosureSection({
+  title,
+  meta,
+  open,
+  onToggle,
+  children,
+}: {
+  title: ReactNode
+  meta?: ReactNode
+  open: boolean
+  onToggle: () => void
+  children: ReactNode
+}) {
+  const reduceMotion = useReducedMotion()
   return (
     <section>
       <button
         type="button"
         aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        className="flex min-h-8 w-full cursor-pointer items-center justify-between gap-2 rounded-md px-1 text-left transition-[background-color,color,transform] duration-150 hover:bg-surface-2 active:scale-[0.96]"
+        onClick={onToggle}
+        className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-md text-left transition-colors duration-150 hover:text-ink"
       >
         <SectionHeader>
-          Threads
-          <span className="ml-2 font-mono normal-case tracking-normal">{threads.length}</span>
+          {title}
+          {meta ? <span className="ml-2 font-mono normal-case tracking-normal">{meta}</span> : null}
         </SectionHeader>
         <ChevronDown
           size={13}
@@ -112,14 +124,38 @@ function ThreadsSection({ threads }: { threads: SpawnedThreadView[] }) {
           aria-hidden
         />
       </button>
-      {open ? (
-        <ul className="mt-2 flex flex-col gap-1.5">
-          {threads.map((thread) => (
-            <ThreadRow key={thread.key} thread={thread} />
-          ))}
-        </ul>
-      ) : null}
+      <AnimatePresence initial={false}>
+        {open ? (
+          <motion.div
+            initial={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0, y: -2 }}
+            animate={reduceMotion ? { opacity: 1 } : { height: 'auto', opacity: 1, y: 0 }}
+            exit={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0, y: -2 }}
+            transition={reduceMotion ? { duration: 0.12 } : { duration: 0.18, ease: 'easeOut' }}
+            className="overflow-hidden"
+          >
+            {children}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </section>
+  )
+}
+
+function ThreadsSection({ threads }: { threads: SpawnedThreadView[] }) {
+  const [open, setOpen] = useState(true)
+  return (
+    <OverviewDisclosureSection
+      title="Threads"
+      meta={threads.length}
+      open={open}
+      onToggle={() => setOpen((value) => !value)}
+    >
+      <ul className="mt-2 flex flex-col gap-1.5">
+        {threads.map((thread) => (
+          <ThreadRow key={thread.key} thread={thread} />
+        ))}
+      </ul>
+    </OverviewDisclosureSection>
   )
 }
 
@@ -334,56 +370,37 @@ function ProgressSection({ progress, working }: { progress: TaskSurface; working
   const showSteps = states.some(Boolean)
   const completedCount = states.filter((state) => state === 'completed').length
   return (
-    <section>
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-md text-left transition-colors hover:text-ink"
-      >
-        <SectionHeader>
-          {progress.title}
-          {showSteps ? (
-            <span className="ml-2 font-mono normal-case tracking-normal">
-              {completedCount}/{entries.length}
-            </span>
-          ) : null}
-        </SectionHeader>
-        <ChevronDown
-          size={13}
-          className={`shrink-0 text-ink-3 transition-transform duration-200 ease-out ${open ? '' : '-rotate-90'}`}
-          aria-hidden
-        />
-      </button>
-      {open ? (
-        <>
-          {entries.length ? (
-            <ul className="mt-2.5 flex flex-col gap-2">
-              {entries.map((entry, index) => {
-                const state = states[index]
-                return (
-                  <li
-                    key={`${entry.content}-${index}`}
-                    className="flex min-w-0 items-start gap-2 text-[13px] leading-snug text-ink-2"
-                  >
-                    {showSteps ? (
-                      <span className="mt-[2px] shrink-0" title={state}>
-                        <TaskStepIcon state={state ?? 'pending'} active={working} />
-                      </span>
-                    ) : null}
-                    <span className={`min-w-0 flex-1 ${state === 'completed' ? 'opacity-50' : ''}`}>
-                      {entry.content}
-                    </span>
-                  </li>
-                )
-              })}
-            </ul>
-          ) : (
-            <p className="mt-2.5 text-[12px] italic text-ink-3">(no steps provided)</p>
-          )}
-        </>
-      ) : null}
-    </section>
+    <OverviewDisclosureSection
+      title={progress.title}
+      meta={showSteps ? `${completedCount}/${entries.length}` : undefined}
+      open={open}
+      onToggle={() => setOpen((value) => !value)}
+    >
+      {entries.length ? (
+        <ul className="mt-2.5 flex flex-col gap-2">
+          {entries.map((entry, index) => {
+            const state = states[index]
+            return (
+              <li
+                key={`${entry.content}-${index}`}
+                className="flex min-w-0 items-start gap-2 text-[13px] leading-snug text-ink-2"
+              >
+                {showSteps ? (
+                  <span className="mt-[2px] shrink-0" title={state}>
+                    <TaskStepIcon state={state ?? 'pending'} active={working} />
+                  </span>
+                ) : null}
+                <span className={`min-w-0 flex-1 ${state === 'completed' ? 'opacity-50' : ''}`}>
+                  {entry.content}
+                </span>
+              </li>
+            )
+          })}
+        </ul>
+      ) : (
+        <p className="mt-2.5 text-[12px] italic text-ink-3">(no steps provided)</p>
+      )}
+    </OverviewDisclosureSection>
   )
 }
 
