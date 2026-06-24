@@ -20,6 +20,7 @@ import { startLocalBackend, stopLocalBackend } from './backend'
 import { attachBrowserNavigationCommands, attachBrowserNavigationShortcuts } from './browserNavigation'
 import { attachWindowLifecycle, installMainDiagnostics } from './diagnostics'
 import { getDeviceIdentity, getDeviceMetadata } from './deviceIdentity'
+import { canGrantAppPermission } from './permissions'
 import { createUpdateController } from './updater'
 
 // Matches --color-bg under :root.dark; used as the window paint color before
@@ -374,11 +375,16 @@ app.whenReady().then(() => {
     else previewURLTargets.delete(event.sender.id)
   })
 
-  // Voice mode records from the mic; allow media (macOS still shows its own
-  // TCC prompt) and deny everything else.
-  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
-    callback(permission === 'media')
+  // Voice mode records from the mic; font settings enumerate installed fonts.
+  // Grant both only to Jaz's own top-level renderer, not embedded frames.
+  session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) => {
+    callback(canGrantAppPermission(contents, permission, details))
   })
+  // queryLocalFonts() also consults the synchronous permission check; grant the
+  // same set so it doesn't fall back to a denied default.
+  session.defaultSession.setPermissionCheckHandler((contents, permission, _origin, details) =>
+    canGrantAppPermission(contents, permission, details),
+  )
   if (process.platform === 'darwin') {
     app.dock?.setIcon(appIcon)
     app.setAboutPanelOptions({

@@ -1,6 +1,8 @@
 import { ChevronRight, LoaderCircle } from 'lucide-react'
-import { memo, useState } from 'react'
+import { memo, useState, type ReactNode } from 'react'
 import type { ACPToolCall } from '@/lib/api/types'
+import { useInlineDiffs } from '@/lib/appearance'
+import { EditDiffBlock, hasInlineDiff } from './EditDiffBlock'
 import { ToolCallDetail, toolCallCategory } from './ToolCallContent'
 import { normalized } from './TranscriptUtils'
 
@@ -81,7 +83,9 @@ export function toolRunLabel(calls: ACPToolCall[]): string {
   return failed ? `${label}, ${failed} failed` : label
 }
 
-export const ToolDisclosure = memo(function ToolDisclosure({
+// The collapsible run summary: a chevron + codex-style phrase that expands to
+// each call's detail. This is the stock rendering for every tool run.
+const ToolRunDisclosure = memo(function ToolRunDisclosure({
   label,
   calls,
   active = false,
@@ -142,6 +146,51 @@ export function ToolStatusLine({
     </div>
   )
 }
+
+export const ToolDisclosure = memo(function ToolDisclosure({
+  label,
+  calls,
+  active = false,
+}: {
+  label: string
+  calls: ACPToolCall[]
+  active?: boolean
+}) {
+  const inlineDiffs = useInlineDiffs()
+  if (!inlineDiffs || !calls.some(hasInlineDiff)) {
+    return <ToolRunDisclosure label={label} calls={calls} active={active} />
+  }
+
+  const rows: ReactNode[] = []
+  let run: ACPToolCall[] = []
+  const flushRun = () => {
+    if (!run.length) return
+    rows.push(
+      <ToolRunDisclosure
+        key={`run-${rows.length}-${run[0].id}`}
+        label={toolRunLabel(run)}
+        calls={run}
+        active={active}
+      />,
+    )
+    run = []
+  }
+  for (const call of calls) {
+    if (hasInlineDiff(call)) {
+      flushRun()
+      rows.push(<EditDiffBlock key={call.id} call={call} />)
+      continue
+    }
+    run.push(call)
+  }
+  flushRun()
+
+  return (
+    <div className="flex w-full flex-col items-start gap-2">
+      {rows}
+    </div>
+  )
+})
 
 export function ToolSummary({ calls, active = false }: { calls?: ACPToolCall[]; active?: boolean }) {
   if (!calls?.length) return null

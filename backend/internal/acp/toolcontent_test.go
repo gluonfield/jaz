@@ -47,7 +47,7 @@ func TestNormalizeToolContentLinkAndDiff(t *testing.T) {
 	if got[0].Type != "link" || got[0].URI != "https://example.com/doc" || got[0].Title != "Doc" {
 		t.Fatalf("unexpected link block: %+v", got[0])
 	}
-	if got[1].Type != "diff" || got[1].Path != "main.go" || got[1].NewText != "b" {
+	if got[1].Type != "diff" || got[1].Path != "main.go" || got[1].OldText != "a" || got[1].NewText != "b" {
 		t.Fatalf("unexpected diff block: %+v", got[1])
 	}
 }

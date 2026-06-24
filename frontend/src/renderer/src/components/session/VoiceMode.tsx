@@ -1,12 +1,13 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { Mic, Pause, X } from 'lucide-react'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { streamSessionMessage } from '@/lib/api/stream'
 import { speakStream, transcribeAudio } from '@/lib/api/voice'
 import { Mic as Microphone } from '@/lib/audio/mic'
 import { StreamingPlayer } from '@/lib/audio/player'
 import { keys } from '@/lib/query/keys'
+import { useReducedEffectsMotion } from '@/lib/effectsMotion'
 import { VoiceVisualizer } from './VoiceVisualizer'
 
 type Phase = 'connecting' | 'listening' | 'thinking' | 'speaking' | 'paused' | 'error'
@@ -36,7 +37,7 @@ const BARGE_GUARD_MS = 500
 
 export function VoiceMode({ sessionId, onExit }: { sessionId: string; onExit: () => void }) {
   const queryClient = useQueryClient()
-  const reducedMotion = useReducedMotion()
+  const reducedMotion = useReducedEffectsMotion()
   const [phase, setPhase] = useState<Phase>('connecting')
   const [turns, setTurns] = useState<Turn[]>([])
   const [live, setLive] = useState('') // streaming assistant reply, pre-commit

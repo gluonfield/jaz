@@ -412,6 +412,7 @@ export interface ACPToolContent {
   uri?: string
   title?: string
   path?: string
+  old_text?: string
   new_text?: string
 }
 

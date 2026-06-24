@@ -142,6 +142,7 @@ func decodeToolContent(raw json.RawMessage) *sessionevents.ACPToolContent {
 	case "diff":
 		var d struct {
 			Path    string `json:"path"`
+			OldText string `json:"oldText"`
 			NewText string `json:"newText"`
 		}
 		if err := json.Unmarshal(raw, &d); err != nil {
@@ -150,6 +151,7 @@ func decodeToolContent(raw json.RawMessage) *sessionevents.ACPToolContent {
 		return &sessionevents.ACPToolContent{
 			Type:    "diff",
 			Path:    d.Path,
+			OldText: clampToolText(d.OldText),
 			NewText: clampToolText(d.NewText),
 		}
 	default:

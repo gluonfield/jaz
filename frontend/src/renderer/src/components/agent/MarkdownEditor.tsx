@@ -15,7 +15,7 @@ const theme = EditorView.theme({
     backgroundColor: 'transparent',
   },
   '.cm-content': {
-    fontFamily: "'JetBrains Mono Variable', ui-monospace, monospace",
+    fontFamily: 'var(--font-mono)',
     lineHeight: '1.7',
     padding: '16px 20px',
     caretColor: 'var(--color-ink)',
