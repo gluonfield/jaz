@@ -143,10 +143,7 @@ func (s *Server) acpChildSnapshots(parentID string) []storage.ACPState {
 		for _, child := range children {
 			errorChild[child.ID] = child.Status == storage.StatusError
 			if state, ok := s.acpSnapshot(child); ok {
-				if !state.ParentVisible {
-					continue
-				}
-				byID[state.ID] = state
+				byID[state.ID] = parentChildSnapshot(state)
 			}
 		}
 	}
@@ -155,8 +152,8 @@ func (s *Server) acpChildSnapshots(parentID string) []storage.ACPState {
 			if errorChild[job.ID] {
 				continue
 			}
-			if job.ParentID == parentID && job.ParentVisible {
-				byID[job.ID] = canonicalACPStateResponse(acpJobState(job))
+			if job.ParentID == parentID {
+				byID[job.ID] = parentChildSnapshot(canonicalACPStateResponse(acpJobState(job)))
 			}
 		}
 	}
@@ -168,6 +165,15 @@ func (s *Server) acpChildSnapshots(parentID string) []storage.ACPState {
 		return out[i].UpdatedAt.After(out[j].UpdatedAt)
 	})
 	return out
+}
+
+func parentChildSnapshot(state storage.ACPState) storage.ACPState {
+	state.Assistant = ""
+	state.Thought = ""
+	state.Plan = nil
+	state.ToolCalls = nil
+	state.Permissions = nil
+	return state
 }
 
 func applyACPStateResponse(resp map[string]any, state storage.ACPState) {

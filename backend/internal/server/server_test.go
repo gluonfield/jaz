@@ -644,7 +644,10 @@ func TestSessionMessagesIncludesPersistedACPChildren(t *testing.T) {
 		ACPSession:    "acp-session",
 		State:         acp.StateIdle,
 		ParentVisible: true,
+		Assistant:     "child answer",
+		Thought:       "child thought",
 		Plan:          []sessionevents.ACPPlanEntry{{Content: "Inspect current page", Status: "completed"}},
+		ToolCalls:     []sessionevents.ACPToolCall{{ID: "tool-1", Title: "read file"}},
 		Permissions: []sessionevents.ACPPermission{{
 			ID:     "perm-1",
 			Title:  "Clarifying questions",
@@ -676,11 +679,14 @@ func TestSessionMessagesIncludesPersistedACPChildren(t *testing.T) {
 		t.Fatalf("children = %#v", got.ACPChildren)
 	}
 	childState := got.ACPChildren[0]
-	if len(childState.Plan) != 1 || childState.Plan[0].Content != "Inspect current page" {
-		t.Fatalf("plan = %#v", childState.Plan)
+	if childState.ID != child.ID || childState.Slug != child.Slug || childState.ParentID != parent.ID {
+		t.Fatalf("child state = %#v", childState)
 	}
-	if len(childState.Permissions) != 0 {
-		t.Fatalf("permissions = %#v", childState.Permissions)
+	if !childState.ParentVisible {
+		t.Fatalf("parent_visible = false, want true")
+	}
+	if childState.Assistant != "" || childState.Thought != "" || len(childState.Plan) != 0 || len(childState.ToolCalls) != 0 || len(childState.Permissions) != 0 {
+		t.Fatalf("child transcript leaked into parent response: %#v", childState)
 	}
 }
 
@@ -806,7 +812,7 @@ func TestSessionMessagesIncludesPersistedSessionEvents(t *testing.T) {
 	}
 }
 
-func TestSessionMessagesHidesDirectACPChildStateFromParent(t *testing.T) {
+func TestSessionMessagesIncludesDirectACPChildMetadataOnly(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -836,6 +842,13 @@ func TestSessionMessagesHidesDirectACPChildStateFromParent(t *testing.T) {
 		ACPSession: "acp-session",
 		State:      acp.StateIdle,
 		Assistant:  "hello from direct child chat",
+		Thought:    "private chain",
+		Plan:       []sessionevents.ACPPlanEntry{{Content: "Inspect current page", Status: "completed"}},
+		ToolCalls:  []sessionevents.ACPToolCall{{ID: "tool-1", Title: "read file"}},
+		Permissions: []sessionevents.ACPPermission{{
+			ID:     "perm-1",
+			Status: "pending",
+		}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -854,7 +867,17 @@ func TestSessionMessagesHidesDirectACPChildStateFromParent(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if len(got.ACPChildren) != 0 {
+	if len(got.ACPChildren) != 1 {
 		t.Fatalf("children = %#v", got.ACPChildren)
+	}
+	state := got.ACPChildren[0]
+	if state.ID != child.ID || state.Slug != child.Slug || state.ParentID != parent.ID {
+		t.Fatalf("child state = %#v", state)
+	}
+	if state.ParentVisible {
+		t.Fatalf("parent_visible = true, want false")
+	}
+	if state.Assistant != "" || state.Thought != "" || len(state.Plan) != 0 || len(state.ToolCalls) != 0 || len(state.Permissions) != 0 {
+		t.Fatalf("child transcript leaked into parent response: %#v", state)
 	}
 }
