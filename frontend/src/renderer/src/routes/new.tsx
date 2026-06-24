@@ -4,6 +4,7 @@ import { NewSessionHome } from '@/components/home/NewSessionHome'
 import { ModelSelect, ProjectPicker, RuntimeSelect } from '@/components/session/NewThreadControls'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { useToast } from '@/components/ui/toast'
+import { ApiError } from '@/lib/api/client'
 import { createSession, listFilesystemDirs, projectsQuery } from '@/lib/api/sessions'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import {
@@ -75,6 +76,7 @@ function NewSessionPage() {
     queryFn: () => listFilesystemDirs(directory),
     enabled: directory !== '' && project === undefined,
     staleTime: 30_000,
+    retry: false,
   })
   const directoryIsGit = project?.git ?? directoryInfo.data?.git ?? false
   // PixelField samples the palette at mount; remount it when the theme flips.
@@ -108,6 +110,14 @@ function NewSessionPage() {
   useEffect(() => {
     if (!directoryIsGit) setWorktree(false)
   }, [directoryIsGit])
+
+  // A directory from another backend won't exist here; drop it on a 4xx reject.
+  useEffect(() => {
+    const error = directoryInfo.error
+    if (directory && project === undefined && error instanceof ApiError && error.status >= 400 && error.status < 500) {
+      setDirectory('')
+    }
+  }, [directory, project, directoryInfo.error])
 
   const runtimeModel = runtimeModelState(agentSettings, runtime, providerOverride)
   const { usesProvider, providers: runtimeProviders, provider, selectedProvider } = runtimeModel
