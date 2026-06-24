@@ -21,7 +21,7 @@ func (b *fallbackBackend) Call(context.Context, ActionInput) (ActionOutput, erro
 }
 
 func TestExtensionBridgeRoutesCallToConnectedExtension(t *testing.T) {
-	bridge := NewExtensionBridge(nil)
+	bridge := NewExtensionBridge(nil, nil)
 	server := httptest.NewServer(bridge)
 	t.Cleanup(server.Close)
 	ws, _, err := websocket.DefaultDialer.Dial(wsURL(server.URL), nil)
@@ -81,8 +81,7 @@ func TestExtensionBridgeRoutesCallToConnectedExtension(t *testing.T) {
 
 func TestExtensionBridgeManagedModeBypassesConnectedExtension(t *testing.T) {
 	fallback := &fallbackBackend{}
-	bridge := NewExtensionBridge(fallback)
-	bridge.SetUseExtension(false)
+	bridge := NewExtensionBridge(fallback, func() bool { return false })
 	server := httptest.NewServer(bridge)
 	t.Cleanup(server.Close)
 	ws, _, err := websocket.DefaultDialer.Dial(wsURL(server.URL), nil)
@@ -110,8 +109,7 @@ func TestExtensionBridgeManagedModeBypassesConnectedExtension(t *testing.T) {
 
 func TestExtensionBridgeKeepsSocketInactiveUntilHello(t *testing.T) {
 	fallback := &fallbackBackend{}
-	bridge := NewExtensionBridge(fallback)
-	bridge.SetUseExtension(false)
+	bridge := NewExtensionBridge(fallback, func() bool { return false })
 	bridge.Timeout = 10 * time.Millisecond
 	server := httptest.NewServer(bridge)
 	t.Cleanup(server.Close)
@@ -134,8 +132,7 @@ func TestExtensionBridgeKeepsSocketInactiveUntilHello(t *testing.T) {
 
 func TestExtensionBridgeRejectsInvalidHello(t *testing.T) {
 	fallback := &fallbackBackend{}
-	bridge := NewExtensionBridge(fallback)
-	bridge.SetUseExtension(false)
+	bridge := NewExtensionBridge(fallback, func() bool { return false })
 	server := httptest.NewServer(bridge)
 	t.Cleanup(server.Close)
 	ws, _, err := websocket.DefaultDialer.Dial(wsURL(server.URL), nil)
@@ -168,8 +165,7 @@ func TestExtensionBridgeRejectsInvalidHello(t *testing.T) {
 
 func TestExtensionBridgeFallsBackWhenDisconnected(t *testing.T) {
 	fallback := &fallbackBackend{}
-	bridge := NewExtensionBridge(fallback)
-	bridge.SetUseExtension(false)
+	bridge := NewExtensionBridge(fallback, func() bool { return false })
 	out, err := bridge.Call(context.Background(), ActionInput{Action: "status"})
 	if err != nil {
 		t.Fatal(err)
@@ -181,7 +177,7 @@ func TestExtensionBridgeFallsBackWhenDisconnected(t *testing.T) {
 
 func TestExtensionBridgeRequiresConnectedExtensionInExtensionMode(t *testing.T) {
 	fallback := &fallbackBackend{}
-	bridge := NewExtensionBridge(fallback)
+	bridge := NewExtensionBridge(fallback, nil)
 	_, err := bridge.Call(context.Background(), ActionInput{Action: "status"})
 	if err == nil || !strings.Contains(err.Error(), "browser extension bridge is not connected") {
 		t.Fatalf("err = %v", err)
@@ -192,7 +188,7 @@ func TestExtensionBridgeRequiresConnectedExtensionInExtensionMode(t *testing.T) 
 }
 
 func TestExtensionBridgeRejectsNonGet(t *testing.T) {
-	bridge := NewExtensionBridge(nil)
+	bridge := NewExtensionBridge(nil, nil)
 	req := httptest.NewRequest("POST", "/v1/browser/extension", strings.NewReader("{}"))
 	res := httptest.NewRecorder()
 	bridge.ServeHTTP(res, req)

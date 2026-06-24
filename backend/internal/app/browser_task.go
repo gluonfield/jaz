@@ -23,16 +23,17 @@ type BrowserSettingsHandler struct {
 }
 
 func NewBrowserTaskService(store *sqlitestore.Store, manager *acp.Manager, catalog acp.AgentCatalog, backend *browserworker.ExtensionBridge) *browsertask.Service {
-	syncBrowserWorkerMode(store, backend)
 	return browsertask.New(store, manager, catalog, backend)
 }
 
-func NewBrowserWorkerBackend(layout runtimefiles.Layout) *browserworker.ExtensionBridge {
-	return browserworker.NewExtensionBridge(browserworker.NewLocalBackend(filepath.Join(layout.Root, "browser")))
+func NewBrowserWorkerBackend(layout runtimefiles.Layout, store *sqlitestore.Store) *browserworker.ExtensionBridge {
+	return browserworker.NewExtensionBridge(browserworker.NewLocalBackend(filepath.Join(layout.Root, "browser")), func() bool {
+		settings, err := jazsettings.LoadBrowserSettings(store)
+		return err != nil || jazsettings.BrowserUsesExtension(settings)
+	})
 }
 
 func NewBrowserSettingsHandler(store *sqlitestore.Store, catalog acp.AgentCatalog, jaz *jaztools.Service, mcp *mcpruntime.Manager, backend *browserworker.ExtensionBridge) *BrowserSettingsHandler {
-	syncBrowserWorkerMode(store, backend)
 	return &BrowserSettingsHandler{Handler: browserapi.NewSettingsHandler(store, catalog, backend, func() {
 		jaz.Sync()
 		go func() {
@@ -41,13 +42,6 @@ func NewBrowserSettingsHandler(store *sqlitestore.Store, catalog acp.AgentCatalo
 			mcp.Refresh(ctx)
 		}()
 	})}
-}
-
-func syncBrowserWorkerMode(store *sqlitestore.Store, backend *browserworker.ExtensionBridge) {
-	settings, err := jazsettings.LoadBrowserSettings(store)
-	if err == nil {
-		backend.SetUseExtension(jazsettings.BrowserUsesExtension(settings))
-	}
 }
 
 func ConfigureBrowserTaskTools(jaz *jaztools.Service, browser *browsertask.Service, backend *browserworker.ExtensionBridge) {

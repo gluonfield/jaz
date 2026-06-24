@@ -24,8 +24,8 @@ type ExtensionBridge struct {
 	Fallback Backend
 	Timeout  time.Duration
 
+	useExtension func() bool
 	seq          atomic.Uint64
-	useExtension atomic.Bool
 	mu           sync.Mutex
 	client       *extensionClient
 }
@@ -99,10 +99,8 @@ var extensionUpgrader = websocket.Upgrader{
 	},
 }
 
-func NewExtensionBridge(fallback Backend) *ExtensionBridge {
-	bridge := &ExtensionBridge{Fallback: fallback}
-	bridge.SetUseExtension(true)
-	return bridge
+func NewExtensionBridge(fallback Backend, useExtension func() bool) *ExtensionBridge {
+	return &ExtensionBridge{Fallback: fallback, useExtension: useExtension}
 }
 
 func (b *ExtensionBridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -132,7 +130,7 @@ func (b *ExtensionBridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (b *ExtensionBridge) Call(ctx context.Context, input ActionInput) (ActionOutput, error) {
-	if !b.useExtension.Load() {
+	if !b.usesExtension() {
 		if b.Fallback != nil {
 			return b.Fallback.Call(ctx, input)
 		}
@@ -144,8 +142,8 @@ func (b *ExtensionBridge) Call(ctx context.Context, input ActionInput) (ActionOu
 	return ActionOutput{}, errors.New("browser extension bridge is not connected")
 }
 
-func (b *ExtensionBridge) SetUseExtension(use bool) {
-	b.useExtension.Store(use)
+func (b *ExtensionBridge) usesExtension() bool {
+	return b.useExtension == nil || b.useExtension()
 }
 
 func (b *ExtensionBridge) Status() ExtensionStatus {
