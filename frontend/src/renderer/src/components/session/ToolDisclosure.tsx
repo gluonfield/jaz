@@ -1,5 +1,5 @@
 import { ChevronRight, LoaderCircle } from 'lucide-react'
-import { memo, useState } from 'react'
+import { memo, useState, type ReactNode } from 'react'
 import type { ACPToolCall } from '@/lib/api/types'
 import { useInlineDiffs } from '@/lib/appearance'
 import { EditDiffBlock, hasInlineDiff } from './EditDiffBlock'
@@ -136,23 +136,38 @@ export const ToolDisclosure = memo(function ToolDisclosure({
   calls: ACPToolCall[]
   active?: boolean
 }) {
-  // With inline diffs on, edits render as expanded red/green panels in the flow;
-  // the rest of the run keeps the collapsed chevron. Off (the default), every
-  // call stays under one disclosure exactly as before.
   const inlineDiffs = useInlineDiffs()
-  const editCalls = inlineDiffs ? calls.filter(hasInlineDiff) : []
-  if (editCalls.length === 0) {
+  if (!inlineDiffs || !calls.some(hasInlineDiff)) {
     return <ToolRunDisclosure label={label} calls={calls} active={active} />
   }
-  const restCalls = calls.filter((call) => !editCalls.includes(call))
+
+  const rows: ReactNode[] = []
+  let run: ACPToolCall[] = []
+  const flushRun = () => {
+    if (!run.length) return
+    rows.push(
+      <ToolRunDisclosure
+        key={`run-${rows.length}-${run[0].id}`}
+        label={toolRunLabel(run)}
+        calls={run}
+        active={active}
+      />,
+    )
+    run = []
+  }
+  for (const call of calls) {
+    if (hasInlineDiff(call)) {
+      flushRun()
+      rows.push(<EditDiffBlock key={call.id} call={call} />)
+      continue
+    }
+    run.push(call)
+  }
+  flushRun()
+
   return (
     <div className="flex w-full flex-col items-start gap-2">
-      {editCalls.map((call) => (
-        <EditDiffBlock key={call.id} call={call} />
-      ))}
-      {restCalls.length ? (
-        <ToolRunDisclosure label={toolRunLabel(restCalls)} calls={restCalls} active={active} />
-      ) : null}
+      {rows}
     </div>
   )
 })

@@ -2,9 +2,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import { memo, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { ChatMessage, SessionEvent } from '@/lib/api/types'
 import { Button } from '@/components/ui/Button'
-import { useInlineDiffs } from '@/lib/appearance'
 import { taskSurfaceFromEvent } from '@/lib/taskSurface'
-import { hasInlineDiff } from './EditDiffBlock'
 import {
   buildTimeline,
   isCollapsibleWork,
@@ -96,13 +94,6 @@ function EarlierHistoryButton({
   )
 }
 
-// A tool run carrying agent edits with renderable diffs. When inline diffs are
-// on, these stay in the main flow (expanded) rather than folding under "Worked
-// for", which is the whole point of the setting.
-function toolsItemHasInlineDiff(item: TimelineItem): boolean {
-  return item.kind === 'tools' && item.calls.some(hasInlineDiff)
-}
-
 // Result cards read as a turn's outcome, so they anchor to the end of the turn
 // rather than folding into its work.
 function isResultCard(item: TimelineItem): boolean {
@@ -144,7 +135,6 @@ export const Transcript = memo(function Transcript({
     () => buildTimeline(messages, events, sessionId, groupTurns),
     [messages, events, sessionId, groupTurns],
   )
-  const inlineDiffs = useInlineDiffs()
   const [visibleHistoryCount, setVisibleHistoryCount] = useState(
     groupTurns ? INITIAL_VISIBLE_TURNS : INITIAL_VISIBLE_ITEMS,
   )
@@ -278,8 +268,7 @@ export const Transcript = memo(function Transcript({
           const collapsible =
             !active &&
             index < lastContentIndex &&
-            isCollapsibleWork(item, pendingPermissionIds, latestTaskSurfaceEvent) &&
-            !(inlineDiffs && toolsItemHasInlineDiff(item))
+            isCollapsibleWork(item, pendingPermissionIds, latestTaskSurfaceEvent)
           if (collapsible) {
             work.push(item)
             return
