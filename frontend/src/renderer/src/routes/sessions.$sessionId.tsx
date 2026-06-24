@@ -9,7 +9,6 @@ import { Composer, PlanDecisionCard } from '@/components/session/Composer'
 import { LiveAttachmentList } from '@/components/session/LiveAttachmentList'
 import { MessageContexts } from '@/components/session/MessageContexts'
 import { SelectionContextToolbar } from '@/components/session/SelectionContextToolbar'
-import { useFileReferencePreview } from '@/components/session/useFileReferencePreview'
 import { useComposerContexts } from '@/components/session/useComposerContexts'
 import { FileReaderLinkProvider, MessageMarkdown, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
 import { MentionText } from '@/components/session/mentions'
@@ -413,17 +412,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
       events.data.some((event) => sessionEventPlacement(event) === 'overview'),
   )
   const sidePanel = useSidePanelState(overviewAvailable, sideChatAvailable)
-  const { openFile, openPreview } = sidePanel
-  useEffect(() => window.jaz?.onOpenSideBrowserURL?.(openPreview), [openPreview])
-  const notifyFilePreviewError = useCallback((message: string) => {
-    toast(`Couldn't preview HTML: ${message}`, 'danger')
-  }, [toast])
-  const openFileReference = useFileReferencePreview({
-    sessionId,
-    onOpenFile: openFile,
-    onOpenPreview: openPreview,
-    onPreviewError: notifyFilePreviewError,
-  })
+  const { openFile } = sidePanel
 
   const itemCount =
     (detail.data?.messages.length ?? 0) + events.data.filter((event) => sessionEventPlacement(event) !== 'side_chat').length
@@ -578,7 +567,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   const titlebarActions = document.getElementById('titlebar-actions')
 
   return (
-    <FileReaderLinkProvider onOpen={openFileReference}>
+    <FileReaderLinkProvider onOpen={openFile}>
       <PreviewLinkProvider onOpen={sidePanel.openPreview}>
         <div ref={sidePanel.measureRef} className="flex h-full">
           {titlebarSlot
@@ -774,7 +763,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
               sideChatAvailable={sideChatAvailable}
               sideChatEvents={sideChatEvents}
               onPreviewUrlChange={sidePanel.setPreviewUrl}
-              onOpenFile={openFileReference}
+              onOpenFile={openFile}
               onAddBrowserAnnotation={composerContexts.addBrowserAnnotation}
               onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
               onSend={queue.onSend}
