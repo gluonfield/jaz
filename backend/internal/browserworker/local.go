@@ -98,7 +98,7 @@ func (b *LocalBackend) Call(ctx context.Context, input ActionInput) (ActionOutpu
 	case ActionPDF:
 		return page.pdf(ctx)
 	default:
-		return ActionOutput{}, fmt.Errorf("unsupported browser action %q", input.Action)
+		return ActionOutput{}, UnsupportedActionError{Action: input.Action}
 	}
 }
 

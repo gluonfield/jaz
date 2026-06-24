@@ -140,7 +140,7 @@ func (s *Service) Run(ctx context.Context, req Request) (Result, error) {
 	if !settings.Enabled {
 		return Result{}, errors.New("browser tools are disabled in settings")
 	}
-	if !s.extensionConnected() {
+	if jazsettings.BrowserUsesExtension(settings) && !s.extensionConnected() {
 		return Result{}, errors.New("connect the Chrome extension before using browser tools")
 	}
 	agent := jazsettings.BrowserAgent(settings, defaults)

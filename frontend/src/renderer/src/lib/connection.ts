@@ -4,6 +4,7 @@ import {
   apiBaseUrl,
   CLIENT_PLATFORM,
   CLIENT_PLATFORM_HEADER,
+  DEFAULT_LOCAL_PORT,
   localBaseUrl,
   normalizeBaseUrl,
   parseBackendConnectUrl,
@@ -78,20 +79,20 @@ export function useConnection(): ConnectionState {
   return useSyncExternalStore(subscribe, () => state)
 }
 
-// Runs `onChange` whenever the active backend changes — a real switch, not the
-// first connect or a reconnect to the same backend. The callback may return a
-// cleanup (run before the next switch) and is read through a ref so it always
-// sees the latest closure without re-arming on every render.
-export function useBackendChange(onChange: (url: string) => void | (() => void)): void {
-  const { url } = useConnection()
-  const last = useRef(url)
+// Runs `onChange` when the connected backend changes — a real switch, not the
+// first connect or a reconnect to the same backend. Fires as the connection
+// settles (when markConnected clears the cache), so callers mask that reload.
+export function useBackendChange(onChange: (url: string) => void): void {
+  const { url, status } = useConnection()
+  const lastConnected = useRef<string | null>(null)
   const handler = useRef(onChange)
   handler.current = onChange
   useEffect(() => {
-    if (last.current === url) return
-    last.current = url
-    return handler.current(url)
-  }, [url])
+    if (status !== 'connected' || lastConnected.current === url) return
+    const isSwitch = lastConnected.current !== null
+    lastConnected.current = url
+    if (isSwitch) handler.current(url)
+  }, [url, status])
 }
 
 async function readHealth(url: string): Promise<HealthStatus | null> {
@@ -210,7 +211,7 @@ function markConnected(url: string) {
   setApiBaseUrl(url)
   failures = 0
   // Every successful connection is a switch target next time; local is implicit.
-  if (!isLoopbackUrl(url)) rememberBackend(url, new Date().toISOString())
+  if (!isLocalBackendUrl(url)) rememberBackend(url, new Date().toISOString())
   // The cache belongs to the backend we were last connected to; drop it when we
   // actually connect somewhere new so the app refetches against the right one.
   if (cacheOwnerUrl !== normalized) queryClient.clear()
@@ -397,14 +398,14 @@ export function clearConnectionPreference(): void {
 // persistLaunchPreference), so bailing out of an unfinished remote never leaves
 // a restart auto-connecting straight back into a setup it can't finish.
 function rememberLocalLaunch(url: string): void {
-  if (isLoopbackUrl(url)) savePreference({ mode: 'local' })
+  if (isLocalBackendUrl(url)) savePreference({ mode: 'local' })
 }
 
 // Commit a backend as the one to reach on launch. Called once onboarding for it
 // is confirmed complete, so only a usable backend becomes the boot default —
 // including remotes, which rememberLocalLaunch deliberately skips.
 export function persistLaunchPreference(url: string): void {
-  savePreference(isLoopbackUrl(url) ? { mode: 'local' } : { mode: 'remote', remoteUrl: normalizeBaseUrl(url) })
+  savePreference(isLocalBackendUrl(url) ? { mode: 'local' } : { mode: 'remote', remoteUrl: normalizeBaseUrl(url) })
 }
 
 // Forget a saved backend everywhere: drop it from the registry and its key, and
@@ -457,15 +458,20 @@ async function restoreConnection(snapshot: ConnectionSnapshot): Promise<void> {
   await reconnectKnown(snapshot.url)
 }
 
-// A loopback host is "this machine" — treat localhost and 127.0.0.1 alike since
-// the spawned backend reports 127.0.0.1 while the env default is localhost.
-export function isLoopbackUrl(url: string): boolean {
+// "This machine" is the local backend, which always runs on the default Jaz port.
+// A loopback host on any other port (e.g. an SSH tunnel to a remote backend) is a
+// remote server, not this Mac.
+export function isLocalBackendUrl(url: string): boolean {
   try {
-    const host = new URL(url).hostname
-    return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0'
+    const { hostname, port } = new URL(normalizeBaseUrl(url))
+    return isLoopbackHost(hostname) && port === DEFAULT_LOCAL_PORT
   } catch {
     return false
   }
+}
+
+function isLoopbackHost(host: string): boolean {
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0'
 }
 
 // Probe whatever URL the user typed; persist it only once it answers.

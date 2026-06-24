@@ -13,6 +13,8 @@ const FILE_LINE_SUFFIX = /^(.*?):(\d+)(?::\d+)?$/
 const FILE_EXT = String.raw`\.[A-Za-z0-9][A-Za-z0-9]*`
 const PATH_SEGMENT = String.raw`[^/\\\s<>(){}]+`
 const FILE_NAME = `${PATH_SEGMENT}${FILE_EXT}`
+const FILE_REFERENCE_LEFT_EDGE = /[\p{L}\p{N}_.~@%+-]/u
+const FILE_REFERENCE_RIGHT_EDGE = /[\p{L}\p{N}_~@%+-]/u
 const FILE_REFERENCE_PATTERN = new RegExp(
   String.raw`(?:` +
     [
@@ -51,11 +53,19 @@ export function findFileReferences(value: string): FileReferenceMatch[] {
 }
 
 function hasFileReferenceBoundary(value: string, index: number, raw: string): boolean {
-  if (index === 0) return true
-  const prev = value[index - 1]
-  if (prev === '/' || prev === '\\') return false
-  if ((raw.startsWith('//') || raw.startsWith('\\\\')) && prev === ':') return false
-  return !/[A-Za-z0-9_.~@%+-]/.test(prev)
+  if (index > 0) {
+    const prev = value[index - 1]
+    if (prev === '/' || prev === '\\') return false
+    if ((raw.startsWith('//') || raw.startsWith('\\\\')) && prev === ':') return false
+    if (FILE_REFERENCE_LEFT_EDGE.test(prev)) return false
+  }
+  const next = value[index + raw.length]
+  if (next === undefined) return true
+  if (next === '/' || next === '\\') return false
+  if (FILE_REFERENCE_RIGHT_EDGE.test(next)) return false
+  if (next !== '.') return true
+  const afterDot = value[index + raw.length + 1]
+  return afterDot === undefined || /\s|[),;!?]/.test(afterDot)
 }
 
 export function isAbsoluteFilePath(value: string): boolean {

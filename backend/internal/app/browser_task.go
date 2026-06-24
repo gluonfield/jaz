@@ -13,6 +13,7 @@ import (
 	"github.com/wins/jaz/backend/internal/jaztools"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
+	jazsettings "github.com/wins/jaz/backend/internal/settings"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"go.uber.org/fx"
 )
@@ -25,8 +26,11 @@ func NewBrowserTaskService(store *sqlitestore.Store, manager *acp.Manager, catal
 	return browsertask.New(store, manager, catalog, backend)
 }
 
-func NewBrowserWorkerBackend(layout runtimefiles.Layout) *browserworker.ExtensionBridge {
-	return browserworker.NewExtensionBridge(browserworker.NewLocalBackend(filepath.Join(layout.Root, "browser")))
+func NewBrowserWorkerBackend(layout runtimefiles.Layout, store *sqlitestore.Store) *browserworker.ExtensionBridge {
+	return browserworker.NewExtensionBridge(browserworker.NewLocalBackend(filepath.Join(layout.Root, "browser")), func() bool {
+		settings, err := jazsettings.LoadBrowserSettings(store)
+		return err != nil || jazsettings.BrowserUsesExtension(settings)
+	})
 }
 
 func NewBrowserSettingsHandler(store *sqlitestore.Store, catalog acp.AgentCatalog, jaz *jaztools.Service, mcp *mcpruntime.Manager, backend *browserworker.ExtensionBridge) *BrowserSettingsHandler {
