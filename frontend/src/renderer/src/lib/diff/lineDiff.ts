@@ -1,4 +1,4 @@
-import type { DiffLine } from './parseUnifiedDiff'
+import type { DiffHunk, DiffLine } from './parseUnifiedDiff'
 
 // Splits text into lines, dropping the single empty element a trailing newline
 // produces so a final "\n" doesn't render as a phantom blank line.
@@ -47,4 +47,42 @@ export function computeLineDiff(oldText: string, newText: string): DiffLine[] {
   while (i < n) out.push({ kind: 'del', oldNo: oldNo++, text: a[i++] })
   while (j < m) out.push({ kind: 'add', newNo: newNo++, text: b[j++] })
   return out
+}
+
+function numberedStart(lines: DiffLine[], key: 'oldNo' | 'newNo'): number {
+  return lines.find((line) => line[key] != null)?.[key] ?? 0
+}
+
+function numberedCount(lines: DiffLine[], key: 'oldNo' | 'newNo'): number {
+  return lines.reduce((count, line) => count + (line[key] == null ? 0 : 1), 0)
+}
+
+export function computeLineDiffHunks(oldText: string, newText: string, context = 3): DiffHunk[] {
+  const lines = computeLineDiff(oldText, newText)
+  const changed = lines.flatMap((line, index) => (line.kind === 'context' ? [] : [index]))
+  if (!changed.length) return []
+
+  const ranges: Array<{ start: number; end: number }> = []
+  for (const index of changed) {
+    const start = Math.max(0, index - context)
+    const end = Math.min(lines.length - 1, index + context)
+    const previous = ranges.at(-1)
+    if (previous && start <= previous.end + 1) {
+      previous.end = Math.max(previous.end, end)
+    } else {
+      ranges.push({ start, end })
+    }
+  }
+
+  return ranges.map(({ start, end }) => {
+    const hunkLines = lines.slice(start, end + 1)
+    return {
+      oldStart: numberedStart(hunkLines, 'oldNo'),
+      oldLines: numberedCount(hunkLines, 'oldNo'),
+      newStart: numberedStart(hunkLines, 'newNo'),
+      newLines: numberedCount(hunkLines, 'newNo'),
+      context: '',
+      lines: hunkLines,
+    }
+  })
 }

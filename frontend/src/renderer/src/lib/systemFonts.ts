@@ -2,8 +2,8 @@ import { useCallback, useState } from 'react'
 
 // Installed-font enumeration via the Local Font Access API (queryLocalFonts).
 // The main process grants the 'local-fonts' permission; the API also needs
-// transient user activation, so callers trigger load() from a real gesture
-// (focusing the field) rather than on mount.
+// transient user activation, so callers trigger load() from direct input
+// gestures rather than on mount.
 
 export interface SystemFonts {
   /** every installed family, de-duped and sorted */
@@ -38,7 +38,7 @@ function detectMonospace(families: string[]): string[] {
   return mono
 }
 
-async function fetchFonts(): Promise<SystemFonts> {
+async function fetchFonts(): Promise<SystemFonts | null> {
   const query = (window as unknown as { queryLocalFonts?: QueryLocalFonts }).queryLocalFonts
   if (typeof query !== 'function') return EMPTY
   try {
@@ -49,16 +49,20 @@ async function fetchFonts(): Promise<SystemFonts> {
     return { all, mono: detectMonospace(all) }
   } catch {
     // Permission denied, no user activation, or unsupported — callers degrade
-    // to their built-in suggestions.
-    return EMPTY
+    // to their built-in suggestions and may retry on the next user gesture.
+    return null
   }
 }
 
 export function loadSystemFonts(): Promise<SystemFonts> {
   if (cache) return Promise.resolve(cache)
   inflight ??= fetchFonts().then((result) => {
-    cache = result
-    return result
+    inflight = null
+    if (result) cache = result
+    return result ?? EMPTY
+  }, () => {
+    inflight = null
+    return EMPTY
   })
   return inflight
 }

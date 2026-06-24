@@ -30,12 +30,6 @@ export const DEFAULTS: AppearanceSettings = {
   wideLayout: false,
 }
 
-// Thread column + prose widths for the wide layout. Defaults (720px / 76ch) live
-// in :root in globals.css; wide overrides both so prose, tool output and diffs
-// all grow together. Keep in sync with the pre-paint script in index.html.
-const WIDE_THREAD_MAX = '1040px'
-const WIDE_PROSE_MAX = '1040px'
-
 // Whole-UI zoom steps. The chrome is built largely with px sizes, so scaling the
 // document root (CSS zoom) is the only thing that grows everything together.
 export const FONT_SCALES = [0.9, 1, 1.1, 1.25] as const
@@ -51,22 +45,25 @@ const KEYS = {
 
 const listeners = new Set<() => void>()
 
-// These stacks must stay in sync with --font-sans/--font-mono in globals.css and
-// with the inline pre-paint script in index.html.
-export function uiFontStack(name: string): string {
-  return `"${name}", 'Inter Variable', ui-sans-serif, system-ui, sans-serif`
+export function normalizeFontScale(value: unknown): AppearanceSettings['fontScale'] {
+  const scale = typeof value === 'number' ? value : Number(value)
+  return FONT_SCALES.find((candidate) => Math.abs(candidate - scale) < 0.001) ?? DEFAULTS.fontScale
 }
-export function monoFontStack(name: string): string {
-  return `"${name}", 'JetBrains Mono Variable', ui-monospace, 'SF Mono', monospace`
+
+function fontName(value: string | null): string {
+  return value?.trim() ?? ''
+}
+
+function cssFontName(name: string): string {
+  return `"${name.replace(/["\\]/g, '')}"`
 }
 
 function readStored(): AppearanceSettings {
-  const scale = Number(localStorage.getItem(KEYS.fontScale))
   return {
     effects: localStorage.getItem(KEYS.effects) !== 'false',
-    fontScale: Number.isFinite(scale) && scale > 0 ? scale : DEFAULTS.fontScale,
-    uiFont: localStorage.getItem(KEYS.uiFont) ?? DEFAULTS.uiFont,
-    monoFont: localStorage.getItem(KEYS.monoFont) ?? DEFAULTS.monoFont,
+    fontScale: normalizeFontScale(localStorage.getItem(KEYS.fontScale)),
+    uiFont: fontName(localStorage.getItem(KEYS.uiFont)),
+    monoFont: fontName(localStorage.getItem(KEYS.monoFont)),
     inlineDiffs: localStorage.getItem(KEYS.inlineDiffs) === 'true',
     wideLayout: localStorage.getItem(KEYS.wideLayout) === 'true',
   }
@@ -82,23 +79,14 @@ function apply(s: AppearanceSettings) {
   // Font size: zoom the whole document so px chrome and rem prose grow together.
   if (s.fontScale && s.fontScale !== 1) root.style.setProperty('zoom', String(s.fontScale))
   else root.style.removeProperty('zoom')
-  // Fonts: override the theme tokens inline on :root; clearing falls back to the
-  // stack declared in @theme.
-  const ui = s.uiFont.trim()
-  if (ui) root.style.setProperty('--font-sans', uiFontStack(ui))
-  else root.style.removeProperty('--font-sans')
-  const mono = s.monoFont.trim()
-  if (mono) root.style.setProperty('--font-mono', monoFontStack(mono))
-  else root.style.removeProperty('--font-mono')
-  // Content width: override the column + prose maxes when wide; clearing falls
-  // back to the stock 720px / 76ch declared in :root.
-  if (s.wideLayout) {
-    root.style.setProperty('--thread-max', WIDE_THREAD_MAX)
-    root.style.setProperty('--prose-max', WIDE_PROSE_MAX)
-  } else {
-    root.style.removeProperty('--thread-max')
-    root.style.removeProperty('--prose-max')
-  }
+  // Fonts: override only the first family; globals.css owns the fallback stacks.
+  const ui = fontName(s.uiFont)
+  if (ui) root.style.setProperty('--jaz-ui-font', cssFontName(ui))
+  else root.style.removeProperty('--jaz-ui-font')
+  const mono = fontName(s.monoFont)
+  if (mono) root.style.setProperty('--jaz-mono-font', cssFontName(mono))
+  else root.style.removeProperty('--jaz-mono-font')
+  root.classList.toggle('jaz-wide-layout', s.wideLayout)
 }
 
 function persist(key: keyof AppearanceSettings, value: string, isDefault: boolean) {
@@ -115,7 +103,13 @@ export function getAppearance(): AppearanceSettings {
 }
 
 export function setAppearance(patch: Partial<AppearanceSettings>) {
-  current = { ...current, ...patch }
+  current = {
+    ...current,
+    ...patch,
+    fontScale: 'fontScale' in patch ? normalizeFontScale(patch.fontScale) : current.fontScale,
+    uiFont: 'uiFont' in patch ? fontName(patch.uiFont ?? '') : current.uiFont,
+    monoFont: 'monoFont' in patch ? fontName(patch.monoFont ?? '') : current.monoFont,
+  }
   if ('effects' in patch) persist('effects', String(current.effects), current.effects === DEFAULTS.effects)
   if ('fontScale' in patch)
     persist('fontScale', String(current.fontScale), current.fontScale === DEFAULTS.fontScale)

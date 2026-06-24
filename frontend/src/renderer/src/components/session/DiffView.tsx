@@ -36,6 +36,22 @@ export const DiffView = memo(function DiffView({
   truncated?: boolean
 }) {
   const hunks = useMemo(() => parseUnifiedDiff(patch), [patch])
+  return <DiffHunkTable hunks={hunks} path={path} binary={binary} truncated={truncated} />
+})
+
+export const DiffHunkTable = memo(function DiffHunkTable({
+  hunks,
+  path,
+  binary,
+  truncated,
+  flattenTokens = false,
+}: {
+  hunks: DiffHunk[]
+  path?: string
+  binary?: boolean
+  truncated?: boolean
+  flattenTokens?: boolean
+}) {
   const lines = useMemo(() => hunks.flatMap((hunk) => hunk.lines.map((line) => line.text)), [hunks])
   const highlighted = useSyntaxHighlightedLines(binary ? '' : (path ?? ''), lines)
   if (binary) {
@@ -58,6 +74,7 @@ export const DiffView = memo(function DiffView({
                 hunk={hunk}
                 previous={hunks[index - 1]}
                 highlighted={highlighted?.slice(start, offset)}
+                flattenTokens={flattenTokens}
               />
             )
           })}
@@ -72,10 +89,12 @@ function Hunk({
   hunk,
   previous,
   highlighted,
+  flattenTokens,
 }: {
   hunk: DiffHunk
   previous?: DiffHunk
   highlighted?: HighlightedCodeLines | null
+  flattenTokens?: boolean
 }) {
   const collapsed = collapsedLineCount(previous, hunk)
   return (
@@ -122,7 +141,7 @@ function Hunk({
             </td>
             <td className={`w-5 min-w-5 text-center align-top select-none ${markerColor}`}>{marker}</td>
             <td className="whitespace-pre pr-5 align-top text-ink-2 select-text">
-              <HighlightedCodeLine text={line.text} tokens={highlighted?.[index]} />
+              <HighlightedCodeLine text={line.text} tokens={highlighted?.[index]} flatten={flattenTokens} />
             </td>
           </tr>
         )
