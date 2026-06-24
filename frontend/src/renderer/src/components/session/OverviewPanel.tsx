@@ -7,6 +7,7 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   CircleAlert,
   Copy,
   ExternalLink,
@@ -18,6 +19,7 @@ import {
   type LucideIcon,
   LoaderCircle,
 } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
@@ -28,8 +30,10 @@ import type { RepoInfo, Session } from '@/lib/api/types'
 import { writeClipboard } from '@/lib/clipboard'
 import type { ProviderSubagentView } from '@/lib/providerSubagents'
 import type { SendMessageOptions } from '@/lib/sendMessage'
+import type { SpawnedThreadView } from '@/lib/spawnedThreads'
 import { taskStepState, type TaskSurface } from '@/lib/taskSurface'
 import { keys } from '@/lib/query/keys'
+import { agentLabel } from '@/lib/agentLabel'
 import { AgentAvatar } from '@/components/acp/AgentAvatar'
 import { SidePanelShell } from './SidePanelShell'
 import { encodeMention } from './mentionCodec'
@@ -42,12 +46,14 @@ export function OverviewPanel({
   session,
   progress,
   subagents,
+  spawnedThreads,
   working,
   onSend,
 }: {
   session: Session
   progress?: TaskSurface
   subagents: ProviderSubagentView[]
+  spawnedThreads: SpawnedThreadView[]
   working: boolean
   onSend: (text: string, options?: SendMessageOptions) => void
 }) {
@@ -55,6 +61,7 @@ export function OverviewPanel({
   const showGit = Boolean(repo.cwd && (repo.info?.git || repo.info?.worktree_missing))
   return (
     <SidePanelShell width={OVERVIEW_PANEL_WIDTH} variant="hug" className="gap-6 px-4 py-4">
+      {spawnedThreads.length ? <ThreadsSection threads={spawnedThreads} /> : null}
       {subagents.length ? <SubagentsSection subagents={subagents} /> : null}
       {progress ? <ProgressSection progress={progress} working={working} /> : null}
       {showGit ? <GitSection repo={repo} /> : null}
@@ -64,6 +71,7 @@ export function OverviewPanel({
 }
 
 type SubagentStatus = 'working' | 'completed' | 'failed' | 'cancelled'
+type ThreadStatus = 'running' | 'idle' | 'failed' | 'cancelled'
 
 const SUBAGENT_STATUS: Record<SubagentStatus, { label: string; className: string; Icon: LucideIcon; spin?: boolean }> = {
   working: { label: 'working', className: 'text-running', Icon: LoaderCircle, spin: true },
@@ -72,8 +80,91 @@ const SUBAGENT_STATUS: Record<SubagentStatus, { label: string; className: string
   cancelled: { label: 'cancelled', className: 'text-ink-3', Icon: Ban },
 }
 
+const THREAD_STATUS: Record<ThreadStatus, { label: string; className: string; Icon: LucideIcon; spin?: boolean }> = {
+  running: { label: 'running', className: 'text-running', Icon: LoaderCircle, spin: true },
+  idle: { label: 'idle', className: 'text-primary', Icon: CheckCircle2 },
+  failed: { label: 'failed', className: 'text-danger', Icon: CircleAlert },
+  cancelled: { label: 'cancelled', className: 'text-ink-3', Icon: Ban },
+}
+
 function SectionHeader({ children }: { children: ReactNode }) {
   return <p className="text-[11px] font-medium tracking-wide text-ink-3 uppercase">{children}</p>
+}
+
+function ThreadsSection({ threads }: { threads: SpawnedThreadView[] }) {
+  return (
+    <section>
+      <div className="mb-2">
+        <SectionHeader>Threads</SectionHeader>
+      </div>
+      <ul className="flex flex-col gap-1.5">
+        {threads.map((thread) => (
+          <ThreadRow key={thread.key} thread={thread} />
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+function ThreadRow({ thread }: { thread: SpawnedThreadView }) {
+  const status = THREAD_STATUS[threadStatus(thread.state)]
+  const title = firstText(thread.title, thread.slug) || 'Thread'
+  const detail = threadDetail(thread)
+  return (
+    <li className="min-w-0 rounded-md">
+      <Link
+        to="/sessions/$sessionId"
+        params={{ sessionId: thread.id }}
+        title={`Open ${title}`}
+        className="flex min-h-10 w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left transition-colors duration-150 hover:bg-surface-2"
+      >
+        <AgentAvatar agent={thread.agent} size={17} />
+        <span className="flex min-w-0 flex-1 flex-col justify-center">
+          <span className="block truncate text-[13px] font-medium leading-5 text-ink" title={title}>
+            {title}
+          </span>
+          {detail ? (
+            <span className="mt-0.5 block truncate text-[12px] leading-snug text-ink-3" title={detail}>
+              {detail}
+            </span>
+          ) : null}
+        </span>
+        <span
+          className={`inline-flex h-5 w-5 shrink-0 items-center justify-center ${status.className}`}
+          title={status.label}
+          aria-label={status.label}
+        >
+          <status.Icon size={13} className={status.spin ? 'animate-spin' : ''} aria-hidden />
+        </span>
+        <ChevronRight size={13} className="shrink-0 text-ink-3" aria-hidden />
+      </Link>
+    </li>
+  )
+}
+
+function threadStatus(state: string | undefined): ThreadStatus {
+  const normalized = state?.toLowerCase()
+  if (normalized === 'idle' || normalized === 'completed') return 'idle'
+  if (normalized === 'failed' || normalized === 'errored' || normalized === 'error') return 'failed'
+  if (normalized === 'cancelled' || normalized === 'canceled' || normalized === 'interrupted') return 'cancelled'
+  return 'running'
+}
+
+function threadDetail(thread: SpawnedThreadView): string {
+  const model = compactModel(thread.model)
+  return [agentLabel(thread.agent), model ? withReasoningEffort(model, thread.reasoning_effort) : '']
+    .filter(Boolean)
+    .join(' · ')
+}
+
+function compactModel(model?: string): string {
+  if (!model) return ''
+  const parts = model.split('/').filter(Boolean)
+  return parts.at(-1) ?? model
+}
+
+function withReasoningEffort(model: string, effort?: string): string {
+  return effort ? `${model}/${effort}` : model
 }
 
 function SubagentsSection({ subagents }: { subagents: ProviderSubagentView[] }) {
