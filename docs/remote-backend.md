@@ -214,6 +214,19 @@ jaz.example.com {
 }
 ```
 
+Install Caddy, save the block above as `/etc/caddy/Caddyfile`, and start it. The package installs a systemd service, so after editing the config just reload it:
+
+```sh
+sudo apt-get install -y caddy   # or download from caddyserver.com/download
+sudo systemctl reload caddy     # applies the config; Caddy auto-provisions the TLS cert
+```
+
+To run Caddy directly instead of via the service — foreground for testing, or `caddy start` to background it:
+
+```sh
+sudo caddy run --config /etc/caddy/Caddyfile
+```
+
 Caddy upgrades the websocket/SSE streams automatically. Open `https://jaz.example.com?key=...` (the key from `/var/lib/jaz/client-url.txt`); the app connects to its own origin, which the proxy forwards to the private backend.
 
 Remote `--public-url` server logs print the public base URL and the auth file path, not the root key:
