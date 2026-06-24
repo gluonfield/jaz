@@ -140,7 +140,6 @@ func (s *Service) Run(ctx context.Context, req Request) (Result, error) {
 	if !settings.Enabled {
 		return Result{}, errors.New("browser tools are disabled in settings")
 	}
-	s.syncBackendMode(settings)
 	if jazsettings.BrowserUsesExtension(settings) && !s.extensionConnected() {
 		return Result{}, errors.New("connect the Chrome extension before using browser tools")
 	}
@@ -238,13 +237,6 @@ func (s *Service) cancelWorker(sessionID string) {
 
 func (s *Service) extensionConnected() bool {
 	return s.Extension != nil && s.Extension.Status().Connected
-}
-
-func (s *Service) syncBackendMode(settings jazsettings.BrowserSettings) {
-	setter, ok := s.Extension.(interface{ SetUseExtension(bool) })
-	if ok {
-		setter.SetUseExtension(jazsettings.BrowserUsesExtension(settings))
-	}
 }
 
 type mcpTools struct {

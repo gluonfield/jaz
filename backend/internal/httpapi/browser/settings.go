@@ -76,7 +76,6 @@ func (h SettingsHandler) update(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
-	h.syncBackendMode(settings)
 	if h.OnChange != nil {
 		h.OnChange()
 	}
@@ -141,13 +140,6 @@ func (h SettingsHandler) normalize(input settingsInput) (jazsettings.BrowserSett
 		return jazsettings.BrowserSettings{}, err
 	}
 	return settings, nil
-}
-
-func (h SettingsHandler) syncBackendMode(settings jazsettings.BrowserSettings) {
-	setter, ok := h.Extension.(interface{ SetUseExtension(bool) })
-	if ok {
-		setter.SetUseExtension(jazsettings.BrowserUsesExtension(settings))
-	}
 }
 
 func (h SettingsHandler) catalog() acp.AgentCatalog {
