@@ -62,6 +62,13 @@ Install the agent CLIs you want to sign into (`npm install -g @openai/codex
 @anthropic-ai/claude-code`); without them the onboarding agent cards show
 "Not installed" and offer no sign-in.
 
+This leaves a plain-HTTP backend at `http://<reserved-ip>:5299`, which the
+desktop app connects to directly. The browser client at `web.jaz.chat` is served
+over HTTPS and cannot reach a public HTTP backend (mixed content); to connect it
+from a browser, front `:5299` with HTTPS — see
+[A remote browser client needs HTTPS](../remote-backend.md) for the
+Cloudflare-tunnel and Caddy recipes.
+
 ## Verify
 
 ```sh

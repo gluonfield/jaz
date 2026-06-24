@@ -184,6 +184,37 @@ After a successful connection, the browser stores the backend URL and device tok
 
 A production browser origin may call a private or loopback backend, for example `http://localhost:5299`, as long as the browser allows the request. Jaz answers normal CORS preflights and Chrome Private Network Access preflights with `Access-Control-Allow-Private-Network: true`.
 
+### A remote browser client needs HTTPS
+
+The desktop app can talk to a plain-HTTP backend, but a browser client served over HTTPS (such as `web.jaz.chat`) cannot reach a public `http://` backend: browsers block an HTTPS page from fetching an `http://` URL as **mixed content**, so the connect screen shows `No backend responded` while the same backend works in the desktop app. The fetch is blocked before it leaves the browser, so this is not a CORS issue (Jaz already returns `Access-Control-Allow-Origin` for the web origin) — the backend must be served over HTTPS. Loopback is exempt, so `http://localhost:5299` still works from a browser; only a public host over plain HTTP is blocked.
+
+Put TLS in front of `:5299` one of two ways.
+
+Quick HTTPS with a Cloudflare tunnel — no DNS, ephemeral URL, good for testing:
+
+```sh
+sudo curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
+  -o /usr/local/bin/cloudflared
+sudo chmod +x /usr/local/bin/cloudflared
+sudo systemd-run --unit=cloudflared-jaz \
+  /usr/local/bin/cloudflared tunnel --no-autoupdate --url http://localhost:5299
+# print the assigned https://<name>.trycloudflare.com URL:
+sudo journalctl -u cloudflared-jaz | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | head -1
+```
+
+Connect the browser client to `https://<name>.trycloudflare.com?key=...` (same key). The URL changes whenever the tunnel restarts.
+
+Stable HTTPS with your own domain and Caddy — real cert, fixed URL:
+
+```sh
+# DNS: point jaz.example.com (A record) at the server IP first.
+sudo apt-get install -y caddy
+printf 'jaz.example.com {\n\treverse_proxy 127.0.0.1:5299\n}\n' | sudo tee /etc/caddy/Caddyfile
+sudo systemctl restart caddy   # Caddy provisions a Let's Encrypt cert automatically
+```
+
+Then set `JAZ_PUBLIC_URL=https://jaz.example.com` in `/etc/jaz/jaz.env` and restart `jaz` so the printed client URL matches. The connect key is unchanged. If the desktop app is already the first approved device, a browser client connecting afterward arrives as a pending device — approve it from an approved device's Settings → Devices (see Pairing Flow below).
+
 Remote `--public-url` server logs print the public base URL and the auth file path, not the root key:
 
 ```text
