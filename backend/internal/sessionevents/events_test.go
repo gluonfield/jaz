@@ -36,6 +36,27 @@ func TestArtifactStorageContentDoesNotIncludeDebugSize(t *testing.T) {
 	}
 }
 
+func TestSideChatStorageContentRoundTripsPayload(t *testing.T) {
+	event := Event{
+		Type: TypeSideChatMessage,
+		SideChat: &SideChatEvent{
+			ID:      "side-1",
+			Role:    "assistant",
+			Content: "side answer",
+		},
+	}
+
+	stored := Event{Type: TypeSideChatMessage, Content: event.StorageContent()}
+	stored.NormalizePayload()
+
+	if stored.Content != "" || stored.SideChat == nil {
+		t.Fatalf("stored side chat = %#v", stored)
+	}
+	if stored.SideChat.ID != "side-1" || stored.SideChat.Content != "side answer" {
+		t.Fatalf("side chat payload = %#v", stored.SideChat)
+	}
+}
+
 func TestACPEventSlimForStorageDropsRepeatedMetadata(t *testing.T) {
 	event := &ACPEvent{
 		ID:              "child",

@@ -1,4 +1,4 @@
-import { LoaderCircle, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { FileDropScope } from '@/components/ui/FileDrop'
 import { IconButton } from '@/components/ui/IconButton'
@@ -23,6 +23,15 @@ type SideChatItem = {
   at: string
 }
 
+type LiveSideChatTurn = {
+  sideChatID: string
+  baselineItemCount: number
+  user: string
+  contexts: ComposerContext[]
+  attachments: BubbleAttachment[]
+  at: string
+}
+
 export function SideChatPanel({
   events,
   visible,
@@ -38,40 +47,85 @@ export function SideChatPanel({
   onClose: () => void
   fileRoot?: string
 }) {
-  const [sideChatID, setSideChatID] = useState(newSideChatID)
+  const [sideChatID, setSideChatID] = useState(() => latestSideChatID(events) || newSideChatID())
   const [pending, setPending] = useState(false)
+  const [pendingTurn, setPendingTurn] = useState<{ sideChatID: string; baselineItemCount: number } | null>(null)
+  const [live, setLive] = useState<LiveSideChatTurn | null>(null)
   const [error, setError] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const items = useMemo(() => sideChatItems(events, sideChatID), [events, sideChatID])
-  const latestItemContent = items.at(-1)?.content
+  const visibleItems = useMemo(() => {
+    if (!live || live.sideChatID !== sideChatID) return items
+    return [
+      ...items,
+      {
+        key: `live:${live.at}`,
+        role: 'user',
+        content: live.user,
+        contexts: live.contexts,
+        attachments: live.attachments,
+        at: live.at,
+      },
+    ]
+  }, [items, live, sideChatID])
+  const pendingActive = Boolean(pendingTurn && pendingTurn.sideChatID === sideChatID)
+  const pendingOutputStarted = Boolean(
+    pendingTurn &&
+      pendingTurn.sideChatID === sideChatID &&
+      items.slice(pendingTurn.baselineItemCount).some((item) => item.role !== 'user'),
+  )
+  const latestItemContent = visibleItems.at(-1)?.content
+
+  useEffect(() => {
+    if (live) return
+    const latest = latestSideChatID(events)
+    if (!latest) return
+    setSideChatID((current) => {
+      if (current === latest) return current
+      return sideChatHasEvents(events, current) ? current : latest
+    })
+  }, [events, live])
+
+  useEffect(() => {
+    if (!live || live.sideChatID !== sideChatID) return
+    if (items.length > live.baselineItemCount) setLive(null)
+  }, [items.length, live, sideChatID])
 
   useEffect(() => {
     if (!visible) return
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
-  }, [visible, items.length, latestItemContent])
+  }, [visible, visibleItems.length, latestItemContent, pendingActive, pendingOutputStarted])
 
   useEffect(() => {
-    if (items.length > 0) setError('')
-  }, [items.length])
+    if (visibleItems.length > 0) setError('')
+  }, [visibleItems.length])
 
   const close = () => {
     onClose()
-    setSideChatID(newSideChatID())
     setError('')
   }
 
-  const submit = async (message: string, options?: SendMessageOptions) => {
+  const submit = (message: string, options?: SendMessageOptions) => {
     if (pending) return
     setError('')
     setPending(true)
-    try {
-      await onSend(sideChatID, message, options)
-    } catch (err) {
-      setError((err as Error).message || 'Side chat failed.')
-      throw err
-    } finally {
-      setPending(false)
-    }
+    setPendingTurn({ sideChatID, baselineItemCount: items.length })
+    setLive({
+      sideChatID,
+      baselineItemCount: items.length,
+      user: message,
+      contexts: options?.contexts ?? [],
+      attachments: options?.attachments ?? [],
+      at: new Date().toISOString(),
+    })
+    void onSend(sideChatID, message, options)
+      .catch((err: Error) => {
+        setError(err.message || 'Side chat failed.')
+      })
+      .finally(() => {
+        setPending(false)
+        setPendingTurn(null)
+      })
   }
 
   return (
@@ -80,7 +134,6 @@ export function SideChatPanel({
         <div className="flex h-11 shrink-0 items-center justify-between border-b border-border px-3">
           <div className="min-w-0 text-sm font-medium text-ink">Side chat</div>
           <div className="flex items-center gap-1">
-            {pending ? <LoaderCircle size={15} className="animate-spin text-ink-3" aria-hidden /> : null}
             <IconButton size="sm" aria-label="Close side chat" title="Close side chat" onClick={close}>
               <X size={15} />
             </IconButton>
@@ -88,9 +141,12 @@ export function SideChatPanel({
         </div>
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto bg-bg px-4 py-4">
           <div className="flex min-h-full flex-col justify-end gap-5">
-            {items.map((item) => (
-              <SideChatRow key={item.key} item={item} active={pending} />
+            {visibleItems.map((item) => (
+              <SideChatRow key={item.key} item={item} active={pendingActive} />
             ))}
+            {pendingActive && !pendingOutputStarted ? (
+              <p className="animate-pulse text-sm text-ink-3">Thinking…</p>
+            ) : null}
           </div>
         </div>
         {error ? <div className="px-3 pb-2 text-[12px] text-danger">{error}</div> : null}
@@ -135,6 +191,18 @@ function SideChatRow({ item, active }: { item: SideChatItem; active: boolean }) 
 function newSideChatID(): string {
   const raw = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now())
   return `side_${raw.replaceAll('-', '')}`
+}
+
+function latestSideChatID(events: SessionEvent[]): string {
+  const latest = events
+    .filter((event) => event.type === 'side_chat_message' && event.side_chat?.id)
+    .sort(compareEvents)
+    .at(-1)
+  return latest?.side_chat?.id ?? ''
+}
+
+function sideChatHasEvents(events: SessionEvent[], sideChatID: string): boolean {
+  return events.some((event) => event.type === 'side_chat_message' && event.side_chat?.id === sideChatID)
 }
 
 function sideChatItems(events: SessionEvent[], sideChatID: string): SideChatItem[] {

@@ -149,10 +149,7 @@ func (m *Manager) publishSideChatEvent(job Job, scope sideChatScope, role, conte
 	if content == "" && status == "" {
 		return
 	}
-	if m.Events == nil {
-		return
-	}
-	m.Events.Publish(sessionevents.Event{
+	m.recordAndPublishDirect(sessionevents.Event{
 		SessionID: job.ID,
 		Type:      sessionevents.TypeSideChatMessage,
 		SideChat: &sessionevents.SideChatEvent{

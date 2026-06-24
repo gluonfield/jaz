@@ -130,6 +130,19 @@ func (e *Event) NormalizePayload() {
 			e.ProviderSubagent = &subagent
 			e.Content = ""
 		}
+	case TypeSideChatMessage:
+		if e.SideChat != nil {
+			e.Content = ""
+			return
+		}
+		if e.Content == "" {
+			return
+		}
+		var side SideChatEvent
+		if err := json.Unmarshal([]byte(e.Content), &side); err == nil && side.ID != "" {
+			e.SideChat = &side
+			e.Content = ""
+		}
 	}
 }
 
@@ -154,6 +167,13 @@ func (e Event) StorageContent() string {
 			return e.Content
 		}
 		if data, err := json.Marshal(e.ProviderSubagent); err == nil {
+			return string(data)
+		}
+	case TypeSideChatMessage:
+		if e.SideChat == nil {
+			return e.Content
+		}
+		if data, err := json.Marshal(e.SideChat); err == nil {
 			return string(data)
 		}
 	}
