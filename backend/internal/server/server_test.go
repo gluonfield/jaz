@@ -881,3 +881,70 @@ func TestSessionMessagesIncludesDirectACPChildMetadataOnly(t *testing.T) {
 		t.Fatalf("child transcript leaked into parent response: %#v", state)
 	}
 }
+
+func TestSessionMessagesIncludesActiveACPChildPermissionsSeparately(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, err := store.CreateSession(storage.CreateSession{Slug: "parent", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := store.CreateSession(storage.CreateSession{
+		Slug:     "codex-direct",
+		ParentID: parent.ID,
+		Runtime:  storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     "codex",
+			SessionID: "acp-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/"+parent.ID+"/messages", nil)
+	res := httptest.NewRecorder()
+	(&Server{
+		Store: store,
+		ACP: &fakeACPManager{jobs: []acp.Job{{
+			ID:            child.ID,
+			Slug:          child.Slug,
+			ParentID:      parent.ID,
+			ACPAgent:      "codex",
+			ACPSession:    "acp-session",
+			State:         acp.StateRunning,
+			ParentVisible: true,
+			Permissions: []sessionevents.ACPPermission{{
+				ID:     "perm-1",
+				Status: "pending",
+				Questions: []sessionevents.ACPQuestion{{
+					ID:       "audience",
+					Question: "Who is this for?",
+				}},
+			}},
+		}}},
+	}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var got struct {
+		ACPChildren         []storage.ACPState            `json:"acp_children"`
+		ACPChildPermissions []sessionevents.ACPPermission `json:"acp_child_permissions"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.ACPChildren) != 1 {
+		t.Fatalf("children = %#v", got.ACPChildren)
+	}
+	if len(got.ACPChildren[0].Permissions) != 0 {
+		t.Fatalf("child permissions leaked into child metadata: %#v", got.ACPChildren[0].Permissions)
+	}
+	if len(got.ACPChildPermissions) != 1 || got.ACPChildPermissions[0].ID != "perm-1" {
+		t.Fatalf("child permissions = %#v", got.ACPChildPermissions)
+	}
+}

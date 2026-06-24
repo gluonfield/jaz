@@ -72,15 +72,16 @@ export function OverviewPanel({
 
 type SubagentStatus = 'working' | 'completed' | 'failed' | 'cancelled'
 type ThreadStatus = 'running' | 'idle' | 'failed' | 'cancelled'
+type OverviewRunStatus = { label: string; className: string; Icon: LucideIcon; spin?: boolean }
 
-const SUBAGENT_STATUS: Record<SubagentStatus, { label: string; className: string; Icon: LucideIcon; spin?: boolean }> = {
+const SUBAGENT_STATUS: Record<SubagentStatus, OverviewRunStatus> = {
   working: { label: 'working', className: 'text-running', Icon: LoaderCircle, spin: true },
   completed: { label: 'completed', className: 'text-primary', Icon: CheckCircle2 },
   failed: { label: 'failed', className: 'text-danger', Icon: CircleAlert },
   cancelled: { label: 'cancelled', className: 'text-ink-3', Icon: Ban },
 }
 
-const THREAD_STATUS: Record<ThreadStatus, { label: string; className: string; Icon: LucideIcon; spin?: boolean }> = {
+const THREAD_STATUS: Record<ThreadStatus, OverviewRunStatus> = {
   running: { label: 'running', className: 'text-running', Icon: LoaderCircle, spin: true },
   idle: { label: 'idle', className: 'text-primary', Icon: CheckCircle2 },
   failed: { label: 'failed', className: 'text-danger', Icon: CircleAlert },
@@ -118,25 +119,13 @@ function ThreadRow({ thread }: { thread: SpawnedThreadView }) {
         title={`Open ${title}`}
         className="flex min-h-10 w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left transition-colors duration-150 hover:bg-surface-2"
       >
-        <AgentAvatar agent={thread.agent} size={17} />
-        <span className="flex min-w-0 flex-1 flex-col justify-center">
-          <span className="block truncate text-[13px] font-medium leading-5 text-ink" title={title}>
-            {title}
-          </span>
-          {detail ? (
-            <span className="mt-0.5 block truncate text-[12px] leading-snug text-ink-3" title={detail}>
-              {detail}
-            </span>
-          ) : null}
-        </span>
-        <span
-          className={`inline-flex h-5 w-5 shrink-0 items-center justify-center ${status.className}`}
-          title={status.label}
-          aria-label={status.label}
-        >
-          <status.Icon size={13} className={status.spin ? 'animate-spin' : ''} aria-hidden />
-        </span>
-        <ChevronRight size={13} className="shrink-0 text-ink-3" aria-hidden />
+        <OverviewRunRowContent
+          agent={thread.agent}
+          title={title}
+          detail={detail}
+          status={status}
+          trailing={<ChevronRight size={13} className="shrink-0 text-ink-3" aria-hidden />}
+        />
       </Link>
     </li>
   )
@@ -165,6 +154,44 @@ function compactModel(model?: string): string {
 
 function withReasoningEffort(model: string, effort?: string): string {
   return effort ? `${model}/${effort}` : model
+}
+
+function OverviewRunRowContent({
+  agent,
+  title,
+  detail,
+  status,
+  trailing,
+}: {
+  agent?: string
+  title: string
+  detail?: string
+  status: OverviewRunStatus
+  trailing?: ReactNode
+}) {
+  return (
+    <>
+      <AgentAvatar agent={agent} size={17} />
+      <span className="flex min-w-0 flex-1 flex-col justify-center">
+        <span className="block truncate text-[13px] font-medium leading-5 text-ink" title={title}>
+          {title}
+        </span>
+        {detail ? (
+          <span className="mt-0.5 block truncate text-[12px] leading-snug text-ink-3" title={detail}>
+            {detail}
+          </span>
+        ) : null}
+      </span>
+      <span
+        className={`inline-flex h-5 w-5 shrink-0 items-center justify-center ${status.className}`}
+        title={status.label}
+        aria-label={status.label}
+      >
+        <status.Icon size={13} className={status.spin ? 'animate-spin' : ''} aria-hidden />
+      </span>
+      {trailing}
+    </>
+  )
 }
 
 function SubagentsSection({ subagents }: { subagents: ProviderSubagentView[] }) {
@@ -197,31 +224,21 @@ function SubagentRow({ subagent }: { subagent: ProviderSubagentView }) {
         onClick={() => setExpanded((open) => !open)}
         className="flex min-h-10 w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left transition-colors duration-150 enabled:cursor-pointer enabled:hover:bg-surface-2 disabled:cursor-default"
       >
-        <AgentAvatar agent={subagent.provider} size={17} />
-        <span className="flex min-w-0 flex-1 flex-col justify-center">
-          <span className="block truncate text-[13px] font-medium leading-5 text-ink" title={title}>
-            {title}
-          </span>
-          {detail && detail !== title ? (
-            <span className="mt-0.5 block truncate text-[12px] leading-snug text-ink-3" title={detail}>
-              {detail}
-            </span>
-          ) : null}
-        </span>
-        <span
-          className={`inline-flex h-5 w-5 shrink-0 items-center justify-center ${status.className}`}
-          title={status.label}
-          aria-label={status.label}
-        >
-          <status.Icon size={13} className={status.spin ? 'animate-spin' : ''} aria-hidden />
-        </span>
-        {prompt ? (
-          <ChevronDown
-            size={13}
-            className={`shrink-0 text-ink-3 transition-transform duration-150 ${expanded ? 'rotate-180' : ''}`}
-            aria-hidden
-          />
-        ) : null}
+        <OverviewRunRowContent
+          agent={subagent.provider}
+          title={title}
+          detail={detail && detail !== title ? detail : undefined}
+          status={status}
+          trailing={
+            prompt ? (
+              <ChevronDown
+                size={13}
+                className={`shrink-0 text-ink-3 transition-transform duration-150 ${expanded ? 'rotate-180' : ''}`}
+                aria-hidden
+              />
+            ) : null
+          }
+        />
       </button>
       {expanded && prompt ? (
         <p className="ml-[25px] max-h-28 overflow-y-auto whitespace-pre-wrap px-1 pb-1 text-[11px] leading-snug text-ink-3">
