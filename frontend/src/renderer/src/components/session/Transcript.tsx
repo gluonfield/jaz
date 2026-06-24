@@ -60,7 +60,7 @@ function WorkSection({
         Worked for {formatDuration(durationMs)}
       </button>
       {effectiveOpen ? (
-        <div className="flex flex-col gap-5 border-l border-border pl-4">
+        <div className="flex flex-col gap-5">
           {items.map((item) => render(item))}
         </div>
       ) : null}
