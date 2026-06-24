@@ -1,6 +1,6 @@
 import { normalizeBaseUrl } from './api/client'
 import { knownBackendLabel } from './backends'
-import { isLoopbackUrl, type ConnectionStatus } from './connection'
+import { isLocalBackendUrl, type ConnectionStatus } from './connection'
 import { localDeviceLabel } from './deviceLabel'
 
 export type BackendDescription = {
@@ -35,7 +35,7 @@ export function backendName(url: string): string {
 // Names whichever backend a URL points at so the sidebar and the switcher can
 // show it the same way.
 export function describeBackend(url: string): BackendDescription {
-  if (!url || isLoopbackUrl(url)) {
+  if (!url || isLocalBackendUrl(url)) {
     return { local: true, title: capitalize(localDeviceLabel()), url }
   }
   try {

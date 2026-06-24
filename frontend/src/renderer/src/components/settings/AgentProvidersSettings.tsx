@@ -15,7 +15,7 @@ import { useToast } from '@/components/ui/toast'
 import { modelProviderRequiresKey, providerHidden, providerKeyUrl } from '@/lib/agentRuntimes'
 import { createProvider, deleteProvider, updateProvider } from '@/lib/api/providers'
 import type { AgentSettings as AgentSettingsData, ProviderInput } from '@/lib/api/types'
-import { isLoopbackUrl, useConnection } from '@/lib/connection'
+import { isLocalBackendUrl, useConnection } from '@/lib/connection'
 import { keys } from '@/lib/query/keys'
 
 const EASE = [0.22, 1, 0.36, 1] as const
@@ -49,7 +49,7 @@ function draftFromProvider(provider: ProviderOption): ProviderDraft {
 export function AgentProvidersSettings() {
   const queryClient = useQueryClient()
   const toast = useToast()
-  const remote = !isLoopbackUrl(useConnection().url)
+  const remote = !isLocalBackendUrl(useConnection().url)
   const { settings, draft, providerKeys, setProviderKeys, save, providerKeyDirty } =
     useAgentSettingsDraft('providers')
   const [providerDraft, setProviderDraft] = useState<ProviderDraft | null>(null)
