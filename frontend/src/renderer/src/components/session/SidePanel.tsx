@@ -56,7 +56,7 @@ export function SidePanel({
   onAddBrowserAnnotation?: (annotation: BrowserAnnotation, screenshot?: Attachment) => void
   onUploadAttachment?: (file: File) => Promise<Attachment>
   onSend: (text: string, options?: SendMessageOptions) => void
-  onSendSideChat: (sideChatID: string, message: string) => Promise<void>
+  onSendSideChat: (sideChatID: string, message: string, options?: SendMessageOptions) => Promise<void>
   onClose: () => void
 }) {
   switch (view) {
@@ -65,6 +65,8 @@ export function SidePanel({
         <SideChatPanel
           events={sideChatEvents}
           visible={visible}
+          fileRoot={session.runtime_ref?.cwd}
+          onUploadAttachment={onUploadAttachment}
           onSend={onSendSideChat}
           onClose={onClose}
         />

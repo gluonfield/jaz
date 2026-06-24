@@ -494,6 +494,8 @@ export interface SideChatEvent {
   role: 'user' | 'assistant' | 'thought' | 'tool' | 'error' | string
   content: string
   status?: string
+  contexts?: MessageContextInput[]
+  attachments?: Attachment[]
 }
 
 export interface ProviderSubagentEvent {

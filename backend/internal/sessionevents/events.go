@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"sync"
 	"time"
+
+	"github.com/wins/jaz/backend/internal/messagepayload"
 )
 
 const (
@@ -31,13 +33,15 @@ type Event struct {
 }
 
 type SideChatEvent struct {
-	ID              string `json:"id"`
-	Command         string `json:"command,omitempty"`
-	ParentSessionID string `json:"parent_session_id,omitempty"`
-	ThreadID        string `json:"thread_id,omitempty"`
-	Role            string `json:"role"`
-	Content         string `json:"content"`
-	Status          string `json:"status,omitempty"`
+	ID              string                          `json:"id"`
+	Command         string                          `json:"command,omitempty"`
+	ParentSessionID string                          `json:"parent_session_id,omitempty"`
+	ThreadID        string                          `json:"thread_id,omitempty"`
+	Role            string                          `json:"role"`
+	Content         string                          `json:"content"`
+	Status          string                          `json:"status,omitempty"`
+	Contexts        []messagepayload.MessageContext `json:"contexts,omitempty"`
+	Attachments     []messagepayload.Attachment     `json:"attachments,omitempty"`
 }
 
 type ProviderSubagentEvent struct {

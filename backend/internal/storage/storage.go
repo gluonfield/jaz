@@ -170,15 +170,6 @@ type Block struct {
 	MediaRefs  []media.Ref `json:"media_refs,omitempty"`
 }
 
-type Attachment struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	MimeType   string `json:"mime_type,omitempty"`
-	Size       int64  `json:"size,omitempty"`
-	URI        string `json:"uri,omitempty"`
-	ServerPath string `json:"server_path,omitempty"`
-}
-
 type Message struct {
 	ThreadID  string    `json:"thread_id,omitempty"`
 	Seq       int64     `json:"seq"`
