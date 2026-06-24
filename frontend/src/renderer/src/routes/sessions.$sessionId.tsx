@@ -253,6 +253,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
     acp_last_event_at: acpLastEventAt,
     acp_last_tool_at: acpLastToolAt,
     acp_children: acpChildren,
+    acp_child_permissions: acpChildPermissions,
     events: persistedEvents = [],
   } = data
   // The job snapshot is only a fallback: when events record the run, the
@@ -292,7 +293,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
   ]
   const modeEvents = [...persistedEvents, ...snapshotEvents, ...liveEvents]
   const currentModes = latestACPModeState(session.id, modeEvents) ?? acpModes
-  const activePermissions = activePermissionIDs([...snapshotEvents, ...liveEvents])
+  const activePermissions = activePermissionIDs([...snapshotEvents, ...liveEvents], acpChildPermissions)
   const transcriptEvents = coalesceSessionEvents(
     [...persistedEvents, ...snapshotEvents, ...liveEvents].flatMap((event) => {
       // 'assistant' events are refresh signals; the message store has the content.
