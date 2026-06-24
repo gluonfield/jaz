@@ -1,6 +1,6 @@
 # Remote Backend
 
-Jaz can run with the backend on a server and desktop or mobile clients on user devices. The backend owns sessions, memory, tools, credentials, workspaces, and connected-device policy. Clients are control surfaces.
+Jaz can run with the backend on a server and desktop, browser, or mobile clients on user devices. The backend owns sessions, memory, tools, credentials, workspaces, and connected-device policy. Clients are control surfaces.
 
 ## Server Setup
 
@@ -146,6 +146,8 @@ ufw allow 5299/tcp comment "Jaz backend"
 
 Prefer putting Caddy, nginx, or a tunnel in front of the backend for TLS instead of exposing plain HTTP. Keep runtime state under `/var/lib/jaz`; do not depend on paths from any client machine being visible to the server or agents.
 
+The backend is API-only. It does not serve the React web app or static assets.
+
 ## Configuration
 
 Provider and voice secrets can come from environment variables, `/etc/jaz/jaz.env`, or the Jaz runtime `.env` file managed by Settings:
@@ -156,11 +158,31 @@ OPENAI_API_KEY=...
 MISTRAL_API_KEY=...
 ```
 
-The desktop app can connect to a remote backend with a client URL:
+## Clients
+
+The Electron desktop app can connect to a remote backend with a client URL or a pinned development backend:
 
 ```sh
 JAZ_API_URL=https://jaz.example.com bun run dev
 ```
+
+The browser client is a static web app. Host `frontend/dist-web` on any static host, for example `https://web.jaz.chat` or a self-hosted origin. It connects directly to the backend URL the user supplies; the backend is not involved in serving the web app.
+
+For first setup from a browser, prefer a fragment URL so the bootstrap key is not sent to the static web host in the HTTP request:
+
+```text
+https://web.jaz.chat/#server=https%3A%2F%2Fjaz.example.com&key=...
+```
+
+Query URLs still work, but they are best kept for trusted/self-hosted web clients:
+
+```text
+https://web.jaz.chat/?server=https%3A%2F%2Fjaz.example.com&key=...
+```
+
+After a successful connection, the browser stores the backend URL and device token in that browser origin's `localStorage`, keyed by backend URL. Refreshing the page reconnects to the same backend; switching from `web.jaz.chat` to a self-hosted copy starts with separate browser storage.
+
+A production browser origin may call a private or loopback backend, for example `http://localhost:5299`, as long as the browser allows the request. Jaz answers normal CORS preflights and Chrome Private Network Access preflights with `Access-Control-Allow-Private-Network: true`.
 
 Remote `--public-url` server logs print the public base URL and the auth file path, not the root key:
 
@@ -169,13 +191,13 @@ client: https://jaz.example.com
 client key: /var/lib/jaz/auth.json
 ```
 
-Keep the full first-setup client URL in a root-owned file such as `/var/lib/jaz/client-url.txt`:
+Keep the backend first-setup URL in a root-owned file such as `/var/lib/jaz/client-url.txt`:
 
 ```text
 https://jaz.example.com?key=...
 ```
 
-The root key is a bootstrap/recovery credential. Normal clients should store their own per-device token after registration. Local development runs without `--public-url` may still print the full client URL so the desktop launcher can start and connect to a local backend.
+Use that URL directly in the desktop app, or convert it to the browser fragment form above. The root key is a bootstrap/recovery credential. Normal clients should store their own per-device token after registration. Local development runs without `--public-url` may still print the full client URL so the desktop launcher can start and connect to a local backend.
 
 ## Connected Devices
 
@@ -215,7 +237,7 @@ First owner device:
 
 1. Backend starts with no approved devices.
 2. The owner retrieves the full client URL from the server, for example `ssh root@SERVER 'cat /var/lib/jaz/client-url.txt'`.
-3. The first desktop app connects with that URL.
+3. The first desktop app connects with that URL, or the first browser client opens the static web app with `#server=<backend>&key=<key>`.
 4. The backend exchanges the root key for a per-device token and creates the first approved device.
 5. The desktop stores only the per-device token for normal use.
 

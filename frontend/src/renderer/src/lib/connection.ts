@@ -4,6 +4,7 @@ import {
   apiBaseUrl,
   CLIENT_PLATFORM,
   CLIENT_PLATFORM_HEADER,
+  consumeStartupConnectUrl,
   DEFAULT_LOCAL_PORT,
   localBaseUrl,
   normalizeBaseUrl,
@@ -12,6 +13,7 @@ import {
   setApiBaseUrl,
 } from './api/client'
 import { rememberBackend, removeKnownBackend } from './backends'
+import { clientRuntime } from './clientRuntime'
 import { getDeviceProfile } from './deviceIdentity'
 import { queryClient } from './query/queryClient'
 
@@ -210,8 +212,12 @@ function markConnected(url: string) {
   const normalized = normalizeBaseUrl(url)
   setApiBaseUrl(url)
   failures = 0
-  // Every successful connection is a switch target next time; local is implicit.
-  if (!isLocalBackendUrl(url)) rememberBackend(url, new Date().toISOString())
+  if (isLocalBackendUrl(normalized)) {
+    savePreference({ mode: 'local' })
+  } else {
+    savePreference({ mode: 'remote', remoteUrl: normalized })
+    rememberBackend(normalized, new Date().toISOString())
+  }
   // The cache belongs to the backend we were last connected to; drop it when we
   // actually connect somewhere new so the app refetches against the right one.
   if (cacheOwnerUrl !== normalized) queryClient.clear()
@@ -244,7 +250,7 @@ async function registerDevice(url: string, rootToken: string): Promise<string | 
         'Content-Type': 'application/json',
         [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM,
       },
-      body: JSON.stringify({ ...profile, kind: 'desktop' }),
+      body: JSON.stringify({ ...profile, kind: clientRuntime.deviceKind }),
       signal: AbortSignal.timeout(5_000),
     })
     const body = await readJSON<{
@@ -256,7 +262,6 @@ async function registerDevice(url: string, rootToken: string): Promise<string | 
     if (res.ok && body?.token) {
       setApiAuthToken(url, body.token)
       markConnected(url)
-      rememberLocalLaunch(url)
       return null
     }
     if (res.status === 202 && body?.pairing && body.pairing_secret) {
@@ -267,7 +272,6 @@ async function registerDevice(url: string, rootToken: string): Promise<string | 
         deviceName: body.pairing.device?.name || profile.name,
         expiresAt: body.pairing.expires_at,
       })
-      rememberLocalLaunch(url)
       return null
     }
     return body?.error || `Device registration failed with ${res.status}`
@@ -282,7 +286,7 @@ async function startPairing(url: string): Promise<string | null> {
     const res = await fetch(`${url}/v1/devices/pairing-requests`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM },
-      body: JSON.stringify({ ...profile, kind: 'desktop' }),
+      body: JSON.stringify({ ...profile, kind: clientRuntime.deviceKind }),
       signal: AbortSignal.timeout(5_000),
     })
     const body = await readJSON<{
@@ -300,7 +304,6 @@ async function startPairing(url: string): Promise<string | null> {
       deviceName: body.pairing.device?.name || profile.name,
       expiresAt: body.pairing.expires_at,
     })
-    rememberLocalLaunch(url)
     return null
   } catch {
     return 'Could not create a device approval request'
@@ -393,21 +396,6 @@ export function clearConnectionPreference(): void {
   localStorage.removeItem(PREFERENCE_KEY)
 }
 
-// Persist the launch default eagerly only for a local backend, which is always
-// usable. A remote is deferred until its onboarding is confirmed complete (see
-// persistLaunchPreference), so bailing out of an unfinished remote never leaves
-// a restart auto-connecting straight back into a setup it can't finish.
-function rememberLocalLaunch(url: string): void {
-  if (isLocalBackendUrl(url)) savePreference({ mode: 'local' })
-}
-
-// Commit a backend as the one to reach on launch. Called once onboarding for it
-// is confirmed complete, so only a usable backend becomes the boot default —
-// including remotes, which rememberLocalLaunch deliberately skips.
-export function persistLaunchPreference(url: string): void {
-  savePreference(isLocalBackendUrl(url) ? { mode: 'local' } : { mode: 'remote', remoteUrl: normalizeBaseUrl(url) })
-}
-
 // Forget a saved backend everywhere: drop it from the registry and its key, and
 // clear the launch preference if it pointed here, so a restart never keeps
 // aiming at a backend the user just removed.
@@ -420,15 +408,15 @@ export function forgetBackend(url: string): void {
 }
 
 // Leave the current backend for the connect chooser without auto-reconnecting.
-// The escape from a backend whose onboarding you can't or won't finish: it stops
-// the health poll so it can't flip back to connected, and leaves the launch
-// preference pointing at the previously set-up backend (or nothing).
+// Explicit disconnect wins over the persisted refresh target; saved backend
+// tokens stay available for later manual reconnects.
 export function disconnectBackend(): void {
   if (pollTimer) clearTimeout(pollTimer)
   if (pairingTimer) clearTimeout(pairingTimer)
   pollGen += 1
   pairingGen += 1
   preflightSnapshot = null
+  clearConnectionPreference()
   setState({ status: 'disconnected', pairing: null, error: null })
 }
 
@@ -497,19 +485,16 @@ export async function connectRemote(url: string): Promise<string | null> {
     }
   }
   markConnected(target)
-  // A remote becomes the launch default only once its onboarding completes, so
-  // a restart never auto-reconnects into a setup the user bailed on.
   return null
 }
 
 export async function startLocal(): Promise<string | null> {
-  if (!window.jaz?.startLocalBackend) {
+  if (!clientRuntime.startLocalBackend) {
     return 'Local backend control is only available in the desktop app'
   }
-  const result = await window.jaz.startLocalBackend()
+  const result = await clientRuntime.startLocalBackend()
   const url = normalizeBaseUrl(result.url ?? localBaseUrl())
   if (await connectStoredToken(url)) {
-    savePreference({ mode: 'local' })
     return null
   }
   if (!result.ok) return result.error ?? 'Failed to start the backend'
@@ -525,7 +510,6 @@ export async function startLocal(): Promise<string | null> {
   )
   if (error) return error
   markConnected(url)
-  savePreference({ mode: 'local' })
   return null
 }
 
@@ -543,6 +527,18 @@ async function connectStoredToken(url: string): Promise<boolean> {
 // launch never shows a connection error: only an *expected* backend (a saved
 // remote, or a local start the user already opted into) can surface one.
 async function init() {
+  const startupURL = consumeStartupConnectUrl()
+  if (startupURL) {
+    const target = normalizeBaseUrl(parseBackendConnectUrl(startupURL).url)
+    setState({ status: 'checking', url: target || state.url, pairing: null, error: null })
+    const error = await connectRemote(startupURL)
+    if (error) {
+      setState({ status: 'disconnected', url: target || state.url, pairing: null, error })
+      schedulePoll()
+    }
+    return
+  }
+
   const pref = connectionPreference()
 
   // A remote server was expected here, so reconnectKnown surfacing the failure
@@ -574,7 +570,6 @@ async function init() {
   // yet.
   const error = await verifyBackend(localUrl)
   if (!error) {
-    savePreference({ mode: 'local' })
     markConnected(localUrl)
     return
   }

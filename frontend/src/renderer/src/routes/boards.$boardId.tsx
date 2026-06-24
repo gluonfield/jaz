@@ -16,6 +16,7 @@ import {
   patchBoard,
   removeWidgetFromBoard,
 } from '@/lib/api/boards'
+import { clientRuntime } from '@/lib/clientRuntime'
 import { keys } from '@/lib/query/keys'
 import { useTheme } from '@/lib/theme'
 
@@ -33,7 +34,7 @@ function BoardPage() {
   const queryClient = useQueryClient()
   const { resolved } = useTheme()
   const scaleTimer = useRef<number | null>(null)
-  const isBoardWindow = window.jaz?.windowKind === 'board'
+  const isBoardWindow = clientRuntime.windowKind === 'board'
   // "Add widget" opens a picker of existing loops first; "New loop" inside it
   // hands off to the loop modal. Either way the board stays put and scrolls
   // the fresh tile into view once it appears.
@@ -148,8 +149,8 @@ function BoardPage() {
     applyScale(Math.min(2, Math.max(0.7, Math.round((current + delta) * 10) / 10)))
   }
   const popOut = () => {
-    if (window.jaz?.openBoardWindow) {
-      window.jaz.openBoardWindow(boardId)
+    if (clientRuntime.openBoardWindow) {
+      clientRuntime.openBoardWindow(boardId)
       return
     }
     window.open(`/boards/${boardId}`, '_blank', 'noopener,noreferrer')

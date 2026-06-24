@@ -60,8 +60,9 @@ func contextWithClientInfo(r *http.Request, principal deviceauth.Principal) cont
 
 func requestClientPlatform(r *http.Request) string {
 	if platform := strings.TrimSpace(r.Header.Get(clientPlatformHeader)); platform != "" {
-		if platform == "mobile" {
-			return "mobile"
+		switch platform {
+		case "browser", "cli", "desktop", "mobile":
+			return platform
 		}
 	}
 	return "desktop"

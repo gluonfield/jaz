@@ -8,7 +8,8 @@ import { authProviderLabel } from '@/lib/agentLabel'
 import { completeOnboarding, onboardingQuery } from '@/lib/api/onboarding'
 import { cloneAgentSettings, compactKeys, startACPAuthLogin } from '@/lib/api/settings'
 import type { ACPAgentAuth, AgentSettings, OnboardingStatus } from '@/lib/api/types'
-import { disconnectBackend, isLocalBackendUrl, persistLaunchPreference, useConnection } from '@/lib/connection'
+import { disconnectBackend, isLocalBackendUrl, useConnection } from '@/lib/connection'
+import { clientRuntime } from '@/lib/clientRuntime'
 import { localDeviceLabel } from '@/lib/deviceLabel'
 import { useACPLoginPolling } from '@/lib/hooks/useACPLoginPolling'
 import { keys } from '@/lib/query/keys'
@@ -26,16 +27,9 @@ const MEMORY_AGENT_PRIORITY = ['codex', 'claude', 'opencode', 'grok']
 
 export function OnboardingGate({ children }: { children: ReactNode }) {
   const onboarding = useQuery(onboardingQuery)
-  const { url } = useConnection()
   const completed = onboarding.data?.completed === true
 
-  // Commit this backend as the launch default only once its onboarding is done,
-  // so an unfinished remote never becomes the boot target and re-traps a restart.
-  useEffect(() => {
-    if (completed) persistLaunchPreference(url)
-  }, [completed, url])
-
-  if (window.jaz?.windowKind === 'board') return <>{children}</>
+  if (clientRuntime.windowKind === 'board') return <>{children}</>
   if (onboarding.isPending) {
     return (
       <OnboardingShell onDisconnect={disconnectBackend}>

@@ -19,6 +19,7 @@ import {
 import { runLoopNow } from '@/lib/api/loops'
 import type { BoardItem } from '@/lib/api/types'
 import { buildArtifactDocument, buildArtifactThemeCSS } from '@/lib/artifacts'
+import { clientRuntime } from '@/lib/clientRuntime'
 import { hasTime, relativeTime } from '@/lib/format/time'
 
 function TileStatusDot({ item }: { item: BoardItem }) {
@@ -262,8 +263,8 @@ export function WidgetTile({
 
   const updated = hasTime(item.widget_updated_at) ? relativeTime(item.widget_updated_at) : ''
   const openLoop = (e: ReactMouseEvent) => {
-    if (window.jaz?.windowKind === 'board') {
-      window.jaz.openInMain(`/loops/${item.loop_id}`)
+    if (clientRuntime.windowKind === 'board') {
+      clientRuntime.openInMain?.(`/loops/${item.loop_id}`)
       onOpenedInMain(e.clientX, e.clientY)
       return
     }
@@ -305,8 +306,8 @@ export function WidgetTile({
           <IconButton
             variant="ghost"
             size="xs"
-            aria-label={window.jaz?.windowKind === 'board' ? 'Open loop in Jaz' : 'Open loop'}
-            title={window.jaz?.windowKind === 'board' ? 'Open loop in Jaz' : 'Open loop'}
+            aria-label={clientRuntime.windowKind === 'board' ? 'Open loop in Jaz' : 'Open loop'}
+            title={clientRuntime.windowKind === 'board' ? 'Open loop in Jaz' : 'Open loop'}
             onClick={openLoop}
           >
             <Pencil size={12} />

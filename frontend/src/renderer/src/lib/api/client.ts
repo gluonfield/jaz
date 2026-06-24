@@ -1,16 +1,17 @@
+import { DEFAULT_API_BASE_URL, clientRuntime } from '@/lib/clientRuntime'
+
 const BACKEND_URL_KEY = 'jaz.backendUrl'
 const AUTH_KEY_PREFIX = 'jaz.backendAuth.'
-const DEFAULT_LOCAL_URL = 'http://localhost:5299'
 // The port the local backend always runs on; a loopback host on this port is
 // "this machine", any other loopback port is a tunnel to a remote backend.
-export const DEFAULT_LOCAL_PORT = new URL(DEFAULT_LOCAL_URL).port
+export const DEFAULT_LOCAL_PORT = new URL(DEFAULT_API_BASE_URL).port
 export const CLIENT_PLATFORM_HEADER = 'X-Jaz-Client-Platform'
-export const CLIENT_PLATFORM = 'desktop'
+export const CLIENT_PLATFORM = clientRuntime.platform
 
 // The local default bridged by the preload script; fall back for
 // plain-browser debugging.
 export function localBaseUrl(): string {
-  return window.jaz?.apiBaseUrl ?? DEFAULT_LOCAL_URL
+  return clientRuntime.defaultApiBaseUrl()
 }
 
 export function normalizeBaseUrl(url: string): string {
@@ -40,13 +41,53 @@ export function parseBackendConnectUrl(input: string): { url: string; key: strin
   }
 }
 
-// A remembered remote URL wins over the local default so the next launch
-// reconnects to wherever the user pointed the app last — unless JAZ_API_URL
-// was set explicitly (≠ default), which is a developer override that beats
-// the remembered URL.
+export function consumeStartupConnectUrl(): string {
+  if (clientRuntime.kind !== 'web') return ''
+  const { params, source } = startupConnectParams()
+  const target = params.get('server')?.trim() || params.get('url')?.trim() || ''
+  const key = params.get('key')?.trim() ?? ''
+  if (!target || !key) return ''
+  const raw = connectUrlWithKey(target, key)
+  const next = new URL(window.location.href)
+  if (source === 'hash') {
+    next.hash = ''
+  } else {
+    next.searchParams.delete('server')
+    next.searchParams.delete('url')
+    next.searchParams.delete('key')
+  }
+  window.history.replaceState(window.history.state, '', next)
+  return raw
+}
+
+function startupConnectParams(): { params: URLSearchParams; source: 'search' | 'hash' } {
+  const search = new URLSearchParams(window.location.search)
+  if (hasStartupConnectParams(search)) return { params: search, source: 'search' }
+  const hash = new URLSearchParams(window.location.hash.replace(/^#\??/, ''))
+  return { params: hash, source: 'hash' }
+}
+
+function hasStartupConnectParams(params: URLSearchParams): boolean {
+  return Boolean((params.get('server')?.trim() || params.get('url')?.trim()) && params.get('key')?.trim())
+}
+
+function connectUrlWithKey(target: string, key: string): string {
+  const raw = target.trim()
+  try {
+    const parsed = new URL(/^https?:\/\//i.test(raw) ? raw : `http://${raw}`)
+    parsed.searchParams.set('key', key)
+    return parsed.toString()
+  } catch {
+    return `${raw}${raw.includes('?') ? '&' : '?'}key=${encodeURIComponent(key)}`
+  }
+}
+
+// A remembered remote URL wins over the local default so refresh reconnects to
+// the user's server. An explicit runtime default still wins for desktop preload
+// and VITE_JAZ_API_URL-pinned development builds.
 let baseUrl = ((): string => {
   const local = localBaseUrl()
-  if (local !== DEFAULT_LOCAL_URL) return normalizeBaseUrl(local)
+  if (local !== DEFAULT_API_BASE_URL) return normalizeBaseUrl(local)
   const stored = localStorage.getItem(BACKEND_URL_KEY)
   return stored ? normalizeBaseUrl(stored) : local
 })()

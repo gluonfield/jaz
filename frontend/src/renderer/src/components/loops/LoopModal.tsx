@@ -10,6 +10,7 @@ import { boardsQuery } from '@/lib/api/boards'
 import { createLoop, runLoopNow, updateLoop } from '@/lib/api/loops'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import type { Loop } from '@/lib/api/types'
+import { clientRuntime } from '@/lib/clientRuntime'
 import { keys } from '@/lib/query/keys'
 import {
   type LoopDraft,
@@ -73,7 +74,7 @@ export function LoopModal({
       if (!isEdit) {
         if (onCreated) onCreated(saved)
         // Board OS windows never navigate; the new loop opens in the main app.
-        else if (window.jaz?.windowKind === 'board') window.jaz.openInMain(`/loops/${saved.id}`)
+        else if (clientRuntime.windowKind === 'board') clientRuntime.openInMain?.(`/loops/${saved.id}`)
         else navigate({ to: '/loops/$loopId', params: { loopId: saved.id } })
       }
     },
