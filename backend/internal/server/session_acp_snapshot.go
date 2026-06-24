@@ -131,8 +131,13 @@ func (s *Server) failedACPSnapshot(session storage.Session) storage.ACPState {
 	return state
 }
 
-func (s *Server) acpChildSnapshots(parentID string) []storage.ACPState {
-	byID := map[string]storage.ACPState{}
+type parentChildACPView struct {
+	state       storage.ACPState
+	permissions []sessionevents.ACPPermission
+}
+
+func (s *Server) acpChildSnapshots(parentID string) ([]storage.ACPState, []sessionevents.ACPPermission) {
+	byID := map[string]parentChildACPView{}
 	errorChild := map[string]bool{}
 	children, err := s.Store.ListSessions(storage.SessionFilter{
 		ParentID:   parentID,
@@ -143,10 +148,10 @@ func (s *Server) acpChildSnapshots(parentID string) []storage.ACPState {
 		for _, child := range children {
 			errorChild[child.ID] = child.Status == storage.StatusError
 			if state, ok := s.acpSnapshot(child); ok {
-				if !state.ParentVisible {
-					continue
+				byID[state.ID] = parentChildACPView{
+					state:       parentChildSnapshot(state),
+					permissions: activeChildPermissions(state),
 				}
-				byID[state.ID] = state
 			}
 		}
 	}
@@ -155,18 +160,49 @@ func (s *Server) acpChildSnapshots(parentID string) []storage.ACPState {
 			if errorChild[job.ID] {
 				continue
 			}
-			if job.ParentID == parentID && job.ParentVisible {
-				byID[job.ID] = canonicalACPStateResponse(acpJobState(job))
+			if job.ParentID == parentID {
+				state := canonicalACPStateResponse(acpJobState(job))
+				byID[job.ID] = parentChildACPView{
+					state:       parentChildSnapshot(state),
+					permissions: activeChildPermissions(state),
+				}
 			}
 		}
 	}
 	out := make([]storage.ACPState, 0, len(byID))
-	for _, state := range byID {
-		out = append(out, state)
+	var permissions []sessionevents.ACPPermission
+	for _, view := range byID {
+		out = append(out, view.state)
+		permissions = append(permissions, view.permissions...)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		return out[i].UpdatedAt.After(out[j].UpdatedAt)
 	})
+	sort.Slice(permissions, func(i, j int) bool {
+		return permissions[i].ID < permissions[j].ID
+	})
+	return out, permissions
+}
+
+func parentChildSnapshot(state storage.ACPState) storage.ACPState {
+	state.Assistant = ""
+	state.Thought = ""
+	state.Plan = nil
+	state.ToolCalls = nil
+	state.Permissions = nil
+	return state
+}
+
+func activeChildPermissions(state storage.ACPState) []sessionevents.ACPPermission {
+	if len(state.Permissions) == 0 {
+		return nil
+	}
+	out := make([]sessionevents.ACPPermission, 0, len(state.Permissions))
+	for _, permission := range state.Permissions {
+		if permission.ID != "" && permission.Status != "selected" && permission.Status != "cancelled" && permission.Status != "canceled" {
+			out = append(out, permission)
+		}
+	}
 	return out
 }
 

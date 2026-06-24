@@ -1,10 +1,9 @@
 import type { SessionEvent } from '@/lib/api/types'
 import { mergeProviderSubagentEvent } from '@/lib/providerSubagents'
-import { taskSurfaceKey } from '@/lib/taskSurface'
+import { taskSurfaceFromEvent, taskSurfaceKey } from '@/lib/taskSurface'
 
-// A child agent's run as seen from its parent's transcript. The parent only
-// receives the child's status (content/thought/tools are stripped server-side),
-// so this is the signal the spawned-agent card renders from.
+// A child agent's run as seen from its parent. Bare child status belongs in
+// Overview > Threads; child task surfaces can still stay inline when actionable.
 export function isParentChildACPEvent(event: SessionEvent): boolean {
   return Boolean(
     event.acp?.parent_id &&
@@ -17,6 +16,8 @@ export type SessionEventPlacement = 'transcript' | 'overview' | 'side_chat'
 
 export function sessionEventPlacement(event: SessionEvent): SessionEventPlacement {
   switch (event.type) {
+    case 'acp':
+      return isParentChildACPEvent(event) && !taskSurfaceFromEvent(event) ? 'overview' : 'transcript'
     case 'provider_subagent':
       return 'overview'
     case 'side_chat_message':
@@ -33,9 +34,9 @@ export function sessionEventPlacement(event: SessionEvent): SessionEventPlacemen
 // two can never disagree on what counts as "the same row".
 export function inPlaceEventKey(event: SessionEvent): string | null {
   if (event.type === 'acp' && event.acp?.id) {
-    // The parent's view of a child is a single status row that moves through
+    // The parent's view of a child is a single overview row that moves through
     // running → idle/failed/cancelled; collapse every state onto one key so a
-    // failure (which carries an error) updates the card instead of forking it.
+    // failure (which carries an error) updates the row instead of forking it.
     if (isParentChildACPEvent(event)) return `acp_status:${event.acp.id}`
     if (event.acp.tool_calls?.length) return `acp_tools:${event.acp.id}`
     if (event.acp.error) return `acp_error:${event.acp.id}`
