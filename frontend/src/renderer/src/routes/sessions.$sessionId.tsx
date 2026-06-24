@@ -343,7 +343,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
     }),
   )
   const sideChatEvents = coalesceSessionEvents(
-    liveEvents.filter((event) => sessionEventPlacement(event) === 'side_chat'),
+    [...persistedEvents, ...liveEvents].filter((event) => sessionEventPlacement(event) === 'side_chat'),
   )
   return {
     transcriptEvents: settledTranscriptEvents,

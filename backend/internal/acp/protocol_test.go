@@ -334,7 +334,7 @@ func TestPlanSessionUpdatePublishesAndPersistsProgress(t *testing.T) {
 	}
 }
 
-func TestSideChatSessionUpdatePublishesLiveSideChatEventOnly(t *testing.T) {
+func TestSideChatSessionUpdatePublishesAndPersistsSideChatEvent(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -402,8 +402,11 @@ func TestSideChatSessionUpdatePublishesLiveSideChatEventOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(stored) != 0 {
+	if len(stored) != 1 || stored[0].Type != sessionevents.TypeSideChatMessage || stored[0].SideChat == nil {
 		t.Fatalf("stored events = %#v", stored)
+	}
+	if stored[0].SideChat.Content != "side answer" || stored[0].SideChat.ID != "side-1" {
+		t.Fatalf("stored side chat event = %#v", stored[0])
 	}
 }
 
@@ -420,7 +423,7 @@ func TestToolCallUpdateCapturesLivenessState(t *testing.T) {
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
 	manager.jobsByID[session.ID] = &jobState{
-		Job: Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex, ACPSession: "acp-session"},
+		Job:      Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex, ACPSession: "acp-session"},
 		toolByID: map[string]sessionevents.ACPToolCall{},
 	}
 	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
