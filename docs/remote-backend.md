@@ -43,6 +43,14 @@ paste back. The onboarding sign-in card surfaces a field for that code and
 relays it to the login process over `POST /v1/acp/auth-logins/{id}/input`; or
 sign in with an API key instead, which needs no browser round-trip.
 
+Agents run as the backend Unix user. With the service below, shell tools see
+`HOME=/var/lib/jaz`; they do not read `/home/your-login-user` dotfiles, SSH keys,
+GitHub auth, npm/go caches, or CLI config. Put shell-tool credentials under
+`/var/lib/jaz`, use Jaz onboarding for managed agent profiles such as
+`/var/lib/jaz/acp/codex-home` and `/var/lib/jaz/acp/claude`, configure MCP
+servers in Jaz Settings, or run the service as the Unix user whose home should be
+exposed to agents.
+
 Write `/etc/jaz/application.yaml`:
 
 ```yaml
