@@ -128,6 +128,12 @@ func (e *HighLevelExecutor) getState(ctx context.Context, session string, input 
 func (e *HighLevelExecutor) extract(ctx context.Context, session string, input HighLevelInput) (ActionOutput, error) {
 	out, err := e.backend.Call(ctx, ActionInput{Action: ActionExtract, Text: input.Task, Session: session})
 	if err != nil {
+		if IsUnsupportedAction(err, ActionExtract) {
+			stateOut, _, _, stateErr := e.state(ctx, session)
+			if stateErr == nil {
+				return e.attachVisual(ctx, session, input, stateOut)
+			}
+		}
 		return ActionOutput{}, err
 	}
 	extraction, ok := decodePageExtraction(out.Data)

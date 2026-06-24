@@ -135,7 +135,13 @@ func TestSettingsEndpointAllowsManagedModeWithoutExtension(t *testing.T) {
 
 	res = httptest.NewRecorder()
 	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/browser", strings.NewReader(`{"mode":"extension"}`)))
-	if res.Code != http.StatusBadRequest {
-		t.Fatalf("extension mode without extension should 400, got %d body = %s", res.Code, res.Body.String())
+	if res.Code != http.StatusOK {
+		t.Fatalf("extension mode without extension should still save = %d, body = %s", res.Code, res.Body.String())
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if status.Mode != jazsettings.BrowserModeExtension {
+		t.Fatalf("browser status = %#v", status)
 	}
 }
