@@ -313,7 +313,7 @@ func (s *Server) writeSessionMessages(w http.ResponseWriter, session storage.Ses
 		return
 	}
 	transcriptEvents = sessionevents.CompactTranscript(transcriptEvents)
-	children := s.acpChildSnapshots(session.ID)
+	children, childPermissions := s.acpChildSnapshots(session.ID)
 	var acpSnapshot storage.ACPState
 	var hasACPSnapshot bool
 	if session.Runtime == storage.RuntimeACP {
@@ -336,6 +336,9 @@ func (s *Server) writeSessionMessages(w http.ResponseWriter, session storage.Ses
 	}
 	if len(children) > 0 {
 		resp["acp_children"] = children
+	}
+	if len(childPermissions) > 0 {
+		resp["acp_child_permissions"] = childPermissions
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

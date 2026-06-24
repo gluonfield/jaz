@@ -19,8 +19,13 @@ export function isPermissionAwaitingResponse(permission: ACPPermission | undefin
   return status !== 'selected' && status !== 'cancelled'
 }
 
-export function activePermissionIDs(events: SessionEvent[]): Set<string> {
+export function activePermissionIDs(events: SessionEvent[], permissions: ACPPermission[] = []): Set<string> {
   const active = new Set<string>()
+  for (const permission of permissions) {
+    if (isPermissionAwaitingResponse(permission)) {
+      active.add(permission.id)
+    }
+  }
   for (const event of events) {
     const id = event.permission?.id
     if (!id) continue

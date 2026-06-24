@@ -47,6 +47,7 @@ import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
 import { takePendingMessage } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
 import { providerSubagentsFromEvents } from '@/lib/providerSubagents'
+import { spawnedThreadsFromSources } from '@/lib/spawnedThreads'
 import {
   approvalPlanSurfaceFromEvent,
   hasProgressSignal,
@@ -144,8 +145,7 @@ function ScrollToBottomButton({ visible, onClick }: { visible: boolean; onClick:
   )
 }
 
-function acpSnapshotEvents(job: ACPJobSnapshot, pageSessionID: string): SessionEvent[] {
-  if (job.parent_id === pageSessionID && job.parent_visible === false) return []
+function acpSnapshotEvents(job: ACPJobSnapshot): SessionEvent[] {
   const at = job.last_event_at || job.updated_at
   const events: SessionEvent[] = []
   if (
@@ -156,7 +156,7 @@ function acpSnapshotEvents(job: ACPJobSnapshot, pageSessionID: string): SessionE
     job.error
   ) {
     events.push({
-      session_id: pageSessionID,
+      session_id: job.id,
       type: 'acp',
       at,
       content: job.assistant,
@@ -188,7 +188,7 @@ function acpSnapshotEvents(job: ACPJobSnapshot, pageSessionID: string): SessionE
     for (const permission of job.permissions ?? []) {
       if (!isPermissionAwaitingResponse(permission)) continue
       events.push({
-        session_id: pageSessionID,
+        session_id: job.id,
         type: 'permission_request',
         at,
         permission,
@@ -253,6 +253,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
     acp_last_event_at: acpLastEventAt,
     acp_last_tool_at: acpLastToolAt,
     acp_children: acpChildren,
+    acp_child_permissions: acpChildPermissions,
     events: persistedEvents = [],
   } = data
   // The job snapshot is only a fallback: when events record the run, the
@@ -287,15 +288,12 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
             last_event_at: acpLastEventAt,
             last_tool_at: acpLastToolAt,
             updated_at: session.updated_at,
-          },
-          session.id,
-        )
+          })
       : []),
-    ...((acpChildren ?? []).flatMap((child) => acpSnapshotEvents(child, session.id))),
   ]
   const modeEvents = [...persistedEvents, ...snapshotEvents, ...liveEvents]
   const currentModes = latestACPModeState(session.id, modeEvents) ?? acpModes
-  const activePermissions = activePermissionIDs([...snapshotEvents, ...liveEvents])
+  const activePermissions = activePermissionIDs([...snapshotEvents, ...liveEvents], acpChildPermissions)
   const transcriptEvents = coalesceSessionEvents(
     [...persistedEvents, ...snapshotEvents, ...liveEvents].flatMap((event) => {
       // 'assistant' events are refresh signals; the message store has the content.
@@ -359,6 +357,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
     planDecisionIsCurrent: !Number.isNaN(planDecisionAt) && planDecisionAt >= latestUserAt,
     panelProgress: panelProgressEvent ? progressSurfaceFromEvent(panelProgressEvent) : undefined,
     providerSubagents: providerSubagentsFromEvents(settledTranscriptEvents),
+    spawnedThreads: spawnedThreadsFromSources(acpChildren, [...persistedEvents, ...liveEvents]),
   }
 }
 
@@ -409,6 +408,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   const repoInfo = useQuery({ ...sessionRepoQuery(sessionId), enabled: Boolean(sessionCwd) })
   const overviewAvailable = Boolean(
     repoInfo.data?.git ||
+      detail.data?.acp_children?.length ||
       detail.data?.events?.some((event) => sessionEventPlacement(event) === 'overview') ||
       events.data.some((event) => sessionEventPlacement(event) === 'overview'),
   )
@@ -546,6 +546,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     planDecisionIsCurrent,
     panelProgress,
     providerSubagents,
+    spawnedThreads,
     sideChatEvents,
   } = derived
   const showPlanDecision = Boolean(
@@ -764,6 +765,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
               session={session}
               progress={panelProgress}
               subagents={providerSubagents}
+              spawnedThreads={spawnedThreads}
               working={sessionRunning}
               visible={sidePanel.open}
               view={sidePanel.view}
