@@ -89,7 +89,7 @@ export function SideChatPanel({
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto bg-bg px-4 py-4">
           <div className="flex min-h-full flex-col justify-end gap-5">
             {items.map((item) => (
-              <SideChatRow key={item.key} item={item} />
+              <SideChatRow key={item.key} item={item} active={pending} />
             ))}
           </div>
         </div>
@@ -113,7 +113,7 @@ export function SideChatPanel({
   )
 }
 
-function SideChatRow({ item }: { item: SideChatItem }) {
+function SideChatRow({ item, active }: { item: SideChatItem; active: boolean }) {
   if (item.role === 'user') {
     return <UserBubble text={item.content} contexts={item.contexts} attachments={item.attachments} />
   }
@@ -124,10 +124,10 @@ function SideChatRow({ item }: { item: SideChatItem }) {
     return <SessionErrorNotice message={item.content} />
   }
   if (item.role === 'thought') {
-    return <ThinkingBlock text={item.content} pending={item.status === 'running'} />
+    return <ThinkingBlock text={item.content} pending={active && item.status === 'running'} />
   }
   if (item.role === 'tool') {
-    return <ToolStatusLine label={item.content} status={item.status} active={item.status === 'running'} />
+    return <ToolStatusLine label={item.content} status={item.status} active={active && item.status === 'running'} />
   }
   return <AssistantBubble text={item.content} />
 }
