@@ -188,28 +188,40 @@ A production browser origin may call a private or loopback backend, for example 
 
 You only need this to reach the backend from a **browser** client. The Electron desktop app connects straight to a remote backend over plain HTTP, so it needs none of this — TLS and a reverse proxy matter only because a browser blocks an HTTPS page from calling a plain-HTTP backend (mixed content).
 
-To expose a single surface and keep the backend private, serve the web build and proxy the API from one origin. The browser only ever talks to that origin, so there is no mixed content and no CORS, and the backend never leaves loopback. Requests still originate in the browser; the proxy is pure routing, not a server that makes calls for it.
+One HTTPS origin serves the web build at `/` and reverse-proxies the API to a backend that stays on `localhost`. The browser only talks to that origin (no mixed content, no CORS) and the backend is never exposed; the proxy is pure routing — requests still originate in the browser. This assumes the backend is already installed and running (see [Server Setup](#server-setup)).
 
-Build the web app to target whatever origin it is served from:
-
-```sh
-VITE_JAZ_API_URL=origin bun run build:web   # emits frontend/dist-web
-```
-
-`origin` makes the app use `window.location.origin` as its backend, so one build works at any domain. (Set `VITE_JAZ_API_URL` to an explicit URL to pin a backend instead, or leave it unset to default to a local backend.)
-
-Copy the build output to the server where Caddy serves it from — the `root` in the Caddyfile below:
+**1. Pick the public hostname Caddy will serve.** It must resolve to the server, because Caddy auto-provisions a Let's Encrypt cert for it. With a domain, point an A record at the server IP. With only an IP and no DNS, use [sslip.io](https://sslip.io) — it resolves `<ip>.sslip.io` to `<ip>` for free:
 
 ```sh
-rsync -a frontend/dist-web/ <user>@<server>:/var/www/jaz-web/
+HOST=34.9.55.98.sslip.io        # or your own domain: jaz.example.com
 ```
 
-Bind the backend to loopback so it is reachable only through the proxy — set `JAZ_ADDR=127.0.0.1:5299` and `JAZ_PUBLIC_URL=https://jaz.example.com` in `/etc/jaz/jaz.env`, restart `jaz`, and leave `:5299` out of the firewall (open only the proxy's `:443`/`:80`).
+**2. Build the web app on the server.** Clone the repo and build with `VITE_JAZ_API_URL=origin`, which makes the app use `window.location.origin` as its backend (so it targets whatever host serves it). The build fits comfortably on a 2 GB VM:
 
-Serve the static build and proxy the API with Caddy:
+```sh
+sudo apt-get install -y git unzip
+curl -fsSL https://bun.sh/install | bash && export PATH="$HOME/.bun/bin:$PATH"
+git clone --depth 1 https://github.com/gluonfield/jaz.git
+cd jaz/frontend && bun install
+VITE_JAZ_API_URL=origin bun run build:web                   # emits frontend/dist-web
+sudo mkdir -p /var/www/jaz-web && sudo cp -a dist-web/. /var/www/jaz-web/
+```
 
-```caddy
-jaz.example.com {
+**3. Point the backend at loopback** so it stays private and Caddy is the only thing exposed:
+
+```sh
+sudo sed -i "s#^JAZ_ADDR=.*#JAZ_ADDR=127.0.0.1:5299#; s#^JAZ_PUBLIC_URL=.*#JAZ_PUBLIC_URL=https://$HOST#" /etc/jaz/jaz.env
+sudo systemctl restart jaz
+```
+
+Keep `:5299` out of the firewall; open only `:80` and `:443`.
+
+**4. Install Caddy and write the proxy config** (on the server; the heredoc substitutes `$HOST` and leaves Caddy's `{...}` placeholders alone):
+
+```sh
+sudo apt-get install -y caddy        # or download from caddyserver.com/download
+sudo tee /etc/caddy/Caddyfile >/dev/null <<EOF
+$HOST {
     @api path /v1/* /health
     handle @api {
         reverse_proxy 127.0.0.1:5299
@@ -220,22 +232,19 @@ jaz.example.com {
         file_server
     }
 }
+EOF
+sudo systemctl reload caddy          # or run directly: sudo caddy run --config /etc/caddy/Caddyfile
 ```
 
-Install Caddy, save the block above as `/etc/caddy/Caddyfile`, and start it. The package installs a systemd service, so after editing the config just reload it:
+Caddy provisions the cert on first start (needs `:80`/`:443` reachable) and upgrades websocket/SSE streams automatically.
+
+**5. Verify and connect.**
 
 ```sh
-sudo apt-get install -y caddy   # or download from caddyserver.com/download
-sudo systemctl reload caddy     # applies the config; Caddy auto-provisions the TLS cert
+curl -fsS https://$HOST/health        # -> {"ok":true,...}
 ```
 
-To run Caddy directly instead of via the service — foreground for testing, or `caddy start` to background it:
-
-```sh
-sudo caddy run --config /etc/caddy/Caddyfile
-```
-
-Caddy upgrades the websocket/SSE streams automatically. Open `https://jaz.example.com?key=...` (the key from `/var/lib/jaz/client-url.txt`); the app connects to its own origin, which the proxy forwards to the private backend.
+Open `https://$HOST?key=...` — the key is in `/var/lib/jaz/client-url.txt` (or `/var/lib/jaz/auth.json`). The app loads from that origin and connects back to it, and the proxy forwards the API to the private backend. On a fresh backend the browser becomes the first approved device automatically.
 
 Remote `--public-url` server logs print the public base URL and the auth file path, not the root key:
 
