@@ -63,11 +63,10 @@ Install the agent CLIs you want to sign into (`npm install -g @openai/codex
 "Not installed" and offer no sign-in.
 
 This leaves a plain-HTTP backend at `http://<reserved-ip>:5299`, which the
-desktop app connects to directly. The browser client at `web.jaz.chat` is served
-over HTTPS and cannot reach a public HTTP backend (mixed content); to connect it
-from a browser, front `:5299` with HTTPS — see
-[A remote browser client needs HTTPS](../remote-backend.md) for the
-Cloudflare-tunnel and Caddy recipes.
+desktop app connects to directly. A browser client (served over HTTPS) cannot
+reach a plain-HTTP backend (mixed content); to use one, serve the app and backend
+behind one HTTPS origin — see
+[Self-host the app and backend behind one origin](../remote-backend.md).
 
 ## Verify
 
