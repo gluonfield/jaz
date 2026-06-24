@@ -196,15 +196,15 @@ One HTTPS origin serves the web build at `/` and reverse-proxies the API to a ba
 HOST=34.9.55.98.sslip.io        # or your own domain: jaz.example.com
 ```
 
-**2. Build the web app on the server.** Clone the repo and build with `VITE_JAZ_API_URL=origin`, which makes the app use `window.location.origin` as its backend (so it targets whatever host serves it). The build fits comfortably on a 2 GB VM:
+**2. Build the web app on the server.** Clone into `/opt/jaz` and build with `VITE_JAZ_API_URL=origin`, which makes the app use `window.location.origin` as its backend (so it targets whatever host serves it). Caddy serves the build in place — no copy step. Fits comfortably on a 2 GB VM:
 
 ```sh
 sudo apt-get install -y git unzip
 curl -fsSL https://bun.sh/install | bash && export PATH="$HOME/.bun/bin:$PATH"
-git clone --depth 1 https://github.com/gluonfield/jaz.git
-cd jaz/frontend && bun install
-VITE_JAZ_API_URL=origin bun run build:web                   # emits frontend/dist-web
-sudo mkdir -p /var/www/jaz-web && sudo cp -a dist-web/. /var/www/jaz-web/
+sudo git clone --depth 1 https://github.com/gluonfield/jaz.git /opt/jaz
+sudo chown -R "$USER" /opt/jaz
+cd /opt/jaz/frontend && bun install
+VITE_JAZ_API_URL=origin bun run build:web                   # builds /opt/jaz/frontend/dist-web
 ```
 
 **3. Point the backend at loopback** so it stays private and Caddy is the only thing exposed:
@@ -227,7 +227,7 @@ $HOST {
         reverse_proxy 127.0.0.1:5299
     }
     handle {
-        root * /var/www/jaz-web
+        root * /opt/jaz/frontend/dist-web
         try_files {path} /index.html
         file_server
     }
