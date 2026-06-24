@@ -5,7 +5,7 @@ import { FileDropOverlay, useFileDropTarget } from '@/components/ui/FileDrop'
 import { IconButton } from '@/components/ui/IconButton'
 import { clipboardFiles } from '@/components/ui/fileTransfer'
 import type { Attachment, QueuedMessage } from '@/lib/api/types'
-import type { ComposerContext, SendMessageOptions } from '@/lib/sendMessage'
+import type { ComposerContext, SendMessageHandler } from '@/lib/sendMessage'
 import { Popover } from '@/components/ui/Popover'
 import { RAINBOW_BEAM } from '@/components/ui/rainbow'
 import { ComposerAttachmentInput, ComposerAttachmentList, ComposerAttachmentMenuRow } from './ComposerAttachments'
@@ -101,7 +101,7 @@ export function ComposerCard({
   fileRoot?: string
   /** text selections and browser annotations attached to the next message */
   contexts?: ComposerContext[]
-  onSend: (text: string, options?: SendMessageOptions) => void | Promise<void>
+  onSend: SendMessageHandler
   onStop?: () => void
   onVoice?: () => void
   onUploadAttachment?: (file: File) => Promise<Attachment>
@@ -441,7 +441,7 @@ export function Composer({
   /** directory the @-mention file picker indexes; undefined disables files */
   fileRoot?: string
   contexts?: ComposerContext[]
-  onSend: (text: string, options?: SendMessageOptions) => void | Promise<void>
+  onSend: SendMessageHandler
   onStop: () => void
   onVoice?: () => void
   onUploadAttachment?: (file: File) => Promise<Attachment>

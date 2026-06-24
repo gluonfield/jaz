@@ -1,7 +1,7 @@
 import type { Attachment, Session, SessionEvent } from '@/lib/api/types'
 import type { BrowserAnnotation } from '@/lib/messageContext'
 import type { ProviderSubagentView } from '@/lib/providerSubagents'
-import type { SendMessageOptions } from '@/lib/sendMessage'
+import type { SendMessageHandler, SendMessageOptions } from '@/lib/sendMessage'
 import type { TaskSurface } from '@/lib/taskSurface'
 import type { FileReference } from '../../../../shared/fileReader'
 import { CODE_DIFF_PANEL_WIDTH, CodeDiffPanel } from './CodeDiffPanel'
@@ -55,7 +55,7 @@ export function SidePanel({
   onOpenFile: (file: FileReference) => void
   onAddBrowserAnnotation?: (annotation: BrowserAnnotation, screenshot?: Attachment) => void
   onUploadAttachment?: (file: File) => Promise<Attachment>
-  onSend: (text: string, options?: SendMessageOptions) => void
+  onSend: SendMessageHandler
   onSendSideChat: (sideChatID: string, message: string, options?: SendMessageOptions) => Promise<void>
   onClose: () => void
 }) {

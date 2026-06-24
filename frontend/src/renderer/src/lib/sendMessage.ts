@@ -11,6 +11,8 @@ export interface SendMessageOptions {
   contexts?: ComposerContext[]
 }
 
+export type SendMessageHandler = (text: string, options?: SendMessageOptions) => void | Promise<void>
+
 export interface PreparedSendMessage {
   contexts: MessageContextInput[]
   attachmentIds: string[]
