@@ -21,13 +21,6 @@ function hasWorkingStatusSurface(event: SessionEvent): boolean {
   return Boolean(event.acp && normalized(event.acp.state) === 'running')
 }
 
-// An event that renders as the spawned-agent card: a child's status row inside
-// its parent's transcript, in any run state. A plan/task surface takes over the
-// row instead, so those are excluded.
-export function isSpawnedAgentEvent(event: SessionEvent): boolean {
-  return event.type === 'acp' && isParentChildACPEvent(event) && !taskSurfaceFromEvent(event)
-}
-
 // A running status whose only surface is the live "working" indicator — no
 // content, thought, tools, error, or plan yet. It anchors to the bottom while
 // live rather than sitting in the chronological flow.
@@ -48,10 +41,7 @@ function hasVisibleACPSurface(event: SessionEvent): boolean {
   if (!acp) return false
   const hasTaskSurface = Boolean(taskSurfaceFromEvent(event))
   if (isParentChildACPEvent(event)) {
-    // In the parent transcript a child surfaces only as its status row (content,
-    // thought and tools are stripped server-side). That row is the spawned-agent
-    // card and stays through completion, so it's a surface in every state.
-    return event.type === 'acp'
+    return event.type === 'acp' && hasTaskSurface
   }
   return Boolean(
     event.content ||

@@ -403,6 +403,7 @@ export interface SessionMessages {
   acp_last_event_at?: string
   acp_last_tool_at?: string
   acp_children?: ACPJobSnapshot[]
+  acp_child_permissions?: ACPPermission[]
 }
 
 export interface ACPToolContent {

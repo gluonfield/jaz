@@ -113,6 +113,10 @@ func TestSessionMessagesErrorChildPreservesParentVisibility(t *testing.T) {
 		ACPSession:    "acp-session",
 		State:         acp.StateRunning,
 		ParentVisible: true,
+		Assistant:     "private child output",
+		Thought:       "private child thought",
+		Plan:          []sessionevents.ACPPlanEntry{{Content: "Inspect current page", Status: "completed"}},
+		ToolCalls:     []sessionevents.ACPToolCall{{ID: "tool-1", Title: "read file"}},
 		Permissions: []sessionevents.ACPPermission{{
 			ID:     "perm-1",
 			Status: "pending",
@@ -166,7 +170,7 @@ func TestSessionMessagesErrorChildPreservesParentVisibility(t *testing.T) {
 	if !state.ParentVisible {
 		t.Fatalf("parent_visible = false, want true")
 	}
-	if len(state.Permissions) != 0 {
-		t.Fatalf("permissions = %#v", state.Permissions)
+	if state.Assistant != "" || state.Thought != "" || len(state.Plan) != 0 || len(state.ToolCalls) != 0 || len(state.Permissions) != 0 {
+		t.Fatalf("child transcript leaked into parent response: %#v", state)
 	}
 }
