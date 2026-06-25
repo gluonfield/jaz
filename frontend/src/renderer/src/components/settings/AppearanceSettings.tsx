@@ -25,8 +25,10 @@ function AccentPicker({ value, onChange }: { value: number; onChange: (hue: numb
             title={preset.label}
             onClick={() => onChange(preset.hue)}
             style={{ backgroundColor: `oklch(0.62 0.16 ${preset.hue})` }}
-            className={`relative flex h-7 w-7 cursor-pointer items-center justify-center rounded-full transition-transform duration-150 hover:scale-110 ring-1 ring-black/10 dark:ring-white/15 ${
-              active ? 'ring-2 ring-offset-2 ring-offset-surface ring-ink/30' : ''
+            className={`relative flex h-7 w-7 cursor-pointer items-center justify-center rounded-full transition-transform duration-150 hover:scale-110 ${
+              active
+                ? 'ring-2 ring-offset-2 ring-offset-surface ring-ink/30'
+                : 'ring-1 ring-black/10 dark:ring-white/15'
             }`}
           >
             {active ? <Check size={15} strokeWidth={3} className="text-white" /> : null}
