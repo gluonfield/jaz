@@ -165,7 +165,9 @@ function splitTurns(items: TimelineItem[]): Turn[] {
   return turns
 }
 
-// Work that may fold under "Worked for Xs"; task surfaces, pending questions, and errors stay out.
+// True for work that folds under "Worked for Xs": tools, thinking, status,
+// resolved permissions, superseded task surfaces. Artifacts and any event with
+// visible `content` are the turn's answer/outcome and never fold.
 export function isCollapsibleWork(
   item: TimelineItem,
   pendingPermissionIds: Set<string>,
@@ -175,12 +177,8 @@ export function isCollapsibleWork(
   if (item.kind !== 'event') return false
   const event = item.event
   if (event.type === 'artifact') return false
+  if (event.content?.trim()) return false
   if (event.type === 'acp_thought') return true
-  // Interim narration ("I'll check the project memory first…") is work, not the
-  // answer — fold it into "Worked for" like Codex does. The turn's final content
-  // is shielded by the `index < lastContentIndex` gate in Transcript, so only the
-  // answer stays expanded; everything before it collapses into one disclosure.
-  if (event.type === 'acp_message') return true
   if (event.type === 'permission_request') {
     return !pendingPermissionIds.has(event.permission?.id ?? '')
   }
