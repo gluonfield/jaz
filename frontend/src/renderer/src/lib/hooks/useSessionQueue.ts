@@ -66,6 +66,7 @@ export function useSessionQueue({
           contexts: prepared.contexts,
           attachment_ids: prepared.attachmentIds,
           plan_requested: options.planRequested,
+          goal_requested: options.goalRequested,
         })
         if (!prompt) return
         await mutateQueue({ op: 'append', message: prompt })
@@ -154,6 +155,7 @@ function normalizeQueuedPrompt(prompt: QueuedMessageInput): QueuedMessageInput |
       : {}),
     ...(attachmentIds.length ? { attachment_ids: attachmentIds } : {}),
     ...(prompt.plan_requested ? { plan_requested: true } : {}),
+    ...(prompt.goal_requested ? { goal_requested: true } : {}),
   }
 }
 

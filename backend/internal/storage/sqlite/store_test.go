@@ -77,6 +77,35 @@ func TestDefaultSlugIgnoresACPAgent(t *testing.T) {
 	}
 }
 
+func TestSessionRuntimeCapabilitiesRoundTrip(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "runtime-caps",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:         storage.RuntimeACP,
+			Agent:        "codex",
+			Capabilities: &storage.RuntimeCapabilities{NativeGoal: true},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.RuntimeRef == nil || loaded.RuntimeRef.Capabilities == nil || !loaded.RuntimeRef.Capabilities.NativeGoal {
+		t.Fatalf("runtime capabilities not persisted: %#v", loaded.RuntimeRef)
+	}
+}
+
 func TestListSessionsOrdersByAttentionNotActivity(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {

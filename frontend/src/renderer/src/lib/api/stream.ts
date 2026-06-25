@@ -23,6 +23,7 @@ export async function streamSessionMessage({
   contexts = [],
   attachmentIds = [],
   planRequested = false,
+  goalRequested = false,
   voice = false,
   signal,
   onEvent,
@@ -32,6 +33,7 @@ export async function streamSessionMessage({
   contexts?: MessageContextInput[]
   attachmentIds?: string[]
   planRequested?: boolean
+  goalRequested?: boolean
   voice?: boolean
   signal: AbortSignal
   onEvent: (event: AgentStreamEvent) => void
@@ -39,7 +41,14 @@ export async function streamSessionMessage({
   const res = await apiFetch(`/v1/sessions/${sessionId}/messages:stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, contexts, attachment_ids: attachmentIds, plan_requested: planRequested, voice }),
+    body: JSON.stringify({
+      message,
+      contexts,
+      attachment_ids: attachmentIds,
+      plan_requested: planRequested,
+      goal_requested: goalRequested,
+      voice,
+    }),
     signal,
   })
   if (!res.ok || !res.body) {
@@ -57,6 +66,7 @@ export async function streamSessionMessage({
     queued: false,
     voice,
     planRequested,
+    goalRequested,
     attachmentCount: attachmentIds.length,
   })
 

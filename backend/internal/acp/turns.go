@@ -42,6 +42,7 @@ func (m *Manager) runPrompt(ctx context.Context, job *jobState, message string, 
 			return
 		}
 	}
+	goalRequested := currentTurnGoalRequested(job, done)
 	prompt, err := promptContentBlocks(message, attachments, resolver)
 	if err != nil {
 		m.failPromptCall(done, job, err)
@@ -50,6 +51,7 @@ func (m *Manager) runPrompt(ctx context.Context, job *jobState, message string, 
 	m.runPromptCall(ctx, job, done, acpschema.PromptRequest{
 		SessionID: acpschema.SessionID(job.ACPSession),
 		Prompt:    prompt,
+		Meta:      goalPromptMeta(goalRequested),
 	})
 }
 

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -12,7 +13,7 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, clientCtx context.Context, session storage.Session, message string, contexts []storage.MessageContext, attachments []storage.Attachment, planRequested bool) {
+func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, clientCtx context.Context, session storage.Session, message string, contexts []storage.MessageContext, attachments []storage.Attachment, planRequested bool, goalRequested bool) {
 	if s.ACP == nil {
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: "acp manager is not configured"})
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
@@ -34,6 +35,7 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 		Attachments:   attachments,
 		Completion:    acp.CompletionInline,
 		PlanRequested: planRequested,
+		GoalRequested: goalRequested,
 	})
 	cancelStart()
 	if err != nil {
@@ -140,6 +142,9 @@ func isACPTerminal(state string) bool {
 }
 
 func acpSendError(session storage.Session, err error) error {
+	if errors.Is(err, acp.ErrNativeGoalUnsupported) {
+		return fmt.Errorf("goal mode is not supported by this ACP agent")
+	}
 	if strings.Contains(err.Error(), "active acp session not found") {
 		return fmt.Errorf("acp session %q (%s) could not be resumed: %v", session.Slug, session.ID, err)
 	}

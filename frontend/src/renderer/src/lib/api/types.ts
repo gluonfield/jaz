@@ -8,6 +8,11 @@ export interface RuntimeRef {
   session_id?: string
   cwd?: string
   project_path?: string
+  capabilities?: RuntimeCapabilities
+}
+
+export interface RuntimeCapabilities {
+  native_goal?: boolean
 }
 
 // Provider-facing token fields: input includes cache reads/writes when the
@@ -96,6 +101,7 @@ export interface QueuedMessage {
   quotes?: string[]
   attachment_ids?: string[]
   plan_requested?: boolean
+  goal_requested?: boolean
 }
 
 export type QueuedMessageInput = Omit<QueuedMessage, 'id'> & { id?: string }
@@ -465,6 +471,18 @@ export interface PlanEvent {
   awaiting_approval?: boolean
 }
 
+export interface GoalEvent {
+  thread_id?: string
+  objective?: string
+  status: string
+  token_budget?: number
+  tokens_used?: number
+  remaining_tokens?: number
+  time_used_seconds?: number
+  created_at?: string
+  updated_at?: string
+}
+
 export interface ArtifactEvent {
   title: string
   widget_code: string
@@ -608,6 +626,7 @@ export interface SessionEvent {
   content?: string
   acp?: ACPEvent
   plan?: PlanEvent
+  goal?: GoalEvent
   permission?: ACPPermission
   artifact?: ArtifactEvent
   loop_created?: LoopCreatedEvent
@@ -820,6 +839,7 @@ export interface ReasoningEffortOption {
 
 export interface ACPAgentOptions {
   reasoning_efforts: ReasoningEffortOption[]
+  capabilities?: RuntimeCapabilities
   local: boolean
   provider_mode?: 'agent_defaults'
   model_provider_ids?: string[]

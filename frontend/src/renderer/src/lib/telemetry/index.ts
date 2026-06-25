@@ -19,6 +19,7 @@ interface MessageSent {
   queued: boolean
   voice?: boolean
   planRequested: boolean
+  goalRequested?: boolean
   attachmentCount: number
 }
 
@@ -84,6 +85,7 @@ function messageSent(input: MessageSent) {
     queued: input.queued,
     voice: input.voice,
     plan_requested: input.planRequested,
+    goal_requested: input.goalRequested,
     attachment_count: input.attachmentCount,
   })
 }

@@ -27,6 +27,7 @@ type ReasoningEffortOption struct {
 
 type AgentOptions struct {
 	ReasoningEfforts []ReasoningEffortOption `json:"reasoning_efforts"`
+	Capabilities     *AgentCapabilities      `json:"capabilities,omitempty"`
 	Local            bool                    `json:"local"`
 	ProviderMode     string                  `json:"provider_mode,omitempty"`
 	ModelProviderIDs []string                `json:"model_provider_ids,omitempty"`
@@ -590,6 +591,9 @@ func AgentOptionsFor(name string) AgentOptions {
 func AgentOptionsForConfig(name string, cfg AgentConfig) AgentOptions {
 	options := AgentOptions{
 		ReasoningEfforts: agentPolicyForAgent(CanonicalAgentName(name)).reasoningEffortOptions(),
+	}
+	if caps := CatalogAgentCapabilitiesFor(name); caps.NativeGoal {
+		options.Capabilities = &caps
 	}
 	options.Local = cfg.Local
 	options.ProviderMode = strings.TrimSpace(cfg.ProviderMode)
