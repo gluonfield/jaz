@@ -58,6 +58,12 @@
   --prose-max: 76ch;
 
   --z-dropdown: 10;
+  /* App-shell / mobile-drawer ladder, below --z-modal so real modals cover it:
+     a backdrop scrim, the persistent shell chrome above it (titlebar controls,
+     docked side panel), and the full-screen drawer (sidebar) above that. */
+  --z-scrim: 10;
+  --z-shell: 20;
+  --z-drawer: 30;
   --z-modal: 60;
   --z-file-drop: 70;
   --z-command: 80;
@@ -72,6 +78,18 @@
 
 @utility z-dropdown {
   z-index: var(--z-dropdown);
+}
+
+@utility z-scrim {
+  z-index: var(--z-scrim);
+}
+
+@utility z-shell {
+  z-index: var(--z-shell);
+}
+
+@utility z-drawer {
+  z-index: var(--z-drawer);
 }
 
 @utility z-modal {

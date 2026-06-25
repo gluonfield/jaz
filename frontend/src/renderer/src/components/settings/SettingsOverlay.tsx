@@ -19,6 +19,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BackendSwitcher } from '@/components/connection/BackendSwitcher'
+import { dismissOnEmptyTap } from '@/lib/dom/drawer'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { ACPAgentsSettings } from './ACPAgentsSettings'
 import { AgentProvidersSettings } from './AgentProvidersSettings'
@@ -121,14 +122,8 @@ export function SettingsOverlay({
           aria-label="Settings"
         >
           <aside
-            onClick={
-              isMobile
-                ? (e) => {
-                    if (!(e.target as HTMLElement).closest('a, button, input, textarea')) setNavOpen(false)
-                  }
-                : undefined
-            }
-            className={`flex w-[272px] shrink-0 flex-col bg-surface max-sm:absolute max-sm:inset-y-0 max-sm:left-0 max-sm:z-30 max-sm:w-full max-sm:transition-transform max-sm:duration-300 ${
+            onClick={isMobile ? dismissOnEmptyTap(() => setNavOpen(false)) : undefined}
+            className={`flex w-[272px] shrink-0 flex-col bg-surface max-sm:absolute max-sm:inset-y-0 max-sm:left-0 max-sm:z-drawer max-sm:w-full max-sm:transition-transform max-sm:duration-300 ${
               navOpen ? '' : 'max-sm:-translate-x-full'
             }`}
           >
