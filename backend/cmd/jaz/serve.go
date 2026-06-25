@@ -62,6 +62,7 @@ func runServe(args []string) error {
 			connections.NewCatalog,
 			app.NewConnectionService,
 			app.NewConnectionOAuthService,
+			app.NewGmailMCPTools,
 			newMemoryService,
 			jaztools.New,
 			terminal.New,

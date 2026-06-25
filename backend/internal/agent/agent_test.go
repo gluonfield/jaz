@@ -292,6 +292,39 @@ func TestToolSearchMatchesSchemaTerms(t *testing.T) {
 	}
 }
 
+func TestToolSearchFindsGmailToolsByEmailQuery(t *testing.T) {
+	exposure, err := newToolExposure([]tools.Definition{
+		namedTool{
+			name:        "mcp_jaztools_gmail_read_message",
+			description: "Read one Gmail email message by ID, returning headers, labels, attachments, and body text.",
+			parameters: tools.ObjectSchema(map[string]any{
+				"id": tools.StringSchema("Gmail message id returned by gmail_search_messages."),
+			}, []string{"id"}),
+		}.Definition(),
+		namedTool{
+			name:        "mcp_jaztools_gmail_search_messages",
+			description: "Search Gmail email messages and return bounded metadata, snippets, labels, and message IDs.",
+			parameters: tools.ObjectSchema(map[string]any{
+				"query": tools.StringSchema("Gmail email search query."),
+			}, nil),
+		}.Definition(),
+	}, nil, func(name string) bool { return strings.HasPrefix(name, "mcp_") })
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result := exposure.executeSearch(provider.FunctionToolCall("search_1", toolSearchToolName, `{"query":"read email","limit":1}`))
+	var output struct {
+		Tools []map[string]any `json:"tools"`
+	}
+	if err := json.Unmarshal([]byte(result.Content), &output); err != nil {
+		t.Fatal(err)
+	}
+	if len(output.Tools) != 1 || output.Tools[0]["name"] != "mcp_jaztools_gmail_read_message" {
+		t.Fatalf("email search returned %#v", output.Tools)
+	}
+}
+
 func TestToolSearchTokenizesLikeCodexEnglishBM25(t *testing.T) {
 	if got := tokenizeToolSearch("i me my myself we our ours ourselves you you're you've you'll you'd"); len(got) != 0 {
 		t.Fatalf("stopword tokens = %v, want none", got)

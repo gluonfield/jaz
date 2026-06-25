@@ -12,13 +12,17 @@ const (
 	ScopeSend     = "https://www.googleapis.com/auth/gmail.send"
 
 	RemoteMCPURL = "https://gmailmcp.googleapis.com/mcp/v1"
+
+	ToolGetProfile     = "gmail_get_profile"
+	ToolSearchMessages = "gmail_search_messages"
+	ToolReadMessage    = "gmail_read_message"
 )
 
 func Plugin() integrations.Plugin {
 	return integrations.Plugin{
 		ID:          "gmail",
 		Name:        "Gmail",
-		Description: "Sync Gmail into memory and let agents read, draft, send, label, archive, and organize email.",
+		Description: "Let agents verify Gmail email access, search email message summaries, and read selected messages.",
 		Provider: integrations.Provider{
 			ID:   ProviderID,
 			Name: ProviderName,
@@ -30,7 +34,7 @@ func Plugin() integrations.Plugin {
 		},
 		Auth: []integrations.AuthOption{{
 			Kind:        integrations.AuthKindOAuth,
-			Description: "Jaz-managed Google OAuth for sync and actions.",
+			Description: "Jaz-managed Google OAuth for Gmail read tools.",
 			Scopes:      OAuthScopes,
 		}, {
 			Kind:        integrations.AuthKindRemoteMCP,
@@ -38,13 +42,10 @@ func Plugin() integrations.Plugin {
 			Scopes:      []string{ScopeReadonly, ScopeCompose},
 		}},
 		Capabilities: []integrations.Capability{
-			integrations.CapabilitySync,
 			integrations.CapabilityAct,
-			integrations.CapabilityMaterialize,
 			integrations.CapabilityMCP,
 		},
-		MultiAccount: true,
-		SourceLanes:  []string{"sources/email"},
+		MultiAccount: false,
 		Tools:        tools(),
 		Skills: []integrations.PluginSkill{{
 			ID:          "gmail",
@@ -64,7 +65,7 @@ func Plugin() integrations.Plugin {
 			OAuthSecrets: true,
 		},
 		ConnectionNotes: []string{
-			"Jaz supports multiple Gmail accounts through connection aliases such as personal or work.",
+			"This first Gmail connection slice supports one default account.",
 			"Jaz-owned Gmail tools use Google APIs directly through the bundled desktop OAuth client.",
 			"The official Gmail MCP endpoint is useful as a compatibility target, but is not the consumer-clean Jaz default.",
 		},
@@ -77,35 +78,10 @@ func Plugin() integrations.Plugin {
 
 func tools() []integrations.PluginTool {
 	return []integrations.PluginTool{
-		readTool("get_profile", "Return the current Gmail user's profile information."),
-		readTool("get_recent_emails", "Return the most recently received Gmail messages."),
-		readTool("list_labels", "List Gmail labels with per-label totals for inbox, unread, and label count questions."),
-		readTool("list_drafts", "List Gmail drafts with summarized metadata for review or selection."),
-		readTool("search_emails", "Search Gmail messages using Gmail query operators and optional exact label IDs."),
-		readTool("search_email_ids", "Retrieve Gmail message IDs matching a Gmail search query."),
-		readTool("search_thread_ids", "Retrieve Gmail thread IDs matching a Gmail search query."),
-		readTool("read_email", "Fetch a single Gmail message including body, metadata, labels, timestamp, and attachments."),
-		readTool("batch_read_email", "Read multiple Gmail messages in one call."),
-		readTool("read_email_thread", "Fetch an entire Gmail conversation thread from a message ID or thread ID."),
-		readTool("batch_read_email_threads", "Fetch multiple Gmail conversation threads, resolving message IDs to thread IDs when needed."),
-		readTool("batch_read_thread", "Fetch multiple known Gmail threads without resolving message IDs first."),
-		readTool("read_attachment", "Read one attachment from a Gmail message using the parent message ID and attachment ID or exact filename."),
-		tool("create_draft", "Create a Gmail draft without sending so the user can review it in Gmail.", integrations.ActionRiskDraft, ScopeModify),
-		tool("update_draft", "Update an existing Gmail draft in place while preserving omitted fields.", integrations.ActionRiskDraft, ScopeModify),
-		tool("send_draft", "Send an existing Gmail draft after explicit user review or instruction.", integrations.ActionRiskWrite, ScopeModify),
-		tool("send_email", "Send an email from the authenticated Gmail account.", integrations.ActionRiskWrite, ScopeModify),
-		tool("forward_emails", "Forward Gmail messages with an optional note and preserved original attachments.", integrations.ActionRiskWrite, ScopeModify),
-		tool("create_label", "Create a Gmail label, returning the existing label when it already exists.", integrations.ActionRiskWrite, ScopeModify),
-		tool("apply_labels_to_emails", "Apply labels to Gmail messages by label name rather than Gmail label ID.", integrations.ActionRiskWrite, ScopeModify),
-		tool("batch_modify_email", "Add or remove Gmail labels on a batch of individual messages.", integrations.ActionRiskWrite, ScopeModify),
-		tool("bulk_label_matching_emails", "Apply a label to every Gmail message matching a Gmail search query without sending IDs through model context.", integrations.ActionRiskBulkWrite, ScopeModify),
-		tool("archive_emails", "Archive Gmail messages by removing INBOX while keeping them searchable in Gmail.", integrations.ActionRiskWrite, ScopeModify),
-		tool("delete_emails", "Move Gmail messages to Trash without permanently deleting them.", integrations.ActionRiskDelete, ScopeModify),
+		tool(ToolGetProfile, "Return the current Gmail email user's live profile totals.", integrations.ActionRiskRead, ScopeModify),
+		tool(ToolSearchMessages, "Search Gmail email messages and return bounded metadata, snippets, labels, and message IDs.", integrations.ActionRiskRead, ScopeModify),
+		tool(ToolReadMessage, "Read one Gmail email message by ID with headers, labels, body text or HTML, and attachment metadata.", integrations.ActionRiskRead, ScopeModify),
 	}
-}
-
-func readTool(name, description string) integrations.PluginTool {
-	return tool(name, description, integrations.ActionRiskRead, ScopeReadonly)
 }
 
 func tool(name, description string, risk integrations.ActionRisk, scopes ...string) integrations.PluginTool {
