@@ -17,6 +17,7 @@ type CodeLanguage =
   | 'cpp'
   | 'csharp'
   | 'css'
+  | 'diff'
   | 'dockerfile'
   | 'go'
   | 'graphql'
@@ -62,6 +63,7 @@ const LANGS = {
   cpp: () => import('@shikijs/langs/cpp'),
   csharp: () => import('@shikijs/langs/csharp'),
   css: () => import('@shikijs/langs/css'),
+  diff: () => import('@shikijs/langs/diff'),
   dockerfile: () => import('@shikijs/langs/dockerfile'),
   go: () => import('@shikijs/langs/go'),
   graphql: () => import('@shikijs/langs/graphql'),
@@ -174,6 +176,7 @@ const LANGUAGE_ALIASES: Record<string, CodeLanguage> = {
   shell: 'bash',
   console: 'bash',
   golang: 'go',
+  patch: 'diff',
   markdown: 'md',
   'c++': 'cpp',
   'c#': 'csharp',
