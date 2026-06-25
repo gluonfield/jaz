@@ -417,6 +417,12 @@ func TestCommitAllAndMergeIntoMain(t *testing.T) {
 		t.Fatalf("AddWorktree: %v", err)
 	}
 
+	// The worktree reports the main checkout's path so the UI can offer a
+	// checkout command without entering the worktree.
+	if info := Inspect(ctx, worktree); !info.IsWorktree || info.MainPath != main {
+		t.Errorf("Inspect worktree: IsWorktree=%v MainPath=%q, want true %q", info.IsWorktree, info.MainPath, main)
+	}
+
 	// Nothing to merge is an error, not a silent success.
 	if _, err := MergeIntoMain(ctx, worktree, "noop"); err == nil || !strings.Contains(err.Error(), "nothing to merge") {
 		t.Errorf("MergeIntoMain with no changes: err = %v, want nothing-to-merge", err)
