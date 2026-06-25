@@ -18,6 +18,7 @@ import { drawerSlide } from '@/lib/dom/drawer'
 import { modalDialogOpen } from '@/lib/dom/modal'
 import { isMobileViewport, useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
+import { TitlebarActionsOutlet, TitlebarProvider, TitlebarSlotOutlet } from '@/lib/titlebar'
 import type { BrowserNavigationDirection } from '../../../shared/browserNavigation'
 
 export const Route = createRootRoute({
@@ -193,78 +194,81 @@ function RootLayout() {
   })
 
   return (
-    <ToastProvider>
-      <div className="relative flex h-full">
-        <motion.div
-          className="shrink-0 overflow-hidden max-sm:absolute max-sm:inset-y-0 max-sm:left-0 max-sm:z-drawer max-sm:w-full!"
-          initial={false}
-          animate={drawerSlide({ isMobile, open: sidebarOpen, side: 'left', width: sidebarWidth })}
-          transition={resizing ? { duration: 0 } : { type: 'spring', stiffness: 400, damping: 36 }}
-        >
-          <Sidebar
-            open={sidebarOpen}
-            width={sidebarWidth}
-            mobile={isMobile}
-            onDismiss={() => setSidebarOpen(false)}
-            resizing={resizing}
-            onResizeStart={startResize}
-            onResizeReset={() => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH)}
-            onOpenSettings={() => setSettingsOpen(true)}
-            onOpenConnect={() => setConnectOpen(true)}
-          />
-        </motion.div>
+    <TitlebarProvider>
+      <ToastProvider>
+        <div className="relative flex h-full">
+          <motion.div
+            className="shrink-0 overflow-hidden max-sm:absolute max-sm:inset-y-0 max-sm:left-0 max-sm:z-drawer max-sm:w-full!"
+            initial={false}
+            animate={drawerSlide({ isMobile, open: sidebarOpen, side: 'left', width: sidebarWidth })}
+            transition={resizing ? { duration: 0 } : { type: 'spring', stiffness: 400, damping: 36 }}
+          >
+            <Sidebar
+              open={sidebarOpen}
+              width={sidebarWidth}
+              mobile={isMobile}
+              onDismiss={() => setSidebarOpen(false)}
+              resizing={resizing}
+              onResizeStart={startResize}
+              onResizeReset={() => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH)}
+              onOpenSettings={() => setSettingsOpen(true)}
+              onOpenConnect={() => setConnectOpen(true)}
+            />
+          </motion.div>
 
-        <main className={`flex min-w-0 flex-1 flex-col ${onBoard ? 'bg-surface' : 'bg-bg'}`}>
-          {/* When collapsed, the content owns the window's top-left, so its
-              header indents past the traffic lights and the pinned toggle. */}
-          <div
-            className={`titlebar-drag flex h-[52px] shrink-0 items-center gap-2 pr-3 ${
-              sidebarOpen ? 'pl-3' : isMobile ? 'pl-14' : isMacDesktop ? 'pl-[108px]' : 'pl-12'
+          <main className={`flex min-w-0 flex-1 flex-col ${onBoard ? 'bg-surface' : 'bg-bg'}`}>
+            {/* When collapsed, the content owns the window's top-left, so its
+                header indents past the traffic lights and the pinned toggle. */}
+            <div
+              className={`titlebar-drag flex h-[52px] shrink-0 items-center gap-2 pr-3 ${
+                sidebarOpen ? 'pl-3' : isMobile ? 'pl-14' : isMacDesktop ? 'pl-[108px]' : 'pl-12'
+              }`}
+            >
+              <div id="titlebar-slot" className="relative z-shell flex min-w-0 items-center gap-1.5">
+                <TitlebarSlotOutlet />
+              </div>
+              <div id="titlebar-actions" className="relative z-shell ml-auto flex items-center gap-1.5">
+                <TitlebarActionsOutlet />
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <Outlet />
+            </div>
+          </main>
+
+          {/* Sidebar toggle, pinned beside the macOS traffic lights and sized to
+              match them. Kept LAST and explicitly no-drag because Electron unions
+              the .titlebar-drag strips then subtracts no-drag rects in document
+              order — so this cutout only stays clickable when subtracted after
+              the strips it overlaps. */}
+          <button
+            type="button"
+            aria-label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+            title={`${sidebarOpen ? 'Hide' : 'Show'} sidebar (⌘S)`}
+            onClick={() => setSidebarOpen((open) => !open)}
+            className={`absolute z-drawer grid cursor-pointer place-items-center rounded-full text-ink-2 transition-colors duration-150 [-webkit-app-region:no-drag] hover:bg-surface-2 hover:text-ink ${
+              isMobile
+                ? 'top-2.5 left-3 size-9'
+                : `top-[11px] size-7 ${isMacDesktop ? 'left-[80px]' : 'left-2'}`
             }`}
           >
-            {/* slot routes portal into (e.g. the session runtime tag). z-shell keeps
-                these controls above a route's mobile dismiss scrim. */}
-            <div id="titlebar-slot" className="relative z-shell flex min-w-0 items-center gap-1.5" />
-            {/* right-aligned slot for route-level actions */}
-            <div id="titlebar-actions" className="relative z-shell ml-auto flex items-center gap-1.5" />
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <Outlet />
-          </div>
-        </main>
-
-        {/* Sidebar toggle, pinned beside the macOS traffic lights and sized to
-            match them. Kept LAST and explicitly no-drag because Electron unions
-            the .titlebar-drag strips then subtracts no-drag rects in document
-            order — so this cutout only stays clickable when subtracted after
-            the strips it overlaps. */}
-        <button
-          type="button"
-          aria-label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
-          title={`${sidebarOpen ? 'Hide' : 'Show'} sidebar (⌘S)`}
-          onClick={() => setSidebarOpen((open) => !open)}
-          className={`absolute z-drawer grid cursor-pointer place-items-center rounded-full text-ink-2 transition-colors duration-150 [-webkit-app-region:no-drag] hover:bg-surface-2 hover:text-ink ${
-            isMobile
-              ? 'top-2.5 left-3 size-9'
-              : `top-[11px] size-7 ${isMacDesktop ? 'left-[80px]' : 'left-2'}`
-          }`}
-        >
-          <PanelLeft size={isMobile ? 20 : 16} />
-        </button>
-      </div>
-      <SettingsOverlay
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        onOpenConnect={() => setConnectOpen(true)}
-      />
-      <ConnectOverlay open={connectOpen} onClose={() => setConnectOpen(false)} />
-      <CommandPalette
-        open={commandOpen}
-        onOpenChange={setCommandOpen}
-        onOpenSettings={() => setSettingsOpen(true)}
-        onOpenConnect={() => setConnectOpen(true)}
-      />
-    </ToastProvider>
+            <PanelLeft size={isMobile ? 20 : 16} />
+          </button>
+        </div>
+        <SettingsOverlay
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          onOpenConnect={() => setConnectOpen(true)}
+        />
+        <ConnectOverlay open={connectOpen} onClose={() => setConnectOpen(false)} />
+        <CommandPalette
+          open={commandOpen}
+          onOpenChange={setCommandOpen}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenConnect={() => setConnectOpen(true)}
+        />
+      </ToastProvider>
+    </TitlebarProvider>
   )
 }
 

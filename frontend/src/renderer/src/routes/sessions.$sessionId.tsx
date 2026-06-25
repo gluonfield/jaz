@@ -3,7 +3,6 @@ import { createFileRoute } from '@tanstack/react-router'
 import { ArrowDown } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { BottomDock } from '@/components/session/BottomDock'
 import { Composer, PlanDecisionCard } from '@/components/session/Composer'
 import { LiveAttachmentList } from '@/components/session/LiveAttachmentList'
@@ -15,7 +14,7 @@ import { MentionText } from '@/components/session/mentions'
 import { SessionErrorNotice } from '@/components/session/SessionErrorNotice'
 import { SessionLivenessIndicator } from '@/components/session/SessionLivenessIndicator'
 import { PendingSteerBubble } from '@/components/session/PendingSteerBubble'
-import { SidePanel } from '@/components/session/SidePanel'
+import { SidePanel, type SidePanelView } from '@/components/session/SidePanel'
 import { SidePanelControl, useSidePanelState } from '@/components/session/SidePanelState'
 import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
 import { ArtifactBlock } from '@/components/session/ArtifactBlock'
@@ -60,6 +59,7 @@ import { preparedSendMessage, type SendMessageOptions } from '@/lib/sendMessage'
 import { coalesceSessionEvents, sessionEventPlacement } from '@/lib/sessionEvents'
 import { activePermissionIDs, isPermissionAwaitingResponse, resolveInactivePermissions } from '@/lib/sessionPermissions'
 import { latestEventTimeISO } from '@/lib/sessionLiveness'
+import { useTitlebarActions, useTitlebarSlot } from '@/lib/titlebar'
 
 type SessionSearch = {
   message?: number
@@ -78,6 +78,61 @@ function SessionRoute() {
   const { sessionId } = Route.useParams()
   const search = Route.useSearch()
   return <SessionPage key={sessionId} sessionId={sessionId} search={search} />
+}
+
+function SessionTitlebar({
+  session,
+  isMobile,
+  sidePanelOpen,
+  sidePanelView,
+  sideChatAvailable,
+  fileAvailable,
+  onToggleSidePanel,
+  onSelectSidePanelView,
+}: {
+  session: Session
+  isMobile: boolean
+  sidePanelOpen: boolean
+  sidePanelView: SidePanelView
+  sideChatAvailable: boolean
+  fileAvailable: boolean
+  onToggleSidePanel: () => void
+  onSelectSidePanelView: (view: SidePanelView) => void
+}) {
+  const slot = useMemo(
+    () => (
+      <>
+        <RuntimeBadge session={session} truncate={isMobile} />
+        <TokenStats session={session} />
+      </>
+    ),
+    [isMobile, session],
+  )
+  useTitlebarSlot(slot)
+
+  const actions = useMemo(
+    () => (
+      <SidePanelControl
+        open={sidePanelOpen}
+        view={sidePanelView}
+        sideChatAvailable={sideChatAvailable}
+        fileAvailable={fileAvailable}
+        onToggle={onToggleSidePanel}
+        onSelectView={onSelectSidePanelView}
+      />
+    ),
+    [
+      fileAvailable,
+      onSelectSidePanelView,
+      onToggleSidePanel,
+      sideChatAvailable,
+      sidePanelOpen,
+      sidePanelView,
+    ],
+  )
+  useTitlebarActions(actions)
+
+  return null
 }
 
 function isCodexACPSession(session: Session | undefined): boolean {
@@ -583,38 +638,21 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
           liveUserMessage(live, (messages.at(-1)?.seq ?? 0) + 1_000_000),
         ]
       : messages
-  const titlebarSlot = document.getElementById('titlebar-slot')
-  const titlebarActions = document.getElementById('titlebar-actions')
 
   return (
     <FileReaderLinkProvider onOpen={openFile}>
       <PreviewLinkProvider onOpen={sidePanel.openPreview}>
         <FileDropScope ref={sidePanel.measureRef} className="relative flex h-full">
-          {titlebarSlot
-            ? createPortal(
-                <>
-                  {/* Phone: truncate the model tag so it can't collide with the
-                      side-panel tabs; the token-stats icon stays (it's shrink-0). */}
-                  <RuntimeBadge session={session} truncate={isMobile} />
-                  <TokenStats session={session} />
-                </>,
-                titlebarSlot,
-              )
-            : null}
-          {titlebarActions
-            ? createPortal(
-                <SidePanelControl
-                  open={sidePanel.open}
-                  view={sidePanel.view}
-                  sideChatAvailable={sideChatAvailable}
-                  fileAvailable={Boolean(sidePanel.fileRef)}
-                  onToggle={sidePanel.toggle}
-                  onSelectView={sidePanel.selectView}
-                />,
-                titlebarActions,
-              )
-            : null}
-
+          <SessionTitlebar
+            session={session}
+            isMobile={isMobile}
+            sidePanelOpen={sidePanel.open}
+            sidePanelView={sidePanel.view}
+            sideChatAvailable={sideChatAvailable}
+            fileAvailable={Boolean(sidePanel.fileRef)}
+            onToggleSidePanel={sidePanel.toggle}
+            onSelectSidePanelView={sidePanel.selectView}
+          />
           {/* Phone: the open panel covers the chat full-width, so the only
               non-panel area left is the title bar. This catches taps on its empty
               space (the header controls sit above it) to dismiss the panel. */}
