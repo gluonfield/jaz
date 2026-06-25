@@ -1,10 +1,41 @@
+import { Check } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import type { ReactNode } from 'react'
 import { Switch } from '@/components/ui/Switch'
-import { FONT_SCALES, useAppearance } from '@/lib/appearance'
+import { ACCENT_PRESETS, FONT_SCALES, useAppearance } from '@/lib/appearance'
 import { FontPicker } from './FontPicker'
 import { SettingsCard } from './SettingsCard'
 import { ThemeSwitcher } from './ThemeSwitcher'
+
+// A swatch per accent preset. The dot is painted at a fixed lightness/chroma so
+// the palette reads evenly; selecting one writes the hue, which globals.css
+// threads through the whole --color-primary family in both light and dark.
+function AccentPicker({ value, onChange }: { value: number; onChange: (hue: number) => void }) {
+  return (
+    <div role="radiogroup" aria-label="Accent color" className="flex items-center gap-2">
+      {ACCENT_PRESETS.map((preset) => {
+        const active = Math.abs(preset.hue - value) < 0.001
+        return (
+          <button
+            key={preset.id}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            aria-label={preset.label}
+            title={preset.label}
+            onClick={() => onChange(preset.hue)}
+            style={{ backgroundColor: `oklch(0.62 0.16 ${preset.hue})` }}
+            className={`relative flex h-7 w-7 cursor-pointer items-center justify-center rounded-full transition-transform duration-150 hover:scale-110 ring-1 ring-black/10 dark:ring-white/15 ${
+              active ? 'ring-2 ring-offset-2 ring-offset-surface ring-ink/30' : ''
+            }`}
+          >
+            {active ? <Check size={15} strokeWidth={3} className="text-white" /> : null}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
 
 const SIZE_LABELS: Record<number, string> = {
   0.9: 'Small',
@@ -86,6 +117,15 @@ export function AppearanceSettings() {
       <SettingsCard className="mt-4 overflow-hidden">
         <Row title="Theme" description="Match the system, or pick light or dark.">
           <ThemeSwitcher />
+        </Row>
+        <Row
+          title="Accent color"
+          description="Recolors actions, links, selection, and the focus ring across light and dark."
+        >
+          <AccentPicker
+            value={settings.accent}
+            onChange={(accent) => setAppearance({ accent })}
+          />
         </Row>
         <Row
           title="Animated effects"
