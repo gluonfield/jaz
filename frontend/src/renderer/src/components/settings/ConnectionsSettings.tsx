@@ -1,11 +1,12 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
-import { Clock3, Loader2, Mail, Plug } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { CheckCircle2, Clock3, Loader2, Mail, Plug } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import { connectionPluginsQuery, startConnectionPlugin } from '@/lib/api/connections'
 import { clientRuntime } from '@/lib/clientRuntime'
+import { keys } from '@/lib/query/keys'
 import type { IntegrationCapability, IntegrationPlugin } from '@/lib/api/types'
 
 const CAPABILITY_LABELS: Record<IntegrationCapability, string> = {
@@ -17,11 +18,17 @@ const CAPABILITY_LABELS: Record<IntegrationCapability, string> = {
 }
 
 export function ConnectionsSettings() {
+  const queryClient = useQueryClient()
   const toast = useToast()
-  const plugins = useQuery(connectionPluginsQuery)
+  const [pollUntil, setPollUntil] = useState(0)
+  const plugins = useQuery({
+    ...connectionPluginsQuery,
+    refetchInterval: () => (Date.now() < pollUntil ? 2000 : false),
+  })
   const connect = useMutation({
     mutationFn: (id: string) => startConnectionPlugin(id),
     onSuccess: (result) => {
+      setPollUntil(Date.now() + 90_000)
       openAuthURL(result.auth_url)
       toast('Finish Gmail sign-in in your browser')
     },
@@ -33,6 +40,22 @@ export function ConnectionsSettings() {
     () => [...(plugins.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
     [plugins.data],
   )
+
+  useEffect(() => {
+    if (pollUntil === 0) return
+    const refresh = () => {
+      if (document.visibilityState === 'hidden') return
+      void queryClient.invalidateQueries({ queryKey: keys.connectionPlugins })
+    }
+    const timeout = window.setTimeout(() => setPollUntil(0), Math.max(0, pollUntil - Date.now()))
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      window.clearTimeout(timeout)
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [pollUntil, queryClient])
 
   return (
     <section className="py-5">
@@ -89,6 +112,14 @@ function ConnectionPluginRow({
   const toolCount = plugin.tools?.length ?? 0
   const sourceLanes = plugin.source_lanes ?? []
   const available = plugin.implementation.status === 'available'
+  const connected = plugin.connection?.status === 'connected'
+  const actionIcon = connecting ? (
+    <Loader2 size={13} className="animate-spin" />
+  ) : connected ? (
+    <CheckCircle2 size={13} />
+  ) : (
+    <Plug size={13} />
+  )
 
   return (
     <div className="flex items-start gap-3 rounded-card px-3 py-3 text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface max-sm:flex-col">
@@ -100,6 +131,7 @@ function ConnectionPluginRow({
               {plugin.name}
             </span>
             {plugin.multi_account ? <Pill>Multiple accounts</Pill> : null}
+            {connected ? <ConnectedPill /> : null}
           </div>
           {plugin.description ? <p className="mt-1 text-[12px] leading-5 text-ink-3">{plugin.description}</p> : null}
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -117,8 +149,8 @@ function ConnectionPluginRow({
 
       {available ? (
         <Button variant="secondary" size="sm" disabled={connecting} onClick={onConnect} className="max-sm:self-start">
-          {connecting ? <Loader2 size={13} className="animate-spin" /> : <Plug size={13} />}
-          {connecting ? 'Connecting' : 'Connect'}
+          {actionIcon}
+          {connecting ? 'Connecting' : connected ? 'Reconnect' : 'Connect'}
         </Button>
       ) : (
         <span
@@ -130,6 +162,15 @@ function ConnectionPluginRow({
         </span>
       )}
     </div>
+  )
+}
+
+function ConnectedPill() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-ok/10 px-1.5 py-[3px] text-[11px] leading-none text-ok">
+      <CheckCircle2 size={11} />
+      Connected
+    </span>
   )
 }
 

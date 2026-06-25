@@ -117,9 +117,10 @@ func TestNewRoutesIncludesBrowserSettingsRoutes(t *testing.T) {
 }
 
 func TestNewRoutesIncludesConnectionPluginRoutes(t *testing.T) {
+	catalog := connections.NewCatalog()
 	routes := NewRoutes(routeDeps{
 		Usage:           usagecore.NewService(fakeUsageStore{}),
-		Connections:     connections.NewCatalog(),
+		Connections:     connections.NewService(catalog, fakeConnectionOAuthStore{}),
 		ConnectionOAuth: connections.NewOAuthService(fakeConnectionOAuthStore{}),
 	})
 	found := map[string]bool{}
