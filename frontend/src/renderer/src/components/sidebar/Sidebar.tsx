@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { GripVertical, Plus, Settings, SquarePen, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion, Reorder, type Transition, useDragControls } from 'motion/react'
-import { type PointerEvent as ReactPointerEvent, useEffect, useMemo, useState } from 'react'
+import { type PointerEvent as ReactPointerEvent, useMemo, useState } from 'react'
 import { BoardModal } from '@/components/boards/BoardModal'
 import { ConnectionFooterButton } from '@/components/connection/ConnectionFooterButton'
 import { LoopModal } from '@/components/loops/LoopModal'
@@ -12,6 +12,8 @@ import { UpdatePanel } from '@/components/update/UpdatePanel'
 import { boardsQuery, deleteBoard } from '@/lib/api/boards'
 import { loopsQuery } from '@/lib/api/loops'
 import { projectsQuery, reorderProjects, sidebarSessionsQuery, type Project, type SessionListItem } from '@/lib/api/sessions'
+import { modalDialogOpen } from '@/lib/dom/modal'
+import { useMetaHeld } from '@/lib/hooks/useMetaHeld'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import type { Board } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
@@ -164,28 +166,15 @@ function sessionDisplayBlocks(
   return blocks
 }
 
-function modalOpen(): boolean {
-  return Boolean(document.querySelector('[role="dialog"][aria-modal="true"]'))
-}
-
 function useThreadShortcuts(items: SessionListItem[], enabled: boolean): boolean {
   const navigate = useNavigate()
-  const [shortcutMode, setShortcutMode] = useState(false)
-
-  useEffect(() => {
-    if (!enabled) setShortcutMode(false)
-  }, [enabled])
+  const metaHeld = useMetaHeld(enabled)
 
   useWindowEvent(
     'keydown',
     (event) => {
-      if (modalOpen()) {
-        setShortcutMode(false)
-        return
-      }
-      if (event.key === 'Meta' || event.metaKey) setShortcutMode(true)
       if (!event.metaKey || event.defaultPrevented || event.altKey || event.ctrlKey) return
-      if (!/^[1-9]$/.test(event.key)) return
+      if (!/^[1-9]$/.test(event.key) || modalDialogOpen()) return
       const item = items[Number(event.key) - 1]
       if (!item) return
       event.preventDefault()
@@ -194,12 +183,7 @@ function useThreadShortcuts(items: SessionListItem[], enabled: boolean): boolean
     enabled,
   )
 
-  useWindowEvent('keyup', (event) => {
-    if (event.key === 'Meta') setShortcutMode(false)
-  }, enabled)
-  useWindowEvent('blur', () => setShortcutMode(false), enabled)
-
-  return enabled && shortcutMode
+  return metaHeld
 }
 
 function SessionRows({

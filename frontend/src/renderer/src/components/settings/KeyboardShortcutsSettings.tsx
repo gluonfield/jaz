@@ -23,6 +23,12 @@ const SHORTCUTS: Shortcut[] = [
     keys: ['Shift', '⌘', 'S'],
   },
   {
+    command: 'Switch thread panel tab',
+    description:
+      'Hold Command to reveal tab shortcuts: Overview ⌘O, Code Diff ⌘D, Preview ⌘P, Terminal ⌘T, Side chat ⌘J.',
+    keys: ['⌘', 'O / D / P / T / J'],
+  },
+  {
     command: 'Go back',
     description: 'Close Settings, then move back in app or preview browser history.',
     keys: ['⌘', '['],
