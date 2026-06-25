@@ -7,6 +7,7 @@ import {
   ChartNoAxesColumn,
   Globe,
   Keyboard,
+  Link2,
   MonitorSmartphone,
   Palette,
   PanelLeft,
@@ -26,6 +27,7 @@ import { AgentProvidersSettings } from './AgentProvidersSettings'
 import { AppearanceSettings } from './AppearanceSettings'
 import { ArchivedThreadsSettings } from './ArchivedThreadsSettings'
 import { BrowserSettings } from './BrowserSettings'
+import { ConnectionsSettings } from './ConnectionsSettings'
 import { DevicesSettings } from './DevicesSettings'
 import { GeneralSettings } from './GeneralSettings'
 import { KeyboardShortcutsSettings } from './KeyboardShortcutsSettings'
@@ -39,6 +41,7 @@ type Section =
   | 'appearance'
   | 'personalization'
   | 'memory'
+  | 'connections'
   | 'browser'
   | 'usage'
   | 'devices'
@@ -55,6 +58,7 @@ const NAV: NavItem[] = [
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'personalization', label: 'Personalization', icon: Sparkles, fullHeight: true },
   { id: 'memory', label: 'Memory', icon: Brain },
+  { id: 'connections', label: 'Connections', icon: Link2 },
   { id: 'browser', label: 'Browser', icon: Globe },
   { id: 'usage', label: 'Usage', icon: ChartNoAxesColumn },
   { id: 'devices', label: 'Devices', icon: MonitorSmartphone },
@@ -266,6 +270,8 @@ function SectionContent({
       return <PersonalizationSettings />
     case 'memory':
       return <MemorySettings />
+    case 'connections':
+      return <ConnectionsSettings />
     case 'browser':
       return <BrowserSettings />
     case 'usage':
