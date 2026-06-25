@@ -1,6 +1,7 @@
 package acp
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -55,12 +56,14 @@ type jobState struct {
 }
 
 type activeTurn struct {
-	done            chan struct{}
-	completion      CompletionMode
-	planRequested   bool
-	goalRequested   bool
-	cancelRequested bool
-	promptCalls     int
+	done                  chan struct{}
+	completion            CompletionMode
+	planRequested         bool
+	goalRequested         bool
+	cancelRequested       bool
+	firstPromptSent       chan struct{}
+	firstPromptSentClosed bool
+	promptCalls           int
 }
 
 type ModeState struct {
@@ -186,10 +189,11 @@ func (j *jobState) startTurnWithOperation(completion CompletionMode, planRequest
 	j.lastUsageContext = storage.Usage{}
 	j.lastUsageDeltaSet = false
 	j.turn = &activeTurn{
-		done:          make(chan struct{}),
-		completion:    completion,
-		planRequested: planRequested,
-		promptCalls:   1,
+		done:            make(chan struct{}),
+		completion:      completion,
+		planRequested:   planRequested,
+		firstPromptSent: make(chan struct{}),
+		promptCalls:     1,
 	}
 	j.ParentVisible = parentVisible
 	j.toolByID = make(map[string]sessionevents.ACPToolCall)
@@ -245,6 +249,38 @@ func (j *jobState) addPromptCall(parentVisible bool) (chan struct{}, bool) {
 	}
 	j.turn.promptCalls++
 	return j.turn.done, true
+}
+
+func (j *jobState) waitFirstPromptSent(ctx context.Context) error {
+	j.mu.RLock()
+	turn := j.turn
+	if turn == nil || turn.firstPromptSentClosed {
+		j.mu.RUnlock()
+		return nil
+	}
+	ch := turn.firstPromptSent
+	j.mu.RUnlock()
+	select {
+	case <-ch:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (j *jobState) markFirstPromptSent() {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.turn != nil {
+		j.turn.closeFirstPromptSent()
+	}
+}
+
+func (t *activeTurn) closeFirstPromptSent() {
+	if !t.firstPromptSentClosed {
+		close(t.firstPromptSent)
+		t.firstPromptSentClosed = true
+	}
 }
 
 func CloneToolCalls(in []sessionevents.ACPToolCall) []sessionevents.ACPToolCall {
