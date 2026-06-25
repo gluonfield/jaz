@@ -60,6 +60,7 @@ func runServe(args []string) error {
 			app.NewMemory,
 			app.NewDeviceAuth,
 			connections.NewCatalog,
+			app.NewConnectionService,
 			app.NewConnectionOAuthService,
 			newMemoryService,
 			jaztools.New,
