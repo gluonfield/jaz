@@ -1139,7 +1139,7 @@ func TestProcessCommandAddsGrokReasoningEffortArg(t *testing.T) {
 		Command:         "grok",
 		Args:            []string{"--no-auto-update", "agent", "--no-leader", "stdio"},
 		ReasoningEffort: "high",
-	})
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1154,7 +1154,7 @@ func TestProcessCommandAddsGrokModelArg(t *testing.T) {
 		Command: "grok",
 		Args:    []string{"agent", "stdio"},
 		Model:   "grok-build",
-	})
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1168,7 +1168,7 @@ func TestProcessCommandRejectsAmbiguousGrokModelArg(t *testing.T) {
 		Command: "grok",
 		Args:    []string{"agent", "--model=custom", "stdio"},
 		Model:   "grok-build",
-	})
+	}, nil)
 	if err == nil || !strings.Contains(err.Error(), "model is ambiguous") {
 		t.Fatalf("error = %v", err)
 	}
@@ -1195,7 +1195,7 @@ func TestProcessCommandDoesNotDuplicateGrokAlwaysApproveArg(t *testing.T) {
 			_, args, err := processCommand("grok", AgentConfig{
 				Command: "grok",
 				Args:    tc.args,
-			})
+			}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1211,7 +1211,7 @@ func TestProcessCommandRejectsAmbiguousGrokReasoningEffortArg(t *testing.T) {
 		Command:         "grok",
 		Args:            []string{"agent", "--reasoning-effort=low", "stdio"},
 		ReasoningEffort: "high",
-	})
+	}, nil)
 	if err == nil || !strings.Contains(err.Error(), "reasoning effort is ambiguous") {
 		t.Fatalf("error = %v", err)
 	}
@@ -1221,7 +1221,7 @@ func TestProcessCommandLeavesNonGrokCommandAlone(t *testing.T) {
 	_, args, err := processCommand("grok", AgentConfig{
 		Command: os.Args[0],
 		Args:    []string{"-test.run=TestFakeACPAgentProcess"},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
