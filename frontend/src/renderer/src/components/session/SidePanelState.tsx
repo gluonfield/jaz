@@ -1,6 +1,9 @@
+import { ChevronDown } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { MenuRow, Popover } from '@/components/ui/Popover'
 import { clientRuntime } from '@/lib/clientRuntime'
+import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import { parseFileReference, type FileReference } from '../../../../shared/fileReader'
 import { SIDE_PANEL_WIDTHS, type SidePanelView } from './SidePanel'
@@ -125,6 +128,8 @@ export function SidePanelControl({
   const baseOptions = sideChatAvailable ? BASE_VIEW_OPTIONS : BASE_VIEW_OPTIONS.filter((option) => option !== 'side-chat')
   const options = fileAvailable || view === 'file' ? [...baseOptions, 'file' as const] : baseOptions
   const currentView = (view === 'file' && !fileAvailable) || (view === 'side-chat' && !sideChatAvailable) ? 'overview' : view
+  const isMobile = useIsMobile()
+  const [menuOpen, setMenuOpen] = useState(false)
   const controlRef = useRef<HTMLDivElement>(null)
   const closeTimer = useRef<number | null>(null)
   const [hovered, setHovered] = useState(false)
@@ -186,6 +191,62 @@ export function SidePanelControl({
         ) : null}
         <span className="relative">{SIDE_PANEL_VIEW_LABEL[option]}</span>
       </motion.button>
+    )
+  }
+
+  // Phone: the segmented row clips in the cramped title bar, so collapse it to a
+  // single dropdown — current view as the trigger, all views (plus Hide) inside.
+  if (isMobile) {
+    return (
+      <Popover
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        placement="below"
+        align="end"
+        trigger={
+          <button
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((value) => !value)}
+            className={`flex h-8 items-center gap-1 rounded-full px-3 text-[13px] font-medium transition-colors duration-150 ${
+              open ? 'bg-bg text-ink shadow-sm ring-1 ring-border/50' : 'bg-surface text-ink-2'
+            }`}
+          >
+            <span>{SIDE_PANEL_VIEW_LABEL[currentView]}</span>
+            <ChevronDown
+              size={13}
+              className={`text-ink-3 transition-transform duration-150 ${menuOpen ? 'rotate-180' : ''}`}
+            />
+          </button>
+        }
+      >
+        {options.map((option) => (
+          <MenuRow
+            key={option}
+            selected={open && currentView === option}
+            onClick={() => {
+              onSelectView(option)
+              setMenuOpen(false)
+            }}
+          >
+            {SIDE_PANEL_VIEW_LABEL[option]}
+          </MenuRow>
+        ))}
+        {open ? (
+          <>
+            <div className="my-1 border-t border-border" />
+            <MenuRow
+              onClick={() => {
+                onToggle()
+                setMenuOpen(false)
+              }}
+            >
+              Hide panel
+            </MenuRow>
+          </>
+        ) : null}
+      </Popover>
     )
   }
 

@@ -297,8 +297,10 @@ export function ComposerCard({
             }
           }}
         />
-        <div className="flex items-center justify-between gap-2.5">
-          <div className="flex min-w-0 items-center gap-1.5">
+        <div className="flex items-center justify-between gap-2.5 max-sm:items-end">
+          {/* Phone: the new-thread controls (agent, model, project, worktree)
+              outgrow one row, so let them wrap and keep send pinned bottom-right. */}
+          <div className="flex min-w-0 items-center gap-1.5 max-sm:flex-1 max-sm:flex-wrap">
             <Popover
               open={optionsOpen}
               onClose={() => setOptionsOpen(false)}

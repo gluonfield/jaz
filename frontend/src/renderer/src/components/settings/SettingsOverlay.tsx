@@ -9,6 +9,7 @@ import {
   Keyboard,
   MonitorSmartphone,
   Palette,
+  PanelLeft,
   Plug,
   Search,
   Sparkles,
@@ -18,6 +19,8 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BackendSwitcher } from '@/components/connection/BackendSwitcher'
+import { dismissOnEmptyTap } from '@/lib/dom/drawer'
+import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { ACPAgentsSettings } from './ACPAgentsSettings'
 import { AgentProvidersSettings } from './AgentProvidersSettings'
 import { AppearanceSettings } from './AppearanceSettings'
@@ -72,8 +75,12 @@ export function SettingsOverlay({
   onOpenConnect: () => void
 }) {
   const reduce = useReducedMotion()
+  const isMobile = useIsMobile()
   const [section, setSection] = useState<Section>('general')
   const [query, setQuery] = useState('')
+  // Phone: the nav is a full-screen drawer over the content rather than a fixed
+  // column. It opens first (so a section is picked), then dismisses to reveal it.
+  const [navOpen, setNavOpen] = useState(true)
 
   // Esc closes; restore focus to whatever was focused before opening. An open
   // transient surface inside (the backend switcher popover) owns Escape first,
@@ -81,6 +88,7 @@ export function SettingsOverlay({
   useEffect(() => {
     if (!open) return
     setQuery('')
+    setNavOpen(true)
     const previouslyFocused = document.activeElement as HTMLElement | null
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
@@ -113,16 +121,21 @@ export function SettingsOverlay({
           aria-modal="true"
           aria-label="Settings"
         >
-          <aside className="flex w-[272px] shrink-0 flex-col bg-surface">
-            <div className="titlebar-drag h-[52px] shrink-0" />
+          <aside
+            onClick={isMobile ? dismissOnEmptyTap(() => setNavOpen(false)) : undefined}
+            className={`flex w-[272px] shrink-0 flex-col bg-surface max-sm:absolute max-sm:inset-y-0 max-sm:left-0 max-sm:z-drawer max-sm:w-full max-sm:transition-transform max-sm:duration-300 ${
+              navOpen ? '' : 'max-sm:-translate-x-full'
+            }`}
+          >
+            <div className={`h-[52px] shrink-0 ${isMobile ? '' : 'titlebar-drag'}`} />
 
             <div className="px-3 pb-2">
               <button
                 type="button"
                 onClick={onClose}
-                className="flex w-full items-center gap-2 rounded-full px-2.5 py-1.5 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+                className="flex w-full items-center gap-2 rounded-full px-2.5 py-1.5 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink max-sm:gap-2.5 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px]"
               >
-                <ArrowLeft size={15} className="text-ink-3" />
+                <ArrowLeft size={15} className="text-ink-3 max-sm:size-[18px]" />
                 <span className="flex-1">Back to jaz</span>
               </button>
             </div>
@@ -149,7 +162,7 @@ export function SettingsOverlay({
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="Search settings…"
                   aria-label="Search settings"
-                  className="h-8 w-full rounded-full bg-ink/10 pl-8 pr-3 text-[13px] text-ink outline-none transition duration-150 placeholder:text-ink-3 focus:bg-ink/15 focus:ring-1 focus:ring-ink/25"
+                  className="h-8 w-full rounded-full bg-ink/10 pl-8 pr-3 text-[13px] text-ink outline-none transition duration-150 placeholder:text-ink-3 focus:bg-ink/15 focus:ring-1 focus:ring-ink/25 max-sm:h-11 max-sm:pl-9 max-sm:text-[15px]"
                 />
               </div>
             </div>
@@ -162,14 +175,17 @@ export function SettingsOverlay({
                   <button
                     key={item.id}
                     type="button"
-                    onClick={() => setSection(item.id)}
-                    className={`flex items-center gap-2 rounded-full px-2.5 py-1.5 text-left text-[13px] transition-colors duration-150 ${
+                    onClick={() => {
+                      setSection(item.id)
+                      if (isMobile) setNavOpen(false)
+                    }}
+                    className={`flex items-center gap-2 rounded-full px-2.5 py-1.5 text-left text-[13px] transition-colors duration-150 max-sm:gap-2.5 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px] ${
                       selected
                         ? 'bg-primary-soft font-medium text-ink'
                         : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
                     }`}
                   >
-                    <Icon size={15} className={selected ? 'text-ink' : 'text-ink-3'} />
+                    <Icon size={15} className={`max-sm:size-[18px] ${selected ? 'text-ink' : 'text-ink-3'}`} />
                     <span className="flex-1">{item.label}</span>
                   </button>
                 )
@@ -181,7 +197,19 @@ export function SettingsOverlay({
           </aside>
 
           <div className="flex min-w-0 flex-1 flex-col bg-bg">
-            <div className="titlebar-drag h-[52px] shrink-0" />
+            <div className={`flex h-[52px] shrink-0 items-center px-3 ${isMobile ? '' : 'titlebar-drag'}`}>
+              {isMobile ? (
+                <button
+                  type="button"
+                  aria-label="Settings menu"
+                  title="Settings menu"
+                  onClick={() => setNavOpen(true)}
+                  className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-full text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+                >
+                  <PanelLeft size={20} />
+                </button>
+              ) : null}
+            </div>
             <div className="min-h-0 flex-1 overflow-hidden">
               <AnimatePresence initial={false} mode="wait">
                 <motion.div
@@ -196,7 +224,7 @@ export function SettingsOverlay({
                     <SectionContent section={section} onNavigate={setSection} />
                   ) : (
                     <div className="h-full overflow-y-auto">
-                      <div className="mx-auto max-w-[760px] px-10 pb-12">
+                      <div className="mx-auto max-w-[760px] px-10 pb-12 max-sm:px-4">
                         <SectionContent section={section} onNavigate={setSection} />
                       </div>
                     </div>
