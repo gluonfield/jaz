@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { appearanceConfig } from './appearanceConfig'
 import { clientRuntime } from './clientRuntime'
 
 // 'system' follows the OS appearance; 'light'/'dark' pin it. Persisted across
@@ -7,9 +8,6 @@ export type ThemePref = 'light' | 'dark' | 'system'
 export type ResolvedTheme = 'light' | 'dark'
 
 const KEY = 'jaz.theme'
-// Shared with lib/appearance.ts: the cached backend `ui` defaults. The theme
-// default lives here too so the pre-paint script and this store agree.
-const SERVER_DEFAULTS_KEY = 'jaz.serverDefaults'
 const LIGHT_BG = 'oklch(0.963 0.007 262)'
 const DARK_BG = 'oklch(0.208 0.007 262)'
 
@@ -20,22 +18,16 @@ function isThemePref(v: unknown): v is ThemePref {
   return v === 'light' || v === 'dark' || v === 'system'
 }
 
-// Deployment default theme from the connected backend; only used when the user
-// hasn't pinned one themselves.
-function serverDefaultTheme(): ThemePref | null {
-  try {
-    const raw = localStorage.getItem(SERVER_DEFAULTS_KEY)
-    const theme = raw ? (JSON.parse(raw) as { theme?: unknown }).theme : null
-    return isThemePref(theme) ? theme : null
-  } catch {
-    return null
-  }
+// Build-time default theme from the appearance config file; only used when the
+// user hasn't pinned one themselves.
+function configDefaultTheme(): ThemePref {
+  const theme = appearanceConfig().theme
+  return isThemePref(theme) ? theme : 'system'
 }
 
 function readStored(): ThemePref {
   const v = localStorage.getItem(KEY)
-  if (isThemePref(v)) return v
-  return serverDefaultTheme() ?? 'system'
+  return isThemePref(v) ? v : configDefaultTheme()
 }
 
 let pref: ThemePref = readStored()
@@ -70,17 +62,6 @@ export function getThemePref(): ThemePref {
 export function setThemePref(next: ThemePref) {
   pref = next
   localStorage.setItem(KEY, next)
-  apply(next)
-  notify()
-}
-
-// Called by lib/appearance.ts after it caches new backend `ui` defaults. Only
-// moves clients that haven't pinned a theme; an explicit pick always wins.
-export function setServerDefaultTheme(theme?: string) {
-  if (localStorage.getItem(KEY)) return
-  const next = isThemePref(theme) ? theme : 'system'
-  if (next === pref) return
-  pref = next
   apply(next)
   notify()
 }

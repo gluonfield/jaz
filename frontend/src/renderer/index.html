@@ -23,20 +23,20 @@
     <meta name="theme-color" content="#f1f2f6" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#1a1b22" media="(prefers-color-scheme: dark)" />
     <title>Jaz</title>
+    <!-- Appearance defaults: a separate, swappable config file (see
+         public/appearance-defaults.js). Classic, blocking script so the global
+         is set before the pre-paint script below runs. -->
+    <script src="/appearance-defaults.js"></script>
     <script>
       // Apply the saved theme before first paint so dark launches never flash
       // white. Mirrors lib/theme.ts; keep the dark bg value in sync with the
       // --color-bg token under :root.dark. In the mac app (preload present)
       // the page stays transparent so the window's vibrancy material shows.
       ;(function () {
-        // Backend deployment defaults (jaz.serverDefaults, cached from /health)
-        // sit *under* the user's own keys: a localStorage value wins, otherwise
-        // fall back to the server default, otherwise the built-in default.
-        var sd = {}
-        try {
-          var rawDefaults = localStorage.getItem('jaz.serverDefaults')
-          if (rawDefaults) sd = JSON.parse(rawDefaults) || {}
-        } catch (e) {}
+        // Build-time appearance defaults sit *under* the user's own keys: a
+        // localStorage value wins, otherwise the config default, otherwise the
+        // built-in default.
+        var sd = window.__JAZ_APPEARANCE_DEFAULTS__ || {}
         try {
           var pref = localStorage.getItem('jaz.theme')
           if (pref !== 'light' && pref !== 'dark' && pref !== 'system')
@@ -69,20 +69,20 @@
           if (accent === null && typeof sd.accent === 'number') accent = String(sd.accent)
           if (accent && Number.isFinite(Number(accent))) el2.style.setProperty('--accent-h', accent)
           var scale = localStorage.getItem('jaz.appearance.fontScale')
-          if (scale === null && sd.font_scale != null) scale = String(sd.font_scale)
+          if (scale === null && sd.fontScale != null) scale = String(sd.fontScale)
           if (scale === '0.9' || scale === '1.1' || scale === '1.25') el2.style.zoom = scale
           function fontVar(name) {
             return '"' + String(name).replace(/["\\]/g, '').trim() + '"'
           }
           var uiFont = localStorage.getItem('jaz.appearance.uiFont')
-          if (uiFont === null && sd.ui_font) uiFont = sd.ui_font
+          if (uiFont === null && sd.uiFont) uiFont = sd.uiFont
           if (uiFont && String(uiFont).trim()) el2.style.setProperty('--jaz-ui-font', fontVar(uiFont))
           var monoFont = localStorage.getItem('jaz.appearance.monoFont')
-          if (monoFont === null && sd.mono_font) monoFont = sd.mono_font
+          if (monoFont === null && sd.monoFont) monoFont = sd.monoFont
           if (monoFont && String(monoFont).trim())
             el2.style.setProperty('--jaz-mono-font', fontVar(monoFont))
           var wide = localStorage.getItem('jaz.appearance.wideLayout')
-          if (wide === 'true' || (wide === null && sd.wide_layout === true))
+          if (wide === 'true' || (wide === null && sd.wideLayout === true))
             el2.classList.add('jaz-wide-layout')
         } catch (e) {}
       })()

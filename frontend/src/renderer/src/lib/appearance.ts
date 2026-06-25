@@ -1,14 +1,13 @@
 import { useSyncExternalStore } from 'react'
-import { setServerDefaultTheme } from './theme'
+import { type AppearanceConfig, appearanceConfig } from './appearanceConfig'
 
 // User-tunable appearance preferences, kept deliberately separate from the
 // light/dark theme (lib/theme.ts). Same mechanics: persisted in localStorage,
 // applied to the document root, mirrored into the pre-paint script in
 // index.html, and synced across sibling Electron windows via the storage event.
-// Defaults reproduce the stock look exactly, so an untouched install is
-// byte-for-byte the current experience. The backend can supply deployment
-// defaults (application.yaml jaz.ui, served on /health) that layer *under* a
-// user's own choices — see applyServerUIDefaults.
+// Build-time defaults from the appearance config file (see appearanceConfig.ts)
+// layer *under* a user's own choices; with no config, an untouched install is
+// byte-for-byte the stock look.
 export interface AppearanceSettings {
   /** decorative motion: composer focus comet, shimmer dots, gradient wordmark, particle fields */
   effects: boolean
@@ -98,52 +97,27 @@ function cssFontName(name: string): string {
   return `"${name.replace(/["\\]/g, '')}"`
 }
 
-// Operator defaults from the backend (/health `ui`), in the wire shape. Every
-// field is optional ("unset"); `theme` is consumed by lib/theme.ts, the rest map
-// below. Cached in localStorage so the pre-paint script in index.html can read
-// it on the next launch without waiting for the connection.
-export interface ServerUIDefaults {
-  theme?: string
-  accent?: number
-  ui_font?: string
-  mono_font?: string
-  font_scale?: number
-  effects?: boolean
-  wide_layout?: boolean
-  inline_diffs?: boolean
-  inline_shell_commands?: boolean
-}
-
-const SERVER_DEFAULTS_KEY = 'jaz.serverDefaults'
-
-function readCachedServerUI(): ServerUIDefaults {
-  try {
-    const raw = localStorage.getItem(SERVER_DEFAULTS_KEY)
-    return raw ? (JSON.parse(raw) as ServerUIDefaults) : {}
-  } catch {
-    return {}
-  }
-}
-
-function toServerPartial(ui: ServerUIDefaults): Partial<AppearanceSettings> {
+// Build-time config (appearance-defaults.js) mapped onto the settings shape.
+// `theme` is consumed by lib/theme.ts; the rest map here. Every field is optional.
+function fromConfig(cfg: AppearanceConfig): Partial<AppearanceSettings> {
   const p: Partial<AppearanceSettings> = {}
-  if (typeof ui.accent === 'number') p.accent = normalizeAccent(ui.accent)
-  if (typeof ui.font_scale === 'number') p.fontScale = normalizeFontScale(ui.font_scale)
-  if (typeof ui.ui_font === 'string') p.uiFont = fontName(ui.ui_font)
-  if (typeof ui.mono_font === 'string') p.monoFont = fontName(ui.mono_font)
-  if (typeof ui.effects === 'boolean') p.effects = ui.effects
-  if (typeof ui.wide_layout === 'boolean') p.wideLayout = ui.wide_layout
-  if (typeof ui.inline_diffs === 'boolean') p.inlineDiffs = ui.inline_diffs
-  if (typeof ui.inline_shell_commands === 'boolean') p.inlineShellCommands = ui.inline_shell_commands
+  if (typeof cfg.accent === 'number') p.accent = normalizeAccent(cfg.accent)
+  if (typeof cfg.fontScale === 'number') p.fontScale = normalizeFontScale(cfg.fontScale)
+  if (typeof cfg.uiFont === 'string') p.uiFont = fontName(cfg.uiFont)
+  if (typeof cfg.monoFont === 'string') p.monoFont = fontName(cfg.monoFont)
+  if (typeof cfg.effects === 'boolean') p.effects = cfg.effects
+  if (typeof cfg.wideLayout === 'boolean') p.wideLayout = cfg.wideLayout
+  if (typeof cfg.inlineDiffs === 'boolean') p.inlineDiffs = cfg.inlineDiffs
+  if (typeof cfg.inlineShellCommands === 'boolean') p.inlineShellCommands = cfg.inlineShellCommands
   return p
 }
 
-// Server defaults overlay the hardcoded DEFAULTS to form the base a client falls
+// Config defaults overlay the hardcoded DEFAULTS to form the base a client falls
 // back to for any field the user hasn't explicitly set.
-let serverDefaults: Partial<AppearanceSettings> = toServerPartial(readCachedServerUI())
+const configDefaults: Partial<AppearanceSettings> = fromConfig(appearanceConfig())
 
 function baseDefaults(): AppearanceSettings {
-  return { ...DEFAULTS, ...serverDefaults }
+  return { ...DEFAULTS, ...configDefaults }
 }
 
 function readStored(): AppearanceSettings {
@@ -234,26 +208,6 @@ export function setAppearance(patch: Partial<AppearanceSettings>) {
   if ('wideLayout' in patch)
     persist('wideLayout', String(current.wideLayout), current.wideLayout === base.wideLayout)
   apply(current)
-  notify()
-}
-
-// Adopt deployment defaults from the connected backend (/health `ui`). They
-// become the base for any field the user hasn't pinned; explicit choices in
-// localStorage still win. Caches the raw shape for the next launch's pre-paint
-// script and hands the theme to lib/theme.ts. No-ops when unchanged.
-let lastServerDefaults = JSON.stringify(readCachedServerUI())
-
-export function applyServerUIDefaults(ui?: ServerUIDefaults): void {
-  const next = ui ?? {}
-  const serialized = JSON.stringify(next)
-  if (serialized === lastServerDefaults) return
-  lastServerDefaults = serialized
-  if (Object.keys(next).length === 0) localStorage.removeItem(SERVER_DEFAULTS_KEY)
-  else localStorage.setItem(SERVER_DEFAULTS_KEY, serialized)
-  serverDefaults = toServerPartial(next)
-  current = readStored()
-  apply(current)
-  setServerDefaultTheme(next.theme)
   notify()
 }
 
