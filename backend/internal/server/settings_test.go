@@ -38,6 +38,7 @@ func TestMCPServerSettingsAPI(t *testing.T) {
 		"url":"https://mcp.example.com/mcp",
 		"enabled":true,
 		"bearer_token_env_var":"DOCS_TOKEN",
+		"oauth":{"client_id":"docs-client","client_secret_env_var":"DOCS_OAUTH_SECRET"},
 		"headers":[{"name":"X-Team","value":"platform"}],
 		"env_headers":[{"name":"X-Secret","env_var":"DOCS_SECRET"}]
 	}`))
@@ -55,12 +56,17 @@ func TestMCPServerSettingsAPI(t *testing.T) {
 		BearerTokenEnvVar string `json:"bearer_token_env_var"`
 		Status            string `json:"status"`
 		ToolCount         int    `json:"tool_count"`
+		OAuth             struct {
+			ClientID           string `json:"client_id"`
+			ClientSecretEnvVar string `json:"client_secret_env_var"`
+		} `json:"oauth"`
 	}
 	if err := json.Unmarshal(createRes.Body.Bytes(), &created); err != nil {
 		t.Fatal(err)
 	}
 	if created.ID == "" || created.Name != "Docs" || created.URL != "https://mcp.example.com/mcp" ||
-		!created.Enabled || created.BearerTokenEnvVar != "DOCS_TOKEN" {
+		!created.Enabled || created.BearerTokenEnvVar != "DOCS_TOKEN" ||
+		created.OAuth.ClientID != "docs-client" || created.OAuth.ClientSecretEnvVar != "DOCS_OAUTH_SECRET" {
 		t.Fatalf("created = %#v", created)
 	}
 
@@ -81,6 +87,9 @@ func TestMCPServerSettingsAPI(t *testing.T) {
 				Name   string `json:"name"`
 				EnvVar string `json:"env_var"`
 			} `json:"env_headers"`
+			OAuth struct {
+				ClientID string `json:"client_id"`
+			} `json:"oauth"`
 		} `json:"servers"`
 	}
 	if err := json.Unmarshal(listRes.Body.Bytes(), &listed); err != nil {
@@ -88,7 +97,8 @@ func TestMCPServerSettingsAPI(t *testing.T) {
 	}
 	if len(listed.Servers) != 1 || listed.Servers[0].ID != created.ID ||
 		len(listed.Servers[0].Headers) != 1 || listed.Servers[0].Headers[0].Value != "platform" ||
-		len(listed.Servers[0].EnvHeaders) != 1 || listed.Servers[0].EnvHeaders[0].EnvVar != "DOCS_SECRET" {
+		len(listed.Servers[0].EnvHeaders) != 1 || listed.Servers[0].EnvHeaders[0].EnvVar != "DOCS_SECRET" ||
+		listed.Servers[0].OAuth.ClientID != "docs-client" {
 		t.Fatalf("listed = %#v", listed)
 	}
 

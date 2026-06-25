@@ -17,6 +17,7 @@ import (
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/app"
 	configloader "github.com/wins/jaz/backend/internal/config"
+	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/deviceauth"
 	"github.com/wins/jaz/backend/internal/jaztools"
@@ -58,6 +59,7 @@ func runServe(args []string) error {
 			app.NewWorkspace,
 			app.NewMemory,
 			app.NewDeviceAuth,
+			connections.NewCatalog,
 			newMemoryService,
 			jaztools.New,
 			terminal.New,

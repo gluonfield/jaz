@@ -92,6 +92,59 @@ func mockAuthServer(t *testing.T) *httptest.Server {
 	return srv
 }
 
+func mockStaticAuthServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	var srv *httptest.Server
+	base := func() string { return srv.URL }
+
+	mux.HandleFunc("/.well-known/oauth-protected-resource/mcp", func(w http.ResponseWriter, r *http.Request) {
+		writeJSONResp(w, map[string]any{
+			"resource":              base() + "/mcp",
+			"authorization_servers": []string{base()},
+			"scopes_supported":      []string{"read", "write"},
+		})
+	})
+	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
+		writeJSONResp(w, map[string]any{
+			"issuer":                           base(),
+			"authorization_endpoint":           base() + "/authorize",
+			"token_endpoint":                   base() + "/token",
+			"response_types_supported":         []string{"code"},
+			"code_challenge_methods_supported": []string{"S256"},
+		})
+	})
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		clientID, clientSecret, ok := r.BasicAuth()
+		if !ok {
+			clientID = r.Form.Get("client_id")
+			clientSecret = r.Form.Get("client_secret")
+		}
+		if clientID != "static-client" || clientSecret != "static-secret" {
+			http.Error(w, "bad client credentials", http.StatusUnauthorized)
+			return
+		}
+		if r.Form.Get("grant_type") != "authorization_code" || r.Form.Get("code") == "" {
+			http.Error(w, "bad grant", http.StatusBadRequest)
+			return
+		}
+		if r.Form.Get("code_verifier") == "" {
+			http.Error(w, "missing PKCE verifier", http.StatusBadRequest)
+			return
+		}
+		writeJSONResp(w, map[string]any{
+			"access_token":  "static-access",
+			"token_type":    "Bearer",
+			"refresh_token": "static-refresh",
+			"expires_in":    3600,
+		})
+	})
+	srv = httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
 func writeJSONResp(w http.ResponseWriter, body map[string]any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(body)
@@ -144,6 +197,72 @@ func TestRunAuthorizationCompletesFlow(t *testing.T) {
 	}
 	if tok.TokenURL != srv.URL+"/token" {
 		t.Errorf("token url = %q", tok.TokenURL)
+	}
+}
+
+func TestAuthorizeFromMetadataUsesStaticOAuthClient(t *testing.T) {
+	t.Setenv("STATIC_OAUTH_SECRET", "static-secret")
+	srv := mockStaticAuthServer(t)
+	store := newMemTokenStore()
+
+	server := mcpconfig.Server{
+		ID:  "srv-static",
+		URL: srv.URL + "/mcp",
+		OAuth: mcpconfig.OAuthConfig{
+			ClientID:           "static-client",
+			ClientSecretEnvVar: "STATIC_OAUTH_SECRET",
+		},
+	}
+	handler := newOAuthHandler(server, store, http.DefaultClient, log.New(io.Discard))
+	handler.interactive = true
+	handler.redirectURL = "http://127.0.0.1:5599/callback"
+	handler.fetch = func(_ context.Context, authURL string) (string, string, error) {
+		u, err := url.Parse(authURL)
+		if err != nil {
+			return "", "", err
+		}
+		q := u.Query()
+		if q.Get("client_id") != "static-client" {
+			t.Errorf("authorization URL client_id = %q", q.Get("client_id"))
+		}
+		if q.Get("resource") != srv.URL+"/mcp" {
+			t.Errorf("authorization URL resource = %q", q.Get("resource"))
+		}
+		return "the-auth-code", q.Get("state"), nil
+	}
+
+	if err := handler.AuthorizeFromMetadata(context.Background()); err != nil {
+		t.Fatalf("AuthorizeFromMetadata: %v", err)
+	}
+	tok, ok, err := store.LoadToken(context.Background(), mcpconfig.OAuthConnectionID("srv-static"))
+	if err != nil || !ok {
+		t.Fatalf("LoadToken ok=%v err=%v", ok, err)
+	}
+	if tok.AccessToken != "static-access" || tok.ClientID != "static-client" {
+		t.Fatalf("token = %#v", tok)
+	}
+	if tok.ClientSecret != "" || tok.ClientSecretEnvVar != "STATIC_OAUTH_SECRET" {
+		t.Fatalf("token stored secret fields = %#v", tok)
+	}
+	if !handler.didAuthorize() {
+		t.Fatal("didAuthorize() = false, want true")
+	}
+}
+
+func TestAuthorizeFromMetadataRequiresStaticClientWhenNoDCR(t *testing.T) {
+	srv := mockStaticAuthServer(t)
+	server := mcpconfig.Server{ID: "srv-static", URL: srv.URL + "/mcp"}
+	handler := newOAuthHandler(server, newMemTokenStore(), http.DefaultClient, log.New(io.Discard))
+	handler.interactive = true
+	handler.redirectURL = "http://127.0.0.1:5599/callback"
+	handler.fetch = func(context.Context, string) (string, string, error) {
+		t.Fatal("fetch should not run without a client")
+		return "", "", nil
+	}
+
+	err := handler.AuthorizeFromMetadata(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "configure an OAuth client ID") {
+		t.Fatalf("err = %v, want configure client id", err)
 	}
 }
 

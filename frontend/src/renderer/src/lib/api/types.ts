@@ -183,6 +183,64 @@ export interface HealthResponse {
   }
 }
 
+export type IntegrationAuthKind = 'oauth' | 'session' | 'bridge' | 'remote_mcp' | 'browser_local'
+export type IntegrationCapability = 'sync' | 'act' | 'materialize' | 'mcp' | 'browser'
+export type IntegrationActionRisk = 'read' | 'draft' | 'write' | 'bulk_write' | 'delete'
+
+export interface IntegrationProvider {
+  id: string
+  name: string
+}
+
+export interface IntegrationAuthOption {
+  kind: IntegrationAuthKind
+  description?: string
+  scopes?: string[]
+}
+
+export interface IntegrationRemoteMCP {
+  url: string
+  status: string
+  requires?: string[]
+  oauth_secrets: boolean
+}
+
+export interface IntegrationTool {
+  name: string
+  description: string
+  capability: IntegrationCapability
+  risk: IntegrationActionRisk
+  required_scopes?: string[]
+}
+
+export interface IntegrationSkill {
+  id: string
+  name: string
+  description?: string
+  status: string
+}
+
+export interface IntegrationImplementation {
+  status: string
+  owner: string
+}
+
+export interface IntegrationPlugin {
+  id: string
+  name: string
+  description?: string
+  provider: IntegrationProvider
+  auth: IntegrationAuthOption[]
+  capabilities: IntegrationCapability[]
+  multi_account: boolean
+  source_lanes?: string[]
+  tools?: IntegrationTool[]
+  skills?: IntegrationSkill[]
+  remote_mcp?: IntegrationRemoteMCP
+  connection_notes?: string[]
+  implementation: IntegrationImplementation
+}
+
 export type DeviceStatus = 'pending' | 'approved' | 'revoked'
 export type DeviceKind = 'desktop' | 'mobile' | 'browser' | 'cli'
 export type PairingStatus = 'pending' | 'approved' | 'rejected' | 'expired'
@@ -700,6 +758,12 @@ export interface MCPEnvHeader {
   env_var: string
 }
 
+export interface MCPOAuthConfig {
+  client_id?: string
+  client_secret_env_var?: string
+  issuer?: string
+}
+
 export interface MCPServer {
   id: string
   name: string
@@ -709,6 +773,7 @@ export interface MCPServer {
   bearer_token_env_var?: string
   headers?: MCPHeader[]
   env_headers?: MCPEnvHeader[]
+  oauth?: MCPOAuthConfig
   status: 'connected' | 'disabled' | 'error' | 'needs_auth' | 'unknown'
   tool_count: number
   error?: string
@@ -723,6 +788,7 @@ export interface MCPServerInput {
   bearer_token_env_var?: string
   headers?: MCPHeader[]
   env_headers?: MCPEnvHeader[]
+  oauth?: MCPOAuthConfig
 }
 
 export interface MCPServerStatus {

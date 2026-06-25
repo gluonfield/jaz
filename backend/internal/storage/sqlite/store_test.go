@@ -299,6 +299,11 @@ func TestMCPServersCRUDRoundTrip(t *testing.T) {
 		BearerTokenEnvVar: "LINEAR_TOKEN",
 		Headers:           []mcpconfig.Header{{Name: "X-Team", Value: "platform"}},
 		EnvHeaders:        []mcpconfig.EnvHeader{{Name: "X-Secret", EnvVar: "LINEAR_SECRET"}},
+		OAuth: mcpconfig.OAuthConfig{
+			ClientID:           "linear-client",
+			ClientSecretEnvVar: "LINEAR_OAUTH_SECRET",
+			Issuer:             "https://accounts.example.com",
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -313,7 +318,8 @@ func TestMCPServersCRUDRoundTrip(t *testing.T) {
 	}
 	if loaded.BearerTokenEnvVar != "LINEAR_TOKEN" ||
 		len(loaded.Headers) != 1 || loaded.Headers[0].Value != "platform" ||
-		len(loaded.EnvHeaders) != 1 || loaded.EnvHeaders[0].EnvVar != "LINEAR_SECRET" {
+		len(loaded.EnvHeaders) != 1 || loaded.EnvHeaders[0].EnvVar != "LINEAR_SECRET" ||
+		loaded.OAuth.ClientID != "linear-client" || loaded.OAuth.ClientSecretEnvVar != "LINEAR_OAUTH_SECRET" {
 		t.Fatalf("loaded = %#v", loaded)
 	}
 
@@ -327,7 +333,8 @@ func TestMCPServersCRUDRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if updated.Name != "Docs" || updated.URL != "https://docs.example.com/mcp" ||
-		updated.BearerTokenEnvVar != "" || len(updated.Headers) != 1 || updated.Headers[0].Name != "X-Docs" {
+		updated.BearerTokenEnvVar != "" || len(updated.Headers) != 1 || updated.Headers[0].Name != "X-Docs" ||
+		updated.OAuth.ClientID != "" {
 		t.Fatalf("updated = %#v", updated)
 	}
 

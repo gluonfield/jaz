@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -36,6 +37,7 @@ var errNeedsAuthorization = errors.New("authorization required")
 type oauthHandler struct {
 	serverID   string
 	serverURL  string
+	oauth      mcpconfig.OAuthConfig
 	store      integrationoauth.Store
 	httpClient *http.Client
 	log        *log.Logger
@@ -47,6 +49,7 @@ type oauthHandler struct {
 	mu            sync.Mutex
 	src           oauth2.TokenSource
 	authRequested bool
+	authorized    bool
 }
 
 // codeFetcher directs the user through the authorization URL (e.g. opens a browser)
@@ -57,6 +60,7 @@ func newOAuthHandler(server mcpconfig.Server, store integrationoauth.Store, http
 	return &oauthHandler{
 		serverID:   server.ID,
 		serverURL:  server.URL,
+		oauth:      server.OAuth,
 		store:      store,
 		httpClient: httpClient,
 		log:        logger,
@@ -98,11 +102,30 @@ func (h *oauthHandler) Authorize(ctx context.Context, req *http.Request, resp *h
 	if err != nil {
 		return err
 	}
+	return h.saveToken(ctx, tok)
+}
+
+func (h *oauthHandler) AuthorizeFromMetadata(ctx context.Context) error {
+	if !h.interactive {
+		h.mu.Lock()
+		h.authRequested = true
+		h.mu.Unlock()
+		return errNeedsAuthorization
+	}
+	tok, err := h.runAuthorizationWithChallenges(ctx, nil, false)
+	if err != nil {
+		return err
+	}
+	return h.saveToken(ctx, tok)
+}
+
+func (h *oauthHandler) saveToken(ctx context.Context, tok integrationoauth.Token) error {
 	if err := h.store.SaveToken(ctx, mcpconfig.OAuthConnectionID(h.serverID), tok); err != nil {
 		return fmt.Errorf("persist token: %w", err)
 	}
 	h.mu.Lock()
-	h.src = nil // force TokenSource to rebuild from the freshly stored token
+	h.src = nil
+	h.authorized = true
 	h.mu.Unlock()
 	return nil
 }
@@ -115,18 +138,27 @@ func (h *oauthHandler) needsAuthorization() bool {
 	return h.authRequested
 }
 
-// runAuthorization performs the OAuth 2.0 authorization-code flow with PKCE and
-// dynamic client registration, following the MCP authorization spec. The logic
-// mirrors the go-sdk's AuthorizationCodeHandler but captures the resolved client
-// and endpoints so the token can be refreshed across restarts.
+func (h *oauthHandler) didAuthorize() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.authorized
+}
+
+// runAuthorization performs the OAuth 2.0 authorization-code flow with PKCE.
+// It uses configured client credentials when present and otherwise follows MCP
+// dynamic client registration.
 func (h *oauthHandler) runAuthorization(ctx context.Context, resp *http.Response) (integrationoauth.Token, error) {
 	var zero integrationoauth.Token
 	challenges, err := oauthex.ParseWWWAuthenticate(resp.Header[http.CanonicalHeaderKey("WWW-Authenticate")])
 	if err != nil {
 		return zero, fmt.Errorf("parse WWW-Authenticate: %w", err)
 	}
+	return h.runAuthorizationWithChallenges(ctx, challenges, true)
+}
 
-	prm, err := h.protectedResourceMetadata(ctx, challenges)
+func (h *oauthHandler) runAuthorizationWithChallenges(ctx context.Context, challenges []oauthex.Challenge, allowOriginFallback bool) (integrationoauth.Token, error) {
+	var zero integrationoauth.Token
+	prm, err := h.protectedResourceMetadata(ctx, challenges, allowOriginFallback)
 	if err != nil {
 		return zero, err
 	}
@@ -147,30 +179,19 @@ func (h *oauthHandler) runAuthorization(ctx context.Context, resp *http.Response
 			RegistrationEndpoint:  base + "/register",
 		}
 	}
-	if asm.RegistrationEndpoint == "" {
-		return zero, errors.New("authorization server does not support dynamic client registration")
-	}
-
-	reg, err := oauthex.RegisterClient(ctx, asm.RegistrationEndpoint, &oauthex.ClientRegistrationMetadata{
-		RedirectURIs:            []string{h.redirectURL},
-		ClientName:              "Jaz",
-		GrantTypes:              []string{"authorization_code", "refresh_token"},
-		ResponseTypes:           []string{"code"},
-		TokenEndpointAuthMethod: "none",
-	}, h.httpClient)
-	if err != nil {
-		return zero, fmt.Errorf("register client: %w", err)
-	}
 
 	scopes := scopesFromChallenges(challenges)
 	if len(scopes) == 0 {
 		scopes = prm.ScopesSupported
 	}
-	authStyle := oauth2.AuthStyleInParams // public client (token_endpoint_auth_method=none)
+	clientID, clientSecret, clientSecretEnvVar, authStyle, err := h.clientCredentials(ctx, asm)
+	if err != nil {
+		return zero, err
+	}
 
 	cfg := &oauth2.Config{
-		ClientID:     reg.ClientID,
-		ClientSecret: reg.ClientSecret,
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
 		Endpoint: oauth2.Endpoint{
 			AuthURL:   asm.AuthorizationEndpoint,
 			TokenURL:  asm.TokenEndpoint,
@@ -207,19 +228,57 @@ func (h *oauthHandler) runAuthorization(ctx context.Context, resp *http.Response
 	}
 
 	return integrationoauth.Token{
-		AccessToken:  token.AccessToken,
-		RefreshToken: token.RefreshToken,
-		TokenType:    token.TokenType,
-		Expiry:       token.Expiry,
-		ClientID:     reg.ClientID,
-		ClientSecret: reg.ClientSecret,
-		AuthURL:      asm.AuthorizationEndpoint,
-		TokenURL:     asm.TokenEndpoint,
-		AuthStyle:    int(authStyle),
-		RedirectURL:  h.redirectURL,
-		Scopes:       scopes,
-		Resource:     prm.Resource,
+		AccessToken:        token.AccessToken,
+		RefreshToken:       token.RefreshToken,
+		TokenType:          token.TokenType,
+		Expiry:             token.Expiry,
+		ClientID:           clientID,
+		ClientSecret:       clientSecretFromDynamic(clientSecret, clientSecretEnvVar),
+		ClientSecretEnvVar: clientSecretEnvVar,
+		AuthURL:            asm.AuthorizationEndpoint,
+		TokenURL:           asm.TokenEndpoint,
+		AuthStyle:          int(authStyle),
+		RedirectURL:        h.redirectURL,
+		Scopes:             scopes,
+		Resource:           prm.Resource,
 	}, nil
+}
+
+func (h *oauthHandler) clientCredentials(ctx context.Context, asm *oauthex.AuthServerMeta) (clientID, clientSecret, clientSecretEnvVar string, authStyle oauth2.AuthStyle, err error) {
+	if h.oauth.ClientID != "" {
+		if h.oauth.ClientSecretEnvVar != "" {
+			clientSecret = os.Getenv(h.oauth.ClientSecretEnvVar)
+			if clientSecret == "" {
+				return "", "", "", 0, fmt.Errorf("environment variable %s is not set", h.oauth.ClientSecretEnvVar)
+			}
+		}
+		authStyle = oauth2.AuthStyleInParams
+		if clientSecret != "" {
+			authStyle = oauth2.AuthStyleAutoDetect
+		}
+		return h.oauth.ClientID, clientSecret, h.oauth.ClientSecretEnvVar, authStyle, nil
+	}
+	if asm.RegistrationEndpoint == "" {
+		return "", "", "", 0, errors.New("authorization server does not support dynamic client registration; configure an OAuth client ID")
+	}
+	reg, err := oauthex.RegisterClient(ctx, asm.RegistrationEndpoint, &oauthex.ClientRegistrationMetadata{
+		RedirectURIs:            []string{h.redirectURL},
+		ClientName:              "Jaz",
+		GrantTypes:              []string{"authorization_code", "refresh_token"},
+		ResponseTypes:           []string{"code"},
+		TokenEndpointAuthMethod: "none",
+	}, h.httpClient)
+	if err != nil {
+		return "", "", "", 0, fmt.Errorf("register client: %w", err)
+	}
+	return reg.ClientID, reg.ClientSecret, "", oauth2.AuthStyleInParams, nil
+}
+
+func clientSecretFromDynamic(clientSecret, envVar string) string {
+	if envVar != "" {
+		return ""
+	}
+	return clientSecret
 }
 
 func (h *oauthHandler) exchangeContext(ctx context.Context) context.Context {
@@ -229,7 +288,7 @@ func (h *oauthHandler) exchangeContext(ctx context.Context) context.Context {
 // protectedResourceMetadata discovers the protected resource metadata, trying the
 // URL from the WWW-Authenticate challenge, then the well-known locations, and
 // finally falling back to treating the server origin as the authorization server.
-func (h *oauthHandler) protectedResourceMetadata(ctx context.Context, challenges []oauthex.Challenge) (*oauthex.ProtectedResourceMetadata, error) {
+func (h *oauthHandler) protectedResourceMetadata(ctx context.Context, challenges []oauthex.Challenge, allowOriginFallback bool) (*oauthex.ProtectedResourceMetadata, error) {
 	for _, candidate := range protectedResourceMetadataURLs(resourceMetadataURLFromChallenges(challenges), h.serverURL) {
 		prm, err := oauthex.GetProtectedResourceMetadata(ctx, candidate.url, candidate.resource, h.httpClient)
 		if err != nil || prm == nil {
@@ -239,6 +298,15 @@ func (h *oauthHandler) protectedResourceMetadata(ctx context.Context, challenges
 			return nil, errors.New("protected resource metadata lists no authorization servers")
 		}
 		return prm, nil
+	}
+	if h.oauth.Issuer != "" {
+		return &oauthex.ProtectedResourceMetadata{
+			AuthorizationServers: []string{h.oauth.Issuer},
+			Resource:             h.serverURL,
+		}, nil
+	}
+	if !allowOriginFallback {
+		return nil, errors.New("server did not advertise OAuth protected resource metadata")
 	}
 	u, err := url.Parse(h.serverURL)
 	if err != nil {
