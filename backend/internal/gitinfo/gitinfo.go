@@ -40,9 +40,11 @@ type Info struct {
 	// Dirty reports uncommitted changes in the working tree.
 	Dirty bool `json:"dirty,omitempty"`
 	// IsWorktree marks a linked worktree (not the repository's main checkout);
-	// MainBranch is the branch checked out in the main checkout, the handoff
-	// destination.
+	// MainPath is that checkout's path and MainBranch the branch it has out —
+	// the handoff destination, and where this branch can be checked out without
+	// entering the worktree.
 	IsWorktree bool   `json:"is_worktree,omitempty"`
+	MainPath   string `json:"main_path,omitempty"`
 	MainBranch string `json:"main_branch,omitempty"`
 	// Behind counts commits on MainBranch the worktree's branch doesn't have
 	// yet — what an "update from main" would pull in (0 when up to date).
@@ -73,8 +75,9 @@ func Inspect(ctx context.Context, dir string) Info {
 	if out, err := git(ctx, dir, "status", "--porcelain"); err == nil && out != "" {
 		info.Dirty = true
 	}
-	if _, branch, ok := mainCheckout(ctx, dir); ok {
+	if root, branch, ok := mainCheckout(ctx, dir); ok {
 		info.IsWorktree = true
+		info.MainPath = root
 		info.MainBranch = branch
 		if branch != "" {
 			if count, err := git(ctx, dir, "rev-list", "--count", "HEAD.."+branch); err == nil {
