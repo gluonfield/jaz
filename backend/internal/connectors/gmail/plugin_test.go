@@ -23,6 +23,14 @@ func TestPluginDescribesGmailConnection(t *testing.T) {
 		!slices.Contains(plugin.SourceLanes, "sources/email") {
 		t.Fatalf("capabilities = %#v source_lanes = %#v", plugin.Capabilities, plugin.SourceLanes)
 	}
+	if len(plugin.Auth) == 0 || !slices.Contains(plugin.Auth[0].Scopes, ScopeModify) {
+		t.Fatalf("oauth auth = %#v", plugin.Auth)
+	}
+	for _, unwanted := range []string{ScopeReadonly, ScopeCompose, ScopeSend} {
+		if slices.Contains(plugin.Auth[0].Scopes, unwanted) {
+			t.Fatalf("oauth scope %q should not be requested in %#v", unwanted, plugin.Auth[0].Scopes)
+		}
+	}
 	if len(plugin.Skills) != 2 || plugin.Skills[0].ID != "gmail" || plugin.Skills[1].ID != "gmail-inbox-triage" {
 		t.Fatalf("skills = %#v", plugin.Skills)
 	}
@@ -47,7 +55,7 @@ func TestPluginIncludesCodexStyleGmailTools(t *testing.T) {
 			t.Fatalf("missing tool %s", name)
 		}
 	}
-	if got := tools["send_email"].RequiredScopes; !slices.Contains(got, ScopeSend) {
+	if got := tools["send_email"].RequiredScopes; !slices.Contains(got, ScopeModify) {
 		t.Fatalf("send_email scopes = %#v", got)
 	}
 	if got := tools["bulk_label_matching_emails"].Risk; got != integrations.ActionRiskBulkWrite {

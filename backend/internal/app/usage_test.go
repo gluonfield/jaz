@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"net/http"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	usagecore "github.com/wins/jaz/backend/internal/usage"
+	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 	"go.uber.org/fx"
 )
 
@@ -21,6 +23,16 @@ type fakeUsageStore struct{}
 
 func (fakeUsageStore) UsageEventsSince(time.Time) ([]storage.UsageEvent, error) {
 	return nil, nil
+}
+
+type fakeConnectionOAuthStore struct{}
+
+func (fakeConnectionOAuthStore) LoadToken(context.Context, string) (integrationoauth.Token, bool, error) {
+	return integrationoauth.Token{}, false, nil
+}
+
+func (fakeConnectionOAuthStore) SaveToken(context.Context, string, integrationoauth.Token) error {
+	return nil
 }
 
 func TestUsageModuleProvidesRoute(t *testing.T) {
@@ -106,17 +118,23 @@ func TestNewRoutesIncludesBrowserSettingsRoutes(t *testing.T) {
 
 func TestNewRoutesIncludesConnectionPluginRoutes(t *testing.T) {
 	routes := NewRoutes(routeDeps{
-		Usage:       usagecore.NewService(fakeUsageStore{}),
-		Connections: connections.NewCatalog(),
+		Usage:           usagecore.NewService(fakeUsageStore{}),
+		Connections:     connections.NewCatalog(),
+		ConnectionOAuth: connections.NewOAuthService(fakeConnectionOAuthStore{}),
 	})
 	found := map[string]bool{}
 	for _, route := range routes {
 		if (route.Pattern == "GET /v1/connections/plugins" ||
-			route.Pattern == "GET /v1/connections/plugins/{id}") && route.Handler != nil {
+			route.Pattern == "GET /v1/connections/plugins/{id}" ||
+			route.Pattern == "POST /v1/connections/plugins/{id}/connect" ||
+			route.Pattern == "GET /v1/connections/oauth/google/callback") && route.Handler != nil {
 			found[route.Pattern] = true
 		}
 	}
-	if !found["GET /v1/connections/plugins"] || !found["GET /v1/connections/plugins/{id}"] {
+	if !found["GET /v1/connections/plugins"] ||
+		!found["GET /v1/connections/plugins/{id}"] ||
+		!found["POST /v1/connections/plugins/{id}/connect"] ||
+		!found["GET /v1/connections/oauth/google/callback"] {
 		t.Fatalf("missing connection plugin routes: %#v", routes)
 	}
 }
