@@ -13,6 +13,7 @@ export interface LiveExchange {
   user: string
   at: string
   planRequested: boolean
+  goalRequested: boolean
   contexts: ComposerContext[]
   attachments: LiveAttachment[]
   reasoning: string
@@ -65,6 +66,7 @@ export function useLiveSessionSend({
       user: text,
       at: new Date().toISOString(),
       planRequested: Boolean(options.planRequested),
+      goalRequested: Boolean(options.goalRequested),
       contexts: draftContexts,
       attachments: [
         ...draftAttachments,
@@ -94,6 +96,7 @@ export function useLiveSessionSend({
         contexts: prepared.contexts,
         attachmentIds: prepared.attachmentIds,
         planRequested: options.planRequested,
+        goalRequested: options.goalRequested,
         signal: controller.signal,
         onEvent: (event) => {
           if (event.type === 'error') {

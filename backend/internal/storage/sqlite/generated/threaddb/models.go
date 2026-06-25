@@ -42,4 +42,5 @@ type Thread struct {
 	ArtifactSurface       sql.NullString `json:"artifact_surface"`
 	McpServerPolicy       sql.NullString `json:"mcp_server_policy"`
 	PendingSteerMessage   string         `json:"pending_steer_message"`
+	RuntimeCapabilities   string         `json:"runtime_capabilities"`
 }

@@ -13,6 +13,7 @@ import { FileReaderLinkProvider, MessageMarkdown, PreviewLinkProvider } from '@/
 import { MentionText } from '@/components/session/mentions'
 import { SessionErrorNotice } from '@/components/session/SessionErrorNotice'
 import { SessionLivenessIndicator } from '@/components/session/SessionLivenessIndicator'
+import { GoalStatusBar } from '@/components/session/GoalStatusBar'
 import { PendingSteerBubble } from '@/components/session/PendingSteerBubble'
 import { SidePanel, type SidePanelView } from '@/components/session/SidePanel'
 import { SidePanelControl, useSidePanelState } from '@/components/session/SidePanelState'
@@ -40,8 +41,9 @@ import {
   sessionRepoQuery,
   uploadSessionAttachment,
 } from '@/lib/api/sessions'
-import type { ACPJobSnapshot, ACPModeState, ChatMessage, Session, SessionEvent, SessionMessages } from '@/lib/api/types'
+import type { ACPJobSnapshot, ACPModeState, ChatMessage, GoalEvent, Session, SessionEvent, SessionMessages } from '@/lib/api/types'
 import { drawerSlide } from '@/lib/dom/drawer'
+import { runtimeCapabilitiesSupportNativeGoal } from '@/lib/agentRuntimes'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
@@ -137,6 +139,18 @@ function SessionTitlebar({
 
 function isCodexACPSession(session: Session | undefined): boolean {
   return session?.runtime === 'acp' && session.runtime_ref?.agent?.trim().toLowerCase() === 'codex'
+}
+
+function sessionSupportsNativeGoal(session: Session | undefined): boolean {
+  return session?.runtime === 'acp' && runtimeCapabilitiesSupportNativeGoal(session.runtime_ref?.capabilities)
+}
+
+function latestGoalEvent(sessionId: string, events: SessionEvent[]): GoalEvent | undefined {
+  return events.findLast((event) => event.session_id === sessionId && event.type === 'goal_update' && event.goal)?.goal
+}
+
+function goalIsActive(goal: GoalEvent | undefined): boolean {
+  return goal?.status === 'active'
 }
 
 function stripACPError(event: SessionEvent): SessionEvent {
@@ -307,6 +321,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
     acp_tool_calls: acpToolCalls,
     acp_permissions: acpPermissions,
     acp_error: acpError,
+    acp_active_operation: acpActiveOperation,
     acp_last_event_at: acpLastEventAt,
     acp_last_tool_at: acpLastToolAt,
     acp_children: acpChildren,
@@ -342,6 +357,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
             plan: acpPlan,
             tool_calls: eventsCoverOwnACP ? undefined : acpToolCalls,
             permissions: acpPermissions,
+            active_operation: acpActiveOperation,
             last_event_at: acpLastEventAt,
             last_tool_at: acpLastToolAt,
             updated_at: session.updated_at,
@@ -365,6 +381,9 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
   const acpModesKnown = modeStateKnown(currentModes)
   const planAvailable = session.runtime !== 'acp' || !acpModesKnown || Boolean(currentModes?.plan_mode_id)
   const planActive = planModeActive(currentModes)
+  const goalAvailable = sessionSupportsNativeGoal(session)
+  const goal = latestGoalEvent(session.id, [...persistedEvents, ...snapshotEvents, ...liveEvents])
+  const goalActive = goalIsActive(goal)
   const hasPendingPermission = activePermissions.size > 0
   const latestUserAt = Math.max(
     0,
@@ -408,6 +427,9 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
     displayEvents,
     planAvailable,
     planActive,
+    goalAvailable,
+    goalActive,
+    goal,
     hasPendingPermission,
     latestPlanDecisionSurface,
     planDecisionSessionID: latestPlanDecisionSurface?.approvalSessionId,
@@ -555,7 +577,11 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     const pending = takePendingMessage(sessionId)
     if (!pending) return
     sentPendingRef.current = sessionId
-    handleSend(pending.text, { planRequested: pending.planRequested, files: pending.files ?? [] })
+    handleSend(pending.text, {
+      planRequested: pending.planRequested,
+      goalRequested: pending.goalRequested,
+      files: pending.files ?? [],
+    })
   }, [detail.isSuccess, handleSend, sessionId])
 
   useEffect(() => {
@@ -604,6 +630,9 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     displayEvents,
     planAvailable,
     planActive,
+    goalAvailable,
+    goalActive,
+    goal,
     hasPendingPermission,
     latestPlanDecisionSurface,
     planDecisionSessionID,
@@ -692,6 +721,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                             <SessionLivenessIndicator
                               agent={session.runtime_ref?.agent}
                               running={sessionRunning}
+                              activeOperation={detail.data?.acp_active_operation}
                               updatedAt={session.updated_at}
                               lastActivityAt={latestEventTimeISO(lastSessionEventAt, live?.at)}
                             />
@@ -783,30 +813,36 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                   }}
                 />
               ) : (
-                <Composer
-                  streaming={sessionRunning}
-                  planAvailable={planAvailable}
-                  planModeActive={Boolean(live?.planRequested) || planActive}
-                  queuedPrompts={queue.queuedPrompts}
-                  steerDisabled={queue.steerDisabled}
-                  draftStorageKey={`${SESSION_DRAFT_KEY_PREFIX}${session.id}`}
-                  fileRoot={session.runtime_ref?.cwd}
-                  contexts={composerContexts.contexts}
-                  onRemoveContext={composerContexts.removeContext}
-                  onClearContexts={composerContexts.clearContexts}
-                  onSend={queue.onSend}
-                  onStop={() => {
-                    // the turn runs detached server-side; stop it there first
-                    void cancelSession(sessionId).catch(() => {})
-                    abortLiveMessage()
-                  }}
-                  onVoice={undefined}
-                  onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
-                  onSteerQueuedPrompt={queue.onSteerQueuedPrompt}
-                  onDeleteQueuedPrompt={queue.onDeleteQueuedPrompt}
-                  onEditQueuedPrompt={queue.onEditQueuedPrompt}
-                  onReorderQueuedPrompts={queue.onReorderQueuedPrompts}
-                />
+                <>
+                  {goalAvailable ? <GoalStatusBar goal={goal} starting={Boolean(live?.goalRequested) && !goalActive} /> : null}
+                  <Composer
+                    streaming={sessionRunning}
+                    planAvailable={planAvailable}
+                    planModeActive={Boolean(live?.planRequested) || planActive}
+                    goalControlVisible
+                    goalAvailable={goalAvailable}
+                    goalActive={Boolean(live?.goalRequested) || goalActive}
+                    queuedPrompts={queue.queuedPrompts}
+                    steerDisabled={queue.steerDisabled}
+                    draftStorageKey={`${SESSION_DRAFT_KEY_PREFIX}${session.id}`}
+                    fileRoot={session.runtime_ref?.cwd}
+                    contexts={composerContexts.contexts}
+                    onRemoveContext={composerContexts.removeContext}
+                    onClearContexts={composerContexts.clearContexts}
+                    onSend={queue.onSend}
+                    onStop={() => {
+                      // the turn runs detached server-side; stop it there first
+                      void cancelSession(sessionId).catch(() => {})
+                      abortLiveMessage()
+                    }}
+                    onVoice={undefined}
+                    onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
+                    onSteerQueuedPrompt={queue.onSteerQueuedPrompt}
+                    onDeleteQueuedPrompt={queue.onDeleteQueuedPrompt}
+                    onEditQueuedPrompt={queue.onEditQueuedPrompt}
+                    onReorderQueuedPrompts={queue.onReorderQueuedPrompts}
+                  />
+                </>
               )}
             </BottomDock>
           </div>

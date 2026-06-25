@@ -1,6 +1,5 @@
 import { Check, Copy } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { writeClipboard } from '@/lib/clipboard'
+import { useCopyAction } from '@/lib/useCopyAction'
 
 export function SessionErrorNotice({
   message,
@@ -11,19 +10,7 @@ export function SessionErrorNotice({
   context?: string
   className?: string
 }) {
-  const [copied, setCopied] = useState(false)
-  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const copy = useCallback(async () => {
-    if (!(await writeClipboard(message))) return
-    if (copiedTimer.current) clearTimeout(copiedTimer.current)
-    setCopied(true)
-    copiedTimer.current = setTimeout(() => setCopied(false), 1500)
-  }, [message])
-
-  useEffect(() => () => {
-    if (copiedTimer.current) clearTimeout(copiedTimer.current)
-  }, [])
+  const { copied, copy } = useCopyAction(message)
 
   return (
     <div role="alert" className={`min-w-0 max-w-[var(--prose-max)] rounded-card bg-surface px-3.5 py-3 ring-1 ring-danger/25 ${className}`}>

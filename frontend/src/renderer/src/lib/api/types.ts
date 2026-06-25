@@ -8,6 +8,12 @@ export interface RuntimeRef {
   session_id?: string
   cwd?: string
   project_path?: string
+  capabilities?: RuntimeCapabilities
+}
+
+export interface RuntimeCapabilities {
+  native_goal?: boolean
+  native_goal_negotiable?: boolean
 }
 
 // Provider-facing token fields: input includes cache reads/writes when the
@@ -65,12 +71,17 @@ export interface Session {
   model_provider?: string
   model?: string
   reasoning_effort?: string
+  actions?: SessionActions
   usage?: Usage
   queued_messages?: QueuedMessage[]
   pending_steer_message?: QueuedMessage
   created_at: string
   updated_at: string
   last_attention_at: string
+}
+
+export interface SessionActions {
+  compact?: boolean
 }
 
 export interface ThreadSearchResult {
@@ -96,6 +107,7 @@ export interface QueuedMessage {
   quotes?: string[]
   attachment_ids?: string[]
   plan_requested?: boolean
+  goal_requested?: boolean
 }
 
 export type QueuedMessageInput = Omit<QueuedMessage, 'id'> & { id?: string }
@@ -117,9 +129,11 @@ export interface RepoInfo {
   // Commits exist that the remote doesn't have.
   needs_push?: boolean
   dirty?: boolean
-  // Linked worktree (not the main checkout); main_branch is the branch the
-  // main checkout is on — the handoff destination.
+  // Linked worktree (not the main checkout); main_path is that checkout's
+  // path and main_branch the branch it's on — the handoff destination, and
+  // where this branch can be checked out without entering the worktree.
   is_worktree?: boolean
+  main_path?: string
   main_branch?: string
   // Commits on main_branch the worktree's branch doesn't have yet — what
   // "Update from main" would pull in (omitted/0 when up to date).
@@ -181,6 +195,74 @@ export interface HealthResponse {
   capabilities?: {
     session_file_read?: boolean
   }
+}
+
+export type IntegrationAuthKind = 'oauth' | 'session' | 'bridge' | 'remote_mcp' | 'browser_local'
+export type IntegrationCapability = 'sync' | 'act' | 'materialize' | 'mcp' | 'browser'
+export type IntegrationActionRisk = 'read' | 'draft' | 'write' | 'bulk_write' | 'delete'
+
+export interface IntegrationProvider {
+  id: string
+  name: string
+}
+
+export interface IntegrationAuthOption {
+  kind: IntegrationAuthKind
+  description?: string
+  scopes?: string[]
+}
+
+export interface IntegrationRemoteMCP {
+  url: string
+  status: string
+  requires?: string[]
+  oauth_secrets: boolean
+}
+
+export interface IntegrationTool {
+  name: string
+  description: string
+  capability: IntegrationCapability
+  risk: IntegrationActionRisk
+  required_scopes?: string[]
+}
+
+export interface IntegrationSkill {
+  id: string
+  name: string
+  description?: string
+  status: string
+}
+
+export interface IntegrationImplementation {
+  status: string
+  owner: string
+}
+
+export type IntegrationPluginIconKind = 'asset' | 'url' | 'initials'
+
+export interface IntegrationPluginIcon {
+  kind: IntegrationPluginIconKind
+  value: string
+  background?: string
+}
+
+export interface IntegrationPlugin {
+  id: string
+  name: string
+  description?: string
+  provider: IntegrationProvider
+  category?: string
+  icon: IntegrationPluginIcon
+  auth: IntegrationAuthOption[]
+  capabilities: IntegrationCapability[]
+  multi_account: boolean
+  source_lanes?: string[]
+  tools?: IntegrationTool[]
+  skills?: IntegrationSkill[]
+  remote_mcp?: IntegrationRemoteMCP
+  connection_notes?: string[]
+  implementation: IntegrationImplementation
 }
 
 export type DeviceStatus = 'pending' | 'approved' | 'revoked'
@@ -400,6 +482,7 @@ export interface SessionMessages {
   acp_tool_calls?: ACPToolCall[]
   acp_permissions?: ACPPermission[]
   acp_error?: string
+  acp_active_operation?: string
   acp_last_event_at?: string
   acp_last_tool_at?: string
   acp_children?: ACPJobSnapshot[]
@@ -463,6 +546,18 @@ export interface PlanEvent {
   explanation?: string
   plan?: PlanEntry[]
   awaiting_approval?: boolean
+}
+
+export interface GoalEvent {
+  thread_id?: string
+  objective?: string
+  status: string
+  token_budget?: number
+  tokens_used?: number
+  remaining_tokens?: number
+  time_used_seconds?: number
+  created_at?: string
+  updated_at?: string
 }
 
 export interface ArtifactEvent {
@@ -558,6 +653,7 @@ export interface ACPJobSnapshot {
   plan?: ACPPlanEntry[]
   tool_calls?: ACPToolCall[]
   permissions?: ACPPermission[]
+  active_operation?: string
   parent_visible?: boolean
   last_event_at?: string
   last_tool_at?: string
@@ -608,6 +704,7 @@ export interface SessionEvent {
   content?: string
   acp?: ACPEvent
   plan?: PlanEvent
+  goal?: GoalEvent
   permission?: ACPPermission
   artifact?: ArtifactEvent
   loop_created?: LoopCreatedEvent
@@ -700,6 +797,12 @@ export interface MCPEnvHeader {
   env_var: string
 }
 
+export interface MCPOAuthConfig {
+  client_id?: string
+  client_secret_env_var?: string
+  issuer?: string
+}
+
 export interface MCPServer {
   id: string
   name: string
@@ -709,6 +812,7 @@ export interface MCPServer {
   bearer_token_env_var?: string
   headers?: MCPHeader[]
   env_headers?: MCPEnvHeader[]
+  oauth?: MCPOAuthConfig
   status: 'connected' | 'disabled' | 'error' | 'needs_auth' | 'unknown'
   tool_count: number
   error?: string
@@ -723,6 +827,7 @@ export interface MCPServerInput {
   bearer_token_env_var?: string
   headers?: MCPHeader[]
   env_headers?: MCPEnvHeader[]
+  oauth?: MCPOAuthConfig
 }
 
 export interface MCPServerStatus {
@@ -820,6 +925,7 @@ export interface ReasoningEffortOption {
 
 export interface ACPAgentOptions {
   reasoning_efforts: ReasoningEffortOption[]
+  capabilities?: RuntimeCapabilities
   local: boolean
   provider_mode?: 'agent_defaults'
   model_provider_ids?: string[]

@@ -1,4 +1,4 @@
-import { Check, CornerDownRight, GripVertical, MessageSquareQuote, Paperclip, Pencil, Trash2, X } from 'lucide-react'
+import { Check, CornerDownRight, GripVertical, MessageSquareQuote, Paperclip, Pencil, Target, Trash2, X } from 'lucide-react'
 import { AnimatePresence, motion, Reorder, useDragControls } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import type { QueuedMessage } from '@/lib/api/types'
@@ -206,6 +206,12 @@ function QueuedRow({
               Plan
             </span>
           ) : null}
+          {item.goal_requested ? (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary-soft px-1.5 py-0.5 text-[11px] font-medium text-primary">
+              <Target size={11} aria-hidden />
+              Goal
+            </span>
+          ) : null}
         </div>
       )}
       <div className="flex items-center gap-1">
@@ -278,6 +284,13 @@ function queueOrderSignature(prompts: QueuedMessage[]): string {
 
 function queueSignature(prompts: QueuedMessage[]): string {
   return JSON.stringify(
-    prompts.map((prompt) => [prompt.id, prompt.text, prompt.contexts ?? prompt.quotes ?? [], prompt.attachment_ids ?? [], prompt.plan_requested ?? false]),
+    prompts.map((prompt) => [
+      prompt.id,
+      prompt.text,
+      prompt.contexts ?? prompt.quotes ?? [],
+      prompt.attachment_ids ?? [],
+      prompt.plan_requested ?? false,
+      prompt.goal_requested ?? false,
+    ]),
   )
 }

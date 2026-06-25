@@ -3,6 +3,7 @@
 export interface PendingMessage {
   text: string
   planRequested?: boolean
+  goalRequested?: boolean
   files?: File[]
 }
 

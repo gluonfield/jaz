@@ -6,6 +6,7 @@ export { contextAttachmentIDs, contextInputs, contextLabel, contextPreviewText }
 
 export interface SendMessageOptions {
   planRequested?: boolean
+  goalRequested?: boolean
   files?: File[]
   attachments?: Attachment[]
   contexts?: ComposerContext[]
