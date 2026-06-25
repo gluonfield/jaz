@@ -1,18 +1,22 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 import { NewSessionHome } from '@/components/home/NewSessionHome'
+import { NewThreadOptions } from '@/components/home/NewThreadOptions'
 import { ModelSelect, ProjectPicker, RuntimeSelect } from '@/components/session/NewThreadControls'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { useToast } from '@/components/ui/toast'
 import { ApiError } from '@/lib/api/client'
 import { createSession, listFilesystemDirs, projectsQuery } from '@/lib/api/sessions'
 import { agentSettingsQuery } from '@/lib/api/settings'
+import { agentLabel } from '@/lib/agentLabel'
 import {
   enabledACPAgents,
   runtimeModelState,
 } from '@/lib/agentRuntimes'
+import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import {
   acpAgentModelSuggestions,
+  modelSuggestionLabel,
   modelSuggestionsForProvider,
   openRouterModelsQuery,
 } from '@/lib/models'
@@ -170,6 +174,18 @@ function NewSessionPage() {
       }),
     )
 
+  // Phone: the controls live in a header dropdown, which sits above the
+  // composer, so their own popovers open downward.
+  const isMobile = useIsMobile()
+  const controlPlacement = isMobile ? 'below' : 'above'
+  const modelLabel = model === '' ? agentLabel(runtime) : modelSuggestionLabel(modelSuggestions, model)
+  const directoryLabel = directory
+    ? (project?.name ?? directory.split(/[\\/]+/).filter(Boolean).at(-1) ?? directory)
+    : ''
+  // Collapsed header summary: reasoning effort and the working directory, so
+  // a chosen project stays visible without opening the panel.
+  const optionsSubtitle = [reasoningEffort, directoryLabel].filter(Boolean).join(' · ')
+
   const composerControls = (
     <>
       {runtimeReady && !runtimeAvailable ? (
@@ -179,6 +195,7 @@ function NewSessionPage() {
         <RuntimeSelect
           value={runtime}
           agents={agents}
+          placement={controlPlacement}
           disabled={creating}
           onChange={(next) => {
             setRuntime(next)
@@ -193,6 +210,7 @@ function NewSessionPage() {
           value={model}
           suggestions={modelSuggestions}
           loading={openRouterModels.isLoading}
+          placement={controlPlacement}
           disabled={creating}
           onChange={setModelOverride}
           providers={
@@ -218,6 +236,7 @@ function NewSessionPage() {
       ) : null}
       <ProjectPicker
         value={directory}
+        placement={controlPlacement}
         disabled={creating}
         onChange={(path, git) => {
           setDirectory(path)
@@ -247,20 +266,27 @@ function NewSessionPage() {
   )
 
   return (
-    <NewSessionHome
-      themeKey={resolved}
-      calm={composing || creating}
-      creating={creating}
-      disabled={!runtimeAvailable}
-      leftSlot={composerControls}
-      draftStorageKey={NEW_SESSION_DRAFT_KEY}
-      // Tokens freeze their absolute expansion at insert time, so re-picking
-      // the directory after tagging keeps old tags valid rather than rebasing
-      // them.
-      fileRoot={directory}
-      onDraftActivity={setComposing}
-      onSend={handleSend}
-      onVoice={undefined}
-    />
+    <>
+      {isMobile ? (
+        <NewThreadOptions title={modelLabel} subtitle={optionsSubtitle || undefined}>
+          {composerControls}
+        </NewThreadOptions>
+      ) : null}
+      <NewSessionHome
+        themeKey={resolved}
+        calm={composing || creating}
+        creating={creating}
+        disabled={!runtimeAvailable}
+        leftSlot={isMobile ? null : composerControls}
+        draftStorageKey={NEW_SESSION_DRAFT_KEY}
+        // Tokens freeze their absolute expansion at insert time, so re-picking
+        // the directory after tagging keeps old tags valid rather than rebasing
+        // them.
+        fileRoot={directory}
+        onDraftActivity={setComposing}
+        onSend={handleSend}
+        onVoice={undefined}
+      />
+    </>
   )
 }
