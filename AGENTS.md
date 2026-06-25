@@ -5,7 +5,7 @@
 - Trim strings at real input boundaries only: user input, config files, env vars, HTTP payloads, CLI args, and persisted loose text. Do not sprinkle `strings.TrimSpace` over internal constants, typed IDs, enum values, or values that have already crossed a validation boundary.
 - When there's an opportunity for dramatic simplification or restructuring, bring it up. Favor "code judo" moves that delete layers, unify shapes, collapse special cases, or make the design inevitable over incremental patches.
 - Bug fixes should first look for deletion or correction of the underlying contract. A solution that only adds branches, flags, helpers, or UI glue is suspicious; prefer removing stale paths, collapsing duplicated state, or moving behavior to the owning layer before adding code.
-- Do not write code comments unless they explain something the code itself cannot describe.
+- Do not add code comments until they are genuinely needed to explain specific behavior the code itself cannot describe.
 - Keep concrete implementations focused and interfaces small.
 - Put behavior in the layer that owns the concept. Shared transcript/message shapes belong in storage or a dedicated shared package, not copied through server, ACP, and UI paths.
 - Keep provider-facing data separate from display/transcript data. Do not mutate prompts and then repair snapshots by string matching; carry explicit typed boundaries instead.
