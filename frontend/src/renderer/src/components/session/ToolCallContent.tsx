@@ -90,7 +90,11 @@ function webToolVariant(call: ACPToolCall): 'search' | 'fetch' | null {
   if (name === 'webfetch') return 'fetch'
   const kind = (call.kind ?? '').toLowerCase()
   if (kind !== 'fetch' && kind !== 'search') return null
-  if (parseWebResults(call.content).length > 1) return 'search'
+  // A filesystem search/listing also reports kind 'search'; require a real URL.
+  const results = parseWebResults(call.content)
+  const urlInTitle = /https?:\/\//i.test(call.title ?? '')
+  if (!results.length && !urlInTitle) return null
+  if (results.length > 1) return 'search'
   if (/search/i.test(call.title ?? '')) return 'search'
   return kind === 'search' ? 'search' : 'fetch'
 }
