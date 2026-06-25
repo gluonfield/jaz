@@ -223,44 +223,48 @@ export function classifyTurnItems(
   pendingPermissionIds: Set<string>,
   latestTaskSurfaceIndex: Map<string, number>,
 ): { workItems: TimelineItem[]; resultItems: TimelineItem[] } {
-  const textPositions = flow.flatMap((item, index) => (textContent(item) ? [index] : []))
-  const lastTextIndex = textPositions.at(-1) ?? -1
-  const hasAnchor = flow.some(isOutcomeAnchor)
-  const hasWork = flow.some(
-    (item) =>
-      !textContent(item) &&
-      !isOutcomeAnchor(item) &&
-      isCollapsibleWork(item, pendingPermissionIds, latestTaskSurfaceIndex),
-  )
-  const anchorBetween = (from: number, to: number) =>
-    flow.slice(from + 1, to).some(isOutcomeAnchor)
-  const showsText = (index: number, order: number): boolean => {
-    if (!hasWork && !hasAnchor) return true // a tool-less turn is pure answer
-    if (index === lastTextIndex) return true // terminal answer
-    const prevText = order > 0 ? textPositions[order - 1] : -1
-    const nextText = order < textPositions.length - 1 ? textPositions[order + 1] : flow.length
-    if (anchorBetween(prevText, index) || anchorBetween(index, nextText)) return true
-    return hasAnswerStructure(textContent(flow[index]) ?? '')
-  }
+  // Pass 1: gather the turn-scope facts each text block needs. A text block
+  // brackets an artifact when one sits between it and the adjacent text block.
+  const artifactBracketed = new Set<number>()
+  let lastTextIndex = -1
+  let prevTextIndex = -1
+  let artifactSincePrevText = false
+  let hasAnchor = false
+  let hasWork = false
+  flow.forEach((item, index) => {
+    if (textContent(item) !== undefined) {
+      if (artifactSincePrevText) {
+        artifactBracketed.add(index)
+        if (prevTextIndex >= 0) artifactBracketed.add(prevTextIndex)
+      }
+      prevTextIndex = index
+      lastTextIndex = index
+      artifactSincePrevText = false
+    } else if (isOutcomeAnchor(item)) {
+      hasAnchor = true
+      artifactSincePrevText = true
+    } else if (isCollapsibleWork(item, pendingPermissionIds, latestTaskSurfaceIndex)) {
+      hasWork = true
+    }
+  })
+  const showsText = (index: number): boolean =>
+    (!hasWork && !hasAnchor) || // a tool-less turn is pure answer
+    index === lastTextIndex || // terminal answer
+    artifactBracketed.has(index) || // prose introducing/following an artifact
+    hasAnswerStructure(textContent(flow[index]) ?? '')
 
+  // Pass 2: partition in place. Artifacts return false from isCollapsibleWork,
+  // so they fall through to results alongside pending questions/task surfaces.
   const workItems: TimelineItem[] = []
   const resultItems: TimelineItem[] = []
-  let textOrder = 0
   flow.forEach((item, index) => {
-    if (textContent(item)) {
-      ;(showsText(index, textOrder) ? resultItems : workItems).push(item)
-      textOrder += 1
-      return
-    }
-    if (isOutcomeAnchor(item)) {
-      resultItems.push(item)
-      return
-    }
-    if (isCollapsibleWork(item, pendingPermissionIds, latestTaskSurfaceIndex)) {
+    if (textContent(item) !== undefined) {
+      ;(showsText(index) ? resultItems : workItems).push(item)
+    } else if (isCollapsibleWork(item, pendingPermissionIds, latestTaskSurfaceIndex)) {
       workItems.push(item)
-      return
+    } else {
+      resultItems.push(item)
     }
-    resultItems.push(item) // pending question, latest task surface — stay shown
   })
   return { workItems, resultItems }
 }
