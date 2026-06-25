@@ -13,6 +13,7 @@ import {
   type BoardDetail,
   type BoardLayoutEntry,
   boardDetailQuery,
+  boardsQuery,
   patchBoard,
   removeWidgetFromBoard,
 } from '@/lib/api/boards'
@@ -35,6 +36,7 @@ function BoardPage() {
   const { resolved } = useTheme()
   const scaleTimer = useRef<number | null>(null)
   const isBoardWindow = clientRuntime.windowKind === 'board'
+  const boards = useQuery({ ...boardsQuery, enabled: isBoardWindow })
   // "Add widget" opens a picker of existing loops first; "New loop" inside it
   // hands off to the loop modal. Either way the board stays put and scrolls
   // the fresh tile into view once it appears.
@@ -125,6 +127,12 @@ function BoardPage() {
   }
 
   const { board, items } = detail.data
+  const boardTabs =
+    isBoardWindow && boards.data
+      ? boards.data.some((candidate) => candidate.id === board.id)
+        ? boards.data
+        : [board, ...boards.data]
+      : [board]
   // Single commit path: Enter blurs the input, blur commits. Escape unmounts
   // the input without blurring, so a cancel never saves.
   const commitRename = () => {
@@ -162,10 +170,41 @@ function BoardPage() {
     <div className="flex h-full flex-col bg-surface">
       <div
         className={`flex shrink-0 items-center gap-3 px-6 pb-1 ${
-          isBoardWindow ? 'justify-end pt-2' : 'justify-between pt-2'
+          isBoardWindow ? 'justify-between pt-0' : 'justify-between pt-2'
         }`}
       >
-        {isBoardWindow ? null : (
+        {isBoardWindow ? (
+          <nav aria-label="Boards" className="min-w-0 flex-1 overflow-hidden">
+            <div className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {boardTabs.map((candidate) => {
+                const active = candidate.id === boardId
+                return (
+                  <button
+                    key={candidate.id}
+                    type="button"
+                    title={candidate.name}
+                    onClick={() => {
+                      if (!active) {
+                        void navigate({
+                          to: '/boards/$boardId',
+                          params: { boardId: candidate.id },
+                          search: {},
+                        })
+                      }
+                    }}
+                    className={`flex h-6 max-w-44 shrink-0 cursor-pointer items-center rounded-full px-2.5 text-[12px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.96] ${
+                      active
+                        ? 'bg-primary-soft text-ink'
+                        : 'text-ink-3 hover:bg-surface-2 hover:text-ink'
+                    }`}
+                  >
+                    <span className="min-w-0 truncate">{candidate.name}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </nav>
+        ) : (
           <h1 className="min-w-0 flex-1 text-lg font-semibold text-ink">
             {draftName === null ? (
               <button
