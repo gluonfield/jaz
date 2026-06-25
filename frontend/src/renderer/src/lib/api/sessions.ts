@@ -338,6 +338,7 @@ export async function mutateSessionQueue(id: string, mutation: QueueMutation): P
     telemetry.messageSent({
       queued: true,
       planRequested: Boolean(mutation.message.plan_requested),
+      goalRequested: Boolean(mutation.message.goal_requested),
       attachmentCount: mutation.message.attachment_ids?.length ?? 0,
     })
   }

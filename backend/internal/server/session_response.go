@@ -27,6 +27,7 @@ func canonicalSessionResponse(session storage.Session) storage.Session {
 		session.ModelProvider = canonical
 	}
 	ref.Agent = canonical
+	ref.Capabilities = storage.NormalizeRuntimeCapabilities(ref.Capabilities)
 	session.RuntimeRef = &ref
 	return session
 }

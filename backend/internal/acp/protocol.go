@@ -29,6 +29,17 @@ func (m *Manager) handleJSONRPC(ctx context.Context, req jsonrpc.Request) (json.
 		}
 		m.applyUpdate(note.SessionID, note.Update)
 		return jsonrpc.EncodeResult(map[string]any{})
+	case acpMethodGoalUpdate:
+		sessionID, goal, ok := decodeGoalNotification(req.Params)
+		if !ok {
+			return nil, jsonrpc.InvalidParams("invalid goal update", nil)
+		}
+		job := m.jobByACP(sessionID)
+		if job == nil {
+			return nil, jsonrpc.InvalidParams("unknown acp session", nil)
+		}
+		m.publishGoalUpdate(job, goal)
+		return jsonrpc.EncodeResult(map[string]any{})
 	case acpschema.ClientMethodSessionRequestPermission:
 		return m.requestPermission(ctx, req.Params)
 	case acpschema.ClientMethodFSReadTextFile:
@@ -120,6 +131,10 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	var attention bool
 	now := time.Now().UTC()
 	update, err := acpschema.DecodeSessionUpdate(raw)
+	if goal, ok := decodeGoalUpdate(raw); ok {
+		m.publishGoalUpdate(job, goal)
+		return
+	}
 	if err != nil {
 		return
 	}

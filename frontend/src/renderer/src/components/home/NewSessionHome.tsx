@@ -10,6 +10,7 @@ export function NewSessionHome({
   calm,
   creating,
   disabled = false,
+  goalAvailable = false,
   leftSlot,
   draftStorageKey,
   fileRoot,
@@ -21,6 +22,7 @@ export function NewSessionHome({
   calm: boolean
   creating: boolean
   disabled?: boolean
+  goalAvailable?: boolean
   leftSlot: ReactNode
   draftStorageKey?: string
   /** directory the composer's @-mention file picker indexes ('' = workspace root) */
@@ -60,6 +62,8 @@ export function NewSessionHome({
             translucent
             placeholder="Ask anything, or hand your assistant a task…"
             planAvailable
+            goalControlVisible
+            goalAvailable={goalAvailable}
             disabled={creating || disabled}
             leftSlot={leftSlot}
             draftStorageKey={draftStorageKey}

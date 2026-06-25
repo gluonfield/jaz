@@ -15,6 +15,10 @@ export function enabledACPAgents(settings?: AgentSettings): string[] {
   return (settings?.agents ?? []).filter((agent) => acpAgentEnabled(settings, agent))
 }
 
+export function acpAgentSupportsNativeGoal(settings: AgentSettings | undefined, agent: string): boolean {
+  return settings?.acp_options?.[agent]?.capabilities?.native_goal === true
+}
+
 export function selectableACPModelProviders(
   settings: AgentSettings | undefined,
   agent: string,

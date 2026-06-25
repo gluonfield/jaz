@@ -510,6 +510,10 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	contexts := storage.NormalizeMessageContexts(append(storage.SelectionContexts(req.Quotes), req.Contexts...))
+	if err := s.validatePromptOptions(session, promptOptionsFromStream(req)); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -524,7 +528,7 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 
 	switch session.Runtime {
 	case storage.RuntimeACP:
-		s.streamACPSession(w, flusher, r.Context(), session, req.Message, contexts, attachments, req.PlanRequested)
+		s.streamACPSession(w, flusher, r.Context(), session, req.Message, contexts, attachments, req.PlanRequested, req.GoalRequested)
 	default:
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: fmt.Sprintf("unknown session runtime %q", session.Runtime)})
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
@@ -643,6 +647,7 @@ type messageRequest struct {
 type streamRequest struct {
 	messageRequest
 	PlanRequested bool `json:"plan_requested,omitempty"`
+	GoalRequested bool `json:"goal_requested,omitempty"`
 	Voice         bool `json:"voice,omitempty"`
 }
 

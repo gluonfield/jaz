@@ -42,6 +42,7 @@ type jobState struct {
 	mu                     sync.RWMutex
 	turnMu                 sync.Mutex
 	promptQueueing         bool
+	nativeGoal             bool
 	turn                   *activeTurn
 	toolByID               map[string]sessionevents.ACPToolCall
 	savedAssistantLen      int
@@ -56,6 +57,7 @@ type activeTurn struct {
 	done            chan struct{}
 	completion      CompletionMode
 	planRequested   bool
+	goalRequested   bool
 	cancelRequested bool
 	promptCalls     int
 }

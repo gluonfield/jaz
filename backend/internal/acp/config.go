@@ -35,6 +35,19 @@ func CanonicalAgentName(name string) string {
 	return name
 }
 
+type AgentCapabilities struct {
+	NativeGoal bool `json:"native_goal,omitempty"`
+}
+
+func CatalogAgentCapabilitiesFor(name string) AgentCapabilities {
+	switch CanonicalAgentName(name) {
+	case AgentCodex:
+		return AgentCapabilities{NativeGoal: true}
+	default:
+		return AgentCapabilities{}
+	}
+}
+
 // SystemPromptSource supplies the full ACP session extension (AGENTS.md,
 // memory, skills) injected at session creation.
 type SystemPromptSource interface {
