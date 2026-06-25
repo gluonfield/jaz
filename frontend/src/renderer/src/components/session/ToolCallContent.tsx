@@ -90,7 +90,14 @@ function webToolVariant(call: ACPToolCall): 'search' | 'fetch' | null {
   if (name === 'webfetch') return 'fetch'
   const kind = (call.kind ?? '').toLowerCase()
   if (kind !== 'fetch' && kind !== 'search') return null
-  if (parseWebResults(call.content).length > 1) return 'search'
+  // `kind` alone is ambiguous: a filesystem search or directory listing also
+  // reports kind 'search'. Only treat it as a web tool when there's an actual
+  // URL — in the results or the title — otherwise let it fall through to the
+  // local search category instead of "Searched the web".
+  const results = parseWebResults(call.content)
+  const urlInTitle = /https?:\/\//i.test(call.title ?? '')
+  if (!results.length && !urlInTitle) return null
+  if (results.length > 1) return 'search'
   if (/search/i.test(call.title ?? '')) return 'search'
   return kind === 'search' ? 'search' : 'fetch'
 }
