@@ -159,6 +159,16 @@ export function AppearanceSettings() {
             aria-label="Inline agent diffs"
           />
         </Row>
+        <Row
+          title="Inline shell commands"
+          description="Show shell commands the agent runs — the command and its output — expanded in the conversation instead of collapsed under a menu."
+        >
+          <Switch
+            checked={settings.inlineShellCommands}
+            onChange={(value) => setAppearance({ inlineShellCommands: value })}
+            aria-label="Inline shell commands"
+          />
+        </Row>
       </SettingsCard>
     </section>
   )

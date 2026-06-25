@@ -236,8 +236,8 @@ export const Transcript = memo(function Transcript({
       {visibleTurns.map((turn, visibleTurnIndex) => {
         const turnIndex = historyStart + visibleTurnIndex
         const active = working && turnIndex === turns.length - 1
-        // Result cards (created loop, spawned-agent run) read as the turn's
-        // outcome, so pull them out of the flow and append them at the end.
+        // A created-loop card reads as the turn's outcome, so pull it out of the
+        // flow and append it at the end rather than folding it into the work.
         const resultCards = turn.items.filter(isResultCard)
         const flow = turn.items.filter((item) => !isResultCard(item))
         const sections: ReactNode[] = []
