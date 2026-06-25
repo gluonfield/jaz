@@ -19,6 +19,7 @@ import (
 	"github.com/gluonfield/acp-transport/streamhttp"
 	"github.com/wins/jaz/backend/internal/processenv"
 	"github.com/wins/jaz/backend/internal/promptmodule"
+	modelprovider "github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/skills"
 )
 
@@ -106,7 +107,7 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	if cfg.Command == "" {
 		return nil, nil, fmt.Errorf("acp agent %q has no command", name)
 	}
-	command, args, err := processCommand(name, cfg)
+	command, args, err := processCommand(name, cfg, m.providers())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -380,8 +381,11 @@ func (m *Manager) installAgentSkills(agent, root, dst string) {
 	}
 }
 
-func processCommand(name string, cfg AgentConfig) (string, []string, error) {
+func processCommand(name string, cfg AgentConfig, providers map[string]modelprovider.ModelProviderConfig) (string, []string, error) {
 	args := append([]string(nil), cfg.Args...)
+	if CanonicalAgentName(name) == AgentCodex {
+		args = append(args, codexProviderArgs(cfg, providers)...)
+	}
 	grokCfg, handled, err := resolveGrokStartupConfig(name, cfg)
 	if err != nil {
 		return "", nil, err

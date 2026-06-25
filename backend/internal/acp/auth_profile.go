@@ -109,7 +109,7 @@ func resolveAgentAuthWithProviders(name string, cfg AgentConfig, root string, en
 	}
 	switch name {
 	case AgentCodex:
-		return resolveCodexAuth(auth, cfg, root, env)
+		return resolveCodexAuth(auth, cfg, root, env, providers)
 	case AgentClaude:
 		return resolveClaudeAuth(auth, cfg, root, env)
 	case AgentGrok:
@@ -121,7 +121,10 @@ func resolveAgentAuthWithProviders(name string, cfg AgentConfig, root string, en
 	}
 }
 
-func resolveCodexAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env map[string]string) resolvedAgentAuth {
+func resolveCodexAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env map[string]string, providers map[string]modelprovider.ModelProviderConfig) resolvedAgentAuth {
+	if meta, ok := codexProvider(cfg.ModelProvider, providers); ok {
+		return resolveCodexProviderAuth(meta, root, env, providers)
+	}
 	layout := runtimefiles.New(root)
 	existing := expandAuthPath(firstNonEmpty(existingAuthPath(auth), cfg.Env["CODEX_HOME"], env["CODEX_HOME"], os.Getenv("CODEX_HOME"), defaultHomePath(".codex")))
 	jaz := layout.ACPCodexHome
@@ -160,6 +163,48 @@ func resolveCodexAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env ma
 		status.Reason = "Codex login at " + filepath.Join(path, "auth.json") + " or " + status.APIKey.SourceEnv
 	}
 	return status
+}
+
+func resolveCodexProviderAuth(meta modelprovider.ModelProvider, root string, env map[string]string, providers map[string]modelprovider.ModelProviderConfig) resolvedAgentAuth {
+	layout := runtimefiles.New(root)
+	keyEnv := strings.TrimSpace(meta.APIKeyEnv)
+	status := resolvedAgentAuth{
+		Config:      AgentAuthConfig{Mode: AuthModeJazProfile, Path: layout.ACPCodexHome},
+		StoragePath: filepath.Join(layout.ACPCodexHome, "auth.json"),
+		Source:      AuthModeJazProfile,
+	}
+	value := strings.TrimSpace(providers[meta.ID].APIKey)
+	if value == "" && keyEnv != "" {
+		value = codexProviderKeyValue(root, env, keyEnv)
+	}
+	switch {
+	case keyEnv != "" && value != "":
+		status.APIKey = AgentAPIKeySpec{SourceEnv: keyEnv, TargetEnv: keyEnv}
+		status.APIKeyValue = value
+		status.APIKeySet = true
+		status.markAuthenticated(strings.ToLower(keyEnv)+"_env", AuthKindAPIKey)
+	default:
+		status.Reason = "Set " + firstNonEmpty(keyEnv, "the provider API key") + " in Settings > Model Providers to use " + firstNonEmpty(strings.TrimSpace(meta.Label), meta.ID) + " with Codex"
+	}
+	return status
+}
+
+func codexProviderKeyValue(root string, env map[string]string, keyEnv string) string {
+	for _, name := range []string{keyEnv, apiKeyAlias(keyEnv)} {
+		if strings.TrimSpace(name) == "" {
+			continue
+		}
+		if v := strings.TrimSpace(env[name]); v != "" {
+			return v
+		}
+		if v, ok := runtimeenv.Lookup(runtimeenv.Path(root), name); ok && strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+		if v := strings.TrimSpace(os.Getenv(name)); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func resolveClaudeAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env map[string]string) resolvedAgentAuth {

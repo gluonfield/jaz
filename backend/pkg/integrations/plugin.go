@@ -39,21 +39,34 @@ const (
 )
 
 type Plugin struct {
-	ID              string         `json:"id"`
-	Name            string         `json:"name"`
-	Description     string         `json:"description,omitempty"`
-	Provider        Provider       `json:"provider"`
-	Category        string         `json:"category,omitempty"`
-	Icon            PluginIcon     `json:"icon"`
-	Auth            []AuthOption   `json:"auth"`
-	Capabilities    []Capability   `json:"capabilities"`
-	MultiAccount    bool           `json:"multi_account"`
-	SourceLanes     []string       `json:"source_lanes,omitempty"`
-	Tools           []PluginTool   `json:"tools,omitempty"`
-	Skills          []PluginSkill  `json:"skills,omitempty"`
-	RemoteMCP       *RemoteMCP     `json:"remote_mcp,omitempty"`
-	ConnectionNotes []string       `json:"connection_notes,omitempty"`
-	Implementation  Implementation `json:"implementation"`
+	ID              string            `json:"id"`
+	Name            string            `json:"name"`
+	Description     string            `json:"description,omitempty"`
+	Provider        Provider          `json:"provider"`
+	Category        string            `json:"category,omitempty"`
+	Icon            PluginIcon        `json:"icon"`
+	Auth            []AuthOption      `json:"auth"`
+	Capabilities    []Capability      `json:"capabilities"`
+	MultiAccount    bool              `json:"multi_account"`
+	SourceLanes     []string          `json:"source_lanes,omitempty"`
+	Tools           []PluginTool      `json:"tools,omitempty"`
+	Skills          []PluginSkill     `json:"skills,omitempty"`
+	RemoteMCP       *RemoteMCP        `json:"remote_mcp,omitempty"`
+	ConnectionNotes []string          `json:"connection_notes,omitempty"`
+	Implementation  Implementation    `json:"implementation"`
+	Connection      *PluginConnection `json:"connection,omitempty"`
+}
+
+type PluginConnectionStatus string
+
+const (
+	PluginConnectionStatusConnected    PluginConnectionStatus = "connected"
+	PluginConnectionStatusNotConnected PluginConnectionStatus = "not_connected"
+)
+
+type PluginConnection struct {
+	Status   PluginConnectionStatus `json:"status"`
+	Accounts []Connection           `json:"accounts,omitempty"`
 }
 
 type PluginIcon struct {

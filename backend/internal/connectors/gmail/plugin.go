@@ -31,7 +31,7 @@ func Plugin() integrations.Plugin {
 		Auth: []integrations.AuthOption{{
 			Kind:        integrations.AuthKindOAuth,
 			Description: "Jaz-managed Google OAuth for sync and actions.",
-			Scopes:      []string{ScopeReadonly, ScopeModify, ScopeCompose, ScopeSend},
+			Scopes:      OAuthScopes,
 		}, {
 			Kind:        integrations.AuthKindRemoteMCP,
 			Description: "Official Google Gmail MCP server compatibility path.",
@@ -65,11 +65,11 @@ func Plugin() integrations.Plugin {
 		},
 		ConnectionNotes: []string{
 			"Jaz supports multiple Gmail accounts through connection aliases such as personal or work.",
-			"Jaz-owned Gmail tools use Google APIs directly so desktop builds do not need to ship OAuth client secrets.",
+			"Jaz-owned Gmail tools use Google APIs directly through the bundled desktop OAuth client.",
 			"The official Gmail MCP endpoint is useful as a compatibility target, but is not the consumer-clean Jaz default.",
 		},
 		Implementation: integrations.Implementation{
-			Status: "planned",
+			Status: "available",
 			Owner:  "jaz",
 		},
 	}
@@ -90,11 +90,11 @@ func tools() []integrations.PluginTool {
 		readTool("batch_read_email_threads", "Fetch multiple Gmail conversation threads, resolving message IDs to thread IDs when needed."),
 		readTool("batch_read_thread", "Fetch multiple known Gmail threads without resolving message IDs first."),
 		readTool("read_attachment", "Read one attachment from a Gmail message using the parent message ID and attachment ID or exact filename."),
-		tool("create_draft", "Create a Gmail draft without sending so the user can review it in Gmail.", integrations.ActionRiskDraft, ScopeCompose),
-		tool("update_draft", "Update an existing Gmail draft in place while preserving omitted fields.", integrations.ActionRiskDraft, ScopeCompose),
-		tool("send_draft", "Send an existing Gmail draft after explicit user review or instruction.", integrations.ActionRiskWrite, ScopeCompose),
-		tool("send_email", "Send an email from the authenticated Gmail account.", integrations.ActionRiskWrite, ScopeSend),
-		tool("forward_emails", "Forward Gmail messages with an optional note and preserved original attachments.", integrations.ActionRiskWrite, ScopeReadonly, ScopeSend),
+		tool("create_draft", "Create a Gmail draft without sending so the user can review it in Gmail.", integrations.ActionRiskDraft, ScopeModify),
+		tool("update_draft", "Update an existing Gmail draft in place while preserving omitted fields.", integrations.ActionRiskDraft, ScopeModify),
+		tool("send_draft", "Send an existing Gmail draft after explicit user review or instruction.", integrations.ActionRiskWrite, ScopeModify),
+		tool("send_email", "Send an email from the authenticated Gmail account.", integrations.ActionRiskWrite, ScopeModify),
+		tool("forward_emails", "Forward Gmail messages with an optional note and preserved original attachments.", integrations.ActionRiskWrite, ScopeModify),
 		tool("create_label", "Create a Gmail label, returning the existing label when it already exists.", integrations.ActionRiskWrite, ScopeModify),
 		tool("apply_labels_to_emails", "Apply labels to Gmail messages by label name rather than Gmail label ID.", integrations.ActionRiskWrite, ScopeModify),
 		tool("batch_modify_email", "Add or remove Gmail labels on a batch of individual messages.", integrations.ActionRiskWrite, ScopeModify),

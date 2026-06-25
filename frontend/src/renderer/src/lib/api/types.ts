@@ -129,11 +129,9 @@ export interface RepoInfo {
   // Commits exist that the remote doesn't have.
   needs_push?: boolean
   dirty?: boolean
-  // Linked worktree (not the main checkout); main_path is that checkout's
-  // path and main_branch the branch it's on — the handoff destination, and
-  // where this branch can be checked out without entering the worktree.
+  // Linked worktree (not the main checkout); main_branch is the branch the
+  // main checkout is on — the handoff destination.
   is_worktree?: boolean
-  main_path?: string
   main_branch?: string
   // Commits on main_branch the worktree's branch doesn't have yet — what
   // "Update from main" would pull in (omitted/0 when up to date).
@@ -239,6 +237,20 @@ export interface IntegrationImplementation {
   owner: string
 }
 
+export interface IntegrationConnectionAccount {
+  id: string
+  provider: string
+  account_id: string
+  account_name?: string
+  alias?: string
+  scopes?: string[]
+}
+
+export interface IntegrationConnection {
+  status: 'connected' | 'not_connected'
+  accounts?: IntegrationConnectionAccount[]
+}
+
 export type IntegrationPluginIconKind = 'asset' | 'url' | 'initials'
 
 export interface IntegrationPluginIcon {
@@ -263,6 +275,7 @@ export interface IntegrationPlugin {
   remote_mcp?: IntegrationRemoteMCP
   connection_notes?: string[]
   implementation: IntegrationImplementation
+  connection?: IntegrationConnection
 }
 
 export type DeviceStatus = 'pending' | 'approved' | 'revoked'
@@ -929,6 +942,7 @@ export interface ACPAgentOptions {
   local: boolean
   provider_mode?: 'agent_defaults'
   model_provider_ids?: string[]
+  auth_provider_id?: string
   requires_command: boolean
   supports_auth: boolean
 }

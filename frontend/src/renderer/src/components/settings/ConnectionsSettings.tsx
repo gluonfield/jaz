@@ -1,9 +1,12 @@
-import { useQuery } from '@tanstack/react-query'
-import { Mail, Plug } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { CheckCircle2, Clock3, Loader2, Mail, Plug } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { SkeletonRows } from '@/components/ui/Skeleton'
-import { connectionPluginsQuery } from '@/lib/api/connections'
+import { useToast } from '@/components/ui/toast'
+import { connectionPluginsQuery, startConnectionPlugin } from '@/lib/api/connections'
+import { clientRuntime } from '@/lib/clientRuntime'
+import { keys } from '@/lib/query/keys'
 import type { IntegrationCapability, IntegrationPlugin } from '@/lib/api/types'
 
 const CAPABILITY_LABELS: Record<IntegrationCapability, string> = {
@@ -15,11 +18,44 @@ const CAPABILITY_LABELS: Record<IntegrationCapability, string> = {
 }
 
 export function ConnectionsSettings() {
-  const plugins = useQuery(connectionPluginsQuery)
+  const queryClient = useQueryClient()
+  const toast = useToast()
+  const [pollUntil, setPollUntil] = useState(0)
+  const plugins = useQuery({
+    ...connectionPluginsQuery,
+    refetchInterval: () => (Date.now() < pollUntil ? 2000 : false),
+  })
+  const connect = useMutation({
+    mutationFn: (id: string) => startConnectionPlugin(id),
+    onSuccess: (result) => {
+      setPollUntil(Date.now() + 90_000)
+      openAuthURL(result.auth_url)
+      toast('Finish Gmail sign-in in your browser')
+    },
+    onError: (error: Error) => {
+      toast(`Couldn't start Gmail sign-in: ${error.message}`, 'danger')
+    },
+  })
   const sortedPlugins = useMemo(
     () => [...(plugins.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
     [plugins.data],
   )
+
+  useEffect(() => {
+    if (pollUntil === 0) return
+    const refresh = () => {
+      if (document.visibilityState === 'hidden') return
+      void queryClient.invalidateQueries({ queryKey: keys.connectionPlugins })
+    }
+    const timeout = window.setTimeout(() => setPollUntil(0), Math.max(0, pollUntil - Date.now()))
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      window.clearTimeout(timeout)
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [pollUntil, queryClient])
 
   return (
     <section className="py-5">
@@ -42,7 +78,12 @@ export function ConnectionsSettings() {
         ) : (
           <div className="flex flex-col gap-px">
             {sortedPlugins.map((plugin) => (
-              <ConnectionPluginRow key={plugin.id} plugin={plugin} />
+              <ConnectionPluginRow
+                key={plugin.id}
+                plugin={plugin}
+                connecting={connect.isPending && connect.variables === plugin.id}
+                onConnect={() => connect.mutate(plugin.id)}
+              />
             ))}
           </div>
         )}
@@ -51,9 +92,34 @@ export function ConnectionsSettings() {
   )
 }
 
-function ConnectionPluginRow({ plugin }: { plugin: IntegrationPlugin }) {
+function openAuthURL(url: string): void {
+  if (clientRuntime.openExternalURL) {
+    clientRuntime.openExternalURL(url)
+    return
+  }
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+function ConnectionPluginRow({
+  plugin,
+  connecting,
+  onConnect,
+}: {
+  plugin: IntegrationPlugin
+  connecting: boolean
+  onConnect: () => void
+}) {
   const toolCount = plugin.tools?.length ?? 0
   const sourceLanes = plugin.source_lanes ?? []
+  const available = plugin.implementation.status === 'available'
+  const connected = plugin.connection?.status === 'connected'
+  const actionIcon = connecting ? (
+    <Loader2 size={13} className="animate-spin" />
+  ) : connected ? (
+    <CheckCircle2 size={13} />
+  ) : (
+    <Plug size={13} />
+  )
 
   return (
     <div className="flex items-start gap-3 rounded-card px-3 py-3 text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface max-sm:flex-col">
@@ -64,8 +130,8 @@ function ConnectionPluginRow({ plugin }: { plugin: IntegrationPlugin }) {
             <span className="truncate font-medium text-ink" title={plugin.name}>
               {plugin.name}
             </span>
-            <Pill>{statusLabel(plugin.implementation.status)}</Pill>
             {plugin.multi_account ? <Pill>Multiple accounts</Pill> : null}
+            {connected ? <ConnectedPill /> : null}
           </div>
           {plugin.description ? <p className="mt-1 text-[12px] leading-5 text-ink-3">{plugin.description}</p> : null}
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -81,17 +147,30 @@ function ConnectionPluginRow({ plugin }: { plugin: IntegrationPlugin }) {
         </div>
       </div>
 
-      <Button
-        variant="secondary"
-        size="sm"
-        disabled
-        title="The first-party account connection flow is not implemented yet."
-        className="max-sm:self-start"
-      >
-        <Plug size={13} />
-        Connect
-      </Button>
+      {available ? (
+        <Button variant="secondary" size="sm" disabled={connecting} onClick={onConnect} className="max-sm:self-start">
+          {actionIcon}
+          {connecting ? 'Connecting' : connected ? 'Reconnect' : 'Connect'}
+        </Button>
+      ) : (
+        <span
+          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-surface-2 px-2.5 text-[12px] font-medium text-ink-3 max-sm:self-start"
+          title="The first-party account connection flow is not implemented yet."
+        >
+          <Clock3 size={13} />
+          {statusLabel(plugin.implementation.status)}
+        </span>
+      )}
     </div>
+  )
+}
+
+function ConnectedPill() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-ok/10 px-1.5 py-[3px] text-[11px] leading-none text-ok">
+      <CheckCircle2 size={11} />
+      Connected
+    </span>
   )
 }
 
