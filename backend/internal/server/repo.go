@@ -367,6 +367,7 @@ func (s *Server) missingWorktreeInfo(ctx context.Context, session storage.Sessio
 	}
 	if worktree.ProjectPath != "" && gitinfo.BranchExists(ctx, worktree.ProjectPath, worktree.Branch) {
 		info.WorktreeRestorable = true
+		info.MainPath = worktree.ProjectPath
 	}
 	return info, true
 }

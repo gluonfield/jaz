@@ -216,6 +216,7 @@ func applyACPStateResponse(resp map[string]any, state storage.ACPState) {
 	resp["acp_tool_calls"] = state.ToolCalls
 	resp["acp_permissions"] = state.Permissions
 	resp["acp_error"] = state.Error
+	resp["acp_active_operation"] = state.ActiveOperation
 	resp["acp_last_event_at"] = state.LastEventAt
 	resp["acp_last_tool_at"] = state.LastToolAt
 }
@@ -231,6 +232,7 @@ func inactiveACPStateResponse(state storage.ACPState) storage.ACPState {
 	if state.State == acp.StateStarting || state.State == acp.StateRunning || state.State == acp.StateNotRunning {
 		state.State = acp.StateIdle
 	}
+	state.ActiveOperation = ""
 	state.Permissions = nil
 	return state
 }
@@ -267,12 +269,13 @@ func acpJobState(job acp.Job) storage.ACPState {
 			PlanModeID:     job.Modes.PlanModeID,
 			AvailableModes: acpModes(job.Modes.AvailableModes),
 		},
-		Error:         job.Error,
-		ParentVisible: job.ParentVisible,
-		CreatedAt:     job.CreatedAt,
-		UpdatedAt:     job.UpdatedAt,
-		LastEventAt:   job.LastEventAt,
-		LastToolAt:    job.LastToolAt,
+		Error:           job.Error,
+		ActiveOperation: job.ActiveOperation,
+		ParentVisible:   job.ParentVisible,
+		CreatedAt:       job.CreatedAt,
+		UpdatedAt:       job.UpdatedAt,
+		LastEventAt:     job.LastEventAt,
+		LastToolAt:      job.LastToolAt,
 	}
 }
 
@@ -289,7 +292,7 @@ func acpModes(in []acp.ModeSnapshot) []sessionevents.ACPMode {
 }
 
 func acpStateFromSession(session storage.Session) storage.ACPState {
-	session = canonicalSessionResponse(session)
+	session = canonicalSession(session)
 	state := storage.ACPState{
 		ID:              session.ID,
 		Slug:            session.Slug,
