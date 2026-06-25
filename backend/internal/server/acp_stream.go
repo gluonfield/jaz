@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -25,6 +26,7 @@ type acpStreamTurn struct {
 	Contexts      []storage.MessageContext
 	Attachments   []storage.Attachment
 	PlanRequested bool
+	GoalRequested bool
 }
 
 func acpStreamTurnFromRequest(req streamRequest) acpStreamTurn {
@@ -32,9 +34,11 @@ func acpStreamTurnFromRequest(req streamRequest) acpStreamTurn {
 		Kind:          acpTurnPrompt,
 		Message:       req.Message,
 		PlanRequested: req.PlanRequested,
+		GoalRequested: req.GoalRequested,
 	}
 	if isACPCompactCommand(req.Message) {
 		turn.Kind = acpTurnCompact
+		turn.GoalRequested = false
 	}
 	return turn
 }
@@ -73,6 +77,7 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 			Attachments:   turn.Attachments,
 			Completion:    acp.CompletionInline,
 			PlanRequested: turn.PlanRequested,
+			GoalRequested: turn.GoalRequested,
 		})
 	}
 	cancelStart()
@@ -180,6 +185,9 @@ func isACPTerminal(state string) bool {
 }
 
 func acpSendError(session storage.Session, err error) error {
+	if errors.Is(err, acp.ErrNativeGoalUnsupported) {
+		return fmt.Errorf("goal mode is not supported by this ACP agent")
+	}
 	if strings.Contains(err.Error(), "active acp session not found") {
 		return fmt.Errorf("acp session %q (%s) could not be resumed: %v", session.Slug, session.ID, err)
 	}

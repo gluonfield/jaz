@@ -73,6 +73,9 @@ func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (
 	if m.configuredLocal(job.ACPAgent) && local == nil {
 		return Job{}, fmt.Errorf("local acp agent %q is not registered", job.ACPAgent)
 	}
+	if req.GoalRequested && !job.supportsNativeGoal() {
+		return Job{}, ErrNativeGoalUnsupported
+	}
 	if err := m.prepareModeForTurn(ctx, job, req.PlanRequested); err != nil {
 		return Job{}, err
 	}
@@ -82,8 +85,9 @@ func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (
 			m.log.Error("append user message failed", "session", job.ID, "error", err)
 		}
 	}
-	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested)
+	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested, "goal", req.GoalRequested, "operation", opts.activeOperation)
 	job.startTurnWithOperation(req.Completion, req.PlanRequested, req.ParentVisible, opts.activeOperation)
+	job.setTurnGoalRequested(req.GoalRequested)
 	m.touchJobAttention(job)
 	m.publishACP(job.Snapshot())
 	if local != nil {
@@ -107,6 +111,9 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	job.mu.RUnlock()
 	if !queueing {
 		return Job{}, ErrPromptQueueingUnsupported
+	}
+	if req.GoalRequested && !job.supportsNativeGoal() {
+		return Job{}, ErrNativeGoalUnsupported
 	}
 	local := m.localAgent(job.ACPAgent)
 	if m.configuredLocal(job.ACPAgent) && local == nil {
@@ -143,6 +150,7 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	go m.runPromptCall(context.Background(), job, done, acpschema.PromptRequest{
 		SessionID: acpschema.SessionID(job.ACPSession),
 		Prompt:    prompt,
+		Meta:      goalPromptMeta(req.GoalRequested),
 	})
 	return job.Snapshot(), nil
 }

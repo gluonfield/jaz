@@ -13,6 +13,7 @@ type QueuedMessage struct {
 	Quotes        []string         `json:"quotes,omitempty"`
 	AttachmentIDs []string         `json:"attachment_ids,omitempty"`
 	PlanRequested bool             `json:"plan_requested,omitempty"`
+	GoalRequested bool             `json:"goal_requested,omitempty"`
 }
 
 func NormalizeQueuedMessages(messages []QueuedMessage) []QueuedMessage {
