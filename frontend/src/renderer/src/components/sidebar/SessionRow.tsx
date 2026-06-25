@@ -51,7 +51,7 @@ export function SessionRow({
     <Link
       to="/sessions/$sessionId"
       params={{ sessionId: session.id }}
-      className="group flex h-8 items-center gap-2 rounded-full px-2.5 text-[13px] text-ink transition-colors duration-150 hover:bg-surface-2"
+      className="group flex h-8 items-center gap-2 rounded-full px-2.5 text-[13px] text-ink transition-colors duration-150 hover:bg-surface-2 max-sm:h-11 max-sm:gap-2.5 max-sm:px-3 max-sm:text-[15px]"
       activeProps={{ className: 'bg-primary-soft! text-ink! font-medium' }}
     >
       {/* branch connector: this thread was spawned by the session above */}
@@ -119,7 +119,7 @@ function PinButton({ session }: { session: Session }) {
         e.stopPropagation()
         pin.mutate()
       }}
-      className={`${pinned ? 'text-primary' : 'text-ink-3'} hidden size-5 shrink-0 cursor-pointer place-items-center rounded transition-colors duration-150 hover:bg-surface-2 hover:text-ink group-hover:grid`}
+      className={`${pinned ? 'text-primary' : 'text-ink-3'} hidden size-5 shrink-0 cursor-pointer place-items-center rounded transition-colors duration-150 hover:bg-surface-2 hover:text-ink group-hover:grid max-sm:grid max-sm:size-8`}
     >
       <Pin size={13} className={pinned ? 'fill-current' : ''} />
     </button>
@@ -148,7 +148,7 @@ function ArchiveButton({ sessionId }: { sessionId: string }) {
         e.stopPropagation()
         archive.mutate()
       }}
-      className="hidden size-5 shrink-0 cursor-pointer place-items-center rounded text-ink-3 transition-colors duration-150 group-hover:grid hover:bg-surface-2 hover:text-ink"
+      className="hidden size-5 shrink-0 cursor-pointer place-items-center rounded text-ink-3 transition-colors duration-150 group-hover:grid hover:bg-surface-2 hover:text-ink max-sm:grid max-sm:size-8"
     >
       <Archive size={13} />
     </button>
