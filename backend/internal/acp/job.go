@@ -29,6 +29,7 @@ type Job struct {
 	Permissions     []sessionevents.ACPPermission `json:"permissions,omitempty"`
 	Modes           ModeState                     `json:"modes,omitempty"`
 	Error           string                        `json:"error,omitempty"`
+	ActiveOperation string                        `json:"active_operation,omitempty"`
 	ParentVisible   bool                          `json:"parent_visible,omitempty"`
 	CreatedAt       time.Time                     `json:"created_at"`
 	UpdatedAt       time.Time                     `json:"updated_at"`
@@ -125,6 +126,7 @@ func (j *jobState) Snapshot() Job {
 		Permissions:     clonePermissions(j.Permissions),
 		Modes:           j.Modes.Clone(),
 		Error:           j.Error,
+		ActiveOperation: j.ActiveOperation,
 		ParentVisible:   j.ParentVisible,
 		CreatedAt:       j.CreatedAt,
 		UpdatedAt:       j.UpdatedAt,
@@ -155,11 +157,18 @@ func (j *jobState) setState(state, stopReason, errMsg string) {
 	j.State = state
 	j.StopReason = stopReason
 	j.Error = errMsg
+	if state != StateRunning && state != StateStarting {
+		j.ActiveOperation = ""
+	}
 	j.UpdatedAt = now
 	j.LastEventAt = now
 }
 
 func (j *jobState) startTurn(completion CompletionMode, planRequested, parentVisible bool) chan struct{} {
+	return j.startTurnWithOperation(completion, planRequested, parentVisible, "")
+}
+
+func (j *jobState) startTurnWithOperation(completion CompletionMode, planRequested, parentVisible bool, activeOperation string) chan struct{} {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	j.State = StateRunning
@@ -170,6 +179,7 @@ func (j *jobState) startTurn(completion CompletionMode, planRequested, parentVis
 	j.Permissions = nil
 	j.Error = ""
 	j.StopReason = ""
+	j.ActiveOperation = activeOperation
 	j.savedAssistantLen = 0
 	j.usage = storage.Usage{}
 	j.lastUsageDelta = storage.Usage{}
