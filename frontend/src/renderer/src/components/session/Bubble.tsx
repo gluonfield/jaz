@@ -84,7 +84,7 @@ function MessageAttachments({ attachments }: { attachments: BubbleAttachment[] }
           className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-bg px-2.5 py-1 text-xs text-ink-2"
           title={attachment.server_path ?? attachment.uri}
         >
-          <FileText size={13} className="shrink-0 text-primary" />
+          <FileText size={13} className="shrink-0 text-ink-3" />
           <span className="max-w-[220px] truncate text-ink">{attachment.name}</span>
           <span className="shrink-0 text-ink-3">{formatAttachmentSize(attachment.size)}</span>
         </span>
