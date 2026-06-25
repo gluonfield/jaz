@@ -11,7 +11,6 @@ import (
 type Querier interface {
 	CreateMCPServer(ctx context.Context, arg CreateMCPServerParams) error
 	DeleteMCPServer(ctx context.Context, id string) (int64, error)
-	DeleteMCPServerOAuthToken(ctx context.Context, connectionID string) error
 	GetMCPServer(ctx context.Context, id string) (GetMCPServerRow, error)
 	ListMCPServers(ctx context.Context) ([]ListMCPServersRow, error)
 	SetMCPServerEnabled(ctx context.Context, arg SetMCPServerEnabledParams) (int64, error)
