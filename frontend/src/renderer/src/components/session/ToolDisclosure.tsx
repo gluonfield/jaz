@@ -1,8 +1,9 @@
 import { ChevronRight, LoaderCircle } from 'lucide-react'
 import { memo, useState, type ReactNode } from 'react'
 import type { ACPToolCall } from '@/lib/api/types'
-import { useInlineDiffs } from '@/lib/appearance'
+import { useInlineDiffs, useInlineShellCommands } from '@/lib/appearance'
 import { EditDiffBlock, hasInlineDiff } from './EditDiffBlock'
+import { ShellCommandBlock, hasInlineShellCommand } from './ShellCommandBlock'
 import { ToolCallDetail, toolCallCategory } from './ToolCallContent'
 import { normalized } from './TranscriptUtils'
 
@@ -157,7 +158,12 @@ export const ToolDisclosure = memo(function ToolDisclosure({
   active?: boolean
 }) {
   const inlineDiffs = useInlineDiffs()
-  if (!inlineDiffs || !calls.some(hasInlineDiff)) {
+  const inlineShell = useInlineShellCommands()
+  const showDiff = (call: ACPToolCall) => inlineDiffs && hasInlineDiff(call)
+  const showShell = (call: ACPToolCall) => inlineShell && hasInlineShellCommand(call)
+  // Edits win when a call somehow qualifies as both, since the diff is the
+  // higher-signal view.
+  if (!calls.some((call) => showDiff(call) || showShell(call))) {
     return <ToolRunDisclosure label={label} calls={calls} active={active} />
   }
 
@@ -176,9 +182,14 @@ export const ToolDisclosure = memo(function ToolDisclosure({
     run = []
   }
   for (const call of calls) {
-    if (hasInlineDiff(call)) {
+    if (showDiff(call)) {
       flushRun()
       rows.push(<EditDiffBlock key={call.id} call={call} />)
+      continue
+    }
+    if (showShell(call)) {
+      flushRun()
+      rows.push(<ShellCommandBlock key={call.id} call={call} active={active} />)
       continue
     }
     run.push(call)
