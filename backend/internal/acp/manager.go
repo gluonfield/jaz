@@ -121,6 +121,15 @@ type SendRequest struct {
 	ParentVisible bool
 }
 
+type CompactRequest struct {
+	Session string
+}
+
+const (
+	ActiveOperationCompact = "compact"
+	CompactCommand         = "/compact"
+)
+
 type SteerRequest struct {
 	Session       string
 	Message       string
@@ -717,6 +726,7 @@ func (m *Manager) cancelStored(ref string) (Job, error) {
 	}
 	state.State = StateCancelled
 	state.StopReason = "cancelled"
+	state.ActiveOperation = ""
 	state.Permissions = nil
 	now := time.Now().UTC()
 	state.UpdatedAt = now

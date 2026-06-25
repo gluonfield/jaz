@@ -27,11 +27,13 @@ function detailFor(signal: RunSignal, ageMs: number | undefined): string {
 export function SessionLivenessIndicator({
   agent,
   running,
+  activeOperation,
   updatedAt,
   lastActivityAt,
 }: {
   agent?: string
   running: boolean
+  activeOperation?: string
   updatedAt: string
   lastActivityAt?: string
 }) {
@@ -51,9 +53,7 @@ export function SessionLivenessIndicator({
 
   const stale = signal === 'stale'
   const detail = detailFor(signal, ageMs)
-  const label = stale
-    ? `${agentLabel(agent)} is still marked running`
-    : `${agentLabel(agent)} is working`
+  const label = livenessLabel(agent, activeOperation, stale)
 
   return (
     <AnimatePresence initial={false}>
@@ -81,4 +81,11 @@ export function SessionLivenessIndicator({
       ) : null}
     </AnimatePresence>
   )
+}
+
+function livenessLabel(agent: string | undefined, activeOperation: string | undefined, stale: boolean): string {
+  if (activeOperation === 'compact') {
+    return stale ? 'Compaction is still marked running' : 'Compacting'
+  }
+  return stale ? `${agentLabel(agent)} is still marked running` : `${agentLabel(agent)} is working`
 }

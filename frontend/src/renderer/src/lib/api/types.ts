@@ -65,12 +65,17 @@ export interface Session {
   model_provider?: string
   model?: string
   reasoning_effort?: string
+  actions?: SessionActions
   usage?: Usage
   queued_messages?: QueuedMessage[]
   pending_steer_message?: QueuedMessage
   created_at: string
   updated_at: string
   last_attention_at: string
+}
+
+export interface SessionActions {
+  compact?: boolean
 }
 
 export interface ThreadSearchResult {
@@ -402,6 +407,7 @@ export interface SessionMessages {
   acp_tool_calls?: ACPToolCall[]
   acp_permissions?: ACPPermission[]
   acp_error?: string
+  acp_active_operation?: string
   acp_last_event_at?: string
   acp_last_tool_at?: string
   acp_children?: ACPJobSnapshot[]
@@ -560,6 +566,7 @@ export interface ACPJobSnapshot {
   plan?: ACPPlanEntry[]
   tool_calls?: ACPToolCall[]
   permissions?: ACPPermission[]
+  active_operation?: string
   parent_visible?: boolean
   last_event_at?: string
   last_tool_at?: string

@@ -78,6 +78,50 @@ func TestSessionMessagesErrorSessionOverridesRunningACPSnapshot(t *testing.T) {
 	}
 }
 
+func TestSessionMessagesIncludesActiveOperation(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "codex-compacting",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     "codex",
+			SessionID: "acp-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/"+session.ID+"/messages", nil)
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store, ACP: &fakeACPManager{job: acp.Job{
+		ID:              session.ID,
+		Slug:            session.Slug,
+		ACPAgent:        "codex",
+		ACPSession:      "acp-session",
+		State:           acp.StateRunning,
+		ActiveOperation: acp.ActiveOperationCompact,
+	}}}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var got struct {
+		ActiveOperation string `json:"acp_active_operation"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.ActiveOperation != acp.ActiveOperationCompact {
+		t.Fatalf("active operation = %q, want compact", got.ActiveOperation)
+	}
+}
+
 func TestSessionMessagesErrorChildPreservesParentVisibility(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

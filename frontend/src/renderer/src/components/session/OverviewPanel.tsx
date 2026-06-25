@@ -19,13 +19,14 @@ import {
   GitPullRequestArrow,
   type LucideIcon,
   LoaderCircle,
+  Minimize2,
 } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useState, type ReactNode } from 'react'
 import { useToast } from '@/components/ui/toast'
-import { setSessionArchived } from '@/lib/api/sessions'
+import { compactSession, setSessionArchived } from '@/lib/api/sessions'
 import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
 import type { RepoInfo, Session } from '@/lib/api/types'
 import type { ProviderSubagentView } from '@/lib/providerSubagents'
@@ -66,7 +67,7 @@ export function OverviewPanel({
       {subagents.length ? <SubagentsSection subagents={subagents} /> : null}
       {progress ? <ProgressSection progress={progress} working={working} /> : null}
       {showGit ? <GitSection repo={repo} /> : null}
-      <ManageSection session={session} repo={repo} onSend={onSend} />
+      <ManageSection session={session} repo={repo} working={working} onSend={onSend} />
     </SidePanelShell>
   )
 }
@@ -408,17 +409,32 @@ function ProgressSection({ progress, working }: { progress: TaskSurface; working
 function ManageSection({
   session,
   repo,
+  working,
   onSend,
 }: {
   session: Session
   repo: ReturnType<typeof useRepoActions>
+  working: boolean
   onSend: SendMessageHandler
 }) {
   const queryClient = useQueryClient()
   const toast = useToast()
   const info = repo.info
   const showCodeReview = canReviewSession(info)
+  const showCompact = canCompactSession(session)
   const skills = useQuery({ ...skillsQuery(), enabled: showCodeReview })
+  const compact = useMutation({
+    mutationFn: () => compactSession(session.id),
+    onSuccess: () => toast('Compaction started'),
+    onError: (error: Error) => toast(`Couldn't compact: ${error.message}`, 'danger'),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: keys.session(session.id) })
+      queryClient.invalidateQueries({ queryKey: keys.sessionMessages(session.id) })
+      queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
+      queryClient.invalidateQueries({ queryKey: keys.allSessions })
+      queryClient.invalidateQueries({ queryKey: keys.usage })
+    },
+  })
   const archive = useMutation({
     mutationFn: (archived: boolean) => setSessionArchived(session.id, archived),
     onSuccess: (_, archived) => toast(archived ? 'Archived thread' : 'Restored thread'),
@@ -466,6 +482,17 @@ function ManageSection({
           Code Review
         </ActionRow>
       ) : null}
+      {showCompact ? (
+        <ActionRow
+          icon={compact.isPending ? LoaderCircle : Minimize2}
+          spin={compact.isPending}
+          disabled={working || compact.isPending}
+          hint="Compact this thread's context"
+          onClick={() => compact.mutate()}
+        >
+          {compact.isPending ? 'Compacting…' : 'Compact'}
+        </ActionRow>
+      ) : null}
       <ActionRow
         icon={archive.isPending ? LoaderCircle : session.archived ? ArchiveRestore : Archive}
         spin={archive.isPending}
@@ -477,6 +504,10 @@ function ManageSection({
       </ActionRow>
     </section>
   )
+}
+
+function canCompactSession(session: Session): boolean {
+  return Boolean(session.actions?.compact)
 }
 
 function canHandoffToMain(info: RepoInfo | undefined): boolean {

@@ -325,6 +325,10 @@ export function cancelSession(id: string): Promise<{ ok: boolean }> {
   return post<{ ok: boolean }>(`/v1/sessions/${id}/cancel`)
 }
 
+export function compactSession(id: string): Promise<{ ok: boolean; acp_state?: string }> {
+  return post<{ ok: boolean; acp_state?: string }>(`/v1/sessions/${id}/compact`)
+}
+
 export type QueueMutation =
   | { op: 'append'; message: QueuedMessageInput }
   | { op: 'delete'; id: string }
