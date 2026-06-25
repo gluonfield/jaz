@@ -77,6 +77,35 @@ func TestDefaultSlugIgnoresACPAgent(t *testing.T) {
 	}
 }
 
+func TestSessionRuntimeCapabilitiesRoundTrip(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "runtime-caps",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:         storage.RuntimeACP,
+			Agent:        "codex",
+			Capabilities: &storage.RuntimeCapabilities{NativeGoal: true},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.RuntimeRef == nil || loaded.RuntimeRef.Capabilities == nil || !loaded.RuntimeRef.Capabilities.NativeGoal {
+		t.Fatalf("runtime capabilities not persisted: %#v", loaded.RuntimeRef)
+	}
+}
+
 func TestListSessionsOrdersByAttentionNotActivity(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
@@ -335,6 +364,11 @@ func TestMCPServersCRUDRoundTrip(t *testing.T) {
 		BearerTokenEnvVar: "LINEAR_TOKEN",
 		Headers:           []mcpconfig.Header{{Name: "X-Team", Value: "platform"}},
 		EnvHeaders:        []mcpconfig.EnvHeader{{Name: "X-Secret", EnvVar: "LINEAR_SECRET"}},
+		OAuth: mcpconfig.OAuthConfig{
+			ClientID:           "linear-client",
+			ClientSecretEnvVar: "LINEAR_OAUTH_SECRET",
+			Issuer:             "https://accounts.example.com",
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -349,10 +383,15 @@ func TestMCPServersCRUDRoundTrip(t *testing.T) {
 	}
 	if loaded.BearerTokenEnvVar != "LINEAR_TOKEN" ||
 		len(loaded.Headers) != 1 || loaded.Headers[0].Value != "platform" ||
-		len(loaded.EnvHeaders) != 1 || loaded.EnvHeaders[0].EnvVar != "LINEAR_SECRET" {
+		len(loaded.EnvHeaders) != 1 || loaded.EnvHeaders[0].EnvVar != "LINEAR_SECRET" ||
+		loaded.OAuth.ClientID != "linear-client" || loaded.OAuth.ClientSecretEnvVar != "LINEAR_OAUTH_SECRET" {
 		t.Fatalf("loaded = %#v", loaded)
 	}
 
+	tokenID := mcpconfig.OAuthConnectionID(created.ID)
+	if err := store.SaveToken(context.Background(), tokenID, integrationoauth.Token{AccessToken: "token"}); err != nil {
+		t.Fatal(err)
+	}
 	updated, err := store.UpdateMCPServer(created.ID, mcpconfig.ServerInput{
 		Name:    "Docs",
 		URL:     "https://docs.example.com/mcp",
@@ -363,8 +402,12 @@ func TestMCPServersCRUDRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if updated.Name != "Docs" || updated.URL != "https://docs.example.com/mcp" ||
-		updated.BearerTokenEnvVar != "" || len(updated.Headers) != 1 || updated.Headers[0].Name != "X-Docs" {
+		updated.BearerTokenEnvVar != "" || len(updated.Headers) != 1 || updated.Headers[0].Name != "X-Docs" ||
+		updated.OAuth.ClientID != "" {
 		t.Fatalf("updated = %#v", updated)
+	}
+	if _, ok, err := store.LoadToken(context.Background(), tokenID); err != nil || ok {
+		t.Fatalf("updated server retained stale token ok=%v err=%v", ok, err)
 	}
 
 	disabled, err := store.SetMCPServerEnabled(created.ID, false)
@@ -382,7 +425,6 @@ func TestMCPServersCRUDRoundTrip(t *testing.T) {
 	if len(servers) != 1 || servers[0].ID != created.ID {
 		t.Fatalf("servers = %#v", servers)
 	}
-	tokenID := mcpconfig.OAuthConnectionID(created.ID)
 	if err := store.SaveToken(context.Background(), tokenID, integrationoauth.Token{AccessToken: "token"}); err != nil {
 		t.Fatal(err)
 	}

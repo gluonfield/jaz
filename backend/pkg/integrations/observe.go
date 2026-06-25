@@ -11,6 +11,14 @@ type Observer interface {
 	Observe(context.Context, ObserveRequest) (ObserveResult, error)
 }
 
+type ObserveMode string
+
+const (
+	ObserveModeIncremental ObserveMode = "incremental"
+	ObserveModeBackfill    ObserveMode = "initial_backfill"
+	ObserveModeRepair      ObserveMode = "repair"
+)
+
 type Cursor struct {
 	Kind  string          `json:"kind,omitempty"`
 	Value json.RawMessage `json:"value,omitempty"`
@@ -20,6 +28,7 @@ type ObserveRequest struct {
 	Connection Connection
 	Client     *http.Client
 	Cursor     Cursor
+	Mode       ObserveMode
 	Since      time.Time
 }
 

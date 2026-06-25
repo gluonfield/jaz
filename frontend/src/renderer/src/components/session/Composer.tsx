@@ -13,6 +13,7 @@ import { ComposerAttachmentInput, ComposerAttachmentList, ComposerAttachmentMenu
 import { MentionSuggestions, MentionTextarea, useMentionInput } from './MentionInput'
 import { QueuedPromptList } from './QueuedPromptList'
 import { ContextChip } from './ContextChip'
+import { GoalChip, GoalMenuToggle, GoalUnsupportedRow } from './GoalControls'
 import { useComposerAttachments } from './useComposerAttachments'
 import type { ComposerDraftStorage } from './useComposerDraft'
 
@@ -67,6 +68,9 @@ export function ComposerCard({
   disabled = false,
   planAvailable = false,
   planModeActive = false,
+  goalControlVisible = false,
+  goalAvailable = false,
+  goalActive = false,
   queueWhenStreaming = false,
   translucent = false,
   draftStorageKey,
@@ -89,6 +93,9 @@ export function ComposerCard({
   disabled?: boolean
   planAvailable?: boolean
   planModeActive?: boolean
+  goalControlVisible?: boolean
+  goalAvailable?: boolean
+  goalActive?: boolean
   queueWhenStreaming?: boolean
   /** let a backdrop (e.g. the welcome particle field) read through the card */
   translucent?: boolean
@@ -113,13 +120,16 @@ export function ComposerCard({
   const [focused, setFocused] = useState(false)
   const [optionsOpen, setOptionsOpen] = useState(false)
   const [planRequested, setPlanRequested] = useState(false)
+  const [goalRequested, setGoalRequested] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const reducedMotion = useReducedMotion()
   // With effects off, drop the rainbow focus comet for a calm static border that
   // never animates (see the card className below).
   const effectsEnabled = useEffectsEnabled()
   const planToggleDisabled = disabled || !planAvailable
+  const goalToggleDisabled = disabled || !goalAvailable || goalActive
   const showPlanChip = planAvailable && (planRequested || planModeActive)
+  const showGoalChip = goalAvailable && (goalRequested || goalActive)
   const mention = useMentionInput({
     fileRoot,
     disabled,
@@ -147,6 +157,10 @@ export function ComposerCard({
     if (!planAvailable) setPlanRequested(false)
   }, [planAvailable])
 
+  useEffect(() => {
+    if (!goalAvailable || goalActive) setGoalRequested(false)
+  }, [goalActive, goalAvailable])
+
   const { dropTargetRef, dragging: draggingFiles } = useFileDropTarget<HTMLDivElement>({
     disabled,
     onDrop: attachmentDraft.addFiles,
@@ -162,6 +176,11 @@ export function ComposerCard({
   const togglePlanRequested = () => {
     if (planToggleDisabled) return
     setPlanRequested((value) => !value)
+  }
+
+  const toggleGoalRequested = () => {
+    if (goalToggleDisabled) return
+    setGoalRequested((value) => !value)
   }
 
   useEffect(() => {
@@ -190,6 +209,7 @@ export function ComposerCard({
     attachmentDraft.clearAttachments()
     onClearContexts?.()
     setPlanRequested(false)
+    setGoalRequested(false)
   }
 
   const submit = async () => {
@@ -200,6 +220,7 @@ export function ComposerCard({
     try {
       await onSend(trimmed, {
         planRequested: planAvailable && planRequested,
+        goalRequested: goalAvailable && goalRequested,
         files: attachmentDraft.files,
         attachments: attachmentDraft.uploaded,
         ...(contexts.length > 0 ? { contexts } : {}),
@@ -334,6 +355,17 @@ export function ComposerCard({
               {planAvailable ? (
                 <PlanMenuToggle checked={planRequested} disabled={disabled} onToggle={togglePlanRequested} />
               ) : null}
+              {goalControlVisible ? (
+                goalAvailable ? (
+                  <GoalMenuToggle
+                    checked={goalActive || goalRequested}
+                    disabled={goalToggleDisabled}
+                    onToggle={toggleGoalRequested}
+                  />
+                ) : (
+                  <GoalUnsupportedRow />
+                )
+              ) : null}
             </Popover>
             {leftSlot}
             <AnimatePresence initial={false}>
@@ -375,6 +407,14 @@ export function ComposerCard({
                   )}
                   <span>Plan</span>
                 </motion.div>
+              ) : null}
+              {showGoalChip ? (
+                <GoalChip
+                  active={goalActive}
+                  requested={goalRequested}
+                  disabled={disabled}
+                  onRemove={() => setGoalRequested(false)}
+                />
               ) : null}
             </AnimatePresence>
           </div>
@@ -426,6 +466,9 @@ export function Composer({
   placeholder,
   planAvailable,
   planModeActive,
+  goalControlVisible,
+  goalAvailable,
+  goalActive,
   queuedPrompts = [],
   steerDisabled,
   draftStorageKey,
@@ -447,6 +490,9 @@ export function Composer({
   placeholder?: string
   planAvailable?: boolean
   planModeActive?: boolean
+  goalControlVisible?: boolean
+  goalAvailable?: boolean
+  goalActive?: boolean
   queuedPrompts?: QueuedMessage[]
   steerDisabled?: boolean
   draftStorageKey?: string
@@ -488,6 +534,9 @@ export function Composer({
         placeholder={placeholder}
         planAvailable={planAvailable}
         planModeActive={planModeActive}
+        goalControlVisible={goalControlVisible}
+        goalAvailable={goalAvailable}
+        goalActive={goalActive}
         queueWhenStreaming
         draftStorageKey={draftStorageKey}
         draftStorage="local"

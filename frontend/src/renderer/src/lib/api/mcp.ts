@@ -8,6 +8,7 @@ function normalizeServer(server: MCPServer): MCPServer {
     ...server,
     headers: server.headers ?? [],
     env_headers: server.env_headers ?? [],
+    oauth: server.oauth ?? {},
   }
 }
 
@@ -17,6 +18,7 @@ function normalizeInput(input: MCPServerInput): MCPServerInput {
     name: input.name.trim(),
     url: input.url.trim(),
     bearer_token_env_var: input.bearer_token_env_var?.trim() || undefined,
+    oauth: normalizeOAuth(input.oauth),
     headers: (input.headers ?? [])
       .map((header) => ({ name: header.name.trim(), value: header.value }))
       .filter((header) => header.name !== ''),
@@ -24,6 +26,16 @@ function normalizeInput(input: MCPServerInput): MCPServerInput {
       .map((header) => ({ name: header.name.trim(), env_var: header.env_var.trim() }))
       .filter((header) => header.name !== '' && header.env_var !== ''),
   }
+}
+
+function normalizeOAuth(oauth: MCPServerInput['oauth']): MCPServerInput['oauth'] | undefined {
+  if (!oauth) return undefined
+  const out = {
+    client_id: oauth.client_id?.trim() || undefined,
+    client_secret_env_var: oauth.client_secret_env_var?.trim() || undefined,
+    issuer: oauth.issuer?.trim() || undefined,
+  }
+  return out.client_id || out.client_secret_env_var || out.issuer ? out : undefined
 }
 
 export const mcpServersQuery = queryOptions({

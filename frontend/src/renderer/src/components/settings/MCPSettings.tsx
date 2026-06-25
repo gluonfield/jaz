@@ -31,7 +31,13 @@ import {
   testMCPServer,
   updateMCPServer,
 } from '@/lib/api/mcp'
-import type { MCPEnvHeader, MCPHeader, MCPServer, MCPServerInput } from '@/lib/api/types'
+import type {
+  MCPEnvHeader,
+  MCPHeader,
+  MCPOAuthConfig,
+  MCPServer,
+  MCPServerInput,
+} from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 
 type Draft = MCPServerInput & { id?: string }
@@ -44,6 +50,7 @@ function emptyDraft(): Draft {
     bearer_token_env_var: '',
     headers: [],
     env_headers: [],
+    oauth: {},
   }
 }
 
@@ -56,6 +63,7 @@ function draftFromServer(server: MCPServer): Draft {
     bearer_token_env_var: server.bearer_token_env_var ?? '',
     headers: server.headers ?? [],
     env_headers: server.env_headers ?? [],
+    oauth: server.oauth ?? {},
   }
 }
 
@@ -238,6 +246,8 @@ function MCPServerRow({
   onAuthorize: () => void
 }) {
   const needsAuth = server.status === 'needs_auth'
+  const oauthConfigured = Boolean(server.oauth?.client_id || server.oauth?.issuer)
+  const canAuthorize = needsAuth || (oauthConfigured && server.status !== 'connected')
   return (
     <div className="flex items-center gap-3 rounded-card px-3 py-2 text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface">
       <StatusIcon server={server} authorizing={authorizing} />
@@ -255,7 +265,7 @@ function MCPServerRow({
       <span className="hidden shrink-0 text-[12px] text-ink-3 sm:inline">
         {authorizing ? 'Waiting for sign-in…' : statusText(server)}
       </span>
-      {needsAuth ? (
+      {canAuthorize ? (
         <Button
           variant="secondary"
           size="sm"
@@ -340,7 +350,10 @@ function MCPServerForm({
   onChange: (draft: Draft) => void
 }) {
   const headerCount = (draft.headers?.length ?? 0) + (draft.env_headers?.length ?? 0)
-  const [advanced, setAdvanced] = useState(headerCount > 0)
+  const oauthSet = Boolean(
+    draft.oauth?.client_id || draft.oauth?.client_secret_env_var || draft.oauth?.issuer,
+  )
+  const [advanced, setAdvanced] = useState(headerCount > 0 || oauthSet)
 
   return (
     <div className="space-y-4">
@@ -378,9 +391,11 @@ function MCPServerForm({
             size={13}
             className={`transition-transform duration-200 ${advanced ? 'rotate-90' : ''}`}
           />
-          Advanced headers
-          {headerCount > 0 && !advanced ? (
-            <span className="font-normal text-ink-3">· {headerCount} set</span>
+          Advanced
+          {(headerCount > 0 || oauthSet) && !advanced ? (
+            <span className="font-normal text-ink-3">
+              · {headerCount + (oauthSet ? 1 : 0)} set
+            </span>
           ) : null}
         </button>
         <AnimatePresence initial={false}>
@@ -393,6 +408,10 @@ function MCPServerForm({
               className="overflow-hidden"
             >
               <div className="space-y-4 pb-1">
+                <OAuthEditor
+                  value={draft.oauth ?? {}}
+                  onChange={(oauth) => onChange({ ...draft, oauth })}
+                />
                 <HeaderEditor
                   title="Custom headers"
                   headers={draft.headers ?? []}
@@ -438,6 +457,39 @@ function Field({
       {children}
       {hint ? <span className="mt-1 block text-[12px] text-ink-3">{hint}</span> : null}
     </label>
+  )
+}
+
+function OAuthEditor({
+  value,
+  onChange,
+}: {
+  value: MCPOAuthConfig
+  onChange: (value: MCPOAuthConfig) => void
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-[12px] font-medium text-ink-2">OAuth</p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Input
+          placeholder="Client ID"
+          value={value.client_id ?? ''}
+          onChange={(event) => onChange({ ...value, client_id: event.target.value })}
+        />
+        <Input
+          placeholder="Client secret env var"
+          value={value.client_secret_env_var ?? ''}
+          onChange={(event) =>
+            onChange({ ...value, client_secret_env_var: event.target.value })
+          }
+        />
+      </div>
+      <Input
+        placeholder="Issuer override"
+        value={value.issuer ?? ''}
+        onChange={(event) => onChange({ ...value, issuer: event.target.value })}
+      />
+    </div>
   )
 }
 

@@ -15,6 +15,7 @@ const (
 	TypeLoopCreated      = "loop_created"
 	TypeSideChatMessage  = "side_chat_message"
 	TypeProviderSubagent = "provider_subagent"
+	TypeGoalUpdate       = "goal_update"
 )
 
 type Event struct {
@@ -24,6 +25,7 @@ type Event struct {
 	Content          string                 `json:"content,omitempty"`
 	ACP              *ACPEvent              `json:"acp,omitempty"`
 	Plan             *PlanEvent             `json:"plan,omitempty"`
+	Goal             *GoalEvent             `json:"goal,omitempty"`
 	Permission       *ACPPermission         `json:"permission,omitempty"`
 	Artifact         *ArtifactEvent         `json:"artifact,omitempty"`
 	LoopCreated      *LoopCreatedEvent      `json:"loop_created,omitempty"`
@@ -143,6 +145,19 @@ func (e *Event) NormalizePayload() {
 			e.SideChat = &side
 			e.Content = ""
 		}
+	case TypeGoalUpdate:
+		if e.Goal != nil {
+			e.Content = ""
+			return
+		}
+		if e.Content == "" {
+			return
+		}
+		var goal GoalEvent
+		if err := json.Unmarshal([]byte(e.Content), &goal); err == nil && goal.Status != "" {
+			e.Goal = &goal
+			e.Content = ""
+		}
 	}
 }
 
@@ -174,6 +189,13 @@ func (e Event) StorageContent() string {
 			return e.Content
 		}
 		if data, err := json.Marshal(e.SideChat); err == nil {
+			return string(data)
+		}
+	case TypeGoalUpdate:
+		if e.Goal == nil {
+			return e.Content
+		}
+		if data, err := json.Marshal(e.Goal); err == nil {
 			return string(data)
 		}
 	}
@@ -248,6 +270,18 @@ type PlanEvent struct {
 	Explanation      string      `json:"explanation,omitempty"`
 	Plan             []PlanEntry `json:"plan,omitempty"`
 	AwaitingApproval bool        `json:"awaiting_approval,omitempty"`
+}
+
+type GoalEvent struct {
+	ThreadID        string    `json:"thread_id,omitempty"`
+	Objective       string    `json:"objective,omitempty"`
+	Status          string    `json:"status"`
+	TokenBudget     *int64    `json:"token_budget,omitempty"`
+	TokensUsed      int64     `json:"tokens_used,omitempty"`
+	RemainingTokens *int64    `json:"remaining_tokens,omitempty"`
+	TimeUsedSeconds int64     `json:"time_used_seconds,omitempty"`
+	CreatedAt       time.Time `json:"created_at,omitzero"`
+	UpdatedAt       time.Time `json:"updated_at,omitzero"`
 }
 
 type ACPModeState struct {

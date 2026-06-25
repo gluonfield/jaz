@@ -1,9 +1,12 @@
 import { ChevronDown } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { KeyboardShortcut } from '@/components/ui/KeyboardShortcut'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { clientRuntime } from '@/lib/clientRuntime'
+import { modalDialogOpen } from '@/lib/dom/modal'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
+import { useMetaHeld } from '@/lib/hooks/useMetaHeld'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import { parseFileReference, type FileReference } from '../../../../shared/fileReader'
 import { SIDE_PANEL_WIDTHS, type SidePanelView } from './SidePanel'
@@ -81,6 +84,19 @@ export function useSidePanelState(overviewAvailable: boolean, sideChatAvailable 
     toggle()
   })
 
+  useWindowEvent('keydown', (e) => {
+    if (!e.metaKey || e.shiftKey || e.altKey || e.ctrlKey || e.defaultPrevented) return
+    if (modalDialogOpen()) return
+    const key = e.key.toLowerCase()
+    const target = (Object.keys(SIDE_PANEL_SHORTCUT) as SidePanelView[]).find(
+      (option) => SIDE_PANEL_SHORTCUT[option]?.toLowerCase() === key,
+    )
+    if (!target || (target === 'side-chat' && !sideChatAvailable)) return
+    e.preventDefault()
+    if (open && activeView === target) toggle()
+    else selectView(target)
+  })
+
   return {
     measureRef,
     fileRef,
@@ -103,6 +119,14 @@ const SIDE_PANEL_VIEW_LABEL: Record<SidePanelView, string> = {
   terminal: 'Terminal',
   file: 'File Reader',
   'side-chat': 'Side chat',
+}
+
+const SIDE_PANEL_SHORTCUT: Partial<Record<SidePanelView, string>> = {
+  'side-chat': 'J',
+  diff: 'D',
+  preview: 'P',
+  terminal: 'T',
+  overview: 'O',
 }
 
 // Overview sits last so it lands on the right edge of the row. It's the default
@@ -129,11 +153,12 @@ export function SidePanelControl({
   const options = fileAvailable || view === 'file' ? [...baseOptions, 'file' as const] : baseOptions
   const currentView = (view === 'file' && !fileAvailable) || (view === 'side-chat' && !sideChatAvailable) ? 'overview' : view
   const isMobile = useIsMobile()
+  const metaHeld = useMetaHeld(!isMobile)
   const [menuOpen, setMenuOpen] = useState(false)
   const controlRef = useRef<HTMLDivElement>(null)
   const closeTimer = useRef<number | null>(null)
   const [hovered, setHovered] = useState(false)
-  const expanded = open || hovered
+  const expanded = open || hovered || metaHeld
 
   // Hover intent: collapse on a short delay, cancelled the moment the pointer
   // (or focus) comes back. Without it a transient pointerleave during the
@@ -170,12 +195,13 @@ export function SidePanelControl({
 
   const renderButton = (option: SidePanelView) => {
     const active = open && view === option
+    const shortcut = SIDE_PANEL_SHORTCUT[option]
     return (
       <motion.button
         key={option}
         type="button"
         aria-pressed={active}
-        title={active ? `Hide ${SIDE_PANEL_VIEW_LABEL[option]} panel` : `Open ${SIDE_PANEL_VIEW_LABEL[option]}`}
+        title={`${active ? `Hide ${SIDE_PANEL_VIEW_LABEL[option]} panel` : `Open ${SIDE_PANEL_VIEW_LABEL[option]}`}${shortcut ? ` (⌘${shortcut})` : ''}`}
         onClick={() => toggleView(option)}
         whileTap={{ scale: 0.96 }}
         className={`relative flex h-7 cursor-pointer items-center rounded-full px-2.5 text-[13px] font-medium whitespace-nowrap transition-colors duration-150 ${
@@ -189,7 +215,20 @@ export function SidePanelControl({
             className="absolute inset-0 rounded-full bg-bg shadow-sm ring-1 ring-border/50"
           />
         ) : null}
-        <span className="relative">{SIDE_PANEL_VIEW_LABEL[option]}</span>
+        <span className="relative flex items-center">
+          {SIDE_PANEL_VIEW_LABEL[option]}
+          {shortcut ? (
+            <span
+              aria-hidden={!metaHeld}
+              className="grid transition-[grid-template-columns,opacity] duration-200 ease-out"
+              style={{ gridTemplateColumns: metaHeld ? '1fr' : '0fr', opacity: metaHeld ? 1 : 0 }}
+            >
+              <span className="overflow-hidden pl-1.5">
+                <KeyboardShortcut value={shortcut} />
+              </span>
+            </span>
+          ) : null}
+        </span>
       </motion.button>
     )
   }

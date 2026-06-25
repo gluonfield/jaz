@@ -4,7 +4,9 @@ import (
 	"net/http"
 
 	"github.com/wins/jaz/backend/internal/browserworker"
+	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/deviceauth"
+	connectionsapi "github.com/wins/jaz/backend/internal/httpapi/connections"
 	deviceapi "github.com/wins/jaz/backend/internal/httpapi/devices"
 	usageapi "github.com/wins/jaz/backend/internal/httpapi/usage"
 	"github.com/wins/jaz/backend/internal/server"
@@ -21,10 +23,12 @@ type routeDeps struct {
 	Config          serverconfig.Config            `optional:"true"`
 	Browser         *browserworker.ExtensionBridge `optional:"true"`
 	BrowserSettings *BrowserSettingsHandler        `optional:"true"`
+	Connections     *connections.Catalog           `optional:"true"`
 }
 
 func NewRoutes(deps routeDeps) server.Routes {
 	routes := usageRoutes(deps.Usage)
+	routes = appendConnectionRoutes(routes, deps.Connections)
 	routes = appendDeviceRoutes(routes, deps.Devices, deps.Config)
 	return appendBrowserRoutes(routes, deps.BrowserSettings, deps.Browser)
 }
@@ -40,6 +44,17 @@ func usageRoutes(usage usagecore.Service) server.Routes {
 			Handler: usageapi.NewModelsHandler(usage),
 		},
 	}
+}
+
+func appendConnectionRoutes(routes server.Routes, catalog *connections.Catalog) server.Routes {
+	if catalog == nil {
+		return routes
+	}
+	handler := connectionsapi.NewPluginHandler(catalog)
+	return append(routes,
+		server.Route{Pattern: "GET /v1/connections/plugins", Handler: httpHandlerFunc(handler.List)},
+		server.Route{Pattern: "GET /v1/connections/plugins/{id}", Handler: httpHandlerFunc(handler.Get)},
+	)
 }
 
 func appendDeviceRoutes(routes server.Routes, devices *deviceauth.Service, cfg serverconfig.Config) server.Routes {

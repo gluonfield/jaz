@@ -10,6 +10,7 @@ import { createSession, listFilesystemDirs, projectsQuery } from '@/lib/api/sess
 import { agentSettingsQuery } from '@/lib/api/settings'
 import { agentLabel } from '@/lib/agentLabel'
 import {
+  acpAgentSupportsNativeGoal,
   enabledACPAgents,
   runtimeModelState,
 } from '@/lib/agentRuntimes'
@@ -170,6 +171,7 @@ function NewSessionPage() {
       setPendingMessage(id, {
         text,
         planRequested: Boolean(options.planRequested),
+        goalRequested: Boolean(options.goalRequested),
         files: options.files ?? [],
       }),
     )
@@ -277,6 +279,7 @@ function NewSessionPage() {
         calm={composing || creating}
         creating={creating}
         disabled={!runtimeAvailable}
+        goalAvailable={acpAgentSupportsNativeGoal(agentSettings, runtime)}
         leftSlot={isMobile ? null : composerControls}
         draftStorageKey={NEW_SESSION_DRAFT_KEY}
         // Tokens freeze their absolute expansion at insert time, so re-picking

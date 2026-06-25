@@ -118,14 +118,25 @@ type SendRequest struct {
 	Attachments   []storage.Attachment
 	Completion    CompletionMode
 	PlanRequested bool
+	GoalRequested bool
 	ParentVisible bool
 }
+
+type CompactRequest struct {
+	Session string
+}
+
+const (
+	ActiveOperationCompact = "compact"
+	CompactCommand         = "/compact"
+)
 
 type SteerRequest struct {
 	Session       string
 	Message       string
 	Contexts      []storage.MessageContext
 	Attachments   []storage.Attachment
+	GoalRequested bool
 	ParentVisible bool
 }
 
@@ -401,12 +412,14 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	}
 	session.RuntimeRef.SessionID = string(acpSession.response.SessionID)
 	session.RuntimeRef.Cwd = absCwd
+	session.RuntimeRef.Capabilities = runtimeCapabilitiesFromInit(ac.initRaw)
 	if err := m.store.SaveSession(session); err != nil {
 		ac.close()
 		return fail(err)
 	}
 	job := newIdleJob(session, req.ACPAgent, string(acpSession.response.SessionID), absCwd, modes)
 	job.promptQueueing = promptQueueingSupported(ac.initRaw)
+	job.nativeGoal = runtimeCapabilitiesNativeGoal(session.RuntimeRef.Capabilities)
 	m.addJob(job, ac.conn, ac.peer, ac.cancel)
 	m.saveACPState(job.Snapshot())
 	m.log.Info("spawned agent session", "agent", job.ACPAgent, "session", job.ID, "acp_session", job.ACPSession)
@@ -522,6 +535,11 @@ func (m *Manager) resume(ctx context.Context, ref string) (*jobState, error) {
 		session.RuntimeRef.SessionID = acpSessionID
 		sessionChanged = true
 	}
+	runtimeCapabilities := runtimeCapabilitiesFromInit(ac.initRaw)
+	if runtimeCapabilitiesNativeGoal(session.RuntimeRef.Capabilities) != runtimeCapabilitiesNativeGoal(runtimeCapabilities) {
+		session.RuntimeRef.Capabilities = runtimeCapabilities
+		sessionChanged = true
+	}
 	if session.ModelProvider == "" {
 		session.ModelProvider = session.RuntimeRef.Agent
 		sessionChanged = true
@@ -534,6 +552,7 @@ func (m *Manager) resume(ctx context.Context, ref string) (*jobState, error) {
 	job.LastEventAt = firstNonZeroTime(state.LastEventAt, state.UpdatedAt)
 	job.LastToolAt = state.LastToolAt
 	job.promptQueueing = promptQueueingSupported(ac.initRaw)
+	job.nativeGoal = runtimeCapabilitiesNativeGoal(session.RuntimeRef.Capabilities)
 	m.addJob(job, ac.conn, ac.peer, ac.cancel)
 	m.saveACPState(job.Snapshot())
 	m.log.Info("resumed agent session", "agent", job.ACPAgent, "session", job.ID,
@@ -717,6 +736,7 @@ func (m *Manager) cancelStored(ref string) (Job, error) {
 	}
 	state.State = StateCancelled
 	state.StopReason = "cancelled"
+	state.ActiveOperation = ""
 	state.Permissions = nil
 	now := time.Now().UTC()
 	state.UpdatedAt = now

@@ -20,6 +20,7 @@ INSERT INTO mcp_servers (
   bearer_token_env_var,
   headers_json,
   env_headers_json,
+  oauth_json,
   created_at_ms,
   updated_at_ms
 ) VALUES (
@@ -32,7 +33,8 @@ INSERT INTO mcp_servers (
   ?7,
   ?8,
   ?9,
-  ?10
+  ?10,
+  ?11
 )
 `
 
@@ -45,6 +47,7 @@ type CreateMCPServerParams struct {
 	BearerTokenEnvVar sql.NullString `json:"bearer_token_env_var"`
 	HeadersJson       string         `json:"headers_json"`
 	EnvHeadersJson    string         `json:"env_headers_json"`
+	OauthJson         string         `json:"oauth_json"`
 	CreatedAtMs       int64          `json:"created_at_ms"`
 	UpdatedAtMs       int64          `json:"updated_at_ms"`
 }
@@ -59,6 +62,7 @@ func (q *Queries) CreateMCPServer(ctx context.Context, arg CreateMCPServerParams
 		arg.BearerTokenEnvVar,
 		arg.HeadersJson,
 		arg.EnvHeadersJson,
+		arg.OauthJson,
 		arg.CreatedAtMs,
 		arg.UpdatedAtMs,
 	)
@@ -88,6 +92,7 @@ SELECT
   bearer_token_env_var,
   headers_json,
   env_headers_json,
+  oauth_json,
   created_at_ms,
   updated_at_ms
 FROM mcp_servers
@@ -95,9 +100,23 @@ WHERE id = ?1
 LIMIT 1
 `
 
-func (q *Queries) GetMCPServer(ctx context.Context, id string) (McpServer, error) {
+type GetMCPServerRow struct {
+	ID                string         `json:"id"`
+	Name              string         `json:"name"`
+	Transport         string         `json:"transport"`
+	Url               string         `json:"url"`
+	Enabled           int64          `json:"enabled"`
+	BearerTokenEnvVar sql.NullString `json:"bearer_token_env_var"`
+	HeadersJson       string         `json:"headers_json"`
+	EnvHeadersJson    string         `json:"env_headers_json"`
+	OauthJson         string         `json:"oauth_json"`
+	CreatedAtMs       int64          `json:"created_at_ms"`
+	UpdatedAtMs       int64          `json:"updated_at_ms"`
+}
+
+func (q *Queries) GetMCPServer(ctx context.Context, id string) (GetMCPServerRow, error) {
 	row := q.db.QueryRowContext(ctx, getMCPServer, id)
-	var i McpServer
+	var i GetMCPServerRow
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -107,6 +126,7 @@ func (q *Queries) GetMCPServer(ctx context.Context, id string) (McpServer, error
 		&i.BearerTokenEnvVar,
 		&i.HeadersJson,
 		&i.EnvHeadersJson,
+		&i.OauthJson,
 		&i.CreatedAtMs,
 		&i.UpdatedAtMs,
 	)
@@ -123,21 +143,36 @@ SELECT
   bearer_token_env_var,
   headers_json,
   env_headers_json,
+  oauth_json,
   created_at_ms,
   updated_at_ms
 FROM mcp_servers
 ORDER BY updated_at_ms DESC
 `
 
-func (q *Queries) ListMCPServers(ctx context.Context) ([]McpServer, error) {
+type ListMCPServersRow struct {
+	ID                string         `json:"id"`
+	Name              string         `json:"name"`
+	Transport         string         `json:"transport"`
+	Url               string         `json:"url"`
+	Enabled           int64          `json:"enabled"`
+	BearerTokenEnvVar sql.NullString `json:"bearer_token_env_var"`
+	HeadersJson       string         `json:"headers_json"`
+	EnvHeadersJson    string         `json:"env_headers_json"`
+	OauthJson         string         `json:"oauth_json"`
+	CreatedAtMs       int64          `json:"created_at_ms"`
+	UpdatedAtMs       int64          `json:"updated_at_ms"`
+}
+
+func (q *Queries) ListMCPServers(ctx context.Context) ([]ListMCPServersRow, error) {
 	rows, err := q.db.QueryContext(ctx, listMCPServers)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []McpServer{}
+	items := []ListMCPServersRow{}
 	for rows.Next() {
-		var i McpServer
+		var i ListMCPServersRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -147,6 +182,7 @@ func (q *Queries) ListMCPServers(ctx context.Context) ([]McpServer, error) {
 			&i.BearerTokenEnvVar,
 			&i.HeadersJson,
 			&i.EnvHeadersJson,
+			&i.OauthJson,
 			&i.CreatedAtMs,
 			&i.UpdatedAtMs,
 		); err != nil {
@@ -195,8 +231,9 @@ SET
   bearer_token_env_var = ?5,
   headers_json = ?6,
   env_headers_json = ?7,
-  updated_at_ms = ?8
-WHERE id = ?9
+  oauth_json = ?8,
+  updated_at_ms = ?9
+WHERE id = ?10
 `
 
 type UpdateMCPServerParams struct {
@@ -207,6 +244,7 @@ type UpdateMCPServerParams struct {
 	BearerTokenEnvVar sql.NullString `json:"bearer_token_env_var"`
 	HeadersJson       string         `json:"headers_json"`
 	EnvHeadersJson    string         `json:"env_headers_json"`
+	OauthJson         string         `json:"oauth_json"`
 	UpdatedAtMs       int64          `json:"updated_at_ms"`
 	ID                string         `json:"id"`
 }
@@ -220,6 +258,7 @@ func (q *Queries) UpdateMCPServer(ctx context.Context, arg UpdateMCPServerParams
 		arg.BearerTokenEnvVar,
 		arg.HeadersJson,
 		arg.EnvHeadersJson,
+		arg.OauthJson,
 		arg.UpdatedAtMs,
 		arg.ID,
 	)

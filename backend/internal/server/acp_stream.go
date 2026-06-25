@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -12,7 +13,41 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, clientCtx context.Context, session storage.Session, message string, contexts []storage.MessageContext, attachments []storage.Attachment, planRequested bool) {
+type acpTurnKind int
+
+const (
+	acpTurnPrompt acpTurnKind = iota
+	acpTurnCompact
+)
+
+type acpStreamTurn struct {
+	Kind          acpTurnKind
+	Message       string
+	Contexts      []storage.MessageContext
+	Attachments   []storage.Attachment
+	PlanRequested bool
+	GoalRequested bool
+}
+
+func acpStreamTurnFromRequest(req streamRequest) acpStreamTurn {
+	turn := acpStreamTurn{
+		Kind:          acpTurnPrompt,
+		Message:       req.Message,
+		PlanRequested: req.PlanRequested,
+		GoalRequested: req.GoalRequested,
+	}
+	if isACPCompactCommand(req.Message) {
+		turn.Kind = acpTurnCompact
+		turn.GoalRequested = false
+	}
+	return turn
+}
+
+func (t acpStreamTurn) compact() bool {
+	return t.Kind == acpTurnCompact
+}
+
+func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, clientCtx context.Context, session storage.Session, turn acpStreamTurn) {
 	if s.ACP == nil {
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: "acp manager is not configured"})
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
@@ -20,21 +55,31 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 	}
 
 	var err error
-	session, err = s.beginACPTurn(clientCtx, session, message)
+	turnTitle := turn.Message
+	if turn.compact() {
+		turnTitle = "Compact"
+	}
+	session, err = s.beginACPTurn(clientCtx, session, turnTitle)
 	if err != nil {
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: err.Error()})
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
 		return
 	}
 	startCtx, cancelStart := serverActionContextFrom(clientCtx)
-	job, err := s.ACP.Send(startCtx, acp.SendRequest{
-		Session:       session.ID,
-		Message:       message,
-		Contexts:      contexts,
-		Attachments:   attachments,
-		Completion:    acp.CompletionInline,
-		PlanRequested: planRequested,
-	})
+	var job acp.Job
+	if turn.compact() {
+		job, err = s.ACP.Compact(startCtx, acp.CompactRequest{Session: session.ID})
+	} else {
+		job, err = s.ACP.Send(startCtx, acp.SendRequest{
+			Session:       session.ID,
+			Message:       turn.Message,
+			Contexts:      turn.Contexts,
+			Attachments:   turn.Attachments,
+			Completion:    acp.CompletionInline,
+			PlanRequested: turn.PlanRequested,
+			GoalRequested: turn.GoalRequested,
+		})
+	}
 	cancelStart()
 	if err != nil {
 		sendErr := acpSendError(session, err)
@@ -140,6 +185,9 @@ func isACPTerminal(state string) bool {
 }
 
 func acpSendError(session storage.Session, err error) error {
+	if errors.Is(err, acp.ErrNativeGoalUnsupported) {
+		return fmt.Errorf("goal mode is not supported by this ACP agent")
+	}
 	if strings.Contains(err.Error(), "active acp session not found") {
 		return fmt.Errorf("acp session %q (%s) could not be resumed: %v", session.Slug, session.ID, err)
 	}

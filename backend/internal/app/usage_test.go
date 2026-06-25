@@ -7,6 +7,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/browserworker"
+	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/deviceauth"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/server"
@@ -100,6 +101,23 @@ func TestNewRoutesIncludesBrowserSettingsRoutes(t *testing.T) {
 	}
 	if !found["GET /v1/browser"] || !found["PUT /v1/browser"] {
 		t.Fatalf("missing browser settings routes: %#v", routes)
+	}
+}
+
+func TestNewRoutesIncludesConnectionPluginRoutes(t *testing.T) {
+	routes := NewRoutes(routeDeps{
+		Usage:       usagecore.NewService(fakeUsageStore{}),
+		Connections: connections.NewCatalog(),
+	})
+	found := map[string]bool{}
+	for _, route := range routes {
+		if (route.Pattern == "GET /v1/connections/plugins" ||
+			route.Pattern == "GET /v1/connections/plugins/{id}") && route.Handler != nil {
+			found[route.Pattern] = true
+		}
+	}
+	if !found["GET /v1/connections/plugins"] || !found["GET /v1/connections/plugins/{id}"] {
+		t.Fatalf("missing connection plugin routes: %#v", routes)
 	}
 }
 

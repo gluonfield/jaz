@@ -325,6 +325,10 @@ export function cancelSession(id: string): Promise<{ ok: boolean }> {
   return post<{ ok: boolean }>(`/v1/sessions/${id}/cancel`)
 }
 
+export function compactSession(id: string): Promise<{ ok: boolean; acp_state?: string }> {
+  return post<{ ok: boolean; acp_state?: string }>(`/v1/sessions/${id}/compact`)
+}
+
 export type QueueMutation =
   | { op: 'append'; message: QueuedMessageInput }
   | { op: 'delete'; id: string }
@@ -338,6 +342,7 @@ export async function mutateSessionQueue(id: string, mutation: QueueMutation): P
     telemetry.messageSent({
       queued: true,
       planRequested: Boolean(mutation.message.plan_requested),
+      goalRequested: Boolean(mutation.message.goal_requested),
       attachmentCount: mutation.message.attachment_ids?.length ?? 0,
     })
   }
