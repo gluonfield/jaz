@@ -135,6 +135,9 @@ func DefaultWorkerAgent(defaults AgentDefaults) string {
 func WorkerAgentModel(agent string, defaults AgentDefaults) string {
 	switch acp.CanonicalAgentName(agent) {
 	case acp.AgentCodex:
+		if strings.TrimSpace(defaults.ACP[acp.AgentCodex].ModelProvider) == provider.ProviderOpenRouter {
+			return "z-ai/glm-5.2"
+		}
 		return "gpt-5.4-mini"
 	case acp.AgentClaude:
 		return "sonnet"
