@@ -19,14 +19,12 @@
 
   /* brand — cobalt: the everyday accent (primary actions, selection, links,
    * caret). Rainbow is reserved for live states; clay stays as the warm
-   * counterpoint (attention markers, mono syntax). The accent *hue* is the one
-   * user-tunable axis (Settings → Appearance); every primary token keeps its
-   * own lightness/chroma and only reads the hue, so one value recolours the
-   * accent across light and dark while the surface/ink ladder stays put. */
-  --accent-h: 262;
-  --color-primary: oklch(0.5 0.13 var(--accent-h, 262));
-  --color-primary-strong: oklch(0.43 0.13 var(--accent-h, 262));
-  --color-primary-soft: oklch(0.92 0.035 var(--accent-h, 262));
+   * counterpoint (attention markers, mono syntax). A custom color scheme
+   * (Settings → Appearance) overrides this whole family via a generated
+   * stylesheet; untouched, these stock values rule. */
+  --color-primary: oklch(0.5 0.13 262);
+  --color-primary-strong: oklch(0.43 0.13 262);
+  --color-primary-soft: oklch(0.92 0.035 262);
   /* text/icons that sit on a primary fill */
   --color-on-primary: oklch(1 0 0);
   --color-accent: oklch(0.62 0.13 55);
@@ -131,10 +129,10 @@
   --color-ink-2: oklch(0.76 0.006 262);
   --color-ink-3: oklch(0.62 0.007 262);
 
-  --color-primary: oklch(0.79 0.11 var(--accent-h, 262));
-  --color-primary-strong: oklch(0.85 0.11 var(--accent-h, 262));
-  --color-primary-soft: oklch(0.35 0.05 var(--accent-h, 262));
-  --color-on-primary: oklch(0.21 0.03 var(--accent-h, 262));
+  --color-primary: oklch(0.79 0.11 262);
+  --color-primary-strong: oklch(0.85 0.11 262);
+  --color-primary-soft: oklch(0.35 0.05 262);
+  --color-on-primary: oklch(0.21 0.03 262);
   --color-accent: oklch(0.72 0.12 55);
   --color-accent-strong: oklch(0.78 0.12 55);
   --color-accent-soft: oklch(0.33 0.05 55);

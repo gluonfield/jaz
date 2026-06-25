@@ -1,43 +1,19 @@
-import { Check } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
-import type { ReactNode } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 import { Switch } from '@/components/ui/Switch'
-import { ACCENT_PRESETS, FONT_SCALES, useAppearance } from '@/lib/appearance'
+import { FONT_SCALES, useAppearance } from '@/lib/appearance'
+import {
+  applyPreset,
+  type ModeSchemes,
+  resetScheme,
+  sameScheme,
+  setMode,
+  THEME_PRESETS,
+  useScheme,
+} from '@/lib/appearanceScheme'
 import { FontPicker } from './FontPicker'
 import { SettingsCard } from './SettingsCard'
 import { ThemeSwitcher } from './ThemeSwitcher'
-
-// A swatch per accent preset. The dot is painted at a fixed lightness/chroma so
-// the palette reads evenly; selecting one writes the hue, which globals.css
-// threads through the whole --color-primary family in both light and dark.
-function AccentPicker({ value, onChange }: { value: number; onChange: (hue: number) => void }) {
-  return (
-    <div role="radiogroup" aria-label="Accent color" className="flex items-center gap-2">
-      {ACCENT_PRESETS.map((preset) => {
-        const active = Math.abs(preset.hue - value) < 0.001
-        return (
-          <button
-            key={preset.id}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            aria-label={preset.label}
-            title={preset.label}
-            onClick={() => onChange(preset.hue)}
-            style={{ backgroundColor: `oklch(0.62 0.16 ${preset.hue})` }}
-            className={`relative flex h-7 w-7 cursor-pointer items-center justify-center rounded-full transition-transform duration-150 hover:scale-110 ${
-              active
-                ? 'ring-2 ring-offset-2 ring-offset-surface ring-ink/30'
-                : 'ring-1 ring-black/10 dark:ring-white/15'
-            }`}
-          >
-            {active ? <Check size={15} strokeWidth={3} className="text-white" /> : null}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
 
 const SIZE_LABELS: Record<number, string> = {
   0.9: 'Small',
@@ -92,17 +68,116 @@ function Row({
   children,
 }: {
   title: string
-  description: string
+  description?: string
   children: ReactNode
 }) {
   return (
     <div className="grid grid-cols-1 gap-2 border-t border-border px-3 py-3 first:border-t-0 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
       <div className="min-w-0">
         <p className="text-[13px] font-medium text-ink">{title}</p>
-        <p className="mt-0.5 text-[12px] text-ink-3">{description}</p>
+        {description ? <p className="mt-0.5 text-[12px] text-ink-3">{description}</p> : null}
       </div>
       <div className="md:justify-self-end">{children}</div>
     </div>
+  )
+}
+
+const HEX = /^#[0-9a-fA-F]{6}$/
+
+// A native color well (the swatch opens the OS picker) paired with an editable
+// hex field. Typing only commits once it parses as #rrggbb so the parent never
+// sees an invalid color mid-edit.
+function ColorField({
+  title,
+  value,
+  onChange,
+}: {
+  title: string
+  value: string
+  onChange: (hex: string) => void
+}) {
+  const [text, setText] = useState(value)
+  useEffect(() => setText(value), [value])
+  const commit = (next: string) => {
+    setText(next)
+    if (HEX.test(next)) onChange(next.toLowerCase())
+  }
+  return (
+    <Row title={title}>
+      <div className="flex items-center gap-2">
+        <span
+          className="relative h-7 w-9 overflow-hidden rounded-control ring-1 ring-border/70"
+          style={{ backgroundColor: value }}
+        >
+          <input
+            type="color"
+            value={value}
+            aria-label={title}
+            onChange={(e) => commit(e.target.value)}
+            className="absolute -inset-2 cursor-pointer opacity-0"
+          />
+        </span>
+        <input
+          type="text"
+          value={text}
+          spellCheck={false}
+          onChange={(e) => commit(e.target.value)}
+          className="w-[5.5rem] rounded-control bg-surface-2 px-2 py-1 font-mono text-[12px] uppercase text-ink outline-none ring-1 ring-border/60 focus:ring-1 focus:ring-primary"
+        />
+      </div>
+    </Row>
+  )
+}
+
+// Per-mode editor: a preset picker plus the three colors and contrast that every
+// other token is derived from (see lib/appearanceScheme.ts).
+function ThemeModeCard({ mode }: { mode: keyof ModeSchemes }) {
+  const schemes = useScheme()
+  const s = schemes[mode]
+  const presetId = THEME_PRESETS.find((p) => sameScheme(p[mode], s))?.id ?? 'custom'
+  return (
+    <SettingsCard className="overflow-hidden">
+      <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
+        <p className="text-[13px] font-medium text-ink">{mode === 'light' ? 'Light theme' : 'Dark theme'}</p>
+        <select
+          value={presetId}
+          aria-label={`${mode} theme preset`}
+          onChange={(e) => {
+            const preset = THEME_PRESETS.find((p) => p.id === e.target.value)
+            if (preset) applyPreset(mode, preset)
+          }}
+          className="cursor-pointer rounded-control bg-surface-2 px-2 py-1 text-[13px] text-ink outline-none ring-1 ring-border/60 focus:ring-1 focus:ring-primary"
+        >
+          {presetId === 'custom' ? (
+            <option value="custom" disabled>
+              Custom
+            </option>
+          ) : null}
+          {THEME_PRESETS.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <ColorField title="Accent" value={s.accent} onChange={(accent) => setMode(mode, { accent })} />
+      <ColorField title="Background" value={s.background} onChange={(background) => setMode(mode, { background })} />
+      <ColorField title="Foreground" value={s.foreground} onChange={(foreground) => setMode(mode, { foreground })} />
+      <Row title="Contrast" description="How far surfaces and muted text step from the background.">
+        <div className="flex items-center gap-3">
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={s.contrast}
+            aria-label={`${mode} contrast`}
+            onChange={(e) => setMode(mode, { contrast: Number(e.target.value) })}
+            className="w-40 accent-primary"
+          />
+          <span className="w-7 text-right font-mono text-[12px] tabular-nums text-ink-2">{s.contrast}</span>
+        </div>
+      </Row>
+    </SettingsCard>
   )
 }
 
@@ -119,15 +194,6 @@ export function AppearanceSettings() {
       <SettingsCard className="mt-4 overflow-hidden">
         <Row title="Theme" description="Match the system, or pick light or dark.">
           <ThemeSwitcher />
-        </Row>
-        <Row
-          title="Accent color"
-          description="Recolors actions, links, selection, and the focus ring across light and dark."
-        >
-          <AccentPicker
-            value={settings.accent}
-            onChange={(accent) => setAppearance({ accent })}
-          />
         </Row>
         <Row
           title="Animated effects"
@@ -156,6 +222,28 @@ export function AppearanceSettings() {
           />
         </Row>
       </SettingsCard>
+
+      <div className="mt-8 flex items-end justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-ink">Color theme</p>
+          <p className="mt-0.5 text-[13px] text-ink-2">
+            Start from a preset or set the accent, background, and foreground for light and dark
+            independently. Every other color is derived from these.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={resetScheme}
+          className="shrink-0 cursor-pointer text-[13px] text-ink-3 underline-offset-2 hover:text-ink hover:underline"
+        >
+          Reset
+        </button>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <ThemeModeCard mode="light" />
+        <ThemeModeCard mode="dark" />
+      </div>
 
       <div className="mt-8">
         <p className="text-sm font-medium text-ink">Fonts</p>

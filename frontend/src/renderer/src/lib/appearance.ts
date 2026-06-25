@@ -11,8 +11,6 @@ import { type AppearanceConfig, appearanceConfig } from './appearanceConfig'
 export interface AppearanceSettings {
   /** decorative motion: composer focus comet, shimmer dots, gradient wordmark, particle fields */
   effects: boolean
-  /** accent hue in oklch degrees; drives the whole --color-primary family via --accent-h */
-  accent: number
   /** whole-UI zoom factor; 1 is the stock size */
   fontScale: number
   /** interface font family name; '' keeps the default Inter stack */
@@ -27,13 +25,8 @@ export interface AppearanceSettings {
   wideLayout: boolean
 }
 
-// Stock accent hue (cobalt). Matches the --accent-h fallback in globals.css; an
-// untouched install never writes the key, so the CSS default rules.
-export const DEFAULT_ACCENT_HUE = 262
-
 export const DEFAULTS: AppearanceSettings = {
   effects: true,
-  accent: DEFAULT_ACCENT_HUE,
   fontScale: 1,
   uiFont: '',
   monoFont: '',
@@ -46,36 +39,11 @@ export const DEFAULTS: AppearanceSettings = {
 // document root (CSS zoom) is the only thing that grows everything together.
 export const FONT_SCALES = [0.9, 1, 1.1, 1.25] as const
 
-// Curated accent palette. Each preset is just an oklch hue: the primary family
-// in globals.css carries its own lightness/chroma per token and per theme, so a
-// hue is all it takes to recolour the accent everywhere. Cobalt is the default.
-export interface AccentPreset {
-  id: string
-  label: string
-  hue: number
-}
-
-export const ACCENT_PRESETS: readonly AccentPreset[] = [
-  { id: 'cobalt', label: 'Cobalt', hue: DEFAULT_ACCENT_HUE },
-  { id: 'azure', label: 'Azure', hue: 230 },
-  { id: 'teal', label: 'Teal', hue: 195 },
-  { id: 'green', label: 'Green', hue: 150 },
-  { id: 'amber', label: 'Amber', hue: 75 },
-  { id: 'rose', label: 'Rose', hue: 12 },
-  { id: 'magenta', label: 'Magenta', hue: 340 },
-  { id: 'violet', label: 'Violet', hue: 300 },
-] as const
-
 const listeners = new Set<() => void>()
 
 export function normalizeFontScale(value: unknown): AppearanceSettings['fontScale'] {
   const scale = typeof value === 'number' ? value : Number(value)
   return FONT_SCALES.find((candidate) => Math.abs(candidate - scale) < 0.001) ?? DEFAULTS.fontScale
-}
-
-export function normalizeAccent(value: unknown): AppearanceSettings['accent'] {
-  const hue = typeof value === 'number' ? value : Number(value)
-  return Number.isFinite(hue) && hue >= 0 && hue < 360 ? hue : DEFAULT_ACCENT_HUE
 }
 
 function fontName(value: string | null): string {
@@ -140,7 +108,6 @@ const numberField = (
 
 const FIELDS: { [K in keyof AppearanceSettings]: Field<AppearanceSettings[K]> } = {
   effects: boolField('jaz.appearance.effects', (c) => c.effects),
-  accent: numberField('jaz.appearance.accent', (c) => c.accent, normalizeAccent),
   fontScale: numberField('jaz.appearance.fontScale', (c) => c.fontScale, normalizeFontScale),
   uiFont: fontField('jaz.appearance.uiFont', (c) => c.uiFont),
   monoFont: fontField('jaz.appearance.monoFont', (c) => c.monoFont),
@@ -182,9 +149,6 @@ function apply(s: AppearanceSettings) {
   // Effects: a single root class CSS keys off (mirrors prefers-reduced-motion);
   // JS-driven effects read the `effects` flag through useEffectsEnabled.
   root.classList.toggle('jaz-no-effects', !s.effects)
-  // Accent: a single hue feeds the whole --color-primary family in globals.css.
-  if (s.accent !== DEFAULT_ACCENT_HUE) root.style.setProperty('--accent-h', String(s.accent))
-  else root.style.removeProperty('--accent-h')
   // Font size: zoom the whole document so px chrome and rem prose grow together.
   if (s.fontScale && s.fontScale !== 1) root.style.setProperty('zoom', String(s.fontScale))
   else root.style.removeProperty('zoom')

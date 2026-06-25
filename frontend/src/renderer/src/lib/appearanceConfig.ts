@@ -8,7 +8,6 @@
 // the pre-paint script in index.html reads the same global.
 export interface AppearanceConfig {
   theme?: 'light' | 'dark' | 'system'
-  accent?: number
   uiFont?: string
   monoFont?: string
   fontScale?: number
