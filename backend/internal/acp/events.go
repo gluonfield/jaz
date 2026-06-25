@@ -275,6 +275,8 @@ func permissionEvent(req acpschema.RequestPermissionRequest) sessionevents.ACPPe
 	out := sessionevents.ACPPermission{
 		Title:      firstNonEmpty(req.ToolCall.Title, "Permission requested"),
 		ToolCallID: string(req.ToolCall.ToolCallID),
+		Kind:       kindString(req.ToolCall.Kind),
+		Content:    permissionPlanContent(req.ToolCall),
 		Options:    make([]sessionevents.ACPPermissionOption, 0, len(req.Options)),
 		Locations:  make([]sessionevents.ACPPermissionLocation, 0, len(req.ToolCall.Locations)),
 	}
