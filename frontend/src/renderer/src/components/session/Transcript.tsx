@@ -236,23 +236,24 @@ export const Transcript = memo(function Transcript({
       {visibleTurns.map((turn, visibleTurnIndex) => {
         const turnIndex = historyStart + visibleTurnIndex
         const active = working && turnIndex === turns.length - 1
-        // Pull result cards out of the chronological flow so the work before and
-        // after the tool call folds into a single "Worked for", and append them
-        // as the turn's outcome below.
+        // Result cards (created loop, spawned-agent run) read as the turn's
+        // outcome, so pull them out of the flow and append them at the end.
         const resultCards = turn.items.filter(isResultCard)
         const flow = turn.items.filter((item) => !isResultCard(item))
-        const lastContentIndex = flow.findLastIndex(
-          (item) => item.kind === 'event' && Boolean(item.event.content?.trim()),
-        )
         const sections: ReactNode[] = []
         if (turn.opener) sections.push(renderItem(turn.opener))
         let work: TimelineItem[] = []
+        // Each "Worked for" run spans from the previously shown item to the end of
+        // the folded batch, so consecutive runs report their own duration instead
+        // of cumulative time from the turn's start.
+        let lastShownAt = turn.opener?.at
         const flushWork = () => {
           if (!work.length) return
           const batch = work
           work = []
-          const durationMs =
-            batch[batch.length - 1].at - (turn.opener?.at ?? batch[0].at)
+          const batchEnd = batch[batch.length - 1].at
+          const durationMs = batchEnd - (lastShownAt ?? batch[0].at)
+          lastShownAt = batchEnd
           sections.push(
             <WorkSection
               key={`work-${turnIndex}-${sections.length}`}
@@ -264,16 +265,15 @@ export const Transcript = memo(function Transcript({
             />,
           )
         }
-        flow.forEach((item, index) => {
+        flow.forEach((item) => {
           const collapsible =
-            !active &&
-            index < lastContentIndex &&
-            isCollapsibleWork(item, pendingPermissionIds, latestTaskSurfaceEvent)
+            !active && isCollapsibleWork(item, pendingPermissionIds, latestTaskSurfaceEvent)
           if (collapsible) {
             work.push(item)
             return
           }
           flushWork()
+          lastShownAt = item.at
           sections.push(renderItem(item))
         })
         flushWork()
