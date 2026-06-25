@@ -8,8 +8,7 @@ Recipe for a disposable Jaz backend VM on GCP.
 PROJECT=jaz-dev
 REGION=us-central1
 ZONE=us-central1-a
-NAME=jaz-v0046
-RELEASE=v0.0.46
+NAME=jaz-backend
 PORT=5299
 TAG=jaz-backend
 ADDRESS_NAME="$NAME-ip"
@@ -55,12 +54,19 @@ gcloud compute instances add-metadata "$NAME" --zone "$ZONE" \
 ssh -i /tmp/jaz_ed25519 -o StrictHostKeyChecking=no "$USER@$IP"
 ```
 
-Inside the VM, run the remote-backend server setup with the recipe release,
-`JAZ_ADDR=:5299`, and `JAZ_PUBLIC_URL=http://<reserved-ip>:5299`. That generic
-setup owns Node/npm, release install, systemd, restart, and boot startup.
+Inside the VM, run the remote-backend server setup (it installs the latest
+release) with `JAZ_ADDR=:5299` and `JAZ_PUBLIC_URL=http://<reserved-ip>:5299`.
+That generic setup owns Node/npm, release install, systemd, restart, and boot
+startup.
 Install the agent CLIs you want to sign into (`npm install -g @openai/codex
 @anthropic-ai/claude-code`); without them the onboarding agent cards show
 "Not installed" and offer no sign-in.
+
+This leaves a plain-HTTP backend at `http://<reserved-ip>:5299`, which the
+desktop app connects to directly. A browser client (served over HTTPS) cannot
+reach a plain-HTTP backend (mixed content); to use one, serve the app and backend
+behind one HTTPS origin — see
+[Self-host the app and backend behind one origin](../remote-backend.md).
 
 ## Verify
 
