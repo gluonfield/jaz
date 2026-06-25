@@ -14,8 +14,9 @@ import { SettingsOverlay } from '@/components/settings/SettingsOverlay'
 import { Sidebar } from '@/components/sidebar/Sidebar'
 import { ToastProvider } from '@/components/ui/toast'
 import { clientRuntime } from '@/lib/clientRuntime'
+import { drawerSlide } from '@/lib/dom/drawer'
 import { modalDialogOpen } from '@/lib/dom/modal'
-import { isMobileViewport, useIsMobile, useViewportWidth } from '@/lib/hooks/useIsMobile'
+import { isMobileViewport, useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import type { BrowserNavigationDirection } from '../../../shared/browserNavigation'
 
@@ -99,12 +100,10 @@ function RootLayout() {
     select: (s) => /^\/boards\/.+/.test(s.location.pathname),
   })
 
-  // Phone: the sidebar is a full-screen drawer rather than a resizable column,
-  // so its open width is the whole viewport and it auto-dismisses on navigation
-  // to reveal the thread underneath.
+  // Phone: the sidebar is a full-screen drawer (CSS `max-sm:w-full`) that slides
+  // over the thread rather than a resizable column, and auto-dismisses on
+  // navigation to reveal the thread underneath.
   const isMobile = useIsMobile()
-  const viewportWidth = useViewportWidth()
-  const openWidth = isMobile ? viewportWidth : sidebarWidth
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   useEffect(() => {
     if (isMobile) setSidebarOpen(false)
@@ -197,14 +196,14 @@ function RootLayout() {
     <ToastProvider>
       <div className="relative flex h-full">
         <motion.div
-          className="shrink-0 overflow-hidden max-sm:absolute max-sm:inset-y-0 max-sm:left-0 max-sm:z-30"
+          className="shrink-0 overflow-hidden max-sm:absolute max-sm:inset-y-0 max-sm:left-0 max-sm:z-drawer max-sm:w-full!"
           initial={false}
-          animate={{ width: sidebarOpen ? openWidth : 0 }}
+          animate={drawerSlide({ isMobile, open: sidebarOpen, side: 'left', width: sidebarWidth })}
           transition={resizing ? { duration: 0 } : { type: 'spring', stiffness: 400, damping: 36 }}
         >
           <Sidebar
             open={sidebarOpen}
-            width={openWidth}
+            width={sidebarWidth}
             mobile={isMobile}
             onDismiss={() => setSidebarOpen(false)}
             resizing={resizing}
@@ -223,11 +222,11 @@ function RootLayout() {
               sidebarOpen ? 'pl-3' : isMobile ? 'pl-14' : isMacDesktop ? 'pl-[108px]' : 'pl-12'
             }`}
           >
-            {/* slot routes portal into (e.g. the session runtime tag). z-20 keeps
-                these controls above a route's mobile dismiss backdrop (z-10). */}
-            <div id="titlebar-slot" className="relative z-20 flex min-w-0 items-center gap-1.5" />
+            {/* slot routes portal into (e.g. the session runtime tag). z-shell keeps
+                these controls above a route's mobile dismiss scrim. */}
+            <div id="titlebar-slot" className="relative z-shell flex min-w-0 items-center gap-1.5" />
             {/* right-aligned slot for route-level actions */}
-            <div id="titlebar-actions" className="relative z-20 ml-auto flex items-center gap-1.5" />
+            <div id="titlebar-actions" className="relative z-shell ml-auto flex items-center gap-1.5" />
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             <Outlet />
@@ -244,7 +243,7 @@ function RootLayout() {
           aria-label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
           title={`${sidebarOpen ? 'Hide' : 'Show'} sidebar (⌘S)`}
           onClick={() => setSidebarOpen((open) => !open)}
-          className={`absolute z-30 grid cursor-pointer place-items-center rounded-full text-ink-2 transition-colors duration-150 [-webkit-app-region:no-drag] hover:bg-surface-2 hover:text-ink ${
+          className={`absolute z-drawer grid cursor-pointer place-items-center rounded-full text-ink-2 transition-colors duration-150 [-webkit-app-region:no-drag] hover:bg-surface-2 hover:text-ink ${
             isMobile
               ? 'top-2.5 left-3 size-9'
               : `top-[11px] size-7 ${isMacDesktop ? 'left-[80px]' : 'left-2'}`

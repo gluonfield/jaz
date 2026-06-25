@@ -2,6 +2,7 @@ import { ChevronDown } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 
 // Phone-only: the new-thread controls (agent, model, project, worktree) don't
 // fit beside the composer, so they collapse behind a single header trigger that
@@ -26,14 +27,13 @@ export function NewThreadOptions({
 
   // Dismiss when the route changes underneath an open panel (e.g. a send that
   // navigates) is handled by unmount; here we only close on backdrop/Escape.
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
+  useWindowEvent(
+    'keydown',
+    (e) => {
       if (e.key === 'Escape') setOpen(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open])
+    },
+    open,
+  )
 
   // Centered over the title bar via the app shell's relative container; absolute
   // so it leaves the slot's flex flow and lines up with the window's middle.

@@ -12,6 +12,7 @@ import { UpdatePanel } from '@/components/update/UpdatePanel'
 import { boardsQuery, deleteBoard } from '@/lib/api/boards'
 import { loopsQuery } from '@/lib/api/loops'
 import { projectsQuery, reorderProjects, sidebarSessionsQuery, type Project, type SessionListItem } from '@/lib/api/sessions'
+import { dismissOnEmptyTap } from '@/lib/dom/drawer'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import type { Board } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
@@ -459,7 +460,7 @@ function LoopsSection() {
       <div className="flex items-center justify-between pr-1">
         <Link
           to="/loops"
-          className="rounded-full px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3 max-sm:text-[13px] transition-colors duration-150 hover:text-ink"
+          className="rounded-full px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3 transition-colors duration-150 hover:text-ink max-sm:text-[13px]"
           activeOptions={{ exact: true }}
           activeProps={{ className: 'text-ink!' }}
         >
@@ -618,16 +619,10 @@ export function Sidebar({
 }) {
   return (
     <aside
-      // Phone: the drawer is full-screen, so a tap on any empty (non-interactive)
-      // area dismisses it like a backdrop would.
-      onClick={
-        mobile && onDismiss
-          ? (e) => {
-              if (!(e.target as HTMLElement).closest('a, button, input, textarea')) onDismiss()
-            }
-          : undefined
-      }
-      className="sidebar-material relative flex h-full shrink-0 flex-col border-r border-border"
+      // Phone: the drawer is full-screen (CSS overrides the inline column width),
+      // so a tap on any empty area dismisses it like a backdrop would.
+      onClick={mobile && onDismiss ? dismissOnEmptyTap(onDismiss) : undefined}
+      className="sidebar-material relative flex h-full shrink-0 flex-col border-r border-border max-sm:w-full!"
       style={{ width }}
     >
       {/* draggable titlebar strip; traffic lights live here on macOS. On a phone
@@ -674,7 +669,6 @@ export function Sidebar({
         aria-label="Resize sidebar"
         onPointerDown={onResizeStart}
         onDoubleClick={onResizeReset}
-        hidden={mobile}
         className="group absolute inset-y-0 right-0 z-10 flex w-2 cursor-col-resize touch-none justify-end max-sm:hidden"
       >
         <span
