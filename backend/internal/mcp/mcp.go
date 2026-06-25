@@ -117,6 +117,11 @@ type refreshResult struct {
 	status  mcpconfig.ServerStatus
 }
 
+type connectResult struct {
+	session *serverSession
+	status  mcpconfig.ServerStatus
+}
+
 func NewManager(store mcpconfig.ServerReader, tokens integrationoauth.Store, registry *tools.Registry, logger *log.Logger, opts ...Option) *Manager {
 	if logger == nil {
 		logger = log.Default()
@@ -143,7 +148,7 @@ func (m *Manager) backgroundHandler(server mcpconfig.Server) *oauthHandler {
 	if m.tokens == nil {
 		return nil
 	}
-	return newOAuthHandler(server, m.tokens, http.DefaultClient, m.log)
+	return newOAuthHandler(server, m.tokens, http.DefaultClient)
 }
 
 func (m *Manager) Refresh(ctx context.Context) {
@@ -214,19 +219,13 @@ func (m *Manager) refreshServerList(ctx context.Context, seq uint64, servers []m
 			sessionCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			defer cancel()
 			handler := m.backgroundHandler(server)
-			ss, err := m.connect(sessionCtx, server, asOAuthHandler(handler))
+			result, err := m.connectForStatus(sessionCtx, server, handler)
+			results[index].status = result.status
 			if err != nil {
-				results[index].status = connectErrorStatus(handler, err)
 				m.log.Warn("mcp server unavailable", "server", server.Name, "error", err)
 				return
 			}
-			if status, ok := oauthGateStatus(sessionCtx, server, handler, len(ss.tools)); ok {
-				closeSessions(map[string]*serverSession{server.ID: ss})
-				results[index].status = status
-				return
-			}
-			results[index].session = ss
-			results[index].status = mcpconfig.ServerStatus{Status: "connected", ToolCount: len(ss.tools), CheckedAt: time.Now().UTC()}
+			results[index].session = result.session
 		}(i, server)
 	}
 	wg.Wait()
@@ -362,10 +361,17 @@ func (m *Manager) proxyTools() []remoteTool {
 
 func closeSessions(sessions map[string]*serverSession) {
 	for _, ss := range sessions {
-		_ = ss.session.Close()
-		if ss.localSession != nil {
-			_ = ss.localSession.Close()
-		}
+		closeSession(ss)
+	}
+}
+
+func closeSession(ss *serverSession) {
+	if ss == nil {
+		return
+	}
+	_ = ss.session.Close()
+	if ss.localSession != nil {
+		_ = ss.localSession.Close()
 	}
 }
 
@@ -382,16 +388,14 @@ func (m *Manager) Test(ctx context.Context, server mcpconfig.Server) mcpconfig.S
 	sessionCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	handler := m.backgroundHandler(server)
-	ss, err := m.connect(sessionCtx, server, asOAuthHandler(handler))
+	result, err := m.connectForStatus(sessionCtx, server, handler)
 	if err != nil {
-		return connectErrorStatus(handler, err)
+		return result.status
 	}
-	if status, ok := oauthGateStatus(sessionCtx, server, handler, len(ss.tools)); ok {
-		closeSessions(map[string]*serverSession{server.ID: ss})
-		return status
+	if result.session != nil {
+		closeSession(result.session)
 	}
-	closeSessions(map[string]*serverSession{server.ID: ss})
-	return mcpconfig.ServerStatus{Status: "connected", ToolCount: len(ss.tools), CheckedAt: time.Now().UTC()}
+	return result.status
 }
 
 // Authorize runs the interactive OAuth authorization-code flow for a server
@@ -408,8 +412,8 @@ func (m *Manager) Authorize(ctx context.Context, server mcpconfig.Server) mcpcon
 	}
 	defer receiver.close()
 
-	handler := newOAuthHandler(server, m.tokens, http.DefaultClient, m.log)
-	handler.interactive = true
+	handler := newOAuthHandler(server, m.tokens, http.DefaultClient)
+	handler.mode = oauthModeInteractive
 	handler.redirectURL = receiver.redirectURL
 	handler.fetch = receiver.fetch
 
@@ -442,6 +446,22 @@ func asOAuthHandler(h *oauthHandler) auth.OAuthHandler {
 		return nil
 	}
 	return h
+}
+
+func (m *Manager) connectForStatus(ctx context.Context, server mcpconfig.Server, handler *oauthHandler) (connectResult, error) {
+	ss, err := m.connect(ctx, server, asOAuthHandler(handler))
+	if err != nil {
+		return connectResult{status: connectErrorStatus(handler, err)}, err
+	}
+	if status, ok := oauthGateStatus(ctx, server, handler, len(ss.tools)); ok {
+		closeSession(ss)
+		return connectResult{status: status}, nil
+	}
+	return connectResult{session: ss, status: connectedStatus(len(ss.tools))}, nil
+}
+
+func connectedStatus(toolCount int) mcpconfig.ServerStatus {
+	return mcpconfig.ServerStatus{Status: "connected", ToolCount: toolCount, CheckedAt: time.Now().UTC()}
 }
 
 func connectErrorStatus(handler *oauthHandler, err error) mcpconfig.ServerStatus {

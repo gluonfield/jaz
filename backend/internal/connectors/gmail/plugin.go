@@ -23,6 +23,11 @@ func Plugin() integrations.Plugin {
 			ID:   ProviderID,
 			Name: ProviderName,
 		},
+		Category: "email",
+		Icon: integrations.PluginIcon{
+			Kind:  integrations.PluginIconKindAsset,
+			Value: "gmail",
+		},
 		Auth: []integrations.AuthOption{{
 			Kind:        integrations.AuthKindOAuth,
 			Description: "Jaz-managed Google OAuth for sync and actions.",

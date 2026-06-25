@@ -11,7 +11,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/charmbracelet/log"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
@@ -155,8 +154,8 @@ func TestRunAuthorizationCompletesFlow(t *testing.T) {
 	store := newMemTokenStore()
 
 	server := mcpconfig.Server{ID: "srv-oauth", URL: srv.URL + "/mcp"}
-	handler := newOAuthHandler(server, store, http.DefaultClient, log.New(io.Discard))
-	handler.interactive = true
+	handler := newOAuthHandler(server, store, http.DefaultClient)
+	handler.mode = oauthModeInteractive
 	handler.redirectURL = "http://127.0.0.1:5599/callback"
 	// Fake browser: read the state from the authorization URL and return an
 	// authorization code, simulating the user approving access.
@@ -213,8 +212,8 @@ func TestAuthorizeFromMetadataUsesStaticOAuthClient(t *testing.T) {
 			ClientSecretEnvVar: "STATIC_OAUTH_SECRET",
 		},
 	}
-	handler := newOAuthHandler(server, store, http.DefaultClient, log.New(io.Discard))
-	handler.interactive = true
+	handler := newOAuthHandler(server, store, http.DefaultClient)
+	handler.mode = oauthModeInteractive
 	handler.redirectURL = "http://127.0.0.1:5599/callback"
 	handler.fetch = func(_ context.Context, authURL string) (string, string, error) {
 		u, err := url.Parse(authURL)
@@ -238,11 +237,11 @@ func TestAuthorizeFromMetadataUsesStaticOAuthClient(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("LoadToken ok=%v err=%v", ok, err)
 	}
-	if tok.AccessToken != "static-access" || tok.ClientID != "static-client" {
+	if tok.AccessToken != "static-access" {
 		t.Fatalf("token = %#v", tok)
 	}
-	if tok.ClientSecret != "" || tok.ClientSecretEnvVar != "STATIC_OAUTH_SECRET" {
-		t.Fatalf("token stored secret fields = %#v", tok)
+	if tok.ClientID != "" || tok.ClientSecret != "" {
+		t.Fatalf("token stored static client fields = %#v", tok)
 	}
 	if !handler.didAuthorize() {
 		t.Fatal("didAuthorize() = false, want true")
@@ -252,8 +251,8 @@ func TestAuthorizeFromMetadataUsesStaticOAuthClient(t *testing.T) {
 func TestAuthorizeFromMetadataRequiresStaticClientWhenNoDCR(t *testing.T) {
 	srv := mockStaticAuthServer(t)
 	server := mcpconfig.Server{ID: "srv-static", URL: srv.URL + "/mcp"}
-	handler := newOAuthHandler(server, newMemTokenStore(), http.DefaultClient, log.New(io.Discard))
-	handler.interactive = true
+	handler := newOAuthHandler(server, newMemTokenStore(), http.DefaultClient)
+	handler.mode = oauthModeInteractive
 	handler.redirectURL = "http://127.0.0.1:5599/callback"
 	handler.fetch = func(context.Context, string) (string, string, error) {
 		t.Fatal("fetch should not run without a client")
@@ -269,7 +268,7 @@ func TestAuthorizeFromMetadataRequiresStaticClientWhenNoDCR(t *testing.T) {
 func TestNonInteractiveAuthorizeReportsNeedsAuth(t *testing.T) {
 	store := newMemTokenStore()
 	server := mcpconfig.Server{ID: "srv-x", URL: "https://example.com/mcp"}
-	handler := newOAuthHandler(server, store, http.DefaultClient, log.New(io.Discard))
+	handler := newOAuthHandler(server, store, http.DefaultClient)
 
 	resp := &http.Response{StatusCode: http.StatusUnauthorized, Body: io.NopCloser(strings.NewReader(""))}
 	err := handler.Authorize(context.Background(), &http.Request{}, resp)

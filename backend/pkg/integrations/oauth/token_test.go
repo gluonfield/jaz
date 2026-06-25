@@ -73,3 +73,56 @@ func TestRefresherPersistsUpdatedToken(t *testing.T) {
 		t.Fatalf("fresh token metadata = %#v", got)
 	}
 }
+
+func TestRefresherUsesResolvedClientConfig(t *testing.T) {
+	tokenEndpointCalled := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tokenEndpointCalled = true
+		if err := r.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		if r.Form.Get("client_id") != "current-client" || r.Form.Get("client_secret") != "current-secret" {
+			t.Fatalf("refresh used stale client config: %s", r.Form.Encode())
+		}
+		if r.Form.Get("refresh_token") != "old-refresh" {
+			t.Fatalf("refresh_token = %q", r.Form.Get("refresh_token"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "new-access",
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+		})
+	}))
+	defer server.Close()
+
+	store := &memoryStore{
+		ok: true,
+		token: Token{
+			AccessToken:  "old-access",
+			RefreshToken: "old-refresh",
+			TokenType:    "Bearer",
+			Expiry:       time.Now().Add(-time.Hour),
+			ClientID:     "stale-client",
+			TokenURL:     server.URL,
+			AuthStyle:    int(oauth2.AuthStyleInParams),
+		},
+	}
+	_, err := (Refresher{
+		Store: store,
+		ClientConfig: func(_ context.Context, token Token) (ClientConfig, error) {
+			return ClientConfig{
+				ClientID:     "current-client",
+				ClientSecret: "current-secret",
+				TokenURL:     token.TokenURL,
+				AuthStyle:    oauth2.AuthStyleInParams,
+			}, nil
+		},
+	}).FreshToken(context.Background(), "conn")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !tokenEndpointCalled {
+		t.Fatal("expected token endpoint call")
+	}
+}

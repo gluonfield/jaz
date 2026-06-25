@@ -246,7 +246,8 @@ function MCPServerRow({
   onAuthorize: () => void
 }) {
   const needsAuth = server.status === 'needs_auth'
-  const canAuthorize = needsAuth || Boolean(server.oauth?.client_id || server.oauth?.issuer)
+  const oauthConfigured = Boolean(server.oauth?.client_id || server.oauth?.issuer)
+  const canAuthorize = needsAuth || (oauthConfigured && server.status !== 'connected')
   return (
     <div className="flex items-center gap-3 rounded-card px-3 py-2 text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface">
       <StatusIcon server={server} authorizing={authorizing} />

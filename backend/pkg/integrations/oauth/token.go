@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -15,19 +13,18 @@ import (
 var ErrTokenNotFound = errors.New("oauth token not found")
 
 type Token struct {
-	AccessToken        string    `json:"access_token"`
-	RefreshToken       string    `json:"refresh_token,omitempty"`
-	TokenType          string    `json:"token_type,omitempty"`
-	Expiry             time.Time `json:"expiry,omitempty"`
-	ClientID           string    `json:"client_id"`
-	ClientSecret       string    `json:"client_secret,omitempty"`
-	ClientSecretEnvVar string    `json:"client_secret_env_var,omitempty"`
-	AuthURL            string    `json:"auth_url"`
-	TokenURL           string    `json:"token_url"`
-	AuthStyle          int       `json:"auth_style"`
-	RedirectURL        string    `json:"redirect_url,omitempty"`
-	Scopes             []string  `json:"scopes,omitempty"`
-	Resource           string    `json:"resource,omitempty"`
+	AccessToken  string    `json:"access_token"`
+	RefreshToken string    `json:"refresh_token,omitempty"`
+	TokenType    string    `json:"token_type,omitempty"`
+	Expiry       time.Time `json:"expiry,omitempty"`
+	ClientID     string    `json:"client_id,omitempty"`
+	ClientSecret string    `json:"client_secret,omitempty"`
+	AuthURL      string    `json:"auth_url"`
+	TokenURL     string    `json:"token_url"`
+	AuthStyle    int       `json:"auth_style"`
+	RedirectURL  string    `json:"redirect_url,omitempty"`
+	Scopes       []string  `json:"scopes,omitempty"`
+	Resource     string    `json:"resource,omitempty"`
 }
 
 type Store interface {
@@ -35,9 +32,22 @@ type Store interface {
 	SaveToken(context.Context, string, Token) error
 }
 
+type ClientConfig struct {
+	ClientID     string
+	ClientSecret string
+	AuthURL      string
+	TokenURL     string
+	AuthStyle    oauth2.AuthStyle
+	RedirectURL  string
+	Scopes       []string
+}
+
+type ClientConfigResolver func(context.Context, Token) (ClientConfig, error)
+
 type Refresher struct {
-	Store      Store
-	HTTPClient *http.Client
+	Store        Store
+	HTTPClient   *http.Client
+	ClientConfig ClientConfigResolver
 }
 
 func (r Refresher) TokenSource(ctx context.Context, connectionID string) (oauth2.TokenSource, error) {
@@ -59,8 +69,12 @@ func (r Refresher) persistentTokenSource(ctx context.Context, connectionID strin
 	if !ok {
 		return nil, ErrTokenNotFound
 	}
+	clientConfig, err := r.clientConfig(ctx, stored)
+	if err != nil {
+		return nil, err
+	}
 	ctx = r.context(ctx)
-	base := stored.config().TokenSource(ctx, stored.oauth2Token())
+	base := clientConfig.config().TokenSource(ctx, stored.oauth2Token())
 	return &persistingTokenSource{base: base, store: r.Store, connectionID: connectionID, stored: stored}, nil
 }
 
@@ -87,21 +101,32 @@ func (r Refresher) context(ctx context.Context) context.Context {
 	return context.WithValue(ctx, oauth2.HTTPClient, r.HTTPClient)
 }
 
-func (t Token) config() *oauth2.Config {
-	clientSecret := t.ClientSecret
-	if clientSecret == "" && strings.TrimSpace(t.ClientSecretEnvVar) != "" {
-		clientSecret = os.Getenv(strings.TrimSpace(t.ClientSecretEnvVar))
+func (r Refresher) clientConfig(ctx context.Context, token Token) (ClientConfig, error) {
+	if r.ClientConfig != nil {
+		return r.ClientConfig(ctx, token)
 	}
+	return ClientConfig{
+		ClientID:     token.ClientID,
+		ClientSecret: token.ClientSecret,
+		AuthURL:      token.AuthURL,
+		TokenURL:     token.TokenURL,
+		AuthStyle:    oauth2.AuthStyle(token.AuthStyle),
+		RedirectURL:  token.RedirectURL,
+		Scopes:       token.Scopes,
+	}, nil
+}
+
+func (c ClientConfig) config() *oauth2.Config {
 	return &oauth2.Config{
-		ClientID:     t.ClientID,
-		ClientSecret: clientSecret,
+		ClientID:     c.ClientID,
+		ClientSecret: c.ClientSecret,
 		Endpoint: oauth2.Endpoint{
-			AuthURL:   t.AuthURL,
-			TokenURL:  t.TokenURL,
-			AuthStyle: oauth2.AuthStyle(t.AuthStyle),
+			AuthURL:   c.AuthURL,
+			TokenURL:  c.TokenURL,
+			AuthStyle: c.AuthStyle,
 		},
-		RedirectURL: t.RedirectURL,
-		Scopes:      t.Scopes,
+		RedirectURL: c.RedirectURL,
+		Scopes:      c.Scopes,
 	}
 }
 

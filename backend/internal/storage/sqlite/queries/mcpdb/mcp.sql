@@ -76,6 +76,10 @@ WHERE id = sqlc.arg(id);
 DELETE FROM mcp_servers
 WHERE id = sqlc.arg(id);
 
+-- name: DeleteMCPServerOAuthToken :exec
+DELETE FROM integration_oauth_tokens
+WHERE connection_id = sqlc.arg(connection_id);
+
 -- name: SetMCPServerEnabled :execrows
 UPDATE mcp_servers
 SET

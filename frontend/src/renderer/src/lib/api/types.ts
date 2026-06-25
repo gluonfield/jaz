@@ -225,11 +225,21 @@ export interface IntegrationImplementation {
   owner: string
 }
 
+export type IntegrationPluginIconKind = 'asset' | 'url' | 'initials'
+
+export interface IntegrationPluginIcon {
+  kind: IntegrationPluginIconKind
+  value: string
+  background?: string
+}
+
 export interface IntegrationPlugin {
   id: string
   name: string
   description?: string
   provider: IntegrationProvider
+  category?: string
+  icon: IntegrationPluginIcon
   auth: IntegrationAuthOption[]
   capabilities: IntegrationCapability[]
   multi_account: boolean

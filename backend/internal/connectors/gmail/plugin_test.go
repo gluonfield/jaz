@@ -12,6 +12,9 @@ func TestPluginDescribesGmailConnection(t *testing.T) {
 	if plugin.ID != "gmail" || plugin.Provider.ID != ProviderID || !plugin.MultiAccount {
 		t.Fatalf("plugin = %#v", plugin)
 	}
+	if plugin.Category != "email" || plugin.Icon.Kind != integrations.PluginIconKindAsset || plugin.Icon.Value != "gmail" {
+		t.Fatalf("plugin metadata = %#v %#v", plugin.Category, plugin.Icon)
+	}
 	if plugin.RemoteMCP == nil || plugin.RemoteMCP.URL != RemoteMCPURL || !plugin.RemoteMCP.OAuthSecrets {
 		t.Fatalf("remote mcp = %#v", plugin.RemoteMCP)
 	}
