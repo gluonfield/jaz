@@ -6,7 +6,6 @@
 // (e.g. Cloudflare) you can replace just this file without rebuilding the app.
 window.__JAZ_APPEARANCE_DEFAULTS__ = {
   // theme: 'system',              // 'light' | 'dark' | 'system'
-  // accent: 262,                  // oklch hue 0–359 (262 cobalt, 195 teal, 230 azure, 300 violet, 12 rose)
   // uiFont: 'Inter',              // interface font family
   // monoFont: 'JetBrains Mono',   // code / diff font family
   // fontScale: 1,                 // 0.9 | 1 | 1.1 | 1.25
