@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { taskSurfaceFromEvent } from '@/lib/taskSurface'
 import {
   buildTimeline,
-  isCollapsibleWork,
+  classifyTurnItems,
   stableEventKey,
   type TimelineItem,
 } from './timeline'
@@ -242,41 +242,34 @@ export const Transcript = memo(function Transcript({
         const flow = turn.items.filter((item) => !isResultCard(item))
         const sections: ReactNode[] = []
         if (turn.opener) sections.push(renderItem(turn.opener))
-        let work: TimelineItem[] = []
-        // Each "Worked for" run spans from the previously shown item to the end of
-        // the folded batch, so consecutive runs report their own duration instead
-        // of cumulative time from the turn's start.
-        let lastShownAt = turn.opener?.at
-        const flushWork = () => {
-          if (!work.length) return
-          const batch = work
-          work = []
-          const batchEnd = batch[batch.length - 1].at
-          const durationMs = batchEnd - (lastShownAt ?? batch[0].at)
-          lastShownAt = batchEnd
-          sections.push(
-            <WorkSection
-              key={`work-${turnIndex}-${sections.length}`}
-              items={batch}
-              durationMs={durationMs}
-              defaultOpen={false}
-              findActive={findActive}
-              render={renderItem}
-            />,
+        if (active) {
+          // Live turn: stream items in order. Answer-vs-narration classification
+          // isn't stable until the turn completes, so nothing folds yet.
+          flow.forEach((item) => sections.push(renderItem(item)))
+        } else {
+          // One "Worked for" disclosure per turn holds all folded work, so a shown
+          // message can't split the turn into a staircase of tiny disclosures.
+          const { workItems, resultItems } = classifyTurnItems(
+            flow,
+            pendingPermissionIds,
+            latestTaskSurfaceEvent,
           )
-        }
-        flow.forEach((item) => {
-          const collapsible =
-            !active && isCollapsibleWork(item, pendingPermissionIds, latestTaskSurfaceEvent)
-          if (collapsible) {
-            work.push(item)
-            return
+          if (workItems.length) {
+            const durationMs =
+              workItems[workItems.length - 1].at - (turn.opener?.at ?? workItems[0].at)
+            sections.push(
+              <WorkSection
+                key={`work-${turnIndex}`}
+                items={workItems}
+                durationMs={durationMs}
+                defaultOpen={false}
+                findActive={findActive}
+                render={renderItem}
+              />,
+            )
           }
-          flushWork()
-          lastShownAt = item.at
-          sections.push(renderItem(item))
-        })
-        flushWork()
+          resultItems.forEach((item) => sections.push(renderItem(item)))
+        }
         resultCards.forEach((item) => sections.push(renderItem(item)))
         return (
           <div key={`turn-${turnIndex}`} className="flex flex-col gap-5">
