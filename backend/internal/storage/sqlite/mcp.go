@@ -10,6 +10,7 @@ import (
 	"time"
 
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	oauthdb "github.com/wins/jaz/backend/internal/storage/sqlite/generated/integrationoauth"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/mcpdb"
 )
 
@@ -102,15 +103,16 @@ func (s *Store) UpdateMCPServer(id string, input mcpconfig.ServerInput) (mcpconf
 		return mcpconfig.Server{}, err
 	}
 	defer tx.Rollback()
-	q := mcpdb.New(s.db).WithTx(tx)
-	current, err := q.GetMCPServer(context.Background(), id)
+	mcpq := mcpdb.New(s.db).WithTx(tx)
+	oauthq := oauthdb.New(s.db).WithTx(tx)
+	current, err := mcpq.GetMCPServer(context.Background(), id)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return mcpconfig.Server{}, fmt.Errorf("mcp server not found: %s", id)
 		}
 		return mcpconfig.Server{}, err
 	}
-	changed, err := q.UpdateMCPServer(context.Background(), mcpdb.UpdateMCPServerParams{
+	changed, err := mcpq.UpdateMCPServer(context.Background(), mcpdb.UpdateMCPServerParams{
 		Name:              input.Name,
 		Transport:         mcpconfig.TransportStreamableHTTP,
 		Url:               input.URL,
@@ -129,7 +131,7 @@ func (s *Store) UpdateMCPServer(id string, input mcpconfig.ServerInput) (mcpconf
 		return mcpconfig.Server{}, fmt.Errorf("mcp server not found: %s", id)
 	}
 	if current.Url != input.URL || current.OauthJson != oauth {
-		if err := q.DeleteMCPServerOAuthToken(context.Background(), mcpconfig.OAuthConnectionID(id)); err != nil {
+		if err := oauthq.DeleteToken(context.Background(), mcpconfig.OAuthConnectionID(id)); err != nil {
 			return mcpconfig.Server{}, err
 		}
 	}
@@ -147,15 +149,16 @@ func (s *Store) DeleteMCPServer(id string) error {
 		return err
 	}
 	defer tx.Rollback()
-	q := mcpdb.New(s.db).WithTx(tx)
-	changed, err := q.DeleteMCPServer(context.Background(), id)
+	mcpq := mcpdb.New(s.db).WithTx(tx)
+	oauthq := oauthdb.New(s.db).WithTx(tx)
+	changed, err := mcpq.DeleteMCPServer(context.Background(), id)
 	if err != nil {
 		return err
 	}
 	if changed == 0 {
 		return fmt.Errorf("mcp server not found: %s", id)
 	}
-	if err := q.DeleteMCPServerOAuthToken(context.Background(), mcpconfig.OAuthConnectionID(id)); err != nil {
+	if err := oauthq.DeleteToken(context.Background(), mcpconfig.OAuthConnectionID(id)); err != nil {
 		return err
 	}
 	return tx.Commit()
