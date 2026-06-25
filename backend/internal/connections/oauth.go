@@ -10,6 +10,7 @@ import (
 	"time"
 
 	gmailconnector "github.com/wins/jaz/backend/internal/connectors/gmail"
+	"github.com/wins/jaz/backend/pkg/integrations"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 	"golang.org/x/oauth2"
 )
@@ -18,8 +19,12 @@ type OAuthStart struct {
 	AuthURL string `json:"auth_url"`
 }
 
+type OAuthStore interface {
+	SaveOAuthConnection(context.Context, integrationoauth.Token, integrations.Connection) error
+}
+
 type OAuthService struct {
-	tokens integrationoauth.Store
+	store  OAuthStore
 	mu     sync.Mutex
 	states map[string]oauthState
 }
@@ -31,8 +36,11 @@ type oauthState struct {
 	expiresAt   time.Time
 }
 
-func NewOAuthService(tokens integrationoauth.Store) *OAuthService {
-	return &OAuthService{tokens: tokens, states: map[string]oauthState{}}
+func NewOAuthService(store OAuthStore) *OAuthService {
+	return &OAuthService{
+		store:  store,
+		states: map[string]oauthState{},
+	}
 }
 
 func (s *OAuthService) Start(_ context.Context, pluginID, redirectURL string) (OAuthStart, error) {
@@ -86,7 +94,11 @@ func (s *OAuthService) Callback(ctx context.Context, state, code, failure string
 	if err != nil {
 		return fmt.Errorf("token exchange: %w", err)
 	}
-	return s.tokens.SaveToken(ctx, gmailconnector.OAuthConnectionID, integrationoauth.Token{
+	profile, err := defaultGmailProfile(ctx, token)
+	if err != nil {
+		return err
+	}
+	storedToken := integrationoauth.Token{
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
 		TokenType:    token.TokenType,
@@ -98,7 +110,20 @@ func (s *OAuthService) Callback(ctx context.Context, state, code, failure string
 		AuthStyle:    int(oauth2.AuthStyleInParams),
 		RedirectURL:  stored.redirectURL,
 		Scopes:       gmailconnector.OAuthScopes,
+	}
+	return s.store.SaveOAuthConnection(ctx, storedToken, integrations.Connection{
+		ID:          gmailconnector.OAuthConnectionID,
+		Provider:    gmailconnector.ProviderID,
+		AccountID:   profile.EmailAddress,
+		AccountName: profile.EmailAddress,
+		Alias:       "default",
+		Scopes:      gmailconnector.OAuthScopes,
 	})
+}
+
+func defaultGmailProfile(ctx context.Context, token *oauth2.Token) (gmailconnector.Profile, error) {
+	client := oauth2.NewClient(ctx, oauth2.StaticTokenSource(token))
+	return gmailconnector.APIClient{HTTP: client}.Profile(ctx)
 }
 
 func (s *OAuthService) takeState(state string) (oauthState, bool) {

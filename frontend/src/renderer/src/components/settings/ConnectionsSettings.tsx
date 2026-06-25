@@ -7,7 +7,11 @@ import { useToast } from '@/components/ui/toast'
 import { connectionPluginsQuery, startConnectionPlugin } from '@/lib/api/connections'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { keys } from '@/lib/query/keys'
-import type { IntegrationCapability, IntegrationPlugin } from '@/lib/api/types'
+import type {
+  IntegrationCapability,
+  IntegrationConnectionAccount,
+  IntegrationPlugin,
+} from '@/lib/api/types'
 
 const CAPABILITY_LABELS: Record<IntegrationCapability, string> = {
   sync: 'Sync',
@@ -113,6 +117,7 @@ function ConnectionPluginRow({
   const sourceLanes = plugin.source_lanes ?? []
   const available = plugin.implementation.status === 'available'
   const connected = plugin.connection?.status === 'connected'
+  const accountLabels = (plugin.connection?.accounts ?? []).map(accountLabel).filter(Boolean)
   const actionIcon = connecting ? (
     <Loader2 size={13} className="animate-spin" />
   ) : connected ? (
@@ -144,6 +149,11 @@ function ConnectionPluginRow({
             {sourceLanes.length > 0 ? ` - ${sourceLanes.join(', ')}` : ''}
             {plugin.remote_mcp ? ` - Official MCP ${statusLabel(plugin.remote_mcp.status)}` : ''}
           </p>
+          {accountLabels.length > 0 ? (
+            <p className="mt-1 truncate text-[12px] text-ink-3" title={accountLabels.join(', ')}>
+              {accountLabels.join(', ')}
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -163,6 +173,13 @@ function ConnectionPluginRow({
       )}
     </div>
   )
+}
+
+function accountLabel(account: IntegrationConnectionAccount): string {
+  if (account.account_name) return account.account_name
+  if (account.account_id) return account.account_id
+  if (account.alias && account.alias !== 'default') return account.alias
+  return ''
 }
 
 function ConnectedPill() {
