@@ -8,13 +8,18 @@ import (
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
 
-type Service struct {
-	catalog *Catalog
-	tokens  integrationoauth.Store
+type Store interface {
+	LoadToken(context.Context, string) (integrationoauth.Token, bool, error)
+	ListConnections(context.Context, string) ([]integrations.Connection, error)
 }
 
-func NewService(catalog *Catalog, tokens integrationoauth.Store) *Service {
-	return &Service{catalog: catalog, tokens: tokens}
+type Service struct {
+	catalog *Catalog
+	store   Store
+}
+
+func NewService(catalog *Catalog, store Store) *Service {
+	return &Service{catalog: catalog, store: store}
 }
 
 func (s *Service) ListPlugins(ctx context.Context) ([]integrations.Plugin, error) {
@@ -42,8 +47,18 @@ func (s *Service) withConnection(ctx context.Context, plugin integrations.Plugin
 	if plugin.ID != gmail.ProviderID {
 		return plugin, nil
 	}
+	accounts, err := s.store.ListConnections(ctx, gmail.ProviderID)
+	if err != nil {
+		return integrations.Plugin{}, err
+	}
 	connection := integrations.PluginConnection{Status: integrations.PluginConnectionStatusNotConnected}
-	token, ok, err := s.tokens.LoadToken(ctx, gmail.OAuthConnectionID)
+	if len(accounts) > 0 {
+		connection.Status = integrations.PluginConnectionStatusConnected
+		connection.Accounts = accounts
+		plugin.Connection = &connection
+		return plugin, nil
+	}
+	token, ok, err := s.store.LoadToken(ctx, gmail.OAuthConnectionID)
 	if err != nil {
 		return integrations.Plugin{}, err
 	}

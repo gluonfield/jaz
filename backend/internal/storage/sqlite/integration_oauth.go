@@ -28,7 +28,7 @@ func (s *Store) LoadToken(ctx context.Context, connectionID string) (integration
 }
 
 func (s *Store) SaveToken(ctx context.Context, connectionID string, token integrationoauth.Token) error {
-	data, err := json.Marshal(token)
+	data, err := tokenJSON(token)
 	if err != nil {
 		return err
 	}
@@ -36,9 +36,17 @@ func (s *Store) SaveToken(ctx context.Context, connectionID string, token integr
 	defer s.mu.Unlock()
 	return oauthdb.New(s.db).SaveToken(ctx, oauthdb.SaveTokenParams{
 		ConnectionID: connectionID,
-		TokenJson:    string(data),
+		TokenJson:    data,
 		UpdatedAtMs:  timeToMs(time.Now().UTC()),
 	})
+}
+
+func tokenJSON(token integrationoauth.Token) (string, error) {
+	data, err := json.Marshal(token)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
 
 func (s *Store) DeleteToken(ctx context.Context, connectionID string) error {

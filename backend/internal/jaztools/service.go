@@ -10,6 +10,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/browsertask"
 	"github.com/wins/jaz/backend/internal/browserworker"
+	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/loops"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/mcpsession"
@@ -57,6 +58,7 @@ type Service struct {
 	loopTools       *loops.MCPTools
 	agentTools      *acp.MCPTools
 	threadTools     *threads.Service
+	gmailTools      *connections.GmailMCPTools
 	visualizeTools  *visualize.MCPTools
 	widgetPublisher *widgets.SessionPublisher
 	sessions        sessionSource
@@ -99,9 +101,10 @@ type sessionSource interface {
 	LoadSession(id string) (storage.Session, error)
 }
 
-func New(memory *memoryservice.Service, urls serverconfig.URLs, sessionEvents storage.SessionEventAppender, events *sessionevents.Bus, sessions storage.SessionStore, widgetPublisher *widgets.SessionPublisher) *Service {
+func New(memory *memoryservice.Service, urls serverconfig.URLs, sessionEvents storage.SessionEventAppender, events *sessionevents.Bus, sessions storage.SessionStore, widgetPublisher *widgets.SessionPublisher, gmailTools *connections.GmailMCPTools) *Service {
 	return &Service{
 		Memory:          memory,
+		gmailTools:      gmailTools,
 		visualizeTools:  visualize.NewMCPTools(sessionEvents, events),
 		widgetPublisher: widgetPublisher,
 		sessions:        sessions,
@@ -195,6 +198,7 @@ func (s *Service) newServer(surface toolSurface) *mcp.Server {
 		return server
 	}
 	s.loopTools.AddTo(server)
+	s.gmailTools.AddTo(server)
 	s.visualizeTools.AddReadMeTo(server)
 	switch surface {
 	case widgetSurface:
