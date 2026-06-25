@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import { connectionPluginsQuery, startConnectionPlugin } from '@/lib/api/connections'
+import { clientRuntime } from '@/lib/clientRuntime'
 import type { IntegrationCapability, IntegrationPlugin } from '@/lib/api/types'
 
 const CAPABILITY_LABELS: Record<IntegrationCapability, string> = {
@@ -19,17 +20,12 @@ export function ConnectionsSettings() {
   const toast = useToast()
   const plugins = useQuery(connectionPluginsQuery)
   const connect = useMutation({
-    mutationFn: ({ id }: { id: string; popup: Window | null }) => startConnectionPlugin(id),
-    onSuccess: (result, variables) => {
-      if (variables.popup) {
-        variables.popup.location.href = result.auth_url
-      } else {
-        window.location.href = result.auth_url
-      }
+    mutationFn: (id: string) => startConnectionPlugin(id),
+    onSuccess: (result) => {
+      openAuthURL(result.auth_url)
       toast('Finish Gmail sign-in in your browser')
     },
-    onError: (error: Error, variables) => {
-      variables.popup?.close()
+    onError: (error: Error) => {
       toast(`Couldn't start Gmail sign-in: ${error.message}`, 'danger')
     },
   })
@@ -62,8 +58,8 @@ export function ConnectionsSettings() {
               <ConnectionPluginRow
                 key={plugin.id}
                 plugin={plugin}
-                connecting={connect.isPending && connect.variables?.id === plugin.id}
-                onConnect={() => connect.mutate({ id: plugin.id, popup: window.open('about:blank', '_blank') })}
+                connecting={connect.isPending && connect.variables === plugin.id}
+                onConnect={() => connect.mutate(plugin.id)}
               />
             ))}
           </div>
@@ -71,6 +67,14 @@ export function ConnectionsSettings() {
       </div>
     </section>
   )
+}
+
+function openAuthURL(url: string): void {
+  if (clientRuntime.openExternalURL) {
+    clientRuntime.openExternalURL(url)
+    return
+  }
+  window.open(url, '_blank', 'noopener,noreferrer')
 }
 
 function ConnectionPluginRow({

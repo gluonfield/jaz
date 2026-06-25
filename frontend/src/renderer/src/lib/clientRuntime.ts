@@ -32,6 +32,7 @@ export interface ClientRuntime {
   installUpdate?: () => Promise<{ ok: boolean; error?: string }>
   onUpdateStatus?: (handler: (status: UpdateStatus) => void) => () => void
   openBoardWindow?: (boardId: string) => void
+  openExternalURL?: (url: string) => void
   openInMain?: (path: string) => void
   onOpenRoute?: (handler: (path: string) => void) => () => void
   onOpenPreviewURL?: (handler: (url: string) => void) => () => void
@@ -69,6 +70,7 @@ function createRuntime(): ClientRuntime {
       installUpdate: electron.installUpdate,
       onUpdateStatus: electron.onUpdateStatus,
       openBoardWindow: electron.openBoardWindow,
+      openExternalURL: electron.openExternalURL,
       openInMain: electron.openInMain,
       onOpenRoute: electron.onOpenRoute,
       onOpenPreviewURL: electron.onOpenPreviewURL,
