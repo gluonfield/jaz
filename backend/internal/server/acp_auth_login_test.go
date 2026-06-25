@@ -348,6 +348,14 @@ echo ok
 	if res.Code != http.StatusOK {
 		t.Fatalf("start status = %d, body = %s", res.Code, res.Body.String())
 	}
+	var started acpAuthLoginResponse
+	if err := json.Unmarshal(res.Body.Bytes(), &started); err != nil {
+		t.Fatal(err)
+	}
+	done := waitForACPAuthLogin(t, handler, started.ID)
+	if done.Status != "succeeded" {
+		t.Fatalf("login status = %#v", done)
+	}
 }
 
 func assertCodexLoginUsesFileCredentials(t *testing.T, root string) {
