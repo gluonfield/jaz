@@ -18,7 +18,7 @@ import (
 func (s *Server) withAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := strings.TrimSpace(s.AuthKey)
-		if key == "" || r.URL.Path == "/health" || internalMCPRequest(r) || publicDeviceRequest(r) || localBrowserExtensionRequest(r) {
+		if key == "" || r.URL.Path == "/health" || internalMCPRequest(r) || publicDeviceRequest(r) || publicConnectionOAuthCallback(r) || localBrowserExtensionRequest(r) {
 			next.ServeHTTP(w, r.WithContext(contextWithClientInfo(r, deviceauth.Principal{})))
 			return
 		}
@@ -99,6 +99,10 @@ func publicDeviceRequest(r *http.Request) bool {
 		return rest != "" && !strings.Contains(rest, "/")
 	}
 	return false
+}
+
+func publicConnectionOAuthCallback(r *http.Request) bool {
+	return r.Method == http.MethodGet && r.URL.Path == "/v1/connections/oauth/google/callback"
 }
 
 func writeAuthError(w http.ResponseWriter, status int, code string, err error) {

@@ -22,6 +22,7 @@ declare global {
       installUpdate: () => Promise<{ ok: boolean; error?: string }>
       onUpdateStatus: (handler: (status: UpdateStatus) => void) => () => void
       openBoardWindow: (boardId: string) => void
+      openExternalURL: (url: string) => void
       openInMain: (path: string) => void
       onOpenRoute: (handler: (path: string) => void) => () => void
       onOpenPreviewURL: (handler: (url: string) => void) => () => void
