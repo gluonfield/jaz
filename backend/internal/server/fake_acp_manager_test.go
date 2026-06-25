@@ -12,10 +12,12 @@ import (
 type fakeACPManager struct {
 	mu             sync.Mutex
 	sent           acp.SendRequest
+	compacted      acp.CompactRequest
 	steered        acp.SteerRequest
 	sideChat       acp.SideChatRequest
 	answered       acp.InteractiveAnswer
 	sendCtxErr     error
+	compactCtxErr  error
 	steerCtxErr    error
 	sendPlatform   string
 	sideCtxErr     error
@@ -23,6 +25,7 @@ type fakeACPManager struct {
 	cancelCtxErr   error
 	cancelled      bool
 	sendErr        error
+	compactErr     error
 	steerErr       error
 	steerSupported bool
 	sideErr        error
@@ -125,6 +128,14 @@ func (f *fakeACPManager) Send(ctx context.Context, req acp.SendRequest) (acp.Job
 	f.sendCtxErr = ctx.Err()
 	f.sendPlatform = sessioncontext.ClientPlatform(ctx)
 	return f.job, f.sendErr
+}
+
+func (f *fakeACPManager) Compact(ctx context.Context, req acp.CompactRequest) (acp.Job, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.compacted = req
+	f.compactCtxErr = ctx.Err()
+	return f.job, f.compactErr
 }
 
 func (f *fakeACPManager) Steer(ctx context.Context, req acp.SteerRequest) (acp.Job, error) {
