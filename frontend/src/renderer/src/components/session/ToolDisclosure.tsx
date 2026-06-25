@@ -120,8 +120,6 @@ const ToolRunDisclosure = memo(function ToolRunDisclosure({
       {open ? (
         <div className="flex w-full max-w-full flex-col gap-1.5 pl-4">
           {calls.map((call) =>
-            // Expanded edits/commands get the same cards as the inline views, so
-            // the setting only controls whether they're folded, not their style.
             hasInlineDiff(call) ? (
               <EditDiffBlock key={call.id} call={call} />
             ) : hasInlineShellCommand(call) ? (
@@ -169,8 +167,6 @@ export const ToolDisclosure = memo(function ToolDisclosure({
   const inlineShell = useInlineShellCommands()
   const showDiff = (call: ACPToolCall) => inlineDiffs && hasInlineDiff(call)
   const showShell = (call: ACPToolCall) => inlineShell && hasInlineShellCommand(call)
-  // Edits win when a call somehow qualifies as both, since the diff is the
-  // higher-signal view.
   if (!calls.some((call) => showDiff(call) || showShell(call))) {
     return <ToolRunDisclosure label={label} calls={calls} active={active} />
   }

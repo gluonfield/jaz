@@ -10,9 +10,6 @@ export function hasInlineShellCommand(call: ACPToolCall): boolean {
   return toolCallCategory(call) === 'command'
 }
 
-// The executed command. Agents disagree on shape: Claude Code sends a `command`
-// string, the native exec tool sends `cmd`, Codex sends an argv array. The
-// disclosure title is the reliable cross-agent fallback.
 function commandText(call: ACPToolCall): string {
   const input = call.raw_input
   if (input && typeof input === 'object') {
@@ -35,17 +32,13 @@ function commandDescription(call: ACPToolCall): string {
   return ''
 }
 
-// Some agents (e.g. Codex) wrap command output in a markdown code fence; we
-// already render it monospace, so unwrap an enclosing ```lang … ``` block. The
-// opening and closing fences are handled independently so streaming output that
-// hasn't been closed yet still loses its leading fence.
+// Some agents wrap command output in a markdown fence; we render monospace already.
 function stripWrappingFence(text: string): string {
   const trimmed = text.trim()
   if (!/^```[^\n]*\n/.test(trimmed)) return text
   return trimmed.replace(/^```[^\n]*\n/, '').replace(/\n?```\s*$/, '')
 }
 
-// Combined stdout/stderr: the runtime delivers command output as text blocks.
 function outputText(content?: ACPToolContent[]): string {
   if (!content?.length) return ''
   const joined = content
@@ -56,8 +49,6 @@ function outputText(content?: ACPToolContent[]): string {
   return stripWrappingFence(joined)
 }
 
-// Terminal-style inline view for a shell command: the command up top with its
-// exit status, the captured output below. Mirrors EditDiffBlock's bordered card.
 export const ShellCommandBlock = memo(function ShellCommandBlock({
   call,
   active = false,
@@ -79,9 +70,6 @@ export const ShellCommandBlock = memo(function ShellCommandBlock({
           <span className="mt-px shrink-0 font-mono text-[12px] leading-relaxed text-ink-3 select-none" aria-hidden>
             $
           </span>
-          {/* One line: long commands scroll horizontally rather than wrapping;
-              the full text is available on hover (desktop) and by swiping the
-              row (touch). */}
           <pre
             title={command || undefined}
             className="min-w-0 flex-1 overflow-x-auto font-mono text-[12px] leading-relaxed whitespace-pre text-ink select-text"
