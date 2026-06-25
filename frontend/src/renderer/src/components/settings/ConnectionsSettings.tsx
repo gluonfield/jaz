@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { Mail, Plug } from 'lucide-react'
+import { Clock3, Mail } from 'lucide-react'
 import { useMemo } from 'react'
-import { Button } from '@/components/ui/Button'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { connectionPluginsQuery } from '@/lib/api/connections'
 import type { IntegrationCapability, IntegrationPlugin } from '@/lib/api/types'
@@ -64,7 +63,6 @@ function ConnectionPluginRow({ plugin }: { plugin: IntegrationPlugin }) {
             <span className="truncate font-medium text-ink" title={plugin.name}>
               {plugin.name}
             </span>
-            <Pill>{statusLabel(plugin.implementation.status)}</Pill>
             {plugin.multi_account ? <Pill>Multiple accounts</Pill> : null}
           </div>
           {plugin.description ? <p className="mt-1 text-[12px] leading-5 text-ink-3">{plugin.description}</p> : null}
@@ -81,16 +79,13 @@ function ConnectionPluginRow({ plugin }: { plugin: IntegrationPlugin }) {
         </div>
       </div>
 
-      <Button
-        variant="secondary"
-        size="sm"
-        disabled
+      <span
+        className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-surface-2 px-2.5 text-[12px] font-medium text-ink-3 max-sm:self-start"
         title="The first-party account connection flow is not implemented yet."
-        className="max-sm:self-start"
       >
-        <Plug size={13} />
-        Connect
-      </Button>
+        <Clock3 size={13} />
+        {statusLabel(plugin.implementation.status)}
+      </span>
     </div>
   )
 }
