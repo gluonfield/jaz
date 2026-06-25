@@ -118,10 +118,18 @@ const ToolRunDisclosure = memo(function ToolRunDisclosure({
         ) : null}
       </button>
       {open ? (
-        <div className="ml-4 flex w-full max-w-full flex-col gap-1">
-          {calls.map((call) => (
-            <ToolCallDetail key={call.id} call={call} />
-          ))}
+        <div className="flex w-full max-w-full flex-col gap-1.5 pl-4">
+          {calls.map((call) =>
+            // Expanded edits/commands get the same cards as the inline views, so
+            // the setting only controls whether they're folded, not their style.
+            hasInlineDiff(call) ? (
+              <EditDiffBlock key={call.id} call={call} />
+            ) : hasInlineShellCommand(call) ? (
+              <ShellCommandBlock key={call.id} call={call} active={active} />
+            ) : (
+              <ToolCallDetail key={call.id} call={call} />
+            ),
+          )}
         </div>
       ) : null}
     </div>
