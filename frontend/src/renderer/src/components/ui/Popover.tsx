@@ -5,6 +5,10 @@ import { createPortal } from 'react-dom'
 
 const GAP = 6
 
+// no-drag keeps the panel clickable when it overlaps the titlebar drag region.
+const menuPanelClass =
+  'min-w-[176px] rounded-[14px] bg-surface p-1.5 shadow-xl ring-1 ring-border [-webkit-app-region:no-drag]'
+
 // A floating menu anchored to its trigger, dismissed on outside-click/Escape.
 // The panel is portaled and fixed-positioned to the trigger so it can't be
 // clipped by a scroll/overflow ancestor (e.g. a modal body); the anchor carries
@@ -92,9 +96,7 @@ export function Popover({
               exit={{ opacity: 0, y: slide }}
               transition={{ duration: 0.15, ease: 'easeOut' }}
               style={style}
-              // no-drag keeps the panel clickable when it overlaps the titlebar
-              // drag region (harmless everywhere else).
-              className="min-w-[176px] rounded-[14px] bg-surface p-1.5 shadow-xl ring-1 ring-border [-webkit-app-region:no-drag]"
+              className={menuPanelClass}
             >
               {children}
             </motion.div>
@@ -103,6 +105,71 @@ export function Popover({
         document.body,
       )}
     </div>
+  )
+}
+
+// Like Popover, but anchored to a cursor point and clamped to the viewport.
+export function ContextMenu({
+  point,
+  onClose,
+  children,
+}: {
+  point: { x: number; y: number }
+  onClose: () => void
+  children: ReactNode
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const reducedMotion = useReducedMotion()
+  const [pos, setPos] = useState(point)
+
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const { width, height } = el.getBoundingClientRect()
+    const margin = 8
+    setPos({
+      x: Math.max(margin, Math.min(point.x, window.innerWidth - width - margin)),
+      y: Math.max(margin, Math.min(point.y, window.innerHeight - height - margin)),
+    })
+  }, [point])
+
+  useEffect(() => {
+    const onOutside = (e: Event) => {
+      if (ref.current?.contains(e.target as Node)) return
+      onClose()
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.stopPropagation()
+      onClose()
+    }
+    document.addEventListener('mousedown', onOutside)
+    document.addEventListener('touchstart', onOutside)
+    document.addEventListener('keydown', onKey)
+    window.addEventListener('scroll', onOutside, true)
+    window.addEventListener('resize', onClose)
+    return () => {
+      document.removeEventListener('mousedown', onOutside)
+      document.removeEventListener('touchstart', onOutside)
+      document.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', onOutside, true)
+      window.removeEventListener('resize', onClose)
+    }
+  }, [onClose])
+
+  return createPortal(
+    <motion.div
+      ref={ref}
+      data-escape-surface=""
+      initial={{ opacity: 0, scale: reducedMotion ? 1 : 0.96 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.12, ease: 'easeOut' }}
+      style={{ position: 'fixed', top: pos.y, left: pos.x, zIndex: 'var(--z-modal)' }}
+      className={menuPanelClass}
+    >
+      {children}
+    </motion.div>,
+    document.body,
   )
 }
 

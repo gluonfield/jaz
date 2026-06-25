@@ -209,6 +209,42 @@ func TestSetPinnedKeepsRuntimeRefAndPinsChildren(t *testing.T) {
 	}
 }
 
+func TestUpdateSessionTitleDoesNotCascadeToChildren(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	parent, err := store.CreateSession(storage.CreateSession{Slug: "parent", Title: "Old parent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := store.CreateSession(storage.CreateSession{Slug: "child", ParentID: parent.ID, Title: "Child title"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.UpdateSessionTitle(parent.ID, "New parent"); err != nil {
+		t.Fatal(err)
+	}
+
+	renamed, err := store.LoadSession(parent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if renamed.Title != "New parent" {
+		t.Fatalf("parent title = %q, want %q", renamed.Title, "New parent")
+	}
+	untouched, err := store.LoadSession(child.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if untouched.Title != "Child title" {
+		t.Fatalf("child title = %q, want %q (rename must not cascade)", untouched.Title, "Child title")
+	}
+}
+
 func setSessionTimes(t *testing.T, store *Store, session storage.Session, updatedAt, lastAttentionAt time.Time) {
 	t.Helper()
 	store.mu.Lock()

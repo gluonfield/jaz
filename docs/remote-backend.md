@@ -8,7 +8,6 @@ Install a release backend on a Linux server:
 
 ```sh
 ssh root@SERVER
-RELEASE=v0.0.46
 
 apt-get update
 apt-get install -y ca-certificates curl tar nodejs npm
@@ -22,13 +21,18 @@ cd "$tmp"
 arch=$(dpkg --print-architecture)
 case "$arch" in amd64|arm64) ;; *) echo "unsupported architecture: $arch"; exit 1;; esac
 asset="jaz-backend-linux-${arch}.tar.gz"
-base=https://github.com/gluonfield/jaz/releases/download/$RELEASE
+base=https://github.com/gluonfield/jaz/releases/latest/download
 curl -fsSLO "$base/$asset"
 curl -fsSLO "$base/$asset.sha256"
 test "$(awk '{print $1}' "$asset.sha256")" = "$(sha256sum "$asset" | awk '{print $1}')"
 tar -xzf "$asset"
 install -o root -g root -m 755 jaz /opt/jaz/bin/jaz
 ```
+
+`releases/latest/download` always resolves to the newest release, so this recipe
+stays current without editing. To pin a specific release instead, swap in
+`releases/download/<tag>`, for example
+`base=https://github.com/gluonfield/jaz/releases/download/v0.0.46`.
 
 Node/npm are required when the backend runs default ACP agents because the
 built-in Codex, Claude, and OpenCode adapters launch through `npx`. Install each
@@ -124,7 +128,7 @@ sudo /opt/jaz/bin/jaz update --latest
 sudo systemctl restart jaz
 ```
 
-Use `jaz update --version v0.0.46` to install a specific release. The update
+Use `jaz update --version <tag>` to install a specific release. The update
 command downloads the matching Linux/macOS backend archive from GitHub, verifies
 its `.sha256`, and replaces only the current executable.
 
