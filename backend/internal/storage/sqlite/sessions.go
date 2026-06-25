@@ -97,6 +97,22 @@ func (s *Store) SetPinned(id string, pinned bool) error {
 	})
 }
 
+func (s *Store) UpdateSessionTitle(id, title string) error {
+	s.mu.Lock()
+	err := threaddb.New(s.db).UpdateSessionTitle(context.Background(), threaddb.UpdateSessionTitleParams{
+		Title: nullDBString(title),
+		ID:    id,
+	})
+	s.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	if current, err := s.LoadSession(id); err == nil {
+		s.mirrorSession(current)
+	}
+	return nil
+}
+
 func (s *Store) ListSessions(filter storage.SessionFilter) ([]storage.Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -1,8 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Archive, CornerDownRight, Pin } from 'lucide-react'
+import { Archive, CornerDownRight, Pencil, Pin } from 'lucide-react'
+import { useRef, useState } from 'react'
 import { KeyboardShortcut } from '@/components/ui/KeyboardShortcut'
-import { setSessionArchived, setSessionPinned } from '@/lib/api/sessions'
+import { setSessionArchived, setSessionPinned, setSessionTitle } from '@/lib/api/sessions'
 import type { Session } from '@/lib/api/types'
 import { relativeTime } from '@/lib/format/time'
 import { keys } from '@/lib/query/keys'
@@ -46,12 +47,13 @@ export function SessionRow({
   shortcutMode?: boolean
 }) {
   const shortcut = shortcutMode && shortcutIndex ? shortcutIndex : undefined
+  const [editing, setEditing] = useState(false)
 
   return (
     <Link
       to="/sessions/$sessionId"
       params={{ sessionId: session.id }}
-      className="group flex h-8 items-center gap-2 rounded-full px-2.5 text-[13px] text-ink transition-colors duration-150 hover:bg-surface-2"
+      className="group flex h-8 items-center gap-2 rounded-full px-2.5 text-[13px] text-ink transition-colors duration-150 hover:bg-surface-2 max-sm:h-11 max-sm:gap-2.5 max-sm:px-3 max-sm:text-[15px]"
       activeProps={{ className: 'bg-primary-soft! text-ink! font-medium' }}
     >
       {/* branch connector: this thread was spawned by the session above */}
@@ -62,10 +64,22 @@ export function SessionRow({
       {session.runtime === 'acp' ? (
         <RuntimeBadge session={session} compact className={child ? '' : '-ml-1.5'} />
       ) : null}
-      <span className="min-w-0 flex-1 truncate" title={sessionLabel(session)}>
-        {sessionLabel(session)}
-      </span>
-      {shortcut ? (
+      {editing ? (
+        <RenameField session={session} onDone={() => setEditing(false)} />
+      ) : (
+        <span
+          className="min-w-0 flex-1 truncate"
+          title={sessionLabel(session)}
+          onDoubleClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            setEditing(true)
+          }}
+        >
+          {sessionLabel(session)}
+        </span>
+      )}
+      {editing ? null : shortcut ? (
         <span className="flex min-w-8 shrink-0 justify-end">
           <KeyboardShortcut value={shortcut} />
         </span>
@@ -87,13 +101,82 @@ export function SessionRow({
           {relativeTime(session.last_attention_at || session.updated_at)}
         </span>
       )}
-      {shortcutMode ? null : (
+      {shortcutMode || editing ? null : (
         <>
+          <RenameButton onStart={() => setEditing(true)} />
           <PinButton session={session} />
           <ArchiveButton sessionId={session.id} />
         </>
       )}
     </Link>
+  )
+}
+
+// Inline title editor that swaps in for the row label. Enter or blur commits,
+// Escape reverts; a guard keeps Enter+blur from firing the mutation twice.
+function RenameField({ session, onDone }: { session: Session; onDone: () => void }) {
+  const queryClient = useQueryClient()
+  const [value, setValue] = useState(session.title ?? '')
+  const settled = useRef(false)
+  const rename = useMutation({
+    mutationFn: (title: string) => setSessionTitle(session.id, title),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
+      queryClient.invalidateQueries({ queryKey: keys.allSessions })
+      queryClient.invalidateQueries({ queryKey: keys.session(session.id), exact: true })
+    },
+  })
+
+  const finish = (commit: boolean) => {
+    if (settled.current) return
+    settled.current = true
+    const next = value.trim()
+    if (commit && next && next !== (session.title ?? '')) rename.mutate(next)
+    onDone()
+  }
+
+  return (
+    <input
+      autoFocus
+      value={value}
+      placeholder="Name this chat"
+      onChange={(e) => setValue(e.target.value)}
+      onFocus={(e) => e.currentTarget.select()}
+      onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+      }}
+      onKeyDown={(e) => {
+        e.stopPropagation()
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          finish(true)
+        } else if (e.key === 'Escape') {
+          e.preventDefault()
+          finish(false)
+        }
+      }}
+      onBlur={() => finish(true)}
+      className="min-w-0 flex-1 rounded bg-surface-1 px-1.5 py-0.5 text-[13px] text-ink outline-none ring-1 ring-primary"
+    />
+  )
+}
+
+function RenameButton({ onStart }: { onStart: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label="Rename thread"
+      title="Rename thread"
+      onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        onStart()
+      }}
+      className="hidden size-5 shrink-0 cursor-pointer place-items-center rounded text-ink-3 transition-colors duration-150 group-hover:grid hover:bg-surface-2 hover:text-ink"
+    >
+      <Pencil size={13} />
+    </button>
   )
 }
 
@@ -119,7 +202,7 @@ function PinButton({ session }: { session: Session }) {
         e.stopPropagation()
         pin.mutate()
       }}
-      className={`${pinned ? 'text-primary' : 'text-ink-3'} hidden size-5 shrink-0 cursor-pointer place-items-center rounded transition-colors duration-150 hover:bg-surface-2 hover:text-ink group-hover:grid`}
+      className={`${pinned ? 'text-primary' : 'text-ink-3'} hidden size-5 shrink-0 cursor-pointer place-items-center rounded transition-colors duration-150 hover:bg-surface-2 hover:text-ink group-hover:grid max-sm:grid max-sm:size-8`}
     >
       <Pin size={13} className={pinned ? 'fill-current' : ''} />
     </button>
@@ -148,7 +231,7 @@ function ArchiveButton({ sessionId }: { sessionId: string }) {
         e.stopPropagation()
         archive.mutate()
       }}
-      className="hidden size-5 shrink-0 cursor-pointer place-items-center rounded text-ink-3 transition-colors duration-150 group-hover:grid hover:bg-surface-2 hover:text-ink"
+      className="hidden size-5 shrink-0 cursor-pointer place-items-center rounded text-ink-3 transition-colors duration-150 group-hover:grid hover:bg-surface-2 hover:text-ink max-sm:grid max-sm:size-8"
     >
       <Archive size={13} />
     </button>

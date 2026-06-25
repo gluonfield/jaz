@@ -200,6 +200,11 @@ UPDATE threads
 SET pinned = sqlc.arg(pinned)
 WHERE id = sqlc.arg(id) OR parent_id = sqlc.arg(id);
 
+-- name: UpdateSessionTitle :exec
+UPDATE threads
+SET title = sqlc.narg(title)
+WHERE id = sqlc.arg(id);
+
 -- name: TouchThread :exec
 UPDATE threads
 SET updated_at_ms = sqlc.arg(updated_at_ms)
