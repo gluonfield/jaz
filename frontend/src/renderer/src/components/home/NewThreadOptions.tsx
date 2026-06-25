@@ -30,9 +30,8 @@ export function NewThreadOptions({
     open,
   )
 
-  // Centered over the title bar via the app shell's relative container; absolute
-  // so it leaves the slot's flex flow and lines up with the window's middle.
-  // It stays inside <main>, so the open mobile sidebar still covers it.
+  // Centered on the viewport: fixed so the title-bar slot's own positioning
+  // context can't pull it to the slot's left edge.
   const trigger = useMemo(
     () => (
       <button
@@ -40,7 +39,7 @@ export function NewThreadOptions({
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="absolute top-3.5 left-1/2 flex -translate-x-1/2 flex-col items-center rounded-full px-2.5 py-1 leading-tight [-webkit-app-region:no-drag] hover:bg-surface-2"
+        className="fixed top-3.5 left-1/2 flex -translate-x-1/2 flex-col items-center rounded-full px-2.5 py-1 leading-tight [-webkit-app-region:no-drag] hover:bg-surface-2"
       >
         {/* The label is the centered element; the chevron hangs off its right edge so it never pulls the text off-center. */}
         <span className="relative flex items-center text-[13px] font-medium text-ink">
