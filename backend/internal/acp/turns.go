@@ -134,6 +134,7 @@ func (m *Manager) finishTurn(done chan struct{}, job *jobState) {
 		job.mu.Unlock()
 		return
 	}
+	turn.closeFirstPromptSent()
 	job.turn = nil
 	completion := turn.completion
 	planRequested := turn.planRequested

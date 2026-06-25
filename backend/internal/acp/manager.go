@@ -205,11 +205,12 @@ func (m *Manager) providers() map[string]provider.ModelProviderConfig {
 }
 
 type agentConn struct {
-	conn    jsonrpc.MessageConn
-	peer    *jsonrpc.Peer
-	cancel  context.CancelFunc
-	initRaw json.RawMessage
-	stderr  *processStderrTail
+	conn          jsonrpc.MessageConn
+	peer          *jsonrpc.Peer
+	cancel        context.CancelFunc
+	initRaw       json.RawMessage
+	stderr        *processStderrTail
+	promptTracker *promptTrackingConn
 }
 
 func (c *agentConn) close() {
@@ -219,6 +220,12 @@ func (c *agentConn) close() {
 
 func (c *agentConn) withProcessStderr(err error) error {
 	return withProcessStderr(err, c.stderr)
+}
+
+func (c *agentConn) trackPromptSends(job *jobState) {
+	if c.promptTracker != nil {
+		c.promptTracker.setOnPromptSent(job.markFirstPromptSent)
+	}
 }
 
 func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (*agentConn, error) {
@@ -237,7 +244,8 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 		cancel()
 		return nil, err
 	}
-	peer := jsonrpc.NewPeer(conn, handler)
+	promptTracker := newPromptTrackingConn(conn)
+	peer := jsonrpc.NewPeer(promptTracker, handler)
 	go func() {
 		err := peer.Serve(runCtx)
 		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, io.EOF) {
@@ -280,7 +288,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 		cancel()
 		return nil, fmt.Errorf("authenticate acp agent %q: missing %s", name, strings.Join(missingAuth, " or "))
 	}
-	return &agentConn{conn: conn, peer: peer, cancel: cancel, initRaw: initRaw, stderr: stderr}, nil
+	return &agentConn{conn: promptTracker, peer: peer, cancel: cancel, initRaw: initRaw, stderr: stderr, promptTracker: promptTracker}, nil
 }
 
 // sessionMeta builds the session _meta payload for prompt and agent-specific
@@ -420,6 +428,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	job := newIdleJob(session, req.ACPAgent, string(acpSession.response.SessionID), absCwd, modes)
 	job.promptQueueing = promptQueueingSupported(ac.initRaw)
 	job.nativeGoal = runtimeCapabilitiesNativeGoal(session.RuntimeRef.Capabilities)
+	ac.trackPromptSends(job)
 	m.addJob(job, ac.conn, ac.peer, ac.cancel)
 	m.saveACPState(job.Snapshot())
 	m.log.Info("spawned agent session", "agent", job.ACPAgent, "session", job.ID, "acp_session", job.ACPSession)
@@ -553,6 +562,7 @@ func (m *Manager) resume(ctx context.Context, ref string) (*jobState, error) {
 	job.LastToolAt = state.LastToolAt
 	job.promptQueueing = promptQueueingSupported(ac.initRaw)
 	job.nativeGoal = runtimeCapabilitiesNativeGoal(session.RuntimeRef.Capabilities)
+	ac.trackPromptSends(job)
 	m.addJob(job, ac.conn, ac.peer, ac.cancel)
 	m.saveACPState(job.Snapshot())
 	m.log.Info("resumed agent session", "agent", job.ACPAgent, "session", job.ID,

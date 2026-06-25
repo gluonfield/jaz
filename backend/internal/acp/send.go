@@ -122,6 +122,9 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	if local != nil {
 		return Job{}, ErrPromptQueueingUnsupported
 	}
+	if err := job.waitFirstPromptSent(ctx); err != nil {
+		return Job{}, err
+	}
 	peer := m.peer(job.ID)
 	if peer == nil {
 		return Job{}, fmt.Errorf("acp peer is not active")
