@@ -523,6 +523,10 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 		}
 		turn.Attachments = attachments
 		turn.Contexts = storage.NormalizeMessageContexts(append(storage.SelectionContexts(req.Quotes), req.Contexts...))
+		if err := s.validatePromptOptions(session, promptOptionsFromStream(req)); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
 	}
 
 	flusher, ok := w.(http.Flusher)
@@ -657,6 +661,7 @@ type messageRequest struct {
 type streamRequest struct {
 	messageRequest
 	PlanRequested bool `json:"plan_requested,omitempty"`
+	GoalRequested bool `json:"goal_requested,omitempty"`
 	Voice         bool `json:"voice,omitempty"`
 }
 

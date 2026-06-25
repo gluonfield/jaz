@@ -57,6 +57,41 @@ func TestSessionQueueActionAppendsQueuedMessage(t *testing.T) {
 	}
 }
 
+func TestSessionQueueActionRejectsGoalForUnsupportedAgent(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "queue-goal-unsupported",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:  storage.RuntimeACP,
+			Agent: acp.AgentClaude,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"append","message":{"text":"keep going","goal_requested":true}}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.QueuedMessages) != 0 {
+		t.Fatalf("queue changed: %#v", loaded.QueuedMessages)
+	}
+}
+
 func TestSessionQueueActionMutatesStoredQueue(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

@@ -51,6 +51,9 @@ export function inPlaceEventKey(event: SessionEvent): string | null {
   if ((event.type === 'permission_request' || event.type === 'permission_response') && event.permission?.id) {
     return `${event.type}:${event.permission.id}`
   }
+  if (event.type === 'goal_update' && event.goal) {
+    return `goal_update:${event.session_id}`
+  }
   if (event.type === 'loop_created' && event.loop_created?.loop_id) {
     return `loop_created:${event.loop_created.loop_id}`
   }

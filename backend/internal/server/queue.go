@@ -59,6 +59,11 @@ func (s *Server) mutateSessionQueue(sessionID string, req queueRequest) (storage
 	if err != nil {
 		return storage.Session{}, err
 	}
+	if req.op() == "append" && len(queue) > 0 {
+		if err := s.validateQueuedPrompt(session, queue[len(queue)-1]); err != nil {
+			return storage.Session{}, err
+		}
+	}
 	if err := s.validateQueueAttachmentMutation(session.ID, req); err != nil {
 		return storage.Session{}, err
 	}
@@ -253,6 +258,9 @@ func (s *Server) claimQueuedPrompt(sessionID string) (storage.Session, storage.Q
 	}
 
 	prompt := prompts[0]
+	if err := s.validateQueuedPrompt(session, prompt); err != nil {
+		return storage.Session{}, storage.QueuedMessage{}, false, err
+	}
 	session.QueuedMessages = s.assignQueuedMessageIDs(prompts[1:])
 	session.Status = storage.StatusRunning
 	session.Error = ""
@@ -317,6 +325,9 @@ func (s *Server) claimSteeredQueuedPrompt(sessionID string, req queueRequest) (s
 	}
 
 	prompt := queue[index]
+	if err := s.validateQueuedPrompt(session, prompt); err != nil {
+		return steeredQueuedPrompt{}, err
+	}
 	session.QueuedMessages = s.assignQueuedMessageIDs(removeQueuedPrompt(queue, index))
 	pending := prompt
 	session.PendingSteer = &pending
@@ -382,6 +393,9 @@ func (s *Server) startSteeredQueuedPrompt(claimed steeredQueuedPrompt) error {
 }
 
 func (s *Server) steerRunningQueuedPrompt(ctx context.Context, session storage.Session, prompt storage.QueuedMessage) error {
+	if err := s.validatePromptOptions(session, promptOptionsFromQueued(prompt)); err != nil {
+		return err
+	}
 	attachments, err := s.resolveAttachments(session.ID, prompt.AttachmentIDs)
 	if err != nil {
 		return err
@@ -390,10 +404,11 @@ func (s *Server) steerRunningQueuedPrompt(ctx context.Context, session storage.S
 		return err
 	}
 	_, err = s.ACP.Steer(ctx, acp.SteerRequest{
-		Session:     session.ID,
-		Message:     prompt.Text,
-		Contexts:    prompt.Contexts,
-		Attachments: attachments,
+		Session:       session.ID,
+		Message:       prompt.Text,
+		Contexts:      prompt.Contexts,
+		Attachments:   attachments,
+		GoalRequested: prompt.GoalRequested,
 	})
 	if err == nil {
 		return nil
@@ -423,6 +438,9 @@ func (s *Server) canStartQueuedPrompt(session storage.Session) bool {
 }
 
 func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session, prompt storage.QueuedMessage) error {
+	if err := s.validatePromptOptions(session, promptOptionsFromQueued(prompt)); err != nil {
+		return err
+	}
 	attachments, err := s.resolveAttachments(session.ID, prompt.AttachmentIDs)
 	if err != nil {
 		return err
@@ -442,6 +460,7 @@ func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session,
 			Attachments:   attachments,
 			Completion:    acp.CompletionAsync,
 			PlanRequested: prompt.PlanRequested,
+			GoalRequested: prompt.GoalRequested,
 		}); err != nil {
 			return acpSendError(session, err)
 		}

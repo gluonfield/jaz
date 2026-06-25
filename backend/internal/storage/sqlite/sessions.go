@@ -205,7 +205,11 @@ func insertSession(db threaddb.DBTX, session storage.Session) error {
 	if session.LastAttentionAt.IsZero() {
 		storage.MarkSessionAttention(&session, storage.SessionAttentionAt(session))
 	}
-	acpAgent, acpSessionID, cwd, artifactSurface, mcpServerPolicy, projectPath := runtimeRefColumns(session)
+	runtimeRef := runtimeRefColumns(session)
+	runtimeCapabilities, err := storage.MarshalRuntimeCapabilities(runtimeRef.Capabilities)
+	if err != nil {
+		return err
+	}
 	queuedMessages, err := storage.MarshalQueuedMessages(session.QueuedMessages)
 	if err != nil {
 		return err
@@ -221,12 +225,13 @@ func insertSession(db threaddb.DBTX, session storage.Session) error {
 		ParentID:              nullDBString(session.ParentID),
 		Status:                session.Status,
 		Runtime:               session.Runtime,
-		AcpAgent:              nullDBString(acpAgent),
-		AcpSessionID:          nullDBString(acpSessionID),
-		Cwd:                   nullDBString(cwd),
-		ArtifactSurface:       nullDBString(artifactSurface),
-		McpServerPolicy:       nullDBString(mcpServerPolicy),
-		ProjectPath:           nullDBString(projectPath),
+		AcpAgent:              nullDBString(runtimeRef.Agent),
+		AcpSessionID:          nullDBString(runtimeRef.SessionID),
+		Cwd:                   nullDBString(runtimeRef.Cwd),
+		ArtifactSurface:       nullDBString(runtimeRef.ArtifactSurface),
+		McpServerPolicy:       nullDBString(runtimeRef.MCPServerPolicy),
+		RuntimeCapabilities:   runtimeCapabilities,
+		ProjectPath:           nullDBString(runtimeRef.ProjectPath),
 		Error:                 nullDBString(session.Error),
 		ModelProvider:         nullDBString(session.ModelProvider),
 		Model:                 nullDBString(session.Model),
@@ -257,6 +262,10 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 		return storage.Session{}, err
 	}
 	pendingSteerMessage, err := storage.UnmarshalQueuedMessage(row.PendingSteerMessage)
+	if err != nil {
+		return storage.Session{}, err
+	}
+	runtimeCapabilities, err := storage.UnmarshalRuntimeCapabilities(row.RuntimeCapabilities)
 	if err != nil {
 		return storage.Session{}, err
 	}
@@ -300,7 +309,7 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 	if session.Status == "" {
 		session.Status = storage.StatusIdle
 	}
-	if row.AcpAgent.Valid || row.AcpSessionID.Valid || row.Cwd.Valid || row.ArtifactSurface.Valid || row.McpServerPolicy.Valid || row.ProjectPath.Valid {
+	if row.AcpAgent.Valid || row.AcpSessionID.Valid || row.Cwd.Valid || row.ArtifactSurface.Valid || row.McpServerPolicy.Valid || row.ProjectPath.Valid || runtimeCapabilities != nil {
 		session.RuntimeRef = &storage.RuntimeRef{
 			Type:            session.Runtime,
 			Agent:           row.AcpAgent.String,
@@ -309,6 +318,7 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 			ProjectPath:     row.ProjectPath.String,
 			ArtifactSurface: row.ArtifactSurface.String,
 			MCPServerPolicy: row.McpServerPolicy.String,
+			Capabilities:    runtimeCapabilities,
 		}
 	}
 	return session, nil
@@ -369,16 +379,29 @@ func (s *Store) uniqueSlugLocked(value, currentID string) (string, error) {
 	}
 }
 
-func runtimeRefColumns(session storage.Session) (string, string, string, string, string, string) {
+type runtimeRefColumnsRow struct {
+	Agent           string
+	SessionID       string
+	Cwd             string
+	ArtifactSurface string
+	MCPServerPolicy string
+	ProjectPath     string
+	Capabilities    *storage.RuntimeCapabilities
+}
+
+func runtimeRefColumns(session storage.Session) runtimeRefColumnsRow {
 	if session.RuntimeRef == nil {
-		return "", "", "", "", "", ""
+		return runtimeRefColumnsRow{}
 	}
-	return session.RuntimeRef.Agent,
-		session.RuntimeRef.SessionID,
-		session.RuntimeRef.Cwd,
-		session.RuntimeRef.ArtifactSurface,
-		session.RuntimeRef.MCPServerPolicy,
-		session.RuntimeRef.ProjectPath
+	return runtimeRefColumnsRow{
+		Agent:           session.RuntimeRef.Agent,
+		SessionID:       session.RuntimeRef.SessionID,
+		Cwd:             session.RuntimeRef.Cwd,
+		ArtifactSurface: session.RuntimeRef.ArtifactSurface,
+		MCPServerPolicy: session.RuntimeRef.MCPServerPolicy,
+		ProjectPath:     session.RuntimeRef.ProjectPath,
+		Capabilities:    storage.NormalizePersistedRuntimeCapabilities(session.RuntimeRef.Capabilities),
+	}
 }
 
 func firstNonEmpty(values ...string) string {
