@@ -129,11 +129,9 @@ export interface RepoInfo {
   // Commits exist that the remote doesn't have.
   needs_push?: boolean
   dirty?: boolean
-  // Linked worktree (not the main checkout); main_path is that checkout's
-  // path and main_branch the branch it's on — the handoff destination, and
-  // where this branch can be checked out without entering the worktree.
+  // Linked worktree (not the main checkout); main_branch is the branch the
+  // main checkout is on — the handoff destination.
   is_worktree?: boolean
-  main_path?: string
   main_branch?: string
   // Commits on main_branch the worktree's branch doesn't have yet — what
   // "Update from main" would pull in (omitted/0 when up to date).

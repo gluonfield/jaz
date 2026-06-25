@@ -9,7 +9,6 @@ import {
   ChevronDown,
   ChevronRight,
   CircleAlert,
-  ClipboardCopy,
   Copy,
   ExternalLink,
   FileSearch,
@@ -24,16 +23,16 @@ import {
 import { Link } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useToast } from '@/components/ui/toast'
 import { compactSession, setSessionArchived } from '@/lib/api/sessions'
 import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
 import type { RepoInfo, Session } from '@/lib/api/types'
+import { writeClipboard } from '@/lib/clipboard'
 import type { ProviderSubagentView } from '@/lib/providerSubagents'
 import type { SendMessageHandler } from '@/lib/sendMessage'
 import type { SpawnedThreadView } from '@/lib/spawnedThreads'
 import { taskStepState, type TaskSurface } from '@/lib/taskSurface'
-import { useCopyAction } from '@/lib/useCopyAction'
 import { keys } from '@/lib/query/keys'
 import { agentLabel } from '@/lib/agentLabel'
 import { AgentAvatar } from '@/components/acp/AgentAvatar'
@@ -529,21 +528,20 @@ function codeReviewPrompt(skill: SkillInfo): string {
   return encodeMention('$', skill.name, skill.path)
 }
 
-function CheckoutCommandRow({ command }: { command: string }) {
-  const { copied, copy } = useCopyAction(command)
-  if (!command) return null
-  return (
-    <ActionRow icon={copied ? Check : ClipboardCopy} hint={command} onClick={() => void copy()}>
-      {copied ? 'Copied command' : 'Copy checkout command'}
-    </ActionRow>
-  )
-}
-
 function GitSection({ repo }: { repo: ReturnType<typeof useRepoActions> }) {
-  const { info, busy, web, branch, branchPath, checkoutCommand } = repo
+  const { info, busy, web, branch, branchPath } = repo
   const branchLabel = branch || 'detached'
-  const { copied, copy: copyBranch } = useCopyAction(branchLabel)
+  const [copied, setCopied] = useState(false)
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reduceMotion = useReducedMotion()
+
+  useEffect(() => {
+    setCopied(false)
+  }, [branchLabel])
+
+  useEffect(() => () => {
+    if (copiedTimer.current) clearTimeout(copiedTimer.current)
+  }, [])
 
   if (!info) return null
   if (info.worktree_missing) {
@@ -568,11 +566,16 @@ function GitSection({ repo }: { repo: ReturnType<typeof useRepoActions> }) {
         >
           {busy === 'restore' ? 'Restoring…' : 'Restore worktree'}
         </ActionRow>
-        <CheckoutCommandRow command={checkoutCommand} />
       </section>
     )
   }
 
+  const copyBranch = async () => {
+    if (!(await writeClipboard(branchLabel))) return
+    if (copiedTimer.current) clearTimeout(copiedTimer.current)
+    setCopied(true)
+    copiedTimer.current = setTimeout(() => setCopied(false), 1500)
+  }
   const changes = info.dirty
     ? { color: 'bg-running', label: 'Uncommitted changes' }
     : info.needs_push
@@ -621,7 +624,6 @@ function GitSection({ repo }: { repo: ReturnType<typeof useRepoActions> }) {
           <span className={`size-[9px] shrink-0 rounded-full ${changes.color} mx-0.5`} aria-hidden />
           <span className="min-w-0 flex-1 truncate">{changes.label}</span>
         </div>
-        <CheckoutCommandRow command={checkoutCommand} />
         {info.dirty ? (
           <ActionRow
             icon={busy === 'commit' ? LoaderCircle : Check}
