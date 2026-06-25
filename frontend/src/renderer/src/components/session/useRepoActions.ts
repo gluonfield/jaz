@@ -14,24 +14,6 @@ import { keys } from '@/lib/query/keys'
 
 export type RepoBusy = 'pr' | 'commit' | 'push' | 'merge' | 'update' | 'restore' | null
 
-// POSIX single-quote only what isn't already shell-safe, so ordinary paths and
-// branch names stay readable in the copied command.
-function shArg(value: string): string {
-  return /^[\w./@:+-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`
-}
-
-// A copyable command to check this branch out in the main checkout, built so it
-// always runs. Git keeps a branch in one worktree at a time, so while the live
-// worktree holds it a plain checkout in the main checkout would fail — detach
-// onto the branch's commit there instead. Once the worktree is removed the
-// branch is free to check out normally. Either way `git checkout <main>` (or
-// `git switch -`) returns.
-function checkoutCommandFor(info: RepoInfo | undefined, branch: string): string {
-  if (!info || !info.main_path || !branch) return ''
-  const detach = info.worktree_missing ? '' : '--detach '
-  return `cd ${shArg(info.main_path)} && git checkout ${detach}${shArg(branch)}`
-}
-
 // Shared repo state and actions for the titlebar capsule and the session
 // panel: one query, one busy state, one set of mutations against the same
 // cache, so both surfaces always agree. Actions resolve true on success so
@@ -53,7 +35,6 @@ export function useRepoActions(session: Session) {
   const compareUrl = info?.default_branch
     ? `${web}/compare/${defaultPath}...${branchPath}?expand=1`
     : `${web}/pull/new/${branchPath}`
-  const checkoutCommand = checkoutCommandFor(info, branch)
   // Cases no automation can fix stay disabled with an explanation; dirty work
   // and a missing upstream are handled by createPR committing/pushing first.
   const prHint = !branch
@@ -148,7 +129,6 @@ export function useRepoActions(session: Session) {
     branchPath,
     onDefaultBranch,
     compareUrl,
-    checkoutCommand,
     prHint,
     prDisabled,
     openUrl,
