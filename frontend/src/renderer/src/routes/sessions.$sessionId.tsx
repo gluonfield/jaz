@@ -43,6 +43,7 @@ import {
 } from '@/lib/api/sessions'
 import type { ACPJobSnapshot, ACPModeState, ChatMessage, GoalEvent, Session, SessionEvent, SessionMessages } from '@/lib/api/types'
 import { drawerSlide } from '@/lib/dom/drawer'
+import { runtimeCapabilitiesSupportNativeGoal } from '@/lib/agentRuntimes'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
@@ -141,7 +142,7 @@ function isCodexACPSession(session: Session | undefined): boolean {
 }
 
 function sessionSupportsNativeGoal(session: Session | undefined): boolean {
-  return session?.runtime === 'acp' && session.runtime_ref?.capabilities?.native_goal === true
+  return session?.runtime === 'acp' && runtimeCapabilitiesSupportNativeGoal(session.runtime_ref?.capabilities)
 }
 
 function latestGoalEvent(sessionId: string, events: SessionEvent[]): GoalEvent | undefined {

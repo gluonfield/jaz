@@ -400,7 +400,7 @@ func runtimeRefColumns(session storage.Session) runtimeRefColumnsRow {
 		ArtifactSurface: session.RuntimeRef.ArtifactSurface,
 		MCPServerPolicy: session.RuntimeRef.MCPServerPolicy,
 		ProjectPath:     session.RuntimeRef.ProjectPath,
-		Capabilities:    storage.NormalizeRuntimeCapabilities(session.RuntimeRef.Capabilities),
+		Capabilities:    storage.NormalizePersistedRuntimeCapabilities(session.RuntimeRef.Capabilities),
 	}
 }
 
