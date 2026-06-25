@@ -71,6 +71,13 @@ function luminance(hex: string): number {
 // the conventional white text. (Pure WCAG crossover 0.179 over-darkens blues.)
 const onColor = (hex: string): string => (luminance(hex) > 0.3 ? '#10131a' : '#ffffff')
 
+// Status colors keep a fixed semantic hue across schemes (danger reads red in
+// any theme); only their soft tints get mixed onto the scheme background so they
+// sit on it correctly. Mid-tone values that read on both light and dark.
+const STATUS_DANGER = '#e5484d'
+const STATUS_OK = '#30a46c'
+const STATUS_RUNNING = '#f2a31e'
+
 // Map a scheme to the full --color-* token set. Surfaces step from the
 // background toward the foreground; the ink ramp steps from the foreground
 // toward the background; contrast scales the step magnitude.
@@ -78,6 +85,9 @@ function tokens(c: ColorScheme): Record<string, string> {
   const { accent, background: bg, foreground: fg } = c
   const k = 0.6 + (c.contrast / 100) * 0.8
   const step = (p: number) => Math.min(60, p * k)
+  // The clay accent family mirrors primary in a custom scheme (one accent).
+  const strong = mix(fg, 16, accent)
+  const soft = mix(accent, 14, bg)
   return {
     bg,
     surface: mix(fg, step(5), bg),
@@ -87,12 +97,16 @@ function tokens(c: ColorScheme): Record<string, string> {
     'ink-2': mix(bg, step(26), fg),
     'ink-3': mix(bg, step(40), fg),
     primary: accent,
-    'primary-strong': mix(fg, 16, accent),
-    'primary-soft': mix(accent, 14, bg),
+    'primary-strong': strong,
+    'primary-soft': soft,
     'on-primary': onColor(accent),
     accent,
-    'accent-strong': mix(fg, 16, accent),
-    'accent-soft': mix(accent, 14, bg),
+    'accent-strong': strong,
+    'accent-soft': soft,
+    danger: STATUS_DANGER,
+    'danger-soft': mix(STATUS_DANGER, 14, bg),
+    ok: STATUS_OK,
+    running: STATUS_RUNNING,
   }
 }
 
@@ -196,9 +210,14 @@ window.addEventListener('storage', (event) => {
   for (const l of listeners) l()
 })
 
-// Reconcile the cached <style> with the stored scheme (the pre-paint script
-// already injected it for first paint).
-render(schemeCss(current))
+// Reconcile both the cached CSS and the live <style> with the current
+// derivation of the stored scheme. Refreshing the cache here keeps the
+// pre-paint script accurate across derivation changes (the script already
+// injected the previous CSS for first paint).
+const initialCss = schemeCss(current)
+if (initialCss) localStorage.setItem(CSS_KEY, initialCss)
+else localStorage.removeItem(CSS_KEY)
+render(initialCss)
 
 function subscribe(fn: () => void) {
   listeners.add(fn)
