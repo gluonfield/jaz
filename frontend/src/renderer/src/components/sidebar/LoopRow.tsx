@@ -25,7 +25,7 @@ export function LoopRow({ loop }: { loop: Loop }) {
     <Link
       to="/loops/$loopId"
       params={{ loopId: loop.id }}
-      className="group flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[13px] text-ink transition-colors duration-150 hover:bg-surface-2"
+      className="group flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[13px] text-ink transition-colors duration-150 hover:bg-surface-2 max-sm:gap-2.5 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px]"
       activeProps={{ className: 'bg-primary-soft! text-ink! font-medium' }}
     >
       <LoopStatusDot loop={loop} />
