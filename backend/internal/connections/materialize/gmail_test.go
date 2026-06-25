@@ -1,4 +1,4 @@
-package gmail
+package materialize
 
 import (
 	"context"
@@ -6,26 +6,27 @@ import (
 	"testing"
 	"time"
 
+	gmailconnector "github.com/wins/jaz/backend/internal/connectors/gmail"
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
-func TestMaterializerCreatesMonthlyEmailSourceArtifact(t *testing.T) {
+func TestGmailMaterializerCreatesMonthlyEmailSourceArtifact(t *testing.T) {
 	occurred := time.Date(2026, 6, 25, 9, 0, 0, 0, time.UTC)
-	record, err := MessageRecord(integrations.Connection{
+	record, err := gmailconnector.MessageRecord(integrations.Connection{
 		ID:          "conn_1",
 		AccountID:   "augustinas@example.com",
 		AccountName: "augustinas@example.com",
 		Alias:       "Personal Gmail",
-	}, Message{
+	}, gmailconnector.Message{
 		ID:        "msg_1",
 		ThreadID:  "thread_1",
 		HistoryID: "history_2",
 		Subject:   "Hello from Gmail",
 		Snippet:   "This is the visible Gmail snippet.",
-		From:      []Address{{Name: "Friend", Email: "friend@example.com"}},
-		To:        []Address{{Email: "augustinas@example.com"}},
+		From:      []gmailconnector.Address{{Name: "Friend", Email: "friend@example.com"}},
+		To:        []gmailconnector.Address{{Email: "augustinas@example.com"}},
 		LabelIDs:  []string{"INBOX", "UNREAD"},
-		Attachments: []Attachment{{
+		Attachments: []gmailconnector.Attachment{{
 			ID:       "att_1",
 			FileName: "plan.pdf",
 			MIMEType: "application/pdf",
@@ -36,7 +37,7 @@ func TestMaterializerCreatesMonthlyEmailSourceArtifact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	artifacts, err := (Materializer{}).Materialize(context.Background(), integrations.MaterializeRequest{
+	artifacts, err := (GmailMaterializer{}).Materialize(context.Background(), integrations.MaterializeRequest{
 		Connection: integrations.Connection{Alias: "Personal Gmail", AccountID: "augustinas@example.com"},
 		Record:     record,
 	})
@@ -66,8 +67,8 @@ func TestMaterializerCreatesMonthlyEmailSourceArtifact(t *testing.T) {
 	}
 }
 
-func TestMaterializerIgnoresOtherRecordKinds(t *testing.T) {
-	artifacts, err := (Materializer{}).Materialize(context.Background(), integrations.MaterializeRequest{
+func TestGmailMaterializerIgnoresOtherRecordKinds(t *testing.T) {
+	artifacts, err := (GmailMaterializer{}).Materialize(context.Background(), integrations.MaterializeRequest{
 		Record: integrations.Record{Kind: "calendar.event"},
 	})
 	if err != nil {

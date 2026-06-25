@@ -96,7 +96,21 @@ func (s *Store) UpdateMCPServer(id string, input mcpconfig.ServerInput) (mcpconf
 	}
 	now := time.Now().UTC()
 	s.mu.Lock()
-	changed, err := mcpdb.New(s.db).UpdateMCPServer(context.Background(), mcpdb.UpdateMCPServerParams{
+	defer s.mu.Unlock()
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return mcpconfig.Server{}, err
+	}
+	defer tx.Rollback()
+	q := mcpdb.New(s.db).WithTx(tx)
+	current, err := q.GetMCPServer(context.Background(), id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return mcpconfig.Server{}, fmt.Errorf("mcp server not found: %s", id)
+		}
+		return mcpconfig.Server{}, err
+	}
+	changed, err := q.UpdateMCPServer(context.Background(), mcpdb.UpdateMCPServerParams{
 		Name:              input.Name,
 		Transport:         mcpconfig.TransportStreamableHTTP,
 		Url:               input.URL,
@@ -108,14 +122,21 @@ func (s *Store) UpdateMCPServer(id string, input mcpconfig.ServerInput) (mcpconf
 		UpdatedAtMs:       timeToMs(now),
 		ID:                id,
 	})
-	s.mu.Unlock()
 	if err != nil {
 		return mcpconfig.Server{}, err
 	}
 	if changed == 0 {
 		return mcpconfig.Server{}, fmt.Errorf("mcp server not found: %s", id)
 	}
-	return s.LoadMCPServer(id)
+	if current.Url != input.URL || current.OauthJson != oauth {
+		if err := q.DeleteMCPServerOAuthToken(context.Background(), mcpconfig.OAuthConnectionID(id)); err != nil {
+			return mcpconfig.Server{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return mcpconfig.Server{}, err
+	}
+	return decodeMCPServer(id, input.Name, mcpconfig.TransportStreamableHTTP, input.URL, boolInt(input.Enabled), nullDBString(input.BearerTokenEnvVar), headers, envHeaders, oauth, current.CreatedAtMs, timeToMs(now))
 }
 
 func (s *Store) DeleteMCPServer(id string) error {
@@ -134,7 +155,7 @@ func (s *Store) DeleteMCPServer(id string) error {
 	if changed == 0 {
 		return fmt.Errorf("mcp server not found: %s", id)
 	}
-	if _, err := tx.ExecContext(context.Background(), `DELETE FROM integration_oauth_tokens WHERE connection_id = ?`, mcpconfig.OAuthConnectionID(id)); err != nil {
+	if err := q.DeleteMCPServerOAuthToken(context.Background(), mcpconfig.OAuthConnectionID(id)); err != nil {
 		return err
 	}
 	return tx.Commit()

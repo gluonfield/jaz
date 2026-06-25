@@ -82,6 +82,16 @@ func (q *Queries) DeleteMCPServer(ctx context.Context, id string) (int64, error)
 	return result.RowsAffected()
 }
 
+const deleteMCPServerOAuthToken = `-- name: DeleteMCPServerOAuthToken :exec
+DELETE FROM integration_oauth_tokens
+WHERE connection_id = ?1
+`
+
+func (q *Queries) DeleteMCPServerOAuthToken(ctx context.Context, connectionID string) error {
+	_, err := q.db.ExecContext(ctx, deleteMCPServerOAuthToken, connectionID)
+	return err
+}
+
 const getMCPServer = `-- name: GetMCPServer :one
 SELECT
   id,

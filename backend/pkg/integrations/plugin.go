@@ -30,11 +30,21 @@ const (
 	ActionRiskDelete    ActionRisk = "delete"
 )
 
+type PluginIconKind string
+
+const (
+	PluginIconKindAsset    PluginIconKind = "asset"
+	PluginIconKindURL      PluginIconKind = "url"
+	PluginIconKindInitials PluginIconKind = "initials"
+)
+
 type Plugin struct {
 	ID              string         `json:"id"`
 	Name            string         `json:"name"`
 	Description     string         `json:"description,omitempty"`
 	Provider        Provider       `json:"provider"`
+	Category        string         `json:"category,omitempty"`
+	Icon            PluginIcon     `json:"icon"`
 	Auth            []AuthOption   `json:"auth"`
 	Capabilities    []Capability   `json:"capabilities"`
 	MultiAccount    bool           `json:"multi_account"`
@@ -44,6 +54,12 @@ type Plugin struct {
 	RemoteMCP       *RemoteMCP     `json:"remote_mcp,omitempty"`
 	ConnectionNotes []string       `json:"connection_notes,omitempty"`
 	Implementation  Implementation `json:"implementation"`
+}
+
+type PluginIcon struct {
+	Kind       PluginIconKind `json:"kind"`
+	Value      string         `json:"value"`
+	Background string         `json:"background,omitempty"`
 }
 
 type Implementation struct {

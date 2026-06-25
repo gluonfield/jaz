@@ -1,4 +1,4 @@
-package gmail
+package materialize
 
 import (
 	"context"
@@ -8,16 +8,17 @@ import (
 	"strings"
 	"time"
 
+	gmailconnector "github.com/wins/jaz/backend/internal/connectors/gmail"
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
-type Materializer struct{}
+type GmailMaterializer struct{}
 
-func (Materializer) Materialize(_ context.Context, req integrations.MaterializeRequest) ([]integrations.Artifact, error) {
-	if req.Record.Kind != RecordKindMessage {
+func (GmailMaterializer) Materialize(_ context.Context, req integrations.MaterializeRequest) ([]integrations.Artifact, error) {
+	if req.Record.Kind != gmailconnector.RecordKindMessage {
 		return nil, nil
 	}
-	var message Message
+	var message gmailconnector.Message
 	if err := json.Unmarshal(req.Record.Raw, &message); err != nil {
 		return nil, err
 	}
@@ -33,11 +34,11 @@ func (Materializer) Materialize(_ context.Context, req integrations.MaterializeR
 		Kind:      "memory_source",
 		PathHint:  path.Join("sources/email/gmail", account, occurred.UTC().Format("2006-01")+".md"),
 		MediaType: "text/markdown",
-		Body:      []byte(messageMarkdown(req.Connection, req.Record, message, occurred)),
+		Body:      []byte(gmailMessageMarkdown(req.Connection, req.Record, message, occurred)),
 	}}, nil
 }
 
-func messageMarkdown(connection integrations.Connection, record integrations.Record, message Message, occurred time.Time) string {
+func gmailMessageMarkdown(connection integrations.Connection, record integrations.Record, message gmailconnector.Message, occurred time.Time) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "## %s - %s\n\n", occurred.UTC().Format("2006-01-02 15:04"), oneLine(message.Subject))
 	fmt.Fprintf(&b, "- Account: `%s`\n", oneLine(connection.AccountRef()))
@@ -77,7 +78,7 @@ func messageMarkdown(connection integrations.Connection, record integrations.Rec
 	return b.String()
 }
 
-func writeAddresses(b *strings.Builder, label string, addresses []Address) {
+func writeAddresses(b *strings.Builder, label string, addresses []gmailconnector.Address) {
 	if len(addresses) == 0 {
 		return
 	}
@@ -88,7 +89,7 @@ func writeAddresses(b *strings.Builder, label string, addresses []Address) {
 	fmt.Fprintf(b, "- %s: %s\n", label, strings.Join(values, ", "))
 }
 
-func formatAddress(address Address) string {
+func formatAddress(address gmailconnector.Address) string {
 	email := oneLine(address.Email)
 	if address.Name == "" {
 		return email

@@ -359,6 +359,10 @@ func TestMCPServersCRUDRoundTrip(t *testing.T) {
 		t.Fatalf("loaded = %#v", loaded)
 	}
 
+	tokenID := mcpconfig.OAuthConnectionID(created.ID)
+	if err := store.SaveToken(context.Background(), tokenID, integrationoauth.Token{AccessToken: "token"}); err != nil {
+		t.Fatal(err)
+	}
 	updated, err := store.UpdateMCPServer(created.ID, mcpconfig.ServerInput{
 		Name:    "Docs",
 		URL:     "https://docs.example.com/mcp",
@@ -372,6 +376,9 @@ func TestMCPServersCRUDRoundTrip(t *testing.T) {
 		updated.BearerTokenEnvVar != "" || len(updated.Headers) != 1 || updated.Headers[0].Name != "X-Docs" ||
 		updated.OAuth.ClientID != "" {
 		t.Fatalf("updated = %#v", updated)
+	}
+	if _, ok, err := store.LoadToken(context.Background(), tokenID); err != nil || ok {
+		t.Fatalf("updated server retained stale token ok=%v err=%v", ok, err)
 	}
 
 	disabled, err := store.SetMCPServerEnabled(created.ID, false)
@@ -389,7 +396,6 @@ func TestMCPServersCRUDRoundTrip(t *testing.T) {
 	if len(servers) != 1 || servers[0].ID != created.ID {
 		t.Fatalf("servers = %#v", servers)
 	}
-	tokenID := mcpconfig.OAuthConnectionID(created.ID)
 	if err := store.SaveToken(context.Background(), tokenID, integrationoauth.Token{AccessToken: "token"}); err != nil {
 		t.Fatal(err)
 	}
