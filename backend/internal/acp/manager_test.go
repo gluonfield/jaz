@@ -264,7 +264,40 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	}
 }
 
-func TestManagerSendCanSkipStoredUserMessage(t *testing.T) {
+func TestManagerCompactUsesHiddenCommand(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := newFakeCodexManager(t, store, t.TempDir(), nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: acp.AgentCodex, Slug: "codex-compact"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+
+	job, err := manager.Compact(ctx, acp.CompactRequest{Session: spawned.SessionID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.ActiveOperation != acp.ActiveOperationCompact {
+		t.Fatalf("active operation = %q, want compact", job.ActiveOperation)
+	}
+	if _, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second}); err != nil {
+		t.Fatal(err)
+	}
+	messages, err := store.LoadMessages(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 0 {
+		t.Fatalf("stored messages = %#v, want none", messages)
+	}
+}
+
+func TestManagerCompactRejectsUnsupportedAgent(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -272,23 +305,14 @@ func TestManagerSendCanSkipStoredUserMessage(t *testing.T) {
 	manager := newFakeAgentManager(t, store, t.TempDir(), nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-skip-user-message"})
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-compact"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
 
-	if _, err := manager.Send(ctx, acp.SendRequest{
-		Session:         spawned.SessionID,
-		Message:         acp.CompactCommand,
-		Completion:      acp.CompletionInline,
-		ActiveOperation: acp.ActiveOperationCompact,
-		SkipUserMessage: true,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second}); err != nil {
-		t.Fatal(err)
+	if _, err := manager.Compact(ctx, acp.CompactRequest{Session: spawned.SessionID}); err == nil || !strings.Contains(err.Error(), "compact is not available") {
+		t.Fatalf("compact error = %v, want unsupported compact", err)
 	}
 	messages, err := store.LoadMessages(spawned.SessionID)
 	if err != nil {

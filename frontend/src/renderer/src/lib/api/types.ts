@@ -65,12 +65,17 @@ export interface Session {
   model_provider?: string
   model?: string
   reasoning_effort?: string
+  actions?: SessionActions
   usage?: Usage
   queued_messages?: QueuedMessage[]
   pending_steer_message?: QueuedMessage
   created_at: string
   updated_at: string
   last_attention_at: string
+}
+
+export interface SessionActions {
+  compact?: boolean
 }
 
 export interface ThreadSearchResult {

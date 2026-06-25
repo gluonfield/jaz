@@ -17,6 +17,10 @@ func (s *Server) handleSessionCompact(w http.ResponseWriter, r *http.Request, se
 		writeError(w, http.StatusBadRequest, fmt.Errorf("compact is only available for acp sessions"))
 		return
 	}
+	if !sessionSupportsCompact(session) {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("compact is not available for this session"))
+		return
+	}
 	if s.ACP == nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("acp manager is not configured"))
 		return
@@ -28,13 +32,7 @@ func (s *Server) handleSessionCompact(w http.ResponseWriter, r *http.Request, se
 	}
 	ctx, cancel := serverActionContextFrom(r.Context())
 	defer cancel()
-	job, err := s.ACP.Send(ctx, acp.SendRequest{
-		Session:         session.ID,
-		Message:         acp.CompactCommand,
-		Completion:      acp.CompletionInline,
-		ActiveOperation: acp.ActiveOperationCompact,
-		SkipUserMessage: true,
-	})
+	job, err := s.ACP.Compact(ctx, acp.CompactRequest{Session: session.ID})
 	if err != nil {
 		sendErr := acpSendError(session, err)
 		s.logger().Error("acp compact failed", "session", session.ID, "error", sendErr)
@@ -45,9 +43,6 @@ func (s *Server) handleSessionCompact(w http.ResponseWriter, r *http.Request, se
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "acp_state": job.State})
 }
 
-func acpActiveOperationForMessage(message string) string {
-	if message == acp.CompactCommand {
-		return acp.ActiveOperationCompact
-	}
-	return ""
+func isACPCompactCommand(message string) bool {
+	return message == acp.CompactCommand
 }
