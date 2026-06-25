@@ -12,7 +12,6 @@ import { UpdatePanel } from '@/components/update/UpdatePanel'
 import { boardsQuery, deleteBoard } from '@/lib/api/boards'
 import { loopsQuery } from '@/lib/api/loops'
 import { projectsQuery, reorderProjects, sidebarSessionsQuery, type Project, type SessionListItem } from '@/lib/api/sessions'
-import { dismissOnEmptyTap } from '@/lib/dom/drawer'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import type { Board } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
@@ -619,9 +618,17 @@ export function Sidebar({
 }) {
   return (
     <aside
-      // Phone: the drawer is full-screen (CSS overrides the inline column width),
-      // so a tap on any empty area dismisses it like a backdrop would.
-      onClick={mobile && onDismiss ? dismissOnEmptyTap(onDismiss) : undefined}
+      // Phone: the drawer is full-screen (CSS overrides the inline column width).
+      // Empty-space taps and navigation links dismiss it — including re-tapping
+      // the already-active session, which doesn't change the route — while
+      // in-place action buttons (pin/archive/rename) keep it open.
+      onClick={
+        mobile && onDismiss
+          ? (e) => {
+              if (!(e.target as HTMLElement).closest('button, input, textarea')) onDismiss()
+            }
+          : undefined
+      }
       className="sidebar-material relative flex h-full shrink-0 flex-col border-r border-border max-sm:w-full!"
       style={{ width }}
     >

@@ -35,16 +35,17 @@ export function NewThreadOptions({
     open,
   )
 
-  // Centered over the title bar via the app shell's relative container; absolute
-  // so it leaves the slot's flex flow and lines up with the window's middle.
-  // It stays inside <main>, so the open mobile sidebar still covers it.
+  // Centered on the viewport: fixed (not absolute) so the title-bar slot's own
+  // positioning context can't pull it to the slot's left edge. It lives in the
+  // slot's z-shell layer, below the z-drawer sidebar, so an open mobile sidebar
+  // still covers it.
   const trigger = (
     <button
       type="button"
       aria-haspopup="dialog"
       aria-expanded={open}
       onClick={() => setOpen((v) => !v)}
-      className="absolute top-3.5 left-1/2 flex -translate-x-1/2 flex-col items-center rounded-full px-2.5 py-1 leading-tight [-webkit-app-region:no-drag] hover:bg-surface-2"
+      className="fixed top-3.5 left-1/2 flex -translate-x-1/2 flex-col items-center rounded-full px-2.5 py-1 leading-tight [-webkit-app-region:no-drag] hover:bg-surface-2"
     >
       {/* The label is the centered element; the chevron hangs off its right
           edge (absolute, out of flow) so it never pulls the text off-center. */}
