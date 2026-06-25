@@ -445,6 +445,95 @@ func TestACPStreamUsesServerContextAfterRequestCancel(t *testing.T) {
 	}
 }
 
+func TestACPCompactRoutesToManager(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "codex-compact",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     "codex",
+			SessionID: "acp-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeACPManager{job: acp.Job{
+		ID:       session.ID,
+		Slug:     session.Slug,
+		ACPAgent: "codex",
+		State:    acp.StateIdle,
+	}}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/compact", nil).WithContext(ctx)
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store, ACP: manager}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	manager.mu.Lock()
+	sent := manager.sent
+	sendCtxErr := manager.sendCtxErr
+	manager.mu.Unlock()
+	if sendCtxErr != nil {
+		t.Fatalf("compact used cancelled request context: %v", sendCtxErr)
+	}
+	if sent.Session != session.ID || sent.Message != acp.CompactCommand || sent.ActiveOperation != acp.ActiveOperationCompact {
+		t.Fatalf("sent compact request = %#v", sent)
+	}
+	if !sent.SkipUserMessage {
+		t.Fatalf("skip user message = false, want true")
+	}
+}
+
+func TestACPStreamMarksCompactOperation(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "codex-typed-compact",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     "codex",
+			SessionID: "acp-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeACPManager{job: acp.Job{
+		ID:    session.ID,
+		Slug:  session.Slug,
+		State: acp.StateIdle,
+	}}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/messages:stream", strings.NewReader(`{"message":"/compact"}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store, ACP: manager}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	manager.mu.Lock()
+	sent := manager.sent
+	manager.mu.Unlock()
+	if sent.ActiveOperation != acp.ActiveOperationCompact {
+		t.Fatalf("active operation = %q, want compact", sent.ActiveOperation)
+	}
+}
+
 func TestRequestClientPlatformAcceptsKnownPlatforms(t *testing.T) {
 	for _, platform := range []string{"browser", "cli", "desktop", "mobile"} {
 		t.Run(platform, func(t *testing.T) {
