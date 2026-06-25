@@ -35,7 +35,7 @@ export function NewSessionHome({
   )
 
   return (
-    <FileDropScope className="relative flex h-full flex-col items-center justify-center overflow-hidden px-10 pb-16">
+    <FileDropScope className="relative flex h-full flex-col items-center justify-center overflow-hidden px-10 pb-16 max-sm:px-4">
       <HomePixelField themeKey={themeKey} calm={calm} />
       <motion.div
         className="relative z-[2] w-full max-w-[640px]"

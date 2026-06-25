@@ -184,6 +184,15 @@ function mentionSigil(label: string): '$' | '@' | null {
 
 type AnchorComponent = ComponentType<ComponentProps<'a'> & ExtraProps>
 
+// Wide tables can't shrink below their column min-widths; left bare they force
+// the prose column wider than the viewport. A scroll wrapper (min-content 0)
+// keeps the table inside its own horizontal scroll without stretching the chat.
+const MarkdownTable: ComponentType<ComponentProps<'table'> & ExtraProps> = ({ node: _node, ...props }) => (
+  <div className="chat-table-scroll">
+    <table {...props} />
+  </div>
+)
+
 function BaseMarkdown({
   text,
   className,
@@ -194,7 +203,7 @@ function BaseMarkdown({
   Link: AnchorComponent
 }) {
   const prepared = useMemo(() => normalizeMath(text), [text])
-  const components = useMemo<Components>(() => ({ a: Link, pre: CodeBlock }), [Link])
+  const components = useMemo<Components>(() => ({ a: Link, pre: CodeBlock, table: MarkdownTable }), [Link])
   return (
     <div className={className}>
       <Markdown

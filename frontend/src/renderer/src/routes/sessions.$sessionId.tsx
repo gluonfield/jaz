@@ -42,6 +42,8 @@ import {
   uploadSessionAttachment,
 } from '@/lib/api/sessions'
 import type { ACPJobSnapshot, ACPModeState, ChatMessage, Session, SessionEvent, SessionMessages } from '@/lib/api/types'
+import { drawerSlide } from '@/lib/dom/drawer'
+import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
 import { takePendingMessage } from '@/lib/pendingMessage'
@@ -414,6 +416,10 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   )
   const sidePanel = useSidePanelState(overviewAvailable, sideChatAvailable)
   const { openFile } = sidePanel
+  // Phone: the docked panel would crush the transcript to a sliver, so it
+  // becomes a full-screen overlay (CSS `max-sm:w-full`) that slides in instead
+  // of a column.
+  const isMobile = useIsMobile()
 
   const itemCount =
     (detail.data?.messages.length ?? 0) + events.data.filter((event) => sessionEventPlacement(event) !== 'side_chat').length
@@ -583,11 +589,13 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   return (
     <FileReaderLinkProvider onOpen={openFile}>
       <PreviewLinkProvider onOpen={sidePanel.openPreview}>
-        <FileDropScope ref={sidePanel.measureRef} className="flex h-full">
+        <FileDropScope ref={sidePanel.measureRef} className="relative flex h-full">
           {titlebarSlot
             ? createPortal(
                 <>
-                  <RuntimeBadge session={session} truncate={false} />
+                  {/* Phone: truncate the model tag so it can't collide with the
+                      side-panel tabs; the token-stats icon stays (it's shrink-0). */}
+                  <RuntimeBadge session={session} truncate={isMobile} />
                   <TokenStats session={session} />
                 </>,
                 titlebarSlot,
@@ -606,6 +614,13 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                 titlebarActions,
               )
             : null}
+
+          {/* Phone: the open panel covers the chat full-width, so the only
+              non-panel area left is the title bar. This catches taps on its empty
+              space (the header controls sit above it) to dismiss the panel. */}
+          {isMobile && sidePanel.open ? (
+            <div className="fixed inset-0 z-scrim" aria-hidden onClick={() => sidePanel.toggle()} />
+          ) : null}
 
           <div className="relative h-full min-w-0 flex-1">
             <div ref={scrollRef} className="h-full overflow-y-auto" onScroll={onThreadScroll}>
@@ -759,9 +774,10 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
           {/* Docked, never overlapping: the chat pane flexes and stays centered
               between the sidebar and this panel. */}
           <motion.div
-            className="h-full shrink-0 overflow-hidden"
+            className="h-full shrink-0 overflow-hidden max-sm:absolute max-sm:inset-y-0 max-sm:right-0 max-sm:z-shell max-sm:w-full!"
             initial={false}
-            animate={{ width: sidePanel.open ? sidePanel.width : 0 }}
+            // The fixed backdrop above owns tap-to-dismiss.
+            animate={drawerSlide({ isMobile, open: sidePanel.open, side: 'right', width: sidePanel.width })}
             transition={{ type: 'spring', stiffness: 400, damping: 36 }}
           >
             <SidePanel
