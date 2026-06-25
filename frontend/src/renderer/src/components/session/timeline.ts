@@ -165,9 +165,9 @@ function splitTurns(items: TimelineItem[]): Turn[] {
   return turns
 }
 
-// True for work that folds under "Worked for Xs": tools, thinking, status,
-// resolved permissions, superseded task surfaces. Artifacts and any event with
-// visible `content` are the turn's answer/outcome and never fold.
+// True for mechanical work that folds under "Worked for Xs": tools, thinking,
+// bare status, resolved permissions, superseded task surfaces. Assistant text is
+// classified at turn scope by classifyTurnItems, not here.
 export function isCollapsibleWork(
   item: TimelineItem,
   pendingPermissionIds: Set<string>,
@@ -177,7 +177,6 @@ export function isCollapsibleWork(
   if (item.kind !== 'event') return false
   const event = item.event
   if (event.type === 'artifact') return false
-  if (event.content?.trim()) return false
   if (event.type === 'acp_thought') return true
   if (event.type === 'permission_request') {
     return !pendingPermissionIds.has(event.permission?.id ?? '')
@@ -190,6 +189,79 @@ export function isCollapsibleWork(
     return true
   }
   return false
+}
+
+// An assistant text block: a streamed acp_message or an acp snapshot carrying
+// answer text. Artifacts render their own surface and count as anchors, not text.
+function textContent(item: TimelineItem): string | undefined {
+  if (item.kind !== 'event' || item.event.type === 'artifact') return undefined
+  return item.event.content?.trim() || undefined
+}
+
+// An item that reads as produced output rather than process. Result cards are
+// pulled from the flow before classification, so artifacts are the only anchor.
+function isOutcomeAnchor(item: TimelineItem): boolean {
+  return item.kind === 'event' && item.event.type === 'artifact'
+}
+
+// Formatted-answer markers that interim progress narration essentially never
+// has: a heading, a table, or display math. Code fences are excluded on purpose
+// — coding agents put them in progress chatter too.
+function hasAnswerStructure(text: string): boolean {
+  return /(^|\n)\s{0,3}#{1,6}\s/.test(text) || /(^|\n)\s*\|.*\|/.test(text) || /\\\[|\$\$/.test(text)
+}
+
+// Split a completed turn into the work that folds under one "Worked for Xs" and
+// the result items shown inline, preserving order. A text block shows when it is
+// the terminal answer, sits next to an artifact it introduces, carries answer
+// structure, or is the whole of a tool-less turn; otherwise it is progress
+// narration and folds with the tools/thinking. Classifying at turn scope — not
+// per item — is what stops a shown message from splitting work into a staircase.
+export function classifyTurnItems(
+  flow: TimelineItem[],
+  pendingPermissionIds: Set<string>,
+  latestTaskSurfaceIndex: Map<string, number>,
+): { workItems: TimelineItem[]; resultItems: TimelineItem[] } {
+  const textPositions = flow.flatMap((item, index) => (textContent(item) ? [index] : []))
+  const lastTextIndex = textPositions.at(-1) ?? -1
+  const hasAnchor = flow.some(isOutcomeAnchor)
+  const hasWork = flow.some(
+    (item) =>
+      !textContent(item) &&
+      !isOutcomeAnchor(item) &&
+      isCollapsibleWork(item, pendingPermissionIds, latestTaskSurfaceIndex),
+  )
+  const anchorBetween = (from: number, to: number) =>
+    flow.slice(from + 1, to).some(isOutcomeAnchor)
+  const showsText = (index: number, order: number): boolean => {
+    if (!hasWork && !hasAnchor) return true // a tool-less turn is pure answer
+    if (index === lastTextIndex) return true // terminal answer
+    const prevText = order > 0 ? textPositions[order - 1] : -1
+    const nextText = order < textPositions.length - 1 ? textPositions[order + 1] : flow.length
+    if (anchorBetween(prevText, index) || anchorBetween(index, nextText)) return true
+    return hasAnswerStructure(textContent(flow[index]) ?? '')
+  }
+
+  const workItems: TimelineItem[] = []
+  const resultItems: TimelineItem[] = []
+  let textOrder = 0
+  flow.forEach((item, index) => {
+    if (textContent(item)) {
+      ;(showsText(index, textOrder) ? resultItems : workItems).push(item)
+      textOrder += 1
+      return
+    }
+    if (isOutcomeAnchor(item)) {
+      resultItems.push(item)
+      return
+    }
+    if (isCollapsibleWork(item, pendingPermissionIds, latestTaskSurfaceIndex)) {
+      workItems.push(item)
+      return
+    }
+    resultItems.push(item) // pending question, latest task surface — stay shown
+  })
+  return { workItems, resultItems }
 }
 
 // Everything between raw history and JSX that doesn't depend on render-only
