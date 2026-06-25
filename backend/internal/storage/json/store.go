@@ -233,6 +233,15 @@ func (s *Store) SetPinned(id string, pinned bool) error {
 	return nil
 }
 
+func (s *Store) UpdateSessionTitle(id, title string) error {
+	session, err := s.loadSessionByID(id)
+	if err != nil {
+		return err
+	}
+	session.Title = title
+	return s.saveSession(session)
+}
+
 func (s *Store) ListSessions(filter storage.SessionFilter) ([]storage.Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
