@@ -16,6 +16,11 @@ func TestValidateInputNormalizesHeadersAndURL(t *testing.T) {
 			{Name: " X-Secret ", EnvVar: " DOCS_SECRET "},
 			{},
 		},
+		OAuth: OAuthConfig{
+			ClientID:           " client-id ",
+			ClientSecretEnvVar: " DOCS_OAUTH_SECRET ",
+			Issuer:             " https://accounts.google.com/ ",
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -23,6 +28,11 @@ func TestValidateInputNormalizesHeadersAndURL(t *testing.T) {
 	if input.Name != "Docs" || input.URL != "https://mcp.example.com/mcp" ||
 		input.BearerTokenEnvVar != "DOCS_TOKEN" {
 		t.Fatalf("input = %#v", input)
+	}
+	if input.OAuth.ClientID != "client-id" ||
+		input.OAuth.ClientSecretEnvVar != "DOCS_OAUTH_SECRET" ||
+		input.OAuth.Issuer != "https://accounts.google.com" {
+		t.Fatalf("oauth = %#v", input.OAuth)
 	}
 	if len(input.Headers) != 1 || input.Headers[0].Name != "X-Team" || input.Headers[0].Value != "platform" {
 		t.Fatalf("headers = %#v", input.Headers)
@@ -60,6 +70,18 @@ func TestValidateInputRejectsInvalidValues(t *testing.T) {
 		{
 			name:  "missing env header env var",
 			input: ServerInput{Name: "Docs", URL: "https://mcp.example.com/mcp", EnvHeaders: []EnvHeader{{Name: "X-Secret"}}},
+		},
+		{
+			name:  "oauth secret without client id",
+			input: ServerInput{Name: "Docs", URL: "https://mcp.example.com/mcp", OAuth: OAuthConfig{ClientSecretEnvVar: "DOCS_OAUTH_SECRET"}},
+		},
+		{
+			name:  "bad oauth secret env",
+			input: ServerInput{Name: "Docs", URL: "https://mcp.example.com/mcp", OAuth: OAuthConfig{ClientID: "client", ClientSecretEnvVar: "BAD-NAME"}},
+		},
+		{
+			name:  "bad oauth issuer",
+			input: ServerInput{Name: "Docs", URL: "https://mcp.example.com/mcp", OAuth: OAuthConfig{Issuer: "http://accounts.google.com"}},
 		},
 	}
 	for _, tt := range tests {

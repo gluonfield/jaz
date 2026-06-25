@@ -28,6 +28,12 @@ type EnvHeader struct {
 	EnvVar string `json:"env_var"`
 }
 
+type OAuthConfig struct {
+	ClientID           string `json:"client_id,omitempty"`
+	ClientSecretEnvVar string `json:"client_secret_env_var,omitempty"`
+	Issuer             string `json:"issuer,omitempty"`
+}
+
 type Server struct {
 	ID                string      `json:"id"`
 	Name              string      `json:"name"`
@@ -37,6 +43,7 @@ type Server struct {
 	BearerTokenEnvVar string      `json:"bearer_token_env_var,omitempty"`
 	Headers           []Header    `json:"headers,omitempty"`
 	EnvHeaders        []EnvHeader `json:"env_headers,omitempty"`
+	OAuth             OAuthConfig `json:"oauth,omitempty"`
 	CreatedAt         time.Time   `json:"created_at"`
 	UpdatedAt         time.Time   `json:"updated_at"`
 }
@@ -48,6 +55,7 @@ type ServerInput struct {
 	BearerTokenEnvVar string      `json:"bearer_token_env_var,omitempty"`
 	Headers           []Header    `json:"headers,omitempty"`
 	EnvHeaders        []EnvHeader `json:"env_headers,omitempty"`
+	OAuth             OAuthConfig `json:"oauth,omitempty"`
 }
 
 type ServerStatus struct {
@@ -74,6 +82,7 @@ func ValidateInput(input ServerInput) (ServerInput, error) {
 	input.Name = strings.TrimSpace(input.Name)
 	input.URL = strings.TrimSpace(input.URL)
 	input.BearerTokenEnvVar = strings.TrimSpace(input.BearerTokenEnvVar)
+	input.OAuth = normalizeOAuth(input.OAuth)
 	if input.Name == "" {
 		return input, errors.New("name is required")
 	}
@@ -101,6 +110,23 @@ func ValidateInput(input ServerInput) (ServerInput, error) {
 	if input.BearerTokenEnvVar != "" && !envVarPattern.MatchString(input.BearerTokenEnvVar) {
 		return input, fmt.Errorf("invalid bearer token env var: %s", input.BearerTokenEnvVar)
 	}
+	if input.OAuth.ClientSecretEnvVar != "" && input.OAuth.ClientID == "" {
+		return input, errors.New("OAuth client ID is required when client secret env var is set")
+	}
+	if input.OAuth.ClientSecretEnvVar != "" && !envVarPattern.MatchString(input.OAuth.ClientSecretEnvVar) {
+		return input, fmt.Errorf("invalid OAuth client secret env var: %s", input.OAuth.ClientSecretEnvVar)
+	}
+	if input.OAuth.Issuer != "" {
+		issuer, err := url.Parse(input.OAuth.Issuer)
+		if err != nil {
+			return input, fmt.Errorf("invalid OAuth issuer: %w", err)
+		}
+		issuer.Scheme = strings.ToLower(issuer.Scheme)
+		if issuer.Scheme != "https" || issuer.Host == "" || issuer.User != nil || issuer.RawQuery != "" || issuer.Fragment != "" {
+			return input, errors.New("OAuth issuer must be an https origin or path URL")
+		}
+		input.OAuth.Issuer = strings.TrimRight(issuer.String(), "/")
+	}
 	headers, err := normalizeHeaders(input.Headers)
 	if err != nil {
 		return input, err
@@ -112,6 +138,16 @@ func ValidateInput(input ServerInput) (ServerInput, error) {
 	input.Headers = headers
 	input.EnvHeaders = envHeaders
 	return input, nil
+}
+
+func normalizeOAuth(oauth OAuthConfig) OAuthConfig {
+	oauth.ClientID = strings.TrimSpace(oauth.ClientID)
+	oauth.ClientSecretEnvVar = strings.TrimSpace(oauth.ClientSecretEnvVar)
+	oauth.Issuer = strings.TrimSpace(oauth.Issuer)
+	if oauth.ClientID == "" && oauth.ClientSecretEnvVar == "" && oauth.Issuer == "" {
+		return OAuthConfig{}
+	}
+	return oauth
 }
 
 func normalizeHeaders(headers []Header) ([]Header, error) {

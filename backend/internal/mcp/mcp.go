@@ -220,6 +220,11 @@ func (m *Manager) refreshServerList(ctx context.Context, seq uint64, servers []m
 				m.log.Warn("mcp server unavailable", "server", server.Name, "error", err)
 				return
 			}
+			if status, ok := oauthGateStatus(sessionCtx, server, handler, len(ss.tools)); ok {
+				closeSessions(map[string]*serverSession{server.ID: ss})
+				results[index].status = status
+				return
+			}
 			results[index].session = ss
 			results[index].status = mcpconfig.ServerStatus{Status: "connected", ToolCount: len(ss.tools), CheckedAt: time.Now().UTC()}
 		}(i, server)
@@ -381,6 +386,10 @@ func (m *Manager) Test(ctx context.Context, server mcpconfig.Server) mcpconfig.S
 	if err != nil {
 		return connectErrorStatus(handler, err)
 	}
+	if status, ok := oauthGateStatus(sessionCtx, server, handler, len(ss.tools)); ok {
+		closeSessions(map[string]*serverSession{server.ID: ss})
+		return status
+	}
 	closeSessions(map[string]*serverSession{server.ID: ss})
 	return mcpconfig.ServerStatus{Status: "connected", ToolCount: len(ss.tools), CheckedAt: time.Now().UTC()}
 }
@@ -411,6 +420,11 @@ func (m *Manager) Authorize(ctx context.Context, server mcpconfig.Server) mcpcon
 		return mcpconfig.ServerStatus{Status: "error", Error: err.Error(), CheckedAt: time.Now().UTC()}
 	}
 	closeSessions(map[string]*serverSession{server.ID: ss})
+	if !handler.didAuthorize() {
+		if err := handler.AuthorizeFromMetadata(sessionCtx); err != nil {
+			return mcpconfig.ServerStatus{Status: "error", Error: err.Error(), CheckedAt: time.Now().UTC()}
+		}
+	}
 
 	// Reconnect everything so this server's tools are installed in the registry
 	// using the token we just persisted.
@@ -435,6 +449,23 @@ func connectErrorStatus(handler *oauthHandler, err error) mcpconfig.ServerStatus
 		return mcpconfig.ServerStatus{Status: "needs_auth", Error: "Sign in required", CheckedAt: time.Now().UTC()}
 	}
 	return mcpconfig.ServerStatus{Status: "error", Error: err.Error(), CheckedAt: time.Now().UTC()}
+}
+
+func oauthGateStatus(ctx context.Context, server mcpconfig.Server, handler *oauthHandler, toolCount int) (mcpconfig.ServerStatus, bool) {
+	if strings.TrimSpace(server.OAuth.ClientID) == "" && strings.TrimSpace(server.OAuth.Issuer) == "" {
+		return mcpconfig.ServerStatus{}, false
+	}
+	if handler == nil {
+		return mcpconfig.ServerStatus{Status: "error", Error: "token store is not configured", CheckedAt: time.Now().UTC()}, true
+	}
+	src, err := handler.TokenSource(ctx)
+	if err != nil {
+		return mcpconfig.ServerStatus{Status: "error", Error: err.Error(), CheckedAt: time.Now().UTC()}, true
+	}
+	if src == nil {
+		return mcpconfig.ServerStatus{Status: "needs_auth", Error: "Sign in required", ToolCount: toolCount, CheckedAt: time.Now().UTC()}, true
+	}
+	return mcpconfig.ServerStatus{}, false
 }
 
 func (m *Manager) connect(ctx context.Context, server mcpconfig.Server, handler auth.OAuthHandler) (*serverSession, error) {

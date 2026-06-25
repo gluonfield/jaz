@@ -100,6 +100,38 @@ func TestManagerRefreshMapsAndExecutesRemoteTools(t *testing.T) {
 	}
 }
 
+func TestManagerRefreshGatesOAuthConfiguredServerWithoutToken(t *testing.T) {
+	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "test-mcp", Version: "1.0.0"}, nil)
+	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "list_labels"}, func(ctx context.Context, req *mcpsdk.CallToolRequest, input echoInput) (*mcpsdk.CallToolResult, map[string]string, error) {
+		return &mcpsdk.CallToolResult{}, nil, nil
+	})
+
+	httpServer := httptest.NewServer(mcpsdk.NewStreamableHTTPHandler(func(req *http.Request) *mcpsdk.Server {
+		return server
+	}, &mcpsdk.StreamableHTTPOptions{JSONResponse: true}))
+	defer httpServer.Close()
+
+	registry := tools.NewRegistry()
+	manager := NewManager(&testStore{servers: []mcpconfig.Server{{
+		ID:        "gmail",
+		Name:      "Gmail",
+		Transport: mcpconfig.TransportStreamableHTTP,
+		URL:       httpServer.URL,
+		Enabled:   true,
+		OAuth:     mcpconfig.OAuthConfig{ClientID: "google-client"},
+	}}}, newMemTokenStore(), registry, log.New(io.Discard))
+	manager.Refresh(context.Background())
+	defer manager.Close()
+
+	status := manager.Status("gmail")
+	if status.Status != "needs_auth" || status.ToolCount != 1 {
+		t.Fatalf("status = %#v", status)
+	}
+	if defs := registry.Definitions(); len(defs) != 0 {
+		t.Fatalf("registry definitions = %d, want 0", len(defs))
+	}
+}
+
 func TestManagerProxyHandlerExposesSafeRemoteTools(t *testing.T) {
 	remote := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "remote-mcp", Version: "1.0.0"}, nil)
 	mcpsdk.AddTool(remote, &mcpsdk.Tool{

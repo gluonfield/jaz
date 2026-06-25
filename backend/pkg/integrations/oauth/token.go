@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,18 +15,19 @@ import (
 var ErrTokenNotFound = errors.New("oauth token not found")
 
 type Token struct {
-	AccessToken  string    `json:"access_token"`
-	RefreshToken string    `json:"refresh_token,omitempty"`
-	TokenType    string    `json:"token_type,omitempty"`
-	Expiry       time.Time `json:"expiry,omitempty"`
-	ClientID     string    `json:"client_id"`
-	ClientSecret string    `json:"client_secret,omitempty"`
-	AuthURL      string    `json:"auth_url"`
-	TokenURL     string    `json:"token_url"`
-	AuthStyle    int       `json:"auth_style"`
-	RedirectURL  string    `json:"redirect_url,omitempty"`
-	Scopes       []string  `json:"scopes,omitempty"`
-	Resource     string    `json:"resource,omitempty"`
+	AccessToken        string    `json:"access_token"`
+	RefreshToken       string    `json:"refresh_token,omitempty"`
+	TokenType          string    `json:"token_type,omitempty"`
+	Expiry             time.Time `json:"expiry,omitempty"`
+	ClientID           string    `json:"client_id"`
+	ClientSecret       string    `json:"client_secret,omitempty"`
+	ClientSecretEnvVar string    `json:"client_secret_env_var,omitempty"`
+	AuthURL            string    `json:"auth_url"`
+	TokenURL           string    `json:"token_url"`
+	AuthStyle          int       `json:"auth_style"`
+	RedirectURL        string    `json:"redirect_url,omitempty"`
+	Scopes             []string  `json:"scopes,omitempty"`
+	Resource           string    `json:"resource,omitempty"`
 }
 
 type Store interface {
@@ -85,9 +88,13 @@ func (r Refresher) context(ctx context.Context) context.Context {
 }
 
 func (t Token) config() *oauth2.Config {
+	clientSecret := t.ClientSecret
+	if clientSecret == "" && strings.TrimSpace(t.ClientSecretEnvVar) != "" {
+		clientSecret = os.Getenv(strings.TrimSpace(t.ClientSecretEnvVar))
+	}
 	return &oauth2.Config{
 		ClientID:     t.ClientID,
-		ClientSecret: t.ClientSecret,
+		ClientSecret: clientSecret,
 		Endpoint: oauth2.Endpoint{
 			AuthURL:   t.AuthURL,
 			TokenURL:  t.TokenURL,

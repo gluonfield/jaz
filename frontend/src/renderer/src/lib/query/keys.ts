@@ -26,6 +26,7 @@ export const keys = {
   deviceConnectionLink: ['settings', 'devices', 'connection-link'] as const,
   onboarding: ['onboarding'] as const,
   memory: ['memory'] as const,
+  connectionPlugins: ['connections', 'plugins'] as const,
   browserSettings: ['browser', 'settings'] as const,
   mcpServers: ['mcp', 'servers'] as const,
   acpAgents: ['acp', 'agents'] as const,

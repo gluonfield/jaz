@@ -3,20 +3,3 @@
 //   sqlc v1.31.1
 
 package mcpdb
-
-import (
-	"database/sql"
-)
-
-type McpServer struct {
-	ID                string         `json:"id"`
-	Name              string         `json:"name"`
-	Transport         string         `json:"transport"`
-	Url               string         `json:"url"`
-	Enabled           int64          `json:"enabled"`
-	BearerTokenEnvVar sql.NullString `json:"bearer_token_env_var"`
-	HeadersJson       string         `json:"headers_json"`
-	EnvHeadersJson    string         `json:"env_headers_json"`
-	CreatedAtMs       int64          `json:"created_at_ms"`
-	UpdatedAtMs       int64          `json:"updated_at_ms"`
-}
