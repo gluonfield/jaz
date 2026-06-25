@@ -429,6 +429,22 @@ func (q *Queries) UpdateACPState(ctx context.Context, arg UpdateACPStateParams) 
 	return err
 }
 
+const updateSessionTitle = `-- name: UpdateSessionTitle :exec
+UPDATE threads
+SET title = ?1
+WHERE id = ?2
+`
+
+type UpdateSessionTitleParams struct {
+	Title sql.NullString `json:"title"`
+	ID    string         `json:"id"`
+}
+
+func (q *Queries) UpdateSessionTitle(ctx context.Context, arg UpdateSessionTitleParams) error {
+	_, err := q.db.ExecContext(ctx, updateSessionTitle, arg.Title, arg.ID)
+	return err
+}
+
 const upsertSession = `-- name: UpsertSession :exec
 INSERT INTO threads (
   id,

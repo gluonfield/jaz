@@ -16,6 +16,7 @@ type SessionStore interface {
 	TouchSessionAttention(id string) error
 	SetArchived(id string, archived bool) error
 	SetPinned(id string, pinned bool) error
+	UpdateSessionTitle(id, title string) error
 	ListSessions(filter SessionFilter) ([]Session, error)
 	LastRootSession() (Session, error)
 }
