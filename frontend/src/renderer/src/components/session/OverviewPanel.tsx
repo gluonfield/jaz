@@ -506,8 +506,7 @@ function ManageSection({
 }
 
 function canCompactSession(session: Session): boolean {
-  const agent = (session.runtime_ref?.agent ?? session.model_provider)?.toLowerCase()
-  return session.runtime === 'acp' && (agent === 'codex' || agent === 'claude')
+  return Boolean(session.actions?.compact)
 }
 
 function canHandoffToMain(info: RepoInfo | undefined): boolean {

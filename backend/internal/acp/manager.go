@@ -112,15 +112,17 @@ type SpawnRequest struct {
 }
 
 type SendRequest struct {
-	Session         string
-	Message         string
-	Contexts        []storage.MessageContext
-	Attachments     []storage.Attachment
-	Completion      CompletionMode
-	PlanRequested   bool
-	ParentVisible   bool
-	ActiveOperation string
-	SkipUserMessage bool
+	Session       string
+	Message       string
+	Contexts      []storage.MessageContext
+	Attachments   []storage.Attachment
+	Completion    CompletionMode
+	PlanRequested bool
+	ParentVisible bool
+}
+
+type CompactRequest struct {
+	Session string
 }
 
 const (

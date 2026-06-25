@@ -292,7 +292,7 @@ func acpModes(in []acp.ModeSnapshot) []sessionevents.ACPMode {
 }
 
 func acpStateFromSession(session storage.Session) storage.ACPState {
-	session = canonicalSessionResponse(session)
+	session = canonicalSession(session)
 	state := storage.ACPState{
 		ID:              session.ID,
 		Slug:            session.Slug,
