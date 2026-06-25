@@ -40,6 +40,9 @@ export interface ClientRuntime {
 
 function webDefaultApiBaseUrl(): string {
   const configured = import.meta.env.VITE_JAZ_API_URL?.trim()
+  // "origin" targets the origin the app is served from, so one build works
+  // behind a reverse proxy at any domain (app and API share an origin).
+  if (configured === 'origin') return window.location.origin
   if (configured) return configured
   return DEFAULT_API_BASE_URL
 }

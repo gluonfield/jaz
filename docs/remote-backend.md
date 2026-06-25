@@ -8,7 +8,6 @@ Install a release backend on a Linux server:
 
 ```sh
 ssh root@SERVER
-RELEASE=v0.0.46
 
 apt-get update
 apt-get install -y ca-certificates curl tar nodejs npm
@@ -22,13 +21,18 @@ cd "$tmp"
 arch=$(dpkg --print-architecture)
 case "$arch" in amd64|arm64) ;; *) echo "unsupported architecture: $arch"; exit 1;; esac
 asset="jaz-backend-linux-${arch}.tar.gz"
-base=https://github.com/gluonfield/jaz/releases/download/$RELEASE
+base=https://github.com/gluonfield/jaz/releases/latest/download
 curl -fsSLO "$base/$asset"
 curl -fsSLO "$base/$asset.sha256"
 test "$(awk '{print $1}' "$asset.sha256")" = "$(sha256sum "$asset" | awk '{print $1}')"
 tar -xzf "$asset"
 install -o root -g root -m 755 jaz /opt/jaz/bin/jaz
 ```
+
+`releases/latest/download` always resolves to the newest release, so this recipe
+stays current without editing. To pin a specific release instead, swap in
+`releases/download/<tag>`, for example
+`base=https://github.com/gluonfield/jaz/releases/download/v0.0.46`.
 
 Node/npm are required when the backend runs default ACP agents because the
 built-in Codex, Claude, and OpenCode adapters launch through `npx`. Install each
@@ -124,7 +128,7 @@ sudo /opt/jaz/bin/jaz update --latest
 sudo systemctl restart jaz
 ```
 
-Use `jaz update --version v0.0.46` to install a specific release. The update
+Use `jaz update --version <tag>` to install a specific release. The update
 command downloads the matching Linux/macOS backend archive from GitHub, verifies
 its `.sha256`, and replaces only the current executable.
 
@@ -183,6 +187,68 @@ https://web.jaz.chat/?server=https%3A%2F%2Fjaz.example.com&key=...
 After a successful connection, the browser stores the backend URL and device token in that browser origin's `localStorage`, keyed by backend URL. Refreshing the page reconnects to the same backend; switching from `web.jaz.chat` to a self-hosted copy starts with separate browser storage.
 
 A production browser origin may call a private or loopback backend, for example `http://localhost:5299`, as long as the browser allows the request. Jaz answers normal CORS preflights and Chrome Private Network Access preflights with `Access-Control-Allow-Private-Network: true`.
+
+### Self-host the app and backend behind one origin (optional)
+
+You only need this to reach the backend from a **browser** client. The Electron desktop app connects straight to a remote backend over plain HTTP, so it needs none of this — TLS and a reverse proxy matter only because a browser blocks an HTTPS page from calling a plain-HTTP backend (mixed content).
+
+One HTTPS origin serves the web build at `/` and reverse-proxies the API to a backend that stays on `localhost`. The browser only talks to that origin (no mixed content, no CORS) and the backend is never exposed; the proxy is pure routing — requests still originate in the browser. This assumes the backend is already installed and running (see [Server Setup](#server-setup)).
+
+**1. Pick the public hostname Caddy will serve.** It must resolve to the server, because Caddy auto-provisions a Let's Encrypt cert for it. With a domain, point an A record at the server IP. With only an IP and no DNS, use [sslip.io](https://sslip.io) — it resolves `<ip>.sslip.io` to `<ip>` for free:
+
+```sh
+HOST=34.9.55.98.sslip.io        # or your own domain: jaz.example.com
+```
+
+**2. Build the web app on the server.** Clone into `/opt/jaz` and build with `VITE_JAZ_API_URL=origin`, which makes the app use `window.location.origin` as its backend (so it targets whatever host serves it). Caddy serves the build in place — no copy step. Fits comfortably on a 2 GB VM:
+
+```sh
+sudo apt-get install -y git unzip
+curl -fsSL https://bun.sh/install | bash && export PATH="$HOME/.bun/bin:$PATH"
+sudo git clone --depth 1 https://github.com/gluonfield/jaz.git /opt/jaz
+sudo chown -R "$USER" /opt/jaz
+cd /opt/jaz/frontend && bun install
+VITE_JAZ_API_URL=origin bun run build:web                   # builds /opt/jaz/frontend/dist-web
+```
+
+**3. Point the backend at loopback** so it stays private and Caddy is the only thing exposed:
+
+```sh
+sudo sed -i "s#^JAZ_ADDR=.*#JAZ_ADDR=127.0.0.1:5299#; s#^JAZ_PUBLIC_URL=.*#JAZ_PUBLIC_URL=https://$HOST#" /etc/jaz/jaz.env
+sudo systemctl restart jaz
+```
+
+Keep `:5299` out of the firewall; open only `:80` and `:443`.
+
+**4. Install Caddy and write the proxy config** (on the server; the heredoc substitutes `$HOST` and leaves Caddy's `{...}` placeholders alone):
+
+```sh
+sudo apt-get install -y caddy        # or download from caddyserver.com/download
+sudo tee /etc/caddy/Caddyfile >/dev/null <<EOF
+$HOST {
+    @api path /v1/* /health
+    handle @api {
+        reverse_proxy 127.0.0.1:5299
+    }
+    handle {
+        root * /opt/jaz/frontend/dist-web
+        try_files {path} /index.html
+        file_server
+    }
+}
+EOF
+sudo systemctl reload caddy          # or run directly: sudo caddy run --config /etc/caddy/Caddyfile
+```
+
+Caddy provisions the cert on first start (needs `:80`/`:443` reachable) and upgrades websocket/SSE streams automatically.
+
+**5. Verify and connect.**
+
+```sh
+curl -fsS https://$HOST/health        # -> {"ok":true,...}
+```
+
+Open `https://$HOST?key=...` — the key is in `/var/lib/jaz/client-url.txt` (or `/var/lib/jaz/auth.json`). The app loads from that origin and connects back to it, and the proxy forwards the API to the private backend. On a fresh backend the browser becomes the first approved device automatically.
 
 Remote `--public-url` server logs print the public base URL and the auth file path, not the root key:
 
