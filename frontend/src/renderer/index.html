@@ -67,7 +67,10 @@
             el2.classList.add('jaz-no-effects')
           var accent = localStorage.getItem('jaz.appearance.accent')
           if (accent === null && typeof sd.accent === 'number') accent = String(sd.accent)
-          if (accent && Number.isFinite(Number(accent))) el2.style.setProperty('--accent-h', accent)
+          // Match normalizeAccent in lib/appearance.ts: only a finite hue in
+          // [0, 360) overrides; anything else falls back to the CSS default.
+          var accentHue = accent === null ? NaN : Number(accent)
+          if (accentHue >= 0 && accentHue < 360) el2.style.setProperty('--accent-h', String(accentHue))
           var scale = localStorage.getItem('jaz.appearance.fontScale')
           if (scale === null && sd.fontScale != null) scale = String(sd.fontScale)
           if (scale === '0.9' || scale === '1.1' || scale === '1.25') el2.style.zoom = scale
