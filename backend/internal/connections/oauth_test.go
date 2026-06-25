@@ -8,16 +8,13 @@ import (
 	"testing"
 
 	gmailconnector "github.com/wins/jaz/backend/internal/connectors/gmail"
+	"github.com/wins/jaz/backend/pkg/integrations"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
 
 type memoryOAuthStore struct{}
 
-func (memoryOAuthStore) LoadToken(context.Context, string) (integrationoauth.Token, bool, error) {
-	return integrationoauth.Token{}, false, nil
-}
-
-func (memoryOAuthStore) SaveToken(context.Context, string, integrationoauth.Token) error {
+func (memoryOAuthStore) SaveOAuthConnection(context.Context, integrationoauth.Token, integrations.Connection) error {
 	return nil
 }
 

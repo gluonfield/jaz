@@ -15,6 +15,7 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	usagecore "github.com/wins/jaz/backend/internal/usage"
+	"github.com/wins/jaz/backend/pkg/integrations"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 	"go.uber.org/fx"
 )
@@ -31,7 +32,11 @@ func (fakeConnectionOAuthStore) LoadToken(context.Context, string) (integrationo
 	return integrationoauth.Token{}, false, nil
 }
 
-func (fakeConnectionOAuthStore) SaveToken(context.Context, string, integrationoauth.Token) error {
+func (fakeConnectionOAuthStore) ListConnections(context.Context, string) ([]integrations.Connection, error) {
+	return nil, nil
+}
+
+func (fakeConnectionOAuthStore) SaveOAuthConnection(context.Context, integrationoauth.Token, integrations.Connection) error {
 	return nil
 }
 
