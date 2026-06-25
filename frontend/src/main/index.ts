@@ -115,6 +115,17 @@ function attachExternalOpenHandler(contents: WebContents): void {
   })
 }
 
+function openExternalURL(url: string): void {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      shell.openExternal(parsed.toString())
+    }
+  } catch {
+    // Ignore malformed renderer input.
+  }
+}
+
 function attachPreviewNavigationGuard(contents: WebContents): void {
   contents.on('will-navigate', (event, url) => {
     if (contents.getType() !== 'webview' || isPreviewURL(url)) return
@@ -364,6 +375,10 @@ app.whenReady().then(() => {
 
   ipcMain.on('jaz:open-board-window', (_event, boardId) => {
     if (typeof boardId === 'string' && boardId !== '') openBoardWindow(boardId)
+  })
+
+  ipcMain.on('jaz:open-external-url', (_event, url) => {
+    if (typeof url === 'string') openExternalURL(url)
   })
 
   ipcMain.on('jaz:open-in-main', (_event, path) => {
