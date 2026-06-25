@@ -51,7 +51,31 @@ export function configuredACPModelProviders(
   settings: AgentSettings | undefined,
   agent: string,
 ): ModelProviderOption[] {
-  return selectableACPModelProviders(settings, agent).filter(modelProviderConnected)
+  return selectableACPModelProviders(settings, agent).filter((provider) =>
+    acpModelProviderReady(settings, agent, provider),
+  )
+}
+
+export function acpProviderUsesNativeAuth(
+  settings: AgentSettings | undefined,
+  agent: string,
+  providerId: string | undefined,
+): boolean {
+  const options = settings?.acp_options?.[agent]
+  return Boolean(
+    providerId && options?.supports_auth && options.auth_provider_id === providerId,
+  )
+}
+
+export function acpModelProviderReady(
+  settings: AgentSettings | undefined,
+  agent: string,
+  provider: ModelProviderOption,
+): boolean {
+  if (acpProviderUsesNativeAuth(settings, agent, provider.id)) {
+    return acpAgentAuthReady(settings, agent)
+  }
+  return modelProviderConnected(provider)
 }
 
 export function selectedACPModelProvider(
@@ -63,10 +87,9 @@ export function selectedACPModelProvider(
 }
 
 export function acpAgentEnableable(settings: AgentSettings | undefined, agent: string): boolean {
-  if (!acpAgentAuthReady(settings, agent)) return false
-  if (!acpUsesModelProvider(settings, agent)) return true
+  if (!acpUsesModelProvider(settings, agent)) return acpAgentAuthReady(settings, agent)
   const provider = selectedACPModelProvider(settings, agent)
-  return Boolean(provider && modelProviderConnected(provider))
+  return Boolean(provider && acpModelProviderReady(settings, agent, provider))
 }
 
 function acpAgentAuthReady(settings: AgentSettings | undefined, agent: string): boolean {
