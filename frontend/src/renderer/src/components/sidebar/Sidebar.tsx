@@ -275,7 +275,7 @@ function ProjectGroup({
           >
             <GripVertical size={13} />
           </button>
-          <p className="min-w-0 truncate pb-1 text-[11px] font-medium text-ink-3" title={group.label}>
+          <p className="min-w-0 truncate pb-1 text-[11px] font-medium text-ink-3 max-sm:text-[13px]" title={group.label}>
             {group.label}
           </p>
         </div>
@@ -407,7 +407,7 @@ function SessionsSection({ open }: { open: boolean }) {
         <div className="flex flex-col gap-3">
           {pinnedBlock ? (
             <div>
-              <p className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3">
+              <p className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3 max-sm:text-[13px]">
                 {pinnedBlock.label}
               </p>
               <SessionRows items={pinnedBlock.items} shortcutByID={shortcutByID} shortcutMode={shortcutMode} />
@@ -459,7 +459,7 @@ function LoopsSection() {
       <div className="flex items-center justify-between pr-1">
         <Link
           to="/loops"
-          className="rounded-full px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3 transition-colors duration-150 hover:text-ink"
+          className="rounded-full px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3 transition-colors duration-150 hover:text-ink max-sm:text-[13px]"
           activeOptions={{ exact: true }}
           activeProps={{ className: 'text-ink!' }}
         >
@@ -471,7 +471,7 @@ function LoopsSection() {
           aria-label="New loop"
           title="New loop"
           onClick={() => setCreating(true)}
-          className="-mt-1"
+          className="-mt-1 max-sm:size-8"
         >
           <Plus size={14} />
         </IconButton>
@@ -544,14 +544,14 @@ function BoardsSection() {
   return (
     <section>
       <div className="flex items-center justify-between pr-1">
-        <p className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3">Boards</p>
+        <p className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3 max-sm:text-[13px]">Boards</p>
         <IconButton
           variant="ghost"
           size="xs"
           aria-label="New board"
           title="New board"
           onClick={() => setCreating(true)}
-          className="-mt-1"
+          className="-mt-1 max-sm:size-8"
         >
           <Plus size={14} />
         </IconButton>
@@ -567,20 +567,21 @@ function BoardsSection() {
               <Link
                 to="/boards/$boardId"
                 params={{ boardId: board.id }}
-                className="flex w-full items-center rounded-full px-2.5 py-1.5 pr-8 text-left text-[13px] text-ink transition-colors duration-150 hover:bg-surface-2"
+                className="flex w-full items-center rounded-full px-2.5 py-1.5 pr-8 text-left text-[13px] text-ink transition-colors duration-150 hover:bg-surface-2 max-sm:px-3 max-sm:py-2.5 max-sm:pr-9 max-sm:text-[15px]"
                 activeProps={{ className: 'bg-primary-soft!' }}
               >
                 <span className="min-w-0 flex-1 truncate" title={board.name}>
                   {board.name}
                 </span>
               </Link>
-              <span className="absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+              <span className="absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 max-sm:opacity-100">
                 <IconButton
                   variant="ghost"
                   size="xs"
                   aria-label={`Delete board ${board.name}`}
                   title="Delete board"
                   onClick={() => onDelete(board)}
+                  className="max-sm:size-8"
                 >
                   <Trash2 size={12} />
                 </IconButton>
@@ -597,6 +598,8 @@ function BoardsSection() {
 export function Sidebar({
   open,
   width,
+  mobile = false,
+  onDismiss,
   resizing,
   onResizeStart,
   onResizeReset,
@@ -605,6 +608,8 @@ export function Sidebar({
 }: {
   open: boolean
   width: number
+  mobile?: boolean
+  onDismiss?: () => void
   resizing?: boolean
   onResizeStart: (e: ReactPointerEvent) => void
   onResizeReset: () => void
@@ -613,21 +618,34 @@ export function Sidebar({
 }) {
   return (
     <aside
-      className="sidebar-material relative flex h-full shrink-0 flex-col border-r border-border"
+      // Phone: the drawer is full-screen (CSS overrides the inline column width).
+      // Empty-space taps and navigation links dismiss it — including re-tapping
+      // the already-active session, which doesn't change the route — while
+      // in-place action buttons (pin/archive/rename) keep it open.
+      onClick={
+        mobile && onDismiss
+          ? (e) => {
+              if (!(e.target as HTMLElement).closest('button, input, textarea')) onDismiss()
+            }
+          : undefined
+      }
+      className="sidebar-material relative flex h-full shrink-0 flex-col border-r border-border max-sm:w-full!"
       style={{ width }}
     >
-      {/* draggable titlebar strip; traffic lights live here on macOS */}
-      <div className="titlebar-drag h-[52px] shrink-0" />
+      {/* draggable titlebar strip; traffic lights live here on macOS. On a phone
+          there is no window to drag, and the drag region would swallow the taps
+          that should dismiss the full-screen drawer, so drop it there. */}
+      <div className={`h-[52px] shrink-0 ${mobile ? '' : 'titlebar-drag'}`} />
 
-      <nav className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-3 pt-3">
+      <nav className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-3 pt-3 max-sm:gap-6 max-sm:p-4">
         <Link
           to="/new"
-          className="group flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2"
+          className="group flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px]"
           activeProps={{ className: 'bg-primary-soft!' }}
         >
-          <SquarePen size={15} className="text-ink-2" />
+          <SquarePen size={15} className="text-ink-2 max-sm:size-[18px]" />
           <span className="flex-1">New Thread</span>
-          <KeyboardShortcut value="N" />
+          <KeyboardShortcut value="N" className="max-sm:hidden" />
         </Link>
 
         <SessionsSection open={open} />
@@ -643,21 +661,22 @@ export function Sidebar({
         <button
           type="button"
           onClick={onOpenSettings}
-          className="group flex w-full items-center gap-2 rounded-full px-2.5 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2"
+          className="group flex w-full items-center gap-2 rounded-full px-2.5 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px]"
         >
-          <Settings size={15} className="text-ink-2" />
+          <Settings size={15} className="text-ink-2 max-sm:size-[18px]" />
           <span className="flex-1 text-left">Settings</span>
         </button>
       </div>
 
-      {/* drag the right edge to resize; double-click resets to the default width */}
+      {/* drag the right edge to resize; double-click resets to the default
+          width. A phone sidebar is full-screen, so there is nothing to resize. */}
       <div
         role="separator"
         aria-orientation="vertical"
         aria-label="Resize sidebar"
         onPointerDown={onResizeStart}
         onDoubleClick={onResizeReset}
-        className="group absolute inset-y-0 right-0 z-10 flex w-2 cursor-col-resize touch-none justify-end"
+        className="group absolute inset-y-0 right-0 z-10 flex w-2 cursor-col-resize touch-none justify-end max-sm:hidden"
       >
         <span
           className={`h-full w-px transition-colors duration-150 group-hover:bg-primary/40 ${

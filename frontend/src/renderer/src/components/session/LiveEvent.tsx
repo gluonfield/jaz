@@ -7,6 +7,7 @@ import { taskSurfaceFromEvent } from '@/lib/taskSurface'
 import { ArtifactBlock } from './ArtifactBlock'
 import { AssistantMarkdown } from './AssistantMarkdown'
 import { LoopCreatedCard } from './LoopCreatedCard'
+import { SessionErrorNotice } from './SessionErrorNotice'
 import { TaskChecklist } from './TaskChecklist'
 import { ThinkingBlock } from './ThinkingBlock'
 import { ToolSummary } from './ToolDisclosure'
@@ -56,6 +57,7 @@ export const LiveEvent = memo(function LiveEvent({
       ) : null}
       {loopCreated ? <LoopCreatedCard loop={loopCreated} /> : null}
       {event.content && !artifact ? <AssistantMarkdown text={event.content} /> : null}
+      {event.acp?.error ? <SessionErrorNotice message={event.acp.error} /> : null}
       {!parentChild ? <ToolSummary calls={event.acp?.tool_calls} active={working} /> : null}
       {event.permission ? (
         <PermissionCard event={event} resolution={permissionResolution} />

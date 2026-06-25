@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { taskSurfaceFromEvent } from '@/lib/taskSurface'
 import {
   buildTimeline,
-  isCollapsibleWork,
+  classifyTurnItems,
   stableEventKey,
   type TimelineItem,
 } from './timeline'
@@ -236,47 +236,40 @@ export const Transcript = memo(function Transcript({
       {visibleTurns.map((turn, visibleTurnIndex) => {
         const turnIndex = historyStart + visibleTurnIndex
         const active = working && turnIndex === turns.length - 1
-        // Pull result cards out of the chronological flow so the work before and
-        // after the tool call folds into a single "Worked for", and append them
-        // as the turn's outcome below.
+        // Result cards (created loop, spawned-agent run) read as the turn's
+        // outcome, so pull them out of the flow and append them at the end.
         const resultCards = turn.items.filter(isResultCard)
         const flow = turn.items.filter((item) => !isResultCard(item))
-        const lastContentIndex = flow.findLastIndex(
-          (item) => item.kind === 'event' && Boolean(item.event.content?.trim()),
-        )
         const sections: ReactNode[] = []
         if (turn.opener) sections.push(renderItem(turn.opener))
-        let work: TimelineItem[] = []
-        const flushWork = () => {
-          if (!work.length) return
-          const batch = work
-          work = []
-          const durationMs =
-            batch[batch.length - 1].at - (turn.opener?.at ?? batch[0].at)
-          sections.push(
-            <WorkSection
-              key={`work-${turnIndex}-${sections.length}`}
-              items={batch}
-              durationMs={durationMs}
-              defaultOpen={false}
-              findActive={findActive}
-              render={renderItem}
-            />,
+        if (active) {
+          // Live turn: stream items in order. Answer-vs-narration classification
+          // isn't stable until the turn completes, so nothing folds yet.
+          flow.forEach((item) => sections.push(renderItem(item)))
+        } else {
+          // One "Worked for" disclosure per turn holds all folded work, so a shown
+          // message can't split the turn into a staircase of tiny disclosures.
+          const { workItems, resultItems } = classifyTurnItems(
+            flow,
+            pendingPermissionIds,
+            latestTaskSurfaceEvent,
           )
-        }
-        flow.forEach((item, index) => {
-          const collapsible =
-            !active &&
-            index < lastContentIndex &&
-            isCollapsibleWork(item, pendingPermissionIds, latestTaskSurfaceEvent)
-          if (collapsible) {
-            work.push(item)
-            return
+          if (workItems.length) {
+            const durationMs =
+              workItems[workItems.length - 1].at - (turn.opener?.at ?? workItems[0].at)
+            sections.push(
+              <WorkSection
+                key={`work-${turnIndex}`}
+                items={workItems}
+                durationMs={durationMs}
+                defaultOpen={false}
+                findActive={findActive}
+                render={renderItem}
+              />,
+            )
           }
-          flushWork()
-          sections.push(renderItem(item))
-        })
-        flushWork()
+          resultItems.forEach((item) => sections.push(renderItem(item)))
+        }
         resultCards.forEach((item) => sections.push(renderItem(item)))
         return (
           <div key={`turn-${turnIndex}`} className="flex flex-col gap-5">

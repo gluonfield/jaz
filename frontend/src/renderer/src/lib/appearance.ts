@@ -17,6 +17,8 @@ export interface AppearanceSettings {
   monoFont: string
   /** render agent file edits as expanded red/green diffs in the transcript */
   inlineDiffs: boolean
+  /** render the agent's shell commands (command + output) inline in the transcript */
+  inlineShellCommands: boolean
   /** widen the whole thread column (messages, code, diffs, composer) */
   wideLayout: boolean
 }
@@ -27,6 +29,7 @@ export const DEFAULTS: AppearanceSettings = {
   uiFont: '',
   monoFont: '',
   inlineDiffs: false,
+  inlineShellCommands: false,
   wideLayout: false,
 }
 
@@ -40,6 +43,7 @@ const KEYS = {
   uiFont: 'jaz.appearance.uiFont',
   monoFont: 'jaz.appearance.monoFont',
   inlineDiffs: 'jaz.appearance.inlineDiffs',
+  inlineShellCommands: 'jaz.appearance.inlineShellCommands',
   wideLayout: 'jaz.appearance.wideLayout',
 } as const
 
@@ -65,6 +69,7 @@ function readStored(): AppearanceSettings {
     uiFont: fontName(localStorage.getItem(KEYS.uiFont)),
     monoFont: fontName(localStorage.getItem(KEYS.monoFont)),
     inlineDiffs: localStorage.getItem(KEYS.inlineDiffs) === 'true',
+    inlineShellCommands: localStorage.getItem(KEYS.inlineShellCommands) === 'true',
     wideLayout: localStorage.getItem(KEYS.wideLayout) === 'true',
   }
 }
@@ -117,6 +122,12 @@ export function setAppearance(patch: Partial<AppearanceSettings>) {
   if ('monoFont' in patch) persist('monoFont', current.monoFont, current.monoFont.trim() === '')
   if ('inlineDiffs' in patch)
     persist('inlineDiffs', String(current.inlineDiffs), current.inlineDiffs === DEFAULTS.inlineDiffs)
+  if ('inlineShellCommands' in patch)
+    persist(
+      'inlineShellCommands',
+      String(current.inlineShellCommands),
+      current.inlineShellCommands === DEFAULTS.inlineShellCommands,
+    )
   if ('wideLayout' in patch)
     persist('wideLayout', String(current.wideLayout), current.wideLayout === DEFAULTS.wideLayout)
   apply(current)
@@ -156,4 +167,8 @@ export function useEffectsEnabled(): boolean {
 
 export function useInlineDiffs(): boolean {
   return useSyncExternalStore(subscribe, () => current.inlineDiffs)
+}
+
+export function useInlineShellCommands(): boolean {
+  return useSyncExternalStore(subscribe, () => current.inlineShellCommands)
 }

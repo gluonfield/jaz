@@ -2,8 +2,26 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- maximum-scale + user-scalable=no stop iOS Safari from zooming the
+         viewport when a small-font input gains focus; in-app scaling is the
+         Appearance font-scale (documentElement.zoom), not browser pinch-zoom. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no"
+    />
     <link rel="icon" type="image/png" href="./favicon.png" />
+    <!-- Installed-to-home-screen (iOS/Android): without a manifest declaring a
+         standalone scope, iOS treats the web-clip as a bookmark and opens every
+         in-app navigation in its in-app Safari browser. scope:"/" + standalone
+         keep SPA routing inside the installed app. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icon-1024.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Jaz" />
+    <meta name="theme-color" content="#f1f2f6" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1a1b22" media="(prefers-color-scheme: dark)" />
     <title>Jaz</title>
     <script>
       // Apply the saved theme before first paint so dark launches never flash
