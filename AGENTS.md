@@ -19,7 +19,7 @@
 - Keep `main.go` files as command dispatch and process entrypoints only. Arbitrary domain types, helper functions, clients, transports, URL builders, and request/response shapes belong in the package that owns that concept; the only allowed exception is global Viper bootstrap/config wiring.
 - Use Fx constructors directly in `fx.Provide`; avoid pass-through wrappers.
 - Do not add defensive nil checks for required constructor-injected dependencies. If a required Fx service is missing, fail fast instead of silently degrading; model truly optional dependencies explicitly.
-- Codex ACP uses the user's Codex OAuth credentials. Never pass coordinator provider keys to Codex subprocesses.
+- Codex ACP defaults to the user's Codex OAuth credentials. Never silently pass coordinator provider keys to Codex subprocesses; a provider API key reaches Codex only when the user explicitly selects a non-OpenAI model provider (e.g. OpenRouter) for it.
 - Target deployments run the Jaz server on a VM and clients on user computers; never assume client-local file paths are visible to the server or agents.
 - Every test you add must be useful: it must run in the relevant verification path and either protect real behavior or clarify a tricky contract. A test that is skipped, does not run, or provides no useful signal must not exist just to raise coverage.
 - Reference repos (`openclaw`, `hermes`) are learning material, not authority.
