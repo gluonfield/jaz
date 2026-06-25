@@ -307,6 +307,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
     acp_tool_calls: acpToolCalls,
     acp_permissions: acpPermissions,
     acp_error: acpError,
+    acp_active_operation: acpActiveOperation,
     acp_last_event_at: acpLastEventAt,
     acp_last_tool_at: acpLastToolAt,
     acp_children: acpChildren,
@@ -342,6 +343,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
             plan: acpPlan,
             tool_calls: eventsCoverOwnACP ? undefined : acpToolCalls,
             permissions: acpPermissions,
+            active_operation: acpActiveOperation,
             last_event_at: acpLastEventAt,
             last_tool_at: acpLastToolAt,
             updated_at: session.updated_at,
@@ -692,6 +694,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                             <SessionLivenessIndicator
                               agent={session.runtime_ref?.agent}
                               running={sessionRunning}
+                              activeOperation={detail.data?.acp_active_operation}
                               updatedAt={session.updated_at}
                               lastActivityAt={latestEventTimeISO(lastSessionEventAt, live?.at)}
                             />

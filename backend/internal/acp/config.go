@@ -35,6 +35,15 @@ func CanonicalAgentName(name string) string {
 	return name
 }
 
+func AgentSupportsCompact(name string) bool {
+	switch CanonicalAgentName(name) {
+	case AgentCodex, AgentClaude:
+		return true
+	default:
+		return false
+	}
+}
+
 // SystemPromptSource supplies the full ACP session extension (AGENTS.md,
 // memory, skills) injected at session creation.
 type SystemPromptSource interface {
