@@ -11,6 +11,14 @@ type promptOptions struct {
 	GoalRequested bool
 }
 
+type promptFeatureSupport uint8
+
+const (
+	promptFeatureUnsupported promptFeatureSupport = iota
+	promptFeatureSupported
+	promptFeatureNegotiable
+)
+
 func promptOptionsFromStream(req streamRequest) promptOptions {
 	return promptOptions{GoalRequested: req.GoalRequested}
 }
@@ -23,10 +31,8 @@ func (s *Server) validatePromptOptions(session storage.Session, options promptOp
 	if !options.GoalRequested {
 		return nil
 	}
-	if sessionSupportsNativeGoal(session) {
-		return nil
-	}
-	if sessionMayNegotiateNativeGoal(session) {
+	switch nativeGoalSupport(session) {
+	case promptFeatureSupported, promptFeatureNegotiable:
 		return nil
 	}
 	return fmt.Errorf("goal mode is not supported by this ACP agent")
@@ -39,23 +45,26 @@ func (s *Server) validateQueuedPrompt(session storage.Session, prompt storage.Qu
 	return nil
 }
 
-func sessionSupportsNativeGoal(session storage.Session) bool {
-	if session.Runtime == "" {
-		session.Runtime = storage.RuntimeACP
+func nativeGoalSupport(session storage.Session) promptFeatureSupport {
+	runtime := session.Runtime
+	if runtime == "" {
+		runtime = storage.RuntimeACP
 	}
-	session = canonicalSessionResponse(session)
-	return session.Runtime == storage.RuntimeACP &&
-		session.RuntimeRef != nil &&
-		session.RuntimeRef.Capabilities != nil &&
-		session.RuntimeRef.Capabilities.NativeGoal
-}
-
-func sessionMayNegotiateNativeGoal(session storage.Session) bool {
-	if session.Runtime != "" && session.Runtime != storage.RuntimeACP {
-		return false
+	if runtime != storage.RuntimeACP || session.RuntimeRef == nil {
+		return promptFeatureUnsupported
 	}
-	if session.RuntimeRef == nil || session.RuntimeRef.SessionID != "" || session.RuntimeRef.Capabilities != nil {
-		return false
+	caps := storage.NormalizeRuntimeCapabilities(session.RuntimeRef.Capabilities)
+	if caps != nil && caps.NativeGoal {
+		return promptFeatureSupported
 	}
-	return acp.CatalogAgentCapabilitiesFor(session.RuntimeRef.Agent).NativeGoal
+	if caps != nil && caps.NativeGoalNegotiable && session.RuntimeRef.SessionID == "" {
+		return promptFeatureNegotiable
+	}
+	if session.RuntimeRef.SessionID != "" || session.RuntimeRef.Capabilities != nil {
+		return promptFeatureUnsupported
+	}
+	if acp.CatalogAgentCapabilitiesFor(session.RuntimeRef.Agent).NativeGoal {
+		return promptFeatureNegotiable
+	}
+	return promptFeatureUnsupported
 }

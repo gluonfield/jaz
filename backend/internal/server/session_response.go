@@ -28,6 +28,9 @@ func canonicalSessionResponse(session storage.Session) storage.Session {
 	}
 	ref.Agent = canonical
 	ref.Capabilities = storage.NormalizeRuntimeCapabilities(ref.Capabilities)
+	if ref.Capabilities == nil && nativeGoalSupport(session) == promptFeatureNegotiable {
+		ref.Capabilities = &storage.RuntimeCapabilities{NativeGoalNegotiable: true}
+	}
 	session.RuntimeRef = &ref
 	return session
 }

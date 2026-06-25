@@ -13,6 +13,7 @@ export interface RuntimeRef {
 
 export interface RuntimeCapabilities {
   native_goal?: boolean
+  native_goal_negotiable?: boolean
 }
 
 // Provider-facing token fields: input includes cache reads/writes when the

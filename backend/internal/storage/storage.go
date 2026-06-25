@@ -58,7 +58,8 @@ type RuntimeRef struct {
 }
 
 type RuntimeCapabilities struct {
-	NativeGoal bool `json:"native_goal,omitempty"`
+	NativeGoal           bool `json:"native_goal,omitempty"`
+	NativeGoalNegotiable bool `json:"native_goal_negotiable,omitempty"`
 }
 
 // Usage follows provider-facing token vocabulary: InputTokens includes cache
