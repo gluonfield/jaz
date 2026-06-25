@@ -46,6 +46,7 @@ function hasVisibleACPSurface(event: SessionEvent): boolean {
   return Boolean(
     event.content ||
       acp.thought ||
+      acp.error ||
       acp.tool_calls?.length ||
       hasTaskSurface ||
       hasWorkingStatusSurface(event),

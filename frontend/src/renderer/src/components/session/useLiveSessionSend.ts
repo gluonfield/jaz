@@ -2,8 +2,9 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react'
 import { uploadSessionAttachment } from '@/lib/api/sessions'
 import { streamSessionMessage, type AgentStreamEvent } from '@/lib/api/stream'
-import type { ChatMessage, MessageBlock } from '@/lib/api/types'
+import type { ChatMessage } from '@/lib/api/types'
 import { contextInputs } from '@/lib/messageContext'
+import { userInputMessageBlocks } from '@/lib/messageBlocks'
 import { keys } from '@/lib/query/keys'
 import { preparedSendMessage, type ComposerContext, type SendMessageOptions } from '@/lib/sendMessage'
 import { isHiddenToolName } from './toolVisibility'
@@ -146,27 +147,7 @@ export function liveUserMessage(live: LiveExchange, seq: number): ChatMessage {
     seq,
     role: 'user',
     content: live.user,
-    blocks: [
-      ...contextInputs(live.contexts).map<MessageBlock>((context) =>
-        context.type === 'selection'
-          ? { type: 'quote', text: context.text }
-          : { type: 'browser_annotation', input_json: JSON.stringify(context.browser_annotation ?? {}) },
-      ),
-      { type: 'text', text: live.user },
-      ...live.attachments.flatMap<MessageBlock>((attachment) =>
-        attachment.id && attachment.uri
-          ? [{
-              type: 'attachment',
-              id: attachment.id,
-              name: attachment.name,
-              uri: attachment.uri,
-              mime_type: attachment.mime_type,
-              size: attachment.size,
-              server_path: attachment.server_path,
-            }]
-          : [],
-      ),
-    ],
+    blocks: userInputMessageBlocks(live.user, contextInputs(live.contexts), live.attachments),
     created_at: live.at,
   }
 }
