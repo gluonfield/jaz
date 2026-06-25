@@ -121,6 +121,7 @@ function ColorField({
           type="text"
           value={text}
           spellCheck={false}
+          aria-label={`${title} hex value`}
           onChange={(e) => commit(e.target.value)}
           className="w-[5.5rem] rounded-control bg-surface-2 px-2 py-1 font-mono text-[12px] uppercase text-ink outline-none ring-1 ring-border/60 focus:ring-1 focus:ring-primary"
         />
