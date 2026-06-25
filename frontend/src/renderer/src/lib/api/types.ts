@@ -400,6 +400,7 @@ export interface SessionMessages {
   acp_tool_calls?: ACPToolCall[]
   acp_permissions?: ACPPermission[]
   acp_error?: string
+  acp_active_operation?: string
   acp_last_event_at?: string
   acp_last_tool_at?: string
   acp_children?: ACPJobSnapshot[]
@@ -558,6 +559,7 @@ export interface ACPJobSnapshot {
   plan?: ACPPlanEntry[]
   tool_calls?: ACPToolCall[]
   permissions?: ACPPermission[]
+  active_operation?: string
   parent_visible?: boolean
   last_event_at?: string
   last_tool_at?: string

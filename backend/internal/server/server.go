@@ -346,7 +346,7 @@ func (s *Server) writeSessionMessages(w http.ResponseWriter, session storage.Ses
 func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
 	sessionRef, action, ok := strings.Cut(rest, "/")
-	if !ok || (action != "messages:stream" && action != "attachments" && action != "archive" && action != "unarchive" && action != "pin" && action != "unpin" && action != "rename" && action != "interactive-response" && action != "permission" && action != "cancel" && action != "queue" && action != "repo/push" && action != "repo/commit" && action != "repo/merge" && action != "repo/merge-from-main" && action != "repo/restore-worktree") {
+	if !ok || (action != "messages:stream" && action != "attachments" && action != "archive" && action != "unarchive" && action != "pin" && action != "unpin" && action != "rename" && action != "interactive-response" && action != "permission" && action != "cancel" && action != "compact" && action != "queue" && action != "repo/push" && action != "repo/commit" && action != "repo/merge" && action != "repo/merge-from-main" && action != "repo/restore-worktree") {
 		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
 		return
 	}
@@ -466,6 +466,10 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 			s.publishMessagesChanged(session.ID)
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		return
+	}
+	if action == "compact" {
+		s.handleSessionCompact(w, r, session)
 		return
 	}
 	if action == "interactive-response" || action == "permission" {

@@ -264,6 +264,41 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	}
 }
 
+func TestManagerSendCanSkipStoredUserMessage(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := newFakeAgentManager(t, store, t.TempDir(), nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-skip-user-message"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+
+	if _, err := manager.Send(ctx, acp.SendRequest{
+		Session:         spawned.SessionID,
+		Message:         acp.CompactCommand,
+		Completion:      acp.CompletionInline,
+		ActiveOperation: acp.ActiveOperationCompact,
+		SkipUserMessage: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second}); err != nil {
+		t.Fatal(err)
+	}
+	messages, err := store.LoadMessages(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 0 {
+		t.Fatalf("stored messages = %#v, want none", messages)
+	}
+}
+
 type fakeAdapterResolver struct {
 	launch acp.AdapterLaunch
 }

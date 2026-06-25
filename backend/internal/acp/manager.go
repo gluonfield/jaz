@@ -112,14 +112,21 @@ type SpawnRequest struct {
 }
 
 type SendRequest struct {
-	Session       string
-	Message       string
-	Contexts      []storage.MessageContext
-	Attachments   []storage.Attachment
-	Completion    CompletionMode
-	PlanRequested bool
-	ParentVisible bool
+	Session         string
+	Message         string
+	Contexts        []storage.MessageContext
+	Attachments     []storage.Attachment
+	Completion      CompletionMode
+	PlanRequested   bool
+	ParentVisible   bool
+	ActiveOperation string
+	SkipUserMessage bool
 }
+
+const (
+	ActiveOperationCompact = "compact"
+	CompactCommand         = "/compact"
+)
 
 type SteerRequest struct {
 	Session       string
@@ -717,6 +724,7 @@ func (m *Manager) cancelStored(ref string) (Job, error) {
 	}
 	state.State = StateCancelled
 	state.StopReason = "cancelled"
+	state.ActiveOperation = ""
 	state.Permissions = nil
 	now := time.Now().UTC()
 	state.UpdatedAt = now

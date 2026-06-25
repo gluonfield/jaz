@@ -45,11 +45,13 @@ func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {
 		return Job{}, err
 	}
 	promptMessage, contexts := promptMessageAndContexts(req.Message, req.Contexts)
-	if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments); err != nil {
-		m.log.Error("append user message failed", "session", job.ID, "error", err)
+	if !req.SkipUserMessage {
+		if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments); err != nil {
+			m.log.Error("append user message failed", "session", job.ID, "error", err)
+		}
 	}
 	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested)
-	job.startTurn(req.Completion, req.PlanRequested, req.ParentVisible)
+	job.startTurnWithOperation(req.Completion, req.PlanRequested, req.ParentVisible, req.ActiveOperation)
 	m.touchJobAttention(job)
 	m.publishACP(job.Snapshot())
 	if local != nil {

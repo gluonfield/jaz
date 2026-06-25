@@ -28,12 +28,13 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 	}
 	startCtx, cancelStart := serverActionContextFrom(clientCtx)
 	job, err := s.ACP.Send(startCtx, acp.SendRequest{
-		Session:       session.ID,
-		Message:       message,
-		Contexts:      contexts,
-		Attachments:   attachments,
-		Completion:    acp.CompletionInline,
-		PlanRequested: planRequested,
+		Session:         session.ID,
+		Message:         message,
+		Contexts:        contexts,
+		Attachments:     attachments,
+		Completion:      acp.CompletionInline,
+		PlanRequested:   planRequested,
+		ActiveOperation: acpActiveOperationForMessage(message),
 	})
 	cancelStart()
 	if err != nil {
