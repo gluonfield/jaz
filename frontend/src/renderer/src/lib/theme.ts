@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { appearanceConfig } from './appearanceConfig'
 import { clientRuntime } from './clientRuntime'
 
 // 'system' follows the OS appearance; 'light'/'dark' pin it. Persisted across
@@ -13,9 +14,20 @@ const DARK_BG = 'oklch(0.208 0.007 262)'
 const media = window.matchMedia('(prefers-color-scheme: dark)')
 const listeners = new Set<() => void>()
 
+function isThemePref(v: unknown): v is ThemePref {
+  return v === 'light' || v === 'dark' || v === 'system'
+}
+
+// Build-time default theme from the appearance config file; only used when the
+// user hasn't pinned one themselves.
+function configDefaultTheme(): ThemePref {
+  const theme = appearanceConfig().theme
+  return isThemePref(theme) ? theme : 'system'
+}
+
 function readStored(): ThemePref {
   const v = localStorage.getItem(KEY)
-  return v === 'light' || v === 'dark' || v === 'system' ? v : 'system'
+  return isThemePref(v) ? v : configDefaultTheme()
 }
 
 let pref: ThemePref = readStored()

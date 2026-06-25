@@ -1,14 +1,18 @@
 import { useSyncExternalStore } from 'react'
+import { type AppearanceConfig, appearanceConfig } from './appearanceConfig'
 
 // User-tunable appearance preferences, kept deliberately separate from the
 // light/dark theme (lib/theme.ts). Same mechanics: persisted in localStorage,
 // applied to the document root, mirrored into the pre-paint script in
 // index.html, and synced across sibling Electron windows via the storage event.
-// Defaults reproduce the stock look exactly, so an untouched install is
-// byte-for-byte the current experience.
+// Build-time defaults from the appearance config file (see appearanceConfig.ts)
+// layer *under* a user's own choices; with no config, an untouched install is
+// byte-for-byte the stock look.
 export interface AppearanceSettings {
   /** decorative motion: composer focus comet, shimmer dots, gradient wordmark, particle fields */
   effects: boolean
+  /** accent hue in oklch degrees; drives the whole --color-primary family via --accent-h */
+  accent: number
   /** whole-UI zoom factor; 1 is the stock size */
   fontScale: number
   /** interface font family name; '' keeps the default Inter stack */
@@ -23,8 +27,13 @@ export interface AppearanceSettings {
   wideLayout: boolean
 }
 
+// Stock accent hue (cobalt). Matches the --accent-h fallback in globals.css; an
+// untouched install never writes the key, so the CSS default rules.
+export const DEFAULT_ACCENT_HUE = 262
+
 export const DEFAULTS: AppearanceSettings = {
   effects: true,
+  accent: DEFAULT_ACCENT_HUE,
   fontScale: 1,
   uiFont: '',
   monoFont: '',
@@ -37,21 +46,36 @@ export const DEFAULTS: AppearanceSettings = {
 // document root (CSS zoom) is the only thing that grows everything together.
 export const FONT_SCALES = [0.9, 1, 1.1, 1.25] as const
 
-const KEYS = {
-  effects: 'jaz.appearance.effects',
-  fontScale: 'jaz.appearance.fontScale',
-  uiFont: 'jaz.appearance.uiFont',
-  monoFont: 'jaz.appearance.monoFont',
-  inlineDiffs: 'jaz.appearance.inlineDiffs',
-  inlineShellCommands: 'jaz.appearance.inlineShellCommands',
-  wideLayout: 'jaz.appearance.wideLayout',
-} as const
+// Curated accent palette. Each preset is just an oklch hue: the primary family
+// in globals.css carries its own lightness/chroma per token and per theme, so a
+// hue is all it takes to recolour the accent everywhere. Cobalt is the default.
+export interface AccentPreset {
+  id: string
+  label: string
+  hue: number
+}
+
+export const ACCENT_PRESETS: readonly AccentPreset[] = [
+  { id: 'cobalt', label: 'Cobalt', hue: DEFAULT_ACCENT_HUE },
+  { id: 'azure', label: 'Azure', hue: 230 },
+  { id: 'teal', label: 'Teal', hue: 195 },
+  { id: 'green', label: 'Green', hue: 150 },
+  { id: 'amber', label: 'Amber', hue: 75 },
+  { id: 'rose', label: 'Rose', hue: 12 },
+  { id: 'magenta', label: 'Magenta', hue: 340 },
+  { id: 'violet', label: 'Violet', hue: 300 },
+] as const
 
 const listeners = new Set<() => void>()
 
 export function normalizeFontScale(value: unknown): AppearanceSettings['fontScale'] {
   const scale = typeof value === 'number' ? value : Number(value)
   return FONT_SCALES.find((candidate) => Math.abs(candidate - scale) < 0.001) ?? DEFAULTS.fontScale
+}
+
+export function normalizeAccent(value: unknown): AppearanceSettings['accent'] {
+  const hue = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(hue) && hue >= 0 && hue < 360 ? hue : DEFAULT_ACCENT_HUE
 }
 
 function fontName(value: string | null): string {
@@ -62,16 +86,93 @@ function cssFontName(name: string): string {
   return `"${name.replace(/["\\]/g, '')}"`
 }
 
-function readStored(): AppearanceSettings {
-  return {
-    effects: localStorage.getItem(KEYS.effects) !== 'false',
-    fontScale: normalizeFontScale(localStorage.getItem(KEYS.fontScale)),
-    uiFont: fontName(localStorage.getItem(KEYS.uiFont)),
-    monoFont: fontName(localStorage.getItem(KEYS.monoFont)),
-    inlineDiffs: localStorage.getItem(KEYS.inlineDiffs) === 'true',
-    inlineShellCommands: localStorage.getItem(KEYS.inlineShellCommands) === 'true',
-    wideLayout: localStorage.getItem(KEYS.wideLayout) === 'true',
+// Each field's persistence contract in one place: how it reads from the
+// build-time config, decodes from / encodes to localStorage, and normalizes a
+// programmatically-set value. apply() owns the (heterogeneous) DOM side. Adding
+// a field is one entry here plus its DEFAULTS / AppearanceConfig / FOUC counterparts.
+interface Field<T> {
+  storageKey: string
+  fromConfig(cfg: AppearanceConfig): T | undefined
+  decode(raw: string): T
+  encode(value: T): string
+  normalize(value: T): T
+}
+
+const boolField = (
+  storageKey: string,
+  pick: (cfg: AppearanceConfig) => boolean | undefined,
+): Field<boolean> => ({
+  storageKey,
+  fromConfig: pick,
+  decode: (raw) => raw === 'true',
+  encode: String,
+  normalize: (v) => v,
+})
+
+const fontField = (
+  storageKey: string,
+  pick: (cfg: AppearanceConfig) => string | undefined,
+): Field<string> => ({
+  storageKey,
+  fromConfig: (cfg) => {
+    const v = pick(cfg)
+    return typeof v === 'string' ? fontName(v) : undefined
+  },
+  decode: fontName,
+  encode: (v) => v,
+  normalize: fontName,
+})
+
+const numberField = (
+  storageKey: string,
+  pick: (cfg: AppearanceConfig) => unknown,
+  normalize: (value: unknown) => number,
+): Field<number> => ({
+  storageKey,
+  fromConfig: (cfg) => {
+    const v = pick(cfg)
+    return typeof v === 'number' ? normalize(v) : undefined
+  },
+  decode: normalize,
+  encode: String,
+  normalize,
+})
+
+const FIELDS: { [K in keyof AppearanceSettings]: Field<AppearanceSettings[K]> } = {
+  effects: boolField('jaz.appearance.effects', (c) => c.effects),
+  accent: numberField('jaz.appearance.accent', (c) => c.accent, normalizeAccent),
+  fontScale: numberField('jaz.appearance.fontScale', (c) => c.fontScale, normalizeFontScale),
+  uiFont: fontField('jaz.appearance.uiFont', (c) => c.uiFont),
+  monoFont: fontField('jaz.appearance.monoFont', (c) => c.monoFont),
+  inlineDiffs: boolField('jaz.appearance.inlineDiffs', (c) => c.inlineDiffs),
+  inlineShellCommands: boolField('jaz.appearance.inlineShellCommands', (c) => c.inlineShellCommands),
+  wideLayout: boolField('jaz.appearance.wideLayout', (c) => c.wideLayout),
+}
+
+const FIELD_KEYS = Object.keys(FIELDS) as (keyof AppearanceSettings)[]
+
+// The base a client falls back to for any field the user hasn't set: build-time
+// config (appearance-defaults.js) over the hardcoded DEFAULTS. Static — the
+// config is fixed at build time.
+const BASE_DEFAULTS: AppearanceSettings = (() => {
+  const cfg = appearanceConfig()
+  const base = { ...DEFAULTS }
+  const seed = <K extends keyof AppearanceSettings>(key: K) => {
+    const v = FIELDS[key].fromConfig(cfg)
+    if (v !== undefined) base[key] = v
   }
+  for (const key of FIELD_KEYS) seed(key)
+  return base
+})()
+
+function readStored(): AppearanceSettings {
+  const out = { ...BASE_DEFAULTS }
+  const load = <K extends keyof AppearanceSettings>(key: K) => {
+    const raw = localStorage.getItem(FIELDS[key].storageKey)
+    if (raw !== null) out[key] = FIELDS[key].decode(raw)
+  }
+  for (const key of FIELD_KEYS) load(key)
+  return out
 }
 
 let current: AppearanceSettings = readStored()
@@ -81,6 +182,9 @@ function apply(s: AppearanceSettings) {
   // Effects: a single root class CSS keys off (mirrors prefers-reduced-motion);
   // JS-driven effects read the `effects` flag through useEffectsEnabled.
   root.classList.toggle('jaz-no-effects', !s.effects)
+  // Accent: a single hue feeds the whole --color-primary family in globals.css.
+  if (s.accent !== DEFAULT_ACCENT_HUE) root.style.setProperty('--accent-h', String(s.accent))
+  else root.style.removeProperty('--accent-h')
   // Font size: zoom the whole document so px chrome and rem prose grow together.
   if (s.fontScale && s.fontScale !== 1) root.style.setProperty('zoom', String(s.fontScale))
   else root.style.removeProperty('zoom')
@@ -94,11 +198,6 @@ function apply(s: AppearanceSettings) {
   root.classList.toggle('jaz-wide-layout', s.wideLayout)
 }
 
-function persist(key: keyof AppearanceSettings, value: string, isDefault: boolean) {
-  if (isDefault) localStorage.removeItem(KEYS[key])
-  else localStorage.setItem(KEYS[key], value)
-}
-
 function notify() {
   for (const l of listeners) l()
 }
@@ -108,28 +207,21 @@ export function getAppearance(): AppearanceSettings {
 }
 
 export function setAppearance(patch: Partial<AppearanceSettings>) {
-  current = {
-    ...current,
-    ...patch,
-    fontScale: 'fontScale' in patch ? normalizeFontScale(patch.fontScale) : current.fontScale,
-    uiFont: 'uiFont' in patch ? fontName(patch.uiFont ?? '') : current.uiFont,
-    monoFont: 'monoFont' in patch ? fontName(patch.monoFont ?? '') : current.monoFont,
+  const next = { ...current }
+  // A key is stored only when it differs from the base (config over hardcoded);
+  // setting the base value clears the override so it keeps tracking the config.
+  const store = <K extends keyof AppearanceSettings>(key: K, value: AppearanceSettings[K]) => {
+    const field = FIELDS[key]
+    const normalized = field.normalize(value)
+    next[key] = normalized
+    if (normalized === BASE_DEFAULTS[key]) localStorage.removeItem(field.storageKey)
+    else localStorage.setItem(field.storageKey, field.encode(normalized))
   }
-  if ('effects' in patch) persist('effects', String(current.effects), current.effects === DEFAULTS.effects)
-  if ('fontScale' in patch)
-    persist('fontScale', String(current.fontScale), current.fontScale === DEFAULTS.fontScale)
-  if ('uiFont' in patch) persist('uiFont', current.uiFont, current.uiFont.trim() === '')
-  if ('monoFont' in patch) persist('monoFont', current.monoFont, current.monoFont.trim() === '')
-  if ('inlineDiffs' in patch)
-    persist('inlineDiffs', String(current.inlineDiffs), current.inlineDiffs === DEFAULTS.inlineDiffs)
-  if ('inlineShellCommands' in patch)
-    persist(
-      'inlineShellCommands',
-      String(current.inlineShellCommands),
-      current.inlineShellCommands === DEFAULTS.inlineShellCommands,
-    )
-  if ('wideLayout' in patch)
-    persist('wideLayout', String(current.wideLayout), current.wideLayout === DEFAULTS.wideLayout)
+  for (const key of FIELD_KEYS) {
+    const value = patch[key]
+    if (value !== undefined) store(key, value)
+  }
+  current = next
   apply(current)
   notify()
 }
