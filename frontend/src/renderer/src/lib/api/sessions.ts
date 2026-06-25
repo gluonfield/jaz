@@ -316,6 +316,10 @@ export function setSessionPinned(id: string, pinned: boolean): Promise<Session> 
   return post<Session>(`/v1/sessions/${id}/${pinned ? 'pin' : 'unpin'}`)
 }
 
+export function setSessionTitle(id: string, title: string): Promise<Session> {
+  return post<Session>(`/v1/sessions/${id}/rename`, { title })
+}
+
 // Stops the in-flight turn server-side (turns survive closed streams).
 export function cancelSession(id: string): Promise<{ ok: boolean }> {
   return post<{ ok: boolean }>(`/v1/sessions/${id}/cancel`)
