@@ -589,7 +589,9 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   return (
     <FileReaderLinkProvider onOpen={openFile}>
       <PreviewLinkProvider onOpen={sidePanel.openPreview}>
-        <FileDropScope ref={sidePanel.measureRef} className="relative flex h-full">
+        {/* Phone: the closed side panel slides off to the right (translateX 100%);
+            clip horizontal overflow so it can't be revealed by scrolling. */}
+        <FileDropScope ref={sidePanel.measureRef} className="relative flex h-full max-sm:overflow-x-clip">
           {titlebarSlot
             ? createPortal(
                 <>
