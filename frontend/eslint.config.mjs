@@ -5,7 +5,14 @@ import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
   {
-    ignores: ['out/**', 'dist/**', 'dist-web/**', 'resources/**', 'src/renderer/src/routeTree.gen.ts'],
+    ignores: [
+      'out/**',
+      'dist/**',
+      'dist-web/**',
+      'resources/**',
+      'src/renderer/public/**',
+      'src/renderer/src/routeTree.gen.ts',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
