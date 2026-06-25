@@ -2,9 +2,8 @@ import { Check, ChevronsUpDown, Pencil, Plus, X } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 import { Input } from '@/components/ui/Input'
 import { Popover } from '@/components/ui/Popover'
-import { useToast } from '@/components/ui/toast'
-import { type KnownBackend, renameBackend, useKnownBackends } from '@/lib/backends'
-import { connectRemote, forgetBackend, startLocal, useConnection } from '@/lib/connection'
+import { type KnownBackend, renameBackend } from '@/lib/backends'
+import { forgetBackend } from '@/lib/connection'
 import {
   backendName,
   connectionStatusDisplay,
@@ -12,25 +11,16 @@ import {
   localBackendLabel,
   sameBackend,
 } from '@/lib/connectionDisplay'
+import { useBackendSwitcher } from './useBackendSwitcher'
 
 // The backend selector that sits above the settings list: switch which machine
 // Jaz runs on (everything below is configured for it), rename or forget saved
 // servers, or connect a new one. Backends are the context for settings, not a
 // settings page of their own.
 export function BackendSwitcher({ onConnectServer }: { onConnectServer: () => void }) {
-  const { status, url } = useConnection()
-  const remotes = useKnownBackends()
-  const toast = useToast()
-  const [open, setOpen] = useState(false)
+  const { open, setOpen, status, url, remotes, switchLocal, switchRemote } = useBackendSwitcher()
 
   const { dot } = connectionStatusDisplay(status)
-  const localCurrent = describeBackend(url).local
-
-  const switchTo = async (action: () => Promise<string | null>) => {
-    setOpen(false)
-    const err = await action()
-    if (err) toast(err, 'danger')
-  }
 
   return (
     <Popover
@@ -54,13 +44,13 @@ export function BackendSwitcher({ onConnectServer }: { onConnectServer: () => vo
       }
     >
       <p className="px-2.5 pb-1 pt-1 text-[11px] font-medium text-ink-3">Run jaz on</p>
-      <SwitchRow label={localBackendLabel()} current={localCurrent} onSwitch={() => switchTo(startLocal)} />
+      <SwitchRow label={localBackendLabel()} current={describeBackend(url).local} onSwitch={switchLocal} />
       {remotes.map((remote) => (
         <RemoteRow
           key={remote.url}
           backend={remote}
           current={sameBackend(url, remote.url)}
-          onSwitch={() => switchTo(() => connectRemote(remote.url))}
+          onSwitch={() => switchRemote(remote.url)}
           onRename={(label) => renameBackend(remote.url, label)}
           onForget={() => forgetBackend(remote.url)}
         />
