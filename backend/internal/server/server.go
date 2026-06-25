@@ -38,6 +38,7 @@ type ACPManager interface {
 	CreateSession(context.Context, acp.SpawnRequest) (storage.Session, error)
 	Spawn(context.Context, acp.SpawnRequest) (acp.SpawnResult, error)
 	Send(context.Context, acp.SendRequest) (acp.Job, error)
+	Compact(context.Context, acp.CompactRequest) (acp.Job, error)
 	Steer(context.Context, acp.SteerRequest) (acp.Job, error)
 	SendSideChat(context.Context, acp.SideChatRequest) error
 	Status(string) (acp.Job, error)
@@ -346,7 +347,7 @@ func (s *Server) writeSessionMessages(w http.ResponseWriter, session storage.Ses
 func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
 	sessionRef, action, ok := strings.Cut(rest, "/")
-	if !ok || (action != "messages:stream" && action != "attachments" && action != "archive" && action != "unarchive" && action != "pin" && action != "unpin" && action != "rename" && action != "interactive-response" && action != "permission" && action != "cancel" && action != "queue" && action != "repo/push" && action != "repo/commit" && action != "repo/merge" && action != "repo/merge-from-main" && action != "repo/restore-worktree") {
+	if !ok || !knownSessionAction(action) {
 		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
 		return
 	}
@@ -468,6 +469,10 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 		return
 	}
+	if action == "compact" {
+		s.handleSessionCompact(w, r, session)
+		return
+	}
 	if action == "interactive-response" || action == "permission" {
 		if s.ACP == nil {
 			writeError(w, http.StatusInternalServerError, fmt.Errorf("acp manager is not configured"))
@@ -504,12 +509,21 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("message is required"))
 		return
 	}
-	attachments, err := s.resolveAttachments(session.ID, req.AttachmentIDs)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err)
-		return
+	turn := acpStreamTurnFromRequest(req)
+	if turn.compact() {
+		if !sessionSupportsCompact(session) {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("compact is not available for this session"))
+			return
+		}
+	} else {
+		attachments, err := s.resolveAttachments(session.ID, req.AttachmentIDs)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		turn.Attachments = attachments
+		turn.Contexts = storage.NormalizeMessageContexts(append(storage.SelectionContexts(req.Quotes), req.Contexts...))
 	}
-	contexts := storage.NormalizeMessageContexts(append(storage.SelectionContexts(req.Quotes), req.Contexts...))
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -524,7 +538,7 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 
 	switch session.Runtime {
 	case storage.RuntimeACP:
-		s.streamACPSession(w, flusher, r.Context(), session, req.Message, contexts, attachments, req.PlanRequested)
+		s.streamACPSession(w, flusher, r.Context(), session, turn)
 	default:
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: fmt.Sprintf("unknown session runtime %q", session.Runtime)})
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})

@@ -12,7 +12,36 @@ import (
 
 var ErrPromptQueueingUnsupported = errors.New("acp prompt queueing unsupported")
 
+type sendTranscriptMode int
+
+const (
+	sendTranscriptUserMessage sendTranscriptMode = iota
+	sendTranscriptHidden
+)
+
+type sendOptions struct {
+	activeOperation       string
+	transcript            sendTranscriptMode
+	requireCompactSupport bool
+}
+
 func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {
+	return m.send(ctx, req, sendOptions{transcript: sendTranscriptUserMessage})
+}
+
+func (m *Manager) Compact(ctx context.Context, req CompactRequest) (Job, error) {
+	return m.send(ctx, SendRequest{
+		Session:    req.Session,
+		Message:    CompactCommand,
+		Completion: CompletionInline,
+	}, sendOptions{
+		activeOperation:       ActiveOperationCompact,
+		transcript:            sendTranscriptHidden,
+		requireCompactSupport: true,
+	})
+}
+
+func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (Job, error) {
 	job, err := m.job(req.Session)
 	if err == nil && m.serveErr(job.ID) != nil {
 		job.mu.RLock()
@@ -27,6 +56,9 @@ func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {
 		if job, err = m.resume(ctx, req.Session); err != nil {
 			return Job{}, err
 		}
+	}
+	if opts.requireCompactSupport && !AgentSupportsCompact(job.ACPAgent) {
+		return Job{}, fmt.Errorf("compact is not available for acp agent %q", job.ACPAgent)
 	}
 	if strings.TrimSpace(req.Message) == "" {
 		return Job{}, fmt.Errorf("message is required")
@@ -45,11 +77,13 @@ func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {
 		return Job{}, err
 	}
 	promptMessage, contexts := promptMessageAndContexts(req.Message, req.Contexts)
-	if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments); err != nil {
-		m.log.Error("append user message failed", "session", job.ID, "error", err)
+	if opts.transcript == sendTranscriptUserMessage {
+		if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments); err != nil {
+			m.log.Error("append user message failed", "session", job.ID, "error", err)
+		}
 	}
 	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested)
-	job.startTurn(req.Completion, req.PlanRequested, req.ParentVisible)
+	job.startTurnWithOperation(req.Completion, req.PlanRequested, req.ParentVisible, opts.activeOperation)
 	m.touchJobAttention(job)
 	m.publishACP(job.Snapshot())
 	if local != nil {
