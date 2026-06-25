@@ -14,6 +14,7 @@ const (
 
 	CapabilityJaz      = "jaz"
 	CapabilityOpenCode = "opencode"
+	CapabilityCodex    = "codex"
 )
 
 type ModelProvider struct {
@@ -25,6 +26,7 @@ type ModelProvider struct {
 	DefaultReasoningEffort string `json:"default_reasoning_effort,omitempty"`
 	Implemented            bool   `json:"implemented"`
 	OpenCode               bool   `json:"opencode,omitempty"`
+	Codex                  bool   `json:"codex,omitempty"`
 	OpenAICompatible       bool   `json:"openai_compatible,omitempty"`
 	RequiresAPIKey         bool   `json:"requires_api_key,omitempty"`
 }
@@ -49,6 +51,7 @@ func ModelProviders() []ModelProvider {
 			DefaultReasoningEffort: "medium",
 			Implemented:            true,
 			OpenCode:               true,
+			Codex:                  true,
 			RequiresAPIKey:         true,
 		},
 		{
@@ -60,6 +63,7 @@ func ModelProviders() []ModelProvider {
 			DefaultReasoningEffort: "medium",
 			Implemented:            true,
 			OpenCode:               true,
+			Codex:                  true,
 			RequiresAPIKey:         true,
 		},
 		{
@@ -154,6 +158,8 @@ func (p ModelProvider) SupportsCapability(capability string) bool {
 		return p.Implemented
 	case CapabilityOpenCode:
 		return p.OpenCode
+	case CapabilityCodex:
+		return p.Codex
 	default:
 		return false
 	}

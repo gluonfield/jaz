@@ -17,6 +17,7 @@ import { agentLabel, authProviderLabel } from '@/lib/agentLabel'
 import {
   acpAgentEnableable,
   acpAgentEnabled,
+  acpProviderUsesNativeAuth,
   acpUsesModelProvider,
   modelProviderConnected,
   modelProviderRequiresKey,
@@ -209,15 +210,16 @@ function ACPAgentRow({
   const usesModelProvider = acpUsesModelProvider(settings, agent)
   const providerOptions = selectableACPModelProviders(settings, agent)
   const selectedProvider = selectedACPModelProvider(settings, agent)
+  const selectedProviderNativeAuth = acpProviderUsesNativeAuth(settings, agent, current.model_provider)
+  const showAuthPanel = supportsAuth && (!usesModelProvider || selectedProviderNativeAuth)
   const providerReady = acpAgentEnableable(settings, agent)
   const checked = acpAgentEnabled(settings, agent)
-  const authReady = Boolean(authStatus?.authenticated || settings.acp_keys?.[agent]?.trim())
   const enableDescription = providerReady
     ? 'Show this ACP client in agent pickers.'
-    : usesModelProvider && selectedProvider
-      ? `Connect ${selectedProvider.label} in Model Providers before enabling.`
-      : supportsAuth && !authReady
-        ? `Connect ${authProviderLabel(agent)} or add an API key before enabling.`
+    : selectedProviderNativeAuth || (supportsAuth && !usesModelProvider)
+      ? `Connect ${authProviderLabel(agent)} or add an API key before enabling.`
+      : usesModelProvider && selectedProvider
+        ? `Connect ${selectedProvider.label} in Model Providers before enabling.`
         : 'Select a provider before enabling.'
   const [commandOpen, setCommandOpen] = useState(requiresCommand && (current.command ?? '').trim() === '')
   const openRouterModels = useQuery({
@@ -261,7 +263,7 @@ function ACPAgentRow({
         </div>
       </SettingsRow>
 
-      {supportsAuth && !usesModelProvider ? (
+      {showAuthPanel ? (
         <div className="border-t border-border/70 px-3 py-3">
           {/* Auth is never gated by the Enabled toggle: you must be able to connect
               an agent you skipped in onboarding. Connecting it turns it on.
@@ -316,9 +318,11 @@ function ACPAgentRow({
               className={rowControlClass}
             />
           </SettingsRow>
-          <div className="border-t border-border/70 px-3 py-3">
-            <ProviderConnectionStrip provider={selectedProvider} onOpenProviders={onOpenProviders} />
-          </div>
+          {selectedProviderNativeAuth ? null : (
+            <div className="border-t border-border/70 px-3 py-3">
+              <ProviderConnectionStrip provider={selectedProvider} onOpenProviders={onOpenProviders} />
+            </div>
+          )}
         </>
       ) : null}
 

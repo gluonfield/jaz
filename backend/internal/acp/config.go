@@ -104,6 +104,7 @@ type AgentConfig struct {
 	ProviderMode            string
 	ModelProviderCapability string
 	ModelProvider           string
+	AuthProviderID          string
 	Model                   string
 	ReasoningEffort         string
 	URL                     string
@@ -257,8 +258,12 @@ func codexBuiltinAgent(_ string) AgentConfig {
 			"-c", `features.tool_search_always_defer_mcp_tools=true`,
 			"-c", `suppress_unstable_features_warning=true`,
 		},
-		Model:           "gpt-5.5",
-		ReasoningEffort: "xhigh",
+		ProviderMode:            AgentProviderModeAgentDefaults,
+		ModelProviderCapability: provider.CapabilityCodex,
+		ModelProvider:           provider.ProviderOpenAI,
+		AuthProviderID:          provider.ProviderOpenAI,
+		Model:                   "gpt-5.5",
+		ReasoningEffort:         "xhigh",
 	}
 }
 
