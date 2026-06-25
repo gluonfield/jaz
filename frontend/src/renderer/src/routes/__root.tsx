@@ -15,6 +15,7 @@ import { Sidebar } from '@/components/sidebar/Sidebar'
 import { ToastProvider } from '@/components/ui/toast'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { modalDialogOpen } from '@/lib/dom/modal'
+import { isMobileViewport, useIsMobile, useViewportWidth } from '@/lib/hooks/useIsMobile'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import type { BrowserNavigationDirection } from '../../../shared/browserNavigation'
 
@@ -60,10 +61,11 @@ const SIDEBAR_MAX_WIDTH = 480
 const SIDEBAR_PREF_KEY = 'jaz.sidebar'
 const SIDEBAR_WIDTH_KEY = 'jaz.sidebarWidth'
 
-// On macOS the toggle lives next to the hidden-titlebar traffic lights, so it
-// (and the content header) clear them. Off mac the OS draws its own titlebar
-// and there is nothing at the window's top-left to dodge.
-const isMac = /Mac/.test(navigator.platform)
+// The macOS traffic lights only exist in the desktop app, which hides the
+// native titlebar and redraws its own; the toggle and content header clear
+// them there. The browser client (even on a Mac) keeps the OS title bar, so
+// there is nothing at the window's top-left to dodge.
+const isMacDesktop = clientRuntime.kind === 'electron' && /Mac/.test(navigator.platform)
 
 const clampSidebarWidth = (w: number) =>
   Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(w)))
@@ -76,8 +78,10 @@ function RootLayout() {
   useEffect(() => {
     return clientRuntime.onOpenRoute?.((path) => router.history.push(path))
   }, [router])
+  // Phones start with the full-screen drawer closed so the thread shows first;
+  // the stored preference only governs the desktop column.
   const [sidebarOpen, setSidebarOpen] = useState(
-    () => localStorage.getItem(SIDEBAR_PREF_KEY) !== 'closed',
+    () => !isMobileViewport() && localStorage.getItem(SIDEBAR_PREF_KEY) !== 'closed',
   )
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const stored = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY))
@@ -95,9 +99,23 @@ function RootLayout() {
     select: (s) => /^\/boards\/.+/.test(s.location.pathname),
   })
 
+  // Phone: the sidebar is a full-screen drawer rather than a resizable column,
+  // so its open width is the whole viewport and it auto-dismisses on navigation
+  // to reveal the thread underneath.
+  const isMobile = useIsMobile()
+  const viewportWidth = useViewportWidth()
+  const openWidth = isMobile ? viewportWidth : sidebarWidth
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
   useEffect(() => {
+    if (isMobile) setSidebarOpen(false)
+  }, [isMobile, pathname])
+
+  useEffect(() => {
+    // The phone drawer's open/closed state is transient; only persist the
+    // desktop column preference so a narrow viewport never clobbers it.
+    if (isMobile) return
     localStorage.setItem(SIDEBAR_PREF_KEY, sidebarOpen ? 'open' : 'closed')
-  }, [sidebarOpen])
+  }, [isMobile, sidebarOpen])
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth))
@@ -179,14 +197,16 @@ function RootLayout() {
     <ToastProvider>
       <div className="relative flex h-full">
         <motion.div
-          className="shrink-0 overflow-hidden"
+          className="shrink-0 overflow-hidden max-sm:absolute max-sm:inset-y-0 max-sm:left-0 max-sm:z-30"
           initial={false}
-          animate={{ width: sidebarOpen ? sidebarWidth : 0 }}
+          animate={{ width: sidebarOpen ? openWidth : 0 }}
           transition={resizing ? { duration: 0 } : { type: 'spring', stiffness: 400, damping: 36 }}
         >
           <Sidebar
             open={sidebarOpen}
-            width={sidebarWidth}
+            width={openWidth}
+            mobile={isMobile}
+            onDismiss={() => setSidebarOpen(false)}
             resizing={resizing}
             onResizeStart={startResize}
             onResizeReset={() => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH)}
@@ -200,13 +220,14 @@ function RootLayout() {
               header indents past the traffic lights and the pinned toggle. */}
           <div
             className={`titlebar-drag flex h-[52px] shrink-0 items-center gap-2 pr-3 ${
-              sidebarOpen ? 'pl-3' : isMac ? 'pl-[108px]' : 'pl-12'
+              sidebarOpen ? 'pl-3' : isMobile ? 'pl-14' : isMacDesktop ? 'pl-[108px]' : 'pl-12'
             }`}
           >
-            {/* slot routes portal into (e.g. the session runtime tag) */}
-            <div id="titlebar-slot" className="flex min-w-0 items-center gap-1.5" />
+            {/* slot routes portal into (e.g. the session runtime tag). z-20 keeps
+                these controls above a route's mobile dismiss backdrop (z-10). */}
+            <div id="titlebar-slot" className="relative z-20 flex min-w-0 items-center gap-1.5" />
             {/* right-aligned slot for route-level actions */}
-            <div id="titlebar-actions" className="ml-auto flex items-center gap-1.5" />
+            <div id="titlebar-actions" className="relative z-20 ml-auto flex items-center gap-1.5" />
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             <Outlet />
@@ -223,11 +244,13 @@ function RootLayout() {
           aria-label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
           title={`${sidebarOpen ? 'Hide' : 'Show'} sidebar (⌘S)`}
           onClick={() => setSidebarOpen((open) => !open)}
-          className={`absolute top-[11px] z-30 grid size-7 cursor-pointer place-items-center rounded-full text-ink-2 transition-colors duration-150 [-webkit-app-region:no-drag] hover:bg-surface-2 hover:text-ink ${
-            isMac ? 'left-[80px]' : 'left-2'
+          className={`absolute z-30 grid cursor-pointer place-items-center rounded-full text-ink-2 transition-colors duration-150 [-webkit-app-region:no-drag] hover:bg-surface-2 hover:text-ink ${
+            isMobile
+              ? 'top-2.5 left-3 size-9'
+              : `top-[11px] size-7 ${isMacDesktop ? 'left-[80px]' : 'left-2'}`
           }`}
         >
-          <PanelLeft size={16} />
+          <PanelLeft size={isMobile ? 20 : 16} />
         </button>
       </div>
       <SettingsOverlay
