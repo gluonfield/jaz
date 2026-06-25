@@ -832,6 +832,7 @@ export interface ACPAgentOptions {
   local: boolean
   provider_mode?: 'agent_defaults'
   model_provider_ids?: string[]
+  auth_provider_id?: string
   requires_command: boolean
   supports_auth: boolean
 }

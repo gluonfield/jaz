@@ -229,7 +229,7 @@ func probeAgentConfig(t *testing.T, agent string) AgentConfig {
 
 func probeOpenConn(t *testing.T, ctx context.Context, agent string, cfg AgentConfig, env map[string]string, cwd string) (jsonrpc.MessageConn, func()) {
 	t.Helper()
-	command, args, err := processCommand(agent, cfg)
+	command, args, err := processCommand(agent, cfg, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
