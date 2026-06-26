@@ -85,6 +85,9 @@ func (c APIClient) ReadThread(ctx context.Context, input ReadThreadRequest) (Thr
 	if id == "" {
 		return ThreadContent{}, fmt.Errorf("gmail message or thread id is required")
 	}
+	if !input.IDType.valid() {
+		return ThreadContent{}, fmt.Errorf("gmail id type must be message or thread")
+	}
 	if input.IDType != IDTypeThread {
 		message, err := c.message(ctx, id, "metadata")
 		if err != nil {
@@ -135,6 +138,9 @@ func (c APIClient) GetDraft(ctx context.Context, id string) (DraftContent, error
 }
 
 func (c APIClient) UpdateDraft(ctx context.Context, id string, input ComposeMessageRequest) (Draft, error) {
+	if id == "" {
+		return Draft{}, fmt.Errorf("gmail draft id is required")
+	}
 	request, err := draftRequest(id, input)
 	if err != nil {
 		return Draft{}, err

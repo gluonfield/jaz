@@ -1,9 +1,15 @@
 package gmail
 
+type IDType string
+
 const (
-	IDTypeMessage = "message"
-	IDTypeThread  = "thread"
+	IDTypeMessage IDType = "message"
+	IDTypeThread  IDType = "thread"
 )
+
+func (t IDType) valid() bool {
+	return t == "" || t == IDTypeMessage || t == IDTypeThread
+}
 
 type Profile struct {
 	EmailAddress  string `json:"emailAddress"`
@@ -25,7 +31,7 @@ type SearchThreadsResponse struct {
 
 type ReadThreadRequest struct {
 	ID          string
-	IDType      string
+	IDType      IDType
 	MaxMessages int
 }
 
