@@ -159,7 +159,7 @@ func TestACPConfigSourceUsesMergedCodexBuiltinCommand(t *testing.T) {
 	if cfg.Command != "" || cfg.ManagedAdapter != "codex" {
 		t.Fatalf("codex config = %#v, want managed adapter", cfg)
 	}
-	if !strings.Contains(strings.Join(cfg.ManagedAdapterArgs, "\n"), `sandbox_mode="workspace-write"`) {
+	if !strings.Contains(strings.Join(cfg.ManagedAdapterArgs, "\n"), `sandbox_mode="danger-full-access"`) {
 		t.Fatalf("codex managed args = %#v", cfg.ManagedAdapterArgs)
 	}
 }
