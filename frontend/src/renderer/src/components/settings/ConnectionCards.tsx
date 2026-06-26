@@ -6,7 +6,7 @@ import { SettingsCard } from './SettingsCard'
 import { accountAddress, pluginActionLabel } from './connectionFormatting'
 import { PluginIcon } from './ConnectionPluginVisuals'
 
-export function SettingsBlock({
+export function ConnectionSection({
   title,
   children,
 }: {
@@ -16,7 +16,7 @@ export function SettingsBlock({
   return (
     <section>
       <p className="mb-2 text-[12px] font-medium text-ink-2">{title}</p>
-      {children}
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">{children}</div>
     </section>
   )
 }
