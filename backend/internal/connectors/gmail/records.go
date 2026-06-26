@@ -10,7 +10,6 @@ import (
 
 const (
 	RecordKindMessage integrations.RecordKind = "gmail.message"
-	CursorKindHistory string                  = "gmail.history"
 )
 
 type Address struct {
@@ -57,10 +56,6 @@ type Draft struct {
 	Message Message `json:"message"`
 }
 
-type HistoryCursor struct {
-	HistoryID string `json:"history_id"`
-}
-
 func MessageRecord(connection integrations.Connection, message Message, receivedAt time.Time) (integrations.Record, error) {
 	return messageRawRecord(connection, message.ID, message.InternalDate, receivedAt, message)
 }
@@ -91,12 +86,4 @@ func messageRawRecord(connection integrations.Connection, id string, occurredAt,
 		ReceivedAt:   receivedAt,
 		Raw:          raw,
 	}, nil
-}
-
-func CursorFromHistoryID(historyID string) (integrations.Cursor, error) {
-	value, err := json.Marshal(HistoryCursor{HistoryID: historyID})
-	if err != nil {
-		return integrations.Cursor{}, err
-	}
-	return integrations.Cursor{Kind: CursorKindHistory, Value: value}, nil
 }

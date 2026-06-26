@@ -13,14 +13,15 @@ const (
 
 	RemoteMCPURL = "https://gmailmcp.googleapis.com/mcp/v1"
 
-	ToolGetProfile    = "gmail_get_profile"
-	ToolSearchThreads = "gmail_search_threads"
-	ToolReadThread    = "gmail_read_thread"
-	ToolCreateDraft   = "gmail_create_draft"
-	ToolCreateReply   = "gmail_create_reply_draft"
-	ToolSendDraft     = "gmail_send_draft"
-	ToolUpdateDraft   = "gmail_update_draft"
-	ToolListDrafts    = "gmail_list_drafts"
+	ToolGetProfile     = "gmail_get_profile"
+	ToolSearchThreads  = "gmail_search_threads"
+	ToolReadThread     = "gmail_read_thread"
+	ToolCreateDraft    = "gmail_create_draft"
+	ToolCreateReply    = "gmail_create_reply_draft"
+	ToolSendDraft      = "gmail_send_draft"
+	ToolUpdateDraft    = "gmail_update_draft"
+	ToolListDrafts     = "gmail_list_drafts"
+	ToolReadAttachment = "gmail_read_attachment"
 )
 
 func Plugin() integrations.Plugin {
@@ -92,6 +93,7 @@ func tools() []integrations.PluginTool {
 		tool(ToolSendDraft, "Send an existing Gmail draft after review or explicit approval.", integrations.ActionRiskWrite, ScopeModify),
 		tool(ToolUpdateDraft, "Update an existing Gmail draft in place while preserving omitted fields.", integrations.ActionRiskWrite, ScopeModify),
 		tool(ToolListDrafts, "List Gmail drafts with summarized message metadata.", integrations.ActionRiskRead, ScopeModify),
+		tool(ToolReadAttachment, "Explicitly fetch a Gmail attachment by message ID and attachment ID and return its local file path.", integrations.ActionRiskRead, ScopeModify),
 	}
 }
 

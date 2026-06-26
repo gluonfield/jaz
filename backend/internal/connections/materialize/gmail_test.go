@@ -59,7 +59,7 @@ func TestGmailMaterializerCreatesMonthlyEmailSourceArtifact(t *testing.T) {
 		"- Labels: INBOX, UNREAD",
 		"- From: Friend <friend@example.com>",
 		"This is the visible Gmail snippet.",
-		"- plan.pdf (application/pdf), 1234 bytes",
+		"- plan.pdf (application/pdf), id `att_1`, 1234 bytes",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q:\n%s", want, body)
@@ -90,6 +90,7 @@ func TestGmailMaterializerCleansHTMLBodiesForMarkdown(t *testing.T) {
 		Message: gmailconnector.Message{
 			ID:           "msg_1",
 			Subject:      "HTML mail",
+			Snippet:      "Open https://example.com/open-source?utm=1 https://tracker.example.com/open/pixel.png",
 			InternalDate: occurred,
 		},
 		BodyHTML: `<html><body>
@@ -116,6 +117,7 @@ func TestGmailMaterializerCleansHTMLBodiesForMarkdown(t *testing.T) {
 	for _, want := range []string{
 		"Quarterly update",
 		"Read report (https://example.com/report)",
+		"Open https://example.com/open-source",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q:\n%s", want, body)

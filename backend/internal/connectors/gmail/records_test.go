@@ -76,20 +76,3 @@ func TestMessageRecordRejectsMissingID(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
-
-func TestCursorFromHistoryID(t *testing.T) {
-	cursor, err := CursorFromHistoryID("123")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cursor.Kind != CursorKindHistory {
-		t.Fatalf("cursor kind = %q", cursor.Kind)
-	}
-	var value HistoryCursor
-	if err := json.Unmarshal(cursor.Value, &value); err != nil {
-		t.Fatal(err)
-	}
-	if value.HistoryID != "123" {
-		t.Fatalf("cursor = %#v", value)
-	}
-}

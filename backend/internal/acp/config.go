@@ -270,7 +270,7 @@ func codexBuiltinAgent(_ string) AgentConfig {
 	return AgentConfig{
 		ManagedAdapter: "codex",
 		ManagedAdapterArgs: []string{
-			"-c", `sandbox_mode="danger-full-access"`,
+			"-c", `sandbox_mode="workspace-write"`,
 			"-c", `approval_policy="never"`,
 			"-c", `features.tool_search_always_defer_mcp_tools=true`,
 			"-c", `suppress_unstable_features_warning=true`,

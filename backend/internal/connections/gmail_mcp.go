@@ -8,15 +8,17 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	gmailconnector "github.com/wins/jaz/backend/internal/connectors/gmail"
+	"github.com/wins/jaz/backend/internal/integrationingest"
 )
 
 type GmailMCPTools struct {
-	store      GmailToolStore
-	apiBaseURL string
+	store            GmailToolStore
+	apiBaseURL       string
+	attachmentWriter integrationingest.RawWriter
 }
 
 func NewGmailMCPTools(store GmailToolStore) *GmailMCPTools {
-	return &GmailMCPTools{store: store}
+	return &GmailMCPTools{store: store, attachmentWriter: integrationingest.RawWriter{}}
 }
 
 func (t *GmailMCPTools) AddTo(server *mcp.Server) {
@@ -43,7 +45,7 @@ func (t *GmailMCPTools) AddTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        gmailconnector.ToolCreateReply,
 		Title:       "Create Gmail reply draft",
-		Description: "Create a reply or reply-all draft for an existing Gmail message or thread. Use this for normal replies; it infers recipients, thread_id, In-Reply-To, References, and reply subject.",
+		Description: "Create a reply or reply-all draft for an existing Gmail message or thread. Use this for normal replies; it infers recipients, subject, and Gmail threading.",
 	}, t.CreateReplyDraft)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        gmailconnector.ToolSendDraft,
@@ -60,6 +62,11 @@ func (t *GmailMCPTools) AddTo(server *mcp.Server) {
 		Title:       "List Gmail drafts",
 		Description: "List Gmail drafts with summarized metadata so a draft can be reviewed or selected.",
 	}, t.ListDrafts)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        gmailconnector.ToolReadAttachment,
+		Title:       "Read Gmail attachment",
+		Description: "Explicitly fetch one Gmail attachment by message ID and attachment ID, store it under Jaz raw sources, and return the local file path with metadata. Use this only after a thread read exposes the attachment ID.",
+	}, t.ReadAttachment)
 }
 
 func (t *GmailMCPTools) RemoveFrom(server *mcp.Server) {
@@ -73,6 +80,7 @@ func (t *GmailMCPTools) RemoveFrom(server *mcp.Server) {
 			gmailconnector.ToolSendDraft,
 			gmailconnector.ToolUpdateDraft,
 			gmailconnector.ToolListDrafts,
+			gmailconnector.ToolReadAttachment,
 		)
 	}
 }
@@ -100,11 +108,9 @@ func (t *GmailMCPTools) GetProfile(ctx context.Context, _ *mcp.CallToolRequest, 
 		EmailAddress:  profile.EmailAddress,
 		MessagesTotal: profile.MessagesTotal,
 		ThreadsTotal:  profile.ThreadsTotal,
-		HistoryID:     profile.HistoryID,
 		AccountID:     session.connection.AccountID,
 		AccountName:   session.connection.AccountName,
 		Alias:         session.connection.Alias,
-		Scopes:        session.connection.Scopes,
 	}
 	text := fmt.Sprintf("Gmail is connected as %s. Profile reports %d messages and %d threads.", profile.EmailAddress, profile.MessagesTotal, profile.ThreadsTotal)
 	return textResult(text), out, nil
@@ -137,7 +143,7 @@ func (t *GmailMCPTools) SearchThreads(ctx context.Context, _ *mcp.CallToolReques
 		AccountID:          session.connection.AccountID,
 		Alias:              session.connection.Alias,
 		Query:              query,
-		Threads:            search.Threads,
+		Threads:            gmailToolThreadSummaries(search.Threads),
 		ResultSizeEstimate: search.ResultSizeEstimate,
 		NextPageToken:      search.NextPageToken,
 	}
@@ -223,7 +229,7 @@ func (t *GmailMCPTools) CreateDraft(ctx context.Context, _ *mcp.CallToolRequest,
 		Accounts:  session.accounts,
 		AccountID: session.connection.AccountID,
 		Alias:     session.connection.Alias,
-		Draft:     draft,
+		Draft:     gmailToolDraft(draft),
 	}, nil
 }
 
@@ -273,7 +279,7 @@ func (t *GmailMCPTools) CreateReplyDraft(ctx context.Context, _ *mcp.CallToolReq
 		Accounts:  session.accounts,
 		AccountID: session.connection.AccountID,
 		Alias:     session.connection.Alias,
-		Draft:     draft,
+		Draft:     gmailToolDraft(draft),
 	}, nil
 }
 
@@ -307,7 +313,7 @@ func (t *GmailMCPTools) SendDraft(ctx context.Context, _ *mcp.CallToolRequest, i
 		Accounts:  session.accounts,
 		AccountID: session.connection.AccountID,
 		Alias:     session.connection.Alias,
-		Message:   message,
+		Message:   gmailToolMessage(message),
 	}, nil
 }
 
@@ -349,7 +355,7 @@ func (t *GmailMCPTools) UpdateDraft(ctx context.Context, _ *mcp.CallToolRequest,
 		Accounts:  session.accounts,
 		AccountID: session.connection.AccountID,
 		Alias:     session.connection.Alias,
-		Draft:     draft,
+		Draft:     gmailToolDraft(draft),
 	}, nil
 }
 
@@ -380,7 +386,7 @@ func (t *GmailMCPTools) ListDrafts(ctx context.Context, _ *mcp.CallToolRequest, 
 		AccountID:          session.connection.AccountID,
 		Alias:              session.connection.Alias,
 		Query:              query,
-		Drafts:             drafts.Drafts,
+		Drafts:             gmailToolDrafts(drafts.Drafts),
 		ResultSizeEstimate: drafts.ResultSizeEstimate,
 		NextPageToken:      drafts.NextPageToken,
 	}
