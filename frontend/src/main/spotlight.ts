@@ -1,5 +1,3 @@
-import { execFile } from 'node:child_process'
-import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   BrowserWindow,
@@ -96,7 +94,6 @@ function showLauncher(): void {
 function hideLauncher(): void {
   if (!launcher || launcher.isDestroyed() || !launcher.isVisible()) return
   launcher.hide()
-  // Return focus to the prior app, unless another Jaz window should keep it.
   if (!BrowserWindow.getAllWindows().some((win) => win !== launcher && win.isVisible())) {
     app.hide()
   }
@@ -109,8 +106,7 @@ function toggleLauncher(): void {
 
 let screenPromptShown = false
 
-// Screen Recording permission only takes effect on relaunch; touching the
-// capture API registers Jaz in the pane, then we open it.
+// Screen Recording permission only applies after relaunch.
 async function ensureScreenPermission(): Promise<boolean> {
   if (systemPreferences.getMediaAccessStatus('screen') === 'granted') return true
   if (!screenPromptShown) {
@@ -123,37 +119,48 @@ async function ensureScreenPermission(): Promise<boolean> {
   return systemPreferences.getMediaAccessStatus('screen') === 'granted'
 }
 
+// In-process capture uses Jaz's own grant; a `screencapture` subprocess does not.
 async function captureScreenRect(rect: Rect): Promise<{ ok: boolean; data?: string; denied?: boolean }> {
   const win = launcher
   if (!win || win.isDestroyed()) return { ok: false }
-  const w = Math.round(rect.width)
-  const h = Math.round(rect.height)
-  if (w < 2 || h < 2) return { ok: false }
+  if (Math.round(rect.width) < 2 || Math.round(rect.height) < 2) return { ok: false }
   if (!(await ensureScreenPermission())) return { ok: false, denied: true }
-  // The overlay covers the display, so screen coords are its origin plus the rect.
-  const origin = win.getBounds()
-  const x = Math.round(origin.x + rect.x)
-  const y = Math.round(origin.y + rect.y)
+  const display = screen.getDisplayMatching(win.getBounds())
 
   win.hide()
   await delay(120)
-  const file = join(app.getPath('temp'), `jaz-shot-${process.pid}-${process.hrtime.bigint()}.png`)
   try {
-    await new Promise<void>((resolve, reject) => {
-      execFile('/usr/sbin/screencapture', ['-x', `-R${x},${y},${w},${h}`, '-t', 'png', file], (err) =>
-        err ? reject(err) : resolve(),
-      )
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: {
+        width: Math.round(display.size.width * display.scaleFactor),
+        height: Math.round(display.size.height * display.scaleFactor),
+      },
     })
-    const data = await readFile(file)
-      .then((bytes) => bytes.toString('base64'))
-      .catch(() => '')
+    const full = (sources.find((s) => String(s.display_id) === String(display.id)) ?? sources[0])?.thumbnail
+    if (!full || full.isEmpty()) return { ok: false }
+    const size = full.getSize()
+    const sx = size.width / display.size.width
+    const sy = size.height / display.size.height
+    const x = clamp(Math.round(rect.x * sx), 0, size.width - 1)
+    const y = clamp(Math.round(rect.y * sy), 0, size.height - 1)
+    const shot = full.crop({
+      x,
+      y,
+      width: clamp(Math.round(rect.width * sx), 1, size.width - x),
+      height: clamp(Math.round(rect.height * sy), 1, size.height - y),
+    })
+    const data = shot.isEmpty() ? '' : shot.toPNG().toString('base64')
     return data ? { ok: true, data } : { ok: false }
   } catch {
     return { ok: false }
   } finally {
-    await rm(file, { force: true }).catch(() => {})
     if (!win.isDestroyed()) presentLauncher(win)
   }
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(value, max))
 }
 
 function isRect(value: unknown): value is Rect {
@@ -161,7 +168,6 @@ function isRect(value: unknown): value is Rect {
   return Boolean(r) && [r.x, r.y, r.width, r.height].every((n) => typeof n === 'number')
 }
 
-// macOS-only: native capture, and Alt+Space is the Windows system menu.
 export function setupLauncher(): void {
   if (process.platform !== 'darwin') return
   ipcMain.handle('jaz:capture-screen-rect', (_event, rect) =>
