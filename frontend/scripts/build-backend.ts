@@ -15,9 +15,14 @@ if (typeof packageJSON.version !== 'string' || !packageJSON.version) {
 const backendVersion = packageJSON.version.startsWith('v') ? packageJSON.version : `v${packageJSON.version}`
 const telegramClientID = process.env.JAZ_BUNDLED_TELEGRAM_APP_ID?.trim() ?? ''
 const telegramClientHash = process.env.JAZ_BUNDLED_TELEGRAM_APP_HASH?.trim() ?? ''
+const requireTelegramBundle =
+  process.env.CI === 'true' || process.env.JAZ_REQUIRE_TELEGRAM_BUNDLE === '1'
 
 if (Boolean(telegramClientID) !== Boolean(telegramClientHash)) {
   throw new Error('JAZ_BUNDLED_TELEGRAM_APP_ID and JAZ_BUNDLED_TELEGRAM_APP_HASH must both be set')
+}
+if (requireTelegramBundle && !telegramClientID) {
+  throw new Error('Bundled Telegram app credentials are required for release backend builds')
 }
 if (telegramClientID && !/^\d+$/.test(telegramClientID)) {
   throw new Error('JAZ_BUNDLED_TELEGRAM_APP_ID must be numeric')

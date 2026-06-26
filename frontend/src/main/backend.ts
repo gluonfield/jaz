@@ -202,6 +202,7 @@ function spawnBackend(): ChildProcess {
   return spawn('go', ['run', './cmd/jaz'], {
     cwd: backendDir,
     detached: true,
+    env: localBackendEnv(),
     stdio: ['ignore', 'pipe', 'pipe'],
   })
 }

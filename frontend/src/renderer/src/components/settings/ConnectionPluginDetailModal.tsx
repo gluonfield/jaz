@@ -6,7 +6,7 @@ import type {
   IntegrationSkill,
   IntegrationTool,
 } from '@/lib/api/types'
-import { pluginActionLabel } from './connectionFormatting'
+import { pluginActionLabel, pluginCanConnect } from './connectionFormatting'
 import { PluginGlyph, PluginIcon } from './ConnectionPluginVisuals'
 
 export function ConnectionPluginDetailModal({
@@ -76,7 +76,7 @@ function AppsSection({
   onConnect: () => void
 }) {
   const sessionAuth = plugin.auth[0]?.kind === 'session'
-  const available = plugin.implementation.status === 'available' || sessionAuth
+  const available = pluginCanConnect(plugin)
   const connected = plugin.connection?.status === 'connected'
   let ConnectIcon = sessionAuth ? QrCode : Plug
   if (available && connected && plugin.multi_account) ConnectIcon = Plus

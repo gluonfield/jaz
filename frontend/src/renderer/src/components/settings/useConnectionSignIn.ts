@@ -8,6 +8,7 @@ import {
 } from '@/lib/api/connections'
 import type { ConnectionQRStart, IntegrationPlugin } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
+import { pluginCanConnect } from './connectionFormatting'
 
 type ActiveQR = {
   plugin: IntegrationPlugin
@@ -95,7 +96,7 @@ export function useConnectionSignIn({
   }
 
   const start = (plugin: IntegrationPlugin) => {
-    if (plugin.implementation.status !== 'available' && plugin.auth[0]?.kind !== 'session') return
+    if (!pluginCanConnect(plugin)) return
     connect.mutate({ pluginID: plugin.id })
   }
 

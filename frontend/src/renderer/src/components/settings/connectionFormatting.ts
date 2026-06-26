@@ -10,13 +10,15 @@ export function accountAddress(account: IntegrationConnectionAccount): string {
 export function pluginActionLabel(plugin: IntegrationPlugin, connecting: boolean): string {
   if (connecting) return 'Connecting'
   const sessionAuth = plugin.auth[0]?.kind === 'session'
-  if (plugin.implementation.status !== 'available') {
-    return sessionAuth ? 'QR sign in' : statusLabel(plugin.implementation.status)
-  }
+  if (!pluginCanConnect(plugin)) return sessionAuth ? 'Unavailable' : statusLabel(plugin.implementation.status)
   if (plugin.connection?.status === 'connected' && plugin.multi_account) return 'Add account'
   if (plugin.connection?.status === 'connected') return 'Reconnect'
   if (sessionAuth) return 'QR sign in'
   return 'Connect'
+}
+
+export function pluginCanConnect(plugin: IntegrationPlugin): boolean {
+  return plugin.implementation.status === 'available'
 }
 
 function statusLabel(status: string): string {
