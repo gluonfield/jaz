@@ -15,14 +15,19 @@ import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
+import { previewPatterns } from '@/lib/jazDefaults'
 import { findFileReferences, parseFileReference, type FileReference } from '../../../../shared/fileReader'
-import { shouldPreviewURLByDefault } from '../../../../shared/preview'
+import { matchesPreviewPattern } from '../../../../shared/preview'
 import { CodeBlock } from './CodeBlock'
 import { encodeMention } from './mentionCodec'
 import { MentionPill } from './mentions'
 
 const PreviewLinkContext = createContext<((url: string) => void) | null>(null)
 const FileReaderLinkContext = createContext<((file: FileReference) => void) | null>(null)
+
+export function usePreviewLink() {
+  return useContext(PreviewLinkContext)
+}
 
 export function PreviewLinkProvider({
   onOpen,
@@ -262,7 +267,7 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, onCli
         if (
           !openPreview ||
           typeof href !== 'string' ||
-          !shouldPreviewURLByDefault(href) ||
+          !matchesPreviewPattern(href, previewPatterns()) ||
           !shouldPreviewLink(event)
         ) {
           return

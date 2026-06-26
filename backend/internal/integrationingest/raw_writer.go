@@ -101,10 +101,7 @@ func (w RawWriter) writeRecord(record integrations.Record) error {
 }
 
 func (w RawWriter) root() (string, error) {
-	if root := strings.TrimSpace(w.Root); root != "" {
-		return root, nil
-	}
-	return "", fmt.Errorf("raw writer root is required")
+	return requiredRoot(w.Root)
 }
 
 func (w RawWriter) prepare(record integrations.Record) integrations.Record {
@@ -138,9 +135,9 @@ func recordID(record integrations.Record) string {
 }
 
 func RawRecordPath(root string, record integrations.Record) (string, error) {
-	root = strings.TrimSpace(root)
-	if root == "" {
-		return "", fmt.Errorf("raw writer root is required")
+	root, err := requiredRoot(root)
+	if err != nil {
+		return "", err
 	}
 	provider, err := requiredPathComponent("provider", record.Provider)
 	if err != nil {
@@ -184,9 +181,9 @@ func RawRecordPath(root string, record integrations.Record) (string, error) {
 }
 
 func RawAttachmentPath(root string, attachment RawAttachment) (string, error) {
-	root = strings.TrimSpace(root)
-	if root == "" {
-		return "", fmt.Errorf("raw writer root is required")
+	root, err := requiredRoot(root)
+	if err != nil {
+		return "", err
 	}
 	provider, err := requiredPathComponent("provider", attachment.Provider)
 	if err != nil {
@@ -218,6 +215,14 @@ func RawAttachmentPath(root string, attachment RawAttachment) (string, error) {
 		attachmentID,
 		safeAttachmentFileName(attachment.FileName),
 	), nil
+}
+
+func requiredRoot(value string) (string, error) {
+	root := strings.TrimSpace(value)
+	if root == "" {
+		return "", fmt.Errorf("raw ingest root is required")
+	}
+	return root, nil
 }
 
 func requiredPathComponent(name, value string) (string, error) {

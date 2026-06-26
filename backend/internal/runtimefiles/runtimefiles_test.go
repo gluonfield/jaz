@@ -8,7 +8,8 @@ import (
 )
 
 func TestEnsureCreatesRuntimeLayout(t *testing.T) {
-	layout, err := Ensure(t.TempDir())
+	root := t.TempDir()
+	layout, err := Ensure(root)
 	if err != nil {
 		t.Fatal(err)
 	}

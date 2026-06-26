@@ -1,4 +1,24 @@
 import { Globe } from 'lucide-react'
+import { useMemo } from 'react'
+import { previewPatterns } from '@/lib/jazDefaults'
+import { findPreviewURLs } from '../../../../shared/preview'
+import { usePreviewLink } from './MessageMarkdown'
+
+export function PreviewSuggestions({ text }: { text: string }) {
+  const openPreview = usePreviewLink()
+  const urls = useMemo(
+    () => (openPreview ? findPreviewURLs(text, previewPatterns()) : []),
+    [openPreview, text],
+  )
+  if (!openPreview || urls.length === 0) return null
+  return (
+    <div className="mt-1 flex w-full flex-col gap-1.5">
+      {urls.map((url) => (
+        <PreviewSuggestion key={url} url={url} onOpen={openPreview} />
+      ))}
+    </div>
+  )
+}
 
 function previewHost(url: string): string {
   try {
@@ -16,7 +36,7 @@ export function PreviewSuggestion({ url, onOpen }: { url: string; onOpen: (url: 
       className="group flex w-full cursor-pointer items-center gap-3 rounded-card bg-surface px-3 py-2.5 text-left transition-[background-color,transform] duration-150 hover:bg-surface-2 active:scale-[0.99]"
     >
       <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-surface-2 text-ink-2 transition-colors duration-150 group-hover:text-ink">
-        <Globe size={16} strokeWidth={1.8} />
+        <Globe aria-hidden="true" size={16} strokeWidth={1.8} />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-[13px] font-medium text-ink">Web preview</span>

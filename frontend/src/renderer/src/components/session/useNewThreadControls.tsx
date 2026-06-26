@@ -4,7 +4,7 @@ import { ModelSelect, RuntimeSelect } from '@/components/session/NewThreadContro
 import { enabledACPAgents, runtimeModelState } from '@/lib/agentRuntimes'
 import type { CreateSessionInput } from '@/lib/api/sessions'
 import { agentSettingsQuery } from '@/lib/api/settings'
-import { composerConfig } from '@/lib/appearanceConfig'
+import { composerConfig } from '@/lib/jazDefaults'
 import {
   acpAgentModelSuggestions,
   modelSuggestionsForProvider,

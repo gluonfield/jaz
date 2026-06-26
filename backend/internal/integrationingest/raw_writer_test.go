@@ -292,3 +292,28 @@ func TestRawWriterRejectsMissingPathKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestRawWriterRejectsMissingRoot(t *testing.T) {
+	err := (RawWriter{}).WriteRecords(context.Background(), []integrations.Record{{
+		Provider:     "gmail",
+		ConnectionID: "conn_1",
+		AccountID:    "august@example.com",
+		OccurredAt:   time.Date(2026, 6, 12, 10, 30, 0, 0, time.UTC),
+	}})
+	if err == nil || !strings.Contains(err.Error(), "raw ingest root is required") {
+		t.Fatalf("error = %v", err)
+	}
+
+	_, err = (RawWriter{}).WriteAttachment(context.Background(), RawAttachment{
+		Provider:     "gmail",
+		ConnectionID: "conn_1",
+		AccountID:    "august@example.com",
+		MessageID:    "msg_1",
+		AttachmentID: "att_1",
+		FileName:     "report.txt",
+		Data:         []byte("report"),
+	})
+	if err == nil || !strings.Contains(err.Error(), "raw ingest root is required") {
+		t.Fatalf("attachment error = %v", err)
+	}
+}
