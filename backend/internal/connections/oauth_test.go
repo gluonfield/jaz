@@ -12,7 +12,26 @@ import (
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
 
-type memoryOAuthStore struct{}
+type memoryOAuthStore struct {
+	connections []integrations.Connection
+}
+
+var testOAuthConfig = OAuthConfig{
+	Gmail: gmailconnector.OAuthClientConfig{
+		ClientID:     "test-client",
+		ClientSecret: "test-secret",
+	},
+}
+
+func (s memoryOAuthStore) ListConnections(_ context.Context, provider string) ([]integrations.Connection, error) {
+	var out []integrations.Connection
+	for _, connection := range s.connections {
+		if connection.Provider == provider {
+			out = append(out, connection)
+		}
+	}
+	return out, nil
+}
 
 func (memoryOAuthStore) SaveOAuthConnection(context.Context, integrationoauth.Token, integrations.Connection) error {
 	return nil
@@ -20,7 +39,7 @@ func (memoryOAuthStore) SaveOAuthConnection(context.Context, integrationoauth.To
 
 func TestOAuthStartBuildsGmailPKCEURL(t *testing.T) {
 	redirectURL := "http://127.0.0.1:5222/v1/connections/oauth/google/callback"
-	start, err := NewOAuthService(memoryOAuthStore{}, OAuthConfig{}).Start(context.Background(), gmailconnector.ProviderID, redirectURL)
+	start, err := NewOAuthService(memoryOAuthStore{}, testOAuthConfig).Start(context.Background(), gmailconnector.ProviderID, redirectURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +50,7 @@ func TestOAuthStartBuildsGmailPKCEURL(t *testing.T) {
 	}
 	q := parsed.Query()
 	scope := strings.Fields(q.Get("scope"))
-	if parsed.Host != "accounts.google.com" || q.Get("client_id") != gmailconnector.OAuthClientID || q.Get("redirect_uri") != redirectURL {
+	if parsed.Host != "accounts.google.com" || q.Get("client_id") != "test-client" || q.Get("redirect_uri") != redirectURL {
 		t.Fatalf("auth url = %s", start.AuthURL)
 	}
 	if !slices.Contains(scope, gmailconnector.ScopeModify) {
@@ -56,5 +75,40 @@ func TestOAuthStartRejectsUnsupportedPlugin(t *testing.T) {
 	_, err := NewOAuthService(memoryOAuthStore{}, OAuthConfig{}).Start(context.Background(), "slack", "http://127.0.0.1/callback")
 	if err == nil {
 		t.Fatal("expected unsupported plugin error")
+	}
+}
+
+func TestGmailConnectionReusesExistingAccount(t *testing.T) {
+	existing := integrations.Connection{
+		ID:          gmailconnector.OAuthConnectionID,
+		Provider:    gmailconnector.ProviderID,
+		AccountID:   "augustinas@example.com",
+		AccountName: "Old name",
+		Alias:       "default",
+	}
+	service := NewOAuthService(memoryOAuthStore{connections: []integrations.Connection{existing}}, OAuthConfig{})
+
+	connection, err := service.gmailConnection(context.Background(), gmailconnector.Profile{EmailAddress: "Augustinas@example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if connection.ID != gmailconnector.OAuthConnectionID || connection.Alias != "default" || connection.AccountID != "Augustinas@example.com" {
+		t.Fatalf("connection = %#v", connection)
+	}
+}
+
+func TestGmailConnectionCreatesAccountSpecificID(t *testing.T) {
+	service := NewOAuthService(memoryOAuthStore{connections: []integrations.Connection{{
+		ID:        gmailconnector.OAuthConnectionID,
+		Provider:  gmailconnector.ProviderID,
+		AccountID: "first@example.com",
+	}}}, OAuthConfig{})
+
+	connection, err := service.gmailConnection(context.Background(), gmailconnector.Profile{EmailAddress: "second@example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if connection.ID == gmailconnector.OAuthConnectionID || connection.ID == "" || connection.Alias != "second" || connection.Provider != gmailconnector.ProviderID {
+		t.Fatalf("connection = %#v", connection)
 	}
 }

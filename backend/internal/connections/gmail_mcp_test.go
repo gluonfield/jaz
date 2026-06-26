@@ -164,6 +164,67 @@ func TestGmailMCPToolsSearchAndReadMessages(t *testing.T) {
 	}
 }
 
+func TestGmailMCPToolsRequireAccountWhenMultipleAccountsConnected(t *testing.T) {
+	gmailServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer work-access" {
+			t.Fatalf("authorization = %q", r.Header.Get("Authorization"))
+		}
+		if r.URL.Path != "/gmail/v1/users/me/profile" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"emailAddress":"work@example.com","messagesTotal":2,"threadsTotal":1,"historyId":"h2"}`))
+	}))
+	defer gmailServer.Close()
+
+	store := &gmailMCPStore{
+		tokens: map[string]integrationoauth.Token{
+			"gmail:personal": {
+				AccessToken: "personal-access",
+				TokenType:   "Bearer",
+				Expiry:      time.Now().Add(time.Hour),
+			},
+			"gmail:work": {
+				AccessToken: "work-access",
+				TokenType:   "Bearer",
+				Expiry:      time.Now().Add(time.Hour),
+			},
+		},
+		connections: []integrations.Connection{{
+			ID:        "gmail:personal",
+			Provider:  gmailconnector.ProviderID,
+			AccountID: "personal@example.com",
+			Alias:     "personal",
+		}, {
+			ID:        "gmail:work",
+			Provider:  gmailconnector.ProviderID,
+			AccountID: "work@example.com",
+			Alias:     "work",
+		}},
+	}
+	tools := NewGmailMCPTools(store)
+	tools.apiBaseURL = gmailServer.URL
+
+	result, profile, err := tools.GetProfile(context.Background(), nil, GmailProfileInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !profile.Connected || !profile.AccountRequired || len(profile.Accounts) != 2 {
+		t.Fatalf("profile = %#v", profile)
+	}
+	if got := gmailToolText(result); !strings.Contains(got, "Specify account") || !strings.Contains(got, "personal") || !strings.Contains(got, "work") {
+		t.Fatalf("text = %q", got)
+	}
+
+	_, profile, err = tools.GetProfile(context.Background(), nil, GmailProfileInput{Account: "work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !profile.Connected || profile.EmailAddress != "work@example.com" || profile.Alias != "work" {
+		t.Fatalf("selected profile = %#v", profile)
+	}
+}
+
 func TestGmailToolContentBoundsBodyOutput(t *testing.T) {
 	text := strings.Repeat("t", maxGmailBodyChars+1)
 	html := strings.Repeat("h", maxGmailBodyChars+1)

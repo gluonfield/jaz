@@ -40,6 +40,10 @@ func (fakeConnectionOAuthStore) SaveOAuthConnection(context.Context, integration
 	return nil
 }
 
+func (fakeConnectionOAuthStore) DeleteConnection(context.Context, string) (bool, error) {
+	return false, nil
+}
+
 func TestUsageModuleProvidesRoute(t *testing.T) {
 	var routes server.Routes
 	app := fx.New(
@@ -132,6 +136,7 @@ func TestNewRoutesIncludesConnectionPluginRoutes(t *testing.T) {
 	for _, route := range routes {
 		if (route.Pattern == "GET /v1/connections/plugins" ||
 			route.Pattern == "GET /v1/connections/plugins/{id}" ||
+			route.Pattern == "DELETE /v1/connections/accounts/{id}" ||
 			route.Pattern == "POST /v1/connections/plugins/{id}/connect" ||
 			route.Pattern == "GET /v1/connections/oauth/google/callback") && route.Handler != nil {
 			found[route.Pattern] = true
@@ -139,6 +144,7 @@ func TestNewRoutesIncludesConnectionPluginRoutes(t *testing.T) {
 	}
 	if !found["GET /v1/connections/plugins"] ||
 		!found["GET /v1/connections/plugins/{id}"] ||
+		!found["DELETE /v1/connections/accounts/{id}"] ||
 		!found["POST /v1/connections/plugins/{id}/connect"] ||
 		!found["GET /v1/connections/oauth/google/callback"] {
 		t.Fatalf("missing connection plugin routes: %#v", routes)
