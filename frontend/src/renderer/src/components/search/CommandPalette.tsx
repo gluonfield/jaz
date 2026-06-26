@@ -9,6 +9,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
+import type { SettingsSection } from '@/components/settings/sections'
 import { RAINBOW_BEAM } from '@/components/ui/rainbow'
 import type { PaletteItem } from './commandPaletteTypes'
 import { CommandRow, ThreadRow } from './CommandPaletteRows'
@@ -27,7 +28,7 @@ export function CommandPalette({
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onOpenSettings: () => void
+  onOpenSettings: (section?: SettingsSection) => void
   onOpenConnect: () => void
 }) {
   const navigate = useNavigate()
