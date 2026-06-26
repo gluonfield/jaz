@@ -266,7 +266,6 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 		}
 	}
 	if name == AgentClaude {
-		configuredConfigDir := strings.TrimSpace(env["CLAUDE_CONFIG_DIR"])
 		claudeHostEnv := []string{
 			"ANTHROPIC_AUTH_TOKEN",
 			"ANTHROPIC_BASE_URL",
@@ -288,9 +287,12 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 			delete(env, "ANTHROPIC_AUTH_TOKEN")
 			delete(env, "CLAUDE_CODE_OAUTH_TOKEN")
 		}
-		if configuredConfigDir != "" && auth.Config.Mode != AuthModeJazProfile {
-			env["CLAUDE_CONFIG_DIR"] = configuredConfigDir
-		} else {
+		switch {
+		case auth.Config.Mode == AuthModeExistingCLI && auth.Config.Path == "":
+			delete(env, "CLAUDE_CONFIG_DIR")
+		case auth.Config.Mode == AuthModeExistingCLI:
+			env["CLAUDE_CONFIG_DIR"] = auth.Config.Path
+		default:
 			env["CLAUDE_CONFIG_DIR"] = auth.Config.Path
 			if prepare && auth.Config.Mode == AuthModeJazProfile {
 				if err := os.MkdirAll(env["CLAUDE_CONFIG_DIR"], 0o700); err != nil {
