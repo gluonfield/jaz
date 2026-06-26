@@ -4,6 +4,10 @@ import { previewPatterns } from '@/lib/jazDefaults'
 import { findPreviewURLs } from '../../../../shared/preview'
 import { usePreviewLink } from './MessageMarkdown'
 
+// Owns the "open in preview" affordance for a message: scan its text for URLs
+// matching the configured patterns (jaz-defaults.js previewPatterns) and render a
+// card per match. Returns null when preview isn't available or nothing matches,
+// so callers can drop it in unconditionally.
 export function PreviewSuggestions({ text }: { text: string }) {
   const openPreview = usePreviewLink()
   const urls = useMemo(
@@ -14,7 +18,7 @@ export function PreviewSuggestions({ text }: { text: string }) {
   return (
     <div className="mt-1 flex w-full flex-col gap-1.5">
       {urls.map((url) => (
-        <PreviewSuggestion key={url} url={url} onOpen={openPreview} />
+        <PreviewSuggestionCard key={url} url={url} onOpen={openPreview} />
       ))}
     </div>
   )
@@ -28,7 +32,7 @@ function previewHost(url: string): string {
   }
 }
 
-export function PreviewSuggestion({ url, onOpen }: { url: string; onOpen: (url: string) => void }) {
+function PreviewSuggestionCard({ url, onOpen }: { url: string; onOpen: (url: string) => void }) {
   return (
     <button
       type="button"

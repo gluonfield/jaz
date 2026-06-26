@@ -426,6 +426,7 @@ func TestGmailMCPToolsReadAttachmentStoresFileAndReturnsPreviewOnly(t *testing.T
 		}},
 	})
 	tools.apiBaseURL = gmailServer.URL
+
 	_, textAttachment, err := tools.ReadAttachment(context.Background(), nil, GmailReadAttachmentInput{
 		MessageID:    "m1",
 		AttachmentID: "a1",

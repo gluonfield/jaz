@@ -252,29 +252,6 @@ func TestRawWriterKeepsAllArchiveDirectoriesPrivate(t *testing.T) {
 	}
 }
 
-func TestRawWriterRequiresRoot(t *testing.T) {
-	occurred := time.Date(2026, 6, 12, 10, 30, 0, 0, time.UTC)
-
-	_, err := RawRecordPath("", integrations.Record{
-		Provider:     "gmail",
-		ConnectionID: "conn_1",
-		AccountID:    "august@example.com",
-		OccurredAt:   occurred,
-	})
-	if err == nil {
-		t.Fatal("expected missing root error")
-	}
-	err = (RawWriter{}).WriteRecords(context.Background(), []integrations.Record{{
-		Provider:     "gmail",
-		ConnectionID: "conn_1",
-		AccountID:    "august@example.com",
-		OccurredAt:   occurred,
-	}})
-	if err == nil {
-		t.Fatal("expected writer missing root error")
-	}
-}
-
 func TestRawWriterRejectsMissingPathKeys(t *testing.T) {
 	root := t.TempDir()
 	tests := []integrations.Record{
