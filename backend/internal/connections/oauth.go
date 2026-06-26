@@ -21,6 +21,7 @@ type OAuthStart struct {
 }
 
 type OAuthStore interface {
+	LoadToken(context.Context, string) (integrationoauth.Token, bool, error)
 	ListConnections(context.Context, string) ([]integrations.Connection, error)
 	SaveOAuthConnection(context.Context, integrationoauth.Token, integrations.Connection) error
 }
@@ -51,14 +52,14 @@ func NewOAuthService(store OAuthStore, config OAuthConfig) *OAuthService {
 	}
 }
 
-func (s *OAuthService) Start(_ context.Context, pluginID, redirectURL string) (OAuthStart, error) {
+func (s *OAuthService) Start(ctx context.Context, pluginID, redirectURL string) (OAuthStart, error) {
 	if pluginID != gmailconnector.ProviderID {
 		return OAuthStart{}, fmt.Errorf("connection plugin %q does not support OAuth yet", pluginID)
 	}
 	if redirectURL == "" {
 		return OAuthStart{}, errors.New("redirect URL is required")
 	}
-	config, _, err := s.gmailOAuthConfig(redirectURL)
+	config, _, err := s.gmailOAuthConfig(ctx, redirectURL)
 	if err != nil {
 		return OAuthStart{}, err
 	}
@@ -102,7 +103,7 @@ func (s *OAuthService) Callback(ctx context.Context, state, code, failure string
 		return fmt.Errorf("connection plugin %q does not support callback exchange", stored.pluginID)
 	}
 
-	config, credentials, err := s.gmailOAuthConfig(stored.redirectURL)
+	config, credentials, err := s.gmailOAuthConfig(ctx, stored.redirectURL)
 	if err != nil {
 		return err
 	}
@@ -180,8 +181,8 @@ func (s *OAuthService) takeState(state string) (oauthState, bool) {
 	return stored, ok
 }
 
-func (s *OAuthService) gmailOAuthConfig(redirectURL string) (*oauth2.Config, gmailconnector.OAuthClientCredentials, error) {
-	credentials, err := s.gmailCredentials()
+func (s *OAuthService) gmailOAuthConfig(ctx context.Context, redirectURL string) (*oauth2.Config, gmailconnector.OAuthClientCredentials, error) {
+	credentials, err := s.gmailCredentials(ctx)
 	if err != nil {
 		return nil, gmailconnector.OAuthClientCredentials{}, err
 	}
@@ -198,8 +199,44 @@ func (s *OAuthService) gmailOAuthConfig(redirectURL string) (*oauth2.Config, gma
 	}, credentials, nil
 }
 
-func (s *OAuthService) gmailCredentials() (gmailconnector.OAuthClientCredentials, error) {
-	return s.config.Gmail.Credentials()
+func (s *OAuthService) gmailCredentials(ctx context.Context) (gmailconnector.OAuthClientCredentials, error) {
+	credentials, err := s.config.Gmail.Credentials()
+	if err == nil {
+		return credentials, nil
+	}
+	if strings.TrimSpace(s.config.Gmail.ClientID) != "" || strings.TrimSpace(s.config.Gmail.ClientSecret) != "" {
+		return gmailconnector.OAuthClientCredentials{}, err
+	}
+	stored, ok, loadErr := s.storedGmailCredentials(ctx)
+	if loadErr != nil {
+		return gmailconnector.OAuthClientCredentials{}, loadErr
+	}
+	if ok {
+		return stored, nil
+	}
+	return gmailconnector.OAuthClientCredentials{}, err
+}
+
+func (s *OAuthService) storedGmailCredentials(ctx context.Context) (gmailconnector.OAuthClientCredentials, bool, error) {
+	connections, err := s.store.ListConnections(ctx, gmailconnector.ProviderID)
+	if err != nil {
+		return gmailconnector.OAuthClientCredentials{}, false, err
+	}
+	for _, connection := range connections {
+		token, ok, err := s.store.LoadToken(ctx, connection.ID)
+		if err != nil {
+			return gmailconnector.OAuthClientCredentials{}, false, err
+		}
+		if !ok {
+			continue
+		}
+		id := strings.TrimSpace(token.ClientID)
+		secret := strings.TrimSpace(token.ClientSecret)
+		if id != "" && secret != "" {
+			return gmailconnector.OAuthClientCredentials{ClientID: id, ClientSecret: secret}, true, nil
+		}
+	}
+	return gmailconnector.OAuthClientCredentials{}, false, nil
 }
 
 func randomOAuthState() (string, error) {

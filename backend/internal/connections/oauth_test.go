@@ -14,6 +14,7 @@ import (
 
 type memoryOAuthStore struct {
 	connections []integrations.Connection
+	tokens      map[string]integrationoauth.Token
 }
 
 var testOAuthConfig = OAuthConfig{
@@ -31,6 +32,11 @@ func (s memoryOAuthStore) ListConnections(_ context.Context, provider string) ([
 		}
 	}
 	return out, nil
+}
+
+func (s memoryOAuthStore) LoadToken(_ context.Context, id string) (integrationoauth.Token, bool, error) {
+	token, ok := s.tokens[id]
+	return token, ok, nil
 }
 
 func (memoryOAuthStore) SaveOAuthConnection(context.Context, integrationoauth.Token, integrations.Connection) error {
@@ -68,6 +74,34 @@ func TestOAuthStartBuildsGmailPKCEURL(t *testing.T) {
 		q.Get("code_challenge") == "" ||
 		q.Get("state") == "" {
 		t.Fatalf("oauth query = %#v", q)
+	}
+}
+
+func TestOAuthStartUsesStoredGmailClientCredentials(t *testing.T) {
+	redirectURL := "http://127.0.0.1:5222/v1/connections/oauth/google/callback"
+	store := memoryOAuthStore{
+		connections: []integrations.Connection{{
+			ID:       gmailconnector.OAuthConnectionID,
+			Provider: gmailconnector.ProviderID,
+		}},
+		tokens: map[string]integrationoauth.Token{
+			gmailconnector.OAuthConnectionID: {
+				ClientID:     "stored-client",
+				ClientSecret: "stored-secret",
+			},
+		},
+	}
+
+	start, err := NewOAuthService(store, OAuthConfig{}).Start(context.Background(), gmailconnector.ProviderID, redirectURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := url.Parse(start.AuthURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Query().Get("client_id") != "stored-client" {
+		t.Fatalf("auth url = %s", start.AuthURL)
 	}
 }
 
