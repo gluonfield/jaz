@@ -16,13 +16,14 @@ const (
 	ToolGetProfile     = "gmail_get_profile"
 	ToolSearchMessages = "gmail_search_messages"
 	ToolReadMessage    = "gmail_read_message"
+	ToolSendMessage    = "gmail_send_message"
 )
 
 func Plugin() integrations.Plugin {
 	return integrations.Plugin{
 		ID:          "gmail",
 		Name:        "Gmail",
-		Description: "Let agents verify Gmail email access, search email message summaries, and read selected messages.",
+		Description: "Search, read, and send Gmail messages from connected accounts.",
 		Provider: integrations.Provider{
 			ID:   ProviderID,
 			Name: ProviderName,
@@ -34,12 +35,12 @@ func Plugin() integrations.Plugin {
 		},
 		Auth: []integrations.AuthOption{{
 			Kind:        integrations.AuthKindOAuth,
-			Description: "Jaz-managed Google OAuth for Gmail read tools.",
+			Description: "Jaz-managed Google OAuth for Gmail tools.",
 			Scopes:      OAuthScopes,
 		}, {
 			Kind:        integrations.AuthKindRemoteMCP,
 			Description: "Official Google Gmail MCP server compatibility path.",
-			Scopes:      []string{ScopeReadonly, ScopeCompose},
+			Scopes:      []string{ScopeReadonly, ScopeCompose, ScopeSend},
 		}},
 		Capabilities: []integrations.Capability{
 			integrations.CapabilityAct,
@@ -50,7 +51,7 @@ func Plugin() integrations.Plugin {
 		Skills: []integrations.PluginSkill{{
 			ID:          "gmail",
 			Name:        "Gmail",
-			Description: "General guidance for reading, searching, drafting, sending, and organizing Gmail.",
+			Description: "Guidance for reading, searching, sending, and organizing Gmail.",
 			Status:      "planned",
 		}, {
 			ID:          "gmail-inbox-triage",
@@ -79,9 +80,10 @@ func Plugin() integrations.Plugin {
 
 func tools() []integrations.PluginTool {
 	return []integrations.PluginTool{
-		tool(ToolGetProfile, "Return one connected Gmail email account's live profile totals.", integrations.ActionRiskRead, ScopeModify),
-		tool(ToolSearchMessages, "Search one connected Gmail email account and return bounded metadata, snippets, labels, and message IDs.", integrations.ActionRiskRead, ScopeModify),
-		tool(ToolReadMessage, "Read one Gmail email message from one connected account by ID with headers, labels, body text or HTML, and attachment metadata.", integrations.ActionRiskRead, ScopeModify),
+		tool(ToolGetProfile, "Show profile totals for one connected Gmail account.", integrations.ActionRiskRead, ScopeModify),
+		tool(ToolSearchMessages, "Search Gmail messages and return bounded metadata, snippets, labels, and message IDs.", integrations.ActionRiskRead, ScopeModify),
+		tool(ToolReadMessage, "Read one Gmail message by ID with headers, labels, body text or HTML, and attachment metadata.", integrations.ActionRiskRead, ScopeModify),
+		tool(ToolSendMessage, "Send a plain text Gmail message from one connected account.", integrations.ActionRiskWrite, ScopeModify),
 	}
 }
 

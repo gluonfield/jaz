@@ -148,7 +148,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 	for _, name := range []string{
 		"memory_search", "memory_get_page",
 		"thread_context",
-		"gmail_get_profile", "gmail_search_messages", "gmail_read_message",
+		"gmail_get_profile", "gmail_search_messages", "gmail_read_message", "gmail_send_message",
 		"whatsapp_send_message", "telegram_send_message",
 		"loop_list", "loop_get", "loop_create", "loop_update", "loop_run", "loop_delete",
 		"agent_spawn", "agent_send", "agent_status", "agent_wait", "agent_cancel", "agent_list",

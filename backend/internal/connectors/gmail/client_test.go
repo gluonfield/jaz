@@ -3,6 +3,7 @@ package gmail
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -114,6 +115,59 @@ func TestAPIClientSearchMessages(t *testing.T) {
 	}
 	if len(message.LabelIDs) != 2 || message.InternalDate.IsZero() {
 		t.Fatalf("labels/date = %#v %v", message.LabelIDs, message.InternalDate)
+	}
+}
+
+func TestAPIClientSendMessage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/gmail/v1/users/me/messages/send" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s", r.Method)
+		}
+		var body struct {
+			Raw string `json:"raw"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		raw, err := base64.RawURLEncoding.DecodeString(body.Raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		message := string(raw)
+		for _, want := range []string{
+			"To: \"Alice\" <alice@example.com>",
+			"Cc: <bob@example.com>",
+			"Subject: Hello",
+			"Content-Type: text/plain; charset=UTF-8",
+			"Plain body",
+		} {
+			if !strings.Contains(message, want) {
+				t.Fatalf("raw message missing %q:\n%s", want, message)
+			}
+		}
+		_, _ = w.Write([]byte(`{
+			"id":"sent1",
+			"threadId":"thread1",
+			"labelIds":["SENT"],
+			"payload":{"headers":[{"name":"Subject","value":"Hello"}]}
+		}`))
+	}))
+	defer server.Close()
+
+	message, err := (APIClient{HTTP: server.Client(), BaseURL: server.URL}).SendMessage(context.Background(), SendMessageRequest{
+		To:       []string{"Alice <alice@example.com>"},
+		Cc:       []string{"bob@example.com"},
+		Subject:  "Hello",
+		BodyText: "Plain body",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if message.ID != "sent1" || message.ThreadID != "thread1" || message.Subject != "Hello" || len(message.LabelIDs) != 1 || message.LabelIDs[0] != "SENT" {
+		t.Fatalf("message = %#v", message)
 	}
 }
 

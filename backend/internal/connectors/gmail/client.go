@@ -1,11 +1,14 @@
 package gmail
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
+	"mime/quotedprintable"
 	"net/http"
 	"net/mail"
 	"net/url"
@@ -38,6 +41,14 @@ type MessageContent struct {
 	Message  Message `json:"message"`
 	BodyText string  `json:"body_text,omitempty"`
 	BodyHTML string  `json:"body_html,omitempty"`
+}
+
+type SendMessageRequest struct {
+	To       []string
+	Cc       []string
+	Bcc      []string
+	Subject  string
+	BodyText string
 }
 
 type APIClient struct {
@@ -122,6 +133,18 @@ func (c APIClient) ReadMessage(ctx context.Context, id string) (MessageContent, 
 	}, nil
 }
 
+func (c APIClient) SendMessage(ctx context.Context, input SendMessageRequest) (Message, error) {
+	raw, err := encodeMessage(input)
+	if err != nil {
+		return Message{}, err
+	}
+	var sent apiMessage
+	if err := c.post(ctx, "gmail/v1/users/me/messages/send", map[string]string{"raw": raw}, &sent); err != nil {
+		return Message{}, err
+	}
+	return messageFromAPI(sent), nil
+}
+
 func (c APIClient) message(ctx context.Context, id, format string) (apiMessage, error) {
 	q := url.Values{}
 	q.Set("format", format)
@@ -132,6 +155,64 @@ func (c APIClient) message(ctx context.Context, id, format string) (apiMessage, 
 	}
 	var message apiMessage
 	return message, c.get(ctx, "gmail/v1/users/me/messages/"+id, q, &message)
+}
+
+func encodeMessage(input SendMessageRequest) (string, error) {
+	to, err := formatAddressHeader(input.To)
+	if err != nil {
+		return "", fmt.Errorf("to: %w", err)
+	}
+	if to == "" {
+		return "", fmt.Errorf("to is required")
+	}
+	cc, err := formatAddressHeader(input.Cc)
+	if err != nil {
+		return "", fmt.Errorf("cc: %w", err)
+	}
+	bcc, err := formatAddressHeader(input.Bcc)
+	if err != nil {
+		return "", fmt.Errorf("bcc: %w", err)
+	}
+	if input.BodyText == "" {
+		return "", fmt.Errorf("body text is required")
+	}
+	var message bytes.Buffer
+	message.WriteString("To: " + to + "\r\n")
+	if cc != "" {
+		message.WriteString("Cc: " + cc + "\r\n")
+	}
+	if bcc != "" {
+		message.WriteString("Bcc: " + bcc + "\r\n")
+	}
+	if input.Subject != "" {
+		message.WriteString("Subject: " + mime.QEncoding.Encode("utf-8", input.Subject) + "\r\n")
+	}
+	message.WriteString("MIME-Version: 1.0\r\n")
+	message.WriteString("Content-Type: text/plain; charset=UTF-8\r\n")
+	message.WriteString("Content-Transfer-Encoding: quoted-printable\r\n\r\n")
+	body := quotedprintable.NewWriter(&message)
+	if _, err := body.Write([]byte(input.BodyText)); err != nil {
+		return "", err
+	}
+	if err := body.Close(); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(message.Bytes()), nil
+}
+
+func formatAddressHeader(values []string) (string, error) {
+	if len(values) == 0 {
+		return "", nil
+	}
+	parsed, err := mail.ParseAddressList(strings.Join(values, ","))
+	if err != nil {
+		return "", err
+	}
+	out := make([]string, 0, len(parsed))
+	for _, address := range parsed {
+		out = append(out, address.String())
+	}
+	return strings.Join(out, ", "), nil
 }
 
 func (c APIClient) get(ctx context.Context, path string, query url.Values, out any) error {
@@ -146,6 +227,32 @@ func (c APIClient) get(ctx context.Context, path string, query url.Values, out a
 	if err != nil {
 		return err
 	}
+	res, err := c.httpClient().Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
+		return apiError(res, body)
+	}
+	return json.NewDecoder(res.Body).Decode(out)
+}
+
+func (c APIClient) post(ctx context.Context, path string, body any, out any) error {
+	endpoint, err := url.JoinPath(c.baseURL(), path)
+	if err != nil {
+		return err
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(raw))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
 	res, err := c.httpClient().Do(req)
 	if err != nil {
 		return err

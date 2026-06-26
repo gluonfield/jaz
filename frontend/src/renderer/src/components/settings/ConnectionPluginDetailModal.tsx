@@ -1,32 +1,26 @@
-import { ArrowRight, Loader2, Plug, Plus, Sparkles, Unplug } from 'lucide-react'
+import { ArrowRight, Loader2, Plug, Plus, Sparkles, Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import type {
-  IntegrationConnectionAccount,
   IntegrationPlugin,
   IntegrationSkill,
+  IntegrationTool,
 } from '@/lib/api/types'
-import { accountAddress, pluginActionLabel } from './connectionFormatting'
+import { pluginActionLabel } from './connectionFormatting'
 import { PluginGlyph, PluginIcon } from './ConnectionPluginVisuals'
 
 export function ConnectionPluginDetailModal({
   plugin,
   connecting,
-  disconnectingAccountID,
   onClose,
   onConnect,
-  onDisconnect,
 }: {
   plugin: IntegrationPlugin | null
   connecting: boolean
-  disconnectingAccountID?: string
   onClose: () => void
   onConnect: (plugin: IntegrationPlugin) => void
-  onDisconnect: (account: IntegrationConnectionAccount) => void
 }) {
   if (!plugin) return null
-
-  const accounts = plugin.connection?.accounts ?? []
 
   return (
     <Modal
@@ -45,13 +39,7 @@ export function ConnectionPluginDetailModal({
           connecting={connecting}
           onConnect={() => onConnect(plugin)}
         />
-        {accounts.length ? (
-          <ConnectedAccountsSection
-            accounts={accounts}
-            disconnectingAccountID={disconnectingAccountID}
-            onDisconnect={onDisconnect}
-          />
-        ) : null}
+        {plugin.tools?.length ? <ToolsSection tools={plugin.tools} /> : null}
         {plugin.skills?.length ? <SkillsSection skills={plugin.skills} /> : null}
         <InformationSection plugin={plugin} />
       </div>
@@ -109,61 +97,26 @@ function AppsSection({
   )
 }
 
-function ConnectedAccountsSection({
-  accounts,
-  disconnectingAccountID,
-  onDisconnect,
-}: {
-  accounts: IntegrationConnectionAccount[]
-  disconnectingAccountID?: string
-  onDisconnect: (account: IntegrationConnectionAccount) => void
-}) {
+function ToolsSection({ tools }: { tools: IntegrationTool[] }) {
   return (
     <section>
-      <SectionHeading label="Connected accounts" count={accounts.length} />
-      <div className="space-y-1">
-        {accounts.map((account) => (
-          <ConnectedAccountRow
-            key={account.id}
-            account={account}
-            disconnecting={disconnectingAccountID === account.id}
-            onDisconnect={() => onDisconnect(account)}
-          />
+      <SectionHeading label="Tools" count={tools.length} />
+      <div className="space-y-4">
+        {tools.map((tool) => (
+          <div key={tool.name} className="flex min-w-0 items-start gap-3">
+            <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-control bg-surface text-ink-2">
+              <Wrench size={15} />
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-[13px] font-medium text-ink">{toolTitle(tool.name)}</p>
+              <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-ink-2">
+                {tool.description}
+              </p>
+            </div>
+          </div>
         ))}
       </div>
     </section>
-  )
-}
-
-function ConnectedAccountRow({
-  account,
-  disconnecting,
-  onDisconnect,
-}: {
-  account: IntegrationConnectionAccount
-  disconnecting: boolean
-  onDisconnect: () => void
-}) {
-  const address = accountAddress(account) || account.id
-  const name = account.account_name && account.account_name !== address ? account.account_name : ''
-
-  return (
-    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-card py-2">
-      <div className="min-w-0">
-        <p className="truncate text-[13px] font-medium text-ink" title={address}>
-          {address}
-        </p>
-        {name ? (
-          <p className="mt-0.5 truncate text-[12px] text-ink-3" title={name}>
-            {name}
-          </p>
-        ) : null}
-      </div>
-      <Button variant="danger" size="sm" disabled={disconnecting} onClick={onDisconnect}>
-        {disconnecting ? <Loader2 size={13} className="animate-spin" /> : <Unplug size={13} />}
-        Disconnect
-      </Button>
-    </div>
   )
 }
 
@@ -225,22 +178,31 @@ function SectionHeading({ label, count }: { label: string; count: number }) {
 }
 
 function subtitle(plugin: IntegrationPlugin): string {
-  if (plugin.id === 'gmail') return 'Read and manage Gmail'
+  if (plugin.id === 'gmail') return 'Search, read, and send Gmail'
   if (plugin.category === 'chat') return `Read and manage ${plugin.name}`
   return plugin.provider.name
 }
 
 function previewText(plugin: IntegrationPlugin): string {
-  if (plugin.id === 'gmail') return 'Summarize inbox, draft replies, or process email threads'
+  if (plugin.id === 'gmail') return 'Search inbox, read threads, or send messages'
   if (plugin.category === 'chat') return 'Search conversations, sync memory, or send approved messages'
   return plugin.description || `Use ${plugin.name} from Jaz`
 }
 
 function appDescription(plugin: IntegrationPlugin): string {
-  if (plugin.id === 'gmail') return 'Find and reference emails from your inbox'
+  if (plugin.id === 'gmail') return 'Search, read, and send Gmail messages'
   if (plugin.id === 'whatsapp') return 'Sync chats and send approved WhatsApp messages'
   if (plugin.id === 'telegram') return 'Sync chats and send approved Telegram messages'
   return plugin.description || `Use ${plugin.name} from Jaz`
+}
+
+function toolTitle(name: string): string {
+  return name
+    .replace(/^[^_]+_/, '')
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
 }
 
 function capabilityLabels(plugin: IntegrationPlugin): string {
