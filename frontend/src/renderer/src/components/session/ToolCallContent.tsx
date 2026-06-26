@@ -59,6 +59,33 @@ function readField(value: unknown, key: string): string {
   return ''
 }
 
+function toolNameKey(name?: string): string {
+  return (name ?? '').toLowerCase().replace(/[\s_-]/g, '')
+}
+
+function toolNameLabel(name?: string): string {
+  const key = toolNameKey(name)
+  if (!key) return ''
+  const labels: Record<string, string> = {
+    agent: 'Agent',
+    bash: 'Bash',
+    edit: 'Edit',
+    glob: 'Glob',
+    grep: 'Grep',
+    ls: 'List files',
+    multiedit: 'Edit',
+    notebookedit: 'Edit notebook',
+    notebookread: 'Read notebook',
+    read: 'Read',
+    task: 'Task',
+    todowrite: 'Update plan',
+    webfetch: 'Web fetch',
+    websearch: 'Web search',
+    write: 'Write',
+  }
+  return labels[key] ?? name ?? ''
+}
+
 function searchQuery(call: ACPToolCall): string {
   const fromInput = readField(call.raw_input, 'query')
   if (fromInput) return fromInput
@@ -85,7 +112,7 @@ function fetchURL(call: ACPToolCall): string {
 // agents only give kind — and Claude even tags both web tools as "fetch" — so we
 // fall back to result shape and the title verb.
 function webToolVariant(call: ACPToolCall): 'search' | 'fetch' | null {
-  const name = (call.tool_name ?? '').toLowerCase().replace(/[\s_-]/g, '')
+  const name = toolNameKey(call.tool_name)
   if (name === 'websearch') return 'search'
   if (name === 'webfetch') return 'fetch'
   const kind = (call.kind ?? '').toLowerCase()
@@ -103,6 +130,13 @@ export function toolCallCategory(call: ACPToolCall): string {
   const web = webToolVariant(call)
   if (web === 'search') return 'web_search'
   if (web === 'fetch') return 'web_fetch'
+  const name = toolNameKey(call.tool_name)
+  if (name === 'bash') return 'command'
+  if (name === 'read' || name === 'notebookread' || name === 'ls') return 'read'
+  if (name === 'grep' || name === 'glob') return 'search'
+  if (name === 'edit' || name === 'multiedit' || name === 'write' || name === 'notebookedit') {
+    return 'edit'
+  }
   const kind = (call.kind ?? '').toLowerCase()
   if (kind === 'edit' || kind === 'delete' || kind === 'move') return 'edit'
   if (kind === 'read') return 'read'
@@ -128,6 +162,16 @@ function previewText(content?: ACPToolContent[]): string {
       parts.push(`${block.path ? `# ${block.path}\n` : ''}${block.new_text ?? ''}`)
   }
   return parts.join('\n\n').trim()
+}
+
+function genericToolLabel(call: ACPToolCall): string {
+  if (call.title) return call.title
+  if (call.status || previewText(call.content)) return toolNameLabel(call.tool_name)
+  return ''
+}
+
+export function hasToolCallDetail(call: ACPToolCall): boolean {
+  return Boolean(genericToolLabel(call) || previewText(call.content))
 }
 
 const Favicon = memo(function Favicon({ url }: { url: string }) {
@@ -204,6 +248,8 @@ function GenericToolRow({ call }: { call: ACPToolCall }) {
   const [open, setOpen] = useState(false)
   const detail = previewText(call.content)
   const hasDetail = Boolean(detail)
+  const label = genericToolLabel(call)
+  if (!label && !hasDetail) return null
   return (
     <div className="flex w-full flex-col gap-1">
       <button
@@ -220,7 +266,7 @@ function GenericToolRow({ call }: { call: ACPToolCall }) {
             aria-hidden
           />
         ) : null}
-        <span className="truncate">{call.title || call.id}</span>
+        <span className="truncate">{label || 'Tool'}</span>
         {call.status ? <span className="text-ink-3"> · {call.status}</span> : null}
       </button>
       {open && hasDetail ? (

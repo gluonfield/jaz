@@ -4,7 +4,7 @@ import type { ACPToolCall } from '@/lib/api/types'
 import { useInlineDiffs, useInlineShellCommands } from '@/lib/appearance'
 import { EditDiffBlock, hasInlineDiff } from './EditDiffBlock'
 import { ShellCommandBlock, hasInlineShellCommand } from './ShellCommandBlock'
-import { ToolCallDetail, toolCallCategory } from './ToolCallContent'
+import { hasToolCallDetail, ToolCallDetail, toolCallCategory } from './ToolCallContent'
 import { normalized } from './TranscriptUtils'
 
 interface ToolGroup {
@@ -96,6 +96,8 @@ const ToolRunDisclosure = memo(function ToolRunDisclosure({
   active?: boolean
 }) {
   const [open, setOpen] = useState(false)
+  const detailCalls = calls.filter(hasToolCallDetail)
+  const expandable = detailCalls.length > 0
   // Old sessions can hold stale non-terminal statuses; only spin while the
   // session is actually working.
   const running = active && calls.some((call) => isRunningToolStatus(call.status))
@@ -103,13 +105,16 @@ const ToolRunDisclosure = memo(function ToolRunDisclosure({
     <div className="flex flex-col items-start gap-1">
       <button
         type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        className="inline-flex min-h-7 items-center gap-1.5 rounded-full px-1 text-left font-mono text-[12px] text-ink-3 transition-colors hover:text-ink"
+        disabled={!expandable}
+        aria-expanded={expandable ? open : undefined}
+        onClick={() => {
+          if (expandable) setOpen((value) => !value)
+        }}
+        className="inline-flex min-h-7 items-center gap-1.5 rounded-full px-1 text-left font-mono text-[12px] text-ink-3 transition-colors enabled:hover:text-ink disabled:cursor-default"
       >
         <ChevronRight
           size={12}
-          className={`shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}
+          className={`shrink-0 transition-transform ${!expandable ? 'opacity-30' : open ? 'rotate-90' : ''}`}
           aria-hidden
         />
         {label}
@@ -117,9 +122,9 @@ const ToolRunDisclosure = memo(function ToolRunDisclosure({
           <LoaderCircle className="size-3 animate-spin text-running" aria-hidden />
         ) : null}
       </button>
-      {open ? (
+      {open && expandable ? (
         <div className="flex w-full max-w-full flex-col gap-1.5 pl-4">
-          {calls.map((call) =>
+          {detailCalls.map((call) =>
             hasInlineDiff(call) ? (
               <EditDiffBlock key={call.id} call={call} />
             ) : hasInlineShellCommand(call) ? (
