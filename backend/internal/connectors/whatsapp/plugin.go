@@ -43,7 +43,7 @@ func Plugin() integrations.Plugin {
 			"Initial history depends on what WhatsApp Web makes available during companion-device sync.",
 		},
 		Implementation: integrations.Implementation{
-			Status: "planned",
+			Status: "available",
 			Owner:  "jaz",
 		},
 	}

@@ -24,8 +24,8 @@ func NewConnectionConnectService(catalog *connections.Catalog, oauth *connection
 	return connections.NewConnectService(catalog, oauth, qr)
 }
 
-func NewConnectionService(catalog *connections.Catalog, store *sqlitestore.Store, qr *connections.QRService, disconnecters ConnectionSessionDisconnecters) *connections.Service {
-	return connections.NewService(catalog, store, qr, disconnecters.Disconnecters...)
+func NewConnectionService(catalog *connections.Catalog, store *sqlitestore.Store, disconnecters ConnectionSessionDisconnecters) *connections.Service {
+	return connections.NewService(catalog, store, disconnecters.Disconnecters...)
 }
 
 func NewGmailMCPTools(store *sqlitestore.Store, raw integrationingest.RawWriter) *connections.GmailMCPTools {

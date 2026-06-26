@@ -15,7 +15,9 @@ import (
 const firstQRCodeTimeout = 20 * time.Second
 
 func (p *Provider) StartQR(ctx context.Context) (connections.QRStart, error) {
-	refreshWhatsAppWebVersion(ctx)
+	if err := refreshWhatsAppWebVersion(ctx); err != nil {
+		return connections.QRStart{}, fmt.Errorf("couldn't refresh WhatsApp Web version: %w", err)
+	}
 	device := p.container.NewDevice()
 	client := newWhatsAppClient(device)
 	session := &qrSession{

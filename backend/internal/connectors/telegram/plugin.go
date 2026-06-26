@@ -42,7 +42,7 @@ func Plugin() integrations.Plugin {
 			"Message sends are direct actions from the selected connected account.",
 		},
 		Implementation: integrations.Implementation{
-			Status: "planned",
+			Status: "available",
 			Owner:  "jaz",
 		},
 	}

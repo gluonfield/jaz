@@ -27,15 +27,13 @@ type SessionDisconnecter interface {
 type Service struct {
 	catalog       *Catalog
 	store         Store
-	qr            *QRService
 	disconnecters map[string]SessionDisconnecter
 }
 
-func NewService(catalog *Catalog, store Store, qr *QRService, disconnecters ...SessionDisconnecter) *Service {
+func NewService(catalog *Catalog, store Store, disconnecters ...SessionDisconnecter) *Service {
 	service := &Service{
 		catalog:       catalog,
 		store:         store,
-		qr:            qr,
 		disconnecters: map[string]SessionDisconnecter{},
 	}
 	for _, disconnecter := range disconnecters {
@@ -96,7 +94,6 @@ func (s *Service) DisconnectAccount(ctx context.Context, id string) error {
 }
 
 func (s *Service) withConnection(ctx context.Context, plugin integrations.Plugin) (integrations.Plugin, error) {
-	plugin = s.withConnectability(plugin)
 	if plugin.Provider.ID == "" {
 		return plugin, nil
 	}
@@ -111,16 +108,4 @@ func (s *Service) withConnection(ctx context.Context, plugin integrations.Plugin
 	}
 	plugin.Connection = &connection
 	return plugin, nil
-}
-
-func (s *Service) withConnectability(plugin integrations.Plugin) integrations.Plugin {
-	if len(plugin.Auth) == 0 || plugin.Auth[0].Kind != integrations.AuthKindSession {
-		return plugin
-	}
-	if s.qr != nil && s.qr.Available(plugin.ID) {
-		plugin.Implementation.Status = "available"
-		return plugin
-	}
-	plugin.Implementation.Status = "adapter_required"
-	return plugin
 }

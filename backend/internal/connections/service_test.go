@@ -5,7 +5,6 @@ import (
 	"errors"
 	"slices"
 	"testing"
-	"time"
 
 	gmailconnector "github.com/wins/jaz/backend/internal/connectors/gmail"
 	"github.com/wins/jaz/backend/internal/connectors/telegram"
@@ -14,7 +13,7 @@ import (
 )
 
 func TestServiceReportsGmailConnectionState(t *testing.T) {
-	service := NewService(NewCatalog(), &serviceStore{}, NewQRService())
+	service := NewService(NewCatalog(), &serviceStore{})
 	plugin, ok, err := service.Plugin(context.Background(), gmailconnector.ProviderID)
 	if err != nil || !ok {
 		t.Fatalf("plugin ok=%v err=%v", ok, err)
@@ -34,7 +33,7 @@ func TestServiceReturnsSavedGmailAccounts(t *testing.T) {
 			Alias:       "personal",
 			Scopes:      []string{gmailconnector.ScopeModify},
 		}},
-	}, NewQRService())
+	})
 	plugin, ok, err := service.Plugin(context.Background(), gmailconnector.ProviderID)
 	if err != nil || !ok {
 		t.Fatalf("plugin ok=%v err=%v", ok, err)
@@ -47,19 +46,19 @@ func TestServiceReturnsSavedGmailAccounts(t *testing.T) {
 	}
 }
 
-func TestServiceReportsMissingChatSessionAdapter(t *testing.T) {
-	service := NewService(NewCatalog(), &serviceStore{}, NewQRService())
+func TestServiceLeavesChatPluginConnectabilityInCatalog(t *testing.T) {
+	service := NewService(NewCatalog(), &serviceStore{})
 	plugin, ok, err := service.Plugin(context.Background(), whatsapp.ProviderID)
 	if err != nil || !ok {
 		t.Fatalf("plugin ok=%v err=%v", ok, err)
 	}
-	if plugin.Implementation.Status != "adapter_required" {
+	if plugin.Implementation.Status != "available" {
 		t.Fatalf("implementation = %#v", plugin.Implementation)
 	}
 }
 
-func TestServiceListsMissingChatSessionAdaptersInCatalog(t *testing.T) {
-	service := NewService(NewCatalog(), &serviceStore{}, NewQRService())
+func TestServiceListsChatSessionPluginsInCatalog(t *testing.T) {
+	service := NewService(NewCatalog(), &serviceStore{})
 	plugins, err := service.ListPlugins(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -72,7 +71,7 @@ func TestServiceListsMissingChatSessionAdaptersInCatalog(t *testing.T) {
 	}
 }
 
-func TestServiceDoesNotTrustStaticAvailableStatusForSessionPlugins(t *testing.T) {
+func TestServiceDoesNotRewriteSessionPluginStatus(t *testing.T) {
 	catalog := &Catalog{plugins: []integrations.Plugin{{
 		ID: "matrix",
 		Provider: integrations.Provider{
@@ -84,54 +83,21 @@ func TestServiceDoesNotTrustStaticAvailableStatusForSessionPlugins(t *testing.T)
 			Status: "available",
 		},
 	}}}
-	service := NewService(catalog, &serviceStore{}, NewQRService())
+	service := NewService(catalog, &serviceStore{})
 
 	plugin, ok, err := service.Plugin(context.Background(), "matrix")
 	if err != nil || !ok {
 		t.Fatalf("plugin ok=%v err=%v", ok, err)
 	}
-	if plugin.Implementation.Status != "adapter_required" {
+	if plugin.Implementation.Status != "available" {
 		t.Fatalf("implementation = %#v", plugin.Implementation)
 	}
 	plugins, err := service.ListPlugins(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plugins) != 1 || plugins[0].Implementation.Status != "adapter_required" {
+	if len(plugins) != 1 || plugins[0].Implementation.Status != "available" {
 		t.Fatalf("plugins = %#v", plugins)
-	}
-}
-
-func TestServiceMarksChatSessionPluginsAvailableWhenQRProvidersExist(t *testing.T) {
-	service := NewService(NewCatalog(), &serviceStore{}, NewQRService(
-		fakeQRProvider{provider: telegram.ProviderID, expires: time.Now().Add(time.Minute)},
-		fakeQRProvider{provider: whatsapp.ProviderID, expires: time.Now().Add(time.Minute)},
-	))
-	for _, provider := range []string{telegram.ProviderID, whatsapp.ProviderID} {
-		plugin, ok, err := service.Plugin(context.Background(), provider)
-		if err != nil || !ok {
-			t.Fatalf("%s plugin ok=%v err=%v", provider, ok, err)
-		}
-		if plugin.Implementation.Status != "available" {
-			t.Fatalf("%s implementation = %#v", provider, plugin.Implementation)
-		}
-	}
-}
-
-func TestServiceListsChatSessionPluginsWhenQRProvidersExist(t *testing.T) {
-	service := NewService(NewCatalog(), &serviceStore{}, NewQRService(
-		fakeQRProvider{provider: telegram.ProviderID, expires: time.Now().Add(time.Minute)},
-		fakeQRProvider{provider: whatsapp.ProviderID, expires: time.Now().Add(time.Minute)},
-	))
-	plugins, err := service.ListPlugins(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	ids := pluginIDs(plugins)
-	for _, provider := range []string{telegram.ProviderID, whatsapp.ProviderID} {
-		if !slices.Contains(ids, provider) {
-			t.Fatalf("%s missing from catalog: %v", provider, ids)
-		}
 	}
 }
 
@@ -144,7 +110,7 @@ func TestServiceDisconnectAccount(t *testing.T) {
 		}},
 	}
 	disconnecter := &fakeSessionDisconnecter{provider: gmailconnector.ProviderID}
-	service := NewService(NewCatalog(), &store, NewQRService(), disconnecter)
+	service := NewService(NewCatalog(), &store, disconnecter)
 	if err := service.DisconnectAccount(context.Background(), " gmail:personal "); err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +135,7 @@ func TestServiceDisconnectCleanupSurvivesCanceledRequest(t *testing.T) {
 	disconnecter := &fakeSessionDisconnecter{provider: telegram.ProviderID}
 	ctx, cancel := context.WithCancel(context.Background())
 	store.afterDelete = cancel
-	service := NewService(NewCatalog(), &store, NewQRService(), disconnecter)
+	service := NewService(NewCatalog(), &store, disconnecter)
 
 	if err := service.DisconnectAccount(ctx, "telegram:personal"); err != nil {
 		t.Fatal(err)

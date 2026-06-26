@@ -3,12 +3,14 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { app, powerSaveBlocker } from 'electron'
+import { telegramBackendLDFlags } from './backendBuildFlags'
 
 // Single source of truth for where the spawned backend lives; returned to the
 // renderer through the IPC result so both sides always agree.
 const LOCAL_BACKEND_URL = 'http://127.0.0.1:5299'
 const LOCAL_HEALTH_URL = `${LOCAL_BACKEND_URL}/health`
 const START_TIMEOUT_MS = 30_000
+const LOGIN_ENV_KEYS = ['PATH', 'JAZ_BUNDLED_TELEGRAM_APP_ID', 'JAZ_BUNDLED_TELEGRAM_APP_HASH'] as const
 
 let child: ChildProcess | null = null
 let exitError: string | null = null
@@ -47,22 +49,32 @@ function localBackendEnv(): NodeJS.ProcessEnv {
   if (process.platform !== 'darwin') return env
   const shell = env['SHELL']?.trim() || '/bin/zsh'
   try {
-    const out = execFileSync(shell, ['-l', '-i', '-c', 'printf "\\n__JAZ_PATH__%s\\n" "$PATH"'], {
+    const out = execFileSync(shell, ['-l', '-i', '-c', loginShellEnvCommand()], {
       encoding: 'utf8',
       timeout: 3_000,
       stdio: ['ignore', 'pipe', 'ignore'],
     })
-    let line = ''
-    for (const entry of out.split(/\r?\n/).reverse()) {
-      if (!entry.startsWith('__JAZ_PATH__')) continue
-      line = entry.slice('__JAZ_PATH__'.length).trim()
-      break
+    for (const entry of out.split(/\r?\n/)) {
+      if (!entry.startsWith('__JAZ_ENV__')) continue
+      const index = entry.indexOf('=')
+      if (index <= '__JAZ_ENV__'.length) continue
+      const key = entry.slice('__JAZ_ENV__'.length, index)
+      if (!isLoginEnvKey(key)) continue
+      const value = entry.slice(index + 1).trim()
+      if (value) env[key] = value
     }
-    if (line) env['PATH'] = line
   } catch {
     // Keep LaunchServices env.
   }
   return env
+}
+
+function loginShellEnvCommand(): string {
+  return LOGIN_ENV_KEYS.map((key) => `printf "\\n__JAZ_ENV__${key}=%s" "$${key}"`).join('; ')
+}
+
+function isLoginEnvKey(value: string): value is (typeof LOGIN_ENV_KEYS)[number] {
+  return (LOGIN_ENV_KEYS as readonly string[]).includes(value)
 }
 
 // The pid file marks a backend WE spawned. If it survives into a new session
@@ -199,12 +211,21 @@ function spawnBackend(): ChildProcess {
   }
   // Dev: out/main → frontend/out/main, so the backend module sits three up.
   const backendDir = resolve(__dirname, '../../../backend')
-  return spawn('go', ['run', './cmd/jaz'], {
+  const env = localBackendEnv()
+  return spawn('go', devBackendArgs(env), {
     cwd: backendDir,
     detached: true,
-    env: localBackendEnv(),
+    env,
     stdio: ['ignore', 'pipe', 'pipe'],
   })
+}
+
+function devBackendArgs(env: NodeJS.ProcessEnv): string[] {
+  const ldflags = telegramBackendLDFlags(env)
+  const args = ['run']
+  if (ldflags.length) args.push('-ldflags', ldflags.join(' '))
+  args.push('./cmd/jaz')
+  return args
 }
 
 function signalBackendPID(pid: number, signal: NodeJS.Signals): void {
