@@ -42,7 +42,7 @@ func TestConnectionIDsUsesDurableConnectionRows(t *testing.T) {
 	}
 }
 
-func TestFailQRSessionRemovesProviderSession(t *testing.T) {
+func TestFailQRSessionPreservesFailedStatusUntilPolled(t *testing.T) {
 	provider := &Provider{sessions: map[string]*qrSession{}}
 	session := &qrSession{
 		id:     "whatsapp_qr_1",
@@ -53,12 +53,18 @@ func TestFailQRSessionRemovesProviderSession(t *testing.T) {
 
 	provider.failQRSession(context.Background(), session, errors.New("save failed"))
 
-	if _, ok := provider.sessions[session.id]; ok {
-		t.Fatalf("session %q was not removed", session.id)
+	if _, ok := provider.sessions[session.id]; !ok {
+		t.Fatalf("session %q was removed before status was read", session.id)
 	}
-	status := session.statusSnapshot()
+	status, err := provider.QRStatus(context.Background(), session.id)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if status.Status != "failed" || status.Error != "save failed" {
 		t.Fatalf("status = %#v", status)
+	}
+	if _, ok := provider.sessions[session.id]; ok {
+		t.Fatalf("session %q was not removed after terminal status", session.id)
 	}
 }
 

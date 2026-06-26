@@ -57,14 +57,19 @@ func TestServiceReportsMissingChatSessionAdapter(t *testing.T) {
 	}
 }
 
-func TestServiceMarksSessionPluginAvailableWhenQRProviderExists(t *testing.T) {
-	service := NewService(NewCatalog(), &serviceStore{}, NewQRService(fakeQRProvider{provider: telegram.ProviderID, expires: time.Now().Add(time.Minute)}))
-	plugin, ok, err := service.Plugin(context.Background(), telegram.ProviderID)
-	if err != nil || !ok {
-		t.Fatalf("plugin ok=%v err=%v", ok, err)
-	}
-	if plugin.Implementation.Status != "available" {
-		t.Fatalf("implementation = %#v", plugin.Implementation)
+func TestServiceMarksChatSessionPluginsAvailableWhenQRProvidersExist(t *testing.T) {
+	service := NewService(NewCatalog(), &serviceStore{}, NewQRService(
+		fakeQRProvider{provider: telegram.ProviderID, expires: time.Now().Add(time.Minute)},
+		fakeQRProvider{provider: whatsapp.ProviderID, expires: time.Now().Add(time.Minute)},
+	))
+	for _, provider := range []string{telegram.ProviderID, whatsapp.ProviderID} {
+		plugin, ok, err := service.Plugin(context.Background(), provider)
+		if err != nil || !ok {
+			t.Fatalf("%s plugin ok=%v err=%v", provider, ok, err)
+		}
+		if plugin.Implementation.Status != "available" {
+			t.Fatalf("%s implementation = %#v", provider, plugin.Implementation)
+		}
 	}
 }
 

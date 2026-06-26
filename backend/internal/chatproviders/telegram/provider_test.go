@@ -110,9 +110,14 @@ func TestContactsSyncMarkerSuppressesRecentRefresh(t *testing.T) {
 func TestDisconnectCancelsClientAndRemovesLocalSessionFiles(t *testing.T) {
 	root := t.TempDir()
 	runCtx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		<-runCtx.Done()
+		close(done)
+	}()
 	provider := &Provider{
 		root:    root,
-		clients: map[string]clientRun{"telegram:test": {cancel: cancel}},
+		clients: map[string]clientRun{"telegram:test": {cancel: cancel, done: done}},
 	}
 	connection := integrations.Connection{ID: "telegram:test"}
 	for _, path := range []string{
@@ -165,9 +170,14 @@ func TestClearClientPreservesReplacement(t *testing.T) {
 
 func TestCloseQRPendingSessionCancelsLoginClient(t *testing.T) {
 	runCtx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		<-runCtx.Done()
+		close(done)
+	}()
 	provider := &Provider{
 		root:     t.TempDir(),
-		clients:  map[string]clientRun{"telegram:test": {cancel: cancel}},
+		clients:  map[string]clientRun{"telegram:test": {cancel: cancel, done: done}},
 		sessions: map[string]*qrSession{},
 	}
 	session := &qrSession{id: "qr_1", connectionID: "telegram:test", status: "pending"}
@@ -212,6 +222,38 @@ func TestCloseQRConnectedSessionPreservesClient(t *testing.T) {
 	}
 	if _, ok := provider.clients[session.connectionID]; !ok {
 		t.Fatal("connected client was removed")
+	}
+}
+
+func TestFailedQRStatusRemovesLoginFileAfterStatusRead(t *testing.T) {
+	provider := &Provider{
+		root:     t.TempDir(),
+		clients:  map[string]clientRun{},
+		sessions: map[string]*qrSession{},
+	}
+	session := &qrSession{
+		id:           "qr_1",
+		connectionID: "telegram:test",
+		status:       "failed",
+		err:          "save failed",
+	}
+	provider.sessions[session.id] = session
+	if err := os.WriteFile(provider.sessionPath(session.connectionID), []byte("session"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	status, err := provider.QRStatus(context.Background(), session.id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Status != "failed" || status.Error != "save failed" {
+		t.Fatalf("status = %#v", status)
+	}
+	if _, ok := provider.sessions[session.id]; ok {
+		t.Fatal("failed QR session still registered after status read")
+	}
+	if _, err := os.Stat(provider.sessionPath(session.connectionID)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("session file still present, stat err=%v", err)
 	}
 }
 

@@ -8,10 +8,9 @@ import (
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
-func (p *Provider) Disconnect(_ context.Context, connection integrations.Connection) error {
-	_, cancel := p.removeClient(connection.ID)
-	if cancel != nil {
-		cancel()
+func (p *Provider) Disconnect(ctx context.Context, connection integrations.Connection) error {
+	if err := p.stopClient(ctx, connection.ID); err != nil {
+		return err
 	}
 	return errors.Join(
 		removeFile(p.sessionPath(connection.ID)),

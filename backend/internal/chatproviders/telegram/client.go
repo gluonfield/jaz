@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/gotd/td/session"
 	"github.com/gotd/td/telegram"
@@ -14,7 +15,10 @@ import (
 type clientRun struct {
 	client *telegram.Client
 	cancel context.CancelFunc
+	done   <-chan struct{}
 }
+
+const clientStopTimeout = 10 * time.Second
 
 func (p *Provider) startWatcher(connection integrations.Connection) {
 	p.mu.Lock()
@@ -25,10 +29,12 @@ func (p *Provider) startWatcher(connection integrations.Connection) {
 	dispatcher := p.dispatcherForConnection(connection)
 	client := p.newClient(connection.ID, dispatcher, false)
 	runCtx, cancel := context.WithCancel(p.ctx)
-	p.clients[connection.ID] = clientRun{client: client, cancel: cancel}
+	done := make(chan struct{})
+	p.clients[connection.ID] = clientRun{client: client, cancel: cancel, done: done}
 	p.mu.Unlock()
 
 	go func() {
+		defer close(done)
 		defer p.clearClient(connection.ID, client)
 		_ = client.Run(runCtx, func(clientCtx context.Context) error {
 			_ = p.writeContacts(clientCtx, connection, client.API())
@@ -72,9 +78,9 @@ func (p *Provider) backfillComplete(connectionID string) bool {
 	return err == nil
 }
 
-func (p *Provider) setClient(connectionID string, client *telegram.Client, cancel context.CancelFunc) {
+func (p *Provider) setClient(connectionID string, client *telegram.Client, cancel context.CancelFunc, done <-chan struct{}) {
 	p.mu.Lock()
-	p.clients[connectionID] = clientRun{client: client, cancel: cancel}
+	p.clients[connectionID] = clientRun{client: client, cancel: cancel, done: done}
 	p.mu.Unlock()
 }
 
@@ -92,10 +98,35 @@ func (p *Provider) clearClient(connectionID string, client *telegram.Client) {
 	p.mu.Unlock()
 }
 
-func (p *Provider) removeClient(connectionID string) (*telegram.Client, context.CancelFunc) {
+func (p *Provider) removeClient(connectionID string) (*telegram.Client, context.CancelFunc, <-chan struct{}) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	run := p.clients[connectionID]
 	delete(p.clients, connectionID)
-	return run.client, run.cancel
+	return run.client, run.cancel, run.done
+}
+
+func (p *Provider) stopClient(ctx context.Context, connectionID string) error {
+	_, cancel, done := p.removeClient(connectionID)
+	if cancel != nil {
+		cancel()
+	}
+	return waitClientDone(ctx, done)
+}
+
+func waitClientDone(ctx context.Context, done <-chan struct{}) error {
+	if done == nil {
+		return nil
+	}
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, clientStopTimeout)
+		defer cancel()
+	}
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }

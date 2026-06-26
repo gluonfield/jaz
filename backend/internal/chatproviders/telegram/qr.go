@@ -29,9 +29,11 @@ func (p *Provider) StartQR(ctx context.Context) (connections.QRStart, error) {
 	dispatcher := p.dispatcherForSession(session)
 	loggedIn := qrlogin.OnLoginToken(&dispatcher)
 	client := p.newClient(connectionID, dispatcher, false)
-	p.setClient(connectionID, client, cancel)
+	done := make(chan struct{})
+	p.setClient(connectionID, client, cancel, done)
 
 	go func() {
+		defer close(done)
 		err := client.Run(loginCtx, func(runCtx context.Context) error {
 			_, err := client.QR().Auth(runCtx, loggedIn, func(ctx context.Context, token qrlogin.Token) error {
 				session.setCode(token.URL(), token.Expires())
@@ -61,6 +63,9 @@ func (p *Provider) StartQR(ctx context.Context) (connections.QRStart, error) {
 		if err != nil && !errors.Is(err, context.Canceled) {
 			session.fail(err)
 		}
+		if session.statusSnapshot().Status == "failed" {
+			_ = removeFile(p.sessionPath(connectionID))
+		}
 		p.clearClient(connectionID, client)
 	}()
 
@@ -68,6 +73,7 @@ func (p *Provider) StartQR(ctx context.Context) (connections.QRStart, error) {
 	case <-session.ready:
 		status := session.statusSnapshot()
 		if status.Code == "" {
+			_ = p.CloseQR(context.WithoutCancel(ctx), session.id)
 			return connections.QRStart{}, fmt.Errorf("telegram QR provider did not return a code")
 		}
 		return connections.QRStart{
@@ -83,7 +89,7 @@ func (p *Provider) StartQR(ctx context.Context) (connections.QRStart, error) {
 			},
 		}, nil
 	case <-ctx.Done():
-		p.closeQRSession(session)
+		_ = p.closeQRSession(context.WithoutCancel(ctx), session)
 		return connections.QRStart{}, ctx.Err()
 	}
 }
@@ -102,7 +108,7 @@ func (p *Provider) QRStatus(ctx context.Context, id string) (connections.QRStatu
 	return status, nil
 }
 
-func (p *Provider) CloseQR(_ context.Context, id string) error {
+func (p *Provider) CloseQR(ctx context.Context, id string) error {
 	p.mu.Lock()
 	session := p.sessions[id]
 	if session != nil {
@@ -112,20 +118,18 @@ func (p *Provider) CloseQR(_ context.Context, id string) error {
 	if session == nil {
 		return connections.ErrQRSessionNotFound
 	}
-	p.closeQRSession(session)
-	return nil
+	return p.closeQRSession(ctx, session)
 }
 
-func (p *Provider) closeQRSession(session *qrSession) {
+func (p *Provider) closeQRSession(ctx context.Context, session *qrSession) error {
 	p.clearSession(session.id, session)
 	if session.statusSnapshot().Status == "connected" {
-		return
+		return nil
 	}
-	_, cancel := p.removeClient(session.connectionID)
-	if cancel != nil {
-		cancel()
-	}
-	_ = removeFile(p.sessionPath(session.connectionID))
+	return errors.Join(
+		p.stopClient(ctx, session.connectionID),
+		removeFile(p.sessionPath(session.connectionID)),
+	)
 }
 
 func (p *Provider) clearSession(id string, session *qrSession) {

@@ -2,6 +2,8 @@ import type { IntegrationPlugin } from '@/lib/api/types'
 
 const pluginAssetUrls: Record<string, string> = {
   gmail: '/integrations/gmail.svg',
+  telegram: '/integrations/telegram.svg',
+  whatsapp: '/integrations/whatsapp.svg',
 }
 
 export function PluginIcon({ plugin, compact = false }: { plugin: IntegrationPlugin; compact?: boolean }) {

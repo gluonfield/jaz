@@ -208,6 +208,7 @@ export interface IntegrationAuthOption {
   kind: IntegrationAuthKind
   description?: string
   scopes?: string[]
+  requires?: string[]
 }
 
 export interface IntegrationRemoteMCP {

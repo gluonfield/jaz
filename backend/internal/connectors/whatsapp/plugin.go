@@ -23,9 +23,8 @@ func Plugin() integrations.Plugin {
 		},
 		Category: "chat",
 		Icon: integrations.PluginIcon{
-			Kind:       integrations.PluginIconKindInitials,
-			Value:      "WA",
-			Background: "#e7f7ee",
+			Kind:  integrations.PluginIconKindAsset,
+			Value: ProviderID,
 		},
 		Auth: []integrations.AuthOption{{
 			Kind:        integrations.AuthKindSession,
