@@ -58,8 +58,25 @@ func TestNewWhatsAppClientUsesBrowserQRIdentity(t *testing.T) {
 	if got := waStore.DeviceProps.GetPlatformType(); got != waCompanionReg.DeviceProps_CHROME {
 		t.Fatalf("platform type = %s, want %s", got, waCompanionReg.DeviceProps_CHROME)
 	}
-	if got := waStore.DeviceProps.GetOs(); got != "Jaz" {
-		t.Fatalf("device os = %q, want Jaz", got)
+	if got := waStore.DeviceProps.GetOs(); got == "Jaz" {
+		t.Fatalf("device os = %q, custom Jaz OS names should not be registered for pairing", got)
+	}
+}
+
+func TestParseWhatsAppWebVersionFromServiceWorker(t *testing.T) {
+	version, err := parseWhatsAppWebVersion([]byte(`SiteData\":{\"client_revision\":1042205873,\"push_phase\":\"C3\"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := version.String(), "2.3000.1042205873"; got != want {
+		t.Fatalf("version = %q, want %q", got, want)
+	}
+	version, err = parseWhatsAppWebVersion([]byte(`{"client_revision":1042205874}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := version.String(), "2.3000.1042205874"; got != want {
+		t.Fatalf("version = %q, want %q", got, want)
 	}
 }
 
