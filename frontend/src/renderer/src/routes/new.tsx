@@ -124,22 +124,39 @@ function NewSessionPage() {
   const directoryLabel = directory
     ? (project?.name ?? directory.split(/[\\/]+/).filter(Boolean).at(-1) ?? directory)
     : ''
-  // Collapsed header summary: reasoning effort and the working directory, so
-  // a chosen project stays visible without opening the panel.
-  const optionsSubtitle = [controls.effort, directoryLabel].filter(Boolean).join(' · ')
+  // Mobile header: shown when there's a picker to surface or an agent to connect.
+  const showMobileOptions =
+    !runtimeAvailable ||
+    controls.showAgentPicker ||
+    controls.showModelPicker ||
+    controls.showProjectPicker ||
+    directoryIsGit
+  const optionsTitle = controls.showModelPicker
+    ? modelLabel
+    : controls.showAgentPicker
+      ? agentLabel(runtime)
+      : 'Options'
+  const optionsSubtitle = [
+    controls.showModelPicker ? controls.effort : '',
+    controls.showProjectPicker ? directoryLabel : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
 
   const composerControls = (
     <>
       <AgentModelControls controls={controls} placement={controlPlacement} disabled={creating} />
-      <ProjectPicker
-        value={directory}
-        placement={controlPlacement}
-        disabled={creating}
-        onChange={(path, git) => {
-          setDirectory(path)
-          if (!git) setWorktree(false)
-        }}
-      />
+      {controls.showProjectPicker ? (
+        <ProjectPicker
+          value={directory}
+          placement={controlPlacement}
+          disabled={creating}
+          onChange={(path, git) => {
+            setDirectory(path)
+            if (!git) setWorktree(false)
+          }}
+        />
+      ) : null}
       {directoryIsGit ? (
         <div className="flex items-center gap-1.5 text-[13px] text-ink-2">
           <Checkbox
@@ -164,8 +181,8 @@ function NewSessionPage() {
 
   return (
     <>
-      {isMobile ? (
-        <NewThreadOptions title={modelLabel} subtitle={optionsSubtitle || undefined}>
+      {isMobile && showMobileOptions ? (
+        <NewThreadOptions title={optionsTitle} subtitle={optionsSubtitle || undefined}>
           {composerControls}
         </NewThreadOptions>
       ) : null}

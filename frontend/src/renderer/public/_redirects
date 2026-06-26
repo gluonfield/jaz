@@ -1,0 +1,3 @@
+# SPA fallback for static hosts that read _redirects (Cloudflare Pages, Netlify):
+# serve index.html for client routes like /new. Real assets are matched first.
+/*  /index.html  200
