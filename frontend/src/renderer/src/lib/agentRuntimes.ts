@@ -28,10 +28,15 @@ export function selectableACPModelProviders(
   agent: string,
 ): ModelProviderOption[] {
   if (!acpUsesModelProvider(settings, agent)) return []
-  const ids = new Set(settings?.acp_options?.[agent]?.model_provider_ids ?? [])
-  const providers = (settings?.providers ?? []).filter(
-    (provider) => ids.has(provider.id) && !providerHidden(provider.id),
-  )
+  const configuredOptions = settings?.acp_options?.[agent]?.model_providers
+  if (configuredOptions) {
+    return configuredOptions.filter((provider) => !providerHidden(provider.id))
+  }
+  const ids = settings?.acp_options?.[agent]?.model_provider_ids ?? []
+  const byID = new Map((settings?.providers ?? []).map((provider) => [provider.id, provider]))
+  const providers = ids
+    .map((id) => byID.get(id))
+    .filter((provider): provider is ModelProviderOption => Boolean(provider && !providerHidden(provider.id)))
   return orderedACPModelProviders(settings, agent, providers)
 }
 

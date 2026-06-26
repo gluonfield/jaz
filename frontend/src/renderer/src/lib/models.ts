@@ -70,6 +70,8 @@ const ACP_AGENT_MODELS: Record<string, ModelSuggestion[]> = {
   opencode: OPENCODE_MODELS,
 }
 
+const OPENAI_MODEL_PROVIDER_IDS = new Set(['openai', 'openai-api-key'])
+
 export function acpAgentModelSuggestions(agent: string): ModelSuggestion[] {
   return ACP_AGENT_MODELS[agent] ?? []
 }
@@ -108,7 +110,7 @@ export function modelSuggestionsForProvider(
 ): ModelSuggestion[] {
   if (!provider) return []
   if (provider.id === 'openrouter') return openRouterModels
-  if (provider.id === 'openai') return OPENAI_MODELS
+  if (OPENAI_MODEL_PROVIDER_IDS.has(provider.id)) return OPENAI_MODELS
   if (provider.default_model) {
     return [{ value: provider.default_model, label: provider.default_model, description: provider.label }]
   }
