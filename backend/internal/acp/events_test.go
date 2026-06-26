@@ -1,13 +1,52 @@
 package acp
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
+	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
+
+func TestPermissionPlanContentExtractsPlan(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  map[string]any
+		want string
+	}{
+		{
+			name: "rawInput plan",
+			raw:  map[string]any{"toolCallId": "t1", "kind": "switch_mode", "rawInput": map[string]any{"plan": "Step one.\nStep two."}},
+			want: "Step one.\nStep two.",
+		},
+		{
+			name: "content block fallback",
+			raw: map[string]any{"toolCallId": "t2", "kind": "switch_mode", "content": []any{
+				map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": "Plan body."}},
+			}},
+			want: "Plan body.",
+		},
+		{
+			name: "non switch_mode ignored",
+			raw:  map[string]any{"toolCallId": "t3", "kind": "edit", "rawInput": map[string]any{"plan": "nope"}},
+			want: "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var call acpschema.ToolCallUpdate
+			if err := json.Unmarshal(mustJSON(t, tc.raw), &call); err != nil {
+				t.Fatal(err)
+			}
+			if got := permissionPlanContent(call); got != tc.want {
+				t.Fatalf("permissionPlanContent = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
 
 // The stored copy of an event must not repeat session-constant fields (title,
 // slug, mode catalog) — they dominated transcript payloads. The live copy

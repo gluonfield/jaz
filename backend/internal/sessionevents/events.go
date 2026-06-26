@@ -355,7 +355,6 @@ type ACPPermission struct {
 	SessionID        string                  `json:"session_id,omitempty"`
 	Title            string                  `json:"title,omitempty"`
 	ToolCallID       string                  `json:"tool_call_id,omitempty"`
-	Kind             string                  `json:"kind,omitempty"`
 	Content          string                  `json:"content,omitempty"`
 	Options          []ACPPermissionOption   `json:"options,omitempty"`
 	Locations        []ACPPermissionLocation `json:"locations,omitempty"`

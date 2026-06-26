@@ -160,26 +160,16 @@ func (m *Manager) AnswerInteractive(ctx context.Context, req InteractiveAnswer) 
 		go m.sendTextAfterTurn(job.ID, req.Text, parentVisible)
 		return nil
 	}
-	option, ok := permissionOption(pending.request.Options, req.OptionID)
-	if !ok {
+	if _, ok := permissionOption(pending.request.Options, req.OptionID); !ok {
 		m.permissionMu.Unlock()
 		return fmt.Errorf("unknown permission option: %s", req.OptionID)
-	}
-	m.permissionMu.Unlock()
-	if optionApprovesPlan(option) {
-		if err := m.restoreBaselineMode(ctx, job); err != nil {
-			return err
-		}
-	}
-
-	m.permissionMu.Lock()
-	if m.pendingPermission[req.RequestID] != pending {
-		m.permissionMu.Unlock()
-		return fmt.Errorf("pending permission request not found: %s", req.RequestID)
 	}
 	delete(m.pendingPermission, req.RequestID)
 	m.permissionMu.Unlock()
 
+	// The agent owns the mode transition out of plan: Claude's ExitPlanMode
+	// approval makes the adapter switch modes and emit current_mode_update, and
+	// the next non-plan turn re-applies the baseline. Jaz does not second-guess it.
 	resolved := pending.request
 	resolved.Status = "selected"
 	resolved.SelectedOptionID = req.OptionID
@@ -275,7 +265,6 @@ func permissionEvent(req acpschema.RequestPermissionRequest) sessionevents.ACPPe
 	out := sessionevents.ACPPermission{
 		Title:      firstNonEmpty(req.ToolCall.Title, "Permission requested"),
 		ToolCallID: string(req.ToolCall.ToolCallID),
-		Kind:       kindString(req.ToolCall.Kind),
 		Content:    permissionPlanContent(req.ToolCall),
 		Options:    make([]sessionevents.ACPPermissionOption, 0, len(req.Options)),
 		Locations:  make([]sessionevents.ACPPermissionLocation, 0, len(req.ToolCall.Locations)),
@@ -298,6 +287,35 @@ func permissionEvent(req acpschema.RequestPermissionRequest) sessionevents.ACPPe
 		out.Questions = questions
 	}
 	return out
+}
+
+// permissionPlanContent returns the proposed-plan markdown carried by a plan-exit
+// (switch_mode) permission. Claude's ExitPlanMode sends the plan both as
+// rawInput {"plan": ...} and as a text content block; either is the full plan the
+// user is being asked to approve, so the approval surface can render it.
+func permissionPlanContent(call acpschema.ToolCallUpdate) string {
+	if kindString(call.Kind) != string(acpschema.ToolKindSwitchMode) {
+		return ""
+	}
+	var in struct {
+		Plan string `json:"plan"`
+	}
+	if len(call.RawInput) > 0 && json.Unmarshal(call.RawInput, &in) == nil {
+		if plan := strings.TrimSpace(in.Plan); plan != "" {
+			return clampToolText(plan)
+		}
+	}
+	var b strings.Builder
+	for _, block := range normalizeToolContent(call.Content) {
+		if block.Type != "text" || block.Text == "" {
+			continue
+		}
+		if b.Len() > 0 {
+			b.WriteString("\n\n")
+		}
+		b.WriteString(block.Text)
+	}
+	return clampToolText(strings.TrimSpace(b.String()))
 }
 
 type codexUserInputMeta struct {
@@ -379,11 +397,6 @@ func permissionOption(options []sessionevents.ACPPermissionOption, optionID stri
 		}
 	}
 	return sessionevents.ACPPermissionOption{}, false
-}
-
-func optionApprovesPlan(option sessionevents.ACPPermissionOption) bool {
-	text := strings.ToLower(option.ID + " " + option.Name + " " + option.Kind)
-	return strings.Contains(text, "approve") || strings.Contains(text, "allow")
 }
 
 func encodeUserInputResponse(answers map[string]InteractiveAnswerValue, optionPrefix string) (string, error) {

@@ -7,11 +7,9 @@ import (
 	"github.com/wins/jaz/backend/internal/sessionevents"
 )
 
-const (
-	proposedPlanOpenTag  = "<proposed_plan>"
-	proposedPlanCloseTag = "</proposed_plan>"
-)
-
+// publishPlanTurnResult closes out a deferred plan turn (Codex/native): publish
+// the proposed plan if the agent produced one, otherwise fall back to the
+// buffered assistant message.
 func (m *Manager) publishPlanTurnResult(job Job) {
 	if m.publishProposedPlan(job) {
 		return
@@ -21,10 +19,12 @@ func (m *Manager) publishPlanTurnResult(job Job) {
 	}
 }
 
+// publishProposedPlan emits the plan the agent built during a plan turn. Codex
+// relays it as `plan` session updates accumulated into job.Plan; returns false
+// when the turn produced no plan so the caller falls back to the message.
 func (m *Manager) publishProposedPlan(job Job) bool {
-	explanation := proposedPlanText(job.Assistant)
 	plan := clonePlanEntries(job.Plan)
-	if explanation == "" && len(plan) == 0 {
+	if len(plan) == 0 {
 		return false
 	}
 	acp := EventFromJob(job)
@@ -41,7 +41,6 @@ func (m *Manager) publishProposedPlan(job Job) bool {
 			Type:      "proposed_plan",
 			ACP:       acp,
 			Plan: &sessionevents.PlanEvent{
-				Explanation:      explanation,
 				Plan:             plan,
 				AwaitingApproval: true,
 			},
@@ -50,21 +49,4 @@ func (m *Manager) publishProposedPlan(job Job) bool {
 	}
 	m.publishOrderedACPEvents(job, events...)
 	return true
-}
-
-func proposedPlanText(raw string) string {
-	text := strings.TrimSpace(raw)
-	if text == "" {
-		return ""
-	}
-	start := strings.Index(text, proposedPlanOpenTag)
-	if start < 0 {
-		return ""
-	}
-	afterOpen := text[start+len(proposedPlanOpenTag):]
-	end := strings.Index(afterOpen, proposedPlanCloseTag)
-	if end < 0 {
-		return ""
-	}
-	return strings.TrimSpace(afterOpen[:end])
 }

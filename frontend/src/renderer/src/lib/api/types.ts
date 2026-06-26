@@ -688,6 +688,7 @@ export interface ACPPermission {
   session_id?: string
   title?: string
   tool_call_id?: string
+  content?: string
   options?: ACPPermissionOption[]
   locations?: ACPPermissionLocation[]
   questions?: ACPQuestion[]

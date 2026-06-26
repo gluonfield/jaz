@@ -4,7 +4,9 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { answerSessionInteractiveResponse } from '@/lib/api/sessions'
 import type { ACPPermission, SessionEvent } from '@/lib/api/types'
+import { useOverflowing } from '@/lib/hooks/useOverflowing'
 import { keys } from '@/lib/query/keys'
+import { MessageMarkdown } from './MessageMarkdown'
 import { hasPermissionSurface, normalized } from './TranscriptUtils'
 
 function QuestionPermissionCard({
@@ -277,6 +279,39 @@ function QuestionPermissionCard({
   )
 }
 
+// A plan-exit ("switch_mode") permission carries the proposed plan as markdown.
+// Show it inline, collapsed past a few hundred px so a long plan never balloons
+// the approval card.
+function PlanPreview({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const [ref, overflowing] = useOverflowing([text, expanded])
+
+  return (
+    <div className="mt-2 rounded-control border border-border bg-bg px-2.5 py-2">
+      <div ref={ref} className={`relative ${expanded ? '' : 'max-h-[280px] overflow-hidden'}`}>
+        <div className="text-sm text-ink">
+          <MessageMarkdown text={text} />
+        </div>
+        {!expanded && overflowing ? (
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-b from-transparent to-bg"
+            aria-hidden
+          />
+        ) : null}
+      </div>
+      {expanded || overflowing ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          className="mt-1.5 inline-flex items-center text-[12px] font-medium text-ink-2 transition-colors hover:text-ink"
+        >
+          {expanded ? 'Show less' : 'Show full plan'}
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
 export function PermissionCard({
   event,
   resolution,
@@ -365,6 +400,8 @@ export function PermissionCard({
           </span>
         ) : null}
       </div>
+
+      {permission.content?.trim() ? <PlanPreview text={permission.content} /> : null}
 
       {!selected && !cancelled && permission.options?.length ? (
         <div className="mt-2 flex flex-wrap gap-1.5">

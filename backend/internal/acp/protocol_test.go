@@ -750,6 +750,7 @@ func TestClaudeStylePlanExitPermissionPublishesRequest(t *testing.T) {
 					Kind:       ptr(acpschema.ToolKindSwitchMode),
 					ToolCallID: "toolu-plan-exit",
 					Title:      "Ready to code?",
+					RawInput:   mustJSON(t, map[string]string{"plan": "1. Inspect the provider path.\n2. Add the flag."}),
 				},
 			}),
 		})
@@ -769,6 +770,9 @@ func TestClaudeStylePlanExitPermissionPublishesRequest(t *testing.T) {
 		requestID = event.Permission.ID
 		if event.Permission.ToolCallID != "toolu-plan-exit" || len(event.Permission.Options) != 4 {
 			t.Fatalf("permission = %#v", event.Permission)
+		}
+		if event.Permission.Content != "1. Inspect the provider path.\n2. Add the flag." {
+			t.Fatalf("permission plan content = %q", event.Permission.Content)
 		}
 	case err := <-errs:
 		t.Fatal(err)
