@@ -164,7 +164,7 @@ function LauncherPage() {
         />
       ) : null}
 
-      <div className="absolute top-[16%] left-1/2 w-[720px] max-w-[calc(100vw-2rem)] -translate-x-1/2">
+      <div className="absolute bottom-[12%] left-1/2 w-[720px] max-w-[calc(100vw-2rem)] -translate-x-1/2">
         <div className="overflow-hidden rounded-[18px] bg-surface shadow-[0_18px_50px_-12px_rgba(0,0,0,0.45)] ring-1 ring-border/60">
           <div className="flex items-center gap-3 px-4 py-3">
             <Sparkles size={20} className="shrink-0 text-primary" />
@@ -222,7 +222,7 @@ function LauncherPage() {
           ) : null}
 
           <div className="flex items-center gap-1.5 border-t border-border/40 px-3 py-2">
-            <AgentModelControls controls={controls} placement="below" disabled={sending} />
+            <AgentModelControls controls={controls} placement="above" disabled={sending} />
             <span className="ml-auto pr-1 text-[12px] text-ink-3">drag to screenshot · ↩ send · esc dismiss</span>
           </div>
         </div>
