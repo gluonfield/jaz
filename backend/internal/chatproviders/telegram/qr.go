@@ -12,6 +12,8 @@ import (
 	telegramconnector "github.com/wins/jaz/backend/internal/connectors/telegram"
 )
 
+const firstQRCodeTimeout = 20 * time.Second
+
 func (p *Provider) StartQR(ctx context.Context) (connections.QRStart, error) {
 	connectionID := telegramconnector.ProviderID + ":" + uuid.NewString()
 	loginCtx, cancel := context.WithCancel(p.ctx)
@@ -69,6 +71,8 @@ func (p *Provider) StartQR(ctx context.Context) (connections.QRStart, error) {
 		p.clearClient(connectionID, client)
 	}()
 
+	timer := time.NewTimer(firstQRCodeTimeout)
+	defer timer.Stop()
 	select {
 	case <-session.ready:
 		status := session.statusSnapshot()
@@ -84,10 +88,15 @@ func (p *Provider) StartQR(ctx context.Context) (connections.QRStart, error) {
 			ExpiresAt: status.ExpiresAt,
 			Instructions: []string{
 				"Open Telegram on your phone.",
-				"Go to Settings > Devices.",
-				"Scan this code to link Jaz.",
+				"Go to Settings, then Devices.",
+				"Scan this QR code.",
 			},
 		}, nil
+	case <-timer.C:
+		err := fmt.Errorf("timed out waiting for Telegram to return a QR code")
+		session.fail(err)
+		_ = p.closeQRSession(context.WithoutCancel(ctx), session)
+		return connections.QRStart{}, err
 	case <-ctx.Done():
 		_ = p.closeQRSession(context.WithoutCancel(ctx), session)
 		return connections.QRStart{}, ctx.Err()

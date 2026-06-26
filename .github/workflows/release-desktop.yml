@@ -46,13 +46,17 @@ jobs:
 
       - name: Build Linux backend artifacts
         working-directory: backend
+        env:
+          JAZ_BUNDLED_TELEGRAM_APP_ID: ${{ vars.JAZ_BUNDLED_TELEGRAM_APP_ID || secrets.JAZ_BUNDLED_TELEGRAM_APP_ID }}
+          JAZ_BUNDLED_TELEGRAM_APP_HASH: ${{ vars.JAZ_BUNDLED_TELEGRAM_APP_HASH || secrets.JAZ_BUNDLED_TELEGRAM_APP_HASH }}
         run: |
           mkdir -p ../dist/backend
+          ldflags="$(bash ../.github/scripts/backend-ldflags.sh "${{ github.event.release.tag_name }}")"
           for arch in amd64 arm64; do
             name="jaz-backend-linux-${arch}"
             out="../dist/backend/${name}"
             mkdir -p "$out"
-            GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${{ github.event.release.tag_name }}" -o "$out/jaz" ./cmd/jaz
+            GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags="$ldflags" -o "$out/jaz" ./cmd/jaz
             tar -C "$out" -czf "../dist/backend/${name}.tar.gz" jaz
             sha256sum "../dist/backend/${name}.tar.gz" > "../dist/backend/${name}.tar.gz.sha256"
           done
@@ -153,13 +157,17 @@ jobs:
 
       - name: Build macOS backend artifacts
         working-directory: backend
+        env:
+          JAZ_BUNDLED_TELEGRAM_APP_ID: ${{ vars.JAZ_BUNDLED_TELEGRAM_APP_ID || secrets.JAZ_BUNDLED_TELEGRAM_APP_ID }}
+          JAZ_BUNDLED_TELEGRAM_APP_HASH: ${{ vars.JAZ_BUNDLED_TELEGRAM_APP_HASH || secrets.JAZ_BUNDLED_TELEGRAM_APP_HASH }}
         run: |
           mkdir -p ../dist/backend
+          ldflags="$(bash ../.github/scripts/backend-ldflags.sh "${{ github.event.release.tag_name }}")"
           for arch in amd64 arm64; do
             name="jaz-backend-darwin-${arch}"
             out="../dist/backend/${name}"
             mkdir -p "$out"
-            GOOS=darwin GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${{ github.event.release.tag_name }}" -o "$out/jaz" ./cmd/jaz
+            GOOS=darwin GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags="$ldflags" -o "$out/jaz" ./cmd/jaz
             tar -C "$out" -czf "../dist/backend/${name}.tar.gz" jaz
             shasum -a 256 "../dist/backend/${name}.tar.gz" > "../dist/backend/${name}.tar.gz.sha256"
           done
@@ -172,6 +180,8 @@ jobs:
           APPLE_API_KEY_ID: ${{ vars.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ vars.APPLE_API_ISSUER }}
           POSTHOG_PROJECT_TOKEN: ${{ vars.POSTHOG_PROJECT_TOKEN || secrets.POSTHOG_PROJECT_TOKEN }}
+          JAZ_BUNDLED_TELEGRAM_APP_ID: ${{ vars.JAZ_BUNDLED_TELEGRAM_APP_ID || secrets.JAZ_BUNDLED_TELEGRAM_APP_ID }}
+          JAZ_BUNDLED_TELEGRAM_APP_HASH: ${{ vars.JAZ_BUNDLED_TELEGRAM_APP_HASH || secrets.JAZ_BUNDLED_TELEGRAM_APP_HASH }}
         run: |
           bun run build:backend
           bun run build:bundle
@@ -245,6 +255,8 @@ jobs:
         working-directory: frontend
         env:
           POSTHOG_PROJECT_TOKEN: ${{ vars.POSTHOG_PROJECT_TOKEN || secrets.POSTHOG_PROJECT_TOKEN }}
+          JAZ_BUNDLED_TELEGRAM_APP_ID: ${{ vars.JAZ_BUNDLED_TELEGRAM_APP_ID || secrets.JAZ_BUNDLED_TELEGRAM_APP_ID }}
+          JAZ_BUNDLED_TELEGRAM_APP_HASH: ${{ vars.JAZ_BUNDLED_TELEGRAM_APP_HASH || secrets.JAZ_BUNDLED_TELEGRAM_APP_HASH }}
         run: |
           bun run build:backend
           bun run build:bundle

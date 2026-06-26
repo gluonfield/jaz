@@ -15,6 +15,8 @@ import (
 	"github.com/wins/jaz/backend/internal/browsertask"
 	"github.com/wins/jaz/backend/internal/browserworker"
 	"github.com/wins/jaz/backend/internal/connections"
+	"github.com/wins/jaz/backend/internal/connectors/telegram"
+	"github.com/wins/jaz/backend/internal/connectors/whatsapp"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/memoryservice"
@@ -47,6 +49,10 @@ type fakeACPService struct {
 }
 
 type fakeBrowserBackend struct{}
+
+type fakeChatSender struct {
+	provider string
+}
 
 func (s fakeACPService) Spawn(_ context.Context, req acp.SpawnRequest) (acp.SpawnResult, error) {
 	s.spawned <- req
@@ -85,6 +91,14 @@ func (fakeBrowserBackend) Status() browserworker.ExtensionStatus {
 	return browserworker.ExtensionStatus{Connected: true}
 }
 
+func (s fakeChatSender) ProviderID() string {
+	return s.provider
+}
+
+func (s fakeChatSender) SendMessage(context.Context, connections.ChatSendRequest) (connections.ChatSendResult, error) {
+	return connections.ChatSendResult{}, nil
+}
+
 func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
@@ -116,7 +130,10 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		store,
 		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
 		connections.NewGmailMCPTools(store),
-		connections.NewChatMCPTools(store),
+		connections.NewChatMCPTools(store,
+			fakeChatSender{provider: whatsapp.ProviderID},
+			fakeChatSender{provider: telegram.ProviderID},
+		),
 	)
 	executor := &fakeExecutor{started: make(chan loops.Run, 1)}
 	service.SetLoops(loops.NewService(store, executor, nil))
@@ -285,6 +302,27 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 	deleted := structured[loops.MCPDeleteOutput](t, deleteCall)
 	if !deleted.OK {
 		t.Fatalf("deleted = %#v", deleted)
+	}
+}
+
+func TestChatToolsFollowRegisteredSenders(t *testing.T) {
+	withoutSenders := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1.0.0"}, nil)
+	connections.NewChatMCPTools(nil).AddTo(withoutSenders)
+	session, closeSession := connectClient(t, withoutSenders)
+	defer closeSession()
+	if hasTool(t, session, whatsapp.ToolSendMessage) || hasTool(t, session, telegram.ToolSendMessage) {
+		t.Fatal("chat send tools must not be advertised without sender adapters")
+	}
+
+	withWhatsApp := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1.0.0"}, nil)
+	connections.NewChatMCPTools(nil, fakeChatSender{provider: whatsapp.ProviderID}).AddTo(withWhatsApp)
+	session, closeSession = connectClient(t, withWhatsApp)
+	defer closeSession()
+	if !hasTool(t, session, whatsapp.ToolSendMessage) {
+		t.Fatal("whatsapp sender was not advertised")
+	}
+	if hasTool(t, session, telegram.ToolSendMessage) {
+		t.Fatal("telegram sender leaked without adapter")
 	}
 }
 

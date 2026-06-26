@@ -3,19 +3,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import {
-  closeConnectionQR,
-  connectionQRStatus,
   connectionPluginsQuery,
   disconnectConnectionAccount,
-  startConnectionPlugin,
 } from '@/lib/api/connections'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { keys } from '@/lib/query/keys'
-import type {
-  ConnectionQRStart,
-  IntegrationConnectionAccount,
-  IntegrationPlugin,
-} from '@/lib/api/types'
+import type { IntegrationConnectionAccount } from '@/lib/api/types'
 import {
   ConnectionSection,
   ConnectionPluginCard,
@@ -24,17 +17,12 @@ import {
 import { ConnectionPluginDetailModal } from './ConnectionPluginDetailModal'
 import { ConnectionQRModal } from './ConnectionQRModal'
 import { accountAddress } from './connectionFormatting'
-
-type ActiveQR = {
-  plugin: IntegrationPlugin
-  qr: ConnectionQRStart
-}
+import { useConnectionSignIn } from './useConnectionSignIn'
 
 export function ConnectionsSettings() {
   const queryClient = useQueryClient()
   const toast = useToast()
   const [pollUntil, setPollUntil] = useState(0)
-  const [activeQR, setActiveQR] = useState<ActiveQR | null>(null)
   const [selectedPluginID, setSelectedPluginID] = useState<string | null>(null)
   const plugins = useQuery({
     ...connectionPluginsQuery,
@@ -44,41 +32,21 @@ export function ConnectionsSettings() {
     () => [...(plugins.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
     [plugins.data],
   )
-  const selectedPlugin = useMemo(
-    () => sortedPlugins.find((plugin) => plugin.id === selectedPluginID) ?? null,
-    [selectedPluginID, sortedPlugins],
+  const addablePlugins = useMemo(
+    () => sortedPlugins.filter((plugin) => plugin.implementation.status === 'available'),
+    [sortedPlugins],
   )
-  const qrStatus = useQuery({
-    queryKey: keys.connectionQR(activeQR?.qr.session_id ?? ''),
-    queryFn: () => connectionQRStatus(activeQR?.qr.session_id ?? ''),
-    enabled: Boolean(activeQR),
-    refetchInterval: (query) => {
-      const status = query.state.data?.status ?? activeQR?.qr.status
-      return status === 'pending' || status === 'scanned' ? 2000 : false
+  const selectedPlugin = useMemo(
+    () => addablePlugins.find((plugin) => plugin.id === selectedPluginID) ?? null,
+    [addablePlugins, selectedPluginID],
+  )
+  const signIn = useConnectionSignIn({
+    plugins: sortedPlugins,
+    onStartAccepted: () => setSelectedPluginID(null),
+    onOAuthURL: (url) => {
+      setPollUntil(Date.now() + 90_000)
+      openAuthURL(url)
     },
-  })
-  const connect = useMutation({
-    mutationFn: (id: string) => startConnectionPlugin(id),
-    onSuccess: (result, pluginID) => {
-      if (result.type === 'oauth' && result.auth_url) {
-        setSelectedPluginID(null)
-        setPollUntil(Date.now() + 90_000)
-        openAuthURL(result.auth_url)
-        toast('Finish sign-in in your browser')
-        return
-      }
-      if (result.type === 'qr' && result.qr) {
-        const plugin = sortedPlugins.find((item) => item.id === (result.qr?.provider ?? pluginID))
-        if (plugin) {
-          setSelectedPluginID(null)
-          setActiveQR({ plugin, qr: result.qr })
-          toast(`Scan the ${plugin.name} QR code`)
-        }
-        return
-      }
-      toast("Connection didn't return a usable sign-in method", 'danger')
-    },
-    onError: (error: Error) => toast(`Couldn't start sign-in: ${error.message}`, 'danger'),
   })
   const disconnect = useMutation({
     mutationFn: disconnectConnectionAccount,
@@ -94,16 +62,11 @@ export function ConnectionsSettings() {
     [sortedPlugins],
   )
   const hasConnectedAccounts = connectedAccounts.length > 0
+  const hasAddablePlugins = addablePlugins.length > 0
+  const hasVisibleConnections = hasConnectedAccounts || hasAddablePlugins
   const disconnectAccount = (account: IntegrationConnectionAccount) => {
     const label = accountAddress(account) || account.id
     if (window.confirm(`Disconnect ${label}?`)) disconnect.mutate(account.id)
-  }
-  const closeActiveQR = () => {
-    const sessionID = activeQR?.qr.session_id
-    setActiveQR(null)
-    if (!sessionID) return
-    queryClient.removeQueries({ queryKey: keys.connectionQR(sessionID) })
-    void closeConnectionQR(sessionID).catch(() => undefined)
   }
 
   useEffect(() => {
@@ -122,12 +85,6 @@ export function ConnectionsSettings() {
     }
   }, [pollUntil, queryClient])
 
-  useEffect(() => {
-    if (qrStatus.data?.status === 'connected') {
-      void queryClient.invalidateQueries({ queryKey: keys.connectionPlugins })
-    }
-  }, [qrStatus.data?.status, queryClient])
-
   return (
     <section className="py-5">
       <div>
@@ -142,7 +99,7 @@ export function ConnectionsSettings() {
           <SkeletonRows count={3} />
         ) : plugins.isError ? (
           <p className="py-2 text-[13px] text-danger">{plugins.error.message}</p>
-        ) : sortedPlugins.length === 0 ? (
+        ) : !hasVisibleConnections ? (
           <p className="rounded-card bg-surface px-3 py-3 text-[13px] text-ink-3">
             No first-party connections are available yet.
           </p>
@@ -163,30 +120,32 @@ export function ConnectionsSettings() {
                 </ConnectionSection>
               ) : null}
 
-              <ConnectionSection title="Add connection">
-                {sortedPlugins.map((plugin) => (
-                  <ConnectionPluginCard
-                    key={plugin.id}
-                    plugin={plugin}
-                    onOpen={() => setSelectedPluginID(plugin.id)}
-                  />
-                ))}
-              </ConnectionSection>
+              {hasAddablePlugins ? (
+                <ConnectionSection title="Add connection">
+                  {addablePlugins.map((plugin) => (
+                    <ConnectionPluginCard
+                      key={plugin.id}
+                      plugin={plugin}
+                      onOpen={() => setSelectedPluginID(plugin.id)}
+                    />
+                  ))}
+                </ConnectionSection>
+              ) : null}
             </div>
             <ConnectionPluginDetailModal
               plugin={selectedPlugin}
-              connecting={connect.isPending && connect.variables === selectedPlugin?.id}
+              connecting={signIn.isConnecting && signIn.connectingPluginID === selectedPlugin?.id}
               onClose={() => setSelectedPluginID(null)}
-              onConnect={(plugin) => {
-                if (plugin.implementation.status === 'available') connect.mutate(plugin.id)
-              }}
+              onConnect={signIn.start}
             />
             <ConnectionQRModal
-              plugin={activeQR?.plugin}
-              qr={activeQR?.qr}
-              status={qrStatus.data}
-              loading={qrStatus.isFetching}
-              onClose={closeActiveQR}
+              plugin={signIn.activeQR?.plugin}
+              qr={signIn.activeQR?.qr}
+              status={signIn.qrStatus}
+              loading={signIn.qrLoading}
+              refreshing={signIn.qrRefreshing}
+              onClose={signIn.closeQR}
+              onRefresh={signIn.refreshQR}
             />
           </>
         )}

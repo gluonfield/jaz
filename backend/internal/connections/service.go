@@ -48,14 +48,17 @@ func NewService(catalog *Catalog, store Store, qr *QRService, disconnecters ...S
 
 func (s *Service) ListPlugins(ctx context.Context) ([]integrations.Plugin, error) {
 	plugins := s.catalog.ListPlugins()
+	out := make([]integrations.Plugin, 0, len(plugins))
 	for i := range plugins {
 		plugin, err := s.withConnection(ctx, plugins[i])
 		if err != nil {
 			return nil, err
 		}
-		plugins[i] = plugin
+		if pluginListVisible(plugin) {
+			out = append(out, plugin)
+		}
 	}
-	return plugins, nil
+	return out, nil
 }
 
 func (s *Service) Plugin(ctx context.Context, id string) (integrations.Plugin, bool, error) {
@@ -113,7 +116,7 @@ func (s *Service) withConnection(ctx context.Context, plugin integrations.Plugin
 }
 
 func (s *Service) withConnectability(plugin integrations.Plugin) integrations.Plugin {
-	if len(plugin.Auth) == 0 || plugin.Auth[0].Kind != integrations.AuthKindSession || plugin.Implementation.Status == "available" {
+	if len(plugin.Auth) == 0 || plugin.Auth[0].Kind != integrations.AuthKindSession {
 		return plugin
 	}
 	if s.qr != nil && s.qr.Available(plugin.ID) {
@@ -122,4 +125,11 @@ func (s *Service) withConnectability(plugin integrations.Plugin) integrations.Pl
 	}
 	plugin.Implementation.Status = "adapter_required"
 	return plugin
+}
+
+func pluginListVisible(plugin integrations.Plugin) bool {
+	if plugin.Implementation.Status != "adapter_required" {
+		return true
+	}
+	return plugin.Connection != nil && len(plugin.Connection.Accounts) > 0
 }

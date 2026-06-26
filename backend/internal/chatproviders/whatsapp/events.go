@@ -2,6 +2,7 @@ package whatsapp
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/wins/jaz/backend/pkg/integrations"
 	"go.mau.fi/whatsmeow"
@@ -16,6 +17,11 @@ func (p *Provider) eventHandler(client *whatsmeow.Client, session *qrSession) wh
 			if session != nil {
 				session.setAccount(event.ID.User)
 				session.setStatus("scanned", "")
+			}
+		case *events.PairError:
+			if session != nil {
+				session.setAccount(event.ID.User)
+				session.fail(event.Error)
 			}
 		case *events.Connected:
 			connection, ok := connectionFromDevice(client.Store)
@@ -50,7 +56,19 @@ func (p *Provider) eventHandler(client *whatsmeow.Client, session *qrSession) wh
 			}
 		case *events.LoggedOut:
 			if session != nil {
-				session.setStatus("failed", event.Reason.String())
+				session.fail(fmt.Errorf("WhatsApp logged this session out: %s", event.Reason.String()))
+			}
+		case *events.ClientOutdated:
+			if session != nil {
+				session.fail(fmt.Errorf("WhatsApp rejected this client as outdated"))
+			}
+		case *events.ConnectFailure:
+			if session != nil {
+				session.fail(fmt.Errorf("WhatsApp connection failed: %s", event.Reason.String()))
+			}
+		case *events.TemporaryBan:
+			if session != nil {
+				session.fail(fmt.Errorf("WhatsApp temporary ban: %s", event.String()))
 			}
 		}
 	}

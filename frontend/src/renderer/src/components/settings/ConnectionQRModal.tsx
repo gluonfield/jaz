@@ -1,28 +1,33 @@
-import { CheckCircle2, Clock3, Loader2, QrCode, TriangleAlert } from 'lucide-react'
+import { CheckCircle2, Clock3, Loader2, QrCode, RefreshCw, TriangleAlert } from 'lucide-react'
 import * as QRCode from 'qrcode'
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import type { ConnectionQRStart, ConnectionQRStatus, IntegrationPlugin } from '@/lib/api/types'
-import { PluginGlyph } from './ConnectionPluginVisuals'
+import { PluginGlyph, PluginIcon } from './ConnectionPluginVisuals'
 
 export function ConnectionQRModal({
   plugin,
   qr,
   status,
   loading,
+  refreshing,
   onClose,
+  onRefresh,
 }: {
   plugin?: IntegrationPlugin
   qr?: ConnectionQRStart
   status?: ConnectionQRStatus
   loading: boolean
+  refreshing: boolean
   onClose: () => void
+  onRefresh: () => void
 }) {
   if (!plugin || !qr) return null
   const currentStatus = status?.status ?? qr.status
   const currentCode = status?.code || qr.code
   const expiresAt = status?.expires_at || qr.expires_at
+  const accountID = status?.account_id
   const done = currentStatus === 'connected'
   const failed = currentStatus === 'expired' || currentStatus === 'failed'
 
@@ -30,46 +35,40 @@ export function ConnectionQRModal({
     <Modal
       open
       onClose={onClose}
-      title={`Connect ${plugin.name}`}
-      description="Scan this code from the mobile app to link the account."
+      title={`${plugin.name} QR sign in`}
+      description={`Scan with ${plugin.name} on your phone.`}
       icon={<PluginGlyph plugin={plugin} size={18} />}
       size="lg"
       footer={
         <>
           <QRStatusLine status={currentStatus} loading={loading} />
-          <Button variant={done ? 'primary' : 'secondary'} onClick={onClose}>
-            {done ? 'Done' : 'Close'}
-          </Button>
+          <div className="flex items-center gap-2">
+            {failed ? (
+              <Button variant="secondary" onClick={onRefresh} disabled={refreshing}>
+                <RefreshCw size={14} className={refreshing ? 'animate-spin' : undefined} />
+                {refreshing ? 'Getting code' : 'New QR code'}
+              </Button>
+            ) : null}
+            <Button variant={done ? 'primary' : 'secondary'} onClick={onClose}>
+              {done ? 'Done' : 'Close'}
+            </Button>
+          </div>
         </>
       }
     >
-      <div className="grid gap-4 sm:grid-cols-[210px_minmax(0,1fr)]">
-        <QRCodeImage value={currentCode} failed={failed} />
-        <div className="min-w-0 space-y-3">
-          <div className="rounded-card bg-surface px-3 py-3">
-            <p className="text-[12px] font-medium text-ink">Waiting for scan</p>
-            <p className="mt-1 text-[12px] leading-5 text-ink-3">
-              Keep this window open until the connection finishes. The code expires at{' '}
-              {formatTime(expiresAt)}.
-            </p>
+      <div className="grid gap-5 sm:grid-cols-[248px_minmax(0,1fr)]">
+        <div className="mx-auto w-full max-w-[248px] space-y-3 sm:max-w-none">
+          <div className="rounded-[20px] bg-surface p-3 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)]">
+            <QRCodeImage value={currentCode} failed={failed} />
           </div>
-          {qr.instructions?.length ? (
-            <ol className="space-y-1.5 text-[13px] leading-5 text-ink-2">
-              {qr.instructions.map((instruction, index) => (
-                <li key={instruction} className="flex gap-2">
-                  <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-surface-2 text-[11px] text-ink-3">
-                    {index + 1}
-                  </span>
-                  <span>{instruction}</span>
-                </li>
-              ))}
-            </ol>
-          ) : null}
-          {status?.error ? (
-            <p className="rounded-card bg-danger-soft px-3 py-2 text-[12px] text-danger">
-              {status.error}
-            </p>
-          ) : null}
+          <div className="flex items-center justify-center gap-2 text-[12px] text-ink-3">
+            <Clock3 size={13} />
+            <span className="tabular-nums">Expires {formatTime(expiresAt)}</span>
+          </div>
+        </div>
+        <div className="min-w-0 space-y-4">
+          <StatusCard plugin={plugin} status={currentStatus} error={status?.error} accountID={accountID} />
+          <StepList instructions={qr.instructions} />
         </div>
       </div>
     </Modal>
@@ -85,7 +84,7 @@ function QRCodeImage({ value, failed }: { value: string; failed: boolean }) {
     void QRCode.toDataURL(value, {
       errorCorrectionLevel: 'M',
       margin: 1,
-      width: 210,
+      width: 224,
       color: { dark: '#111111', light: '#ffffff' },
     })
       .then((next) => {
@@ -100,18 +99,60 @@ function QRCodeImage({ value, failed }: { value: string; failed: boolean }) {
   }, [value])
 
   return (
-    <div className="relative grid size-[210px] shrink-0 place-items-center rounded-card bg-white p-3 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.1)]">
+    <div className="relative grid aspect-square w-full shrink-0 place-items-center rounded-[14px] bg-white p-3 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.1)]">
       {src ? (
         <img src={src} alt="Connection QR code" className={failed ? 'size-full opacity-35' : 'size-full'} />
       ) : (
         <Loader2 size={18} className="animate-spin text-ink-3" />
       )}
       {failed ? (
-        <div className="absolute inset-0 grid place-items-center rounded-card bg-white/70 text-danger">
-          <TriangleAlert size={24} />
+        <div className="absolute inset-0 grid place-items-center rounded-[14px] bg-white/75 text-danger">
+          <div className="grid size-12 place-items-center rounded-full bg-danger-soft">
+            <TriangleAlert size={24} />
+          </div>
         </div>
       ) : null}
     </div>
+  )
+}
+
+function StatusCard({
+  plugin,
+  status,
+  error,
+  accountID,
+}: {
+  plugin: IntegrationPlugin
+  status: string
+  error?: string
+  accountID?: string
+}) {
+  const content = statusContent(plugin.name, status, error, accountID)
+  return (
+    <div className="rounded-card bg-surface px-3 py-3 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)]">
+      <div className="flex items-start gap-3">
+        <PluginIcon plugin={plugin} compact />
+        <div className="min-w-0">
+          <p className={`text-[13px] font-medium ${content.tone}`}>{content.title}</p>
+          <p className="mt-1 text-[12px] leading-5 text-ink-3">{content.detail}</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function StepList({ instructions }: { instructions: string[] }) {
+  return (
+    <ol className="space-y-2 text-[13px] leading-5 text-ink-2">
+      {instructions.map((instruction, index) => (
+        <li key={`${index}-${instruction}`} className="flex gap-2.5">
+          <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-surface text-[11px] font-medium tabular-nums text-ink-3">
+            {index + 1}
+          </span>
+          <span className="pt-0.5">{instruction}</span>
+        </li>
+      ))}
+    </ol>
   )
 }
 
@@ -121,6 +162,14 @@ function QRStatusLine({ status, loading }: { status: string; loading: boolean })
       <span className="inline-flex items-center gap-1.5 text-[12px] text-ok">
         <CheckCircle2 size={14} />
         Connected
+      </span>
+    )
+  }
+  if (status === 'scanned') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[12px] text-primary">
+        <CheckCircle2 size={14} />
+        Scanned
       </span>
     )
   }
@@ -143,9 +192,45 @@ function QRStatusLine({ status, loading }: { status: string; loading: boolean })
   return (
     <span className="inline-flex items-center gap-1.5 text-[12px] text-ink-3">
       {loading ? <Loader2 size={14} className="animate-spin" /> : <QrCode size={14} />}
-      Waiting for scan
+      Waiting for QR scan
     </span>
   )
+}
+
+function statusContent(provider: string, status: string, error?: string, accountID?: string) {
+  if (status === 'connected') {
+    return {
+      title: 'Connected',
+      detail: accountID ? `${accountID} is ready in Jaz.` : `${provider} is ready in Jaz.`,
+      tone: 'text-ok',
+    }
+  }
+  if (status === 'scanned') {
+    return {
+      title: 'Scanned',
+      detail: 'Finish any confirmation on your phone. This window will update automatically.',
+      tone: 'text-primary',
+    }
+  }
+  if (status === 'expired') {
+    return {
+      title: 'QR code expired',
+      detail: 'Get a new code and scan it from your phone.',
+      tone: 'text-danger',
+    }
+  }
+  if (status === 'failed') {
+    return {
+      title: 'QR sign-in failed',
+      detail: error || 'Get a new code and try again.',
+      tone: 'text-danger',
+    }
+  }
+  return {
+    title: 'Scan the QR code',
+    detail: 'Keep this window open. Jaz will connect as soon as your phone approves the scan.',
+    tone: 'text-ink',
+  }
 }
 
 function formatTime(value: string): string {

@@ -2,13 +2,12 @@ package app
 
 import (
 	"context"
-	"fmt"
 	"path/filepath"
-	"strings"
 
 	"github.com/wins/jaz/backend/internal/chatproviders/telegram"
 	"github.com/wins/jaz/backend/internal/chatproviders/whatsapp"
 	"github.com/wins/jaz/backend/internal/connections"
+	telegramconnector "github.com/wins/jaz/backend/internal/connectors/telegram"
 	"github.com/wins/jaz/backend/internal/integrationingest"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -33,8 +32,8 @@ func NewWhatsAppChatProvider(lc fx.Lifecycle, layout runtimefiles.Layout, store 
 	return chatProviderOut(provider), nil
 }
 
-func NewTelegramChatProvider(lc fx.Lifecycle, cfg Config, layout runtimefiles.Layout, store *sqlitestore.Store, raw integrationingest.RawWriter) (ChatProviderOut, error) {
-	telegramConfig, ok, err := telegramProviderConfig(cfg)
+func NewTelegramChatProvider(lc fx.Lifecycle, layout runtimefiles.Layout, store *sqlitestore.Store, raw integrationingest.RawWriter) (ChatProviderOut, error) {
+	telegramConfig, ok, err := telegramProviderConfig()
 	if err != nil {
 		return ChatProviderOut{}, err
 	}
@@ -66,14 +65,13 @@ func chatProviderOut(provider interface {
 	}
 }
 
-func telegramProviderConfig(cfg Config) (telegram.Config, bool, error) {
-	apiID := cfg.Connections.Telegram.APIID
-	apiHash := strings.TrimSpace(cfg.Connections.Telegram.APIHash)
-	if apiID == 0 && apiHash == "" {
+func telegramProviderConfig() (telegram.Config, bool, error) {
+	credentials, ok, err := telegramconnector.Credentials()
+	if err != nil {
+		return telegram.Config{}, false, err
+	}
+	if !ok {
 		return telegram.Config{}, false, nil
 	}
-	if apiID == 0 || apiHash == "" {
-		return telegram.Config{}, false, fmt.Errorf("telegram api id and api hash must both be configured")
-	}
-	return telegram.Config{APIID: apiID, APIHash: apiHash}, true, nil
+	return telegram.Config{APIID: credentials.APIID, APIHash: credentials.APIHash}, true, nil
 }

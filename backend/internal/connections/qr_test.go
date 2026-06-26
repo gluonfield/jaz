@@ -34,6 +34,24 @@ func TestQRServiceRejectsProviderWithoutAdapter(t *testing.T) {
 	}
 }
 
+func TestQRServiceRejectsProviderWithoutInstructions(t *testing.T) {
+	var closed string
+	provider := fakeQRProvider{provider: "matrix", closed: &closed}
+	provider.instructions = []string{}
+	service := NewQRService(provider)
+	_, err := service.Start(context.Background(), "matrix")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if closed != "qr_1" {
+		t.Fatalf("closed session = %q, want qr_1", closed)
+	}
+	_, err = service.Status(context.Background(), "qr_1")
+	if !errors.Is(err, ErrQRSessionNotFound) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestQRServiceRejectsUnknownSession(t *testing.T) {
 	_, err := NewQRService(fakeQRProvider{provider: "matrix"}).Status(context.Background(), "missing")
 	if !errors.Is(err, ErrQRSessionNotFound) {
@@ -76,10 +94,11 @@ func TestQRServicePrunesTerminalSessions(t *testing.T) {
 }
 
 type fakeQRProvider struct {
-	provider string
-	expires  time.Time
-	status   string
-	closed   *string
+	provider     string
+	expires      time.Time
+	status       string
+	closed       *string
+	instructions []string
 }
 
 func (p fakeQRProvider) ProviderID() string {
@@ -87,12 +106,17 @@ func (p fakeQRProvider) ProviderID() string {
 }
 
 func (p fakeQRProvider) StartQR(context.Context) (QRStart, error) {
+	instructions := p.instructions
+	if instructions == nil {
+		instructions = []string{"Scan this QR code."}
+	}
 	return QRStart{
-		SessionID: "qr_1",
-		Provider:  p.provider,
-		Code:      p.provider + "-login-code",
-		Status:    "pending",
-		ExpiresAt: p.expires,
+		SessionID:    "qr_1",
+		Provider:     p.provider,
+		Code:         p.provider + "-login-code",
+		Status:       "pending",
+		ExpiresAt:    p.expires,
+		Instructions: instructions,
 	}, nil
 }
 

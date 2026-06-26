@@ -8,7 +8,10 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/pkg/integrations"
+	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/proto/waCompanionReg"
 	waE2E "go.mau.fi/whatsmeow/proto/waE2E"
+	waStore "go.mau.fi/whatsmeow/store"
 	waTypes "go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	"google.golang.org/protobuf/proto"
@@ -39,6 +42,19 @@ func TestConnectionIDsUsesDurableConnectionRows(t *testing.T) {
 	})
 	if !ids["whatsapp:15550101111"] || !ids["whatsapp:15550102222"] || ids[""] {
 		t.Fatalf("ids = %#v", ids)
+	}
+}
+
+func TestNewWhatsAppClientUsesBrowserQRIdentity(t *testing.T) {
+	client := newWhatsAppClient(&waStore.Device{})
+	if client.QRClientType != whatsmeow.PairClientChrome {
+		t.Fatalf("QR client type = %q, want %q", client.QRClientType, whatsmeow.PairClientChrome)
+	}
+	if got := waStore.DeviceProps.GetPlatformType(); got != waCompanionReg.DeviceProps_CHROME {
+		t.Fatalf("platform type = %s, want %s", got, waCompanionReg.DeviceProps_CHROME)
+	}
+	if got := waStore.DeviceProps.GetOs(); got != "Jaz" {
+		t.Fatalf("device os = %q, want Jaz", got)
 	}
 }
 

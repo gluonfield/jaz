@@ -8,11 +8,10 @@ import (
 	"github.com/wins/jaz/backend/pkg/integrations"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store"
-	waLog "go.mau.fi/whatsmeow/util/log"
 )
 
 func (p *Provider) startClient(device *store.Device, session *qrSession) {
-	client := whatsmeow.NewClient(device, waLog.Noop)
+	client := newWhatsAppClient(device)
 	client.AddEventHandler(p.eventHandler(client, session))
 	if connection, ok := connectionFromDevice(device); ok {
 		p.mu.Lock()
@@ -48,7 +47,7 @@ func (p *Provider) clientForConnection(ctx context.Context, connection integrati
 		if !ok || candidate.ID != connection.ID {
 			continue
 		}
-		client = whatsmeow.NewClient(device, waLog.Noop)
+		client = newWhatsAppClient(device)
 		client.AddEventHandler(p.eventHandler(client, nil))
 		p.mu.Lock()
 		p.clients[connection.ID] = client

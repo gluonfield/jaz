@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/Button'
 import type { IntegrationConnectionAccount, IntegrationPlugin } from '@/lib/api/types'
 import { SettingsCard } from './SettingsCard'
-import { accountAddress, adapterRequiredDescription } from './connectionFormatting'
+import { accountAddress } from './connectionFormatting'
 import { PluginIcon } from './ConnectionPluginVisuals'
 
 export function ConnectionSection({
@@ -58,28 +58,19 @@ export function ConnectionPluginCard({
   plugin: IntegrationPlugin
   onOpen: () => void
 }) {
-  const statusDetail = connectionStatusDetail(plugin)
-
   return (
     <button
       type="button"
       onClick={onOpen}
       className="group grid h-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-card bg-surface px-3 py-3 text-left transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
     >
-      <ConnectionSummary plugin={plugin} title={plugin.name} detail={statusDetail || plugin.description} />
+      <ConnectionSummary plugin={plugin} title={plugin.name} detail={plugin.description} />
       <ChevronRight
         size={14}
         className="shrink-0 text-ink-3 transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-ink-2"
       />
     </button>
   )
-}
-
-function connectionStatusDetail(plugin: IntegrationPlugin): string {
-  if (plugin.implementation.status === 'adapter_required') {
-    return adapterRequiredDescription(plugin)
-  }
-  return ''
 }
 
 function ConnectionSummary({

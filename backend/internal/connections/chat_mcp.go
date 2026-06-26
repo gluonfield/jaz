@@ -72,16 +72,20 @@ func NewChatMCPTools(store ChatToolStore, senders ...ChatSender) *ChatMCPTools {
 }
 
 func (t *ChatMCPTools) AddTo(server *mcp.Server) {
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        whatsapp.ToolSendMessage,
-		Title:       "Send WhatsApp message",
-		Description: "Send a WhatsApp message from one connected account to a phone number, contact id, or conversation id. Requires a connected WhatsApp session.",
-	}, t.SendWhatsAppMessage)
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        telegram.ToolSendMessage,
-		Title:       "Send Telegram message",
-		Description: "Send a Telegram message from one connected account to a username, user id, or chat id. Requires a connected Telegram session.",
-	}, t.SendTelegramMessage)
+	if t.senders[whatsapp.ProviderID] != nil {
+		mcp.AddTool(server, &mcp.Tool{
+			Name:        whatsapp.ToolSendMessage,
+			Title:       "Send WhatsApp message",
+			Description: "Send a WhatsApp message from one connected account to a phone number, contact id, or conversation id. Requires a connected WhatsApp session.",
+		}, t.SendWhatsAppMessage)
+	}
+	if t.senders[telegram.ProviderID] != nil {
+		mcp.AddTool(server, &mcp.Tool{
+			Name:        telegram.ToolSendMessage,
+			Title:       "Send Telegram message",
+			Description: "Send a Telegram message from one connected account to a username, user id, or chat id. Requires a connected Telegram session.",
+		}, t.SendTelegramMessage)
+	}
 }
 
 func (t *ChatMCPTools) RemoveFrom(server *mcp.Server) {

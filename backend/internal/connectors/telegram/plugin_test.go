@@ -12,7 +12,7 @@ func TestPluginAdvertisesImplementedChatCapabilities(t *testing.T) {
 	if plugin.Icon.Kind != integrations.PluginIconKindAsset || plugin.Icon.Value != ProviderID {
 		t.Fatalf("icon = %#v", plugin.Icon)
 	}
-	if len(plugin.Auth) != 1 || !slices.Contains(plugin.Auth[0].Requires, "JAZ_TELEGRAM_API_ID") || !slices.Contains(plugin.Auth[0].Requires, "JAZ_TELEGRAM_API_HASH") {
+	if len(plugin.Auth) != 1 || plugin.Auth[0].Kind != integrations.AuthKindSession || len(plugin.Auth[0].Requires) != 0 {
 		t.Fatalf("auth = %#v", plugin.Auth)
 	}
 	if !slices.Contains(plugin.Capabilities, integrations.CapabilitySync) ||

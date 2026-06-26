@@ -29,7 +29,6 @@ func Plugin() integrations.Plugin {
 		Auth: []integrations.AuthOption{{
 			Kind:        integrations.AuthKindSession,
 			Description: "Scan a Telegram login QR code to connect this Jaz instance.",
-			Requires:    []string{"JAZ_TELEGRAM_API_ID", "JAZ_TELEGRAM_API_HASH"},
 		}},
 		Capabilities: []integrations.Capability{
 			integrations.CapabilitySync,
@@ -40,7 +39,6 @@ func Plugin() integrations.Plugin {
 		Skills:       telegramSkills(),
 		ConnectionNotes: []string{
 			"Jaz stores raw Telegram contacts and messages under ~/.memory/raw-sources.",
-			"Telegram QR login requires configured Telegram app credentials.",
 			"Message sends are direct actions from the selected connected account.",
 		},
 		Implementation: integrations.Implementation{

@@ -285,7 +285,7 @@ export interface ConnectionQRStart {
   code: string
   status: 'pending' | 'scanned' | 'connected' | 'expired' | 'failed'
   expires_at: string
-  instructions?: string[]
+  instructions: string[]
 }
 
 export interface ConnectionStart {

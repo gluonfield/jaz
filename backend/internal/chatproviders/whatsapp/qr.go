@@ -10,12 +10,13 @@ import (
 	"github.com/wins/jaz/backend/internal/connections"
 	whatsappconnector "github.com/wins/jaz/backend/internal/connectors/whatsapp"
 	"go.mau.fi/whatsmeow"
-	waLog "go.mau.fi/whatsmeow/util/log"
 )
+
+const firstQRCodeTimeout = 20 * time.Second
 
 func (p *Provider) StartQR(ctx context.Context) (connections.QRStart, error) {
 	device := p.container.NewDevice()
-	client := whatsmeow.NewClient(device, waLog.Noop)
+	client := newWhatsAppClient(device)
 	session := &qrSession{
 		id:        "whatsapp_qr_" + uuid.NewString(),
 		status:    "pending",
@@ -40,6 +41,8 @@ func (p *Provider) StartQR(ctx context.Context) (connections.QRStart, error) {
 		}
 	}()
 
+	timer := time.NewTimer(firstQRCodeTimeout)
+	defer timer.Stop()
 	select {
 	case <-session.ready:
 		status := session.statusSnapshot()
@@ -56,9 +59,16 @@ func (p *Provider) StartQR(ctx context.Context) (connections.QRStart, error) {
 			Instructions: []string{
 				"Open WhatsApp on your phone.",
 				"Go to Linked devices.",
-				"Scan this code to link Jaz.",
+				"Scan this QR code.",
 			},
 		}, nil
+	case <-timer.C:
+		err := fmt.Errorf("timed out waiting for WhatsApp to return a QR code")
+		session.fail(err)
+		if removed := p.removeQRSession(session.id); removed != nil {
+			p.teardownQRSession(context.WithoutCancel(ctx), removed)
+		}
+		return connections.QRStart{}, err
 	case <-ctx.Done():
 		_ = p.CloseQR(context.WithoutCancel(ctx), session.id)
 		return connections.QRStart{}, ctx.Err()
@@ -146,6 +156,13 @@ func (p *Provider) watchQR(session *qrSession, qrChan <-chan whatsmeow.QRChannel
 			session.readyOnce.Do(func() { close(session.ready) })
 			p.teardownQRSession(p.ctx, session)
 			return
+		case whatsmeow.QRChannelClientOutdated.Event:
+			session.setStatus("failed", "WhatsApp rejected this client as outdated")
+			session.readyOnce.Do(func() { close(session.ready) })
+			p.teardownQRSession(p.ctx, session)
+			return
+		case whatsmeow.QRChannelScannedWithoutMultidevice.Event:
+			session.setStatus("pending", "Enable linked-device support in WhatsApp, then scan the same code again")
 		case whatsmeow.QRChannelEventError:
 			if item.Error != nil {
 				p.failQRSession(p.ctx, session, item.Error)

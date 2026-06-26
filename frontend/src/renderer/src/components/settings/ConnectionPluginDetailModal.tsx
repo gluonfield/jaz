@@ -1,4 +1,4 @@
-import { ArrowRight, Loader2, Plug, Plus, Sparkles, Wrench } from 'lucide-react'
+import { ArrowRight, Loader2, Plug, Plus, QrCode, Sparkles, Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import type {
@@ -6,7 +6,7 @@ import type {
   IntegrationSkill,
   IntegrationTool,
 } from '@/lib/api/types'
-import { adapterRequiredDescription, pluginActionLabel } from './connectionFormatting'
+import { pluginActionLabel } from './connectionFormatting'
 import { PluginGlyph, PluginIcon } from './ConnectionPluginVisuals'
 
 export function ConnectionPluginDetailModal({
@@ -73,12 +73,14 @@ function AppsSection({
 }) {
   const available = plugin.implementation.status === 'available'
   const connected = plugin.connection?.status === 'connected'
-  const adapterRequired = plugin.implementation.status === 'adapter_required'
-  const ConnectIcon = connecting ? Loader2 : adapterRequired ? Wrench : available && connected && plugin.multi_account ? Plus : Plug
+  const sessionAuth = plugin.auth[0]?.kind === 'session'
+  let ConnectIcon = sessionAuth ? QrCode : Plug
+  if (available && connected && plugin.multi_account) ConnectIcon = Plus
+  if (connecting) ConnectIcon = Loader2
 
   return (
     <section>
-      <SectionHeading label="Apps" count={1} />
+      <SectionHeading label={sessionAuth ? 'QR sign in' : 'App'} count={1} />
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-card px-0 py-2">
         <div className="flex min-w-0 items-center gap-3">
           <PluginIcon plugin={plugin} />
@@ -87,11 +89,6 @@ function AppsSection({
             <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-ink-2">
               {appDescription(plugin)}
             </p>
-            {adapterRequired ? (
-              <p className="mt-1 text-[12px] leading-5 text-ink-3">
-                {adapterRequiredDescription(plugin)}
-              </p>
-            ) : null}
           </div>
         </div>
         <Button variant="secondary" size="md" disabled={!available || connecting} onClick={onConnect}>
@@ -185,20 +182,20 @@ function SectionHeading({ label, count }: { label: string; count: number }) {
 
 function subtitle(plugin: IntegrationPlugin): string {
   if (plugin.id === 'gmail') return 'Search threads and send drafts'
-  if (plugin.category === 'chat') return `Read and manage ${plugin.name}`
+  if (plugin.category === 'chat') return `Scan a QR code to connect ${plugin.name}`
   return plugin.provider.name
 }
 
 function previewText(plugin: IntegrationPlugin): string {
   if (plugin.id === 'gmail') return 'Search threads, draft replies, or send approved drafts'
-  if (plugin.category === 'chat') return 'Search conversations, sync memory, or send messages'
+  if (plugin.category === 'chat') return 'Scan a QR code, sync conversations, or send messages'
   return plugin.description || `Use ${plugin.name} from Jaz`
 }
 
 function appDescription(plugin: IntegrationPlugin): string {
   if (plugin.id === 'gmail') return 'Search threads, draft replies, and send approved drafts'
-  if (plugin.id === 'whatsapp') return 'Sync chats and send WhatsApp messages'
-  if (plugin.id === 'telegram') return 'Sync chats and send Telegram messages'
+  if (plugin.id === 'whatsapp') return 'Scan a WhatsApp QR code to sync chats and send messages'
+  if (plugin.id === 'telegram') return 'Scan a Telegram QR code to sync chats and send messages'
   return plugin.description || `Use ${plugin.name} from Jaz`
 }
 
@@ -247,7 +244,7 @@ function authDescription(kind?: string): string {
     case 'oauth':
       return 'Browser sign-in'
     case 'session':
-      return 'QR pairing'
+      return 'QR sign-in'
     case 'remote_mcp':
       return 'Remote MCP'
     case 'browser_local':
