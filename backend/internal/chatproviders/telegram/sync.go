@@ -2,7 +2,6 @@ package telegram
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"time"
@@ -304,8 +303,7 @@ func (p *Provider) writeRecords(ctx context.Context, connection integrations.Con
 		return err
 	}
 	return p.store.SaveIntegrationCursor(ctx, connection.ID, integrations.Cursor{
-		Kind:  telegramSyncCursorKind,
-		Value: json.RawMessage(`{}`),
+		Kind: telegramSyncCursorKind,
 	})
 }
 

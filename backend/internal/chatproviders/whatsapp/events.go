@@ -2,7 +2,6 @@ package whatsapp
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -98,7 +97,6 @@ func (p *Provider) writeRecords(ctx context.Context, records ...integrations.Rec
 		return err
 	}
 	return p.store.SaveIntegrationCursor(ctx, records[0].ConnectionID, integrations.Cursor{
-		Kind:  whatsappSyncCursorKind,
-		Value: json.RawMessage(`{}`),
+		Kind: whatsappSyncCursorKind,
 	})
 }

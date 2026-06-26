@@ -30,11 +30,13 @@ SELECT
   c.account_name,
   c.alias,
   c.scopes_json,
-  CAST(COALESCE(MAX(ic.updated_at_ms), 0) AS INTEGER) AS last_synced_at_ms
+  CAST((
+    SELECT COALESCE(MAX(updated_at_ms), 0)
+    FROM integration_cursors
+    WHERE connection_id = c.id
+  ) AS INTEGER) AS last_synced_at_ms
 FROM integration_connections c
-LEFT JOIN integration_cursors ic ON ic.connection_id = c.id
 WHERE c.provider = ?1
-GROUP BY c.id, c.provider, c.account_id, c.account_name, c.alias, c.scopes_json
 ORDER BY c.alias, c.account_id, c.id
 `
 
@@ -87,11 +89,13 @@ SELECT
   c.account_name,
   c.alias,
   c.scopes_json,
-  CAST(COALESCE(MAX(ic.updated_at_ms), 0) AS INTEGER) AS last_synced_at_ms
+  CAST((
+    SELECT COALESCE(MAX(updated_at_ms), 0)
+    FROM integration_cursors
+    WHERE connection_id = c.id
+  ) AS INTEGER) AS last_synced_at_ms
 FROM integration_connections c
-LEFT JOIN integration_cursors ic ON ic.connection_id = c.id
 WHERE c.id = ?1
-GROUP BY c.id, c.provider, c.account_id, c.account_name, c.alias, c.scopes_json
 LIMIT 1
 `
 
