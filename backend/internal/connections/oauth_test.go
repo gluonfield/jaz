@@ -16,6 +16,13 @@ type memoryOAuthStore struct {
 	connections []integrations.Connection
 }
 
+var testOAuthConfig = OAuthConfig{
+	Gmail: gmailconnector.OAuthClientConfig{
+		ClientID:     "test-client",
+		ClientSecret: "test-secret",
+	},
+}
+
 func (s memoryOAuthStore) ListConnections(_ context.Context, provider string) ([]integrations.Connection, error) {
 	var out []integrations.Connection
 	for _, connection := range s.connections {
@@ -32,7 +39,7 @@ func (memoryOAuthStore) SaveOAuthConnection(context.Context, integrationoauth.To
 
 func TestOAuthStartBuildsGmailPKCEURL(t *testing.T) {
 	redirectURL := "http://127.0.0.1:5222/v1/connections/oauth/google/callback"
-	start, err := NewOAuthService(memoryOAuthStore{}, OAuthConfig{}).Start(context.Background(), gmailconnector.ProviderID, redirectURL)
+	start, err := NewOAuthService(memoryOAuthStore{}, testOAuthConfig).Start(context.Background(), gmailconnector.ProviderID, redirectURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +50,7 @@ func TestOAuthStartBuildsGmailPKCEURL(t *testing.T) {
 	}
 	q := parsed.Query()
 	scope := strings.Fields(q.Get("scope"))
-	if parsed.Host != "accounts.google.com" || q.Get("client_id") != gmailconnector.OAuthClientID || q.Get("redirect_uri") != redirectURL {
+	if parsed.Host != "accounts.google.com" || q.Get("client_id") != "test-client" || q.Get("redirect_uri") != redirectURL {
 		t.Fatalf("auth url = %s", start.AuthURL)
 	}
 	if !slices.Contains(scope, gmailconnector.ScopeModify) {

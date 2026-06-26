@@ -92,17 +92,20 @@ func (s *Store) DeleteConnection(ctx context.Context, id string) (bool, error) {
 		return false, err
 	}
 	defer tx.Rollback()
-	if err := oauthdb.New(s.db).WithTx(tx).DeleteToken(ctx, id); err != nil {
-		return false, err
-	}
 	rows, err := connectiondb.New(s.db).WithTx(tx).DeleteConnection(ctx, id)
 	if err != nil {
+		return false, err
+	}
+	if rows == 0 {
+		return false, nil
+	}
+	if err := oauthdb.New(s.db).WithTx(tx).DeleteToken(ctx, id); err != nil {
 		return false, err
 	}
 	if err := tx.Commit(); err != nil {
 		return false, err
 	}
-	return rows > 0, nil
+	return true, nil
 }
 
 func connectionFromRow(id, provider, accountID, accountName, alias, scopesJSON string) (integrations.Connection, error) {

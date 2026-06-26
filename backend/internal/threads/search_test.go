@@ -64,6 +64,47 @@ func TestSearchFindsMessagesAndThreadMetadata(t *testing.T) {
 	}
 }
 
+func TestSearchExcludesLoopThreads(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	chat, err := store.CreateSession(storage.CreateSession{Slug: "weather-chat", Title: "Weather report"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendMessageRecords(chat.ID, storage.Message{Role: "user", Content: "weather report please"}); err != nil {
+		t.Fatal(err)
+	}
+
+	loopRun, err := store.CreateSession(storage.CreateSession{
+		Slug:       "weather-loop-run",
+		Title:      "Weather report loop",
+		SourceType: storage.SourceLoopRun,
+		SourceID:   "loop-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendMessageRecords(loopRun.ID, storage.Message{Role: "user", Content: "weather report please"}); err != nil {
+		t.Fatal(err)
+	}
+
+	search := NewService(sqlitestore.NewSearchQueries(store), store)
+
+	for _, query := range []string{"weather report", "weather"} {
+		results, err := search.Search(context.Background(), SearchQuery{Query: query, IncludeArchived: true, Limit: 10})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(results) != 1 || results[0].ThreadID != chat.ID {
+			t.Fatalf("search %q = %#v, want only the chat thread (loop run excluded)", query, results)
+		}
+	}
+}
+
 func TestSearchRanksActiveAboveArchived(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
