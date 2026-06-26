@@ -14,7 +14,6 @@ import (
 
 type memoryOAuthStore struct {
 	connections []integrations.Connection
-	tokens      map[string]integrationoauth.Token
 }
 
 var testOAuthConfig = OAuthConfig{
@@ -32,11 +31,6 @@ func (s memoryOAuthStore) ListConnections(_ context.Context, provider string) ([
 		}
 	}
 	return out, nil
-}
-
-func (s memoryOAuthStore) LoadToken(_ context.Context, id string) (integrationoauth.Token, bool, error) {
-	token, ok := s.tokens[id]
-	return token, ok, nil
 }
 
 func (memoryOAuthStore) SaveOAuthConnection(context.Context, integrationoauth.Token, integrations.Connection) error {
@@ -77,23 +71,9 @@ func TestOAuthStartBuildsGmailPKCEURL(t *testing.T) {
 	}
 }
 
-func TestOAuthStartUsesStoredGmailClientCredentials(t *testing.T) {
+func TestOAuthStartUsesBundledGmailClientCredentials(t *testing.T) {
 	redirectURL := "http://127.0.0.1:5222/v1/connections/oauth/google/callback"
-	store := memoryOAuthStore{
-		connections: []integrations.Connection{{
-			ID:       gmailconnector.OAuthConnectionID,
-			Provider: gmailconnector.ProviderID,
-		}},
-		tokens: map[string]integrationoauth.Token{
-			gmailconnector.OAuthConnectionID: {
-				ClientID:     "stored-client",
-				ClientSecret: "stored-secret",
-			},
-		},
-	}
-
-	service := NewOAuthService(store, OAuthConfig{})
-	start, err := service.Start(context.Background(), gmailconnector.ProviderID, redirectURL)
+	start, err := NewOAuthService(memoryOAuthStore{}, OAuthConfig{}).Start(context.Background(), gmailconnector.ProviderID, redirectURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,18 +81,8 @@ func TestOAuthStartUsesStoredGmailClientCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if parsed.Query().Get("client_id") != "stored-client" {
+	if parsed.Query().Get("client_id") != gmailconnector.OAuthClientID {
 		t.Fatalf("auth url = %s", start.AuthURL)
-	}
-	state := parsed.Query().Get("state")
-	service.mu.Lock()
-	stored, ok := service.states[state]
-	service.mu.Unlock()
-	if !ok {
-		t.Fatalf("missing oauth state %q", state)
-	}
-	if stored.credentials.ClientID != "stored-client" || stored.credentials.ClientSecret != "stored-secret" {
-		t.Fatalf("stored credentials = %#v", stored.credentials)
 	}
 }
 

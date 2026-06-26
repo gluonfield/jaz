@@ -6,8 +6,12 @@ import (
 )
 
 func TestOAuthClientConfigCredentials(t *testing.T) {
-	if _, err := (OAuthClientConfig{}).Credentials(); err == nil {
-		t.Fatal("expected missing credentials error")
+	defaults, err := (OAuthClientConfig{}).Credentials()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if defaults != DefaultOAuthClientCredentials() {
+		t.Fatalf("defaults = %#v", defaults)
 	}
 
 	custom, err := (OAuthClientConfig{
