@@ -14,14 +14,12 @@ import (
 	"go.mau.fi/whatsmeow/proto/waCompanionReg"
 	"go.mau.fi/whatsmeow/store"
 	waLog "go.mau.fi/whatsmeow/util/log"
-	"google.golang.org/protobuf/proto"
 )
 
-var configureDevicePropsOnce sync.Once
 var refreshWebVersion = versionRefresh{}
 
 const (
-	whatsappCompanionName       = "Chrome (Linux)"
+	whatsappCompanionOS         = "Linux"
 	whatsappWebServiceWorkerURL = "https://web.whatsapp.com/sw.js"
 )
 
@@ -38,10 +36,16 @@ func newWhatsAppClient(device *store.Device) *whatsmeow.Client {
 }
 
 func configureWhatsAppDeviceProps() {
-	configureDevicePropsOnce.Do(func() {
-		store.DeviceProps.Os = proto.String(whatsappCompanionName)
-		store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_CHROME.Enum()
-	})
+	store.SetOSInfo(whatsappCompanionOS, store.GetWAVersion())
+	store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_CHROME.Enum()
+}
+
+func prepareWhatsAppClient(ctx context.Context) error {
+	if err := refreshWhatsAppWebVersion(ctx); err != nil {
+		return err
+	}
+	configureWhatsAppDeviceProps()
+	return nil
 }
 
 func refreshWhatsAppWebVersion(ctx context.Context) error {

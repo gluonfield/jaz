@@ -51,6 +51,10 @@ func TestConnectionIDsUsesDurableConnectionRows(t *testing.T) {
 }
 
 func TestNewWhatsAppClientUsesBrowserQRIdentity(t *testing.T) {
+	restoreWhatsAppVersion(t)
+	version := waStore.WAVersionContainer{2, 3000, 1042217683}
+	waStore.SetWAVersion(version)
+
 	client := newWhatsAppClient(&waStore.Device{})
 	if client.QRClientType != whatsmeow.PairClientChrome {
 		t.Fatalf("QR client type = %q, want %q", client.QRClientType, whatsmeow.PairClientChrome)
@@ -58,9 +62,51 @@ func TestNewWhatsAppClientUsesBrowserQRIdentity(t *testing.T) {
 	if got := waStore.DeviceProps.GetPlatformType(); got != waCompanionReg.DeviceProps_CHROME {
 		t.Fatalf("platform type = %s, want %s", got, waCompanionReg.DeviceProps_CHROME)
 	}
-	if got := waStore.DeviceProps.GetOs(); got != whatsappCompanionName {
-		t.Fatalf("device os = %q, want %q", got, whatsappCompanionName)
+	if got := waStore.DeviceProps.GetOs(); got != whatsappCompanionOS {
+		t.Fatalf("device os = %q, want %q", got, whatsappCompanionOS)
 	}
+	propsVersion := waStore.DeviceProps.GetVersion()
+	if got := [3]uint32{propsVersion.GetPrimary(), propsVersion.GetSecondary(), propsVersion.GetTertiary()}; got != version {
+		t.Fatalf("device props version = %v, want %v", got, version)
+	}
+}
+
+func TestConfigureWhatsAppDevicePropsTracksRefreshedVersion(t *testing.T) {
+	restoreWhatsAppVersion(t)
+	waStore.SetWAVersion(waStore.WAVersionContainer{2, 3000, 1042000000})
+	configureWhatsAppDeviceProps()
+
+	version := waStore.WAVersionContainer{2, 3000, 1042217683}
+	waStore.SetWAVersion(version)
+	configureWhatsAppDeviceProps()
+
+	propsVersion := waStore.DeviceProps.GetVersion()
+	if got := [3]uint32{propsVersion.GetPrimary(), propsVersion.GetSecondary(), propsVersion.GetTertiary()}; got != version {
+		t.Fatalf("device props version = %v, want %v", got, version)
+	}
+}
+
+func restoreWhatsAppVersion(t *testing.T) {
+	t.Helper()
+	original := waStore.GetWAVersion()
+	originalOS := waStore.DeviceProps.GetOs()
+	originalPlatform := waStore.DeviceProps.GetPlatformType()
+	originalPropsVersion := waStore.DeviceProps.GetVersion()
+	propsVersion := [3]uint32{
+		originalPropsVersion.GetPrimary(),
+		originalPropsVersion.GetSecondary(),
+		originalPropsVersion.GetTertiary(),
+	}
+	t.Cleanup(func() {
+		waStore.SetWAVersion(original)
+		waStore.DeviceProps.Os = proto.String(originalOS)
+		waStore.DeviceProps.PlatformType = originalPlatform.Enum()
+		waStore.DeviceProps.Version = &waCompanionReg.DeviceProps_AppVersion{
+			Primary:   proto.Uint32(propsVersion[0]),
+			Secondary: proto.Uint32(propsVersion[1]),
+			Tertiary:  proto.Uint32(propsVersion[2]),
+		}
+	})
 }
 
 func TestParseWhatsAppWebVersionFromServiceWorker(t *testing.T) {

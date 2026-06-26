@@ -47,6 +47,9 @@ func (p *Provider) clientForConnection(ctx context.Context, connection integrati
 		if !ok || candidate.ID != connection.ID {
 			continue
 		}
+		if err := prepareWhatsAppClient(ctx); err != nil {
+			return nil, err
+		}
 		client = newWhatsAppClient(device)
 		client.AddEventHandler(p.eventHandler(client, nil))
 		p.mu.Lock()
