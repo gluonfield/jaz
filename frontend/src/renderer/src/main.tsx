@@ -30,10 +30,13 @@ installFileDropGuard()
 // returning users from the per-install distinct id.
 if (clientRuntime.windowKind === 'main') telemetry.appOpened()
 
-// The launcher window floats over other apps; keep its page see-through so only
-// the card paints (the pre-paint script already does this on mac vibrancy, but
-// be explicit for every platform).
-if (clientRuntime.windowKind === 'launcher') document.documentElement.classList.add('launcher')
+// The launcher window floats over other apps: keep its page see-through so only
+// the card paints, and pin zoom to 1 so drag coordinates map 1:1 to screen
+// pixels for region capture (it never shows the appearance font-scale anyway).
+if (clientRuntime.windowKind === 'launcher') {
+  document.documentElement.classList.add('launcher')
+  document.documentElement.style.zoom = '1'
+}
 
 const router = createRouter({
   routeTree,

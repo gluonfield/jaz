@@ -1,35 +1,20 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NewSessionHome } from '@/components/home/NewSessionHome'
 import { NewThreadOptions } from '@/components/home/NewThreadOptions'
-import { ModelSelect, ProjectPicker, RuntimeSelect } from '@/components/session/NewThreadControls'
+import { ProjectPicker } from '@/components/session/NewThreadControls'
+import { AgentModelControls, useNewThreadControls } from '@/components/session/useNewThreadControls'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { useToast } from '@/components/ui/toast'
 import { ApiError } from '@/lib/api/client'
 import { createSession, listFilesystemDirs, projectsQuery } from '@/lib/api/sessions'
-import { agentSettingsQuery } from '@/lib/api/settings'
 import { agentLabel } from '@/lib/agentLabel'
-import {
-  acpAgentSupportsNativeGoal,
-  enabledACPAgents,
-  runtimeModelState,
-} from '@/lib/agentRuntimes'
+import { acpAgentSupportsNativeGoal } from '@/lib/agentRuntimes'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
-import {
-  acpAgentModelSuggestions,
-  modelSuggestionLabel,
-  modelSuggestionsForProvider,
-  openRouterModelsQuery,
-} from '@/lib/models'
-import {
-  createSessionInput,
-  NEW_SESSION_AGENT_KEY,
-  NEW_SESSION_DIRECTORY_KEY,
-  NEW_SESSION_DRAFT_KEY,
-} from '@/lib/newSessionConfig'
+import { modelSuggestionLabel } from '@/lib/models'
+import { NEW_SESSION_DIRECTORY_KEY, NEW_SESSION_DRAFT_KEY } from '@/lib/newSessionConfig'
 import { setPendingMessage } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
-import { acpReasoningEffortOptions } from '@/lib/reasoningEfforts'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { useTheme } from '@/lib/theme'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -58,24 +43,16 @@ function NewSessionPage() {
   const toast = useToast()
   const [creating, setCreating] = useState(false)
   const [composing, setComposing] = useState(false)
-  // Configured ACP agent name; directory is the session cwd.
-  const [runtime, setRuntime] = useState(() => storedString(NEW_SESSION_AGENT_KEY) || 'jaz')
+  // Agent + model + reasoning effort, shared with the launcher.
+  const controls = useNewThreadControls()
+  const { agentSettings, runtimeAvailable, runtime } = controls
+  // directory is the session cwd.
   const [directory, setDirectory] = useState(
     () => search.project ?? storedString(NEW_SESSION_DIRECTORY_KEY),
   )
   // Worktree runs the session on a disposable git worktree (any agent);
   // only offered when the chosen directory is a git repository.
   const [worktree, setWorktree] = useState(false)
-  // Per-session overrides of the Settings > Agents defaults; null follows the
-  // default for the chosen agent and provider.
-  const [providerOverride, setProviderOverride] = useState<string | null>(null)
-  const [modelOverride, setModelOverride] = useState<string | null>(null)
-  const [effortOverride, setEffortOverride] = useState<string | null>(null)
-  const settingsQuery = useQuery(agentSettingsQuery)
-  const agentSettings = settingsQuery.data
-  const agents = useMemo(() => enabledACPAgents(agentSettings), [agentSettings])
-  const runtimeReady = settingsQuery.isSuccess
-  const runtimeAvailable = runtimeReady && agents.length > 0
   const projects = useQuery(projectsQuery)
   const project = projects.data?.find((item) => item.path === directory)
   const directoryInfo = useQuery({
@@ -96,23 +73,8 @@ function NewSessionPage() {
   }, [search.project])
 
   useEffect(() => {
-    localStorage.setItem(NEW_SESSION_AGENT_KEY, runtime)
-  }, [runtime])
-
-  useEffect(() => {
     localStorage.setItem(NEW_SESSION_DIRECTORY_KEY, directory)
   }, [directory])
-
-  useEffect(() => {
-    if (!runtimeReady) return
-    if (agents.includes(runtime)) return
-    const next = agents.includes('jaz') ? 'jaz' : (agents[0] ?? '')
-    if (next === runtime) return
-    setRuntime(next)
-    setProviderOverride(null)
-    setModelOverride(null)
-    setEffortOverride(null)
-  }, [agents, runtime, runtimeReady])
 
   useEffect(() => {
     if (!directoryIsGit) setWorktree(false)
@@ -126,20 +88,6 @@ function NewSessionPage() {
     }
   }, [directory, project, directoryInfo.error])
 
-  const runtimeModel = runtimeModelState(agentSettings, runtime, providerOverride)
-  const { usesProvider, providers: runtimeProviders, provider, selectedProvider } = runtimeModel
-  const defaultModel = runtimeModel.defaultModel
-  const model = modelOverride ?? defaultModel
-  const reasoningEffort = effortOverride ?? runtimeModel.defaultEffort
-
-  const openRouterModels = useQuery({
-    ...openRouterModelsQuery,
-    enabled: usesProvider && provider === 'openrouter',
-  })
-  const modelSuggestions = usesProvider
-    ? modelSuggestionsForProvider(selectedProvider, openRouterModels.data ?? [])
-    : acpAgentModelSuggestions(runtime)
-
   const startThread = async (title: string | undefined, prepare: (sessionId: string) => void) => {
     if (!runtimeAvailable) {
       toast('Connect an agent in Settings before starting a session.', 'danger')
@@ -147,13 +95,7 @@ function NewSessionPage() {
     }
     setCreating(true)
     try {
-      const session = await createSession(
-        createSessionInput(
-          agentSettings,
-          { agent: runtime, directory, worktree, providerOverride, modelOverride, effortOverride },
-          title,
-        ),
-      )
+      const session = await createSession(controls.sessionConfig({ directory, worktree }, title))
       prepare(session.id)
       sessionStorage.removeItem(NEW_SESSION_DRAFT_KEY)
       queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
@@ -179,62 +121,18 @@ function NewSessionPage() {
   // composer, so their own popovers open downward.
   const isMobile = useIsMobile()
   const controlPlacement = isMobile ? 'below' : 'above'
-  const modelLabel = model === '' ? agentLabel(runtime) : modelSuggestionLabel(modelSuggestions, model)
+  const modelLabel =
+    controls.model === '' ? agentLabel(runtime) : modelSuggestionLabel(controls.modelSuggestions, controls.model)
   const directoryLabel = directory
     ? (project?.name ?? directory.split(/[\\/]+/).filter(Boolean).at(-1) ?? directory)
     : ''
   // Collapsed header summary: reasoning effort and the working directory, so
   // a chosen project stays visible without opening the panel.
-  const optionsSubtitle = [reasoningEffort, directoryLabel].filter(Boolean).join(' · ')
+  const optionsSubtitle = [controls.effort, directoryLabel].filter(Boolean).join(' · ')
 
   const composerControls = (
     <>
-      {runtimeReady && !runtimeAvailable ? (
-        <span className="px-1.5 text-[13px] text-ink-3">Connect an agent in Settings</span>
-      ) : null}
-      {runtimeAvailable && agents.length > 0 ? (
-        <RuntimeSelect
-          value={runtime}
-          agents={agents}
-          placement={controlPlacement}
-          disabled={creating}
-          onChange={(next) => {
-            setRuntime(next)
-            setProviderOverride(null)
-            setModelOverride(null)
-            setEffortOverride(null)
-          }}
-        />
-      ) : null}
-      {runtimeAvailable ? (
-        <ModelSelect
-          value={model}
-          suggestions={modelSuggestions}
-          loading={openRouterModels.isLoading}
-          placement={controlPlacement}
-          disabled={creating}
-          onChange={setModelOverride}
-          providers={
-            usesProvider
-              ? runtimeProviders.map((p) => ({ value: p.id, label: p.label }))
-              : undefined
-          }
-          provider={usesProvider ? provider : undefined}
-          onProviderChange={
-            usesProvider
-              ? (next) => {
-                  setProviderOverride(next)
-                  setModelOverride(null)
-                  setEffortOverride(null)
-                }
-              : undefined
-          }
-          effort={reasoningEffort}
-          effortOptions={acpReasoningEffortOptions(agentSettings, runtime)}
-          // Default clears the override, falling back to the settings effort.
-          onEffortChange={(next) => setEffortOverride(next === '' ? null : next)}
-        />
-      ) : null}
+      <AgentModelControls controls={controls} placement={controlPlacement} disabled={creating} />
       <ProjectPicker
         value={directory}
         placement={controlPlacement}
