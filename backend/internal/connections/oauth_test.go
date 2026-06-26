@@ -20,7 +20,7 @@ func (memoryOAuthStore) SaveOAuthConnection(context.Context, integrationoauth.To
 
 func TestOAuthStartBuildsGmailPKCEURL(t *testing.T) {
 	redirectURL := "http://127.0.0.1:5222/v1/connections/oauth/google/callback"
-	start, err := NewOAuthService(memoryOAuthStore{}).Start(context.Background(), gmailconnector.ProviderID, redirectURL)
+	start, err := NewOAuthService(memoryOAuthStore{}, OAuthConfig{}).Start(context.Background(), gmailconnector.ProviderID, redirectURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestOAuthStartBuildsGmailPKCEURL(t *testing.T) {
 }
 
 func TestOAuthStartRejectsUnsupportedPlugin(t *testing.T) {
-	_, err := NewOAuthService(memoryOAuthStore{}).Start(context.Background(), "slack", "http://127.0.0.1/callback")
+	_, err := NewOAuthService(memoryOAuthStore{}, OAuthConfig{}).Start(context.Background(), "slack", "http://127.0.0.1/callback")
 	if err == nil {
 		t.Fatal("expected unsupported plugin error")
 	}
