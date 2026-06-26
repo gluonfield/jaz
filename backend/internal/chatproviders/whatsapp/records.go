@@ -17,6 +17,8 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+const whatsappHistoricalWindow = 365 * 24 * time.Hour
+
 func connectionFromDevice(device *store.Device) (integrations.Connection, bool) {
 	jid := device.GetJID()
 	if jid.IsEmpty() {
@@ -104,7 +106,7 @@ func whatsappMessageRecord(connection integrations.Connection, event *events.Mes
 	}
 }
 
-func whatsappHistoryRecords(connection integrations.Connection, sync *waHistorySync.HistorySync) []integrations.Record {
+func whatsappHistoryRecords(connection integrations.Connection, sync *waHistorySync.HistorySync, cutoff time.Time) []integrations.Record {
 	if sync == nil {
 		return nil
 	}
@@ -114,17 +116,23 @@ func whatsappHistoryRecords(connection integrations.Connection, sync *waHistoryS
 		AccountID:    connection.AccountID,
 		Kind:         "whatsapp.history",
 		ExternalID:   fmt.Sprintf("%s-%d", sync.GetSyncType().String(), sync.GetChunkOrder()),
-		Raw:          protoMessageJSON(sync),
+		Raw: rawJSON(map[string]any{
+			"sync_type":            sync.GetSyncType().String(),
+			"chunk_order":          sync.GetChunkOrder(),
+			"progress":             sync.GetProgress(),
+			"conversation_count":   len(sync.GetConversations()),
+			"status_message_count": len(sync.GetStatusV3Messages()),
+		}),
 	}}
 	for _, conversation := range sync.GetConversations() {
 		for _, msg := range conversation.GetMessages() {
-			if record, ok := whatsappWebMessageRecord(connection, conversation.GetID(), msg.GetMessage()); ok {
+			if record, ok := whatsappWebMessageRecord(connection, conversation.GetID(), msg.GetMessage()); ok && whatsappRecordInWindow(record, cutoff) {
 				records = append(records, record)
 			}
 		}
 	}
 	for _, msg := range sync.GetStatusV3Messages() {
-		if record, ok := whatsappWebMessageRecord(connection, "status", msg); ok {
+		if record, ok := whatsappWebMessageRecord(connection, "status", msg); ok && whatsappRecordInWindow(record, cutoff) {
 			records = append(records, record)
 		}
 	}
@@ -165,6 +173,14 @@ func whatsappWebMessageRecord(connection integrations.Connection, conversationID
 		OccurredAt:   occurred,
 		Raw:          raw,
 	}, true
+}
+
+func whatsappHistoryCutoff(now time.Time) time.Time {
+	return now.UTC().Add(-whatsappHistoricalWindow)
+}
+
+func whatsappRecordInWindow(record integrations.Record, cutoff time.Time) bool {
+	return cutoff.IsZero() || record.OccurredAt.IsZero() || !record.OccurredAt.Before(cutoff)
 }
 
 func whatsappText(message *waE2E.Message) string {

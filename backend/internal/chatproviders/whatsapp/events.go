@@ -3,6 +3,7 @@ package whatsapp
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/wins/jaz/backend/pkg/integrations"
 	"go.mau.fi/whatsmeow"
@@ -48,7 +49,7 @@ func (p *Provider) eventHandler(client *whatsmeow.Client, session *qrSession) wh
 			}
 		case *events.HistorySync:
 			if connection, ok := connectionFromDevice(client.Store); ok {
-				_ = p.writeRecords(p.ctx, whatsappHistoryRecords(connection, event.Data)...)
+				_ = p.writeRecords(p.ctx, whatsappHistoryRecords(connection, event.Data, whatsappHistoryCutoff(time.Now()))...)
 			}
 		case *events.Contact:
 			if connection, ok := connectionFromDevice(client.Store); ok {

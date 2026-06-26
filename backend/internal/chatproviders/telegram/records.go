@@ -210,12 +210,7 @@ func messageDate(messages []tg.MessageClass, id int) int {
 		if telegramMessageID(message) != id {
 			continue
 		}
-		switch msg := message.(type) {
-		case *tg.Message:
-			return msg.Date
-		case *tg.MessageService:
-			return msg.Date
-		}
+		return telegramMessageDate(message)
 	}
 	return 0
 }
@@ -226,6 +221,17 @@ func telegramMessageID(message tg.MessageClass) int {
 		return msg.ID
 	case *tg.MessageService:
 		return msg.ID
+	default:
+		return 0
+	}
+}
+
+func telegramMessageDate(message tg.MessageClass) int {
+	switch msg := message.(type) {
+	case *tg.Message:
+		return msg.Date
+	case *tg.MessageService:
+		return msg.Date
 	default:
 		return 0
 	}

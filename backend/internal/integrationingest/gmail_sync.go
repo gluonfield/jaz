@@ -13,6 +13,7 @@ import (
 const (
 	defaultGmailSyncInterval     = 5 * time.Minute
 	defaultGmailSyncPagesPerTick = 4
+	defaultGmailHistoricalWindow = 365 * 24 * time.Hour
 )
 
 type GmailSyncStore interface {
@@ -23,11 +24,13 @@ type GmailSyncStore interface {
 }
 
 type GmailSyncer struct {
-	Store           GmailSyncStore
-	Writer          RawWriter
-	Interval        time.Duration
-	MaxPagesPerTick int
-	APIBaseURL      string
+	Store            GmailSyncStore
+	Writer           RawWriter
+	Interval         time.Duration
+	MaxPagesPerTick  int
+	APIBaseURL       string
+	HistoricalWindow time.Duration
+	Now              func() time.Time
 }
 
 func (s GmailSyncer) PollInterval() time.Duration {
@@ -66,10 +69,12 @@ func (s GmailSyncer) syncConnection(ctx context.Context, connection integrations
 		if err != nil {
 			return err
 		}
+		mode := gmailObserveMode(state)
 		result, err := api.Observe(ctx, integrations.ObserveRequest{
 			Connection: connection,
 			Cursor:     cursor,
-			Mode:       gmailObserveMode(state),
+			Mode:       mode,
+			Since:      s.observeSince(mode),
 		})
 		if err != nil {
 			return err
@@ -123,4 +128,22 @@ func (s GmailSyncer) pagesPerTick() int {
 		return s.MaxPagesPerTick
 	}
 	return defaultGmailSyncPagesPerTick
+}
+
+func (s GmailSyncer) observeSince(mode integrations.ObserveMode) time.Time {
+	if mode != integrations.ObserveModeBackfill {
+		return time.Time{}
+	}
+	window := s.HistoricalWindow
+	if window < 0 {
+		return time.Time{}
+	}
+	if window == 0 {
+		window = defaultGmailHistoricalWindow
+	}
+	now := time.Now().UTC()
+	if s.Now != nil {
+		now = s.Now().UTC()
+	}
+	return now.Add(-window)
 }

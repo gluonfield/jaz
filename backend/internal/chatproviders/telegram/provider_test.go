@@ -300,3 +300,25 @@ func TestTelegramRecordsExposeContactsAndMessages(t *testing.T) {
 		t.Fatalf("message raw = %#v", messageRaw)
 	}
 }
+
+func TestTelegramHistoricalBackfillKeepsOnlyOneYearByDefault(t *testing.T) {
+	now := time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC)
+	cutoff := telegramBackfillCutoff(now)
+	messages := []tg.MessageClass{
+		&tg.Message{ID: 1, Date: cutoff + 60, Message: "inside window"},
+		&tg.Message{ID: 2, Date: cutoff - 60, Message: "too old"},
+		&tg.MessageService{ID: 3, Date: cutoff, Action: &tg.MessageActionEmpty{}},
+	}
+
+	filtered := telegramMessagesSince(messages, cutoff)
+
+	if len(filtered) != 2 {
+		t.Fatalf("filtered len = %d, want 2", len(filtered))
+	}
+	if telegramMessageID(filtered[0]) != 1 || telegramMessageID(filtered[1]) != 3 {
+		t.Fatalf("filtered messages = %#v", filtered)
+	}
+	if !messagesReachedCutoff(messages, cutoff) {
+		t.Fatal("expected page to stop at historical cutoff")
+	}
+}

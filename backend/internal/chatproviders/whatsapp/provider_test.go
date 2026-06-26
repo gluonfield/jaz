@@ -9,8 +9,11 @@ import (
 
 	"github.com/wins/jaz/backend/pkg/integrations"
 	"go.mau.fi/whatsmeow"
+	waCommon "go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waCompanionReg"
 	waE2E "go.mau.fi/whatsmeow/proto/waE2E"
+	waHistorySync "go.mau.fi/whatsmeow/proto/waHistorySync"
+	waWeb "go.mau.fi/whatsmeow/proto/waWeb"
 	waStore "go.mau.fi/whatsmeow/store"
 	waTypes "go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -126,5 +129,65 @@ func TestWhatsAppRecordsExposeContactsAndMessages(t *testing.T) {
 	}
 	if messageRaw["text"] != "hello" || messageRaw["sender"] != "15550103333@s.whatsapp.net" {
 		t.Fatalf("message raw = %#v", messageRaw)
+	}
+}
+
+func TestWhatsAppHistoryRecordsDropOldMessagesAndFullProtoBlob(t *testing.T) {
+	connection := integrations.Connection{ID: "whatsapp:alice", AccountID: "15550102222"}
+	now := time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC)
+	newTimestamp := uint64(now.Add(-time.Hour).Unix())
+	oldTimestamp := uint64(now.Add(-(whatsappHistoricalWindow + time.Hour)).Unix())
+	syncType := waHistorySync.HistorySync_INITIAL_BOOTSTRAP
+	chunk := uint32(2)
+	progress := uint32(50)
+	conversationID := "15550103333@s.whatsapp.net"
+	sync := &waHistorySync.HistorySync{
+		SyncType:   &syncType,
+		ChunkOrder: &chunk,
+		Progress:   &progress,
+		Conversations: []*waHistorySync.Conversation{{
+			ID: proto.String(conversationID),
+			Messages: []*waHistorySync.HistorySyncMsg{
+				{Message: whatsappWebInfo("new-id", conversationID, newTimestamp, "new message")},
+				{Message: whatsappWebInfo("old-id", conversationID, oldTimestamp, "old message")},
+			},
+		}},
+	}
+
+	records := whatsappHistoryRecords(connection, sync, whatsappHistoryCutoff(now))
+
+	if len(records) != 2 {
+		t.Fatalf("records len = %d, want metadata + one message", len(records))
+	}
+	if records[0].Kind != "whatsapp.history" {
+		t.Fatalf("metadata kind = %q", records[0].Kind)
+	}
+	var metadata map[string]any
+	if err := json.Unmarshal(records[0].Raw, &metadata); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := metadata["conversations"]; ok {
+		t.Fatalf("metadata contains full conversations blob: %#v", metadata)
+	}
+	if records[1].ExternalID != "new-id" {
+		t.Fatalf("message external id = %q", records[1].ExternalID)
+	}
+	var message map[string]any
+	if err := json.Unmarshal(records[1].Raw, &message); err != nil {
+		t.Fatal(err)
+	}
+	if message["text"] != "new message" {
+		t.Fatalf("message raw = %#v", message)
+	}
+}
+
+func whatsappWebInfo(id, remoteJID string, timestamp uint64, text string) *waWeb.WebMessageInfo {
+	return &waWeb.WebMessageInfo{
+		Key: &waCommon.MessageKey{
+			ID:        proto.String(id),
+			RemoteJID: proto.String(remoteJID),
+		},
+		MessageTimestamp: proto.Uint64(timestamp),
+		Message:          &waE2E.Message{Conversation: proto.String(text)},
 	}
 }
