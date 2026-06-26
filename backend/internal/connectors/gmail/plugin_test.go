@@ -46,16 +46,20 @@ func TestPluginIncludesImplementedGmailTools(t *testing.T) {
 		ToolGetProfile,
 		ToolSearchMessages,
 		ToolReadMessage,
+		ToolSendMessage,
 	} {
 		if _, ok := tools[name]; !ok {
 			t.Fatalf("missing tool %s", name)
 		}
 	}
-	if len(tools) != 3 {
+	if len(tools) != 4 {
 		t.Fatalf("tools = %#v", tools)
 	}
 	if got := tools["gmail_search_messages"].Risk; got != integrations.ActionRiskRead {
 		t.Fatalf("search risk = %q", got)
+	}
+	if got := tools["gmail_send_message"].Risk; got != integrations.ActionRiskWrite {
+		t.Fatalf("send risk = %q", got)
 	}
 	for _, tool := range tools {
 		if !slices.Contains(tool.RequiredScopes, ScopeModify) {

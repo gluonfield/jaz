@@ -49,6 +49,15 @@ type GmailReadMessageInput struct {
 	ID      string `json:"id" jsonschema:"Gmail message id returned by the Gmail search messages tool for the same account"`
 }
 
+type GmailSendMessageInput struct {
+	Account  string   `json:"account,omitempty" jsonschema:"Gmail account alias, email address, or connection id; omit only when one Gmail account is connected"`
+	To       []string `json:"to" jsonschema:"recipient email addresses"`
+	Cc       []string `json:"cc,omitempty" jsonschema:"CC recipient email addresses"`
+	Bcc      []string `json:"bcc,omitempty" jsonschema:"BCC recipient email addresses"`
+	Subject  string   `json:"subject,omitempty" jsonschema:"email subject"`
+	BodyText string   `json:"body_text" jsonschema:"plain text email body"`
+}
+
 type GmailProfileOutput struct {
 	Connected       bool                      `json:"connected"`
 	AccountRequired bool                      `json:"account_required,omitempty"`
@@ -84,6 +93,15 @@ type GmailReadMessageOutput struct {
 	Content         GmailMessageContent       `json:"content,omitempty"`
 }
 
+type GmailSendMessageOutput struct {
+	Connected       bool                      `json:"connected"`
+	AccountRequired bool                      `json:"account_required,omitempty"`
+	Accounts        []integrations.Connection `json:"accounts,omitempty"`
+	AccountID       string                    `json:"account_id,omitempty"`
+	Alias           string                    `json:"alias,omitempty"`
+	Message         gmailconnector.Message    `json:"message,omitempty"`
+}
+
 type GmailMessageContent struct {
 	Message           gmailconnector.Message `json:"message"`
 	BodyText          string                 `json:"body_text,omitempty"`
@@ -100,23 +118,28 @@ func (t *GmailMCPTools) AddTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        gmailconnector.ToolGetProfile,
 		Title:       "Get Gmail profile",
-		Description: "Check a connected Gmail email account and return live Gmail profile totals. If multiple Gmail accounts are connected, pass account as an alias, email, or connection id.",
+		Description: "Show live profile totals for one connected Gmail account. If multiple Gmail accounts are connected, pass account as an alias, email, or connection id.",
 	}, t.GetProfile)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        gmailconnector.ToolSearchMessages,
 		Title:       "Search Gmail messages",
-		Description: "Search or list Gmail email messages for one connected account and return bounded metadata, snippets, labels, and message IDs. If multiple Gmail accounts are connected, pass account as an alias, email, or connection id.",
+		Description: "Search or list Gmail messages for one connected account and return bounded metadata, snippets, labels, and message IDs. If multiple Gmail accounts are connected, pass account as an alias, email, or connection id.",
 	}, t.SearchMessages)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        gmailconnector.ToolReadMessage,
 		Title:       "Read Gmail message",
-		Description: "Read one Gmail email message by ID from one connected account, returning headers, labels, attachments, and a bounded body text or HTML fallback.",
+		Description: "Read one Gmail message by ID from one connected account, returning headers, labels, attachments, and a bounded body text or HTML fallback.",
 	}, t.ReadMessage)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        gmailconnector.ToolSendMessage,
+		Title:       "Send Gmail message",
+		Description: "Send a plain text Gmail message from one connected account. If multiple Gmail accounts are connected, pass account as an alias, email, or connection id.",
+	}, t.SendMessage)
 }
 
 func (t *GmailMCPTools) RemoveFrom(server *mcp.Server) {
 	if server != nil {
-		server.RemoveTools(gmailconnector.ToolGetProfile, gmailconnector.ToolSearchMessages, gmailconnector.ToolReadMessage)
+		server.RemoveTools(gmailconnector.ToolGetProfile, gmailconnector.ToolSearchMessages, gmailconnector.ToolReadMessage, gmailconnector.ToolSendMessage)
 	}
 }
 
@@ -225,6 +248,40 @@ func (t *GmailMCPTools) ReadMessage(ctx context.Context, _ *mcp.CallToolRequest,
 	}, nil
 }
 
+func (t *GmailMCPTools) SendMessage(ctx context.Context, _ *mcp.CallToolRequest, input GmailSendMessageInput) (*mcp.CallToolResult, GmailSendMessageOutput, error) {
+	request, err := gmailSendRequest(input)
+	if err != nil {
+		return nil, GmailSendMessageOutput{}, err
+	}
+	session, connected, err := t.session(ctx, input.Account)
+	if err != nil {
+		return nil, GmailSendMessageOutput{}, err
+	}
+	if !connected {
+		accountRequired := len(session.accounts) > 1
+		out := GmailSendMessageOutput{Connected: accountRequired, Accounts: session.accounts, AccountRequired: accountRequired}
+		if out.AccountRequired {
+			return textResult(gmailAccountRequiredText(session.accounts)), out, nil
+		}
+		return textResult("Gmail is not connected. Connect Gmail in Settings > Connections."), out, nil
+	}
+	message, err := session.api.SendMessage(ctx, request)
+	if err != nil {
+		return nil, GmailSendMessageOutput{}, err
+	}
+	text := "Sent Gmail message"
+	if request.Subject != "" {
+		text += ": " + request.Subject
+	}
+	return textResult(text), GmailSendMessageOutput{
+		Connected: true,
+		Accounts:  session.accounts,
+		AccountID: session.connection.AccountID,
+		Alias:     session.connection.Alias,
+		Message:   message,
+	}, nil
+}
+
 func (t *GmailMCPTools) session(ctx context.Context, account string) (gmailToolSession, bool, error) {
 	connections, err := t.gmailConnections(ctx)
 	if err != nil {
@@ -293,6 +350,34 @@ func gmailToolContent(content gmailconnector.MessageContent) GmailMessageContent
 		BodyHTML:          html,
 		BodyHTMLTruncated: htmlTruncated,
 	}
+}
+
+func gmailSendRequest(input GmailSendMessageInput) (gmailconnector.SendMessageRequest, error) {
+	request := gmailconnector.SendMessageRequest{
+		To:       cleanGmailAddressList(input.To),
+		Cc:       cleanGmailAddressList(input.Cc),
+		Bcc:      cleanGmailAddressList(input.Bcc),
+		Subject:  strings.TrimSpace(input.Subject),
+		BodyText: input.BodyText,
+	}
+	if len(request.To) == 0 {
+		return gmailconnector.SendMessageRequest{}, errors.New("to is required")
+	}
+	if strings.TrimSpace(request.BodyText) == "" {
+		return gmailconnector.SendMessageRequest{}, errors.New("body_text is required")
+	}
+	return request, nil
+}
+
+func cleanGmailAddressList(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
 }
 
 func clampGmailBody(body string) (string, bool) {

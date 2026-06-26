@@ -3,6 +3,7 @@ package connections
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -93,7 +94,7 @@ func TestGmailMCPToolsRequiresVerifiedConnection(t *testing.T) {
 	}
 }
 
-func TestGmailMCPToolsSearchAndReadMessages(t *testing.T) {
+func TestGmailMCPToolsSearchReadAndSendMessages(t *testing.T) {
 	body := base64.RawURLEncoding.EncodeToString([]byte("Plain body"))
 	gmailServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer access" {
@@ -126,6 +127,29 @@ func TestGmailMCPToolsSearchAndReadMessages(t *testing.T) {
 			default:
 				t.Fatalf("format = %s", r.URL.Query().Get("format"))
 			}
+		case "/gmail/v1/users/me/messages/send":
+			if r.Method != http.MethodPost {
+				t.Fatalf("method = %s", r.Method)
+			}
+			var payload struct {
+				Raw string `json:"raw"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatal(err)
+			}
+			raw, err := base64.RawURLEncoding.DecodeString(payload.Raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			message := string(raw)
+			if !strings.Contains(message, `To: "Alice" <alice@example.com>`) || !strings.Contains(message, "Subject: Hello") || !strings.Contains(message, "Plain body") {
+				t.Fatalf("raw message = %s", message)
+			}
+			_, _ = w.Write([]byte(`{
+				"id":"sent1",
+				"threadId":"sent-thread",
+				"payload":{"headers":[{"name":"Subject","value":"Hello"}]}
+			}`))
 		default:
 			t.Fatalf("path = %s", r.URL.Path)
 		}
@@ -161,6 +185,17 @@ func TestGmailMCPToolsSearchAndReadMessages(t *testing.T) {
 	}
 	if !read.Connected || read.Content.Message.ID != "m1" || read.Content.BodyText != "Plain body" {
 		t.Fatalf("read = %#v", read)
+	}
+	_, sent, err := tools.SendMessage(context.Background(), nil, GmailSendMessageInput{
+		To:       []string{" Alice <alice@example.com> "},
+		Subject:  " Hello ",
+		BodyText: "Plain body",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sent.Connected || sent.Message.ID != "sent1" || sent.Message.ThreadID != "sent-thread" {
+		t.Fatalf("sent = %#v", sent)
 	}
 }
 

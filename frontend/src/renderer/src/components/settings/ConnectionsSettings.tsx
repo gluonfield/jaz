@@ -164,10 +164,8 @@ export function ConnectionsSettings() {
             <ConnectionPluginDetailModal
               plugin={selectedPlugin}
               connecting={connect.isPending && connect.variables === selectedPlugin?.id}
-              disconnectingAccountID={disconnect.isPending ? disconnect.variables : undefined}
               onClose={() => setSelectedPluginID(null)}
               onConnect={(plugin) => connect.mutate(plugin.id)}
-              onDisconnect={disconnectAccount}
             />
             <ConnectionQRModal
               plugin={activeQR?.plugin}
