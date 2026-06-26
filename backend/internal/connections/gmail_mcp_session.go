@@ -13,9 +13,9 @@ import (
 const (
 	defaultGmailSearchLimit = 10
 	maxGmailSearchLimit     = 20
-	defaultGmailThreadLimit = 20
-	maxGmailThreadLimit     = 50
-	maxGmailBodyChars       = 16000
+	defaultGmailThreadLimit = 10
+	maxGmailThreadLimit     = 20
+	maxGmailBodyChars       = 6000
 )
 
 type GmailToolStore interface {

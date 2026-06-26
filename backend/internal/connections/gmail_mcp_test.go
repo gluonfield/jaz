@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	gmailconnector "github.com/wins/jaz/backend/internal/connectors/gmail"
+	"github.com/wins/jaz/backend/internal/integrationingest"
 	"github.com/wins/jaz/backend/pkg/integrations"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
@@ -54,10 +56,10 @@ func TestGmailMCPToolsGetProfile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !profile.Connected || profile.EmailAddress != "augustinas@example.com" || profile.MessagesTotal != 42 || profile.ThreadsTotal != 7 || profile.HistoryID != "123" {
+	if !profile.Connected || profile.EmailAddress != "augustinas@example.com" || profile.MessagesTotal != 42 || profile.ThreadsTotal != 7 {
 		t.Fatalf("profile = %#v", profile)
 	}
-	if profile.AccountID != "augustinas@example.com" || profile.AccountName != "Augustinas" || profile.Alias != "personal" || len(profile.Scopes) != 1 || profile.Scopes[0] != gmailconnector.ScopeModify {
+	if profile.AccountID != "augustinas@example.com" || profile.AccountName != "Augustinas" || profile.Alias != "personal" {
 		t.Fatalf("account fields = %#v", profile)
 	}
 	if got := gmailToolText(result); !strings.Contains(got, "Gmail is connected as augustinas@example.com") {
@@ -170,7 +172,10 @@ func TestGmailMCPToolsThreadAndDraftWorkflow(t *testing.T) {
 					}
 					_, _ = w.Write([]byte(`{
 						"id":"reply-draft",
-						"message":{"id":"reply-draft-message","threadId":"t1","payload":{"headers":[{"name":"Subject","value":"Re: Hello"}]}}
+						"message":{"id":"reply-draft-message","threadId":"t1","historyId":"h-reply","payload":{"headers":[
+							{"name":"Subject","value":"Re: Hello"},
+							{"name":"Message-ID","value":"<reply-draft@example.com>"}
+						]}}
 					}`))
 					return
 				}
@@ -179,7 +184,10 @@ func TestGmailMCPToolsThreadAndDraftWorkflow(t *testing.T) {
 				}
 				_, _ = w.Write([]byte(`{
 					"id":"draft1",
-					"message":{"id":"draft-message","threadId":"t1","payload":{"headers":[{"name":"Subject","value":"Hello"}]}}
+					"message":{"id":"draft-message","threadId":"t1","historyId":"h-draft","payload":{"headers":[
+						{"name":"Subject","value":"Hello"},
+						{"name":"Message-ID","value":"<draft-created@example.com>"}
+					]}}
 				}`))
 			case http.MethodGet:
 				if r.URL.Query().Get("q") != "subject:hello" || r.URL.Query().Get("maxResults") != "5" {
@@ -215,7 +223,10 @@ func TestGmailMCPToolsThreadAndDraftWorkflow(t *testing.T) {
 				}
 				_, _ = w.Write([]byte(`{
 					"id":"draft1",
-					"message":{"id":"draft-message","threadId":"t1","payload":{"headers":[{"name":"Subject","value":"Hello"}]}}
+					"message":{"id":"draft-message","threadId":"t1","historyId":"h-draft","payload":{"headers":[
+						{"name":"Subject","value":"Hello"},
+						{"name":"Message-ID","value":"<draft-list@example.com>"}
+					]}}
 				}`))
 			case http.MethodPut:
 				message := decodedGmailDraftMessage(t, r)
@@ -224,7 +235,10 @@ func TestGmailMCPToolsThreadAndDraftWorkflow(t *testing.T) {
 				}
 				_, _ = w.Write([]byte(`{
 					"id":"draft1",
-					"message":{"id":"draft-message-2","threadId":"t1","payload":{"headers":[{"name":"Subject","value":"Hello"}]}}
+					"message":{"id":"draft-message-2","threadId":"t1","historyId":"h-updated","payload":{"headers":[
+						{"name":"Subject","value":"Hello"},
+						{"name":"Message-ID","value":"<draft-updated@example.com>"}
+					]}}
 				}`))
 			default:
 				t.Fatalf("method = %s", r.Method)
@@ -245,7 +259,11 @@ func TestGmailMCPToolsThreadAndDraftWorkflow(t *testing.T) {
 			_, _ = w.Write([]byte(`{
 				"id":"sent1",
 				"threadId":"t1",
-				"payload":{"headers":[{"name":"Subject","value":"Hello"}]}
+				"historyId":"h-sent",
+				"payload":{"headers":[
+					{"name":"Subject","value":"Hello"},
+					{"name":"Message-ID","value":"<sent@example.com>"}
+				]}
 			}`))
 		default:
 			t.Fatalf("path = %s", r.URL.Path)
@@ -274,8 +292,11 @@ func TestGmailMCPToolsThreadAndDraftWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !search.Connected || search.Query != "subject:hello" || len(search.Threads) != 1 || search.Threads[0].ID != "t1" || search.Threads[0].Messages[0].MessageID != "<m1@example.com>" {
+	if !search.Connected || search.Query != "subject:hello" || len(search.Threads) != 1 || search.Threads[0].ID != "t1" || search.Threads[0].Messages[0].ID != "m1" {
 		t.Fatalf("search = %#v", search)
+	}
+	if search.Threads[0].Messages[0].MessageID != "" || search.Threads[0].Messages[0].References != "" || search.Threads[0].HistoryID != "" {
+		t.Fatalf("search leaked raw header fields: %#v", search.Threads[0])
 	}
 	_, read, err := tools.ReadThread(context.Background(), nil, GmailReadThreadInput{ID: " m1 "})
 	if err != nil {
@@ -284,17 +305,22 @@ func TestGmailMCPToolsThreadAndDraftWorkflow(t *testing.T) {
 	if !read.Connected || read.Thread.ID != "t1" || len(read.Thread.Messages) != 1 || read.Thread.Messages[0].BodyText != "Thread body" {
 		t.Fatalf("read = %#v", read)
 	}
+	if got := read.Thread.Messages[0].Message; got.MessageID != "" || got.References != "" || got.InReplyTo != "" || got.HistoryID != "" {
+		t.Fatalf("read leaked raw header fields: %#v", got)
+	}
 	_, draft, err := tools.CreateDraft(context.Background(), nil, GmailCreateDraftInput{
 		To:       []string{" Alice <alice@example.com> "},
 		Subject:  " Hello ",
 		BodyText: "Plain body",
-		ThreadID: " t1 ",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !draft.Connected || draft.Draft.ID != "draft1" || draft.Draft.Message.ThreadID != "t1" {
 		t.Fatalf("draft = %#v", draft)
+	}
+	if draft.Draft.Message.MessageID != "" || draft.Draft.Message.HistoryID != "" {
+		t.Fatalf("draft leaked raw header fields: %#v", draft.Draft.Message)
 	}
 	_, reply, err := tools.CreateReplyDraft(context.Background(), nil, GmailCreateReplyDraftInput{
 		ID:        "m1",
@@ -309,12 +335,18 @@ func TestGmailMCPToolsThreadAndDraftWorkflow(t *testing.T) {
 	if !reply.Connected || reply.Draft.ID != "reply-draft" || reply.Draft.Message.ThreadID != "t1" {
 		t.Fatalf("reply draft = %#v", reply)
 	}
+	if reply.Draft.Message.MessageID != "" || reply.Draft.Message.HistoryID != "" {
+		t.Fatalf("reply draft leaked raw header fields: %#v", reply.Draft.Message)
+	}
 	_, drafts, err := tools.ListDrafts(context.Background(), nil, GmailListDraftsInput{Query: " subject:hello ", MaxResults: 5})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !drafts.Connected || len(drafts.Drafts) != 1 || drafts.Drafts[0].ID != "draft1" {
 		t.Fatalf("drafts = %#v", drafts)
+	}
+	if drafts.Drafts[0].Message.MessageID != "" || drafts.Drafts[0].Message.HistoryID != "" {
+		t.Fatalf("draft list leaked raw header fields: %#v", drafts.Drafts[0].Message)
 	}
 	bodyText := "Updated body"
 	_, updated, err := tools.UpdateDraft(context.Background(), nil, GmailUpdateDraftInput{ID: " draft1 ", BodyText: &bodyText})
@@ -324,12 +356,123 @@ func TestGmailMCPToolsThreadAndDraftWorkflow(t *testing.T) {
 	if !updated.Connected || updated.Draft.Message.ID != "draft-message-2" {
 		t.Fatalf("updated = %#v", updated)
 	}
+	if updated.Draft.Message.MessageID != "" || updated.Draft.Message.HistoryID != "" {
+		t.Fatalf("updated draft leaked raw header fields: %#v", updated.Draft.Message)
+	}
 	_, sent, err := tools.SendDraft(context.Background(), nil, GmailSendDraftInput{ID: " draft1 "})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !sent.Connected || sent.Message.ID != "sent1" || sent.Message.ThreadID != "t1" {
 		t.Fatalf("sent = %#v", sent)
+	}
+	if sent.Message.MessageID != "" || sent.Message.HistoryID != "" {
+		t.Fatalf("sent draft leaked raw header fields: %#v", sent.Message)
+	}
+}
+
+func TestGmailMCPToolsReadAttachmentStoresFileAndReturnsPreviewOnly(t *testing.T) {
+	textBody := base64.RawURLEncoding.EncodeToString([]byte("Attachment text https://example.com/report?utm_source=email"))
+	htmlBody := base64.RawURLEncoding.EncodeToString([]byte(`<p>Attachment HTML</p><img src="https://tracker.example.com/open/pixel.png"><a href="https://example.com/doc?utm=1">Doc</a>`))
+	binaryBody := base64.RawURLEncoding.EncodeToString([]byte{0, 1, 2, 3})
+	gmailServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer access" {
+			t.Fatalf("authorization = %q", r.Header.Get("Authorization"))
+		}
+		switch r.URL.Path {
+		case "/gmail/v1/users/me/messages/m1":
+			if r.URL.Query().Get("format") != "full" {
+				t.Fatalf("message format = %s", r.URL.Query().Get("format"))
+			}
+			_, _ = w.Write([]byte(`{
+				"id":"m1",
+				"threadId":"t1",
+				"payload":{"parts":[
+					{"filename":"note.txt","mimeType":"text/plain","body":{"attachmentId":"a1","size":57}},
+					{"filename":"note.html","mimeType":"text/html","body":{"attachmentId":"html","size":120}},
+					{"filename":"file.pdf","mimeType":"application/pdf","body":{"attachmentId":"bin","size":4}}
+				]}
+			}`))
+		case "/gmail/v1/users/me/messages/m1/attachments/a1":
+			_, _ = w.Write([]byte(`{"data":"` + textBody + `","size":57}`))
+		case "/gmail/v1/users/me/messages/m1/attachments/html":
+			_, _ = w.Write([]byte(`{"data":"` + htmlBody + `","size":120}`))
+		case "/gmail/v1/users/me/messages/m1/attachments/bin":
+			_, _ = w.Write([]byte(`{"data":"` + binaryBody + `","size":4}`))
+		default:
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+	}))
+	defer gmailServer.Close()
+
+	tools := NewGmailMCPTools(&gmailMCPStore{
+		tokens: map[string]integrationoauth.Token{
+			gmailconnector.OAuthConnectionID: {
+				AccessToken: "access",
+				TokenType:   "Bearer",
+				Expiry:      time.Now().Add(time.Hour),
+			},
+		},
+		connections: []integrations.Connection{{
+			ID:        gmailconnector.OAuthConnectionID,
+			Provider:  gmailconnector.ProviderID,
+			AccountID: "augustinas@example.com",
+			Alias:     "default",
+		}},
+	})
+	tools.apiBaseURL = gmailServer.URL
+	tools.attachmentWriter = integrationingest.RawWriter{Root: t.TempDir()}
+
+	_, textAttachment, err := tools.ReadAttachment(context.Background(), nil, GmailReadAttachmentInput{
+		MessageID:    "m1",
+		AttachmentID: "a1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !textAttachment.Connected || textAttachment.UnsupportedContent || textAttachment.FilePath == "" || !strings.Contains(textAttachment.TextPreview, "Attachment text https://example.com/report") || strings.Contains(textAttachment.TextPreview, "utm_source") {
+		t.Fatalf("text attachment = %#v", textAttachment)
+	}
+	textData, err := os.ReadFile(textAttachment.FilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(textData), "utm_source=email") {
+		t.Fatalf("stored attachment should keep original bytes, got %q", string(textData))
+	}
+
+	_, htmlAttachment, err := tools.ReadAttachment(context.Background(), nil, GmailReadAttachmentInput{
+		MessageID:    "m1",
+		AttachmentID: "html",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !htmlAttachment.Connected || htmlAttachment.UnsupportedContent || htmlAttachment.FilePath == "" || !strings.Contains(htmlAttachment.TextPreview, "Attachment HTML") || !strings.Contains(htmlAttachment.TextPreview, "Doc (https://example.com/doc)") {
+		t.Fatalf("html attachment = %#v", htmlAttachment)
+	}
+	for _, unwanted := range []string{"<p>", "<img", "tracker.example.com", "utm="} {
+		if strings.Contains(htmlAttachment.TextPreview, unwanted) {
+			t.Fatalf("html attachment contains %q: %#v", unwanted, htmlAttachment)
+		}
+	}
+
+	_, binaryAttachment, err := tools.ReadAttachment(context.Background(), nil, GmailReadAttachmentInput{
+		MessageID:    "m1",
+		AttachmentID: "bin",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !binaryAttachment.Connected || !binaryAttachment.UnsupportedContent || binaryAttachment.TextPreview != "" || binaryAttachment.FilePath == "" || binaryAttachment.Size != 4 {
+		t.Fatalf("binary attachment = %#v", binaryAttachment)
+	}
+	binaryData, err := os.ReadFile(binaryAttachment.FilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(binaryData) != string([]byte{0, 1, 2, 3}) {
+		t.Fatalf("binary attachment bytes = %#v", binaryData)
 	}
 }
 
@@ -395,17 +538,14 @@ func TestGmailMCPToolsRequireAccountWhenMultipleAccountsConnected(t *testing.T) 
 }
 
 func TestGmailToolContentBoundsBodyOutput(t *testing.T) {
-	text := strings.Repeat("t", maxGmailBodyChars+1)
-	html := strings.Repeat("h", maxGmailBodyChars+1)
+	text := strings.Repeat("text ", maxGmailBodyChars)
+	html := strings.Repeat("html ", maxGmailBodyChars)
 
 	content := gmailToolContent(gmailconnector.MessageContent{
 		Message:  gmailconnector.Message{ID: "m1"},
 		BodyText: text,
 		BodyHTML: html,
 	})
-	if content.BodyHTML != "" || content.BodyHTMLTruncated {
-		t.Fatalf("html should be omitted when plain text exists: %#v", content)
-	}
 	if !content.BodyTextTruncated || len([]rune(content.BodyText)) != maxGmailBodyChars+3 {
 		t.Fatalf("body text = %d truncated=%v", len([]rune(content.BodyText)), content.BodyTextTruncated)
 	}
@@ -414,8 +554,26 @@ func TestGmailToolContentBoundsBodyOutput(t *testing.T) {
 		Message:  gmailconnector.Message{ID: "m2"},
 		BodyHTML: html,
 	})
-	if fallback.BodyText != "" || fallback.BodyTextTruncated || !fallback.BodyHTMLTruncated || len([]rune(fallback.BodyHTML)) != maxGmailBodyChars+3 {
-		t.Fatalf("html fallback = %#v", fallback)
+	if !fallback.BodyTextTruncated || len([]rune(fallback.BodyText)) != maxGmailBodyChars+3 {
+		t.Fatalf("html fallback should be cleaned into bounded text: %#v", fallback)
+	}
+}
+
+func TestGmailToolContentCleansHTMLBeforeReturningToAgent(t *testing.T) {
+	content := gmailToolContent(gmailconnector.MessageContent{
+		Message: gmailconnector.Message{ID: "m1"},
+		BodyHTML: `<p>Hello</p>
+			<a href="https://click.mailchimp.com/?url=https%3A%2F%2Fexample.com%2Fdoc%3Futm_source%3Dmail">Read</a>
+			<a href="https://example.com/inline.png"><img src="cid:image001"></a>
+			<img src="https://tracker.example.com/open/pixel.png">`,
+	})
+	if !strings.Contains(content.BodyText, "Hello") || !strings.Contains(content.BodyText, "Read (https://example.com/doc)") {
+		t.Fatalf("clean body missing useful content: %#v", content)
+	}
+	for _, unwanted := range []string{"mailchimp", "inline.png", "tracker.example.com", "<img", "utm_source"} {
+		if strings.Contains(content.BodyText, unwanted) {
+			t.Fatalf("clean body contains %q: %#v", unwanted, content)
+		}
 	}
 }
 

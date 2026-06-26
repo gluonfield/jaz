@@ -136,6 +136,36 @@ func TestAPIClientSearchAndReadThreads(t *testing.T) {
 	}
 }
 
+func TestAPIClientReadAttachment(t *testing.T) {
+	body := base64.RawURLEncoding.EncodeToString([]byte("Attachment body"))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.EscapedPath() {
+		case "/gmail/v1/users/me/messages/m%2F1":
+			if r.URL.Query().Get("format") != "full" {
+				t.Fatalf("message format = %s", r.URL.Query().Get("format"))
+			}
+			_, _ = w.Write([]byte(`{
+				"id":"m/1",
+				"threadId":"t1",
+				"payload":{"parts":[{"filename":"note.txt","mimeType":"text/plain","body":{"attachmentId":"a/1","size":15}}]}
+			}`))
+		case "/gmail/v1/users/me/messages/m%2F1/attachments/a%2F1":
+			_, _ = w.Write([]byte(`{"data":"` + body + `","size":15}`))
+		default:
+			t.Fatalf("path = %s", r.URL.EscapedPath())
+		}
+	}))
+	defer server.Close()
+
+	attachment, err := (APIClient{HTTP: server.Client(), BaseURL: server.URL}).ReadAttachment(context.Background(), "m/1", "a/1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(attachment.Data) != "Attachment body" || attachment.Size != 15 || attachment.Attachment.FileName != "note.txt" || attachment.Attachment.MIMEType != "text/plain" {
+		t.Fatalf("attachment = %#v", attachment)
+	}
+}
+
 func TestAPIClientReadThreadRejectsUnknownIDType(t *testing.T) {
 	_, err := (APIClient{}).ReadThread(context.Background(), ReadThreadRequest{ID: "m1", IDType: IDType("email")})
 	if err == nil || !strings.Contains(err.Error(), "id type") {
@@ -391,6 +421,33 @@ func TestAPIClientDraftWorkflow(t *testing.T) {
 	}
 	if sent.ID != "sent1" || sent.ThreadID != "thread1" || sent.Subject != "Old subject" {
 		t.Fatalf("sent = %#v", sent)
+	}
+}
+
+func TestAPIClientUpdateDraftEscapesDraftID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut || r.URL.EscapedPath() != "/gmail/v1/users/me/drafts/draft%2F1" {
+			t.Fatalf("request = %s %s", r.Method, r.URL.EscapedPath())
+		}
+		_ = decodedDraftMessage(t, r)
+		_, _ = w.Write([]byte(`{
+			"id":"draft/1",
+			"message":{"id":"draft-message","threadId":"thread1","payload":{"headers":[{"name":"Subject","value":"Hello"}]}}
+		}`))
+	}))
+	defer server.Close()
+
+	updated, err := (APIClient{HTTP: server.Client(), BaseURL: server.URL}).UpdateDraft(context.Background(), "draft/1", ComposeMessageRequest{
+		ThreadID: "thread1",
+		To:       []string{"alice@example.com"},
+		Subject:  "Hello",
+		BodyText: "Body",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.ID != "draft/1" {
+		t.Fatalf("updated = %#v", updated)
 	}
 }
 

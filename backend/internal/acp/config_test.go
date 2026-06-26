@@ -74,8 +74,12 @@ func TestCodexBuiltinAgentUsesManagedAdapterOnWindows(t *testing.T) {
 	if cfg.Command != "" || cfg.ManagedAdapter != "codex" {
 		t.Fatalf("cfg = %#v, want managed adapter", cfg)
 	}
-	if len(cfg.ManagedAdapterArgs) == 0 {
+	args := strings.Join(cfg.ManagedAdapterArgs, "\n")
+	if !strings.Contains(args, `sandbox_mode="workspace-write"`) {
 		t.Fatalf("managed args = %#v", cfg.ManagedAdapterArgs)
+	}
+	if strings.Contains(args, `sandbox_mode="danger-full-access"`) {
+		t.Fatalf("codex builtin must not default to full filesystem access: %#v", cfg.ManagedAdapterArgs)
 	}
 }
 
