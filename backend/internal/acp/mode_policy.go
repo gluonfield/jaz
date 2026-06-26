@@ -14,6 +14,15 @@ var baselineModePriority = map[string][]string{
 
 var defaultBaselineModePriority = []string{"full-access", "yolo", "always-approve"}
 
+// planTurnDefersResult reports whether a plan-requested turn buffers its streamed
+// output and publishes a single synthesized proposed_plan at turn end (Codex
+// relays `plan` session updates; the native agent uses the update_plan tool).
+// Claude is excluded: it surfaces the plan inline via the ExitPlanMode permission
+// and streams its plan/implementation text live.
+func planTurnDefersResult(planRequested bool, agent string) bool {
+	return planRequested && CanonicalAgentName(agent) != AgentClaude
+}
+
 func preferredBaselineModeID(agent string, modes []acpschema.SessionMode) string {
 	if ids, ok := baselineModePriority[CanonicalAgentName(agent)]; ok {
 		return firstSessionMode(modes, ids)

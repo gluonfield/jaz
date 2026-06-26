@@ -12,98 +12,6 @@ import (
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
-func TestPlanRequestedTextPublishesProposedPlan(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	parent, err := store.CreateSession(storage.CreateSession{Slug: "parent", Runtime: storage.RuntimeACP})
-	if err != nil {
-		t.Fatal(err)
-	}
-	session, err := store.CreateSession(storage.CreateSession{
-		Slug:     "codex-plan",
-		Runtime:  storage.RuntimeACP,
-		ParentID: parent.ID,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	events := sessionevents.New()
-	manager := NewManager(store, Config{}, nil)
-	manager.Events = events
-	job := &jobState{
-		Job: Job{
-			ID:            session.ID,
-			ParentID:      parent.ID,
-			ParentVisible: true,
-			ACPAgent:      AgentCodex,
-			ACPSession:    "acp-session",
-			Cwd:           t.TempDir(),
-		},
-		toolByID: map[string]sessionevents.ACPToolCall{},
-	}
-	manager.jobsByID[session.ID] = job
-	manager.jobsByACP["acp-session"] = job
-	done := job.startTurn(CompletionInline, true, true)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	childSub := events.Subscribe(ctx, session.ID)
-	parentSub := events.Subscribe(ctx, parent.ID)
-
-	raw, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
-		Method: acpschema.ClientMethodSessionUpdate,
-		Params: mustJSON(t, map[string]any{
-			"sessionId": "acp-session",
-			"update": map[string]any{
-				"sessionUpdate": "agent_message_chunk",
-				"content": map[string]any{
-					"type": "text",
-					"text": "<proposed_plan>\nInspect the provider path.\n</proposed_plan>",
-				},
-			},
-		}),
-	})
-	if rpcErr != nil {
-		t.Fatal(rpcErr)
-	}
-	if len(raw) == 0 {
-		t.Fatal("empty update response")
-	}
-	assertNoEvent(t, childSub)
-
-	job.setState(StateIdle, "", "")
-	manager.finishTurn(done, job)
-
-	childEvent := receiveEvent(t, childSub)
-	if childEvent.Type != "proposed_plan" || childEvent.Plan == nil {
-		t.Fatalf("child event = %#v", childEvent)
-	}
-	if !childEvent.Plan.AwaitingApproval || childEvent.Plan.Explanation != "Inspect the provider path." {
-		t.Fatalf("child plan = %#v", childEvent.Plan)
-	}
-	if childEvent.ACP == nil || childEvent.ACP.ID != session.ID {
-		t.Fatalf("child acp envelope = %#v", childEvent.ACP)
-	}
-
-	parentEvent := receiveEvent(t, parentSub)
-	if parentEvent.Type != "proposed_plan" || parentEvent.SessionID != parent.ID {
-		t.Fatalf("parent event = %#v", parentEvent)
-	}
-	if parentEvent.ACP == nil || parentEvent.ACP.ID != session.ID || parentEvent.ACP.ParentID != parent.ID {
-		t.Fatalf("parent acp envelope = %#v", parentEvent.ACP)
-	}
-
-	stored, err := store.LoadSessionEvents(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(stored) != 1 || stored[0].Type != "proposed_plan" {
-		t.Fatalf("stored events = %#v", stored)
-	}
-}
-
 func TestPlanRequestedPlainTextPublishesACPMessage(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -264,6 +172,58 @@ func TestLocalPlanRequestedPlainTextPublishesACPMessage(t *testing.T) {
 	proposal := receiveEvent(t, sub)
 	if proposal.Type != "acp_message" || proposal.Content != "local reply" {
 		t.Fatalf("event = %#v", proposal)
+	}
+}
+
+// Claude surfaces plan approval inline via the ExitPlanMode permission, so it
+// streams its plan and implementation text live rather than buffering the turn
+// for a synthesized proposed_plan.
+func TestClaudePlanRequestedStreamsAssistantTextLive(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "claude-plan-live", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := sessionevents.New()
+	manager := NewManager(store, Config{}, nil)
+	manager.Events = events
+	job := &jobState{
+		Job: Job{
+			ID:         session.ID,
+			ACPAgent:   AgentClaude,
+			ACPSession: "acp-session",
+			Cwd:        t.TempDir(),
+		},
+		toolByID: map[string]sessionevents.ACPToolCall{},
+	}
+	manager.jobsByID[session.ID] = job
+	manager.jobsByACP["acp-session"] = job
+	job.startTurn(CompletionInline, true, false)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	sub := events.Subscribe(ctx, session.ID)
+
+	_, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
+		Method: acpschema.ClientMethodSessionUpdate,
+		Params: mustJSON(t, map[string]any{
+			"sessionId": "acp-session",
+			"update": map[string]any{
+				"sessionUpdate": "agent_message_chunk",
+				"content":       map[string]any{"type": "text", "text": "Here is the plan I propose."},
+			},
+		}),
+	})
+	if rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+
+	event := receiveEvent(t, sub)
+	if event.Type != "acp_message" || event.Content != "Here is the plan I propose." {
+		t.Fatalf("expected live acp_message during claude plan turn, got %#v", event)
 	}
 }
 
