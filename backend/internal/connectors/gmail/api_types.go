@@ -18,6 +18,31 @@ type threadRef struct {
 	ID string `json:"id"`
 }
 
+type messageList struct {
+	Messages           []messageRef `json:"messages"`
+	NextPageToken      string       `json:"nextPageToken"`
+	ResultSizeEstimate int64        `json:"resultSizeEstimate"`
+}
+
+type messageRef struct {
+	ID       string `json:"id"`
+	ThreadID string `json:"threadId"`
+}
+
+type historyList struct {
+	History       []historyEntry `json:"history"`
+	NextPageToken string         `json:"nextPageToken"`
+	HistoryID     string         `json:"historyId"`
+}
+
+type historyEntry struct {
+	MessagesAdded []historyMessageAdded `json:"messagesAdded"`
+}
+
+type historyMessageAdded struct {
+	Message messageRef `json:"message"`
+}
+
 type draftList struct {
 	Drafts             []draftRef `json:"drafts"`
 	NextPageToken      string     `json:"nextPageToken"`
@@ -80,7 +105,7 @@ type messageBody struct {
 }
 
 func metadataHeaders() []string {
-	return []string{"From", "To", "Cc", "Bcc", "Subject", "Date", "Message-ID", "References", "In-Reply-To"}
+	return []string{"From", "To", "Cc", "Bcc", "Reply-To", "Subject", "Date", "Message-ID", "References", "In-Reply-To"}
 }
 
 func messageFromAPI(raw apiMessage) Message {
@@ -95,12 +120,22 @@ func messageFromAPI(raw apiMessage) Message {
 		Subject:      headers["subject"],
 		Snippet:      raw.Snippet,
 		From:         parseAddresses(headers["from"]),
+		ReplyTo:      parseAddresses(headers["reply-to"]),
 		To:           parseAddresses(headers["to"]),
 		Cc:           parseAddresses(headers["cc"]),
 		Bcc:          parseAddresses(headers["bcc"]),
 		LabelIDs:     raw.LabelIDs,
 		InternalDate: internalDate(raw.InternalDate),
 		Attachments:  attachments(raw.Payload),
+	}
+}
+
+func messageContentFromAPI(raw apiMessage) MessageContent {
+	text, html := messageBodies(raw.Payload)
+	return MessageContent{
+		Message:  messageFromAPI(raw),
+		BodyText: text,
+		BodyHTML: html,
 	}
 }
 
@@ -120,12 +155,7 @@ func threadFromAPI(raw apiThread) Thread {
 func threadContentFromAPI(raw apiThread) ThreadContent {
 	messages := make([]MessageContent, 0, len(raw.Messages))
 	for _, message := range raw.Messages {
-		text, html := messageBodies(message.Payload)
-		messages = append(messages, MessageContent{
-			Message:  messageFromAPI(message),
-			BodyText: text,
-			BodyHTML: html,
-		})
+		messages = append(messages, messageContentFromAPI(message))
 	}
 	return ThreadContent{
 		ID:        raw.ID,

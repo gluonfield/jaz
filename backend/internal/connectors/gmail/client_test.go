@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
 func TestAPIClientProfile(t *testing.T) {
@@ -138,6 +140,111 @@ func TestAPIClientReadThreadRejectsUnknownIDType(t *testing.T) {
 	_, err := (APIClient{}).ReadThread(context.Background(), ReadThreadRequest{ID: "m1", IDType: IDType("email")})
 	if err == nil || !strings.Contains(err.Error(), "id type") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestAPIClientObserveBackfillsFullMessages(t *testing.T) {
+	body := base64.RawURLEncoding.EncodeToString([]byte("Historical body"))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/gmail/v1/users/me/messages":
+			if r.URL.Query().Get("maxResults") != "25" {
+				t.Fatalf("query = %#v", r.URL.Query())
+			}
+			_, _ = w.Write([]byte(`{"messages":[{"id":"m1","threadId":"t1"}]}`))
+		case "/gmail/v1/users/me/messages/m1":
+			if r.URL.Query().Get("format") != "full" {
+				t.Fatalf("message format = %s", r.URL.Query().Get("format"))
+			}
+			_, _ = w.Write([]byte(`{
+				"id":"m1",
+				"threadId":"t1",
+				"internalDate":"1782387600000",
+				"payload":{
+					"headers":[
+						{"name":"Subject","value":"Historical"},
+						{"name":"From","value":"Alice <alice@example.com>"}
+					],
+					"parts":[{"mimeType":"text/plain","body":{"data":"` + body + `"}}]
+				}
+			}`))
+		case "/gmail/v1/users/me/profile":
+			_, _ = w.Write([]byte(`{"emailAddress":"augustinas@example.com","historyId":"h2"}`))
+		default:
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	result, err := (APIClient{HTTP: server.Client(), BaseURL: server.URL}).Observe(context.Background(), integrations.ObserveRequest{
+		Connection: integrations.Connection{ID: "conn_1", AccountID: "augustinas@example.com"},
+		Mode:       integrations.ObserveModeBackfill,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Records) != 1 || result.Records[0].ExternalID != "m1" {
+		t.Fatalf("records = %#v", result.Records)
+	}
+	var content MessageContent
+	if err := json.Unmarshal(result.Records[0].Raw, &content); err != nil {
+		t.Fatal(err)
+	}
+	if content.Message.Subject != "Historical" || content.BodyText != "Historical body" {
+		t.Fatalf("content = %#v", content)
+	}
+	cursor, err := DecodeSyncCursor(result.Cursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cursor.BackfillComplete || cursor.HistoryID != "h2" {
+		t.Fatalf("cursor = %#v", cursor)
+	}
+}
+
+func TestAPIClientObserveIncrementalMessages(t *testing.T) {
+	body := base64.RawURLEncoding.EncodeToString([]byte("New body"))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/gmail/v1/users/me/history":
+			if r.URL.Query().Get("startHistoryId") != "h1" || r.URL.Query().Get("historyTypes") != "messageAdded" {
+				t.Fatalf("query = %#v", r.URL.Query())
+			}
+			_, _ = w.Write([]byte(`{"historyId":"h2","history":[{"messagesAdded":[{"message":{"id":"m2","threadId":"t1"}}]}]}`))
+		case "/gmail/v1/users/me/messages/m2":
+			_, _ = w.Write([]byte(`{
+				"id":"m2",
+				"threadId":"t1",
+				"payload":{
+					"headers":[{"name":"Subject","value":"New"}],
+					"parts":[{"mimeType":"text/plain","body":{"data":"` + body + `"}}]
+				}
+			}`))
+		default:
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	cursor, err := EncodeSyncCursor(SyncCursor{BackfillComplete: true, HistoryID: "h1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := (APIClient{HTTP: server.Client(), BaseURL: server.URL}).Observe(context.Background(), integrations.ObserveRequest{
+		Connection: integrations.Connection{ID: "conn_1", AccountID: "augustinas@example.com"},
+		Cursor:     cursor,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Records) != 1 || result.Records[0].ExternalID != "m2" {
+		t.Fatalf("records = %#v", result.Records)
+	}
+	next, err := DecodeSyncCursor(result.Cursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.HistoryID != "h2" {
+		t.Fatalf("cursor = %#v", next)
 	}
 }
 

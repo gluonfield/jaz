@@ -18,8 +18,8 @@ func (GmailMaterializer) Materialize(_ context.Context, req integrations.Materia
 	if req.Record.Kind != gmailconnector.RecordKindMessage {
 		return nil, nil
 	}
-	var message gmailconnector.Message
-	if err := json.Unmarshal(req.Record.Raw, &message); err != nil {
+	message, body, err := gmailRecordMessage(req.Record.Raw)
+	if err != nil {
 		return nil, err
 	}
 	occurred := req.Record.OccurredAt
@@ -34,11 +34,26 @@ func (GmailMaterializer) Materialize(_ context.Context, req integrations.Materia
 		Kind:      "memory_source",
 		PathHint:  path.Join("sources/email/gmail", account, occurred.UTC().Format("2006-01")+".md"),
 		MediaType: "text/markdown",
-		Body:      []byte(gmailMessageMarkdown(req.Connection, req.Record, message, occurred)),
+		Body:      []byte(gmailMessageMarkdown(req.Connection, req.Record, message, body, occurred)),
 	}}, nil
 }
 
-func gmailMessageMarkdown(connection integrations.Connection, record integrations.Record, message gmailconnector.Message, occurred time.Time) string {
+func gmailRecordMessage(raw json.RawMessage) (gmailconnector.Message, string, error) {
+	var message gmailconnector.Message
+	if err := json.Unmarshal(raw, &message); err != nil {
+		return gmailconnector.Message{}, "", err
+	}
+	if message.ID != "" {
+		return message, "", nil
+	}
+	var content gmailconnector.MessageContent
+	if err := json.Unmarshal(raw, &content); err != nil {
+		return gmailconnector.Message{}, "", err
+	}
+	return content.Message, content.BodyText, nil
+}
+
+func gmailMessageMarkdown(connection integrations.Connection, record integrations.Record, message gmailconnector.Message, body string, occurred time.Time) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "## %s - %s\n\n", occurred.UTC().Format("2006-01-02 15:04"), oneLine(message.Subject))
 	fmt.Fprintf(&b, "- Account: `%s`\n", oneLine(connection.AccountRef()))
@@ -60,6 +75,9 @@ func gmailMessageMarkdown(connection integrations.Connection, record integration
 	}
 	if message.Snippet != "" {
 		fmt.Fprintf(&b, "\n%s\n", oneLine(message.Snippet))
+	}
+	if body != "" {
+		fmt.Fprintf(&b, "\n%s\n", strings.TrimSpace(body))
 	}
 	if len(message.Attachments) > 0 {
 		b.WriteString("\nAttachments:\n")

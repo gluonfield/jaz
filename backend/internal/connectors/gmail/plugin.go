@@ -17,6 +17,7 @@ const (
 	ToolSearchThreads = "gmail_search_threads"
 	ToolReadThread    = "gmail_read_thread"
 	ToolCreateDraft   = "gmail_create_draft"
+	ToolCreateReply   = "gmail_create_reply_draft"
 	ToolSendDraft     = "gmail_send_draft"
 	ToolUpdateDraft   = "gmail_update_draft"
 	ToolListDrafts    = "gmail_list_drafts"
@@ -86,7 +87,8 @@ func tools() []integrations.PluginTool {
 		tool(ToolGetProfile, "Show profile totals for one connected Gmail account.", integrations.ActionRiskRead, ScopeModify),
 		tool(ToolSearchThreads, "Search Gmail conversation threads and return thread IDs with summarized message metadata.", integrations.ActionRiskRead, ScopeModify),
 		tool(ToolReadThread, "Read a Gmail conversation thread by message ID or thread ID with bounded message bodies.", integrations.ActionRiskRead, ScopeModify),
-		tool(ToolCreateDraft, "Create a plain text Gmail draft, optionally attached to an existing thread.", integrations.ActionRiskWrite, ScopeModify),
+		tool(ToolCreateDraft, "Create a new plain text Gmail draft to specified recipients.", integrations.ActionRiskWrite, ScopeModify),
+		tool(ToolCreateReply, "Create a reply or reply-all draft for an existing Gmail message or thread.", integrations.ActionRiskWrite, ScopeModify),
 		tool(ToolSendDraft, "Send an existing Gmail draft after review or explicit approval.", integrations.ActionRiskWrite, ScopeModify),
 		tool(ToolUpdateDraft, "Update an existing Gmail draft in place while preserving omitted fields.", integrations.ActionRiskWrite, ScopeModify),
 		tool(ToolListDrafts, "List Gmail drafts with summarized message metadata.", integrations.ActionRiskRead, ScopeModify),

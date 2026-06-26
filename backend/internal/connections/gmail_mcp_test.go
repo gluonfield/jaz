@@ -130,7 +130,14 @@ func TestGmailMCPToolsThreadAndDraftWorkflow(t *testing.T) {
 						"id":"m1",
 						"threadId":"t1",
 						"payload":{
-							"headers":[{"name":"Subject","value":"Hello"}],
+							"headers":[
+								{"name":"Subject","value":"Hello"},
+								{"name":"From","value":"Alice <alice@example.com>"},
+								{"name":"To","value":"Augustinas <augustinas@example.com>, Bob <bob@example.com>"},
+								{"name":"Cc","value":"Carol <carol@example.com>"},
+								{"name":"Message-ID","value":"<m1@example.com>"},
+								{"name":"References","value":"<root@example.com>"}
+							],
 							"parts":[{"mimeType":"text/plain","body":{"data":"` + body + `"}}]
 						}
 					}]
@@ -147,6 +154,26 @@ func TestGmailMCPToolsThreadAndDraftWorkflow(t *testing.T) {
 			switch r.Method {
 			case http.MethodPost:
 				message := decodedGmailDraftMessage(t, r)
+				if strings.Contains(message, "Reply body") {
+					for _, want := range []string{
+						`To: "Alice" <alice@example.com>, "Bob" <bob@example.com>`,
+						`Cc: "Carol" <carol@example.com>, "Dan" <dan@example.com>`,
+						`Bcc: "Erin" <erin@example.com>`,
+						"Subject: Re: Hello",
+						"In-Reply-To: <m1@example.com>",
+						"References: <root@example.com> <m1@example.com>",
+						"Reply body",
+					} {
+						if !strings.Contains(message, want) {
+							t.Fatalf("reply draft missing %q:\n%s", want, message)
+						}
+					}
+					_, _ = w.Write([]byte(`{
+						"id":"reply-draft",
+						"message":{"id":"reply-draft-message","threadId":"t1","payload":{"headers":[{"name":"Subject","value":"Re: Hello"}]}}
+					}`))
+					return
+				}
 				if !strings.Contains(message, `To: "Alice" <alice@example.com>`) || !strings.Contains(message, "Subject: Hello") || !strings.Contains(message, "Plain body") {
 					t.Fatalf("created draft = %s", message)
 				}
@@ -235,9 +262,10 @@ func TestGmailMCPToolsThreadAndDraftWorkflow(t *testing.T) {
 			},
 		},
 		connections: []integrations.Connection{{
-			ID:       gmailconnector.OAuthConnectionID,
-			Provider: gmailconnector.ProviderID,
-			Alias:    "default",
+			ID:        gmailconnector.OAuthConnectionID,
+			Provider:  gmailconnector.ProviderID,
+			AccountID: "augustinas@example.com",
+			Alias:     "default",
 		}},
 	})
 	tools.apiBaseURL = gmailServer.URL
@@ -267,6 +295,19 @@ func TestGmailMCPToolsThreadAndDraftWorkflow(t *testing.T) {
 	}
 	if !draft.Connected || draft.Draft.ID != "draft1" || draft.Draft.Message.ThreadID != "t1" {
 		t.Fatalf("draft = %#v", draft)
+	}
+	_, reply, err := tools.CreateReplyDraft(context.Background(), nil, GmailCreateReplyDraftInput{
+		ID:        "m1",
+		ReplyMode: "reply_all",
+		BodyText:  "Reply body",
+		CcAdd:     []string{"Dan <dan@example.com>"},
+		BccAdd:    []string{"Erin <erin@example.com>"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reply.Connected || reply.Draft.ID != "reply-draft" || reply.Draft.Message.ThreadID != "t1" {
+		t.Fatalf("reply draft = %#v", reply)
 	}
 	_, drafts, err := tools.ListDrafts(context.Background(), nil, GmailListDraftsInput{Query: " subject:hello ", MaxResults: 5})
 	if err != nil {

@@ -34,6 +34,16 @@ type GmailCreateDraftInput struct {
 	References string   `json:"references,omitempty" jsonschema:"References header for the thread being replied to"`
 }
 
+type GmailCreateReplyDraftInput struct {
+	Account   string   `json:"account,omitempty" jsonschema:"Gmail account alias, email address, or connection id; omit only when one Gmail account is connected"`
+	ID        string   `json:"id" jsonschema:"Gmail message id or thread id to reply to"`
+	IDType    string   `json:"id_type,omitempty" jsonschema:"message or thread; defaults to message"`
+	ReplyMode string   `json:"reply_mode,omitempty" jsonschema:"reply or reply_all; defaults to reply"`
+	BodyText  string   `json:"body_text" jsonschema:"plain text reply body"`
+	CcAdd     []string `json:"cc_add,omitempty" jsonschema:"extra CC recipient email addresses to add to the reply draft"`
+	BccAdd    []string `json:"bcc_add,omitempty" jsonschema:"BCC recipient email addresses to add to the reply draft"`
+}
+
 type GmailSendDraftInput struct {
 	Account string `json:"account,omitempty" jsonschema:"Gmail account alias, email address, or connection id; omit only when one Gmail account is connected"`
 	ID      string `json:"id" jsonschema:"Gmail draft id"`

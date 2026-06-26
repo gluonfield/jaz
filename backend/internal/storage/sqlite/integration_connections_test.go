@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/wins/jaz/backend/pkg/integrations"
@@ -101,6 +102,10 @@ func TestDeleteConnectionDeletesTokenAndConnection(t *testing.T) {
 	if err := store.SaveOAuthConnection(context.Background(), token, connection); err != nil {
 		t.Fatal(err)
 	}
+	cursor := integrations.Cursor{Kind: "gmail.sync", Value: json.RawMessage(`{"history_id":"h1"}`)}
+	if err := store.SaveIntegrationCursor(context.Background(), connection.ID, cursor); err != nil {
+		t.Fatal(err)
+	}
 	ok, err := store.DeleteConnection(context.Background(), connection.ID)
 	if err != nil || !ok {
 		t.Fatalf("delete ok=%v err=%v", ok, err)
@@ -111,9 +116,42 @@ func TestDeleteConnectionDeletesTokenAndConnection(t *testing.T) {
 	if _, ok, err := store.LoadToken(context.Background(), connection.ID); err != nil || ok {
 		t.Fatalf("token after delete ok=%v err=%v", ok, err)
 	}
+	if _, ok, err := store.LoadIntegrationCursor(context.Background(), connection.ID, cursor.Kind); err != nil || ok {
+		t.Fatalf("cursor after delete ok=%v err=%v", ok, err)
+	}
 	ok, err = store.DeleteConnection(context.Background(), connection.ID)
 	if err != nil || ok {
 		t.Fatalf("second delete ok=%v err=%v", ok, err)
+	}
+}
+
+func TestIntegrationCursorRoundTrip(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	connection := integrations.Connection{
+		ID:        "gmail:personal",
+		Provider:  "gmail",
+		AccountID: "augustinas@example.com",
+		Alias:     "personal",
+		Scopes:    []string{"scope"},
+	}
+	if err := store.SaveConnection(context.Background(), connection); err != nil {
+		t.Fatal(err)
+	}
+	cursor := integrations.Cursor{Kind: "gmail.sync", Value: json.RawMessage(`{"backfill_page_token":"next"}`)}
+	if err := store.SaveIntegrationCursor(context.Background(), connection.ID, cursor); err != nil {
+		t.Fatal(err)
+	}
+	loaded, ok, err := store.LoadIntegrationCursor(context.Background(), connection.ID, cursor.Kind)
+	if err != nil || !ok {
+		t.Fatalf("cursor ok=%v err=%v", ok, err)
+	}
+	if loaded.Kind != cursor.Kind || string(loaded.Value) != string(cursor.Value) {
+		t.Fatalf("cursor = %#v", loaded)
 	}
 }
 

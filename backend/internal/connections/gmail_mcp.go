@@ -38,8 +38,13 @@ func (t *GmailMCPTools) AddTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        gmailconnector.ToolCreateDraft,
 		Title:       "Create Gmail draft",
-		Description: "Create a plain text Gmail draft from one connected account. For replies, read the thread first and pass thread_id plus reply headers.",
+		Description: "Create a new plain text Gmail draft from one connected account. Use this for new outbound email.",
 	}, t.CreateDraft)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        gmailconnector.ToolCreateReply,
+		Title:       "Create Gmail reply draft",
+		Description: "Create a reply or reply-all draft for an existing Gmail message or thread. Use this for normal replies; it infers recipients, thread_id, In-Reply-To, References, and reply subject.",
+	}, t.CreateReplyDraft)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        gmailconnector.ToolSendDraft,
 		Title:       "Send Gmail draft",
@@ -64,6 +69,7 @@ func (t *GmailMCPTools) RemoveFrom(server *mcp.Server) {
 			gmailconnector.ToolSearchThreads,
 			gmailconnector.ToolReadThread,
 			gmailconnector.ToolCreateDraft,
+			gmailconnector.ToolCreateReply,
 			gmailconnector.ToolSendDraft,
 			gmailconnector.ToolUpdateDraft,
 			gmailconnector.ToolListDrafts,
@@ -209,6 +215,56 @@ func (t *GmailMCPTools) CreateDraft(ctx context.Context, _ *mcp.CallToolRequest,
 		return nil, GmailDraftOutput{}, err
 	}
 	text := "Created Gmail draft"
+	if request.Subject != "" {
+		text += ": " + request.Subject
+	}
+	return textResult(text), GmailDraftOutput{
+		Connected: true,
+		Accounts:  session.accounts,
+		AccountID: session.connection.AccountID,
+		Alias:     session.connection.Alias,
+		Draft:     draft,
+	}, nil
+}
+
+func (t *GmailMCPTools) CreateReplyDraft(ctx context.Context, _ *mcp.CallToolRequest, input GmailCreateReplyDraftInput) (*mcp.CallToolResult, GmailDraftOutput, error) {
+	id := strings.TrimSpace(input.ID)
+	if id == "" {
+		return nil, GmailDraftOutput{}, errors.New("id is required")
+	}
+	idType := gmailThreadIDType(input.IDType)
+	if idType == "" {
+		return nil, GmailDraftOutput{}, errors.New("id_type must be message or thread")
+	}
+	session, connected, err := t.session(ctx, input.Account)
+	if err != nil {
+		return nil, GmailDraftOutput{}, err
+	}
+	if !connected {
+		accountRequired := len(session.accounts) > 1
+		out := GmailDraftOutput{Connected: accountRequired, Accounts: session.accounts, AccountRequired: accountRequired}
+		if out.AccountRequired {
+			return textResult(gmailAccountRequiredText(session.accounts)), out, nil
+		}
+		return textResult("Gmail is not connected. Connect Gmail in Settings > Connections."), out, nil
+	}
+	thread, err := session.api.ReadThread(ctx, gmailconnector.ReadThreadRequest{
+		ID:          id,
+		IDType:      idType,
+		MaxMessages: gmailThreadLimit(0),
+	})
+	if err != nil {
+		return nil, GmailDraftOutput{}, err
+	}
+	request, err := gmailReplyDraftRequest(input, thread, session.connection.AccountID)
+	if err != nil {
+		return nil, GmailDraftOutput{}, err
+	}
+	draft, err := session.api.CreateDraft(ctx, request)
+	if err != nil {
+		return nil, GmailDraftOutput{}, err
+	}
+	text := "Created Gmail reply draft"
 	if request.Subject != "" {
 		text += ": " + request.Subject
 	}
