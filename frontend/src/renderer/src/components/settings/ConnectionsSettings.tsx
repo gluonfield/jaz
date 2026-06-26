@@ -128,10 +128,10 @@ export function ConnectionsSettings() {
           </p>
         ) : (
           <>
-            <div className="w-full space-y-5 md:max-w-[760px]">
+            <div className="space-y-5">
               {hasConnectedAccounts ? (
                 <SettingsBlock title="Existing connections">
-                  <div className="flex flex-col divide-y divide-border/70">
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                     {connectedAccounts.map(({ plugin, account }) => (
                       <ExistingConnectionCard
                         key={account.id}
@@ -146,7 +146,7 @@ export function ConnectionsSettings() {
               ) : null}
 
               <SettingsBlock title="Add connection">
-                <div className="flex flex-col divide-y divide-border/70">
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                   {sortedPlugins.map((plugin) => (
                     <ConnectionPluginCard
                       key={plugin.id}
