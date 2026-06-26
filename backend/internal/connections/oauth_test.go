@@ -92,7 +92,8 @@ func TestOAuthStartUsesStoredGmailClientCredentials(t *testing.T) {
 		},
 	}
 
-	start, err := NewOAuthService(store, OAuthConfig{}).Start(context.Background(), gmailconnector.ProviderID, redirectURL)
+	service := NewOAuthService(store, OAuthConfig{})
+	start, err := service.Start(context.Background(), gmailconnector.ProviderID, redirectURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,6 +103,16 @@ func TestOAuthStartUsesStoredGmailClientCredentials(t *testing.T) {
 	}
 	if parsed.Query().Get("client_id") != "stored-client" {
 		t.Fatalf("auth url = %s", start.AuthURL)
+	}
+	state := parsed.Query().Get("state")
+	service.mu.Lock()
+	stored, ok := service.states[state]
+	service.mu.Unlock()
+	if !ok {
+		t.Fatalf("missing oauth state %q", state)
+	}
+	if stored.credentials.ClientID != "stored-client" || stored.credentials.ClientSecret != "stored-secret" {
+		t.Fatalf("stored credentials = %#v", stored.credentials)
 	}
 }
 

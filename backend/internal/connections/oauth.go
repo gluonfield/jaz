@@ -39,6 +39,7 @@ type OAuthService struct {
 
 type oauthState struct {
 	pluginID    string
+	credentials gmailconnector.OAuthClientCredentials
 	verifier    string
 	redirectURL string
 	expiresAt   time.Time
@@ -59,10 +60,11 @@ func (s *OAuthService) Start(ctx context.Context, pluginID, redirectURL string) 
 	if redirectURL == "" {
 		return OAuthStart{}, errors.New("redirect URL is required")
 	}
-	config, _, err := s.gmailOAuthConfig(ctx, redirectURL)
+	credentials, err := s.gmailCredentials(ctx)
 	if err != nil {
 		return OAuthStart{}, err
 	}
+	config := gmailOAuthConfig(redirectURL, credentials)
 	state, err := randomOAuthState()
 	if err != nil {
 		return OAuthStart{}, err
@@ -71,6 +73,7 @@ func (s *OAuthService) Start(ctx context.Context, pluginID, redirectURL string) 
 	s.mu.Lock()
 	s.states[state] = oauthState{
 		pluginID:    pluginID,
+		credentials: credentials,
 		verifier:    verifier,
 		redirectURL: redirectURL,
 		expiresAt:   time.Now().UTC().Add(10 * time.Minute),
@@ -103,10 +106,7 @@ func (s *OAuthService) Callback(ctx context.Context, state, code, failure string
 		return fmt.Errorf("connection plugin %q does not support callback exchange", stored.pluginID)
 	}
 
-	config, credentials, err := s.gmailOAuthConfig(ctx, stored.redirectURL)
-	if err != nil {
-		return err
-	}
+	config := gmailOAuthConfig(stored.redirectURL, stored.credentials)
 	token, err := config.Exchange(ctx, code, oauth2.VerifierOption(stored.verifier))
 	if err != nil {
 		return fmt.Errorf("token exchange: %w", err)
@@ -120,8 +120,8 @@ func (s *OAuthService) Callback(ctx context.Context, state, code, failure string
 		RefreshToken: token.RefreshToken,
 		TokenType:    token.TokenType,
 		Expiry:       token.Expiry,
-		ClientID:     credentials.ClientID,
-		ClientSecret: credentials.ClientSecret,
+		ClientID:     stored.credentials.ClientID,
+		ClientSecret: stored.credentials.ClientSecret,
 		AuthURL:      gmailconnector.OAuthAuthURL,
 		TokenURL:     gmailconnector.OAuthTokenURL,
 		AuthStyle:    int(oauth2.AuthStyleInParams),
@@ -181,11 +181,7 @@ func (s *OAuthService) takeState(state string) (oauthState, bool) {
 	return stored, ok
 }
 
-func (s *OAuthService) gmailOAuthConfig(ctx context.Context, redirectURL string) (*oauth2.Config, gmailconnector.OAuthClientCredentials, error) {
-	credentials, err := s.gmailCredentials(ctx)
-	if err != nil {
-		return nil, gmailconnector.OAuthClientCredentials{}, err
-	}
+func gmailOAuthConfig(redirectURL string, credentials gmailconnector.OAuthClientCredentials) *oauth2.Config {
 	return &oauth2.Config{
 		ClientID:     credentials.ClientID,
 		ClientSecret: credentials.ClientSecret,
@@ -196,7 +192,7 @@ func (s *OAuthService) gmailOAuthConfig(ctx context.Context, redirectURL string)
 		},
 		RedirectURL: redirectURL,
 		Scopes:      gmailconnector.OAuthScopes,
-	}, credentials, nil
+	}
 }
 
 func (s *OAuthService) gmailCredentials(ctx context.Context) (gmailconnector.OAuthClientCredentials, error) {

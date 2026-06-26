@@ -10,14 +10,14 @@ export function PluginIcon({ plugin, compact = false }: { plugin: IntegrationPlu
       <img
         src={plugin.icon.value}
         alt=""
-        className={`${sizeClass} shrink-0 rounded-control bg-surface-2 object-cover`}
+        className={`${sizeClass} shrink-0 rounded-[8px] bg-bg object-cover ring-1 ring-border/70`}
       />
     )
   }
 
   if (plugin.icon.kind === 'asset' && plugin.icon.value === 'gmail') {
     return (
-      <span className={`grid ${sizeClass} shrink-0 place-items-center rounded-control bg-surface-2 text-[#d93025]`}>
+      <span className={`grid ${sizeClass} shrink-0 place-items-center rounded-full bg-bg text-[#d93025] ring-1 ring-border/70`}>
         <PluginGlyph plugin={plugin} size={iconSize} />
       </span>
     )
@@ -25,7 +25,7 @@ export function PluginIcon({ plugin, compact = false }: { plugin: IntegrationPlu
 
   return (
     <span
-      className={`grid ${sizeClass} shrink-0 place-items-center rounded-control bg-surface-2 text-[12px] font-medium text-ink`}
+      className={`grid ${sizeClass} shrink-0 place-items-center rounded-full bg-bg text-[12px] font-medium text-ink ring-1 ring-border/70`}
       style={plugin.icon.background ? { background: plugin.icon.background } : undefined}
     >
       <PluginGlyph plugin={plugin} size={iconSize} />

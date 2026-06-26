@@ -53,6 +53,7 @@ export function ConnectionsSettings() {
       ),
     [sortedPlugins],
   )
+  const hasConnectedAccounts = connectedAccounts.length > 0
   const disconnectAccount = (account: IntegrationConnectionAccount) => {
     const label = accountAddress(account) || account.id
     if (window.confirm(`Disconnect ${label}?`)) disconnect.mutate(account.id)
@@ -94,38 +95,36 @@ export function ConnectionsSettings() {
           </p>
         ) : (
           <>
-            <SettingsBlock title="Existing connections">
-              {connectedAccounts.length === 0 ? (
-                <p className="rounded-card bg-surface px-3 py-3 text-[13px] text-ink-3">
-                  No app accounts are connected yet.
-                </p>
-              ) : (
-                <div className="grid gap-2 md:grid-cols-2">
-                  {connectedAccounts.map(({ plugin, account }) => (
-                    <ExistingConnectionCard
-                      key={account.id}
+            <div className="space-y-5">
+              {hasConnectedAccounts ? (
+                <SettingsBlock title="Existing connections">
+                  <div className="flex flex-col divide-y divide-border/70">
+                    {connectedAccounts.map(({ plugin, account }) => (
+                      <ExistingConnectionCard
+                        key={account.id}
+                        plugin={plugin}
+                        account={account}
+                        disconnecting={disconnect.isPending && disconnect.variables === account.id}
+                        onDisconnect={() => disconnectAccount(account)}
+                      />
+                    ))}
+                  </div>
+                </SettingsBlock>
+              ) : null}
+
+              <SettingsBlock title="Add connection">
+                <div className="flex flex-col divide-y divide-border/70">
+                  {sortedPlugins.map((plugin) => (
+                    <ConnectionPluginCard
+                      key={plugin.id}
                       plugin={plugin}
-                      account={account}
-                      disconnecting={disconnect.isPending && disconnect.variables === account.id}
-                      onDisconnect={() => disconnectAccount(account)}
+                      connecting={connect.isPending && connect.variables === plugin.id}
+                      onConnect={() => connect.mutate(plugin.id)}
                     />
                   ))}
                 </div>
-              )}
-            </SettingsBlock>
-
-            <SettingsBlock title="Add new connection">
-              <div className="grid gap-2 md:grid-cols-2">
-                {sortedPlugins.map((plugin) => (
-                  <ConnectionPluginCard
-                    key={plugin.id}
-                    plugin={plugin}
-                    connecting={connect.isPending && connect.variables === plugin.id}
-                    onConnect={() => connect.mutate(plugin.id)}
-                  />
-                ))}
-              </div>
-            </SettingsBlock>
+              </SettingsBlock>
+            </div>
           </>
         )}
       </div>
