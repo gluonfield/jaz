@@ -1,6 +1,7 @@
 package connections
 
 import (
+	"errors"
 	"html"
 	"net/http"
 
@@ -10,16 +11,18 @@ import (
 
 const googleOAuthCallbackPath = "/v1/connections/oauth/google/callback"
 
-type OAuthHandler struct {
-	OAuth *connections.OAuthService
+type ConnectHandler struct {
+	Connect *connections.ConnectService
+	OAuth   *connections.OAuthService
+	QR      *connections.QRService
 }
 
-func NewOAuthHandler(oauth *connections.OAuthService) OAuthHandler {
-	return OAuthHandler{OAuth: oauth}
+func NewConnectHandler(connect *connections.ConnectService, oauth *connections.OAuthService, qr *connections.QRService) ConnectHandler {
+	return ConnectHandler{Connect: connect, OAuth: oauth, QR: qr}
 }
 
-func (h OAuthHandler) Start(w http.ResponseWriter, r *http.Request) {
-	start, err := h.OAuth.Start(r.Context(), r.PathValue("id"), oauthCallbackURL(r))
+func (h ConnectHandler) Start(w http.ResponseWriter, r *http.Request) {
+	start, err := h.Connect.Start(r.Context(), r.PathValue("id"), oauthCallbackURL(r))
 	if err != nil {
 		httpapi.WriteError(w, http.StatusBadRequest, err)
 		return
@@ -27,13 +30,26 @@ func (h OAuthHandler) Start(w http.ResponseWriter, r *http.Request) {
 	httpapi.WriteJSON(w, http.StatusOK, start)
 }
 
-func (h OAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
+func (h ConnectHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	if err := h.OAuth.Callback(r.Context(), q.Get("state"), q.Get("code"), q.Get("error")); err != nil {
 		writeCallbackHTML(w, http.StatusBadRequest, "Gmail connection failed", err.Error(), false)
 		return
 	}
 	writeCallbackHTML(w, http.StatusOK, "Gmail connected", "You can close this tab and return to Jaz.", true)
+}
+
+func (h ConnectHandler) QRStatus(w http.ResponseWriter, r *http.Request) {
+	status, err := h.QR.Status(r.Context(), r.PathValue("id"))
+	if err != nil {
+		if errors.Is(err, connections.ErrQRSessionNotFound) {
+			httpapi.WriteError(w, http.StatusNotFound, err)
+			return
+		}
+		httpapi.WriteError(w, http.StatusInternalServerError, err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, status)
 }
 
 func oauthCallbackURL(r *http.Request) string {

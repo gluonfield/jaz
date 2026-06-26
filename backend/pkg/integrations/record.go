@@ -2,10 +2,39 @@ package integrations
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 )
 
 type RecordKind string
+
+type RecordDomain string
+
+const (
+	RecordDomainEvents   RecordDomain = "events"
+	RecordDomainMessages RecordDomain = "messages"
+	RecordDomainContacts RecordDomain = "contacts"
+)
+
+func (k RecordKind) Domain() RecordDomain {
+	value := strings.ToLower(string(k))
+	if recordKindHasSegment(value, "contact") || recordKindHasSegment(value, "contacts") {
+		return RecordDomainContacts
+	}
+	if recordKindHasSegment(value, "message") || recordKindHasSegment(value, "messages") {
+		return RecordDomainMessages
+	}
+	return RecordDomainEvents
+}
+
+func recordKindHasSegment(value, segment string) bool {
+	for part := range strings.SplitSeq(value, ".") {
+		if part == segment {
+			return true
+		}
+	}
+	return false
+}
 
 type Record struct {
 	ID           string          `json:"id"`

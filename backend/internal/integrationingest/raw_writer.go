@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,10 +20,15 @@ type RawWriter struct {
 	Now  func() time.Time
 }
 
-func (w RawWriter) WriteRecords(ctx context.Context, records []integrations.Record) error {
-	if strings.TrimSpace(w.Root) == "" {
-		return errors.New("ingest root is required")
+func DefaultRoot() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(".memory", "raw-sources")
 	}
+	return filepath.Join(home, ".memory", "raw-sources")
+}
+
+func (w RawWriter) WriteRecords(ctx context.Context, records []integrations.Record) error {
 	for _, record := range records {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -38,7 +42,7 @@ func (w RawWriter) WriteRecords(ctx context.Context, records []integrations.Reco
 
 func (w RawWriter) writeRecord(record integrations.Record) error {
 	record = w.prepare(record)
-	path, err := RawRecordPath(w.Root, record)
+	path, err := RawRecordPath(w.root(), record)
 	if err != nil {
 		return err
 	}
@@ -60,6 +64,13 @@ func (w RawWriter) writeRecord(record integrations.Record) error {
 		return err
 	}
 	return writer.Flush()
+}
+
+func (w RawWriter) root() string {
+	if root := strings.TrimSpace(w.Root); root != "" {
+		return root
+	}
+	return DefaultRoot()
 }
 
 func (w RawWriter) prepare(record integrations.Record) integrations.Record {
@@ -93,8 +104,9 @@ func recordID(record integrations.Record) string {
 }
 
 func RawRecordPath(root string, record integrations.Record) (string, error) {
-	if strings.TrimSpace(root) == "" {
-		return "", errors.New("ingest root is required")
+	root = strings.TrimSpace(root)
+	if root == "" {
+		root = DefaultRoot()
 	}
 	provider, err := requiredPathComponent("provider", record.Provider)
 	if err != nil {
@@ -108,6 +120,10 @@ func RawRecordPath(root string, record integrations.Record) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	domain := record.Kind.Domain()
+	if domain == integrations.RecordDomainContacts {
+		return filepath.Join(root, provider, accountID, connectionID, string(domain), "contacts.jsonl"), nil
+	}
 	day := record.OccurredAt
 	if day.IsZero() {
 		day = record.ReceivedAt
@@ -116,16 +132,20 @@ func RawRecordPath(root string, record integrations.Record) (string, error) {
 		return "", fmt.Errorf("record time is required")
 	}
 	day = day.UTC()
+	filename := "events.jsonl"
+	if domain == integrations.RecordDomainMessages {
+		filename = "messages.jsonl"
+	}
 	return filepath.Join(
 		root,
-		"raw",
 		provider,
 		accountID,
 		connectionID,
+		string(domain),
 		day.Format("2006"),
 		day.Format("01"),
 		day.Format("02"),
-		"events.jsonl",
+		filename,
 	), nil
 }
 
