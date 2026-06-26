@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,7 +20,13 @@ import (
 
 func TestGmailSyncerWritesRawMessagesAndCursor(t *testing.T) {
 	occurred := time.Date(2026, 6, 25, 9, 0, 0, 0, time.UTC)
-	body := base64.RawURLEncoding.EncodeToString([]byte("Indexed body"))
+	body := base64.RawURLEncoding.EncodeToString([]byte(`<html><body>
+		<style>.hidden{display:none}</style>
+		<p>Indexed body</p>
+		<a href="https://click.mailchimp.com/?url=https%3A%2F%2Fexample.com%2Freport%3Futm_source%3Dnews">Read report</a>
+		<img src="https://tracker.example.com/open/pixel.png">
+		<script>alert("x")</script>
+	</body></html>`))
 	now := time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -35,7 +42,7 @@ func TestGmailSyncerWritesRawMessagesAndCursor(t *testing.T) {
 				"internalDate":"` + jsonNumber(occurred.UnixMilli()) + `",
 				"payload":{
 					"headers":[{"name":"Subject","value":"Sync me"}],
-					"parts":[{"mimeType":"text/plain","body":{"data":"` + body + `"}}]
+					"parts":[{"mimeType":"text/html","body":{"data":"` + body + `"}}]
 				}
 			}`))
 		case "/gmail/v1/users/me/profile":
@@ -71,7 +78,7 @@ func TestGmailSyncerWritesRawMessagesAndCursor(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	matches, err := filepath.Glob(filepath.Join(root, "gmail", "augustinas-example-com", "gmail-personal", "messages", "2026", "06", "25", "messages.jsonl"))
+	matches, err := filepath.Glob(filepath.Join(root, "gmail", "augustinas-example-com", "messages", "2026", "06", "25", "messages.jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,8 +102,16 @@ func TestGmailSyncerWritesRawMessagesAndCursor(t *testing.T) {
 	if err := json.Unmarshal(record.Raw, &content); err != nil {
 		t.Fatal(err)
 	}
-	if record.ExternalID != "m1" || content.BodyText != "Indexed body" {
+	if record.ExternalID != "m1" ||
+		!strings.Contains(content.BodyText, "Indexed body") ||
+		!strings.Contains(content.BodyText, "Read report (https://example.com/report)") ||
+		content.BodyHTML != "" {
 		t.Fatalf("record = %#v content = %#v", record, content)
+	}
+	for _, unwanted := range []string{"mailchimp", "tracker.example.com", "<img", "script", "utm_source"} {
+		if strings.Contains(content.BodyText, unwanted) {
+			t.Fatalf("cleaned export body contains %q:\n%s", unwanted, content.BodyText)
+		}
 	}
 	cursor, err := gmailconnector.DecodeSyncCursor(store.cursor)
 	if err != nil {

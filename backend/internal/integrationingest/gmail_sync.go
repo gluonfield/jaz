@@ -80,7 +80,11 @@ func (s GmailSyncer) syncConnection(ctx context.Context, connection integrations
 			return err
 		}
 		if len(result.Records) > 0 {
-			if err := s.Writer.WriteRecords(ctx, result.Records); err != nil {
+			records, err := cleanGmailSyncRecords(result.Records)
+			if err != nil {
+				return err
+			}
+			if err := s.Writer.WriteRecords(ctx, records); err != nil {
 				return err
 			}
 		}

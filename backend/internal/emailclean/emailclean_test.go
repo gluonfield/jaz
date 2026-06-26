@@ -34,6 +34,20 @@ func TestBodyCleansHTMLTrackingAndKeepsMeaningfulLinks(t *testing.T) {
 	}
 }
 
+func TestBodyUsesCleanedHTMLWhenPlainTextIsNoisier(t *testing.T) {
+	text := "Quarterly update\n" + strings.Repeat("Footer legal notice\n", 800)
+	html := `<p>Quarterly update</p><a href="https://example.com/report?utm_source=newsletter">Read report</a>`
+
+	got := Body(text, html)
+
+	if !strings.Contains(got, "Quarterly update") || !strings.Contains(got, "Read report (https://example.com/report)") {
+		t.Fatalf("cleaned body missing useful html content:\n%s", got)
+	}
+	if strings.Contains(got, "Footer legal notice") || strings.Contains(got, "utm_source") {
+		t.Fatalf("cleaned body kept noisier plain text:\n%s", got)
+	}
+}
+
 func TestTextDropsLongTrackingNoise(t *testing.T) {
 	longURL := "https://tracker.example.com/open/" + strings.Repeat("a", 1000)
 	got := Text("Hello\n" + longURL + "\n" + strings.Repeat("A", 300) + "\nhttps://example.com/path?token=" + strings.Repeat("b", 1000))

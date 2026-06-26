@@ -147,13 +147,12 @@ func RawRecordPath(root string, record integrations.Record) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	connectionID, err := requiredPathComponent("connection id", record.ConnectionID)
-	if err != nil {
+	if _, err := requiredPathComponent("connection id", record.ConnectionID); err != nil {
 		return "", err
 	}
 	domain := record.Kind.Domain()
 	if domain == integrations.RecordDomainContacts {
-		return filepath.Join(root, provider, accountID, connectionID, string(domain), "contacts.jsonl"), nil
+		return filepath.Join(root, provider, accountID, string(domain), "contacts.jsonl"), nil
 	}
 	day := record.OccurredAt
 	if day.IsZero() {
@@ -171,7 +170,6 @@ func RawRecordPath(root string, record integrations.Record) (string, error) {
 		root,
 		provider,
 		accountID,
-		connectionID,
 		string(domain),
 		day.Format("2006"),
 		day.Format("01"),
@@ -193,8 +191,7 @@ func RawAttachmentPath(root string, attachment RawAttachment) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	connectionID, err := requiredPathComponent("connection id", attachment.ConnectionID)
-	if err != nil {
+	if _, err := requiredPathComponent("connection id", attachment.ConnectionID); err != nil {
 		return "", err
 	}
 	messageID, err := externalIDPathComponent("message id", attachment.MessageID)
@@ -209,7 +206,6 @@ func RawAttachmentPath(root string, attachment RawAttachment) (string, error) {
 		root,
 		provider,
 		accountID,
-		connectionID,
 		"attachments",
 		messageID,
 		attachmentID,
