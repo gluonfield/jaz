@@ -42,7 +42,7 @@ func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, stri
 	}
 	if providerID := strings.TrimSpace(req.ModelProvider); providerID != "" {
 		if !modelOverridden && providerID != strings.TrimSpace(cfg.ModelProvider) && cfg.UsesProvider() {
-			cfg.Model = providerDefaultModel(providerID)
+			cfg.Model = agentProviderDefaultModel(req.ACPAgent, providerID, m.providers())
 		}
 		cfg.ModelProvider = providerID
 	}
@@ -54,7 +54,12 @@ func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, stri
 	return req, cfg, effort, nil
 }
 
-func providerDefaultModel(id string) string {
+func agentProviderDefaultModel(agent, id string, providers map[string]provider.ModelProviderConfig) string {
+	if CanonicalAgentName(agent) == AgentCodex {
+		if meta, ok := codexProvider(id, providers); ok {
+			return strings.TrimSpace(meta.DefaultModel)
+		}
+	}
 	meta, _ := provider.ModelProviderByID(id)
 	return strings.TrimSpace(meta.DefaultModel)
 }

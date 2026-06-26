@@ -1,44 +1,18 @@
 package gmail
 
 import (
+	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"net/mail"
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 )
 
 const APIBaseURL = "https://gmail.googleapis.com"
-
-type Profile struct {
-	EmailAddress  string `json:"emailAddress"`
-	MessagesTotal int64  `json:"messagesTotal"`
-	ThreadsTotal  int64  `json:"threadsTotal"`
-	HistoryID     string `json:"historyId"`
-}
-
-type SearchMessagesRequest struct {
-	Query      string
-	MaxResults int
-}
-
-type SearchMessagesResponse struct {
-	Messages           []Message `json:"messages"`
-	NextPageToken      string    `json:"next_page_token,omitempty"`
-	ResultSizeEstimate int64     `json:"result_size_estimate,omitempty"`
-}
-
-type MessageContent struct {
-	Message  Message `json:"message"`
-	BodyText string  `json:"body_text,omitempty"`
-	BodyHTML string  `json:"body_html,omitempty"`
-}
 
 type APIClient struct {
 	HTTP    *http.Client
@@ -76,7 +50,7 @@ func (c APIClient) Profile(ctx context.Context) (Profile, error) {
 	return profile, nil
 }
 
-func (c APIClient) SearchMessages(ctx context.Context, input SearchMessagesRequest) (SearchMessagesResponse, error) {
+func (c APIClient) SearchThreads(ctx context.Context, input SearchThreadsRequest) (SearchThreadsResponse, error) {
 	q := url.Values{}
 	if input.Query != "" {
 		q.Set("q", input.Query)
@@ -84,54 +58,175 @@ func (c APIClient) SearchMessages(ctx context.Context, input SearchMessagesReque
 	if input.MaxResults > 0 {
 		q.Set("maxResults", strconv.Itoa(input.MaxResults))
 	}
-	var list messageList
-	if err := c.get(ctx, "gmail/v1/users/me/messages", q, &list); err != nil {
-		return SearchMessagesResponse{}, err
+	var list threadList
+	if err := c.get(ctx, "gmail/v1/users/me/threads", q, &list); err != nil {
+		return SearchThreadsResponse{}, err
 	}
-	out := SearchMessagesResponse{
-		Messages:           make([]Message, 0, len(list.Messages)),
+	out := SearchThreadsResponse{
+		Threads:            make([]Thread, 0, len(list.Threads)),
 		NextPageToken:      list.NextPageToken,
 		ResultSizeEstimate: list.ResultSizeEstimate,
 	}
-	for _, ref := range list.Messages {
+	for _, ref := range list.Threads {
 		if ref.ID == "" {
 			continue
 		}
-		message, err := c.message(ctx, ref.ID, "metadata")
+		thread, err := c.thread(ctx, ref.ID, "metadata")
 		if err != nil {
-			return SearchMessagesResponse{}, err
+			return SearchThreadsResponse{}, err
 		}
-		out.Messages = append(out.Messages, messageFromAPI(message))
+		out.Threads = append(out.Threads, threadFromAPI(thread))
 	}
 	return out, nil
 }
 
-func (c APIClient) ReadMessage(ctx context.Context, id string) (MessageContent, error) {
+func (c APIClient) ReadThread(ctx context.Context, input ReadThreadRequest) (ThreadContent, error) {
+	id := input.ID
 	if id == "" {
-		return MessageContent{}, fmt.Errorf("gmail message id is required")
+		return ThreadContent{}, fmt.Errorf("gmail message or thread id is required")
 	}
-	raw, err := c.message(ctx, id, "full")
+	if !input.IDType.valid() {
+		return ThreadContent{}, fmt.Errorf("gmail id type must be message or thread")
+	}
+	if input.IDType != IDTypeThread {
+		message, err := c.message(ctx, id, "metadata")
+		if err != nil {
+			return ThreadContent{}, err
+		}
+		id = message.ThreadID
+	}
+	if id == "" {
+		return ThreadContent{}, fmt.Errorf("gmail thread id is required")
+	}
+	raw, err := c.thread(ctx, id, "full")
 	if err != nil {
-		return MessageContent{}, err
+		return ThreadContent{}, err
 	}
-	text, html := messageBodies(raw.Payload)
-	return MessageContent{
-		Message:  messageFromAPI(raw),
+	content := threadContentFromAPI(raw)
+	if input.MaxMessages > 0 && len(content.Messages) > input.MaxMessages {
+		content.Messages = content.Messages[len(content.Messages)-input.MaxMessages:]
+	}
+	return content, nil
+}
+
+func (c APIClient) CreateDraft(ctx context.Context, input ComposeMessageRequest) (Draft, error) {
+	request, err := draftRequest("", input)
+	if err != nil {
+		return Draft{}, err
+	}
+	var draft apiDraft
+	if err := c.post(ctx, "gmail/v1/users/me/drafts", request, &draft); err != nil {
+		return Draft{}, err
+	}
+	return draftFromAPI(draft), nil
+}
+
+func (c APIClient) GetDraft(ctx context.Context, id string) (DraftContent, error) {
+	if id == "" {
+		return DraftContent{}, fmt.Errorf("gmail draft id is required")
+	}
+	raw, err := c.draft(ctx, id, "full")
+	if err != nil {
+		return DraftContent{}, err
+	}
+	text, html := messageBodies(raw.Message.Payload)
+	return DraftContent{
+		Draft:    draftFromAPI(raw),
 		BodyText: text,
 		BodyHTML: html,
 	}, nil
+}
+
+func (c APIClient) UpdateDraft(ctx context.Context, id string, input ComposeMessageRequest) (Draft, error) {
+	if id == "" {
+		return Draft{}, fmt.Errorf("gmail draft id is required")
+	}
+	request, err := draftRequest(id, input)
+	if err != nil {
+		return Draft{}, err
+	}
+	var draft apiDraft
+	if err := c.put(ctx, "gmail/v1/users/me/drafts/"+id, request, &draft); err != nil {
+		return Draft{}, err
+	}
+	return draftFromAPI(draft), nil
+}
+
+func (c APIClient) SendDraft(ctx context.Context, id string) (Message, error) {
+	if id == "" {
+		return Message{}, fmt.Errorf("gmail draft id is required")
+	}
+	var sent apiMessage
+	if err := c.post(ctx, "gmail/v1/users/me/drafts/send", apiDraftRequest{ID: id}, &sent); err != nil {
+		return Message{}, err
+	}
+	return messageFromAPI(sent), nil
+}
+
+func (c APIClient) ListDrafts(ctx context.Context, input ListDraftsRequest) (ListDraftsResponse, error) {
+	q := url.Values{}
+	if input.Query != "" {
+		q.Set("q", input.Query)
+	}
+	if input.MaxResults > 0 {
+		q.Set("maxResults", strconv.Itoa(input.MaxResults))
+	}
+	var list draftList
+	if err := c.get(ctx, "gmail/v1/users/me/drafts", q, &list); err != nil {
+		return ListDraftsResponse{}, err
+	}
+	out := ListDraftsResponse{
+		Drafts:             make([]Draft, 0, len(list.Drafts)),
+		NextPageToken:      list.NextPageToken,
+		ResultSizeEstimate: list.ResultSizeEstimate,
+	}
+	for _, ref := range list.Drafts {
+		if ref.ID == "" {
+			continue
+		}
+		draft, err := c.draft(ctx, ref.ID, "metadata")
+		if err != nil {
+			return ListDraftsResponse{}, err
+		}
+		out.Drafts = append(out.Drafts, draftFromAPI(draft))
+	}
+	return out, nil
 }
 
 func (c APIClient) message(ctx context.Context, id, format string) (apiMessage, error) {
 	q := url.Values{}
 	q.Set("format", format)
 	if format == "metadata" {
-		for _, header := range []string{"From", "To", "Cc", "Bcc", "Subject", "Date"} {
+		for _, header := range metadataHeaders() {
 			q.Add("metadataHeaders", header)
 		}
 	}
 	var message apiMessage
 	return message, c.get(ctx, "gmail/v1/users/me/messages/"+id, q, &message)
+}
+
+func (c APIClient) thread(ctx context.Context, id, format string) (apiThread, error) {
+	q := url.Values{}
+	q.Set("format", format)
+	if format == "metadata" {
+		for _, header := range metadataHeaders() {
+			q.Add("metadataHeaders", header)
+		}
+	}
+	var thread apiThread
+	return thread, c.get(ctx, "gmail/v1/users/me/threads/"+id, q, &thread)
+}
+
+func (c APIClient) draft(ctx context.Context, id, format string) (apiDraft, error) {
+	q := url.Values{}
+	q.Set("format", format)
+	if format == "metadata" {
+		for _, header := range metadataHeaders() {
+			q.Add("metadataHeaders", header)
+		}
+	}
+	var draft apiDraft
+	return draft, c.get(ctx, "gmail/v1/users/me/drafts/"+id, q, &draft)
 }
 
 func (c APIClient) get(ctx context.Context, path string, query url.Values, out any) error {
@@ -146,6 +241,40 @@ func (c APIClient) get(ctx context.Context, path string, query url.Values, out a
 	if err != nil {
 		return err
 	}
+	res, err := c.httpClient().Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
+		return apiError(res, body)
+	}
+	return json.NewDecoder(res.Body).Decode(out)
+}
+
+func (c APIClient) post(ctx context.Context, path string, body any, out any) error {
+	return c.write(ctx, http.MethodPost, path, body, out)
+}
+
+func (c APIClient) put(ctx context.Context, path string, body any, out any) error {
+	return c.write(ctx, http.MethodPut, path, body, out)
+}
+
+func (c APIClient) write(ctx context.Context, method, path string, body any, out any) error {
+	endpoint, err := url.JoinPath(c.baseURL(), path)
+	if err != nil {
+		return err
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(raw))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
 	res, err := c.httpClient().Do(req)
 	if err != nil {
 		return err
@@ -217,159 +346,4 @@ func (c APIClient) baseURL() string {
 		return c.BaseURL
 	}
 	return APIBaseURL
-}
-
-type messageList struct {
-	Messages           []messageRef `json:"messages"`
-	NextPageToken      string       `json:"nextPageToken"`
-	ResultSizeEstimate int64        `json:"resultSizeEstimate"`
-}
-
-type messageRef struct {
-	ID       string `json:"id"`
-	ThreadID string `json:"threadId"`
-}
-
-type apiMessage struct {
-	ID           string      `json:"id"`
-	ThreadID     string      `json:"threadId"`
-	HistoryID    string      `json:"historyId"`
-	Snippet      string      `json:"snippet"`
-	LabelIDs     []string    `json:"labelIds"`
-	InternalDate string      `json:"internalDate"`
-	Payload      messagePart `json:"payload"`
-}
-
-type messagePart struct {
-	MIMEType string          `json:"mimeType"`
-	Filename string          `json:"filename"`
-	Headers  []messageHeader `json:"headers"`
-	Body     messageBody     `json:"body"`
-	Parts    []messagePart   `json:"parts"`
-}
-
-type messageHeader struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-}
-
-type messageBody struct {
-	Data         string `json:"data"`
-	AttachmentID string `json:"attachmentId"`
-	Size         int64  `json:"size"`
-}
-
-func messageFromAPI(raw apiMessage) Message {
-	headers := headersByName(raw.Payload.Headers)
-	return Message{
-		ID:           raw.ID,
-		ThreadID:     raw.ThreadID,
-		HistoryID:    raw.HistoryID,
-		Subject:      headers["subject"],
-		Snippet:      raw.Snippet,
-		From:         parseAddresses(headers["from"]),
-		To:           parseAddresses(headers["to"]),
-		Cc:           parseAddresses(headers["cc"]),
-		Bcc:          parseAddresses(headers["bcc"]),
-		LabelIDs:     raw.LabelIDs,
-		InternalDate: internalDate(raw.InternalDate),
-		Attachments:  attachments(raw.Payload),
-	}
-}
-
-func headersByName(headers []messageHeader) map[string]string {
-	out := map[string]string{}
-	for _, header := range headers {
-		name := strings.ToLower(strings.TrimSpace(header.Name))
-		value := strings.TrimSpace(header.Value)
-		if name != "" && value != "" {
-			out[name] = value
-		}
-	}
-	return out
-}
-
-func parseAddresses(value string) []Address {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return nil
-	}
-	parsed, err := mail.ParseAddressList(value)
-	if err != nil {
-		return []Address{{Email: value}}
-	}
-	out := make([]Address, 0, len(parsed))
-	for _, address := range parsed {
-		out = append(out, Address{
-			Name:  strings.TrimSpace(address.Name),
-			Email: strings.TrimSpace(address.Address),
-		})
-	}
-	return out
-}
-
-func internalDate(value string) time.Time {
-	ms, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
-	if err != nil || ms <= 0 {
-		return time.Time{}
-	}
-	return time.UnixMilli(ms).UTC()
-}
-
-func attachments(part messagePart) []Attachment {
-	var out []Attachment
-	var walk func(messagePart)
-	walk = func(part messagePart) {
-		if part.Filename != "" || part.Body.AttachmentID != "" {
-			out = append(out, Attachment{
-				ID:       part.Body.AttachmentID,
-				FileName: part.Filename,
-				MIMEType: part.MIMEType,
-				Size:     part.Body.Size,
-				Inline:   part.Filename == "",
-			})
-		}
-		for _, child := range part.Parts {
-			walk(child)
-		}
-	}
-	walk(part)
-	return out
-}
-
-func messageBodies(part messagePart) (string, string) {
-	var textParts []string
-	var htmlParts []string
-	var walk func(messagePart)
-	walk = func(part messagePart) {
-		switch strings.ToLower(strings.TrimSpace(part.MIMEType)) {
-		case "text/plain":
-			if text := decodeBody(part.Body.Data); text != "" {
-				textParts = append(textParts, text)
-			}
-		case "text/html":
-			if html := decodeBody(part.Body.Data); html != "" {
-				htmlParts = append(htmlParts, html)
-			}
-		}
-		for _, child := range part.Parts {
-			walk(child)
-		}
-	}
-	walk(part)
-	return strings.Join(textParts, "\n\n"), strings.Join(htmlParts, "\n\n")
-}
-
-func decodeBody(data string) string {
-	if data == "" {
-		return ""
-	}
-	raw, err := base64.RawURLEncoding.DecodeString(data)
-	if err != nil {
-		raw, err = base64.URLEncoding.DecodeString(data)
-	}
-	if err != nil {
-		return ""
-	}
-	return string(raw)
 }

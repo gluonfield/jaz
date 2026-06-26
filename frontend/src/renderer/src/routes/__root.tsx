@@ -7,10 +7,16 @@ import {
 } from '@tanstack/react-router'
 import { PanelLeft } from 'lucide-react'
 import { motion } from 'motion/react'
-import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useState } from 'react'
+import {
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 import { ConnectOverlay } from '@/components/connection/ConnectOverlay'
 import { CommandPalette } from '@/components/search/CommandPalette'
-import type { SettingsSection } from '@/components/settings/sections'
+import { isSettingsSection, type SettingsSection } from '@/components/settings/sections'
 import { SettingsOverlay } from '@/components/settings/SettingsOverlay'
 import { Sidebar } from '@/components/sidebar/Sidebar'
 import { ToastProvider } from '@/components/ui/toast'
@@ -22,7 +28,13 @@ import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import { TitlebarActionsOutlet, TitlebarProvider, TitlebarSlotOutlet } from '@/lib/titlebar'
 import type { BrowserNavigationDirection } from '../../../shared/browserNavigation'
 
+type RootSearch = { settings?: SettingsSection }
+
 export const Route = createRootRoute({
+  // Settings rides in the URL so it's a real history entry that ⌘[ / ⌘] and the
+  // browser back/forward step in and out of like any other page.
+  validateSearch: (search): RootSearch =>
+    isSettingsSection(search.settings) ? { settings: search.settings } : {},
   component: RootComponent,
 })
 
@@ -104,15 +116,38 @@ function RootLayout() {
     return stored > 0 ? clampSidebarWidth(stored) : SIDEBAR_DEFAULT_WIDTH
   })
   const [resizing, setResizing] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const [settingsSection, setSettingsSection] = useState<SettingsSection>()
   const [connectOpen, setConnectOpen] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
 
-  const openSettings = useCallback((section?: SettingsSection) => {
-    setSettingsSection(section)
-    setSettingsOpen(true)
-  }, [])
+  // Settings open-state is derived from the URL, not local state. lastSection
+  // lets the sidebar button reopen the pane the user last viewed.
+  const settingsSection = Route.useSearch().settings
+  const settingsOpen = settingsSection !== undefined
+  const lastSection = useRef<SettingsSection>('general')
+  useEffect(() => {
+    if (settingsSection) lastSection.current = settingsSection
+  }, [settingsSection])
+
+  const openSettings = useCallback(
+    (section?: SettingsSection) =>
+      void navigate({
+        to: '.',
+        search: (prev) => ({ ...prev, settings: section ?? lastSection.current }),
+      }),
+    [navigate],
+  )
+  const goToSettingsSection = useCallback(
+    (section: SettingsSection) =>
+      void navigate({ to: '.', search: (prev) => ({ ...prev, settings: section }), replace: true }),
+    [navigate],
+  )
+  // Leaving settings is just stepping back. But when it's the entry we loaded
+  // into (deep link / web reload) there's nothing behind it, so drop the param
+  // directly — otherwise back() is a no-op and the user is stuck inside settings.
+  const closeSettings = useCallback(() => {
+    if (router.history.canGoBack()) router.history.back()
+    else void navigate({ to: '.', search: (prev) => ({ ...prev, settings: undefined }), replace: true })
+  }, [router, navigate])
 
   // A specific board paints itself on bg-surface so its tiles blend; the app
   // titlebar inherits main's background, so match main to surface there too —
@@ -143,15 +178,13 @@ function RootLayout() {
 
   const handleBrowserNavigation = useCallback(
     (direction: BrowserNavigationDirection) => {
-      if (settingsOpen) {
-        if (direction === 'back') setSettingsOpen(false)
-        return
-      }
       if (commandOpen) {
         if (direction === 'back') setCommandOpen(false)
         return
       }
-      if (modalDialogOpen()) return
+      // Settings is a normal history entry now, so it must not trip the modal
+      // guard — let back/forward step out of and into it like any page.
+      if (!settingsOpen && modalDialogOpen()) return
       if (direction === 'back') window.history.back()
       else window.history.forward()
     },
@@ -278,7 +311,8 @@ function RootLayout() {
         <SettingsOverlay
           open={settingsOpen}
           section={settingsSection}
-          onClose={() => setSettingsOpen(false)}
+          onSectionChange={goToSettingsSection}
+          onClose={closeSettings}
           onOpenConnect={() => setConnectOpen(true)}
         />
         <ConnectOverlay open={connectOpen} onClose={() => setConnectOpen(false)} />

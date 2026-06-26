@@ -30,6 +30,20 @@ func TestCodexProviderArgsOpenRouter(t *testing.T) {
 	}
 }
 
+func TestCodexProviderArgsOpenAIAPIKey(t *testing.T) {
+	args := codexProviderArgs(AgentConfig{ModelProvider: CodexProviderOpenAIAPIKey}, nil)
+	want := []string{
+		"-c", `model_provider="openai-api-key"`,
+		"-c", `model_providers.openai-api-key.name="OpenAI"`,
+		"-c", `model_providers.openai-api-key.base_url="https://api.openai.com/v1"`,
+		"-c", `model_providers.openai-api-key.env_key="OPENAI_API_KEY"`,
+		"-c", `model_providers.openai-api-key.wire_api="responses"`,
+	}
+	if !slices.Equal(args, want) {
+		t.Fatalf("openai api-key args mismatch\n got: %v\nwant: %v", args, want)
+	}
+}
+
 func TestCodexProviderArgsCustomProvider(t *testing.T) {
 	args := codexProviderArgs(
 		AgentConfig{ModelProvider: "acme"},
@@ -55,12 +69,15 @@ func TestCodexProviderArgsUnknownWithoutConfig(t *testing.T) {
 	}
 }
 
-func TestProcessEnvBindsOpenRouterKeyForCodexProviderOnly(t *testing.T) {
+func TestProcessEnvBindsSelectedCodexProviderKeyOnly(t *testing.T) {
 	clearHostEnv(t)
 	root := t.TempDir()
 	t.Setenv("PATH", "/bin")
 	t.Setenv("HOME", t.TempDir())
-	if err := runtimeenv.Save(runtimeenv.Path(root), map[string]string{"OPENROUTER_API_KEY": "or-key"}); err != nil {
+	if err := runtimeenv.Save(runtimeenv.Path(root), map[string]string{
+		"OPENAI_API_KEY":     "oa-key",
+		"OPENROUTER_API_KEY": "or-key",
+	}); err != nil {
 		t.Fatal(err)
 	}
 	manager := NewManager(nil, Config{Root: root}, nil)
@@ -70,8 +87,13 @@ func TestProcessEnvBindsOpenRouterKeyForCodexProviderOnly(t *testing.T) {
 		t.Fatalf("codex+openrouter did not bind the provider key: %#v", openrouter)
 	}
 
+	openaiKey := manager.processEnv("codex", AgentConfig{ModelProvider: CodexProviderOpenAIAPIKey})
+	if openaiKey["OPENAI_API_KEY"] != "oa-key" || openaiKey["OPENROUTER_API_KEY"] != "" {
+		t.Fatalf("codex+openai api-key bound wrong provider keys: %#v", openaiKey)
+	}
+
 	openai := manager.processEnv("codex", AgentConfig{ModelProvider: modelprovider.ProviderOpenAI})
-	if openai["OPENROUTER_API_KEY"] != "" {
-		t.Fatalf("codex default (OAuth) must not receive the OpenRouter key: %#v", openai)
+	if openai["OPENAI_API_KEY"] != "" || openai["OPENROUTER_API_KEY"] != "" {
+		t.Fatalf("codex default (OAuth) must not receive provider API keys: %#v", openai)
 	}
 }

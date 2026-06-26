@@ -7,10 +7,20 @@ import (
 	modelprovider "github.com/wins/jaz/backend/internal/provider"
 )
 
+const CodexProviderOpenAIAPIKey = "openai-api-key"
+
 func codexProvider(modelProvider string, providers map[string]modelprovider.ModelProviderConfig) (modelprovider.ModelProvider, bool) {
 	id := strings.ToLower(strings.TrimSpace(modelProvider))
 	if id == "" || id == AgentCodex || id == modelprovider.ProviderOpenAI {
 		return modelprovider.ModelProvider{}, false
+	}
+	if id == CodexProviderOpenAIAPIKey {
+		meta, _ := modelprovider.ModelProviderByID(modelprovider.ProviderOpenAI)
+		if override, present := providers[modelprovider.ProviderOpenAI]; present {
+			meta = modelprovider.ApplyModelProviderConfig(meta, override)
+		}
+		meta.ID = CodexProviderOpenAIAPIKey
+		return meta, true
 	}
 	meta, ok := modelprovider.RunnableModelProviderByID(id)
 	if !ok {
@@ -20,6 +30,14 @@ func codexProvider(modelProvider string, providers map[string]modelprovider.Mode
 		meta = modelprovider.ApplyModelProviderConfig(meta, override)
 	}
 	return meta, true
+}
+
+func codexProviderKeyID(id string) string {
+	keyID := strings.ToLower(strings.TrimSpace(id))
+	if keyID == CodexProviderOpenAIAPIKey {
+		return modelprovider.ProviderOpenAI
+	}
+	return keyID
 }
 
 func codexProviderArgs(cfg AgentConfig, providers map[string]modelprovider.ModelProviderConfig) []string {

@@ -49,7 +49,7 @@ import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
 import { takePendingMessage } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
-import { providerSubagentsFromEvents } from '@/lib/providerSubagents'
+import { applyProviderToolTitleFallbacks, providerSubagentsFromEvents } from '@/lib/providerSubagents'
 import { spawnedThreadsFromSources } from '@/lib/spawnedThreads'
 import {
   approvalPlanSurfaceFromEvent,
@@ -367,7 +367,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
   const modeEvents = [...persistedEvents, ...snapshotEvents, ...liveEvents]
   const currentModes = latestACPModeState(session.id, modeEvents) ?? acpModes
   const activePermissions = activePermissionIDs([...snapshotEvents, ...liveEvents], acpChildPermissions)
-  const transcriptEvents = coalesceSessionEvents(
+  const rawTranscriptEvents = applyProviderToolTitleFallbacks(
     [...persistedEvents, ...snapshotEvents, ...liveEvents].flatMap((event) => {
       // 'assistant' events are refresh signals; the message store has the content.
       if (event.type === 'assistant' || sessionEventPlacement(event) === 'side_chat') return []
@@ -377,6 +377,7 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
       return sanitized ? [sanitized] : []
     }),
   )
+  const transcriptEvents = coalesceSessionEvents(rawTranscriptEvents)
   const settledTranscriptEvents = resolveInactivePermissions(transcriptEvents, activePermissions)
   const acpModesKnown = modeStateKnown(currentModes)
   const planAvailable = session.runtime !== 'acp' || !acpModesKnown || Boolean(currentModes?.plan_mode_id)

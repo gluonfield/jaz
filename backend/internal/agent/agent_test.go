@@ -295,17 +295,17 @@ func TestToolSearchMatchesSchemaTerms(t *testing.T) {
 func TestToolSearchFindsGmailToolsByEmailQuery(t *testing.T) {
 	exposure, err := newToolExposure([]tools.Definition{
 		namedTool{
-			name:        "mcp_jaztools_gmail_read_message",
-			description: "Read one Gmail email message by ID, returning headers, labels, attachments, and body text.",
+			name:        "mcp_jaztools_gmail_read_thread",
+			description: "Read a Gmail conversation thread by message ID or thread ID before drafting a reply.",
 			parameters: tools.ObjectSchema(map[string]any{
-				"id": tools.StringSchema("Gmail message id returned by gmail_search_messages."),
+				"id": tools.StringSchema("Gmail message id or thread id."),
 			}, []string{"id"}),
 		}.Definition(),
 		namedTool{
-			name:        "mcp_jaztools_gmail_search_messages",
-			description: "Search Gmail email messages and return bounded metadata, snippets, labels, and message IDs.",
+			name:        "mcp_jaztools_gmail_search_threads",
+			description: "Search Gmail conversation threads and return thread IDs with summarized message metadata.",
 			parameters: tools.ObjectSchema(map[string]any{
-				"query": tools.StringSchema("Gmail email search query."),
+				"query": tools.StringSchema("Gmail thread search query."),
 			}, nil),
 		}.Definition(),
 	}, nil, func(name string) bool { return strings.HasPrefix(name, "mcp_") })
@@ -320,7 +320,7 @@ func TestToolSearchFindsGmailToolsByEmailQuery(t *testing.T) {
 	if err := json.Unmarshal([]byte(result.Content), &output); err != nil {
 		t.Fatal(err)
 	}
-	if len(output.Tools) != 1 || output.Tools[0]["name"] != "mcp_jaztools_gmail_read_message" {
+	if len(output.Tools) != 1 || output.Tools[0]["name"] != "mcp_jaztools_gmail_read_thread" {
 		t.Fatalf("email search returned %#v", output.Tools)
 	}
 }

@@ -13,16 +13,21 @@ const (
 
 	RemoteMCPURL = "https://gmailmcp.googleapis.com/mcp/v1"
 
-	ToolGetProfile     = "gmail_get_profile"
-	ToolSearchMessages = "gmail_search_messages"
-	ToolReadMessage    = "gmail_read_message"
+	ToolGetProfile    = "gmail_get_profile"
+	ToolSearchThreads = "gmail_search_threads"
+	ToolReadThread    = "gmail_read_thread"
+	ToolCreateDraft   = "gmail_create_draft"
+	ToolCreateReply   = "gmail_create_reply_draft"
+	ToolSendDraft     = "gmail_send_draft"
+	ToolUpdateDraft   = "gmail_update_draft"
+	ToolListDrafts    = "gmail_list_drafts"
 )
 
 func Plugin() integrations.Plugin {
 	return integrations.Plugin{
 		ID:          "gmail",
 		Name:        "Gmail",
-		Description: "Let agents verify Gmail email access, search email message summaries, and read selected messages.",
+		Description: "Search Gmail threads, draft replies, and send approved drafts from connected accounts.",
 		Provider: integrations.Provider{
 			ID:   ProviderID,
 			Name: ProviderName,
@@ -34,12 +39,12 @@ func Plugin() integrations.Plugin {
 		},
 		Auth: []integrations.AuthOption{{
 			Kind:        integrations.AuthKindOAuth,
-			Description: "Jaz-managed Google OAuth for Gmail read tools.",
+			Description: "Jaz-managed Google OAuth for Gmail tools.",
 			Scopes:      OAuthScopes,
 		}, {
 			Kind:        integrations.AuthKindRemoteMCP,
 			Description: "Official Google Gmail MCP server compatibility path.",
-			Scopes:      []string{ScopeReadonly, ScopeCompose},
+			Scopes:      []string{ScopeReadonly, ScopeCompose, ScopeSend},
 		}},
 		Capabilities: []integrations.Capability{
 			integrations.CapabilityAct,
@@ -50,7 +55,7 @@ func Plugin() integrations.Plugin {
 		Skills: []integrations.PluginSkill{{
 			ID:          "gmail",
 			Name:        "Gmail",
-			Description: "General guidance for reading, searching, drafting, sending, and organizing Gmail.",
+			Description: "Guidance for reading threads, drafting replies, and sending approved Gmail drafts.",
 			Status:      "planned",
 		}, {
 			ID:          "gmail-inbox-triage",
@@ -79,9 +84,14 @@ func Plugin() integrations.Plugin {
 
 func tools() []integrations.PluginTool {
 	return []integrations.PluginTool{
-		tool(ToolGetProfile, "Return one connected Gmail email account's live profile totals.", integrations.ActionRiskRead, ScopeModify),
-		tool(ToolSearchMessages, "Search one connected Gmail email account and return bounded metadata, snippets, labels, and message IDs.", integrations.ActionRiskRead, ScopeModify),
-		tool(ToolReadMessage, "Read one Gmail email message from one connected account by ID with headers, labels, body text or HTML, and attachment metadata.", integrations.ActionRiskRead, ScopeModify),
+		tool(ToolGetProfile, "Show profile totals for one connected Gmail account.", integrations.ActionRiskRead, ScopeModify),
+		tool(ToolSearchThreads, "Search Gmail conversation threads and return thread IDs with summarized message metadata.", integrations.ActionRiskRead, ScopeModify),
+		tool(ToolReadThread, "Read a Gmail conversation thread by message ID or thread ID with bounded message bodies.", integrations.ActionRiskRead, ScopeModify),
+		tool(ToolCreateDraft, "Create a new plain text Gmail draft to specified recipients.", integrations.ActionRiskWrite, ScopeModify),
+		tool(ToolCreateReply, "Create a reply or reply-all draft for an existing Gmail message or thread.", integrations.ActionRiskWrite, ScopeModify),
+		tool(ToolSendDraft, "Send an existing Gmail draft after review or explicit approval.", integrations.ActionRiskWrite, ScopeModify),
+		tool(ToolUpdateDraft, "Update an existing Gmail draft in place while preserving omitted fields.", integrations.ActionRiskWrite, ScopeModify),
+		tool(ToolListDrafts, "List Gmail drafts with summarized message metadata.", integrations.ActionRiskRead, ScopeModify),
 	}
 }
 

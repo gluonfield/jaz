@@ -232,7 +232,7 @@ $HOST {
     }
     handle {
         root * /opt/jaz/frontend/dist-web
-        try_files {path} /index.html
+        try_files {path} /index.html    # SPA fallback — serve index.html for client routes (/new, /sessions/…)
         file_server
     }
 }
@@ -241,6 +241,8 @@ sudo systemctl reload caddy          # or run directly: sudo caddy run --config 
 ```
 
 Caddy provisions the cert on first start (needs `:80`/`:443` reachable) and upgrades websocket/SSE streams automatically.
+
+Two lines in that `handle` block are load-bearing. **`try_files {path} /index.html` is the single-page-app fallback:** routes like `/new` or `/sessions/<id>` are client-side only — no such file exists on disk — so opening one directly or hard-refreshing it would 404 without this. `try_files` serves the real asset when the path matches a file and otherwise rewrites the request to `index.html`, letting the app's router resolve the route in the browser. It must come **before** `file_server`. And the `@api` block must stay **above** the web `handle` so `/v1/*` and `/health` reach the backend instead of falling through to `index.html`. Verify with `curl -sI https://$HOST/new | head -1` — it should report `200` and `Content-Type: text/html`, not `404`. The same fallback is required on any static host that serves the web build (nginx: `try_files $uri /index.html;`). Hosts that read a `_redirects` file — Cloudflare Pages, Netlify — are already covered: the build ships one at the deploy root (`frontend/src/renderer/public/_redirects` → `dist-web/_redirects`) with `/*  /index.html  200`.
 
 **5. Verify and connect.**
 

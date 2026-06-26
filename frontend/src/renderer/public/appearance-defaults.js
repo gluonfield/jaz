@@ -14,6 +14,13 @@ window.__JAZ_APPEARANCE_DEFAULTS__ = {
   // inlineDiffs: false,           // expand agent file diffs in the transcript
   // inlineShellCommands: false,   // expand agent shell commands in the transcript
 
+  // New-thread composer pickers (default false = shown). The agent picker
+  // hides itself when only one agent is connected.
+  // composer: {
+  //   hideModelPicker: false,
+  //   hideProjectPicker: false,
+  // },
+
   // Default color scheme for light + dark. `preset` names a built-in (jaz,
   // catppuccin, github, gruvbox, rose-pine, solarized, nord, tokyo-night,
   // everforest, one); the per-mode blocks override individual colors on top.

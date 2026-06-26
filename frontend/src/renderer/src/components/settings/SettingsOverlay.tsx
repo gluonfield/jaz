@@ -22,18 +22,19 @@ import { UsageSettings } from './UsageSettings'
 
 export function SettingsOverlay({
   open,
-  section: target,
+  section,
+  onSectionChange,
   onClose,
   onOpenConnect,
 }: {
   open: boolean
   section?: SettingsSection
+  onSectionChange: (section: SettingsSection) => void
   onClose: () => void
   onOpenConnect: () => void
 }) {
   const reduce = useReducedMotion()
   const isMobile = useIsMobile()
-  const [section, setSection] = useState<SettingsSection>('general')
   const [query, setQuery] = useState('')
   // Phone: the nav is a full-screen drawer over the content rather than a fixed
   // column. It opens first (so a section is picked), then dismisses to reveal it.
@@ -59,12 +60,6 @@ export function SettingsOverlay({
       previouslyFocused?.focus?.()
     }
   }, [open, onClose])
-
-  // Jump to the section a caller asked for (e.g. a command-palette entry). With
-  // no target (the sidebar button), reopening keeps the last-viewed section.
-  useEffect(() => {
-    if (open && target) setSection(target)
-  }, [open, target])
 
   const q = query.trim().toLowerCase()
   const items = SETTINGS_SECTIONS.filter((item) => !q || item.label.toLowerCase().includes(q))
@@ -139,7 +134,7 @@ export function SettingsOverlay({
                     key={item.id}
                     type="button"
                     onClick={() => {
-                      setSection(item.id)
+                      onSectionChange(item.id)
                       if (isMobile) setNavOpen(false)
                     }}
                     className={`flex items-center gap-2 rounded-full px-2.5 py-1.5 text-left text-[13px] transition-colors duration-150 max-sm:gap-2.5 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px] ${
@@ -176,7 +171,7 @@ export function SettingsOverlay({
             <div className="min-h-0 flex-1 overflow-hidden">
               <AnimatePresence initial={false} mode="wait">
                 <motion.div
-                  key={section}
+                  key={current.id}
                   className="h-full"
                   initial={{ opacity: 0, y: 4 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -184,11 +179,11 @@ export function SettingsOverlay({
                   transition={{ duration: 0.14, ease: 'easeOut' }}
                 >
                   {current.fullHeight ? (
-                    <SectionContent section={section} onNavigate={setSection} />
+                    <SectionContent section={current.id} onNavigate={onSectionChange} />
                   ) : (
                     <div className="h-full overflow-y-auto">
                       <div className="mx-auto max-w-[760px] px-10 pb-12 max-sm:px-4">
-                        <SectionContent section={section} onNavigate={setSection} />
+                        <SectionContent section={current.id} onNavigate={onSectionChange} />
                       </div>
                     </div>
                   )}

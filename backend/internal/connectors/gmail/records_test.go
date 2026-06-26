@@ -44,6 +44,32 @@ func TestMessageRecordPreservesGmailMessage(t *testing.T) {
 	}
 }
 
+func TestMessageContentRecordPreservesBody(t *testing.T) {
+	occurred := time.Date(2026, 6, 25, 9, 0, 0, 0, time.UTC)
+	record, err := MessageContentRecord(integrations.Connection{
+		ID:        "conn_1",
+		AccountID: "augustinas@example.com",
+	}, MessageContent{
+		Message: Message{
+			ID:           "msg_1",
+			ThreadID:     "thread_1",
+			Subject:      "Hello",
+			InternalDate: occurred,
+		},
+		BodyText: "full body",
+	}, occurred.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw MessageContent
+	if err := json.Unmarshal(record.Raw, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if raw.Message.ID != "msg_1" || raw.BodyText != "full body" {
+		t.Fatalf("raw = %#v", raw)
+	}
+}
+
 func TestMessageRecordRejectsMissingID(t *testing.T) {
 	_, err := MessageRecord(integrations.Connection{}, Message{}, time.Now())
 	if err == nil {

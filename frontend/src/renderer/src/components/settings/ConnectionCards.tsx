@@ -1,9 +1,9 @@
-import { Clock3, Loader2, Plug, Plus, Unplug } from 'lucide-react'
+import { ChevronRight, Loader2, Unplug } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/Button'
 import type { IntegrationConnectionAccount, IntegrationPlugin } from '@/lib/api/types'
 import { SettingsCard } from './SettingsCard'
-import { accountAddress, pluginActionLabel } from './connectionFormatting'
+import { accountAddress } from './connectionFormatting'
 import { PluginIcon } from './ConnectionPluginVisuals'
 
 export function ConnectionSection({
@@ -53,33 +53,25 @@ export function ExistingConnectionCard({
 
 export function ConnectionPluginCard({
   plugin,
-  connecting,
-  onConnect,
+  onOpen,
 }: {
   plugin: IntegrationPlugin
-  connecting: boolean
-  onConnect: () => void
+  onOpen: () => void
 }) {
-  const available = plugin.implementation.status === 'available'
-  const connected = plugin.connection?.status === 'connected'
-  const Icon = connecting ? Loader2 : available && connected && plugin.multi_account ? Plus : available ? Plug : Clock3
   const statusDetail = connectionStatusDetail(plugin)
 
   return (
-    <SettingsCard className="grid h-full grid-cols-1 gap-3 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group grid h-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-card bg-surface px-3 py-3 text-left transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+    >
       <ConnectionSummary plugin={plugin} title={plugin.name} detail={statusDetail || plugin.description} />
-      <Button
-        variant="secondary"
-        size="sm"
-        disabled={!available || connecting}
-        onClick={onConnect}
-        title={statusDetail}
-        className="sm:justify-self-end"
-      >
-        <Icon size={13} className={connecting ? 'animate-spin' : undefined} />
-        {pluginActionLabel(plugin, connecting)}
-      </Button>
-    </SettingsCard>
+      <ChevronRight
+        size={14}
+        className="shrink-0 text-ink-3 transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-ink-2"
+      />
+    </button>
   )
 }
 

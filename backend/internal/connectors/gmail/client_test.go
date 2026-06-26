@@ -3,10 +3,13 @@ package gmail
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
 func TestAPIClientProfile(t *testing.T) {
@@ -64,30 +67,276 @@ func TestAPIClientNormalizesDisabledAPIError(t *testing.T) {
 	}
 }
 
-func TestAPIClientSearchMessages(t *testing.T) {
+func TestAPIClientSearchAndReadThreads(t *testing.T) {
+	body := base64.RawURLEncoding.EncodeToString([]byte("Thread body"))
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/gmail/v1/users/me/messages":
+		case "/gmail/v1/users/me/threads":
 			if r.URL.Query().Get("q") != "from:alice" || r.URL.Query().Get("maxResults") != "2" {
 				t.Fatalf("query = %#v", r.URL.Query())
 			}
-			_, _ = w.Write([]byte(`{"messages":[{"id":"m1","threadId":"t1"}],"resultSizeEstimate":1}`))
+			_, _ = w.Write([]byte(`{"threads":[{"id":"t1"}],"resultSizeEstimate":1}`))
+		case "/gmail/v1/users/me/threads/t1":
+			switch r.URL.Query().Get("format") {
+			case "metadata":
+				_, _ = w.Write([]byte(`{
+					"id":"t1",
+					"historyId":"h1",
+					"messages":[{
+						"id":"m1",
+						"threadId":"t1",
+						"payload":{"headers":[
+							{"name":"Subject","value":"Hello"},
+							{"name":"Message-ID","value":"<m1@example.com>"},
+							{"name":"References","value":"<root@example.com>"}
+						]}
+					}]
+				}`))
+			case "full":
+				_, _ = w.Write([]byte(`{
+					"id":"t1",
+					"historyId":"h1",
+					"messages":[{
+						"id":"m1",
+						"threadId":"t1",
+						"payload":{
+							"headers":[{"name":"Subject","value":"Hello"}],
+							"parts":[{"mimeType":"text/plain","body":{"data":"` + body + `"}}]
+						}
+					}]
+				}`))
+			default:
+				t.Fatalf("thread format = %s", r.URL.Query().Get("format"))
+			}
 		case "/gmail/v1/users/me/messages/m1":
 			if r.URL.Query().Get("format") != "metadata" {
-				t.Fatalf("format = %s", r.URL.Query().Get("format"))
+				t.Fatalf("message format = %s", r.URL.Query().Get("format"))
+			}
+			_, _ = w.Write([]byte(`{"id":"m1","threadId":"t1","payload":{"headers":[{"name":"Subject","value":"Hello"}]}}`))
+		default:
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := APIClient{HTTP: server.Client(), BaseURL: server.URL}
+	search, err := client.SearchThreads(context.Background(), SearchThreadsRequest{Query: "from:alice", MaxResults: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(search.Threads) != 1 || search.Threads[0].ID != "t1" || search.Threads[0].Messages[0].MessageID != "<m1@example.com>" || search.Threads[0].Messages[0].References != "<root@example.com>" {
+		t.Fatalf("search = %#v", search)
+	}
+	thread, err := client.ReadThread(context.Background(), ReadThreadRequest{ID: "m1", IDType: IDTypeMessage, MaxMessages: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if thread.ID != "t1" || len(thread.Messages) != 1 || thread.Messages[0].BodyText != "Thread body" {
+		t.Fatalf("thread = %#v", thread)
+	}
+}
+
+func TestAPIClientReadThreadRejectsUnknownIDType(t *testing.T) {
+	_, err := (APIClient{}).ReadThread(context.Background(), ReadThreadRequest{ID: "m1", IDType: IDType("email")})
+	if err == nil || !strings.Contains(err.Error(), "id type") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestAPIClientObserveBackfillsFullMessages(t *testing.T) {
+	body := base64.RawURLEncoding.EncodeToString([]byte("Historical body"))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/gmail/v1/users/me/messages":
+			if r.URL.Query().Get("maxResults") != "25" {
+				t.Fatalf("query = %#v", r.URL.Query())
+			}
+			_, _ = w.Write([]byte(`{"messages":[{"id":"m1","threadId":"t1"}]}`))
+		case "/gmail/v1/users/me/messages/m1":
+			if r.URL.Query().Get("format") != "full" {
+				t.Fatalf("message format = %s", r.URL.Query().Get("format"))
 			}
 			_, _ = w.Write([]byte(`{
 				"id":"m1",
 				"threadId":"t1",
-				"historyId":"h1",
-				"snippet":"Snippet text",
-				"labelIds":["INBOX","UNREAD"],
-				"internalDate":"1710000000000",
-				"payload":{"headers":[
-					{"name":"Subject","value":"Hello"},
-					{"name":"From","value":"Alice <alice@example.com>"},
-					{"name":"To","value":"Bob <bob@example.com>"}
-				]}
+				"internalDate":"1782387600000",
+				"payload":{
+					"headers":[
+						{"name":"Subject","value":"Historical"},
+						{"name":"From","value":"Alice <alice@example.com>"}
+					],
+					"parts":[{"mimeType":"text/plain","body":{"data":"` + body + `"}}]
+				}
+			}`))
+		case "/gmail/v1/users/me/profile":
+			_, _ = w.Write([]byte(`{"emailAddress":"augustinas@example.com","historyId":"h2"}`))
+		default:
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	result, err := (APIClient{HTTP: server.Client(), BaseURL: server.URL}).Observe(context.Background(), integrations.ObserveRequest{
+		Connection: integrations.Connection{ID: "conn_1", AccountID: "augustinas@example.com"},
+		Mode:       integrations.ObserveModeBackfill,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Records) != 1 || result.Records[0].ExternalID != "m1" {
+		t.Fatalf("records = %#v", result.Records)
+	}
+	var content MessageContent
+	if err := json.Unmarshal(result.Records[0].Raw, &content); err != nil {
+		t.Fatal(err)
+	}
+	if content.Message.Subject != "Historical" || content.BodyText != "Historical body" {
+		t.Fatalf("content = %#v", content)
+	}
+	cursor, err := DecodeSyncCursor(result.Cursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cursor.BackfillComplete || cursor.HistoryID != "h2" {
+		t.Fatalf("cursor = %#v", cursor)
+	}
+}
+
+func TestAPIClientObserveIncrementalMessages(t *testing.T) {
+	body := base64.RawURLEncoding.EncodeToString([]byte("New body"))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/gmail/v1/users/me/history":
+			if r.URL.Query().Get("startHistoryId") != "h1" || r.URL.Query().Get("historyTypes") != "messageAdded" {
+				t.Fatalf("query = %#v", r.URL.Query())
+			}
+			_, _ = w.Write([]byte(`{"historyId":"h2","history":[{"messagesAdded":[{"message":{"id":"m2","threadId":"t1"}}]}]}`))
+		case "/gmail/v1/users/me/messages/m2":
+			_, _ = w.Write([]byte(`{
+				"id":"m2",
+				"threadId":"t1",
+				"payload":{
+					"headers":[{"name":"Subject","value":"New"}],
+					"parts":[{"mimeType":"text/plain","body":{"data":"` + body + `"}}]
+				}
+			}`))
+		default:
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	cursor, err := EncodeSyncCursor(SyncCursor{BackfillComplete: true, HistoryID: "h1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := (APIClient{HTTP: server.Client(), BaseURL: server.URL}).Observe(context.Background(), integrations.ObserveRequest{
+		Connection: integrations.Connection{ID: "conn_1", AccountID: "augustinas@example.com"},
+		Cursor:     cursor,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Records) != 1 || result.Records[0].ExternalID != "m2" {
+		t.Fatalf("records = %#v", result.Records)
+	}
+	next, err := DecodeSyncCursor(result.Cursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.HistoryID != "h2" {
+		t.Fatalf("cursor = %#v", next)
+	}
+}
+
+func TestAPIClientDraftWorkflow(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/gmail/v1/users/me/drafts":
+			switch r.Method {
+			case http.MethodPost:
+				message := decodedDraftMessage(t, r)
+				for _, want := range []string{
+					"To: \"Alice\" <alice@example.com>",
+					"Subject: Hello",
+					"In-Reply-To: <m1@example.com>",
+					"References: <root@example.com> <m1@example.com>",
+					"Plain body",
+				} {
+					if !strings.Contains(message, want) {
+						t.Fatalf("created draft missing %q:\n%s", want, message)
+					}
+				}
+				_, _ = w.Write([]byte(`{
+					"id":"draft1",
+					"message":{"id":"draft-message","threadId":"thread1","payload":{"headers":[{"name":"Subject","value":"Hello"}]}}
+				}`))
+			case http.MethodGet:
+				if r.URL.Query().Get("q") != "subject:Hello" || r.URL.Query().Get("maxResults") != "2" {
+					t.Fatalf("query = %#v", r.URL.Query())
+				}
+				_, _ = w.Write([]byte(`{"drafts":[{"id":"draft1"}],"resultSizeEstimate":1}`))
+			default:
+				t.Fatalf("method = %s", r.Method)
+			}
+		case "/gmail/v1/users/me/drafts/draft1":
+			switch r.Method {
+			case http.MethodGet:
+				if r.URL.Query().Get("format") == "full" {
+					body := base64.RawURLEncoding.EncodeToString([]byte("Old body"))
+					_, _ = w.Write([]byte(`{
+						"id":"draft1",
+						"message":{
+							"id":"draft-message",
+							"threadId":"thread1",
+							"payload":{
+								"headers":[
+									{"name":"Subject","value":"Old subject"},
+									{"name":"To","value":"Alice <alice@example.com>"},
+									{"name":"Message-ID","value":"<draft@example.com>"}
+								],
+								"parts":[{"mimeType":"text/plain","body":{"data":"` + body + `"}}]
+							}
+						}
+					}`))
+					return
+				}
+				if r.URL.Query().Get("format") != "metadata" {
+					t.Fatalf("format = %s", r.URL.Query().Get("format"))
+				}
+				_, _ = w.Write([]byte(`{
+					"id":"draft1",
+					"message":{"id":"draft-message","threadId":"thread1","payload":{"headers":[{"name":"Subject","value":"Hello"}]}}
+				}`))
+			case http.MethodPut:
+				message := decodedDraftMessage(t, r)
+				if !strings.Contains(message, `To: "Alice" <alice@example.com>`) || !strings.Contains(message, "Subject: Old subject") || !strings.Contains(message, "New body") {
+					t.Fatalf("updated draft = %s", message)
+				}
+				_, _ = w.Write([]byte(`{
+					"id":"draft1",
+					"message":{"id":"draft-message-2","threadId":"thread1","payload":{"headers":[{"name":"Subject","value":"Old subject"}]}}
+				}`))
+			default:
+				t.Fatalf("method = %s", r.Method)
+			}
+		case "/gmail/v1/users/me/drafts/send":
+			if r.Method != http.MethodPost {
+				t.Fatalf("method = %s", r.Method)
+			}
+			var body struct {
+				ID string `json:"id"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			if body.ID != "draft1" {
+				t.Fatalf("send draft id = %q", body.ID)
+			}
+			_, _ = w.Write([]byte(`{
+				"id":"sent1",
+				"threadId":"thread1",
+				"labelIds":["SENT"],
+				"payload":{"headers":[{"name":"Subject","value":"Old subject"}]}
 			}`))
 		default:
 			t.Fatalf("path = %s", r.URL.Path)
@@ -95,61 +344,83 @@ func TestAPIClientSearchMessages(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result, err := (APIClient{HTTP: server.Client(), BaseURL: server.URL}).SearchMessages(context.Background(), SearchMessagesRequest{
-		Query:      "from:alice",
-		MaxResults: 2,
+	client := APIClient{HTTP: server.Client(), BaseURL: server.URL}
+	draft, err := client.CreateDraft(context.Background(), ComposeMessageRequest{
+		ThreadID:   "thread1",
+		To:         []string{"Alice <alice@example.com>"},
+		Subject:    "Hello",
+		BodyText:   "Plain body",
+		InReplyTo:  "<m1@example.com>",
+		References: "<root@example.com>\n<m1@example.com>",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Messages) != 1 {
-		t.Fatalf("messages = %#v", result.Messages)
+	if draft.ID != "draft1" || draft.Message.ThreadID != "thread1" || draft.Message.Subject != "Hello" {
+		t.Fatalf("draft = %#v", draft)
 	}
-	message := result.Messages[0]
-	if message.ID != "m1" || message.ThreadID != "t1" || message.HistoryID != "h1" || message.Subject != "Hello" || message.Snippet != "Snippet text" {
-		t.Fatalf("message = %#v", message)
-	}
-	if len(message.From) != 1 || message.From[0].Name != "Alice" || message.From[0].Email != "alice@example.com" {
-		t.Fatalf("from = %#v", message.From)
-	}
-	if len(message.LabelIDs) != 2 || message.InternalDate.IsZero() {
-		t.Fatalf("labels/date = %#v %v", message.LabelIDs, message.InternalDate)
-	}
-}
-
-func TestAPIClientReadMessage(t *testing.T) {
-	body := base64.RawURLEncoding.EncodeToString([]byte("Plain body"))
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/gmail/v1/users/me/messages/m1" {
-			t.Fatalf("path = %s", r.URL.Path)
-		}
-		if r.URL.Query().Get("format") != "full" {
-			t.Fatalf("format = %s", r.URL.Query().Get("format"))
-		}
-		_, _ = w.Write([]byte(`{
-			"id":"m1",
-			"threadId":"t1",
-			"snippet":"Snippet text",
-			"payload":{
-				"mimeType":"multipart/mixed",
-				"headers":[{"name":"Subject","value":"Hello"}],
-				"parts":[
-					{"mimeType":"text/plain","body":{"data":"` + body + `"}},
-					{"mimeType":"application/pdf","filename":"invoice.pdf","body":{"attachmentId":"att1","size":123}}
-				]
-			}
-		}`))
-	}))
-	defer server.Close()
-
-	content, err := (APIClient{HTTP: server.Client(), BaseURL: server.URL}).ReadMessage(context.Background(), "m1")
+	drafts, err := client.ListDrafts(context.Background(), ListDraftsRequest{Query: "subject:Hello", MaxResults: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if content.Message.ID != "m1" || content.Message.Subject != "Hello" || content.BodyText != "Plain body" {
-		t.Fatalf("content = %#v", content)
+	if len(drafts.Drafts) != 1 || drafts.Drafts[0].ID != "draft1" {
+		t.Fatalf("drafts = %#v", drafts)
 	}
-	if len(content.Message.Attachments) != 1 || content.Message.Attachments[0].ID != "att1" || content.Message.Attachments[0].FileName != "invoice.pdf" || content.Message.Attachments[0].Size != 123 {
-		t.Fatalf("attachments = %#v", content.Message.Attachments)
+	current, err := client.GetDraft(context.Background(), "draft1")
+	if err != nil {
+		t.Fatal(err)
 	}
+	if current.BodyText != "Old body" || current.Draft.Message.Subject != "Old subject" {
+		t.Fatalf("current draft = %#v", current)
+	}
+	updated, err := client.UpdateDraft(context.Background(), "draft1", ComposeMessageRequest{
+		ThreadID: "thread1",
+		To:       []string{"Alice <alice@example.com>"},
+		Subject:  "Old subject",
+		BodyText: "New body",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.ID != "draft1" || updated.Message.ID != "draft-message-2" {
+		t.Fatalf("updated = %#v", updated)
+	}
+	sent, err := client.SendDraft(context.Background(), "draft1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sent.ID != "sent1" || sent.ThreadID != "thread1" || sent.Subject != "Old subject" {
+		t.Fatalf("sent = %#v", sent)
+	}
+}
+
+func TestAPIClientUpdateDraftRequiresID(t *testing.T) {
+	_, err := (APIClient{}).UpdateDraft(context.Background(), "", ComposeMessageRequest{
+		To:       []string{"alice@example.com"},
+		BodyText: "Plain body",
+	})
+	if err == nil || !strings.Contains(err.Error(), "draft id") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func decodedDraftMessage(t *testing.T, r *http.Request) string {
+	t.Helper()
+	var body struct {
+		Message struct {
+			Raw      string `json:"raw"`
+			ThreadID string `json:"threadId"`
+		} `json:"message"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Message.ThreadID != "thread1" {
+		t.Fatalf("thread id = %q", body.Message.ThreadID)
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(body.Message.Raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
 }

@@ -19,8 +19,13 @@ type agentSettingsResponse struct {
 	Providers  []settingsModelProvider                   `json:"providers"`
 	ACP        map[string]agentsettings.ACPAgentDefaults `json:"acp"`
 	ACPAuth    map[string]acpAuthStatusResponse          `json:"acp_auth"`
-	ACPOptions map[string]acp.AgentOptions               `json:"acp_options"`
+	ACPOptions map[string]agentOptionResponse            `json:"acp_options"`
 	Agents     []string                                  `json:"agents"`
+}
+
+type agentOptionResponse struct {
+	acp.AgentOptions
+	ModelProviders []settingsModelProvider `json:"model_providers,omitempty"`
 }
 
 type settingsModelProvider struct {
@@ -175,25 +180,72 @@ func (s *Server) acpAgentAuthStatuses(defaults agentsettings.AgentDefaults) map[
 	return out
 }
 
-func acpOptions(catalog acp.AgentCatalog, agentNames []string, providers []settingsModelProvider) map[string]acp.AgentOptions {
-	options := make(map[string]acp.AgentOptions, len(agentNames))
+func acpOptions(catalog acp.AgentCatalog, agentNames []string, providers []settingsModelProvider) map[string]agentOptionResponse {
+	options := make(map[string]agentOptionResponse, len(agentNames))
 	for _, name := range agentNames {
 		cfg, _ := catalog.Agent(name)
 		option := acp.AgentOptionsForConfig(name, cfg)
 		if cfg.UsesModelProvider() {
-			option.ModelProviderIDs = compatibleModelProviderIDs(cfg.ModelProviderCapability, providers)
+			modelProviders := compatibleModelProviders(name, cfg.ModelProviderCapability, providers)
+			option.ModelProviderIDs = modelProviderIDs(modelProviders)
+			options[name] = agentOptionResponse{AgentOptions: option, ModelProviders: modelProviders}
+			continue
 		}
-		options[name] = option
+		options[name] = agentOptionResponse{AgentOptions: option}
 	}
 	return options
 }
 
-func compatibleModelProviderIDs(capability string, providers []settingsModelProvider) []string {
-	ids := []string{}
+func compatibleModelProviders(agent, capability string, providers []settingsModelProvider) []settingsModelProvider {
+	if acp.CanonicalAgentName(agent) == acp.AgentCodex && capability == provider.CapabilityCodex {
+		return codexModelProviders(providers)
+	}
+	out := []settingsModelProvider{}
 	for _, modelProvider := range providers {
 		if modelProvider.SupportsCapability(capability) {
-			ids = append(ids, modelProvider.ID)
+			out = append(out, modelProvider)
 		}
+	}
+	return out
+}
+
+func codexModelProviders(providers []settingsModelProvider) []settingsModelProvider {
+	out := []settingsModelProvider{}
+	openAI, hasOpenAI := modelProviderByID(providers, provider.ProviderOpenAI)
+	if hasOpenAI {
+		native := openAI
+		native.Label = "OpenAI OAuth"
+		out = append(out, native)
+
+		apiKey := openAI
+		apiKey.ID = acp.CodexProviderOpenAIAPIKey
+		apiKey.Label = "OpenAI"
+		out = append(out, apiKey)
+	}
+	for _, modelProvider := range providers {
+		if modelProvider.ID == provider.ProviderOpenAI {
+			continue
+		}
+		if modelProvider.SupportsCapability(provider.CapabilityCodex) {
+			out = append(out, modelProvider)
+		}
+	}
+	return out
+}
+
+func modelProviderByID(providers []settingsModelProvider, id string) (settingsModelProvider, bool) {
+	for _, modelProvider := range providers {
+		if modelProvider.ID == id {
+			return modelProvider, true
+		}
+	}
+	return settingsModelProvider{}, false
+}
+
+func modelProviderIDs(providers []settingsModelProvider) []string {
+	ids := make([]string, 0, len(providers))
+	for _, modelProvider := range providers {
+		ids = append(ids, modelProvider.ID)
 	}
 	return ids
 }

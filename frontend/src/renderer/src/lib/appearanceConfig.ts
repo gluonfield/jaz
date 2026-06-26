@@ -15,6 +15,11 @@ export interface ColorSchemeConfig {
   contrast?: number
 }
 
+export interface ComposerConfig {
+  hideModelPicker?: boolean
+  hideProjectPicker?: boolean
+}
+
 export interface AppearanceConfig {
   theme?: 'light' | 'dark' | 'system'
   uiFont?: string
@@ -24,6 +29,7 @@ export interface AppearanceConfig {
   wideLayout?: boolean
   inlineDiffs?: boolean
   inlineShellCommands?: boolean
+  composer?: ComposerConfig
   // Default color scheme. `preset` names a built-in (e.g. 'catppuccin'); the
   // per-mode blocks override individual colors on top of it (or of the default).
   scheme?: {
@@ -41,4 +47,8 @@ declare global {
 
 export function appearanceConfig(): AppearanceConfig {
   return window.__JAZ_APPEARANCE_DEFAULTS__ ?? {}
+}
+
+export function composerConfig(): ComposerConfig {
+  return appearanceConfig().composer ?? {}
 }
