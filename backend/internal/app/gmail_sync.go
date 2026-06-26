@@ -10,8 +10,8 @@ import (
 	"go.uber.org/fx"
 )
 
-func NewGmailSyncer(store *sqlitestore.Store) integrationingest.GmailSyncer {
-	return integrationingest.GmailSyncer{Store: store}
+func NewGmailSyncer(store *sqlitestore.Store, raw integrationingest.RawWriter) integrationingest.GmailSyncer {
+	return integrationingest.GmailSyncer{Store: store, Writer: raw}
 }
 
 func StartGmailSync(lc fx.Lifecycle, syncer integrationingest.GmailSyncer, logger *log.Logger) {

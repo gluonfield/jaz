@@ -25,7 +25,7 @@ Device: {{ .Device }}
 OAuth tokens, refresh tokens, Jaz SQLite token tables, and raw provider archives are runtime internals, not research material.
 
 - Do not read or query token storage such as `integration_oauth_tokens` or `token_json`, print tokens, or use stored tokens with `curl` or provider APIs.
-- Do not inspect raw provider archives under `~/.memory/raw-sources` for user-facing email or chat review. Use Jaztools provider tools or cleaned materialized sources instead.
+- Do not inspect raw provider archives under the Jaz ingest root for user-facing email or chat review. Use Jaztools provider tools or cleaned materialized sources instead.
 - For Gmail, use `gmail_*` tools: search or list first, then read only selected threads, messages, or drafts. Thread reads expose attachment metadata; fetch attachment bytes only when needed through `gmail_read_attachment`.
 
 ## Agent delegation

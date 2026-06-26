@@ -38,7 +38,7 @@ func Plugin() integrations.Plugin {
 		Tools:        chatTools(),
 		Skills:       telegramSkills(),
 		ConnectionNotes: []string{
-			"Jaz stores raw Telegram contacts and messages under ~/.memory/raw-sources.",
+			"Jaz stores raw Telegram contacts and messages under the configured Jaz ingest root.",
 			"Message sends are direct actions from the selected connected account.",
 		},
 		Implementation: integrations.Implementation{

@@ -30,14 +30,6 @@ type RawAttachment struct {
 	Data         []byte
 }
 
-func DefaultRoot() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return filepath.Join(".memory", "raw-sources")
-	}
-	return filepath.Join(home, ".memory", "raw-sources")
-}
-
 func (w RawWriter) WriteRecords(ctx context.Context, records []integrations.Record) error {
 	for _, record := range records {
 		if err := ctx.Err(); err != nil {
@@ -54,7 +46,10 @@ func (w RawWriter) WriteAttachment(ctx context.Context, attachment RawAttachment
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	root := w.root()
+	root, err := w.root()
+	if err != nil {
+		return "", err
+	}
 	path, err := RawAttachmentPath(root, attachment)
 	if err != nil {
 		return "", err
@@ -72,7 +67,10 @@ func (w RawWriter) WriteAttachment(ctx context.Context, attachment RawAttachment
 }
 
 func (w RawWriter) writeRecord(record integrations.Record) error {
-	root := w.root()
+	root, err := w.root()
+	if err != nil {
+		return err
+	}
 	record = w.prepare(record)
 	path, err := RawRecordPath(root, record)
 	if err != nil {
@@ -102,11 +100,11 @@ func (w RawWriter) writeRecord(record integrations.Record) error {
 	return writer.Flush()
 }
 
-func (w RawWriter) root() string {
+func (w RawWriter) root() (string, error) {
 	if root := strings.TrimSpace(w.Root); root != "" {
-		return root
+		return root, nil
 	}
-	return DefaultRoot()
+	return "", fmt.Errorf("raw writer root is required")
 }
 
 func (w RawWriter) prepare(record integrations.Record) integrations.Record {
@@ -142,7 +140,7 @@ func recordID(record integrations.Record) string {
 func RawRecordPath(root string, record integrations.Record) (string, error) {
 	root = strings.TrimSpace(root)
 	if root == "" {
-		root = DefaultRoot()
+		return "", fmt.Errorf("raw writer root is required")
 	}
 	provider, err := requiredPathComponent("provider", record.Provider)
 	if err != nil {
@@ -188,7 +186,7 @@ func RawRecordPath(root string, record integrations.Record) (string, error) {
 func RawAttachmentPath(root string, attachment RawAttachment) (string, error) {
 	root = strings.TrimSpace(root)
 	if root == "" {
-		root = DefaultRoot()
+		return "", fmt.Errorf("raw writer root is required")
 	}
 	provider, err := requiredPathComponent("provider", attachment.Provider)
 	if err != nil {

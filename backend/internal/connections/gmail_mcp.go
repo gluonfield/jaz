@@ -17,8 +17,8 @@ type GmailMCPTools struct {
 	attachmentWriter integrationingest.RawWriter
 }
 
-func NewGmailMCPTools(store GmailToolStore) *GmailMCPTools {
-	return &GmailMCPTools{store: store, attachmentWriter: integrationingest.RawWriter{}}
+func NewGmailMCPTools(store GmailToolStore, attachmentWriter integrationingest.RawWriter) *GmailMCPTools {
+	return &GmailMCPTools{store: store, attachmentWriter: attachmentWriter}
 }
 
 func (t *GmailMCPTools) AddTo(server *mcp.Server) {

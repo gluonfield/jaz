@@ -14,10 +14,6 @@ import (
 	"go.uber.org/fx"
 )
 
-func NewIntegrationRawWriter() integrationingest.RawWriter {
-	return integrationingest.RawWriter{}
-}
-
 func NewWhatsAppChatProvider(lc fx.Lifecycle, layout runtimefiles.Layout, store *sqlitestore.Store, raw integrationingest.RawWriter) (ChatProviderOut, error) {
 	provider, err := whatsapp.New(context.Background(), filepath.Join(layout.Connections, "whatsapp"), store, raw)
 	if err != nil {
