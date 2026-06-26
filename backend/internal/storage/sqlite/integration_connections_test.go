@@ -116,3 +116,28 @@ func TestDeleteConnectionDeletesTokenAndConnection(t *testing.T) {
 		t.Fatalf("second delete ok=%v err=%v", ok, err)
 	}
 }
+
+func TestDeleteConnectionKeepsTokenWithoutConnection(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	connectionID := "gmail:token-only"
+	token := integrationoauth.Token{AccessToken: "access", RefreshToken: "refresh"}
+	if err := store.SaveToken(context.Background(), connectionID, token); err != nil {
+		t.Fatal(err)
+	}
+	ok, err := store.DeleteConnection(context.Background(), connectionID)
+	if err != nil || ok {
+		t.Fatalf("delete ok=%v err=%v", ok, err)
+	}
+	loaded, ok, err := store.LoadToken(context.Background(), connectionID)
+	if err != nil || !ok {
+		t.Fatalf("token after missing connection delete ok=%v err=%v", ok, err)
+	}
+	if loaded.AccessToken != token.AccessToken || loaded.RefreshToken != token.RefreshToken {
+		t.Fatalf("token = %#v", loaded)
+	}
+}
