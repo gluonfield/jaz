@@ -1,11 +1,11 @@
 import { useSyncExternalStore } from 'react'
-import { type AppearanceConfig, appearanceConfig } from './appearanceConfig'
+import { type JazDefaults, jazDefaults } from './jazDefaults'
 
 // User-tunable appearance preferences, kept deliberately separate from the
 // light/dark theme (lib/theme.ts). Same mechanics: persisted in localStorage,
 // applied to the document root, mirrored into the pre-paint script in
 // index.html, and synced across sibling Electron windows via the storage event.
-// Build-time defaults from the appearance config file (see appearanceConfig.ts)
+// Build-time defaults from the appearance defaults file (see jazDefaults.ts)
 // layer *under* a user's own choices; with no config, an untouched install is
 // byte-for-byte the stock look.
 export interface AppearanceSettings {
@@ -57,10 +57,10 @@ function cssFontName(name: string): string {
 // Each field's persistence contract in one place: how it reads from the
 // build-time config, decodes from / encodes to localStorage, and normalizes a
 // programmatically-set value. apply() owns the (heterogeneous) DOM side. Adding
-// a field is one entry here plus its DEFAULTS / AppearanceConfig / FOUC counterparts.
+// a field is one entry here plus its DEFAULTS / JazDefaults / FOUC counterparts.
 interface Field<T> {
   storageKey: string
-  fromConfig(cfg: AppearanceConfig): T | undefined
+  fromConfig(cfg: JazDefaults): T | undefined
   decode(raw: string): T
   encode(value: T): string
   normalize(value: T): T
@@ -68,7 +68,7 @@ interface Field<T> {
 
 const boolField = (
   storageKey: string,
-  pick: (cfg: AppearanceConfig) => boolean | undefined,
+  pick: (cfg: JazDefaults) => boolean | undefined,
 ): Field<boolean> => ({
   storageKey,
   fromConfig: pick,
@@ -79,7 +79,7 @@ const boolField = (
 
 const fontField = (
   storageKey: string,
-  pick: (cfg: AppearanceConfig) => string | undefined,
+  pick: (cfg: JazDefaults) => string | undefined,
 ): Field<string> => ({
   storageKey,
   fromConfig: (cfg) => {
@@ -93,7 +93,7 @@ const fontField = (
 
 const numberField = (
   storageKey: string,
-  pick: (cfg: AppearanceConfig) => unknown,
+  pick: (cfg: JazDefaults) => unknown,
   normalize: (value: unknown) => number,
 ): Field<number> => ({
   storageKey,
@@ -119,10 +119,10 @@ const FIELDS: { [K in keyof AppearanceSettings]: Field<AppearanceSettings[K]> } 
 const FIELD_KEYS = Object.keys(FIELDS) as (keyof AppearanceSettings)[]
 
 // The base a client falls back to for any field the user hasn't set: build-time
-// config (appearance-defaults.js) over the hardcoded DEFAULTS. Static — the
+// config (jaz-defaults.js) over the hardcoded DEFAULTS. Static — the
 // config is fixed at build time.
 const BASE_DEFAULTS: AppearanceSettings = (() => {
-  const cfg = appearanceConfig()
+  const cfg = jazDefaults()
   const base = { ...DEFAULTS }
   const seed = <K extends keyof AppearanceSettings>(key: K) => {
     const v = FIELDS[key].fromConfig(cfg)

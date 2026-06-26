@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import { appearanceConfig } from './appearanceConfig'
+import { jazDefaults } from './jazDefaults'
 import { clientRuntime } from './clientRuntime'
 
 // 'system' follows the OS appearance; 'light'/'dark' pin it. Persisted across
@@ -21,7 +21,7 @@ function isThemePref(v: unknown): v is ThemePref {
 // Build-time default theme from the appearance config file; only used when the
 // user hasn't pinned one themselves.
 function configDefaultTheme(): ThemePref {
-  const theme = appearanceConfig().theme
+  const theme = jazDefaults().theme
   return isThemePref(theme) ? theme : 'system'
 }
 

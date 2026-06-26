@@ -5,8 +5,7 @@ export function isPreviewURL(value: string): boolean {
 }
 
 export function shouldPreviewURLByDefault(value: string): boolean {
-  const parsed = previewURL(value)
-  return parsed !== null && isLoopbackHost(parsed.hostname)
+  return isPreviewURL(value)
 }
 
 function previewURL(value: string): URL | null {
@@ -43,7 +42,7 @@ export function resolvePreviewPatterns(configured?: readonly string[]): string[]
   return cleaned.length ? cleaned : [...DEFAULT_PREVIEW_PATTERNS]
 }
 
-function matchesPreviewPattern(value: string, patterns: readonly string[]): boolean {
+export function matchesPreviewPattern(value: string, patterns: readonly string[]): boolean {
   const parsed = previewURL(value)
   if (!parsed) return false
   return patterns.some((pattern) => testPreviewPattern(pattern, parsed.href))

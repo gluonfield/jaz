@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import { appearanceConfig, type ColorSchemeConfig } from './appearanceConfig'
+import { jazDefaults, type ColorSchemeConfig } from './jazDefaults'
 
 // A color scheme is four user-facing inputs per light/dark mode; every other
 // --color-* token (surfaces, ink ramp, borders, primary family) is *derived*
@@ -64,11 +64,11 @@ function mergeScheme(base: ColorScheme, c?: ColorSchemeConfig): ColorScheme {
   }
 }
 
-// The deployment default scheme from the build-time config (appearance-defaults.js):
+// The deployment default scheme from the build-time config (jaz-defaults.js):
 // an optional named preset, then per-mode color overrides, falling back to the
 // Jaz default. The user's own choices layer on top of this.
 const CONFIG_BASE: ModeSchemes = (() => {
-  const cfg = appearanceConfig().scheme
+  const cfg = jazDefaults().scheme
   if (!cfg) return DEFAULT_SCHEME
   const base = (cfg.preset && THEME_PRESETS.find((p) => p.id === cfg.preset)) || DEFAULT_SCHEME
   return { light: mergeScheme(base.light, cfg.light), dark: mergeScheme(base.dark, cfg.dark) }

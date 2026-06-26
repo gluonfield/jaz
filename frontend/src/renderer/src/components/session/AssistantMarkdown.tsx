@@ -1,11 +1,13 @@
 import { CopyToggleIcon } from '@/components/ui/CopyToggleIcon'
 import { useCopyAction } from '@/lib/useCopyAction'
 import { MessageMarkdown } from './MessageMarkdown'
+import { PreviewSuggestions } from './PreviewSuggestion'
 
 export function AssistantMarkdown({ text }: { text: string }) {
   return (
     <div className="flex min-w-0 flex-col items-start gap-1">
       <MessageMarkdown text={text} />
+      <PreviewSuggestions text={text} />
       <AssistantCopyButton text={text} />
     </div>
   )
