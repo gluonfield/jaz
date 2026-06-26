@@ -205,11 +205,18 @@ function isOutcomeAnchor(item: TimelineItem): boolean {
   return item.kind === 'event' && item.event.type === 'artifact'
 }
 
-// Formatted-answer markers that interim progress narration essentially never
-// has: a heading, a table, or display math. Code fences are excluded on purpose
-// — coding agents put them in progress chatter too.
+// Substance markers that separate an answer from a one-line preamble: a heading,
+// a list, a table, display math, or more than one paragraph. The bias is toward
+// showing — interim narration ("Let me check X first") is a single short
+// paragraph and stays folded; anything richer reads as answer and shows.
 function hasAnswerStructure(text: string): boolean {
-  return /(^|\n)\s{0,3}#{1,6}\s/.test(text) || /(^|\n)\s*\|.*\|/.test(text) || /\\\[|\$\$/.test(text)
+  return (
+    /(^|\n)\s{0,3}#{1,6}\s/.test(text) || // heading
+    /(^|\n)\s*([-*+]|\d+\.)\s/.test(text) || // bullet or numbered list
+    /(^|\n)\s*\|.*\|/.test(text) || // table row
+    /\\\[|\$\$/.test(text) || // display math
+    text.trim().includes('\n\n') // multiple paragraphs
+  )
 }
 
 // Split a completed turn into the work that folds under one "Worked for Xs" and
