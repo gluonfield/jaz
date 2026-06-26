@@ -4,7 +4,6 @@ import { Switch } from '@/components/ui/Switch'
 import { FONT_SCALES, useAppearance } from '@/lib/appearance'
 import {
   applyPreset,
-  type ColorScheme,
   type ModeSchemes,
   resetScheme,
   sameScheme,
@@ -12,122 +11,10 @@ import {
   THEME_PRESETS,
   useScheme,
 } from '@/lib/appearanceScheme'
-import { type ThemePref, useTheme } from '@/lib/theme'
 import { FontPicker } from './FontPicker'
 import { SettingsCard } from './SettingsCard'
-
-// A miniature app mock — titlebar bar + a content panel with skeleton lines —
-// painted at the given mode's representative colors. The System card stacks a
-// light mock under a right-half-clipped dark one for the split look.
-type MockColors = { bg: string; panel: string; bar: string }
-const LIGHT_MOCK: MockColors = { bg: '#e8eaef', panel: '#ffffff', bar: '#d0d3da' }
-const DARK_MOCK: MockColors = { bg: '#26282f', panel: '#1a1b21', bar: '#3b3e47' }
-
-function Mock({ colors, clip }: { colors: MockColors; clip?: boolean }) {
-  const bar = (w: string) => <div className={`h-1.5 rounded-full ${w}`} style={{ backgroundColor: colors.bar }} />
-  return (
-    <div
-      aria-hidden
-      className="absolute inset-0 flex flex-col gap-2 p-3"
-      style={{ backgroundColor: colors.bg, clipPath: clip ? 'inset(0 0 0 50%)' : undefined }}
-    >
-      <div className="flex justify-center">{bar('w-24')}</div>
-      <div className="flex-1 space-y-1.5 rounded-lg p-2.5" style={{ backgroundColor: colors.panel }}>
-        {bar('w-1/3')}
-        {bar('w-1/2')}
-        {bar('w-2/5')}
-      </div>
-    </div>
-  )
-}
-
-const THEME_LABELS: Record<ThemePref, string> = { system: 'System', light: 'Light', dark: 'Dark' }
-
-function ThemePreviewCard({ value }: { value: ThemePref }) {
-  const { theme, setTheme } = useTheme()
-  const active = theme === value
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={active}
-      aria-label={THEME_LABELS[value]}
-      onClick={() => setTheme(value)}
-      className="group flex cursor-pointer flex-col items-center gap-2"
-    >
-      <div
-        className={`relative aspect-[16/10] w-full overflow-hidden rounded-xl transition ${
-          active ? 'ring-2 ring-primary' : 'ring-1 ring-border/70 group-hover:ring-border'
-        }`}
-      >
-        {value !== 'dark' ? <Mock colors={LIGHT_MOCK} /> : null}
-        {value !== 'light' ? <Mock colors={DARK_MOCK} clip={value === 'system'} /> : null}
-      </div>
-      <span className={`text-[13px] ${active ? 'font-medium text-ink' : 'text-ink-2'}`}>
-        {THEME_LABELS[value]}
-      </span>
-    </button>
-  )
-}
-
-// A `ThemeConfig` snippet shown as a git-style diff between the live light and
-// dark schemes: the left pane is the "removed" side (red), the right is "added"
-// (green), and value lines that differ get the changed-line treatment. Syntax is
-// hand-coloured (small fixed snippet).
-const KW = 'text-[#8b5cf6]'
-const TY = 'text-[#0d9aa6]'
-const ST = 'text-[#3f9142]'
-const NU = 'text-[#c2740a]'
-
-function DiffPane({
-  scheme,
-  side,
-  changed,
-}: {
-  scheme: ColorScheme
-  side: 'del' | 'add'
-  changed: Record<'accent' | 'background' | 'foreground' | 'contrast', boolean>
-}) {
-  const del = side === 'del'
-  const sign = del ? '-' : '+'
-  const lineBg = del ? 'bg-rose-500/10' : 'bg-emerald-500/10'
-  const signColor = del ? 'text-rose-500' : 'text-emerald-500'
-  const rows: [string, boolean, ReactNode][] = [
-    ['head', false, <><span className={KW}>const</span> themePreview: <span className={TY}>ThemeConfig</span> = {'{'}</>],
-    ['accent', changed.accent, <>{'  '}accent: <span className={ST}>&quot;{scheme.accent}&quot;</span>,</>],
-    ['background', changed.background, <>{'  '}background: <span className={ST}>&quot;{scheme.background}&quot;</span>,</>],
-    ['foreground', changed.foreground, <>{'  '}foreground: <span className={ST}>&quot;{scheme.foreground}&quot;</span>,</>],
-    ['contrast', changed.contrast, <>{'  '}contrast: <span className={NU}>{scheme.contrast}</span>,</>],
-    ['close', false, <>{'}'};</>],
-  ]
-  return (
-    <div className={`border-l-2 py-2 ${del ? 'border-rose-400/50' : 'border-emerald-400/50'}`}>
-      {rows.map(([key, isChanged, node], i) => (
-        <div key={key} className={`flex ${isChanged ? lineBg : ''}`}>
-          <span className={`w-4 shrink-0 select-none text-center ${signColor}`}>{isChanged ? sign : ''}</span>
-          <span className="w-7 shrink-0 select-none pr-2 text-right text-ink-3/50">{i + 1}</span>
-          <span className="whitespace-pre pr-3 text-ink-2">{node}</span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function ThemeConfigPreview() {
-  const { light, dark } = useScheme()
-  const changed = {
-    accent: light.accent !== dark.accent,
-    background: light.background !== dark.background,
-    foreground: light.foreground !== dark.foreground,
-    contrast: light.contrast !== dark.contrast,
-  }
-  return (
-    <div className="mt-3 grid grid-cols-2 overflow-hidden rounded-control bg-surface font-mono text-[11px] leading-[1.7] ring-1 ring-border/60">
-      <DiffPane scheme={light} side="del" changed={changed} />
-      <DiffPane scheme={dark} side="add" changed={changed} />
-    </div>
-  )
-}
+import { ThemeConfigPreview } from './ThemeConfigPreview'
+import { ThemeModePicker } from './ThemeModePicker'
 
 const SIZE_LABELS: Record<number, string> = {
   0.9: 'Small',
@@ -136,7 +23,7 @@ const SIZE_LABELS: Record<number, string> = {
   1.25: 'Larger',
 }
 
-// Segmented control mirroring ThemeSwitcher: a pill slides to the active size.
+// Segmented control: a pill slides to the active size.
 function FontSizeSwitcher({ value, onChange }: { value: number; onChange: (value: number) => void }) {
   const reduceMotion = useReducedMotion()
   return (
@@ -303,13 +190,13 @@ export function AppearanceSettings() {
     <section className="py-5">
       <p className="text-sm font-medium text-ink">Appearance</p>
 
-      <div role="radiogroup" aria-label="Theme" className="mt-4 grid grid-cols-3 gap-3">
-        <ThemePreviewCard value="system" />
-        <ThemePreviewCard value="light" />
-        <ThemePreviewCard value="dark" />
+      <div className="mt-4">
+        <ThemeModePicker />
       </div>
 
-      <ThemeConfigPreview />
+      <div className="mt-3">
+        <ThemeConfigPreview />
+      </div>
 
       <SettingsCard className="mt-6 overflow-hidden">
         <Row
