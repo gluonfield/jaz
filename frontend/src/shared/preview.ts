@@ -36,6 +36,45 @@ function isLoopbackHost(hostname: string): boolean {
   )
 }
 
+const DEFAULT_PREVIEW_PATTERNS = ['localhost', '127\\.0\\.0\\.1']
+
+export function resolvePreviewPatterns(configured?: readonly string[]): string[] {
+  const cleaned = (configured ?? []).map((pattern) => pattern.trim()).filter(Boolean)
+  return cleaned.length ? cleaned : [...DEFAULT_PREVIEW_PATTERNS]
+}
+
+function matchesPreviewPattern(value: string, patterns: readonly string[]): boolean {
+  const parsed = previewURL(value)
+  if (!parsed) return false
+  return patterns.some((pattern) => testPreviewPattern(pattern, parsed.href))
+}
+
+function testPreviewPattern(pattern: string, href: string): boolean {
+  try {
+    return new RegExp(pattern, 'i').test(href)
+  } catch {
+    return false
+  }
+}
+
+const URL_IN_TEXT = /https?:\/\/[^\s<>()[\]"'`]+/gi
+
+// Pull http(s) URLs from assistant prose, keep those matching a preview pattern,
+// deduped in first-seen order. Trailing sentence punctuation is shaved.
+export function findPreviewURLs(text: string, patterns: readonly string[]): string[] {
+  const matches = text.match(URL_IN_TEXT)
+  if (!matches) return []
+  const seen = new Set<string>()
+  const urls: string[] = []
+  for (const raw of matches) {
+    const url = raw.replace(/[.,;:!?)\]}'"]+$/, '')
+    if (seen.has(url) || !matchesPreviewPattern(url, patterns)) continue
+    seen.add(url)
+    urls.push(url)
+  }
+  return urls
+}
+
 export function normalizePreviewURL(value: string): string {
   const trimmed = value.trim()
   if (!trimmed) return ''
