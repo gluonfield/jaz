@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/Button'
 import type { IntegrationConnectionAccount, IntegrationPlugin } from '@/lib/api/types'
 import { SettingsCard } from './SettingsCard'
-import { accountAddress } from './connectionFormatting'
+import { accountAddress, accountSyncLabel } from './connectionFormatting'
 import { PluginIcon } from './ConnectionPluginVisuals'
 
 export function ConnectionSection({
@@ -16,7 +16,7 @@ export function ConnectionSection({
   return (
     <section>
       <p className="mb-2 text-[12px] font-medium text-ink-2">{title}</p>
-      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">{children}</div>
+      <div className="grid grid-cols-1 gap-2">{children}</div>
     </section>
   )
 }
@@ -33,10 +33,16 @@ export function ExistingConnectionCard({
   onDisconnect: () => void
 }) {
   const address = accountAddress(account)
+  const sync = accountSyncLabel(account)
 
   return (
     <SettingsCard className="grid h-full grid-cols-1 gap-3 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-      <ConnectionSummary plugin={plugin} title={plugin.name} detail={address || account.id} />
+      <ConnectionSummary
+        plugin={plugin}
+        title={plugin.name}
+        detail={address || account.id}
+        meta={sync}
+      />
       <Button
         variant="danger"
         size="sm"
@@ -77,10 +83,12 @@ function ConnectionSummary({
   plugin,
   title,
   detail,
+  meta,
 }: {
   plugin: IntegrationPlugin
   title: string
   detail?: string
+  meta?: string
 }) {
   return (
     <div className="flex min-w-0 items-start gap-3">
@@ -92,6 +100,11 @@ function ConnectionSummary({
         {detail ? (
           <p className="mt-0.5 line-clamp-2 text-[12px] leading-5 text-ink-2" title={detail}>
             {detail}
+          </p>
+        ) : null}
+        {meta ? (
+          <p className="mt-0.5 truncate text-[11px] leading-4 text-ink-3" title={meta}>
+            {meta}
           </p>
         ) : null}
       </div>

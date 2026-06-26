@@ -10,6 +10,8 @@ import (
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
+const telegramSyncCursorKind = "telegram.sync"
+
 func (p *Provider) dispatcherForSession(session *qrSession) tg.UpdateDispatcher {
 	dispatcher := tg.NewUpdateDispatcher()
 	dispatcher.OnNewMessage(func(ctx context.Context, e tg.Entities, update *tg.UpdateNewMessage) error {
@@ -74,7 +76,7 @@ func (p *Provider) writeContacts(ctx context.Context, connection integrations.Co
 		}
 		records = append(records, telegramContactRecord(connection, user))
 	}
-	if err := p.raw.WriteRecords(ctx, records); err != nil {
+	if err := p.writeRecords(ctx, connection, records); err != nil {
 		return err
 	}
 	return p.markContactsSyncSuppressed(connection.ID)
@@ -113,7 +115,7 @@ func (p *Provider) exportHistory(ctx context.Context, connection integrations.Co
 			break
 		}
 		users, chats, channels := peerMaps(modified.GetUsers(), modified.GetChats())
-		if err := p.raw.WriteRecords(ctx, telegramPeerRecords(connection, users, chats, channels)); err != nil {
+		if err := p.writeRecords(ctx, connection, telegramPeerRecords(connection, users, chats, channels)); err != nil {
 			return err
 		}
 		messages := modified.GetMessages()
@@ -210,7 +212,7 @@ func (p *Provider) exportDialogHistory(ctx context.Context, connection integrati
 			return true, offsetID, nil
 		}
 		users, chats, channels := peerMaps(modified.GetUsers(), modified.GetChats())
-		if err := p.raw.WriteRecords(ctx, telegramPeerRecords(connection, users, chats, channels)); err != nil {
+		if err := p.writeRecords(ctx, connection, telegramPeerRecords(connection, users, chats, channels)); err != nil {
 			return false, offsetID, err
 		}
 		if err := p.writeMessagesSince(ctx, connection, messages, cutoff); err != nil {
@@ -277,7 +279,7 @@ func (p *Provider) writeTelegramMessage(ctx context.Context, connection integrat
 	if len(records) == 0 {
 		return nil
 	}
-	return p.raw.WriteRecords(ctx, records)
+	return p.writeRecords(ctx, connection, records)
 }
 
 func (p *Provider) writeMessages(ctx context.Context, connection integrations.Connection, messages []tg.MessageClass) error {
@@ -290,7 +292,19 @@ func (p *Provider) writeMessagesSince(ctx context.Context, connection integratio
 	if len(records) == 0 {
 		return nil
 	}
-	return p.raw.WriteRecords(ctx, records)
+	return p.writeRecords(ctx, connection, records)
+}
+
+func (p *Provider) writeRecords(ctx context.Context, connection integrations.Connection, records []integrations.Record) error {
+	if len(records) == 0 || p.raw == nil {
+		return nil
+	}
+	if err := p.raw.WriteRecords(ctx, records); err != nil {
+		return err
+	}
+	return p.store.SaveIntegrationCursor(ctx, connection.ID, integrations.Cursor{
+		Kind: telegramSyncCursorKind,
+	})
 }
 
 func telegramBackfillCutoff(now time.Time) int {

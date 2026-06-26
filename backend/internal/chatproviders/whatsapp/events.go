@@ -11,6 +11,8 @@ import (
 	"go.mau.fi/whatsmeow/types/events"
 )
 
+const whatsappSyncCursorKind = "whatsapp.sync"
+
 func (p *Provider) eventHandler(client *whatsmeow.Client, session *qrSession) whatsmeow.EventHandler {
 	return func(evt any) {
 		switch event := evt.(type) {
@@ -91,5 +93,10 @@ func (p *Provider) writeRecords(ctx context.Context, records ...integrations.Rec
 	if len(records) == 0 || p.raw == nil {
 		return nil
 	}
-	return p.raw.WriteRecords(ctx, records)
+	if err := p.raw.WriteRecords(ctx, records); err != nil {
+		return err
+	}
+	return p.store.SaveIntegrationCursor(ctx, records[0].ConnectionID, integrations.Cursor{
+		Kind: whatsappSyncCursorKind,
+	})
 }

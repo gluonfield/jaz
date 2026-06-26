@@ -23,7 +23,7 @@ func (s *Store) LoadConnection(ctx context.Context, id string) (integrations.Con
 	if err != nil {
 		return integrations.Connection{}, false, err
 	}
-	connection, err := connectionFromRow(row.ID, row.Provider, row.AccountID, row.AccountName, row.Alias, row.ScopesJson)
+	connection, err := connectionFromRow(row.ID, row.Provider, row.AccountID, row.AccountName, row.Alias, row.ScopesJson, row.LastSyncedAtMs)
 	return connection, true, err
 }
 
@@ -36,7 +36,7 @@ func (s *Store) ListConnections(ctx context.Context, provider string) ([]integra
 	}
 	out := make([]integrations.Connection, 0, len(rows))
 	for _, row := range rows {
-		connection, err := connectionFromRow(row.ID, row.Provider, row.AccountID, row.AccountName, row.Alias, row.ScopesJson)
+		connection, err := connectionFromRow(row.ID, row.Provider, row.AccountID, row.AccountName, row.Alias, row.ScopesJson, row.LastSyncedAtMs)
 		if err != nil {
 			return nil, err
 		}
@@ -112,18 +112,24 @@ func (s *Store) DeleteConnection(ctx context.Context, id string) (bool, error) {
 	return true, nil
 }
 
-func connectionFromRow(id, provider, accountID, accountName, alias, scopesJSON string) (integrations.Connection, error) {
+func connectionFromRow(id, provider, accountID, accountName, alias, scopesJSON string, lastSyncedAtMs int64) (integrations.Connection, error) {
 	var scopes []string
 	if err := json.Unmarshal([]byte(scopesJSON), &scopes); err != nil {
 		return integrations.Connection{}, err
 	}
+	var lastSyncedAt *time.Time
+	if lastSyncedAtMs > 0 {
+		value := msToTime(lastSyncedAtMs)
+		lastSyncedAt = &value
+	}
 	return integrations.Connection{
-		ID:          id,
-		Provider:    provider,
-		AccountID:   accountID,
-		AccountName: accountName,
-		Alias:       alias,
-		Scopes:      scopes,
+		ID:           id,
+		Provider:     provider,
+		AccountID:    accountID,
+		AccountName:  accountName,
+		Alias:        alias,
+		Scopes:       scopes,
+		LastSyncedAt: lastSyncedAt,
 	}, nil
 }
 

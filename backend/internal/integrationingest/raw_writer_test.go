@@ -13,7 +13,7 @@ import (
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
-func TestRawWriterAppendsMessagesByProviderAccountConnectionAndDay(t *testing.T) {
+func TestRawWriterAppendsMessagesByProviderAccountAndDay(t *testing.T) {
 	root := t.TempDir()
 	occurred := time.Date(2026, 6, 12, 10, 30, 0, 0, time.UTC)
 	writer := RawWriter{Root: root, Now: func() time.Time { return occurred.Add(time.Minute) }}
@@ -43,7 +43,7 @@ func TestRawWriterAppendsMessagesByProviderAccountConnectionAndDay(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantPath := filepath.Join(root, "gmail", "august-example-com", "conn-1", "messages", "2026", "06", "12", "messages.jsonl")
+	wantPath := filepath.Join(root, "gmail", "august-example-com", "messages", "2026", "06", "12", "messages.jsonl")
 	if path != wantPath {
 		t.Fatalf("path = %q, want %q", path, wantPath)
 	}
@@ -110,7 +110,7 @@ func TestRawWriterAppendsContactsToStableContactExport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantPath := filepath.Join(root, "telegram", "august", "conn-1", "contacts", "contacts.jsonl")
+	wantPath := filepath.Join(root, "telegram", "august", "contacts", "contacts.jsonl")
 	if path != wantPath {
 		t.Fatalf("path = %q, want %q", path, wantPath)
 	}
@@ -133,7 +133,7 @@ func TestRawWriterAppendsContactsToStableContactExport(t *testing.T) {
 	}
 }
 
-func TestRawWriterWritesAttachmentFileByProviderAccountConnectionAndIDs(t *testing.T) {
+func TestRawWriterWritesAttachmentFileByProviderAccountAndIDs(t *testing.T) {
 	root := t.TempDir()
 	path, err := (RawWriter{Root: root}).WriteAttachment(context.Background(), RawAttachment{
 		Provider:     "gmail",
@@ -152,7 +152,7 @@ func TestRawWriterWritesAttachmentFileByProviderAccountConnectionAndIDs(t *testi
 		t.Fatal(err)
 	}
 	rel = filepath.ToSlash(rel)
-	if !strings.HasPrefix(rel, "gmail/august-example-com/gmail-august/attachments/msg-1-") || !strings.Contains(rel, "/att-1-") || filepath.Base(path) != "report-final.pdf" {
+	if !strings.HasPrefix(rel, "gmail/august-example-com/attachments/msg-1-") || !strings.Contains(rel, "/att-1-") || filepath.Base(path) != "report-final.pdf" {
 		t.Fatalf("path = %q", path)
 	}
 	data, err := os.ReadFile(path)
@@ -214,11 +214,10 @@ func TestRawWriterKeepsAllArchiveDirectoriesPrivate(t *testing.T) {
 		root,
 		filepath.Join(root, "telegram"),
 		filepath.Join(root, "telegram", "august"),
-		filepath.Join(root, "telegram", "august", "conn-1"),
-		filepath.Join(root, "telegram", "august", "conn-1", "messages"),
-		filepath.Join(root, "telegram", "august", "conn-1", "messages", "2026"),
-		filepath.Join(root, "telegram", "august", "conn-1", "messages", "2026", "06"),
-		filepath.Join(root, "telegram", "august", "conn-1", "messages", "2026", "06", "12"),
+		filepath.Join(root, "telegram", "august", "messages"),
+		filepath.Join(root, "telegram", "august", "messages", "2026"),
+		filepath.Join(root, "telegram", "august", "messages", "2026", "06"),
+		filepath.Join(root, "telegram", "august", "messages", "2026", "06", "12"),
 	}
 	for _, dir := range pathDirs {
 		if err := os.MkdirAll(dir, 0o755); err != nil {

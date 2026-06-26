@@ -1,6 +1,9 @@
 package integrations
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 type Provider struct {
 	ID   string `json:"id"`
@@ -8,12 +11,13 @@ type Provider struct {
 }
 
 type Connection struct {
-	ID          string   `json:"id"`
-	Provider    string   `json:"provider"`
-	AccountID   string   `json:"account_id"`
-	AccountName string   `json:"account_name,omitempty"`
-	Alias       string   `json:"alias,omitempty"`
-	Scopes      []string `json:"scopes,omitempty"`
+	ID           string     `json:"id"`
+	Provider     string     `json:"provider"`
+	AccountID    string     `json:"account_id"`
+	AccountName  string     `json:"account_name,omitempty"`
+	Alias        string     `json:"alias,omitempty"`
+	Scopes       []string   `json:"scopes,omitempty"`
+	LastSyncedAt *time.Time `json:"last_synced_at,omitempty"`
 }
 
 func (c Connection) AccountRef() string {

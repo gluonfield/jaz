@@ -151,6 +151,30 @@ func TestWhatsAppRecordsExposeContactsAndMessages(t *testing.T) {
 	}
 }
 
+func TestWriteRecordsMarksSyncCursor(t *testing.T) {
+	raw := &fakeWhatsAppRawSink{}
+	store := &fakeWhatsAppStore{}
+	provider := &Provider{raw: raw, store: store}
+	record := integrations.Record{
+		Provider:     "whatsapp",
+		AccountID:    "15550102222",
+		ConnectionID: "whatsapp:15550102222",
+		Kind:         "whatsapp.message",
+		ExternalID:   "wamid.1",
+		Raw:          json.RawMessage(`{"text":"hello"}`),
+	}
+
+	if err := provider.writeRecords(context.Background(), record); err != nil {
+		t.Fatal(err)
+	}
+	if len(raw.records) != 1 || raw.records[0].ExternalID != record.ExternalID {
+		t.Fatalf("records = %#v", raw.records)
+	}
+	if store.cursorConnectionID != record.ConnectionID || store.cursor.Kind != whatsappSyncCursorKind {
+		t.Fatalf("cursor connection=%q cursor=%#v", store.cursorConnectionID, store.cursor)
+	}
+}
+
 func TestWhatsAppHistoryRecordsDropOldMessagesAndFullProtoBlob(t *testing.T) {
 	connection := integrations.Connection{ID: "whatsapp:alice", AccountID: "15550102222"}
 	now := time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC)
@@ -209,4 +233,32 @@ func whatsappWebInfo(id, remoteJID string, timestamp uint64, text string) *waWeb
 		MessageTimestamp: proto.Uint64(timestamp),
 		Message:          &waE2E.Message{Conversation: proto.String(text)},
 	}
+}
+
+type fakeWhatsAppRawSink struct {
+	records []integrations.Record
+}
+
+func (s *fakeWhatsAppRawSink) WriteRecords(_ context.Context, records []integrations.Record) error {
+	s.records = append(s.records, records...)
+	return nil
+}
+
+type fakeWhatsAppStore struct {
+	cursorConnectionID string
+	cursor             integrations.Cursor
+}
+
+func (s *fakeWhatsAppStore) ListConnections(context.Context, string) ([]integrations.Connection, error) {
+	return nil, nil
+}
+
+func (s *fakeWhatsAppStore) SaveConnection(context.Context, integrations.Connection) error {
+	return nil
+}
+
+func (s *fakeWhatsAppStore) SaveIntegrationCursor(_ context.Context, connectionID string, cursor integrations.Cursor) error {
+	s.cursorConnectionID = connectionID
+	s.cursor = cursor
+	return nil
 }

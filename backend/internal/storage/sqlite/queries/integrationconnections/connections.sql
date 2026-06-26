@@ -1,14 +1,36 @@
 -- name: LoadConnection :one
-SELECT id, provider, account_id, account_name, alias, scopes_json
-FROM integration_connections
-WHERE id = sqlc.arg(id)
+SELECT
+  c.id,
+  c.provider,
+  c.account_id,
+  c.account_name,
+  c.alias,
+  c.scopes_json,
+  CAST((
+    SELECT COALESCE(MAX(updated_at_ms), 0)
+    FROM integration_cursors
+    WHERE connection_id = c.id
+  ) AS INTEGER) AS last_synced_at_ms
+FROM integration_connections c
+WHERE c.id = sqlc.arg(id)
 LIMIT 1;
 
 -- name: ListConnectionsByProvider :many
-SELECT id, provider, account_id, account_name, alias, scopes_json
-FROM integration_connections
-WHERE provider = sqlc.arg(provider)
-ORDER BY alias, account_id, id;
+SELECT
+  c.id,
+  c.provider,
+  c.account_id,
+  c.account_name,
+  c.alias,
+  c.scopes_json,
+  CAST((
+    SELECT COALESCE(MAX(updated_at_ms), 0)
+    FROM integration_cursors
+    WHERE connection_id = c.id
+  ) AS INTEGER) AS last_synced_at_ms
+FROM integration_connections c
+WHERE c.provider = sqlc.arg(provider)
+ORDER BY c.alias, c.account_id, c.id;
 
 -- name: SaveConnection :exec
 INSERT INTO integration_connections (

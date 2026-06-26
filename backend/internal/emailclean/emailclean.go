@@ -23,13 +23,21 @@ var (
 )
 
 func Body(text, htmlBody string) string {
+	cleanedText := ""
 	if strings.TrimSpace(text) != "" {
-		return Text(text)
+		cleanedText = Text(text)
 	}
-	if strings.TrimSpace(htmlBody) == "" {
-		return ""
+	cleanedHTML := ""
+	if strings.TrimSpace(htmlBody) != "" {
+		cleanedHTML = Text(HTMLText(htmlBody))
 	}
-	return Text(HTMLText(htmlBody))
+	if cleanedText == "" {
+		return cleanedHTML
+	}
+	if cleanedHTML != "" && len([]rune(cleanedHTML)) < len([]rune(cleanedText)) {
+		return cleanedHTML
+	}
+	return cleanedText
 }
 
 func Text(value string) string {

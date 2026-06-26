@@ -245,6 +245,7 @@ export interface IntegrationConnectionAccount {
   account_name?: string
   alias?: string
   scopes?: string[]
+  last_synced_at?: string
 }
 
 export interface IntegrationConnection {
