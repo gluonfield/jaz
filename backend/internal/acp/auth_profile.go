@@ -209,7 +209,8 @@ func codexProviderKeyValue(root string, env map[string]string, keyEnv string) st
 
 func resolveClaudeAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env map[string]string) resolvedAgentAuth {
 	layout := runtimefiles.New(root)
-	existing := expandAuthPath(firstNonEmpty(existingAuthPath(auth), cfg.Env["CLAUDE_CONFIG_DIR"], env["CLAUDE_CONFIG_DIR"], os.Getenv("CLAUDE_CONFIG_DIR"), defaultHomePath(".claude")))
+	configuredExisting := firstNonEmpty(existingAuthPath(auth), cfg.Env["CLAUDE_CONFIG_DIR"], env["CLAUDE_CONFIG_DIR"], os.Getenv("CLAUDE_CONFIG_DIR"))
+	existing := expandAuthPath(firstNonEmpty(configuredExisting, defaultHomePath(".claude")))
 	jaz := layout.ACPClaudeConfig
 	if auth.Mode == AuthModeJazProfile && strings.TrimSpace(auth.Path) != "" {
 		jaz = expandAuthPath(auth.Path)
@@ -226,12 +227,19 @@ func resolveClaudeAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env m
 	path := jaz
 	source := AuthModeJazProfile
 	if mode == AuthModeExistingCLI {
-		path = existing
+		path = ""
+		if configuredExisting != "" {
+			path = existing
+		}
 		source = AuthModeExistingCLI
+	}
+	storagePath := ""
+	if path != "" {
+		storagePath = claudeAuthPath(path)
 	}
 	status := resolvedAgentAuth{
 		Config:      AgentAuthConfig{Mode: mode, Path: path},
-		StoragePath: claudeAuthPath(path),
+		StoragePath: storagePath,
 		Source:      source,
 	}
 	accountAuthConfigured := source == AuthModeExistingCLI &&
@@ -240,12 +248,14 @@ func resolveClaudeAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env m
 	switch {
 	case accountAuthConfigured:
 		status.markAuthenticated("env", AuthKindOAuth)
-	case claudeAuthFileAvailable(path):
+	case path != "" && claudeAuthFileAvailable(path):
 		status.markAuthenticated("claude_json", AuthKindOAuth)
 	case apiKeyConfigured:
 		status.markAuthenticated("api_key_env", AuthKindAPIKey)
+	case source == AuthModeExistingCLI && configuredExisting == "":
+		status.markAuthenticated("existing_cli", AuthKindOAuth)
 	default:
-		status.Reason = "Claude login at " + claudeAuthPath(path) + " or " + status.APIKey.SourceEnv
+		status.Reason = "Claude login at " + firstNonEmpty(storagePath, "the existing Claude CLI profile") + " or " + status.APIKey.SourceEnv
 	}
 	return status
 }
