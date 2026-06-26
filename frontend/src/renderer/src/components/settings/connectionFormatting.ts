@@ -1,10 +1,17 @@
 import type { IntegrationConnectionAccount, IntegrationPlugin } from '@/lib/api/types'
+import { hasTime, relativeTime } from '@/lib/format/time'
 
 export function accountAddress(account: IntegrationConnectionAccount): string {
   if (account.account_id) return account.account_id
   if (account.account_name) return account.account_name
   if (account.alias && account.alias !== 'default') return account.alias
   return ''
+}
+
+export function accountSyncLabel(account: IntegrationConnectionAccount): string {
+  if (!hasTime(account.last_synced_at)) return ''
+  const value = relativeTime(account.last_synced_at)
+  return value ? `Synced ${value}` : ''
 }
 
 export function pluginActionLabel(plugin: IntegrationPlugin, connecting: boolean): string {

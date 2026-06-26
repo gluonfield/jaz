@@ -76,6 +76,10 @@ func (w RawWriter) writeRecord(record integrations.Record) error {
 	if err != nil {
 		return err
 	}
+	return appendJSONLine(root, path, record)
+}
+
+func appendJSONLine(root, path string, value any) error {
 	dir := filepath.Dir(path)
 	if err := ensurePrivateDir(root, dir); err != nil {
 		return err
@@ -89,7 +93,7 @@ func (w RawWriter) writeRecord(record integrations.Record) error {
 		return err
 	}
 
-	line, err := json.Marshal(record)
+	line, err := json.Marshal(value)
 	if err != nil {
 		return err
 	}

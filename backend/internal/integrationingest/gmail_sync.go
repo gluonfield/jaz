@@ -84,7 +84,7 @@ func (s GmailSyncer) syncConnection(ctx context.Context, connection integrations
 			if err != nil {
 				return err
 			}
-			if err := s.Writer.WriteRecords(ctx, records); err != nil {
+			if _, err := s.Writer.WriteGmailMessages(ctx, records); err != nil {
 				return err
 			}
 		}
@@ -138,16 +138,25 @@ func (s GmailSyncer) observeSince(mode integrations.ObserveMode) time.Time {
 	if mode != integrations.ObserveModeBackfill {
 		return time.Time{}
 	}
-	window := s.HistoricalWindow
+	window := s.historicalWindow()
 	if window < 0 {
 		return time.Time{}
 	}
-	if window == 0 {
-		window = defaultGmailHistoricalWindow
+	now := s.now()
+	return now.Add(-window)
+}
+
+func (s GmailSyncer) historicalWindow() time.Duration {
+	if s.HistoricalWindow != 0 {
+		return s.HistoricalWindow
 	}
+	return defaultGmailHistoricalWindow
+}
+
+func (s GmailSyncer) now() time.Time {
 	now := time.Now().UTC()
 	if s.Now != nil {
 		now = s.Now().UTC()
 	}
-	return now.Add(-window)
+	return now
 }

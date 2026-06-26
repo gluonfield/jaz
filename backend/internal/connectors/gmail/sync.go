@@ -13,7 +13,7 @@ import (
 
 const (
 	CursorKindSync      = "gmail.sync"
-	syncMessagePageSize = 25
+	SyncMessagePageSize = 25
 )
 
 type SyncCursor struct {
@@ -58,7 +58,7 @@ func (c APIClient) Observe(ctx context.Context, req integrations.ObserveRequest)
 
 func (c APIClient) backfillMessages(ctx context.Context, connection integrations.Connection, cursor SyncCursor, since time.Time) (integrations.ObserveResult, error) {
 	q := url.Values{}
-	q.Set("maxResults", strconv.Itoa(syncMessagePageSize))
+	q.Set("maxResults", strconv.Itoa(SyncMessagePageSize))
 	if cursor.BackfillPageToken != "" {
 		q.Set("pageToken", cursor.BackfillPageToken)
 	}
@@ -99,7 +99,7 @@ func (c APIClient) incrementalMessages(ctx context.Context, connection integrati
 	q := url.Values{}
 	q.Set("startHistoryId", cursor.HistoryID)
 	q.Set("historyTypes", "messageAdded")
-	q.Set("maxResults", strconv.Itoa(syncMessagePageSize))
+	q.Set("maxResults", strconv.Itoa(SyncMessagePageSize))
 	if cursor.HistoryPageToken != "" {
 		q.Set("pageToken", cursor.HistoryPageToken)
 	}

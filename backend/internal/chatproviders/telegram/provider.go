@@ -20,6 +20,7 @@ type Config struct {
 type Store interface {
 	ListConnections(context.Context, string) ([]integrations.Connection, error)
 	SaveConnection(context.Context, integrations.Connection) error
+	SaveIntegrationCursor(context.Context, string, integrations.Cursor) error
 }
 
 type RawSink interface {

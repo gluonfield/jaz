@@ -313,6 +313,31 @@ func TestTelegramRecordsExposeContactsAndMessages(t *testing.T) {
 	}
 }
 
+func TestWriteRecordsMarksSyncCursor(t *testing.T) {
+	raw := &fakeTelegramRawSink{}
+	store := &fakeTelegramStore{}
+	provider := &Provider{raw: raw, store: store}
+	connection := integrations.Connection{ID: "telegram:test", AccountID: "42"}
+	record := integrations.Record{
+		Provider:     "telegram",
+		AccountID:    "42",
+		ConnectionID: connection.ID,
+		Kind:         "telegram.message",
+		ExternalID:   "user:43:7",
+		Raw:          json.RawMessage(`{"message":"hello"}`),
+	}
+
+	if err := provider.writeRecords(context.Background(), connection, []integrations.Record{record}); err != nil {
+		t.Fatal(err)
+	}
+	if len(raw.records) != 1 || raw.records[0].ExternalID != record.ExternalID {
+		t.Fatalf("records = %#v", raw.records)
+	}
+	if store.cursorConnectionID != connection.ID || store.cursor.Kind != telegramSyncCursorKind {
+		t.Fatalf("cursor connection=%q cursor=%#v", store.cursorConnectionID, store.cursor)
+	}
+}
+
 func TestTelegramHistoricalBackfillKeepsOnlyOneYearByDefault(t *testing.T) {
 	now := time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC)
 	cutoff := telegramBackfillCutoff(now)
@@ -333,4 +358,32 @@ func TestTelegramHistoricalBackfillKeepsOnlyOneYearByDefault(t *testing.T) {
 	if !messagesReachedCutoff(messages, cutoff) {
 		t.Fatal("expected page to stop at historical cutoff")
 	}
+}
+
+type fakeTelegramRawSink struct {
+	records []integrations.Record
+}
+
+func (s *fakeTelegramRawSink) WriteRecords(_ context.Context, records []integrations.Record) error {
+	s.records = append(s.records, records...)
+	return nil
+}
+
+type fakeTelegramStore struct {
+	cursorConnectionID string
+	cursor             integrations.Cursor
+}
+
+func (s *fakeTelegramStore) ListConnections(context.Context, string) ([]integrations.Connection, error) {
+	return nil, nil
+}
+
+func (s *fakeTelegramStore) SaveConnection(context.Context, integrations.Connection) error {
+	return nil
+}
+
+func (s *fakeTelegramStore) SaveIntegrationCursor(_ context.Context, connectionID string, cursor integrations.Cursor) error {
+	s.cursorConnectionID = connectionID
+	s.cursor = cursor
+	return nil
 }

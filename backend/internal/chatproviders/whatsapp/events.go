@@ -2,6 +2,7 @@ package whatsapp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -10,6 +11,8 @@ import (
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types/events"
 )
+
+const whatsappSyncCursorKind = "whatsapp.sync"
 
 func (p *Provider) eventHandler(client *whatsmeow.Client, session *qrSession) whatsmeow.EventHandler {
 	return func(evt any) {
@@ -91,5 +94,11 @@ func (p *Provider) writeRecords(ctx context.Context, records ...integrations.Rec
 	if len(records) == 0 || p.raw == nil {
 		return nil
 	}
-	return p.raw.WriteRecords(ctx, records)
+	if err := p.raw.WriteRecords(ctx, records); err != nil {
+		return err
+	}
+	return p.store.SaveIntegrationCursor(ctx, records[0].ConnectionID, integrations.Cursor{
+		Kind:  whatsappSyncCursorKind,
+		Value: json.RawMessage(`{}`),
+	})
 }

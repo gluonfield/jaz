@@ -23,19 +23,29 @@ func (q *Queries) DeleteConnection(ctx context.Context, id string) (int64, error
 }
 
 const listConnectionsByProvider = `-- name: ListConnectionsByProvider :many
-SELECT id, provider, account_id, account_name, alias, scopes_json
-FROM integration_connections
-WHERE provider = ?1
-ORDER BY alias, account_id, id
+SELECT
+  c.id,
+  c.provider,
+  c.account_id,
+  c.account_name,
+  c.alias,
+  c.scopes_json,
+  CAST(COALESCE(MAX(ic.updated_at_ms), 0) AS INTEGER) AS last_synced_at_ms
+FROM integration_connections c
+LEFT JOIN integration_cursors ic ON ic.connection_id = c.id
+WHERE c.provider = ?1
+GROUP BY c.id, c.provider, c.account_id, c.account_name, c.alias, c.scopes_json
+ORDER BY c.alias, c.account_id, c.id
 `
 
 type ListConnectionsByProviderRow struct {
-	ID          string `json:"id"`
-	Provider    string `json:"provider"`
-	AccountID   string `json:"account_id"`
-	AccountName string `json:"account_name"`
-	Alias       string `json:"alias"`
-	ScopesJson  string `json:"scopes_json"`
+	ID             string `json:"id"`
+	Provider       string `json:"provider"`
+	AccountID      string `json:"account_id"`
+	AccountName    string `json:"account_name"`
+	Alias          string `json:"alias"`
+	ScopesJson     string `json:"scopes_json"`
+	LastSyncedAtMs int64  `json:"last_synced_at_ms"`
 }
 
 func (q *Queries) ListConnectionsByProvider(ctx context.Context, provider string) ([]ListConnectionsByProviderRow, error) {
@@ -54,6 +64,7 @@ func (q *Queries) ListConnectionsByProvider(ctx context.Context, provider string
 			&i.AccountName,
 			&i.Alias,
 			&i.ScopesJson,
+			&i.LastSyncedAtMs,
 		); err != nil {
 			return nil, err
 		}
@@ -69,19 +80,29 @@ func (q *Queries) ListConnectionsByProvider(ctx context.Context, provider string
 }
 
 const loadConnection = `-- name: LoadConnection :one
-SELECT id, provider, account_id, account_name, alias, scopes_json
-FROM integration_connections
-WHERE id = ?1
+SELECT
+  c.id,
+  c.provider,
+  c.account_id,
+  c.account_name,
+  c.alias,
+  c.scopes_json,
+  CAST(COALESCE(MAX(ic.updated_at_ms), 0) AS INTEGER) AS last_synced_at_ms
+FROM integration_connections c
+LEFT JOIN integration_cursors ic ON ic.connection_id = c.id
+WHERE c.id = ?1
+GROUP BY c.id, c.provider, c.account_id, c.account_name, c.alias, c.scopes_json
 LIMIT 1
 `
 
 type LoadConnectionRow struct {
-	ID          string `json:"id"`
-	Provider    string `json:"provider"`
-	AccountID   string `json:"account_id"`
-	AccountName string `json:"account_name"`
-	Alias       string `json:"alias"`
-	ScopesJson  string `json:"scopes_json"`
+	ID             string `json:"id"`
+	Provider       string `json:"provider"`
+	AccountID      string `json:"account_id"`
+	AccountName    string `json:"account_name"`
+	Alias          string `json:"alias"`
+	ScopesJson     string `json:"scopes_json"`
+	LastSyncedAtMs int64  `json:"last_synced_at_ms"`
 }
 
 func (q *Queries) LoadConnection(ctx context.Context, id string) (LoadConnectionRow, error) {
@@ -94,6 +115,7 @@ func (q *Queries) LoadConnection(ctx context.Context, id string) (LoadConnection
 		&i.AccountName,
 		&i.Alias,
 		&i.ScopesJson,
+		&i.LastSyncedAtMs,
 	)
 	return i, err
 }

@@ -153,6 +153,20 @@ func TestIntegrationCursorRoundTrip(t *testing.T) {
 	if loaded.Kind != cursor.Kind || string(loaded.Value) != string(cursor.Value) {
 		t.Fatalf("cursor = %#v", loaded)
 	}
+	loadedConnection, ok, err := store.LoadConnection(context.Background(), connection.ID)
+	if err != nil || !ok {
+		t.Fatalf("connection ok=%v err=%v", ok, err)
+	}
+	if loadedConnection.LastSyncedAt == nil || loadedConnection.LastSyncedAt.IsZero() {
+		t.Fatalf("last synced at = %#v", loadedConnection.LastSyncedAt)
+	}
+	connections, err := store.ListConnections(context.Background(), connection.Provider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(connections) != 1 || connections[0].LastSyncedAt == nil || connections[0].LastSyncedAt.IsZero() {
+		t.Fatalf("connections = %#v", connections)
+	}
 }
 
 func TestDeleteConnectionKeepsTokenWithoutConnection(t *testing.T) {
