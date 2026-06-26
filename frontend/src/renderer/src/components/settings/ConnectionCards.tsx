@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/Button'
 import type { IntegrationConnectionAccount, IntegrationPlugin } from '@/lib/api/types'
 import { SettingsCard } from './SettingsCard'
-import { accountAddress } from './connectionFormatting'
+import { accountAddress, adapterRequiredDescription } from './connectionFormatting'
 import { PluginIcon } from './ConnectionPluginVisuals'
 
 export function ConnectionSection({
@@ -77,7 +77,7 @@ export function ConnectionPluginCard({
 
 function connectionStatusDetail(plugin: IntegrationPlugin): string {
   if (plugin.implementation.status === 'adapter_required') {
-    return 'Requires a provider session adapter before QR login can start.'
+    return adapterRequiredDescription(plugin)
   }
   return ''
 }

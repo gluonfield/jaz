@@ -9,6 +9,9 @@ import (
 
 func TestPluginAdvertisesImplementedChatCapabilities(t *testing.T) {
 	plugin := Plugin()
+	if plugin.Icon.Kind != integrations.PluginIconKindAsset || plugin.Icon.Value != ProviderID {
+		t.Fatalf("icon = %#v", plugin.Icon)
+	}
 	if !slices.Contains(plugin.Capabilities, integrations.CapabilitySync) ||
 		!slices.Contains(plugin.Capabilities, integrations.CapabilityAct) ||
 		slices.Contains(plugin.Capabilities, integrations.CapabilityMaterialize) ||

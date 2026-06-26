@@ -84,6 +84,7 @@ type AuthOption struct {
 	Kind        AuthKind `json:"kind"`
 	Description string   `json:"description,omitempty"`
 	Scopes      []string `json:"scopes,omitempty"`
+	Requires    []string `json:"requires,omitempty"`
 }
 
 type RemoteMCP struct {

@@ -6,7 +6,7 @@ import type {
   IntegrationSkill,
   IntegrationTool,
 } from '@/lib/api/types'
-import { pluginActionLabel } from './connectionFormatting'
+import { adapterRequiredDescription, pluginActionLabel } from './connectionFormatting'
 import { PluginGlyph, PluginIcon } from './ConnectionPluginVisuals'
 
 export function ConnectionPluginDetailModal({
@@ -73,7 +73,8 @@ function AppsSection({
 }) {
   const available = plugin.implementation.status === 'available'
   const connected = plugin.connection?.status === 'connected'
-  const ConnectIcon = connecting ? Loader2 : available && connected && plugin.multi_account ? Plus : Plug
+  const adapterRequired = plugin.implementation.status === 'adapter_required'
+  const ConnectIcon = connecting ? Loader2 : adapterRequired ? Wrench : available && connected && plugin.multi_account ? Plus : Plug
 
   return (
     <section>
@@ -86,6 +87,11 @@ function AppsSection({
             <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-ink-2">
               {appDescription(plugin)}
             </p>
+            {adapterRequired ? (
+              <p className="mt-1 text-[12px] leading-5 text-ink-3">
+                {adapterRequiredDescription(plugin)}
+              </p>
+            ) : null}
           </div>
         </div>
         <Button variant="secondary" size="md" disabled={!available || connecting} onClick={onConnect}>

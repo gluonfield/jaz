@@ -36,7 +36,7 @@ func (p *Provider) StartQR(ctx context.Context) (connections.QRStart, error) {
 	go p.watchQR(session, qrChan)
 	go func() {
 		if err := client.Connect(); err != nil && !errors.Is(err, context.Canceled) {
-			session.fail(err)
+			p.failQRSession(p.ctx, session, err)
 		}
 	}()
 
@@ -44,6 +44,7 @@ func (p *Provider) StartQR(ctx context.Context) (connections.QRStart, error) {
 	case <-session.ready:
 		status := session.statusSnapshot()
 		if status.Code == "" {
+			_ = p.CloseQR(context.WithoutCancel(ctx), session.id)
 			return connections.QRStart{}, fmt.Errorf("whatsapp QR provider did not return a code")
 		}
 		return connections.QRStart{
@@ -73,31 +74,49 @@ func (p *Provider) QRStatus(ctx context.Context, id string) (connections.QRStatu
 	}
 	status := session.statusSnapshot()
 	if qrDone(status.Status) {
-		_ = p.CloseQR(context.WithoutCancel(ctx), id)
+		p.finishQRSession(context.WithoutCancel(ctx), id, session)
 	}
 	return status, nil
 }
 
 func (p *Provider) CloseQR(ctx context.Context, id string) error {
-	p.mu.Lock()
-	session := p.sessions[id]
-	if session != nil {
-		delete(p.sessions, id)
-	}
-	p.mu.Unlock()
+	session := p.removeQRSession(id)
 	if session == nil {
 		return connections.ErrQRSessionNotFound
 	}
-	p.closeQRSession(context.WithoutCancel(ctx), session)
+	p.teardownQRSession(context.WithoutCancel(ctx), session)
 	return nil
 }
 
 func (p *Provider) failQRSession(ctx context.Context, session *qrSession, err error) {
 	session.fail(err)
-	_ = p.CloseQR(context.WithoutCancel(ctx), session.id)
+	p.teardownQRSession(context.WithoutCancel(ctx), session)
 }
 
-func (p *Provider) closeQRSession(ctx context.Context, session *qrSession) {
+func (p *Provider) finishQRSession(ctx context.Context, id string, session *qrSession) {
+	p.forgetQRSession(id, session)
+	p.teardownQRSession(ctx, session)
+}
+
+func (p *Provider) removeQRSession(id string) *qrSession {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	session := p.sessions[id]
+	if session != nil {
+		delete(p.sessions, id)
+	}
+	return session
+}
+
+func (p *Provider) forgetQRSession(id string, session *qrSession) {
+	p.mu.Lock()
+	if p.sessions[id] == session {
+		delete(p.sessions, id)
+	}
+	p.mu.Unlock()
+}
+
+func (p *Provider) teardownQRSession(ctx context.Context, session *qrSession) {
 	if session.statusSnapshot().Status == "connected" {
 		return
 	}
@@ -124,16 +143,22 @@ func (p *Provider) watchQR(session *qrSession, qrChan <-chan whatsmeow.QRChannel
 			session.setStatus("scanned", "")
 		case whatsmeow.QRChannelTimeout.Event:
 			session.setStatus("expired", "")
+			session.readyOnce.Do(func() { close(session.ready) })
+			p.teardownQRSession(p.ctx, session)
 			return
 		case whatsmeow.QRChannelEventError:
 			if item.Error != nil {
-				session.setStatus("failed", item.Error.Error())
+				p.failQRSession(p.ctx, session, item.Error)
 				return
 			}
 			session.setStatus("failed", item.Event)
+			session.readyOnce.Do(func() { close(session.ready) })
+			p.teardownQRSession(p.ctx, session)
 			return
 		default:
 			session.setStatus("failed", item.Event)
+			session.readyOnce.Do(func() { close(session.ready) })
+			p.teardownQRSession(p.ctx, session)
 			return
 		}
 	}

@@ -75,12 +75,12 @@ func (t *ChatMCPTools) AddTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        whatsapp.ToolSendMessage,
 		Title:       "Send WhatsApp message",
-		Description: "Send a WhatsApp message from one connected account to a phone number, contact id, or conversation id. Requires a configured WhatsApp sender adapter.",
+		Description: "Send a WhatsApp message from one connected account to a phone number, contact id, or conversation id. Requires a connected WhatsApp session.",
 	}, t.SendWhatsAppMessage)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        telegram.ToolSendMessage,
 		Title:       "Send Telegram message",
-		Description: "Send a Telegram message from one connected account to a username, user id, or chat id. Requires a configured Telegram sender adapter.",
+		Description: "Send a Telegram message from one connected account to a username, user id, or chat id. Requires a connected Telegram session.",
 	}, t.SendTelegramMessage)
 }
 
@@ -126,7 +126,7 @@ func (t *ChatMCPTools) sendMessage(ctx context.Context, provider, providerName s
 	out.Alias = connection.Alias
 	sender := t.senders[provider]
 	if sender == nil {
-		return textResult(providerName + " messaging is not enabled yet. A provider sender adapter is required before Jaz can send messages."), out, nil
+		return textResult(providerName + " messaging is not enabled in this runtime."), out, nil
 	}
 	out.SenderAvailable = true
 	result, err := sender.SendMessage(ctx, ChatSendRequest{

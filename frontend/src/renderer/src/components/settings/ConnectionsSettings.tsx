@@ -78,9 +78,7 @@ export function ConnectionsSettings() {
       }
       toast("Connection didn't return a usable sign-in method", 'danger')
     },
-    onError: (error: Error) => {
-      toast(`Couldn't start sign-in: ${error.message}`, 'danger')
-    },
+    onError: (error: Error) => toast(`Couldn't start sign-in: ${error.message}`, 'danger'),
   })
   const disconnect = useMutation({
     mutationFn: disconnectConnectionAccount,
@@ -179,7 +177,9 @@ export function ConnectionsSettings() {
               plugin={selectedPlugin}
               connecting={connect.isPending && connect.variables === selectedPlugin?.id}
               onClose={() => setSelectedPluginID(null)}
-              onConnect={(plugin) => connect.mutate(plugin.id)}
+              onConnect={(plugin) => {
+                if (plugin.implementation.status === 'available') connect.mutate(plugin.id)
+              }}
             />
             <ConnectionQRModal
               plugin={activeQR?.plugin}

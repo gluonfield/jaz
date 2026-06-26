@@ -23,13 +23,13 @@ func Plugin() integrations.Plugin {
 		},
 		Category: "chat",
 		Icon: integrations.PluginIcon{
-			Kind:       integrations.PluginIconKindInitials,
-			Value:      "TG",
-			Background: "#e8f3ff",
+			Kind:  integrations.PluginIconKindAsset,
+			Value: ProviderID,
 		},
 		Auth: []integrations.AuthOption{{
 			Kind:        integrations.AuthKindSession,
 			Description: "Scan a Telegram login QR code to connect this Jaz instance.",
+			Requires:    []string{"JAZ_TELEGRAM_API_ID", "JAZ_TELEGRAM_API_HASH"},
 		}},
 		Capabilities: []integrations.Capability{
 			integrations.CapabilitySync,
