@@ -21,6 +21,7 @@ import { attachBrowserNavigationCommands, attachBrowserNavigationShortcuts } fro
 import { attachWindowLifecycle, installMainDiagnostics } from './diagnostics'
 import { getDeviceIdentity, getDeviceMetadata } from './deviceIdentity'
 import { canGrantAppPermission } from './permissions'
+import { setupLauncher, teardownLauncher } from './spotlight'
 import { createUpdateController } from './updater'
 
 // Matches --color-bg under :root.dark; used as the window paint color before
@@ -409,6 +410,7 @@ app.whenReady().then(() => {
     })
     void systemPreferences.askForMediaAccess('microphone')
   }
+  setupLauncher()
   createWindow()
   updates.start()
   app.on('activate', () => {
@@ -421,5 +423,6 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  teardownLauncher()
   stopLocalBackend()
 })

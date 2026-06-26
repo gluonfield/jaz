@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as NewRouteImport } from './routes/new'
+import { Route as LauncherRouteImport } from './routes/launcher'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SessionsIndexRouteImport } from './routes/sessions.index'
 import { Route as LoopsIndexRouteImport } from './routes/loops.index'
@@ -21,6 +22,11 @@ import { Route as BoardsBoardIdRouteImport } from './routes/boards.$boardId'
 const NewRoute = NewRouteImport.update({
   id: '/new',
   path: '/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LauncherRoute = LauncherRouteImport.update({
+  id: '/launcher',
+  path: '/launcher',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -61,6 +67,7 @@ const BoardsBoardIdRoute = BoardsBoardIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/launcher': typeof LauncherRoute
   '/new': typeof NewRoute
   '/boards/$boardId': typeof BoardsBoardIdRoute
   '/loops/$loopId': typeof LoopsLoopIdRoute
@@ -71,6 +78,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/launcher': typeof LauncherRoute
   '/new': typeof NewRoute
   '/boards/$boardId': typeof BoardsBoardIdRoute
   '/loops/$loopId': typeof LoopsLoopIdRoute
@@ -82,6 +90,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/launcher': typeof LauncherRoute
   '/new': typeof NewRoute
   '/boards/$boardId': typeof BoardsBoardIdRoute
   '/loops/$loopId': typeof LoopsLoopIdRoute
@@ -94,6 +103,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/launcher'
     | '/new'
     | '/boards/$boardId'
     | '/loops/$loopId'
@@ -104,6 +114,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/launcher'
     | '/new'
     | '/boards/$boardId'
     | '/loops/$loopId'
@@ -114,6 +125,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/launcher'
     | '/new'
     | '/boards/$boardId'
     | '/loops/$loopId'
@@ -125,6 +137,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  LauncherRoute: typeof LauncherRoute
   NewRoute: typeof NewRoute
   BoardsBoardIdRoute: typeof BoardsBoardIdRoute
   LoopsLoopIdRoute: typeof LoopsLoopIdRoute
@@ -141,6 +154,13 @@ declare module '@tanstack/react-router' {
       path: '/new'
       fullPath: '/new'
       preLoaderRoute: typeof NewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/launcher': {
+      id: '/launcher'
+      path: '/launcher'
+      fullPath: '/launcher'
+      preLoaderRoute: typeof LauncherRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -197,6 +217,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  LauncherRoute: LauncherRoute,
   NewRoute: NewRoute,
   BoardsBoardIdRoute: BoardsBoardIdRoute,
   LoopsLoopIdRoute: LoopsLoopIdRoute,

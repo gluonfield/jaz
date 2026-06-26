@@ -21,6 +21,12 @@ import {
   modelSuggestionsForProvider,
   openRouterModelsQuery,
 } from '@/lib/models'
+import {
+  createSessionInput,
+  NEW_SESSION_AGENT_KEY,
+  NEW_SESSION_DIRECTORY_KEY,
+  NEW_SESSION_DRAFT_KEY,
+} from '@/lib/newSessionConfig'
 import { setPendingMessage } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
 import { acpReasoningEffortOptions } from '@/lib/reasoningEfforts'
@@ -31,10 +37,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 type NewSearch = {
   project?: string
 }
-
-const NEW_SESSION_AGENT_KEY = 'jaz.newSession.agent'
-const NEW_SESSION_DIRECTORY_KEY = 'jaz.newSession.directory'
-const NEW_SESSION_DRAFT_KEY = 'jaz.newSession.prompt'
 
 function storedString(key: string): string {
   return localStorage.getItem(key) ?? ''
@@ -145,16 +147,13 @@ function NewSessionPage() {
     }
     setCreating(true)
     try {
-      const session = await createSession({
-        ...(title ? { title } : {}),
-        runtime: 'acp',
-        agent: runtime,
-        directory,
-        worktree,
-        ...(usesProvider && provider ? { model_provider: provider } : {}),
-        ...(model ? { model } : {}),
-        ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
-      })
+      const session = await createSession(
+        createSessionInput(
+          agentSettings,
+          { agent: runtime, directory, worktree, providerOverride, modelOverride, effortOverride },
+          title,
+        ),
+      )
       prepare(session.id)
       sessionStorage.removeItem(NEW_SESSION_DRAFT_KEY)
       queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })

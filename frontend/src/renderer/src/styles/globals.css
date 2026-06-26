@@ -467,6 +467,14 @@ body,
   height: 100%;
 }
 
+/* The launcher is a transparent overlay window: only its card paints, so the
+ * page stays see-through on every platform regardless of vibrancy. */
+html.launcher,
+html.launcher body,
+html.launcher #root {
+  background: transparent !important;
+}
+
 body {
   margin: 0;
   background: var(--color-bg);
