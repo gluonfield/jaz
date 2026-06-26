@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -35,6 +36,31 @@ func TestAPIClientProfileRequiresEmail(t *testing.T) {
 
 	if _, err := (APIClient{HTTP: server.Client(), BaseURL: server.URL}).Profile(context.Background()); err == nil {
 		t.Fatal("expected missing email error")
+	}
+}
+
+func TestAPIClientNormalizesDisabledAPIError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{
+			"error": {
+				"code": 403,
+				"message": "Gmail API has not been used in project 181926640908 before or it is disabled. Enable it by visiting https://console.developers.google.com/apis/api/gmail.googleapis.com/overview?project=181926640908 then retry.",
+				"status": "PERMISSION_DENIED",
+				"errors": [{"reason":"accessNotConfigured"}],
+				"details": [{"reason":"SERVICE_DISABLED"}]
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	_, err := (APIClient{HTTP: server.Client(), BaseURL: server.URL}).Profile(context.Background())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	text := err.Error()
+	if !strings.Contains(text, "gmail api is disabled for the OAuth client project") || strings.Contains(text, "181926640908") || strings.Contains(text, "console.developers.google.com") {
+		t.Fatalf("error = %q", text)
 	}
 }
 

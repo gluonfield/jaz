@@ -5,11 +5,9 @@ import (
 
 	"github.com/wins/jaz/backend/internal/connectors/gmail"
 	"github.com/wins/jaz/backend/pkg/integrations"
-	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
 
 type Store interface {
-	LoadToken(context.Context, string) (integrationoauth.Token, bool, error)
 	ListConnections(context.Context, string) ([]integrations.Connection, error)
 }
 
@@ -55,21 +53,6 @@ func (s *Service) withConnection(ctx context.Context, plugin integrations.Plugin
 	if len(accounts) > 0 {
 		connection.Status = integrations.PluginConnectionStatusConnected
 		connection.Accounts = accounts
-		plugin.Connection = &connection
-		return plugin, nil
-	}
-	token, ok, err := s.store.LoadToken(ctx, gmail.OAuthConnectionID)
-	if err != nil {
-		return integrations.Plugin{}, err
-	}
-	if ok && (token.AccessToken != "" || token.RefreshToken != "") {
-		connection.Status = integrations.PluginConnectionStatusConnected
-		connection.Accounts = []integrations.Connection{{
-			ID:       gmail.OAuthConnectionID,
-			Provider: gmail.ProviderID,
-			Alias:    "default",
-			Scopes:   token.Scopes,
-		}}
 	}
 	plugin.Connection = &connection
 	return plugin, nil

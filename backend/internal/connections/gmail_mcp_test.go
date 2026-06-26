@@ -74,6 +74,25 @@ func TestGmailMCPToolsGetProfileReportsNotConnected(t *testing.T) {
 	}
 }
 
+func TestGmailMCPToolsRequiresVerifiedConnection(t *testing.T) {
+	store := &gmailMCPStore{
+		tokens: map[string]integrationoauth.Token{
+			gmailconnector.OAuthConnectionID: {
+				AccessToken: "access",
+				TokenType:   "Bearer",
+				Expiry:      time.Now().Add(time.Hour),
+			},
+		},
+	}
+	_, profile, err := NewGmailMCPTools(store).GetProfile(context.Background(), nil, GmailProfileInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if profile.Connected {
+		t.Fatalf("profile = %#v", profile)
+	}
+}
+
 func TestGmailMCPToolsSearchAndReadMessages(t *testing.T) {
 	body := base64.RawURLEncoding.EncodeToString([]byte("Plain body"))
 	gmailServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -121,6 +140,11 @@ func TestGmailMCPToolsSearchAndReadMessages(t *testing.T) {
 				Expiry:      time.Now().Add(time.Hour),
 			},
 		},
+		connections: []integrations.Connection{{
+			ID:       gmailconnector.OAuthConnectionID,
+			Provider: gmailconnector.ProviderID,
+			Alias:    "default",
+		}},
 	})
 	tools.apiBaseURL = gmailServer.URL
 

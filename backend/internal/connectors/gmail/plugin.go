@@ -66,7 +66,8 @@ func Plugin() integrations.Plugin {
 		},
 		ConnectionNotes: []string{
 			"This first Gmail connection slice supports one default account.",
-			"Jaz-owned Gmail tools use Google APIs directly through the bundled desktop OAuth client.",
+			"Jaz-owned Gmail tools use Google APIs directly and require a Gmail-enabled Google OAuth client.",
+			"Custom builds can supply another Gmail-enabled OAuth client through Jaz configuration.",
 			"The official Gmail MCP endpoint is useful as a compatibility target, but is not the consumer-clean Jaz default.",
 		},
 		Implementation: integrations.Implementation{
