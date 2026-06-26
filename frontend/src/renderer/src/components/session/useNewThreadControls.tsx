@@ -4,6 +4,7 @@ import { ModelSelect, RuntimeSelect } from '@/components/session/NewThreadContro
 import { enabledACPAgents, runtimeModelState } from '@/lib/agentRuntimes'
 import type { CreateSessionInput } from '@/lib/api/sessions'
 import { agentSettingsQuery } from '@/lib/api/settings'
+import { composerConfig } from '@/lib/appearanceConfig'
 import {
   acpAgentModelSuggestions,
   modelSuggestionsForProvider,
@@ -54,11 +55,17 @@ export function useNewThreadControls() {
     ? modelSuggestionsForProvider(selectedProvider, openRouterModels.data ?? [])
     : acpAgentModelSuggestions(runtime)
 
+  const composer = composerConfig()
+
   return {
     agentSettings,
     agents,
     runtimeReady,
     runtimeAvailable,
+    // Picker visibility lives here so the controls and the mobile summary agree.
+    showAgentPicker: agents.length > 1,
+    showModelPicker: !composer.hideModelPicker,
+    showProjectPicker: !composer.hideProjectPicker,
     runtime,
     selectRuntime,
     model: selectedModel,
@@ -101,7 +108,7 @@ export function AgentModelControls({
   }
   return (
     <>
-      {controls.agents.length > 0 ? (
+      {controls.showAgentPicker ? (
         <RuntimeSelect
           value={controls.runtime}
           agents={controls.agents}
@@ -110,20 +117,22 @@ export function AgentModelControls({
           onChange={controls.selectRuntime}
         />
       ) : null}
-      <ModelSelect
-        value={controls.model}
-        suggestions={controls.modelSuggestions}
-        loading={controls.modelsLoading}
-        placement={placement}
-        disabled={disabled}
-        onChange={controls.setModel}
-        providers={controls.providers}
-        provider={controls.provider}
-        onProviderChange={controls.usesProvider ? controls.setProvider : undefined}
-        effort={controls.effort}
-        effortOptions={controls.effortOptions}
-        onEffortChange={controls.setEffort}
-      />
+      {controls.showModelPicker ? (
+        <ModelSelect
+          value={controls.model}
+          suggestions={controls.modelSuggestions}
+          loading={controls.modelsLoading}
+          placement={placement}
+          disabled={disabled}
+          onChange={controls.setModel}
+          providers={controls.providers}
+          provider={controls.provider}
+          onProviderChange={controls.usesProvider ? controls.setProvider : undefined}
+          effort={controls.effort}
+          effortOptions={controls.effortOptions}
+          onEffortChange={controls.setEffort}
+        />
+      ) : null}
     </>
   )
 }
