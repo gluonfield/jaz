@@ -41,19 +41,24 @@ func (w RawWriter) WriteRecords(ctx context.Context, records []integrations.Reco
 }
 
 func (w RawWriter) writeRecord(record integrations.Record) error {
+	root := w.root()
 	record = w.prepare(record)
-	path, err := RawRecordPath(w.root(), record)
+	path, err := RawRecordPath(root, record)
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	dir := filepath.Dir(path)
+	if err := ensurePrivateDir(root, dir); err != nil {
 		return err
 	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
+	if err := file.Chmod(0o600); err != nil {
+		return err
+	}
 
 	line, err := json.Marshal(record)
 	if err != nil {
@@ -155,4 +160,42 @@ func requiredPathComponent(name, value string) (string, error) {
 		return "", fmt.Errorf("record %s is required", name)
 	}
 	return component, nil
+}
+
+func ensurePrivateDir(root, dir string) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return err
+	}
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(absRoot, absDir)
+	if err != nil {
+		return err
+	}
+	if filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return fmt.Errorf("raw record path escapes root")
+	}
+	current := absRoot
+	if err := os.Chmod(current, 0o700); err != nil {
+		return err
+	}
+	if rel == "." {
+		return nil
+	}
+	for _, component := range strings.Split(rel, string(os.PathSeparator)) {
+		if component == "" || component == "." {
+			continue
+		}
+		current = filepath.Join(current, component)
+		if err := os.Chmod(current, 0o700); err != nil {
+			return err
+		}
+	}
+	return nil
 }

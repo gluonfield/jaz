@@ -102,6 +102,65 @@ func TestRawWriterAppendsContactsToStableContactExport(t *testing.T) {
 	if _, err := os.Stat(path); err != nil {
 		t.Fatal(err)
 	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := info.Mode().Perm(), os.FileMode(0o600); got != want {
+		t.Fatalf("file mode = %s, want %s", got, want)
+	}
+	dirInfo, err := os.Stat(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := dirInfo.Mode().Perm(), os.FileMode(0o700); got != want {
+		t.Fatalf("dir mode = %s, want %s", got, want)
+	}
+}
+
+func TestRawWriterKeepsAllArchiveDirectoriesPrivate(t *testing.T) {
+	root := t.TempDir()
+	occurred := time.Date(2026, 6, 12, 10, 30, 0, 0, time.UTC)
+	pathDirs := []string{
+		root,
+		filepath.Join(root, "telegram"),
+		filepath.Join(root, "telegram", "august"),
+		filepath.Join(root, "telegram", "august", "conn-1"),
+		filepath.Join(root, "telegram", "august", "conn-1", "messages"),
+		filepath.Join(root, "telegram", "august", "conn-1", "messages", "2026"),
+		filepath.Join(root, "telegram", "august", "conn-1", "messages", "2026", "06"),
+		filepath.Join(root, "telegram", "august", "conn-1", "messages", "2026", "06", "12"),
+	}
+	for _, dir := range pathDirs {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	err := (RawWriter{Root: root}).WriteRecords(context.Background(), []integrations.Record{{
+		Provider:     "telegram",
+		ConnectionID: "conn_1",
+		AccountID:    "august",
+		Kind:         "telegram.message",
+		ExternalID:   "msg_1",
+		OccurredAt:   occurred,
+		Raw:          json.RawMessage(`{"text":"hello"}`),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range pathDirs {
+		info, err := os.Stat(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := info.Mode().Perm(), os.FileMode(0o700); got != want {
+			t.Fatalf("%s mode = %s, want %s", dir, got, want)
+		}
+	}
 }
 
 func TestRawWriterDefaultsToMemoryRawSourcesRoot(t *testing.T) {

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import {
+  closeConnectionQR,
   connectionQRStatus,
   connectionPluginsQuery,
   disconnectConnectionAccount,
@@ -91,6 +92,13 @@ export function ConnectionsSettings() {
     const label = accountAddress(account) || account.id
     if (window.confirm(`Disconnect ${label}?`)) disconnect.mutate(account.id)
   }
+  const closeActiveQR = () => {
+    const sessionID = activeQR?.qr.session_id
+    setActiveQR(null)
+    if (!sessionID) return
+    queryClient.removeQueries({ queryKey: keys.connectionQR(sessionID) })
+    void closeConnectionQR(sessionID).catch(() => undefined)
+  }
 
   useEffect(() => {
     if (pollUntil === 0) return
@@ -107,6 +115,12 @@ export function ConnectionsSettings() {
       document.removeEventListener('visibilitychange', refresh)
     }
   }, [pollUntil, queryClient])
+
+  useEffect(() => {
+    if (qrStatus.data?.status === 'connected') {
+      void queryClient.invalidateQueries({ queryKey: keys.connectionPlugins })
+    }
+  }, [qrStatus.data?.status, queryClient])
 
   return (
     <section className="py-5">
@@ -159,7 +173,7 @@ export function ConnectionsSettings() {
               qr={activeQR?.qr}
               status={qrStatus.data}
               loading={qrStatus.isFetching}
-              onClose={() => setActiveQR(null)}
+              onClose={closeActiveQR}
             />
           </>
         )}

@@ -56,6 +56,18 @@ func (h ConnectHandler) QRStatus(w http.ResponseWriter, r *http.Request) {
 	httpapi.WriteJSON(w, http.StatusOK, status)
 }
 
+func (h ConnectHandler) CloseQR(w http.ResponseWriter, r *http.Request) {
+	if err := h.QR.Close(r.Context(), r.PathValue("id")); err != nil {
+		if errors.Is(err, connections.ErrQRSessionNotFound) {
+			httpapi.WriteError(w, http.StatusNotFound, err)
+			return
+		}
+		httpapi.WriteError(w, http.StatusInternalServerError, err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 func oauthCallbackURL(r *http.Request) string {
 	return httpapi.RequestBaseURL(r) + googleOAuthCallbackPath
 }

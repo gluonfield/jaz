@@ -21,6 +21,8 @@ export function ConnectionQRModal({
 }) {
   if (!plugin || !qr) return null
   const currentStatus = status?.status ?? qr.status
+  const currentCode = status?.code || qr.code
+  const expiresAt = status?.expires_at || qr.expires_at
   const done = currentStatus === 'connected'
   const failed = currentStatus === 'expired' || currentStatus === 'failed'
 
@@ -42,13 +44,13 @@ export function ConnectionQRModal({
       }
     >
       <div className="grid gap-4 sm:grid-cols-[210px_minmax(0,1fr)]">
-        <QRCodeImage value={qr.code} failed={failed} />
+        <QRCodeImage value={currentCode} failed={failed} />
         <div className="min-w-0 space-y-3">
           <div className="rounded-card bg-surface px-3 py-3">
             <p className="text-[12px] font-medium text-ink">Waiting for scan</p>
             <p className="mt-1 text-[12px] leading-5 text-ink-3">
               Keep this window open until the connection finishes. The code expires at{' '}
-              {formatTime(qr.expires_at)}.
+              {formatTime(expiresAt)}.
             </p>
           </div>
           {qr.instructions?.length ? (

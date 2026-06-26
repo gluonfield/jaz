@@ -63,6 +63,9 @@ type ChatSendMessageOutput struct {
 func NewChatMCPTools(store ChatToolStore, senders ...ChatSender) *ChatMCPTools {
 	tools := &ChatMCPTools{store: store, senders: map[string]ChatSender{}}
 	for _, sender := range senders {
+		if sender == nil {
+			continue
+		}
 		tools.senders[sender.ProviderID()] = sender
 	}
 	return tools

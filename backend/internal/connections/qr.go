@@ -25,6 +25,7 @@ type QRStart struct {
 type QRStatus struct {
 	SessionID string    `json:"session_id"`
 	Provider  string    `json:"provider"`
+	Code      string    `json:"code,omitempty"`
 	Status    string    `json:"status"`
 	ExpiresAt time.Time `json:"expires_at"`
 	AccountID string    `json:"account_id,omitempty"`
@@ -35,6 +36,7 @@ type QRProvider interface {
 	ProviderID() string
 	StartQR(context.Context) (QRStart, error)
 	QRStatus(context.Context, string) (QRStatus, error)
+	CloseQR(context.Context, string) error
 }
 
 type QRService struct {
@@ -49,6 +51,9 @@ func NewQRService(providers ...QRProvider) *QRService {
 		sessions:  map[string]string{},
 	}
 	for _, provider := range providers {
+		if provider == nil {
+			continue
+		}
 		service.providers[provider.ProviderID()] = provider
 	}
 	return service
@@ -89,6 +94,9 @@ func (s *QRService) Status(ctx context.Context, id string) (QRStatus, error) {
 	}
 	status, err := adapter.QRStatus(ctx, id)
 	if err != nil {
+		if errors.Is(err, ErrQRSessionNotFound) {
+			s.forget(id)
+		}
 		return QRStatus{}, err
 	}
 	if status.SessionID == "" {
@@ -97,7 +105,22 @@ func (s *QRService) Status(ctx context.Context, id string) (QRStatus, error) {
 	if status.Provider == "" {
 		status.Provider = provider
 	}
+	if qrTerminal(status.Status) {
+		s.forget(id)
+	}
 	return status, nil
+}
+
+func (s *QRService) Close(ctx context.Context, id string) error {
+	s.mu.Lock()
+	provider := s.sessions[id]
+	adapter := s.providers[provider]
+	delete(s.sessions, id)
+	s.mu.Unlock()
+	if adapter == nil {
+		return ErrQRSessionNotFound
+	}
+	return adapter.CloseQR(ctx, id)
 }
 
 func (s *QRService) Available(provider string) bool {
@@ -113,4 +136,14 @@ func (s *QRService) provider(id string) (QRProvider, bool) {
 		return nil, false
 	}
 	return provider, true
+}
+
+func (s *QRService) forget(id string) {
+	s.mu.Lock()
+	delete(s.sessions, id)
+	s.mu.Unlock()
+}
+
+func qrTerminal(status string) bool {
+	return status == "connected" || status == "expired" || status == "failed"
 }

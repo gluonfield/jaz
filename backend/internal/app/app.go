@@ -105,12 +105,18 @@ type MemoryConfig struct {
 }
 
 type ConnectionsConfig struct {
-	Gmail GmailConnectionConfig
+	Gmail    GmailConnectionConfig
+	Telegram TelegramConnectionConfig
 }
 
 type GmailConnectionConfig struct {
 	OAuthClientID     string
 	OAuthClientSecret string
+}
+
+type TelegramConnectionConfig struct {
+	APIID   int
+	APIHash string
 }
 
 type Workspace string

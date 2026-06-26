@@ -68,6 +68,8 @@ func Init() error {
 	_ = viper.BindEnv("jaz.skills.disablesync", "JAZ_SKILLS_DISABLE_SYNC")
 	_ = viper.BindEnv("jaz.connections.gmail.oauthclientid", "JAZ_GMAIL_OAUTH_CLIENT_ID")
 	_ = viper.BindEnv("jaz.connections.gmail.oauthclientsecret", "JAZ_GMAIL_OAUTH_CLIENT_SECRET")
+	_ = viper.BindEnv("jaz.connections.telegram.apiid", "JAZ_TELEGRAM_API_ID")
+	_ = viper.BindEnv("jaz.connections.telegram.apihash", "JAZ_TELEGRAM_API_HASH")
 	if err := viper.ReadInConfig(); err != nil {
 		var notFound viper.ConfigFileNotFoundError
 		if !explicitConfig && errors.As(err, &notFound) {

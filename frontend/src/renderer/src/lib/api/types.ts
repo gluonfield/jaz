@@ -296,6 +296,7 @@ export interface ConnectionStart {
 export interface ConnectionQRStatus {
   session_id: string
   provider: string
+  code?: string
   status: 'pending' | 'scanned' | 'connected' | 'expired' | 'failed'
   expires_at: string
   account_id?: string

@@ -76,20 +76,54 @@ func TestServiceDisconnectAccount(t *testing.T) {
 			Alias:    "personal",
 		}},
 	}
-	service := NewService(NewCatalog(), &store, NewQRService())
+	disconnecter := &fakeSessionDisconnecter{provider: gmailconnector.ProviderID}
+	service := NewService(NewCatalog(), &store, NewQRService(), disconnecter)
 	if err := service.DisconnectAccount(context.Background(), " gmail:personal "); err != nil {
 		t.Fatal(err)
 	}
 	if len(store.connections) != 0 {
 		t.Fatalf("connections = %#v", store.connections)
 	}
+	if disconnecter.connection.ID != "gmail:personal" {
+		t.Fatalf("disconnecter connection = %#v", disconnecter.connection)
+	}
 	if err := service.DisconnectAccount(context.Background(), "gmail:missing"); !errors.Is(err, ErrConnectionNotFound) {
 		t.Fatalf("err = %v", err)
 	}
 }
 
+func TestServiceDisconnectCleanupSurvivesCanceledRequest(t *testing.T) {
+	store := serviceStore{
+		connections: []integrations.Connection{{
+			ID:       "telegram:personal",
+			Provider: telegram.ProviderID,
+		}},
+	}
+	disconnecter := &fakeSessionDisconnecter{provider: telegram.ProviderID}
+	ctx, cancel := context.WithCancel(context.Background())
+	store.afterDelete = cancel
+	service := NewService(NewCatalog(), &store, NewQRService(), disconnecter)
+
+	if err := service.DisconnectAccount(ctx, "telegram:personal"); err != nil {
+		t.Fatal(err)
+	}
+	if disconnecter.ctxErr != nil {
+		t.Fatalf("disconnect cleanup context was canceled: %v", disconnecter.ctxErr)
+	}
+}
+
 type serviceStore struct {
 	connections []integrations.Connection
+	afterDelete func()
+}
+
+func (s serviceStore) LoadConnection(_ context.Context, id string) (integrations.Connection, bool, error) {
+	for _, connection := range s.connections {
+		if connection.ID == id {
+			return connection, true, nil
+		}
+	}
+	return integrations.Connection{}, false, nil
 }
 
 func (s serviceStore) ListConnections(_ context.Context, provider string) ([]integrations.Connection, error) {
@@ -106,8 +140,27 @@ func (s *serviceStore) DeleteConnection(_ context.Context, id string) (bool, err
 	for i, connection := range s.connections {
 		if connection.ID == id {
 			s.connections = append(s.connections[:i], s.connections[i+1:]...)
+			if s.afterDelete != nil {
+				s.afterDelete()
+			}
 			return true, nil
 		}
 	}
 	return false, nil
+}
+
+type fakeSessionDisconnecter struct {
+	provider   string
+	connection integrations.Connection
+	ctxErr     error
+}
+
+func (d *fakeSessionDisconnecter) ProviderID() string {
+	return d.provider
+}
+
+func (d *fakeSessionDisconnecter) Disconnect(ctx context.Context, connection integrations.Connection) error {
+	d.connection = connection
+	d.ctxErr = ctx.Err()
+	return nil
 }

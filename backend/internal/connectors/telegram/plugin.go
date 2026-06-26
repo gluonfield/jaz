@@ -16,7 +16,7 @@ func Plugin() integrations.Plugin {
 	return integrations.Plugin{
 		ID:          ProviderID,
 		Name:        ProviderName,
-		Description: "Sync Telegram chats into chat memory and let agents send approved messages.",
+		Description: "Sync Telegram chats into raw chat archives and let agents send messages.",
 		Provider: integrations.Provider{
 			ID:   ProviderID,
 			Name: ProviderName,
@@ -34,17 +34,14 @@ func Plugin() integrations.Plugin {
 		Capabilities: []integrations.Capability{
 			integrations.CapabilitySync,
 			integrations.CapabilityAct,
-			integrations.CapabilityMaterialize,
 		},
 		MultiAccount: true,
-		SourceLanes:  []string{"sources/chat/telegram"},
 		Tools:        chatTools(),
 		Skills:       telegramSkills(),
 		ConnectionNotes: []string{
-			"Jaz stores raw Telegram contacts and messages under ~/.memory/raw-sources and writes readable chat pages under memory sources/chat.",
-			"Telegram QR login requires a Telegram client app identity in the provider adapter.",
-			"The catalog entry is present before QR pairing is enabled.",
-			"Message sending should go through approval and audit policies.",
+			"Jaz stores raw Telegram contacts and messages under ~/.memory/raw-sources.",
+			"Telegram QR login requires configured Telegram app credentials.",
+			"Message sends are direct actions from the selected connected account.",
 		},
 		Implementation: integrations.Implementation{
 			Status: "planned",
@@ -57,7 +54,7 @@ func chatTools() []integrations.PluginTool {
 	return []integrations.PluginTool{
 		{
 			Name:        ToolSendMessage,
-			Description: "Send a message to a connected chat conversation after approval.",
+			Description: "Send a message to a connected chat conversation.",
 			Capability:  integrations.CapabilityAct,
 			Risk:        integrations.ActionRiskWrite,
 		},
@@ -75,7 +72,7 @@ func telegramSkills() []integrations.PluginSkill {
 		{
 			ID:          chat.SkillChatActions,
 			Name:        "Chat Actions",
-			Description: "Guidance for safe chat sends, replies, reactions, approvals, and audit trails.",
+			Description: "Guidance for safe chat sends, replies, reactions, and provider caveats.",
 			Status:      "planned",
 		},
 		{

@@ -32,6 +32,10 @@ func (fakeConnectionOAuthStore) LoadToken(context.Context, string) (integrationo
 	return integrationoauth.Token{}, false, nil
 }
 
+func (fakeConnectionOAuthStore) LoadConnection(context.Context, string) (integrations.Connection, bool, error) {
+	return integrations.Connection{}, false, nil
+}
+
 func (fakeConnectionOAuthStore) ListConnections(context.Context, string) ([]integrations.Connection, error) {
 	return nil, nil
 }
@@ -143,6 +147,7 @@ func TestNewRoutesIncludesConnectionPluginRoutes(t *testing.T) {
 			route.Pattern == "DELETE /v1/connections/accounts/{id}" ||
 			route.Pattern == "POST /v1/connections/plugins/{id}/connect" ||
 			route.Pattern == "GET /v1/connections/qr/{id}" ||
+			route.Pattern == "DELETE /v1/connections/qr/{id}" ||
 			route.Pattern == "GET /v1/connections/oauth/google/callback") && route.Handler != nil {
 			found[route.Pattern] = true
 		}
@@ -152,6 +157,7 @@ func TestNewRoutesIncludesConnectionPluginRoutes(t *testing.T) {
 		!found["DELETE /v1/connections/accounts/{id}"] ||
 		!found["POST /v1/connections/plugins/{id}/connect"] ||
 		!found["GET /v1/connections/qr/{id}"] ||
+		!found["DELETE /v1/connections/qr/{id}"] ||
 		!found["GET /v1/connections/oauth/google/callback"] {
 		t.Fatalf("missing connection plugin routes: %#v", routes)
 	}

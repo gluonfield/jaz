@@ -4,25 +4,46 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
 var ErrConnectionNotFound = errors.New("connection account not found")
 
+const disconnectCleanupTimeout = 10 * time.Second
+
 type Store interface {
+	LoadConnection(context.Context, string) (integrations.Connection, bool, error)
 	ListConnections(context.Context, string) ([]integrations.Connection, error)
 	DeleteConnection(context.Context, string) (bool, error)
 }
 
-type Service struct {
-	catalog *Catalog
-	store   Store
-	qr      *QRService
+type SessionDisconnecter interface {
+	ProviderID() string
+	Disconnect(context.Context, integrations.Connection) error
 }
 
-func NewService(catalog *Catalog, store Store, qr *QRService) *Service {
-	return &Service{catalog: catalog, store: store, qr: qr}
+type Service struct {
+	catalog       *Catalog
+	store         Store
+	qr            *QRService
+	disconnecters map[string]SessionDisconnecter
+}
+
+func NewService(catalog *Catalog, store Store, qr *QRService, disconnecters ...SessionDisconnecter) *Service {
+	service := &Service{
+		catalog:       catalog,
+		store:         store,
+		qr:            qr,
+		disconnecters: map[string]SessionDisconnecter{},
+	}
+	for _, disconnecter := range disconnecters {
+		if disconnecter != nil {
+			service.disconnecters[disconnecter.ProviderID()] = disconnecter
+		}
+	}
+	return service
 }
 
 func (s *Service) ListPlugins(ctx context.Context) ([]integrations.Plugin, error) {
@@ -51,12 +72,24 @@ func (s *Service) DisconnectAccount(ctx context.Context, id string) error {
 	if id == "" {
 		return ErrConnectionNotFound
 	}
-	ok, err := s.store.DeleteConnection(ctx, id)
+	connection, ok, err := s.store.LoadConnection(ctx, id)
 	if err != nil {
 		return err
 	}
 	if !ok {
 		return ErrConnectionNotFound
+	}
+	ok, err = s.store.DeleteConnection(ctx, id)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrConnectionNotFound
+	}
+	if disconnecter := s.disconnecters[connection.Provider]; disconnecter != nil {
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), disconnectCleanupTimeout)
+		defer cancel()
+		return disconnecter.Disconnect(cleanupCtx, connection)
 	}
 	return nil
 }
