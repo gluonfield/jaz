@@ -8,6 +8,8 @@ import (
 const (
 	ProviderID   = "whatsapp"
 	ProviderName = "WhatsApp"
+
+	ToolSendMessage = "whatsapp_send_message"
 )
 
 func Plugin() integrations.Plugin {
@@ -54,20 +56,8 @@ func Plugin() integrations.Plugin {
 func chatTools() []integrations.PluginTool {
 	return []integrations.PluginTool{
 		{
-			Name:        chat.ToolSendMessage,
+			Name:        ToolSendMessage,
 			Description: "Send a message to a connected chat conversation after approval.",
-			Capability:  integrations.CapabilityAct,
-			Risk:        integrations.ActionRiskWrite,
-		},
-		{
-			Name:        chat.ToolReply,
-			Description: "Reply to a specific chat message after approval.",
-			Capability:  integrations.CapabilityAct,
-			Risk:        integrations.ActionRiskWrite,
-		},
-		{
-			Name:        chat.ToolAddReaction,
-			Description: "Add a reaction to a chat message.",
 			Capability:  integrations.CapabilityAct,
 			Risk:        integrations.ActionRiskWrite,
 		},

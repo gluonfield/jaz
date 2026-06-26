@@ -30,3 +30,7 @@ func NewConnectionService(catalog *connections.Catalog, store *sqlitestore.Store
 func NewGmailMCPTools(store *sqlitestore.Store) *connections.GmailMCPTools {
 	return connections.NewGmailMCPTools(store)
 }
+
+func NewChatMCPTools(store *sqlitestore.Store) *connections.ChatMCPTools {
+	return connections.NewChatMCPTools(store)
+}

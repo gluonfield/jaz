@@ -45,7 +45,7 @@ func testMemoryServer(t *testing.T) (*Server, *fakeMemoryScheduler) {
 	widgetService := widgets.NewService(store, nil)
 	publisher := &widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store}
 	events := sessionevents.New()
-	tools := jaztools.New(svc, serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"}, store, events, store, publisher, connections.NewGmailMCPTools(store))
+	tools := jaztools.New(svc, serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"}, store, events, store, publisher, connections.NewGmailMCPTools(store), connections.NewChatMCPTools(store))
 	return &Server{Store: store, Memory: svc, JazTools: tools}, scheduler
 }
 
