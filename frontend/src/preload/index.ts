@@ -7,9 +7,13 @@ import type { UpdateStatus } from '../shared/update'
 
 const apiBaseUrl = process.env['JAZ_API_URL'] ?? 'http://localhost:5299'
 
-// Board windows are spawned with this flag so the renderer can drop the app
-// chrome (sidebar, titlebar) and render the board full-bleed.
-const windowKind = process.argv.includes('--jaz-board-window') ? 'board' : 'main'
+// Board and launcher windows are spawned with a flag so the renderer can drop
+// the app chrome (sidebar, titlebar) and render that surface full-bleed.
+const windowKind = process.argv.includes('--jaz-board-window')
+  ? 'board'
+  : process.argv.includes('--jaz-launcher-window')
+    ? 'launcher'
+    : 'main'
 let previewURLTargetSubscriptions = 0
 
 contextBridge.exposeInMainWorld('jaz', {
@@ -47,6 +51,14 @@ contextBridge.exposeInMainWorld('jaz', {
   },
   openBoardWindow: (boardId: string) => ipcRenderer.send('jaz:open-board-window', boardId),
   openExternalURL: (url: string) => ipcRenderer.send('jaz:open-external-url', url),
+  captureScreenRegion: (): Promise<{ ok: boolean; data?: string }> =>
+    ipcRenderer.invoke('jaz:capture-screen-region'),
+  hideLauncher: () => ipcRenderer.send('jaz:hide-launcher'),
+  onLauncherShown: (handler: () => void): (() => void) => {
+    const listener = (): void => handler()
+    ipcRenderer.on('jaz:launcher-shown', listener)
+    return () => ipcRenderer.removeListener('jaz:launcher-shown', listener)
+  },
   // Board windows deep-link into the main app instead of navigating themselves.
   openInMain: (path: string) => ipcRenderer.send('jaz:open-in-main', path),
   onOpenRoute: (handler: (path: string) => void): (() => void) => {
