@@ -115,15 +115,16 @@ func RawRecordPath(root string, record integrations.Record) (string, error) {
 	if day.IsZero() {
 		return "", fmt.Errorf("record time is required")
 	}
+	day = day.UTC()
 	return filepath.Join(
 		root,
 		"raw",
 		provider,
 		accountID,
 		connectionID,
-		day.UTC().Format("2006"),
-		day.UTC().Format("01"),
-		day.UTC().Format("02"),
+		day.Format("2006"),
+		day.Format("01"),
+		day.Format("02"),
 		"events.jsonl",
 	), nil
 }
