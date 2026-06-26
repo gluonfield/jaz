@@ -2,11 +2,17 @@ package app
 
 import (
 	"github.com/wins/jaz/backend/internal/connections"
+	gmailconnector "github.com/wins/jaz/backend/internal/connectors/gmail"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
-func NewConnectionOAuthService(store *sqlitestore.Store) *connections.OAuthService {
-	return connections.NewOAuthService(store)
+func NewConnectionOAuthService(store *sqlitestore.Store, cfg Config) *connections.OAuthService {
+	return connections.NewOAuthService(store, connections.OAuthConfig{
+		Gmail: gmailconnector.OAuthClientConfig{
+			ClientID:     cfg.Connections.Gmail.OAuthClientID,
+			ClientSecret: cfg.Connections.Gmail.OAuthClientSecret,
+		},
+	})
 }
 
 func NewConnectionService(catalog *connections.Catalog, store *sqlitestore.Store) *connections.Service {

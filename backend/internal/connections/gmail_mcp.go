@@ -28,6 +28,11 @@ type GmailMCPTools struct {
 	apiBaseURL string
 }
 
+type gmailToolSession struct {
+	api        gmailconnector.APIClient
+	connection integrations.Connection
+}
+
 type GmailProfileInput struct{}
 
 type GmailSearchMessagesInput struct {
@@ -101,7 +106,7 @@ func (t *GmailMCPTools) RemoveFrom(server *mcp.Server) {
 }
 
 func (t *GmailMCPTools) GetProfile(ctx context.Context, _ *mcp.CallToolRequest, _ GmailProfileInput) (*mcp.CallToolResult, GmailProfileOutput, error) {
-	api, connected, err := t.api(ctx)
+	session, connected, err := t.session(ctx)
 	if err != nil {
 		return nil, GmailProfileOutput{}, err
 	}
@@ -109,7 +114,7 @@ func (t *GmailMCPTools) GetProfile(ctx context.Context, _ *mcp.CallToolRequest, 
 		out := GmailProfileOutput{Connected: false}
 		return textResult("Gmail is not connected. Connect Gmail in Settings > Connections."), out, nil
 	}
-	profile, err := api.Profile(ctx)
+	profile, err := session.api.Profile(ctx)
 	if err != nil {
 		return nil, GmailProfileOutput{}, err
 	}
@@ -119,14 +124,10 @@ func (t *GmailMCPTools) GetProfile(ctx context.Context, _ *mcp.CallToolRequest, 
 		MessagesTotal: profile.MessagesTotal,
 		ThreadsTotal:  profile.ThreadsTotal,
 		HistoryID:     profile.HistoryID,
-	}
-	if connection, ok, err := t.defaultConnection(ctx); err != nil {
-		return nil, GmailProfileOutput{}, err
-	} else if ok {
-		out.AccountID = connection.AccountID
-		out.AccountName = connection.AccountName
-		out.Alias = connection.Alias
-		out.Scopes = connection.Scopes
+		AccountID:     session.connection.AccountID,
+		AccountName:   session.connection.AccountName,
+		Alias:         session.connection.Alias,
+		Scopes:        session.connection.Scopes,
 	}
 	text := fmt.Sprintf("Gmail is connected as %s. Profile reports %d messages and %d threads.", profile.EmailAddress, profile.MessagesTotal, profile.ThreadsTotal)
 	return textResult(text), out, nil
@@ -134,7 +135,7 @@ func (t *GmailMCPTools) GetProfile(ctx context.Context, _ *mcp.CallToolRequest, 
 
 func (t *GmailMCPTools) SearchMessages(ctx context.Context, _ *mcp.CallToolRequest, input GmailSearchMessagesInput) (*mcp.CallToolResult, GmailSearchMessagesOutput, error) {
 	query := strings.TrimSpace(input.Query)
-	api, connected, err := t.api(ctx)
+	session, connected, err := t.session(ctx)
 	if err != nil {
 		return nil, GmailSearchMessagesOutput{}, err
 	}
@@ -142,7 +143,7 @@ func (t *GmailMCPTools) SearchMessages(ctx context.Context, _ *mcp.CallToolReque
 		out := GmailSearchMessagesOutput{Connected: false, Query: query}
 		return textResult("Gmail is not connected. Connect Gmail in Settings > Connections."), out, nil
 	}
-	search, err := api.SearchMessages(ctx, gmailconnector.SearchMessagesRequest{
+	search, err := session.api.SearchMessages(ctx, gmailconnector.SearchMessagesRequest{
 		Query:      query,
 		MaxResults: gmailSearchLimit(input.MaxResults),
 	})
@@ -168,7 +169,7 @@ func (t *GmailMCPTools) ReadMessage(ctx context.Context, _ *mcp.CallToolRequest,
 	if id == "" {
 		return nil, GmailReadMessageOutput{}, errors.New("id is required")
 	}
-	api, connected, err := t.api(ctx)
+	session, connected, err := t.session(ctx)
 	if err != nil {
 		return nil, GmailReadMessageOutput{}, err
 	}
@@ -176,7 +177,7 @@ func (t *GmailMCPTools) ReadMessage(ctx context.Context, _ *mcp.CallToolRequest,
 		out := GmailReadMessageOutput{Connected: false}
 		return textResult("Gmail is not connected. Connect Gmail in Settings > Connections."), out, nil
 	}
-	content, err := api.ReadMessage(ctx, id)
+	content, err := session.api.ReadMessage(ctx, id)
 	if err != nil {
 		return nil, GmailReadMessageOutput{}, err
 	}
@@ -187,15 +188,24 @@ func (t *GmailMCPTools) ReadMessage(ctx context.Context, _ *mcp.CallToolRequest,
 	return textResult("Read Gmail message: " + subject), GmailReadMessageOutput{Connected: true, Content: gmailToolContent(content)}, nil
 }
 
-func (t *GmailMCPTools) api(ctx context.Context) (gmailconnector.APIClient, bool, error) {
+func (t *GmailMCPTools) session(ctx context.Context) (gmailToolSession, bool, error) {
+	connection, ok, err := t.defaultConnection(ctx)
+	if err != nil {
+		return gmailToolSession{}, false, err
+	} else if !ok {
+		return gmailToolSession{}, false, nil
+	}
 	client, err := (integrationoauth.Refresher{Store: t.store}).Client(ctx, gmailconnector.OAuthConnectionID)
 	if errors.Is(err, integrationoauth.ErrTokenNotFound) {
-		return gmailconnector.APIClient{}, false, nil
+		return gmailToolSession{}, false, nil
 	}
 	if err != nil {
-		return gmailconnector.APIClient{}, false, err
+		return gmailToolSession{}, false, err
 	}
-	return gmailconnector.APIClient{HTTP: client, BaseURL: t.apiBaseURL}, true, nil
+	return gmailToolSession{
+		api:        gmailconnector.APIClient{HTTP: client, BaseURL: t.apiBaseURL},
+		connection: connection,
+	}, true, nil
 }
 
 func (t *GmailMCPTools) defaultConnection(ctx context.Context) (integrations.Connection, bool, error) {

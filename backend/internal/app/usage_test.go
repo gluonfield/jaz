@@ -126,7 +126,7 @@ func TestNewRoutesIncludesConnectionPluginRoutes(t *testing.T) {
 	routes := NewRoutes(routeDeps{
 		Usage:           usagecore.NewService(fakeUsageStore{}),
 		Connections:     connections.NewService(catalog, fakeConnectionOAuthStore{}),
-		ConnectionOAuth: connections.NewOAuthService(fakeConnectionOAuthStore{}),
+		ConnectionOAuth: connections.NewOAuthService(fakeConnectionOAuthStore{}, connections.OAuthConfig{}),
 	})
 	found := map[string]bool{}
 	for _, route := range routes {
