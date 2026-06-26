@@ -23,8 +23,8 @@ func NewConnectionConnectService(catalog *connections.Catalog, oauth *connection
 	return connections.NewConnectService(catalog, oauth, qr)
 }
 
-func NewConnectionService(catalog *connections.Catalog, store *sqlitestore.Store) *connections.Service {
-	return connections.NewService(catalog, store)
+func NewConnectionService(catalog *connections.Catalog, store *sqlitestore.Store, qr *connections.QRService) *connections.Service {
+	return connections.NewService(catalog, store, qr)
 }
 
 func NewGmailMCPTools(store *sqlitestore.Store) *connections.GmailMCPTools {

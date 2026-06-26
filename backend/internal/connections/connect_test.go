@@ -9,12 +9,12 @@ import (
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
-func TestConnectServiceRejectsUnavailablePlugin(t *testing.T) {
+func TestConnectServiceReportsMissingQRProviderForSessionPlugin(t *testing.T) {
 	service := NewConnectService(NewCatalog(), nil, NewQRService())
 
 	_, err := service.Start(context.Background(), whatsapp.ProviderID, "")
-	if err == nil {
-		t.Fatal("expected error")
+	if !errors.Is(err, ErrQRProviderUnavailable) {
+		t.Fatalf("err = %v", err)
 	}
 }
 

@@ -4,13 +4,16 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	gmailconnector "github.com/wins/jaz/backend/internal/connectors/gmail"
+	"github.com/wins/jaz/backend/internal/connectors/telegram"
+	"github.com/wins/jaz/backend/internal/connectors/whatsapp"
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
 func TestServiceReportsGmailConnectionState(t *testing.T) {
-	service := NewService(NewCatalog(), &serviceStore{})
+	service := NewService(NewCatalog(), &serviceStore{}, NewQRService())
 	plugin, ok, err := service.Plugin(context.Background(), gmailconnector.ProviderID)
 	if err != nil || !ok {
 		t.Fatalf("plugin ok=%v err=%v", ok, err)
@@ -30,7 +33,7 @@ func TestServiceReturnsSavedGmailAccounts(t *testing.T) {
 			Alias:       "personal",
 			Scopes:      []string{gmailconnector.ScopeModify},
 		}},
-	})
+	}, NewQRService())
 	plugin, ok, err := service.Plugin(context.Background(), gmailconnector.ProviderID)
 	if err != nil || !ok {
 		t.Fatalf("plugin ok=%v err=%v", ok, err)
@@ -43,6 +46,28 @@ func TestServiceReturnsSavedGmailAccounts(t *testing.T) {
 	}
 }
 
+func TestServiceReportsMissingChatSessionAdapter(t *testing.T) {
+	service := NewService(NewCatalog(), &serviceStore{}, NewQRService())
+	plugin, ok, err := service.Plugin(context.Background(), whatsapp.ProviderID)
+	if err != nil || !ok {
+		t.Fatalf("plugin ok=%v err=%v", ok, err)
+	}
+	if plugin.Implementation.Status != "adapter_required" {
+		t.Fatalf("implementation = %#v", plugin.Implementation)
+	}
+}
+
+func TestServiceMarksSessionPluginAvailableWhenQRProviderExists(t *testing.T) {
+	service := NewService(NewCatalog(), &serviceStore{}, NewQRService(fakeQRProvider{provider: telegram.ProviderID, expires: time.Now().Add(time.Minute)}))
+	plugin, ok, err := service.Plugin(context.Background(), telegram.ProviderID)
+	if err != nil || !ok {
+		t.Fatalf("plugin ok=%v err=%v", ok, err)
+	}
+	if plugin.Implementation.Status != "available" {
+		t.Fatalf("implementation = %#v", plugin.Implementation)
+	}
+}
+
 func TestServiceDisconnectAccount(t *testing.T) {
 	store := serviceStore{
 		connections: []integrations.Connection{{
@@ -51,7 +76,7 @@ func TestServiceDisconnectAccount(t *testing.T) {
 			Alias:    "personal",
 		}},
 	}
-	service := NewService(NewCatalog(), &store)
+	service := NewService(NewCatalog(), &store, NewQRService())
 	if err := service.DisconnectAccount(context.Background(), " gmail:personal "); err != nil {
 		t.Fatal(err)
 	}

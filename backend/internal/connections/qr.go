@@ -100,6 +100,11 @@ func (s *QRService) Status(ctx context.Context, id string) (QRStatus, error) {
 	return status, nil
 }
 
+func (s *QRService) Available(provider string) bool {
+	_, ok := s.provider(provider)
+	return ok
+}
+
 func (s *QRService) provider(id string) (QRProvider, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

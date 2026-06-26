@@ -63,15 +63,17 @@ export function ConnectionPluginCard({
   const available = plugin.implementation.status === 'available'
   const connected = plugin.connection?.status === 'connected'
   const Icon = connecting ? Loader2 : available && connected && plugin.multi_account ? Plus : available ? Plug : Clock3
+  const statusDetail = connectionStatusDetail(plugin)
 
   return (
     <div className="grid grid-cols-1 gap-3 bg-surface px-3 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-      <ConnectionSummary plugin={plugin} title={plugin.name} detail={plugin.description} />
+      <ConnectionSummary plugin={plugin} title={plugin.name} detail={statusDetail || plugin.description} />
       <Button
         variant="secondary"
         size="sm"
         disabled={!available || connecting}
         onClick={onConnect}
+        title={statusDetail}
         className="md:justify-self-end"
       >
         <Icon size={13} className={connecting ? 'animate-spin' : undefined} />
@@ -79,6 +81,13 @@ export function ConnectionPluginCard({
       </Button>
     </div>
   )
+}
+
+function connectionStatusDetail(plugin: IntegrationPlugin): string {
+  if (plugin.implementation.status === 'adapter_required') {
+    return 'Requires a provider session adapter before QR login can start.'
+  }
+  return ''
 }
 
 function ConnectionSummary({

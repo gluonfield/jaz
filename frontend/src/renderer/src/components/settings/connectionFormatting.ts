@@ -16,6 +16,7 @@ export function pluginActionLabel(plugin: IntegrationPlugin, connecting: boolean
 }
 
 function statusLabel(status: string): string {
+  if (status === 'adapter_required') return 'Adapter required'
   return status
     .split('_')
     .filter(Boolean)

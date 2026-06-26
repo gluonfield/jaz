@@ -131,7 +131,7 @@ func TestNewRoutesIncludesConnectionPluginRoutes(t *testing.T) {
 	qr := connections.NewQRService()
 	routes := NewRoutes(routeDeps{
 		Usage:           usagecore.NewService(fakeUsageStore{}),
-		Connections:     connections.NewService(catalog, fakeConnectionOAuthStore{}),
+		Connections:     connections.NewService(catalog, fakeConnectionOAuthStore{}, qr),
 		ConnectionOAuth: oauth,
 		ConnectionQR:    qr,
 		ConnectionStart: connections.NewConnectService(catalog, oauth, qr),
@@ -162,7 +162,7 @@ func TestNewRoutesKeepsConnectionStartRoutesIndependent(t *testing.T) {
 	oauth := connections.NewOAuthService(fakeConnectionOAuthStore{}, connections.OAuthConfig{})
 	routes := NewRoutes(routeDeps{
 		Usage:           usagecore.NewService(fakeUsageStore{}),
-		Connections:     connections.NewService(catalog, fakeConnectionOAuthStore{}),
+		Connections:     connections.NewService(catalog, fakeConnectionOAuthStore{}, nil),
 		ConnectionOAuth: oauth,
 	})
 	for _, route := range routes {

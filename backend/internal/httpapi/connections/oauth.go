@@ -24,6 +24,10 @@ func NewConnectHandler(connect *connections.ConnectService, oauth *connections.O
 func (h ConnectHandler) Start(w http.ResponseWriter, r *http.Request) {
 	start, err := h.Connect.Start(r.Context(), r.PathValue("id"), oauthCallbackURL(r))
 	if err != nil {
+		if errors.Is(err, connections.ErrQRProviderUnavailable) {
+			httpapi.WriteError(w, http.StatusServiceUnavailable, err)
+			return
+		}
 		httpapi.WriteError(w, http.StatusBadRequest, err)
 		return
 	}

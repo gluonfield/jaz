@@ -28,14 +28,14 @@ func (s *ConnectService) Start(ctx context.Context, pluginID, redirectURL string
 	if !ok {
 		return ConnectStart{}, fmt.Errorf("connection plugin %q is not available", pluginID)
 	}
-	if plugin.Implementation.Status != "available" {
-		return ConnectStart{}, fmt.Errorf("connection plugin %q is %s", pluginID, plugin.Implementation.Status)
-	}
 	if len(plugin.Auth) == 0 {
 		return ConnectStart{}, fmt.Errorf("connection plugin %q has no sign-in method", pluginID)
 	}
 	switch plugin.Auth[0].Kind {
 	case integrations.AuthKindOAuth:
+		if plugin.Implementation.Status != "available" {
+			return ConnectStart{}, fmt.Errorf("connection plugin %q is %s", pluginID, plugin.Implementation.Status)
+		}
 		if s.oauth == nil {
 			return ConnectStart{}, fmt.Errorf("connection plugin %q does not support OAuth here", pluginID)
 		}
@@ -48,12 +48,18 @@ func (s *ConnectService) Start(ctx context.Context, pluginID, redirectURL string
 		if s.qr == nil {
 			return ConnectStart{}, fmt.Errorf("connection plugin %q does not support QR login here", pluginID)
 		}
+		if !s.qr.Available(pluginID) {
+			return ConnectStart{}, fmt.Errorf("%w: %s", ErrQRProviderUnavailable, pluginID)
+		}
 		start, err := s.qr.Start(ctx, pluginID)
 		if err != nil {
 			return ConnectStart{}, err
 		}
 		return ConnectStart{Type: "qr", QR: &start}, nil
 	default:
+		if plugin.Implementation.Status != "available" {
+			return ConnectStart{}, fmt.Errorf("connection plugin %q is %s", pluginID, plugin.Implementation.Status)
+		}
 		return ConnectStart{}, fmt.Errorf("connection plugin %q uses unsupported sign-in method %q", pluginID, plugin.Auth[0].Kind)
 	}
 }
