@@ -120,12 +120,15 @@ export function CommandRow({
 }: {
   item: PaletteCommand
 } & Omit<PaletteRowProps, 'className' | 'children'>) {
+  const Icon = item.icon
   return (
-    <PaletteRow {...row} className="min-h-[52px] items-center py-2">
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13px] font-medium text-ink">{item.title}</span>
-        <span className="block truncate text-[12px] text-ink-3">{item.detail}</span>
-      </span>
+    <PaletteRow {...row} className="min-h-[44px] items-center py-2">
+      {Icon ? (
+        <span className="grid size-7 shrink-0 place-items-center rounded-[6px] bg-surface-2 text-ink-2">
+          <Icon size={15} />
+        </span>
+      ) : null}
+      <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{item.title}</span>
       {item.shortcut ? <KeyboardShortcut value={item.shortcut} className="bg-surface-2" /> : null}
     </PaletteRow>
   )

@@ -18,9 +18,10 @@ func TestPluginDescribesGmailConnection(t *testing.T) {
 	if plugin.RemoteMCP == nil || plugin.RemoteMCP.URL != RemoteMCPURL || !plugin.RemoteMCP.OAuthSecrets {
 		t.Fatalf("remote mcp = %#v", plugin.RemoteMCP)
 	}
-	if !slices.Contains(plugin.Capabilities, integrations.CapabilitySync) ||
-		!slices.Contains(plugin.Capabilities, integrations.CapabilityAct) ||
-		!slices.Contains(plugin.SourceLanes, "sources/email") {
+	if !slices.Contains(plugin.Capabilities, integrations.CapabilityAct) ||
+		!slices.Contains(plugin.Capabilities, integrations.CapabilityMCP) ||
+		slices.Contains(plugin.Capabilities, integrations.CapabilitySync) ||
+		len(plugin.SourceLanes) != 0 {
 		t.Fatalf("capabilities = %#v source_lanes = %#v", plugin.Capabilities, plugin.SourceLanes)
 	}
 	if len(plugin.Auth) == 0 || !slices.Contains(plugin.Auth[0].Scopes, ScopeModify) {
@@ -36,32 +37,29 @@ func TestPluginDescribesGmailConnection(t *testing.T) {
 	}
 }
 
-func TestPluginIncludesCodexStyleGmailTools(t *testing.T) {
+func TestPluginIncludesImplementedGmailTools(t *testing.T) {
 	tools := map[string]integrations.PluginTool{}
 	for _, tool := range Plugin().Tools {
 		tools[tool.Name] = tool
 	}
 	for _, name := range []string{
-		"search_emails",
-		"read_email_thread",
-		"create_draft",
-		"send_email",
-		"apply_labels_to_emails",
-		"bulk_label_matching_emails",
-		"archive_emails",
-		"delete_emails",
+		ToolGetProfile,
+		ToolSearchMessages,
+		ToolReadMessage,
 	} {
 		if _, ok := tools[name]; !ok {
 			t.Fatalf("missing tool %s", name)
 		}
 	}
-	if got := tools["send_email"].RequiredScopes; !slices.Contains(got, ScopeModify) {
-		t.Fatalf("send_email scopes = %#v", got)
+	if len(tools) != 3 {
+		t.Fatalf("tools = %#v", tools)
 	}
-	if got := tools["bulk_label_matching_emails"].Risk; got != integrations.ActionRiskBulkWrite {
-		t.Fatalf("bulk risk = %q", got)
-	}
-	if got := tools["search_emails"].Risk; got != integrations.ActionRiskRead {
+	if got := tools["gmail_search_messages"].Risk; got != integrations.ActionRiskRead {
 		t.Fatalf("search risk = %q", got)
+	}
+	for _, tool := range tools {
+		if !slices.Contains(tool.RequiredScopes, ScopeModify) {
+			t.Fatalf("%s scopes = %#v", tool.Name, tool.RequiredScopes)
+		}
 	}
 }

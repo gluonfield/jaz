@@ -23,7 +23,7 @@ type routeDeps struct {
 	Config          serverconfig.Config            `optional:"true"`
 	Browser         *browserworker.ExtensionBridge `optional:"true"`
 	BrowserSettings *BrowserSettingsHandler        `optional:"true"`
-	Connections     *connections.Catalog           `optional:"true"`
+	Connections     *connections.Service           `optional:"true"`
 	ConnectionOAuth *connections.OAuthService      `optional:"true"`
 }
 
@@ -47,14 +47,15 @@ func usageRoutes(usage usagecore.Service) server.Routes {
 	}
 }
 
-func appendConnectionRoutes(routes server.Routes, catalog *connections.Catalog, oauth *connections.OAuthService) server.Routes {
-	if catalog == nil {
+func appendConnectionRoutes(routes server.Routes, service *connections.Service, oauth *connections.OAuthService) server.Routes {
+	if service == nil {
 		return routes
 	}
-	handler := connectionsapi.NewPluginHandler(catalog)
+	handler := connectionsapi.NewPluginHandler(service)
 	routes = append(routes,
 		server.Route{Pattern: "GET /v1/connections/plugins", Handler: httpHandlerFunc(handler.List)},
 		server.Route{Pattern: "GET /v1/connections/plugins/{id}", Handler: httpHandlerFunc(handler.Get)},
+		server.Route{Pattern: "DELETE /v1/connections/accounts/{id}", Handler: httpHandlerFunc(handler.Disconnect)},
 	)
 	if oauth != nil {
 		oauthHandler := connectionsapi.NewOAuthHandler(oauth)

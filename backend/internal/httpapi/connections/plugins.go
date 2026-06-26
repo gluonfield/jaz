@@ -10,23 +10,45 @@ import (
 )
 
 type PluginHandler struct {
-	Catalog *connections.Catalog
+	Service *connections.Service
 }
 
-func NewPluginHandler(catalog *connections.Catalog) PluginHandler {
-	return PluginHandler{Catalog: catalog}
+func NewPluginHandler(service *connections.Service) PluginHandler {
+	return PluginHandler{Service: service}
 }
 
-func (h PluginHandler) List(w http.ResponseWriter, _ *http.Request) {
-	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"plugins": h.Catalog.ListPlugins()})
+func (h PluginHandler) List(w http.ResponseWriter, r *http.Request) {
+	plugins, err := h.Service.ListPlugins(r.Context())
+	if err != nil {
+		httpapi.WriteError(w, http.StatusInternalServerError, err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"plugins": plugins})
 }
 
 func (h PluginHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSpace(r.PathValue("id"))
-	plugin, ok := h.Catalog.Plugin(id)
+	plugin, ok, err := h.Service.Plugin(r.Context(), id)
+	if err != nil {
+		httpapi.WriteError(w, http.StatusInternalServerError, err)
+		return
+	}
 	if !ok {
 		httpapi.WriteError(w, http.StatusNotFound, errors.New("connection plugin not found"))
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusOK, plugin)
+}
+
+func (h PluginHandler) Disconnect(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(r.PathValue("id"))
+	if err := h.Service.DisconnectAccount(r.Context(), id); err != nil {
+		if errors.Is(err, connections.ErrConnectionNotFound) {
+			httpapi.WriteError(w, http.StatusNotFound, err)
+			return
+		}
+		httpapi.WriteError(w, http.StatusInternalServerError, err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

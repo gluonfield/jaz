@@ -14,6 +14,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/browsertask"
 	"github.com/wins/jaz/backend/internal/browserworker"
+	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/memoryservice"
@@ -114,6 +115,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		sessionevents.New(),
 		store,
 		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
+		connections.NewGmailMCPTools(store),
 	)
 	executor := &fakeExecutor{started: make(chan loops.Run, 1)}
 	service.SetLoops(loops.NewService(store, executor, nil))
@@ -145,6 +147,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 	for _, name := range []string{
 		"memory_search", "memory_get_page",
 		"thread_context",
+		"gmail_get_profile", "gmail_search_messages", "gmail_read_message",
 		"loop_list", "loop_get", "loop_create", "loop_update", "loop_run", "loop_delete",
 		"agent_spawn", "agent_send", "agent_status", "agent_wait", "agent_cancel", "agent_list",
 		"visualise_read_me", "visualise_show_widget",
@@ -303,6 +306,7 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 		sessionevents.New(),
 		store,
 		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
+		connections.NewGmailMCPTools(store),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 	service.SetAgents(fakeACPService{spawned: make(chan acp.SpawnRequest, 1)})
@@ -409,6 +413,7 @@ func TestWidgetSurfaceGetsAgentToolsAfterServerCreated(t *testing.T) {
 		sessionevents.New(),
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
+		connections.NewGmailMCPTools(store),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 
@@ -443,6 +448,7 @@ func TestAgentSpawnToolSchemaAndAlias(t *testing.T) {
 		sessionevents.New(),
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
+		connections.NewGmailMCPTools(store),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 	agentService := fakeACPService{spawned: make(chan acp.SpawnRequest, 1)}
@@ -508,6 +514,7 @@ func TestSearchWorkerSurfaceOnlyAdvertisesRawMemoryTools(t *testing.T) {
 		sessionevents.New(),
 		store,
 		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
+		connections.NewGmailMCPTools(store),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 
@@ -564,6 +571,7 @@ func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 		sessionevents.New(),
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
+		connections.NewGmailMCPTools(store),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 
@@ -631,6 +639,7 @@ func TestBrowserToolsAndWorkerSurface(t *testing.T) {
 		sessionevents.New(),
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
+		connections.NewGmailMCPTools(store),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 	service.SetBrowser(browsertask.New(store, fakeACPService{spawned: make(chan acp.SpawnRequest, 1)}, acp.BuiltinAgents(), fakeBrowserBackend{}), fakeBrowserBackend{})

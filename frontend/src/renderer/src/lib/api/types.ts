@@ -237,6 +237,20 @@ export interface IntegrationImplementation {
   owner: string
 }
 
+export interface IntegrationConnectionAccount {
+  id: string
+  provider: string
+  account_id: string
+  account_name?: string
+  alias?: string
+  scopes?: string[]
+}
+
+export interface IntegrationConnection {
+  status: 'connected' | 'not_connected'
+  accounts?: IntegrationConnectionAccount[]
+}
+
 export type IntegrationPluginIconKind = 'asset' | 'url' | 'initials'
 
 export interface IntegrationPluginIcon {
@@ -261,6 +275,7 @@ export interface IntegrationPlugin {
   remote_mcp?: IntegrationRemoteMCP
   connection_notes?: string[]
   implementation: IntegrationImplementation
+  connection?: IntegrationConnection
 }
 
 export type DeviceStatus = 'pending' | 'approved' | 'revoked'
