@@ -1,4 +1,4 @@
-import { ArrowRight, Loader2, Plug, Plus, QrCode, Sparkles, Wrench } from 'lucide-react'
+import { ArrowRight, Loader2, Plug, Plus, QrCode, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import type {
@@ -29,9 +29,9 @@ export function ConnectionPluginDetailModal({
       title={plugin.name}
       description={subtitle(plugin)}
       icon={<PluginGlyph plugin={plugin} size={18} />}
-      size="lg"
+      size="xl"
     >
-      <div className="space-y-6">
+      <div className="space-y-5">
         <PreviewBand plugin={plugin} />
         <p className="text-[13px] leading-5 text-ink-2">{plugin.description}</p>
         <AppsSection
@@ -49,7 +49,7 @@ export function ConnectionPluginDetailModal({
 
 function PreviewBand({ plugin }: { plugin: IntegrationPlugin }) {
   return (
-    <div className="rounded-card bg-[linear-gradient(135deg,var(--color-primary-soft),var(--color-surface-2))] px-4 py-5">
+    <div className="rounded-card bg-[linear-gradient(135deg,var(--color-primary-soft),var(--color-surface-2))] px-4 py-4">
       <div className="mx-auto flex w-fit max-w-full items-center gap-2 rounded-full bg-bg/90 px-4 py-2.5 shadow-raised">
         <PluginGlyph plugin={plugin} size={16} />
         <span className="shrink-0 text-[13px] font-medium text-ink">{plugin.name}</span>
@@ -92,8 +92,8 @@ function AppsSection({
           </div>
         </div>
         <Button
-          variant="secondary"
-          size="md"
+          variant="primary"
+          size="lg"
           disabled={!available || connecting}
           onClick={onConnect}
           className="w-full sm:w-auto"
@@ -110,20 +110,18 @@ function ToolsSection({ tools }: { tools: IntegrationTool[] }) {
   return (
     <section>
       <SectionHeading label="Tools" count={tools.length} />
-      <div className="space-y-3">
-        {tools.map((tool) => (
-          <div key={tool.name} className="flex min-w-0 items-start gap-3">
-            <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-control bg-surface text-ink-2">
-              <Wrench size={15} />
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-[13px] font-medium text-ink">{toolTitle(tool.name)}</p>
-              <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-ink-2">
-                {tool.description}
-              </p>
-            </div>
-          </div>
-        ))}
+      <div className="max-h-[min(220px,32dvh)] overflow-y-auto rounded-card bg-surface px-3 py-2">
+        <ul className="grid grid-cols-1 gap-x-5 sm:grid-cols-2">
+          {tools.map((tool) => (
+            <li
+              key={tool.name}
+              className="min-w-0 truncate py-1.5 font-mono text-[12px] leading-5 text-ink"
+              title={tool.name}
+            >
+              {tool.name}
+            </li>
+          ))}
+        </ul>
       </div>
     </section>
   )
@@ -203,15 +201,6 @@ function appDescription(plugin: IntegrationPlugin): string {
   if (plugin.id === 'whatsapp') return 'Scan a WhatsApp QR code to sync chats and send messages'
   if (plugin.id === 'telegram') return 'Scan a Telegram QR code to sync chats and send messages'
   return plugin.description || `Use ${plugin.name} from Jaz`
-}
-
-function toolTitle(name: string): string {
-  return name
-    .replace(/^[^_]+_/, '')
-    .split('_')
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ')
 }
 
 function capabilityLabels(plugin: IntegrationPlugin): string {
