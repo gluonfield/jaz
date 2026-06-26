@@ -146,7 +146,7 @@ func (c APIClient) UpdateDraft(ctx context.Context, id string, input ComposeMess
 		return Draft{}, err
 	}
 	var draft apiDraft
-	if err := c.put(ctx, "gmail/v1/users/me/drafts/"+id, request, &draft); err != nil {
+	if err := c.put(ctx, "gmail/v1/users/me/drafts/"+url.PathEscape(id), request, &draft); err != nil {
 		return Draft{}, err
 	}
 	return draftFromAPI(draft), nil
@@ -193,6 +193,46 @@ func (c APIClient) ListDrafts(ctx context.Context, input ListDraftsRequest) (Lis
 	return out, nil
 }
 
+func (c APIClient) ReadAttachment(ctx context.Context, messageID, attachmentID string) (AttachmentContent, error) {
+	messageID = strings.TrimSpace(messageID)
+	attachmentID = strings.TrimSpace(attachmentID)
+	if messageID == "" {
+		return AttachmentContent{}, fmt.Errorf("gmail message id is required")
+	}
+	if attachmentID == "" {
+		return AttachmentContent{}, fmt.Errorf("gmail attachment id is required")
+	}
+	rawMessage, err := c.message(ctx, messageID, "full")
+	if err != nil {
+		return AttachmentContent{}, err
+	}
+	attachment, ok := attachmentByID(messageFromAPI(rawMessage).Attachments, attachmentID)
+	if !ok {
+		return AttachmentContent{}, fmt.Errorf("gmail attachment %q not found on message %q", attachmentID, messageID)
+	}
+	var raw apiAttachment
+	if err := c.get(ctx, "gmail/v1/users/me/messages/"+url.PathEscape(messageID)+"/attachments/"+url.PathEscape(attachmentID), nil, &raw); err != nil {
+		return AttachmentContent{}, err
+	}
+	data, err := decodeBodyBytes(raw.Data)
+	if err != nil {
+		return AttachmentContent{}, fmt.Errorf("decode gmail attachment: %w", err)
+	}
+	if raw.Size == 0 {
+		raw.Size = attachment.Size
+	}
+	return AttachmentContent{Attachment: attachment, Data: data, Size: raw.Size}, nil
+}
+
+func attachmentByID(attachments []Attachment, id string) (Attachment, bool) {
+	for _, attachment := range attachments {
+		if attachment.ID == id {
+			return attachment, true
+		}
+	}
+	return Attachment{}, false
+}
+
 func (c APIClient) message(ctx context.Context, id, format string) (apiMessage, error) {
 	q := url.Values{}
 	q.Set("format", format)
@@ -202,7 +242,7 @@ func (c APIClient) message(ctx context.Context, id, format string) (apiMessage, 
 		}
 	}
 	var message apiMessage
-	return message, c.get(ctx, "gmail/v1/users/me/messages/"+id, q, &message)
+	return message, c.get(ctx, "gmail/v1/users/me/messages/"+url.PathEscape(id), q, &message)
 }
 
 func (c APIClient) thread(ctx context.Context, id, format string) (apiThread, error) {
@@ -214,7 +254,7 @@ func (c APIClient) thread(ctx context.Context, id, format string) (apiThread, er
 		}
 	}
 	var thread apiThread
-	return thread, c.get(ctx, "gmail/v1/users/me/threads/"+id, q, &thread)
+	return thread, c.get(ctx, "gmail/v1/users/me/threads/"+url.PathEscape(id), q, &thread)
 }
 
 func (c APIClient) draft(ctx context.Context, id, format string) (apiDraft, error) {
@@ -226,7 +266,7 @@ func (c APIClient) draft(ctx context.Context, id, format string) (apiDraft, erro
 		}
 	}
 	var draft apiDraft
-	return draft, c.get(ctx, "gmail/v1/users/me/drafts/"+id, q, &draft)
+	return draft, c.get(ctx, "gmail/v1/users/me/drafts/"+url.PathEscape(id), q, &draft)
 }
 
 func (c APIClient) get(ctx context.Context, path string, query url.Values, out any) error {

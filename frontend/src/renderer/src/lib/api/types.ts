@@ -208,6 +208,7 @@ export interface IntegrationAuthOption {
   kind: IntegrationAuthKind
   description?: string
   scopes?: string[]
+  requires?: string[]
 }
 
 export interface IntegrationRemoteMCP {
@@ -284,7 +285,7 @@ export interface ConnectionQRStart {
   code: string
   status: 'pending' | 'scanned' | 'connected' | 'expired' | 'failed'
   expires_at: string
-  instructions?: string[]
+  instructions: string[]
 }
 
 export interface ConnectionStart {
@@ -296,6 +297,7 @@ export interface ConnectionStart {
 export interface ConnectionQRStatus {
   session_id: string
   provider: string
+  code?: string
   status: 'pending' | 'scanned' | 'connected' | 'expired' | 'failed'
   expires_at: string
   account_id?: string

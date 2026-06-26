@@ -3,6 +3,7 @@ package app
 import (
 	"github.com/wins/jaz/backend/internal/connections"
 	gmailconnector "github.com/wins/jaz/backend/internal/connectors/gmail"
+	"github.com/wins/jaz/backend/internal/integrationingest"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
@@ -15,22 +16,22 @@ func NewConnectionOAuthService(store *sqlitestore.Store, cfg Config) *connection
 	})
 }
 
-func NewConnectionQRService() *connections.QRService {
-	return connections.NewQRService()
+func NewConnectionQRService(providers ConnectionQRProviders) *connections.QRService {
+	return connections.NewQRService(providers.Providers...)
 }
 
 func NewConnectionConnectService(catalog *connections.Catalog, oauth *connections.OAuthService, qr *connections.QRService) *connections.ConnectService {
 	return connections.NewConnectService(catalog, oauth, qr)
 }
 
-func NewConnectionService(catalog *connections.Catalog, store *sqlitestore.Store) *connections.Service {
-	return connections.NewService(catalog, store)
+func NewConnectionService(catalog *connections.Catalog, store *sqlitestore.Store, qr *connections.QRService, disconnecters ConnectionSessionDisconnecters) *connections.Service {
+	return connections.NewService(catalog, store, qr, disconnecters.Disconnecters...)
 }
 
-func NewGmailMCPTools(store *sqlitestore.Store) *connections.GmailMCPTools {
-	return connections.NewGmailMCPTools(store)
+func NewGmailMCPTools(store *sqlitestore.Store, raw integrationingest.RawWriter) *connections.GmailMCPTools {
+	return connections.NewGmailMCPTools(store, raw)
 }
 
-func NewChatMCPTools(store *sqlitestore.Store) *connections.ChatMCPTools {
-	return connections.NewChatMCPTools(store)
+func NewChatMCPTools(store *sqlitestore.Store, senders ChatSenders) *connections.ChatMCPTools {
+	return connections.NewChatMCPTools(store, senders.Senders...)
 }

@@ -32,7 +32,7 @@ function providerSubagentKey(event: SessionEvent): string {
   return `${subagent.provider ?? ''}:${subagent.id}`
 }
 
-function looksLikeOpaqueToolID(text: string): boolean {
+export function looksLikeOpaqueToolID(text: string): boolean {
   return /^(?:toolu_|call_|tool[-_])[A-Za-z0-9_-]+$/.test(text)
 }
 

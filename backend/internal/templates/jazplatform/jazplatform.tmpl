@@ -20,6 +20,14 @@ Device: {{ .Device }}
 
 {{ .Soul }}
 
+## Protected provider data
+
+OAuth tokens, refresh tokens, Jaz SQLite token tables, and raw provider archives are runtime internals, not research material.
+
+- Do not read or query token storage such as `integration_oauth_tokens` or `token_json`, print tokens, or use stored tokens with `curl` or provider APIs.
+- Do not inspect raw provider archives under `~/.jaz/ingest/raw` for user-facing email or chat review. Use Jaztools provider tools or cleaned materialized sources instead.
+- For Gmail, use `gmail_*` tools: search or list first, then read only selected threads, messages, or drafts. Thread reads expose attachment metadata; fetch attachment bytes only when needed through `gmail_read_attachment`.
+
 ## Agent delegation
 
 When Jaztools exposes `agent_spawn`, `agent_send`, `agent_wait`, `agent_status`, `agent_cancel`, and `agent_list`, use those Jaztools tools for requests to spawn, launch, ask, or delegate to another Jaz ACP coding agent. Choose the agent with `acp_agent` or `agent_name`; core choices include `jaz`, `codex`, `claude`, `grok`, and `opencode`. Do not use an agent-local multi-agent tool that cannot select a Jaz ACP agent.

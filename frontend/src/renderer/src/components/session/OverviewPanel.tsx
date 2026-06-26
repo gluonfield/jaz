@@ -29,7 +29,7 @@ import { compactSession, setSessionArchived } from '@/lib/api/sessions'
 import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
 import type { RepoInfo, Session } from '@/lib/api/types'
 import { writeClipboard } from '@/lib/clipboard'
-import type { ProviderSubagentView } from '@/lib/providerSubagents'
+import { looksLikeOpaqueToolID, type ProviderSubagentView } from '@/lib/providerSubagents'
 import type { SendMessageHandler } from '@/lib/sendMessage'
 import type { SpawnedThreadView } from '@/lib/spawnedThreads'
 import { taskStepState, type TaskSurface } from '@/lib/taskSurface'
@@ -318,7 +318,7 @@ function subagentTitle(subagent: ProviderSubagentView): string {
 
 function subagentSummary(summary: string | undefined): string | undefined {
   const text = summary?.trim()
-  if (!text) return undefined
+  if (!text || looksLikeOpaqueToolID(text)) return undefined
   switch (text.toLowerCase()) {
     case 'spawned':
     case 'working':

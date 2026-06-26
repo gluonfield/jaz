@@ -63,22 +63,29 @@ type ChatSendMessageOutput struct {
 func NewChatMCPTools(store ChatToolStore, senders ...ChatSender) *ChatMCPTools {
 	tools := &ChatMCPTools{store: store, senders: map[string]ChatSender{}}
 	for _, sender := range senders {
+		if sender == nil {
+			continue
+		}
 		tools.senders[sender.ProviderID()] = sender
 	}
 	return tools
 }
 
 func (t *ChatMCPTools) AddTo(server *mcp.Server) {
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        whatsapp.ToolSendMessage,
-		Title:       "Send WhatsApp message",
-		Description: "Send a WhatsApp message from one connected account to a phone number, contact id, or conversation id. Requires a configured WhatsApp sender adapter.",
-	}, t.SendWhatsAppMessage)
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        telegram.ToolSendMessage,
-		Title:       "Send Telegram message",
-		Description: "Send a Telegram message from one connected account to a username, user id, or chat id. Requires a configured Telegram sender adapter.",
-	}, t.SendTelegramMessage)
+	if t.senders[whatsapp.ProviderID] != nil {
+		mcp.AddTool(server, &mcp.Tool{
+			Name:        whatsapp.ToolSendMessage,
+			Title:       "Send WhatsApp message",
+			Description: "Send a WhatsApp message from one connected account to a phone number, contact id, or conversation id. Requires a connected WhatsApp session.",
+		}, t.SendWhatsAppMessage)
+	}
+	if t.senders[telegram.ProviderID] != nil {
+		mcp.AddTool(server, &mcp.Tool{
+			Name:        telegram.ToolSendMessage,
+			Title:       "Send Telegram message",
+			Description: "Send a Telegram message from one connected account to a username, user id, or chat id. Requires a connected Telegram session.",
+		}, t.SendTelegramMessage)
+	}
 }
 
 func (t *ChatMCPTools) RemoveFrom(server *mcp.Server) {
@@ -123,7 +130,7 @@ func (t *ChatMCPTools) sendMessage(ctx context.Context, provider, providerName s
 	out.Alias = connection.Alias
 	sender := t.senders[provider]
 	if sender == nil {
-		return textResult(providerName + " messaging is not enabled yet. A provider sender adapter is required before Jaz can send messages."), out, nil
+		return textResult(providerName + " messaging is not enabled in this runtime."), out, nil
 	}
 	out.SenderAvailable = true
 	result, err := sender.SendMessage(ctx, ChatSendRequest{

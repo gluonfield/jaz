@@ -7,6 +7,7 @@ import (
 	"time"
 
 	connectiondb "github.com/wins/jaz/backend/internal/storage/sqlite/generated/integrationconnections"
+	cursordb "github.com/wins/jaz/backend/internal/storage/sqlite/generated/integrationcursors"
 	oauthdb "github.com/wins/jaz/backend/internal/storage/sqlite/generated/integrationoauth"
 	"github.com/wins/jaz/backend/pkg/integrations"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
@@ -98,6 +99,9 @@ func (s *Store) DeleteConnection(ctx context.Context, id string) (bool, error) {
 	}
 	if rows == 0 {
 		return false, nil
+	}
+	if err := cursordb.New(s.db).WithTx(tx).DeleteCursorsForConnection(ctx, id); err != nil {
+		return false, err
 	}
 	if err := oauthdb.New(s.db).WithTx(tx).DeleteToken(ctx, id); err != nil {
 		return false, err

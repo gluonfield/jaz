@@ -24,6 +24,10 @@ func NewConnectHandler(connect *connections.ConnectService, oauth *connections.O
 func (h ConnectHandler) Start(w http.ResponseWriter, r *http.Request) {
 	start, err := h.Connect.Start(r.Context(), r.PathValue("id"), oauthCallbackURL(r))
 	if err != nil {
+		if errors.Is(err, connections.ErrQRProviderUnavailable) {
+			httpapi.WriteError(w, http.StatusServiceUnavailable, err)
+			return
+		}
 		httpapi.WriteError(w, http.StatusBadRequest, err)
 		return
 	}
@@ -50,6 +54,18 @@ func (h ConnectHandler) QRStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusOK, status)
+}
+
+func (h ConnectHandler) CloseQR(w http.ResponseWriter, r *http.Request) {
+	if err := h.QR.Close(r.Context(), r.PathValue("id")); err != nil {
+		if errors.Is(err, connections.ErrQRSessionNotFound) {
+			httpapi.WriteError(w, http.StatusNotFound, err)
+			return
+		}
+		httpapi.WriteError(w, http.StatusInternalServerError, err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func oauthCallbackURL(r *http.Request) string {

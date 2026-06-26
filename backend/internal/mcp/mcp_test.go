@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/log"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/connections"
+	"github.com/wins/jaz/backend/internal/integrationingest"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/tools"
 )
@@ -274,7 +275,7 @@ func TestManagerRefreshLocalCanUseLocalServer(t *testing.T) {
 
 func TestManagerRefreshLocalRegistersJaztoolsGmailTools(t *testing.T) {
 	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "jaztools", Version: "test"}, nil)
-	connections.NewGmailMCPTools(nil).AddTo(server)
+	connections.NewGmailMCPTools(nil, integrationingest.RawWriter{Root: t.TempDir()}).AddTo(server)
 
 	registry := tools.NewRegistry()
 	manager := NewManager(&testStore{}, nil, registry, log.New(io.Discard), WithBuiltinServerProvider(mcpconfig.Server{
@@ -286,7 +287,7 @@ func TestManagerRefreshLocalRegistersJaztoolsGmailTools(t *testing.T) {
 	defer manager.Close()
 
 	status := manager.Status("jaztools")
-	if status.Status != "connected" || status.ToolCount != 7 {
+	if status.Status != "connected" || status.ToolCount != 9 {
 		t.Fatalf("status = %#v", status)
 	}
 	for _, name := range []string{
@@ -294,9 +295,11 @@ func TestManagerRefreshLocalRegistersJaztoolsGmailTools(t *testing.T) {
 		"mcp_jaztools_gmail_search_threads",
 		"mcp_jaztools_gmail_read_thread",
 		"mcp_jaztools_gmail_create_draft",
+		"mcp_jaztools_gmail_create_reply_draft",
 		"mcp_jaztools_gmail_send_draft",
 		"mcp_jaztools_gmail_update_draft",
 		"mcp_jaztools_gmail_list_drafts",
+		"mcp_jaztools_gmail_read_attachment",
 	} {
 		if _, ok := registry.Get(name); !ok {
 			t.Fatalf("registry missing %s", name)

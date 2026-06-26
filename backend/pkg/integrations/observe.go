@@ -24,6 +24,10 @@ type Cursor struct {
 	Value json.RawMessage `json:"value,omitempty"`
 }
 
+func (c Cursor) Empty() bool {
+	return c.Kind == "" && len(c.Value) == 0
+}
+
 type ObserveRequest struct {
 	Connection Connection
 	Client     *http.Client

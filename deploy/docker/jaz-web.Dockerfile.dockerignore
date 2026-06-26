@@ -1,0 +1,15 @@
+# jaz-web builds the frontend; it needs frontend/ source (not node_modules,
+# which bun reinstalls in the image) and deploy/docker/*. Drop the rest.
+.git
+**/node_modules
+**/.DS_Store
+**/.env
+**/.env.*
+frontend/dist-web
+frontend/dist
+frontend/out
+frontend/.vite
+backend
+activepieces
+matrix
+docs

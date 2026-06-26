@@ -1,0 +1,6 @@
+# jaz-backend installs the release binary; it only needs deploy/docker/* from
+# the context. Exclude everything else (the 2 GB repo, node_modules, .git).
+*
+!deploy
+deploy/*
+!deploy/docker

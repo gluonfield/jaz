@@ -176,9 +176,8 @@ function compactProperties(properties: TelemetryProperties): Record<string, stri
 }
 
 async function send(payload: object): Promise<void> {
-  const host = import.meta.env.VITE_POSTHOG_HOST?.trim() || DEFAULT_HOST
   try {
-    await fetch(`${host.replace(/\/+$/, '')}/i/v0/e/`, {
+    await fetch(`${DEFAULT_HOST}/i/v0/e/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

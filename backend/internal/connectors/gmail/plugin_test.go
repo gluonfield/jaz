@@ -47,21 +47,23 @@ func TestPluginIncludesImplementedGmailTools(t *testing.T) {
 		ToolSearchThreads,
 		ToolReadThread,
 		ToolCreateDraft,
+		ToolCreateReply,
 		ToolSendDraft,
 		ToolUpdateDraft,
 		ToolListDrafts,
+		ToolReadAttachment,
 	} {
 		if _, ok := tools[name]; !ok {
 			t.Fatalf("missing tool %s", name)
 		}
 	}
-	if len(tools) != 7 {
+	if len(tools) != 9 {
 		t.Fatalf("tools = %#v", tools)
 	}
 	if got := tools[ToolSearchThreads].Risk; got != integrations.ActionRiskRead {
 		t.Fatalf("search risk = %q", got)
 	}
-	for _, name := range []string{ToolCreateDraft, ToolSendDraft, ToolUpdateDraft} {
+	for _, name := range []string{ToolCreateDraft, ToolCreateReply, ToolSendDraft, ToolUpdateDraft} {
 		if got := tools[name].Risk; got != integrations.ActionRiskWrite {
 			t.Fatalf("%s risk = %q", name, got)
 		}

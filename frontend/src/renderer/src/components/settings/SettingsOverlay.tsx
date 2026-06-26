@@ -17,7 +17,11 @@ import { KeyboardShortcutsSettings } from './KeyboardShortcutsSettings'
 import { MCPSettings } from './MCPSettings'
 import { MemorySettings } from './MemorySettings'
 import { PersonalizationSettings } from './PersonalizationSettings'
-import { SETTINGS_SECTIONS, type SettingsSection } from './sections'
+import {
+  type SettingsSection,
+  useExperimentalFeaturesEnabled,
+  visibleSettingsSections,
+} from './sections'
 import { UsageSettings } from './UsageSettings'
 
 export function SettingsOverlay({
@@ -35,6 +39,7 @@ export function SettingsOverlay({
 }) {
   const reduce = useReducedMotion()
   const isMobile = useIsMobile()
+  const [experimentalEnabled] = useExperimentalFeaturesEnabled()
   const [query, setQuery] = useState('')
   // Phone: the nav is a full-screen drawer over the content rather than a fixed
   // column. It opens first (so a section is picked), then dismisses to reveal it.
@@ -61,10 +66,14 @@ export function SettingsOverlay({
     }
   }, [open, onClose])
 
+  const visibleSections = visibleSettingsSections(experimentalEnabled)
   const q = query.trim().toLowerCase()
-  const items = SETTINGS_SECTIONS.filter((item) => !q || item.label.toLowerCase().includes(q))
+  const items = visibleSections.filter((item) => !q || item.label.toLowerCase().includes(q))
+  const current = visibleSections.find((item) => item.id === section) ?? visibleSections[0]
 
-  const current = SETTINGS_SECTIONS.find((item) => item.id === section) ?? SETTINGS_SECTIONS[0]
+  useEffect(() => {
+    if (open && section && section !== current.id) onSectionChange(current.id)
+  }, [current.id, onSectionChange, open, section])
 
   return createPortal(
     <AnimatePresence>
@@ -128,7 +137,7 @@ export function SettingsOverlay({
             <nav className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-3 pb-3">
               {items.map((item) => {
                 const Icon = item.icon
-                const selected = item.id === section
+                const selected = item.id === current.id
                 return (
                   <button
                     key={item.id}

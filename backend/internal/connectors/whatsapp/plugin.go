@@ -16,16 +16,15 @@ func Plugin() integrations.Plugin {
 	return integrations.Plugin{
 		ID:          ProviderID,
 		Name:        ProviderName,
-		Description: "Sync WhatsApp conversations into chat memory and let agents send approved messages.",
+		Description: "Sync WhatsApp conversations into raw chat archives and let agents send messages.",
 		Provider: integrations.Provider{
 			ID:   ProviderID,
 			Name: ProviderName,
 		},
 		Category: "chat",
 		Icon: integrations.PluginIcon{
-			Kind:       integrations.PluginIconKindInitials,
-			Value:      "WA",
-			Background: "#e7f7ee",
+			Kind:  integrations.PluginIconKindAsset,
+			Value: ProviderID,
 		},
 		Auth: []integrations.AuthOption{{
 			Kind:        integrations.AuthKindSession,
@@ -34,16 +33,13 @@ func Plugin() integrations.Plugin {
 		Capabilities: []integrations.Capability{
 			integrations.CapabilitySync,
 			integrations.CapabilityAct,
-			integrations.CapabilityMaterialize,
 		},
 		MultiAccount: true,
-		SourceLanes:  []string{"sources/chat/whatsapp"},
 		Tools:        chatTools(),
 		Skills:       chatSkills(),
 		ConnectionNotes: []string{
-			"Jaz stores raw WhatsApp contacts and messages under ~/.memory/raw-sources and writes readable chat pages under memory sources/chat.",
-			"QR pairing requires a WhatsApp provider session adapter; the catalog entry is present before pairing is enabled.",
-			"Message sending should go through approval and audit policies.",
+			"Jaz stores raw WhatsApp contacts and messages under ~/.jaz/ingest/raw.",
+			"Message sends are direct actions from the selected connected account.",
 			"Initial history depends on what WhatsApp Web makes available during companion-device sync.",
 		},
 		Implementation: integrations.Implementation{
@@ -57,7 +53,7 @@ func chatTools() []integrations.PluginTool {
 	return []integrations.PluginTool{
 		{
 			Name:        ToolSendMessage,
-			Description: "Send a message to a connected chat conversation after approval.",
+			Description: "Send a message to a connected chat conversation.",
 			Capability:  integrations.CapabilityAct,
 			Risk:        integrations.ActionRiskWrite,
 		},
@@ -75,7 +71,7 @@ func chatSkills() []integrations.PluginSkill {
 		{
 			ID:          chat.SkillChatActions,
 			Name:        "Chat Actions",
-			Description: "Guidance for safe chat sends, replies, reactions, approvals, and audit trails.",
+			Description: "Guidance for safe chat sends, replies, reactions, and provider caveats.",
 			Status:      "planned",
 		},
 		{

@@ -20,12 +20,14 @@ type RawWriter struct {
 	Now  func() time.Time
 }
 
-func DefaultRoot() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return filepath.Join(".memory", "raw-sources")
-	}
-	return filepath.Join(home, ".memory", "raw-sources")
+type RawAttachment struct {
+	Provider     string
+	AccountID    string
+	ConnectionID string
+	MessageID    string
+	AttachmentID string
+	FileName     string
+	Data         []byte
 }
 
 func (w RawWriter) WriteRecords(ctx context.Context, records []integrations.Record) error {
@@ -40,20 +42,52 @@ func (w RawWriter) WriteRecords(ctx context.Context, records []integrations.Reco
 	return nil
 }
 
+func (w RawWriter) WriteAttachment(ctx context.Context, attachment RawAttachment) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	root, err := w.root()
+	if err != nil {
+		return "", err
+	}
+	path, err := RawAttachmentPath(root, attachment)
+	if err != nil {
+		return "", err
+	}
+	if err := ensurePrivateDir(root, filepath.Dir(path)); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(path, attachment.Data, 0o600); err != nil {
+		return "", err
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
 func (w RawWriter) writeRecord(record integrations.Record) error {
-	record = w.prepare(record)
-	path, err := RawRecordPath(w.root(), record)
+	root, err := w.root()
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	record = w.prepare(record)
+	path, err := RawRecordPath(root, record)
+	if err != nil {
 		return err
 	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	dir := filepath.Dir(path)
+	if err := ensurePrivateDir(root, dir); err != nil {
+		return err
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
+	if err := file.Chmod(0o600); err != nil {
+		return err
+	}
 
 	line, err := json.Marshal(record)
 	if err != nil {
@@ -66,11 +100,8 @@ func (w RawWriter) writeRecord(record integrations.Record) error {
 	return writer.Flush()
 }
 
-func (w RawWriter) root() string {
-	if root := strings.TrimSpace(w.Root); root != "" {
-		return root
-	}
-	return DefaultRoot()
+func (w RawWriter) root() (string, error) {
+	return requiredRoot(w.Root)
 }
 
 func (w RawWriter) prepare(record integrations.Record) integrations.Record {
@@ -104,9 +135,9 @@ func recordID(record integrations.Record) string {
 }
 
 func RawRecordPath(root string, record integrations.Record) (string, error) {
-	root = strings.TrimSpace(root)
-	if root == "" {
-		root = DefaultRoot()
+	root, err := requiredRoot(root)
+	if err != nil {
+		return "", err
 	}
 	provider, err := requiredPathComponent("provider", record.Provider)
 	if err != nil {
@@ -149,10 +180,136 @@ func RawRecordPath(root string, record integrations.Record) (string, error) {
 	), nil
 }
 
+func RawAttachmentPath(root string, attachment RawAttachment) (string, error) {
+	root, err := requiredRoot(root)
+	if err != nil {
+		return "", err
+	}
+	provider, err := requiredPathComponent("provider", attachment.Provider)
+	if err != nil {
+		return "", err
+	}
+	accountID, err := requiredPathComponent("account id", attachment.AccountID)
+	if err != nil {
+		return "", err
+	}
+	connectionID, err := requiredPathComponent("connection id", attachment.ConnectionID)
+	if err != nil {
+		return "", err
+	}
+	messageID, err := externalIDPathComponent("message id", attachment.MessageID)
+	if err != nil {
+		return "", err
+	}
+	attachmentID, err := externalIDPathComponent("attachment id", attachment.AttachmentID)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(
+		root,
+		provider,
+		accountID,
+		connectionID,
+		"attachments",
+		messageID,
+		attachmentID,
+		safeAttachmentFileName(attachment.FileName),
+	), nil
+}
+
+func requiredRoot(value string) (string, error) {
+	root := strings.TrimSpace(value)
+	if root == "" {
+		return "", fmt.Errorf("raw ingest root is required")
+	}
+	return root, nil
+}
+
 func requiredPathComponent(name, value string) (string, error) {
 	component := integrations.NormalizeAlias(value)
 	if component == "" {
 		return "", fmt.Errorf("record %s is required", name)
 	}
 	return component, nil
+}
+
+func externalIDPathComponent(name, value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", fmt.Errorf("record %s is required", name)
+	}
+	prefix := integrations.NormalizeAlias(value)
+	if prefix == "" {
+		prefix = "id"
+	}
+	if len(prefix) > 48 {
+		prefix = strings.Trim(prefix[:48], "-")
+	}
+	sum := sha256.Sum256([]byte(value))
+	return prefix + "-" + hex.EncodeToString(sum[:4]), nil
+}
+
+func safeAttachmentFileName(value string) string {
+	name := filepath.Base(strings.TrimSpace(value))
+	if name == "" || name == "." || name == string(os.PathSeparator) {
+		name = "attachment"
+	}
+	ext := safeAttachmentExtension(filepath.Ext(name))
+	stem := strings.TrimSuffix(name, filepath.Ext(name))
+	stem = integrations.NormalizeAlias(stem)
+	if stem == "" {
+		stem = "attachment"
+	}
+	return stem + ext
+}
+
+func safeAttachmentExtension(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if !strings.HasPrefix(value, ".") || len(value) > 17 {
+		return ""
+	}
+	for _, r := range value[1:] {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9') {
+			return ""
+		}
+	}
+	return value
+}
+
+func ensurePrivateDir(root, dir string) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return err
+	}
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(absRoot, absDir)
+	if err != nil {
+		return err
+	}
+	if filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return fmt.Errorf("raw record path escapes root")
+	}
+	current := absRoot
+	if err := os.Chmod(current, 0o700); err != nil {
+		return err
+	}
+	if rel == "." {
+		return nil
+	}
+	for _, component := range strings.Split(rel, string(os.PathSeparator)) {
+		if component == "" || component == "." {
+			continue
+		}
+		current = filepath.Join(current, component)
+		if err := os.Chmod(current, 0o700); err != nil {
+			return err
+		}
+	}
+	return nil
 }

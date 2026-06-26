@@ -19,12 +19,13 @@ type QRStart struct {
 	Code         string    `json:"code"`
 	Status       string    `json:"status"`
 	ExpiresAt    time.Time `json:"expires_at"`
-	Instructions []string  `json:"instructions,omitempty"`
+	Instructions []string  `json:"instructions"`
 }
 
 type QRStatus struct {
 	SessionID string    `json:"session_id"`
 	Provider  string    `json:"provider"`
+	Code      string    `json:"code,omitempty"`
 	Status    string    `json:"status"`
 	ExpiresAt time.Time `json:"expires_at"`
 	AccountID string    `json:"account_id,omitempty"`
@@ -35,6 +36,7 @@ type QRProvider interface {
 	ProviderID() string
 	StartQR(context.Context) (QRStart, error)
 	QRStatus(context.Context, string) (QRStatus, error)
+	CloseQR(context.Context, string) error
 }
 
 type QRService struct {
@@ -49,6 +51,9 @@ func NewQRService(providers ...QRProvider) *QRService {
 		sessions:  map[string]string{},
 	}
 	for _, provider := range providers {
+		if provider == nil {
+			continue
+		}
 		service.providers[provider.ProviderID()] = provider
 	}
 	return service
@@ -64,13 +69,16 @@ func (s *QRService) Start(ctx context.Context, provider string) (QRStart, error)
 		return QRStart{}, err
 	}
 	if start.SessionID == "" || start.Code == "" {
-		return QRStart{}, fmt.Errorf("connection QR provider %q returned an incomplete session", provider)
+		return rejectQRStart(ctx, adapter, start, fmt.Errorf("connection QR provider %q returned an incomplete session", provider))
+	}
+	if len(start.Instructions) == 0 {
+		return rejectQRStart(ctx, adapter, start, fmt.Errorf("connection QR provider %q returned no instructions", provider))
 	}
 	if start.Provider == "" {
 		start.Provider = provider
 	}
 	if start.Provider != provider {
-		return QRStart{}, fmt.Errorf("connection QR provider %q returned provider %q", provider, start.Provider)
+		return rejectQRStart(ctx, adapter, start, fmt.Errorf("connection QR provider %q returned provider %q", provider, start.Provider))
 	}
 
 	s.mu.Lock()
@@ -89,6 +97,9 @@ func (s *QRService) Status(ctx context.Context, id string) (QRStatus, error) {
 	}
 	status, err := adapter.QRStatus(ctx, id)
 	if err != nil {
+		if errors.Is(err, ErrQRSessionNotFound) {
+			s.forget(id)
+		}
 		return QRStatus{}, err
 	}
 	if status.SessionID == "" {
@@ -97,7 +108,27 @@ func (s *QRService) Status(ctx context.Context, id string) (QRStatus, error) {
 	if status.Provider == "" {
 		status.Provider = provider
 	}
+	if qrTerminal(status.Status) {
+		s.forget(id)
+	}
 	return status, nil
+}
+
+func (s *QRService) Close(ctx context.Context, id string) error {
+	s.mu.Lock()
+	provider := s.sessions[id]
+	adapter := s.providers[provider]
+	delete(s.sessions, id)
+	s.mu.Unlock()
+	if adapter == nil {
+		return ErrQRSessionNotFound
+	}
+	return adapter.CloseQR(ctx, id)
+}
+
+func (s *QRService) Available(provider string) bool {
+	_, ok := s.provider(provider)
+	return ok
 }
 
 func (s *QRService) provider(id string) (QRProvider, bool) {
@@ -108,4 +139,21 @@ func (s *QRService) provider(id string) (QRProvider, bool) {
 		return nil, false
 	}
 	return provider, true
+}
+
+func rejectQRStart(ctx context.Context, adapter QRProvider, start QRStart, err error) (QRStart, error) {
+	if start.SessionID == "" {
+		return QRStart{}, err
+	}
+	return QRStart{}, errors.Join(err, adapter.CloseQR(context.WithoutCancel(ctx), start.SessionID))
+}
+
+func (s *QRService) forget(id string) {
+	s.mu.Lock()
+	delete(s.sessions, id)
+	s.mu.Unlock()
+}
+
+func qrTerminal(status string) bool {
+	return status == "connected" || status == "expired" || status == "failed"
 }

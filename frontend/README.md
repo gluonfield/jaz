@@ -47,9 +47,12 @@ Add these repository variables:
 - `APPLE_TEAM_ID`
 - `APPLE_API_KEY_ID`
 - `APPLE_API_ISSUER`
-- `POSTHOG_PROJECT_TOKEN` (optional; enables privacy-preserving desktop telemetry)
+- `POSTHOG_PROJECT_TOKEN` (or repository secret; enables privacy-preserving desktop telemetry)
 
 The release tag must match `frontend/package.json`, for example `v0.0.2`.
+
+For local telemetry builds, set `POSTHOG_PROJECT_TOKEN` in the environment or
+in `.env.local`; `VITE_POSTHOG_TOKEN` is still accepted for Vite-only setups.
 
 ## Layout
 

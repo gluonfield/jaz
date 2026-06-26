@@ -18,10 +18,40 @@ type threadRef struct {
 	ID string `json:"id"`
 }
 
+type messageList struct {
+	Messages           []messageRef `json:"messages"`
+	NextPageToken      string       `json:"nextPageToken"`
+	ResultSizeEstimate int64        `json:"resultSizeEstimate"`
+}
+
+type messageRef struct {
+	ID       string `json:"id"`
+	ThreadID string `json:"threadId"`
+}
+
+type historyList struct {
+	History       []historyEntry `json:"history"`
+	NextPageToken string         `json:"nextPageToken"`
+	HistoryID     string         `json:"historyId"`
+}
+
+type historyEntry struct {
+	MessagesAdded []historyMessageAdded `json:"messagesAdded"`
+}
+
+type historyMessageAdded struct {
+	Message messageRef `json:"message"`
+}
+
 type draftList struct {
 	Drafts             []draftRef `json:"drafts"`
 	NextPageToken      string     `json:"nextPageToken"`
 	ResultSizeEstimate int64      `json:"resultSizeEstimate"`
+}
+
+type apiAttachment struct {
+	Data string `json:"data"`
+	Size int64  `json:"size"`
 }
 
 type draftRef struct {
@@ -80,7 +110,7 @@ type messageBody struct {
 }
 
 func metadataHeaders() []string {
-	return []string{"From", "To", "Cc", "Bcc", "Subject", "Date", "Message-ID", "References", "In-Reply-To"}
+	return []string{"From", "To", "Cc", "Bcc", "Reply-To", "Subject", "Date", "Message-ID", "References", "In-Reply-To"}
 }
 
 func messageFromAPI(raw apiMessage) Message {
@@ -95,12 +125,22 @@ func messageFromAPI(raw apiMessage) Message {
 		Subject:      headers["subject"],
 		Snippet:      raw.Snippet,
 		From:         parseAddresses(headers["from"]),
+		ReplyTo:      parseAddresses(headers["reply-to"]),
 		To:           parseAddresses(headers["to"]),
 		Cc:           parseAddresses(headers["cc"]),
 		Bcc:          parseAddresses(headers["bcc"]),
 		LabelIDs:     raw.LabelIDs,
 		InternalDate: internalDate(raw.InternalDate),
 		Attachments:  attachments(raw.Payload),
+	}
+}
+
+func messageContentFromAPI(raw apiMessage) MessageContent {
+	text, html := messageBodies(raw.Payload)
+	return MessageContent{
+		Message:  messageFromAPI(raw),
+		BodyText: text,
+		BodyHTML: html,
 	}
 }
 
@@ -120,12 +160,7 @@ func threadFromAPI(raw apiThread) Thread {
 func threadContentFromAPI(raw apiThread) ThreadContent {
 	messages := make([]MessageContent, 0, len(raw.Messages))
 	for _, message := range raw.Messages {
-		text, html := messageBodies(message.Payload)
-		messages = append(messages, MessageContent{
-			Message:  messageFromAPI(message),
-			BodyText: text,
-			BodyHTML: html,
-		})
+		messages = append(messages, messageContentFromAPI(message))
 	}
 	return ThreadContent{
 		ID:        raw.ID,
@@ -186,13 +221,16 @@ func attachments(part messagePart) []Attachment {
 	var walk func(messagePart)
 	walk = func(part messagePart) {
 		if part.Filename != "" || part.Body.AttachmentID != "" {
-			out = append(out, Attachment{
-				ID:       part.Body.AttachmentID,
-				FileName: part.Filename,
-				MIMEType: part.MIMEType,
-				Size:     part.Body.Size,
-				Inline:   part.Filename == "",
-			})
+			inline := inlinePart(part)
+			if !(inline && strings.HasPrefix(strings.ToLower(part.MIMEType), "image/")) {
+				out = append(out, Attachment{
+					ID:       part.Body.AttachmentID,
+					FileName: part.Filename,
+					MIMEType: part.MIMEType,
+					Size:     part.Body.Size,
+					Inline:   inline,
+				})
+			}
 		}
 		for _, child := range part.Parts {
 			walk(child)
@@ -200,6 +238,18 @@ func attachments(part messagePart) []Attachment {
 	}
 	walk(part)
 	return out
+}
+
+func inlinePart(part messagePart) bool {
+	if part.Filename == "" {
+		return true
+	}
+	headers := headersByName(part.Headers)
+	disposition := strings.ToLower(headers["content-disposition"])
+	if strings.HasPrefix(disposition, "inline") {
+		return true
+	}
+	return headers["content-id"] != "" && strings.HasPrefix(strings.ToLower(part.MIMEType), "image/")
 }
 
 func messageBodies(part messagePart) (string, string) {
@@ -226,15 +276,23 @@ func messageBodies(part messagePart) (string, string) {
 }
 
 func decodeBody(data string) string {
-	if data == "" {
+	raw, err := decodeBodyBytes(data)
+	if err != nil {
 		return ""
+	}
+	return string(raw)
+}
+
+func decodeBodyBytes(data string) ([]byte, error) {
+	if data == "" {
+		return nil, nil
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(data)
 	if err != nil {
 		raw, err = base64.URLEncoding.DecodeString(data)
 	}
 	if err != nil {
-		return ""
+		return nil, err
 	}
-	return string(raw)
+	return raw, nil
 }

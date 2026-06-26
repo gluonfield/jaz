@@ -4,17 +4,19 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
+	"github.com/wins/jaz/backend/internal/connectors/telegram"
 	"github.com/wins/jaz/backend/internal/connectors/whatsapp"
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
-func TestConnectServiceRejectsUnavailablePlugin(t *testing.T) {
+func TestConnectServiceReportsMissingQRProviderForSessionPlugin(t *testing.T) {
 	service := NewConnectService(NewCatalog(), nil, NewQRService())
 
 	_, err := service.Start(context.Background(), whatsapp.ProviderID, "")
-	if err == nil {
-		t.Fatal("expected error")
+	if !errors.Is(err, ErrQRProviderUnavailable) {
+		t.Fatalf("err = %v", err)
 	}
 }
 
@@ -36,6 +38,23 @@ func TestConnectServiceDelegatesSessionAuthToQRService(t *testing.T) {
 	_, err := service.Start(context.Background(), "matrix", "")
 	if !errors.Is(err, ErrQRProviderUnavailable) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestConnectServiceStartsChatQRProviders(t *testing.T) {
+	service := NewConnectService(NewCatalog(), nil, NewQRService(
+		fakeQRProvider{provider: telegram.ProviderID, expires: time.Now().Add(time.Minute)},
+		fakeQRProvider{provider: whatsapp.ProviderID, expires: time.Now().Add(time.Minute)},
+	))
+
+	for _, provider := range []string{telegram.ProviderID, whatsapp.ProviderID} {
+		start, err := service.Start(context.Background(), provider, "")
+		if err != nil {
+			t.Fatalf("%s start err = %v", provider, err)
+		}
+		if start.Type != "qr" || start.QR == nil || start.QR.Provider != provider || start.QR.Code == "" {
+			t.Fatalf("%s start = %#v", provider, start)
+		}
 	}
 }
 

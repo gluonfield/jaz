@@ -54,7 +54,7 @@ func TestChatMCPToolsRequiresAccountWhenMultipleAccountsConnected(t *testing.T) 
 	}
 }
 
-func TestChatMCPToolsReportsMissingSenderAdapter(t *testing.T) {
+func TestChatMCPToolsReportsMissingRuntimeSender(t *testing.T) {
 	tools := NewChatMCPTools(&gmailMCPStore{connections: []integrations.Connection{{
 		ID:        "whatsapp:personal",
 		Provider:  whatsapp.ProviderID,
@@ -71,7 +71,7 @@ func TestChatMCPToolsReportsMissingSenderAdapter(t *testing.T) {
 	if !out.Connected || out.SenderAvailable || out.Sent || out.AccountID != "+447700900123" || out.Alias != "personal" {
 		t.Fatalf("output = %#v", out)
 	}
-	if got := gmailToolText(result); !strings.Contains(got, "messaging is not enabled yet") {
+	if got := gmailToolText(result); !strings.Contains(got, "messaging is not enabled in this runtime") {
 		t.Fatalf("text = %q", got)
 	}
 }

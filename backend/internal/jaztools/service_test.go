@@ -15,6 +15,9 @@ import (
 	"github.com/wins/jaz/backend/internal/browsertask"
 	"github.com/wins/jaz/backend/internal/browserworker"
 	"github.com/wins/jaz/backend/internal/connections"
+	"github.com/wins/jaz/backend/internal/connectors/telegram"
+	"github.com/wins/jaz/backend/internal/connectors/whatsapp"
+	"github.com/wins/jaz/backend/internal/integrationingest"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/memoryservice"
@@ -34,6 +37,11 @@ func (fakeScheduler) Start()        {}
 func (fakeScheduler) Stop()         {}
 func (fakeScheduler) Running() bool { return true }
 
+func testGmailTools(t *testing.T, store connections.GmailToolStore) *connections.GmailMCPTools {
+	t.Helper()
+	return connections.NewGmailMCPTools(store, integrationingest.RawWriter{Root: t.TempDir()})
+}
+
 type fakeExecutor struct {
 	started chan loops.Run
 }
@@ -47,6 +55,10 @@ type fakeACPService struct {
 }
 
 type fakeBrowserBackend struct{}
+
+type fakeChatSender struct {
+	provider string
+}
 
 func (s fakeACPService) Spawn(_ context.Context, req acp.SpawnRequest) (acp.SpawnResult, error) {
 	s.spawned <- req
@@ -85,6 +97,14 @@ func (fakeBrowserBackend) Status() browserworker.ExtensionStatus {
 	return browserworker.ExtensionStatus{Connected: true}
 }
 
+func (s fakeChatSender) ProviderID() string {
+	return s.provider
+}
+
+func (s fakeChatSender) SendMessage(context.Context, connections.ChatSendRequest) (connections.ChatSendResult, error) {
+	return connections.ChatSendResult{}, nil
+}
+
 func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
@@ -115,8 +135,11 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		sessionevents.New(),
 		store,
 		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
-		connections.NewGmailMCPTools(store),
-		connections.NewChatMCPTools(store),
+		testGmailTools(t, store),
+		connections.NewChatMCPTools(store,
+			fakeChatSender{provider: whatsapp.ProviderID},
+			fakeChatSender{provider: telegram.ProviderID},
+		),
 	)
 	executor := &fakeExecutor{started: make(chan loops.Run, 1)}
 	service.SetLoops(loops.NewService(store, executor, nil))
@@ -148,7 +171,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 	for _, name := range []string{
 		"memory_search", "memory_get_page",
 		"thread_context",
-		"gmail_get_profile", "gmail_search_threads", "gmail_read_thread", "gmail_create_draft", "gmail_send_draft", "gmail_update_draft", "gmail_list_drafts",
+		"gmail_get_profile", "gmail_search_threads", "gmail_read_thread", "gmail_create_draft", "gmail_create_reply_draft", "gmail_send_draft", "gmail_update_draft", "gmail_list_drafts", "gmail_read_attachment",
 		"whatsapp_send_message", "telegram_send_message",
 		"loop_list", "loop_get", "loop_create", "loop_update", "loop_run", "loop_delete",
 		"agent_spawn", "agent_send", "agent_status", "agent_wait", "agent_cancel", "agent_list",
@@ -288,6 +311,27 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 	}
 }
 
+func TestChatToolsFollowRegisteredSenders(t *testing.T) {
+	withoutSenders := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1.0.0"}, nil)
+	connections.NewChatMCPTools(nil).AddTo(withoutSenders)
+	session, closeSession := connectClient(t, withoutSenders)
+	defer closeSession()
+	if hasTool(t, session, whatsapp.ToolSendMessage) || hasTool(t, session, telegram.ToolSendMessage) {
+		t.Fatal("chat send tools must not be advertised without sender adapters")
+	}
+
+	withWhatsApp := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1.0.0"}, nil)
+	connections.NewChatMCPTools(nil, fakeChatSender{provider: whatsapp.ProviderID}).AddTo(withWhatsApp)
+	session, closeSession = connectClient(t, withWhatsApp)
+	defer closeSession()
+	if !hasTool(t, session, whatsapp.ToolSendMessage) {
+		t.Fatal("whatsapp sender was not advertised")
+	}
+	if hasTool(t, session, telegram.ToolSendMessage) {
+		t.Fatal("telegram sender leaked without adapter")
+	}
+}
+
 func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
@@ -308,7 +352,7 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 		sessionevents.New(),
 		store,
 		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
-		connections.NewGmailMCPTools(store),
+		testGmailTools(t, store),
 		connections.NewChatMCPTools(store),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
@@ -416,7 +460,7 @@ func TestWidgetSurfaceGetsAgentToolsAfterServerCreated(t *testing.T) {
 		sessionevents.New(),
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
-		connections.NewGmailMCPTools(store),
+		testGmailTools(t, store),
 		connections.NewChatMCPTools(store),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
@@ -452,7 +496,7 @@ func TestAgentSpawnToolSchemaAndAlias(t *testing.T) {
 		sessionevents.New(),
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
-		connections.NewGmailMCPTools(store),
+		testGmailTools(t, store),
 		connections.NewChatMCPTools(store),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
@@ -519,7 +563,7 @@ func TestSearchWorkerSurfaceOnlyAdvertisesRawMemoryTools(t *testing.T) {
 		sessionevents.New(),
 		store,
 		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
-		connections.NewGmailMCPTools(store),
+		testGmailTools(t, store),
 		connections.NewChatMCPTools(store),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
@@ -577,7 +621,7 @@ func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 		sessionevents.New(),
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
-		connections.NewGmailMCPTools(store),
+		testGmailTools(t, store),
 		connections.NewChatMCPTools(store),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
@@ -646,7 +690,7 @@ func TestBrowserToolsAndWorkerSurface(t *testing.T) {
 		sessionevents.New(),
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
-		connections.NewGmailMCPTools(store),
+		testGmailTools(t, store),
 		connections.NewChatMCPTools(store),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
