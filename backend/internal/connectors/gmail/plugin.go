@@ -13,17 +13,20 @@ const (
 
 	RemoteMCPURL = "https://gmailmcp.googleapis.com/mcp/v1"
 
-	ToolGetProfile     = "gmail_get_profile"
-	ToolSearchMessages = "gmail_search_messages"
-	ToolReadMessage    = "gmail_read_message"
-	ToolSendMessage    = "gmail_send_message"
+	ToolGetProfile    = "gmail_get_profile"
+	ToolSearchThreads = "gmail_search_threads"
+	ToolReadThread    = "gmail_read_thread"
+	ToolCreateDraft   = "gmail_create_draft"
+	ToolSendDraft     = "gmail_send_draft"
+	ToolUpdateDraft   = "gmail_update_draft"
+	ToolListDrafts    = "gmail_list_drafts"
 )
 
 func Plugin() integrations.Plugin {
 	return integrations.Plugin{
 		ID:          "gmail",
 		Name:        "Gmail",
-		Description: "Search, read, and send Gmail messages from connected accounts.",
+		Description: "Search Gmail threads, draft replies, and send approved drafts from connected accounts.",
 		Provider: integrations.Provider{
 			ID:   ProviderID,
 			Name: ProviderName,
@@ -51,7 +54,7 @@ func Plugin() integrations.Plugin {
 		Skills: []integrations.PluginSkill{{
 			ID:          "gmail",
 			Name:        "Gmail",
-			Description: "Guidance for reading, searching, sending, and organizing Gmail.",
+			Description: "Guidance for reading threads, drafting replies, and sending approved Gmail drafts.",
 			Status:      "planned",
 		}, {
 			ID:          "gmail-inbox-triage",
@@ -81,9 +84,12 @@ func Plugin() integrations.Plugin {
 func tools() []integrations.PluginTool {
 	return []integrations.PluginTool{
 		tool(ToolGetProfile, "Show profile totals for one connected Gmail account.", integrations.ActionRiskRead, ScopeModify),
-		tool(ToolSearchMessages, "Search Gmail messages and return bounded metadata, snippets, labels, and message IDs.", integrations.ActionRiskRead, ScopeModify),
-		tool(ToolReadMessage, "Read one Gmail message by ID with headers, labels, body text or HTML, and attachment metadata.", integrations.ActionRiskRead, ScopeModify),
-		tool(ToolSendMessage, "Send a plain text Gmail message from one connected account.", integrations.ActionRiskWrite, ScopeModify),
+		tool(ToolSearchThreads, "Search Gmail conversation threads and return thread IDs with summarized message metadata.", integrations.ActionRiskRead, ScopeModify),
+		tool(ToolReadThread, "Read a Gmail conversation thread by message ID or thread ID with bounded message bodies.", integrations.ActionRiskRead, ScopeModify),
+		tool(ToolCreateDraft, "Create a plain text Gmail draft, optionally attached to an existing thread.", integrations.ActionRiskWrite, ScopeModify),
+		tool(ToolSendDraft, "Send an existing Gmail draft after review or explicit approval.", integrations.ActionRiskWrite, ScopeModify),
+		tool(ToolUpdateDraft, "Update an existing Gmail draft in place while preserving omitted fields.", integrations.ActionRiskWrite, ScopeModify),
+		tool(ToolListDrafts, "List Gmail drafts with summarized message metadata.", integrations.ActionRiskRead, ScopeModify),
 	}
 }
 

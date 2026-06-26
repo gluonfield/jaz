@@ -286,14 +286,17 @@ func TestManagerRefreshLocalRegistersJaztoolsGmailTools(t *testing.T) {
 	defer manager.Close()
 
 	status := manager.Status("jaztools")
-	if status.Status != "connected" || status.ToolCount != 4 {
+	if status.Status != "connected" || status.ToolCount != 7 {
 		t.Fatalf("status = %#v", status)
 	}
 	for _, name := range []string{
 		"mcp_jaztools_gmail_get_profile",
-		"mcp_jaztools_gmail_search_messages",
-		"mcp_jaztools_gmail_read_message",
-		"mcp_jaztools_gmail_send_message",
+		"mcp_jaztools_gmail_search_threads",
+		"mcp_jaztools_gmail_read_thread",
+		"mcp_jaztools_gmail_create_draft",
+		"mcp_jaztools_gmail_send_draft",
+		"mcp_jaztools_gmail_update_draft",
+		"mcp_jaztools_gmail_list_drafts",
 	} {
 		if _, ok := registry.Get(name); !ok {
 			t.Fatalf("registry missing %s", name)

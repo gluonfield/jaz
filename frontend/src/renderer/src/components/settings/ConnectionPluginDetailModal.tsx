@@ -178,19 +178,19 @@ function SectionHeading({ label, count }: { label: string; count: number }) {
 }
 
 function subtitle(plugin: IntegrationPlugin): string {
-  if (plugin.id === 'gmail') return 'Search, read, and send Gmail'
+  if (plugin.id === 'gmail') return 'Search threads and send drafts'
   if (plugin.category === 'chat') return `Read and manage ${plugin.name}`
   return plugin.provider.name
 }
 
 function previewText(plugin: IntegrationPlugin): string {
-  if (plugin.id === 'gmail') return 'Search inbox, read threads, or send messages'
+  if (plugin.id === 'gmail') return 'Search threads, draft replies, or send approved drafts'
   if (plugin.category === 'chat') return 'Search conversations, sync memory, or send approved messages'
   return plugin.description || `Use ${plugin.name} from Jaz`
 }
 
 function appDescription(plugin: IntegrationPlugin): string {
-  if (plugin.id === 'gmail') return 'Search, read, and send Gmail messages'
+  if (plugin.id === 'gmail') return 'Search threads, draft replies, and send approved drafts'
   if (plugin.id === 'whatsapp') return 'Sync chats and send approved WhatsApp messages'
   if (plugin.id === 'telegram') return 'Sync chats and send approved Telegram messages'
   return plugin.description || `Use ${plugin.name} from Jaz`

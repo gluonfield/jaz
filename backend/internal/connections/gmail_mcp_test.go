@@ -94,60 +94,130 @@ func TestGmailMCPToolsRequiresVerifiedConnection(t *testing.T) {
 	}
 }
 
-func TestGmailMCPToolsSearchReadAndSendMessages(t *testing.T) {
-	body := base64.RawURLEncoding.EncodeToString([]byte("Plain body"))
+func TestGmailMCPToolsThreadAndDraftWorkflow(t *testing.T) {
+	body := base64.RawURLEncoding.EncodeToString([]byte("Thread body"))
+	draftBody := base64.RawURLEncoding.EncodeToString([]byte("Old body"))
 	gmailServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer access" {
 			t.Fatalf("authorization = %q", r.Header.Get("Authorization"))
 		}
 		switch r.URL.Path {
-		case "/gmail/v1/users/me/messages":
+		case "/gmail/v1/users/me/threads":
 			if r.URL.Query().Get("q") != "subject:hello" || r.URL.Query().Get("maxResults") != "5" {
 				t.Fatalf("query = %#v", r.URL.Query())
 			}
-			_, _ = w.Write([]byte(`{"messages":[{"id":"m1","threadId":"t1"}],"resultSizeEstimate":1}`))
-		case "/gmail/v1/users/me/messages/m1":
+			_, _ = w.Write([]byte(`{"threads":[{"id":"t1"}],"resultSizeEstimate":1}`))
+		case "/gmail/v1/users/me/threads/t1":
 			switch r.URL.Query().Get("format") {
 			case "metadata":
 				_, _ = w.Write([]byte(`{
-					"id":"m1",
-					"threadId":"t1",
-					"snippet":"Snippet",
-					"payload":{"headers":[{"name":"Subject","value":"Hello"}]}
+					"id":"t1",
+					"messages":[{
+						"id":"m1",
+						"threadId":"t1",
+						"snippet":"Snippet",
+						"payload":{"headers":[
+							{"name":"Subject","value":"Hello"},
+							{"name":"Message-ID","value":"<m1@example.com>"},
+							{"name":"References","value":"<root@example.com>"}
+						]}
+					}]
 				}`))
 			case "full":
 				_, _ = w.Write([]byte(`{
-					"id":"m1",
-					"threadId":"t1",
-					"payload":{
-						"headers":[{"name":"Subject","value":"Hello"}],
-						"parts":[{"mimeType":"text/plain","body":{"data":"` + body + `"}}]
-					}
+					"id":"t1",
+					"messages":[{
+						"id":"m1",
+						"threadId":"t1",
+						"payload":{
+							"headers":[{"name":"Subject","value":"Hello"}],
+							"parts":[{"mimeType":"text/plain","body":{"data":"` + body + `"}}]
+						}
+					}]
 				}`))
 			default:
-				t.Fatalf("format = %s", r.URL.Query().Get("format"))
+				t.Fatalf("thread format = %s", r.URL.Query().Get("format"))
 			}
-		case "/gmail/v1/users/me/messages/send":
+		case "/gmail/v1/users/me/messages/m1":
+			if r.URL.Query().Get("format") != "metadata" {
+				t.Fatalf("message format = %s", r.URL.Query().Get("format"))
+			}
+			_, _ = w.Write([]byte(`{"id":"m1","threadId":"t1","payload":{"headers":[{"name":"Subject","value":"Hello"}]}}`))
+		case "/gmail/v1/users/me/drafts":
+			switch r.Method {
+			case http.MethodPost:
+				message := decodedGmailDraftMessage(t, r)
+				if !strings.Contains(message, `To: "Alice" <alice@example.com>`) || !strings.Contains(message, "Subject: Hello") || !strings.Contains(message, "Plain body") {
+					t.Fatalf("created draft = %s", message)
+				}
+				_, _ = w.Write([]byte(`{
+					"id":"draft1",
+					"message":{"id":"draft-message","threadId":"t1","payload":{"headers":[{"name":"Subject","value":"Hello"}]}}
+				}`))
+			case http.MethodGet:
+				if r.URL.Query().Get("q") != "subject:hello" || r.URL.Query().Get("maxResults") != "5" {
+					t.Fatalf("draft query = %#v", r.URL.Query())
+				}
+				_, _ = w.Write([]byte(`{"drafts":[{"id":"draft1"}],"resultSizeEstimate":1}`))
+			default:
+				t.Fatalf("method = %s", r.Method)
+			}
+		case "/gmail/v1/users/me/drafts/draft1":
+			switch r.Method {
+			case http.MethodGet:
+				if r.URL.Query().Get("format") == "full" {
+					_, _ = w.Write([]byte(`{
+						"id":"draft1",
+						"message":{
+							"id":"draft-message",
+							"threadId":"t1",
+							"payload":{
+								"headers":[
+									{"name":"Subject","value":"Hello"},
+									{"name":"To","value":"Alice <alice@example.com>"},
+									{"name":"Message-ID","value":"<draft@example.com>"}
+								],
+								"parts":[{"mimeType":"text/plain","body":{"data":"` + draftBody + `"}}]
+							}
+						}
+					}`))
+					return
+				}
+				if r.URL.Query().Get("format") != "metadata" {
+					t.Fatalf("draft format = %s", r.URL.Query().Get("format"))
+				}
+				_, _ = w.Write([]byte(`{
+					"id":"draft1",
+					"message":{"id":"draft-message","threadId":"t1","payload":{"headers":[{"name":"Subject","value":"Hello"}]}}
+				}`))
+			case http.MethodPut:
+				message := decodedGmailDraftMessage(t, r)
+				if !strings.Contains(message, "Updated body") || !strings.Contains(message, "Subject: Hello") {
+					t.Fatalf("updated draft = %s", message)
+				}
+				_, _ = w.Write([]byte(`{
+					"id":"draft1",
+					"message":{"id":"draft-message-2","threadId":"t1","payload":{"headers":[{"name":"Subject","value":"Hello"}]}}
+				}`))
+			default:
+				t.Fatalf("method = %s", r.Method)
+			}
+		case "/gmail/v1/users/me/drafts/send":
 			if r.Method != http.MethodPost {
 				t.Fatalf("method = %s", r.Method)
 			}
 			var payload struct {
-				Raw string `json:"raw"`
+				ID string `json:"id"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 				t.Fatal(err)
 			}
-			raw, err := base64.RawURLEncoding.DecodeString(payload.Raw)
-			if err != nil {
-				t.Fatal(err)
-			}
-			message := string(raw)
-			if !strings.Contains(message, `To: "Alice" <alice@example.com>`) || !strings.Contains(message, "Subject: Hello") || !strings.Contains(message, "Plain body") {
-				t.Fatalf("raw message = %s", message)
+			if payload.ID != "draft1" {
+				t.Fatalf("draft id = %q", payload.ID)
 			}
 			_, _ = w.Write([]byte(`{
 				"id":"sent1",
-				"threadId":"sent-thread",
+				"threadId":"t1",
 				"payload":{"headers":[{"name":"Subject","value":"Hello"}]}
 			}`))
 		default:
@@ -172,29 +242,52 @@ func TestGmailMCPToolsSearchReadAndSendMessages(t *testing.T) {
 	})
 	tools.apiBaseURL = gmailServer.URL
 
-	_, search, err := tools.SearchMessages(context.Background(), nil, GmailSearchMessagesInput{Query: " subject:hello ", MaxResults: 5})
+	_, search, err := tools.SearchThreads(context.Background(), nil, GmailSearchThreadsInput{Query: " subject:hello ", MaxResults: 5})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !search.Connected || search.Query != "subject:hello" || len(search.Messages) != 1 || search.Messages[0].ID != "m1" || search.Messages[0].Subject != "Hello" {
+	if !search.Connected || search.Query != "subject:hello" || len(search.Threads) != 1 || search.Threads[0].ID != "t1" || search.Threads[0].Messages[0].MessageID != "<m1@example.com>" {
 		t.Fatalf("search = %#v", search)
 	}
-	_, read, err := tools.ReadMessage(context.Background(), nil, GmailReadMessageInput{ID: " m1 "})
+	_, read, err := tools.ReadThread(context.Background(), nil, GmailReadThreadInput{ID: " m1 "})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !read.Connected || read.Content.Message.ID != "m1" || read.Content.BodyText != "Plain body" {
+	if !read.Connected || read.Thread.ID != "t1" || len(read.Thread.Messages) != 1 || read.Thread.Messages[0].BodyText != "Thread body" {
 		t.Fatalf("read = %#v", read)
 	}
-	_, sent, err := tools.SendMessage(context.Background(), nil, GmailSendMessageInput{
+	_, draft, err := tools.CreateDraft(context.Background(), nil, GmailCreateDraftInput{
 		To:       []string{" Alice <alice@example.com> "},
 		Subject:  " Hello ",
 		BodyText: "Plain body",
+		ThreadID: " t1 ",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !sent.Connected || sent.Message.ID != "sent1" || sent.Message.ThreadID != "sent-thread" {
+	if !draft.Connected || draft.Draft.ID != "draft1" || draft.Draft.Message.ThreadID != "t1" {
+		t.Fatalf("draft = %#v", draft)
+	}
+	_, drafts, err := tools.ListDrafts(context.Background(), nil, GmailListDraftsInput{Query: " subject:hello ", MaxResults: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !drafts.Connected || len(drafts.Drafts) != 1 || drafts.Drafts[0].ID != "draft1" {
+		t.Fatalf("drafts = %#v", drafts)
+	}
+	bodyText := "Updated body"
+	_, updated, err := tools.UpdateDraft(context.Background(), nil, GmailUpdateDraftInput{ID: " draft1 ", BodyText: &bodyText})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !updated.Connected || updated.Draft.Message.ID != "draft-message-2" {
+		t.Fatalf("updated = %#v", updated)
+	}
+	_, sent, err := tools.SendDraft(context.Background(), nil, GmailSendDraftInput{ID: " draft1 "})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sent.Connected || sent.Message.ID != "sent1" || sent.Message.ThreadID != "t1" {
 		t.Fatalf("sent = %#v", sent)
 	}
 }
@@ -283,6 +376,23 @@ func TestGmailToolContentBoundsBodyOutput(t *testing.T) {
 	if fallback.BodyText != "" || fallback.BodyTextTruncated || !fallback.BodyHTMLTruncated || len([]rune(fallback.BodyHTML)) != maxGmailBodyChars+3 {
 		t.Fatalf("html fallback = %#v", fallback)
 	}
+}
+
+func decodedGmailDraftMessage(t *testing.T, r *http.Request) string {
+	t.Helper()
+	var payload struct {
+		Message struct {
+			Raw string `json:"raw"`
+		} `json:"message"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(payload.Message.Raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
 }
 
 type gmailMCPStore struct {
