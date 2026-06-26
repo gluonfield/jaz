@@ -1,4 +1,4 @@
-import { enabledACPAgents, runtimeModelState } from '@/lib/agentRuntimes'
+import { runtimeModelState } from '@/lib/agentRuntimes'
 import type { CreateSessionInput } from '@/lib/api/sessions'
 import type { AgentSettings } from '@/lib/api/types'
 
@@ -36,13 +36,4 @@ export function createSessionInput(
     ...(resolvedModel ? { model: resolvedModel } : {}),
     ...(resolvedEffort ? { reasoning_effort: resolvedEffort } : {}),
   }
-}
-
-// The launcher has no agent picker; it follows the last agent used on the
-// New-session page, falling back to jaz, then any enabled agent.
-export function launcherAgent(settings: AgentSettings | undefined): string {
-  const agents = enabledACPAgents(settings)
-  const stored = localStorage.getItem(NEW_SESSION_AGENT_KEY) ?? ''
-  if (agents.includes(stored)) return stored
-  return agents.includes('jaz') ? 'jaz' : (agents[0] ?? '')
 }
