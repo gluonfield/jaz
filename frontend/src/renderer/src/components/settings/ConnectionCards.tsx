@@ -6,7 +6,7 @@ import { SettingsCard } from './SettingsCard'
 import { accountAddress, pluginActionLabel } from './connectionFormatting'
 import { PluginIcon } from './ConnectionPluginVisuals'
 
-export function SettingsBlock({
+export function ConnectionSection({
   title,
   children,
 }: {
@@ -16,7 +16,7 @@ export function SettingsBlock({
   return (
     <section>
       <p className="mb-2 text-[12px] font-medium text-ink-2">{title}</p>
-      <SettingsCard className="overflow-hidden">{children}</SettingsCard>
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">{children}</div>
     </section>
   )
 }
@@ -35,19 +35,19 @@ export function ExistingConnectionCard({
   const address = accountAddress(account)
 
   return (
-    <div className="grid grid-cols-1 gap-3 bg-surface px-3 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+    <SettingsCard className="grid h-full grid-cols-1 gap-3 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
       <ConnectionSummary plugin={plugin} title={plugin.name} detail={address || account.id} />
       <Button
         variant="danger"
         size="sm"
         disabled={disconnecting}
         onClick={onDisconnect}
-        className="md:justify-self-end"
+        className="sm:justify-self-end"
       >
         {disconnecting ? <Loader2 size={13} className="animate-spin" /> : <Unplug size={13} />}
         {disconnecting ? 'Disconnecting' : 'Disconnect'}
       </Button>
-    </div>
+    </SettingsCard>
   )
 }
 
@@ -66,7 +66,7 @@ export function ConnectionPluginCard({
   const statusDetail = connectionStatusDetail(plugin)
 
   return (
-    <div className="grid grid-cols-1 gap-3 bg-surface px-3 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+    <SettingsCard className="grid h-full grid-cols-1 gap-3 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
       <ConnectionSummary plugin={plugin} title={plugin.name} detail={statusDetail || plugin.description} />
       <Button
         variant="secondary"
@@ -74,12 +74,12 @@ export function ConnectionPluginCard({
         disabled={!available || connecting}
         onClick={onConnect}
         title={statusDetail}
-        className="md:justify-self-end"
+        className="sm:justify-self-end"
       >
         <Icon size={13} className={connecting ? 'animate-spin' : undefined} />
         {pluginActionLabel(plugin, connecting)}
       </Button>
-    </div>
+    </SettingsCard>
   )
 }
 

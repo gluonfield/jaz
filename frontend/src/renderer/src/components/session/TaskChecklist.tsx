@@ -1,5 +1,6 @@
 import { Check, ChevronDown, Circle, LoaderCircle } from 'lucide-react'
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useState } from 'react'
+import { useOverflowing } from '@/lib/hooks/useOverflowing'
 import { taskStepState, type TaskStepState, type TaskSurface } from '@/lib/taskSurface'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
@@ -30,23 +31,8 @@ export const TaskChecklist = memo(function TaskChecklist({
   onApprovePlan?: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
-  const [overflowing, setOverflowing] = useState(false)
-  const contentRef = useRef<HTMLDivElement>(null)
   const { title, explanation, entries, strikeCompleted } = surface
-
-  useEffect(() => {
-    const el = contentRef.current
-    if (!el) return
-
-    const measure = () => {
-      setOverflowing(el.scrollHeight > el.clientHeight + 2)
-    }
-    measure()
-
-    const observer = new ResizeObserver(measure)
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [entries, expanded, explanation])
+  const [contentRef, overflowing] = useOverflowing([entries, expanded, explanation])
 
   const showExpandControl = expanded || overflowing
   const taskEntries = entries ?? []

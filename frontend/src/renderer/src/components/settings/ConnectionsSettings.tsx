@@ -16,9 +16,9 @@ import type {
   IntegrationPlugin,
 } from '@/lib/api/types'
 import {
+  ConnectionSection,
   ConnectionPluginCard,
   ExistingConnectionCard,
-  SettingsBlock,
 } from './ConnectionCards'
 import { ConnectionQRModal } from './ConnectionQRModal'
 import { accountAddress } from './connectionFormatting'
@@ -130,33 +130,29 @@ export function ConnectionsSettings() {
           <>
             <div className="space-y-5">
               {hasConnectedAccounts ? (
-                <SettingsBlock title="Existing connections">
-                  <div className="flex flex-col divide-y divide-border/70">
-                    {connectedAccounts.map(({ plugin, account }) => (
-                      <ExistingConnectionCard
-                        key={account.id}
-                        plugin={plugin}
-                        account={account}
-                        disconnecting={disconnect.isPending && disconnect.variables === account.id}
-                        onDisconnect={() => disconnectAccount(account)}
-                      />
-                    ))}
-                  </div>
-                </SettingsBlock>
-              ) : null}
-
-              <SettingsBlock title="Add connection">
-                <div className="flex flex-col divide-y divide-border/70">
-                  {sortedPlugins.map((plugin) => (
-                    <ConnectionPluginCard
-                      key={plugin.id}
+                <ConnectionSection title="Existing connections">
+                  {connectedAccounts.map(({ plugin, account }) => (
+                    <ExistingConnectionCard
+                      key={account.id}
                       plugin={plugin}
-                      connecting={connect.isPending && connect.variables === plugin.id}
-                      onConnect={() => connect.mutate(plugin.id)}
+                      account={account}
+                      disconnecting={disconnect.isPending && disconnect.variables === account.id}
+                      onDisconnect={() => disconnectAccount(account)}
                     />
                   ))}
-                </div>
-              </SettingsBlock>
+                </ConnectionSection>
+              ) : null}
+
+              <ConnectionSection title="Add connection">
+                {sortedPlugins.map((plugin) => (
+                  <ConnectionPluginCard
+                    key={plugin.id}
+                    plugin={plugin}
+                    connecting={connect.isPending && connect.variables === plugin.id}
+                    onConnect={() => connect.mutate(plugin.id)}
+                  />
+                ))}
+              </ConnectionSection>
             </div>
             <ConnectionQRModal
               plugin={activeQR?.plugin}

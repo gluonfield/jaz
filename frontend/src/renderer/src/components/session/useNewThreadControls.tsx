@@ -12,9 +12,6 @@ import {
 import { createSessionInput, NEW_SESSION_AGENT_KEY } from '@/lib/newSessionConfig'
 import { acpReasoningEffortOptions } from '@/lib/reasoningEfforts'
 
-// Agent + model + reasoning-effort selection for a new thread, shared by the
-// New-session page and the global launcher so both pick the same way and build
-// the same create-session payload. Directory/worktree stay with the caller.
 export function useNewThreadControls() {
   const settingsQuery = useQuery(agentSettingsQuery)
   const agentSettings = settingsQuery.data
@@ -38,7 +35,6 @@ export function useNewThreadControls() {
     localStorage.setItem(NEW_SESSION_AGENT_KEY, runtime)
   }, [runtime])
 
-  // A stored agent that's since been disabled falls back to jaz, then any agent.
   useEffect(() => {
     if (!runtimeReady || agents.includes(runtime)) return
     const next = agents.includes('jaz') ? 'jaz' : (agents[0] ?? '')
@@ -79,7 +75,6 @@ export function useNewThreadControls() {
     setModel: (next: string) => setModelOverride(next),
     effort,
     effortOptions: acpReasoningEffortOptions(agentSettings, runtime),
-    // '' clears the override, falling back to the settings effort.
     setEffort: (next: string) => setEffortOverride(next === '' ? null : next),
     sessionConfig: (extra: { directory: string; worktree: boolean }, title?: string): CreateSessionInput =>
       createSessionInput(
@@ -90,8 +85,6 @@ export function useNewThreadControls() {
   }
 }
 
-// The agent + model pickers, rendered identically wherever a new thread is
-// composed (New-session page, launcher).
 export function AgentModelControls({
   controls,
   placement,

@@ -39,8 +39,6 @@ function RootComponent() {
   return <RootLayout />
 }
 
-// The launcher window is a transparent, frameless overlay: just the route, no
-// app chrome, on a see-through surface so only its card floats over other apps.
 function LauncherRoot() {
   return (
     <ToastProvider>

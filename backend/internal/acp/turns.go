@@ -144,7 +144,7 @@ func (m *Manager) finishTurn(done chan struct{}, job *jobState) {
 	m.resolveDanglingToolCalls(job)
 	snapshot := job.Snapshot()
 	if snapshot.State == StateIdle || snapshot.State == StateFailed || snapshot.State == StateCancelled {
-		if planRequested && snapshot.State == StateIdle {
+		if snapshot.State == StateIdle && planTurnDefersResult(planRequested, snapshot.ACPAgent) {
 			m.publishPlanTurnResult(snapshot)
 		}
 		m.compactSessionEvents(snapshot.ID)

@@ -4,7 +4,6 @@ import { type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPoi
 import { AgentModelControls, useNewThreadControls } from '@/components/session/useNewThreadControls'
 import { dataURLToFile } from '@/components/ui/fileTransfer'
 import { IconButton } from '@/components/ui/IconButton'
-import { useToast } from '@/components/ui/toast'
 import { createSession, uploadSessionAttachment } from '@/lib/api/sessions'
 import { streamSessionMessage } from '@/lib/api/stream'
 import { clientRuntime } from '@/lib/clientRuntime'
@@ -26,16 +25,9 @@ interface Selection {
   h: number
 }
 
-// Below this the gesture is a click (dismiss), not a region selection.
 const DRAG_THRESHOLD = 6
 
-// The ⌥Space launcher: a full-screen overlay over whatever app is frontmost.
-// The composer bar floats near the top; dragging anywhere else selects a screen
-// region that's captured natively and attached. On submit it acts as a full
-// client — creates the session, uploads attachments, fires the (detached) turn —
-// then hands the main window the session to stream the reply.
 function LauncherPage() {
-  const toast = useToast()
   const controls = useNewThreadControls()
 
   const [value, setValue] = useState('')
@@ -43,6 +35,7 @@ function LauncherPage() {
   const [sending, setSending] = useState(false)
   const [capturing, setCapturing] = useState(false)
   const [selection, setSelection] = useState<Selection | null>(null)
+  const [error, setError] = useState('')
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const focusInput = () => inputRef.current?.focus()
@@ -51,10 +44,10 @@ function LauncherPage() {
     setValue('')
     setShots([])
     setSelection(null)
+    setError('')
     if (inputRef.current) inputRef.current.style.height = 'auto'
   }, [])
 
-  // Each summon starts clean and focused.
   useEffect(() => {
     focusInput()
     return clientRuntime.onLauncherShown?.(() => {
@@ -68,9 +61,17 @@ function LauncherPage() {
   const captureRect = async (rect: { x: number; y: number; width: number; height: number }) => {
     if (!clientRuntime.captureScreenRect) return
     setCapturing(true)
+    setError('')
     try {
       const result = await clientRuntime.captureScreenRect(rect)
-      if (!result.ok || !result.data) return
+      if (result.denied) {
+        setError('Allow Screen Recording for Jaz in System Settings, then reopen Jaz.')
+        return
+      }
+      if (!result.ok || !result.data) {
+        setError("Couldn't capture that region — make sure Screen Recording is allowed.")
+        return
+      }
       setShots((prev) => [...prev, { id: crypto.randomUUID(), dataUrl: `data:image/png;base64,${result.data}` }])
     } finally {
       setCapturing(false)
@@ -78,8 +79,6 @@ function LauncherPage() {
     }
   }
 
-  // Drag on the backdrop draws a selection box; a release with no real drag is a
-  // click-away dismiss. Window listeners keep tracking even over the bar.
   const onBackdropPointerDown = (event: ReactPointerEvent) => {
     if (event.button !== 0 || sending || capturing) return
     const sx = event.clientX
@@ -113,10 +112,11 @@ function LauncherPage() {
     const text = value.trim()
     if (!text || sending) return
     if (!controls.runtimeAvailable) {
-      toast('Connect an agent in Settings before starting a session.', 'danger')
+      setError('Connect an agent in Settings before starting a session.')
       return
     }
     setSending(true)
+    setError('')
     try {
       const directory = localStorage.getItem(NEW_SESSION_DIRECTORY_KEY) ?? ''
       const session = await createSession(controls.sessionConfig({ directory, worktree: false }, text))
@@ -135,8 +135,8 @@ function LauncherPage() {
       clientRuntime.openInMain?.(`/sessions/${session.id}`)
       clientRuntime.hideLauncher?.()
       reset()
-    } catch (error) {
-      toast(`Couldn't start a session: ${(error as Error).message}`, 'danger')
+    } catch (err) {
+      setError(`Couldn't start a session: ${(err as Error).message}`)
     } finally {
       setSending(false)
     }
@@ -164,7 +164,7 @@ function LauncherPage() {
         />
       ) : null}
 
-      <div className="absolute top-[16%] left-1/2 w-[720px] max-w-[calc(100vw-2rem)] -translate-x-1/2">
+      <div className="absolute bottom-[12%] left-1/2 w-[720px] max-w-[calc(100vw-2rem)] -translate-x-1/2">
         <div className="overflow-hidden rounded-[18px] bg-surface shadow-[0_18px_50px_-12px_rgba(0,0,0,0.45)] ring-1 ring-border/60">
           <div className="flex items-center gap-3 px-4 py-3">
             <Sparkles size={20} className="shrink-0 text-primary" />
@@ -175,6 +175,7 @@ function LauncherPage() {
               onChange={(event) => {
                 setValue(event.target.value)
                 autosize(event.currentTarget)
+                if (error) setError('')
               }}
               onKeyDown={onKeyDown}
               placeholder="What can I help you with today?"
@@ -214,8 +215,14 @@ function LauncherPage() {
             </div>
           ) : null}
 
+          {error ? (
+            <p className="px-4 pb-2 text-[13px] text-danger" role="alert">
+              {error}
+            </p>
+          ) : null}
+
           <div className="flex items-center gap-1.5 border-t border-border/40 px-3 py-2">
-            <AgentModelControls controls={controls} placement="below" disabled={sending} />
+            <AgentModelControls controls={controls} placement="above" disabled={sending} />
             <span className="ml-auto pr-1 text-[12px] text-ink-3">drag to screenshot · ↩ send · esc dismiss</span>
           </div>
         </div>

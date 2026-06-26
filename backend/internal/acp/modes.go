@@ -101,10 +101,6 @@ func (m *Manager) applyTurnMode(ctx context.Context, job *jobState, target strin
 	return nil
 }
 
-func (m *Manager) restoreBaselineMode(ctx context.Context, job *jobState) error {
-	return m.prepareModeForTurn(ctx, job, false)
-}
-
 func (m *Manager) setSessionMode(ctx context.Context, peer *jsonrpc.Peer, sessionID acpschema.SessionID, modeID string) error {
 	_, err := peer.Call(ctx, acpschema.AgentMethodSessionSetMode, acpschema.SetSessionModeRequest{
 		SessionID: sessionID,
