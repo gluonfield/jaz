@@ -24,12 +24,14 @@ type routeDeps struct {
 	Browser         *browserworker.ExtensionBridge `optional:"true"`
 	BrowserSettings *BrowserSettingsHandler        `optional:"true"`
 	Connections     *connections.Service           `optional:"true"`
+	ConnectionStart *connections.ConnectService    `optional:"true"`
 	ConnectionOAuth *connections.OAuthService      `optional:"true"`
+	ConnectionQR    *connections.QRService         `optional:"true"`
 }
 
 func NewRoutes(deps routeDeps) server.Routes {
 	routes := usageRoutes(deps.Usage)
-	routes = appendConnectionRoutes(routes, deps.Connections, deps.ConnectionOAuth)
+	routes = appendConnectionRoutes(routes, deps.Connections, deps.ConnectionStart, deps.ConnectionOAuth, deps.ConnectionQR)
 	routes = appendDeviceRoutes(routes, deps.Devices, deps.Config)
 	return appendBrowserRoutes(routes, deps.BrowserSettings, deps.Browser)
 }
@@ -47,7 +49,7 @@ func usageRoutes(usage usagecore.Service) server.Routes {
 	}
 }
 
-func appendConnectionRoutes(routes server.Routes, service *connections.Service, oauth *connections.OAuthService) server.Routes {
+func appendConnectionRoutes(routes server.Routes, service *connections.Service, connect *connections.ConnectService, oauth *connections.OAuthService, qr *connections.QRService) server.Routes {
 	if service == nil {
 		return routes
 	}
@@ -57,12 +59,17 @@ func appendConnectionRoutes(routes server.Routes, service *connections.Service, 
 		server.Route{Pattern: "GET /v1/connections/plugins/{id}", Handler: httpHandlerFunc(handler.Get)},
 		server.Route{Pattern: "DELETE /v1/connections/accounts/{id}", Handler: httpHandlerFunc(handler.Disconnect)},
 	)
-	if oauth != nil {
-		oauthHandler := connectionsapi.NewOAuthHandler(oauth)
-		routes = append(routes,
-			server.Route{Pattern: "POST /v1/connections/plugins/{id}/connect", Handler: httpHandlerFunc(oauthHandler.Start)},
-			server.Route{Pattern: "GET /v1/connections/oauth/google/callback", Handler: httpHandlerFunc(oauthHandler.GoogleCallback)},
-		)
+	if connect != nil || oauth != nil || qr != nil {
+		connectHandler := connectionsapi.NewConnectHandler(connect, oauth, qr)
+		if connect != nil {
+			routes = append(routes, server.Route{Pattern: "POST /v1/connections/plugins/{id}/connect", Handler: httpHandlerFunc(connectHandler.Start)})
+		}
+		if qr != nil {
+			routes = append(routes, server.Route{Pattern: "GET /v1/connections/qr/{id}", Handler: httpHandlerFunc(connectHandler.QRStatus)})
+		}
+		if oauth != nil {
+			routes = append(routes, server.Route{Pattern: "GET /v1/connections/oauth/google/callback", Handler: httpHandlerFunc(connectHandler.GoogleCallback)})
+		}
 	}
 	return routes
 }

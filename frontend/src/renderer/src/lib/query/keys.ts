@@ -27,6 +27,7 @@ export const keys = {
   onboarding: ['onboarding'] as const,
   memory: ['memory'] as const,
   connectionPlugins: ['connections', 'plugins'] as const,
+  connectionQR: (id: string) => ['connections', 'qr', id] as const,
   browserSettings: ['browser', 'settings'] as const,
   mcpServers: ['mcp', 'servers'] as const,
   acpAgents: ['acp', 'agents'] as const,

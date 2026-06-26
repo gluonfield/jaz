@@ -278,6 +278,30 @@ export interface IntegrationPlugin {
   connection?: IntegrationConnection
 }
 
+export interface ConnectionQRStart {
+  session_id: string
+  provider: string
+  code: string
+  status: 'pending' | 'scanned' | 'connected' | 'expired' | 'failed'
+  expires_at: string
+  instructions?: string[]
+}
+
+export interface ConnectionStart {
+  type: 'oauth' | 'qr'
+  auth_url?: string
+  qr?: ConnectionQRStart
+}
+
+export interface ConnectionQRStatus {
+  session_id: string
+  provider: string
+  status: 'pending' | 'scanned' | 'connected' | 'expired' | 'failed'
+  expires_at: string
+  account_id?: string
+  error?: string
+}
+
 export type DeviceStatus = 'pending' | 'approved' | 'revoked'
 export type DeviceKind = 'desktop' | 'mobile' | 'browser' | 'cli'
 export type PairingStatus = 'pending' | 'approved' | 'rejected' | 'expired'

@@ -15,6 +15,14 @@ func NewConnectionOAuthService(store *sqlitestore.Store, cfg Config) *connection
 	})
 }
 
+func NewConnectionQRService() *connections.QRService {
+	return connections.NewQRService()
+}
+
+func NewConnectionConnectService(catalog *connections.Catalog, oauth *connections.OAuthService, qr *connections.QRService) *connections.ConnectService {
+	return connections.NewConnectService(catalog, oauth, qr)
+}
+
 func NewConnectionService(catalog *connections.Catalog, store *sqlitestore.Store) *connections.Service {
 	return connections.NewService(catalog, store)
 }

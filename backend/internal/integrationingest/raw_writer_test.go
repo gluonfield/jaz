@@ -12,7 +12,7 @@ import (
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
-func TestRawWriterAppendsJSONLByProviderAccountConnectionAndDay(t *testing.T) {
+func TestRawWriterAppendsMessagesByProviderAccountConnectionAndDay(t *testing.T) {
 	root := t.TempDir()
 	occurred := time.Date(2026, 6, 12, 10, 30, 0, 0, time.UTC)
 	writer := RawWriter{Root: root, Now: func() time.Time { return occurred.Add(time.Minute) }}
@@ -35,13 +35,14 @@ func TestRawWriterAppendsJSONLByProviderAccountConnectionAndDay(t *testing.T) {
 		Provider:     "gmail",
 		ConnectionID: "conn_1",
 		AccountID:    "august@example.com",
+		Kind:         "gmail.message.received",
 		OccurredAt:   occurred,
 	}
 	path, err := RawRecordPath(root, record)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantPath := filepath.Join(root, "raw", "gmail", "august-example-com", "conn-1", "2026", "06", "12", "events.jsonl")
+	wantPath := filepath.Join(root, "gmail", "august-example-com", "conn-1", "messages", "2026", "06", "12", "messages.jsonl")
 	if path != wantPath {
 		t.Fatalf("path = %q, want %q", path, wantPath)
 	}
@@ -67,14 +68,59 @@ func TestRawWriterAppendsJSONLByProviderAccountConnectionAndDay(t *testing.T) {
 	}
 }
 
-func TestRawWriterRejectsMissingRoot(t *testing.T) {
-	err := (RawWriter{}).WriteRecords(context.Background(), []integrations.Record{{
+func TestRawWriterAppendsContactsToStableContactExport(t *testing.T) {
+	root := t.TempDir()
+	received := time.Date(2026, 6, 12, 10, 30, 0, 0, time.UTC)
+	writer := RawWriter{Root: root, Now: func() time.Time { return received }}
+
+	err := writer.WriteRecords(context.Background(), []integrations.Record{
+		{
+			Provider:     "telegram",
+			ConnectionID: "conn_1",
+			AccountID:    "august",
+			Kind:         "telegram.contact",
+			ExternalID:   "+447700900123",
+			Raw:          json.RawMessage(`{"name":"Alice","phone":"+447700900123"}`),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := RawRecordPath(root, integrations.Record{
+		Provider:     "telegram",
+		ConnectionID: "conn_1",
+		AccountID:    "august",
+		Kind:         "telegram.contact",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPath := filepath.Join(root, "telegram", "august", "conn-1", "contacts", "contacts.jsonl")
+	if path != wantPath {
+		t.Fatalf("path = %q, want %q", path, wantPath)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRawWriterDefaultsToMemoryRawSourcesRoot(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	occurred := time.Date(2026, 6, 12, 10, 30, 0, 0, time.UTC)
+
+	path, err := RawRecordPath("", integrations.Record{
 		Provider:     "gmail",
 		ConnectionID: "conn_1",
 		AccountID:    "august@example.com",
-	}})
-	if err == nil {
-		t.Fatal("expected error")
+		OccurredAt:   occurred,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(home, ".memory", "raw-sources", "gmail", "august-example-com", "conn-1", "events", "2026", "06", "12", "events.jsonl")
+	if path != want {
+		t.Fatalf("path = %q, want %q", path, want)
 	}
 }
 

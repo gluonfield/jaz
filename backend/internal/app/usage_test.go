@@ -127,10 +127,14 @@ func TestNewRoutesIncludesBrowserSettingsRoutes(t *testing.T) {
 
 func TestNewRoutesIncludesConnectionPluginRoutes(t *testing.T) {
 	catalog := connections.NewCatalog()
+	oauth := connections.NewOAuthService(fakeConnectionOAuthStore{}, connections.OAuthConfig{})
+	qr := connections.NewQRService()
 	routes := NewRoutes(routeDeps{
 		Usage:           usagecore.NewService(fakeUsageStore{}),
 		Connections:     connections.NewService(catalog, fakeConnectionOAuthStore{}),
-		ConnectionOAuth: connections.NewOAuthService(fakeConnectionOAuthStore{}, connections.OAuthConfig{}),
+		ConnectionOAuth: oauth,
+		ConnectionQR:    qr,
+		ConnectionStart: connections.NewConnectService(catalog, oauth, qr),
 	})
 	found := map[string]bool{}
 	for _, route := range routes {
@@ -138,6 +142,7 @@ func TestNewRoutesIncludesConnectionPluginRoutes(t *testing.T) {
 			route.Pattern == "GET /v1/connections/plugins/{id}" ||
 			route.Pattern == "DELETE /v1/connections/accounts/{id}" ||
 			route.Pattern == "POST /v1/connections/plugins/{id}/connect" ||
+			route.Pattern == "GET /v1/connections/qr/{id}" ||
 			route.Pattern == "GET /v1/connections/oauth/google/callback") && route.Handler != nil {
 			found[route.Pattern] = true
 		}
@@ -146,9 +151,26 @@ func TestNewRoutesIncludesConnectionPluginRoutes(t *testing.T) {
 		!found["GET /v1/connections/plugins/{id}"] ||
 		!found["DELETE /v1/connections/accounts/{id}"] ||
 		!found["POST /v1/connections/plugins/{id}/connect"] ||
+		!found["GET /v1/connections/qr/{id}"] ||
 		!found["GET /v1/connections/oauth/google/callback"] {
 		t.Fatalf("missing connection plugin routes: %#v", routes)
 	}
+}
+
+func TestNewRoutesKeepsConnectionStartRoutesIndependent(t *testing.T) {
+	catalog := connections.NewCatalog()
+	oauth := connections.NewOAuthService(fakeConnectionOAuthStore{}, connections.OAuthConfig{})
+	routes := NewRoutes(routeDeps{
+		Usage:           usagecore.NewService(fakeUsageStore{}),
+		Connections:     connections.NewService(catalog, fakeConnectionOAuthStore{}),
+		ConnectionOAuth: oauth,
+	})
+	for _, route := range routes {
+		if route.Pattern == "GET /v1/connections/oauth/google/callback" && route.Handler != nil {
+			return
+		}
+	}
+	t.Fatalf("missing OAuth callback route without QR service: %#v", routes)
 }
 
 func TestUsageModuleWiresWithNewStore(t *testing.T) {
