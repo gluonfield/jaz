@@ -26,14 +26,8 @@ interface Selection {
   h: number
 }
 
-// Below this the gesture is a click (dismiss), not a region selection.
 const DRAG_THRESHOLD = 6
 
-// The ⌥Space launcher: a full-screen overlay over whatever app is frontmost.
-// The composer bar floats near the top; dragging anywhere else selects a screen
-// region that's captured natively and attached. On submit it acts as a full
-// client — creates the session, uploads attachments, fires the (detached) turn —
-// then hands the main window the session to stream the reply.
 function LauncherPage() {
   const toast = useToast()
   const controls = useNewThreadControls()
@@ -54,7 +48,6 @@ function LauncherPage() {
     if (inputRef.current) inputRef.current.style.height = 'auto'
   }, [])
 
-  // Each summon starts clean and focused.
   useEffect(() => {
     focusInput()
     return clientRuntime.onLauncherShown?.(() => {
@@ -70,7 +63,14 @@ function LauncherPage() {
     setCapturing(true)
     try {
       const result = await clientRuntime.captureScreenRect(rect)
-      if (!result.ok || !result.data) return
+      if (result.denied) {
+        toast('Allow Screen Recording for Jaz in System Settings, then reopen Jaz.', 'danger')
+        return
+      }
+      if (!result.ok || !result.data) {
+        toast("Couldn't capture that region. Try again.", 'danger')
+        return
+      }
       setShots((prev) => [...prev, { id: crypto.randomUUID(), dataUrl: `data:image/png;base64,${result.data}` }])
     } finally {
       setCapturing(false)
@@ -78,8 +78,6 @@ function LauncherPage() {
     }
   }
 
-  // Drag on the backdrop draws a selection box; a release with no real drag is a
-  // click-away dismiss. Window listeners keep tracking even over the bar.
   const onBackdropPointerDown = (event: ReactPointerEvent) => {
     if (event.button !== 0 || sending || capturing) return
     const sx = event.clientX

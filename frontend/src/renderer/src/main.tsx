@@ -30,11 +30,9 @@ installFileDropGuard()
 // returning users from the per-install distinct id.
 if (clientRuntime.windowKind === 'main') telemetry.appOpened()
 
-// The launcher window floats over other apps: keep its page see-through so only
-// the card paints, and pin zoom to 1 so drag coordinates map 1:1 to screen
-// pixels for region capture (it never shows the appearance font-scale anyway).
 if (clientRuntime.windowKind === 'launcher') {
   document.documentElement.classList.add('launcher')
+  // zoom 1 keeps drag coordinates 1:1 with screen pixels for region capture.
   document.documentElement.style.zoom = '1'
 }
 

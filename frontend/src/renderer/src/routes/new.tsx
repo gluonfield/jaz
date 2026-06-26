@@ -43,10 +43,8 @@ function NewSessionPage() {
   const toast = useToast()
   const [creating, setCreating] = useState(false)
   const [composing, setComposing] = useState(false)
-  // Agent + model + reasoning effort, shared with the launcher.
   const controls = useNewThreadControls()
   const { agentSettings, runtimeAvailable, runtime } = controls
-  // directory is the session cwd.
   const [directory, setDirectory] = useState(
     () => search.project ?? storedString(NEW_SESSION_DIRECTORY_KEY),
   )
