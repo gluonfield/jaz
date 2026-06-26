@@ -90,11 +90,11 @@ func gmailThreadLimit(limit int) int {
 	return min(limit, maxGmailThreadLimit)
 }
 
-func gmailThreadIDType(value string) string {
+func gmailThreadIDType(value string) gmailconnector.IDType {
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "", gmailconnector.IDTypeMessage:
+	case "", string(gmailconnector.IDTypeMessage):
 		return gmailconnector.IDTypeMessage
-	case gmailconnector.IDTypeThread:
+	case string(gmailconnector.IDTypeThread):
 		return gmailconnector.IDTypeThread
 	default:
 		return ""

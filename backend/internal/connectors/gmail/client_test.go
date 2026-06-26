@@ -134,6 +134,13 @@ func TestAPIClientSearchAndReadThreads(t *testing.T) {
 	}
 }
 
+func TestAPIClientReadThreadRejectsUnknownIDType(t *testing.T) {
+	_, err := (APIClient{}).ReadThread(context.Background(), ReadThreadRequest{ID: "m1", IDType: IDType("email")})
+	if err == nil || !strings.Contains(err.Error(), "id type") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestAPIClientDraftWorkflow(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -277,6 +284,16 @@ func TestAPIClientDraftWorkflow(t *testing.T) {
 	}
 	if sent.ID != "sent1" || sent.ThreadID != "thread1" || sent.Subject != "Old subject" {
 		t.Fatalf("sent = %#v", sent)
+	}
+}
+
+func TestAPIClientUpdateDraftRequiresID(t *testing.T) {
+	_, err := (APIClient{}).UpdateDraft(context.Background(), "", ComposeMessageRequest{
+		To:       []string{"alice@example.com"},
+		BodyText: "Plain body",
+	})
+	if err == nil || !strings.Contains(err.Error(), "draft id") {
+		t.Fatalf("err = %v", err)
 	}
 }
 
