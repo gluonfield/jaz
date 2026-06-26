@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { appearanceConfig, type ColorSchemeConfig } from './appearanceConfig'
 
 // A color scheme is four user-facing inputs per light/dark mode; every other
 // --color-* token (surfaces, ink ramp, borders, primary family) is *derived*
@@ -49,6 +50,29 @@ export const THEME_PRESETS: readonly ThemePreset[] = [
 ] as const
 
 export const DEFAULT_SCHEME: ModeSchemes = { light: THEME_PRESETS[0].light, dark: THEME_PRESETS[0].dark }
+
+const isHex = (v: unknown): v is string => typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v)
+
+function mergeScheme(base: ColorScheme, c?: ColorSchemeConfig): ColorScheme {
+  if (!c) return base
+  return {
+    accent: isHex(c.accent) ? c.accent.toLowerCase() : base.accent,
+    background: isHex(c.background) ? c.background.toLowerCase() : base.background,
+    foreground: isHex(c.foreground) ? c.foreground.toLowerCase() : base.foreground,
+    contrast:
+      typeof c.contrast === 'number' && c.contrast >= 0 && c.contrast <= 100 ? c.contrast : base.contrast,
+  }
+}
+
+// The deployment default scheme from the build-time config (appearance-defaults.js):
+// an optional named preset, then per-mode color overrides, falling back to the
+// Jaz default. The user's own choices layer on top of this.
+const CONFIG_BASE: ModeSchemes = (() => {
+  const cfg = appearanceConfig().scheme
+  if (!cfg) return DEFAULT_SCHEME
+  const base = (cfg.preset && THEME_PRESETS.find((p) => p.id === cfg.preset)) || DEFAULT_SCHEME
+  return { light: mergeScheme(base.light, cfg.light), dark: mergeScheme(base.dark, cfg.dark) }
+})()
 
 // --- derivation -----------------------------------------------------------
 
@@ -141,17 +165,21 @@ const STYLE_ID = 'jaz-theme-overrides'
 
 const listeners = new Set<() => void>()
 
+// The user's stored override layers over the deployment base (CONFIG_BASE).
+const isBase = (m: ModeSchemes): boolean =>
+  sameScheme(m.light, CONFIG_BASE.light) && sameScheme(m.dark, CONFIG_BASE.dark)
+
 function readStored(): ModeSchemes {
   try {
     const raw = localStorage.getItem(KEY)
-    if (!raw) return DEFAULT_SCHEME
+    if (!raw) return CONFIG_BASE
     const p = JSON.parse(raw) as Partial<ModeSchemes>
     return {
-      light: { ...DEFAULT_SCHEME.light, ...p.light },
-      dark: { ...DEFAULT_SCHEME.dark, ...p.dark },
+      light: { ...CONFIG_BASE.light, ...p.light },
+      dark: { ...CONFIG_BASE.dark, ...p.dark },
     }
   } catch {
-    return DEFAULT_SCHEME
+    return CONFIG_BASE
   }
 }
 
@@ -173,16 +201,14 @@ function render(css: string) {
 
 function commit(next: ModeSchemes) {
   current = next
+  // Persist the user override only when it diverges from the deployment base, so
+  // it keeps tracking the config default otherwise. The derived CSS (vs the Jaz
+  // stock tokens) is cached separately for the pre-paint script.
+  if (isBase(next)) localStorage.removeItem(KEY)
+  else localStorage.setItem(KEY, JSON.stringify(next))
   const css = schemeCss(next)
-  // Cache both the scheme (for the editor) and the derived CSS (for the
-  // pre-paint script). Empty CSS means stock — drop both keys.
-  if (css) {
-    localStorage.setItem(KEY, JSON.stringify(next))
-    localStorage.setItem(CSS_KEY, css)
-  } else {
-    localStorage.removeItem(KEY)
-    localStorage.removeItem(CSS_KEY)
-  }
+  if (css) localStorage.setItem(CSS_KEY, css)
+  else localStorage.removeItem(CSS_KEY)
   render(css)
   for (const l of listeners) l()
 }
@@ -200,7 +226,7 @@ export function applyPreset(mode: keyof ModeSchemes, preset: ThemePreset) {
 }
 
 export function resetScheme() {
-  commit(DEFAULT_SCHEME)
+  commit(CONFIG_BASE)
 }
 
 window.addEventListener('storage', (event) => {
