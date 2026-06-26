@@ -173,7 +173,7 @@ func resolveCodexProviderAuth(meta modelprovider.ModelProvider, root string, env
 		StoragePath: filepath.Join(layout.ACPCodexHome, "auth.json"),
 		Source:      AuthModeJazProfile,
 	}
-	value := strings.TrimSpace(providers[meta.ID].APIKey)
+	value := strings.TrimSpace(providers[codexProviderKeyID(meta.ID)].APIKey)
 	if value == "" && keyEnv != "" {
 		value = codexProviderKeyValue(root, env, keyEnv)
 	}

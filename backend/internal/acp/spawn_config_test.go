@@ -3,6 +3,7 @@ package acp
 import (
 	"testing"
 
+	modelprovider "github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -108,5 +109,25 @@ func TestSpawnConfigReasoningEffortNoneAndDefault(t *testing.T) {
 				t.Fatalf("effort = %q, cfg effort = %q; want configured default high", effort, cfg.ReasoningEffort)
 			}
 		})
+	}
+}
+
+func TestSpawnConfigKeepsDefaultModelWhenCodexUsesOpenAIAPIKey(t *testing.T) {
+	manager := &Manager{agents: AgentCatalog{
+		AgentCodex: AgentConfig{
+			Command:       AgentCodex,
+			ProviderMode:  AgentProviderModeAgentDefaults,
+			ModelProvider: modelprovider.ProviderOpenAI,
+		},
+	}}
+	_, cfg, _, err := manager.spawnConfig(SpawnRequest{
+		ACPAgent:      AgentCodex,
+		ModelProvider: CodexProviderOpenAIAPIKey,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ModelProvider != CodexProviderOpenAIAPIKey || cfg.Model != "gpt-5.4-mini" {
+		t.Fatalf("unexpected codex provider override %#v", cfg)
 	}
 }

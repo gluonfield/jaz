@@ -168,8 +168,14 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 			Local            bool     `json:"local"`
 			ProviderMode     string   `json:"provider_mode"`
 			ModelProviderIDs []string `json:"model_provider_ids"`
-			RequiresCommand  bool     `json:"requires_command"`
-			SupportsAuth     bool     `json:"supports_auth"`
+			ModelProviders   []struct {
+				ID         string `json:"id"`
+				Label      string `json:"label"`
+				Configured bool   `json:"configured"`
+			} `json:"model_providers"`
+			AuthProviderID  string `json:"auth_provider_id"`
+			RequiresCommand bool   `json:"requires_command"`
+			SupportsAuth    bool   `json:"supports_auth"`
 		} `json:"acp_options"`
 	}
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
@@ -189,6 +195,16 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	}
 	if got.ACPOptions["codex"].RequiresCommand {
 		t.Fatalf("unexpected codex capabilities %#v", got.ACPOptions["codex"])
+	}
+	if got.ACPOptions["codex"].AuthProviderID != provider.ProviderOpenAI ||
+		strings.Join(got.ACPOptions["codex"].ModelProviderIDs, ",") != "openai,openai-api-key,openrouter" {
+		t.Fatalf("unexpected codex provider options %#v", got.ACPOptions["codex"])
+	}
+	if len(got.ACPOptions["codex"].ModelProviders) < 2 ||
+		got.ACPOptions["codex"].ModelProviders[0].Label != "OpenAI OAuth" ||
+		got.ACPOptions["codex"].ModelProviders[1].ID != acp.CodexProviderOpenAIAPIKey ||
+		got.ACPOptions["codex"].ModelProviders[1].Label != "OpenAI" {
+		t.Fatalf("unexpected codex model providers %#v", got.ACPOptions["codex"].ModelProviders)
 	}
 	if got.ACP["grok"].Enabled ||
 		got.ACP["grok"].Command != `grok --no-auto-update agent --no-leader --always-approve stdio` ||
@@ -237,7 +253,8 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	}
 	if got.ACPOptions["opencode"].ProviderMode != acp.AgentProviderModeAgentDefaults ||
 		!hasString(got.ACPOptions["opencode"].ModelProviderIDs, "openrouter") ||
-		!hasString(got.ACPOptions["opencode"].ModelProviderIDs, "openai") {
+		!hasString(got.ACPOptions["opencode"].ModelProviderIDs, "openai") ||
+		hasString(got.ACPOptions["opencode"].ModelProviderIDs, acp.CodexProviderOpenAIAPIKey) {
 		t.Fatalf("unexpected opencode capabilities %#v", got.ACPOptions["opencode"])
 	}
 

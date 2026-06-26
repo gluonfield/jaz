@@ -84,6 +84,7 @@ export function cloneAgentSettings(settings: AgentSettings): AgentSettings {
           capabilities: value.capabilities ? { ...value.capabilities } : undefined,
           reasoning_efforts: [...value.reasoning_efforts],
           model_provider_ids: [...(value.model_provider_ids ?? [])],
+          model_providers: [...(value.model_providers ?? [])],
         },
       ]),
     ),
