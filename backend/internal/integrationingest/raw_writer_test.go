@@ -78,11 +78,15 @@ func TestRawWriterRejectsMissingRoot(t *testing.T) {
 	}
 }
 
-func TestRawWriterRejectsMissingAccountOrConnection(t *testing.T) {
+func TestRawWriterRejectsMissingPathKeys(t *testing.T) {
 	root := t.TempDir()
 	tests := []integrations.Record{
+		{AccountID: "august@example.com", ConnectionID: "conn_1"},
 		{Provider: "gmail", ConnectionID: "conn_1"},
 		{Provider: "gmail", AccountID: "august@example.com"},
+		{Provider: "---", AccountID: "august@example.com", ConnectionID: "conn_1"},
+		{Provider: "gmail", AccountID: "---", ConnectionID: "conn_1"},
+		{Provider: "gmail", AccountID: "august@example.com", ConnectionID: "---"},
 	}
 	for _, record := range tests {
 		err := (RawWriter{Root: root}).WriteRecords(context.Background(), []integrations.Record{record})
