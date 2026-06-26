@@ -29,19 +29,23 @@ export function ConnectionPluginDetailModal({
       title={plugin.name}
       description={subtitle(plugin)}
       icon={<PluginGlyph plugin={plugin} size={18} />}
-      size="lg"
+      size="xl"
     >
-      <div className="space-y-7">
-        <PreviewBand plugin={plugin} />
-        <p className="max-w-2xl text-[13px] leading-6 text-ink-2">{plugin.description}</p>
-        <AppsSection
-          plugin={plugin}
-          connecting={connecting}
-          onConnect={() => onConnect(plugin)}
-        />
-        {plugin.tools?.length ? <ToolsSection tools={plugin.tools} /> : null}
-        {plugin.skills?.length ? <SkillsSection skills={plugin.skills} /> : null}
-        <InformationSection plugin={plugin} />
+      <div className="grid gap-6 lg:grid-cols-5 lg:items-start">
+        <div className="space-y-5 lg:col-span-2">
+          <PreviewBand plugin={plugin} />
+          <p className="text-[13px] leading-5 text-ink-2">{plugin.description}</p>
+          <AppsSection
+            plugin={plugin}
+            connecting={connecting}
+            onConnect={() => onConnect(plugin)}
+          />
+          <InformationSection plugin={plugin} />
+        </div>
+        <div className="space-y-6 lg:col-span-3">
+          {plugin.tools?.length ? <ToolsSection tools={plugin.tools} /> : null}
+          {plugin.skills?.length ? <SkillsSection skills={plugin.skills} /> : null}
+        </div>
       </div>
     </Modal>
   )
@@ -49,7 +53,7 @@ export function ConnectionPluginDetailModal({
 
 function PreviewBand({ plugin }: { plugin: IntegrationPlugin }) {
   return (
-    <div className="rounded-card bg-[linear-gradient(135deg,var(--color-primary-soft),var(--color-surface-2))] px-5 py-7">
+    <div className="rounded-card bg-[linear-gradient(135deg,var(--color-primary-soft),var(--color-surface-2))] px-4 py-5">
       <div className="mx-auto flex w-fit max-w-full items-center gap-2 rounded-full bg-bg/90 px-4 py-2.5 shadow-raised">
         <PluginGlyph plugin={plugin} size={16} />
         <span className="shrink-0 text-[13px] font-medium text-ink">{plugin.name}</span>
@@ -81,7 +85,7 @@ function AppsSection({
   return (
     <section>
       <SectionHeading label={sessionAuth ? 'QR sign in' : 'App'} count={1} />
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-card px-0 py-2">
+      <div className="grid gap-3 rounded-card py-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
         <div className="flex min-w-0 items-center gap-3">
           <PluginIcon plugin={plugin} />
           <div className="min-w-0">
@@ -91,7 +95,13 @@ function AppsSection({
             </p>
           </div>
         </div>
-        <Button variant="secondary" size="md" disabled={!available || connecting} onClick={onConnect}>
+        <Button
+          variant="secondary"
+          size="md"
+          disabled={!available || connecting}
+          onClick={onConnect}
+          className="w-full sm:w-auto"
+        >
           <ConnectIcon size={14} className={connecting ? 'animate-spin' : undefined} />
           {pluginActionLabel(plugin, connecting)}
         </Button>
@@ -104,7 +114,7 @@ function ToolsSection({ tools }: { tools: IntegrationTool[] }) {
   return (
     <section>
       <SectionHeading label="Tools" count={tools.length} />
-      <div className="space-y-4">
+      <div className="grid gap-3 xl:grid-cols-2">
         {tools.map((tool) => (
           <div key={tool.name} className="flex min-w-0 items-start gap-3">
             <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-control bg-surface text-ink-2">
@@ -127,7 +137,7 @@ function SkillsSection({ skills }: { skills: IntegrationSkill[] }) {
   return (
     <section>
       <SectionHeading label="Skills" count={skills.length} />
-      <div className="space-y-4">
+      <div className="grid gap-3 xl:grid-cols-2">
         {skills.map((skill) => (
           <div key={skill.id} className="flex min-w-0 items-start gap-3">
             <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-control bg-surface text-primary">
@@ -158,8 +168,8 @@ function InformationSection({ plugin }: { plugin: IntegrationPlugin }) {
 
   return (
     <section>
-      <p className="mb-4 text-[13px] font-medium text-ink">Information</p>
-      <dl className="grid grid-cols-[128px_minmax(0,1fr)] gap-x-7 gap-y-4 text-[13px]">
+      <p className="mb-3 text-[13px] font-medium text-ink">Information</p>
+      <dl className="grid grid-cols-[6rem_minmax(0,1fr)] gap-x-5 gap-y-3 text-[13px]">
         {rows.map(([label, value]) => (
           <div key={label} className="contents">
             <dt className="text-ink-3">{label}</dt>
@@ -173,7 +183,7 @@ function InformationSection({ plugin }: { plugin: IntegrationPlugin }) {
 
 function SectionHeading({ label, count }: { label: string; count: number }) {
   return (
-    <p className="mb-4 flex items-center gap-2 text-[13px] font-medium text-ink">
+    <p className="mb-3 flex items-center gap-2 text-[13px] font-medium text-ink">
       {label}
       <span className="tabular-nums text-ink-3">{count}</span>
     </p>

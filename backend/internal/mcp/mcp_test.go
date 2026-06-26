@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/log"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/connections"
+	"github.com/wins/jaz/backend/internal/integrationingest"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/tools"
 )
@@ -274,7 +275,7 @@ func TestManagerRefreshLocalCanUseLocalServer(t *testing.T) {
 
 func TestManagerRefreshLocalRegistersJaztoolsGmailTools(t *testing.T) {
 	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "jaztools", Version: "test"}, nil)
-	connections.NewGmailMCPTools(nil).AddTo(server)
+	connections.NewGmailMCPTools(nil, integrationingest.RawWriter{Root: t.TempDir()}).AddTo(server)
 
 	registry := tools.NewRegistry()
 	manager := NewManager(&testStore{}, nil, registry, log.New(io.Discard), WithBuiltinServerProvider(mcpconfig.Server{

@@ -18,6 +18,11 @@ import (
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
 
+func newTestGmailMCPTools(t *testing.T, store GmailToolStore) *GmailMCPTools {
+	t.Helper()
+	return NewGmailMCPTools(store, integrationingest.RawWriter{Root: t.TempDir()})
+}
+
 func TestGmailMCPToolsGetProfile(t *testing.T) {
 	gmailServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/gmail/v1/users/me/profile" {
@@ -49,7 +54,7 @@ func TestGmailMCPToolsGetProfile(t *testing.T) {
 			Scopes:      []string{gmailconnector.ScopeModify},
 		}},
 	}
-	tools := NewGmailMCPTools(store)
+	tools := newTestGmailMCPTools(t, store)
 	tools.apiBaseURL = gmailServer.URL
 
 	result, profile, err := tools.GetProfile(context.Background(), nil, GmailProfileInput{})
@@ -68,7 +73,7 @@ func TestGmailMCPToolsGetProfile(t *testing.T) {
 }
 
 func TestGmailMCPToolsGetProfileReportsNotConnected(t *testing.T) {
-	_, profile, err := NewGmailMCPTools(&gmailMCPStore{}).GetProfile(context.Background(), nil, GmailProfileInput{})
+	_, profile, err := newTestGmailMCPTools(t, &gmailMCPStore{}).GetProfile(context.Background(), nil, GmailProfileInput{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +92,7 @@ func TestGmailMCPToolsRequiresVerifiedConnection(t *testing.T) {
 			},
 		},
 	}
-	_, profile, err := NewGmailMCPTools(store).GetProfile(context.Background(), nil, GmailProfileInput{})
+	_, profile, err := newTestGmailMCPTools(t, store).GetProfile(context.Background(), nil, GmailProfileInput{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +276,7 @@ func TestGmailMCPToolsThreadAndDraftWorkflow(t *testing.T) {
 	}))
 	defer gmailServer.Close()
 
-	tools := NewGmailMCPTools(&gmailMCPStore{
+	tools := newTestGmailMCPTools(t, &gmailMCPStore{
 		tokens: map[string]integrationoauth.Token{
 			gmailconnector.OAuthConnectionID: {
 				AccessToken: "access",
@@ -405,7 +410,7 @@ func TestGmailMCPToolsReadAttachmentStoresFileAndReturnsPreviewOnly(t *testing.T
 	}))
 	defer gmailServer.Close()
 
-	tools := NewGmailMCPTools(&gmailMCPStore{
+	tools := newTestGmailMCPTools(t, &gmailMCPStore{
 		tokens: map[string]integrationoauth.Token{
 			gmailconnector.OAuthConnectionID: {
 				AccessToken: "access",
@@ -421,7 +426,6 @@ func TestGmailMCPToolsReadAttachmentStoresFileAndReturnsPreviewOnly(t *testing.T
 		}},
 	})
 	tools.apiBaseURL = gmailServer.URL
-	tools.attachmentWriter = integrationingest.RawWriter{Root: t.TempDir()}
 
 	_, textAttachment, err := tools.ReadAttachment(context.Background(), nil, GmailReadAttachmentInput{
 		MessageID:    "m1",
@@ -514,7 +518,7 @@ func TestGmailMCPToolsRequireAccountWhenMultipleAccountsConnected(t *testing.T) 
 			Alias:     "work",
 		}},
 	}
-	tools := NewGmailMCPTools(store)
+	tools := newTestGmailMCPTools(t, store)
 	tools.apiBaseURL = gmailServer.URL
 
 	result, profile, err := tools.GetProfile(context.Background(), nil, GmailProfileInput{})

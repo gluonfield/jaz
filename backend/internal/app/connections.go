@@ -3,6 +3,7 @@ package app
 import (
 	"github.com/wins/jaz/backend/internal/connections"
 	gmailconnector "github.com/wins/jaz/backend/internal/connectors/gmail"
+	"github.com/wins/jaz/backend/internal/integrationingest"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
@@ -27,8 +28,8 @@ func NewConnectionService(catalog *connections.Catalog, store *sqlitestore.Store
 	return connections.NewService(catalog, store, qr, disconnecters.Disconnecters...)
 }
 
-func NewGmailMCPTools(store *sqlitestore.Store) *connections.GmailMCPTools {
-	return connections.NewGmailMCPTools(store)
+func NewGmailMCPTools(store *sqlitestore.Store, raw integrationingest.RawWriter) *connections.GmailMCPTools {
+	return connections.NewGmailMCPTools(store, raw)
 }
 
 func NewChatMCPTools(store *sqlitestore.Store, senders ChatSenders) *connections.ChatMCPTools {

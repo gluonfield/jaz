@@ -252,26 +252,6 @@ func TestRawWriterKeepsAllArchiveDirectoriesPrivate(t *testing.T) {
 	}
 }
 
-func TestRawWriterDefaultsToMemoryRawSourcesRoot(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	occurred := time.Date(2026, 6, 12, 10, 30, 0, 0, time.UTC)
-
-	path, err := RawRecordPath("", integrations.Record{
-		Provider:     "gmail",
-		ConnectionID: "conn_1",
-		AccountID:    "august@example.com",
-		OccurredAt:   occurred,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := filepath.Join(home, ".memory", "raw-sources", "gmail", "august-example-com", "conn-1", "events", "2026", "06", "12", "events.jsonl")
-	if path != want {
-		t.Fatalf("path = %q, want %q", path, want)
-	}
-}
-
 func TestRawWriterRejectsMissingPathKeys(t *testing.T) {
 	root := t.TempDir()
 	tests := []integrations.Record{
@@ -287,5 +267,30 @@ func TestRawWriterRejectsMissingPathKeys(t *testing.T) {
 		if err == nil {
 			t.Fatalf("expected error for %#v", record)
 		}
+	}
+}
+
+func TestRawWriterRejectsMissingRoot(t *testing.T) {
+	err := (RawWriter{}).WriteRecords(context.Background(), []integrations.Record{{
+		Provider:     "gmail",
+		ConnectionID: "conn_1",
+		AccountID:    "august@example.com",
+		OccurredAt:   time.Date(2026, 6, 12, 10, 30, 0, 0, time.UTC),
+	}})
+	if err == nil || !strings.Contains(err.Error(), "raw ingest root is required") {
+		t.Fatalf("error = %v", err)
+	}
+
+	_, err = (RawWriter{}).WriteAttachment(context.Background(), RawAttachment{
+		Provider:     "gmail",
+		ConnectionID: "conn_1",
+		AccountID:    "august@example.com",
+		MessageID:    "msg_1",
+		AttachmentID: "att_1",
+		FileName:     "report.txt",
+		Data:         []byte("report"),
+	})
+	if err == nil || !strings.Contains(err.Error(), "raw ingest root is required") {
+		t.Fatalf("attachment error = %v", err)
 	}
 }

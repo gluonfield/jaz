@@ -14,8 +14,8 @@ import (
 	"go.uber.org/fx"
 )
 
-func NewIntegrationRawWriter() integrationingest.RawWriter {
-	return integrationingest.RawWriter{}
+func NewIntegrationRawWriter(layout runtimefiles.Layout) integrationingest.RawWriter {
+	return integrationingest.RawWriter{Root: layout.IngestRaw}
 }
 
 func NewWhatsAppChatProvider(lc fx.Lifecycle, layout runtimefiles.Layout, store *sqlitestore.Store, raw integrationingest.RawWriter) (ChatProviderOut, error) {

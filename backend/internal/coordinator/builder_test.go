@@ -118,7 +118,7 @@ func TestBuilderACPPrompt(t *testing.T) {
 		"be kind",
 		"## Protected provider data",
 		"integration_oauth_tokens",
-		"~/.memory/raw-sources",
+		"~/.jaz/ingest/raw",
 		"gmail_*",
 		"## memory/LONG_TERM.md",
 		"- Goal: $5m.",
