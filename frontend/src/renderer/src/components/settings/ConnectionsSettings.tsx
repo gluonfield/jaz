@@ -20,7 +20,6 @@ import {
   ExistingConnectionCard,
   SettingsBlock,
 } from './ConnectionCards'
-import { ConnectionPluginModal } from './ConnectionPluginModal'
 import { ConnectionQRModal } from './ConnectionQRModal'
 import { accountAddress } from './connectionFormatting'
 
@@ -33,12 +32,15 @@ export function ConnectionsSettings() {
   const queryClient = useQueryClient()
   const toast = useToast()
   const [pollUntil, setPollUntil] = useState(0)
-  const [selectedPluginID, setSelectedPluginID] = useState<string | null>(null)
   const [activeQR, setActiveQR] = useState<ActiveQR | null>(null)
   const plugins = useQuery({
     ...connectionPluginsQuery,
     refetchInterval: () => (Date.now() < pollUntil ? 2000 : false),
   })
+  const sortedPlugins = useMemo(
+    () => [...(plugins.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
+    [plugins.data],
+  )
   const qrStatus = useQuery({
     queryKey: keys.connectionQR(activeQR?.qr.session_id ?? ''),
     queryFn: () => connectionQRStatus(activeQR?.qr.session_id ?? ''),
@@ -77,10 +79,6 @@ export function ConnectionsSettings() {
     onError: (error: Error) => toast(`Couldn't disconnect account: ${error.message}`, 'danger'),
     onSettled: () => queryClient.invalidateQueries({ queryKey: keys.connectionPlugins }),
   })
-  const sortedPlugins = useMemo(
-    () => [...(plugins.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
-    [plugins.data],
-  )
   const connectedAccounts = useMemo(
     () =>
       sortedPlugins.flatMap((plugin) =>
@@ -88,7 +86,7 @@ export function ConnectionsSettings() {
       ),
     [sortedPlugins],
   )
-  const selectedPlugin = sortedPlugins.find((plugin) => plugin.id === selectedPluginID)
+  const hasConnectedAccounts = connectedAccounts.length > 0
   const disconnectAccount = (account: IntegrationConnectionAccount) => {
     const label = accountAddress(account) || account.id
     if (window.confirm(`Disconnect ${label}?`)) disconnect.mutate(account.id)
@@ -115,7 +113,7 @@ export function ConnectionsSettings() {
       <div>
         <p className="text-sm font-medium text-ink">Connections</p>
         <p className="mt-0.5 text-[13px] text-ink-2">
-          First-party app connections for sync, actions, and memory materialization.
+          Connect accounts for agent tools and memory.
         </p>
       </div>
 
@@ -130,52 +128,36 @@ export function ConnectionsSettings() {
           </p>
         ) : (
           <>
-            <SettingsBlock
-              title="Existing connections"
-              detail={`${connectedAccounts.length} connected ${connectedAccounts.length === 1 ? 'account' : 'accounts'}`}
-            >
-              {connectedAccounts.length === 0 ? (
-                <p className="rounded-card bg-surface px-3 py-3 text-[13px] text-ink-3">
-                  No app accounts are connected yet.
-                </p>
-              ) : (
-                <div className="grid gap-2 md:grid-cols-2">
-                  {connectedAccounts.map(({ plugin, account }) => (
-                    <ExistingConnectionCard
-                      key={account.id}
+            <div className="space-y-5">
+              {hasConnectedAccounts ? (
+                <SettingsBlock title="Existing connections">
+                  <div className="flex flex-col divide-y divide-border/70">
+                    {connectedAccounts.map(({ plugin, account }) => (
+                      <ExistingConnectionCard
+                        key={account.id}
+                        plugin={plugin}
+                        account={account}
+                        disconnecting={disconnect.isPending && disconnect.variables === account.id}
+                        onDisconnect={() => disconnectAccount(account)}
+                      />
+                    ))}
+                  </div>
+                </SettingsBlock>
+              ) : null}
+
+              <SettingsBlock title="Add connection">
+                <div className="flex flex-col divide-y divide-border/70">
+                  {sortedPlugins.map((plugin) => (
+                    <ConnectionPluginCard
+                      key={plugin.id}
                       plugin={plugin}
-                      account={account}
-                      disconnecting={disconnect.isPending && disconnect.variables === account.id}
-                      onDetails={() => setSelectedPluginID(plugin.id)}
-                      onDisconnect={() => disconnectAccount(account)}
+                      connecting={connect.isPending && connect.variables === plugin.id}
+                      onConnect={() => connect.mutate(plugin.id)}
                     />
                   ))}
                 </div>
-              )}
-            </SettingsBlock>
-
-            <SettingsBlock title="Add new connection" detail={`${sortedPlugins.length} available`}>
-              <div className="grid gap-2 md:grid-cols-2">
-                {sortedPlugins.map((plugin) => (
-                  <ConnectionPluginCard
-                    key={plugin.id}
-                    plugin={plugin}
-                    connecting={connect.isPending && connect.variables === plugin.id}
-                    onOpen={() => setSelectedPluginID(plugin.id)}
-                  />
-                ))}
-              </div>
-            </SettingsBlock>
-
-            <ConnectionPluginModal
-              plugin={selectedPlugin}
-              open={Boolean(selectedPlugin)}
-              connecting={connect.isPending && connect.variables === selectedPlugin?.id}
-              disconnectingAccountID={disconnect.isPending ? disconnect.variables : undefined}
-              onClose={() => setSelectedPluginID(null)}
-              onConnect={() => selectedPlugin && connect.mutate(selectedPlugin.id)}
-              onDisconnect={disconnectAccount}
-            />
+              </SettingsBlock>
+            </div>
             <ConnectionQRModal
               plugin={activeQR?.plugin}
               qr={activeQR?.qr}

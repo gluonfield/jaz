@@ -2,22 +2,22 @@ import { Mail } from 'lucide-react'
 import type { IntegrationPlugin } from '@/lib/api/types'
 
 export function PluginIcon({ plugin, compact = false }: { plugin: IntegrationPlugin; compact?: boolean }) {
-  const sizeClass = compact ? 'size-9' : 'size-10'
-  const iconSize = compact ? 18 : 20
+  const sizeClass = compact ? 'size-8' : 'size-9'
+  const iconSize = compact ? 16 : 18
 
   if (plugin.icon.kind === 'url') {
     return (
       <img
         src={plugin.icon.value}
         alt=""
-        className={`${sizeClass} shrink-0 rounded-control bg-surface-2 object-cover`}
+        className={`${sizeClass} shrink-0 rounded-[8px] bg-bg object-cover ring-1 ring-border/70`}
       />
     )
   }
 
   if (plugin.icon.kind === 'asset' && plugin.icon.value === 'gmail') {
     return (
-      <span className={`grid ${sizeClass} shrink-0 place-items-center rounded-control bg-surface-2 text-[#d93025]`}>
+      <span className={`grid ${sizeClass} shrink-0 place-items-center rounded-full bg-bg text-[#d93025] ring-1 ring-border/70`}>
         <PluginGlyph plugin={plugin} size={iconSize} />
       </span>
     )
@@ -25,7 +25,7 @@ export function PluginIcon({ plugin, compact = false }: { plugin: IntegrationPlu
 
   return (
     <span
-      className={`grid ${sizeClass} shrink-0 place-items-center rounded-control bg-surface-2 text-[12px] font-medium text-ink`}
+      className={`grid ${sizeClass} shrink-0 place-items-center rounded-full bg-bg text-[12px] font-medium text-ink ring-1 ring-border/70`}
       style={plugin.icon.background ? { background: plugin.icon.background } : undefined}
     >
       <PluginGlyph plugin={plugin} size={iconSize} />
@@ -38,15 +38,7 @@ export function PluginGlyph({ plugin, size }: { plugin: IntegrationPlugin; size:
     return <Mail size={size} />
   }
   if (plugin.icon.kind === 'url') {
-    return <img src={plugin.icon.value} alt="" className="size-5 rounded-[4px] object-cover" />
+    return <img src={plugin.icon.value} alt="" className="size-4 rounded-[4px] object-cover" />
   }
   return <span>{plugin.icon.value || plugin.name.slice(0, 2).toUpperCase()}</span>
-}
-
-export function Pill({ children }: { children: string }) {
-  return (
-    <span className="rounded-full bg-surface-2 px-1.5 py-[3px] text-[11px] leading-none text-ink-2">
-      {children}
-    </span>
-  )
 }

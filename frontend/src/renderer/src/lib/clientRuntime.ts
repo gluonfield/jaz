@@ -33,7 +33,7 @@ export interface ClientRuntime {
   onUpdateStatus?: (handler: (status: UpdateStatus) => void) => () => void
   openBoardWindow?: (boardId: string) => void
   openExternalURL?: (url: string) => void
-  captureScreenRegion?: () => Promise<{ ok: boolean; data?: string }>
+  captureScreenRect?: (rect: { x: number; y: number; width: number; height: number }) => Promise<{ ok: boolean; data?: string }>
   hideLauncher?: () => void
   onLauncherShown?: (handler: () => void) => () => void
   openInMain?: (path: string) => void
@@ -74,7 +74,7 @@ function createRuntime(): ClientRuntime {
       onUpdateStatus: electron.onUpdateStatus,
       openBoardWindow: electron.openBoardWindow,
       openExternalURL: electron.openExternalURL,
-      captureScreenRegion: electron.captureScreenRegion,
+      captureScreenRect: electron.captureScreenRect,
       hideLauncher: electron.hideLauncher,
       onLauncherShown: electron.onLauncherShown,
       openInMain: electron.openInMain,

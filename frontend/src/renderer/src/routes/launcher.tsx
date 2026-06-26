@@ -1,17 +1,14 @@
-import { useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { ArrowUp, LoaderCircle, Monitor, Sparkles, X } from 'lucide-react'
-import { type KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowUp, LoaderCircle, Sparkles, X } from 'lucide-react'
+import { type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useRef, useState } from 'react'
+import { AgentModelControls, useNewThreadControls } from '@/components/session/useNewThreadControls'
 import { dataURLToFile } from '@/components/ui/fileTransfer'
 import { IconButton } from '@/components/ui/IconButton'
 import { useToast } from '@/components/ui/toast'
-import { agentLabel } from '@/lib/agentLabel'
-import { enabledACPAgents } from '@/lib/agentRuntimes'
 import { createSession, uploadSessionAttachment } from '@/lib/api/sessions'
-import { agentSettingsQuery } from '@/lib/api/settings'
 import { streamSessionMessage } from '@/lib/api/stream'
 import { clientRuntime } from '@/lib/clientRuntime'
-import { createSessionInput, launcherAgent, NEW_SESSION_DIRECTORY_KEY } from '@/lib/newSessionConfig'
+import { NEW_SESSION_DIRECTORY_KEY } from '@/lib/newSessionConfig'
 
 export const Route = createFileRoute('/launcher')({
   component: LauncherPage,
@@ -19,28 +16,33 @@ export const Route = createFileRoute('/launcher')({
 
 interface Shot {
   id: string
-  // The capture arrives as base64; a data URL displays directly and becomes a
-  // File only at upload — no object-URL lifecycle to manage.
   dataUrl: string
 }
 
-// A floating, frameless quick-launcher (⌥Space from any app): draft a message,
-// optionally drag a screen region in as an attachment, then hand the new
-// session to the main window. The launcher acts as a full client — it creates
-// the session, uploads attachments, and fires the turn (which runs detached
-// server-side); the main window streams the reply through the session's own
-// live subscription.
+interface Selection {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+// Below this the gesture is a click (dismiss), not a region selection.
+const DRAG_THRESHOLD = 6
+
+// The ⌥Space launcher: a full-screen overlay over whatever app is frontmost.
+// The composer bar floats near the top; dragging anywhere else selects a screen
+// region that's captured natively and attached. On submit it acts as a full
+// client — creates the session, uploads attachments, fires the (detached) turn —
+// then hands the main window the session to stream the reply.
 function LauncherPage() {
   const toast = useToast()
-  const settingsQuery = useQuery(agentSettingsQuery)
-  const agentSettings = settingsQuery.data
-  const runtimeAvailable = settingsQuery.isSuccess && enabledACPAgents(agentSettings).length > 0
-  const agent = useMemo(() => launcherAgent(agentSettings), [agentSettings])
+  const controls = useNewThreadControls()
 
   const [value, setValue] = useState('')
   const [shots, setShots] = useState<Shot[]>([])
   const [sending, setSending] = useState(false)
   const [capturing, setCapturing] = useState(false)
+  const [selection, setSelection] = useState<Selection | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const focusInput = () => inputRef.current?.focus()
@@ -48,6 +50,7 @@ function LauncherPage() {
   const reset = useCallback(() => {
     setValue('')
     setShots([])
+    setSelection(null)
     if (inputRef.current) inputRef.current.style.height = 'auto'
   }, [])
 
@@ -62,35 +65,61 @@ function LauncherPage() {
 
   const removeShot = (id: string) => setShots((prev) => prev.filter((shot) => shot.id !== id))
 
-  const capture = async () => {
-    if (capturing || !clientRuntime.captureScreenRegion) return
+  const captureRect = async (rect: { x: number; y: number; width: number; height: number }) => {
+    if (!clientRuntime.captureScreenRect) return
     setCapturing(true)
     try {
-      const result = await clientRuntime.captureScreenRegion()
-      if (!result.ok || !result.data) return // cancelled, or capture denied
-      setShots((prev) => [
-        ...prev,
-        { id: crypto.randomUUID(), dataUrl: `data:image/png;base64,${result.data}` },
-      ])
+      const result = await clientRuntime.captureScreenRect(rect)
+      if (!result.ok || !result.data) return
+      setShots((prev) => [...prev, { id: crypto.randomUUID(), dataUrl: `data:image/png;base64,${result.data}` }])
     } finally {
       setCapturing(false)
       focusInput()
     }
   }
 
+  // Drag on the backdrop draws a selection box; a release with no real drag is a
+  // click-away dismiss. Window listeners keep tracking even over the bar.
+  const onBackdropPointerDown = (event: ReactPointerEvent) => {
+    if (event.button !== 0 || sending || capturing) return
+    const sx = event.clientX
+    const sy = event.clientY
+    setSelection({ x: sx, y: sy, w: 0, h: 0 })
+    const move = (e: PointerEvent) => {
+      setSelection({
+        x: Math.min(sx, e.clientX),
+        y: Math.min(sy, e.clientY),
+        w: Math.abs(e.clientX - sx),
+        h: Math.abs(e.clientY - sy),
+      })
+    }
+    const up = (e: PointerEvent) => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      setSelection(null)
+      const w = Math.abs(e.clientX - sx)
+      const h = Math.abs(e.clientY - sy)
+      if (w < DRAG_THRESHOLD || h < DRAG_THRESHOLD) {
+        clientRuntime.hideLauncher?.()
+        return
+      }
+      void captureRect({ x: Math.min(sx, e.clientX), y: Math.min(sy, e.clientY), width: w, height: h })
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
   const submit = async () => {
     const text = value.trim()
     if (!text || sending) return
-    if (!runtimeAvailable || agent === '') {
+    if (!controls.runtimeAvailable) {
       toast('Connect an agent in Settings before starting a session.', 'danger')
       return
     }
     setSending(true)
     try {
       const directory = localStorage.getItem(NEW_SESSION_DIRECTORY_KEY) ?? ''
-      const session = await createSession(
-        createSessionInput(agentSettings, { agent, directory, worktree: false }, text),
-      )
+      const session = await createSession(controls.sessionConfig({ directory, worktree: false }, text))
       const uploaded = await Promise.all(
         shots.map(async (shot) =>
           uploadSessionAttachment(session.id, await dataURLToFile(shot.dataUrl, 'screenshot.png')),
@@ -126,68 +155,69 @@ function LauncherPage() {
   }
 
   return (
-    <div className="flex h-full w-full items-start justify-center p-3">
-      <div className="w-full overflow-hidden rounded-[20px] bg-surface shadow-[0_24px_60px_rgba(0,0,0,0.38)] ring-1 ring-border/60">
-        <div className="flex items-center gap-3 px-4 py-3">
-          <Sparkles size={20} className="shrink-0 text-primary" />
-          <textarea
-            ref={inputRef}
-            rows={1}
-            value={value}
-            onChange={(event) => {
-              setValue(event.target.value)
-              autosize(event.currentTarget)
-            }}
-            onKeyDown={onKeyDown}
-            placeholder="What can I help you with today?"
-            className="max-h-32 flex-1 resize-none self-center bg-transparent text-[15px] leading-6 text-ink placeholder:text-ink-3 focus:outline-none"
-          />
-          <span className="shrink-0 text-[13px] text-ink-3">{runtimeAvailable ? agentLabel(agent) : ''}</span>
-          <IconButton
-            variant="primary"
-            size="lg"
-            aria-label="Send message"
-            title="Send message"
-            disabled={value.trim() === '' || sending}
-            onClick={() => void submit()}
-          >
-            {sending ? <LoaderCircle size={16} className="animate-spin" /> : <ArrowUp size={18} />}
-          </IconButton>
-        </div>
+    <div className="relative h-full w-full">
+      <div className="absolute inset-0 cursor-crosshair" onPointerDown={onBackdropPointerDown} />
+      {selection ? (
+        <div
+          className="pointer-events-none absolute rounded-[3px] border-2 border-primary bg-primary/10"
+          style={{ left: selection.x, top: selection.y, width: selection.w, height: selection.h }}
+        />
+      ) : null}
 
-        {shots.length > 0 ? (
-          <div className="flex flex-wrap gap-2 px-4 pb-3">
-            {shots.map((shot) => (
-              <div key={shot.id} className="relative">
-                <img
-                  src={shot.dataUrl}
-                  alt="Captured screenshot"
-                  className="h-14 w-20 rounded-lg object-cover ring-1 ring-border/60"
-                />
-                <button
-                  type="button"
-                  aria-label="Remove screenshot"
-                  onClick={() => removeShot(shot.id)}
-                  className="absolute -top-1.5 -right-1.5 grid size-5 cursor-pointer place-items-center rounded-full bg-ink text-bg shadow-sm transition-colors hover:bg-ink/80"
-                >
-                  <X size={12} />
-                </button>
-              </div>
-            ))}
+      <div className="absolute top-[16%] left-1/2 w-[720px] max-w-[calc(100vw-2rem)] -translate-x-1/2">
+        <div className="overflow-hidden rounded-[18px] bg-surface shadow-[0_18px_50px_-12px_rgba(0,0,0,0.45)] ring-1 ring-border/60">
+          <div className="flex items-center gap-3 px-4 py-3">
+            <Sparkles size={20} className="shrink-0 text-primary" />
+            <textarea
+              ref={inputRef}
+              rows={1}
+              value={value}
+              onChange={(event) => {
+                setValue(event.target.value)
+                autosize(event.currentTarget)
+              }}
+              onKeyDown={onKeyDown}
+              placeholder="What can I help you with today?"
+              className="max-h-32 flex-1 resize-none self-center bg-transparent text-[15px] leading-6 text-ink placeholder:text-ink-3 focus:outline-none"
+            />
+            <IconButton
+              variant="primary"
+              size="lg"
+              aria-label="Send message"
+              title="Send message"
+              disabled={value.trim() === '' || sending}
+              onClick={() => void submit()}
+            >
+              {sending ? <LoaderCircle size={16} className="animate-spin" /> : <ArrowUp size={18} />}
+            </IconButton>
           </div>
-        ) : null}
 
-        <div className="flex items-center gap-2 border-t border-border/40 px-3 py-2">
-          <button
-            type="button"
-            onClick={() => void capture()}
-            disabled={capturing}
-            className="flex cursor-pointer items-center gap-1.5 rounded-full px-2 py-1 text-[13px] text-ink-2 transition-colors hover:bg-surface-2 disabled:cursor-default disabled:opacity-50"
-          >
-            <Monitor size={14} />
-            {capturing ? 'Select a region…' : 'Drag to take a screenshot'}
-          </button>
-          <span className="ml-auto pr-1 text-[12px] text-ink-3">↩ send · esc dismiss</span>
+          {shots.length > 0 ? (
+            <div className="flex flex-wrap gap-2 px-4 pb-3">
+              {shots.map((shot) => (
+                <div key={shot.id} className="relative">
+                  <img
+                    src={shot.dataUrl}
+                    alt="Captured screenshot"
+                    className="h-14 w-20 rounded-lg object-cover ring-1 ring-border/60"
+                  />
+                  <button
+                    type="button"
+                    aria-label="Remove screenshot"
+                    onClick={() => removeShot(shot.id)}
+                    className="absolute -top-1.5 -right-1.5 grid size-5 cursor-pointer place-items-center rounded-full bg-ink text-bg shadow-sm transition-colors hover:bg-ink/80"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="flex items-center gap-1.5 border-t border-border/40 px-3 py-2">
+            <AgentModelControls controls={controls} placement="below" disabled={sending} />
+            <span className="ml-auto pr-1 text-[12px] text-ink-3">drag to screenshot · ↩ send · esc dismiss</span>
+          </div>
         </div>
       </div>
     </div>

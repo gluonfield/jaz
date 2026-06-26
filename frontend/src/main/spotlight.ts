@@ -3,14 +3,19 @@ import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { BrowserWindow, app, globalShortcut, ipcMain, screen } from 'electron'
 
-// A floating Spotlight-style launcher: ⌥Space pops a frameless, always-on-top
-// card over any app, drafts a message (with optional screen-region screenshots),
-// then hands the new session to the main window. The window is created lazily
-// and reused — show/hide, never destroyed — so invocation stays instant.
+// The ⌥Space launcher: a full-screen, transparent overlay over whatever app is
+// frontmost. A composer bar floats near the top; dragging anywhere else selects
+// a screen region that's captured natively and attached. Created lazily and
+// reused — show/hide, never destroyed — so invocation stays instant.
 const LAUNCHER_HASH = '/launcher'
 const LAUNCHER_SHORTCUT = 'Alt+Space'
-const WIDTH = 720
-const HEIGHT = 260
+
+interface Rect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
 
 let launcher: BrowserWindow | null = null
 
@@ -18,11 +23,15 @@ function preloadPath(): string {
   return join(__dirname, '../preload/index.js')
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 function buildLauncher(): BrowserWindow {
-  const mac = process.platform === 'darwin'
+  const { width, height } = screen.getPrimaryDisplay().bounds
   const win = new BrowserWindow({
-    width: WIDTH,
-    height: HEIGHT,
+    width,
+    height,
     show: false,
     frame: false,
     transparent: true,
@@ -35,7 +44,7 @@ function buildLauncher(): BrowserWindow {
     backgroundColor: '#00000000',
     // A panel floats above fullscreen apps and takes key focus without fully
     // activating Jaz's other windows.
-    ...(mac ? { type: 'panel' as const } : {}),
+    type: 'panel',
     webPreferences: {
       preload: preloadPath(),
       contextIsolation: true,
@@ -63,11 +72,9 @@ function ensureLauncher(): BrowserWindow {
   return launcher
 }
 
-// Center horizontally on the display under the cursor, anchored to its upper
-// third — where a launcher reads as "in front of" rather than "on top of".
-function positionLauncher(win: BrowserWindow): void {
-  const { x, y, width, height } = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea
-  win.setPosition(Math.round(x + (width - WIDTH) / 2), Math.round(y + height * 0.22))
+// Cover the whole display under the cursor so a drag can select anywhere on it.
+function coverCursorDisplay(win: BrowserWindow): void {
+  win.setBounds(screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).bounds)
 }
 
 // Showing the window isn't enough when summoned over another app — Jaz must
@@ -80,7 +87,7 @@ function presentLauncher(win: BrowserWindow): void {
 
 function showLauncher(): void {
   const win = ensureLauncher()
-  positionLauncher(win)
+  coverCursorDisplay(win)
   presentLauncher(win)
   win.webContents.send('jaz:launcher-shown')
 }
@@ -100,17 +107,26 @@ function toggleLauncher(): void {
   else showLauncher()
 }
 
-// macOS native region capture: `screencapture -i` gives the same crosshair the
-// OS does (drag a rect or press Space to grab a window), writing a PNG only if
-// the user commits. We hide the launcher first so it isn't in the shot, then
-// restore it without re-emitting `launcher-shown` (which would clear the draft).
-async function captureScreenRegion(): Promise<{ ok: boolean; data?: string }> {
-  const restore = launcher?.isVisible() ?? false
-  if (restore) launcher?.hide()
+// Capture a region the user dragged on the overlay. The rect is in the overlay
+// window's coordinates; the window covers the display, so screen coords are just
+// the window origin plus the rect. We hide the overlay first (so neither the bar
+// nor the selection box land in the shot), let it clear, then grab the pixels.
+async function captureScreenRect(rect: Rect): Promise<{ ok: boolean; data?: string }> {
+  const win = launcher
+  if (!win || win.isDestroyed()) return { ok: false }
+  const w = Math.round(rect.width)
+  const h = Math.round(rect.height)
+  if (w < 2 || h < 2) return { ok: false }
+  const origin = win.getBounds()
+  const x = Math.round(origin.x + rect.x)
+  const y = Math.round(origin.y + rect.y)
+
+  win.hide()
+  await delay(120)
   const file = join(app.getPath('temp'), `jaz-shot-${process.pid}-${process.hrtime.bigint()}.png`)
   try {
     await new Promise<void>((resolve, reject) => {
-      execFile('/usr/sbin/screencapture', ['-i', '-o', '-t', 'png', file], (err) =>
+      execFile('/usr/sbin/screencapture', ['-x', `-R${x},${y},${w},${h}`, '-t', 'png', file], (err) =>
         err ? reject(err) : resolve(),
       )
     })
@@ -122,15 +138,22 @@ async function captureScreenRegion(): Promise<{ ok: boolean; data?: string }> {
     return { ok: false }
   } finally {
     await rm(file, { force: true }).catch(() => {})
-    if (restore && launcher && !launcher.isDestroyed()) presentLauncher(launcher)
+    if (!win.isDestroyed()) presentLauncher(win)
   }
+}
+
+function isRect(value: unknown): value is Rect {
+  const r = value as Rect
+  return Boolean(r) && [r.x, r.y, r.width, r.height].every((n) => typeof n === 'number')
 }
 
 // macOS-only for now: the region capture is native to macOS, and on Windows
 // Alt+Space is the system window menu. A cross-platform path can register here.
 export function setupLauncher(): void {
   if (process.platform !== 'darwin') return
-  ipcMain.handle('jaz:capture-screen-region', () => captureScreenRegion())
+  ipcMain.handle('jaz:capture-screen-rect', (_event, rect) =>
+    isRect(rect) ? captureScreenRect(rect) : { ok: false },
+  )
   ipcMain.on('jaz:hide-launcher', hideLauncher)
   globalShortcut.register(LAUNCHER_SHORTCUT, toggleLauncher)
 }

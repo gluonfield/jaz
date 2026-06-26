@@ -51,8 +51,12 @@ contextBridge.exposeInMainWorld('jaz', {
   },
   openBoardWindow: (boardId: string) => ipcRenderer.send('jaz:open-board-window', boardId),
   openExternalURL: (url: string) => ipcRenderer.send('jaz:open-external-url', url),
-  captureScreenRegion: (): Promise<{ ok: boolean; data?: string }> =>
-    ipcRenderer.invoke('jaz:capture-screen-region'),
+  captureScreenRect: (rect: {
+    x: number
+    y: number
+    width: number
+    height: number
+  }): Promise<{ ok: boolean; data?: string }> => ipcRenderer.invoke('jaz:capture-screen-rect', rect),
   hideLauncher: () => ipcRenderer.send('jaz:hide-launcher'),
   onLauncherShown: (handler: () => void): (() => void) => {
     const listener = (): void => handler()

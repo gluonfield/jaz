@@ -4,21 +4,25 @@ The desktop app registers a global shortcut — **Option+Space** — that pops a
 floating Spotlight-style launcher over any app. Type a prompt and press Enter to
 start a new session; the main window opens on it and streams the reply.
 
-The launcher is its own frameless, transparent, always-on-top window
-(`frontend/src/main/spotlight.ts`). It is created lazily and reused (show/hide),
-hides on blur or Esc, and renders the `/launcher` route. On submit it behaves as
-a full client: it creates the session, uploads any attachments, and fires the
-turn — which runs detached server-side — then deep-links the main window to the
-session via `openInMain`.
+The launcher is its own frameless, transparent, always-on-top **full-screen**
+overlay (`frontend/src/main/spotlight.ts`) covering the display under the cursor.
+A composer bar floats near the top; the rest is a transparent drag surface. It is
+created lazily and reused (show/hide), hides on blur, Esc, or a click on the
+backdrop, and renders the `/launcher` route. Agent and model are picked with the
+same `RuntimeSelect`/`ModelSelect` controls as the main composer (shared through
+`useNewThreadControls`). On submit it behaves as a full client: it creates the
+session, uploads any attachments, and fires the turn — which runs detached
+server-side — then deep-links the main window to the session via `openInMain`.
 
 ## Screen-region capture
 
-The launcher's **Drag to take a screenshot** button captures a region of the
-screen and attaches it to the message. On macOS this shells out to the native
-`/usr/sbin/screencapture -i` (the same crosshair as ⌘⇧4: drag a rectangle, or
-press Space to grab a window). The PNG is returned to the renderer, attached,
-and uploaded with the message. The button is hidden on non-macOS platforms until
-a `desktopCapturer`-based path is added.
+No button: while the launcher is open you just **drag anywhere outside the bar**
+to select a region, which is attached to the message. The renderer draws the
+selection box (coordinates in window space, with the window pinned to zoom 1 so
+they map 1:1 to screen pixels) and on release sends the rect to the main process,
+which hides the overlay and grabs exactly those pixels with the native
+`/usr/sbin/screencapture -R<x,y,w,h>`. A click without a drag dismisses the
+launcher. macOS only for now; a cross-platform path can replace the capture.
 
 ### macOS Screen Recording permission
 
