@@ -54,9 +54,7 @@ func (s *Service) ListPlugins(ctx context.Context) ([]integrations.Plugin, error
 		if err != nil {
 			return nil, err
 		}
-		if pluginListVisible(plugin) {
-			out = append(out, plugin)
-		}
+		out = append(out, plugin)
 	}
 	return out, nil
 }
@@ -125,11 +123,4 @@ func (s *Service) withConnectability(plugin integrations.Plugin) integrations.Pl
 	}
 	plugin.Implementation.Status = "adapter_required"
 	return plugin
-}
-
-func pluginListVisible(plugin integrations.Plugin) bool {
-	if plugin.Implementation.Status != "adapter_required" {
-		return true
-	}
-	return plugin.Connection != nil && len(plugin.Connection.Accounts) > 0
 }

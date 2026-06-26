@@ -58,15 +58,17 @@ func TestServiceReportsMissingChatSessionAdapter(t *testing.T) {
 	}
 }
 
-func TestServiceHidesMissingChatSessionAdaptersFromCatalog(t *testing.T) {
+func TestServiceListsMissingChatSessionAdaptersInCatalog(t *testing.T) {
 	service := NewService(NewCatalog(), &serviceStore{}, NewQRService())
 	plugins, err := service.ListPlugins(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	ids := pluginIDs(plugins)
-	if slices.Contains(ids, whatsapp.ProviderID) || slices.Contains(ids, telegram.ProviderID) {
-		t.Fatalf("hidden chat providers leaked into catalog: %v", ids)
+	for _, provider := range []string{whatsapp.ProviderID, telegram.ProviderID} {
+		if !slices.Contains(ids, provider) {
+			t.Fatalf("%s missing from catalog: %v", provider, ids)
+		}
 	}
 }
 
@@ -95,7 +97,7 @@ func TestServiceDoesNotTrustStaticAvailableStatusForSessionPlugins(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plugins) != 0 {
+	if len(plugins) != 1 || plugins[0].Implementation.Status != "adapter_required" {
 		t.Fatalf("plugins = %#v", plugins)
 	}
 }

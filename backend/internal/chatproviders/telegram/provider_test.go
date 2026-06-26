@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	tgclient "github.com/gotd/td/telegram"
 	"github.com/gotd/td/tg"
+	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
@@ -45,6 +47,16 @@ func TestExplicitTelegramPeerRecipients(t *testing.T) {
 	}
 	if channel.ChannelID != 100 || channel.AccessHash != 200 || conversationID != "channel:100" {
 		t.Fatalf("resolved channel = %#v, conversation = %q", channel, conversationID)
+	}
+}
+
+func TestTelegramFirstQRCodeErrorPreservesProviderFailure(t *testing.T) {
+	err := telegramFirstQRCodeError(connections.QRStatus{
+		Status: "failed",
+		Error:  "auth export failed",
+	})
+	if err == nil || !strings.Contains(err.Error(), "auth export failed") {
+		t.Fatalf("err = %v", err)
 	}
 }
 

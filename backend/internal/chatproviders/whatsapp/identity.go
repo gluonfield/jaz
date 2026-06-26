@@ -1,7 +1,9 @@
 package whatsapp
 
 import (
+	"context"
 	"sync"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 
@@ -12,6 +14,15 @@ import (
 )
 
 var configureDevicePropsOnce sync.Once
+var refreshWebVersion = versionRefresh{}
+
+const webVersionRefreshInterval = time.Hour
+
+type versionRefresh struct {
+	mu          sync.Mutex
+	lastAttempt time.Time
+	loaded      bool
+}
 
 func newWhatsAppClient(device *store.Device) *whatsmeow.Client {
 	configureWhatsAppDeviceProps()
@@ -25,4 +36,26 @@ func configureWhatsAppDeviceProps() {
 		store.DeviceProps.Os = proto.String("Jaz")
 		store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_CHROME.Enum()
 	})
+}
+
+func refreshWhatsAppWebVersion(ctx context.Context) {
+	refreshWebVersion.mu.Lock()
+	if refreshWebVersion.loaded || time.Since(refreshWebVersion.lastAttempt) < webVersionRefreshInterval {
+		refreshWebVersion.mu.Unlock()
+		return
+	}
+	refreshWebVersion.lastAttempt = time.Now()
+	refreshWebVersion.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	version, err := whatsmeow.GetLatestVersion(ctx, nil)
+	if err != nil {
+		return
+	}
+	store.SetWAVersion(*version)
+
+	refreshWebVersion.mu.Lock()
+	refreshWebVersion.loaded = true
+	refreshWebVersion.mu.Unlock()
 }

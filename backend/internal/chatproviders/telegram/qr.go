@@ -78,7 +78,7 @@ func (p *Provider) StartQR(ctx context.Context) (connections.QRStart, error) {
 		status := session.statusSnapshot()
 		if status.Code == "" {
 			_ = p.CloseQR(context.WithoutCancel(ctx), session.id)
-			return connections.QRStart{}, fmt.Errorf("telegram QR provider did not return a code")
+			return connections.QRStart{}, telegramFirstQRCodeError(status)
 		}
 		return connections.QRStart{
 			SessionID: session.id,
@@ -101,6 +101,16 @@ func (p *Provider) StartQR(ctx context.Context) (connections.QRStart, error) {
 		_ = p.closeQRSession(context.WithoutCancel(ctx), session)
 		return connections.QRStart{}, ctx.Err()
 	}
+}
+
+func telegramFirstQRCodeError(status connections.QRStatus) error {
+	if status.Error != "" {
+		return fmt.Errorf("Telegram QR sign-in failed: %s", status.Error)
+	}
+	if status.Status == "expired" {
+		return fmt.Errorf("Telegram QR code expired before it was shown")
+	}
+	return fmt.Errorf("Telegram did not return a QR code")
 }
 
 func (p *Provider) QRStatus(ctx context.Context, id string) (connections.QRStatus, error) {

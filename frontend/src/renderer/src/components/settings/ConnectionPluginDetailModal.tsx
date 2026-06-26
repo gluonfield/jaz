@@ -75,9 +75,9 @@ function AppsSection({
   connecting: boolean
   onConnect: () => void
 }) {
-  const available = plugin.implementation.status === 'available'
-  const connected = plugin.connection?.status === 'connected'
   const sessionAuth = plugin.auth[0]?.kind === 'session'
+  const available = plugin.implementation.status === 'available' || sessionAuth
+  const connected = plugin.connection?.status === 'connected'
   let ConnectIcon = sessionAuth ? QrCode : Plug
   if (available && connected && plugin.multi_account) ConnectIcon = Plus
   if (connecting) ConnectIcon = Loader2

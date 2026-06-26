@@ -15,6 +15,7 @@ import (
 const firstQRCodeTimeout = 20 * time.Second
 
 func (p *Provider) StartQR(ctx context.Context) (connections.QRStart, error) {
+	refreshWhatsAppWebVersion(ctx)
 	device := p.container.NewDevice()
 	client := newWhatsAppClient(device)
 	session := &qrSession{
@@ -48,7 +49,7 @@ func (p *Provider) StartQR(ctx context.Context) (connections.QRStart, error) {
 		status := session.statusSnapshot()
 		if status.Code == "" {
 			_ = p.CloseQR(context.WithoutCancel(ctx), session.id)
-			return connections.QRStart{}, fmt.Errorf("whatsapp QR provider did not return a code")
+			return connections.QRStart{}, whatsappFirstQRCodeError(status)
 		}
 		return connections.QRStart{
 			SessionID: session.id,
@@ -73,6 +74,16 @@ func (p *Provider) StartQR(ctx context.Context) (connections.QRStart, error) {
 		_ = p.CloseQR(context.WithoutCancel(ctx), session.id)
 		return connections.QRStart{}, ctx.Err()
 	}
+}
+
+func whatsappFirstQRCodeError(status connections.QRStatus) error {
+	if status.Error != "" {
+		return fmt.Errorf("WhatsApp QR sign-in failed: %s", status.Error)
+	}
+	if status.Status == "expired" {
+		return fmt.Errorf("WhatsApp QR code expired before it was shown")
+	}
+	return fmt.Errorf("WhatsApp did not return a QR code")
 }
 
 func (p *Provider) QRStatus(ctx context.Context, id string) (connections.QRStatus, error) {

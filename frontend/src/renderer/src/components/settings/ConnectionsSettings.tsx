@@ -32,13 +32,9 @@ export function ConnectionsSettings() {
     () => [...(plugins.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
     [plugins.data],
   )
-  const addablePlugins = useMemo(
-    () => sortedPlugins.filter((plugin) => plugin.implementation.status === 'available'),
-    [sortedPlugins],
-  )
   const selectedPlugin = useMemo(
-    () => addablePlugins.find((plugin) => plugin.id === selectedPluginID) ?? null,
-    [addablePlugins, selectedPluginID],
+    () => sortedPlugins.find((plugin) => plugin.id === selectedPluginID) ?? null,
+    [sortedPlugins, selectedPluginID],
   )
   const signIn = useConnectionSignIn({
     plugins: sortedPlugins,
@@ -62,8 +58,8 @@ export function ConnectionsSettings() {
     [sortedPlugins],
   )
   const hasConnectedAccounts = connectedAccounts.length > 0
-  const hasAddablePlugins = addablePlugins.length > 0
-  const hasVisibleConnections = hasConnectedAccounts || hasAddablePlugins
+  const hasCatalogPlugins = sortedPlugins.length > 0
+  const hasVisibleConnections = hasConnectedAccounts || hasCatalogPlugins
   const disconnectAccount = (account: IntegrationConnectionAccount) => {
     const label = accountAddress(account) || account.id
     if (window.confirm(`Disconnect ${label}?`)) disconnect.mutate(account.id)
@@ -120,9 +116,9 @@ export function ConnectionsSettings() {
                 </ConnectionSection>
               ) : null}
 
-              {hasAddablePlugins ? (
+              {hasCatalogPlugins ? (
                 <ConnectionSection title="Add connection">
-                  {addablePlugins.map((plugin) => (
+                  {sortedPlugins.map((plugin) => (
                     <ConnectionPluginCard
                       key={plugin.id}
                       plugin={plugin}
