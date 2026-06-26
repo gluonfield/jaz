@@ -127,10 +127,7 @@ function BoardPage() {
   }
 
   const { board, items } = detail.data
-  const boardTabs =
-    isBoardWindow && boards.data
-      ? [board, ...boards.data.filter((candidate) => candidate.id !== board.id)]
-      : [board]
+  const boardTabs = isBoardWindow && boards.data ? boards.data : [board]
   // Single commit path: Enter blurs the input, blur commits. Escape unmounts
   // the input without blurring, so a cancel never saves.
   const commitRename = () => {
@@ -172,8 +169,8 @@ function BoardPage() {
         }`}
       >
         {isBoardWindow ? (
-          <nav aria-label="Boards" className="group min-w-0 flex-1 overflow-hidden">
-            <div className="flex min-w-0 items-center overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <nav aria-label="Boards" className="min-w-0 flex-1 overflow-hidden">
+            <div className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {boardTabs.map((candidate) => {
                 const active = candidate.id === boardId
                 return (
@@ -191,10 +188,10 @@ function BoardPage() {
                         })
                       }
                     }}
-                    className={`flex h-6 shrink-0 items-center overflow-hidden rounded-full text-[12px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.96] ${
+                    className={`flex h-6 max-w-44 shrink-0 items-center overflow-hidden rounded-full px-2 text-[12px] font-medium transition-[background-color,color,opacity,transform] duration-150 active:scale-[0.96] ${
                       active
-                        ? 'max-w-44 cursor-default px-0 text-ink-2 group-hover:mr-1 group-focus-within:mr-1 hover:text-ink'
-                        : 'pointer-events-none mr-0 max-w-0 cursor-pointer px-0 opacity-0 text-ink-3 group-hover:pointer-events-auto group-hover:mr-1 group-hover:max-w-44 group-hover:px-2 group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:mr-1 group-focus-within:max-w-44 group-focus-within:px-2 group-focus-within:opacity-100 hover:bg-surface-2 hover:text-ink focus-visible:bg-surface-2 focus-visible:text-ink'
+                        ? 'cursor-default text-ink-2 hover:text-ink'
+                        : 'cursor-pointer text-ink-3 opacity-50 hover:bg-surface-2 hover:text-ink hover:opacity-100 focus-visible:bg-surface-2 focus-visible:text-ink focus-visible:opacity-100'
                     }`}
                   >
                     <span className="min-w-0 truncate">{candidate.name}</span>

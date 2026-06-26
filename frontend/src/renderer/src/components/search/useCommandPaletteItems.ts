@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
+import { Server, Settings2, SquarePen } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { SETTINGS_SECTIONS, type SettingsSection } from '@/components/settings/sections'
 import { searchThreads } from '@/lib/api/search'
 import { keys } from '@/lib/query/keys'
 import type { PaletteCommand, PaletteThread } from './commandPaletteTypes'
@@ -17,7 +19,7 @@ function useDebouncedValue(value: string, delay: number): string {
 function commandMatches(item: PaletteCommand, query: string): boolean {
   const needle = query.trim().toLocaleLowerCase()
   if (!needle) return true
-  return `${item.title} ${item.detail}`.toLocaleLowerCase().includes(needle)
+  return item.title.toLocaleLowerCase().includes(needle)
 }
 
 export function useCommandPaletteItems({
@@ -30,7 +32,7 @@ export function useCommandPaletteItems({
   open: boolean
   query: string
   onOpenChange: (open: boolean) => void
-  onOpenSettings: () => void
+  onOpenSettings: (section?: SettingsSection) => void
   onOpenConnect: () => void
 }) {
   const navigate = useNavigate()
@@ -43,7 +45,7 @@ export function useCommandPaletteItems({
         id: 'new-thread',
         kind: 'command',
         title: 'New Thread',
-        detail: 'Start a fresh session',
+        icon: SquarePen,
         shortcut: 'N',
         run: () => {
           onOpenChange(false)
@@ -54,7 +56,7 @@ export function useCommandPaletteItems({
         id: 'connect-machine',
         kind: 'command',
         title: 'Connect to a machine',
-        detail: 'Switch which backend Jaz runs on',
+        icon: Server,
         run: () => {
           onOpenChange(false)
           onOpenConnect()
@@ -64,7 +66,7 @@ export function useCommandPaletteItems({
         id: 'settings',
         kind: 'command',
         title: 'Settings',
-        detail: 'Open app settings',
+        icon: Settings2,
         run: () => {
           onOpenChange(false)
           onOpenSettings()
@@ -72,6 +74,24 @@ export function useCommandPaletteItems({
       },
     ],
     [navigate, onOpenChange, onOpenSettings, onOpenConnect],
+  )
+
+  // Each settings section is its own action so the palette can jump straight to
+  // Appearance, Memory, etc. They surface only once the user types (matched by
+  // section name), keeping the resting palette uncluttered.
+  const settingsCommands = useMemo<PaletteCommand[]>(
+    () =>
+      SETTINGS_SECTIONS.map((sectionItem) => ({
+        id: `settings-${sectionItem.id}`,
+        kind: 'command',
+        title: sectionItem.label,
+        icon: sectionItem.icon,
+        run: () => {
+          onOpenChange(false)
+          onOpenSettings(sectionItem.id)
+        },
+      })),
+    [onOpenChange, onOpenSettings],
   )
 
   // Archived chats stay searchable; the backend ranks them below active ones
@@ -94,7 +114,11 @@ export function useCommandPaletteItems({
   // directly) plus a flat `items` whose order — commands first, then threads —
   // is the index space for keyboard navigation.
   const { commandItems, threadItems, items } = useMemo(() => {
-    const commandItems = commands.filter((item) => commandMatches(item, query))
+    const baseItems = commands.filter((item) => commandMatches(item, query))
+    const sectionItems = query.trim()
+      ? settingsCommands.filter((item) => commandMatches(item, query))
+      : []
+    const commandItems = [...baseItems, ...sectionItems]
     const threadItems: PaletteThread[] =
       searchEnabled && threadSearch.data
         ? threadSearch.data.map((result) => ({
@@ -104,7 +128,7 @@ export function useCommandPaletteItems({
           }))
         : []
     return { commandItems, threadItems, items: [...commandItems, ...threadItems] }
-  }, [commands, query, searchEnabled, threadSearch.data])
+  }, [commands, settingsCommands, query, searchEnabled, threadSearch.data])
 
   return {
     debouncedQuery,

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,6 +21,7 @@ type OAuthStart struct {
 }
 
 type OAuthStore interface {
+	ListConnections(context.Context, string) ([]integrations.Connection, error)
 	SaveOAuthConnection(context.Context, integrationoauth.Token, integrations.Connection) error
 }
 
@@ -125,19 +127,47 @@ func (s *OAuthService) Callback(ctx context.Context, state, code, failure string
 		RedirectURL:  stored.redirectURL,
 		Scopes:       gmailconnector.OAuthScopes,
 	}
-	return s.store.SaveOAuthConnection(ctx, storedToken, integrations.Connection{
-		ID:          gmailconnector.OAuthConnectionID,
-		Provider:    gmailconnector.ProviderID,
-		AccountID:   profile.EmailAddress,
-		AccountName: profile.EmailAddress,
-		Alias:       "default",
-		Scopes:      gmailconnector.OAuthScopes,
-	})
+	connection, err := s.gmailConnection(ctx, profile)
+	if err != nil {
+		return err
+	}
+	return s.store.SaveOAuthConnection(ctx, storedToken, connection)
 }
 
 func defaultGmailProfile(ctx context.Context, token *oauth2.Token) (gmailconnector.Profile, error) {
 	client := oauth2.NewClient(ctx, oauth2.StaticTokenSource(token))
 	return gmailconnector.APIClient{HTTP: client}.Profile(ctx)
+}
+
+func (s *OAuthService) gmailConnection(ctx context.Context, profile gmailconnector.Profile) (integrations.Connection, error) {
+	connections, err := s.store.ListConnections(ctx, gmailconnector.ProviderID)
+	if err != nil {
+		return integrations.Connection{}, err
+	}
+	accountID := strings.TrimSpace(profile.EmailAddress)
+	for _, connection := range connections {
+		if strings.EqualFold(strings.TrimSpace(connection.AccountID), accountID) {
+			connection.AccountID = accountID
+			connection.AccountName = accountID
+			if connection.Alias == "" {
+				connection.Alias = integrations.DefaultAlias(accountID, accountID)
+			}
+			connection.Scopes = gmailconnector.OAuthScopes
+			return connection, nil
+		}
+	}
+	id, err := gmailconnector.ConnectionID(accountID)
+	if err != nil {
+		return integrations.Connection{}, err
+	}
+	return integrations.Connection{
+		ID:          id,
+		Provider:    gmailconnector.ProviderID,
+		AccountID:   accountID,
+		AccountName: accountID,
+		Alias:       integrations.DefaultAlias(accountID, accountID),
+		Scopes:      gmailconnector.OAuthScopes,
+	}, nil
 }
 
 func (s *OAuthService) takeState(state string) (oauthState, bool) {
