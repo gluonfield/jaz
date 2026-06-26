@@ -104,9 +104,17 @@ function ColorField({
   }
   return (
     <Row title={title}>
-      <div className="flex items-center gap-2">
+      <div className="flex w-40 items-center gap-2 rounded-control bg-surface-2 py-1 pl-2.5 pr-1 ring-1 ring-border/60 focus-within:ring-1 focus-within:ring-primary">
+        <input
+          type="text"
+          value={text}
+          spellCheck={false}
+          aria-label={`${title} hex value`}
+          onChange={(e) => commit(e.target.value)}
+          className="min-w-0 flex-1 bg-transparent font-mono text-[12px] uppercase text-ink outline-none"
+        />
         <span
-          className="relative h-7 w-9 overflow-hidden rounded-control ring-1 ring-border/70"
+          className="relative h-5 w-5 shrink-0 overflow-hidden rounded ring-1 ring-border/70"
           style={{ backgroundColor: value }}
         >
           <input
@@ -117,14 +125,6 @@ function ColorField({
             className="absolute -inset-2 cursor-pointer opacity-0"
           />
         </span>
-        <input
-          type="text"
-          value={text}
-          spellCheck={false}
-          aria-label={`${title} hex value`}
-          onChange={(e) => commit(e.target.value)}
-          className="w-[5.5rem] rounded-control bg-surface-2 px-2 py-1 font-mono text-[12px] uppercase text-ink outline-none ring-1 ring-border/60 focus:ring-1 focus:ring-primary"
-        />
       </div>
     </Row>
   )
@@ -241,7 +241,7 @@ export function AppearanceSettings() {
         </button>
       </div>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+      <div className="mt-4 space-y-4">
         <ThemeModeCard mode="light" />
         <ThemeModeCard mode="dark" />
       </div>
