@@ -9,6 +9,19 @@ import (
 	"context"
 )
 
+const deleteConnection = `-- name: DeleteConnection :execrows
+DELETE FROM integration_connections
+WHERE id = ?1
+`
+
+func (q *Queries) DeleteConnection(ctx context.Context, id string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteConnection, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const listConnectionsByProvider = `-- name: ListConnectionsByProvider :many
 SELECT id, provider, account_id, account_name, alias, scopes_json
 FROM integration_connections

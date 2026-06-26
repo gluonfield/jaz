@@ -2,13 +2,17 @@ package connections
 
 import (
 	"context"
+	"errors"
+	"strings"
 
-	"github.com/wins/jaz/backend/internal/connectors/gmail"
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
+var ErrConnectionNotFound = errors.New("connection account not found")
+
 type Store interface {
 	ListConnections(context.Context, string) ([]integrations.Connection, error)
+	DeleteConnection(context.Context, string) (bool, error)
 }
 
 type Service struct {
@@ -41,11 +45,26 @@ func (s *Service) Plugin(ctx context.Context, id string) (integrations.Plugin, b
 	return plugin, true, err
 }
 
+func (s *Service) DisconnectAccount(ctx context.Context, id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ErrConnectionNotFound
+	}
+	ok, err := s.store.DeleteConnection(ctx, id)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrConnectionNotFound
+	}
+	return nil
+}
+
 func (s *Service) withConnection(ctx context.Context, plugin integrations.Plugin) (integrations.Plugin, error) {
-	if plugin.ID != gmail.ProviderID {
+	if plugin.Provider.ID == "" {
 		return plugin, nil
 	}
-	accounts, err := s.store.ListConnections(ctx, gmail.ProviderID)
+	accounts, err := s.store.ListConnections(ctx, plugin.Provider.ID)
 	if err != nil {
 		return integrations.Plugin{}, err
 	}

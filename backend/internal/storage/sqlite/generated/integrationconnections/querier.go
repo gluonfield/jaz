@@ -9,6 +9,7 @@ import (
 )
 
 type Querier interface {
+	DeleteConnection(ctx context.Context, id string) (int64, error)
 	ListConnectionsByProvider(ctx context.Context, provider string) ([]ListConnectionsByProviderRow, error)
 	LoadConnection(ctx context.Context, id string) (LoadConnectionRow, error)
 	SaveConnection(ctx context.Context, arg SaveConnectionParams) error
