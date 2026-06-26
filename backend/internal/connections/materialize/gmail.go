@@ -18,7 +18,7 @@ func (GmailMaterializer) Materialize(_ context.Context, req integrations.Materia
 	if req.Record.Kind != gmailconnector.RecordKindMessage {
 		return nil, nil
 	}
-	message, body, err := gmailRecordMessage(req.Record.Raw)
+	content, err := gmailRecordContent(req.Record.Raw)
 	if err != nil {
 		return nil, err
 	}
@@ -34,23 +34,23 @@ func (GmailMaterializer) Materialize(_ context.Context, req integrations.Materia
 		Kind:      "memory_source",
 		PathHint:  path.Join("sources/email/gmail", account, occurred.UTC().Format("2006-01")+".md"),
 		MediaType: "text/markdown",
-		Body:      []byte(gmailMessageMarkdown(req.Connection, req.Record, message, body, occurred)),
+		Body:      []byte(gmailMessageMarkdown(req.Connection, req.Record, content.Message, cleanEmailBody(content.BodyText, content.BodyHTML), occurred)),
 	}}, nil
 }
 
-func gmailRecordMessage(raw json.RawMessage) (gmailconnector.Message, string, error) {
+func gmailRecordContent(raw json.RawMessage) (gmailconnector.MessageContent, error) {
 	var message gmailconnector.Message
 	if err := json.Unmarshal(raw, &message); err != nil {
-		return gmailconnector.Message{}, "", err
+		return gmailconnector.MessageContent{}, err
 	}
 	if message.ID != "" {
-		return message, "", nil
+		return gmailconnector.MessageContent{Message: message}, nil
 	}
 	var content gmailconnector.MessageContent
 	if err := json.Unmarshal(raw, &content); err != nil {
-		return gmailconnector.Message{}, "", err
+		return gmailconnector.MessageContent{}, err
 	}
-	return content.Message, content.BodyText, nil
+	return content, nil
 }
 
 func gmailMessageMarkdown(connection integrations.Connection, record integrations.Record, message gmailconnector.Message, body string, occurred time.Time) string {

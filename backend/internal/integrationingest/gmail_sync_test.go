@@ -20,9 +20,13 @@ import (
 func TestGmailSyncerWritesRawMessagesAndCursor(t *testing.T) {
 	occurred := time.Date(2026, 6, 25, 9, 0, 0, 0, time.UTC)
 	body := base64.RawURLEncoding.EncodeToString([]byte("Indexed body"))
+	now := time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/gmail/v1/users/me/messages":
+			if got := r.URL.Query().Get("q"); got != "after:2025/06/26" {
+				t.Fatalf("gmail backfill query = %q", got)
+			}
 			_, _ = w.Write([]byte(`{"messages":[{"id":"m1","threadId":"t1"}]}`))
 		case "/gmail/v1/users/me/messages/m1":
 			_, _ = w.Write([]byte(`{
@@ -61,6 +65,7 @@ func TestGmailSyncerWritesRawMessagesAndCursor(t *testing.T) {
 		Writer:          RawWriter{Root: root},
 		APIBaseURL:      server.URL,
 		MaxPagesPerTick: 1,
+		Now:             func() time.Time { return now },
 	}
 	if err := syncer.SyncOnce(context.Background()); err != nil {
 		t.Fatal(err)

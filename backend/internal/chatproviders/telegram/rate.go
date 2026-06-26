@@ -15,6 +15,7 @@ const (
 	telegramBackfillMaxCallsPerRun = 30
 	telegramBackfillRunInterval    = 30 * time.Minute
 	telegramBackfillPageLimit      = 50
+	telegramHistoricalWindow       = 365 * 24 * time.Hour
 )
 
 var errBackfillBudget = errors.New("telegram backfill budget exhausted")
