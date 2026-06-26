@@ -1,3 +1,4 @@
+import { agentDefault } from './jazDefaults'
 import type { AgentSettings, ModelProviderOption, RuntimeCapabilities } from './api/types'
 
 export const ACP_PROVIDER_MODE_AGENT = 'agent_defaults'
@@ -163,12 +164,15 @@ export function runtimeModelState(
     ? effectiveACPModelProvider(settings, runtime, requestedProvider)
     : ''
   const selectedProvider = providers.find((p) => p.id === provider)
-  const defaultModel = usesModelProvider
-    ? provider === defaultProvider
-      ? (settings?.acp[runtime]?.model ?? '')
-      : (selectedProvider?.default_model ?? '')
-    : (settings?.acp[runtime]?.model ?? '')
-  const defaultEffort = settings?.acp[runtime]?.reasoning_effort ?? ''
+  const onDefaultProvider = !usesModelProvider || provider === defaultProvider
+  // Deploy defaults (jaz-defaults.js) seed a fresh thread, then the user's pick
+  // wins. Model applies only on the agent's own provider; another provider keeps
+  // its own default model.
+  const deploy = agentDefault(runtime)
+  const defaultModel = onDefaultProvider
+    ? deploy.model?.trim() || settings?.acp[runtime]?.model || ''
+    : (selectedProvider?.default_model ?? '')
+  const defaultEffort = deploy.reasoningEffort?.trim() || settings?.acp[runtime]?.reasoning_effort || ''
   return {
     usesModelProvider,
     usesProvider,

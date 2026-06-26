@@ -23,10 +23,10 @@
     <meta name="theme-color" content="#f1f2f6" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#1a1b22" media="(prefers-color-scheme: dark)" />
     <title>Jaz</title>
-    <!-- Appearance defaults: a separate, swappable config file (see
-         public/appearance-defaults.js). Classic, blocking script so the global
+    <!-- Deploy defaults: a separate, swappable config file (see
+         public/jaz-defaults.js). Classic, blocking script so the global
          is set before the pre-paint script below runs. -->
-    <script src="/appearance-defaults.js"></script>
+    <script src="/jaz-defaults.js"></script>
     <script>
       // Apply the saved theme before first paint so dark launches never flash
       // white. Mirrors lib/theme.ts; keep the dark bg value in sync with the
@@ -36,7 +36,7 @@
         // Build-time appearance defaults sit *under* the user's own keys: a
         // localStorage value wins, otherwise the config default, otherwise the
         // built-in default.
-        var sd = window.__JAZ_APPEARANCE_DEFAULTS__ || {}
+        var sd = window.__JAZ_DEFAULTS__ || {}
         try {
           var pref = localStorage.getItem('jaz.theme')
           if (pref !== 'light' && pref !== 'dark' && pref !== 'system')
