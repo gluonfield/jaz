@@ -56,7 +56,8 @@ contextBridge.exposeInMainWorld('jaz', {
     y: number
     width: number
     height: number
-  }): Promise<{ ok: boolean; data?: string }> => ipcRenderer.invoke('jaz:capture-screen-rect', rect),
+  }): Promise<{ ok: boolean; data?: string; denied?: boolean }> =>
+    ipcRenderer.invoke('jaz:capture-screen-rect', rect),
   hideLauncher: () => ipcRenderer.send('jaz:hide-launcher'),
   onLauncherShown: (handler: () => void): (() => void) => {
     const listener = (): void => handler()

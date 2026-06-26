@@ -40,7 +40,6 @@ function fallbackClipboardFileName(type: string): string {
   return `pasted-${kind}-${id}${suffix}`
 }
 
-// Turn a captured image (data URL or `data:` base64) into an upload-ready File.
 export async function dataURLToFile(dataURL: string, name: string): Promise<File> {
   const blob = await (await fetch(dataURL)).blob()
   return new File([blob], name, { type: blob.type || 'image/png' })

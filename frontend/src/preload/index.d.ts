@@ -28,7 +28,7 @@ declare global {
         y: number
         width: number
         height: number
-      }) => Promise<{ ok: boolean; data?: string }>
+      }) => Promise<{ ok: boolean; data?: string; denied?: boolean }>
       hideLauncher: () => void
       onLauncherShown: (handler: () => void) => () => void
       openInMain: (path: string) => void

@@ -33,7 +33,7 @@ export interface ClientRuntime {
   onUpdateStatus?: (handler: (status: UpdateStatus) => void) => () => void
   openBoardWindow?: (boardId: string) => void
   openExternalURL?: (url: string) => void
-  captureScreenRect?: (rect: { x: number; y: number; width: number; height: number }) => Promise<{ ok: boolean; data?: string }>
+  captureScreenRect?: (rect: { x: number; y: number; width: number; height: number }) => Promise<{ ok: boolean; data?: string; denied?: boolean }>
   hideLauncher?: () => void
   onLauncherShown?: (handler: () => void) => () => void
   openInMain?: (path: string) => void
