@@ -75,3 +75,9 @@ type ListDraftsResponse struct {
 	NextPageToken      string  `json:"next_page_token,omitempty"`
 	ResultSizeEstimate int64   `json:"result_size_estimate,omitempty"`
 }
+
+type AttachmentContent struct {
+	Attachment Attachment `json:"attachment"`
+	Data       []byte     `json:"-"`
+	Size       int64      `json:"size,omitempty"`
+}

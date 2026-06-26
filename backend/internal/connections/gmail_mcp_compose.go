@@ -11,14 +11,11 @@ import (
 
 func gmailCreateDraftRequest(input GmailCreateDraftInput) (gmailconnector.ComposeMessageRequest, error) {
 	return gmailValidateCompose(gmailconnector.ComposeMessageRequest{
-		ThreadID:   strings.TrimSpace(input.ThreadID),
-		To:         cleanGmailAddressList(input.To),
-		Cc:         cleanGmailAddressList(input.Cc),
-		Bcc:        cleanGmailAddressList(input.Bcc),
-		Subject:    strings.TrimSpace(input.Subject),
-		BodyText:   input.BodyText,
-		InReplyTo:  strings.TrimSpace(input.InReplyTo),
-		References: strings.TrimSpace(input.References),
+		To:       cleanGmailAddressList(input.To),
+		Cc:       cleanGmailAddressList(input.Cc),
+		Bcc:      cleanGmailAddressList(input.Bcc),
+		Subject:  strings.TrimSpace(input.Subject),
+		BodyText: input.BodyText,
 	})
 }
 
@@ -47,15 +44,6 @@ func gmailUpdateDraftRequest(input GmailUpdateDraftInput, current gmailconnector
 	}
 	if input.BodyText != nil {
 		request.BodyText = *input.BodyText
-	}
-	if input.ThreadID != nil {
-		request.ThreadID = strings.TrimSpace(*input.ThreadID)
-	}
-	if input.InReplyTo != nil {
-		request.InReplyTo = strings.TrimSpace(*input.InReplyTo)
-	}
-	if input.References != nil {
-		request.References = strings.TrimSpace(*input.References)
 	}
 	return gmailValidateCompose(request)
 }

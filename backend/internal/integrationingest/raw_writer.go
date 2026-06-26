@@ -20,6 +20,16 @@ type RawWriter struct {
 	Now  func() time.Time
 }
 
+type RawAttachment struct {
+	Provider     string
+	AccountID    string
+	ConnectionID string
+	MessageID    string
+	AttachmentID string
+	FileName     string
+	Data         []byte
+}
+
 func DefaultRoot() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -38,6 +48,27 @@ func (w RawWriter) WriteRecords(ctx context.Context, records []integrations.Reco
 		}
 	}
 	return nil
+}
+
+func (w RawWriter) WriteAttachment(ctx context.Context, attachment RawAttachment) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	root := w.root()
+	path, err := RawAttachmentPath(root, attachment)
+	if err != nil {
+		return "", err
+	}
+	if err := ensurePrivateDir(root, filepath.Dir(path)); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(path, attachment.Data, 0o600); err != nil {
+		return "", err
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 func (w RawWriter) writeRecord(record integrations.Record) error {
@@ -154,12 +185,92 @@ func RawRecordPath(root string, record integrations.Record) (string, error) {
 	), nil
 }
 
+func RawAttachmentPath(root string, attachment RawAttachment) (string, error) {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		root = DefaultRoot()
+	}
+	provider, err := requiredPathComponent("provider", attachment.Provider)
+	if err != nil {
+		return "", err
+	}
+	accountID, err := requiredPathComponent("account id", attachment.AccountID)
+	if err != nil {
+		return "", err
+	}
+	connectionID, err := requiredPathComponent("connection id", attachment.ConnectionID)
+	if err != nil {
+		return "", err
+	}
+	messageID, err := externalIDPathComponent("message id", attachment.MessageID)
+	if err != nil {
+		return "", err
+	}
+	attachmentID, err := externalIDPathComponent("attachment id", attachment.AttachmentID)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(
+		root,
+		provider,
+		accountID,
+		connectionID,
+		"attachments",
+		messageID,
+		attachmentID,
+		safeAttachmentFileName(attachment.FileName),
+	), nil
+}
+
 func requiredPathComponent(name, value string) (string, error) {
 	component := integrations.NormalizeAlias(value)
 	if component == "" {
 		return "", fmt.Errorf("record %s is required", name)
 	}
 	return component, nil
+}
+
+func externalIDPathComponent(name, value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", fmt.Errorf("record %s is required", name)
+	}
+	prefix := integrations.NormalizeAlias(value)
+	if prefix == "" {
+		prefix = "id"
+	}
+	if len(prefix) > 48 {
+		prefix = strings.Trim(prefix[:48], "-")
+	}
+	sum := sha256.Sum256([]byte(value))
+	return prefix + "-" + hex.EncodeToString(sum[:4]), nil
+}
+
+func safeAttachmentFileName(value string) string {
+	name := filepath.Base(strings.TrimSpace(value))
+	if name == "" || name == "." || name == string(os.PathSeparator) {
+		name = "attachment"
+	}
+	ext := safeAttachmentExtension(filepath.Ext(name))
+	stem := strings.TrimSuffix(name, filepath.Ext(name))
+	stem = integrations.NormalizeAlias(stem)
+	if stem == "" {
+		stem = "attachment"
+	}
+	return stem + ext
+}
+
+func safeAttachmentExtension(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if !strings.HasPrefix(value, ".") || len(value) > 17 {
+		return ""
+	}
+	for _, r := range value[1:] {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9') {
+			return ""
+		}
+	}
+	return value
 }
 
 func ensurePrivateDir(root, dir string) error {

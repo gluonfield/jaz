@@ -136,3 +136,43 @@ func TestClampToolTextRuneSafe(t *testing.T) {
 		t.Fatalf("expected valid leading rune")
 	}
 }
+
+func TestClampToolTextRedactsOAuthTokens(t *testing.T) {
+	input := `{"access_token":"ya29.visible","refresh_token":"1//visible","client_secret":"secret-visible"} Authorization: Bearer ya29.visible`
+	got := clampToolText(input)
+	for _, leaked := range []string{"ya29.visible", "1//visible", "secret-visible"} {
+		if strings.Contains(got, leaked) {
+			t.Fatalf("tool text leaked %q in %q", leaked, got)
+		}
+	}
+	if strings.Count(got, "[REDACTED]") != 4 {
+		t.Fatalf("redacted text = %q", got)
+	}
+}
+
+func TestToolContentRedactsOAuthTokensOutsideTextBlocks(t *testing.T) {
+	content := rawContent(t,
+		`{"type":"content","content":{"type":"resource_link","uri":"https://example.com/callback?token=ya29.visible","name":"Bearer 1//visible","mimeType":"text/html"}}`,
+		`{"type":"diff","path":"token-1//visible.txt","oldText":"a","newText":"b"}`,
+	)
+	got := normalizeToolContent(content)
+	if len(got) != 2 {
+		t.Fatalf("content = %#v", got)
+	}
+	raw := boundedRawInput(json.RawMessage(`{"authorization":"Bearer ya29.visible","key-ya29.visible":"value","nested":{"refresh_token":"1//visible"},"items":["ya29.visible"]}`))
+	serialized := mustMarshalString(t, map[string]any{"content": got, "raw": raw})
+	for _, leaked := range []string{"ya29.visible", "1//visible"} {
+		if strings.Contains(serialized, leaked) {
+			t.Fatalf("normalized tool content leaked %q in %s", leaked, serialized)
+		}
+	}
+}
+
+func mustMarshalString(t *testing.T, value any) string {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}

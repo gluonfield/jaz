@@ -49,6 +49,11 @@ type draftList struct {
 	ResultSizeEstimate int64      `json:"resultSizeEstimate"`
 }
 
+type apiAttachment struct {
+	Data string `json:"data"`
+	Size int64  `json:"size"`
+}
+
 type draftRef struct {
 	ID string `json:"id"`
 }
@@ -216,13 +221,16 @@ func attachments(part messagePart) []Attachment {
 	var walk func(messagePart)
 	walk = func(part messagePart) {
 		if part.Filename != "" || part.Body.AttachmentID != "" {
-			out = append(out, Attachment{
-				ID:       part.Body.AttachmentID,
-				FileName: part.Filename,
-				MIMEType: part.MIMEType,
-				Size:     part.Body.Size,
-				Inline:   part.Filename == "",
-			})
+			inline := inlinePart(part)
+			if !(inline && strings.HasPrefix(strings.ToLower(part.MIMEType), "image/")) {
+				out = append(out, Attachment{
+					ID:       part.Body.AttachmentID,
+					FileName: part.Filename,
+					MIMEType: part.MIMEType,
+					Size:     part.Body.Size,
+					Inline:   inline,
+				})
+			}
 		}
 		for _, child := range part.Parts {
 			walk(child)
@@ -230,6 +238,18 @@ func attachments(part messagePart) []Attachment {
 	}
 	walk(part)
 	return out
+}
+
+func inlinePart(part messagePart) bool {
+	if part.Filename == "" {
+		return true
+	}
+	headers := headersByName(part.Headers)
+	disposition := strings.ToLower(headers["content-disposition"])
+	if strings.HasPrefix(disposition, "inline") {
+		return true
+	}
+	return headers["content-id"] != "" && strings.HasPrefix(strings.ToLower(part.MIMEType), "image/")
 }
 
 func messageBodies(part messagePart) (string, string) {
@@ -256,15 +276,23 @@ func messageBodies(part messagePart) (string, string) {
 }
 
 func decodeBody(data string) string {
-	if data == "" {
+	raw, err := decodeBodyBytes(data)
+	if err != nil {
 		return ""
+	}
+	return string(raw)
+}
+
+func decodeBodyBytes(data string) ([]byte, error) {
+	if data == "" {
+		return nil, nil
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(data)
 	if err != nil {
 		raw, err = base64.URLEncoding.DecodeString(data)
 	}
 	if err != nil {
-		return ""
+		return nil, err
 	}
-	return string(raw)
+	return raw, nil
 }

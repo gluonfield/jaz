@@ -2,6 +2,7 @@ package acp
 
 import (
 	"encoding/json"
+	"regexp"
 	"time"
 	"unicode/utf8"
 
@@ -13,6 +14,13 @@ const (
 	maxToolContentBlocks = 64
 	maxToolContentText   = 8000
 	maxToolRawInputBytes = 2048
+)
+
+var (
+	oauthJSONFieldPattern = regexp.MustCompile(`(?i)("(?:(?:access|refresh|id)_token|client_secret)"\s*:\s*")[^"]+(")`)
+	bearerTokenPattern    = regexp.MustCompile(`(?i)(bearer\s+)[A-Za-z0-9._~+/\-]+=*`)
+	googleAccessPattern   = regexp.MustCompile(`\bya29\.[A-Za-z0-9._\-]+`)
+	googleRefreshPattern  = regexp.MustCompile(`\b1//[A-Za-z0-9._\-]+`)
 )
 
 // mergeToolCall overlays the populated fields of src onto dst. ACP updates (and
@@ -85,7 +93,7 @@ func boundedRawInput(raw json.RawMessage) map[string]any {
 	if err := json.Unmarshal(raw, &out); err != nil || len(out) == 0 {
 		return nil
 	}
-	return out
+	return redactToolMap(out)
 }
 
 // metaToolName recovers the underlying tool name from the ACP _meta bag. Claude
@@ -150,7 +158,7 @@ func decodeToolContent(raw json.RawMessage) *sessionevents.ACPToolContent {
 		}
 		return &sessionevents.ACPToolContent{
 			Type:    "diff",
-			Path:    d.Path,
+			Path:    redactToolText(d.Path),
 			OldText: clampToolText(d.OldText),
 			NewText: clampToolText(d.NewText),
 		}
@@ -184,8 +192,8 @@ func decodeContentBlock(raw json.RawMessage) *sessionevents.ACPToolContent {
 		}
 		return &sessionevents.ACPToolContent{
 			Type:  "link",
-			URI:   block.URI,
-			Title: firstNonEmpty(block.Title, block.Name),
+			URI:   redactToolText(block.URI),
+			Title: redactToolText(firstNonEmpty(block.Title, block.Name)),
 		}
 	case "resource":
 		var res struct {
@@ -195,11 +203,12 @@ func decodeContentBlock(raw json.RawMessage) *sessionevents.ACPToolContent {
 		if len(block.Resource) > 0 {
 			_ = json.Unmarshal(block.Resource, &res)
 		}
+		uri := redactToolText(res.URI)
 		if text := clampToolText(res.Text); text != "" {
-			return &sessionevents.ACPToolContent{Type: "text", Text: text, URI: res.URI}
+			return &sessionevents.ACPToolContent{Type: "text", Text: text, URI: uri}
 		}
-		if res.URI != "" {
-			return &sessionevents.ACPToolContent{Type: "link", URI: res.URI}
+		if uri != "" {
+			return &sessionevents.ACPToolContent{Type: "link", URI: uri}
 		}
 		return nil
 	default:
@@ -209,8 +218,42 @@ func decodeContentBlock(raw json.RawMessage) *sessionevents.ACPToolContent {
 }
 
 func clampToolText(s string) string {
+	s = redactToolText(s)
 	if utf8.RuneCountInString(s) <= maxToolContentText {
 		return s
 	}
 	return string([]rune(s)[:maxToolContentText]) + "…"
+}
+
+func redactToolText(s string) string {
+	s = oauthJSONFieldPattern.ReplaceAllString(s, `${1}[REDACTED]${2}`)
+	s = bearerTokenPattern.ReplaceAllString(s, `${1}[REDACTED]`)
+	s = googleAccessPattern.ReplaceAllString(s, `[REDACTED]`)
+	s = googleRefreshPattern.ReplaceAllString(s, `[REDACTED]`)
+	return s
+}
+
+func redactToolMap(in map[string]any) map[string]any {
+	out := make(map[string]any, len(in))
+	for key, value := range in {
+		out[redactToolText(key)] = redactToolValue(value)
+	}
+	return out
+}
+
+func redactToolValue(value any) any {
+	switch v := value.(type) {
+	case string:
+		return redactToolText(v)
+	case map[string]any:
+		return redactToolMap(v)
+	case []any:
+		out := make([]any, 0, len(v))
+		for _, item := range v {
+			out = append(out, redactToolValue(item))
+		}
+		return out
+	default:
+		return value
+	}
 }

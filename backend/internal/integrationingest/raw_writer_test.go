@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -129,6 +130,80 @@ func TestRawWriterAppendsContactsToStableContactExport(t *testing.T) {
 	}
 	if got, want := dirInfo.Mode().Perm(), os.FileMode(0o700); got != want {
 		t.Fatalf("dir mode = %s, want %s", got, want)
+	}
+}
+
+func TestRawWriterWritesAttachmentFileByProviderAccountConnectionAndIDs(t *testing.T) {
+	root := t.TempDir()
+	path, err := (RawWriter{Root: root}).WriteAttachment(context.Background(), RawAttachment{
+		Provider:     "gmail",
+		AccountID:    "august@example.com",
+		ConnectionID: "gmail:august",
+		MessageID:    "msg/1",
+		AttachmentID: "att/1",
+		FileName:     "../Report Final.PDF",
+		Data:         []byte("attachment bytes"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel = filepath.ToSlash(rel)
+	if !strings.HasPrefix(rel, "gmail/august-example-com/gmail-august/attachments/msg-1-") || !strings.Contains(rel, "/att-1-") || filepath.Base(path) != "report-final.pdf" {
+		t.Fatalf("path = %q", path)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "attachment bytes" {
+		t.Fatalf("data = %q", string(data))
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := info.Mode().Perm(), os.FileMode(0o600); got != want {
+		t.Fatalf("file mode = %s, want %s", got, want)
+	}
+	dirInfo, err := os.Stat(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := dirInfo.Mode().Perm(), os.FileMode(0o700); got != want {
+		t.Fatalf("dir mode = %s, want %s", got, want)
+	}
+}
+
+func TestRawAttachmentPathDoesNotCollapseDistinctExternalIDs(t *testing.T) {
+	root := t.TempDir()
+	first, err := RawAttachmentPath(root, RawAttachment{
+		Provider:     "gmail",
+		AccountID:    "august@example.com",
+		ConnectionID: "gmail:august",
+		MessageID:    "msg/1",
+		AttachmentID: "att/1",
+		FileName:     "report.pdf",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := RawAttachmentPath(root, RawAttachment{
+		Provider:     "gmail",
+		AccountID:    "august@example.com",
+		ConnectionID: "gmail:august",
+		MessageID:    "msg_1",
+		AttachmentID: "att_1",
+		FileName:     "report.pdf",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatalf("paths collapsed: %q", first)
 	}
 }
 
