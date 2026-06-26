@@ -6,6 +6,15 @@
 // Settings → Appearance choices always layer on top. Read once at module load;
 // lib/appearance.ts and lib/theme.ts fold it under the user's stored prefs, and
 // the pre-paint script in index.html reads the same global.
+// A per-mode color scheme override (all fields optional). Hex strings + a 0–100
+// contrast; lib/appearanceScheme.ts validates and derives the full token set.
+export interface ColorSchemeConfig {
+  accent?: string
+  background?: string
+  foreground?: string
+  contrast?: number
+}
+
 export interface AppearanceConfig {
   theme?: 'light' | 'dark' | 'system'
   uiFont?: string
@@ -15,6 +24,13 @@ export interface AppearanceConfig {
   wideLayout?: boolean
   inlineDiffs?: boolean
   inlineShellCommands?: boolean
+  // Default color scheme. `preset` names a built-in (e.g. 'catppuccin'); the
+  // per-mode blocks override individual colors on top of it (or of the default).
+  scheme?: {
+    preset?: string
+    light?: ColorSchemeConfig
+    dark?: ColorSchemeConfig
+  }
 }
 
 declare global {

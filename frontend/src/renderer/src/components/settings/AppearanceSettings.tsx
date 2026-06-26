@@ -4,6 +4,7 @@ import { Switch } from '@/components/ui/Switch'
 import { FONT_SCALES, useAppearance } from '@/lib/appearance'
 import {
   applyPreset,
+  type ColorScheme,
   type ModeSchemes,
   resetScheme,
   sameScheme,
@@ -66,6 +67,52 @@ function ThemePreviewCard({ value }: { value: ThemePref }) {
         {THEME_LABELS[value]}
       </span>
     </button>
+  )
+}
+
+// A `ThemeConfig` snippet mirroring the live light/dark schemes — two syntax-lit
+// panes side by side, like the screenshot. Hand-coloured (small fixed snippet).
+const KW = 'text-[#8b5cf6]'
+const TY = 'text-[#0d9aa6]'
+const ST = 'text-[#3f9142]'
+const NU = 'text-[#c2740a]'
+
+function ConfigPane({ scheme, tone }: { scheme: ColorScheme; tone: 'light' | 'dark' }) {
+  const rows: [string, ReactNode][] = [
+    ['head', <><span className={KW}>const</span> themePreview: <span className={TY}>ThemeConfig</span> = {'{'}</>],
+    ['accent', <>{'  '}accent: <span className={ST}>&quot;{scheme.accent}&quot;</span>,</>],
+    ['background', <>{'  '}background: <span className={ST}>&quot;{scheme.background}&quot;</span>,</>],
+    ['foreground', <>{'  '}foreground: <span className={ST}>&quot;{scheme.foreground}&quot;</span>,</>],
+    ['contrast', <>{'  '}contrast: <span className={NU}>{scheme.contrast}</span>,</>],
+    ['close', <>{'}'};</>],
+  ]
+  return (
+    <div
+      className={`border-l-2 py-2.5 pr-3 ${
+        tone === 'light'
+          ? 'border-rose-400/50 bg-rose-500/[0.04]'
+          : 'border-emerald-400/50 bg-emerald-500/[0.06]'
+      }`}
+    >
+      <div className="font-mono text-[11px] leading-[1.7]">
+        {rows.map(([key, node], i) => (
+          <div key={key} className="flex">
+            <span className="w-9 shrink-0 select-none pr-3 text-right text-ink-3/50">{i + 1}</span>
+            <span className="whitespace-pre text-ink-2">{node}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ThemeConfigPreview() {
+  const schemes = useScheme()
+  return (
+    <div className="mt-3 grid grid-cols-2 overflow-hidden rounded-control bg-surface ring-1 ring-border/60">
+      <ConfigPane scheme={schemes.light} tone="light" />
+      <ConfigPane scheme={schemes.dark} tone="dark" />
+    </div>
   )
 }
 
@@ -241,16 +288,15 @@ export function AppearanceSettings() {
 
   return (
     <section className="py-5">
-      <div>
-        <p className="text-sm font-medium text-ink">Appearance</p>
-        <p className="mt-0.5 text-[13px] text-ink-2">How the interface looks and feels. Defaults match the stock look.</p>
-      </div>
+      <p className="text-sm font-medium text-ink">Appearance</p>
 
       <div role="radiogroup" aria-label="Theme" className="mt-4 grid grid-cols-3 gap-3">
         <ThemePreviewCard value="system" />
         <ThemePreviewCard value="light" />
         <ThemePreviewCard value="dark" />
       </div>
+
+      <ThemeConfigPreview />
 
       <SettingsCard className="mt-6 overflow-hidden">
         <Row
