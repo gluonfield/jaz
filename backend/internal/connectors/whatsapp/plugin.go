@@ -38,7 +38,7 @@ func Plugin() integrations.Plugin {
 		Tools:        chatTools(),
 		Skills:       chatSkills(),
 		ConnectionNotes: []string{
-			"Jaz stores raw WhatsApp contacts and messages under ~/.jaz/ingest/raw.",
+			"Jaz stores raw WhatsApp contacts and messages under the configured Jaz ingest root.",
 			"Message sends are direct actions from the selected connected account.",
 			"Initial history depends on what WhatsApp Web makes available during companion-device sync.",
 		},

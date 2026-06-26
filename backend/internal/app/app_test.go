@@ -181,7 +181,7 @@ func TestNewRuntimeLayoutEnsuresDirsAndSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, dir := range []string{layout.Root, layout.Sessions, layout.DefaultWorkspace, layout.UserSkills} {
+	for _, dir := range []string{layout.Root, layout.Sessions, layout.DefaultWorkspace, layout.UserSkills, layout.Ingest} {
 		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 			t.Fatalf("runtime dir %s missing: %v", dir, err)
 		}
@@ -191,6 +191,16 @@ func TestNewRuntimeLayoutEnsuresDirsAndSkills(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(layout.Root, "system", "skills")); !os.IsNotExist(err) {
 		t.Fatalf("system skills dir should not exist, err = %v", err)
+	}
+}
+
+func TestNewIntegrationRawWriterUsesRuntimeIngestRoot(t *testing.T) {
+	layout := runtimefiles.New(t.TempDir())
+
+	writer := NewIntegrationRawWriter(layout)
+
+	if writer.Root != layout.Ingest {
+		t.Fatalf("raw writer root = %q, want %q", writer.Root, layout.Ingest)
 	}
 }
 

@@ -13,9 +13,6 @@ func TestEnsureCreatesRuntimeLayout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if layout.IngestRaw != filepath.Join(root, "ingest", "raw") {
-		t.Fatalf("ingest raw = %q, want %q", layout.IngestRaw, filepath.Join(root, "ingest", "raw"))
-	}
 	for _, dir := range []string{
 		layout.Root,
 		layout.Sessions,
@@ -24,8 +21,7 @@ func TestEnsureCreatesRuntimeLayout(t *testing.T) {
 		layout.UserSkills,
 		layout.Automations,
 		layout.Connections,
-		filepath.Dir(layout.IngestRaw),
-		layout.IngestRaw,
+		layout.Ingest,
 		layout.ACPCodexHome,
 		layout.ACPClaudeConfig,
 		layout.ACPOpenCodeConfig,
@@ -34,14 +30,7 @@ func TestEnsureCreatesRuntimeLayout(t *testing.T) {
 			t.Fatalf("runtime dir %s missing: %v", dir, err)
 		}
 	}
-	for _, dir := range []string{
-		layout.ACPCodexHome,
-		layout.ACPClaudeConfig,
-		layout.ACPOpenCodeConfig,
-		layout.Connections,
-		filepath.Dir(layout.IngestRaw),
-		layout.IngestRaw,
-	} {
+	for _, dir := range []string{layout.ACPCodexHome, layout.ACPClaudeConfig, layout.ACPOpenCodeConfig, layout.Connections, layout.Ingest} {
 		info, err := os.Stat(dir)
 		if err != nil {
 			t.Fatalf("private runtime dir %s missing: %v", dir, err)

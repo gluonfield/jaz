@@ -15,7 +15,7 @@ type Layout struct {
 	UserSkills        string
 	Automations       string
 	Connections       string
-	IngestRaw         string
+	Ingest            string
 	ACPCodexHome      string
 	ACPClaudeConfig   string
 	ACPOpenCodeConfig string
@@ -31,7 +31,7 @@ func New(root string) Layout {
 		UserSkills:        filepath.Join(root, "skills"),
 		Automations:       filepath.Join(root, "automations"),
 		Connections:       filepath.Join(root, "connections"),
-		IngestRaw:         filepath.Join(root, "ingest", "raw"),
+		Ingest:            filepath.Join(root, "ingest"),
 		ACPCodexHome:      filepath.Join(root, "acp", "codex-home"),
 		ACPClaudeConfig:   filepath.Join(root, "acp", "claude"),
 		ACPOpenCodeConfig: filepath.Join(root, "acp", "opencode"),
@@ -60,7 +60,7 @@ func Ensure(root string) (Layout, error) {
 		layout.ACPClaudeConfig,
 		layout.ACPOpenCodeConfig,
 		layout.Connections,
-		layout.IngestRaw,
+		layout.Ingest,
 	} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return Layout{}, err

@@ -19,7 +19,7 @@ By default the stack stores state outside the repository:
 | `~/.jaz/node/matrix/bridges/<bridge>` | bridge config and session state |
 
 Jaz ingest data remains under the normal Jaz ingest root, such as
-`~/.jaz/ingest/raw`. The Matrix sidecar stack does not write ingest records
+`~/.jaz/ingest`. The Matrix sidecar stack does not write ingest records
 directly.
 
 Set `JAZ_RUNTIME_ROOT` or `JAZ_MATRIX_ROOT` to override these paths.
