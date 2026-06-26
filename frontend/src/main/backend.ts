@@ -3,7 +3,6 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { app, powerSaveBlocker } from 'electron'
-import { telegramBackendLDFlags } from './backendBuildFlags'
 
 // Single source of truth for where the spawned backend lives; returned to the
 // renderer through the IPC result so both sides always agree.
@@ -211,21 +210,12 @@ function spawnBackend(): ChildProcess {
   }
   // Dev: out/main → frontend/out/main, so the backend module sits three up.
   const backendDir = resolve(__dirname, '../../../backend')
-  const env = localBackendEnv()
-  return spawn('go', devBackendArgs(env), {
+  return spawn('go', ['run', './cmd/jaz'], {
     cwd: backendDir,
     detached: true,
-    env,
+    env: localBackendEnv(),
     stdio: ['ignore', 'pipe', 'pipe'],
   })
-}
-
-function devBackendArgs(env: NodeJS.ProcessEnv): string[] {
-  const ldflags = telegramBackendLDFlags(env)
-  const args = ['run']
-  if (ldflags.length) args.push('-ldflags', ldflags.join(' '))
-  args.push('./cmd/jaz')
-  return args
 }
 
 function signalBackendPID(pid: number, signal: NodeJS.Signals): void {
