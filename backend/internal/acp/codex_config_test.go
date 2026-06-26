@@ -9,7 +9,7 @@ import (
 )
 
 func TestCodexProviderArgsNativeOpenAI(t *testing.T) {
-	for _, providerID := range []string{"", modelprovider.ProviderOpenAI} {
+	for _, providerID := range []string{"", AgentCodex, modelprovider.ProviderOpenAI} {
 		if args := codexProviderArgs(AgentConfig{ModelProvider: providerID}, nil); args != nil {
 			t.Fatalf("provider %q should use the native Codex path, got %v", providerID, args)
 		}

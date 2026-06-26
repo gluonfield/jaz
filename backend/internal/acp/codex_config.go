@@ -9,7 +9,7 @@ import (
 
 func codexProvider(modelProvider string, providers map[string]modelprovider.ModelProviderConfig) (modelprovider.ModelProvider, bool) {
 	id := strings.ToLower(strings.TrimSpace(modelProvider))
-	if id == "" || id == modelprovider.ProviderOpenAI {
+	if id == "" || id == AgentCodex || id == modelprovider.ProviderOpenAI {
 		return modelprovider.ModelProvider{}, false
 	}
 	meta, ok := modelprovider.RunnableModelProviderByID(id)

@@ -52,6 +52,7 @@ type agentPolicy struct {
 	modelConfigID       string
 	effortConfigID      string
 	effortInModelSuffix bool
+	providerInLaunch    bool
 	modelValidationKind modelValidationKind
 	effortOptions       []ReasoningEffortOption
 	ultracodeSetting    bool
@@ -86,6 +87,7 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 			modelConfigID:       sessionConfigModel,
 			effortConfigID:      sessionConfigReasoningEffort,
 			effortInModelSuffix: true,
+			providerInLaunch:    true,
 			modelValidationKind: modelValidationNone,
 			effortOptions:       baseReasoningEffortOptions,
 		}
@@ -124,6 +126,13 @@ func (p agentPolicy) usesReasoningEffortConfigOption() bool {
 
 func (p agentPolicy) effortEncodedInModel(model string) bool {
 	return p.effortInModelSuffix && modelHasReasoningEffort(model)
+}
+
+func (p agentPolicy) sessionConfigModel(cfg AgentConfig) string {
+	if p.providerInLaunch {
+		return cfg.ProviderNativeModel()
+	}
+	return cfg.ProviderQualifiedModel()
 }
 
 func (p agentPolicy) reasoningEffortOptions() []ReasoningEffortOption {
@@ -292,7 +301,7 @@ func (m *Manager) configuredModeState(
 ) (ModeState, error) {
 	policy := agentPolicyForAgent(agentName)
 	effort := policy.sessionConfigEffort(cfg.ReasoningEffort)
-	model := cfg.ProviderQualifiedModel()
+	model := policy.sessionConfigModel(cfg)
 	if _, handled, err := resolveGrokStartupConfig(agentName, cfg); err != nil {
 		return ModeState{}, err
 	} else if handled {
@@ -304,10 +313,10 @@ func (m *Manager) configuredModeState(
 	}
 	if !policy.effortEncodedInModel(model) {
 		options := session.configOptions
-		requireAdvertisedEffort := false
+		activeModelOptions := false
 		if refreshed := parseSessionConfigOptions(modelRaw); refreshed.configOptionsPresent {
 			options = refreshed
-			requireAdvertisedEffort = true
+			activeModelOptions = true
 		}
 		if err := m.applyConfiguredReasoningEffort(
 			ctx,
@@ -317,7 +326,7 @@ func (m *Manager) configuredModeState(
 			model,
 			effort,
 			options,
-			requireAdvertisedEffort,
+			activeModelOptions,
 		); err != nil {
 			return ModeState{}, err
 		}
@@ -333,7 +342,7 @@ func (m *Manager) applyConfiguredReasoningEffort(
 	model string,
 	effort string,
 	options sessionConfigOptionsState,
-	requireAdvertisedEffort bool,
+	activeModelOptions bool,
 ) error {
 	if effort == "" {
 		return nil
@@ -341,13 +350,8 @@ func (m *Manager) applyConfiguredReasoningEffort(
 	if !agentPolicyForAgent(agentName).usesReasoningEffortConfigOption() && options.effortConfigID == "" {
 		return nil
 	}
-	if requireAdvertisedEffort && !options.effortConfigPresent {
-		return fmt.Errorf(
-			"set acp agent %q reasoning effort %q for model %q: the agent did not advertise a reasoning effort config option for the active model",
-			agentName,
-			effort,
-			configuredSessionModel(model),
-		)
+	if activeModelOptions && !options.effortConfigPresent {
+		return nil
 	}
 	if options.effortConfigPresent && !configOptionValueAvailable(options.effortOptions, effort) {
 		return fmt.Errorf(
