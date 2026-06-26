@@ -76,7 +76,7 @@ func (t *ChatMCPTools) AddTo(server *mcp.Server) {
 		mcp.AddTool(server, &mcp.Tool{
 			Name:        whatsapp.ToolSendMessage,
 			Title:       "Send WhatsApp message",
-			Description: "Send a WhatsApp message from one connected account to a phone number, contact id, or conversation id. Requires a connected WhatsApp session.",
+			Description: "Send a WhatsApp message from one connected account to a phone number or WhatsApp JID. Requires a connected WhatsApp session.",
 		}, t.SendWhatsAppMessage)
 	}
 	if t.senders[telegram.ProviderID] != nil {

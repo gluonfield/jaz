@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/pkg/integrations"
 	"go.mau.fi/whatsmeow"
 	waCommon "go.mau.fi/whatsmeow/proto/waCommon"
@@ -87,6 +89,16 @@ func TestFailQRSessionPreservesFailedStatusUntilPolled(t *testing.T) {
 	}
 }
 
+func TestWhatsAppFirstQRCodeErrorPreservesProviderFailure(t *testing.T) {
+	err := whatsappFirstQRCodeError(connections.QRStatus{
+		Status: "failed",
+		Error:  "connect failed",
+	})
+	if err == nil || !strings.Contains(err.Error(), "connect failed") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestWhatsAppRecordsExposeContactsAndMessages(t *testing.T) {
 	connection := integrations.Connection{ID: "whatsapp:alice", AccountID: "15550102222"}
 	contact := whatsappContactRecord(connection, waTypes.NewJID("15550103333", waTypes.DefaultUserServer), waTypes.ContactInfo{
@@ -100,8 +112,15 @@ func TestWhatsAppRecordsExposeContactsAndMessages(t *testing.T) {
 	if err := json.Unmarshal(contact.Raw, &contactRaw); err != nil {
 		t.Fatal(err)
 	}
-	if contactRaw["full_name"] != "Alice Example" || contactRaw["phone"] != "15550103333" {
+	if contactRaw["full_name"] != "Alice Example" ||
+		contactRaw["display_name"] != "Alice Example" ||
+		contactRaw["phone_number"] != "15550103333" ||
+		contactRaw["whatsapp_id"] != "15550103333@s.whatsapp.net" {
 		t.Fatalf("contact raw = %#v", contactRaw)
+	}
+	names, ok := contactRaw["contact_names"].([]any)
+	if !ok || len(names) != 2 || names[0] != "Alice Example" || names[1] != "Alice" {
+		t.Fatalf("contact names = %#v", contactRaw["contact_names"])
 	}
 
 	occurred := time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC)

@@ -66,7 +66,7 @@ export function useConnectionSignIn({
     onError: (error: Error, request) => {
       const plugin = plugins.find((item) => item.id === request.pluginID)
       if (plugin?.auth[0]?.kind === 'session') {
-        toast(qrSignInError(error), 'danger')
+        toast(qrSignInError(error, plugin.name), 'danger')
         return
       }
       toast(`Couldn't start sign-in: ${error.message}`, 'danger')
@@ -95,7 +95,7 @@ export function useConnectionSignIn({
   }
 
   const start = (plugin: IntegrationPlugin) => {
-    if (plugin.implementation.status !== 'available') return
+    if (plugin.implementation.status !== 'available' && plugin.auth[0]?.kind !== 'session') return
     connect.mutate({ pluginID: plugin.id })
   }
 
@@ -146,9 +146,14 @@ function closeQRSession(queryClient: QueryClient, sessionID?: string) {
   void closeConnectionQR(sessionID).catch(() => undefined)
 }
 
-function qrSignInError(error: Error): string {
-  if (error.message.toLowerCase().includes('timed out')) {
+function qrSignInError(error: Error, provider: string): string {
+  const message = error.message.trim()
+  const lower = message.toLowerCase()
+  if (lower.includes('qr provider unavailable')) {
+    return `${provider} QR sign-in is not available in this build.`
+  }
+  if (lower.includes('timed out')) {
     return "Couldn't show the QR code. Try again."
   }
-  return "Couldn't start QR sign-in. Try again."
+  return message || "Couldn't start QR sign-in. Try again."
 }

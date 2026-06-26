@@ -53,7 +53,7 @@ func chatTools() []integrations.PluginTool {
 	return []integrations.PluginTool{
 		{
 			Name:        ToolSendMessage,
-			Description: "Send a message to a connected chat conversation.",
+			Description: "Send a message to a WhatsApp phone number or JID.",
 			Capability:  integrations.CapabilityAct,
 			Risk:        integrations.ActionRiskWrite,
 		},

@@ -40,9 +40,14 @@ func connectionFromDevice(device *store.Device) (integrations.Connection, bool) 
 }
 
 func whatsappContactRecord(connection integrations.Connection, jid waTypes.JID, contact waTypes.ContactInfo) integrations.Record {
+	names := contactNames(contact)
 	raw := rawJSON(map[string]any{
+		"whatsapp_id":    jid.String(),
 		"jid":            jid.String(),
+		"phone_number":   jid.User,
 		"phone":          jid.User,
+		"display_name":   whatsappContactDisplayName(jid, contact, names),
+		"contact_names":  names,
 		"first_name":     contact.FirstName,
 		"full_name":      contact.FullName,
 		"push_name":      contact.PushName,
@@ -59,10 +64,32 @@ func whatsappContactRecord(connection integrations.Connection, jid waTypes.JID, 
 	}
 }
 
+func whatsappContactDisplayName(jid waTypes.JID, contact waTypes.ContactInfo, names []string) string {
+	if len(names) > 0 {
+		return names[0]
+	}
+	return firstNonEmpty(contact.RedactedPhone, jid.User, jid.String())
+}
+
+func contactNames(contact waTypes.ContactInfo) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, value := range []string{contact.FullName, contact.PushName, contact.BusinessName, contact.FirstName} {
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
+}
+
 func whatsappContactActionRecord(connection integrations.Connection, event *events.Contact) integrations.Record {
 	rawAction, _ := protojson.Marshal(event.Action)
 	raw := rawJSON(map[string]any{
+		"whatsapp_id":    event.JID.String(),
 		"jid":            event.JID.String(),
+		"phone_number":   event.JID.User,
 		"phone":          event.JID.User,
 		"timestamp":      event.Timestamp,
 		"from_full_sync": event.FromFullSync,
