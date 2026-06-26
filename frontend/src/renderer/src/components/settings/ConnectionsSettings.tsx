@@ -95,7 +95,7 @@ export function ConnectionsSettings() {
           </p>
         ) : (
           <>
-            <div className="space-y-5">
+            <div className="w-full space-y-5 md:max-w-[760px]">
               {hasConnectedAccounts ? (
                 <SettingsBlock title="Existing connections">
                   <div className="flex flex-col divide-y divide-border/70">
