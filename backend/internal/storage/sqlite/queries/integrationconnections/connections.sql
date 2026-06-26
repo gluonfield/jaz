@@ -35,3 +35,7 @@ ON CONFLICT(id) DO UPDATE SET
   alias = excluded.alias,
   scopes_json = excluded.scopes_json,
   updated_at_ms = excluded.updated_at_ms;
+
+-- name: DeleteConnection :execrows
+DELETE FROM integration_connections
+WHERE id = sqlc.arg(id);

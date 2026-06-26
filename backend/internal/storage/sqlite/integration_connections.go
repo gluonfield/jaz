@@ -84,6 +84,27 @@ func (s *Store) SaveOAuthConnection(ctx context.Context, token integrationoauth.
 	return tx.Commit()
 }
 
+func (s *Store) DeleteConnection(ctx context.Context, id string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	if err := oauthdb.New(s.db).WithTx(tx).DeleteToken(ctx, id); err != nil {
+		return false, err
+	}
+	rows, err := connectiondb.New(s.db).WithTx(tx).DeleteConnection(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return rows > 0, nil
+}
+
 func connectionFromRow(id, provider, accountID, accountName, alias, scopesJSON string) (integrations.Connection, error) {
 	var scopes []string
 	if err := json.Unmarshal([]byte(scopesJSON), &scopes); err != nil {
