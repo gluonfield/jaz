@@ -24,7 +24,7 @@ func TestEnsureCreatesRuntimeLayout(t *testing.T) {
 		layout.UserSkills,
 		layout.Automations,
 		layout.Connections,
-		layout.Ingest,
+		filepath.Dir(layout.IngestRaw),
 		layout.IngestRaw,
 		layout.ACPCodexHome,
 		layout.ACPClaudeConfig,
@@ -39,7 +39,7 @@ func TestEnsureCreatesRuntimeLayout(t *testing.T) {
 		layout.ACPClaudeConfig,
 		layout.ACPOpenCodeConfig,
 		layout.Connections,
-		layout.Ingest,
+		filepath.Dir(layout.IngestRaw),
 		layout.IngestRaw,
 	} {
 		info, err := os.Stat(dir)
