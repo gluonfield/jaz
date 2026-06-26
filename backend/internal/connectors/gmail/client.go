@@ -45,6 +45,26 @@ type APIClient struct {
 	BaseURL string
 }
 
+type APIError struct {
+	StatusCode int
+	Status     string
+	Message    string
+	Reason     string
+}
+
+func (e APIError) Error() string {
+	if e.Reason == "SERVICE_DISABLED" || e.Reason == "accessNotConfigured" {
+		return "gmail api is disabled for the OAuth client project; configure a Gmail-enabled Google OAuth client and reconnect Gmail"
+	}
+	if e.Message != "" {
+		return "gmail api: " + clampErrorMessage(e.Message)
+	}
+	if e.Status != "" {
+		return "gmail api: " + e.Status
+	}
+	return "gmail api request failed"
+}
+
 func (c APIClient) Profile(ctx context.Context) (Profile, error) {
 	var profile Profile
 	if err := c.get(ctx, "gmail/v1/users/me/profile", nil, &profile); err != nil {
@@ -133,9 +153,56 @@ func (c APIClient) get(ctx context.Context, path string, query url.Values, out a
 	defer res.Body.Close()
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
-		return fmt.Errorf("gmail api: %s: %s", res.Status, strings.TrimSpace(string(body)))
+		return apiError(res, body)
 	}
 	return json.NewDecoder(res.Body).Decode(out)
+}
+
+func apiError(res *http.Response, body []byte) error {
+	out := APIError{StatusCode: res.StatusCode, Status: res.Status}
+	var parsed googleErrorResponse
+	if err := json.Unmarshal(body, &parsed); err == nil {
+		out.Message = parsed.Error.Message
+		out.Reason = parsed.reason()
+	}
+	if out.Message == "" {
+		out.Message = strings.TrimSpace(string(body))
+	}
+	return out
+}
+
+type googleErrorResponse struct {
+	Error struct {
+		Message string              `json:"message"`
+		Errors  []googleErrorReason `json:"errors"`
+		Details []googleErrorReason `json:"details"`
+	} `json:"error"`
+}
+
+type googleErrorReason struct {
+	Reason string `json:"reason"`
+}
+
+func (r googleErrorResponse) reason() string {
+	for _, detail := range r.Error.Details {
+		if detail.Reason != "" {
+			return detail.Reason
+		}
+	}
+	for _, item := range r.Error.Errors {
+		if item.Reason != "" {
+			return item.Reason
+		}
+	}
+	return ""
+}
+
+func clampErrorMessage(message string) string {
+	message = strings.TrimSpace(message)
+	if len([]rune(message)) <= 240 {
+		return message
+	}
+	return string([]rune(message)[:240]) + "..."
 }
 
 func (c APIClient) httpClient() *http.Client {
