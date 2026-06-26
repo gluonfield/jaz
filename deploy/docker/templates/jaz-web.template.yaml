@@ -1,0 +1,74 @@
+# DRAFT Ink template — jaz-web.
+# Final home: a Go const in the Ink repo's go-backend/cmd/seed-templates/main.go,
+# added to the systemTemplates list. Kept here as a reviewable draft until the
+# image is published and the deploy is validated on Ink.
+#
+# Deliverable: a frontend URL that "just works". Given a backend URL (+ optional
+# key), it outputs a ready connect URL using the #server=&key= fragment, so the
+# key never reaches this static host.
+apiVersion: ink.ml.ink/v1
+kind: Template
+metadata:
+  slug: jaz-web
+  name: Jaz Web
+  description: Jaz browser app. Serves the static web client and outputs a ready-to-connect URL for a given Jaz backend.
+  icon: https://jaz.chat/icon.png
+  author:
+    name: Jaz
+    url: https://jaz.chat
+  tags: [AI, Automation]
+  repoUrl: https://github.com/gluonfield/jaz
+  docsUrl: https://github.com/gluonfield/jaz/blob/main/docs/remote-backend.md
+  readme: |-
+    # Jaz Web
+
+    The Jaz browser client as a static site. It does not run a backend — it
+    connects to a Jaz backend over HTTPS (the backend answers CORS), so deploy
+    the **Jaz Backend** template first and pass its URL + key here.
+
+    ## Outputs
+    - **Web URL** — the app. Open it and paste a backend URL + key to connect.
+    - **Connect URL** — if you provided a backend URL/key, this opens already
+      pointed at that backend (key carried in the URL fragment, never sent to
+      this host). The first browser to connect becomes the approved owner.
+spec:
+  inputs:
+    - key: backend_url
+      type: string
+      name: Backend URL
+      description: The Jaz backend endpoint to connect to (the Jaz Backend template's Backend URL).
+      required: false
+    - key: backend_key
+      type: secret
+      name: Backend Key
+      description: Optional bootstrap key, used to pre-fill the first connection.
+      required: false
+      sensitive: true
+  services:
+    - key: web
+      name: Jaz Web
+      source:
+        type: image
+        image: augustinast/testing:jaz-web
+      memory: 256Mi
+      vcpus: "0.25"
+      ports:
+        - name: http
+          port: 8080
+          protocol: http
+          visibility: public
+      env:
+        - key: PORT
+          value: "8080"
+  outputs:
+    - key: web_url
+      label: Web URL
+      description: Public URL of the Jaz browser app.
+      kind: url
+      value: "{{services.web.ports.http.publicEndpoint}}"
+    - key: connect_url
+      label: Connect URL (just works)
+      description: Opens the app already pointed at the backend. Key rides in the URL fragment.
+      kind: url
+      value: "{{services.web.ports.http.publicEndpoint}}/#server={{inputs.backend_url}}&key={{inputs.backend_key}}"
+      sensitive: true

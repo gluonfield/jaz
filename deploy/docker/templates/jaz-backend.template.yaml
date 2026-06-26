@@ -1,0 +1,96 @@
+# DRAFT Ink template — jaz-backend.
+# Final home: a Go const in the Ink repo's go-backend/cmd/seed-templates/main.go,
+# added to the systemTemplates list. Kept here as a reviewable draft until the
+# image is published and the deploy is validated on Ink.
+#
+# Deliverable: a public HTTPS backend endpoint + the bootstrap root key (secret).
+apiVersion: ink.ml.ink/v1
+kind: Template
+metadata:
+  slug: jaz-backend
+  name: Jaz Backend
+  description: Jaz remote backend (API only). Outputs the backend endpoint and a bootstrap key for first-device approval.
+  icon: https://jaz.chat/icon.png
+  author:
+    name: Jaz
+    url: https://jaz.chat
+  tags: [AI, Automation]
+  repoUrl: https://github.com/gluonfield/jaz
+  docsUrl: https://github.com/gluonfield/jaz/blob/main/docs/remote-backend.md
+  readme: |-
+    # Jaz Backend
+
+    The API-only Jaz backend: sessions, memory, tools, credentials, workspaces,
+    and connected-device policy. Desktop, browser, and mobile clients connect to
+    its endpoint.
+
+    ## Outputs
+    - **Backend URL** — point a Jaz client at this.
+    - **Root Key** — bootstrap/recovery credential. The first client to connect
+      with it becomes the approved owner device; later devices pair from Settings.
+    - **Backend Client URL** — the URL with the key already attached.
+
+    Pair it with the **Jaz Web** template for a browser, or connect the desktop
+    app straight to the Backend URL.
+spec:
+  inputs:
+    - key: storage_gi
+      type: number
+      name: Storage Size
+      description: Persistent disk (GiB) for sessions, memory, devices, and agent profiles.
+      defaultValue: 10
+      min: 1
+      max: 200
+  services:
+    - key: backend
+      name: Jaz Backend
+      source:
+        type: image
+        image: augustinast/testing:jaz-backend
+      memory: 1Gi
+      vcpus: "1"
+      ports:
+        - name: http
+          port: 5299
+          protocol: http
+          visibility: public
+      env:
+        - key: PORT
+          value: "5299"
+        # Self-reference: validate Ink resolves a service's own publicEndpoint
+        # here. If not, drop this env — the backend works without it and the
+        # client URL output below is still correct.
+        - key: JAZ_PUBLIC_URL
+          value: "{{services.backend.ports.http.publicEndpoint}}"
+        - key: JAZ_ROOT_KEY
+          generate: password
+          description: Bootstrap/root key seeded into the backend on first boot.
+          secret: true
+      volumes:
+        - name: data
+          mountPath: /var/lib/jaz
+          sizeGi: "{{inputs.storage_gi}}"
+      exports:
+        - key: root_key
+          label: Root Key
+          kind: credential
+          value: "{{env.JAZ_ROOT_KEY}}"
+          sensitive: true
+  outputs:
+    - key: backend_url
+      label: Backend URL
+      description: Public HTTPS endpoint for Jaz clients.
+      kind: url
+      value: "{{services.backend.ports.http.publicEndpoint}}"
+    - key: backend_client_url
+      label: Backend Client URL (with key)
+      description: Backend URL with the bootstrap key attached.
+      kind: url
+      value: "{{services.backend.ports.http.publicEndpoint}}?key={{services.backend.exports.root_key}}"
+      sensitive: true
+    - key: root_key
+      label: Root Key
+      description: Bootstrap/recovery credential.
+      kind: credential
+      value: "{{services.backend.exports.root_key}}"
+      sensitive: true
