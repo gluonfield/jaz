@@ -1,9 +1,13 @@
-import { Loader2, Plug, Plus, Unplug } from 'lucide-react'
+import { ArrowRight, Loader2, Plug, Plus, Sparkles, Unplug } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import type { IntegrationConnectionAccount, IntegrationPlugin } from '@/lib/api/types'
+import type {
+  IntegrationConnectionAccount,
+  IntegrationPlugin,
+  IntegrationSkill,
+} from '@/lib/api/types'
 import { accountAddress, pluginActionLabel } from './connectionFormatting'
-import { PluginGlyph } from './ConnectionPluginVisuals'
+import { PluginGlyph, PluginIcon } from './ConnectionPluginVisuals'
 
 export function ConnectionPluginDetailModal({
   plugin,
@@ -23,72 +27,111 @@ export function ConnectionPluginDetailModal({
   if (!plugin) return null
 
   const accounts = plugin.connection?.accounts ?? []
-  const available = plugin.implementation.status === 'available'
-  const connected = plugin.connection?.status === 'connected'
-  const ConnectIcon = connecting ? Loader2 : available && connected && plugin.multi_account ? Plus : Plug
 
   return (
     <Modal
       open
       onClose={onClose}
       title={plugin.name}
-      description={plugin.description}
+      description={subtitle(plugin)}
       icon={<PluginGlyph plugin={plugin} size={18} />}
-      size="md"
-      footer={
-        <>
-          <p className="min-w-0 truncate text-[12px] text-ink-3">
-            {available ? '' : connectionStatus(plugin.implementation.status)}
-          </p>
-          <Button
-            variant="primary"
-            size="md"
-            disabled={!available || connecting}
-            onClick={() => onConnect(plugin)}
-          >
-            <ConnectIcon size={14} className={connecting ? 'animate-spin' : undefined} />
-            {pluginActionLabel(plugin, connecting)}
-          </Button>
-        </>
-      }
+      size="lg"
     >
-      <div className="space-y-4">
-        <ConnectionDetails plugin={plugin} />
+      <div className="space-y-7">
+        <PreviewBand plugin={plugin} />
+        <p className="max-w-2xl text-[13px] leading-6 text-ink-2">{plugin.description}</p>
+        <AppsSection
+          plugin={plugin}
+          connecting={connecting}
+          onConnect={() => onConnect(plugin)}
+        />
         {accounts.length ? (
-          <section>
-            <p className="mb-2 text-[12px] font-medium text-ink-2">Connected accounts</p>
-            <div className="space-y-1">
-              {accounts.map((account) => (
-                <ConnectedAccountRow
-                  key={account.id}
-                  account={account}
-                  disconnecting={disconnectingAccountID === account.id}
-                  onDisconnect={() => onDisconnect(account)}
-                />
-              ))}
-            </div>
-          </section>
+          <ConnectedAccountsSection
+            accounts={accounts}
+            disconnectingAccountID={disconnectingAccountID}
+            onDisconnect={onDisconnect}
+          />
         ) : null}
+        {plugin.skills?.length ? <SkillsSection skills={plugin.skills} /> : null}
+        <InformationSection plugin={plugin} />
       </div>
     </Modal>
   )
 }
 
-function ConnectionDetails({ plugin }: { plugin: IntegrationPlugin }) {
-  const auth = plugin.auth[0]
+function PreviewBand({ plugin }: { plugin: IntegrationPlugin }) {
   return (
-    <dl className="grid grid-cols-[92px_minmax(0,1fr)] gap-x-3 gap-y-2 rounded-card bg-surface px-3 py-3 text-[13px]">
-      <dt className="text-ink-3">Provider</dt>
-      <dd className="min-w-0 truncate text-ink">{plugin.provider.name}</dd>
-      <dt className="text-ink-3">Accounts</dt>
-      <dd className="text-ink">{plugin.multi_account ? 'Multiple accounts' : 'One account'}</dd>
-      {auth ? (
-        <>
-          <dt className="text-ink-3">Sign in</dt>
-          <dd className="text-ink">{authDescription(auth.kind)}</dd>
-        </>
-      ) : null}
-    </dl>
+    <div className="rounded-card bg-[linear-gradient(135deg,var(--color-primary-soft),var(--color-surface-2))] px-5 py-7">
+      <div className="mx-auto flex w-fit max-w-full items-center gap-2 rounded-full bg-bg/90 px-4 py-2.5 shadow-raised">
+        <PluginGlyph plugin={plugin} size={16} />
+        <span className="shrink-0 text-[13px] font-medium text-ink">{plugin.name}</span>
+        <span className="min-w-0 truncate text-[13px] text-ink-2">{previewText(plugin)}</span>
+        <span className="grid size-7 shrink-0 place-items-center rounded-full bg-surface-2 text-ink-2">
+          <ArrowRight size={14} />
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function AppsSection({
+  plugin,
+  connecting,
+  onConnect,
+}: {
+  plugin: IntegrationPlugin
+  connecting: boolean
+  onConnect: () => void
+}) {
+  const available = plugin.implementation.status === 'available'
+  const connected = plugin.connection?.status === 'connected'
+  const ConnectIcon = connecting ? Loader2 : available && connected && plugin.multi_account ? Plus : Plug
+
+  return (
+    <section>
+      <SectionHeading label="Apps" count={1} />
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-card px-0 py-2">
+        <div className="flex min-w-0 items-center gap-3">
+          <PluginIcon plugin={plugin} />
+          <div className="min-w-0">
+            <p className="truncate text-[13px] font-medium text-ink">{plugin.name}</p>
+            <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-ink-2">
+              {appDescription(plugin)}
+            </p>
+          </div>
+        </div>
+        <Button variant="secondary" size="md" disabled={!available || connecting} onClick={onConnect}>
+          <ConnectIcon size={14} className={connecting ? 'animate-spin' : undefined} />
+          {pluginActionLabel(plugin, connecting)}
+        </Button>
+      </div>
+    </section>
+  )
+}
+
+function ConnectedAccountsSection({
+  accounts,
+  disconnectingAccountID,
+  onDisconnect,
+}: {
+  accounts: IntegrationConnectionAccount[]
+  disconnectingAccountID?: string
+  onDisconnect: (account: IntegrationConnectionAccount) => void
+}) {
+  return (
+    <section>
+      <SectionHeading label="Connected accounts" count={accounts.length} />
+      <div className="space-y-1">
+        {accounts.map((account) => (
+          <ConnectedAccountRow
+            key={account.id}
+            account={account}
+            disconnecting={disconnectingAccountID === account.id}
+            onDisconnect={() => onDisconnect(account)}
+          />
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -105,7 +148,7 @@ function ConnectedAccountRow({
   const name = account.account_name && account.account_name !== address ? account.account_name : ''
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-card bg-surface px-3 py-2">
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-card py-2">
       <div className="min-w-0">
         <p className="truncate text-[13px] font-medium text-ink" title={address}>
           {address}
@@ -124,7 +167,114 @@ function ConnectedAccountRow({
   )
 }
 
-function authDescription(kind: string): string {
+function SkillsSection({ skills }: { skills: IntegrationSkill[] }) {
+  return (
+    <section>
+      <SectionHeading label="Skills" count={skills.length} />
+      <div className="space-y-4">
+        {skills.map((skill) => (
+          <div key={skill.id} className="flex min-w-0 items-start gap-3">
+            <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-control bg-surface text-primary">
+              <Sparkles size={15} />
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-[13px] font-medium text-ink">{skill.name}</p>
+              {skill.description ? (
+                <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-ink-2">
+                  {skill.description}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function InformationSection({ plugin }: { plugin: IntegrationPlugin }) {
+  const rows = [
+    ['Capabilities', capabilityLabels(plugin)],
+    ['Developer', developerLabel(plugin)],
+    ['Category', categoryLabel(plugin.category)],
+    ['Sign in', authDescription(plugin.auth[0]?.kind)],
+  ]
+
+  return (
+    <section>
+      <p className="mb-4 text-[13px] font-medium text-ink">Information</p>
+      <dl className="grid grid-cols-[128px_minmax(0,1fr)] gap-x-7 gap-y-4 text-[13px]">
+        {rows.map(([label, value]) => (
+          <div key={label} className="contents">
+            <dt className="text-ink-3">{label}</dt>
+            <dd className="min-w-0 text-ink">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  )
+}
+
+function SectionHeading({ label, count }: { label: string; count: number }) {
+  return (
+    <p className="mb-4 flex items-center gap-2 text-[13px] font-medium text-ink">
+      {label}
+      <span className="tabular-nums text-ink-3">{count}</span>
+    </p>
+  )
+}
+
+function subtitle(plugin: IntegrationPlugin): string {
+  if (plugin.id === 'gmail') return 'Read and manage Gmail'
+  if (plugin.category === 'chat') return `Read and manage ${plugin.name}`
+  return plugin.provider.name
+}
+
+function previewText(plugin: IntegrationPlugin): string {
+  if (plugin.id === 'gmail') return 'Summarize inbox, draft replies, or process email threads'
+  if (plugin.category === 'chat') return 'Search conversations, sync memory, or send approved messages'
+  return plugin.description || `Use ${plugin.name} from Jaz`
+}
+
+function appDescription(plugin: IntegrationPlugin): string {
+  if (plugin.id === 'gmail') return 'Find and reference emails from your inbox'
+  if (plugin.id === 'whatsapp') return 'Sync chats and send approved WhatsApp messages'
+  if (plugin.id === 'telegram') return 'Sync chats and send approved Telegram messages'
+  return plugin.description || `Use ${plugin.name} from Jaz`
+}
+
+function capabilityLabels(plugin: IntegrationPlugin): string {
+  if (plugin.capabilities.length === 0) return 'None'
+  return plugin.capabilities.map(capabilityLabel).join(', ')
+}
+
+function capabilityLabel(value: string): string {
+  switch (value) {
+    case 'act':
+      return 'Actions'
+    case 'sync':
+      return 'Sync'
+    case 'materialize':
+      return 'Memory'
+    case 'mcp':
+      return 'MCP tools'
+    case 'browser':
+      return 'Browser'
+    default:
+      return statusLabel(value)
+  }
+}
+
+function developerLabel(plugin: IntegrationPlugin): string {
+  if (plugin.implementation.owner === 'jaz') return 'Jaz'
+  return statusLabel(plugin.implementation.owner)
+}
+
+function categoryLabel(value?: string): string {
+  return value ? statusLabel(value) : 'Integration'
+}
+
+function authDescription(kind?: string): string {
   switch (kind) {
     case 'oauth':
       return 'Browser sign-in'
@@ -135,12 +285,12 @@ function authDescription(kind: string): string {
     case 'browser_local':
       return 'Local browser'
     default:
-      return connectionStatus(kind)
+      return 'Configured by Jaz'
   }
 }
 
-function connectionStatus(status: string): string {
-  return status
+function statusLabel(value: string): string {
+  return value
     .split('_')
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
