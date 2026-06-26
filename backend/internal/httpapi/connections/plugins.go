@@ -39,3 +39,16 @@ func (h PluginHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	httpapi.WriteJSON(w, http.StatusOK, plugin)
 }
+
+func (h PluginHandler) Disconnect(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(r.PathValue("id"))
+	if err := h.Service.DisconnectAccount(r.Context(), id); err != nil {
+		if errors.Is(err, connections.ErrConnectionNotFound) {
+			httpapi.WriteError(w, http.StatusNotFound, err)
+			return
+		}
+		httpapi.WriteError(w, http.StatusInternalServerError, err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}

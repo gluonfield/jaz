@@ -45,7 +45,7 @@ func Plugin() integrations.Plugin {
 			integrations.CapabilityAct,
 			integrations.CapabilityMCP,
 		},
-		MultiAccount: false,
+		MultiAccount: true,
 		Tools:        tools(),
 		Skills: []integrations.PluginSkill{{
 			ID:          "gmail",
@@ -65,7 +65,7 @@ func Plugin() integrations.Plugin {
 			OAuthSecrets: true,
 		},
 		ConnectionNotes: []string{
-			"This first Gmail connection slice supports one default account.",
+			"Connect each Gmail account separately.",
 			"Jaz-owned Gmail tools use Google APIs directly and require a Gmail-enabled Google OAuth client.",
 			"Custom builds can supply another Gmail-enabled OAuth client through Jaz configuration.",
 			"The official Gmail MCP endpoint is useful as a compatibility target, but is not the consumer-clean Jaz default.",
@@ -79,9 +79,9 @@ func Plugin() integrations.Plugin {
 
 func tools() []integrations.PluginTool {
 	return []integrations.PluginTool{
-		tool(ToolGetProfile, "Return the current Gmail email user's live profile totals.", integrations.ActionRiskRead, ScopeModify),
-		tool(ToolSearchMessages, "Search Gmail email messages and return bounded metadata, snippets, labels, and message IDs.", integrations.ActionRiskRead, ScopeModify),
-		tool(ToolReadMessage, "Read one Gmail email message by ID with headers, labels, body text or HTML, and attachment metadata.", integrations.ActionRiskRead, ScopeModify),
+		tool(ToolGetProfile, "Return one connected Gmail email account's live profile totals.", integrations.ActionRiskRead, ScopeModify),
+		tool(ToolSearchMessages, "Search one connected Gmail email account and return bounded metadata, snippets, labels, and message IDs.", integrations.ActionRiskRead, ScopeModify),
+		tool(ToolReadMessage, "Read one Gmail email message from one connected account by ID with headers, labels, body text or HTML, and attachment metadata.", integrations.ActionRiskRead, ScopeModify),
 	}
 }
 
