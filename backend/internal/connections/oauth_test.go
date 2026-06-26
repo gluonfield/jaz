@@ -71,6 +71,21 @@ func TestOAuthStartBuildsGmailPKCEURL(t *testing.T) {
 	}
 }
 
+func TestOAuthStartUsesBundledGmailClientCredentials(t *testing.T) {
+	redirectURL := "http://127.0.0.1:5222/v1/connections/oauth/google/callback"
+	start, err := NewOAuthService(memoryOAuthStore{}, OAuthConfig{}).Start(context.Background(), gmailconnector.ProviderID, redirectURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := url.Parse(start.AuthURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Query().Get("client_id") != gmailconnector.OAuthClientID {
+		t.Fatalf("auth url = %s", start.AuthURL)
+	}
+}
+
 func TestOAuthStartRejectsUnsupportedPlugin(t *testing.T) {
 	_, err := NewOAuthService(memoryOAuthStore{}, OAuthConfig{}).Start(context.Background(), "slack", "http://127.0.0.1/callback")
 	if err == nil {

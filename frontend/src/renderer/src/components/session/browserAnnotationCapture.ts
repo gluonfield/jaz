@@ -1,3 +1,4 @@
+import { dataURLToFile } from '@/components/ui/fileTransfer'
 import type { Attachment } from '@/lib/api/types'
 import type { BrowserAnnotation } from '@/lib/messageContext'
 import type { PreviewWebviewElement } from './previewWebview'
@@ -18,7 +19,7 @@ export async function captureBrowserAnnotation(
     try {
       const image = await webview.capturePage()
       await clearBrowserAnnotationCapture(webview)
-      const file = await dataURLFile(image.toDataURL(), `browser-annotation-${Date.now()}.png`)
+      const file = await dataURLToFile(image.toDataURL(), `browser-annotation-${Date.now()}.png`)
       screenshot = await uploadAttachment(file)
     } catch {
       screenshot = undefined
@@ -40,12 +41,6 @@ export async function clearBrowserAnnotationCapture(webview: PreviewWebviewEleme
 export function isBrowserAnnotationCancelled(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
   return message.includes('JAZ_ANNOTATION_CANCELLED')
-}
-
-async function dataURLFile(dataURL: string, name: string): Promise<File> {
-  const response = await fetch(dataURL)
-  const blob = await response.blob()
-  return new File([blob], name, { type: blob.type || 'image/png' })
 }
 
 const BROWSER_ANNOTATION_CAPTURE_SCRIPT = String.raw`

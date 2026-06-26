@@ -5,7 +5,7 @@ export const DEFAULT_API_BASE_URL = 'http://localhost:5299'
 
 export type ClientRuntimeKind = 'electron' | 'web'
 export type ClientPlatform = 'desktop' | 'browser'
-export type ClientWindowKind = 'main' | 'board'
+export type ClientWindowKind = 'main' | 'board' | 'launcher'
 
 export interface ClientRuntime {
   kind: ClientRuntimeKind
@@ -33,6 +33,9 @@ export interface ClientRuntime {
   onUpdateStatus?: (handler: (status: UpdateStatus) => void) => () => void
   openBoardWindow?: (boardId: string) => void
   openExternalURL?: (url: string) => void
+  captureScreenRect?: (rect: { x: number; y: number; width: number; height: number }) => Promise<{ ok: boolean; data?: string }>
+  hideLauncher?: () => void
+  onLauncherShown?: (handler: () => void) => () => void
   openInMain?: (path: string) => void
   onOpenRoute?: (handler: (path: string) => void) => () => void
   onOpenPreviewURL?: (handler: (url: string) => void) => () => void
@@ -71,6 +74,9 @@ function createRuntime(): ClientRuntime {
       onUpdateStatus: electron.onUpdateStatus,
       openBoardWindow: electron.openBoardWindow,
       openExternalURL: electron.openExternalURL,
+      captureScreenRect: electron.captureScreenRect,
+      hideLauncher: electron.hideLauncher,
+      onLauncherShown: electron.onLauncherShown,
       openInMain: electron.openInMain,
       onOpenRoute: electron.onOpenRoute,
       onOpenPreviewURL: electron.onOpenPreviewURL,

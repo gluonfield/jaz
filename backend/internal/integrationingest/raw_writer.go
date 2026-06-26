@@ -38,18 +38,14 @@ func (w RawWriter) WriteRecords(ctx context.Context, records []integrations.Reco
 
 func (w RawWriter) writeRecord(record integrations.Record) error {
 	record = w.prepare(record)
-	if strings.TrimSpace(record.Provider) == "" {
-		return errors.New("record provider is required")
-	}
-	day := record.OccurredAt
-	if day.IsZero() {
-		day = record.ReceivedAt
-	}
-	dir := filepath.Join(w.Root, "raw", pathComponent(record.Provider), day.UTC().Format("2006"), day.UTC().Format("01"), day.UTC().Format("02"))
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	path, err := RawRecordPath(w.Root, record)
+	if err != nil {
 		return err
 	}
-	file, err := os.OpenFile(filepath.Join(dir, "events.jsonl"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}
@@ -96,20 +92,21 @@ func recordID(record integrations.Record) string {
 	return "rec_" + hex.EncodeToString(sum[:12])
 }
 
-func pathComponent(value string) string {
-	value = integrations.NormalizeAlias(value)
-	if value == "" {
-		return "unknown"
-	}
-	return value
-}
-
 func RawRecordPath(root string, record integrations.Record) (string, error) {
 	if strings.TrimSpace(root) == "" {
 		return "", errors.New("ingest root is required")
 	}
-	if strings.TrimSpace(record.Provider) == "" {
-		return "", errors.New("record provider is required")
+	provider, err := requiredPathComponent("provider", record.Provider)
+	if err != nil {
+		return "", err
+	}
+	accountID, err := requiredPathComponent("account id", record.AccountID)
+	if err != nil {
+		return "", err
+	}
+	connectionID, err := requiredPathComponent("connection id", record.ConnectionID)
+	if err != nil {
+		return "", err
 	}
 	day := record.OccurredAt
 	if day.IsZero() {
@@ -118,5 +115,24 @@ func RawRecordPath(root string, record integrations.Record) (string, error) {
 	if day.IsZero() {
 		return "", fmt.Errorf("record time is required")
 	}
-	return filepath.Join(root, "raw", pathComponent(record.Provider), day.UTC().Format("2006"), day.UTC().Format("01"), day.UTC().Format("02"), "events.jsonl"), nil
+	day = day.UTC()
+	return filepath.Join(
+		root,
+		"raw",
+		provider,
+		accountID,
+		connectionID,
+		day.Format("2006"),
+		day.Format("01"),
+		day.Format("02"),
+		"events.jsonl",
+	), nil
+}
+
+func requiredPathComponent(name, value string) (string, error) {
+	component := integrations.NormalizeAlias(value)
+	if component == "" {
+		return "", fmt.Errorf("record %s is required", name)
+	}
+	return component, nil
 }

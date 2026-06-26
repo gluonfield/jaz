@@ -5,13 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
-func TestRawWriterAppendsJSONLByProviderAndDay(t *testing.T) {
+func TestRawWriterAppendsJSONLByProviderAccountConnectionAndDay(t *testing.T) {
 	root := t.TempDir()
 	occurred := time.Date(2026, 6, 12, 10, 30, 0, 0, time.UTC)
 	writer := RawWriter{Root: root, Now: func() time.Time { return occurred.Add(time.Minute) }}
@@ -30,9 +31,19 @@ func TestRawWriterAppendsJSONLByProviderAndDay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path, err := RawRecordPath(root, integrations.Record{Provider: "gmail", OccurredAt: occurred})
+	record := integrations.Record{
+		Provider:     "gmail",
+		ConnectionID: "conn_1",
+		AccountID:    "august@example.com",
+		OccurredAt:   occurred,
+	}
+	path, err := RawRecordPath(root, record)
 	if err != nil {
 		t.Fatal(err)
+	}
+	wantPath := filepath.Join(root, "raw", "gmail", "august-example-com", "conn-1", "2026", "06", "12", "events.jsonl")
+	if path != wantPath {
+		t.Fatalf("path = %q, want %q", path, wantPath)
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -57,8 +68,30 @@ func TestRawWriterAppendsJSONLByProviderAndDay(t *testing.T) {
 }
 
 func TestRawWriterRejectsMissingRoot(t *testing.T) {
-	err := (RawWriter{}).WriteRecords(context.Background(), []integrations.Record{{Provider: "gmail"}})
+	err := (RawWriter{}).WriteRecords(context.Background(), []integrations.Record{{
+		Provider:     "gmail",
+		ConnectionID: "conn_1",
+		AccountID:    "august@example.com",
+	}})
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestRawWriterRejectsMissingPathKeys(t *testing.T) {
+	root := t.TempDir()
+	tests := []integrations.Record{
+		{AccountID: "august@example.com", ConnectionID: "conn_1"},
+		{Provider: "gmail", ConnectionID: "conn_1"},
+		{Provider: "gmail", AccountID: "august@example.com"},
+		{Provider: "---", AccountID: "august@example.com", ConnectionID: "conn_1"},
+		{Provider: "gmail", AccountID: "---", ConnectionID: "conn_1"},
+		{Provider: "gmail", AccountID: "august@example.com", ConnectionID: "---"},
+	}
+	for _, record := range tests {
+		err := (RawWriter{Root: root}).WriteRecords(context.Background(), []integrations.Record{record})
+		if err == nil {
+			t.Fatalf("expected error for %#v", record)
+		}
 	}
 }

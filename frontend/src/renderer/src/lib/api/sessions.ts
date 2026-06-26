@@ -19,20 +19,20 @@ import {
   type SessionMessages,
 } from './types'
 
-export async function createSession(
-  input: {
-    title?: string
-    runtime?: 'acp'
-    agent?: string
-    directory?: string
-    worktree?: boolean
-    // Per-session overrides of the Settings > Agents defaults; model_provider
-    // applies to ACP agents with provider-backed models.
-    model_provider?: string
-    model?: string
-    reasoning_effort?: string
-  } = {},
-): Promise<Session> {
+export interface CreateSessionInput {
+  title?: string
+  runtime?: 'acp'
+  agent?: string
+  directory?: string
+  worktree?: boolean
+  // Per-session overrides of the Settings > Agents defaults; model_provider
+  // applies to ACP agents with provider-backed models.
+  model_provider?: string
+  model?: string
+  reasoning_effort?: string
+}
+
+export async function createSession(input: CreateSessionInput = {}): Promise<Session> {
   const session = await post<Session>('/v1/sessions', input)
   telemetry.threadCreated({
     worktree: Boolean(input.worktree),

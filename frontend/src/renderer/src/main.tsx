@@ -30,6 +30,14 @@ installFileDropGuard()
 // returning users from the per-install distinct id.
 if (clientRuntime.windowKind === 'main') telemetry.appOpened()
 
+// The launcher window floats over other apps: keep its page see-through so only
+// the card paints, and pin zoom to 1 so drag coordinates map 1:1 to screen
+// pixels for region capture (it never shows the appearance font-scale anyway).
+if (clientRuntime.windowKind === 'launcher') {
+  document.documentElement.classList.add('launcher')
+  document.documentElement.style.zoom = '1'
+}
+
 const router = createRouter({
   routeTree,
   defaultPreload: 'intent',
@@ -53,8 +61,11 @@ function App() {
   // the onboarding gate, so it also covers landing after a fresh backend's
   // onboarding finishes (the router mounts onto this location). The persisted
   // route otherwise points at the previous backend's data — a thread/board/loop
-  // id the new backend doesn't have — which 404s.
-  useBackendChange(() => router.history.push('/'))
+  // id the new backend doesn't have — which 404s. The launcher window lives at
+  // one route, so never yank it to home.
+  useBackendChange(() => {
+    if (clientRuntime.windowKind !== 'launcher') router.history.push('/')
+  })
 
   const connected = status === 'connected' || status === 'reconnecting'
   const app = <RouterProvider router={router} />
@@ -64,7 +75,7 @@ function App() {
       <BackendTransition />
       {connected ? (
         <>
-          {clientRuntime.windowKind === 'board' ? app : <OnboardingGate>{app}</OnboardingGate>}
+          {clientRuntime.windowKind === 'main' ? <OnboardingGate>{app}</OnboardingGate> : app}
           <ReconnectingBanner show={status === 'reconnecting'} />
         </>
       ) : (

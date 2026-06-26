@@ -33,7 +33,22 @@ function RootComponent() {
   if (clientRuntime.windowKind === 'board') {
     return <BoardRoot />
   }
+  if (clientRuntime.windowKind === 'launcher') {
+    return <LauncherRoot />
+  }
   return <RootLayout />
+}
+
+// The launcher window is a transparent, frameless overlay: just the route, no
+// app chrome, on a see-through surface so only its card floats over other apps.
+function LauncherRoot() {
+  return (
+    <ToastProvider>
+      <main className="h-full overflow-hidden bg-transparent">
+        <Outlet />
+      </main>
+    </ToastProvider>
+  )
 }
 
 function BoardRoot() {

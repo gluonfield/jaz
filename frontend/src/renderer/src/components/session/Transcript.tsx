@@ -1,14 +1,9 @@
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { memo, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { ChatMessage, SessionEvent } from '@/lib/api/types'
 import { Button } from '@/components/ui/Button'
 import { taskSurfaceFromEvent } from '@/lib/taskSurface'
-import {
-  buildTimeline,
-  classifyTurnItems,
-  stableEventKey,
-  type TimelineItem,
-} from './timeline'
+import { buildTimeline, stableEventKey, type TimelineItem } from './timeline'
 import { Bubble } from './Bubble'
 import { LiveEvent } from './LiveEvent'
 import { ToolDisclosure, toolRunLabel } from './ToolDisclosure'
@@ -17,56 +12,6 @@ const INITIAL_VISIBLE_TURNS = 14
 const VISIBLE_TURN_BATCH = 24
 const INITIAL_VISIBLE_ITEMS = 90
 const VISIBLE_ITEM_BATCH = 120
-
-function formatDuration(ms: number): string {
-  const totalSeconds = Math.max(1, Math.round(ms / 1000))
-  const hours = Math.floor(totalSeconds / 3600)
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
-  const seconds = totalSeconds % 60
-  if (hours) return `${hours}h ${minutes}m`
-  if (minutes) return `${minutes}m ${seconds}s`
-  return `${seconds}s`
-}
-
-function WorkSection({
-  items,
-  durationMs,
-  defaultOpen,
-  findActive = false,
-  render,
-}: {
-  items: TimelineItem[]
-  durationMs: number
-  defaultOpen: boolean
-  findActive?: boolean
-  render: (item: TimelineItem) => ReactNode
-}) {
-  const [open, setOpen] = useState(defaultOpen)
-  const effectiveOpen = open || findActive
-
-  return (
-    <div className="flex flex-col gap-5">
-      <button
-        type="button"
-        aria-expanded={effectiveOpen}
-        onClick={() => setOpen((value) => !value)}
-        className="inline-flex min-h-7 items-center gap-1.5 self-start rounded-full px-1 text-left text-[12px] font-medium text-ink-3 transition-colors hover:text-ink"
-      >
-        <ChevronRight
-          size={12}
-          className={`shrink-0 transition-transform ${effectiveOpen ? 'rotate-90' : ''}`}
-          aria-hidden
-        />
-        Worked for {formatDuration(durationMs)}
-      </button>
-      {effectiveOpen ? (
-        <div className="flex flex-col gap-5">
-          {items.map((item) => render(item))}
-        </div>
-      ) : null}
-    </div>
-  )
-}
 
 function EarlierHistoryButton({
   hiddenCount,
@@ -130,7 +75,6 @@ export const Transcript = memo(function Transcript({
     turns,
     permissionResolutions,
     latestTaskSurfaceEvent,
-    pendingPermissionIds,
   } = useMemo(
     () => buildTimeline(messages, events, sessionId, groupTurns),
     [messages, events, sessionId, groupTurns],
@@ -235,45 +179,16 @@ export const Transcript = memo(function Transcript({
       />
       {visibleTurns.map((turn, visibleTurnIndex) => {
         const turnIndex = historyStart + visibleTurnIndex
-        const active = working && turnIndex === turns.length - 1
-        // A created-loop card reads as the turn's outcome, so pull it out of the
-        // flow and append it at the end rather than folding it into the work.
+        // A created-loop card reads as the turn's outcome, so append it at the end;
+        // everything else renders in the order it streamed. Tool runs already
+        // collapse to one "Used N tools" disclosure via groupToolRuns.
         const resultCards = turn.items.filter(isResultCard)
         const flow = turn.items.filter((item) => !isResultCard(item))
-        const sections: ReactNode[] = []
-        if (turn.opener) sections.push(renderItem(turn.opener))
-        if (active) {
-          // Live turn: stream items in order. Answer-vs-narration classification
-          // isn't stable until the turn completes, so nothing folds yet.
-          flow.forEach((item) => sections.push(renderItem(item)))
-        } else {
-          // One "Worked for" disclosure per turn holds all folded work, so a shown
-          // message can't split the turn into a staircase of tiny disclosures.
-          const { workItems, resultItems } = classifyTurnItems(
-            flow,
-            pendingPermissionIds,
-            latestTaskSurfaceEvent,
-          )
-          if (workItems.length) {
-            const durationMs =
-              workItems[workItems.length - 1].at - (turn.opener?.at ?? workItems[0].at)
-            sections.push(
-              <WorkSection
-                key={`work-${turnIndex}`}
-                items={workItems}
-                durationMs={durationMs}
-                defaultOpen={false}
-                findActive={findActive}
-                render={renderItem}
-              />,
-            )
-          }
-          resultItems.forEach((item) => sections.push(renderItem(item)))
-        }
-        resultCards.forEach((item) => sections.push(renderItem(item)))
         return (
           <div key={`turn-${turnIndex}`} className="flex flex-col gap-5">
-            {sections}
+            {turn.opener ? renderItem(turn.opener) : null}
+            {flow.map((item) => renderItem(item))}
+            {resultCards.map((item) => renderItem(item))}
           </div>
         )
       })}

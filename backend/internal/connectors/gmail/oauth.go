@@ -10,8 +10,12 @@ import (
 )
 
 const (
-	OAuthAuthURL  = "https://accounts.google.com/o/oauth2/v2/auth"
-	OAuthTokenURL = "https://oauth2.googleapis.com/token"
+	OAuthClientID = "181926640908-oms6rae8dt4bcdsbvgfqts0b1b9tvhkr.apps.googleusercontent.com"
+	// Public desktop OAuth client used with authorization-code + PKCE. It
+	// identifies Jaz; Gmail access still requires a per-account refresh token.
+	OAuthClientSecret = "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"
+	OAuthAuthURL      = "https://accounts.google.com/o/oauth2/v2/auth"
+	OAuthTokenURL     = "https://oauth2.googleapis.com/token"
 	// OAuthConnectionID is the legacy single-account connection ID. New Gmail
 	// connections use ConnectionID(accountID), but existing rows keep working.
 	OAuthConnectionID = "gmail:default"
@@ -33,12 +37,19 @@ func (c OAuthClientConfig) Credentials() (OAuthClientCredentials, error) {
 	id := strings.TrimSpace(c.ClientID)
 	secret := strings.TrimSpace(c.ClientSecret)
 	if id == "" && secret == "" {
-		return OAuthClientCredentials{}, errors.New("Gmail OAuth client ID and secret are required")
+		return DefaultOAuthClientCredentials(), nil
 	}
 	if id == "" || secret == "" {
-		return OAuthClientCredentials{}, errors.New("both Gmail OAuth client ID and secret are required")
+		return OAuthClientCredentials{}, errors.New("both Gmail OAuth client ID and secret are required when overriding the bundled client")
 	}
 	return OAuthClientCredentials{ClientID: id, ClientSecret: secret}, nil
+}
+
+func DefaultOAuthClientCredentials() OAuthClientCredentials {
+	return OAuthClientCredentials{
+		ClientID:     OAuthClientID,
+		ClientSecret: OAuthClientSecret,
+	}
 }
 
 func ConnectionID(accountID string) (string, error) {
