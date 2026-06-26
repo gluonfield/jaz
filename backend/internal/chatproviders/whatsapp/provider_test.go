@@ -58,8 +58,8 @@ func TestNewWhatsAppClientUsesBrowserQRIdentity(t *testing.T) {
 	if got := waStore.DeviceProps.GetPlatformType(); got != waCompanionReg.DeviceProps_CHROME {
 		t.Fatalf("platform type = %s, want %s", got, waCompanionReg.DeviceProps_CHROME)
 	}
-	if got := waStore.DeviceProps.GetOs(); got == "Jaz" {
-		t.Fatalf("device os = %q, custom Jaz OS names should not be registered for pairing", got)
+	if got := waStore.DeviceProps.GetOs(); got != whatsappCompanionName {
+		t.Fatalf("device os = %q, want %q", got, whatsappCompanionName)
 	}
 }
 

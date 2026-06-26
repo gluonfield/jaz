@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/agent"
+	telegramconnector "github.com/wins/jaz/backend/internal/connectors/telegram"
 	"github.com/wins/jaz/backend/internal/coordinator"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/provider"
@@ -201,6 +202,24 @@ func TestNewIntegrationRawWriterUsesRuntimeIngestRoot(t *testing.T) {
 
 	if writer.Root != layout.Ingest {
 		t.Fatalf("raw writer root = %q, want %q", writer.Root, layout.Ingest)
+	}
+}
+
+func TestTelegramProviderConfigUsesRuntimeEnvCredentials(t *testing.T) {
+	t.Setenv(telegramconnector.EnvAppID, "")
+	t.Setenv(telegramconnector.EnvAppHash, "")
+
+	root := t.TempDir()
+	if err := runtimeenv.Save(runtimeenv.Path(root), map[string]string{
+		telegramconnector.EnvAppID:   "12345",
+		telegramconnector.EnvAppHash: "test-hash",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, ok, err := telegramProviderConfig(root)
+	if err != nil || !ok || cfg.APIID != 12345 || cfg.APIHash != "test-hash" {
+		t.Fatalf("config ok=%v cfg=%#v err=%v", ok, cfg, err)
 	}
 }
 
