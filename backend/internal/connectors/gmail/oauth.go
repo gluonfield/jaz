@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	OAuthClientID = "181926640908-oms6rae8dt4bcdsbvgfqts0b1b9tvhkr.apps.googleusercontent.com"
+	OAuthClientID = "818853148911-thp5kku4b4uh4vs8omhuq528847gb48h.apps.googleusercontent.com"
 	// Public desktop OAuth client used with authorization-code + PKCE. It
 	// identifies Jaz; Gmail access still requires a per-account refresh token.
-	OAuthClientSecret = "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"
+	OAuthClientSecret = "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"
 	OAuthAuthURL      = "https://accounts.google.com/o/oauth2/v2/auth"
 	OAuthTokenURL     = "https://oauth2.googleapis.com/token"
 	// OAuthConnectionID is the legacy single-account connection ID. New Gmail
