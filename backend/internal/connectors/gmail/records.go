@@ -30,6 +30,9 @@ type Message struct {
 	ID           string       `json:"id"`
 	ThreadID     string       `json:"thread_id,omitempty"`
 	HistoryID    string       `json:"history_id,omitempty"`
+	MessageID    string       `json:"message_id,omitempty"`
+	References   string       `json:"references,omitempty"`
+	InReplyTo    string       `json:"in_reply_to,omitempty"`
 	Subject      string       `json:"subject,omitempty"`
 	Snippet      string       `json:"snippet,omitempty"`
 	From         []Address    `json:"from,omitempty"`
@@ -39,6 +42,18 @@ type Message struct {
 	LabelIDs     []string     `json:"label_ids,omitempty"`
 	InternalDate time.Time    `json:"internal_date,omitempty"`
 	Attachments  []Attachment `json:"attachments,omitempty"`
+}
+
+type Thread struct {
+	ID        string    `json:"id"`
+	HistoryID string    `json:"history_id,omitempty"`
+	Snippet   string    `json:"snippet,omitempty"`
+	Messages  []Message `json:"messages,omitempty"`
+}
+
+type Draft struct {
+	ID      string  `json:"id"`
+	Message Message `json:"message"`
 }
 
 type HistoryCursor struct {
