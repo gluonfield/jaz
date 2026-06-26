@@ -16,7 +16,7 @@ export function SettingsBlock({
   return (
     <section>
       <p className="mb-2 text-[12px] font-medium text-ink-2">{title}</p>
-      <SettingsCard className="overflow-hidden">{children}</SettingsCard>
+      {children}
     </section>
   )
 }
@@ -35,19 +35,19 @@ export function ExistingConnectionCard({
   const address = accountAddress(account)
 
   return (
-    <div className="grid grid-cols-1 gap-3 bg-surface px-3 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+    <SettingsCard className="grid h-full grid-cols-1 gap-3 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
       <ConnectionSummary plugin={plugin} title={plugin.name} detail={address || account.id} />
       <Button
         variant="danger"
         size="sm"
         disabled={disconnecting}
         onClick={onDisconnect}
-        className="md:justify-self-end"
+        className="sm:justify-self-end"
       >
         {disconnecting ? <Loader2 size={13} className="animate-spin" /> : <Unplug size={13} />}
         {disconnecting ? 'Disconnecting' : 'Disconnect'}
       </Button>
-    </div>
+    </SettingsCard>
   )
 }
 
@@ -65,19 +65,19 @@ export function ConnectionPluginCard({
   const Icon = connecting ? Loader2 : available && connected && plugin.multi_account ? Plus : available ? Plug : Clock3
 
   return (
-    <div className="grid grid-cols-1 gap-3 bg-surface px-3 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+    <SettingsCard className="grid h-full grid-cols-1 gap-3 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
       <ConnectionSummary plugin={plugin} title={plugin.name} detail={plugin.description} />
       <Button
         variant="secondary"
         size="sm"
         disabled={!available || connecting}
         onClick={onConnect}
-        className="md:justify-self-end"
+        className="sm:justify-self-end"
       >
         <Icon size={13} className={connecting ? 'animate-spin' : undefined} />
         {pluginActionLabel(plugin, connecting)}
       </Button>
-    </div>
+    </SettingsCard>
   )
 }
 
