@@ -10,6 +10,7 @@ import { motion } from 'motion/react'
 import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useState } from 'react'
 import { ConnectOverlay } from '@/components/connection/ConnectOverlay'
 import { CommandPalette } from '@/components/search/CommandPalette'
+import type { SettingsSection } from '@/components/settings/sections'
 import { SettingsOverlay } from '@/components/settings/SettingsOverlay'
 import { Sidebar } from '@/components/sidebar/Sidebar'
 import { ToastProvider } from '@/components/ui/toast'
@@ -91,8 +92,14 @@ function RootLayout() {
   })
   const [resizing, setResizing] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>()
   const [connectOpen, setConnectOpen] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
+
+  const openSettings = useCallback((section?: SettingsSection) => {
+    setSettingsSection(section)
+    setSettingsOpen(true)
+  }, [])
 
   // A specific board paints itself on bg-surface so its tiles blend; the app
   // titlebar inherits main's background, so match main to surface there too —
@@ -211,7 +218,7 @@ function RootLayout() {
               resizing={resizing}
               onResizeStart={startResize}
               onResizeReset={() => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH)}
-              onOpenSettings={() => setSettingsOpen(true)}
+              onOpenSettings={() => openSettings()}
               onOpenConnect={() => setConnectOpen(true)}
             />
           </motion.div>
@@ -257,6 +264,7 @@ function RootLayout() {
         </div>
         <SettingsOverlay
           open={settingsOpen}
+          section={settingsSection}
           onClose={() => setSettingsOpen(false)}
           onOpenConnect={() => setConnectOpen(true)}
         />
@@ -264,7 +272,7 @@ function RootLayout() {
         <CommandPalette
           open={commandOpen}
           onOpenChange={setCommandOpen}
-          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenSettings={openSettings}
           onOpenConnect={() => setConnectOpen(true)}
         />
       </ToastProvider>

@@ -45,7 +45,7 @@ func TestAPIClientNormalizesDisabledAPIError(t *testing.T) {
 		_, _ = w.Write([]byte(`{
 			"error": {
 				"code": 403,
-				"message": "Gmail API has not been used in project 181926640908 before or it is disabled. Enable it by visiting https://console.developers.google.com/apis/api/gmail.googleapis.com/overview?project=181926640908 then retry.",
+				"message": "Gmail API has not been used in project 123456789 before or it is disabled. Enable it by visiting https://console.developers.google.com/apis/api/gmail.googleapis.com/overview?project=123456789 then retry.",
 				"status": "PERMISSION_DENIED",
 				"errors": [{"reason":"accessNotConfigured"}],
 				"details": [{"reason":"SERVICE_DISABLED"}]
@@ -59,7 +59,7 @@ func TestAPIClientNormalizesDisabledAPIError(t *testing.T) {
 		t.Fatal("expected error")
 	}
 	text := err.Error()
-	if !strings.Contains(text, "gmail api is disabled for the OAuth client project") || strings.Contains(text, "181926640908") || strings.Contains(text, "console.developers.google.com") {
+	if !strings.Contains(text, "gmail api is disabled for the OAuth client project") || strings.Contains(text, "123456789") || strings.Contains(text, "console.developers.google.com") {
 		t.Fatalf("error = %q", text)
 	}
 }

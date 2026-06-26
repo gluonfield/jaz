@@ -64,12 +64,14 @@ You can also connect **OpenRouter**, **OpenAI**, or **Anthropic** directly and p
 ## Architecture
 
 Client/server split — the backend owns everything, clients are control surfaces.
+By default you run both together on your own machine; the backend can also live on a
+remote server you connect to over HTTP.
 
 - **Backend** (`backend/`, Go) — the always-on core. Runs agent sessions, loops,
   memory, and tools; owns your credentials and workspaces. REST + SSE; drives agents
   over [ACP](https://agentclientprotocol.com) and tools over MCP.
 - **Desktop** (`frontend/`, Electron + React) — the control surface. Runs the backend
-  locally, or connects to a remote one over HTTP with a per-device token.
+  locally by default, or connects to a remote one over HTTP with a per-device token.
 
 Running the backend on a server: see [`docs/remote-backend.md`](docs/remote-backend.md).
 

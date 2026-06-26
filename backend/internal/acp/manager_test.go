@@ -1030,6 +1030,8 @@ func TestManagerUsesCodexModelAndEffortConfigOptions(t *testing.T) {
 			"codex": {
 				Command:         os.Args[0],
 				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
+				ProviderMode:    acp.AgentProviderModeAgentDefaults,
+				ModelProvider:   provider.ProviderOpenAI,
 				Model:           "fake-large",
 				ReasoningEffort: "xhigh",
 				Env: map[string]string{
@@ -1055,6 +1057,48 @@ func TestManagerUsesCodexModelAndEffortConfigOptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	if session.Model != "fake-large" || session.ReasoningEffort != "xhigh" {
+		t.Fatalf("unexpected stored model metadata %#v", session)
+	}
+}
+
+func TestManagerUsesCodexProviderNativeModel(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := acp.NewManager(store, acp.Config{
+		Root:      t.TempDir(),
+		Workspace: t.TempDir(),
+		Agents: map[string]acp.AgentConfig{
+			"codex": {
+				Command:         os.Args[0],
+				Args:            []string{"-test.run=TestFakeACPAgentProcess", "--"},
+				ProviderMode:    acp.AgentProviderModeAgentDefaults,
+				ModelProvider:   provider.ProviderOpenRouter,
+				Model:           "openai/gpt-5.5",
+				ReasoningEffort: "xhigh",
+				Env: map[string]string{
+					"JAZ_FAKE_ACP_AGENT":               "1",
+					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG": "openai/gpt-5.5",
+					"JAZ_FAKE_ACP_SET_CONFIG":          "1",
+					"JAZ_FAKE_ACP_EXPECT_EFFORT":       "xhigh",
+				},
+			},
+		},
+	}, log.New(io.Discard))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "codex", Slug: "codex-openrouter-model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	session, err := store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.ModelProvider != provider.ProviderOpenRouter || session.Model != "openai/gpt-5.5" || session.ReasoningEffort != "xhigh" {
 		t.Fatalf("unexpected stored model metadata %#v", session)
 	}
 }
@@ -1181,7 +1225,7 @@ func TestManagerAllowsUnadvertisedCodexModel(t *testing.T) {
 	}
 }
 
-func TestManagerRejectsConfiguredCodexEffortWhenModelOmitsEffortConfig(t *testing.T) {
+func TestManagerSkipsConfiguredCodexEffortWhenModelOmitsEffortConfig(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -1201,6 +1245,7 @@ func TestManagerRejectsConfiguredCodexEffortWhenModelOmitsEffortConfig(t *testin
 					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG":       "missing-model",
 					"JAZ_FAKE_ACP_SET_CONFIG":                "1",
 					"JAZ_FAKE_ACP_MODEL_CONFIG_OMITS_EFFORT": "1",
+					"JAZ_FAKE_ACP_EXPECT_CONFIG_ID":          "unexpected_effort_config",
 				},
 			},
 		},
@@ -1208,19 +1253,17 @@ func TestManagerRejectsConfiguredCodexEffortWhenModelOmitsEffortConfig(t *testin
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	_, err = manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "codex", Slug: "missing-codex-effort-config"})
-	if err == nil {
-		t.Fatal("expected spawn to fail")
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "codex", Slug: "missing-codex-effort-config"})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(err.Error(), `reasoning effort "xhigh"`) || !strings.Contains(err.Error(), "did not advertise a reasoning effort config option") {
-		t.Fatalf("unexpected error: %v", err)
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	session, err := store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
 	}
-	session, loadErr := store.LoadSession("missing-codex-effort-config")
-	if loadErr != nil {
-		t.Fatal(loadErr)
-	}
-	if session.Status != storage.StatusError || !strings.Contains(session.Error, "did not advertise a reasoning effort config option") {
-		t.Fatalf("missing effort config failure was not stored: %#v", session)
+	if session.Status == storage.StatusError || session.Error != "" {
+		t.Fatalf("missing effort config should not fail session: %#v", session)
 	}
 }
 

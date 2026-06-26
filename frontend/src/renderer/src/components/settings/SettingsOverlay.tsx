@@ -1,21 +1,4 @@
-import {
-  ArchiveRestore,
-  ArrowLeft,
-  Bot,
-  Boxes,
-  Brain,
-  ChartNoAxesColumn,
-  Globe,
-  Keyboard,
-  Link2,
-  MonitorSmartphone,
-  Palette,
-  PanelLeft,
-  Plug,
-  Search,
-  Sparkles,
-  SlidersHorizontal,
-} from 'lucide-react'
+import { ArrowLeft, PanelLeft, Search } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -34,53 +17,23 @@ import { KeyboardShortcutsSettings } from './KeyboardShortcutsSettings'
 import { MCPSettings } from './MCPSettings'
 import { MemorySettings } from './MemorySettings'
 import { PersonalizationSettings } from './PersonalizationSettings'
+import { SETTINGS_SECTIONS, type SettingsSection } from './sections'
 import { UsageSettings } from './UsageSettings'
-
-type Section =
-  | 'general'
-  | 'appearance'
-  | 'personalization'
-  | 'memory'
-  | 'connections'
-  | 'browser'
-  | 'usage'
-  | 'devices'
-  | 'keyboard'
-  | 'mcp'
-  | 'providers'
-  | 'agents'
-  | 'archived'
-
-type NavItem = { id: Section; label: string; icon: typeof Bot; fullHeight?: boolean }
-
-const NAV: NavItem[] = [
-  { id: 'general', label: 'General', icon: SlidersHorizontal },
-  { id: 'appearance', label: 'Appearance', icon: Palette },
-  { id: 'personalization', label: 'Personalization', icon: Sparkles, fullHeight: true },
-  { id: 'memory', label: 'Memory', icon: Brain },
-  { id: 'connections', label: 'Connections', icon: Link2 },
-  { id: 'browser', label: 'Browser', icon: Globe },
-  { id: 'usage', label: 'Usage', icon: ChartNoAxesColumn },
-  { id: 'devices', label: 'Devices', icon: MonitorSmartphone },
-  { id: 'keyboard', label: 'Keyboard shortcuts', icon: Keyboard },
-  { id: 'mcp', label: 'MCP servers', icon: Plug },
-  { id: 'providers', label: 'Model Providers', icon: Boxes },
-  { id: 'agents', label: 'Agents (ACP)', icon: Bot },
-  { id: 'archived', label: 'Archived threads', icon: ArchiveRestore },
-]
 
 export function SettingsOverlay({
   open,
+  section: target,
   onClose,
   onOpenConnect,
 }: {
   open: boolean
+  section?: SettingsSection
   onClose: () => void
   onOpenConnect: () => void
 }) {
   const reduce = useReducedMotion()
   const isMobile = useIsMobile()
-  const [section, setSection] = useState<Section>('general')
+  const [section, setSection] = useState<SettingsSection>('general')
   const [query, setQuery] = useState('')
   // Phone: the nav is a full-screen drawer over the content rather than a fixed
   // column. It opens first (so a section is picked), then dismisses to reveal it.
@@ -107,10 +60,16 @@ export function SettingsOverlay({
     }
   }, [open, onClose])
 
-  const q = query.trim().toLowerCase()
-  const items = NAV.filter((item) => !q || item.label.toLowerCase().includes(q))
+  // Jump to the section a caller asked for (e.g. a command-palette entry). With
+  // no target (the sidebar button), reopening keeps the last-viewed section.
+  useEffect(() => {
+    if (open && target) setSection(target)
+  }, [open, target])
 
-  const current = NAV.find((item) => item.id === section) ?? NAV[0]
+  const q = query.trim().toLowerCase()
+  const items = SETTINGS_SECTIONS.filter((item) => !q || item.label.toLowerCase().includes(q))
+
+  const current = SETTINGS_SECTIONS.find((item) => item.id === section) ?? SETTINGS_SECTIONS[0]
 
   return createPortal(
     <AnimatePresence>
@@ -248,8 +207,8 @@ function SectionContent({
   section,
   onNavigate,
 }: {
-  section: Section
-  onNavigate: (section: Section) => void
+  section: SettingsSection
+  onNavigate: (section: SettingsSection) => void
 }) {
   switch (section) {
     case 'general':

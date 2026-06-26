@@ -158,6 +158,10 @@ func (c AgentConfig) ProviderQualifiedModel() string {
 	return modelProvider + "/" + model
 }
 
+func (c AgentConfig) ProviderNativeModel() string {
+	return strings.TrimSpace(c.Model)
+}
+
 func (c AgentConfig) NormalizeProviderModel(defaultProvider string) AgentConfig {
 	if !c.UsesModelProvider() {
 		return c
