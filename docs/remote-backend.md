@@ -208,7 +208,9 @@ curl -fsSL https://bun.sh/install | bash && export PATH="$HOME/.bun/bin:$PATH"
 sudo git clone --depth 1 https://github.com/gluonfield/jaz.git /opt/jaz
 sudo chown -R "$USER" /opt/jaz
 cd /opt/jaz/frontend && bun install
-VITE_JAZ_API_URL=origin bun run build:web                   # builds /opt/jaz/frontend/dist-web
+POSTHOG_PROJECT_TOKEN=<ph_project_token> \
+  VITE_JAZ_API_URL=origin \
+  bun run build:web                                         # builds /opt/jaz/frontend/dist-web
 ```
 
 **3. Point the backend at loopback** so it stays private and Caddy is the only thing exposed:

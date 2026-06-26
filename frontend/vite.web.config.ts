@@ -3,9 +3,11 @@ import tailwindcss from '@tailwindcss/vite'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
+import { defineTelemetryEnv } from './vite.telemetry'
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   root: resolve('src/renderer'),
+  define: defineTelemetryEnv(mode),
   resolve: {
     alias: {
       '@': resolve('src/renderer/src'),
@@ -34,4 +36,4 @@ export default defineConfig({
       '/v1': 'http://127.0.0.1:5299',
     },
   },
-})
+}))

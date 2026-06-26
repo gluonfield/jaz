@@ -27,6 +27,7 @@ assets (`--clobber`), so to redo a release just publish the tag again.
 Standalone backend release assets are built with version metadata. After
 installing one, `/opt/jaz/bin/jaz --version` should print the release tag.
 
-Desktop telemetry is enabled only when the release build receives the
-`POSTHOG_PROJECT_TOKEN` repository variable. The token is a public PostHog
-project token; leave it unset for telemetry-free builds.
+Desktop telemetry is enabled only when the release build receives
+`POSTHOG_PROJECT_TOKEN` as a repository variable or secret. The token is a
+public PostHog project token. The capture host is hardcoded to
+`https://us.i.posthog.com`.
