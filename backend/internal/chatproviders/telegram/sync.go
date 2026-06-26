@@ -98,6 +98,7 @@ func (p *Provider) exportHistory(ctx context.Context, connection integrations.Co
 		return nil
 	}
 	budget := newBackfillBudget()
+	cutoff := telegramBackfillCutoff(time.Now())
 	for {
 		page, err := p.getDialogsPage(ctx, api, budget, state.DialogOffset)
 		if err != nil {
@@ -115,7 +116,8 @@ func (p *Provider) exportHistory(ctx context.Context, connection integrations.Co
 		if err := p.raw.WriteRecords(ctx, telegramPeerRecords(connection, users, chats, channels)); err != nil {
 			return err
 		}
-		if err := p.writeMessages(ctx, connection, modified.GetMessages()); err != nil {
+		messages := modified.GetMessages()
+		if err := p.writeMessagesSince(ctx, connection, messages, cutoff); err != nil {
 			return err
 		}
 		for _, dialog := range dialogs {
@@ -135,7 +137,7 @@ func (p *Provider) exportHistory(ctx context.Context, connection integrations.Co
 			if err := p.saveBackfillState(connection.ID, state); err != nil {
 				return err
 			}
-			done, nextOffsetID, err := p.exportDialogHistory(ctx, connection, api, budget, ref.inputPeer(), offsetID)
+			done, nextOffsetID, err := p.exportDialogHistory(ctx, connection, api, budget, ref.inputPeer(), offsetID, cutoff)
 			if err != nil {
 				state.CurrentPeerOffsetID = nextOffsetID
 				return p.handleBackfillPause(connection.ID, state, err)
@@ -168,6 +170,9 @@ func (p *Provider) exportHistory(ctx context.Context, connection integrations.Co
 		if err := p.saveBackfillState(connection.ID, state); err != nil {
 			return err
 		}
+		if dialogPageReachedCutoff(dialogs, messages, cutoff) {
+			return p.finishBackfill(connection.ID, state)
+		}
 	}
 	return p.finishBackfill(connection.ID, state)
 }
@@ -190,7 +195,7 @@ func (p *Provider) startBackfillLoop(ctx context.Context, connection integration
 	}()
 }
 
-func (p *Provider) exportDialogHistory(ctx context.Context, connection integrations.Connection, api *tg.Client, budget *backfillBudget, peer tg.InputPeerClass, offsetID int) (bool, int, error) {
+func (p *Provider) exportDialogHistory(ctx context.Context, connection integrations.Connection, api *tg.Client, budget *backfillBudget, peer tg.InputPeerClass, offsetID int, cutoff int) (bool, int, error) {
 	for {
 		history, err := p.getHistoryPage(ctx, api, budget, peer, offsetID)
 		if err != nil {
@@ -208,8 +213,11 @@ func (p *Provider) exportDialogHistory(ctx context.Context, connection integrati
 		if err := p.raw.WriteRecords(ctx, telegramPeerRecords(connection, users, chats, channels)); err != nil {
 			return false, offsetID, err
 		}
-		if err := p.writeMessages(ctx, connection, messages); err != nil {
+		if err := p.writeMessagesSince(ctx, connection, messages, cutoff); err != nil {
 			return false, offsetID, err
+		}
+		if messagesReachedCutoff(messages, cutoff) {
+			return true, offsetID, nil
 		}
 		nextOffsetID := lowestMessageID(messages)
 		if nextOffsetID == 0 || nextOffsetID == offsetID {
@@ -273,11 +281,55 @@ func (p *Provider) writeTelegramMessage(ctx context.Context, connection integrat
 }
 
 func (p *Provider) writeMessages(ctx context.Context, connection integrations.Connection, messages []tg.MessageClass) error {
+	return p.writeMessagesSince(ctx, connection, messages, 0)
+}
+
+func (p *Provider) writeMessagesSince(ctx context.Context, connection integrations.Connection, messages []tg.MessageClass, cutoff int) error {
+	messages = telegramMessagesSince(messages, cutoff)
 	records := telegramMessageRecords(connection, messages)
 	if len(records) == 0 {
 		return nil
 	}
 	return p.raw.WriteRecords(ctx, records)
+}
+
+func telegramBackfillCutoff(now time.Time) int {
+	return int(now.UTC().Add(-telegramHistoricalWindow).Unix())
+}
+
+func telegramMessagesSince(messages []tg.MessageClass, cutoff int) []tg.MessageClass {
+	if cutoff <= 0 {
+		return messages
+	}
+	out := make([]tg.MessageClass, 0, len(messages))
+	for _, message := range messages {
+		date := telegramMessageDate(message)
+		if date == 0 || date >= cutoff {
+			out = append(out, message)
+		}
+	}
+	return out
+}
+
+func messagesReachedCutoff(messages []tg.MessageClass, cutoff int) bool {
+	if cutoff <= 0 {
+		return false
+	}
+	for _, message := range messages {
+		date := telegramMessageDate(message)
+		if date > 0 && date < cutoff {
+			return true
+		}
+	}
+	return false
+}
+
+func dialogPageReachedCutoff(dialogs []tg.DialogClass, messages []tg.MessageClass, cutoff int) bool {
+	if cutoff <= 0 || len(dialogs) == 0 {
+		return false
+	}
+	date := messageDate(messages, dialogs[len(dialogs)-1].GetTopMessage())
+	return date > 0 && date < cutoff
 }
 
 func (p *Provider) contactsSyncSuppressed(connectionID string) bool {
