@@ -9,7 +9,7 @@ import (
 
 func TestPluginDescribesGmailConnection(t *testing.T) {
 	plugin := Plugin()
-	if plugin.ID != "gmail" || plugin.Provider.ID != ProviderID || plugin.MultiAccount {
+	if plugin.ID != "gmail" || plugin.Provider.ID != ProviderID || !plugin.MultiAccount {
 		t.Fatalf("plugin = %#v", plugin)
 	}
 	if plugin.Category != "email" || plugin.Icon.Kind != integrations.PluginIconKindAsset || plugin.Icon.Value != "gmail" {

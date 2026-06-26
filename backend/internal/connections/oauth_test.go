@@ -12,7 +12,19 @@ import (
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
 
-type memoryOAuthStore struct{}
+type memoryOAuthStore struct {
+	connections []integrations.Connection
+}
+
+func (s memoryOAuthStore) ListConnections(_ context.Context, provider string) ([]integrations.Connection, error) {
+	var out []integrations.Connection
+	for _, connection := range s.connections {
+		if connection.Provider == provider {
+			out = append(out, connection)
+		}
+	}
+	return out, nil
+}
 
 func (memoryOAuthStore) SaveOAuthConnection(context.Context, integrationoauth.Token, integrations.Connection) error {
 	return nil
@@ -56,5 +68,40 @@ func TestOAuthStartRejectsUnsupportedPlugin(t *testing.T) {
 	_, err := NewOAuthService(memoryOAuthStore{}, OAuthConfig{}).Start(context.Background(), "slack", "http://127.0.0.1/callback")
 	if err == nil {
 		t.Fatal("expected unsupported plugin error")
+	}
+}
+
+func TestGmailConnectionReusesExistingAccount(t *testing.T) {
+	existing := integrations.Connection{
+		ID:          gmailconnector.OAuthConnectionID,
+		Provider:    gmailconnector.ProviderID,
+		AccountID:   "augustinas@example.com",
+		AccountName: "Old name",
+		Alias:       "default",
+	}
+	service := NewOAuthService(memoryOAuthStore{connections: []integrations.Connection{existing}}, OAuthConfig{})
+
+	connection, err := service.gmailConnection(context.Background(), gmailconnector.Profile{EmailAddress: "Augustinas@example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if connection.ID != gmailconnector.OAuthConnectionID || connection.Alias != "default" || connection.AccountID != "Augustinas@example.com" {
+		t.Fatalf("connection = %#v", connection)
+	}
+}
+
+func TestGmailConnectionCreatesAccountSpecificID(t *testing.T) {
+	service := NewOAuthService(memoryOAuthStore{connections: []integrations.Connection{{
+		ID:        gmailconnector.OAuthConnectionID,
+		Provider:  gmailconnector.ProviderID,
+		AccountID: "first@example.com",
+	}}}, OAuthConfig{})
+
+	connection, err := service.gmailConnection(context.Background(), gmailconnector.Profile{EmailAddress: "second@example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if connection.ID == gmailconnector.OAuthConnectionID || connection.ID == "" || connection.Alias != "second" || connection.Provider != gmailconnector.ProviderID {
+		t.Fatalf("connection = %#v", connection)
 	}
 }
