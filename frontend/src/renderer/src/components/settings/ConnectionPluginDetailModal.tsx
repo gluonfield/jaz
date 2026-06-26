@@ -29,23 +29,19 @@ export function ConnectionPluginDetailModal({
       title={plugin.name}
       description={subtitle(plugin)}
       icon={<PluginGlyph plugin={plugin} size={18} />}
-      size="xl"
+      size="lg"
     >
-      <div className="grid gap-6 lg:grid-cols-5 lg:items-start">
-        <div className="space-y-5 lg:col-span-2">
-          <PreviewBand plugin={plugin} />
-          <p className="text-[13px] leading-5 text-ink-2">{plugin.description}</p>
-          <AppsSection
-            plugin={plugin}
-            connecting={connecting}
-            onConnect={() => onConnect(plugin)}
-          />
-          <InformationSection plugin={plugin} />
-        </div>
-        <div className="space-y-6 lg:col-span-3">
-          {plugin.tools?.length ? <ToolsSection tools={plugin.tools} /> : null}
-          {plugin.skills?.length ? <SkillsSection skills={plugin.skills} /> : null}
-        </div>
+      <div className="space-y-6">
+        <PreviewBand plugin={plugin} />
+        <p className="text-[13px] leading-5 text-ink-2">{plugin.description}</p>
+        <AppsSection
+          plugin={plugin}
+          connecting={connecting}
+          onConnect={() => onConnect(plugin)}
+        />
+        {plugin.tools?.length ? <ToolsSection tools={plugin.tools} /> : null}
+        {plugin.skills?.length ? <SkillsSection skills={plugin.skills} /> : null}
+        <InformationSection plugin={plugin} />
       </div>
     </Modal>
   )
@@ -114,7 +110,7 @@ function ToolsSection({ tools }: { tools: IntegrationTool[] }) {
   return (
     <section>
       <SectionHeading label="Tools" count={tools.length} />
-      <div className="grid gap-3 xl:grid-cols-2">
+      <div className="space-y-3">
         {tools.map((tool) => (
           <div key={tool.name} className="flex min-w-0 items-start gap-3">
             <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-control bg-surface text-ink-2">
@@ -137,7 +133,7 @@ function SkillsSection({ skills }: { skills: IntegrationSkill[] }) {
   return (
     <section>
       <SectionHeading label="Skills" count={skills.length} />
-      <div className="grid gap-3 xl:grid-cols-2">
+      <div className="space-y-3">
         {skills.map((skill) => (
           <div key={skill.id} className="flex min-w-0 items-start gap-3">
             <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-control bg-surface text-primary">
