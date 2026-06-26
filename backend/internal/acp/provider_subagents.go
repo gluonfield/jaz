@@ -23,28 +23,23 @@ type providerSubagentUpdate struct {
 	consume  bool
 }
 
+// providerSubagentFromUpdate publishes subagent panel records and decides which
+// updates to keep out of the main transcript. Both providers report subagents
+// the same way — a _meta.jaz.providerSubagent record built at the adapter edge
+// (codex-acp's collab_subagents, claude-agent-acp's subagents) — so publishing
+// is provider-agnostic. Consuming is Jaz display policy: codex subagent records
+// ride dedicated session_info updates, while Claude streams a subagent's own
+// tool calls inline tagged with claudeCode.parentToolUseId; those belong to the
+// subagent's panel, never the parent turn.
 func providerSubagentFromUpdate(agent string, update acpschema.DecodedSessionUpdate) providerSubagentUpdate {
 	switch event := update.(type) {
 	case acpschema.SessionInfoSessionUpdate:
-		return providerSubagentUpdate{subagent: providerSubagentFromJazMeta(agent, event.Meta, providerSubagentHint{}), consume: true}
+		subagent := providerSubagentFromJazMeta(agent, event.Meta, providerSubagentHint{})
+		return providerSubagentUpdate{subagent: subagent, consume: subagent != nil}
 	case acpschema.ToolCallSessionUpdate:
-		hint := providerSubagentHint{
-			summary: firstNonEmpty(event.Title, string(event.ToolCallID)),
-			status:  "running",
-		}
-		if subagent := providerSubagentFromJazMeta(agent, event.Meta, hint); subagent != nil {
-			return providerSubagentUpdate{subagent: subagent}
-		}
-		return providerSubagentUpdate{subagent: claudeProviderSubagentFromMeta(agent, event.Meta, hint), consume: true}
+		return toolCallSubagent(agent, event.Meta)
 	case acpschema.ToolCallUpdateSessionUpdate:
-		hint := providerSubagentHint{
-			summary: firstNonEmpty(event.Title, string(event.ToolCallID)),
-			status:  "running",
-		}
-		if subagent := providerSubagentFromJazMeta(agent, event.Meta, hint); subagent != nil {
-			return providerSubagentUpdate{subagent: subagent}
-		}
-		return providerSubagentUpdate{subagent: claudeProviderSubagentFromMeta(agent, event.Meta, hint), consume: true}
+		return toolCallSubagent(agent, event.Meta)
 	case acpschema.AgentMessageChunkUpdate:
 		return providerSubagentUpdate{subagent: providerSubagentFromJazMeta(agent, event.Meta, providerSubagentHint{summary: "Subagent message", status: "running"})}
 	case acpschema.AgentThoughtChunkUpdate:
@@ -52,6 +47,24 @@ func providerSubagentFromUpdate(agent string, update acpschema.DecodedSessionUpd
 	default:
 		return providerSubagentUpdate{}
 	}
+}
+
+func toolCallSubagent(agent string, meta map[string]any) providerSubagentUpdate {
+	return providerSubagentUpdate{
+		subagent: providerSubagentFromJazMeta(agent, meta, providerSubagentHint{status: "running"}),
+		consume:  subagentInternalToolCall(meta),
+	}
+}
+
+// subagentInternalToolCall reports whether a tool call is a Claude subagent's
+// own nested call (claudeCode.parentToolUseId), which Jaz keeps out of the main
+// transcript regardless of whether it also carried a panel record.
+func subagentInternalToolCall(meta map[string]any) bool {
+	claudeCode, ok := mapValue(meta["claudeCode"])
+	if !ok {
+		return false
+	}
+	return strings.TrimSpace(stringValue(claudeCode["parentToolUseId"])) != ""
 }
 
 func providerSubagentFromJazMeta(agent string, meta map[string]any, hint providerSubagentHint) *sessionevents.ProviderSubagentEvent {
@@ -70,26 +83,6 @@ func providerSubagentFromJazMeta(agent string, meta map[string]any, hint provide
 		}
 	}
 	return nil
-}
-
-func claudeProviderSubagentFromMeta(agent string, meta map[string]any, hint providerSubagentHint) *sessionevents.ProviderSubagentEvent {
-	if CanonicalAgentName(agent) != AgentClaude {
-		return nil
-	}
-	claudeCode, ok := mapValue(meta["claudeCode"])
-	if !ok {
-		return nil
-	}
-	id := strings.TrimSpace(stringValue(claudeCode["parentToolUseId"]))
-	if id == "" {
-		return nil
-	}
-	return &sessionevents.ProviderSubagentEvent{
-		Provider: AgentClaude,
-		ID:       id,
-		Status:   firstNonEmpty(hint.status, "running"),
-		Summary:  hint.summary,
-	}
 }
 
 func decodeProviderSubagent(raw map[string]any) *sessionevents.ProviderSubagentEvent {
