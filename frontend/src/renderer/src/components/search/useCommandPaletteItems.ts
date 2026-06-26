@@ -2,7 +2,11 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { Server, Settings2, SquarePen } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { SETTINGS_SECTIONS, type SettingsSection } from '@/components/settings/sections'
+import {
+  type SettingsSection,
+  useExperimentalFeaturesEnabled,
+  visibleSettingsSections,
+} from '@/components/settings/sections'
 import { searchThreads } from '@/lib/api/search'
 import { keys } from '@/lib/query/keys'
 import type { PaletteCommand, PaletteThread } from './commandPaletteTypes'
@@ -36,6 +40,7 @@ export function useCommandPaletteItems({
   onOpenConnect: () => void
 }) {
   const navigate = useNavigate()
+  const [experimentalEnabled] = useExperimentalFeaturesEnabled()
   const debouncedQuery = useDebouncedValue(query.trim(), 140)
   const searchEnabled = open && debouncedQuery.length >= 2
 
@@ -81,7 +86,7 @@ export function useCommandPaletteItems({
   // section name), keeping the resting palette uncluttered.
   const settingsCommands = useMemo<PaletteCommand[]>(
     () =>
-      SETTINGS_SECTIONS.map((sectionItem) => ({
+      visibleSettingsSections(experimentalEnabled).map((sectionItem) => ({
         id: `settings-${sectionItem.id}`,
         kind: 'command',
         title: sectionItem.label,
@@ -91,7 +96,7 @@ export function useCommandPaletteItems({
           onOpenSettings(sectionItem.id)
         },
       })),
-    [onOpenChange, onOpenSettings],
+    [experimentalEnabled, onOpenChange, onOpenSettings],
   )
 
   // Archived chats stay searchable; the backend ranks them below active ones
