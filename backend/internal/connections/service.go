@@ -2,19 +2,26 @@ package connections
 
 import (
 	"context"
+	"errors"
+	"strings"
 
-	"github.com/wins/jaz/backend/internal/connectors/gmail"
 	"github.com/wins/jaz/backend/pkg/integrations"
-	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
+
+var ErrConnectionNotFound = errors.New("connection account not found")
+
+type Store interface {
+	ListConnections(context.Context, string) ([]integrations.Connection, error)
+	DeleteConnection(context.Context, string) (bool, error)
+}
 
 type Service struct {
 	catalog *Catalog
-	tokens  integrationoauth.Store
+	store   Store
 }
 
-func NewService(catalog *Catalog, tokens integrationoauth.Store) *Service {
-	return &Service{catalog: catalog, tokens: tokens}
+func NewService(catalog *Catalog, store Store) *Service {
+	return &Service{catalog: catalog, store: store}
 }
 
 func (s *Service) ListPlugins(ctx context.Context) ([]integrations.Plugin, error) {
@@ -38,23 +45,33 @@ func (s *Service) Plugin(ctx context.Context, id string) (integrations.Plugin, b
 	return plugin, true, err
 }
 
+func (s *Service) DisconnectAccount(ctx context.Context, id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ErrConnectionNotFound
+	}
+	ok, err := s.store.DeleteConnection(ctx, id)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrConnectionNotFound
+	}
+	return nil
+}
+
 func (s *Service) withConnection(ctx context.Context, plugin integrations.Plugin) (integrations.Plugin, error) {
-	if plugin.ID != gmail.ProviderID {
+	if plugin.Provider.ID == "" {
 		return plugin, nil
 	}
-	connection := integrations.PluginConnection{Status: integrations.PluginConnectionStatusNotConnected}
-	token, ok, err := s.tokens.LoadToken(ctx, gmail.OAuthConnectionID)
+	accounts, err := s.store.ListConnections(ctx, plugin.Provider.ID)
 	if err != nil {
 		return integrations.Plugin{}, err
 	}
-	if ok && (token.AccessToken != "" || token.RefreshToken != "") {
+	connection := integrations.PluginConnection{Status: integrations.PluginConnectionStatusNotConnected}
+	if len(accounts) > 0 {
 		connection.Status = integrations.PluginConnectionStatusConnected
-		connection.Accounts = []integrations.Connection{{
-			ID:       gmail.OAuthConnectionID,
-			Provider: gmail.ProviderID,
-			Alias:    "default",
-			Scopes:   token.Scopes,
-		}}
+		connection.Accounts = accounts
 	}
 	plugin.Connection = &connection
 	return plugin, nil

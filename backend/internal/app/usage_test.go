@@ -15,6 +15,7 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	usagecore "github.com/wins/jaz/backend/internal/usage"
+	"github.com/wins/jaz/backend/pkg/integrations"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 	"go.uber.org/fx"
 )
@@ -31,8 +32,16 @@ func (fakeConnectionOAuthStore) LoadToken(context.Context, string) (integrationo
 	return integrationoauth.Token{}, false, nil
 }
 
-func (fakeConnectionOAuthStore) SaveToken(context.Context, string, integrationoauth.Token) error {
+func (fakeConnectionOAuthStore) ListConnections(context.Context, string) ([]integrations.Connection, error) {
+	return nil, nil
+}
+
+func (fakeConnectionOAuthStore) SaveOAuthConnection(context.Context, integrationoauth.Token, integrations.Connection) error {
 	return nil
+}
+
+func (fakeConnectionOAuthStore) DeleteConnection(context.Context, string) (bool, error) {
+	return false, nil
 }
 
 func TestUsageModuleProvidesRoute(t *testing.T) {
@@ -121,12 +130,13 @@ func TestNewRoutesIncludesConnectionPluginRoutes(t *testing.T) {
 	routes := NewRoutes(routeDeps{
 		Usage:           usagecore.NewService(fakeUsageStore{}),
 		Connections:     connections.NewService(catalog, fakeConnectionOAuthStore{}),
-		ConnectionOAuth: connections.NewOAuthService(fakeConnectionOAuthStore{}),
+		ConnectionOAuth: connections.NewOAuthService(fakeConnectionOAuthStore{}, connections.OAuthConfig{}),
 	})
 	found := map[string]bool{}
 	for _, route := range routes {
 		if (route.Pattern == "GET /v1/connections/plugins" ||
 			route.Pattern == "GET /v1/connections/plugins/{id}" ||
+			route.Pattern == "DELETE /v1/connections/accounts/{id}" ||
 			route.Pattern == "POST /v1/connections/plugins/{id}/connect" ||
 			route.Pattern == "GET /v1/connections/oauth/google/callback") && route.Handler != nil {
 			found[route.Pattern] = true
@@ -134,6 +144,7 @@ func TestNewRoutesIncludesConnectionPluginRoutes(t *testing.T) {
 	}
 	if !found["GET /v1/connections/plugins"] ||
 		!found["GET /v1/connections/plugins/{id}"] ||
+		!found["DELETE /v1/connections/accounts/{id}"] ||
 		!found["POST /v1/connections/plugins/{id}/connect"] ||
 		!found["GET /v1/connections/oauth/google/callback"] {
 		t.Fatalf("missing connection plugin routes: %#v", routes)

@@ -65,6 +65,7 @@ type Config struct {
 	Voice          VoiceConfig
 	ACP            acp.Config
 	Memory         MemoryConfig
+	Connections    ConnectionsConfig
 }
 
 type Release struct {
@@ -101,6 +102,15 @@ type MemoryConfig struct {
 	Root      string
 	DBPath    string
 	Scheduler bool
+}
+
+type ConnectionsConfig struct {
+	Gmail GmailConnectionConfig
+}
+
+type GmailConnectionConfig struct {
+	OAuthClientID     string
+	OAuthClientSecret string
 }
 
 type Workspace string

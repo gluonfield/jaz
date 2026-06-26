@@ -2,31 +2,31 @@
   "adapters": {
     "codex": {
       "repo": "gluonfield/codex-acp",
-      "tag": "v0.16.8",
-      "version": "0.16.8",
+      "tag": "v0.16.9",
+      "version": "0.16.9",
       "assets": {
         "darwin-arm64": {
-          "name": "codex-acp-0.16.8-aarch64-apple-darwin.tar.gz",
+          "name": "codex-acp-0.16.9-aarch64-apple-darwin.tar.gz",
           "binary": "codex-acp"
         },
         "darwin-x64": {
-          "name": "codex-acp-0.16.8-x86_64-apple-darwin.tar.gz",
+          "name": "codex-acp-0.16.9-x86_64-apple-darwin.tar.gz",
           "binary": "codex-acp"
         },
         "linux-arm64": {
-          "name": "codex-acp-0.16.8-aarch64-unknown-linux-gnu.tar.gz",
+          "name": "codex-acp-0.16.9-aarch64-unknown-linux-gnu.tar.gz",
           "binary": "codex-acp"
         },
         "linux-x64": {
-          "name": "codex-acp-0.16.8-x86_64-unknown-linux-gnu.tar.gz",
+          "name": "codex-acp-0.16.9-x86_64-unknown-linux-gnu.tar.gz",
           "binary": "codex-acp"
         },
         "win32-arm64": {
-          "name": "codex-acp-0.16.8-aarch64-pc-windows-msvc.tar.gz",
+          "name": "codex-acp-0.16.9-aarch64-pc-windows-msvc.tar.gz",
           "binary": "codex-acp.exe"
         },
         "win32-x64": {
-          "name": "codex-acp-0.16.8-x86_64-pc-windows-msvc.tar.gz",
+          "name": "codex-acp-0.16.9-x86_64-pc-windows-msvc.tar.gz",
           "binary": "codex-acp.exe"
         }
       }

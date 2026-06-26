@@ -17,6 +17,8 @@ FROM message_search_fts(CAST(sqlc.arg(match) AS TEXT))
 JOIN message_search_docs d ON d.id = message_search_fts.rowid
 JOIN threads t ON t.id = d.thread_id
 WHERE (CAST(sqlc.arg(include_archived) AS INTEGER) = 1 OR t.archived = 0)
+  -- Exclude loop-run / sourced threads, matching the default thread list.
+  AND coalesce(t.source_type, '') = ''
 ORDER BY bm25(message_search_fts)
 LIMIT sqlc.arg(limit);
 
@@ -39,5 +41,7 @@ FROM thread_search_fts(CAST(sqlc.arg(match) AS TEXT))
 JOIN thread_search_docs d ON d.id = thread_search_fts.rowid
 JOIN threads t ON t.id = d.thread_id
 WHERE (CAST(sqlc.arg(include_archived) AS INTEGER) = 1 OR t.archived = 0)
+  -- Exclude loop-run / sourced threads, matching the default thread list.
+  AND coalesce(t.source_type, '') = ''
 ORDER BY bm25(thread_search_fts, 3.0, 2.0, 1.0)
 LIMIT sqlc.arg(limit);

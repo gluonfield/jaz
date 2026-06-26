@@ -1,13 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, Clock3, Loader2, Mail, Plug } from 'lucide-react'
+import { CheckCircle2, Clock3, Loader2, Mail, Plug, Unplug } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
-import { connectionPluginsQuery, startConnectionPlugin } from '@/lib/api/connections'
+import {
+  connectionPluginsQuery,
+  disconnectConnectionAccount,
+  startConnectionPlugin,
+} from '@/lib/api/connections'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { keys } from '@/lib/query/keys'
-import type { IntegrationCapability, IntegrationPlugin } from '@/lib/api/types'
+import type {
+  IntegrationCapability,
+  IntegrationConnectionAccount,
+  IntegrationPlugin,
+} from '@/lib/api/types'
 
 const CAPABILITY_LABELS: Record<IntegrationCapability, string> = {
   sync: 'Sync',
@@ -35,6 +43,12 @@ export function ConnectionsSettings() {
     onError: (error: Error) => {
       toast(`Couldn't start Gmail sign-in: ${error.message}`, 'danger')
     },
+  })
+  const disconnect = useMutation({
+    mutationFn: disconnectConnectionAccount,
+    onSuccess: () => toast('Disconnected account'),
+    onError: (error: Error) => toast(`Couldn't disconnect account: ${error.message}`, 'danger'),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: keys.connectionPlugins }),
   })
   const sortedPlugins = useMemo(
     () => [...(plugins.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
@@ -82,7 +96,12 @@ export function ConnectionsSettings() {
                 key={plugin.id}
                 plugin={plugin}
                 connecting={connect.isPending && connect.variables === plugin.id}
+                disconnectingAccountID={disconnect.isPending ? disconnect.variables : undefined}
                 onConnect={() => connect.mutate(plugin.id)}
+                onDisconnect={(account) => {
+                  const label = accountLabel(account) || account.id
+                  if (window.confirm(`Disconnect ${label}?`)) disconnect.mutate(account.id)
+                }}
               />
             ))}
           </div>
@@ -103,18 +122,26 @@ function openAuthURL(url: string): void {
 function ConnectionPluginRow({
   plugin,
   connecting,
+  disconnectingAccountID,
   onConnect,
+  onDisconnect,
 }: {
   plugin: IntegrationPlugin
   connecting: boolean
+  disconnectingAccountID?: string
   onConnect: () => void
+  onDisconnect: (account: IntegrationConnectionAccount) => void
 }) {
   const toolCount = plugin.tools?.length ?? 0
   const sourceLanes = plugin.source_lanes ?? []
   const available = plugin.implementation.status === 'available'
   const connected = plugin.connection?.status === 'connected'
+  const accounts = plugin.connection?.accounts ?? []
+  const actionLabel = connecting ? 'Connecting' : connected && plugin.multi_account ? 'Add account' : connected ? 'Reconnect' : 'Connect'
   const actionIcon = connecting ? (
     <Loader2 size={13} className="animate-spin" />
+  ) : connected && plugin.multi_account ? (
+    <Plug size={13} />
   ) : connected ? (
     <CheckCircle2 size={13} />
   ) : (
@@ -144,13 +171,25 @@ function ConnectionPluginRow({
             {sourceLanes.length > 0 ? ` - ${sourceLanes.join(', ')}` : ''}
             {plugin.remote_mcp ? ` - Official MCP ${statusLabel(plugin.remote_mcp.status)}` : ''}
           </p>
+          {accounts.length > 0 ? (
+            <div className="mt-2 flex flex-col gap-1.5">
+              {accounts.map((account) => (
+                <ConnectedAccountRow
+                  key={account.id}
+                  account={account}
+                  disconnecting={disconnectingAccountID === account.id}
+                  onDisconnect={() => onDisconnect(account)}
+                />
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
 
       {available ? (
         <Button variant="secondary" size="sm" disabled={connecting} onClick={onConnect} className="max-sm:self-start">
           {actionIcon}
-          {connecting ? 'Connecting' : connected ? 'Reconnect' : 'Connect'}
+          {actionLabel}
         </Button>
       ) : (
         <span
@@ -163,6 +202,55 @@ function ConnectionPluginRow({
       )}
     </div>
   )
+}
+
+function ConnectedAccountRow({
+  account,
+  disconnecting,
+  onDisconnect,
+}: {
+  account: IntegrationConnectionAccount
+  disconnecting: boolean
+  onDisconnect: () => void
+}) {
+  const label = accountLabel(account) || account.id
+  const sublabel = accountSubLabel(account, label)
+  return (
+    <div className="flex min-w-0 items-center justify-between gap-2 rounded-control bg-surface px-2.5 py-2 max-sm:flex-col max-sm:items-start">
+      <div className="min-w-0">
+        <p className="truncate text-[12px] font-medium text-ink" title={label}>
+          {label}
+        </p>
+        {sublabel ? (
+          <p className="truncate text-[11px] text-ink-3" title={sublabel}>
+            {sublabel}
+          </p>
+        ) : null}
+      </div>
+      <Button
+        variant="danger"
+        size="sm"
+        disabled={disconnecting}
+        onClick={onDisconnect}
+        className="min-h-10 whitespace-nowrap max-sm:self-start"
+      >
+        {disconnecting ? <Loader2 size={13} className="animate-spin" /> : <Unplug size={13} />}
+        {disconnecting ? 'Disconnecting' : 'Disconnect'}
+      </Button>
+    </div>
+  )
+}
+
+function accountLabel(account: IntegrationConnectionAccount): string {
+  if (account.account_name) return account.account_name
+  if (account.account_id) return account.account_id
+  if (account.alias && account.alias !== 'default') return account.alias
+  return ''
+}
+
+function accountSubLabel(account: IntegrationConnectionAccount, label: string): string {
+  if (account.alias && account.alias !== 'default' && account.alias !== label) return account.alias
+  return ''
 }
 
 function ConnectedPill() {

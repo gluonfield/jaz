@@ -29,9 +29,20 @@ export function selectableACPModelProviders(
 ): ModelProviderOption[] {
   if (!acpUsesModelProvider(settings, agent)) return []
   const ids = new Set(settings?.acp_options?.[agent]?.model_provider_ids ?? [])
-  return (settings?.providers ?? []).filter(
+  const providers = (settings?.providers ?? []).filter(
     (provider) => ids.has(provider.id) && !providerHidden(provider.id),
   )
+  return orderedACPModelProviders(settings, agent, providers)
+}
+
+function orderedACPModelProviders(
+  settings: AgentSettings | undefined,
+  agent: string,
+  providers: ModelProviderOption[],
+): ModelProviderOption[] {
+  const first = settings?.acp_options?.[agent]?.auth_provider_id
+  if (!first) return providers
+  return [...providers].sort((a, b) => Number(b.id === first) - Number(a.id === first))
 }
 
 // The backend serializes `requires_api_key` with omitempty, so the only values
