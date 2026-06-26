@@ -52,3 +52,6 @@ export const SETTINGS_SECTIONS: SettingsNavItem[] = [
   { id: 'agents', label: 'Agents (ACP)', icon: Bot },
   { id: 'archived', label: 'Archived threads', icon: ArchiveRestore },
 ]
+
+export const isSettingsSection = (value: unknown): value is SettingsSection =>
+  SETTINGS_SECTIONS.some((item) => item.id === value)
