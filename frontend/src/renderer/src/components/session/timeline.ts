@@ -215,16 +215,32 @@ function hasAnswerStructure(text: string): boolean {
     /(^|\n)\s*([-*+]|\d+\.)\s/.test(text) || // bullet or numbered list
     /(^|\n)\s*\|.*\|/.test(text) || // table row
     /\\\[|\$\$/.test(text) || // display math
-    text.trim().includes('\n\n') // multiple paragraphs
+    text.includes('\n\n') // multiple paragraphs
   )
 }
 
+const progressNarrationPattern =
+  /\b(?:let me|i(?:'|’)ll|i will|i(?:'|’)m going to|i am going to|i(?:'|’)m (?:checking|running|opening|editing|installing|starting|staging|committing|doing|using|narrowing|tightening|changing))\b/i
+
+function hasAnswerWeight(text: string): boolean {
+  return text.length >= 400 || hasAnswerStructure(text)
+}
+
+function isLikelyProgressNarration(text: string): boolean {
+  if (hasAnswerWeight(text)) return false
+  return progressNarrationPattern.test(text)
+}
+
+function isSourceNote(text: string): boolean {
+  return /^sources?:\s/i.test(text)
+}
+
 // Split a completed turn into the work that folds under one "Worked for Xs" and
-// the result items shown inline, preserving order. A text block shows when it is
-// the terminal answer, sits next to an artifact it introduces, carries answer
-// structure, or is the whole of a tool-less turn; otherwise it is progress
-// narration and folds with the tools/thinking. Classifying at turn scope — not
-// per item — is what stops a shown message from splitting work into a staircase.
+// the result items shown inline, preserving order. With no final-answer marker
+// in stored ACP text, terminal, artifact-linked, source-linked, structured, and
+// substantial text stays visible; short unstructured non-terminal text folds as
+// process narration. Classifying at turn scope — not per item — is what stops a
+// shown message from splitting work into a staircase.
 export function classifyTurnItems(
   flow: TimelineItem[],
   pendingPermissionIds: Set<string>,
@@ -233,13 +249,21 @@ export function classifyTurnItems(
   // Pass 1: gather the turn-scope facts each text block needs. A text block
   // brackets an artifact when one sits between it and the adjacent text block.
   const artifactBracketed = new Set<number>()
+  const sourceLinkedText = new Set<number>()
+  const textIndices: number[] = []
   let lastTextIndex = -1
   let prevTextIndex = -1
   let artifactSincePrevText = false
   let hasAnchor = false
   let hasWork = false
   flow.forEach((item, index) => {
-    if (textContent(item) !== undefined) {
+    const text = textContent(item)
+    if (text !== undefined) {
+      textIndices.push(index)
+      if (isSourceNote(text)) {
+        sourceLinkedText.add(index)
+        if (prevTextIndex >= 0) sourceLinkedText.add(prevTextIndex)
+      }
       if (artifactSincePrevText) {
         artifactBracketed.add(index)
         if (prevTextIndex >= 0) artifactBracketed.add(prevTextIndex)
@@ -254,11 +278,16 @@ export function classifyTurnItems(
       hasWork = true
     }
   })
+  if (lastTextIndex >= 0 && isLikelyProgressNarration(textContent(flow[lastTextIndex]) ?? '')) {
+    const previousText = textIndices.at(-2)
+    if (previousText !== undefined) sourceLinkedText.add(previousText)
+  }
   const showsText = (index: number): boolean =>
     (!hasWork && !hasAnchor) || // a tool-less turn is pure answer
     index === lastTextIndex || // terminal answer
     artifactBracketed.has(index) || // prose introducing/following an artifact
-    hasAnswerStructure(textContent(flow[index]) ?? '')
+    sourceLinkedText.has(index) || // sources/trailing progress belong with the answer
+    hasAnswerWeight(textContent(flow[index]) ?? '')
 
   // Pass 2: partition in place. Artifacts return false from isCollapsibleWork,
   // so they fall through to results alongside pending questions/task surfaces.
