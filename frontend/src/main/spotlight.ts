@@ -94,9 +94,6 @@ function showLauncher(): void {
 function hideLauncher(): void {
   if (!launcher || launcher.isDestroyed() || !launcher.isVisible()) return
   launcher.hide()
-  if (!BrowserWindow.getAllWindows().some((win) => win !== launcher && win.isVisible())) {
-    app.hide()
-  }
 }
 
 function toggleLauncher(): void {
@@ -124,12 +121,13 @@ async function captureScreenRect(rect: Rect): Promise<{ ok: boolean; data?: stri
   const win = launcher
   if (!win || win.isDestroyed()) return { ok: false }
   if (Math.round(rect.width) < 2 || Math.round(rect.height) < 2) return { ok: false }
-  if (!(await ensureScreenPermission())) return { ok: false, denied: true }
-  const display = screen.getDisplayMatching(win.getBounds())
 
-  win.hide()
-  await delay(120)
   try {
+    if (!(await ensureScreenPermission())) return { ok: false, denied: true }
+    const display = screen.getDisplayMatching(win.getBounds())
+
+    win.hide()
+    await delay(120)
     const sources = await desktopCapturer.getSources({
       types: ['screen'],
       thumbnailSize: {
