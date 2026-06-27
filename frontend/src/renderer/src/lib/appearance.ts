@@ -172,14 +172,13 @@ export function getAppearance(): AppearanceSettings {
 
 export function setAppearance(patch: Partial<AppearanceSettings>) {
   const next = { ...current }
-  // A key is stored only when it differs from the base (config over hardcoded);
-  // setting the base value clears the override so it keeps tracking the config.
+  // A settings-panel write is an explicit user choice. Deploy defaults only
+  // apply to fields the user has never set.
   const store = <K extends keyof AppearanceSettings>(key: K, value: AppearanceSettings[K]) => {
     const field = FIELDS[key]
     const normalized = field.normalize(value)
     next[key] = normalized
-    if (normalized === BASE_DEFAULTS[key]) localStorage.removeItem(field.storageKey)
-    else localStorage.setItem(field.storageKey, field.encode(normalized))
+    localStorage.setItem(field.storageKey, field.encode(normalized))
   }
   for (const key of FIELD_KEYS) {
     const value = patch[key]
@@ -200,7 +199,8 @@ function subscribe(fn: () => void) {
 // Keep sibling Electron windows (detached boards, popouts) in step when the
 // settings panel writes a preference from another window.
 window.addEventListener('storage', (event) => {
-  if (event.storageArea !== localStorage || !event.key?.startsWith('jaz.appearance.')) return
+  if (event.storageArea && event.storageArea !== localStorage) return
+  if (event.key !== null && !event.key.startsWith('jaz.appearance.')) return
   current = readStored()
   apply(current)
   notify()
