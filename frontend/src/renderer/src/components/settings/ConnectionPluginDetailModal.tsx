@@ -1,4 +1,4 @@
-import { Loader2, Plug, Plus, QrCode } from 'lucide-react'
+import { ArrowRight, Loader2, Plug, Plus, QrCode } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import type { IntegrationPlugin, IntegrationTool } from '@/lib/api/types'
@@ -31,7 +31,7 @@ export function ConnectionPluginDetailModal({
       size="lg"
     >
       <div className="space-y-7">
-        <Hero plugin={plugin} />
+        {plugin.examples?.length ? <ExamplesBand plugin={plugin} /> : null}
         {plugin.tools?.length ? <ToolsSection tools={plugin.tools} /> : null}
         <InformationSection plugin={plugin} />
       </div>
@@ -63,15 +63,28 @@ function ConnectButton({
   )
 }
 
-function Hero({ plugin }: { plugin: IntegrationPlugin }) {
+function ExamplesBand({ plugin }: { plugin: IntegrationPlugin }) {
   return (
-    <div className="rounded-card bg-[linear-gradient(135deg,var(--color-primary-soft),var(--color-surface-2))] px-6 py-9 text-center">
-      <span className="mx-auto grid size-16 place-items-center rounded-[18px] bg-bg ring-1 ring-border/70">
-        <PluginGlyph plugin={plugin} size={32} />
-      </span>
-      {plugin.description ? (
-        <p className="mx-auto mt-5 max-w-sm text-[13px] leading-6 text-ink-2">{plugin.description}</p>
-      ) : null}
+    <div
+      className="space-y-2 rounded-card px-4 py-5"
+      style={{
+        background:
+          'linear-gradient(120deg, color-mix(in oklab, var(--color-primary) 28%, var(--color-bg)) 0%, color-mix(in oklab, var(--color-primary) 10%, var(--color-surface)) 55%, var(--color-surface) 100%)',
+      }}
+    >
+      {plugin.examples?.map((example) => (
+        <div
+          key={example}
+          className="flex items-center gap-2.5 rounded-full bg-bg/80 px-3.5 py-2.5"
+        >
+          <PluginGlyph plugin={plugin} size={16} />
+          <span className="shrink-0 text-[13px] font-medium text-ink">{plugin.name}</span>
+          <span className="min-w-0 flex-1 truncate text-[13px] text-ink-2">{example}</span>
+          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-surface-2 text-ink-3">
+            <ArrowRight size={13} />
+          </span>
+        </div>
+      ))}
     </div>
   )
 }
@@ -80,18 +93,20 @@ function ToolsSection({ tools }: { tools: IntegrationTool[] }) {
   return (
     <section>
       <SectionHeading label="Tools" count={tools.length} />
-      <ul className="max-h-[min(260px,38dvh)] divide-y divide-border/50 overflow-y-auto rounded-card bg-surface">
+      <ul className="grid grid-cols-1 gap-x-8 gap-y-1.5 sm:grid-cols-2">
         {tools.map((tool) => (
-          <li key={tool.name} className="px-3.5 py-3">
-            <p className="font-mono text-[12px] text-ink">{tool.name}</p>
-            {tool.description ? (
-              <p className="mt-1 text-[12px] leading-5 text-ink-2">{tool.description}</p>
-            ) : null}
+          <li key={tool.name} className="truncate text-[13px] text-ink" title={tool.name}>
+            {formatToolName(tool.name)}
           </li>
         ))}
       </ul>
     </section>
   )
+}
+
+function formatToolName(name: string): string {
+  const spaced = name.replace(/_/g, ' ').trim()
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
 }
 
 function InformationSection({ plugin }: { plugin: IntegrationPlugin }) {

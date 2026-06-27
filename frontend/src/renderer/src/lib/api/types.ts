@@ -265,6 +265,7 @@ export interface IntegrationPlugin {
   id: string
   name: string
   description?: string
+  examples?: string[]
   provider: IntegrationProvider
   category?: string
   icon: IntegrationPluginIcon

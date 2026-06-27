@@ -42,6 +42,7 @@ type Plugin struct {
 	ID              string            `json:"id"`
 	Name            string            `json:"name"`
 	Description     string            `json:"description,omitempty"`
+	Examples        []string          `json:"examples,omitempty"`
 	Provider        Provider          `json:"provider"`
 	Category        string            `json:"category,omitempty"`
 	Icon            PluginIcon        `json:"icon"`
