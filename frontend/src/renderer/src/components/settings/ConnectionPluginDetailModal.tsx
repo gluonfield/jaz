@@ -1,4 +1,4 @@
-import { ArrowRight, Loader2, Plug, Plus, QrCode } from 'lucide-react'
+import { ArrowUp, Loader2, Plug, Plus, QrCode } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import type { IntegrationPlugin, IntegrationTool } from '@/lib/api/types'
@@ -81,7 +81,7 @@ function ExamplesBand({ plugin }: { plugin: IntegrationPlugin }) {
           <span className="shrink-0 text-[13px] font-medium text-ink">{plugin.name}</span>
           <span className="min-w-0 flex-1 truncate text-[13px] text-ink-2">{example}</span>
           <span className="grid size-6 shrink-0 place-items-center rounded-full bg-surface-2 text-ink-3">
-            <ArrowRight size={13} />
+            <ArrowUp size={13} />
           </span>
         </div>
       ))}
