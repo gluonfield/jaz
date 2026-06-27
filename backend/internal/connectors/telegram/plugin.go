@@ -17,6 +17,11 @@ func Plugin() integrations.Plugin {
 		ID:          ProviderID,
 		Name:        ProviderName,
 		Description: "Sync Telegram chats into raw chat archives and let agents send messages.",
+		Examples: []string{
+			"Summarize my recent Telegram chats",
+			"Catch me up on unread group chats",
+			"Send a Telegram message to a contact",
+		},
 		Provider: integrations.Provider{
 			ID:   ProviderID,
 			Name: ProviderName,

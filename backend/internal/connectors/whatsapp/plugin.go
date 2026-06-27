@@ -17,6 +17,11 @@ func Plugin() integrations.Plugin {
 		ID:          ProviderID,
 		Name:        ProviderName,
 		Description: "Sync WhatsApp conversations into raw chat archives and let agents send messages.",
+		Examples: []string{
+			"Summarize my recent WhatsApp chats",
+			"Catch me up on unread conversations",
+			"Send a WhatsApp message to a contact",
+		},
 		Provider: integrations.Provider{
 			ID:   ProviderID,
 			Name: ProviderName,

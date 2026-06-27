@@ -29,6 +29,11 @@ func Plugin() integrations.Plugin {
 		ID:          "gmail",
 		Name:        "Gmail",
 		Description: "Search Gmail threads, draft replies, and send approved drafts from connected accounts.",
+		Examples: []string{
+			"Summarize my unread inbox and flag what needs a reply",
+			"Draft a reply to my latest thread",
+			"Find recent emails about invoices",
+		},
 		Provider: integrations.Provider{
 			ID:   ProviderID,
 			Name: ProviderName,
