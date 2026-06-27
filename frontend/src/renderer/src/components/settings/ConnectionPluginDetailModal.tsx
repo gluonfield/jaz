@@ -21,8 +21,8 @@ export function ConnectionPluginDetailModal({
   return (
     <Modal open onClose={onClose} title={plugin.name} size="wide" chromeless>
       <Hero plugin={plugin} connecting={connecting} onConnect={() => onConnect(plugin)} />
-      <div className="space-y-8 px-7 py-7">
-        {plugin.examples?.length ? <ExamplesSection plugin={plugin} /> : null}
+      <div className="space-y-9 px-8 pb-9">
+        {plugin.examples?.length ? <ExamplesBand plugin={plugin} /> : null}
         {plugin.tools?.length ? <ToolsSection tools={plugin.tools} /> : null}
         <InformationSection plugin={plugin} />
       </div>
@@ -39,32 +39,20 @@ function Hero({
   connecting: boolean
   onConnect: () => void
 }) {
-  const connected = plugin.connection?.status === 'connected'
-
   return (
-    <div className="border-b border-border bg-surface px-7 pb-7 pt-8">
-      <div className="flex items-center gap-4">
-        <span className="grid size-14 shrink-0 place-items-center rounded-card bg-bg ring-1 ring-border">
-          <PluginGlyph plugin={plugin} size={30} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate text-[17px] font-semibold leading-tight text-ink">{plugin.name}</h2>
-          <div className="mt-1.5 flex items-center gap-2 text-[13px] text-ink-2">
-            <span>{categoryLabel(plugin.category)}</span>
-            <span className="text-ink-3" aria-hidden="true">
-              ·
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className={`size-1.5 rounded-full ${connected ? 'bg-ok' : 'bg-ink-3'}`} />
-              {connected ? 'Connected' : 'Not connected'}
-            </span>
-          </div>
+    <div className="px-8 pb-8 pt-9">
+      <PluginGlyph plugin={plugin} size={44} />
+      <div className="mt-5 flex items-center justify-between gap-5">
+        <div className="min-w-0">
+          <h2 className="truncate text-2xl font-semibold leading-tight text-ink">{plugin.name}</h2>
+          {plugin.description ? (
+            <p className="mt-1.5 max-w-[58ch] text-[14px] leading-6 text-ink-2">
+              {plugin.description}
+            </p>
+          ) : null}
         </div>
         <ConnectButton plugin={plugin} connecting={connecting} onConnect={onConnect} />
       </div>
-      {plugin.description ? (
-        <p className="mt-4 max-w-[58ch] text-[13px] leading-6 text-ink-2">{plugin.description}</p>
-      ) : null}
     </div>
   )
 }
@@ -99,26 +87,33 @@ function ConnectButton({
   )
 }
 
-function ExamplesSection({ plugin }: { plugin: IntegrationPlugin }) {
+function ExamplesBand({ plugin }: { plugin: IntegrationPlugin }) {
   return (
-    <section>
-      <SectionLabel>Try asking</SectionLabel>
-      <div className="space-y-2">
+    <div
+      className="rounded-card px-6 py-8"
+      style={{
+        background:
+          'radial-gradient(135% 135% at 12% 15%, oklch(0.52 0.1 262) 0%, transparent 55%),' +
+          'radial-gradient(120% 130% at 88% 92%, oklch(0.46 0.09 292) 0%, transparent 55%),' +
+          'linear-gradient(135deg, oklch(0.33 0.06 266) 0%, oklch(0.29 0.05 282) 100%)',
+      }}
+    >
+      <div className="mx-auto flex max-w-[480px] flex-col gap-2.5">
         {plugin.examples?.map((example) => (
           <div
             key={example}
-            className="flex items-center gap-3 rounded-full bg-surface px-4 py-2.5"
+            className="flex items-center gap-3 rounded-full bg-black/40 px-4 py-2.5 ring-1 ring-white/10"
           >
             <PluginGlyph plugin={plugin} size={17} />
-            <span className="shrink-0 text-[13px] font-medium text-ink">{plugin.name}</span>
-            <span className="min-w-0 flex-1 truncate text-[13px] text-ink-2">{example}</span>
-            <span className="grid size-7 shrink-0 place-items-center rounded-full bg-surface-2 text-ink-2">
+            <span className="shrink-0 text-[13px] font-medium text-white">{plugin.name}</span>
+            <span className="min-w-0 flex-1 truncate text-[13px] text-white/70">{example}</span>
+            <span className="grid size-7 shrink-0 place-items-center rounded-full bg-white/10 text-white/80">
               <ArrowUp size={14} />
             </span>
           </div>
         ))}
       </div>
-    </section>
+    </div>
   )
 }
 
