@@ -56,9 +56,9 @@ type fakeACPService struct {
 
 type fakeBrowserBackend struct{}
 
-type fakeChatSender struct {
-	provider string
-}
+type fakeWhatsAppSender struct{}
+type fakeWhatsAppProvider struct{}
+type fakeTelegramProvider struct{}
 
 func (s fakeACPService) Spawn(_ context.Context, req acp.SpawnRequest) (acp.SpawnResult, error) {
 	s.spawned <- req
@@ -97,12 +97,24 @@ func (fakeBrowserBackend) Status() browserworker.ExtensionStatus {
 	return browserworker.ExtensionStatus{Connected: true}
 }
 
-func (s fakeChatSender) ProviderID() string {
-	return s.provider
+func (fakeWhatsAppSender) SendMessage(context.Context, whatsapp.SendMessageRequest) (whatsapp.SendMessageResult, error) {
+	return whatsapp.SendMessageResult{}, nil
 }
 
-func (s fakeChatSender) SendMessage(context.Context, connections.ChatSendRequest) (connections.ChatSendResult, error) {
-	return connections.ChatSendResult{}, nil
+func (fakeWhatsAppProvider) SendMessage(context.Context, whatsapp.SendMessageRequest) (whatsapp.SendMessageResult, error) {
+	return whatsapp.SendMessageResult{}, nil
+}
+
+func (fakeWhatsAppProvider) Search(context.Context, whatsapp.SearchRequest) (whatsapp.SearchResult, error) {
+	return whatsapp.SearchResult{}, nil
+}
+
+func (fakeTelegramProvider) SendMessage(context.Context, telegram.SendMessageRequest) (telegram.SendMessageResult, error) {
+	return telegram.SendMessageResult{}, nil
+}
+
+func (fakeTelegramProvider) Search(context.Context, telegram.SearchRequest) (telegram.SearchResult, error) {
+	return telegram.SearchResult{}, nil
 }
 
 func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
@@ -136,10 +148,8 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		store,
 		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
 		testGmailTools(t, store),
-		connections.NewChatMCPTools(store,
-			fakeChatSender{provider: whatsapp.ProviderID},
-			fakeChatSender{provider: telegram.ProviderID},
-		),
+		connections.NewWhatsAppMCPTools(store, fakeWhatsAppProvider{}, fakeWhatsAppProvider{}),
+		connections.NewTelegramMCPTools(store, fakeTelegramProvider{}, fakeTelegramProvider{}),
 	)
 	executor := &fakeExecutor{started: make(chan loops.Run, 1)}
 	service.SetLoops(loops.NewService(store, executor, nil))
@@ -172,7 +182,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		"memory_search", "memory_get_page",
 		"thread_context",
 		"gmail_get_profile", "gmail_search_threads", "gmail_read_thread", "gmail_create_draft", "gmail_create_reply_draft", "gmail_send_draft", "gmail_update_draft", "gmail_list_drafts", "gmail_read_attachment",
-		"whatsapp_send_message", "telegram_send_message",
+		"whatsapp_search", "whatsapp_send_message", "telegram_search", "telegram_send_message",
 		"loop_list", "loop_get", "loop_create", "loop_update", "loop_run", "loop_delete",
 		"agent_spawn", "agent_send", "agent_status", "agent_wait", "agent_cancel", "agent_list",
 		"visualise_read_me", "visualise_show_widget",
@@ -313,15 +323,17 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 
 func TestChatToolsFollowRegisteredSenders(t *testing.T) {
 	withoutSenders := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1.0.0"}, nil)
-	connections.NewChatMCPTools(nil).AddTo(withoutSenders)
+	connections.NewWhatsAppMCPTools(nil, nil, nil).AddTo(withoutSenders)
+	connections.NewTelegramMCPTools(nil, nil, nil).AddTo(withoutSenders)
 	session, closeSession := connectClient(t, withoutSenders)
 	defer closeSession()
-	if hasTool(t, session, whatsapp.ToolSendMessage) || hasTool(t, session, telegram.ToolSendMessage) {
-		t.Fatal("chat send tools must not be advertised without sender adapters")
+	if hasTool(t, session, whatsapp.ToolSearch) || hasTool(t, session, whatsapp.ToolSendMessage) ||
+		hasTool(t, session, telegram.ToolSearch) || hasTool(t, session, telegram.ToolSendMessage) {
+		t.Fatal("chat tools must not be advertised without provider adapters")
 	}
 
 	withWhatsApp := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1.0.0"}, nil)
-	connections.NewChatMCPTools(nil, fakeChatSender{provider: whatsapp.ProviderID}).AddTo(withWhatsApp)
+	connections.NewWhatsAppMCPTools(nil, fakeWhatsAppSender{}, nil).AddTo(withWhatsApp)
 	session, closeSession = connectClient(t, withWhatsApp)
 	defer closeSession()
 	if !hasTool(t, session, whatsapp.ToolSendMessage) {
@@ -329,6 +341,18 @@ func TestChatToolsFollowRegisteredSenders(t *testing.T) {
 	}
 	if hasTool(t, session, telegram.ToolSendMessage) {
 		t.Fatal("telegram sender leaked without adapter")
+	}
+	if hasTool(t, session, whatsapp.ToolSearch) {
+		t.Fatal("whatsapp search leaked from sender-only adapter")
+	}
+
+	withSearch := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1.0.0"}, nil)
+	whatsappProvider := fakeWhatsAppProvider{}
+	connections.NewWhatsAppMCPTools(nil, whatsappProvider, whatsappProvider).AddTo(withSearch)
+	session, closeSession = connectClient(t, withSearch)
+	defer closeSession()
+	if !hasTool(t, session, whatsapp.ToolSearch) || !hasTool(t, session, whatsapp.ToolSendMessage) {
+		t.Fatal("whatsapp provider did not advertise search and send")
 	}
 }
 
@@ -353,7 +377,8 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 		store,
 		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
 		testGmailTools(t, store),
-		connections.NewChatMCPTools(store),
+		connections.NewWhatsAppMCPTools(store, nil, nil),
+		connections.NewTelegramMCPTools(store, nil, nil),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 	service.SetAgents(fakeACPService{spawned: make(chan acp.SpawnRequest, 1)})
@@ -461,7 +486,8 @@ func TestWidgetSurfaceGetsAgentToolsAfterServerCreated(t *testing.T) {
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
 		testGmailTools(t, store),
-		connections.NewChatMCPTools(store),
+		connections.NewWhatsAppMCPTools(store, nil, nil),
+		connections.NewTelegramMCPTools(store, nil, nil),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 
@@ -497,7 +523,8 @@ func TestAgentSpawnToolSchemaAndAlias(t *testing.T) {
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
 		testGmailTools(t, store),
-		connections.NewChatMCPTools(store),
+		connections.NewWhatsAppMCPTools(store, nil, nil),
+		connections.NewTelegramMCPTools(store, nil, nil),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 	agentService := fakeACPService{spawned: make(chan acp.SpawnRequest, 1)}
@@ -564,7 +591,8 @@ func TestSearchWorkerSurfaceOnlyAdvertisesRawMemoryTools(t *testing.T) {
 		store,
 		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
 		testGmailTools(t, store),
-		connections.NewChatMCPTools(store),
+		connections.NewWhatsAppMCPTools(store, nil, nil),
+		connections.NewTelegramMCPTools(store, nil, nil),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 
@@ -622,7 +650,8 @@ func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
 		testGmailTools(t, store),
-		connections.NewChatMCPTools(store),
+		connections.NewWhatsAppMCPTools(store, nil, nil),
+		connections.NewTelegramMCPTools(store, nil, nil),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 
@@ -691,7 +720,8 @@ func TestBrowserToolsAndWorkerSurface(t *testing.T) {
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
 		testGmailTools(t, store),
-		connections.NewChatMCPTools(store),
+		connections.NewWhatsAppMCPTools(store, nil, nil),
+		connections.NewTelegramMCPTools(store, nil, nil),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 	service.SetBrowser(browsertask.New(store, fakeACPService{spawned: make(chan acp.SpawnRequest, 1)}, acp.BuiltinAgents(), fakeBrowserBackend{}), fakeBrowserBackend{})

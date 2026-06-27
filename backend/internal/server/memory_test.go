@@ -54,7 +54,8 @@ func testMemoryServer(t *testing.T) (*Server, *fakeMemoryScheduler) {
 		store,
 		publisher,
 		connections.NewGmailMCPTools(store, integrationingest.RawWriter{Root: t.TempDir()}),
-		connections.NewChatMCPTools(store),
+		connections.NewWhatsAppMCPTools(store, nil, nil),
+		connections.NewTelegramMCPTools(store, nil, nil),
 	)
 	return &Server{Store: store, Memory: svc, JazTools: tools}, scheduler
 }

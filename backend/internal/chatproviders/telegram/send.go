@@ -10,19 +10,19 @@ import (
 
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/tg"
-	"github.com/wins/jaz/backend/internal/connections"
+	telegramconnector "github.com/wins/jaz/backend/internal/connectors/telegram"
 )
 
-func (p *Provider) SendMessage(ctx context.Context, req connections.ChatSendRequest) (connections.ChatSendResult, error) {
+func (p *Provider) SendMessage(ctx context.Context, req telegramconnector.SendMessageRequest) (telegramconnector.SendMessageResult, error) {
 	client := p.client(req.Connection.ID)
 	randomID := int64(rand.Uint64() & (1<<63 - 1))
-	var conversationID string
+	var peerID string
 	send := func(runCtx context.Context, client *telegram.Client) error {
 		peer, resolved, err := p.resolvePeer(runCtx, client.API(), req.Recipient)
 		if err != nil {
 			return err
 		}
-		conversationID = resolved
+		peerID = resolved
 		if err := p.foregroundCall(runCtx, func(ctx context.Context) error {
 			return client.SendMessage(ctx, &tg.MessagesSendMessageRequest{
 				Peer:     peer,
@@ -36,16 +36,16 @@ func (p *Provider) SendMessage(ctx context.Context, req connections.ChatSendRequ
 	}
 	if client != nil {
 		if err := send(ctx, client); err != nil {
-			return connections.ChatSendResult{}, err
+			return telegramconnector.SendMessageResult{}, err
 		}
-		return connections.ChatSendResult{MessageID: strconv.FormatInt(randomID, 10), ConversationID: conversationID, SentAt: time.Now().UTC()}, nil
+		return telegramconnector.SendMessageResult{MessageID: strconv.FormatInt(randomID, 10), PeerID: peerID, SentAt: time.Now().UTC()}, nil
 	}
 	err := p.withClient(ctx, req.Connection.ID, true, func(runCtx context.Context, client *telegram.Client) error {
 		peer, resolved, err := p.resolvePeer(runCtx, client.API(), req.Recipient)
 		if err != nil {
 			return err
 		}
-		conversationID = resolved
+		peerID = resolved
 		return p.foregroundCall(runCtx, func(ctx context.Context) error {
 			return client.SendMessage(ctx, &tg.MessagesSendMessageRequest{
 				Peer:     peer,
@@ -55,9 +55,9 @@ func (p *Provider) SendMessage(ctx context.Context, req connections.ChatSendRequ
 		})
 	})
 	if err != nil {
-		return connections.ChatSendResult{}, err
+		return telegramconnector.SendMessageResult{}, err
 	}
-	return connections.ChatSendResult{MessageID: strconv.FormatInt(randomID, 10), ConversationID: conversationID, SentAt: time.Now().UTC()}, nil
+	return telegramconnector.SendMessageResult{MessageID: strconv.FormatInt(randomID, 10), PeerID: peerID, SentAt: time.Now().UTC()}, nil
 }
 
 func (p *Provider) resolvePeer(ctx context.Context, api *tg.Client, recipient string) (tg.InputPeerClass, string, error) {

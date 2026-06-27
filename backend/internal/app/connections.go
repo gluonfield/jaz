@@ -1,6 +1,8 @@
 package app
 
 import (
+	"fmt"
+
 	"github.com/wins/jaz/backend/internal/connections"
 	gmailconnector "github.com/wins/jaz/backend/internal/connectors/gmail"
 	"github.com/wins/jaz/backend/internal/integrationingest"
@@ -32,6 +34,46 @@ func NewGmailMCPTools(store *sqlitestore.Store, raw integrationingest.RawWriter)
 	return connections.NewGmailMCPTools(store, raw)
 }
 
-func NewChatMCPTools(store *sqlitestore.Store, senders ChatSenders) *connections.ChatMCPTools {
-	return connections.NewChatMCPTools(store, senders.Senders...)
+func NewWhatsAppMCPTools(
+	store *sqlitestore.Store,
+	whatsAppSenders WhatsAppSenders,
+	whatsAppSearchers WhatsAppSearchers,
+) (*connections.WhatsAppMCPTools, error) {
+	whatsAppSender, err := singleProvider("WhatsApp", "sender", whatsAppSenders.Senders)
+	if err != nil {
+		return nil, err
+	}
+	whatsAppSearch, err := singleProvider("WhatsApp", "searcher", whatsAppSearchers.Searchers)
+	if err != nil {
+		return nil, err
+	}
+	return connections.NewWhatsAppMCPTools(store, whatsAppSender, whatsAppSearch), nil
+}
+
+func NewTelegramMCPTools(
+	store *sqlitestore.Store,
+	telegramSenders TelegramSenders,
+	telegramSearchers TelegramSearchers,
+) (*connections.TelegramMCPTools, error) {
+	telegramSender, err := singleProvider("Telegram", "sender", telegramSenders.Senders)
+	if err != nil {
+		return nil, err
+	}
+	telegramSearch, err := singleProvider("Telegram", "searcher", telegramSearchers.Searchers)
+	if err != nil {
+		return nil, err
+	}
+	return connections.NewTelegramMCPTools(store, telegramSender, telegramSearch), nil
+}
+
+func singleProvider[T any](provider, role string, items []T) (T, error) {
+	var zero T
+	switch len(items) {
+	case 0:
+		return zero, nil
+	case 1:
+		return items[0], nil
+	default:
+		return zero, fmt.Errorf("multiple %s %s providers registered", provider, role)
+	}
 }
