@@ -1,13 +1,9 @@
-import { ArrowRight, Loader2, Plug, Plus, QrCode, Sparkles } from 'lucide-react'
+import { Loader2, Plug, Plus, QrCode } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import type {
-  IntegrationPlugin,
-  IntegrationSkill,
-  IntegrationTool,
-} from '@/lib/api/types'
+import type { IntegrationPlugin, IntegrationTool } from '@/lib/api/types'
 import { pluginActionLabel, pluginCanConnect } from './connectionFormatting'
-import { PluginGlyph, PluginIcon } from './ConnectionPluginVisuals'
+import { PluginGlyph } from './ConnectionPluginVisuals'
 
 export function ConnectionPluginDetailModal({
   plugin,
@@ -27,42 +23,23 @@ export function ConnectionPluginDetailModal({
       open
       onClose={onClose}
       title={plugin.name}
-      description={subtitle(plugin)}
+      description={categoryLabel(plugin.category)}
       icon={<PluginGlyph plugin={plugin} size={18} />}
-      size="xl"
+      headerAccessory={
+        <ConnectButton plugin={plugin} connecting={connecting} onConnect={() => onConnect(plugin)} />
+      }
+      size="lg"
     >
-      <div className="space-y-5">
-        <PreviewBand plugin={plugin} />
-        <p className="text-[13px] leading-5 text-ink-2">{plugin.description}</p>
-        <AppsSection
-          plugin={plugin}
-          connecting={connecting}
-          onConnect={() => onConnect(plugin)}
-        />
+      <div className="space-y-7">
+        <Hero plugin={plugin} />
         {plugin.tools?.length ? <ToolsSection tools={plugin.tools} /> : null}
-        {plugin.skills?.length ? <SkillsSection skills={plugin.skills} /> : null}
         <InformationSection plugin={plugin} />
       </div>
     </Modal>
   )
 }
 
-function PreviewBand({ plugin }: { plugin: IntegrationPlugin }) {
-  return (
-    <div className="rounded-card bg-[linear-gradient(135deg,var(--color-primary-soft),var(--color-surface-2))] px-4 py-4">
-      <div className="mx-auto flex w-fit max-w-full items-center gap-2 rounded-full bg-bg/90 px-4 py-2.5 shadow-raised">
-        <PluginGlyph plugin={plugin} size={16} />
-        <span className="shrink-0 text-[13px] font-medium text-ink">{plugin.name}</span>
-        <span className="min-w-0 truncate text-[13px] text-ink-2">{previewText(plugin)}</span>
-        <span className="grid size-7 shrink-0 place-items-center rounded-full bg-surface-2 text-ink-2">
-          <ArrowRight size={14} />
-        </span>
-      </div>
-    </div>
-  )
-}
-
-function AppsSection({
+function ConnectButton({
   plugin,
   connecting,
   onConnect,
@@ -74,35 +51,28 @@ function AppsSection({
   const sessionAuth = plugin.auth[0]?.kind === 'session'
   const available = pluginCanConnect(plugin)
   const connected = plugin.connection?.status === 'connected'
-  let ConnectIcon = sessionAuth ? QrCode : Plug
-  if (available && connected && plugin.multi_account) ConnectIcon = Plus
-  if (connecting) ConnectIcon = Loader2
+  let Icon = sessionAuth ? QrCode : Plug
+  if (available && connected && plugin.multi_account) Icon = Plus
+  if (connecting) Icon = Loader2
 
   return (
-    <section>
-      <SectionHeading label={sessionAuth ? 'QR sign in' : 'App'} count={1} />
-      <div className="grid gap-3 rounded-card py-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-        <div className="flex min-w-0 items-center gap-3">
-          <PluginIcon plugin={plugin} />
-          <div className="min-w-0">
-            <p className="truncate text-[13px] font-medium text-ink">{plugin.name}</p>
-            <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-ink-2">
-              {appDescription(plugin)}
-            </p>
-          </div>
-        </div>
-        <Button
-          variant="primary"
-          size="lg"
-          disabled={!available || connecting}
-          onClick={onConnect}
-          className="w-full sm:w-auto"
-        >
-          <ConnectIcon size={14} className={connecting ? 'animate-spin' : undefined} />
-          {pluginActionLabel(plugin, connecting)}
-        </Button>
-      </div>
-    </section>
+    <Button variant="primary" size="lg" disabled={!available || connecting} onClick={onConnect}>
+      <Icon size={14} className={connecting ? 'animate-spin' : undefined} />
+      {pluginActionLabel(plugin, connecting)}
+    </Button>
+  )
+}
+
+function Hero({ plugin }: { plugin: IntegrationPlugin }) {
+  return (
+    <div className="rounded-card bg-[linear-gradient(135deg,var(--color-primary-soft),var(--color-surface-2))] px-6 py-9 text-center">
+      <span className="mx-auto grid size-16 place-items-center rounded-[18px] bg-bg ring-1 ring-border/70">
+        <PluginGlyph plugin={plugin} size={32} />
+      </span>
+      {plugin.description ? (
+        <p className="mx-auto mt-5 max-w-sm text-[13px] leading-6 text-ink-2">{plugin.description}</p>
+      ) : null}
+    </div>
   )
 }
 
@@ -110,50 +80,22 @@ function ToolsSection({ tools }: { tools: IntegrationTool[] }) {
   return (
     <section>
       <SectionHeading label="Tools" count={tools.length} />
-      <div className="max-h-[min(220px,32dvh)] overflow-y-auto rounded-card bg-surface px-3 py-2">
-        <ul className="grid grid-cols-1 gap-x-5 sm:grid-cols-2">
-          {tools.map((tool) => (
-            <li
-              key={tool.name}
-              className="min-w-0 truncate py-1.5 font-mono text-[12px] leading-5 text-ink"
-              title={tool.name}
-            >
-              {tool.name}
-            </li>
-          ))}
-        </ul>
-      </div>
-    </section>
-  )
-}
-
-function SkillsSection({ skills }: { skills: IntegrationSkill[] }) {
-  return (
-    <section>
-      <SectionHeading label="Skills" count={skills.length} />
-      <div className="space-y-3">
-        {skills.map((skill) => (
-          <div key={skill.id} className="flex min-w-0 items-start gap-3">
-            <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-control bg-surface text-primary">
-              <Sparkles size={15} />
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-[13px] font-medium text-ink">{skill.name}</p>
-              {skill.description ? (
-                <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-ink-2">
-                  {skill.description}
-                </p>
-              ) : null}
-            </div>
-          </div>
+      <ul className="max-h-[min(260px,38dvh)] divide-y divide-border/50 overflow-y-auto rounded-card bg-surface">
+        {tools.map((tool) => (
+          <li key={tool.name} className="px-3.5 py-3">
+            <p className="font-mono text-[12px] text-ink">{tool.name}</p>
+            {tool.description ? (
+              <p className="mt-1 text-[12px] leading-5 text-ink-2">{tool.description}</p>
+            ) : null}
+          </li>
         ))}
-      </div>
+      </ul>
     </section>
   )
 }
 
 function InformationSection({ plugin }: { plugin: IntegrationPlugin }) {
-  const rows = [
+  const rows: [string, string][] = [
     ['Capabilities', capabilityLabels(plugin)],
     ['Developer', developerLabel(plugin)],
     ['Category', categoryLabel(plugin.category)],
@@ -162,10 +104,10 @@ function InformationSection({ plugin }: { plugin: IntegrationPlugin }) {
 
   return (
     <section>
-      <p className="mb-3 text-[13px] font-medium text-ink">Information</p>
-      <dl className="grid grid-cols-[6rem_minmax(0,1fr)] gap-x-5 gap-y-3 text-[13px]">
+      <p className="mb-1 text-[13px] font-medium text-ink">Information</p>
+      <dl className="divide-y divide-border/50 text-[13px]">
         {rows.map(([label, value]) => (
-          <div key={label} className="contents">
+          <div key={label} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-5 py-3">
             <dt className="text-ink-3">{label}</dt>
             <dd className="min-w-0 text-ink">{value}</dd>
           </div>
@@ -182,25 +124,6 @@ function SectionHeading({ label, count }: { label: string; count: number }) {
       <span className="tabular-nums text-ink-3">{count}</span>
     </p>
   )
-}
-
-function subtitle(plugin: IntegrationPlugin): string {
-  if (plugin.id === 'gmail') return 'Search threads and send drafts'
-  if (plugin.category === 'chat') return `Scan a QR code to connect ${plugin.name}`
-  return plugin.provider.name
-}
-
-function previewText(plugin: IntegrationPlugin): string {
-  if (plugin.id === 'gmail') return 'Search threads, draft replies, or send approved drafts'
-  if (plugin.category === 'chat') return 'Scan a QR code, sync conversations, or send messages'
-  return plugin.description || `Use ${plugin.name} from Jaz`
-}
-
-function appDescription(plugin: IntegrationPlugin): string {
-  if (plugin.id === 'gmail') return 'Search threads, draft replies, and send approved drafts'
-  if (plugin.id === 'whatsapp') return 'Scan a WhatsApp QR code to sync chats and send messages'
-  if (plugin.id === 'telegram') return 'Scan a Telegram QR code to sync chats and send messages'
-  return plugin.description || `Use ${plugin.name} from Jaz`
 }
 
 function capabilityLabels(plugin: IntegrationPlugin): string {
