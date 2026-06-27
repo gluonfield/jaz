@@ -9,6 +9,7 @@ const SIZES = {
   sm: 'max-w-md',
   md: 'max-w-lg',
   lg: 'max-w-2xl',
+  wide: 'max-w-3xl',
   xl: 'max-w-5xl',
 } as const
 
@@ -22,6 +23,7 @@ export function Modal({
   footer,
   children,
   size = 'md',
+  chromeless = false,
 }: {
   open: boolean
   onClose: () => void
@@ -34,6 +36,9 @@ export function Modal({
   footer?: ReactNode
   children: ReactNode
   size?: keyof typeof SIZES
+  // Drop the standard header and body padding so the children own the full
+  // panel surface (e.g. a full-bleed hero). Close stays as a floating control.
+  chromeless?: boolean
 }) {
   const reduce = useReducedMotion()
   const panelRef = useRef<HTMLDivElement>(null)
@@ -110,35 +115,49 @@ export function Modal({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={reduce ? { opacity: 0 } : { opacity: 0, y: 6, scale: 0.98 }}
               transition={{ type: 'spring', stiffness: 460, damping: 34 }}
-              className={`flex max-h-[calc(100dvh-2rem)] w-full ${SIZES[size]} flex-col overflow-hidden rounded-card bg-bg shadow-raised sm:max-h-[calc(100dvh-3rem)]`}
+              className={`relative flex max-h-[calc(100dvh-2rem)] w-full ${SIZES[size]} flex-col overflow-hidden rounded-card bg-bg shadow-raised sm:max-h-[calc(100dvh-3rem)]`}
             >
-              <header className="flex items-start gap-3 px-5 py-4">
-                {icon ? (
-                  <div className="grid size-9 shrink-0 place-items-center rounded-control bg-surface-2 text-ink-2">
-                    {icon}
-                  </div>
-                ) : null}
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-sm font-semibold text-ink">{title}</h2>
-                  {description ? (
-                    <p className="mt-0.5 text-[13px] text-ink-2">{description}</p>
-                  ) : null}
-                </div>
-                {headerAccessory ? (
-                  <div className="shrink-0 self-center">{headerAccessory}</div>
-                ) : null}
+              {chromeless ? (
                 <IconButton
                   variant="ghost"
                   size="sm"
                   onClick={onClose}
                   aria-label="Close"
-                  className="-mr-1.5 -mt-1"
+                  className="absolute right-3 top-3 z-10 bg-bg/60 backdrop-blur-sm"
                 >
                   <X size={16} />
                 </IconButton>
-              </header>
+              ) : (
+                <header className="flex items-start gap-3 px-5 py-4">
+                  {icon ? (
+                    <div className="grid size-9 shrink-0 place-items-center rounded-control bg-surface-2 text-ink-2">
+                      {icon}
+                    </div>
+                  ) : null}
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-sm font-semibold text-ink">{title}</h2>
+                    {description ? (
+                      <p className="mt-0.5 text-[13px] text-ink-2">{description}</p>
+                    ) : null}
+                  </div>
+                  {headerAccessory ? (
+                    <div className="shrink-0 self-center">{headerAccessory}</div>
+                  ) : null}
+                  <IconButton
+                    variant="ghost"
+                    size="sm"
+                    onClick={onClose}
+                    aria-label="Close"
+                    className="-mr-1.5 -mt-1"
+                  >
+                    <X size={16} />
+                  </IconButton>
+                </header>
+              )}
 
-              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">{children}</div>
+              <div className={`min-h-0 flex-1 overflow-y-auto ${chromeless ? '' : 'px-5 py-5'}`}>
+                {children}
+              </div>
 
               {footer ? (
                 <footer className="flex items-center justify-between gap-3 px-5 py-3">
