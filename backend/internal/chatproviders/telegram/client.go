@@ -58,7 +58,13 @@ func (p *Provider) newClient(connectionID string, dispatcher tg.UpdateDispatcher
 		SessionStorage: &session.FileStorage{Path: p.sessionPath(connectionID)},
 		UpdateHandler:  dispatcher,
 		NoUpdates:      noUpdates,
+		Device:         telegramClientDevice(),
+		Resolver:       telegram.TDesktopResolver(),
 	})
+}
+
+func telegramClientDevice() telegram.DeviceConfig {
+	return telegram.DeviceTDesktopWindows()
 }
 
 func (p *Provider) sessionPath(connectionID string) string {

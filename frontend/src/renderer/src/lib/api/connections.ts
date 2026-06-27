@@ -23,6 +23,10 @@ export function connectionQRStatus(id: string): Promise<ConnectionQRStatus> {
   return get<ConnectionQRStatus>(`/v1/connections/qr/${encodeURIComponent(id)}`)
 }
 
+export function submitConnectionQRPassword(id: string, password: string): Promise<ConnectionQRStatus> {
+  return post<ConnectionQRStatus>(`/v1/connections/qr/${encodeURIComponent(id)}/password`, { password })
+}
+
 export function closeConnectionQR(id: string): Promise<{ ok: boolean }> {
   return del<{ ok: boolean }>(`/v1/connections/qr/${encodeURIComponent(id)}`)
 }

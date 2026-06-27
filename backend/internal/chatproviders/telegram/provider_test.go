@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	tgclient "github.com/gotd/td/telegram"
 	"github.com/gotd/td/tg"
+	"github.com/gotd/td/tgerr"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
@@ -57,6 +59,64 @@ func TestTelegramFirstQRCodeErrorPreservesProviderFailure(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "auth export failed") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestTelegramPasswordNeededRecognizesWrappedRPCError(t *testing.T) {
+	err := fmt.Errorf("import: %w", tgerr.New(401, "SESSION_PASSWORD_NEEDED"))
+	if !telegramPasswordNeeded(err) {
+		t.Fatalf("password needed not recognized from %v", err)
+	}
+}
+
+func TestTelegramClientUsesDesktopDeviceIdentity(t *testing.T) {
+	device := telegramClientDevice()
+	if device.DeviceModel != "Desktop" || device.SystemVersion != "Windows 10" || device.LangPack != "tdesktop" {
+		t.Fatalf("device = %#v", device)
+	}
+	if device.AppVersion == "" {
+		t.Fatal("missing app version")
+	}
+}
+
+func TestQRSessionPasswordSubmission(t *testing.T) {
+	session := &qrSession{status: "password_required", passwords: make(chan string, 1)}
+
+	if err := session.submitPassword(" secret "); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case password := <-session.passwords:
+		if password != " secret " {
+			t.Fatalf("password = %q", password)
+		}
+	default:
+		t.Fatal("password was not queued")
+	}
+	status := session.statusSnapshot()
+	if status.Status != "scanned" || status.Error != "" {
+		t.Fatalf("status = %#v", status)
+	}
+}
+
+func TestQRSessionPasswordSubmissionRequiresPasswordState(t *testing.T) {
+	session := &qrSession{status: "pending", passwords: make(chan string, 1)}
+
+	err := session.submitPassword("secret")
+	if !errors.Is(err, connections.ErrQRPasswordNotRequired) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestQRSessionPasswordRequiredDoesNotExpireQRCode(t *testing.T) {
+	session := &qrSession{
+		status:    "password_required",
+		expiresAt: time.Now().Add(-time.Minute),
+	}
+
+	status := session.statusSnapshot()
+	if status.Status != "password_required" {
+		t.Fatalf("status = %#v", status)
 	}
 }
 

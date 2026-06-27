@@ -1,6 +1,8 @@
 package telegram
 
 import (
+	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -19,6 +21,7 @@ type qrSession struct {
 	accountID    string
 	connection   *integrations.Connection
 	err          string
+	passwords    chan string
 	ready        chan struct{}
 	readyOnce    sync.Once
 }
@@ -55,6 +58,36 @@ func (s *qrSession) setStatus(status, err string) {
 	s.status = status
 	s.err = err
 	s.mu.Unlock()
+}
+
+func (s *qrSession) requirePassword(err string) {
+	s.setStatus("password_required", err)
+	s.readyOnce.Do(func() { close(s.ready) })
+}
+
+func (s *qrSession) submitPassword(password string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.status != "password_required" || s.passwords == nil {
+		return connections.ErrQRPasswordNotRequired
+	}
+	select {
+	case s.passwords <- password:
+		s.status = "scanned"
+		s.err = ""
+		return nil
+	default:
+		return errors.New("Telegram password check is already in progress")
+	}
+}
+
+func (s *qrSession) waitPassword(ctx context.Context) (string, error) {
+	select {
+	case password := <-s.passwords:
+		return password, nil
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
 }
 
 func (s *qrSession) fail(err error) {

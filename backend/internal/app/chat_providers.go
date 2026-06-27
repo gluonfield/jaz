@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 
+	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/chatproviders/telegram"
 	"github.com/wins/jaz/backend/internal/chatproviders/whatsapp"
 	"github.com/wins/jaz/backend/internal/connections"
@@ -15,8 +16,8 @@ import (
 	"go.uber.org/fx"
 )
 
-func NewWhatsAppChatProvider(lc fx.Lifecycle, layout runtimefiles.Layout, store *sqlitestore.Store, raw integrationingest.RawWriter) (ChatProviderOut, error) {
-	provider, err := whatsapp.New(context.Background(), filepath.Join(layout.Connections, "whatsapp"), store, raw)
+func NewWhatsAppChatProvider(lc fx.Lifecycle, layout runtimefiles.Layout, store *sqlitestore.Store, raw integrationingest.RawWriter, logger *log.Logger) (ChatProviderOut, error) {
+	provider, err := whatsapp.New(context.Background(), filepath.Join(layout.Connections, "whatsapp"), store, raw, logger)
 	if err != nil {
 		return ChatProviderOut{}, err
 	}

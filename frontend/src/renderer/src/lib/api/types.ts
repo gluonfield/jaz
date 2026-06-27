@@ -280,11 +280,13 @@ export interface IntegrationPlugin {
   connection?: IntegrationConnection
 }
 
+export type ConnectionQRStatusName = 'pending' | 'scanned' | 'password_required' | 'connected' | 'expired' | 'failed'
+
 export interface ConnectionQRStart {
   session_id: string
   provider: string
   code: string
-  status: 'pending' | 'scanned' | 'connected' | 'expired' | 'failed'
+  status: ConnectionQRStatusName
   expires_at: string
   instructions: string[]
 }
@@ -299,7 +301,7 @@ export interface ConnectionQRStatus {
   session_id: string
   provider: string
   code?: string
-  status: 'pending' | 'scanned' | 'connected' | 'expired' | 'failed'
+  status: ConnectionQRStatusName
   expires_at: string
   account_id?: string
   error?: string

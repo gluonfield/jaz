@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/charmbracelet/log"
 	whatsappconnector "github.com/wins/jaz/backend/internal/connectors/whatsapp"
 	"github.com/wins/jaz/backend/pkg/integrations"
 	"go.mau.fi/whatsmeow"
@@ -31,13 +32,14 @@ type Provider struct {
 	container *sqlstore.Container
 	ctx       context.Context
 	cancel    context.CancelFunc
+	logger    *log.Logger
 
 	mu       sync.Mutex
 	clients  map[string]*whatsmeow.Client
 	sessions map[string]*qrSession
 }
 
-func New(ctx context.Context, root string, store Store, raw RawSink) (*Provider, error) {
+func New(ctx context.Context, root string, store Store, raw RawSink, logger *log.Logger) (*Provider, error) {
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return nil, err
 	}
@@ -55,12 +57,16 @@ func New(ctx context.Context, root string, store Store, raw RawSink) (*Provider,
 		return nil, err
 	}
 	baseCtx, cancel := context.WithCancel(context.Background())
+	if logger != nil {
+		logger = logger.WithPrefix("whatsapp")
+	}
 	return &Provider{
 		store:     store,
 		raw:       raw,
 		container: container,
 		ctx:       baseCtx,
 		cancel:    cancel,
+		logger:    logger,
 		clients:   map[string]*whatsmeow.Client{},
 		sessions:  map[string]*qrSession{},
 	}, nil
@@ -68,6 +74,24 @@ func New(ctx context.Context, root string, store Store, raw RawSink) (*Provider,
 
 func (p *Provider) ProviderID() string {
 	return whatsappconnector.ProviderID
+}
+
+func (p *Provider) logInfo(message string, keyvals ...any) {
+	if p.logger != nil {
+		p.logger.Info(message, keyvals...)
+	}
+}
+
+func (p *Provider) logWarn(message string, keyvals ...any) {
+	if p.logger != nil {
+		p.logger.Warn(message, keyvals...)
+	}
+}
+
+func (p *Provider) logDebug(message string, keyvals ...any) {
+	if p.logger != nil {
+		p.logger.Debug(message, keyvals...)
+	}
 }
 
 func (p *Provider) Start(ctx context.Context) error {

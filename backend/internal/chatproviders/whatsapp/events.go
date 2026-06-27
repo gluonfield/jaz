@@ -17,11 +17,13 @@ func (p *Provider) eventHandler(client *whatsmeow.Client, session *qrSession) wh
 	return func(evt any) {
 		switch event := evt.(type) {
 		case *events.PairSuccess:
+			p.logInfo("pair success", "session", qrSessionLogID(session), "platform", event.Platform)
 			if session != nil {
 				session.setAccount(event.ID.User)
 				session.setStatus("scanned", "")
 			}
 		case *events.PairError:
+			p.logWarn("pair error", "session", qrSessionLogID(session), "platform", event.Platform, "error", event.Error)
 			if session != nil {
 				session.setAccount(event.ID.User)
 				session.fail(event.Error)
@@ -33,6 +35,7 @@ func (p *Provider) eventHandler(client *whatsmeow.Client, session *qrSession) wh
 			}
 			if session != nil {
 				if err := p.store.SaveConnection(p.ctx, connection); err != nil {
+					p.logWarn("save connection failed", "session", session.id, "error", err)
 					p.failQRSession(p.ctx, session, err)
 					return
 				}
@@ -44,6 +47,7 @@ func (p *Provider) eventHandler(client *whatsmeow.Client, session *qrSession) wh
 				session.setAccount(connection.AccountID)
 				session.setStatus("connected", "")
 			}
+			p.logInfo("client connected", "session", qrSessionLogID(session))
 			_ = p.writeAllContacts(p.ctx, connection, client.Store)
 		case *events.Message:
 			if connection, ok := connectionFromDevice(client.Store); ok {
@@ -58,23 +62,34 @@ func (p *Provider) eventHandler(client *whatsmeow.Client, session *qrSession) wh
 				_ = p.writeRecords(p.ctx, whatsappContactActionRecord(connection, event))
 			}
 		case *events.LoggedOut:
+			p.logWarn("client logged out", "session", qrSessionLogID(session), "reason", event.Reason.String())
 			if session != nil {
 				session.fail(fmt.Errorf("WhatsApp logged this session out: %s", event.Reason.String()))
 			}
 		case *events.ClientOutdated:
+			p.logWarn("client outdated", "session", qrSessionLogID(session))
 			if session != nil {
 				session.fail(fmt.Errorf("WhatsApp rejected this client as outdated"))
 			}
 		case *events.ConnectFailure:
+			p.logWarn("connect failure", "session", qrSessionLogID(session), "reason", event.Reason.String())
 			if session != nil {
 				session.fail(fmt.Errorf("WhatsApp connection failed: %s", event.Reason.String()))
 			}
 		case *events.TemporaryBan:
+			p.logWarn("temporary ban", "session", qrSessionLogID(session), "reason", event.String())
 			if session != nil {
 				session.fail(fmt.Errorf("WhatsApp temporary ban: %s", event.String()))
 			}
 		}
 	}
+}
+
+func qrSessionLogID(session *qrSession) string {
+	if session == nil {
+		return ""
+	}
+	return session.id
 }
 
 func (p *Provider) writeAllContacts(ctx context.Context, connection integrations.Connection, device *store.Device) error {

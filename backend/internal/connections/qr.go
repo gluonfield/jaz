@@ -11,6 +11,7 @@ import (
 var (
 	ErrQRProviderUnavailable = errors.New("connection QR provider unavailable")
 	ErrQRSessionNotFound     = errors.New("connection QR session not found")
+	ErrQRPasswordNotRequired = errors.New("connection QR session does not need a password")
 )
 
 type QRStart struct {
@@ -37,6 +38,10 @@ type QRProvider interface {
 	StartQR(context.Context) (QRStart, error)
 	QRStatus(context.Context, string) (QRStatus, error)
 	CloseQR(context.Context, string) error
+}
+
+type QRPasswordProvider interface {
+	SubmitQRPassword(context.Context, string, string) (QRStatus, error)
 }
 
 type QRService struct {
@@ -96,6 +101,37 @@ func (s *QRService) Status(ctx context.Context, id string) (QRStatus, error) {
 		return QRStatus{}, ErrQRSessionNotFound
 	}
 	status, err := adapter.QRStatus(ctx, id)
+	if err != nil {
+		if errors.Is(err, ErrQRSessionNotFound) {
+			s.forget(id)
+		}
+		return QRStatus{}, err
+	}
+	if status.SessionID == "" {
+		status.SessionID = id
+	}
+	if status.Provider == "" {
+		status.Provider = provider
+	}
+	if qrTerminal(status.Status) {
+		s.forget(id)
+	}
+	return status, nil
+}
+
+func (s *QRService) SubmitPassword(ctx context.Context, id, password string) (QRStatus, error) {
+	s.mu.Lock()
+	provider := s.sessions[id]
+	adapter := s.providers[provider]
+	s.mu.Unlock()
+	if adapter == nil {
+		return QRStatus{}, ErrQRSessionNotFound
+	}
+	passwordAdapter, ok := adapter.(QRPasswordProvider)
+	if !ok {
+		return QRStatus{}, ErrQRPasswordNotRequired
+	}
+	status, err := passwordAdapter.SubmitQRPassword(ctx, id, password)
 	if err != nil {
 		if errors.Is(err, ErrQRSessionNotFound) {
 			s.forget(id)

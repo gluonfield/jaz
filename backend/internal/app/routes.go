@@ -66,6 +66,7 @@ func appendConnectionRoutes(routes server.Routes, service *connections.Service, 
 		}
 		if qr != nil {
 			routes = append(routes, server.Route{Pattern: "GET /v1/connections/qr/{id}", Handler: httpHandlerFunc(connectHandler.QRStatus)})
+			routes = append(routes, server.Route{Pattern: "POST /v1/connections/qr/{id}/password", Handler: httpHandlerFunc(connectHandler.QRPassword)})
 			routes = append(routes, server.Route{Pattern: "DELETE /v1/connections/qr/{id}", Handler: httpHandlerFunc(connectHandler.CloseQR)})
 		}
 		if oauth != nil {

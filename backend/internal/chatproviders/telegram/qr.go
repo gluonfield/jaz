@@ -7,7 +7,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	tgclient "github.com/gotd/td/telegram"
+	telegramauth "github.com/gotd/td/telegram/auth"
 	"github.com/gotd/td/telegram/auth/qrlogin"
+	"github.com/gotd/td/tgerr"
 	"github.com/wins/jaz/backend/internal/connections"
 	telegramconnector "github.com/wins/jaz/backend/internal/connectors/telegram"
 )
@@ -22,6 +25,7 @@ func (p *Provider) StartQR(ctx context.Context) (connections.QRStart, error) {
 		connectionID: connectionID,
 		status:       "pending",
 		ready:        make(chan struct{}),
+		passwords:    make(chan string, 1),
 		expiresAt:    time.Now().UTC().Add(time.Minute),
 	}
 	p.mu.Lock()
@@ -37,11 +41,7 @@ func (p *Provider) StartQR(ctx context.Context) (connections.QRStart, error) {
 	go func() {
 		defer close(done)
 		err := client.Run(loginCtx, func(runCtx context.Context) error {
-			_, err := client.QR().Auth(runCtx, loggedIn, func(ctx context.Context, token qrlogin.Token) error {
-				session.setCode(token.URL(), token.Expires())
-				return nil
-			})
-			if err != nil {
+			if err := p.completeQRAuth(runCtx, client, loggedIn, session); err != nil {
 				session.fail(err)
 				return nil
 			}
@@ -103,6 +103,30 @@ func (p *Provider) StartQR(ctx context.Context) (connections.QRStart, error) {
 	}
 }
 
+func (p *Provider) completeQRAuth(ctx context.Context, client *tgclient.Client, loggedIn qrlogin.LoggedIn, session *qrSession) error {
+	_, err := client.QR().Auth(ctx, loggedIn, func(ctx context.Context, token qrlogin.Token) error {
+		session.setCode(token.URL(), token.Expires())
+		return nil
+	})
+	for telegramPasswordNeeded(err) {
+		session.requirePassword("")
+		password, waitErr := session.waitPassword(ctx)
+		if waitErr != nil {
+			return waitErr
+		}
+		_, err = client.Auth().Password(ctx, password)
+		if errors.Is(err, telegramauth.ErrPasswordInvalid) {
+			session.requirePassword("Incorrect password. Try again.")
+			continue
+		}
+	}
+	return err
+}
+
+func telegramPasswordNeeded(err error) bool {
+	return tgerr.Is(err, "SESSION_PASSWORD_NEEDED")
+}
+
 func telegramFirstQRCodeError(status connections.QRStatus) error {
 	if status.Error != "" {
 		return fmt.Errorf("Telegram QR sign-in failed: %s", status.Error)
@@ -125,6 +149,19 @@ func (p *Provider) QRStatus(ctx context.Context, id string) (connections.QRStatu
 		_ = p.CloseQR(context.WithoutCancel(ctx), id)
 	}
 	return status, nil
+}
+
+func (p *Provider) SubmitQRPassword(_ context.Context, id, password string) (connections.QRStatus, error) {
+	p.mu.Lock()
+	session := p.sessions[id]
+	p.mu.Unlock()
+	if session == nil {
+		return connections.QRStatus{}, connections.ErrQRSessionNotFound
+	}
+	if err := session.submitPassword(password); err != nil {
+		return connections.QRStatus{}, err
+	}
+	return session.statusSnapshot(), nil
 }
 
 func (p *Provider) CloseQR(ctx context.Context, id string) error {

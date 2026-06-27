@@ -52,7 +52,7 @@ func TestConnectionIDsUsesDurableConnectionRows(t *testing.T) {
 
 func TestNewWhatsAppClientUsesBrowserQRIdentity(t *testing.T) {
 	restoreWhatsAppVersion(t)
-	version := waStore.WAVersionContainer{2, 3000, 1042217683}
+	version := waStore.WAVersionContainer{2, 3000, 1042247318}
 	waStore.SetWAVersion(version)
 
 	client := newWhatsAppClient(&waStore.Device{})
@@ -62,8 +62,8 @@ func TestNewWhatsAppClientUsesBrowserQRIdentity(t *testing.T) {
 	if got := waStore.DeviceProps.GetPlatformType(); got != waCompanionReg.DeviceProps_CHROME {
 		t.Fatalf("platform type = %s, want %s", got, waCompanionReg.DeviceProps_CHROME)
 	}
-	if got := waStore.DeviceProps.GetOs(); got != whatsappCompanionOS {
-		t.Fatalf("device os = %q, want %q", got, whatsappCompanionOS)
+	if got := waStore.DeviceProps.GetOs(); got != whatsappCompanionName {
+		t.Fatalf("device os = %q, want %q", got, whatsappCompanionName)
 	}
 	propsVersion := waStore.DeviceProps.GetVersion()
 	if got := [3]uint32{propsVersion.GetPrimary(), propsVersion.GetSecondary(), propsVersion.GetTertiary()}; got != version {
@@ -76,10 +76,13 @@ func TestConfigureWhatsAppDevicePropsTracksRefreshedVersion(t *testing.T) {
 	waStore.SetWAVersion(waStore.WAVersionContainer{2, 3000, 1042000000})
 	configureWhatsAppDeviceProps()
 
-	version := waStore.WAVersionContainer{2, 3000, 1042217683}
+	version := waStore.WAVersionContainer{2, 3000, 1042247318}
 	waStore.SetWAVersion(version)
 	configureWhatsAppDeviceProps()
 
+	if got := waStore.DeviceProps.GetOs(); got != whatsappCompanionName {
+		t.Fatalf("device os = %q, want %q", got, whatsappCompanionName)
+	}
 	propsVersion := waStore.DeviceProps.GetVersion()
 	if got := [3]uint32{propsVersion.GetPrimary(), propsVersion.GetSecondary(), propsVersion.GetTertiary()}; got != version {
 		t.Fatalf("device props version = %v, want %v", got, version)
@@ -159,6 +162,36 @@ func TestWhatsAppFirstQRCodeErrorPreservesProviderFailure(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "connect failed") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestWatchQRScannedWithoutMultideviceSurfacesMessage(t *testing.T) {
+	provider := &Provider{}
+	session := &qrSession{id: "whatsapp_qr_1", status: "pending", ready: make(chan struct{})}
+	qrChan := make(chan whatsmeow.QRChannelItem, 1)
+	qrChan <- whatsmeow.QRChannelScannedWithoutMultidevice
+	close(qrChan)
+
+	provider.watchQR(session, qrChan)
+
+	status := session.statusSnapshot()
+	if status.Status != "scanned" || !strings.Contains(status.Error, "linked-device support") {
+		t.Fatalf("status = %#v", status)
+	}
+}
+
+func TestWatchQRPairingErrorWithoutDetailsHasUsefulMessage(t *testing.T) {
+	provider := &Provider{}
+	session := &qrSession{id: "whatsapp_qr_1", status: "pending", ready: make(chan struct{})}
+	qrChan := make(chan whatsmeow.QRChannelItem, 1)
+	qrChan <- whatsmeow.QRChannelItem{Event: whatsmeow.QRChannelEventError}
+	close(qrChan)
+
+	provider.watchQR(session, qrChan)
+
+	status := session.statusSnapshot()
+	if status.Status != "failed" || status.Error != "WhatsApp pairing failed" {
+		t.Fatalf("status = %#v", status)
 	}
 }
 

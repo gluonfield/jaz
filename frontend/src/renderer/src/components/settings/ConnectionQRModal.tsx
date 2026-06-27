@@ -1,6 +1,6 @@
-import { CheckCircle2, Clock3, Loader2, QrCode, RefreshCw, TriangleAlert } from 'lucide-react'
+import { CheckCircle2, Clock3, KeyRound, Loader2, QrCode, RefreshCw, TriangleAlert } from 'lucide-react'
 import * as QRCode from 'qrcode'
-import { useEffect, useState } from 'react'
+import { type FormEvent, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import type { ConnectionQRStart, ConnectionQRStatus, IntegrationPlugin } from '@/lib/api/types'
@@ -12,16 +12,20 @@ export function ConnectionQRModal({
   status,
   loading,
   refreshing,
+  passwordSubmitting,
   onClose,
   onRefresh,
+  onSubmitPassword,
 }: {
   plugin?: IntegrationPlugin
   qr?: ConnectionQRStart
   status?: ConnectionQRStatus
   loading: boolean
   refreshing: boolean
+  passwordSubmitting: boolean
   onClose: () => void
   onRefresh: () => void
+  onSubmitPassword: (password: string) => void
 }) {
   if (!plugin || !qr) return null
   const currentStatus = status?.status ?? qr.status
@@ -30,6 +34,7 @@ export function ConnectionQRModal({
   const accountID = status?.account_id
   const done = currentStatus === 'connected'
   const failed = currentStatus === 'expired' || currentStatus === 'failed'
+  const passwordRequired = currentStatus === 'password_required'
 
   return (
     <Modal
@@ -68,6 +73,14 @@ export function ConnectionQRModal({
         </div>
         <div className="min-w-0 space-y-4">
           <StatusCard plugin={plugin} status={currentStatus} error={status?.error} accountID={accountID} />
+          {passwordRequired ? (
+            <PasswordCard
+              provider={plugin.name}
+              error={status?.error}
+              submitting={passwordSubmitting}
+              onSubmitPassword={onSubmitPassword}
+            />
+          ) : null}
           <StepList instructions={qr.instructions} />
         </div>
       </div>
@@ -156,6 +169,53 @@ function StepList({ instructions }: { instructions: string[] }) {
   )
 }
 
+function PasswordCard({
+  provider,
+  error,
+  submitting,
+  onSubmitPassword,
+}: {
+  provider: string
+  error?: string
+  submitting: boolean
+  onSubmitPassword: (password: string) => void
+}) {
+  const [password, setPassword] = useState('')
+
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!password || submitting) return
+    onSubmitPassword(password)
+  }
+
+  return (
+    <form
+      className="rounded-card bg-surface px-3 py-3 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)]"
+      onSubmit={submit}
+    >
+      <label className="block text-[12px] font-medium text-ink" htmlFor="connection-qr-password">
+        {provider} password
+      </label>
+      <div className="mt-2 flex items-center gap-2">
+        <input
+          id="connection-qr-password"
+          type="password"
+          value={password}
+          autoComplete="current-password"
+          placeholder="Two-step verification password"
+          className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-white px-3 text-[13px] text-ink outline-none transition-colors placeholder:text-ink-3 focus:border-primary"
+          onChange={(event) => setPassword(event.target.value)}
+        />
+        <Button type="submit" variant="primary" disabled={!password || submitting}>
+          {submitting ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
+          {submitting ? 'Checking' : 'Continue'}
+        </Button>
+      </div>
+      {error ? <p className="mt-2 text-[12px] leading-5 text-danger">{error}</p> : null}
+    </form>
+  )
+}
+
 function QRStatusLine({ status, loading }: { status: string; loading: boolean }) {
   if (status === 'connected') {
     return (
@@ -178,6 +238,14 @@ function QRStatusLine({ status, loading }: { status: string; loading: boolean })
       <span className="inline-flex items-center gap-1.5 text-[12px] text-danger">
         <Clock3 size={14} />
         Expired
+      </span>
+    )
+  }
+  if (status === 'password_required') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[12px] text-primary">
+        <KeyRound size={14} />
+        Password needed
       </span>
     )
   }
@@ -208,7 +276,7 @@ function statusContent(provider: string, status: string, error?: string, account
   if (status === 'scanned') {
     return {
       title: 'Scanned',
-      detail: 'Finish any confirmation on your phone. This window will update automatically.',
+      detail: error || 'Finish any confirmation on your phone. This window will update automatically.',
       tone: 'text-primary',
     }
   }
@@ -217,6 +285,13 @@ function statusContent(provider: string, status: string, error?: string, account
       title: 'QR code expired',
       detail: 'Get a new code and scan it from your phone.',
       tone: 'text-danger',
+    }
+  }
+  if (status === 'password_required') {
+    return {
+      title: 'Password needed',
+      detail: `Enter your ${provider} two-step verification password to finish sign-in.`,
+      tone: 'text-primary',
     }
   }
   if (status === 'failed') {
@@ -228,7 +303,7 @@ function statusContent(provider: string, status: string, error?: string, account
   }
   return {
     title: 'Scan the QR code',
-    detail: 'Keep this window open. Jaz will connect as soon as your phone approves the scan.',
+    detail: error || 'Keep this window open. Jaz will connect as soon as your phone approves the scan.',
     tone: 'text-ink',
   }
 }

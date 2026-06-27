@@ -1,7 +1,9 @@
 package connections
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"html"
 	"net/http"
 
@@ -15,6 +17,10 @@ type ConnectHandler struct {
 	Connect *connections.ConnectService
 	OAuth   *connections.OAuthService
 	QR      *connections.QRService
+}
+
+type qrPasswordRequest struct {
+	Password string `json:"password"`
 }
 
 func NewConnectHandler(connect *connections.ConnectService, oauth *connections.OAuthService, qr *connections.QRService) ConnectHandler {
@@ -48,6 +54,32 @@ func (h ConnectHandler) QRStatus(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, connections.ErrQRSessionNotFound) {
 			httpapi.WriteError(w, http.StatusNotFound, err)
+			return
+		}
+		httpapi.WriteError(w, http.StatusInternalServerError, err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, status)
+}
+
+func (h ConnectHandler) QRPassword(w http.ResponseWriter, r *http.Request) {
+	var input qrPasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		httpapi.WriteError(w, http.StatusBadRequest, fmt.Errorf("invalid QR password request"))
+		return
+	}
+	if input.Password == "" {
+		httpapi.WriteError(w, http.StatusBadRequest, fmt.Errorf("QR password is required"))
+		return
+	}
+	status, err := h.QR.SubmitPassword(r.Context(), r.PathValue("id"), input.Password)
+	if err != nil {
+		if errors.Is(err, connections.ErrQRSessionNotFound) {
+			httpapi.WriteError(w, http.StatusNotFound, err)
+			return
+		}
+		if errors.Is(err, connections.ErrQRPasswordNotRequired) {
+			httpapi.WriteError(w, http.StatusBadRequest, err)
 			return
 		}
 		httpapi.WriteError(w, http.StatusInternalServerError, err)

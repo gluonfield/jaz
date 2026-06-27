@@ -10,6 +10,7 @@ import (
 	"github.com/wins/jaz/backend/internal/connections"
 	whatsappconnector "github.com/wins/jaz/backend/internal/connectors/whatsapp"
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/store"
 )
 
 const firstQRCodeTimeout = 20 * time.Second
@@ -30,6 +31,13 @@ func (p *Provider) StartQR(ctx context.Context) (connections.QRStart, error) {
 	p.mu.Lock()
 	p.sessions[session.id] = session
 	p.mu.Unlock()
+	p.logInfo(
+		"qr session prepared",
+		"session", session.id,
+		"wa_version", store.GetWAVersion().String(),
+		"device_os", store.DeviceProps.GetOs(),
+		"platform", store.DeviceProps.GetPlatformType().String(),
+	)
 
 	qrChan, err := client.GetQRChannel(p.ctx)
 	if err != nil {
@@ -40,6 +48,7 @@ func (p *Provider) StartQR(ctx context.Context) (connections.QRStart, error) {
 	go p.watchQR(session, qrChan)
 	go func() {
 		if err := client.Connect(); err != nil && !errors.Is(err, context.Canceled) {
+			p.logWarn("qr client connect failed", "session", session.id, "error", err)
 			p.failQRSession(p.ctx, session, err)
 		}
 	}()
@@ -67,6 +76,7 @@ func (p *Provider) StartQR(ctx context.Context) (connections.QRStart, error) {
 		}, nil
 	case <-timer.C:
 		err := fmt.Errorf("timed out waiting for WhatsApp to return a QR code")
+		p.logWarn("qr first code timed out", "session", session.id)
 		session.fail(err)
 		if removed := p.removeQRSession(session.id); removed != nil {
 			p.teardownQRSession(context.WithoutCancel(ctx), removed)
@@ -112,6 +122,7 @@ func (p *Provider) CloseQR(ctx context.Context, id string) error {
 }
 
 func (p *Provider) failQRSession(ctx context.Context, session *qrSession, err error) {
+	p.logWarn("qr session failed", "session", session.id, "error", err)
 	session.fail(err)
 	p.teardownQRSession(context.WithoutCancel(ctx), session)
 }
@@ -149,6 +160,7 @@ func (p *Provider) teardownQRSession(ctx context.Context, session *qrSession) {
 	session.client.RemoveEventHandlers()
 	session.client.Disconnect()
 	if session.client.Store != nil && session.client.Store.ID != nil {
+		p.logDebug("deleting unfinished qr device", "session", session.id)
 		_ = session.client.Store.Delete(ctx)
 	}
 }
@@ -159,13 +171,14 @@ func qrDone(status string) bool {
 
 func (p *Provider) watchQR(session *qrSession, qrChan <-chan whatsmeow.QRChannelItem) {
 	for item := range qrChan {
+		p.logInfo("qr channel event", "session", session.id, "event", item.Event, "timeout", item.Timeout.String(), "error", item.Error)
 		switch item.Event {
 		case whatsmeow.QRChannelEventCode:
 			session.setCode(item.Code, time.Now().UTC().Add(item.Timeout))
 		case whatsmeow.QRChannelSuccess.Event:
 			session.setStatus("scanned", "")
 		case whatsmeow.QRChannelTimeout.Event:
-			session.setStatus("expired", "")
+			session.setStatus("expired", "WhatsApp closed the pairing socket before the code was approved")
 			session.readyOnce.Do(func() { close(session.ready) })
 			p.teardownQRSession(p.ctx, session)
 			return
@@ -175,18 +188,18 @@ func (p *Provider) watchQR(session *qrSession, qrChan <-chan whatsmeow.QRChannel
 			p.teardownQRSession(p.ctx, session)
 			return
 		case whatsmeow.QRChannelScannedWithoutMultidevice.Event:
-			session.setStatus("pending", "Enable linked-device support in WhatsApp, then scan the same code again")
+			session.setStatus("scanned", "Enable linked-device support in WhatsApp, then scan the same code again")
 		case whatsmeow.QRChannelEventError:
 			if item.Error != nil {
 				p.failQRSession(p.ctx, session, item.Error)
 				return
 			}
-			session.setStatus("failed", item.Event)
+			session.setStatus("failed", "WhatsApp pairing failed")
 			session.readyOnce.Do(func() { close(session.ready) })
 			p.teardownQRSession(p.ctx, session)
 			return
 		default:
-			session.setStatus("failed", item.Event)
+			session.setStatus("failed", fmt.Sprintf("Unexpected WhatsApp QR event: %s", item.Event))
 			session.readyOnce.Do(func() { close(session.ready) })
 			p.teardownQRSession(p.ctx, session)
 			return

@@ -59,6 +59,41 @@ func TestQRServiceRejectsUnknownSession(t *testing.T) {
 	}
 }
 
+func TestQRServiceSubmitsPasswordToProvider(t *testing.T) {
+	var submitted string
+	service := NewQRService(fakeQRPasswordProvider{
+		fakeQRProvider: fakeQRProvider{provider: "telegram"},
+		password:       &submitted,
+	})
+	start, err := service.Start(context.Background(), "telegram")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	status, err := service.SubmitPassword(context.Background(), start.SessionID, " secret ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if submitted != " secret " {
+		t.Fatalf("submitted password = %q", submitted)
+	}
+	if status.SessionID != start.SessionID || status.Provider != "telegram" || status.Status != "scanned" {
+		t.Fatalf("status = %#v", status)
+	}
+}
+
+func TestQRServiceRejectsPasswordForUnsupportedProvider(t *testing.T) {
+	service := NewQRService(fakeQRProvider{provider: "matrix"})
+	start, err := service.Start(context.Background(), "matrix")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = service.SubmitPassword(context.Background(), start.SessionID, "secret")
+	if !errors.Is(err, ErrQRPasswordNotRequired) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestQRServiceCloseDelegatesAndForgetsSession(t *testing.T) {
 	var closed string
 	service := NewQRService(fakeQRProvider{provider: "matrix", closed: &closed})
@@ -136,4 +171,16 @@ func (p fakeQRProvider) CloseQR(_ context.Context, id string) error {
 		*p.closed = id
 	}
 	return nil
+}
+
+type fakeQRPasswordProvider struct {
+	fakeQRProvider
+	password *string
+}
+
+func (p fakeQRPasswordProvider) SubmitQRPassword(_ context.Context, _ string, password string) (QRStatus, error) {
+	if p.password != nil {
+		*p.password = password
+	}
+	return QRStatus{Status: "scanned"}, nil
 }

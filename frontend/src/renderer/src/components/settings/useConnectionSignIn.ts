@@ -5,6 +5,7 @@ import {
   closeConnectionQR,
   connectionQRStatus,
   startConnectionPlugin,
+  submitConnectionQRPassword,
 } from '@/lib/api/connections'
 import type { ConnectionQRStart, IntegrationPlugin } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
@@ -74,6 +75,17 @@ export function useConnectionSignIn({
     },
   })
 
+  const qrPassword = useMutation({
+    mutationFn: (request: { sessionID: string; password: string }) =>
+      submitConnectionQRPassword(request.sessionID, request.password),
+    onSuccess: (status) => {
+      queryClient.setQueryData(keys.connectionQR(status.session_id), status)
+    },
+    onError: (error: Error) => {
+      toast(error.message || "Couldn't submit QR password", 'danger')
+    },
+  })
+
   const handleQRStart = (qr: ConnectionQRStart, request: ConnectRequest) => {
     if (request.replacingSessionID && activeQRRef.current?.qr.session_id !== request.replacingSessionID) {
       void closeConnectionQR(qr.session_id).catch(() => undefined)
@@ -112,6 +124,12 @@ export function useConnectionSignIn({
     connect.mutate({ pluginID: current.plugin.id, replacingSessionID: current.qr.session_id })
   }
 
+  const submitQRPassword = (password: string) => {
+    const current = activeQRRef.current
+    if (!current || qrPassword.isPending) return
+    qrPassword.mutate({ sessionID: current.qr.session_id, password })
+  }
+
   useEffect(() => {
     if (qrStatus.data?.status === 'connected') {
       void queryClient.invalidateQueries({ queryKey: keys.connectionPlugins })
@@ -135,8 +153,10 @@ export function useConnectionSignIn({
       connect.isPending &&
       connect.variables?.pluginID === activeQR?.plugin.id &&
       connect.variables?.replacingSessionID === activeQR?.qr.session_id,
+    qrPasswordSubmitting: qrPassword.isPending,
     closeQR,
     refreshQR,
+    submitQRPassword,
     start,
   }
 }

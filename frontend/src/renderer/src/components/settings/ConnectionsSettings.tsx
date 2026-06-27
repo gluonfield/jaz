@@ -140,8 +140,10 @@ export function ConnectionsSettings() {
               status={signIn.qrStatus}
               loading={signIn.qrLoading}
               refreshing={signIn.qrRefreshing}
+              passwordSubmitting={signIn.qrPasswordSubmitting}
               onClose={signIn.closeQR}
               onRefresh={signIn.refreshQR}
+              onSubmitPassword={signIn.submitQRPassword}
             />
           </>
         )}
