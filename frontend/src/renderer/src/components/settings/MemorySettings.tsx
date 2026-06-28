@@ -141,7 +141,7 @@ export function MemorySettings() {
   const horizons = memory.horizons
   const activeName = activeHorizon ?? horizons[0]?.name
   const active = horizons.find((h) => h.name === activeName)
-  const memoryAgents = enabledACPAgents(agentSettings.data).filter((agent) => agent !== 'jaz')
+  const memoryAgents = enabledACPAgents(agentSettings.data)
   const selectedMemoryAgent = memory.agent ?? ''
   const staleMemoryAgent = selectedMemoryAgent && !memoryAgents.includes(selectedMemoryAgent)
   const memoryAgentOptions = [

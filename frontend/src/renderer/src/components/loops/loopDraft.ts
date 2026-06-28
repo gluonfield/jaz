@@ -30,7 +30,7 @@ export function emptyLoopDraft(boardIds: string[] = []): LoopDraft {
   return {
     name: '',
     prompt: '',
-    runtime: 'jaz',
+    runtime: '',
     directory: '',
     provider: '',
     model: '',
@@ -44,7 +44,7 @@ export function loopDraftFromLoop(loop: Loop, boardIds: string[] = []): LoopDraf
   return {
     name: loop.name ?? '',
     prompt: loop.prompt ?? '',
-    runtime: loop.acp_agent || 'jaz',
+    runtime: loop.acp_agent || '',
     directory: loop.directory ?? '',
     provider: loop.model_provider ?? '',
     model: loop.model ?? '',

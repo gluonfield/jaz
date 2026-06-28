@@ -2,7 +2,6 @@ package acp
 
 import (
 	"context"
-	"sort"
 	"strings"
 	"time"
 
@@ -43,7 +42,7 @@ func (t *MCPTools) AddTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        MCPToolAgentSpawn,
 		Title:       "Spawn ACP agent",
-		Description: "Create an idle Jaz ACP agent session. Use acp_agent or agent_name to choose one of: " + agents + ". Empty uses jaz. Send work with agent_send.",
+		Description: "Create an idle Jaz ACP agent session. Use acp_agent or agent_name to choose one of: " + agents + ". Empty uses the default selectable agent. Send work with agent_send.",
 		InputSchema: spawnInputSchema(agentNames),
 	}, t.Spawn)
 	mcp.AddTool(server, &mcp.Tool{
@@ -76,10 +75,9 @@ func (t *MCPTools) AddTo(server *mcp.Server) {
 func (t *MCPTools) availableAgents() []string {
 	agents := append([]string(nil), t.Service.Agents()...)
 	if len(agents) == 0 {
-		agents = []string{AgentJaz, AgentCodex, AgentClaude, AgentGrok, AgentOpenCode}
+		agents = []string{AgentCodex, AgentClaude, AgentGrok, AgentOpenCode}
 	}
-	sort.Strings(agents)
-	return agents
+	return SelectableAgentNames(agents)
 }
 
 type MCPSpawnInput struct {
@@ -184,7 +182,7 @@ func (t *MCPTools) List(context.Context, *mcp.CallToolRequest, MCPListInput) (*m
 
 func spawnInputSchema(agents []string) map[string]any {
 	agentList := strings.Join(agents, ", ")
-	agentDescription := "Configured Jaz ACP agent name. Valid configured agents: " + agentList + ". Empty uses jaz."
+	agentDescription := "Configured Jaz ACP agent name. Valid configured agents: " + agentList + ". Empty uses the default selectable agent."
 	agentProperty := map[string]any{
 		"type":        "string",
 		"description": agentDescription,

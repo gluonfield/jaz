@@ -75,14 +75,21 @@ func TestMCPSpawnAcceptsAgentNameAliasAndModelOverrides(t *testing.T) {
 }
 
 func TestSpawnInputSchemaAdvertisesAgentEnums(t *testing.T) {
-	schema := spawnInputSchema([]string{AgentCodex, AgentJaz})
+	schema := spawnInputSchema([]string{AgentCodex, AgentClaude})
 	properties, _ := schema["properties"].(map[string]any)
 	for _, name := range []string{"acp_agent", "agent_name"} {
 		property, _ := properties[name].(map[string]any)
 		enum, _ := property["enum"].([]string)
-		if len(enum) != 2 || enum[0] != AgentCodex || enum[1] != AgentJaz {
+		if len(enum) != 2 || enum[0] != AgentCodex || enum[1] != AgentClaude {
 			t.Fatalf("%s enum = %#v", name, property["enum"])
 		}
+	}
+}
+
+func TestMCPAvailableAgentsFiltersJaz(t *testing.T) {
+	agents := NewMCPTools(&fakeMCPService{}).availableAgents()
+	if len(agents) != 1 || agents[0] != AgentCodex {
+		t.Fatalf("agents = %#v", agents)
 	}
 }
 

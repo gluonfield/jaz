@@ -6,6 +6,7 @@ export const ACP_PROVIDER_MODE_AGENT = 'agent_defaults'
 // but hidden from selection and the settings providers list. Remove an id here
 // once the provider is ready to surface in the UI.
 const HIDDEN_PROVIDERS = new Set(['ollama'])
+const HIDDEN_AGENTS = new Set(['jaz'])
 const AUTH_REQUIRED_AGENTS = new Set(['codex', 'claude', 'grok', 'opencode'])
 
 export function providerHidden(id: string): boolean {
@@ -13,7 +14,12 @@ export function providerHidden(id: string): boolean {
 }
 
 export function enabledACPAgents(settings?: AgentSettings): string[] {
-  return (settings?.agents ?? []).filter((agent) => acpAgentEnabled(settings, agent))
+  return (settings?.agents ?? []).filter((agent) => selectableACPAgent(agent) && acpAgentEnabled(settings, agent))
+}
+
+export function selectableACPAgent(agent: string | undefined): boolean {
+  const slug = (agent ?? '').trim().toLowerCase()
+  return Boolean(slug) && !HIDDEN_AGENTS.has(slug)
 }
 
 export function acpAgentSupportsNativeGoal(settings: AgentSettings | undefined, agent: string): boolean {

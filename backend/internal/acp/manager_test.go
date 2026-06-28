@@ -366,7 +366,8 @@ func TestManagerSpawnsManagedAdapterAgent(t *testing.T) {
 	}
 }
 
-func TestManagerRunsLocalJazAgentThroughACPJob(t *testing.T) {
+func TestManagerRunsLocalAgentThroughACPJob(t *testing.T) {
+	const localAgent = "local_helper"
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -379,7 +380,7 @@ func TestManagerRunsLocalJazAgentThroughACPJob(t *testing.T) {
 		Root:      t.TempDir(),
 		Workspace: t.TempDir(),
 		Agents: map[string]acp.AgentConfig{
-			acp.AgentJaz: {
+			localAgent: {
 				Local:           true,
 				ModelProvider:   "openrouter",
 				Model:           "openai/gpt-test",
@@ -387,15 +388,15 @@ func TestManagerRunsLocalJazAgentThroughACPJob(t *testing.T) {
 			},
 		},
 	}, log.New(io.Discard))
-	manager.RegisterLocalAgent(acp.AgentJaz, runner)
+	manager.RegisterLocalAgent(localAgent, runner)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{Slug: "local-jaz"})
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: localAgent, Slug: "local-helper"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if spawned.ACPAgent != acp.AgentJaz || spawned.State != acp.StateIdle {
+	if spawned.ACPAgent != localAgent || spawned.State != acp.StateIdle {
 		t.Fatalf("spawned = %#v", spawned)
 	}
 	session, err := store.LoadSession(spawned.SessionID)
@@ -403,7 +404,7 @@ func TestManagerRunsLocalJazAgentThroughACPJob(t *testing.T) {
 		t.Fatal(err)
 	}
 	if session.Runtime != storage.RuntimeACP ||
-		session.RuntimeRef.Agent != acp.AgentJaz ||
+		session.RuntimeRef.Agent != localAgent ||
 		session.RuntimeRef.SessionID != session.ID ||
 		session.ModelProvider != "openrouter" ||
 		session.Model != "openai/gpt-test" {

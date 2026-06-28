@@ -234,6 +234,34 @@ func (c AgentCatalog) EnabledAgentNames() ([]string, error) {
 	return c.Names(), nil
 }
 
+func SelectableAgentNames(names []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		name = CanonicalAgentName(name)
+		if name == "" || name == AgentJaz {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func SelectableAgentCatalog(catalog AgentCatalog) AgentCatalog {
+	out := AgentCatalog{}
+	for _, name := range SelectableAgentNames(catalog.Names()) {
+		if cfg, ok := catalog.Agent(name); ok {
+			out[name] = cfg
+		}
+	}
+	return out
+}
+
 func BuiltinAgents() AgentCatalog {
 	return AgentCatalog{
 		AgentCodex: codexBuiltinAgent(runtime.GOOS),

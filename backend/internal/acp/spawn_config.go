@@ -13,7 +13,14 @@ import (
 func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, string, error) {
 	req.ACPAgent = CanonicalAgentName(req.ACPAgent)
 	if req.ACPAgent == "" {
-		req.ACPAgent = AgentJaz
+		agent, err := m.defaultSpawnAgent()
+		if err != nil {
+			return SpawnRequest{}, AgentConfig{}, "", err
+		}
+		req.ACPAgent = agent
+	}
+	if req.ACPAgent == AgentJaz {
+		return SpawnRequest{}, AgentConfig{}, "", fmt.Errorf("acp agent %q is not selectable", req.ACPAgent)
 	}
 	req.ArtifactSurface = strings.TrimSpace(req.ArtifactSurface)
 	req.MCPServerPolicy = strings.TrimSpace(req.MCPServerPolicy)
@@ -52,6 +59,25 @@ func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, stri
 	}
 	cfg.ReasoningEffort = effort
 	return req, cfg, effort, nil
+}
+
+func (m *Manager) defaultSpawnAgent() (string, error) {
+	names, err := m.agents.EnabledAgentNames()
+	if err != nil {
+		return "", err
+	}
+	names = SelectableAgentNames(names)
+	for _, preferred := range []string{AgentCodex, AgentClaude, AgentGrok, AgentOpenCode} {
+		for _, name := range names {
+			if name == preferred {
+				return name, nil
+			}
+		}
+	}
+	if len(names) > 0 {
+		return names[0], nil
+	}
+	return "", fmt.Errorf("no selectable acp agent is configured")
 }
 
 func agentProviderDefaultModel(agent, id string, providers map[string]provider.ModelProviderConfig) string {

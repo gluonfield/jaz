@@ -7,7 +7,6 @@ export function isArtifactToolName(name?: string): boolean {
 
 export function isHiddenToolName(name?: string): boolean {
   return (
-    name === 'update_plan' ||
     name === 'visualise_read_me' ||
     name === 'mcp_jaztools_visualise_read_me'
   )

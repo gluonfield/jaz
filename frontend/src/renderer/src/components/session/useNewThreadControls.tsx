@@ -20,7 +20,7 @@ export function useNewThreadControls() {
   const runtimeReady = settingsQuery.isSuccess
   const runtimeAvailable = runtimeReady && agents.length > 0
 
-  const [runtime, setRuntime] = useState(() => localStorage.getItem(NEW_SESSION_AGENT_KEY) || 'jaz')
+  const [runtime, setRuntime] = useState(() => localStorage.getItem(NEW_SESSION_AGENT_KEY) || '')
   const [providerOverride, setProviderOverride] = useState<string | null>(null)
   const [modelOverride, setModelOverride] = useState<string | null>(null)
   const [effortOverride, setEffortOverride] = useState<string | null>(null)
@@ -38,7 +38,7 @@ export function useNewThreadControls() {
 
   useEffect(() => {
     if (!runtimeReady || agents.includes(runtime)) return
-    const next = agents.includes('jaz') ? 'jaz' : (agents[0] ?? '')
+    const next = agents[0] ?? ''
     if (next !== runtime) selectRuntime(next)
   }, [agents, runtime, runtimeReady])
 

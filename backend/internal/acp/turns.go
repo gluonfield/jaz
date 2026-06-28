@@ -138,6 +138,7 @@ func (m *Manager) finishTurn(done chan struct{}, job *jobState) {
 	job.turn = nil
 	completion := turn.completion
 	planRequested := turn.planRequested
+	planProposal := clonePlanEvent(turn.planProposal)
 	parentVisible := job.ParentVisible
 	job.mu.Unlock()
 	m.cancelPendingPermissions(job.ID)
@@ -145,7 +146,7 @@ func (m *Manager) finishTurn(done chan struct{}, job *jobState) {
 	snapshot := job.Snapshot()
 	if snapshot.State == StateIdle || snapshot.State == StateFailed || snapshot.State == StateCancelled {
 		if snapshot.State == StateIdle && planTurnDefersResult(planRequested, snapshot.ACPAgent) {
-			m.publishPlanTurnResult(snapshot)
+			m.publishPlanTurnResult(snapshot, planProposal)
 		}
 		m.compactSessionEvents(snapshot.ID)
 		m.touchAttention(surfaceSessionIDs(&snapshot)...)

@@ -60,6 +60,7 @@ func (r utilityLocalRunner) RunUtility(_ context.Context, req acp.LocalUtilityRe
 
 func newUtilityLocalManager(t *testing.T, runner acp.LocalAgentRunner, cfg acp.AgentConfig) (*jsonstore.Store, *acp.Manager) {
 	t.Helper()
+	const localAgent = "local_helper"
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -68,10 +69,10 @@ func newUtilityLocalManager(t *testing.T, runner acp.LocalAgentRunner, cfg acp.A
 		Root:      t.TempDir(),
 		Workspace: t.TempDir(),
 		Agents: map[string]acp.AgentConfig{
-			acp.AgentJaz: cfg,
+			localAgent: cfg,
 		},
 	}, log.New(io.Discard))
-	manager.RegisterLocalAgent(acp.AgentJaz, runner)
+	manager.RegisterLocalAgent(localAgent, runner)
 	return store, manager
 }
 
@@ -133,7 +134,7 @@ func TestManagerRunUtilityPromptUsesLocalRunnerWithoutPersistingSession(t *testi
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	text, err := manager.RunUtilityPrompt(ctx, acp.UtilityPromptRequest{
-		ACPAgent:  acp.AgentJaz,
+		ACPAgent:  "local_helper",
 		Directory: ".",
 		Message:   "return a short title",
 	})
@@ -150,7 +151,7 @@ func TestManagerRunUtilityPromptUsesLocalRunnerWithoutPersistingSession(t *testi
 			req.Session.Model != "openai/gpt-test" ||
 			req.Session.ReasoningEffort != "medium" ||
 			req.Session.RuntimeRef == nil ||
-			req.Session.RuntimeRef.Agent != acp.AgentJaz ||
+			req.Session.RuntimeRef.Agent != "local_helper" ||
 			req.Session.RuntimeRef.Cwd == "" {
 			t.Fatalf("local utility request = %#v", req)
 		}
@@ -177,7 +178,7 @@ func TestManagerRunUtilityPromptDrainsLocalErrorStream(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_, err := manager.RunUtilityPrompt(ctx, acp.UtilityPromptRequest{
-		ACPAgent:  acp.AgentJaz,
+		ACPAgent:  "local_helper",
 		Directory: ".",
 		Message:   "return a short title",
 	})
@@ -195,7 +196,7 @@ func TestManagerRunUtilityPromptTimesOutStalledLocalStream(t *testing.T) {
 	_, manager := newUtilityLocalManager(t, utilityLocalRunner{stall: true}, acp.AgentConfig{Local: true})
 
 	_, err := manager.RunUtilityPrompt(context.Background(), acp.UtilityPromptRequest{
-		ACPAgent:  acp.AgentJaz,
+		ACPAgent:  "local_helper",
 		Directory: ".",
 		Message:   "return a short title",
 		Timeout:   20 * time.Millisecond,

@@ -196,6 +196,17 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 				Priority: string(entry.Priority),
 			})
 		}
+		if planText, ok := sessionevents.NormalizePlanDocumentText(plan); ok && job.turn != nil && planTurnDefersResult(job.turn.planRequested, job.ACPAgent) {
+			job.turn.planProposal = &sessionevents.PlanEvent{
+				Explanation:      planText,
+				AwaitingApproval: true,
+			}
+			if len(job.Plan) > 0 {
+				job.Plan = []sessionevents.PlanEntry{}
+				publishACP = true
+			}
+			break
+		}
 		var ok bool
 		plan, ok = sessionevents.NormalizeProgressEntries(plan)
 		if !ok {

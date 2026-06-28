@@ -838,8 +838,7 @@ func (m *Manager) Agents() []string {
 		m.log.Warn("loading configured acp agents failed", "error", err)
 		return []string{}
 	}
-	sort.Strings(names)
-	return names
+	return SelectableAgentNames(names)
 }
 
 func (m *Manager) Close() {

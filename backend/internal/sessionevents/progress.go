@@ -32,8 +32,24 @@ func NormalizeProgressEntryContent(content string) (string, bool) {
 	return text, true
 }
 
+func NormalizePlanDocumentText(entries []PlanEntry) (string, bool) {
+	if len(entries) != 1 {
+		return "", false
+	}
+	text := strings.TrimSpace(entries[0].Content)
+	if text == "" || text == "#" {
+		return "", false
+	}
+	if _, ok := NormalizeProgressEntryContent(text); ok {
+		return "", false
+	}
+	return text, true
+}
+
 func looksLikeMarkdownBlock(text string) bool {
 	switch {
+	case text == "#":
+		return true
 	case strings.HasPrefix(text, "# "):
 		return true
 	case strings.HasPrefix(text, "##"):
