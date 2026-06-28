@@ -264,7 +264,7 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	}
 	switch action {
 	case "messages":
-		s.writeSessionMessages(w, session)
+		s.writeSessionMessages(w, r, session)
 	case "events":
 		s.streamSessionEvents(w, r, session.ID)
 	case "transcript":
@@ -286,7 +286,8 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 
 // writeSessionMessages serves the thread page's full hydration payload:
 // persisted messages, activity, transcript events, and ACP state.
-func (s *Server) writeSessionMessages(w http.ResponseWriter, session storage.Session) {
+func (s *Server) writeSessionMessages(w http.ResponseWriter, r *http.Request, session storage.Session) {
+	mobile := requestClientPlatform(r) == "mobile"
 	var messages any
 	if recordStore, ok := s.Store.(messageRecordStore); ok {
 		records, err := recordStore.LoadMessageRecords(session.ID)
@@ -303,10 +304,14 @@ func (s *Server) writeSessionMessages(w http.ResponseWriter, session storage.Ses
 		}
 		messages = loaded
 	}
-	activity, err := s.Store.LoadActivity(session.ID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
+	var activity []storage.ActivityEntry
+	if !mobile {
+		var err error
+		activity, err = s.Store.LoadActivity(session.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
 	}
 	transcriptEvents, err := s.Store.LoadSessionEvents(session.ID)
 	if err != nil {
@@ -314,7 +319,13 @@ func (s *Server) writeSessionMessages(w http.ResponseWriter, session storage.Ses
 		return
 	}
 	transcriptEvents = sessionevents.CompactTranscript(transcriptEvents)
+	if mobile {
+		transcriptEvents = mobileSessionEvents(transcriptEvents)
+	}
 	children, childPermissions := s.acpChildSnapshots(session.ID)
+	if mobile {
+		children = mobileACPStates(children)
+	}
 	var acpSnapshot storage.ACPState
 	var hasACPSnapshot bool
 	if session.Runtime == storage.RuntimeACP {
@@ -323,11 +334,16 @@ func (s *Server) writeSessionMessages(w http.ResponseWriter, session storage.Ses
 			session.Status = status
 		}
 	}
+	if mobile && hasACPSnapshot {
+		acpSnapshot = mobileACPState(acpSnapshot)
+	}
 	resp := map[string]any{
 		"session":  canonicalSessionResponse(session),
 		"messages": messages,
-		"activity": activity,
 		"events":   transcriptEvents,
+	}
+	if !mobile {
+		resp["activity"] = activity
 	}
 	if meta := s.acpMeta(transcriptEvents, session, children); len(meta) > 0 {
 		resp["acp_meta"] = meta
