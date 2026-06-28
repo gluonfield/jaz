@@ -33,11 +33,14 @@ func (GmailMaterializer) SourceTargets(_ context.Context, req integrations.Mater
 	account := recordAccountSlug(req.Record.AccountID)
 	messageID := firstText(content.Message.ID, req.Record.ExternalID)
 	utc := occurred.UTC()
+	day := utc.Format("2006-01-02")
 	return []integrations.SourceTarget{{
 		Provider:  gmailconnector.ProviderID,
 		Kind:      "email_message",
 		PathHint:  path.Join("sources", gmailconnector.ProviderID, account, "messages", utc.Format("2006"), utc.Format("01"), utc.Format("02"), integrations.SourceSlug(messageID)+".md"),
 		MediaType: "text/markdown",
+		Key:       sourceKey(messageID, day),
+		Replay:    sourceReplay(account, integrations.ReplayScope{Domain: integrations.RecordDomainMessages, Day: day}),
 	}}, nil
 }
 
@@ -64,7 +67,6 @@ func (GmailMaterializer) ProjectSource(_ context.Context, req integrations.Sourc
 }
 
 func gmailTargetRecord(target integrations.SourceTarget, records []integrations.Record) (integrations.Record, bool, error) {
-	targetSlug := strings.TrimSuffix(path.Base(target.PathHint), ".md")
 	var best integrations.Record
 	var ok bool
 	for _, record := range records {
@@ -76,7 +78,7 @@ func gmailTargetRecord(target integrations.SourceTarget, records []integrations.
 			return integrations.Record{}, false, err
 		}
 		messageID := firstText(content.Message.ID, record.ExternalID)
-		if integrations.SourceSlug(messageID) != targetSlug {
+		if messageID != target.Key.Entity {
 			continue
 		}
 		if !ok || record.ReceivedAt.After(best.ReceivedAt) {

@@ -2,6 +2,7 @@ package integrationingest
 
 import (
 	"context"
+	"errors"
 
 	"github.com/wins/jaz/backend/internal/sourcequeue"
 )
@@ -23,19 +24,32 @@ func (r SourceProjectionRunner) RunOnce(ctx context.Context) (int, error) {
 	if err != nil || len(sources) == 0 {
 		return 0, err
 	}
-	artifacts, err := r.Projector.ProjectSources(ctx, sources)
-	if err != nil {
-		_ = r.Queue.Release(context.Background(), sources)
+	var completed []sourcequeue.Source
+	var failed []sourcequeue.Source
+	var firstErr error
+	for _, source := range sources {
+		artifacts, err := r.Projector.ProjectSource(ctx, source)
+		if err == nil {
+			err = r.Writer.WriteArtifacts(ctx, artifacts)
+		}
+		if err != nil {
+			firstErr = errors.Join(firstErr, err)
+			failed = append(failed, source)
+			continue
+		}
+		completed = append(completed, source)
+	}
+	settleErr := r.Queue.Settle(context.Background(), completed, failed)
+	if settleErr != nil {
+		return len(completed), errors.Join(firstErr, settleErr)
+	}
+	if firstErr != nil {
+		return len(completed), firstErr
+	}
+	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
-	if err := r.Writer.WriteArtifacts(ctx, artifacts); err != nil {
-		_ = r.Queue.Release(context.Background(), sources)
-		return 0, err
-	}
-	if err := r.Queue.Complete(ctx, sources); err != nil {
-		return 0, err
-	}
-	return len(sources), nil
+	return len(completed), nil
 }
 
 func (r SourceProjectionRunner) batchFiles() int {

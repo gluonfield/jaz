@@ -29,3 +29,11 @@ func sourceMediaType(value string) string {
 	}
 	return "text/markdown"
 }
+
+func sourceReplay(account string, scopes ...integrations.ReplayScope) integrations.Replay {
+	return integrations.Replay{Account: account, Scopes: scopes}
+}
+
+func sourceKey(entity, day string) integrations.SourceKey {
+	return integrations.SourceKey{Entity: entity, Day: day}
+}

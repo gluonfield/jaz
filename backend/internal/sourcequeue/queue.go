@@ -11,10 +11,12 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
 const (
-	stateVersion     = 2
+	stateVersion     = 4
 	defaultStaleTime = 30 * time.Minute
 )
 
@@ -24,6 +26,8 @@ type Source struct {
 	Provider  string
 	Kind      string
 	MediaType string
+	Key       integrations.SourceKey
+	Replay    integrations.Replay
 }
 
 type Stats struct {
@@ -47,18 +51,129 @@ type queueState struct {
 }
 
 type queuedSource struct {
-	DirtyAt   time.Time `json:"dirty_at"`
-	Provider  string    `json:"provider,omitempty"`
-	Kind      string    `json:"kind,omitempty"`
-	MediaType string    `json:"media_type,omitempty"`
+	DirtyAt   time.Time              `json:"dirty_at"`
+	Provider  string                 `json:"provider,omitempty"`
+	Kind      string                 `json:"kind,omitempty"`
+	MediaType string                 `json:"media_type,omitempty"`
+	Key       integrations.SourceKey `json:"key,omitempty"`
+	Replay    integrations.Replay    `json:"replay,omitempty"`
 }
 
 type processingSource struct {
-	DirtyAt    time.Time `json:"dirty_at"`
-	ReservedAt time.Time `json:"reserved_at"`
-	Provider   string    `json:"provider,omitempty"`
-	Kind       string    `json:"kind,omitempty"`
-	MediaType  string    `json:"media_type,omitempty"`
+	DirtyAt    time.Time              `json:"dirty_at"`
+	ReservedAt time.Time              `json:"reserved_at"`
+	Provider   string                 `json:"provider,omitempty"`
+	Kind       string                 `json:"kind,omitempty"`
+	MediaType  string                 `json:"media_type,omitempty"`
+	Key        integrations.SourceKey `json:"key,omitempty"`
+	Replay     integrations.Replay    `json:"replay,omitempty"`
+}
+
+func (s queuedSource) MarshalJSON() ([]byte, error) {
+	var out struct {
+		DirtyAt   time.Time               `json:"dirty_at"`
+		Provider  string                  `json:"provider,omitempty"`
+		Kind      string                  `json:"kind,omitempty"`
+		MediaType string                  `json:"media_type,omitempty"`
+		Key       *integrations.SourceKey `json:"key,omitempty"`
+		Replay    *integrations.Replay    `json:"replay,omitempty"`
+	}
+	out.DirtyAt = s.DirtyAt
+	out.Provider = s.Provider
+	out.Kind = s.Kind
+	out.MediaType = s.MediaType
+	out.Key = sourceKeyPtr(s.Key)
+	out.Replay = replayPtr(s.Replay)
+	return json.Marshal(out)
+}
+
+func (s *queuedSource) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		DirtyAt      time.Time              `json:"dirty_at"`
+		Provider     string                 `json:"provider,omitempty"`
+		Kind         string                 `json:"kind,omitempty"`
+		MediaType    string                 `json:"media_type,omitempty"`
+		Key          integrations.SourceKey `json:"key,omitempty"`
+		Replay       integrations.Replay    `json:"replay,omitempty"`
+		LegacyEntity string                 `json:"source_id,omitempty"`
+		LegacyDay    string                 `json:"day,omitempty"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	s.DirtyAt = raw.DirtyAt
+	s.Provider = raw.Provider
+	s.Kind = raw.Kind
+	s.MediaType = raw.MediaType
+	s.Key = keyWithLegacy(raw.Key, raw.LegacyEntity, raw.LegacyDay)
+	s.Replay = raw.Replay
+	return nil
+}
+
+func (s processingSource) MarshalJSON() ([]byte, error) {
+	var out struct {
+		DirtyAt    time.Time               `json:"dirty_at"`
+		ReservedAt time.Time               `json:"reserved_at"`
+		Provider   string                  `json:"provider,omitempty"`
+		Kind       string                  `json:"kind,omitempty"`
+		MediaType  string                  `json:"media_type,omitempty"`
+		Key        *integrations.SourceKey `json:"key,omitempty"`
+		Replay     *integrations.Replay    `json:"replay,omitempty"`
+	}
+	out.DirtyAt = s.DirtyAt
+	out.ReservedAt = s.ReservedAt
+	out.Provider = s.Provider
+	out.Kind = s.Kind
+	out.MediaType = s.MediaType
+	out.Key = sourceKeyPtr(s.Key)
+	out.Replay = replayPtr(s.Replay)
+	return json.Marshal(out)
+}
+
+func (s *processingSource) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		DirtyAt      time.Time              `json:"dirty_at"`
+		ReservedAt   time.Time              `json:"reserved_at"`
+		Provider     string                 `json:"provider,omitempty"`
+		Kind         string                 `json:"kind,omitempty"`
+		MediaType    string                 `json:"media_type,omitempty"`
+		Key          integrations.SourceKey `json:"key,omitempty"`
+		Replay       integrations.Replay    `json:"replay,omitempty"`
+		LegacyEntity string                 `json:"source_id,omitempty"`
+		LegacyDay    string                 `json:"day,omitempty"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	s.DirtyAt = raw.DirtyAt
+	s.ReservedAt = raw.ReservedAt
+	s.Provider = raw.Provider
+	s.Kind = raw.Kind
+	s.MediaType = raw.MediaType
+	s.Key = keyWithLegacy(raw.Key, raw.LegacyEntity, raw.LegacyDay)
+	s.Replay = raw.Replay
+	return nil
+}
+
+func keyWithLegacy(key integrations.SourceKey, entity, day string) integrations.SourceKey {
+	if key != (integrations.SourceKey{}) {
+		return key
+	}
+	return integrations.SourceKey{Entity: entity, Day: day}
+}
+
+func sourceKeyPtr(key integrations.SourceKey) *integrations.SourceKey {
+	if key.IsZero() {
+		return nil
+	}
+	return &key
+}
+
+func replayPtr(replay integrations.Replay) *integrations.Replay {
+	if replay.IsZero() {
+		return nil
+	}
+	return &replay
 }
 
 type legacyQueueState struct {
@@ -88,12 +203,8 @@ func (q *Queue) MarkDirtySource(ctx context.Context, source Source) error {
 	if dirtyAt.IsZero() {
 		dirtyAt = q.now()
 	}
-	item := queuedSource{
-		DirtyAt:   dirtyAt,
-		Provider:  source.Provider,
-		Kind:      source.Kind,
-		MediaType: source.MediaType,
-	}
+	source.DirtyAt = dirtyAt
+	item := queuedFromSource(source)
 	return q.update(func(state *queueState) error {
 		if state.Dirty == nil {
 			state.Dirty = map[string]queuedSource{}
@@ -144,8 +255,10 @@ func (q *Queue) Reserve(ctx context.Context, limit int) ([]Source, error) {
 				Provider:   item.Provider,
 				Kind:       item.Kind,
 				MediaType:  item.MediaType,
+				Key:        item.Key,
+				Replay:     item.Replay,
 			}
-			out = append(out, Source{Path: path, DirtyAt: dirtyAt, Provider: item.Provider, Kind: item.Kind, MediaType: item.MediaType})
+			out = append(out, Source{Path: path, DirtyAt: dirtyAt, Provider: item.Provider, Kind: item.Kind, MediaType: item.MediaType, Key: item.Key, Replay: item.Replay})
 		}
 		return nil
 	})
@@ -172,17 +285,7 @@ func (q *Queue) Complete(ctx context.Context, sources []Source) error {
 		return err
 	}
 	return q.update(func(state *queueState) error {
-		for _, source := range sources {
-			path, err := cleanPath(source.Path)
-			if err != nil {
-				return err
-			}
-			processing, ok := state.Processing[path]
-			if ok && processing.DirtyAt.Equal(source.DirtyAt.UTC()) {
-				delete(state.Processing, path)
-			}
-		}
-		return nil
+		return completeSources(state, sources)
 	})
 }
 
@@ -191,36 +294,56 @@ func (q *Queue) Release(ctx context.Context, sources []Source) error {
 		return err
 	}
 	return q.update(func(state *queueState) error {
-		if state.Dirty == nil {
-			state.Dirty = map[string]queuedSource{}
-		}
-		for _, source := range sources {
-			path, err := cleanPath(source.Path)
-			if err != nil {
-				return err
-			}
-			processing, ok := state.Processing[path]
-			item := queuedSource{
-				DirtyAt:   source.DirtyAt.UTC(),
-				Provider:  source.Provider,
-				Kind:      source.Kind,
-				MediaType: source.MediaType,
-			}
-			if ok {
-				item = queuedSource{
-					DirtyAt:   processing.DirtyAt,
-					Provider:  processing.Provider,
-					Kind:      processing.Kind,
-					MediaType: processing.MediaType,
-				}
-				delete(state.Processing, path)
-			}
-			if current, ok := state.Dirty[path]; !ok || shouldReplace(current, item) {
-				state.Dirty[path] = item
-			}
-		}
-		return nil
+		return releaseSources(state, sources)
 	})
+}
+
+func (q *Queue) Settle(ctx context.Context, completed, failed []Source) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return q.update(func(state *queueState) error {
+		if err := completeSources(state, completed); err != nil {
+			return err
+		}
+		return releaseSources(state, failed)
+	})
+}
+
+func completeSources(state *queueState, sources []Source) error {
+	for _, source := range sources {
+		path, err := cleanPath(source.Path)
+		if err != nil {
+			return err
+		}
+		processing, ok := state.Processing[path]
+		if ok && processing.DirtyAt.Equal(source.DirtyAt.UTC()) {
+			delete(state.Processing, path)
+		}
+	}
+	return nil
+}
+
+func releaseSources(state *queueState, sources []Source) error {
+	if state.Dirty == nil {
+		state.Dirty = map[string]queuedSource{}
+	}
+	for _, source := range sources {
+		path, err := cleanPath(source.Path)
+		if err != nil {
+			return err
+		}
+		processing, ok := state.Processing[path]
+		item := queuedFromSource(source)
+		if ok {
+			item = queuedFromProcessing(processing)
+			delete(state.Processing, path)
+		}
+		if current, ok := state.Dirty[path]; !ok || shouldReplace(current, item) {
+			state.Dirty[path] = item
+		}
+	}
+	return nil
 }
 
 func (q *Queue) update(fn func(*queueState) error) error {
@@ -378,12 +501,7 @@ func (q *Queue) recoverStale(state *queueState, now time.Time) {
 		if now.Sub(processing.ReservedAt) < staleAfter {
 			continue
 		}
-		item := queuedSource{
-			DirtyAt:   processing.DirtyAt,
-			Provider:  processing.Provider,
-			Kind:      processing.Kind,
-			MediaType: processing.MediaType,
-		}
+		item := queuedFromProcessing(processing)
 		if current, ok := state.Dirty[path]; !ok || shouldReplace(current, item) {
 			state.Dirty[path] = item
 		}
@@ -391,11 +509,42 @@ func (q *Queue) recoverStale(state *queueState, now time.Time) {
 	}
 }
 
+func queuedFromSource(source Source) queuedSource {
+	return queuedSource{
+		DirtyAt:   source.DirtyAt.UTC(),
+		Provider:  source.Provider,
+		Kind:      source.Kind,
+		MediaType: source.MediaType,
+		Key:       source.Key,
+		Replay:    source.Replay,
+	}
+}
+
+func queuedFromProcessing(processing processingSource) queuedSource {
+	return queuedSource{
+		DirtyAt:   processing.DirtyAt,
+		Provider:  processing.Provider,
+		Kind:      processing.Kind,
+		MediaType: processing.MediaType,
+		Key:       processing.Key,
+		Replay:    processing.Replay,
+	}
+}
+
 func shouldReplace(current, next queuedSource) bool {
 	if current.DirtyAt.Before(next.DirtyAt) {
 		return true
 	}
-	return current.DirtyAt.Equal(next.DirtyAt) && current.Kind == "" && next.Kind != ""
+	if !current.DirtyAt.Equal(next.DirtyAt) {
+		return false
+	}
+	if current.Kind == "" && next.Kind != "" {
+		return true
+	}
+	if current.Key == (integrations.SourceKey{}) && next.Key != (integrations.SourceKey{}) {
+		return true
+	}
+	return len(current.Replay.Scopes) == 0 && len(next.Replay.Scopes) > 0
 }
 
 func (q *Queue) statePath() (string, error) {

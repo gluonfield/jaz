@@ -44,7 +44,7 @@ func TestMaterializingWriterWritesObservedRecordsAndQueuesProjection(t *testing.
 	if _, err := os.Stat(rawPath); err != nil {
 		t.Fatal(err)
 	}
-	if len(projection.sources) != 1 || projection.sources[0].Path != "sources/telegram/acct/conversations/test/2026/06/27.md" || projection.sources[0].Kind != "chat_day" || projection.sources[0].Provider != "telegram" {
+	if len(projection.sources) != 1 || projection.sources[0].Path != "sources/telegram/acct/conversations/test/2026/06/27.md" || projection.sources[0].Kind != "chat_day" || projection.sources[0].Provider != "telegram" || len(projection.sources[0].Replay.Scopes) != 1 {
 		t.Fatalf("projection sources = %#v", projection.sources)
 	}
 }
@@ -163,6 +163,8 @@ func TestSourceProjectionRunnerReleasesSourceWhenProjectorProducesNoArtifact(t *
 		Provider:  "telegram",
 		Kind:      "chat_day",
 		MediaType: "text/markdown",
+		Key:       integrations.SourceKey{Entity: "test", Day: "2026-06-27"},
+		Replay:    integrations.Replay{Account: "acct", Scopes: []integrations.ReplayScope{{Domain: integrations.RecordDomainMessages, Day: "2026-06-27"}}},
 	}
 	if err := queue.MarkDirtySource(context.Background(), source); err != nil {
 		t.Fatal(err)
@@ -185,6 +187,70 @@ func TestSourceProjectionRunnerReleasesSourceWhenProjectorProducesNoArtifact(t *
 	}
 	if len(reserved) != 1 || reserved[0].Path != source.Path || reserved[0].Kind != source.Kind {
 		t.Fatalf("source was not released with metadata: %#v", reserved)
+	}
+}
+
+func TestSourceProjectionRunnerCompletesSuccessfulSourcesWhenAnotherSourceFails(t *testing.T) {
+	rawRoot := t.TempDir()
+	sourceRoot := t.TempDir()
+	queueRoot := t.TempDir()
+	now := time.Date(2026, 6, 27, 18, 30, 0, 0, time.UTC)
+	raw := RawWriter{Root: rawRoot, Now: func() time.Time { return now }}
+	good := integrations.Record{
+		Provider:     "telegram",
+		ConnectionID: "conn",
+		AccountID:    "acct",
+		Kind:         "telegram.message",
+		ExternalID:   "good",
+		OccurredAt:   now,
+		Raw:          json.RawMessage(`{"message":"good"}`),
+	}
+	if err := raw.WriteRecords(context.Background(), []integrations.Record{good}); err != nil {
+		t.Fatal(err)
+	}
+	queue := sourcequeue.New(queueRoot)
+	goodSource := sourcequeue.Source{
+		Path:      "sources/telegram/acct/conversations/good/2026/06/27.md",
+		DirtyAt:   now,
+		Provider:  "telegram",
+		Kind:      "chat_day",
+		MediaType: "text/markdown",
+		Key:       integrations.SourceKey{Entity: "good", Day: "2026-06-27"},
+		Replay:    integrations.Replay{Account: "acct", Scopes: []integrations.ReplayScope{{Domain: integrations.RecordDomainMessages, Day: "2026-06-27"}}},
+	}
+	badSource := goodSource
+	badSource.Path = "sources/telegram/acct/conversations/bad/2026/06/27.md"
+	badSource.Key.Entity = "bad"
+	for _, source := range []sourcequeue.Source{goodSource, badSource} {
+		if err := queue.MarkDirtySource(context.Background(), source); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runner := SourceProjectionRunner{
+		Queue: queue,
+		Projector: SourceProjector{
+			RawRoot:   rawRoot,
+			Projector: noArtifactForBadProjector{},
+		},
+		Writer: SourceWriter{Root: sourceRoot},
+	}
+
+	processed, err := runner.RunOnce(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "bad") {
+		t.Fatalf("err = %v, want bad source error", err)
+	}
+	if processed != 1 {
+		t.Fatalf("processed = %d, want 1", processed)
+	}
+	reserved, err := queue.Reserve(context.Background(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reserved) != 1 || reserved[0].Path != badSource.Path {
+		t.Fatalf("remaining dirty sources = %#v", reserved)
+	}
+	if _, err := os.Stat(filepath.Join(sourceRoot, filepath.FromSlash(goodSource.Path))); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -224,6 +290,53 @@ func TestPlanRecordsQueuesContactDependencyWhenContactChanges(t *testing.T) {
 	}
 	if !sawContacts || !sawDependency || sawChat {
 		t.Fatalf("sources = %#v, want contacts and dependency only", sources)
+	}
+}
+
+func TestPlanRecordsCompactsContactDependencyIndex(t *testing.T) {
+	stateRoot := t.TempDir()
+	now := time.Date(2026, 6, 27, 10, 42, 9, 0, time.UTC)
+	messageRaw, _ := json.Marshal(map[string]any{
+		"id":      7,
+		"message": "hello",
+		"from_id": "user:1",
+		"peer_id": "chat:100",
+	})
+	message := integrations.Record{
+		Provider:     "telegram",
+		ConnectionID: "conn",
+		AccountID:    "acct",
+		Kind:         "telegram.message",
+		ExternalID:   "chat:100:7",
+		OccurredAt:   now,
+		Raw:          messageRaw,
+	}
+	projector := SourceProjector{
+		StateRoot: stateRoot,
+		Projector: CompositeSourceProjector(materialize.DefaultSourceProjectors()),
+	}
+	if _, err := projector.PlanRecords(context.Background(), []integrations.Record{message}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := projector.PlanRecords(context.Background(), []integrations.Record{message}); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(stateRoot, ".state", "source-dependencies", "chat-contact", "telegram", "acct", integrations.SourceSlug("user:1")+".json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var index map[string]contactDependencyEntry
+	if err := json.Unmarshal(data, &index); err != nil {
+		t.Fatal(err)
+	}
+	if len(index) != 1 {
+		t.Fatalf("dependency index = %#v, want one source entry", index)
+	}
+	for _, entry := range index {
+		if entry.Key.Entity != "chat:100" || len(entry.Replay.Scopes) != 2 {
+			t.Fatalf("dependency entry lost source metadata: %#v", entry)
+		}
 	}
 }
 
@@ -413,6 +526,8 @@ func (fakeSourceProjector) SourceTargets(context.Context, integrations.Materiali
 		Kind:      "chat_day",
 		PathHint:  "sources/telegram/acct/conversations/test/2026/06/27.md",
 		MediaType: "text/markdown",
+		Key:       integrations.SourceKey{Entity: "test", Day: "2026-06-27"},
+		Replay:    integrations.Replay{Account: "acct", Scopes: []integrations.ReplayScope{{Domain: integrations.RecordDomainMessages, Day: "2026-06-27"}}},
 	}}, nil
 }
 
@@ -437,6 +552,8 @@ func (partialFailureProjector) SourceTargets(_ context.Context, req integrations
 		Kind:      "chat_day",
 		PathHint:  "sources/telegram/acct/conversations/good/2026/06/27.md",
 		MediaType: "text/markdown",
+		Key:       integrations.SourceKey{Entity: "good", Day: "2026-06-27"},
+		Replay:    integrations.Replay{Account: "acct", Scopes: []integrations.ReplayScope{{Domain: integrations.RecordDomainMessages, Day: "2026-06-27"}}},
 	}}, nil
 }
 
@@ -452,6 +569,19 @@ func (noArtifactProjector) SourceTargets(context.Context, integrations.Materiali
 
 func (noArtifactProjector) ProjectSource(context.Context, integrations.SourceProjectionRequest) (integrations.Artifact, error) {
 	return integrations.Artifact{}, nil
+}
+
+type noArtifactForBadProjector struct{}
+
+func (noArtifactForBadProjector) SourceTargets(context.Context, integrations.MaterializeRequest) ([]integrations.SourceTarget, error) {
+	return nil, nil
+}
+
+func (noArtifactForBadProjector) ProjectSource(_ context.Context, req integrations.SourceProjectionRequest) (integrations.Artifact, error) {
+	if req.Target.Key.Entity == "bad" {
+		return integrations.Artifact{}, nil
+	}
+	return fakeSourceProjector{}.ProjectSource(context.Background(), req)
 }
 
 var _ DirtySourceStore = (*fakeDirtySourceStore)(nil)
