@@ -133,18 +133,6 @@ export function useLiveSessionSend({
   return { live, streaming, send, abort }
 }
 
-export function liveExchangeSize(live: LiveExchange | null): number {
-  return live
-    ? live.user.length +
-        live.contexts.length +
-        live.reasoning.length +
-        live.assistant.length +
-        live.tools.length +
-        live.attachments.length +
-        (live.error?.length ?? 0)
-    : 0
-}
-
 export function liveUserMessage(live: LiveExchange, seq: number): ChatMessage {
   return {
     seq,
