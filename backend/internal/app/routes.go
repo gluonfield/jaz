@@ -19,6 +19,7 @@ type routeDeps struct {
 	fx.In
 
 	Usage           usagecore.Service
+	Jaz             Config                         `optional:"true"`
 	Devices         *deviceauth.Service            `optional:"true"`
 	Config          serverconfig.Config            `optional:"true"`
 	Browser         *browserworker.ExtensionBridge `optional:"true"`
@@ -32,7 +33,7 @@ type routeDeps struct {
 func NewRoutes(deps routeDeps) server.Routes {
 	routes := usageRoutes(deps.Usage)
 	routes = appendConnectionRoutes(routes, deps.Connections, deps.ConnectionStart, deps.ConnectionOAuth, deps.ConnectionQR)
-	routes = appendDeviceRoutes(routes, deps.Devices, deps.Config)
+	routes = appendDeviceRoutes(routes, deps.Devices, deps.Config, deps.Jaz.Devices.DisablePairing)
 	return appendBrowserRoutes(routes, deps.BrowserSettings, deps.Browser)
 }
 
@@ -76,18 +77,24 @@ func appendConnectionRoutes(routes server.Routes, service *connections.Service, 
 	return routes
 }
 
-func appendDeviceRoutes(routes server.Routes, devices *deviceauth.Service, cfg serverconfig.Config) server.Routes {
+func appendDeviceRoutes(routes server.Routes, devices *deviceauth.Service, cfg serverconfig.Config, disablePairing bool) server.Routes {
 	if devices == nil {
 		return routes
 	}
 	handler := deviceapi.NewHandler(devices, cfg)
-	return append(routes,
+	routes = append(routes,
 		server.Route{Pattern: "GET /v1/devices/connection-link", Handler: httpHandlerFunc(handler.ConnectionLink)},
 		server.Route{Pattern: "GET /v1/devices", Handler: httpHandlerFunc(handler.List)},
 		server.Route{Pattern: "POST /v1/devices/register", Handler: httpHandlerFunc(handler.Register)},
+		server.Route{Pattern: "DELETE /v1/devices/{id}", Handler: httpHandlerFunc(handler.Revoke)},
+	)
+	// Pairing is the unauthenticated keyless-onboarding surface.
+	if disablePairing {
+		return routes
+	}
+	return append(routes,
 		server.Route{Pattern: "POST /v1/devices/pairing-requests", Handler: httpHandlerFunc(handler.CreatePairing)},
 		server.Route{Pattern: "/v1/devices/pairing-requests/", Handler: httpHandlerFunc(handler.Pairing)},
-		server.Route{Pattern: "DELETE /v1/devices/{id}", Handler: httpHandlerFunc(handler.Revoke)},
 	)
 }
 
