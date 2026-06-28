@@ -12,7 +12,7 @@ import (
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
-func TestPlanRequestedPlainTextPublishesACPMessage(t *testing.T) {
+func TestPlanRequestedPlainTextPublishesProposedPlan(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -63,8 +63,11 @@ func TestPlanRequestedPlainTextPublishesACPMessage(t *testing.T) {
 	manager.finishTurn(done, job)
 
 	event := receiveEvent(t, sub)
-	if event.Type != "acp_message" || event.Content != "I need one more detail before proposing a plan." {
+	if event.Type != "proposed_plan" || event.Plan == nil || !event.Plan.AwaitingApproval {
 		t.Fatalf("event = %#v", event)
+	}
+	if event.Plan.Explanation != "I need one more detail before proposing a plan." || len(event.Plan.Plan) != 0 {
+		t.Fatalf("plan = %#v", event.Plan)
 	}
 }
 
@@ -135,7 +138,7 @@ func TestPlanRequestedProgressPublishesProposedPlan(t *testing.T) {
 	}
 }
 
-func TestLocalPlanRequestedPlainTextPublishesACPMessage(t *testing.T) {
+func TestLocalPlanRequestedPlainTextPublishesProposedPlan(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -170,8 +173,11 @@ func TestLocalPlanRequestedPlainTextPublishesACPMessage(t *testing.T) {
 	manager.finishTurn(done, job)
 
 	proposal := receiveEvent(t, sub)
-	if proposal.Type != "acp_message" || proposal.Content != "local reply" {
+	if proposal.Type != "proposed_plan" || proposal.Plan == nil || !proposal.Plan.AwaitingApproval {
 		t.Fatalf("event = %#v", proposal)
+	}
+	if proposal.Plan.Explanation != "local reply" || len(proposal.Plan.Plan) != 0 {
+		t.Fatalf("plan = %#v", proposal.Plan)
 	}
 }
 

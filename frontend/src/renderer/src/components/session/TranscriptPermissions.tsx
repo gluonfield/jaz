@@ -7,7 +7,7 @@ import type { ACPPermission, SessionEvent } from '@/lib/api/types'
 import { useOverflowing } from '@/lib/hooks/useOverflowing'
 import { keys } from '@/lib/query/keys'
 import { MessageMarkdown } from './MessageMarkdown'
-import { hasPermissionSurface, normalized } from './TranscriptUtils'
+import { hasPermissionSurface, isPlanApprovalPermission, normalized } from './TranscriptUtils'
 
 function QuestionPermissionCard({
   event,
@@ -325,6 +325,7 @@ export function PermissionCard({
   const [text, setText] = useState('')
   const [error, setError] = useState('')
   if (!permission) return null
+  if (isPlanApprovalPermission(permission)) return null
   if (!hasPermissionSurface(permission)) return null
   if (permission.questions?.length) {
     return <QuestionPermissionCard event={event} resolution={resolution} />

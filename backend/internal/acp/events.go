@@ -72,8 +72,8 @@ func permissionCancelled() (json.RawMessage, *jsonrpc.Error) {
 }
 
 func (m *Manager) AnswerInteractive(ctx context.Context, req InteractiveAnswer) error {
+	text := strings.TrimSpace(req.Text)
 	if strings.TrimSpace(req.RequestID) == "" {
-		text := strings.TrimSpace(req.Text)
 		if text == "" {
 			return fmt.Errorf("request_id or text is required")
 		}
@@ -143,7 +143,7 @@ func (m *Manager) AnswerInteractive(ctx context.Context, req InteractiveAnswer) 
 		return nil
 	}
 	if strings.TrimSpace(req.OptionID) == "" {
-		if strings.TrimSpace(req.Text) == "" {
+		if text == "" {
 			m.permissionMu.Unlock()
 			return fmt.Errorf("option_id or text is required")
 		}
@@ -157,7 +157,7 @@ func (m *Manager) AnswerInteractive(ctx context.Context, req InteractiveAnswer) 
 		case pending.answer <- "":
 		default:
 		}
-		go m.sendTextAfterTurn(job.ID, req.Text, parentVisible)
+		go m.sendTextAfterTurn(job.ID, text, parentVisible, req.PlanRequested)
 		return nil
 	}
 	if _, ok := permissionOption(pending.request.Options, req.OptionID); !ok {
@@ -179,6 +179,9 @@ func (m *Manager) AnswerInteractive(ctx context.Context, req InteractiveAnswer) 
 	select {
 	case pending.answer <- req.OptionID:
 	default:
+	}
+	if text != "" {
+		go m.sendTextAfterTurn(job.ID, text, parentVisible, req.PlanRequested)
 	}
 	return nil
 }
@@ -213,7 +216,7 @@ func (m *Manager) steerText(ctx context.Context, job *jobState, text string, req
 	return err
 }
 
-func (m *Manager) sendTextAfterTurn(sessionID, text string, parentVisible bool) {
+func (m *Manager) sendTextAfterTurn(sessionID, text string, parentVisible, planRequested bool) {
 	job := m.jobByID(sessionID)
 	if job == nil {
 		return
@@ -226,6 +229,7 @@ func (m *Manager) sendTextAfterTurn(sessionID, text string, parentVisible bool) 
 		Session:       sessionID,
 		Message:       text,
 		Completion:    CompletionAsync,
+		PlanRequested: planRequested,
 		ParentVisible: parentVisible,
 	})
 }

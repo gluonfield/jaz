@@ -1,6 +1,6 @@
 import { ArrowUp, AudioLines, ListChecks, LoaderCircle, Plus, Square, X } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { type ClipboardEvent, type ReactNode, useEffect, useRef, useState } from 'react'
+import { type ClipboardEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { FileDropOverlay, useFileDropTarget } from '@/components/ui/FileDrop'
 import { IconButton } from '@/components/ui/IconButton'
 import { clipboardFiles } from '@/components/ui/fileTransfer'
@@ -119,7 +119,7 @@ export function ComposerCard({
 }) {
   const [focused, setFocused] = useState(false)
   const [optionsOpen, setOptionsOpen] = useState(false)
-  const [planRequested, setPlanRequested] = useState(false)
+  const [planModeOverride, setPlanModeOverride] = useState<boolean | null>(null)
   const [goalRequested, setGoalRequested] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const reducedMotion = useReducedMotion()
@@ -128,7 +128,7 @@ export function ComposerCard({
   const effectsEnabled = useEffectsEnabled()
   const planToggleDisabled = disabled || !planAvailable
   const goalToggleDisabled = disabled || !goalAvailable || goalActive
-  const showPlanChip = planAvailable && (planRequested || planModeActive)
+  const planModeOn = planAvailable && (planModeOverride ?? planModeActive)
   const showGoalChip = goalAvailable && (goalRequested || goalActive)
   const mention = useMentionInput({
     fileRoot,
@@ -154,8 +154,12 @@ export function ComposerCard({
   }, [mention.textareaRef])
 
   useEffect(() => {
-    if (!planAvailable) setPlanRequested(false)
+    if (!planAvailable) setPlanModeOverride(null)
   }, [planAvailable])
+
+  useEffect(() => {
+    setPlanModeOverride((override) => (override === planModeActive ? null : override))
+  }, [planModeActive])
 
   useEffect(() => {
     if (!goalAvailable || goalActive) setGoalRequested(false)
@@ -173,9 +177,13 @@ export function ComposerCard({
     attachmentDraft.addFiles(files)
   }
 
-  const togglePlanRequested = () => {
+  const setPlanMode = useCallback((next: boolean) => {
+    setPlanModeOverride(next === planModeActive ? null : next)
+  }, [planModeActive])
+
+  const togglePlanMode = () => {
     if (planToggleDisabled) return
-    setPlanRequested((value) => !value)
+    setPlanMode(!planModeOn)
   }
 
   const toggleGoalRequested = () => {
@@ -198,17 +206,16 @@ export function ComposerCard({
         return
       }
       event.preventDefault()
-      setPlanRequested((value) => !value)
+      setPlanMode(!planModeOn)
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [planToggleDisabled])
+  }, [planModeOn, planToggleDisabled, setPlanMode])
 
   const clearDraft = () => {
     mention.reset()
     attachmentDraft.clearAttachments()
     onClearContexts?.()
-    setPlanRequested(false)
     setGoalRequested(false)
   }
 
@@ -219,7 +226,7 @@ export function ComposerCard({
     if (!trimmed || disabled || attachmentBusy || (streaming && !canQueueWhileStreaming)) return
     try {
       await onSend(trimmed, {
-        planRequested: planAvailable && planRequested,
+        planRequested: planModeOn,
         goalRequested: goalAvailable && goalRequested,
         files: attachmentDraft.files,
         attachments: attachmentDraft.uploaded,
@@ -353,7 +360,11 @@ export function ComposerCard({
                 }}
               />
               {planAvailable ? (
-                <PlanMenuToggle checked={planRequested} disabled={disabled} onToggle={togglePlanRequested} />
+                <PlanMenuToggle
+                  checked={planModeOn}
+                  disabled={disabled}
+                  onToggle={togglePlanMode}
+                />
               ) : null}
               {goalControlVisible ? (
                 goalAvailable ? (
@@ -369,42 +380,33 @@ export function ComposerCard({
             </Popover>
             {leftSlot}
             <AnimatePresence initial={false}>
-              {showPlanChip ? (
+              {planModeOn ? (
                 <motion.div
                   key="plan-chip"
                   initial={{ opacity: 0, scale: 0.8, filter: 'blur(4px)' }}
                   animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
                   exit={{ opacity: 0, scale: 0.8, filter: 'blur(4px)' }}
                   transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
-                  title={planRequested ? undefined : 'Plan mode active'}
-                  className={`flex h-8 shrink-0 items-center gap-1 rounded-full pr-2.5 pl-1 text-[13px] font-medium text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink ${
-                    planRequested ? 'group' : ''
-                  }`}
+                  className="group flex h-8 shrink-0 items-center gap-1 rounded-full pr-2.5 pl-1 text-[13px] font-medium text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
                 >
-                  {planRequested ? (
-                    <IconButton
-                      variant="ghost"
-                      size="xs"
-                      aria-label="Remove plan mode"
-                      title="Remove plan mode"
-                      disabled={disabled}
-                      className="grid"
-                      onClick={() => setPlanRequested(false)}
-                    >
-                      <ListChecks
-                        size={13}
-                        className="col-start-1 row-start-1 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0"
-                      />
-                      <X
-                        size={13}
-                        className="col-start-1 row-start-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-                      />
-                    </IconButton>
-                  ) : (
-                    <span className="grid size-6 place-items-center" aria-hidden>
-                      <ListChecks size={13} />
-                    </span>
-                  )}
+                  <IconButton
+                    variant="ghost"
+                    size="xs"
+                    aria-label="Remove plan mode"
+                    title="Remove plan mode"
+                    disabled={disabled}
+                    className="grid"
+                    onClick={() => setPlanMode(false)}
+                  >
+                    <ListChecks
+                      size={13}
+                      className="col-start-1 row-start-1 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0"
+                    />
+                    <X
+                      size={13}
+                      className="col-start-1 row-start-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                    />
+                  </IconButton>
                   <span>Plan</span>
                 </motion.div>
               ) : null}
