@@ -54,12 +54,18 @@ import { spawnedThreadsFromSources } from '@/lib/spawnedThreads'
 import {
   approvalPlanSurfaceFromEvent,
   hasProgressSignal,
+  type PlanApprovalAction,
   progressSurfaceFromEvent,
   taskSurfaceBelongsToSession,
 } from '@/lib/taskSurface'
 import { preparedSendMessage, type SendMessageOptions } from '@/lib/sendMessage'
 import { coalesceSessionEvents, sessionEventPlacement } from '@/lib/sessionEvents'
-import { activePermissionIDs, isPermissionAwaitingResponse, resolveInactivePermissions } from '@/lib/sessionPermissions'
+import {
+  activePermissionIDs,
+  isPermissionAwaitingResponse,
+  planApprovalPermissionIDs,
+  resolveInactivePermissions,
+} from '@/lib/sessionPermissions'
 import { latestEventTimeISO } from '@/lib/sessionLiveness'
 import { useTitlebarActions, useTitlebarSlot } from '@/lib/titlebar'
 
@@ -366,7 +372,9 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
   ]
   const modeEvents = [...persistedEvents, ...snapshotEvents, ...liveEvents]
   const currentModes = latestACPModeState(session.id, modeEvents) ?? acpModes
-  const activePermissions = activePermissionIDs([...snapshotEvents, ...liveEvents], acpChildPermissions)
+  const livePermissionEvents = [...snapshotEvents, ...liveEvents]
+  const activePermissions = activePermissionIDs(livePermissionEvents, acpChildPermissions)
+  const activePlanApprovalPermissions = planApprovalPermissionIDs(livePermissionEvents, acpChildPermissions)
   const rawTranscriptEvents = applyProviderToolTitleFallbacks(
     [...persistedEvents, ...snapshotEvents, ...liveEvents].flatMap((event) => {
       // 'assistant' events are refresh signals; the message store has the content.
@@ -385,7 +393,9 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
   const goalAvailable = sessionSupportsNativeGoal(session)
   const goal = latestGoalEvent(session.id, [...persistedEvents, ...snapshotEvents, ...liveEvents])
   const goalActive = goalIsActive(goal)
-  const hasPendingPermission = activePermissions.size > 0
+  const hasBlockingPendingPermission = Array.from(activePermissions).some(
+    (id) => !activePlanApprovalPermissions.has(id),
+  )
   const latestUserAt = Math.max(
     0,
     ...messages
@@ -397,7 +407,9 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
     const surface = approvalPlanSurfaceFromEvent(event)
     return Boolean(
       surface?.awaitingApproval &&
-        surface.approvalSessionId &&
+        surface.approval &&
+        (surface.approval.type !== 'permission' ||
+          activePlanApprovalPermissions.has(surface.approval.requestId)) &&
         taskSurfaceBelongsToSession(event, session.id),
     )
   })
@@ -431,9 +443,9 @@ function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
     goalAvailable,
     goalActive,
     goal,
-    hasPendingPermission,
+    hasBlockingPendingPermission,
     latestPlanDecisionSurface,
-    planDecisionSessionID: latestPlanDecisionSurface?.approvalSessionId,
+    planDecisionApproval: latestPlanDecisionSurface?.approval,
     planDecisionIsCurrent: !Number.isNaN(planDecisionAt) && planDecisionAt >= latestUserAt,
     panelProgress: panelProgressEvent ? progressSurfaceFromEvent(panelProgressEvent) : undefined,
     providerSubagents: providerSubagentsFromEvents(settledTranscriptEvents),
@@ -540,6 +552,45 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     queryClient.invalidateQueries({ queryKey: keys.usage })
   }, [handleSend, queryClient, sessionId])
 
+  const answerPlanApproval = useCallback(async (
+    approval: PlanApprovalAction,
+    action: 'implement' | 'clarify',
+    text = '',
+  ) => {
+    const parentVisible = approval.sessionId !== sessionId
+    if (approval.type === 'message') {
+      await sendACPFallback(
+        approval.sessionId,
+        action === 'implement' ? 'Implement the plan.' : text,
+        {
+          planRequested: action === 'clarify',
+          parentVisible,
+        },
+      )
+      return
+    }
+
+    if (action === 'implement') {
+      await answerSessionInteractiveResponse(approval.sessionId, {
+        request_id: approval.requestId,
+        option_id: approval.approveOptionId,
+        parent_visible: parentVisible,
+      })
+    } else {
+      await answerSessionInteractiveResponse(approval.sessionId, {
+        request_id: approval.requestId,
+        option_id: approval.clarifyOptionId,
+        text,
+        plan_requested: true,
+        parent_visible: parentVisible,
+      })
+    }
+    queryClient.invalidateQueries({ queryKey: keys.sessionMessages(approval.sessionId) })
+    queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
+    queryClient.invalidateQueries({ queryKey: keys.allSessions })
+    queryClient.invalidateQueries({ queryKey: keys.usage })
+  }, [queryClient, sendACPFallback, sessionId])
+
   const handleSideChatSend = useCallback(async (
     sideChatID: string,
     message: string,
@@ -634,9 +685,9 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     goalAvailable,
     goalActive,
     goal,
-    hasPendingPermission,
+    hasBlockingPendingPermission,
     latestPlanDecisionSurface,
-    planDecisionSessionID,
+    planDecisionApproval,
     planDecisionIsCurrent,
     panelProgress,
     providerSubagents,
@@ -645,11 +696,11 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   } = derived
   const showPlanDecision = Boolean(
     latestPlanDecisionSurface?.awaitingApproval &&
-      planDecisionSessionID &&
+      planDecisionApproval &&
       planDecisionIsCurrent &&
       !streaming &&
       !live &&
-      !hasPendingPermission,
+      !hasBlockingPendingPermission,
   )
   const sessionError = session.status === 'error' ? session.error?.trim() || 'Unknown error.' : ''
   const sessionErrorContext = [session.model_provider, session.model].filter(Boolean).join(' · ')
@@ -794,21 +845,18 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                 <PlanDecisionCard
                   pending={planDecisionPending}
                   onImplement={() => {
+                    if (!planDecisionApproval) return
                     setPlanDecisionPending(true)
                     setPlanDecisionError('')
-                    void sendACPFallback(planDecisionSessionID!, 'Implement the plan.', {
-                      parentVisible: planDecisionSessionID !== session.id,
-                    })
+                    void answerPlanApproval(planDecisionApproval, 'implement')
                       .catch((err: Error) => setPlanDecisionError(err.message || 'Sending the approval failed.'))
                       .finally(() => setPlanDecisionPending(false))
                   }}
                   onClarify={(text) => {
+                    if (!planDecisionApproval) return
                     setPlanDecisionPending(true)
                     setPlanDecisionError('')
-                    void sendACPFallback(planDecisionSessionID!, text, {
-                      planRequested: true,
-                      parentVisible: planDecisionSessionID !== session.id,
-                    })
+                    void answerPlanApproval(planDecisionApproval, 'clarify', text)
                       .catch((err: Error) => setPlanDecisionError(err.message || 'Sending the reply failed.'))
                       .finally(() => setPlanDecisionPending(false))
                   }}

@@ -1,6 +1,17 @@
-import type { PlanEntry, SessionEvent } from '@/lib/api/types'
+import type { ACPPermissionOption, PlanEntry, SessionEvent } from '@/lib/api/types'
+import { isPlanApprovalPermission } from '@/lib/sessionPermissions'
 
 export type TaskSurfaceKind = 'approval_plan' | 'progress'
+
+export type PlanApprovalAction =
+  | { type: 'message'; sessionId: string }
+  | {
+      type: 'permission'
+      sessionId: string
+      requestId: string
+      approveOptionId: string
+      clarifyOptionId?: string
+    }
 
 export interface TaskSurface {
   kind: TaskSurfaceKind
@@ -8,7 +19,7 @@ export interface TaskSurface {
   explanation?: string
   entries: PlanEntry[]
   awaitingApproval: boolean
-  approvalSessionId?: string
+  approval?: PlanApprovalAction
   strikeCompleted: boolean
 }
 
@@ -68,18 +79,65 @@ function looksLikeMarkdownBlock(text: string): boolean {
   )
 }
 
-export function approvalPlanSurfaceFromEvent(event: SessionEvent): TaskSurface | undefined {
-  if (event.type !== 'proposed_plan' || !event.plan) return undefined
-  const awaitingApproval = Boolean(event.plan.awaiting_approval)
-  return {
-    kind: 'approval_plan',
-    title: 'Proposed Plan',
-    explanation: event.plan.explanation || event.content,
-    entries: event.plan.plan ?? [],
-    awaitingApproval,
-    approvalSessionId: awaitingApproval ? (event.acp?.id ?? event.session_id) : undefined,
-    strikeCompleted: false,
+const approvePlanOptionPriority = ['bypassPermissions', 'auto', 'acceptEdits', 'default']
+
+function preferredOption(options: ACPPermissionOption[] | undefined, ids: string[]) {
+  for (const id of ids) {
+    const option = options?.find((candidate) => candidate.id === id)
+    if (option) return option
   }
+  return undefined
+}
+
+function kindHasPrefix(option: ACPPermissionOption, prefix: string): boolean {
+  return normalized(option.kind).startsWith(prefix)
+}
+
+function permissionApprovalAction(event: SessionEvent): PlanApprovalAction | undefined {
+  const permission = event.permission
+  if (!isPlanApprovalPermission(permission)) return undefined
+  const options = permission.options ?? []
+  const approveOption =
+    preferredOption(options, approvePlanOptionPriority) ?? options.find((option) => kindHasPrefix(option, 'allow'))
+  if (!approveOption) return undefined
+  const clarifyOption =
+    preferredOption(options, ['plan']) ?? options.find((option) => kindHasPrefix(option, 'reject'))
+  return {
+    type: 'permission',
+    sessionId: event.session_id,
+    requestId: permission.id,
+    approveOptionId: approveOption.id,
+    clarifyOptionId: clarifyOption?.id,
+  }
+}
+
+export function approvalPlanSurfaceFromEvent(event: SessionEvent): TaskSurface | undefined {
+  if (event.type === 'proposed_plan' && event.plan) {
+    const awaitingApproval = Boolean(event.plan.awaiting_approval)
+    const sessionId = event.acp?.id ?? event.session_id
+    return {
+      kind: 'approval_plan',
+      title: 'Proposed Plan',
+      explanation: event.plan.explanation || event.content,
+      entries: event.plan.plan ?? [],
+      awaitingApproval,
+      approval: awaitingApproval ? { type: 'message', sessionId } : undefined,
+      strikeCompleted: false,
+    }
+  }
+  if (event.type === 'permission_request' && isPlanApprovalPermission(event.permission)) {
+    const approval = permissionApprovalAction(event)
+    return {
+      kind: 'approval_plan',
+      title: 'Proposed Plan',
+      explanation: event.permission?.content,
+      entries: [],
+      awaitingApproval: Boolean(approval),
+      approval,
+      strikeCompleted: false,
+    }
+  }
+  return undefined
 }
 
 export function progressSurfaceFromEvent(event: SessionEvent): TaskSurface | undefined {
@@ -126,6 +184,9 @@ export function hasProgressSignal(event: SessionEvent): boolean {
 
 export function taskSurfaceKey(event: SessionEvent): string {
   if (approvalPlanSurfaceFromEvent(event)) {
+    if (event.type === 'permission_request' && event.permission?.id) {
+      return `approval_plan_permission:${event.permission.id}`
+    }
     return `approval_plan:${event.acp?.id ?? event.session_id}`
   }
   return progressSignalKey(event)
