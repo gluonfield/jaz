@@ -34,6 +34,7 @@ const (
 	MCPServerPolicyAll                = ""
 	MCPServerPolicyWidget             = "widget"
 	MCPServerPolicyMemorySearchWorker = "memory_search_worker"
+	MCPServerPolicyMemorySourceWorker = "memory_source_worker"
 	MCPServerPolicyBrowserWorker      = "browser_worker"
 )
 

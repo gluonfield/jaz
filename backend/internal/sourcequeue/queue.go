@@ -352,7 +352,7 @@ func (q *Queue) save(state queueState) error {
 	}
 	tmp := file.Name()
 	defer os.Remove(tmp)
-	data, err := json.Marshal(state)
+	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		file.Close()
 		return err

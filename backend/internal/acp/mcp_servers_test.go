@@ -102,6 +102,29 @@ func TestEnabledHTTPMCPServersAppliesPolicyBeforeResolvingHeaders(t *testing.T) 
 	}
 }
 
+func TestEnabledHTTPMCPServersMemorySourcePolicyRestrictsToJaztoolsWithSurface(t *testing.T) {
+	servers, err := enabledHTTPMCPServers(context.Background(), staticMCPServerStore{servers: []mcpconfig.Server{
+		{ID: "docs", Name: "Docs", URL: "https://docs.example.com/mcp", Enabled: true, Transport: mcpconfig.TransportStreamableHTTP},
+		{ID: "jaztools", Name: "jaztools", URL: "http://127.0.0.1:5299/mcp/jaztools", Enabled: true, Transport: mcpconfig.TransportStreamableHTTP},
+	}}, MCPServerPolicyMemorySourceWorker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(servers) != 1 {
+		t.Fatalf("servers = %d, want only jaztools", len(servers))
+	}
+	var payload struct {
+		Name string `json:"name"`
+		URL  string `json:"url"`
+	}
+	if err := json.Unmarshal(servers[0], &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Name != "jaztools" || payload.URL != "http://127.0.0.1:5299/mcp/jaztools?jaztools_surface=memory_source_worker" {
+		t.Fatalf("payload = %#v", payload)
+	}
+}
+
 func TestEnabledHTTPMCPServersAllPolicyLeavesURLUnchanged(t *testing.T) {
 	servers, err := enabledHTTPMCPServers(context.Background(), staticMCPServerStore{servers: []mcpconfig.Server{{
 		ID:        "jaztools",

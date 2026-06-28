@@ -11,12 +11,7 @@ import (
 	"github.com/wins/jaz/backend/internal/mcpsession"
 )
 
-const (
-	jaztoolsSurfaceQueryParam        = "jaztools_surface"
-	jaztoolsWidgetSurfaceName        = "widget"
-	jaztoolsMemorySearchSurfaceName  = "memory_search_worker"
-	jaztoolsBrowserWorkerSurfaceName = "browser_worker"
-)
+const jaztoolsSurfaceQueryParam = "jaztools_surface"
 
 func (m *Manager) mcpServersForAgent(ctx context.Context, initRaw json.RawMessage, policy string) []json.RawMessage {
 	var init struct {
@@ -87,7 +82,7 @@ func mcpServerAllowed(policy string, server mcpconfig.Server) bool {
 	switch strings.TrimSpace(policy) {
 	case MCPServerPolicyAll, MCPServerPolicyWidget:
 		return true
-	case MCPServerPolicyMemorySearchWorker, MCPServerPolicyBrowserWorker:
+	case MCPServerPolicyMemorySearchWorker, MCPServerPolicyMemorySourceWorker, MCPServerPolicyBrowserWorker:
 		return isJaztoolsServer(server)
 	default:
 		return false
@@ -104,6 +99,8 @@ func mcpServerURL(policy string, server mcpconfig.Server) string {
 		return jaztoolsSurfaceURL(raw, jaztoolsWidgetSurfaceName)
 	case MCPServerPolicyMemorySearchWorker:
 		return jaztoolsSurfaceURL(raw, jaztoolsMemorySearchSurfaceName)
+	case MCPServerPolicyMemorySourceWorker:
+		return jaztoolsSurfaceURL(raw, jaztoolsMemorySourceSurfaceName)
 	case MCPServerPolicyBrowserWorker:
 		return jaztoolsSurfaceURL(raw, jaztoolsBrowserWorkerSurfaceName)
 	default:

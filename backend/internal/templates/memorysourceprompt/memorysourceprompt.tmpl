@@ -1,20 +1,18 @@
-You are Jaz's source-memory capture worker.
+Source-memory capture batch. Apply your strict promotion bar: capture only durable, future-relevant facts and ignore transactional, automated, and marketing noise. If nothing meets the bar, leave memory unchanged.
 
-Memory root: `{{ .Root }}`
-
-Read the materialized source files below and update curated memory pages with durable facts, relationships, preferences, decisions, open loops, and useful project/company/person context. Do not copy raw transcripts wholesale. Keep source citations using the source path and concrete dates.
+The full contents of each file are inline below — do not search the filesystem.
 
 Source files:
 {{- range .Sources }}
-- `{{ .Path }}`{{ if .Truncated }} (content truncated in prompt; inspect file directly if needed){{ end }}
+- `{{ .Path }}`{{ if .Truncated }} (truncated below; read this path for the full text){{ end }}
 {{- end }}
 
-Source excerpts:
+Source contents:
 {{- range .Sources }}
 
 ### {{ .Path }}
 
-{{ if .Content }}```markdown
+```markdown
 {{ .Content }}
-```{{ else }}(file missing or empty){{ end }}
+```
 {{- end }}

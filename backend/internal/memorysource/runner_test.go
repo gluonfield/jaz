@@ -191,6 +191,45 @@ func TestRunOnceReleasesReservedSourcesOutsideCharBudget(t *testing.T) {
 	}
 }
 
+func TestRunOnceDropsMissingSourcesWithoutSpawning(t *testing.T) {
+	root := t.TempDir()
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, err := jazsettings.SaveMemorySettings(store, jazsettings.MemorySettings{Enabled: true, Agent: acp.AgentCodex}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := jazsettings.SaveAgentDefaults(store, jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{acp.AgentCodex: {Enabled: true}}}); err != nil {
+		t.Fatal(err)
+	}
+	queue := sourcequeue.New(root)
+	if err := queue.MarkPendingSource(context.Background(), sourcequeue.Source{Path: "sources/gmail/personal/messages/2026/06/27/gone.md"}); err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeSourceManager{job: acp.Job{State: acp.StateIdle}}
+	runner := &Runner{Root: root, Store: store, Queue: queue, Manager: manager}
+
+	processed, err := runner.RunOnce(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if processed != 1 {
+		t.Fatalf("processed = %d, want 1 (dropped ghost)", processed)
+	}
+	if manager.spawn.SourceType != "" {
+		t.Fatalf("agent was spawned for a missing file: %#v", manager.spawn)
+	}
+	pending, err := queue.Reserve(context.Background(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 0 {
+		t.Fatalf("missing source was not dropped: %#v", pending)
+	}
+}
+
 func writeSource(t *testing.T, root, rel, content string) {
 	t.Helper()
 	path := filepath.Join(root, filepath.FromSlash(rel))

@@ -11,7 +11,7 @@ import (
 
 func restrictedWorkerPolicy(policy string) bool {
 	switch policy {
-	case MCPServerPolicyMemorySearchWorker, MCPServerPolicyBrowserWorker:
+	case MCPServerPolicyMemorySearchWorker, MCPServerPolicyMemorySourceWorker, MCPServerPolicyBrowserWorker:
 		return true
 	default:
 		return false
@@ -22,6 +22,8 @@ func mcpServerPolicyForSourceType(sourceType string) string {
 	switch sourceType {
 	case storage.SourceMemorySearch:
 		return MCPServerPolicyMemorySearchWorker
+	case storage.SourceMemorySource:
+		return MCPServerPolicyMemorySourceWorker
 	case storage.SourceBrowserTask:
 		return MCPServerPolicyBrowserWorker
 	default:

@@ -11,6 +11,7 @@ const CATEGORY_META: Record<string, { label: string; color: string }> = {
   memory_dream: { label: 'Memory Dream', color: USAGE_SHARE_PALETTE[2] },
   memory_search: { label: 'Memory Search', color: USAGE_SHARE_PALETTE[3] },
   browser_task: { label: 'Browser Agent', color: USAGE_SHARE_PALETTE[4] },
+  memory_source: { label: 'Memory Capture', color: USAGE_SHARE_PALETTE[5] },
 }
 const CATEGORY_FALLBACK_COLOR = USAGE_SHARE_OTHER_COLOR
 

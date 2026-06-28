@@ -67,6 +67,7 @@ func TestSpawnConfigDefaultsWorkerSourceToRestrictedMCPPolicy(t *testing.T) {
 		want   string
 	}{
 		{storage.SourceMemorySearch, MCPServerPolicyMemorySearchWorker},
+		{storage.SourceMemorySource, MCPServerPolicyMemorySourceWorker},
 		{storage.SourceBrowserTask, MCPServerPolicyBrowserWorker},
 	}
 	for _, tc := range cases {

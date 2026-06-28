@@ -33,6 +33,7 @@ const (
 	surfaceQueryParam        = "jaztools_surface"
 	widgetSurfaceName        = "widget"
 	memorySearchSurfaceName  = "memory_search_worker"
+	memorySourceSurfaceName  = "memory_source_worker"
 	browserWorkerSurfaceName = "browser_worker"
 )
 
@@ -71,6 +72,7 @@ type Service struct {
 	thread      serverSlot
 	widget      serverSlot
 	search      serverSlot
+	source      serverSlot
 	browser     serverSlot
 	handlerOnce sync.Once
 	handler     http.Handler
@@ -82,6 +84,7 @@ const (
 	threadSurface toolSurface = iota
 	widgetSurface
 	searchWorkerSurface
+	sourceWorkerSurface
 	browserWorkerSurface
 )
 
@@ -185,6 +188,7 @@ func (s *Service) slots() []surfaceSlot {
 		{surface: threadSurface, slot: &s.thread},
 		{surface: widgetSurface, slot: &s.widget},
 		{surface: searchWorkerSurface, slot: &s.search},
+		{surface: sourceWorkerSurface, slot: &s.source},
 		{surface: browserWorkerSurface, slot: &s.browser},
 	}
 }
@@ -195,6 +199,8 @@ func (s *Service) slot(surface toolSurface) *serverSlot {
 		return &s.browser
 	case searchWorkerSurface:
 		return &s.search
+	case sourceWorkerSurface:
+		return &s.source
 	case widgetSurface:
 		return &s.widget
 	default:
@@ -252,11 +258,16 @@ func (s *Service) surface(r *http.Request) toolSurface {
 		return browserWorkerSurface
 	case memorySearchSurfaceName:
 		return searchWorkerSurface
+	case memorySourceSurfaceName:
+		return sourceWorkerSurface
 	case widgetSurfaceName:
 		return widgetSurface
 	}
 	if s.searchWorkerSession(r) {
 		return searchWorkerSurface
+	}
+	if s.sourceWorkerSession(r) {
+		return sourceWorkerSurface
 	}
 	if s.browserWorkerSession(r) {
 		return browserWorkerSurface
@@ -270,6 +281,11 @@ func (s *Service) surface(r *http.Request) toolSurface {
 func (s *Service) searchWorkerSession(r *http.Request) bool {
 	session, ok := s.sessionFromRequest(r)
 	return ok && session.SourceType == storage.SourceMemorySearch
+}
+
+func (s *Service) sourceWorkerSession(r *http.Request) bool {
+	session, ok := s.sessionFromRequest(r)
+	return ok && session.SourceType == storage.SourceMemorySource
 }
 
 func (s *Service) browserWorkerSession(r *http.Request) bool {
@@ -406,7 +422,7 @@ func (s *Service) removeBrowserTools(server *mcp.Server, surface toolSurface) {
 }
 
 func (surface toolSurface) workerOnly() bool {
-	return surface == searchWorkerSurface || surface == browserWorkerSurface
+	return surface == searchWorkerSurface || surface == sourceWorkerSurface || surface == browserWorkerSurface
 }
 
 func (surface toolSurface) agentToolsAllowed() bool {

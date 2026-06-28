@@ -466,6 +466,68 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 	}
 }
 
+func TestSourceWorkerSurfaceIsRestrictedToMemoryTools(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	memory, err := jazmem.Open(jazmem.Config{Root: t.TempDir(), DBPath: filepath.Join(t.TempDir(), "memory.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = memory.Close() })
+
+	service := New(
+		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"),
+		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
+		store,
+		sessionevents.New(),
+		store,
+		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
+		testGmailTools(t, store),
+		connections.NewWhatsAppMCPTools(store, nil, nil),
+		connections.NewTelegramMCPTools(store, nil, nil),
+	)
+	// Configure the full kit so the absence of these tools proves a real
+	// restriction, not just unconfigured services.
+	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
+	service.SetThreads(threads.NewService(sqlitestore.NewSearchQueries(store), store))
+	service.SetAgents(fakeACPService{spawned: make(chan acp.SpawnRequest, 1)})
+
+	// Both routes (session source type and the acp-emitted query param) must
+	// resolve to the restricted source surface.
+	srcSession, err := store.CreateSession(storage.CreateSession{
+		Slug:       "memory-source",
+		Runtime:    storage.RuntimeACP,
+		SourceType: storage.SourceMemorySource,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if service.surface(sessionRequest(srcSession.ID)) != sourceWorkerSurface {
+		t.Fatal("memory-source session did not route to source worker surface")
+	}
+	queryReq, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1/mcp/jaztools?jaztools_surface=memory_source_worker", nil)
+	if service.surface(queryReq) != sourceWorkerSurface {
+		t.Fatal("memory-source surface query did not route to source worker surface")
+	}
+
+	source, closeSource := connectClient(t, service.server(sourceWorkerSurface))
+	defer closeSource()
+
+	for _, name := range []string{"memory_search", "memory_get_page"} {
+		if !hasTool(t, source, name) {
+			t.Fatalf("source worker surface missing %s", name)
+		}
+	}
+	for _, name := range []string{"agent_spawn", "thread_context", "gmail_search_threads", "loop_list", "visualise_read_me"} {
+		if hasTool(t, source, name) {
+			t.Fatalf("source worker surface must not advertise %s", name)
+		}
+	}
+}
+
 func TestWidgetSurfaceGetsAgentToolsAfterServerCreated(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {

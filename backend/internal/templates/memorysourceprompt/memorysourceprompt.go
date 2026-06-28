@@ -9,7 +9,17 @@ import (
 //go:embed memorysourceprompt.tmpl
 var promptTemplate string
 
+//go:embed system.md
+var systemPrompt string
+
 var tmpl = template.Must(template.New("memorysourceprompt").Parse(promptTemplate))
+
+// System returns the worker system prompt: the durable memory conventions and
+// promotion bar, injected once per session so the agent never has to read the
+// skill or explore the filesystem to learn them.
+func System() string {
+	return systemPrompt
+}
 
 type Source struct {
 	Path      string
@@ -18,7 +28,6 @@ type Source struct {
 }
 
 type Data struct {
-	Root    string
 	Sources []Source
 }
 

@@ -59,7 +59,7 @@ export interface ModelUsage {
 }
 
 export interface CategoryUsage {
-  // chat, loop_run, memory_dream, memory_search, browser_task
+  // chat, loop_run, memory_dream, memory_search, memory_source, browser_task
   category: string
   usage: UsageTotals
 }
