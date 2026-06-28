@@ -252,15 +252,19 @@ export function OnboardingProgress({
 type AgentState = 'ready' | 'action' | 'missing' | 'downloading' | 'failed'
 
 export function agentReady(probe: OnboardingACPProbe, keyDraft: string): boolean {
-  return adapterReady(probe) && Boolean(probe.available || probe.api_key_configured || keyDraft.trim())
+  return probeReady(probe) || (adapterReady(probe) && Boolean(keyDraft.trim()))
 }
 
-function agentState(probe: OnboardingACPProbe, keyDraft: string): AgentState {
-  const authReady = Boolean(probe.authenticated || probe.api_key_configured || keyDraft.trim())
+function probeReady(probe: OnboardingACPProbe): boolean {
+  return adapterReady(probe) && Boolean(probe.available || probe.api_key_configured)
+}
+
+function agentState(probe: OnboardingACPProbe): AgentState {
+  const authReady = Boolean(probe.authenticated || probe.api_key_configured)
   if (authReady && probe.managed_adapter?.state === 'downloading') return 'downloading'
   if (authReady && probe.managed_adapter?.state === 'failed') return 'failed'
   if (authReady && probe.managed_adapter?.state === 'missing') return 'downloading'
-  if (agentReady(probe, keyDraft)) return 'ready'
+  if (probeReady(probe)) return 'ready'
   if (!probe.installed) return 'missing'
   return 'action'
 }
@@ -289,7 +293,7 @@ function AgentCard({
   const reducedMotion = useReducedMotion()
   const apiKeyEnv = probe.api_key?.source_env
   const apiKeyReady = Boolean(probe.api_key_configured || apiKeyValue.trim())
-  const state = agentState(probe, apiKeyValue)
+  const state = agentState(probe)
   const running = loginPending || loginJob?.status === 'running'
   const canKey = Boolean(apiKeyEnv)
   const canLogin = Boolean(probe.auth_command_available)
