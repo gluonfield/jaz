@@ -42,6 +42,10 @@ func (m *Manager) handleJSONRPC(ctx context.Context, req jsonrpc.Request) (json.
 		return jsonrpc.EncodeResult(map[string]any{})
 	case acpschema.ClientMethodSessionRequestPermission:
 		return m.requestPermission(ctx, req.Params)
+	case acpschema.ClientMethodElicitationCreate:
+		return m.createElicitation(ctx, req.Params)
+	case acpschema.ClientMethodElicitationComplete:
+		return jsonrpc.EncodeResult(map[string]any{})
 	case acpschema.ClientMethodFSReadTextFile:
 		return m.readTextFile(req.Params)
 	case acpschema.ClientMethodFSWriteTextFile:

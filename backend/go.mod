@@ -5,7 +5,7 @@ go 1.26
 require (
 	github.com/charmbracelet/log v0.4.2
 	github.com/creack/pty v1.1.24
-	github.com/gluonfield/acp-transport v0.0.0-20260623144540-b07094226847
+	github.com/gluonfield/acp-transport v0.0.0-20260628101419-3f094724c7f2
 	github.com/gluonfield/jazmem v0.0.0-20260617205718-6749b41cec95
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
@@ -24,6 +24,7 @@ require (
 	go.mau.fi/whatsmeow v0.0.0-20260622185415-5f04eac6dbbb
 	go.uber.org/fx v1.24.0
 	golang.org/x/image v0.39.0
+	golang.org/x/net v0.56.0
 	golang.org/x/oauth2 v0.35.0
 	golang.org/x/sys v0.46.0
 	google.golang.org/protobuf v1.36.11
@@ -111,7 +112,6 @@ require (
 	golang.org/x/exp v0.0.0-20260611194520-c48552f49976 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20231108232855-2478ac86f678 // indirect
 	golang.org/x/mod v0.37.0 // indirect
-	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/telemetry v0.0.0-20260610154732-fb80ec83bdd9 // indirect
 	golang.org/x/text v0.38.0 // indirect
