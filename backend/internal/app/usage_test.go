@@ -100,6 +100,32 @@ func TestNewRoutesMountsDeviceRevokeAsMethodRoute(t *testing.T) {
 	}
 }
 
+func TestNewRoutesDisablePairingDropsPairingRoutes(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	routes := NewRoutes(routeDeps{
+		Usage:   usagecore.NewService(fakeUsageStore{}),
+		Jaz:     Config{Devices: DevicesConfig{DisablePairing: true}},
+		Devices: deviceauth.New(store),
+	})
+	var foundRegister bool
+	for _, route := range routes {
+		switch route.Pattern {
+		case "POST /v1/devices/pairing-requests", "/v1/devices/pairing-requests/":
+			t.Fatalf("pairing route mounted while disabled: %s", route.Pattern)
+		case "POST /v1/devices/register":
+			foundRegister = route.Handler != nil
+		}
+	}
+	if !foundRegister {
+		t.Fatalf("register route must stay mounted: %#v", routes)
+	}
+}
+
 func TestNewRoutesIncludesBrowserExtensionRoute(t *testing.T) {
 	routes := NewRoutes(routeDeps{
 		Usage:   usagecore.NewService(fakeUsageStore{}),

@@ -66,6 +66,11 @@ type Config struct {
 	ACP            acp.Config
 	Memory         MemoryConfig
 	Connections    ConnectionsConfig
+	Devices        DevicesConfig
+}
+
+type DevicesConfig struct {
+	DisablePairing bool
 }
 
 type Release struct {
