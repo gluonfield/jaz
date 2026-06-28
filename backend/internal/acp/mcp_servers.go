@@ -79,33 +79,27 @@ func enabledHTTPMCPServers(ctx context.Context, store mcpconfig.ServerReader, po
 }
 
 func mcpServerAllowed(policy string, server mcpconfig.Server) bool {
-	switch strings.TrimSpace(policy) {
+	policy = strings.TrimSpace(policy)
+	if restrictedWorkerPolicy(policy) {
+		return isJaztoolsServer(server)
+	}
+	switch policy {
 	case MCPServerPolicyAll, MCPServerPolicyWidget:
 		return true
-	case MCPServerPolicyMemorySearchWorker, MCPServerPolicyMemorySourceWorker, MCPServerPolicyBrowserWorker:
-		return isJaztoolsServer(server)
 	default:
 		return false
 	}
 }
 
+// mcpServerURL routes the jaztools server to the tool surface named by the
+// policy itself: the policy string and the jaztools surface query param are one
+// and the same, so they cannot drift out of sync.
 func mcpServerURL(policy string, server mcpconfig.Server) string {
-	raw := server.URL
-	if !isJaztoolsServer(server) {
-		return raw
+	policy = strings.TrimSpace(policy)
+	if !isJaztoolsServer(server) || policy == MCPServerPolicyAll {
+		return server.URL
 	}
-	switch strings.TrimSpace(policy) {
-	case MCPServerPolicyWidget:
-		return jaztoolsSurfaceURL(raw, jaztoolsWidgetSurfaceName)
-	case MCPServerPolicyMemorySearchWorker:
-		return jaztoolsSurfaceURL(raw, jaztoolsMemorySearchSurfaceName)
-	case MCPServerPolicyMemorySourceWorker:
-		return jaztoolsSurfaceURL(raw, jaztoolsMemorySourceSurfaceName)
-	case MCPServerPolicyBrowserWorker:
-		return jaztoolsSurfaceURL(raw, jaztoolsBrowserWorkerSurfaceName)
-	default:
-		return raw
-	}
+	return jaztoolsSurfaceURL(server.URL, policy)
 }
 
 func isJaztoolsServer(server mcpconfig.Server) bool {
