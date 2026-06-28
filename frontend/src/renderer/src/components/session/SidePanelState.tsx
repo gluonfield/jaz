@@ -178,7 +178,7 @@ export function SidePanelControl({
         title={`${active ? `Hide ${SIDE_PANEL_VIEW_LABEL[option]} panel` : `Open ${SIDE_PANEL_VIEW_LABEL[option]}`}${shortcut ? ` (⌘${shortcut})` : ''}`}
         onClick={() => toggleView(option)}
         whileTap={{ scale: 0.96 }}
-        className={`relative flex h-7 cursor-pointer items-center rounded-full px-2.5 text-[13px] font-medium whitespace-nowrap transition-colors duration-150 ${
+        className={`relative flex h-7 cursor-pointer items-center rounded-full px-2 text-[13px] font-medium whitespace-nowrap transition-colors duration-150 ${
           active ? 'text-ink' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
         }`}
       >
@@ -272,7 +272,7 @@ export function SidePanelControl({
       onBlur={(event) => {
         if (!controlRef.current?.contains(event.relatedTarget as Node | null)) collapseSoon()
       }}
-      className="flex h-8 items-center rounded-full bg-surface p-0.5"
+      className="flex h-8 items-center rounded-full bg-surface px-2 py-0.5"
     >
       {options.map((option) => {
         // The current view is a plain flex child (the rigid anchor); the others
