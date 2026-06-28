@@ -28,7 +28,7 @@ import { THREAD_COLUMN_CLASS } from '@/components/session/threadLayout'
 import { isArtifactToolName } from '@/components/session/toolVisibility'
 import { useThreadFind } from '@/components/session/useThreadFind'
 import { useThreadAutoScroll } from '@/components/session/useThreadAutoScroll'
-import { liveExchangeSize, liveUserMessage, useLiveSessionSend } from '@/components/session/useLiveSessionSend'
+import { liveUserMessage, useLiveSessionSend } from '@/components/session/useLiveSessionSend'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { FileDropScope } from '@/components/ui/FileDrop'
 import { Skeleton, SkeletonRows } from '@/components/ui/Skeleton'
@@ -511,18 +511,15 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   // of a column.
   const isMobile = useIsMobile()
 
-  const itemCount =
-    (detail.data?.messages.length ?? 0) + events.data.filter((event) => sessionEventPlacement(event) !== 'side_chat').length
   const { live, streaming, send: sendLiveMessage, abort: abortLiveMessage } = useLiveSessionSend({
     sessionId,
     streamingRef,
     onCriticalError: notifyCriticalError,
   })
-  const liveSize = liveExchangeSize(live)
   const [bottomDockHeight, setBottomDockHeight] = useState(0)
   const transcriptBottomPadding = Math.max(bottomDockHeight + TRANSCRIPT_DOCK_GAP_PX, 160)
   const { scrollRef, showScrollToBottom, onScroll: onThreadScroll, scrollToBottom, pinToBottom } =
-    useThreadAutoScroll({ resetKey: sessionId, itemCount, liveSize, bottomInset: transcriptBottomPadding })
+    useThreadAutoScroll({ resetKey: sessionId })
   const threadFind = useThreadFind(sessionId, scrollRef)
   const [highlightedMessageSeq, setHighlightedMessageSeq] = useState<number>()
 
