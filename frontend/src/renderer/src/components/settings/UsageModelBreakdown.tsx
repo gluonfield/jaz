@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { UsageShareLegend } from '@/components/settings/UsageShareLegend'
 import { formatTokens } from '@/lib/format/tokens'
 import { formatUsd, type PricedModel } from '@/lib/usageCost'
 import { inputTokens, totalUsageTokens, type UsageModelTotals } from '@/lib/usageDaily'
@@ -172,26 +173,17 @@ function ModelUsagePie({ models }: { models: UsageModelTotals[] }) {
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-4">
         <PieDonut slices={slices} grand={grand} />
-        <ul className="min-w-[180px] flex-1 space-y-1.5">
-          {slices.map((slice) => {
-            const pct = (slice.total / grand) * 100
-            return (
-              <li key={`${slice.label}:${slice.meta}`} className="flex items-center gap-2 text-[12px]">
-                <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: slice.color }} />
-                <span className="min-w-0 flex-1 truncate text-ink">
-                  {slice.label}
-                  {slice.meta ? <span className="text-ink-3"> · {slice.meta}</span> : null}
-                </span>
-                <span className="shrink-0 font-mono text-[11px] text-ink-2 tabular-nums">
-                  {formatTokens(slice.total)}
-                </span>
-                <span className="w-9 shrink-0 text-right font-mono text-[11px] text-ink-3 tabular-nums">
-                  {pct < 1 ? '<1' : Math.round(pct)}%
-                </span>
-              </li>
-            )
-          })}
-        </ul>
+        <UsageShareLegend
+          className="min-w-[180px] flex-1 space-y-1.5"
+          grand={grand}
+          rows={slices.map((slice) => ({
+            key: `${slice.label}:${slice.meta}`,
+            color: slice.color,
+            label: slice.label,
+            meta: slice.meta,
+            total: slice.total,
+          }))}
+        />
       </div>
     </div>
   )

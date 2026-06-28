@@ -46,6 +46,7 @@ export interface DailyUsage {
   date: string
   usage: UsageTotals
   models?: ModelUsage[]
+  categories?: CategoryUsage[]
   session_count: number
 }
 
@@ -55,6 +56,12 @@ export interface ModelUsage {
   model?: string
   usage: UsageTotals
   session_count: number
+}
+
+export interface CategoryUsage {
+  // chat, loop_run, memory_dream, memory_search, browser_task
+  category: string
+  usage: UsageTotals
 }
 
 export interface Session {

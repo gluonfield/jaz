@@ -1,5 +1,10 @@
 import type { DailyUsage, UsageTotals } from './api/types'
 
+export type UsageCategoryTotals = {
+  category: string
+  usage: UsageTotals
+}
+
 export type UsageCell = {
   date: string
   day: DailyUsage | null
@@ -72,28 +77,56 @@ export function sumUsage(days: DailyUsage[]): UsageTotals {
 }
 
 export function sumModelUsage(days: DailyUsage[]): UsageModelTotals[] {
-  const groups = new Map<string, UsageModelTotals>()
-  for (const day of days) {
-    for (const model of day.models ?? []) {
-      const key = modelUsageKey(model)
-      let group = groups.get(key)
-      if (!group) {
-        group = {
-          agent: model.agent,
-          model_provider: model.model_provider,
-          model: model.model,
-          usage: {},
-        }
-        groups.set(key, group)
-      }
-      addUsageTotals(group.usage, model.usage)
+  return sumUsageGroups(
+    days.flatMap((day) => day.models ?? []),
+    modelUsageKey,
+    (model) => ({
+      agent: model.agent,
+      model_provider: model.model_provider,
+      model: model.model,
+      usage: {},
+    }),
+    (left, right) => modelUsageKey(left).localeCompare(modelUsageKey(right)),
+  )
+}
+
+export function sumCategoryUsage(days: DailyUsage[]): UsageCategoryTotals[] {
+  return sumUsageGroups(
+    days.flatMap((day) => day.categories ?? []),
+    (category) => category.category,
+    (category) => ({ category: category.category, usage: {} }),
+    (left, right) => left.category.localeCompare(right.category),
+  )
+}
+
+// sumUsageGroups groups rows by key, accumulates their usage into a fresh
+// aggregate per group, and ranks the result by total tokens (ties broken by
+// the caller). The model and category breakdowns are the same shape over
+// different identities, so they share it.
+function sumUsageGroups<R extends { usage: UsageTotals }, T extends { usage: UsageTotals }>(
+  rows: R[],
+  keyOf: (row: R) => string,
+  blank: (row: R) => T,
+  tiebreak: (left: T, right: T) => number,
+): T[] {
+  const groups = new Map<string, T>()
+  for (const row of rows) {
+    const key = keyOf(row)
+    let group = groups.get(key)
+    if (!group) {
+      group = blank(row)
+      groups.set(key, group)
     }
+    addUsageTotals(group.usage, row.usage)
   }
   const out = [...groups.values()]
-  for (const model of out) {
-    model.usage.input_output_tokens = totalUsageTokens(model.usage)
+  for (const group of out) {
+    group.usage.input_output_tokens = totalUsageTokens(group.usage)
   }
-  return out.sort(compareModelUsage)
+  return out.sort((left, right) => {
+    const diff = totalUsageTokens(right.usage) - totalUsageTokens(left.usage)
+    return diff !== 0 ? diff : tiebreak(left, right)
+  })
 }
 
 export function peakDay(days: DailyUsage[]): DailyUsage | null {
@@ -149,13 +182,6 @@ function addUsageTotals(total: UsageTotals, usage: UsageTotals): UsageTotals {
 
 function modelUsageKey(model: UsageModelTotals): string {
   return [model.agent ?? '', model.model_provider ?? '', model.model ?? ''].join('\u0000')
-}
-
-function compareModelUsage(left: UsageModelTotals, right: UsageModelTotals): number {
-  const leftTokens = totalUsageTokens(left.usage)
-  const rightTokens = totalUsageTokens(right.usage)
-  if (leftTokens !== rightTokens) return rightTokens - leftTokens
-  return modelUsageKey(left).localeCompare(modelUsageKey(right))
 }
 
 function parseLocalDate(date: string): Date {

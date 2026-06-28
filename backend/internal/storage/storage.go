@@ -82,14 +82,17 @@ type Usage struct {
 }
 
 type UsageEvent struct {
-	SessionID     string    `json:"session_id"`
-	Runtime       string    `json:"runtime"`
-	Agent         string    `json:"agent,omitempty"`
-	ModelProvider string    `json:"model_provider,omitempty"`
-	Model         string    `json:"model,omitempty"`
-	Usage         Usage     `json:"usage"`
-	Source        string    `json:"source,omitempty"`
-	CreatedAt     time.Time `json:"created_at"`
+	SessionID     string `json:"session_id"`
+	Runtime       string `json:"runtime"`
+	Agent         string `json:"agent,omitempty"`
+	ModelProvider string `json:"model_provider,omitempty"`
+	Model         string `json:"model,omitempty"`
+	Usage         Usage  `json:"usage"`
+	Source        string `json:"source,omitempty"`
+	// SourceType is the originating session's source type (loop_run,
+	// memory_dream, memory_search, browser_task), empty for interactive chat.
+	SourceType string    `json:"source_type,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 const (

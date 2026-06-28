@@ -21,10 +21,16 @@ type dailyResponse struct {
 }
 
 type dailyUsageDTO struct {
-	Date         string          `json:"date"`
-	Usage        usageTotalsDTO  `json:"usage"`
-	Models       []modelUsageDTO `json:"models,omitempty"`
-	SessionCount int             `json:"session_count"`
+	Date         string             `json:"date"`
+	Usage        usageTotalsDTO     `json:"usage"`
+	Models       []modelUsageDTO    `json:"models,omitempty"`
+	Categories   []categoryUsageDTO `json:"categories,omitempty"`
+	SessionCount int                `json:"session_count"`
+}
+
+type categoryUsageDTO struct {
+	Category string         `json:"category"`
+	Usage    usageTotalsDTO `json:"usage"`
 }
 
 type usageTotalsDTO struct {
@@ -66,7 +72,19 @@ func dailyDTOs(days []usagecore.DailyBucket) []dailyUsageDTO {
 			Date:         day.Date,
 			Usage:        usageDTO(day.Usage),
 			Models:       modelDTOs(day.Models),
+			Categories:   categoryDTOs(day.Categories),
 			SessionCount: day.SessionCount,
+		}
+	}
+	return out
+}
+
+func categoryDTOs(categories []usagecore.CategoryUsage) []categoryUsageDTO {
+	out := make([]categoryUsageDTO, len(categories))
+	for i, category := range categories {
+		out[i] = categoryUsageDTO{
+			Category: category.Category,
+			Usage:    usageDTO(category.Usage),
 		}
 	}
 	return out

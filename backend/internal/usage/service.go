@@ -33,6 +33,7 @@ type DailyBucket struct {
 	Date         string
 	Usage        UsageTotals
 	Models       []ModelUsage
+	Categories   []CategoryUsage
 	SessionCount int
 }
 
@@ -50,6 +51,26 @@ type ModelUsage struct {
 	Model         string
 	Usage         UsageTotals
 	SessionCount  int
+}
+
+// CategoryUsage splits usage by the originating session's activity. Categories
+// partition the daily total: every turn event lands in exactly one. Unlike
+// ModelUsage there is no per-category session count: nothing consumes one, and
+// categories have no dedicated endpoint where it would be a contract.
+type CategoryUsage struct {
+	Category string
+	Usage    UsageTotals
+}
+
+// CategoryChat is the category for interactive sessions, which carry no source
+// type. Worker categories reuse their storage source-type keys verbatim.
+const CategoryChat = "chat"
+
+func usageCategory(sourceType string) string {
+	if sourceType == "" {
+		return CategoryChat
+	}
+	return sourceType
 }
 
 func (u UsageTotals) InputOutputTokens() int64 {
@@ -73,10 +94,9 @@ func (s Service) Daily(query DailyQuery) ([]DailyBucket, error) {
 		loc = time.Local
 	}
 	out, index, start := dailyBucketsAt(days, loc, s.currentTime())
-	sessionIDs := make([]map[string]struct{}, len(out))
-	modelGroups := make([]map[modelUsageKey]*modelUsageGroup, len(out))
-	for i := range sessionIDs {
-		sessionIDs[i] = map[string]struct{}{}
+	accs := make([]dayAccumulator, len(out))
+	for i := range accs {
+		accs[i] = newDayAccumulator()
 	}
 	events, err := s.store.UsageEventsSince(start.In(time.UTC))
 	if err != nil {
@@ -93,20 +113,20 @@ func (s Service) Daily(query DailyQuery) ([]DailyBucket, error) {
 		if !ok {
 			continue
 		}
+		acc := accs[i]
 		AddDaily(&out[i].Usage, event.Usage)
+		addUsageGroup(acc.categories, usageCategory(event.SourceType), event)
 		if event.Runtime == storage.RuntimeACP {
-			if modelGroups[i] == nil {
-				modelGroups[i] = map[modelUsageKey]*modelUsageGroup{}
-			}
-			addModelUsage(modelGroups[i], event)
+			addUsageGroup(acc.models, modelKey(event), event)
 		}
 		if event.Usage.Countable() {
-			sessionIDs[i][event.SessionID] = struct{}{}
+			acc.sessions[event.SessionID] = struct{}{}
 		}
 	}
 	for i := range out {
-		out[i].SessionCount = len(sessionIDs[i])
-		out[i].Models = modelUsageFromGroups(modelGroups[i])
+		out[i].SessionCount = len(accs[i].sessions)
+		out[i].Models = modelUsageFromGroups(accs[i].models)
+		out[i].Categories = categoryUsageFromGroups(accs[i].categories)
 	}
 	return out, nil
 }
@@ -129,7 +149,7 @@ func (s Service) Models(query DailyQuery) ([]ModelUsage, error) {
 	if err != nil {
 		return nil, err
 	}
-	groups := map[modelUsageKey]*modelUsageGroup{}
+	groups := map[modelUsageKey]*usageGroup{}
 	for _, event := range events {
 		if event.Source != storage.UsageEventSourceTurn || event.Runtime != storage.RuntimeACP {
 			continue
@@ -137,40 +157,21 @@ func (s Service) Models(query DailyQuery) ([]ModelUsage, error) {
 		if event.CreatedAt.Before(start) || !event.CreatedAt.Before(end) {
 			continue
 		}
-		addModelUsage(groups, event)
+		addUsageGroup(groups, modelKey(event), event)
 	}
 	return modelUsageFromGroups(groups), nil
 }
 
-func addModelUsage(groups map[modelUsageKey]*modelUsageGroup, event storage.UsageEvent) {
-	key := modelUsageKey{
-		agent:    event.Agent,
-		provider: event.ModelProvider,
-		model:    event.Model,
-	}
-	group := groups[key]
-	if group == nil {
-		group = &modelUsageGroup{
-			ModelUsage: ModelUsage{
-				Agent:         event.Agent,
-				ModelProvider: event.ModelProvider,
-				Model:         event.Model,
-			},
-			sessionIDs: map[string]struct{}{},
-		}
-		groups[key] = group
-	}
-	AddDaily(&group.Usage, event.Usage)
-	if event.Usage.Countable() {
-		group.sessionIDs[event.SessionID] = struct{}{}
-	}
-}
-
-func modelUsageFromGroups(groups map[modelUsageKey]*modelUsageGroup) []ModelUsage {
+func modelUsageFromGroups(groups map[modelUsageKey]*usageGroup) []ModelUsage {
 	out := make([]ModelUsage, 0, len(groups))
-	for _, group := range groups {
-		group.SessionCount = len(group.sessionIDs)
-		out = append(out, group.ModelUsage)
+	for key, group := range groups {
+		out = append(out, ModelUsage{
+			Agent:         key.agent,
+			ModelProvider: key.provider,
+			Model:         key.model,
+			Usage:         group.usage,
+			SessionCount:  len(group.sessionIDs),
+		})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		left := out[i].Usage.InputOutputTokens()
@@ -185,6 +186,25 @@ func modelUsageFromGroups(groups map[modelUsageKey]*modelUsageGroup) []ModelUsag
 			return out[i].ModelProvider < out[j].ModelProvider
 		}
 		return out[i].Model < out[j].Model
+	})
+	return out
+}
+
+func categoryUsageFromGroups(groups map[string]*usageGroup) []CategoryUsage {
+	out := make([]CategoryUsage, 0, len(groups))
+	for key, group := range groups {
+		out = append(out, CategoryUsage{
+			Category: key,
+			Usage:    group.usage,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		left := out[i].Usage.InputOutputTokens()
+		right := out[j].Usage.InputOutputTokens()
+		if left != right {
+			return left > right
+		}
+		return out[i].Category < out[j].Category
 	})
 	return out
 }
@@ -245,13 +265,48 @@ func AddDaily(total *UsageTotals, event storage.Usage) {
 	total.ReasoningOutputTokens += event.ReasoningOutputTokens
 }
 
-type modelUsageGroup struct {
-	ModelUsage
+// dayAccumulator collects one day's events: distinct sessions for the day's
+// count, plus the model and category breakdowns keyed by identity.
+type dayAccumulator struct {
+	sessions   map[string]struct{}
+	models     map[modelUsageKey]*usageGroup
+	categories map[string]*usageGroup
+}
+
+func newDayAccumulator() dayAccumulator {
+	return dayAccumulator{
+		sessions:   map[string]struct{}{},
+		models:     map[modelUsageKey]*usageGroup{},
+		categories: map[string]*usageGroup{},
+	}
+}
+
+// usageGroup accumulates token totals and distinct sessions for one key. The
+// model and category breakdowns are the same group-by-then-rank shape over
+// different keys, so they share this accumulator; the key carries identity.
+type usageGroup struct {
+	usage      UsageTotals
 	sessionIDs map[string]struct{}
+}
+
+func addUsageGroup[K comparable](groups map[K]*usageGroup, key K, event storage.UsageEvent) {
+	group := groups[key]
+	if group == nil {
+		group = &usageGroup{sessionIDs: map[string]struct{}{}}
+		groups[key] = group
+	}
+	AddDaily(&group.usage, event.Usage)
+	if event.Usage.Countable() {
+		group.sessionIDs[event.SessionID] = struct{}{}
+	}
 }
 
 type modelUsageKey struct {
 	agent    string
 	provider string
 	model    string
+}
+
+func modelKey(event storage.UsageEvent) modelUsageKey {
+	return modelUsageKey{agent: event.Agent, provider: event.ModelProvider, model: event.Model}
 }
