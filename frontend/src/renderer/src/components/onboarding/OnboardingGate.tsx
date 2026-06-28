@@ -12,6 +12,7 @@ import { disconnectBackend, isLocalBackendUrl, useConnection } from '@/lib/conne
 import { clientRuntime } from '@/lib/clientRuntime'
 import { localDeviceLabel } from '@/lib/deviceLabel'
 import { useACPLoginPolling } from '@/lib/hooks/useACPLoginPolling'
+import { selectableACPAgent } from '@/lib/agentRuntimes'
 import { keys } from '@/lib/query/keys'
 import {
   AgentSetupStep,
@@ -76,7 +77,7 @@ function OnboardingScreen({
   const [acpKeysByAgent, setACPKeysByAgent] = useState<Record<string, string>>({})
   const [memoryEnabled, setMemoryEnabled] = useState(status.memory?.enabled ?? true)
   const [memoryAgent, setMemoryAgent] = useState(status.memory?.agent ?? '')
-  const onboardingProbes = useMemo(() => status.acp.filter((probe) => probe.agent !== 'jaz'), [status.acp])
+  const onboardingProbes = useMemo(() => status.acp.filter((probe) => selectableACPAgent(probe.agent)), [status.acp])
   const adapterPreparing = onboardingProbes.some(
     (probe) => probe.managed_adapter?.state === 'missing' || probe.managed_adapter?.state === 'downloading',
   )
@@ -135,11 +136,11 @@ function OnboardingScreen({
   const save = useMutation({
     mutationFn: () => {
       const next = cloneAgentSettings(draft)
-      for (const probe of status.acp) {
+      for (const probe of onboardingProbes) {
         const current = next.acp[probe.agent]
         next.acp[probe.agent] = {
           ...current,
-          enabled: probe.agent === 'jaz' ? Boolean(current?.enabled) : readyAgents.has(probe.agent),
+          enabled: readyAgents.has(probe.agent),
         }
       }
       return completeOnboarding({
@@ -276,7 +277,7 @@ function OnboardingShell({ children, onDisconnect }: { children: ReactNode; onDi
 }
 
 function orderedMemoryAgents(agents: string[]): string[] {
-  const unique = Array.from(new Set(agents.filter((agent) => agent && agent !== 'jaz')))
+  const unique = Array.from(new Set(agents.filter(selectableACPAgent)))
   const rank = new Map(MEMORY_AGENT_PRIORITY.map((agent, index) => [agent, index]))
   return unique.sort((left, right) => {
     const leftRank = rank.get(left) ?? Number.MAX_SAFE_INTEGER
@@ -294,7 +295,7 @@ function preferredMemoryAgent(current: string, agents: string[]): string {
 
 function draftFromStatus(status: OnboardingStatus): AgentSettings {
   const settings = cloneAgentSettings(status.settings)
-  for (const probe of status.acp) {
+  for (const probe of status.acp.filter((item) => selectableACPAgent(item.agent))) {
     const current = settings.acp[probe.agent]
     settings.acp[probe.agent] = {
       ...current,

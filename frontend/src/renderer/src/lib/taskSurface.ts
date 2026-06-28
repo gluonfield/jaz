@@ -67,6 +67,7 @@ function hasACPPlanSignal(acp: SessionEvent['acp']): boolean {
 
 function looksLikeMarkdownBlock(text: string): boolean {
   return (
+    text === '#' ||
     text.startsWith('# ') ||
     text.startsWith('##') ||
     text.startsWith('- ') ||

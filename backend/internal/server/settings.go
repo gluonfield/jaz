@@ -62,7 +62,7 @@ func (s *Server) handleAgentSettings(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		normalized, err := agentsettings.NormalizeAgentDefaults(input.AgentDefaults, s.acpAgentCatalog())
+		normalized, err := agentsettings.NormalizeAgentDefaults(input.AgentDefaults, s.selectableACPAgentCatalog())
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
@@ -87,7 +87,7 @@ func (s *Server) handleAgentSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) loadAgentSettings(store storage.SettingsStorage) (agentsettings.AgentDefaults, error) {
-	return agentsettings.LoadEffectiveAgentDefaults(store, s.acpAgentCatalog())
+	return agentsettings.LoadEffectiveAgentDefaults(store, s.selectableACPAgentCatalog())
 }
 
 func (s *Server) agentSettingsResponse(defaults agentsettings.AgentDefaults) agentSettingsResponse {
@@ -95,11 +95,21 @@ func (s *Server) agentSettingsResponse(defaults agentsettings.AgentDefaults) age
 	providers := s.modelProvidersWithStatus()
 	return agentSettingsResponse{
 		Providers:  providers,
-		ACP:        defaults.ACP,
+		ACP:        acpDefaultsForAgents(defaults.ACP, agentNames),
 		ACPAuth:    s.acpAgentAuthStatuses(defaults),
-		ACPOptions: acpOptions(s.acpAgentCatalog(), agentNames, providers),
+		ACPOptions: acpOptions(s.selectableACPAgentCatalog(), agentNames, providers),
 		Agents:     agentNames,
 	}
+}
+
+func acpDefaultsForAgents(defaults map[string]agentsettings.ACPAgentDefaults, agents []string) map[string]agentsettings.ACPAgentDefaults {
+	out := make(map[string]agentsettings.ACPAgentDefaults, len(agents))
+	for _, agent := range agents {
+		if current, ok := defaults[agent]; ok {
+			out[agent] = current
+		}
+	}
+	return out
 }
 
 func (s *Server) modelProvidersWithStatus() []settingsModelProvider {
@@ -286,11 +296,15 @@ func enabledACPAgentRequiresAuth(name string, cfg acp.AgentConfig) bool {
 }
 
 func (s *Server) agentSettingsSeed() agentsettings.AgentDefaults {
-	return agentsettings.AgentDefaultsFromCatalog(s.acpAgentCatalog())
+	return agentsettings.AgentDefaultsFromCatalog(s.selectableACPAgentCatalog())
 }
 
 func (s *Server) allACPAgentNames() []string {
-	return s.acpAgentCatalog().Names()
+	return acp.SelectableAgentNames(s.acpAgentCatalog().Names())
+}
+
+func (s *Server) selectableACPAgentCatalog() acp.AgentCatalog {
+	return acp.SelectableAgentCatalog(s.acpAgentCatalog())
 }
 
 func (s *Server) acpAgentCatalog() acp.AgentCatalog {

@@ -1,16 +1,18 @@
 import { queryOptions } from '@tanstack/react-query'
+import { selectableACPAgent } from '@/lib/agentRuntimes'
 import { keys } from '../query/keys'
 import { get, post, put } from './client'
 import type { ACPAgentAuth, ACPAuthLogin, AgentSettings, BrowserMode, BrowserStatus } from './types'
 
 function normalizeAgentSettings(settings: AgentSettings): AgentSettings {
+  const agents = (settings.agents ?? []).filter(selectableACPAgent)
   return {
     providers: settings.providers ?? [],
     acp_auth: settings.acp_auth ?? {},
     acp_keys: settings.acp_keys ?? {},
     acp_options: settings.acp_options ?? {},
     acp: Object.fromEntries(
-      (settings.agents ?? []).map((agent) => {
+      agents.map((agent) => {
         const current = settings.acp?.[agent] ?? { enabled: false }
         return [
           agent,
@@ -28,7 +30,7 @@ function normalizeAgentSettings(settings: AgentSettings): AgentSettings {
         ]
       }),
     ),
-    agents: settings.agents ?? [],
+    agents,
   }
 }
 

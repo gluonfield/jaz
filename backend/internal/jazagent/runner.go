@@ -34,12 +34,10 @@ You are in Plan Mode until this turn ends. Plan Mode is a collaboration mode for
 
 ## Proposing The Plan
 
-When you are ready to present the official plan, call update_plan with the proposed plan. In Plan Mode, update_plan creates the approval surface shown to the user. Do not duplicate the full plan in normal assistant text after calling the tool.
-
-The proposed plan should include a clear title or summary, important API/interface/type changes, concrete implementation steps, tests/scenarios, and explicit assumptions/defaults where needed. Do not ask "should I proceed?" in the final output; the user can approve the plan from the client.
+Present the plan in the assistant response. The proposed plan should include a clear title or summary, important API/interface/type changes, concrete implementation steps, tests/scenarios, and explicit assumptions/defaults where needed.
 </collaboration_mode>`
 
-const PlanUserInstruction = "Plan mode is enabled for this turn. Use the update_plan tool to present the proposed plan when it is ready for approval."
+const PlanUserInstruction = "Plan mode is enabled for this turn. Present the proposed plan when it is ready."
 
 type Store interface {
 	storage.MessageStore

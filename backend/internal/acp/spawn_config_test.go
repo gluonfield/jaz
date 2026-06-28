@@ -1,6 +1,7 @@
 package acp
 
 import (
+	"strings"
 	"testing"
 
 	modelprovider "github.com/wins/jaz/backend/internal/provider"
@@ -47,6 +48,16 @@ func TestSpawnConfigPreservesExplicitMCPPolicy(t *testing.T) {
 	}
 }
 
+func TestSpawnConfigRejectsJazAgent(t *testing.T) {
+	manager := &Manager{agents: AgentCatalog{
+		AgentJaz: AgentConfig{Local: true},
+	}}
+	_, _, _, err := manager.spawnConfig(SpawnRequest{ACPAgent: AgentJaz})
+	if err == nil || !strings.Contains(err.Error(), `acp agent "jaz" is not selectable`) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestSpawnConfigDefaultsWorkerSourceToRestrictedMCPPolicy(t *testing.T) {
 	manager := &Manager{agents: AgentCatalog{
 		"fake": AgentConfig{Command: "fake"},
@@ -75,7 +86,7 @@ func TestSpawnConfigDefaultsWorkerSourceToRestrictedMCPPolicy(t *testing.T) {
 }
 
 func TestSpawnConfigReasoningEffortNoneAndDefault(t *testing.T) {
-	agents := []string{AgentJaz, AgentCodex, AgentClaude, AgentGrok, AgentOpenCode}
+	agents := []string{AgentCodex, AgentClaude, AgentGrok, AgentOpenCode}
 	catalog := AgentCatalog{}
 	for _, agent := range agents {
 		catalog[agent] = AgentConfig{Command: agent, Model: "gpt-5/high", ReasoningEffort: "high"}

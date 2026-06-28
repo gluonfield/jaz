@@ -90,7 +90,7 @@ export function BrowserSettings() {
   const browser = status.data
   const extension = browser.extension ?? { connected: false }
   const mode: BrowserMode = browser.mode ?? 'extension'
-  const agents = enabledACPAgents(agentSettings.data).filter((agent) => agent !== 'jaz')
+  const agents = enabledACPAgents(agentSettings.data)
   const selectedAgent = browser.agent ?? ''
   const staleAgent = selectedAgent && !agents.includes(selectedAgent)
   const agentOptions = [

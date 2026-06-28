@@ -47,7 +47,6 @@ import (
 	agentwait "github.com/wins/jaz/backend/internal/tools/agent/wait"
 	applypatch "github.com/wins/jaz/backend/internal/tools/applypatch"
 	exectool "github.com/wins/jaz/backend/internal/tools/exec"
-	plantool "github.com/wins/jaz/backend/internal/tools/plan"
 	viewimagetool "github.com/wins/jaz/backend/internal/tools/viewimage"
 	visualizetool "github.com/wins/jaz/backend/internal/tools/visualize"
 	widgettool "github.com/wins/jaz/backend/internal/tools/widget"
@@ -189,7 +188,7 @@ func NewPromptBuilder(store *sqlitestore.Store, workspace Workspace, memory *mem
 }
 
 func NewACPAgentCatalog(cfg Config) acp.AgentCatalog {
-	return acp.MergeAgents(acp.MergeAgents(acp.BuiltinAgents(), jazagent.ACPAgentCatalog()), cfg.ACP.Agents)
+	return acp.MergeAgents(acp.BuiltinAgents(), cfg.ACP.Agents)
 }
 
 func NewACPAgentConfigSource(store *sqlitestore.Store, catalog acp.AgentCatalog) acp.AgentConfigSource {
@@ -303,7 +302,6 @@ func NewThreadService(store *sqlitestore.Store) *threads.Service {
 
 func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, store *sqlitestore.Store, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher) *tools.Registry {
 	return tools.NewRegistry(
-		&plantool.Tool{Store: store, Events: events},
 		&exectool.ExecCommandTool{Manager: commandManager, Workspace: string(workspace)},
 		&exectool.WriteStdinTool{Manager: commandManager},
 		&applypatch.Tool{
@@ -584,15 +582,6 @@ func NewAgent(cfg Config, modelProvider provider.Provider, registry *tools.Regis
 		DeferTools: func(name string) bool { return registry.InGroup(mcpruntime.RegistryGroup, name) },
 		MaxTurns:   agent.DefaultMaxTurns,
 	}
-}
-
-func ConnectLocalJazAgent(manager *acp.Manager, a *agent.Agent, store *sqlitestore.Store, prompts *coordinator.Builder, logger *log.Logger) {
-	jazagent.RegisterACP(manager, jazagent.ACPDependencies{
-		Agent:   a,
-		Store:   store,
-		Prompts: prompts,
-		Log:     logger.WithPrefix("jazagent"),
-	})
 }
 
 func ConnectACPCompletion(manager *acp.Manager, a *agent.Agent, store *sqlitestore.Store, locks *sessionlock.Locks, events *sessionevents.Bus, prompts *coordinator.Builder, logger *log.Logger) {

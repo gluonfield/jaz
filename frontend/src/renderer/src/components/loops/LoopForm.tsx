@@ -201,7 +201,7 @@ function LoopPromptCard({
   useEffect(() => {
     if (!runtimeReady) return
     if (agents.includes(draft.runtime)) return
-    const runtime = agents.includes('jaz') ? 'jaz' : (agents[0] ?? '')
+    const runtime = agents[0] ?? ''
     if (runtime === draft.runtime) return
     set({ runtime, provider: '', model: '', reasoningEffort: '' })
   }, [agents, draft.runtime, runtimeReady, set])

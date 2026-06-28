@@ -14,7 +14,7 @@ type Tool struct {
 }
 
 type input struct {
-	ACPAgent        string `json:"acp_agent,omitempty" jsonschema_description:"Configured ACP agent name, for example jaz, codex, claude, grok, or opencode. Empty uses jaz."`
+	ACPAgent        string `json:"acp_agent,omitempty" jsonschema_description:"Configured ACP agent name, for example codex, claude, grok, or opencode. Empty uses the default selectable agent."`
 	AgentName       string `json:"agent_name,omitempty" jsonschema_description:"Alias for acp_agent. Use this when the caller expects an agent_name field."`
 	Slug            string `json:"slug,omitempty" jsonschema_description:"Stable human-readable handle for the spawned session."`
 	Title           string `json:"title,omitempty" jsonschema_description:"Optional display title for the spawned session."`
@@ -29,7 +29,7 @@ type input struct {
 func (t *Tool) Definition() tools.Definition {
 	return tools.Function(
 		"agent_spawn",
-		"Create an idle ACP-backed agent session, such as jaz, codex, claude, grok, or opencode. Use acp_agent or agent_name to choose the agent; empty uses jaz. This only creates the session; send tasks with agent_send and choose wait=true or wait=false per task. Pass directory to work inside an existing project; pass worktree=true to isolate repo changes on a session branch. With worktree=true, branch optionally chooses the base branch/ref; omit it to branch from directory's current HEAD.",
+		"Create an idle ACP-backed agent session, such as codex, claude, grok, or opencode. Use acp_agent or agent_name to choose the agent; empty uses the default selectable agent. This only creates the session; send tasks with agent_send and choose wait=true or wait=false per task. Pass directory to work inside an existing project; pass worktree=true to isolate repo changes on a session branch. With worktree=true, branch optionally chooses the base branch/ref; omit it to branch from directory's current HEAD.",
 		true,
 		helpers.GenerateSchema[input](),
 	)

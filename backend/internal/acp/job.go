@@ -64,6 +64,7 @@ type activeTurn struct {
 	firstPromptSent       chan struct{}
 	firstPromptSentClosed bool
 	promptCalls           int
+	planProposal          *sessionevents.PlanEvent
 }
 
 type ModeState struct {

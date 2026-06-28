@@ -1,27 +1,25 @@
 package acp
 
 import (
-	"strings"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/sessionevents"
 )
 
-// publishPlanTurnResult closes out a deferred plan turn (Codex/native): publish
-// the proposed plan if the agent produced one, otherwise treat the buffered
-// assistant message as the plan text awaiting approval.
-func (m *Manager) publishPlanTurnResult(job Job) {
-	if m.publishProposedPlan(job) {
+// publishPlanTurnResult closes out a deferred plan turn: publish the proposed
+// plan through the shared PlanEvent shape.
+func (m *Manager) publishPlanTurnResult(job Job, proposal *sessionevents.PlanEvent) {
+	if proposal != nil {
+		m.publishPlanEvent(job, *proposal)
 		return
 	}
-	if explanation := strings.TrimSpace(job.Assistant); explanation != "" {
-		m.publishProposedPlanText(job, explanation)
+	if m.publishProposedPlan(job) {
+		return
 	}
 }
 
 // publishProposedPlan emits the plan the agent built during a plan turn. Codex
-// relays it as `plan` session updates accumulated into job.Plan; returns false
-// when the turn produced no plan so the caller falls back to the message.
+// can relay it as structured `plan` session updates accumulated into job.Plan.
 func (m *Manager) publishProposedPlan(job Job) bool {
 	plan := clonePlanEntries(job.Plan)
 	if len(plan) == 0 {
@@ -32,13 +30,6 @@ func (m *Manager) publishProposedPlan(job Job) bool {
 		AwaitingApproval: true,
 	})
 	return true
-}
-
-func (m *Manager) publishProposedPlanText(job Job, explanation string) {
-	m.publishPlanEvent(job, sessionevents.PlanEvent{
-		Explanation:      explanation,
-		AwaitingApproval: true,
-	})
 }
 
 func (m *Manager) publishPlanEvent(job Job, plan sessionevents.PlanEvent) {
@@ -60,4 +51,13 @@ func (m *Manager) publishPlanEvent(job Job, plan sessionevents.PlanEvent) {
 		})
 	}
 	m.publishOrderedACPEvents(job, events...)
+}
+
+func clonePlanEvent(in *sessionevents.PlanEvent) *sessionevents.PlanEvent {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	out.Plan = clonePlanEntries(in.Plan)
+	return &out
 }

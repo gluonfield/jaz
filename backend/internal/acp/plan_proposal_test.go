@@ -12,7 +12,7 @@ import (
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
-func TestPlanRequestedPlainTextPublishesProposedPlan(t *testing.T) {
+func TestCodexPlanRequestedTextDoesNotPublishProposedPlan(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -49,7 +49,7 @@ func TestPlanRequestedPlainTextPublishesProposedPlan(t *testing.T) {
 				"sessionUpdate": "agent_message_chunk",
 				"content": map[string]any{
 					"type": "text",
-					"text": "I need one more detail before proposing a plan.",
+					"text": "Proposed plan:\n- Inspect the current app structure.\n- Build the dinosaur page.\n- Run the relevant checks.",
 				},
 			},
 		}),
@@ -61,13 +61,119 @@ func TestPlanRequestedPlainTextPublishesProposedPlan(t *testing.T) {
 
 	job.setState(StateIdle, "", "")
 	manager.finishTurn(done, job)
+	assertNoEvent(t, sub)
+}
 
-	event := receiveEvent(t, sub)
-	if event.Type != "proposed_plan" || event.Plan == nil || !event.Plan.AwaitingApproval {
-		t.Fatalf("event = %#v", event)
+func TestCodexPlanRequestedPreambleDoesNotPublishProposedPlan(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
 	}
-	if event.Plan.Explanation != "I need one more detail before proposing a plan." || len(event.Plan.Plan) != 0 {
-		t.Fatalf("plan = %#v", event.Plan)
+	session, err := store.CreateSession(storage.CreateSession{Slug: "preamble-plan-text", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := sessionevents.New()
+	manager := NewManager(store, Config{}, nil)
+	manager.Events = events
+	job := &jobState{
+		Job: Job{
+			ID:         session.ID,
+			ACPAgent:   AgentCodex,
+			ACPSession: "acp-session",
+			Cwd:        t.TempDir(),
+		},
+		toolByID: map[string]sessionevents.ACPToolCall{},
+	}
+	manager.jobsByID[session.ID] = job
+	manager.jobsByACP["acp-session"] = job
+	done := job.startTurn(CompletionInline, true, false)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	sub := events.Subscribe(ctx, session.ID)
+
+	_, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
+		Method: acpschema.ClientMethodSessionUpdate,
+		Params: mustJSON(t, map[string]any{
+			"sessionId": "acp-session",
+			"update": map[string]any{
+				"sessionUpdate": "agent_message_chunk",
+				"content": map[string]any{
+					"type": "text",
+					"text": "I’ll first check what’s in the current workspace so the plan fits the actual project shape.",
+				},
+			},
+		}),
+	})
+	if rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	assertNoEvent(t, sub)
+
+	job.setState(StateIdle, "", "")
+	manager.finishTurn(done, job)
+	assertNoEvent(t, sub)
+}
+
+func TestCodexPlanRequestedPlanDocumentPublishesProposedPlan(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "plan-document", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := sessionevents.New()
+	manager := NewManager(store, Config{}, nil)
+	manager.Events = events
+	job := &jobState{
+		Job: Job{
+			ID:         session.ID,
+			ACPAgent:   AgentCodex,
+			ACPSession: "acp-session",
+			Cwd:        t.TempDir(),
+		},
+		toolByID: map[string]sessionevents.ACPToolCall{},
+	}
+	manager.jobsByID[session.ID] = job
+	manager.jobsByACP["acp-session"] = job
+	done := job.startTurn(CompletionInline, true, false)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	sub := events.Subscribe(ctx, session.ID)
+
+	planText := "# Plan\n\n- Inspect the current app structure.\n- Build the dinosaur page.\n- Run the relevant checks."
+	_, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
+		Method: acpschema.ClientMethodSessionUpdate,
+		Params: mustJSON(t, map[string]any{
+			"sessionId": "acp-session",
+			"update": map[string]any{
+				"sessionUpdate": "plan",
+				"entries": []map[string]any{{
+					"content":  planText,
+					"status":   "completed",
+					"priority": "medium",
+				}},
+			},
+		}),
+	})
+	if rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	assertNoEvent(t, sub)
+
+	job.setState(StateIdle, "", "")
+	manager.finishTurn(done, job)
+
+	proposal := receiveEvent(t, sub)
+	if proposal.Type != "proposed_plan" || proposal.Plan == nil || !proposal.Plan.AwaitingApproval {
+		t.Fatalf("proposal event = %#v", proposal)
+	}
+	if proposal.Plan.Explanation != planText || len(proposal.Plan.Plan) != 0 {
+		t.Fatalf("proposal plan = %#v", proposal.Plan)
 	}
 }
 
@@ -135,49 +241,6 @@ func TestPlanRequestedProgressPublishesProposedPlan(t *testing.T) {
 	}
 	if proposal.ACP == nil || proposal.ACP.Plan != nil {
 		t.Fatalf("proposal acp envelope should not carry progress plan: %#v", proposal.ACP)
-	}
-}
-
-func TestLocalPlanRequestedPlainTextPublishesProposedPlan(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	session, err := store.CreateSession(storage.CreateSession{Slug: "local-plan", Runtime: storage.RuntimeACP})
-	if err != nil {
-		t.Fatal(err)
-	}
-	events := sessionevents.New()
-	manager := NewManager(store, Config{}, nil)
-	manager.Events = events
-	job := &jobState{
-		Job: Job{
-			ID:         session.ID,
-			ACPAgent:   AgentJaz,
-			ACPSession: session.ID,
-			Cwd:        t.TempDir(),
-		},
-		toolByID: map[string]sessionevents.ACPToolCall{},
-	}
-	manager.jobsByID[session.ID] = job
-	done := job.startTurn(CompletionInline, true, false)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	sub := events.Subscribe(ctx, session.ID)
-
-	manager.applyLocalMessage(job, "local reply")
-	assertNoEvent(t, sub)
-
-	job.setState(StateIdle, "", "")
-	manager.finishTurn(done, job)
-
-	proposal := receiveEvent(t, sub)
-	if proposal.Type != "proposed_plan" || proposal.Plan == nil || !proposal.Plan.AwaitingApproval {
-		t.Fatalf("event = %#v", proposal)
-	}
-	if proposal.Plan.Explanation != "local reply" || len(proposal.Plan.Plan) != 0 {
-		t.Fatalf("plan = %#v", proposal.Plan)
 	}
 }
 

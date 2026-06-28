@@ -61,7 +61,7 @@ function LoopsPage() {
 }
 
 function LoopRow({ loop }: { loop: Loop }) {
-  const agent = agentLabel(loop.acp_agent || 'jaz')
+  const agent = agentLabel(loop.acp_agent)
   const paused = loop.status === 'paused'
   const nextRun = !paused && hasTime(loop.next_run_at) ? shortDate(loop.next_run_at) : ''
   return (

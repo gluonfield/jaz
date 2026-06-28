@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
-	"github.com/wins/jaz/backend/internal/jazagent"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
@@ -22,7 +21,7 @@ import (
 )
 
 func testACPAgentCatalog(extra map[string]acp.AgentConfig) acp.AgentCatalog {
-	return acp.MergeAgents(acp.MergeAgents(acp.BuiltinAgents(), jazagent.ACPAgentCatalog()), extra)
+	return acp.MergeAgents(acp.BuiltinAgents(), extra)
 }
 
 func TestMCPServerSettingsAPI(t *testing.T) {
@@ -181,7 +180,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(got.Agents, ",") != "claude,codex,grok,jaz,opencode" {
+	if strings.Join(got.Agents, ",") != "claude,codex,grok,opencode" {
 		t.Fatalf("unexpected seeded settings %#v", got)
 	}
 	if !hasModelProvider(got.Providers, "openai", "https://api.openai.com/v1") ||
@@ -211,12 +210,6 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		got.ACP["grok"].Model != "grok-build" {
 		t.Fatalf("unexpected grok defaults %#v", got.ACP["grok"])
 	}
-	if !got.ACP["jaz"].Enabled ||
-		got.ACP["jaz"].Command != "" ||
-		got.ACP["jaz"].ModelProvider != "openrouter" ||
-		got.ACP["jaz"].Model != "openai/gpt-5.4-mini" {
-		t.Fatalf("unexpected jaz defaults %#v", got.ACP["jaz"])
-	}
 	if got.ACP["opencode"].Enabled ||
 		got.ACP["opencode"].Command != `npx -y opencode-ai@1.17.7 acp` ||
 		got.ACP["opencode"].ModelProvider != "openrouter" ||
@@ -227,14 +220,6 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		hasReasoningEffort(got.ACPOptions["codex"].ReasoningEfforts, "ultracode") {
 		t.Fatalf("unexpected acp options %#v", got.ACPOptions)
 	}
-	if !got.ACPOptions["jaz"].Local ||
-		got.ACPOptions["jaz"].ProviderMode != acp.AgentProviderModeAgentDefaults ||
-		!hasString(got.ACPOptions["jaz"].ModelProviderIDs, "openrouter") ||
-		!hasString(got.ACPOptions["jaz"].ModelProviderIDs, "openai") ||
-		got.ACPOptions["jaz"].RequiresCommand ||
-		got.ACPOptions["jaz"].SupportsAuth {
-		t.Fatalf("unexpected jaz capabilities %#v", got.ACPOptions["jaz"])
-	}
 	// The desktop client treats a missing capability flag as "requires a command",
 	// so a false flag must be emitted explicitly, never dropped by omitempty. A
 	// struct unmarshal can't tell absent from false, so assert the raw keys exist.
@@ -244,11 +229,9 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	if err := json.Unmarshal(getRes.Body.Bytes(), &rawOptions); err != nil {
 		t.Fatal(err)
 	}
-	for _, agent := range []string{"codex", "jaz"} {
-		for _, flag := range []string{"local", "requires_command", "supports_auth"} {
-			if _, ok := rawOptions.ACPOptions[agent][flag]; !ok {
-				t.Fatalf("acp_options.%s must emit %q, body = %s", agent, flag, getRes.Body.String())
-			}
+	for _, flag := range []string{"local", "requires_command", "supports_auth"} {
+		if _, ok := rawOptions.ACPOptions["codex"][flag]; !ok {
+			t.Fatalf("acp_options.codex must emit %q, body = %s", flag, getRes.Body.String())
 		}
 	}
 	if got.ACPOptions["opencode"].ProviderMode != acp.AgentProviderModeAgentDefaults ||
@@ -670,6 +653,9 @@ func TestAgentSettingsAPIRoundTripsConfiguredACPAgent(t *testing.T) {
 	}
 	defer store.Close()
 	catalog := testACPAgentCatalog(map[string]acp.AgentConfig{
+		acp.AgentJaz: {
+			Local: true,
+		},
 		"local_helper": {
 			Command:         "/opt/jaz/local-helper",
 			Args:            []string{"--stdio"},
@@ -696,8 +682,11 @@ func TestAgentSettingsAPIRoundTripsConfiguredACPAgent(t *testing.T) {
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(got.Agents, ",") != "claude,codex,grok,jaz,local_helper,opencode" {
+	if strings.Join(got.Agents, ",") != "claude,codex,grok,local_helper,opencode" {
 		t.Fatalf("agents = %#v", got.Agents)
+	}
+	if _, ok := got.ACP[acp.AgentJaz]; ok {
+		t.Fatalf("jaz should not be exposed in editable settings: %#v", got.ACP)
 	}
 	if got.ACP["local_helper"].Command != "/opt/jaz/local-helper --stdio" || got.ACP["local_helper"].Model != "helper-model" {
 		t.Fatalf("custom agent not seeded: %#v", got.ACP["local_helper"])
@@ -718,6 +707,33 @@ func TestAgentSettingsAPIRoundTripsConfiguredACPAgent(t *testing.T) {
 	}
 	if !strings.Contains(putRes.Body.String(), "local_helper") {
 		t.Fatalf("custom agent missing from response: %s", putRes.Body.String())
+	}
+	if strings.Contains(putRes.Body.String(), `"jaz"`) {
+		t.Fatalf("jaz leaked into response: %s", putRes.Body.String())
+	}
+}
+
+func TestAgentSettingsRejectsJazACPAgent(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	catalog := testACPAgentCatalog(map[string]acp.AgentConfig{
+		acp.AgentJaz: {Local: true},
+	})
+	req := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
+		"acp":{"jaz":{"enabled":true}}
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store, AgentCatalog: catalog}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusBadRequest ||
+		!strings.Contains(res.Body.String(), "unknown acp agent") ||
+		!strings.Contains(res.Body.String(), "jaz") {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
 }
 
