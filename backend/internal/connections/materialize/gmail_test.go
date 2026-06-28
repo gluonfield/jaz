@@ -53,7 +53,7 @@ func TestGmailMaterializerCreatesMessageSourceArtifact(t *testing.T) {
 		"  - Me: augustinas@example.com",
 		"09:00:00 Friend <friend@example.com>: Hello from Gmail",
 		"This is the visible Gmail snippet.",
-		"- plan.pdf (application/pdf), id `att_1`, 1234 bytes",
+		"- plan.pdf (application/pdf), 1234 bytes, ref `att:gmail/augustinas-example-com/msg_1/1`",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q:\n%s", want, body)

@@ -445,6 +445,23 @@ func TestGmailMCPToolsReadAttachmentStoresFileAndReturnsPreviewOnly(t *testing.T
 		t.Fatalf("stored attachment should keep original bytes, got %q", string(textData))
 	}
 
+	_, refAttachment, err := tools.ReadAttachment(context.Background(), nil, GmailReadAttachmentInput{
+		AttachmentID: "att:gmail/augustinas-example-com/m1/2",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !refAttachment.Connected || refAttachment.AttachmentID != "html" || refAttachment.FileName != "note.html" || !strings.Contains(refAttachment.TextPreview, "Attachment HTML") {
+		t.Fatalf("ref attachment = %#v", refAttachment)
+	}
+
+	if _, _, err := tools.ReadAttachment(context.Background(), nil, GmailReadAttachmentInput{
+		Account:      "default",
+		AttachmentID: "att:gmail/work-example-com/m1/2",
+	}); err == nil || !strings.Contains(err.Error(), "account does not match attachment ref") {
+		t.Fatalf("mismatched account err = %v", err)
+	}
+
 	_, htmlAttachment, err := tools.ReadAttachment(context.Background(), nil, GmailReadAttachmentInput{
 		MessageID:    "m1",
 		AttachmentID: "html",

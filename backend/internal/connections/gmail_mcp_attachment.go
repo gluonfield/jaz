@@ -9,6 +9,7 @@ import (
 	gmailconnector "github.com/wins/jaz/backend/internal/connectors/gmail"
 	"github.com/wins/jaz/backend/internal/emailclean"
 	"github.com/wins/jaz/backend/internal/integrationingest"
+	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
 const maxGmailAttachmentTextPreviewChars = 1200
@@ -16,13 +17,28 @@ const maxGmailAttachmentTextPreviewChars = 1200
 func (t *GmailMCPTools) ReadAttachment(ctx context.Context, _ *mcp.CallToolRequest, input GmailReadAttachmentInput) (*mcp.CallToolResult, GmailReadAttachmentOutput, error) {
 	messageID := strings.TrimSpace(input.MessageID)
 	attachmentID := strings.TrimSpace(input.AttachmentID)
+	account := input.Account
+	ref, hasRef, err := gmailconnector.ParseAttachmentSourceRef(attachmentID)
+	if err != nil {
+		return nil, GmailReadAttachmentOutput{}, err
+	}
+	if hasRef {
+		if messageID != "" && messageID != ref.MessageID {
+			return nil, GmailReadAttachmentOutput{}, errors.New("message_id does not match attachment ref")
+		}
+		messageID = ref.MessageID
+		attachmentID = ""
+		if strings.TrimSpace(account) == "" {
+			account = ref.Account
+		}
+	}
 	if messageID == "" {
 		return nil, GmailReadAttachmentOutput{}, errors.New("message_id is required")
 	}
-	if attachmentID == "" {
+	if attachmentID == "" && !hasRef {
 		return nil, GmailReadAttachmentOutput{}, errors.New("attachment_id is required")
 	}
-	session, connected, err := t.session(ctx, input.Account)
+	session, connected, err := t.session(ctx, account)
 	if err != nil {
 		return nil, GmailReadAttachmentOutput{}, err
 	}
@@ -34,7 +50,15 @@ func (t *GmailMCPTools) ReadAttachment(ctx context.Context, _ *mcp.CallToolReque
 		}
 		return textResult("Gmail is not connected. Connect Gmail in Settings > Connections."), out, nil
 	}
-	attachment, err := session.api.ReadAttachment(ctx, messageID, attachmentID)
+	if hasRef && integrations.NormalizeAlias(session.connection.AccountID) != integrations.NormalizeAlias(ref.Account) {
+		return nil, GmailReadAttachmentOutput{}, errors.New("account does not match attachment ref")
+	}
+	var attachment gmailconnector.AttachmentContent
+	if hasRef {
+		attachment, err = session.api.ReadAttachmentAt(ctx, messageID, ref.Index)
+	} else {
+		attachment, err = session.api.ReadAttachment(ctx, messageID, attachmentID)
+	}
 	if err != nil {
 		return nil, GmailReadAttachmentOutput{}, err
 	}

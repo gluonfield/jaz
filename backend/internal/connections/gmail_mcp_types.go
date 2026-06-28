@@ -64,8 +64,8 @@ type GmailListDraftsInput struct {
 
 type GmailReadAttachmentInput struct {
 	Account      string `json:"account,omitempty" jsonschema:"Gmail account alias, email address, or connection id; omit only when one Gmail account is connected"`
-	MessageID    string `json:"message_id" jsonschema:"Gmail message id from gmail_read_thread"`
-	AttachmentID string `json:"attachment_id" jsonschema:"Gmail attachment id from the message attachments list"`
+	MessageID    string `json:"message_id,omitempty" jsonschema:"Gmail message id from gmail_read_thread; can be omitted when attachment_id is an att:gmail/... ref"`
+	AttachmentID string `json:"attachment_id" jsonschema:"Gmail attachment id from the message attachments list, or a materialized source ref like att:gmail/account/message/1"`
 }
 
 type GmailProfileOutput struct {

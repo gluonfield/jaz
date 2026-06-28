@@ -164,6 +164,14 @@ func TestAPIClientReadAttachment(t *testing.T) {
 	if string(attachment.Data) != "Attachment body" || attachment.Size != 15 || attachment.Attachment.FileName != "note.txt" || attachment.Attachment.MIMEType != "text/plain" {
 		t.Fatalf("attachment = %#v", attachment)
 	}
+
+	attachment, err = (APIClient{HTTP: server.Client(), BaseURL: server.URL}).ReadAttachmentAt(context.Background(), "m/1", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(attachment.Data) != "Attachment body" || attachment.Attachment.ID != "a/1" {
+		t.Fatalf("attachment by index = %#v", attachment)
+	}
 }
 
 func TestAPIClientReadThreadRejectsUnknownIDType(t *testing.T) {
