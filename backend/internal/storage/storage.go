@@ -168,6 +168,7 @@ func SessionAttentionAt(session Session) time.Time {
 type Block struct {
 	Type       string      `json:"type"`
 	Text       string      `json:"text,omitempty"`
+	Comment    string      `json:"comment,omitempty"`
 	ID         string      `json:"id,omitempty"`
 	Name       string      `json:"name,omitempty"`
 	URI        string      `json:"uri,omitempty"`

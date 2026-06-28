@@ -52,6 +52,21 @@ func TestMessageWithContextLabelsSelectionsAboveMessage(t *testing.T) {
 	}
 }
 
+func TestMessageWithContextNestsSelectionComment(t *testing.T) {
+	got := messageWithContext("explain this", []storage.MessageContext{{
+		Type:    storage.ContextTypeSelection,
+		Text:    "hovered text",
+		Comment: "make this bolder",
+	}})
+	want := "<selection index=\"1\">\n" +
+		"```\nhovered text\n```\n" +
+		"<user_comment>\n```\nmake this bolder\n```\n</user_comment>\n" +
+		"</selection>"
+	if !strings.Contains(got, want) {
+		t.Fatalf("messageWithContext() missing nested comment:\n%s", got)
+	}
+}
+
 func TestMessageWithContextFormatsBrowserAnnotationsLikeCodex(t *testing.T) {
 	got := messageWithContext("apply it", []storage.MessageContext{{
 		Type: storage.ContextTypeBrowserAnnotation,

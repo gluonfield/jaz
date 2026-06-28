@@ -24,7 +24,9 @@ function storedContext(value: unknown): ComposerContext | null {
   if (!id) return null
   if (type === 'selection') {
     const text = typeof raw.text === 'string' ? raw.text.trim() : ''
-    return text ? { id, type, text } : null
+    if (!text) return null
+    const comment = typeof raw.comment === 'string' ? raw.comment.trim() : ''
+    return { id, type, text, comment: comment || undefined }
   }
   if (type === 'browser_annotation') {
     const annotation = browserAnnotationFromUnknown(raw.browser_annotation)
@@ -92,7 +94,8 @@ function writeContexts(key: string | undefined, storage: ComposerDraftStorage, i
 function persistedContext(context: ComposerContext): ComposerContext | null {
   if (context.type === 'selection') {
     const text = context.text.trim()
-    return text ? { id: context.id, type: 'selection', text } : null
+    if (!text) return null
+    return { id: context.id, type: 'selection', text, comment: context.comment?.trim() || undefined }
   }
   const annotation = normalizeBrowserAnnotation(context.browser_annotation)
   if (!annotation) return null
@@ -132,10 +135,13 @@ export function useComposerContexts({
     writeContexts(storageKey, storage, next)
   }, [storage, storageKey])
 
-  const addSelection = useCallback((text: string) => {
+  const addSelection = useCallback((text: string, comment?: string) => {
     const trimmed = text.trim()
     if (disabled || !trimmed) return
-    commitContexts([...contextsRef.current, { id: crypto.randomUUID(), type: 'selection', text: trimmed }])
+    commitContexts([
+      ...contextsRef.current,
+      { id: crypto.randomUUID(), type: 'selection', text: trimmed, comment: comment?.trim() || undefined },
+    ])
   }, [commitContexts, disabled])
 
   const addBrowserAnnotation = useCallback((annotation: BrowserAnnotation, screenshotAttachment?: Attachment) => {

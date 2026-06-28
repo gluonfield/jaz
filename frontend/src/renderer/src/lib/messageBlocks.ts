@@ -11,7 +11,7 @@ export function userInputMessageBlocks(
   return [
     ...contexts.flatMap<MessageBlock>((context) =>
       context.type === 'selection'
-        ? context.text ? [{ type: 'quote', text: context.text }] : []
+        ? context.text ? [{ type: 'quote', text: context.text, comment: context.comment }] : []
         : [{ type: 'browser_annotation', input_json: JSON.stringify(context.browser_annotation ?? {}) }],
     ),
     { type: 'text', text: content },
