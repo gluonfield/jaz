@@ -518,7 +518,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   })
   const [bottomDockHeight, setBottomDockHeight] = useState(0)
   const transcriptBottomPadding = Math.max(bottomDockHeight + TRANSCRIPT_DOCK_GAP_PX, 160)
-  const { scrollRef, showScrollToBottom, onScroll: onThreadScroll, scrollToBottom, pinToBottom } =
+  const { scrollRef, attachScroll, showScrollToBottom, onScroll: onThreadScroll, scrollToBottom, pinToBottom } =
     useThreadAutoScroll({ resetKey: sessionId })
   const threadFind = useThreadFind(sessionId, scrollRef)
   const [highlightedMessageSeq, setHighlightedMessageSeq] = useState<number>()
@@ -741,7 +741,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
           ) : null}
 
           <div className="relative h-full min-w-0 flex-1">
-            <div ref={scrollRef} className="h-full overflow-y-auto" onScroll={onThreadScroll}>
+            <div ref={attachScroll} className="h-full overflow-y-auto" onScroll={onThreadScroll}>
               <div
                 ref={threadFind.rootRef}
                 className={`${THREAD_COLUMN_CLASS} pt-2`}
