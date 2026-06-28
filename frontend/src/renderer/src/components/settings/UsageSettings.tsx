@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ChartNoAxesColumn } from 'lucide-react'
 import { type MouseEvent, useMemo, useState } from 'react'
-import { ModelBreakdown } from '@/components/settings/UsageModelBreakdown'
+import { ModelBreakdown, UsageShareCharts } from '@/components/settings/UsageModelBreakdown'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { dailyUsageQuery } from '@/lib/api/sessions'
@@ -214,6 +214,8 @@ function UsagePanel({
           {reasoning > 0 ? <span>Reasoning {formatTokens(reasoning)}</span> : null}
         </div>
       </div>
+
+      <UsageShareCharts rows={pricedModels} />
 
       <ModelBreakdown
         rows={pricedModels}
