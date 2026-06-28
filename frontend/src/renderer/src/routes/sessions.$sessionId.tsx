@@ -38,7 +38,6 @@ import {
   cancelSession,
   sendSessionSideChat,
   sessionMessagesQuery,
-  sessionRepoQuery,
   uploadSessionAttachment,
 } from '@/lib/api/sessions'
 import type { ACPJobSnapshot, ACPModeState, ChatMessage, GoalEvent, Session, SessionEvent, SessionMessages } from '@/lib/api/types'
@@ -492,19 +491,9 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   const [planDecisionPending, setPlanDecisionPending] = useState(false)
   const [planDecisionError, setPlanDecisionError] = useState('')
   const sentPendingRef = useRef<string | null>(null)
-  // Overview auto-opens only when it has real content, so check repo state
-  // up front here; provider subagents are already in the event stream.
   const detailSession = detail.data?.session
-  const sessionCwd = detailSession?.runtime_ref?.cwd
   const sideChatAvailable = isCodexACPSession(detailSession)
-  const repoInfo = useQuery({ ...sessionRepoQuery(sessionId), enabled: Boolean(sessionCwd) })
-  const overviewAvailable = Boolean(
-    repoInfo.data?.git ||
-      detail.data?.acp_children?.length ||
-      detail.data?.events?.some((event) => sessionEventPlacement(event) === 'overview') ||
-      events.data.some((event) => sessionEventPlacement(event) === 'overview'),
-  )
-  const sidePanel = useSidePanelState(overviewAvailable, sideChatAvailable)
+  const sidePanel = useSidePanelState(sideChatAvailable)
   const { openFile } = sidePanel
   // Phone: the docked panel would crush the transcript to a sliver, so it
   // becomes a full-screen overlay (CSS `max-sm:w-full`) that slides in instead
@@ -722,7 +711,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
       <PreviewLinkProvider onOpen={sidePanel.openPreview}>
         {/* Phone: the closed side panel slides off to the right (translateX 100%);
             clip horizontal overflow so it can't be revealed by scrolling. */}
-        <FileDropScope ref={sidePanel.measureRef} className="relative flex h-full max-sm:overflow-x-clip">
+        <FileDropScope className="relative flex h-full max-sm:overflow-x-clip">
           <SessionTitlebar
             session={session}
             isMobile={isMobile}
