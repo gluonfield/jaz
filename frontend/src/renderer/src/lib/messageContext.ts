@@ -25,6 +25,7 @@ export type ComposerContext =
       id: string
       type: 'selection'
       text: string
+      comment?: string
     }
   | {
       id: string
@@ -34,14 +35,15 @@ export type ComposerContext =
     }
 
 export type MessageContextInput =
-  | { type: 'selection'; text: string }
+  | { type: 'selection'; text: string; comment?: string }
   | { type: 'browser_annotation'; browser_annotation: BrowserAnnotation }
 
 export function contextInputs(contexts: ComposerContext[] = []): MessageContextInput[] {
   return contexts.flatMap<MessageContextInput>((context) => {
     if (context.type === 'selection') {
       const text = context.text.trim()
-      return text ? [{ type: 'selection' as const, text }] : []
+      if (!text) return []
+      return [{ type: 'selection' as const, text, comment: context.comment?.trim() || undefined }]
     }
     const annotation = normalizeBrowserAnnotation(context.browser_annotation)
     if (!annotation) return []
@@ -69,11 +71,14 @@ export function contextAttachmentIDs(contexts: ComposerContext[] = []): string[]
 }
 
 export function contextLabel(context: ComposerContext): string {
-  return context.type === 'selection' ? 'Selection' : 'Annotation'
+  if (context.type !== 'selection') return 'Annotation'
+  return context.comment?.trim() ? 'Comment' : 'Quote'
 }
 
 export function contextPreviewText(context: ComposerContext): string {
-  if (context.type === 'selection') return context.text
+  if (context.type === 'selection') {
+    return [context.text, context.comment?.trim()].filter(Boolean).join('\n\n')
+  }
   const annotation = context.browser_annotation
   return [annotation.target, annotation.comment || annotation.requested_changes].filter(Boolean).join('\n\n')
 }

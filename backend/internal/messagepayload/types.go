@@ -10,6 +10,7 @@ const (
 type MessageContext struct {
 	Type              string             `json:"type"`
 	Text              string             `json:"text,omitempty"`
+	Comment           string             `json:"comment,omitempty"`
 	BrowserAnnotation *BrowserAnnotation `json:"browser_annotation,omitempty"`
 }
 
@@ -71,7 +72,7 @@ func NormalizeMessageContexts(contexts []MessageContext) []MessageContext {
 		case ContextTypeSelection:
 			text := strings.TrimSpace(context.Text)
 			if text != "" {
-				out = append(out, MessageContext{Type: ContextTypeSelection, Text: text})
+				out = append(out, MessageContext{Type: ContextTypeSelection, Text: text, Comment: strings.TrimSpace(context.Comment)})
 			}
 		case ContextTypeBrowserAnnotation:
 			annotation := NormalizeBrowserAnnotation(context.BrowserAnnotation)

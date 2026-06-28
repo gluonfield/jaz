@@ -11,8 +11,8 @@ func TextBlock(text string) Block {
 	return Block{Type: BlockTypeText, Text: text}
 }
 
-func QuoteBlock(text string) Block {
-	return Block{Type: BlockTypeQuote, Text: text}
+func QuoteBlock(text, comment string) Block {
+	return Block{Type: BlockTypeQuote, Text: text, Comment: comment}
 }
 
 func BrowserAnnotationBlock(annotation BrowserAnnotation) Block {
@@ -41,7 +41,7 @@ func UserMessageRecord(message string, contexts []MessageContext, attachments []
 	for _, context := range contexts {
 		switch context.Type {
 		case ContextTypeSelection:
-			blocks = append(blocks, QuoteBlock(context.Text))
+			blocks = append(blocks, QuoteBlock(context.Text, context.Comment))
 		case ContextTypeBrowserAnnotation:
 			if context.BrowserAnnotation != nil {
 				blocks = append(blocks, BrowserAnnotationBlock(*context.BrowserAnnotation))

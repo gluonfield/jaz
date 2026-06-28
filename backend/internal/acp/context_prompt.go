@@ -36,7 +36,11 @@ func selectionContext(contexts []storage.MessageContext) string {
 		if context.Type != storage.ContextTypeSelection {
 			continue
 		}
-		sections = append(sections, indexedTaggedSection("selection", len(sections)+1, fencedText(context.Text)))
+		body := fencedText(context.Text)
+		if context.Comment != "" {
+			body += taggedSection("user_comment", fencedText(context.Comment))
+		}
+		sections = append(sections, indexedTaggedSection("selection", len(sections)+1, body))
 	}
 	if len(sections) == 0 {
 		return ""

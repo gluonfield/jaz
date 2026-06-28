@@ -163,7 +163,8 @@ function normalizeContexts(contexts: QueuedMessageInput['contexts'] = []): NonNu
   return contexts.flatMap<NonNullable<QueuedMessageInput['contexts']>[number]>((context) => {
     if (context.type === 'selection') {
       const text = context.text?.trim()
-      return text ? [{ type: 'selection' as const, text }] : []
+      if (!text) return []
+      return [{ type: 'selection' as const, text, comment: context.comment?.trim() || undefined }]
     }
     if (context.type !== 'browser_annotation' || !context.browser_annotation) return []
     const annotation = normalizeBrowserAnnotation(context.browser_annotation)

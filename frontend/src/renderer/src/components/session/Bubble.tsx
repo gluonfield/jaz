@@ -37,7 +37,9 @@ function messageContexts(message: ChatMessage): ComposerContext[] {
     message.blocks?.flatMap<ComposerContext>((block, index) => {
       if (block.type === 'quote') {
         const text = (block.text ?? '').trim()
-        return text ? [{ id: `${message.seq}-selection-${index}`, type: 'selection' as const, text }] : []
+        if (!text) return []
+        const id = `${message.seq}-selection-${index}`
+        return [{ id, type: 'selection' as const, text, comment: (block.comment ?? '').trim() || undefined }]
       }
       if (block.type === 'browser_annotation') {
         const annotation = browserAnnotationFromJSON(block.input_json)
