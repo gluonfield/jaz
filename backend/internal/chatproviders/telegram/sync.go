@@ -131,26 +131,32 @@ func (p *Provider) exportHistory(ctx context.Context, connection integrations.Co
 				continue
 			}
 			offsetID := 0
+			messageCount := 0
 			if state.CurrentPeer != nil && state.CurrentPeer.key() == ref.key() {
 				offsetID = state.CurrentPeerOffsetID
+				messageCount = state.CurrentPeerMessages
 			}
 			state.CurrentPeer = &ref
 			state.CurrentPeerOffsetID = offsetID
+			state.CurrentPeerMessages = messageCount
 			if err := p.saveBackfillState(connection.ID, state); err != nil {
 				return err
 			}
-			done, nextOffsetID, err := p.exportDialogHistory(ctx, connection, api, budget, ref.inputPeer(), offsetID, cutoff)
+			done, nextOffsetID, nextMessageCount, err := p.exportDialogHistory(ctx, connection, api, budget, ref, offsetID, cutoff, messageCount)
 			if err != nil {
 				state.CurrentPeerOffsetID = nextOffsetID
+				state.CurrentPeerMessages = nextMessageCount
 				return p.handleBackfillPause(connection.ID, state, err)
 			}
 			state.CurrentPeerOffsetID = nextOffsetID
+			state.CurrentPeerMessages = nextMessageCount
 			if !done {
 				return p.saveBackfillState(connection.ID, state)
 			}
 			state.CompletedPeers[ref.key()] = true
 			state.CurrentPeer = nil
 			state.CurrentPeerOffsetID = 0
+			state.CurrentPeerMessages = 0
 			if err := p.saveBackfillState(connection.ID, state); err != nil {
 				return err
 			}
@@ -197,35 +203,49 @@ func (p *Provider) startBackfillLoop(ctx context.Context, connection integration
 	}()
 }
 
-func (p *Provider) exportDialogHistory(ctx context.Context, connection integrations.Connection, api *tg.Client, budget *backfillBudget, peer tg.InputPeerClass, offsetID int, cutoff int) (bool, int, error) {
+func (p *Provider) exportDialogHistory(ctx context.Context, connection integrations.Connection, api *tg.Client, budget *backfillBudget, ref telegramPeerRef, offsetID int, cutoff int, messageCount int) (bool, int, int, error) {
 	for {
-		history, err := p.getHistoryPage(ctx, api, budget, peer, offsetID)
+		history, err := p.getHistoryPage(ctx, api, budget, ref.inputPeer(), offsetID)
 		if err != nil {
-			return false, offsetID, err
+			return false, offsetID, messageCount, err
 		}
 		modified, ok := history.AsModified()
 		if !ok {
-			return true, offsetID, nil
+			return true, offsetID, messageCount, nil
 		}
 		messages := modified.GetMessages()
 		if len(messages) == 0 {
-			return true, offsetID, nil
+			return true, offsetID, messageCount, nil
 		}
 		users, chats, channels := peerMaps(modified.GetUsers(), modified.GetChats())
 		if err := p.writeRecords(ctx, connection, telegramPeerRecords(connection, users, chats, channels)); err != nil {
-			return false, offsetID, err
+			return false, offsetID, messageCount, err
 		}
-		if err := p.writeMessagesSince(ctx, connection, messages, cutoff); err != nil {
-			return false, offsetID, err
+		selected, nextMessageCount, limitReached := telegramBackfillMessages(messages, cutoff, p.peerHistoryLimit(ref), messageCount)
+		if err := p.writeMessages(ctx, connection, selected); err != nil {
+			return false, offsetID, messageCount, err
+		}
+		messageCount = nextMessageCount
+		if limitReached {
+			return true, offsetID, messageCount, nil
 		}
 		if messagesReachedCutoff(messages, cutoff) {
-			return true, offsetID, nil
+			return true, offsetID, messageCount, nil
 		}
 		nextOffsetID := lowestMessageID(messages)
 		if nextOffsetID == 0 || nextOffsetID == offsetID {
-			return true, offsetID, nil
+			return true, offsetID, messageCount, nil
 		}
 		offsetID = nextOffsetID
+	}
+}
+
+func (p *Provider) peerHistoryLimit(ref telegramPeerRef) int {
+	switch ref.Kind {
+	case "chat", "channel":
+		return p.cfg.GroupHistoryLimit
+	default:
+		return 0
 	}
 }
 
@@ -323,6 +343,22 @@ func telegramMessagesSince(messages []tg.MessageClass, cutoff int) []tg.MessageC
 		}
 	}
 	return out
+}
+
+func telegramBackfillMessages(messages []tg.MessageClass, cutoff, limit, count int) ([]tg.MessageClass, int, bool) {
+	messages = telegramMessagesSince(messages, cutoff)
+	if limit <= 0 {
+		return messages, count + len(messages), false
+	}
+	remaining := limit - count
+	if remaining <= 0 {
+		return nil, count, true
+	}
+	if len(messages) > remaining {
+		return messages[:remaining], limit, true
+	}
+	count += len(messages)
+	return messages, count, count >= limit
 }
 
 func messagesReachedCutoff(messages []tg.MessageClass, cutoff int) bool {

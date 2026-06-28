@@ -71,6 +71,9 @@ func TestLoadConfigUnmarshalsACPAgentModelAndProviderKeys(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "application.yaml")
 	if err := os.WriteFile(path, []byte(`
 jaz:
+  connections:
+    chat:
+      grouphistorylimit: 123
   acp:
     agents:
       codex:
@@ -108,5 +111,8 @@ openai:
 	}
 	if !cfg.Jaz.Skills.DisableSync {
 		t.Fatalf("skills config = %#v", cfg.Jaz.Skills)
+	}
+	if cfg.Jaz.Connections.Chat.GroupHistoryLimit != 123 {
+		t.Fatalf("group history limit = %d", cfg.Jaz.Connections.Chat.GroupHistoryLimit)
 	}
 }

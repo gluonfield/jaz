@@ -16,6 +16,7 @@ type backfillState struct {
 	DialogOffset        dialogOffset     `json:"dialog_offset,omitempty"`
 	CurrentPeer         *telegramPeerRef `json:"current_peer,omitempty"`
 	CurrentPeerOffsetID int              `json:"current_peer_offset_id,omitempty"`
+	CurrentPeerMessages int              `json:"current_peer_messages,omitempty"`
 	CompletedPeers      map[string]bool  `json:"completed_peers,omitempty"`
 	UpdatedAt           time.Time        `json:"updated_at,omitempty"`
 }

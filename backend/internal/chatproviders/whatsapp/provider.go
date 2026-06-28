@@ -26,9 +26,15 @@ type RawSink interface {
 	WriteRecords(context.Context, []integrations.Record) error
 }
 
+type Config struct {
+	GroupHistoryLimit int
+}
+
 type Provider struct {
 	store     Store
 	raw       RawSink
+	cfg       Config
+	root      string
 	container *sqlstore.Container
 	ctx       context.Context
 	cancel    context.CancelFunc
@@ -39,7 +45,7 @@ type Provider struct {
 	sessions map[string]*qrSession
 }
 
-func New(ctx context.Context, root string, store Store, raw RawSink, logger *log.Logger) (*Provider, error) {
+func New(ctx context.Context, root string, cfg Config, store Store, raw RawSink, logger *log.Logger) (*Provider, error) {
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return nil, err
 	}
@@ -63,6 +69,8 @@ func New(ctx context.Context, root string, store Store, raw RawSink, logger *log
 	return &Provider{
 		store:     store,
 		raw:       raw,
+		cfg:       cfg,
+		root:      root,
 		container: container,
 		ctx:       baseCtx,
 		cancel:    cancel,

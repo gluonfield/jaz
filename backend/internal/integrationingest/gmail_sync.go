@@ -23,9 +23,13 @@ type GmailSyncStore interface {
 	SaveIntegrationCursor(context.Context, string, integrations.Cursor) error
 }
 
+type RecordWriter interface {
+	WriteRecords(context.Context, []integrations.Record) error
+}
+
 type GmailSyncer struct {
 	Store            GmailSyncStore
-	Writer           RawWriter
+	Writer           RecordWriter
 	Interval         time.Duration
 	MaxPagesPerTick  int
 	APIBaseURL       string
@@ -84,7 +88,7 @@ func (s GmailSyncer) syncConnection(ctx context.Context, connection integrations
 			if err != nil {
 				return err
 			}
-			if _, err := s.Writer.WriteGmailMessages(ctx, records); err != nil {
+			if err := s.Writer.WriteRecords(ctx, records); err != nil {
 				return err
 			}
 		}

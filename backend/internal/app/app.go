@@ -106,12 +106,19 @@ type MemoryConfig struct {
 
 type ConnectionsConfig struct {
 	Gmail GmailConnectionConfig
+	Chat  ChatConnectionConfig
 }
 
 type GmailConnectionConfig struct {
 	OAuthClientID     string
 	OAuthClientSecret string
 }
+
+type ChatConnectionConfig struct {
+	GroupHistoryLimit int
+}
+
+const DefaultChatGroupHistoryLimit = 500
 
 type Workspace string
 

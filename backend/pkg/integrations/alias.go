@@ -1,6 +1,10 @@
 package integrations
 
-import "strings"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"strings"
+)
 
 func NormalizeAlias(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
@@ -31,4 +35,17 @@ func DefaultAlias(accountName, accountID string) string {
 		return alias
 	}
 	return NormalizeAlias(accountID)
+}
+
+func SourceSlug(value string) string {
+	value = strings.TrimSpace(value)
+	slug := NormalizeAlias(value)
+	if slug == "" {
+		slug = "source"
+	}
+	if len(slug) > 72 {
+		slug = strings.Trim(slug[:72], "-")
+	}
+	sum := sha256.Sum256([]byte(value))
+	return slug + "-" + hex.EncodeToString(sum[:4])
 }

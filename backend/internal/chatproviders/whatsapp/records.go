@@ -3,6 +3,7 @@ package whatsapp
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	whatsappconnector "github.com/wins/jaz/backend/internal/connectors/whatsapp"
@@ -17,7 +18,10 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-const whatsappHistoricalWindow = 365 * 24 * time.Hour
+const (
+	whatsappHistoricalWindow   = 365 * 24 * time.Hour
+	whatsappGroupServerAddress = "@g.us"
+)
 
 func connectionFromDevice(device *store.Device) (integrations.Connection, bool) {
 	jid := device.GetJID()
@@ -134,9 +138,15 @@ func whatsappMessageRecord(connection integrations.Connection, event *events.Mes
 }
 
 func whatsappHistoryRecords(connection integrations.Connection, sync *waHistorySync.HistorySync, cutoff time.Time) []integrations.Record {
+	records, _ := whatsappHistoryRecordsLimited(connection, sync, cutoff, nil, 0)
+	return records
+}
+
+func whatsappHistoryRecordsLimited(connection integrations.Connection, sync *waHistorySync.HistorySync, cutoff time.Time, groupCounts map[string]int, groupLimit int) ([]integrations.Record, map[string]int) {
 	if sync == nil {
-		return nil
+		return nil, groupCounts
 	}
+	groupCounts = copyGroupCounts(groupCounts)
 	records := []integrations.Record{{
 		Provider:     whatsappconnector.ProviderID,
 		ConnectionID: connection.ID,
@@ -152,10 +162,19 @@ func whatsappHistoryRecords(connection integrations.Connection, sync *waHistoryS
 		}),
 	}}
 	for _, conversation := range sync.GetConversations() {
+		conversationID := conversation.GetID()
 		for _, msg := range conversation.GetMessages() {
-			if record, ok := whatsappWebMessageRecord(connection, conversation.GetID(), msg.GetMessage()); ok && whatsappRecordInWindow(record, cutoff) {
-				records = append(records, record)
+			record, ok := whatsappWebMessageRecord(connection, conversationID, msg.GetMessage())
+			if !ok || !whatsappRecordInWindow(record, cutoff) {
+				continue
 			}
+			if whatsappConversationIsGroup(conversationID) {
+				if groupLimit > 0 && groupCounts[conversationID] >= groupLimit {
+					continue
+				}
+				groupCounts[conversationID]++
+			}
+			records = append(records, record)
 		}
 	}
 	for _, msg := range sync.GetStatusV3Messages() {
@@ -163,7 +182,19 @@ func whatsappHistoryRecords(connection integrations.Connection, sync *waHistoryS
 			records = append(records, record)
 		}
 	}
-	return records
+	return records, groupCounts
+}
+
+func copyGroupCounts(counts map[string]int) map[string]int {
+	out := make(map[string]int, len(counts))
+	for key, count := range counts {
+		out[key] = count
+	}
+	return out
+}
+
+func whatsappConversationIsGroup(conversationID string) bool {
+	return strings.HasSuffix(conversationID, whatsappGroupServerAddress)
 }
 
 func whatsappWebMessageRecord(connection integrations.Connection, conversationID string, info *waWeb.WebMessageInfo) (integrations.Record, bool) {

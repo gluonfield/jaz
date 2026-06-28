@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -28,11 +29,23 @@ type memoryStatusResponse struct {
 	Horizons         []memoryHorizon     `json:"horizons"`
 	Tasks            []jazmem.TaskStatus `json:"tasks"`
 	MCPURL           string              `json:"mcp_url,omitempty"`
+	SourceQueues     memorySourceQueues  `json:"source_queues"`
 }
 
 type memorySettingsInput struct {
 	Enabled *bool   `json:"enabled,omitempty"`
 	Agent   *string `json:"agent,omitempty"`
+}
+
+type memorySourceQueues struct {
+	Projection memoryQueueStatus `json:"projection"`
+	Memory     memoryQueueStatus `json:"memory"`
+}
+
+type memoryQueueStatus struct {
+	Dirty      int    `json:"dirty"`
+	Processing int    `json:"processing"`
+	Error      string `json:"error,omitempty"`
 }
 
 func (s *Server) requireMemory(w http.ResponseWriter) bool {
@@ -90,7 +103,22 @@ func (s *Server) memoryStatus(r *http.Request) (memoryStatusResponse, error) {
 		Horizons:         horizons,
 		Tasks:            tasks,
 		MCPURL:           s.Memory.MCPURL(),
+		SourceQueues: memorySourceQueues{
+			Projection: readMemoryQueueStatus(r.Context(), s.SourceProjectionQueue),
+			Memory:     readMemoryQueueStatus(r.Context(), s.MemorySourceQueue),
+		},
 	}, nil
+}
+
+func readMemoryQueueStatus(ctx context.Context, queue sourceQueueStatsReader) memoryQueueStatus {
+	if queue == nil {
+		return memoryQueueStatus{}
+	}
+	stats, err := queue.Stats(ctx)
+	if err != nil {
+		return memoryQueueStatus{Error: err.Error()}
+	}
+	return memoryQueueStatus{Dirty: stats.Dirty, Processing: stats.Processing}
 }
 
 func (s *Server) handleMemoryUpdate(w http.ResponseWriter, r *http.Request) {

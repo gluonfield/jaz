@@ -19,7 +19,7 @@ import {
   updateMemoryEnabled,
   updateMemorySettings,
 } from '@/lib/api/memory'
-import type { MemoryHorizon, MemoryStatus, MemoryTask } from '@/lib/api/types'
+import type { MemoryHorizon, MemoryQueueStatus, MemoryStatus, MemoryTask } from '@/lib/api/types'
 import { enabledACPAgents } from '@/lib/agentRuntimes'
 import { keys } from '@/lib/query/keys'
 
@@ -52,7 +52,7 @@ function formatTime(value?: string): string {
 }
 
 export function MemorySettings() {
-  const status = useQuery(memoryQuery)
+  const status = useQuery({ ...memoryQuery, refetchInterval: 5000 })
   const agentSettings = useQuery(agentSettingsQuery)
   const queryClient = useQueryClient()
   const toast = useToast()
@@ -187,10 +187,10 @@ export function MemorySettings() {
         <SettingsCard>
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <div className="flex items-baseline gap-3 text-[13px] text-ink">
-              <span className="font-medium">{memory.doctor.page_count} pages</span>
-              <span className="text-ink-2">{memory.doctor.chunk_count} chunks</span>
-              <span className="text-ink-2">{memory.doctor.link_count} links</span>
-              <span className="text-ink-2">{memory.doctor.typed_link_count} typed</span>
+              <span className="font-medium tabular-nums">{memory.doctor.page_count} pages</span>
+              <span className="tabular-nums text-ink-2">{memory.doctor.chunk_count} chunks</span>
+              <span className="tabular-nums text-ink-2">{memory.doctor.link_count} links</span>
+              <span className="tabular-nums text-ink-2">{memory.doctor.typed_link_count} typed</span>
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -211,6 +211,20 @@ export function MemorySettings() {
               </Button>
             </div>
           </div>
+          {memory.source_queues ? (
+            <div className="grid grid-cols-1 divide-y divide-border border-b border-border md:grid-cols-2 md:divide-x md:divide-y-0">
+              <SourceQueueStatus
+                label="Source projection"
+                detail="Raw provider data to materialized source files."
+                queue={memory.source_queues.projection}
+              />
+              <SourceQueueStatus
+                label="Memory capture"
+                detail="Materialized source files reserved for jazmem."
+                queue={memory.source_queues.memory}
+              />
+            </div>
+          ) : null}
           <ul className="divide-y divide-border">
             {memory.tasks.map((task: MemoryTask) => (
               <li key={task.name} className="flex items-center justify-between gap-3 px-4 py-2">
@@ -314,6 +328,52 @@ export function MemorySettings() {
           </SettingsCard>
         ) : null}
       </div>
+    </div>
+  )
+}
+
+function SourceQueueStatus({
+  label,
+  detail,
+  queue,
+}: {
+  label: string
+  detail: string
+  queue: MemoryQueueStatus
+}) {
+  const active = queue.dirty > 0 || queue.processing > 0
+  return (
+    <div className="min-w-0 px-4 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <span className="block text-[12px] font-medium text-ink">{label}</span>
+          <span className="mt-0.5 block truncate text-[11px] text-ink-3">{detail}</span>
+        </div>
+        <span
+          className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+            queue.error
+              ? 'bg-danger-soft text-danger'
+              : active
+                ? 'bg-primary-soft text-primary-strong'
+                : 'bg-surface-2 text-ink-3'
+          }`}
+        >
+          {queue.error ? 'Error' : active ? 'Active' : 'Idle'}
+        </span>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-ink-2">
+        <span>
+          <span className="font-mono tabular-nums text-ink">{queue.dirty}</span> dirty
+        </span>
+        <span>
+          <span className="font-mono tabular-nums text-ink">{queue.processing}</span> processing
+        </span>
+      </div>
+      {queue.error ? (
+        <p className="mt-1 truncate text-[11px] text-danger" title={queue.error}>
+          {queue.error}
+        </p>
+      ) : null}
     </div>
   )
 }

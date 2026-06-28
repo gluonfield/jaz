@@ -10,7 +10,7 @@ import (
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
-func TestGmailMaterializerCreatesMonthlyEmailSourceArtifact(t *testing.T) {
+func TestGmailMaterializerCreatesMessageSourceArtifact(t *testing.T) {
 	occurred := time.Date(2026, 6, 25, 9, 0, 0, 0, time.UTC)
 	record, err := gmailconnector.MessageRecord(integrations.Connection{
 		ID:          "conn_1",
@@ -37,27 +37,21 @@ func TestGmailMaterializerCreatesMonthlyEmailSourceArtifact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	artifacts, err := (GmailMaterializer{}).Materialize(context.Background(), integrations.MaterializeRequest{
-		Connection: integrations.Connection{Alias: "Personal Gmail", AccountID: "augustinas@example.com"},
-		Record:     record,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(artifacts) != 1 {
-		t.Fatalf("artifacts = %#v", artifacts)
-	}
-	artifact := artifacts[0]
-	if artifact.PathHint != "sources/email/gmail/personal-gmail/2026-06.md" || artifact.MediaType != "text/markdown" {
+	artifact := projectOne(t, GmailMaterializer{}, record)
+	if !strings.HasPrefix(artifact.PathHint, "sources/gmail/augustinas-example-com/messages/2026/06/25/msg-1-") || !strings.HasSuffix(artifact.PathHint, ".md") || artifact.Kind != "email_message" || artifact.MediaType != "text/markdown" {
 		t.Fatalf("artifact = %#v", artifact)
 	}
 	body := string(artifact.Body)
 	for _, want := range []string{
-		"## 2026-06-25 09:00 - Hello from Gmail",
+		"## 2026-06-25 UTC - Hello from Gmail",
 		"- Message ID: `msg_1`",
 		"- Thread ID: `thread_1`",
 		"- Labels: INBOX, UNREAD",
 		"- From: Friend <friend@example.com>",
+		"- Participants:",
+		"  - Friend <friend@example.com>",
+		"  - Me: augustinas@example.com",
+		"09:00:00 Friend <friend@example.com>: Hello from Gmail",
 		"This is the visible Gmail snippet.",
 		"- plan.pdf (application/pdf), id `att_1`, 1234 bytes",
 	} {
@@ -67,15 +61,33 @@ func TestGmailMaterializerCreatesMonthlyEmailSourceArtifact(t *testing.T) {
 	}
 }
 
+func projectOne(t *testing.T, projector integrations.SourceProjector, record integrations.Record) integrations.Artifact {
+	t.Helper()
+	targets, err := projector.SourceTargets(context.Background(), integrations.MaterializeRequest{
+		Record: record,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("targets = %#v", targets)
+	}
+	artifact, err := projector.ProjectSource(context.Background(), integrations.SourceProjectionRequest{Target: targets[0], Records: []integrations.Record{record}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return artifact
+}
+
 func TestGmailMaterializerIgnoresOtherRecordKinds(t *testing.T) {
-	artifacts, err := (GmailMaterializer{}).Materialize(context.Background(), integrations.MaterializeRequest{
+	targets, err := (GmailMaterializer{}).SourceTargets(context.Background(), integrations.MaterializeRequest{
 		Record: integrations.Record{Kind: "calendar.event"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if artifacts != nil {
-		t.Fatalf("artifacts = %#v", artifacts)
+	if targets != nil {
+		t.Fatalf("targets = %#v", targets)
 	}
 }
 
@@ -105,15 +117,8 @@ func TestGmailMaterializerCleansHTMLBodiesForMarkdown(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	artifacts, err := (GmailMaterializer{}).Materialize(context.Background(), integrations.MaterializeRequest{
-		Connection: integrations.Connection{Alias: "Personal Gmail", AccountID: "augustinas@example.com"},
-		Record:     record,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	body := string(artifacts[0].Body)
+	artifact := projectOne(t, GmailMaterializer{}, record)
+	body := string(artifact.Body)
 	for _, want := range []string{
 		"Quarterly update",
 		"Read report (https://example.com/report)",

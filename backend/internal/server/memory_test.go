@@ -18,6 +18,7 @@ import (
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	jazsettings "github.com/wins/jaz/backend/internal/settings"
+	"github.com/wins/jaz/backend/internal/sourcequeue"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/widgets"
 )
@@ -41,6 +42,8 @@ func testMemoryServer(t *testing.T) (*Server, *fakeMemoryScheduler) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = memory.Close() })
+	sourceProjectionQueue := sourcequeue.New(t.TempDir())
+	memorySourceQueue := sourcequeue.New(t.TempDir())
 	scheduler := &fakeMemoryScheduler{running: true}
 	svc := memoryservice.New(memory, store, scheduler, "http://127.0.0.1:5299/mcp/jazmem")
 	widgetService := widgets.NewService(store, nil)
@@ -56,11 +59,37 @@ func testMemoryServer(t *testing.T) (*Server, *fakeMemoryScheduler) {
 		connections.NewGmailMCPTools(store, integrationingest.RawWriter{Root: t.TempDir()}),
 		connections.NewChatMCPTools(store),
 	)
-	return &Server{Store: store, Memory: svc, JazTools: tools}, scheduler
+	return &Server{
+		Store:                 store,
+		Memory:                svc,
+		JazTools:              tools,
+		SourceProjectionQueue: sourceProjectionQueue,
+		MemorySourceQueue:     memorySourceQueue,
+	}, scheduler
 }
 
 func TestMemoryStatusAndToggle(t *testing.T) {
 	srv, scheduler := testMemoryServer(t)
+	ctx := context.Background()
+	sourceProjectionQueue := srv.SourceProjectionQueue.(*sourcequeue.Queue)
+	if err := sourceProjectionQueue.MarkDirtySource(ctx, sourcequeue.Source{
+		Path:     "gmail/personal/messages/2026/06/28/a.md",
+		Provider: "gmail",
+		Kind:     "message",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sourceProjectionQueue.Reserve(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	memorySourceQueue := srv.MemorySourceQueue.(*sourcequeue.Queue)
+	if err := memorySourceQueue.MarkDirtySource(ctx, sourcequeue.Source{
+		Path:     "sources/gmail/personal/messages/2026/06/28/a.md",
+		Provider: "gmail",
+		Kind:     "message",
+	}); err != nil {
+		t.Fatal(err)
+	}
 	handler := srv.Handler()
 
 	res := httptest.NewRecorder()
@@ -83,6 +112,12 @@ func TestMemoryStatusAndToggle(t *testing.T) {
 	}
 	if len(status.Tasks) != 6 {
 		t.Fatalf("expected all scheduler tasks, got %#v", status.Tasks)
+	}
+	if status.SourceQueues.Projection.Dirty != 0 || status.SourceQueues.Projection.Processing != 1 {
+		t.Fatalf("unexpected source projection queue status %#v", status.SourceQueues.Projection)
+	}
+	if status.SourceQueues.Memory.Dirty != 1 || status.SourceQueues.Memory.Processing != 0 {
+		t.Fatalf("unexpected memory source queue status %#v", status.SourceQueues.Memory)
 	}
 
 	res = httptest.NewRecorder()
@@ -182,6 +217,39 @@ func TestMemoryHorizonWriteAndReindex(t *testing.T) {
 	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/v1/memory/reindex", nil))
 	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), "page_count") {
 		t.Fatalf("reindex = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
+func TestMemoryReindexIndexesProviderSourceFiles(t *testing.T) {
+	srv, _ := testMemoryServer(t)
+	root := srv.Memory.Root()
+	sourceTerms := map[string]string{
+		"sources/gmail/personal/messages/2026/06/28/gmail-message":                       "gmailmaterializedanchor",
+		"sources/telegram/personal/conversations/user-123/2026/06/28":                    "telegrammaterializedanchor",
+		"sources/whatsapp/personal/conversations/447700900123@s.whatsapp.net/2026/06/28": "whatsappmaterializedanchor",
+	}
+	for slug, term := range sourceTerms {
+		path := filepath.Join(root, filepath.FromSlash(slug+".md"))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		content := "# Materialized Source\n\nparticipants: Augustinas, Majid <majid@example.com>\n\n" + term + "\n"
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx := context.Background()
+	if _, err := srv.Memory.RunIndexTask(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for slug, term := range sourceTerms {
+		results, err := srv.Memory.Search(ctx, term, jazmem.SearchOptions{Limit: 5})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !serverSlugsContain(results, slug) {
+			t.Fatalf("%s was not searchable for %q: %#v", slug, term, results)
+		}
 	}
 }
 

@@ -6,15 +6,12 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/integrationingest"
-	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"go.uber.org/fx"
 )
 
-func NewGmailSyncer(store *sqlitestore.Store, writer integrationingest.MaterializingWriter) integrationingest.GmailSyncer {
-	return integrationingest.GmailSyncer{Store: store, Writer: writer}
-}
+const sourceProjectionInterval = 30 * time.Second
 
-func StartGmailSync(lc fx.Lifecycle, syncer integrationingest.GmailSyncer, logger *log.Logger) {
+func StartSourceProjectionWorker(lc fx.Lifecycle, runner integrationingest.SourceProjectionRunner, logger *log.Logger) {
 	var cancel context.CancelFunc
 	var done chan struct{}
 	lc.Append(fx.Hook{
@@ -24,11 +21,14 @@ func StartGmailSync(lc fx.Lifecycle, syncer integrationingest.GmailSyncer, logge
 			done = make(chan struct{})
 			go func() {
 				defer close(done)
-				ticker := time.NewTicker(syncer.PollInterval())
+				ticker := time.NewTicker(sourceProjectionInterval)
 				defer ticker.Stop()
 				for {
-					if err := syncer.SyncOnce(ctx); err != nil && ctx.Err() == nil {
-						logger.WithPrefix("gmail-sync").Warn("gmail sync failed", "error", err)
+					processed, err := runner.RunOnce(ctx)
+					if err != nil && ctx.Err() == nil && logger != nil {
+						logger.WithPrefix("source-projection").Warn("source projection failed", "error", err)
+					} else {
+						logSourceQueueStatus(ctx, logger, "source-projection", runner.Queue, processed)
 					}
 					select {
 					case <-ctx.Done():

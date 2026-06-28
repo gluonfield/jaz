@@ -55,7 +55,7 @@ func (p *Provider) eventHandler(client *whatsmeow.Client, session *qrSession) wh
 			}
 		case *events.HistorySync:
 			if connection, ok := connectionFromDevice(client.Store); ok {
-				_ = p.writeRecords(p.ctx, whatsappHistoryRecords(connection, event.Data, whatsappHistoryCutoff(time.Now()))...)
+				_ = p.writeHistorySync(p.ctx, connection, event.Data, time.Now())
 			}
 		case *events.Contact:
 			if connection, ok := connectionFromDevice(client.Store); ok {

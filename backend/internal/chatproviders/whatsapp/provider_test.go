@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -317,6 +318,51 @@ func TestWhatsAppHistoryRecordsDropOldMessagesAndFullProtoBlob(t *testing.T) {
 	}
 	if message["text"] != "new message" {
 		t.Fatalf("message raw = %#v", message)
+	}
+}
+
+func TestWhatsAppHistorySyncCapsGroupHistoryAcrossChunks(t *testing.T) {
+	connection := integrations.Connection{ID: "whatsapp:alice", AccountID: "15550102222"}
+	raw := &fakeWhatsAppRawSink{}
+	provider := &Provider{
+		root:  t.TempDir(),
+		raw:   raw,
+		cfg:   Config{GroupHistoryLimit: 2},
+		store: &fakeWhatsAppStore{},
+	}
+	now := time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC)
+	groupID := "12345-67890@g.us"
+	first := whatsappHistorySync(groupID, now, 3, "first")
+	second := whatsappHistorySync(groupID, now.Add(time.Minute), 5, "second")
+
+	if err := provider.writeHistorySync(context.Background(), connection, first, now); err != nil {
+		t.Fatal(err)
+	}
+	if len(raw.records) != 3 {
+		t.Fatalf("first records len = %d, want metadata + 2 messages", len(raw.records))
+	}
+	if err := provider.writeHistorySync(context.Background(), connection, second, now.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if len(raw.records) != 4 {
+		t.Fatalf("second chunk wrote group messages after cap: records len = %d", len(raw.records))
+	}
+}
+
+func whatsappHistorySync(conversationID string, start time.Time, count int, prefix string) *waHistorySync.HistorySync {
+	syncType := waHistorySync.HistorySync_INITIAL_BOOTSTRAP
+	messages := make([]*waHistorySync.HistorySyncMsg, 0, count)
+	for i := range count {
+		messages = append(messages, &waHistorySync.HistorySyncMsg{
+			Message: whatsappWebInfo(fmt.Sprintf("%s-%d", prefix, i), conversationID, uint64(start.Add(-time.Duration(i)*time.Second).Unix()), prefix),
+		})
+	}
+	return &waHistorySync.HistorySync{
+		SyncType: &syncType,
+		Conversations: []*waHistorySync.Conversation{{
+			ID:       proto.String(conversationID),
+			Messages: messages,
+		}},
 	}
 }
 

@@ -24,3 +24,10 @@ func TestDefaultAliasPrefersEmailLocalPart(t *testing.T) {
 		t.Fatalf("alias = %q, want accounts-123", got)
 	}
 }
+
+func TestSourceSlugKeepsReadablePrefixAndStableHash(t *testing.T) {
+	got := SourceSlug("user:276369933")
+	if got != "user-276369933-7be65a27" {
+		t.Fatalf("source slug = %q", got)
+	}
+}

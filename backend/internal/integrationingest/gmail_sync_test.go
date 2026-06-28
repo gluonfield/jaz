@@ -18,7 +18,7 @@ import (
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
 
-func TestGmailSyncerWritesRawMessagesAndCursor(t *testing.T) {
+func TestGmailSyncerWritesObservedMessagesAndCursor(t *testing.T) {
 	occurred := time.Date(2026, 6, 25, 9, 0, 0, 0, time.UTC)
 	body := base64.RawURLEncoding.EncodeToString([]byte(`<html><body>
 		<style>.hidden{display:none}</style>
@@ -94,30 +94,35 @@ func TestGmailSyncerWritesRawMessagesAndCursor(t *testing.T) {
 	if !scanner.Scan() {
 		t.Fatal("expected one raw record")
 	}
-	var raw map[string]any
-	if err := json.Unmarshal(scanner.Bytes(), &raw); err != nil {
+	var record integrations.Record
+	if err := json.Unmarshal(scanner.Bytes(), &record); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"provider", "connection_id", "account_id", "kind", "external_id", "occurred_at", "received_at", "raw", "body_html"} {
-		if _, ok := raw[key]; ok {
-			t.Fatalf("compact export contains %q: %#v", key, raw)
-		}
+	if record.Provider != "gmail" ||
+		record.ConnectionID != "gmail:personal" ||
+		record.AccountID != "augustinas@example.com" ||
+		record.Kind != gmailconnector.RecordKindMessage ||
+		record.ExternalID != "m1" ||
+		!record.OccurredAt.Equal(occurred) ||
+		record.ReceivedAt.IsZero() {
+		t.Fatalf("record = %#v", record)
 	}
-	var message GmailMessageExport
-	if err := json.Unmarshal(scanner.Bytes(), &message); err != nil {
+	var content gmailconnector.MessageContent
+	if err := json.Unmarshal(record.Raw, &content); err != nil {
 		t.Fatal(err)
 	}
-	if message.ID != "m1" ||
-		message.ThreadID != "t1" ||
-		message.At != "2026-06-25T09:00:00Z" ||
-		message.Subject != "Sync me" ||
-		!strings.Contains(message.Body, "Indexed body") ||
-		!strings.Contains(message.Body, "Read report (https://example.com/report)") {
-		t.Fatalf("message = %#v", message)
+	if content.Message.ID != "m1" ||
+		content.Message.ThreadID != "t1" ||
+		!content.Message.InternalDate.Equal(occurred) ||
+		content.Message.Subject != "Sync me" ||
+		content.BodyHTML != "" ||
+		!strings.Contains(content.BodyText, "Indexed body") ||
+		!strings.Contains(content.BodyText, "Read report (https://example.com/report)") {
+		t.Fatalf("content = %#v", content)
 	}
 	for _, unwanted := range []string{"mailchimp", "tracker.example.com", "<img", "script", "utm_source"} {
-		if strings.Contains(message.Body, unwanted) {
-			t.Fatalf("cleaned export body contains %q:\n%s", unwanted, message.Body)
+		if strings.Contains(content.BodyText, unwanted) {
+			t.Fatalf("cleaned content body contains %q:\n%s", unwanted, content.BodyText)
 		}
 	}
 	cursor, err := gmailconnector.DecodeSyncCursor(store.cursor)

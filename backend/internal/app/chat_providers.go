@@ -16,8 +16,10 @@ import (
 	"go.uber.org/fx"
 )
 
-func NewWhatsAppChatProvider(lc fx.Lifecycle, layout runtimefiles.Layout, store *sqlitestore.Store, raw integrationingest.RawWriter, logger *log.Logger) (ChatProviderOut, error) {
-	provider, err := whatsapp.New(context.Background(), filepath.Join(layout.Connections, "whatsapp"), store, raw, logger)
+func NewWhatsAppChatProvider(lc fx.Lifecycle, cfg Config, layout runtimefiles.Layout, store *sqlitestore.Store, writer integrationingest.MaterializingWriter, logger *log.Logger) (ChatProviderOut, error) {
+	provider, err := whatsapp.New(context.Background(), filepath.Join(layout.Connections, "whatsapp"), whatsapp.Config{
+		GroupHistoryLimit: groupHistoryLimit(cfg),
+	}, store, writer, logger)
 	if err != nil {
 		return ChatProviderOut{}, err
 	}
@@ -30,7 +32,7 @@ func NewWhatsAppChatProvider(lc fx.Lifecycle, layout runtimefiles.Layout, store 
 	return chatProviderOut(provider), nil
 }
 
-func NewTelegramChatProvider(lc fx.Lifecycle, layout runtimefiles.Layout, store *sqlitestore.Store, raw integrationingest.RawWriter) (ChatProviderOut, error) {
+func NewTelegramChatProvider(lc fx.Lifecycle, cfg Config, layout runtimefiles.Layout, store *sqlitestore.Store, writer integrationingest.MaterializingWriter) (ChatProviderOut, error) {
 	telegramConfig, ok, err := telegramProviderConfig(layout.Root)
 	if err != nil {
 		return ChatProviderOut{}, err
@@ -38,7 +40,8 @@ func NewTelegramChatProvider(lc fx.Lifecycle, layout runtimefiles.Layout, store 
 	if !ok {
 		return ChatProviderOut{}, nil
 	}
-	provider, err := telegram.New(filepath.Join(layout.Connections, "telegram"), telegramConfig, store, raw)
+	telegramConfig.GroupHistoryLimit = groupHistoryLimit(cfg)
+	provider, err := telegram.New(filepath.Join(layout.Connections, "telegram"), telegramConfig, store, writer)
 	if err != nil {
 		return ChatProviderOut{}, err
 	}
@@ -49,6 +52,13 @@ func NewTelegramChatProvider(lc fx.Lifecycle, layout runtimefiles.Layout, store 
 		},
 	})
 	return chatProviderOut(provider), nil
+}
+
+func groupHistoryLimit(cfg Config) int {
+	if cfg.Connections.Chat.GroupHistoryLimit > 0 {
+		return cfg.Connections.Chat.GroupHistoryLimit
+	}
+	return DefaultChatGroupHistoryLimit
 }
 
 func chatProviderOut(provider interface {

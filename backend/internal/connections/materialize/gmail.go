@@ -15,7 +15,7 @@ import (
 
 type GmailMaterializer struct{}
 
-func (GmailMaterializer) Materialize(_ context.Context, req integrations.MaterializeRequest) ([]integrations.Artifact, error) {
+func (GmailMaterializer) SourceTargets(_ context.Context, req integrations.MaterializeRequest) ([]integrations.SourceTarget, error) {
 	if req.Record.Kind != gmailconnector.RecordKindMessage {
 		return nil, nil
 	}
@@ -27,16 +27,64 @@ func (GmailMaterializer) Materialize(_ context.Context, req integrations.Materia
 	if occurred.IsZero() {
 		occurred = req.Record.ReceivedAt
 	}
-	account := integrations.NormalizeAlias(req.Connection.AccountRef())
-	if account == "" {
-		account = "unknown"
+	if occurred.IsZero() {
+		return nil, nil
 	}
-	return []integrations.Artifact{{
-		Kind:      "memory_source",
-		PathHint:  path.Join("sources/email/gmail", account, occurred.UTC().Format("2006-01")+".md"),
+	account := recordAccountSlug(req.Record.AccountID)
+	messageID := firstText(content.Message.ID, req.Record.ExternalID)
+	utc := occurred.UTC()
+	return []integrations.SourceTarget{{
+		Provider:  gmailconnector.ProviderID,
+		Kind:      "email_message",
+		PathHint:  path.Join("sources", gmailconnector.ProviderID, account, "messages", utc.Format("2006"), utc.Format("01"), utc.Format("02"), integrations.SourceSlug(messageID)+".md"),
 		MediaType: "text/markdown",
-		Body:      []byte(gmailMessageMarkdown(req.Connection, req.Record, content.Message, emailclean.Body(content.BodyText, content.BodyHTML), occurred)),
 	}}, nil
+}
+
+func (GmailMaterializer) ProjectSource(_ context.Context, req integrations.SourceProjectionRequest) (integrations.Artifact, error) {
+	record, ok, err := gmailTargetRecord(req.Target, req.Records)
+	if err != nil || !ok {
+		return integrations.Artifact{}, err
+	}
+	content, err := gmailRecordContent(record.Raw)
+	if err != nil {
+		return integrations.Artifact{}, err
+	}
+	occurred := record.OccurredAt
+	if occurred.IsZero() {
+		occurred = record.ReceivedAt
+	}
+	return integrations.Artifact{
+		Provider:  req.Target.Provider,
+		Kind:      req.Target.Kind,
+		PathHint:  req.Target.PathHint,
+		MediaType: sourceMediaType(req.Target.MediaType),
+		Body:      []byte(gmailMessageMarkdown(record, content.Message, emailclean.Body(content.BodyText, content.BodyHTML), occurred)),
+	}, nil
+}
+
+func gmailTargetRecord(target integrations.SourceTarget, records []integrations.Record) (integrations.Record, bool, error) {
+	targetSlug := strings.TrimSuffix(path.Base(target.PathHint), ".md")
+	var best integrations.Record
+	var ok bool
+	for _, record := range records {
+		if record.Kind != gmailconnector.RecordKindMessage {
+			continue
+		}
+		content, err := gmailRecordContent(record.Raw)
+		if err != nil {
+			return integrations.Record{}, false, err
+		}
+		messageID := firstText(content.Message.ID, record.ExternalID)
+		if integrations.SourceSlug(messageID) != targetSlug {
+			continue
+		}
+		if !ok || record.ReceivedAt.After(best.ReceivedAt) {
+			best = record
+			ok = true
+		}
+	}
+	return best, ok, nil
 }
 
 func gmailRecordContent(raw json.RawMessage) (gmailconnector.MessageContent, error) {
@@ -54,10 +102,11 @@ func gmailRecordContent(raw json.RawMessage) (gmailconnector.MessageContent, err
 	return content, nil
 }
 
-func gmailMessageMarkdown(connection integrations.Connection, record integrations.Record, message gmailconnector.Message, body string, occurred time.Time) string {
+func gmailMessageMarkdown(record integrations.Record, message gmailconnector.Message, body string, occurred time.Time) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "## %s - %s\n\n", occurred.UTC().Format("2006-01-02 15:04"), oneLine(message.Subject))
-	fmt.Fprintf(&b, "- Account: `%s`\n", oneLine(connection.AccountRef()))
+	utc := occurred.UTC()
+	fmt.Fprintf(&b, "## %s UTC - %s\n\n", utc.Format("2006-01-02"), oneLine(message.Subject))
+	fmt.Fprintf(&b, "- Account: `%s`\n", oneLine(record.AccountID))
 	fmt.Fprintf(&b, "- Message ID: `%s`\n", oneLine(message.ID))
 	if message.ThreadID != "" {
 		fmt.Fprintf(&b, "- Thread ID: `%s`\n", oneLine(message.ThreadID))
@@ -68,9 +117,11 @@ func gmailMessageMarkdown(connection integrations.Connection, record integration
 	writeAddresses(&b, "From", message.From)
 	writeAddresses(&b, "To", message.To)
 	writeAddresses(&b, "Cc", message.Cc)
+	writeParticipants(&b, record.AccountID, message)
 	if record.ID != "" {
 		fmt.Fprintf(&b, "- Raw record: `%s`\n", oneLine(record.ID))
 	}
+	fmt.Fprintf(&b, "\n%s %s: %s\n", utc.Format("15:04:05"), emailSpeaker(record.AccountID, message.From), oneLine(message.Subject))
 	if snippet := emailclean.Text(message.Snippet); snippet != "" {
 		fmt.Fprintf(&b, "\n%s\n", oneLine(snippet))
 	}
@@ -95,6 +146,50 @@ func gmailMessageMarkdown(connection integrations.Connection, record integration
 	}
 	b.WriteByte('\n')
 	return b.String()
+}
+
+func writeParticipants(b *strings.Builder, accountID string, message gmailconnector.Message) {
+	participants := participantAddresses(accountID, message)
+	if len(participants) == 0 {
+		return
+	}
+	b.WriteString("- Participants:\n")
+	for _, participant := range participants {
+		fmt.Fprintf(b, "  - %s\n", participant)
+	}
+}
+
+func participantAddresses(accountID string, message gmailconnector.Message) []string {
+	own := strings.ToLower(strings.TrimSpace(accountID))
+	seen := map[string]bool{}
+	var out []string
+	for _, address := range append(append(append([]gmailconnector.Address{}, message.From...), message.To...), message.Cc...) {
+		key := strings.ToLower(strings.TrimSpace(address.Email))
+		if key == "" {
+			key = strings.ToLower(oneLine(address.Name))
+		}
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		label := formatAddress(address)
+		if own != "" && key == own {
+			label = "Me: " + label
+		}
+		out = append(out, label)
+	}
+	return out
+}
+
+func emailSpeaker(accountID string, from []gmailconnector.Address) string {
+	if len(from) == 0 {
+		return "Unknown"
+	}
+	label := formatAddress(from[0])
+	if strings.EqualFold(strings.TrimSpace(from[0].Email), strings.TrimSpace(accountID)) {
+		return "Me <" + oneLine(from[0].Email) + ">"
+	}
+	return label
 }
 
 func attachmentLabel(attachment gmailconnector.Attachment) string {
@@ -129,3 +224,7 @@ func formatAddress(address gmailconnector.Address) string {
 func oneLine(value string) string {
 	return strings.Join(strings.Fields(value), " ")
 }
+
+var _ integrations.SourceProjector = GmailMaterializer{}
+
+func (GmailMaterializer) SourceProvider() string { return gmailconnector.ProviderID }

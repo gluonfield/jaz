@@ -125,6 +125,7 @@ func TestBackfillStatePersistsResumePeer(t *testing.T) {
 	state := backfillState{
 		CurrentPeer:         &telegramPeerRef{Kind: "user", ID: 43, AccessHash: 99},
 		CurrentPeerOffsetID: 7,
+		CurrentPeerMessages: 123,
 		CompletedPeers:      map[string]bool{"chat:100": true},
 		PausedUntil:         time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC),
 	}
@@ -135,7 +136,7 @@ func TestBackfillStatePersistsResumePeer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.CurrentPeer == nil || loaded.CurrentPeer.key() != "user:43" || loaded.CurrentPeerOffsetID != 7 || !loaded.CompletedPeers["chat:100"] {
+	if loaded.CurrentPeer == nil || loaded.CurrentPeer.key() != "user:43" || loaded.CurrentPeerOffsetID != 7 || loaded.CurrentPeerMessages != 123 || !loaded.CompletedPeers["chat:100"] {
 		t.Fatalf("loaded state = %#v", loaded)
 	}
 	peer, ok := loaded.CurrentPeer.inputPeer().(*tg.InputPeerUser)
@@ -417,6 +418,27 @@ func TestTelegramHistoricalBackfillKeepsOnlyOneYearByDefault(t *testing.T) {
 	}
 	if !messagesReachedCutoff(messages, cutoff) {
 		t.Fatal("expected page to stop at historical cutoff")
+	}
+}
+
+func TestTelegramGroupHistoricalBackfillCapsMessages(t *testing.T) {
+	messages := make([]tg.MessageClass, 5)
+	for i := range messages {
+		messages[i] = &tg.Message{ID: i + 1, Date: 1782475200 - i, Message: fmt.Sprintf("message %d", i)}
+	}
+
+	provider := &Provider{cfg: Config{GroupHistoryLimit: 2}}
+	selected, count, reached := telegramBackfillMessages(messages, 0, provider.peerHistoryLimit(telegramPeerRef{Kind: "chat"}), 0)
+	if len(selected) != 2 {
+		t.Fatalf("selected len = %d, want 2", len(selected))
+	}
+	if count != 2 || !reached {
+		t.Fatalf("count=%d reached=%v", count, reached)
+	}
+
+	selected, count, reached = telegramBackfillMessages(messages, 0, 0, 0)
+	if len(selected) != len(messages) || count != len(messages) || reached {
+		t.Fatalf("unlimited selected=%d count=%d reached=%v", len(selected), count, reached)
 	}
 }
 

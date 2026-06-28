@@ -27,6 +27,7 @@ import (
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
 	"github.com/wins/jaz/backend/internal/skills"
+	"github.com/wins/jaz/backend/internal/sourcequeue"
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/terminal"
 	"github.com/wins/jaz/backend/internal/threads"
@@ -91,8 +92,10 @@ type Server struct {
 
 	// Memory owns the embedded jazmem instance, its enabled gate, scheduler,
 	// and MCP surface.
-	Memory   *memoryservice.Service
-	JazTools *jaztools.Service
+	Memory                *memoryservice.Service
+	JazTools              *jaztools.Service
+	SourceProjectionQueue sourceQueueStatsReader
+	MemorySourceQueue     sourceQueueStatsReader
 
 	Terminal     *terminal.Manager
 	Devices      *deviceauth.Service
@@ -100,6 +103,10 @@ type Server struct {
 
 	acpAuthLoginJobs sync.Map
 	worktreePruneMu  sync.Mutex
+}
+
+type sourceQueueStatsReader interface {
+	Stats(context.Context) (sourcequeue.Stats, error)
 }
 
 type Route struct {

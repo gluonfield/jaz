@@ -13,8 +13,9 @@ import (
 )
 
 type Config struct {
-	APIID   int
-	APIHash string
+	APIID             int
+	APIHash           string
+	GroupHistoryLimit int
 }
 
 type Store interface {

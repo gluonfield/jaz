@@ -68,6 +68,8 @@ func Init() error {
 	_ = viper.BindEnv("jaz.skills.disablesync", "JAZ_SKILLS_DISABLE_SYNC")
 	_ = viper.BindEnv("jaz.connections.gmail.oauthclientid", "JAZ_GMAIL_OAUTH_CLIENT_ID")
 	_ = viper.BindEnv("jaz.connections.gmail.oauthclientsecret", "JAZ_GMAIL_OAUTH_CLIENT_SECRET")
+	viper.SetDefault("jaz.connections.chat.grouphistorylimit", app.DefaultChatGroupHistoryLimit)
+	_ = viper.BindEnv("jaz.connections.chat.grouphistorylimit", "JAZ_CHAT_GROUP_HISTORY_LIMIT")
 	if err := viper.ReadInConfig(); err != nil {
 		var notFound viper.ConfigFileNotFoundError
 		if !explicitConfig && errors.As(err, &notFound) {

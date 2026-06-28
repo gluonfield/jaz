@@ -787,6 +787,17 @@ export interface MemoryDoctor {
   unresolved_count: number
 }
 
+export interface MemoryQueueStatus {
+  dirty: number
+  processing: number
+  error?: string
+}
+
+export interface MemorySourceQueues {
+  projection: MemoryQueueStatus
+  memory: MemoryQueueStatus
+}
+
 export interface MemoryStatus {
   enabled: boolean
   agent?: string
@@ -797,6 +808,7 @@ export interface MemoryStatus {
   horizons: MemoryHorizon[]
   tasks: MemoryTask[]
   mcp_url?: string
+  source_queues?: MemorySourceQueues
 }
 
 export interface MemoryIndexReport {

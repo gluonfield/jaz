@@ -65,16 +65,16 @@ func (p *Provider) Disconnect(ctx context.Context, connection integrations.Conne
 	if client != nil {
 		client.RemoveEventHandlers()
 		if err := client.Logout(ctx); err == nil {
-			return nil
+			return p.removeHistoryLimitState(connection.ID)
 		}
 		client.Disconnect()
-		return client.Store.Delete(ctx)
+		return errors.Join(client.Store.Delete(ctx), p.removeHistoryLimitState(connection.ID))
 	}
 	device, ok, err := p.deviceForConnection(ctx, connection.ID)
 	if err != nil || !ok {
 		return err
 	}
-	return device.Delete(ctx)
+	return errors.Join(device.Delete(ctx), p.removeHistoryLimitState(connection.ID))
 }
 
 func (p *Provider) removeClient(connectionID string) *whatsmeow.Client {
