@@ -6,18 +6,9 @@ function isNearBottom(el: HTMLDivElement): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX
 }
 
-export function useThreadAutoScroll({
-  resetKey,
-  itemCount,
-  liveSize,
-  bottomInset,
-}: {
-  resetKey: string
-  itemCount: number
-  liveSize: number
-  bottomInset: number
-}) {
-  const scrollRef = useRef<HTMLDivElement>(null)
+export function useThreadAutoScroll({ resetKey }: { resetKey: string }) {
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const observerRef = useRef<ResizeObserver | null>(null)
   const nearBottom = useRef(true)
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
 
@@ -28,9 +19,20 @@ export function useThreadAutoScroll({
     if (el) el.scrollTop = el.scrollHeight
   }, [])
 
-  useLayoutEffect(() => {
-    if (nearBottom.current) pinToBottom()
-  }, [bottomInset, itemCount, liveSize, pinToBottom])
+  // Re-pin on any content-box change (sent bubble, streaming deltas, composer
+  // collapse, image/markdown reflow). Proxying growth through render counters
+  // missed shifts that landed after a send, so sends sometimes stopped short.
+  const attachScroll = useCallback((node: HTMLDivElement | null) => {
+    observerRef.current?.disconnect()
+    scrollRef.current = node
+    const content = node?.firstElementChild
+    if (!node || !content) return
+    const observer = new ResizeObserver(() => {
+      if (nearBottom.current) node.scrollTop = node.scrollHeight
+    })
+    observer.observe(content, { box: 'border-box' })
+    observerRef.current = observer
+  }, [])
 
   useLayoutEffect(() => {
     pinToBottom()
@@ -42,5 +44,5 @@ export function useThreadAutoScroll({
     setShowScrollToBottom(!nextNearBottom)
   }, [])
 
-  return { scrollRef, showScrollToBottom, onScroll, scrollToBottom: pinToBottom, pinToBottom }
+  return { scrollRef, attachScroll, showScrollToBottom, onScroll, scrollToBottom: pinToBottom, pinToBottom }
 }
