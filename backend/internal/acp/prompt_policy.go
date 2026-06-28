@@ -9,26 +9,27 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-func restrictedWorkerPolicy(policy string) bool {
-	switch policy {
-	case MCPServerPolicyMemorySearchWorker, MCPServerPolicyMemorySourceWorker, MCPServerPolicyBrowserWorker:
-		return true
-	default:
-		return false
-	}
+// restrictedWorkerPolicies maps a worker session's source type to its MCP
+// server policy. These sessions run with only the jaztools server, on the
+// policy-named jaztools surface, and without the base agent system prompt.
+// Adding a worker is a single entry here.
+var restrictedWorkerPolicies = map[string]string{
+	storage.SourceMemorySearch: MCPServerPolicyMemorySearchWorker,
+	storage.SourceMemorySource: MCPServerPolicyMemorySourceWorker,
+	storage.SourceBrowserTask:  MCPServerPolicyBrowserWorker,
 }
 
 func mcpServerPolicyForSourceType(sourceType string) string {
-	switch sourceType {
-	case storage.SourceMemorySearch:
-		return MCPServerPolicyMemorySearchWorker
-	case storage.SourceMemorySource:
-		return MCPServerPolicyMemorySourceWorker
-	case storage.SourceBrowserTask:
-		return MCPServerPolicyBrowserWorker
-	default:
-		return ""
+	return restrictedWorkerPolicies[sourceType]
+}
+
+func restrictedWorkerPolicy(policy string) bool {
+	for _, workerPolicy := range restrictedWorkerPolicies {
+		if workerPolicy == policy {
+			return true
+		}
 	}
+	return false
 }
 
 func effectiveMCPServerPolicy(session storage.Session) string {

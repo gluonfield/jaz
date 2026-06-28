@@ -263,14 +263,10 @@ func (s *Service) surface(r *http.Request) toolSurface {
 	case widgetSurfaceName:
 		return widgetSurface
 	}
-	if s.searchWorkerSession(r) {
-		return searchWorkerSurface
-	}
-	if s.sourceWorkerSession(r) {
-		return sourceWorkerSurface
-	}
-	if s.browserWorkerSession(r) {
-		return browserWorkerSurface
+	if session, ok := s.sessionFromRequest(r); ok {
+		if workerSurface, found := workerSurfaceBySourceType[session.SourceType]; found {
+			return workerSurface
+		}
 	}
 	if s.widgetSession(r) {
 		return widgetSurface
@@ -278,19 +274,12 @@ func (s *Service) surface(r *http.Request) toolSurface {
 	return threadSurface
 }
 
-func (s *Service) searchWorkerSession(r *http.Request) bool {
-	session, ok := s.sessionFromRequest(r)
-	return ok && session.SourceType == storage.SourceMemorySearch
-}
-
-func (s *Service) sourceWorkerSession(r *http.Request) bool {
-	session, ok := s.sessionFromRequest(r)
-	return ok && session.SourceType == storage.SourceMemorySource
-}
-
-func (s *Service) browserWorkerSession(r *http.Request) bool {
-	session, ok := s.sessionFromRequest(r)
-	return ok && session.SourceType == storage.SourceBrowserTask
+// workerSurfaceBySourceType routes a backend worker session, identified by its
+// source type, to its restricted tool surface. Adding a worker is one entry.
+var workerSurfaceBySourceType = map[string]toolSurface{
+	storage.SourceMemorySearch: searchWorkerSurface,
+	storage.SourceMemorySource: sourceWorkerSurface,
+	storage.SourceBrowserTask:  browserWorkerSurface,
 }
 
 func (s *Service) widgetSession(r *http.Request) bool {
