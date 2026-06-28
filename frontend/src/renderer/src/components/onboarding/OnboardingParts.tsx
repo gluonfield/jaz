@@ -10,7 +10,7 @@ import {
   LogIn,
 } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { type ReactNode, useEffect, useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { AgentLogo } from '@/components/acp/AgentLogo'
 import { AuthLoginStatus } from '@/components/acp/AuthLoginStatus'
 import { Button } from '@/components/ui/Button'
@@ -298,10 +298,8 @@ function AgentCard({
   const canKey = Boolean(apiKeyEnv)
   const canLogin = Boolean(probe.auth_command_available)
   const [expanded, setExpanded] = useState(false)
-  const [method, setMethod] = useState<'login' | 'key'>(canKey && (!canLogin || apiKeyReady) ? 'key' : 'login')
-  useEffect(() => {
-    if (canKey && !canLogin && method === 'login') setMethod('key')
-  }, [canKey, canLogin, method])
+  const [chosen, setChosen] = useState<'login' | 'key'>(apiKeyReady ? 'key' : 'login')
+  const method = canKey && !canLogin ? 'key' : !canKey ? 'login' : chosen
   const actionable = state === 'action'
   const companionAppBlocked = Boolean(probe.app_installed && !probe.available && !probe.auth_command_available)
   const missingLabel = companionAppBlocked ? `Needs ${onboardingAgentLabel(probe.agent)}` : undefined
@@ -381,7 +379,7 @@ function AgentCard({
                   <Segmented
                     layoutId={`onboarding-method-${probe.agent}`}
                     value={method}
-                    onChange={setMethod}
+                    onChange={setChosen}
                     options={[
                       { value: 'login', label: 'Sign in', icon: <LogIn size={13} /> },
                       { value: 'key', label: 'API key', icon: <KeyRound size={13} /> },
