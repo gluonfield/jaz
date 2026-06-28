@@ -197,8 +197,10 @@ export function SidePanelControl({
               className="grid transition-[grid-template-columns,opacity] duration-200 ease-out"
               style={{ gridTemplateColumns: metaHeld ? '1fr' : '0fr', opacity: metaHeld ? 1 : 0 }}
             >
-              <span className="overflow-hidden pl-1.5">
-                <KeyboardShortcut value={shortcut} />
+              <span className="overflow-hidden">
+                <span className="block pl-1.5">
+                  <KeyboardShortcut value={shortcut} />
+                </span>
               </span>
             </span>
           ) : null}
