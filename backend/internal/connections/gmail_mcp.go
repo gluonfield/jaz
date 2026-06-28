@@ -65,7 +65,7 @@ func (t *GmailMCPTools) AddTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        gmailconnector.ToolReadAttachment,
 		Title:       "Read Gmail attachment",
-		Description: "Explicitly fetch one Gmail attachment by message ID and attachment ID, store it under Jaz ingest raw, and return the local file path with metadata. Use this only after a thread read exposes the attachment ID.",
+		Description: "Explicitly fetch one Gmail attachment by message ID and attachment ID or a materialized source ref like att:gmail/account/message/1, store it under Jaz ingest raw, and return the local file path with metadata.",
 	}, t.ReadAttachment)
 }
 

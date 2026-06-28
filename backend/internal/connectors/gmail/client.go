@@ -210,8 +210,34 @@ func (c APIClient) ReadAttachment(ctx context.Context, messageID, attachmentID s
 	if !ok {
 		return AttachmentContent{}, fmt.Errorf("gmail attachment %q not found on message %q", attachmentID, messageID)
 	}
+	return c.readAttachment(ctx, messageID, attachment)
+}
+
+func (c APIClient) ReadAttachmentAt(ctx context.Context, messageID string, index int) (AttachmentContent, error) {
+	messageID = strings.TrimSpace(messageID)
+	if messageID == "" {
+		return AttachmentContent{}, fmt.Errorf("gmail message id is required")
+	}
+	if index <= 0 {
+		return AttachmentContent{}, fmt.Errorf("gmail attachment index is required")
+	}
+	rawMessage, err := c.message(ctx, messageID, "full")
+	if err != nil {
+		return AttachmentContent{}, err
+	}
+	attachments := messageFromAPI(rawMessage).Attachments
+	if index > len(attachments) {
+		return AttachmentContent{}, fmt.Errorf("gmail attachment %d not found on message %q", index, messageID)
+	}
+	return c.readAttachment(ctx, messageID, attachments[index-1])
+}
+
+func (c APIClient) readAttachment(ctx context.Context, messageID string, attachment Attachment) (AttachmentContent, error) {
+	if strings.TrimSpace(attachment.ID) == "" {
+		return AttachmentContent{}, fmt.Errorf("gmail attachment id is required")
+	}
 	var raw apiAttachment
-	if err := c.get(ctx, "gmail/v1/users/me/messages/"+url.PathEscape(messageID)+"/attachments/"+url.PathEscape(attachmentID), nil, &raw); err != nil {
+	if err := c.get(ctx, "gmail/v1/users/me/messages/"+url.PathEscape(messageID)+"/attachments/"+url.PathEscape(attachment.ID), nil, &raw); err != nil {
 		return AttachmentContent{}, err
 	}
 	data, err := decodeBodyBytes(raw.Data)

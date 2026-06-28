@@ -132,16 +132,16 @@ func gmailMessageMarkdown(record integrations.Record, message gmailconnector.Mes
 	}
 	if len(message.Attachments) > 0 {
 		b.WriteString("\nAttachments:\n")
-		for _, attachment := range message.Attachments {
+		for i, attachment := range message.Attachments {
 			fmt.Fprintf(&b, "- %s", attachmentLabel(attachment))
 			if attachment.MIMEType != "" {
 				fmt.Fprintf(&b, " (%s)", oneLine(attachment.MIMEType))
 			}
-			if attachment.ID != "" {
-				fmt.Fprintf(&b, ", id `%s`", oneLine(attachment.ID))
-			}
 			if attachment.Size > 0 {
 				fmt.Fprintf(&b, ", %d bytes", attachment.Size)
+			}
+			if ref := gmailconnector.FormatAttachmentSourceRef(record.AccountID, message.ID, i+1); ref != "" {
+				fmt.Fprintf(&b, ", ref `%s`", ref)
 			}
 			b.WriteByte('\n')
 		}
@@ -196,9 +196,6 @@ func emailSpeaker(accountID string, from []gmailconnector.Address) string {
 
 func attachmentLabel(attachment gmailconnector.Attachment) string {
 	if label := oneLine(attachment.FileName); label != "" {
-		return label
-	}
-	if label := oneLine(attachment.ID); label != "" {
 		return label
 	}
 	return "attachment"
