@@ -11,7 +11,7 @@ import (
 type MaterializingWriter struct {
 	Raw             RawWriter
 	Projector       SourceProjector
-	ProjectionQueue DirtySourceStore
+	ProjectionQueue PendingSourceStore
 	Log             *log.Logger
 }
 
@@ -28,18 +28,18 @@ func (w MaterializingWriter) WriteRecords(ctx context.Context, records []integra
 		w.warn("source projection planning failed", err)
 	}
 	for _, source := range sources {
-		if err := w.markProjectionDirty(ctx, source); err != nil {
+		if err := w.markProjectionPending(ctx, source); err != nil {
 			w.warn("source projection queue update failed", err)
 		}
 	}
 	return nil
 }
 
-func (w MaterializingWriter) markProjectionDirty(ctx context.Context, source sourcequeue.Source) error {
+func (w MaterializingWriter) markProjectionPending(ctx context.Context, source sourcequeue.Source) error {
 	if w.ProjectionQueue == nil {
 		return nil
 	}
-	return w.ProjectionQueue.MarkDirtySource(ctx, source)
+	return w.ProjectionQueue.MarkPendingSource(ctx, source)
 }
 
 func (w MaterializingWriter) warn(message string, err error) {

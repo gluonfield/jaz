@@ -18,7 +18,7 @@ import (
 func TestMaterializingWriterWritesObservedRecordsAndQueuesProjection(t *testing.T) {
 	rawRoot := t.TempDir()
 	now := time.Date(2026, 6, 27, 18, 30, 0, 0, time.UTC)
-	projection := &fakeDirtySourceStore{}
+	projection := &fakePendingSourceStore{}
 	writer := MaterializingWriter{
 		Raw:             RawWriter{Root: rawRoot, Now: func() time.Time { return now }},
 		ProjectionQueue: projection,
@@ -55,7 +55,7 @@ func TestSourceProjectionRunnerRebuildsSourceFromRawShard(t *testing.T) {
 	queueRoot := t.TempDir()
 	now := time.Date(2026, 6, 27, 18, 30, 0, 0, time.UTC)
 	queue := sourcequeue.New(queueRoot)
-	memoryDirty := &fakeDirtySourceStore{}
+	memoryPending := &fakePendingSourceStore{}
 	writer := MaterializingWriter{
 		Raw:             RawWriter{Root: rawRoot, Now: func() time.Time { return now }},
 		ProjectionQueue: queue,
@@ -91,8 +91,8 @@ func TestSourceProjectionRunnerRebuildsSourceFromRawShard(t *testing.T) {
 			Projector: fakeSourceProjector{},
 		},
 		Writer: SourceWriter{
-			Root:             sourceRoot,
-			DirtySourceStore: memoryDirty,
+			Root:               sourceRoot,
+			PendingSourceStore: memoryPending,
 		},
 	}
 	processed, err := runner.RunOnce(context.Background())
@@ -110,18 +110,18 @@ func TestSourceProjectionRunnerRebuildsSourceFromRawShard(t *testing.T) {
 	if string(data) != "materialized m1\nmaterialized m2\n" {
 		t.Fatalf("source = %q", string(data))
 	}
-	if len(memoryDirty.sources) != 1 || memoryDirty.sources[0].Path != "sources/telegram/acct/conversations/test/2026/06/27.md" {
-		t.Fatalf("memory dirty sources = %#v", memoryDirty.sources)
+	if len(memoryPending.sources) != 1 || memoryPending.sources[0].Path != "sources/telegram/acct/conversations/test/2026/06/27.md" {
+		t.Fatalf("memory pending sources = %#v", memoryPending.sources)
 	}
-	if memoryDirty.sources[0].Provider != "telegram" {
-		t.Fatalf("memory dirty source lost provider metadata: %#v", memoryDirty.sources[0])
+	if memoryPending.sources[0].Provider != "telegram" {
+		t.Fatalf("memory pending source lost provider metadata: %#v", memoryPending.sources[0])
 	}
 }
 
 func TestMaterializingWriterQueuesValidSourcesWhenPlanningRecordFails(t *testing.T) {
 	rawRoot := t.TempDir()
 	now := time.Date(2026, 6, 27, 18, 30, 0, 0, time.UTC)
-	projection := &fakeDirtySourceStore{}
+	projection := &fakePendingSourceStore{}
 	writer := MaterializingWriter{
 		Raw:             RawWriter{Root: rawRoot, Now: func() time.Time { return now }},
 		ProjectionQueue: projection,
@@ -159,14 +159,14 @@ func TestSourceProjectionRunnerReleasesSourceWhenProjectorProducesNoArtifact(t *
 	queue := sourcequeue.New(queueRoot)
 	source := sourcequeue.Source{
 		Path:      "sources/telegram/acct/conversations/test/2026/06/27.md",
-		DirtyAt:   now,
+		PendingAt: now,
 		Provider:  "telegram",
 		Kind:      "chat_day",
 		MediaType: "text/markdown",
 		Key:       integrations.SourceKey{Entity: "test", Day: "2026-06-27"},
 		Replay:    integrations.Replay{Account: "acct", Scopes: []integrations.ReplayScope{{Domain: integrations.RecordDomainMessages, Day: "2026-06-27"}}},
 	}
-	if err := queue.MarkDirtySource(context.Background(), source); err != nil {
+	if err := queue.MarkPendingSource(context.Background(), source); err != nil {
 		t.Fatal(err)
 	}
 	runner := SourceProjectionRunner{
@@ -211,7 +211,7 @@ func TestSourceProjectionRunnerCompletesSuccessfulSourcesWhenAnotherSourceFails(
 	queue := sourcequeue.New(queueRoot)
 	goodSource := sourcequeue.Source{
 		Path:      "sources/telegram/acct/conversations/good/2026/06/27.md",
-		DirtyAt:   now,
+		PendingAt: now,
 		Provider:  "telegram",
 		Kind:      "chat_day",
 		MediaType: "text/markdown",
@@ -222,7 +222,7 @@ func TestSourceProjectionRunnerCompletesSuccessfulSourcesWhenAnotherSourceFails(
 	badSource.Path = "sources/telegram/acct/conversations/bad/2026/06/27.md"
 	badSource.Key.Entity = "bad"
 	for _, source := range []sourcequeue.Source{goodSource, badSource} {
-		if err := queue.MarkDirtySource(context.Background(), source); err != nil {
+		if err := queue.MarkPendingSource(context.Background(), source); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -247,7 +247,7 @@ func TestSourceProjectionRunnerCompletesSuccessfulSourcesWhenAnotherSourceFails(
 		t.Fatal(err)
 	}
 	if len(reserved) != 1 || reserved[0].Path != badSource.Path {
-		t.Fatalf("remaining dirty sources = %#v", reserved)
+		t.Fatalf("remaining pending sources = %#v", reserved)
 	}
 	if _, err := os.Stat(filepath.Join(sourceRoot, filepath.FromSlash(goodSource.Path))); err != nil {
 		t.Fatal(err)
@@ -388,21 +388,21 @@ func TestSourceProjectionRunnerExpandsContactDependencyInProjectionWorker(t *tes
 	}
 	queue := sourcequeue.New(queueRoot)
 	dependency := sourcequeue.Source{
-		Path:    ".state/source-dependencies/chat-contact/telegram/acct/" + integrations.SourceSlug("user:1") + ".dep",
-		DirtyAt: now.Add(time.Minute),
-		Kind:    sourceKindContactDependency,
+		Path:      ".state/source-dependencies/chat-contact/telegram/acct/" + integrations.SourceSlug("user:1") + ".dep",
+		PendingAt: now.Add(time.Minute),
+		Kind:      sourceKindContactDependency,
 	}
-	if err := queue.MarkDirtySource(context.Background(), dependency); err != nil {
+	if err := queue.MarkPendingSource(context.Background(), dependency); err != nil {
 		t.Fatal(err)
 	}
-	memoryDirty := &fakeDirtySourceStore{}
+	memoryPending := &fakePendingSourceStore{}
 	runner := SourceProjectionRunner{
 		Queue:     queue,
 		Projector: projector,
 		Writer: SourceWriter{
-			Root:             sourceRoot,
-			DirtySourceStore: memoryDirty,
-			Now:              func() time.Time { return now.Add(2 * time.Minute) },
+			Root:               sourceRoot,
+			PendingSourceStore: memoryPending,
+			Now:                func() time.Time { return now.Add(2 * time.Minute) },
 		},
 	}
 	processed, err := runner.RunOnce(context.Background())
@@ -424,8 +424,8 @@ func TestSourceProjectionRunnerExpandsContactDependencyInProjectionWorker(t *tes
 			t.Fatalf("source body missing %q:\n%s", want, body)
 		}
 	}
-	if len(memoryDirty.sources) != 1 || memoryDirty.sources[0].Path != "sources/telegram/acct/conversations/"+chatSlug+"/2026/06/27.md" {
-		t.Fatalf("memory dirty sources = %#v", memoryDirty.sources)
+	if len(memoryPending.sources) != 1 || memoryPending.sources[0].Path != "sources/telegram/acct/conversations/"+chatSlug+"/2026/06/27.md" {
+		t.Fatalf("memory pending sources = %#v", memoryPending.sources)
 	}
 }
 
@@ -477,21 +477,21 @@ func TestSourceProjectionRunnerExpandsContactDependencyForGroupSpeaker(t *testin
 	}
 	queue := sourcequeue.New(queueRoot)
 	dependency := sourcequeue.Source{
-		Path:    ".state/source-dependencies/chat-contact/telegram/acct/" + integrations.SourceSlug("user:1") + ".dep",
-		DirtyAt: now.Add(time.Minute),
-		Kind:    sourceKindContactDependency,
+		Path:      ".state/source-dependencies/chat-contact/telegram/acct/" + integrations.SourceSlug("user:1") + ".dep",
+		PendingAt: now.Add(time.Minute),
+		Kind:      sourceKindContactDependency,
 	}
-	if err := queue.MarkDirtySource(context.Background(), dependency); err != nil {
+	if err := queue.MarkPendingSource(context.Background(), dependency); err != nil {
 		t.Fatal(err)
 	}
-	memoryDirty := &fakeDirtySourceStore{}
+	memoryPending := &fakePendingSourceStore{}
 	runner := SourceProjectionRunner{
 		Queue:     queue,
 		Projector: projector,
 		Writer: SourceWriter{
-			Root:             sourceRoot,
-			DirtySourceStore: memoryDirty,
-			Now:              func() time.Time { return now.Add(2 * time.Minute) },
+			Root:               sourceRoot,
+			PendingSourceStore: memoryPending,
+			Now:                func() time.Time { return now.Add(2 * time.Minute) },
 		},
 	}
 	processed, err := runner.RunOnce(context.Background())
@@ -513,8 +513,8 @@ func TestSourceProjectionRunnerExpandsContactDependencyForGroupSpeaker(t *testin
 			t.Fatalf("source body missing %q:\n%s", want, body)
 		}
 	}
-	if len(memoryDirty.sources) != 1 || memoryDirty.sources[0].Path != "sources/telegram/acct/conversations/"+chatSlug+"/2026/06/27.md" {
-		t.Fatalf("memory dirty sources = %#v", memoryDirty.sources)
+	if len(memoryPending.sources) != 1 || memoryPending.sources[0].Path != "sources/telegram/acct/conversations/"+chatSlug+"/2026/06/27.md" {
+		t.Fatalf("memory pending sources = %#v", memoryPending.sources)
 	}
 }
 
@@ -584,4 +584,4 @@ func (noArtifactForBadProjector) ProjectSource(_ context.Context, req integratio
 	return fakeSourceProjector{}.ProjectSource(context.Background(), req)
 }
 
-var _ DirtySourceStore = (*fakeDirtySourceStore)(nil)
+var _ PendingSourceStore = (*fakePendingSourceStore)(nil)

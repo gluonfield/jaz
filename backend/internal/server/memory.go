@@ -43,7 +43,7 @@ type memorySourceQueues struct {
 }
 
 type memoryQueueStatus struct {
-	Dirty      int    `json:"dirty"`
+	Pending    int    `json:"pending"`
 	Processing int    `json:"processing"`
 	Error      string `json:"error,omitempty"`
 }
@@ -118,7 +118,7 @@ func readMemoryQueueStatus(ctx context.Context, queue sourceQueueStatsReader) me
 	if err != nil {
 		return memoryQueueStatus{Error: err.Error()}
 	}
-	return memoryQueueStatus{Dirty: stats.Dirty, Processing: stats.Processing}
+	return memoryQueueStatus{Pending: stats.Pending, Processing: stats.Processing}
 }
 
 func (s *Server) handleMemoryUpdate(w http.ResponseWriter, r *http.Request) {

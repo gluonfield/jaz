@@ -215,12 +215,12 @@ export function MemorySettings() {
             <div className="grid grid-cols-1 divide-y divide-border border-b border-border md:grid-cols-2 md:divide-x md:divide-y-0">
               <SourceQueueStatus
                 label="Source projection"
-                detail="Raw provider data to materialized source files."
+                detail="Raw provider data → materialized source files."
                 queue={memory.source_queues.projection}
               />
               <SourceQueueStatus
                 label="Memory capture"
-                detail="Materialized source files reserved for jazmem."
+                detail="Source files waiting to be captured into memory."
                 queue={memory.source_queues.memory}
               />
             </div>
@@ -341,7 +341,7 @@ function SourceQueueStatus({
   detail: string
   queue: MemoryQueueStatus
 }) {
-  const active = queue.dirty > 0 || queue.processing > 0
+  const active = queue.pending > 0 || queue.processing > 0
   return (
     <div className="min-w-0 px-4 py-3">
       <div className="flex items-start justify-between gap-3">
@@ -363,7 +363,7 @@ function SourceQueueStatus({
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-ink-2">
         <span>
-          <span className="font-mono tabular-nums text-ink">{queue.dirty}</span> dirty
+          <span className="font-mono tabular-nums text-ink">{queue.pending}</span> pending
         </span>
         <span>
           <span className="font-mono tabular-nums text-ink">{queue.processing}</span> processing

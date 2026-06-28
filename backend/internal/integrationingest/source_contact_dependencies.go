@@ -95,16 +95,16 @@ func contactDependencySource(record integrations.Record) (sourcequeue.Source, bo
 		return sourcequeue.Source{}, false
 	}
 	path := filepath.ToSlash(filepath.Join(".state", "source-dependencies", "chat-contact", provider, account, integrations.SourceSlug(record.ExternalID)+".dep"))
-	return sourcequeue.Source{Path: path, DirtyAt: recordTime(record), Provider: provider, Kind: sourceKindContactDependency}, true
+	return sourcequeue.Source{Path: path, PendingAt: recordTime(record), Provider: provider, Kind: sourceKindContactDependency}, true
 }
 
-func (p SourceProjector) projectContactDependency(ctx context.Context, dependency contactDependencyAddress, dirtyAt time.Time) ([]integrations.Artifact, error) {
-	dirty, err := p.contactDependencySources(dependency, dirtyAt)
+func (p SourceProjector) projectContactDependency(ctx context.Context, dependency contactDependencyAddress, pendingAt time.Time) ([]integrations.Artifact, error) {
+	pending, err := p.contactDependencySources(dependency, pendingAt)
 	if err != nil {
 		return nil, err
 	}
 	var artifacts []integrations.Artifact
-	for _, source := range dirty {
+	for _, source := range pending {
 		projected, err := p.ProjectSource(ctx, source)
 		if err != nil {
 			return nil, err
@@ -162,7 +162,7 @@ func (p SourceProjector) recordContactDependency(provider, account, contactSlug 
 	return writeContactDependencyIndex(path, index)
 }
 
-func (p SourceProjector) contactDependencySources(dependency contactDependencyAddress, dirtyAt time.Time) ([]sourcequeue.Source, error) {
+func (p SourceProjector) contactDependencySources(dependency contactDependencyAddress, pendingAt time.Time) ([]sourcequeue.Source, error) {
 	path, err := p.contactDependencyIndexPath(dependency)
 	if err != nil {
 		return nil, err
@@ -179,7 +179,7 @@ func (p SourceProjector) contactDependencySources(dependency contactDependencyAd
 		}
 		seen[sourcePath] = sourcequeue.Source{
 			Path:      sourcePath,
-			DirtyAt:   dirtyAt,
+			PendingAt: pendingAt,
 			Provider:  firstNonEmpty(entry.Provider, dependency.Provider),
 			Kind:      entry.Kind,
 			MediaType: entry.MediaType,

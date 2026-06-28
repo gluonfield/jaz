@@ -15,14 +15,11 @@ import (
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
-const (
-	stateVersion     = 4
-	defaultStaleTime = 30 * time.Minute
-)
+const defaultStaleTime = 30 * time.Minute
 
 type Source struct {
 	Path      string
-	DirtyAt   time.Time
+	PendingAt time.Time
 	Provider  string
 	Kind      string
 	MediaType string
@@ -31,7 +28,7 @@ type Source struct {
 }
 
 type Stats struct {
-	Dirty      int
+	Pending    int
 	Processing int
 }
 
@@ -45,13 +42,12 @@ type Queue struct {
 }
 
 type queueState struct {
-	Version    int                         `json:"version"`
-	Dirty      map[string]queuedSource     `json:"dirty,omitempty"`
+	Pending    map[string]queuedSource     `json:"pending,omitempty"`
 	Processing map[string]processingSource `json:"processing,omitempty"`
 }
 
 type queuedSource struct {
-	DirtyAt   time.Time              `json:"dirty_at"`
+	PendingAt time.Time              `json:"pending_at"`
 	Provider  string                 `json:"provider,omitempty"`
 	Kind      string                 `json:"kind,omitempty"`
 	MediaType string                 `json:"media_type,omitempty"`
@@ -60,7 +56,7 @@ type queuedSource struct {
 }
 
 type processingSource struct {
-	DirtyAt    time.Time              `json:"dirty_at"`
+	PendingAt  time.Time              `json:"pending_at"`
 	ReservedAt time.Time              `json:"reserved_at"`
 	Provider   string                 `json:"provider,omitempty"`
 	Kind       string                 `json:"kind,omitempty"`
@@ -71,14 +67,14 @@ type processingSource struct {
 
 func (s queuedSource) MarshalJSON() ([]byte, error) {
 	var out struct {
-		DirtyAt   time.Time               `json:"dirty_at"`
+		PendingAt time.Time               `json:"pending_at"`
 		Provider  string                  `json:"provider,omitempty"`
 		Kind      string                  `json:"kind,omitempty"`
 		MediaType string                  `json:"media_type,omitempty"`
 		Key       *integrations.SourceKey `json:"key,omitempty"`
 		Replay    *integrations.Replay    `json:"replay,omitempty"`
 	}
-	out.DirtyAt = s.DirtyAt
+	out.PendingAt = s.PendingAt
 	out.Provider = s.Provider
 	out.Kind = s.Kind
 	out.MediaType = s.MediaType
@@ -87,32 +83,9 @@ func (s queuedSource) MarshalJSON() ([]byte, error) {
 	return json.Marshal(out)
 }
 
-func (s *queuedSource) UnmarshalJSON(data []byte) error {
-	var raw struct {
-		DirtyAt      time.Time              `json:"dirty_at"`
-		Provider     string                 `json:"provider,omitempty"`
-		Kind         string                 `json:"kind,omitempty"`
-		MediaType    string                 `json:"media_type,omitempty"`
-		Key          integrations.SourceKey `json:"key,omitempty"`
-		Replay       integrations.Replay    `json:"replay,omitempty"`
-		LegacyEntity string                 `json:"source_id,omitempty"`
-		LegacyDay    string                 `json:"day,omitempty"`
-	}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	s.DirtyAt = raw.DirtyAt
-	s.Provider = raw.Provider
-	s.Kind = raw.Kind
-	s.MediaType = raw.MediaType
-	s.Key = keyWithLegacy(raw.Key, raw.LegacyEntity, raw.LegacyDay)
-	s.Replay = raw.Replay
-	return nil
-}
-
 func (s processingSource) MarshalJSON() ([]byte, error) {
 	var out struct {
-		DirtyAt    time.Time               `json:"dirty_at"`
+		PendingAt  time.Time               `json:"pending_at"`
 		ReservedAt time.Time               `json:"reserved_at"`
 		Provider   string                  `json:"provider,omitempty"`
 		Kind       string                  `json:"kind,omitempty"`
@@ -120,7 +93,7 @@ func (s processingSource) MarshalJSON() ([]byte, error) {
 		Key        *integrations.SourceKey `json:"key,omitempty"`
 		Replay     *integrations.Replay    `json:"replay,omitempty"`
 	}
-	out.DirtyAt = s.DirtyAt
+	out.PendingAt = s.PendingAt
 	out.ReservedAt = s.ReservedAt
 	out.Provider = s.Provider
 	out.Kind = s.Kind
@@ -128,38 +101,6 @@ func (s processingSource) MarshalJSON() ([]byte, error) {
 	out.Key = sourceKeyPtr(s.Key)
 	out.Replay = replayPtr(s.Replay)
 	return json.Marshal(out)
-}
-
-func (s *processingSource) UnmarshalJSON(data []byte) error {
-	var raw struct {
-		DirtyAt      time.Time              `json:"dirty_at"`
-		ReservedAt   time.Time              `json:"reserved_at"`
-		Provider     string                 `json:"provider,omitempty"`
-		Kind         string                 `json:"kind,omitempty"`
-		MediaType    string                 `json:"media_type,omitempty"`
-		Key          integrations.SourceKey `json:"key,omitempty"`
-		Replay       integrations.Replay    `json:"replay,omitempty"`
-		LegacyEntity string                 `json:"source_id,omitempty"`
-		LegacyDay    string                 `json:"day,omitempty"`
-	}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	s.DirtyAt = raw.DirtyAt
-	s.ReservedAt = raw.ReservedAt
-	s.Provider = raw.Provider
-	s.Kind = raw.Kind
-	s.MediaType = raw.MediaType
-	s.Key = keyWithLegacy(raw.Key, raw.LegacyEntity, raw.LegacyDay)
-	s.Replay = raw.Replay
-	return nil
-}
-
-func keyWithLegacy(key integrations.SourceKey, entity, day string) integrations.SourceKey {
-	if key != (integrations.SourceKey{}) {
-		return key
-	}
-	return integrations.SourceKey{Entity: entity, Day: day}
 }
 
 func sourceKeyPtr(key integrations.SourceKey) *integrations.SourceKey {
@@ -176,22 +117,11 @@ func replayPtr(replay integrations.Replay) *integrations.Replay {
 	return &replay
 }
 
-type legacyQueueState struct {
-	Version    int                              `json:"version"`
-	Dirty      map[string]time.Time             `json:"dirty,omitempty"`
-	Processing map[string]legacyProcessingState `json:"processing,omitempty"`
-}
-
-type legacyProcessingState struct {
-	DirtyAt    time.Time `json:"dirty_at"`
-	ReservedAt time.Time `json:"reserved_at"`
-}
-
 func New(root string) *Queue {
 	return &Queue{Root: root}
 }
 
-func (q *Queue) MarkDirtySource(ctx context.Context, source Source) error {
+func (q *Queue) MarkPendingSource(ctx context.Context, source Source) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -199,18 +129,18 @@ func (q *Queue) MarkDirtySource(ctx context.Context, source Source) error {
 	if err != nil {
 		return err
 	}
-	dirtyAt := source.DirtyAt.UTC()
-	if dirtyAt.IsZero() {
-		dirtyAt = q.now()
+	pendingAt := source.PendingAt.UTC()
+	if pendingAt.IsZero() {
+		pendingAt = q.now()
 	}
-	source.DirtyAt = dirtyAt
+	source.PendingAt = pendingAt
 	item := queuedFromSource(source)
 	return q.update(func(state *queueState) error {
-		if state.Dirty == nil {
-			state.Dirty = map[string]queuedSource{}
+		if state.Pending == nil {
+			state.Pending = map[string]queuedSource{}
 		}
-		if current, ok := state.Dirty[path]; !ok || shouldReplace(current, item) {
-			state.Dirty[path] = item
+		if current, ok := state.Pending[path]; !ok || shouldReplace(current, item) {
+			state.Pending[path] = item
 		}
 		return nil
 	})
@@ -227,13 +157,13 @@ func (q *Queue) Reserve(ctx context.Context, limit int) ([]Source, error) {
 	now := q.now()
 	err := q.update(func(state *queueState) error {
 		q.recoverStale(state, now)
-		paths := make([]string, 0, len(state.Dirty))
-		for path := range state.Dirty {
+		paths := make([]string, 0, len(state.Pending))
+		for path := range state.Pending {
 			paths = append(paths, path)
 		}
 		sort.Slice(paths, func(i, j int) bool {
-			left := state.Dirty[paths[i]].DirtyAt
-			right := state.Dirty[paths[j]].DirtyAt
+			left := state.Pending[paths[i]].PendingAt
+			right := state.Pending[paths[j]].PendingAt
 			if left.Equal(right) {
 				return paths[i] < paths[j]
 			}
@@ -246,11 +176,11 @@ func (q *Queue) Reserve(ctx context.Context, limit int) ([]Source, error) {
 			if len(out) >= limit {
 				break
 			}
-			item := state.Dirty[path]
-			dirtyAt := item.DirtyAt.UTC()
-			delete(state.Dirty, path)
+			item := state.Pending[path]
+			pendingAt := item.PendingAt.UTC()
+			delete(state.Pending, path)
 			state.Processing[path] = processingSource{
-				DirtyAt:    dirtyAt,
+				PendingAt:  pendingAt,
 				ReservedAt: now,
 				Provider:   item.Provider,
 				Kind:       item.Kind,
@@ -258,7 +188,7 @@ func (q *Queue) Reserve(ctx context.Context, limit int) ([]Source, error) {
 				Key:        item.Key,
 				Replay:     item.Replay,
 			}
-			out = append(out, Source{Path: path, DirtyAt: dirtyAt, Provider: item.Provider, Kind: item.Kind, MediaType: item.MediaType, Key: item.Key, Replay: item.Replay})
+			out = append(out, Source{Path: path, PendingAt: pendingAt, Provider: item.Provider, Kind: item.Kind, MediaType: item.MediaType, Key: item.Key, Replay: item.Replay})
 		}
 		return nil
 	})
@@ -274,7 +204,7 @@ func (q *Queue) Stats(ctx context.Context) (Stats, error) {
 	}
 	var stats Stats
 	err := q.view(func(state queueState) error {
-		stats = Stats{Dirty: len(state.Dirty), Processing: len(state.Processing)}
+		stats = Stats{Pending: len(state.Pending), Processing: len(state.Processing)}
 		return nil
 	})
 	return stats, err
@@ -317,7 +247,7 @@ func completeSources(state *queueState, sources []Source) error {
 			return err
 		}
 		processing, ok := state.Processing[path]
-		if ok && processing.DirtyAt.Equal(source.DirtyAt.UTC()) {
+		if ok && processing.PendingAt.Equal(source.PendingAt.UTC()) {
 			delete(state.Processing, path)
 		}
 	}
@@ -325,8 +255,8 @@ func completeSources(state *queueState, sources []Source) error {
 }
 
 func releaseSources(state *queueState, sources []Source) error {
-	if state.Dirty == nil {
-		state.Dirty = map[string]queuedSource{}
+	if state.Pending == nil {
+		state.Pending = map[string]queuedSource{}
 	}
 	for _, source := range sources {
 		path, err := cleanPath(source.Path)
@@ -339,8 +269,8 @@ func releaseSources(state *queueState, sources []Source) error {
 			item = queuedFromProcessing(processing)
 			delete(state.Processing, path)
 		}
-		if current, ok := state.Dirty[path]; !ok || shouldReplace(current, item) {
-			state.Dirty[path] = item
+		if current, ok := state.Pending[path]; !ok || shouldReplace(current, item) {
+			state.Pending[path] = item
 		}
 	}
 	return nil
@@ -386,72 +316,24 @@ func (q *Queue) load() (queueState, error) {
 	}
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		return newState(), nil
+		return queueState{}, nil
 	}
 	if err != nil {
 		return queueState{}, err
 	}
 	if len(data) == 0 {
-		return newState(), nil
+		return queueState{}, nil
 	}
-	state, err := parseState(data)
-	if err != nil {
-		return queueState{}, err
-	}
-	return state, nil
-}
-
-func parseState(data []byte) (queueState, error) {
 	var state queueState
 	if err := json.Unmarshal(data, &state); err != nil {
-		legacy, legacyErr := parseLegacyState(data)
-		if legacyErr == nil {
-			return legacy, nil
-		}
 		return queueState{}, err
-	}
-	if state.Version == 0 {
-		state.Version = stateVersion
-	}
-	return state, nil
-}
-
-func parseLegacyState(data []byte) (queueState, error) {
-	var legacy legacyQueueState
-	if err := json.Unmarshal(data, &legacy); err != nil {
-		return queueState{}, err
-	}
-	state := newState()
-	if len(legacy.Dirty) > 0 {
-		state.Dirty = map[string]queuedSource{}
-		for path, dirtyAt := range legacy.Dirty {
-			clean, err := cleanPath(path)
-			if err != nil {
-				return queueState{}, err
-			}
-			state.Dirty[clean] = queuedSource{DirtyAt: dirtyAt.UTC()}
-		}
-	}
-	if len(legacy.Processing) > 0 {
-		state.Processing = map[string]processingSource{}
-		for path, processing := range legacy.Processing {
-			clean, err := cleanPath(path)
-			if err != nil {
-				return queueState{}, err
-			}
-			state.Processing[clean] = processingSource{
-				DirtyAt:    processing.DirtyAt.UTC(),
-				ReservedAt: processing.ReservedAt.UTC(),
-			}
-		}
 	}
 	return state, nil
 }
 
 func (q *Queue) save(state queueState) error {
-	state.Version = stateVersion
-	if len(state.Dirty) == 0 {
-		state.Dirty = nil
+	if len(state.Pending) == 0 {
+		state.Pending = nil
 	}
 	if len(state.Processing) == 0 {
 		state.Processing = nil
@@ -464,7 +346,7 @@ func (q *Queue) save(state queueState) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	file, err := os.CreateTemp(dir, ".dirty-sources-*.tmp")
+	file, err := os.CreateTemp(dir, ".pending-sources-*.tmp")
 	if err != nil {
 		return err
 	}
@@ -494,16 +376,16 @@ func (q *Queue) recoverStale(state *queueState, now time.Time) {
 	if staleAfter <= 0 {
 		staleAfter = defaultStaleTime
 	}
-	if state.Dirty == nil {
-		state.Dirty = map[string]queuedSource{}
+	if state.Pending == nil {
+		state.Pending = map[string]queuedSource{}
 	}
 	for path, processing := range state.Processing {
 		if now.Sub(processing.ReservedAt) < staleAfter {
 			continue
 		}
 		item := queuedFromProcessing(processing)
-		if current, ok := state.Dirty[path]; !ok || shouldReplace(current, item) {
-			state.Dirty[path] = item
+		if current, ok := state.Pending[path]; !ok || shouldReplace(current, item) {
+			state.Pending[path] = item
 		}
 		delete(state.Processing, path)
 	}
@@ -511,7 +393,7 @@ func (q *Queue) recoverStale(state *queueState, now time.Time) {
 
 func queuedFromSource(source Source) queuedSource {
 	return queuedSource{
-		DirtyAt:   source.DirtyAt.UTC(),
+		PendingAt: source.PendingAt.UTC(),
 		Provider:  source.Provider,
 		Kind:      source.Kind,
 		MediaType: source.MediaType,
@@ -522,7 +404,7 @@ func queuedFromSource(source Source) queuedSource {
 
 func queuedFromProcessing(processing processingSource) queuedSource {
 	return queuedSource{
-		DirtyAt:   processing.DirtyAt,
+		PendingAt: processing.PendingAt,
 		Provider:  processing.Provider,
 		Kind:      processing.Kind,
 		MediaType: processing.MediaType,
@@ -532,10 +414,10 @@ func queuedFromProcessing(processing processingSource) queuedSource {
 }
 
 func shouldReplace(current, next queuedSource) bool {
-	if current.DirtyAt.Before(next.DirtyAt) {
+	if current.PendingAt.Before(next.PendingAt) {
 		return true
 	}
-	if !current.DirtyAt.Equal(next.DirtyAt) {
+	if !current.PendingAt.Equal(next.PendingAt) {
 		return false
 	}
 	if current.Kind == "" && next.Kind != "" {
@@ -554,7 +436,7 @@ func (q *Queue) statePath() (string, error) {
 	}
 	stateFile := strings.TrimSpace(q.StateFile)
 	if stateFile == "" {
-		stateFile = filepath.Join(".state", "dirty-sources.json")
+		stateFile = filepath.Join(".state", "pending-sources.json")
 	}
 	clean := filepath.Clean(filepath.FromSlash(stateFile))
 	if filepath.IsAbs(clean) || clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(os.PathSeparator)) {
@@ -592,10 +474,6 @@ func (q *Queue) now() time.Time {
 		now = q.Now().UTC()
 	}
 	return now
-}
-
-func newState() queueState {
-	return queueState{Version: stateVersion}
 }
 
 func cleanPath(value string) (string, error) {

@@ -73,7 +73,7 @@ func TestMemoryStatusAndToggle(t *testing.T) {
 	srv, scheduler := testMemoryServer(t)
 	ctx := context.Background()
 	sourceProjectionQueue := srv.SourceProjectionQueue.(*sourcequeue.Queue)
-	if err := sourceProjectionQueue.MarkDirtySource(ctx, sourcequeue.Source{
+	if err := sourceProjectionQueue.MarkPendingSource(ctx, sourcequeue.Source{
 		Path:     "gmail/personal/messages/2026/06/28/a.md",
 		Provider: "gmail",
 		Kind:     "message",
@@ -84,7 +84,7 @@ func TestMemoryStatusAndToggle(t *testing.T) {
 		t.Fatal(err)
 	}
 	memorySourceQueue := srv.MemorySourceQueue.(*sourcequeue.Queue)
-	if err := memorySourceQueue.MarkDirtySource(ctx, sourcequeue.Source{
+	if err := memorySourceQueue.MarkPendingSource(ctx, sourcequeue.Source{
 		Path:     "sources/gmail/personal/messages/2026/06/28/a.md",
 		Provider: "gmail",
 		Kind:     "message",
@@ -114,10 +114,10 @@ func TestMemoryStatusAndToggle(t *testing.T) {
 	if len(status.Tasks) != 6 {
 		t.Fatalf("expected all scheduler tasks, got %#v", status.Tasks)
 	}
-	if status.SourceQueues.Projection.Dirty != 0 || status.SourceQueues.Projection.Processing != 1 {
+	if status.SourceQueues.Projection.Pending != 0 || status.SourceQueues.Projection.Processing != 1 {
 		t.Fatalf("unexpected source projection queue status %#v", status.SourceQueues.Projection)
 	}
-	if status.SourceQueues.Memory.Dirty != 1 || status.SourceQueues.Memory.Processing != 0 {
+	if status.SourceQueues.Memory.Pending != 1 || status.SourceQueues.Memory.Processing != 0 {
 		t.Fatalf("unexpected memory source queue status %#v", status.SourceQueues.Memory)
 	}
 

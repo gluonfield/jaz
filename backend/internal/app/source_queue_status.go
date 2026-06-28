@@ -18,8 +18,8 @@ func logSourceQueueStatus(ctx context.Context, logger *log.Logger, prefix string
 		}
 		return
 	}
-	if processed == 0 && stats.Dirty == 0 && stats.Processing == 0 {
+	if processed == 0 && stats.Pending == 0 && stats.Processing == 0 {
 		return
 	}
-	logger.WithPrefix(prefix).Info("source queue progress", "processed", processed, "dirty", stats.Dirty, "processing", stats.Processing)
+	logger.WithPrefix(prefix).Info("source queue progress", "processed", processed, "pending", stats.Pending, "processing", stats.Processing)
 }
