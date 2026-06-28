@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/acp"
@@ -75,6 +76,193 @@ func TestSessionMessagesErrorSessionOverridesRunningACPSnapshot(t *testing.T) {
 	}
 	if got.ACPError != session.Error {
 		t.Fatalf("acp_error = %q, want %q", got.ACPError, session.Error)
+	}
+}
+
+func TestSessionMessagesMobileProjectionStripsHeavyToolPayload(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "codex-mobile",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     "codex",
+			SessionID: "acp-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	heavyCall := sessionevents.ACPToolCall{
+		ID:       "tool-1",
+		Title:    "rg release",
+		Status:   "completed",
+		Kind:     "terminal",
+		ToolName: "shell",
+		Content: []sessionevents.ACPToolContent{{
+			Type: "text",
+			Text: "very large tool result that mobile does not render",
+		}},
+		RawInput: map[string]any{
+			"cmd": "expensive command input that mobile does not render",
+		},
+		Runtime: sessionevents.ACPToolRuntime{ElapsedTimeSeconds: 12.5},
+	}
+	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{
+		Type: "acp_tool",
+		ACP: &sessionevents.ACPEvent{
+			ID:        session.ID,
+			Slug:      session.Slug,
+			Agent:     "codex",
+			SessionID: "acp-session",
+			State:     acp.StateIdle,
+			ToolCalls: []sessionevents.ACPToolCall{heavyCall},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertActivity(session.ID, storage.ActivityEntry{
+		ID:     "tool-1",
+		Kind:   "tool",
+		Text:   "activity entry not rendered by mobile",
+		Status: "completed",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveACPState(session.ID, storage.ACPState{
+		ID:         session.ID,
+		Slug:       session.Slug,
+		ACPAgent:   "codex",
+		ACPSession: "acp-session",
+		State:      acp.StateIdle,
+		ToolCalls:  []sessionevents.ACPToolCall{heavyCall},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/"+session.ID+"/messages", nil)
+	req.Header.Set("X-Jaz-Client-Platform", "mobile")
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	body := res.Body.String()
+	for _, forbidden := range []string{
+		"very large tool result",
+		"expensive command input",
+		"activity entry not rendered",
+	} {
+		if strings.Contains(body, forbidden) {
+			t.Fatalf("mobile response contains stripped payload %q: %s", forbidden, body)
+		}
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(res.Body.Bytes(), &raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := raw["activity"]; ok {
+		t.Fatalf("mobile response includes activity: %s", raw["activity"])
+	}
+	var got struct {
+		Events       []sessionevents.Event       `json:"events"`
+		ACPToolCalls []sessionevents.ACPToolCall `json:"acp_tool_calls"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Events) != 1 || got.Events[0].ACP == nil || len(got.Events[0].ACP.ToolCalls) != 1 {
+		t.Fatalf("events = %#v", got.Events)
+	}
+	eventCall := got.Events[0].ACP.ToolCalls[0]
+	if eventCall.ID != heavyCall.ID || eventCall.Title != heavyCall.Title || eventCall.Status != heavyCall.Status {
+		t.Fatalf("event tool call summary = %#v", eventCall)
+	}
+	if len(eventCall.Content) != 0 || len(eventCall.RawInput) != 0 || !eventCall.Runtime.IsZero() || eventCall.Kind != "" || eventCall.ToolName != "" {
+		t.Fatalf("event tool call retained heavy fields: %#v", eventCall)
+	}
+	if len(got.ACPToolCalls) != 1 {
+		t.Fatalf("acp_tool_calls = %#v", got.ACPToolCalls)
+	}
+	stateCall := got.ACPToolCalls[0]
+	if stateCall.ID != heavyCall.ID || stateCall.Title != heavyCall.Title || stateCall.Status != heavyCall.Status {
+		t.Fatalf("state tool call summary = %#v", stateCall)
+	}
+	if len(stateCall.Content) != 0 || len(stateCall.RawInput) != 0 || !stateCall.Runtime.IsZero() || stateCall.Kind != "" || stateCall.ToolName != "" {
+		t.Fatalf("state tool call retained heavy fields: %#v", stateCall)
+	}
+}
+
+func TestSessionMessagesMobilePreservesPermissionContent(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "claude-plan",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     "claude",
+			SessionID: "acp-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	permission := sessionevents.ACPPermission{
+		ID:         "perm-1",
+		Title:      "Ready to code?",
+		ToolCallID: "toolu-plan-exit",
+		Content:    "1. Inspect the provider path.\n2. Add the flag.",
+		Status:     "pending",
+		Options: []sessionevents.ACPPermissionOption{{
+			ID:   "allow",
+			Name: "Allow",
+		}},
+	}
+	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{
+		Type:       "permission_request",
+		Permission: &permission,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/"+session.ID+"/messages", nil)
+	req.Header.Set("X-Jaz-Client-Platform", "mobile")
+	res := httptest.NewRecorder()
+
+	(&Server{Store: store, ACP: &fakeACPManager{job: acp.Job{
+		ID:          session.ID,
+		Slug:        session.Slug,
+		ACPAgent:    "claude",
+		ACPSession:  "acp-session",
+		State:       acp.StateRunning,
+		Permissions: []sessionevents.ACPPermission{permission},
+	}}}).Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var got struct {
+		Events         []sessionevents.Event         `json:"events"`
+		ACPPermissions []sessionevents.ACPPermission `json:"acp_permissions"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Events) != 1 || got.Events[0].Permission == nil {
+		t.Fatalf("events = %#v", got.Events)
+	}
+	if got.Events[0].Permission.Content != permission.Content {
+		t.Fatalf("event permission content = %q, want %q", got.Events[0].Permission.Content, permission.Content)
+	}
+	if len(got.ACPPermissions) != 1 || got.ACPPermissions[0].Content != permission.Content {
+		t.Fatalf("acp permissions = %#v", got.ACPPermissions)
 	}
 }
 

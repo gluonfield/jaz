@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ChartNoAxesColumn } from 'lucide-react'
 import { type MouseEvent, useMemo, useState } from 'react'
 import { CategoryBreakdown } from '@/components/settings/UsageCategoryBreakdown'
-import { ModelBreakdown } from '@/components/settings/UsageModelBreakdown'
+import { ModelBreakdown, UsageShareCharts } from '@/components/settings/UsageModelBreakdown'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { dailyUsageQuery } from '@/lib/api/sessions'
@@ -219,6 +219,8 @@ function UsagePanel({
       </div>
 
       <CategoryBreakdown categories={categories} />
+
+      <UsageShareCharts rows={pricedModels} />
 
       <ModelBreakdown
         rows={pricedModels}

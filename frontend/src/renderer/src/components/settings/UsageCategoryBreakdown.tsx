@@ -1,5 +1,4 @@
 import { useMemo } from 'react'
-import { UsageShareLegend } from '@/components/settings/UsageShareLegend'
 import { formatTokens } from '@/lib/format/tokens'
 import { totalUsageTokens, type UsageCategoryTotals } from '@/lib/usageDaily'
 
@@ -48,16 +47,23 @@ export function CategoryBreakdown({ categories }: { categories: UsageCategoryTot
         ))}
       </div>
 
-      <UsageShareLegend
-        className="mt-3 grid gap-x-6 gap-y-1.5 sm:grid-cols-2"
-        grand={grand}
-        rows={segments.map((segment) => ({
-          key: segment.category,
-          color: segment.color,
-          label: segment.label,
-          total: segment.total,
-        }))}
-      />
+      <ul className="mt-3 grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
+        {segments.map((segment) => {
+          const pct = (segment.total / grand) * 100
+          return (
+            <li key={segment.category} className="flex items-center gap-2 text-[12px]">
+              <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: segment.color }} />
+              <span className="min-w-0 flex-1 truncate text-ink">{segment.label}</span>
+              <span className="shrink-0 font-mono text-[11px] text-ink-2 tabular-nums">
+                {formatTokens(segment.total)}
+              </span>
+              <span className="w-9 shrink-0 text-right font-mono text-[11px] text-ink-3 tabular-nums">
+                {pct < 1 ? '<1' : Math.round(pct)}%
+              </span>
+            </li>
+          )
+        })}
+      </ul>
     </div>
   )
 }
