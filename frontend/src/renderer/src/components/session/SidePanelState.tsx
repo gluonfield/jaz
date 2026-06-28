@@ -5,65 +5,40 @@ import { KeyboardShortcut } from '@/components/ui/KeyboardShortcut'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { modalDialogOpen } from '@/lib/dom/modal'
-import { useIsMobile } from '@/lib/hooks/useIsMobile'
+import { isMobileViewport, useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useMetaHeld } from '@/lib/hooks/useMetaHeld'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import { parseFileReference, type FileReference } from '../../../../shared/fileReader'
 import { SIDE_PANEL_WIDTHS, type SidePanelView } from './SidePanel'
 
-const PANEL_CHAT_COMFORT = 800
-const PANEL_PREF_KEY = 'jaz.sessionPanel'
+const PANEL_OPEN_KEY = 'jaz.sessionPanel'
 
-type PanelPref = 'auto' | 'open' | 'closed'
-
-function storedPanelPref(): PanelPref {
-  const value = localStorage.getItem(PANEL_PREF_KEY)
-  return value === 'open' || value === 'closed' ? value : 'auto'
-}
-
-export function useSidePanelState(overviewAvailable: boolean, sideChatAvailable = false) {
-  const [panelPref, setPanelPref] = useState<PanelPref>(storedPanelPref)
+export function useSidePanelState(sideChatAvailable = false) {
+  const [open, setOpen] = useState(() => {
+    const stored = localStorage.getItem(PANEL_OPEN_KEY)
+    return stored === 'open' ? true : stored === 'closed' ? false : !isMobileViewport()
+  })
   const [view, setView] = useState<SidePanelView>('overview')
   const [previewUrl, setPreviewUrl] = useState('')
   const [fileRef, setFileRef] = useState<FileReference | null>(null)
-  const [hasPanelSpace, setHasPanelSpace] = useState(false)
-  const observerRef = useRef<ResizeObserver | null>(null)
   const activeView = view === 'side-chat' && !sideChatAvailable ? 'overview' : view
   const width = SIDE_PANEL_WIDTHS[activeView]
-  // Auto-open only earns its keep when Overview has content. Explicit 'open'
-  // still opens anywhere.
-  const autoOpen = hasPanelSpace && overviewAvailable
-  const open = panelPref === 'auto' ? autoOpen : panelPref === 'open'
-
-  const measureRef = useCallback((el: HTMLDivElement | null) => {
-    observerRef.current?.disconnect()
-    observerRef.current = null
-    if (!el) return
-    const update = () => setHasPanelSpace(el.clientWidth >= PANEL_CHAT_COMFORT + width)
-    const observer = new ResizeObserver(update)
-    observer.observe(el)
-    update()
-    observerRef.current = observer
-  }, [width])
 
   useEffect(() => {
-    localStorage.setItem(PANEL_PREF_KEY, panelPref)
-  }, [panelPref])
+    localStorage.setItem(PANEL_OPEN_KEY, open ? 'open' : 'closed')
+  }, [open])
 
-  const toggle = useCallback(() => {
-    const next = !open
-    setPanelPref(next === autoOpen ? 'auto' : next ? 'open' : 'closed')
-  }, [autoOpen, open])
+  const toggle = useCallback(() => setOpen((value) => !value), [])
 
   const selectView = useCallback((next: SidePanelView) => {
     setView(next)
-    setPanelPref('open')
+    setOpen(true)
   }, [])
 
   const openPreview = useCallback((url: string) => {
     setPreviewUrl(url)
     setView('preview')
-    setPanelPref('open')
+    setOpen(true)
   }, [])
 
   useEffect(() => clientRuntime.onOpenPreviewURL?.(openPreview), [openPreview])
@@ -73,7 +48,7 @@ export function useSidePanelState(overviewAvailable: boolean, sideChatAvailable 
     if (!ref) return false
     setFileRef(ref)
     setView('file')
-    setPanelPref('open')
+    setOpen(true)
     return true
   }, [])
 
@@ -98,7 +73,6 @@ export function useSidePanelState(overviewAvailable: boolean, sideChatAvailable 
   })
 
   return {
-    measureRef,
     fileRef,
     open,
     previewUrl,
