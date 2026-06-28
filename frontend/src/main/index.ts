@@ -414,7 +414,12 @@ app.whenReady().then(() => {
   createWindow()
   updates.start()
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      createWindow()
+      return
+    }
+    mainWindow.show()
+    mainWindow.focus()
   })
 })
 

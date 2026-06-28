@@ -6,34 +6,34 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/wins/jaz/backend/internal/connections"
+	whatsappconnector "github.com/wins/jaz/backend/internal/connectors/whatsapp"
 	waE2E "go.mau.fi/whatsmeow/proto/waE2E"
 	waTypes "go.mau.fi/whatsmeow/types"
 	"google.golang.org/protobuf/proto"
 )
 
-func (p *Provider) SendMessage(ctx context.Context, req connections.ChatSendRequest) (connections.ChatSendResult, error) {
+func (p *Provider) SendMessage(ctx context.Context, req whatsappconnector.SendMessageRequest) (whatsappconnector.SendMessageResult, error) {
 	client, err := p.clientForConnection(ctx, req.Connection)
 	if err != nil {
-		return connections.ChatSendResult{}, err
+		return whatsappconnector.SendMessageResult{}, err
 	}
 	if !client.IsConnected() {
 		if err := client.Connect(); err != nil {
-			return connections.ChatSendResult{}, err
+			return whatsappconnector.SendMessageResult{}, err
 		}
 	}
 	to, err := recipientJID(req.Recipient)
 	if err != nil {
-		return connections.ChatSendResult{}, err
+		return whatsappconnector.SendMessageResult{}, err
 	}
 	resp, err := client.SendMessage(ctx, to, &waE2E.Message{Conversation: proto.String(req.Message)})
 	if err != nil {
-		return connections.ChatSendResult{}, err
+		return whatsappconnector.SendMessageResult{}, err
 	}
-	return connections.ChatSendResult{
-		MessageID:      string(resp.ID),
-		ConversationID: to.String(),
-		SentAt:         resp.Timestamp,
+	return whatsappconnector.SendMessageResult{
+		MessageID: string(resp.ID),
+		JID:       to.String(),
+		SentAt:    resp.Timestamp,
 	}, nil
 }
 

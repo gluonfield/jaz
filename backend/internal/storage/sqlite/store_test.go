@@ -567,6 +567,36 @@ func TestAddUsageStoresCachedTokensAndMirrors(t *testing.T) {
 	if len(events) != 2 || events[0].Source != storage.UsageEventSourceTurn || events[1].Source != storage.UsageEventSourceTurn {
 		t.Fatalf("usage event sources = %#v, want turn events", events)
 	}
+	if events[0].SourceType != "" || events[1].SourceType != "" {
+		t.Fatalf("chat session usage events carry source type %q/%q, want empty", events[0].SourceType, events[1].SourceType)
+	}
+}
+
+func TestAddUsageCarriesSessionSourceType(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:       "loop-worker",
+		Runtime:    storage.RuntimeACP,
+		SourceType: storage.SourceLoopRun,
+		SourceID:   "run-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AddUsage(session.ID, storage.Usage{InputTokens: 12, OutputTokens: 3}); err != nil {
+		t.Fatal(err)
+	}
+	events, err := store.UsageEventsSince(time.Unix(0, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].SourceType != storage.SourceLoopRun {
+		t.Fatalf("usage events = %#v, want one loop_run event", events)
+	}
 }
 
 func TestSaveACPStateMirrorsStateAndUpdatesSessionStatus(t *testing.T) {

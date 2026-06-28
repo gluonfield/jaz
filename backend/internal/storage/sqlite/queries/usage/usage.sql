@@ -14,6 +14,7 @@ INSERT INTO usage_events (
   context_tokens,
   context_window_tokens,
   source,
+  source_type,
   created_at_ms
 ) VALUES (
   sqlc.arg(thread_id),
@@ -30,6 +31,7 @@ INSERT INTO usage_events (
   sqlc.arg(context_tokens),
   sqlc.arg(context_window_tokens),
   sqlc.arg(source),
+  sqlc.arg(source_type),
   sqlc.arg(created_at_ms)
 );
 
@@ -47,6 +49,7 @@ SELECT
   reasoning_output_tokens,
   total_tokens,
   source,
+  source_type,
   created_at_ms
 FROM usage_events
 WHERE created_at_ms >= sqlc.arg(created_at_ms)

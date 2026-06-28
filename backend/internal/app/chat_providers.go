@@ -9,6 +9,7 @@ import (
 	"github.com/wins/jaz/backend/internal/chatproviders/whatsapp"
 	"github.com/wins/jaz/backend/internal/connections"
 	telegramconnector "github.com/wins/jaz/backend/internal/connectors/telegram"
+	whatsappconnector "github.com/wins/jaz/backend/internal/connectors/whatsapp"
 	"github.com/wins/jaz/backend/internal/integrationingest"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
@@ -16,12 +17,12 @@ import (
 	"go.uber.org/fx"
 )
 
-func NewWhatsAppChatProvider(lc fx.Lifecycle, cfg Config, layout runtimefiles.Layout, store *sqlitestore.Store, writer integrationingest.MaterializingWriter, logger *log.Logger) (ChatProviderOut, error) {
+func NewWhatsAppProvider(lc fx.Lifecycle, cfg Config, layout runtimefiles.Layout, store *sqlitestore.Store, writer integrationingest.MaterializingWriter, logger *log.Logger) (WhatsAppProviderOut, error) {
 	provider, err := whatsapp.New(context.Background(), filepath.Join(layout.Connections, "whatsapp"), whatsapp.Config{
 		GroupHistoryLimit: groupHistoryLimit(cfg),
 	}, store, writer, logger)
 	if err != nil {
-		return ChatProviderOut{}, err
+		return WhatsAppProviderOut{}, err
 	}
 	lc.Append(fx.Hook{
 		OnStart: provider.Start,
@@ -29,21 +30,26 @@ func NewWhatsAppChatProvider(lc fx.Lifecycle, cfg Config, layout runtimefiles.La
 			return provider.Close()
 		},
 	})
-	return chatProviderOut(provider), nil
+	return WhatsAppProviderOut{
+		QR:            []connections.QRProvider{provider},
+		Senders:       []whatsappconnector.Sender{provider},
+		Searchers:     []whatsappconnector.Searcher{provider},
+		Disconnecters: []connections.SessionDisconnecter{provider},
+	}, nil
 }
 
-func NewTelegramChatProvider(lc fx.Lifecycle, cfg Config, layout runtimefiles.Layout, store *sqlitestore.Store, writer integrationingest.MaterializingWriter) (ChatProviderOut, error) {
+func NewTelegramProvider(lc fx.Lifecycle, cfg Config, layout runtimefiles.Layout, store *sqlitestore.Store, writer integrationingest.MaterializingWriter) (TelegramProviderOut, error) {
 	telegramConfig, ok, err := telegramProviderConfig(layout.Root)
 	if err != nil {
-		return ChatProviderOut{}, err
+		return TelegramProviderOut{}, err
 	}
 	if !ok {
-		return ChatProviderOut{}, nil
+		return TelegramProviderOut{}, nil
 	}
 	telegramConfig.GroupHistoryLimit = groupHistoryLimit(cfg)
 	provider, err := telegram.New(filepath.Join(layout.Connections, "telegram"), telegramConfig, store, writer)
 	if err != nil {
-		return ChatProviderOut{}, err
+		return TelegramProviderOut{}, err
 	}
 	lc.Append(fx.Hook{
 		OnStart: provider.Start,
@@ -51,7 +57,12 @@ func NewTelegramChatProvider(lc fx.Lifecycle, cfg Config, layout runtimefiles.La
 			return provider.Close()
 		},
 	})
-	return chatProviderOut(provider), nil
+	return TelegramProviderOut{
+		QR:            []connections.QRProvider{provider},
+		Senders:       []telegramconnector.Sender{provider},
+		Searchers:     []telegramconnector.Searcher{provider},
+		Disconnecters: []connections.SessionDisconnecter{provider},
+	}, nil
 }
 
 func groupHistoryLimit(cfg Config) int {
@@ -59,18 +70,6 @@ func groupHistoryLimit(cfg Config) int {
 		return cfg.Connections.Chat.GroupHistoryLimit
 	}
 	return DefaultChatGroupHistoryLimit
-}
-
-func chatProviderOut(provider interface {
-	connections.QRProvider
-	connections.ChatSender
-	connections.SessionDisconnecter
-}) ChatProviderOut {
-	return ChatProviderOut{
-		QR:            []connections.QRProvider{provider},
-		Senders:       []connections.ChatSender{provider},
-		Disconnecters: []connections.SessionDisconnecter{provider},
-	}
 }
 
 func telegramProviderConfig(root string) (telegram.Config, bool, error) {

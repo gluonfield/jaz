@@ -33,8 +33,9 @@ func (s *Store) UsageEventsSince(since time.Time) ([]storage.UsageEvent, error) 
 				ReasoningOutputTokens: row.ReasoningOutputTokens,
 				TotalTokens:           row.TotalTokens,
 			},
-			Source:    row.Source,
-			CreatedAt: msToTime(row.CreatedAtMs),
+			Source:     row.Source,
+			SourceType: row.SourceType,
+			CreatedAt:  msToTime(row.CreatedAtMs),
 		})
 	}
 	return events, nil
@@ -62,6 +63,7 @@ func insertUsageEvent(ctx context.Context, q usagequeries.Querier, thread thread
 		ContextTokens:         liveContext,
 		ContextWindowTokens:   usage.ContextWindowTokens,
 		Source:                storage.UsageEventSourceTurn,
+		SourceType:            nullString(thread.SourceType),
 		CreatedAtMs:           createdAtMs,
 	})
 }

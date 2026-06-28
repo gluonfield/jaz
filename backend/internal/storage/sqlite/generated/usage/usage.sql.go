@@ -25,6 +25,7 @@ INSERT INTO usage_events (
   context_tokens,
   context_window_tokens,
   source,
+  source_type,
   created_at_ms
 ) VALUES (
   ?1,
@@ -41,7 +42,8 @@ INSERT INTO usage_events (
   ?12,
   ?13,
   ?14,
-  ?15
+  ?15,
+  ?16
 )
 `
 
@@ -60,6 +62,7 @@ type InsertUsageEventParams struct {
 	ContextTokens         int64  `json:"context_tokens"`
 	ContextWindowTokens   int64  `json:"context_window_tokens"`
 	Source                string `json:"source"`
+	SourceType            string `json:"source_type"`
 	CreatedAtMs           int64  `json:"created_at_ms"`
 }
 
@@ -79,6 +82,7 @@ func (q *Queries) InsertUsageEvent(ctx context.Context, arg InsertUsageEventPara
 		arg.ContextTokens,
 		arg.ContextWindowTokens,
 		arg.Source,
+		arg.SourceType,
 		arg.CreatedAtMs,
 	)
 	return err
@@ -98,6 +102,7 @@ SELECT
   reasoning_output_tokens,
   total_tokens,
   source,
+  source_type,
   created_at_ms
 FROM usage_events
 WHERE created_at_ms >= ?1
@@ -117,6 +122,7 @@ type ListUsageEventsSinceRow struct {
 	ReasoningOutputTokens int64  `json:"reasoning_output_tokens"`
 	TotalTokens           int64  `json:"total_tokens"`
 	Source                string `json:"source"`
+	SourceType            string `json:"source_type"`
 	CreatedAtMs           int64  `json:"created_at_ms"`
 }
 
@@ -142,6 +148,7 @@ func (q *Queries) ListUsageEventsSince(ctx context.Context, createdAtMs int64) (
 			&i.ReasoningOutputTokens,
 			&i.TotalTokens,
 			&i.Source,
+			&i.SourceType,
 			&i.CreatedAtMs,
 		); err != nil {
 			return nil, err

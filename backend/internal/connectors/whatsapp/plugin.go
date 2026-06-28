@@ -9,7 +9,10 @@ const (
 	ProviderID   = "whatsapp"
 	ProviderName = "WhatsApp"
 
-	ToolSendMessage = "whatsapp_send_message"
+	ToolSearch                 = "whatsapp_search"
+	ToolSearchDescription      = "Search WhatsApp people and chats from a connected account. Returns recipient values usable with whatsapp_send_message."
+	ToolSendMessage            = "whatsapp_send_message"
+	ToolSendMessageDescription = "Send a WhatsApp message from one connected account to a phone number or WhatsApp JID. Requires a connected WhatsApp session."
 )
 
 func Plugin() integrations.Plugin {
@@ -57,8 +60,14 @@ func Plugin() integrations.Plugin {
 func chatTools() []integrations.PluginTool {
 	return []integrations.PluginTool{
 		{
+			Name:        ToolSearch,
+			Description: ToolSearchDescription,
+			Capability:  integrations.CapabilityAct,
+			Risk:        integrations.ActionRiskRead,
+		},
+		{
 			Name:        ToolSendMessage,
-			Description: "Send a message to a WhatsApp phone number or JID.",
+			Description: ToolSendMessageDescription,
 			Capability:  integrations.CapabilityAct,
 			Risk:        integrations.ActionRiskWrite,
 		},

@@ -59,7 +59,8 @@ type Service struct {
 	agentTools      *acp.MCPTools
 	threadTools     *threads.Service
 	gmailTools      *connections.GmailMCPTools
-	chatTools       *connections.ChatMCPTools
+	whatsAppTools   *connections.WhatsAppMCPTools
+	telegramTools   *connections.TelegramMCPTools
 	visualizeTools  *visualize.MCPTools
 	widgetPublisher *widgets.SessionPublisher
 	sessions        sessionSource
@@ -102,11 +103,22 @@ type sessionSource interface {
 	LoadSession(id string) (storage.Session, error)
 }
 
-func New(memory *memoryservice.Service, urls serverconfig.URLs, sessionEvents storage.SessionEventAppender, events *sessionevents.Bus, sessions storage.SessionStore, widgetPublisher *widgets.SessionPublisher, gmailTools *connections.GmailMCPTools, chatTools *connections.ChatMCPTools) *Service {
+func New(
+	memory *memoryservice.Service,
+	urls serverconfig.URLs,
+	sessionEvents storage.SessionEventAppender,
+	events *sessionevents.Bus,
+	sessions storage.SessionStore,
+	widgetPublisher *widgets.SessionPublisher,
+	gmailTools *connections.GmailMCPTools,
+	whatsAppTools *connections.WhatsAppMCPTools,
+	telegramTools *connections.TelegramMCPTools,
+) *Service {
 	return &Service{
 		Memory:          memory,
 		gmailTools:      gmailTools,
-		chatTools:       chatTools,
+		whatsAppTools:   whatsAppTools,
+		telegramTools:   telegramTools,
 		visualizeTools:  visualize.NewMCPTools(sessionEvents, events),
 		widgetPublisher: widgetPublisher,
 		sessions:        sessions,
@@ -201,7 +213,8 @@ func (s *Service) newServer(surface toolSurface) *mcp.Server {
 	}
 	s.loopTools.AddTo(server)
 	s.gmailTools.AddTo(server)
-	s.chatTools.AddTo(server)
+	s.whatsAppTools.AddTo(server)
+	s.telegramTools.AddTo(server)
 	s.visualizeTools.AddReadMeTo(server)
 	switch surface {
 	case widgetSurface:

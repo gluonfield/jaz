@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { ChartNoAxesColumn } from 'lucide-react'
 import { type MouseEvent, useMemo, useState } from 'react'
-import { ModelBreakdown } from '@/components/settings/UsageModelBreakdown'
+import { CategoryBreakdown } from '@/components/settings/UsageCategoryBreakdown'
+import { ModelBreakdown, UsageShareCharts } from '@/components/settings/UsageModelBreakdown'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { dailyUsageQuery } from '@/lib/api/sessions'
@@ -17,6 +18,7 @@ import {
   sumUsage,
   totalUsageTokens,
   USAGE_CHART_DAYS,
+  sumCategoryUsage,
   type UsageCell,
   usageCells,
   usageLevel,
@@ -92,6 +94,7 @@ function UsagePanel({
   const last7 = sumUsage(days.slice(-7))
   const last30 = sumUsage(last30Days)
   const models = useMemo(() => sumModelUsage(last30Days), [last30Days])
+  const categories = useMemo(() => sumCategoryUsage(last30Days), [last30Days])
   const peak = peakDay(chartDays)
   const activeDays = chartDays.filter((day) => totalUsageTokens(day.usage) > 0).length
   const maxTotal = Math.max(1, ...chartDays.map((day) => totalUsageTokens(day.usage)))
@@ -214,6 +217,10 @@ function UsagePanel({
           {reasoning > 0 ? <span>Reasoning {formatTokens(reasoning)}</span> : null}
         </div>
       </div>
+
+      <CategoryBreakdown categories={categories} />
+
+      <UsageShareCharts rows={pricedModels} />
 
       <ModelBreakdown
         rows={pricedModels}

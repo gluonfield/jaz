@@ -52,6 +52,10 @@ func TestDailyHandler(t *testing.T) {
 				Usage         map[string]int64 `json:"usage"`
 				SessionCount  int              `json:"session_count"`
 			} `json:"models"`
+			Categories []struct {
+				Category string           `json:"category"`
+				Usage    map[string]int64 `json:"usage"`
+			} `json:"categories"`
 			SessionCount int `json:"session_count"`
 		} `json:"days"`
 	}
@@ -76,6 +80,14 @@ func TestDailyHandler(t *testing.T) {
 		model.Usage["input_tokens"] != 12 || model.Usage["cached_input_tokens"] != 30 ||
 		model.Usage["output_tokens"] != 4 || model.SessionCount != 1 {
 		t.Fatalf("daily model = %#v", model)
+	}
+	if len(got.Days[0].Categories) != 1 {
+		t.Fatalf("daily categories = %#v", got.Days[0].Categories)
+	}
+	category := got.Days[0].Categories[0]
+	if category.Category != "chat" || category.Usage["input_tokens"] != 12 ||
+		category.Usage["output_tokens"] != 4 {
+		t.Fatalf("daily category = %#v", category)
 	}
 }
 

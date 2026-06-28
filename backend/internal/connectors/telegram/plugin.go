@@ -9,7 +9,10 @@ const (
 	ProviderID   = "telegram"
 	ProviderName = "Telegram"
 
-	ToolSendMessage = "telegram_send_message"
+	ToolSearch                 = "telegram_search"
+	ToolSearchDescription      = "Search Telegram people and chats from a connected account. Returns recipient values usable with telegram_send_message."
+	ToolSendMessage            = "telegram_send_message"
+	ToolSendMessageDescription = "Send a Telegram message from one connected account to a username, user id, or chat id. Requires a connected Telegram session."
 )
 
 func Plugin() integrations.Plugin {
@@ -56,8 +59,14 @@ func Plugin() integrations.Plugin {
 func chatTools() []integrations.PluginTool {
 	return []integrations.PluginTool{
 		{
+			Name:        ToolSearch,
+			Description: ToolSearchDescription,
+			Capability:  integrations.CapabilityAct,
+			Risk:        integrations.ActionRiskRead,
+		},
+		{
 			Name:        ToolSendMessage,
-			Description: "Send a message to a connected chat conversation.",
+			Description: ToolSendMessageDescription,
 			Capability:  integrations.CapabilityAct,
 			Risk:        integrations.ActionRiskWrite,
 		},

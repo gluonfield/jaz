@@ -1,7 +1,30 @@
-import type { ACPPermission, SessionEvent } from '@/lib/api/types'
+import type { ACPPermission, ACPPermissionOption, SessionEvent } from '@/lib/api/types'
+
+export type PlanApprovalPermission = ACPPermission & {
+  content: string
+  options: ACPPermissionOption[]
+}
 
 function normalized(value: string | undefined): string {
   return (value ?? '').trim().toLowerCase()
+}
+
+function isAllowOption(kind: string | undefined, id: string | undefined): boolean {
+  const normalizedKind = normalized(kind)
+  return normalizedKind.startsWith('allow') || id === 'bypassPermissions' || id === 'auto'
+}
+
+function isRejectOption(kind: string | undefined, id: string | undefined): boolean {
+  return normalized(kind).startsWith('reject') || id === 'plan'
+}
+
+export function isPlanApprovalPermission(
+  permission: ACPPermission | undefined,
+): permission is PlanApprovalPermission {
+  if (!permission?.id?.trim() || !permission.content?.trim()) return false
+  const options = permission.options ?? []
+  return options.some((option) => isAllowOption(option.kind, option.id)) &&
+    options.some((option) => isRejectOption(option.kind, option.id))
 }
 
 export function hasPermissionSurface(permission: ACPPermission | undefined): boolean {
@@ -11,6 +34,21 @@ export function hasPermissionSurface(permission: ACPPermission | undefined): boo
       permission.options?.length ||
       permission.locations?.length,
   )
+}
+
+export function planApprovalPermissionIDs(
+  events: SessionEvent[],
+  permissions: ACPPermission[] = [],
+): Set<string> {
+  const ids = new Set<string>()
+  for (const permission of permissions) {
+    if (isPlanApprovalPermission(permission)) ids.add(permission.id)
+  }
+  for (const event of events) {
+    const permission = event.permission
+    if (isPlanApprovalPermission(permission)) ids.add(permission.id)
+  }
+  return ids
 }
 
 export function isPermissionAwaitingResponse(permission: ACPPermission | undefined): boolean {

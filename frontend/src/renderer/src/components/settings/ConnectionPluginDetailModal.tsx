@@ -1,4 +1,4 @@
-import { ArrowRight, Loader2, Plug, Plus, QrCode } from 'lucide-react'
+import { ArrowUp, Loader2, Plug, Plus, QrCode } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import type { IntegrationPlugin, IntegrationTool } from '@/lib/api/types'
@@ -19,23 +19,41 @@ export function ConnectionPluginDetailModal({
   if (!plugin) return null
 
   return (
-    <Modal
-      open
-      onClose={onClose}
-      title={plugin.name}
-      description={categoryLabel(plugin.category)}
-      icon={<PluginGlyph plugin={plugin} size={18} />}
-      headerAccessory={
-        <ConnectButton plugin={plugin} connecting={connecting} onConnect={() => onConnect(plugin)} />
-      }
-      size="lg"
-    >
-      <div className="space-y-7">
+    <Modal open onClose={onClose} title={plugin.name} size="wide" chromeless>
+      <Hero plugin={plugin} connecting={connecting} onConnect={() => onConnect(plugin)} />
+      <div className="space-y-9 px-8 pb-9">
         {plugin.examples?.length ? <ExamplesBand plugin={plugin} /> : null}
         {plugin.tools?.length ? <ToolsSection tools={plugin.tools} /> : null}
         <InformationSection plugin={plugin} />
       </div>
     </Modal>
+  )
+}
+
+function Hero({
+  plugin,
+  connecting,
+  onConnect,
+}: {
+  plugin: IntegrationPlugin
+  connecting: boolean
+  onConnect: () => void
+}) {
+  return (
+    <div className="px-8 pb-8 pt-9">
+      <PluginGlyph plugin={plugin} size={44} />
+      <div className="mt-5 flex items-center justify-between gap-5">
+        <div className="min-w-0">
+          <h2 className="truncate text-2xl font-semibold leading-tight text-ink">{plugin.name}</h2>
+          {plugin.description ? (
+            <p className="mt-1.5 max-w-[58ch] text-[14px] leading-6 text-ink-2">
+              {plugin.description}
+            </p>
+          ) : null}
+        </div>
+        <ConnectButton plugin={plugin} connecting={connecting} onConnect={onConnect} />
+      </div>
+    </div>
   )
 }
 
@@ -56,7 +74,13 @@ function ConnectButton({
   if (connecting) Icon = Loader2
 
   return (
-    <Button variant="primary" size="lg" disabled={!available || connecting} onClick={onConnect}>
+    <Button
+      variant="primary"
+      size="lg"
+      disabled={!available || connecting}
+      onClick={onConnect}
+      className="shrink-0"
+    >
       <Icon size={14} className={connecting ? 'animate-spin' : undefined} />
       {pluginActionLabel(plugin, connecting)}
     </Button>
@@ -66,25 +90,29 @@ function ConnectButton({
 function ExamplesBand({ plugin }: { plugin: IntegrationPlugin }) {
   return (
     <div
-      className="space-y-2 rounded-card px-4 py-5"
+      className="rounded-card px-6 py-8"
       style={{
         background:
-          'linear-gradient(120deg, color-mix(in oklab, var(--color-primary) 28%, var(--color-bg)) 0%, color-mix(in oklab, var(--color-primary) 10%, var(--color-surface)) 55%, var(--color-surface) 100%)',
+          'radial-gradient(135% 135% at 12% 15%, oklch(0.52 0.1 262) 0%, transparent 55%),' +
+          'radial-gradient(120% 130% at 88% 92%, oklch(0.46 0.09 292) 0%, transparent 55%),' +
+          'linear-gradient(135deg, oklch(0.33 0.06 266) 0%, oklch(0.29 0.05 282) 100%)',
       }}
     >
-      {plugin.examples?.map((example) => (
-        <div
-          key={example}
-          className="flex items-center gap-2.5 rounded-full bg-bg/80 px-3.5 py-2.5"
-        >
-          <PluginGlyph plugin={plugin} size={16} />
-          <span className="shrink-0 text-[13px] font-medium text-ink">{plugin.name}</span>
-          <span className="min-w-0 flex-1 truncate text-[13px] text-ink-2">{example}</span>
-          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-surface-2 text-ink-3">
-            <ArrowRight size={13} />
-          </span>
-        </div>
-      ))}
+      <div className="mx-auto flex max-w-[480px] flex-col gap-2.5">
+        {plugin.examples?.map((example) => (
+          <div
+            key={example}
+            className="flex items-center gap-3 rounded-full bg-black/40 px-4 py-2.5 ring-1 ring-white/10"
+          >
+            <PluginGlyph plugin={plugin} size={17} />
+            <span className="shrink-0 text-[13px] font-medium text-white">{plugin.name}</span>
+            <span className="min-w-0 flex-1 truncate text-[13px] text-white/70">{example}</span>
+            <span className="grid size-7 shrink-0 place-items-center rounded-full bg-white/10 text-white/80">
+              <ArrowUp size={14} />
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -92,14 +120,18 @@ function ExamplesBand({ plugin }: { plugin: IntegrationPlugin }) {
 function ToolsSection({ tools }: { tools: IntegrationTool[] }) {
   return (
     <section>
-      <SectionHeading label="Tools" count={tools.length} />
-      <ul className="grid grid-cols-1 gap-x-8 gap-y-1.5 sm:grid-cols-2">
+      <SectionLabel count={tools.length}>Tools</SectionLabel>
+      <div className="flex flex-wrap gap-2">
         {tools.map((tool) => (
-          <li key={tool.name} className="truncate text-[13px] text-ink" title={tool.name}>
+          <span
+            key={tool.name}
+            className="rounded-full px-3 py-1.5 text-[12px] text-ink-2 ring-1 ring-border"
+            title={tool.name}
+          >
             {formatToolName(tool.name)}
-          </li>
+          </span>
         ))}
-      </ul>
+      </div>
     </section>
   )
 }
@@ -119,10 +151,10 @@ function InformationSection({ plugin }: { plugin: IntegrationPlugin }) {
 
   return (
     <section>
-      <p className="mb-1 text-[13px] font-medium text-ink">Information</p>
-      <dl className="divide-y divide-border/50 text-[13px]">
+      <SectionLabel>Information</SectionLabel>
+      <dl className="divide-y divide-border/60 text-[13px]">
         {rows.map(([label, value]) => (
-          <div key={label} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-5 py-3">
+          <div key={label} className="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-5 py-2.5">
             <dt className="text-ink-3">{label}</dt>
             <dd className="min-w-0 text-ink">{value}</dd>
           </div>
@@ -132,11 +164,11 @@ function InformationSection({ plugin }: { plugin: IntegrationPlugin }) {
   )
 }
 
-function SectionHeading({ label, count }: { label: string; count: number }) {
+function SectionLabel({ children, count }: { children: string; count?: number }) {
   return (
     <p className="mb-3 flex items-center gap-2 text-[13px] font-medium text-ink">
-      {label}
-      <span className="tabular-nums text-ink-3">{count}</span>
+      {children}
+      {count !== undefined ? <span className="tabular-nums text-ink-3">{count}</span> : null}
     </p>
   )
 }
