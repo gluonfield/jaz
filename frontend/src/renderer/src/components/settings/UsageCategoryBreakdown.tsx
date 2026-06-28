@@ -1,15 +1,18 @@
 import { useMemo } from 'react'
 import { formatTokens } from '@/lib/format/tokens'
+import { USAGE_SHARE_OTHER_COLOR, USAGE_SHARE_PALETTE } from '@/lib/usageColors'
 import { totalUsageTokens, type UsageCategoryTotals } from '@/lib/usageDaily'
 
+// Each activity gets a fixed hue from the shared palette so its color is stable
+// regardless of token rank, and consistent with the agent/model pies.
 const CATEGORY_META: Record<string, { label: string; color: string }> = {
-  chat: { label: 'Chat', color: 'var(--color-primary)' },
-  loop_run: { label: 'Loops', color: 'var(--color-accent)' },
-  memory_dream: { label: 'Memory Dream', color: 'oklch(0.62 0.13 150)' },
-  memory_search: { label: 'Memory Search', color: 'oklch(0.66 0.12 200)' },
-  browser_task: { label: 'Browser Agent', color: 'oklch(0.6 0.15 305)' },
+  chat: { label: 'Chat', color: USAGE_SHARE_PALETTE[0] },
+  loop_run: { label: 'Loops', color: USAGE_SHARE_PALETTE[1] },
+  memory_dream: { label: 'Memory Dream', color: USAGE_SHARE_PALETTE[2] },
+  memory_search: { label: 'Memory Search', color: USAGE_SHARE_PALETTE[3] },
+  browser_task: { label: 'Browser Agent', color: USAGE_SHARE_PALETTE[4] },
 }
-const CATEGORY_FALLBACK_COLOR = 'var(--color-ink-3)'
+const CATEGORY_FALLBACK_COLOR = USAGE_SHARE_OTHER_COLOR
 
 function categoryMeta(category: string): { label: string; color: string } {
   return CATEGORY_META[category] ?? { label: category, color: CATEGORY_FALLBACK_COLOR }

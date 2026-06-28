@@ -1,6 +1,7 @@
 import { ChevronDown } from 'lucide-react'
 import { type ReactNode, useMemo, useState } from 'react'
 import { formatTokens } from '@/lib/format/tokens'
+import { USAGE_SHARE_OTHER_COLOR, USAGE_SHARE_PALETTE } from '@/lib/usageColors'
 import { formatUsd, type PricedModel } from '@/lib/usageCost'
 import { inputTokens, totalUsageTokens, type UsageModelTotals } from '@/lib/usageDaily'
 
@@ -406,16 +407,9 @@ type ModelPieEntry = {
   details: PieSliceDetail[]
 }
 
-const PIE_SLICE_COLORS = [
-  'var(--color-primary)',
-  'var(--color-accent)',
-  'oklch(0.62 0.13 150)',
-  'oklch(0.6 0.15 305)',
-  'oklch(0.66 0.12 200)',
-  'oklch(0.62 0.17 350)',
-]
-const AGENT_COLORS = PIE_SLICE_COLORS
-const PIE_OTHER_COLOR = 'var(--color-ink-3)'
+const PIE_SLICE_COLORS = USAGE_SHARE_PALETTE
+const AGENT_COLORS = USAGE_SHARE_PALETTE
+const PIE_OTHER_COLOR = USAGE_SHARE_OTHER_COLOR
 const PIE_MAX_SLICES = 6
 
 function buildModelPieEntries(rows: PricedModel[]): ModelPieEntry[] {
