@@ -15,7 +15,7 @@ import (
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
-func TestRunOnceProcessesDirtySourcesInBatchAndClearsOnSuccess(t *testing.T) {
+func TestRunOnceProcessesPendingSourcesInBatchAndClearsOnSuccess(t *testing.T) {
 	root := t.TempDir()
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
@@ -40,7 +40,7 @@ func TestRunOnceProcessesDirtySourcesInBatchAndClearsOnSuccess(t *testing.T) {
 		"sources/telegram/personal/conversations/user-1/2026/06/27.md",
 		"sources/telegram/personal/contacts.md",
 	} {
-		if err := queue.MarkDirtySource(context.Background(), sourcequeue.Source{Path: path, DirtyAt: now}); err != nil {
+		if err := queue.MarkPendingSource(context.Background(), sourcequeue.Source{Path: path, PendingAt: now}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -61,22 +61,21 @@ func TestRunOnceProcessesDirtySourcesInBatchAndClearsOnSuccess(t *testing.T) {
 		"sources/telegram/personal/conversations/user-1/2026/06/27.md",
 		"sources/telegram/personal/contacts.md",
 		"10:42:09 Alice: hello",
-		"Run note: `dreams/source-runs/",
 	} {
 		if !strings.Contains(manager.send.Message, want) {
 			t.Fatalf("prompt missing %q:\n%s", want, manager.send.Message)
 		}
 	}
-	dirty, err := queue.Reserve(context.Background(), 10)
+	pending, err := queue.Reserve(context.Background(), 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(dirty) != 0 {
-		t.Fatalf("dirty after success = %#v", dirty)
+	if len(pending) != 0 {
+		t.Fatalf("pending after success = %#v", pending)
 	}
 }
 
-func TestRunOnceLeavesDirtySourcesWhenAgentFails(t *testing.T) {
+func TestRunOnceLeavesPendingSourcesWhenAgentFails(t *testing.T) {
 	root := t.TempDir()
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
@@ -92,7 +91,7 @@ func TestRunOnceLeavesDirtySourcesWhenAgentFails(t *testing.T) {
 	path := "sources/gmail/personal/messages/2026/06/27/m1.md"
 	writeSource(t, root, path, "mail")
 	queue := sourcequeue.New(root)
-	if err := queue.MarkDirtySource(context.Background(), sourcequeue.Source{Path: path}); err != nil {
+	if err := queue.MarkPendingSource(context.Background(), sourcequeue.Source{Path: path}); err != nil {
 		t.Fatal(err)
 	}
 	runner := &Runner{Root: root, Store: store, Queue: queue, Manager: &fakeSourceManager{job: acp.Job{State: acp.StateFailed, Error: "boom"}}}
@@ -100,12 +99,12 @@ func TestRunOnceLeavesDirtySourcesWhenAgentFails(t *testing.T) {
 	if _, err := runner.RunOnce(context.Background()); err == nil {
 		t.Fatal("expected failure")
 	}
-	dirty, err := queue.Reserve(context.Background(), 10)
+	pending, err := queue.Reserve(context.Background(), 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(dirty) != 1 || dirty[0].Path != path {
-		t.Fatalf("dirty after failure = %#v", dirty)
+	if len(pending) != 1 || pending[0].Path != path {
+		t.Fatalf("pending after failure = %#v", pending)
 	}
 }
 
@@ -125,7 +124,7 @@ func TestRunOnceCompletesTruncatedSourcesAfterSuccessfulAgentRun(t *testing.T) {
 	path := "sources/telegram/personal/conversations/user-1/2026/06/27.md"
 	writeSource(t, root, path, strings.Repeat("x", 20))
 	queue := sourcequeue.New(root)
-	if err := queue.MarkDirtySource(context.Background(), sourcequeue.Source{Path: path}); err != nil {
+	if err := queue.MarkPendingSource(context.Background(), sourcequeue.Source{Path: path}); err != nil {
 		t.Fatal(err)
 	}
 	runner := &Runner{Root: root, Store: store, Queue: queue, Manager: &fakeSourceManager{job: acp.Job{State: acp.StateIdle}}, BatchChars: 4}
@@ -137,12 +136,12 @@ func TestRunOnceCompletesTruncatedSourcesAfterSuccessfulAgentRun(t *testing.T) {
 	if processed != 1 {
 		t.Fatalf("processed = %d, want 1", processed)
 	}
-	dirty, err := queue.Reserve(context.Background(), 10)
+	pending, err := queue.Reserve(context.Background(), 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(dirty) != 0 {
-		t.Fatalf("truncated source was retried: %#v", dirty)
+	if len(pending) != 0 {
+		t.Fatalf("truncated source was retried: %#v", pending)
 	}
 }
 
@@ -170,7 +169,7 @@ func TestRunOnceReleasesReservedSourcesOutsideCharBudget(t *testing.T) {
 	now := time.Date(2026, 6, 27, 18, 0, 0, 0, time.UTC)
 	queue := &sourcequeue.Queue{Root: root, Now: func() time.Time { return now }}
 	for _, path := range paths {
-		if err := queue.MarkDirtySource(context.Background(), sourcequeue.Source{Path: path, DirtyAt: now}); err != nil {
+		if err := queue.MarkPendingSource(context.Background(), sourcequeue.Source{Path: path, PendingAt: now}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -183,12 +182,12 @@ func TestRunOnceReleasesReservedSourcesOutsideCharBudget(t *testing.T) {
 	if processed != 1 {
 		t.Fatalf("processed = %d, want 1", processed)
 	}
-	dirty, err := queue.Reserve(context.Background(), 10)
+	pending, err := queue.Reserve(context.Background(), 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(dirty) != 2 || dirty[0].Path != paths[1] || dirty[1].Path != paths[2] {
-		t.Fatalf("deferred dirty sources = %#v", dirty)
+	if len(pending) != 2 || pending[0].Path != paths[1] || pending[1].Path != paths[2] {
+		t.Fatalf("deferred pending sources = %#v", pending)
 	}
 }
 

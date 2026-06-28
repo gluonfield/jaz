@@ -795,7 +795,7 @@ export interface MemoryDoctor {
 }
 
 export interface MemoryQueueStatus {
-  dirty: number
+  pending: number
   processing: number
   error?: string
 }

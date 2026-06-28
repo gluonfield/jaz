@@ -11,10 +11,10 @@ import (
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
-func sourceFromTarget(target integrations.SourceTarget, dirtyAt time.Time) sourcequeue.Source {
+func sourceFromTarget(target integrations.SourceTarget, pendingAt time.Time) sourcequeue.Source {
 	return sourcequeue.Source{
 		Path:      target.PathHint,
-		DirtyAt:   dirtyAt,
+		PendingAt: pendingAt,
 		Provider:  target.Provider,
 		Kind:      target.Kind,
 		MediaType: target.MediaType,

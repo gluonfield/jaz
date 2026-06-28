@@ -30,7 +30,7 @@ func (p SourceProjector) PlanRecords(ctx context.Context, records []integrations
 		}
 		source.Path = path
 		if index, ok := seen[path]; ok {
-			if out[index].DirtyAt.Before(source.DirtyAt) {
+			if out[index].PendingAt.Before(source.PendingAt) {
 				out[index] = source
 			}
 			return
@@ -71,7 +71,7 @@ func (p SourceProjector) ProjectSource(ctx context.Context, source sourcequeue.S
 		if err != nil {
 			return nil, err
 		}
-		return p.projectContactDependency(ctx, dependency, source.DirtyAt)
+		return p.projectContactDependency(ctx, dependency, source.PendingAt)
 	}
 	if source.Kind == "" {
 		return nil, fmt.Errorf("source %q has no target kind", source.Path)

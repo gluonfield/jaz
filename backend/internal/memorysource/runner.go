@@ -14,6 +14,7 @@ import (
 	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/sourcequeue"
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/templates/memorysourceprompt"
 )
 
 const (
@@ -45,7 +46,7 @@ type Runner struct {
 
 type batchSource struct {
 	Path      string
-	DirtyAt   time.Time
+	PendingAt time.Time
 	Content   string
 	Truncated bool
 }
@@ -98,6 +99,11 @@ func (r *Runner) RunOnce(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	stamp := time.Now().UTC().Format("20060102T150405")
+	prompt, err := sourcePrompt(r.Root, batch.Sources)
+	if err != nil {
+		_ = r.Queue.Release(context.Background(), reserved)
+		return 0, err
+	}
 	spawned, err := r.Manager.Spawn(ctx, acp.SpawnRequest{
 		ACPAgent:        agent,
 		Slug:            fmt.Sprintf("memory-source-%s-%s", agent, stamp),
@@ -114,7 +120,7 @@ func (r *Runner) RunOnce(ctx context.Context) (int, error) {
 	}
 	if _, err := r.Manager.Send(ctx, acp.SendRequest{
 		Session:    spawned.SessionID,
-		Message:    sourcePrompt(r.Root, stamp, batch.Sources),
+		Message:    prompt,
 		Completion: acp.CompletionInline,
 	}); err != nil {
 		_ = r.Queue.Release(context.Background(), reserved)
@@ -151,18 +157,18 @@ func (r *Runner) RunOnce(ctx context.Context) (int, error) {
 	return len(complete), nil
 }
 
-func (r *Runner) readBatch(dirty []sourcequeue.Source) (batchRead, error) {
+func (r *Runner) readBatch(pending []sourcequeue.Source) (batchRead, error) {
 	remaining := r.batchChars()
-	out := make([]batchSource, 0, min(len(dirty), r.batchFiles()))
+	out := make([]batchSource, 0, min(len(pending), r.batchFiles()))
 	var deferred []sourcequeue.Source
-	for i, source := range dirty {
+	for i, source := range pending {
 		path, err := sourcePath(r.Root, source.Path)
 		if err != nil {
 			return batchRead{}, err
 		}
 		data, err := os.ReadFile(path)
 		if errors.Is(err, os.ErrNotExist) {
-			out = append(out, batchSource{Path: source.Path, DirtyAt: source.DirtyAt})
+			out = append(out, batchSource{Path: source.Path, PendingAt: source.PendingAt})
 			continue
 		}
 		if err != nil {
@@ -172,16 +178,16 @@ func (r *Runner) readBatch(dirty []sourcequeue.Source) (batchRead, error) {
 		truncated := false
 		if len(content) > remaining {
 			if len(out) > 0 {
-				deferred = append(deferred, dirty[i:]...)
+				deferred = append(deferred, pending[i:]...)
 				break
 			}
 			content = content[:remaining]
 			truncated = true
 		}
 		remaining -= len(content)
-		out = append(out, batchSource{Path: source.Path, DirtyAt: source.DirtyAt, Content: content, Truncated: truncated})
+		out = append(out, batchSource{Path: source.Path, PendingAt: source.PendingAt, Content: content, Truncated: truncated})
 		if remaining <= 0 {
-			deferred = append(deferred, dirty[i+1:]...)
+			deferred = append(deferred, pending[i+1:]...)
 			break
 		}
 	}
@@ -191,41 +197,24 @@ func (r *Runner) readBatch(dirty []sourcequeue.Source) (batchRead, error) {
 func completedSources(sources []batchSource) []sourcequeue.Source {
 	complete := make([]sourcequeue.Source, 0, len(sources))
 	for _, source := range sources {
-		complete = append(complete, sourcequeue.Source{Path: source.Path, DirtyAt: source.DirtyAt})
+		complete = append(complete, sourcequeue.Source{Path: source.Path, PendingAt: source.PendingAt})
 	}
 	return complete
 }
 
-func sourcePrompt(root, stamp string, sources []batchSource) string {
-	runSlug := "dreams/source-runs/" + stamp
-	var b strings.Builder
-	fmt.Fprintf(&b, "You are Jaz's source-memory capture worker.\n\n")
-	fmt.Fprintf(&b, "Memory root: `%s`\n", root)
-	fmt.Fprintf(&b, "Run note: `%s.md`\n\n", runSlug)
-	b.WriteString("Read the materialized source files below and update curated memory pages with durable facts, relationships, preferences, decisions, open loops, and useful project/company/person context. Do not copy raw transcripts wholesale. Keep source citations using the source path and concrete dates. Write a short run note at the run note path summarizing what you changed or why nothing was promoted.\n\n")
-	b.WriteString("Source files:\n")
-	for _, source := range sources {
-		fmt.Fprintf(&b, "- `%s`", source.Path)
-		if source.Truncated {
-			b.WriteString(" (content truncated in prompt; inspect file directly if needed)")
-		}
-		b.WriteByte('\n')
+func sourcePrompt(root string, sources []batchSource) (string, error) {
+	data := memorysourceprompt.Data{
+		Root:    root,
+		Sources: make([]memorysourceprompt.Source, 0, len(sources)),
 	}
-	b.WriteString("\nSource excerpts:\n")
 	for _, source := range sources {
-		fmt.Fprintf(&b, "\n### %s\n\n", source.Path)
-		if source.Content == "" {
-			b.WriteString("(file missing or empty)\n")
-			continue
-		}
-		b.WriteString("```markdown\n")
-		b.WriteString(source.Content)
-		if !strings.HasSuffix(source.Content, "\n") {
-			b.WriteByte('\n')
-		}
-		b.WriteString("```\n")
+		data.Sources = append(data.Sources, memorysourceprompt.Source{
+			Path:      source.Path,
+			Truncated: source.Truncated,
+			Content:   source.Content,
+		})
 	}
-	return b.String()
+	return memorysourceprompt.Render(data)
 }
 
 func sourcePath(root, rel string) (string, error) {

@@ -54,8 +54,8 @@ func NewSourceProjectionRunner(layout runtimefiles.Layout, memory *jazmem.Memory
 			Projector: integrationingest.CompositeSourceProjector(materialize.DefaultSourceProjectors()),
 		},
 		Writer: integrationingest.SourceWriter{
-			Root:             memory.Root(),
-			DirtySourceStore: memoryQueue.Queue,
+			Root:               memory.Root(),
+			PendingSourceStore: memoryQueue.Queue,
 		},
 	}
 }

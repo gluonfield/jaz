@@ -12,14 +12,14 @@ import (
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
-type DirtySourceStore interface {
-	MarkDirtySource(context.Context, sourcequeue.Source) error
+type PendingSourceStore interface {
+	MarkPendingSource(context.Context, sourcequeue.Source) error
 }
 
 type SourceWriter struct {
 	Root string
 	Now  func() time.Time
-	DirtySourceStore
+	PendingSourceStore
 }
 
 func (w SourceWriter) WriteArtifacts(ctx context.Context, artifacts []integrations.Artifact) error {
@@ -55,12 +55,12 @@ func (w SourceWriter) writeArtifact(ctx context.Context, artifact integrations.A
 	if err := writeSourceFile(path, body); err != nil {
 		return err
 	}
-	if w.DirtySourceStore == nil {
+	if w.PendingSourceStore == nil {
 		return nil
 	}
-	return w.DirtySourceStore.MarkDirtySource(ctx, sourcequeue.Source{
+	return w.PendingSourceStore.MarkPendingSource(ctx, sourcequeue.Source{
 		Path:      rel,
-		DirtyAt:   w.now(),
+		PendingAt: w.now(),
 		Provider:  artifact.Provider,
 		Kind:      artifact.Kind,
 		MediaType: artifact.MediaType,
