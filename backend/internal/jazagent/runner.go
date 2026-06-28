@@ -21,24 +21,6 @@ import (
 
 const VoiceModeNote = "Voice mode: the user spoke this message aloud and your final reply will be read out by text-to-speech. Keep the final response to a few short conversational sentences of plain prose — no markdown, lists, headings, or code blocks. Using tools is fine."
 
-const PlanModeNote = `<collaboration_mode># Plan Mode
-
-You are in Plan Mode until this turn ends. Plan Mode is a collaboration mode for producing an approval-ready implementation plan, separate from tool permissions or autonomy.
-
-## Rules
-
-- You may read/search/inspect and run non-mutating checks that improve the plan.
-- You must not edit files, apply patches, run codegen/formatters that rewrite tracked files, or otherwise execute the plan.
-- If the user asks you to implement while still in Plan Mode, plan the implementation instead of doing it.
-- A final plan must be decision-complete: another engineer or agent should be able to implement it without making design choices.
-
-## Proposing The Plan
-
-Present the plan in the assistant response. The proposed plan should include a clear title or summary, important API/interface/type changes, concrete implementation steps, tests/scenarios, and explicit assumptions/defaults where needed.
-</collaboration_mode>`
-
-const PlanUserInstruction = "Plan mode is enabled for this turn. Present the proposed plan when it is ready."
-
 type Store interface {
 	storage.MessageStore
 }
@@ -59,7 +41,6 @@ type Request struct {
 	Message                string
 	Attachments            []storage.Attachment
 	VoiceMode              bool
-	PlanRequested          bool
 	AppendUser             bool
 	ArtifactSurface        string
 	SystemPromptExtensions promptmodule.Modules
@@ -120,9 +101,6 @@ func (r *Runner) run(ctx context.Context, req Request, out chan<- agent.StreamEv
 	runCtx := sessioncontext.WithSessionID(ctx, req.Session.ID)
 	if req.Session.RuntimeRef != nil && strings.TrimSpace(req.Session.RuntimeRef.Cwd) != "" {
 		runCtx = sessioncontext.WithCWD(runCtx, req.Session.RuntimeRef.Cwd)
-	}
-	if req.PlanRequested {
-		runCtx = sessioncontext.WithCollaborationMode(runCtx, sessioncontext.CollaborationModePlan)
 	}
 	for event := range r.Agent.Run(runCtx, provider.Request{
 		Provider:        req.Session.ModelProvider,
@@ -243,15 +221,8 @@ func BuildRequest(ctx context.Context, store Store, prompts PromptSource, req Re
 		messages = append(messages, provider.SystemMessage(VoiceModeNote))
 		transient = append(transient, VoiceModeNote)
 	}
-	if req.PlanRequested {
-		messages = append(messages, provider.DeveloperMessage(PlanModeNote))
-		transient = append(transient, PlanModeNote)
-	}
 	userMessageIndex := len(messages)
 	userPrompt := MessageWithAttachmentLinks(req.Message, req.Attachments)
-	if req.PlanRequested {
-		userPrompt = strings.TrimSpace(userPrompt + "\n\n" + PlanUserInstruction)
-	}
 	messages = append(messages, provider.UserMessage(userPrompt))
 	if req.AppendUser {
 		if err := storage.AppendUserMessage(store, req.Session.ID, req.Message, nil, req.Attachments); err != nil {

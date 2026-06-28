@@ -19,7 +19,7 @@ var defaultBaselineModePriority = []string{"full-access", "yolo", "always-approv
 // approval inline via the ExitPlanMode permission and streams live.
 func planTurnDefersResult(planRequested bool, agent string) bool {
 	switch CanonicalAgentName(agent) {
-	case AgentClaude, AgentJaz:
+	case AgentClaude:
 		return false
 	default:
 		return planRequested

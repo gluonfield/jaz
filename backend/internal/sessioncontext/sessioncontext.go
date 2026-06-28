@@ -8,13 +8,7 @@ import (
 
 type sessionIDKey struct{}
 type cwdKey struct{}
-type collaborationModeKey struct{}
 type clientPlatformKey struct{}
-
-const (
-	CollaborationModeDefault = "default"
-	CollaborationModePlan    = "plan"
-)
 
 func WithSessionID(ctx context.Context, id string) context.Context {
 	return context.WithValue(ctx, sessionIDKey{}, id)
@@ -43,18 +37,6 @@ func SessionBase(ctx context.Context, fallback string) (string, error) {
 		base = cwd
 	}
 	return filepath.Abs(base)
-}
-
-func WithCollaborationMode(ctx context.Context, mode string) context.Context {
-	return context.WithValue(ctx, collaborationModeKey{}, mode)
-}
-
-func CollaborationMode(ctx context.Context) string {
-	mode, _ := ctx.Value(collaborationModeKey{}).(string)
-	if mode == "" {
-		return CollaborationModeDefault
-	}
-	return mode
 }
 
 func WithClientPlatform(ctx context.Context, platform string) context.Context {

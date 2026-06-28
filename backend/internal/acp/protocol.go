@@ -196,7 +196,8 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 				Priority: string(entry.Priority),
 			})
 		}
-		if planText, ok := sessionevents.NormalizePlanDocumentText(plan); ok && job.turn != nil && planTurnDefersResult(job.turn.planRequested, job.ACPAgent) {
+		deferPlan := job.turn != nil && planTurnDefersResult(job.turn.planRequested, job.ACPAgent)
+		if planText, ok := sessionevents.NormalizePlanDocumentText(plan); ok && deferPlan {
 			job.turn.planProposal = &sessionevents.PlanEvent{
 				Explanation:      planText,
 				AwaitingApproval: true,
@@ -210,11 +211,24 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 		var ok bool
 		plan, ok = sessionevents.NormalizeProgressEntries(plan)
 		if !ok {
+			if deferPlan {
+				job.turn.planProposal = nil
+			}
 			if len(job.Plan) > 0 {
 				job.Plan = []sessionevents.PlanEntry{}
 				publishACP = true
 			}
 			break
+		}
+		if deferPlan {
+			if len(plan) == 0 {
+				job.turn.planProposal = nil
+			} else {
+				job.turn.planProposal = &sessionevents.PlanEvent{
+					Plan:             clonePlanEntries(plan),
+					AwaitingApproval: true,
+				}
+			}
 		}
 		wasEmpty := len(job.Plan) == 0
 		publishACP = !slices.Equal(job.Plan, plan)

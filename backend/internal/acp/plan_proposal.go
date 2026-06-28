@@ -11,25 +11,7 @@ import (
 func (m *Manager) publishPlanTurnResult(job Job, proposal *sessionevents.PlanEvent) {
 	if proposal != nil {
 		m.publishPlanEvent(job, *proposal)
-		return
 	}
-	if m.publishProposedPlan(job) {
-		return
-	}
-}
-
-// publishProposedPlan emits the plan the agent built during a plan turn. Codex
-// can relay it as structured `plan` session updates accumulated into job.Plan.
-func (m *Manager) publishProposedPlan(job Job) bool {
-	plan := clonePlanEntries(job.Plan)
-	if len(plan) == 0 {
-		return false
-	}
-	m.publishPlanEvent(job, sessionevents.PlanEvent{
-		Plan:             plan,
-		AwaitingApproval: true,
-	})
-	return true
 }
 
 func (m *Manager) publishPlanEvent(job Job, plan sessionevents.PlanEvent) {
