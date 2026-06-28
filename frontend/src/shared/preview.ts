@@ -59,16 +59,17 @@ function testPreviewPattern(pattern: string, href: string): boolean {
 const URL_IN_TEXT = /https?:\/\/[^\s<>()[\]"'`]+/gi
 
 // Pull http(s) URLs from assistant prose, keep those matching a preview pattern,
-// deduped in first-seen order. Trailing sentence punctuation is shaved.
+// deduped in first-seen order. Trailing delimiters/punctuation are shaved.
 export function findPreviewURLs(text: string, patterns: readonly string[]): string[] {
   const matches = text.match(URL_IN_TEXT)
   if (!matches) return []
   const seen = new Set<string>()
   const urls: string[] = []
   for (const raw of matches) {
-    const url = raw.replace(/[.,;:!?)\]}'"]+$/, '')
-    if (seen.has(url) || !matchesPreviewPattern(url, patterns)) continue
-    seen.add(url)
+    const url = raw.replace(/[\\.,;:!?)\]}'"]+$/, '')
+    const parsed = previewURL(url)
+    if (!parsed || seen.has(parsed.href) || !patterns.some((pattern) => testPreviewPattern(pattern, parsed.href))) continue
+    seen.add(parsed.href)
     urls.push(url)
   }
   return urls
