@@ -23,11 +23,13 @@ const (
 )
 
 type pendingPermission struct {
-	sessionID                     string
-	request                       sessionevents.ACPPermission
-	userInputResponseOptionPrefix string
-	answer                        chan string
+	sessionID     string
+	request       sessionevents.ACPPermission
+	encodeAnswers answerEncoder
+	answer        chan string
 }
+
+type answerEncoder func(map[string]InteractiveAnswerValue) (string, error)
 
 type InteractiveAnswerValue struct {
 	Answers []string `json:"answers"`
@@ -40,10 +42,10 @@ func (m *Manager) awaitPermission(ctx context.Context, job *jobState, req acpsch
 	permission.Status = "pending"
 
 	pending := &pendingPermission{
-		sessionID:                     job.ID,
-		request:                       permission,
-		userInputResponseOptionPrefix: userInputResponseOptionPrefix,
-		answer:                        make(chan string, 1),
+		sessionID:     job.ID,
+		request:       permission,
+		encodeAnswers: userInputAnswerEncoder(userInputResponseOptionPrefix),
+		answer:        make(chan string, 1),
 	}
 	m.permissionMu.Lock()
 	m.pendingPermission[permission.ID] = pending
@@ -120,7 +122,7 @@ func (m *Manager) AnswerInteractive(ctx context.Context, req InteractiveAnswer) 
 			m.permissionMu.Unlock()
 			return fmt.Errorf("permission request %s does not accept structured answers", req.RequestID)
 		}
-		optionID, err := encodeUserInputResponse(req.Answers, pending.userInputResponseOptionPrefix)
+		payload, err := pending.encodeAnswers(req.Answers)
 		if err != nil {
 			m.permissionMu.Unlock()
 			return err
@@ -137,7 +139,7 @@ func (m *Manager) AnswerInteractive(ctx context.Context, req InteractiveAnswer) 
 		m.publishPermission(job, resolved, "permission_response")
 
 		select {
-		case pending.answer <- optionID:
+		case pending.answer <- payload:
 		default:
 		}
 		return nil
@@ -412,6 +414,12 @@ func encodeUserInputResponse(answers map[string]InteractiveAnswerValue, optionPr
 		return "", err
 	}
 	return optionPrefix + string(raw), nil
+}
+
+func userInputAnswerEncoder(optionPrefix string) answerEncoder {
+	return func(answers map[string]InteractiveAnswerValue) (string, error) {
+		return encodeUserInputResponse(answers, optionPrefix)
+	}
 }
 
 func formatPermissionAnswers(permission sessionevents.ACPPermission, answers map[string]InteractiveAnswerValue) string {

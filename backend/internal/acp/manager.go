@@ -269,6 +269,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 				ReadTextFile:  true,
 				WriteTextFile: true,
 			},
+			Elicitation: &acpschema.ElicitationCapabilities{Form: &acpschema.ElicitationFormCapabilities{}},
 		},
 	})
 	if err != nil {
