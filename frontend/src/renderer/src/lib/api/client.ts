@@ -44,9 +44,13 @@ export function parseBackendConnectUrl(input: string): { url: string; key: strin
 export function consumeStartupConnectUrl(): string {
   if (clientRuntime.kind !== 'web') return ''
   const { params, source } = startupConnectParams()
-  const target = params.get('server')?.trim() || params.get('url')?.trim() || ''
   const key = params.get('key')?.trim() ?? ''
-  if (!target || !key) return ''
+  if (!key) return ''
+  const target =
+    params.get('server')?.trim() ||
+    params.get('url')?.trim() ||
+    clientRuntime.defaultApiBaseUrl()
+  if (!target) return ''
   const raw = connectUrlWithKey(target, key)
   const next = new URL(window.location.href)
   if (source === 'hash') {
