@@ -24,29 +24,31 @@ func (s *Store) LoadFeed() ([]storage.FeedItem, error) {
 		if err != nil {
 			return nil, err
 		}
-		events, err := s.loadSessionEventsLocked(row.ID)
+		events, err := s.loadSessionEventsAfterTimeLocked(row.ID, promptAt)
 		if err != nil {
 			return nil, err
 		}
-		text, replyAt := lastTurnReply(events, promptAt)
+		text, replyAt := lastTurnReply(events)
+		if replyAt == 0 {
+			replyAt = row.LastAttentionAtMs
+		}
 		items = append(items, storage.FeedItem{
 			ID:        row.ID,
 			Slug:      row.Slug,
 			Title:     row.Title.String,
 			ParentID:  row.ParentID.String,
-			Status:    row.Status,
 			ReplyText: text,
-			ReplyAt:   msToTime(orDefault(replyAt, row.LastAttentionAtMs)),
+			ReplyAt:   msToTime(replyAt),
 		})
 	}
 	return items, nil
 }
 
-func lastTurnReply(events []sessionevents.Event, promptAtMs int64) (string, int64) {
+func lastTurnReply(events []sessionevents.Event) (string, int64) {
 	parts := make([]string, 0)
 	var replyAt int64
 	for _, event := range sessionevents.CompactTextChunks(events) {
-		if event.Type != sessionevents.TypeACPMessage || event.At.UnixMilli() <= promptAtMs {
+		if event.Type != sessionevents.TypeACPMessage {
 			continue
 		}
 		if text := strings.TrimSpace(event.Content); text != "" {
@@ -55,11 +57,4 @@ func lastTurnReply(events []sessionevents.Event, promptAtMs int64) (string, int6
 		replyAt = event.At.UnixMilli()
 	}
 	return strings.Join(parts, "\n\n"), replyAt
-}
-
-func orDefault(value, fallback int64) int64 {
-	if value == 0 {
-		return fallback
-	}
-	return value
 }

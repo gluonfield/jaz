@@ -155,7 +155,6 @@ type FeedItem struct {
 	Slug      string
 	Title     string
 	ParentID  string
-	Status    string
 	ReplyText string
 	ReplyAt   time.Time
 }

@@ -160,6 +160,70 @@ func (q *Queries) ListSessionEventsAfter(ctx context.Context, arg ListSessionEve
 	return items, nil
 }
 
+const listSessionEventsAfterTime = `-- name: ListSessionEventsAfterTime :many
+SELECT
+  thread_id,
+  seq,
+  type,
+  content,
+  acp,
+  plan,
+  permission,
+  created_at_ms
+FROM session_events
+WHERE thread_id = ?1
+  AND created_at_ms > ?2
+ORDER BY seq
+`
+
+type ListSessionEventsAfterTimeParams struct {
+	ThreadID string `json:"thread_id"`
+	AfterMs  int64  `json:"after_ms"`
+}
+
+type ListSessionEventsAfterTimeRow struct {
+	ThreadID    string         `json:"thread_id"`
+	Seq         int64          `json:"seq"`
+	Type        string         `json:"type"`
+	Content     string         `json:"content"`
+	Acp         sql.NullString `json:"acp"`
+	Plan        sql.NullString `json:"plan"`
+	Permission  sql.NullString `json:"permission"`
+	CreatedAtMs int64          `json:"created_at_ms"`
+}
+
+func (q *Queries) ListSessionEventsAfterTime(ctx context.Context, arg ListSessionEventsAfterTimeParams) ([]ListSessionEventsAfterTimeRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSessionEventsAfterTime, arg.ThreadID, arg.AfterMs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSessionEventsAfterTimeRow{}
+	for rows.Next() {
+		var i ListSessionEventsAfterTimeRow
+		if err := rows.Scan(
+			&i.ThreadID,
+			&i.Seq,
+			&i.Type,
+			&i.Content,
+			&i.Acp,
+			&i.Plan,
+			&i.Permission,
+			&i.CreatedAtMs,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const nextSessionEventSeq = `-- name: NextSessionEventSeq :one
 SELECT COALESCE(MAX(seq), 0) + 1 AS seq
 FROM session_events

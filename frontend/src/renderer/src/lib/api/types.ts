@@ -109,7 +109,6 @@ export interface FeedItem {
   slug: string
   title?: string
   parent_id?: string
-  status: 'idle' | 'running' | 'error'
   last_message: FeedMessage
 }
 

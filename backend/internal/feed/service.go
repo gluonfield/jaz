@@ -1,8 +1,6 @@
 package feed
 
 import (
-	"strings"
-
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/threads"
 )
@@ -20,7 +18,6 @@ type Item struct {
 	Slug        string                    `json:"slug"`
 	Title       string                    `json:"title,omitempty"`
 	ParentID    string                    `json:"parent_id,omitempty"`
-	Status      string                    `json:"status"`
 	LastMessage threads.TranscriptMessage `json:"last_message"`
 }
 
@@ -36,10 +33,9 @@ func (s Service) Feed() ([]Item, error) {
 			Slug:     entry.Slug,
 			Title:    entry.Title,
 			ParentID: entry.ParentID,
-			Status:   entry.Status,
 			LastMessage: threads.TranscriptMessage{
 				Role:      "assistant",
-				Text:      strings.TrimSpace(entry.ReplyText),
+				Text:      entry.ReplyText,
 				CreatedAt: entry.ReplyAt,
 			},
 		})

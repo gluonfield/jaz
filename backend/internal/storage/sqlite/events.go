@@ -160,6 +160,25 @@ func (s *Store) loadSessionEventsLocked(id string) ([]sessionevents.Event, error
 	return events, nil
 }
 
+func (s *Store) loadSessionEventsAfterTimeLocked(id string, afterMs int64) ([]sessionevents.Event, error) {
+	rows, err := eventdb.New(s.db).ListSessionEventsAfterTime(context.Background(), eventdb.ListSessionEventsAfterTimeParams{
+		ThreadID: id,
+		AfterMs:  afterMs,
+	})
+	if err != nil {
+		return nil, err
+	}
+	events := make([]sessionevents.Event, 0, len(rows))
+	for _, row := range rows {
+		event, err := eventFromDBFields(row.ThreadID, row.Seq, row.Type, row.Content, row.Acp, row.Plan, row.Permission, row.CreatedAtMs)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, event)
+	}
+	return events, nil
+}
+
 func (s *Store) loadSessionEventsAfterLocked(id string, afterSeq int64) ([]sessionevents.Event, error) {
 	rows, err := eventdb.New(s.db).ListSessionEventsAfter(context.Background(), eventdb.ListSessionEventsAfterParams{
 		ThreadID: id,
