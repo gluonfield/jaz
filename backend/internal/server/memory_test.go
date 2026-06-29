@@ -114,6 +114,15 @@ func TestMemoryStatusAndToggle(t *testing.T) {
 	if len(status.Tasks) != 5 {
 		t.Fatalf("unexpected scheduler tasks %#v", status.Tasks)
 	}
+	byTaskName := map[string]bool{}
+	for _, task := range status.Tasks {
+		byTaskName[task.Name] = true
+	}
+	for _, name := range []string{jazmem.TaskIndexChangedPages, jazmem.TaskDailyRollup, jazmem.TaskLinkHygiene, jazmem.TaskDream, jazmem.TaskOptimizeIndex} {
+		if !byTaskName[name] {
+			t.Fatalf("missing scheduler task %s in %#v", name, status.Tasks)
+		}
+	}
 	if status.SourceQueues.Projection.Pending != 0 || status.SourceQueues.Projection.Processing != 1 {
 		t.Fatalf("unexpected source projection queue status %#v", status.SourceQueues.Projection)
 	}
