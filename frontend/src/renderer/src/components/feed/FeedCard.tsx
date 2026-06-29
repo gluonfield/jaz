@@ -1,22 +1,25 @@
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { ArrowUpRight, Check, Archive as ArchiveIcon, CornerDownRight } from 'lucide-react'
-import { useLayoutEffect, useRef, useState, type RefObject } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
-import { MessageMarkdown } from '@/components/session/MessageMarkdown'
+import { FileReaderLinkProvider, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
 import { ComposerCard } from '@/components/session/Composer'
 import { OverviewPanel, OVERVIEW_PANEL_WIDTH } from '@/components/session/OverviewPanel'
+import { Transcript } from '@/components/session/Transcript'
+import { deriveSessionView, type SessionView } from '@/components/session/sessionView'
 import { IconButton } from '@/components/ui/IconButton'
+import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import { markThreadSeen } from '@/lib/api/feed'
 import {
   mutateSessionQueue,
-  sessionQuery,
+  sessionMessagesQuery,
   setSessionArchived,
   uploadSessionAttachment,
 } from '@/lib/api/sessions'
-import type { FeedItem } from '@/lib/api/types'
+import type { FeedItem, Session } from '@/lib/api/types'
 import { relativeTime } from '@/lib/format/time'
 import { invalidateSessionLists } from '@/lib/query/invalidate'
 import { keys } from '@/lib/query/keys'
@@ -40,8 +43,12 @@ export function FeedCard({
 }) {
   const cardRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const toast = useToast()
   const reducedMotion = useReducedMotion()
+  const openThread = () => navigate({ to: '/sessions/$sessionId', params: { sessionId: item.id } })
+  const detail = useQuery({ ...sessionMessagesQuery(item.id), enabled: expanded })
+  const view = useMemo(() => (detail.data ? deriveSessionView(detail.data, []) : null), [detail.data])
 
   const removeFromFeed = () => {
     queryClient.setQueryData<FeedItem[]>(keys.feed, (prev) =>
@@ -101,7 +108,9 @@ export function FeedCard({
       }`}
     >
       <AnimatePresence>
-        {expanded ? <FeedOverview anchorRef={cardRef} threadId={item.id} onSend={reply} /> : null}
+        {expanded && detail.data && view ? (
+          <FeedOverview anchorRef={cardRef} session={detail.data.session} view={view} onSend={reply} />
+        ) : null}
       </AnimatePresence>
       <div
         role="button"
@@ -154,11 +163,21 @@ export function FeedCard({
             className="overflow-hidden"
           >
             <div className="bg-surface-2 px-3.5 py-3">
-              <div className="max-h-[42vh] overflow-y-auto text-[13px] leading-relaxed text-ink [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {item.last_message.text ? (
-                  <MessageMarkdown text={item.last_message.text} />
+              <div className="max-h-[42vh] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {view && detail.data ? (
+                  <FileReaderLinkProvider onOpen={openThread}>
+                    <PreviewLinkProvider onOpen={openThread}>
+                      <Transcript
+                        messages={detail.data.messages}
+                        events={view.displayEvents}
+                        sessionId={item.id}
+                        groupTurns={detail.data.session.runtime === 'acp'}
+                        onArtifactPrompt={reply}
+                      />
+                    </PreviewLinkProvider>
+                  </FileReaderLinkProvider>
                 ) : (
-                  <p className="text-ink-3">{NO_TEXT}</p>
+                  <SkeletonRows count={3} />
                 )}
               </div>
               <div className="mt-3">
@@ -207,14 +226,15 @@ export function FeedCard({
 
 function FeedOverview({
   anchorRef,
-  threadId,
+  session,
+  view,
   onSend,
 }: {
   anchorRef: RefObject<HTMLElement | null>
-  threadId: string
+  session: Session
+  view: SessionView
   onSend: SendMessageHandler
 }) {
-  const session = useQuery(sessionQuery(threadId)).data
   const reducedMotion = useReducedMotion()
   const [rect, setRect] = useState<DOMRect | null>(null)
 
@@ -234,7 +254,7 @@ function FeedOverview({
     }
   }, [anchorRef])
 
-  if (!rect || !session) return null
+  if (!rect) return null
   const gap = 12
   const panelWidth = OVERVIEW_PANEL_WIDTH + 16
   const fitsRight = rect.right + gap + panelWidth <= window.innerWidth
@@ -251,8 +271,9 @@ function FeedOverview({
     >
       <OverviewPanel
         session={session}
-        subagents={[]}
-        spawnedThreads={[]}
+        subagents={view.providerSubagents}
+        spawnedThreads={view.spawnedThreads}
+        progress={view.panelProgress}
         working={session.status === 'running'}
         onSend={onSend}
       />
