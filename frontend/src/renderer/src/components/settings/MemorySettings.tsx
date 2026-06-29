@@ -31,37 +31,41 @@ const HORIZON_DESCRIPTIONS: Record<string, string> = {
     'What is true right now: current focus, active projects, blockers, and open loops.',
 }
 
-const TASK_COPY: Record<string, { label: string; description: string }> = {
+type TaskCopy = { label: string; description: string }
+
+const TASK_COPY = {
   index_changed_pages: {
     label: 'Update search index',
     description: 'Rebuilds search data for saved memory files.',
   },
   daily_rollup: {
-    label: "Update today's note",
-    description: 'Keeps the daily memory note current for recent work.',
+    label: 'Daily memories update',
+    description: "Creates today's daily memory file if it does not exist yet.",
   },
   link_hygiene: {
-    label: 'Check memory links',
-    description: 'Finds memory links that point at missing or renamed pages.',
+    label: 'Review relationship suggestions',
+    description: 'Writes review notes for likely people, company, and project relationships.',
   },
   dream: {
-    label: 'Review long-term memory',
+    label: 'Dream',
     description: 'Consolidates durable facts from daily notes into long-term and short-term memory.',
   },
   optimize_index: {
-    label: 'Compact search data',
-    description: 'Keeps memory search fast after many updates.',
+    label: 'Optimize search database',
+    description: 'Compacts the existing search database. It does not scan memory files.',
   },
-}
+} satisfies Record<string, TaskCopy>
+
+type KnownMemoryTask = MemoryTask & { name: keyof typeof TASK_COPY }
 
 const QUEUE_COPY = {
   projection: {
-    label: 'Prepare connected-account notes',
-    description: 'Converts raw updates from connected accounts into readable notes.',
+    label: 'Export Connections data',
+    description: 'Converts raw connected-account updates into readable source files.',
   },
   memory: {
-    label: 'Add notes to memory',
-    description: 'Asks the selected memory agent to extract durable facts from prepared notes.',
+    label: 'Ingest Connections data to memory',
+    description: 'Asks the selected memory agent to extract durable facts from exported source files.',
   },
 }
 
@@ -282,7 +286,7 @@ export function MemorySettings() {
                 </div>
               ) : null}
               <ul className="divide-y divide-border">
-                {memory.tasks.map((task: MemoryTask) => (
+                {memory.tasks.filter(isKnownMemoryTask).map((task) => (
                   <MemoryTaskRow key={task.name} task={task} />
                 ))}
               </ul>
@@ -464,11 +468,8 @@ function SourceQueueStatus({
   )
 }
 
-function MemoryTaskRow({ task }: { task: MemoryTask }) {
-  const copy = TASK_COPY[task.name] ?? {
-    label: task.name,
-    description: 'Background memory upkeep task.',
-  }
+function MemoryTaskRow({ task }: { task: KnownMemoryTask }) {
+  const copy = TASK_COPY[task.name]
   const error = task.status === 'error' || Boolean(task.error)
   return (
     <li className="flex items-center justify-between gap-3 px-4 py-2.5">
@@ -491,6 +492,10 @@ function MemoryTaskRow({ task }: { task: MemoryTask }) {
       </div>
     </li>
   )
+}
+
+function isKnownMemoryTask(task: MemoryTask): task is KnownMemoryTask {
+  return task.name in TASK_COPY
 }
 
 function MaintenanceAction({
