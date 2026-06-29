@@ -79,10 +79,14 @@ export function FeedCard({ item }: { item: FeedItem }) {
 
   return (
     <motion.div
+      // Spacing rides on marginBottom (not a parent gap). On exit the card shrinks
+      // its own height + margin to 0 so the cards below slide up smoothly instead of
+      // jumping when it unmounts. Height is touched only on exit — animating it in
+      // `animate` would lock the card and break the inline expand. (10px ≈ gap-2.5)
       initial={reducedMotion ? false : { opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.98 }}
-      transition={{ duration: 0.18, ease: 'easeOut' }}
+      animate={{ opacity: 1, y: 0, marginBottom: 10 }}
+      exit={reducedMotion ? { opacity: 0 } : { opacity: 0, height: 0, marginBottom: 0 }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
       className={`overflow-hidden rounded-card border border-border bg-surface transition-colors duration-150 ${
         expanded ? '' : 'hover:bg-surface-2'
       }`}
