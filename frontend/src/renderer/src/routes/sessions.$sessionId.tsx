@@ -622,6 +622,12 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     })
   }, [detail.isSuccess, handleSend, sessionId])
 
+  // Hydrating the thread marks it seen server-side; once that response lands,
+  // refresh the Feed so the card and sidebar badge clear without waiting a poll.
+  useEffect(() => {
+    if (detail.isSuccess) queryClient.invalidateQueries({ queryKey: keys.feed })
+  }, [detail.isSuccess, sessionId, queryClient])
+
   useEffect(() => {
     if (!detail.isSuccess || !search.message) return
     const messageSeq = search.message

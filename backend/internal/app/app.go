@@ -136,6 +136,7 @@ type Stores struct {
 	SessionStore    storage.SessionStore
 	SessionEvents   storage.SessionEventAppender
 	UsageEventStore storage.UsageEventStore
+	FeedStore       storage.FeedStore
 }
 
 func NewRuntimeLayout(cfg Config) (runtimefiles.Layout, error) {
@@ -166,6 +167,7 @@ func NewStore(layout runtimefiles.Layout, catalog acp.AgentCatalog) (Stores, err
 		SessionStore:    store,
 		SessionEvents:   store,
 		UsageEventStore: store,
+		FeedStore:       store,
 	}, nil
 }
 

@@ -147,6 +147,18 @@ type Session struct {
 	CreatedAt       time.Time       `json:"created_at"`
 	UpdatedAt       time.Time       `json:"updated_at"`
 	LastAttentionAt time.Time       `json:"last_attention_at"`
+	LastSeenAt      time.Time       `json:"last_seen_at"`
+}
+
+// FeedItem is an unarchived thread paired with its newest message, for threads
+// the user has not yet seen. Built by the storage feed query.
+type FeedItem struct {
+	ID          string
+	Slug        string
+	Title       string
+	ParentID    string
+	Status      string
+	LastMessage Message
 }
 
 func MarkSessionAttention(session *Session, at time.Time) {

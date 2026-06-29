@@ -6,8 +6,10 @@ import (
 	"github.com/wins/jaz/backend/internal/browserworker"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/deviceauth"
+	feedcore "github.com/wins/jaz/backend/internal/feed"
 	connectionsapi "github.com/wins/jaz/backend/internal/httpapi/connections"
 	deviceapi "github.com/wins/jaz/backend/internal/httpapi/devices"
+	feedapi "github.com/wins/jaz/backend/internal/httpapi/feed"
 	usageapi "github.com/wins/jaz/backend/internal/httpapi/usage"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/serverconfig"
@@ -19,6 +21,7 @@ type routeDeps struct {
 	fx.In
 
 	Usage           usagecore.Service
+	Feed            feedcore.Service
 	Jaz             Config
 	Devices         *deviceauth.Service            `optional:"true"`
 	Config          serverconfig.Config            `optional:"true"`
@@ -32,9 +35,19 @@ type routeDeps struct {
 
 func NewRoutes(deps routeDeps) server.Routes {
 	routes := usageRoutes(deps.Usage)
+	routes = append(routes, feedRoutes(deps.Feed)...)
 	routes = appendConnectionRoutes(routes, deps.Connections, deps.ConnectionStart, deps.ConnectionOAuth, deps.ConnectionQR)
 	routes = appendDeviceRoutes(routes, deps.Devices, deps.Config, deps.Jaz.Devices.DisablePairing)
 	return appendBrowserRoutes(routes, deps.BrowserSettings, deps.Browser)
+}
+
+func feedRoutes(feed feedcore.Service) server.Routes {
+	return server.Routes{
+		{
+			Pattern: "GET /v1/feed",
+			Handler: feedapi.NewListHandler(feed),
+		},
+	}
 }
 
 func usageRoutes(usage usagecore.Service) server.Routes {

@@ -91,6 +91,28 @@ export interface SessionActions {
   compact?: boolean
 }
 
+export interface FeedMessageTool {
+  name?: string
+  detail?: string
+}
+
+export interface FeedMessage {
+  role: string
+  text?: string
+  tools?: FeedMessageTool[]
+  created_at: string
+}
+
+// One unread thread on the Feed: its newest message plus identity for the card.
+export interface FeedItem {
+  id: string
+  slug: string
+  title?: string
+  parent_id?: string
+  status: 'idle' | 'running' | 'error'
+  last_message: FeedMessage
+}
+
 export interface ThreadSearchResult {
   thread_id: string
   thread_slug: string
