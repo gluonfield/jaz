@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { GripVertical, Plus, Settings, SquarePen, Trash2 } from 'lucide-react'
+import { GripVertical, Inbox, Plus, Settings, SquarePen, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion, Reorder, type Transition, useDragControls } from 'motion/react'
 import { type PointerEvent as ReactPointerEvent, useMemo, useState } from 'react'
 import { BoardModal } from '@/components/boards/BoardModal'
@@ -10,6 +10,7 @@ import { IconButton } from '@/components/ui/IconButton'
 import { KeyboardShortcut } from '@/components/ui/KeyboardShortcut'
 import { UpdatePanel } from '@/components/update/UpdatePanel'
 import { boardsQuery, deleteBoard } from '@/lib/api/boards'
+import { feedQuery } from '@/lib/api/feed'
 import { loopsQuery } from '@/lib/api/loops'
 import { projectsQuery, reorderProjects, sidebarSessionsQuery, type Project, type SessionListItem } from '@/lib/api/sessions'
 import { modalDialogOpen } from '@/lib/dom/modal'
@@ -433,6 +434,26 @@ function SessionsSection({ open }: { open: boolean }) {
   )
 }
 
+function FeedLink() {
+  const feed = useQuery(feedQuery)
+  const count = feed.data?.length ?? 0
+  return (
+    <Link
+      to="/feed"
+      className="group flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px]"
+      activeProps={{ className: 'bg-primary-soft!' }}
+    >
+      <Inbox size={15} className="text-ink-2 max-sm:size-[18px]" />
+      <span className="flex-1">Feed</span>
+      {count > 0 ? (
+        <span className="min-w-5 rounded-full bg-primary px-1.5 text-center text-[11px] font-semibold tabular-nums text-on-primary">
+          {count}
+        </span>
+      ) : null}
+    </Link>
+  )
+}
+
 function LoopsSection() {
   const loops = useQuery(loopsQuery)
   const [creating, setCreating] = useState(false)
@@ -631,6 +652,8 @@ export function Sidebar({
           <span className="flex-1">New Thread</span>
           <KeyboardShortcut value="N" className="max-sm:hidden" />
         </Link>
+
+        <FeedLink />
 
         <SessionsSection open={open} />
 

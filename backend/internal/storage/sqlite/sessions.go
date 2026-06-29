@@ -252,6 +252,7 @@ func insertSession(db threaddb.DBTX, session storage.Session) error {
 		CreatedAtMs:           timeToMs(session.CreatedAt),
 		UpdatedAtMs:           timeToMs(session.UpdatedAt),
 		LastAttentionAtMs:     timeToMs(session.LastAttentionAt),
+		LastSeenAtMs:          timeToMs(sessionLastSeenAt(session)),
 		PendingSteerMessage:   pendingSteerMessage,
 	})
 }
@@ -299,6 +300,7 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 		CreatedAt:       msToTime(row.CreatedAtMs),
 		UpdatedAt:       msToTime(row.UpdatedAtMs),
 		LastAttentionAt: msToTime(row.LastAttentionAtMs),
+		LastSeenAt:      msToTime(row.LastSeenAtMs),
 	}
 	if session.LastAttentionAt.IsZero() {
 		storage.MarkSessionAttention(&session, storage.SessionAttentionAt(session))
@@ -340,6 +342,34 @@ func (s *Store) TouchSessionAttention(id string) error {
 		s.mirrorSession(current)
 	}
 	return nil
+}
+
+// SetThreadSeen marks a single thread read up to now. Unlike SetArchived this is
+// scoped to the thread itself: every child thread is its own Feed entry.
+func (s *Store) SetThreadSeen(id string) error {
+	now := time.Now().UTC()
+	s.mu.Lock()
+	err := threaddb.New(s.db).SetThreadSeen(context.Background(), threaddb.SetThreadSeenParams{
+		LastSeenAtMs: timeToMs(now),
+		ID:           id,
+	})
+	s.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	if current, err := s.LoadSession(id); err == nil {
+		s.mirrorSession(current)
+	}
+	return nil
+}
+
+// sessionLastSeenAt defaults an unset last-seen to the thread's attention moment
+// so a freshly created thread is considered already seen, not unread.
+func sessionLastSeenAt(session storage.Session) time.Time {
+	if !session.LastSeenAt.IsZero() {
+		return session.LastSeenAt
+	}
+	return storage.SessionAttentionAt(session)
 }
 
 var slugUnsafe = regexp.MustCompile(`[^a-z0-9]+`)

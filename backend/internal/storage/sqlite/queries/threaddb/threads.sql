@@ -33,7 +33,8 @@ SELECT
   artifact_surface,
   mcp_server_policy,
   pending_steer_message,
-  runtime_capabilities
+  runtime_capabilities,
+  last_seen_at_ms
 FROM threads;
 
 -- name: GetSession :one
@@ -71,7 +72,8 @@ SELECT
   artifact_surface,
   mcp_server_policy,
   pending_steer_message,
-  runtime_capabilities
+  runtime_capabilities,
+  last_seen_at_ms
 FROM threads
 WHERE id = sqlc.arg(ref) OR slug = sqlc.arg(ref)
 LIMIT 1;
@@ -122,6 +124,7 @@ INSERT INTO threads (
   created_at_ms,
   updated_at_ms,
   last_attention_at_ms,
+  last_seen_at_ms,
   pinned,
   pending_steer_message
 ) VALUES (
@@ -157,6 +160,7 @@ INSERT INTO threads (
   sqlc.arg(created_at_ms),
   sqlc.arg(updated_at_ms),
   sqlc.arg(last_attention_at_ms),
+  sqlc.arg(last_seen_at_ms),
   sqlc.arg(pinned),
   sqlc.arg(pending_steer_message)
 )
@@ -192,6 +196,7 @@ ON CONFLICT(id) DO UPDATE SET
   created_at_ms = excluded.created_at_ms,
   updated_at_ms = excluded.updated_at_ms,
   last_attention_at_ms = excluded.last_attention_at_ms,
+  last_seen_at_ms = excluded.last_seen_at_ms,
   pinned = excluded.pinned,
   pending_steer_message = excluded.pending_steer_message;
 
@@ -220,6 +225,11 @@ UPDATE threads
 SET
   updated_at_ms = sqlc.arg(updated_at_ms),
   last_attention_at_ms = sqlc.arg(last_attention_at_ms)
+WHERE id = sqlc.arg(id);
+
+-- name: SetThreadSeen :exec
+UPDATE threads
+SET last_seen_at_ms = sqlc.arg(last_seen_at_ms)
 WHERE id = sqlc.arg(id);
 
 -- name: UpdateACPState :exec

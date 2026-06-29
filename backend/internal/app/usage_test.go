@@ -26,6 +26,12 @@ func (fakeUsageStore) UsageEventsSince(time.Time) ([]storage.UsageEvent, error) 
 	return nil, nil
 }
 
+type fakeFeedStore struct{}
+
+func (fakeFeedStore) LoadFeed() ([]storage.FeedItem, error) { return nil, nil }
+
+func (fakeFeedStore) SetThreadSeen(string) error { return nil }
+
 type fakeConnectionOAuthStore struct{}
 
 func (fakeConnectionOAuthStore) LoadToken(context.Context, string) (integrationoauth.Token, bool, error) {
@@ -54,17 +60,20 @@ func TestUsageModuleProvidesRoute(t *testing.T) {
 		fx.NopLogger,
 		fx.Supply(Config{}),
 		fx.Provide(func() storage.UsageEventStore { return fakeUsageStore{} }),
+		fx.Provide(func() storage.FeedStore { return fakeFeedStore{} }),
 		UsageModule(),
 		fx.Populate(&routes),
 	)
 	if err := app.Err(); err != nil {
 		t.Fatal(err)
 	}
-	if len(routes) != 2 ||
+	if len(routes) != 3 ||
 		routes[0].Pattern != "GET /v1/usage/daily" ||
 		routes[0].Handler == nil ||
 		routes[1].Pattern != "GET /v1/usage/models" ||
-		routes[1].Handler == nil {
+		routes[1].Handler == nil ||
+		routes[2].Pattern != "GET /v1/feed" ||
+		routes[2].Handler == nil {
 		t.Fatalf("routes = %#v", routes)
 	}
 }
@@ -229,7 +238,19 @@ func TestUsageModuleWiresWithNewStore(t *testing.T) {
 	}
 	defer store.Close()
 
-	if len(routes) != 2 || routes[0].Handler == nil || routes[1].Handler == nil {
+	if len(routes) != 3 {
 		t.Fatalf("routes = %#v", routes)
+	}
+	var hasFeed bool
+	for _, route := range routes {
+		if route.Handler == nil {
+			t.Fatalf("nil handler in routes = %#v", routes)
+		}
+		if route.Pattern == "GET /v1/feed" {
+			hasFeed = true
+		}
+	}
+	if !hasFeed {
+		t.Fatalf("feed route missing from routes = %#v", routes)
 	}
 }

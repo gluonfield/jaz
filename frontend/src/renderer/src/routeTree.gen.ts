@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as NewRouteImport } from './routes/new'
 import { Route as LauncherRouteImport } from './routes/launcher'
+import { Route as FeedRouteImport } from './routes/feed'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SessionsIndexRouteImport } from './routes/sessions.index'
 import { Route as LoopsIndexRouteImport } from './routes/loops.index'
@@ -27,6 +28,11 @@ const NewRoute = NewRouteImport.update({
 const LauncherRoute = LauncherRouteImport.update({
   id: '/launcher',
   path: '/launcher',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FeedRoute = FeedRouteImport.update({
+  id: '/feed',
+  path: '/feed',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -67,6 +73,7 @@ const BoardsBoardIdRoute = BoardsBoardIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/feed': typeof FeedRoute
   '/launcher': typeof LauncherRoute
   '/new': typeof NewRoute
   '/boards/$boardId': typeof BoardsBoardIdRoute
@@ -78,6 +85,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/feed': typeof FeedRoute
   '/launcher': typeof LauncherRoute
   '/new': typeof NewRoute
   '/boards/$boardId': typeof BoardsBoardIdRoute
@@ -90,6 +98,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/feed': typeof FeedRoute
   '/launcher': typeof LauncherRoute
   '/new': typeof NewRoute
   '/boards/$boardId': typeof BoardsBoardIdRoute
@@ -103,6 +112,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/feed'
     | '/launcher'
     | '/new'
     | '/boards/$boardId'
@@ -114,6 +124,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/feed'
     | '/launcher'
     | '/new'
     | '/boards/$boardId'
@@ -125,6 +136,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/feed'
     | '/launcher'
     | '/new'
     | '/boards/$boardId'
@@ -137,6 +149,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  FeedRoute: typeof FeedRoute
   LauncherRoute: typeof LauncherRoute
   NewRoute: typeof NewRoute
   BoardsBoardIdRoute: typeof BoardsBoardIdRoute
@@ -161,6 +174,13 @@ declare module '@tanstack/react-router' {
       path: '/launcher'
       fullPath: '/launcher'
       preLoaderRoute: typeof LauncherRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/feed': {
+      id: '/feed'
+      path: '/feed'
+      fullPath: '/feed'
+      preLoaderRoute: typeof FeedRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -217,6 +237,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  FeedRoute: FeedRoute,
   LauncherRoute: LauncherRoute,
   NewRoute: NewRoute,
   BoardsBoardIdRoute: BoardsBoardIdRoute,

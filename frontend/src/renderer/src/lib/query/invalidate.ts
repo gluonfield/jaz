@@ -10,6 +10,8 @@ export function invalidateSessionLists(
 ) {
   queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
   queryClient.invalidateQueries({ queryKey: keys.allSessions })
+  // Archiving, replying, and renaming all change which threads are unread.
+  queryClient.invalidateQueries({ queryKey: keys.feed })
   if (opts.archived) queryClient.invalidateQueries({ queryKey: keys.archivedSessions })
   if (opts.session) {
     queryClient.invalidateQueries({ queryKey: keys.session(opts.session), exact: true })

@@ -6,6 +6,7 @@ export const keys = {
   usage: ['usage'] as const,
   usageDaily: (days: number, timezone: string) => ['usage', 'daily', days, timezone] as const,
   archivedSessions: ['sessions', 'archived'] as const,
+  feed: ['feed'] as const,
   threadSearch: (query: string, includeArchived = false) =>
     ['search', 'threads', query, includeArchived] as const,
   sessionMessages: (id: string) => ['sessions', id, 'messages'] as const,
