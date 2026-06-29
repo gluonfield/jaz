@@ -446,8 +446,8 @@ function FeedLink() {
       <Inbox size={15} className="text-ink-2 max-sm:size-[18px]" />
       <span className="flex-1">Feed</span>
       {count > 0 ? (
-        <span className="min-w-5 rounded-full bg-primary px-1.5 text-center text-[11px] font-semibold tabular-nums text-on-primary">
-          {count}
+        <span className="inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-ink px-1 text-[11px] font-semibold leading-none tabular-nums text-bg">
+          {count > 99 ? '99+' : count}
         </span>
       ) : null}
     </Link>
