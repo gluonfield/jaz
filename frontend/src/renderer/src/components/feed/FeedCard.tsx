@@ -1,9 +1,8 @@
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { motion, useReducedMotion } from 'motion/react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { ArrowUpRight, Check, Archive as ArchiveIcon, CornerDownRight } from 'lucide-react'
 import { useState } from 'react'
-import { Button } from '@/components/ui/Button'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
 import { ComposerCard } from '@/components/session/Composer'
 import { markThreadSeen } from '@/lib/api/feed'
@@ -68,16 +67,15 @@ export function FeedCard({ item }: { item: FeedItem }) {
 
   return (
     <motion.div
-      layout={!reducedMotion}
       initial={reducedMotion ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={reducedMotion ? undefined : { opacity: 0, scale: 0.98 }}
-      transition={{ type: 'spring', stiffness: 420, damping: 36 }}
-      className={`group rounded-2xl border border-border bg-surface-1 transition-colors duration-150 ${
-        expanded ? 'ring-1 ring-border' : 'hover:bg-surface-2'
+      exit={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.98 }}
+      transition={{ duration: 0.18, ease: 'easeOut' }}
+      className={`overflow-hidden rounded-card border border-border bg-surface transition-colors duration-150 ${
+        expanded ? '' : 'hover:bg-surface-2'
       }`}
     >
-      <div className="flex items-start gap-3 p-4">
+      <div className="flex items-start gap-3 p-3.5">
         <button
           type="button"
           onClick={() => setExpanded((open) => !open)}
@@ -88,7 +86,7 @@ export function FeedCard({ item }: { item: FeedItem }) {
             {item.parent_id ? (
               <CornerDownRight size={13} className="shrink-0 text-ink-3" aria-hidden />
             ) : null}
-            <span className="truncate text-[14px] font-medium text-ink">{title}</span>
+            <span className="truncate text-[13px] font-medium text-ink">{title}</span>
             {item.status === 'running' ? (
               <span className="size-1.5 shrink-0 rounded-full bg-primary" aria-label="running" />
             ) : null}
@@ -96,51 +94,74 @@ export function FeedCard({ item }: { item: FeedItem }) {
               {relativeTime(item.last_message.created_at)}
             </span>
           </div>
-          <p
-            className={`mt-1 text-[13px] leading-relaxed text-ink-2 ${expanded ? '' : 'line-clamp-2'}`}
-          >
-            {expanded ? null : snippet(item.last_message.text)}
-          </p>
+          {expanded ? null : (
+            <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-ink-2">
+              {snippet(item.last_message.text)}
+            </p>
+          )}
         </button>
-        <Link
-          to="/sessions/$sessionId"
-          params={{ sessionId: item.id }}
-          aria-label="Open thread"
-          className="shrink-0 rounded-full p-1.5 text-ink-3 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
-        >
-          <ArrowUpRight size={16} />
-        </Link>
+        <div className="flex shrink-0 items-center gap-0.5 text-ink-3">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => done.mutate()}
+            aria-label="Mark done"
+            title="Mark done"
+            className="rounded-full p-1.5 transition-colors duration-150 hover:bg-surface-2 hover:text-ink disabled:opacity-50"
+          >
+            <Check size={16} />
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => archive.mutate()}
+            aria-label="Archive"
+            title="Archive"
+            className="rounded-full p-1.5 transition-colors duration-150 hover:bg-surface-2 hover:text-ink disabled:opacity-50"
+          >
+            <ArchiveIcon size={16} />
+          </button>
+          <Link
+            to="/sessions/$sessionId"
+            params={{ sessionId: item.id }}
+            aria-label="Open thread"
+            title="Open thread"
+            className="rounded-full p-1.5 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+          >
+            <ArrowUpRight size={16} />
+          </Link>
+        </div>
       </div>
 
-      {expanded ? (
-        <div className="border-t border-border px-4 pb-4 pt-3">
-          <div className="max-h-[42vh] overflow-y-auto pr-1 text-[13px] leading-relaxed text-ink">
-            {item.last_message.text ? (
-              <MessageMarkdown text={item.last_message.text} />
-            ) : (
-              <p className="text-ink-3">{NO_TEXT}</p>
-            )}
-          </div>
-          <div className="mt-3">
-            <ComposerCard
-              streaming={false}
-              placeholder="Reply…"
-              draftStorageKey={`feed:${item.id}`}
-              onSend={reply}
-            />
-          </div>
-          <div className="mt-2 flex items-center justify-end gap-1.5">
-            <Button variant="ghost" size="sm" disabled={busy} onClick={() => done.mutate()}>
-              <Check size={14} />
-              Done
-            </Button>
-            <Button variant="ghost" size="sm" disabled={busy} onClick={() => archive.mutate()}>
-              <ArchiveIcon size={14} />
-              Archive
-            </Button>
-          </div>
-        </div>
-      ) : null}
+      <AnimatePresence initial={false}>
+        {expanded ? (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            className="overflow-hidden"
+          >
+            <div className="border-t border-border px-3.5 pb-3.5 pt-3">
+              <div className="max-h-[42vh] overflow-y-auto text-[13px] leading-relaxed text-ink [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {item.last_message.text ? (
+                  <MessageMarkdown text={item.last_message.text} />
+                ) : (
+                  <p className="text-ink-3">{NO_TEXT}</p>
+                )}
+              </div>
+              <div className="mt-3">
+                <ComposerCard
+                  streaming={false}
+                  placeholder="Reply…"
+                  draftStorageKey={`feed:${item.id}`}
+                  onSend={reply}
+                />
+              </div>
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </motion.div>
   )
 }
