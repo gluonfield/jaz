@@ -1,18 +1,17 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"embed"
 	"fmt"
-	"sync"
+	"io/fs"
 
 	"github.com/pressly/goose/v3"
 )
 
 //go:embed migrations/*.sql
 var sqliteMigrations embed.FS
-
-var gooseMu sync.Mutex
 
 func (s *Store) migrate() error {
 	if err := runMigrations(s.db); err != nil {
@@ -23,14 +22,20 @@ func (s *Store) migrate() error {
 }
 
 func runMigrations(db *sql.DB) error {
-	gooseMu.Lock()
-	defer gooseMu.Unlock()
-	goose.SetBaseFS(sqliteMigrations)
-	defer goose.SetBaseFS(nil)
-	if err := goose.SetDialect("sqlite3"); err != nil {
-		return fmt.Errorf("set sqlite migration dialect: %w", err)
+	migrations, err := fs.Sub(sqliteMigrations, "migrations")
+	if err != nil {
+		return fmt.Errorf("load sqlite migrations: %w", err)
 	}
-	if err := goose.Up(db, "migrations"); err != nil {
+	provider, err := goose.NewProvider(
+		goose.DialectSQLite3,
+		db,
+		migrations,
+		goose.WithDisableGlobalRegistry(true),
+	)
+	if err != nil {
+		return fmt.Errorf("create sqlite migration provider: %w", err)
+	}
+	if _, err := provider.Up(context.Background()); err != nil {
 		return fmt.Errorf("run sqlite migrations: %w", err)
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_threads_source ON threads(source_type, source_id)`); err != nil {
