@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { ArrowDown } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { BottomDock } from '@/components/session/BottomDock'
 import { Composer, PlanDecisionCard } from '@/components/session/Composer'
 import { LiveAttachmentList } from '@/components/session/LiveAttachmentList'
@@ -16,6 +16,7 @@ import { SessionLivenessIndicator } from '@/components/session/SessionLivenessIn
 import { GoalStatusBar } from '@/components/session/GoalStatusBar'
 import { PendingSteerBubble } from '@/components/session/PendingSteerBubble'
 import { SidePanel, type SidePanelView } from '@/components/session/SidePanel'
+import { SidePanelResizeHandle } from '@/components/session/SidePanelResizeHandle'
 import { SidePanelControl, useSidePanelState } from '@/components/session/SidePanelState'
 import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
 import { ArtifactBlock } from '@/components/session/ArtifactBlock'
@@ -890,12 +891,22 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
           {/* Docked, never overlapping: the chat pane flexes and stays centered
               between the sidebar and this panel. */}
           <motion.div
-            className="h-full shrink-0 overflow-hidden max-sm:absolute max-sm:inset-y-0 max-sm:right-0 max-sm:z-shell max-sm:w-full!"
+            style={{ '--side-panel-width': `${sidePanel.width}px` } as CSSProperties}
+            className="relative h-full shrink-0 overflow-hidden max-sm:absolute max-sm:inset-y-0 max-sm:right-0 max-sm:z-shell max-sm:w-full!"
             initial={false}
             // The fixed backdrop above owns tap-to-dismiss.
             animate={drawerSlide({ isMobile, open: sidePanel.open, side: 'right', width: sidePanel.width })}
-            transition={{ type: 'spring', stiffness: 400, damping: 36 }}
+            transition={sidePanel.resizing ? { duration: 0 } : { type: 'spring', stiffness: 400, damping: 36 }}
           >
+            <SidePanelResizeHandle
+              width={sidePanel.width}
+              minWidth={sidePanel.defaultWidth}
+              maxWidth={sidePanel.maxWidth}
+              disabled={isMobile || !sidePanel.open}
+              onResizeStart={() => sidePanel.setResizing(true)}
+              onResize={sidePanel.resize}
+              onResizeEnd={() => sidePanel.setResizing(false)}
+            />
             <SidePanel
               session={session}
               progress={panelProgress}
