@@ -242,10 +242,10 @@ function FeedOverview({
   const from = reducedMotion ? 0 : (fitsRight ? -1 : 1) * 16
   return createPortal(
     <motion.div
-      style={{ position: 'fixed', top: rect.top + rect.height / 2, left }}
-      initial={{ opacity: 0, x: from, y: '-50%' }}
-      animate={{ opacity: 1, x: 0, y: '-50%' }}
-      exit={{ opacity: 0, x: from, y: '-50%' }}
+      style={{ position: 'fixed', top: rect.top, left }}
+      initial={{ opacity: 0, x: from }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: from }}
       transition={{ duration: 0.18, ease: 'easeOut' }}
       className="z-drawer"
     >
