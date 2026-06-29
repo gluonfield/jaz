@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { AlertTriangle, CheckCircle2, Database, HelpCircle, RefreshCcw, Search, Sparkles } from 'lucide-react'
+import { type ReactNode, useState } from 'react'
 import { MarkdownEditor } from '@/components/agent/MarkdownEditor'
 import { FileTabs } from './FileTabs'
 import { SettingsCard } from './SettingsCard'
@@ -25,19 +26,50 @@ import { keys } from '@/lib/query/keys'
 
 const HORIZON_DESCRIPTIONS: Record<string, string> = {
   'LONG_TERM.md':
-    'Who you are and where you are going: identity, goals, standing preferences. Rewritten by dream; agents receive it through memory context.',
+    'Stable facts agents should remember across sessions: identity, goals, preferences, relationships, and important project context.',
   'SHORT_TERM.md':
-    'What is true right now: current focus, active projects, open loops. Agents update it live; dream prunes stale entries.',
+    'What is true right now: current focus, active projects, blockers, and open loops.',
 }
 
-const TASK_LABELS: Record<string, string> = {
-  index_changed_pages: 'Index',
-  ingest_sources: 'Ingest sources',
-  daily_rollup: 'Daily page',
-  link_hygiene: 'Link hygiene',
-  dream: 'Dream',
-  optimize_index: 'Optimize index',
+const TASK_COPY: Record<string, { label: string; description: string }> = {
+  index_changed_pages: {
+    label: 'Keep search current',
+    description: 'Updates memory search after memory files change.',
+  },
+  ingest_sources: {
+    label: 'Capture new information',
+    description: 'Turns prepared notes into durable memory entries.',
+  },
+  daily_rollup: {
+    label: "Update today's note",
+    description: 'Keeps the daily memory note current for recent work.',
+  },
+  link_hygiene: {
+    label: 'Check memory links',
+    description: 'Finds memory links that point at missing or renamed pages.',
+  },
+  dream: {
+    label: 'Review long-term memory',
+    description: 'Consolidates durable facts from daily notes into long-term and short-term memory.',
+  },
+  optimize_index: {
+    label: 'Compact search data',
+    description: 'Keeps memory search fast after many updates.',
+  },
 }
+
+const QUEUE_COPY = {
+  projection: {
+    label: 'Prepare connected-account notes',
+    description: 'Converts raw updates from connected accounts into readable notes.',
+  },
+  memory: {
+    label: 'Add notes to memory',
+    description: 'Asks the selected memory agent to extract durable facts from prepared notes.',
+  },
+}
+
+type StatusTone = 'ok' | 'warn' | 'idle'
 
 function formatTime(value?: string): string {
   if (!value) return 'never'
@@ -77,19 +109,19 @@ export function MemorySettings() {
   const reindex = useMutation({
     mutationFn: reindexMemory,
     onSuccess: (report) => {
-      toast(`Indexed ${report.page_count} pages, ${report.chunk_count} chunks`)
+      toast(`Refreshed ${report.page_count} pages, ${report.chunk_count} search parts`)
       void queryClient.invalidateQueries({ queryKey: keys.memory })
     },
-    onError: (error: Error) => toast(`Index failed: ${error.message}`, 'danger'),
+    onError: (error: Error) => toast(`Search refresh failed: ${error.message}`, 'danger'),
   })
 
   const runDream = useMutation({
     mutationFn: dreamMemory,
     onSuccess: (result) => {
-      toast(result.dream.run_slug ? `Dream finished: ${result.dream.run_slug}` : 'Dream finished')
+      toast(result.dream.run_slug ? `Memory review finished: ${result.dream.run_slug}` : 'Memory review finished')
       void queryClient.invalidateQueries({ queryKey: keys.memory })
     },
-    onError: (error: Error) => toast(`Dream failed: ${error.message}`, 'danger'),
+    onError: (error: Error) => toast(`Memory review failed: ${error.message}`, 'danger'),
   })
 
   const saveHorizon = useMutation({
@@ -161,174 +193,272 @@ export function MemorySettings() {
   ]
   const memoryAgentValid =
     !selectedMemoryAgent || memoryAgents.includes(selectedMemoryAgent) || agentSettings.isPending
+  const summary = memoryStatusSummary(memory, selectedMemoryAgent, memoryAgentValid)
 
   return (
     <div className="flex flex-col gap-5 py-5">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-lg font-semibold text-ink">Memory</h1>
-          <p className="mt-0.5 max-w-[58ch] text-[13px] text-ink-2">
-            Markdown-first personal memory. When enabled, agents receive long-term and
-            short-term context, capture into daily pages, and dream consolidates periodically.
-          </p>
-        </div>
-        <div className="flex h-8 shrink-0 items-center gap-2">
-          <span className="text-[12px] text-ink-2">{enabled ? 'Enabled' : 'Disabled'}</span>
-          <Switch
-            checked={enabled}
-            disabled={toggle.isPending}
-            onChange={(next) => toggle.mutate(next)}
-            aria-label="Enable memory"
-          />
-        </div>
+      <header>
+        <h1 className="text-lg font-semibold text-ink">Memory</h1>
+        <p className="mt-0.5 max-w-[58ch] text-[13px] text-ink-2">
+          Saved context Jaz gives to agents so they remember stable facts, preferences,
+          current projects, and open loops across sessions.
+        </p>
       </header>
 
-      <div className={enabled ? 'flex flex-col gap-5' : 'pointer-events-none flex flex-col gap-5 opacity-50'}>
-        <SettingsCard>
-          <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <div className="flex items-baseline gap-3 text-[13px] text-ink">
-              <span className="font-medium tabular-nums">{memory.doctor.page_count} pages</span>
-              <span className="tabular-nums text-ink-2">{memory.doctor.chunk_count} chunks</span>
-              <span className="tabular-nums text-ink-2">{memory.doctor.link_count} links</span>
-              <span className="tabular-nums text-ink-2">{memory.doctor.typed_link_count} typed</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => reindex.mutate()}
-                disabled={reindex.isPending || runDream.isPending}
-              >
-                {reindex.isPending ? 'Indexing…' : 'Index now'}
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => runDream.mutate()}
-                disabled={reindex.isPending || runDream.isPending}
-              >
-                {runDream.isPending ? 'Dreaming…' : 'Run dream'}
-              </Button>
-            </div>
+      <SettingsCard className="overflow-hidden">
+        <MemorySettingsRow
+          title="Use memory"
+          description={
+            enabled
+              ? 'Agents receive saved memory and background upkeep can run.'
+              : 'Agents start without saved memory and background upkeep stays paused.'
+          }
+          explanation="This is the main switch. Turning it off stops memory from being added to agent prompts and disables automatic memory work."
+        >
+          <div className="flex h-8 items-center justify-start gap-2 md:justify-end">
+            <span className="text-[12px] text-ink-2">{enabled ? 'Enabled' : 'Disabled'}</span>
+            <Switch
+              checked={enabled}
+              disabled={toggle.isPending}
+              onChange={(next) => toggle.mutate(next)}
+              aria-label="Enable memory"
+            />
           </div>
-          {memory.source_queues ? (
-            <div className="grid grid-cols-1 divide-y divide-border border-b border-border md:grid-cols-2 md:divide-x md:divide-y-0">
-              <SourceQueueStatus
-                label="Source projection"
-                detail="Raw provider data → materialized source files."
-                queue={memory.source_queues.projection}
-              />
-              <SourceQueueStatus
-                label="Memory capture"
-                detail="Source files waiting to be captured into memory."
-                queue={memory.source_queues.memory}
-              />
-            </div>
-          ) : null}
-          <ul className="divide-y divide-border">
-            {memory.tasks.map((task: MemoryTask) => (
-              <li key={task.name} className="flex items-center justify-between gap-3 px-4 py-2">
-                <div className="min-w-0">
-                  <span className="text-[13px] text-ink">{TASK_LABELS[task.name] ?? task.name}</span>
-                  {task.error ? (
-                    <p className="truncate text-[12px] text-danger" title={task.error}>
-                      {task.error}
-                    </p>
-                  ) : null}
-                </div>
-                <div className="flex shrink-0 items-center gap-3 text-[12px] text-ink-2">
-                  <span
-                    className={
-                      task.status === 'error' ? 'font-medium text-danger' : task.status ? '' : 'text-ink-3'
-                    }
-                  >
-                    {task.status ? `${task.status} ${formatTime(task.last_run_at)}` : 'never ran'}
-                  </span>
-                  <span className="text-ink-3">next {formatTime(task.next_due)}</span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </SettingsCard>
+        </MemorySettingsRow>
 
-        <SettingsCard className="px-4 py-3">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_260px] md:items-center">
-            <div className="min-w-0">
-              <span className="text-[13px] font-medium text-ink">Memory agent</span>
-              <p className="mt-0.5 text-[12px] text-ink-2">
-                Coding agent used by memory_search and dream.
-              </p>
-              {!memoryAgentValid ? (
-                <p className="mt-1 text-[12px] text-danger">
-                  {agentLabel(selectedMemoryAgent)} is no longer enabled.
-                </p>
-              ) : null}
-            </div>
+        <MemorySettingsRow
+          title="Memory agent"
+          description={
+            selectedMemoryAgent
+              ? `${agentLabel(selectedMemoryAgent)} handles memory search and background review.`
+              : 'Choose which coding agent should read and organize memory.'
+          }
+          explanation="This agent answers memory-search requests and does background memory review. It should be an enabled ACP agent you trust with your saved context."
+          disabled={!enabled}
+        >
+          <div className="grid gap-1">
             <Select
               value={selectedMemoryAgent}
               options={memoryAgentOptions}
-              disabled={setMemoryAgent.isPending || agentSettings.isPending}
+              disabled={!enabled || setMemoryAgent.isPending || agentSettings.isPending}
               onChange={(agent) => setMemoryAgent.mutate(agent)}
               aria-label="Memory agent"
+              className="w-full md:w-[260px]"
             />
+            {!memoryAgentValid ? (
+              <p className="text-[12px] text-danger">{agentLabel(selectedMemoryAgent)} is no longer enabled.</p>
+            ) : null}
           </div>
-        </SettingsCard>
+        </MemorySettingsRow>
+      </SettingsCard>
 
-        {active ? (
-          <section className="flex flex-col">
-            <div className="flex items-end justify-between gap-4 border-b border-border">
-              <FileTabs
-                underlineId="memory-horizon-tab-underline"
-                active={active.name}
-                onSelect={setActiveHorizon}
-                tabs={horizons.map((horizon) => {
-                  const draft = drafts[horizon.name]
-                  return {
-                    name: horizon.name,
-                    dirty: draft !== undefined && draft !== horizon.content,
-                  }
-                })}
-              />
-              <HorizonSaveControls
-                horizon={active}
-                draft={drafts[active.name]}
-                pending={saveHorizon.isPending}
-                onSave={(content) => saveHorizon.mutate({ name: active.name, content })}
-              />
-            </div>
-            <p className="pb-2 text-[12px] text-ink-2">{HORIZON_DESCRIPTIONS[active.name]}</p>
-            <SettingsCard className="h-64 overflow-hidden">
-              <MarkdownEditor
-                key={active.name}
-                initialValue={drafts[active.name] ?? active.content}
-                placeholder={HORIZON_DESCRIPTIONS[active.name] ?? 'Write markdown here.'}
-                onChange={(doc) => setDrafts((prev) => ({ ...prev, [active.name]: doc }))}
-                onSave={() => {
-                  if (saveHorizon.isPending) return
-                  saveHorizon.mutate({ name: active.name, content: drafts[active.name] ?? active.content })
-                }}
-              />
+      {enabled ? (
+        <div className="flex flex-col gap-5">
+          <section>
+            <SectionHeader
+              title="Status"
+              description="Use this to tell whether memory is ready, empty, busy, or needs attention."
+            />
+            <SettingsCard className="mt-3 overflow-hidden">
+              <div className="flex flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <StatusIcon tone={summary.tone} />
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-[13px] font-medium text-ink">{summary.label}</p>
+                      <StatusPill tone={summary.tone}>{summary.badge}</StatusPill>
+                    </div>
+                    <p className="mt-0.5 text-[12px] text-ink-2">{summary.detail}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-right text-[12px] md:min-w-[280px]">
+                  <MiniStat icon={<Database size={13} />} value={memory.doctor.page_count} label="notes" />
+                  <MiniStat icon={<Search size={13} />} value={memory.doctor.chunk_count} label="search parts" />
+                  <MiniStat icon={<AlertTriangle size={13} />} value={memory.doctor.unresolved_count} label="broken links" />
+                </div>
+              </div>
             </SettingsCard>
           </section>
-        ) : null}
 
-        {memory.mcp_url ? (
-          <SettingsCard className="px-4 py-3">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <span className="text-[13px] font-medium text-ink">MCP endpoint</span>
-                <p className="text-[12px] text-ink-2">
-                  Served to ACP agents (codex, claude) automatically while memory is enabled.
-                </p>
+          <section>
+            <SectionHeader
+              title="Background upkeep"
+              description="Usually you should not need to touch this. It is here so problems are legible."
+            />
+            <SettingsCard className="mt-3 overflow-hidden">
+              {memory.source_queues ? (
+                <div className="grid grid-cols-1 divide-y divide-border border-b border-border md:grid-cols-2 md:divide-x md:divide-y-0">
+                  <SourceQueueStatus
+                    label={QUEUE_COPY.projection.label}
+                    detail={QUEUE_COPY.projection.description}
+                    queue={memory.source_queues.projection}
+                  />
+                  <SourceQueueStatus
+                    label={QUEUE_COPY.memory.label}
+                    detail={QUEUE_COPY.memory.description}
+                    queue={memory.source_queues.memory}
+                  />
+                </div>
+              ) : null}
+              <ul className="divide-y divide-border">
+                {memory.tasks.map((task: MemoryTask) => (
+                  <MemoryTaskRow key={task.name} task={task} />
+                ))}
+              </ul>
+            </SettingsCard>
+          </section>
+
+          <section>
+            <SectionHeader
+              title="Manual actions"
+              description="Use these only when memory search looks stale or you want an immediate review."
+            />
+            <SettingsCard className="mt-3 overflow-hidden">
+              <MaintenanceAction
+                title="Refresh memory search"
+                description="Rebuild the search data from the memory files on disk."
+                explanation="Use this if you edited memory files outside Jaz or memory search returns stale results. Normal edits refresh automatically."
+              >
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => reindex.mutate()}
+                  disabled={reindex.isPending || runDream.isPending}
+                >
+                  <RefreshCcw size={13} />
+                  {reindex.isPending ? 'Refreshing...' : 'Refresh search'}
+                </Button>
+              </MaintenanceAction>
+              <MaintenanceAction
+                title="Review memory now"
+                description="Ask the selected agent to consolidate recent notes into stable memory."
+                explanation="This runs the same review that normally happens in the background. It can use tokens because it asks an agent to read recent memory notes."
+              >
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => runDream.mutate()}
+                  disabled={reindex.isPending || runDream.isPending || !selectedMemoryAgent}
+                >
+                  <Sparkles size={13} />
+                  {runDream.isPending ? 'Reviewing...' : 'Review now'}
+                </Button>
+              </MaintenanceAction>
+            </SettingsCard>
+          </section>
+
+          {active ? (
+            <section className="flex flex-col">
+              <SectionHeader
+                title="Memory files"
+                description="These are the editable notes agents read. Changes affect future sessions."
+              />
+              <div className="mt-3 flex items-end justify-between gap-4 border-b border-border">
+                <FileTabs
+                  underlineId="memory-horizon-tab-underline"
+                  active={active.name}
+                  onSelect={setActiveHorizon}
+                  tabs={horizons.map((horizon) => {
+                    const draft = drafts[horizon.name]
+                    return {
+                      name: horizon.name,
+                      dirty: draft !== undefined && draft !== horizon.content,
+                    }
+                  })}
+                />
+                <HorizonSaveControls
+                  horizon={active}
+                  draft={drafts[active.name]}
+                  pending={saveHorizon.isPending}
+                  onSave={(content) => saveHorizon.mutate({ name: active.name, content })}
+                />
               </div>
-              <code className="shrink-0 rounded bg-surface-2 px-2 py-1 font-mono text-[12px] text-ink-2">
-                {memory.mcp_url}
-              </code>
-            </div>
-          </SettingsCard>
-        ) : null}
-      </div>
+              <p className="pb-2 text-[12px] text-ink-2">{HORIZON_DESCRIPTIONS[active.name]}</p>
+              <SettingsCard className="h-64 overflow-hidden">
+                <MarkdownEditor
+                  key={active.name}
+                  initialValue={drafts[active.name] ?? active.content}
+                  placeholder={HORIZON_DESCRIPTIONS[active.name] ?? 'Write markdown here.'}
+                  onChange={(doc) => setDrafts((prev) => ({ ...prev, [active.name]: doc }))}
+                  onSave={() => {
+                    if (saveHorizon.isPending) return
+                    saveHorizon.mutate({ name: active.name, content: drafts[active.name] ?? active.content })
+                  }}
+                />
+              </SettingsCard>
+            </section>
+          ) : null}
+        </div>
+      ) : (
+        <SettingsCard className="px-4 py-4">
+          <p className="text-[13px] font-medium text-ink">Memory is off</p>
+          <p className="mt-0.5 max-w-[62ch] text-[12px] text-ink-2">
+            Agents will not receive saved memory, and Jaz will not run background memory search or
+            review work until you turn it back on.
+          </p>
+        </SettingsCard>
+      )}
     </div>
+  )
+}
+
+function MemorySettingsRow({
+  title,
+  description,
+  explanation,
+  disabled,
+  children,
+}: {
+  title: string
+  description: string
+  explanation: string
+  disabled?: boolean
+  children: ReactNode
+}) {
+  return (
+    <div
+      className={`grid grid-cols-1 gap-2 border-t border-border/70 px-4 py-3 first:border-t-0 md:grid-cols-[minmax(0,1fr)_minmax(220px,320px)] md:items-center ${
+        disabled ? 'opacity-50' : ''
+      }`}
+    >
+      <div className="min-w-0">
+        <div className="flex items-center gap-1.5">
+          <p className="text-[13px] font-medium text-ink">{title}</p>
+          <HelpTooltip text={explanation} />
+        </div>
+        <p className="mt-0.5 text-[12px] text-ink-3">{description}</p>
+      </div>
+      <div className="min-w-0 md:justify-self-end">{children}</div>
+    </div>
+  )
+}
+
+function SectionHeader({ title, description }: { title: string; description: string }) {
+  return (
+    <div>
+      <p className="text-sm font-medium text-ink">{title}</p>
+      <p className="mt-0.5 text-[13px] text-ink-2">{description}</p>
+    </div>
+  )
+}
+
+function HelpTooltip({ text }: { text: string }) {
+  return (
+    <span className="group relative inline-flex">
+      <button
+        type="button"
+        className="-m-2.5 grid size-10 place-items-center rounded-full text-ink-3 outline-none transition-colors duration-150 hover:text-ink focus-visible:text-ink"
+      >
+        <HelpCircle size={13} aria-hidden />
+        <span className="sr-only">{text}</span>
+      </button>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute bottom-full left-1/2 z-tooltip mb-1.5 hidden w-[260px] -translate-x-1/2 rounded-[8px] bg-ink px-3 py-2 text-left text-[12px] leading-relaxed text-bg shadow-[0_8px_30px_rgba(0,0,0,0.22)] group-hover:block group-focus-within:block"
+      >
+        {text}
+      </span>
+    </span>
   )
 }
 
@@ -342,32 +472,20 @@ function SourceQueueStatus({
   queue: MemoryQueueStatus
 }) {
   const active = queue.pending > 0 || queue.processing > 0
+  const status = queue.error ? 'Needs attention' : active ? queueActivity(queue) : 'Idle'
   return (
     <div className="min-w-0 px-4 py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <span className="block text-[12px] font-medium text-ink">{label}</span>
-          <span className="mt-0.5 block truncate text-[11px] text-ink-3">{detail}</span>
+          <span className="flex items-center gap-1.5 text-[12px] font-medium text-ink">
+            {label}
+            <HelpTooltip text={detail} />
+          </span>
+          <span className="mt-0.5 block text-[11px] text-ink-3">
+            {active ? queueActivity(queue) : 'Nothing is waiting right now.'}
+          </span>
         </div>
-        <span
-          className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
-            queue.error
-              ? 'bg-danger-soft text-danger'
-              : active
-                ? 'bg-primary-soft text-primary-strong'
-                : 'bg-surface-2 text-ink-3'
-          }`}
-        >
-          {queue.error ? 'Error' : active ? 'Active' : 'Idle'}
-        </span>
-      </div>
-      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-ink-2">
-        <span>
-          <span className="font-mono tabular-nums text-ink">{queue.pending}</span> pending
-        </span>
-        <span>
-          <span className="font-mono tabular-nums text-ink">{queue.processing}</span> processing
-        </span>
+        <StatusPill tone={queue.error ? 'warn' : active ? 'ok' : 'idle'}>{status}</StatusPill>
       </div>
       {queue.error ? (
         <p className="mt-1 truncate text-[11px] text-danger" title={queue.error}>
@@ -376,6 +494,163 @@ function SourceQueueStatus({
       ) : null}
     </div>
   )
+}
+
+function MemoryTaskRow({ task }: { task: MemoryTask }) {
+  const copy = TASK_COPY[task.name] ?? {
+    label: task.name,
+    description: 'Background memory upkeep task.',
+  }
+  const error = task.status === 'error' || Boolean(task.error)
+  return (
+    <li className="flex items-center justify-between gap-3 px-4 py-2.5">
+      <div className="min-w-0">
+        <span className="flex items-center gap-1.5 text-[13px] text-ink">
+          {copy.label}
+          <HelpTooltip text={copy.description} />
+        </span>
+        {task.error ? (
+          <p className="truncate text-[12px] text-danger" title={task.error}>
+            {task.error}
+          </p>
+        ) : null}
+      </div>
+      <div className="flex shrink-0 items-center gap-3 text-[12px] text-ink-2">
+        <span className={error ? 'font-medium text-danger' : task.last_run_at ? '' : 'text-ink-3'}>
+          {error ? 'Needs attention' : task.last_run_at ? `Last ran ${formatTime(task.last_run_at)}` : 'Not run yet'}
+        </span>
+        {task.next_due ? <span className="text-ink-3">Next {formatTime(task.next_due)}</span> : null}
+      </div>
+    </li>
+  )
+}
+
+function MaintenanceAction({
+  title,
+  description,
+  explanation,
+  children,
+}: {
+  title: string
+  description: string
+  explanation: string
+  children: ReactNode
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-2 border-t border-border/70 px-4 py-3 first:border-t-0 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+      <div className="min-w-0">
+        <span className="flex items-center gap-1.5 text-[13px] font-medium text-ink">
+          {title}
+          <HelpTooltip text={explanation} />
+        </span>
+        <p className="mt-0.5 text-[12px] text-ink-3">{description}</p>
+      </div>
+      <div className="md:justify-self-end">{children}</div>
+    </div>
+  )
+}
+
+function MiniStat({ icon, value, label }: { icon: ReactNode; value: number; label: string }) {
+  return (
+    <div className="min-w-0 rounded-[8px] bg-surface-2 px-2 py-1.5">
+      <div className="flex items-center justify-end gap-1 text-ink">
+        <span className="text-ink-3">{icon}</span>
+        <span className="font-mono tabular-nums">{value}</span>
+      </div>
+      <p className="truncate text-[11px] text-ink-3">{label}</p>
+    </div>
+  )
+}
+
+function StatusIcon({ tone }: { tone: StatusTone }) {
+  const className =
+    tone === 'warn'
+      ? 'bg-danger-soft text-danger'
+      : tone === 'ok'
+        ? 'bg-primary-soft text-primary-strong'
+        : 'bg-surface-2 text-ink-3'
+  return (
+    <span className={`grid size-8 shrink-0 place-items-center rounded-full ${className}`}>
+      {tone === 'warn' ? <AlertTriangle size={15} /> : tone === 'ok' ? <CheckCircle2 size={15} /> : <Database size={15} />}
+    </span>
+  )
+}
+
+function StatusPill({ tone, children }: { tone: StatusTone; children: ReactNode }) {
+  const className =
+    tone === 'warn'
+      ? 'bg-danger-soft text-danger'
+      : tone === 'ok'
+        ? 'bg-primary-soft text-primary-strong'
+        : 'bg-surface-2 text-ink-3'
+  return <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${className}`}>{children}</span>
+}
+
+function memoryStatusSummary(
+  memory: MemoryStatus,
+  selectedMemoryAgent: string,
+  memoryAgentValid: boolean,
+): { label: string; badge: string; detail: string; tone: StatusTone } {
+  if (!selectedMemoryAgent) {
+    return {
+      label: 'Choose a memory agent',
+      badge: 'Needs agent',
+      detail: 'Memory is on, but search answers and background review need an agent.',
+      tone: 'warn',
+    }
+  }
+  if (!memoryAgentValid) {
+    return {
+      label: 'Memory agent is unavailable',
+      badge: 'Needs agent',
+      detail: 'Pick an enabled agent before relying on memory search or review.',
+      tone: 'warn',
+    }
+  }
+  if (!memory.scheduler_running) {
+    return {
+      label: 'Background upkeep is paused',
+      badge: 'Paused',
+      detail: 'Agents can still read memory, but automatic upkeep is not running.',
+      tone: 'warn',
+    }
+  }
+  if (memoryHasErrors(memory)) {
+    return {
+      label: 'Memory needs attention',
+      badge: 'Issue',
+      detail: 'At least one background job reported an error. The row below shows which one.',
+      tone: 'warn',
+    }
+  }
+  if (memory.doctor.page_count === 0) {
+    return {
+      label: 'No saved memory yet',
+      badge: 'Empty',
+      detail: 'Nothing is wrong if this is a fresh setup. Memory will fill as agents capture durable facts.',
+      tone: 'idle',
+    }
+  }
+  return {
+    label: 'Memory is ready',
+    badge: 'Ready',
+    detail: 'Agents can use saved context, and background upkeep is running.',
+    tone: 'ok',
+  }
+}
+
+function memoryHasErrors(memory: MemoryStatus): boolean {
+  return (
+    memory.tasks.some((task) => task.status === 'error' || Boolean(task.error)) ||
+    Boolean(memory.source_queues?.projection.error || memory.source_queues?.memory.error)
+  )
+}
+
+function queueActivity(queue: MemoryQueueStatus): string {
+  const parts = []
+  if (queue.pending > 0) parts.push(`${queue.pending} waiting`)
+  if (queue.processing > 0) parts.push(`${queue.processing} running`)
+  return parts.join(', ') || 'Idle'
 }
 
 function HorizonSaveControls({
@@ -396,7 +671,7 @@ function HorizonSaveControls({
       <span className="text-[12px] text-ink-3">{value.length} chars</span>
       {dirty || pending ? (
         <Button variant="primary" size="sm" onClick={() => onSave(value)} disabled={pending}>
-          {pending ? 'Saving…' : 'Save'}
+          {pending ? 'Saving...' : 'Save'}
         </Button>
       ) : null}
     </div>
