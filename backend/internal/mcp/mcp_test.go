@@ -73,6 +73,11 @@ func TestManagerRefreshMapsAndExecutesRemoteTools(t *testing.T) {
 	if !strings.HasPrefix(name, "mcp_Remote_Test_echo") {
 		t.Fatalf("tool name = %q", name)
 	}
+	if len(status.Tools) != 1 || status.Tools[0].Name != name ||
+		status.Tools[0].RemoteName != "echo" ||
+		!strings.Contains(status.Tools[0].Description, "echoes a value") {
+		t.Fatalf("status tools = %#v, mapped name = %q", status.Tools, name)
+	}
 	tool, ok := registry.Get(name)
 	if !ok {
 		t.Fatalf("tool %q not registered", name)

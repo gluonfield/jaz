@@ -899,9 +899,16 @@ export interface MCPServer {
   oauth?: MCPOAuthConfig
   status: 'connected' | 'disabled' | 'error' | 'needs_auth' | 'unknown'
   tool_count: number
+  tools?: MCPTool[]
   error?: string
   created_at: string
   updated_at: string
+}
+
+export interface MCPTool {
+  name: string
+  remote_name?: string
+  description?: string
 }
 
 export interface MCPServerInput {
@@ -917,6 +924,7 @@ export interface MCPServerInput {
 export interface MCPServerStatus {
   status: 'connected' | 'disabled' | 'error' | 'needs_auth' | 'unknown'
   tool_count: number
+  tools?: MCPTool[]
   error?: string
   checked_at?: string
 }

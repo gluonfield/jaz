@@ -235,8 +235,8 @@ func (m *Manager) refreshServerList(ctx context.Context, seq uint64, servers []m
 	var allTools []tools.Tool
 	usedNames := map[string]string{}
 	for _, result := range results {
-		statuses[result.server.ID] = result.status
 		if result.session == nil {
+			statuses[result.server.ID] = result.status
 			continue
 		}
 		next[result.server.ID] = result.session
@@ -247,6 +247,7 @@ func (m *Manager) refreshServerList(ctx context.Context, seq uint64, servers []m
 			result.session.tools[i] = rt
 			allTools = append(allTools, rt)
 		}
+		statuses[result.server.ID] = statusWithTools(result.status, result.session.tools)
 	}
 
 	m.mu.Lock()
@@ -436,7 +437,7 @@ func (m *Manager) Authorize(ctx context.Context, server mcpconfig.Server) mcpcon
 	if status := m.Status(server.ID); status.Status != "" {
 		return status
 	}
-	return mcpconfig.ServerStatus{Status: "connected", ToolCount: len(ss.tools), CheckedAt: time.Now().UTC()}
+	return connectedStatus(ss.tools)
 }
 
 // asOAuthHandler converts a possibly-nil *oauthHandler to the interface without
@@ -453,15 +454,44 @@ func (m *Manager) connectForStatus(ctx context.Context, server mcpconfig.Server,
 	if err != nil {
 		return connectResult{status: connectErrorStatus(handler, err)}, err
 	}
-	if status, ok := oauthGateStatus(ctx, server, handler, len(ss.tools)); ok {
+	if status, ok := oauthGateStatus(ctx, server, handler, ss.tools); ok {
 		closeSession(ss)
 		return connectResult{status: status}, nil
 	}
-	return connectResult{session: ss, status: connectedStatus(len(ss.tools))}, nil
+	return connectResult{session: ss, status: connectedStatus(ss.tools)}, nil
 }
 
-func connectedStatus(toolCount int) mcpconfig.ServerStatus {
-	return mcpconfig.ServerStatus{Status: "connected", ToolCount: toolCount, CheckedAt: time.Now().UTC()}
+func connectedStatus(items []remoteTool) mcpconfig.ServerStatus {
+	return statusWithTools(mcpconfig.ServerStatus{Status: "connected", CheckedAt: time.Now().UTC()}, items)
+}
+
+func statusWithTools(status mcpconfig.ServerStatus, items []remoteTool) mcpconfig.ServerStatus {
+	status.ToolCount = len(items)
+	status.Tools = serverToolViews(items)
+	return status
+}
+
+func serverToolViews(items []remoteTool) []mcpconfig.ServerTool {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]mcpconfig.ServerTool, 0, len(items))
+	for _, item := range items {
+		name := tools.DefinitionName(item.definition)
+		if name == "" {
+			name = item.remoteName
+		}
+		remoteName := item.remoteName
+		if remoteName == name {
+			remoteName = ""
+		}
+		out = append(out, mcpconfig.ServerTool{
+			Name:        name,
+			RemoteName:  remoteName,
+			Description: item.description,
+		})
+	}
+	return out
 }
 
 func connectErrorStatus(handler *oauthHandler, err error) mcpconfig.ServerStatus {
@@ -471,7 +501,7 @@ func connectErrorStatus(handler *oauthHandler, err error) mcpconfig.ServerStatus
 	return mcpconfig.ServerStatus{Status: "error", Error: err.Error(), CheckedAt: time.Now().UTC()}
 }
 
-func oauthGateStatus(ctx context.Context, server mcpconfig.Server, handler *oauthHandler, toolCount int) (mcpconfig.ServerStatus, bool) {
+func oauthGateStatus(ctx context.Context, server mcpconfig.Server, handler *oauthHandler, items []remoteTool) (mcpconfig.ServerStatus, bool) {
 	if strings.TrimSpace(server.OAuth.ClientID) == "" && strings.TrimSpace(server.OAuth.Issuer) == "" {
 		return mcpconfig.ServerStatus{}, false
 	}
@@ -483,7 +513,7 @@ func oauthGateStatus(ctx context.Context, server mcpconfig.Server, handler *oaut
 		return mcpconfig.ServerStatus{Status: "error", Error: err.Error(), CheckedAt: time.Now().UTC()}, true
 	}
 	if src == nil {
-		return mcpconfig.ServerStatus{Status: "needs_auth", Error: "Sign in required", ToolCount: toolCount, CheckedAt: time.Now().UTC()}, true
+		return statusWithTools(mcpconfig.ServerStatus{Status: "needs_auth", Error: "Sign in required", CheckedAt: time.Now().UTC()}, items), true
 	}
 	return mcpconfig.ServerStatus{}, false
 }

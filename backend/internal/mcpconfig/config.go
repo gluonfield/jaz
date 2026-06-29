@@ -58,11 +58,18 @@ type ServerInput struct {
 	OAuth             OAuthConfig `json:"oauth,omitempty"`
 }
 
+type ServerTool struct {
+	Name        string `json:"name"`
+	RemoteName  string `json:"remote_name,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
 type ServerStatus struct {
-	Status    string    `json:"status"`
-	ToolCount int       `json:"tool_count"`
-	Error     string    `json:"error,omitempty"`
-	CheckedAt time.Time `json:"checked_at,omitempty"`
+	Status    string       `json:"status"`
+	ToolCount int          `json:"tool_count"`
+	Tools     []ServerTool `json:"tools,omitempty"`
+	Error     string       `json:"error,omitempty"`
+	CheckedAt time.Time    `json:"checked_at,omitempty"`
 }
 
 type ServerReader interface {

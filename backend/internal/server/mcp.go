@@ -36,20 +36,21 @@ type mcpServerInput struct {
 }
 
 type mcpServerView struct {
-	ID                string                `json:"id"`
-	Name              string                `json:"name"`
-	Transport         string                `json:"transport"`
-	URL               string                `json:"url"`
-	Enabled           bool                  `json:"enabled"`
-	BearerTokenEnvVar string                `json:"bearer_token_env_var,omitempty"`
-	Headers           []mcpconfig.Header    `json:"headers,omitempty"`
-	EnvHeaders        []mcpconfig.EnvHeader `json:"env_headers,omitempty"`
-	OAuth             mcpconfig.OAuthConfig `json:"oauth,omitempty"`
-	Status            string                `json:"status"`
-	ToolCount         int                   `json:"tool_count"`
-	Error             string                `json:"error,omitempty"`
-	CreatedAt         time.Time             `json:"created_at"`
-	UpdatedAt         time.Time             `json:"updated_at"`
+	ID                string                 `json:"id"`
+	Name              string                 `json:"name"`
+	Transport         string                 `json:"transport"`
+	URL               string                 `json:"url"`
+	Enabled           bool                   `json:"enabled"`
+	BearerTokenEnvVar string                 `json:"bearer_token_env_var,omitempty"`
+	Headers           []mcpconfig.Header     `json:"headers,omitempty"`
+	EnvHeaders        []mcpconfig.EnvHeader  `json:"env_headers,omitempty"`
+	OAuth             mcpconfig.OAuthConfig  `json:"oauth,omitempty"`
+	Status            string                 `json:"status"`
+	ToolCount         int                    `json:"tool_count"`
+	Tools             []mcpconfig.ServerTool `json:"tools,omitempty"`
+	Error             string                 `json:"error,omitempty"`
+	CreatedAt         time.Time              `json:"created_at"`
+	UpdatedAt         time.Time              `json:"updated_at"`
 }
 
 func (s *Server) handleListMCPServers(w http.ResponseWriter, r *http.Request) {
@@ -280,6 +281,7 @@ func (s *Server) mcpServerView(server mcpconfig.Server) mcpServerView {
 		OAuth:             server.OAuth,
 		Status:            status.Status,
 		ToolCount:         status.ToolCount,
+		Tools:             status.Tools,
 		Error:             status.Error,
 		CreatedAt:         server.CreatedAt,
 		UpdatedAt:         server.UpdatedAt,

@@ -39,6 +39,8 @@ import type {
   MCPServerInput,
 } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
+import { mcpStatusText, mcpToolCountLabel } from './MCPSettingsFormatting'
+import { MCPToolsModal } from './MCPToolsModal'
 
 type Draft = MCPServerInput & { id?: string }
 
@@ -72,6 +74,7 @@ export function MCPSettings() {
   const toast = useToast()
   const servers = useQuery(mcpServersQuery)
   const [draft, setDraft] = useState<Draft | null>(null)
+  const [toolsServerID, setToolsServerID] = useState<string | null>(null)
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: keys.mcpServers })
   const save = useMutation({
@@ -99,7 +102,7 @@ export function MCPSettings() {
     mutationFn: testMCPServer,
     onSuccess: (status) => {
       if (status.status === 'connected') {
-        toast(`Connected, ${status.tool_count} tool${status.tool_count === 1 ? '' : 's'}`)
+        toast(`Connected, ${mcpToolCountLabel(status.tool_count)}`)
       } else {
         toast(status.error ? `Connection failed: ${status.error}` : 'Connection failed', 'danger')
       }
@@ -111,7 +114,7 @@ export function MCPSettings() {
     mutationFn: authorizeMCPServer,
     onSuccess: (status) => {
       if (status.status === 'connected') {
-        toast(`Connected, ${status.tool_count} tool${status.tool_count === 1 ? '' : 's'}`)
+        toast(`Connected, ${mcpToolCountLabel(status.tool_count)}`)
       } else {
         toast(status.error ? `Sign-in failed: ${status.error}` : 'Sign-in failed', 'danger')
       }
@@ -137,6 +140,7 @@ export function MCPSettings() {
     () => [...(servers.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
     [servers.data],
   )
+  const toolsServer = sortedServers.find((server) => server.id === toolsServerID) ?? null
 
   const busy = toggle.isPending || remove.isPending || test.isPending || authorize.isPending
   const isEdit = Boolean(draft?.id)
@@ -177,6 +181,7 @@ export function MCPSettings() {
                 busy={busy}
                 authorizing={authorize.isPending && authorize.variables === server.id}
                 onEdit={() => openEdit(server)}
+                onTools={() => setToolsServerID(server.id)}
                 onToggle={() => toggle.mutate({ id: server.id, enabled: !server.enabled })}
                 onDelete={() => {
                   if (window.confirm(`Delete ${server.name}?`)) remove.mutate(server.id)
@@ -222,6 +227,8 @@ export function MCPSettings() {
       >
         {draft ? <MCPServerForm draft={draft} onChange={setDraft} /> : null}
       </Modal>
+
+      <MCPToolsModal server={toolsServer} onClose={() => setToolsServerID(null)} />
     </section>
   )
 }
@@ -235,6 +242,7 @@ function MCPServerRow({
   onDelete,
   onTest,
   onAuthorize,
+  onTools,
 }: {
   server: MCPServer
   busy: boolean
@@ -244,10 +252,12 @@ function MCPServerRow({
   onDelete: () => void
   onTest: () => void
   onAuthorize: () => void
+  onTools: () => void
 }) {
   const needsAuth = server.status === 'needs_auth'
   const oauthConfigured = Boolean(server.oauth?.client_id || server.oauth?.issuer)
   const canAuthorize = needsAuth || (oauthConfigured && server.status !== 'connected')
+  const showTools = server.status === 'connected' || server.tool_count > 0
   return (
     <div className="flex items-center gap-3 rounded-card px-3 py-2 text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface">
       <StatusIcon server={server} authorizing={authorizing} />
@@ -262,9 +272,23 @@ function MCPServerRow({
           {server.url}
         </p>
       </div>
-      <span className="hidden shrink-0 text-[12px] text-ink-3 sm:inline">
-        {authorizing ? 'Waiting for sign-in…' : statusText(server)}
-      </span>
+      <div className="hidden shrink-0 sm:block">
+        {showTools && !authorizing ? (
+          <button
+            type="button"
+            className="flex h-7 cursor-pointer items-center rounded-full px-2 text-[12px] text-ink-3 transition-[background-color,color,transform] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96]"
+            aria-label={`Show ${server.name} tools`}
+            title="Show tools"
+            onClick={onTools}
+          >
+            {mcpToolCountLabel(server.tool_count)}
+          </button>
+        ) : (
+          <span className="text-[12px] text-ink-3">
+            {authorizing ? 'Waiting for sign-in…' : mcpStatusText(server)}
+          </span>
+        )}
+      </div>
       {canAuthorize ? (
         <Button
           variant="secondary"
@@ -330,16 +354,6 @@ function StatusIcon({ server, authorizing }: { server: MCPServer; authorizing: b
   if (server.status === 'needs_auth') return <KeyRound size={14} className="text-accent" />
   if (server.status === 'error') return <CircleAlert size={15} className="text-danger" />
   return <span className="size-2 rounded-full bg-running" />
-}
-
-function statusText(server: MCPServer): string {
-  if (!server.enabled) return 'Disabled'
-  if (server.status === 'connected') {
-    return `${server.tool_count} tool${server.tool_count === 1 ? '' : 's'}`
-  }
-  if (server.status === 'needs_auth') return 'Sign in required'
-  if (server.status === 'error') return server.error || 'Connection error'
-  return 'Not checked'
 }
 
 function MCPServerForm({
