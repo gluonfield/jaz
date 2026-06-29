@@ -193,7 +193,7 @@ func mergeACPTextEvent(prev Event, prevLastSeq int64, event Event) (Event, bool)
 	if !event.At.IsZero() {
 		merged.At = event.At
 	}
-	if event.Type == "acp_message" {
+	if event.Type == TypeACPMessage {
 		merged.Content += event.Content
 	}
 	if prev.ACP != nil {
@@ -207,7 +207,7 @@ func mergeACPTextEvent(prev Event, prevLastSeq int64, event Event) (Event, bool)
 		if event.ACP.Error != "" {
 			acp.Error = event.ACP.Error
 		}
-		if event.Type == "acp_thought" {
+		if event.Type == TypeACPThought {
 			acp.Thought += event.ACP.Thought
 		}
 		merged.ACP = &acp
@@ -222,7 +222,7 @@ func canMergeACPTextEvent(prev Event, prevLastSeq int64, event Event) bool {
 	if prev.Type != event.Type {
 		return false
 	}
-	if event.Type != "acp_message" && event.Type != "acp_thought" {
+	if event.Type != TypeACPMessage && event.Type != TypeACPThought {
 		return false
 	}
 	if prev.ACP.ID != event.ACP.ID {

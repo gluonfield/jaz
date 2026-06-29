@@ -1,11 +1,11 @@
 package feed
 
 import (
+	"strings"
+
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/threads"
 )
-
-const maxToolChars = 280
 
 type Service struct {
 	store storage.FeedStore
@@ -32,21 +32,17 @@ func (s Service) Feed() ([]Item, error) {
 	items := make([]Item, 0, len(entries))
 	for _, entry := range entries {
 		items = append(items, Item{
-			ID:          entry.ID,
-			Slug:        entry.Slug,
-			Title:       entry.Title,
-			ParentID:    entry.ParentID,
-			Status:      entry.Status,
-			LastMessage: lastMessage(entry.LastMessage),
+			ID:       entry.ID,
+			Slug:     entry.Slug,
+			Title:    entry.Title,
+			ParentID: entry.ParentID,
+			Status:   entry.Status,
+			LastMessage: threads.TranscriptMessage{
+				Role:      "assistant",
+				Text:      strings.TrimSpace(entry.ReplyText),
+				CreatedAt: entry.ReplyAt,
+			},
 		})
 	}
 	return items, nil
-}
-
-func lastMessage(record storage.Message) threads.TranscriptMessage {
-	transcript := threads.TranscriptFromRecords([]storage.Message{record}, maxToolChars)
-	if len(transcript) == 0 {
-		return threads.TranscriptMessage{Role: record.Role, CreatedAt: record.CreatedAt}
-	}
-	return transcript[0]
 }

@@ -16,6 +16,8 @@ const (
 	TypeSideChatMessage  = "side_chat_message"
 	TypeProviderSubagent = "provider_subagent"
 	TypeGoalUpdate       = "goal_update"
+	TypeACPMessage       = "acp_message"
+	TypeACPThought       = "acp_thought"
 )
 
 type Event struct {

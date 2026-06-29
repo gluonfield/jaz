@@ -151,12 +151,13 @@ type Session struct {
 }
 
 type FeedItem struct {
-	ID          string
-	Slug        string
-	Title       string
-	ParentID    string
-	Status      string
-	LastMessage Message
+	ID        string
+	Slug      string
+	Title     string
+	ParentID  string
+	Status    string
+	ReplyText string
+	ReplyAt   time.Time
 }
 
 func MarkSessionAttention(session *Session, at time.Time) {

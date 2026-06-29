@@ -3,6 +3,7 @@ package sqlite
 import (
 	"testing"
 
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -28,6 +29,13 @@ func contains(ids []string, id string) bool {
 	return false
 }
 
+func assistantReply(t *testing.T, store *Store, id, text string) {
+	t.Helper()
+	if err := store.AppendSessionEvents(id, sessionevents.Event{Type: "acp_message", Content: text}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestLoadFeedTracksUnreadFlag(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
@@ -39,10 +47,9 @@ func TestLoadFeedTracksUnreadFlag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.AppendMessageRecords(session.ID, storage.Message{Role: "assistant", Content: "done"}); err != nil {
-		t.Fatal(err)
-	}
+	assistantReply(t, store, session.ID, "done")
 
+	// A reply alone does not surface a thread — only the agent's turn-finish flag.
 	if ids := feedIDs(t, store); contains(ids, session.ID) {
 		t.Fatalf("thread should not be in feed before it is flagged unread: %v", ids)
 	}
@@ -57,8 +64,8 @@ func TestLoadFeedTracksUnreadFlag(t *testing.T) {
 	if len(items) != 1 || items[0].ID != session.ID {
 		t.Fatalf("feed = %#v, want the unread thread", items)
 	}
-	if items[0].LastMessage.Content != "done" || items[0].LastMessage.Role != "assistant" {
-		t.Fatalf("last message = %+v, want assistant/done", items[0].LastMessage)
+	if items[0].ReplyText != "done" {
+		t.Fatalf("reply = %q, want 'done'", items[0].ReplyText)
 	}
 
 	if err := store.SetThreadUnread(session.ID, false); err != nil {
@@ -69,7 +76,7 @@ func TestLoadFeedTracksUnreadFlag(t *testing.T) {
 	}
 }
 
-func TestLoadFeedUsesLastMessageAndExcludesArchived(t *testing.T) {
+func TestLoadFeedUsesLatestReplyAndExcludesArchived(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -80,12 +87,8 @@ func TestLoadFeedUsesLastMessageAndExcludesArchived(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.AppendMessageRecords(session.ID,
-		storage.Message{Role: "user", Content: "first"},
-		storage.Message{Role: "assistant", Content: "latest"},
-	); err != nil {
-		t.Fatal(err)
-	}
+	assistantReply(t, store, session.ID, "first")
+	assistantReply(t, store, session.ID, "latest")
 	if err := store.SetThreadUnread(session.ID, true); err != nil {
 		t.Fatal(err)
 	}
@@ -94,8 +97,8 @@ func TestLoadFeedUsesLastMessageAndExcludesArchived(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 1 || items[0].LastMessage.Content != "latest" {
-		t.Fatalf("feed last message = %#v, want highest-seq 'latest'", items)
+	if len(items) != 1 || items[0].ReplyText != "latest" {
+		t.Fatalf("feed reply = %#v, want newest reply 'latest'", items)
 	}
 
 	if err := store.SetArchived(session.ID, true); err != nil {
@@ -118,40 +121,11 @@ func TestLoadFeedExcludesSourcedThreads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.AppendMessageRecords(session.ID, storage.Message{Role: "assistant", Content: "loop output"}); err != nil {
-		t.Fatal(err)
-	}
+	assistantReply(t, store, session.ID, "loop output")
 	if err := store.SetThreadUnread(session.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	if ids := feedIDs(t, store); contains(ids, session.ID) {
 		t.Fatalf("sourced (loop) thread should be excluded: %v", ids)
-	}
-}
-
-func TestLoadFeedExcludesUserAuthoredLastMessage(t *testing.T) {
-	store, err := New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-
-	session, err := store.CreateSession(storage.CreateSession{Slug: "feed-user-last"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Last message authored by the user means the thread is waiting on the agent,
-	// not on the human, so it must not appear even when flagged unread.
-	if err := store.AppendMessageRecords(session.ID,
-		storage.Message{Role: "assistant", Content: "answer"},
-		storage.Message{Role: "user", Content: "follow-up"},
-	); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.SetThreadUnread(session.ID, true); err != nil {
-		t.Fatal(err)
-	}
-	if ids := feedIDs(t, store); contains(ids, session.ID) {
-		t.Fatalf("thread with a user-authored last message should be excluded: %v", ids)
 	}
 }

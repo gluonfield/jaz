@@ -16,15 +16,8 @@ func (f *fakeStore) LoadFeed() ([]storage.FeedItem, error) { return f.items, f.l
 
 func (f *fakeStore) SetThreadUnread(string, bool) error { return nil }
 
-func TestFeedCompactsLastMessage(t *testing.T) {
-	store := &fakeStore{items: []storage.FeedItem{{
-		ID:    "t1",
-		Title: "Hello",
-		LastMessage: storage.Message{
-			Role:   "assistant",
-			Blocks: []storage.Block{{Type: storage.BlockTypeText, Text: "  hi there  "}},
-		},
-	}}}
+func TestFeedBuildsAssistantReply(t *testing.T) {
+	store := &fakeStore{items: []storage.FeedItem{{ID: "t1", Title: "Hello", ReplyText: "  hi there  "}}}
 
 	items, err := NewService(store).Feed()
 	if err != nil {
@@ -33,8 +26,8 @@ func TestFeedCompactsLastMessage(t *testing.T) {
 	if len(items) != 1 {
 		t.Fatalf("items = %d, want 1", len(items))
 	}
-	if items[0].ID != "t1" || items[0].LastMessage.Text != "hi there" {
-		t.Fatalf("item = %+v, want compacted text from blocks", items[0])
+	if items[0].ID != "t1" || items[0].LastMessage.Role != "assistant" || items[0].LastMessage.Text != "hi there" {
+		t.Fatalf("item = %+v, want trimmed assistant reply", items[0])
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
@@ -22,7 +23,7 @@ func TestSessionSeenActionClearsFeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.AppendMessageRecords(session.ID, storage.Message{Role: "assistant", Content: "ping"}); err != nil {
+	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{Type: "acp_message", Content: "ping"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.SetThreadUnread(session.ID, true); err != nil {

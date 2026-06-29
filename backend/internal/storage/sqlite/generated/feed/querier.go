@@ -9,9 +9,10 @@ import (
 )
 
 type Querier interface {
-	// Unread user-started threads, with their newest message for display. The
-	// assistant-role guard drops threads whose last message is the user's own.
-	ListFeed(ctx context.Context) ([]ListFeedRow, error)
+	// Unread, non-archived, user-started threads with the agent's latest reply for
+	// the card preview. Assistant text lives in session_events (the caller passes the
+	// reply event type), not in the messages table which holds user turns.
+	ListFeed(ctx context.Context, replyType string) ([]ListFeedRow, error)
 }
 
 var _ Querier = (*Queries)(nil)
