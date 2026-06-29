@@ -24,7 +24,7 @@ func (q *Queries) LastUserPromptAt(ctx context.Context, threadID string) (int64,
 }
 
 const listFeed = `-- name: ListFeed :many
-SELECT id, slug, title, parent_id, status, last_attention_at_ms
+SELECT id, slug, title, parent_id, last_attention_at_ms
 FROM threads
 WHERE archived = 0
   AND unread = 1
@@ -38,7 +38,6 @@ type ListFeedRow struct {
 	Slug              string         `json:"slug"`
 	Title             sql.NullString `json:"title"`
 	ParentID          sql.NullString `json:"parent_id"`
-	Status            string         `json:"status"`
 	LastAttentionAtMs int64          `json:"last_attention_at_ms"`
 }
 
@@ -56,7 +55,6 @@ func (q *Queries) ListFeed(ctx context.Context) ([]ListFeedRow, error) {
 			&i.Slug,
 			&i.Title,
 			&i.ParentID,
-			&i.Status,
 			&i.LastAttentionAtMs,
 		); err != nil {
 			return nil, err

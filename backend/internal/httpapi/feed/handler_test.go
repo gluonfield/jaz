@@ -19,7 +19,7 @@ func (f fakeStore) SetThreadUnread(string, bool) error    { return nil }
 
 func TestListHandlerReturnsItems(t *testing.T) {
 	store := fakeStore{items: []storage.FeedItem{{
-		ID: "t1", Slug: "alpha", Title: "Alpha", Status: "idle", ReplyText: "ping",
+		ID: "t1", Slug: "alpha", Title: "Alpha", ReplyText: "ping",
 	}}}
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/feed", nil)

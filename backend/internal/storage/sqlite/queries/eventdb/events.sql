@@ -27,6 +27,21 @@ WHERE thread_id = sqlc.arg(thread_id)
   AND seq > sqlc.arg(after_seq)
 ORDER BY seq;
 
+-- name: ListSessionEventsAfterTime :many
+SELECT
+  thread_id,
+  seq,
+  type,
+  content,
+  acp,
+  plan,
+  permission,
+  created_at_ms
+FROM session_events
+WHERE thread_id = sqlc.arg(thread_id)
+  AND created_at_ms > sqlc.arg(after_ms)
+ORDER BY seq;
+
 -- name: NextSessionEventSeq :one
 SELECT COALESCE(MAX(seq), 0) + 1 AS seq
 FROM session_events

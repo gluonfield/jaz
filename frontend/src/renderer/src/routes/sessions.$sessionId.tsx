@@ -33,6 +33,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { FileDropScope } from '@/components/ui/FileDrop'
 import { Skeleton, SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
+import { markThreadSeen } from '@/lib/api/feed'
 import {
   answerSessionInteractiveResponse,
   cancelSession,
@@ -622,10 +623,9 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     })
   }, [detail.isSuccess, handleSend, sessionId])
 
-  // Hydrating the thread marks it seen server-side; refresh the Feed once it lands.
   useEffect(() => {
-    if (detail.isSuccess) queryClient.invalidateQueries({ queryKey: keys.feed })
-  }, [detail.isSuccess, sessionId, queryClient])
+    void markThreadSeen(sessionId).finally(() => queryClient.invalidateQueries({ queryKey: keys.feed }))
+  }, [sessionId, queryClient])
 
   useEffect(() => {
     if (!detail.isSuccess || !search.message) return

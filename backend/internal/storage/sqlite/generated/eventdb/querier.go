@@ -13,6 +13,7 @@ type Querier interface {
 	DeleteSessionEvent(ctx context.Context, arg DeleteSessionEventParams) error
 	ListSessionEvents(ctx context.Context, threadID string) ([]ListSessionEventsRow, error)
 	ListSessionEventsAfter(ctx context.Context, arg ListSessionEventsAfterParams) ([]ListSessionEventsAfterRow, error)
+	ListSessionEventsAfterTime(ctx context.Context, arg ListSessionEventsAfterTimeParams) ([]ListSessionEventsAfterTimeRow, error)
 	NextSessionEventSeq(ctx context.Context, threadID string) (int64, error)
 	UpsertSessionEvent(ctx context.Context, arg UpsertSessionEventParams) error
 }

@@ -300,7 +300,6 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 // writeSessionMessages serves the thread page's full hydration payload:
 // persisted messages, activity, transcript events, and ACP state.
 func (s *Server) writeSessionMessages(w http.ResponseWriter, r *http.Request, session storage.Session) {
-	s.setSessionUnread(session.ID, false)
 	mobile := requestClientPlatform(r) == "mobile"
 	var messages any
 	if recordStore, ok := s.Store.(messageRecordStore); ok {

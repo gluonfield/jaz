@@ -1,5 +1,5 @@
 -- name: ListFeed :many
-SELECT id, slug, title, parent_id, status, last_attention_at_ms
+SELECT id, slug, title, parent_id, last_attention_at_ms
 FROM threads
 WHERE archived = 0
   AND unread = 1

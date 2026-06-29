@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { AnimatePresence } from 'motion/react'
+import { useState } from 'react'
 import { FeedCard } from '@/components/feed/FeedCard'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { SkeletonRows } from '@/components/ui/Skeleton'
@@ -12,6 +13,7 @@ export const Route = createFileRoute('/feed')({
 
 function FeedPage() {
   const feed = useQuery(feedQuery)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   return (
     <div className="mx-auto flex min-h-full max-w-[var(--thread-max)] flex-col px-10 pb-12">
@@ -37,7 +39,12 @@ function FeedPage() {
         <div className="flex flex-col">
           <AnimatePresence initial={false}>
             {feed.data.map((item) => (
-              <FeedCard key={item.id} item={item} />
+              <FeedCard
+                key={item.id}
+                item={item}
+                expanded={expandedId === item.id}
+                onToggle={() => setExpandedId((prev) => (prev === item.id ? null : item.id))}
+              />
             ))}
           </AnimatePresence>
         </div>

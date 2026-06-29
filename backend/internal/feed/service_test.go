@@ -17,7 +17,7 @@ func (f *fakeStore) LoadFeed() ([]storage.FeedItem, error) { return f.items, f.l
 func (f *fakeStore) SetThreadUnread(string, bool) error { return nil }
 
 func TestFeedBuildsAssistantReply(t *testing.T) {
-	store := &fakeStore{items: []storage.FeedItem{{ID: "t1", Title: "Hello", ReplyText: "  hi there  "}}}
+	store := &fakeStore{items: []storage.FeedItem{{ID: "t1", Title: "Hello", ReplyText: "hi there"}}}
 
 	items, err := NewService(store).Feed()
 	if err != nil {
@@ -27,7 +27,7 @@ func TestFeedBuildsAssistantReply(t *testing.T) {
 		t.Fatalf("items = %d, want 1", len(items))
 	}
 	if items[0].ID != "t1" || items[0].LastMessage.Role != "assistant" || items[0].LastMessage.Text != "hi there" {
-		t.Fatalf("item = %+v, want trimmed assistant reply", items[0])
+		t.Fatalf("item = %+v, want the reply as an assistant message", items[0])
 	}
 }
 

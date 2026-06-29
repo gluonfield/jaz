@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { ArrowUpRight, Check, Archive as ArchiveIcon, CornerDownRight } from 'lucide-react'
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
 import { ComposerCard } from '@/components/session/Composer'
@@ -12,7 +12,7 @@ import { useToast } from '@/components/ui/toast'
 import { markThreadSeen } from '@/lib/api/feed'
 import {
   mutateSessionQueue,
-  sessionMessagesQuery,
+  sessionQuery,
   setSessionArchived,
   uploadSessionAttachment,
 } from '@/lib/api/sessions'
@@ -29,8 +29,15 @@ function snippet(text: string | undefined): string {
   return text.replace(/\s+/g, ' ').trim()
 }
 
-export function FeedCard({ item }: { item: FeedItem }) {
-  const [expanded, setExpanded] = useState(false)
+export function FeedCard({
+  item,
+  expanded,
+  onToggle,
+}: {
+  item: FeedItem
+  expanded: boolean
+  onToggle: () => void
+}) {
   const cardRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
   const toast = useToast()
@@ -93,18 +100,16 @@ export function FeedCard({ item }: { item: FeedItem }) {
         expanded ? '' : 'hover:bg-surface-2'
       }`}
     >
-      {expanded && cardRef.current ? (
-        <FeedOverview anchor={cardRef.current} threadId={item.id} onSend={reply} />
-      ) : null}
+      {expanded ? <FeedOverview anchorRef={cardRef} threadId={item.id} onSend={reply} /> : null}
       <div
         role="button"
         tabIndex={0}
         aria-expanded={expanded}
-        onClick={() => setExpanded((open) => !open)}
+        onClick={onToggle}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
-            setExpanded((open) => !open)
+            onToggle()
           }
         }}
         className="flex cursor-pointer items-start gap-3 px-3.5 pt-3.5 pb-2 text-left"
@@ -115,9 +120,6 @@ export function FeedCard({ item }: { item: FeedItem }) {
               <CornerDownRight size={13} className="shrink-0 text-ink-3" aria-hidden />
             ) : null}
             <span className="truncate text-[13px] font-medium text-ink">{title}</span>
-            {item.status === 'running' ? (
-              <span className="size-1.5 shrink-0 rounded-full bg-primary" aria-label="running" />
-            ) : null}
             <span className="ml-auto shrink-0 text-[12px] tabular-nums text-ink-3">
               {relativeTime(item.last_message.created_at)}
             </span>
@@ -202,18 +204,20 @@ export function FeedCard({ item }: { item: FeedItem }) {
 }
 
 function FeedOverview({
-  anchor,
+  anchorRef,
   threadId,
   onSend,
 }: {
-  anchor: HTMLElement
+  anchorRef: RefObject<HTMLElement | null>
   threadId: string
   onSend: SendMessageHandler
 }) {
-  const detail = useQuery(sessionMessagesQuery(threadId))
+  const session = useQuery(sessionQuery(threadId)).data
   const [rect, setRect] = useState<DOMRect | null>(null)
 
   useLayoutEffect(() => {
+    const anchor = anchorRef.current
+    if (!anchor) return
     const update = () => setRect(anchor.getBoundingClientRect())
     update()
     const observer = new ResizeObserver(update)
@@ -225,9 +229,8 @@ function FeedOverview({
       window.removeEventListener('scroll', update, true)
       window.removeEventListener('resize', update)
     }
-  }, [anchor])
+  }, [anchorRef])
 
-  const session = detail.data?.session
   if (!rect || !session) return null
   const gap = 12
   const panelWidth = OVERVIEW_PANEL_WIDTH + 16
