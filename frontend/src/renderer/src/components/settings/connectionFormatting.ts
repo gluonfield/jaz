@@ -11,7 +11,10 @@ export function accountAddress(account: IntegrationConnectionAccount): string {
 export function accountSyncLabel(account: IntegrationConnectionAccount): string {
   if (!hasTime(account.last_synced_at)) return ''
   const value = relativeTime(account.last_synced_at)
-  return value ? `Synced ${value}` : ''
+  if (!value) return ''
+  if (value === 'now') return 'Synced just now'
+  if (/^\d+[mhd]$/.test(value)) return `Synced ${value} ago`
+  return `Synced ${value}`
 }
 
 export function pluginActionLabel(plugin: IntegrationPlugin, connecting: boolean): string {
