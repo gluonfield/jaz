@@ -12,6 +12,8 @@ import { parseFileReference, type FileReference } from '../../../../shared/fileR
 import { SIDE_PANEL_WIDTHS, type SidePanelView } from './SidePanel'
 
 const PANEL_OPEN_KEY = 'jaz.sessionPanel'
+const PANEL_MAX_WIDTH = 1180
+const PANEL_MIN_THREAD_WIDTH = 360
 
 export function useSidePanelState(sideChatAvailable = false) {
   const [open, setOpen] = useState(() => {
@@ -19,16 +21,21 @@ export function useSidePanelState(sideChatAvailable = false) {
     return stored === 'open' ? true : stored === 'closed' ? false : !isMobileViewport()
   })
   const [view, setView] = useState<SidePanelView>('overview')
+  const [widthOverride, setWidthOverride] = useState<number | null>(null)
+  const [resizing, setResizing] = useState(false)
   const [previewUrl, setPreviewUrl] = useState('')
   const [fileRef, setFileRef] = useState<FileReference | null>(null)
   const activeView = view === 'side-chat' && !sideChatAvailable ? 'overview' : view
-  const width = SIDE_PANEL_WIDTHS[activeView]
+  const defaultWidth = SIDE_PANEL_WIDTHS[activeView]
+  const maxWidth = sidePanelMaxWidth(defaultWidth)
+  const width = clampSidePanelWidth(widthOverride ?? defaultWidth, defaultWidth)
 
   useEffect(() => {
     localStorage.setItem(PANEL_OPEN_KEY, open ? 'open' : 'closed')
   }, [open])
 
   const toggle = useCallback(() => setOpen((value) => !value), [])
+  const resize = useCallback((next: number) => setWidthOverride(clampSidePanelWidth(next, defaultWidth)), [defaultWidth])
 
   const selectView = useCallback((next: SidePanelView) => {
     setView(next)
@@ -42,6 +49,10 @@ export function useSidePanelState(sideChatAvailable = false) {
   }, [])
 
   useEffect(() => clientRuntime.onOpenPreviewURL?.(openPreview), [openPreview])
+
+  useWindowEvent('resize', () => {
+    setWidthOverride((current) => (current === null ? null : clampSidePanelWidth(current, defaultWidth)))
+  })
 
   const openFile = useCallback((file: string | FileReference) => {
     const ref = typeof file === 'string' ? parseFileReference(file) : file
@@ -76,14 +87,28 @@ export function useSidePanelState(sideChatAvailable = false) {
     fileRef,
     open,
     previewUrl,
+    resize,
+    resizing,
     selectView,
     setPreviewUrl,
+    setResizing,
     toggle,
     view: activeView,
     width,
+    defaultWidth,
+    maxWidth,
     openFile,
     openPreview,
   }
+}
+
+function clampSidePanelWidth(width: number, minWidth: number): number {
+  return Math.round(Math.min(Math.max(width, minWidth), sidePanelMaxWidth(minWidth)))
+}
+
+function sidePanelMaxWidth(minWidth: number): number {
+  if (typeof window === 'undefined') return PANEL_MAX_WIDTH
+  return Math.max(minWidth, Math.min(PANEL_MAX_WIDTH, window.innerWidth - PANEL_MIN_THREAD_WIDTH))
 }
 
 const SIDE_PANEL_VIEW_LABEL: Record<SidePanelView, string> = {
