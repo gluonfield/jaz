@@ -66,7 +66,7 @@ func TestTelegramMaterializerCreatesChatDayAndContactSources(t *testing.T) {
 		t.Fatalf("unexpected telegram contact refs")
 	}
 	body := string(messageArtifact.Body)
-	for _, want := range []string{"# Telegram conversation user:276369933", "## 2026-06-27 UTC", "10:42:09 user:276369933: are we still on?"} {
+	for _, want := range []string{"# Telegram · user:276369933", "## 2026-06-27 UTC", "10:42:09 user:276369933: are we still on?"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("message body missing %q:\n%s", want, body)
 		}
@@ -221,10 +221,65 @@ func TestWhatsAppMaterializerCreatesChatDayAndContactSources(t *testing.T) {
 		t.Fatalf("unexpected whatsapp contact refs")
 	}
 	body := string(messageArtifact.Body)
-	for _, want := range []string{"# WhatsApp conversation 447700900123@s.whatsapp.net", "## 2026-06-27 UTC", "11:02:03 Majid: yes"} {
+	for _, want := range []string{"# WhatsApp · Majid", "Conversation: Majid (447700900123@s.whatsapp.net)", "## 2026-06-27 UTC", "11:02:03 Majid: yes"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("message body missing %q:\n%s", want, body)
 		}
+	}
+}
+
+func TestWhatsAppChatDayNamesPeerWhenOnlyOwnerSpoke(t *testing.T) {
+	occurred := time.Date(2025, 7, 17, 2, 39, 15, 0, time.UTC)
+	messageRaw, _ := json.Marshal(map[string]any{
+		"id":           "3A26D730CDD4A028AF7E",
+		"conversation": "447554884345@s.whatsapp.net",
+		"remote_jid":   "447554884345@s.whatsapp.net",
+		"from_me":      true,
+		"text":         "Could you retweet and like, https://x.com/primamente",
+	})
+	message := integrations.Record{
+		Provider:   "whatsapp",
+		AccountID:  "447598490355",
+		Kind:       "whatsapp.message",
+		ExternalID: "3A26D730CDD4A028AF7E",
+		OccurredAt: occurred,
+		Raw:        messageRaw,
+	}
+
+	// No contact known: the peer must still be named by its phone number.
+	artifact := projectOne(t, WhatsAppMaterializer{}, message)
+	body := string(artifact.Body)
+	for _, want := range []string{"# WhatsApp · +447554884345", "- +447554884345", "02:39:15 Me:"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("body missing %q:\n%s", want, body)
+		}
+	}
+
+	// Contact known: the peer resolves to the contact name.
+	contactRaw, _ := json.Marshal(map[string]any{
+		"jid":          "447554884345@s.whatsapp.net",
+		"phone_number": "447554884345",
+		"display_name": "Majid Yazdani",
+	})
+	targets, err := (WhatsAppMaterializer{}).SourceTargets(context.Background(), integrations.MaterializeRequest{Record: message})
+	if err != nil {
+		t.Fatal(err)
+	}
+	named, err := (WhatsAppMaterializer{}).ProjectSource(context.Background(), integrations.SourceProjectionRequest{
+		Target: targets[0],
+		Records: []integrations.Record{{
+			Provider:   "whatsapp",
+			AccountID:  "447598490355",
+			Kind:       "whatsapp.contact",
+			ExternalID: "447554884345@s.whatsapp.net",
+			Raw:        contactRaw,
+		}, message},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(named.Body), "- Majid Yazdani") {
+		t.Fatalf("named body missing peer:\n%s", named.Body)
 	}
 }
 

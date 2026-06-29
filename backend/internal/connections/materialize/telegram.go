@@ -120,7 +120,8 @@ func telegramContactsArtifact(req integrations.SourceProjectionRequest) (integra
 
 func telegramChatDayArtifact(req integrations.SourceProjectionRequest) (integrations.Artifact, error) {
 	contacts := telegramContactIndex(req.Records)
-	var conversation string
+	conversation := req.Target.Key.Entity
+	group := telegramPeerIsGroup(conversation)
 	var lines []chatLine
 	for _, record := range req.Records {
 		if record.Kind != "telegram.message" {
@@ -134,14 +135,11 @@ func telegramChatDayArtifact(req integrations.SourceProjectionRequest) (integrat
 		if recordConversation != req.Target.Key.Entity || recordTime(record).UTC().Format("2006-01-02") != req.Target.Key.Day {
 			continue
 		}
-		conversation = firstText(conversation, recordConversation)
-		speaker := firstText(raw.FromID, raw.PeerID, "Unknown")
-		info := contacts[speaker]
-		if raw.Out {
-			speaker = "Me"
-			info = ""
-		} else if info != "" {
-			speaker = strings.Split(info, " | ")[0]
+		speaker, info := selfSpeaker, ""
+		if !raw.Out {
+			speakerID := firstText(raw.FromID, raw.PeerID, "Unknown")
+			info = contacts[speakerID]
+			speaker = firstText(labelHead(info), speakerID)
 		}
 		text := oneLine(raw.Message)
 		if text == "" {
@@ -149,7 +147,20 @@ func telegramChatDayArtifact(req integrations.SourceProjectionRequest) (integrat
 		}
 		lines = append(lines, chatLine{At: recordTime(record).UTC(), ExternalID: record.ExternalID, Speaker: speaker, SpeakerInfo: info, Text: text})
 	}
-	return chatDayArtifact(req.Target, "Telegram", conversation, lines)
+	conv := resolveConversation(conversation, lines, group, telegramConversationDisplay(conversation, contacts))
+	return chatDayArtifact(req.Target, "Telegram", conv)
+}
+
+func telegramPeerIsGroup(peerID string) bool {
+	kind, _, _ := strings.Cut(peerID, ":")
+	return kind == "chat" || kind == "channel"
+}
+
+func telegramConversationDisplay(peerID string, contacts map[string]string) string {
+	if head := labelHead(contacts[peerID]); head != "" {
+		return head
+	}
+	return peerID
 }
 
 func telegramContactDisplay(raw telegramContactRaw, externalID string) string {

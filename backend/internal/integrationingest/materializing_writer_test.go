@@ -419,7 +419,7 @@ func TestSourceProjectionRunnerExpandsContactDependencyInProjectionWorker(t *tes
 		t.Fatal(err)
 	}
 	body := string(data)
-	for _, want := range []string{"# Telegram conversation user:1", "Alice | user:1", "10:42:09 Alice: hello"} {
+	for _, want := range []string{"# Telegram · Alice", "Alice | user:1", "10:42:09 Alice: hello"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("source body missing %q:\n%s", want, body)
 		}
@@ -508,7 +508,7 @@ func TestSourceProjectionRunnerExpandsContactDependencyForGroupSpeaker(t *testin
 		t.Fatal(err)
 	}
 	body := string(data)
-	for _, want := range []string{"# Telegram conversation chat:100", "Alice | user:1", "10:42:09 Alice: hello group"} {
+	for _, want := range []string{"# Telegram · chat:100", "Alice | user:1", "10:42:09 Alice: hello group"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("source body missing %q:\n%s", want, body)
 		}
