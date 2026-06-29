@@ -84,7 +84,6 @@ func TestLoadFeedTracksUnreadFlag(t *testing.T) {
 	}
 	assistantReply(t, store, session.ID, "done")
 
-	// A reply alone does not surface a thread — only the agent's turn-finish flag.
 	if ids := feedIDs(t, store); contains(ids, session.ID) {
 		t.Fatalf("thread should not be in feed before it is flagged unread: %v", ids)
 	}
@@ -119,8 +118,6 @@ func TestLoadFeedConcatenatesLastTurn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// An earlier turn, then the user prompts again, then a turn split into two
-	// reply events around a tool call. Only the latest turn's replies show.
 	assistantReplyAt(t, store, session.ID, "earlier turn", 1000)
 	userPromptAt(t, store, session.ID, "do it", 2000)
 	assistantReplyAt(t, store, session.ID, "working on it", 3000)
@@ -217,7 +214,6 @@ func TestLoadFeedExcludesSourcedThreads(t *testing.T) {
 	}
 	defer store.Close()
 
-	// A loop-run thread is automated, not a conversation the user must answer.
 	session, err := store.CreateSession(storage.CreateSession{Slug: "feed-loop", SourceType: storage.SourceLoopRun})
 	if err != nil {
 		t.Fatal(err)
