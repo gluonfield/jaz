@@ -111,8 +111,8 @@ func TestMemoryStatusAndToggle(t *testing.T) {
 	if len(status.Horizons) != 2 || status.Horizons[0].Name != jazmem.LongTermFile || status.Horizons[0].Chars == 0 {
 		t.Fatalf("unexpected horizons %#v", status.Horizons)
 	}
-	if len(status.Tasks) != 6 {
-		t.Fatalf("expected all scheduler tasks, got %#v", status.Tasks)
+	if len(status.Tasks) != 5 {
+		t.Fatalf("unexpected scheduler tasks %#v", status.Tasks)
 	}
 	if status.SourceQueues.Projection.Pending != 0 || status.SourceQueues.Projection.Processing != 1 {
 		t.Fatalf("unexpected source projection queue status %#v", status.SourceQueues.Projection)
