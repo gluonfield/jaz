@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"testing"
+	"time"
 
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -36,6 +37,32 @@ func assistantReply(t *testing.T, store *Store, id, text string) {
 	}
 }
 
+func assistantReplyAt(t *testing.T, store *Store, id, text string, atMs int64) {
+	t.Helper()
+	if err := store.AppendSessionEvents(id, sessionevents.Event{Type: "acp_message", Content: text, At: time.UnixMilli(atMs)}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func userPromptAt(t *testing.T, store *Store, id, text string, atMs int64) {
+	t.Helper()
+	if err := store.AppendMessageRecords(id, storage.Message{Role: "user", Content: text, CreatedAt: time.UnixMilli(atMs)}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func setRunning(t *testing.T, store *Store, id string) {
+	t.Helper()
+	session, err := store.LoadSession(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.Status = storage.StatusRunning
+	if err := store.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestLoadFeedTracksUnreadFlag(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
@@ -61,11 +88,8 @@ func TestLoadFeedTracksUnreadFlag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 1 || items[0].ID != session.ID {
-		t.Fatalf("feed = %#v, want the unread thread", items)
-	}
-	if items[0].ReplyText != "done" {
-		t.Fatalf("reply = %q, want 'done'", items[0].ReplyText)
+	if len(items) != 1 || items[0].ID != session.ID || items[0].ReplyText != "done" {
+		t.Fatalf("feed = %#v, want the unread thread with reply 'done'", items)
 	}
 
 	if err := store.SetThreadUnread(session.ID, false); err != nil {
@@ -76,19 +100,23 @@ func TestLoadFeedTracksUnreadFlag(t *testing.T) {
 	}
 }
 
-func TestLoadFeedUsesLatestReplyAndExcludesArchived(t *testing.T) {
+func TestLoadFeedConcatenatesLastTurn(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
 
-	session, err := store.CreateSession(storage.CreateSession{Slug: "feed-last"})
+	session, err := store.CreateSession(storage.CreateSession{Slug: "feed-turn"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	assistantReply(t, store, session.ID, "first")
-	assistantReply(t, store, session.ID, "latest")
+	// An earlier turn, then the user prompts again, then a turn split into two
+	// reply events around a tool call. Only the latest turn's replies show.
+	assistantReplyAt(t, store, session.ID, "earlier turn", 1000)
+	userPromptAt(t, store, session.ID, "do it", 2000)
+	assistantReplyAt(t, store, session.ID, "working on it", 3000)
+	assistantReplyAt(t, store, session.ID, "here is the answer", 4000)
 	if err := store.SetThreadUnread(session.ID, true); err != nil {
 		t.Fatal(err)
 	}
@@ -97,10 +125,48 @@ func TestLoadFeedUsesLatestReplyAndExcludesArchived(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 1 || items[0].ReplyText != "latest" {
-		t.Fatalf("feed reply = %#v, want newest reply 'latest'", items)
+	if len(items) != 1 || items[0].ReplyText != "working on it\n\nhere is the answer" {
+		t.Fatalf("reply = %#v, want the whole last turn concatenated", items)
 	}
+}
 
+func TestLoadFeedExcludesRunningThreads(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	session, err := store.CreateSession(storage.CreateSession{Slug: "feed-running"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assistantReply(t, store, session.ID, "partial")
+	if err := store.SetThreadUnread(session.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	setRunning(t, store, session.ID)
+
+	if ids := feedIDs(t, store); contains(ids, session.ID) {
+		t.Fatalf("a thread with the agent still working should be excluded: %v", ids)
+	}
+}
+
+func TestLoadFeedExcludesArchived(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	session, err := store.CreateSession(storage.CreateSession{Slug: "feed-archived"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assistantReply(t, store, session.ID, "answer")
+	if err := store.SetThreadUnread(session.ID, true); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.SetArchived(session.ID, true); err != nil {
 		t.Fatal(err)
 	}
