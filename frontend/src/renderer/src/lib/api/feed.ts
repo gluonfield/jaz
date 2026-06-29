@@ -9,8 +9,7 @@ export const feedQuery = queryOptions({
     const data = await get<{ items: FeedItem[] | null }>('/v1/feed')
     return data.items ?? []
   },
-  refetchInterval: (query) =>
-    query.state.data?.some((item) => item.status === 'running') ? 5_000 : 15_000,
+  refetchInterval: 15_000,
 })
 
 export function markThreadSeen(id: string): Promise<Session> {
