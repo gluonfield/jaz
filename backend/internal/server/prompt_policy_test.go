@@ -26,15 +26,15 @@ func TestNativeGoalSupport(t *testing.T) {
 			want: promptFeatureSupported,
 		},
 		{
-			name: "catalog codex may negotiate before acp session exists",
+			name: "catalog codex supports goal before acp session exists",
 			session: storage.Session{
 				Runtime:    storage.RuntimeACP,
 				RuntimeRef: &storage.RuntimeRef{Agent: acp.AgentCodex},
 			},
-			want: promptFeatureNegotiable,
+			want: promptFeatureSupported,
 		},
 		{
-			name: "created codex session without runtime capability is unsupported",
+			name: "created codex session uses catalog goal support",
 			session: storage.Session{
 				Runtime: storage.RuntimeACP,
 				RuntimeRef: &storage.RuntimeRef{
@@ -42,7 +42,7 @@ func TestNativeGoalSupport(t *testing.T) {
 					SessionID: "acp-session",
 				},
 			},
-			want: promptFeatureUnsupported,
+			want: promptFeatureSupported,
 		},
 		{
 			name: "non acp session is unsupported",
@@ -69,15 +69,15 @@ func TestCanonicalSessionResponseNativeGoalCapabilities(t *testing.T) {
 		wantNeg    bool
 	}{
 		{
-			name: "prelaunch codex advertises negotiable goal support",
+			name: "prelaunch codex advertises catalog goal support",
 			session: storage.Session{
 				Runtime:    storage.RuntimeACP,
 				RuntimeRef: &storage.RuntimeRef{Agent: acp.AgentCodex},
 			},
-			wantNeg: true,
+			wantNative: true,
 		},
 		{
-			name: "created codex without runtime capability stays unsupported",
+			name: "created codex without runtime capability advertises catalog support",
 			session: storage.Session{
 				Runtime: storage.RuntimeACP,
 				RuntimeRef: &storage.RuntimeRef{
@@ -85,6 +85,7 @@ func TestCanonicalSessionResponseNativeGoalCapabilities(t *testing.T) {
 					SessionID: "acp-session",
 				},
 			},
+			wantNative: true,
 		},
 		{
 			name: "runtime capability advertises negotiated goal support",

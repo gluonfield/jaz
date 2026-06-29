@@ -104,7 +104,7 @@ func TestGoalPromptMetaMarksGoalRequested(t *testing.T) {
 	}
 }
 
-func TestNativeGoalSupportedReadsJazInitializeMeta(t *testing.T) {
+func TestInitNativeGoalSupportedReadsJazInitializeMeta(t *testing.T) {
 	raw := mustJSON(t, map[string]any{
 		"agentCapabilities": map[string]any{
 			"_meta": map[string]any{
@@ -112,10 +112,10 @@ func TestNativeGoalSupportedReadsJazInitializeMeta(t *testing.T) {
 			},
 		},
 	})
-	if !nativeGoalSupported(raw) {
+	if !initNativeGoalSupported(raw) {
 		t.Fatalf("native goal support was not detected")
 	}
-	if nativeGoalSupported(mustJSON(t, map[string]any{"agentCapabilities": map[string]any{}})) {
+	if initNativeGoalSupported(mustJSON(t, map[string]any{"agentCapabilities": map[string]any{}})) {
 		t.Fatalf("native goal support detected without meta")
 	}
 }

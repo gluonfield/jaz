@@ -15,7 +15,7 @@ func promptQueueingSupported(raw json.RawMessage) bool {
 	return metaPromptQueueing(resp.AgentCapabilities.Meta)
 }
 
-func nativeGoalSupported(raw json.RawMessage) bool {
+func initNativeGoalSupported(raw json.RawMessage) bool {
 	var resp acpschema.InitializeResponse
 	if json.Unmarshal(raw, &resp) != nil || resp.AgentCapabilities == nil {
 		return false
@@ -23,15 +23,45 @@ func nativeGoalSupported(raw json.RawMessage) bool {
 	return metaNativeGoal(resp.AgentCapabilities.Meta)
 }
 
-func runtimeCapabilitiesFromInit(raw json.RawMessage) *storage.RuntimeCapabilities {
-	if !nativeGoalSupported(raw) {
+func catalogRuntimeCapabilities(agent string) *storage.RuntimeCapabilities {
+	if !CatalogAgentCapabilitiesFor(agent).NativeGoal {
 		return nil
 	}
 	return &storage.RuntimeCapabilities{NativeGoal: true}
 }
 
-func runtimeCapabilitiesNativeGoal(caps *storage.RuntimeCapabilities) bool {
+func runtimeCapabilitiesFromInit(agent string, raw json.RawMessage) *storage.RuntimeCapabilities {
+	if initNativeGoalSupported(raw) {
+		return &storage.RuntimeCapabilities{NativeGoal: true}
+	}
+	return catalogRuntimeCapabilities(agent)
+}
+
+func EffectiveRuntimeCapabilities(agent string, caps *storage.RuntimeCapabilities) *storage.RuntimeCapabilities {
+	caps = storage.NormalizeRuntimeCapabilities(caps)
+	catalog := catalogRuntimeCapabilities(agent)
+	if caps == nil {
+		return catalog
+	}
+	if catalog != nil && catalog.NativeGoal {
+		caps.NativeGoal = true
+		caps.NativeGoalNegotiable = false
+	}
+	return caps
+}
+
+func effectiveRuntimeNativeGoal(agent string, caps *storage.RuntimeCapabilities) bool {
+	caps = EffectiveRuntimeCapabilities(agent, caps)
 	return caps != nil && caps.NativeGoal
+}
+
+func storedRuntimeCapabilitiesEqual(a, b *storage.RuntimeCapabilities) bool {
+	a = storage.NormalizeRuntimeCapabilities(a)
+	b = storage.NormalizeRuntimeCapabilities(b)
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return a.NativeGoal == b.NativeGoal && a.NativeGoalNegotiable == b.NativeGoalNegotiable
 }
 
 func metaPromptQueueing(meta map[string]any) bool {

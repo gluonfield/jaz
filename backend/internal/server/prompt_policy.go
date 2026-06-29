@@ -53,17 +53,11 @@ func nativeGoalSupport(session storage.Session) promptFeatureSupport {
 	if runtime != storage.RuntimeACP || session.RuntimeRef == nil {
 		return promptFeatureUnsupported
 	}
-	caps := storage.NormalizeRuntimeCapabilities(session.RuntimeRef.Capabilities)
+	caps := acp.EffectiveRuntimeCapabilities(session.RuntimeRef.Agent, session.RuntimeRef.Capabilities)
 	if caps != nil && caps.NativeGoal {
 		return promptFeatureSupported
 	}
 	if caps != nil && caps.NativeGoalNegotiable && session.RuntimeRef.SessionID == "" {
-		return promptFeatureNegotiable
-	}
-	if session.RuntimeRef.SessionID != "" || session.RuntimeRef.Capabilities != nil {
-		return promptFeatureUnsupported
-	}
-	if acp.CatalogAgentCapabilitiesFor(session.RuntimeRef.Agent).NativeGoal {
 		return promptFeatureNegotiable
 	}
 	return promptFeatureUnsupported

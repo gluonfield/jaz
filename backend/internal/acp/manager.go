@@ -422,14 +422,14 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	}
 	session.RuntimeRef.SessionID = string(acpSession.response.SessionID)
 	session.RuntimeRef.Cwd = absCwd
-	session.RuntimeRef.Capabilities = runtimeCapabilitiesFromInit(ac.initRaw)
+	session.RuntimeRef.Capabilities = runtimeCapabilitiesFromInit(req.ACPAgent, ac.initRaw)
 	if err := m.store.SaveSession(session); err != nil {
 		ac.close()
 		return fail(err)
 	}
 	job := newIdleJob(session, req.ACPAgent, string(acpSession.response.SessionID), absCwd, modes)
 	job.promptQueueing = promptQueueingSupported(ac.initRaw)
-	job.nativeGoal = runtimeCapabilitiesNativeGoal(session.RuntimeRef.Capabilities)
+	job.nativeGoal = effectiveRuntimeNativeGoal(req.ACPAgent, session.RuntimeRef.Capabilities)
 	ac.trackPromptSends(job)
 	m.addJob(job, ac.conn, ac.peer, ac.cancel)
 	m.saveACPState(job.Snapshot())
@@ -546,8 +546,8 @@ func (m *Manager) resume(ctx context.Context, ref string) (*jobState, error) {
 		session.RuntimeRef.SessionID = acpSessionID
 		sessionChanged = true
 	}
-	runtimeCapabilities := runtimeCapabilitiesFromInit(ac.initRaw)
-	if runtimeCapabilitiesNativeGoal(session.RuntimeRef.Capabilities) != runtimeCapabilitiesNativeGoal(runtimeCapabilities) {
+	runtimeCapabilities := runtimeCapabilitiesFromInit(agentName, ac.initRaw)
+	if !storedRuntimeCapabilitiesEqual(session.RuntimeRef.Capabilities, runtimeCapabilities) {
 		session.RuntimeRef.Capabilities = runtimeCapabilities
 		sessionChanged = true
 	}
@@ -563,7 +563,7 @@ func (m *Manager) resume(ctx context.Context, ref string) (*jobState, error) {
 	job.LastEventAt = firstNonZeroTime(state.LastEventAt, state.UpdatedAt)
 	job.LastToolAt = state.LastToolAt
 	job.promptQueueing = promptQueueingSupported(ac.initRaw)
-	job.nativeGoal = runtimeCapabilitiesNativeGoal(session.RuntimeRef.Capabilities)
+	job.nativeGoal = effectiveRuntimeNativeGoal(agentName, session.RuntimeRef.Capabilities)
 	ac.trackPromptSends(job)
 	m.addJob(job, ac.conn, ac.peer, ac.cancel)
 	m.saveACPState(job.Snapshot())
