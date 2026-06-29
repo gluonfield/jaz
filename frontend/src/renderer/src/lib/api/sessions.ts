@@ -2,7 +2,7 @@ import { queryOptions } from '@tanstack/react-query'
 import type { MessageContextInput } from '@/lib/messageContext'
 import { telemetry } from '@/lib/telemetry'
 import { keys } from '../query/keys'
-import { apiFetch, ApiError, get, post, put } from './client'
+import { apiFetch, ApiError, del, get, post, put } from './client'
 import {
   fileKey,
   type Attachment,
@@ -154,6 +154,12 @@ export const projectsQuery = queryOptions({
 
 export function addProject(path: string): Promise<Project> {
   return post<Project>('/v1/projects', { path })
+}
+
+export function deleteProject(path: string): Promise<Project[]> {
+  return del<{ projects: Project[] | null }>(`/v1/projects?path=${encodeURIComponent(path)}`).then(
+    (data) => data.projects ?? [],
+  )
 }
 
 export function reorderProjects(paths: string[]): Promise<Project[]> {
