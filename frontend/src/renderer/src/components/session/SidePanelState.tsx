@@ -26,9 +26,10 @@ export function useSidePanelState(sideChatAvailable = false) {
   const [previewUrl, setPreviewUrl] = useState('')
   const [fileRef, setFileRef] = useState<FileReference | null>(null)
   const activeView = view === 'side-chat' && !sideChatAvailable ? 'overview' : view
+  const resizable = activeView !== 'overview'
   const defaultWidth = SIDE_PANEL_WIDTHS[activeView]
   const maxWidth = sidePanelMaxWidth(defaultWidth)
-  const width = clampSidePanelWidth(widthOverride ?? defaultWidth, defaultWidth)
+  const width = resizable ? clampSidePanelWidth(widthOverride ?? defaultWidth, defaultWidth) : defaultWidth
 
   useEffect(() => {
     localStorage.setItem(PANEL_OPEN_KEY, open ? 'open' : 'closed')
@@ -97,6 +98,7 @@ export function useSidePanelState(sideChatAvailable = false) {
     width,
     defaultWidth,
     maxWidth,
+    resizable,
     openFile,
     openPreview,
   }
