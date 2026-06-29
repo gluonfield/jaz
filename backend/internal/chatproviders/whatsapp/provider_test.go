@@ -248,6 +248,35 @@ func TestWhatsAppRecordsExposeContactsAndMessages(t *testing.T) {
 	}
 }
 
+func TestWhatsAppMessageRecordExtractsQuotedText(t *testing.T) {
+	connection := integrations.Connection{ID: "whatsapp:alice", AccountID: "15550102222"}
+	message := whatsappMessageRecord(connection, &events.Message{
+		Info: waTypes.MessageInfo{
+			ID: "wamid.quoted",
+			MessageSource: waTypes.MessageSource{
+				Chat:   waTypes.NewJID("15550103333", waTypes.DefaultUserServer),
+				Sender: waTypes.NewJID("15550103333", waTypes.DefaultUserServer),
+			},
+			Timestamp: time.Date(2026, 6, 26, 12, 5, 0, 0, time.UTC),
+		},
+		Message: &waE2E.Message{
+			ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+				ContextInfo: &waE2E.ContextInfo{
+					QuotedMessage: &waE2E.Message{Conversation: proto.String("original message")},
+				},
+			},
+		},
+	})
+
+	var raw map[string]any
+	if err := json.Unmarshal(message.Raw, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if raw["text"] != "" || raw["quoted_text"] != "original message" {
+		t.Fatalf("message raw = %#v", raw)
+	}
+}
+
 func TestWriteRecordsMarksSyncCursor(t *testing.T) {
 	raw := &fakeWhatsAppRawSink{}
 	store := &fakeWhatsAppStore{}

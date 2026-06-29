@@ -7,37 +7,14 @@ import (
 	"sort"
 	"strings"
 
+	whatsappconnector "github.com/wins/jaz/backend/internal/connectors/whatsapp"
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
 type WhatsAppMaterializer struct{}
 
-type whatsappContactRaw struct {
-	WhatsAppID   string   `json:"whatsapp_id"`
-	JID          string   `json:"jid"`
-	PhoneNumber  string   `json:"phone_number"`
-	Phone        string   `json:"phone"`
-	DisplayName  string   `json:"display_name"`
-	ContactNames []string `json:"contact_names"`
-	FirstName    string   `json:"first_name"`
-	FullName     string   `json:"full_name"`
-	PushName     string   `json:"push_name"`
-	BusinessName string   `json:"business_name"`
-}
-
-type whatsappMessageRaw struct {
-	ID           string `json:"id"`
-	Chat         string `json:"chat"`
-	Conversation string `json:"conversation"`
-	RemoteJID    string `json:"remote_jid"`
-	Sender       string `json:"sender"`
-	Participant  string `json:"participant"`
-	FromMe       bool   `json:"from_me"`
-	IsGroup      bool   `json:"is_group"`
-	PushName     string `json:"push_name"`
-	MediaType    string `json:"media_type"`
-	Text         string `json:"text"`
-}
+type whatsappContactRaw = whatsappconnector.ContactRecord
+type whatsappMessageRaw = whatsappconnector.MessageRecord
 
 func (WhatsAppMaterializer) SourceTargets(_ context.Context, req integrations.MaterializeRequest) ([]integrations.SourceTarget, error) {
 	switch req.Record.Kind {
@@ -86,7 +63,7 @@ func whatsappMessageTargets(req integrations.MaterializeRequest) ([]integrations
 		return nil, nil
 	}
 	account := recordAccountSlug(req.Record.AccountID)
-	conversation := firstText(raw.Chat, raw.Conversation, raw.RemoteJID, req.Record.ExternalID)
+	conversation := firstText(raw.ConversationID(req.Record.ExternalID))
 	utc := occurred.UTC()
 	day := utc.Format("2006-01-02")
 	return []integrations.SourceTarget{{
@@ -138,7 +115,7 @@ func whatsappChatDayArtifact(req integrations.SourceProjectionRequest) (integrat
 		if err := json.Unmarshal(record.Raw, &raw); err != nil {
 			return integrations.Artifact{}, err
 		}
-		recordConversation := firstText(raw.Chat, raw.Conversation, raw.RemoteJID, record.ExternalID)
+		recordConversation := firstText(raw.ConversationID(record.ExternalID))
 		if recordConversation != req.Target.Key.Entity || recordTime(record).UTC().Format("2006-01-02") != req.Target.Key.Day {
 			continue
 		}
@@ -148,7 +125,7 @@ func whatsappChatDayArtifact(req integrations.SourceProjectionRequest) (integrat
 			info = firstText(contacts[senderID], contacts[whatsappJIDUser(senderID)])
 			sender = firstText(labelHead(info), raw.PushName, whatsappDisplay(senderID, contacts))
 		}
-		text := oneLine(raw.Text)
+		text := oneLine(raw.DisplayText())
 		if text == "" {
 			text = "[message]"
 			if raw.MediaType != "" {
@@ -221,4 +198,4 @@ func whatsappContactIndex(records []integrations.Record) map[string]string {
 
 var _ integrations.SourceProjector = WhatsAppMaterializer{}
 
-func (WhatsAppMaterializer) SourceProvider() string { return "whatsapp" }
+func (WhatsAppMaterializer) SourceProvider() string { return whatsappconnector.ProviderID }

@@ -283,6 +283,34 @@ func TestWhatsAppChatDayNamesPeerWhenOnlyOwnerSpoke(t *testing.T) {
 	}
 }
 
+func TestWhatsAppChatDayUsesQuotedTextWhenMessageTextMissing(t *testing.T) {
+	occurred := time.Date(2026, 5, 19, 16, 2, 40, 0, time.UTC)
+	messageRaw, _ := json.Marshal(map[string]any{
+		"id":           "3A884C5DEB7FE1",
+		"conversation": "12345-67890@g.us",
+		"participant":  "447598490355@s.whatsapp.net",
+		"from_me":      true,
+		"quoted_text":  "would it be cheating if you used a model to fill in the steps?",
+	})
+	message := integrations.Record{
+		Provider:   "whatsapp",
+		AccountID:  "447598490355",
+		Kind:       "whatsapp.message",
+		ExternalID: "3A884C5DEB7FE1",
+		OccurredAt: occurred,
+		Raw:        messageRaw,
+	}
+
+	artifact := projectOne(t, WhatsAppMaterializer{}, message)
+	body := string(artifact.Body)
+	if strings.Contains(body, "[message]") {
+		t.Fatalf("body still contains placeholder:\n%s", body)
+	}
+	if !strings.Contains(body, "16:02:40 Me: would it be cheating if you used a model to fill in the steps?") {
+		t.Fatalf("body missing quoted text:\n%s", body)
+	}
+}
+
 func messageArtifactTargetRefs(t *testing.T, projector integrations.SourceProjector, record integrations.Record) []string {
 	t.Helper()
 	targets, err := projector.SourceTargets(context.Background(), integrations.MaterializeRequest{Record: record})
