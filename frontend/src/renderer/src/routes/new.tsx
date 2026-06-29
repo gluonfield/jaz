@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { NewSessionHome } from '@/components/home/NewSessionHome'
 import { NewThreadOptions } from '@/components/home/NewThreadOptions'
+import { deleteAttachmentDraft } from '@/components/session/composerAttachmentDraftStore'
 import { ProjectPicker } from '@/components/session/NewThreadControls'
 import { AgentModelControls, useNewThreadControls } from '@/components/session/useNewThreadControls'
 import { Checkbox } from '@/components/ui/Checkbox'
@@ -96,6 +97,7 @@ function NewSessionPage() {
       const session = await createSession(controls.sessionConfig({ directory, worktree }, title))
       prepare(session.id)
       sessionStorage.removeItem(NEW_SESSION_DRAFT_KEY)
+      void deleteAttachmentDraft(NEW_SESSION_DRAFT_KEY, 'session')
       queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
       queryClient.invalidateQueries({ queryKey: keys.allSessions })
       navigate({ to: '/sessions/$sessionId', params: { sessionId: session.id } })
