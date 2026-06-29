@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	DefaultBatchFiles = 10
+	DefaultBatchFiles = 50
 	DefaultBatchChars = 100000
 	Timeout           = 30 * time.Minute
 )
@@ -115,6 +115,17 @@ func (r *Runner) RunOnce(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	return len(sources) + len(batch.Missing), nil
+}
+
+func (r *Runner) RunUntilIdle(ctx context.Context) (int, error) {
+	total := 0
+	for {
+		processed, err := r.RunOnce(ctx)
+		total += processed
+		if err != nil || processed == 0 {
+			return total, err
+		}
+	}
 }
 
 // capture runs one agent session over the batch: it builds the prompt, spawns

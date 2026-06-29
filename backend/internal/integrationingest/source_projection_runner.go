@@ -7,7 +7,7 @@ import (
 	"github.com/wins/jaz/backend/internal/sourcequeue"
 )
 
-const DefaultProjectionBatchFiles = 20
+const DefaultProjectionBatchFiles = 200
 
 type SourceProjectionRunner struct {
 	Queue      *sourcequeue.Queue
@@ -50,6 +50,17 @@ func (r SourceProjectionRunner) RunOnce(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	return len(completed), nil
+}
+
+func (r SourceProjectionRunner) RunUntilIdle(ctx context.Context) (int, error) {
+	total := 0
+	for {
+		processed, err := r.RunOnce(ctx)
+		total += processed
+		if err != nil || processed == 0 {
+			return total, err
+		}
+	}
 }
 
 func (r SourceProjectionRunner) batchFiles() int {
