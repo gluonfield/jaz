@@ -4,12 +4,12 @@ import {
   Check,
   ChevronDown,
   ChevronLeft,
+  ChevronRight,
   Folder,
   FolderPlus,
   GitBranch,
   Keyboard,
   LoaderCircle,
-  Plus,
 } from 'lucide-react'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { AgentLogo, hasAgentLogo } from '@/components/acp/AgentLogo'
@@ -332,7 +332,7 @@ export function ProjectPicker({
         </Button>
       }
     >
-      <div className="w-[270px]">
+      <div className="w-[300px]">
         {adding ? (
           <DirectoryBrowser
             initialPath={value}
@@ -344,10 +344,18 @@ export function ProjectPicker({
           />
         ) : (
           <>
+            <button
+              type="button"
+              onClick={() => setAdding(true)}
+              className="flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-primary-soft"
+            >
+              <FolderPlus size={13} className="shrink-0 text-primary" />
+              Add new project
+            </button>
+            <div className="my-1 border-t border-border" />
             <MenuRow selected={value === ''} onClick={() => select('', false)}>
               Default directory
             </MenuRow>
-            <div className="my-1 border-t border-border" />
             <div className="max-h-[220px] overflow-y-auto">
               {projects.isLoading ? (
                 <div className="flex h-7 items-center gap-2 px-2 text-[13px] text-ink-3">
@@ -378,16 +386,6 @@ export function ProjectPicker({
               ) : (
                 <div className="px-2 py-1 text-[13px] text-ink-3">No projects yet.</div>
               )}
-            </div>
-            <div className="mt-1 border-t border-border pt-1">
-              <button
-                type="button"
-                onClick={() => setAdding(true)}
-                className="flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-primary-soft"
-              >
-                <FolderPlus size={13} className="shrink-0 text-primary" />
-                Add new project
-              </button>
             </div>
           </>
         )}
@@ -522,9 +520,9 @@ function DirectoryBrowser({
         )}
       </div>
       <p className="px-2.5 pb-1.5 text-[11px] text-ink-3">
-        Open a folder, or add one directly with <span className="text-ink-2">Add</span>.
+        Open folders to browse, then choose one as your project.
       </p>
-      <div className="max-h-[220px] overflow-y-auto">
+      <div className="max-h-[240px] overflow-y-auto">
         {dirs.isLoading ? (
           <div className="flex h-7 items-center gap-2 px-2 text-[13px] text-ink-3">
             <LoaderCircle size={13} className="animate-spin" />
@@ -534,33 +532,20 @@ function DirectoryBrowser({
           <div className="px-2 py-1 text-[13px] text-ink-3">Couldn't read this folder.</div>
         ) : dirs.data && dirs.data.dirs.length > 0 ? (
           dirs.data.dirs.map((dir) => (
-            <div
+            <button
               key={dir.path}
-              className="group flex h-7 items-center rounded-full pr-1 transition-colors duration-150 hover:bg-surface-2"
+              type="button"
+              onClick={() => goTo(dir.path)}
+              className="group flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+              title={dir.path}
             >
-              <button
-                type="button"
-                onClick={() => goTo(dir.path)}
-                className="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-full pl-2.5 text-left text-[13px] text-ink-2 transition-colors duration-150 group-hover:text-ink"
-                title={dir.path}
-              >
-                <Folder size={13} className="shrink-0 text-ink-3" />
-                <span className="min-w-0 flex-1 truncate">{dir.name}</span>
-                {dir.git ? (
-                  <GitBranch size={12} className="shrink-0 text-ink-3" aria-label="git repository" />
-                ) : null}
-              </button>
-              <button
-                type="button"
-                disabled={add.isPending}
-                onClick={() => add.mutate(dir.path)}
-                aria-label={`Add ${dir.name}`}
-                className="flex h-6 shrink-0 items-center gap-1 rounded-full px-2 text-[12px] text-ink-3 transition-colors duration-150 hover:bg-primary-soft hover:text-primary disabled:cursor-default disabled:opacity-50"
-              >
-                <Plus size={12} className="shrink-0" />
-                Add
-              </button>
-            </div>
+              <Folder size={14} className="shrink-0 text-primary/70" />
+              <span className="min-w-0 flex-1 truncate">{dir.name}</span>
+              {dir.git ? (
+                <GitBranch size={12} className="shrink-0 text-ink-3" aria-label="git repository" />
+              ) : null}
+              <ChevronRight size={14} className="shrink-0 text-ink-3 opacity-0 transition-opacity duration-150 group-hover:opacity-100" />
+            </button>
           ))
         ) : (
           <div className="px-2 py-1 text-[13px] text-ink-3">No subfolders here.</div>
@@ -571,14 +556,14 @@ function DirectoryBrowser({
           type="button"
           disabled={!dirs.data || add.isPending}
           onClick={() => dirs.data && add.mutate(dirs.data.path)}
-          className="flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-primary-soft disabled:cursor-default disabled:opacity-50"
+          className="flex h-8 w-full items-center gap-2 rounded-[8px] bg-primary-soft px-2.5 text-left text-[13px] font-medium text-primary transition-colors duration-150 hover:bg-primary-soft/80 disabled:cursor-default disabled:opacity-50"
         >
           {add.isPending ? (
-            <LoaderCircle size={13} className="shrink-0 animate-spin text-primary" />
+            <LoaderCircle size={14} className="shrink-0 animate-spin" />
           ) : (
-            <Check size={13} className="shrink-0 text-primary" />
+            <Check size={14} className="shrink-0" />
           )}
-          <span className="min-w-0 flex-1 truncate">Add “{directoryName(currentPath)}” as a project</span>
+          <span className="min-w-0 flex-1 truncate">Choose “{directoryName(currentPath)}”</span>
         </button>
       </div>
       {add.isError ? (
