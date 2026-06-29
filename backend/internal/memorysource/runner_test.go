@@ -75,6 +75,60 @@ func TestRunOnceProcessesPendingSourcesInBatchAndClearsOnSuccess(t *testing.T) {
 	}
 }
 
+func TestRunUntilIdleProcessesMultipleAgentBatches(t *testing.T) {
+	root := t.TempDir()
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, err := jazsettings.SaveMemorySettings(store, jazsettings.MemorySettings{Enabled: true, Agent: acp.AgentCodex}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := jazsettings.SaveAgentDefaults(store, jazsettings.AgentDefaults{
+		ACP: map[string]jazsettings.ACPAgentDefaults{
+			acp.AgentCodex: {Enabled: true},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	paths := []string{
+		"sources/gmail/personal/messages/2026/06/27/a.md",
+		"sources/gmail/personal/messages/2026/06/27/b.md",
+		"sources/gmail/personal/messages/2026/06/27/c.md",
+	}
+	for _, path := range paths {
+		writeSource(t, root, path, path)
+	}
+	now := time.Date(2026, 6, 27, 18, 0, 0, 0, time.UTC)
+	queue := &sourcequeue.Queue{Root: root, Now: func() time.Time { return now }}
+	for _, path := range paths {
+		if err := queue.MarkPendingSource(context.Background(), sourcequeue.Source{Path: path, PendingAt: now}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manager := &fakeSourceManager{job: acp.Job{State: acp.StateIdle}}
+	runner := &Runner{Root: root, Store: store, Queue: queue, Manager: manager, BatchFiles: 2, BatchChars: 100000}
+
+	processed, err := runner.RunUntilIdle(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if processed != 3 {
+		t.Fatalf("processed = %d, want 3", processed)
+	}
+	if len(manager.sendMessages) != 2 {
+		t.Fatalf("agent batches = %d, want 2", len(manager.sendMessages))
+	}
+	pending, err := queue.Reserve(context.Background(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 0 {
+		t.Fatalf("memory source queue was not drained: %#v", pending)
+	}
+}
+
 func TestRunOnceLeavesPendingSourcesWhenAgentFails(t *testing.T) {
 	root := t.TempDir()
 	store, err := sqlitestore.New(t.TempDir())
@@ -242,9 +296,10 @@ func writeSource(t *testing.T, root, rel, content string) {
 }
 
 type fakeSourceManager struct {
-	spawn acp.SpawnRequest
-	send  acp.SendRequest
-	job   acp.Job
+	spawn        acp.SpawnRequest
+	send         acp.SendRequest
+	sendMessages []string
+	job          acp.Job
 }
 
 func (f *fakeSourceManager) Spawn(_ context.Context, req acp.SpawnRequest) (acp.SpawnResult, error) {
@@ -254,6 +309,7 @@ func (f *fakeSourceManager) Spawn(_ context.Context, req acp.SpawnRequest) (acp.
 
 func (f *fakeSourceManager) Send(_ context.Context, req acp.SendRequest) (acp.Job, error) {
 	f.send = req
+	f.sendMessages = append(f.sendMessages, req.Message)
 	return acp.Job{State: acp.StateRunning}, nil
 }
 

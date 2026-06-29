@@ -24,7 +24,7 @@ func StartSourceProjectionWorker(lc fx.Lifecycle, runner integrationingest.Sourc
 				ticker := time.NewTicker(sourceProjectionInterval)
 				defer ticker.Stop()
 				for {
-					processed, err := runner.RunOnce(ctx)
+					processed, err := runner.RunUntilIdle(ctx)
 					if err != nil && ctx.Err() == nil && logger != nil {
 						logger.WithPrefix("source-projection").Warn("source projection failed", "error", err)
 					} else {

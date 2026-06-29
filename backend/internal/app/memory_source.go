@@ -34,7 +34,7 @@ func StartMemorySourceWorker(lc fx.Lifecycle, runner *memorysource.Runner, logge
 				ticker := time.NewTicker(memorySourceInterval)
 				defer ticker.Stop()
 				for {
-					processed, err := runner.RunOnce(ctx)
+					processed, err := runner.RunUntilIdle(ctx)
 					if err != nil && ctx.Err() == nil && logger != nil {
 						logger.WithPrefix("memory-source").Warn("source capture failed", "error", err)
 					} else {

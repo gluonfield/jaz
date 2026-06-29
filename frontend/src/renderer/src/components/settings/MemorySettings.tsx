@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, CheckCircle2, Database, HelpCircle, RefreshCcw, Search, Sparkles } from 'lucide-react'
+import { HelpCircle, RefreshCcw, Sparkles } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { MarkdownEditor } from '@/components/agent/MarkdownEditor'
 import { FileTabs } from './FileTabs'
@@ -37,8 +37,8 @@ const TASK_COPY: Record<string, { label: string; description: string }> = {
     description: 'Updates memory search after memory files change.',
   },
   ingest_sources: {
-    label: 'Capture new information',
-    description: 'Turns prepared notes into durable memory entries.',
+    label: 'Scan import folder',
+    description: 'Checks the local memory import folder. Connected-account notes use the two counters above.',
   },
   daily_rollup: {
     label: "Update today's note",
@@ -71,16 +71,21 @@ const QUEUE_COPY = {
 
 type StatusTone = 'ok' | 'warn' | 'idle'
 
-function formatTime(value?: string): string {
+function formatRelativeTime(value?: string): string {
   if (!value) return 'never'
   const date = new Date(value)
   if (Number.isNaN(date.getTime()) || date.getTime() <= 0) return 'never'
-  return date.toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  const diffMs = date.getTime() - Date.now()
+  const absMs = Math.abs(diffMs)
+  if (absMs < 60_000) return diffMs >= 0 ? 'in 1m' : '1m ago'
+  const units = [
+    { suffix: 'd', ms: 86_400_000 },
+    { suffix: 'h', ms: 3_600_000 },
+    { suffix: 'm', ms: 60_000 },
+  ]
+  const unit = units.find(({ ms }) => absMs >= ms) ?? units[units.length - 1]
+  const amount = Math.max(1, Math.round(absMs / unit.ms))
+  return diffMs >= 0 ? `in ${amount}${unit.suffix}` : `${amount}${unit.suffix} ago`
 }
 
 export function MemorySettings() {
@@ -199,20 +204,13 @@ export function MemorySettings() {
     <div className="flex flex-col gap-5 py-5">
       <header>
         <h1 className="text-lg font-semibold text-ink">Memory</h1>
-        <p className="mt-0.5 max-w-[58ch] text-[13px] text-ink-2">
-          Saved context Jaz gives to agents so they remember stable facts, preferences,
-          current projects, and open loops across sessions.
-        </p>
+        <p className="mt-0.5 text-[13px] text-ink-2">Saved context for future agent sessions.</p>
       </header>
 
       <SettingsCard>
         <MemorySettingsRow
           title="Use memory"
-          description={
-            enabled
-              ? 'Agents receive saved memory and background upkeep can run.'
-              : 'Agents start without saved memory and background upkeep stays paused.'
-          }
+          description={enabled ? 'Included in agent prompts.' : 'Not included in agent prompts.'}
           explanation="This is the main switch. Turning it off stops memory from being added to agent prompts and disables automatic memory work."
         >
           <div className="flex h-8 items-center justify-start gap-2 md:justify-end">
@@ -228,11 +226,7 @@ export function MemorySettings() {
 
         <MemorySettingsRow
           title="Memory agent"
-          description={
-            selectedMemoryAgent
-              ? `${agentLabel(selectedMemoryAgent)} handles memory search and background review.`
-              : 'Choose which coding agent should read and organize memory.'
-          }
+          description={selectedMemoryAgent ? `${agentLabel(selectedMemoryAgent)} handles upkeep.` : 'Choose an agent.'}
           explanation="This agent answers memory-search requests and does background memory review. It should be an enabled ACP agent you trust with your saved context."
           disabled={!enabled}
         >
@@ -255,36 +249,27 @@ export function MemorySettings() {
       {enabled ? (
         <div className="flex flex-col gap-5">
           <section>
-            <SectionHeader
-              title="Status"
-              description="Use this to tell whether memory is ready, empty, busy, or needs attention."
-            />
+            <SectionHeader title="Status" />
             <SettingsCard className="mt-3">
               <div className="flex flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between">
-                <div className="flex min-w-0 items-start gap-3">
-                  <StatusIcon tone={summary.tone} />
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-[13px] font-medium text-ink">{summary.label}</p>
-                      <StatusPill tone={summary.tone}>{summary.badge}</StatusPill>
-                    </div>
-                    <p className="mt-0.5 text-[12px] text-ink-2">{summary.detail}</p>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-[13px] font-medium text-ink">{summary.label}</p>
+                    <StatusPill tone={summary.tone}>{summary.badge}</StatusPill>
                   </div>
+                  {summary.detail ? <p className="mt-0.5 text-[12px] text-ink-2">{summary.detail}</p> : null}
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-right text-[12px] md:min-w-[280px]">
-                  <MiniStat icon={<Database size={13} />} value={memory.doctor.page_count} label="notes" />
-                  <MiniStat icon={<Search size={13} />} value={memory.doctor.chunk_count} label="search parts" />
-                  <MiniStat icon={<AlertTriangle size={13} />} value={memory.doctor.unresolved_count} label="broken links" />
+                  <MiniStat value={memory.doctor.page_count} label="notes" />
+                  <MiniStat value={memory.doctor.chunk_count} label="search" />
+                  <MiniStat value={memory.doctor.unresolved_count} label="bad links" />
                 </div>
               </div>
             </SettingsCard>
           </section>
 
           <section>
-            <SectionHeader
-              title="Background upkeep"
-              description="Usually you should not need to touch this. It is here so problems are legible."
-            />
+            <SectionHeader title="Background upkeep" />
             <SettingsCard className="mt-3">
               {memory.source_queues ? (
                 <div className="grid grid-cols-1 divide-y divide-border border-b border-border md:grid-cols-2 md:divide-x md:divide-y-0">
@@ -309,14 +294,11 @@ export function MemorySettings() {
           </section>
 
           <section>
-            <SectionHeader
-              title="Manual actions"
-              description="Use these only when memory search looks stale or you want an immediate review."
-            />
+            <SectionHeader title="Manual actions" />
             <SettingsCard className="mt-3">
               <MaintenanceAction
                 title="Refresh memory search"
-                description="Rebuild the search data from the memory files on disk."
+                description="Rebuild search data."
                 explanation="Use this if you edited memory files outside Jaz or memory search returns stale results. Normal edits refresh automatically."
               >
                 <Button
@@ -331,7 +313,7 @@ export function MemorySettings() {
               </MaintenanceAction>
               <MaintenanceAction
                 title="Review memory now"
-                description="Ask the selected agent to consolidate recent notes into stable memory."
+                description="Consolidate recent notes."
                 explanation="This runs the same review that normally happens in the background. It can use tokens because it asks an agent to read recent memory notes."
               >
                 <Button
@@ -349,10 +331,7 @@ export function MemorySettings() {
 
           {active ? (
             <section className="flex flex-col">
-              <SectionHeader
-                title="Memory files"
-                description="These are the editable notes agents read. Changes affect future sessions."
-              />
+              <SectionHeader title="Memory files" />
               <div className="mt-3 flex items-end justify-between gap-4 border-b border-border">
                 <FileTabs
                   underlineId="memory-horizon-tab-underline"
@@ -373,7 +352,6 @@ export function MemorySettings() {
                   onSave={(content) => saveHorizon.mutate({ name: active.name, content })}
                 />
               </div>
-              <p className="pb-2 text-[12px] text-ink-2">{HORIZON_DESCRIPTIONS[active.name]}</p>
               <SettingsCard className="h-64 overflow-hidden">
                 <MarkdownEditor
                   key={active.name}
@@ -392,10 +370,7 @@ export function MemorySettings() {
       ) : (
         <SettingsCard className="px-4 py-4">
           <p className="text-[13px] font-medium text-ink">Memory is off</p>
-          <p className="mt-0.5 max-w-[62ch] text-[12px] text-ink-2">
-            Agents will not receive saved memory, and Jaz will not run background memory search or
-            review work until you turn it back on.
-          </p>
+          <p className="mt-0.5 text-[12px] text-ink-2">Agents will not receive saved memory.</p>
         </SettingsCard>
       )}
     </div>
@@ -433,11 +408,11 @@ function MemorySettingsRow({
   )
 }
 
-function SectionHeader({ title, description }: { title: string; description: string }) {
+function SectionHeader({ title, description }: { title: string; description?: string }) {
   return (
     <div>
       <p className="text-sm font-medium text-ink">{title}</p>
-      <p className="mt-0.5 text-[13px] text-ink-2">{description}</p>
+      {description ? <p className="mt-0.5 text-[13px] text-ink-2">{description}</p> : null}
     </div>
   )
 }
@@ -447,9 +422,9 @@ function HelpTooltip({ text }: { text: string }) {
     <span className="group relative inline-flex">
       <button
         type="button"
-        className="-m-2.5 grid size-10 place-items-center rounded-full text-ink-3 outline-none transition-colors duration-150 hover:text-ink focus-visible:text-ink"
+        className="grid size-6 place-items-center rounded-full text-ink-3 outline-none transition-colors duration-150 hover:text-ink focus-visible:text-ink"
       >
-        <HelpCircle size={13} aria-hidden />
+        <HelpCircle size={12} aria-hidden />
         <span className="sr-only">{text}</span>
       </button>
       <span
@@ -480,9 +455,6 @@ function SourceQueueStatus({
           <span className="flex items-center gap-1.5 text-[12px] font-medium text-ink">
             {label}
             <HelpTooltip text={detail} />
-          </span>
-          <span className="mt-0.5 block text-[11px] text-ink-3">
-            {active ? queueActivity(queue) : 'Nothing is waiting right now.'}
           </span>
         </div>
         <StatusPill tone={queue.error ? 'warn' : active ? 'ok' : 'idle'}>{status}</StatusPill>
@@ -517,9 +489,9 @@ function MemoryTaskRow({ task }: { task: MemoryTask }) {
       </div>
       <div className="flex shrink-0 items-center gap-3 text-[12px] text-ink-2">
         <span className={error ? 'font-medium text-danger' : task.last_run_at ? '' : 'text-ink-3'}>
-          {error ? 'Needs attention' : task.last_run_at ? `Last ran ${formatTime(task.last_run_at)}` : 'Not run yet'}
+          {error ? 'Needs attention' : task.last_run_at ? `Last ${formatRelativeTime(task.last_run_at)}` : 'Not run yet'}
         </span>
-        {task.next_due ? <span className="text-ink-3">Next {formatTime(task.next_due)}</span> : null}
+        {task.next_due ? <span className="text-ink-3">Next {formatRelativeTime(task.next_due)}</span> : null}
       </div>
     </li>
   )
@@ -550,29 +522,12 @@ function MaintenanceAction({
   )
 }
 
-function MiniStat({ icon, value, label }: { icon: ReactNode; value: number; label: string }) {
+function MiniStat({ value, label }: { value: number; label: string }) {
   return (
     <div className="min-w-0 rounded-[8px] bg-surface-2 px-2 py-1.5">
-      <div className="flex items-center justify-end gap-1 text-ink">
-        <span className="text-ink-3">{icon}</span>
-        <span className="font-mono tabular-nums">{value}</span>
-      </div>
+      <div className="font-mono tabular-nums text-ink">{value}</div>
       <p className="truncate text-[11px] text-ink-3">{label}</p>
     </div>
-  )
-}
-
-function StatusIcon({ tone }: { tone: StatusTone }) {
-  const className =
-    tone === 'warn'
-      ? 'bg-danger-soft text-danger'
-      : tone === 'ok'
-        ? 'bg-primary-soft text-primary-strong'
-        : 'bg-surface-2 text-ink-3'
-  return (
-    <span className={`grid size-8 shrink-0 place-items-center rounded-full ${className}`}>
-      {tone === 'warn' ? <AlertTriangle size={15} /> : tone === 'ok' ? <CheckCircle2 size={15} /> : <Database size={15} />}
-    </span>
   )
 }
 
@@ -590,12 +545,12 @@ function memoryStatusSummary(
   memory: MemoryStatus,
   selectedMemoryAgent: string,
   memoryAgentValid: boolean,
-): { label: string; badge: string; detail: string; tone: StatusTone } {
+): { label: string; badge: string; detail?: string; tone: StatusTone } {
   if (!selectedMemoryAgent) {
     return {
       label: 'Choose a memory agent',
       badge: 'Needs agent',
-      detail: 'Memory is on, but search answers and background review need an agent.',
+      detail: 'Pick an agent to run search and review.',
       tone: 'warn',
     }
   }
@@ -603,7 +558,7 @@ function memoryStatusSummary(
     return {
       label: 'Memory agent is unavailable',
       badge: 'Needs agent',
-      detail: 'Pick an enabled agent before relying on memory search or review.',
+      detail: 'Pick an enabled agent.',
       tone: 'warn',
     }
   }
@@ -611,7 +566,7 @@ function memoryStatusSummary(
     return {
       label: 'Background upkeep is paused',
       badge: 'Paused',
-      detail: 'Agents can still read memory, but automatic upkeep is not running.',
+      detail: 'Automatic upkeep is not running.',
       tone: 'warn',
     }
   }
@@ -619,7 +574,7 @@ function memoryStatusSummary(
     return {
       label: 'Memory needs attention',
       badge: 'Issue',
-      detail: 'At least one background job reported an error. The row below shows which one.',
+      detail: 'A row below has an error.',
       tone: 'warn',
     }
   }
@@ -627,14 +582,12 @@ function memoryStatusSummary(
     return {
       label: 'No saved memory yet',
       badge: 'Empty',
-      detail: 'Nothing is wrong if this is a fresh setup. Memory will fill as agents capture durable facts.',
       tone: 'idle',
     }
   }
   return {
     label: 'Memory is ready',
     badge: 'Ready',
-    detail: 'Agents can use saved context, and background upkeep is running.',
     tone: 'ok',
   }
 }

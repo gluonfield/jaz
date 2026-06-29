@@ -118,6 +118,94 @@ func TestSourceProjectionRunnerRebuildsSourceFromRawShard(t *testing.T) {
 	}
 }
 
+func TestSourceProjectionRunnerRunUntilIdleDrainsMultipleBatches(t *testing.T) {
+	rawRoot := t.TempDir()
+	sourceRoot := t.TempDir()
+	queueRoot := t.TempDir()
+	now := time.Date(2026, 6, 27, 18, 30, 0, 0, time.UTC)
+	raw := RawWriter{Root: rawRoot, Now: func() time.Time { return now }}
+	records := []integrations.Record{
+		{
+			Provider:     "telegram",
+			ConnectionID: "conn",
+			AccountID:    "acct",
+			Kind:         "telegram.message",
+			ExternalID:   "m1",
+			OccurredAt:   now,
+			Raw:          json.RawMessage(`{"message":"one"}`),
+		},
+		{
+			Provider:     "telegram",
+			ConnectionID: "conn",
+			AccountID:    "acct",
+			Kind:         "telegram.message",
+			ExternalID:   "m2",
+			OccurredAt:   now.AddDate(0, 0, 1),
+			Raw:          json.RawMessage(`{"message":"two"}`),
+		},
+	}
+	if err := raw.WriteRecords(context.Background(), records); err != nil {
+		t.Fatal(err)
+	}
+	queue := sourcequeue.New(queueRoot)
+	sources := []sourcequeue.Source{
+		{
+			Path:      "sources/telegram/acct/conversations/a/2026/06/27.md",
+			PendingAt: now,
+			Provider:  "telegram",
+			Kind:      "chat_day",
+			MediaType: "text/markdown",
+			Key:       integrations.SourceKey{Entity: "a", Day: "2026-06-27"},
+			Replay:    integrations.Replay{Account: "acct", Scopes: []integrations.ReplayScope{{Domain: integrations.RecordDomainMessages, Day: "2026-06-27"}}},
+		},
+		{
+			Path:      "sources/telegram/acct/conversations/b/2026/06/28.md",
+			PendingAt: now,
+			Provider:  "telegram",
+			Kind:      "chat_day",
+			MediaType: "text/markdown",
+			Key:       integrations.SourceKey{Entity: "b", Day: "2026-06-28"},
+			Replay:    integrations.Replay{Account: "acct", Scopes: []integrations.ReplayScope{{Domain: integrations.RecordDomainMessages, Day: "2026-06-28"}}},
+		},
+	}
+	for _, source := range sources {
+		if err := queue.MarkPendingSource(context.Background(), source); err != nil {
+			t.Fatal(err)
+		}
+	}
+	memoryPending := &fakePendingSourceStore{}
+	runner := SourceProjectionRunner{
+		Queue: queue,
+		Projector: SourceProjector{
+			RawRoot:   rawRoot,
+			Projector: fakeSourceProjector{},
+		},
+		Writer: SourceWriter{
+			Root:               sourceRoot,
+			PendingSourceStore: memoryPending,
+		},
+		BatchFiles: 1,
+	}
+
+	processed, err := runner.RunUntilIdle(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if processed != 2 {
+		t.Fatalf("processed = %d, want 2", processed)
+	}
+	if len(memoryPending.sources) != 2 {
+		t.Fatalf("memory pending sources = %#v, want 2", memoryPending.sources)
+	}
+	pending, err := queue.Reserve(context.Background(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 0 {
+		t.Fatalf("projection queue was not drained: %#v", pending)
+	}
+}
+
 func TestMaterializingWriterQueuesValidSourcesWhenPlanningRecordFails(t *testing.T) {
 	rawRoot := t.TempDir()
 	now := time.Date(2026, 6, 27, 18, 30, 0, 0, time.UTC)
