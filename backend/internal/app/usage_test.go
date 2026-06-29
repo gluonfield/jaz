@@ -30,7 +30,7 @@ type fakeFeedStore struct{}
 
 func (fakeFeedStore) LoadFeed() ([]storage.FeedItem, error) { return nil, nil }
 
-func (fakeFeedStore) SetThreadSeen(string) error { return nil }
+func (fakeFeedStore) SetThreadUnread(string, bool) error { return nil }
 
 type fakeConnectionOAuthStore struct{}
 

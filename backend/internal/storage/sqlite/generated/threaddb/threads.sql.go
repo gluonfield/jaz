@@ -95,7 +95,7 @@ SELECT
   mcp_server_policy,
   pending_steer_message,
   runtime_capabilities,
-  last_seen_at_ms
+  unread
 FROM threads
 WHERE id = ?1 OR slug = ?1
 LIMIT 1
@@ -139,7 +139,7 @@ func (q *Queries) GetSession(ctx context.Context, ref string) (Thread, error) {
 		&i.McpServerPolicy,
 		&i.PendingSteerMessage,
 		&i.RuntimeCapabilities,
-		&i.LastSeenAtMs,
+		&i.Unread,
 	)
 	return i, err
 }
@@ -238,7 +238,7 @@ SELECT
   mcp_server_policy,
   pending_steer_message,
   runtime_capabilities,
-  last_seen_at_ms
+  unread
 FROM threads
 `
 
@@ -286,7 +286,7 @@ func (q *Queries) ListSessions(ctx context.Context) ([]Thread, error) {
 			&i.McpServerPolicy,
 			&i.PendingSteerMessage,
 			&i.RuntimeCapabilities,
-			&i.LastSeenAtMs,
+			&i.Unread,
 		); err != nil {
 			return nil, err
 		}
@@ -376,19 +376,19 @@ func (q *Queries) SetThreadError(ctx context.Context, arg SetThreadErrorParams) 
 	return err
 }
 
-const setThreadSeen = `-- name: SetThreadSeen :exec
+const setThreadUnread = `-- name: SetThreadUnread :exec
 UPDATE threads
-SET last_seen_at_ms = ?1
+SET unread = ?1
 WHERE id = ?2
 `
 
-type SetThreadSeenParams struct {
-	LastSeenAtMs int64  `json:"last_seen_at_ms"`
-	ID           string `json:"id"`
+type SetThreadUnreadParams struct {
+	Unread int64  `json:"unread"`
+	ID     string `json:"id"`
 }
 
-func (q *Queries) SetThreadSeen(ctx context.Context, arg SetThreadSeenParams) error {
-	_, err := q.db.ExecContext(ctx, setThreadSeen, arg.LastSeenAtMs, arg.ID)
+func (q *Queries) SetThreadUnread(ctx context.Context, arg SetThreadUnreadParams) error {
+	_, err := q.db.ExecContext(ctx, setThreadUnread, arg.Unread, arg.ID)
 	return err
 }
 
@@ -503,9 +503,9 @@ INSERT INTO threads (
   created_at_ms,
   updated_at_ms,
   last_attention_at_ms,
-  last_seen_at_ms,
   pinned,
-  pending_steer_message
+  pending_steer_message,
+  unread
 ) VALUES (
   ?1,
   ?2,
@@ -575,9 +575,9 @@ ON CONFLICT(id) DO UPDATE SET
   created_at_ms = excluded.created_at_ms,
   updated_at_ms = excluded.updated_at_ms,
   last_attention_at_ms = excluded.last_attention_at_ms,
-  last_seen_at_ms = excluded.last_seen_at_ms,
   pinned = excluded.pinned,
-  pending_steer_message = excluded.pending_steer_message
+  pending_steer_message = excluded.pending_steer_message,
+  unread = excluded.unread
 `
 
 type UpsertSessionParams struct {
@@ -613,9 +613,9 @@ type UpsertSessionParams struct {
 	CreatedAtMs           int64          `json:"created_at_ms"`
 	UpdatedAtMs           int64          `json:"updated_at_ms"`
 	LastAttentionAtMs     int64          `json:"last_attention_at_ms"`
-	LastSeenAtMs          int64          `json:"last_seen_at_ms"`
 	Pinned                int64          `json:"pinned"`
 	PendingSteerMessage   string         `json:"pending_steer_message"`
+	Unread                int64          `json:"unread"`
 }
 
 func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) error {
@@ -652,9 +652,9 @@ func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) er
 		arg.CreatedAtMs,
 		arg.UpdatedAtMs,
 		arg.LastAttentionAtMs,
-		arg.LastSeenAtMs,
 		arg.Pinned,
 		arg.PendingSteerMessage,
+		arg.Unread,
 	)
 	return err
 }

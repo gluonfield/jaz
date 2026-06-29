@@ -5,7 +5,6 @@ import (
 	"github.com/wins/jaz/backend/internal/threads"
 )
 
-// maxToolChars bounds the per-tool detail kept on a feed card's last message.
 const maxToolChars = 280
 
 type Service struct {
@@ -16,15 +15,13 @@ func NewService(store storage.FeedStore) Service {
 	return Service{store: store}
 }
 
-// Item is one unread thread for the Feed: identity plus its newest message in
-// the compacted transcript shape the UI already renders.
 type Item struct {
-	ID          string
-	Slug        string
-	Title       string
-	ParentID    string
-	Status      string
-	LastMessage threads.TranscriptMessage
+	ID          string                    `json:"id"`
+	Slug        string                    `json:"slug"`
+	Title       string                    `json:"title,omitempty"`
+	ParentID    string                    `json:"parent_id,omitempty"`
+	Status      string                    `json:"status"`
+	LastMessage threads.TranscriptMessage `json:"last_message"`
 }
 
 func (s Service) Feed() ([]Item, error) {
@@ -44,10 +41,6 @@ func (s Service) Feed() ([]Item, error) {
 		})
 	}
 	return items, nil
-}
-
-func (s Service) MarkSeen(id string) error {
-	return s.store.SetThreadSeen(id)
 }
 
 func lastMessage(record storage.Message) threads.TranscriptMessage {

@@ -9,16 +9,12 @@ import (
 
 type fakeStore struct {
 	items   []storage.FeedItem
-	seenIDs []string
 	loadErr error
 }
 
 func (f *fakeStore) LoadFeed() ([]storage.FeedItem, error) { return f.items, f.loadErr }
 
-func (f *fakeStore) SetThreadSeen(id string) error {
-	f.seenIDs = append(f.seenIDs, id)
-	return nil
-}
+func (f *fakeStore) SetThreadUnread(string, bool) error { return nil }
 
 func TestFeedCompactsLastMessage(t *testing.T) {
 	store := &fakeStore{items: []storage.FeedItem{{
@@ -46,15 +42,5 @@ func TestFeedPropagatesLoadError(t *testing.T) {
 	want := errors.New("boom")
 	if _, err := NewService(&fakeStore{loadErr: want}).Feed(); !errors.Is(err, want) {
 		t.Fatalf("err = %v, want %v", err, want)
-	}
-}
-
-func TestMarkSeenDelegates(t *testing.T) {
-	store := &fakeStore{}
-	if err := NewService(store).MarkSeen("t9"); err != nil {
-		t.Fatal(err)
-	}
-	if len(store.seenIDs) != 1 || store.seenIDs[0] != "t9" {
-		t.Fatalf("seenIDs = %v, want [t9]", store.seenIDs)
 	}
 }

@@ -15,7 +15,7 @@ type fakeStore struct {
 }
 
 func (f fakeStore) LoadFeed() ([]storage.FeedItem, error) { return f.items, nil }
-func (f fakeStore) SetThreadSeen(string) error            { return nil }
+func (f fakeStore) SetThreadUnread(string, bool) error    { return nil }
 
 func TestListHandlerReturnsItems(t *testing.T) {
 	store := fakeStore{items: []storage.FeedItem{{

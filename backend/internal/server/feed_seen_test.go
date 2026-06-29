@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -26,6 +25,9 @@ func TestSessionSeenActionClearsFeed(t *testing.T) {
 	if err := store.AppendMessageRecords(session.ID, storage.Message{Role: "assistant", Content: "ping"}); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.SetThreadUnread(session.ID, true); err != nil {
+		t.Fatal(err)
+	}
 
 	feed, err := store.LoadFeed()
 	if err != nil {
@@ -35,8 +37,6 @@ func TestSessionSeenActionClearsFeed(t *testing.T) {
 		t.Fatalf("feed before seen = %d, want 1", len(feed))
 	}
 
-	// Append stamps created_at slightly ahead of wall-clock; wait past it.
-	time.Sleep(5 * time.Millisecond)
 	handler := (&Server{Store: store}).Handler()
 	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/seen", nil)
 	res := httptest.NewRecorder()

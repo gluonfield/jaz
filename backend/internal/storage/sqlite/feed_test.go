@@ -2,7 +2,6 @@ package sqlite
 
 import (
 	"testing"
-	"time"
 
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -29,25 +28,26 @@ func contains(ids []string, id string) bool {
 	return false
 }
 
-func TestLoadFeedSurfacesUnseenThreadsAndSetThreadSeenClears(t *testing.T) {
+func TestLoadFeedTracksUnreadFlag(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
 
-	session, err := store.CreateSession(storage.CreateSession{Slug: "feed-unseen"})
+	session, err := store.CreateSession(storage.CreateSession{Slug: "feed-unread"})
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// A freshly created thread with no new messages is not in the feed.
-	if ids := feedIDs(t, store); contains(ids, session.ID) {
-		t.Fatalf("new empty thread should not be in feed: %v", ids)
+	if err := store.AppendMessageRecords(session.ID, storage.Message{Role: "assistant", Content: "done"}); err != nil {
+		t.Fatal(err)
 	}
 
-	// A message that arrives after creation makes the thread unread.
-	if err := store.AppendMessageRecords(session.ID, storage.Message{Role: "assistant", Content: "done"}); err != nil {
+	if ids := feedIDs(t, store); contains(ids, session.ID) {
+		t.Fatalf("thread should not be in feed before it is flagged unread: %v", ids)
+	}
+
+	if err := store.SetThreadUnread(session.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	items, err := store.LoadFeed()
@@ -55,16 +55,13 @@ func TestLoadFeedSurfacesUnseenThreadsAndSetThreadSeenClears(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(items) != 1 || items[0].ID != session.ID {
-		t.Fatalf("feed = %#v, want the unseen thread", items)
+		t.Fatalf("feed = %#v, want the unread thread", items)
 	}
 	if items[0].LastMessage.Content != "done" || items[0].LastMessage.Role != "assistant" {
 		t.Fatalf("last message = %+v, want assistant/done", items[0].LastMessage)
 	}
 
-	// Marking seen clears it from the feed. Append stamps created_at a couple ms
-	// ahead of wall-clock, so wait past it before recording the seen mark.
-	time.Sleep(5 * time.Millisecond)
-	if err := store.SetThreadSeen(session.ID); err != nil {
+	if err := store.SetThreadUnread(session.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	if ids := feedIDs(t, store); contains(ids, session.ID) {
@@ -87,6 +84,9 @@ func TestLoadFeedUsesLastMessageAndExcludesArchived(t *testing.T) {
 		storage.Message{Role: "user", Content: "first"},
 		storage.Message{Role: "assistant", Content: "latest"},
 	); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetThreadUnread(session.ID, true); err != nil {
 		t.Fatal(err)
 	}
 
@@ -121,6 +121,9 @@ func TestLoadFeedExcludesSourcedThreads(t *testing.T) {
 	if err := store.AppendMessageRecords(session.ID, storage.Message{Role: "assistant", Content: "loop output"}); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.SetThreadUnread(session.ID, true); err != nil {
+		t.Fatal(err)
+	}
 	if ids := feedIDs(t, store); contains(ids, session.ID) {
 		t.Fatalf("sourced (loop) thread should be excluded: %v", ids)
 	}
@@ -138,11 +141,14 @@ func TestLoadFeedExcludesUserAuthoredLastMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Last message authored by the user means the thread is waiting on the agent,
-	// not on the human, so it must not appear in the feed.
+	// not on the human, so it must not appear even when flagged unread.
 	if err := store.AppendMessageRecords(session.ID,
 		storage.Message{Role: "assistant", Content: "answer"},
 		storage.Message{Role: "user", Content: "follow-up"},
 	); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetThreadUnread(session.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	if ids := feedIDs(t, store); contains(ids, session.ID) {

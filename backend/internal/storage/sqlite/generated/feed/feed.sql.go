@@ -19,7 +19,6 @@ SELECT
   t.status,
   m.role AS message_role,
   m.content AS message_content,
-  m.reasoning AS message_reasoning,
   m.blocks AS message_blocks,
   m.created_at_ms AS message_created_at_ms
 FROM threads t
@@ -27,9 +26,9 @@ JOIN messages m
   ON m.thread_id = t.id
  AND m.seq = (SELECT MAX(seq) FROM messages m2 WHERE m2.thread_id = t.id)
 WHERE t.archived = 0
+  AND t.unread = 1
   AND COALESCE(t.source_type, '') = ''
   AND m.role = 'assistant'
-  AND m.created_at_ms > t.last_seen_at_ms
 ORDER BY m.created_at_ms DESC
 `
 
@@ -41,18 +40,12 @@ type ListFeedRow struct {
 	Status             string         `json:"status"`
 	MessageRole        string         `json:"message_role"`
 	MessageContent     string         `json:"message_content"`
-	MessageReasoning   sql.NullString `json:"message_reasoning"`
 	MessageBlocks      string         `json:"message_blocks"`
 	MessageCreatedAtMs int64          `json:"message_created_at_ms"`
 }
 
-// Every unarchived, user-started thread whose newest message is an unseen
-// assistant reply, with that message attached. Restricting to assistant-authored
-// last messages is what "threads I need to respond to" means: a thread whose last
-// message is the user's own is waiting on the agent, not on you. Sourced threads
-// (loop runs, memory/browser tasks) are automated and excluded, matching how the
-// sidebar hides them. The correlated MAX(seq) is an index-only seek on the
-// (thread_id, seq) primary key, so this is one round trip.
+// Unread user-started threads, with their newest message for display. The
+// assistant-role guard drops threads whose last message is the user's own.
 func (q *Queries) ListFeed(ctx context.Context) ([]ListFeedRow, error) {
 	rows, err := q.db.QueryContext(ctx, listFeed)
 	if err != nil {
@@ -70,7 +63,6 @@ func (q *Queries) ListFeed(ctx context.Context) ([]ListFeedRow, error) {
 			&i.Status,
 			&i.MessageRole,
 			&i.MessageContent,
-			&i.MessageReasoning,
 			&i.MessageBlocks,
 			&i.MessageCreatedAtMs,
 		); err != nil {

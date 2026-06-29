@@ -7,8 +7,6 @@ import (
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/feed"
 )
 
-// LoadFeed returns every unarchived thread whose newest message is an unseen
-// assistant reply, newest first, each with that message attached.
 func (s *Store) LoadFeed() ([]storage.FeedItem, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -29,10 +27,8 @@ func (s *Store) LoadFeed() ([]storage.FeedItem, error) {
 			ParentID: row.ParentID.String,
 			Status:   row.Status,
 			LastMessage: storage.Message{
-				ThreadID:  row.ID,
 				Role:      row.MessageRole,
 				Content:   row.MessageContent,
-				Reasoning: row.MessageReasoning.String,
 				Blocks:    blocks,
 				CreatedAt: msToTime(row.MessageCreatedAtMs),
 			},

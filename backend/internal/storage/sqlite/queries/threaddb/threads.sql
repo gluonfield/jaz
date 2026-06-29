@@ -34,7 +34,7 @@ SELECT
   mcp_server_policy,
   pending_steer_message,
   runtime_capabilities,
-  last_seen_at_ms
+  unread
 FROM threads;
 
 -- name: GetSession :one
@@ -73,7 +73,7 @@ SELECT
   mcp_server_policy,
   pending_steer_message,
   runtime_capabilities,
-  last_seen_at_ms
+  unread
 FROM threads
 WHERE id = sqlc.arg(ref) OR slug = sqlc.arg(ref)
 LIMIT 1;
@@ -124,9 +124,9 @@ INSERT INTO threads (
   created_at_ms,
   updated_at_ms,
   last_attention_at_ms,
-  last_seen_at_ms,
   pinned,
-  pending_steer_message
+  pending_steer_message,
+  unread
 ) VALUES (
   sqlc.arg(id),
   sqlc.arg(slug),
@@ -160,9 +160,9 @@ INSERT INTO threads (
   sqlc.arg(created_at_ms),
   sqlc.arg(updated_at_ms),
   sqlc.arg(last_attention_at_ms),
-  sqlc.arg(last_seen_at_ms),
   sqlc.arg(pinned),
-  sqlc.arg(pending_steer_message)
+  sqlc.arg(pending_steer_message),
+  sqlc.arg(unread)
 )
 ON CONFLICT(id) DO UPDATE SET
   slug = excluded.slug,
@@ -196,9 +196,9 @@ ON CONFLICT(id) DO UPDATE SET
   created_at_ms = excluded.created_at_ms,
   updated_at_ms = excluded.updated_at_ms,
   last_attention_at_ms = excluded.last_attention_at_ms,
-  last_seen_at_ms = excluded.last_seen_at_ms,
   pinned = excluded.pinned,
-  pending_steer_message = excluded.pending_steer_message;
+  pending_steer_message = excluded.pending_steer_message,
+  unread = excluded.unread;
 
 -- name: SetArchived :exec
 UPDATE threads
@@ -227,9 +227,9 @@ SET
   last_attention_at_ms = sqlc.arg(last_attention_at_ms)
 WHERE id = sqlc.arg(id);
 
--- name: SetThreadSeen :exec
+-- name: SetThreadUnread :exec
 UPDATE threads
-SET last_seen_at_ms = sqlc.arg(last_seen_at_ms)
+SET unread = sqlc.arg(unread)
 WHERE id = sqlc.arg(id);
 
 -- name: UpdateACPState :exec
