@@ -22,6 +22,10 @@ interface Rect {
 
 let launcher: BrowserWindow | null = null
 
+function keepDockVisible(): void {
+  if (process.platform === 'darwin') app.setActivationPolicy('regular')
+}
+
 function preloadPath(): string {
   return join(__dirname, '../preload/index.js')
 }
@@ -56,6 +60,7 @@ function buildLauncher(): BrowserWindow {
   })
   win.setAlwaysOnTop(true, 'screen-saver')
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  keepDockVisible()
   win.on('blur', hideLauncher)
   win.on('closed', () => {
     if (launcher === win) launcher = null
@@ -78,6 +83,7 @@ function coverCursorDisplay(win: BrowserWindow): void {
 }
 
 function presentLauncher(win: BrowserWindow): void {
+  keepDockVisible()
   win.show()
   // Without stealing app focus, keystrokes go to the previously-frontmost app.
   app.focus({ steal: true })
