@@ -143,10 +143,12 @@ function normalizeQueuedPrompts(prompts: QueuedMessage[]): QueuedMessage[] {
 
 function normalizeQueuedPrompt(prompt: QueuedMessageInput): QueuedMessageInput | null {
   const text = prompt.text.trim()
-  if (!text) return null
   const contexts = normalizeContexts(prompt.contexts)
   const legacyQuotes = (prompt.quotes ?? []).map((quote) => quote.trim()).filter(Boolean)
   const attachmentIds = (prompt.attachment_ids ?? []).map((id) => id.trim()).filter(Boolean)
+  if (!text && contexts.length === 0 && legacyQuotes.length === 0 && attachmentIds.length === 0) {
+    return null
+  }
   return {
     ...(prompt.id?.trim() ? { id: prompt.id.trim() } : {}),
     text,

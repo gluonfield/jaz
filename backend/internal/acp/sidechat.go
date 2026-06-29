@@ -38,7 +38,7 @@ func (m *Manager) SendSideChat(ctx context.Context, req SideChatRequest) error {
 	if sideChatID == "" {
 		return fmt.Errorf("side chat id is required")
 	}
-	if message == "" {
+	if !storage.HasMessageContent(req.Message, req.Contexts, req.Attachments) {
 		return fmt.Errorf("message is required")
 	}
 	job, err := m.job(req.Session)
@@ -146,7 +146,7 @@ func (m *Manager) publishSideChatEvent(job Job, scope sideChatScope, role, conte
 	if strings.TrimSpace(scope.ID) == "" {
 		return
 	}
-	if content == "" && status == "" {
+	if content == "" && status == "" && len(contexts) == 0 && len(attachments) == 0 {
 		return
 	}
 	m.recordAndPublishDirect(sessionevents.Event{

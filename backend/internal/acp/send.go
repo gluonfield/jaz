@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -60,7 +59,7 @@ func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (
 	if opts.requireCompactSupport && !AgentSupportsCompact(job.ACPAgent) {
 		return Job{}, fmt.Errorf("compact is not available for acp agent %q", job.ACPAgent)
 	}
-	if strings.TrimSpace(req.Message) == "" {
+	if !storage.HasMessageContent(req.Message, req.Contexts, req.Attachments) {
 		return Job{}, fmt.Errorf("message is required")
 	}
 	job.mu.RLock()
@@ -103,7 +102,7 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	if err != nil {
 		return Job{}, err
 	}
-	if strings.TrimSpace(req.Message) == "" {
+	if !storage.HasMessageContent(req.Message, req.Contexts, req.Attachments) {
 		return Job{}, fmt.Errorf("message is required")
 	}
 	job.mu.RLock()

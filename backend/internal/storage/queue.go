@@ -76,7 +76,7 @@ func NormalizeQueuedMessage(message QueuedMessage) (QueuedMessage, bool) {
 	message.Contexts = NormalizeMessageContexts(append(SelectionContexts(message.Quotes), message.Contexts...))
 	message.Quotes = nil
 	message.AttachmentIDs = normalizeNonEmpty(message.AttachmentIDs)
-	return message, message.Text != ""
+	return message, message.Text != "" || len(message.Contexts) > 0 || len(message.AttachmentIDs) > 0
 }
 
 func NewQueuedMessage(text string, attachmentIDs []string) QueuedMessage {

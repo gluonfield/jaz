@@ -46,6 +46,10 @@ type Attachment struct {
 	ServerPath string `json:"server_path,omitempty"`
 }
 
+func HasMessageContent(message string, contexts []MessageContext, attachments []Attachment) bool {
+	return strings.TrimSpace(message) != "" || len(NormalizeMessageContexts(contexts)) > 0 || len(attachments) > 0
+}
+
 func SelectionContexts(selections []string) []MessageContext {
 	if len(selections) == 0 {
 		return nil

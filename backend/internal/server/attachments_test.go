@@ -97,6 +97,49 @@ func TestACPStreamResolvesAttachmentIDs(t *testing.T) {
 	}
 }
 
+func TestACPStreamAllowsAttachmentWithoutText(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "acp-attachment-only",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     "codex",
+			SessionID: "acp-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	manager := &fakeACPManager{job: acp.Job{ID: session.ID, Slug: session.Slug, State: acp.StateIdle}}
+	handler := (&Server{Store: store, ACP: manager, Workspace: workspace}).Handler()
+	attachment := uploadTestAttachment(t, handler, session.ID, "image.png", "image-bytes")
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/sessions/"+session.ID+"/messages:stream",
+		strings.NewReader(`{"attachment_ids":["`+attachment.ID+`"]}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	if manager.sent.Message != "" {
+		t.Fatalf("message = %q, want empty", manager.sent.Message)
+	}
+	if len(manager.sent.Attachments) != 1 || manager.sent.Attachments[0].ID != attachment.ID {
+		t.Fatalf("attachments = %#v", manager.sent.Attachments)
+	}
+}
+
 func TestStreamDoesNotTrustAttachmentMetadataServerPath(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {

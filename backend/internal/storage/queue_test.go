@@ -36,6 +36,37 @@ func TestQueuedMessageContextsRoundTripAndTrim(t *testing.T) {
 	}
 }
 
+func TestQueuedMessageAllowsContextWithoutText(t *testing.T) {
+	raw, err := MarshalQueuedMessages([]QueuedMessage{{Quotes: []string{" keep "}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages, err := UnmarshalQueuedMessages(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 || messages[0].Text != "" || len(messages[0].Contexts) != 1 {
+		t.Fatalf("messages = %#v", messages)
+	}
+}
+
+func TestQueuedMessageAllowsAttachmentWithoutText(t *testing.T) {
+	raw, err := MarshalQueuedMessages([]QueuedMessage{{AttachmentIDs: []string{" file-1 "}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages, err := UnmarshalQueuedMessages(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 ||
+		messages[0].Text != "" ||
+		len(messages[0].AttachmentIDs) != 1 ||
+		messages[0].AttachmentIDs[0] != "file-1" {
+		t.Fatalf("messages = %#v", messages)
+	}
+}
+
 func TestQueuedMessageBrowserAnnotationsRoundTripAndTrim(t *testing.T) {
 	raw, err := MarshalQueuedMessages([]QueuedMessage{{
 		Text: "ask",

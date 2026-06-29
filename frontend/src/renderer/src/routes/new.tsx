@@ -106,7 +106,7 @@ function NewSessionPage() {
   }
 
   const handleSend = (text: string, options: SendMessageOptions = {}) =>
-    startThread(text.trim(), (id) =>
+    startThread(text.trim() || undefined, (id) =>
       setPendingMessage(id, {
         text,
         planRequested: Boolean(options.planRequested),

@@ -46,6 +46,26 @@ func TestPromptContentBlocksUsesResourceLinks(t *testing.T) {
 	}
 }
 
+func TestPromptContentBlocksAllowsAttachmentWithoutText(t *testing.T) {
+	blocks, err := promptContentBlocks("", []storage.Attachment{{
+		Name: "image.png",
+		URI:  "file:///tmp/image.png",
+	}}, localAttachmentResources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("blocks = %d, want resource_link only", len(blocks))
+	}
+	decoded, err := acpschema.DecodeContentBlock(blocks[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := decoded.(acpschema.ResourceLinkContentBlock); !ok {
+		t.Fatalf("attachment block type = %T, want resource_link", decoded)
+	}
+}
+
 func TestPromptContentBlocksDerivesResourceURIFromServerPath(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "note.txt")
 	blocks, err := promptContentBlocks("read this", []storage.Attachment{{

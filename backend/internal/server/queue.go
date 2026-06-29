@@ -94,7 +94,7 @@ func applyQueueMutation(queue []storage.QueuedMessage, req queueRequest) ([]stor
 		message.ID = ""
 		msgs := storage.NormalizeQueuedMessages([]storage.QueuedMessage{message})
 		if len(msgs) == 0 {
-			return queue, queueInputError{"queued prompt text is required"}
+			return queue, queueInputError{"queued prompt content is required"}
 		}
 		return append(queue, msgs[0]), nil
 	case "delete":
