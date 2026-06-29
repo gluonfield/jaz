@@ -17,13 +17,6 @@ function FeedPage() {
     <div className="mx-auto max-w-[680px] px-10 pb-12">
       <header className="pb-6">
         <h1 className="text-lg font-semibold text-ink">Feed</h1>
-        {feed.data ? (
-          <p className="mt-0.5 text-[13px] text-ink-3">
-            {feed.data.length === 0
-              ? 'Nothing waiting on you'
-              : `${feed.data.length} thread${feed.data.length === 1 ? '' : 's'} to respond`}
-          </p>
-        ) : null}
       </header>
 
       {feed.isPending ? (

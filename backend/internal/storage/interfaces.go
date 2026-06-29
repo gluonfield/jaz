@@ -72,10 +72,9 @@ type UsageEventStore interface {
 	UsageEventsSince(since time.Time) ([]UsageEvent, error)
 }
 
-// FeedStore backs the Feed: unread unarchived threads and per-thread seen marks.
 type FeedStore interface {
 	LoadFeed() ([]FeedItem, error)
-	SetThreadSeen(id string) error
+	SetThreadUnread(id string, unread bool) error
 }
 
 type Store interface {

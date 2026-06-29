@@ -127,11 +127,9 @@ type messageRecordStore interface {
 	LoadMessageRecords(string) ([]storage.Message, error)
 }
 
-// markSessionSeen records that the user has seen a thread up to now, clearing it
-// from the Feed. No-op when the store does not back a Feed.
-func (s *Server) markSessionSeen(id string) {
+func (s *Server) setSessionUnread(id string, unread bool) {
 	if feed, ok := s.Store.(storage.FeedStore); ok {
-		_ = feed.SetThreadSeen(id)
+		_ = feed.SetThreadUnread(id, unread)
 	}
 }
 
@@ -302,7 +300,7 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 // writeSessionMessages serves the thread page's full hydration payload:
 // persisted messages, activity, transcript events, and ACP state.
 func (s *Server) writeSessionMessages(w http.ResponseWriter, r *http.Request, session storage.Session) {
-	s.markSessionSeen(session.ID)
+	s.setSessionUnread(session.ID, false)
 	mobile := requestClientPlatform(r) == "mobile"
 	var messages any
 	if recordStore, ok := s.Store.(messageRecordStore); ok {
@@ -399,7 +397,7 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if action == "archive" {
-			s.markSessionSeen(session.ID)
+			s.setSessionUnread(session.ID, false)
 		}
 		session, err = s.Store.LoadSession(session.ID)
 		if err != nil {
@@ -430,7 +428,7 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if action == "seen" {
-		s.markSessionSeen(session.ID)
+		s.setSessionUnread(session.ID, false)
 		session, err = s.Store.LoadSession(session.ID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)

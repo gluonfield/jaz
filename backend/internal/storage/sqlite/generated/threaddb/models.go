@@ -43,5 +43,5 @@ type Thread struct {
 	McpServerPolicy       sql.NullString `json:"mcp_server_policy"`
 	PendingSteerMessage   string         `json:"pending_steer_message"`
 	RuntimeCapabilities   string         `json:"runtime_capabilities"`
-	LastSeenAtMs          int64          `json:"last_seen_at_ms"`
+	Unread                int64          `json:"unread"`
 }

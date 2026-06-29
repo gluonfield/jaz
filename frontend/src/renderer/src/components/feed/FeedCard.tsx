@@ -5,6 +5,7 @@ import { ArrowUpRight, Check, Archive as ArchiveIcon, CornerDownRight } from 'lu
 import { useState } from 'react'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
 import { ComposerCard } from '@/components/session/Composer'
+import { IconButton } from '@/components/ui/IconButton'
 import { markThreadSeen } from '@/lib/api/feed'
 import { setSessionArchived } from '@/lib/api/sessions'
 import type { FeedItem } from '@/lib/api/types'
@@ -27,7 +28,6 @@ export function FeedCard({ item }: { item: FeedItem }) {
   const navigate = useNavigate()
   const reducedMotion = useReducedMotion()
 
-  // Optimistically drop the card from the cached feed, then reconcile.
   const removeFromFeed = () => {
     queryClient.setQueryData<FeedItem[]>(keys.feed, (prev) =>
       (prev ?? []).filter((entry) => entry.id !== item.id),
@@ -46,9 +46,6 @@ export function FeedCard({ item }: { item: FeedItem }) {
     onSettled: () => invalidateSessionLists(queryClient, { archived: true }),
   })
 
-  // Replying reuses the proven thread send pipeline: hand the draft to the
-  // thread view and open it. The server marks the thread seen on send, so it
-  // leaves the feed on its own.
   const reply = (text: string, options: SendMessageOptions = {}) => {
     const trimmed = text.trim()
     if (!trimmed) return
@@ -75,13 +72,20 @@ export function FeedCard({ item }: { item: FeedItem }) {
         expanded ? '' : 'hover:bg-surface-2'
       }`}
     >
-      <div className="flex items-start gap-3 p-3.5">
-        <button
-          type="button"
-          onClick={() => setExpanded((open) => !open)}
-          className="min-w-0 flex-1 cursor-pointer text-left"
-          aria-expanded={expanded}
-        >
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        onClick={() => setExpanded((open) => !open)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            setExpanded((open) => !open)
+          }
+        }}
+        className="flex cursor-pointer items-start gap-3 px-3.5 pt-3.5 pb-2 text-left"
+      >
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             {item.parent_id ? (
               <CornerDownRight size={13} className="shrink-0 text-ink-3" aria-hidden />
@@ -99,38 +103,17 @@ export function FeedCard({ item }: { item: FeedItem }) {
               {snippet(item.last_message.text)}
             </p>
           )}
-        </button>
-        <div className="flex shrink-0 items-center gap-0.5 text-ink-3">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => done.mutate()}
-            aria-label="Mark done"
-            title="Mark done"
-            className="rounded-full p-1.5 transition-colors duration-150 hover:bg-surface-2 hover:text-ink disabled:opacity-50"
-          >
-            <Check size={16} />
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => archive.mutate()}
-            aria-label="Archive"
-            title="Archive"
-            className="rounded-full p-1.5 transition-colors duration-150 hover:bg-surface-2 hover:text-ink disabled:opacity-50"
-          >
-            <ArchiveIcon size={16} />
-          </button>
-          <Link
-            to="/sessions/$sessionId"
-            params={{ sessionId: item.id }}
-            aria-label="Open thread"
-            title="Open thread"
-            className="rounded-full p-1.5 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
-          >
-            <ArrowUpRight size={16} />
-          </Link>
         </div>
+        <Link
+          to="/sessions/$sessionId"
+          params={{ sessionId: item.id }}
+          aria-label="Open thread"
+          title="Open thread"
+          onClick={(e) => e.stopPropagation()}
+          className="-mt-0.5 shrink-0 rounded-full p-1.5 text-ink-3 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+        >
+          <ArrowUpRight size={16} />
+        </Link>
       </div>
 
       <AnimatePresence initial={false}>
@@ -142,7 +125,7 @@ export function FeedCard({ item }: { item: FeedItem }) {
             transition={{ duration: 0.18, ease: 'easeOut' }}
             className="overflow-hidden"
           >
-            <div className="border-t border-border px-3.5 pb-3.5 pt-3">
+            <div className="border-t border-border bg-surface-2 px-3.5 py-3">
               <div className="max-h-[42vh] overflow-y-auto text-[13px] leading-relaxed text-ink [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {item.last_message.text ? (
                   <MessageMarkdown text={item.last_message.text} />
@@ -162,6 +145,28 @@ export function FeedCard({ item }: { item: FeedItem }) {
           </motion.div>
         ) : null}
       </AnimatePresence>
+
+      <div className="flex items-center justify-end gap-1 px-3 pb-2.5 pt-1.5">
+        <IconButton
+          size="sm"
+          disabled={busy}
+          onClick={() => done.mutate()}
+          aria-label="Mark done"
+          title="Mark done"
+        >
+          <Check size={15} />
+        </IconButton>
+        <IconButton
+          size="sm"
+          variant="danger"
+          disabled={busy}
+          onClick={() => archive.mutate()}
+          aria-label="Archive"
+          title="Archive"
+        >
+          <ArchiveIcon size={15} />
+        </IconButton>
+      </div>
     </motion.div>
   )
 }
