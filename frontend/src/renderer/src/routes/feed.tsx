@@ -14,7 +14,7 @@ function FeedPage() {
   const feed = useQuery(feedQuery)
 
   return (
-    <div className="mx-auto max-w-[680px] px-10 pb-12">
+    <div className="mx-auto max-w-[var(--thread-max)] px-10 pb-12">
       <header className="pb-6">
         <h1 className="text-lg font-semibold text-ink">Feed</h1>
       </header>
