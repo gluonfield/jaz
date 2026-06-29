@@ -9,11 +9,13 @@ import (
 )
 
 type Querier interface {
-	// Every unarchived thread whose newest message is an unseen assistant reply,
-	// with that message attached. Restricting to assistant-authored last messages is
-	// what "threads I need to respond to" means: a thread whose last message is the
-	// user's own is waiting on the agent, not on you. The correlated MAX(seq) is an
-	// index-only seek on the (thread_id, seq) primary key, so this is one round trip.
+	// Every unarchived, user-started thread whose newest message is an unseen
+	// assistant reply, with that message attached. Restricting to assistant-authored
+	// last messages is what "threads I need to respond to" means: a thread whose last
+	// message is the user's own is waiting on the agent, not on you. Sourced threads
+	// (loop runs, memory/browser tasks) are automated and excluded, matching how the
+	// sidebar hides them. The correlated MAX(seq) is an index-only seek on the
+	// (thread_id, seq) primary key, so this is one round trip.
 	ListFeed(ctx context.Context) ([]ListFeedRow, error)
 }
 

@@ -446,9 +446,11 @@ function FeedLink() {
       <Inbox size={15} className="text-ink-2 max-sm:size-[18px]" />
       <span className="flex-1">Feed</span>
       {count > 0 ? (
-        <span className="inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-ink px-1 text-[11px] font-semibold leading-none tabular-nums text-bg">
+        // A div (not span): the sidebar force-colors span text to --color-ink in
+        // dark mode, which would erase the count on the bg-ink bubble.
+        <div className="inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-ink px-1 text-[11px] font-semibold leading-none tabular-nums text-bg">
           {count > 99 ? '99+' : count}
-        </span>
+        </div>
       ) : null}
     </Link>
   )

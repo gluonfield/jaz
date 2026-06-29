@@ -106,6 +106,26 @@ func TestLoadFeedUsesLastMessageAndExcludesArchived(t *testing.T) {
 	}
 }
 
+func TestLoadFeedExcludesSourcedThreads(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	// A loop-run thread is automated, not a conversation the user must answer.
+	session, err := store.CreateSession(storage.CreateSession{Slug: "feed-loop", SourceType: storage.SourceLoopRun})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendMessageRecords(session.ID, storage.Message{Role: "assistant", Content: "loop output"}); err != nil {
+		t.Fatal(err)
+	}
+	if ids := feedIDs(t, store); contains(ids, session.ID) {
+		t.Fatalf("sourced (loop) thread should be excluded: %v", ids)
+	}
+}
+
 func TestLoadFeedExcludesUserAuthoredLastMessage(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
