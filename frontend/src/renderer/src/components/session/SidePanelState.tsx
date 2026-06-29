@@ -9,7 +9,7 @@ import { isMobileViewport, useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useMetaHeld } from '@/lib/hooks/useMetaHeld'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import { parseFileReference, type FileReference } from '../../../../shared/fileReader'
-import { SIDE_PANEL_WIDTHS, type SidePanelView } from './SidePanel'
+import { SIDE_PANEL_LAYOUT, type SidePanelView } from './SidePanel'
 
 const PANEL_OPEN_KEY = 'jaz.sessionPanel'
 const PANEL_MAX_WIDTH = 1180
@@ -26,10 +26,10 @@ export function useSidePanelState(sideChatAvailable = false) {
   const [previewUrl, setPreviewUrl] = useState('')
   const [fileRef, setFileRef] = useState<FileReference | null>(null)
   const activeView = view === 'side-chat' && !sideChatAvailable ? 'overview' : view
-  const resizable = activeView !== 'overview'
-  const defaultWidth = SIDE_PANEL_WIDTHS[activeView]
+  const layout = SIDE_PANEL_LAYOUT[activeView]
+  const defaultWidth = layout.width
   const maxWidth = sidePanelMaxWidth(defaultWidth)
-  const width = resizable ? clampSidePanelWidth(widthOverride ?? defaultWidth, defaultWidth) : defaultWidth
+  const width = layout.resizable ? clampSidePanelWidth(widthOverride ?? defaultWidth, defaultWidth) : defaultWidth
 
   useEffect(() => {
     localStorage.setItem(PANEL_OPEN_KEY, open ? 'open' : 'closed')
@@ -98,7 +98,7 @@ export function useSidePanelState(sideChatAvailable = false) {
     width,
     defaultWidth,
     maxWidth,
-    resizable,
+    resizable: layout.resizable,
     openFile,
     openPreview,
   }

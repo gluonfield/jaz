@@ -14,13 +14,13 @@ import { TERMINAL_PANEL_WIDTH, TerminalPanel } from './TerminalPanel'
 
 export type SidePanelView = 'overview' | 'diff' | 'preview' | 'terminal' | 'file' | 'side-chat'
 
-export const SIDE_PANEL_WIDTHS: Record<SidePanelView, number> = {
-  overview: OVERVIEW_PANEL_WIDTH,
-  diff: CODE_DIFF_PANEL_WIDTH,
-  preview: PREVIEW_PANEL_WIDTH,
-  terminal: TERMINAL_PANEL_WIDTH,
-  file: FILE_READER_PANEL_WIDTH,
-  'side-chat': SIDE_CHAT_PANEL_WIDTH,
+export const SIDE_PANEL_LAYOUT: Record<SidePanelView, { width: number; resizable: boolean }> = {
+  overview: { width: OVERVIEW_PANEL_WIDTH, resizable: false },
+  diff: { width: CODE_DIFF_PANEL_WIDTH, resizable: true },
+  preview: { width: PREVIEW_PANEL_WIDTH, resizable: true },
+  terminal: { width: TERMINAL_PANEL_WIDTH, resizable: true },
+  file: { width: FILE_READER_PANEL_WIDTH, resizable: true },
+  'side-chat': { width: SIDE_CHAT_PANEL_WIDTH, resizable: true },
 }
 
 export function SidePanel({
