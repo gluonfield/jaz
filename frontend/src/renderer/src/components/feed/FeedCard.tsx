@@ -1,4 +1,4 @@
-import { Link, useNavigate } from '@tanstack/react-router'
+import { Link } from '@tanstack/react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { ArrowUpRight, Check, Archive as ArchiveIcon, CornerDownRight } from 'lucide-react'
@@ -6,14 +6,14 @@ import { useState } from 'react'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
 import { ComposerCard } from '@/components/session/Composer'
 import { IconButton } from '@/components/ui/IconButton'
+import { useToast } from '@/components/ui/toast'
 import { markThreadSeen } from '@/lib/api/feed'
-import { setSessionArchived } from '@/lib/api/sessions'
+import { mutateSessionQueue, setSessionArchived, uploadSessionAttachment } from '@/lib/api/sessions'
 import type { FeedItem } from '@/lib/api/types'
 import { relativeTime } from '@/lib/format/time'
-import { setPendingMessage } from '@/lib/pendingMessage'
 import { invalidateSessionLists } from '@/lib/query/invalidate'
 import { keys } from '@/lib/query/keys'
-import type { SendMessageOptions } from '@/lib/sendMessage'
+import { preparedSendMessage, type SendMessageOptions } from '@/lib/sendMessage'
 
 const NO_TEXT = 'No text — open the thread to see tool activity.'
 
@@ -25,7 +25,7 @@ function snippet(text: string | undefined): string {
 export function FeedCard({ item }: { item: FeedItem }) {
   const [expanded, setExpanded] = useState(false)
   const queryClient = useQueryClient()
-  const navigate = useNavigate()
+  const toast = useToast()
   const reducedMotion = useReducedMotion()
 
   const removeFromFeed = () => {
@@ -46,17 +46,32 @@ export function FeedCard({ item }: { item: FeedItem }) {
     onSettled: () => invalidateSessionLists(queryClient, { archived: true }),
   })
 
-  const reply = (text: string, options: SendMessageOptions = {}) => {
-    const trimmed = text.trim()
-    if (!trimmed) return
-    setPendingMessage(item.id, {
-      text,
-      planRequested: Boolean(options.planRequested),
-      goalRequested: Boolean(options.goalRequested),
-      files: options.files ?? [],
-    })
+  // Send straight to the thread's queue (the backend starts the turn when idle)
+  // and let the card animate out — no navigation. Mark seen so the poll doesn't
+  // bounce it back before the agent's next reply arrives.
+  const reply = async (text: string, options: SendMessageOptions = {}) => {
+    if (!text.trim()) return
     removeFromFeed()
-    navigate({ to: '/sessions/$sessionId', params: { sessionId: item.id } })
+    try {
+      const uploaded = options.files?.length
+        ? await Promise.all(options.files.map((file) => uploadSessionAttachment(item.id, file)))
+        : []
+      const prepared = preparedSendMessage(options, uploaded)
+      await markThreadSeen(item.id)
+      await mutateSessionQueue(item.id, {
+        op: 'append',
+        message: {
+          text,
+          contexts: prepared.contexts,
+          attachment_ids: prepared.attachmentIds,
+          plan_requested: options.planRequested,
+          goal_requested: options.goalRequested,
+        },
+      })
+    } catch (error) {
+      toast(`Couldn't send reply: ${(error as Error).message}`, 'danger')
+      queryClient.invalidateQueries({ queryKey: keys.feed })
+    }
   }
 
   const title = item.title?.trim() || item.slug
@@ -146,7 +161,11 @@ export function FeedCard({ item }: { item: FeedItem }) {
         ) : null}
       </AnimatePresence>
 
-      <div className="flex items-center justify-end gap-1 px-3 pb-2.5 pt-1.5">
+      <div
+        className={`flex items-center justify-end gap-1 px-3 pb-2.5 pt-1.5 ${
+          expanded ? 'bg-surface-2' : ''
+        }`}
+      >
         <IconButton
           size="sm"
           disabled={busy}

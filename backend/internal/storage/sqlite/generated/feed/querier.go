@@ -9,10 +9,14 @@ import (
 )
 
 type Querier interface {
-	// Unread, non-archived, user-started threads with the agent's latest reply for
-	// the card preview. Assistant text lives in session_events (the caller passes the
-	// reply event type), not in the messages table which holds user turns.
-	ListFeed(ctx context.Context, replyType string) ([]ListFeedRow, error)
+	// Assistant reply events of the latest turn (after the last user prompt), in
+	// order. A turn is often several events split around tool calls, so the card
+	// concatenates the run; the last event alone drops most of the answer.
+	LastTurnReplies(ctx context.Context, arg LastTurnRepliesParams) ([]LastTurnRepliesRow, error)
+	// Unread, non-archived, user-started threads whose agent turn has finished
+	// (status idle, not mid-stream). The reply preview is assembled in Go from
+	// LastTurnReplies (sqlite's grammar can't express the concatenation here).
+	ListFeed(ctx context.Context) ([]ListFeedRow, error)
 }
 
 var _ Querier = (*Queries)(nil)

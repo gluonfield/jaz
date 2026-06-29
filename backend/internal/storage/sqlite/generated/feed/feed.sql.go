@@ -10,40 +10,76 @@ import (
 	"database/sql"
 )
 
+const lastTurnReplies = `-- name: LastTurnReplies :many
+SELECT e.content, e.created_at_ms
+FROM session_events e
+WHERE e.thread_id = ?1
+  AND e.type = ?2
+  AND e.created_at_ms > COALESCE(
+    (SELECT MAX(m.created_at_ms) FROM messages m WHERE m.thread_id = ?1 AND m.role = 'user'), 0)
+ORDER BY e.seq
+`
+
+type LastTurnRepliesParams struct {
+	ThreadID  string `json:"thread_id"`
+	ReplyType string `json:"reply_type"`
+}
+
+type LastTurnRepliesRow struct {
+	Content     string `json:"content"`
+	CreatedAtMs int64  `json:"created_at_ms"`
+}
+
+// Assistant reply events of the latest turn (after the last user prompt), in
+// order. A turn is often several events split around tool calls, so the card
+// concatenates the run; the last event alone drops most of the answer.
+func (q *Queries) LastTurnReplies(ctx context.Context, arg LastTurnRepliesParams) ([]LastTurnRepliesRow, error) {
+	rows, err := q.db.QueryContext(ctx, lastTurnReplies, arg.ThreadID, arg.ReplyType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LastTurnRepliesRow{}
+	for rows.Next() {
+		var i LastTurnRepliesRow
+		if err := rows.Scan(&i.Content, &i.CreatedAtMs); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listFeed = `-- name: ListFeed :many
-SELECT
-  t.id,
-  t.slug,
-  t.title,
-  t.parent_id,
-  t.status,
-  e.content AS message_content,
-  COALESCE(e.created_at_ms, t.last_attention_at_ms) AS message_created_at_ms
-FROM threads t
-LEFT JOIN session_events e
-  ON e.thread_id = t.id
- AND e.seq = (SELECT MAX(e2.seq) FROM session_events e2 WHERE e2.thread_id = t.id AND e2.type = ?1)
-WHERE t.archived = 0
-  AND t.unread = 1
-  AND COALESCE(t.source_type, '') = ''
-ORDER BY message_created_at_ms DESC
+SELECT id, slug, title, parent_id, status, last_attention_at_ms
+FROM threads
+WHERE archived = 0
+  AND unread = 1
+  AND status = 'idle'
+  AND COALESCE(source_type, '') = ''
+ORDER BY last_attention_at_ms DESC
 `
 
 type ListFeedRow struct {
-	ID                 string         `json:"id"`
-	Slug               string         `json:"slug"`
-	Title              sql.NullString `json:"title"`
-	ParentID           sql.NullString `json:"parent_id"`
-	Status             string         `json:"status"`
-	MessageContent     sql.NullString `json:"message_content"`
-	MessageCreatedAtMs int64          `json:"message_created_at_ms"`
+	ID                string         `json:"id"`
+	Slug              string         `json:"slug"`
+	Title             sql.NullString `json:"title"`
+	ParentID          sql.NullString `json:"parent_id"`
+	Status            string         `json:"status"`
+	LastAttentionAtMs int64          `json:"last_attention_at_ms"`
 }
 
-// Unread, non-archived, user-started threads with the agent's latest reply for
-// the card preview. Assistant text lives in session_events (the caller passes the
-// reply event type), not in the messages table which holds user turns.
-func (q *Queries) ListFeed(ctx context.Context, replyType string) ([]ListFeedRow, error) {
-	rows, err := q.db.QueryContext(ctx, listFeed, replyType)
+// Unread, non-archived, user-started threads whose agent turn has finished
+// (status idle, not mid-stream). The reply preview is assembled in Go from
+// LastTurnReplies (sqlite's grammar can't express the concatenation here).
+func (q *Queries) ListFeed(ctx context.Context) ([]ListFeedRow, error) {
+	rows, err := q.db.QueryContext(ctx, listFeed)
 	if err != nil {
 		return nil, err
 	}
@@ -57,8 +93,7 @@ func (q *Queries) ListFeed(ctx context.Context, replyType string) ([]ListFeedRow
 			&i.Title,
 			&i.ParentID,
 			&i.Status,
-			&i.MessageContent,
-			&i.MessageCreatedAtMs,
+			&i.LastAttentionAtMs,
 		); err != nil {
 			return nil, err
 		}
