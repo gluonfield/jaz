@@ -51,13 +51,13 @@ export function FeedCard({
   const view = useMemo(() => (detail.data ? deriveSessionView(detail.data, []) : null), [detail.data])
   const lastTurn = useMemo(() => {
     if (!detail.data || !view) return null
-    const after = (at: string | undefined) => {
+    const sincePrompt = (at: string | undefined) => {
       const time = Date.parse(at ?? '')
-      return !Number.isNaN(time) && time > view.latestUserAt
+      return !Number.isNaN(time) && time >= view.latestUserAt
     }
     return {
-      messages: detail.data.messages.filter((message) => after(message.created_at)),
-      events: view.displayEvents.filter((event) => after(event.at)),
+      messages: detail.data.messages.filter((message) => sincePrompt(message.created_at)),
+      events: view.displayEvents.filter((event) => sincePrompt(event.at)),
     }
   }, [detail.data, view])
 
