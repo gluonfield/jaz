@@ -643,17 +643,19 @@ export function Sidebar({
       <div className={`h-[52px] shrink-0 ${mobile ? '' : 'titlebar-drag'}`} />
 
       <nav className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-3 pt-3 max-sm:gap-6 max-sm:p-4">
-        <Link
-          to="/new"
-          className="group flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px]"
-          activeProps={{ className: 'bg-primary-soft!' }}
-        >
-          <SquarePen size={15} className="text-ink-2 max-sm:size-[18px]" />
-          <span className="flex-1">New Thread</span>
-          <KeyboardShortcut value="N" className="max-sm:hidden" />
-        </Link>
+        <div className="flex flex-col gap-0.5 max-sm:gap-1">
+          <Link
+            to="/new"
+            className="group flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px]"
+            activeProps={{ className: 'bg-primary-soft!' }}
+          >
+            <SquarePen size={15} className="text-ink-2 max-sm:size-[18px]" />
+            <span className="flex-1">New Thread</span>
+            <KeyboardShortcut value="N" className="max-sm:hidden" />
+          </Link>
 
-        <FeedLink />
+          <FeedLink />
+        </div>
 
         <SessionsSection open={open} />
 
