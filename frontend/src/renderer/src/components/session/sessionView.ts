@@ -297,6 +297,7 @@ export function deriveSessionView(data: SessionMessages, liveEvents: SessionEven
     transcriptEvents: settledTranscriptEvents,
     sideChatEvents,
     displayEvents,
+    latestUserAt,
     planAvailable,
     planActive,
     goalAvailable,
