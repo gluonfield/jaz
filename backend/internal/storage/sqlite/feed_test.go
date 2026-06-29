@@ -44,6 +44,14 @@ func assistantReplyAt(t *testing.T, store *Store, id, text string, atMs int64) {
 	}
 }
 
+func assistantChunk(t *testing.T, store *Store, id, acpID, text string, atMs int64) {
+	t.Helper()
+	event := sessionevents.Event{Type: "acp_message", Content: text, ACP: &sessionevents.ACPEvent{ID: acpID}, At: time.UnixMilli(atMs)}
+	if err := store.AppendSessionEvents(id, event); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func userPromptAt(t *testing.T, store *Store, id, text string, atMs int64) {
 	t.Helper()
 	if err := store.AppendMessageRecords(id, storage.Message{Role: "user", Content: text, CreatedAt: time.UnixMilli(atMs)}); err != nil {
@@ -127,6 +135,33 @@ func TestLoadFeedConcatenatesLastTurn(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].ReplyText != "working on it\n\nhere is the answer" {
 		t.Fatalf("reply = %#v, want the whole last turn concatenated", items)
+	}
+}
+
+func TestLoadFeedMergesStreamedChunks(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	session, err := store.CreateSession(storage.CreateSession{Slug: "feed-chunks"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	userPromptAt(t, store, session.ID, "go", 1000)
+	assistantChunk(t, store, session.ID, "m1", "Please repl", 2000)
+	assistantChunk(t, store, session.ID, "m1", "ace the value.", 2001)
+	if err := store.SetThreadUnread(session.ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := store.LoadFeed()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].ReplyText != "Please replace the value." {
+		t.Fatalf("reply = %#v, want streamed chunks merged without a separator", items)
 	}
 }
 

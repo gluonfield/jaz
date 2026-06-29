@@ -20,30 +20,46 @@ func (s *Store) LoadFeed() ([]storage.FeedItem, error) {
 	}
 	items := make([]storage.FeedItem, 0, len(rows))
 	for _, row := range rows {
-		replies, err := q.LastTurnReplies(ctx, feed.LastTurnRepliesParams{
-			ThreadID:  row.ID,
-			ReplyType: sessionevents.TypeACPMessage,
-		})
+		promptAt, err := q.LastUserPromptAt(ctx, row.ID)
 		if err != nil {
 			return nil, err
 		}
-		parts := make([]string, 0, len(replies))
-		replyAt := row.LastAttentionAtMs
-		for _, reply := range replies {
-			if text := strings.TrimSpace(reply.Content); text != "" {
-				parts = append(parts, text)
-			}
-			replyAt = reply.CreatedAtMs
+		events, err := s.loadSessionEventsLocked(row.ID)
+		if err != nil {
+			return nil, err
 		}
+		text, replyAt := lastTurnReply(events, promptAt)
 		items = append(items, storage.FeedItem{
 			ID:        row.ID,
 			Slug:      row.Slug,
 			Title:     row.Title.String,
 			ParentID:  row.ParentID.String,
 			Status:    row.Status,
-			ReplyText: strings.Join(parts, "\n\n"),
-			ReplyAt:   msToTime(replyAt),
+			ReplyText: text,
+			ReplyAt:   msToTime(orDefault(replyAt, row.LastAttentionAtMs)),
 		})
 	}
 	return items, nil
+}
+
+func lastTurnReply(events []sessionevents.Event, promptAtMs int64) (string, int64) {
+	parts := make([]string, 0)
+	var replyAt int64
+	for _, event := range sessionevents.CompactTextChunks(events) {
+		if event.Type != sessionevents.TypeACPMessage || event.At.UnixMilli() <= promptAtMs {
+			continue
+		}
+		if text := strings.TrimSpace(event.Content); text != "" {
+			parts = append(parts, text)
+		}
+		replyAt = event.At.UnixMilli()
+	}
+	return strings.Join(parts, "\n\n"), replyAt
+}
+
+func orDefault(value, fallback int64) int64 {
+	if value == 0 {
+		return fallback
+	}
+	return value
 }
