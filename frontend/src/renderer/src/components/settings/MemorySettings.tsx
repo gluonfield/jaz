@@ -205,7 +205,7 @@ export function MemorySettings() {
         </p>
       </header>
 
-      <SettingsCard className="overflow-hidden">
+      <SettingsCard>
         <MemorySettingsRow
           title="Use memory"
           description={
@@ -259,7 +259,7 @@ export function MemorySettings() {
               title="Status"
               description="Use this to tell whether memory is ready, empty, busy, or needs attention."
             />
-            <SettingsCard className="mt-3 overflow-hidden">
+            <SettingsCard className="mt-3">
               <div className="flex flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between">
                 <div className="flex min-w-0 items-start gap-3">
                   <StatusIcon tone={summary.tone} />
@@ -285,7 +285,7 @@ export function MemorySettings() {
               title="Background upkeep"
               description="Usually you should not need to touch this. It is here so problems are legible."
             />
-            <SettingsCard className="mt-3 overflow-hidden">
+            <SettingsCard className="mt-3">
               {memory.source_queues ? (
                 <div className="grid grid-cols-1 divide-y divide-border border-b border-border md:grid-cols-2 md:divide-x md:divide-y-0">
                   <SourceQueueStatus
@@ -313,7 +313,7 @@ export function MemorySettings() {
               title="Manual actions"
               description="Use these only when memory search looks stale or you want an immediate review."
             />
-            <SettingsCard className="mt-3 overflow-hidden">
+            <SettingsCard className="mt-3">
               <MaintenanceAction
                 title="Refresh memory search"
                 description="Rebuild the search data from the memory files on disk."
