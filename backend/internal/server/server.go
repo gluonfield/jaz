@@ -528,10 +528,6 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	if strings.TrimSpace(req.Message) == "" {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("message is required"))
-		return
-	}
 	turn := acpStreamTurnFromRequest(req)
 	if turn.compact() {
 		if !sessionSupportsCompact(session) {
@@ -546,6 +542,10 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 		}
 		turn.Attachments = attachments
 		turn.Contexts = storage.NormalizeMessageContexts(append(storage.SelectionContexts(req.Quotes), req.Contexts...))
+		if !storage.HasMessageContent(req.Message, turn.Contexts, attachments) {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("message is required"))
+			return
+		}
 		if err := s.validatePromptOptions(session, promptOptionsFromStream(req)); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return

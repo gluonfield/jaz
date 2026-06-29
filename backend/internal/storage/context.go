@@ -26,6 +26,10 @@ func NormalizeMessageContexts(contexts []MessageContext) []MessageContext {
 	return messagepayload.NormalizeMessageContexts(contexts)
 }
 
+func HasMessageContent(message string, contexts []MessageContext, attachments []Attachment) bool {
+	return messagepayload.HasMessageContent(message, contexts, attachments)
+}
+
 func BrowserAnnotationFromBlock(block Block) *BrowserAnnotation {
 	if block.Type != BlockTypeBrowserAnnotation || strings.TrimSpace(block.InputJSON) == "" {
 		return nil

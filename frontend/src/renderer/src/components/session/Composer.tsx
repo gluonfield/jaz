@@ -145,8 +145,12 @@ export function ComposerCard({
   })
   const canQueueWhileStreaming = streaming && queueWhenStreaming
   const attachmentBusy = attachmentDraft.busy
-  const submitDisabled = mention.isEmpty || disabled || attachmentBusy || (streaming && !canQueueWhileStreaming)
-  const showStopButton = streaming && onStop && (!queueWhenStreaming || mention.isEmpty)
+  const hasNonTextDraftContent =
+    attachmentDraft.files.length > 0 || attachmentDraft.uploaded.length > 0 || contexts.length > 0
+  const hasSendableDraft = (messageEmpty: boolean) => !messageEmpty || hasNonTextDraftContent
+  const hasDraftContent = hasSendableDraft(mention.isEmpty)
+  const submitDisabled = !hasDraftContent || disabled || attachmentBusy || (streaming && !canQueueWhileStreaming)
+  const showStopButton = streaming && onStop && (!queueWhenStreaming || !hasDraftContent)
 
   // autoFocus lands before React's focus listeners attach; sync the ring state.
   useEffect(() => {
@@ -223,7 +227,14 @@ export function ComposerCard({
     // Tokens expand on the way out: tagged paths become absolute, skill
     // references pass through for the agent's skill catalog to resolve.
     const trimmed = mention.value().trim()
-    if (!trimmed || disabled || attachmentBusy || (streaming && !canQueueWhileStreaming)) return
+    if (
+      !hasSendableDraft(trimmed === '') ||
+      disabled ||
+      attachmentBusy ||
+      (streaming && !canQueueWhileStreaming)
+    ) {
+      return
+    }
     try {
       await onSend(trimmed, {
         planRequested: planModeOn,

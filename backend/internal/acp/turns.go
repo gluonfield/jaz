@@ -205,10 +205,12 @@ func (r attachmentResourceResolver) URI(attachment storage.Attachment) (string, 
 
 func promptContentBlocks(message string, attachments []storage.Attachment, resolver attachmentResourceResolver) ([]acpschema.ContentBlock, error) {
 	out := make([]acpschema.ContentBlock, 0, 1+len(attachments))
-	var err error
-	out, err = appendTextBlock(out, message)
-	if err != nil {
-		return nil, err
+	if strings.TrimSpace(message) != "" {
+		var err error
+		out, err = appendTextBlock(out, message)
+		if err != nil {
+			return nil, err
+		}
 	}
 	for _, attachment := range attachments {
 		uri, err := resolver.URI(attachment)
