@@ -10,50 +10,17 @@ import (
 	"database/sql"
 )
 
-const lastTurnReplies = `-- name: LastTurnReplies :many
-SELECT e.content, e.created_at_ms
-FROM session_events e
-WHERE e.thread_id = ?1
-  AND e.type = ?2
-  AND e.created_at_ms > COALESCE(
-    (SELECT MAX(m.created_at_ms) FROM messages m WHERE m.thread_id = ?1 AND m.role = 'user'), 0)
-ORDER BY e.seq
+const lastUserPromptAt = `-- name: LastUserPromptAt :one
+SELECT CAST(COALESCE(MAX(created_at_ms), 0) AS INTEGER) AS at_ms
+FROM messages
+WHERE thread_id = ?1 AND role = 'user'
 `
 
-type LastTurnRepliesParams struct {
-	ThreadID  string `json:"thread_id"`
-	ReplyType string `json:"reply_type"`
-}
-
-type LastTurnRepliesRow struct {
-	Content     string `json:"content"`
-	CreatedAtMs int64  `json:"created_at_ms"`
-}
-
-// Assistant reply events of the latest turn (after the last user prompt), in
-// order. A turn is often several events split around tool calls, so the card
-// concatenates the run; the last event alone drops most of the answer.
-func (q *Queries) LastTurnReplies(ctx context.Context, arg LastTurnRepliesParams) ([]LastTurnRepliesRow, error) {
-	rows, err := q.db.QueryContext(ctx, lastTurnReplies, arg.ThreadID, arg.ReplyType)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []LastTurnRepliesRow{}
-	for rows.Next() {
-		var i LastTurnRepliesRow
-		if err := rows.Scan(&i.Content, &i.CreatedAtMs); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) LastUserPromptAt(ctx context.Context, threadID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, lastUserPromptAt, threadID)
+	var at_ms int64
+	err := row.Scan(&at_ms)
+	return at_ms, err
 }
 
 const listFeed = `-- name: ListFeed :many
@@ -75,9 +42,6 @@ type ListFeedRow struct {
 	LastAttentionAtMs int64          `json:"last_attention_at_ms"`
 }
 
-// Unread, non-archived, user-started threads whose agent turn has finished
-// (status idle, not mid-stream). The reply preview is assembled in Go from
-// LastTurnReplies (sqlite's grammar can't express the concatenation here).
 func (q *Queries) ListFeed(ctx context.Context) ([]ListFeedRow, error) {
 	rows, err := q.db.QueryContext(ctx, listFeed)
 	if err != nil {

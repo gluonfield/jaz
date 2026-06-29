@@ -1,19 +1,26 @@
 import { Link } from '@tanstack/react-router'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { ArrowUpRight, Check, Archive as ArchiveIcon, CornerDownRight } from 'lucide-react'
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
 import { ComposerCard } from '@/components/session/Composer'
+import { OverviewPanel, OVERVIEW_PANEL_WIDTH } from '@/components/session/OverviewPanel'
 import { IconButton } from '@/components/ui/IconButton'
 import { useToast } from '@/components/ui/toast'
 import { markThreadSeen } from '@/lib/api/feed'
-import { mutateSessionQueue, setSessionArchived, uploadSessionAttachment } from '@/lib/api/sessions'
+import {
+  mutateSessionQueue,
+  sessionMessagesQuery,
+  setSessionArchived,
+  uploadSessionAttachment,
+} from '@/lib/api/sessions'
 import type { FeedItem } from '@/lib/api/types'
 import { relativeTime } from '@/lib/format/time'
 import { invalidateSessionLists } from '@/lib/query/invalidate'
 import { keys } from '@/lib/query/keys'
-import { preparedSendMessage, type SendMessageOptions } from '@/lib/sendMessage'
+import { preparedSendMessage, type SendMessageHandler, type SendMessageOptions } from '@/lib/sendMessage'
 
 const NO_TEXT = 'No text — open the thread to see tool activity.'
 
@@ -24,6 +31,7 @@ function snippet(text: string | undefined): string {
 
 export function FeedCard({ item }: { item: FeedItem }) {
   const [expanded, setExpanded] = useState(false)
+  const cardRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
   const toast = useToast()
   const reducedMotion = useReducedMotion()
@@ -76,6 +84,7 @@ export function FeedCard({ item }: { item: FeedItem }) {
 
   return (
     <motion.div
+      ref={cardRef}
       initial={reducedMotion ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0, marginBottom: 10 }}
       exit={reducedMotion ? { opacity: 0 } : { opacity: 0, height: 0, marginBottom: 0 }}
@@ -84,6 +93,9 @@ export function FeedCard({ item }: { item: FeedItem }) {
         expanded ? '' : 'hover:bg-surface-2'
       }`}
     >
+      {expanded && cardRef.current ? (
+        <FeedOverview anchor={cardRef.current} threadId={item.id} onSend={reply} />
+      ) : null}
       <div
         role="button"
         tabIndex={0}
@@ -186,5 +198,54 @@ export function FeedCard({ item }: { item: FeedItem }) {
         </IconButton>
       </div>
     </motion.div>
+  )
+}
+
+function FeedOverview({
+  anchor,
+  threadId,
+  onSend,
+}: {
+  anchor: HTMLElement
+  threadId: string
+  onSend: SendMessageHandler
+}) {
+  const detail = useQuery(sessionMessagesQuery(threadId))
+  const [rect, setRect] = useState<DOMRect | null>(null)
+
+  useLayoutEffect(() => {
+    const update = () => setRect(anchor.getBoundingClientRect())
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(anchor)
+    window.addEventListener('scroll', update, true)
+    window.addEventListener('resize', update)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('scroll', update, true)
+      window.removeEventListener('resize', update)
+    }
+  }, [anchor])
+
+  const session = detail.data?.session
+  if (!rect || !session) return null
+  const gap = 12
+  const panelWidth = OVERVIEW_PANEL_WIDTH + 16
+  const fitsRight = rect.right + gap + panelWidth <= window.innerWidth
+  const left = fitsRight ? rect.right + gap : rect.left - gap - panelWidth
+  return createPortal(
+    <div
+      style={{ position: 'fixed', top: rect.top + rect.height / 2, left }}
+      className="z-drawer -translate-y-1/2"
+    >
+      <OverviewPanel
+        session={session}
+        subagents={[]}
+        spawnedThreads={[]}
+        working={session.status === 'running'}
+        onSend={onSend}
+      />
+    </div>,
+    document.body,
   )
 }
