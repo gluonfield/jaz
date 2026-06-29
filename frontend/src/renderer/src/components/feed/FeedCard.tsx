@@ -100,7 +100,9 @@ export function FeedCard({
         expanded ? '' : 'hover:bg-surface-2'
       }`}
     >
-      {expanded ? <FeedOverview anchorRef={cardRef} threadId={item.id} onSend={reply} /> : null}
+      <AnimatePresence>
+        {expanded ? <FeedOverview anchorRef={cardRef} threadId={item.id} onSend={reply} /> : null}
+      </AnimatePresence>
       <div
         role="button"
         tabIndex={0}
@@ -213,6 +215,7 @@ function FeedOverview({
   onSend: SendMessageHandler
 }) {
   const session = useQuery(sessionQuery(threadId)).data
+  const reducedMotion = useReducedMotion()
   const [rect, setRect] = useState<DOMRect | null>(null)
 
   useLayoutEffect(() => {
@@ -236,10 +239,15 @@ function FeedOverview({
   const panelWidth = OVERVIEW_PANEL_WIDTH + 16
   const fitsRight = rect.right + gap + panelWidth <= window.innerWidth
   const left = fitsRight ? rect.right + gap : rect.left - gap - panelWidth
+  const from = reducedMotion ? 0 : (fitsRight ? -1 : 1) * 16
   return createPortal(
-    <div
+    <motion.div
       style={{ position: 'fixed', top: rect.top + rect.height / 2, left }}
-      className="z-drawer -translate-y-1/2"
+      initial={{ opacity: 0, x: from, y: '-50%' }}
+      animate={{ opacity: 1, x: 0, y: '-50%' }}
+      exit={{ opacity: 0, x: from, y: '-50%' }}
+      transition={{ duration: 0.18, ease: 'easeOut' }}
+      className="z-drawer"
     >
       <OverviewPanel
         session={session}
@@ -248,7 +256,7 @@ function FeedOverview({
         working={session.status === 'running'}
         onSend={onSend}
       />
-    </div>,
+    </motion.div>,
     document.body,
   )
 }
