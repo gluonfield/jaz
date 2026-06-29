@@ -8,7 +8,6 @@ import (
 
 	whatsappconnector "github.com/wins/jaz/backend/internal/connectors/whatsapp"
 	"github.com/wins/jaz/backend/pkg/integrations"
-	waE2E "go.mau.fi/whatsmeow/proto/waE2E"
 	waHistorySync "go.mau.fi/whatsmeow/proto/waHistorySync"
 	waWeb "go.mau.fi/whatsmeow/proto/waWeb"
 	"go.mau.fi/whatsmeow/store"
@@ -112,19 +111,19 @@ func whatsappContactActionRecord(connection integrations.Connection, event *even
 
 func whatsappMessageRecord(connection integrations.Connection, event *events.Message) integrations.Record {
 	message := event.Message
-	rawMessage := protoMessageJSON(message)
-	raw := rawJSON(map[string]any{
-		"id":         string(event.Info.ID),
-		"chat":       event.Info.Chat.String(),
-		"sender":     event.Info.Sender.String(),
-		"from_me":    event.Info.IsFromMe,
-		"is_group":   event.Info.IsGroup,
-		"timestamp":  event.Info.Timestamp,
-		"push_name":  event.Info.PushName,
-		"type":       event.Info.Type,
-		"media_type": event.Info.MediaType,
-		"text":       whatsappText(message),
-		"message":    rawMessage,
+	raw := rawJSON(whatsappconnector.MessageRecord{
+		ID:         string(event.Info.ID),
+		Chat:       event.Info.Chat.String(),
+		Sender:     event.Info.Sender.String(),
+		FromMe:     event.Info.IsFromMe,
+		IsGroup:    event.Info.IsGroup,
+		Timestamp:  rawJSON(event.Info.Timestamp),
+		PushName:   event.Info.PushName,
+		Type:       event.Info.Type,
+		MediaType:  event.Info.MediaType,
+		Text:       whatsappconnector.MessageText(message),
+		QuotedText: whatsappconnector.MessageQuotedText(message),
+		Message:    protoMessageJSON(message),
 	})
 	return integrations.Record{
 		Provider:     whatsappconnector.ProviderID,
@@ -210,17 +209,19 @@ func whatsappWebMessageRecord(connection integrations.Connection, conversationID
 	if externalID == "" {
 		externalID = fmt.Sprintf("%s:%d", conversationID, info.GetMessageTimestamp())
 	}
-	raw := rawJSON(map[string]any{
-		"id":              key.GetID(),
-		"conversation":    conversationID,
-		"remote_jid":      key.GetRemoteJID(),
-		"participant":     firstNonEmpty(key.GetParticipant(), info.GetParticipant()),
-		"from_me":         key.GetFromMe(),
-		"timestamp":       info.GetMessageTimestamp(),
-		"push_name":       info.GetPushName(),
-		"text":            whatsappText(info.GetMessage()),
-		"web_message":     protoMessageJSON(info),
-		"message_payload": protoMessageJSON(info.GetMessage()),
+	message := info.GetMessage()
+	raw := rawJSON(whatsappconnector.MessageRecord{
+		ID:             key.GetID(),
+		Conversation:   conversationID,
+		RemoteJID:      key.GetRemoteJID(),
+		Participant:    firstNonEmpty(key.GetParticipant(), info.GetParticipant()),
+		FromMe:         key.GetFromMe(),
+		Timestamp:      rawJSON(info.GetMessageTimestamp()),
+		PushName:       info.GetPushName(),
+		Text:           whatsappconnector.MessageText(message),
+		QuotedText:     whatsappconnector.MessageQuotedText(message),
+		WebMessage:     protoMessageJSON(info),
+		MessagePayload: protoMessageJSON(message),
 	})
 	return integrations.Record{
 		Provider:     whatsappconnector.ProviderID,
@@ -239,19 +240,6 @@ func whatsappHistoryCutoff(now time.Time) time.Time {
 
 func whatsappRecordInWindow(record integrations.Record, cutoff time.Time) bool {
 	return cutoff.IsZero() || record.OccurredAt.IsZero() || !record.OccurredAt.Before(cutoff)
-}
-
-func whatsappText(message *waE2E.Message) string {
-	if message == nil {
-		return ""
-	}
-	if text := message.GetConversation(); text != "" {
-		return text
-	}
-	if extended := message.GetExtendedTextMessage(); extended != nil {
-		return extended.GetText()
-	}
-	return ""
 }
 
 func protoMessageJSON(message proto.Message) json.RawMessage {
