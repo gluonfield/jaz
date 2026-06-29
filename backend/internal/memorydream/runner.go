@@ -43,7 +43,7 @@ func (r *Runner) RunDream(ctx context.Context, req jazmem.DreamRequest) (jazmem.
 	}
 	agent := acp.CanonicalAgentName(settings.Agent)
 	if agent == "" {
-		return jazmem.DreamReport{}, jazmem.ErrDreamRunnerUnavailable
+		return jazmem.DreamReport{}, fmt.Errorf("memory agent is not configured")
 	}
 	if agent == acp.AgentJaz {
 		return jazmem.DreamReport{}, fmt.Errorf("built-in Jaz cannot be used as the memory agent yet")

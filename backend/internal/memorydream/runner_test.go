@@ -2,6 +2,7 @@ package memorydream
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -115,6 +116,31 @@ func TestRunDreamSpawnsCompatibleWorkerModelAndEffort(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+func TestRunDreamTaskWithoutMemoryAgentDoesNotFallBackToOpenRouter(t *testing.T) {
+	store := newStore(t)
+	root := t.TempDir()
+	memory, err := jazmem.Open(jazmem.Config{
+		Root:   root,
+		DBPath: filepath.Join(t.TempDir(), "index.sqlite"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = memory.Close() })
+	memory.SetDreamRunner(New(store, &fakeManager{}, nil))
+
+	_, err = memory.RunDreamTask(context.Background(), jazmem.DreamOptions{})
+	if err == nil {
+		t.Fatal("expected missing memory agent error")
+	}
+	if !strings.Contains(err.Error(), "memory agent is not configured") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(err.Error(), "OPENROUTER") {
+		t.Fatalf("dream fell through to provider-backed fallback: %v", err)
 	}
 }
 

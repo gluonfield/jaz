@@ -9,12 +9,5 @@ import (
 )
 
 func ConfigureMemoryDreamRunner(memory *jazmem.Memory, store *sqlitestore.Store, manager *acp.Manager, logger *log.Logger) {
-	if memory == nil || store == nil || manager == nil {
-		return
-	}
-	dreamLog := log.Default().WithPrefix("memory-dream")
-	if logger != nil {
-		dreamLog = logger.WithPrefix("memory-dream")
-	}
-	memory.SetDreamRunner(memorydream.New(store, manager, dreamLog))
+	memory.SetDreamRunner(memorydream.New(store, manager, logger.WithPrefix("memory-dream")))
 }

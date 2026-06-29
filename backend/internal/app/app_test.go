@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/log"
+	"github.com/gluonfield/jazmem/pkg/jazmem"
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/agent"
 	telegramconnector "github.com/wins/jaz/backend/internal/connectors/telegram"
@@ -249,6 +250,13 @@ func TestNewMemoryDefaultsToRuntimeRoot(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(layout.Root, "memory", "LONG_TERM.md")); err != nil {
 		t.Fatalf("memory horizons were not created: %v", err)
+	}
+	_, err = memory.Dream(context.Background(), jazmem.DreamOptions{})
+	if err == nil || !strings.Contains(err.Error(), "dream runner is not configured") {
+		t.Fatalf("memory should require jaz's dream runner, got %v", err)
+	}
+	if strings.Contains(err.Error(), "OPENROUTER") {
+		t.Fatalf("memory used provider-backed dream path: %v", err)
 	}
 }
 

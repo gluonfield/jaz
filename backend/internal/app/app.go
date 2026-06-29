@@ -188,7 +188,7 @@ func NewMemory(cfg Config, layout runtimefiles.Layout) (*jazmem.Memory, error) {
 			dbPath = filepath.Join(layout.Root, "jazmem.sqlite")
 		}
 	}
-	return jazmem.Open(jazmem.Config{Root: memoryRoot, DBPath: dbPath})
+	return jazmem.Open(jazmem.Config{Root: memoryRoot, DBPath: dbPath, DisableProviderDreams: true})
 }
 
 func NewPromptBuilder(store *sqlitestore.Store, workspace Workspace, memory *memoryservice.Service) *coordinator.Builder {
