@@ -39,6 +39,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/search/threads", api.NewThreadSearchHandler(s.Threads))
 	mux.HandleFunc("GET /v1/projects", s.handleListProjects)
 	mux.HandleFunc("POST /v1/projects", s.handleCreateProject)
+	mux.HandleFunc("DELETE /v1/projects", s.handleDeleteProject)
 	mux.HandleFunc("PUT /v1/projects/order", s.handleReorderProjects)
 	mux.HandleFunc("GET /v1/filesystem/dirs", s.handleListFilesystemDirs)
 	mux.HandleFunc("GET /v1/workspace/files", s.handleListWorkspaceFiles)

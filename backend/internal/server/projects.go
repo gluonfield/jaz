@@ -76,6 +76,30 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, p)
 }
 
+func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimSpace(r.URL.Query().Get("path"))
+	if path == "" {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("path is required"))
+		return
+	}
+	paths, err := s.loadProjectPaths()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	kept := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if p != path {
+			kept = append(kept, p)
+		}
+	}
+	if err := s.saveProjectPaths(kept); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"projects": projectsFromPaths(kept)})
+}
+
 func (s *Server) handleReorderProjects(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Paths []string `json:"paths"`
