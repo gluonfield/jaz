@@ -52,6 +52,7 @@ func TestUsageModuleProvidesRoute(t *testing.T) {
 	var routes server.Routes
 	app := fx.New(
 		fx.NopLogger,
+		fx.Supply(Config{}),
 		fx.Provide(func() storage.UsageEventStore { return fakeUsageStore{} }),
 		UsageModule(),
 		fx.Populate(&routes),
@@ -100,29 +101,35 @@ func TestNewRoutesMountsDeviceRevokeAsMethodRoute(t *testing.T) {
 	}
 }
 
-func TestNewRoutesDisablePairingDropsPairingRoutes(t *testing.T) {
+func TestNewRoutesDisablePairingGatesPairingRoutes(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
 
-	routes := NewRoutes(routeDeps{
-		Usage:   usagecore.NewService(fakeUsageStore{}),
-		Jaz:     Config{Devices: DevicesConfig{DisablePairing: true}},
-		Devices: deviceauth.New(store),
-	})
-	var foundRegister bool
-	for _, route := range routes {
-		switch route.Pattern {
-		case "POST /v1/devices/pairing-requests", "/v1/devices/pairing-requests/":
-			t.Fatalf("pairing route mounted while disabled: %s", route.Pattern)
-		case "POST /v1/devices/register":
-			foundRegister = route.Handler != nil
+	mounted := func(disable bool) (pairing, register bool) {
+		routes := NewRoutes(routeDeps{
+			Usage:   usagecore.NewService(fakeUsageStore{}),
+			Jaz:     Config{Devices: DevicesConfig{DisablePairing: disable}},
+			Devices: deviceauth.New(store),
+		})
+		for _, route := range routes {
+			switch route.Pattern {
+			case "POST /v1/devices/pairing-requests", "/v1/devices/pairing-requests/":
+				pairing = true
+			case "POST /v1/devices/register":
+				register = register || route.Handler != nil
+			}
 		}
+		return
 	}
-	if !foundRegister {
-		t.Fatalf("register route must stay mounted: %#v", routes)
+
+	if pairing, register := mounted(false); !pairing || !register {
+		t.Fatalf("default: pairing=%v register=%v, want both mounted", pairing, register)
+	}
+	if pairing, register := mounted(true); pairing || !register {
+		t.Fatalf("disabled: pairing=%v register=%v, want only register", pairing, register)
 	}
 }
 
@@ -212,7 +219,7 @@ func TestUsageModuleWiresWithNewStore(t *testing.T) {
 	var store *sqlitestore.Store
 	app := fx.New(
 		fx.NopLogger,
-		fx.Supply(runtimefiles.New(t.TempDir()), acp.AgentCatalog{}),
+		fx.Supply(runtimefiles.New(t.TempDir()), acp.AgentCatalog{}, Config{}),
 		fx.Provide(NewStore),
 		UsageModule(),
 		fx.Populate(&routes, &store),

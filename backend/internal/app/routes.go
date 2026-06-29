@@ -19,7 +19,7 @@ type routeDeps struct {
 	fx.In
 
 	Usage           usagecore.Service
-	Jaz             Config                         `optional:"true"`
+	Jaz             Config
 	Devices         *deviceauth.Service            `optional:"true"`
 	Config          serverconfig.Config            `optional:"true"`
 	Browser         *browserworker.ExtensionBridge `optional:"true"`
