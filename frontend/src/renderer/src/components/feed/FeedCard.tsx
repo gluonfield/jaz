@@ -49,6 +49,17 @@ export function FeedCard({
   const openThread = () => navigate({ to: '/sessions/$sessionId', params: { sessionId: item.id } })
   const detail = useQuery({ ...sessionMessagesQuery(item.id), enabled: expanded })
   const view = useMemo(() => (detail.data ? deriveSessionView(detail.data, []) : null), [detail.data])
+  const lastTurn = useMemo(() => {
+    if (!detail.data || !view) return null
+    const after = (at: string | undefined) => {
+      const time = Date.parse(at ?? '')
+      return !Number.isNaN(time) && time > view.latestUserAt
+    }
+    return {
+      messages: detail.data.messages.filter((message) => after(message.created_at)),
+      events: view.displayEvents.filter((event) => after(event.at)),
+    }
+  }, [detail.data, view])
 
   const removeFromFeed = () => {
     queryClient.setQueryData<FeedItem[]>(keys.feed, (prev) =>
@@ -164,12 +175,12 @@ export function FeedCard({
           >
             <div className="bg-surface-2 px-3.5 py-3">
               <div className="max-h-[42vh] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {view && detail.data ? (
+                {lastTurn && detail.data ? (
                   <FileReaderLinkProvider onOpen={openThread}>
                     <PreviewLinkProvider onOpen={openThread}>
                       <Transcript
-                        messages={detail.data.messages}
-                        events={view.displayEvents}
+                        messages={lastTurn.messages}
+                        events={lastTurn.events}
                         sessionId={item.id}
                         groupTurns={detail.data.session.runtime === 'acp'}
                         onArtifactPrompt={reply}
