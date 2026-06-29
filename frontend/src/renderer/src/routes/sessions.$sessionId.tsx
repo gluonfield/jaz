@@ -898,15 +898,17 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
             animate={drawerSlide({ isMobile, open: sidePanel.open, side: 'right', width: sidePanel.width })}
             transition={sidePanel.resizing ? { duration: 0 } : { type: 'spring', stiffness: 400, damping: 36 }}
           >
-            <SidePanelResizeHandle
-              width={sidePanel.width}
-              minWidth={sidePanel.defaultWidth}
-              maxWidth={sidePanel.maxWidth}
-              disabled={isMobile || !sidePanel.open}
-              onResizeStart={() => sidePanel.setResizing(true)}
-              onResize={sidePanel.resize}
-              onResizeEnd={() => sidePanel.setResizing(false)}
-            />
+            {sidePanel.resizable ? (
+              <SidePanelResizeHandle
+                width={sidePanel.width}
+                minWidth={sidePanel.defaultWidth}
+                maxWidth={sidePanel.maxWidth}
+                disabled={isMobile || !sidePanel.open}
+                onResizeStart={() => sidePanel.setResizing(true)}
+                onResize={sidePanel.resize}
+                onResizeEnd={() => sidePanel.setResizing(false)}
+              />
+            ) : null}
             <SidePanel
               session={session}
               progress={panelProgress}
