@@ -33,12 +33,8 @@ const HORIZON_DESCRIPTIONS: Record<string, string> = {
 
 const TASK_COPY: Record<string, { label: string; description: string }> = {
   index_changed_pages: {
-    label: 'Keep search current',
-    description: 'Updates memory search after memory files change.',
-  },
-  ingest_sources: {
-    label: 'Scan import folder',
-    description: 'Checks the local memory import folder. Connected-account notes use the two counters above.',
+    label: 'Update search index',
+    description: 'Rebuilds search data for saved memory files.',
   },
   daily_rollup: {
     label: "Update today's note",
@@ -297,8 +293,8 @@ export function MemorySettings() {
             <SectionHeader title="Manual actions" />
             <SettingsCard className="mt-3">
               <MaintenanceAction
-                title="Refresh memory search"
-                description="Rebuild search data."
+                title="Rebuild search index"
+                description="Rebuild search data for saved memory files."
                 explanation="Use this if you edited memory files outside Jaz or memory search returns stale results. Normal edits refresh automatically."
               >
                 <Button
@@ -308,7 +304,7 @@ export function MemorySettings() {
                   disabled={reindex.isPending || runDream.isPending}
                 >
                   <RefreshCcw size={13} />
-                  {reindex.isPending ? 'Refreshing...' : 'Refresh search'}
+                  {reindex.isPending ? 'Rebuilding...' : 'Rebuild index'}
                 </Button>
               </MaintenanceAction>
               <MaintenanceAction
