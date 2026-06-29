@@ -66,7 +66,7 @@ export function findPreviewURLs(text: string, patterns: readonly string[]): stri
   const seen = new Set<string>()
   const urls: string[] = []
   for (const raw of matches) {
-    const url = raw.replace(/[\\.,;:!?)\]}'"]+$/, '')
+    const url = raw.replace(/[\\.,;:!?)\]}'"*_]+$/, '')
     const parsed = previewURL(url)
     if (!parsed || seen.has(parsed.href) || !patterns.some((pattern) => testPreviewPattern(pattern, parsed.href))) continue
     seen.add(parsed.href)
