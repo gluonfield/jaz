@@ -46,9 +46,6 @@ export function FeedCard({ item }: { item: FeedItem }) {
     onSettled: () => invalidateSessionLists(queryClient, { archived: true }),
   })
 
-  // Send straight to the thread's queue (the backend starts the turn when idle)
-  // and let the card animate out — no navigation. Mark seen so the poll doesn't
-  // bounce it back before the agent's next reply arrives.
   const reply = async (text: string, options: SendMessageOptions = {}) => {
     if (!text.trim()) return
     removeFromFeed()
@@ -79,15 +76,11 @@ export function FeedCard({ item }: { item: FeedItem }) {
 
   return (
     <motion.div
-      // Spacing rides on marginBottom (not a parent gap). On exit the card shrinks
-      // its own height + margin to 0 so the cards below slide up smoothly instead of
-      // jumping when it unmounts. Height is touched only on exit — animating it in
-      // `animate` would lock the card and break the inline expand. (10px ≈ gap-2.5)
       initial={reducedMotion ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0, marginBottom: 10 }}
       exit={reducedMotion ? { opacity: 0 } : { opacity: 0, height: 0, marginBottom: 0 }}
       transition={{ duration: 0.2, ease: 'easeOut' }}
-      className={`overflow-hidden rounded-card border border-border bg-surface transition-colors duration-150 ${
+      className={`overflow-hidden rounded-card bg-surface transition-colors duration-150 ${
         expanded ? '' : 'hover:bg-surface-2'
       }`}
     >
@@ -129,7 +122,7 @@ export function FeedCard({ item }: { item: FeedItem }) {
           aria-label="Open thread"
           title="Open thread"
           onClick={(e) => e.stopPropagation()}
-          className="-mt-0.5 shrink-0 rounded-full p-1.5 text-ink-3 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+          className="-mt-0.5 shrink-0 rounded-full p-1.5 text-ink-3 transition-colors duration-150 hover:bg-ink/10 hover:text-ink"
         >
           <ArrowUpRight size={16} />
         </Link>
@@ -144,7 +137,7 @@ export function FeedCard({ item }: { item: FeedItem }) {
             transition={{ duration: 0.18, ease: 'easeOut' }}
             className="overflow-hidden"
           >
-            <div className="border-t border-border bg-surface-2 px-3.5 py-3">
+            <div className="bg-surface-2 px-3.5 py-3">
               <div className="max-h-[42vh] overflow-y-auto text-[13px] leading-relaxed text-ink [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {item.last_message.text ? (
                   <MessageMarkdown text={item.last_message.text} />
@@ -176,6 +169,7 @@ export function FeedCard({ item }: { item: FeedItem }) {
           onClick={() => done.mutate()}
           aria-label="Mark done"
           title="Mark done"
+          className="hover:bg-ink/10!"
         >
           <Check size={15} />
         </IconButton>
@@ -186,6 +180,7 @@ export function FeedCard({ item }: { item: FeedItem }) {
           onClick={() => archive.mutate()}
           aria-label="Archive"
           title="Archive"
+          className="hover:bg-danger/15!"
         >
           <ArchiveIcon size={15} />
         </IconButton>

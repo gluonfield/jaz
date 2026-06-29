@@ -1,7 +1,4 @@
 -- name: ListFeed :many
--- Unread, non-archived, user-started threads whose agent turn has finished
--- (status idle, not mid-stream). The reply preview is assembled in Go from
--- LastTurnReplies (sqlite's grammar can't express the concatenation here).
 SELECT id, slug, title, parent_id, status, last_attention_at_ms
 FROM threads
 WHERE archived = 0
@@ -11,9 +8,8 @@ WHERE archived = 0
 ORDER BY last_attention_at_ms DESC;
 
 -- name: LastTurnReplies :many
--- Assistant reply events of the latest turn (after the last user prompt), in
--- order. A turn is often several events split around tool calls, so the card
--- concatenates the run; the last event alone drops most of the answer.
+-- A turn splits into several events around tool calls; the caller concatenates
+-- them in Go because sqlite's grammar can't express the ordered concatenation.
 SELECT e.content, e.created_at_ms
 FROM session_events e
 WHERE e.thread_id = sqlc.arg(thread_id)
