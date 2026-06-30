@@ -19,10 +19,8 @@ cat > ./src/renderer/public/jaz-defaults.js <<'JS'
 // Loaded before first paint by frontend/src/renderer/index.html.
 window.__JAZ_DEFAULTS__ = {
   theme: 'light',
-  uiFont: 'Inter',
-  monoFont: 'JetBrains Mono',
-  effects: true,
-  wideLayout: true,
+  effects: false,
+  wideLayout: false,
   scheme: {
     light: {
       accent: '#347ee8',
