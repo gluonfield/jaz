@@ -20,6 +20,7 @@ func codexProvider(modelProvider string, providers map[string]modelprovider.Mode
 			meta = modelprovider.ApplyModelProviderConfig(meta, override)
 		}
 		meta.ID = CodexProviderOpenAIAPIKey
+		meta.Label = "OpenAI API key"
 		return meta, true
 	}
 	meta, ok := modelprovider.RunnableModelProviderByID(id)
