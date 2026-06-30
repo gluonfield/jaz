@@ -49,6 +49,7 @@ func (p *Provider) eventHandler(client *whatsmeow.Client, session *qrSession) wh
 			}
 			p.logInfo("client connected", "session", qrSessionLogID(session))
 			_ = p.writeAllContacts(p.ctx, connection, client.Store)
+			_ = p.writeAllGroups(p.ctx, connection, client)
 		case *events.Message:
 			if connection, ok := connectionFromDevice(client.Store); ok {
 				_ = p.writeRecords(p.ctx, whatsappMessageRecord(connection, event))
@@ -60,6 +61,17 @@ func (p *Provider) eventHandler(client *whatsmeow.Client, session *qrSession) wh
 		case *events.Contact:
 			if connection, ok := connectionFromDevice(client.Store); ok {
 				_ = p.writeRecords(p.ctx, whatsappContactActionRecord(connection, event))
+			}
+		case *events.JoinedGroup:
+			if connection, ok := connectionFromDevice(client.Store); ok {
+				_ = p.writeRecords(p.ctx, whatsappGroupRecord(connection, event.JID, event.Name))
+			}
+		case *events.GroupInfo:
+			if event.Name == nil {
+				return
+			}
+			if connection, ok := connectionFromDevice(client.Store); ok {
+				_ = p.writeRecords(p.ctx, whatsappGroupRecord(connection, event.JID, event.Name.Name))
 			}
 		case *events.LoggedOut:
 			p.logWarn("client logged out", "session", qrSessionLogID(session), "reason", event.Reason.String())
