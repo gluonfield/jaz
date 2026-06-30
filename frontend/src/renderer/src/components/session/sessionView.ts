@@ -32,8 +32,13 @@ export function sessionSupportsNativeGoal(session: Session | undefined): boolean
   return session?.runtime === 'acp' && runtimeCapabilitiesSupportNativeGoal(session.runtime_ref?.capabilities)
 }
 
-export function latestGoalEvent(sessionId: string, events: SessionEvent[]): GoalEvent | undefined {
-  return events.findLast((event) => event.session_id === sessionId && event.type === 'goal_update' && event.goal)?.goal
+export function latestGoalEvent(sessionId: string, events: SessionEvent[]): GoalEvent | null | undefined {
+  const event = events.findLast((item) => (
+    item.session_id === sessionId &&
+    (item.type === 'goal_clear' || (item.type === 'goal_update' && item.goal))
+  ))
+  if (!event) return undefined
+  return event.type === 'goal_clear' ? null : event.goal
 }
 
 export function goalIsActive(goal: GoalEvent | undefined): boolean {
@@ -250,7 +255,8 @@ export function deriveSessionView(data: SessionMessages, liveEvents: SessionEven
   const planAvailable = session.runtime !== 'acp' || !acpModesKnown || Boolean(currentModes?.plan_mode_id)
   const planActive = planModeActive(currentModes)
   const goalAvailable = sessionSupportsNativeGoal(session)
-  const goal = latestGoalEvent(session.id, [...persistedEvents, ...snapshotEvents, ...liveEvents])
+  const latestGoal = latestGoalEvent(session.id, [...persistedEvents, ...snapshotEvents, ...liveEvents])
+  const goal = latestGoal === null ? undefined : latestGoal ?? session.goal
   const goalActive = goalIsActive(goal)
   const hasBlockingPendingPermission = Array.from(activePermissions).some(
     (id) => !activePlanApprovalPermissions.has(id),

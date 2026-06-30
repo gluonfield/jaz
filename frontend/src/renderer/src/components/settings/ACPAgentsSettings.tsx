@@ -1,6 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, ChevronDown, CircleAlert, KeyRound, LoaderCircle, LogIn, Terminal } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { AuthLoginStatus } from '@/components/acp/AuthLoginStatus'
 import { SettingsCard } from '@/components/settings/SettingsCard'
@@ -34,9 +34,9 @@ import type {
   ModelProviderOption,
 } from '@/lib/api/types'
 import { useACPLoginPolling } from '@/lib/hooks/useACPLoginPolling'
-import { acpAgentModelSuggestions, modelSuggestionsForProvider, openRouterModelsQuery } from '@/lib/models'
+import { useModelReasoningState } from '@/lib/modelReasoning'
 import { keys } from '@/lib/query/keys'
-import { acpReasoningEffortOptions, settingsReasoningOptions } from '@/lib/reasoningEfforts'
+import { modelSettingsReasoningEffortOptions, supportedReasoningEffort } from '@/lib/reasoningEfforts'
 
 const inputClass =
   'h-7 w-full rounded-full bg-ink/10 px-3 text-[12px] text-ink outline-none transition duration-150 placeholder:text-ink-3 focus:bg-ink/15 focus:ring-1 focus:ring-ink/25 disabled:opacity-50'
@@ -222,14 +222,21 @@ function ACPAgentRow({
         ? `Connect ${selectedProvider.label} in Model Providers before enabling.`
         : 'Select a provider before enabling.'
   const [commandOpen, setCommandOpen] = useState(requiresCommand && (current.command ?? '').trim() === '')
-  const openRouterModels = useQuery({
-    ...openRouterModelsQuery,
-    enabled: usesModelProvider && current.model_provider === 'openrouter',
+  const reasoningModel = (current.model ?? '').trim() || selectedProvider?.default_model || ''
+  const { modelSuggestions, modelsLoading, reasoningOptions } = useModelReasoningState({
+    settings,
+    agent,
+    model: reasoningModel,
+    usesProvider: usesModelProvider,
+    provider: current.model_provider,
+    selectedProvider,
+    settingsMode: true,
   })
-  const modelSuggestions = usesModelProvider
-    ? modelSuggestionsForProvider(selectedProvider, openRouterModels.data ?? [])
-    : acpAgentModelSuggestions(agent)
-  const update = (next: Partial<typeof current>) => {
+  const reasoningEffort = current.reasoning_effort ?? ''
+  const normalizedReasoningEffort = supportedReasoningEffort(reasoningEffort, reasoningOptions)
+    ? reasoningEffort
+    : ''
+  const update = useCallback((next: Partial<typeof current>) => {
     const value = { ...current, ...next }
     const nextSettings = {
       ...settings,
@@ -239,10 +246,16 @@ function ACPAgentRow({
       },
     }
     onChange(normalizeACPAgentEnabled(nextSettings, agent))
-  }
+  }, [agent, current, onChange, settings])
   useEffect(() => {
     if (requiresCommand && checked && (current.command ?? '').trim() === '') setCommandOpen(true)
   }, [checked, current.command, requiresCommand])
+
+  useEffect(() => {
+    if (reasoningEffort !== normalizedReasoningEffort) {
+      update({ reasoning_effort: normalizedReasoningEffort })
+    }
+  }, [normalizedReasoningEffort, reasoningEffort, update])
 
   return (
     <SettingsCard className="overflow-hidden">
@@ -330,9 +343,17 @@ function ACPAgentRow({
         <ModelCombobox
           value={current.model ?? ''}
           suggestions={modelSuggestions}
-          loading={openRouterModels.isLoading}
+          loading={modelsLoading}
           disabled={disabled}
-          onChange={(model) => update({ model })}
+          onChange={(model) => {
+            const nextOptions = modelSettingsReasoningEffortOptions(settings, agent, model, modelSuggestions)
+            update({
+              model,
+              reasoning_effort: supportedReasoningEffort(reasoningEffort, nextOptions)
+                ? reasoningEffort
+                : '',
+            })
+          }}
           aria-label={`${agentLabel(agent)} model`}
           className={rowControlClass}
         />
@@ -340,8 +361,8 @@ function ACPAgentRow({
 
       <SettingsRow title="Reasoning" description="Reasoning effort copied into new threads.">
         <Select
-          value={current.reasoning_effort ?? ''}
-          options={settingsReasoningOptions(acpReasoningEffortOptions(settings, agent))}
+          value={normalizedReasoningEffort}
+          options={reasoningOptions}
           disabled={disabled}
           onChange={(reasoning_effort) => update({ reasoning_effort })}
           aria-label={`${agentLabel(agent)} reasoning effort`}

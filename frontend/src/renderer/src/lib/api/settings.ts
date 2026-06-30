@@ -85,6 +85,11 @@ export function cloneAgentSettings(settings: AgentSettings): AgentSettings {
           ...value,
           capabilities: value.capabilities ? { ...value.capabilities } : undefined,
           reasoning_efforts: [...value.reasoning_efforts],
+          models: value.models?.map((model) => ({
+            ...model,
+            reasoning_efforts: model.reasoning_efforts ? [...model.reasoning_efforts] : model.reasoning_efforts,
+            pricing: model.pricing ? { ...model.pricing } : undefined,
+          })),
           model_provider_ids: [...(value.model_provider_ids ?? [])],
           model_providers: [...(value.model_providers ?? [])],
         },

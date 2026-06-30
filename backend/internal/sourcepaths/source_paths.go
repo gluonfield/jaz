@@ -20,6 +20,13 @@ func ChatConversationDayPath(provider, account, conversation string, occurred ti
 	return path.Join(chatConversationsDir(provider, account), integrations.SourceSlug(conversation), utc.Format("2006"), utc.Format("01"), utc.Format("02")+".md")
 }
 
+func ChatConversationSegmentsDayPath(provider, account string, occurred time.Time, segments ...string) string {
+	utc := occurred.UTC()
+	parts := append([]string{chatConversationsDir(provider, account)}, segments...)
+	parts = append(parts, utc.Format("2006"), utc.Format("01"), utc.Format("02")+".md")
+	return path.Join(parts...)
+}
+
 func EmailMessagesPrefix(provider, account string) string {
 	return emailMessagesDir(provider, account) + "/"
 }

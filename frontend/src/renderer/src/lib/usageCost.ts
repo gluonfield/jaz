@@ -1,4 +1,4 @@
-import type { UsageTotals } from './api/types'
+import type { AgentSettings, UsageTotals } from './api/types'
 import { type ModelPricing, pricingIdForUsage } from './models'
 import { inputTokens, totalUsageTokens, type UsageModelTotals } from './usageDaily'
 
@@ -31,11 +31,12 @@ export interface CostSummary {
 export function priceModels(
   models: UsageModelTotals[],
   index: Map<string, ModelPricing>,
+  settings?: AgentSettings,
 ): { rows: PricedModel[]; summary: CostSummary } {
   const rows: PricedModel[] = []
   const summary: CostSummary = { total: 0, priced: 0, unpriced: 0 }
   for (const model of models) {
-    const id = pricingIdForUsage(model)
+    const id = pricingIdForUsage(model, settings)
     const pricing = id ? index.get(id) : undefined
     const cost = pricing ? estimateUsageCost(model.usage, pricing) : null
     rows.push({ model, cost })

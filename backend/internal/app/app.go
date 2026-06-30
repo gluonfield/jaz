@@ -23,6 +23,7 @@ import (
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/memorysearch"
 	"github.com/wins/jaz/backend/internal/memoryservice"
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/provider"
 	mockprovider "github.com/wins/jaz/backend/internal/provider/mock"
@@ -200,8 +201,8 @@ func NewACPAgentCatalog(cfg Config) acp.AgentCatalog {
 	return acp.MergeAgents(acp.BuiltinAgents(), cfg.ACP.Agents)
 }
 
-func NewACPAgentConfigSource(store *sqlitestore.Store, catalog acp.AgentCatalog) acp.AgentConfigSource {
-	return agentsettings.NewACPConfigSource(store, catalog)
+func NewACPAgentConfigSource(store *sqlitestore.Store, catalog acp.AgentCatalog, modelCatalog *modelcatalog.Service) acp.AgentConfigSource {
+	return agentsettings.NewACPConfigSource(store, catalog, modelCatalog)
 }
 
 func NewACPAdapterManager(layout runtimefiles.Layout, release Release) *acpadapter.Manager {
@@ -261,7 +262,22 @@ func NewProviderSource(cfg Config, store *sqlitestore.Store) (provider.Source, e
 	return provider.NewSource(cfg.ModelProviders, providerstore.Loader{Store: store})
 }
 
-func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, prompts *coordinator.Builder, catalog acp.AgentCatalog, source acp.AgentConfigSource, adapters *acpadapter.Manager, mcpServers mcpconfig.ServerReader, providerSource provider.Source, widgetService *widgets.Service) acp.Config {
+func NewModelCatalog(providerSource provider.Source) *modelcatalog.Service {
+	return modelcatalog.NewService(providerSource)
+}
+
+func StartModelCatalogWarmup(lc fx.Lifecycle, catalog *modelcatalog.Service, logger *log.Logger) {
+	lc.Append(fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			if err := catalog.Warm(ctx); err != nil {
+				logger.WithPrefix("models").Warn("model provider catalog warmup failed", "error", err)
+			}
+			return nil
+		},
+	})
+}
+
+func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, prompts *coordinator.Builder, catalog acp.AgentCatalog, source acp.AgentConfigSource, adapters *acpadapter.Manager, mcpServers mcpconfig.ServerReader, providerSource provider.Source, modelCatalog *modelcatalog.Service, widgetService *widgets.Service) acp.Config {
 	cfg.ACP.Agents = catalog
 	cfg.ACP.AgentSource = source
 	cfg.ACP.Adapters = adapters
@@ -269,6 +285,7 @@ func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, pro
 	cfg.ACP.Workspace = string(workspace)
 	cfg.ACP.Providers = cfg.ModelProviders
 	cfg.ACP.ProviderSource = providerSource
+	cfg.ACP.ModelCatalog = modelCatalog
 	cfg.ACP.SystemPrompt = prompts
 	cfg.ACP.MCPStore = mcpServers
 	promptBuilder := loops.RuntimePromptBuilder{Repo: store}

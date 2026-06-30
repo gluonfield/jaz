@@ -17,6 +17,7 @@ func TestSourcePaths(t *testing.T) {
 		{"chat conversations prefix", ChatConversationsPrefix("whatsapp", "personal"), "sources/chat/whatsapp/personal/conversations/"},
 		{"email message", EmailMessagePath("gmail", "personal", when, "msg/1"), "sources/email/gmail/personal/messages/2026/06/27/msg-1-588a29c4.md"},
 		{"chat conversation day", ChatConversationDayPath("telegram", "42", "user/1", when), "sources/chat/telegram/42/conversations/user-1-a298c916/2026/06/27.md"},
+		{"chat conversation segments day", ChatConversationSegmentsDayPath("telegram", "42", when, "user", "1"), "sources/chat/telegram/42/conversations/user/1/2026/06/27.md"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.got != tc.want {

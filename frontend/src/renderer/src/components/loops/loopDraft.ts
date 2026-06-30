@@ -17,7 +17,7 @@ export interface LoopDraft {
   runtime: string
   directory: string
   // Overrides of the Settings > Agents defaults; '' follows settings at run
-  // time, while the picker always displays the resolved effective value.
+  // time, "none" explicitly clears it, and the picker displays the effective value.
   provider: string
   model: string
   reasoningEffort: string

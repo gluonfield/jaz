@@ -57,6 +57,11 @@ func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, stri
 	if strings.EqualFold(strings.TrimSpace(req.ReasoningEffort), "none") && agentPolicyForAgent(req.ACPAgent).effortEncodedInModel(cfg.Model) {
 		cfg.Model = strings.TrimSpace(cfg.Model[:strings.LastIndex(cfg.Model, "/")])
 	}
+	if m.cfg.ModelCatalog != nil {
+		if err := m.cfg.ModelCatalog.ValidateReasoningEffort(req.ACPAgent, cfg.ModelProvider, cfg.Model, effort); err != nil {
+			return SpawnRequest{}, AgentConfig{}, "", err
+		}
+	}
 	cfg.ReasoningEffort = effort
 	return req, cfg, effort, nil
 }

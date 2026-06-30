@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/sourcepaths"
@@ -78,14 +79,18 @@ func telegramMessageTargets(req integrations.MaterializeRequest) ([]integrations
 	if occurred.IsZero() {
 		return nil, nil
 	}
+	kind, id, ok := telegramPeerPath(raw.PeerID)
+	if !ok {
+		return nil, nil
+	}
+	conversation := kind + ":" + id
 	account := recordAccountSlug(req.Record.AccountID)
-	conversation := firstText(raw.PeerID, req.Record.ExternalID)
 	utc := occurred.UTC()
 	day := utc.Format("2006-01-02")
 	return []integrations.SourceTarget{{
 		Provider:    "telegram",
 		Kind:        "chat_day",
-		PathHint:    sourcepaths.ChatConversationDayPath("telegram", account, conversation, utc),
+		PathHint:    sourcepaths.ChatConversationSegmentsDayPath("telegram", account, utc, kind, id),
 		MediaType:   "text/markdown",
 		Key:         sourceKey(conversation, day),
 		Replay:      sourceReplay(account, integrations.ReplayScope{Domain: integrations.RecordDomainMessages, Day: day}, integrations.ReplayScope{Domain: integrations.RecordDomainContacts}),
@@ -121,7 +126,8 @@ func telegramContactsArtifact(req integrations.SourceProjectionRequest) (integra
 func telegramChatDayArtifact(req integrations.SourceProjectionRequest) (integrations.Artifact, error) {
 	contacts := telegramContactIndex(req.Records)
 	conversation := req.Target.Key.Entity
-	group := telegramPeerIsGroup(conversation)
+	kind, _, _ := strings.Cut(conversation, ":")
+	group := kind == "chat" || kind == "channel"
 	var lines []chatLine
 	for _, record := range req.Records {
 		if record.Kind != "telegram.message" {
@@ -131,8 +137,7 @@ func telegramChatDayArtifact(req integrations.SourceProjectionRequest) (integrat
 		if err := json.Unmarshal(record.Raw, &raw); err != nil {
 			return integrations.Artifact{}, err
 		}
-		recordConversation := firstText(raw.PeerID, record.ExternalID)
-		if recordConversation != req.Target.Key.Entity || recordTime(record).UTC().Format("2006-01-02") != req.Target.Key.Day {
+		if raw.PeerID != req.Target.Key.Entity || recordTime(record).UTC().Format("2006-01-02") != req.Target.Key.Day {
 			continue
 		}
 		speaker, info := selfSpeaker, ""
@@ -151,9 +156,13 @@ func telegramChatDayArtifact(req integrations.SourceProjectionRequest) (integrat
 	return chatDayArtifact(req.Target, "Telegram", conv)
 }
 
-func telegramPeerIsGroup(peerID string) bool {
-	kind, _, _ := strings.Cut(peerID, ":")
-	return kind == "chat" || kind == "channel"
+func telegramPeerPath(peerID string) (string, string, bool) {
+	kind, id, ok := strings.Cut(peerID, ":")
+	if !ok || id == "" || kind != "user" && kind != "chat" && kind != "channel" {
+		return "", "", false
+	}
+	_, err := strconv.ParseInt(id, 10, 64)
+	return kind, id, err == nil
 }
 
 func telegramConversationDisplay(peerID string, contacts map[string]string) string {

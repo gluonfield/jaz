@@ -23,7 +23,7 @@ type input struct {
 	Branch          string `json:"branch,omitempty" jsonschema_description:"Base branch or ref for the disposable worktree. Only valid with worktree=true. Omit to branch from directory's current HEAD."`
 	ModelProvider   string `json:"model_provider,omitempty" jsonschema_description:"Provider override for provider-backed agents."`
 	Model           string `json:"model,omitempty" jsonschema_description:"Model override for this session. Omit unless the user asked for a specific model."`
-	ReasoningEffort string `json:"reasoning_effort,omitempty" jsonschema_description:"Reasoning effort override: none, minimal, low, medium, high, or xhigh."`
+	ReasoningEffort string `json:"reasoning_effort,omitempty" jsonschema_description:"Reasoning effort override: none, minimal, low, medium, high, xhigh, or max where supported."`
 }
 
 func (t *Tool) Definition() tools.Definition {

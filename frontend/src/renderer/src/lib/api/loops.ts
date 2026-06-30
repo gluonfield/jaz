@@ -11,7 +11,7 @@ export interface LoopInput {
   status?: string
   runtime?: string
   acp_agent?: string
-  // Overrides of the Settings > Agents defaults; '' follows settings at run time.
+  // Overrides of the Settings > Agents defaults; '' follows settings, "none" clears it.
   model_provider?: string
   model?: string
   reasoning_effort?: string

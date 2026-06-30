@@ -57,6 +57,10 @@ type MCPRuntime interface {
 	Authorize(context.Context, mcpconfig.Server) mcpconfig.ServerStatus
 }
 
+type ReasoningEffortValidator interface {
+	ValidateReasoningEffort(agent, providerID, model, effort string) error
+}
+
 type ACPAdapterStatusReader interface {
 	Status(name string) acpadapter.Status
 }
@@ -76,6 +80,7 @@ type Server struct {
 	STT                  voice.STT
 	TTS                  voice.TTS
 	ModelProviderRuntime provider.ReloadableProvider
+	ModelCatalog         ReasoningEffortValidator
 	// Providers is the live registry of effective model providers (catalog +
 	// application.yaml + DB customs). Read it through modelProviders().
 	Providers    provider.Source

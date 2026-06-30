@@ -11,6 +11,7 @@ import (
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
 
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/provider"
 )
 
@@ -27,6 +28,7 @@ type ReasoningEffortOption struct {
 
 type AgentOptions struct {
 	ReasoningEfforts []ReasoningEffortOption `json:"reasoning_efforts"`
+	Models           []modelcatalog.Model    `json:"models,omitempty"`
 	Capabilities     *AgentCapabilities      `json:"capabilities,omitempty"`
 	Local            bool                    `json:"local"`
 	ProviderMode     string                  `json:"provider_mode,omitempty"`
@@ -72,6 +74,10 @@ var claudeReasoningEffortOptions = append(append([]ReasoningEffortOption(nil), b
 	ReasoningEffortOption{Value: claudeReasoningEffortUltracode, Label: "Ultracode"},
 )
 
+var openCodeReasoningEffortOptions = append(append([]ReasoningEffortOption(nil), baseReasoningEffortOptions...),
+	ReasoningEffortOption{Value: "max", Label: "Max"},
+)
+
 func agentPolicyForAgent(agentName string) agentPolicy {
 	switch strings.ToLower(strings.TrimSpace(agentName)) {
 	case AgentClaude:
@@ -101,7 +107,7 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 			modelConfigID:       sessionConfigModel,
 			effortConfigID:      claudeSessionConfigEffort,
 			modelValidationKind: modelValidationNone,
-			effortOptions:       baseReasoningEffortOptions,
+			effortOptions:       openCodeReasoningEffortOptions,
 		}
 	default:
 		return agentPolicy{
@@ -596,6 +602,7 @@ func AgentOptionsFor(name string) AgentOptions {
 func AgentOptionsForConfig(name string, cfg AgentConfig) AgentOptions {
 	options := AgentOptions{
 		ReasoningEfforts: agentPolicyForAgent(CanonicalAgentName(name)).reasoningEffortOptions(),
+		Models:           modelcatalog.AgentModels(name),
 	}
 	if caps := CatalogAgentCapabilitiesFor(name); caps.NativeGoal {
 		options.Capabilities = &caps
@@ -629,6 +636,10 @@ func modelHasReasoningEffort(model string) bool {
 	if i < 0 {
 		return false
 	}
-	effort, err := provider.NormalizeReasoningEffort(model[i+1:])
-	return err == nil && effort != ""
+	switch strings.ToLower(strings.TrimSpace(model[i+1:])) {
+	case "minimal", "low", "medium", "high", "xhigh":
+		return true
+	default:
+		return false
+	}
 }

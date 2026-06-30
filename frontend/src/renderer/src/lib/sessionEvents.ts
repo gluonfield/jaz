@@ -20,6 +20,9 @@ export function sessionEventPlacement(event: SessionEvent): SessionEventPlacemen
       return isParentChildACPEvent(event) && !taskSurfaceFromEvent(event) ? 'overview' : 'transcript'
     case 'provider_subagent':
       return 'overview'
+    case 'goal_update':
+    case 'goal_clear':
+      return 'overview'
     case 'side_chat_message':
       return 'side_chat'
     default:
@@ -51,7 +54,7 @@ export function inPlaceEventKey(event: SessionEvent): string | null {
   if ((event.type === 'permission_request' || event.type === 'permission_response') && event.permission?.id) {
     return `${event.type}:${event.permission.id}`
   }
-  if (event.type === 'goal_update' && event.goal) {
+  if ((event.type === 'goal_update' && event.goal) || event.type === 'goal_clear') {
     return `goal_update:${event.session_id}`
   }
   if (event.type === 'loop_created' && event.loop_created?.loop_id) {

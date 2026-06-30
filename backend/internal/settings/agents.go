@@ -30,6 +30,10 @@ type AgentDefaults struct {
 	ACP map[string]ACPAgentDefaults `json:"acp"`
 }
 
+type ReasoningEffortValidator interface {
+	ValidateReasoningEffort(agent, providerID, model, effort string) error
+}
+
 func DefaultAgentDefaults() AgentDefaults {
 	return AgentDefaults{
 		ACP: map[string]ACPAgentDefaults{},
@@ -202,7 +206,11 @@ func agentNames(defaults AgentDefaults) []string {
 	return names
 }
 
-func NormalizeAgentDefaults(input AgentDefaults, catalog acp.AgentCatalog) (AgentDefaults, error) {
+func NormalizeAgentDefaults(input AgentDefaults, catalog acp.AgentCatalog, validators ...ReasoningEffortValidator) (AgentDefaults, error) {
+	var validator ReasoningEffortValidator
+	if len(validators) > 0 {
+		validator = validators[0]
+	}
 	agentNames := catalog.Names()
 	allowed := map[string]struct{}{}
 	for _, name := range agentNames {
@@ -256,6 +264,11 @@ func NormalizeAgentDefaults(input AgentDefaults, catalog acp.AgentCatalog) (Agen
 			}.NormalizeProviderModel(base.ModelProvider)
 			modelProvider = cfg.ModelProvider
 			model = cfg.Model
+		}
+		if validator != nil {
+			if err := validator.ValidateReasoningEffort(name, modelProvider, model, effort); err != nil {
+				return AgentDefaults{}, err
+			}
 		}
 		next.ACP[name] = ACPAgentDefaults{
 			Enabled:         current.Enabled,
@@ -338,12 +351,17 @@ func canonicalizeACPDefaults(in map[string]ACPAgentDefaults) map[string]ACPAgent
 }
 
 type ACPConfigSource struct {
-	store   storage.SettingsStorage
-	catalog acp.AgentCatalog
+	store     storage.SettingsStorage
+	catalog   acp.AgentCatalog
+	validator ReasoningEffortValidator
 }
 
-func NewACPConfigSource(store storage.SettingsStorage, catalog acp.AgentCatalog) *ACPConfigSource {
-	return &ACPConfigSource{store: store, catalog: catalog}
+func NewACPConfigSource(store storage.SettingsStorage, catalog acp.AgentCatalog, validators ...ReasoningEffortValidator) *ACPConfigSource {
+	var validator ReasoningEffortValidator
+	if len(validators) > 0 {
+		validator = validators[0]
+	}
+	return &ACPConfigSource{store: store, catalog: catalog, validator: validator}
 }
 
 func (s *ACPConfigSource) effectiveDefaults() (AgentDefaults, error) {
@@ -390,6 +408,11 @@ func (s *ACPConfigSource) AgentConfig(name string) (acp.AgentConfig, bool, error
 	cfg.Auth = agent.Auth
 	if cfg.UsesModelProvider() {
 		cfg = cfg.NormalizeProviderModel(defaultModelProvider)
+	}
+	if s.validator != nil {
+		if err := s.validator.ValidateReasoningEffort(name, cfg.ModelProvider, cfg.Model, cfg.ReasoningEffort); err != nil {
+			return acp.AgentConfig{}, false, err
+		}
 	}
 	return cfg, true, nil
 }

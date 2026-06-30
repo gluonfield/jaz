@@ -103,7 +103,7 @@ func TestNormalizeAgentReasoningEffort(t *testing.T) {
 		{AgentCodex, "max", "", true},
 		{AgentGrok, "ultracode", "", true},
 		{AgentOpenCode, "medium", "medium", false},
-		{AgentOpenCode, "max", "", true},
+		{AgentOpenCode, "max", "max", false},
 	}
 	for _, tc := range cases {
 		got, err := NormalizeAgentReasoningEffort(tc.agent, tc.value)

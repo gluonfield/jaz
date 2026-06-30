@@ -23,6 +23,7 @@ type Querier interface {
 	TouchSessionAttention(ctx context.Context, arg TouchSessionAttentionParams) error
 	TouchThread(ctx context.Context, arg TouchThreadParams) error
 	UpdateACPState(ctx context.Context, arg UpdateACPStateParams) error
+	UpdateGoal(ctx context.Context, arg UpdateGoalParams) error
 	UpdateSessionTitle(ctx context.Context, arg UpdateSessionTitleParams) error
 	UpsertSession(ctx context.Context, arg UpsertSessionParams) error
 }

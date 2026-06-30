@@ -24,6 +24,7 @@ import (
 	"github.com/wins/jaz/backend/internal/loops"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/memoryservice"
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeauth"
 	"github.com/wins/jaz/backend/internal/server"
@@ -97,6 +98,7 @@ func runServe(args []string) error {
 			app.NewBrowserSettingsHandler,
 			app.NewMCPManager,
 			app.NewProviderSource,
+			app.NewModelCatalog,
 			app.NewProvider,
 			app.NewVoice,
 			app.NewAgent,
@@ -115,6 +117,7 @@ func runServe(args []string) error {
 			app.StartSkillSync,
 			app.StartGmailSync,
 			app.StartACPAdapterDownloads,
+			app.StartModelCatalogWarmup,
 			startServer,
 			app.StartMCPManager,
 		),
@@ -212,6 +215,7 @@ func startServer(
 	tts voice.TTS,
 	modelProviderRuntime provider.Provider,
 	providerSource provider.Source,
+	modelCatalog *modelcatalog.Service,
 	logger *log.Logger,
 	cfg app.Config,
 	catalog acp.AgentCatalog,
@@ -244,6 +248,7 @@ func startServer(
 		STT:                   stt,
 		TTS:                   tts,
 		ModelProviderRuntime:  reloadableProvider(modelProviderRuntime),
+		ModelCatalog:          modelCatalog,
 		Providers:             providerSource,
 		AgentCatalog:          catalog,
 		AuthKey:               authKey,

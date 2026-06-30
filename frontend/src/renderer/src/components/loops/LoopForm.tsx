@@ -5,12 +5,11 @@ import { ModelSelect, RuntimeSelect } from '@/components/session/NewThreadContro
 import { boardsQuery } from '@/lib/api/boards'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import { enabledACPAgents, runtimeModelState } from '@/lib/agentRuntimes'
+import { useModelReasoningState } from '@/lib/modelReasoning'
 import {
-  acpAgentModelSuggestions,
-  modelSuggestionsForProvider,
-  openRouterModelsQuery,
-} from '@/lib/models'
-import { acpReasoningEffortOptions } from '@/lib/reasoningEfforts'
+  effectiveReasoningEffort,
+  supportedReasoningEffort,
+} from '@/lib/reasoningEfforts'
 import { BoardAssignmentPicker } from './BoardAssignmentPicker'
 import { LoopExamplesPicker } from './LoopExamplesPicker'
 import type { LoopDraft } from './loopDraft'
@@ -210,15 +209,34 @@ function LoopPromptCard({
   const { usesProvider, providers: runtimeProviders, provider, selectedProvider } = runtimeModel
   const defaultModel = runtimeModel.defaultModel
   const model = draft.model || defaultModel
-  const reasoningEffort = draft.reasoningEffort || runtimeModel.defaultEffort
 
-  const openRouterModels = useQuery({
-    ...openRouterModelsQuery,
-    enabled: usesProvider && provider === 'openrouter',
+  const { modelSuggestions, modelsLoading, reasoningOptions: effortOptions } = useModelReasoningState({
+    settings: agentSettings,
+    agent: draft.runtime,
+    model,
+    usesProvider,
+    provider,
+    selectedProvider,
   })
-  const modelSuggestions = usesProvider
-    ? modelSuggestionsForProvider(selectedProvider, openRouterModels.data ?? [])
-    : acpAgentModelSuggestions(draft.runtime)
+  const reasoningEffort = effectiveReasoningEffort(
+    draft.reasoningEffort || runtimeModel.defaultEffort,
+    effortOptions,
+  )
+
+  useEffect(() => {
+    if (draft.reasoningEffort && !supportedReasoningEffort(draft.reasoningEffort, effortOptions)) {
+      set({ reasoningEffort: '' })
+      return
+    }
+    if (
+      draft.reasoningEffort === '' &&
+      runtimeModel.defaultEffort &&
+      !supportedReasoningEffort(runtimeModel.defaultEffort, effortOptions) &&
+      effortOptions.some((option) => option.value === 'none')
+    ) {
+      set({ reasoningEffort: 'none' })
+    }
+  }, [draft.reasoningEffort, effortOptions, runtimeModel.defaultEffort, set])
 
   return (
     <div>
@@ -254,10 +272,10 @@ function LoopPromptCard({
                 <ModelSelect
                   value={model}
                   suggestions={modelSuggestions}
-                  loading={openRouterModels.isLoading}
+                  loading={modelsLoading}
                   disabled={disabled}
                   placement="below"
-                  onChange={(next) => set({ model: next })}
+                  onChange={(next) => set({ model: next, reasoningEffort: '' })}
                   providers={
                     usesProvider
                       ? runtimeProviders.map((p) => ({ value: p.id, label: p.label }))
@@ -270,7 +288,7 @@ function LoopPromptCard({
                       : undefined
                   }
                   effort={reasoningEffort}
-                  effortOptions={acpReasoningEffortOptions(agentSettings, draft.runtime)}
+                  effortOptions={effortOptions}
                   // 'Default' clears the override; the selection snaps back to the
                   // resolved settings effort.
                   onEffortChange={(next) => set({ reasoningEffort: next })}

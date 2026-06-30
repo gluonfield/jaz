@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
@@ -258,6 +259,19 @@ func TestNormalizeAgentDefaultsRejectsClaudeOnlyReasoningForOtherACPAgents(t *te
 
 	if _, err := NormalizeAgentDefaults(input, acp.BuiltinAgents()); err == nil {
 		t.Fatal("expected codex ultracode effort to be rejected")
+	}
+}
+
+func TestNormalizeAgentDefaultsRejectsModelSpecificUnsupportedReasoning(t *testing.T) {
+	input := testAgentDefaultsSeed()
+	claude := input.ACP["claude"]
+	claude.Model = "sonnet"
+	claude.ReasoningEffort = "xhigh"
+	input.ACP["claude"] = claude
+
+	_, err := NormalizeAgentDefaults(input, acp.BuiltinAgents(), modelcatalog.NewService(nil))
+	if err == nil || !strings.Contains(err.Error(), `reasoning effort "xhigh" is not supported for claude model "sonnet"`) {
+		t.Fatalf("err = %v", err)
 	}
 }
 

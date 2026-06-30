@@ -75,7 +75,7 @@ func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) {
 		}
 		var normalized *agentsettings.AgentDefaults
 		if input.Settings != nil {
-			next, err := agentsettings.NormalizeAgentDefaults(*input.Settings, s.acpAgentCatalog())
+			next, err := agentsettings.NormalizeAgentDefaults(*input.Settings, s.acpAgentCatalog(), s.ModelCatalog)
 			if err != nil {
 				writeError(w, http.StatusBadRequest, err)
 				return
