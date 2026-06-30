@@ -1,32 +1,35 @@
-import type { GoalEvent, Usage } from '@/lib/api/types'
-import { formatTokens } from '@/lib/format/tokens'
+import type { GoalEvent } from '@/lib/api/types'
+import { formatUsd } from '@/lib/usageCost'
 
 const numberFormatter = new Intl.NumberFormat()
-const costFormatter = new Intl.NumberFormat(undefined, {
-  currency: 'USD',
-  maximumFractionDigits: 2,
-  minimumFractionDigits: 2,
-  style: 'currency',
+const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: 'medium',
+  timeStyle: 'short',
 })
+
+type GoalMetadataRow = {
+  label: string
+  value: string
+  compact?: boolean
+}
 
 export function GoalStatusBar({
   goal,
   starting,
   running,
-  usage,
 }: {
   goal?: GoalEvent
   starting?: boolean
   running?: boolean
-  usage?: Usage
 }) {
   if (!goal && !starting) return null
   const objective = goal?.objective?.trim()
   const label = goalStatusLabel(goal?.status, starting, running)
-  const budget = goalBudgetLabel(goal, usage)
+  const budget = goalBudgetLabel(goal)
   const details = goalDetailLabel(goal)
+  const metadata = goalMetadataRows(goal)
   return (
-    <div className="mb-2 flex min-h-9 items-center gap-3 rounded-[8px] bg-primary-soft/70 px-3 py-2 text-[13px] shadow-sm ring-1 ring-primary/20">
+    <div className="group/goal relative mb-2 flex min-h-9 items-center gap-3 rounded-[8px] bg-primary-soft/70 px-3 py-2 text-[13px] shadow-sm ring-1 ring-primary/20">
       <span className={`size-1.5 shrink-0 rounded-full ${goalDotClass(goal?.status, running || starting)}`} />
       <div className="min-w-0 flex-1 leading-5">
         <div className="flex min-w-0 items-center gap-2">
@@ -36,6 +39,28 @@ export function GoalStatusBar({
         {details ? <div className="truncate text-[12px] text-ink-3">{details}</div> : null}
       </div>
       {budget ? <span className="shrink-0 tabular-nums text-ink-3">{budget}</span> : null}
+      {metadata.length ? <GoalMetadataPanel rows={metadata} /> : null}
+    </div>
+  )
+}
+
+function GoalMetadataPanel({ rows }: { rows: GoalMetadataRow[] }) {
+  return (
+    <div className="pointer-events-none invisible absolute right-0 bottom-full z-tooltip mb-2 max-h-[min(70vh,520px)] w-[360px] max-w-[calc(100vw-2rem)] translate-y-1 overflow-y-auto rounded-[8px] bg-bg px-3 py-2.5 text-[12px] leading-4 opacity-0 shadow-raised ring-1 ring-border/70 transition-[opacity,transform,visibility] duration-150 group-hover/goal:pointer-events-auto group-hover/goal:visible group-hover/goal:translate-y-0 group-hover/goal:opacity-100">
+      <div className="mb-2 flex items-center justify-between gap-3 border-b border-border/70 pb-2">
+        <span className="font-medium text-ink">Goal metadata</span>
+        <span className="text-[11px] text-ink-3">provider report</span>
+      </div>
+      <dl className="space-y-1.5">
+        {rows.map((row) => (
+          <div key={row.label} className="grid grid-cols-[108px_minmax(0,1fr)] gap-3">
+            <dt className="text-ink-3">{row.label}</dt>
+            <dd className={`min-w-0 break-words text-ink ${row.compact ? 'font-mono text-[11px] tabular-nums' : ''}`}>
+              {row.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
     </div>
   )
 }
@@ -67,7 +92,7 @@ function goalDotClass(status?: string, running?: boolean): string {
   return 'bg-ink-3/60'
 }
 
-function goalBudgetLabel(goal?: GoalEvent, usage?: Usage): string {
+function goalBudgetLabel(goal?: GoalEvent): string {
   if (goal?.token_budget != null) {
     const used = goal.tokens_used ?? 0
     const remaining = goal.remaining_tokens
@@ -77,19 +102,69 @@ function goalBudgetLabel(goal?: GoalEvent, usage?: Usage): string {
   if (goal?.cost_budget_usd != null) {
     const used = goal.cost_used_usd ?? 0
     const suffix = goal.cost_estimated ? ' est.' : ''
-    return `${costFormatter.format(used)} / ${costFormatter.format(goal.cost_budget_usd)}${suffix}`
+    return `${formatUsd(used)} / ${formatUsd(goal.cost_budget_usd)}${suffix}`
   }
   if (goal?.cost_used_usd != null) {
     const suffix = goal.cost_estimated ? ' est.' : ''
-    return `${costFormatter.format(goal.cost_used_usd)} spent${suffix}`
+    return `${formatUsd(goal.cost_used_usd)} spent${suffix}`
   }
-  const context = usage?.context_tokens ?? 0
-  const contextWindow = usage?.context_window_tokens ?? 0
-  if (context > 0 && contextWindow > 0) {
-    return `Context ${formatTokens(context)} / ${formatTokens(contextWindow)}`
-  }
-  if (context > 0) return `Context ${formatTokens(context)}`
   return ''
+}
+
+function goalMetadataRows(goal?: GoalEvent): GoalMetadataRow[] {
+  if (!goal) return []
+  const rows: GoalMetadataRow[] = []
+  addMetadataRow(rows, 'Objective', goal.objective)
+  addMetadataRow(rows, 'Status', goal.status)
+  addMetadataRow(rows, 'Provider', goal.provider)
+  addMetadataRow(rows, 'Goal ID', goal.provider_goal_id, true)
+  addMetadataRow(rows, 'Budget source', goal.budget_source)
+  addMetadataRow(rows, 'Tokens used', numericLabel(goal.tokens_used), true)
+  addMetadataRow(rows, 'Token budget', numericLabel(goal.token_budget), true)
+  addMetadataRow(rows, 'Tokens left', numericLabel(goal.remaining_tokens), true)
+  addMetadataRow(rows, 'Cost used', costLabel(goal.cost_used_usd, goal.cost_estimated), true)
+  addMetadataRow(rows, 'Cost budget', costLabel(goal.cost_budget_usd), true)
+  addMetadataRow(rows, 'Cost estimated', boolLabel(goal.cost_estimated))
+  addMetadataRow(rows, 'Elapsed', elapsedLabel(goal.time_used_seconds), true)
+  addMetadataRow(rows, 'Turns', numericLabel(goal.turn_count), true)
+  addMetadataRow(rows, 'Evaluated', numericLabel(goal.evaluated_turns), true)
+  addMetadataRow(rows, 'Attempts', numericLabel(goal.attempt_count), true)
+  addMetadataRow(rows, 'Progress', goal.progress_message)
+  addMetadataRow(rows, 'Blocked', goal.blocked_reason)
+  addMetadataRow(rows, 'Evaluator', goal.evaluator_reason)
+  addMetadataRow(rows, 'Review', goal.completion_review)
+  addMetadataRow(rows, 'Operation', goal.active_operation)
+  addMetadataRow(rows, 'Subagent', goal.active_subagent_id, true)
+  addMetadataRow(rows, 'Created', dateTimeLabel(goal.created_at), true)
+  addMetadataRow(rows, 'Updated', dateTimeLabel(goal.updated_at), true)
+  addMetadataRow(rows, 'Completed', dateTimeLabel(goal.completed_at), true)
+  addMetadataRow(rows, 'Thread', goal.thread_id, true)
+  return rows
+}
+
+function addMetadataRow(rows: GoalMetadataRow[], label: string, value?: string, compact?: boolean) {
+  if (!value) return
+  rows.push({ label, value, compact })
+}
+
+function numericLabel(value?: number): string {
+  return typeof value === 'number' ? numberFormatter.format(value) : ''
+}
+
+function costLabel(value?: number, estimated?: boolean): string {
+  if (typeof value !== 'number') return ''
+  return `${formatUsd(value)}${estimated ? ' est.' : ''}`
+}
+
+function boolLabel(value?: boolean): string {
+  return typeof value === 'boolean' ? (value ? 'Yes' : 'No') : ''
+}
+
+function dateTimeLabel(value?: string): string {
+  if (!value) return ''
+  const timestamp = Date.parse(value)
+  if (!Number.isFinite(timestamp)) return value
+  return dateTimeFormatter.format(new Date(timestamp))
 }
 
 function goalDetailLabel(goal?: GoalEvent): string {
