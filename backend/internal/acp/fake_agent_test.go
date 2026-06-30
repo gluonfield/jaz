@@ -299,6 +299,14 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				sendResult(conn, msg, map[string]any{"stopReason": "end_turn"})
 				continue
 			}
+			if strings.Contains(string(msg.Params), "queue before ask") {
+				fakeAskThenBlock(conn, msg, true)
+				continue
+			}
+			if strings.Contains(string(msg.Params), "ask then block") {
+				fakeAskThenBlock(conn, msg, false)
+				continue
+			}
 			if strings.Contains(string(msg.Params), "block until cancelled") {
 				notify(conn, "session/update", map[string]any{
 					"sessionId": "fake-session",
@@ -440,6 +448,85 @@ func fakeModeSupported(mode string) bool {
 		}
 	}
 	return false
+}
+
+func fakeAskThenBlock(conn jsonrpc.MessageConn, prompt *jsonrpc.Message, waitForSteerBeforeAsk bool) {
+	var steered *jsonrpc.Message
+	for waitForSteerBeforeAsk && steered == nil {
+		next, err := conn.Receive(context.Background())
+		if err != nil {
+			os.Exit(0)
+		}
+		switch {
+		case next.Method == "session/cancel":
+			sendResult(conn, prompt, map[string]any{"stopReason": fakeCancelStopReason()})
+			return
+		case next.Method == "session/prompt":
+			steered = next
+		}
+	}
+
+	req, err := jsonrpc.NewRequest(json.RawMessage(`"fake-elicit-1"`), "elicitation/create", map[string]any{
+		"mode":      "form",
+		"sessionId": "fake-session",
+		"message":   "Which workspace?",
+		"requestedSchema": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"choice": map[string]any{"type": "string", "title": "Choice"},
+			},
+		},
+	})
+	if err != nil {
+		return
+	}
+	_ = conn.Send(context.Background(), req)
+
+	finishSteered := func(steered *jsonrpc.Message) {
+		notify(conn, "session/update", map[string]any{
+			"sessionId": "fake-session",
+			"update": map[string]any{
+				"sessionUpdate": "agent_message_chunk",
+				"content":       map[string]any{"type": "text", "text": "hello from fake agent"},
+			},
+		})
+		sendResult(conn, steered, map[string]any{"stopReason": "end_turn"})
+	}
+
+	parkedResolved := false
+	for {
+		next, err := conn.Receive(context.Background())
+		if err != nil {
+			os.Exit(0)
+		}
+		switch {
+		case next.Method == "session/cancel":
+			sendResult(conn, prompt, map[string]any{"stopReason": fakeCancelStopReason()})
+			return
+		case next.IsResponse():
+			stop := "end_turn"
+			if os.Getenv("JAZ_FAKE_ACP_ELICIT_CANCEL_STOP") == "1" {
+				stop = "cancelled"
+			}
+			sendResult(conn, prompt, map[string]any{"stopReason": stop})
+			parkedResolved = true
+			if steered != nil {
+				finishSteered(steered)
+				return
+			}
+		case next.Method == "session/prompt":
+			if !parkedResolved && os.Getenv("JAZ_FAKE_ACP_STRICT_ELICIT_HOL") == "1" {
+				resp, _ := jsonrpc.NewErrorResponse(*next.ID, jsonrpc.InvalidParams("steered prompt arrived before elicitation response", nil))
+				_ = conn.Send(context.Background(), resp)
+				continue
+			}
+			steered = next
+			if parkedResolved {
+				finishSteered(steered)
+				return
+			}
+		}
+	}
 }
 
 func sendResult(conn jsonrpc.MessageConn, req *jsonrpc.Message, result any) {
