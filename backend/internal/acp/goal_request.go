@@ -2,16 +2,21 @@ package acp
 
 import (
 	"errors"
+	"strings"
 )
 
 var ErrNativeGoalUnsupported = errors.New("acp native goal unsupported")
 
-func goalPromptMeta(requested bool) map[string]any {
+func goalPromptMeta(requested bool, objective string) map[string]any {
 	if !requested {
 		return nil
 	}
+	goal := map[string]any{"requested": true}
+	if objective = strings.TrimSpace(objective); objective != "" {
+		goal["objective"] = objective
+	}
 	return map[string]any{
-		jazMetaKey: map[string]any{"goalRequested": true},
+		codexMetaKey: map[string]any{"goal": goal},
 	}
 }
 

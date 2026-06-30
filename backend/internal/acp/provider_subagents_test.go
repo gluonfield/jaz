@@ -38,7 +38,7 @@ func TestProviderSubagentSessionInfoUpdatePublishesAndStores(t *testing.T) {
 			"update": map[string]any{
 				"sessionUpdate": "session_info_update",
 				"_meta": map[string]any{
-					"jaz": map[string]any{
+					codexMetaKey: map[string]any{
 						"providerSubagent": map[string]any{
 							"provider":  "codex",
 							"id":        "thread-1",
@@ -110,7 +110,7 @@ func TestProviderSubagentMetadataDoesNotConsumeMessageChunk(t *testing.T) {
 				"sessionUpdate": "agent_message_chunk",
 				"content":       map[string]any{"type": "text", "text": "root-visible text"},
 				"_meta": map[string]any{
-					"jaz": map[string]any{
+					codexMetaKey: map[string]any{
 						"providerSubagent": map[string]any{
 							"provider": "codex",
 							"id":       "thread-1",

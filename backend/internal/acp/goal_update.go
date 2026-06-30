@@ -11,6 +11,7 @@ import (
 const (
 	acpMethodGoalUpdate       = "_jaz/session_goal_update"
 	acpMethodGoalClear        = "_jaz/session_goal_clear"
+	acpMethodCodexGoalUpdated = "thread/goal/updated"
 	acpMethodCodexGoalCleared = "thread/goal/cleared"
 	acpSessionUpdateGoal      = "_jaz_goal_update"
 	acpSessionUpdateGoalClear = "_jaz_goal_clear"
@@ -23,6 +24,7 @@ type goalUpdateEnvelope struct {
 
 type goalNotificationEnvelope struct {
 	SessionID string             `json:"sessionId"`
+	ThreadID  string             `json:"threadId"`
 	Goal      goal.UpdatePayload `json:"goal"`
 }
 
@@ -32,6 +34,7 @@ type goalClearUpdateEnvelope struct {
 
 type goalClearNotificationEnvelope struct {
 	SessionID string `json:"sessionId"`
+	ThreadID  string `json:"threadId"`
 }
 
 func decodeGoalUpdate(raw json.RawMessage) (sessionevents.GoalEvent, bool) {
@@ -44,11 +47,15 @@ func decodeGoalUpdate(raw json.RawMessage) (sessionevents.GoalEvent, bool) {
 
 func decodeGoalNotification(raw json.RawMessage) (string, sessionevents.GoalEvent, bool) {
 	var env goalNotificationEnvelope
-	if err := json.Unmarshal(raw, &env); err != nil || env.SessionID == "" {
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return "", sessionevents.GoalEvent{}, false
+	}
+	sessionID := firstNonEmpty(env.SessionID, env.ThreadID)
+	if sessionID == "" {
 		return "", sessionevents.GoalEvent{}, false
 	}
 	goal, ok := goalEventFromPayload(env.Goal)
-	return env.SessionID, goal, ok
+	return sessionID, goal, ok
 }
 
 func decodeGoalClearUpdate(raw json.RawMessage) bool {
@@ -58,10 +65,11 @@ func decodeGoalClearUpdate(raw json.RawMessage) bool {
 
 func decodeGoalClearNotification(raw json.RawMessage) (string, bool) {
 	var env goalClearNotificationEnvelope
-	if err := json.Unmarshal(raw, &env); err != nil || env.SessionID == "" {
+	if err := json.Unmarshal(raw, &env); err != nil {
 		return "", false
 	}
-	return env.SessionID, true
+	sessionID := firstNonEmpty(env.SessionID, env.ThreadID)
+	return sessionID, sessionID != ""
 }
 
 func goalEventFromPayload(payload goal.UpdatePayload) (sessionevents.GoalEvent, bool) {

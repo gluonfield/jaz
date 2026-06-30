@@ -17,7 +17,7 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-func (m *Manager) runPrompt(ctx context.Context, job *jobState, message string, attachments []storage.Attachment) {
+func (m *Manager) runPrompt(ctx context.Context, job *jobState, message, goalObjective string, attachments []storage.Attachment) {
 	job.turnMu.Lock()
 	defer job.turnMu.Unlock()
 
@@ -51,7 +51,7 @@ func (m *Manager) runPrompt(ctx context.Context, job *jobState, message string, 
 	m.runPromptCall(ctx, job, done, acpschema.PromptRequest{
 		SessionID: acpschema.SessionID(job.ACPSession),
 		Prompt:    prompt,
-		Meta:      goalPromptMeta(goalRequested),
+		Meta:      goalPromptMeta(goalRequested, goalObjective),
 	})
 }
 
