@@ -109,16 +109,19 @@ func TestGoalSessionUpdatePublishesAndPersistsGoal(t *testing.T) {
 }
 
 func TestGoalPromptMetaMarksGoalRequested(t *testing.T) {
-	meta := goalPromptMeta(true, "  Finish the goal  ")
+	meta := goalPromptMeta(true)
 	codex, ok := meta[codexMetaKey].(map[string]any)
 	if !ok {
 		t.Fatalf("goal prompt meta = %#v", meta)
 	}
 	goal, ok := codex["goal"].(map[string]any)
-	if !ok || goal["requested"] != true || goal["objective"] != "Finish the goal" {
+	if !ok || goal["requested"] != true {
 		t.Fatalf("goal prompt meta = %#v", meta)
 	}
-	if got := goalPromptMeta(false, "ignored"); got != nil {
+	if _, ok := goal["objective"]; ok {
+		t.Fatalf("goal prompt meta includes host objective: %#v", meta)
+	}
+	if got := goalPromptMeta(false); got != nil {
 		t.Fatalf("unrequested goal prompt meta = %#v", got)
 	}
 }

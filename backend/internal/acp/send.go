@@ -92,7 +92,7 @@ func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (
 	if local != nil {
 		go m.runLocalPrompt(context.WithoutCancel(ctx), job, local, promptMessage, req.Attachments)
 	} else {
-		go m.runPrompt(context.Background(), job, promptMessage, req.Message, req.Attachments)
+		go m.runPrompt(context.Background(), job, promptMessage, req.Attachments)
 	}
 	return job.Snapshot(), nil
 }
@@ -154,7 +154,7 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	go m.runPromptCallAfterHandoff(context.Background(), job, done, handoff, acpschema.PromptRequest{
 		SessionID: acpschema.SessionID(job.ACPSession),
 		Prompt:    prompt,
-		Meta:      goalPromptMeta(req.GoalRequested, req.Message),
+		Meta:      goalPromptMeta(req.GoalRequested),
 	})
 	return job.Snapshot(), nil
 }
