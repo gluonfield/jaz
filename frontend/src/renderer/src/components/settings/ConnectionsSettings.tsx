@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
+import { AnimatedList, AnimatedListItem } from '@/components/ui/AnimatedList'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import {
@@ -104,27 +105,33 @@ export function ConnectionsSettings() {
             <div className="space-y-5">
               {hasConnectedAccounts ? (
                 <ConnectionSection title="Existing connections">
-                  {connectedAccounts.map(({ plugin, account }) => (
-                    <ExistingConnectionCard
-                      key={account.id}
-                      plugin={plugin}
-                      account={account}
-                      disconnecting={disconnect.isPending && disconnect.variables === account.id}
-                      onDisconnect={() => disconnectAccount(account)}
-                    />
-                  ))}
+                  <AnimatedList>
+                    {connectedAccounts.map(({ plugin, account }) => (
+                      <AnimatedListItem key={account.id}>
+                        <ExistingConnectionCard
+                          plugin={plugin}
+                          account={account}
+                          disconnecting={disconnect.isPending && disconnect.variables === account.id}
+                          onDisconnect={() => disconnectAccount(account)}
+                        />
+                      </AnimatedListItem>
+                    ))}
+                  </AnimatedList>
                 </ConnectionSection>
               ) : null}
 
               {hasCatalogPlugins ? (
                 <ConnectionSection title="Add connection">
-                  {sortedPlugins.map((plugin) => (
-                    <ConnectionPluginCard
-                      key={plugin.id}
-                      plugin={plugin}
-                      onOpen={() => setSelectedPluginID(plugin.id)}
-                    />
-                  ))}
+                  <AnimatedList>
+                    {sortedPlugins.map((plugin) => (
+                      <AnimatedListItem key={plugin.id}>
+                        <ConnectionPluginCard
+                          plugin={plugin}
+                          onOpen={() => setSelectedPluginID(plugin.id)}
+                        />
+                      </AnimatedListItem>
+                    ))}
+                  </AnimatedList>
                 </ConnectionSection>
               ) : null}
             </div>

@@ -274,6 +274,16 @@ type PlanEvent struct {
 	AwaitingApproval bool        `json:"awaiting_approval,omitempty"`
 }
 
+const (
+	GoalStatusRequested     = "requested"
+	GoalStatusActive        = "active"
+	GoalStatusPaused        = "paused"
+	GoalStatusBlocked       = "blocked"
+	GoalStatusUsageLimited  = "usageLimited"
+	GoalStatusBudgetLimited = "budgetLimited"
+	GoalStatusComplete      = "complete"
+)
+
 type GoalEvent struct {
 	ThreadID        string    `json:"thread_id,omitempty"`
 	Objective       string    `json:"objective,omitempty"`

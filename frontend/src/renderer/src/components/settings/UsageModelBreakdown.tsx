@@ -1,5 +1,6 @@
 import { ChevronDown } from 'lucide-react'
 import { type ReactNode, useMemo, useState } from 'react'
+import { AnimatedList, AnimatedListItem } from '@/components/ui/AnimatedList'
 import { formatTokens } from '@/lib/format/tokens'
 import { USAGE_SHARE_OTHER_COLOR, USAGE_SHARE_PALETTE } from '@/lib/usageColors'
 import { formatUsd, type PricedModel } from '@/lib/usageCost'
@@ -122,13 +123,15 @@ export function ModelBreakdown({
                 <span className="text-right text-ink-2">Cost</span>
               </div>
               <div className="divide-y divide-border/60">
-                {visible.map(({ model, cost }) => (
-                  <ModelUsageRow
-                    key={`${model.agent ?? ''}:${model.model_provider ?? ''}:${model.model ?? ''}`}
-                    model={model}
-                    cost={cost}
-                  />
-                ))}
+                <AnimatedList>
+                  {visible.map(({ model, cost }) => (
+                    <AnimatedListItem
+                      key={`${model.agent ?? ''}:${model.model_provider ?? ''}:${model.model ?? ''}`}
+                    >
+                      <ModelUsageRow model={model} cost={cost} />
+                    </AnimatedListItem>
+                  ))}
+                </AnimatedList>
               </div>
             </div>
           </div>

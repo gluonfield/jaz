@@ -25,6 +25,8 @@ function goalStatusLabel(status?: string, starting?: boolean): string {
   switch (status) {
     case 'active':
       return 'Goal active'
+    case 'requested':
+      return 'Goal requested'
     case 'complete':
       return 'Goal complete'
     case 'blocked':

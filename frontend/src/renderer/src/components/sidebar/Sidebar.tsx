@@ -437,21 +437,24 @@ function SessionsSection({ open }: { open: boolean }) {
 function FeedLink() {
   const feed = useQuery(feedQuery)
   const count = feed.data?.length ?? 0
+  const label = count > 99 ? '99+' : String(count)
   return (
     <Link
       to="/feed"
       className="group flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px]"
       activeProps={{ className: 'bg-primary-soft!' }}
     >
-      <Inbox size={15} className="text-ink-2 max-sm:size-[18px]" />
+      <span className="relative grid size-[18px] shrink-0 place-items-center">
+        <Inbox size={15} className="text-ink-2 max-sm:size-[18px]" />
+        {count > 0 ? (
+          // A div (not span): the sidebar force-colors span text to --color-ink in
+          // dark mode, which would erase the count on the bg-ink bubble.
+          <div className="absolute top-0 right-0 inline-flex h-[14px] min-w-[14px] translate-x-[35%] -translate-y-[25%] items-center justify-center rounded-full bg-ink px-1 text-[9px] font-semibold leading-none tabular-nums text-bg">
+            {label}
+          </div>
+        ) : null}
+      </span>
       <span className="flex-1">Feed</span>
-      {count > 0 ? (
-        // A div (not span): the sidebar force-colors span text to --color-ink in
-        // dark mode, which would erase the count on the bg-ink bubble.
-        <div className="inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-ink px-1 text-[11px] font-semibold leading-none tabular-nums text-bg">
-          {count > 99 ? '99+' : count}
-        </div>
-      ) : null}
     </Link>
   )
 }

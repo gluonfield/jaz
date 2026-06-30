@@ -619,10 +619,19 @@ export interface PlanEvent {
   awaiting_approval?: boolean
 }
 
+export type GoalStatus =
+  | 'requested'
+  | 'active'
+  | 'paused'
+  | 'blocked'
+  | 'usageLimited'
+  | 'budgetLimited'
+  | 'complete'
+
 export interface GoalEvent {
   thread_id?: string
   objective?: string
-  status: string
+  status: GoalStatus
   token_budget?: number
   tokens_used?: number
   remaining_tokens?: number

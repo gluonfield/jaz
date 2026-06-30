@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
@@ -53,5 +54,21 @@ func TestManagerSendUsesCatalogGoalSupportForCodex(t *testing.T) {
 	}
 	if loaded.RuntimeRef == nil || loaded.RuntimeRef.Capabilities == nil || !loaded.RuntimeRef.Capabilities.NativeGoal {
 		t.Fatalf("loaded runtime ref = %#v, want native goal capability", loaded.RuntimeRef)
+	}
+	events, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var goal *sessionevents.GoalEvent
+	for i := range events {
+		if events[i].Type == sessionevents.TypeGoalUpdate {
+			goal = events[i].Goal
+		}
+	}
+	if goal == nil {
+		t.Fatalf("stored events = %#v, want goal update", events)
+	}
+	if goal.Status != sessionevents.GoalStatusRequested || goal.Objective != "say hello" {
+		t.Fatalf("goal event = %#v", goal)
 	}
 }
