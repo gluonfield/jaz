@@ -1,8 +1,0 @@
-# Static single-page app. No TLS, no API proxy — Ink terminates TLS, and the
-# browser calls the Jaz backend cross-origin (the backend answers CORS).
-:{$PORT} {
-	root * /srv
-	try_files {path} /index.html
-	file_server
-	encode zstd gzip
-}
