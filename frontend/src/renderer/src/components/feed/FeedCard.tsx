@@ -259,7 +259,7 @@ function DoneCountdown({ onClick }: { onClick: () => void }) {
     >
       <svg viewBox="0 0 28 28" className="absolute inset-0 size-7 -rotate-90" aria-hidden>
         <circle cx="14" cy="14" r="11" fill="none" strokeWidth="2" className="stroke-border" />
-        <motion.circle
+        <circle
           cx="14"
           cy="14"
           r="11"
@@ -267,10 +267,12 @@ function DoneCountdown({ onClick }: { onClick: () => void }) {
           strokeWidth="2"
           strokeLinecap="round"
           className="stroke-primary"
-          strokeDasharray={circumference}
-          initial={{ strokeDashoffset: circumference }}
-          animate={{ strokeDashoffset: 0 }}
-          transition={{ duration: COUNTDOWN_SECONDS, ease: 'linear' }}
+          style={{
+            strokeDasharray: circumference,
+            strokeDashoffset: 0,
+            animation: `feed-countdown ${COUNTDOWN_SECONDS}s linear forwards`,
+            ['--ring-circumference' as string]: circumference,
+          }}
         />
       </svg>
       <Check size={13} />

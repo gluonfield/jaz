@@ -358,6 +358,12 @@
   }
 }
 
+@keyframes feed-countdown {
+  to {
+    stroke-dashoffset: var(--ring-circumference);
+  }
+}
+
 /* Live-state dot: rainbow appears only while jaz is working (wordmark,
  * live thinking/tool indicators). At rest the dot is brand cobalt. */
 .jaz-shimmer {
