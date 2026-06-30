@@ -2,7 +2,7 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { ArrowUpRight, Check, Archive as ArchiveIcon, CornerDownRight } from 'lucide-react'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { FileReaderLinkProvider, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
 import { ComposerCard } from '@/components/session/Composer'
@@ -11,22 +11,16 @@ import { Transcript } from '@/components/session/Transcript'
 import { deriveSessionView, type SessionView } from '@/components/session/sessionView'
 import { IconButton } from '@/components/ui/IconButton'
 import { SkeletonRows } from '@/components/ui/Skeleton'
-import { useToast } from '@/components/ui/toast'
 import { markThreadSeen } from '@/lib/api/feed'
-import {
-  mutateSessionQueue,
-  sessionMessagesQuery,
-  setSessionArchived,
-  uploadSessionAttachment,
-} from '@/lib/api/sessions'
+import { sessionMessagesQuery, setSessionArchived } from '@/lib/api/sessions'
 import type { FeedItem, Session } from '@/lib/api/types'
 import { relativeTime } from '@/lib/format/time'
 import { invalidateSessionLists } from '@/lib/query/invalidate'
 import { keys } from '@/lib/query/keys'
-import { preparedSendMessage, type SendMessageHandler, type SendMessageOptions } from '@/lib/sendMessage'
+import { type SendMessageHandler } from '@/lib/sendMessage'
+import { COUNTDOWN_SECONDS, useDeferredReply } from './useDeferredReply'
 
 const NO_TEXT = 'No text — open the thread to see tool activity.'
-const COUNTDOWN_SECONDS = 3
 
 function snippet(text: string | undefined): string {
   if (!text) return NO_TEXT
@@ -45,7 +39,6 @@ export function FeedCard({
   const cardRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const toast = useToast()
   const reducedMotion = useReducedMotion()
   const openThread = () => navigate({ to: '/sessions/$sessionId', params: { sessionId: item.id } })
   const detail = useQuery({ ...sessionMessagesQuery(item.id), enabled: expanded })
@@ -62,19 +55,13 @@ export function FeedCard({
     }
   }, [detail.data, view])
 
-  const [sent, setSent] = useState(false)
-
   const removeFromFeed = useCallback(() => {
     queryClient.setQueryData<FeedItem[]>(keys.feed, (prev) =>
       (prev ?? []).filter((entry) => entry.id !== item.id),
     )
   }, [queryClient, item.id])
 
-  useEffect(() => {
-    if (!sent) return
-    const timer = setTimeout(removeFromFeed, COUNTDOWN_SECONDS * 1000)
-    return () => clearTimeout(timer)
-  }, [sent, removeFromFeed])
+  const { counting, sendDeferred, sendNow, commitNow, cancel } = useDeferredReply(item.id, removeFromFeed)
 
   const done = useMutation({
     mutationFn: () => markThreadSeen(item.id),
@@ -87,30 +74,6 @@ export function FeedCard({
     onMutate: removeFromFeed,
     onSettled: () => invalidateSessionLists(queryClient, { archived: true }),
   })
-
-  const reply = async (text: string, options: SendMessageOptions = {}) => {
-    if (!text.trim()) return
-    try {
-      const uploaded = options.files?.length
-        ? await Promise.all(options.files.map((file) => uploadSessionAttachment(item.id, file)))
-        : []
-      const prepared = preparedSendMessage(options, uploaded)
-      await markThreadSeen(item.id)
-      await mutateSessionQueue(item.id, {
-        op: 'append',
-        message: {
-          text,
-          contexts: prepared.contexts,
-          attachment_ids: prepared.attachmentIds,
-          plan_requested: options.planRequested,
-          goal_requested: options.goalRequested,
-        },
-      })
-      setSent(true)
-    } catch (error) {
-      toast(`Couldn't send reply: ${(error as Error).message}`, 'danger')
-    }
-  }
 
   const title = item.title?.trim() || item.slug
   const busy = done.isPending || archive.isPending
@@ -128,7 +91,7 @@ export function FeedCard({
     >
       <AnimatePresence>
         {expanded && detail.data && view ? (
-          <FeedOverview anchorRef={cardRef} session={detail.data.session} view={view} onSend={reply} />
+          <FeedOverview anchorRef={cardRef} session={detail.data.session} view={view} onSend={sendNow} />
         ) : null}
       </AnimatePresence>
       <div
@@ -191,7 +154,7 @@ export function FeedCard({
                         events={lastTurn.events}
                         sessionId={item.id}
                         groupTurns={detail.data.session.runtime === 'acp'}
-                        onArtifactPrompt={reply}
+                        onArtifactPrompt={sendNow}
                       />
                     </PreviewLinkProvider>
                   </FileReaderLinkProvider>
@@ -204,7 +167,8 @@ export function FeedCard({
                   streaming={false}
                   placeholder="Reply…"
                   draftStorageKey={`feed:${item.id}`}
-                  onSend={reply}
+                  onSend={sendDeferred}
+                  onTextChange={cancel}
                 />
               </div>
             </div>
@@ -217,8 +181,8 @@ export function FeedCard({
           expanded ? 'bg-surface-2' : ''
         }`}
       >
-        {sent ? (
-          <DoneCountdown onClick={removeFromFeed} />
+        {counting ? (
+          <DoneCountdown onClick={commitNow} />
         ) : (
           <IconButton
             size="sm"
@@ -253,8 +217,8 @@ function DoneCountdown({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      aria-label="Mark done now"
-      title="Done"
+      aria-label="Send now"
+      title="Send now"
       className="relative grid size-7 cursor-pointer place-items-center rounded-full text-ink-2 transition-colors duration-150 hover:bg-ink/10 hover:text-ink"
     >
       <svg viewBox="0 0 28 28" className="absolute inset-0 size-7 -rotate-90" aria-hidden>
