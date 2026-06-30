@@ -248,6 +248,7 @@ export function FeedCard({
 }
 
 function DoneCountdown({ onClick }: { onClick: () => void }) {
+  const circumference = 2 * Math.PI * 11
   return (
     <button
       type="button"
@@ -266,8 +267,9 @@ function DoneCountdown({ onClick }: { onClick: () => void }) {
           strokeWidth="2"
           strokeLinecap="round"
           className="stroke-primary"
-          initial={{ pathLength: 0 }}
-          animate={{ pathLength: 1 }}
+          strokeDasharray={circumference}
+          initial={{ strokeDashoffset: circumference }}
+          animate={{ strokeDashoffset: 0 }}
           transition={{ duration: COUNTDOWN_SECONDS, ease: 'linear' }}
         />
       </svg>
