@@ -248,6 +248,26 @@ func TestWhatsAppRecordsExposeContactsAndMessages(t *testing.T) {
 	}
 }
 
+func TestWhatsAppGroupRecordCarriesSubjectAsContact(t *testing.T) {
+	connection := integrations.Connection{ID: "whatsapp:alice", AccountID: "15550102222"}
+	jid := waTypes.NewJID("120363409748040236", waTypes.GroupServer)
+	group := whatsappGroupRecord(connection, jid, "Enterprise x Employee AI")
+
+	if got, want := group.Kind.Domain(), integrations.RecordDomainContacts; got != want {
+		t.Fatalf("group domain = %q, want %q", got, want)
+	}
+	if group.ExternalID != jid.String() {
+		t.Fatalf("group external id = %q, want %q", group.ExternalID, jid.String())
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(group.Raw, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if raw["display_name"] != "Enterprise x Employee AI" || raw["jid"] != jid.String() || raw["phone"] != nil {
+		t.Fatalf("group raw = %#v", raw)
+	}
+}
+
 func TestWhatsAppMessageRecordExtractsQuotedText(t *testing.T) {
 	connection := integrations.Connection{ID: "whatsapp:alice", AccountID: "15550102222"}
 	message := whatsappMessageRecord(connection, &events.Message{
