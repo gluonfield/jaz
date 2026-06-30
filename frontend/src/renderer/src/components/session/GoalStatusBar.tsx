@@ -96,7 +96,7 @@ function goalBudgetLabel(goal?: GoalEvent): string {
   if (goal?.token_budget != null) {
     const used = goal.tokens_used ?? 0
     const remaining = goal.remaining_tokens
-    const base = `${numberFormatter.format(used)} / ${numberFormatter.format(goal.token_budget)} tokens`
+    const base = `${numberFormatter.format(used)} / ${numberFormatter.format(goal.token_budget)} goal tokens`
     return typeof remaining === 'number' ? `${base} - ${numberFormatter.format(remaining)} left` : base
   }
   if (goal?.cost_budget_usd != null) {
@@ -120,9 +120,16 @@ function goalMetadataRows(goal?: GoalEvent): GoalMetadataRow[] {
   addMetadataRow(rows, 'Provider', goal.provider)
   addMetadataRow(rows, 'Goal ID', goal.provider_goal_id, true)
   addMetadataRow(rows, 'Budget source', goal.budget_source)
-  addMetadataRow(rows, 'Tokens used', numericLabel(goal.tokens_used), true)
+  addMetadataRow(rows, 'Goal tokens', numericLabel(goal.tokens_used), true)
   addMetadataRow(rows, 'Token budget', numericLabel(goal.token_budget), true)
   addMetadataRow(rows, 'Tokens left', numericLabel(goal.remaining_tokens), true)
+  if (goal.tokens_used != null || goal.token_budget != null || goal.remaining_tokens != null) {
+    addMetadataRow(
+      rows,
+      'Token basis',
+      'Provider-reported goal accounting; for Codex this is uncached input plus output, not the context window.',
+    )
+  }
   addMetadataRow(rows, 'Cost used', costLabel(goal.cost_used_usd, goal.cost_estimated), true)
   addMetadataRow(rows, 'Cost budget', costLabel(goal.cost_budget_usd), true)
   addMetadataRow(rows, 'Cost estimated', boolLabel(goal.cost_estimated))
