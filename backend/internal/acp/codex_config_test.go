@@ -34,7 +34,7 @@ func TestCodexProviderArgsOpenAIAPIKey(t *testing.T) {
 	args := codexProviderArgs(AgentConfig{ModelProvider: CodexProviderOpenAIAPIKey}, nil)
 	want := []string{
 		"-c", `model_provider="openai-api-key"`,
-		"-c", `model_providers.openai-api-key.name="OpenAI"`,
+		"-c", `model_providers.openai-api-key.name="OpenAI API key"`,
 		"-c", `model_providers.openai-api-key.base_url="https://api.openai.com/v1"`,
 		"-c", `model_providers.openai-api-key.env_key="OPENAI_API_KEY"`,
 		"-c", `model_providers.openai-api-key.wire_api="responses"`,

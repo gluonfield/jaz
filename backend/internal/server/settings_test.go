@@ -212,7 +212,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	if len(got.ACPOptions["codex"].ModelProviders) < 2 ||
 		got.ACPOptions["codex"].ModelProviders[0].Label != "OpenAI OAuth" ||
 		got.ACPOptions["codex"].ModelProviders[1].ID != acp.CodexProviderOpenAIAPIKey ||
-		got.ACPOptions["codex"].ModelProviders[1].Label != "OpenAI" {
+		got.ACPOptions["codex"].ModelProviders[1].Label != "OpenAI API key" {
 		t.Fatalf("unexpected codex model providers %#v", got.ACPOptions["codex"].ModelProviders)
 	}
 	if got.ACP["grok"].Enabled ||

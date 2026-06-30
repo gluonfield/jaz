@@ -229,7 +229,7 @@ func codexModelProviders(providers []settingsModelProvider) []settingsModelProvi
 
 		apiKey := openAI
 		apiKey.ID = acp.CodexProviderOpenAIAPIKey
-		apiKey.Label = "OpenAI"
+		apiKey.Label = "OpenAI API key"
 		out = append(out, apiKey)
 	}
 	for _, modelProvider := range providers {

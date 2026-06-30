@@ -174,6 +174,66 @@ func TestIncludeCacheInInputMigrationRepairsUsageRows(t *testing.T) {
 	}
 }
 
+func TestNormalizeCodexNativeProviderMigrationRepairsLegacyRows(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	for _, stmt := range []string{
+		`CREATE TABLE threads (
+			id TEXT PRIMARY KEY,
+			runtime TEXT NOT NULL,
+			acp_agent TEXT NOT NULL,
+			model_provider TEXT NOT NULL
+		)`,
+		`CREATE TABLE usage_events (
+			id INTEGER PRIMARY KEY,
+			runtime TEXT NOT NULL,
+			agent TEXT NOT NULL,
+			model_provider TEXT NOT NULL
+		)`,
+		`INSERT INTO threads VALUES ('legacy', 'acp', 'codex', 'codex')`,
+		`INSERT INTO threads VALUES ('current', 'acp', 'codex', 'openai')`,
+		`INSERT INTO threads VALUES ('claude', 'acp', 'claude', 'claude')`,
+		`INSERT INTO usage_events VALUES (1, 'acp', 'codex', 'codex')`,
+		`INSERT INTO usage_events VALUES (2, 'acp', 'codex', 'openai')`,
+		`INSERT INTO usage_events VALUES (3, 'acp', 'claude', 'claude')`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	raw, err := sqliteMigrations.ReadFile("migrations/0036_normalize_codex_native_provider.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	up := strings.SplitN(string(raw), "-- +goose Down", 2)[0]
+	if _, err := db.Exec(up); err != nil {
+		t.Fatal(err)
+	}
+	for table, query := range map[string]string{
+		"threads":      `SELECT COUNT(*) FROM threads WHERE runtime = 'acp' AND acp_agent = 'codex' AND model_provider = 'codex'`,
+		"usage_events": `SELECT COUNT(*) FROM usage_events WHERE runtime = 'acp' AND agent = 'codex' AND model_provider = 'codex'`,
+	} {
+		var got int
+		if err := db.QueryRow(query).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got != 0 {
+			t.Fatalf("%s legacy rows = %d, want 0", table, got)
+		}
+	}
+	var claudeProvider string
+	if err := db.QueryRow(`SELECT model_provider FROM threads WHERE id = 'claude'`).Scan(&claudeProvider); err != nil {
+		t.Fatal(err)
+	}
+	if claudeProvider != "claude" {
+		t.Fatalf("claude provider = %q, want unchanged", claudeProvider)
+	}
+}
+
 func TestSearchDocTablesDoNotDuplicateIndexedText(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
