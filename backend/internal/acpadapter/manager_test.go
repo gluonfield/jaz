@@ -107,7 +107,7 @@ func TestResolveAdapterPrefersLocalAssetSpecInDev(t *testing.T) {
 	}
 }
 
-func TestFetchManifestFallsBackToCacheWhenLocalAssetSpecFetchFails(t *testing.T) {
+func TestFetchManifestRejectsStaleCacheWhenLocalAssetSpecFetchFails(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "offline", http.StatusBadGateway)
 	}))
@@ -126,11 +126,35 @@ func TestFetchManifestFallsBackToCacheWhenLocalAssetSpecFetchFails(t *testing.T)
 		"claude": {Version: "cached", Assets: map[string]manifestAsset{}},
 	}})
 
+	if _, err := manager.fetchManifest(context.Background()); err == nil {
+		t.Fatal("expected stale cache to be rejected")
+	}
+}
+
+func TestFetchManifestFallsBackToMatchingCacheWhenLocalAssetSpecFetchFails(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "offline", http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	root := t.TempDir()
+	specPath := filepath.Join(root, "acp-adapter-assets.json")
+	if err := os.WriteFile(specPath, []byte(`{"adapters":{"claude":{"repo":"example/adapter","tag":"v1.2.3","version":"1.2.3","assets":{"darwin-arm64":{"name":"adapter-1.2.3-darwin-arm64.tar.gz","binary":"bin/tool"}}}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	manager := NewForTest(root, "", server.Client())
+	manager.assetSpecPath = specPath
+	manager.githubAPIURL = server.URL + "/repos"
+	manager.cacheManifest(manifest{Adapters: map[string]manifestAdapter{
+		"claude": {Version: "1.2.3", Assets: map[string]manifestAsset{}},
+	}})
+
 	got, err := manager.fetchManifest(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Adapters["claude"].Version != "cached" {
+	if got.Adapters["claude"].Version != "1.2.3" {
 		t.Fatalf("manifest = %#v", got)
 	}
 }
