@@ -2,7 +2,7 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { ArrowUpRight, Check, Archive as ArchiveIcon, CornerDownRight } from 'lucide-react'
-import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { FileReaderLinkProvider, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
 import { ComposerCard } from '@/components/session/Composer'
@@ -26,6 +26,7 @@ import { keys } from '@/lib/query/keys'
 import { preparedSendMessage, type SendMessageHandler, type SendMessageOptions } from '@/lib/sendMessage'
 
 const NO_TEXT = 'No text — open the thread to see tool activity.'
+const COUNTDOWN_SECONDS = 3
 
 function snippet(text: string | undefined): string {
   if (!text) return NO_TEXT
@@ -61,11 +62,19 @@ export function FeedCard({
     }
   }, [detail.data, view])
 
-  const removeFromFeed = () => {
+  const [sent, setSent] = useState(false)
+
+  const removeFromFeed = useCallback(() => {
     queryClient.setQueryData<FeedItem[]>(keys.feed, (prev) =>
       (prev ?? []).filter((entry) => entry.id !== item.id),
     )
-  }
+  }, [queryClient, item.id])
+
+  useEffect(() => {
+    if (!sent) return
+    const timer = setTimeout(removeFromFeed, COUNTDOWN_SECONDS * 1000)
+    return () => clearTimeout(timer)
+  }, [sent, removeFromFeed])
 
   const done = useMutation({
     mutationFn: () => markThreadSeen(item.id),
@@ -81,7 +90,6 @@ export function FeedCard({
 
   const reply = async (text: string, options: SendMessageOptions = {}) => {
     if (!text.trim()) return
-    removeFromFeed()
     try {
       const uploaded = options.files?.length
         ? await Promise.all(options.files.map((file) => uploadSessionAttachment(item.id, file)))
@@ -98,9 +106,9 @@ export function FeedCard({
           goal_requested: options.goalRequested,
         },
       })
+      setSent(true)
     } catch (error) {
       toast(`Couldn't send reply: ${(error as Error).message}`, 'danger')
-      queryClient.invalidateQueries({ queryKey: keys.feed })
     }
   }
 
@@ -209,16 +217,20 @@ export function FeedCard({
           expanded ? 'bg-surface-2' : ''
         }`}
       >
-        <IconButton
-          size="sm"
-          disabled={busy}
-          onClick={() => done.mutate()}
-          aria-label="Mark done"
-          title="Mark done"
-          className="hover:bg-ink/10!"
-        >
-          <Check size={15} />
-        </IconButton>
+        {sent ? (
+          <DoneCountdown onClick={removeFromFeed} />
+        ) : (
+          <IconButton
+            size="sm"
+            disabled={busy}
+            onClick={() => done.mutate()}
+            aria-label="Mark done"
+            title="Mark done"
+            className="hover:bg-ink/10!"
+          >
+            <Check size={15} />
+          </IconButton>
+        )}
         <IconButton
           size="sm"
           variant="danger"
@@ -232,6 +244,35 @@ export function FeedCard({
         </IconButton>
       </div>
     </motion.div>
+  )
+}
+
+function DoneCountdown({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Mark done now"
+      title="Done"
+      className="relative grid size-7 cursor-pointer place-items-center rounded-full text-ink-2 transition-colors duration-150 hover:bg-ink/10 hover:text-ink"
+    >
+      <svg viewBox="0 0 28 28" className="absolute inset-0 size-7 -rotate-90" aria-hidden>
+        <circle cx="14" cy="14" r="11" fill="none" strokeWidth="2" className="stroke-border" />
+        <motion.circle
+          cx="14"
+          cy="14"
+          r="11"
+          fill="none"
+          strokeWidth="2"
+          strokeLinecap="round"
+          className="stroke-primary"
+          initial={{ pathLength: 0 }}
+          animate={{ pathLength: 1 }}
+          transition={{ duration: COUNTDOWN_SECONDS, ease: 'linear' }}
+        />
+      </svg>
+      <Check size={13} />
+    </button>
   )
 }
 
