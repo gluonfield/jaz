@@ -40,6 +40,17 @@ func (m *Manager) handleJSONRPC(ctx context.Context, req jsonrpc.Request) (json.
 		}
 		m.publishGoalUpdate(job, goal)
 		return jsonrpc.EncodeResult(map[string]any{})
+	case acpMethodGoalClear, acpMethodCodexGoalCleared:
+		sessionID, ok := decodeGoalClearNotification(req.Params)
+		if !ok {
+			return nil, jsonrpc.InvalidParams("invalid goal clear", nil)
+		}
+		job := m.jobByACP(sessionID)
+		if job == nil {
+			return nil, jsonrpc.InvalidParams("unknown acp session", nil)
+		}
+		m.publishGoalClear(job)
+		return jsonrpc.EncodeResult(map[string]any{})
 	case acpschema.ClientMethodSessionRequestPermission:
 		return m.requestPermission(ctx, req.Params)
 	case acpschema.ClientMethodElicitationCreate:
@@ -137,6 +148,10 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	update, err := acpschema.DecodeSessionUpdate(raw)
 	if goal, ok := decodeGoalUpdate(raw); ok {
 		m.publishGoalUpdate(job, goal)
+		return
+	}
+	if decodeGoalClearUpdate(raw) {
+		m.publishGoalClear(job)
 		return
 	}
 	if err != nil {

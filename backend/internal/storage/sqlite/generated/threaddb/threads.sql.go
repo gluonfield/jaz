@@ -95,7 +95,8 @@ SELECT
   mcp_server_policy,
   pending_steer_message,
   runtime_capabilities,
-  unread
+  unread,
+  goal
 FROM threads
 WHERE id = ?1 OR slug = ?1
 LIMIT 1
@@ -140,6 +141,7 @@ func (q *Queries) GetSession(ctx context.Context, ref string) (Thread, error) {
 		&i.PendingSteerMessage,
 		&i.RuntimeCapabilities,
 		&i.Unread,
+		&i.Goal,
 	)
 	return i, err
 }
@@ -238,7 +240,8 @@ SELECT
   mcp_server_policy,
   pending_steer_message,
   runtime_capabilities,
-  unread
+  unread,
+  goal
 FROM threads
 `
 
@@ -287,6 +290,7 @@ func (q *Queries) ListSessions(ctx context.Context) ([]Thread, error) {
 			&i.PendingSteerMessage,
 			&i.RuntimeCapabilities,
 			&i.Unread,
+			&i.Goal,
 		); err != nil {
 			return nil, err
 		}
@@ -453,6 +457,25 @@ func (q *Queries) UpdateACPState(ctx context.Context, arg UpdateACPStateParams) 
 	return err
 }
 
+const updateGoal = `-- name: UpdateGoal :exec
+UPDATE threads
+SET
+  goal = ?1,
+  updated_at_ms = ?2
+WHERE id = ?3
+`
+
+type UpdateGoalParams struct {
+	Goal        string `json:"goal"`
+	UpdatedAtMs int64  `json:"updated_at_ms"`
+	ID          string `json:"id"`
+}
+
+func (q *Queries) UpdateGoal(ctx context.Context, arg UpdateGoalParams) error {
+	_, err := q.db.ExecContext(ctx, updateGoal, arg.Goal, arg.UpdatedAtMs, arg.ID)
+	return err
+}
+
 const updateSessionTitle = `-- name: UpdateSessionTitle :exec
 UPDATE threads
 SET title = ?1
@@ -505,7 +528,8 @@ INSERT INTO threads (
   last_attention_at_ms,
   pinned,
   pending_steer_message,
-  unread
+  unread,
+  goal
 ) VALUES (
   ?1,
   ?2,
@@ -541,7 +565,8 @@ INSERT INTO threads (
   ?32,
   ?33,
   ?34,
-  ?35
+  ?35,
+  ?36
 )
 ON CONFLICT(id) DO UPDATE SET
   slug = excluded.slug,
@@ -577,7 +602,8 @@ ON CONFLICT(id) DO UPDATE SET
   last_attention_at_ms = excluded.last_attention_at_ms,
   pinned = excluded.pinned,
   pending_steer_message = excluded.pending_steer_message,
-  unread = excluded.unread
+  unread = excluded.unread,
+  goal = excluded.goal
 `
 
 type UpsertSessionParams struct {
@@ -616,6 +642,7 @@ type UpsertSessionParams struct {
 	Pinned                int64          `json:"pinned"`
 	PendingSteerMessage   string         `json:"pending_steer_message"`
 	Unread                int64          `json:"unread"`
+	Goal                  string         `json:"goal"`
 }
 
 func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) error {
@@ -655,6 +682,7 @@ func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) er
 		arg.Pinned,
 		arg.PendingSteerMessage,
 		arg.Unread,
+		arg.Goal,
 	)
 	return err
 }

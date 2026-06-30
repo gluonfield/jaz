@@ -218,6 +218,10 @@ func insertSession(db threaddb.DBTX, session storage.Session) error {
 	if err != nil {
 		return err
 	}
+	goalState, err := storage.MarshalGoalState(session.Goal)
+	if err != nil {
+		return err
+	}
 	return threaddb.New(db).UpsertSession(context.Background(), threaddb.UpsertSessionParams{
 		ID:                    session.ID,
 		Slug:                  session.Slug,
@@ -254,6 +258,7 @@ func insertSession(db threaddb.DBTX, session storage.Session) error {
 		LastAttentionAtMs:     timeToMs(session.LastAttentionAt),
 		Unread:                boolInt(session.Unread),
 		PendingSteerMessage:   pendingSteerMessage,
+		Goal:                  goalState,
 	})
 }
 
@@ -270,6 +275,10 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 	if err != nil {
 		return storage.Session{}, err
 	}
+	goalState, err := storage.UnmarshalGoalState(row.Goal)
+	if err != nil {
+		return storage.Session{}, err
+	}
 	session := storage.Session{
 		ID:              row.ID,
 		Slug:            row.Slug,
@@ -281,6 +290,7 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 		ModelProvider:   row.ModelProvider.String,
 		Model:           row.Model.String,
 		ReasoningEffort: row.ReasoningEffort.String,
+		Goal:            goalState,
 		Usage: storage.Usage{
 			InputTokens:           row.InputTokens,
 			CachedInputTokens:     row.CachedInputTokens,
