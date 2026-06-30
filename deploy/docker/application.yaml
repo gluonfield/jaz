@@ -1,7 +1,0 @@
-# Backend config baked into the jaz-backend image. Pointed at by APPLICATION_CONFIG.
-# Runtime state stays under /var/lib/jaz (mount a volume to persist).
-jaz:
-  root: /var/lib/jaz
-  workspace: /var/lib/jaz/workspaces/default
-  memory:
-    scheduler: true
