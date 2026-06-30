@@ -336,6 +336,7 @@ func (s *Server) writeSessionMessages(w http.ResponseWriter, r *http.Request, se
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	transcriptEvents = storage.GoalDisplayEvents(transcriptEvents)
 	transcriptEvents = sessionevents.CompactTranscript(transcriptEvents)
 	if mobile {
 		transcriptEvents = mobileSessionEvents(transcriptEvents)

@@ -230,6 +230,7 @@ type ACPEvent struct {
 	Plan            []PlanEntry     `json:"plan,omitempty"`
 	ToolCalls       []ACPToolCall   `json:"tool_calls,omitempty"`
 	Permissions     []ACPPermission `json:"permissions,omitempty"`
+	GoalRequested   bool            `json:"goal_requested"`
 	LastEventAt     time.Time       `json:"last_event_at,omitzero"`
 	LastToolAt      time.Time       `json:"last_tool_at,omitzero"`
 }

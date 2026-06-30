@@ -293,6 +293,7 @@ func TestSessionMessagesIncludesActiveOperation(t *testing.T) {
 		ACPAgent:        "codex",
 		ACPSession:      "acp-session",
 		State:           acp.StateRunning,
+		GoalRequested:   true,
 		ActiveOperation: acp.ActiveOperationCompact,
 	}}}).Handler().ServeHTTP(res, req)
 
@@ -301,12 +302,16 @@ func TestSessionMessagesIncludesActiveOperation(t *testing.T) {
 	}
 	var got struct {
 		ActiveOperation string `json:"acp_active_operation"`
+		GoalRequested   bool   `json:"acp_goal_requested"`
 	}
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
 	if got.ActiveOperation != acp.ActiveOperationCompact {
 		t.Fatalf("active operation = %q, want compact", got.ActiveOperation)
+	}
+	if !got.GoalRequested {
+		t.Fatalf("goal requested = false, want true")
 	}
 }
 

@@ -75,6 +75,7 @@ func goalEventFromPayload(payload goal.UpdatePayload) (sessionevents.GoalEvent, 
 
 func (m *Manager) publishGoalUpdate(job *jobState, state sessionevents.GoalEvent) {
 	now := time.Now().UTC()
+	state.Source = goal.SourceProvider
 	if state.Provider == "" {
 		state.Provider = job.ACPAgent
 	}

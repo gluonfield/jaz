@@ -231,6 +231,7 @@ type ACPState struct {
 	Permissions     []sessionevents.ACPPermission `json:"permissions,omitempty"`
 	Modes           sessionevents.ACPModeState    `json:"modes,omitempty"`
 	Error           string                        `json:"error,omitempty"`
+	GoalRequested   bool                          `json:"goal_requested,omitempty"`
 	ActiveOperation string                        `json:"active_operation,omitempty"`
 	ParentVisible   bool                          `json:"parent_visible,omitempty"`
 	CreatedAt       time.Time                     `json:"created_at"`

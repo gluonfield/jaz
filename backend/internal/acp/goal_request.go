@@ -2,10 +2,6 @@ package acp
 
 import (
 	"errors"
-	"strings"
-
-	"github.com/wins/jaz/backend/internal/goal"
-	"github.com/wins/jaz/backend/internal/sessionevents"
 )
 
 var ErrNativeGoalUnsupported = errors.New("acp native goal unsupported")
@@ -19,17 +15,11 @@ func goalPromptMeta(requested bool) map[string]any {
 	}
 }
 
-func (m *Manager) recordGoalRequest(job *jobState, requested bool, objective string) {
+func markGoalRequested(job *jobState, requested bool) {
 	if !requested {
 		return
 	}
 	job.setTurnGoalRequested()
-	m.publishGoalUpdate(job, sessionevents.GoalEvent{
-		Identity: goal.Identity{
-			Objective: strings.TrimSpace(objective),
-			Status:    sessionevents.GoalStatusRequested,
-		},
-	})
 }
 
 func currentTurnGoalRequested(job *jobState, done chan struct{}) bool {
