@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArchiveRestore, CornerDownRight } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
+import { AnimatedList, AnimatedListItem } from '@/components/ui/AnimatedList'
 import { sessionLabel } from '@/components/sidebar/SessionRow'
 import { IconButton } from '@/components/ui/IconButton'
 import { SkeletonRows } from '@/components/ui/Skeleton'
@@ -50,17 +51,13 @@ function ArchivedList() {
 
   return (
     <div className="flex flex-col gap-px pb-2">
-      <AnimatePresence initial={false} mode="popLayout">
+      <AnimatedList>
         {archived.data.map((item) => (
-          <motion.div
-            key={item.session.id}
-            exit={{ opacity: 0, x: -8 }}
-            transition={{ type: 'spring', stiffness: 420, damping: 34 }}
-          >
+          <AnimatedListItem key={item.session.id}>
             <ArchivedRow session={item.session} child={item.child} />
-          </motion.div>
+          </AnimatedListItem>
         ))}
-      </AnimatePresence>
+      </AnimatedList>
     </div>
   )
 }

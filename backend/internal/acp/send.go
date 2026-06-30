@@ -86,8 +86,8 @@ func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (
 	}
 	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested, "goal", req.GoalRequested, "operation", opts.activeOperation)
 	job.startTurnWithOperation(req.Completion, req.PlanRequested, req.ParentVisible, opts.activeOperation)
-	job.setTurnGoalRequested(req.GoalRequested)
 	m.touchJobAttention(job)
+	m.recordGoalRequest(job, req.GoalRequested, req.Message)
 	m.publishACP(job.Snapshot())
 	if local != nil {
 		go m.runLocalPrompt(context.WithoutCancel(ctx), job, local, promptMessage, req.Attachments)
@@ -148,6 +148,7 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 		m.log.Error("append user message failed", "session", job.ID, "error", err)
 	}
 	m.touchJobAttention(job)
+	m.recordGoalRequest(job, req.GoalRequested, req.Message)
 	m.publishACP(job.Snapshot())
 	go m.runPromptCall(context.Background(), job, done, acpschema.PromptRequest{
 		SessionID: acpschema.SessionID(job.ACPSession),

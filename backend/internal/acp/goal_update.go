@@ -107,9 +107,15 @@ func (m *Manager) publishGoalUpdate(job *jobState, goal sessionevents.GoalEvent)
 }
 
 func normalizeGoalStatus(status string) string {
-	switch strings.TrimSpace(status) {
-	case "active", "paused", "blocked", "usageLimited", "budgetLimited", "complete":
-		return strings.TrimSpace(status)
+	status = strings.TrimSpace(status)
+	switch status {
+	case sessionevents.GoalStatusActive,
+		sessionevents.GoalStatusPaused,
+		sessionevents.GoalStatusBlocked,
+		sessionevents.GoalStatusUsageLimited,
+		sessionevents.GoalStatusBudgetLimited,
+		sessionevents.GoalStatusComplete:
+		return status
 	default:
 		return ""
 	}

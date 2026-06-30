@@ -14,6 +14,7 @@ import {
 import { AnimatePresence, motion } from 'motion/react'
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { AnimatedList, AnimatedListItem } from '@/components/ui/AnimatedList'
 import { Button } from '@/components/ui/Button'
 import { DashedCta } from '@/components/ui/DashedCta'
 import { IconButton } from '@/components/ui/IconButton'
@@ -174,22 +175,25 @@ export function MCPSettings() {
           />
         ) : (
           <div className="flex flex-col gap-px">
-            {sortedServers.map((server) => (
-              <MCPServerRow
-                key={server.id}
-                server={server}
-                busy={busy}
-                authorizing={authorize.isPending && authorize.variables === server.id}
-                onEdit={() => openEdit(server)}
-                onTools={() => setToolsServerID(server.id)}
-                onToggle={() => toggle.mutate({ id: server.id, enabled: !server.enabled })}
-                onDelete={() => {
-                  if (window.confirm(`Delete ${server.name}?`)) remove.mutate(server.id)
-                }}
-                onTest={() => test.mutate(server.id)}
-                onAuthorize={() => authorize.mutate(server.id)}
-              />
-            ))}
+            <AnimatedList>
+              {sortedServers.map((server) => (
+                <AnimatedListItem key={server.id}>
+                  <MCPServerRow
+                    server={server}
+                    busy={busy}
+                    authorizing={authorize.isPending && authorize.variables === server.id}
+                    onEdit={() => openEdit(server)}
+                    onTools={() => setToolsServerID(server.id)}
+                    onToggle={() => toggle.mutate({ id: server.id, enabled: !server.enabled })}
+                    onDelete={() => {
+                      if (window.confirm(`Delete ${server.name}?`)) remove.mutate(server.id)
+                    }}
+                    onTest={() => test.mutate(server.id)}
+                    onAuthorize={() => authorize.mutate(server.id)}
+                  />
+                </AnimatedListItem>
+              ))}
+            </AnimatedList>
           </div>
         )}
       </div>
