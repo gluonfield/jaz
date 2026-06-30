@@ -232,7 +232,7 @@ function UsagePanel({
 
       <ModelBreakdown
         rows={pricedModels}
-        unpriced={costSummary.unpriced}
+        cost={costSummary}
       />
 
       {tooltip ? <UsageTooltip state={tooltip} costLabel={dailyCostLabels.get(tooltip.day.date) ?? '—'} /> : null}
