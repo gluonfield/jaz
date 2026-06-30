@@ -52,7 +52,7 @@ func TestTelegramMaterializerCreatesChatDayAndContactSources(t *testing.T) {
 		OccurredAt: occurred,
 		Raw:        messageRaw,
 	})
-	if !strings.Contains(messageArtifact.PathHint, "sources/telegram/42/conversations/user-276369933-") || !strings.HasSuffix(messageArtifact.PathHint, "/2026/06/27.md") {
+	if messageArtifact.PathHint != "sources/telegram/42/conversations/user/276369933/2026/06/27.md" {
 		t.Fatalf("message artifact = %#v", messageArtifact)
 	}
 	if !sameStrings(messageArtifactTargetRefs(t, TelegramMaterializer{}, integrations.Record{
