@@ -64,6 +64,7 @@ type activeTurn struct {
 	cancelRequested       bool
 	firstPromptSent       chan struct{}
 	firstPromptSentClosed bool
+	promptHandoff         chan struct{}
 	promptCalls           int
 	planProposal          *sessionevents.PlanEvent
 }
@@ -252,6 +253,33 @@ func (j *jobState) addPromptCall(parentVisible bool) (chan struct{}, bool) {
 	}
 	j.turn.promptCalls++
 	return j.turn.done, true
+}
+
+func (j *jobState) hasQueuedPromptSuccessor() bool {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	return j.turn != nil && j.turn.promptCalls > 1
+}
+
+func (j *jobState) requirePromptHandoff(done chan struct{}) <-chan struct{} {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.turn == nil || j.turn.done != done {
+		return nil
+	}
+	if j.turn.promptHandoff == nil {
+		j.turn.promptHandoff = make(chan struct{})
+	}
+	return j.turn.promptHandoff
+}
+
+func (j *jobState) currentPromptHandoff(done chan struct{}) <-chan struct{} {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	if j.turn == nil || j.turn.done != done {
+		return nil
+	}
+	return j.turn.promptHandoff
 }
 
 func (j *jobState) waitFirstPromptSent(ctx context.Context) error {

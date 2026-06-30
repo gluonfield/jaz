@@ -144,16 +144,33 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	if !ok {
 		return Job{}, ErrPromptQueueingUnsupported
 	}
+	handoff := m.cancelPendingPermissionsForSteer(job, done)
 	if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments); err != nil {
 		m.log.Error("append user message failed", "session", job.ID, "error", err)
 	}
 	m.touchJobAttention(job)
 	markGoalRequested(job, req.GoalRequested)
 	m.publishACP(job.Snapshot())
-	go m.runPromptCall(context.Background(), job, done, acpschema.PromptRequest{
+	go m.runPromptCallAfterHandoff(context.Background(), job, done, handoff, acpschema.PromptRequest{
 		SessionID: acpschema.SessionID(job.ACPSession),
 		Prompt:    prompt,
 		Meta:      goalPromptMeta(req.GoalRequested),
 	})
 	return job.Snapshot(), nil
+}
+
+func (m *Manager) runPromptCallAfterHandoff(ctx context.Context, job *jobState, done chan struct{}, handoff <-chan struct{}, req acpschema.PromptRequest) {
+	if handoff != nil {
+		select {
+		case <-handoff:
+		case <-done:
+			return
+		}
+	}
+	select {
+	case <-done:
+		return
+	default:
+	}
+	m.runPromptCall(ctx, job, done, req)
 }

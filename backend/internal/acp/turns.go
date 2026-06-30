@@ -78,8 +78,9 @@ func (m *Manager) runPromptCall(ctx context.Context, job *jobState, done chan st
 }
 
 func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReason string) {
+	userCancelled := jobCancelRequested(job)
 	state := StateIdle
-	if jobCancelRequested(job) || stopReason == "cancelled" {
+	if userCancelled || stopReason == "cancelled" {
 		state = StateCancelled
 		stopReason = "cancelled"
 	}
@@ -93,9 +94,14 @@ func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReas
 		turn.promptCalls--
 	}
 	remaining := turn.promptCalls
-	if state == StateIdle && remaining > 0 {
+	if remaining > 0 && !userCancelled {
+		handoff := turn.promptHandoff
+		turn.promptHandoff = nil
 		job.UpdatedAt = time.Now().UTC()
 		job.mu.Unlock()
+		if handoff != nil {
+			close(handoff)
+		}
 		m.log.Info("acp prompt handed off", "session", job.ID, "remaining_prompt_calls", remaining)
 		return
 	}
