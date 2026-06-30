@@ -1,0 +1,13 @@
+.git
+**/node_modules
+**/.DS_Store
+**/.env
+**/.env.*
+frontend/dist-web
+frontend/dist
+frontend/out
+frontend/.vite
+backend
+activepieces
+matrix
+docs
