@@ -13,7 +13,33 @@ ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
 COPY frontend/package.json frontend/bun.lock ./
 RUN bun install --frozen-lockfile
 COPY frontend/ ./
-COPY deploy/docker/jaz-defaults.leeroo.js ./src/renderer/public/jaz-defaults.js
+RUN <<'EOF'
+cat > ./src/renderer/public/jaz-defaults.js <<'JS'
+// Leeroo-flavoured Jaz defaults for the full-stack custom image.
+// Loaded before first paint by frontend/src/renderer/index.html.
+window.__JAZ_DEFAULTS__ = {
+  theme: 'light',
+  uiFont: 'Inter',
+  monoFont: 'JetBrains Mono',
+  effects: true,
+  wideLayout: true,
+  scheme: {
+    light: {
+      accent: '#347ee8',
+      background: '#ffffff',
+      foreground: '#344154',
+      contrast: 42,
+    },
+    dark: {
+      accent: '#6ca6ff',
+      background: '#111827',
+      foreground: '#eef4ff',
+      contrast: 52,
+    },
+  },
+}
+JS
+EOF
 RUN VITE_JAZ_API_URL=origin bun run build:web
 
 FROM caddy:2-alpine AS caddy
