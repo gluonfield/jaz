@@ -12,7 +12,7 @@ export function useDeferredReply(threadId: string, onCommit: () => void) {
   const queryClient = useQueryClient()
   const toast = useToast()
   const [counting, setCounting] = useState(false)
-  const countdownRef = useRef<{ resolve: () => void; reject: () => void; timer: ReturnType<typeof setTimeout> } | null>(null)
+  const countdownRef = useRef<{ resolve: () => void; reject: (reason?: unknown) => void; timer: ReturnType<typeof setTimeout> } | null>(null)
 
   const settle = useCallback((commit: boolean) => {
     const pending = countdownRef.current

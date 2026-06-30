@@ -10,7 +10,9 @@ import (
 	connectionsapi "github.com/wins/jaz/backend/internal/httpapi/connections"
 	deviceapi "github.com/wins/jaz/backend/internal/httpapi/devices"
 	feedapi "github.com/wins/jaz/backend/internal/httpapi/feed"
+	modelcatalogapi "github.com/wins/jaz/backend/internal/httpapi/modelcatalog"
 	usageapi "github.com/wins/jaz/backend/internal/httpapi/usage"
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	usagecore "github.com/wins/jaz/backend/internal/usage"
@@ -22,6 +24,7 @@ type routeDeps struct {
 
 	Usage           usagecore.Service
 	Feed            feedcore.Service
+	ModelCatalog    *modelcatalog.Service `optional:"true"`
 	Jaz             Config
 	Devices         *deviceauth.Service            `optional:"true"`
 	Config          serverconfig.Config            `optional:"true"`
@@ -36,9 +39,23 @@ type routeDeps struct {
 func NewRoutes(deps routeDeps) server.Routes {
 	routes := usageRoutes(deps.Usage)
 	routes = append(routes, feedRoutes(deps.Feed)...)
+	routes = append(routes, modelCatalogRoutes(deps.ModelCatalog)...)
 	routes = appendConnectionRoutes(routes, deps.Connections, deps.ConnectionStart, deps.ConnectionOAuth, deps.ConnectionQR)
 	routes = appendDeviceRoutes(routes, deps.Devices, deps.Config, deps.Jaz.Devices.DisablePairing)
 	return appendBrowserRoutes(routes, deps.BrowserSettings, deps.Browser)
+}
+
+func modelCatalogRoutes(catalog *modelcatalog.Service) server.Routes {
+	if catalog == nil {
+		return nil
+	}
+	handler := modelcatalogapi.NewHandler(catalog)
+	return server.Routes{
+		{
+			Pattern: "GET /v1/model-providers/{provider}/models",
+			Handler: httpHandlerFunc(handler.ProviderModels),
+		},
+	}
 }
 
 func feedRoutes(feed feedcore.Service) server.Routes {

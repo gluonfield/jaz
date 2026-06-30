@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	modelprovider "github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -141,5 +142,18 @@ func TestSpawnConfigKeepsDefaultModelWhenCodexUsesOpenAIAPIKey(t *testing.T) {
 	}
 	if cfg.ModelProvider != CodexProviderOpenAIAPIKey || cfg.Model != "gpt-5.4-mini" {
 		t.Fatalf("unexpected codex provider override %#v", cfg)
+	}
+}
+
+func TestSpawnConfigRejectsModelSpecificUnsupportedReasoning(t *testing.T) {
+	manager := &Manager{
+		cfg: Config{ModelCatalog: modelcatalog.NewService(nil)},
+		agents: AgentCatalog{
+			AgentClaude: {Command: AgentClaude, Model: "sonnet", ReasoningEffort: "xhigh"},
+		},
+	}
+	_, _, _, err := manager.spawnConfig(SpawnRequest{ACPAgent: AgentClaude})
+	if err == nil || !strings.Contains(err.Error(), `reasoning effort "xhigh" is not supported for claude model "sonnet"`) {
+		t.Fatalf("err = %v", err)
 	}
 }

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, ChevronDown, CircleAlert, KeyRound, LoaderCircle, LogIn, Terminal } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -34,12 +34,9 @@ import type {
   ModelProviderOption,
 } from '@/lib/api/types'
 import { useACPLoginPolling } from '@/lib/hooks/useACPLoginPolling'
-import { acpAgentModelSuggestions, modelProviderModelsQuery, modelSuggestionsForProvider } from '@/lib/models'
+import { useModelReasoningState } from '@/lib/modelReasoning'
 import { keys } from '@/lib/query/keys'
-import {
-  modelSettingsReasoningEffortOptions,
-  supportedReasoningEffort,
-} from '@/lib/reasoningEfforts'
+import { modelSettingsReasoningEffortOptions, supportedReasoningEffort } from '@/lib/reasoningEfforts'
 
 const inputClass =
   'h-7 w-full rounded-full bg-ink/10 px-3 text-[12px] text-ink outline-none transition duration-150 placeholder:text-ink-3 focus:bg-ink/15 focus:ring-1 focus:ring-ink/25 disabled:opacity-50'
@@ -225,20 +222,16 @@ function ACPAgentRow({
         ? `Connect ${selectedProvider.label} in Model Providers before enabling.`
         : 'Select a provider before enabling.'
   const [commandOpen, setCommandOpen] = useState(requiresCommand && (current.command ?? '').trim() === '')
-  const providerModels = useQuery({
-    ...modelProviderModelsQuery(current.model_provider),
-    enabled: usesModelProvider && Boolean(current.model_provider),
-  })
-  const modelSuggestions = usesModelProvider
-    ? modelSuggestionsForProvider(selectedProvider, providerModels.data ?? [])
-    : acpAgentModelSuggestions(settings, agent)
   const reasoningModel = (current.model ?? '').trim() || selectedProvider?.default_model || ''
-  const reasoningOptions = modelSettingsReasoningEffortOptions(
+  const { modelSuggestions, modelsLoading, reasoningOptions } = useModelReasoningState({
     settings,
     agent,
-    reasoningModel,
-    modelSuggestions,
-  )
+    model: reasoningModel,
+    usesProvider: usesModelProvider,
+    provider: current.model_provider,
+    selectedProvider,
+    settingsMode: true,
+  })
   const reasoningEffort = current.reasoning_effort ?? ''
   const normalizedReasoningEffort = supportedReasoningEffort(reasoningEffort, reasoningOptions)
     ? reasoningEffort
@@ -350,7 +343,7 @@ function ACPAgentRow({
         <ModelCombobox
           value={current.model ?? ''}
           suggestions={modelSuggestions}
-          loading={providerModels.isLoading}
+          loading={modelsLoading}
           disabled={disabled}
           onChange={(model) => {
             const nextOptions = modelSettingsReasoningEffortOptions(settings, agent, model, modelSuggestions)

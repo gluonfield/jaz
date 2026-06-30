@@ -5,14 +5,9 @@ import { ModelSelect, RuntimeSelect } from '@/components/session/NewThreadContro
 import { boardsQuery } from '@/lib/api/boards'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import { enabledACPAgents, runtimeModelState } from '@/lib/agentRuntimes'
-import {
-  acpAgentModelSuggestions,
-  modelProviderModelsQuery,
-  modelSuggestionsForProvider,
-} from '@/lib/models'
+import { useModelReasoningState } from '@/lib/modelReasoning'
 import {
   effectiveReasoningEffort,
-  modelReasoningEffortOptions,
   supportedReasoningEffort,
 } from '@/lib/reasoningEfforts'
 import { BoardAssignmentPicker } from './BoardAssignmentPicker'
@@ -215,14 +210,14 @@ function LoopPromptCard({
   const defaultModel = runtimeModel.defaultModel
   const model = draft.model || defaultModel
 
-  const providerModels = useQuery({
-    ...modelProviderModelsQuery(provider),
-    enabled: usesProvider && Boolean(provider),
+  const { modelSuggestions, modelsLoading, reasoningOptions: effortOptions } = useModelReasoningState({
+    settings: agentSettings,
+    agent: draft.runtime,
+    model,
+    usesProvider,
+    provider,
+    selectedProvider,
   })
-  const modelSuggestions = usesProvider
-    ? modelSuggestionsForProvider(selectedProvider, providerModels.data ?? [])
-    : acpAgentModelSuggestions(agentSettings, draft.runtime)
-  const effortOptions = modelReasoningEffortOptions(agentSettings, draft.runtime, model, modelSuggestions)
   const reasoningEffort = effectiveReasoningEffort(
     draft.reasoningEffort || runtimeModel.defaultEffort,
     effortOptions,
@@ -277,7 +272,7 @@ function LoopPromptCard({
                 <ModelSelect
                   value={model}
                   suggestions={modelSuggestions}
-                  loading={providerModels.isLoading}
+                  loading={modelsLoading}
                   disabled={disabled}
                   placement="below"
                   onChange={(next) => set({ model: next, reasoningEffort: '' })}

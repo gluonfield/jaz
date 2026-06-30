@@ -53,7 +53,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/providers", s.handleCreateProvider)
 	mux.HandleFunc("PUT /v1/providers/", s.handleProviderAction)
 	mux.HandleFunc("DELETE /v1/providers/", s.handleProviderAction)
-	mux.HandleFunc("GET /v1/model-providers/{provider}/models", s.handleModelProviderModels)
 	mux.HandleFunc("GET /v1/agent/files", s.handleListAgentFiles)
 	mux.HandleFunc("PUT /v1/agent/files/{name}", s.handleWriteAgentFile)
 	mux.HandleFunc("POST /v1/audio/transcribe", s.handleTranscribe)

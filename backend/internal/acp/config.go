@@ -65,6 +65,10 @@ type SystemPromptSource interface {
 
 type SessionPromptExtensionResolver func(storage.Session) (promptmodule.Modules, error)
 
+type ReasoningEffortValidator interface {
+	ValidateReasoningEffort(agent, providerID, model, effort string) error
+}
+
 func promptWithModules(base string, modules promptmodule.Modules) string {
 	return promptmodule.New(base).Append(modules...).Text()
 }
@@ -103,6 +107,7 @@ type Config struct {
 	// manager reads per spawn so runtime provider changes reach new agents.
 	Providers      map[string]provider.ModelProviderConfig
 	ProviderSource provider.Source
+	ModelCatalog   ReasoningEffortValidator
 	SystemPrompt   SystemPromptSource
 	MCPStore       mcpconfig.ServerReader
 	ResumePrompt   SessionPromptExtensionResolver

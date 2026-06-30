@@ -5,16 +5,11 @@ import { enabledACPAgents, runtimeModelState } from '@/lib/agentRuntimes'
 import type { CreateSessionInput } from '@/lib/api/sessions'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import { composerConfig } from '@/lib/jazDefaults'
-import {
-  acpAgentModelSuggestions,
-  modelProviderModelsQuery,
-  modelSuggestionsForProvider,
-} from '@/lib/models'
+import { useModelReasoningState } from '@/lib/modelReasoning'
 import { createSessionInput, NEW_SESSION_AGENT_KEY } from '@/lib/newSessionConfig'
 import {
   effectiveReasoningEffort,
   inheritedReasoningEffortOverride,
-  modelReasoningEffortOptions,
   supportedReasoningEffort,
 } from '@/lib/reasoningEfforts'
 
@@ -51,14 +46,14 @@ export function useNewThreadControls() {
   const { usesProvider, providers: runtimeProviders, provider, selectedProvider } = model
   const selectedModel = modelOverride ?? model.defaultModel
 
-  const providerModels = useQuery({
-    ...modelProviderModelsQuery(provider),
-    enabled: usesProvider && Boolean(provider),
+  const { modelSuggestions, modelsLoading, reasoningOptions: effortOptions } = useModelReasoningState({
+    settings: agentSettings,
+    agent: runtime,
+    model: selectedModel,
+    usesProvider,
+    provider,
+    selectedProvider,
   })
-  const modelSuggestions = usesProvider
-    ? modelSuggestionsForProvider(selectedProvider, providerModels.data ?? [])
-    : acpAgentModelSuggestions(agentSettings, runtime)
-  const effortOptions = modelReasoningEffortOptions(agentSettings, runtime, selectedModel, modelSuggestions)
   const effort = effectiveReasoningEffort(effortOverride ?? model.defaultEffort, effortOptions)
 
   useEffect(() => {
@@ -82,7 +77,7 @@ export function useNewThreadControls() {
     selectRuntime,
     model: selectedModel,
     modelSuggestions,
-    modelsLoading: providerModels.isLoading,
+    modelsLoading,
     usesProvider,
     providers: usesProvider ? runtimeProviders.map((p) => ({ value: p.id, label: p.label })) : undefined,
     provider: usesProvider ? provider : undefined,
