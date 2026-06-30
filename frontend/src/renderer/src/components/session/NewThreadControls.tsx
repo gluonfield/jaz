@@ -28,7 +28,7 @@ import {
   type ModelSuggestion,
 } from '@/lib/models'
 import { keys } from '@/lib/query/keys'
-import { REASONING_EFFORT_OPTIONS } from '@/lib/reasoningEfforts'
+import { reasoningEffortLabel, REASONING_EFFORT_OPTIONS } from '@/lib/reasoningEfforts'
 
 // Selects the ACP agent backing a new thread.
 export function RuntimeSelect({
@@ -132,8 +132,9 @@ export function ModelSelect({
   const typedIsNew = typed !== '' && !suggestions.some((s) => s.value === typed)
   const label = value === '' ? 'Model' : modelSuggestionLabel(suggestions, value)
   const effortValue = effort ?? ''
+  const effortLabel = effortValue === 'none' ? reasoningEffortLabel(effortValue, effortOptions) : effortValue
   const description = `Model: ${value === '' ? 'default' : value}${
-    effortValue ? `, reasoning effort: ${effortValue}` : ''
+    effortValue ? `, reasoning effort: ${effortLabel}` : ''
   }`
   const select = (model: string) => {
     onChange(model)
@@ -158,7 +159,7 @@ export function ModelSelect({
           onClick={() => setOpen((v) => !v)}
         >
           <span className="truncate">{label}</span>
-          {effortValue ? <span className="shrink-0 text-primary">{effortValue}</span> : null}
+          {effortValue ? <span className="shrink-0 text-primary">{effortLabel}</span> : null}
           <ChevronDown size={13} className="shrink-0" />
         </Button>
       }

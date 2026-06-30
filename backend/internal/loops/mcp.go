@@ -202,7 +202,7 @@ type MCPCreateInput struct {
 	ACPAgent        string   `json:"acp_agent,omitempty" jsonschema:"ACP agent that runs the loop; see this tool's description for the available agents. Omit to use the workspace default agent."`
 	ModelProvider   string   `json:"model_provider,omitempty"`
 	Model           string   `json:"model,omitempty"`
-	ReasoningEffort string   `json:"reasoning_effort,omitempty" jsonschema:"none, minimal, low, medium, high, xhigh"`
+	ReasoningEffort string   `json:"reasoning_effort,omitempty" jsonschema:"none, minimal, low, medium, high, xhigh, max"`
 	Directory       string   `json:"directory,omitempty" jsonschema:"workspace-relative or absolute directory for loop runs"`
 	BoardIDs        []string `json:"board_ids,omitempty" jsonschema:"board ids to place this loop's widget on; assignment is what enables the widget. Use loop_boards to list ids."`
 }
@@ -233,7 +233,7 @@ type MCPUpdateInput struct {
 	ACPAgent        *string   `json:"acp_agent,omitempty" jsonschema:"ACP agent that runs the loop; see this tool's description for the available agents."`
 	ModelProvider   *string   `json:"model_provider,omitempty"`
 	Model           *string   `json:"model,omitempty"`
-	ReasoningEffort *string   `json:"reasoning_effort,omitempty" jsonschema:"none, minimal, low, medium, high, xhigh"`
+	ReasoningEffort *string   `json:"reasoning_effort,omitempty" jsonschema:"none, minimal, low, medium, high, xhigh, max"`
 	Directory       *string   `json:"directory,omitempty"`
 	// BoardIDs reassigns the loop's widget to exactly these boards. Omit to
 	// leave assignments untouched; pass an empty array to clear them.

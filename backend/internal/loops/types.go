@@ -44,8 +44,8 @@ type Loop struct {
 	Status   string   `json:"status"`
 	Runtime  string   `json:"runtime"`
 	ACPAgent string   `json:"acp_agent,omitempty"`
-	// ModelProvider/Model override the Settings > Agents defaults for runs;
-	// empty follows settings at run time (like sessions).
+	// ModelProvider/Model override the Settings > Agents defaults for runs.
+	// Empty ReasoningEffort follows settings; "none" explicitly clears it.
 	ModelProvider   string    `json:"model_provider,omitempty"`
 	Model           string    `json:"model,omitempty"`
 	ReasoningEffort string    `json:"reasoning_effort,omitempty"`

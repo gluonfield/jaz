@@ -809,7 +809,7 @@ func TestProcessEnvDoesNotAddOpenCodeReasoningVariantForInvalidEffort(t *testing
 		ProviderMode:    AgentProviderModeAgentDefaults,
 		ModelProvider:   "openrouter",
 		Model:           "z-ai/glm-5.2",
-		ReasoningEffort: "max",
+		ReasoningEffort: "ultracode",
 	})
 	if err != nil {
 		t.Fatal(err)

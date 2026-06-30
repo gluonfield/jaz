@@ -5,8 +5,9 @@ import { CategoryBreakdown } from '@/components/settings/UsageCategoryBreakdown'
 import { ModelBreakdown, UsageShareCharts } from '@/components/settings/UsageModelBreakdown'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { agentSettingsQuery } from '@/lib/api/settings'
 import { dailyUsageQuery } from '@/lib/api/sessions'
-import type { DailyUsage } from '@/lib/api/types'
+import type { AgentSettings, DailyUsage } from '@/lib/api/types'
 import { formatTokens } from '@/lib/format/tokens'
 import { type ModelPricing, openRouterModelsQuery } from '@/lib/models'
 import { buildPricingIndex, formatUsd, priceModels } from '@/lib/usageCost'
@@ -38,6 +39,7 @@ const usageGapPx = 3
 
 export function UsageSettings() {
   const usage = useQuery(dailyUsageQuery(365))
+  const agentSettings = useQuery(agentSettingsQuery)
   const openRouter = useQuery(openRouterModelsQuery)
   const pricing = useMemo(() => buildPricingIndex(openRouter.data ?? []), [openRouter.data])
 
@@ -58,6 +60,7 @@ export function UsageSettings() {
         <UsagePanel
           days={usage.data}
           pricing={pricing}
+          agentSettings={agentSettings.data}
         />
       )}
     </section>
@@ -81,9 +84,11 @@ function UsageSkeleton() {
 function UsagePanel({
   days,
   pricing,
+  agentSettings,
 }: {
   days: DailyUsage[]
   pricing: Map<string, ModelPricing>
+  agentSettings?: AgentSettings
 }) {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
   const chartDays = useMemo(() => visibleUsageDays(days), [days])
@@ -104,15 +109,18 @@ function UsagePanel({
   const cacheWrite = last30.cached_write_tokens ?? 0
   const reasoning = last30.reasoning_output_tokens ?? 0
   const cacheHitLabel = inputAndCacheTokens > 0 ? `${Math.round((cacheRead / inputAndCacheTokens) * 100)}%` : '—'
-  const { rows: pricedModels, summary: costSummary } = useMemo(() => priceModels(models, pricing), [models, pricing])
+  const { rows: pricedModels, summary: costSummary } = useMemo(
+    () => priceModels(models, pricing, agentSettings),
+    [agentSettings, models, pricing],
+  )
   const costLabel = costSummary.priced > 0 ? formatUsd(costSummary.total) : '—'
   const dailyCostLabels = useMemo(() => {
     const labels = new Map<string, string>()
     for (const day of chartDays) {
-      labels.set(day.date, dailyCostLabel(day, pricing))
+      labels.set(day.date, dailyCostLabel(day, pricing, agentSettings))
     }
     return labels
-  }, [chartDays, pricing])
+  }, [agentSettings, chartDays, pricing])
 
   return (
     <SettingsCard className="mt-4 p-4">
@@ -339,10 +347,14 @@ function levelColor(level: number): string {
   }
 }
 
-function dailyCostLabel(day: DailyUsage, pricing: Map<string, ModelPricing>): string {
+function dailyCostLabel(
+  day: DailyUsage,
+  pricing: Map<string, ModelPricing>,
+  agentSettings?: AgentSettings,
+): string {
   const models = day.models ?? []
   if (models.length === 0) return '—'
-  const { summary } = priceModels(models, pricing)
+  const { summary } = priceModels(models, pricing, agentSettings)
   return summary.priced > 0 ? formatUsd(summary.total) : '—'
 }
 

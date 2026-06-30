@@ -959,6 +959,25 @@ export interface ModelProviderOption {
   icon?: string
 }
 
+export interface ModelPricing {
+  input: number
+  output: number
+  cache_read: number
+  cache_write: number
+}
+
+export interface ModelCatalogEntry {
+  value: string
+  label: string
+  description?: string
+  context_length?: number
+  pricing?: ModelPricing
+  openrouter_id?: string
+  reasoning_efforts?: string[] | null
+  reasoning_default_effort?: string
+  reasoning_mandatory?: boolean
+}
+
 /** Editable fields for creating or updating a custom model provider. */
 export interface ProviderInput {
   label: string
@@ -1026,6 +1045,7 @@ export interface ReasoningEffortOption {
 
 export interface ACPAgentOptions {
   reasoning_efforts: ReasoningEffortOption[]
+  models?: ModelCatalogEntry[]
   capabilities?: RuntimeCapabilities
   local: boolean
   provider_mode?: 'agent_defaults'

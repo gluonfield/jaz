@@ -103,6 +103,8 @@ type Server struct {
 
 	acpAuthLoginJobs sync.Map
 	worktreePruneMu  sync.Mutex
+	modelCatalogMu   sync.Mutex
+	modelCatalog     map[string]providerModelCatalogSnapshot
 }
 
 type sourceQueueStatsReader interface {

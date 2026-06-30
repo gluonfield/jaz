@@ -164,6 +164,10 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 				Value string `json:"value"`
 				Label string `json:"label"`
 			} `json:"reasoning_efforts"`
+			Models []struct {
+				Value            string   `json:"value"`
+				ReasoningEfforts []string `json:"reasoning_efforts"`
+			} `json:"models"`
 			Local            bool     `json:"local"`
 			ProviderMode     string   `json:"provider_mode"`
 			ModelProviderIDs []string `json:"model_provider_ids"`
@@ -225,6 +229,9 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	if !hasReasoningEffort(got.ACPOptions["claude"].ReasoningEfforts, "ultracode") ||
 		hasReasoningEffort(got.ACPOptions["codex"].ReasoningEfforts, "ultracode") {
 		t.Fatalf("unexpected acp options %#v", got.ACPOptions)
+	}
+	if !hasModelReasoningEfforts(got.ACPOptions["claude"].Models, "sonnet", "low,medium,high,max") {
+		t.Fatalf("claude model options missing sonnet reasoning matrix %#v", got.ACPOptions["claude"].Models)
 	}
 	// The desktop client treats a missing capability flag as "requires a command",
 	// so a false flag must be emitted explicitly, never dropped by omitempty. A
@@ -549,6 +556,18 @@ func hasReasoningEffort(options []struct {
 }, value string) bool {
 	for _, option := range options {
 		if option.Value == value {
+			return true
+		}
+	}
+	return false
+}
+
+func hasModelReasoningEfforts(models []struct {
+	Value            string   `json:"value"`
+	ReasoningEfforts []string `json:"reasoning_efforts"`
+}, value, efforts string) bool {
+	for _, model := range models {
+		if model.Value == value && strings.Join(model.ReasoningEfforts, ",") == efforts {
 			return true
 		}
 	}

@@ -7,11 +7,16 @@ import { agentSettingsQuery } from '@/lib/api/settings'
 import { composerConfig } from '@/lib/jazDefaults'
 import {
   acpAgentModelSuggestions,
+  modelProviderModelsQuery,
   modelSuggestionsForProvider,
-  openRouterModelsQuery,
 } from '@/lib/models'
 import { createSessionInput, NEW_SESSION_AGENT_KEY } from '@/lib/newSessionConfig'
-import { acpReasoningEffortOptions } from '@/lib/reasoningEfforts'
+import {
+  effectiveReasoningEffort,
+  inheritedReasoningEffortOverride,
+  modelReasoningEffortOptions,
+  supportedReasoningEffort,
+} from '@/lib/reasoningEfforts'
 
 export function useNewThreadControls() {
   const settingsQuery = useQuery(agentSettingsQuery)
@@ -45,15 +50,22 @@ export function useNewThreadControls() {
   const model = runtimeModelState(agentSettings, runtime, providerOverride)
   const { usesProvider, providers: runtimeProviders, provider, selectedProvider } = model
   const selectedModel = modelOverride ?? model.defaultModel
-  const effort = effortOverride ?? model.defaultEffort
 
-  const openRouterModels = useQuery({
-    ...openRouterModelsQuery,
-    enabled: usesProvider && provider === 'openrouter',
+  const providerModels = useQuery({
+    ...modelProviderModelsQuery(provider),
+    enabled: usesProvider && Boolean(provider),
   })
   const modelSuggestions = usesProvider
-    ? modelSuggestionsForProvider(selectedProvider, openRouterModels.data ?? [])
-    : acpAgentModelSuggestions(runtime)
+    ? modelSuggestionsForProvider(selectedProvider, providerModels.data ?? [])
+    : acpAgentModelSuggestions(agentSettings, runtime)
+  const effortOptions = modelReasoningEffortOptions(agentSettings, runtime, selectedModel, modelSuggestions)
+  const effort = effectiveReasoningEffort(effortOverride ?? model.defaultEffort, effortOptions)
+
+  useEffect(() => {
+    if (effortOverride != null && !supportedReasoningEffort(effortOverride, effortOptions)) {
+      setEffortOverride(null)
+    }
+  }, [effortOptions, effortOverride])
 
   const composer = composerConfig()
 
@@ -70,7 +82,7 @@ export function useNewThreadControls() {
     selectRuntime,
     model: selectedModel,
     modelSuggestions,
-    modelsLoading: openRouterModels.isLoading,
+    modelsLoading: providerModels.isLoading,
     usesProvider,
     providers: usesProvider ? runtimeProviders.map((p) => ({ value: p.id, label: p.label })) : undefined,
     provider: usesProvider ? provider : undefined,
@@ -81,12 +93,19 @@ export function useNewThreadControls() {
     },
     setModel: (next: string) => setModelOverride(next),
     effort,
-    effortOptions: acpReasoningEffortOptions(agentSettings, runtime),
+    effortOptions,
     setEffort: (next: string) => setEffortOverride(next === '' ? null : next),
     sessionConfig: (extra: { directory: string; worktree: boolean }, title?: string): CreateSessionInput =>
       createSessionInput(
         agentSettings,
-        { agent: runtime, ...extra, providerOverride, modelOverride, effortOverride },
+        {
+          agent: runtime,
+          ...extra,
+          providerOverride,
+          modelOverride,
+          effortOverride:
+            effortOverride ?? inheritedReasoningEffortOverride(model.defaultEffort, effortOptions),
+        },
         title,
       ),
   }

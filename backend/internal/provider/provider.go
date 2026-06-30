@@ -81,10 +81,10 @@ func NormalizeReasoningEffort(value string) (string, error) {
 	switch value {
 	case "", "none":
 		return "", nil
-	case "minimal", "low", "medium", "high", "xhigh":
+	case "minimal", "low", "medium", "high", "xhigh", "max":
 		return value, nil
 	default:
-		return "", fmt.Errorf("unknown reasoning effort %q; valid values are none, minimal, low, medium, high, xhigh", value)
+		return "", fmt.Errorf("unknown reasoning effort %q; valid values are none, minimal, low, medium, high, xhigh, max", value)
 	}
 }
 

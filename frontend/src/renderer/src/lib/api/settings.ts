@@ -78,18 +78,23 @@ export function cloneAgentSettings(settings: AgentSettings): AgentSettings {
       ]),
     ),
     agents: [...(settings.agents ?? [])],
-    acp_options: Object.fromEntries(
-      Object.entries(settings.acp_options ?? {}).map(([agent, value]) => [
-        agent,
-        {
-          ...value,
-          capabilities: value.capabilities ? { ...value.capabilities } : undefined,
-          reasoning_efforts: [...value.reasoning_efforts],
-          model_provider_ids: [...(value.model_provider_ids ?? [])],
-          model_providers: [...(value.model_providers ?? [])],
-        },
-      ]),
-    ),
+	    acp_options: Object.fromEntries(
+	      Object.entries(settings.acp_options ?? {}).map(([agent, value]) => [
+	        agent,
+	        {
+	          ...value,
+	          capabilities: value.capabilities ? { ...value.capabilities } : undefined,
+	          reasoning_efforts: [...value.reasoning_efforts],
+	          models: value.models?.map((model) => ({
+	            ...model,
+	            reasoning_efforts: model.reasoning_efforts ? [...model.reasoning_efforts] : model.reasoning_efforts,
+	            pricing: model.pricing ? { ...model.pricing } : undefined,
+	          })),
+	          model_provider_ids: [...(value.model_provider_ids ?? [])],
+	          model_providers: [...(value.model_providers ?? [])],
+	        },
+	      ]),
+	    ),
   }
 }
 
