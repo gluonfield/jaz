@@ -3,6 +3,7 @@ package storage
 import (
 	"time"
 
+	"github.com/wins/jaz/backend/internal/goal"
 	"github.com/wins/jaz/backend/internal/media"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 )
@@ -137,6 +138,7 @@ type Session struct {
 	ModelProvider   string          `json:"model_provider,omitempty"`
 	Model           string          `json:"model,omitempty"`
 	ReasoningEffort string          `json:"reasoning_effort,omitempty"`
+	Goal            *goal.State     `json:"goal,omitempty"`
 	Usage           Usage           `json:"usage,omitempty"`
 	QueuedMessages  []QueuedMessage `json:"queued_messages,omitempty"`
 	PendingSteer    *QueuedMessage  `json:"pending_steer_message,omitempty"`

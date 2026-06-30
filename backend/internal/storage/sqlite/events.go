@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/eventdb"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/threaddb"
 )
@@ -54,6 +55,17 @@ func (s *Store) AppendSessionEvents(id string, events ...sessionevents.Event) er
 		return nil
 	}
 	now := time.Now().UTC()
+	goalProjection, err := storage.GoalProjectionFromEvents(events...)
+	if err != nil {
+		return err
+	}
+	goalRaw := ""
+	if goalProjection.Seen {
+		goalRaw, err = storage.MarshalGoalState(goalProjection.State)
+		if err != nil {
+			return err
+		}
+	}
 	s.mu.Lock()
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
@@ -85,7 +97,12 @@ func (s *Store) AppendSessionEvents(id string, events ...sessionevents.Event) er
 			return err
 		}
 	}
-	if err := threadq.TouchThread(context.Background(), threaddb.TouchThreadParams{UpdatedAtMs: timeToMs(now), ID: id}); err != nil {
+	if goalProjection.Seen {
+		err = threadq.UpdateGoal(context.Background(), threaddb.UpdateGoalParams{Goal: goalRaw, UpdatedAtMs: timeToMs(now), ID: id})
+	} else {
+		err = threadq.TouchThread(context.Background(), threaddb.TouchThreadParams{UpdatedAtMs: timeToMs(now), ID: id})
+	}
+	if err != nil {
 		s.mu.Unlock()
 		return err
 	}

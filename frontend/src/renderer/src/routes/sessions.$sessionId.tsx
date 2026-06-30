@@ -410,6 +410,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
           liveUserMessage(live, (messages.at(-1)?.seq ?? 0) + 1_000_000),
         ]
       : messages
+  const goalStatusVisible = goalAvailable || Boolean(goal) || Boolean(live?.goalRequested)
 
   return (
     <FileReaderLinkProvider onOpen={openFile}>
@@ -554,7 +555,14 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                 />
               ) : (
                 <>
-                  {goalAvailable ? <GoalStatusBar goal={goal} starting={Boolean(live?.goalRequested) && !goalActive} /> : null}
+                  {goalStatusVisible ? (
+                    <GoalStatusBar
+                      goal={goal}
+                      starting={Boolean(live?.goalRequested) && !goal}
+                      running={sessionRunning}
+                      usage={session.usage}
+                    />
+                  ) : null}
                   <Composer
                     streaming={sessionRunning}
                     planAvailable={planAvailable}

@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/goal"
 	"github.com/wins/jaz/backend/internal/messagepayload"
 )
 
@@ -16,6 +17,7 @@ const (
 	TypeSideChatMessage  = "side_chat_message"
 	TypeProviderSubagent = "provider_subagent"
 	TypeGoalUpdate       = "goal_update"
+	TypeGoalClear        = "goal_clear"
 	TypeACPMessage       = "acp_message"
 	TypeACPThought       = "acp_thought"
 )
@@ -160,6 +162,9 @@ func (e *Event) NormalizePayload() {
 			e.Goal = &goal
 			e.Content = ""
 		}
+	case TypeGoalClear:
+		e.Goal = nil
+		e.Content = ""
 	}
 }
 
@@ -200,6 +205,8 @@ func (e Event) StorageContent() string {
 		if data, err := json.Marshal(e.Goal); err == nil {
 			return string(data)
 		}
+	case TypeGoalClear:
+		return ""
 	}
 	return e.Content
 }
@@ -275,26 +282,16 @@ type PlanEvent struct {
 }
 
 const (
-	GoalStatusRequested     = "requested"
-	GoalStatusActive        = "active"
-	GoalStatusPaused        = "paused"
-	GoalStatusBlocked       = "blocked"
-	GoalStatusUsageLimited  = "usageLimited"
-	GoalStatusBudgetLimited = "budgetLimited"
-	GoalStatusComplete      = "complete"
+	GoalStatusRequested     = goal.StatusRequested
+	GoalStatusActive        = goal.StatusActive
+	GoalStatusPaused        = goal.StatusPaused
+	GoalStatusBlocked       = goal.StatusBlocked
+	GoalStatusUsageLimited  = goal.StatusUsageLimited
+	GoalStatusBudgetLimited = goal.StatusBudgetLimited
+	GoalStatusComplete      = goal.StatusComplete
 )
 
-type GoalEvent struct {
-	ThreadID        string    `json:"thread_id,omitempty"`
-	Objective       string    `json:"objective,omitempty"`
-	Status          string    `json:"status"`
-	TokenBudget     *int64    `json:"token_budget,omitempty"`
-	TokensUsed      int64     `json:"tokens_used,omitempty"`
-	RemainingTokens *int64    `json:"remaining_tokens,omitempty"`
-	TimeUsedSeconds int64     `json:"time_used_seconds,omitempty"`
-	CreatedAt       time.Time `json:"created_at,omitzero"`
-	UpdatedAt       time.Time `json:"updated_at,omitzero"`
-}
+type GoalEvent = goal.State
 
 type ACPModeState struct {
 	CurrentModeID  string    `json:"current_mode_id,omitempty"`

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/storage"
 )
 
 func (s *Store) LoadSessionEvents(id string) ([]sessionevents.Event, error) {
@@ -75,9 +76,21 @@ func (s *Store) AppendSessionEvents(id string, events ...sessionevents.Event) er
 			nextSeq++
 		}
 	}
+	goalProjection, err := storage.GoalProjectionFromEvents(events...)
+	if err != nil {
+		return err
+	}
 	path := filepath.Join(s.sessionDir(id), "events.jsonl")
 	if err := appendSessionEventsJSONL(path, events); err != nil {
 		return err
+	}
+	if goalProjection.Seen {
+		session, err := s.loadSessionByID(id)
+		if err != nil {
+			return err
+		}
+		session.Goal = goalProjection.State
+		return s.saveSession(session)
 	}
 	s.touchSession(id)
 	return nil
