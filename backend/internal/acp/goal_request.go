@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/wins/jaz/backend/internal/goal"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 )
 
@@ -24,8 +25,10 @@ func (m *Manager) recordGoalRequest(job *jobState, requested bool, objective str
 	}
 	job.setTurnGoalRequested()
 	m.publishGoalUpdate(job, sessionevents.GoalEvent{
-		Objective: strings.TrimSpace(objective),
-		Status:    sessionevents.GoalStatusRequested,
+		Identity: goal.Identity{
+			Objective: strings.TrimSpace(objective),
+			Status:    sessionevents.GoalStatusRequested,
+		},
 	})
 }
 

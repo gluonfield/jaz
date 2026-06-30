@@ -241,6 +241,9 @@ func transcriptCoalesceKey(event Event) string {
 	if event.Type == TypeGoalUpdate && event.Goal != nil {
 		return "goal_update:" + event.SessionID
 	}
+	if event.Type == TypeGoalClear {
+		return "goal_update:" + event.SessionID
+	}
 	if event.ACP != nil && event.ACP.ID != "" && event.ACP.Plan != nil {
 		return "acp_plan:" + event.ACP.ID
 	}
