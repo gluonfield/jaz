@@ -8,8 +8,8 @@ import (
 func TestRenderListsEverySource(t *testing.T) {
 	got, err := Render(Data{
 		Sources: []Source{
-			{Path: "sources/gmail/a/messages/2026/06/28/x.md", Content: "hello"},
-			{Path: "sources/telegram/b/2026/06/28.md", Truncated: true, Content: "world"},
+			{Path: "sources/email/gmail/a/messages/2026/06/28/x.md", Content: "hello"},
+			{Path: "sources/chat/telegram/b/2026/06/28.md", Truncated: true, Content: "world"},
 		},
 	})
 	if err != nil {
@@ -17,10 +17,10 @@ func TestRenderListsEverySource(t *testing.T) {
 	}
 	got = strings.ReplaceAll(got, "\r\n", "\n")
 	for _, want := range []string{
-		"- `sources/gmail/a/messages/2026/06/28/x.md`",
-		"- `sources/telegram/b/2026/06/28.md` (truncated below; read this path for the full text)",
-		"### sources/gmail/a/messages/2026/06/28/x.md",
-		"### sources/telegram/b/2026/06/28.md",
+		"- `sources/email/gmail/a/messages/2026/06/28/x.md`",
+		"- `sources/chat/telegram/b/2026/06/28.md` (truncated below; read this path for the full text)",
+		"### sources/email/gmail/a/messages/2026/06/28/x.md",
+		"### sources/chat/telegram/b/2026/06/28.md",
 		"world",
 	} {
 		if !strings.Contains(got, want) {

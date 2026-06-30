@@ -3,6 +3,8 @@ package memoryservice
 import (
 	"context"
 	"errors"
+	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/gluonfield/jazmem/pkg/jazmem"
@@ -115,7 +117,11 @@ func (m gatedJazmem) GetPage(ctx context.Context, path string) (jazmem.Page, err
 	if err := m.ready(); err != nil {
 		return jazmem.Page{}, err
 	}
-	return m.service.Memory.GetPage(ctx, path)
+	pagePath, err := normalizeMemoryPagePath(m.service.Memory.Root(), path)
+	if err != nil {
+		return jazmem.Page{}, err
+	}
+	return m.service.Memory.GetPage(ctx, pagePath)
 }
 
 func (m gatedJazmem) ready() error {
@@ -123,6 +129,50 @@ func (m gatedJazmem) ready() error {
 		return errors.New("memory is disabled in settings")
 	}
 	return nil
+}
+
+func normalizeMemoryPagePath(root, input string) (string, error) {
+	pagePath := strings.TrimSpace(input)
+	if pagePath == "" {
+		return "", nil
+	}
+	if filepath.IsAbs(pagePath) {
+		rel, ok := relativeMemoryPath(root, pagePath)
+		if !ok {
+			return "", fmt.Errorf("memory page path %q is outside memory root", pagePath)
+		}
+		if filepath.Ext(rel) != ".md" {
+			return "", fmt.Errorf("memory page path %q is not a markdown page", pagePath)
+		}
+		pagePath = rel
+	}
+	pagePath = filepath.ToSlash(pagePath)
+	pagePath = strings.TrimPrefix(pagePath, "./")
+	pagePath = strings.TrimSuffix(pagePath, ".md")
+	return strings.Trim(pagePath, "/"), nil
+}
+
+func relativeMemoryPath(root, pagePath string) (string, bool) {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return "", false
+	}
+	cleanRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", false
+	}
+	cleanPath, err := filepath.Abs(pagePath)
+	if err != nil {
+		return "", false
+	}
+	rel, err := filepath.Rel(cleanRoot, cleanPath)
+	if err != nil || rel == "." || rel == "" {
+		return "", false
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return rel, true
 }
 
 func textResult(texts ...string) (*mcp.CallToolResult, any, error) {

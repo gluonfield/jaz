@@ -15,6 +15,7 @@ type fakeMCPService struct {
 	spawned SpawnRequest
 	job     Job
 	list    []Job
+	agents  []string
 }
 
 func (s *fakeMCPService) Spawn(_ context.Context, req SpawnRequest) (SpawnResult, error) {
@@ -43,6 +44,9 @@ func (s *fakeMCPService) List() []Job {
 }
 
 func (s *fakeMCPService) Agents() []string {
+	if s.agents != nil {
+		return append([]string(nil), s.agents...)
+	}
 	return []string{AgentCodex, AgentJaz}
 }
 
@@ -90,6 +94,13 @@ func TestMCPAvailableAgentsFiltersJaz(t *testing.T) {
 	agents := NewMCPTools(&fakeMCPService{}).availableAgents()
 	if len(agents) != 1 || agents[0] != AgentCodex {
 		t.Fatalf("agents = %#v", agents)
+	}
+}
+
+func TestMCPAvailableAgentsDoesNotInventFallbacks(t *testing.T) {
+	agents := NewMCPTools(&fakeMCPService{agents: []string{}}).availableAgents()
+	if len(agents) != 0 {
+		t.Fatalf("agents = %#v, want none", agents)
 	}
 }
 

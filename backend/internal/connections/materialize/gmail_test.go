@@ -38,7 +38,7 @@ func TestGmailMaterializerCreatesMessageSourceArtifact(t *testing.T) {
 		t.Fatal(err)
 	}
 	artifact := projectOne(t, GmailMaterializer{}, record)
-	if !strings.HasPrefix(artifact.PathHint, "sources/gmail/augustinas-example-com/messages/2026/06/25/msg-1-") || !strings.HasSuffix(artifact.PathHint, ".md") || artifact.Kind != "email_message" || artifact.MediaType != "text/markdown" {
+	if !strings.HasPrefix(artifact.PathHint, "sources/email/gmail/augustinas-example-com/messages/2026/06/25/msg-1-") || !strings.HasSuffix(artifact.PathHint, ".md") || artifact.Kind != "email_message" || artifact.MediaType != "text/markdown" {
 		t.Fatalf("artifact = %#v", artifact)
 	}
 	body := string(artifact.Body)

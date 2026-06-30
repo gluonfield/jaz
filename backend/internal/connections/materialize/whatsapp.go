@@ -3,11 +3,11 @@ package materialize
 import (
 	"context"
 	"encoding/json"
-	"path"
 	"sort"
 	"strings"
 
 	whatsappconnector "github.com/wins/jaz/backend/internal/connectors/whatsapp"
+	"github.com/wins/jaz/backend/internal/sourcepaths"
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
@@ -47,7 +47,7 @@ func whatsappContactTargets(req integrations.MaterializeRequest) ([]integrations
 	return []integrations.SourceTarget{{
 		Provider:  "whatsapp",
 		Kind:      "contact_list",
-		PathHint:  path.Join("sources", "whatsapp", account, "contacts.md"),
+		PathHint:  sourcepaths.ChatContactPath("whatsapp", account),
 		MediaType: "text/markdown",
 		Replay:    sourceReplay(account, integrations.ReplayScope{Domain: integrations.RecordDomainContacts}),
 	}}, nil
@@ -69,7 +69,7 @@ func whatsappMessageTargets(req integrations.MaterializeRequest) ([]integrations
 	return []integrations.SourceTarget{{
 		Provider:    "whatsapp",
 		Kind:        "chat_day",
-		PathHint:    path.Join("sources", "whatsapp", account, "conversations", integrations.SourceSlug(conversation), utc.Format("2006"), utc.Format("01"), utc.Format("02")+".md"),
+		PathHint:    sourcepaths.ChatConversationDayPath("whatsapp", account, conversation, utc),
 		MediaType:   "text/markdown",
 		Key:         sourceKey(conversation, day),
 		Replay:      sourceReplay(account, integrations.ReplayScope{Domain: integrations.RecordDomainMessages, Day: day}, integrations.ReplayScope{Domain: integrations.RecordDomainContacts}),

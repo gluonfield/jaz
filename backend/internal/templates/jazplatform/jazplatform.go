@@ -1,6 +1,5 @@
-// Package jazplatform renders the jaz extension shared by every agent on the
-// platform — Jaz and external ACP agents (claude, codex, grok)
-// alike. Every injected surface is named explicitly in jazplatform.tmpl:
+// Package jazplatform renders the Jaz extension shared by every agent on the
+// platform. Every injected surface is named explicitly in jazplatform.tmpl:
 // runtime context, AGENTS.md, SOUL.md, memory horizons, daily pages, and
 // skills.
 package jazplatform
@@ -10,6 +9,8 @@ import (
 	_ "embed"
 	"strings"
 	"text/template"
+
+	"github.com/wins/jaz/backend/internal/connections"
 )
 
 //go:embed jazplatform.tmpl
@@ -30,8 +31,19 @@ type MemoryData struct {
 	Today     string
 }
 
+type RuntimePaths struct {
+	Root             string
+	AgentsPath       string
+	SoulPath         string
+	SkillsPath       string
+	SessionsPath     string
+	DefaultWorkspace string
+	WorktreesPath    string
+}
+
 type Data struct {
 	Agents          string
+	AgentNames      []string
 	Date            string
 	Time            string
 	Timezone        string
@@ -39,9 +51,11 @@ type Data struct {
 	Human           string
 	Cwd             string
 	Device          string
+	RuntimePaths    RuntimePaths
 	Soul            string
 	ArtifactSurface string
 	Memory          *MemoryData
+	Connections     []connections.AgentConnection
 	Skills          string
 }
 
@@ -51,8 +65,25 @@ func Render(data Data) (string, error) {
 	if data.ArtifactSurface != "widget" {
 		data.ArtifactSurface = "chat"
 	}
+	return renderTemplate("jazplatform", data)
+}
+
+func RenderConnections(connections []connections.AgentConnection) (string, error) {
+	return renderPromptModule("connections", connections)
+}
+
+func RenderMemory(memory *MemoryData) (string, error) {
+	return renderPromptModule("memory", memory)
+}
+
+func renderPromptModule(name string, data any) (string, error) {
+	out, err := renderTemplate(name, data)
+	return strings.TrimSpace(out), err
+}
+
+func renderTemplate(name string, data any) (string, error) {
 	var out bytes.Buffer
-	err := tmpl.Execute(&out, data)
+	err := tmpl.ExecuteTemplate(&out, name, data)
 	return out.String(), err
 }
 

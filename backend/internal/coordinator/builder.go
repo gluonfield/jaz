@@ -5,19 +5,43 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/connections"
+	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/skills"
+	"github.com/wins/jaz/backend/internal/templates/jazplatform"
 	"github.com/wins/jaz/backend/internal/visualize"
 )
+
+type ConnectionSource interface {
+	AgentConnections(context.Context) ([]connections.AgentConnection, error)
+}
+
+type AgentNameSource interface {
+	EnabledAgentNames() ([]string, error)
+}
 
 type Builder struct {
 	root          string
 	workspace     string
 	memoryRoot    string
 	memoryEnabled func() bool
+	connections   ConnectionSource
+	agents        AgentNameSource
 }
 
 func NewBuilder(root, workspace, memoryRoot string, memoryEnabled func() bool) *Builder {
 	return &Builder{root: root, workspace: workspace, memoryRoot: memoryRoot, memoryEnabled: memoryEnabled}
+}
+
+func (b *Builder) WithConnections(connections ConnectionSource) *Builder {
+	b.connections = connections
+	return b
+}
+
+func (b *Builder) WithAgents(agents AgentNameSource) *Builder {
+	b.agents = agents
+	return b
 }
 
 func (b *Builder) SystemPrompt() (string, error) {
@@ -45,11 +69,11 @@ func (b *Builder) SkillsPrompt() (string, error) {
 	return skillsPrompt, err
 }
 
-// ACPPrompt builds the prompt extension delivered to ACP agent sessions
-// (codex, claude, grok). Unlike the coordinator prompt it carries no Jaz
-// identity — agents keep their own system prompt and this is appended to it:
-// runtime context, Jaztools policy, the user's standing rules (AGENTS.md), the
-// jazmem memory horizons, and the skills catalog.
+// ACPPrompt builds the prompt extension delivered to ACP agent sessions. Unlike
+// the coordinator prompt it carries no Jaz identity — agents keep their own
+// system prompt and this is appended to it: runtime context, Jaztools policy,
+// the user's standing rules (AGENTS.md), connected-account paths, the jazmem
+// memory horizons, and the skills catalog.
 func (b *Builder) ACPPrompt(cwd string) (string, error) {
 	return b.ACPPromptForArtifactSurface(cwd, string(visualize.SurfaceChat))
 }
@@ -71,11 +95,39 @@ func (b *Builder) ACPPromptForContext(ctx context.Context, cwd, surface string) 
 		return "", err
 	}
 	now := time.Now()
-	memoryRoot := b.memoryRoot
-	if b.memoryEnabled != nil && !b.memoryEnabled() {
-		memoryRoot = ""
+	memoryRoot := b.memoryRootForPrompt()
+	connections, err := b.agentConnections(ctx, memoryRoot)
+	if err != nil {
+		return "", err
 	}
-	return platformPrompt(ctx, b.root, cwd, memoryRoot, catalog.Prompt(), visualize.NormalizeSurface(surface), now)
+	agents := b.agentNames()
+	return platformPrompt(ctx, b.root, cwd, b.runtimeWorkspace(), memoryRoot, catalog.Prompt(), connections, agents, visualize.NormalizeSurface(surface), now)
+}
+
+func (b *Builder) PromptModulesForContext(ctx context.Context, opts acp.PromptModuleOptions) (promptmodule.Modules, error) {
+	now := time.Now()
+	memoryRoot := b.memoryRootForPrompt()
+	memory, err := memoryData(memoryRoot, now)
+	if err != nil {
+		return nil, err
+	}
+	out := promptmodule.Modules{}
+	if opts.Connections {
+		connections, err := b.agentConnections(ctx, memoryRoot)
+		if err != nil {
+			return nil, err
+		}
+		prompt, err := jazplatform.RenderConnections(connections)
+		if err != nil {
+			return nil, err
+		}
+		out = out.Append(prompt)
+	}
+	prompt, err := jazplatform.RenderMemory(memory)
+	if err != nil {
+		return nil, err
+	}
+	return out.Append(prompt), nil
 }
 
 func (b *Builder) build(ctx context.Context, workspace string, surface visualize.Surface) (system, skillsPrompt string, err error) {
@@ -87,10 +139,46 @@ func (b *Builder) build(ctx context.Context, workspace string, surface visualize
 		return "", "", err
 	}
 	skillsPrompt = catalog.Prompt()
-	memoryRoot := b.memoryRoot
-	if b.memoryEnabled != nil && !b.memoryEnabled() {
-		memoryRoot = ""
+	now := time.Now()
+	memoryRoot := b.memoryRootForPrompt()
+	connections, err := b.agentConnections(ctx, memoryRoot)
+	if err != nil {
+		return "", "", err
 	}
-	system, err = prompt(ctx, b.root, workspace, memoryRoot, skillsPrompt, surface, time.Now())
+	agents := b.agentNames()
+	system, err = prompt(ctx, b.root, workspace, memoryRoot, skillsPrompt, connections, agents, surface, now)
 	return system, skillsPrompt, err
+}
+
+func (b *Builder) memoryRootForPrompt() string {
+	if b.memoryEnabled != nil && !b.memoryEnabled() {
+		return ""
+	}
+	return b.memoryRoot
+}
+
+func (b *Builder) runtimeWorkspace() string {
+	workspace := strings.TrimSpace(b.workspace)
+	if workspace == "" {
+		return defaultWorkspace(b.root)
+	}
+	return workspace
+}
+
+func (b *Builder) agentConnections(ctx context.Context, memoryRoot string) ([]connections.AgentConnection, error) {
+	if b.connections == nil || strings.TrimSpace(memoryRoot) == "" {
+		return nil, nil
+	}
+	return b.connections.AgentConnections(ctx)
+}
+
+func (b *Builder) agentNames() []string {
+	if b.agents == nil {
+		return nil
+	}
+	names, err := b.agents.EnabledAgentNames()
+	if err != nil {
+		return nil
+	}
+	return names
 }

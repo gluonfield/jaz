@@ -24,7 +24,7 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 	}
 	write(t, skillDir, "SKILL.md", "---\nname: deploy\ndescription: ship & verify\n---\nsteps")
 
-	builder := NewBuilder(root, filepath.Join(root, "workspaces", "default"), memoryRoot, func() bool { return true })
+	builder := NewBuilder(root, filepath.Join(root, "workspaces", "default"), memoryRoot, func() bool { return true }).WithAgents(staticAgentNames{names: []string{"codex", "claude"}})
 	system, err := builder.SystemPrompt()
 	if err != nil {
 		t.Fatal(err)
@@ -38,7 +38,7 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		"## AGENTS.md\n\nalways cite sources",
 		"## SOUL.md\n\nbe direct",
 		"## Agent delegation",
-		"Do not use an agent-local multi-agent tool",
+		"configured ACP agents: `claude`, `codex`",
 		"## Artifacts and visualisation",
 		"Few-shot trace:",
 		"## memory",
@@ -91,7 +91,7 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 	if strings.Contains(acp, "You are Jaz") {
 		t.Fatalf("acp extension must carry no coordinator identity:\n%s", acp)
 	}
-	for _, want := range []string{"## Agent delegation", "`agent_spawn`", "Do not use an agent-local multi-agent tool"} {
+	for _, want := range []string{"## Agent delegation", "`agent_spawn`", "configured ACP agents: `claude`, `codex`"} {
 		if !strings.Contains(acp, want) {
 			t.Fatalf("acp extension missing delegation guidance %q:\n%s", want, acp)
 		}
@@ -100,7 +100,7 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		!strings.Contains(acp, "any reusable code snippet over 20 lines") ||
 		!strings.Contains(acp, "plain lists, plain tables, enumerated content") ||
 		!strings.Contains(acp, "visualise_show_widget") ||
-		!strings.Contains(acp, "Never pass raw JSX, TSX, or an unbundled app to the output tool") {
+		!strings.Contains(acp, "Never pass raw JSX, TSX, or an unbundled app to the visualise tool") {
 		t.Fatalf("acp extension must carry the artifact policy:\n%s", acp)
 	}
 	for _, reject := range []string{"`visualize:", "visualize_", "`create_file`", "file-artifact tool", "coding-agent surface provides", "Claude-compatible"} {
@@ -132,14 +132,14 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 			t.Fatalf("widget ACP extension missing shared section %q:\n%s", want, widgetACP)
 		}
 	}
-	for _, reject := range []string{"visualise_show_widget", "visualise_publish_widget", "## Board Widget Runtime"} {
+	for _, reject := range []string{"visualise_show_widget", "## Board Widget Runtime"} {
 		if strings.Contains(widgetACP, reject) {
 			t.Fatalf("widget ACP base extension must leave output details to the loop widget extension; found %q:\n%s", reject, widgetACP)
 		}
 	}
 
 	// The master switch strips memory from both layers identically.
-	disabledBuilder := NewBuilder(root, "", memoryRoot, func() bool { return false })
+	disabledBuilder := NewBuilder(root, "", memoryRoot, func() bool { return false }).WithAgents(staticAgentNames{names: []string{"codex", "claude"}})
 	disabledSystem, err := disabledBuilder.SystemPrompt()
 	if err != nil {
 		t.Fatal(err)

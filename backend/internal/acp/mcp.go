@@ -38,11 +38,14 @@ func NewMCPTools(service MCPService) *MCPTools {
 
 func (t *MCPTools) AddTo(server *mcp.Server) {
 	agentNames := t.availableAgents()
-	agents := strings.Join(agentNames, ", ")
+	description := "Create an idle Jaz ACP agent session. Send work with agent_send."
+	if len(agentNames) > 0 {
+		description = "Create an idle Jaz ACP agent session. Use acp_agent or agent_name to choose one of: " + strings.Join(agentNames, ", ") + ". Empty uses the default selectable agent. Send work with agent_send."
+	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        MCPToolAgentSpawn,
 		Title:       "Spawn ACP agent",
-		Description: "Create an idle Jaz ACP agent session. Use acp_agent or agent_name to choose one of: " + agents + ". Empty uses the default selectable agent. Send work with agent_send.",
+		Description: description,
 		InputSchema: spawnInputSchema(agentNames),
 	}, t.Spawn)
 	mcp.AddTool(server, &mcp.Tool{
@@ -73,11 +76,7 @@ func (t *MCPTools) AddTo(server *mcp.Server) {
 }
 
 func (t *MCPTools) availableAgents() []string {
-	agents := append([]string(nil), t.Service.Agents()...)
-	if len(agents) == 0 {
-		agents = []string{AgentCodex, AgentClaude, AgentGrok, AgentOpenCode}
-	}
-	return SelectableAgentNames(agents)
+	return SelectableAgentNames(t.Service.Agents())
 }
 
 type MCPSpawnInput struct {
@@ -182,7 +181,15 @@ func (t *MCPTools) List(context.Context, *mcp.CallToolRequest, MCPListInput) (*m
 
 func spawnInputSchema(agents []string) map[string]any {
 	agentList := strings.Join(agents, ", ")
-	agentDescription := "Configured Jaz ACP agent name. Valid configured agents: " + agentList + ". Empty uses the default selectable agent."
+	agentDescription := "Configured Jaz ACP agent name."
+	agentNameDescription := "Alias for acp_agent. Use this when the caller expects an agent_name field."
+	if len(agents) > 0 {
+		agentDescription += " Valid configured agents: " + agentList + ". Empty uses the default selectable agent."
+		agentNameDescription += " Valid configured agents: " + agentList + "."
+	} else {
+		agentDescription += " No ACP agents are currently configured."
+		agentNameDescription += " No ACP agents are currently configured."
+	}
 	agentProperty := map[string]any{
 		"type":        "string",
 		"description": agentDescription,
@@ -195,7 +202,7 @@ func spawnInputSchema(agents []string) map[string]any {
 			"acp_agent": agentProperty,
 			"agent_name": map[string]any{
 				"type":        "string",
-				"description": "Alias for acp_agent. Use this when the caller expects an agent_name field. Valid configured agents: " + agentList + ".",
+				"description": agentNameDescription,
 				"enum":        agents,
 			},
 			"slug": map[string]any{

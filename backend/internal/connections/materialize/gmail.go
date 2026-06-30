@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path"
 	"strings"
 	"time"
 
 	gmailconnector "github.com/wins/jaz/backend/internal/connectors/gmail"
 	"github.com/wins/jaz/backend/internal/emailclean"
+	"github.com/wins/jaz/backend/internal/sourcepaths"
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
@@ -37,7 +37,7 @@ func (GmailMaterializer) SourceTargets(_ context.Context, req integrations.Mater
 	return []integrations.SourceTarget{{
 		Provider:  gmailconnector.ProviderID,
 		Kind:      "email_message",
-		PathHint:  path.Join("sources", gmailconnector.ProviderID, account, "messages", utc.Format("2006"), utc.Format("01"), utc.Format("02"), integrations.SourceSlug(messageID)+".md"),
+		PathHint:  sourcepaths.EmailMessagePath(gmailconnector.ProviderID, account, utc, messageID),
 		MediaType: "text/markdown",
 		Key:       sourceKey(messageID, day),
 		Replay:    sourceReplay(account, integrations.ReplayScope{Domain: integrations.RecordDomainMessages, Day: day}),

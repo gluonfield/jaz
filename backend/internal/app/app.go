@@ -15,6 +15,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acpadapter"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/browsertask"
+	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/jazagent"
 	"github.com/wins/jaz/backend/internal/loops"
@@ -191,8 +192,8 @@ func NewMemory(cfg Config, layout runtimefiles.Layout) (*jazmem.Memory, error) {
 	return jazmem.Open(jazmem.Config{Root: memoryRoot, DBPath: dbPath, DisableProviderDreams: true})
 }
 
-func NewPromptBuilder(store *sqlitestore.Store, workspace Workspace, memory *memoryservice.Service) *coordinator.Builder {
-	return coordinator.NewBuilder(store.RootDir(), string(workspace), memory.Root(), memory.Enabled)
+func NewPromptBuilder(store *sqlitestore.Store, workspace Workspace, memory *memoryservice.Service, connections *connections.Service, agents acp.AgentConfigSource) *coordinator.Builder {
+	return coordinator.NewBuilder(store.RootDir(), string(workspace), memory.Root(), memory.Enabled).WithConnections(connections).WithAgents(agents)
 }
 
 func NewACPAgentCatalog(cfg Config) acp.AgentCatalog {

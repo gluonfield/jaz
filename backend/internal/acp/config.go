@@ -57,10 +57,19 @@ func AgentSupportsCompact(name string) bool {
 	}
 }
 
-// SystemPromptSource supplies the full ACP session extension (AGENTS.md,
-// memory, skills) injected at session creation.
+// SystemPromptSource supplies the full ACP session extension injected at
+// session creation: platform context, prompt files, connections, memory, and
+// skills.
 type SystemPromptSource interface {
 	ACPPromptForContext(ctx context.Context, cwd, surface string) (string, error)
+}
+
+type PromptModuleOptions struct {
+	Connections bool
+}
+
+type SystemPromptModules interface {
+	PromptModulesForContext(context.Context, PromptModuleOptions) (promptmodule.Modules, error)
 }
 
 type SessionPromptExtensionResolver func(storage.Session) (promptmodule.Modules, error)

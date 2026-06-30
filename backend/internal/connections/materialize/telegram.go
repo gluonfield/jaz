@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path"
 	"sort"
 	"strings"
 
+	"github.com/wins/jaz/backend/internal/sourcepaths"
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
@@ -63,7 +63,7 @@ func telegramContactTargets(req integrations.MaterializeRequest) ([]integrations
 	return []integrations.SourceTarget{{
 		Provider:  "telegram",
 		Kind:      "contact_list",
-		PathHint:  path.Join("sources", "telegram", account, "contacts.md"),
+		PathHint:  sourcepaths.ChatContactPath("telegram", account),
 		MediaType: "text/markdown",
 		Replay:    sourceReplay(account, integrations.ReplayScope{Domain: integrations.RecordDomainContacts}),
 	}}, nil
@@ -85,7 +85,7 @@ func telegramMessageTargets(req integrations.MaterializeRequest) ([]integrations
 	return []integrations.SourceTarget{{
 		Provider:    "telegram",
 		Kind:        "chat_day",
-		PathHint:    path.Join("sources", "telegram", account, "conversations", integrations.SourceSlug(conversation), utc.Format("2006"), utc.Format("01"), utc.Format("02")+".md"),
+		PathHint:    sourcepaths.ChatConversationDayPath("telegram", account, conversation, utc),
 		MediaType:   "text/markdown",
 		Key:         sourceKey(conversation, day),
 		Replay:      sourceReplay(account, integrations.ReplayScope{Domain: integrations.RecordDomainMessages, Day: day}, integrations.ReplayScope{Domain: integrations.RecordDomainContacts}),

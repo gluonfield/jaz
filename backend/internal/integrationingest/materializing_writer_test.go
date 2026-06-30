@@ -366,13 +366,13 @@ func TestPlanRecordsQueuesContactDependencyWhenContactChanges(t *testing.T) {
 	dependencyPath := ".state/source-dependencies/chat-contact/telegram/acct/" + integrations.SourceSlug("user:1") + ".dep"
 	var sawContacts, sawDependency, sawChat bool
 	for _, source := range sources {
-		if source.Path == "sources/telegram/acct/contacts.md" {
+		if source.Path == "sources/chat/telegram/acct/contacts.md" {
 			sawContacts = true
 		}
 		if source.Path == dependencyPath {
 			sawDependency = true
 		}
-		if strings.HasPrefix(source.Path, "sources/telegram/acct/conversations/user-1-") && strings.HasSuffix(source.Path, "/2026/06/27.md") {
+		if strings.HasPrefix(source.Path, "sources/chat/telegram/acct/conversations/user-1-") && strings.HasSuffix(source.Path, "/2026/06/27.md") {
 			sawChat = true
 		}
 	}
@@ -501,7 +501,7 @@ func TestSourceProjectionRunnerExpandsContactDependencyInProjectionWorker(t *tes
 		t.Fatalf("processed = %d, want 1", processed)
 	}
 	chatSlug := integrations.SourceSlug("user:1")
-	sourcePath := filepath.Join(sourceRoot, "sources", "telegram", "acct", "conversations", chatSlug, "2026", "06", "27.md")
+	sourcePath := filepath.Join(sourceRoot, "sources", "chat", "telegram", "acct", "conversations", chatSlug, "2026", "06", "27.md")
 	data, err := os.ReadFile(sourcePath)
 	if err != nil {
 		t.Fatal(err)
@@ -512,7 +512,7 @@ func TestSourceProjectionRunnerExpandsContactDependencyInProjectionWorker(t *tes
 			t.Fatalf("source body missing %q:\n%s", want, body)
 		}
 	}
-	if len(memoryPending.sources) != 1 || memoryPending.sources[0].Path != "sources/telegram/acct/conversations/"+chatSlug+"/2026/06/27.md" {
+	if len(memoryPending.sources) != 1 || memoryPending.sources[0].Path != "sources/chat/telegram/acct/conversations/"+chatSlug+"/2026/06/27.md" {
 		t.Fatalf("memory pending sources = %#v", memoryPending.sources)
 	}
 }
@@ -590,7 +590,7 @@ func TestSourceProjectionRunnerExpandsContactDependencyForGroupSpeaker(t *testin
 		t.Fatalf("processed = %d, want 1", processed)
 	}
 	chatSlug := integrations.SourceSlug("chat:100")
-	sourcePath := filepath.Join(sourceRoot, "sources", "telegram", "acct", "conversations", chatSlug, "2026", "06", "27.md")
+	sourcePath := filepath.Join(sourceRoot, "sources", "chat", "telegram", "acct", "conversations", chatSlug, "2026", "06", "27.md")
 	data, err := os.ReadFile(sourcePath)
 	if err != nil {
 		t.Fatal(err)
@@ -601,7 +601,7 @@ func TestSourceProjectionRunnerExpandsContactDependencyForGroupSpeaker(t *testin
 			t.Fatalf("source body missing %q:\n%s", want, body)
 		}
 	}
-	if len(memoryPending.sources) != 1 || memoryPending.sources[0].Path != "sources/telegram/acct/conversations/"+chatSlug+"/2026/06/27.md" {
+	if len(memoryPending.sources) != 1 || memoryPending.sources[0].Path != "sources/chat/telegram/acct/conversations/"+chatSlug+"/2026/06/27.md" {
 		t.Fatalf("memory pending sources = %#v", memoryPending.sources)
 	}
 }

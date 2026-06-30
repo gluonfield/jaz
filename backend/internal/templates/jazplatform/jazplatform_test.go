@@ -3,24 +3,49 @@ package jazplatform
 import (
 	"strings"
 	"testing"
+
+	"github.com/wins/jaz/backend/internal/connections"
 )
 
 func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 	prompt, err := Render(Data{
-		Agents:   "agents",
-		Date:     "June 16, 2026",
-		Time:     "12:34:56 BST",
-		Timezone: "BST (UTC+01:00)",
-		Weekday:  "Tuesday",
-		Human:    "Tuesday, June 16, 2026 at 12:34:56 BST",
-		Cwd:      "/tmp/jaz/workspaces/default/.worktrees/task",
-		Soul:     "soul",
+		Agents:     "agents",
+		AgentNames: []string{"codex", "claude"},
+		Date:       "June 16, 2026",
+		Time:       "12:34:56 BST",
+		Timezone:   "BST (UTC+01:00)",
+		Weekday:    "Tuesday",
+		Human:      "Tuesday, June 16, 2026 at 12:34:56 BST",
+		Cwd:        "/tmp/jaz/workspaces/default/.worktrees/task",
+		RuntimePaths: RuntimePaths{
+			Root:             "/tmp/jaz",
+			AgentsPath:       "/tmp/jaz/AGENTS.md",
+			SoulPath:         "/tmp/jaz/SOUL.md",
+			SkillsPath:       "/tmp/jaz/skills",
+			SessionsPath:     "/tmp/jaz/sessions",
+			DefaultWorkspace: "/tmp/jaz/workspaces/default",
+			WorktreesPath:    "/tmp/jaz/workspaces/default/.worktrees",
+		},
+		Soul: "soul",
 		Memory: &MemoryData{
 			LongTerm:  "- Goal: $5m.",
 			ShortTerm: "- Focus: jaz memory.",
 			TodayName: "daily/2026-06-11.md",
 			Today:     "- shipped templates",
 		},
+		Connections: []connections.AgentConnection{{
+			ProviderName: "Telegram",
+			Account:      "personal (42)",
+			RelevantPaths: []connections.AgentPath{{
+				Path:        "sources/chat/telegram/42/contacts.md",
+				Kind:        connections.AgentPathKindMemoryPage,
+				Explanation: "Clean contact index.",
+			}, {
+				Path:        "sources/chat/telegram/42/conversations/",
+				Kind:        connections.AgentPathKindMemoryPrefix,
+				Explanation: "Materialized chat days.",
+			}},
+		}},
 		Skills: "skills-block",
 	})
 	if err != nil {
@@ -36,10 +61,18 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"Now: Tuesday, June 16, 2026 at 12:34:56 BST",
 		"Current working directory: /tmp/jaz/workspaces/default/.worktrees/task",
 		"Device: Desktop",
+		"## Runtime paths",
+		"/tmp/jaz: runtime state",
+		"/tmp/jaz/workspaces/default/.worktrees: ACP worktrees.",
 		"## AGENTS.md\n\nagents",
 		"## SOUL.md\n\nsoul",
+		"## connections",
+		"Connected accounts and agent-relevant memory paths",
+		"Telegram: personal (42)",
+		"`sources/chat/telegram/42/contacts.md` (memory_page)",
+		"`sources/chat/telegram/42/conversations/` (memory_prefix)",
 		"## Agent delegation",
-		"Do not use an agent-local multi-agent tool",
+		"configured ACP agents: `codex`, `claude`",
 		"## Artifacts and visualisation",
 		"Artifact usage criteria:",
 		"Always call `visualise_read_me` before the first artifact",
@@ -47,7 +80,11 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"## memory",
 		"broad context from the user's past behavior",
 		"start from the user's question",
+		"available memory search tool",
 		"Capture as you go",
+		"Core memory paths:",
+		"`sources/`: cleaned source pages; `sources/email/`, `sources/chat/`, and `sources/agent/` split provider and agent material.",
+		"`dreams/runs/` stores run output and `dreams/review/` stores review queues.",
 		"## memory/LONG_TERM.md\n\n- Goal: $5m.",
 		"## memory/SHORT_TERM.md\n\n- Focus: jaz memory.",
 		"## memory/daily/2026-06-11.md\n\n- shipped templates",
@@ -60,7 +97,7 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"these govern behavior on the Jaz platform",
 		"Launching background work is not delivery",
 		"When Jaztools exposes `agent_spawn`",
-		"Choose the agent with `acp_agent` or `agent_name`",
+		"Select only one of the configured ACP agents",
 		"any reusable code snippet over 20 lines",
 		"standalone text-heavy documents over 20 lines or 1500 characters",
 		"Do not use artifacts for short code answers of 20 lines or fewer",
@@ -74,7 +111,7 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"Stacking millions into bars",
 		"When to visualise:",
 		"prefer an inline artifact over plain text",
-		"Never pass raw JSX, TSX, or an unbundled app to the output tool",
+		"Never pass raw JSX, TSX, or an unbundled app to the visualise tool",
 		"`visualise_read_me` is the visual styling authority",
 	} {
 		if !strings.Contains(prompt, want) {
@@ -82,6 +119,11 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		}
 	}
 	for _, reject := range []string{
+		"## Protected provider data",
+		"integration_oauth_tokens",
+		"token_json",
+		"Do not inspect raw provider archives",
+		"the output tool",
 		"`visualize:",
 		"visualize_",
 		"`create_file`",
@@ -126,6 +168,42 @@ func TestRenderMemoryStates(t *testing.T) {
 	}
 }
 
+func TestRenderStandaloneModules(t *testing.T) {
+	connectionsPrompt, err := RenderConnections([]connections.AgentConnection{{
+		ProviderName: "WhatsApp",
+		Account:      "personal (+447700900123)",
+		RelevantPaths: []connections.AgentPath{{
+			Path:        "sources/chat/whatsapp/447700900123/contacts.md",
+			Kind:        connections.AgentPathKindMemoryPage,
+			Explanation: "Clean contacts.",
+		}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"## connections", "available memory search tool", "WhatsApp: personal", "`sources/chat/whatsapp/447700900123/contacts.md` (memory_page)", "Clean contacts."} {
+		if !strings.Contains(connectionsPrompt, want) {
+			t.Fatalf("connections prompt missing %q:\n%s", want, connectionsPrompt)
+		}
+	}
+	if empty, err := RenderConnections(nil); err != nil || empty != "" {
+		t.Fatalf("empty connections = %q err=%v", empty, err)
+	}
+
+	memory, err := RenderMemory(&MemoryData{Root: "/tmp/jaz/memory", LongTerm: "- long", ShortTerm: "- short"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"## memory", "Core memory paths:", "## memory/LONG_TERM.md\n\n- long", "## memory/SHORT_TERM.md\n\n- short"} {
+		if !strings.Contains(memory, want) {
+			t.Fatalf("memory prompt missing %q:\n%s", want, memory)
+		}
+	}
+	if empty, err := RenderMemory(nil); err != nil || empty != "" {
+		t.Fatalf("empty memory = %q err=%v", empty, err)
+	}
+}
+
 func TestRenderWidgetSurfaceKeepsSharedVisualPolicy(t *testing.T) {
 	data := testData("agents", "soul")
 	data.ArtifactSurface = "widget"
@@ -150,7 +228,6 @@ func TestRenderWidgetSurfaceKeepsSharedVisualPolicy(t *testing.T) {
 	}
 	for _, reject := range []string{
 		"visualise_show_widget",
-		"visualise_publish_widget",
 		"## Board Widget Runtime",
 		"Few-shot trace:",
 	} {
@@ -162,14 +239,24 @@ func TestRenderWidgetSurfaceKeepsSharedVisualPolicy(t *testing.T) {
 
 func testData(agents, soul string) Data {
 	return Data{
-		Agents:   agents,
-		Date:     "June 16, 2026",
-		Time:     "12:34:56 BST",
-		Timezone: "BST (UTC+01:00)",
-		Weekday:  "Tuesday",
-		Human:    "Tuesday, June 16, 2026 at 12:34:56 BST",
-		Cwd:      "/tmp/jaz/workspaces/default",
-		Soul:     soul,
+		Agents:     agents,
+		AgentNames: []string{"codex"},
+		Date:       "June 16, 2026",
+		Time:       "12:34:56 BST",
+		Timezone:   "BST (UTC+01:00)",
+		Weekday:    "Tuesday",
+		Human:      "Tuesday, June 16, 2026 at 12:34:56 BST",
+		Cwd:        "/tmp/jaz/workspaces/default",
+		RuntimePaths: RuntimePaths{
+			Root:             "/tmp/jaz",
+			AgentsPath:       "/tmp/jaz/AGENTS.md",
+			SoulPath:         "/tmp/jaz/SOUL.md",
+			SkillsPath:       "/tmp/jaz/skills",
+			SessionsPath:     "/tmp/jaz/sessions",
+			DefaultWorkspace: "/tmp/jaz/workspaces/default",
+			WorktreesPath:    "/tmp/jaz/workspaces/default/.worktrees",
+		},
+		Soul: soul,
 	}
 }
 

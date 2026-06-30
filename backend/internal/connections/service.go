@@ -93,6 +93,34 @@ func (s *Service) DisconnectAccount(ctx context.Context, id string) error {
 	return nil
 }
 
+func (s *Service) AgentConnections(ctx context.Context) ([]AgentConnection, error) {
+	plugins := s.catalog.ListPlugins()
+	var out []AgentConnection
+	for _, plugin := range plugins {
+		providerID := plugin.Provider.ID
+		if providerID == "" {
+			continue
+		}
+		accounts, err := s.store.ListConnections(ctx, providerID)
+		if err != nil {
+			return nil, err
+		}
+		providerName := plugin.Provider.Name
+		if providerName == "" {
+			providerName = plugin.Name
+		}
+		for _, account := range accounts {
+			out = append(out, AgentConnection{
+				ProviderID:    providerID,
+				ProviderName:  providerName,
+				Account:       accountLabel(account),
+				RelevantPaths: s.relevantPaths(account),
+			})
+		}
+	}
+	return out, nil
+}
+
 func (s *Service) withConnection(ctx context.Context, plugin integrations.Plugin) (integrations.Plugin, error) {
 	if plugin.Provider.ID == "" {
 		return plugin, nil
@@ -108,4 +136,19 @@ func (s *Service) withConnection(ctx context.Context, plugin integrations.Plugin
 	}
 	plugin.Connection = &connection
 	return plugin, nil
+}
+
+func accountLabel(connection integrations.Connection) string {
+	label := connection.AccountRef()
+	accountID := strings.TrimSpace(connection.AccountID)
+	if label == "" {
+		label = accountID
+	}
+	if label == "" {
+		label = strings.TrimSpace(connection.ID)
+	}
+	if accountID != "" && label != accountID {
+		return label + " (" + accountID + ")"
+	}
+	return label
 }

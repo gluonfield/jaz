@@ -46,6 +46,61 @@ func TestServiceReturnsSavedGmailAccounts(t *testing.T) {
 	}
 }
 
+func TestServiceAddsAgentRelevantPaths(t *testing.T) {
+	service := NewService(NewCatalog(), &serviceStore{
+		connections: []integrations.Connection{{
+			ID:        "telegram:personal",
+			Provider:  telegram.ProviderID,
+			AccountID: "42",
+			Alias:     "personal",
+		}, {
+			ID:        "whatsapp:personal",
+			Provider:  whatsapp.ProviderID,
+			AccountID: "+44 7700 900123",
+			Alias:     "personal",
+		}, {
+			ID:        "gmail:personal",
+			Provider:  gmailconnector.ProviderID,
+			AccountID: "augustinas@example.com",
+			Alias:     "personal",
+		}},
+	})
+
+	connections, err := service.AgentConnections(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(connections) != 3 {
+		t.Fatalf("agent connections = %#v", connections)
+	}
+	for _, connection := range connections {
+		switch connection.ProviderID {
+		case telegram.ProviderID:
+			if len(connection.RelevantPaths) != 2 ||
+				connection.RelevantPaths[0].Kind != AgentPathKindMemoryPage ||
+				connection.RelevantPaths[0].Path != "sources/chat/telegram/42/contacts.md" ||
+				connection.RelevantPaths[1].Kind != AgentPathKindMemoryPrefix ||
+				connection.RelevantPaths[1].Path != "sources/chat/telegram/42/conversations/" {
+				t.Fatalf("telegram connection = %#v", connection)
+			}
+		case whatsapp.ProviderID:
+			if len(connection.RelevantPaths) != 2 ||
+				connection.RelevantPaths[0].Kind != AgentPathKindMemoryPage ||
+				connection.RelevantPaths[0].Path != "sources/chat/whatsapp/44-7700-900123/contacts.md" ||
+				connection.RelevantPaths[1].Kind != AgentPathKindMemoryPrefix ||
+				connection.RelevantPaths[1].Path != "sources/chat/whatsapp/44-7700-900123/conversations/" {
+				t.Fatalf("whatsapp connection = %#v", connection)
+			}
+		case gmailconnector.ProviderID:
+			if len(connection.RelevantPaths) != 1 ||
+				connection.RelevantPaths[0].Kind != AgentPathKindMemoryPrefix ||
+				connection.RelevantPaths[0].Path != "sources/email/gmail/augustinas-example-com/messages/" {
+				t.Fatalf("gmail connection = %#v", connection)
+			}
+		}
+	}
+}
+
 func TestServiceLeavesChatPluginConnectabilityInCatalog(t *testing.T) {
 	service := NewService(NewCatalog(), &serviceStore{})
 	plugin, ok, err := service.Plugin(context.Background(), whatsapp.ProviderID)

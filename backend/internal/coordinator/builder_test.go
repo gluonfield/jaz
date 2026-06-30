@@ -2,11 +2,13 @@ package coordinator
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/visualize"
 )
@@ -101,7 +103,7 @@ func TestBuilderACPPrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 	write(t, localSkillDir, "SKILL.md", "---\nname: local\ndescription: cwd skill\n---\nsteps")
-	prompt, err := NewBuilder(root, "", memoryRoot, func() bool { return true }).ACPPrompt(cwd)
+	prompt, err := NewBuilder(root, "", memoryRoot, func() bool { return true }).WithAgents(staticAgentNames{names: []string{"codex"}}).ACPPrompt(cwd)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,14 +114,13 @@ func TestBuilderACPPrompt(t *testing.T) {
 		"Weekday: ",
 		"Now: ",
 		"Current working directory: " + cwd,
+		"## Runtime paths",
+		filepath.Join(root, "workspaces", "default", ".worktrees"),
 		"## AGENTS.md",
 		"save durable facts with jazmem",
 		"## SOUL.md",
 		"be kind",
-		"## Protected provider data",
-		"integration_oauth_tokens",
-		"Jaz ingest root",
-		"gmail_*",
+		"configured ACP agents: `codex`",
 		"## memory/LONG_TERM.md",
 		"- Goal: $5m.",
 		"<name>deploy</name>",
@@ -135,7 +136,7 @@ func TestBuilderACPPrompt(t *testing.T) {
 	if strings.Contains(prompt, "You are Jaz") {
 		t.Fatalf("acp prompt must not contain the coordinator identity:\n%s", prompt)
 	}
-	mobilePrompt, err := NewBuilder(root, "", memoryRoot, func() bool { return true }).ACPPromptForContext(sessioncontext.WithClientPlatform(context.Background(), "mobile"), cwd, string(visualize.SurfaceChat))
+	mobilePrompt, err := NewBuilder(root, "", memoryRoot, func() bool { return true }).WithAgents(staticAgentNames{names: []string{"codex"}}).ACPPromptForContext(sessioncontext.WithClientPlatform(context.Background(), "mobile"), cwd, string(visualize.SurfaceChat))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,4 +183,82 @@ func TestBuilderSkipsMemoryWhenDisabled(t *testing.T) {
 	if strings.Contains(disabled, "## memory/") {
 		t.Fatalf("disabled builder must not inject memory:\n%s", disabled)
 	}
+}
+
+func TestBuilderIncludesConnections(t *testing.T) {
+	builder := NewBuilder(t.TempDir(), "", t.TempDir(), func() bool { return true }).WithConnections(staticConnections{connections: []connections.AgentConnection{{
+		ProviderName: "WhatsApp",
+		Account:      "personal (+447700900123)",
+		RelevantPaths: []connections.AgentPath{{
+			Path:        "sources/chat/whatsapp/447700900123/contacts.md",
+			Kind:        connections.AgentPathKindMemoryPage,
+			Explanation: "Clean contacts.",
+		}},
+	}}})
+	prompt, err := builder.ACPPrompt("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"## connections",
+		"WhatsApp: personal (+447700900123)",
+		"`sources/chat/whatsapp/447700900123/contacts.md` (memory_page)",
+		"Clean contacts.",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("prompt missing connection detail %q:\n%s", want, prompt)
+		}
+	}
+}
+
+func TestBuilderSkipsConnectionsWhenMemoryDisabled(t *testing.T) {
+	builder := NewBuilder(t.TempDir(), "", t.TempDir(), func() bool { return false }).WithConnections(staticConnections{connections: []connections.AgentConnection{{
+		ProviderName: "WhatsApp",
+		Account:      "personal (+447700900123)",
+		RelevantPaths: []connections.AgentPath{{
+			Path:        "sources/chat/whatsapp/447700900123/contacts.md",
+			Kind:        connections.AgentPathKindMemoryPage,
+			Explanation: "Clean contacts.",
+		}},
+	}}})
+	prompt, err := builder.ACPPrompt("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(prompt, "## connections") || strings.Contains(prompt, "sources/chat/whatsapp") {
+		t.Fatalf("disabled memory must omit memory-backed connection hints:\n%s", prompt)
+	}
+}
+
+func TestBuilderOmitsDelegationWhenAgentNamesFail(t *testing.T) {
+	builder := NewBuilder(t.TempDir(), "", "", nil).WithAgents(failingAgentNames{})
+	prompt, err := builder.ACPPrompt("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(prompt, "## Agent delegation") {
+		t.Fatalf("prompt should omit best-effort delegation context after agent-name failure:\n%s", prompt)
+	}
+}
+
+type staticConnections struct {
+	connections []connections.AgentConnection
+}
+
+func (s staticConnections) AgentConnections(context.Context) ([]connections.AgentConnection, error) {
+	return s.connections, nil
+}
+
+type staticAgentNames struct {
+	names []string
+}
+
+func (s staticAgentNames) EnabledAgentNames() ([]string, error) {
+	return s.names, nil
+}
+
+type failingAgentNames struct{}
+
+func (failingAgentNames) EnabledAgentNames() ([]string, error) {
+	return nil, errors.New("agent settings unavailable")
 }

@@ -26,7 +26,7 @@ func TestTelegramMaterializerCreatesChatDayAndContactSources(t *testing.T) {
 		Raw:        contactRaw,
 	}
 	contactArtifact := projectOne(t, TelegramMaterializer{}, contactRecord)
-	if contactArtifact.PathHint != "sources/telegram/42/contacts.md" {
+	if contactArtifact.PathHint != "sources/chat/telegram/42/contacts.md" {
 		t.Fatalf("contact artifact = %#v", contactArtifact)
 	}
 	contactBody := string(contactArtifact.Body)
@@ -52,7 +52,7 @@ func TestTelegramMaterializerCreatesChatDayAndContactSources(t *testing.T) {
 		OccurredAt: occurred,
 		Raw:        messageRaw,
 	})
-	if !strings.Contains(messageArtifact.PathHint, "sources/telegram/42/conversations/user-276369933-") || !strings.HasSuffix(messageArtifact.PathHint, "/2026/06/27.md") {
+	if !strings.Contains(messageArtifact.PathHint, "sources/chat/telegram/42/conversations/user-276369933-") || !strings.HasSuffix(messageArtifact.PathHint, "/2026/06/27.md") {
 		t.Fatalf("message artifact = %#v", messageArtifact)
 	}
 	if !sameStrings(messageArtifactTargetRefs(t, TelegramMaterializer{}, integrations.Record{
@@ -183,7 +183,7 @@ func TestWhatsAppMaterializerCreatesChatDayAndContactSources(t *testing.T) {
 		ExternalID: "447700900123@s.whatsapp.net",
 		Raw:        contactRaw,
 	})
-	if contactArtifact.PathHint != "sources/whatsapp/15550102222/contacts.md" {
+	if contactArtifact.PathHint != "sources/chat/whatsapp/15550102222/contacts.md" {
 		t.Fatalf("contact artifact = %#v", contactArtifact)
 	}
 	contactBody := string(contactArtifact.Body)
