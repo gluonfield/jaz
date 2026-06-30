@@ -127,6 +127,14 @@ export function ModelBreakdown({
                 <span className="text-right">Total</span>
                 <span className="text-right text-ink-2">Cost</span>
               </div>
+              <div className="border-b border-border">
+                <ModelTableRow
+                  label="All models"
+                  meta={`${rows.length} total`}
+                  usage={totalUsage}
+                  cost={cost.priced > 0 ? formatUsd(cost.total) : null}
+                />
+              </div>
               <div className="divide-y divide-border/60">
                 <AnimatedList>
                   {visible.map(({ model, cost: modelCost }) => (
@@ -142,14 +150,6 @@ export function ModelBreakdown({
                     </AnimatedListItem>
                   ))}
                 </AnimatedList>
-              </div>
-              <div className="border-t border-border">
-                <ModelTableRow
-                  label="All models"
-                  meta={`${rows.length} total`}
-                  usage={totalUsage}
-                  cost={cost.priced > 0 ? formatUsd(cost.total) : null}
-                />
               </div>
             </div>
           </div>
