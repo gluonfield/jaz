@@ -1,0 +1,16 @@
+# Single-origin Jaz: Caddy serves the browser app and proxies API/MCP routes to
+# the private backend process running inside the same container.
+:{$PORT} {
+	encode zstd gzip
+
+	@api path /v1/* /mcp/* /jazmem/* /health
+	handle @api {
+		reverse_proxy 127.0.0.1:{$JAZ_BACKEND_PORT}
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
