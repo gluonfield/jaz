@@ -170,7 +170,7 @@ export function formatUsageDate(date: string): string {
   })
 }
 
-function addUsageTotals(total: UsageTotals, usage: UsageTotals): UsageTotals {
+export function addUsageTotals(total: UsageTotals, usage: UsageTotals): UsageTotals {
   total.input_tokens = (total.input_tokens ?? 0) + (usage.input_tokens ?? 0)
   total.cached_input_tokens = (total.cached_input_tokens ?? 0) + (usage.cached_input_tokens ?? 0)
   total.cached_write_tokens = (total.cached_write_tokens ?? 0) + (usage.cached_write_tokens ?? 0)
