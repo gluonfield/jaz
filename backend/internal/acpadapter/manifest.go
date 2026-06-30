@@ -134,13 +134,40 @@ func (m *Manager) fetchManifest(ctx context.Context) (manifest, error) {
 		return out, nil
 	}
 	if cached, ok := m.cachedManifest(); ok {
+		if !m.cacheAllowedForFetchFailure(cached) {
+			return manifest{}, err
+		}
 		return cached, nil
 	}
 	if cached, ok := m.readManifestCache(); ok {
+		if !m.cacheAllowedForFetchFailure(cached) {
+			return manifest{}, err
+		}
 		m.cacheManifest(cached)
 		return cached, nil
 	}
 	return manifest{}, err
+}
+
+func (m *Manager) cacheAllowedForFetchFailure(cached manifest) bool {
+	if m.assetSpecPath == "" {
+		return true
+	}
+	body, err := os.ReadFile(m.assetSpecPath)
+	if err != nil {
+		return false
+	}
+	var spec managedAdapterAssetSpec
+	if err := json.Unmarshal(body, &spec); err != nil {
+		return false
+	}
+	for name, pinned := range spec.Adapters {
+		adapter, ok := cached.Adapters[name]
+		if !ok || adapter.Version != pinned.Version {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *Manager) fetchManifestSource(ctx context.Context) (manifest, error) {

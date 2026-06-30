@@ -287,6 +287,21 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				_ = conn.Send(context.Background(), resp)
 				continue
 			}
+			if objective := os.Getenv("JAZ_FAKE_ACP_GOAL_OBJECTIVE"); objective != "" {
+				notify(conn, "thread/goal/updated", map[string]any{
+					"threadId": "fake-session",
+					"goal": map[string]any{
+						"provider":        "codex",
+						"providerGoalId":  "fake-goal-1",
+						"objective":       objective,
+						"status":          "active",
+						"budgetSource":    "goal",
+						"tokenBudget":     1000,
+						"tokensUsed":      42,
+						"remainingTokens": 958,
+					},
+				})
+			}
 			if _, ok := fakeSideChatMeta(promptReq.Meta); ok {
 				notify(conn, "session/update", map[string]any{
 					"sessionId": "fake-session",
