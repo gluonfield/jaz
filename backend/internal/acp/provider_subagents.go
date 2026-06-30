@@ -9,7 +9,6 @@ import (
 )
 
 const (
-	jazMetaKey              = "jaz"
 	providerSubagentMetaKey = "providerSubagent"
 )
 
@@ -24,26 +23,20 @@ type providerSubagentUpdate struct {
 }
 
 // providerSubagentFromUpdate publishes subagent panel records and decides which
-// updates to keep out of the main transcript. Both providers report subagents
-// the same way — a _meta.jaz.providerSubagent record built at the adapter edge
-// (codex-acp's collab_subagents, claude-agent-acp's subagents) — so publishing
-// is provider-agnostic. Consuming is Jaz display policy: codex subagent records
-// ride dedicated session_info updates, while Claude streams a subagent's own
-// tool calls inline tagged with claudeCode.parentToolUseId; those belong to the
-// subagent's panel, never the parent turn.
+// updates to keep out of the main transcript.
 func providerSubagentFromUpdate(agent string, update acpschema.DecodedSessionUpdate) providerSubagentUpdate {
 	switch event := update.(type) {
 	case acpschema.SessionInfoSessionUpdate:
-		subagent := providerSubagentFromJazMeta(agent, event.Meta, providerSubagentHint{})
+		subagent := providerSubagentFromMeta(agent, event.Meta, providerSubagentHint{})
 		return providerSubagentUpdate{subagent: subagent, consume: subagent != nil}
 	case acpschema.ToolCallSessionUpdate:
 		return toolCallSubagent(agent, event.Meta)
 	case acpschema.ToolCallUpdateSessionUpdate:
 		return toolCallSubagent(agent, event.Meta)
 	case acpschema.AgentMessageChunkUpdate:
-		return providerSubagentUpdate{subagent: providerSubagentFromJazMeta(agent, event.Meta, providerSubagentHint{summary: "Subagent message", status: "running"})}
+		return providerSubagentUpdate{subagent: providerSubagentFromMeta(agent, event.Meta, providerSubagentHint{summary: "Subagent message", status: "running"})}
 	case acpschema.AgentThoughtChunkUpdate:
-		return providerSubagentUpdate{subagent: providerSubagentFromJazMeta(agent, event.Meta, providerSubagentHint{summary: "Subagent thinking", status: "running"})}
+		return providerSubagentUpdate{subagent: providerSubagentFromMeta(agent, event.Meta, providerSubagentHint{summary: "Subagent thinking", status: "running"})}
 	default:
 		return providerSubagentUpdate{}
 	}
@@ -51,7 +44,7 @@ func providerSubagentFromUpdate(agent string, update acpschema.DecodedSessionUpd
 
 func toolCallSubagent(agent string, meta map[string]any) providerSubagentUpdate {
 	return providerSubagentUpdate{
-		subagent: providerSubagentFromJazMeta(agent, meta, providerSubagentHint{status: "running"}),
+		subagent: providerSubagentFromMeta(agent, meta, providerSubagentHint{status: "running"}),
 		consume:  subagentInternalToolCall(meta),
 	}
 }
@@ -67,13 +60,17 @@ func subagentInternalToolCall(meta map[string]any) bool {
 	return strings.TrimSpace(stringValue(claudeCode["parentToolUseId"])) != ""
 }
 
-func providerSubagentFromJazMeta(agent string, meta map[string]any, hint providerSubagentHint) *sessionevents.ProviderSubagentEvent {
+func providerSubagentFromMeta(agent string, meta map[string]any, hint providerSubagentHint) *sessionevents.ProviderSubagentEvent {
 	if meta == nil {
 		return nil
 	}
-	if jaz, ok := mapValue(meta[jazMetaKey]); ok {
+	for _, namespace := range []string{codexMetaKey, "claudeCode", "jaz"} {
+		provider, ok := mapValue(meta[namespace])
+		if !ok {
+			continue
+		}
 		for _, key := range []string{providerSubagentMetaKey, "provider_subagent"} {
-			if raw, ok := mapValue(jaz[key]); ok {
+			if raw, ok := mapValue(provider[key]); ok {
 				subagent := decodeProviderSubagent(raw)
 				if subagent != nil {
 					fillProviderSubagent(subagent, agent, hint)

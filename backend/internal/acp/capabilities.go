@@ -73,8 +73,8 @@ func metaPromptQueueing(meta map[string]any) bool {
 }
 
 func metaNativeGoal(meta map[string]any) bool {
-	jaz, _ := meta["jaz"].(map[string]any)
-	return boolMeta(jaz, "nativeGoal")
+	codex, _ := meta[codexMetaKey].(map[string]any)
+	return boolMeta(codex, "nativeGoal")
 }
 
 func boolMeta(meta map[string]any, key string) bool {

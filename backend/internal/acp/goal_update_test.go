@@ -109,12 +109,16 @@ func TestGoalSessionUpdatePublishesAndPersistsGoal(t *testing.T) {
 }
 
 func TestGoalPromptMetaMarksGoalRequested(t *testing.T) {
-	meta := goalPromptMeta(true)
-	jaz, ok := meta[jazMetaKey].(map[string]any)
-	if !ok || jaz["goalRequested"] != true {
+	meta := goalPromptMeta(true, "  Finish the goal  ")
+	codex, ok := meta[codexMetaKey].(map[string]any)
+	if !ok {
 		t.Fatalf("goal prompt meta = %#v", meta)
 	}
-	if got := goalPromptMeta(false); got != nil {
+	goal, ok := codex["goal"].(map[string]any)
+	if !ok || goal["requested"] != true || goal["objective"] != "Finish the goal" {
+		t.Fatalf("goal prompt meta = %#v", meta)
+	}
+	if got := goalPromptMeta(false, "ignored"); got != nil {
 		t.Fatalf("unrequested goal prompt meta = %#v", got)
 	}
 }
@@ -135,11 +139,11 @@ func TestDecodeGoalUpdateRejectsPartialSnapshot(t *testing.T) {
 	}
 }
 
-func TestInitNativeGoalSupportedReadsJazInitializeMeta(t *testing.T) {
+func TestInitNativeGoalSupportedReadsCodexInitializeMeta(t *testing.T) {
 	raw := mustJSON(t, map[string]any{
 		"agentCapabilities": map[string]any{
 			"_meta": map[string]any{
-				"jaz": map[string]any{"nativeGoal": true},
+				"codex": map[string]any{"nativeGoal": true},
 			},
 		},
 	})
@@ -224,6 +228,66 @@ func TestGoalExtensionNotificationPublishesAndPersistsGoal(t *testing.T) {
 		loaded.Goal.RemainingTokens == nil || *loaded.Goal.RemainingTokens != 0 ||
 		loaded.Goal.ProviderGoalID != "goal-2" ||
 		loaded.Goal.BlockedReason != "token budget reached" {
+		t.Fatalf("session goal = %#v", loaded.Goal)
+	}
+}
+
+func TestCodexNativeGoalNotificationPublishesAndPersistsGoal(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "codex-native-goal-notification", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := sessionevents.New()
+	manager := NewManager(store, Config{}, nil)
+	manager.Events = events
+	manager.jobsByID[session.ID] = &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex, ACPSession: "codex-thread"}}
+	manager.jobsByACP["codex-thread"] = manager.jobsByID[session.ID]
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	sub := events.Subscribe(ctx, session.ID)
+
+	raw, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
+		Method: acpMethodCodexGoalUpdated,
+		Params: mustJSON(t, map[string]any{
+			"threadId": "codex-thread",
+			"goal": map[string]any{
+				"threadId":        "codex-thread",
+				"objective":       "Activate native Codex goal",
+				"status":          "active",
+				"tokenBudget":     1000,
+				"tokensUsed":      10,
+				"timeUsedSeconds": 2,
+				"createdAt":       int64(1782736800),
+				"updatedAt":       int64(1782736802),
+			},
+		}),
+	})
+	if rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	if string(raw) != "{}" {
+		t.Fatalf("response = %s", raw)
+	}
+
+	event := receiveGoalUpdate(t, ctx, sub)
+	if event.Goal.ThreadID != "codex-thread" ||
+		event.Goal.Objective != "Activate native Codex goal" ||
+		event.Goal.Status != goal.StatusActive ||
+		event.Goal.TokenBudget == nil ||
+		*event.Goal.TokenBudget != 1000 ||
+		event.Goal.TokensUsed != 10 {
+		t.Fatalf("goal event = %#v", event.Goal)
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Goal == nil || loaded.Goal.Objective != "Activate native Codex goal" || loaded.Goal.Status != goal.StatusActive {
 		t.Fatalf("session goal = %#v", loaded.Goal)
 	}
 }
@@ -324,7 +388,7 @@ func TestGoalClearNotificationPublishesAndClearsPersistedGoal(t *testing.T) {
 
 	raw, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
 		Method: acpMethodCodexGoalCleared,
-		Params: mustJSON(t, map[string]any{"sessionId": "acp-session"}),
+		Params: mustJSON(t, map[string]any{"threadId": "acp-session"}),
 	})
 	if rpcErr != nil {
 		t.Fatal(rpcErr)

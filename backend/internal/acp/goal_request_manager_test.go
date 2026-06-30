@@ -16,7 +16,7 @@ func TestManagerSendRequestsCodexGoalWithoutLocalGoalSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := newFakeCodexManager(t, store, t.TempDir(), map[string]string{
-		"JAZ_FAKE_ACP_EXPECT_PROMPT_CONTAINS": `"goalRequested":true`,
+		"JAZ_FAKE_ACP_EXPECT_PROMPT_CONTAINS": `"requested":true`,
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()

@@ -29,7 +29,7 @@ func (m *Manager) handleJSONRPC(ctx context.Context, req jsonrpc.Request) (json.
 		}
 		m.applyUpdate(note.SessionID, note.Update)
 		return jsonrpc.EncodeResult(map[string]any{})
-	case acpMethodGoalUpdate:
+	case acpMethodGoalUpdate, acpMethodCodexGoalUpdated:
 		sessionID, goal, ok := decodeGoalNotification(req.Params)
 		if !ok {
 			return nil, jsonrpc.InvalidParams("invalid goal update", nil)
