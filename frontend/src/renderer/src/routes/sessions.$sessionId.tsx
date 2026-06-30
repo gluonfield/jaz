@@ -560,7 +560,6 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                       goal={goal}
                       starting={Boolean(live?.goalRequested) && !goal}
                       running={sessionRunning}
-                      usage={session.usage}
                     />
                   ) : null}
                   <Composer
