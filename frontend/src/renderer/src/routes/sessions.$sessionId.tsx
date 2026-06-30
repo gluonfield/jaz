@@ -375,6 +375,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     planActive,
     goalAvailable,
     goalActive,
+    goalTurnRequested,
     goal,
     hasBlockingPendingPermission,
     latestPlanDecisionSurface,
@@ -410,7 +411,8 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
           liveUserMessage(live, (messages.at(-1)?.seq ?? 0) + 1_000_000),
         ]
       : messages
-  const goalStatusVisible = goalAvailable || Boolean(goal) || Boolean(live?.goalRequested)
+  const goalStarting = (Boolean(live?.goalRequested) || goalTurnRequested) && !goal
+  const goalStatusVisible = goalAvailable || Boolean(goal) || goalStarting
 
   return (
     <FileReaderLinkProvider onOpen={openFile}>
@@ -554,14 +556,14 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                   }}
                 />
               ) : (
-                <>
-                  {goalStatusVisible ? (
-                    <GoalStatusBar
-                      goal={goal}
-                      starting={Boolean(live?.goalRequested) && !goal}
-                      running={sessionRunning}
-                    />
-                  ) : null}
+	                <>
+	                  {goalStatusVisible ? (
+	                    <GoalStatusBar
+	                      goal={goal}
+	                      starting={goalStarting}
+	                      running={sessionRunning}
+	                    />
+	                  ) : null}
                   <Composer
                     streaming={sessionRunning}
                     planAvailable={planAvailable}
@@ -578,9 +580,16 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                     onClearContexts={composerContexts.clearContexts}
                     onSend={queue.onSend}
                     onStop={() => {
-                      // the turn runs detached server-side; stop it there first
-                      void cancelSession(sessionId).catch(() => {})
+                      // The turn runs detached server-side; clear local optimistic state now.
                       abortLiveMessage()
+                      void cancelSession(sessionId)
+                        .catch(() => {})
+                        .finally(() => {
+                          queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
+                          queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
+                          queryClient.invalidateQueries({ queryKey: keys.allSessions })
+                          queryClient.invalidateQueries({ queryKey: keys.usage })
+                        })
                     }}
                     onVoice={undefined}
                     onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}

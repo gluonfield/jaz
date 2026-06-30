@@ -114,21 +114,32 @@ export function useLiveSessionSend({
         )
       })
       .finally(async () => {
-        setStreaming(false)
-        streamingRef.current = false
-        abortRef.current = null
+        const current = abortRef.current === controller
+        if (current) {
+          setStreaming(false)
+          streamingRef.current = false
+          abortRef.current = null
+        }
         await queryClient.refetchQueries({ queryKey: keys.sessionMessages(sessionId) })
         queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
         queryClient.invalidateQueries({ queryKey: keys.allSessions })
         queryClient.invalidateQueries({ queryKey: keys.usage })
         queryClient.invalidateQueries({ queryKey: keys.sessionRepo(sessionId) })
-        setLive((prev) => (prev?.error ? { ...prev, error: undefined } : null))
+        if (current) {
+          setLive((prev) => (prev?.error ? { ...prev, error: undefined } : null))
+        }
       })
   }, [onCriticalError, queryClient, sessionId, streamingRef])
 
   const abort = useCallback(() => {
-    abortRef.current?.abort()
-  }, [])
+    const controller = abortRef.current
+    if (!controller) return
+    controller.abort()
+    abortRef.current = null
+    setStreaming(false)
+    streamingRef.current = false
+    setLive(null)
+  }, [streamingRef])
 
   return { live, streaming, send, abort }
 }

@@ -66,6 +66,7 @@ func TestGoalSessionUpdatePublishesAndPersistsGoal(t *testing.T) {
 
 	event := receiveGoalUpdate(t, ctx, sub)
 	if event.Goal.ThreadID != "thread-1" ||
+		event.Goal.Source != goal.SourceProvider ||
 		event.Goal.Provider != AgentCodex ||
 		event.Goal.ProviderGoalID != "goal-1" ||
 		event.Goal.Objective != "Ship native ACP goal support" ||
@@ -91,14 +92,15 @@ func TestGoalSessionUpdatePublishesAndPersistsGoal(t *testing.T) {
 	if len(stored) != 1 || stored[0].Type != sessionevents.TypeGoalUpdate || stored[0].Goal == nil {
 		t.Fatalf("stored events = %#v", stored)
 	}
-	if stored[0].Goal.ThreadID != "thread-1" || stored[0].Goal.ProviderGoalID != "goal-1" || stored[0].Goal.TokensUsed != 250 {
+	if stored[0].Goal.ThreadID != "thread-1" || stored[0].Goal.Source != goal.SourceProvider || stored[0].Goal.ProviderGoalID != "goal-1" || stored[0].Goal.TokensUsed != 250 {
 		t.Fatalf("stored goal event = %#v", stored[0])
 	}
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Goal == nil || loaded.Goal.Status != goal.StatusActive || loaded.Goal.Objective != "Ship native ACP goal support" ||
+	if loaded.Goal == nil || loaded.Goal.Source != goal.SourceProvider ||
+		loaded.Goal.Status != goal.StatusActive || loaded.Goal.Objective != "Ship native ACP goal support" ||
 		loaded.Goal.RemainingTokens == nil || *loaded.Goal.RemainingTokens != 750 ||
 		loaded.Goal.ProviderGoalID != "goal-1" ||
 		loaded.Goal.ProgressMessage != "Tests are running" {
@@ -195,6 +197,7 @@ func TestGoalExtensionNotificationPublishesAndPersistsGoal(t *testing.T) {
 
 	event := receiveGoalUpdate(t, ctx, sub)
 	if event.Goal.ThreadID != "thread-2" ||
+		event.Goal.Source != goal.SourceProvider ||
 		event.Goal.ProviderGoalID != "goal-2" ||
 		event.Goal.Status != "budgetLimited" ||
 		event.Goal.RemainingTokens == nil ||
@@ -216,7 +219,8 @@ func TestGoalExtensionNotificationPublishesAndPersistsGoal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Goal == nil || loaded.Goal.Status != goal.StatusBudgetLimited ||
+	if loaded.Goal == nil || loaded.Goal.Source != goal.SourceProvider ||
+		loaded.Goal.Status != goal.StatusBudgetLimited ||
 		loaded.Goal.RemainingTokens == nil || *loaded.Goal.RemainingTokens != 0 ||
 		loaded.Goal.ProviderGoalID != "goal-2" ||
 		loaded.Goal.BlockedReason != "token budget reached" {
@@ -335,6 +339,83 @@ func TestGoalClearNotificationPublishesAndClearsPersistedGoal(t *testing.T) {
 	}
 	if loaded.Goal != nil {
 		t.Fatalf("session goal after clear = %#v", loaded.Goal)
+	}
+}
+
+func TestCancelClearsPersistedGoal(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "codex-goal-cancel", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := sessionevents.New()
+	manager := NewManager(store, Config{}, nil)
+	manager.Events = events
+	manager.jobsByID[session.ID] = &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex, ACPSession: "acp-session"}}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	sub := events.Subscribe(ctx, session.ID)
+	manager.publishGoalUpdate(manager.jobsByID[session.ID], sessionevents.GoalEvent{
+		Identity: goal.Identity{
+			Objective: "Stop should clear this",
+			Status:    goal.StatusActive,
+		},
+	})
+	_ = receiveGoalUpdate(t, ctx, sub)
+
+	if _, err := manager.Cancel(ctx, session.ID); err != nil {
+		t.Fatal(err)
+	}
+	_ = receiveGoalClear(t, ctx, sub)
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Goal != nil {
+		t.Fatalf("session goal after cancel = %#v", loaded.Goal)
+	}
+}
+
+func TestCancelStoredClearsPersistedGoal(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "codex-goal-stored-cancel", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.Goal = &goal.State{
+		Identity: goal.Identity{
+			Source:    goal.SourceProvider,
+			Objective: "Stop should clear after restart",
+			Status:    goal.StatusActive,
+		},
+	}
+	if err := store.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+	events := sessionevents.New()
+	manager := NewManager(store, Config{}, nil)
+	manager.Events = events
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	sub := events.Subscribe(ctx, session.ID)
+	if _, err := manager.Cancel(ctx, session.ID); err != nil {
+		t.Fatal(err)
+	}
+	_ = receiveGoalClear(t, ctx, sub)
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Goal != nil {
+		t.Fatalf("session goal after stored cancel = %#v", loaded.Goal)
 	}
 }
 

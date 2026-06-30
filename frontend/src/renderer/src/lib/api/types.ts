@@ -554,6 +554,7 @@ export interface SessionMessages {
   acp_tool_calls?: ACPToolCall[]
   acp_permissions?: ACPPermission[]
   acp_error?: string
+  acp_goal_requested?: boolean
   acp_active_operation?: string
   acp_last_event_at?: string
   acp_last_tool_at?: string
@@ -630,8 +631,10 @@ export type GoalStatus =
   | 'complete'
 
 export type GoalBudgetSource = 'goal' | 'session' | 'context' | 'cost'
+export type GoalSource = 'provider'
 
 export interface GoalState {
+  source?: GoalSource
   thread_id?: string
   provider?: string
   provider_goal_id?: string
@@ -731,6 +734,7 @@ export interface ACPEvent {
   plan?: ACPPlanEntry[]
   tool_calls?: ACPToolCall[]
   permissions?: ACPPermission[]
+  goal_requested?: boolean
   last_event_at?: string
   last_tool_at?: string
 }
@@ -754,6 +758,7 @@ export interface ACPJobSnapshot {
   plan?: ACPPlanEntry[]
   tool_calls?: ACPToolCall[]
   permissions?: ACPPermission[]
+  goal_requested?: boolean
   active_operation?: string
   parent_visible?: boolean
   last_event_at?: string

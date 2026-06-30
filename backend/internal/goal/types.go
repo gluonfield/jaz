@@ -7,6 +7,7 @@ import (
 
 type Status string
 type BudgetSource string
+type Source string
 
 const (
 	StatusRequested     Status = "requested"
@@ -25,6 +26,8 @@ const (
 	BudgetSourceCost    BudgetSource = "cost"
 )
 
+const SourceProvider Source = "provider"
+
 type State struct {
 	Identity
 	Budget
@@ -35,6 +38,7 @@ type State struct {
 }
 
 type Identity struct {
+	Source         Source `json:"source,omitempty"`
 	ThreadID       string `json:"thread_id,omitempty"`
 	Provider       string `json:"provider,omitempty"`
 	ProviderGoalID string `json:"provider_goal_id,omitempty"`
@@ -121,11 +125,21 @@ func NormalizeBudgetSource(source string) BudgetSource {
 	}
 }
 
+func NormalizeSource(source string) Source {
+	switch Source(strings.TrimSpace(source)) {
+	case SourceProvider:
+		return SourceProvider
+	default:
+		return ""
+	}
+}
+
 func NormalizeState(state *State) *State {
 	if state == nil {
 		return nil
 	}
 	out := *state
+	out.Source = NormalizeSource(string(out.Source))
 	out.Status = NormalizeStatus(string(out.Status))
 	out.BudgetSource = NormalizeBudgetSource(string(out.BudgetSource))
 	if out.Status == "" ||
@@ -159,6 +173,34 @@ func NormalizeState(state *State) *State {
 func CompleteSnapshot(state *State) bool {
 	normalized := NormalizeState(state)
 	return normalized != nil && normalized.Objective != ""
+}
+
+func Active(state *State) bool {
+	normalized := NormalizeState(state)
+	return normalized != nil && normalized.Status != StatusComplete
+}
+
+func ProviderSnapshot(state *State) bool {
+	normalized := NormalizeState(state)
+	if normalized == nil || normalized.Objective == "" {
+		return false
+	}
+	if normalized.Source == SourceProvider {
+		return true
+	}
+	return !legacyRequestOnlySnapshot(normalized)
+}
+
+func legacyRequestOnlySnapshot(state *State) bool {
+	return state.Source == "" &&
+		state.Status == StatusRequested &&
+		state.ThreadID == "" &&
+		state.ProviderGoalID == "" &&
+		state.Budget == Budget{} &&
+		state.Progress == Progress{} &&
+		state.Review == Review{} &&
+		state.Cost == Cost{} &&
+		state.CompletedAt.IsZero()
 }
 
 func negativeFloat(value *float64) bool {

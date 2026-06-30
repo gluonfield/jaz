@@ -6,12 +6,11 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
-	"github.com/wins/jaz/backend/internal/goal"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
-func TestManagerSendUsesCatalogGoalSupportForCodex(t *testing.T) {
+func TestManagerSendRequestsCodexGoalWithoutLocalGoalSnapshot(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -66,13 +65,10 @@ func TestManagerSendUsesCatalogGoalSupportForCodex(t *testing.T) {
 			goalEvent = events[i].Goal
 		}
 	}
-	if goalEvent == nil {
-		t.Fatalf("stored events = %#v, want goal update", events)
+	if goalEvent != nil {
+		t.Fatalf("stored events = %#v, want no local goal update before provider report", events)
 	}
-	if goalEvent.Status != sessionevents.GoalStatusRequested || goalEvent.Objective != "say hello" {
-		t.Fatalf("goal event = %#v", goalEvent)
-	}
-	if loaded.Goal == nil || loaded.Goal.Status != goal.StatusRequested || loaded.Goal.Objective != "say hello" {
-		t.Fatalf("session goal = %#v", loaded.Goal)
+	if loaded.Goal != nil {
+		t.Fatalf("session goal = %#v, want nil before provider report", loaded.Goal)
 	}
 }

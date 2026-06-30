@@ -30,6 +30,7 @@ type Job struct {
 	Permissions     []sessionevents.ACPPermission `json:"permissions,omitempty"`
 	Modes           ModeState                     `json:"modes,omitempty"`
 	Error           string                        `json:"error,omitempty"`
+	GoalRequested   bool                          `json:"goal_requested,omitempty"`
 	ActiveOperation string                        `json:"active_operation,omitempty"`
 	ParentVisible   bool                          `json:"parent_visible,omitempty"`
 	CreatedAt       time.Time                     `json:"created_at"`
@@ -130,6 +131,7 @@ func (j *jobState) Snapshot() Job {
 		Permissions:     clonePermissions(j.Permissions),
 		Modes:           j.Modes.Clone(),
 		Error:           j.Error,
+		GoalRequested:   j.turn != nil && j.turn.goalRequested && (j.State == StateRunning || j.State == StateStarting),
 		ActiveOperation: j.ActiveOperation,
 		ParentVisible:   j.ParentVisible,
 		CreatedAt:       j.CreatedAt,

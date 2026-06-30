@@ -116,6 +116,7 @@ function goalMetadataRows(goal?: GoalEvent): GoalMetadataRow[] {
   const rows: GoalMetadataRow[] = []
   addMetadataRow(rows, 'Objective', goal.objective)
   addMetadataRow(rows, 'Status', goal.status)
+  addMetadataRow(rows, 'Source', goal.source)
   addMetadataRow(rows, 'Provider', goal.provider)
   addMetadataRow(rows, 'Goal ID', goal.provider_goal_id, true)
   addMetadataRow(rows, 'Budget source', goal.budget_source)
