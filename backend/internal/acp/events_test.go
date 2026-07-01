@@ -317,9 +317,9 @@ func TestACPTranscriptTextRunIdleStartsNewRun(t *testing.T) {
 	buffer := &acpTranscriptBuffer{}
 	now := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
 
-	first := buffer.textRunID(now)
-	same := buffer.textRunID(now.Add(acpTranscriptTextRunIdle))
-	second := buffer.textRunID(now.Add(2*acpTranscriptTextRunIdle + time.Nanosecond))
+	first := buffer.textRunID(now, "")
+	same := buffer.textRunID(now.Add(acpTranscriptTextRunIdle), "")
+	second := buffer.textRunID(now.Add(2*acpTranscriptTextRunIdle+time.Nanosecond), "")
 
 	if first == "" {
 		t.Fatal("first text run id is empty")
@@ -329,6 +329,41 @@ func TestACPTranscriptTextRunIdleStartsNewRun(t *testing.T) {
 	}
 	if second == first {
 		t.Fatalf("idle text run id = %q, want new id", second)
+	}
+}
+
+func TestACPTranscriptUpstreamMessageIDOverridesIdleBoundary(t *testing.T) {
+	buffer := &acpTranscriptBuffer{}
+	now := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+
+	first := buffer.textRunID(now, "message-1")
+	same := buffer.textRunID(now.Add(10*time.Minute), "message-1")
+	second := buffer.textRunID(now.Add(10*time.Minute), "message-2")
+
+	if first != "message:message-1" {
+		t.Fatalf("first text run id = %q", first)
+	}
+	if same != first {
+		t.Fatalf("same upstream message id produced %q, want %q", same, first)
+	}
+	if second == first {
+		t.Fatalf("different upstream message id reused %q", second)
+	}
+}
+
+func TestACPTranscriptUpstreamMessageIDClosesFallbackRun(t *testing.T) {
+	buffer := &acpTranscriptBuffer{}
+	now := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+
+	firstFallback := buffer.textRunID(now, "")
+	upstream := buffer.textRunID(now.Add(time.Second), "message-1")
+	secondFallback := buffer.textRunID(now.Add(2*time.Second), "")
+
+	if upstream != "message:message-1" {
+		t.Fatalf("upstream text run id = %q", upstream)
+	}
+	if firstFallback == "" || secondFallback == "" || firstFallback == secondFallback {
+		t.Fatalf("fallback text run ids = %q, %q; want provider id to close fallback run", firstFallback, secondFallback)
 	}
 }
 

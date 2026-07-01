@@ -15,6 +15,67 @@ import (
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
+func TestACPTransportDecodesChunkMessageID(t *testing.T) {
+	update, err := acpschema.DecodeSessionUpdate(json.RawMessage(`{
+		"sessionUpdate": "agent_message_chunk",
+		"messageId": "provider-message-1",
+		"content": {"type": "text", "text": "hello"}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	message, ok := update.(acpschema.AgentMessageChunkUpdate)
+	if !ok {
+		t.Fatalf("decoded %T, want AgentMessageChunkUpdate", update)
+	}
+	if got := message.MessageID; got != "provider-message-1" {
+		t.Fatalf("messageId = %q, want provider-message-1", got)
+	}
+}
+
+func TestAgentMessageChunkMessageIDPersistsTextRunID(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "message-id", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(store, Config{}, nil)
+	manager.Events = sessionevents.New()
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex, ACPSession: "acp-session"}}
+	manager.jobsByID[session.ID] = job
+	manager.jobsByACP["acp-session"] = job
+
+	_, rpcErr := manager.handleJSONRPC(context.Background(), jsonrpc.Request{
+		Method: acpschema.ClientMethodSessionUpdate,
+		Params: mustJSON(t, map[string]any{
+			"sessionId": "acp-session",
+			"update": map[string]any{
+				"sessionUpdate": "agent_message_chunk",
+				"messageId":     "provider-message-1",
+				"content":       map[string]any{"type": "text", "text": "hello"},
+			},
+		}),
+	})
+	if rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	manager.withACPTranscriptBarrier(job.Snapshot(), nil)
+
+	stored, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 1 || stored[0].Type != sessionevents.TypeACPMessage {
+		t.Fatalf("stored events = %#v", stored)
+	}
+	if stored[0].Content != "hello" || stored[0].ACP.TextRunID != "message:provider-message-1" {
+		t.Fatalf("stored message event = %#v", stored[0])
+	}
+}
+
 func TestRequestPermissionPublishesAndWaitsForAnswer(t *testing.T) {
 	root := t.TempDir()
 	store, err := jsonstore.New(t.TempDir())

@@ -10,14 +10,16 @@ import (
 
 const acpTranscriptFlushInterval = 100 * time.Millisecond
 
-// ACP text chunks carry no stream ID or close event, so Jaz owns the display
-// run boundary. Tool/status barriers keep a run open; a real pause closes it.
+// Older ACP adapters carry no stream ID or close event, so Jaz owns the fallback
+// display run boundary. Tool/status barriers keep a fallback run open; a real
+// pause closes it. Newer adapters should send ContentChunk.messageId instead.
 const acpTranscriptTextRunIdle = 2 * time.Second
 
 type acpTranscriptRun struct {
-	eventType string
-	content   string
-	textRunID string
+	eventType         string
+	content           string
+	upstreamMessageID string
+	textRunID         string
 }
 
 type acpTranscriptBuffers struct {
@@ -37,11 +39,19 @@ type acpTranscriptBuffer struct {
 }
 
 func (m *Manager) queueACPMessage(job *jobState, content string) {
-	m.queueACPTranscript(job, acpTranscriptRun{eventType: "acp_message", content: content})
+	m.queueACPMessageWithID(job, content, "")
+}
+
+func (m *Manager) queueACPMessageWithID(job *jobState, content string, upstreamMessageID string) {
+	m.queueACPTranscript(job, acpTranscriptRun{eventType: "acp_message", content: content, upstreamMessageID: upstreamMessageID})
 }
 
 func (m *Manager) queueACPThought(job *jobState, content string) {
-	m.queueACPTranscript(job, acpTranscriptRun{eventType: "acp_thought", content: content})
+	m.queueACPThoughtWithID(job, content, "")
+}
+
+func (m *Manager) queueACPThoughtWithID(job *jobState, content string, upstreamMessageID string) {
+	m.queueACPTranscript(job, acpTranscriptRun{eventType: "acp_thought", content: content, upstreamMessageID: upstreamMessageID})
 }
 
 func (m *Manager) queueACPTranscript(job *jobState, run acpTranscriptRun) {
@@ -127,7 +137,7 @@ func (b *acpTranscriptBuffers) closeTextRun(sessionID string) {
 func (b *acpTranscriptBuffer) queue(m *Manager, run acpTranscriptRun) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	run.textRunID = b.textRunID(time.Now().UTC())
+	run.textRunID = b.textRunID(time.Now().UTC(), run.upstreamMessageID)
 	if n := len(b.runs); n > 0 && b.runs[n-1].eventType == run.eventType && b.runs[n-1].textRunID == run.textRunID {
 		b.runs[n-1].content += run.content
 	} else {
@@ -140,7 +150,12 @@ func (b *acpTranscriptBuffer) queue(m *Manager, run acpTranscriptRun) {
 	}
 }
 
-func (b *acpTranscriptBuffer) textRunID(now time.Time) string {
+func (b *acpTranscriptBuffer) textRunID(now time.Time, upstreamMessageID string) string {
+	if upstreamMessageID != "" {
+		b.activeRun = ""
+		b.lastText = time.Time{}
+		return "message:" + upstreamMessageID
+	}
 	if b.activeRun == "" || (!b.lastText.IsZero() && now.Sub(b.lastText) > acpTranscriptTextRunIdle) {
 		b.nextRun++
 		b.activeRun = "text-" + strconv.FormatInt(b.nextRun, 10)

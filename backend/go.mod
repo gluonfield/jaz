@@ -5,7 +5,7 @@ go 1.26
 require (
 	github.com/charmbracelet/log v0.4.2
 	github.com/creack/pty v1.1.24
-	github.com/gluonfield/acp-transport v0.0.0-20260628104508-6b8e7098aaf7
+	github.com/gluonfield/acp-transport v0.0.0-20260701204330-fd221f34da59
 	github.com/gluonfield/jazmem v0.0.0-20260629183144-772a456cd714
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
