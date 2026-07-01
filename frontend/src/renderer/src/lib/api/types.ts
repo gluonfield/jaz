@@ -790,6 +790,7 @@ export interface SessionEvent {
   session_id: string
   type: string
   content?: string
+  replace_seqs?: number[]
   acp?: ACPEvent
   plan?: PlanEvent
   goal?: GoalEvent

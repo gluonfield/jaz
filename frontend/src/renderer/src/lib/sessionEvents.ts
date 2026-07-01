@@ -68,33 +68,38 @@ export function sessionEventCoalesceKey(event: SessionEvent): string {
 }
 
 export function mergeSessionEvent(prev: SessionEvent[], event: SessionEvent): SessionEvent[] {
+  const base = withoutReplacedSessionEvents(prev, event)
   if (event.seq) {
-    const seqIndex = prev.findIndex((item) => item.seq === event.seq && item.session_id === event.session_id)
+    const seqIndex = base.findIndex((item) => item.seq === event.seq && item.session_id === event.session_id)
     if (seqIndex !== -1) {
-      const next = [...prev]
+      const next = [...base]
       next[seqIndex] = preferredDuplicateEvent(next[seqIndex], event)
       return next
     }
   }
-  const merged = mergeAdjacentACPText(prev.at(-1), event)
+  const merged = mergeAdjacentACPText(base.at(-1), event)
   if (merged) {
-    const next = [...prev]
+    const next = [...base]
     next[next.length - 1] = merged
     return next
   }
   const key = sessionEventCoalesceKey(event)
-  if (!key) return [...prev, event]
-  const index = prev.findIndex((item) => sessionEventCoalesceKey(item) === key)
-  if (index === -1) return [...prev, event]
-  const next = [...prev]
+  if (!key) return [...base, event]
+  const index = base.findIndex((item) => sessionEventCoalesceKey(item) === key)
+  if (index === -1) return [...base, event]
+  const next = [...base]
   next[index] = mergeCoalescedSessionEvent(next[index], event)
   return next
 }
 
 export function coalesceSessionEvents(events: SessionEvent[]): SessionEvent[] {
+  const replaced = replacedSessionEventSeqs(events)
   const bySeq = new Map<string, number>()
   const deduped: SessionEvent[] = []
   for (const event of events) {
+    if (event.seq && replaced.has(sessionEventSeqKey(event.session_id, event.seq))) {
+      continue
+    }
     if (!event.seq) {
       deduped.push(event)
       continue
@@ -134,6 +139,26 @@ export function coalesceSessionEvents(events: SessionEvent[]): SessionEvent[] {
       return timeA - timeB || seqA - seqB || a.index - b.index
     })
     .map((item) => item.event)
+}
+
+function withoutReplacedSessionEvents(prev: SessionEvent[], event: SessionEvent): SessionEvent[] {
+  if (!event.replace_seqs?.length) return prev
+  const replaced = new Set(event.replace_seqs.map((seq) => sessionEventSeqKey(event.session_id, seq)))
+  return prev.filter((item) => !item.seq || !replaced.has(sessionEventSeqKey(item.session_id, item.seq)))
+}
+
+function replacedSessionEventSeqs(events: SessionEvent[]): Set<string> {
+  const replaced = new Set<string>()
+  for (const event of events) {
+    for (const seq of event.replace_seqs ?? []) {
+      replaced.add(sessionEventSeqKey(event.session_id, seq))
+    }
+  }
+  return replaced
+}
+
+function sessionEventSeqKey(sessionID: string, seq: number): string {
+  return `${sessionID}:${seq}`
 }
 
 function mergeCoalescedSessionEvent(prev: SessionEvent, next: SessionEvent): SessionEvent {
@@ -187,7 +212,7 @@ function canMergeACPText(prev: SessionEvent | undefined, event: SessionEvent): b
   if (!prev?.acp || !event.acp) return false
   if (prev.type !== event.type) return false
   if (event.type !== 'acp_message' && event.type !== 'acp_thought') return false
-  return prev.acp.id === event.acp.id
+  return prev.session_id === event.session_id && prev.acp.id === event.acp.id
 }
 
 function preferredDuplicateEvent(existing: SessionEvent, incoming: SessionEvent): SessionEvent {

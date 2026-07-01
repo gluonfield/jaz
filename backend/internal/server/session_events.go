@@ -28,17 +28,22 @@ func (s *Server) streamSessionEvents(w http.ResponseWriter, r *http.Request, ses
 		return
 	}
 	events := s.Events.Subscribe(r.Context(), sessionID)
-	stored, err := s.Store.LoadSessionEventsAfter(sessionID, afterSeq)
+	stored, err := s.Store.LoadSessionEvents(sessionID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	projector := sessionevents.NewTextStreamProjector()
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 	for _, event := range stored {
+		event = projector.Project(event)
+		if event.Seq <= afterSeq {
+			continue
+		}
 		if event.Seq > afterSeq {
 			afterSeq = event.Seq
 		}
@@ -53,6 +58,7 @@ func (s *Server) streamSessionEvents(w http.ResponseWriter, r *http.Request, ses
 		writeSessionEventSSE(w, flusher, event)
 	}
 	for event := range events {
+		event = projector.Project(event)
 		if event.Seq > 0 && event.Seq <= afterSeq {
 			continue
 		}

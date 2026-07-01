@@ -15,6 +15,54 @@ type TextChunkCompaction struct {
 	DeleteSeqs []int64
 }
 
+type TextStreamProjector struct {
+	open             *compactedTextItem
+	lastSeqBySession map[string]int64
+}
+
+func NewTextStreamProjector() *TextStreamProjector {
+	return &TextStreamProjector{}
+}
+
+func (p *TextStreamProjector) Project(event Event) Event {
+	event.ReplaceSeqs = nil
+	if p.lastSeqBySession == nil {
+		p.lastSeqBySession = map[string]int64{}
+	}
+	if last := p.lastSeqBySession[event.SessionID]; last != 0 && event.Seq != 0 {
+		if event.Seq <= last {
+			return event
+		}
+		if event.Seq != last+1 {
+			p.open = nil
+		}
+	}
+	if event.Seq != 0 {
+		p.lastSeqBySession[event.SessionID] = event.Seq
+	}
+	if isACPTextEvent(event) {
+		if p.open != nil {
+			if merged, ok := mergeACPTextEvent(p.open.event, p.open.lastSeq, event); ok {
+				if p.open.event.Seq != 0 && event.Seq != 0 {
+					p.open.deleteSeqs = append(p.open.deleteSeqs, p.open.event.Seq)
+				}
+				p.open.event = merged
+				if event.Seq != 0 {
+					p.open.lastSeq = event.Seq
+				}
+				merged.ReplaceSeqs = append([]int64(nil), p.open.deleteSeqs...)
+				return merged
+			}
+		}
+		p.open = &compactedTextItem{event: event, lastSeq: event.Seq}
+		return event
+	}
+	if p.open != nil && !keepsACPTextStreamOpen(p.open.event, event) {
+		p.open = nil
+	}
+	return event
+}
+
 func CompactTranscript(events []Event) []Event {
 	if len(events) == 0 {
 		return nil
@@ -140,21 +188,37 @@ type compactedTextItem struct {
 
 func compactACPTextRuns(events []Event, trackDeletes bool) []compactedTextItem {
 	items := make([]compactedTextItem, 0, len(events))
+	openTextIndex := -1
+	lastSeqBySession := map[string]int64{}
 	for sourceIndex, event := range events {
-		if len(items) > 0 {
-			last := &items[len(items)-1]
-			if merged, ok := mergeACPTextEvent(last.event, last.lastSeq, event); ok {
-				if trackDeletes && last.event.Seq != 0 && event.Seq != 0 {
-					last.deleteSeqs = append(last.deleteSeqs, last.event.Seq)
+		if sequenceGap(lastSeqBySession[event.SessionID], event.Seq) {
+			openTextIndex = -1
+		}
+		if event.Seq != 0 {
+			lastSeqBySession[event.SessionID] = event.Seq
+		}
+		if isACPTextEvent(event) {
+			if openTextIndex >= 0 {
+				last := &items[openTextIndex]
+				if merged, ok := mergeACPTextEvent(last.event, last.lastSeq, event); ok {
+					if trackDeletes && last.event.Seq != 0 && event.Seq != 0 {
+						last.deleteSeqs = append(last.deleteSeqs, last.event.Seq)
+					}
+					last.event = merged
+					if event.Seq != 0 {
+						last.lastSeq = event.Seq
+					}
+					continue
 				}
-				last.event = merged
-				if event.Seq != 0 {
-					last.lastSeq = event.Seq
-				}
-				continue
 			}
+			items = append(items, compactedTextItem{event: event, index: sourceIndex, lastSeq: event.Seq})
+			openTextIndex = len(items) - 1
+			continue
 		}
 		items = append(items, compactedTextItem{event: event, index: sourceIndex, lastSeq: event.Seq})
+		if openTextIndex >= 0 && !keepsACPTextStreamOpen(items[openTextIndex].event, event) {
+			openTextIndex = -1
+		}
 	}
 	return items
 }
@@ -215,6 +279,49 @@ func mergeACPTextEvent(prev Event, prevLastSeq int64, event Event) (Event, bool)
 	return merged, true
 }
 
+func isACPTextEvent(event Event) bool {
+	return event.ACP != nil && (event.Type == TypeACPMessage || event.Type == TypeACPThought)
+}
+
+func sequenceGap(prevSeq, seq int64) bool {
+	return prevSeq != 0 && seq != 0 && seq != prevSeq+1
+}
+
+func keepsACPTextStreamOpen(text Event, event Event) bool {
+	if text.ACP == nil {
+		return false
+	}
+	if event.SessionID != text.SessionID {
+		return false
+	}
+	if event.ACP != nil && event.ACP.ID == text.ACP.ID {
+		if event.Type == "acp_tool" {
+			return true
+		}
+		if event.Type == "acp" {
+			return acpStatusKeepsTextStreamOpen(event.ACP)
+		}
+	}
+	return event.Type == TypeProviderSubagent &&
+		event.ProviderSubagent != nil &&
+		event.ProviderSubagent.ParentID == text.ACP.ID
+}
+
+func acpStatusKeepsTextStreamOpen(acp *ACPEvent) bool {
+	if acp == nil || acp.Error != "" {
+		return false
+	}
+	if acp.Assistant != "" || acp.Thought != "" || len(acp.Plan) > 0 || len(acp.ToolCalls) > 0 || len(acp.Permissions) > 0 || acp.GoalRequested {
+		return false
+	}
+	switch acp.State {
+	case "", "starting", "running":
+		return true
+	default:
+		return false
+	}
+}
+
 func canMergeACPTextEvent(prev Event, prevLastSeq int64, event Event) bool {
 	if prev.ACP == nil || event.ACP == nil {
 		return false
@@ -225,10 +332,13 @@ func canMergeACPTextEvent(prev Event, prevLastSeq int64, event Event) bool {
 	if event.Type != TypeACPMessage && event.Type != TypeACPThought {
 		return false
 	}
+	if prev.SessionID != event.SessionID {
+		return false
+	}
 	if prev.ACP.ID != event.ACP.ID {
 		return false
 	}
-	return prevLastSeq == 0 || event.Seq == 0 || event.Seq == prevLastSeq+1
+	return prevLastSeq == 0 || event.Seq == 0 || event.Seq > prevLastSeq
 }
 
 func transcriptCoalesceKey(event Event) string {

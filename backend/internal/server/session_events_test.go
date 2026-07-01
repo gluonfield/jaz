@@ -80,6 +80,49 @@ func TestStreamSessionEventsResumesFromLastEventID(t *testing.T) {
 	}
 }
 
+func TestStreamSessionEventsProjectsTextReplacementAcrossToolEvents(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "events", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	acpState := &sessionevents.ACPEvent{
+		ID:        session.ID,
+		Slug:      session.Slug,
+		Agent:     "claude_code",
+		SessionID: "acp-session",
+		State:     acp.StateRunning,
+	}
+	toolState := *acpState
+	toolState.ToolCalls = []sessionevents.ACPToolCall{{ID: "tool-1", Title: "Read file", Status: "completed"}}
+	if err := store.AppendSessionEvents(session.ID,
+		sessionevents.Event{Type: "acp_message", Content: "message chunks, t", ACP: acpState},
+		sessionevents.Event{Type: "acp_tool", ACP: &toolState},
+		sessionevents.Event{Type: "acp_message", Content: "ool calls", ACP: acpState},
+	); err != nil {
+		t.Fatal(err)
+	}
+	srv := &Server{Store: store, Events: sessionevents.New()}
+	res := streamSessionEventsForTest(t, srv, session.ID, "/v1/sessions/"+session.ID+"/events?after_seq=1", "", "")
+	body := res.Body.String()
+
+	if !strings.Contains(body, "id: 2\n") || !strings.Contains(body, `"type":"acp_tool"`) {
+		t.Fatalf("missing projected tool event: %s", body)
+	}
+	if !strings.Contains(body, "id: 3\n") || !strings.Contains(body, `"content":"message chunks, tool calls"`) {
+		t.Fatalf("missing projected merged text: %s", body)
+	}
+	if !strings.Contains(body, `"replace_seqs":[1]`) {
+		t.Fatalf("missing replacement metadata: %s", body)
+	}
+	if strings.Contains(body, `"content":"ool calls"`) {
+		t.Fatalf("raw split text leaked through SSE: %s", body)
+	}
+}
+
 func TestStreamSessionEventsMobileProjectsToolPayload(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
