@@ -338,7 +338,19 @@ func canMergeACPTextEvent(prev Event, prevLastSeq int64, event Event) bool {
 	if prev.ACP.ID != event.ACP.ID {
 		return false
 	}
-	return prevLastSeq == 0 || event.Seq == 0 || event.Seq > prevLastSeq
+	if event.Seq != 0 && prevLastSeq != 0 && event.Seq <= prevLastSeq {
+		return false
+	}
+	if prev.ACP.TextRunID != "" || event.ACP.TextRunID != "" {
+		return prev.ACP.TextRunID != "" && prev.ACP.TextRunID == event.ACP.TextRunID
+	}
+	if prevLastSeq == 0 || event.Seq == 0 {
+		return true
+	}
+	if event.Seq == prevLastSeq+1 {
+		return true
+	}
+	return false
 }
 
 func transcriptCoalesceKey(event Event) string {
