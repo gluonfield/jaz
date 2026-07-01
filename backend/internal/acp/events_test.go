@@ -313,6 +313,25 @@ func TestACPTranscriptCloseTextRunStartsNewRun(t *testing.T) {
 	}
 }
 
+func TestACPTranscriptTextRunIdleStartsNewRun(t *testing.T) {
+	buffer := &acpTranscriptBuffer{}
+	now := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+
+	first := buffer.textRunID(now)
+	same := buffer.textRunID(now.Add(acpTranscriptTextRunIdle))
+	second := buffer.textRunID(now.Add(2*acpTranscriptTextRunIdle + time.Nanosecond))
+
+	if first == "" {
+		t.Fatal("first text run id is empty")
+	}
+	if same != first {
+		t.Fatalf("boundary run id = %q, want %q", same, first)
+	}
+	if second == first {
+		t.Fatalf("idle text run id = %q, want new id", second)
+	}
+}
+
 func receiveLiveEvent(t *testing.T, ch <-chan sessionevents.Event) sessionevents.Event {
 	t.Helper()
 	select {

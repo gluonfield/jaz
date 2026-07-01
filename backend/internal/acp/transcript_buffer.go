@@ -9,6 +9,9 @@ import (
 )
 
 const acpTranscriptFlushInterval = 100 * time.Millisecond
+
+// ACP text chunks carry no stream ID or close event, so Jaz owns the display
+// run boundary. Tool/status barriers keep a run open; a real pause closes it.
 const acpTranscriptTextRunIdle = 2 * time.Second
 
 type acpTranscriptRun struct {
