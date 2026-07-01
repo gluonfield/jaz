@@ -27,7 +27,6 @@ type Event struct {
 	SessionID        string                 `json:"session_id"`
 	Type             string                 `json:"type"`
 	Content          string                 `json:"content,omitempty"`
-	ReplaceSeqs      []int64                `json:"replace_seqs,omitempty"`
 	ACP              *ACPEvent              `json:"acp,omitempty"`
 	Plan             *PlanEvent             `json:"plan,omitempty"`
 	Goal             *GoalEvent             `json:"goal,omitempty"`

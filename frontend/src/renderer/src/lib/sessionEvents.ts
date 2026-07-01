@@ -30,11 +30,9 @@ export function sessionEventPlacement(event: SessionEvent): SessionEventPlacemen
   }
 }
 
-// Stable identity for the events that update in place rather than appending:
-// a child/agent status row, a running tool call, a permission prompt, a loop
-// card. Returns null for events that have no such identity (plain text deltas,
-// unknown types). Shared by the live-merge key and the React render key so the
-// two can never disagree on what counts as "the same row".
+// Stable identity for non-text events that update in place rather than
+// appending: child/agent status rows, running tool calls, permissions, and loop
+// cards. Text runs have their own coalesce key below.
 export function inPlaceEventKey(event: SessionEvent): string | null {
   if (event.type === 'acp' && event.acp?.id) {
     // The parent's view of a child is a single overview row that moves through
@@ -64,42 +62,37 @@ export function inPlaceEventKey(event: SessionEvent): string | null {
 }
 
 export function sessionEventCoalesceKey(event: SessionEvent): string {
-  return taskSurfaceKey(event) || inPlaceEventKey(event) || ''
+  return textRunEventKey(event) || taskSurfaceKey(event) || inPlaceEventKey(event) || ''
 }
 
 export function mergeSessionEvent(prev: SessionEvent[], event: SessionEvent): SessionEvent[] {
-  const base = withoutReplacedSessionEvents(prev, event)
   if (event.seq) {
-    const seqIndex = base.findIndex((item) => item.seq === event.seq && item.session_id === event.session_id)
+    const seqIndex = prev.findIndex((item) => item.seq === event.seq && item.session_id === event.session_id)
     if (seqIndex !== -1) {
-      const next = [...base]
+      const next = [...prev]
       next[seqIndex] = preferredDuplicateEvent(next[seqIndex], event)
       return next
     }
   }
-  const merged = mergeAdjacentACPText(base.at(-1), event)
+  const merged = mergeAdjacentACPText(prev.at(-1), event)
   if (merged) {
-    const next = [...base]
+    const next = [...prev]
     next[next.length - 1] = merged
     return next
   }
   const key = sessionEventCoalesceKey(event)
-  if (!key) return [...base, event]
-  const index = base.findIndex((item) => sessionEventCoalesceKey(item) === key)
-  if (index === -1) return [...base, event]
-  const next = [...base]
+  if (!key) return [...prev, event]
+  const index = prev.findIndex((item) => sessionEventCoalesceKey(item) === key)
+  if (index === -1) return [...prev, event]
+  const next = [...prev]
   next[index] = mergeCoalescedSessionEvent(next[index], event)
   return next
 }
 
 export function coalesceSessionEvents(events: SessionEvent[]): SessionEvent[] {
-  const replaced = replacedSessionEventSeqs(events)
   const bySeq = new Map<string, number>()
   const deduped: SessionEvent[] = []
   for (const event of events) {
-    if (event.seq && replaced.has(sessionEventSeqKey(event.session_id, event.seq))) {
-      continue
-    }
     if (!event.seq) {
       deduped.push(event)
       continue
@@ -141,27 +134,9 @@ export function coalesceSessionEvents(events: SessionEvent[]): SessionEvent[] {
     .map((item) => item.event)
 }
 
-function withoutReplacedSessionEvents(prev: SessionEvent[], event: SessionEvent): SessionEvent[] {
-  if (!event.replace_seqs?.length) return prev
-  const replaced = new Set(event.replace_seqs.map((seq) => sessionEventSeqKey(event.session_id, seq)))
-  return prev.filter((item) => !item.seq || !replaced.has(sessionEventSeqKey(item.session_id, item.seq)))
-}
-
-function replacedSessionEventSeqs(events: SessionEvent[]): Set<string> {
-  const replaced = new Set<string>()
-  for (const event of events) {
-    for (const seq of event.replace_seqs ?? []) {
-      replaced.add(sessionEventSeqKey(event.session_id, seq))
-    }
-  }
-  return replaced
-}
-
-function sessionEventSeqKey(sessionID: string, seq: number): string {
-  return `${sessionID}:${seq}`
-}
-
 function mergeCoalescedSessionEvent(prev: SessionEvent, next: SessionEvent): SessionEvent {
+  const mergedText = mergeACPTextEvents(prev, next)
+  if (mergedText) return mergedText
   if (prev.type === 'provider_subagent' && next.type === 'provider_subagent' && next.provider_subagent) {
     return {
       ...next,
@@ -231,6 +206,17 @@ function sameACPTextEvent(a: SessionEvent, b: SessionEvent): boolean {
       a.acp?.id &&
       a.acp.id === b.acp?.id,
   )
+}
+
+function textRunEventKey(event: SessionEvent): string | null {
+  if (
+    (event.type === 'acp_message' || event.type === 'acp_thought') &&
+    event.acp?.id &&
+    event.acp.text_run_id
+  ) {
+    return `acp_text:${event.session_id}:${event.acp.id}:${event.type}:${event.acp.text_run_id}`
+  }
+  return null
 }
 
 function acpTextLength(event: SessionEvent): number {

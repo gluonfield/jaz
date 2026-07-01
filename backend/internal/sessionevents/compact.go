@@ -15,54 +15,6 @@ type TextChunkCompaction struct {
 	DeleteSeqs []int64
 }
 
-type TextStreamProjector struct {
-	open             *compactedTextItem
-	lastSeqBySession map[string]int64
-}
-
-func NewTextStreamProjector() *TextStreamProjector {
-	return &TextStreamProjector{}
-}
-
-func (p *TextStreamProjector) Project(event Event) Event {
-	event.ReplaceSeqs = nil
-	if p.lastSeqBySession == nil {
-		p.lastSeqBySession = map[string]int64{}
-	}
-	if last := p.lastSeqBySession[event.SessionID]; last != 0 && event.Seq != 0 {
-		if event.Seq <= last {
-			return event
-		}
-		if event.Seq != last+1 {
-			p.open = nil
-		}
-	}
-	if event.Seq != 0 {
-		p.lastSeqBySession[event.SessionID] = event.Seq
-	}
-	if isACPTextEvent(event) {
-		if p.open != nil {
-			if merged, ok := mergeACPTextEvent(p.open.event, p.open.lastSeq, event); ok {
-				if p.open.event.Seq != 0 && event.Seq != 0 {
-					p.open.deleteSeqs = append(p.open.deleteSeqs, p.open.event.Seq)
-				}
-				p.open.event = merged
-				if event.Seq != 0 {
-					p.open.lastSeq = event.Seq
-				}
-				merged.ReplaceSeqs = append([]int64(nil), p.open.deleteSeqs...)
-				return merged
-			}
-		}
-		p.open = &compactedTextItem{event: event, lastSeq: event.Seq}
-		return event
-	}
-	if p.open != nil && !keepsACPTextStreamOpen(p.open.event, event) {
-		p.open = nil
-	}
-	return event
-}
-
 func CompactTranscript(events []Event) []Event {
 	if len(events) == 0 {
 		return nil
