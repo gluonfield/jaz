@@ -375,7 +375,6 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     planActive,
     goalAvailable,
     goalActive,
-    goalTurnRequested,
     goal,
     hasBlockingPendingPermission,
     latestPlanDecisionSurface,
@@ -411,8 +410,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
           liveUserMessage(live, (messages.at(-1)?.seq ?? 0) + 1_000_000),
         ]
       : messages
-  const goalStarting = (Boolean(live?.goalRequested) || goalTurnRequested) && !goal
-  const goalStatusVisible = goalAvailable || Boolean(goal) || goalStarting
+  const goalStatusVisible = goalActive
 
   return (
     <FileReaderLinkProvider onOpen={openFile}>
@@ -556,21 +554,15 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                   }}
                 />
               ) : (
-	                <>
-	                  {goalStatusVisible ? (
-	                    <GoalStatusBar
-	                      goal={goal}
-	                      starting={goalStarting}
-	                      running={sessionRunning}
-	                    />
-	                  ) : null}
+                <>
+                  {goalStatusVisible ? <GoalStatusBar goal={goal} running={sessionRunning} /> : null}
                   <Composer
                     streaming={sessionRunning}
                     planAvailable={planAvailable}
                     planModeActive={Boolean(live?.planRequested) || planActive}
                     goalControlVisible
                     goalAvailable={goalAvailable}
-                    goalActive={Boolean(live?.goalRequested) || goalActive}
+                    goalActive={goalActive}
                     queuedPrompts={queue.queuedPrompts}
                     steerDisabled={queue.steerDisabled}
                     draftStorageKey={`${SESSION_DRAFT_KEY_PREFIX}${session.id}`}

@@ -45,15 +45,6 @@ export function goalIsActive(goal: GoalEvent | undefined): boolean {
   return Boolean(goal?.status && goal.status !== 'complete')
 }
 
-export function latestACPGoalRequested(sessionId: string, events: SessionEvent[]): boolean | undefined {
-  let latest: boolean | undefined
-  for (const event of events) {
-    if (event.acp?.id !== sessionId || event.acp.goal_requested === undefined) continue
-    latest = event.acp.goal_requested
-  }
-  return latest
-}
-
 export function stripACPError(event: SessionEvent): SessionEvent {
   if (!event.acp?.error) return event
   return { ...event, acp: { ...event.acp, error: undefined } }
@@ -201,7 +192,6 @@ export function deriveSessionView(data: SessionMessages, liveEvents: SessionEven
     acp_tool_calls: acpToolCalls,
     acp_permissions: acpPermissions,
     acp_error: acpError,
-    acp_goal_requested: acpGoalRequested,
     acp_active_operation: acpActiveOperation,
     acp_last_event_at: acpLastEventAt,
     acp_last_tool_at: acpLastToolAt,
@@ -269,8 +259,7 @@ export function deriveSessionView(data: SessionMessages, liveEvents: SessionEven
   const runtimeEvents = [...persistedEvents, ...snapshotEvents, ...liveEvents]
   const latestGoal = latestGoalEvent(session.id, runtimeEvents)
   const goal = latestGoal === null ? undefined : latestGoal ?? session.goal
-  const goalTurnRequested = latestACPGoalRequested(session.id, runtimeEvents) ?? Boolean(acpGoalRequested)
-  const goalActive = goalIsActive(goal) || goalTurnRequested
+  const goalActive = goalIsActive(goal)
   const hasBlockingPendingPermission = Array.from(activePermissions).some(
     (id) => !activePlanApprovalPermissions.has(id),
   )
@@ -321,7 +310,6 @@ export function deriveSessionView(data: SessionMessages, liveEvents: SessionEven
     planActive,
     goalAvailable,
     goalActive,
-    goalTurnRequested,
     goal,
     hasBlockingPendingPermission,
     latestPlanDecisionSurface,
