@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"maps"
 	"net/http"
-	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -30,33 +28,6 @@ type manifestAsset struct {
 	SHA256 string            `json:"sha256"`
 	Binary string            `json:"binary"`
 	Env    map[string]string `json:"env,omitempty"`
-}
-
-type managedAdapterAssetSpec struct {
-	Adapters map[string]managedAdapterAssetSpecEntry `json:"adapters"`
-}
-
-type managedAdapterAssetSpecEntry struct {
-	Repo    string                                  `json:"repo"`
-	Tag     string                                  `json:"tag"`
-	Version string                                  `json:"version"`
-	Assets  map[string]managedAdapterAssetSpecAsset `json:"assets"`
-}
-
-type managedAdapterAssetSpecAsset struct {
-	Name   string            `json:"name"`
-	Binary string            `json:"binary"`
-	Env    map[string]string `json:"env,omitempty"`
-}
-
-type githubRelease struct {
-	Assets []githubReleaseAsset `json:"assets"`
-}
-
-type githubReleaseAsset struct {
-	Name               string `json:"name"`
-	BrowserDownloadURL string `json:"browser_download_url"`
-	Digest             string `json:"digest"`
 }
 
 func manifestURLForVersion(version string) string {
@@ -135,13 +106,13 @@ func (m *Manager) fetchManifest(ctx context.Context) (manifest, error) {
 		return out, nil
 	}
 	if cached, ok := m.cachedManifest(); ok {
-		if !m.cacheAllowedForFetchFailure(cached) {
+		if !m.cacheAllowedForFetchFailure() {
 			return manifest{}, err
 		}
 		return cached, nil
 	}
 	if cached, ok := m.readManifestCache(); ok {
-		if !m.cacheAllowedForFetchFailure(cached) {
+		if !m.cacheAllowedForFetchFailure() {
 			return manifest{}, err
 		}
 		m.cacheManifest(cached)
@@ -150,46 +121,13 @@ func (m *Manager) fetchManifest(ctx context.Context) (manifest, error) {
 	return manifest{}, err
 }
 
-func (m *Manager) cacheAllowedForFetchFailure(cached manifest) bool {
-	if m.assetSpecPath == "" {
-		return true
-	}
-	spec, err := m.readAssetSpec()
-	if err != nil {
-		return false
-	}
-	for name, pinned := range spec.Adapters {
-		adapter, ok := cached.Adapters[name]
-		if !ok || adapter.Version != pinned.Version {
-			return false
-		}
-		for platform, pinnedAsset := range pinned.Assets {
-			asset, ok := adapter.Assets[platform]
-			if !ok || !manifestAssetMatchesSpec(name, adapter.Version, asset, pinnedAsset) {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-func manifestAssetMatchesSpec(adapter, version string, asset manifestAsset, pinned managedAdapterAssetSpecAsset) bool {
-	if err := validateManifestAsset(adapter, version, asset); err != nil {
-		return false
-	}
-	if asset.Binary != strings.TrimSpace(pinned.Binary) {
-		return false
-	}
-	if !maps.Equal(asset.Env, pinned.Env) {
-		return false
-	}
-	parsed, err := url.Parse(asset.URL)
-	return err == nil && path.Base(parsed.Path) == strings.TrimSpace(pinned.Name)
+func (m *Manager) cacheAllowedForFetchFailure() bool {
+	return m.localManifestPath == ""
 }
 
 func (m *Manager) fetchManifestSource(ctx context.Context) (manifest, error) {
-	if m.assetSpecPath != "" {
-		return m.manifestFromAssetSpec(ctx)
+	if m.localManifestPath != "" {
+		return readLocalManifest(m.localManifestPath)
 	}
 	if m.manifestURL == "" {
 		return manifest{}, fmt.Errorf("managed acp adapter manifest URL is not configured")
@@ -197,79 +135,17 @@ func (m *Manager) fetchManifestSource(ctx context.Context) (manifest, error) {
 	return m.fetchRemoteManifest(ctx)
 }
 
-func (m *Manager) manifestFromAssetSpec(ctx context.Context) (manifest, error) {
-	spec, err := m.readAssetSpec()
+func readLocalManifest(file string) (manifest, error) {
+	body, err := os.ReadFile(file)
 	if err != nil {
 		return manifest{}, err
 	}
-	out := manifest{Adapters: map[string]manifestAdapter{}}
-	for name, adapter := range spec.Adapters {
-		releaseAssets, err := m.fetchReleaseAssets(ctx, adapter.Repo, adapter.Tag)
-		if err != nil {
-			return manifest{}, err
-		}
-		out.Adapters[name] = manifestAdapter{Version: adapter.Version, Assets: map[string]manifestAsset{}}
-		for platform, wanted := range adapter.Assets {
-			asset, ok := releaseAssets[wanted.Name]
-			if !ok {
-				return manifest{}, fmt.Errorf("%s@%s is missing %s", adapter.Repo, adapter.Tag, wanted.Name)
-			}
-			sha256 := strings.TrimPrefix(asset.Digest, "sha256:")
-			if sha256 == asset.Digest || sha256 == "" {
-				return manifest{}, fmt.Errorf("%s is missing a GitHub SHA-256 digest", asset.Name)
-			}
-			out.Adapters[name].Assets[platform] = manifestAsset{
-				URL:    asset.BrowserDownloadURL,
-				SHA256: sha256,
-				Binary: wanted.Binary,
-				Env:    wanted.Env,
-			}
-		}
+	var out manifest
+	if err := json.Unmarshal(body, &out); err != nil {
+		return manifest{}, err
 	}
-	return out, nil
-}
-
-func (m *Manager) readAssetSpec() (managedAdapterAssetSpec, error) {
-	body, err := os.ReadFile(m.assetSpecPath)
-	if err != nil {
-		return managedAdapterAssetSpec{}, err
-	}
-	var spec managedAdapterAssetSpec
-	if err := json.Unmarshal(body, &spec); err != nil {
-		return managedAdapterAssetSpec{}, err
-	}
-	if len(spec.Adapters) == 0 {
-		return managedAdapterAssetSpec{}, fmt.Errorf("managed acp adapter asset spec is empty")
-	}
-	for name, adapter := range spec.Adapters {
-		if err := validateAdapterAssetSpec(name, adapter); err != nil {
-			return managedAdapterAssetSpec{}, err
-		}
-	}
-	return spec, nil
-}
-
-func (m *Manager) fetchReleaseAssets(ctx context.Context, repo, tag string) (map[string]githubReleaseAsset, error) {
-	endpoint := strings.TrimRight(m.githubAPIURL, "/") + "/" + strings.Trim(repo, "/") + "/releases/tags/" + url.PathEscape(strings.TrimSpace(tag))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, err
-	}
-	res, err := m.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fetch %s@%s release assets: %s", repo, tag, res.Status)
-	}
-	var release githubRelease
-	if err := json.NewDecoder(res.Body).Decode(&release); err != nil {
-		return nil, err
-	}
-	out := make(map[string]githubReleaseAsset, len(release.Assets))
-	for _, asset := range release.Assets {
-		out[asset.Name] = asset
+	if len(out.Adapters) == 0 {
+		return manifest{}, fmt.Errorf("managed acp adapter manifest is empty")
 	}
 	return out, nil
 }
@@ -336,23 +212,23 @@ func (m *Manager) manifestCachePath() string {
 	return filepath.Join(m.root, "acp", "managed", "adapters", "manifest-"+m.manifestCacheName+".json")
 }
 
-func findLocalAssetSpecPath() string {
+func findLocalManifestPath() string {
 	dir, err := os.Getwd()
 	if err == nil {
-		if path := findAssetSpecFromDir(dir); path != "" {
+		if path := findManifestFromDir(dir); path != "" {
 			return path
 		}
 	}
 	_, file, _, ok := runtime.Caller(0)
 	if ok {
-		return findAssetSpecFromDir(filepath.Dir(file))
+		return findManifestFromDir(filepath.Dir(file))
 	}
 	return ""
 }
 
-func findAssetSpecFromDir(dir string) string {
+func findManifestFromDir(dir string) string {
 	for {
-		candidate := filepath.Join(dir, ".github", "acp-adapter-assets.json")
+		candidate := filepath.Join(dir, "dist", "acp-adapters.json")
 		if fileExists(candidate) {
 			return candidate
 		}
@@ -399,29 +275,6 @@ func validateManifestAsset(adapter, version string, asset manifestAsset) error {
 	for key, value := range asset.Env {
 		if strings.TrimSpace(key) == "" || !cleanRelative(value) {
 			return fmt.Errorf("managed acp adapter %q manifest env path is invalid", adapter)
-		}
-	}
-	return nil
-}
-
-func validateAdapterAssetSpec(name string, adapter managedAdapterAssetSpecEntry) error {
-	tag := strings.TrimSpace(adapter.Tag)
-	version := strings.TrimSpace(adapter.Version)
-	if strings.TrimSpace(adapter.Repo) == "" || tag == "" || version == "" {
-		return fmt.Errorf("managed acp adapter %q asset spec is incomplete", name)
-	}
-	if tag != version && tag != "v"+version {
-		return fmt.Errorf("%s: tag %q does not match version %q", name, tag, version)
-	}
-	if len(adapter.Assets) == 0 {
-		return fmt.Errorf("managed acp adapter %q asset spec is incomplete", name)
-	}
-	for platform, asset := range adapter.Assets {
-		if strings.TrimSpace(asset.Name) == "" || strings.TrimSpace(asset.Binary) == "" {
-			return fmt.Errorf("managed acp adapter %q %s asset spec is incomplete", name, platform)
-		}
-		if !strings.Contains(asset.Name, version) {
-			return fmt.Errorf("%s %s: asset %q does not embed version %q", name, platform, asset.Name, version)
 		}
 	}
 	return nil
