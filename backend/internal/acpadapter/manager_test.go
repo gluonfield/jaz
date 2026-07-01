@@ -114,10 +114,7 @@ func TestFetchManifestRejectsStaleCacheWhenLocalAssetSpecFetchFails(t *testing.T
 	defer server.Close()
 
 	root := t.TempDir()
-	specPath := filepath.Join(root, "acp-adapter-assets.json")
-	if err := os.WriteFile(specPath, []byte(`{"adapters":{"claude":{"repo":"example/adapter","tag":"v1.2.3","version":"1.2.3","assets":{"darwin-arm64":{"name":"adapter-1.2.3-darwin-arm64.tar.gz","binary":"bin/tool"}}}}}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	specPath := writeAssetSpec(t, root, `{"adapters":{"claude":{"repo":"example/adapter","tag":"v1.2.3","version":"1.2.3","assets":{"darwin-arm64":{"name":"adapter-1.2.3-darwin-arm64.tar.gz","binary":"bin/tool"}}}}}`)
 
 	manager := NewForTest(root, "", server.Client())
 	manager.assetSpecPath = specPath
@@ -131,6 +128,27 @@ func TestFetchManifestRejectsStaleCacheWhenLocalAssetSpecFetchFails(t *testing.T
 	}
 }
 
+func TestFetchManifestRejectsInvalidLocalAssetSpecCacheFallback(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "offline", http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	root := t.TempDir()
+	specPath := writeAssetSpec(t, root, `{"adapters":{"claude":{"repo":"example/adapter","tag":"v1.2.3","version":"1.2.3","assets":{}}}}`)
+
+	manager := NewForTest(root, "", server.Client())
+	manager.assetSpecPath = specPath
+	manager.githubAPIURL = server.URL + "/repos"
+	manager.cacheManifest(manifest{Adapters: map[string]manifestAdapter{
+		"claude": {Version: "1.2.3", Assets: map[string]manifestAsset{}},
+	}})
+
+	if _, err := manager.fetchManifest(context.Background()); err == nil {
+		t.Fatal("expected invalid asset spec to reject cache fallback")
+	}
+}
+
 func TestFetchManifestFallsBackToMatchingCacheWhenLocalAssetSpecFetchFails(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "offline", http.StatusBadGateway)
@@ -138,10 +156,7 @@ func TestFetchManifestFallsBackToMatchingCacheWhenLocalAssetSpecFetchFails(t *te
 	defer server.Close()
 
 	root := t.TempDir()
-	specPath := filepath.Join(root, "acp-adapter-assets.json")
-	if err := os.WriteFile(specPath, []byte(`{"adapters":{"claude":{"repo":"example/adapter","tag":"v1.2.3","version":"1.2.3","assets":{"darwin-arm64":{"name":"adapter-1.2.3-darwin-arm64.tar.gz","binary":"bin/tool"}}}}}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	specPath := writeAssetSpec(t, root, `{"adapters":{"claude":{"repo":"example/adapter","tag":"v1.2.3","version":"1.2.3","assets":{"darwin-arm64":{"name":"adapter-1.2.3-darwin-arm64.tar.gz","binary":"bin/tool"}}}}}`)
 
 	manager := NewForTest(root, "", server.Client())
 	manager.assetSpecPath = specPath
@@ -157,6 +172,15 @@ func TestFetchManifestFallsBackToMatchingCacheWhenLocalAssetSpecFetchFails(t *te
 	if got.Adapters["claude"].Version != "1.2.3" {
 		t.Fatalf("manifest = %#v", got)
 	}
+}
+
+func writeAssetSpec(t *testing.T, root, body string) string {
+	t.Helper()
+	path := filepath.Join(root, "acp-adapter-assets.json")
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func TestResolveAdapterRejectsBadChecksum(t *testing.T) {

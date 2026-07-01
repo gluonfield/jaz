@@ -25,6 +25,7 @@ func TestSessionGoalRoundTripAndMirror(t *testing.T) {
 		Type: sessionevents.TypeGoalUpdate,
 		Goal: &sessionevents.GoalEvent{
 			Identity: goal.Identity{
+				Source:         goal.SourceProvider,
 				Provider:       "codex",
 				ProviderGoalID: "goal-1",
 				Objective:      "Ship visible goal state",
