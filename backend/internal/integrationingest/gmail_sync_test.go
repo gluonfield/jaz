@@ -31,7 +31,7 @@ func TestGmailSyncerWritesObservedMessagesAndCursor(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/gmail/v1/users/me/messages":
-			if got := r.URL.Query().Get("q"); got != "after:2025/06/26" {
+			if got := r.URL.Query().Get("q"); got != "after:2026/03/28" {
 				t.Fatalf("gmail backfill query = %q", got)
 			}
 			_, _ = w.Write([]byte(`{"messages":[{"id":"m1","threadId":"t1"}]}`))
