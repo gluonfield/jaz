@@ -39,25 +39,35 @@ func (s *Server) streamSessionEvents(w http.ResponseWriter, r *http.Request, ses
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 	for _, event := range stored {
-		event = storage.GoalDisplayEvent(event)
+		if event.Seq > afterSeq {
+			afterSeq = event.Seq
+		}
+		var ok bool
+		event, ok = storage.GoalDisplayEvent(event)
+		if !ok {
+			continue
+		}
 		if mobile {
 			event = mobileSessionEvent(event)
 		}
 		writeSessionEventSSE(w, flusher, event)
-		afterSeq = event.Seq
 	}
 	for event := range events {
 		if event.Seq > 0 && event.Seq <= afterSeq {
 			continue
 		}
-		event = storage.GoalDisplayEvent(event)
+		if event.Seq > afterSeq {
+			afterSeq = event.Seq
+		}
+		var ok bool
+		event, ok = storage.GoalDisplayEvent(event)
+		if !ok {
+			continue
+		}
 		if mobile {
 			event = mobileSessionEvent(event)
 		}
 		writeSessionEventSSE(w, flusher, event)
-		if event.Seq > afterSeq {
-			afterSeq = event.Seq
-		}
 	}
 }
 

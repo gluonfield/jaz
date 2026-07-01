@@ -1,3 +1,6 @@
+import { ChevronDown } from 'lucide-react'
+import { useState } from 'react'
+
 import type { GoalEvent } from '@/lib/api/types'
 
 const numberFormatter = new Intl.NumberFormat()
@@ -15,6 +18,8 @@ export function GoalStatusBar({
   goal?: GoalEvent
   running?: boolean
 }) {
+  const [expanded, setExpanded] = useState(false)
+
   if (!goal) return null
 
   const objective = goal?.objective?.trim()
@@ -23,20 +28,38 @@ export function GoalStatusBar({
   const details = goalDetails(goal)
 
   return (
-    <div className="group/goal relative mb-2 flex min-h-9 items-center gap-3 rounded-[8px] bg-primary-soft/70 px-3 py-2 text-[13px] shadow-sm ring-1 ring-primary/20">
-      <span className={`size-1.5 shrink-0 rounded-full ${goalDotClass(goal?.status, running)}`} />
-      <div className="min-w-0 flex-1 leading-5">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 font-medium text-primary-strong">{label}</span>
-          {objective ? <span className="min-w-0 truncate text-ink-2">{objective}</span> : null}
+    <div className="group/goal relative mb-2 rounded-[8px] bg-primary-soft/70 px-3 py-2 text-[13px] shadow-sm ring-1 ring-primary/20">
+      <button
+        type="button"
+        className="flex min-h-10 w-full min-w-0 items-center gap-3 text-left transition-transform duration-150 active:scale-[0.96]"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((value) => !value)}
+      >
+        <span className={`size-1.5 shrink-0 rounded-full ${goalDotClass(goal?.status, running)}`} />
+        <div className="min-w-0 flex-1 leading-5">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="shrink-0 font-medium text-primary-strong">{label}</span>
+            {objective ? <span className="min-w-0 truncate text-ink-2">{objective}</span> : null}
+          </div>
         </div>
-      </div>
-      {tokenProgress ? (
-        <GoalTokenProgress progress={tokenProgress} />
-      ) : goal?.tokens_used != null ? (
-        <span className="shrink-0 tabular-nums text-[12px] text-ink-3">
-          {numberFormatter.format(goal.tokens_used)} goal tokens
-        </span>
+        {tokenProgress ? (
+          <GoalTokenProgress progress={tokenProgress} />
+        ) : goal?.tokens_used != null ? (
+          <span className="shrink-0 tabular-nums text-[12px] text-ink-3">
+            {numberFormatter.format(goal.tokens_used)} goal tokens
+          </span>
+        ) : null}
+        {objective ? (
+          <ChevronDown
+            className={`size-4 shrink-0 text-primary-strong/70 transition-transform duration-150 ${expanded ? 'rotate-180' : ''}`}
+            aria-hidden="true"
+          />
+        ) : null}
+      </button>
+      {expanded && objective ? (
+        <div className="mt-2 whitespace-pre-wrap break-words border-t border-primary/15 pt-2 text-[13px] leading-5 text-ink-2">
+          {objective}
+        </div>
       ) : null}
       {details.length ? <GoalDetails rows={details} /> : null}
     </div>
@@ -86,7 +109,7 @@ function goalStatusLabel(status?: string): string {
     case 'requested':
       return 'Goal requested'
     case 'active':
-      return 'Goal active'
+      return 'Goal'
     case 'complete':
       return 'Goal complete'
     case 'blocked':
@@ -119,9 +142,10 @@ function goalDetails(goal?: GoalEvent): GoalDetail[] {
   if (!goal) return []
   const rows: GoalDetail[] = []
   addDetail(rows, 'Goal tokens', numericLabel(goal.tokens_used), true)
-  addDetail(rows, 'Token budget', goalTokenBudgetLabel(goal), true)
-  addDetail(rows, 'Remaining', numericLabel(goal.remaining_tokens), true)
-  addDetail(rows, 'Elapsed', elapsedLabel(goal.time_used_seconds), true)
+  if (goal.token_budget != null) {
+    addDetail(rows, 'Token budget', numericLabel(goal.token_budget), true)
+    addDetail(rows, 'Remaining', numericLabel(goal.remaining_tokens), true)
+  }
   return rows
 }
 
@@ -130,22 +154,6 @@ function addDetail(rows: GoalDetail[], label: string, value?: string, numeric?: 
   rows.push({ label, value, numeric })
 }
 
-function goalTokenBudgetLabel(goal: GoalEvent): string {
-  if (goal.token_budget != null) return numberFormatter.format(goal.token_budget)
-  return goal.tokens_used != null ? 'Not set' : ''
-}
-
 function numericLabel(value?: number): string {
   return typeof value === 'number' ? numberFormatter.format(value) : ''
-}
-
-function elapsedLabel(seconds?: number): string {
-  if (!seconds || seconds <= 0) return ''
-  if (seconds < 60) return `${numberFormatter.format(seconds)}s`
-  const minutes = Math.floor(seconds / 60)
-  const remainder = seconds % 60
-  if (minutes < 60) return remainder ? `${minutes}m ${remainder}s` : `${minutes}m`
-  const hours = Math.floor(minutes / 60)
-  const minuteRemainder = minutes % 60
-  return minuteRemainder ? `${hours}h ${minuteRemainder}m` : `${hours}h`
 }
