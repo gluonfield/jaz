@@ -21,10 +21,10 @@ export function GoalStatusBar({
   const tokenProgress = goalTokenProgress(goal)
 
   return (
-    <div className="mb-2 rounded-[8px] bg-primary-soft/70 px-3 py-2 text-[13px] shadow-sm ring-1 ring-primary/20">
+    <div className="mb-2 rounded-[8px] bg-primary-soft/70 px-3 py-1.5 text-[13px] shadow-sm ring-1 ring-primary/20">
       <button
         type="button"
-        className="flex min-h-10 w-full min-w-0 items-center gap-3 text-left transition-transform duration-150 active:scale-[0.99]"
+        className="flex w-full min-w-0 items-center gap-3 text-left transition-transform duration-150 active:scale-[0.99]"
         aria-expanded={expanded}
         onClick={() => setExpanded((value) => !value)}
       >
