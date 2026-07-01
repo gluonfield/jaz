@@ -1,7 +1,6 @@
 import {
   ArrowLeft,
   ArrowRight,
-  Check,
   CheckCircle2,
   ChevronDown,
   KeyRound,
@@ -10,7 +9,7 @@ import {
   LogIn,
 } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { type ReactNode, useState } from 'react'
+import { useState } from 'react'
 import { AgentLogo } from '@/components/acp/AgentLogo'
 import { AuthLoginStatus } from '@/components/acp/AuthLoginStatus'
 import { Button } from '@/components/ui/Button'
@@ -25,51 +24,94 @@ import { localDeviceLabel } from '@/lib/deviceLabel'
 
 export const onboardingEase = [0.22, 1, 0.36, 1] as const
 
-export const onboardingStagger = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.07, delayChildren: 0.08 } },
+export type OnboardingStep = 'welcome' | 'agents' | 'memory' | 'connections' | 'loops'
+
+const PROGRESS_STEPS = ['agents', 'memory', 'connections', 'loops'] as const
+
+// Quiet positional dots: the active step stretches into a pill, past steps
+// tint toward the brand, future steps stay faint.
+export function OnboardingProgress({ step }: { step: OnboardingStep }) {
+  const position = PROGRESS_STEPS.findIndex((value) => value === step)
+  return (
+    <div aria-label="Setup progress" className="flex shrink-0 items-center gap-1.5">
+      {PROGRESS_STEPS.map((value, index) => (
+        <span
+          key={value}
+          aria-current={index === position ? 'step' : undefined}
+          className={`h-1.5 rounded-full transition-all duration-200 ${
+            index === position ? 'w-5 bg-primary' : index < position ? 'w-1.5 bg-primary/40' : 'w-1.5 bg-ink/15'
+          }`}
+        />
+      ))}
+    </div>
+  )
 }
 
-export const onboardingRise = {
-  hidden: { opacity: 0, y: 12, filter: 'blur(5px)' },
-  show: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.42, ease: onboardingEase } },
+// Shared slide footer: Back on the left, progress dots dead center, the
+// primary action on the right — the one fixed anchor across every slide.
+export function OnboardingFooter({
+  step,
+  nextLabel,
+  nextDisabled = false,
+  busy = false,
+  error,
+  onBack,
+  onNext,
+}: {
+  step: OnboardingStep
+  nextLabel: string
+  nextDisabled?: boolean
+  busy?: boolean
+  error?: string
+  onBack: () => void
+  onNext: () => void
+}) {
+  return (
+    <div className="mt-8 w-full">
+      {error ? <p className="mb-2 text-center text-pretty text-[12px] text-danger">{error}</p> : null}
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center">
+        <Button variant="ghost" size="lg" onClick={onBack} className="justify-self-start">
+          <ArrowLeft size={14} />
+          Back
+        </Button>
+        <OnboardingProgress step={step} />
+        <Button
+          variant="primary"
+          size="lg"
+          disabled={nextDisabled || busy}
+          onClick={onNext}
+          className="justify-self-end"
+        >
+          {busy ? <LoaderCircle size={14} className="animate-spin" /> : null}
+          {nextLabel}
+          {busy ? null : <ArrowRight size={14} />}
+        </Button>
+      </div>
+    </div>
+  )
 }
 
-export type OnboardingStep = 'agents' | 'memory'
-
-export function AgentSetupStep({
+export function AgentList({
   probes,
   remote,
   acpKeysByAgent,
   loginJobs,
   loginPending,
-  canContinue,
-  onRefresh,
   onStartLogin,
   onAPIKeyChange,
-  onContinue,
 }: {
   probes: OnboardingACPProbe[]
   remote: boolean
   acpKeysByAgent: Record<string, string>
   loginJobs: Record<string, ACPAuthLogin>
   loginPending?: string
-  canContinue: boolean
-  onRefresh: () => void
   onStartLogin: (agent: string) => void
   onAPIKeyChange: (agent: string, value: string) => void
-  onContinue: () => void
 }) {
   const deviceLabel = localDeviceLabel()
   return (
-    <motion.div
-      variants={onboardingRise}
-      initial="hidden"
-      animate="show"
-      exit={{ opacity: 0, y: -6, filter: 'blur(3px)', transition: { duration: 0.16, ease: onboardingEase } }}
-    >
-      <SectionLabel>Coding agents</SectionLabel>
-      <div className="grid gap-1.5">
+    <div>
+      <div className="grid grid-cols-1 gap-1.5">
         {probes.map((probe) => (
           <AgentCard
             key={probe.agent}
@@ -83,169 +125,49 @@ export function AgentSetupStep({
           />
         ))}
       </div>
-
-      <div className="mt-4 flex items-center gap-2.5 px-1">
-        <Lock size={13} className="shrink-0 text-ink-3" />
-        <p className="text-pretty text-[12px] leading-relaxed text-ink-3">
-          {remote
-            ? 'Your logins and keys are stored on your server and never leave it.'
-            : `Your logins and keys are stored on ${deviceLabel} and never leave your machine.`}
-        </p>
-      </div>
-
-      <div className="mt-5 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-        <p className="min-h-5 text-pretty text-[12px] text-ink-3">
-          {canContinue ? 'Continue to choose how memory works.' : 'Connect one coding agent to continue.'}
-        </p>
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="lg" onClick={onRefresh} title="Re-check agent status">
-            Refresh
-          </Button>
-          <Button variant="primary" size="lg" disabled={!canContinue} onClick={onContinue}>
-            Continue
-            <ArrowRight size={14} />
-          </Button>
-        </div>
-      </div>
-    </motion.div>
+      <p className="mt-3 flex items-center justify-center gap-1.5 text-[12px] text-ink-3">
+        <Lock size={12} className="shrink-0" />
+        {remote ? 'Logins and keys stay on your server.' : `Logins and keys stay on ${deviceLabel}.`}
+      </p>
+    </div>
   )
 }
 
-export function MemorySetupStep({
+export function MemoryCard({
   enabled,
   agent,
   agents,
-  saving,
-  error,
-  canFinish,
   onEnabledChange,
   onAgentChange,
-  onBack,
-  onFinish,
 }: {
   enabled: boolean
   agent: string
   agents: string[]
-  saving: boolean
-  error: string
-  canFinish: boolean
   onEnabledChange: (enabled: boolean) => void
   onAgentChange: (agent: string) => void
-  onBack: () => void
-  onFinish: () => void
 }) {
   const options = agents.map((value) => ({
     value,
     label: onboardingAgentLabel(value),
   }))
   return (
-    <motion.div
-      variants={onboardingRise}
-      initial="hidden"
-      animate="show"
-      exit={{ opacity: 0, y: -6, filter: 'blur(3px)', transition: { duration: 0.16, ease: onboardingEase } }}
-    >
-      <div className="rounded-[12px] bg-surface p-3 shadow-sm">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[13.5px] font-medium text-ink">Memory</p>
-            <p className="mt-0.5 text-pretty text-[12px] leading-relaxed text-ink-2">
-              Memory lets Jaz remember your preferences, decisions, and project context, so agents
-              understand you across projects instead of starting cold.
-            </p>
-          </div>
-          <Switch checked={enabled} onChange={onEnabledChange} aria-label="Enable memory" />
-        </div>
-        <div className={enabled ? 'mt-4' : 'pointer-events-none mt-4 opacity-50'}>
-          <SectionLabel>Select an agent</SectionLabel>
-          <Select
-            value={agent}
-            options={options}
-            disabled={!enabled || options.length === 0}
-            onChange={onAgentChange}
-            aria-label="Select memory agent"
-            className="h-10 w-full justify-between rounded-[9px] bg-bg px-3 text-[13px]"
-          />
-        </div>
+    <div className="rounded-[14px] bg-surface p-3.5">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[13.5px] font-medium text-ink">Remember me</p>
+        <Switch checked={enabled} onChange={onEnabledChange} aria-label="Enable memory" />
       </div>
-
-      <div className="mt-5 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-        <p className={`min-h-5 text-pretty text-[12px] ${error ? 'text-danger' : 'text-ink-3'}`}>
-          {error ||
-            (enabled
-              ? agent
-                ? `Using ${onboardingAgentLabel(agent)} for memory.`
-                : 'Select an agent to continue.'
-              : 'Memory will stay off.')}
-        </p>
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="lg" onClick={onBack}>
-            <ArrowLeft size={14} />
-            Back
-          </Button>
-          <Button variant="primary" size="lg" disabled={!canFinish || saving} onClick={onFinish}>
-            {saving && <LoaderCircle size={14} className="animate-spin" />}
-            Finish setup
-          </Button>
-        </div>
+      <div className={enabled ? 'mt-3' : 'pointer-events-none mt-3 opacity-40'}>
+        <Select
+          value={agent}
+          options={options}
+          disabled={!enabled || options.length === 0}
+          onChange={onAgentChange}
+          aria-label="Select memory agent"
+          className="h-10 w-full justify-between rounded-[10px] bg-bg px-3 text-[13px]"
+        />
+        <p className="mt-2 text-[12px] text-ink-3">This agent writes and organizes what jaz remembers.</p>
       </div>
-    </motion.div>
-  )
-}
-
-export function OnboardingProgress({
-  step,
-  agentsComplete,
-}: {
-  step: OnboardingStep
-  agentsComplete: boolean
-}) {
-  const items = [
-    { value: 'agents', label: 'Agents', complete: agentsComplete },
-    { value: 'memory', label: 'Memory', complete: false },
-  ] as const
-  return (
-    <ol
-      aria-label="Setup progress"
-      className="flex shrink-0 items-center text-[12px]"
-    >
-      {items.map((item, index) => {
-        const active = step === item.value
-        const complete = item.complete
-        return (
-          <li
-            key={item.value}
-            aria-current={active ? 'step' : undefined}
-            className="flex items-center"
-          >
-            <span
-              className={`grid size-[18px] place-items-center rounded-full ring-1 ${
-                complete
-                  ? 'bg-primary-soft text-primary-strong ring-primary/20'
-                  : active
-                    ? 'bg-primary text-on-primary ring-primary'
-                    : 'bg-bg text-ink-3 ring-border'
-              }`}
-            >
-              {complete ? <Check size={11} /> : <span className="size-1.5 rounded-full bg-current" />}
-            </span>
-            <span
-              className={`ml-1.5 font-medium ${
-                active ? 'text-ink' : complete ? 'text-ink-2' : 'text-ink-3'
-              }`}
-            >
-              {item.label}
-            </span>
-            {index === 0 ? (
-              <span
-                aria-hidden
-                className={`mx-2 h-px w-8 ${complete ? 'bg-primary/45' : 'bg-border'}`}
-              />
-            ) : null}
-          </li>
-        )
-      })}
-    </ol>
+    </div>
   )
 }
 
@@ -349,7 +271,7 @@ function AgentCard({
             <span className="truncate text-[13.5px] font-medium text-ink">
               {onboardingAgentLabel(probe.agent)}
             </span>
-            <StatePill state={state} label={missingLabel} />
+            {state !== 'ready' ? <StatePill state={state} label={missingLabel} /> : null}
           </span>
           {state === 'ready' ? (
             <CheckCircle2 size={17} className="shrink-0 text-primary" />
@@ -459,8 +381,4 @@ function StatePill({ state, label }: { state: AgentState; label?: string }) {
       {text}
     </span>
   )
-}
-
-function SectionLabel({ children }: { children: ReactNode }) {
-  return <p className="mb-2 px-1 text-[12px] font-medium text-ink-3">{children}</p>
 }

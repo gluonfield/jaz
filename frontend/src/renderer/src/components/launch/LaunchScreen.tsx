@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
 import { RemoteServerForm } from '@/components/connection/RemoteServerForm'
 import { Button } from '@/components/ui/Button'
+import { DitherWordmark } from '@/components/launch/DitherArt'
 import { PixelField } from '@/components/ui/PixelField'
 import { useKnownBackends } from '@/lib/backends'
 import { clientRuntime } from '@/lib/clientRuntime'
@@ -19,6 +20,13 @@ import { localDeviceLabel } from '@/lib/deviceLabel'
 import { useTheme } from '@/lib/theme'
 
 const EASE = [0.22, 1, 0.36, 1] as const
+
+// Dev-only escape hatch: `?launch` pins the boot gate to the checking state
+// (`?launch=welcome` to the options state) so the launch visuals can be
+// iterated in a browser while a live backend is reachable.
+export const launchPreview: string | null = import.meta.env.DEV
+  ? new URLSearchParams(window.location.search).get('launch')
+  : null
 
 const stagger = {
   hidden: {},
@@ -72,7 +80,8 @@ type LaunchScreenProps = { manual?: false; onClose?: never } | { manual: true; o
 // dismisses itself via `onClose`. The particle field renders the wordmark, so
 // the chrome stays text-light.
 export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}) {
-  const { status, error, pairing, url: currentUrl } = useConnection()
+  const { status: liveStatus, error, pairing, url: currentUrl } = useConnection()
+  const status = launchPreview === null ? liveStatus : launchPreview === 'welcome' ? 'disconnected' : 'checking'
   // PixelField samples the palette at mount; remount it when the theme flips.
   const { resolved } = useTheme()
   const [mode, setMode] = useState<'options' | 'remote'>('options')
@@ -146,10 +155,16 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1, transition: { duration: 0.3, delay: 0.2 } }}
               exit={{ opacity: 0, transition: { duration: 0.15 } }}
-              className="flex flex-col items-center gap-3"
+              className="flex flex-col items-center gap-8"
             >
-              <span className="size-2 animate-pulse rounded-full bg-primary" />
-              <p className="text-[13px] text-ink-3">{checkingCopy}</p>
+              <DitherWordmark delay={0.35} />
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1, transition: { duration: 0.4, delay: 1.1 } }}
+                className="text-[13px] text-ink-3"
+              >
+                {checkingCopy}
+              </motion.p>
             </motion.div>
           ) : status === 'pending_approval' && pairing ? (
             <motion.div

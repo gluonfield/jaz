@@ -2,33 +2,125 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertCircle } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { DitherArt, type Silhouette } from '@/components/launch/DitherArt'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import { authProviderLabel } from '@/lib/agentLabel'
+import { connectionPluginsQuery } from '@/lib/api/connections'
 import { completeOnboarding, onboardingQuery } from '@/lib/api/onboarding'
 import { cloneAgentSettings, compactKeys, startACPAuthLogin } from '@/lib/api/settings'
 import type { ACPAgentAuth, AgentSettings, OnboardingStatus } from '@/lib/api/types'
 import { disconnectBackend, isLocalBackendUrl, useConnection } from '@/lib/connection'
 import { clientRuntime } from '@/lib/clientRuntime'
-import { localDeviceLabel } from '@/lib/deviceLabel'
 import { useACPLoginPolling } from '@/lib/hooks/useACPLoginPolling'
 import { selectableACPAgent } from '@/lib/agentRuntimes'
 import { keys } from '@/lib/query/keys'
 import {
-  AgentSetupStep,
-  MemorySetupStep,
-  OnboardingProgress,
+  AgentList,
+  MemoryCard,
+  OnboardingFooter,
   agentReady,
   type OnboardingStep,
-  onboardingRise,
-  onboardingStagger,
+  onboardingEase,
 } from './OnboardingParts'
+import { ConnectionsList } from './OnboardingConnections'
+import { LoopsBoardsShowcase, WelcomeStep } from './OnboardingSlides'
 
 const MEMORY_AGENT_PRIORITY = ['codex', 'claude', 'opencode', 'grok']
 
+// Dev-only escape hatch: `?onboarding` pins the gate open so the flow can be
+// iterated in a browser against a live, already-onboarded backend.
+const onboardingPreview =
+  import.meta.env.DEV && new URLSearchParams(window.location.search).has('onboarding')
+
+type SetupStep = Exclude<OnboardingStep, 'welcome'>
+
+// Each slide opens on a small mark dissolved in the same dither grain as the
+// wordmark: a prompt chevron, memory layers, linked rings, a loop orbit.
+const MOTIFS: Record<SetupStep, Silhouette> = {
+  agents: (g, w, h) => {
+    g.lineWidth = h * 0.17
+    g.lineCap = 'round'
+    g.lineJoin = 'round'
+    g.beginPath()
+    g.moveTo(w * 0.26, h * 0.2)
+    g.lineTo(w * 0.5, h * 0.5)
+    g.lineTo(w * 0.26, h * 0.8)
+    g.stroke()
+    g.beginPath()
+    g.roundRect(w * 0.58, h * 0.7, w * 0.18, h * 0.13, h * 0.06)
+    g.fill()
+  },
+  memory: (g, w, h) => {
+    for (const y of [0.14, 0.42, 0.7]) {
+      g.beginPath()
+      g.roundRect(w * 0.24, h * y, w * 0.52, h * 0.16, h * 0.08)
+      g.fill()
+    }
+  },
+  connections: (g, w, h) => {
+    g.lineWidth = h * 0.14
+    for (const x of [0.38, 0.62]) {
+      g.beginPath()
+      g.arc(w * x, h * 0.5, h * 0.3, 0, Math.PI * 2)
+      g.stroke()
+    }
+  },
+  loops: (g, w, h) => {
+    g.lineWidth = h * 0.14
+    g.beginPath()
+    g.arc(w * 0.5, h * 0.5, h * 0.32, 0, Math.PI * 2)
+    g.stroke()
+    g.beginPath()
+    g.arc(w * 0.5 + h * 0.32 * Math.cos(-Math.PI / 4), h * 0.5 + h * 0.32 * Math.sin(-Math.PI / 4), h * 0.13, 0, Math.PI * 2)
+    g.fill()
+  },
+}
+
+const TITLES: Record<SetupStep, string> = {
+  agents: 'Connect your agents',
+  memory: 'Give jaz a memory',
+  connections: 'Connect your world',
+  loops: 'Always working',
+}
+
+const SUBTITLES: Record<SetupStep, string> = {
+  agents: 'jaz runs on the coding agents you already use.',
+  memory: 'Preferences, decisions, projects — agents start warm, not cold.',
+  connections: 'Your email and chats become context agents can use.',
+  loops: 'Loops run agents on a schedule. Boards show their results live.',
+}
+
+const NEXT: Record<SetupStep, OnboardingStep> = {
+  agents: 'memory',
+  memory: 'connections',
+  connections: 'loops',
+  loops: 'loops',
+}
+
+const BACK: Record<SetupStep, OnboardingStep> = {
+  agents: 'welcome',
+  memory: 'agents',
+  connections: 'memory',
+  loops: 'connections',
+}
+
+const slideStagger = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.07, delayChildren: 0.04 } },
+}
+
+const slideRise = {
+  hidden: { opacity: 0, y: 12, filter: 'blur(5px)' },
+  show: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.42, ease: onboardingEase } },
+}
+
 export function OnboardingGate({ children }: { children: ReactNode }) {
   const onboarding = useQuery(onboardingQuery)
-  const completed = onboarding.data?.completed === true
+  // The preview pin is one-shot: finishing the flow releases it so "Launch
+  // jaz" hands over to the app exactly like a real first run.
+  const [preview, setPreview] = useState(onboardingPreview)
+  const completed = onboarding.data?.completed === true && !preview
 
   if (clientRuntime.windowKind === 'board') return <>{children}</>
   if (onboarding.isPending) {
@@ -55,6 +147,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       status={onboarding.data}
       onRefresh={() => void onboarding.refetch()}
       onDisconnect={disconnectBackend}
+      onFinished={() => setPreview(false)}
     />
   )
 }
@@ -63,16 +156,18 @@ function OnboardingScreen({
   status,
   onRefresh,
   onDisconnect,
+  onFinished,
 }: {
   status: OnboardingStatus
   onRefresh: () => void
   onDisconnect: () => void
+  onFinished: () => void
 }) {
   const queryClient = useQueryClient()
   const toast = useToast()
   const connection = useConnection()
   const remote = !isLocalBackendUrl(connection.url)
-  const [step, setStep] = useState<OnboardingStep>('agents')
+  const [step, setStep] = useState<OnboardingStep>('welcome')
   const [draft, setDraft] = useState(() => draftFromStatus(status))
   const [acpKeysByAgent, setACPKeysByAgent] = useState<Record<string, string>>({})
   const [memoryEnabled, setMemoryEnabled] = useState(status.memory?.enabled ?? true)
@@ -81,6 +176,9 @@ function OnboardingScreen({
   const adapterPreparing = onboardingProbes.some(
     (probe) => probe.managed_adapter?.state === 'missing' || probe.managed_adapter?.state === 'downloading',
   )
+  // Only for the connections slide's action label; shares the list's cache.
+  const plugins = useQuery(connectionPluginsQuery)
+  const anyConnected = (plugins.data ?? []).some((plugin) => plugin.connection?.status === 'connected')
 
   useEffect(() => {
     setDraft(draftFromStatus(status))
@@ -103,8 +201,7 @@ function OnboardingScreen({
   )
   const readyAgents = useMemo(() => new Set(readyAgentNames), [readyAgentNames])
   const canContinue = readyAgentNames.length > 0
-  const canFinish = !memoryEnabled || memoryAgent.trim() !== ''
-  const title = step === 'agents' ? 'Connect your agents' : 'Set up memory'
+  const memoryReady = !memoryEnabled || memoryAgent.trim() !== ''
 
   useEffect(() => {
     setMemoryEnabled(status.memory?.enabled ?? true)
@@ -115,7 +212,7 @@ function OnboardingScreen({
   }, [readyAgentNames, status.memory?.agent])
 
   useEffect(() => {
-    if (!canContinue && step === 'memory') setStep('agents')
+    if (!canContinue && step !== 'welcome' && step !== 'agents') setStep('agents')
   }, [canContinue, step])
 
   useEffect(() => {
@@ -157,84 +254,85 @@ function OnboardingScreen({
       queryClient.setQueryData(keys.onboarding, saved)
       queryClient.invalidateQueries({ queryKey: keys.agentSettings })
       queryClient.invalidateQueries({ queryKey: keys.acpAgents })
+      onFinished()
     },
   })
 
   return (
-    <OnboardingShell onDisconnect={onDisconnect}>
-      <motion.div
-        variants={onboardingStagger}
-        initial="hidden"
-        animate="show"
-        className="min-w-0 w-full max-w-[calc(100vw-40px)] md:max-w-[500px]"
-      >
-        <motion.div
-          variants={onboardingRise}
-          className="mb-5"
-        >
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <BackendChip remote={remote} url={connection.url} />
-            <OnboardingProgress step={step} agentsComplete={canContinue} />
-          </div>
-          <h1 className="mt-3 text-balance text-[20px] font-semibold tracking-tight text-ink">
-            {title}
-          </h1>
-        </motion.div>
+    <OnboardingShell onDisconnect={onDisconnect} center>
+      <AnimatePresence mode="wait">
+        {step === 'welcome' ? (
+          <WelcomeStep key="welcome" onStart={() => setStep('agents')} />
+        ) : (
+          <motion.div
+            key={step}
+            variants={slideStagger}
+            initial="hidden"
+            animate="show"
+            exit={{ opacity: 0, y: -8, filter: 'blur(4px)', transition: { duration: 0.16, ease: onboardingEase } }}
+            className="flex w-full max-w-[460px] flex-col items-center"
+          >
+            <motion.div variants={slideRise}>
+              <DitherArt draw={MOTIFS[step]} cols={40} rows={24} delay={0.15} />
+            </motion.div>
+            <motion.h1
+              variants={slideRise}
+              className="mt-6 text-balance text-center text-[22px] font-semibold tracking-tight text-ink"
+            >
+              {TITLES[step]}
+            </motion.h1>
+            <motion.p
+              variants={slideRise}
+              className="mt-2 max-w-[360px] text-center text-pretty text-[13px] leading-relaxed text-ink-2"
+            >
+              {SUBTITLES[step]}
+            </motion.p>
 
-        <AnimatePresence mode="wait" initial={false}>
-          {step === 'agents' ? (
-            <AgentSetupStep
-              key="agents"
-              probes={onboardingProbes}
-              remote={remote}
-              acpKeysByAgent={acpKeysByAgent}
-              loginJobs={loginJobs}
-              loginPending={login.isPending ? login.variables?.agent : undefined}
-              canContinue={canContinue}
-              onRefresh={onRefresh}
-              onStartLogin={(agent) => {
-                const auth = onboardingLoginAuth(draft.acp[agent]?.auth)
-                setDraft((current) => withAgentAuth(current, agent, auth))
-                login.mutate({ agent, auth })
-              }}
-              onAPIKeyChange={(agent, value) => setACPKeysByAgent((keys) => ({ ...keys, [agent]: value }))}
-              onContinue={() => setStep('memory')}
-            />
-          ) : (
-            <MemorySetupStep
-              key="memory"
-              enabled={memoryEnabled}
-              agent={memoryAgent}
-              agents={readyAgentNames}
-              saving={save.isPending}
-              error={save.error?.message ?? ''}
-              canFinish={canFinish}
-              onEnabledChange={setMemoryEnabled}
-              onAgentChange={setMemoryAgent}
-              onBack={() => setStep('agents')}
-              onFinish={() => save.mutate()}
-            />
-          )}
-        </AnimatePresence>
-      </motion.div>
+            <motion.div variants={slideRise} className="mt-7 w-full">
+              {step === 'agents' ? (
+                <AgentList
+                  probes={onboardingProbes}
+                  remote={remote}
+                  acpKeysByAgent={acpKeysByAgent}
+                  loginJobs={loginJobs}
+                  loginPending={login.isPending ? login.variables?.agent : undefined}
+                  onStartLogin={(agent) => {
+                    const auth = onboardingLoginAuth(draft.acp[agent]?.auth)
+                    setDraft((current) => withAgentAuth(current, agent, auth))
+                    login.mutate({ agent, auth })
+                  }}
+                  onAPIKeyChange={(agent, value) => setACPKeysByAgent((keys) => ({ ...keys, [agent]: value }))}
+                />
+              ) : step === 'memory' ? (
+                <MemoryCard
+                  enabled={memoryEnabled}
+                  agent={memoryAgent}
+                  agents={readyAgentNames}
+                  onEnabledChange={setMemoryEnabled}
+                  onAgentChange={setMemoryAgent}
+                />
+              ) : step === 'connections' ? (
+                <ConnectionsList />
+              ) : (
+                <LoopsBoardsShowcase />
+              )}
+            </motion.div>
+
+            <motion.div variants={slideRise} className="w-full">
+              <OnboardingFooter
+                step={step}
+                nextLabel={step === 'loops' ? 'Launch jaz' : step === 'connections' && !anyConnected ? 'Skip for now' : 'Continue'}
+                nextDisabled={step === 'agents' ? !canContinue : step === 'memory' ? !memoryReady : false}
+                busy={step === 'loops' && save.isPending}
+                error={step === 'loops' ? save.error?.message : undefined}
+                onBack={() => setStep(BACK[step])}
+                onNext={() => (step === 'loops' ? save.mutate() : setStep(NEXT[step]))}
+              />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </OnboardingShell>
-  )
-}
-
-function BackendChip({ remote, url }: { remote: boolean; url: string }) {
-  const deviceLabel = localDeviceLabel()
-  const host = (() => {
-    try {
-      return new URL(url).host
-    } catch {
-      return url
-    }
-  })()
-  return (
-    <span className="inline-flex items-center gap-2 rounded-full bg-surface px-2.5 py-1 text-[12px] text-ink-2">
-      <span className="text-ink">{remote ? 'Connected to server' : `Running on ${deviceLabel}`}</span>
-      <span className="font-mono text-[11px] text-ink-3">{host}</span>
-    </span>
   )
 }
 
@@ -250,7 +348,15 @@ function StatusBlock({ icon, title, text }: { icon: ReactNode; title: string; te
   )
 }
 
-function OnboardingShell({ children, onDisconnect }: { children: ReactNode; onDisconnect?: () => void }) {
+function OnboardingShell({
+  children,
+  onDisconnect,
+  center = false,
+}: {
+  children: ReactNode
+  onDisconnect?: () => void
+  center?: boolean
+}) {
   return (
     <div className="flex h-full flex-col bg-bg">
       {/* Always an escape back to the connect chooser, so onboarding a backend
@@ -268,7 +374,7 @@ function OnboardingShell({ children, onDisconnect }: { children: ReactNode; onDi
         ) : null}
       </div>
       <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-5 pb-[52px]">
-        <div className="flex min-h-full w-full items-start justify-center py-6 md:py-10">
+        <div className={`flex min-h-full w-full ${center ? 'items-center' : 'items-start'} justify-center py-6 md:py-10`}>
           {children}
         </div>
       </main>
