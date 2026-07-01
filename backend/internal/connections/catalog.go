@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/connectors/gmail"
+	"github.com/wins/jaz/backend/internal/connectors/slack"
 	"github.com/wins/jaz/backend/internal/connectors/telegram"
 	"github.com/wins/jaz/backend/internal/connectors/whatsapp"
 	"github.com/wins/jaz/backend/pkg/integrations"
@@ -17,6 +18,7 @@ type Catalog struct {
 func NewCatalog() *Catalog {
 	return &Catalog{plugins: []integrations.Plugin{
 		gmail.Plugin(),
+		slack.Plugin(),
 		telegram.Plugin(),
 		whatsapp.Plugin(),
 	}}

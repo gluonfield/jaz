@@ -93,6 +93,9 @@ type RemoteMCP struct {
 	Status       string   `json:"status"`
 	Requires     []string `json:"requires,omitempty"`
 	OAuthSecrets bool     `json:"oauth_secrets"`
+	// TokenAuth means a connected account is served by proxying this remote MCP
+	// server with the stored user token as a bearer credential.
+	TokenAuth bool `json:"token_auth,omitempty"`
 }
 
 type PluginTool struct {

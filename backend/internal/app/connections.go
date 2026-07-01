@@ -5,6 +5,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/connections"
 	gmailconnector "github.com/wins/jaz/backend/internal/connectors/gmail"
+	slackconnector "github.com/wins/jaz/backend/internal/connectors/slack"
 	"github.com/wins/jaz/backend/internal/integrationingest"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
@@ -14,6 +15,9 @@ func NewConnectionOAuthService(store *sqlitestore.Store, cfg Config) *connection
 		Gmail: gmailconnector.OAuthClientConfig{
 			ClientID:     cfg.Connections.Gmail.OAuthClientID,
 			ClientSecret: cfg.Connections.Gmail.OAuthClientSecret,
+		},
+		Slack: slackconnector.OAuthClientConfig{
+			ClientID: cfg.Connections.Slack.OAuthClientID,
 		},
 	})
 }

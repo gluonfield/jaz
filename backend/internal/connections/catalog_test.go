@@ -5,10 +5,10 @@ import "testing"
 func TestCatalogIncludesGmail(t *testing.T) {
 	catalog := NewCatalog()
 	plugins := catalog.ListPlugins()
-	if len(plugins) != 3 {
+	if len(plugins) != 4 {
 		t.Fatalf("plugins = %#v", plugins)
 	}
-	for _, id := range []string{"gmail", "telegram", "whatsapp"} {
+	for _, id := range []string{"gmail", "slack", "telegram", "whatsapp"} {
 		plugin, ok := catalog.Plugin(id)
 		if !ok || plugin.ID != id {
 			t.Fatalf("%s plugin = %#v ok=%v", id, plugin, ok)

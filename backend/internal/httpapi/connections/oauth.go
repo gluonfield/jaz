@@ -11,7 +11,9 @@ import (
 	"github.com/wins/jaz/backend/internal/httpapi"
 )
 
-const googleOAuthCallbackPath = "/v1/connections/oauth/google/callback"
+// OAuthCallbackPath is the shared redirect target for every OAuth provider; the
+// provider is recovered from the OAuth state, not the URL.
+const OAuthCallbackPath = "/v1/connections/oauth/callback"
 
 type ConnectHandler struct {
 	Connect *connections.ConnectService
@@ -40,13 +42,13 @@ func (h ConnectHandler) Start(w http.ResponseWriter, r *http.Request) {
 	httpapi.WriteJSON(w, http.StatusOK, start)
 }
 
-func (h ConnectHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
+func (h ConnectHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	if err := h.OAuth.Callback(r.Context(), q.Get("state"), q.Get("code"), q.Get("error")); err != nil {
-		writeCallbackHTML(w, http.StatusBadRequest, "Gmail connection failed", err.Error(), false)
+		writeCallbackHTML(w, http.StatusBadRequest, "Connection failed", err.Error(), false)
 		return
 	}
-	writeCallbackHTML(w, http.StatusOK, "Gmail connected", "You can close this tab and return to Jaz.", true)
+	writeCallbackHTML(w, http.StatusOK, "Connected", "You can close this tab and return to Jaz.", true)
 }
 
 func (h ConnectHandler) QRStatus(w http.ResponseWriter, r *http.Request) {
@@ -101,7 +103,7 @@ func (h ConnectHandler) CloseQR(w http.ResponseWriter, r *http.Request) {
 }
 
 func oauthCallbackURL(r *http.Request) string {
-	return httpapi.RequestBaseURL(r) + googleOAuthCallbackPath
+	return httpapi.RequestBaseURL(r) + OAuthCallbackPath
 }
 
 func writeCallbackHTML(w http.ResponseWriter, status int, title, message string, autoClose bool) {

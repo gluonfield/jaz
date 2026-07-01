@@ -101,7 +101,7 @@ func appendConnectionRoutes(routes server.Routes, service *connections.Service, 
 			routes = append(routes, server.Route{Pattern: "DELETE /v1/connections/qr/{id}", Handler: httpHandlerFunc(connectHandler.CloseQR)})
 		}
 		if oauth != nil {
-			routes = append(routes, server.Route{Pattern: "GET /v1/connections/oauth/google/callback", Handler: httpHandlerFunc(connectHandler.GoogleCallback)})
+			routes = append(routes, server.Route{Pattern: "GET " + connectionsapi.OAuthCallbackPath, Handler: httpHandlerFunc(connectHandler.Callback)})
 		}
 	}
 	return routes

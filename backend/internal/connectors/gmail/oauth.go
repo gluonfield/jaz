@@ -1,12 +1,8 @@
 package gmail
 
 import (
-	"crypto/sha256"
 	"errors"
-	"fmt"
 	"strings"
-
-	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
 const (
@@ -17,7 +13,7 @@ const (
 	OAuthAuthURL      = "https://accounts.google.com/o/oauth2/v2/auth"
 	OAuthTokenURL     = "https://oauth2.googleapis.com/token"
 	// OAuthConnectionID is the legacy single-account connection ID. New Gmail
-	// connections use ConnectionID(accountID), but existing rows keep working.
+	// connections use integrations.ConnectionID, but existing rows keep working.
 	OAuthConnectionID = "gmail:default"
 )
 
@@ -50,14 +46,4 @@ func DefaultOAuthClientCredentials() OAuthClientCredentials {
 		ClientID:     OAuthClientID,
 		ClientSecret: OAuthClientSecret,
 	}
-}
-
-func ConnectionID(accountID string) (string, error) {
-	accountID = strings.ToLower(strings.TrimSpace(accountID))
-	alias := integrations.NormalizeAlias(accountID)
-	if alias == "" {
-		return "", errors.New("gmail account id is required")
-	}
-	sum := sha256.Sum256([]byte(accountID))
-	return fmt.Sprintf("%s:%s-%x", ProviderID, alias, sum[:4]), nil
 }
