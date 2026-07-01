@@ -5,13 +5,7 @@ import type { GoalEvent } from '@/lib/api/types'
 
 const numberFormatter = new Intl.NumberFormat()
 
-export function GoalStatusBar({
-  goal,
-  running,
-}: {
-  goal?: GoalEvent
-  running?: boolean
-}) {
+export function GoalStatusBar({ goal }: { goal?: GoalEvent }) {
   const [expanded, setExpanded] = useState(false)
 
   if (!goal) return null
@@ -28,7 +22,6 @@ export function GoalStatusBar({
         aria-expanded={expanded}
         onClick={() => setExpanded((value) => !value)}
       >
-        <span className={`size-1.5 shrink-0 rounded-full ${goalDotClass(goal?.status, running)}`} />
         <div className={`min-w-0 flex-1 leading-5 ${expanded ? 'break-words' : 'truncate'}`}>
           <span className="mr-2 font-medium text-primary-strong">{label}</span>
           {objective ? <span className="text-ink-2">{objective}</span> : null}
@@ -95,13 +88,6 @@ function goalStatusLabel(status?: string): string {
     default:
       return status ? `Goal ${status}` : 'Goal'
   }
-}
-
-function goalDotClass(status?: string, running?: boolean): string {
-  if (status === 'blocked' || status === 'budgetLimited' || status === 'usageLimited') return 'bg-danger'
-  if (status === 'complete') return 'bg-ink-3/60'
-  if (running || status === 'active' || status === 'requested') return 'bg-primary'
-  return 'bg-ink-3/60'
 }
 
 function goalTokenProgress(goal?: GoalEvent): { used: number; budget: number; percent: number } | undefined {

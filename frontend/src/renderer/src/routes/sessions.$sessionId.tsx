@@ -556,7 +556,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                 />
               ) : (
                 <>
-                  {goalStatusVisible ? <GoalStatusBar goal={goal} running={sessionRunning} /> : null}
+                  {goalStatusVisible ? <GoalStatusBar goal={goal} /> : null}
                   <Composer
                     streaming={sessionRunning}
                     planAvailable={planAvailable}
