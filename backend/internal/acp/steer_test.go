@@ -143,6 +143,13 @@ func TestManagerSteerReusesPendingQuestionHandoff(t *testing.T) {
 		provider.MessageContent(messages[2]) != "say hello again" {
 		t.Fatalf("messages = %#v", messages)
 	}
+	events, err := store.LoadSessionEvents(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if countACPMessage(events, "hello from fake agent") < 2 {
+		t.Fatalf("steered prompts did not both complete: %#v", events)
+	}
 }
 
 func waitForSteerEventType(t *testing.T, ch <-chan sessionevents.Event, eventType string) {
