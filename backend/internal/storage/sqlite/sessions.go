@@ -113,6 +113,30 @@ func (s *Store) UpdateSessionTitle(id, title string) error {
 	return nil
 }
 
+func (s *Store) UpdateSessionStatus(id, status, errorMessage string, attentionAt time.Time) error {
+	now := time.Now().UTC()
+	params := threaddb.UpdateSessionStatusParams{
+		Status:            status,
+		Error:             nullDBString(errorMessage),
+		UpdatedAtMs:       timeToMs(now),
+		LastAttentionAtMs: timeToMs(attentionAt),
+		ID:                id,
+	}
+	if !attentionAt.IsZero() {
+		params.TouchAttention = 1
+	}
+	s.mu.Lock()
+	err := threaddb.New(s.db).UpdateSessionStatus(context.Background(), params)
+	s.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	if current, err := s.LoadSession(id); err == nil {
+		s.mirrorSession(current)
+	}
+	return nil
+}
+
 func (s *Store) ListSessions(filter storage.SessionFilter) ([]storage.Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
