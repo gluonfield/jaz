@@ -710,6 +710,7 @@ export interface ACPEvent {
   stop_reason?: string
   assistant?: string
   thought?: string
+  text_run_id?: string
   error?: string
   modes?: ACPModeState
   plan?: ACPPlanEntry[]

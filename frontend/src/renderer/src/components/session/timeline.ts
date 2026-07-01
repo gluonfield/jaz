@@ -58,7 +58,7 @@ function combineVisibleACPText(items: TimelineItem[]): TimelineItem[] {
   for (const item of items) {
     const prev = out.at(-1)
     const merged =
-      prev?.kind === 'event' && item.kind === 'event'
+      prev?.kind === 'event' && item.kind === 'event' && adjacentSessionEvents(prev.event, item.event)
         ? mergeACPTextEvents(prev.event, item.event)
         : undefined
     if (merged && prev?.kind === 'event' && item.kind === 'event') {
@@ -73,6 +73,10 @@ function combineVisibleACPText(items: TimelineItem[]): TimelineItem[] {
     out.push(item)
   }
   return out
+}
+
+function adjacentSessionEvents(prev: SessionEvent, event: SessionEvent): boolean {
+  return prev.session_id === event.session_id && (!prev.seq || !event.seq || event.seq === prev.seq + 1)
 }
 
 function itemTime(value: string | undefined): number {

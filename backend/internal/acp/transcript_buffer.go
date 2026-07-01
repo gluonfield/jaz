@@ -1,6 +1,7 @@
 package acp
 
 import (
+	"strconv"
 	"sync"
 	"time"
 
@@ -8,10 +9,12 @@ import (
 )
 
 const acpTranscriptFlushInterval = 100 * time.Millisecond
+const acpTranscriptTextRunIdle = 2 * time.Second
 
 type acpTranscriptRun struct {
 	eventType string
 	content   string
+	textRunID string
 }
 
 type acpTranscriptBuffers struct {
@@ -25,6 +28,9 @@ type acpTranscriptBuffer struct {
 	publishMu sync.Mutex
 	timer     *time.Timer
 	runs      []acpTranscriptRun
+	nextRun   int64
+	activeRun string
+	lastText  time.Time
 }
 
 func (m *Manager) queueACPMessage(job *jobState, content string) {
@@ -107,10 +113,19 @@ func (b *acpTranscriptBuffers) delete(sessionID string) {
 	}
 }
 
+func (b *acpTranscriptBuffers) closeTextRun(sessionID string) {
+	buffer := b.get(sessionID, false)
+	if buffer == nil {
+		return
+	}
+	buffer.closeTextRun()
+}
+
 func (b *acpTranscriptBuffer) queue(m *Manager, run acpTranscriptRun) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if n := len(b.runs); n > 0 && b.runs[n-1].eventType == run.eventType {
+	run.textRunID = b.textRunID(time.Now().UTC())
+	if n := len(b.runs); n > 0 && b.runs[n-1].eventType == run.eventType && b.runs[n-1].textRunID == run.textRunID {
 		b.runs[n-1].content += run.content
 	} else {
 		b.runs = append(b.runs, run)
@@ -120,6 +135,22 @@ func (b *acpTranscriptBuffer) queue(m *Manager, run acpTranscriptRun) {
 			m.flushACPTranscriptBuffer(b)
 		})
 	}
+}
+
+func (b *acpTranscriptBuffer) textRunID(now time.Time) string {
+	if b.activeRun == "" || (!b.lastText.IsZero() && now.Sub(b.lastText) > acpTranscriptTextRunIdle) {
+		b.nextRun++
+		b.activeRun = "text-" + strconv.FormatInt(b.nextRun, 10)
+	}
+	b.lastText = now
+	return b.activeRun
+}
+
+func (b *acpTranscriptBuffer) closeTextRun() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.activeRun = ""
+	b.lastText = time.Time{}
 }
 
 func (b *acpTranscriptBuffer) withBarrier(m *Manager, job Job, publish func()) {
@@ -183,6 +214,7 @@ func (m *Manager) publishACPTranscriptRuns(job Job, runs []acpTranscriptRun) {
 			} else {
 				event.Content = run.content
 			}
+			event.ACP.TextRunID = run.textRunID
 			events = append(events, event)
 		}
 		m.recordAndPublishEventsDirect(sessionID, events)

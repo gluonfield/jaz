@@ -244,6 +244,75 @@ func assertTranscriptBufferIdle(t *testing.T, manager *Manager, sessionID string
 	}
 }
 
+func TestACPTranscriptTextRunSurvivesToolBarrier(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "main", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := &Manager{store: store, Events: sessionevents.New()}
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex, ACPSession: "acp-session", State: StateRunning}}
+
+	manager.queueACPMessage(job, "message chunks, t")
+	manager.publishACPTool(job.Snapshot(), sessionevents.ACPToolCall{ID: "tool-1", Title: "Read file", Status: "completed"})
+	manager.queueACPMessage(job, "ool calls")
+	manager.withACPTranscriptBarrier(job.Snapshot(), nil)
+
+	events, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("events = %#v", events)
+	}
+	if events[0].Type != "acp_message" || events[2].Type != "acp_message" {
+		t.Fatalf("text events = %#v", events)
+	}
+	firstRun := events[0].ACP.TextRunID
+	secondRun := events[2].ACP.TextRunID
+	if firstRun == "" || secondRun != firstRun {
+		t.Fatalf("text run ids = %q, %q; events=%#v", firstRun, secondRun, events)
+	}
+	if events[1].Type != "acp_tool" || events[1].ACP.TextRunID != "" {
+		t.Fatalf("tool event = %#v", events[1])
+	}
+}
+
+func TestACPTranscriptCloseTextRunStartsNewRun(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "main", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := &Manager{store: store, Events: sessionevents.New()}
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex, ACPSession: "acp-session", State: StateRunning}}
+
+	manager.queueACPMessage(job, "first")
+	manager.withACPTranscriptBarrier(job.Snapshot(), nil)
+	manager.transcriptBuffers.closeTextRun(session.ID)
+	manager.queueACPMessage(job, "second")
+	manager.withACPTranscriptBarrier(job.Snapshot(), nil)
+
+	events, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("events = %#v", events)
+	}
+	firstRun := events[0].ACP.TextRunID
+	secondRun := events[1].ACP.TextRunID
+	if firstRun == "" || secondRun == "" || firstRun == secondRun {
+		t.Fatalf("text run ids = %q, %q; events=%#v", firstRun, secondRun, events)
+	}
+}
+
 func receiveLiveEvent(t *testing.T, ch <-chan sessionevents.Event) sessionevents.Event {
 	t.Helper()
 	select {

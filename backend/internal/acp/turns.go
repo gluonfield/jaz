@@ -150,6 +150,7 @@ func (m *Manager) finishTurn(done chan struct{}, job *jobState) {
 	m.resolveDanglingToolCalls(job)
 	snapshot := job.Snapshot()
 	if snapshot.State == StateIdle || snapshot.State == StateFailed || snapshot.State == StateCancelled {
+		m.transcriptBuffers.closeTextRun(snapshot.ID)
 		if snapshot.State == StateIdle && planTurnDefersResult(planRequested, snapshot.ACPAgent) {
 			m.publishPlanTurnResult(snapshot, planProposal)
 		}

@@ -212,7 +212,11 @@ function canMergeACPText(prev: SessionEvent | undefined, event: SessionEvent): b
   if (!prev?.acp || !event.acp) return false
   if (prev.type !== event.type) return false
   if (event.type !== 'acp_message' && event.type !== 'acp_thought') return false
-  return prev.session_id === event.session_id && prev.acp.id === event.acp.id
+  if (prev.session_id !== event.session_id || prev.acp.id !== event.acp.id) return false
+  if (prev.acp.text_run_id || event.acp.text_run_id) {
+    return Boolean(prev.acp.text_run_id && prev.acp.text_run_id === event.acp.text_run_id)
+  }
+  return true
 }
 
 function preferredDuplicateEvent(existing: SessionEvent, incoming: SessionEvent): SessionEvent {
