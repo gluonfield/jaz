@@ -220,6 +220,18 @@ UPDATE threads
 SET title = sqlc.narg(title)
 WHERE id = sqlc.arg(id);
 
+-- name: UpdateSessionStatus :exec
+UPDATE threads
+SET
+  status = sqlc.arg(status),
+  error = sqlc.narg(error),
+  updated_at_ms = sqlc.arg(updated_at_ms),
+  last_attention_at_ms = CASE
+    WHEN CAST(sqlc.arg(touch_attention) AS INTEGER) != 0 THEN sqlc.arg(last_attention_at_ms)
+    ELSE last_attention_at_ms
+  END
+WHERE id = sqlc.arg(id);
+
 -- name: TouchThread :exec
 UPDATE threads
 SET updated_at_ms = sqlc.arg(updated_at_ms)

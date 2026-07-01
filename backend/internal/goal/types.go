@@ -182,25 +182,7 @@ func Active(state *State) bool {
 
 func ProviderSnapshot(state *State) bool {
 	normalized := NormalizeState(state)
-	if normalized == nil || normalized.Objective == "" {
-		return false
-	}
-	if normalized.Source == SourceProvider {
-		return true
-	}
-	return !legacyRequestOnlySnapshot(normalized)
-}
-
-func legacyRequestOnlySnapshot(state *State) bool {
-	return state.Source == "" &&
-		state.Status == StatusRequested &&
-		state.ThreadID == "" &&
-		state.ProviderGoalID == "" &&
-		state.Budget == Budget{} &&
-		state.Progress == Progress{} &&
-		state.Review == Review{} &&
-		state.Cost == Cost{} &&
-		state.CompletedAt.IsZero()
+	return normalized != nil && normalized.Objective != "" && normalized.Source == SourceProvider
 }
 
 func negativeFloat(value *float64) bool {

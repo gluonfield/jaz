@@ -476,6 +476,40 @@ func (q *Queries) UpdateGoal(ctx context.Context, arg UpdateGoalParams) error {
 	return err
 }
 
+const updateSessionStatus = `-- name: UpdateSessionStatus :exec
+UPDATE threads
+SET
+  status = ?1,
+  error = ?2,
+  updated_at_ms = ?3,
+  last_attention_at_ms = CASE
+    WHEN CAST(?4 AS INTEGER) != 0 THEN ?5
+    ELSE last_attention_at_ms
+  END
+WHERE id = ?6
+`
+
+type UpdateSessionStatusParams struct {
+	Status            string         `json:"status"`
+	Error             sql.NullString `json:"error"`
+	UpdatedAtMs       int64          `json:"updated_at_ms"`
+	TouchAttention    int64          `json:"touch_attention"`
+	LastAttentionAtMs int64          `json:"last_attention_at_ms"`
+	ID                string         `json:"id"`
+}
+
+func (q *Queries) UpdateSessionStatus(ctx context.Context, arg UpdateSessionStatusParams) error {
+	_, err := q.db.ExecContext(ctx, updateSessionStatus,
+		arg.Status,
+		arg.Error,
+		arg.UpdatedAtMs,
+		arg.TouchAttention,
+		arg.LastAttentionAtMs,
+		arg.ID,
+	)
+	return err
+}
+
 const updateSessionTitle = `-- name: UpdateSessionTitle :exec
 UPDATE threads
 SET title = ?1

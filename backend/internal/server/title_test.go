@@ -87,6 +87,39 @@ func TestMessageStreamGeneratesTitleVisibleToUI(t *testing.T) {
 	waitForSessionTitle(t, store, session.ID, "Stream Route Title")
 }
 
+func TestStatusUpdatePreservesGeneratedTitle(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "stale-status-title",
+		Title:   "Fallback Title",
+		Runtime: storage.RuntimeACP,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{Store: store}
+
+	if err := store.UpdateSessionTitle(session.ID, "Generated Title"); err != nil {
+		t.Fatal(err)
+	}
+	server.setSessionStatus(session, storage.StatusIdle)
+
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Title != "Generated Title" {
+		t.Fatalf("title = %q, want generated title", loaded.Title)
+	}
+	if loaded.Status != storage.StatusIdle {
+		t.Fatalf("status = %q, want idle", loaded.Status)
+	}
+}
+
 func TestGeneratedSessionTitlePublishesSessionEvent(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {

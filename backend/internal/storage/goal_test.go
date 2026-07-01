@@ -28,6 +28,7 @@ func TestGoalProjectionFromEventAcceptsCompleteSnapshot(t *testing.T) {
 		Type: sessionevents.TypeGoalUpdate,
 		Goal: &sessionevents.GoalEvent{
 			Identity: goal.Identity{
+				Source:    goal.SourceProvider,
 				Objective: "ship it",
 				Status:    goal.StatusActive,
 			},
@@ -38,7 +39,26 @@ func TestGoalProjectionFromEventAcceptsCompleteSnapshot(t *testing.T) {
 	}
 	if !ok || !projection.Seen || projection.State == nil ||
 		projection.State.Objective != "ship it" ||
+		projection.State.Source != goal.SourceProvider ||
 		projection.State.Status != goal.StatusActive {
+		t.Fatalf("projection = %#v, ok = %v", projection, ok)
+	}
+}
+
+func TestGoalProjectionFromEventClearsAmbiguousCompleteSnapshot(t *testing.T) {
+	projection, ok, err := GoalProjectionFromEvent(sessionevents.Event{
+		Type: sessionevents.TypeGoalUpdate,
+		Goal: &sessionevents.GoalEvent{
+			Identity: goal.Identity{
+				Objective: "source-less objective",
+				Status:    goal.StatusActive,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || !projection.Seen || projection.State != nil {
 		t.Fatalf("projection = %#v, ok = %v", projection, ok)
 	}
 }
