@@ -77,7 +77,7 @@ func Inspect(ctx context.Context, dir string) Info {
 		info.IsWorktree = true
 		info.MainBranch = branch
 		if branch != "" {
-			if count, err := git(ctx, dir, "rev-list", "--count", "HEAD.."+branch); err == nil {
+			if count, err := git(ctx, dir, "rev-list", "--count", "HEAD.."+updateBranchRef(ctx, dir, branch)); err == nil {
 				info.Behind, _ = strconv.Atoi(count)
 			}
 		}
@@ -240,10 +240,14 @@ func MergeFromMain(ctx context.Context, dir, message string) error {
 	if err := CommitAll(ctx, dir, message); err != nil {
 		return err
 	}
-	if count, err := git(ctx, dir, "rev-list", "--count", worktreeBranch+".."+branch); err == nil && count == "0" {
+	if _, err := git(ctx, dir, "remote", "get-url", "origin"); err == nil {
+		_, _ = git(ctx, dir, "fetch", "origin", branch)
+	}
+	source := updateBranchRef(ctx, dir, branch)
+	if count, err := git(ctx, dir, "rev-list", "--count", worktreeBranch+".."+source); err == nil && count == "0" {
 		return fmt.Errorf("nothing to merge — %s already has everything from %s", worktreeBranch, branch)
 	}
-	if _, err := git(ctx, dir, "merge", "--no-edit", branch); err != nil {
+	if _, err := git(ctx, dir, "merge", "--no-edit", source); err != nil {
 		// Abort a conflicted merge so the worktree never sits mid-merge.
 		_, _ = git(ctx, dir, "merge", "--abort")
 		return fmt.Errorf("merging %s into %s: %w", branch, worktreeBranch, err)
@@ -338,6 +342,14 @@ func firstRemoteURL(ctx context.Context, dir string) string {
 	name, _, _ := strings.Cut(names, "\n")
 	url, _ := git(ctx, dir, "remote", "get-url", strings.TrimSpace(name))
 	return url
+}
+
+func updateBranchRef(ctx context.Context, dir, branch string) string {
+	remote := "refs/remotes/origin/" + branch
+	if _, err := git(ctx, dir, "rev-parse", "--verify", "--quiet", remote); err == nil {
+		return remote
+	}
+	return "refs/heads/" + branch
 }
 
 // defaultBranch resolves the remote's default branch: origin/HEAD when the
