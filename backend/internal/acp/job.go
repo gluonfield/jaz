@@ -45,7 +45,6 @@ type jobState struct {
 	mu                     sync.RWMutex
 	turnMu                 sync.Mutex
 	promptQueueing         bool
-	nativeGoal             bool
 	turn                   *activeTurn
 	toolByID               map[string]sessionevents.ACPToolCall
 	savedAssistantLen      int
@@ -61,6 +60,7 @@ type activeTurn struct {
 	completion            CompletionMode
 	planRequested         bool
 	goalRequested         bool
+	startedAt             time.Time
 	cancelRequested       bool
 	firstPromptSent       chan struct{}
 	firstPromptSentClosed bool
@@ -178,6 +178,7 @@ func (j *jobState) startTurn(completion CompletionMode, planRequested, parentVis
 func (j *jobState) startTurnWithOperation(completion CompletionMode, planRequested, parentVisible bool, activeOperation string) chan struct{} {
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	now := time.Now().UTC()
 	j.State = StateRunning
 	j.Assistant = ""
 	j.Thought = ""
@@ -196,12 +197,12 @@ func (j *jobState) startTurnWithOperation(completion CompletionMode, planRequest
 		done:            make(chan struct{}),
 		completion:      completion,
 		planRequested:   planRequested,
+		startedAt:       now,
 		firstPromptSent: make(chan struct{}),
 		promptCalls:     1,
 	}
 	j.ParentVisible = parentVisible
 	j.toolByID = make(map[string]sessionevents.ACPToolCall)
-	now := time.Now().UTC()
 	j.UpdatedAt = now
 	j.LastEventAt = now
 	j.LastToolAt = time.Time{}

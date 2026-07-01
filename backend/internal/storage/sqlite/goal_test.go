@@ -25,7 +25,6 @@ func TestSessionGoalRoundTripAndMirror(t *testing.T) {
 		Type: sessionevents.TypeGoalUpdate,
 		Goal: &sessionevents.GoalEvent{
 			Identity: goal.Identity{
-				Source:         goal.SourceProvider,
 				Provider:       "codex",
 				ProviderGoalID: "goal-1",
 				Objective:      "Ship visible goal state",
@@ -51,7 +50,6 @@ func TestSessionGoalRoundTripAndMirror(t *testing.T) {
 	if loaded.Goal == nil || loaded.Goal.Objective != "Ship visible goal state" ||
 		loaded.Goal.Status != goal.StatusActive ||
 		loaded.Goal.RemainingTokens == nil || *loaded.Goal.RemainingTokens != 750 ||
-		loaded.Goal.BudgetSource != goal.BudgetSourceGoal ||
 		loaded.Goal.ProviderGoalID != "goal-1" ||
 		loaded.Goal.ProgressMessage != "Working through tests" ||
 		loaded.Goal.EvaluatedTurns != 2 {

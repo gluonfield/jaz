@@ -1,5 +1,5 @@
 import { agentDefault } from './jazDefaults'
-import type { AgentSettings, ModelProviderOption, RuntimeCapabilities } from './api/types'
+import type { AgentSettings, ModelProviderOption } from './api/types'
 
 export const ACP_PROVIDER_MODE_AGENT = 'agent_defaults'
 // Providers without first-class support yet — kept in the catalog for the runtime
@@ -22,12 +22,8 @@ export function selectableACPAgent(agent: string | undefined): boolean {
   return Boolean(slug) && !HIDDEN_AGENTS.has(slug)
 }
 
-export function acpAgentSupportsNativeGoal(settings: AgentSettings | undefined, agent: string): boolean {
-  return runtimeCapabilitiesSupportNativeGoal(settings?.acp_options?.[agent]?.capabilities)
-}
-
-export function runtimeCapabilitiesSupportNativeGoal(capabilities: RuntimeCapabilities | undefined): boolean {
-  return capabilities?.native_goal === true || capabilities?.native_goal_negotiable === true
+export function acpAgentSupportsGoal(agent: string): boolean {
+  return selectableACPAgent(agent)
 }
 
 export function selectableACPModelProviders(

@@ -359,7 +359,7 @@ func (s *Server) writeSessionMessages(w http.ResponseWriter, r *http.Request, se
 	resp := map[string]any{
 		"session":  canonicalSessionResponse(session),
 		"messages": messages,
-		"events":   transcriptEvents,
+		"events":   sessionEventResponses(transcriptEvents),
 	}
 	if !mobile {
 		resp["activity"] = activity
@@ -571,7 +571,7 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, fmt.Errorf("message is required"))
 			return
 		}
-		if err := s.validatePromptOptions(session, promptOptionsFromStream(req)); err != nil {
+		if err := s.validateGoalRequest(session, req.GoalRequested); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}

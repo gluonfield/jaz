@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -185,9 +184,6 @@ func isACPTerminal(state string) bool {
 }
 
 func acpSendError(session storage.Session, err error) error {
-	if errors.Is(err, acp.ErrNativeGoalUnsupported) {
-		return fmt.Errorf("goal mode is not supported by this ACP agent")
-	}
 	if strings.Contains(err.Error(), "active acp session not found") {
 		return fmt.Errorf("acp session %q (%s) could not be resumed: %v", session.Slug, session.ID, err)
 	}

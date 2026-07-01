@@ -630,36 +630,15 @@ export type GoalStatus =
   | 'budgetLimited'
   | 'complete'
 
-export type GoalBudgetSource = 'goal' | 'session' | 'context' | 'cost'
-export type GoalSource = 'provider'
-
 export interface GoalState {
-  source?: GoalSource
+  id?: string
   thread_id?: string
-  provider?: string
-  provider_goal_id?: string
   objective?: string
   status: GoalStatus
-  budget_source?: GoalBudgetSource
   token_budget?: number
   tokens_used?: number
   remaining_tokens?: number
   time_used_seconds?: number
-  turn_count?: number
-  evaluated_turns?: number
-  attempt_count?: number
-  progress_message?: string
-  blocked_reason?: string
-  evaluator_reason?: string
-  completion_review?: string
-  active_subagent_id?: string
-  active_operation?: string
-  cost_used_usd?: number
-  cost_budget_usd?: number
-  cost_estimated?: boolean
-  created_at?: string
-  updated_at?: string
-  completed_at?: string
 }
 
 export type GoalEvent = GoalState

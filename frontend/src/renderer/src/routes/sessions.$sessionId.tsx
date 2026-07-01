@@ -375,6 +375,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     planActive,
     goalAvailable,
     goalActive,
+    goalRequested,
     goal,
     hasBlockingPendingPermission,
     latestPlanDecisionSurface,
@@ -562,7 +563,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                     planModeActive={Boolean(live?.planRequested) || planActive}
                     goalControlVisible
                     goalAvailable={goalAvailable}
-                    goalActive={goalActive}
+                    goalActive={goalRequested || goalActive}
                     queuedPrompts={queue.queuedPrompts}
                     steerDisabled={queue.steerDisabled}
                     draftStorageKey={`${SESSION_DRAFT_KEY_PREFIX}${session.id}`}

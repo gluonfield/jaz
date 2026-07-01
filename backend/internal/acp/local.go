@@ -198,6 +198,7 @@ func (m *Manager) runLocalPrompt(ctx context.Context, job *jobState, runner Loca
 	if done == nil {
 		done = job.startTurn(CompletionInline, false, false)
 	}
+	goalRequested := currentTurnGoalRequested(job, done)
 	session, err := m.store.LoadSession(job.ID)
 	if err != nil {
 		m.failTurn(job, err)
@@ -221,7 +222,7 @@ func (m *Manager) runLocalPrompt(ctx context.Context, job *jobState, runner Loca
 	job.mu.RUnlock()
 	for event := range runner.Run(runCtx, LocalAgentRequest{
 		Session:                session,
-		Message:                message,
+		Message:                goalPromptMessage(message, goalRequested),
 		Attachments:            attachments,
 		PlanRequested:          planRequested,
 		ArtifactSurface:        artifactSurface,

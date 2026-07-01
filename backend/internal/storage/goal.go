@@ -42,7 +42,7 @@ func UnmarshalGoalState(raw string) (*goal.State, error) {
 	if normalized == nil {
 		return nil, fmt.Errorf("invalid goal state")
 	}
-	if !goal.ProviderSnapshot(normalized) {
+	if normalized.Status == goal.StatusRequested {
 		return nil, nil
 	}
 	return normalized, nil
@@ -102,10 +102,10 @@ func GoalProjectionFromEvent(event sessionevents.Event) (GoalProjection, bool, e
 		return GoalProjection{}, true, fmt.Errorf("invalid goal state")
 	}
 	if !goal.CompleteSnapshot(state) {
+		if state.Objective != "" && state.Status == goal.StatusRequested {
+			return GoalProjection{Seen: true}, true, nil
+		}
 		return GoalProjection{}, true, fmt.Errorf("goal update is not a complete snapshot")
-	}
-	if !goal.ProviderSnapshot(state) {
-		return GoalProjection{Seen: true}, true, nil
 	}
 	return GoalProjection{Seen: true, State: state}, true, nil
 }

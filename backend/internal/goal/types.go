@@ -6,8 +6,6 @@ import (
 )
 
 type Status string
-type BudgetSource string
-type Source string
 
 const (
 	StatusRequested     Status = "requested"
@@ -19,26 +17,16 @@ const (
 	StatusComplete      Status = "complete"
 )
 
-const (
-	BudgetSourceGoal    BudgetSource = "goal"
-	BudgetSourceSession BudgetSource = "session"
-	BudgetSourceContext BudgetSource = "context"
-	BudgetSourceCost    BudgetSource = "cost"
-)
-
-const SourceProvider Source = "provider"
-
 type State struct {
 	Identity
 	Budget
 	Progress
 	Review
-	Cost
 	Timestamps
 }
 
 type Identity struct {
-	Source         Source `json:"source,omitempty"`
+	ID             string `json:"id,omitempty"`
 	ThreadID       string `json:"thread_id,omitempty"`
 	Provider       string `json:"provider,omitempty"`
 	ProviderGoalID string `json:"provider_goal_id,omitempty"`
@@ -47,10 +35,9 @@ type Identity struct {
 }
 
 type Budget struct {
-	BudgetSource    BudgetSource `json:"budget_source,omitempty"`
-	TokenBudget     *int64       `json:"token_budget,omitempty"`
-	TokensUsed      int64        `json:"tokens_used,omitempty"`
-	RemainingTokens *int64       `json:"remaining_tokens,omitempty"`
+	TokenBudget     *int64 `json:"token_budget,omitempty"`
+	TokensUsed      int64  `json:"tokens_used,omitempty"`
+	RemainingTokens *int64 `json:"remaining_tokens,omitempty"`
 }
 
 type Progress struct {
@@ -69,16 +56,38 @@ type Review struct {
 	CompletionReview string `json:"completion_review,omitempty"`
 }
 
-type Cost struct {
-	CostUsedUSD   *float64 `json:"cost_used_usd,omitempty"`
-	CostBudgetUSD *float64 `json:"cost_budget_usd,omitempty"`
-	CostEstimated bool     `json:"cost_estimated,omitempty"`
-}
-
 type Timestamps struct {
 	CreatedAt   time.Time `json:"created_at,omitzero"`
 	UpdatedAt   time.Time `json:"updated_at,omitzero"`
 	CompletedAt time.Time `json:"completed_at,omitzero"`
+}
+
+type PublicState struct {
+	ID              string `json:"id,omitempty"`
+	ThreadID        string `json:"thread_id,omitempty"`
+	Objective       string `json:"objective,omitempty"`
+	Status          Status `json:"status"`
+	TokenBudget     *int64 `json:"token_budget,omitempty"`
+	TokensUsed      int64  `json:"tokens_used,omitempty"`
+	RemainingTokens *int64 `json:"remaining_tokens,omitempty"`
+	TimeUsedSeconds int64  `json:"time_used_seconds,omitempty"`
+}
+
+func PublicStateFrom(state *State) *PublicState {
+	normalized := NormalizeState(state)
+	if normalized == nil {
+		return nil
+	}
+	return &PublicState{
+		ID:              normalized.ID,
+		ThreadID:        normalized.ThreadID,
+		Objective:       normalized.Objective,
+		Status:          normalized.Status,
+		TokenBudget:     normalized.TokenBudget,
+		TokensUsed:      normalized.TokensUsed,
+		RemainingTokens: normalized.RemainingTokens,
+		TimeUsedSeconds: normalized.TimeUsedSeconds,
+	}
 }
 
 func NormalizeStatus(status string) Status {
@@ -110,56 +119,25 @@ func NormalizeStatus(status string) Status {
 	}
 }
 
-func NormalizeBudgetSource(source string) BudgetSource {
-	switch BudgetSource(strings.TrimSpace(source)) {
-	case BudgetSourceGoal:
-		return BudgetSourceGoal
-	case BudgetSourceSession:
-		return BudgetSourceSession
-	case BudgetSourceContext:
-		return BudgetSourceContext
-	case BudgetSourceCost:
-		return BudgetSourceCost
-	default:
-		return ""
-	}
-}
-
-func NormalizeSource(source string) Source {
-	switch Source(strings.TrimSpace(source)) {
-	case SourceProvider:
-		return SourceProvider
-	default:
-		return ""
-	}
-}
-
 func NormalizeState(state *State) *State {
 	if state == nil {
 		return nil
 	}
 	out := *state
-	out.Source = NormalizeSource(string(out.Source))
 	out.Status = NormalizeStatus(string(out.Status))
-	out.BudgetSource = NormalizeBudgetSource(string(out.BudgetSource))
 	if out.Status == "" ||
 		out.TokensUsed < 0 ||
 		out.TimeUsedSeconds < 0 ||
 		out.TurnCount < 0 ||
 		out.EvaluatedTurns < 0 ||
 		out.AttemptCount < 0 ||
-		negativeInt(out.RemainingTokens) ||
-		negativeFloat(out.CostUsedUSD) ||
-		negativeFloat(out.CostBudgetUSD) {
+		negativeInt(out.RemainingTokens) {
 		return nil
 	}
 	if out.TokenBudget != nil {
 		budget := *out.TokenBudget
 		if budget < 0 {
 			return nil
-		}
-		if out.BudgetSource == "" {
-			out.BudgetSource = BudgetSourceGoal
 		}
 		remaining := budget - out.TokensUsed
 		if remaining < 0 {
@@ -172,21 +150,15 @@ func NormalizeState(state *State) *State {
 
 func CompleteSnapshot(state *State) bool {
 	normalized := NormalizeState(state)
-	return normalized != nil && normalized.Objective != ""
+	return normalized != nil && normalized.Objective != "" && normalized.Status != StatusRequested
 }
 
 func Active(state *State) bool {
 	normalized := NormalizeState(state)
-	return normalized != nil && normalized.Status != StatusComplete
-}
-
-func ProviderSnapshot(state *State) bool {
-	normalized := NormalizeState(state)
-	return normalized != nil && normalized.Objective != "" && normalized.Source == SourceProvider
-}
-
-func negativeFloat(value *float64) bool {
-	return value != nil && *value < 0
+	return normalized != nil &&
+		normalized.Objective != "" &&
+		normalized.Status != StatusRequested &&
+		normalized.Status != StatusComplete
 }
 
 func negativeInt(value *int64) bool {

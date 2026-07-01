@@ -146,6 +146,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		store,
 		sessionevents.New(),
 		store,
+		store,
 		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, fakeWhatsAppProvider{}, fakeWhatsAppProvider{}),
@@ -185,6 +186,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		"whatsapp_search", "whatsapp_send_message", "telegram_search", "telegram_send_message",
 		"loop_list", "loop_get", "loop_create", "loop_update", "loop_run", "loop_delete",
 		"agent_spawn", "agent_send", "agent_status", "agent_wait", "agent_cancel", "agent_list",
+		"create_goal", "get_goal", "update_goal",
 		"visualise_read_me", "visualise_show_widget",
 	} {
 		if !names[name] {
@@ -375,6 +377,7 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 		store,
 		sessionevents.New(),
 		store,
+		store,
 		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
@@ -484,6 +487,7 @@ func TestSourceWorkerSurfaceIsRestrictedToMemoryTools(t *testing.T) {
 		store,
 		sessionevents.New(),
 		store,
+		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
@@ -546,6 +550,7 @@ func TestWidgetSurfaceGetsAgentToolsAfterServerCreated(t *testing.T) {
 		store,
 		sessionevents.New(),
 		store,
+		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
@@ -582,6 +587,7 @@ func TestAgentSpawnToolSchemaAndAlias(t *testing.T) {
 		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
 		store,
 		sessionevents.New(),
+		store,
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
 		testGmailTools(t, store),
@@ -651,6 +657,7 @@ func TestSearchWorkerSurfaceOnlyAdvertisesRawMemoryTools(t *testing.T) {
 		store,
 		sessionevents.New(),
 		store,
+		store,
 		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
@@ -709,6 +716,7 @@ func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
 		store,
 		sessionevents.New(),
+		store,
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
 		testGmailTools(t, store),
@@ -780,6 +788,7 @@ func TestBrowserToolsAndWorkerSurface(t *testing.T) {
 		store,
 		sessionevents.New(),
 		store,
+		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
@@ -822,7 +831,7 @@ func TestBrowserToolsAndWorkerSurface(t *testing.T) {
 			t.Fatalf("worker server missing %s", name)
 		}
 	}
-	for _, name := range []string{"memory_search", "agent_spawn", "visualise_read_me"} {
+	for _, name := range []string{"memory_search", "agent_spawn", "create_goal", "visualise_read_me"} {
 		if hasTool(t, worker, name) {
 			t.Fatalf("worker server advertised %s", name)
 		}

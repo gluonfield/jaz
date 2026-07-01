@@ -11,7 +11,7 @@ import (
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
-func TestACPBackedSessionRejectsUnsupportedGoalBeforeStreaming(t *testing.T) {
+func TestACPBackedSessionAllowsJazGoalWithoutNativeCapability(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -33,17 +33,18 @@ func TestACPBackedSessionRejectsUnsupportedGoalBeforeStreaming(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 
-	(&Server{Store: store, ACP: &fakeACPManager{}}).Handler().ServeHTTP(res, req)
+	manager := &fakeACPManager{job: acp.Job{State: acp.StateIdle}}
+	(&Server{Store: store, ACP: manager}).Handler().ServeHTTP(res, req)
 
-	if res.Code != http.StatusBadRequest {
+	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
-	if got := res.Header().Get("Content-Type"); strings.HasPrefix(got, "text/event-stream") {
-		t.Fatalf("unexpected SSE response content type %q", got)
+	if !manager.sent.GoalRequested {
+		t.Fatalf("goal request was not sent to acp manager: %#v", manager.sent)
 	}
 }
 
-func TestACPBackedCodexSessionUsesCatalogGoalSupport(t *testing.T) {
+func TestACPBackedCodexSessionForwardsJazGoalRequest(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

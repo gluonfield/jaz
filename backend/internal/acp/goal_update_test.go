@@ -2,6 +2,7 @@ package acp
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -45,7 +46,6 @@ func TestGoalSessionUpdatePublishesAndPersistsGoal(t *testing.T) {
 					"providerGoalId":  "goal-1",
 					"objective":       "Ship native ACP goal support",
 					"status":          "active",
-					"budgetSource":    "goal",
 					"tokenBudget":     1000,
 					"tokensUsed":      250,
 					"timeUsedSeconds": 45,
@@ -66,12 +66,11 @@ func TestGoalSessionUpdatePublishesAndPersistsGoal(t *testing.T) {
 
 	event := receiveGoalUpdate(t, ctx, sub)
 	if event.Goal.ThreadID != "thread-1" ||
-		event.Goal.Source != goal.SourceProvider ||
+		event.Goal.ID != "goal-1" ||
 		event.Goal.Provider != AgentCodex ||
 		event.Goal.ProviderGoalID != "goal-1" ||
 		event.Goal.Objective != "Ship native ACP goal support" ||
 		event.Goal.Status != "active" ||
-		event.Goal.BudgetSource != "goal" ||
 		event.Goal.TokenBudget == nil ||
 		*event.Goal.TokenBudget != 1000 ||
 		event.Goal.TokensUsed != 250 ||
@@ -92,14 +91,15 @@ func TestGoalSessionUpdatePublishesAndPersistsGoal(t *testing.T) {
 	if len(stored) != 1 || stored[0].Type != sessionevents.TypeGoalUpdate || stored[0].Goal == nil {
 		t.Fatalf("stored events = %#v", stored)
 	}
-	if stored[0].Goal.ThreadID != "thread-1" || stored[0].Goal.Source != goal.SourceProvider || stored[0].Goal.ProviderGoalID != "goal-1" || stored[0].Goal.TokensUsed != 250 {
+	if stored[0].Goal.ThreadID != "thread-1" || stored[0].Goal.ID != "goal-1" || stored[0].Goal.ProviderGoalID != "goal-1" || stored[0].Goal.TokensUsed != 250 {
 		t.Fatalf("stored goal event = %#v", stored[0])
 	}
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Goal == nil || loaded.Goal.Source != goal.SourceProvider ||
+	if loaded.Goal == nil ||
+		loaded.Goal.ID != "goal-1" ||
 		loaded.Goal.Status != goal.StatusActive || loaded.Goal.Objective != "Ship native ACP goal support" ||
 		loaded.Goal.RemainingTokens == nil || *loaded.Goal.RemainingTokens != 750 ||
 		loaded.Goal.ProviderGoalID != "goal-1" ||
@@ -108,21 +108,13 @@ func TestGoalSessionUpdatePublishesAndPersistsGoal(t *testing.T) {
 	}
 }
 
-func TestGoalPromptMetaMarksGoalRequested(t *testing.T) {
-	meta := goalPromptMeta(true)
-	codex, ok := meta[codexMetaKey].(map[string]any)
-	if !ok {
-		t.Fatalf("goal prompt meta = %#v", meta)
+func TestGoalPromptUsesJazToolsNotProviderMeta(t *testing.T) {
+	prompt := goalPromptMessage("do the work", true)
+	if !strings.Contains(prompt, "create_goal") || !strings.Contains(prompt, "do the work") {
+		t.Fatalf("goal prompt message = %q", prompt)
 	}
-	goal, ok := codex["goal"].(map[string]any)
-	if !ok || goal["requested"] != true {
-		t.Fatalf("goal prompt meta = %#v", meta)
-	}
-	if _, ok := goal["objective"]; ok {
-		t.Fatalf("goal prompt meta includes host objective: %#v", meta)
-	}
-	if got := goalPromptMeta(false); got != nil {
-		t.Fatalf("unrequested goal prompt meta = %#v", got)
+	if got := goalPromptMessage("do the work", false); got != "do the work" {
+		t.Fatalf("unrequested goal prompt message = %q", got)
 	}
 }
 
@@ -204,7 +196,7 @@ func TestGoalExtensionNotificationPublishesAndPersistsGoal(t *testing.T) {
 
 	event := receiveGoalUpdate(t, ctx, sub)
 	if event.Goal.ThreadID != "thread-2" ||
-		event.Goal.Source != goal.SourceProvider ||
+		event.Goal.ID != "goal-2" ||
 		event.Goal.ProviderGoalID != "goal-2" ||
 		event.Goal.Status != "budgetLimited" ||
 		event.Goal.RemainingTokens == nil ||
@@ -226,7 +218,8 @@ func TestGoalExtensionNotificationPublishesAndPersistsGoal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Goal == nil || loaded.Goal.Source != goal.SourceProvider ||
+	if loaded.Goal == nil ||
+		loaded.Goal.ID != "goal-2" ||
 		loaded.Goal.Status != goal.StatusBudgetLimited ||
 		loaded.Goal.RemainingTokens == nil || *loaded.Goal.RemainingTokens != 0 ||
 		loaded.Goal.ProviderGoalID != "goal-2" ||
@@ -458,7 +451,6 @@ func TestCancelStoredClearsPersistedGoal(t *testing.T) {
 	}
 	session.Goal = &goal.State{
 		Identity: goal.Identity{
-			Source:    goal.SourceProvider,
 			Objective: "Stop should clear after restart",
 			Status:    goal.StatusActive,
 		},
