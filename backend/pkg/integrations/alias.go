@@ -3,6 +3,7 @@ package integrations
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"strings"
 )
 
@@ -35,6 +36,17 @@ func DefaultAlias(accountName, accountID string) string {
 		return alias
 	}
 	return NormalizeAlias(accountID)
+}
+
+// ConnectionID derives a stable per-account connection ID for a provider.
+func ConnectionID(provider, accountID string) (string, error) {
+	accountID = strings.ToLower(strings.TrimSpace(accountID))
+	alias := NormalizeAlias(accountID)
+	if alias == "" {
+		return "", fmt.Errorf("%s account id is required", provider)
+	}
+	sum := sha256.Sum256([]byte(accountID))
+	return fmt.Sprintf("%s:%s-%x", provider, alias, sum[:4]), nil
 }
 
 func SourceSlug(value string) string {

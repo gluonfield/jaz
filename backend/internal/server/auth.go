@@ -102,7 +102,7 @@ func publicDeviceRequest(r *http.Request) bool {
 }
 
 func publicConnectionOAuthCallback(r *http.Request) bool {
-	return r.Method == http.MethodGet && r.URL.Path == "/v1/connections/oauth/google/callback"
+	return r.Method == http.MethodGet && r.URL.Path == "/v1/connections/oauth/callback"
 }
 
 func writeAuthError(w http.ResponseWriter, status int, code string, err error) {

@@ -6,11 +6,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	gmailconnector "github.com/wins/jaz/backend/internal/connectors/gmail"
+	slackconnector "github.com/wins/jaz/backend/internal/connectors/slack"
 	"github.com/wins/jaz/backend/pkg/integrations"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 	"golang.org/x/oauth2"
@@ -27,69 +29,86 @@ type OAuthStore interface {
 
 type OAuthConfig struct {
 	Gmail gmailconnector.OAuthClientConfig
+	Slack slackconnector.OAuthClientConfig
+}
+
+// oauthProvider adapts a connector's OAuth primitives to the generic flow. The
+// service owns state, PKCE, connection dedup, and persistence; a provider only
+// builds its consent URL and exchanges a code for a token plus account identity.
+type oauthProvider interface {
+	id() string
+	authCodeURL(redirectURL, state, verifier string) (string, error)
+	exchange(ctx context.Context, httpClient *http.Client, redirectURL, code, verifier string) (integrationoauth.Token, oauthIdentity, error)
+}
+
+type oauthIdentity struct {
+	accountID   string
+	accountName string
+	scopes      []string
 }
 
 type OAuthService struct {
-	store  OAuthStore
-	config OAuthConfig
-	mu     sync.Mutex
-	states map[string]oauthState
+	store      OAuthStore
+	providers  map[string]oauthProvider
+	httpClient *http.Client
+	mu         sync.Mutex
+	states     map[string]oauthState
 }
 
 type oauthState struct {
 	pluginID    string
-	credentials gmailconnector.OAuthClientCredentials
 	verifier    string
 	redirectURL string
 	expiresAt   time.Time
 }
 
 func NewOAuthService(store OAuthStore, config OAuthConfig) *OAuthService {
+	providers := map[string]oauthProvider{}
+	for _, p := range []oauthProvider{
+		gmailOAuthProvider{config: config.Gmail},
+		slackOAuthProvider{config: config.Slack},
+	} {
+		providers[p.id()] = p
+	}
 	return &OAuthService{
-		store:  store,
-		config: config,
-		states: map[string]oauthState{},
+		store:      store,
+		providers:  providers,
+		httpClient: http.DefaultClient,
+		states:     map[string]oauthState{},
 	}
 }
 
 func (s *OAuthService) Start(_ context.Context, pluginID, redirectURL string) (OAuthStart, error) {
-	if pluginID != gmailconnector.ProviderID {
-		return OAuthStart{}, fmt.Errorf("connection plugin %q does not support OAuth yet", pluginID)
-	}
 	if redirectURL == "" {
 		return OAuthStart{}, errors.New("redirect URL is required")
 	}
-	credentials, err := s.config.Gmail.Credentials()
-	if err != nil {
-		return OAuthStart{}, err
+	provider, ok := s.providers[pluginID]
+	if !ok {
+		return OAuthStart{}, fmt.Errorf("connection plugin %q does not support OAuth yet", pluginID)
 	}
-	config := gmailOAuthConfig(redirectURL, credentials)
 	state, err := randomOAuthState()
 	if err != nil {
 		return OAuthStart{}, err
 	}
 	verifier := oauth2.GenerateVerifier()
+	authURL, err := provider.authCodeURL(redirectURL, state, verifier)
+	if err != nil {
+		return OAuthStart{}, err
+	}
 	s.mu.Lock()
 	s.states[state] = oauthState{
 		pluginID:    pluginID,
-		credentials: credentials,
 		verifier:    verifier,
 		redirectURL: redirectURL,
 		expiresAt:   time.Now().UTC().Add(10 * time.Minute),
 	}
 	s.mu.Unlock()
-
-	return OAuthStart{AuthURL: config.AuthCodeURL(
-		state,
-		oauth2.AccessTypeOffline,
-		oauth2.S256ChallengeOption(verifier),
-		oauth2.SetAuthURLParam("prompt", "consent"),
-	)}, nil
+	return OAuthStart{AuthURL: authURL}, nil
 }
 
 func (s *OAuthService) Callback(ctx context.Context, state, code, failure string) error {
 	if failure != "" {
-		return fmt.Errorf("Google rejected authorization: %s", failure)
+		return fmt.Errorf("authorization was rejected: %s", failure)
 	}
 	if code == "" {
 		return errors.New("authorization returned no code")
@@ -101,72 +120,55 @@ func (s *OAuthService) Callback(ctx context.Context, state, code, failure string
 	if time.Now().UTC().After(stored.expiresAt) {
 		return errors.New("authorization state expired")
 	}
-	if stored.pluginID != gmailconnector.ProviderID {
+	provider, ok := s.providers[stored.pluginID]
+	if !ok {
 		return fmt.Errorf("connection plugin %q does not support callback exchange", stored.pluginID)
 	}
-
-	config := gmailOAuthConfig(stored.redirectURL, stored.credentials)
-	token, err := config.Exchange(ctx, code, oauth2.VerifierOption(stored.verifier))
-	if err != nil {
-		return fmt.Errorf("token exchange: %w", err)
-	}
-	profile, err := defaultGmailProfile(ctx, token)
-	if err != nil {
-		return fmt.Errorf("gmail verification failed: %w", err)
-	}
-	storedToken := integrationoauth.Token{
-		AccessToken:  token.AccessToken,
-		RefreshToken: token.RefreshToken,
-		TokenType:    token.TokenType,
-		Expiry:       token.Expiry,
-		ClientID:     stored.credentials.ClientID,
-		ClientSecret: stored.credentials.ClientSecret,
-		AuthURL:      gmailconnector.OAuthAuthURL,
-		TokenURL:     gmailconnector.OAuthTokenURL,
-		AuthStyle:    int(oauth2.AuthStyleInParams),
-		RedirectURL:  stored.redirectURL,
-		Scopes:       gmailconnector.OAuthScopes,
-	}
-	connection, err := s.gmailConnection(ctx, profile)
+	token, identity, err := provider.exchange(ctx, s.httpClient, stored.redirectURL, code, stored.verifier)
 	if err != nil {
 		return err
 	}
-	return s.store.SaveOAuthConnection(ctx, storedToken, connection)
+	connection, err := s.upsertConnection(ctx, provider.id(), identity)
+	if err != nil {
+		return err
+	}
+	return s.store.SaveOAuthConnection(ctx, token, connection)
 }
 
-func defaultGmailProfile(ctx context.Context, token *oauth2.Token) (gmailconnector.Profile, error) {
-	client := oauth2.NewClient(ctx, oauth2.StaticTokenSource(token))
-	return gmailconnector.APIClient{HTTP: client}.Profile(ctx)
-}
-
-func (s *OAuthService) gmailConnection(ctx context.Context, profile gmailconnector.Profile) (integrations.Connection, error) {
-	connections, err := s.store.ListConnections(ctx, gmailconnector.ProviderID)
+// upsertConnection reuses an existing account row (matched by account ID) or
+// creates a new one so multiple accounts per provider get stable IDs.
+func (s *OAuthService) upsertConnection(ctx context.Context, provider string, identity oauthIdentity) (integrations.Connection, error) {
+	accountID := strings.TrimSpace(identity.accountID)
+	accountName := identity.accountName
+	if accountName == "" {
+		accountName = accountID
+	}
+	connections, err := s.store.ListConnections(ctx, provider)
 	if err != nil {
 		return integrations.Connection{}, err
 	}
-	accountID := strings.TrimSpace(profile.EmailAddress)
 	for _, connection := range connections {
 		if strings.EqualFold(strings.TrimSpace(connection.AccountID), accountID) {
 			connection.AccountID = accountID
-			connection.AccountName = accountID
+			connection.AccountName = accountName
 			if connection.Alias == "" {
-				connection.Alias = integrations.DefaultAlias(accountID, accountID)
+				connection.Alias = integrations.DefaultAlias(accountName, accountID)
 			}
-			connection.Scopes = gmailconnector.OAuthScopes
+			connection.Scopes = identity.scopes
 			return connection, nil
 		}
 	}
-	id, err := gmailconnector.ConnectionID(accountID)
+	id, err := integrations.ConnectionID(provider, accountID)
 	if err != nil {
 		return integrations.Connection{}, err
 	}
 	return integrations.Connection{
 		ID:          id,
-		Provider:    gmailconnector.ProviderID,
+		Provider:    provider,
 		AccountID:   accountID,
-		AccountName: accountID,
-		Alias:       integrations.DefaultAlias(accountID, accountID),
-		Scopes:      gmailconnector.OAuthScopes,
+		AccountName: accountName,
+		Alias:       integrations.DefaultAlias(accountName, accountID),
+		Scopes:      identity.scopes,
 	}, nil
 }
 
@@ -178,20 +180,6 @@ func (s *OAuthService) takeState(state string) (oauthState, bool) {
 		delete(s.states, state)
 	}
 	return stored, ok
-}
-
-func gmailOAuthConfig(redirectURL string, credentials gmailconnector.OAuthClientCredentials) *oauth2.Config {
-	return &oauth2.Config{
-		ClientID:     credentials.ClientID,
-		ClientSecret: credentials.ClientSecret,
-		Endpoint: oauth2.Endpoint{
-			AuthURL:   gmailconnector.OAuthAuthURL,
-			TokenURL:  gmailconnector.OAuthTokenURL,
-			AuthStyle: oauth2.AuthStyleInParams,
-		},
-		RedirectURL: redirectURL,
-		Scopes:      gmailconnector.OAuthScopes,
-	}
 }
 
 func randomOAuthState() (string, error) {

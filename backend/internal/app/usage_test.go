@@ -191,7 +191,7 @@ func TestNewRoutesIncludesConnectionPluginRoutes(t *testing.T) {
 			route.Pattern == "GET /v1/connections/qr/{id}" ||
 			route.Pattern == "POST /v1/connections/qr/{id}/password" ||
 			route.Pattern == "DELETE /v1/connections/qr/{id}" ||
-			route.Pattern == "GET /v1/connections/oauth/google/callback") && route.Handler != nil {
+			route.Pattern == "GET /v1/connections/oauth/callback") && route.Handler != nil {
 			found[route.Pattern] = true
 		}
 	}
@@ -202,7 +202,7 @@ func TestNewRoutesIncludesConnectionPluginRoutes(t *testing.T) {
 		!found["GET /v1/connections/qr/{id}"] ||
 		!found["POST /v1/connections/qr/{id}/password"] ||
 		!found["DELETE /v1/connections/qr/{id}"] ||
-		!found["GET /v1/connections/oauth/google/callback"] {
+		!found["GET /v1/connections/oauth/callback"] {
 		t.Fatalf("missing connection plugin routes: %#v", routes)
 	}
 }
@@ -216,7 +216,7 @@ func TestNewRoutesKeepsConnectionStartRoutesIndependent(t *testing.T) {
 		ConnectionOAuth: oauth,
 	})
 	for _, route := range routes {
-		if route.Pattern == "GET /v1/connections/oauth/google/callback" && route.Handler != nil {
+		if route.Pattern == "GET /v1/connections/oauth/callback" && route.Handler != nil {
 			return
 		}
 	}

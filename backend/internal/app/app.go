@@ -113,12 +113,17 @@ type MemoryConfig struct {
 
 type ConnectionsConfig struct {
 	Gmail GmailConnectionConfig
+	Slack SlackConnectionConfig
 	Chat  ChatConnectionConfig
 }
 
 type GmailConnectionConfig struct {
 	OAuthClientID     string
 	OAuthClientSecret string
+}
+
+type SlackConnectionConfig struct {
+	OAuthClientID string
 }
 
 type ChatConnectionConfig struct {
