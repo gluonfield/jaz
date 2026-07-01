@@ -118,6 +118,59 @@ func TestCreateElicitationPublishesQuestionsAndReturnsAnswers(t *testing.T) {
 	}
 }
 
+func TestCreateElicitationCancelsWhenPromptSuccessorQueued(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "queued-question", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(store, Config{}, nil)
+	job := &jobState{Job: Job{ID: session.ID, ACPSession: "acp-session", Cwd: t.TempDir()}, promptQueueing: true}
+	job.startTurn(CompletionInline, false, false)
+	if _, ok := job.addPromptCall(false); !ok {
+		t.Fatal("prompt queueing unavailable")
+	}
+	manager.jobsByID[session.ID] = job
+	manager.jobsByACP["acp-session"] = job
+
+	raw, rpcErr := manager.handleJSONRPC(context.Background(), jsonrpc.Request{
+		Method: acpschema.ClientMethodElicitationCreate,
+		Params: mustJSON(t, map[string]any{
+			"mode":      "form",
+			"sessionId": "acp-session",
+			"message":   "Which workspace?",
+			"requestedSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"choice": map[string]any{"type": "string", "title": "Choice"},
+				},
+			},
+		}),
+	})
+	if rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	var got acpschema.CreateElicitationResponse
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Action != "cancel" {
+		t.Fatalf("action = %q", got.Action)
+	}
+	if len(manager.pendingPermission) != 0 {
+		t.Fatalf("pending permission registered: %#v", manager.pendingPermission)
+	}
+	job.mu.RLock()
+	permissions := len(job.Permissions)
+	job.mu.RUnlock()
+	if permissions != 0 {
+		t.Fatalf("job permissions = %d", permissions)
+	}
+}
+
 func TestCreateElicitationPlainTextAnswerUsesRequestedField(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

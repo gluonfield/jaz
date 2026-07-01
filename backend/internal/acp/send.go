@@ -140,6 +140,11 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	if err != nil {
 		return Job{}, err
 	}
+	promptReq := acpschema.PromptRequest{
+		SessionID: acpschema.SessionID(job.ACPSession),
+		Prompt:    prompt,
+		Meta:      goalPromptMeta(req.GoalRequested),
+	}
 	done, ok := job.addPromptCall(req.ParentVisible)
 	if !ok {
 		return Job{}, ErrPromptQueueingUnsupported
@@ -151,11 +156,7 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	m.touchJobAttention(job)
 	markGoalRequested(job, req.GoalRequested)
 	m.publishACP(job.Snapshot())
-	go m.runPromptCallAfterHandoff(context.Background(), job, done, handoff, acpschema.PromptRequest{
-		SessionID: acpschema.SessionID(job.ACPSession),
-		Prompt:    prompt,
-		Meta:      goalPromptMeta(req.GoalRequested),
-	})
+	go m.runPromptCallAfterHandoff(context.Background(), job, done, handoff, promptReq)
 	return job.Snapshot(), nil
 }
 
