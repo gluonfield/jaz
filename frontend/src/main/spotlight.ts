@@ -21,6 +21,9 @@ interface Rect {
 }
 
 let launcher: BrowserWindow | null = null
+// Whether opening the launcher stole focus from another app, so dismissing it
+// should return there instead of surfacing Jaz's own main window.
+let stoleForeignFocus = false
 
 function preloadPath(): string {
   return join(__dirname, '../preload/index.js')
@@ -88,6 +91,7 @@ function presentLauncher(win: BrowserWindow): void {
 
 function showLauncher(): void {
   const win = ensureLauncher()
+  stoleForeignFocus = BrowserWindow.getFocusedWindow() === null
   coverCursorDisplay(win)
   presentLauncher(win)
   win.webContents.send('jaz:launcher-shown')
@@ -96,6 +100,9 @@ function showLauncher(): void {
 function hideLauncher(): void {
   if (!launcher || launcher.isDestroyed() || !launcher.isVisible()) return
   launcher.hide()
+  // Deactivate Jaz so focus returns to the app we opened over, rather than
+  // letting macOS surface the main window as the app's next key window.
+  if (stoleForeignFocus) app.hide()
 }
 
 function toggleLauncher(): void {
