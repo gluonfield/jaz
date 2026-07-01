@@ -50,11 +50,6 @@ func EffectiveRuntimeCapabilities(agent string, caps *storage.RuntimeCapabilitie
 	return caps
 }
 
-func effectiveRuntimeNativeGoal(agent string, caps *storage.RuntimeCapabilities) bool {
-	caps = EffectiveRuntimeCapabilities(agent, caps)
-	return caps != nil && caps.NativeGoal
-}
-
 func storedRuntimeCapabilitiesEqual(a, b *storage.RuntimeCapabilities) bool {
 	a = storage.NormalizeRuntimeCapabilities(a)
 	b = storage.NormalizeRuntimeCapabilities(b)

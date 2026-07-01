@@ -7,60 +7,6 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-func TestNativeGoalSupport(t *testing.T) {
-	tests := []struct {
-		name    string
-		session storage.Session
-		want    promptFeatureSupport
-	}{
-		{
-			name: "stored runtime capability supports goal",
-			session: storage.Session{
-				Runtime: storage.RuntimeACP,
-				RuntimeRef: &storage.RuntimeRef{
-					Agent:        acp.AgentCodex,
-					SessionID:    "acp-session",
-					Capabilities: &storage.RuntimeCapabilities{NativeGoal: true},
-				},
-			},
-			want: promptFeatureSupported,
-		},
-		{
-			name: "catalog codex supports goal before acp session exists",
-			session: storage.Session{
-				Runtime:    storage.RuntimeACP,
-				RuntimeRef: &storage.RuntimeRef{Agent: acp.AgentCodex},
-			},
-			want: promptFeatureSupported,
-		},
-		{
-			name: "created codex session uses catalog goal support",
-			session: storage.Session{
-				Runtime: storage.RuntimeACP,
-				RuntimeRef: &storage.RuntimeRef{
-					Agent:     acp.AgentCodex,
-					SessionID: "acp-session",
-				},
-			},
-			want: promptFeatureSupported,
-		},
-		{
-			name: "non acp session is unsupported",
-			session: storage.Session{
-				Runtime: "native",
-			},
-			want: promptFeatureUnsupported,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := nativeGoalSupport(tt.session); got != tt.want {
-				t.Fatalf("nativeGoalSupport() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestCanonicalSessionResponseNativeGoalCapabilities(t *testing.T) {
 	tests := []struct {
 		name       string

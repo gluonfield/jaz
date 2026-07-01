@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/goal"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
@@ -76,6 +77,74 @@ func TestSessionMessagesErrorSessionOverridesRunningACPSnapshot(t *testing.T) {
 	}
 	if got.ACPError != session.Error {
 		t.Fatalf("acp_error = %q, want %q", got.ACPError, session.Error)
+	}
+}
+
+func TestCanonicalSessionResponsePublishesPublicGoal(t *testing.T) {
+	budget := int64(100)
+	data, err := json.Marshal(canonicalSessionResponse(storage.Session{
+		ID:      "thread-1",
+		Runtime: storage.RuntimeACP,
+		Goal: &goal.State{
+			Identity: goal.Identity{
+				ID:             "goal-1",
+				ThreadID:       "thread-1",
+				Provider:       "codex",
+				ProviderGoalID: "provider-goal-1",
+				Objective:      "ship it",
+				Status:         goal.StatusActive,
+			},
+			Budget: goal.Budget{
+				TokenBudget: &budget,
+				TokensUsed:  25,
+			},
+			Progress: goal.Progress{
+				ProgressMessage: "running tests",
+			},
+		},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(data)
+	for _, forbidden := range []string{"provider_goal_id", "progress_message", "budget_source"} {
+		if strings.Contains(body, forbidden) {
+			t.Fatalf("session response leaked goal field %q: %s", forbidden, body)
+		}
+	}
+	for _, required := range []string{`"objective":"ship it"`, `"token_budget":100`, `"tokens_used":25`, `"remaining_tokens":75`} {
+		if !strings.Contains(body, required) {
+			t.Fatalf("session response missing %s: %s", required, body)
+		}
+	}
+}
+
+func TestSessionEventResponsePublishesPublicGoal(t *testing.T) {
+	data, err := json.Marshal(sessionEventResponseFrom(sessionevents.Event{
+		SessionID: "thread-1",
+		Type:      sessionevents.TypeGoalUpdate,
+		Goal: &sessionevents.GoalEvent{
+			Identity: goal.Identity{
+				Objective:      "ship it",
+				Status:         goal.StatusActive,
+				ProviderGoalID: "provider-goal-1",
+			},
+			Progress: goal.Progress{
+				ProgressMessage: "running tests",
+			},
+		},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(data)
+	for _, forbidden := range []string{"provider_goal_id", "progress_message"} {
+		if strings.Contains(body, forbidden) {
+			t.Fatalf("event response leaked goal field %q: %s", forbidden, body)
+		}
+	}
+	if !strings.Contains(body, `"objective":"ship it"`) {
+		t.Fatalf("event response missing public goal: %s", body)
 	}
 }
 

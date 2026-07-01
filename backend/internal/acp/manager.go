@@ -430,7 +430,6 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	}
 	job := newIdleJob(session, req.ACPAgent, string(acpSession.response.SessionID), absCwd, modes)
 	job.promptQueueing = promptQueueingSupported(ac.initRaw)
-	job.nativeGoal = effectiveRuntimeNativeGoal(req.ACPAgent, session.RuntimeRef.Capabilities)
 	ac.trackPromptSends(job)
 	m.addJob(job, ac.conn, ac.peer, ac.cancel)
 	m.saveACPState(job.Snapshot())
@@ -564,7 +563,6 @@ func (m *Manager) resume(ctx context.Context, ref string) (*jobState, error) {
 	job.LastEventAt = firstNonZeroTime(state.LastEventAt, state.UpdatedAt)
 	job.LastToolAt = state.LastToolAt
 	job.promptQueueing = promptQueueingSupported(ac.initRaw)
-	job.nativeGoal = effectiveRuntimeNativeGoal(agentName, session.RuntimeRef.Capabilities)
 	ac.trackPromptSends(job)
 	m.addJob(job, ac.conn, ac.peer, ac.cancel)
 	m.saveACPState(job.Snapshot())

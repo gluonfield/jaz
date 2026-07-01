@@ -1,5 +1,4 @@
 import type { GoalEvent } from '@/lib/api/types'
-import { formatUsd } from '@/lib/usageCost'
 
 const numberFormatter = new Intl.NumberFormat()
 
@@ -123,24 +122,12 @@ function goalDetails(goal?: GoalEvent): GoalDetail[] {
   addDetail(rows, 'Token budget', goalTokenBudgetLabel(goal), true)
   addDetail(rows, 'Remaining', numericLabel(goal.remaining_tokens), true)
   addDetail(rows, 'Elapsed', elapsedLabel(goal.time_used_seconds), true)
-  addDetail(rows, 'Cost', goalCostLabel(goal), true)
-  addDetail(rows, 'Progress', firstText(goal.blocked_reason, goal.progress_message, goal.evaluator_reason))
-  addDetail(rows, 'Operation', goal.active_operation)
   return rows
 }
 
 function addDetail(rows: GoalDetail[], label: string, value?: string, numeric?: boolean) {
   if (!value) return
   rows.push({ label, value, numeric })
-}
-
-function goalCostLabel(goal: GoalEvent): string {
-  if (goal.cost_budget_usd != null) {
-    const used = goal.cost_used_usd ?? 0
-    return `${formatUsd(used)} / ${formatUsd(goal.cost_budget_usd)}${goal.cost_estimated ? ' est.' : ''}`
-  }
-  if (goal.cost_used_usd != null) return `${formatUsd(goal.cost_used_usd)}${goal.cost_estimated ? ' est.' : ''}`
-  return ''
 }
 
 function goalTokenBudgetLabel(goal: GoalEvent): string {
@@ -150,14 +137,6 @@ function goalTokenBudgetLabel(goal: GoalEvent): string {
 
 function numericLabel(value?: number): string {
   return typeof value === 'number' ? numberFormatter.format(value) : ''
-}
-
-function firstText(...values: Array<string | undefined>): string {
-  for (const value of values) {
-    const text = value?.trim()
-    if (text) return text
-  }
-  return ''
 }
 
 function elapsedLabel(seconds?: number): string {

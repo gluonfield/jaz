@@ -396,7 +396,7 @@ func (s *Server) startSteeredQueuedPrompt(claimed steeredQueuedPrompt) error {
 }
 
 func (s *Server) steerRunningQueuedPrompt(ctx context.Context, session storage.Session, prompt storage.QueuedMessage) error {
-	if err := s.validatePromptOptions(session, promptOptionsFromQueued(prompt)); err != nil {
+	if err := s.validateGoalRequest(session, prompt.GoalRequested); err != nil {
 		return err
 	}
 	attachments, err := s.resolveAttachments(session.ID, prompt.AttachmentIDs)
@@ -441,7 +441,7 @@ func (s *Server) canStartQueuedPrompt(session storage.Session) bool {
 }
 
 func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session, prompt storage.QueuedMessage) error {
-	if err := s.validatePromptOptions(session, promptOptionsFromQueued(prompt)); err != nil {
+	if err := s.validateGoalRequest(session, prompt.GoalRequested); err != nil {
 		return err
 	}
 	attachments, err := s.resolveAttachments(session.ID, prompt.AttachmentIDs)

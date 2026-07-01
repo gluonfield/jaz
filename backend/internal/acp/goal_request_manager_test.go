@@ -16,7 +16,7 @@ func TestManagerSendRequestsCodexGoalWithoutLocalGoalSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := newFakeCodexManager(t, store, t.TempDir(), map[string]string{
-		"JAZ_FAKE_ACP_EXPECT_PROMPT_CONTAINS": `"requested":true`,
+		"JAZ_FAKE_ACP_EXPECT_PROMPT_CONTAINS": `create_goal`,
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -81,7 +81,7 @@ func TestManagerPersistsProviderGoalObjectiveNotUserPrompt(t *testing.T) {
 	const providerObjective = "provider refined goal objective"
 	const userPrompt = "continue iterating and commit periodically"
 	manager := newFakeCodexManager(t, store, t.TempDir(), map[string]string{
-		"JAZ_FAKE_ACP_EXPECT_PROMPT_CONTAINS": `"requested":true`,
+		"JAZ_FAKE_ACP_EXPECT_PROMPT_CONTAINS": `create_goal`,
 		"JAZ_FAKE_ACP_GOAL_OBJECTIVE":         providerObjective,
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)

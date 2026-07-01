@@ -295,7 +295,6 @@ func TestFakeACPAgentProcess(t *testing.T) {
 						"providerGoalId":  "fake-goal-1",
 						"objective":       objective,
 						"status":          "active",
-						"budgetSource":    "goal",
 						"tokenBudget":     1000,
 						"tokensUsed":      42,
 						"remainingTokens": 958,

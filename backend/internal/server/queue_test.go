@@ -57,7 +57,7 @@ func TestSessionQueueActionAppendsQueuedMessage(t *testing.T) {
 	}
 }
 
-func TestSessionQueueActionRejectsGoalForUnsupportedAgent(t *testing.T) {
+func TestSessionQueueActionStoresJazGoalRequest(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -80,15 +80,15 @@ func TestSessionQueueActionRejectsGoalForUnsupportedAgent(t *testing.T) {
 
 	(&Server{Store: store}).Handler().ServeHTTP(res, req)
 
-	if res.Code != http.StatusBadRequest {
+	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded.QueuedMessages) != 0 {
-		t.Fatalf("queue changed: %#v", loaded.QueuedMessages)
+	if len(loaded.QueuedMessages) != 1 || !loaded.QueuedMessages[0].GoalRequested {
+		t.Fatalf("queue = %#v, want one goal-requested prompt", loaded.QueuedMessages)
 	}
 }
 

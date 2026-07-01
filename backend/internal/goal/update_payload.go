@@ -35,11 +35,6 @@ func (p *UpdatePayload) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	state.Status = NormalizeStatus(status)
-	budgetSource, err := stringField(fields, "budgetSource", "budget_source")
-	if err != nil {
-		return err
-	}
-	state.BudgetSource = NormalizeBudgetSource(budgetSource)
 	if state.TokenBudget, err = intPtrField(fields, "tokenBudget", "token_budget"); err != nil {
 		return err
 	}
@@ -77,15 +72,6 @@ func (p *UpdatePayload) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	if state.ActiveOperation, err = stringField(fields, "activeOperation", "active_operation"); err != nil {
-		return err
-	}
-	if state.CostUsedUSD, err = floatPtrField(fields, "costUsedUSD", "costUsedUsd", "cost_used_usd"); err != nil {
-		return err
-	}
-	if state.CostBudgetUSD, err = floatPtrField(fields, "costBudgetUSD", "costBudgetUsd", "cost_budget_usd"); err != nil {
-		return err
-	}
-	if state.CostEstimated, err = boolField(fields, "costEstimated", "cost_estimated"); err != nil {
 		return err
 	}
 	if state.CreatedAt, err = unixSecondsField(fields, "createdAt", "created_at"); err != nil {
