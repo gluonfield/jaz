@@ -104,11 +104,8 @@ func (m *Manager) refreshGoalUsage(job *jobState) {
 func (j *jobState) isDuplicateUsageDelta(report usageReport) bool {
 	// Codex can repeat the same token_count notification; the ACP bridge only
 	// carries lastTokenUsage, so consecutive identical delta reports are replays.
-	duplicate := j.lastUsageDeltaSet &&
-		j.lastUsageDelta == report.Delta &&
-		j.lastUsageContext == report.Context
+	duplicate := j.lastUsageDeltaSet && j.lastUsageDelta == report.Delta
 	j.lastUsageDelta = report.Delta
-	j.lastUsageContext = report.Context
 	j.lastUsageDeltaSet = true
 	return duplicate
 }

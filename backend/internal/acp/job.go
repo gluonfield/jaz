@@ -50,7 +50,6 @@ type jobState struct {
 	savedAssistantLen      int
 	usage                  storage.Usage
 	lastUsageDelta         storage.Usage
-	lastUsageContext       storage.Usage
 	lastUsageDeltaSet      bool
 	systemPromptExtensions promptmodule.Modules
 }
@@ -191,7 +190,6 @@ func (j *jobState) startTurnWithOperation(completion CompletionMode, planRequest
 	j.savedAssistantLen = 0
 	j.usage = storage.Usage{}
 	j.lastUsageDelta = storage.Usage{}
-	j.lastUsageContext = storage.Usage{}
 	j.lastUsageDeltaSet = false
 	j.turn = &activeTurn{
 		done:            make(chan struct{}),
