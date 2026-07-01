@@ -36,7 +36,7 @@ func TestGmailMCPToolsGetProfile(t *testing.T) {
 	}))
 	defer gmailServer.Close()
 
-	store := &gmailMCPStore{
+	store := &testConnectionStore{
 		tokens: map[string]integrationoauth.Token{
 			gmailconnector.OAuthConnectionID: {
 				AccessToken: "access",
@@ -67,13 +67,13 @@ func TestGmailMCPToolsGetProfile(t *testing.T) {
 	if profile.AccountID != "augustinas@example.com" || profile.AccountName != "Augustinas" || profile.Alias != "personal" {
 		t.Fatalf("account fields = %#v", profile)
 	}
-	if got := gmailToolText(result); !strings.Contains(got, "Gmail is connected as augustinas@example.com") {
+	if got := toolText(result); !strings.Contains(got, "Gmail is connected as augustinas@example.com") {
 		t.Fatalf("text = %q", got)
 	}
 }
 
 func TestGmailMCPToolsGetProfileReportsNotConnected(t *testing.T) {
-	_, profile, err := newTestGmailMCPTools(t, &gmailMCPStore{}).GetProfile(context.Background(), nil, GmailProfileInput{})
+	_, profile, err := newTestGmailMCPTools(t, &testConnectionStore{}).GetProfile(context.Background(), nil, GmailProfileInput{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestGmailMCPToolsGetProfileReportsNotConnected(t *testing.T) {
 }
 
 func TestGmailMCPToolsRequiresVerifiedConnection(t *testing.T) {
-	store := &gmailMCPStore{
+	store := &testConnectionStore{
 		tokens: map[string]integrationoauth.Token{
 			gmailconnector.OAuthConnectionID: {
 				AccessToken: "access",
@@ -276,7 +276,7 @@ func TestGmailMCPToolsThreadAndDraftWorkflow(t *testing.T) {
 	}))
 	defer gmailServer.Close()
 
-	tools := newTestGmailMCPTools(t, &gmailMCPStore{
+	tools := newTestGmailMCPTools(t, &testConnectionStore{
 		tokens: map[string]integrationoauth.Token{
 			gmailconnector.OAuthConnectionID: {
 				AccessToken: "access",
@@ -410,7 +410,7 @@ func TestGmailMCPToolsReadAttachmentStoresFileAndReturnsPreviewOnly(t *testing.T
 	}))
 	defer gmailServer.Close()
 
-	tools := newTestGmailMCPTools(t, &gmailMCPStore{
+	tools := newTestGmailMCPTools(t, &testConnectionStore{
 		tokens: map[string]integrationoauth.Token{
 			gmailconnector.OAuthConnectionID: {
 				AccessToken: "access",
@@ -510,7 +510,7 @@ func TestGmailMCPToolsRequireAccountWhenMultipleAccountsConnected(t *testing.T) 
 	}))
 	defer gmailServer.Close()
 
-	store := &gmailMCPStore{
+	store := &testConnectionStore{
 		tokens: map[string]integrationoauth.Token{
 			"gmail:personal": {
 				AccessToken: "personal-access",
@@ -545,7 +545,7 @@ func TestGmailMCPToolsRequireAccountWhenMultipleAccountsConnected(t *testing.T) 
 	if !profile.Connected || !profile.AccountRequired || len(profile.Accounts) != 2 {
 		t.Fatalf("profile = %#v", profile)
 	}
-	if got := gmailToolText(result); !strings.Contains(got, "Specify account") || !strings.Contains(got, "personal") || !strings.Contains(got, "work") {
+	if got := toolText(result); !strings.Contains(got, "Specify account") || !strings.Contains(got, "personal") || !strings.Contains(got, "work") {
 		t.Fatalf("text = %q", got)
 	}
 
@@ -615,17 +615,17 @@ func decodedGmailDraftMessage(t *testing.T, r *http.Request) string {
 	return string(raw)
 }
 
-type gmailMCPStore struct {
+type testConnectionStore struct {
 	tokens      map[string]integrationoauth.Token
 	connections []integrations.Connection
 }
 
-func (s *gmailMCPStore) LoadToken(_ context.Context, connectionID string) (integrationoauth.Token, bool, error) {
+func (s *testConnectionStore) LoadToken(_ context.Context, connectionID string) (integrationoauth.Token, bool, error) {
 	token, ok := s.tokens[connectionID]
 	return token, ok, nil
 }
 
-func (s *gmailMCPStore) SaveToken(_ context.Context, connectionID string, token integrationoauth.Token) error {
+func (s *testConnectionStore) SaveToken(_ context.Context, connectionID string, token integrationoauth.Token) error {
 	if s.tokens == nil {
 		s.tokens = map[string]integrationoauth.Token{}
 	}
@@ -633,7 +633,7 @@ func (s *gmailMCPStore) SaveToken(_ context.Context, connectionID string, token 
 	return nil
 }
 
-func (s *gmailMCPStore) ListConnections(_ context.Context, provider string) ([]integrations.Connection, error) {
+func (s *testConnectionStore) ListConnections(_ context.Context, provider string) ([]integrations.Connection, error) {
 	var out []integrations.Connection
 	for _, connection := range s.connections {
 		if connection.Provider == provider {
@@ -643,7 +643,7 @@ func (s *gmailMCPStore) ListConnections(_ context.Context, provider string) ([]i
 	return out, nil
 }
 
-func gmailToolText(result *mcp.CallToolResult) string {
+func toolText(result *mcp.CallToolResult) string {
 	var out string
 	for _, content := range result.Content {
 		if text, ok := content.(*mcp.TextContent); ok {

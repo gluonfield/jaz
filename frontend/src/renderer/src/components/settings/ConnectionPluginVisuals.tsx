@@ -2,6 +2,7 @@ import type { IntegrationPlugin } from '@/lib/api/types'
 
 const pluginAssetUrls: Record<string, string> = {
   gmail: '/integrations/gmail.svg',
+  google_calendar: '/integrations/google_calendar.svg',
   slack: '/integrations/slack.svg',
   telegram: '/integrations/telegram.svg',
   whatsapp: '/integrations/whatsapp.svg',

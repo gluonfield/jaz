@@ -42,6 +42,10 @@ func testGmailTools(t *testing.T, store connections.GmailToolStore) *connections
 	return connections.NewGmailMCPTools(store, integrationingest.RawWriter{Root: t.TempDir()})
 }
 
+func testCalendarTools(_ *testing.T, store connections.CalendarToolStore) *connections.CalendarMCPTools {
+	return connections.NewCalendarMCPTools(store)
+}
+
 type fakeExecutor struct {
 	started chan loops.Run
 }
@@ -148,6 +152,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		store,
 		store,
 		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
+		testCalendarTools(t, store),
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, fakeWhatsAppProvider{}, fakeWhatsAppProvider{}),
 		connections.NewTelegramMCPTools(store, fakeTelegramProvider{}, fakeTelegramProvider{}),
@@ -182,6 +187,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 	for _, name := range []string{
 		"memory_search", "memory_get_page",
 		"thread_context",
+		"google_calendar_get_events", "google_calendar_create_event",
 		"gmail_get_profile", "gmail_search_threads", "gmail_read_thread", "gmail_create_draft", "gmail_create_reply_draft", "gmail_send_draft", "gmail_update_draft", "gmail_list_drafts", "gmail_read_attachment",
 		"whatsapp_search", "whatsapp_send_message", "telegram_search", "telegram_send_message",
 		"loop_list", "loop_get", "loop_create", "loop_update", "loop_run", "loop_delete",
@@ -379,6 +385,7 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 		store,
 		store,
 		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
+		testCalendarTools(t, store),
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
@@ -489,6 +496,7 @@ func TestSourceWorkerSurfaceIsRestrictedToMemoryTools(t *testing.T) {
 		store,
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
+		testCalendarTools(t, store),
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
@@ -525,7 +533,7 @@ func TestSourceWorkerSurfaceIsRestrictedToMemoryTools(t *testing.T) {
 			t.Fatalf("source worker surface missing %s", name)
 		}
 	}
-	for _, name := range []string{"agent_spawn", "thread_context", "gmail_search_threads", "loop_list", "visualise_read_me"} {
+	for _, name := range []string{"agent_spawn", "thread_context", "google_calendar_get_events", "gmail_search_threads", "loop_list", "visualise_read_me"} {
 		if hasTool(t, source, name) {
 			t.Fatalf("source worker surface must not advertise %s", name)
 		}
@@ -552,6 +560,7 @@ func TestWidgetSurfaceGetsAgentToolsAfterServerCreated(t *testing.T) {
 		store,
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
+		testCalendarTools(t, store),
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
@@ -590,6 +599,7 @@ func TestAgentSpawnToolSchemaAndAlias(t *testing.T) {
 		store,
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
+		testCalendarTools(t, store),
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
@@ -659,6 +669,7 @@ func TestSearchWorkerSurfaceOnlyAdvertisesRawMemoryTools(t *testing.T) {
 		store,
 		store,
 		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
+		testCalendarTools(t, store),
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
@@ -719,6 +730,7 @@ func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 		store,
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
+		testCalendarTools(t, store),
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
@@ -790,6 +802,7 @@ func TestBrowserToolsAndWorkerSurface(t *testing.T) {
 		store,
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
+		testCalendarTools(t, store),
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),

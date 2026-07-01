@@ -61,6 +61,7 @@ type Service struct {
 	agentTools      *acp.MCPTools
 	threadTools     *threads.Service
 	goalTools       *sessiongoal.MCPTools
+	calendarTools   *connections.CalendarMCPTools
 	gmailTools      *connections.GmailMCPTools
 	whatsAppTools   *connections.WhatsAppMCPTools
 	telegramTools   *connections.TelegramMCPTools
@@ -122,12 +123,14 @@ func New(
 	sessions storage.SessionStore,
 	usage storage.UsageEventStore,
 	widgetPublisher *widgets.SessionPublisher,
+	calendarTools *connections.CalendarMCPTools,
 	gmailTools *connections.GmailMCPTools,
 	whatsAppTools *connections.WhatsAppMCPTools,
 	telegramTools *connections.TelegramMCPTools,
 ) *Service {
 	return &Service{
 		Memory:          memory,
+		calendarTools:   calendarTools,
 		gmailTools:      gmailTools,
 		whatsAppTools:   whatsAppTools,
 		telegramTools:   telegramTools,
@@ -240,6 +243,7 @@ func (s *Service) newServer(surface toolSurface) *mcp.Server {
 	if surface == threadSurface && s.goalTools != nil {
 		s.goalTools.AddTo(server)
 	}
+	s.calendarTools.AddTo(server)
 	s.gmailTools.AddTo(server)
 	s.whatsAppTools.AddTo(server)
 	s.telegramTools.AddTo(server)
