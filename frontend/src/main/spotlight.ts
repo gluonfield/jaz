@@ -1,7 +1,6 @@
 import { join } from 'node:path'
 import {
   BrowserWindow,
-  app,
   desktopCapturer,
   globalShortcut,
   ipcMain,
@@ -21,9 +20,6 @@ interface Rect {
 }
 
 let launcher: BrowserWindow | null = null
-// Whether opening the launcher stole focus from another app, so dismissing it
-// should return there instead of surfacing Jaz's own main window.
-let stoleForeignFocus = false
 
 function preloadPath(): string {
   return join(__dirname, '../preload/index.js')
@@ -47,7 +43,10 @@ function buildLauncher(): BrowserWindow {
     maximizable: false,
     hasShadow: false,
     backgroundColor: '#00000000',
-    // Not a 'panel': a regular window becomes key so the composer can type.
+    // A panel becomes key and accepts typing without activating Jaz, so
+    // dismissing it returns to the previous app instead of surfacing the
+    // main window. Regular windows force app activation and can't do this.
+    type: 'panel',
     webPreferences: {
       preload: preloadPath(),
       contextIsolation: true,
@@ -84,14 +83,11 @@ function coverCursorDisplay(win: BrowserWindow): void {
 
 function presentLauncher(win: BrowserWindow): void {
   win.show()
-  // Without stealing app focus, keystrokes go to the previously-frontmost app.
-  app.focus({ steal: true })
   win.focus()
 }
 
 function showLauncher(): void {
   const win = ensureLauncher()
-  stoleForeignFocus = BrowserWindow.getFocusedWindow() === null
   coverCursorDisplay(win)
   presentLauncher(win)
   win.webContents.send('jaz:launcher-shown')
@@ -100,9 +96,6 @@ function showLauncher(): void {
 function hideLauncher(): void {
   if (!launcher || launcher.isDestroyed() || !launcher.isVisible()) return
   launcher.hide()
-  // Deactivate Jaz so focus returns to the app we opened over, rather than
-  // letting macOS surface the main window as the app's next key window.
-  if (stoleForeignFocus) app.hide()
 }
 
 function toggleLauncher(): void {
