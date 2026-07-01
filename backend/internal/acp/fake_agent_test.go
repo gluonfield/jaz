@@ -314,12 +314,8 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				sendResult(conn, msg, map[string]any{"stopReason": "end_turn"})
 				continue
 			}
-			if strings.Contains(string(msg.Params), "queue before ask") {
-				fakeAskThenBlock(conn, msg, true)
-				continue
-			}
 			if strings.Contains(string(msg.Params), "ask then block") {
-				fakeAskThenBlock(conn, msg, false)
+				fakeAskThenBlock(conn, msg)
 				continue
 			}
 			if strings.Contains(string(msg.Params), "block until cancelled") {
@@ -465,22 +461,7 @@ func fakeModeSupported(mode string) bool {
 	return false
 }
 
-func fakeAskThenBlock(conn jsonrpc.MessageConn, prompt *jsonrpc.Message, waitForSteerBeforeAsk bool) {
-	var steered *jsonrpc.Message
-	for waitForSteerBeforeAsk && steered == nil {
-		next, err := conn.Receive(context.Background())
-		if err != nil {
-			os.Exit(0)
-		}
-		switch {
-		case next.Method == "session/cancel":
-			sendResult(conn, prompt, map[string]any{"stopReason": fakeCancelStopReason()})
-			return
-		case next.Method == "session/prompt":
-			steered = next
-		}
-	}
-
+func fakeAskThenBlock(conn jsonrpc.MessageConn, prompt *jsonrpc.Message) {
 	req, err := jsonrpc.NewRequest(json.RawMessage(`"fake-elicit-1"`), "elicitation/create", map[string]any{
 		"mode":      "form",
 		"sessionId": "fake-session",
@@ -508,6 +489,7 @@ func fakeAskThenBlock(conn jsonrpc.MessageConn, prompt *jsonrpc.Message, waitFor
 		sendResult(conn, steered, map[string]any{"stopReason": "end_turn"})
 	}
 
+	var steered *jsonrpc.Message
 	parkedResolved := false
 	for {
 		next, err := conn.Receive(context.Background())
