@@ -33,13 +33,6 @@ export function GoalStatusBar({
           <span className="mr-2 font-medium text-primary-strong">{label}</span>
           {objective ? <span className="text-ink-2">{objective}</span> : null}
         </div>
-        {tokenProgress ? (
-          <GoalTokenProgress progress={tokenProgress} />
-        ) : goal?.tokens_used != null ? (
-          <span className="shrink-0 tabular-nums text-[12px] text-ink-3">
-            {numberFormatter.format(goal.tokens_used)} goal tokens
-          </span>
-        ) : null}
         {objective ? (
           <ChevronDown
             className={`size-4 shrink-0 text-primary-strong/70 transition-transform duration-150 ${expanded ? 'rotate-180' : ''}`}
@@ -47,29 +40,40 @@ export function GoalStatusBar({
           />
         ) : null}
       </button>
+      {expanded ? <GoalTokens goal={goal} progress={tokenProgress} /> : null}
     </div>
   )
 }
 
-function GoalTokenProgress({
+function GoalTokens({
+  goal,
   progress,
 }: {
-  progress: { used: number; budget: number; percent: number }
+  goal: GoalEvent
+  progress?: { used: number; budget: number; percent: number }
 }) {
-  return (
-    <div className="flex w-[min(34vw,240px)] shrink-0 items-center gap-2">
-      <div
-        className="h-1.5 min-w-20 flex-1 overflow-hidden rounded-full bg-bg/80 shadow-inner"
-        aria-label={`${numberFormatter.format(progress.used)} of ${numberFormatter.format(progress.budget)} goal tokens used`}
-      >
+  if (progress) {
+    return (
+      <div className="mt-2 flex items-center gap-2">
         <div
-          className="h-full rounded-full bg-primary transition-[width] duration-150"
-          style={{ width: `${progress.percent}%` }}
-        />
+          className="h-1.5 flex-1 overflow-hidden rounded-full bg-bg/80 shadow-inner"
+          aria-label={`${numberFormatter.format(progress.used)} of ${numberFormatter.format(progress.budget)} goal tokens used`}
+        >
+          <div
+            className="h-full rounded-full bg-primary transition-[width] duration-150"
+            style={{ width: `${progress.percent}%` }}
+          />
+        </div>
+        <span className="shrink-0 text-[12px] tabular-nums text-ink-3">
+          {numberFormatter.format(progress.used)} / {numberFormatter.format(progress.budget)}
+        </span>
       </div>
-      <span className="w-[118px] shrink-0 text-right text-[12px] tabular-nums text-ink-3">
-        {numberFormatter.format(progress.used)} / {numberFormatter.format(progress.budget)}
-      </span>
+    )
+  }
+  if (goal.tokens_used == null) return null
+  return (
+    <div className="mt-2 text-[12px] tabular-nums text-ink-3">
+      {numberFormatter.format(goal.tokens_used)} goal tokens
     </div>
   )
 }
