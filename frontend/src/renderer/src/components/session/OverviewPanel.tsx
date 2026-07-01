@@ -646,15 +646,15 @@ function GitSection({ repo }: { repo: ReturnType<typeof useRepoActions> }) {
             {busy === 'push' ? 'Pushing…' : 'Push branch'}
           </ActionRow>
         ) : null}
-        {info.is_worktree && info.main_branch && (info.behind ?? 0) > 0 ? (
+        {info.is_worktree && (info.update_branch || info.main_branch) && (info.behind ?? 0) > 0 ? (
           <ActionRow
             icon={busy === 'update' ? LoaderCircle : ArrowDownToLine}
             spin={busy === 'update'}
             disabled={busy !== null}
-            hint={`Commits this session's work, then merges the latest ${info.main_branch} into this worktree`}
+            hint={`Commits this session's work, then merges the latest ${info.update_branch || info.main_branch} into this worktree`}
             onClick={() => void repo.update()}
           >
-            {busy === 'update' ? 'Updating…' : `Update from ${info.main_branch}`}
+            {busy === 'update' ? 'Updating…' : `Update from ${info.update_branch || info.main_branch}`}
           </ActionRow>
         ) : null}
         {canHandoffToMain(info) ? (
