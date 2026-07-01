@@ -149,6 +149,32 @@ func TestFetchManifestRejectsInvalidLocalAssetSpecCacheFallback(t *testing.T) {
 	}
 }
 
+func TestFetchManifestRejectsMatchingVersionCacheMissingPinnedAssets(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "offline", http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	root := t.TempDir()
+	specPath := writeAssetSpec(t, root, `{"adapters":{"claude":{"repo":"example/adapter","tag":"v1.2.3","version":"1.2.3","assets":{"darwin-arm64":{"name":"adapter-1.2.3-darwin-arm64.tar.gz","binary":"bin/tool"},"win32-x64":{"name":"adapter-1.2.3-win32-x64.tar.gz","binary":"bin/tool.exe"}}}}}`)
+
+	manager := NewForTest(root, "", server.Client())
+	manager.assetSpecPath = specPath
+	manager.githubAPIURL = server.URL + "/repos"
+	manager.cacheManifest(manifest{Adapters: map[string]manifestAdapter{
+		"claude": {
+			Version: "1.2.3",
+			Assets: map[string]manifestAsset{
+				"darwin-arm64": {URL: server.URL + "/adapter-1.2.3-darwin-arm64.tar.gz", SHA256: strings.Repeat("a", 64), Binary: "bin/tool"},
+			},
+		},
+	}})
+
+	if _, err := manager.fetchManifest(context.Background()); err == nil {
+		t.Fatal("expected matching-version cache with missing pinned asset to be rejected")
+	}
+}
+
 func TestFetchManifestFallsBackToMatchingCacheWhenLocalAssetSpecFetchFails(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "offline", http.StatusBadGateway)
@@ -162,7 +188,12 @@ func TestFetchManifestFallsBackToMatchingCacheWhenLocalAssetSpecFetchFails(t *te
 	manager.assetSpecPath = specPath
 	manager.githubAPIURL = server.URL + "/repos"
 	manager.cacheManifest(manifest{Adapters: map[string]manifestAdapter{
-		"claude": {Version: "1.2.3", Assets: map[string]manifestAsset{}},
+		"claude": {
+			Version: "1.2.3",
+			Assets: map[string]manifestAsset{
+				"darwin-arm64": {URL: server.URL + "/adapter-1.2.3-darwin-arm64.tar.gz", SHA256: strings.Repeat("a", 64), Binary: "bin/tool"},
+			},
+		},
 	}})
 
 	got, err := manager.fetchManifest(context.Background())

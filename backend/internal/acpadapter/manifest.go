@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -162,8 +163,28 @@ func (m *Manager) cacheAllowedForFetchFailure(cached manifest) bool {
 		if !ok || adapter.Version != pinned.Version {
 			return false
 		}
+		for platform, pinnedAsset := range pinned.Assets {
+			asset, ok := adapter.Assets[platform]
+			if !ok || !manifestAssetMatchesSpec(name, adapter.Version, asset, pinnedAsset) {
+				return false
+			}
+		}
 	}
 	return true
+}
+
+func manifestAssetMatchesSpec(adapter, version string, asset manifestAsset, pinned managedAdapterAssetSpecAsset) bool {
+	if err := validateManifestAsset(adapter, version, asset); err != nil {
+		return false
+	}
+	if asset.Binary != strings.TrimSpace(pinned.Binary) {
+		return false
+	}
+	if !maps.Equal(asset.Env, pinned.Env) {
+		return false
+	}
+	parsed, err := url.Parse(asset.URL)
+	return err == nil && path.Base(parsed.Path) == strings.TrimSpace(pinned.Name)
 }
 
 func (m *Manager) fetchManifestSource(ctx context.Context) (manifest, error) {
