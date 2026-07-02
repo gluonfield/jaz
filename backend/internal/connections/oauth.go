@@ -137,8 +137,6 @@ func (s *OAuthService) Callback(ctx context.Context, state, code, failure string
 	return s.store.SaveOAuthConnection(ctx, token, connection)
 }
 
-// upsertConnection reuses an existing account row (matched by account ID) or
-// creates a new one so multiple accounts per provider get stable IDs.
 func (s *OAuthService) upsertConnection(ctx context.Context, provider string, identity oauthIdentity) (integrations.Connection, error) {
 	accountID := strings.TrimSpace(identity.accountID)
 	accountName := identity.accountName

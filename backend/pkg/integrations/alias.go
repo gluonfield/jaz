@@ -38,7 +38,6 @@ func DefaultAlias(accountName, accountID string) string {
 	return NormalizeAlias(accountID)
 }
 
-// ConnectionID derives a stable per-account connection ID for a provider.
 func ConnectionID(provider, accountID string) (string, error) {
 	accountID = strings.ToLower(strings.TrimSpace(accountID))
 	alias := NormalizeAlias(accountID)
