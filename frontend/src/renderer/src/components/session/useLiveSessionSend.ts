@@ -154,6 +154,35 @@ export function liveUserMessage(live: LiveExchange, seq: number): ChatMessage {
   }
 }
 
+export function liveTranscriptMessages(
+  messages: ChatMessage[],
+  live: LiveExchange | null,
+  active: boolean,
+): ChatMessage[] {
+  if (!active || !live) return messages
+
+  const currentIndex = currentLiveUserIndex(messages, live)
+  if (currentIndex === -1) {
+    return [...messages, liveUserMessage(live, (messages.at(-1)?.seq ?? 0) + 1_000_000)]
+  }
+
+  const out = messages.slice()
+  out[currentIndex] = liveUserMessage(live, messages[currentIndex].seq)
+  return out
+}
+
+function currentLiveUserIndex(messages: ChatMessage[], live: LiveExchange): number {
+  const index = messages.findLastIndex((message) => message.role === 'user')
+  if (index === -1 || messages[index].content !== live.user) return -1
+  if (index === messages.length - 1) return index
+  return itemTime(messages[index].created_at) >= itemTime(live.at) ? index : -1
+}
+
+function itemTime(value: string | undefined): number {
+  const parsed = Date.parse(value ?? '')
+  return Number.isNaN(parsed) ? 0 : parsed
+}
+
 function liveContextAttachments(contexts: ComposerContext[]): LiveAttachment[] {
   return contexts.flatMap((context) =>
     context.type === 'browser_annotation' && context.screenshotAttachment?.id
