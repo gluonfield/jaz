@@ -53,6 +53,7 @@ func (p CustomProvider) Config() provider.ModelProviderConfig {
 		BaseURL:   p.BaseURL,
 		APIKeyEnv: p.APIKeyEnv,
 		OpenCode:  true,
+		Codex:     true,
 	}
 }
 

@@ -19,13 +19,9 @@ var (
 )
 
 type Header struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-}
-
-type EnvHeader struct {
 	Name   string `json:"name"`
-	EnvVar string `json:"env_var"`
+	Value  string `json:"value,omitempty"`
+	EnvVar string `json:"envvar,omitempty"`
 }
 
 type OAuthConfig struct {
@@ -42,7 +38,6 @@ type Server struct {
 	Enabled           bool        `json:"enabled"`
 	BearerTokenEnvVar string      `json:"bearer_token_env_var,omitempty"`
 	Headers           []Header    `json:"headers,omitempty"`
-	EnvHeaders        []EnvHeader `json:"env_headers,omitempty"`
 	OAuth             OAuthConfig `json:"oauth,omitempty"`
 	CreatedAt         time.Time   `json:"created_at"`
 	UpdatedAt         time.Time   `json:"updated_at"`
@@ -54,7 +49,6 @@ type ServerInput struct {
 	Enabled           bool        `json:"enabled"`
 	BearerTokenEnvVar string      `json:"bearer_token_env_var,omitempty"`
 	Headers           []Header    `json:"headers,omitempty"`
-	EnvHeaders        []EnvHeader `json:"env_headers,omitempty"`
 	OAuth             OAuthConfig `json:"oauth,omitempty"`
 }
 
@@ -138,12 +132,7 @@ func ValidateInput(input ServerInput) (ServerInput, error) {
 	if err != nil {
 		return input, err
 	}
-	envHeaders, err := normalizeEnvHeaders(input.EnvHeaders)
-	if err != nil {
-		return input, err
-	}
 	input.Headers = headers
-	input.EnvHeaders = envHeaders
 	return input, nil
 }
 
@@ -161,7 +150,8 @@ func normalizeHeaders(headers []Header) ([]Header, error) {
 	var out []Header
 	for _, header := range headers {
 		header.Name = strings.TrimSpace(header.Name)
-		if header.Name == "" && header.Value == "" {
+		header.EnvVar = strings.TrimSpace(header.EnvVar)
+		if header.Name == "" && header.Value == "" && header.EnvVar == "" {
 			continue
 		}
 		if header.Name == "" {
@@ -170,30 +160,13 @@ func normalizeHeaders(headers []Header) ([]Header, error) {
 		if !headerNamePattern.MatchString(header.Name) {
 			return nil, fmt.Errorf("invalid header name: %s", header.Name)
 		}
-		out = append(out, header)
-	}
-	return out, nil
-}
-
-func normalizeEnvHeaders(headers []EnvHeader) ([]EnvHeader, error) {
-	var out []EnvHeader
-	for _, header := range headers {
-		header.Name = strings.TrimSpace(header.Name)
-		header.EnvVar = strings.TrimSpace(header.EnvVar)
-		if header.Name == "" && header.EnvVar == "" {
-			continue
-		}
-		if header.Name == "" {
-			return nil, errors.New("env header name is required")
-		}
-		if header.EnvVar == "" {
-			return nil, fmt.Errorf("env var is required for header %s", header.Name)
-		}
-		if !headerNamePattern.MatchString(header.Name) {
-			return nil, fmt.Errorf("invalid header name: %s", header.Name)
-		}
-		if !envVarPattern.MatchString(header.EnvVar) {
-			return nil, fmt.Errorf("invalid env var for header %s: %s", header.Name, header.EnvVar)
+		if header.EnvVar != "" {
+			if header.Value != "" {
+				return nil, fmt.Errorf("header %s must not set both value and envvar", header.Name)
+			}
+			if !envVarPattern.MatchString(header.EnvVar) {
+				return nil, fmt.Errorf("invalid env var for header %s: %s", header.Name, header.EnvVar)
+			}
 		}
 		out = append(out, header)
 	}
@@ -218,22 +191,21 @@ func ResolvedHeaders(server Server, requireEnv bool) ([]Header, error) {
 		out = append(out, header)
 	}
 	for _, header := range server.Headers {
-		if strings.TrimSpace(header.Name) != "" {
-			add(header.Name, header.Value)
-		}
-	}
-	for _, header := range server.EnvHeaders {
-		if strings.TrimSpace(header.Name) == "" || strings.TrimSpace(header.EnvVar) == "" {
+		if strings.TrimSpace(header.Name) == "" {
 			continue
 		}
-		value := os.Getenv(strings.TrimSpace(header.EnvVar))
-		if value == "" {
-			if requireEnv {
-				return nil, fmt.Errorf("environment variable %s is not set", header.EnvVar)
+		if envVar := strings.TrimSpace(header.EnvVar); envVar != "" {
+			value := os.Getenv(envVar)
+			if value == "" {
+				if requireEnv {
+					return nil, fmt.Errorf("environment variable %s is not set", envVar)
+				}
+				continue
 			}
+			add(header.Name, value)
 			continue
 		}
-		add(header.Name, value)
+		add(header.Name, header.Value)
 	}
 	if envVar := strings.TrimSpace(server.BearerTokenEnvVar); envVar != "" {
 		value := os.Getenv(envVar)

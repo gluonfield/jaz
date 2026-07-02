@@ -46,7 +46,7 @@ func assistantReplyAt(t *testing.T, store *Store, id, text string, atMs int64) {
 
 func assistantChunk(t *testing.T, store *Store, id, acpID, text string, atMs int64) {
 	t.Helper()
-	event := sessionevents.Event{Type: "acp_message", Content: text, ACP: &sessionevents.ACPEvent{ID: acpID}, At: time.UnixMilli(atMs)}
+	event := sessionevents.Event{Type: "acp_message", Content: text, ACP: &sessionevents.ACPEvent{ID: acpID, TextRunID: "message:" + acpID}, At: time.UnixMilli(atMs)}
 	if err := store.AppendSessionEvents(id, event); err != nil {
 		t.Fatal(err)
 	}

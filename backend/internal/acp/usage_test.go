@@ -59,6 +59,7 @@ func TestUsageFromRawReadsThoughtTokens(t *testing.T) {
 func TestUsageFromRawIgnoresTelemetryTotalOnly(t *testing.T) {
 	usage := usageFromRaw(json.RawMessage(`{
 		"sessionUpdate": "agent_message_chunk",
+		"messageId": "usage-test-message",
 		"content": {"type": "text", "text": "ok"},
 		"_meta": {
 			"totalTokens": 78220,

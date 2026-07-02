@@ -108,6 +108,7 @@ func TestProviderSubagentMetadataDoesNotConsumeMessageChunk(t *testing.T) {
 			"sessionId": "acp-session",
 			"update": map[string]any{
 				"sessionUpdate": "agent_message_chunk",
+				"messageId":     "subagent-root-visible",
 				"content":       map[string]any{"type": "text", "text": "root-visible text"},
 				"_meta": map[string]any{
 					codexMetaKey: map[string]any{

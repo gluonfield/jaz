@@ -223,9 +223,9 @@ func TestEnabledHTTPMCPServersOnlyCarriesSessionHeader(t *testing.T) {
 			Headers: []mcpconfig.Header{
 				{Name: "Authorization", Value: "Bearer configured"},
 				{Name: "X-API-Key", Value: "configured"},
+				{Name: "X-Env-Secret", EnvVar: "MCP_SECRET"},
 				{Name: mcpsession.HeaderName, Value: mcpsession.HeaderPlaceholder},
 			},
-			EnvHeaders: []mcpconfig.EnvHeader{{Name: "X-Env-Secret", EnvVar: "MCP_SECRET"}},
 		},
 	}}, MCPServerPolicyAll)
 	if err != nil {

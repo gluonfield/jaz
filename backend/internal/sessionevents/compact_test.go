@@ -39,16 +39,16 @@ func compactACPState(id, state string) *ACPEvent {
 	}
 }
 
-func TestCompactTranscriptMergesAdjacentACPText(t *testing.T) {
+func TestCompactTranscriptMergesACPTextWithSameRunID(t *testing.T) {
 	got := CompactTranscript([]Event{
-		compactACP(1, "acp_message", "Hel", compactACPState("thread", "running")),
-		compactACP(2, "acp_message", "lo", compactACPState("thread", "running")),
-		compactACP(3, "acp_thought", "", func() *ACPEvent {
+		compactACPTextRun(1, "acp_message", "Hel", "message:m1", compactACPState("thread", "running")),
+		compactACPTextRun(2, "acp_message", "lo", "message:m1", compactACPState("thread", "running")),
+		compactACPTextRun(3, "acp_thought", "", "message:t1", func() *ACPEvent {
 			acp := compactACPState("thread", "running")
 			acp.Thought = "Rea"
 			return acp
 		}()),
-		compactACP(4, "acp_thought", "", func() *ACPEvent {
+		compactACPTextRun(4, "acp_thought", "", "message:t1", func() *ACPEvent {
 			acp := compactACPState("thread", "running")
 			acp.Thought = "son"
 			return acp
@@ -63,6 +63,20 @@ func TestCompactTranscriptMergesAdjacentACPText(t *testing.T) {
 	}
 	if got[1].Seq != 4 || got[1].ACP == nil || got[1].ACP.Thought != "Reason" {
 		t.Fatalf("merged thought = %#v", got[1])
+	}
+}
+
+func TestCompactTranscriptDoesNotMergeACPTextWithoutRunID(t *testing.T) {
+	got := CompactTranscript([]Event{
+		compactACP(1, "acp_message", "Hel", compactACPState("thread", "running")),
+		compactACP(2, "acp_message", "lo", compactACPState("thread", "running")),
+	})
+
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2: %#v", len(got), got)
+	}
+	if got[0].Content != "Hel" || got[1].Content != "lo" {
+		t.Fatalf("events merged without run id: %#v", got)
 	}
 }
 
@@ -123,13 +137,13 @@ func TestCompactTextChunksKeepsToolSeparatedMessages(t *testing.T) {
 	doneTool.ToolCalls = []ACPToolCall{{ID: "tool-1", Title: "Read file", Status: "completed"}}
 
 	events := []Event{
-		compactACP(1, "acp_message", "Hel", compactACPState("thread", "running")),
-		compactACP(2, "acp_message", "lo", compactACPState("thread", "running")),
+		compactACPTextRun(1, "acp_message", "Hel", "message:first", compactACPState("thread", "running")),
+		compactACPTextRun(2, "acp_message", "lo", "message:first", compactACPState("thread", "running")),
 		compactACP(3, "acp_tool", "", pendingTool),
 		compactACP(4, "acp_tool", "", doneTool),
-		compactACP(5, "acp_message", "Done.", compactACPState("thread", "running")),
-		compactACP(6, "acp_message", "Next", compactACPState("thread", "running")),
-		compactACP(8, "acp_message", "gap", compactACPState("thread", "running")),
+		compactACPTextRun(5, "acp_message", "Done.", "message:second", compactACPState("thread", "running")),
+		compactACPTextRun(6, "acp_message", "Next", "message:second", compactACPState("thread", "running")),
+		compactACPTextRun(8, "acp_message", "gap", "message:gap", compactACPState("thread", "running")),
 	}
 	got := CompactTextChunks(events)
 
@@ -191,9 +205,9 @@ func TestCompactTranscriptDoesNotSplitWordsAcrossToolEvents(t *testing.T) {
 	toolACP := compactACPState("thread", "running")
 	toolACP.ToolCalls = []ACPToolCall{{ID: "tool-1", Title: "Read file", Status: "completed"}}
 	got := CompactTranscript([]Event{
-		compactACPTextRun(1, "acp_message", "message chunks, t", "text-1", compactACPState("thread", "running")),
+		compactACPTextRun(1, "acp_message", "message chunks, t", "message:m1", compactACPState("thread", "running")),
 		compactACP(2, "acp_tool", "", toolACP),
-		compactACPTextRun(3, "acp_message", "ool calls, and status updates", "text-1", compactACPState("thread", "running")),
+		compactACPTextRun(3, "acp_message", "ool calls, and status updates", "message:m1", compactACPState("thread", "running")),
 	})
 
 	if len(got) != 2 {
@@ -265,81 +279,6 @@ func TestCompactTranscriptKeepsOtherSessionSubagentAsTextBoundary(t *testing.T) 
 	}
 	if got[0].Content != "one" || got[2].Content != "two" {
 		t.Fatalf("messages crossed other-session subagent: %#v", got)
-	}
-}
-
-func TestTextStreamProjectorReplacesPriorTextAcrossToolEvents(t *testing.T) {
-	for _, agent := range []string{"codex", "claude_code"} {
-		t.Run(agent, func(t *testing.T) {
-			textACP := compactACPState("thread", "running")
-			textACP.Agent = agent
-			toolACP := compactACPState("thread", "running")
-			toolACP.Agent = agent
-			toolACP.ToolCalls = []ACPToolCall{{ID: "tool-1", Title: "Read file", Status: "completed"}}
-			projector := NewTextStreamProjector()
-
-			first := projector.Project(compactACPTextRun(1, "acp_message", "message chunks, t", "text-1", textACP))
-			tool := projector.Project(compactACP(2, "acp_tool", "", toolACP))
-			second := projector.Project(compactACPTextRun(3, "acp_message", "ool calls", "text-1", textACP))
-
-			if first.Content != "message chunks, t" || len(first.ReplaceSeqs) != 0 {
-				t.Fatalf("first projected event = %#v", first)
-			}
-			if tool.Type != "acp_tool" || len(tool.ReplaceSeqs) != 0 {
-				t.Fatalf("tool projected event = %#v", tool)
-			}
-			if second.Content != "message chunks, tool calls" {
-				t.Fatalf("merged content = %q", second.Content)
-			}
-			if len(second.ReplaceSeqs) != 1 || second.ReplaceSeqs[0] != 1 {
-				t.Fatalf("replace seqs = %#v, want [1]", second.ReplaceSeqs)
-			}
-		})
-	}
-}
-
-func TestTextStreamProjectorKeepsProgressMessagesAcrossToolEvents(t *testing.T) {
-	textACP := compactACPState("thread", "running")
-	toolACP := compactACPState("thread", "running")
-	toolACP.ToolCalls = []ACPToolCall{{ID: "tool-1", Title: "Read file", Status: "completed"}}
-	projector := NewTextStreamProjector()
-
-	first := projector.Project(compactACP(1, "acp_message", "I'll build a rich visual com", textACP))
-	tool := projector.Project(compactACP(2, "acp_tool", "", toolACP))
-	second := projector.Project(compactACP(3, "acp_message", "Let me pull the chart guidance.", textACP))
-
-	if first.Content != "I'll build a rich visual com" || len(first.ReplaceSeqs) != 0 {
-		t.Fatalf("first projected event = %#v", first)
-	}
-	if tool.Type != "acp_tool" || len(tool.ReplaceSeqs) != 0 {
-		t.Fatalf("tool projected event = %#v", tool)
-	}
-	if second.Content != "Let me pull the chart guidance." || len(second.ReplaceSeqs) != 0 {
-		t.Fatalf("second projected event = %#v", second)
-	}
-}
-
-func TestTextStreamProjectorKeepsDifferentTextRunsAcrossToolEvents(t *testing.T) {
-	textACP := compactACPState("thread", "running")
-	toolACP := compactACPState("thread", "running")
-	toolACP.ToolCalls = []ACPToolCall{{ID: "tool-1", Title: "Read file", Status: "completed"}}
-	projector := NewTextStreamProjector()
-	first := compactACPTextRun(1, "acp_message", "checked docs", "text-1", textACP)
-	tool := compactACP(2, "acp_tool", "", toolACP)
-	second := compactACPTextRun(3, "acp_message", "found issue.", "text-2", compactACPState("thread", "running"))
-
-	first = projector.Project(first)
-	tool = projector.Project(tool)
-	second = projector.Project(second)
-
-	if first.Content != "checked docs" || len(first.ReplaceSeqs) != 0 {
-		t.Fatalf("first projected event = %#v", first)
-	}
-	if tool.Type != "acp_tool" || len(tool.ReplaceSeqs) != 0 {
-		t.Fatalf("tool projected event = %#v", tool)
-	}
-	if second.Content != "found issue." || len(second.ReplaceSeqs) != 0 {
-		t.Fatalf("later progress was merged: %#v", second)
 	}
 }
 

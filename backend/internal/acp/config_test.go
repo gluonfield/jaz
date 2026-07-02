@@ -1167,6 +1167,14 @@ func TestAutoAuthMethodPrefersGrokCachedTokenOverAPIKey(t *testing.T) {
 	if method != "cached_token" || len(missing) != 0 {
 		t.Fatalf("method=%q missing=%v", method, missing)
 	}
+
+	method, missing = autoAuthMethod("grok", grokInitializeEnvAuthMethods(), map[string]string{
+		"HOME":        home,
+		"XAI_API_KEY": "key",
+	})
+	if method != "cached_token" || len(missing) != 0 {
+		t.Fatalf("env auth method=%q missing=%v", method, missing)
+	}
 }
 
 func TestAutoAuthMethodUsesGrokCachedToken(t *testing.T) {
@@ -1314,6 +1322,15 @@ func grokInitializeAuthMethods() []byte {
 			{"id": "cached_token", "name": "cached_token"},
 			{"id": "grok.com", "name": "Grok"},
 			{"id": "xai.api_key", "name": "XAI API Key"}
+		]
+	}`)
+}
+
+func grokInitializeEnvAuthMethods() []byte {
+	return []byte(`{
+		"authMethods": [
+			{"id": "cached_token", "name": "cached_token"},
+			{"type": "env_var", "id": "xai.api_key", "vars": [{"name": "XAI_API_KEY"}]}
 		]
 	}`)
 }

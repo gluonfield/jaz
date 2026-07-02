@@ -122,8 +122,10 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	var title string
 	var publishACP bool
 	var messageChunk string
+	var messageID string
 	var bufferMessage bool
 	var thoughtChunk string
+	var thoughtMessageID string
 	var toolEvent *sessionevents.ACPToolCall
 	var attention bool
 	now := time.Now().UTC()
@@ -167,6 +169,7 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	switch event := update.(type) {
 	case acpschema.AgentMessageChunkUpdate:
 		messageChunk = contentText(event.Content)
+		messageID = event.MessageID
 		job.Assistant = appendACPText(job.Assistant, messageChunk)
 		bufferMessage = job.turn != nil && planTurnDefersResult(job.turn.planRequested, job.ACPAgent)
 		if messageChunk != "" {
@@ -174,6 +177,7 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 		}
 	case acpschema.AgentThoughtChunkUpdate:
 		thoughtChunk = contentText(event.Content)
+		thoughtMessageID = event.MessageID
 		job.Thought = appendACPText(job.Thought, thoughtChunk)
 	case acpschema.ToolCallSessionUpdate:
 		recordTool(toolUpdateSnapshot(event.ToolCallID, event.Title, event.Status, event.Kind, event.Content, event.RawInput, event.Meta, now))
@@ -254,10 +258,10 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 		}
 	}
 	if messageChunk != "" && !bufferMessage {
-		m.queueACPMessage(job, messageChunk)
+		m.queueACPMessageWithID(job, messageChunk, messageID)
 	}
 	if thoughtChunk != "" {
-		m.queueACPThought(job, thoughtChunk)
+		m.queueACPThoughtWithID(job, thoughtChunk, thoughtMessageID)
 	}
 	if toolEvent != nil {
 		m.publishACPTool(job.Snapshot(), *toolEvent)
