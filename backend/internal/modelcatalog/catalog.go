@@ -41,7 +41,7 @@ var (
 		},
 		"claude": {
 			{Value: "default", Label: "Default (Opus 4.8)", Description: "Opus 4.8 with 1M context · Recommended", ContextLength: 1000000, OpenRouterID: "anthropic/claude-opus-4.8", ReasoningEfforts: claudeLongThinkingEfforts},
-			{Value: "claude-fable-5", Label: "Fable 5", Description: "Most capable for the hardest tasks", ContextLength: 1000000, OpenRouterID: "anthropic/claude-fable-5", ReasoningEfforts: claudeLongThinkingEfforts},
+			{Value: "claude-fable-5[1m]", Label: "Fable 5", Description: "Most capable for the hardest tasks", ContextLength: 1000000, OpenRouterID: "anthropic/claude-fable-5", ReasoningEfforts: claudeLongThinkingEfforts},
 			{Value: "sonnet", Label: "Sonnet 5", Description: "Efficient for routine tasks", ContextLength: 200000, OpenRouterID: "anthropic/claude-sonnet-5", ReasoningEfforts: claudeStandardThinkingEfforts},
 			{Value: "sonnet[1m]", Label: "Sonnet 5 (1M context)", Description: "Draws from usage credits", ContextLength: 1000000, OpenRouterID: "anthropic/claude-sonnet-5", ReasoningEfforts: claudeStandardThinkingEfforts},
 			{Value: "haiku", Label: "Haiku 4.5", Description: "Fastest for quick answers", ContextLength: 200000, OpenRouterID: "anthropic/claude-haiku-4.5", ReasoningEfforts: noReasoningEfforts},
