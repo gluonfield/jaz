@@ -210,7 +210,9 @@ func TestEnabledHTTPMCPServersUnknownPolicyFailsClosed(t *testing.T) {
 	}
 }
 
-func TestEnabledHTTPMCPServersOnlyCarriesSessionHeader(t *testing.T) {
+func TestEnabledHTTPMCPServersResolvesConfiguredHeaders(t *testing.T) {
+	t.Setenv("MCP_TOKEN", "token")
+	t.Setenv("MCP_SECRET", "secret")
 	ctx := mcpsession.With(context.Background(), "session-1")
 	servers, err := enabledHTTPMCPServers(ctx, staticMCPServerStore{servers: []mcpconfig.Server{
 		{
@@ -241,8 +243,48 @@ func TestEnabledHTTPMCPServersOnlyCarriesSessionHeader(t *testing.T) {
 	for _, header := range payload.Headers {
 		headers[header.Name] = header.Value
 	}
-	if len(headers) != 1 || headers[mcpsession.HeaderName] != "session-1" {
+	want := map[string]string{
+		"Authorization":       "Bearer token",
+		"X-API-Key":           "configured",
+		"X-Env-Secret":        "secret",
+		mcpsession.HeaderName: "session-1",
+	}
+	if len(headers) != len(want) {
 		t.Fatalf("headers = %#v", headers)
+	}
+	for key, value := range want {
+		if headers[key] != value {
+			t.Fatalf("header %s = %q, want %q in %#v", key, headers[key], value, headers)
+		}
+	}
+}
+
+func TestEnabledHTTPMCPServersDropsMissingEnvHeaders(t *testing.T) {
+	servers, err := enabledHTTPMCPServers(context.Background(), staticMCPServerStore{servers: []mcpconfig.Server{
+		{
+			ID:                "docs",
+			Name:              "Docs",
+			URL:               "https://docs.example.com/mcp",
+			Enabled:           true,
+			Transport:         mcpconfig.TransportStreamableHTTP,
+			BearerTokenEnvVar: "MISSING_MCP_TOKEN",
+			Headers: []mcpconfig.Header{
+				{Name: "X-Env-Secret", EnvVar: "MISSING_MCP_SECRET"},
+				{Name: mcpsession.HeaderName, Value: mcpsession.HeaderPlaceholder},
+			},
+		},
+	}}, MCPServerPolicyAll)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		Headers []mcpconfig.Header `json:"headers"`
+	}
+	if err := json.Unmarshal(servers[0], &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Headers) != 0 {
+		t.Fatalf("headers = %#v, want none", payload.Headers)
 	}
 }
 
