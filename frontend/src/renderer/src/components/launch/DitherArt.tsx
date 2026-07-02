@@ -1,5 +1,5 @@
 import { useReducedMotion } from 'motion/react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useEffectsEnabled } from '@/lib/appearance'
 import { useTheme } from '@/lib/theme'
 
@@ -193,7 +193,15 @@ export function DitherArt({
     }
   }, [animate, draw, cols, rows, dot, gap, pitch, width, height, delay, waitForFonts, resolved])
 
-  return <canvas ref={canvasRef} role="img" aria-label={label} aria-hidden={label ? undefined : true} style={{ width, height }} />
+  return (
+    <canvas
+      ref={canvasRef}
+      role="img"
+      aria-label={label}
+      aria-hidden={label ? undefined : true}
+      style={{ width, height, display: 'block' }}
+    />
+  )
 }
 
 const drawJaz: Silhouette = (g, w, h) => {
@@ -211,4 +219,54 @@ const drawJaz: Silhouette = (g, w, h) => {
 // The boot wordmark: "jaz" dissolving in as dithered brand grain.
 export function DitherWordmark({ delay = 0 }: { delay?: number }) {
   return <DitherArt draw={drawJaz} cols={112} rows={48} delay={delay} waitForFonts label="jaz" />
+}
+
+const TERRAIN_SEED = 77
+
+// Procedural ridgelines: layered absolute-sine ridges, back range sparse and
+// tall, front range dense. Deterministic, so the brandscape is the same on
+// every boot.
+const drawTerrain: Silhouette = (g, w, h) => {
+  const ridge = (u: number, s1: number, s2: number, s3: number) =>
+    0.55 * (1 - Math.abs(Math.sin(u * 2.1 + s1))) +
+    0.3 * (1 - Math.abs(Math.sin(u * 5.3 + s2))) +
+    0.15 * (1 - Math.abs(Math.sin(u * 12.7 + s3)))
+  const layer = (seed: number, lift: number, alpha: number) => {
+    const s1 = (hash(seed) % 628) / 100
+    const s2 = (hash(seed + 1) % 628) / 100
+    const s3 = (hash(seed + 2) % 628) / 100
+    g.globalAlpha = alpha
+    g.beginPath()
+    g.moveTo(0, h)
+    for (let x = 0; x <= w; x++) {
+      const r = ridge(x / (h * 4), s1, s2, s3)
+      g.lineTo(x, h * (1 - lift * (0.2 + 0.8 * r)))
+    }
+    g.lineTo(w, h)
+    g.closePath()
+    g.fill()
+  }
+  layer(TERRAIN_SEED, 0.95, 0.4)
+  layer(TERRAIN_SEED + 9, 0.55, 1)
+  g.globalAlpha = 1
+}
+
+// Full-bleed dithered brandscape for the bottom of launch/onboarding screens.
+// Sized to its container; a resize re-dissolves the terrain at the new width.
+export function DitherTerrain({ className = '', rows = 44, delay = 0 }: { className?: string; rows?: number; delay?: number }) {
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const [cols, setCols] = useState(0)
+  useLayoutEffect(() => {
+    const el = wrapRef.current!
+    const update = () => setCols(Math.max(1, Math.ceil(el.clientWidth / 4)))
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+  return (
+    <div ref={wrapRef} aria-hidden className={`pointer-events-none overflow-hidden ${className}`}>
+      {cols > 1 ? <DitherArt draw={drawTerrain} cols={cols} rows={rows} delay={delay} /> : null}
+    </div>
+  )
 }

@@ -28,18 +28,18 @@ export type OnboardingStep = 'welcome' | 'agents' | 'memory' | 'connections' | '
 
 const PROGRESS_STEPS = ['agents', 'memory', 'connections', 'loops'] as const
 
-// Quiet positional dots: the active step stretches into a pill, past steps
-// tint toward the brand, future steps stay faint.
+// Positional pixels in the brand's dither language: square dots, the active
+// step stretching into a short bar, past steps tinted toward the brand.
 export function OnboardingProgress({ step }: { step: OnboardingStep }) {
   const position = PROGRESS_STEPS.findIndex((value) => value === step)
   return (
-    <div aria-label="Setup progress" className="flex shrink-0 items-center gap-1.5">
+    <div aria-label="Setup progress" className="flex shrink-0 items-center gap-[5px]">
       {PROGRESS_STEPS.map((value, index) => (
         <span
           key={value}
           aria-current={index === position ? 'step' : undefined}
-          className={`h-1.5 rounded-full transition-all duration-200 ${
-            index === position ? 'w-5 bg-primary' : index < position ? 'w-1.5 bg-primary/40' : 'w-1.5 bg-ink/15'
+          className={`size-[5px] rounded-[1px] transition-all duration-200 ${
+            index === position ? 'w-[17px] bg-primary' : index < position ? 'bg-primary/40' : 'bg-ink/15'
           }`}
         />
       ))}

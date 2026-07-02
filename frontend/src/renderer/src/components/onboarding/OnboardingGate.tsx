@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertCircle } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
-import { DitherArt, type Silhouette } from '@/components/launch/DitherArt'
+import { DitherArt, DitherTerrain, type Silhouette } from '@/components/launch/DitherArt'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import { authProviderLabel } from '@/lib/agentLabel'
@@ -35,44 +35,69 @@ const onboardingPreview =
 
 type SetupStep = Exclude<OnboardingStep, 'welcome'>
 
-// Each slide opens on a small mark dissolved in the same dither grain as the
-// wordmark: a prompt chevron, memory layers, linked rings, a loop orbit.
+// A soft radial gradient behind each mark: the dither turns it into a grain
+// halo, which is what gives the art its shading depth.
+function heroGlow(g: Parameters<Silhouette>[0], w: number, h: number, cx: number, cy: number, r: number) {
+  const glow = g.createRadialGradient(cx, cy, 0, cx, cy, r)
+  glow.addColorStop(0, 'rgba(255,255,255,0.55)')
+  glow.addColorStop(1, 'rgba(255,255,255,0)')
+  g.fillStyle = glow
+  g.fillRect(0, 0, w, h)
+  g.fillStyle = '#fff'
+}
+
+// Each slide opens on wide dithered hero art in the same grain as the
+// wordmark: a prompt, memory strata, linked rings, a loop orbit.
 const MOTIFS: Record<SetupStep, Silhouette> = {
   agents: (g, w, h) => {
-    g.lineWidth = h * 0.17
+    heroGlow(g, w, h, w * 0.5, h * 0.5, h * 0.95)
+    g.lineWidth = h * 0.16
     g.lineCap = 'round'
     g.lineJoin = 'round'
     g.beginPath()
-    g.moveTo(w * 0.26, h * 0.2)
-    g.lineTo(w * 0.5, h * 0.5)
-    g.lineTo(w * 0.26, h * 0.8)
+    g.moveTo(w * 0.41, h * 0.24)
+    g.lineTo(w * 0.52, h * 0.5)
+    g.lineTo(w * 0.41, h * 0.76)
     g.stroke()
     g.beginPath()
-    g.roundRect(w * 0.58, h * 0.7, w * 0.18, h * 0.13, h * 0.06)
+    g.roundRect(w * 0.56, h * 0.66, w * 0.075, h * 0.12, h * 0.05)
     g.fill()
   },
   memory: (g, w, h) => {
-    for (const y of [0.14, 0.42, 0.7]) {
+    heroGlow(g, w, h, w * 0.5, h * 0.5, h * 0.95)
+    for (const [y, half] of [
+      [0.16, 0.1],
+      [0.44, 0.14],
+      [0.72, 0.18],
+    ] as const) {
       g.beginPath()
-      g.roundRect(w * 0.24, h * y, w * 0.52, h * 0.16, h * 0.08)
+      g.roundRect(w * (0.5 - half), h * y, w * half * 2, h * 0.15, h * 0.075)
       g.fill()
     }
   },
   connections: (g, w, h) => {
-    g.lineWidth = h * 0.14
-    for (const x of [0.38, 0.62]) {
+    heroGlow(g, w, h, w * 0.5, h * 0.5, h * 0.95)
+    g.lineWidth = h * 0.12
+    for (const x of [0.43, 0.57]) {
       g.beginPath()
       g.arc(w * x, h * 0.5, h * 0.3, 0, Math.PI * 2)
       g.stroke()
     }
   },
   loops: (g, w, h) => {
-    g.lineWidth = h * 0.14
+    heroGlow(g, w, h, w * 0.5, h * 0.5, h * 0.95)
+    g.lineWidth = h * 0.12
     g.beginPath()
     g.arc(w * 0.5, h * 0.5, h * 0.32, 0, Math.PI * 2)
     g.stroke()
+    g.globalAlpha = 0.4
+    g.lineWidth = h * 0.07
     g.beginPath()
-    g.arc(w * 0.5 + h * 0.32 * Math.cos(-Math.PI / 4), h * 0.5 + h * 0.32 * Math.sin(-Math.PI / 4), h * 0.13, 0, Math.PI * 2)
+    g.arc(w * 0.5, h * 0.5, h * 0.46, -Math.PI * 0.45, -Math.PI * 0.05)
+    g.stroke()
+    g.globalAlpha = 1
+    g.beginPath()
+    g.arc(w * 0.5 + h * 0.46 * Math.cos(-Math.PI * 0.05), h * 0.5 + h * 0.46 * Math.sin(-Math.PI * 0.05), h * 0.1, 0, Math.PI * 2)
     g.fill()
   },
 }
@@ -273,7 +298,7 @@ function OnboardingScreen({
             className="flex w-full max-w-[460px] flex-col items-center"
           >
             <motion.div variants={slideRise}>
-              <DitherArt draw={MOTIFS[step]} cols={40} rows={24} delay={0.15} />
+              <DitherArt draw={MOTIFS[step]} cols={104} rows={34} delay={0.15} />
             </motion.div>
             <motion.h1
               variants={slideRise}
@@ -358,11 +383,12 @@ function OnboardingShell({
   center?: boolean
 }) {
   return (
-    <div className="flex h-full flex-col bg-bg">
+    <div className="relative flex h-full flex-col bg-bg">
+      <DitherTerrain className="absolute inset-x-0 bottom-0" delay={0.3} />
       {/* Always an escape back to the connect chooser, so onboarding a backend
           you can't finish never traps the app. Right-aligned to clear the macOS
           traffic lights. */}
-      <div className="titlebar-drag flex h-[52px] shrink-0 items-center justify-end px-3">
+      <div className="titlebar-drag relative flex h-[52px] shrink-0 items-center justify-end px-3">
         {onDisconnect ? (
           <button
             type="button"
@@ -373,7 +399,7 @@ function OnboardingShell({
           </button>
         ) : null}
       </div>
-      <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-5 pb-[52px]">
+      <main className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-5 pb-[52px]">
         <div className={`flex min-h-full w-full ${center ? 'items-center' : 'items-start'} justify-center py-6 md:py-10`}>
           {children}
         </div>

@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
 import { RemoteServerForm } from '@/components/connection/RemoteServerForm'
 import { Button } from '@/components/ui/Button'
-import { DitherWordmark } from '@/components/launch/DitherArt'
+import { DitherTerrain, DitherWordmark } from '@/components/launch/DitherArt'
 import { PixelField } from '@/components/ui/PixelField'
 import { useKnownBackends } from '@/lib/backends'
 import { clientRuntime } from '@/lib/clientRuntime'
@@ -133,6 +133,7 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
   return (
     <div className="relative flex h-full flex-col bg-bg">
       {showField && <PixelField key={resolved} calm={mode === 'remote' || busy !== null} />}
+      {status === 'checking' ? <DitherTerrain className="absolute inset-x-0 bottom-0" delay={0.5} /> : null}
       <div className="titlebar-drag relative h-[52px] shrink-0">
         {manual && onClose ? (
           <button
