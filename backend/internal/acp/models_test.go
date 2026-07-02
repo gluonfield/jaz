@@ -118,3 +118,35 @@ func TestNormalizeAgentReasoningEffort(t *testing.T) {
 		}
 	}
 }
+
+func TestResolveAdvertisedContextTag(t *testing.T) {
+	// Claude Code alternates Fable's [1m] context tag between restarts; whichever
+	// spelling the catalog carries, resolution must land on the advertised one.
+	bare := parseSessionModelState(json.RawMessage(
+		`{"models":{"availableModels":[{"modelId":"claude-fable-5"},{"modelId":"default"},{"modelId":"opus[1m]"},{"modelId":"sonnet"}]}}`))
+	tagged := parseSessionModelState(json.RawMessage(
+		`{"models":{"availableModels":[{"modelId":"claude-fable-5[1m]"},{"modelId":"default"},{"modelId":"opus[1m]"},{"modelId":"sonnet"}]}}`))
+
+	if got := bare.resolveAdvertised("claude-fable-5[1m]"); got != "claude-fable-5" {
+		t.Fatalf("tagged config against bare advertisement = %q, want claude-fable-5", got)
+	}
+	if got := tagged.resolveAdvertised("claude-fable-5"); got != "claude-fable-5[1m]" {
+		t.Fatalf("bare config against tagged advertisement = %q, want claude-fable-5[1m]", got)
+	}
+	if got := tagged.resolveAdvertised("claude-fable-5[1m]"); got != "claude-fable-5[1m]" {
+		t.Fatalf("exact match should be unchanged, got %q", got)
+	}
+
+	policy := agentPolicyForAgent(AgentClaude)
+	for _, st := range []sessionModelState{bare, tagged} {
+		resolved := st.resolveAdvertised("claude-fable-5[1m]")
+		if err := policy.validateConfiguredSessionModel(AgentClaude, "claude-fable-5[1m]", resolved, st); err != nil {
+			t.Fatalf("validate after resolve: %v", err)
+		}
+	}
+
+	// A genuinely unknown model must still be rejected.
+	if err := policy.validateConfiguredSessionModel(AgentClaude, "claude-ghost-9", bare.resolveAdvertised("claude-ghost-9"), bare); err == nil {
+		t.Fatal("expected unknown model to fail validation")
+	}
+}
