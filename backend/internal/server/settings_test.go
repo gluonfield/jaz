@@ -176,9 +176,6 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 				Label      string `json:"label"`
 				Configured bool   `json:"configured"`
 			} `json:"model_providers"`
-			Capabilities struct {
-				NativeGoal bool `json:"native_goal"`
-			} `json:"capabilities"`
 			AuthProviderID  string `json:"auth_provider_id"`
 			RequiresCommand bool   `json:"requires_command"`
 			SupportsAuth    bool   `json:"supports_auth"`
@@ -201,9 +198,6 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	}
 	if got.ACPOptions["codex"].RequiresCommand {
 		t.Fatalf("unexpected codex capabilities %#v", got.ACPOptions["codex"])
-	}
-	if !got.ACPOptions["codex"].Capabilities.NativeGoal {
-		t.Fatalf("codex goal capability missing %#v", got.ACPOptions["codex"])
 	}
 	if got.ACPOptions["codex"].AuthProviderID != provider.ProviderOpenAI ||
 		strings.Join(got.ACPOptions["codex"].ModelProviderIDs, ",") != "openai,openai-api-key,openrouter" {

@@ -10,7 +10,7 @@ import (
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
-func TestManagerSendRequestsCodexGoalWithoutLocalGoalSnapshot(t *testing.T) {
+func TestManagerRoutesCodexGoalThroughJazTools(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -28,9 +28,6 @@ func TestManagerSendRequestsCodexGoalWithoutLocalGoalSnapshot(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	if session.RuntimeRef == nil || session.RuntimeRef.Capabilities == nil || !session.RuntimeRef.Capabilities.NativeGoal {
-		t.Fatalf("stored runtime ref = %#v, want native goal capability", session.RuntimeRef)
 	}
 	if _, err := manager.Send(ctx, acp.SendRequest{
 		Session:       session.ID,
@@ -51,9 +48,6 @@ func TestManagerSendRequestsCodexGoalWithoutLocalGoalSnapshot(t *testing.T) {
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if loaded.RuntimeRef == nil || loaded.RuntimeRef.Capabilities == nil || !loaded.RuntimeRef.Capabilities.NativeGoal {
-		t.Fatalf("loaded runtime ref = %#v, want native goal capability", loaded.RuntimeRef)
 	}
 	events, err := store.LoadSessionEvents(session.ID)
 	if err != nil {

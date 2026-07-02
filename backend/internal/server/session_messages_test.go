@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/goal"
@@ -87,34 +88,30 @@ func TestCanonicalSessionResponsePublishesPublicGoal(t *testing.T) {
 		Runtime: storage.RuntimeACP,
 		Goal: &goal.State{
 			Identity: goal.Identity{
-				ID:             "goal-1",
-				ThreadID:       "thread-1",
-				Provider:       "codex",
-				ProviderGoalID: "provider-goal-1",
-				Objective:      "ship it",
-				Status:         goal.StatusActive,
+				ID:        "goal-1",
+				ThreadID:  "thread-1",
+				Objective: "ship it",
+				Status:    goal.StatusActive,
 			},
 			Budget: goal.Budget{
 				TokenBudget: &budget,
 				TokensUsed:  25,
 			},
-			Progress: goal.Progress{
-				ProgressMessage: "running tests",
-			},
+			Timestamps: goal.Timestamps{CreatedAt: time.Now().UTC()},
 		},
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := string(data)
-	for _, forbidden := range []string{"provider_goal_id", "progress_message", "budget_source"} {
-		if strings.Contains(body, forbidden) {
-			t.Fatalf("session response leaked goal field %q: %s", forbidden, body)
+	goalBody := goalField(t, data)
+	for _, forbidden := range []string{"created_at", "updated_at"} {
+		if strings.Contains(goalBody, forbidden) {
+			t.Fatalf("session response leaked goal field %q: %s", forbidden, goalBody)
 		}
 	}
 	for _, required := range []string{`"objective":"ship it"`, `"token_budget":100`, `"tokens_used":25`, `"remaining_tokens":75`} {
-		if !strings.Contains(body, required) {
-			t.Fatalf("session response missing %s: %s", required, body)
+		if !strings.Contains(goalBody, required) {
+			t.Fatalf("session response missing %s: %s", required, goalBody)
 		}
 	}
 }
@@ -125,27 +122,37 @@ func TestSessionEventResponsePublishesPublicGoal(t *testing.T) {
 		Type:      sessionevents.TypeGoalUpdate,
 		Goal: &sessionevents.GoalEvent{
 			Identity: goal.Identity{
-				Objective:      "ship it",
-				Status:         goal.StatusActive,
-				ProviderGoalID: "provider-goal-1",
+				Objective: "ship it",
+				Status:    goal.StatusActive,
 			},
-			Progress: goal.Progress{
-				ProgressMessage: "running tests",
-			},
+			Timestamps: goal.Timestamps{CreatedAt: time.Now().UTC()},
 		},
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := string(data)
-	for _, forbidden := range []string{"provider_goal_id", "progress_message"} {
-		if strings.Contains(body, forbidden) {
-			t.Fatalf("event response leaked goal field %q: %s", forbidden, body)
+	goalBody := goalField(t, data)
+	for _, forbidden := range []string{"created_at", "updated_at"} {
+		if strings.Contains(goalBody, forbidden) {
+			t.Fatalf("event response leaked goal field %q: %s", forbidden, goalBody)
 		}
 	}
-	if !strings.Contains(body, `"objective":"ship it"`) {
-		t.Fatalf("event response missing public goal: %s", body)
+	if !strings.Contains(goalBody, `"objective":"ship it"`) {
+		t.Fatalf("event response missing public goal: %s", goalBody)
 	}
+}
+
+func goalField(t *testing.T, response []byte) string {
+	t.Helper()
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(response, &fields); err != nil {
+		t.Fatal(err)
+	}
+	goalRaw, ok := fields["goal"]
+	if !ok {
+		t.Fatalf("response missing goal field: %s", response)
+	}
+	return string(goalRaw)
 }
 
 func TestSessionMessagesMobileProjectionStripsHeavyToolPayload(t *testing.T) {

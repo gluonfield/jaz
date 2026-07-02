@@ -3,17 +3,15 @@ package goal
 import (
 	"encoding/json"
 	"testing"
+	"time"
 )
 
 func TestPublicStateIsUIShape(t *testing.T) {
 	budget := int64(100)
 	state := State{
-		Identity: Identity{ID: "goal-1", ThreadID: "thread-1", Objective: "ship it", Status: StatusActive},
-		Budget:   Budget{TokenBudget: &budget, TokensUsed: 25},
-		Progress: Progress{
-			TimeUsedSeconds: 9,
-			ProgressMessage: "running tests",
-		},
+		Identity:        Identity{ID: "goal-1", ThreadID: "thread-1", Objective: "ship it", Status: StatusActive},
+		Budget:          Budget{TokenBudget: &budget, TokensUsed: 25},
+		TimeUsedSeconds: 9,
 	}
 	normalized := NormalizeState(&state)
 	if normalized == nil {
@@ -27,7 +25,7 @@ func TestPublicStateIsUIShape(t *testing.T) {
 	if err := json.Unmarshal(data, &fields); err != nil {
 		t.Fatal(err)
 	}
-	for _, nested := range []string{"Identity", "Budget", "Progress", "Review", "Cost", "Timestamps"} {
+	for _, nested := range []string{"Identity", "Budget", "Timestamps"} {
 		if _, ok := fields[nested]; ok {
 			t.Fatalf("state JSON contains nested %q: %s", nested, data)
 		}
@@ -37,7 +35,7 @@ func TestPublicStateIsUIShape(t *testing.T) {
 			t.Fatalf("state JSON missing flat field %q: %s", field, data)
 		}
 	}
-	for _, field := range []string{"budget_source", "progress_message", "created_at", "updated_at"} {
+	for _, field := range []string{"created_at", "updated_at"} {
 		if _, ok := fields[field]; ok {
 			t.Fatalf("state JSON contains UI-hidden field %q: %s", field, data)
 		}
@@ -46,12 +44,11 @@ func TestPublicStateIsUIShape(t *testing.T) {
 
 func TestStateStorageJSONKeepsInternalSnapshot(t *testing.T) {
 	budget := int64(100)
+	created := time.Date(2026, time.July, 2, 9, 0, 0, 0, time.UTC)
 	state := State{
-		Identity: Identity{Objective: "ship it", Status: StatusActive},
-		Budget:   Budget{TokenBudget: &budget, TokensUsed: 25},
-		Progress: Progress{
-			ProgressMessage: "running tests",
-		},
+		Identity:   Identity{Objective: "ship it", Status: StatusActive},
+		Budget:     Budget{TokenBudget: &budget, TokensUsed: 25},
+		Timestamps: Timestamps{CreatedAt: created},
 	}
 	normalized := NormalizeState(&state)
 	if normalized == nil {
@@ -70,7 +67,7 @@ func TestStateStorageJSONKeepsInternalSnapshot(t *testing.T) {
 		roundTripState.Objective != "ship it" ||
 		roundTripState.TokenBudget == nil ||
 		*roundTripState.TokenBudget != 100 ||
-		roundTripState.ProgressMessage != "running tests" {
+		!roundTripState.CreatedAt.Equal(created) {
 		t.Fatalf("round trip state = %#v", roundTripState)
 	}
 }

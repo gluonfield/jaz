@@ -94,7 +94,6 @@ SELECT
   artifact_surface,
   mcp_server_policy,
   pending_steer_message,
-  runtime_capabilities,
   unread,
   goal
 FROM threads
@@ -139,7 +138,6 @@ func (q *Queries) GetSession(ctx context.Context, ref string) (Thread, error) {
 		&i.ArtifactSurface,
 		&i.McpServerPolicy,
 		&i.PendingSteerMessage,
-		&i.RuntimeCapabilities,
 		&i.Unread,
 		&i.Goal,
 	)
@@ -239,7 +237,6 @@ SELECT
   artifact_surface,
   mcp_server_policy,
   pending_steer_message,
-  runtime_capabilities,
   unread,
   goal
 FROM threads
@@ -288,7 +285,6 @@ func (q *Queries) ListSessions(ctx context.Context) ([]Thread, error) {
 			&i.ArtifactSurface,
 			&i.McpServerPolicy,
 			&i.PendingSteerMessage,
-			&i.RuntimeCapabilities,
 			&i.Unread,
 			&i.Goal,
 		); err != nil {
@@ -539,7 +535,6 @@ INSERT INTO threads (
   cwd,
   artifact_surface,
   mcp_server_policy,
-  runtime_capabilities,
   project_path,
   error,
   model_provider,
@@ -599,8 +594,7 @@ INSERT INTO threads (
   ?32,
   ?33,
   ?34,
-  ?35,
-  ?36
+  ?35
 )
 ON CONFLICT(id) DO UPDATE SET
   slug = excluded.slug,
@@ -614,7 +608,6 @@ ON CONFLICT(id) DO UPDATE SET
   cwd = excluded.cwd,
   artifact_surface = excluded.artifact_surface,
   mcp_server_policy = excluded.mcp_server_policy,
-  runtime_capabilities = excluded.runtime_capabilities,
   project_path = excluded.project_path,
   model_provider = excluded.model_provider,
   model = excluded.model,
@@ -652,7 +645,6 @@ type UpsertSessionParams struct {
 	Cwd                   sql.NullString `json:"cwd"`
 	ArtifactSurface       sql.NullString `json:"artifact_surface"`
 	McpServerPolicy       sql.NullString `json:"mcp_server_policy"`
-	RuntimeCapabilities   string         `json:"runtime_capabilities"`
 	ProjectPath           sql.NullString `json:"project_path"`
 	Error                 sql.NullString `json:"error"`
 	ModelProvider         sql.NullString `json:"model_provider"`
@@ -692,7 +684,6 @@ func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) er
 		arg.Cwd,
 		arg.ArtifactSurface,
 		arg.McpServerPolicy,
-		arg.RuntimeCapabilities,
 		arg.ProjectPath,
 		arg.Error,
 		arg.ModelProvider,
