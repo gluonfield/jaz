@@ -82,7 +82,6 @@ func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (
 		}
 	}
 	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested, "goal", req.GoalRequested, "operation", opts.activeOperation)
-	m.transcriptBuffers.closeTextRun(job.ID)
 	job.startTurnWithOperation(req.Completion, req.PlanRequested, req.ParentVisible, opts.activeOperation)
 	m.touchJobAttention(job)
 	markGoalRequested(job, req.GoalRequested)

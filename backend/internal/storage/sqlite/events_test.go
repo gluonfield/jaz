@@ -175,15 +175,21 @@ func TestCompactSessionEventsMergesStoredTextChunks(t *testing.T) {
 	acpState := func(state string) *sessionevents.ACPEvent {
 		return &sessionevents.ACPEvent{ID: session.ID, State: state}
 	}
-	thought := func(text string) *sessionevents.ACPEvent {
+	acpTextRun := func(state, textRunID string) *sessionevents.ACPEvent {
+		acp := acpState(state)
+		acp.TextRunID = textRunID
+		return acp
+	}
+	thought := func(text, textRunID string) *sessionevents.ACPEvent {
 		acp := acpState("running")
 		acp.Thought = text
+		acp.TextRunID = textRunID
 		return acp
 	}
 
 	if err := store.AppendSessionEvents(session.ID,
-		sessionevents.Event{Type: "acp_message", Content: "Hel", ACP: acpState("running")},
-		sessionevents.Event{Type: "acp_message", Content: "lo", ACP: acpState("running")},
+		sessionevents.Event{Type: "acp_message", Content: "Hel", ACP: acpTextRun("running", "message:m1")},
+		sessionevents.Event{Type: "acp_message", Content: "lo", ACP: acpTextRun("running", "message:m1")},
 		sessionevents.Event{
 			Type: "acp_tool",
 			ACP: &sessionevents.ACPEvent{
@@ -198,8 +204,8 @@ func TestCompactSessionEventsMergesStoredTextChunks(t *testing.T) {
 				ToolCalls: []sessionevents.ACPToolCall{{ID: "tool-1", Title: "Read", Status: "completed"}},
 			},
 		},
-		sessionevents.Event{Type: "acp_thought", ACP: thought("Rea")},
-		sessionevents.Event{Type: "acp_thought", ACP: thought("son")},
+		sessionevents.Event{Type: "acp_thought", ACP: thought("Rea", "message:t1")},
+		sessionevents.Event{Type: "acp_thought", ACP: thought("son", "message:t1")},
 		sessionevents.Event{Type: "acp_message", Content: "Done.", ACP: acpState("running")},
 		sessionevents.Event{Type: "acp", ACP: acpState("running")},
 		sessionevents.Event{Type: "acp_message", Content: "Next", ACP: acpState("idle")},

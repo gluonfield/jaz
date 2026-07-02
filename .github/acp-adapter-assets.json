@@ -2,70 +2,70 @@
   "adapters": {
     "codex": {
       "repo": "gluonfield/codex-acp",
-      "tag": "v0.16.15",
-      "version": "0.16.15",
+      "tag": "v0.16.17",
+      "version": "0.16.17",
       "assets": {
         "darwin-arm64": {
-          "name": "codex-acp-0.16.15-aarch64-apple-darwin.tar.gz",
+          "name": "codex-acp-0.16.17-aarch64-apple-darwin.tar.gz",
           "binary": "codex-acp"
         },
         "darwin-x64": {
-          "name": "codex-acp-0.16.15-x86_64-apple-darwin.tar.gz",
+          "name": "codex-acp-0.16.17-x86_64-apple-darwin.tar.gz",
           "binary": "codex-acp"
         },
         "linux-arm64": {
-          "name": "codex-acp-0.16.15-aarch64-unknown-linux-gnu.tar.gz",
+          "name": "codex-acp-0.16.17-aarch64-unknown-linux-gnu.tar.gz",
           "binary": "codex-acp"
         },
         "linux-x64": {
-          "name": "codex-acp-0.16.15-x86_64-unknown-linux-gnu.tar.gz",
+          "name": "codex-acp-0.16.17-x86_64-unknown-linux-gnu.tar.gz",
           "binary": "codex-acp"
         },
         "win32-arm64": {
-          "name": "codex-acp-0.16.15-aarch64-pc-windows-msvc.tar.gz",
+          "name": "codex-acp-0.16.17-aarch64-pc-windows-msvc.tar.gz",
           "binary": "codex-acp.exe"
         },
         "win32-x64": {
-          "name": "codex-acp-0.16.15-x86_64-pc-windows-msvc.tar.gz",
+          "name": "codex-acp-0.16.17-x86_64-pc-windows-msvc.tar.gz",
           "binary": "codex-acp.exe"
         }
       }
     },
     "claude": {
       "repo": "gluonfield/claude-agent-acp",
-      "tag": "v0.52.0-jaz.2",
-      "version": "0.52.0-jaz.2",
+      "tag": "v0.52.0-jaz.3",
+      "version": "0.52.0-jaz.3",
       "assets": {
         "darwin-arm64": {
-          "name": "claude-agent-acp-0.52.0-jaz.2-darwin-arm64.tar.gz",
+          "name": "claude-agent-acp-0.52.0-jaz.3-darwin-arm64.tar.gz",
           "binary": "claude-agent-acp",
           "env": {
             "CLAUDE_CODE_EXECUTABLE": "claude"
           }
         },
         "darwin-x64": {
-          "name": "claude-agent-acp-0.52.0-jaz.2-darwin-x64.tar.gz",
+          "name": "claude-agent-acp-0.52.0-jaz.3-darwin-x64.tar.gz",
           "binary": "claude-agent-acp",
           "env": {
             "CLAUDE_CODE_EXECUTABLE": "claude"
           }
         },
         "linux-arm64": {
-          "name": "claude-agent-acp-0.52.0-jaz.2-linux-arm64.tar.gz",
+          "name": "claude-agent-acp-0.52.0-jaz.3-linux-arm64.tar.gz",
           "binary": "claude-agent-acp",
           "env": {
             "CLAUDE_CODE_EXECUTABLE": "claude"
           }
         },
         "linux-x64": {
-          "name": "claude-agent-acp-0.52.0-jaz.2-linux-x64.tar.gz",
+          "name": "claude-agent-acp-0.52.0-jaz.3-linux-x64.tar.gz",
           "binary": "claude-agent-acp",
           "env": {
             "CLAUDE_CODE_EXECUTABLE": "claude"
           }
         },
         "win32-x64": {
-          "name": "claude-agent-acp-0.52.0-jaz.2-win32-x64.tar.gz",
+          "name": "claude-agent-acp-0.52.0-jaz.3-win32-x64.tar.gz",
           "binary": "claude-agent-acp.exe",
           "env": {
             "CLAUDE_CODE_EXECUTABLE": "claude.exe"

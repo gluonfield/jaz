@@ -145,9 +145,9 @@ func TestTranscriptChunksFlushBeforeStatus(t *testing.T) {
 			Assistant:  "Hel",
 		},
 	}
-	manager.queueACPMessage(job, "Hel")
+	manager.queueACPMessageWithID(job, "Hel", "message-1")
 	job.Assistant = "Hello"
-	manager.queueACPMessage(job, "lo")
+	manager.queueACPMessageWithID(job, "lo", "message-1")
 	job.State = StateIdle
 	manager.publishACPStatus(job.Snapshot())
 
@@ -207,8 +207,8 @@ func TestTranscriptChunksFlushOnTimerWhileRunning(t *testing.T) {
 		},
 	}
 	manager.jobsByID[session.ID] = job
-	manager.queueACPMessage(job, "live ")
-	manager.queueACPMessage(job, "text")
+	manager.queueACPMessageWithID(job, "live ", "message-1")
+	manager.queueACPMessageWithID(job, "text", "message-1")
 
 	event := receiveLiveEvent(t, live)
 	if event.Type != "acp_message" || event.Content != "live text" || event.ACP.State != StateRunning {
@@ -256,9 +256,9 @@ func TestACPTranscriptTextRunSurvivesToolBarrier(t *testing.T) {
 	manager := &Manager{store: store, Events: sessionevents.New()}
 	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex, ACPSession: "acp-session", State: StateRunning}}
 
-	manager.queueACPMessage(job, "message chunks, t")
+	manager.queueACPMessageWithID(job, "message chunks, t", "message-1")
 	manager.publishACPTool(job.Snapshot(), sessionevents.ACPToolCall{ID: "tool-1", Title: "Read file", Status: "completed"})
-	manager.queueACPMessage(job, "ool calls")
+	manager.queueACPMessageWithID(job, "ool calls", "message-1")
 	manager.withACPTranscriptBarrier(job.Snapshot(), nil)
 
 	events, err := store.LoadSessionEvents(session.ID)
@@ -281,7 +281,7 @@ func TestACPTranscriptTextRunSurvivesToolBarrier(t *testing.T) {
 	}
 }
 
-func TestACPTranscriptCloseTextRunStartsNewRun(t *testing.T) {
+func TestACPTranscriptChunksWithoutMessageIDStaySeparate(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -293,10 +293,8 @@ func TestACPTranscriptCloseTextRunStartsNewRun(t *testing.T) {
 	manager := &Manager{store: store, Events: sessionevents.New()}
 	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex, ACPSession: "acp-session", State: StateRunning}}
 
-	manager.queueACPMessage(job, "first")
-	manager.withACPTranscriptBarrier(job.Snapshot(), nil)
-	manager.transcriptBuffers.closeTextRun(session.ID)
-	manager.queueACPMessage(job, "second")
+	manager.queueACPMessage(job, "message chunks, ")
+	manager.queueACPMessage(job, "stay separate")
 	manager.withACPTranscriptBarrier(job.Snapshot(), nil)
 
 	events, err := store.LoadSessionEvents(session.ID)
@@ -306,10 +304,66 @@ func TestACPTranscriptCloseTextRunStartsNewRun(t *testing.T) {
 	if len(events) != 2 {
 		t.Fatalf("events = %#v", events)
 	}
-	firstRun := events[0].ACP.TextRunID
-	secondRun := events[1].ACP.TextRunID
-	if firstRun == "" || secondRun == "" || firstRun == secondRun {
-		t.Fatalf("text run ids = %q, %q; events=%#v", firstRun, secondRun, events)
+	if events[0].Type != "acp_message" || events[0].Content != "message chunks, " || events[0].ACP.TextRunID != "" {
+		t.Fatalf("first text event = %#v", events[0])
+	}
+	if events[1].Type != "acp_message" || events[1].Content != "stay separate" || events[1].ACP.TextRunID != "" {
+		t.Fatalf("second text event = %#v", events[1])
+	}
+}
+
+func TestACPTranscriptChunksWithoutMessageIDDoNotCrossToolBarrier(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "main", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := &Manager{store: store, Events: sessionevents.New()}
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex, ACPSession: "acp-session", State: StateRunning}}
+
+	manager.queueACPMessage(job, "message chunks, t")
+	manager.publishACPTool(job.Snapshot(), sessionevents.ACPToolCall{ID: "tool-1", Title: "Read file", Status: "completed"})
+	manager.queueACPMessage(job, "ool calls")
+	manager.withACPTranscriptBarrier(job.Snapshot(), nil)
+
+	events, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("events = %#v", events)
+	}
+	if events[0].Type != "acp_message" || events[0].Content != "message chunks, t" || events[0].ACP.TextRunID != "" {
+		t.Fatalf("first text event = %#v", events[0])
+	}
+	if events[1].Type != "acp_tool" {
+		t.Fatalf("tool event = %#v", events[1])
+	}
+	if events[2].Type != "acp_message" || events[2].Content != "ool calls" || events[2].ACP.TextRunID != "" {
+		t.Fatalf("second text event = %#v", events[2])
+	}
+}
+
+func TestACPTranscriptUpstreamMessageIDDefinesTextRun(t *testing.T) {
+	first := textRunID("message-1")
+	same := textRunID("message-1")
+	second := textRunID("message-2")
+	withoutMessageID := textRunID("")
+
+	if first != "message:message-1" {
+		t.Fatalf("first text run id = %q", first)
+	}
+	if same != first {
+		t.Fatalf("same upstream message id produced %q, want %q", same, first)
+	}
+	if second == first {
+		t.Fatalf("different upstream message id reused %q", second)
+	}
+	if withoutMessageID != "" {
+		t.Fatalf("text run id without message id = %q, want empty", withoutMessageID)
 	}
 }
 
