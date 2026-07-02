@@ -242,14 +242,17 @@ func MergeFromMain(ctx context.Context, dir, message string) error {
 	if worktreeBranch == "" {
 		return fmt.Errorf("the worktree is on a detached HEAD")
 	}
-	if err := CommitAll(ctx, dir, message); err != nil {
-		return err
-	}
 	source := worktreeUpdateSource(ctx, dir, branch)
 	if source.remote {
 		if _, err := git(ctx, dir, "fetch", "origin", branch); err != nil {
 			return fmt.Errorf("fetching %s: %w", source.label, err)
 		}
+		if _, err := git(ctx, dir, "rev-parse", "--verify", "--quiet", source.ref); err != nil {
+			return fmt.Errorf("fetching %s did not create %s: %w", source.label, source.ref, err)
+		}
+	}
+	if err := CommitAll(ctx, dir, message); err != nil {
+		return err
 	}
 	if count, err := git(ctx, dir, "rev-list", "--count", worktreeBranch+".."+source.ref); err == nil && count == "0" {
 		return fmt.Errorf("nothing to merge — %s already has everything from %s", worktreeBranch, source.label)
@@ -359,7 +362,7 @@ type updateSource struct {
 
 func worktreeUpdateSource(ctx context.Context, dir, branch string) updateSource {
 	remote := "refs/remotes/origin/" + branch
-	if _, err := git(ctx, dir, "rev-parse", "--verify", "--quiet", remote); err == nil {
+	if _, err := git(ctx, dir, "remote", "get-url", "origin"); err == nil {
 		return updateSource{label: "origin/" + branch, ref: remote, remote: true}
 	}
 	return updateSource{label: branch, ref: "refs/heads/" + branch}

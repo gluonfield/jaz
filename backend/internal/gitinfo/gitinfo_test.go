@@ -658,24 +658,31 @@ func TestMergeFromMainUsesOriginWhenLocalMainDiverged(t *testing.T) {
 	git(other, "add", "-A")
 	git(other, "commit", "-q", "-m", "origin main")
 	git(other, "push", "-q", "origin", "main")
-	git(main, "fetch", "-q", "origin", "main")
-	git(worktree, "merge", "--no-edit", "refs/remotes/origin/main")
+	git(worktree, "update-ref", "-d", "refs/remotes/origin/main")
 
+	if err := MergeFromMain(ctx, worktree, "noop"); err != nil {
+		t.Fatalf("MergeFromMain with missing origin/main ref = %v, want fetch+merge from origin/main", err)
+	}
 	if info := Inspect(ctx, worktree); info.Behind != 0 || info.UpdateBranch != "origin/main" {
-		t.Fatalf("Inspect = %+v with origin/main already merged, want behind=0 update_branch=origin/main", info)
+		t.Fatalf("Inspect = %+v after origin/main merge, want behind=0 update_branch=origin/main", info)
 	}
 	if err := MergeFromMain(ctx, worktree, "noop"); err == nil || !strings.Contains(err.Error(), "nothing to merge") {
 		t.Fatalf("MergeFromMain = %v, want nothing-to-merge from origin/main", err)
 	}
 	git(worktree, "remote", "set-url", "origin", filepath.Join(workspace, "missing.git"))
+	head := strings.TrimSpace(git(worktree, "rev-parse", "HEAD"))
+	write(worktree, "dirty.txt", "dirty\n")
 	if err := MergeFromMain(ctx, worktree, "noop"); err == nil || !strings.Contains(err.Error(), "fetching origin/main") {
 		t.Fatalf("MergeFromMain with broken origin = %v, want fetch error", err)
+	}
+	if got := strings.TrimSpace(git(worktree, "rev-parse", "HEAD")); got != head {
+		t.Fatalf("HEAD = %s after broken-origin update, want unchanged %s", got, head)
 	}
 	if got, _ := os.ReadFile(filepath.Join(worktree, "settings.txt")); string(got) != "origin main\n" {
 		t.Fatalf("worktree settings.txt = %q, want origin main", got)
 	}
-	if out := git(worktree, "status", "--porcelain"); strings.TrimSpace(out) != "" {
-		t.Fatalf("worktree dirty after MergeFromMain:\n%s", out)
+	if out := git(worktree, "status", "--porcelain"); !strings.Contains(out, "dirty.txt") {
+		t.Fatalf("dirty work was not preserved after failed MergeFromMain:\n%s", out)
 	}
 }
 
