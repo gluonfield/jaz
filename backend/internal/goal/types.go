@@ -20,40 +20,21 @@ const (
 type State struct {
 	Identity
 	Budget
-	Progress
-	Review
 	Timestamps
+	TimeUsedSeconds int64 `json:"time_used_seconds,omitempty"`
 }
 
 type Identity struct {
-	ID             string `json:"id,omitempty"`
-	ThreadID       string `json:"thread_id,omitempty"`
-	Provider       string `json:"provider,omitempty"`
-	ProviderGoalID string `json:"provider_goal_id,omitempty"`
-	Objective      string `json:"objective,omitempty"`
-	Status         Status `json:"status"`
+	ID        string `json:"id,omitempty"`
+	ThreadID  string `json:"thread_id,omitempty"`
+	Objective string `json:"objective,omitempty"`
+	Status    Status `json:"status"`
 }
 
 type Budget struct {
 	TokenBudget     *int64 `json:"token_budget,omitempty"`
 	TokensUsed      int64  `json:"tokens_used,omitempty"`
 	RemainingTokens *int64 `json:"remaining_tokens,omitempty"`
-}
-
-type Progress struct {
-	TimeUsedSeconds  int64  `json:"time_used_seconds,omitempty"`
-	TurnCount        int64  `json:"turn_count,omitempty"`
-	EvaluatedTurns   int64  `json:"evaluated_turns,omitempty"`
-	AttemptCount     int64  `json:"attempt_count,omitempty"`
-	ProgressMessage  string `json:"progress_message,omitempty"`
-	BlockedReason    string `json:"blocked_reason,omitempty"`
-	ActiveSubagentID string `json:"active_subagent_id,omitempty"`
-	ActiveOperation  string `json:"active_operation,omitempty"`
-}
-
-type Review struct {
-	EvaluatorReason  string `json:"evaluator_reason,omitempty"`
-	CompletionReview string `json:"completion_review,omitempty"`
 }
 
 type Timestamps struct {
@@ -128,9 +109,6 @@ func NormalizeState(state *State) *State {
 	if out.Status == "" ||
 		out.TokensUsed < 0 ||
 		out.TimeUsedSeconds < 0 ||
-		out.TurnCount < 0 ||
-		out.EvaluatedTurns < 0 ||
-		out.AttemptCount < 0 ||
 		negativeInt(out.RemainingTokens) {
 		return nil
 	}

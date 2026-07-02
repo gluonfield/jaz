@@ -38,9 +38,6 @@ func UnmarshalGoalState(raw string) (*goal.State, error) {
 	if err := json.Unmarshal([]byte(raw), &state); err != nil {
 		return nil, fmt.Errorf("goal state: %w", err)
 	}
-	if nativeGoalSnapshot(&state) {
-		return nil, nil
-	}
 	normalized := goal.NormalizeState(&state)
 	if normalized == nil {
 		return nil, fmt.Errorf("invalid goal state")
@@ -77,9 +74,6 @@ func GoalDisplayEvents(events []sessionevents.Event) []sessionevents.Event {
 }
 
 func GoalDisplayEvent(event sessionevents.Event) (sessionevents.Event, bool) {
-	if nativeGoalEvent(event) {
-		return event, false
-	}
 	projection, ok, err := GoalProjectionFromEvent(event)
 	if !ok {
 		return event, true
@@ -106,9 +100,6 @@ func GoalProjectionFromEvent(event sessionevents.Event) (GoalProjection, bool, e
 	if event.Goal == nil {
 		return GoalProjection{}, true, fmt.Errorf("goal update missing goal")
 	}
-	if nativeGoalSnapshot(event.Goal) {
-		return GoalProjection{}, false, nil
-	}
 	state := goal.NormalizeState(event.Goal)
 	if state == nil {
 		return GoalProjection{}, true, fmt.Errorf("invalid goal state")
@@ -120,12 +111,4 @@ func GoalProjectionFromEvent(event sessionevents.Event) (GoalProjection, bool, e
 		return GoalProjection{}, true, fmt.Errorf("goal update is not a complete snapshot")
 	}
 	return GoalProjection{Seen: true, State: state}, true, nil
-}
-
-func nativeGoalSnapshot(state *goal.State) bool {
-	return state != nil && (state.Provider != "" || state.ProviderGoalID != "")
-}
-
-func nativeGoalEvent(event sessionevents.Event) bool {
-	return event.Type == sessionevents.TypeGoalUpdate && nativeGoalSnapshot(event.Goal)
 }

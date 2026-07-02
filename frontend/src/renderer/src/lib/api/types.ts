@@ -8,12 +8,6 @@ export interface RuntimeRef {
   session_id?: string
   cwd?: string
   project_path?: string
-  capabilities?: RuntimeCapabilities
-}
-
-export interface RuntimeCapabilities {
-  native_goal?: boolean
-  native_goal_negotiable?: boolean
 }
 
 // Provider-facing token fields: input includes cache reads/writes when the
@@ -1051,7 +1045,6 @@ export interface ReasoningEffortOption {
 export interface ACPAgentOptions {
   reasoning_efforts: ReasoningEffortOption[]
   models?: ModelCatalogEntry[]
-  capabilities?: RuntimeCapabilities
   local: boolean
   provider_mode?: 'agent_defaults'
   model_provider_ids?: string[]

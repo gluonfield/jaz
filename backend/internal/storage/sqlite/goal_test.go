@@ -32,10 +32,7 @@ func TestSessionGoalRoundTripAndMirror(t *testing.T) {
 				TokenBudget: &budget,
 				TokensUsed:  250,
 			},
-			Progress: goal.Progress{
-				ProgressMessage: "Working through tests",
-				EvaluatedTurns:  2,
-			},
+			TimeUsedSeconds: 42,
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -48,8 +45,7 @@ func TestSessionGoalRoundTripAndMirror(t *testing.T) {
 	if loaded.Goal == nil || loaded.Goal.Objective != "Ship visible goal state" ||
 		loaded.Goal.Status != goal.StatusActive ||
 		loaded.Goal.RemainingTokens == nil || *loaded.Goal.RemainingTokens != 750 ||
-		loaded.Goal.ProgressMessage != "Working through tests" ||
-		loaded.Goal.EvaluatedTurns != 2 {
+		loaded.Goal.TimeUsedSeconds != 42 {
 		t.Fatalf("goal = %#v", loaded.Goal)
 	}
 	mirror, err := jsonstore.New(store.RootDir())
@@ -62,7 +58,7 @@ func TestSessionGoalRoundTripAndMirror(t *testing.T) {
 	}
 	if mirrored.Goal == nil || mirrored.Goal.Objective != loaded.Goal.Objective ||
 		mirrored.Goal.RemainingTokens == nil || *mirrored.Goal.RemainingTokens != 750 ||
-		mirrored.Goal.ProgressMessage != "Working through tests" {
+		mirrored.Goal.TimeUsedSeconds != 42 {
 		t.Fatalf("mirrored goal = %#v, want %#v", mirrored.Goal, loaded.Goal)
 	}
 

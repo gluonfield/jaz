@@ -29,10 +29,6 @@ func (m *Manager) handleJSONRPC(ctx context.Context, req jsonrpc.Request) (json.
 		}
 		m.applyUpdate(note.SessionID, note.Update)
 		return jsonrpc.EncodeResult(map[string]any{})
-	case acpMethodGoalUpdate, acpMethodCodexGoalUpdated:
-		return jsonrpc.EncodeResult(map[string]any{})
-	case acpMethodGoalClear, acpMethodCodexGoalCleared:
-		return jsonrpc.EncodeResult(map[string]any{})
 	case acpschema.ClientMethodSessionRequestPermission:
 		return m.requestPermission(ctx, req.Params)
 	case acpschema.ClientMethodElicitationCreate:
@@ -130,9 +126,6 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	var attention bool
 	now := time.Now().UTC()
 	update, err := acpschema.DecodeSessionUpdate(raw)
-	if isGoalUpdate(raw) || isGoalClearUpdate(raw) {
-		return
-	}
 	if err != nil {
 		return
 	}

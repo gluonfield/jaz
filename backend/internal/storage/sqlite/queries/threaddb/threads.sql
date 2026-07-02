@@ -33,7 +33,6 @@ SELECT
   artifact_surface,
   mcp_server_policy,
   pending_steer_message,
-  runtime_capabilities,
   unread,
   goal
 FROM threads;
@@ -73,7 +72,6 @@ SELECT
   artifact_surface,
   mcp_server_policy,
   pending_steer_message,
-  runtime_capabilities,
   unread,
   goal
 FROM threads
@@ -105,7 +103,6 @@ INSERT INTO threads (
   cwd,
   artifact_surface,
   mcp_server_policy,
-  runtime_capabilities,
   project_path,
   error,
   model_provider,
@@ -142,7 +139,6 @@ INSERT INTO threads (
   sqlc.narg(cwd),
   sqlc.narg(artifact_surface),
   sqlc.narg(mcp_server_policy),
-  sqlc.arg(runtime_capabilities),
   sqlc.narg(project_path),
   sqlc.narg(error),
   sqlc.narg(model_provider),
@@ -180,7 +176,6 @@ ON CONFLICT(id) DO UPDATE SET
   cwd = excluded.cwd,
   artifact_surface = excluded.artifact_surface,
   mcp_server_policy = excluded.mcp_server_policy,
-  runtime_capabilities = excluded.runtime_capabilities,
   project_path = excluded.project_path,
   model_provider = excluded.model_provider,
   model = excluded.model,

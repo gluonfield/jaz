@@ -423,7 +423,6 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	}
 	session.RuntimeRef.SessionID = string(acpSession.response.SessionID)
 	session.RuntimeRef.Cwd = absCwd
-	session.RuntimeRef.Capabilities = runtimeCapabilitiesFromInit(req.ACPAgent, ac.initRaw)
 	if err := m.store.SaveSession(session); err != nil {
 		ac.close()
 		return fail(err)
@@ -544,11 +543,6 @@ func (m *Manager) resume(ctx context.Context, ref string) (*jobState, error) {
 	}
 	if acpSessionID != session.RuntimeRef.SessionID {
 		session.RuntimeRef.SessionID = acpSessionID
-		sessionChanged = true
-	}
-	runtimeCapabilities := runtimeCapabilitiesFromInit(agentName, ac.initRaw)
-	if !storedRuntimeCapabilitiesEqual(session.RuntimeRef.Capabilities, runtimeCapabilities) {
-		session.RuntimeRef.Capabilities = runtimeCapabilities
 		sessionChanged = true
 	}
 	if session.ModelProvider == "" {
