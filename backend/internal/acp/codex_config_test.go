@@ -69,7 +69,7 @@ func TestCodexProviderArgsUnknownWithoutConfig(t *testing.T) {
 	}
 }
 
-func TestProcessEnvBindsSelectedCodexProviderKeyOnly(t *testing.T) {
+func TestProcessEnvBindsSelectedCodexProviderKey(t *testing.T) {
 	clearHostEnv(t)
 	root := t.TempDir()
 	t.Setenv("PATH", "/bin")
@@ -83,7 +83,7 @@ func TestProcessEnvBindsSelectedCodexProviderKeyOnly(t *testing.T) {
 	manager := NewManager(nil, Config{Root: root}, nil)
 
 	openrouter := manager.processEnv("codex", AgentConfig{ModelProvider: modelprovider.ProviderOpenRouter})
-	if openrouter["OPENROUTER_API_KEY"] != "or-key" {
+	if openrouter["OPENROUTER_API_KEY"] != "or-key" || openrouter["OPENAI_API_KEY"] != "or-key" {
 		t.Fatalf("codex+openrouter did not bind the provider key: %#v", openrouter)
 	}
 

@@ -27,16 +27,17 @@ type AgentAPIKeySpec struct {
 }
 
 type resolvedAgentAuth struct {
-	Config        AgentAuthConfig
-	StoragePath   string
-	Source        string
-	Evidence      string
-	Kind          string
-	Authenticated bool
-	Reason        string
-	APIKey        AgentAPIKeySpec
-	APIKeySet     bool
-	APIKeyValue   string
+	Config              AgentAuthConfig
+	StoragePath         string
+	Source              string
+	Evidence            string
+	Kind                string
+	Authenticated       bool
+	Reason              string
+	APIKey              AgentAPIKeySpec
+	APIKeySet           bool
+	APIKeyValue         string
+	APIKeyTargetAliases []string
 }
 
 func NormalizeAgentAuthConfig(name string, auth AgentAuthConfig) (AgentAuthConfig, error) {
@@ -182,6 +183,9 @@ func resolveCodexProviderAuth(meta modelprovider.ModelProvider, root string, env
 		status.APIKey = AgentAPIKeySpec{SourceEnv: keyEnv, TargetEnv: keyEnv}
 		status.APIKeyValue = value
 		status.APIKeySet = true
+		if keyEnv != "OPENAI_API_KEY" {
+			status.APIKeyTargetAliases = []string{"OPENAI_API_KEY"}
+		}
 		status.markAuthenticated(strings.ToLower(keyEnv)+"_env", AuthKindAPIKey)
 	default:
 		status.Reason = "Set " + firstNonEmpty(keyEnv, "the provider API key") + " in Settings > Model Providers to use " + firstNonEmpty(strings.TrimSpace(meta.Label), meta.ID) + " with Codex"
@@ -424,6 +428,19 @@ func (a resolvedAgentAuth) APIKeyBinding() (string, string, bool) {
 		return "", "", false
 	}
 	return a.APIKey.TargetEnv, a.APIKeyValue, true
+}
+
+func (a resolvedAgentAuth) BindAPIKeyEnv(env map[string]string) {
+	target, value, ok := a.APIKeyBinding()
+	if !ok {
+		return
+	}
+	env[target] = value
+	for _, extra := range a.APIKeyTargetAliases {
+		if target := strings.TrimSpace(extra); target != "" {
+			env[target] = value
+		}
+	}
 }
 
 func AgentAPIKey(name string) (AgentAPIKeySpec, bool) {

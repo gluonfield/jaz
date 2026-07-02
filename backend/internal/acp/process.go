@@ -261,14 +261,7 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 		for _, key := range []string{"OPENAI_API_KEY", "OPENAI_APIKEY", "OPENROUTER_API_KEY", "OPENROUTER_APIKEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"} {
 			delete(env, key)
 		}
-		if target, value, ok := auth.APIKeyBinding(); ok {
-			env[target] = value
-			if target != "OPENAI_API_KEY" {
-				if _, ok := codexProvider(agent.ModelProvider, m.providers()); ok {
-					env["OPENAI_API_KEY"] = value
-				}
-			}
-		}
+		auth.BindAPIKeyEnv(env)
 	}
 	if name == AgentClaude {
 		claudeHostEnv := []string{
@@ -315,9 +308,7 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 		}
 		normalizeEnv(env, "ANTHROPIC_API_KEY", "ANTHROPIC_APIKEY")
 		delete(env, "ANTHROPIC_API_KEY")
-		if target, value, ok := auth.APIKeyBinding(); ok {
-			env[target] = value
-		}
+		auth.BindAPIKeyEnv(env)
 	}
 	if name == AgentGrok {
 		processenv.PreserveHost(env,
@@ -335,9 +326,7 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.providers())
 		normalizeEnv(env, "XAI_API_KEY", "XAI_APIKEY")
 		delete(env, "XAI_API_KEY")
-		if target, value, ok := auth.APIKeyBinding(); ok {
-			env[target] = value
-		}
+		auth.BindAPIKeyEnv(env)
 	}
 	if name == AgentOpenCode {
 		processenv.PreserveHost(env,
@@ -361,9 +350,7 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 				prepareErr = firstError(prepareErr, err)
 			}
 		}
-		if target, value, ok := auth.APIKeyBinding(); ok {
-			env[target] = value
-		}
+		auth.BindAPIKeyEnv(env)
 	}
 	if prepare {
 		if spec, ok := resolveAgentAPIKeySpec(name); ok {
