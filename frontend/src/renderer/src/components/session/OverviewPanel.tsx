@@ -581,6 +581,7 @@ function GitSection({ repo }: { repo: ReturnType<typeof useRepoActions> }) {
     : info.needs_push
       ? { color: 'bg-primary', label: 'Unpushed commits' }
       : { color: 'bg-ok', label: 'Working tree clean' }
+  const updateBranch = info.update_branch || info.main_branch
   return (
     <>
       <section className="flex flex-col gap-0.5">
@@ -646,15 +647,15 @@ function GitSection({ repo }: { repo: ReturnType<typeof useRepoActions> }) {
             {busy === 'push' ? 'Pushing…' : 'Push branch'}
           </ActionRow>
         ) : null}
-        {info.is_worktree && (info.update_branch || info.main_branch) && (info.behind ?? 0) > 0 ? (
+        {info.is_worktree && updateBranch && info.can_update_from_main ? (
           <ActionRow
             icon={busy === 'update' ? LoaderCircle : ArrowDownToLine}
             spin={busy === 'update'}
             disabled={busy !== null}
-            hint={`Commits this session's work, then merges the latest ${info.update_branch || info.main_branch} into this worktree`}
+            hint={`Commits this session's work, then merges the latest ${updateBranch} into this worktree`}
             onClick={() => void repo.update()}
           >
-            {busy === 'update' ? 'Updating…' : `Update from ${info.update_branch || info.main_branch}`}
+            {busy === 'update' ? 'Updating…' : `Update from ${updateBranch}`}
           </ActionRow>
         ) : null}
         {canHandoffToMain(info) ? (

@@ -50,6 +50,10 @@ type Info struct {
 	// Behind counts commits on UpdateBranch the worktree's branch doesn't
 	// have yet — what an update would pull in (0 when up to date).
 	Behind int `json:"behind,omitempty"`
+	// CanUpdateFromMain reports whether the worktree update action should be
+	// available, including remote-backed cases where Behind cannot be known
+	// until the action fetches origin/<main>.
+	CanUpdateFromMain bool `json:"can_update_from_main,omitempty"`
 	// WorktreeMissing reports a managed worktree path that no longer exists.
 	WorktreeMissing bool `json:"worktree_missing,omitempty"`
 	// WorktreeRestorable reports whether the saved session branch can recreate
@@ -84,6 +88,9 @@ func Inspect(ctx context.Context, dir string) Info {
 			info.UpdateBranch = source.label
 			if count, err := git(ctx, dir, "rev-list", "--count", "HEAD.."+source.ref); err == nil {
 				info.Behind, _ = strconv.Atoi(count)
+				info.CanUpdateFromMain = info.Behind > 0
+			} else if source.remote {
+				info.CanUpdateFromMain = true
 			}
 		}
 	}

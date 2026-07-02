@@ -660,11 +660,14 @@ func TestMergeFromMainUsesOriginWhenLocalMainDiverged(t *testing.T) {
 	git(other, "push", "-q", "origin", "main")
 	git(worktree, "update-ref", "-d", "refs/remotes/origin/main")
 
+	if info := Inspect(ctx, worktree); !info.CanUpdateFromMain || info.UpdateBranch != "origin/main" {
+		t.Fatalf("Inspect = %+v with missing origin/main, want can_update_from_main and update_branch=origin/main", info)
+	}
 	if err := MergeFromMain(ctx, worktree, "noop"); err != nil {
 		t.Fatalf("MergeFromMain with missing origin/main ref = %v, want fetch+merge from origin/main", err)
 	}
-	if info := Inspect(ctx, worktree); info.Behind != 0 || info.UpdateBranch != "origin/main" {
-		t.Fatalf("Inspect = %+v after origin/main merge, want behind=0 update_branch=origin/main", info)
+	if info := Inspect(ctx, worktree); info.Behind != 0 || info.CanUpdateFromMain || info.UpdateBranch != "origin/main" {
+		t.Fatalf("Inspect = %+v after origin/main merge, want behind=0 and no update action", info)
 	}
 	if err := MergeFromMain(ctx, worktree, "noop"); err == nil || !strings.Contains(err.Error(), "nothing to merge") {
 		t.Fatalf("MergeFromMain = %v, want nothing-to-merge from origin/main", err)
