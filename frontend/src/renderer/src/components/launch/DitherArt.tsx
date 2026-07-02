@@ -8,6 +8,11 @@ import { useTheme } from '@/lib/theme'
 // limited brand palette — mostly cobalt, dark grain speckles, rare rainbow
 // sparks. The image dissolves in dot by dot, and settled grain keeps quietly
 // re-rolling so the artwork feels printed yet alive.
+//
+// Perf contract: every dot's color is computed once at sample time; the
+// dissolve paints only newly-appeared dots each frame (no full-canvas
+// repaints); the idle grain repaints only the handful of re-rolled cells per
+// tick.
 export type Silhouette = (g: OffscreenCanvasRenderingContext2D, w: number, h: number) => void
 
 // prettier-ignore
@@ -29,43 +34,7 @@ function hash(n: number): number {
   return (x ^ (x >>> 15)) >>> 0
 }
 
-type Dot = {
-  x: number
-  y: number
-  edge: boolean
-  ambient: boolean
-  seed: number
-  appear: number
-}
-
-function sample(draw: Silhouette, cols: number, rows: number): Dot[] {
-  const off = new OffscreenCanvas(cols, rows)
-  const g = off.getContext('2d', { willReadFrequently: true })!
-  g.fillStyle = '#fff'
-  g.strokeStyle = '#fff'
-  draw(g, cols, rows)
-  const alpha = g.getImageData(0, 0, cols, rows).data
-
-  const dots: Dot[] = []
-  for (let y = 0; y < rows; y++) {
-    for (let x = 0; x < cols; x++) {
-      const coverage = alpha[(y * cols + x) * 4 + 3] / 255
-      const seed = hash(x + y * cols)
-      const noise = (seed % 4096) / 4096
-      const appear = 0.18 * (x / cols) + (((seed >>> 12) % 1024) / 1024) * 0.95
-      if (coverage > 0.05) {
-        const threshold = 0.92 * (0.7 * ((BAYER8[(y % 8) * 8 + (x % 8)] + 0.5) / 64) + 0.3 * noise)
-        if (coverage < threshold) continue
-        dots.push({ x, y, edge: coverage < 0.6, ambient: false, seed, appear })
-      } else if (noise < 0.012) {
-        // Sparse dust around the silhouette keeps the canvas reading as a
-        // dithered field rather than a sticker on empty space.
-        dots.push({ x, y, edge: false, ambient: true, seed, appear })
-      }
-    }
-  }
-  return dots
-}
+type Dot = { x: number; y: number; color: string; alpha: number; seed: number; appear: number; ambient: boolean }
 
 type Palette = { primary: string; strong: string; ink: string; rainbow: string[] }
 
@@ -80,24 +49,48 @@ function readPalette(): Palette {
   }
 }
 
-function tone(dot: Dot, seed: number, palette: Palette): string {
+function toneFor(seed: number, ambient: boolean, palette: Palette): string {
   const r = seed % 1000
-  if (dot.ambient) return r < 300 ? palette.ink : palette.primary
+  if (ambient) return r < 300 ? palette.ink : palette.primary
   if (r < 30) return palette.rainbow[seed % 5]
   if (r < 130) return palette.ink
   if (r < 340) return palette.strong
   return palette.primary
 }
 
-function baseAlpha(dot: Dot, seed: number): number {
-  const noise = ((seed >>> 4) % 256) / 256
-  if (dot.ambient) return 0.09 + 0.08 * noise
-  if (dot.edge) return 0.55 + 0.25 * noise
-  return 0.82 + 0.18 * noise
+function sample(draw: Silhouette, cols: number, rows: number, palette: Palette): Dot[] {
+  const off = new OffscreenCanvas(cols, rows)
+  const g = off.getContext('2d', { willReadFrequently: true })!
+  g.fillStyle = '#fff'
+  g.strokeStyle = '#fff'
+  draw(g, cols, rows)
+  const alpha = g.getImageData(0, 0, cols, rows).data
+
+  const dots: Dot[] = []
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const coverage = alpha[(y * cols + x) * 4 + 3] / 255
+      const seed = hash(x + y * cols)
+      const noise = (seed % 4096) / 4096
+      const appear = 0.18 * (x / cols) + (((seed >>> 12) % 1024) / 1024) * 0.95
+      const shade = ((seed >>> 4) % 256) / 256
+      if (coverage > 0.05) {
+        const threshold = 0.92 * (0.7 * ((BAYER8[(y % 8) * 8 + (x % 8)] + 0.5) / 64) + 0.3 * noise)
+        if (coverage < threshold) continue
+        const base = coverage < 0.6 ? 0.55 + 0.25 * shade : 0.82 + 0.18 * shade
+        dots.push({ x, y, color: toneFor(seed, false, palette), alpha: base, seed, appear, ambient: false })
+      } else if (noise < 0.012) {
+        // Sparse dust around the silhouette keeps the canvas reading as a
+        // dithered field rather than a sticker on empty space.
+        dots.push({ x, y, color: toneFor(seed, true, palette), alpha: 0.09 + 0.08 * shade, seed, appear, ambient: true })
+      }
+    }
+  }
+  dots.sort((a, b) => a.appear - b.appear)
+  return dots
 }
 
-const BUILD_END = 1.4
-const GRAIN_EPOCH = 0.15
+const GRAIN_EPOCH_MS = 150
 
 export function DitherArt({
   draw,
@@ -139,45 +132,69 @@ export function DitherArt({
 
     let cancelled = false
     let raf = 0
+    let grainTimer = 0
 
     const start = () => {
       if (cancelled) return
-      const dots = sample(draw, cols, rows)
       const palette = readPalette()
+      const dots = sample(draw, cols, rows, palette)
 
-      const drawFrame = (t: number) => {
-        ctx.clearRect(0, 0, width, height)
-        const epoch = animate ? Math.floor(Math.max(0, t) / GRAIN_EPOCH) : 0
-        for (const d of dots) {
-          const local = animate ? t - d.appear : 1
-          if (local <= 0) continue
-          // A slice of settled grain re-rolls its tone every epoch — the
-          // crawling-static texture that keeps a dither feeling alive.
-          const rerolled = animate && hash(d.seed + epoch * 31) % 34 === 0
-          const seed = rerolled ? hash(d.seed ^ Math.imul(epoch, 2654435761)) : d.seed
-          ctx.globalAlpha = baseAlpha(d, seed) * (animate ? Math.min(1, local / 0.18) : 1)
-          ctx.fillStyle = tone(d, seed, palette)
+      const paintDot = (d: Dot, color: string, alpha: number) => {
+        ctx.clearRect(d.x * pitch, d.y * pitch, dot, dot)
+        ctx.globalAlpha = alpha
+        ctx.fillStyle = color
+        ctx.fillRect(d.x * pitch, d.y * pitch, dot, dot)
+      }
+
+      const paintRange = (from: number, to: number) => {
+        for (let i = from; i < to; i++) {
+          const d = dots[i]
+          ctx.globalAlpha = d.alpha
+          ctx.fillStyle = d.color
           ctx.fillRect(d.x * pitch, d.y * pitch, dot, dot)
         }
         ctx.globalAlpha = 1
       }
 
       if (!animate) {
-        drawFrame(Number.MAX_SAFE_INTEGER)
+        paintRange(0, dots.length)
         return
       }
-      let lastEpoch = -1
+
+      // Idle grain: each tick restores last tick's cells, then re-rolls a
+      // small deterministic slice — a crawling-static texture for the cost of
+      // a few hundred rect ops per tick.
+      let epoch = 0
+      let rerolled: Dot[] = []
+      const grainTick = () => {
+        epoch++
+        for (const d of rerolled) paintDot(d, d.color, d.alpha)
+        rerolled = []
+        const count = Math.max(1, Math.floor(dots.length / 34))
+        for (let k = 0; k < count; k++) {
+          const d = dots[hash(epoch * 7919 + k) % dots.length]
+          const seed = hash(d.seed ^ Math.imul(epoch, 2654435761))
+          paintDot(d, toneFor(seed, d.ambient, palette), d.alpha)
+          rerolled.push(d)
+        }
+        ctx.globalAlpha = 1
+      }
+
+      let index = 0
       const t0 = performance.now()
       const frame = (now: number) => {
         const t = (now - t0) / 1000 - delay
-        const epoch = Math.floor(Math.max(0, t) / GRAIN_EPOCH)
-        // Per-frame drawing only while dissolving in; afterwards the canvas
-        // repaints only when the grain epoch ticks (~7fps).
-        if (t < BUILD_END || epoch !== lastEpoch) {
-          lastEpoch = epoch
-          drawFrame(t)
+        let next = index
+        while (next < dots.length && dots[next].appear <= t) next++
+        if (next > index) {
+          paintRange(index, next)
+          index = next
         }
-        raf = requestAnimationFrame(frame)
+        if (index < dots.length) {
+          raf = requestAnimationFrame(frame)
+        } else {
+          grainTimer = window.setInterval(grainTick, GRAIN_EPOCH_MS)
+        }
       }
       raf = requestAnimationFrame(frame)
     }
@@ -190,6 +207,7 @@ export function DitherArt({
     return () => {
       cancelled = true
       cancelAnimationFrame(raf)
+      window.clearInterval(grainTimer)
     }
   }, [animate, draw, cols, rows, dot, gap, pitch, width, height, delay, waitForFonts, resolved])
 
