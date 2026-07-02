@@ -1,78 +1,78 @@
 {
   "adapters": {
     "codex": {
-      "version": "0.16.15",
+      "version": "0.16.17",
       "assets": {
         "darwin-arm64": {
-          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.15/codex-acp-0.16.15-aarch64-apple-darwin.tar.gz",
-          "sha256": "35da098729493f60ea09561304eeb976c51cf0ebef6c375fa65e10f52c66770d",
+          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.17/codex-acp-0.16.17-aarch64-apple-darwin.tar.gz",
+          "sha256": "78f5824173ba7aa094027dbdaab44a8094789d6d4aa57c5170be82e0c90868ba",
           "binary": "codex-acp"
         },
         "darwin-x64": {
-          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.15/codex-acp-0.16.15-x86_64-apple-darwin.tar.gz",
-          "sha256": "d3dea09939da8a4d16c1d1b445f0c4a635910175c8ebae56b41ac98a19898811",
+          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.17/codex-acp-0.16.17-x86_64-apple-darwin.tar.gz",
+          "sha256": "9dfc8066a898ff191e22954c14e9c0116b458b623949b122c273f2472bab4ba2",
           "binary": "codex-acp"
         },
         "linux-arm64": {
-          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.15/codex-acp-0.16.15-aarch64-unknown-linux-gnu.tar.gz",
-          "sha256": "7fc4e0ccea554c0a1dc9b905a5cd19d8ad6f8d93e576a8cd1243f9894f8581bf",
+          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.17/codex-acp-0.16.17-aarch64-unknown-linux-gnu.tar.gz",
+          "sha256": "bd4e9ae0bbf0903e9086e1fcc65a898e02a09a52b148b554650ef53c54933e86",
           "binary": "codex-acp"
         },
         "linux-x64": {
-          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.15/codex-acp-0.16.15-x86_64-unknown-linux-gnu.tar.gz",
-          "sha256": "848df540be2b00a23dcc8f7f8e2319275283df3c238bfcf143e36d0b8c9a4879",
+          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.17/codex-acp-0.16.17-x86_64-unknown-linux-gnu.tar.gz",
+          "sha256": "334db4084f54b9b916cc8c6f275d19e38ca5e01dead28614b6196c2e8da8bcfa",
           "binary": "codex-acp"
         },
         "win32-arm64": {
-          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.15/codex-acp-0.16.15-aarch64-pc-windows-msvc.tar.gz",
-          "sha256": "5f24dab2f9afe29f1332b8e69c84a7e4e8130fdda9b07916d71d89151336a057",
+          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.17/codex-acp-0.16.17-aarch64-pc-windows-msvc.tar.gz",
+          "sha256": "6cf9233885e64fea7c06438d50c5e36d0a600476765fe89dd07c5802550edd00",
           "binary": "codex-acp.exe"
         },
         "win32-x64": {
-          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.15/codex-acp-0.16.15-x86_64-pc-windows-msvc.tar.gz",
-          "sha256": "8e075171dec044dcee4a8d95765c9917899bdee923fa4f66b0241311beff22fe",
+          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.17/codex-acp-0.16.17-x86_64-pc-windows-msvc.tar.gz",
+          "sha256": "7ff1c0582b00d5fff0cce1a56c80b638e9ac9d44480539d6cb37333d865863c4",
           "binary": "codex-acp.exe"
         }
       }
     },
     "claude": {
-      "version": "0.52.0-jaz.2",
+      "version": "0.52.0-jaz.4",
       "assets": {
         "darwin-arm64": {
-          "url": "https://github.com/gluonfield/claude-agent-acp/releases/download/v0.52.0-jaz.2/claude-agent-acp-0.52.0-jaz.2-darwin-arm64.tar.gz",
-          "sha256": "255cda3a747d2ab4a56d10e32939d8b4cf77d92d1eb885bbcd44d10b13180f15",
+          "url": "https://github.com/gluonfield/claude-agent-acp/releases/download/v0.52.0-jaz.4/claude-agent-acp-0.52.0-jaz.4-darwin-arm64.tar.gz",
+          "sha256": "0f4e6094ec3704251d21eb2024977ccfbefa0c050fb1ff8468ce503a5cfc6f96",
           "binary": "claude-agent-acp",
           "env": {
             "CLAUDE_CODE_EXECUTABLE": "claude"
           }
         },
         "darwin-x64": {
-          "url": "https://github.com/gluonfield/claude-agent-acp/releases/download/v0.52.0-jaz.2/claude-agent-acp-0.52.0-jaz.2-darwin-x64.tar.gz",
-          "sha256": "3e65224f481e6c17747406a01a8c80f0aadd0c3bfae3d459cbb85ac84e9003ab",
+          "url": "https://github.com/gluonfield/claude-agent-acp/releases/download/v0.52.0-jaz.4/claude-agent-acp-0.52.0-jaz.4-darwin-x64.tar.gz",
+          "sha256": "648b1a532ccc9a9ea5776aeb7a2c63b1e1ef2679e0be219d0f0acf6628306864",
           "binary": "claude-agent-acp",
           "env": {
             "CLAUDE_CODE_EXECUTABLE": "claude"
           }
         },
         "linux-arm64": {
-          "url": "https://github.com/gluonfield/claude-agent-acp/releases/download/v0.52.0-jaz.2/claude-agent-acp-0.52.0-jaz.2-linux-arm64.tar.gz",
-          "sha256": "4688cf500ee70656d62ba40b44e53b31447a7de7b8825c22f117921d85a6655d",
+          "url": "https://github.com/gluonfield/claude-agent-acp/releases/download/v0.52.0-jaz.4/claude-agent-acp-0.52.0-jaz.4-linux-arm64.tar.gz",
+          "sha256": "cded53ee7c074b759ad86afc6aa4ca50e90924df7db0ab0ae297a15bb5c55fbf",
           "binary": "claude-agent-acp",
           "env": {
             "CLAUDE_CODE_EXECUTABLE": "claude"
           }
         },
         "linux-x64": {
-          "url": "https://github.com/gluonfield/claude-agent-acp/releases/download/v0.52.0-jaz.2/claude-agent-acp-0.52.0-jaz.2-linux-x64.tar.gz",
-          "sha256": "6341c2f23cd1897df15a2d740444b484c65664342f1d8497250030ca13f74312",
+          "url": "https://github.com/gluonfield/claude-agent-acp/releases/download/v0.52.0-jaz.4/claude-agent-acp-0.52.0-jaz.4-linux-x64.tar.gz",
+          "sha256": "60f78a9e1cee7613a3cc1f0d112cdba98ac7b6b3203191054783f32b1fdb34b9",
           "binary": "claude-agent-acp",
           "env": {
             "CLAUDE_CODE_EXECUTABLE": "claude"
           }
         },
         "win32-x64": {
-          "url": "https://github.com/gluonfield/claude-agent-acp/releases/download/v0.52.0-jaz.2/claude-agent-acp-0.52.0-jaz.2-win32-x64.tar.gz",
-          "sha256": "6037e4b8280bde540d94cf3e640cc4b09fc9d9e84881d69e1b3d8b993317c4a7",
+          "url": "https://github.com/gluonfield/claude-agent-acp/releases/download/v0.52.0-jaz.4/claude-agent-acp-0.52.0-jaz.4-win32-x64.tar.gz",
+          "sha256": "200bdf2427ad703196093cf07c671f7685c03f80df52d4094bace75fc00e9fb5",
           "binary": "claude-agent-acp.exe",
           "env": {
             "CLAUDE_CODE_EXECUTABLE": "claude.exe"
