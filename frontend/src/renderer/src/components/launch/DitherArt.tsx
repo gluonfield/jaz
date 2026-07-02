@@ -276,9 +276,13 @@ export function DitherTerrain({ className = '', rows = 44, delay = 0 }: { classN
   const [cols, setCols] = useState(0)
   useLayoutEffect(() => {
     const el = wrapRef.current!
-    const update = () => setCols(Math.max(1, Math.ceil(el.clientWidth / 4)))
-    update()
-    const observer = new ResizeObserver(update)
+    // Size from the content box (padding excluded) so a padded wrapper can
+    // never feed its own overflow back into a grow loop. The observer fires
+    // once on observe, so no manual initial measure.
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[entries.length - 1].contentRect.width
+      setCols(Math.max(1, Math.floor(width / 4)))
+    })
     observer.observe(el)
     return () => observer.disconnect()
   }, [])
