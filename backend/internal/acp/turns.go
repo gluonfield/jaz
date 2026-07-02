@@ -60,6 +60,7 @@ func (m *Manager) runPromptCall(ctx context.Context, job *jobState, done chan st
 		m.failPromptCall(done, job, fmt.Errorf("acp peer is not active"))
 		return
 	}
+	m.withACPTranscriptBarrier(job.Snapshot(), nil)
 	raw, err := peer.Call(ctx, acpschema.AgentMethodSessionPrompt, req)
 	if err != nil {
 		m.failPromptCall(done, job, err)
@@ -150,7 +151,6 @@ func (m *Manager) finishTurn(done chan struct{}, job *jobState) {
 	m.resolveDanglingToolCalls(job)
 	snapshot := job.Snapshot()
 	if snapshot.State == StateIdle || snapshot.State == StateFailed || snapshot.State == StateCancelled {
-		m.transcriptBuffers.closeTextRun(snapshot.ID)
 		if snapshot.State == StateIdle && planTurnDefersResult(planRequested, snapshot.ACPAgent) {
 			m.publishPlanTurnResult(snapshot, planProposal)
 		}

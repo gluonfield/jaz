@@ -191,7 +191,7 @@ function canMergeACPText(prev: SessionEvent | undefined, event: SessionEvent): b
   if (prev.acp.text_run_id || event.acp.text_run_id) {
     return Boolean(prev.acp.text_run_id && prev.acp.text_run_id === event.acp.text_run_id)
   }
-  return true
+  return false
 }
 
 function preferredDuplicateEvent(existing: SessionEvent, incoming: SessionEvent): SessionEvent {

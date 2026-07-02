@@ -1,7 +1,6 @@
 package acp
 
 import (
-	"strconv"
 	"sync"
 	"time"
 
@@ -9,11 +8,6 @@ import (
 )
 
 const acpTranscriptFlushInterval = 100 * time.Millisecond
-
-// Older ACP adapters carry no stream ID or close event, so Jaz owns the fallback
-// display run boundary. Tool/status barriers keep a fallback run open; a real
-// pause closes it. Newer adapters should send ContentChunk.messageId instead.
-const acpTranscriptTextRunIdle = 2 * time.Second
 
 type acpTranscriptRun struct {
 	eventType         string
@@ -33,9 +27,6 @@ type acpTranscriptBuffer struct {
 	publishMu sync.Mutex
 	timer     *time.Timer
 	runs      []acpTranscriptRun
-	nextRun   int64
-	activeRun string
-	lastText  time.Time
 }
 
 func (m *Manager) queueACPMessage(job *jobState, content string) {
@@ -126,19 +117,11 @@ func (b *acpTranscriptBuffers) delete(sessionID string) {
 	}
 }
 
-func (b *acpTranscriptBuffers) closeTextRun(sessionID string) {
-	buffer := b.get(sessionID, false)
-	if buffer == nil {
-		return
-	}
-	buffer.closeTextRun()
-}
-
 func (b *acpTranscriptBuffer) queue(m *Manager, run acpTranscriptRun) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	run.textRunID = b.textRunID(time.Now().UTC(), run.upstreamMessageID)
-	if n := len(b.runs); n > 0 && b.runs[n-1].eventType == run.eventType && b.runs[n-1].textRunID == run.textRunID {
+	run.textRunID = textRunID(run.upstreamMessageID)
+	if n := len(b.runs); n > 0 && run.textRunID != "" && b.runs[n-1].eventType == run.eventType && b.runs[n-1].textRunID == run.textRunID {
 		b.runs[n-1].content += run.content
 	} else {
 		b.runs = append(b.runs, run)
@@ -150,25 +133,11 @@ func (b *acpTranscriptBuffer) queue(m *Manager, run acpTranscriptRun) {
 	}
 }
 
-func (b *acpTranscriptBuffer) textRunID(now time.Time, upstreamMessageID string) string {
+func textRunID(upstreamMessageID string) string {
 	if upstreamMessageID != "" {
-		b.activeRun = ""
-		b.lastText = time.Time{}
 		return "message:" + upstreamMessageID
 	}
-	if b.activeRun == "" || (!b.lastText.IsZero() && now.Sub(b.lastText) > acpTranscriptTextRunIdle) {
-		b.nextRun++
-		b.activeRun = "text-" + strconv.FormatInt(b.nextRun, 10)
-	}
-	b.lastText = now
-	return b.activeRun
-}
-
-func (b *acpTranscriptBuffer) closeTextRun() {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.activeRun = ""
-	b.lastText = time.Time{}
+	return ""
 }
 
 func (b *acpTranscriptBuffer) withBarrier(m *Manager, job Job, publish func()) {

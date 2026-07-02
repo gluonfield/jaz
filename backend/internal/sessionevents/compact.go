@@ -296,12 +296,6 @@ func canMergeACPTextEvent(prev Event, prevLastSeq int64, event Event) bool {
 	if prev.ACP.TextRunID != "" || event.ACP.TextRunID != "" {
 		return prev.ACP.TextRunID != "" && prev.ACP.TextRunID == event.ACP.TextRunID
 	}
-	if prevLastSeq == 0 || event.Seq == 0 {
-		return true
-	}
-	if event.Seq == prevLastSeq+1 {
-		return true
-	}
 	return false
 }
 

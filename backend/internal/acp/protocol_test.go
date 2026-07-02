@@ -420,6 +420,7 @@ func TestSideChatSessionUpdatePublishesAndPersistsSideChatEvent(t *testing.T) {
 			"sessionId": "acp-session",
 			"update": map[string]any{
 				"sessionUpdate": "agent_message_chunk",
+				"messageId":     "side-chat-message",
 				"_meta": map[string]any{
 					"codex": map[string]any{
 						"sideChat": map[string]any{

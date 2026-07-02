@@ -28,6 +28,11 @@ func TestFakeACPAgentProcess(t *testing.T) {
 	}
 	currentModel := ""
 	currentEffort := ""
+	messageSeq := 0
+	nextMessageID := func(kind string) string {
+		messageSeq++
+		return fmt.Sprintf("fake:%s:%d", kind, messageSeq)
+	}
 	var pendingPrompt *jsonrpc.Message
 	cancelArrived := false
 	for {
@@ -116,6 +121,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				"sessionId": "fake-session",
 				"update": map[string]any{
 					"sessionUpdate": "agent_message_chunk",
+					"messageId":     "fake:replay:1",
 					"content":       map[string]any{"type": "text", "text": "replayed history"},
 				},
 			})
@@ -293,6 +299,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 					"update": map[string]any{
 						"sessionUpdate": "agent_message_chunk",
 						"_meta":         promptReq.Meta,
+						"messageId":     nextMessageID("side-chat"),
 						"content":       map[string]any{"type": "text", "text": "hello from side chat"},
 					},
 				})
@@ -339,6 +346,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				"sessionId": "fake-session",
 				"update": map[string]any{
 					"sessionUpdate": "agent_message_chunk",
+					"messageId":     nextMessageID("message"),
 					"content":       map[string]any{"type": "text", "text": "hello from fake agent"},
 				},
 			})
@@ -463,11 +471,14 @@ func fakeAskThenBlock(conn jsonrpc.MessageConn, prompt *jsonrpc.Message) {
 	}
 	_ = conn.Send(context.Background(), req)
 
+	messageSeq := 0
 	finishSteered := func(steered *jsonrpc.Message) {
+		messageSeq++
 		notify(conn, "session/update", map[string]any{
 			"sessionId": "fake-session",
 			"update": map[string]any{
 				"sessionUpdate": "agent_message_chunk",
+				"messageId":     fmt.Sprintf("fake:steered:%d", messageSeq),
 				"content":       map[string]any{"type": "text", "text": "hello from fake agent"},
 			},
 		})
