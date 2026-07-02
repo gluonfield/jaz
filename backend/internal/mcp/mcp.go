@@ -21,8 +21,9 @@ import (
 )
 
 const (
-	RegistryGroup  = "mcp"
-	maxToolNameLen = 64
+	RegistryGroup       = "mcp"
+	maxToolNameLen      = 64
+	remoteStatusTimeout = 25 * time.Second
 
 	ProxyServerID   = "jaz_mcp"
 	ProxyServerName = "jaz_mcp"
@@ -216,7 +217,7 @@ func (m *Manager) refreshServerList(ctx context.Context, seq uint64, servers []m
 		wg.Add(1)
 		go func(index int, server mcpconfig.Server) {
 			defer wg.Done()
-			sessionCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			sessionCtx, cancel := context.WithTimeout(ctx, remoteStatusTimeout)
 			defer cancel()
 			handler := m.backgroundHandler(server)
 			result, err := m.connectForStatus(sessionCtx, server, handler)
@@ -297,7 +298,7 @@ func (m *Manager) ensureProxyReady(ctx context.Context) {
 	if !m.proxyRefreshNeeded() {
 		return
 	}
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, remoteStatusTimeout)
 	defer cancel()
 	m.Refresh(ctx)
 }
@@ -386,7 +387,7 @@ func (m *Manager) Test(ctx context.Context, server mcpconfig.Server) mcpconfig.S
 	if strings.TrimSpace(server.ID) == "" {
 		server.ID = "test"
 	}
-	sessionCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	sessionCtx, cancel := context.WithTimeout(ctx, remoteStatusTimeout)
 	defer cancel()
 	handler := m.backgroundHandler(server)
 	result, err := m.connectForStatus(sessionCtx, server, handler)
