@@ -890,12 +890,8 @@ export interface AgentFilesResponse {
 
 export interface MCPHeader {
   name: string
-  value: string
-}
-
-export interface MCPEnvHeader {
-  name: string
-  env_var: string
+  value?: string
+  envvar?: string
 }
 
 export interface MCPOAuthConfig {
@@ -912,7 +908,6 @@ export interface MCPServer {
   enabled: boolean
   bearer_token_env_var?: string
   headers?: MCPHeader[]
-  env_headers?: MCPEnvHeader[]
   oauth?: MCPOAuthConfig
   status: 'connected' | 'disabled' | 'error' | 'needs_auth' | 'unknown'
   tool_count: number
@@ -934,7 +929,6 @@ export interface MCPServerInput {
   enabled: boolean
   bearer_token_env_var?: string
   headers?: MCPHeader[]
-  env_headers?: MCPEnvHeader[]
   oauth?: MCPOAuthConfig
 }
 

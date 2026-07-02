@@ -38,8 +38,7 @@ func TestMCPServerSettingsAPI(t *testing.T) {
 		"enabled":true,
 		"bearer_token_env_var":"DOCS_TOKEN",
 		"oauth":{"client_id":"docs-client","client_secret_env_var":"DOCS_OAUTH_SECRET"},
-		"headers":[{"name":"X-Team","value":"platform"}],
-		"env_headers":[{"name":"X-Secret","env_var":"DOCS_SECRET"}]
+		"headers":[{"name":"X-Team","value":"platform"},{"name":"X-Secret","envvar":"DOCS_SECRET"}]
 	}`))
 	createReq.Header.Set("Content-Type", "application/json")
 	createRes := httptest.NewRecorder()
@@ -79,13 +78,10 @@ func TestMCPServerSettingsAPI(t *testing.T) {
 		Servers []struct {
 			ID      string `json:"id"`
 			Headers []struct {
-				Name  string `json:"name"`
-				Value string `json:"value"`
-			} `json:"headers"`
-			EnvHeaders []struct {
 				Name   string `json:"name"`
-				EnvVar string `json:"env_var"`
-			} `json:"env_headers"`
+				Value  string `json:"value"`
+				EnvVar string `json:"envvar"`
+			} `json:"headers"`
 			OAuth struct {
 				ClientID string `json:"client_id"`
 			} `json:"oauth"`
@@ -95,8 +91,8 @@ func TestMCPServerSettingsAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(listed.Servers) != 1 || listed.Servers[0].ID != created.ID ||
-		len(listed.Servers[0].Headers) != 1 || listed.Servers[0].Headers[0].Value != "platform" ||
-		len(listed.Servers[0].EnvHeaders) != 1 || listed.Servers[0].EnvHeaders[0].EnvVar != "DOCS_SECRET" ||
+		len(listed.Servers[0].Headers) != 2 || listed.Servers[0].Headers[0].Value != "platform" ||
+		listed.Servers[0].Headers[1].EnvVar != "DOCS_SECRET" ||
 		listed.Servers[0].OAuth.ClientID != "docs-client" {
 		t.Fatalf("listed = %#v", listed)
 	}
