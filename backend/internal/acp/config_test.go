@@ -1126,7 +1126,7 @@ func TestAutoAuthMethodUsesAPIKeyForCodexWhenOAuthMissing(t *testing.T) {
 	}
 }
 
-func TestAutoAuthMethodPrefersCodexOAuth(t *testing.T) {
+func TestAutoAuthMethodPrefersCodexAPIKeyOverStaleOAuth(t *testing.T) {
 	codexHome := t.TempDir()
 	if err := os.WriteFile(filepath.Join(codexHome, "auth.json"), []byte(`{}`), 0o600); err != nil {
 		t.Fatal(err)
@@ -1137,7 +1137,7 @@ func TestAutoAuthMethodPrefersCodexOAuth(t *testing.T) {
 		"OPENAI_API_KEY": "key",
 	})
 
-	if method != "chatgpt" || len(missing) != 0 {
+	if method != "openai-api-key" || len(missing) != 0 {
 		t.Fatalf("method=%q missing=%v", method, missing)
 	}
 }
