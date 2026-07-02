@@ -504,19 +504,6 @@ func autoAuthMethod(agent string, raw json.RawMessage, env map[string]string) (s
 	if err := json.Unmarshal(raw, &init); err != nil {
 		return "", nil
 	}
-	if method := configuredEnvAuthMethod(init.AuthMethods, env); method != "" {
-		return method, nil
-	}
-	if agent == AgentCodex {
-		if method := configuredEnvAuthMethod(init.AuthMethods, env); method != "" {
-			return method, nil
-		}
-		for _, method := range init.AuthMethods {
-			if method.ID == "chatgpt" && codexAuthAvailable(env) {
-				return method.ID, nil
-			}
-		}
-	}
 	if agent == AgentGrok {
 		for _, method := range init.AuthMethods {
 			if method.ID == "cached_token" && grokAuthAvailable(env) {
@@ -531,6 +518,13 @@ func autoAuthMethod(agent string, raw json.RawMessage, env map[string]string) (s
 	}
 	if method := configuredEnvAuthMethod(init.AuthMethods, env); method != "" {
 		return method, nil
+	}
+	if agent == AgentCodex {
+		for _, method := range init.AuthMethods {
+			if method.ID == "chatgpt" && codexAuthAvailable(env) {
+				return method.ID, nil
+			}
+		}
 	}
 	var missing []string
 	if agent == AgentCodex {
