@@ -97,3 +97,33 @@ func TestProcessEnvBindsSelectedCodexProviderKeyOnly(t *testing.T) {
 		t.Fatalf("codex default (OAuth) must not receive provider API keys: %#v", openai)
 	}
 }
+
+func TestProcessEnvBindsCodexCustomProviderKeyForACPAuth(t *testing.T) {
+	clearHostEnv(t)
+	root := t.TempDir()
+	t.Setenv("PATH", "/bin")
+	t.Setenv("HOME", t.TempDir())
+	if err := runtimeenv.Save(runtimeenv.Path(root), map[string]string{
+		"ACME_KEY": "acme-key",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(nil, Config{
+		Root: root,
+		Providers: map[string]modelprovider.ModelProviderConfig{
+			"acme": {Type: "openai-compatible", BaseURL: "https://acme.test/v1", APIKeyEnv: "ACME_KEY"},
+		},
+	}, nil)
+
+	env := manager.processEnv("codex", AgentConfig{ModelProvider: "acme"})
+	if env["ACME_KEY"] != "acme-key" {
+		t.Fatalf("custom provider key was not bound to its configured env: %#v", env)
+	}
+	if env["OPENAI_API_KEY"] != "acme-key" {
+		t.Fatalf("custom provider key was not exposed for codex ACP auth: %#v", env)
+	}
+	method, missing := autoAuthMethod("codex", codexInitializeAuthMethods(), env)
+	if method != "openai-api-key" || len(missing) != 0 {
+		t.Fatalf("method=%q missing=%v", method, missing)
+	}
+}

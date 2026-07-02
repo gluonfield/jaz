@@ -263,6 +263,11 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 		}
 		if target, value, ok := auth.APIKeyBinding(); ok {
 			env[target] = value
+			if target != "OPENAI_API_KEY" {
+				if _, ok := codexProvider(agent.ModelProvider, m.providers()); ok {
+					env["OPENAI_API_KEY"] = value
+				}
+			}
 		}
 	}
 	if name == AgentClaude {
