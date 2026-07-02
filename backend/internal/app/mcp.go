@@ -51,8 +51,6 @@ func NewMCPManager(store *sqlitestore.Store, catalog *connections.Catalog, regis
 	return mcpruntime.NewManager(reader, store, registry, logger, mcpruntime.WithBuiltinServerProvider(jaztools.ServerConfig(jaz.URL()), jaz.Server))
 }
 
-// connectionTokenStore is the slice of storage the connection-backed reader
-// needs: stored MCP servers plus per-connection accounts and OAuth tokens.
 type connectionTokenStore interface {
 	mcpconfig.ServerReader
 	ListConnections(context.Context, string) ([]integrations.Connection, error)

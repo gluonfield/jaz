@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"strings"
 
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/httpapi"
@@ -19,18 +20,22 @@ type ConnectHandler struct {
 	Connect *connections.ConnectService
 	OAuth   *connections.OAuthService
 	QR      *connections.QRService
+	// CallbackBaseURL is the trusted public origin for OAuth redirect URIs. When
+	// empty the request host is used. Providers like Slack require an HTTPS
+	// callback, configured here rather than derived from request headers.
+	CallbackBaseURL string
 }
 
 type qrPasswordRequest struct {
 	Password string `json:"password"`
 }
 
-func NewConnectHandler(connect *connections.ConnectService, oauth *connections.OAuthService, qr *connections.QRService) ConnectHandler {
-	return ConnectHandler{Connect: connect, OAuth: oauth, QR: qr}
+func NewConnectHandler(connect *connections.ConnectService, oauth *connections.OAuthService, qr *connections.QRService, callbackBaseURL string) ConnectHandler {
+	return ConnectHandler{Connect: connect, OAuth: oauth, QR: qr, CallbackBaseURL: strings.TrimRight(strings.TrimSpace(callbackBaseURL), "/")}
 }
 
 func (h ConnectHandler) Start(w http.ResponseWriter, r *http.Request) {
-	start, err := h.Connect.Start(r.Context(), r.PathValue("id"), oauthCallbackURL(r))
+	start, err := h.Connect.Start(r.Context(), r.PathValue("id"), h.callbackURL(r))
 	if err != nil {
 		if errors.Is(err, connections.ErrQRProviderUnavailable) {
 			httpapi.WriteError(w, http.StatusServiceUnavailable, err)
@@ -102,8 +107,12 @@ func (h ConnectHandler) CloseQR(w http.ResponseWriter, r *http.Request) {
 	httpapi.WriteJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-func oauthCallbackURL(r *http.Request) string {
-	return httpapi.RequestBaseURL(r) + OAuthCallbackPath
+func (h ConnectHandler) callbackURL(r *http.Request) string {
+	base := h.CallbackBaseURL
+	if base == "" {
+		base = httpapi.RequestBaseURL(r)
+	}
+	return base + OAuthCallbackPath
 }
 
 func writeCallbackHTML(w http.ResponseWriter, status int, title, message string, autoClose bool) {

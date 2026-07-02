@@ -75,8 +75,6 @@ func TestConnectionMCPServerReaderSkipsSlackWithoutToken(t *testing.T) {
 }
 
 func TestConnectionMCPServerReaderIgnoresProvidersWithoutTokenAuth(t *testing.T) {
-	// Gmail declares a RemoteMCP but not TokenAuth, so a connected Gmail account
-	// with a token must not be proxied as a token-backed server.
 	reader := slackReader(fakeConnectionTokenStore{
 		connections: map[string][]integrations.Connection{
 			"gmail": {{ID: "gmail:default", Provider: "gmail"}},

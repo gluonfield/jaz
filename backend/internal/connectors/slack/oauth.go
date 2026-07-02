@@ -16,22 +16,18 @@ const (
 	ProviderID   = "slack"
 	ProviderName = "Slack"
 
-	// OAuthClientID is Jaz's internal Slack app. Slack's MCP server rejects
-	// dynamic client registration, so the client ID is pinned; it is a public
-	// client used with authorization-code + PKCE and carries no secret.
+	// Pinned public client: Slack rejects dynamic registration, so the ID ships
+	// with Jaz and is used with PKCE and no secret.
 	OAuthClientID = "11223932874336.11401908920209"
 
-	// v2_user endpoints mint a user token (xoxp) for a public PKCE client.
+	// v2_user endpoints mint a user token for a public PKCE client.
 	OAuthAuthURL  = "https://slack.com/oauth/v2_user/authorize"
 	OAuthTokenURL = "https://slack.com/api/oauth.v2.user.access"
 	authTestURL   = "https://slack.com/api/auth.test"
 
-	// RemoteMCPURL is Slack's official MCP server; the stored user token
-	// authenticates requests to it.
 	RemoteMCPURL = "https://mcp.slack.com/mcp"
 )
 
-// UserScopes are the user-token scopes Slack's MCP tools require.
 var UserScopes = []string{
 	"channels:read",
 	"channels:history",
@@ -54,7 +50,6 @@ type OAuthClientConfig struct {
 	ClientID string
 }
 
-// Resolve returns the configured client ID, or the bundled Jaz client ID.
 func (c OAuthClientConfig) Resolve() string {
 	if id := strings.TrimSpace(c.ClientID); id != "" {
 		return id
@@ -62,7 +57,6 @@ func (c OAuthClientConfig) Resolve() string {
 	return OAuthClientID
 }
 
-// AuthorizeURL builds the consent URL for the public PKCE client.
 func AuthorizeURL(clientID, redirectURL, state, verifier string) string {
 	q := url.Values{
 		"client_id":             {clientID},
@@ -76,9 +70,8 @@ func AuthorizeURL(clientID, redirectURL, state, verifier string) string {
 	return OAuthAuthURL + "?" + q.Encode()
 }
 
-// Exchange trades the authorization code for a Slack user token. Slack wraps
-// the response in an {ok, ...} envelope rather than a bare OAuth2 token, so the
-// exchange is done directly instead of through golang.org/x/oauth2.
+// Exchange is manual because Slack returns an {ok, ...} envelope, not a bare
+// OAuth2 token.
 func Exchange(ctx context.Context, httpClient *http.Client, clientID, redirectURL, code, verifier string) (string, error) {
 	return exchangeAt(ctx, httpClient, OAuthTokenURL, clientID, redirectURL, code, verifier)
 }
@@ -138,7 +131,6 @@ func (p Profile) AccountName() string {
 	}
 }
 
-// Identify verifies the token and resolves the workspace/user via auth.test.
 func Identify(ctx context.Context, httpClient *http.Client, accessToken string) (Profile, error) {
 	return identifyAt(ctx, httpClient, authTestURL, accessToken)
 }

@@ -2,6 +2,7 @@ package app
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/wins/jaz/backend/internal/browserworker"
 	"github.com/wins/jaz/backend/internal/connections"
@@ -40,7 +41,7 @@ func NewRoutes(deps routeDeps) server.Routes {
 	routes := usageRoutes(deps.Usage)
 	routes = append(routes, feedRoutes(deps.Feed)...)
 	routes = append(routes, modelCatalogRoutes(deps.ModelCatalog)...)
-	routes = appendConnectionRoutes(routes, deps.Connections, deps.ConnectionStart, deps.ConnectionOAuth, deps.ConnectionQR)
+	routes = appendConnectionRoutes(routes, deps.Connections, deps.ConnectionStart, deps.ConnectionOAuth, deps.ConnectionQR, deps.Config)
 	routes = appendDeviceRoutes(routes, deps.Devices, deps.Config, deps.Jaz.Devices.DisablePairing)
 	return appendBrowserRoutes(routes, deps.BrowserSettings, deps.Browser)
 }
@@ -80,7 +81,14 @@ func usageRoutes(usage usagecore.Service) server.Routes {
 	}
 }
 
-func appendConnectionRoutes(routes server.Routes, service *connections.Service, connect *connections.ConnectService, oauth *connections.OAuthService, qr *connections.QRService) server.Routes {
+func oauthCallbackBaseURL(cfg serverconfig.Config) string {
+	if strings.TrimSpace(cfg.PublicURL) == "" {
+		return ""
+	}
+	return serverconfig.ClientBaseURL(cfg)
+}
+
+func appendConnectionRoutes(routes server.Routes, service *connections.Service, connect *connections.ConnectService, oauth *connections.OAuthService, qr *connections.QRService, cfg serverconfig.Config) server.Routes {
 	if service == nil {
 		return routes
 	}
@@ -91,7 +99,7 @@ func appendConnectionRoutes(routes server.Routes, service *connections.Service, 
 		server.Route{Pattern: "DELETE /v1/connections/accounts/{id}", Handler: httpHandlerFunc(handler.Disconnect)},
 	)
 	if connect != nil || oauth != nil || qr != nil {
-		connectHandler := connectionsapi.NewConnectHandler(connect, oauth, qr)
+		connectHandler := connectionsapi.NewConnectHandler(connect, oauth, qr, oauthCallbackBaseURL(cfg))
 		if connect != nil {
 			routes = append(routes, server.Route{Pattern: "POST /v1/connections/plugins/{id}/connect", Handler: httpHandlerFunc(connectHandler.Start)})
 		}
