@@ -138,9 +138,7 @@ func (s *Server) beginACPTurn(ctx context.Context, session storage.Session, mess
 	if err := s.ensureManagedWorktree(ctx, session); err != nil {
 		return session, err
 	}
-	session.Status = storage.StatusRunning
-	session.Error = ""
-	storage.MarkSessionAttention(&session, time.Now().UTC())
+	markSessionRunning(&session)
 	if session.Title == "" {
 		session.Title = titleFromMessage(message)
 	}

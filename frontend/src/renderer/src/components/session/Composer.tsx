@@ -70,7 +70,7 @@ export function ComposerCard({
   planModeActive = false,
   goalControlVisible = false,
   goalAvailable = false,
-  goalActive = false,
+  goalEngaged = false,
   queueWhenStreaming = false,
   translucent = false,
   draftStorageKey,
@@ -81,6 +81,7 @@ export function ComposerCard({
   contexts = [],
   onSend,
   onStop,
+  onClearGoal,
   onVoice,
   onUploadAttachment,
   onRemoveContext,
@@ -95,7 +96,7 @@ export function ComposerCard({
   planModeActive?: boolean
   goalControlVisible?: boolean
   goalAvailable?: boolean
-  goalActive?: boolean
+  goalEngaged?: boolean
   queueWhenStreaming?: boolean
   /** let a backdrop (e.g. the welcome particle field) read through the card */
   translucent?: boolean
@@ -111,6 +112,8 @@ export function ComposerCard({
   contexts?: ComposerContext[]
   onSend: SendMessageHandler
   onStop?: () => void
+  /** stops the goal auto-continuation loop server-side */
+  onClearGoal?: () => void
   onVoice?: () => void
   onUploadAttachment?: (file: File) => Promise<Attachment>
   onRemoveContext?: (id: string) => void
@@ -127,10 +130,10 @@ export function ComposerCard({
   // never animates (see the card className below).
   const effectsEnabled = useEffectsEnabled()
   const planToggleDisabled = disabled || !planAvailable
-  const goalToggleDisabled = disabled || !goalAvailable || goalActive
+  const goalToggleDisabled = disabled || !goalAvailable
   const planModeOn = planAvailable && (planModeOverride ?? planModeActive)
-  const goalModeOn = goalAvailable && (goalRequested || goalActive)
-  const showGoalChip = goalAvailable && (goalRequested || goalActive)
+  const goalModeOn = goalAvailable && (goalRequested || goalEngaged)
+  const showGoalChip = goalModeOn
   const mention = useMentionInput({
     fileRoot,
     disabled,
@@ -167,8 +170,8 @@ export function ComposerCard({
   }, [planModeActive])
 
   useEffect(() => {
-    if (!goalAvailable || goalActive) setGoalRequested(false)
-  }, [goalActive, goalAvailable])
+    if (!goalAvailable || goalEngaged) setGoalRequested(false)
+  }, [goalEngaged, goalAvailable])
 
   const { dropTargetRef, dragging: draggingFiles } = useFileDropTarget<HTMLDivElement>({
     disabled,
@@ -191,9 +194,16 @@ export function ComposerCard({
     setPlanMode(!planModeOn)
   }
 
+  // An engaged goal is cleared server-side; a not-yet-sent request is disarmed.
+  const turnGoalOff = () => {
+    if (goalEngaged) onClearGoal?.()
+    else setGoalRequested(false)
+  }
+
   const toggleGoalRequested = () => {
     if (goalToggleDisabled) return
-    setGoalRequested((value) => !value)
+    if (goalModeOn) turnGoalOff()
+    else setGoalRequested(true)
   }
 
   useEffect(() => {
@@ -381,7 +391,7 @@ export function ComposerCard({
               {goalControlVisible ? (
                 goalAvailable ? (
                   <GoalMenuToggle
-                    checked={goalActive || goalRequested}
+                    checked={goalEngaged || goalRequested}
                     disabled={goalToggleDisabled}
                     onToggle={toggleGoalRequested}
                   />
@@ -424,10 +434,10 @@ export function ComposerCard({
               ) : null}
               {showGoalChip ? (
                 <GoalChip
-                  active={goalActive}
-                  requested={goalRequested}
+                  active={goalEngaged}
+                  requested={goalRequested || goalEngaged}
                   disabled={disabled}
-                  onRemove={() => setGoalRequested(false)}
+                  onRemove={turnGoalOff}
                 />
               ) : null}
             </AnimatePresence>
@@ -482,7 +492,7 @@ export function Composer({
   planModeActive,
   goalControlVisible,
   goalAvailable,
-  goalActive,
+  goalEngaged,
   queuedPrompts = [],
   steerDisabled,
   draftStorageKey,
@@ -490,6 +500,7 @@ export function Composer({
   contexts,
   onSend,
   onStop,
+  onClearGoal,
   onVoice,
   onUploadAttachment,
   onRemoveContext,
@@ -506,7 +517,7 @@ export function Composer({
   planModeActive?: boolean
   goalControlVisible?: boolean
   goalAvailable?: boolean
-  goalActive?: boolean
+  goalEngaged?: boolean
   queuedPrompts?: QueuedMessage[]
   steerDisabled?: boolean
   draftStorageKey?: string
@@ -515,6 +526,7 @@ export function Composer({
   contexts?: ComposerContext[]
   onSend: SendMessageHandler
   onStop: () => void
+  onClearGoal?: () => void
   onVoice?: () => void
   onUploadAttachment?: (file: File) => Promise<Attachment>
   onRemoveContext?: (id: string) => void
@@ -550,7 +562,7 @@ export function Composer({
         planModeActive={planModeActive}
         goalControlVisible={goalControlVisible}
         goalAvailable={goalAvailable}
-        goalActive={goalActive}
+        goalEngaged={goalEngaged}
         queueWhenStreaming
         draftStorageKey={draftStorageKey}
         draftStorage="local"
@@ -558,6 +570,7 @@ export function Composer({
         contexts={contexts}
         onSend={onSend}
         onStop={onStop}
+        onClearGoal={onClearGoal}
         onVoice={onVoice}
         onUploadAttachment={onUploadAttachment}
         onRemoveContext={onRemoveContext}

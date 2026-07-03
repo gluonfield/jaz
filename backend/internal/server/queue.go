@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/goal"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -218,64 +219,102 @@ func (s *Server) drainQueueSoon(sessionID string) {
 }
 
 func (s *Server) drainQueuedPrompt(ctx context.Context, sessionID string) {
-	session, prompt, ok, err := s.claimQueuedPrompt(sessionID)
+	session, prompt, ok, err := s.claimNextTurn(sessionID)
 	if err != nil {
-		s.logger().Error("queued prompt claim failed", "session", sessionID, "error", err)
+		s.logger().Error("next turn claim failed", "session", sessionID, "error", err)
 		return
 	}
 	if !ok {
 		return
 	}
+	if prompt == nil {
+		s.startGoalContinuation(ctx, session)
+		return
+	}
 	s.publishMessagesChanged(session.ID)
-	if err := s.startQueuedPrompt(ctx, session, prompt); err != nil {
+	if err := s.startQueuedPrompt(ctx, session, *prompt); err != nil {
 		s.logger().Error("queued prompt start failed", "session", session.ID, "error", err)
-		s.restoreQueuedPrompt(session.ID, prompt, 0, err.Error())
+		s.restoreQueuedPrompt(session.ID, *prompt, 0, err.Error())
 		return
 	}
 	s.publishMessagesChanged(session.ID)
 }
 
-func (s *Server) claimQueuedPrompt(sessionID string) (storage.Session, storage.QueuedMessage, bool, error) {
+func (s *Server) startGoalContinuation(ctx context.Context, session storage.Session) {
+	s.publishSessionChanged(session.ID)
+	if err := s.ensureManagedWorktree(ctx, session); err != nil {
+		s.failGoalContinuation(session.ID, err)
+		return
+	}
+	if _, err := s.ACP.ContinueGoal(ctx, session.ID); err != nil {
+		s.failGoalContinuation(session.ID, err)
+	}
+}
+
+func (s *Server) failGoalContinuation(sessionID string, err error) {
+	s.logger().Error("goal continuation start failed", "session", sessionID, "error", err)
+	s.setSessionStatus(storage.Session{ID: sessionID}, storage.StatusIdle)
+	s.publishSessionChanged(sessionID)
+}
+
+// claimNextTurn atomically selects the next turn for an idle session: the oldest
+// queued prompt, or a goal continuation when the queue is empty but an active
+// goal remains. A nil prompt with ok=true means goal continuation.
+func (s *Server) claimNextTurn(sessionID string) (storage.Session, *storage.QueuedMessage, bool, error) {
 	unlock := s.lockSession(sessionID)
 	defer unlock()
 
 	session, err := s.Store.LoadSession(sessionID)
 	if err != nil {
-		return storage.Session{}, storage.QueuedMessage{}, false, err
+		return storage.Session{}, nil, false, err
 	}
 	if session.Runtime == "" {
 		session.Runtime = storage.RuntimeACP
 	}
 	if s.sessionRuntimeRunning(session) || session.Status != storage.StatusIdle {
-		return session, storage.QueuedMessage{}, false, nil
+		return session, nil, false, nil
 	}
 	prompts := s.assignQueuedMessageIDs(storage.CanonicalQueuedMessages(session.QueuedMessages))
 	if len(prompts) == 0 {
+		// Empty queue still yields work when a goal is live; otherwise drop any
+		// stale (non-canonical) entries and report nothing to run.
+		if goal.Continuable(session.Goal) && session.Runtime == storage.RuntimeACP && s.ACP != nil {
+			session.QueuedMessages = nil
+			markSessionRunning(&session)
+			if err := s.Store.SaveSession(session); err != nil {
+				return storage.Session{}, nil, false, err
+			}
+			return session, nil, true, nil
+		}
 		if len(session.QueuedMessages) > 0 {
 			session.QueuedMessages = nil
 			if err := s.Store.SaveSession(session); err != nil {
-				return storage.Session{}, storage.QueuedMessage{}, false, err
+				return storage.Session{}, nil, false, err
 			}
 		}
-		return session, storage.QueuedMessage{}, false, nil
+		return session, nil, false, nil
 	}
 
 	prompt := prompts[0]
 	if err := s.validateQueuedPrompt(session, prompt); err != nil {
-		return storage.Session{}, storage.QueuedMessage{}, false, err
+		return storage.Session{}, nil, false, err
 	}
 	session.QueuedMessages = s.assignQueuedMessageIDs(prompts[1:])
-	session.Status = storage.StatusRunning
-	session.Error = ""
-	storage.MarkSessionAttention(&session, time.Now().UTC())
+	markSessionRunning(&session)
 	if session.Title == "" {
 		session.Title = titleFromMessage(prompt.Text)
 	}
 	if err := s.Store.SaveSession(session); err != nil {
-		return storage.Session{}, storage.QueuedMessage{}, false, err
+		return storage.Session{}, nil, false, err
 	}
 	s.maybeGenerateSessionTitle(session, prompt.Text)
-	return session, prompt, true, nil
+	return session, &prompt, true, nil
+}
+
+func markSessionRunning(session *storage.Session) {
+	session.Status = storage.StatusRunning
+	session.Error = ""
+	storage.MarkSessionAttention(session, time.Now().UTC())
 }
 
 type steeredQueuedPrompt struct {

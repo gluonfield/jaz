@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/goal"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
@@ -513,6 +514,102 @@ func TestQueuedACPDrainClaimsOnlyOnePrompt(t *testing.T) {
 	}
 	if queuedTexts(loaded.QueuedMessages) != "second" {
 		t.Fatalf("queue = %#v, want only second prompt left", loaded.QueuedMessages)
+	}
+}
+
+func goalSession(t *testing.T, store storage.SessionStore, slug string, status goal.Status) storage.Session {
+	t.Helper()
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    slug,
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     "claude",
+			SessionID: "acp-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.Goal = &goal.State{
+		Identity: goal.Identity{ID: "goal-1", ThreadID: session.ID, Objective: "ship the thing", Status: status},
+	}
+	if err := store.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+	return session
+}
+
+func TestGoalContinuationStartsWhenActiveAndQueueEmpty(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := goalSession(t, store, "goal-active", goal.StatusActive)
+	manager := &fakeACPManager{job: acp.Job{ID: session.ID, Slug: session.Slug, State: acp.StateIdle}}
+	srv := &Server{Store: store, ACP: manager}
+
+	srv.drainQueuedPrompt(context.Background(), session.ID)
+
+	manager.mu.Lock()
+	continued := append([]string(nil), manager.continueGoals...)
+	sent := manager.sent
+	manager.mu.Unlock()
+	if len(continued) != 1 || continued[0] != session.ID {
+		t.Fatalf("continueGoals = %#v, want one for %s", continued, session.ID)
+	}
+	if sent.Session != "" {
+		t.Fatalf("goal continuation must not go through Send: %#v", sent)
+	}
+}
+
+func TestGoalContinuationSkippedForTerminalStatus(t *testing.T) {
+	for _, status := range []goal.Status{goal.StatusComplete, goal.StatusBlocked, goal.StatusPaused} {
+		t.Run(string(status), func(t *testing.T) {
+			store, err := jsonstore.New(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			session := goalSession(t, store, "goal-"+string(status), status)
+			manager := &fakeACPManager{job: acp.Job{ID: session.ID, Slug: session.Slug, State: acp.StateIdle}}
+			srv := &Server{Store: store, ACP: manager}
+
+			srv.drainQueuedPrompt(context.Background(), session.ID)
+
+			manager.mu.Lock()
+			continued := len(manager.continueGoals)
+			manager.mu.Unlock()
+			if continued != 0 {
+				t.Fatalf("continueGoals = %d for status %s, want 0", continued, status)
+			}
+		})
+	}
+}
+
+func TestGoalContinuationYieldsToQueuedPrompt(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := goalSession(t, store, "goal-with-queue", goal.StatusActive)
+	session.QueuedMessages = queuedMessages("user says hi")
+	if err := store.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeACPManager{job: acp.Job{ID: session.ID, Slug: session.Slug, State: acp.StateIdle}}
+	srv := &Server{Store: store, ACP: manager}
+
+	srv.drainQueuedPrompt(context.Background(), session.ID)
+
+	sent := waitForACPSend(t, manager, "user says hi")
+	if sent.Message != "user says hi" {
+		t.Fatalf("queued prompt should win, got %#v", sent)
+	}
+	manager.mu.Lock()
+	continued := len(manager.continueGoals)
+	manager.mu.Unlock()
+	if continued != 0 {
+		t.Fatalf("continueGoals = %d, want 0 while a user prompt is queued", continued)
 	}
 }
 

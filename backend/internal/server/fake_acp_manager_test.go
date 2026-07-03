@@ -12,6 +12,7 @@ import (
 type fakeACPManager struct {
 	mu             sync.Mutex
 	sent           acp.SendRequest
+	continueGoals  []string
 	compacted      acp.CompactRequest
 	steered        acp.SteerRequest
 	sideChat       acp.SideChatRequest
@@ -127,6 +128,13 @@ func (f *fakeACPManager) Send(ctx context.Context, req acp.SendRequest) (acp.Job
 	f.sent = req
 	f.sendCtxErr = ctx.Err()
 	f.sendPlatform = sessioncontext.ClientPlatform(ctx)
+	return f.job, f.sendErr
+}
+
+func (f *fakeACPManager) ContinueGoal(_ context.Context, session string) (acp.Job, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.continueGoals = append(f.continueGoals, session)
 	return f.job, f.sendErr
 }
 

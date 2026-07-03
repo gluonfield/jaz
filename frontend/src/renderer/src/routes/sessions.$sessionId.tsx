@@ -218,6 +218,21 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     sendLiveMessage(text, options)
   }, [pinToBottom, sendLiveMessage])
 
+  // Cancelling clears any active goal server-side, so this doubles as the goal
+  // off-switch: it stops a running turn and the auto-continuation loop.
+  const stopSession = useCallback(() => {
+    // The turn runs detached server-side; clear local optimistic state now.
+    abortLiveMessage()
+    void cancelSession(sessionId)
+      .catch(() => {})
+      .finally(() => {
+        queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
+        queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
+        queryClient.invalidateQueries({ queryKey: keys.allSessions })
+        queryClient.invalidateQueries({ queryKey: keys.usage })
+      })
+  }, [abortLiveMessage, queryClient, sessionId])
+
   const sendACPFallback = useCallback(async (
     targetSessionID: string,
     text: string,
@@ -557,7 +572,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                     planModeActive={Boolean(live?.planRequested) || planActive}
                     goalControlVisible
                     goalAvailable={goalAvailable}
-                    goalActive={goalRequested || goalActive}
+                    goalEngaged={goalRequested || goalActive}
                     queuedPrompts={queue.queuedPrompts}
                     steerDisabled={queue.steerDisabled}
                     draftStorageKey={`${SESSION_DRAFT_KEY_PREFIX}${session.id}`}
@@ -566,18 +581,8 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                     onRemoveContext={composerContexts.removeContext}
                     onClearContexts={composerContexts.clearContexts}
                     onSend={queue.onSend}
-                    onStop={() => {
-                      // The turn runs detached server-side; clear local optimistic state now.
-                      abortLiveMessage()
-                      void cancelSession(sessionId)
-                        .catch(() => {})
-                        .finally(() => {
-                          queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
-                          queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
-                          queryClient.invalidateQueries({ queryKey: keys.allSessions })
-                          queryClient.invalidateQueries({ queryKey: keys.usage })
-                        })
-                    }}
+                    onStop={stopSession}
+                    onClearGoal={stopSession}
                     onVoice={undefined}
                     onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
                     onSteerQueuedPrompt={queue.onSteerQueuedPrompt}

@@ -139,6 +139,19 @@ func Active(state *State) bool {
 		normalized.Status != StatusComplete
 }
 
+// Continuable reports whether an automatic goal continuation turn should run.
+// Unlike Active, only StatusActive goals with budget headroom continue.
+func Continuable(state *State) bool {
+	normalized := NormalizeState(state)
+	if normalized == nil || normalized.Objective == "" || normalized.Status != StatusActive {
+		return false
+	}
+	if normalized.TokenBudget != nil && normalized.TokensUsed >= *normalized.TokenBudget {
+		return false
+	}
+	return true
+}
+
 func negativeInt(value *int64) bool {
 	return value != nil && *value < 0
 }

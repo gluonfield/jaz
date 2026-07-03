@@ -12,6 +12,10 @@ Set token_budget only when you can state a useful token budget. Jaz tracks token
 Use get_goal when you need current goal usage. When the objective is achieved, call update_goal with status "complete"; if progress is impossible without user input or an external change, call update_goal with status "blocked".
 </jaz_goal_mode>`
 
+// Sent with GoalRequested, so goalPromptMessage prepends the jaz_goal_mode block
+// documenting the goal tools; this text only steers the agent to keep going.
+const jazGoalContinuationMessage = `Continue working toward the active goal. Call get_goal to check the objective and usage. This goal persists across turns: keep the full objective intact and make concrete progress toward the real requested end state rather than redefining success as a smaller task. When the objective is fully achieved, call update_goal with status "complete"; if you cannot progress without user input or an external change, call update_goal with status "blocked"; otherwise keep going now.`
+
 func goalPromptMessage(message string, requested bool) string {
 	if !requested {
 		return message
