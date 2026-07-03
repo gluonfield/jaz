@@ -154,6 +154,7 @@ export function FeedCard({
                         events={lastTurn.events}
                         sessionId={item.id}
                         groupTurns={detail.data.session.runtime === 'acp'}
+                        working={detail.data.session.status === 'running'}
                         onArtifactPrompt={sendNow}
                       />
                     </PreviewLinkProvider>
