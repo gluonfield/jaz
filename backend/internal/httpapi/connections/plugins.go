@@ -1,6 +1,7 @@
 package connections
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -51,4 +52,27 @@ func (h PluginHandler) Disconnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+type updateScopesRequest struct {
+	Scopes []string `json:"scopes"`
+}
+
+func (h PluginHandler) UpdateScopes(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(r.PathValue("id"))
+	var input updateScopesRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		httpapi.WriteError(w, http.StatusBadRequest, err)
+		return
+	}
+	account, err := h.Service.UpdateAccountScopes(r.Context(), id, input.Scopes)
+	if err != nil {
+		if errors.Is(err, connections.ErrConnectionNotFound) {
+			httpapi.WriteError(w, http.StatusNotFound, err)
+			return
+		}
+		httpapi.WriteError(w, http.StatusInternalServerError, err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, account)
 }

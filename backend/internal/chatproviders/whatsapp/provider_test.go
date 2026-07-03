@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/connections"
+	whatsappconnector "github.com/wins/jaz/backend/internal/connectors/whatsapp"
+	"github.com/wins/jaz/backend/internal/integrationingest"
 	"github.com/wins/jaz/backend/pkg/integrations"
 	"go.mau.fi/whatsmeow"
 	waCommon "go.mau.fi/whatsmeow/proto/waCommon"
@@ -398,6 +400,94 @@ func TestWhatsAppHistorySyncCapsGroupHistoryAcrossChunks(t *testing.T) {
 	}
 }
 
+func TestPublishHistorySyncDeliversWaitingReadMessages(t *testing.T) {
+	chat := "15550103333@s.whatsapp.net"
+	provider := &Provider{historyWaiters: map[string][]chan []whatsappconnector.ReadRecentMessage{}}
+	waiter := provider.addHistoryWaiter(chat)
+	defer provider.removeHistoryWaiter(chat, waiter)
+
+	provider.publishHistorySync(whatsappHistorySync(chat, time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC), 2, "live"))
+
+	select {
+	case messages := <-waiter:
+		if len(messages) != 2 {
+			t.Fatalf("messages len = %d", len(messages))
+		}
+		if messages[0].MessageID != "live-1" || messages[1].MessageID != "live-0" {
+			t.Fatalf("messages = %#v", messages)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for history messages")
+	}
+}
+
+func TestReadRecentReadsStoredRawMessages(t *testing.T) {
+	rawRoot := t.TempDir()
+	connection := integrations.Connection{
+		ID:        "whatsapp:alice",
+		AccountID: "15550102222",
+	}
+	chat := "15550103333@s.whatsapp.net"
+	writeWhatsAppRawRecord(t, rawRoot, whatsappWebMessageRecordForTest(connection, chat, "stored-old", time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC), "old"))
+	writeWhatsAppRawRecord(t, rawRoot, whatsappWebMessageRecordForTest(connection, chat, "stored-new", time.Date(2026, 6, 26, 12, 1, 0, 0, time.UTC), "new"))
+	writeWhatsAppRawRecord(t, rawRoot, whatsappWebMessageRecordForTest(connection, "15550104444@s.whatsapp.net", "other-chat", time.Date(2026, 6, 26, 12, 2, 0, 0, time.UTC), "other"))
+	provider := &Provider{
+		cfg: Config{RawRoot: rawRoot},
+	}
+
+	result, err := provider.ReadRecent(context.Background(), whatsappconnector.ReadRecentRequest{
+		Connection: connection,
+		Chat:       chat,
+		Limit:      1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Chat != chat || len(result.Messages) != 1 || result.Messages[0].MessageID != "stored-new" {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestReadRecentUsesStoredMessagesBeforeLiveDuplicates(t *testing.T) {
+	rawRoot := t.TempDir()
+	connection := integrations.Connection{
+		ID:        "whatsapp:alice",
+		AccountID: "15550102222",
+	}
+	chat := "15550103333@s.whatsapp.net"
+	storedAt := time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC)
+	liveAt := time.Date(2026, 6, 26, 12, 1, 0, 0, time.UTC)
+	writeWhatsAppRawRecord(t, rawRoot, whatsappWebMessageRecordForTest(connection, chat, "stored-only", storedAt, "stored"))
+	writeWhatsAppRawRecord(t, rawRoot, whatsappWebMessageRecordForTest(connection, chat, "live-dup", liveAt, "duplicate"))
+	provider := &Provider{
+		cfg:            Config{RawRoot: rawRoot},
+		recentMessages: map[string][]whatsappconnector.ReadRecentMessage{},
+	}
+	provider.storeLiveMessages(chat, []whatsappconnector.ReadRecentMessage{{
+		MessageID: "live-dup",
+		SentAt:    liveAt,
+		Text:      "live duplicate",
+	}})
+
+	result, err := provider.ReadRecent(context.Background(), whatsappconnector.ReadRecentRequest{
+		Connection: connection,
+		Chat:       chat,
+		Limit:      10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Messages) != 2 {
+		t.Fatalf("messages len = %d, messages = %#v", len(result.Messages), result.Messages)
+	}
+	if result.Messages[0].MessageID != "stored-only" || result.Messages[1].MessageID != "live-dup" {
+		t.Fatalf("messages = %#v", result.Messages)
+	}
+	if result.Messages[1].Text != "duplicate" {
+		t.Fatalf("duplicate should keep stored message text, messages = %#v", result.Messages)
+	}
+}
+
 func whatsappHistorySync(conversationID string, start time.Time, count int, prefix string) *waHistorySync.HistorySync {
 	syncType := waHistorySync.HistorySync_INITIAL_BOOTSTRAP
 	messages := make([]*waHistorySync.HistorySyncMsg, 0, count)
@@ -412,6 +502,35 @@ func whatsappHistorySync(conversationID string, start time.Time, count int, pref
 			ID:       proto.String(conversationID),
 			Messages: messages,
 		}},
+	}
+}
+
+func whatsappWebMessageRecordForTest(connection integrations.Connection, chat, id string, timestamp time.Time, text string) integrations.Record {
+	return whatsappWebMessageRecordForTestWithMessage(connection, chat, id, timestamp, &waE2E.Message{Conversation: proto.String(text)})
+}
+
+func whatsappWebMessageRecordForTestWithMessage(connection integrations.Connection, chat, id string, timestamp time.Time, message *waE2E.Message) integrations.Record {
+	record, ok := whatsappWebMessageRecord(connection, chat, &waWeb.WebMessageInfo{
+		Key: &waCommon.MessageKey{
+			ID:        proto.String(id),
+			RemoteJID: proto.String(chat),
+		},
+		MessageTimestamp: proto.Uint64(uint64(timestamp.Unix())),
+		Message:          message,
+	})
+	if !ok {
+		panic("failed to build whatsapp web message record")
+	}
+	return record
+}
+
+func writeWhatsAppRawRecord(t *testing.T, root string, record integrations.Record) {
+	t.Helper()
+	writer := integrationingest.RawWriter{Root: root, Now: func() time.Time {
+		return recordTime(record)
+	}}
+	if err := writer.WriteRecords(context.Background(), []integrations.Record{record}); err != nil {
+		t.Fatal(err)
 	}
 }
 

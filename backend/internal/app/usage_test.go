@@ -46,6 +46,10 @@ func (fakeConnectionOAuthStore) ListConnections(context.Context, string) ([]inte
 	return nil, nil
 }
 
+func (fakeConnectionOAuthStore) UpdateConnectionScopes(context.Context, string, []string) (integrations.Connection, bool, error) {
+	return integrations.Connection{}, false, nil
+}
+
 func (fakeConnectionOAuthStore) SaveOAuthConnection(context.Context, integrationoauth.Token, integrations.Connection) error {
 	return nil
 }
@@ -186,6 +190,7 @@ func TestNewRoutesIncludesConnectionPluginRoutes(t *testing.T) {
 	for _, route := range routes {
 		if (route.Pattern == "GET /v1/connections/plugins" ||
 			route.Pattern == "GET /v1/connections/plugins/{id}" ||
+			route.Pattern == "PATCH /v1/connections/accounts/{id}/scopes" ||
 			route.Pattern == "DELETE /v1/connections/accounts/{id}" ||
 			route.Pattern == "POST /v1/connections/plugins/{id}/connect" ||
 			route.Pattern == "GET /v1/connections/qr/{id}" ||
@@ -197,6 +202,7 @@ func TestNewRoutesIncludesConnectionPluginRoutes(t *testing.T) {
 	}
 	if !found["GET /v1/connections/plugins"] ||
 		!found["GET /v1/connections/plugins/{id}"] ||
+		!found["PATCH /v1/connections/accounts/{id}/scopes"] ||
 		!found["DELETE /v1/connections/accounts/{id}"] ||
 		!found["POST /v1/connections/plugins/{id}/connect"] ||
 		!found["GET /v1/connections/qr/{id}"] ||

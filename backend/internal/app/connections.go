@@ -50,6 +50,7 @@ func NewWhatsAppMCPTools(
 	store *sqlitestore.Store,
 	whatsAppSenders WhatsAppSenders,
 	whatsAppSearchers WhatsAppSearchers,
+	whatsAppReaders WhatsAppReaders,
 ) (*connections.WhatsAppMCPTools, error) {
 	whatsAppSender, err := singleProvider("WhatsApp", "sender", whatsAppSenders.Senders)
 	if err != nil {
@@ -59,13 +60,18 @@ func NewWhatsAppMCPTools(
 	if err != nil {
 		return nil, err
 	}
-	return connections.NewWhatsAppMCPTools(store, whatsAppSender, whatsAppSearch), nil
+	whatsAppReader, err := singleProvider("WhatsApp", "reader", whatsAppReaders.Readers)
+	if err != nil {
+		return nil, err
+	}
+	return connections.NewWhatsAppMCPTools(store, whatsAppSender, whatsAppSearch, whatsAppReader), nil
 }
 
 func NewTelegramMCPTools(
 	store *sqlitestore.Store,
 	telegramSenders TelegramSenders,
 	telegramSearchers TelegramSearchers,
+	telegramReaders TelegramReaders,
 ) (*connections.TelegramMCPTools, error) {
 	telegramSender, err := singleProvider("Telegram", "sender", telegramSenders.Senders)
 	if err != nil {
@@ -75,7 +81,11 @@ func NewTelegramMCPTools(
 	if err != nil {
 		return nil, err
 	}
-	return connections.NewTelegramMCPTools(store, telegramSender, telegramSearch), nil
+	telegramReader, err := singleProvider("Telegram", "reader", telegramReaders.Readers)
+	if err != nil {
+		return nil, err
+	}
+	return connections.NewTelegramMCPTools(store, telegramSender, telegramSearch, telegramReader), nil
 }
 
 func singleProvider[T any](provider, role string, items []T) (T, error) {

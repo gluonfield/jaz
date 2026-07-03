@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"testing"
 
 	"github.com/wins/jaz/backend/pkg/integrations"
@@ -122,6 +123,40 @@ func TestDeleteConnectionDeletesTokenAndConnection(t *testing.T) {
 	ok, err = store.DeleteConnection(context.Background(), connection.ID)
 	if err != nil || ok {
 		t.Fatalf("second delete ok=%v err=%v", ok, err)
+	}
+}
+
+func TestUpdateConnectionScopesPersistsScopes(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	connection := integrations.Connection{
+		ID:       "whatsapp:personal",
+		Provider: "whatsapp",
+		Scopes:   []string{"contacts", "messages", "send"},
+	}
+	if err := store.SaveConnection(context.Background(), connection); err != nil {
+		t.Fatal(err)
+	}
+	updated, ok, err := store.UpdateConnectionScopes(context.Background(), connection.ID, []string{"contacts", "send"})
+	if err != nil || !ok {
+		t.Fatalf("update ok=%v err=%v", ok, err)
+	}
+	if got, want := updated.Scopes, []string{"contacts", "send"}; !slices.Equal(got, want) {
+		t.Fatalf("updated scopes = %#v, want %#v", got, want)
+	}
+	loaded, ok, err := store.LoadConnection(context.Background(), connection.ID)
+	if err != nil || !ok {
+		t.Fatalf("load ok=%v err=%v", ok, err)
+	}
+	if got, want := loaded.Scopes, []string{"contacts", "send"}; !slices.Equal(got, want) {
+		t.Fatalf("loaded scopes = %#v, want %#v", got, want)
+	}
+	if _, ok, err := store.UpdateConnectionScopes(context.Background(), "missing", []string{"send"}); err != nil || ok {
+		t.Fatalf("missing update ok=%v err=%v", ok, err)
 	}
 }
 

@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import { AnimatedList, AnimatedListItem } from '@/components/ui/AnimatedList'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
-import { disconnectConnectionAccount } from '@/lib/api/connections'
+import { disconnectConnectionAccount, updateConnectionAccountScopes } from '@/lib/api/connections'
 import { keys } from '@/lib/query/keys'
 import type { IntegrationConnectionAccount } from '@/lib/api/types'
 import {
@@ -34,6 +34,12 @@ export function ConnectionsSettings() {
     mutationFn: disconnectConnectionAccount,
     onSuccess: () => toast('Disconnected account'),
     onError: (error: Error) => toast(`Couldn't disconnect account: ${error.message}`, 'danger'),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: keys.connectionPlugins }),
+  })
+  const updateScopes = useMutation({
+    mutationFn: ({ id, scopes }: { id: string; scopes: string[] }) =>
+      updateConnectionAccountScopes(id, scopes),
+    onError: (error: Error) => toast(`Couldn't update access: ${error.message}`, 'danger'),
     onSettled: () => queryClient.invalidateQueries({ queryKey: keys.connectionPlugins }),
   })
   const connectedAccounts = useMemo(
@@ -81,6 +87,10 @@ export function ConnectionsSettings() {
                           plugin={plugin}
                           account={account}
                           disconnecting={disconnect.isPending && disconnect.variables === account.id}
+                          updatingScopes={updateScopes.isPending && updateScopes.variables?.id === account.id}
+                          onScopesChange={(scopes) =>
+                            updateScopes.mutate({ id: account.id, scopes })
+                          }
                           onDisconnect={() => disconnectAccount(account)}
                         />
                       </AnimatedListItem>

@@ -20,6 +20,7 @@ import (
 func NewWhatsAppProvider(lc fx.Lifecycle, cfg Config, layout runtimefiles.Layout, store *sqlitestore.Store, writer integrationingest.MaterializingWriter, logger *log.Logger) (WhatsAppProviderOut, error) {
 	provider, err := whatsapp.New(context.Background(), filepath.Join(layout.Connections, "whatsapp"), whatsapp.Config{
 		GroupHistoryLimit: groupHistoryLimit(cfg),
+		RawRoot:           layout.Ingest,
 	}, store, writer, logger)
 	if err != nil {
 		return WhatsAppProviderOut{}, err
@@ -34,6 +35,7 @@ func NewWhatsAppProvider(lc fx.Lifecycle, cfg Config, layout runtimefiles.Layout
 		QR:            []connections.QRProvider{provider},
 		Senders:       []whatsappconnector.Sender{provider},
 		Searchers:     []whatsappconnector.Searcher{provider},
+		Readers:       []whatsappconnector.Reader{provider},
 		Disconnecters: []connections.SessionDisconnecter{provider},
 	}, nil
 }
@@ -61,6 +63,7 @@ func NewTelegramProvider(lc fx.Lifecycle, cfg Config, layout runtimefiles.Layout
 		QR:            []connections.QRProvider{provider},
 		Senders:       []telegramconnector.Sender{provider},
 		Searchers:     []telegramconnector.Searcher{provider},
+		Readers:       []telegramconnector.Reader{provider},
 		Disconnecters: []connections.SessionDisconnecter{provider},
 	}, nil
 }

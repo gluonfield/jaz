@@ -11,6 +11,8 @@ const (
 
 	ToolSearch                 = "whatsapp_search"
 	ToolSearchDescription      = "Search WhatsApp people and chats from a connected account. Returns recipient values usable with whatsapp_send_message."
+	ToolReadRecent             = "whatsapp_read_recent"
+	ToolReadRecentDescription  = "Read recent WhatsApp messages from a chat JID or phone number from a connected account."
 	ToolSendMessage            = "whatsapp_send_message"
 	ToolSendMessageDescription = "Send a WhatsApp message from one connected account to a phone number or WhatsApp JID. Requires a connected WhatsApp session."
 )
@@ -62,6 +64,12 @@ func chatTools() []integrations.PluginTool {
 		{
 			Name:        ToolSearch,
 			Description: ToolSearchDescription,
+			Capability:  integrations.CapabilityAct,
+			Risk:        integrations.ActionRiskRead,
+		},
+		{
+			Name:        ToolReadRecent,
+			Description: ToolReadRecentDescription,
 			Capability:  integrations.CapabilityAct,
 			Risk:        integrations.ActionRiskRead,
 		},

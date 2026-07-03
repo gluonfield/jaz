@@ -16,6 +16,7 @@ type WhatsAppMCPTools struct {
 	store  ConnectionToolStore
 	sender whatsappconnector.Sender
 	search whatsappconnector.Searcher
+	reader whatsappconnector.Reader
 }
 
 type WhatsAppSendMessageInput struct {
@@ -57,8 +58,30 @@ type WhatsAppSearchOutput struct {
 	Results           []whatsappconnector.SearchItem `json:"results,omitempty"`
 }
 
-func NewWhatsAppMCPTools(store ConnectionToolStore, sender whatsappconnector.Sender, search whatsappconnector.Searcher) *WhatsAppMCPTools {
-	return &WhatsAppMCPTools{store: store, sender: sender, search: search}
+type WhatsAppReadRecentInput struct {
+	Account string `json:"account,omitempty" jsonschema:"connected account alias, account id, or connection id; omit only when one WhatsApp account is connected"`
+	Chat    string `json:"chat" jsonschema:"WhatsApp chat JID or phone number returned by whatsapp_search"`
+	Limit   int    `json:"limit,omitempty" jsonschema:"maximum recent messages to return, default 50, max 200"`
+}
+
+type WhatsAppReadRecentOutput struct {
+	Connected       bool                                  `json:"connected"`
+	AccountRequired bool                                  `json:"account_required,omitempty"`
+	ReaderAvailable bool                                  `json:"reader_available"`
+	Provider        string                                `json:"provider"`
+	Accounts        []integrations.Connection             `json:"accounts,omitempty"`
+	AccountID       string                                `json:"account_id,omitempty"`
+	Alias           string                                `json:"alias,omitempty"`
+	Chat            string                                `json:"chat,omitempty"`
+	Messages        []whatsappconnector.ReadRecentMessage `json:"messages,omitempty"`
+}
+
+func NewWhatsAppMCPTools(store ConnectionToolStore, sender whatsappconnector.Sender, search whatsappconnector.Searcher, readers ...whatsappconnector.Reader) *WhatsAppMCPTools {
+	var reader whatsappconnector.Reader
+	if len(readers) > 0 {
+		reader = readers[0]
+	}
+	return &WhatsAppMCPTools{store: store, sender: sender, search: search, reader: reader}
 }
 
 func (t *WhatsAppMCPTools) AddTo(server *mcp.Server) {
@@ -68,6 +91,13 @@ func (t *WhatsAppMCPTools) AddTo(server *mcp.Server) {
 			Title:       "Search WhatsApp chats",
 			Description: whatsappconnector.ToolSearchDescription,
 		}, t.SearchWhatsApp)
+	}
+	if t.reader != nil {
+		mcp.AddTool(server, &mcp.Tool{
+			Name:        whatsappconnector.ToolReadRecent,
+			Title:       "Read WhatsApp messages",
+			Description: whatsappconnector.ToolReadRecentDescription,
+		}, t.ReadWhatsAppRecent)
 	}
 	if t.sender != nil {
 		mcp.AddTool(server, &mcp.Tool{
@@ -80,7 +110,7 @@ func (t *WhatsAppMCPTools) AddTo(server *mcp.Server) {
 
 func (t *WhatsAppMCPTools) RemoveFrom(server *mcp.Server) {
 	if server != nil {
-		server.RemoveTools(whatsappconnector.ToolSearch, whatsappconnector.ToolSendMessage)
+		server.RemoveTools(whatsappconnector.ToolSearch, whatsappconnector.ToolReadRecent, whatsappconnector.ToolSendMessage)
 	}
 }
 
@@ -94,6 +124,9 @@ func (t *WhatsAppMCPTools) SearchWhatsApp(ctx context.Context, _ *mcp.CallToolRe
 	applyWhatsAppSearchAccount(&out, selected)
 	if !selected.Connected || selected.AccountRequired {
 		return textResult(selected.Text), out, nil
+	}
+	if !connectionHasScope(selected.Connection, connectionScopeContacts) {
+		return textResult(mcpScopeDeniedText(whatsappconnector.ProviderName, connectionScopeContacts)), out, nil
 	}
 	if t.search == nil {
 		return textResult("WhatsApp search is not enabled in this runtime."), out, nil
@@ -114,6 +147,40 @@ func (t *WhatsAppMCPTools) SearchWhatsApp(ctx context.Context, _ *mcp.CallToolRe
 	return textResult(fmt.Sprintf("Found %d WhatsApp result(s). Use a result phone or jid with %s recipient.", len(out.Results), whatsappconnector.ToolSendMessage)), out, nil
 }
 
+func (t *WhatsAppMCPTools) ReadWhatsAppRecent(ctx context.Context, _ *mcp.CallToolRequest, input WhatsAppReadRecentInput) (*mcp.CallToolResult, WhatsAppReadRecentOutput, error) {
+	chat := strings.TrimSpace(input.Chat)
+	if chat == "" {
+		return nil, WhatsAppReadRecentOutput{}, errors.New("chat is required")
+	}
+	selected, err := selectMCPConnection(ctx, t.store, whatsappconnector.ProviderID, whatsappconnector.ProviderName, input.Account)
+	if err != nil {
+		return nil, WhatsAppReadRecentOutput{}, err
+	}
+	out := WhatsAppReadRecentOutput{Provider: whatsappconnector.ProviderID, Accounts: selected.Connections, Chat: chat}
+	applyWhatsAppReadAccount(&out, selected)
+	if !selected.Connected || selected.AccountRequired {
+		return textResult(selected.Text), out, nil
+	}
+	if !connectionHasScope(selected.Connection, connectionScopeMessages) {
+		return textResult(mcpScopeDeniedText(whatsappconnector.ProviderName, connectionScopeMessages)), out, nil
+	}
+	if t.reader == nil {
+		return textResult("WhatsApp message reading is not enabled in this runtime."), out, nil
+	}
+	out.ReaderAvailable = true
+	result, err := t.reader.ReadRecent(ctx, whatsappconnector.ReadRecentRequest{
+		Connection: selected.Connection,
+		Chat:       chat,
+		Limit:      whatsappconnector.ReadRecentLimit(input.Limit),
+	})
+	if err != nil {
+		return nil, WhatsAppReadRecentOutput{}, err
+	}
+	out.Chat = result.Chat
+	out.Messages = result.Messages
+	return textResult(fmt.Sprintf("Read %d recent WhatsApp message(s) from %s.", len(out.Messages), out.Chat)), out, nil
+}
+
 func (t *WhatsAppMCPTools) SendWhatsAppMessage(ctx context.Context, _ *mcp.CallToolRequest, input WhatsAppSendMessageInput) (*mcp.CallToolResult, WhatsAppSendMessageOutput, error) {
 	recipient := strings.TrimSpace(input.Recipient)
 	if recipient == "" {
@@ -132,6 +199,9 @@ func (t *WhatsAppMCPTools) SendWhatsAppMessage(ctx context.Context, _ *mcp.CallT
 	if !selected.Connected || selected.AccountRequired {
 		return textResult(selected.Text), out, nil
 	}
+	if !connectionHasScope(selected.Connection, connectionScopeSend) {
+		return textResult(mcpScopeDeniedText(whatsappconnector.ProviderName, connectionScopeSend)), out, nil
+	}
 	if t.sender == nil {
 		return textResult("WhatsApp messaging is not enabled in this runtime."), out, nil
 	}
@@ -149,6 +219,13 @@ func (t *WhatsAppMCPTools) SendWhatsAppMessage(ctx context.Context, _ *mcp.CallT
 	out.JID = result.JID
 	out.SentAt = result.SentAt
 	return textResult(fmt.Sprintf("Sent WhatsApp message to %s.", recipient)), out, nil
+}
+
+func applyWhatsAppReadAccount(out *WhatsAppReadRecentOutput, selected mcpAccountSelection) {
+	out.Connected = selected.Connected
+	out.AccountRequired = selected.AccountRequired
+	out.AccountID = selected.Connection.AccountID
+	out.Alias = selected.Connection.Alias
 }
 
 func applyWhatsAppSearchAccount(out *WhatsAppSearchOutput, selected mcpAccountSelection) {

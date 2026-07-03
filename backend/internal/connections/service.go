@@ -16,6 +16,7 @@ const disconnectCleanupTimeout = 10 * time.Second
 type Store interface {
 	LoadConnection(context.Context, string) (integrations.Connection, bool, error)
 	ListConnections(context.Context, string) ([]integrations.Connection, error)
+	UpdateConnectionScopes(context.Context, string, []string) (integrations.Connection, bool, error)
 	DeleteConnection(context.Context, string) (bool, error)
 }
 
@@ -91,6 +92,41 @@ func (s *Service) DisconnectAccount(ctx context.Context, id string) error {
 		return disconnecter.Disconnect(cleanupCtx, connection)
 	}
 	return nil
+}
+
+func (s *Service) UpdateAccountScopes(ctx context.Context, id string, scopes []string) (integrations.Connection, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return integrations.Connection{}, ErrConnectionNotFound
+	}
+	scopes = normalizeConnectionScopes(scopes)
+	connection, ok, err := s.store.UpdateConnectionScopes(ctx, id, scopes)
+	if err != nil {
+		return integrations.Connection{}, err
+	}
+	if !ok {
+		return integrations.Connection{}, ErrConnectionNotFound
+	}
+	return connection, nil
+}
+
+func normalizeConnectionScopes(scopes []string) []string {
+	allowed := map[string]bool{
+		"contacts": true,
+		"messages": true,
+		"send":     true,
+	}
+	out := make([]string, 0, len(scopes))
+	seen := map[string]bool{}
+	for _, scope := range scopes {
+		scope = strings.ToLower(strings.TrimSpace(scope))
+		if !allowed[scope] || seen[scope] {
+			continue
+		}
+		seen[scope] = true
+		out = append(out, scope)
+	}
+	return out
 }
 
 func (s *Service) AgentConnections(ctx context.Context) ([]AgentConnection, error) {

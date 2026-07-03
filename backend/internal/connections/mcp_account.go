@@ -7,6 +7,12 @@ import (
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
+const (
+	connectionScopeContacts = "contacts"
+	connectionScopeMessages = "messages"
+	connectionScopeSend     = "send"
+)
+
 type ConnectionToolStore interface {
 	ListConnections(context.Context, string) ([]integrations.Connection, error)
 }
@@ -53,4 +59,26 @@ func mcpAccountRequiredText(providerName string, connections []integrations.Conn
 		return "Multiple " + providerName + " accounts are connected. Specify the account alias, account id, or connection id."
 	}
 	return "Multiple " + providerName + " accounts are connected. Specify account as one of: " + strings.Join(refs, ", ") + "."
+}
+
+func connectionHasScope(connection integrations.Connection, scope string) bool {
+	for _, value := range connection.Scopes {
+		if strings.EqualFold(strings.TrimSpace(value), scope) {
+			return true
+		}
+	}
+	return false
+}
+
+func mcpScopeDeniedText(providerName, scope string) string {
+	switch scope {
+	case connectionScopeContacts:
+		return providerName + " contact/search access is disabled for this account."
+	case connectionScopeMessages:
+		return providerName + " message read access is disabled for this account."
+	case connectionScopeSend:
+		return providerName + " message send access is disabled for this account."
+	default:
+		return providerName + " access is disabled for this account."
+	}
 }
