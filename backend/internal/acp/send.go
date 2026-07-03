@@ -28,6 +28,16 @@ func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {
 	return m.send(ctx, req, sendOptions{transcript: sendTranscriptUserMessage})
 }
 
+// ContinueGoal starts an automatic follow-up turn for a still-active goal.
+func (m *Manager) ContinueGoal(ctx context.Context, session string) (Job, error) {
+	return m.send(ctx, SendRequest{
+		Session:       session,
+		Message:       jazGoalContinuationMessage,
+		Completion:    CompletionAsync,
+		GoalRequested: true,
+	}, sendOptions{transcript: sendTranscriptHidden})
+}
+
 func (m *Manager) Compact(ctx context.Context, req CompactRequest) (Job, error) {
 	return m.send(ctx, SendRequest{
 		Session:    req.Session,
