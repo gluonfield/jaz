@@ -20,6 +20,10 @@ type googleOAuthProvider struct {
 
 func (p googleOAuthProvider) id() string { return p.providerID }
 
+// Google allows http loopback redirect URIs, so its providers never need the
+// hosted broker.
+func (p googleOAuthProvider) usesBroker() bool { return false }
+
 func (p googleOAuthProvider) authCodeURL(redirectURL, state, verifier string) (string, error) {
 	credentials, err := p.config.Credentials()
 	if err != nil {
