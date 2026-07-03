@@ -3,7 +3,6 @@ import { AlertCircle } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { DitherArt, DitherTerrain, type Silhouette } from '@/components/launch/DitherArt'
-import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import { authProviderLabel } from '@/lib/agentLabel'
 import { connectionPluginsQuery } from '@/lib/api/connections'
@@ -148,44 +147,35 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const completed = onboarding.data?.completed === true && !preview
 
   if (clientRuntime.windowKind === 'board') return <>{children}</>
-  if (onboarding.isPending) {
-    return (
-      <OnboardingShell onDisconnect={disconnectBackend}>
-        <SkeletonRows count={4} />
-      </OnboardingShell>
-    )
-  }
-  if (onboarding.isError) {
-    return (
-      <OnboardingShell onDisconnect={disconnectBackend}>
+  if (completed) return <>{children}</>
+  // One shell across loading → content, so the terrain and titlebar never
+  // remount (a remount replays the boot art and reads as a blink).
+  return (
+    <OnboardingShell onDisconnect={disconnectBackend} center>
+      {onboarding.isPending ? null : onboarding.isError ? (
         <StatusBlock
           icon={<AlertCircle size={16} />}
           title="Couldn't load onboarding"
           text={onboarding.error.message}
         />
-      </OnboardingShell>
-    )
-  }
-  if (completed) return <>{children}</>
-  return (
-    <OnboardingScreen
-      status={onboarding.data}
-      onRefresh={() => void onboarding.refetch()}
-      onDisconnect={disconnectBackend}
-      onFinished={() => setPreview(false)}
-    />
+      ) : (
+        <OnboardingScreen
+          status={onboarding.data}
+          onRefresh={() => void onboarding.refetch()}
+          onFinished={() => setPreview(false)}
+        />
+      )}
+    </OnboardingShell>
   )
 }
 
 function OnboardingScreen({
   status,
   onRefresh,
-  onDisconnect,
   onFinished,
 }: {
   status: OnboardingStatus
   onRefresh: () => void
-  onDisconnect: () => void
   onFinished: () => void
 }) {
   const queryClient = useQueryClient()
@@ -284,8 +274,7 @@ function OnboardingScreen({
   })
 
   return (
-    <OnboardingShell onDisconnect={onDisconnect} center>
-      <AnimatePresence mode="wait">
+    <AnimatePresence mode="wait">
         {step === 'welcome' ? (
           <WelcomeStep key="welcome" onStart={() => setStep('agents')} />
         ) : (
@@ -356,8 +345,7 @@ function OnboardingScreen({
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
-    </OnboardingShell>
+    </AnimatePresence>
   )
 }
 

@@ -1,5 +1,5 @@
 import { useReducedMotion } from 'motion/react'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { useEffectsEnabled } from '@/lib/appearance'
 import { useTheme } from '@/lib/theme'
 
@@ -92,6 +92,11 @@ function sample(draw: Silhouette, cols: number, rows: number, palette: Palette):
 
 const GRAIN_EPOCH_MS = 150
 
+// Boot art plays its dissolve once per process. The launch screen, the
+// onboarding gate, and the onboarding screen each mount their own canvases;
+// without this, every handoff replays the build and the boot visibly blinks.
+const BUILT_KEYS = new Set<string>()
+
 export function DitherArt({
   draw,
   cols,
@@ -100,6 +105,7 @@ export function DitherArt({
   gap = 1,
   delay = 0,
   waitForFonts = false,
+  buildKey,
   label,
 }: {
   draw: Silhouette
@@ -109,6 +115,7 @@ export function DitherArt({
   gap?: number
   delay?: number
   waitForFonts?: boolean
+  buildKey?: string
   label?: string
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -122,7 +129,9 @@ export function DitherArt({
   const width = cols * pitch - gap
   const height = rows * pitch - gap
 
-  useEffect(() => {
+  // Layout effect so a remount of already-built art paints before the browser
+  // does — an effect-timed paint leaves one blank frame, which reads as a blink.
+  useLayoutEffect(() => {
     const canvas = canvasRef.current!
     const ctx = canvas.getContext('2d')!
     const dpr = window.devicePixelRatio || 1
@@ -133,6 +142,7 @@ export function DitherArt({
     let cancelled = false
     let raf = 0
     let grainTimer = 0
+    const alreadyBuilt = buildKey ? BUILT_KEYS.has(buildKey) : false
 
     const start = () => {
       if (cancelled) return
@@ -180,6 +190,12 @@ export function DitherArt({
         ctx.globalAlpha = 1
       }
 
+      if (alreadyBuilt) {
+        paintRange(0, dots.length)
+        grainTimer = window.setInterval(grainTick, GRAIN_EPOCH_MS)
+        return
+      }
+
       let index = 0
       const t0 = performance.now()
       const frame = (now: number) => {
@@ -193,13 +209,16 @@ export function DitherArt({
         if (index < dots.length) {
           raf = requestAnimationFrame(frame)
         } else {
+          if (buildKey) BUILT_KEYS.add(buildKey)
           grainTimer = window.setInterval(grainTick, GRAIN_EPOCH_MS)
         }
       }
       raf = requestAnimationFrame(frame)
     }
 
-    if (waitForFonts) {
+    // Once built, fonts are certainly loaded — start synchronously so the
+    // repaint happens inside this layout effect, not a microtask later.
+    if (waitForFonts && !alreadyBuilt) {
       void document.fonts.ready.then(() => start())
     } else {
       start()
@@ -209,7 +228,7 @@ export function DitherArt({
       cancelAnimationFrame(raf)
       window.clearInterval(grainTimer)
     }
-  }, [animate, draw, cols, rows, dot, gap, pitch, width, height, delay, waitForFonts, resolved])
+  }, [animate, draw, cols, rows, dot, gap, pitch, width, height, delay, waitForFonts, buildKey, resolved])
 
   return (
     <canvas
@@ -236,7 +255,7 @@ const drawJaz: Silhouette = (g, w, h) => {
 
 // The boot wordmark: "jaz" dissolving in as dithered brand grain.
 export function DitherWordmark({ delay = 0 }: { delay?: number }) {
-  return <DitherArt draw={drawJaz} cols={112} rows={48} delay={delay} waitForFonts label="jaz" />
+  return <DitherArt draw={drawJaz} cols={112} rows={48} delay={delay} waitForFonts buildKey="jaz-wordmark" label="jaz" />
 }
 
 const TERRAIN_SEED = 77
@@ -288,7 +307,7 @@ export function DitherTerrain({ className = '', rows = 44, delay = 0 }: { classN
   }, [])
   return (
     <div ref={wrapRef} aria-hidden className={`pointer-events-none overflow-hidden ${className}`}>
-      {cols > 1 ? <DitherArt draw={drawTerrain} cols={cols} rows={rows} delay={delay} /> : null}
+      {cols > 1 ? <DitherArt draw={drawTerrain} cols={cols} rows={rows} delay={delay} buildKey="jaz-terrain" /> : null}
     </div>
   )
 }
