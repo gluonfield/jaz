@@ -1,17 +1,14 @@
 import { ArrowRight } from 'lucide-react'
 import { motion } from 'motion/react'
-import { DitherWordmark } from '@/components/launch/DitherArt'
+import { DitherWordmark, type Silhouette } from '@/components/launch/DitherArt'
 import { Button } from '@/components/ui/Button'
-import { onboardingEase } from './OnboardingParts'
+import { type OnboardingStep, type SetupStep, onboardingEase, slideExit } from './OnboardingParts'
 
 // The first thing a new user ever sees: the wordmark assembles itself out of
-// glyphs, then one line of copy and the CTA rise in underneath it.
+// dither grain, then one line of copy and the CTA rise in underneath it.
 export function WelcomeStep({ onStart }: { onStart: () => void }) {
   return (
-    <motion.div
-      exit={{ opacity: 0, y: -6, filter: 'blur(3px)', transition: { duration: 0.16, ease: onboardingEase } }}
-      className="flex w-full max-w-[440px] flex-col items-center text-center"
-    >
+    <motion.div exit={slideExit} className="flex w-full max-w-[440px] flex-col items-center text-center">
       <DitherWordmark delay={0.25} />
       <motion.p
         initial={{ opacity: 0, y: 10, filter: 'blur(4px)' }}
@@ -32,6 +29,112 @@ export function WelcomeStep({ onStart }: { onStart: () => void }) {
       </motion.div>
     </motion.div>
   )
+}
+
+// A soft radial gradient behind each mark: the dither turns it into a grain
+// halo, which is what gives the slide art its shading depth.
+function heroGlow(g: Parameters<Silhouette>[0], w: number, h: number) {
+  const glow = g.createRadialGradient(w * 0.5, h * 0.5, 0, w * 0.5, h * 0.5, h * 0.95)
+  glow.addColorStop(0, 'rgba(255,255,255,0.55)')
+  glow.addColorStop(1, 'rgba(255,255,255,0)')
+  g.fillStyle = glow
+  g.fillRect(0, 0, w, h)
+  g.fillStyle = '#fff'
+}
+
+// Everything that defines a setup slide lives in this one table: the dithered
+// hero mark, the copy, and where Back/Continue go. The gate only walks it; a
+// slide without `next` is the finishing step.
+export const SLIDES: Record<
+  SetupStep,
+  { motif: Silhouette; title: string; subtitle: string; back: OnboardingStep; next?: OnboardingStep }
+> = {
+  agents: {
+    title: 'Connect your agents',
+    subtitle: 'jaz runs on the coding agents you already use.',
+    back: 'welcome',
+    next: 'memory',
+    motif: (g, w, h) => {
+      heroGlow(g, w, h)
+      g.lineWidth = h * 0.16
+      g.lineCap = 'round'
+      g.lineJoin = 'round'
+      g.beginPath()
+      g.moveTo(w * 0.41, h * 0.24)
+      g.lineTo(w * 0.52, h * 0.5)
+      g.lineTo(w * 0.41, h * 0.76)
+      g.stroke()
+      g.beginPath()
+      g.roundRect(w * 0.56, h * 0.66, w * 0.075, h * 0.12, h * 0.05)
+      g.fill()
+    },
+  },
+  memory: {
+    title: 'Give jaz a memory',
+    subtitle: 'Preferences, decisions, projects — agents start warm, not cold.',
+    back: 'agents',
+    next: 'connections',
+    motif: (g, w, h) => {
+      heroGlow(g, w, h)
+      for (const [y, half] of [
+        [0.16, 0.1],
+        [0.44, 0.14],
+        [0.72, 0.18],
+      ] as const) {
+        g.beginPath()
+        g.roundRect(w * (0.5 - half), h * y, w * half * 2, h * 0.15, h * 0.075)
+        g.fill()
+      }
+    },
+  },
+  connections: {
+    title: 'Connect your world',
+    subtitle: 'Your email and chats become context agents can use.',
+    back: 'memory',
+    next: 'loops',
+    motif: (g, w, h) => {
+      heroGlow(g, w, h)
+      g.lineWidth = h * 0.12
+      for (const x of [0.43, 0.57]) {
+        g.beginPath()
+        g.arc(w * x, h * 0.5, h * 0.3, 0, Math.PI * 2)
+        g.stroke()
+      }
+    },
+  },
+  loops: {
+    title: 'Always working',
+    subtitle: 'Loops run agents on a schedule. Boards show their results live.',
+    back: 'connections',
+    motif: (g, w, h) => {
+      heroGlow(g, w, h)
+      g.lineWidth = h * 0.12
+      g.beginPath()
+      g.arc(w * 0.5, h * 0.5, h * 0.32, 0, Math.PI * 2)
+      g.stroke()
+      g.globalAlpha = 0.4
+      g.lineWidth = h * 0.07
+      g.beginPath()
+      g.arc(w * 0.5, h * 0.5, h * 0.46, -Math.PI * 0.45, -Math.PI * 0.05)
+      g.stroke()
+      g.globalAlpha = 1
+      g.beginPath()
+      g.arc(w * 0.5 + h * 0.46 * Math.cos(-Math.PI * 0.05), h * 0.5 + h * 0.46 * Math.sin(-Math.PI * 0.05), h * 0.1, 0, Math.PI * 2)
+      g.fill()
+    },
+  },
+}
+
+// The two footer bits that depend on live state rather than the table.
+export function slideFooter(
+  step: SetupStep,
+  state: { canContinue: boolean; memoryReady: boolean; anyConnected: boolean },
+): { nextLabel: string; nextDisabled: boolean } {
+  return {
+    nextLabel:
+      step === 'loops' ? 'Launch jaz' : step === 'connections' && !state.anyConnected ? 'Skip for now' : 'Continue',
+    nextDisabled: step === 'agents' ? !state.canContinue : step === 'memory' ? !state.memoryReady : false,
+  }
 }
 
 // Two miniature product mocks instead of prose: a loop schedule and the live

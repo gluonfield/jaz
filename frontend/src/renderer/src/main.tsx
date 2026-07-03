@@ -9,7 +9,8 @@ import { RouterProvider, createHashHistory, createRouter } from '@tanstack/react
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BackendTransition } from './components/connection/BackendTransition'
-import { LaunchScreen, ReconnectingBanner, launchPreview } from './components/launch/LaunchScreen'
+import { LaunchScreen, ReconnectingBanner } from './components/launch/LaunchScreen'
+import { devPreview } from './lib/devPreview'
 import { OnboardingGate } from './components/onboarding/OnboardingGate'
 import { installFileDropGuard } from './components/ui/FileDrop'
 import { useBackendChange, useConnection } from './lib/connection'
@@ -65,7 +66,7 @@ function App() {
     if (clientRuntime.windowKind !== 'launcher') router.history.push('/')
   })
 
-  const connected = launchPreview === null && (status === 'connected' || status === 'reconnecting')
+  const connected = devPreview('launch') === null && (status === 'connected' || status === 'reconnecting')
   const app = <RouterProvider router={router} />
   return (
     <>

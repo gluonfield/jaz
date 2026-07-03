@@ -11,22 +11,24 @@ import {
   cancelPendingApproval,
   connectionPreference,
   connectRemote,
+  type ConnectionStatus,
   forgetBackend,
   startLocal,
   useConnection,
 } from '@/lib/connection'
 import { describeBackend, sameBackend } from '@/lib/connectionDisplay'
+import { devPreview } from '@/lib/devPreview'
 import { localDeviceLabel } from '@/lib/deviceLabel'
 import { useTheme } from '@/lib/theme'
 
 const EASE = [0.22, 1, 0.36, 1] as const
 
-// Dev-only escape hatch: `?launch` pins the boot gate to the checking state
-// (`?launch=welcome` to the options state) so the launch visuals can be
-// iterated in a browser while a live backend is reachable.
-export const launchPreview: string | null = import.meta.env.DEV
-  ? new URLSearchParams(window.location.search).get('launch')
-  : null
+// `?launch` pins the boot gate to the checking state, `?launch=welcome` to
+// the options state, so the launch visuals can be iterated in a browser while
+// a live backend is reachable.
+const launchPreview = devPreview('launch')
+const previewStatus: ConnectionStatus | null =
+  launchPreview === null ? null : launchPreview === 'welcome' ? 'disconnected' : 'checking'
 
 const stagger = {
   hidden: {},
@@ -81,7 +83,7 @@ type LaunchScreenProps = { manual?: false; onClose?: never } | { manual: true; o
 // the chrome stays text-light.
 export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}) {
   const { status: liveStatus, error, pairing, url: currentUrl } = useConnection()
-  const status = launchPreview === null ? liveStatus : launchPreview === 'welcome' ? 'disconnected' : 'checking'
+  const status = previewStatus ?? liveStatus
   // PixelField samples the palette at mount; remount it when the theme flips.
   const { resolved } = useTheme()
   const [mode, setMode] = useState<'options' | 'remote'>('options')
