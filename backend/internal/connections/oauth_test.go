@@ -2,6 +2,7 @@ package connections
 
 import (
 	"context"
+	"encoding/base64"
 	"net/url"
 	"slices"
 	"strings"
@@ -117,6 +118,60 @@ func TestOAuthStartBuildsSlackPKCEURL(t *testing.T) {
 	scope := strings.Split(q.Get("scope"), ",")
 	if !slices.Contains(scope, "search:read.public") || !slices.Contains(scope, "chat:write") {
 		t.Fatalf("slack scopes missing from %#v", scope)
+	}
+}
+
+const testBroker = "https://jaz.chat/oauth/callback"
+
+func slackRedirectAndState(t *testing.T, cfg OAuthConfig, localCallback string) (string, string) {
+	t.Helper()
+	start, err := NewOAuthService(memoryOAuthStore{}, cfg).Start(context.Background(), slackconnector.ProviderID, localCallback)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := url.Parse(start.AuthURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := parsed.Query()
+	return q.Get("redirect_uri"), q.Get("state")
+}
+
+func TestSlackStartUsesBrokerForLoopback(t *testing.T) {
+	local := "http://127.0.0.1:5299/v1/connections/oauth/callback"
+	redirect, state := slackRedirectAndState(t, OAuthConfig{RedirectBrokerURL: testBroker}, local)
+	if redirect != testBroker {
+		t.Fatalf("redirect_uri = %q", redirect)
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(state)
+	if err != nil {
+		t.Fatalf("state not base64url: %v", err)
+	}
+	if _, embedded, ok := strings.Cut(string(raw), "|"); !ok || embedded != local {
+		t.Fatalf("state payload = %q", raw)
+	}
+}
+
+func TestSlackStartStaysDirectForHTTPSCallback(t *testing.T) {
+	httpsLocal := "https://jaz.example.com/v1/connections/oauth/callback"
+	redirect, state := slackRedirectAndState(t, OAuthConfig{RedirectBrokerURL: testBroker}, httpsLocal)
+	if redirect != httpsLocal {
+		t.Fatalf("redirect_uri = %q", redirect)
+	}
+	if _, err := base64.RawURLEncoding.DecodeString(state); err == nil && strings.Contains(state, "|") {
+		t.Fatalf("https callback should not use broker state: %q", state)
+	}
+}
+
+func TestGmailStartIgnoresBroker(t *testing.T) {
+	local := "http://127.0.0.1:5299/v1/connections/oauth/callback"
+	start, err := NewOAuthService(memoryOAuthStore{}, OAuthConfig{RedirectBrokerURL: testBroker}).Start(context.Background(), gmailconnector.ProviderID, local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, _ := url.Parse(start.AuthURL)
+	if got := parsed.Query().Get("redirect_uri"); got != local {
+		t.Fatalf("gmail redirect_uri = %q", got)
 	}
 }
 

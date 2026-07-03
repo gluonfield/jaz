@@ -17,6 +17,8 @@ type gmailOAuthProvider struct {
 
 func (p gmailOAuthProvider) id() string { return gmailconnector.ProviderID }
 
+func (p gmailOAuthProvider) usesBroker() bool { return false }
+
 func (p gmailOAuthProvider) authCodeURL(redirectURL, state, verifier string) (string, error) {
 	credentials, err := p.config.Credentials()
 	if err != nil {

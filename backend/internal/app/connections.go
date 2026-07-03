@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/wins/jaz/backend/internal/connections"
 	gmailconnector "github.com/wins/jaz/backend/internal/connectors/gmail"
@@ -11,6 +12,10 @@ import (
 )
 
 func NewConnectionOAuthService(store *sqlitestore.Store, cfg Config) *connections.OAuthService {
+	brokerURL := strings.TrimSpace(cfg.Connections.OAuthRedirectBrokerURL)
+	if brokerURL == "" {
+		brokerURL = connections.DefaultOAuthRedirectBroker
+	}
 	return connections.NewOAuthService(store, connections.OAuthConfig{
 		Gmail: gmailconnector.OAuthClientConfig{
 			ClientID:     cfg.Connections.Gmail.OAuthClientID,
@@ -19,6 +24,7 @@ func NewConnectionOAuthService(store *sqlitestore.Store, cfg Config) *connection
 		Slack: slackconnector.OAuthClientConfig{
 			ClientID: cfg.Connections.Slack.OAuthClientID,
 		},
+		RedirectBrokerURL: brokerURL,
 	})
 }
 

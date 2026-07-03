@@ -115,6 +115,9 @@ type ConnectionsConfig struct {
 	Gmail GmailConnectionConfig
 	Slack SlackConnectionConfig
 	Chat  ChatConnectionConfig
+	// OAuthRedirectBrokerURL overrides the hosted broker for providers that
+	// reject loopback redirects; defaults to connections.DefaultOAuthRedirectBroker.
+	OAuthRedirectBrokerURL string
 }
 
 type GmailConnectionConfig struct {

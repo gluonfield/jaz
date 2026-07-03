@@ -15,6 +15,8 @@ type slackOAuthProvider struct {
 
 func (p slackOAuthProvider) id() string { return slackconnector.ProviderID }
 
+func (p slackOAuthProvider) usesBroker() bool { return true }
+
 func (p slackOAuthProvider) authCodeURL(redirectURL, state, verifier string) (string, error) {
 	return slackconnector.AuthorizeURL(p.config.Resolve(), redirectURL, state, verifier), nil
 }

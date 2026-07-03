@@ -3,10 +3,12 @@ package connections
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -27,9 +29,15 @@ type OAuthStore interface {
 	SaveOAuthConnection(context.Context, integrationoauth.Token, integrations.Connection) error
 }
 
+// DefaultOAuthRedirectBroker is the hosted HTTPS endpoint that bounces provider
+// callbacks to a desktop Jaz's local loopback, for providers (e.g. Slack) that
+// reject loopback redirect URIs.
+const DefaultOAuthRedirectBroker = "https://jaz.chat/oauth/callback"
+
 type OAuthConfig struct {
-	Gmail gmailconnector.OAuthClientConfig
-	Slack slackconnector.OAuthClientConfig
+	Gmail             gmailconnector.OAuthClientConfig
+	Slack             slackconnector.OAuthClientConfig
+	RedirectBrokerURL string
 }
 
 // oauthProvider adapts a connector's OAuth primitives to the generic flow. The
@@ -37,6 +45,9 @@ type OAuthConfig struct {
 // builds its consent URL and exchanges a code for a token plus account identity.
 type oauthProvider interface {
 	id() string
+	// usesBroker reports whether the provider rejects loopback redirect URIs and
+	// must go through the hosted HTTPS redirect broker.
+	usesBroker() bool
 	authCodeURL(redirectURL, state, verifier string) (string, error)
 	exchange(ctx context.Context, httpClient *http.Client, redirectURL, code, verifier string) (integrationoauth.Token, oauthIdentity, error)
 }
@@ -50,6 +61,7 @@ type oauthIdentity struct {
 type OAuthService struct {
 	store      OAuthStore
 	providers  map[string]oauthProvider
+	brokerURL  string
 	httpClient *http.Client
 	mu         sync.Mutex
 	states     map[string]oauthState
@@ -73,24 +85,34 @@ func NewOAuthService(store OAuthStore, config OAuthConfig) *OAuthService {
 	return &OAuthService{
 		store:      store,
 		providers:  providers,
+		brokerURL:  strings.TrimRight(strings.TrimSpace(config.RedirectBrokerURL), "/"),
 		httpClient: http.DefaultClient,
 		states:     map[string]oauthState{},
 	}
 }
 
-func (s *OAuthService) Start(_ context.Context, pluginID, redirectURL string) (OAuthStart, error) {
-	if redirectURL == "" {
+func (s *OAuthService) Start(_ context.Context, pluginID, localCallbackURL string) (OAuthStart, error) {
+	if localCallbackURL == "" {
 		return OAuthStart{}, errors.New("redirect URL is required")
 	}
 	provider, ok := s.providers[pluginID]
 	if !ok {
 		return OAuthStart{}, fmt.Errorf("connection plugin %q does not support OAuth yet", pluginID)
 	}
-	state, err := randomOAuthState()
+	nonce, err := randomOAuthState()
 	if err != nil {
 		return OAuthStart{}, err
 	}
 	verifier := oauth2.GenerateVerifier()
+
+	// Providers that reject loopback callbacks are sent through the hosted broker,
+	// which bounces the response back to localCallbackURL (carried in state).
+	redirectURL, state := localCallbackURL, nonce
+	if provider.usesBroker() && s.brokerURL != "" && isLoopbackHTTP(localCallbackURL) {
+		redirectURL = s.brokerURL
+		state = encodeBrokerState(nonce, localCallbackURL)
+	}
+
 	authURL, err := provider.authCodeURL(redirectURL, state, verifier)
 	if err != nil {
 		return OAuthStart{}, err
@@ -186,4 +208,19 @@ func randomOAuthState() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b[:]), nil
+}
+
+// encodeBrokerState packs the loopback callback into the OAuth state so the
+// hosted broker knows where to bounce the response. The broker validates it is
+// a loopback address before redirecting.
+func encodeBrokerState(nonce, localCallbackURL string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(nonce + "|" + localCallbackURL))
+}
+
+func isLoopbackHTTP(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "http" {
+		return false
+	}
+	return u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost"
 }
