@@ -1,7 +1,12 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '../query/keys'
-import { del, get, post } from './client'
-import type { ConnectionQRStatus, ConnectionStart, IntegrationPlugin } from './types'
+import { del, get, patch, post } from './client'
+import type {
+  ConnectionQRStatus,
+  ConnectionStart,
+  IntegrationConnectionAccount,
+  IntegrationPlugin,
+} from './types'
 
 export const connectionPluginsQuery = queryOptions({
   queryKey: keys.connectionPlugins,
@@ -33,4 +38,14 @@ export function closeConnectionQR(id: string): Promise<{ ok: boolean }> {
 
 export function disconnectConnectionAccount(id: string): Promise<{ ok: boolean }> {
   return del<{ ok: boolean }>(`/v1/connections/accounts/${encodeURIComponent(id)}`)
+}
+
+export function updateConnectionAccountScopes(
+  id: string,
+  scopes: string[],
+): Promise<IntegrationConnectionAccount> {
+  return patch<IntegrationConnectionAccount>(
+    `/v1/connections/accounts/${encodeURIComponent(id)}/scopes`,
+    { scopes },
+  )
 }

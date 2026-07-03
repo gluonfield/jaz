@@ -20,6 +20,10 @@ type Searcher interface {
 	Search(context.Context, SearchRequest) (SearchResult, error)
 }
 
+type Reader interface {
+	ReadRecent(context.Context, ReadRecentRequest) (ReadRecentResult, error)
+}
+
 type SendMessageRequest struct {
 	Connection integrations.Connection
 	Recipient  string
@@ -40,6 +44,26 @@ type SearchRequest struct {
 
 type SearchResult struct {
 	Items []SearchItem `json:"items"`
+}
+
+type ReadRecentRequest struct {
+	Connection integrations.Connection
+	Chat       string
+	Limit      int
+}
+
+type ReadRecentResult struct {
+	Chat     string              `json:"chat"`
+	Messages []ReadRecentMessage `json:"messages"`
+}
+
+type ReadRecentMessage struct {
+	MessageID string    `json:"message_id,omitempty"`
+	SentAt    time.Time `json:"sent_at,omitempty"`
+	FromMe    bool      `json:"from_me"`
+	Sender    string    `json:"sender,omitempty"`
+	Text      string    `json:"text,omitempty"`
+	MediaType string    `json:"media_type,omitempty"`
 }
 
 type SearchItemKind string
@@ -63,6 +87,16 @@ func SearchLimit(limit int) int {
 	}
 	if limit > MaxSearchLimit {
 		return MaxSearchLimit
+	}
+	return limit
+}
+
+func ReadRecentLimit(limit int) int {
+	if limit <= 0 {
+		return 50
+	}
+	if limit > 200 {
+		return 200
 	}
 	return limit
 }

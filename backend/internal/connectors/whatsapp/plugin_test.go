@@ -22,7 +22,9 @@ func TestPluginAdvertisesImplementedChatCapabilities(t *testing.T) {
 	for _, tool := range plugin.Tools {
 		tools[tool.Name] = tool
 	}
-	if tools[ToolSearch].Risk != integrations.ActionRiskRead || tools[ToolSendMessage].Risk != integrations.ActionRiskWrite {
+	if tools[ToolSearch].Risk != integrations.ActionRiskRead ||
+		tools[ToolReadRecent].Risk != integrations.ActionRiskRead ||
+		tools[ToolSendMessage].Risk != integrations.ActionRiskWrite {
 		t.Fatalf("tools = %#v", tools)
 	}
 }

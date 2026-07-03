@@ -28,6 +28,7 @@ type RawSink interface {
 
 type Config struct {
 	GroupHistoryLimit int
+	RawRoot           string
 }
 
 type Provider struct {
@@ -43,6 +44,12 @@ type Provider struct {
 	mu       sync.Mutex
 	clients  map[string]*whatsmeow.Client
 	sessions map[string]*qrSession
+
+	historyMu      sync.Mutex
+	historyWaiters map[string][]chan []whatsappconnector.ReadRecentMessage
+
+	recentMu       sync.Mutex
+	recentMessages map[string][]whatsappconnector.ReadRecentMessage
 }
 
 func New(ctx context.Context, root string, cfg Config, store Store, raw RawSink, logger *log.Logger) (*Provider, error) {
@@ -77,6 +84,9 @@ func New(ctx context.Context, root string, cfg Config, store Store, raw RawSink,
 		logger:    logger,
 		clients:   map[string]*whatsmeow.Client{},
 		sessions:  map[string]*qrSession{},
+
+		historyWaiters: map[string][]chan []whatsappconnector.ReadRecentMessage{},
+		recentMessages: map[string][]whatsappconnector.ReadRecentMessage{},
 	}, nil
 }
 

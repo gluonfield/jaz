@@ -55,6 +55,36 @@ func (s *Store) SaveConnection(ctx context.Context, connection integrations.Conn
 	return connectiondb.New(s.db).SaveConnection(ctx, params)
 }
 
+func (s *Store) UpdateConnectionScopes(ctx context.Context, id string, scopes []string) (integrations.Connection, bool, error) {
+	data, err := json.Marshal(scopes)
+	if err != nil {
+		return integrations.Connection{}, false, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result, err := s.db.ExecContext(ctx, `
+UPDATE integration_connections
+SET scopes_json = ?1, updated_at_ms = ?2
+WHERE id = ?3
+`, string(data), timeToMs(time.Now().UTC()), id)
+	if err != nil {
+		return integrations.Connection{}, false, err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return integrations.Connection{}, false, err
+	}
+	if rows == 0 {
+		return integrations.Connection{}, false, nil
+	}
+	row, err := connectiondb.New(s.db).LoadConnection(ctx, id)
+	if err != nil {
+		return integrations.Connection{}, false, err
+	}
+	connection, err := connectionFromRow(row.ID, row.Provider, row.AccountID, row.AccountName, row.Alias, row.ScopesJson, row.LastSyncedAtMs)
+	return connection, true, err
+}
+
 func (s *Store) SaveOAuthConnection(ctx context.Context, token integrationoauth.Token, connection integrations.Connection) error {
 	tokenData, err := tokenJSON(token)
 	if err != nil {

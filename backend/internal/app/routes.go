@@ -96,6 +96,7 @@ func appendConnectionRoutes(routes server.Routes, service *connections.Service, 
 	routes = append(routes,
 		server.Route{Pattern: "GET /v1/connections/plugins", Handler: httpHandlerFunc(handler.List)},
 		server.Route{Pattern: "GET /v1/connections/plugins/{id}", Handler: httpHandlerFunc(handler.Get)},
+		server.Route{Pattern: "PATCH /v1/connections/accounts/{id}/scopes", Handler: httpHandlerFunc(handler.UpdateScopes)},
 		server.Route{Pattern: "DELETE /v1/connections/accounts/{id}", Handler: httpHandlerFunc(handler.Disconnect)},
 	)
 	if connect != nil || oauth != nil || qr != nil {

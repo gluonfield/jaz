@@ -16,6 +16,7 @@ type TelegramMCPTools struct {
 	store  ConnectionToolStore
 	sender telegramconnector.Sender
 	search telegramconnector.Searcher
+	reader telegramconnector.Reader
 }
 
 type TelegramSendMessageInput struct {
@@ -57,8 +58,30 @@ type TelegramSearchOutput struct {
 	Results           []telegramconnector.SearchItem `json:"results,omitempty"`
 }
 
-func NewTelegramMCPTools(store ConnectionToolStore, sender telegramconnector.Sender, search telegramconnector.Searcher) *TelegramMCPTools {
-	return &TelegramMCPTools{store: store, sender: sender, search: search}
+type TelegramReadRecentInput struct {
+	Account string `json:"account,omitempty" jsonschema:"connected account alias, account id, or connection id; omit only when one Telegram account is connected"`
+	Peer    string `json:"peer" jsonschema:"Telegram recipient or peer returned by telegram_search, such as user:<id>:<access_hash>, chat:<id>, channel:<id>:<access_hash>, or @username"`
+	Limit   int    `json:"limit,omitempty" jsonschema:"maximum recent messages to return, default 50, max 200"`
+}
+
+type TelegramReadRecentOutput struct {
+	Connected       bool                                  `json:"connected"`
+	AccountRequired bool                                  `json:"account_required,omitempty"`
+	ReaderAvailable bool                                  `json:"reader_available"`
+	Provider        string                                `json:"provider"`
+	Accounts        []integrations.Connection             `json:"accounts,omitempty"`
+	AccountID       string                                `json:"account_id,omitempty"`
+	Alias           string                                `json:"alias,omitempty"`
+	PeerID          string                                `json:"peer_id,omitempty"`
+	Messages        []telegramconnector.ReadRecentMessage `json:"messages,omitempty"`
+}
+
+func NewTelegramMCPTools(store ConnectionToolStore, sender telegramconnector.Sender, search telegramconnector.Searcher, readers ...telegramconnector.Reader) *TelegramMCPTools {
+	var reader telegramconnector.Reader
+	if len(readers) > 0 {
+		reader = readers[0]
+	}
+	return &TelegramMCPTools{store: store, sender: sender, search: search, reader: reader}
 }
 
 func (t *TelegramMCPTools) AddTo(server *mcp.Server) {
@@ -68,6 +91,13 @@ func (t *TelegramMCPTools) AddTo(server *mcp.Server) {
 			Title:       "Search Telegram chats",
 			Description: telegramconnector.ToolSearchDescription,
 		}, t.SearchTelegram)
+	}
+	if t.reader != nil {
+		mcp.AddTool(server, &mcp.Tool{
+			Name:        telegramconnector.ToolReadRecent,
+			Title:       "Read Telegram messages",
+			Description: telegramconnector.ToolReadRecentDescription,
+		}, t.ReadTelegramRecent)
 	}
 	if t.sender != nil {
 		mcp.AddTool(server, &mcp.Tool{
@@ -80,7 +110,7 @@ func (t *TelegramMCPTools) AddTo(server *mcp.Server) {
 
 func (t *TelegramMCPTools) RemoveFrom(server *mcp.Server) {
 	if server != nil {
-		server.RemoveTools(telegramconnector.ToolSearch, telegramconnector.ToolSendMessage)
+		server.RemoveTools(telegramconnector.ToolSearch, telegramconnector.ToolReadRecent, telegramconnector.ToolSendMessage)
 	}
 }
 
@@ -94,6 +124,9 @@ func (t *TelegramMCPTools) SearchTelegram(ctx context.Context, _ *mcp.CallToolRe
 	applyTelegramSearchAccount(&out, selected)
 	if !selected.Connected || selected.AccountRequired {
 		return textResult(selected.Text), out, nil
+	}
+	if !connectionHasScope(selected.Connection, connectionScopeContacts) {
+		return textResult(mcpScopeDeniedText(telegramconnector.ProviderName, connectionScopeContacts)), out, nil
 	}
 	if t.search == nil {
 		return textResult("Telegram search is not enabled in this runtime."), out, nil
@@ -114,6 +147,40 @@ func (t *TelegramMCPTools) SearchTelegram(ctx context.Context, _ *mcp.CallToolRe
 	return textResult(fmt.Sprintf("Found %d Telegram result(s). Use the recipient field with %s.", len(out.Results), telegramconnector.ToolSendMessage)), out, nil
 }
 
+func (t *TelegramMCPTools) ReadTelegramRecent(ctx context.Context, _ *mcp.CallToolRequest, input TelegramReadRecentInput) (*mcp.CallToolResult, TelegramReadRecentOutput, error) {
+	peer := strings.TrimSpace(input.Peer)
+	if peer == "" {
+		return nil, TelegramReadRecentOutput{}, errors.New("peer is required")
+	}
+	selected, err := selectMCPConnection(ctx, t.store, telegramconnector.ProviderID, telegramconnector.ProviderName, input.Account)
+	if err != nil {
+		return nil, TelegramReadRecentOutput{}, err
+	}
+	out := TelegramReadRecentOutput{Provider: telegramconnector.ProviderID, Accounts: selected.Connections}
+	applyTelegramReadAccount(&out, selected)
+	if !selected.Connected || selected.AccountRequired {
+		return textResult(selected.Text), out, nil
+	}
+	if !connectionHasScope(selected.Connection, connectionScopeMessages) {
+		return textResult(mcpScopeDeniedText(telegramconnector.ProviderName, connectionScopeMessages)), out, nil
+	}
+	if t.reader == nil {
+		return textResult("Telegram message reading is not enabled in this runtime."), out, nil
+	}
+	out.ReaderAvailable = true
+	result, err := t.reader.ReadRecent(ctx, telegramconnector.ReadRecentRequest{
+		Connection: selected.Connection,
+		Peer:       peer,
+		Limit:      telegramconnector.ReadRecentLimit(input.Limit),
+	})
+	if err != nil {
+		return nil, TelegramReadRecentOutput{}, err
+	}
+	out.PeerID = result.PeerID
+	out.Messages = result.Messages
+	return textResult(fmt.Sprintf("Read %d recent Telegram message(s) from %s.", len(out.Messages), out.PeerID)), out, nil
+}
+
 func (t *TelegramMCPTools) SendTelegramMessage(ctx context.Context, _ *mcp.CallToolRequest, input TelegramSendMessageInput) (*mcp.CallToolResult, TelegramSendMessageOutput, error) {
 	recipient := strings.TrimSpace(input.Recipient)
 	if recipient == "" {
@@ -132,6 +199,9 @@ func (t *TelegramMCPTools) SendTelegramMessage(ctx context.Context, _ *mcp.CallT
 	if !selected.Connected || selected.AccountRequired {
 		return textResult(selected.Text), out, nil
 	}
+	if !connectionHasScope(selected.Connection, connectionScopeSend) {
+		return textResult(mcpScopeDeniedText(telegramconnector.ProviderName, connectionScopeSend)), out, nil
+	}
 	if t.sender == nil {
 		return textResult("Telegram messaging is not enabled in this runtime."), out, nil
 	}
@@ -149,6 +219,13 @@ func (t *TelegramMCPTools) SendTelegramMessage(ctx context.Context, _ *mcp.CallT
 	out.PeerID = result.PeerID
 	out.SentAt = result.SentAt
 	return textResult(fmt.Sprintf("Sent Telegram message to %s.", recipient)), out, nil
+}
+
+func applyTelegramReadAccount(out *TelegramReadRecentOutput, selected mcpAccountSelection) {
+	out.Connected = selected.Connected
+	out.AccountRequired = selected.AccountRequired
+	out.AccountID = selected.Connection.AccountID
+	out.Alias = selected.Connection.Alias
 }
 
 func applyTelegramSearchAccount(out *TelegramSearchOutput, selected mcpAccountSelection) {

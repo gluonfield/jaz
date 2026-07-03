@@ -13,7 +13,7 @@ func TestProviderMCPToolsRejectDuplicateAdapters(t *testing.T) {
 	_, err := NewWhatsAppMCPTools(nil, WhatsAppSenders{Senders: []whatsappconnector.Sender{
 		fakeWhatsAppAppSender{},
 		fakeWhatsAppAppSender{},
-	}}, WhatsAppSearchers{})
+	}}, WhatsAppSearchers{}, WhatsAppReaders{})
 	if err == nil || !strings.Contains(err.Error(), "multiple WhatsApp sender providers") {
 		t.Fatalf("whatsapp err = %v", err)
 	}
@@ -21,7 +21,7 @@ func TestProviderMCPToolsRejectDuplicateAdapters(t *testing.T) {
 	_, err = NewTelegramMCPTools(nil, TelegramSenders{}, TelegramSearchers{Searchers: []telegramconnector.Searcher{
 		fakeTelegramAppSearcher{},
 		fakeTelegramAppSearcher{},
-	}})
+	}}, TelegramReaders{})
 	if err == nil || !strings.Contains(err.Error(), "multiple Telegram searcher providers") {
 		t.Fatalf("telegram err = %v", err)
 	}

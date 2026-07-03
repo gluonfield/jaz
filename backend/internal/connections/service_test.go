@@ -200,6 +200,30 @@ func TestServiceDisconnectCleanupSurvivesCanceledRequest(t *testing.T) {
 	}
 }
 
+func TestServiceUpdateAccountScopesNormalizesAndPersists(t *testing.T) {
+	store := serviceStore{
+		connections: []integrations.Connection{{
+			ID:       "whatsapp:personal",
+			Provider: whatsapp.ProviderID,
+			Scopes:   []string{"contacts", "messages", "send"},
+		}},
+	}
+	service := NewService(NewCatalog(), &store)
+	connection, err := service.UpdateAccountScopes(context.Background(), " whatsapp:personal ", []string{"SEND", "unknown", "messages", "send", " "})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := connection.Scopes, []string{"send", "messages"}; !slices.Equal(got, want) {
+		t.Fatalf("scopes = %#v, want %#v", got, want)
+	}
+	if got, want := store.connections[0].Scopes, []string{"send", "messages"}; !slices.Equal(got, want) {
+		t.Fatalf("stored scopes = %#v, want %#v", got, want)
+	}
+	if _, err := service.UpdateAccountScopes(context.Background(), "missing", []string{"send"}); !errors.Is(err, ErrConnectionNotFound) {
+		t.Fatalf("missing err = %v", err)
+	}
+}
+
 type serviceStore struct {
 	connections []integrations.Connection
 	afterDelete func()
@@ -230,6 +254,17 @@ func (s serviceStore) ListConnections(_ context.Context, provider string) ([]int
 		}
 	}
 	return out, nil
+}
+
+func (s *serviceStore) UpdateConnectionScopes(_ context.Context, id string, scopes []string) (integrations.Connection, bool, error) {
+	for i, connection := range s.connections {
+		if connection.ID == id {
+			connection.Scopes = scopes
+			s.connections[i] = connection
+			return connection, true, nil
+		}
+	}
+	return integrations.Connection{}, false, nil
 }
 
 func (s *serviceStore) DeleteConnection(_ context.Context, id string) (bool, error) {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/connections"
+	whatsappconnector "github.com/wins/jaz/backend/internal/connectors/whatsapp"
 	"github.com/wins/jaz/backend/pkg/integrations"
 	"go.mau.fi/whatsmeow"
 	waCommon "go.mau.fi/whatsmeow/proto/waCommon"
@@ -395,6 +396,27 @@ func TestWhatsAppHistorySyncCapsGroupHistoryAcrossChunks(t *testing.T) {
 	}
 	if len(raw.records) != 4 {
 		t.Fatalf("second chunk wrote group messages after cap: records len = %d", len(raw.records))
+	}
+}
+
+func TestPublishHistorySyncDeliversWaitingReadMessages(t *testing.T) {
+	chat := "15550103333@s.whatsapp.net"
+	provider := &Provider{historyWaiters: map[string][]chan []whatsappconnector.ReadRecentMessage{}}
+	waiter := provider.addHistoryWaiter(chat)
+	defer provider.removeHistoryWaiter(chat, waiter)
+
+	provider.publishHistorySync(whatsappHistorySync(chat, time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC), 2, "live"))
+
+	select {
+	case messages := <-waiter:
+		if len(messages) != 2 {
+			t.Fatalf("messages len = %d", len(messages))
+		}
+		if messages[0].MessageID != "live-1" || messages[1].MessageID != "live-0" {
+			t.Fatalf("messages = %#v", messages)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for history messages")
 	}
 }
 
