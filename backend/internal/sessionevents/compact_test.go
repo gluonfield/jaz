@@ -24,6 +24,11 @@ func compactACP(seq int64, eventType, content string, acp *ACPEvent) Event {
 	}
 }
 
+func compactACPTextRun(seq int64, eventType, content, textRunID string, acp *ACPEvent) Event {
+	acp.TextRunID = textRunID
+	return compactACP(seq, eventType, content, acp)
+}
+
 func compactACPState(id, state string) *ACPEvent {
 	return &ACPEvent{
 		ID:        id,
@@ -34,16 +39,16 @@ func compactACPState(id, state string) *ACPEvent {
 	}
 }
 
-func TestCompactTranscriptMergesAdjacentACPText(t *testing.T) {
+func TestCompactTranscriptMergesACPTextWithSameRunID(t *testing.T) {
 	got := CompactTranscript([]Event{
-		compactACP(1, "acp_message", "Hel", compactACPState("thread", "running")),
-		compactACP(2, "acp_message", "lo", compactACPState("thread", "running")),
-		compactACP(3, "acp_thought", "", func() *ACPEvent {
+		compactACPTextRun(1, "acp_message", "Hel", "message:m1", compactACPState("thread", "running")),
+		compactACPTextRun(2, "acp_message", "lo", "message:m1", compactACPState("thread", "running")),
+		compactACPTextRun(3, "acp_thought", "", "message:t1", func() *ACPEvent {
 			acp := compactACPState("thread", "running")
 			acp.Thought = "Rea"
 			return acp
 		}()),
-		compactACP(4, "acp_thought", "", func() *ACPEvent {
+		compactACPTextRun(4, "acp_thought", "", "message:t1", func() *ACPEvent {
 			acp := compactACPState("thread", "running")
 			acp.Thought = "son"
 			return acp
@@ -58,6 +63,20 @@ func TestCompactTranscriptMergesAdjacentACPText(t *testing.T) {
 	}
 	if got[1].Seq != 4 || got[1].ACP == nil || got[1].ACP.Thought != "Reason" {
 		t.Fatalf("merged thought = %#v", got[1])
+	}
+}
+
+func TestCompactTranscriptDoesNotMergeACPTextWithoutRunID(t *testing.T) {
+	got := CompactTranscript([]Event{
+		compactACP(1, "acp_message", "Hel", compactACPState("thread", "running")),
+		compactACP(2, "acp_message", "lo", compactACPState("thread", "running")),
+	})
+
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2: %#v", len(got), got)
+	}
+	if got[0].Content != "Hel" || got[1].Content != "lo" {
+		t.Fatalf("events merged without run id: %#v", got)
 	}
 }
 
@@ -111,20 +130,20 @@ func TestCompactTextChunksKeepsHiddenOwnStatusAsTextBoundary(t *testing.T) {
 	}
 }
 
-func TestCompactTextChunksKeepsVisibleToolBoundaries(t *testing.T) {
+func TestCompactTextChunksKeepsToolSeparatedMessages(t *testing.T) {
 	pendingTool := compactACPState("thread", "running")
 	pendingTool.ToolCalls = []ACPToolCall{{ID: "tool-1", Title: "Read file", Status: "pending"}}
 	doneTool := compactACPState("thread", "running")
 	doneTool.ToolCalls = []ACPToolCall{{ID: "tool-1", Title: "Read file", Status: "completed"}}
 
 	events := []Event{
-		compactACP(1, "acp_message", "Hel", compactACPState("thread", "running")),
-		compactACP(2, "acp_message", "lo", compactACPState("thread", "running")),
+		compactACPTextRun(1, "acp_message", "Hel", "message:first", compactACPState("thread", "running")),
+		compactACPTextRun(2, "acp_message", "lo", "message:first", compactACPState("thread", "running")),
 		compactACP(3, "acp_tool", "", pendingTool),
 		compactACP(4, "acp_tool", "", doneTool),
-		compactACP(5, "acp_message", "Done.", compactACPState("thread", "running")),
-		compactACP(6, "acp_message", "Next", compactACPState("thread", "running")),
-		compactACP(8, "acp_message", "gap", compactACPState("thread", "running")),
+		compactACPTextRun(5, "acp_message", "Done.", "message:second", compactACPState("thread", "running")),
+		compactACPTextRun(6, "acp_message", "Next", "message:second", compactACPState("thread", "running")),
+		compactACPTextRun(8, "acp_message", "gap", "message:gap", compactACPState("thread", "running")),
 	}
 	got := CompactTextChunks(events)
 
@@ -155,21 +174,111 @@ func TestCompactTextChunksKeepsVisibleToolBoundaries(t *testing.T) {
 	}
 }
 
-func TestCompactTranscriptKeepsVisibleBoundaries(t *testing.T) {
+func TestCompactTranscriptKeepsToolSeparatedMessages(t *testing.T) {
 	toolACP := compactACPState("thread", "running")
 	toolACP.ToolCalls = []ACPToolCall{{ID: "tool-1", Title: "Read file", Status: "pending"}}
 	got := CompactTranscript([]Event{
-		compactACP(1, "acp_message", "before", compactACPState("thread", "running")),
+		compactACP(1, "acp_message", "I'll inspect the docs.", compactACPState("thread", "running")),
 		compactACP(2, "acp_tool", "", toolACP),
-		compactACP(3, "acp_message", "after", compactACPState("thread", "running")),
+		compactACP(3, "acp_message", "Here is the result.", compactACPState("thread", "running")),
 		compactACP(5, "acp_message", "gap", compactACPState("thread", "running")),
 	})
 
 	if len(got) != 4 {
 		t.Fatalf("len = %d, want 4: %#v", len(got), got)
 	}
-	if got[0].Content != "before" || got[2].Content != "after" || got[3].Content != "gap" {
-		t.Fatalf("messages crossed a boundary: %#v", got)
+	if got[0].Seq != 1 || got[0].Content != "I'll inspect the docs." {
+		t.Fatalf("first message = %#v", got[0])
+	}
+	if got[1].Seq != 2 || got[1].Type != "acp_tool" {
+		t.Fatalf("tool event = %#v", got[1])
+	}
+	if got[2].Seq != 3 || got[2].Content != "Here is the result." {
+		t.Fatalf("second message = %#v", got[2])
+	}
+	if got[3].Seq != 5 || got[3].Content != "gap" {
+		t.Fatalf("gap message = %#v", got[3])
+	}
+}
+
+func TestCompactTranscriptDoesNotSplitWordsAcrossToolEvents(t *testing.T) {
+	toolACP := compactACPState("thread", "running")
+	toolACP.ToolCalls = []ACPToolCall{{ID: "tool-1", Title: "Read file", Status: "completed"}}
+	got := CompactTranscript([]Event{
+		compactACPTextRun(1, "acp_message", "message chunks, t", "message:m1", compactACPState("thread", "running")),
+		compactACP(2, "acp_tool", "", toolACP),
+		compactACPTextRun(3, "acp_message", "ool calls, and status updates", "message:m1", compactACPState("thread", "running")),
+	})
+
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2: %#v", len(got), got)
+	}
+	if got[0].Type != "acp_tool" {
+		t.Fatalf("tool event should be preserved: %#v", got[0])
+	}
+	if got[1].Content != "message chunks, tool calls, and status updates" {
+		t.Fatalf("merged message = %q", got[1].Content)
+	}
+}
+
+func TestCompactTranscriptKeepsTaskSurfaceAsTextBoundary(t *testing.T) {
+	planACP := compactACPState("thread", "running")
+	planACP.Plan = []PlanEntry{{Content: "Inspect files", Status: "completed"}}
+	got := CompactTranscript([]Event{
+		compactACP(1, "acp_message", "before", compactACPState("thread", "running")),
+		compactACP(2, "acp", "", planACP),
+		compactACP(3, "acp_message", "after", compactACPState("thread", "running")),
+	})
+
+	if len(got) != 3 {
+		t.Fatalf("len = %d, want 3: %#v", len(got), got)
+	}
+	if got[0].Content != "before" || got[2].Content != "after" {
+		t.Fatalf("messages crossed task surface: %#v", got)
+	}
+}
+
+func TestCompactTranscriptDoesNotMergeAcrossSessions(t *testing.T) {
+	other := compactACP(2, "acp_message", "two", compactACPState("thread", "running"))
+	other.SessionID = "other"
+	got := CompactTranscript([]Event{
+		compactACP(1, "acp_message", "one", compactACPState("thread", "running")),
+		other,
+	})
+
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2: %#v", len(got), got)
+	}
+	if got[0].Content != "one" || got[1].Content != "two" {
+		t.Fatalf("messages crossed sessions: %#v", got)
+	}
+}
+
+func TestCompactTranscriptKeepsOtherSessionSubagentAsTextBoundary(t *testing.T) {
+	subagent := Event{
+		Seq:       2,
+		SessionID: "other",
+		Type:      TypeProviderSubagent,
+		ProviderSubagent: &ProviderSubagentEvent{
+			Provider: "codex",
+			ID:       "worker",
+			ParentID: "thread",
+			Status:   "running",
+		},
+		At: compactAt(2),
+	}
+
+	got := CompactTranscript([]Event{
+		compactACP(1, "acp_message", "one", compactACPState("thread", "running")),
+		subagent,
+		compactACP(2, "acp_message", "two", compactACPState("thread", "running")),
+	})
+
+	if len(got) != 3 {
+		t.Fatalf("len = %d, want 3: %#v", len(got), got)
+	}
+	if got[0].Content != "one" || got[2].Content != "two" {
+		t.Fatalf("messages crossed other-session subagent: %#v", got)
 	}
 }
 

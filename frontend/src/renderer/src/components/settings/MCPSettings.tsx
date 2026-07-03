@@ -33,7 +33,6 @@ import {
   updateMCPServer,
 } from '@/lib/api/mcp'
 import type {
-  MCPEnvHeader,
   MCPHeader,
   MCPOAuthConfig,
   MCPServer,
@@ -52,7 +51,6 @@ function emptyDraft(): Draft {
     enabled: true,
     bearer_token_env_var: '',
     headers: [],
-    env_headers: [],
     oauth: {},
   }
 }
@@ -65,7 +63,6 @@ function draftFromServer(server: MCPServer): Draft {
     enabled: server.enabled,
     bearer_token_env_var: server.bearer_token_env_var ?? '',
     headers: server.headers ?? [],
-    env_headers: server.env_headers ?? [],
     oauth: server.oauth ?? {},
   }
 }
@@ -367,7 +364,7 @@ function MCPServerForm({
   draft: Draft
   onChange: (draft: Draft) => void
 }) {
-  const headerCount = (draft.headers?.length ?? 0) + (draft.env_headers?.length ?? 0)
+  const headerCount = draft.headers?.length ?? 0
   const oauthSet = Boolean(
     draft.oauth?.client_id || draft.oauth?.client_secret_env_var || draft.oauth?.issuer,
   )
@@ -431,14 +428,8 @@ function MCPServerForm({
                   onChange={(oauth) => onChange({ ...draft, oauth })}
                 />
                 <HeaderEditor
-                  title="Custom headers"
                   headers={draft.headers ?? []}
                   onChange={(headers) => onChange({ ...draft, headers })}
-                />
-                <EnvHeaderEditor
-                  title="Headers from environment variables"
-                  headers={draft.env_headers ?? []}
-                  onChange={(envHeaders) => onChange({ ...draft, env_headers: envHeaders })}
                 />
               </div>
             </motion.div>
@@ -512,84 +503,63 @@ function OAuthEditor({
 }
 
 function HeaderEditor({
-  title,
   headers,
   onChange,
 }: {
-  title: string
   headers: MCPHeader[]
   onChange: (headers: MCPHeader[]) => void
 }) {
   return (
     <div className="space-y-2">
-      <p className="text-[12px] font-medium text-ink-2">{title}</p>
+      <p className="text-[12px] font-medium text-ink-2">Headers</p>
       <div className="flex flex-col gap-2">
-        {headers.map((header, index) => (
-          <div key={index} className="grid gap-2 sm:grid-cols-[1fr_1fr_28px]">
-            <Input
-              placeholder="Header"
-              value={header.name}
-              onChange={(event) =>
-                replaceHeader(headers, index, { ...header, name: event.target.value }, onChange)
-              }
-            />
-            <Input
-              placeholder="Value"
-              value={header.value}
-              onChange={(event) =>
-                replaceHeader(headers, index, { ...header, value: event.target.value }, onChange)
-              }
-            />
-            <RemoveButton onClick={() => onChange(headers.filter((_, i) => i !== index))} />
-          </div>
-        ))}
+        {headers.map((header, index) => {
+          const isEnv = header.envvar != null
+          return (
+            <div key={index} className="grid gap-2 sm:grid-cols-[1fr_84px_1fr_28px]">
+              <Input
+                placeholder="Header"
+                value={header.name}
+                onChange={(event) =>
+                  replaceHeader(headers, index, { ...header, name: event.target.value }, onChange)
+                }
+              />
+              <button
+                type="button"
+                className="h-9 rounded-md border border-border bg-surface text-[12px] font-medium text-ink-2 transition-colors duration-150 hover:bg-surface-2"
+                onClick={() =>
+                  replaceHeader(
+                    headers,
+                    index,
+                    isEnv
+                      ? { name: header.name, value: '' }
+                      : { name: header.name, envvar: '' },
+                    onChange,
+                  )
+                }
+              >
+                {isEnv ? 'Env' : 'Value'}
+              </button>
+              <Input
+                placeholder={isEnv ? 'ENV_VAR' : 'Value'}
+                value={isEnv ? (header.envvar ?? '') : (header.value ?? '')}
+                onChange={(event) =>
+                  replaceHeader(
+                    headers,
+                    index,
+                    isEnv
+                      ? { ...header, value: undefined, envvar: event.target.value }
+                      : { ...header, value: event.target.value, envvar: undefined },
+                    onChange,
+                  )
+                }
+              />
+              <RemoveButton onClick={() => onChange(headers.filter((_, i) => i !== index))} />
+            </div>
+          )
+        })}
         <AddRowButton onClick={() => onChange([...headers, { name: '', value: '' }])}>
           Add header
-        </AddRowButton>
-      </div>
-    </div>
-  )
-}
-
-function EnvHeaderEditor({
-  title,
-  headers,
-  onChange,
-}: {
-  title: string
-  headers: MCPEnvHeader[]
-  onChange: (headers: MCPEnvHeader[]) => void
-}) {
-  return (
-    <div className="space-y-2">
-      <p className="text-[12px] font-medium text-ink-2">{title}</p>
-      <div className="flex flex-col gap-2">
-        {headers.map((header, index) => (
-          <div key={index} className="grid gap-2 sm:grid-cols-[1fr_1fr_28px]">
-            <Input
-              placeholder="Header"
-              value={header.name}
-              onChange={(event) =>
-                replaceEnvHeader(headers, index, { ...header, name: event.target.value }, onChange)
-              }
-            />
-            <Input
-              placeholder="ENV_VAR"
-              value={header.env_var}
-              onChange={(event) =>
-                replaceEnvHeader(
-                  headers,
-                  index,
-                  { ...header, env_var: event.target.value },
-                  onChange,
-                )
-              }
-            />
-            <RemoveButton onClick={() => onChange(headers.filter((_, i) => i !== index))} />
-          </div>
-        ))}
-        <AddRowButton onClick={() => onChange([...headers, { name: '', env_var: '' }])}>
-          Add variable
         </AddRowButton>
       </div>
     </div>
@@ -601,17 +571,6 @@ function replaceHeader(
   index: number,
   header: MCPHeader,
   onChange: (headers: MCPHeader[]) => void,
-) {
-  const next = [...headers]
-  next[index] = header
-  onChange(next)
-}
-
-function replaceEnvHeader(
-  headers: MCPEnvHeader[],
-  index: number,
-  header: MCPEnvHeader,
-  onChange: (headers: MCPEnvHeader[]) => void,
 ) {
   const next = [...headers]
   next[index] = header

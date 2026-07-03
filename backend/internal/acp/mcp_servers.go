@@ -123,15 +123,21 @@ func jaztoolsSurfaceURL(raw, surface string) string {
 }
 
 func resolvedACPHeaders(ctx context.Context, server mcpconfig.Server) []mcpconfig.Header {
-	return resolveSessionHeaders(ctx, server.Headers)
+	server.Headers = resolveSessionHeaderValues(ctx, server.Headers)
+	headers, err := mcpconfig.ResolvedHeaders(server, false)
+	if err != nil {
+		return nil
+	}
+	return headers
 }
 
-func resolveSessionHeaders(ctx context.Context, headers []mcpconfig.Header) []mcpconfig.Header {
+func resolveSessionHeaderValues(ctx context.Context, headers []mcpconfig.Header) []mcpconfig.Header {
 	sessionID := mcpsession.ID(ctx)
 	out := make([]mcpconfig.Header, 0, len(headers))
 	for _, header := range headers {
 		header.Name = strings.TrimSpace(header.Name)
 		if !strings.EqualFold(header.Name, mcpsession.HeaderName) {
+			out = append(out, header)
 			continue
 		}
 		if header.Value != mcpsession.HeaderPlaceholder {

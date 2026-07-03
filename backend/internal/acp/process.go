@@ -261,9 +261,7 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 		for _, key := range []string{"OPENAI_API_KEY", "OPENAI_APIKEY", "OPENROUTER_API_KEY", "OPENROUTER_APIKEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"} {
 			delete(env, key)
 		}
-		if target, value, ok := auth.APIKeyBinding(); ok {
-			env[target] = value
-		}
+		auth.BindAPIKeyEnv(env)
 	}
 	if name == AgentClaude {
 		claudeHostEnv := []string{
@@ -310,9 +308,7 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 		}
 		normalizeEnv(env, "ANTHROPIC_API_KEY", "ANTHROPIC_APIKEY")
 		delete(env, "ANTHROPIC_API_KEY")
-		if target, value, ok := auth.APIKeyBinding(); ok {
-			env[target] = value
-		}
+		auth.BindAPIKeyEnv(env)
 	}
 	if name == AgentGrok {
 		processenv.PreserveHost(env,
@@ -330,9 +326,7 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.providers())
 		normalizeEnv(env, "XAI_API_KEY", "XAI_APIKEY")
 		delete(env, "XAI_API_KEY")
-		if target, value, ok := auth.APIKeyBinding(); ok {
-			env[target] = value
-		}
+		auth.BindAPIKeyEnv(env)
 	}
 	if name == AgentOpenCode {
 		processenv.PreserveHost(env,
@@ -356,9 +350,7 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 				prepareErr = firstError(prepareErr, err)
 			}
 		}
-		if target, value, ok := auth.APIKeyBinding(); ok {
-			env[target] = value
-		}
+		auth.BindAPIKeyEnv(env)
 	}
 	if prepare {
 		if spec, ok := resolveAgentAPIKeySpec(name); ok {
@@ -499,23 +491,10 @@ func normalizeEnv(env map[string]string, canonical, alias string) {
 
 func autoAuthMethod(agent string, raw json.RawMessage, env map[string]string) (string, []string) {
 	var init struct {
-		AuthMethods []struct {
-			Type string `json:"type"`
-			ID   string `json:"id"`
-			Vars []struct {
-				Name string `json:"name"`
-			} `json:"vars"`
-		} `json:"authMethods"`
+		AuthMethods []agentAuthMethod `json:"authMethods"`
 	}
 	if err := json.Unmarshal(raw, &init); err != nil {
 		return "", nil
-	}
-	if agent == AgentCodex {
-		for _, method := range init.AuthMethods {
-			if method.ID == "chatgpt" && codexAuthAvailable(env) {
-				return method.ID, nil
-			}
-		}
 	}
 	if agent == AgentGrok {
 		for _, method := range init.AuthMethods {
@@ -525,6 +504,16 @@ func autoAuthMethod(agent string, raw json.RawMessage, env map[string]string) (s
 		}
 		for _, method := range init.AuthMethods {
 			if method.ID == "xai.api_key" && env["XAI_API_KEY"] != "" {
+				return method.ID, nil
+			}
+		}
+	}
+	if method := configuredEnvAuthMethod(init.AuthMethods, env); method != "" {
+		return method, nil
+	}
+	if agent == AgentCodex {
+		for _, method := range init.AuthMethods {
+			if method.ID == "chatgpt" && codexAuthAvailable(env) {
 				return method.ID, nil
 			}
 		}
@@ -547,6 +536,28 @@ func autoAuthMethod(agent string, raw json.RawMessage, env map[string]string) (s
 		}
 	}
 	for _, method := range init.AuthMethods {
+		if method.Type == "env_var" || len(method.Vars) > 0 {
+			for _, v := range method.Vars {
+				if env[v.Name] == "" {
+					missing = appendMissing(missing, authMissingEnvName(agent, v.Name))
+					break
+				}
+			}
+		}
+	}
+	return "", missing
+}
+
+type agentAuthMethod struct {
+	Type string `json:"type"`
+	ID   string `json:"id"`
+	Vars []struct {
+		Name string `json:"name"`
+	} `json:"vars"`
+}
+
+func configuredEnvAuthMethod(methods []agentAuthMethod, env map[string]string) string {
+	for _, method := range methods {
 		if method.Type != "env_var" && len(method.Vars) == 0 {
 			continue
 		}
@@ -554,15 +565,14 @@ func autoAuthMethod(agent string, raw json.RawMessage, env map[string]string) (s
 		for _, v := range method.Vars {
 			if env[v.Name] == "" {
 				allSet = false
-				missing = appendMissing(missing, authMissingEnvName(agent, v.Name))
 				break
 			}
 		}
 		if allSet {
-			return method.ID, nil
+			return method.ID
 		}
 	}
-	return "", missing
+	return ""
 }
 
 func codexAuthAvailable(env map[string]string) bool {

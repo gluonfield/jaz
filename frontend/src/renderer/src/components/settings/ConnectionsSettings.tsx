@@ -1,13 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMemo, useState } from 'react'
 import { AnimatedList, AnimatedListItem } from '@/components/ui/AnimatedList'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
-import {
-  connectionPluginsQuery,
-  disconnectConnectionAccount,
-} from '@/lib/api/connections'
-import { clientRuntime } from '@/lib/clientRuntime'
+import { disconnectConnectionAccount } from '@/lib/api/connections'
 import { keys } from '@/lib/query/keys'
 import type { IntegrationConnectionAccount } from '@/lib/api/types'
 import {
@@ -23,12 +19,9 @@ import { useConnectionSignIn } from './useConnectionSignIn'
 export function ConnectionsSettings() {
   const queryClient = useQueryClient()
   const toast = useToast()
-  const [pollUntil, setPollUntil] = useState(0)
   const [selectedPluginID, setSelectedPluginID] = useState<string | null>(null)
-  const plugins = useQuery({
-    ...connectionPluginsQuery,
-    refetchInterval: () => (Date.now() < pollUntil ? 2000 : false),
-  })
+  const signIn = useConnectionSignIn({ onStartAccepted: () => setSelectedPluginID(null) })
+  const plugins = signIn.plugins
   const sortedPlugins = useMemo(
     () => [...(plugins.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
     [plugins.data],
@@ -37,14 +30,6 @@ export function ConnectionsSettings() {
     () => sortedPlugins.find((plugin) => plugin.id === selectedPluginID) ?? null,
     [sortedPlugins, selectedPluginID],
   )
-  const signIn = useConnectionSignIn({
-    plugins: sortedPlugins,
-    onStartAccepted: () => setSelectedPluginID(null),
-    onOAuthURL: (url) => {
-      setPollUntil(Date.now() + 90_000)
-      openAuthURL(url)
-    },
-  })
   const disconnect = useMutation({
     mutationFn: disconnectConnectionAccount,
     onSuccess: () => toast('Disconnected account'),
@@ -65,22 +50,6 @@ export function ConnectionsSettings() {
     const label = accountAddress(account) || account.id
     if (window.confirm(`Disconnect ${label}?`)) disconnect.mutate(account.id)
   }
-
-  useEffect(() => {
-    if (pollUntil === 0) return
-    const refresh = () => {
-      if (document.visibilityState === 'hidden') return
-      void queryClient.invalidateQueries({ queryKey: keys.connectionPlugins })
-    }
-    const timeout = window.setTimeout(() => setPollUntil(0), Math.max(0, pollUntil - Date.now()))
-    window.addEventListener('focus', refresh)
-    document.addEventListener('visibilitychange', refresh)
-    return () => {
-      window.clearTimeout(timeout)
-      window.removeEventListener('focus', refresh)
-      document.removeEventListener('visibilitychange', refresh)
-    }
-  }, [pollUntil, queryClient])
 
   return (
     <section className="py-5">
@@ -157,12 +126,4 @@ export function ConnectionsSettings() {
       </div>
     </section>
   )
-}
-
-function openAuthURL(url: string): void {
-  if (clientRuntime.openExternalURL) {
-    clientRuntime.openExternalURL(url)
-    return
-  }
-  window.open(url, '_blank', 'noopener,noreferrer')
 }

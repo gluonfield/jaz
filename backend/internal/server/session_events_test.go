@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/goal"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
@@ -134,6 +135,38 @@ func TestStreamSessionEventsMobileProjectsToolPayload(t *testing.T) {
 	}
 	if !strings.Contains(body, `"id":"tool-1"`) || !strings.Contains(body, `"title":"rg release"`) {
 		t.Fatalf("mobile SSE missing tool summary: %s", body)
+	}
+}
+
+func TestStreamSessionEventsClearsRequestedGoalSnapshots(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "goal-events", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{
+		Type: sessionevents.TypeGoalUpdate,
+		Goal: &sessionevents.GoalEvent{
+			Identity: goal.Identity{
+				Objective: "raw user prompt text",
+				Status:    goal.StatusRequested,
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	srv := &Server{Store: store, Events: sessionevents.New()}
+	res := streamSessionEventsForTest(t, srv, session.ID, "/v1/sessions/"+session.ID+"/events", "", "")
+	body := res.Body.String()
+
+	if strings.Contains(body, "raw user prompt text") || strings.Contains(body, `"goal":`) {
+		t.Fatalf("requested goal leaked into SSE: %s", body)
+	}
+	if !strings.Contains(body, `"type":"goal_clear"`) {
+		t.Fatalf("requested goal was not streamed as clear: %s", body)
 	}
 }
 

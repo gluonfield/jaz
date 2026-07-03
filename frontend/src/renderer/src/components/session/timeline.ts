@@ -3,8 +3,8 @@
 // renders. Pure data — no JSX — so the component can memoize one buildTimeline
 // call per data change.
 import type { ACPPermission, ACPToolCall, ChatMessage, SessionEvent } from '@/lib/api/types'
-import { taskSurfaceFromEvent, taskSurfaceKey } from '@/lib/taskSurface'
-import { inPlaceEventKey, isParentChildACPEvent, mergeACPTextEvents } from '@/lib/sessionEvents'
+import { taskSurfaceFromEvent } from '@/lib/taskSurface'
+import { isParentChildACPEvent, mergeACPTextEvents, sessionEventCoalesceKey } from '@/lib/sessionEvents'
 import { hasPermissionSurface, normalized } from './TranscriptUtils'
 
 export type TimelineItem =
@@ -58,7 +58,7 @@ function combineVisibleACPText(items: TimelineItem[]): TimelineItem[] {
   for (const item of items) {
     const prev = out.at(-1)
     const merged =
-      prev?.kind === 'event' && item.kind === 'event'
+      prev?.kind === 'event' && item.kind === 'event' && adjacentSessionEvents(prev.event, item.event)
         ? mergeACPTextEvents(prev.event, item.event)
         : undefined
     if (merged && prev?.kind === 'event' && item.kind === 'event') {
@@ -73,6 +73,10 @@ function combineVisibleACPText(items: TimelineItem[]): TimelineItem[] {
     out.push(item)
   }
   return out
+}
+
+function adjacentSessionEvents(prev: SessionEvent, event: SessionEvent): boolean {
+  return prev.session_id === event.session_id && (!prev.seq || !event.seq || event.seq === prev.seq + 1)
 }
 
 function itemTime(value: string | undefined): number {
@@ -408,11 +412,10 @@ export function buildTimeline(
 // Coalesced events keep their latest copy whose seq changes per update; key by
 // identity so streamed deltas patch in place instead of remounting.
 export function stableEventKey(event: SessionEvent, eventIndex = 0): string {
-  const taskKey = taskSurfaceKey(event)
-  if (taskKey) return taskKey
-  // Text deltas don't coalesce by identity, so each gets a per-index key.
+  const coalesceKey = sessionEventCoalesceKey(event)
+  if (coalesceKey) return coalesceKey
   if ((event.type === 'acp_message' || event.type === 'acp_thought') && event.acp?.id) {
     return `${event.type}:${event.acp.id}:${event.session_id}:${eventIndex}`
   }
-  return inPlaceEventKey(event) ?? `${event.session_id}:${event.seq ?? 'live'}`
+  return `${event.session_id}:${event.seq ?? 'live'}`
 }

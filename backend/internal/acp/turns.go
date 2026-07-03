@@ -43,7 +43,7 @@ func (m *Manager) runPrompt(ctx context.Context, job *jobState, message string, 
 		}
 	}
 	goalRequested := currentTurnGoalRequested(job, done)
-	prompt, err := promptContentBlocks(message, attachments, resolver)
+	prompt, err := promptContentBlocks(goalPromptMessage(message, goalRequested), attachments, resolver)
 	if err != nil {
 		m.failPromptCall(done, job, err)
 		return
@@ -51,7 +51,6 @@ func (m *Manager) runPrompt(ctx context.Context, job *jobState, message string, 
 	m.runPromptCall(ctx, job, done, acpschema.PromptRequest{
 		SessionID: acpschema.SessionID(job.ACPSession),
 		Prompt:    prompt,
-		Meta:      goalPromptMeta(goalRequested),
 	})
 }
 
@@ -61,6 +60,7 @@ func (m *Manager) runPromptCall(ctx context.Context, job *jobState, done chan st
 		m.failPromptCall(done, job, fmt.Errorf("acp peer is not active"))
 		return
 	}
+	m.withACPTranscriptBarrier(job.Snapshot(), nil)
 	raw, err := peer.Call(ctx, acpschema.AgentMethodSessionPrompt, req)
 	if err != nil {
 		m.failPromptCall(done, job, err)
@@ -78,8 +78,9 @@ func (m *Manager) runPromptCall(ctx context.Context, job *jobState, done chan st
 }
 
 func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReason string) {
+	userCancelled := jobCancelRequested(job)
 	state := StateIdle
-	if jobCancelRequested(job) || stopReason == "cancelled" {
+	if userCancelled || stopReason == "cancelled" {
 		state = StateCancelled
 		stopReason = "cancelled"
 	}
@@ -93,9 +94,14 @@ func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReas
 		turn.promptCalls--
 	}
 	remaining := turn.promptCalls
-	if state == StateIdle && remaining > 0 {
+	if remaining > 0 && !userCancelled {
+		handoff := turn.promptHandoff
+		turn.promptHandoff = nil
 		job.UpdatedAt = time.Now().UTC()
 		job.mu.Unlock()
+		if handoff != nil {
+			close(handoff)
+		}
 		m.log.Info("acp prompt handed off", "session", job.ID, "remaining_prompt_calls", remaining)
 		return
 	}

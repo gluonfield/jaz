@@ -603,6 +603,92 @@ func TestMergeFromMain(t *testing.T) {
 	}
 }
 
+func TestMergeFromMainUsesOriginWhenLocalMainDiverged(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	ctx := context.Background()
+	workspace, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bare := filepath.Join(workspace, "origin.git")
+	main := filepath.Join(workspace, "repo")
+	other := filepath.Join(workspace, "other")
+	git := func(dir string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir, "-c", "user.email=t@t", "-c", "user.name=t"}, args...)...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s %v: %v\n%s", dir, args, err, out)
+		}
+		return string(out)
+	}
+	write := func(dir, name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := exec.Command("git", "init", "-q", "--bare", "-b", "main", bare).Run(); err != nil {
+		t.Fatal(err)
+	}
+	if err := exec.Command("git", "init", "-q", "-b", "main", main).Run(); err != nil {
+		t.Fatal(err)
+	}
+	write(main, "settings.txt", "base\n")
+	git(main, "add", "-A")
+	git(main, "commit", "-q", "-m", "init")
+	git(main, "remote", "add", "origin", bare)
+	git(main, "push", "-q", "-u", "origin", "main")
+
+	worktree, _, err := AddWorktree(ctx, workspace, main, "wt", "")
+	if err != nil {
+		t.Fatalf("AddWorktree: %v", err)
+	}
+
+	write(main, "settings.txt", "stale local main\n")
+	git(main, "add", "-A")
+	git(main, "commit", "-q", "-m", "stale local main")
+
+	if err := exec.Command("git", "clone", "-q", bare, other).Run(); err != nil {
+		t.Fatal(err)
+	}
+	write(other, "settings.txt", "origin main\n")
+	git(other, "add", "-A")
+	git(other, "commit", "-q", "-m", "origin main")
+	git(other, "push", "-q", "origin", "main")
+	git(worktree, "update-ref", "-d", "refs/remotes/origin/main")
+
+	if info := Inspect(ctx, worktree); !info.CanUpdateFromMain || info.UpdateBranch != "origin/main" {
+		t.Fatalf("Inspect = %+v with missing origin/main, want can_update_from_main and update_branch=origin/main", info)
+	}
+	if err := MergeFromMain(ctx, worktree, "noop"); err != nil {
+		t.Fatalf("MergeFromMain with missing origin/main ref = %v, want fetch+merge from origin/main", err)
+	}
+	if info := Inspect(ctx, worktree); info.Behind != 0 || info.CanUpdateFromMain || info.UpdateBranch != "origin/main" {
+		t.Fatalf("Inspect = %+v after origin/main merge, want behind=0 and no update action", info)
+	}
+	if err := MergeFromMain(ctx, worktree, "noop"); err == nil || !strings.Contains(err.Error(), "nothing to merge") {
+		t.Fatalf("MergeFromMain = %v, want nothing-to-merge from origin/main", err)
+	}
+	git(worktree, "remote", "set-url", "origin", filepath.Join(workspace, "missing.git"))
+	head := strings.TrimSpace(git(worktree, "rev-parse", "HEAD"))
+	write(worktree, "dirty.txt", "dirty\n")
+	if err := MergeFromMain(ctx, worktree, "noop"); err == nil || !strings.Contains(err.Error(), "fetching origin/main") {
+		t.Fatalf("MergeFromMain with broken origin = %v, want fetch error", err)
+	}
+	if got := strings.TrimSpace(git(worktree, "rev-parse", "HEAD")); got != head {
+		t.Fatalf("HEAD = %s after broken-origin update, want unchanged %s", got, head)
+	}
+	if got, _ := os.ReadFile(filepath.Join(worktree, "settings.txt")); string(got) != "origin main\n" {
+		t.Fatalf("worktree settings.txt = %q, want origin main", got)
+	}
+	if out := git(worktree, "status", "--porcelain"); !strings.Contains(out, "dirty.txt") {
+		t.Fatalf("dirty work was not preserved after failed MergeFromMain:\n%s", out)
+	}
+}
+
 func TestDiffSummaryAndFileDiff(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")

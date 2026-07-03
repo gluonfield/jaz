@@ -59,22 +59,20 @@ func TestResolveAdapterDownloadsVerifiesAndExtractsManifestArchive(t *testing.T)
 	}
 }
 
-func TestResolveAdapterPrefersLocalAssetSpecInDev(t *testing.T) {
+func TestResolveAdapterPrefersLocalManifestInDev(t *testing.T) {
 	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		t.Skip(err)
 	}
 	body := testTarball(t, map[string]string{"bin/tool": "new"})
 	sum := sha256.Sum256(body)
-	staleManifestHit := false
+	remoteManifestHit := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/repos/example/adapter/releases/tags/v1.2.3":
-			_, _ = fmt.Fprintf(w, `{"assets":[{"name":"adapter-1.2.3-%s.tar.gz","browser_download_url":"%s","digest":"sha256:%x"}]}`, platform, serverURL(r, "/adapter.tgz"), sum)
 		case "/adapter.tgz":
 			_, _ = w.Write(body)
 		case "/manifest.json":
-			staleManifestHit = true
+			remoteManifestHit = true
 			_, _ = fmt.Fprintf(w, `{"adapters":{"claude":{"version":"0.9.0","assets":{"%s":{"url":"%s","sha256":"%064x","binary":"old"}}}}}`, platform, serverURL(r, "/old.tgz"), 1)
 		default:
 			http.NotFound(w, r)
@@ -83,55 +81,45 @@ func TestResolveAdapterPrefersLocalAssetSpecInDev(t *testing.T) {
 	defer server.Close()
 
 	root := t.TempDir()
-	specPath := filepath.Join(root, "acp-adapter-assets.json")
-	if err := os.WriteFile(specPath, []byte(fmt.Sprintf(`{"adapters":{"claude":{"repo":"example/adapter","tag":"v1.2.3","version":"1.2.3","assets":{"%s":{"name":"adapter-1.2.3-%s.tar.gz","binary":"bin/tool"}}}}}`, platform, platform)), 0o644); err != nil {
+	manifestPath := filepath.Join(root, "dist", "acp-adapters.json")
+	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manifestPath, []byte(fmt.Sprintf(`{"adapters":{"claude":{"version":"1.2.3","assets":{"%s":{"url":"%s","sha256":"%x","binary":"bin/tool"}}}}}`, platform, server.URL+"/adapter.tgz", sum)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	manager := NewForTest(root, server.URL+"/manifest.json", server.Client())
-	manager.assetSpecPath = specPath
-	manager.githubAPIURL = server.URL + "/repos"
+	manager.localManifestPath = manifestPath
 	launch, err := manager.ResolveAdapter(context.Background(), "claude")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if staleManifestHit {
-		t.Fatal("stale release manifest was fetched despite local asset spec")
+	if remoteManifestHit {
+		t.Fatal("remote latest manifest was fetched despite local dev manifest")
 	}
 	if !strings.Contains(launch.Command, "1.2.3") {
 		t.Fatalf("launch command = %q", launch.Command)
 	}
-	status := manager.Status("claude")
-	if status.Version != "1.2.3" || status.State != StateReady {
-		t.Fatalf("status = %#v", status)
-	}
 }
 
-func TestFetchManifestFallsBackToCacheWhenLocalAssetSpecFetchFails(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "offline", http.StatusBadGateway)
-	}))
-	defer server.Close()
-
+func TestFetchManifestRejectsStaleCacheWhenLocalManifestIsInvalid(t *testing.T) {
 	root := t.TempDir()
-	specPath := filepath.Join(root, "acp-adapter-assets.json")
-	if err := os.WriteFile(specPath, []byte(`{"adapters":{"claude":{"repo":"example/adapter","tag":"v1.2.3","version":"1.2.3","assets":{"darwin-arm64":{"name":"adapter-1.2.3-darwin-arm64.tar.gz","binary":"bin/tool"}}}}}`), 0o644); err != nil {
+	manifestPath := filepath.Join(root, "dist", "acp-adapters.json")
+	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-
-	manager := NewForTest(root, "", server.Client())
-	manager.assetSpecPath = specPath
-	manager.githubAPIURL = server.URL + "/repos"
+	if err := os.WriteFile(manifestPath, []byte(`{`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewForTest(root, "", nil)
+	manager.localManifestPath = manifestPath
 	manager.cacheManifest(manifest{Adapters: map[string]manifestAdapter{
 		"claude": {Version: "cached", Assets: map[string]manifestAsset{}},
 	}})
 
-	got, err := manager.fetchManifest(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Adapters["claude"].Version != "cached" {
-		t.Fatalf("manifest = %#v", got)
+	if _, err := manager.fetchManifest(context.Background()); err == nil {
+		t.Fatal("expected invalid local manifest to reject cache fallback")
 	}
 }
 

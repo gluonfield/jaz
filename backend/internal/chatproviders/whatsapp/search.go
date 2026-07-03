@@ -28,6 +28,12 @@ func (p *Provider) Search(ctx context.Context, req whatsappconnector.SearchReque
 		}
 		items = append(items, item)
 	}
+	for _, item := range whatsappGroupSearchItems(ctx, client) {
+		if query != "" && !whatsappSearchMatch(item, query) {
+			continue
+		}
+		items = append(items, item)
+	}
 	sort.Slice(items, func(i, j int) bool {
 		return strings.ToLower(items[i].Name) < strings.ToLower(items[j].Name)
 	})

@@ -507,14 +507,14 @@ html.vibrant body {
   background: transparent;
 }
 html.vibrant .sidebar-material {
-  --sidebar-material-bg: color-mix(in oklab, var(--color-surface) 88%, transparent);
+  --sidebar-material-bg: color-mix(in oklab, var(--color-surface) 30%, transparent);
   --sidebar-material-edge: color-mix(in oklab, var(--color-border) 82%, transparent);
   --sidebar-material-highlight: color-mix(in oklab, oklch(1 0 0) 42%, transparent);
   -webkit-backdrop-filter: saturate(1.08);
   backdrop-filter: saturate(1.08);
 }
 html.vibrant.dark .sidebar-material {
-  --sidebar-material-bg: color-mix(in oklab, var(--color-surface) 82%, transparent);
+  --sidebar-material-bg: color-mix(in oklab, var(--color-surface) 36%, transparent);
   --sidebar-material-edge: color-mix(in oklab, var(--color-border) 74%, transparent);
   --sidebar-material-highlight: color-mix(in oklab, oklch(1 0 0) 7%, transparent);
   -webkit-backdrop-filter: saturate(1.12);

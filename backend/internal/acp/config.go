@@ -35,19 +35,6 @@ func CanonicalAgentName(name string) string {
 	return name
 }
 
-type AgentCapabilities struct {
-	NativeGoal bool `json:"native_goal,omitempty"`
-}
-
-func CatalogAgentCapabilitiesFor(name string) AgentCapabilities {
-	switch CanonicalAgentName(name) {
-	case AgentCodex:
-		return AgentCapabilities{NativeGoal: true}
-	default:
-		return AgentCapabilities{}
-	}
-}
-
 func AgentSupportsCompact(name string) bool {
 	switch CanonicalAgentName(name) {
 	case AgentCodex, AgentClaude:

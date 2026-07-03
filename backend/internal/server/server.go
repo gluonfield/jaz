@@ -336,6 +336,7 @@ func (s *Server) writeSessionMessages(w http.ResponseWriter, r *http.Request, se
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	transcriptEvents = storage.GoalDisplayEvents(transcriptEvents)
 	transcriptEvents = sessionevents.CompactTranscript(transcriptEvents)
 	if mobile {
 		transcriptEvents = mobileSessionEvents(transcriptEvents)
@@ -358,7 +359,7 @@ func (s *Server) writeSessionMessages(w http.ResponseWriter, r *http.Request, se
 	resp := map[string]any{
 		"session":  canonicalSessionResponse(session),
 		"messages": messages,
-		"events":   transcriptEvents,
+		"events":   sessionEventResponses(transcriptEvents),
 	}
 	if !mobile {
 		resp["activity"] = activity
@@ -570,7 +571,7 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, fmt.Errorf("message is required"))
 			return
 		}
-		if err := s.validatePromptOptions(session, promptOptionsFromStream(req)); err != nil {
+		if err := s.validateGoalRequest(session, req.GoalRequested); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
@@ -632,21 +633,21 @@ func (s *Server) setSessionStatusWithError(session storage.Session, status, mess
 	if status == "" {
 		return
 	}
-	unlock := s.lockSession(session.ID)
-	defer unlock()
-	if current, err := s.Store.LoadSession(session.ID); err == nil {
-		session = current
-	}
-	session.Status = status
+	errorMessage := ""
 	if status == storage.StatusError {
-		session.Error = firstNonEmpty(message, session.Error, "Unknown error.")
-	} else {
-		session.Error = ""
+		errorMessage = message
+		if errorMessage == "" {
+			if current, err := s.Store.LoadSession(session.ID); err == nil {
+				errorMessage = current.Error
+			}
+		}
+		errorMessage = firstNonEmpty(errorMessage, "Unknown error.")
 	}
+	var attentionAt time.Time
 	if status == storage.StatusIdle || status == storage.StatusError {
-		storage.MarkSessionAttention(&session, time.Now().UTC())
+		attentionAt = time.Now().UTC()
 	}
-	_ = s.Store.SaveSession(session)
+	_ = s.Store.UpdateSessionStatus(session.ID, status, errorMessage, attentionAt)
 }
 
 func (s *Server) addUsage(sessionID string, usage *provider.Usage) {

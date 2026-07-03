@@ -68,7 +68,7 @@ export function ConnectionPluginCard({
     <button
       type="button"
       onClick={onOpen}
-      className="group grid h-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-card bg-surface px-3 py-3 text-left transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      className="group grid h-full w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-card bg-surface px-3 py-3 text-left transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
     >
       <ConnectionSummary plugin={plugin} title={plugin.name} detail={plugin.description} />
       <ChevronRight

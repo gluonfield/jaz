@@ -7,7 +7,6 @@ import type {
   SessionEvent,
   SessionMessages,
 } from '@/lib/api/types'
-import { runtimeCapabilitiesSupportNativeGoal } from '@/lib/agentRuntimes'
 import { applyProviderToolTitleFallbacks, providerSubagentsFromEvents } from '@/lib/providerSubagents'
 import { spawnedThreadsFromSources } from '@/lib/spawnedThreads'
 import {
@@ -28,8 +27,8 @@ export function isCodexACPSession(session: Session | undefined): boolean {
   return session?.runtime === 'acp' && session.runtime_ref?.agent?.trim().toLowerCase() === 'codex'
 }
 
-export function sessionSupportsNativeGoal(session: Session | undefined): boolean {
-  return session?.runtime === 'acp' && runtimeCapabilitiesSupportNativeGoal(session.runtime_ref?.capabilities)
+export function sessionSupportsGoal(session: Session | undefined): boolean {
+  return session?.runtime === 'acp'
 }
 
 export function latestGoalEvent(sessionId: string, events: SessionEvent[]): GoalEvent | null | undefined {
@@ -42,7 +41,7 @@ export function latestGoalEvent(sessionId: string, events: SessionEvent[]): Goal
 }
 
 export function goalIsActive(goal: GoalEvent | undefined): boolean {
-  return goal?.status === 'active'
+  return Boolean(goal?.status && goal.status !== 'complete')
 }
 
 export function stripACPError(event: SessionEvent): SessionEvent {
@@ -84,6 +83,11 @@ export function latestACPModeState(sessionId: string, events: SessionEvent[]): A
   return latest
 }
 
+export function latestACPGoalRequested(sessionId: string, events: SessionEvent[]): boolean | undefined {
+  const event = events.findLast((item) => item.acp?.id === sessionId && item.acp.goal_requested != null)
+  return event?.acp?.goal_requested
+}
+
 function acpSnapshotEvents(job: ACPJobSnapshot): SessionEvent[] {
   const at = job.last_event_at || job.updated_at
   const events: SessionEvent[] = []
@@ -118,6 +122,7 @@ function acpSnapshotEvents(job: ACPJobSnapshot): SessionEvent[] {
         plan: job.plan,
         tool_calls: job.tool_calls,
         permissions: job.permissions,
+        goal_requested: job.goal_requested,
         last_event_at: job.last_event_at,
         last_tool_at: job.last_tool_at,
       },
@@ -191,6 +196,7 @@ export function deriveSessionView(data: SessionMessages, liveEvents: SessionEven
     acp_tool_calls: acpToolCalls,
     acp_permissions: acpPermissions,
     acp_error: acpError,
+    acp_goal_requested: acpGoalRequested,
     acp_active_operation: acpActiveOperation,
     acp_last_event_at: acpLastEventAt,
     acp_last_tool_at: acpLastToolAt,
@@ -227,6 +233,7 @@ export function deriveSessionView(data: SessionMessages, liveEvents: SessionEven
             plan: acpPlan,
             tool_calls: eventsCoverOwnACP ? undefined : acpToolCalls,
             permissions: acpPermissions,
+            goal_requested: acpGoalRequested,
             active_operation: acpActiveOperation,
             last_event_at: acpLastEventAt,
             last_tool_at: acpLastToolAt,
@@ -254,10 +261,12 @@ export function deriveSessionView(data: SessionMessages, liveEvents: SessionEven
   const acpModesKnown = modeStateKnown(currentModes)
   const planAvailable = session.runtime !== 'acp' || !acpModesKnown || Boolean(currentModes?.plan_mode_id)
   const planActive = planModeActive(currentModes)
-  const goalAvailable = sessionSupportsNativeGoal(session)
-  const latestGoal = latestGoalEvent(session.id, [...persistedEvents, ...snapshotEvents, ...liveEvents])
+  const goalAvailable = sessionSupportsGoal(session)
+  const runtimeEvents = [...persistedEvents, ...snapshotEvents, ...liveEvents]
+  const latestGoal = latestGoalEvent(session.id, runtimeEvents)
   const goal = latestGoal === null ? undefined : latestGoal ?? session.goal
   const goalActive = goalIsActive(goal)
+  const goalRequested = Boolean(latestACPGoalRequested(session.id, runtimeEvents) ?? acpGoalRequested)
   const hasBlockingPendingPermission = Array.from(activePermissions).some(
     (id) => !activePlanApprovalPermissions.has(id),
   )
@@ -308,6 +317,7 @@ export function deriveSessionView(data: SessionMessages, liveEvents: SessionEven
     planActive,
     goalAvailable,
     goalActive,
+    goalRequested,
     goal,
     hasBlockingPendingPermission,
     latestPlanDecisionSurface,

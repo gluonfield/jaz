@@ -57,7 +57,7 @@ func TestSessionQueueActionAppendsQueuedMessage(t *testing.T) {
 	}
 }
 
-func TestSessionQueueActionRejectsGoalForUnsupportedAgent(t *testing.T) {
+func TestSessionQueueActionStoresJazGoalRequest(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -80,15 +80,15 @@ func TestSessionQueueActionRejectsGoalForUnsupportedAgent(t *testing.T) {
 
 	(&Server{Store: store}).Handler().ServeHTTP(res, req)
 
-	if res.Code != http.StatusBadRequest {
+	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded.QueuedMessages) != 0 {
-		t.Fatalf("queue changed: %#v", loaded.QueuedMessages)
+	if len(loaded.QueuedMessages) != 1 || !loaded.QueuedMessages[0].GoalRequested {
+		t.Fatalf("queue = %#v, want one goal-requested prompt", loaded.QueuedMessages)
 	}
 }
 
@@ -569,15 +569,11 @@ func TestSessionQueueSteerClaimsOnePromptForRunningACP(t *testing.T) {
 	if cancelCtxErr != nil || sendCtxErr != nil {
 		t.Fatalf("steer used cancelled context: cancel=%v send=%v", cancelCtxErr, sendCtxErr)
 	}
-	loaded, err := store.LoadSession(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if queuedTexts(loaded.QueuedMessages) != "first|third" {
-		t.Fatalf("queue = %#v, want selected prompt removed only", loaded.QueuedMessages)
-	}
-	if loaded.PendingSteer != nil {
-		t.Fatalf("pending steer = %#v, want cleared after send", loaded.PendingSteer)
+	loaded := waitForSession(t, store, session.ID, func(loaded storage.Session) bool {
+		return queuedTexts(loaded.QueuedMessages) == "first|third" && loaded.PendingSteer == nil
+	})
+	if queuedTexts(loaded.QueuedMessages) != "first|third" || loaded.PendingSteer != nil {
+		t.Fatalf("session queue=%#v pending=%#v", loaded.QueuedMessages, loaded.PendingSteer)
 	}
 }
 
@@ -640,13 +636,7 @@ func TestSessionQueueSteerUsesPromptQueueingWhenSupported(t *testing.T) {
 	if steerCtxErr != nil {
 		t.Fatalf("steer used cancelled context: %v", steerCtxErr)
 	}
-	var loaded storage.Session
-	waitFor(t, time.Second, func() bool {
-		var err error
-		loaded, err = store.LoadSession(session.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
+	loaded := waitForSession(t, store, session.ID, func(loaded storage.Session) bool {
 		return len(loaded.QueuedMessages) == 0 && loaded.PendingSteer == nil
 	})
 	if len(loaded.QueuedMessages) != 0 || loaded.PendingSteer != nil {
@@ -710,11 +700,7 @@ func TestSessionQueueSteerShowsPendingBeforeRunningACPStops(t *testing.T) {
 	}
 	close(manager.cancelRelease)
 	_ = waitForACPSend(t, manager, "first")
-	waitFor(t, time.Second, func() bool {
-		loaded, err = store.LoadSession(session.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
+	loaded = waitForSession(t, store, session.ID, func(loaded storage.Session) bool {
 		return loaded.PendingSteer == nil
 	})
 }
@@ -768,12 +754,11 @@ func TestSessionQueueSteerSendsAttachmentsForRunningACP(t *testing.T) {
 	if got := sent.Attachments[0]; got.ID != attachment.ID || got.URI != "" || got.ServerPath != attachment.ServerPath {
 		t.Fatalf("sent attachment = %#v, want %#v", got, attachment)
 	}
-	loaded, err := store.LoadSession(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(loaded.QueuedMessages) != 0 || loaded.Status != storage.StatusRunning {
-		t.Fatalf("session after steer queue=%#v status=%q", loaded.QueuedMessages, loaded.Status)
+	loaded := waitForSession(t, store, session.ID, func(loaded storage.Session) bool {
+		return len(loaded.QueuedMessages) == 0 && loaded.PendingSteer == nil && loaded.Status == storage.StatusRunning
+	})
+	if len(loaded.QueuedMessages) != 0 || loaded.PendingSteer != nil || loaded.Status != storage.StatusRunning {
+		t.Fatalf("session after steer queue=%#v pending=%#v status=%q", loaded.QueuedMessages, loaded.PendingSteer, loaded.Status)
 	}
 }
 
@@ -825,6 +810,12 @@ func TestSessionQueueSteerUsesServerContextAfterRequestCancel(t *testing.T) {
 	if cancelCtxErr != nil || sendCtxErr != nil {
 		t.Fatalf("steer used cancelled request context: cancel=%v send=%v", cancelCtxErr, sendCtxErr)
 	}
+	loaded := waitForSession(t, store, session.ID, func(loaded storage.Session) bool {
+		return len(loaded.QueuedMessages) == 0 && loaded.PendingSteer == nil
+	})
+	if len(loaded.QueuedMessages) != 0 || loaded.PendingSteer != nil {
+		t.Fatalf("session queue=%#v pending=%#v", loaded.QueuedMessages, loaded.PendingSteer)
+	}
 }
 
 func TestSessionQueueSteerStartsIdleACPFromBackend(t *testing.T) {
@@ -868,12 +859,11 @@ func TestSessionQueueSteerStartsIdleACPFromBackend(t *testing.T) {
 	if sent.Session != session.ID || sent.Completion != acp.CompletionAsync {
 		t.Fatalf("unexpected steer send %#v", sent)
 	}
-	loaded, err := store.LoadSession(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(loaded.QueuedMessages) != 0 || loaded.Status != storage.StatusRunning {
-		t.Fatalf("session after steer queue=%#v status=%q", loaded.QueuedMessages, loaded.Status)
+	loaded := waitForSession(t, store, session.ID, func(loaded storage.Session) bool {
+		return len(loaded.QueuedMessages) == 0 && loaded.PendingSteer == nil && loaded.Status == storage.StatusRunning
+	})
+	if len(loaded.QueuedMessages) != 0 || loaded.PendingSteer != nil || loaded.Status != storage.StatusRunning {
+		t.Fatalf("session after steer queue=%#v pending=%#v status=%q", loaded.QueuedMessages, loaded.PendingSteer, loaded.Status)
 	}
 }
 
@@ -918,12 +908,7 @@ func TestSessionQueueSteerRestoresPromptWhenSendFails(t *testing.T) {
 	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
-	var loaded storage.Session
-	waitFor(t, time.Second, func() bool {
-		loaded, err = store.LoadSession(session.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
+	loaded := waitForSession(t, store, session.ID, func(loaded storage.Session) bool {
 		return queuedTexts(loaded.QueuedMessages) == "first|second|third" &&
 			loaded.Status == storage.StatusError &&
 			strings.Contains(loaded.Error, "steer failed")
@@ -965,6 +950,22 @@ func sentACPRequest(manager *fakeACPManager) acp.SendRequest {
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
 	return manager.sent
+}
+
+func waitForSession(t *testing.T, store interface {
+	LoadSession(string) (storage.Session, error)
+}, sessionID string, ready func(storage.Session) bool) storage.Session {
+	t.Helper()
+	var loaded storage.Session
+	waitFor(t, time.Second, func() bool {
+		var err error
+		loaded, err = store.LoadSession(sessionID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ready(loaded)
+	})
+	return loaded
 }
 
 func waitFor(t *testing.T, timeout time.Duration, ready func() bool) {

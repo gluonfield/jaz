@@ -111,7 +111,7 @@ export function useRepoActions(session: Session) {
   const update = () =>
     run('update', async () => {
       setRepoData(await mergeFromMainSessionRepo(session.id))
-      toast(`Updated from ${info?.main_branch}`)
+      toast(`Updated from ${info?.update_branch || info?.main_branch}`)
     })
   const restore = () =>
     run('restore', async () => {

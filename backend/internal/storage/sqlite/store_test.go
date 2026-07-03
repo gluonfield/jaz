@@ -77,35 +77,6 @@ func TestDefaultSlugIgnoresACPAgent(t *testing.T) {
 	}
 }
 
-func TestSessionRuntimeCapabilitiesRoundTrip(t *testing.T) {
-	store, err := New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-
-	session, err := store.CreateSession(storage.CreateSession{
-		Slug:    "runtime-caps",
-		Runtime: storage.RuntimeACP,
-		RuntimeRef: &storage.RuntimeRef{
-			Type:         storage.RuntimeACP,
-			Agent:        "codex",
-			Capabilities: &storage.RuntimeCapabilities{NativeGoal: true},
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	loaded, err := store.LoadSession(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loaded.RuntimeRef == nil || loaded.RuntimeRef.Capabilities == nil || !loaded.RuntimeRef.Capabilities.NativeGoal {
-		t.Fatalf("runtime capabilities not persisted: %#v", loaded.RuntimeRef)
-	}
-}
-
 func TestListSessionsOrdersByAttentionNotActivity(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
@@ -362,8 +333,7 @@ func TestMCPServersCRUDRoundTrip(t *testing.T) {
 		URL:               "https://mcp.example.com/mcp",
 		Enabled:           true,
 		BearerTokenEnvVar: "LINEAR_TOKEN",
-		Headers:           []mcpconfig.Header{{Name: "X-Team", Value: "platform"}},
-		EnvHeaders:        []mcpconfig.EnvHeader{{Name: "X-Secret", EnvVar: "LINEAR_SECRET"}},
+		Headers:           []mcpconfig.Header{{Name: "X-Team", Value: "platform"}, {Name: "X-Secret", EnvVar: "LINEAR_SECRET"}},
 		OAuth: mcpconfig.OAuthConfig{
 			ClientID:           "linear-client",
 			ClientSecretEnvVar: "LINEAR_OAUTH_SECRET",
@@ -382,8 +352,7 @@ func TestMCPServersCRUDRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if loaded.BearerTokenEnvVar != "LINEAR_TOKEN" ||
-		len(loaded.Headers) != 1 || loaded.Headers[0].Value != "platform" ||
-		len(loaded.EnvHeaders) != 1 || loaded.EnvHeaders[0].EnvVar != "LINEAR_SECRET" ||
+		len(loaded.Headers) != 2 || loaded.Headers[0].Value != "platform" || loaded.Headers[1].EnvVar != "LINEAR_SECRET" ||
 		loaded.OAuth.ClientID != "linear-client" || loaded.OAuth.ClientSecretEnvVar != "LINEAR_OAUTH_SECRET" {
 		t.Fatalf("loaded = %#v", loaded)
 	}

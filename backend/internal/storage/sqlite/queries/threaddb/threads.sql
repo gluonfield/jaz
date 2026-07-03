@@ -33,7 +33,6 @@ SELECT
   artifact_surface,
   mcp_server_policy,
   pending_steer_message,
-  runtime_capabilities,
   unread,
   goal
 FROM threads;
@@ -73,7 +72,6 @@ SELECT
   artifact_surface,
   mcp_server_policy,
   pending_steer_message,
-  runtime_capabilities,
   unread,
   goal
 FROM threads
@@ -105,7 +103,6 @@ INSERT INTO threads (
   cwd,
   artifact_surface,
   mcp_server_policy,
-  runtime_capabilities,
   project_path,
   error,
   model_provider,
@@ -142,7 +139,6 @@ INSERT INTO threads (
   sqlc.narg(cwd),
   sqlc.narg(artifact_surface),
   sqlc.narg(mcp_server_policy),
-  sqlc.arg(runtime_capabilities),
   sqlc.narg(project_path),
   sqlc.narg(error),
   sqlc.narg(model_provider),
@@ -180,7 +176,6 @@ ON CONFLICT(id) DO UPDATE SET
   cwd = excluded.cwd,
   artifact_surface = excluded.artifact_surface,
   mcp_server_policy = excluded.mcp_server_policy,
-  runtime_capabilities = excluded.runtime_capabilities,
   project_path = excluded.project_path,
   model_provider = excluded.model_provider,
   model = excluded.model,
@@ -218,6 +213,18 @@ WHERE id = sqlc.arg(id) OR parent_id = sqlc.arg(id);
 -- name: UpdateSessionTitle :exec
 UPDATE threads
 SET title = sqlc.narg(title)
+WHERE id = sqlc.arg(id);
+
+-- name: UpdateSessionStatus :exec
+UPDATE threads
+SET
+  status = sqlc.arg(status),
+  error = sqlc.narg(error),
+  updated_at_ms = sqlc.arg(updated_at_ms),
+  last_attention_at_ms = CASE
+    WHEN CAST(sqlc.arg(touch_attention) AS INTEGER) != 0 THEN sqlc.arg(last_attention_at_ms)
+    ELSE last_attention_at_ms
+  END
 WHERE id = sqlc.arg(id);
 
 -- name: TouchThread :exec

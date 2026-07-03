@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
 import { RemoteServerForm } from '@/components/connection/RemoteServerForm'
 import { Button } from '@/components/ui/Button'
+import { DitherTerrain, DitherWordmark } from '@/components/launch/DitherArt'
 import { PixelField } from '@/components/ui/PixelField'
 import { useKnownBackends } from '@/lib/backends'
 import { clientRuntime } from '@/lib/clientRuntime'
@@ -10,15 +11,24 @@ import {
   cancelPendingApproval,
   connectionPreference,
   connectRemote,
+  type ConnectionStatus,
   forgetBackend,
   startLocal,
   useConnection,
 } from '@/lib/connection'
 import { describeBackend, sameBackend } from '@/lib/connectionDisplay'
+import { devPreview } from '@/lib/devPreview'
 import { localDeviceLabel } from '@/lib/deviceLabel'
 import { useTheme } from '@/lib/theme'
 
 const EASE = [0.22, 1, 0.36, 1] as const
+
+// `?launch` pins the boot gate to the checking state, `?launch=welcome` to
+// the options state, so the launch visuals can be iterated in a browser while
+// a live backend is reachable.
+const launchPreview = devPreview('launch')
+const previewStatus: ConnectionStatus | null =
+  launchPreview === null ? null : launchPreview === 'welcome' ? 'disconnected' : 'checking'
 
 const stagger = {
   hidden: {},
@@ -72,7 +82,8 @@ type LaunchScreenProps = { manual?: false; onClose?: never } | { manual: true; o
 // dismisses itself via `onClose`. The particle field renders the wordmark, so
 // the chrome stays text-light.
 export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}) {
-  const { status, error, pairing, url: currentUrl } = useConnection()
+  const { status: liveStatus, error, pairing, url: currentUrl } = useConnection()
+  const status = previewStatus ?? liveStatus
   // PixelField samples the palette at mount; remount it when the theme flips.
   const { resolved } = useTheme()
   const [mode, setMode] = useState<'options' | 'remote'>('options')
@@ -124,6 +135,7 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
   return (
     <div className="relative flex h-full flex-col bg-bg">
       {showField && <PixelField key={resolved} calm={mode === 'remote' || busy !== null} />}
+      {status === 'checking' ? <DitherTerrain className="absolute inset-x-0 bottom-0" delay={0.5} /> : null}
       <div className="titlebar-drag relative h-[52px] shrink-0">
         {manual && onClose ? (
           <button
@@ -146,10 +158,16 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1, transition: { duration: 0.3, delay: 0.2 } }}
               exit={{ opacity: 0, transition: { duration: 0.15 } }}
-              className="flex flex-col items-center gap-3"
+              className="flex flex-col items-center gap-8"
             >
-              <span className="size-2 animate-pulse rounded-full bg-primary" />
-              <p className="text-[13px] text-ink-3">{checkingCopy}</p>
+              <DitherWordmark delay={0.35} />
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1, transition: { duration: 0.4, delay: 1.1 } }}
+                className="text-[13px] text-ink-3"
+              >
+                {checkingCopy}
+              </motion.p>
             </motion.div>
           ) : status === 'pending_approval' && pairing ? (
             <motion.div

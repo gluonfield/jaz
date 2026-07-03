@@ -7,7 +7,6 @@ function normalizeServer(server: MCPServer): MCPServer {
   return {
     ...server,
     headers: server.headers ?? [],
-    env_headers: server.env_headers ?? [],
     oauth: server.oauth ?? {},
   }
 }
@@ -20,12 +19,16 @@ function normalizeInput(input: MCPServerInput): MCPServerInput {
     bearer_token_env_var: input.bearer_token_env_var?.trim() || undefined,
     oauth: normalizeOAuth(input.oauth),
     headers: (input.headers ?? [])
-      .map((header) => ({ name: header.name.trim(), value: header.value }))
+      .map((header) => normalizedHeader(header))
       .filter((header) => header.name !== ''),
-    env_headers: (input.env_headers ?? [])
-      .map((header) => ({ name: header.name.trim(), env_var: header.env_var.trim() }))
-      .filter((header) => header.name !== '' && header.env_var !== ''),
   }
+}
+
+function normalizedHeader(header: NonNullable<MCPServerInput['headers']>[number]) {
+  const name = header.name.trim()
+  const envvar = header.envvar?.trim()
+  if (envvar) return { name, envvar }
+  return { name, value: header.value ?? '' }
 }
 
 function normalizeOAuth(oauth: MCPServerInput['oauth']): MCPServerInput['oauth'] | undefined {

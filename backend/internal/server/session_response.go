@@ -2,12 +2,14 @@ package server
 
 import (
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/goal"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
 type sessionResponse struct {
 	storage.Session
-	Actions *sessionActions `json:"actions,omitempty"`
+	Goal    *goal.PublicState `json:"goal,omitempty"`
+	Actions *sessionActions   `json:"actions,omitempty"`
 }
 
 func canonicalSessionResponses(sessions []storage.Session) []sessionResponse {
@@ -20,7 +22,9 @@ func canonicalSessionResponses(sessions []storage.Session) []sessionResponse {
 
 func canonicalSessionResponse(session storage.Session) sessionResponse {
 	session = canonicalSession(session)
-	resp := sessionResponse{Session: session}
+	publicGoal := goal.PublicStateFrom(session.Goal)
+	session.Goal = nil
+	resp := sessionResponse{Session: session, Goal: publicGoal}
 	if actions := sessionActionsForSession(session); actions != (sessionActions{}) {
 		resp.Actions = &actions
 	}
@@ -41,7 +45,6 @@ func canonicalSession(session storage.Session) storage.Session {
 		session.ModelProvider = canonical
 	}
 	ref.Agent = canonical
-	ref.Capabilities = acp.EffectiveRuntimeCapabilities(ref.Agent, ref.Capabilities)
 	session.RuntimeRef = &ref
 	return session
 }

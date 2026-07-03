@@ -384,8 +384,7 @@ func TestResolvedHeadersUsesEnvAndBearerToken(t *testing.T) {
 	t.Setenv("MCP_HEADER_VALUE", "from-env")
 	t.Setenv("MCP_TOKEN", "token")
 	headers, err := mcpconfig.ResolvedHeaders(mcpconfig.Server{
-		Headers:           []mcpconfig.Header{{Name: "X-Literal", Value: "literal"}},
-		EnvHeaders:        []mcpconfig.EnvHeader{{Name: "X-Env", EnvVar: "MCP_HEADER_VALUE"}},
+		Headers:           []mcpconfig.Header{{Name: "X-Literal", Value: "literal"}, {Name: "X-Env", EnvVar: "MCP_HEADER_VALUE"}},
 		BearerTokenEnvVar: "MCP_TOKEN",
 	}, true)
 	if err != nil {

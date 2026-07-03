@@ -3,8 +3,9 @@ import { type ReactNode, useMemo, useState } from 'react'
 import { AnimatedList, AnimatedListItem } from '@/components/ui/AnimatedList'
 import { formatTokens } from '@/lib/format/tokens'
 import { USAGE_SHARE_OTHER_COLOR, USAGE_SHARE_PALETTE } from '@/lib/usageColors'
-import { formatUsd, type PricedModel } from '@/lib/usageCost'
-import { inputTokens, totalUsageTokens, type UsageModelTotals } from '@/lib/usageDaily'
+import type { UsageTotals } from '@/lib/api/types'
+import { type CostSummary, formatUsd, type PricedModel } from '@/lib/usageCost'
+import { addUsageTotals, inputTokens, totalUsageTokens, type UsageModelTotals } from '@/lib/usageDaily'
 
 const MODEL_TABLE_COLUMNS = 'minmax(0,1fr) repeat(6, 60px)'
 
@@ -88,12 +89,16 @@ export function UsageShareCharts({ rows }: { rows: PricedModel[] }) {
 
 export function ModelBreakdown({
   rows,
-  unpriced,
+  cost,
 }: {
   rows: PricedModel[]
-  unpriced: number
+  cost: CostSummary
 }) {
   const visible = rows.slice(0, 8)
+  const totalUsage = useMemo(
+    () => rows.reduce<UsageTotals>((acc, { model }) => addUsageTotals(acc, model.usage), {}),
+    [rows],
+  )
 
   return (
     <div className="mt-5">
@@ -122,13 +127,26 @@ export function ModelBreakdown({
                 <span className="text-right">Total</span>
                 <span className="text-right text-ink-2">Cost</span>
               </div>
+              <div className="border-b border-border">
+                <ModelTableRow
+                  label="All models"
+                  meta={`${rows.length} total`}
+                  usage={totalUsage}
+                  cost={cost.priced > 0 ? formatUsd(cost.total) : null}
+                />
+              </div>
               <div className="divide-y divide-border/60">
                 <AnimatedList>
-                  {visible.map(({ model, cost }) => (
+                  {visible.map(({ model, cost: modelCost }) => (
                     <AnimatedListItem
                       key={`${model.agent ?? ''}:${model.model_provider ?? ''}:${model.model ?? ''}`}
                     >
-                      <ModelUsageRow model={model} cost={cost} />
+                      <ModelTableRow
+                        label={modelName(model)}
+                        meta={formatModelMeta(model)}
+                        usage={model.usage}
+                        cost={modelCost == null ? null : formatUsd(modelCost)}
+                      />
                     </AnimatedListItem>
                   ))}
                 </AnimatedList>
@@ -148,8 +166,8 @@ export function ModelBreakdown({
           <p className="mt-1 text-[11px] text-ink-3">
             Cost is an OpenRouter list-price equivalent for subscription-backed coding-agent usage,
             not the actual subscription bill.
-            {unpriced > 0
-              ? ` ${unpriced} model${unpriced === 1 ? '' : 's'} without list pricing show no cost.`
+            {cost.unpriced > 0
+              ? ` ${cost.unpriced} model${cost.unpriced === 1 ? '' : 's'} without list pricing show no cost.`
               : ''}
           </p>
         </>
@@ -252,22 +270,32 @@ function DetailRow({ label, value }: { label: string; value: string }) {
   )
 }
 
-function ModelUsageRow({ model, cost }: { model: UsageModelTotals; cost: number | null }) {
+function ModelTableRow({
+  label,
+  meta,
+  usage,
+  cost,
+}: {
+  label: string
+  meta: string
+  usage: UsageTotals
+  cost: string | null
+}) {
   return (
     <div
       className="grid items-center gap-x-3 px-1 py-2"
       style={{ gridTemplateColumns: MODEL_TABLE_COLUMNS }}
     >
       <div className="flex min-w-0 items-baseline gap-2">
-        <span className="truncate text-[13px] font-medium text-ink">{modelName(model)}</span>
-        <span className="shrink-0 text-[11px] text-ink-3">{formatModelMeta(model)}</span>
+        <span className="truncate text-[13px] font-medium text-ink">{label}</span>
+        <span className="shrink-0 text-[11px] text-ink-3">{meta}</span>
       </div>
-      <Cell text={tokenText(inputTokens(model.usage))} />
-      <Cell text={tokenText(model.usage.cached_input_tokens ?? 0)} tone="muted" />
-      <Cell text={tokenText(model.usage.cached_write_tokens ?? 0)} tone="muted" />
-      <Cell text={tokenText(model.usage.output_tokens ?? 0)} />
-      <Cell text={tokenText(totalUsageTokens(model.usage))} tone="strong" />
-      <Cell text={cost == null ? null : formatUsd(cost)} tone="strong" />
+      <Cell text={tokenText(inputTokens(usage))} />
+      <Cell text={tokenText(usage.cached_input_tokens ?? 0)} tone="muted" />
+      <Cell text={tokenText(usage.cached_write_tokens ?? 0)} tone="muted" />
+      <Cell text={tokenText(usage.output_tokens ?? 0)} />
+      <Cell text={tokenText(totalUsageTokens(usage))} tone="strong" />
+      <Cell text={cost} tone="strong" />
     </div>
   )
 }
@@ -290,12 +318,7 @@ function buildAgentRows(rows: PricedModel[]): AgentUsageRow[] {
       groups.set(agent, group)
     }
     group.modelCount += 1
-    group.usage.input_tokens = (group.usage.input_tokens ?? 0) + (model.usage.input_tokens ?? 0)
-    group.usage.cached_input_tokens = (group.usage.cached_input_tokens ?? 0) + (model.usage.cached_input_tokens ?? 0)
-    group.usage.cached_write_tokens = (group.usage.cached_write_tokens ?? 0) + (model.usage.cached_write_tokens ?? 0)
-    group.usage.output_tokens = (group.usage.output_tokens ?? 0) + (model.usage.output_tokens ?? 0)
-    group.usage.reasoning_output_tokens =
-      (group.usage.reasoning_output_tokens ?? 0) + (model.usage.reasoning_output_tokens ?? 0)
+    addUsageTotals(group.usage, model.usage)
     if (cost == null) {
       group.unpricedCount += 1
     } else {

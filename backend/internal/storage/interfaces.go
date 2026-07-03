@@ -17,6 +17,7 @@ type SessionStore interface {
 	SetArchived(id string, archived bool) error
 	SetPinned(id string, pinned bool) error
 	UpdateSessionTitle(id, title string) error
+	UpdateSessionStatus(id, status, errorMessage string, attentionAt time.Time) error
 	ListSessions(filter SessionFilter) ([]Session, error)
 	LastRootSession() (Session, error)
 }

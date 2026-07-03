@@ -58,9 +58,9 @@ func (m *Manager) createElicitation(ctx context.Context, raw json.RawMessage) (j
 		encodeAnswers: elicitationAnswerEncoder(fields),
 		answer:        make(chan string, 1),
 	}
-	m.permissionMu.Lock()
-	m.pendingPermission[permission.ID] = pending
-	m.permissionMu.Unlock()
+	if !m.registerPendingPermission(job, pending) {
+		return jsonrpc.EncodeResult(acpschema.CreateElicitationResponse{Action: "cancel"})
+	}
 
 	m.setJobPermission(job, permission)
 	m.publishPermission(job, permission, "permission_request")

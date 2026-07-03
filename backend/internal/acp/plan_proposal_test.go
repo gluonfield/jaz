@@ -47,6 +47,7 @@ func TestCodexPlanRequestedTextDoesNotPublishProposedPlan(t *testing.T) {
 			"sessionId": "acp-session",
 			"update": map[string]any{
 				"sessionUpdate": "agent_message_chunk",
+				"messageId":     "codex-plan-proposal",
 				"content": map[string]any{
 					"type": "text",
 					"text": "Proposed plan:\n- Inspect the current app structure.\n- Build the dinosaur page.\n- Run the relevant checks.",
@@ -99,6 +100,7 @@ func TestCodexPlanRequestedPreambleDoesNotPublishProposedPlan(t *testing.T) {
 			"sessionId": "acp-session",
 			"update": map[string]any{
 				"sessionUpdate": "agent_message_chunk",
+				"messageId":     "codex-plan-preamble",
 				"content": map[string]any{
 					"type": "text",
 					"text": "I’ll first check what’s in the current workspace so the plan fits the actual project shape.",
@@ -282,6 +284,7 @@ func TestClaudePlanRequestedStreamsAssistantTextLive(t *testing.T) {
 			"sessionId": "acp-session",
 			"update": map[string]any{
 				"sessionUpdate": "agent_message_chunk",
+				"messageId":     "claude-plan-text",
 				"content":       map[string]any{"type": "text", "text": "Here is the plan I propose."},
 			},
 		}),

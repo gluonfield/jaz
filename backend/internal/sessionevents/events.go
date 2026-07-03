@@ -225,11 +225,13 @@ type ACPEvent struct {
 	StopReason      string          `json:"stop_reason,omitempty"`
 	Assistant       string          `json:"assistant,omitempty"`
 	Thought         string          `json:"thought,omitempty"`
+	TextRunID       string          `json:"text_run_id,omitempty"`
 	Error           string          `json:"error,omitempty"`
 	Modes           ACPModeState    `json:"modes,omitzero"`
 	Plan            []PlanEntry     `json:"plan,omitempty"`
 	ToolCalls       []ACPToolCall   `json:"tool_calls,omitempty"`
 	Permissions     []ACPPermission `json:"permissions,omitempty"`
+	GoalRequested   bool            `json:"goal_requested"`
 	LastEventAt     time.Time       `json:"last_event_at,omitzero"`
 	LastToolAt      time.Time       `json:"last_tool_at,omitzero"`
 }

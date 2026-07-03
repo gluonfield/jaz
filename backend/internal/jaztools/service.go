@@ -17,6 +17,7 @@ import (
 	"github.com/wins/jaz/backend/internal/memoryservice"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/sessiongoal"
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/threads"
 	"github.com/wins/jaz/backend/internal/visualize"
@@ -59,6 +60,8 @@ type Service struct {
 	loopTools       *loops.MCPTools
 	agentTools      *acp.MCPTools
 	threadTools     *threads.Service
+	goalTools       *sessiongoal.MCPTools
+	calendarTools   *connections.CalendarMCPTools
 	gmailTools      *connections.GmailMCPTools
 	whatsAppTools   *connections.WhatsAppMCPTools
 	telegramTools   *connections.TelegramMCPTools
@@ -106,27 +109,46 @@ type sessionSource interface {
 	LoadSession(id string) (storage.Session, error)
 }
 
+type goalStoreAdapter struct {
+	storage.SessionStore
+	storage.SessionEventAppender
+	storage.UsageEventStore
+}
+
 func New(
 	memory *memoryservice.Service,
 	urls serverconfig.URLs,
 	sessionEvents storage.SessionEventAppender,
 	events *sessionevents.Bus,
 	sessions storage.SessionStore,
+	usage storage.UsageEventStore,
 	widgetPublisher *widgets.SessionPublisher,
+	calendarTools *connections.CalendarMCPTools,
 	gmailTools *connections.GmailMCPTools,
 	whatsAppTools *connections.WhatsAppMCPTools,
 	telegramTools *connections.TelegramMCPTools,
 ) *Service {
 	return &Service{
 		Memory:          memory,
+		calendarTools:   calendarTools,
 		gmailTools:      gmailTools,
 		whatsAppTools:   whatsAppTools,
 		telegramTools:   telegramTools,
 		visualizeTools:  visualize.NewMCPTools(sessionEvents, events),
+		goalTools:       newGoalTools(sessionEvents, events, sessions, usage),
 		widgetPublisher: widgetPublisher,
 		sessions:        sessions,
 		url:             strings.TrimSpace(urls.JazToolsMCP),
 	}
+}
+
+func newGoalTools(sessionEvents storage.SessionEventAppender, events *sessionevents.Bus, sessions storage.SessionStore, usage storage.UsageEventStore) *sessiongoal.MCPTools {
+	store := goalStoreAdapter{
+		SessionStore:         sessions,
+		SessionEventAppender: sessionEvents,
+		UsageEventStore:      usage,
+	}
+	return sessiongoal.NewMCPTools(sessiongoal.New(store, events))
 }
 
 func (s *Service) URL() string {
@@ -218,6 +240,10 @@ func (s *Service) newServer(surface toolSurface) *mcp.Server {
 		return server
 	}
 	s.loopTools.AddTo(server)
+	if surface == threadSurface && s.goalTools != nil {
+		s.goalTools.AddTo(server)
+	}
+	s.calendarTools.AddTo(server)
 	s.gmailTools.AddTo(server)
 	s.whatsAppTools.AddTo(server)
 	s.telegramTools.AddTo(server)

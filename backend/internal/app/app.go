@@ -112,12 +112,18 @@ type MemoryConfig struct {
 }
 
 type ConnectionsConfig struct {
-	Gmail GmailConnectionConfig
-	Slack SlackConnectionConfig
-	Chat  ChatConnectionConfig
+	Calendar CalendarConnectionConfig
+	Gmail    GmailConnectionConfig
+	Slack    SlackConnectionConfig
+	Chat     ChatConnectionConfig
 	// OAuthRedirectBrokerURL overrides the hosted broker for providers that
 	// reject loopback redirects; defaults to connections.DefaultOAuthRedirectBroker.
 	OAuthRedirectBrokerURL string
+}
+
+type CalendarConnectionConfig struct {
+	OAuthClientID     string
+	OAuthClientSecret string
 }
 
 type GmailConnectionConfig struct {

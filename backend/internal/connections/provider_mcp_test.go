@@ -12,7 +12,7 @@ import (
 )
 
 func TestWhatsAppMCPToolsReportsNotConnected(t *testing.T) {
-	result, out, err := NewWhatsAppMCPTools(&gmailMCPStore{}, nil, nil).SendWhatsAppMessage(context.Background(), nil, WhatsAppSendMessageInput{
+	result, out, err := NewWhatsAppMCPTools(&testConnectionStore{}, nil, nil).SendWhatsAppMessage(context.Background(), nil, WhatsAppSendMessageInput{
 		Recipient: "+447700900123",
 		Message:   "hello",
 	})
@@ -22,13 +22,13 @@ func TestWhatsAppMCPToolsReportsNotConnected(t *testing.T) {
 	if out.Connected || out.SenderAvailable || out.Sent || out.Provider != whatsappconnector.ProviderID {
 		t.Fatalf("output = %#v", out)
 	}
-	if got := gmailToolText(result); !strings.Contains(got, "WhatsApp is not connected") {
+	if got := toolText(result); !strings.Contains(got, "WhatsApp is not connected") {
 		t.Fatalf("text = %q", got)
 	}
 }
 
 func TestWhatsAppMCPToolsRequiresAccountWhenMultipleAccountsConnected(t *testing.T) {
-	tools := NewWhatsAppMCPTools(&gmailMCPStore{connections: []integrations.Connection{{
+	tools := NewWhatsAppMCPTools(&testConnectionStore{connections: []integrations.Connection{{
 		ID:        "whatsapp:personal",
 		Provider:  whatsappconnector.ProviderID,
 		AccountID: "+447700900123",
@@ -49,13 +49,13 @@ func TestWhatsAppMCPToolsRequiresAccountWhenMultipleAccountsConnected(t *testing
 	if !out.Connected || !out.AccountRequired || out.SenderAvailable || out.Sent || len(out.Accounts) != 2 {
 		t.Fatalf("output = %#v", out)
 	}
-	if got := gmailToolText(result); !strings.Contains(got, "Specify account") || !strings.Contains(got, "personal") || !strings.Contains(got, "work") {
+	if got := toolText(result); !strings.Contains(got, "Specify account") || !strings.Contains(got, "personal") || !strings.Contains(got, "work") {
 		t.Fatalf("text = %q", got)
 	}
 }
 
 func TestWhatsAppMCPToolsReportsMissingRuntimeSender(t *testing.T) {
-	tools := NewWhatsAppMCPTools(&gmailMCPStore{connections: []integrations.Connection{{
+	tools := NewWhatsAppMCPTools(&testConnectionStore{connections: []integrations.Connection{{
 		ID:        "whatsapp:personal",
 		Provider:  whatsappconnector.ProviderID,
 		AccountID: "+447700900123",
@@ -71,14 +71,14 @@ func TestWhatsAppMCPToolsReportsMissingRuntimeSender(t *testing.T) {
 	if !out.Connected || out.SenderAvailable || out.Sent || out.AccountID != "+447700900123" || out.Alias != "personal" {
 		t.Fatalf("output = %#v", out)
 	}
-	if got := gmailToolText(result); !strings.Contains(got, "messaging is not enabled in this runtime") {
+	if got := toolText(result); !strings.Contains(got, "messaging is not enabled in this runtime") {
 		t.Fatalf("text = %q", got)
 	}
 }
 
 func TestTelegramMCPToolsSendsThroughAdapter(t *testing.T) {
 	sender := &fakeTelegramSender{}
-	tools := NewTelegramMCPTools(&gmailMCPStore{connections: []integrations.Connection{{
+	tools := NewTelegramMCPTools(&testConnectionStore{connections: []integrations.Connection{{
 		ID:        "telegram:personal",
 		Provider:  telegramconnector.ProviderID,
 		AccountID: "12345",
@@ -97,14 +97,14 @@ func TestTelegramMCPToolsSendsThroughAdapter(t *testing.T) {
 	if sender.got.Connection.ID != "telegram:personal" || sender.got.Recipient != "@augustinas" || sender.got.Message != "hello" {
 		t.Fatalf("request = %#v", sender.got)
 	}
-	if got := gmailToolText(result); !strings.Contains(got, "Sent Telegram message to @augustinas") {
+	if got := toolText(result); !strings.Contains(got, "Sent Telegram message to @augustinas") {
 		t.Fatalf("text = %q", got)
 	}
 }
 
 func TestWhatsAppMCPToolsSearchesThroughAdapter(t *testing.T) {
 	searcher := &fakeWhatsAppSearcher{}
-	tools := NewWhatsAppMCPTools(&gmailMCPStore{connections: []integrations.Connection{{
+	tools := NewWhatsAppMCPTools(&testConnectionStore{connections: []integrations.Connection{{
 		ID:        "whatsapp:personal",
 		Provider:  whatsappconnector.ProviderID,
 		AccountID: "15550101111",
@@ -126,13 +126,13 @@ func TestWhatsAppMCPToolsSearchesThroughAdapter(t *testing.T) {
 	if out.Results[0].JID != "15550102222@s.whatsapp.net" {
 		t.Fatalf("results = %#v", out.Results)
 	}
-	if got := gmailToolText(result); !strings.Contains(got, "Use a result phone or jid with whatsapp_send_message recipient") {
+	if got := toolText(result); !strings.Contains(got, "Use a result phone or jid with whatsapp_send_message recipient") {
 		t.Fatalf("text = %q", got)
 	}
 }
 
 func TestTelegramMCPToolsReportsMissingRuntimeSearcher(t *testing.T) {
-	tools := NewTelegramMCPTools(&gmailMCPStore{connections: []integrations.Connection{{
+	tools := NewTelegramMCPTools(&testConnectionStore{connections: []integrations.Connection{{
 		ID:        "telegram:personal",
 		Provider:  telegramconnector.ProviderID,
 		AccountID: "12345",
@@ -145,7 +145,7 @@ func TestTelegramMCPToolsReportsMissingRuntimeSearcher(t *testing.T) {
 	if !out.Connected || out.SearcherAvailable || len(out.Results) != 0 {
 		t.Fatalf("output = %#v", out)
 	}
-	if got := gmailToolText(result); !strings.Contains(got, "search is not enabled in this runtime") {
+	if got := toolText(result); !strings.Contains(got, "search is not enabled in this runtime") {
 		t.Fatalf("text = %q", got)
 	}
 }

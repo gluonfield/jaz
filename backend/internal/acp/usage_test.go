@@ -59,6 +59,7 @@ func TestUsageFromRawReadsThoughtTokens(t *testing.T) {
 func TestUsageFromRawIgnoresTelemetryTotalOnly(t *testing.T) {
 	usage := usageFromRaw(json.RawMessage(`{
 		"sessionUpdate": "agent_message_chunk",
+		"messageId": "usage-test-message",
 		"content": {"type": "text", "text": "ok"},
 		"_meta": {
 			"totalTokens": 78220,
@@ -337,7 +338,7 @@ func TestACPUsageSkipsRepeatedCodexLastTokenUsageUpdate(t *testing.T) {
 	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPSession: "acp-session", State: StateRunning}}
 	job.startTurn(CompletionInline, false, false)
 
-	raw := json.RawMessage(`{
+	first := json.RawMessage(`{
 		"sessionUpdate": "usage_update",
 		"used": 1010,
 		"size": 258400,
@@ -350,8 +351,21 @@ func TestACPUsageSkipsRepeatedCodexLastTokenUsageUpdate(t *testing.T) {
 			}
 		}
 	}`)
-	manager.recordRawUsage(job, raw)
-	manager.recordRawUsage(job, raw)
+	replayWithNewContext := json.RawMessage(`{
+		"sessionUpdate": "usage_update",
+		"used": 1020,
+		"size": 258400,
+		"_meta": {
+			"lastTokenUsage": {
+				"input_tokens": 1000,
+				"cached_input_tokens": 400,
+				"output_tokens": 10,
+				"total_tokens": 1010
+			}
+		}
+	}`)
+	manager.recordRawUsage(job, first)
+	manager.recordRawUsage(job, replayWithNewContext)
 
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
@@ -360,6 +374,9 @@ func TestACPUsageSkipsRepeatedCodexLastTokenUsageUpdate(t *testing.T) {
 	if loaded.Usage.InputTokens != 1000 || loaded.Usage.CachedInputTokens != 400 ||
 		loaded.Usage.OutputTokens != 10 || loaded.Usage.TotalTokens != 1010 {
 		t.Fatalf("usage = %#v", loaded.Usage)
+	}
+	if loaded.Usage.ContextTokens != 1020 || loaded.Usage.ContextWindowTokens != 258400 {
+		t.Fatalf("context = %d / %d, want 1020 / 258400", loaded.Usage.ContextTokens, loaded.Usage.ContextWindowTokens)
 	}
 	events, err := store.UsageEventsSince(time.Unix(0, 0))
 	if err != nil {

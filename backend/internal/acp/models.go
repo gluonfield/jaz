@@ -29,7 +29,6 @@ type ReasoningEffortOption struct {
 type AgentOptions struct {
 	ReasoningEfforts []ReasoningEffortOption `json:"reasoning_efforts"`
 	Models           []modelcatalog.Model    `json:"models,omitempty"`
-	Capabilities     *AgentCapabilities      `json:"capabilities,omitempty"`
 	Local            bool                    `json:"local"`
 	ProviderMode     string                  `json:"provider_mode,omitempty"`
 	ModelProviderIDs []string                `json:"model_provider_ids,omitempty"`
@@ -229,6 +228,9 @@ type sessionConfigOptionsState struct {
 func (m *Manager) setConfiguredSessionModel(ctx context.Context, peer *jsonrpc.Peer, agentName string, sessionID acpschema.SessionID, rawModel string, state sessionModelState) (json.RawMessage, error) {
 	policy := agentPolicyForAgent(agentName)
 	model := configuredSessionModel(rawModel)
+	if policy.modelValidationKind == modelValidationClaude {
+		model = state.resolveAdvertised(model)
+	}
 	if err := policy.validateConfiguredSessionModel(agentName, rawModel, model, state); err != nil {
 		return nil, err
 	}
@@ -548,6 +550,38 @@ func (s sessionModelState) empty() bool {
 	return len(s.exact) == 0 && len(s.base) == 0
 }
 
+// resolveAdvertised maps a configured Claude model onto the spelling the agent
+// currently advertises. Claude Code flips the "[1m]" context tag on a model
+// between restarts (a model is bare while it is the active selection and tagged
+// otherwise), so a static catalog value alternates in and out of validity. When
+// the literal value is not advertised, fall back to matching by context-tag
+// base and return the advertised spelling so set_config_option gets a value the
+// agent accepts.
+func (s sessionModelState) resolveAdvertised(model string) string {
+	model = strings.TrimSpace(model)
+	if model == "" || s.empty() {
+		return model
+	}
+	if _, ok := s.exact[model]; ok {
+		return model
+	}
+	if _, ok := s.base[model]; ok {
+		return model
+	}
+	base := contextTagBase(model)
+	for adv := range s.exact {
+		if contextTagBase(adv) == base {
+			return adv
+		}
+	}
+	for adv := range s.base {
+		if contextTagBase(adv) == base {
+			return adv
+		}
+	}
+	return model
+}
+
 func (s sessionModelState) hasExact(model string) bool {
 	_, ok := s.exact[strings.TrimSpace(model)]
 	return ok
@@ -604,9 +638,6 @@ func AgentOptionsForConfig(name string, cfg AgentConfig) AgentOptions {
 		ReasoningEfforts: agentPolicyForAgent(CanonicalAgentName(name)).reasoningEffortOptions(),
 		Models:           modelcatalog.AgentModels(name),
 	}
-	if caps := CatalogAgentCapabilitiesFor(name); caps.NativeGoal {
-		options.Capabilities = &caps
-	}
 	options.Local = cfg.Local
 	options.ProviderMode = strings.TrimSpace(cfg.ProviderMode)
 	options.AuthProviderID = strings.TrimSpace(cfg.AuthProviderID)
@@ -629,6 +660,16 @@ func configuredAgentReasoningEffort(agentName, value string) string {
 
 func configuredSessionModel(rawModel string) string {
 	return strings.TrimSpace(rawModel)
+}
+
+func contextTagBase(model string) string {
+	model = strings.TrimSpace(model)
+	if strings.HasSuffix(model, "]") {
+		if i := strings.LastIndex(model, "["); i > 0 {
+			return strings.TrimSpace(model[:i])
+		}
+	}
+	return model
 }
 
 func modelHasReasoningEffort(model string) bool {

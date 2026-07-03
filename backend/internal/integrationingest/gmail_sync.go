@@ -13,7 +13,7 @@ import (
 const (
 	defaultGmailSyncInterval     = 5 * time.Minute
 	defaultGmailSyncPagesPerTick = 4
-	defaultGmailHistoricalWindow = 365 * 24 * time.Hour
+	defaultGmailHistoricalWindow = 90 * 24 * time.Hour
 )
 
 type GmailSyncStore interface {

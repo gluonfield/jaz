@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/log"
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
+	"github.com/wins/jaz/backend/internal/goal"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/provider"
@@ -422,14 +423,12 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	}
 	session.RuntimeRef.SessionID = string(acpSession.response.SessionID)
 	session.RuntimeRef.Cwd = absCwd
-	session.RuntimeRef.Capabilities = runtimeCapabilitiesFromInit(req.ACPAgent, ac.initRaw)
 	if err := m.store.SaveSession(session); err != nil {
 		ac.close()
 		return fail(err)
 	}
 	job := newIdleJob(session, req.ACPAgent, string(acpSession.response.SessionID), absCwd, modes)
 	job.promptQueueing = promptQueueingSupported(ac.initRaw)
-	job.nativeGoal = effectiveRuntimeNativeGoal(req.ACPAgent, session.RuntimeRef.Capabilities)
 	ac.trackPromptSends(job)
 	m.addJob(job, ac.conn, ac.peer, ac.cancel)
 	m.saveACPState(job.Snapshot())
@@ -546,11 +545,6 @@ func (m *Manager) resume(ctx context.Context, ref string) (*jobState, error) {
 		session.RuntimeRef.SessionID = acpSessionID
 		sessionChanged = true
 	}
-	runtimeCapabilities := runtimeCapabilitiesFromInit(agentName, ac.initRaw)
-	if !storedRuntimeCapabilitiesEqual(session.RuntimeRef.Capabilities, runtimeCapabilities) {
-		session.RuntimeRef.Capabilities = runtimeCapabilities
-		sessionChanged = true
-	}
 	if session.ModelProvider == "" {
 		session.ModelProvider = session.RuntimeRef.Agent
 		sessionChanged = true
@@ -563,7 +557,6 @@ func (m *Manager) resume(ctx context.Context, ref string) (*jobState, error) {
 	job.LastEventAt = firstNonZeroTime(state.LastEventAt, state.UpdatedAt)
 	job.LastToolAt = state.LastToolAt
 	job.promptQueueing = promptQueueingSupported(ac.initRaw)
-	job.nativeGoal = effectiveRuntimeNativeGoal(agentName, session.RuntimeRef.Capabilities)
 	ac.trackPromptSends(job)
 	m.addJob(job, ac.conn, ac.peer, ac.cancel)
 	m.saveACPState(job.Snapshot())
@@ -691,6 +684,7 @@ func (m *Manager) Cancel(ctx context.Context, ref string) (Job, error) {
 		return m.cancelStored(ref)
 	}
 	running, done := job.requestCancel()
+	clearGoal := m.clearGoalOnCancel(job)
 	m.log.Info("acp cancel requested", "session", job.ID, "agent", job.ACPAgent, "running", running)
 	if peer := m.peer(job.ID); peer != nil {
 		if err := peer.Notify(ctx, acpschema.AgentMethodSessionCancel, acpschema.CancelNotification{
@@ -702,6 +696,9 @@ func (m *Manager) Cancel(ctx context.Context, ref string) (Job, error) {
 		cancel()
 	}
 	if !running || done == nil {
+		if clearGoal {
+			m.publishGoalClear(job)
+		}
 		return job.Snapshot(), nil
 	}
 	select {
@@ -719,7 +716,21 @@ func (m *Manager) Cancel(ctx context.Context, ref string) (Job, error) {
 		}
 	case <-ctx.Done():
 	}
+	if clearGoal {
+		m.publishGoalClear(job)
+	}
 	return job.Snapshot(), nil
+}
+
+func (m *Manager) clearGoalOnCancel(job *jobState) bool {
+	job.mu.RLock()
+	turnRequested := job.turn != nil && job.turn.goalRequested
+	job.mu.RUnlock()
+	if turnRequested {
+		return true
+	}
+	session, err := m.store.LoadSession(job.ID)
+	return err == nil && goal.Active(session.Goal)
 }
 
 // cancelStored unsticks a session that has no live job (server restarted
@@ -748,6 +759,7 @@ func (m *Manager) cancelStored(ref string) (Job, error) {
 	}
 	state.State = StateCancelled
 	state.StopReason = "cancelled"
+	state.GoalRequested = false
 	state.ActiveOperation = ""
 	state.Permissions = nil
 	now := time.Now().UTC()
@@ -775,11 +787,19 @@ func (m *Manager) cancelStored(ref string) (Job, error) {
 		LastEventAt:     now,
 		LastToolAt:      state.LastToolAt,
 	}
-	m.publishOrderedACPEvents(cancelled, sessionevents.Event{
+	events := []sessionevents.Event{{
 		SessionID: session.ID,
 		Type:      "acp",
 		ACP:       EventFromJob(cancelled),
-	})
+	}}
+	if goal.Active(session.Goal) {
+		events = append(events, sessionevents.Event{
+			SessionID: session.ID,
+			Type:      sessionevents.TypeGoalClear,
+			At:        now,
+		})
+	}
+	m.publishOrderedACPEvents(cancelled, events...)
 	return cancelled, nil
 }
 

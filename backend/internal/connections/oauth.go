@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	gmailconnector "github.com/wins/jaz/backend/internal/connectors/gmail"
+	googleconnector "github.com/wins/jaz/backend/internal/connectors/google"
 	slackconnector "github.com/wins/jaz/backend/internal/connectors/slack"
 	"github.com/wins/jaz/backend/pkg/integrations"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
@@ -35,7 +35,8 @@ type OAuthStore interface {
 const DefaultOAuthRedirectBroker = "https://jaz.chat/oauth/callback"
 
 type OAuthConfig struct {
-	Gmail             gmailconnector.OAuthClientConfig
+	Calendar          googleconnector.OAuthClientConfig
+	Gmail             googleconnector.OAuthClientConfig
 	Slack             slackconnector.OAuthClientConfig
 	RedirectBrokerURL string
 }
@@ -77,7 +78,8 @@ type oauthState struct {
 func NewOAuthService(store OAuthStore, config OAuthConfig) *OAuthService {
 	providers := map[string]oauthProvider{}
 	for _, p := range []oauthProvider{
-		gmailOAuthProvider{config: config.Gmail},
+		newCalendarOAuthProvider(config.Calendar),
+		newGmailOAuthProvider(config.Gmail),
 		slackOAuthProvider{config: config.Slack},
 	} {
 		providers[p.id()] = p

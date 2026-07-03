@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/storage"
 )
 
 func (s *Server) streamSessionEvents(w http.ResponseWriter, r *http.Request, sessionID string) {
@@ -38,23 +39,35 @@ func (s *Server) streamSessionEvents(w http.ResponseWriter, r *http.Request, ses
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 	for _, event := range stored {
-		if mobile {
-			event = mobileSessionEvent(event)
+		if event.Seq > afterSeq {
+			afterSeq = event.Seq
 		}
-		writeSessionEventSSE(w, flusher, event)
-		afterSeq = event.Seq
-	}
-	for event := range events {
-		if event.Seq > 0 && event.Seq <= afterSeq {
+		var ok bool
+		event, ok = storage.GoalDisplayEvent(event)
+		if !ok {
 			continue
 		}
 		if mobile {
 			event = mobileSessionEvent(event)
 		}
 		writeSessionEventSSE(w, flusher, event)
+	}
+	for event := range events {
+		if event.Seq > 0 && event.Seq <= afterSeq {
+			continue
+		}
 		if event.Seq > afterSeq {
 			afterSeq = event.Seq
 		}
+		var ok bool
+		event, ok = storage.GoalDisplayEvent(event)
+		if !ok {
+			continue
+		}
+		if mobile {
+			event = mobileSessionEvent(event)
+		}
+		writeSessionEventSSE(w, flusher, event)
 	}
 }
 
@@ -89,7 +102,7 @@ func parseEventSeq(raw string) (int64, error) {
 }
 
 func writeSessionEventSSE(w http.ResponseWriter, flusher http.Flusher, event sessionevents.Event) {
-	data, err := json.Marshal(event)
+	data, err := json.Marshal(sessionEventResponseFrom(event))
 	if err != nil {
 		return
 	}

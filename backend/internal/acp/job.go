@@ -30,6 +30,7 @@ type Job struct {
 	Permissions     []sessionevents.ACPPermission `json:"permissions,omitempty"`
 	Modes           ModeState                     `json:"modes,omitempty"`
 	Error           string                        `json:"error,omitempty"`
+	GoalRequested   bool                          `json:"goal_requested,omitempty"`
 	ActiveOperation string                        `json:"active_operation,omitempty"`
 	ParentVisible   bool                          `json:"parent_visible,omitempty"`
 	CreatedAt       time.Time                     `json:"created_at"`
@@ -44,13 +45,11 @@ type jobState struct {
 	mu                     sync.RWMutex
 	turnMu                 sync.Mutex
 	promptQueueing         bool
-	nativeGoal             bool
 	turn                   *activeTurn
 	toolByID               map[string]sessionevents.ACPToolCall
 	savedAssistantLen      int
 	usage                  storage.Usage
 	lastUsageDelta         storage.Usage
-	lastUsageContext       storage.Usage
 	lastUsageDeltaSet      bool
 	systemPromptExtensions promptmodule.Modules
 }
@@ -60,9 +59,11 @@ type activeTurn struct {
 	completion            CompletionMode
 	planRequested         bool
 	goalRequested         bool
+	startedAt             time.Time
 	cancelRequested       bool
 	firstPromptSent       chan struct{}
 	firstPromptSentClosed bool
+	promptHandoff         chan struct{}
 	promptCalls           int
 	planProposal          *sessionevents.PlanEvent
 }
@@ -130,6 +131,7 @@ func (j *jobState) Snapshot() Job {
 		Permissions:     clonePermissions(j.Permissions),
 		Modes:           j.Modes.Clone(),
 		Error:           j.Error,
+		GoalRequested:   j.turn != nil && j.turn.goalRequested && (j.State == StateRunning || j.State == StateStarting),
 		ActiveOperation: j.ActiveOperation,
 		ParentVisible:   j.ParentVisible,
 		CreatedAt:       j.CreatedAt,
@@ -175,6 +177,7 @@ func (j *jobState) startTurn(completion CompletionMode, planRequested, parentVis
 func (j *jobState) startTurnWithOperation(completion CompletionMode, planRequested, parentVisible bool, activeOperation string) chan struct{} {
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	now := time.Now().UTC()
 	j.State = StateRunning
 	j.Assistant = ""
 	j.Thought = ""
@@ -187,18 +190,17 @@ func (j *jobState) startTurnWithOperation(completion CompletionMode, planRequest
 	j.savedAssistantLen = 0
 	j.usage = storage.Usage{}
 	j.lastUsageDelta = storage.Usage{}
-	j.lastUsageContext = storage.Usage{}
 	j.lastUsageDeltaSet = false
 	j.turn = &activeTurn{
 		done:            make(chan struct{}),
 		completion:      completion,
 		planRequested:   planRequested,
+		startedAt:       now,
 		firstPromptSent: make(chan struct{}),
 		promptCalls:     1,
 	}
 	j.ParentVisible = parentVisible
 	j.toolByID = make(map[string]sessionevents.ACPToolCall)
-	now := time.Now().UTC()
 	j.UpdatedAt = now
 	j.LastEventAt = now
 	j.LastToolAt = time.Time{}
@@ -250,6 +252,33 @@ func (j *jobState) addPromptCall(parentVisible bool) (chan struct{}, bool) {
 	}
 	j.turn.promptCalls++
 	return j.turn.done, true
+}
+
+func (j *jobState) hasQueuedPromptSuccessor() bool {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	return j.turn != nil && j.turn.promptCalls > 1
+}
+
+func (j *jobState) requirePromptHandoff(done chan struct{}) <-chan struct{} {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.turn == nil || j.turn.done != done {
+		return nil
+	}
+	if j.turn.promptHandoff == nil {
+		j.turn.promptHandoff = make(chan struct{})
+	}
+	return j.turn.promptHandoff
+}
+
+func (j *jobState) currentPromptHandoff(done chan struct{}) <-chan struct{} {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	if j.turn == nil || j.turn.done != done {
+		return nil
+	}
+	return j.turn.promptHandoff
 }
 
 func (j *jobState) waitFirstPromptSent(ctx context.Context) error {

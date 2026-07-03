@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
+	"slices"
 	"strconv"
 	"time"
 
@@ -14,7 +15,34 @@ import (
 const (
 	CursorKindSync      = "gmail.sync"
 	SyncMessagePageSize = 25
+
+	labelImportant = "IMPORTANT"
+	labelStarred   = "STARRED"
 )
+
+// noiseCategories are Gmail's automated inbox categories excluded from memory
+// sync: promotions/social/forums/updates are marketing and machine mail, while
+// primary/personal correspondence carries no category label. IMPORTANT or
+// STARRED always override the exclusion so flagged mail is never dropped.
+var noiseCategories = []string{
+	"CATEGORY_PROMOTIONS",
+	"CATEGORY_SOCIAL",
+	"CATEGORY_FORUMS",
+	"CATEGORY_UPDATES",
+}
+
+func keepMessage(labels []string) bool {
+	drop := false
+	for _, label := range labels {
+		if label == labelImportant || label == labelStarred {
+			return true
+		}
+		if slices.Contains(noiseCategories, label) {
+			drop = true
+		}
+	}
+	return !drop
+}
 
 type SyncCursor struct {
 	BackfillPageToken string `json:"backfill_page_token,omitempty"`
@@ -138,6 +166,9 @@ func (c APIClient) messageRecords(ctx context.Context, connection integrations.C
 		content, err := c.messageContent(ctx, id)
 		if err != nil {
 			return nil, err
+		}
+		if !keepMessage(content.Message.LabelIDs) {
+			continue
 		}
 		record, err := MessageContentRecord(connection, content, receivedAt)
 		if err != nil {

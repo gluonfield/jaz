@@ -114,21 +114,32 @@ export function useLiveSessionSend({
         )
       })
       .finally(async () => {
-        setStreaming(false)
-        streamingRef.current = false
-        abortRef.current = null
+        const current = abortRef.current === controller
+        if (current) {
+          setStreaming(false)
+          streamingRef.current = false
+          abortRef.current = null
+        }
         await queryClient.refetchQueries({ queryKey: keys.sessionMessages(sessionId) })
         queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
         queryClient.invalidateQueries({ queryKey: keys.allSessions })
         queryClient.invalidateQueries({ queryKey: keys.usage })
         queryClient.invalidateQueries({ queryKey: keys.sessionRepo(sessionId) })
-        setLive((prev) => (prev?.error ? { ...prev, error: undefined } : null))
+        if (current) {
+          setLive((prev) => (prev?.error ? { ...prev, error: undefined } : null))
+        }
       })
   }, [onCriticalError, queryClient, sessionId, streamingRef])
 
   const abort = useCallback(() => {
-    abortRef.current?.abort()
-  }, [])
+    const controller = abortRef.current
+    if (!controller) return
+    controller.abort()
+    abortRef.current = null
+    setStreaming(false)
+    streamingRef.current = false
+    setLive(null)
+  }, [streamingRef])
 
   return { live, streaming, send, abort }
 }
@@ -141,6 +152,35 @@ export function liveUserMessage(live: LiveExchange, seq: number): ChatMessage {
     blocks: userInputMessageBlocks(live.user, contextInputs(live.contexts), live.attachments),
     created_at: live.at,
   }
+}
+
+export function liveTranscriptMessages(
+  messages: ChatMessage[],
+  live: LiveExchange | null,
+  active: boolean,
+): ChatMessage[] {
+  if (!active || !live) return messages
+
+  const currentIndex = currentLiveUserIndex(messages, live)
+  if (currentIndex === -1) {
+    return [...messages, liveUserMessage(live, (messages.at(-1)?.seq ?? 0) + 1_000_000)]
+  }
+
+  const out = messages.slice()
+  out[currentIndex] = liveUserMessage(live, messages[currentIndex].seq)
+  return out
+}
+
+function currentLiveUserIndex(messages: ChatMessage[], live: LiveExchange): number {
+  const index = messages.findLastIndex((message) => message.role === 'user')
+  if (index === -1 || messages[index].content !== live.user) return -1
+  if (index === messages.length - 1) return index
+  return itemTime(messages[index].created_at) >= itemTime(live.at) ? index : -1
+}
+
+function itemTime(value: string | undefined): number {
+  const parsed = Date.parse(value ?? '')
+  return Number.isNaN(parsed) ? 0 : parsed
 }
 
 function liveContextAttachments(contexts: ComposerContext[]): LiveAttachment[] {

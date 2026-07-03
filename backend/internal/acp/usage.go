@@ -2,15 +2,23 @@ package acp
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"strconv"
 	"strings"
 
+	"github.com/wins/jaz/backend/internal/sessiongoal"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
 type usageStore interface {
 	AddUsage(string, storage.Usage) error
+}
+
+type goalUsageStore interface {
+	storage.SessionStore
+	storage.SessionEventAppender
+	storage.UsageEventStore
 }
 
 type usageReport struct {
@@ -72,17 +80,32 @@ func (m *Manager) recordUsageReport(job *jobState, report usageReport) {
 		m.log.Error("persist acp usage failed", "session", job.ID, "error", err)
 		return
 	}
+	m.refreshGoalUsage(job)
 	m.publishSessionChanged(job.ID)
+}
+
+func (m *Manager) refreshGoalUsage(job *jobState) {
+	store, ok := m.store.(goalUsageStore)
+	if !ok {
+		return
+	}
+	service := sessiongoal.New(store, m.Events)
+	var err error
+	if startedAt, ok := activeGoalTurnStartedAt(job); ok {
+		_, err = service.RefreshCurrentTurnSince(context.Background(), job.ID, startedAt)
+	} else {
+		_, err = service.RefreshActive(context.Background(), job.ID)
+	}
+	if err != nil {
+		m.log.Debug("refresh goal usage failed", "session", job.ID, "error", err)
+	}
 }
 
 func (j *jobState) isDuplicateUsageDelta(report usageReport) bool {
 	// Codex can repeat the same token_count notification; the ACP bridge only
 	// carries lastTokenUsage, so consecutive identical delta reports are replays.
-	duplicate := j.lastUsageDeltaSet &&
-		j.lastUsageDelta == report.Delta &&
-		j.lastUsageContext == report.Context
+	duplicate := j.lastUsageDeltaSet && j.lastUsageDelta == report.Delta
 	j.lastUsageDelta = report.Delta
-	j.lastUsageContext = report.Context
 	j.lastUsageDeltaSet = true
 	return duplicate
 }

@@ -6,18 +6,17 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
-	"github.com/wins/jaz/backend/internal/goal"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
-func TestManagerSendUsesCatalogGoalSupportForCodex(t *testing.T) {
+func TestManagerRoutesCodexGoalThroughJazTools(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	manager := newFakeCodexManager(t, store, t.TempDir(), map[string]string{
-		"JAZ_FAKE_ACP_EXPECT_PROMPT_CONTAINS": `"goalRequested":true`,
+		"JAZ_FAKE_ACP_EXPECT_PROMPT_CONTAINS": `create_goal`,
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -29,9 +28,6 @@ func TestManagerSendUsesCatalogGoalSupportForCodex(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	if session.RuntimeRef == nil || session.RuntimeRef.Capabilities == nil || !session.RuntimeRef.Capabilities.NativeGoal {
-		t.Fatalf("stored runtime ref = %#v, want native goal capability", session.RuntimeRef)
 	}
 	if _, err := manager.Send(ctx, acp.SendRequest{
 		Session:       session.ID,
@@ -53,9 +49,6 @@ func TestManagerSendUsesCatalogGoalSupportForCodex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.RuntimeRef == nil || loaded.RuntimeRef.Capabilities == nil || !loaded.RuntimeRef.Capabilities.NativeGoal {
-		t.Fatalf("loaded runtime ref = %#v, want native goal capability", loaded.RuntimeRef)
-	}
 	events, err := store.LoadSessionEvents(session.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -66,13 +59,10 @@ func TestManagerSendUsesCatalogGoalSupportForCodex(t *testing.T) {
 			goalEvent = events[i].Goal
 		}
 	}
-	if goalEvent == nil {
-		t.Fatalf("stored events = %#v, want goal update", events)
+	if goalEvent != nil {
+		t.Fatalf("stored events = %#v, want no local goal update before provider report", events)
 	}
-	if goalEvent.Status != sessionevents.GoalStatusRequested || goalEvent.Objective != "say hello" {
-		t.Fatalf("goal event = %#v", goalEvent)
-	}
-	if loaded.Goal == nil || loaded.Goal.Status != goal.StatusRequested || loaded.Goal.Objective != "say hello" {
-		t.Fatalf("session goal = %#v", loaded.Goal)
+	if loaded.Goal != nil {
+		t.Fatalf("session goal = %#v, want nil before provider report", loaded.Goal)
 	}
 }

@@ -94,7 +94,6 @@ SELECT
   artifact_surface,
   mcp_server_policy,
   pending_steer_message,
-  runtime_capabilities,
   unread,
   goal
 FROM threads
@@ -139,7 +138,6 @@ func (q *Queries) GetSession(ctx context.Context, ref string) (Thread, error) {
 		&i.ArtifactSurface,
 		&i.McpServerPolicy,
 		&i.PendingSteerMessage,
-		&i.RuntimeCapabilities,
 		&i.Unread,
 		&i.Goal,
 	)
@@ -239,7 +237,6 @@ SELECT
   artifact_surface,
   mcp_server_policy,
   pending_steer_message,
-  runtime_capabilities,
   unread,
   goal
 FROM threads
@@ -288,7 +285,6 @@ func (q *Queries) ListSessions(ctx context.Context) ([]Thread, error) {
 			&i.ArtifactSurface,
 			&i.McpServerPolicy,
 			&i.PendingSteerMessage,
-			&i.RuntimeCapabilities,
 			&i.Unread,
 			&i.Goal,
 		); err != nil {
@@ -476,6 +472,40 @@ func (q *Queries) UpdateGoal(ctx context.Context, arg UpdateGoalParams) error {
 	return err
 }
 
+const updateSessionStatus = `-- name: UpdateSessionStatus :exec
+UPDATE threads
+SET
+  status = ?1,
+  error = ?2,
+  updated_at_ms = ?3,
+  last_attention_at_ms = CASE
+    WHEN CAST(?4 AS INTEGER) != 0 THEN ?5
+    ELSE last_attention_at_ms
+  END
+WHERE id = ?6
+`
+
+type UpdateSessionStatusParams struct {
+	Status            string         `json:"status"`
+	Error             sql.NullString `json:"error"`
+	UpdatedAtMs       int64          `json:"updated_at_ms"`
+	TouchAttention    int64          `json:"touch_attention"`
+	LastAttentionAtMs int64          `json:"last_attention_at_ms"`
+	ID                string         `json:"id"`
+}
+
+func (q *Queries) UpdateSessionStatus(ctx context.Context, arg UpdateSessionStatusParams) error {
+	_, err := q.db.ExecContext(ctx, updateSessionStatus,
+		arg.Status,
+		arg.Error,
+		arg.UpdatedAtMs,
+		arg.TouchAttention,
+		arg.LastAttentionAtMs,
+		arg.ID,
+	)
+	return err
+}
+
 const updateSessionTitle = `-- name: UpdateSessionTitle :exec
 UPDATE threads
 SET title = ?1
@@ -505,7 +535,6 @@ INSERT INTO threads (
   cwd,
   artifact_surface,
   mcp_server_policy,
-  runtime_capabilities,
   project_path,
   error,
   model_provider,
@@ -565,8 +594,7 @@ INSERT INTO threads (
   ?32,
   ?33,
   ?34,
-  ?35,
-  ?36
+  ?35
 )
 ON CONFLICT(id) DO UPDATE SET
   slug = excluded.slug,
@@ -580,7 +608,6 @@ ON CONFLICT(id) DO UPDATE SET
   cwd = excluded.cwd,
   artifact_surface = excluded.artifact_surface,
   mcp_server_policy = excluded.mcp_server_policy,
-  runtime_capabilities = excluded.runtime_capabilities,
   project_path = excluded.project_path,
   model_provider = excluded.model_provider,
   model = excluded.model,
@@ -618,7 +645,6 @@ type UpsertSessionParams struct {
 	Cwd                   sql.NullString `json:"cwd"`
 	ArtifactSurface       sql.NullString `json:"artifact_surface"`
 	McpServerPolicy       sql.NullString `json:"mcp_server_policy"`
-	RuntimeCapabilities   string         `json:"runtime_capabilities"`
 	ProjectPath           sql.NullString `json:"project_path"`
 	Error                 sql.NullString `json:"error"`
 	ModelProvider         sql.NullString `json:"model_provider"`
@@ -658,7 +684,6 @@ func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) er
 		arg.Cwd,
 		arg.ArtifactSurface,
 		arg.McpServerPolicy,
-		arg.RuntimeCapabilities,
 		arg.ProjectPath,
 		arg.Error,
 		arg.ModelProvider,

@@ -115,7 +115,6 @@ func (m *Manager) createStoredSession(req SpawnRequest, cfg AgentConfig, effort 
 			Agent:           req.ACPAgent,
 			ArtifactSurface: req.ArtifactSurface,
 			MCPServerPolicy: req.MCPServerPolicy,
-			Capabilities:    catalogRuntimeCapabilities(req.ACPAgent),
 		},
 	})
 }

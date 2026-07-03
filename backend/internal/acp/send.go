@@ -72,9 +72,6 @@ func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (
 	if m.configuredLocal(job.ACPAgent) && local == nil {
 		return Job{}, fmt.Errorf("local acp agent %q is not registered", job.ACPAgent)
 	}
-	if req.GoalRequested && !job.supportsNativeGoal() {
-		return Job{}, ErrNativeGoalUnsupported
-	}
 	if err := m.prepareModeForTurn(ctx, job, req.PlanRequested); err != nil {
 		return Job{}, err
 	}
@@ -87,7 +84,7 @@ func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (
 	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested, "goal", req.GoalRequested, "operation", opts.activeOperation)
 	job.startTurnWithOperation(req.Completion, req.PlanRequested, req.ParentVisible, opts.activeOperation)
 	m.touchJobAttention(job)
-	m.recordGoalRequest(job, req.GoalRequested, req.Message)
+	markGoalRequested(job, req.GoalRequested)
 	m.publishACP(job.Snapshot())
 	if local != nil {
 		go m.runLocalPrompt(context.WithoutCancel(ctx), job, local, promptMessage, req.Attachments)
@@ -111,9 +108,6 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	if !queueing {
 		return Job{}, ErrPromptQueueingUnsupported
 	}
-	if req.GoalRequested && !job.supportsNativeGoal() {
-		return Job{}, ErrNativeGoalUnsupported
-	}
 	local := m.localAgent(job.ACPAgent)
 	if m.configuredLocal(job.ACPAgent) && local == nil {
 		return Job{}, fmt.Errorf("local acp agent %q is not registered", job.ACPAgent)
@@ -136,24 +130,41 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 		}
 	}
 	promptMessage, contexts := promptMessageAndContexts(req.Message, req.Contexts)
-	prompt, err := promptContentBlocks(promptMessage, req.Attachments, resolver)
+	prompt, err := promptContentBlocks(goalPromptMessage(promptMessage, req.GoalRequested), req.Attachments, resolver)
 	if err != nil {
 		return Job{}, err
+	}
+	promptReq := acpschema.PromptRequest{
+		SessionID: acpschema.SessionID(job.ACPSession),
+		Prompt:    prompt,
 	}
 	done, ok := job.addPromptCall(req.ParentVisible)
 	if !ok {
 		return Job{}, ErrPromptQueueingUnsupported
 	}
+	handoff := m.cancelPendingPermissionsForSteer(job, done)
 	if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments); err != nil {
 		m.log.Error("append user message failed", "session", job.ID, "error", err)
 	}
 	m.touchJobAttention(job)
-	m.recordGoalRequest(job, req.GoalRequested, req.Message)
+	markGoalRequested(job, req.GoalRequested)
 	m.publishACP(job.Snapshot())
-	go m.runPromptCall(context.Background(), job, done, acpschema.PromptRequest{
-		SessionID: acpschema.SessionID(job.ACPSession),
-		Prompt:    prompt,
-		Meta:      goalPromptMeta(req.GoalRequested),
-	})
+	go m.runPromptCallAfterHandoff(context.Background(), job, done, handoff, promptReq)
 	return job.Snapshot(), nil
+}
+
+func (m *Manager) runPromptCallAfterHandoff(ctx context.Context, job *jobState, done chan struct{}, handoff <-chan struct{}, req acpschema.PromptRequest) {
+	if handoff != nil {
+		select {
+		case <-handoff:
+		case <-done:
+			return
+		}
+	}
+	select {
+	case <-done:
+		return
+	default:
+	}
+	m.runPromptCall(ctx, job, done, req)
 }

@@ -129,6 +129,7 @@ export function ComposerCard({
   const planToggleDisabled = disabled || !planAvailable
   const goalToggleDisabled = disabled || !goalAvailable || goalActive
   const planModeOn = planAvailable && (planModeOverride ?? planModeActive)
+  const goalModeOn = goalAvailable && (goalRequested || goalActive)
   const showGoalChip = goalAvailable && (goalRequested || goalActive)
   const mention = useMentionInput({
     fileRoot,
@@ -238,7 +239,7 @@ export function ComposerCard({
     try {
       await onSend(trimmed, {
         planRequested: planModeOn,
-        goalRequested: goalAvailable && goalRequested,
+        goalRequested: goalModeOn,
         files: attachmentDraft.files,
         attachments: attachmentDraft.uploaded,
         ...(contexts.length > 0 ? { contexts } : {}),

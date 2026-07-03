@@ -10,7 +10,7 @@ import { useToast } from '@/components/ui/toast'
 import { ApiError } from '@/lib/api/client'
 import { createSession, listFilesystemDirs, projectsQuery } from '@/lib/api/sessions'
 import { agentLabel } from '@/lib/agentLabel'
-import { acpAgentSupportsNativeGoal } from '@/lib/agentRuntimes'
+import { acpAgentSupportsGoal } from '@/lib/agentRuntimes'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { modelSuggestionLabel } from '@/lib/models'
 import { NEW_SESSION_DIRECTORY_KEY, NEW_SESSION_DRAFT_KEY } from '@/lib/newSessionConfig'
@@ -45,7 +45,7 @@ function NewSessionPage() {
   const [creating, setCreating] = useState(false)
   const [composing, setComposing] = useState(false)
   const controls = useNewThreadControls()
-  const { agentSettings, runtimeAvailable, runtime } = controls
+  const { runtimeAvailable, runtime } = controls
   const [directory, setDirectory] = useState(
     () => search.project ?? storedString(NEW_SESSION_DIRECTORY_KEY),
   )
@@ -193,7 +193,7 @@ function NewSessionPage() {
         calm={composing || creating}
         creating={creating}
         disabled={!runtimeAvailable}
-        goalAvailable={acpAgentSupportsNativeGoal(agentSettings, runtime)}
+        goalAvailable={acpAgentSupportsGoal(runtime)}
         leftSlot={isMobile ? null : composerControls}
         draftStorageKey={NEW_SESSION_DRAFT_KEY}
         // Tokens freeze their absolute expansion at insert time, so re-picking

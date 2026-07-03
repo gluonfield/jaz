@@ -30,7 +30,7 @@ import { THREAD_COLUMN_CLASS } from '@/components/session/threadLayout'
 import { isArtifactToolName } from '@/components/session/toolVisibility'
 import { useThreadFind } from '@/components/session/useThreadFind'
 import { useThreadAutoScroll } from '@/components/session/useThreadAutoScroll'
-import { liveUserMessage, useLiveSessionSend } from '@/components/session/useLiveSessionSend'
+import { liveTranscriptMessages, useLiveSessionSend } from '@/components/session/useLiveSessionSend'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { FileDropScope } from '@/components/ui/FileDrop'
 import { Skeleton, SkeletonRows } from '@/components/ui/Skeleton'
@@ -375,6 +375,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     planActive,
     goalAvailable,
     goalActive,
+    goalRequested,
     goal,
     hasBlockingPendingPermission,
     latestPlanDecisionSurface,
@@ -400,17 +401,11 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   const sessionRunning = queue.sessionRunning
   const pendingSteer = session.pending_steer_message
   const empty = messages.length === 0 && transcriptEvents.length === 0 && !live && !sessionError && !sessionRunning
-  // ACP turns stream through events; the live exchange only contributes the
-  // not-yet-refetched user bubble, injected so mid-turn events sort after it.
-  const lastUserMessage = messages.findLast((message) => message.role === 'user')
-  const transcriptMessages =
-    isACP && live && lastUserMessage?.content.trim() !== live.user.trim()
-      ? [
-          ...messages,
-          liveUserMessage(live, (messages.at(-1)?.seq ?? 0) + 1_000_000),
-        ]
-      : messages
-  const goalStatusVisible = goalAvailable || Boolean(goal) || Boolean(live?.goalRequested)
+  // ACP turns stream through events. While the request is active, the local
+  // send time is the turn boundary; replayed user rows can be timestamped after
+  // early live events and would otherwise fold those events into the prior turn.
+  const transcriptMessages = liveTranscriptMessages(messages, live, isACP)
+  const goalStatusVisible = goalActive
 
   return (
     <FileReaderLinkProvider onOpen={openFile}>
@@ -555,20 +550,14 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                 />
               ) : (
                 <>
-                  {goalStatusVisible ? (
-                    <GoalStatusBar
-                      goal={goal}
-                      starting={Boolean(live?.goalRequested) && !goal}
-                      running={sessionRunning}
-                    />
-                  ) : null}
+                  {goalStatusVisible ? <GoalStatusBar goal={goal} /> : null}
                   <Composer
                     streaming={sessionRunning}
                     planAvailable={planAvailable}
                     planModeActive={Boolean(live?.planRequested) || planActive}
                     goalControlVisible
                     goalAvailable={goalAvailable}
-                    goalActive={Boolean(live?.goalRequested) || goalActive}
+                    goalActive={goalRequested || goalActive}
                     queuedPrompts={queue.queuedPrompts}
                     steerDisabled={queue.steerDisabled}
                     draftStorageKey={`${SESSION_DRAFT_KEY_PREFIX}${session.id}`}
@@ -578,9 +567,16 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                     onClearContexts={composerContexts.clearContexts}
                     onSend={queue.onSend}
                     onStop={() => {
-                      // the turn runs detached server-side; stop it there first
-                      void cancelSession(sessionId).catch(() => {})
+                      // The turn runs detached server-side; clear local optimistic state now.
                       abortLiveMessage()
+                      void cancelSession(sessionId)
+                        .catch(() => {})
+                        .finally(() => {
+                          queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
+                          queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
+                          queryClient.invalidateQueries({ queryKey: keys.allSessions })
+                          queryClient.invalidateQueries({ queryKey: keys.usage })
+                        })
                     }}
                     onVoice={undefined}
                     onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}

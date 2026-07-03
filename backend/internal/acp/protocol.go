@@ -29,28 +29,6 @@ func (m *Manager) handleJSONRPC(ctx context.Context, req jsonrpc.Request) (json.
 		}
 		m.applyUpdate(note.SessionID, note.Update)
 		return jsonrpc.EncodeResult(map[string]any{})
-	case acpMethodGoalUpdate:
-		sessionID, goal, ok := decodeGoalNotification(req.Params)
-		if !ok {
-			return nil, jsonrpc.InvalidParams("invalid goal update", nil)
-		}
-		job := m.jobByACP(sessionID)
-		if job == nil {
-			return nil, jsonrpc.InvalidParams("unknown acp session", nil)
-		}
-		m.publishGoalUpdate(job, goal)
-		return jsonrpc.EncodeResult(map[string]any{})
-	case acpMethodGoalClear, acpMethodCodexGoalCleared:
-		sessionID, ok := decodeGoalClearNotification(req.Params)
-		if !ok {
-			return nil, jsonrpc.InvalidParams("invalid goal clear", nil)
-		}
-		job := m.jobByACP(sessionID)
-		if job == nil {
-			return nil, jsonrpc.InvalidParams("unknown acp session", nil)
-		}
-		m.publishGoalClear(job)
-		return jsonrpc.EncodeResult(map[string]any{})
 	case acpschema.ClientMethodSessionRequestPermission:
 		return m.requestPermission(ctx, req.Params)
 	case acpschema.ClientMethodElicitationCreate:
@@ -140,20 +118,14 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	var title string
 	var publishACP bool
 	var messageChunk string
+	var messageID string
 	var bufferMessage bool
 	var thoughtChunk string
+	var thoughtMessageID string
 	var toolEvent *sessionevents.ACPToolCall
 	var attention bool
 	now := time.Now().UTC()
 	update, err := acpschema.DecodeSessionUpdate(raw)
-	if goal, ok := decodeGoalUpdate(raw); ok {
-		m.publishGoalUpdate(job, goal)
-		return
-	}
-	if decodeGoalClearUpdate(raw) {
-		m.publishGoalClear(job)
-		return
-	}
 	if err != nil {
 		return
 	}
@@ -190,6 +162,7 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	switch event := update.(type) {
 	case acpschema.AgentMessageChunkUpdate:
 		messageChunk = contentText(event.Content)
+		messageID = event.MessageID
 		job.Assistant = appendACPText(job.Assistant, messageChunk)
 		bufferMessage = job.turn != nil && planTurnDefersResult(job.turn.planRequested, job.ACPAgent)
 		if messageChunk != "" {
@@ -197,6 +170,7 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 		}
 	case acpschema.AgentThoughtChunkUpdate:
 		thoughtChunk = contentText(event.Content)
+		thoughtMessageID = event.MessageID
 		job.Thought = appendACPText(job.Thought, thoughtChunk)
 	case acpschema.ToolCallSessionUpdate:
 		recordTool(toolUpdateSnapshot(event.ToolCallID, event.Title, event.Status, event.Kind, event.Content, event.RawInput, event.Meta, now))
@@ -277,10 +251,10 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 		}
 	}
 	if messageChunk != "" && !bufferMessage {
-		m.queueACPMessage(job, messageChunk)
+		m.queueACPMessageWithID(job, messageChunk, messageID)
 	}
 	if thoughtChunk != "" {
-		m.queueACPThought(job, thoughtChunk)
+		m.queueACPThoughtWithID(job, thoughtChunk, thoughtMessageID)
 	}
 	if toolEvent != nil {
 		m.publishACPTool(job.Snapshot(), *toolEvent)

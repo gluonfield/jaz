@@ -22,15 +22,6 @@ const (
 	userInputResponseOptionPrefix = "__user_input_response__:"
 )
 
-type pendingPermission struct {
-	sessionID     string
-	request       sessionevents.ACPPermission
-	encodeAnswers answerEncoder
-	answer        chan string
-}
-
-type answerEncoder func(map[string]InteractiveAnswerValue) (string, error)
-
 type InteractiveAnswerValue struct {
 	Answers []string `json:"answers"`
 }
@@ -47,9 +38,9 @@ func (m *Manager) awaitPermission(ctx context.Context, job *jobState, req acpsch
 		encodeAnswers: userInputAnswerEncoder(userInputResponseOptionPrefix),
 		answer:        make(chan string, 1),
 	}
-	m.permissionMu.Lock()
-	m.pendingPermission[permission.ID] = pending
-	m.permissionMu.Unlock()
+	if !m.registerPendingPermission(job, pending) {
+		return permissionCancelled()
+	}
 
 	m.setJobPermission(job, permission)
 	m.publishPermission(job, permission, "permission_request")
@@ -234,37 +225,6 @@ func (m *Manager) sendTextAfterTurn(sessionID, text string, parentVisible, planR
 		PlanRequested: planRequested,
 		ParentVisible: parentVisible,
 	})
-}
-
-func (m *Manager) cancelPendingPermissions(sessionID string) {
-	m.permissionMu.Lock()
-	pending := make([]*pendingPermission, 0)
-	for id, candidate := range m.pendingPermission {
-		if candidate.sessionID == sessionID {
-			pending = append(pending, candidate)
-			delete(m.pendingPermission, id)
-		}
-	}
-	m.permissionMu.Unlock()
-
-	for _, candidate := range pending {
-		cancelled := candidate.request
-		cancelled.Status = "cancelled"
-		if job := m.jobByID(sessionID); job != nil {
-			m.removeJobPermission(job, candidate.request.ID)
-			m.publishPermission(job, cancelled, "permission_response")
-		}
-		select {
-		case candidate.answer <- "":
-		default:
-		}
-	}
-}
-
-func (m *Manager) removePendingPermission(requestID string) {
-	m.permissionMu.Lock()
-	delete(m.pendingPermission, requestID)
-	m.permissionMu.Unlock()
 }
 
 func permissionEvent(req acpschema.RequestPermissionRequest) sessionevents.ACPPermission {
@@ -740,6 +700,7 @@ func acpStorageState(job Job) storage.ACPState {
 		ToolCalls:       CloneToolCalls(job.ToolCalls),
 		Modes:           acpModeEvent(job.Modes),
 		Error:           job.Error,
+		GoalRequested:   job.GoalRequested,
 		ActiveOperation: job.ActiveOperation,
 		ParentVisible:   job.ParentVisible,
 		CreatedAt:       job.CreatedAt,
@@ -765,6 +726,7 @@ func EventFromJob(job Job) *sessionevents.ACPEvent {
 		Assistant:       job.Assistant,
 		Thought:         job.Thought,
 		Error:           job.Error,
+		GoalRequested:   job.GoalRequested,
 		Modes:           acpModeEvent(job.Modes),
 		Plan:            clonePlanEntries(job.Plan),
 		ToolCalls:       CloneToolCalls(job.ToolCalls),
@@ -788,6 +750,7 @@ func acpTranscriptEnvelope(job Job) *sessionevents.ACPEvent {
 		State:           job.State,
 		StopReason:      job.StopReason,
 		Error:           job.Error,
+		GoalRequested:   job.GoalRequested,
 		Modes:           acpModeEvent(job.Modes),
 		LastEventAt:     job.LastEventAt,
 		LastToolAt:      job.LastToolAt,

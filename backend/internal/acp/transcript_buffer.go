@@ -10,8 +10,10 @@ import (
 const acpTranscriptFlushInterval = 100 * time.Millisecond
 
 type acpTranscriptRun struct {
-	eventType string
-	content   string
+	eventType         string
+	content           string
+	upstreamMessageID string
+	textRunID         string
 }
 
 type acpTranscriptBuffers struct {
@@ -28,11 +30,19 @@ type acpTranscriptBuffer struct {
 }
 
 func (m *Manager) queueACPMessage(job *jobState, content string) {
-	m.queueACPTranscript(job, acpTranscriptRun{eventType: "acp_message", content: content})
+	m.queueACPMessageWithID(job, content, "")
+}
+
+func (m *Manager) queueACPMessageWithID(job *jobState, content string, upstreamMessageID string) {
+	m.queueACPTranscript(job, acpTranscriptRun{eventType: "acp_message", content: content, upstreamMessageID: upstreamMessageID})
 }
 
 func (m *Manager) queueACPThought(job *jobState, content string) {
-	m.queueACPTranscript(job, acpTranscriptRun{eventType: "acp_thought", content: content})
+	m.queueACPThoughtWithID(job, content, "")
+}
+
+func (m *Manager) queueACPThoughtWithID(job *jobState, content string, upstreamMessageID string) {
+	m.queueACPTranscript(job, acpTranscriptRun{eventType: "acp_thought", content: content, upstreamMessageID: upstreamMessageID})
 }
 
 func (m *Manager) queueACPTranscript(job *jobState, run acpTranscriptRun) {
@@ -110,7 +120,8 @@ func (b *acpTranscriptBuffers) delete(sessionID string) {
 func (b *acpTranscriptBuffer) queue(m *Manager, run acpTranscriptRun) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if n := len(b.runs); n > 0 && b.runs[n-1].eventType == run.eventType {
+	run.textRunID = textRunID(run.upstreamMessageID)
+	if n := len(b.runs); n > 0 && run.textRunID != "" && b.runs[n-1].eventType == run.eventType && b.runs[n-1].textRunID == run.textRunID {
 		b.runs[n-1].content += run.content
 	} else {
 		b.runs = append(b.runs, run)
@@ -120,6 +131,13 @@ func (b *acpTranscriptBuffer) queue(m *Manager, run acpTranscriptRun) {
 			m.flushACPTranscriptBuffer(b)
 		})
 	}
+}
+
+func textRunID(upstreamMessageID string) string {
+	if upstreamMessageID != "" {
+		return "message:" + upstreamMessageID
+	}
+	return ""
 }
 
 func (b *acpTranscriptBuffer) withBarrier(m *Manager, job Job, publish func()) {
@@ -183,6 +201,7 @@ func (m *Manager) publishACPTranscriptRuns(job Job, runs []acpTranscriptRun) {
 			} else {
 				event.Content = run.content
 			}
+			event.ACP.TextRunID = run.textRunID
 			events = append(events, event)
 		}
 		m.recordAndPublishEventsDirect(sessionID, events)

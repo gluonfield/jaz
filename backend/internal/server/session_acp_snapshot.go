@@ -216,6 +216,7 @@ func applyACPStateResponse(resp map[string]any, state storage.ACPState) {
 	resp["acp_tool_calls"] = state.ToolCalls
 	resp["acp_permissions"] = state.Permissions
 	resp["acp_error"] = state.Error
+	resp["acp_goal_requested"] = state.GoalRequested
 	resp["acp_active_operation"] = state.ActiveOperation
 	resp["acp_last_event_at"] = state.LastEventAt
 	resp["acp_last_tool_at"] = state.LastToolAt
@@ -232,6 +233,7 @@ func inactiveACPStateResponse(state storage.ACPState) storage.ACPState {
 	if state.State == acp.StateStarting || state.State == acp.StateRunning || state.State == acp.StateNotRunning {
 		state.State = acp.StateIdle
 	}
+	state.GoalRequested = false
 	state.ActiveOperation = ""
 	state.Permissions = nil
 	return state
@@ -270,6 +272,7 @@ func acpJobState(job acp.Job) storage.ACPState {
 			AvailableModes: acpModes(job.Modes.AvailableModes),
 		},
 		Error:           job.Error,
+		GoalRequested:   job.GoalRequested,
 		ActiveOperation: job.ActiveOperation,
 		ParentVisible:   job.ParentVisible,
 		CreatedAt:       job.CreatedAt,

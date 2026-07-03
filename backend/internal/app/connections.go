@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/connections"
-	gmailconnector "github.com/wins/jaz/backend/internal/connectors/gmail"
+	googleconnector "github.com/wins/jaz/backend/internal/connectors/google"
 	slackconnector "github.com/wins/jaz/backend/internal/connectors/slack"
 	"github.com/wins/jaz/backend/internal/integrationingest"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -17,7 +17,11 @@ func NewConnectionOAuthService(store *sqlitestore.Store, cfg Config) *connection
 		brokerURL = connections.DefaultOAuthRedirectBroker
 	}
 	return connections.NewOAuthService(store, connections.OAuthConfig{
-		Gmail: gmailconnector.OAuthClientConfig{
+		Calendar: googleconnector.OAuthClientConfig{
+			ClientID:     cfg.Connections.Calendar.OAuthClientID,
+			ClientSecret: cfg.Connections.Calendar.OAuthClientSecret,
+		},
+		Gmail: googleconnector.OAuthClientConfig{
 			ClientID:     cfg.Connections.Gmail.OAuthClientID,
 			ClientSecret: cfg.Connections.Gmail.OAuthClientSecret,
 		},
@@ -42,6 +46,10 @@ func NewConnectionService(catalog *connections.Catalog, store *sqlitestore.Store
 
 func NewGmailMCPTools(store *sqlitestore.Store, raw integrationingest.RawWriter) *connections.GmailMCPTools {
 	return connections.NewGmailMCPTools(store, raw)
+}
+
+func NewCalendarMCPTools(store *sqlitestore.Store) *connections.CalendarMCPTools {
+	return connections.NewCalendarMCPTools(store)
 }
 
 func NewWhatsAppMCPTools(

@@ -72,6 +72,7 @@ func runServe(args []string) error {
 			app.NewTelegramProvider,
 			app.NewConnectionQRService,
 			app.NewConnectionConnectService,
+			app.NewCalendarMCPTools,
 			app.NewGmailMCPTools,
 			app.NewWhatsAppMCPTools,
 			app.NewTelegramMCPTools,

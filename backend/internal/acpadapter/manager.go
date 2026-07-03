@@ -34,8 +34,7 @@ type Manager struct {
 	root              string
 	manifestURL       string
 	manifestCacheName string
-	assetSpecPath     string
-	githubAPIURL      string
+	localManifestPath string
 	client            *http.Client
 	installMu         sync.Mutex
 	manifestMu        sync.Mutex
@@ -46,16 +45,15 @@ type Manager struct {
 }
 
 func New(root, releaseVersion string) *Manager {
-	assetSpecPath := ""
+	localManifestPath := ""
 	if usesLatestManifest(releaseVersion) {
-		assetSpecPath = findLocalAssetSpecPath()
+		localManifestPath = findLocalManifestPath()
 	}
 	return &Manager{
 		root:              root,
 		manifestURL:       manifestURLForVersion(releaseVersion),
 		manifestCacheName: manifestCacheNameForVersion(releaseVersion),
-		assetSpecPath:     assetSpecPath,
-		githubAPIURL:      "https://api.github.com/repos",
+		localManifestPath: localManifestPath,
 		client:            &http.Client{Timeout: 10 * time.Minute},
 		status:            map[string]Status{},
 	}
@@ -65,7 +63,7 @@ func NewForTest(root, manifestURL string, client *http.Client) *Manager {
 	m := New(root, "dev")
 	m.manifestURL = strings.TrimSpace(manifestURL)
 	m.manifestCacheName = "test"
-	m.assetSpecPath = ""
+	m.localManifestPath = ""
 	if client != nil {
 		m.client = client
 	}

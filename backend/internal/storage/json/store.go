@@ -234,11 +234,36 @@ func (s *Store) SetPinned(id string, pinned bool) error {
 }
 
 func (s *Store) UpdateSessionTitle(id, title string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.updateSessionTitleLocked(id, title)
+}
+
+func (s *Store) updateSessionTitleLocked(id, title string) error {
 	session, err := s.loadSessionByID(id)
 	if err != nil {
 		return err
 	}
 	session.Title = title
+	return s.saveSession(session)
+}
+
+func (s *Store) UpdateSessionStatus(id, status, errorMessage string, attentionAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, err := s.loadSessionByID(id)
+	if err != nil {
+		return err
+	}
+	session.Status = status
+	if status == storage.StatusError {
+		session.Error = errorMessage
+	} else {
+		session.Error = ""
+	}
+	if !attentionAt.IsZero() {
+		storage.MarkSessionAttention(&session, attentionAt)
+	}
 	return s.saveSession(session)
 }
 

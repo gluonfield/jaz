@@ -6,8 +6,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/goal"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
@@ -77,6 +79,80 @@ func TestSessionMessagesErrorSessionOverridesRunningACPSnapshot(t *testing.T) {
 	if got.ACPError != session.Error {
 		t.Fatalf("acp_error = %q, want %q", got.ACPError, session.Error)
 	}
+}
+
+func TestCanonicalSessionResponsePublishesPublicGoal(t *testing.T) {
+	budget := int64(100)
+	data, err := json.Marshal(canonicalSessionResponse(storage.Session{
+		ID:      "thread-1",
+		Runtime: storage.RuntimeACP,
+		Goal: &goal.State{
+			Identity: goal.Identity{
+				ID:        "goal-1",
+				ThreadID:  "thread-1",
+				Objective: "ship it",
+				Status:    goal.StatusActive,
+			},
+			Budget: goal.Budget{
+				TokenBudget: &budget,
+				TokensUsed:  25,
+			},
+			Timestamps: goal.Timestamps{CreatedAt: time.Now().UTC()},
+		},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	goalBody := goalField(t, data)
+	for _, forbidden := range []string{"created_at", "updated_at"} {
+		if strings.Contains(goalBody, forbidden) {
+			t.Fatalf("session response leaked goal field %q: %s", forbidden, goalBody)
+		}
+	}
+	for _, required := range []string{`"objective":"ship it"`, `"token_budget":100`, `"tokens_used":25`, `"remaining_tokens":75`} {
+		if !strings.Contains(goalBody, required) {
+			t.Fatalf("session response missing %s: %s", required, goalBody)
+		}
+	}
+}
+
+func TestSessionEventResponsePublishesPublicGoal(t *testing.T) {
+	data, err := json.Marshal(sessionEventResponseFrom(sessionevents.Event{
+		SessionID: "thread-1",
+		Type:      sessionevents.TypeGoalUpdate,
+		Goal: &sessionevents.GoalEvent{
+			Identity: goal.Identity{
+				Objective: "ship it",
+				Status:    goal.StatusActive,
+			},
+			Timestamps: goal.Timestamps{CreatedAt: time.Now().UTC()},
+		},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	goalBody := goalField(t, data)
+	for _, forbidden := range []string{"created_at", "updated_at"} {
+		if strings.Contains(goalBody, forbidden) {
+			t.Fatalf("event response leaked goal field %q: %s", forbidden, goalBody)
+		}
+	}
+	if !strings.Contains(goalBody, `"objective":"ship it"`) {
+		t.Fatalf("event response missing public goal: %s", goalBody)
+	}
+}
+
+func goalField(t *testing.T, response []byte) string {
+	t.Helper()
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(response, &fields); err != nil {
+		t.Fatal(err)
+	}
+	goalRaw, ok := fields["goal"]
+	if !ok {
+		t.Fatalf("response missing goal field: %s", response)
+	}
+	return string(goalRaw)
 }
 
 func TestSessionMessagesMobileProjectionStripsHeavyToolPayload(t *testing.T) {
@@ -293,6 +369,7 @@ func TestSessionMessagesIncludesActiveOperation(t *testing.T) {
 		ACPAgent:        "codex",
 		ACPSession:      "acp-session",
 		State:           acp.StateRunning,
+		GoalRequested:   true,
 		ActiveOperation: acp.ActiveOperationCompact,
 	}}}).Handler().ServeHTTP(res, req)
 
@@ -301,12 +378,16 @@ func TestSessionMessagesIncludesActiveOperation(t *testing.T) {
 	}
 	var got struct {
 		ActiveOperation string `json:"acp_active_operation"`
+		GoalRequested   bool   `json:"acp_goal_requested"`
 	}
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
 	if got.ActiveOperation != acp.ActiveOperationCompact {
 		t.Fatalf("active operation = %q, want compact", got.ActiveOperation)
+	}
+	if !got.GoalRequested {
+		t.Fatalf("goal requested = false, want true")
 	}
 }
 

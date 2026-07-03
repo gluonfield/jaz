@@ -1,7 +1,6 @@
 import { join } from 'node:path'
 import {
   BrowserWindow,
-  app,
   desktopCapturer,
   globalShortcut,
   ipcMain,
@@ -44,7 +43,10 @@ function buildLauncher(): BrowserWindow {
     maximizable: false,
     hasShadow: false,
     backgroundColor: '#00000000',
-    // Not a 'panel': a regular window becomes key so the composer can type.
+    // A panel becomes key and accepts typing without activating Jaz, so
+    // dismissing it returns to the previous app instead of surfacing the
+    // main window. Regular windows force app activation and can't do this.
+    type: 'panel',
     webPreferences: {
       preload: preloadPath(),
       contextIsolation: true,
@@ -81,8 +83,6 @@ function coverCursorDisplay(win: BrowserWindow): void {
 
 function presentLauncher(win: BrowserWindow): void {
   win.show()
-  // Without stealing app focus, keystrokes go to the previously-frontmost app.
-  app.focus({ steal: true })
   win.focus()
 }
 

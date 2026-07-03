@@ -67,6 +67,8 @@ func Init() error {
 	_ = viper.BindEnv("openrouter.apikey", "OPENROUTER_API_KEY")
 	_ = viper.BindEnv("jaz.skills.disablesync", "JAZ_SKILLS_DISABLE_SYNC")
 	_ = viper.BindEnv("jaz.devices.disablepairing", "JAZ_DISABLE_PAIRING")
+	_ = viper.BindEnv("jaz.connections.calendar.oauthclientid", "JAZ_GOOGLE_CALENDAR_OAUTH_CLIENT_ID")
+	_ = viper.BindEnv("jaz.connections.calendar.oauthclientsecret", "JAZ_GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET")
 	_ = viper.BindEnv("jaz.connections.gmail.oauthclientid", "JAZ_GMAIL_OAUTH_CLIENT_ID")
 	_ = viper.BindEnv("jaz.connections.gmail.oauthclientsecret", "JAZ_GMAIL_OAUTH_CLIENT_SECRET")
 	viper.SetDefault("jaz.connections.chat.grouphistorylimit", app.DefaultChatGroupHistoryLimit)

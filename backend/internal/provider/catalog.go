@@ -38,6 +38,7 @@ type ModelProviderConfig struct {
 	APIKey    string
 	APIKeyEnv string
 	OpenCode  bool
+	Codex     bool
 }
 
 func ModelProviders() []ModelProvider {
@@ -128,11 +129,15 @@ func ApplyModelProviderConfig(meta ModelProvider, cfg ModelProviderConfig) Model
 	if cfg.OpenCode {
 		meta.OpenCode = true
 	}
+	if cfg.Codex {
+		meta.Codex = true
+	}
 	if !builtIn && strings.TrimSpace(cfg.BaseURL) != "" {
 		meta.OpenCode = true
 	}
 	if strings.EqualFold(strings.TrimSpace(cfg.Type), "openai-compatible") {
 		meta.OpenCode = true
+		meta.Codex = true
 		meta.OpenAICompatible = true
 	}
 	if strings.TrimSpace(meta.APIKeyEnv) == "" {
@@ -149,7 +154,8 @@ func ModelProviderConfigPresent(cfg ModelProviderConfig) bool {
 		strings.TrimSpace(cfg.Label) != "" ||
 		strings.TrimSpace(cfg.BaseURL) != "" ||
 		strings.TrimSpace(cfg.APIKey) != "" ||
-		cfg.OpenCode
+		cfg.OpenCode ||
+		cfg.Codex
 }
 
 func (p ModelProvider) SupportsCapability(capability string) bool {

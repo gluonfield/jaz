@@ -1,35 +1,32 @@
 package acp
 
 import (
-	"errors"
 	"strings"
-
-	"github.com/wins/jaz/backend/internal/goal"
-	"github.com/wins/jaz/backend/internal/sessionevents"
+	"time"
 )
 
-var ErrNativeGoalUnsupported = errors.New("acp native goal unsupported")
+const jazGoalPrompt = `<jaz_goal_mode>
+Goal mode is active for this turn.
+Before doing substantive work, call get_goal. If no active goal exists, call create_goal with the concise objective you will pursue. Do not copy the raw user message unless it is already the exact objective.
+Set token_budget only when you can state a useful token budget. Jaz tracks tokens_used from usage events after create_goal.
+Use get_goal when you need current goal usage. When the objective is achieved, call update_goal with status "complete"; if progress is impossible without user input or an external change, call update_goal with status "blocked".
+</jaz_goal_mode>`
 
-func goalPromptMeta(requested bool) map[string]any {
+func goalPromptMessage(message string, requested bool) string {
 	if !requested {
-		return nil
+		return message
 	}
-	return map[string]any{
-		jazMetaKey: map[string]any{"goalRequested": true},
+	if strings.TrimSpace(message) == "" {
+		return jazGoalPrompt
 	}
+	return jazGoalPrompt + "\n\n" + message
 }
 
-func (m *Manager) recordGoalRequest(job *jobState, requested bool, objective string) {
+func markGoalRequested(job *jobState, requested bool) {
 	if !requested {
 		return
 	}
 	job.setTurnGoalRequested()
-	m.publishGoalUpdate(job, sessionevents.GoalEvent{
-		Identity: goal.Identity{
-			Objective: strings.TrimSpace(objective),
-			Status:    sessionevents.GoalStatusRequested,
-		},
-	})
 }
 
 func currentTurnGoalRequested(job *jobState, done chan struct{}) bool {
@@ -38,16 +35,19 @@ func currentTurnGoalRequested(job *jobState, done chan struct{}) bool {
 	return job.turn != nil && job.turn.done == done && job.turn.goalRequested
 }
 
+func activeGoalTurnStartedAt(job *jobState) (time.Time, bool) {
+	job.mu.RLock()
+	defer job.mu.RUnlock()
+	if job.turn == nil || !job.turn.goalRequested {
+		return time.Time{}, false
+	}
+	return job.turn.startedAt, true
+}
+
 func (j *jobState) setTurnGoalRequested() {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	if j.turn != nil {
 		j.turn.goalRequested = true
 	}
-}
-
-func (j *jobState) supportsNativeGoal() bool {
-	j.mu.RLock()
-	defer j.mu.RUnlock()
-	return j.nativeGoal
 }

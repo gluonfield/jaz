@@ -38,8 +38,7 @@ func TestMCPServerSettingsAPI(t *testing.T) {
 		"enabled":true,
 		"bearer_token_env_var":"DOCS_TOKEN",
 		"oauth":{"client_id":"docs-client","client_secret_env_var":"DOCS_OAUTH_SECRET"},
-		"headers":[{"name":"X-Team","value":"platform"}],
-		"env_headers":[{"name":"X-Secret","env_var":"DOCS_SECRET"}]
+		"headers":[{"name":"X-Team","value":"platform"},{"name":"X-Secret","envvar":"DOCS_SECRET"}]
 	}`))
 	createReq.Header.Set("Content-Type", "application/json")
 	createRes := httptest.NewRecorder()
@@ -79,13 +78,10 @@ func TestMCPServerSettingsAPI(t *testing.T) {
 		Servers []struct {
 			ID      string `json:"id"`
 			Headers []struct {
-				Name  string `json:"name"`
-				Value string `json:"value"`
-			} `json:"headers"`
-			EnvHeaders []struct {
 				Name   string `json:"name"`
-				EnvVar string `json:"env_var"`
-			} `json:"env_headers"`
+				Value  string `json:"value"`
+				EnvVar string `json:"envvar"`
+			} `json:"headers"`
 			OAuth struct {
 				ClientID string `json:"client_id"`
 			} `json:"oauth"`
@@ -95,8 +91,8 @@ func TestMCPServerSettingsAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(listed.Servers) != 1 || listed.Servers[0].ID != created.ID ||
-		len(listed.Servers[0].Headers) != 1 || listed.Servers[0].Headers[0].Value != "platform" ||
-		len(listed.Servers[0].EnvHeaders) != 1 || listed.Servers[0].EnvHeaders[0].EnvVar != "DOCS_SECRET" ||
+		len(listed.Servers[0].Headers) != 2 || listed.Servers[0].Headers[0].Value != "platform" ||
+		listed.Servers[0].Headers[1].EnvVar != "DOCS_SECRET" ||
 		listed.Servers[0].OAuth.ClientID != "docs-client" {
 		t.Fatalf("listed = %#v", listed)
 	}
@@ -176,9 +172,6 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 				Label      string `json:"label"`
 				Configured bool   `json:"configured"`
 			} `json:"model_providers"`
-			Capabilities struct {
-				NativeGoal bool `json:"native_goal"`
-			} `json:"capabilities"`
 			AuthProviderID  string `json:"auth_provider_id"`
 			RequiresCommand bool   `json:"requires_command"`
 			SupportsAuth    bool   `json:"supports_auth"`
@@ -202,9 +195,6 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	if got.ACPOptions["codex"].RequiresCommand {
 		t.Fatalf("unexpected codex capabilities %#v", got.ACPOptions["codex"])
 	}
-	if !got.ACPOptions["codex"].Capabilities.NativeGoal {
-		t.Fatalf("codex goal capability missing %#v", got.ACPOptions["codex"])
-	}
 	if got.ACPOptions["codex"].AuthProviderID != provider.ProviderOpenAI ||
 		strings.Join(got.ACPOptions["codex"].ModelProviderIDs, ",") != "openai,openai-api-key,openrouter" {
 		t.Fatalf("unexpected codex provider options %#v", got.ACPOptions["codex"])
@@ -212,7 +202,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	if len(got.ACPOptions["codex"].ModelProviders) < 2 ||
 		got.ACPOptions["codex"].ModelProviders[0].Label != "OpenAI OAuth" ||
 		got.ACPOptions["codex"].ModelProviders[1].ID != acp.CodexProviderOpenAIAPIKey ||
-		got.ACPOptions["codex"].ModelProviders[1].Label != "OpenAI" {
+		got.ACPOptions["codex"].ModelProviders[1].Label != "OpenAI API key" {
 		t.Fatalf("unexpected codex model providers %#v", got.ACPOptions["codex"].ModelProviders)
 	}
 	if got.ACP["grok"].Enabled ||
@@ -592,17 +582,26 @@ func jsonReader(t *testing.T, value any) *strings.Reader {
 	return strings.NewReader(string(body))
 }
 
-func TestAgentSettingsAPIIncludesCustomOpenCodeProvider(t *testing.T) {
+func TestAgentSettingsAPIIncludesCustomProviderForACPAgents(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
 	catalog := testACPAgentCatalog(acp.AgentCatalog{
+		acp.AgentCodex: {
+			Command:                 "codex",
+			ProviderMode:            acp.AgentProviderModeAgentDefaults,
+			ModelProviderCapability: provider.CapabilityCodex,
+			ModelProvider:           "internal",
+			Model:                   "gpt-5.4-mini",
+		},
 		acp.AgentOpenCode: {
-			Command:       "opencode",
-			ModelProvider: "internal",
-			Model:         "chat",
+			Command:                 "opencode",
+			ProviderMode:            acp.AgentProviderModeAgentDefaults,
+			ModelProviderCapability: provider.CapabilityOpenCode,
+			ModelProvider:           "internal",
+			Model:                   "chat",
 		},
 	})
 	handler := (&Server{
@@ -628,6 +627,7 @@ func TestAgentSettingsAPIIncludesCustomOpenCodeProvider(t *testing.T) {
 			ID               string `json:"id"`
 			Label            string `json:"label"`
 			BaseURL          string `json:"base_url"`
+			Codex            bool   `json:"codex"`
 			OpenCode         bool   `json:"opencode"`
 			OpenAICompatible bool   `json:"openai_compatible"`
 			Configured       bool   `json:"configured"`
@@ -648,6 +648,7 @@ func TestAgentSettingsAPIIncludesCustomOpenCodeProvider(t *testing.T) {
 		ID               string `json:"id"`
 		Label            string `json:"label"`
 		BaseURL          string `json:"base_url"`
+		Codex            bool   `json:"codex"`
 		OpenCode         bool   `json:"opencode"`
 		OpenAICompatible bool   `json:"openai_compatible"`
 		Configured       bool   `json:"configured"`
@@ -659,12 +660,19 @@ func TestAgentSettingsAPIIncludesCustomOpenCodeProvider(t *testing.T) {
 		}
 	}
 	if custom == nil || custom.Label != "Internal" || custom.BaseURL != "https://llm.internal/v1" ||
-		!custom.OpenCode || !custom.OpenAICompatible || !custom.Configured {
+		!custom.Codex || !custom.OpenCode || !custom.OpenAICompatible || !custom.Configured {
 		t.Fatalf("custom provider not exposed correctly: %#v", got.Providers)
+	}
+	if options := got.ACPOptions["codex"]; options.ProviderMode != acp.AgentProviderModeAgentDefaults ||
+		!hasString(options.ModelProviderIDs, "internal") {
+		t.Fatalf("codex capabilities lost: %#v", options)
 	}
 	if options := got.ACPOptions["opencode"]; options.ProviderMode != acp.AgentProviderModeAgentDefaults ||
 		!hasString(options.ModelProviderIDs, "internal") {
 		t.Fatalf("opencode capabilities lost: %#v", options)
+	}
+	if auth := got.ACPAuth["codex"]; !auth.Authenticated || auth.AuthKind != acp.AuthKindAPIKey {
+		t.Fatalf("codex auth did not use custom provider config: %#v", auth)
 	}
 	if auth := got.ACPAuth["opencode"]; !auth.Authenticated || auth.AuthKind != acp.AuthKindAPIKey {
 		t.Fatalf("opencode auth did not use custom provider config: %#v", auth)
