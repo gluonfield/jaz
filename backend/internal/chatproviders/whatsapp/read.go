@@ -1,9 +1,13 @@
 package whatsapp
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"sort"
 	"time"
 
@@ -18,32 +22,156 @@ const whatsappReadRecentTimeout = 5 * time.Second
 const whatsappReadRecentCacheLimit = 500
 
 func (p *Provider) ReadRecent(ctx context.Context, req whatsappconnector.ReadRecentRequest) (whatsappconnector.ReadRecentResult, error) {
-	client, err := p.clientForConnection(ctx, req.Connection)
-	if err != nil {
-		return whatsappconnector.ReadRecentResult{}, err
-	}
-	if !client.IsConnected() {
-		if err := client.Connect(); err != nil {
-			return whatsappconnector.ReadRecentResult{}, err
-		}
-	}
 	chat, err := recipientJID(req.Chat)
 	if err != nil {
 		return whatsappconnector.ReadRecentResult{}, err
 	}
 	limit := whatsappconnector.ReadRecentLimit(req.Limit)
-	messages := p.cachedRecentMessages(chat.String(), limit)
-	if len(messages) >= limit {
-		return whatsappconnector.ReadRecentResult{Chat: chat.String(), Messages: messages}, nil
+	stored, err := p.storedRecentMessages(ctx, req.Connection, chat.String(), limit)
+	live := p.cachedRecentMessages(chat.String(), limit)
+	if err != nil && len(live) == 0 {
+		return whatsappconnector.ReadRecentResult{}, err
 	}
-	if len(messages) > 0 {
-		_ = p.requestOlderHistory(ctx, client, chat, messages[0], limit-len(messages))
-		messages = p.cachedRecentMessages(chat.String(), limit)
+	messages := mergeRecentMessages(stored, live, limit)
+	if len(messages) < limit && len(live) > 0 && p.container != nil {
+		if client, err := p.clientForConnection(ctx, req.Connection); err == nil {
+			if !client.IsConnected() {
+				_ = client.Connect()
+			}
+			if client.IsConnected() {
+				_ = p.requestOlderHistory(ctx, client, chat, live[0], limit-len(messages))
+				live = p.cachedRecentMessages(chat.String(), limit)
+				messages = mergeRecentMessages(stored, live, limit)
+			}
+		}
 	}
 	if len(messages) == 0 {
-		return whatsappconnector.ReadRecentResult{}, errors.New("no live WhatsApp messages are cached for this chat yet; keep the WhatsApp connection running until messages or history sync arrive")
+		return whatsappconnector.ReadRecentResult{}, errors.New("no live or stored WhatsApp messages are available for this chat")
 	}
 	return whatsappconnector.ReadRecentResult{Chat: chat.String(), Messages: messages}, nil
+}
+
+func (p *Provider) storedRecentMessages(ctx context.Context, connection integrations.Connection, chat string, limit int) ([]whatsappconnector.ReadRecentMessage, error) {
+	root := filepath.Join(p.cfg.RawRoot, whatsappconnector.ProviderID, integrations.NormalizeAlias(connection.AccountID), string(integrations.RecordDomainMessages))
+	if p.cfg.RawRoot == "" || connection.AccountID == "" {
+		return nil, nil
+	}
+	var messages []whatsappconnector.ReadRecentMessage
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if entry.IsDir() || entry.Name() != "messages.jsonl" {
+			return nil
+		}
+		records, err := readWhatsAppRawRecords(path)
+		if err != nil {
+			return err
+		}
+		for _, record := range records {
+			message, ok, err := decodeStoredWhatsAppMessage(record, chat)
+			if err != nil {
+				return err
+			}
+			if ok {
+				messages = append(messages, message)
+			}
+		}
+		return nil
+	})
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return mergeRecentMessages(nil, messages, limit), nil
+}
+
+func readWhatsAppRawRecords(path string) ([]integrations.Record, error) {
+	file, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64*1024), 16*1024*1024)
+	var records []integrations.Record
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+		var record integrations.Record
+		if err := json.Unmarshal(line, &record); err != nil {
+			return nil, err
+		}
+		if record.Kind == "whatsapp.message" {
+			records = append(records, record)
+		}
+	}
+	return records, scanner.Err()
+}
+
+func decodeStoredWhatsAppMessage(record integrations.Record, chat string) (whatsappconnector.ReadRecentMessage, bool, error) {
+	var raw whatsappconnector.MessageRecord
+	if err := json.Unmarshal(record.Raw, &raw); err != nil {
+		return whatsappconnector.ReadRecentMessage{}, false, err
+	}
+	if raw.ConversationID(record.ExternalID) != chat {
+		return whatsappconnector.ReadRecentMessage{}, false, nil
+	}
+	return decodeWhatsAppRecentMessage(record)
+}
+
+func mergeRecentMessages(left, right []whatsappconnector.ReadRecentMessage, limit int) []whatsappconnector.ReadRecentMessage {
+	merged := make([]whatsappconnector.ReadRecentMessage, 0, len(left)+len(right))
+	seen := map[string]bool{}
+	add := func(message whatsappconnector.ReadRecentMessage) {
+		key := recentMessageKey(message)
+		if key != "" && seen[key] {
+			return
+		}
+		if key != "" {
+			seen[key] = true
+		}
+		merged = append(merged, message)
+	}
+	for _, message := range left {
+		add(message)
+	}
+	for _, message := range right {
+		add(message)
+	}
+	sort.Slice(merged, func(i, j int) bool {
+		if merged[i].SentAt.Equal(merged[j].SentAt) {
+			return merged[i].MessageID < merged[j].MessageID
+		}
+		return merged[i].SentAt.Before(merged[j].SentAt)
+	})
+	if len(merged) > limit {
+		merged = merged[len(merged)-limit:]
+	}
+	return merged
+}
+
+func recentMessageKey(message whatsappconnector.ReadRecentMessage) string {
+	if message.MessageID != "" {
+		return "id:" + message.MessageID
+	}
+	if !message.SentAt.IsZero() || message.Sender != "" || message.Text != "" {
+		return "fallback:" + message.SentAt.UTC().Format(time.RFC3339Nano) + "\x00" + message.Sender + "\x00" + message.Text
+	}
+	return ""
 }
 
 func (p *Provider) requestOlderHistory(ctx context.Context, client *whatsmeow.Client, chat waTypes.JID, oldest whatsappconnector.ReadRecentMessage, count int) error {
@@ -147,29 +275,7 @@ func (p *Provider) storeLiveMessages(chat string, messages []whatsappconnector.R
 	if p.recentMessages == nil {
 		p.recentMessages = map[string][]whatsappconnector.ReadRecentMessage{}
 	}
-	merged := append([]whatsappconnector.ReadRecentMessage{}, p.recentMessages[chat]...)
-	seen := make(map[string]bool, len(merged)+len(messages))
-	for _, message := range merged {
-		if message.MessageID != "" {
-			seen[message.MessageID] = true
-		}
-	}
-	for _, message := range messages {
-		if message.MessageID != "" && seen[message.MessageID] {
-			continue
-		}
-		merged = append(merged, message)
-		if message.MessageID != "" {
-			seen[message.MessageID] = true
-		}
-	}
-	sort.Slice(merged, func(i, j int) bool {
-		return merged[i].SentAt.Before(merged[j].SentAt)
-	})
-	if len(merged) > whatsappReadRecentCacheLimit {
-		merged = merged[len(merged)-whatsappReadRecentCacheLimit:]
-	}
-	p.recentMessages[chat] = merged
+	p.recentMessages[chat] = mergeRecentMessages(p.recentMessages[chat], messages, whatsappReadRecentCacheLimit)
 }
 
 func (p *Provider) cachedRecentMessages(chat string, limit int) []whatsappconnector.ReadRecentMessage {
