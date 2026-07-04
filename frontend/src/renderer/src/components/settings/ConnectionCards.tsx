@@ -34,14 +34,16 @@ export function ExistingConnectionCard({
 }) {
   const address = accountAddress(account)
   const sync = accountSyncLabel(account)
+  const detail = address || account.id
+  const maskDetail = shouldMaskAccountDetail(plugin, account)
 
   return (
     <SettingsCard className="grid h-full grid-cols-1 gap-3 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
       <ConnectionSummary
         plugin={plugin}
         title={plugin.name}
-        detail={<MaskedAccountDetail value={address || account.id} />}
-        detailTitle="Account hidden until hover or focus"
+        detail={maskDetail ? <MaskedAccountDetail value={detail} /> : detail}
+        detailTitle={maskDetail ? 'Account hidden until hover or focus' : detail}
         meta={sync}
       />
       <Button
@@ -63,16 +65,20 @@ function MaskedAccountDetail({ value }: { value: string }) {
     <span
       tabIndex={0}
       aria-label={value}
-      className="group/account inline-grid max-w-full cursor-default rounded-[6px] bg-surface-2/70 px-1.5 py-0.5 align-baseline font-mono text-[11px] leading-4 text-ink-2 ring-1 ring-border/50 transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      className="group/account inline-grid max-w-full cursor-default align-baseline tabular-nums focus-visible:rounded-[4px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
     >
-      <span className="col-start-1 row-start-1 truncate tracking-[0.16em] text-ink-3 transition-opacity duration-150 group-hover/account:opacity-0 group-focus/account:opacity-0">
-        ************
+      <span className="col-start-1 row-start-1 truncate font-mono tracking-[0.1em] text-ink-3 transition-opacity duration-150 group-hover/account:opacity-0 group-focus/account:opacity-0">
+        ••••••••••
       </span>
       <span className="col-start-1 row-start-1 truncate opacity-0 transition-opacity duration-150 group-hover/account:opacity-100 group-focus/account:opacity-100">
         {value}
       </span>
     </span>
   )
+}
+
+function shouldMaskAccountDetail(plugin: IntegrationPlugin, account: IntegrationConnectionAccount) {
+  return plugin.id === 'telegram' || plugin.id === 'whatsapp' || account.provider === 'telegram' || account.provider === 'whatsapp'
 }
 
 export function ConnectionPluginCard({
