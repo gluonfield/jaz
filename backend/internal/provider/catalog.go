@@ -2,6 +2,8 @@ package provider
 
 import (
 	"fmt"
+	"net"
+	"net/url"
 	"sort"
 	"strings"
 )
@@ -140,7 +142,7 @@ func ApplyModelProviderConfig(meta ModelProvider, cfg ModelProviderConfig) Model
 		meta.Codex = true
 		meta.OpenAICompatible = true
 	}
-	if strings.TrimSpace(meta.APIKeyEnv) == "" && (!builtIn || strings.TrimSpace(cfg.APIKey) != "" || strings.TrimSpace(cfg.APIKeyEnv) != "") {
+	if strings.TrimSpace(meta.APIKeyEnv) == "" && needsGeneratedAPIKeyEnv(builtIn, meta, cfg) {
 		meta.APIKeyEnv = ConfiguredAPIKeyEnv(meta.ID, cfg)
 	}
 	if strings.TrimSpace(cfg.APIKey) != "" || strings.TrimSpace(meta.APIKeyEnv) != "" {
@@ -156,6 +158,29 @@ func ModelProviderConfigPresent(cfg ModelProviderConfig) bool {
 		strings.TrimSpace(cfg.APIKey) != "" ||
 		cfg.OpenCode ||
 		cfg.Codex
+}
+
+func needsGeneratedAPIKeyEnv(builtIn bool, meta ModelProvider, cfg ModelProviderConfig) bool {
+	if strings.TrimSpace(cfg.APIKey) != "" || strings.TrimSpace(cfg.APIKeyEnv) != "" {
+		return true
+	}
+	if builtIn {
+		return false
+	}
+	return !BaseURLIsLoopback(meta.BaseURL)
+}
+
+func BaseURLIsLoopback(raw string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func (p ModelProvider) SupportsCapability(capability string) bool {
