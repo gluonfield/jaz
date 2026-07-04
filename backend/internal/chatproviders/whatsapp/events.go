@@ -7,7 +7,6 @@ import (
 
 	"github.com/wins/jaz/backend/pkg/integrations"
 	"go.mau.fi/whatsmeow"
-	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types/events"
 )
 
@@ -48,8 +47,6 @@ func (p *Provider) eventHandler(client *whatsmeow.Client, session *qrSession) wh
 				session.setStatus("connected", "")
 			}
 			p.logInfo("client connected", "session", qrSessionLogID(session))
-			_ = p.writeAllContacts(p.ctx, connection, client.Store)
-			_ = p.writeAllGroups(p.ctx, connection, client)
 		case *events.Message:
 			if connection, ok := connectionFromDevice(client.Store); ok {
 				_ = p.writeRecords(p.ctx, whatsappMessageRecord(connection, event))
@@ -57,10 +54,6 @@ func (p *Provider) eventHandler(client *whatsmeow.Client, session *qrSession) wh
 		case *events.HistorySync:
 			if connection, ok := connectionFromDevice(client.Store); ok {
 				_ = p.writeHistorySync(p.ctx, connection, event.Data, time.Now())
-			}
-		case *events.Contact:
-			if connection, ok := connectionFromDevice(client.Store); ok {
-				_ = p.writeRecords(p.ctx, whatsappContactActionRecord(connection, event))
 			}
 		case *events.JoinedGroup:
 			if connection, ok := connectionFromDevice(client.Store); ok {
@@ -102,18 +95,6 @@ func qrSessionLogID(session *qrSession) string {
 		return ""
 	}
 	return session.id
-}
-
-func (p *Provider) writeAllContacts(ctx context.Context, connection integrations.Connection, device *store.Device) error {
-	contacts, err := device.Contacts.GetAllContacts(ctx)
-	if err != nil {
-		return err
-	}
-	records := make([]integrations.Record, 0, len(contacts))
-	for jid, contact := range contacts {
-		records = append(records, whatsappContactRecord(connection, jid, contact))
-	}
-	return p.writeRecords(ctx, records...)
 }
 
 func (p *Provider) writeRecords(ctx context.Context, records ...integrations.Record) error {

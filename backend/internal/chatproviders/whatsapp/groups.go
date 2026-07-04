@@ -9,18 +9,6 @@ import (
 	waTypes "go.mau.fi/whatsmeow/types"
 )
 
-func (p *Provider) writeAllGroups(ctx context.Context, connection integrations.Connection, client *whatsmeow.Client) error {
-	groups, err := client.GetJoinedGroups(ctx)
-	if err != nil {
-		return err
-	}
-	records := make([]integrations.Record, 0, len(groups))
-	for _, group := range groups {
-		records = append(records, whatsappGroupRecord(connection, group.JID, group.Name))
-	}
-	return p.writeRecords(ctx, records...)
-}
-
 func whatsappGroupRecord(connection integrations.Connection, jid waTypes.JID, name string) integrations.Record {
 	var names []string
 	if name != "" {
