@@ -155,12 +155,13 @@ function buildCells(width: number, height: number): DitherCell[] {
 
 function UltracodeDither({ active }: { active: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const stateRef = useRef({ active, wave: 0, raf: 0 })
+  const stateRef = useRef({ active, reduced: false, wave: 0, raf: 0 })
   const reducedMotion = useReducedEffectsMotion()
 
   useEffect(() => {
     const state = stateRef.current
     state.active = active
+    state.reduced = reducedMotion
     const canvas = canvasRef.current
     if (!canvas || state.raf || (!active && state.wave === 0)) return
     const ctx = canvas.getContext('2d')
@@ -189,7 +190,7 @@ function UltracodeDither({ active }: { active: boolean }) {
       for (const cell of cells) {
         const front = Math.max(0, Math.min(1, (state.wave * 1.04 - cell.need) * 6))
         if (front <= 0.01) continue
-        const flow = reducedMotion
+        const flow = state.reduced
           ? 1
           : 0.6 +
             0.3 * Math.sin(cell.nx * 14 + t * 3.4 + cell.phase * 0.5) +
@@ -210,7 +211,7 @@ function UltracodeDither({ active }: { active: boolean }) {
         return
       }
       const target = state.active ? 1 : 0
-      state.wave = reducedMotion
+      state.wave = state.reduced
         ? target
         : state.wave + (target - state.wave) * (1 - Math.exp(-dt * 5))
       if (!state.active && state.wave < 0.01) {
@@ -220,7 +221,7 @@ function UltracodeDither({ active }: { active: boolean }) {
         return
       }
       draw(ms / 1000)
-      state.raf = reducedMotion ? 0 : requestAnimationFrame(frame)
+      state.raf = state.reduced ? 0 : requestAnimationFrame(frame)
     }
     state.raf = requestAnimationFrame(frame)
   }, [active, reducedMotion])

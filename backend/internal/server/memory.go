@@ -20,21 +20,27 @@ type memoryHorizon struct {
 }
 
 type memoryStatusResponse struct {
-	Enabled          bool                `json:"enabled"`
-	Agent            string              `json:"agent,omitempty"`
-	SchedulerRunning bool                `json:"scheduler_running"`
-	Root             string              `json:"root"`
-	DBPath           string              `json:"db_path"`
-	Doctor           jazmem.DoctorReport `json:"doctor"`
-	Horizons         []memoryHorizon     `json:"horizons"`
-	Tasks            []jazmem.TaskStatus `json:"tasks"`
-	MCPURL           string              `json:"mcp_url,omitempty"`
-	SourceQueues     memorySourceQueues  `json:"source_queues"`
+	Enabled                bool                `json:"enabled"`
+	Agent                  string              `json:"agent,omitempty"`
+	Model                  string              `json:"model,omitempty"`
+	ReasoningEffort        string              `json:"reasoning_effort,omitempty"`
+	DefaultModel           string              `json:"default_model,omitempty"`
+	DefaultReasoningEffort string              `json:"default_reasoning_effort,omitempty"`
+	SchedulerRunning       bool                `json:"scheduler_running"`
+	Root                   string              `json:"root"`
+	DBPath                 string              `json:"db_path"`
+	Doctor                 jazmem.DoctorReport `json:"doctor"`
+	Horizons               []memoryHorizon     `json:"horizons"`
+	Tasks                  []jazmem.TaskStatus `json:"tasks"`
+	MCPURL                 string              `json:"mcp_url,omitempty"`
+	SourceQueues           memorySourceQueues  `json:"source_queues"`
 }
 
 type memorySettingsInput struct {
-	Enabled *bool   `json:"enabled,omitempty"`
-	Agent   *string `json:"agent,omitempty"`
+	Enabled         *bool   `json:"enabled,omitempty"`
+	Agent           *string `json:"agent,omitempty"`
+	Model           *string `json:"model,omitempty"`
+	ReasoningEffort *string `json:"reasoning_effort,omitempty"`
 }
 
 type memorySourceQueues struct {
@@ -93,16 +99,24 @@ func (s *Server) memoryStatus(r *http.Request) (memoryStatusResponse, error) {
 	if err != nil {
 		return memoryStatusResponse{}, err
 	}
+	agentDefaults, err := s.loadAgentSettings(store)
+	if err != nil {
+		return memoryStatusResponse{}, err
+	}
 	return memoryStatusResponse{
-		Enabled:          s.Memory.Enabled(),
-		Agent:            settings.Agent,
-		SchedulerRunning: s.Memory.Scheduler != nil && s.Memory.Scheduler.Running(),
-		Root:             s.Memory.Root(),
-		DBPath:           s.Memory.DBPath(),
-		Doctor:           doctor,
-		Horizons:         horizons,
-		Tasks:            tasks,
-		MCPURL:           s.Memory.MCPURL(),
+		Enabled:                s.Memory.Enabled(),
+		Agent:                  settings.Agent,
+		Model:                  settings.Model,
+		ReasoningEffort:        settings.ReasoningEffort,
+		DefaultModel:           jazsettings.WorkerAgentModel(settings.Agent, agentDefaults),
+		DefaultReasoningEffort: jazsettings.WorkerAgentReasoningEffort(settings.Agent),
+		SchedulerRunning:       s.Memory.Scheduler != nil && s.Memory.Scheduler.Running(),
+		Root:                   s.Memory.Root(),
+		DBPath:                 s.Memory.DBPath(),
+		Doctor:                 doctor,
+		Horizons:               horizons,
+		Tasks:                  tasks,
+		MCPURL:                 s.Memory.MCPURL(),
 		SourceQueues: memorySourceQueues{
 			Projection: readMemoryQueueStatus(r.Context(), s.SourceProjectionQueue),
 			Memory:     readMemoryQueueStatus(r.Context(), s.MemorySourceQueue),
@@ -170,7 +184,18 @@ func (s *Server) normalizeMemorySettingsInput(store storage.SettingsStorage, inp
 		settings.Enabled = *input.Enabled
 	}
 	if input.Agent != nil {
-		settings.Agent = acp.CanonicalAgentName(*input.Agent)
+		agent := acp.CanonicalAgentName(*input.Agent)
+		if agent != settings.Agent {
+			settings.Model = ""
+			settings.ReasoningEffort = ""
+		}
+		settings.Agent = agent
+	}
+	if input.Model != nil {
+		settings.Model = strings.TrimSpace(*input.Model)
+	}
+	if input.ReasoningEffort != nil {
+		settings.ReasoningEffort = strings.ToLower(strings.TrimSpace(*input.ReasoningEffort))
 	}
 	if settings.Agent == "" {
 		return settings, nil
@@ -184,6 +209,16 @@ func (s *Server) normalizeMemorySettingsInput(store storage.SettingsStorage, inp
 	}
 	if err := validateMemoryAgent(agentSettings, settings.Agent); err != nil {
 		return jazsettings.MemorySettings{}, err
+	}
+	if settings.ReasoningEffort != "" {
+		provider := agentSettings.ACP[settings.Agent].ModelProvider
+		model := settings.WorkerModel(agentSettings)
+		if err := s.ModelCatalog.ValidateReasoningEffort(settings.Agent, provider, model, settings.ReasoningEffort); err != nil {
+			if input.ReasoningEffort != nil {
+				return jazsettings.MemorySettings{}, err
+			}
+			settings.ReasoningEffort = ""
+		}
 	}
 	return settings, nil
 }
