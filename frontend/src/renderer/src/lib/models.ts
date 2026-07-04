@@ -40,7 +40,7 @@ export function modelSuggestionFor(
   return raw ? suggestions.find((s) => s.value === raw) : suggestions[0]
 }
 
-export function usageCatalogEntry(
+function usageCatalogEntry(
   model: { agent?: string; model?: string },
   settings?: AgentSettings,
 ): ModelSuggestion | undefined {
