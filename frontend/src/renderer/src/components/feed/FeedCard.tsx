@@ -6,7 +6,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState, type RefObject
 import { createPortal } from 'react-dom'
 import { FileReaderLinkProvider, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
 import { ComposerCard } from '@/components/session/Composer'
-import { OverviewPanel, OVERVIEW_PANEL_WIDTH } from '@/components/session/OverviewPanel'
+import { OverviewPanel } from '@/components/session/OverviewPanel'
 import { Transcript } from '@/components/session/Transcript'
 import { deriveSessionView, type SessionView } from '@/components/session/sessionView'
 import { IconButton } from '@/components/ui/IconButton'
@@ -259,31 +259,34 @@ function FeedOverview({
   const reducedMotion = useReducedMotion()
   const [rect, setRect] = useState<DOMRect | null>(null)
 
+  // The card lives in a scroll container, so the panel is portalled out and
+  // pinned with fixed coordinates. The card can move without resizing or
+  // scrolling the window (sidebar toggle, cards above expanding), which no
+  // ResizeObserver/scroll listener catches — so track its box every frame and
+  // only re-render when it actually shifts.
   useLayoutEffect(() => {
     const anchor = anchorRef.current
     if (!anchor) return
-    const update = () => setRect(anchor.getBoundingClientRect())
-    update()
-    const observer = new ResizeObserver(update)
-    observer.observe(anchor)
-    window.addEventListener('scroll', update, true)
-    window.addEventListener('resize', update)
-    return () => {
-      observer.disconnect()
-      window.removeEventListener('scroll', update, true)
-      window.removeEventListener('resize', update)
+    let frame = 0
+    let box = ''
+    const track = () => {
+      const next = anchor.getBoundingClientRect()
+      const snapshot = `${next.top}:${next.right}`
+      if (snapshot !== box) {
+        box = snapshot
+        setRect(next)
+      }
+      frame = requestAnimationFrame(track)
     }
+    track()
+    return () => cancelAnimationFrame(frame)
   }, [anchorRef])
 
   if (!rect) return null
-  const gap = 12
-  const panelWidth = OVERVIEW_PANEL_WIDTH + 16
-  const fitsRight = rect.right + gap + panelWidth <= window.innerWidth
-  const left = fitsRight ? rect.right + gap : rect.left - gap - panelWidth
-  const from = reducedMotion ? 0 : (fitsRight ? -1 : 1) * 16
+  const from = reducedMotion ? 0 : -16
   return createPortal(
     <motion.div
-      style={{ position: 'fixed', top: rect.top, left }}
+      style={{ position: 'fixed', top: rect.top, left: rect.right + 12 }}
       initial={{ opacity: 0, x: from }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: from }}
