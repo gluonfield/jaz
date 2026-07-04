@@ -13,6 +13,7 @@ import { boardsQuery, deleteBoard } from '@/lib/api/boards'
 import { feedQuery } from '@/lib/api/feed'
 import { loopsQuery } from '@/lib/api/loops'
 import { projectsQuery, reorderProjects, sidebarSessionsQuery, type Project, type SessionListItem } from '@/lib/api/sessions'
+import { useShowModelIcons } from '@/lib/appearance'
 import { modalDialogOpen } from '@/lib/dom/modal'
 import { useMetaHeld } from '@/lib/hooks/useMetaHeld'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
@@ -196,6 +197,7 @@ function SessionRows({
   shortcutByID?: Map<string, number>
   shortcutMode?: boolean
 }) {
+  const showRuntimeBadge = useShowModelIcons()
   return (
     <div className="flex flex-col gap-px">
       <AnimatePresence initial={false} mode="popLayout">
@@ -213,6 +215,7 @@ function SessionRows({
               child={item.child}
               shortcutIndex={shortcutByID?.get(item.session.id)}
               shortcutMode={shortcutMode}
+              showRuntimeBadge={showRuntimeBadge}
             />
           </motion.div>
         ))}

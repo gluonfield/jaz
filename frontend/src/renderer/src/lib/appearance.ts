@@ -23,6 +23,8 @@ export interface AppearanceSettings {
   inlineShellCommands: boolean
   /** widen the whole thread column (messages, code, diffs, composer) */
   wideLayout: boolean
+  /** show ACP agent/model marks in the left sidebar */
+  showModelIcons: boolean
 }
 
 export const DEFAULTS: AppearanceSettings = {
@@ -33,6 +35,7 @@ export const DEFAULTS: AppearanceSettings = {
   inlineDiffs: false,
   inlineShellCommands: false,
   wideLayout: false,
+  showModelIcons: true,
 }
 
 // Whole-UI zoom steps. The chrome is built largely with px sizes, so scaling the
@@ -114,6 +117,7 @@ const FIELDS: { [K in keyof AppearanceSettings]: Field<AppearanceSettings[K]> } 
   inlineDiffs: boolField('jaz.appearance.inlineDiffs', (c) => c.inlineDiffs),
   inlineShellCommands: boolField('jaz.appearance.inlineShellCommands', (c) => c.inlineShellCommands),
   wideLayout: boolField('jaz.appearance.wideLayout', (c) => c.wideLayout),
+  showModelIcons: boolField('jaz.appearance.showModelIcons', (c) => c.showModelIcons),
 }
 
 const FIELD_KEYS = Object.keys(FIELDS) as (keyof AppearanceSettings)[]
@@ -227,4 +231,8 @@ export function useInlineDiffs(): boolean {
 
 export function useInlineShellCommands(): boolean {
   return useSyncExternalStore(subscribe, () => current.inlineShellCommands)
+}
+
+export function useShowModelIcons(): boolean {
+  return useSyncExternalStore(subscribe, () => current.showModelIcons)
 }
