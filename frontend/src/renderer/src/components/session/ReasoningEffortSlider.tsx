@@ -47,7 +47,7 @@ export function ReasoningEffortSlider({
       </p>
       <div
         ref={trackRef}
-        className="relative mt-1.5 h-8"
+        className="relative mt-1.5 h-7"
         onMouseMove={(e) => setPreviewIndex(indexFromPointer(e.clientX))}
         onMouseLeave={() => setPreviewIndex(null)}
       >
@@ -74,13 +74,13 @@ export function ReasoningEffortSlider({
           aria-valuetext={shown?.label}
           onChange={(e) => onChange(options[Number(e.target.value)]?.value ?? '')}
           className="absolute inset-0 w-full cursor-pointer appearance-none bg-transparent outline-none
-            [&::-webkit-slider-runnable-track]:h-8
-            [&::-webkit-slider-thumb]:mt-1 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:w-7
+            [&::-webkit-slider-runnable-track]:h-7
+            [&::-webkit-slider-thumb]:mt-1 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-7
             [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-[6px]
             [&::-webkit-slider-thumb]:bg-ink/90 hover:[&::-webkit-slider-thumb]:bg-ink
             [&::-webkit-slider-thumb]:shadow-[0_1px_3px_rgba(0,0,0,0.35)]
             [&::-webkit-slider-thumb]:transition-colors [&::-webkit-slider-thumb]:duration-150
-            [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:w-7 [&::-moz-range-thumb]:appearance-none
+            [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-7 [&::-moz-range-thumb]:appearance-none
             [&::-moz-range-thumb]:rounded-[6px] [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-ink/90"
         />
       </div>
@@ -189,8 +189,12 @@ function UltracodeDither({ active }: { active: boolean }) {
       for (const cell of cells) {
         const front = Math.max(0, Math.min(1, (state.wave * 1.04 - cell.need) * 6))
         if (front <= 0.01) continue
-        const twinkle = reducedMotion ? 1 : 0.72 + 0.28 * Math.sin(t * cell.speed + cell.phase)
-        ctx.globalAlpha = front * cell.ramp * twinkle
+        const flow = reducedMotion
+          ? 1
+          : 0.6 +
+            0.3 * Math.sin(cell.nx * 14 + t * 3.4 + cell.phase * 0.5) +
+            0.1 * Math.sin(t * cell.speed + cell.phase)
+        ctx.globalAlpha = front * cell.ramp * flow
         ctx.fillStyle = palette[cell.color]
         ctx.fillRect(cell.x, cell.y, PIXEL, PIXEL)
       }
