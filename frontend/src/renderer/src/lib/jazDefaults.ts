@@ -37,6 +37,7 @@ export interface JazDefaults {
   fontScale?: number
   effects?: boolean
   wideLayout?: boolean
+  showModelIcons?: boolean
   inlineDiffs?: boolean
   inlineShellCommands?: boolean
   composer?: ComposerConfig
