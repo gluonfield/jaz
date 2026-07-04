@@ -2,8 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import type { ReasoningEffortOption } from '@/lib/api/types'
 import { useReducedEffectsMotion } from '@/lib/effectsMotion'
 
-// Width of the native range thumb; dots and pointer math share the rail the
-// thumb's center travels, so everything stays aligned at every stop.
 const THUMB = 28
 
 function stopPosition(index: number, count: number): string {
@@ -11,22 +9,15 @@ function stopPosition(index: number, count: number): string {
   return `calc(${THUMB / 2}px + ${index / (count - 1)} * (100% - ${THUMB}px))`
 }
 
-// Discrete effort slider, fastest on the left, smartest on the right.
-// Hovering the track previews the stop under the pointer; the ultracode stop
-// lights the track with a dither field sweeping in from the right.
 export function ReasoningEffortSlider({
   options,
   value,
   defaultValue,
-  showDefaultReset,
   onChange,
 }: {
-  // Concrete stops, ordered fastest → smartest ('' never appears here).
   options: ReasoningEffortOption[]
-  // '' inherits the configured default; the thumb then parks on defaultValue.
   value: string
   defaultValue?: string
-  showDefaultReset?: boolean
   onChange: (effort: string) => void
 }) {
   const trackRef = useRef<HTMLDivElement>(null)
@@ -48,32 +39,15 @@ export function ReasoningEffortSlider({
 
   return (
     <div className="px-3 pt-1.5 pb-2.5">
-      <div className="flex items-baseline justify-between">
-        <p className="text-[13px] text-ink-3">
-          Effort{' '}
-          <span className={`font-semibold ${ultra ? 'text-primary' : 'text-ink'}`}>
-            {shown?.label ?? 'Default'}
-          </span>
-        </p>
-        {showDefaultReset ? (
-          <button
-            type="button"
-            onClick={() => onChange('')}
-            className={`rounded-full px-1.5 text-[11px] transition-colors duration-150 ${
-              value === '' ? 'text-primary' : 'text-ink-3 hover:text-ink'
-            }`}
-          >
-            Default
-          </button>
-        ) : null}
-      </div>
-      <div className="mt-1 mb-1.5 flex items-baseline justify-between text-[12px] text-ink-3">
-        <span>Faster</span>
-        <span>Smarter</span>
-      </div>
+      <p className="text-[13px] text-ink-3">
+        Effort{' '}
+        <span className={`font-semibold ${ultra ? 'text-primary' : 'text-ink'}`}>
+          {shown?.label ?? 'Default'}
+        </span>
+      </p>
       <div
         ref={trackRef}
-        className="relative h-8"
+        className="relative mt-1.5 h-8"
         onMouseMove={(e) => setPreviewIndex(indexFromPointer(e.clientX))}
         onMouseLeave={() => setPreviewIndex(null)}
       >
@@ -110,16 +84,13 @@ export function ReasoningEffortSlider({
             [&::-moz-range-thumb]:rounded-[6px] [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-ink/90"
         />
       </div>
+      <div className="mt-1 flex items-baseline justify-between text-[12px] text-ink-3">
+        <span>Faster</span>
+        <span>Smarter</span>
+      </div>
     </div>
   )
 }
-
-/* ---------------- ultracode dither ----------------
- * A grid of ~4px pixels over the track, brightness ramping toward the right.
- * Activation sweeps a wavefront right → left (per-cell jitter keeps the edge
- * dithered, not a hard line); deactivation runs the same front in reverse.
- * The wave chases `active` with an exponential approach, so flipping state
- * mid-sweep retargets smoothly instead of restarting. */
 
 const CELL = 5
 const PIXEL = 4
@@ -128,14 +99,13 @@ type DitherCell = {
   x: number
   y: number
   nx: number
-  need: number // wave level at which this cell lights; grows toward the left
-  ramp: number // spatial brightness, dim left → bright right
+  need: number
+  ramp: number
   color: number
   phase: number
   speed: number
 }
 
-// Resolve a CSS color (oklch tokens included) to RGB by letting canvas parse it.
 function cssToRgb(css: string): [number, number, number] {
   const scratch = document.createElement('canvas')
   scratch.width = scratch.height = 1
@@ -147,9 +117,6 @@ function cssToRgb(css: string): [number, number, number] {
   return [r, g, b]
 }
 
-// Four primary-derived shades: negative k darkens toward black, positive
-// lightens toward white — dim purple at the field's tail, near-white at the
-// bright end by the thumb.
 function ditherPalette(): string[] {
   const [r, g, b] = cssToRgb(
     getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim(),
@@ -170,8 +137,6 @@ function buildCells(width: number, height: number): DitherCell[] {
   for (let c = 0; c < cols; c++) {
     const nx = (c + 0.5) / cols
     for (let r = 0; r < rows; r++) {
-      // Density thins toward the left: the field should trail off into dark
-      // track, not carpet it edge to edge.
       if (Math.random() > 0.1 + 0.9 * Math.pow(nx, 1.1)) continue
       cells.push({
         x: c * CELL + (CELL - PIXEL) / 2,

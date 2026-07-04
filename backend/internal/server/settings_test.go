@@ -25,8 +25,6 @@ func testACPAgentCatalog(extra map[string]acp.AgentConfig) acp.AgentCatalog {
 	return acp.MergeAgents(acp.BuiltinAgents(), extra)
 }
 
-// warmedModelCatalog serves a fixed OpenRouter catalog so settings responses
-// carry enriched per-model reasoning efforts, mirroring a running server.
 func warmedModelCatalog(t *testing.T) *modelcatalog.Service {
 	t.Helper()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -134,10 +134,7 @@ export function ModelSelect({
   const label = value === '' ? 'Model' : modelSuggestionLabel(suggestions, value)
   const effortValue = effort ?? ''
   const effortLabel = reasoningEffortLabel(effortValue, effortOptions)
-  // Slider stops are the concrete levels; '' (inherit the default) stays a
-  // separate reset affordance instead of a position on the track.
   const effortStops = effortOptions.filter((option) => option.value !== '')
-  const hasDefaultEffort = effortOptions.some((option) => option.value === '')
   const selectedSuggestion =
     suggestions.find((s) => s.value === value) ?? (value === '' ? suggestions[0] : undefined)
   const showEffortSlider = Boolean(onEffortChange) && effortStops.length > 1
@@ -248,12 +245,10 @@ export function ModelSelect({
         {showEffortSlider && onEffortChange ? (
           <>
             <div className="my-1 border-t border-border" />
-            {/* Stays open: effort is a refinement, not the menu's main action. */}
             <ReasoningEffortSlider
               options={effortStops}
               value={effortValue}
               defaultValue={selectedSuggestion?.reasoningDefaultEffort}
-              showDefaultReset={hasDefaultEffort}
               onChange={onEffortChange}
             />
           </>
