@@ -74,10 +74,6 @@ func (s *Service) ProviderModels(id string) ([]Model, error) {
 	}
 }
 
-// AgentModels returns the curated models for an agent with reasoning efforts
-// filled from the OpenRouter catalog, the sole source of per-model effort
-// truth. Models it doesn't know keep nil efforts and resolve to the agent's
-// harness efforts downstream.
 func (s *Service) AgentModels(agent string) []Model {
 	agent = strings.ToLower(strings.TrimSpace(agent))
 	models := s.enrichReasoning(AgentModels(agent))

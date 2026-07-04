@@ -24,9 +24,6 @@ type Model struct {
 	ReasoningMandatory     bool     `json:"reasoning_mandatory,omitempty"`
 }
 
-// reasoningEffortRank orders efforts from fastest to smartest; every list the
-// catalog serves follows this canonical order so consumers (validation errors,
-// effort sliders) never re-sort.
 var reasoningEffortRank = map[string]int{
 	"none": 0, "minimal": 1, "low": 2, "medium": 3, "high": 4, "xhigh": 5, "max": 6, "ultracode": 7,
 }
@@ -37,9 +34,6 @@ func sortReasoningEfforts(efforts []string) {
 	})
 }
 
-// withUltracode appends the Claude Code harness level to efforts that include
-// xhigh: ultracode is built on xhigh thinking and never appears in provider
-// catalogs. Idempotent, so it applies to static and enriched lists alike.
 func withUltracode(efforts []string) []string {
 	hasXhigh := false
 	for _, effort := range efforts {
@@ -54,10 +48,6 @@ func withUltracode(efforts []string) []string {
 	return append(efforts, "ultracode")
 }
 
-// Curated models carry no effort data: the OpenRouter catalog is the only
-// source of per-model supported efforts (Service.enrichReasoning fills them
-// by OpenRouterID). Models it doesn't know fall back to the agent's harness
-// efforts, which is the correct agent-level truth, not a compat shim.
 var (
 	codexHarnessEfforts  = []string{"none", "minimal", "low", "medium", "high", "xhigh"}
 	claudeHarnessEfforts = []string{"low", "medium", "high", "xhigh", "max", "ultracode"}

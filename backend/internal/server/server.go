@@ -61,8 +61,6 @@ type MCPRuntime interface {
 
 type ModelCatalog interface {
 	ValidateReasoningEffort(agent, providerID, model, effort string) error
-	// AgentModels is the curated per-agent catalog with reasoning metadata
-	// refreshed from the live OpenRouter catalog.
 	AgentModels(agent string) []modelcatalog.Model
 }
 

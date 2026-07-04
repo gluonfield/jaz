@@ -83,9 +83,6 @@ export function modelSettingsReasoningEffortOptions(
   ])
 }
 
-// A model's efforts gated by what the agent harness accepts: an agent CLI
-// rejects levels it doesn't know even when the model supports them (e.g.
-// codex has no max). 'none' always passes — agents map it to "no reasoning".
 function harnessSupported(values: string[], agentOptions: ReasoningEffortOption[]): string[] {
   const supported = new Set(agentOptions.map((option) => option.value))
   return values.filter((value) => value === 'none' || supported.has(value))

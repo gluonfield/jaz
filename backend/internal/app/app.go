@@ -280,9 +280,6 @@ func NewModelCatalog(providerSource provider.Source) *modelcatalog.Service {
 	return modelcatalog.NewService(providerSource)
 }
 
-// StartModelCatalogWarmup loads the OpenRouter catalog in the background and
-// retries until it succeeds: it is the sole source of per-model reasoning
-// efforts, so the process keeps working toward it instead of degrading.
 func StartModelCatalogWarmup(lc fx.Lifecycle, catalog *modelcatalog.Service, logger *log.Logger) {
 	ctx, cancel := context.WithCancel(context.Background())
 	lc.Append(fx.Hook{
